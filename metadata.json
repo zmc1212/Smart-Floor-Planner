@@ -1,0 +1,5 @@
+{
+  "name": "智能量房大师 (Smart Floor Planner)",
+  "description": "一款专业的户型图绘制工具，支持拖拽绘图、精确长度输入与多房间布局管理，轻松实现一室一厅、二室一厅等复杂户型设计。",
+  "requestFramePermissions": []
+}
