@@ -1,9 +1,21 @@
 import { GoogleGenAI } from "@google/genai";
 import { StyleType } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+let aiInstance: GoogleGenAI | null = null;
+
+const getAI = () => {
+  if (!aiInstance) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY is not set. Please configure it in your environment variables.");
+    }
+    aiInstance = new GoogleGenAI({ apiKey });
+  }
+  return aiInstance;
+};
 
 export const generateRendering = async (roomName: string, style: StyleType, width: number, height: number): Promise<string> => {
+  const ai = getAI();
   const prompt = `Generate a high-quality, realistic interior design rendering for a room.
   Room Type: ${roomName}
   Dimensions: ${width / 10}m x ${height / 10}m
