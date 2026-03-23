@@ -9,6 +9,7 @@ interface CanvasProps {
   onRoomsChange: (newRooms: RoomData[]) => void;
   selectedIds: string[];
   setSelectedIds: (ids: string[]) => void;
+  currentRoomType: string;
 }
 
 const GRID_SIZE = 20;
@@ -20,6 +21,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   onRoomsChange,
   selectedIds,
   setSelectedIds,
+  currentRoomType,
 }) => {
   const [newRoom, setNewRoom] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const stageRef = useRef<any>(null);
@@ -43,6 +45,11 @@ export const Canvas: React.FC<CanvasProps> = ({
   }, []);
 
   const handleMouseDown = (e: any) => {
+    // Prevent default to stop scrolling/dragging on mobile
+    if (e.evt && e.evt.preventDefault) {
+      e.evt.preventDefault();
+    }
+
     const pos = e.target.getStage().getPointerPosition();
     const snappedPos = {
       x: Math.round(pos.x / GRID_SIZE) * GRID_SIZE,
@@ -60,6 +67,9 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleMouseMove = (e: any) => {
+    if (e.evt && e.evt.preventDefault) {
+      e.evt.preventDefault();
+    }
     if (!newRoom || activeTool !== ToolType.ROOM) return;
 
     const pos = e.target.getStage().getPointerPosition();
@@ -75,7 +85,10 @@ export const Canvas: React.FC<CanvasProps> = ({
     }) : null);
   };
 
-  const handleMouseUp = () => {
+  const handleMouseUp = (e: any) => {
+    if (e.evt && e.evt.preventDefault) {
+      e.evt.preventDefault();
+    }
     if (newRoom && activeTool === ToolType.ROOM) {
       if (Math.abs(newRoom.width) > GRID_SIZE && Math.abs(newRoom.height) > GRID_SIZE) {
         const room: RoomData = {
@@ -84,7 +97,7 @@ export const Canvas: React.FC<CanvasProps> = ({
           y: newRoom.height > 0 ? newRoom.y : newRoom.y + newRoom.height,
           width: Math.abs(newRoom.width),
           height: Math.abs(newRoom.height),
-          name: '新房间',
+          name: currentRoomType,
           color: 'rgba(255, 255, 255, 0.8)',
         };
         onRoomsChange([...rooms, room]);
@@ -105,7 +118,11 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleRoomClick = (id: string, e: any) => {
-    if (activeTool !== ToolType.SELECT) return;
+    // On mobile/touch, we allow selection even if not in SELECT mode 
+    // to make it easier to edit properties
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+    
+    if (!isMobile && activeTool !== ToolType.SELECT) return;
     
     const isShift = e.evt.shiftKey;
     if (isShift) {
@@ -120,7 +137,12 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   return (
-    <div className="w-full h-full bg-[#f0f0f0] overflow-hidden relative" id="canvas-container" ref={containerRef}>
+    <div 
+      className="w-full h-full bg-[#f0f0f0] overflow-hidden relative touch-none" 
+      id="canvas-container" 
+      ref={containerRef}
+      style={{ touchAction: 'none' }}
+    >
       <Stage
         width={dimensions.width}
         height={dimensions.height}

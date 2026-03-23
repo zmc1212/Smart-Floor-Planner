@@ -9,6 +9,15 @@ export enum ToolType {
   ERASER = 'ERASER'
 }
 
+export enum StyleType {
+  MODERN = '现代简约',
+  INDUSTRIAL = '工业风',
+  CREAMY = '奶油风',
+  JAPANDI = '原木风',
+  EUROPEAN = '欧式',
+  CHINESE = '中式'
+}
+
 export interface RoomData {
   id: string;
   x: number;
@@ -17,6 +26,7 @@ export interface RoomData {
   height: number;
   name: string;
   color: string;
+  renderingUrl?: string;
 }
 
 export interface WallData {

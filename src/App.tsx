@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
   const [activeTool, setActiveTool] = useState<ToolType>(ToolType.SELECT);
+  const [currentRoomType, setCurrentRoomType] = useState<string>('客厅');
   const [history, setHistory] = useState<RoomData[][]>([[]]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -143,7 +144,12 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex flex-col md:flex-row flex-1 overflow-hidden">
-        <Toolbar activeTool={activeTool} setActiveTool={setActiveTool} />
+        <Toolbar 
+          activeTool={activeTool} 
+          setActiveTool={setActiveTool} 
+          currentRoomType={currentRoomType}
+          setCurrentRoomType={setCurrentRoomType}
+        />
         
         <div className="flex-1 relative order-first md:order-none">
           <Canvas
@@ -152,6 +158,7 @@ export default function App() {
             onRoomsChange={pushToHistory}
             selectedIds={selectedIds}
             setSelectedIds={setSelectedIds}
+            currentRoomType={currentRoomType}
           />
           
           {/* Tool Indicator */}
@@ -181,6 +188,7 @@ export default function App() {
           onUpdate={handleUpdateRoom}
           onDelete={handleDeleteRooms}
           onMerge={handleMergeRooms}
+          onClose={() => setSelectedIds([])}
         />
       </main>
 
