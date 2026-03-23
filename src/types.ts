@@ -18,6 +18,12 @@ export enum StyleType {
   CHINESE = '中式'
 }
 
+export enum AIProvider {
+  GEMINI = 'Gemini (Google)',
+  DOUBAO = '豆包 (字节跳动)',
+  QWEN = '通义万相 (阿里)',
+}
+
 export interface RoomData {
   id: string;
   x: number;
@@ -27,6 +33,7 @@ export interface RoomData {
   name: string;
   color: string;
   renderingUrl?: string;
+  lastProvider?: AIProvider;
 }
 
 export interface WallData {

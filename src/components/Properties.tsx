@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { RoomData, StyleType } from '../types';
-import { Trash2, Move, Maximize2, Merge, Sparkles, Image as ImageIcon, Download, Loader2, X } from 'lucide-react';
+import { RoomData, StyleType, AIProvider } from '../types';
+import { Trash2, Move, Maximize2, Merge, Sparkles, Image as ImageIcon, Download, Loader2, X, Cpu } from 'lucide-react';
 import { generateRendering } from '../services/renderingService';
 
 interface PropertiesProps {
@@ -14,6 +14,7 @@ interface PropertiesProps {
 
 export const Properties: React.FC<PropertiesProps> = ({ selectedRooms, onUpdate, onDelete, onMerge, onClose }) => {
   const [selectedStyle, setSelectedStyle] = useState<StyleType>(StyleType.MODERN);
+  const [selectedProvider, setSelectedProvider] = useState<AIProvider>(AIProvider.GEMINI);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showRendering, setShowRendering] = useState(false);
 
@@ -33,11 +34,12 @@ export const Properties: React.FC<PropertiesProps> = ({ selectedRooms, onUpdate,
     setIsGenerating(true);
     try {
       const room = selectedRooms[0];
-      const url = await generateRendering(room.name, selectedStyle, room.width, room.height);
-      onUpdate(room.id, { renderingUrl: url });
+      const url = await generateRendering(room.name, selectedStyle, room.width, room.height, selectedProvider);
+      onUpdate(room.id, { renderingUrl: url, lastProvider: selectedProvider });
       setShowRendering(true);
-    } catch (error) {
-      alert("生成效果图失败，请重试。");
+    } catch (error: any) {
+      const message = error?.message || "生成效果图失败，请重试。";
+      alert(message);
     } finally {
       setIsGenerating(false);
     }
@@ -160,6 +162,28 @@ export const Properties: React.FC<PropertiesProps> = ({ selectedRooms, onUpdate,
 
               <div className="space-y-4">
                 <div>
+                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1">
+                    <Cpu size={12} /> AI 模型
+                  </label>
+                  <div className="grid grid-cols-1 gap-2">
+                    {Object.values(AIProvider).map((provider) => (
+                      <button
+                        key={provider}
+                        onClick={() => setSelectedProvider(provider)}
+                        className={`px-3 py-2 text-xs rounded-lg border text-left transition-all flex items-center justify-between ${
+                          selectedProvider === provider
+                            ? 'bg-blue-50 border-blue-500 text-blue-700 font-medium'
+                            : 'bg-white border-gray-200 text-gray-600 hover:border-blue-200'
+                        }`}
+                      >
+                        {provider}
+                        {selectedProvider === provider && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
                   <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
                     装修风格
                   </label>
@@ -189,6 +213,9 @@ export const Properties: React.FC<PropertiesProps> = ({ selectedRooms, onUpdate,
                       onClick={() => setShowRendering(true)}
                       referrerPolicy="no-referrer"
                     />
+                    <div className="absolute top-2 left-2 bg-black/60 backdrop-blur px-2 py-1 rounded text-[10px] text-white font-medium">
+                      {selectedRooms[0].lastProvider || 'AI 生成'}
+                    </div>
                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
                       <button 
                         onClick={() => setShowRendering(true)}
