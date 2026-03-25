@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { RoomData, StyleType, AIProvider } from '../types';
-import { Trash2, Move, Maximize2, Merge, Sparkles, Image as ImageIcon, Download, Loader2, X, Cpu } from 'lucide-react';
-import { generateRendering } from '../services/renderingService';
+import { Trash2, Move, Maximize2, Merge, Sparkles, Image as ImageIcon, Download, Loader2, X, Cpu, MessageSquareText } from 'lucide-react';
+import { generateRendering, generateDesignAdvice } from '../services/renderingService';
+import Markdown from 'react-markdown';
 
 interface PropertiesProps {
   selectedRooms: RoomData[];
@@ -28,6 +29,7 @@ export const Properties: React.FC<PropertiesProps> = ({
   const [selectedStyle, setSelectedStyle] = useState<StyleType>(StyleType.MODERN);
   const [selectedProvider, setSelectedProvider] = useState<AIProvider>(AIProvider.GEMINI);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isGettingAdvice, setIsGettingAdvice] = useState(false);
   const [showRendering, setShowRendering] = useState(false);
 
   if (selectedRooms.length === 0) {
@@ -61,6 +63,30 @@ export const Properties: React.FC<PropertiesProps> = ({
       alert(message);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleGetAdvice = async () => {
+    if (selectedRooms.length !== 1) return;
+    setIsGettingAdvice(true);
+    try {
+      const room = selectedRooms[0];
+      const advice = await generateDesignAdvice(
+        room.name,
+        selectedStyle,
+        room.width,
+        room.height
+      );
+      onUpdate(room.id, { 
+        designAdvice: { 
+          content: advice, 
+          timestamp: Date.now() 
+        } 
+      });
+    } catch (error: any) {
+      alert(error.message);
+    } finally {
+      setIsGettingAdvice(false);
     }
   };
 
@@ -346,6 +372,48 @@ export const Properties: React.FC<PropertiesProps> = ({
                         <>
                           <Sparkles size={18} />
                           生成 AI 效果图
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-6 border-t border-gray-100">
+                  <div className="flex items-center gap-2 mb-4">
+                    <MessageSquareText size={16} className="text-blue-500" />
+                    <h3 className="text-sm font-semibold text-gray-900">AI 装修建议</h3>
+                  </div>
+
+                  <div className="space-y-4">
+                    {selectedRooms[0].designAdvice ? (
+                      <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100/50">
+                        <div className="prose prose-sm prose-blue max-w-none text-xs text-blue-900 leading-relaxed">
+                          <Markdown>{selectedRooms[0].designAdvice.content}</Markdown>
+                        </div>
+                        <p className="mt-3 text-[10px] text-blue-400">
+                          建议生成于: {new Date(selectedRooms[0].designAdvice.timestamp).toLocaleString()}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="bg-gray-50 p-4 rounded-xl border border-dashed border-gray-200 text-center">
+                        <p className="text-xs text-gray-400">点击下方按钮获取专业设计建议</p>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={handleGetAdvice}
+                      disabled={isGettingAdvice}
+                      className="w-full flex items-center justify-center gap-2 bg-white border border-blue-200 text-blue-600 py-3 rounded-xl font-medium hover:bg-blue-50 transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      {isGettingAdvice ? (
+                        <>
+                          <Loader2 size={18} className="animate-spin" />
+                          正在咨询 AI 设计师...
+                        </>
+                      ) : (
+                        <>
+                          <MessageSquareText size={18} />
+                          获取 AI 装修建议
                         </>
                       )}
                     </button>

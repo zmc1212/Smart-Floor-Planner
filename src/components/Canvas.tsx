@@ -180,11 +180,10 @@ export const Canvas: React.FC<CanvasProps> = ({
           if (roomId) {
             const isShift = e.evt.shiftKey;
             if (isShift) {
-              setSelectedIds(prev => 
-                prev.includes(roomId)
-                  ? prev.filter((i) => i !== roomId)
-                  : [...prev, roomId]
-              );
+              const newIds = selectedIds.includes(roomId)
+                ? selectedIds.filter((i) => i !== roomId)
+                : [...selectedIds, roomId];
+              setSelectedIds(newIds);
             } else {
               setSelectedIds([roomId]);
             }

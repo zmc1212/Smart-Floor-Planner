@@ -102,6 +102,74 @@ const generateWithQwen = async (prompt: string): Promise<string> => {
   return data.output?.results?.[0]?.url || "";
 };
 
+const generateWithPollinations = async (prompt: string): Promise<string> => {
+  const seed = Math.floor(Math.random() * 1000000);
+  const model = "flux";
+  
+  try {
+    const response = await fetch('/api/render/pollinations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        prompt,
+        model,
+        seed
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || "服务器端 Pollinations 调用失败");
+    }
+
+    const data = await response.json();
+    return data.data;
+  } catch (error: any) {
+    console.error("Error calling Pollinations proxy:", error);
+    // 如果后端代理失败，尝试前端匿名回退 (作为保底)
+    const encodedPrompt = encodeURIComponent(prompt);
+    const params = `model=${model}&width=1024&height=1024&nologo=true&enhance=true&seed=${seed}`;
+    return `https://image.pollinations.ai/prompt/${encodedPrompt}?${params}`;
+  }
+};
+
+export const generateDesignAdvice = async (
+  roomName: string,
+  style: StyleType,
+  width: number,
+  height: number
+): Promise<string> => {
+  const systemPrompt = "You are a professional interior design consultant. Provide concise, expert advice for a room based on its type, dimensions, and style. Focus on furniture layout, color palettes, and lighting. Use bullet points and keep it under 150 words. Respond in Chinese.";
+  const userPrompt = `Room: ${roomName}, Style: ${style}, Dimensions: ${width / 10}m x ${height / 10}m.`;
+
+  try {
+    const response = await fetch('https://text.pollinations.ai/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        model: 'openai'
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error("Pollinations Text API error");
+    }
+
+    return await response.text();
+  } catch (error) {
+    console.error("Error generating design advice:", error);
+    throw new Error("无法获取 AI 装修建议，请稍后再试。");
+  }
+};
+
 export const generateRendering = async (
   roomName: string, 
   style: StyleType, 
@@ -143,6 +211,8 @@ export const generateRendering = async (
         return await generateWithDoubao(prompt);
       case AIProvider.QWEN:
         return await generateWithQwen(prompt);
+      case AIProvider.POLLINATIONS:
+        return await generateWithPollinations(prompt);
       case AIProvider.GEMINI:
       default:
         return await generateWithGemini(prompt);

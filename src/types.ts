@@ -22,6 +22,12 @@ export enum AIProvider {
   GEMINI = 'Gemini (Google)',
   DOUBAO = '豆包 (字节跳动)',
   QWEN = '通义万相 (阿里)',
+  POLLINATIONS = 'Pollinations AI (开源)',
+}
+
+export interface DesignAdvice {
+  content: string;
+  timestamp: number;
 }
 
 export interface RoomData {
@@ -34,6 +40,7 @@ export interface RoomData {
   color: string;
   renderingUrl?: string;
   lastProvider?: AIProvider;
+  designAdvice?: DesignAdvice;
   openings?: OpeningData[];
 }
 
