@@ -159,25 +159,35 @@ export const generateDesignAdvice = async (
   height: number
 ): Promise<string> => {
   const systemPrompt = "You are a professional interior design consultant. Provide concise, expert advice for a room based on its type, dimensions, and style. Focus on furniture layout, color palettes, and lighting. Use bullet points and keep it under 150 words. Respond in Chinese.";
-  const userPrompt = `Room: ${roomName}, Style: ${style}, Dimensions: ${width / 10}m x ${height / 10}m.`;
-  const combinedPrompt = `${systemPrompt}\n\n${userPrompt}`;
-  const encodedPrompt = encodeURIComponent(combinedPrompt);
+  const userPrompt = `Room: ${roomName}, Style: ${style}, Dimensions: ${width / 10}m x ${height / 10}m!`;
   const apiKey = process.env.POLLINATIONS_API_KEY;
 
   try {
-    const url = `https://gen.pollinations.ai/text/${encodedPrompt}?model=gemini-fast`;
-    const headers: HeadersInit = {};
+    const url = "https://gen.pollinations.ai/v1/chat/completions";
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json'
+    };
     if (apiKey) {
       headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
-    const response = await fetch(url, { headers });
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: "gemini-fast",
+        messages: [
+          { role: "user", content: `${systemPrompt}${userPrompt}` }
+        ]
+      })
+    });
 
     if (!response.ok) {
-      throw new Error("Pollinations Text API error");
+      throw new Error("Pollinations Chat API error");
     }
 
-    return await response.text();
+    const data = await response.json();
+    return data.choices?.[0]?.message?.content || "无法生成建议。";
   } catch (error) {
     console.error("Error generating design advice with Pollinations:", error);
     throw new Error("无法获取 AI 装修建议，请稍后再试。");
@@ -196,52 +206,19 @@ export const generateRendering = async (
   const doors = openings.filter(o => o.type === 'DOOR');
   const windows = openings.filter(o => o.type === 'WINDOW');
 
-  const openingsDescription = openings.length > 0 ? `
-  Openings Details (Spatial Layout relative to top-left corner 0,0):
-  ${openings.map((o, i) => {
+  const openingsDescription = openings.map((o) => {
     const type = o.type === 'DOOR' ? 'Door' : 'Window';
-    const w = (o.width / 10).toFixed(1);
-    const h = (o.height / 10).toFixed(1);
-    const rx = (o.x / 10).toFixed(1);
-    const ry = (o.y / 10).toFixed(1);
-    
-    let wallPos = "";
-    // rotation 0 means top/bottom wall, rotation 90 means left/right wall
-    if (o.rotation === 0) {
-      if (o.y < 5) wallPos = `located on the TOP wall (y=0), centered at x=${rx}m`;
-      else wallPos = `located on the BOTTOM wall (y=${(height / 10).toFixed(1)}m), centered at x=${rx}m`;
-    } else {
-      if (o.x < 5) wallPos = `located on the LEFT wall (x=0), centered at y=${ry}m`;
-      else wallPos = `located on the RIGHT wall (x=${(width / 10).toFixed(1)}m), centered at y=${ry}m`;
-    }
-    
-    return `- ${type} ${i + 1}: ${w}m wide x ${h}m high, ${wallPos}.`;
-  }).join('\n  ')}
-  ` : '';
+    const pos = o.rotation === 0 
+      ? `${o.y < 5 ? 'Top' : 'Bottom'} wall (x=${(o.x / 10).toFixed(1)}m)` 
+      : `${o.x < 5 ? 'Left' : 'Right'} wall (y=${(o.y / 10).toFixed(1)}m)`;
+    return `${type} on ${pos}`;
+  }).join(', ');
 
-  const prompt = `Generate a professional interior design presentation collage for a ${roomName}.
-  
-  CRITICAL REQUIREMENT: The image MUST NOT contain any text, labels, dimensions, or annotations. Pure visual rendering only.
-  
-  The image MUST be a clean split-view collage showing the spatial relationship:
-  1. A top-down 3D floor plan view (俯视图) showing the exact room layout (${width / 10}m x ${height / 10}m) with ${doors.length} door(s) and ${windows.length} window(s) positioned correctly according to the provided coordinates.
-  2. A 3D perspective view from the entrance, showing the furniture arrangement and the ${windows.length > 0 ? 'window(s)' : 'walls'} in their exact spatial positions.
-  3. A detailed perspective view focusing on the ${windows.length > 0 ? 'window area' : 'main feature wall'}.
-  
-  Correspondence: Ensure the positions of doors and windows in the 3D views perfectly match the floor plan layout and the specific wall positions described below.
-  
-  Room Details:
-  - Type: ${roomName}
-  - Dimensions: ${width / 10}m x ${height / 10}m
-  - Style: ${style}
-  ${openingsDescription}
-  
-  Technical Requirements:
-  - High-quality, photorealistic rendering.
-  - NO TEXT, NO NUMBERS, NO LABELS.
-  - Consistent lighting, materials, and furniture across all views.
-  - Professional architectural photography style, 8k resolution, cinematic lighting.
-  - Clean, organized white-background collage layout.`;
+  const prompt = `Interior design collage: ${roomName}, ${style} style, ${width / 10}x${height / 10}m.
+  Layout: ${openingsDescription || 'Standard enclosed space'}.
+  Views: 3D top-down plan, entrance perspective, detail shot.
+  Style: Photorealistic, 8k, architectural photography, cinematic lighting, white background.
+  Strictly NO TEXT, NO LABELS, NO NUMBERS.`;
 
   try {
     switch (provider) {
