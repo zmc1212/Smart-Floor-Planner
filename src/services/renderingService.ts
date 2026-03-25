@@ -197,8 +197,26 @@ export const generateRendering = async (
   const windows = openings.filter(o => o.type === 'WINDOW');
 
   const openingsDescription = openings.length > 0 ? `
-  Openings Details:
-  ${openings.map((o, i) => `- ${o.type === 'DOOR' ? 'Door' : 'Window'} ${i + 1}: Width ${o.width / 10}m, Height ${o.height / 10}m`).join('\n  ')}
+  Openings Details (Spatial Layout relative to top-left corner 0,0):
+  ${openings.map((o, i) => {
+    const type = o.type === 'DOOR' ? 'Door' : 'Window';
+    const w = (o.width / 10).toFixed(1);
+    const h = (o.height / 10).toFixed(1);
+    const rx = (o.x / 10).toFixed(1);
+    const ry = (o.y / 10).toFixed(1);
+    
+    let wallPos = "";
+    // rotation 0 means top/bottom wall, rotation 90 means left/right wall
+    if (o.rotation === 0) {
+      if (o.y < 5) wallPos = `located on the TOP wall (y=0), centered at x=${rx}m`;
+      else wallPos = `located on the BOTTOM wall (y=${(height / 10).toFixed(1)}m), centered at x=${rx}m`;
+    } else {
+      if (o.x < 5) wallPos = `located on the LEFT wall (x=0), centered at y=${ry}m`;
+      else wallPos = `located on the RIGHT wall (x=${(width / 10).toFixed(1)}m), centered at y=${ry}m`;
+    }
+    
+    return `- ${type} ${i + 1}: ${w}m wide x ${h}m high, ${wallPos}.`;
+  }).join('\n  ')}
   ` : '';
 
   const prompt = `Generate a professional interior design presentation collage for a ${roomName}.
@@ -206,11 +224,11 @@ export const generateRendering = async (
   CRITICAL REQUIREMENT: The image MUST NOT contain any text, labels, dimensions, or annotations. Pure visual rendering only.
   
   The image MUST be a clean split-view collage showing the spatial relationship:
-  1. A top-down 3D floor plan view (俯视图) showing the exact room layout with ${doors.length} door(s) and ${windows.length} window(s) positioned correctly.
-  2. A 3D perspective view from the entrance, showing the furniture arrangement and the ${windows.length > 0 ? 'window(s)' : 'walls'}.
+  1. A top-down 3D floor plan view (俯视图) showing the exact room layout (${width / 10}m x ${height / 10}m) with ${doors.length} door(s) and ${windows.length} window(s) positioned correctly according to the provided coordinates.
+  2. A 3D perspective view from the entrance, showing the furniture arrangement and the ${windows.length > 0 ? 'window(s)' : 'walls'} in their exact spatial positions.
   3. A detailed perspective view focusing on the ${windows.length > 0 ? 'window area' : 'main feature wall'}.
   
-  Correspondence: Ensure the positions of doors and windows in the 3D views perfectly match the floor plan layout.
+  Correspondence: Ensure the positions of doors and windows in the 3D views perfectly match the floor plan layout and the specific wall positions described below.
   
   Room Details:
   - Type: ${roomName}
