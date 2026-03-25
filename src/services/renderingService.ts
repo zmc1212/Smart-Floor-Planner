@@ -172,7 +172,7 @@ export const generateDesignAdvice = async (
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        model: 'openai'
+        model: 'gemini-fast'
       })
     });
 
@@ -182,7 +182,7 @@ export const generateDesignAdvice = async (
 
     return await response.text();
   } catch (error) {
-    console.error("Error generating design advice:", error);
+    console.error("Error generating design advice with Pollinations:", error);
     throw new Error("无法获取 AI 装修建议，请稍后再试。");
   }
 };

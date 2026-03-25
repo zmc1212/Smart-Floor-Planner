@@ -27,7 +27,7 @@ export const Properties: React.FC<PropertiesProps> = ({
   setIsCollapsed
 }) => {
   const [selectedStyle, setSelectedStyle] = useState<StyleType>(StyleType.MODERN);
-  const [selectedProvider, setSelectedProvider] = useState<AIProvider>(AIProvider.GEMINI);
+  const [selectedProvider, setSelectedProvider] = useState<AIProvider>(AIProvider.POLLINATIONS);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGettingAdvice, setIsGettingAdvice] = useState(false);
   const [showRendering, setShowRendering] = useState(false);
