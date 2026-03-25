@@ -13,6 +13,7 @@ export default function App() {
   const [historyIndex, setHistoryIndex] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [highlightedOpeningId, setHighlightedOpeningId] = useState<string | null>(null);
+  const [isPropertiesCollapsed, setIsPropertiesCollapsed] = useState(false);
 
   const rooms = history[historyIndex];
   const selectedRooms = rooms.filter((r) => selectedIds.includes(r.id));
@@ -161,6 +162,7 @@ export default function App() {
             setSelectedIds={setSelectedIds}
             currentRoomType={currentRoomType}
             highlightedOpeningId={highlightedOpeningId}
+            isPropertiesCollapsed={isPropertiesCollapsed}
           />
           
           {/* Tool Indicator */}
@@ -192,6 +194,8 @@ export default function App() {
           onMerge={handleMergeRooms}
           onClose={() => setSelectedIds([])}
           setHighlightedOpeningId={setHighlightedOpeningId}
+          isCollapsed={isPropertiesCollapsed}
+          setIsCollapsed={setIsPropertiesCollapsed}
         />
       </main>
 

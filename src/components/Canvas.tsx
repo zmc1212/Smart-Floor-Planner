@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Rect, Line, Text, Group, Circle } from 'react-konva';
+import Konva from 'konva';
 import { RoomData, ToolType, Point } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { Trash2, Maximize2, Sparkles, Settings } from 'lucide-react';
@@ -12,6 +13,7 @@ interface CanvasProps {
   setSelectedIds: (ids: string[]) => void;
   currentRoomType: string;
   highlightedOpeningId: string | null;
+  isPropertiesCollapsed: boolean;
 }
 
 const GRID_SIZE = 20;
@@ -25,6 +27,7 @@ export const Canvas: React.FC<CanvasProps> = ({
   setSelectedIds,
   currentRoomType,
   highlightedOpeningId,
+  isPropertiesCollapsed,
 }) => {
   const [newRoom, setNewRoom] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const stageRef = useRef<any>(null);
@@ -67,6 +70,49 @@ export const Canvas: React.FC<CanvasProps> = ({
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (highlightedOpeningId && stageRef.current) {
+      // Find the opening and its parent room
+      let targetOpening: any = null;
+      let parentRoom: RoomData | null = null;
+      
+      for (const room of rooms) {
+        const opening = room.openings?.find(o => o.id === highlightedOpeningId);
+        if (opening) {
+          targetOpening = opening;
+          parentRoom = room;
+          break;
+        }
+      }
+
+      if (targetOpening && parentRoom) {
+        const stage = stageRef.current;
+        const scale = stage.scaleX();
+        
+        // Calculate absolute position of the opening
+        const absX = parentRoom.x + targetOpening.x;
+        const absY = parentRoom.y + targetOpening.y;
+        
+        // Target position to center the opening
+        // On desktop, we offset the center to the left to avoid the properties panel
+        const isDesktop = window.innerWidth >= 768;
+        const panelWidth = (isDesktop && !isPropertiesCollapsed) ? 288 : 0; // w-72
+        const mobileSheetHeight = (!isDesktop && !isPropertiesCollapsed) ? window.innerHeight * 0.3 : 0; // Approximate mobile sheet height
+
+        const targetX = (dimensions.width - panelWidth) / 2 - absX * scale;
+        const targetY = (dimensions.height - mobileSheetHeight) / 2 - absY * scale;
+        
+        // Smoothly move stage
+        stage.to({
+          x: targetX,
+          y: targetY,
+          duration: 0.3,
+          easing: Konva.Easings.EaseInOut
+        });
+      }
+    }
+  }, [highlightedOpeningId, rooms, dimensions.width, dimensions.height]);
 
   const getRelativePointerPosition = (stage: any) => {
     const transform = stage.getAbsoluteTransform().copy().invert();
@@ -121,18 +167,16 @@ export const Canvas: React.FC<CanvasProps> = ({
       stage.stopDrag();
     }
 
-    if (activeTool === ToolType.ROOM) {
-      // Only clear selection if clicking the stage background
-      if (e.target === stage) {
-        setNewRoom({ ...snappedPos, width: 0, height: 0 });
-        setSelectedIds([]);
-      }
-    } else if (activeTool === ToolType.DOOR || activeTool === ToolType.WINDOW) {
-      // Clear selection when clicking blank stage area
-      if (e.target === stage) {
-        setSelectedIds([]);
-      }
+    // 1. Handle selection clearing when clicking empty area
+    if (e.target === stage) {
+      setSelectedIds([]);
+    }
 
+    // 2. Tool-specific logic
+    if (activeTool === ToolType.ROOM) {
+      // Allow starting a room anywhere
+      setNewRoom({ ...snappedPos, width: 0, height: 0 });
+    } else if (activeTool === ToolType.DOOR || activeTool === ToolType.WINDOW) {
       // Find the nearest wall to place door/window
       const threshold = 15;
       let foundWall = false;
@@ -215,10 +259,6 @@ export const Canvas: React.FC<CanvasProps> = ({
 
       if (erased) {
         onRoomsChange(newRooms);
-        setSelectedIds([]);
-      }
-    } else if (activeTool === ToolType.SELECT) {
-      if (e.target === e.target.getStage()) {
         setSelectedIds([]);
       }
     }
