@@ -160,21 +160,18 @@ export const generateDesignAdvice = async (
 ): Promise<string> => {
   const systemPrompt = "You are a professional interior design consultant. Provide concise, expert advice for a room based on its type, dimensions, and style. Focus on furniture layout, color palettes, and lighting. Use bullet points and keep it under 150 words. Respond in Chinese.";
   const userPrompt = `Room: ${roomName}, Style: ${style}, Dimensions: ${width / 10}m x ${height / 10}m.`;
+  const combinedPrompt = `${systemPrompt}\n\n${userPrompt}`;
+  const encodedPrompt = encodeURIComponent(combinedPrompt);
+  const apiKey = process.env.POLLINATIONS_API_KEY;
 
   try {
-    const response = await fetch('https://text.pollinations.ai/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        model: 'gemini-fast'
-      })
-    });
+    const url = `https://gen.pollinations.ai/text/${encodedPrompt}?model=gemini-fast`;
+    const headers: HeadersInit = {};
+    if (apiKey) {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+
+    const response = await fetch(url, { headers });
 
     if (!response.ok) {
       throw new Error("Pollinations Text API error");
