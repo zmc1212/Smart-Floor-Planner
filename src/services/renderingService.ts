@@ -205,10 +205,15 @@ export const generateRendering = async (
   ` : '';
 
   const prompt = `Generate a professional interior design presentation collage for a ${roomName}.
-  The image MUST be a split-view or multi-angle collage showing:
-  1. A 3D perspective view showing the overall atmosphere, furniture, and the ${doors.length > 0 ? 'door(s)' : ''} ${windows.length > 0 ? 'and window(s)' : ''}.
-  2. A top-down 2D/3D floor plan view (俯视图) clearly showing the room layout with ${doors.length} door(s) and ${windows.length} window(s) matching the specified dimensions.
-  3. A side elevation view or detailed close-up (侧视图) of the ${windows.length > 0 ? 'window area' : 'wall decoration'}.
+  
+  CRITICAL REQUIREMENT: The image MUST NOT contain any text, labels, dimensions, or annotations. Pure visual rendering only.
+  
+  The image MUST be a clean split-view collage showing the spatial relationship:
+  1. A top-down 3D floor plan view (俯视图) showing the exact room layout with ${doors.length} door(s) and ${windows.length} window(s) positioned correctly.
+  2. A 3D perspective view from the entrance, showing the furniture arrangement and the ${windows.length > 0 ? 'window(s)' : 'walls'}.
+  3. A detailed perspective view focusing on the ${windows.length > 0 ? 'window area' : 'main feature wall'}.
+  
+  Correspondence: Ensure the positions of doors and windows in the 3D views perfectly match the floor plan layout.
   
   Room Details:
   - Type: ${roomName}
@@ -217,10 +222,11 @@ export const generateRendering = async (
   ${openingsDescription}
   
   Technical Requirements:
-  - High-quality, realistic rendering.
-  - Consistent lighting and textures across all views.
+  - High-quality, photorealistic rendering.
+  - NO TEXT, NO NUMBERS, NO LABELS.
+  - Consistent lighting, materials, and furniture across all views.
   - Professional architectural photography style, 8k resolution, cinematic lighting.
-  - Organized layout like a design proposal.`;
+  - Clean, organized white-background collage layout.`;
 
   try {
     switch (provider) {
