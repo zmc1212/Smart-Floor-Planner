@@ -34,6 +34,7 @@ export interface RoomData {
   color: string;
   renderingUrl?: string;
   lastProvider?: AIProvider;
+  openings?: OpeningData[];
 }
 
 export interface WallData {
@@ -48,4 +49,5 @@ export interface OpeningData {
   y: number;
   rotation: number;
   width: number;
+  height: number;
 }

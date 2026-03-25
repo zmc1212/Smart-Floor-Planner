@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { StyleType, AIProvider } from "../types";
+import { StyleType, AIProvider, OpeningData } from "../types";
 
 let aiInstance: GoogleGenAI | null = null;
 
@@ -32,6 +32,7 @@ const generateWithGemini = async (prompt: string): Promise<string> => {
 
 const generateWithDoubao = async (prompt: string): Promise<string> => {
   const apiKey = process.env.DOUBAO_API_KEY;
+  const modelId = process.env.DOUBAO_MODEL_ID || "doubao-t2i-v3";
   if (!apiKey) throw new Error("请先在环境变量中配置 DOUBAO_API_KEY");
 
   // 豆包 (字节跳动) 图像生成 API
@@ -42,20 +43,29 @@ const generateWithDoubao = async (prompt: string): Promise<string> => {
       'Authorization': `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      model: "cv_high_fidelity_v2", // 示例模型
+      model: modelId,
       prompt: prompt,
       size: "1024x1024",
-      n: 1
+      n: 1,
+      response_format: "b64_json"
     })
   });
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(`豆包 API 错误: ${error.message || response.statusText}`);
+    throw new Error(`豆包 API 错误: ${error.error?.message || error.message || response.statusText}`);
   }
 
   const data = await response.json();
-  return data.data[0].url || data.data[0].b64_json;
+  if (data.data && data.data[0]) {
+    if (data.data[0].b64_json) {
+      return `data:image/png;base64,${data.data[0].b64_json}`;
+    }
+    if (data.data[0].url) {
+      return data.data[0].url;
+    }
+  }
+  throw new Error("豆包 API 未返回图像数据");
 };
 
 const generateWithQwen = async (prompt: string): Promise<string> => {
@@ -97,15 +107,35 @@ export const generateRendering = async (
   style: StyleType, 
   width: number, 
   height: number, 
+  openings: OpeningData[] = [],
   provider: AIProvider = AIProvider.GEMINI,
   retries = 2
 ): Promise<string> => {
-  const prompt = `Generate a high-quality, realistic interior design rendering for a room.
-  Room Type: ${roomName}
-  Dimensions: ${width / 10}m x ${height / 10}m
-  Style: ${style}
-  The image should be a wide-angle view showing the furniture, lighting, and textures consistent with the ${style} aesthetic.
-  Professional photography, 8k resolution, cinematic lighting.`;
+  const doors = openings.filter(o => o.type === 'DOOR');
+  const windows = openings.filter(o => o.type === 'WINDOW');
+
+  const openingsDescription = openings.length > 0 ? `
+  Openings Details:
+  ${openings.map((o, i) => `- ${o.type === 'DOOR' ? 'Door' : 'Window'} ${i + 1}: Width ${o.width / 10}m, Height ${o.height / 10}m`).join('\n  ')}
+  ` : '';
+
+  const prompt = `Generate a professional interior design presentation collage for a ${roomName}.
+  The image MUST be a split-view or multi-angle collage showing:
+  1. A 3D perspective view showing the overall atmosphere, furniture, and the ${doors.length > 0 ? 'door(s)' : ''} ${windows.length > 0 ? 'and window(s)' : ''}.
+  2. A top-down 2D/3D floor plan view (俯视图) clearly showing the room layout with ${doors.length} door(s) and ${windows.length} window(s) matching the specified dimensions.
+  3. A side elevation view or detailed close-up (侧视图) of the ${windows.length > 0 ? 'window area' : 'wall decoration'}.
+  
+  Room Details:
+  - Type: ${roomName}
+  - Dimensions: ${width / 10}m x ${height / 10}m
+  - Style: ${style}
+  ${openingsDescription}
+  
+  Technical Requirements:
+  - High-quality, realistic rendering.
+  - Consistent lighting and textures across all views.
+  - Professional architectural photography style, 8k resolution, cinematic lighting.
+  - Organized layout like a design proposal.`;
 
   try {
     switch (provider) {
@@ -123,7 +153,7 @@ export const generateRendering = async (
       if (retries > 0) {
         console.log(`Rate limited. Retrying in 2 seconds... (${retries} retries left)`);
         await new Promise(resolve => setTimeout(resolve, 2000));
-        return generateRendering(roomName, style, width, height, provider, retries - 1);
+        return generateRendering(roomName, style, width, height, openings, provider, retries - 1);
       }
       throw new Error("AI 渲染服务目前太忙了（触发频率限制），请稍等 1 分钟后再试。");
     }

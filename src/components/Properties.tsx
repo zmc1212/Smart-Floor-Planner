@@ -34,7 +34,14 @@ export const Properties: React.FC<PropertiesProps> = ({ selectedRooms, onUpdate,
     setIsGenerating(true);
     try {
       const room = selectedRooms[0];
-      const url = await generateRendering(room.name, selectedStyle, room.width, room.height, selectedProvider);
+      const url = await generateRendering(
+        room.name, 
+        selectedStyle, 
+        room.width, 
+        room.height, 
+        room.openings || [],
+        selectedProvider
+      );
       onUpdate(room.id, { renderingUrl: url, lastProvider: selectedProvider });
       setShowRendering(true);
     } catch (error: any) {
@@ -134,6 +141,67 @@ export const Properties: React.FC<PropertiesProps> = ({ selectedRooms, onUpdate,
                   />
                 </div>
               </div>
+
+              {/* Openings Management */}
+              {selectedRooms[0].openings && selectedRooms[0].openings.length > 0 && (
+                <div className="pt-4 border-t border-gray-100">
+                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
+                    门窗管理 ({selectedRooms[0].openings.length})
+                  </label>
+                  <div className="space-y-3">
+                    {selectedRooms[0].openings.map((opening, idx) => (
+                      <div key={opening.id} className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] font-bold text-blue-600 uppercase">
+                            {opening.type === 'DOOR' ? '门' : '窗户'} #{idx + 1}
+                          </span>
+                          <button 
+                            onClick={() => {
+                              const newOpenings = selectedRooms[0].openings?.filter(o => o.id !== opening.id);
+                              onUpdate(selectedRooms[0].id, { openings: newOpenings });
+                            }}
+                            className="text-gray-400 hover:text-red-500 transition-colors"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[10px] text-gray-400 mb-1">宽度 (米)</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={opening.width / 10}
+                              onChange={(e) => {
+                                const newOpenings = selectedRooms[0].openings?.map(o => 
+                                  o.id === opening.id ? { ...o, width: parseFloat(e.target.value) * 10 } : o
+                                );
+                                onUpdate(selectedRooms[0].id, { openings: newOpenings });
+                              }}
+                              className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] text-gray-400 mb-1">高度 (米)</label>
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={opening.height / 10}
+                              onChange={(e) => {
+                                const newOpenings = selectedRooms[0].openings?.map(o => 
+                                  o.id === opening.id ? { ...o, height: parseFloat(e.target.value) * 10 } : o
+                                );
+                                onUpdate(selectedRooms[0].id, { openings: newOpenings });
+                              }}
+                              className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">

@@ -44,13 +44,49 @@ export const Canvas: React.FC<CanvasProps> = ({
     return () => observer.disconnect();
   }, []);
 
+  const getRelativePointerPosition = (stage: any) => {
+    const transform = stage.getAbsoluteTransform().copy().invert();
+    const pos = stage.getPointerPosition();
+    return transform.point(pos);
+  };
+
+  const handleWheel = (e: any) => {
+    e.evt.preventDefault();
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const oldScale = stage.scaleX();
+    const pointer = stage.getPointerPosition();
+
+    const mousePointTo = {
+      x: (pointer.x - stage.x()) / oldScale,
+      y: (pointer.y - stage.y()) / oldScale,
+    };
+
+    const scaleBy = 1.1;
+    const newScale = e.evt.deltaY > 0 ? oldScale / scaleBy : oldScale * scaleBy;
+
+    // Limit scale
+    const limitedScale = Math.max(0.1, Math.min(newScale, 5));
+
+    stage.scale({ x: limitedScale, y: limitedScale });
+
+    const newPos = {
+      x: pointer.x - mousePointTo.x * limitedScale,
+      y: pointer.y - mousePointTo.y * limitedScale,
+    };
+    stage.position(newPos);
+    stage.batchDraw();
+  };
+
   const handleMouseDown = (e: any) => {
     // Prevent default to stop scrolling/dragging on mobile
     if (e.evt && e.evt.preventDefault) {
-      e.evt.preventDefault();
+      // e.evt.preventDefault(); // Removing this to allow stage dragging
     }
 
-    const pos = e.target.getStage().getPointerPosition();
+    const stage = e.target.getStage();
+    const pos = getRelativePointerPosition(stage);
     const snappedPos = {
       x: Math.round(pos.x / GRID_SIZE) * GRID_SIZE,
       y: Math.round(pos.y / GRID_SIZE) * GRID_SIZE,
@@ -59,6 +95,96 @@ export const Canvas: React.FC<CanvasProps> = ({
     if (activeTool === ToolType.ROOM) {
       setNewRoom({ ...snappedPos, width: 0, height: 0 });
       setSelectedIds([]);
+    } else if (activeTool === ToolType.DOOR || activeTool === ToolType.WINDOW) {
+      // Clear selection when clicking blank stage area
+      if (e.target === stage) {
+        setSelectedIds([]);
+      }
+
+      // Find the nearest wall to place door/window
+      const threshold = 15;
+      let foundWall = false;
+
+      const newRooms = rooms.map(room => {
+        if (foundWall) return room;
+
+        const walls = [
+          { side: 'top', dist: Math.abs(pos.y - room.y), x: pos.x, y: room.y, rotation: 0 },
+          { side: 'bottom', dist: Math.abs(pos.y - (room.y + room.height)), x: pos.x, y: room.y + room.height, rotation: 0 },
+          { side: 'left', dist: Math.abs(pos.x - room.x), x: room.x, y: pos.y, rotation: 90 },
+          { side: 'right', dist: Math.abs(pos.x - (room.x + room.width)), x: room.x + room.width, y: pos.y, rotation: 90 },
+        ];
+
+        const nearestWall = walls.reduce((prev, curr) => prev.dist < curr.dist ? prev : curr);
+
+        if (nearestWall.dist < threshold) {
+          // Check if the point is within the wall's length
+          const isWithinLength = nearestWall.rotation === 0 
+            ? (pos.x >= room.x && pos.x <= room.x + room.width)
+            : (pos.y >= room.y && pos.y <= room.y + room.height);
+
+          if (isWithinLength) {
+            foundWall = true;
+            const openingWidth = activeTool === ToolType.DOOR ? 10 : 15; // 1m or 1.5m
+            const openingHeight = activeTool === ToolType.DOOR ? 20 : 12; // 2m or 1.2m
+            const opening = {
+              id: uuidv4(),
+              type: activeTool === ToolType.DOOR ? 'DOOR' : 'WINDOW' as 'DOOR' | 'WINDOW',
+              x: (nearestWall.rotation === 0 ? Math.round(pos.x / 5) * 5 : nearestWall.x) - room.x,
+              y: (nearestWall.rotation === 90 ? Math.round(pos.y / 5) * 5 : nearestWall.y) - room.y,
+              rotation: nearestWall.rotation,
+              width: openingWidth,
+              height: openingHeight,
+            };
+            return {
+              ...room,
+              openings: [...(room.openings || []), opening]
+            };
+          }
+        }
+        return room;
+      });
+
+      if (foundWall) {
+        onRoomsChange(newRooms);
+      }
+    } else if (activeTool === ToolType.ERASER) {
+      // Erase openings or rooms
+      const threshold = 10;
+      let erased = false;
+
+      const newRooms = rooms.map(room => {
+        if (erased) return room;
+
+        // Check if clicked on an opening
+        const remainingOpenings = room.openings?.filter(opening => {
+          const absX = room.x + opening.x;
+          const absY = room.y + opening.y;
+          const dist = Math.sqrt(Math.pow(pos.x - absX, 2) + Math.pow(pos.y - absY, 2));
+          if (dist < threshold) {
+            erased = true;
+            return false;
+          }
+          return true;
+        });
+
+        if (erased) {
+          return { ...room, openings: remainingOpenings };
+        }
+
+        // Check if clicked inside a room
+        if (pos.x >= room.x && pos.x <= room.x + room.width && pos.y >= room.y && pos.y <= room.y + room.height) {
+          erased = true;
+          return null; // Mark for deletion
+        }
+
+        return room;
+      }).filter(Boolean) as RoomData[];
+
+      if (erased) {
+        onRoomsChange(newRooms);
+        setSelectedIds([]);
+      }
     } else if (activeTool === ToolType.SELECT) {
       if (e.target === e.target.getStage()) {
         setSelectedIds([]);
@@ -68,11 +194,12 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   const handleMouseMove = (e: any) => {
     if (e.evt && e.evt.preventDefault) {
-      e.evt.preventDefault();
+      // e.evt.preventDefault();
     }
     if (!newRoom || activeTool !== ToolType.ROOM) return;
 
-    const pos = e.target.getStage().getPointerPosition();
+    const stage = e.target.getStage();
+    const pos = getRelativePointerPosition(stage);
     const snappedPos = {
       x: Math.round(pos.x / GRID_SIZE) * GRID_SIZE,
       y: Math.round(pos.y / GRID_SIZE) * GRID_SIZE,
@@ -87,7 +214,7 @@ export const Canvas: React.FC<CanvasProps> = ({
 
   const handleMouseUp = (e: any) => {
     if (e.evt && e.evt.preventDefault) {
-      e.evt.preventDefault();
+      // e.evt.preventDefault();
     }
     if (newRoom && activeTool === ToolType.ROOM) {
       if (Math.abs(newRoom.width) > GRID_SIZE && Math.abs(newRoom.height) > GRID_SIZE) {
@@ -118,12 +245,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleRoomClick = (id: string, e: any) => {
-    // On mobile/touch, we allow selection even if not in SELECT mode 
-    // to make it easier to edit properties
-    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-    
-    if (!isMobile && activeTool !== ToolType.SELECT) return;
-    
+    // We allow selection even if not in SELECT mode 
+    // to make it easier to edit properties or deselect
     const isShift = e.evt.shiftKey;
     if (isShift) {
       setSelectedIds(
@@ -152,6 +275,8 @@ export const Canvas: React.FC<CanvasProps> = ({
         onTouchStart={handleMouseDown}
         onTouchMove={handleMouseMove}
         onTouchEnd={handleMouseUp}
+        onWheel={handleWheel}
+        draggable={activeTool === ToolType.SELECT}
         ref={stageRef}
       >
         <Layer>
@@ -217,6 +342,60 @@ export const Canvas: React.FC<CanvasProps> = ({
                 fontSize={10}
                 fill="#666"
               />
+
+              {/* Openings (Doors & Windows) */}
+              {room.openings?.map((opening) => (
+                <Group
+                  key={opening.id}
+                  x={opening.x}
+                  y={opening.y}
+                  rotation={opening.rotation}
+                >
+                  {opening.type === 'DOOR' ? (
+                    <Group>
+                      {/* Opening Gap */}
+                      <Rect
+                        x={-opening.width / 2}
+                        y={-1.5}
+                        width={opening.width}
+                        height={3}
+                        fill="white"
+                      />
+                      {/* Door Leaf */}
+                      <Line
+                        points={[-opening.width / 2, 0, -opening.width / 2, -opening.width]}
+                        stroke="#3b82f6"
+                        strokeWidth={2}
+                      />
+                      {/* Door Swing Arc */}
+                      <Line
+                        points={[-opening.width / 2, -opening.width, opening.width / 2, 0]}
+                        stroke="#3b82f6"
+                        strokeWidth={1}
+                        dash={[2, 2]}
+                      />
+                    </Group>
+                  ) : (
+                    <Group>
+                      {/* Window Frame */}
+                      <Rect
+                        x={-opening.width / 2}
+                        y={-2}
+                        width={opening.width}
+                        height={4}
+                        fill="#93c5fd"
+                        stroke="#3b82f6"
+                        strokeWidth={1}
+                      />
+                      <Line
+                        points={[-opening.width / 2, 0, opening.width / 2, 0]}
+                        stroke="#3b82f6"
+                        strokeWidth={1}
+                      />
+                    </Group>
+                  )}
+                </Group>
+              ))}
             </Group>
           ))}
 
