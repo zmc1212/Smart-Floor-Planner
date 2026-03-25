@@ -170,12 +170,38 @@ export const Canvas: React.FC<CanvasProps> = ({
     // 1. Handle selection clearing when clicking empty area
     if (e.target === stage) {
       setSelectedIds([]);
+    } else {
+      // If clicking on a room element, find the room ID and select it
+      // This ensures selection works in all tool modes
+      let target = e.target;
+      while (target && target !== stage) {
+        if (target.name() === 'room-group') {
+          const roomId = target.id();
+          if (roomId) {
+            const isShift = e.evt.shiftKey;
+            if (isShift) {
+              setSelectedIds(prev => 
+                prev.includes(roomId)
+                  ? prev.filter((i) => i !== roomId)
+                  : [...prev, roomId]
+              );
+            } else {
+              setSelectedIds([roomId]);
+            }
+          }
+          break;
+        }
+        target = target.getParent();
+      }
     }
 
     // 2. Tool-specific logic
     if (activeTool === ToolType.ROOM) {
-      // Allow starting a room anywhere
-      setNewRoom({ ...snappedPos, width: 0, height: 0 });
+      // Only start drawing if we are clicking the stage background
+      // This allows selecting rooms by clicking them even in drawing mode
+      if (e.target === stage) {
+        setNewRoom({ ...snappedPos, width: 0, height: 0 });
+      }
     } else if (activeTool === ToolType.DOOR || activeTool === ToolType.WINDOW) {
       // Find the nearest wall to place door/window
       const threshold = 15;
@@ -378,6 +404,8 @@ export const Canvas: React.FC<CanvasProps> = ({
           {rooms.map((room) => (
             <Group
               key={room.id}
+              id={room.id}
+              name="room-group"
               x={room.x}
               y={room.y}
               draggable={activeTool === ToolType.SELECT}
@@ -508,6 +536,7 @@ export const Canvas: React.FC<CanvasProps> = ({
               stroke="#3b82f6"
               strokeWidth={1}
               dash={[5, 5]}
+              listening={false}
             />
           )}
         </Layer>

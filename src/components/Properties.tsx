@@ -74,7 +74,7 @@ export const Properties: React.FC<PropertiesProps> = ({
   };
 
   const content = (
-    <div className="flex flex-col gap-6 h-full pb-6 md:pb-0">
+    <div className="flex flex-col gap-6 flex-1 pb-6 md:pb-0 overflow-y-auto pr-2 custom-scrollbar">
       <div className="flex items-center justify-between">
         <h2 className={`text-lg font-semibold text-gray-900 ${isCollapsed ? 'hidden' : 'block'}`}>
           {selectedRooms.length > 1 ? '批量操作' : '房间属性'}
@@ -386,7 +386,7 @@ export const Properties: React.FC<PropertiesProps> = ({
                 padding: isCollapsed ? '24px 12px' : '24px'
               }}
               exit={{ x: 288 }}
-              className="md:flex hidden bg-white border-l border-gray-200 flex-col shadow-sm z-10 transition-all duration-300"
+              className="md:flex hidden bg-white border-l border-gray-200 flex-col shadow-sm z-10 transition-all duration-300 h-full"
             >
               {content}
             </motion.div>
