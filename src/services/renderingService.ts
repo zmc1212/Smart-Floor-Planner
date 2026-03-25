@@ -103,36 +103,53 @@ const generateWithQwen = async (prompt: string): Promise<string> => {
 };
 
 const generateWithPollinations = async (prompt: string): Promise<string> => {
+  // Now defined in vite.config.ts, so process.env.POLLINATIONS_API_KEY is available
+  const apiKey = process.env.POLLINATIONS_API_KEY;
+  const encodedPrompt = encodeURIComponent(prompt);
   const seed = Math.floor(Math.random() * 1000000);
   const model = "flux";
   
-  try {
-    const response = await fetch('/api/render/pollinations', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        prompt,
-        model,
-        seed
-      })
+  const params = `model=${model}&width=1024&height=1024&nologo=true&enhance=true&seed=${seed}`;
+  const authUrl = `https://gen.pollinations.ai/image/${encodedPrompt}?${params}`;
+  const anonUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?${params}`;
+
+  // Helper to convert Blob to Data URL to bypass ORB issues
+  const blobToDataURL = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
     });
+  };
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.error || "服务器端 Pollinations 调用失败");
+  // 1. Try authenticated endpoint if key is available
+  if (apiKey) {
+    try {
+      const response = await fetch(authUrl, {
+        headers: { 'Authorization': `Bearer ${apiKey}` }
+      });
+      if (response.ok) {
+        const blob = await response.blob();
+        return await blobToDataURL(blob);
+      }
+    } catch (e) {
+      console.warn("Pollinations Auth API failed, falling back to anonymous", e);
     }
-
-    const data = await response.json();
-    return data.data;
-  } catch (error: any) {
-    console.error("Error calling Pollinations proxy:", error);
-    // 如果后端代理失败，尝试前端匿名回退 (作为保底)
-    const encodedPrompt = encodeURIComponent(prompt);
-    const params = `model=${model}&width=1024&height=1024&nologo=true&enhance=true&seed=${seed}`;
-    return `https://image.pollinations.ai/prompt/${encodedPrompt}?${params}`;
   }
+
+  // 2. Fallback to anonymous endpoint
+  try {
+    const response = await fetch(anonUrl);
+    if (response.ok) {
+      const blob = await response.blob();
+      return await blobToDataURL(blob);
+    }
+  } catch (e) {
+    console.warn("Pollinations Anonymous API failed", e);
+  }
+
+  return anonUrl;
 };
 
 export const generateDesignAdvice = async (

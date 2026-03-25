@@ -13,6 +13,7 @@ export default defineConfig(({mode}) => {
       'process.env.DOUBAO_API_KEY': JSON.stringify(env.DOUBAO_API_KEY),
       'process.env.DOUBAO_MODEL_ID': JSON.stringify(env.DOUBAO_MODEL_ID),
       'process.env.QWEN_API_KEY': JSON.stringify(env.QWEN_API_KEY),
+      'process.env.POLLINATIONS_API_KEY': JSON.stringify(env.POLLINATIONS_API_KEY),
     },
     resolve: {
       alias: {
