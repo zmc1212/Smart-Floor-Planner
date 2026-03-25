@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Rect, Line, Text, Group, Circle } from 'react-konva';
 import { RoomData, ToolType, Point } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import { Trash2, Maximize2, Sparkles, Settings } from 'lucide-react';
 
 interface CanvasProps {
   activeTool: ToolType;
@@ -10,6 +11,7 @@ interface CanvasProps {
   selectedIds: string[];
   setSelectedIds: (ids: string[]) => void;
   currentRoomType: string;
+  highlightedOpeningId: string | null;
 }
 
 const GRID_SIZE = 20;
@@ -22,11 +24,33 @@ export const Canvas: React.FC<CanvasProps> = ({
   selectedIds,
   setSelectedIds,
   currentRoomType,
+  highlightedOpeningId,
 }) => {
   const [newRoom, setNewRoom] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const stageRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [menuPos, setMenuPos] = useState<{ x: number, y: number } | null>(null);
+
+  useEffect(() => {
+    if (selectedIds.length === 1 && stageRef.current) {
+      const room = rooms.find(r => r.id === selectedIds[0]);
+      if (room) {
+        const stage = stageRef.current;
+        const scale = stage.scaleX();
+        // Calculate screen position of the room
+        const screenX = (room.x * scale) + stage.x();
+        const screenY = (room.y * scale) + stage.y();
+        
+        setMenuPos({
+          x: screenX + (room.width * scale) / 2,
+          y: screenY - 10
+        });
+      }
+    } else {
+      setMenuPos(null);
+    }
+  }, [selectedIds, rooms, dimensions]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -92,9 +116,17 @@ export const Canvas: React.FC<CanvasProps> = ({
       y: Math.round(pos.y / GRID_SIZE) * GRID_SIZE,
     };
 
+    // If we are drawing or placing, stop the stage from dragging
+    if (activeTool !== ToolType.SELECT) {
+      stage.stopDrag();
+    }
+
     if (activeTool === ToolType.ROOM) {
-      setNewRoom({ ...snappedPos, width: 0, height: 0 });
-      setSelectedIds([]);
+      // Only clear selection if clicking the stage background
+      if (e.target === stage) {
+        setNewRoom({ ...snappedPos, width: 0, height: 0 });
+        setSelectedIds([]);
+      }
     } else if (activeTool === ToolType.DOOR || activeTool === ToolType.WINDOW) {
       // Clear selection when clicking blank stage area
       if (e.target === stage) {
@@ -276,8 +308,12 @@ export const Canvas: React.FC<CanvasProps> = ({
         onTouchMove={handleMouseMove}
         onTouchEnd={handleMouseUp}
         onWheel={handleWheel}
-        draggable={activeTool === ToolType.SELECT}
+        draggable={true}
         ref={stageRef}
+        onDragMove={() => {
+          // Force update menu position during stage drag
+          setDimensions({ ...dimensions });
+        }}
       >
         <Layer>
           {/* Grid */}
@@ -353,6 +389,17 @@ export const Canvas: React.FC<CanvasProps> = ({
                 >
                   {opening.type === 'DOOR' ? (
                     <Group>
+                      {/* Highlight Effect */}
+                      {highlightedOpeningId === opening.id && (
+                        <Rect
+                          x={-opening.width / 2 - 4}
+                          y={-opening.width - 4}
+                          width={opening.width + 8}
+                          height={opening.width + 8}
+                          fill="rgba(59, 130, 246, 0.2)"
+                          cornerRadius={4}
+                        />
+                      )}
                       {/* Opening Gap */}
                       <Rect
                         x={-opening.width / 2}
@@ -377,6 +424,17 @@ export const Canvas: React.FC<CanvasProps> = ({
                     </Group>
                   ) : (
                     <Group>
+                      {/* Highlight Effect */}
+                      {highlightedOpeningId === opening.id && (
+                        <Rect
+                          x={-opening.width / 2 - 4}
+                          y={-6}
+                          width={opening.width + 8}
+                          height={12}
+                          fill="rgba(59, 130, 246, 0.2)"
+                          cornerRadius={4}
+                        />
+                      )}
                       {/* Window Frame */}
                       <Rect
                         x={-opening.width / 2}
@@ -414,6 +472,40 @@ export const Canvas: React.FC<CanvasProps> = ({
           )}
         </Layer>
       </Stage>
+
+      {/* Floating Quick Menu */}
+      {menuPos && (
+        <div 
+          className="absolute z-50 flex items-center gap-1 bg-white/90 backdrop-blur-md p-1 rounded-lg shadow-xl border border-gray-200 -translate-x-1/2 -translate-y-full mb-2 pointer-events-auto"
+          style={{ left: menuPos.x, top: menuPos.y }}
+        >
+          <div className="px-2 py-1 text-[10px] font-bold text-gray-500 border-r border-gray-100 mr-1">
+            {rooms.find(r => r.id === selectedIds[0])?.name}
+          </div>
+          <button 
+            onClick={() => {
+              const id = selectedIds[0];
+              const newRooms = rooms.filter(r => r.id !== id);
+              onRoomsChange(newRooms);
+              setSelectedIds([]);
+            }}
+            className="p-1.5 text-gray-600 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
+            title="删除"
+          >
+            <Trash2 size={14} />
+          </button>
+          <button 
+            onClick={() => {
+              // Focus on properties panel by just keeping it selected
+              // In a real app we might trigger a scroll or highlight
+            }}
+            className="p-1.5 text-gray-600 hover:text-blue-500 hover:bg-blue-50 rounded-md transition-colors"
+            title="属性"
+          >
+            <Settings size={14} />
+          </button>
+        </div>
+      )}
       
       <div className="absolute bottom-4 left-4 bg-white/80 backdrop-blur-sm px-3 py-1 rounded-full text-[10px] text-gray-500 font-mono border border-gray-200">
         比例尺: 1:10 (10px = 1m) | 网格: 0.2m

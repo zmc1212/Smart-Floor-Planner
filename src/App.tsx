@@ -12,6 +12,7 @@ export default function App() {
   const [history, setHistory] = useState<RoomData[][]>([[]]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [highlightedOpeningId, setHighlightedOpeningId] = useState<string | null>(null);
 
   const rooms = history[historyIndex];
   const selectedRooms = rooms.filter((r) => selectedIds.includes(r.id));
@@ -159,6 +160,7 @@ export default function App() {
             selectedIds={selectedIds}
             setSelectedIds={setSelectedIds}
             currentRoomType={currentRoomType}
+            highlightedOpeningId={highlightedOpeningId}
           />
           
           {/* Tool Indicator */}
@@ -189,6 +191,7 @@ export default function App() {
           onDelete={handleDeleteRooms}
           onMerge={handleMergeRooms}
           onClose={() => setSelectedIds([])}
+          setHighlightedOpeningId={setHighlightedOpeningId}
         />
       </main>
 

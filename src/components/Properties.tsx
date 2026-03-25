@@ -10,9 +10,17 @@ interface PropertiesProps {
   onDelete: () => void;
   onMerge: () => void;
   onClose: () => void;
+  setHighlightedOpeningId: (id: string | null) => void;
 }
 
-export const Properties: React.FC<PropertiesProps> = ({ selectedRooms, onUpdate, onDelete, onMerge, onClose }) => {
+export const Properties: React.FC<PropertiesProps> = ({ 
+  selectedRooms, 
+  onUpdate, 
+  onDelete, 
+  onMerge, 
+  onClose,
+  setHighlightedOpeningId
+}) => {
   const [selectedStyle, setSelectedStyle] = useState<StyleType>(StyleType.MODERN);
   const [selectedProvider, setSelectedProvider] = useState<AIProvider>(AIProvider.GEMINI);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -150,7 +158,12 @@ export const Properties: React.FC<PropertiesProps> = ({ selectedRooms, onUpdate,
                   </label>
                   <div className="space-y-3">
                     {selectedRooms[0].openings.map((opening, idx) => (
-                      <div key={opening.id} className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+                      <div 
+                        key={opening.id} 
+                        className="bg-gray-50 p-3 rounded-lg border border-gray-100 transition-all hover:border-blue-300 hover:shadow-sm"
+                        onMouseEnter={() => setHighlightedOpeningId(opening.id)}
+                        onMouseLeave={() => setHighlightedOpeningId(null)}
+                      >
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-[10px] font-bold text-blue-600 uppercase">
                             {opening.type === 'DOOR' ? '门' : '窗户'} #{idx + 1}
