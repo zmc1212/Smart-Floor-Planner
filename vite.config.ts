@@ -17,11 +17,13 @@ export default defineConfig(({mode}) => {
     base:'./',
     plugins: [react(), tailwindcss()],
     define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(GEMINI_API_KEY),
-      'process.env.DOUBAO_API_KEY': JSON.stringify(DOUBAO_API_KEY),
-      'process.env.DOUBAO_MODEL_ID': JSON.stringify(DOUBAO_MODEL_ID),
-      'process.env.QWEN_API_KEY': JSON.stringify(QWEN_API_KEY),
-      'process.env.POLLINATIONS_API_KEY': JSON.stringify(POLLINATIONS_API_KEY),
+      'process.env': {
+        GEMINI_API_KEY: GEMINI_API_KEY,
+        DOUBAO_API_KEY: DOUBAO_API_KEY,
+        DOUBAO_MODEL_ID: DOUBAO_MODEL_ID,
+        QWEN_API_KEY: QWEN_API_KEY,
+        POLLINATIONS_API_KEY: POLLINATIONS_API_KEY,
+      }
     },
     resolve: {
       alias: {
