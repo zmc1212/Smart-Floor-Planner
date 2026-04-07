@@ -1,0 +1,9 @@
+{
+  "usingComponents": {
+    "toolbar": "../../components/toolbar/toolbar",
+    "floor-canvas": "../../components/canvas/canvas",
+    "properties": "../../components/properties/properties"
+  },
+  "navigationStyle": "custom",
+  "disableScroll": true
+}

@@ -1,0 +1,107 @@
+/* 全局样式 - 智能量房大师 */
+
+page {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  background-color: #f8f9fa;
+  color: #1a1a2e;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 通用容器 */
+.flex-row { display: flex; flex-direction: row; }
+.flex-col { display: flex; flex-direction: column; }
+.flex-1 { flex: 1; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.gap-4 { gap: 8rpx; }
+.gap-8 { gap: 16rpx; }
+
+/* 文字 */
+.text-xs { font-size: 20rpx; }
+.text-sm { font-size: 24rpx; }
+.text-base { font-size: 28rpx; }
+.text-lg { font-size: 32rpx; }
+.text-xl { font-size: 36rpx; }
+.font-bold { font-weight: 700; }
+.font-medium { font-weight: 500; }
+
+/* 颜色 */
+.text-gray-400 { color: #9ca3af; }
+.text-gray-500 { color: #6b7280; }
+.text-gray-600 { color: #4b5563; }
+.text-gray-900 { color: #111827; }
+.text-blue-500 { color: #3b82f6; }
+.text-blue-600 { color: #2563eb; }
+.text-blue-700 { color: #1d4ed8; }
+.text-red-500 { color: #ef4444; }
+.text-purple-500 { color: #a855f7; }
+.text-white { color: #ffffff; }
+
+.bg-white { background-color: #ffffff; }
+.bg-blue-50 { background-color: #eff6ff; }
+.bg-blue-600 { background-color: #2563eb; }
+.bg-gray-50 { background-color: #f9fafb; }
+.bg-gray-100 { background-color: #f3f4f6; }
+
+/* 圆角 */
+.rounded-lg { border-radius: 16rpx; }
+.rounded-xl { border-radius: 24rpx; }
+.rounded-full { border-radius: 999rpx; }
+
+/* 边框 */
+.border { border: 1rpx solid #e5e7eb; }
+.border-b { border-bottom: 1rpx solid #e5e7eb; }
+.border-t { border-top: 1rpx solid #e5e7eb; }
+
+/* 阴影 */
+.shadow-sm { box-shadow: 0 2rpx 4rpx rgba(0,0,0,0.05); }
+.shadow-md { box-shadow: 0 8rpx 16rpx rgba(0,0,0,0.1); }
+.shadow-lg { box-shadow: 0 16rpx 40rpx rgba(0,0,0,0.12); }
+.shadow-xl { box-shadow: 0 20rpx 50rpx rgba(0,0,0,0.15); }
+
+/* 按钮通用 */
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  outline: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  line-height: 1;
+}
+
+.btn::after {
+  border: none;
+}
+
+/* 动画 */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.animate-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 4rpx;
+}
+::-webkit-scrollbar-thumb {
+  background: #e5e7eb;
+  border-radius: 10rpx;
+}

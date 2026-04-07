@@ -1,0 +1,28 @@
+<view class="canvas-container" id="canvas-container">
+  <canvas
+    type="2d"
+    id="floor-canvas"
+    class="floor-canvas"
+    bindtouchstart="onTouchStart"
+    bindtouchmove="onTouchMove"
+    bindtouchend="onTouchEnd"
+    disable-scroll="true"
+  ></canvas>
+
+  <!-- 浮动快捷菜单 -->
+  <view
+    wx:if="{{menuPos}}"
+    class="float-menu"
+    style="left: {{menuPos.x}}px; top: {{menuPos.y}}px;"
+  >
+    <view class="float-menu-label">
+      {{menuRoomName || '房间'}}
+    </view>
+    <view class="float-menu-btn" bindtap="onDeleteFromMenu">
+      <text class="float-menu-icon">🗑</text>
+    </view>
+    <view class="float-menu-btn" bindtap="onPropsFromMenu">
+      <text class="float-menu-icon">⚙</text>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,235 @@
+<view class="properties-panel {{visible ? 'visible' : ''}}" wx:if="{{selectedRooms.length > 0}}">
+  <!-- 拖动手柄 -->
+  <view class="drag-handle" bindtap="toggleCollapse">
+    <view class="drag-bar"></view>
+  </view>
+
+  <!-- 头部 -->
+  <view class="panel-header">
+    <text class="panel-title" wx:if="{{!isCollapsed}}">
+      {{selectedRooms.length > 1 ? '批量操作' : '房间属性'}}
+    </text>
+    <view class="header-actions">
+      <view class="header-btn" bindtap="toggleCollapse">
+        <text>{{isCollapsed ? '▢' : '—'}}</text>
+      </view>
+      <view class="header-btn" bindtap="onClose">
+        <text>✕</text>
+      </view>
+      <view class="header-btn header-btn-danger" bindtap="onDelete">
+        <text>🗑</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 内容区域 -->
+  <scroll-view scroll-y class="panel-content" wx:if="{{!isCollapsed}}">
+    <!-- 多选时：合并操作 -->
+    <block wx:if="{{selectedRooms.length > 1}}">
+      <view class="merge-section">
+        <text class="merge-hint">已选择 {{selectedRooms.length}} 个房间</text>
+        <view class="btn-primary" bindtap="onMerge">
+          <text>⊞ 合并房间</text>
+        </view>
+      </view>
+    </block>
+
+    <!-- 单选时：属性编辑 -->
+    <block wx:elif="{{selectedRooms.length === 1}}">
+      <!-- 房间名称 -->
+      <view class="form-group">
+        <text class="form-label">房间名称</text>
+        <input
+          class="form-input"
+          value="{{selectedRooms[0].name}}"
+          bindinput="onNameInput"
+          disabled="{{isPresetName(selectedRooms[0].name)}}"
+          placeholder="输入房间名称"
+        />
+      </view>
+
+      <!-- 尺寸 -->
+      <view class="form-row">
+        <view class="form-group form-group-half">
+          <text class="form-label">宽度 (米)</text>
+          <input
+            class="form-input"
+            type="digit"
+            value="{{selectedRooms[0].width / 10}}"
+            bindinput="onWidthInput"
+            placeholder="宽"
+          />
+        </view>
+        <view class="form-group form-group-half">
+          <text class="form-label">长度 (米)</text>
+          <input
+            class="form-input"
+            type="digit"
+            value="{{selectedRooms[0].height / 10}}"
+            bindinput="onHeightInput"
+            placeholder="长"
+          />
+        </view>
+      </view>
+
+      <!-- 激光联动选边 -->
+      <view class="section-divider"></view>
+      <text class="form-label">激光测距 (选择要测量的边)</text>
+      <view class="edge-grid">
+        <view class="edge-btn {{selectedEdge === 'top' ? 'active' : ''}}" data-edge="top" bindtap="onEdgeSelect">上墙</view>
+        <view class="edge-btn {{selectedEdge === 'bottom' ? 'active' : ''}}" data-edge="bottom" bindtap="onEdgeSelect">下墙</view>
+        <view class="edge-btn {{selectedEdge === 'left' ? 'active' : ''}}" data-edge="left" bindtap="onEdgeSelect">左墙</view>
+        <view class="edge-btn {{selectedEdge === 'right' ? 'active' : ''}}" data-edge="right" bindtap="onEdgeSelect">右墙</view>
+      </view>
+
+      <!-- 门窗管理 -->
+      <block wx:if="{{selectedRooms[0].openings && selectedRooms[0].openings.length > 0}}">
+        <view class="section-divider"></view>
+        <text class="form-label">门窗管理 ({{selectedRooms[0].openings.length}})</text>
+        <view class="openings-list">
+          <view
+            wx:for="{{selectedRooms[0].openings}}"
+            wx:key="id"
+            class="opening-card"
+            bindtouchstart="onHighlightOpening"
+            bindtouchend="onUnhighlightOpening"
+            data-id="{{item.id}}"
+          >
+            <view class="opening-header">
+              <text class="opening-type">{{item.type === 'DOOR' ? '门' : '窗户'}} #{{index + 1}}</text>
+              <view class="opening-delete" data-id="{{item.id}}" bindtap="onDeleteOpening">
+                <text>🗑</text>
+              </view>
+            </view>
+            <view class="form-row">
+              <view class="form-group form-group-half">
+                <text class="form-label-sm">宽度 (米)</text>
+                <input
+                  class="form-input-sm"
+                  type="digit"
+                  value="{{item.width / 10}}"
+                  data-id="{{item.id}}"
+                  bindinput="onOpeningWidthInput"
+                />
+              </view>
+              <view class="form-group form-group-half">
+                <text class="form-label-sm">高度 (米)</text>
+                <input
+                  class="form-input-sm"
+                  type="digit"
+                  value="{{item.height / 10}}"
+                  data-id="{{item.id}}"
+                  bindinput="onOpeningHeightInput"
+                />
+              </view>
+            </view>
+          </view>
+        </view>
+      </block>
+
+      <!-- 背景颜色 -->
+      <view class="section-divider"></view>
+      <text class="form-label">背景颜色</text>
+      <view class="color-picker">
+        <view
+          wx:for="{{roomColors}}"
+          wx:key="*this"
+          class="color-dot {{selectedRooms[0].color === item ? 'color-dot-active' : ''}}"
+          style="background-color: {{item}};"
+          data-color="{{item}}"
+          bindtap="onColorSelect"
+        ></view>
+      </view>
+
+      <!-- AI 效果图 -->
+      <view class="section-divider"></view>
+      <view class="section-header">
+        <text class="section-icon">✨</text>
+        <text class="section-title">AI 效果图预览</text>
+      </view>
+
+      <!-- 装修风格 -->
+      <text class="form-label">装修风格</text>
+      <view class="style-grid">
+        <view
+          wx:for="{{styles}}"
+          wx:key="*this"
+          class="style-btn {{selectedStyle === item ? 'style-btn-active' : ''}}"
+          data-style="{{item}}"
+          bindtap="onStyleSelect"
+        >
+          <text>{{item}}</text>
+        </view>
+      </view>
+
+      <!-- 渲染预览 -->
+      <block wx:if="{{selectedRooms[0].renderingUrl}}">
+        <view class="rendering-preview" bindtap="onPreviewImage">
+          <image
+            src="{{selectedRooms[0].renderingUrl}}"
+            mode="aspectFill"
+            class="rendering-image"
+          />
+          <view class="rendering-overlay">
+            <text class="rendering-badge">AI 生成</text>
+          </view>
+        </view>
+        <view class="btn-link" bindtap="onSaveImage">
+          <text>💾 保存到相册</text>
+        </view>
+      </block>
+      <block wx:else>
+        <view class="rendering-placeholder">
+          <text class="placeholder-icon">🖼</text>
+          <text class="placeholder-text">尚未生成效果图</text>
+        </view>
+      </block>
+
+      <view class="btn-gradient" bindtap="onGenerate">
+        <block wx:if="{{isGenerating}}">
+          <view class="loading-icon animate-spin">⟳</view>
+          <text>正在生成中...</text>
+        </block>
+        <block wx:else>
+          <text>✨ 生成 AI 效果图</text>
+        </block>
+      </view>
+
+      <!-- AI 装修建议 -->
+      <view class="section-divider"></view>
+      <view class="section-header">
+        <text class="section-icon">💬</text>
+        <text class="section-title">AI 装修建议</text>
+      </view>
+
+      <block wx:if="{{selectedRooms[0].designAdvice}}">
+        <view class="advice-card">
+          <text class="advice-text">{{selectedRooms[0].designAdvice.content}}</text>
+        </view>
+      </block>
+      <block wx:else>
+        <view class="advice-placeholder">
+          <text class="placeholder-text">点击下方按钮获取专业设计建议</text>
+        </view>
+      </block>
+
+      <view class="btn-outline" bindtap="onGetAdvice">
+        <block wx:if="{{isGettingAdvice}}">
+          <view class="loading-icon animate-spin">⟳</view>
+          <text>正在咨询 AI 设计师...</text>
+        </block>
+        <block wx:else>
+          <text>💬 获取 AI 装修建议</text>
+        </block>
+      </view>
+
+      <!-- 操作提示 -->
+      <view class="tips-section">
+        <text class="tips-title">📐 操作提示</text>
+        <text class="tips-item">• 拖拽房间可移动位置</text>
+        <text class="tips-item">• 双指缩放画布</text>
+        <text class="tips-item">• 点击空白处取消选择</text>
+      </view>
+    </block>
+  </scroll-view>
+</view>

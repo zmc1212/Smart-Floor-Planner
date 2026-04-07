@@ -1,0 +1,67 @@
+<view class="toolbar">
+  <block wx:for="{{tools}}" wx:key="id">
+    <view class="tool-wrapper">
+      <view
+        class="tool-btn {{activeTool === item.id ? 'tool-btn-active' : ''}}"
+        data-tool="{{item.id}}"
+        bindtap="onToolClick"
+      >
+        <text class="tool-icon">{{item.iconText}}</text>
+        <!-- 房间类型指示点 -->
+        <view wx:if="{{item.id === 'ROOM'}}" class="tool-dot"></view>
+      </view>
+      <text class="tool-label">{{item.label}}</text>
+
+      <!-- 房间类型弹出菜单 -->
+      <view
+        wx:if="{{item.id === 'ROOM' && isMenuOpen}}"
+        class="room-type-menu"
+      >
+        <view class="menu-header">
+          <view class="menu-header-bar"></view>
+          <text class="menu-header-text">选择房间类型</text>
+        </view>
+        <view class="menu-list">
+          <view
+            wx:for="{{roomTypes}}"
+            wx:for-item="type"
+            wx:key="*this"
+            class="menu-item {{currentRoomType === type ? 'menu-item-active' : ''}}"
+            data-type="{{type}}"
+            bindtap="onRoomTypeClick"
+          >
+            <text>{{type}}</text>
+            <text wx:if="{{currentRoomType === type}}" class="menu-item-check">›</text>
+          </view>
+        </view>
+        <view class="menu-arrow"></view>
+      </view>
+        <!-- 房型模板弹出菜单 -->
+        <view
+          wx:if="{{item.id === 'TEMPLATE' && isTemplateMenuOpen}}"
+          class="room-type-menu template-menu"
+        >
+          <view class="menu-header">
+            <view class="menu-header-bar"></view>
+            <text class="menu-header-text">选择默认户型</text>
+          </view>
+          <view class="menu-list">
+            <view
+              wx:for="{{layoutTemplates}}"
+              wx:for-item="tpl"
+              wx:key="id"
+              class="menu-item"
+              data-id="{{tpl.id}}"
+              bindtap="onTemplateClick"
+            >
+              <text>{{tpl.name}}</text>
+            </view>
+          </view>
+          <view class="menu-arrow"></view>
+        </view>
+      </view>
+    </block>
+  </view>
+
+<!-- 遮罩层：点击关闭菜单 -->
+<view wx:if="{{isMenuOpen || isTemplateMenuOpen}}" class="menu-overlay" bindtap="closeMenu"></view>

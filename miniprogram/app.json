@@ -1,0 +1,15 @@
+{
+  "pages": [
+    "pages/index/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "智能量房大师",
+    "navigationBarBackgroundColor": "#ffffff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f8f9fa",
+    "backgroundTextStyle": "light"
+  },
+  "usingComponents": {},
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

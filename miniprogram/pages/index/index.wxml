@@ -1,0 +1,100 @@
+<view class="page-container">
+  <!-- 自定义导航栏 -->
+  <view class="nav-bar" style="padding-top: {{statusBarHeight}}px;">
+    <view class="nav-bar-content">
+      <view class="nav-left">
+        <view class="logo-box">
+          <text class="logo-icon">⊞</text>
+        </view>
+        <view class="logo-text">
+          <text class="app-title">智能量房大师</text>
+          <text class="app-subtitle">SMART FLOOR PLANNER PRO</text>
+        </view>
+      </view>
+
+      <view class="nav-right">
+        <!-- 撤销/重做 -->
+        <view class="action-group">
+          <view
+            class="action-btn {{historyIndex <= 0 ? 'disabled' : ''}}"
+            bindtap="onUndo"
+          >
+            <text>↩</text>
+          </view>
+          <view
+            class="action-btn {{historyIndex >= history.length - 1 ? 'disabled' : ''}}"
+            bindtap="onRedo"
+          >
+            <text>↪</text>
+          </view>
+        </view>
+
+        <view class="nav-divider"></view>
+
+        <!-- 导出 -->
+        <view class="action-btn" bindtap="onExport">
+          <text>📥</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 主内容区 -->
+  <view class="main-content">
+    <!-- 工具栏 -->
+    <toolbar
+      activeTool="{{activeTool}}"
+      currentRoomType="{{currentRoomType}}"
+      bindtoolchange="onToolChange"
+      bindroomtypechange="onRoomTypeChange"
+      bindaddtemplate="onAddTemplate"
+    />
+
+    <!-- 画布区域 -->
+    <view class="canvas-area">
+      <floor-canvas
+        activeTool="{{activeTool}}"
+        rooms="{{rooms}}"
+        selectedIds="{{selectedIds}}"
+        currentRoomType="{{currentRoomType}}"
+        highlightedOpeningId="{{highlightedOpeningId}}"
+        selectedEdge="{{selectedEdge}}"
+        bindaddroom="onAddRoom"
+        bindselectroom="onSelectRoom"
+        bindclearselection="onClearSelection"
+        bindmoveroom="onMoveRoom"
+        bindroomschange="onRoomsChange"
+        binddeleteroom="onDeleteRoom"
+        bindshowprops="onShowProps"
+      />
+
+      <!-- 绘制模式指示器 -->
+      <view wx:if="{{showDrawingIndicator}}" class="drawing-indicator">
+        <view class="indicator-dot"></view>
+        <text class="indicator-text">绘制模式</text>
+        <text class="indicator-cancel" bindtap="onCancelDrawing">取消</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 属性面板 (底部弹出) -->
+  <properties
+    selectedRooms="{{selectedRooms}}"
+    visible="{{selectedIds.length > 0}}"
+    selectedEdge="{{selectedEdge}}"
+    bindupdate="onUpdateRoom"
+    binddelete="onDeleteRooms"
+    bindmerge="onMergeRooms"
+    bindclose="onCloseProperties"
+    bindhighlightopening="onHighlightOpening"
+    bindedgeselect="onEdgeSelect"
+  />
+
+  <!-- 底部状态栏 -->
+  <view class="status-bar">
+    <view class="ble-btn" bindtap="onConnectBLE">连测距仪</view>
+    <text class="status-text">房间: {{rooms.length}}</text>
+    <text class="status-text">面积: {{totalArea}} m²</text>
+    <text class="status-ready">READY</text>
+  </view>
+</view>
