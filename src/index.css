@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+:root {
+  --wechat-capsule-padding: 0px;
+}
+
+@media (max-width: 640px) {
+  :root {
+    --wechat-capsule-padding: 100px;
+  }
+}
+
+
 @layer utilities {
   .custom-scrollbar::-webkit-scrollbar {
     width: 4px;

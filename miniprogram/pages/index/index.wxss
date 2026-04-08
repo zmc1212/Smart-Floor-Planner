@@ -18,8 +18,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12rpx 24rpx;
-  height: 88rpx;
+  padding: 0 24rpx;
+  box-sizing: border-box;
 }
 
 .nav-left {
@@ -29,17 +29,17 @@
 }
 
 .logo-box {
-  width: 64rpx;
-  height: 64rpx;
+  width: 52rpx;
+  height: 52rpx;
   background: #2563eb;
-  border-radius: 14rpx;
+  border-radius: 12rpx;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .logo-icon {
-  font-size: 32rpx;
+  font-size: 28rpx;
   color: #ffffff;
 }
 
@@ -49,17 +49,18 @@
 }
 
 .app-title {
-  font-size: 30rpx;
+  font-size: 28rpx;
   font-weight: 700;
   color: #111827;
-  line-height: 1.2;
+  line-height: 1.1;
 }
 
 .app-subtitle {
-  font-size: 16rpx;
+  font-size: 14rpx;
   color: #9ca3af;
-  letter-spacing: 3rpx;
+  letter-spacing: 2rpx;
   font-weight: 500;
+  margin-top: -2rpx;
 }
 
 .nav-right {
@@ -306,13 +307,10 @@ properties {
 
 /* 引导式模式横幅 */
 .guided-wizard-bar {
-  position: absolute;
-  top: 0;
-  left: 0;
   width: 100%;
   background: #3b82f6;
   color: white;
-  padding: 24rpx 0;
+  padding: 32rpx 0;
   text-align: center;
   font-size: 28rpx;
   font-weight: 600;

@@ -31,10 +31,20 @@ Page({
 
   onLoad: function () {
     var that = this;
-    // 获取状态栏高度
-    var sysInfo = wx.getWindowInfo();
+    // 获取状态栏和胶囊按钮信息
+    var sysInfo = wx.getSystemInfoSync();
+    var menuButtonInfo = wx.getMenuButtonBoundingClientRect();
+    
+    // 标准公式：内容高度 = (胶囊顶部 - 状态栏) * 2 + 胶囊高度
+    var navBarContentHeight = (menuButtonInfo.top - sysInfo.statusBarHeight) * 2 + menuButtonInfo.height;
+    var navBarHeightTotal = sysInfo.statusBarHeight + navBarContentHeight;
+    
     this.setData({
-      statusBarHeight: sysInfo.statusBarHeight || 20,
+      statusBarHeight: sysInfo.statusBarHeight,
+      navBarHeightTotal: navBarHeightTotal,
+      navBarContentHeight: navBarContentHeight,
+      menuButtonLeft: menuButtonInfo.left,
+      capsulePadding: sysInfo.windowWidth - menuButtonInfo.left,
       windowWidth: sysInfo.windowWidth,
       windowHeight: sysInfo.windowHeight
     });

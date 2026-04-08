@@ -90,9 +90,9 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#f8f9fa] font-sans text-gray-900 overflow-hidden">
+    <div className="flex flex-col h-dvh bg-[#f8f9fa] font-sans text-gray-900 overflow-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
       {/* Header */}
-      <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 md:px-6 z-20 shadow-sm">
+      <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between pl-4 pr-[calc(1rem+var(--wechat-capsule-padding))] md:px-6 z-20 shadow-sm">
         <div className="flex items-center gap-2 md:gap-3">
           <div className="bg-blue-600 p-1.5 md:p-2 rounded-lg text-white">
             <Layout size={18} className="md:w-5 md:h-5" />
