@@ -39,62 +39,150 @@
     </view>
   </view>
 
-  <!-- 主内容区 -->
-  <view class="main-content">
-    <!-- 工具栏 -->
-    <toolbar
-      activeTool="{{activeTool}}"
-      currentRoomType="{{currentRoomType}}"
-      bindtoolchange="onToolChange"
-      bindroomtypechange="onRoomTypeChange"
-      bindaddtemplate="onAddTemplate"
-    />
-
-    <!-- 画布区域 -->
-    <view class="canvas-area">
-      <floor-canvas
-        activeTool="{{activeTool}}"
-        rooms="{{rooms}}"
-        selectedIds="{{selectedIds}}"
-        currentRoomType="{{currentRoomType}}"
-        highlightedOpeningId="{{highlightedOpeningId}}"
-        selectedEdge="{{selectedEdge}}"
-        bindaddroom="onAddRoom"
-        bindselectroom="onSelectRoom"
-        bindclearselection="onClearSelection"
-        bindmoveroom="onMoveRoom"
-        bindroomschange="onRoomsChange"
-        binddeleteroom="onDeleteRoom"
-        bindshowprops="onShowProps"
-      />
-
-      <!-- 绘制模式指示器 -->
-      <view wx:if="{{showDrawingIndicator}}" class="drawing-indicator">
-        <view class="indicator-dot"></view>
-        <text class="indicator-text">绘制模式</text>
-        <text class="indicator-cancel" bindtap="onCancelDrawing">取消</text>
-      </view>
+  <!-- 蓝牙强制连接视图 -->
+  <view wx:if="{{!bleConnected}}" class="ble-entry-view">
+    <view class="ble-entry-icon">📡</view>
+    <view class="ble-entry-title">智能量房开始前</view>
+    <view class="ble-entry-subtitle">请先连接蓝牙激光测距仪</view>
+    <view class="ble-action-group">
+      <view class="ble-btn-primary" bindtap="onAutoConnectBLE">一键连接记忆设备</view>
+      <view class="ble-btn-outline" bindtap="onConnectBLE">搜索新的测距仪</view>
     </view>
   </view>
 
-  <!-- 属性面板 (底部弹出) -->
-  <properties
-    selectedRooms="{{selectedRooms}}"
-    visible="{{selectedIds.length > 0}}"
-    selectedEdge="{{selectedEdge}}"
-    bindupdate="onUpdateRoom"
-    binddelete="onDeleteRooms"
-    bindmerge="onMergeRooms"
-    bindclose="onCloseProperties"
-    bindhighlightopening="onHighlightOpening"
-    bindedgeselect="onEdgeSelect"
-  />
+  <!-- 连接成功后才显示主内容区 -->
+  <block wx:else>
+    <!-- 户型库视图 -->
+    <view class="library-container" wx:if="{{viewMode === 'LIBRARY'}}">
+      <!-- 未选择户型时显示： -->
+      <block wx:if="{{plannedRooms.length === 0}}">
+        <view class="library-header">请选择需要测量的户型</view>
+        <view class="layout-selector">
+          <view 
+            class="layout-btn" 
+            wx:for="{{layoutTemplates}}" 
+            wx:key="id"
+            data-id="{{item.id}}"
+            bindtap="onSelectLayout"
+          >
+            {{item.name}}
+          </view>
+        </view>
+      </block>
+      <!-- 已选择户型，显示待测房间列表 -->
+      <block wx:else>
+        <view class="library-header" style="display: flex; justify-content: space-between;">
+          <text>户型库</text>
+          <text style="font-size: 28rpx; color: #3b82f6; font-weight: 500;" bindtap="onResetLayout">重新选择</text>
+        </view>
+        <view class="room-list">
+          <view 
+            class="room-item {{item.measured ? 'room-item-measured' : ''}}" 
+            wx:for="{{plannedRooms}}" 
+            wx:key="id"
+            data-id="{{item.id}}"
+            bindtap="onEnterRoom"
+          >
+            <view class="room-icon">{{item.measured ? '✅' : '🏠'}}</view>
+            <text class="room-name">{{item.name}}</text>
+            <text class="room-status {{item.measured ? 'measured' : ''}}">{{item.measured ? '已测量' : '待测量'}}</text>
+          </view>
+        </view>
+      </block>
+    </view>
 
-  <!-- 底部状态栏 -->
-  <view class="status-bar">
-    <view class="ble-btn" bindtap="onConnectBLE">连测距仪</view>
-    <text class="status-text">房间: {{rooms.length}}</text>
-    <text class="status-text">面积: {{totalArea}} m²</text>
-    <text class="status-ready">READY</text>
+    <!-- 主内容区 -->
+    <view class="main-content" wx:if="{{viewMode === 'CANVAS'}}">
+      <!-- 引导模式横幅 -->
+      <block wx:if="{{guidedMode}}">
+        <view class="guided-wizard-bar">
+          <view class="wizard-text">当前：{{currentGuidedRoomName}} - 测量【{{edgeNames[guidedEdgeIndex]}}】边缘</view>
+          <view class="wizard-cancel" bindtap="onExitGuide">取消测量</view>
+        </view>
+      </block>
+      <block wx:elif="{{currentGuidedRoomId}}">
+        <view class="guided-wizard-bar" style="background: #10b981;">
+          <view class="wizard-text">{{currentGuidedRoomName}} - 预览模式</view>
+          <view class="wizard-btn-action" bindtap="onStartRemeasure">重新测量</view>
+          <view class="wizard-cancel" bindtap="onExitToLibrary">返回大厅</view>
+        </view>
+      </block>
+      <block wx:else>
+        <view class="guided-wizard-bar" style="background: #6b7280;">
+          <view class="wizard-text">任意绘制模式</view>
+          <view class="wizard-cancel" bindtap="onExitToLibrary">返回大厅</view>
+        </view>
+      </block>
+
+      <!-- 工具栏 -->
+      <toolbar
+        activeTool="{{activeTool}}"
+        currentRoomType="{{currentRoomType}}"
+        bindtoolchange="onToolChange"
+        bindroomtypechange="onRoomTypeChange"
+        bindaddtemplate="onAddTemplate"
+      />
+
+      <!-- 画布区域 -->
+      <view class="canvas-area">
+        <floor-canvas
+          activeTool="{{activeTool}}"
+          rooms="{{rooms}}"
+          selectedIds="{{selectedIds}}"
+          currentRoomType="{{currentRoomType}}"
+          highlightedOpeningId="{{highlightedOpeningId}}"
+          selectedEdge="{{selectedEdge}}"
+          bindaddroom="onAddRoom"
+          bindselectroom="onSelectRoom"
+          bindclearselection="onClearSelection"
+          bindmoveroom="onMoveRoom"
+          bindroomschange="onRoomsChange"
+          binddeleteroom="onDeleteRoom"
+          bindshowprops="onShowProps"
+        />
+
+        <!-- 绘制模式指示器 -->
+        <view wx:if="{{showDrawingIndicator}}" class="drawing-indicator">
+          <view class="indicator-dot"></view>
+          <text class="indicator-text">绘制模式</text>
+          <text class="indicator-cancel" bindtap="onCancelDrawing">取消</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 属性面板 (底部弹出) -->
+    <properties
+      selectedRooms="{{selectedRooms}}"
+      visible="{{selectedIds.length > 0}}"
+      selectedEdge="{{selectedEdge}}"
+      bindupdate="onUpdateRoom"
+      binddelete="onDeleteRooms"
+      bindmerge="onMergeRooms"
+      bindclose="onCloseProperties"
+      bindhighlightopening="onHighlightOpening"
+      bindedgeselect="onEdgeSelect"
+    />
+
+    <!-- 底部状态栏 -->
+    <view class="status-bar">
+      <view class="ble-btn" bindtap="onConnectBLE">重新连接</view>
+      <text class="status-text">房间: {{rooms.length}}</text>
+      <text class="status-text">面积: {{totalArea}} m²</text>
+      <text class="status-ready">已连接蓝牙</text>
+    </view>
+  </block>
+
+  <!-- 全局测量确认弹窗 -->
+  <view class="measure-modal-mask" wx:if="{{showMeasurePrompt}}">
+    <view class="measure-modal">
+      <view class="measure-modal-header">准备测量</view>
+      <view class="measure-modal-content">
+        <text style="font-size: 32rpx; margin-bottom: 20rpx; display: block;">激光红点已唤醒 🔴</text>
+        <text>请将测距仪靠紧房间的【<text style="color: #ef4444; font-weight: bold; font-size: 36rpx;">{{edgeNames[guidedEdgeIndex]}}</text>】墙面，并对准对侧墙壁。</text>
+      </view>
+      <view class="measure-modal-footer">
+        <view class="measure-btn-confirm" bindtap="onConfirmMeasure">位置已放好，立刻自动获取</view>
+      </view>
+    </view>
   </view>
 </view>

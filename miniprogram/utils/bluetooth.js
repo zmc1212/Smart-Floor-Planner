@@ -1,14 +1,14 @@
 // miniprogram/utils/bluetooth.js
 
 var _deviceId = '';
-var _serviceId = '';
-var _characteristicId = '';
-var _writeCharacteristicId = '';
+var _writeCharacteristics = []; // 存储所有可写入的特征值以供广播
 var _onMeasureCallback = null;
 var _isConnecting = false;
+var _onConnectCallback = null;
 
-function initBLE(callback) {
+function initBLE(callback, connectCallback) {
   _onMeasureCallback = callback;
+  _onConnectCallback = connectCallback;
   wx.openBluetoothAdapter({
     success: function (res) {
       startScan();
@@ -34,11 +34,7 @@ function startScan() {
         var deviceList = devices.devices;
         for (var i = 0; i < deviceList.length; i++) {
           var device = deviceList[i];
-          // 如果名称包含测距仪常见的名字，可以增加名字过滤。这里目前只要搜到信号强于 -80 的新蓝牙就尝试询问或者交给用户选
-          // 考虑到静默连接，我们可以过滤有特定名前缀的，但若不知前缀，只把搜到的设备通过回调抛出给页面，或者就弹窗
           if (device.name && device.name.length > 0 && !_isConnecting) {
-            // 暂不静默连接，抛给上层或者直接用微信 action sheet
-            // TODO: 这里简化为将设备抛出，交给页面渲染或者就在这使用 wx.showActionSheet
             offerDevice(device);
           }
         }
@@ -53,8 +49,7 @@ function offerDevice(device) {
   var exists = false;
   for (var i = 0; i < _foundDevices.length; i++) {
     if (_foundDevices[i].deviceId === device.deviceId) {
-      // 更新 RSSI 信息
-      _foundDevices[i].RSSI = device.RSSI;
+      _foundDevices[i].RSSI = device.RSSI; // 更新信号强度
       exists = true; break;
     }
   }
@@ -62,7 +57,7 @@ function offerDevice(device) {
     _foundDevices.push(device);
   }
 
-  // 按照信号强度 (RSSI) 降序排序，信号越强（负数越小，约接近0）排在越前面
+  // 按照信号强度 (RSSI) 降序排序
   _foundDevices.sort(function (a, b) {
     return b.RSSI - a.RSSI;
   });
@@ -72,9 +67,10 @@ function offerDevice(device) {
   }
   _offerTimer = setTimeout(function () {
     if (_isConnecting) return;
-
-    // 生成包含信号强度的显示列表，只取前 6 个最强的设备避免列表过长
+    
+    // 只展示前 6 个信号最强的设备
     var displayDevices = _foundDevices.slice(0, 6);
+
     var itemList = displayDevices.map(function (d) {
       return (d.name || '未知设备') + ' (信号:' + d.RSSI + ')';
     });
@@ -86,11 +82,12 @@ function offerDevice(device) {
         connectDevice(selected.deviceId, selected.name);
       }
     });
-  }, 1500); // 1.5秒后把找的设备供用户选择
+  }, 1500);
 }
 
 function connectDevice(deviceId, name) {
   _isConnecting = true;
+  _writeCharacteristics = []; // 连接前重置写入通道
   wx.stopBluetoothDevicesDiscovery();
   wx.showLoading({ title: '连接 ' + name + '...' });
 
@@ -98,14 +95,23 @@ function connectDevice(deviceId, name) {
     deviceId: deviceId,
     success: function () {
       _deviceId = deviceId;
+      // 保存到本地缓存以便后续一键直连
+      wx.setStorageSync('last_ble_device_id', deviceId);
+      wx.setStorageSync('last_ble_device_name', name);
+
       wx.showToast({ title: '连接成功', icon: 'success' });
       getServices(deviceId);
+      if (_onConnectCallback) _onConnectCallback(true, name);
     },
     fail: function (err) {
       wx.hideLoading();
-      console.log('连接失败', err)
+      console.log('连接失败', err);
+      // 如果直连失败，清除缓存
+      wx.removeStorageSync('last_ble_device_id');
+      wx.removeStorageSync('last_ble_device_name');
       wx.showToast({ title: '连接失败', icon: 'none' });
       _isConnecting = false;
+      if (_onConnectCallback) _onConnectCallback(false);
     }
   });
 }
@@ -117,7 +123,6 @@ function getServices(deviceId) {
       var services = res.services;
       for (var i = 0; i < services.length; i++) {
         var serviceId = services[i].uuid;
-        // 排除掉微信过滤或标准的通用基础服务
         if (serviceId.indexOf('1800') === -1 && serviceId.indexOf('1801') === -1) {
           getCharacteristics(deviceId, serviceId);
         }
@@ -134,7 +139,7 @@ function getCharacteristics(deviceId, serviceId) {
       for (var i = 0; i < res.characteristics.length; i++) {
         var item = res.characteristics[i];
 
-        // 订阅通知特征值
+        // 订阅所有通知特征值
         if (item.properties.notify || item.properties.indicate) {
           wx.notifyBLECharacteristicValueChange({
             deviceId: deviceId,
@@ -142,19 +147,20 @@ function getCharacteristics(deviceId, serviceId) {
             characteristicId: item.uuid,
             state: true,
             success: function () {
-              console.log('✅ Subscribe Success:', item.uuid);
-              _serviceId = serviceId;
-              _characteristicId = item.uuid;
+              console.log('✅ 订阅成功:', item.uuid);
               listenValueChange();
             }
           });
         }
 
-        // 寻找可写入的特征值
+        // 收集所有可写入的特征值
         if (item.properties.write || item.properties.writeNoResponse) {
-          console.log('发现可写入特征值:', item.uuid);
-          _writeCharacteristicId = item.uuid;
-          _serviceId = serviceId;
+          console.log('发现写入通道:', item.uuid);
+          _writeCharacteristics.push({
+            serviceId: serviceId,
+            characteristicId: item.uuid,
+            writeNoResponse: item.properties.writeNoResponse
+          });
         }
       }
     }
@@ -164,12 +170,10 @@ function getCharacteristics(deviceId, serviceId) {
 var dataBuffer = [];
 function listenValueChange() {
   wx.onBLECharacteristicValueChange(function (res) {
-    // 移除严格匹配 res.characteristicId === _characteristicId 的限制
-    // 因为某些仪器可能有多个 Notify 通道
     var length = res.value.byteLength;
     var arr = new Uint8Array(res.value);
 
-    // 增加日志打印原始十六进制数据以供调试
+    // 打印原始 Hex 以供调试
     var hexArr = [];
     for (var i = 0; i < length; i++) {
       var hex = arr[i].toString(16).toUpperCase();
@@ -178,7 +182,7 @@ function listenValueChange() {
     }
     console.log('收到蓝牙数据 [UUID: ' + res.characteristicId.substring(4, 8) + '], 长度:', length, '内容: [', hexArr.join(' '), ']');
 
-    // 接下来正常解析缓冲池
+    // 解析 ATD 测距包 (17字节)
     while (dataBuffer.length >= 17) {
       var a = dataBuffer[0];
       var b = dataBuffer[1];
@@ -187,7 +191,8 @@ function listenValueChange() {
       if (a === 0x41 && b === 0x54 && c === 0x44) {
         var u8 = new Uint8Array(dataBuffer.slice(3, 7));
         var dataDv = new DataView(u8.buffer);
-        var meadist = dataDv.getUint32(0, true);
+        // 使用大端控制 (false) 解析: 00 00 02 77 -> 631
+        var meadist = dataDv.getUint32(0, false);
 
         var distanceInMeters = meadist / 10000.0;
         console.log("测距结果:", distanceInMeters, "m, 原始字节:", u8);
@@ -197,48 +202,47 @@ function listenValueChange() {
         }
         dataBuffer.splice(0, 17);
       } else {
-        // 如果头部不是 ATD，并且如果正好返回的是 ATK001# 等回应，我们目前只做了移出策略。
-        // 为了避免把有用的反馈当垃圾丢掉，我们可以把识别到的 A, T 首字母做下判断
-        if (a === 0x41 && b === 0x54 && (dataBuffer[2] === 0x4B || dataBuffer[2] === 0x4D)) { // ATK or ATM
-          // 这里可能是收到了回应，我们暂不处理距离，但是可以将这几个字节从 buffer 移除
-          // 按照协议，ATK001# 等是 7 字节
+        // 处理 ATK/ATM 等指令反馈 (7字节)
+        if (a === 0x41 && b === 0x54 && (dataBuffer[2] === 0x4B || dataBuffer[2] === 0x4D)) {
           if (dataBuffer.length >= 7) {
             console.log('收到通信回应: ', String.fromCharCode.apply(null, dataBuffer.slice(0, 7)));
             dataBuffer.splice(0, 7);
             continue;
           }
         }
-
-        dataBuffer.shift(); // 丢弃无效头部1字节
+        dataBuffer.shift(); // 丢弃无效头部
       }
     }
   });
 }
 
 function sendBLECommand(cmd) {
-  if (!_deviceId || !_serviceId || !_writeCharacteristicId) {
+  if (!_deviceId || _writeCharacteristics.length === 0) {
     console.error('蓝牙未连接或未发现写入特征值');
     return;
   }
 
-  // 将字符串转为 ArrayBuffer
   var buffer = new ArrayBuffer(cmd.length);
   var dataView = new DataView(buffer);
   for (var i = 0; i < cmd.length; i++) {
     dataView.setUint8(i, cmd.charCodeAt(i));
   }
 
-  wx.writeBLECharacteristicValue({
-    deviceId: _deviceId,
-    serviceId: _serviceId,
-    characteristicId: _writeCharacteristicId,
-    value: buffer,
-    success: function (res) {
-      console.log('指令发送成功:', cmd);
-    },
-    fail: function (err) {
-      console.error('指令发送失败:', err);
-    }
+  // 广播指令到所有可写通道
+  _writeCharacteristics.forEach(function (channel) {
+    wx.writeBLECharacteristicValue({
+      deviceId: _deviceId,
+      serviceId: channel.serviceId,
+      characteristicId: channel.characteristicId,
+      value: buffer,
+      writeType: channel.writeNoResponse ? 'writeNoResponse' : 'write',
+      success: function () {
+        console.log('成功下发指令到:', channel.characteristicId.substring(4, 8), '内容:', cmd);
+      },
+      fail: function (err) {
+        console.log('下发失败 (通道:', channel.characteristicId.substring(4, 8) + '):', err.errMsg);
+      }
+    });
   });
 }
 
@@ -250,10 +254,35 @@ function closeBLE() {
   wx.closeBluetoothAdapter();
   _isConnecting = false;
   _foundDevices = [];
+  _writeCharacteristics = [];
+}
+
+function autoConnectBLE(callback, connectCallback) {
+  _onMeasureCallback = callback;
+  _onConnectCallback = connectCallback;
+  var lastId = wx.getStorageSync('last_ble_device_id');
+  var lastName = wx.getStorageSync('last_ble_device_name');
+  
+  if (lastId) {
+    wx.openBluetoothAdapter({
+      success: function (res) {
+        connectDevice(lastId, lastName || '记忆设备');
+      },
+      fail: function (err) {
+        wx.showToast({ title: '请打开手机蓝牙', icon: 'none' });
+        if (_onConnectCallback) _onConnectCallback(false);
+      }
+    });
+  } else {
+    // 没有记忆设备时，直接调用常规搜索
+    wx.showToast({ title: '无记忆设备，请搜索连接', icon: 'none' });
+    initBLE(callback, connectCallback);
+  }
 }
 
 module.exports = {
   initBLE: initBLE,
   closeBLE: closeBLE,
-  sendBLECommand: sendBLECommand
+  sendBLECommand: sendBLECommand,
+  autoConnectBLE: autoConnectBLE
 };

@@ -57,7 +57,33 @@ function generateTemplate(templateId, startX, startY) {
   return result;
 }
 
+function generateTemplateRooms(templateId) {
+  var template = null;
+  for (var i = 0; i < templates.length; i++) {
+    if (templates[i].id === templateId) {
+      template = templates[i];
+      break;
+    }
+  }
+  if (!template) return [];
+
+  var result = [];
+  for (var j = 0; j < template.rooms.length; j++) {
+    var r = template.rooms[j];
+    result.push({
+      id: util.generateUUID(),
+      name: r.name,
+      measured: false,
+      color: r.color,
+      defaultWidth: 40,
+      defaultHeight: 40
+    });
+  }
+  return result;
+}
+
 module.exports = {
   templates: templates,
-  generateTemplate: generateTemplate
+  generateTemplate: generateTemplate,
+  generateTemplateRooms: generateTemplateRooms
 };

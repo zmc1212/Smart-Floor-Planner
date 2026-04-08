@@ -3,6 +3,17 @@ var ToolType = util.ToolType;
 
 Page({
   data: {
+    bleConnected: false,
+    viewMode: 'LIBRARY',
+    layoutTemplates: require('../../utils/templates.js').templates,
+    plannedRooms: [],
+    guidedMode: false,
+    showMeasurePrompt: false,
+    guidedEdgeIndex: 0,
+    currentGuidedRoomId: '',
+    currentGuidedRoomName: '',
+    edgeNames: ['上方', '右侧', '下方', '左侧'],
+    edgesList: ['top', 'right', 'bottom', 'left'],
     activeTool: 'SELECT',
     currentRoomType: '客厅',
     rooms: [],
@@ -13,7 +24,9 @@ Page({
     highlightedOpeningId: '',
     statusBarHeight: 0,
     showDrawingIndicator: false,
-    totalArea: '0.00'
+    totalArea: '0.00',
+    windowWidth: 375,
+    windowHeight: 600
   },
 
   onLoad: function () {
@@ -21,8 +34,104 @@ Page({
     // 获取状态栏高度
     var sysInfo = wx.getWindowInfo();
     this.setData({
-      statusBarHeight: sysInfo.statusBarHeight || 20
+      statusBarHeight: sysInfo.statusBarHeight || 20,
+      windowWidth: sysInfo.windowWidth,
+      windowHeight: sysInfo.windowHeight
     });
+  },
+
+  // === 户型库及引导测量交互 ===
+  onSelectLayout: function (e) {
+    var templateId = e.currentTarget.dataset.id;
+    var templatesUtil = require('../../utils/templates.js');
+    var roomsData = templatesUtil.generateTemplateRooms(templateId);
+    this.setData({
+      plannedRooms: roomsData
+    });
+  },
+
+  onResetLayout: function () {
+    this.setData({ plannedRooms: [] });
+  },
+
+  onEnterRoom: function (e) {
+    var roomId = e.currentTarget.dataset.id;
+    var roomData = null;
+    for (var i = 0; i < this.data.plannedRooms.length; i++) {
+        if (this.data.plannedRooms[i].id === roomId) {
+            roomData = this.data.plannedRooms[i];
+            break;
+        }
+    }
+    if (!roomData) return;
+
+    var canvasWidth = this.data.windowWidth;
+    // 换算：88rpx 约等于多少 px
+    var rpxRatio = canvasWidth / 750;
+    var navHeightPx = 88 * rpxRatio;
+    var statusBarHeightPx = this.data.statusBarHeight;
+    var bottomBarHeightPx = 88 * rpxRatio;
+    var canvasHeight = this.data.windowHeight - statusBarHeightPx - navHeightPx - bottomBarHeightPx;
+    
+    var roomW = roomData.defaultWidth || 40;
+    var roomH = roomData.defaultHeight || 40;
+
+    var newRoom = {
+      id: roomData.id,
+      name: roomData.name,
+      x: (canvasWidth / 2) - (roomW / 2),
+      y: (canvasHeight / 2) - (roomH / 2) + 20, // 稍微向下偏移一点
+      width: roomW,
+      height: roomH,
+      color: roomData.color || 'rgba(255, 255, 255, 0.8)',
+      openings: []
+    };
+
+    var newRooms = [newRoom];
+    var isMeasured = roomData.measured || false;
+
+    this.setData({
+      viewMode: 'CANVAS',
+      guidedMode: !isMeasured,
+      currentGuidedRoomId: roomId,
+      currentGuidedRoomName: roomData.name,
+      guidedEdgeIndex: 0,
+      activeTool: 'SELECT',
+      selectedEdge: isMeasured ? '' : 'top',
+      showMeasurePrompt: !isMeasured
+    });
+    this.pushToHistory(newRooms);
+    this.setData({ selectedIds: [roomId] });
+
+    if (!isMeasured) {
+      // 延迟 400ms 自动触发第一条边的蓝牙唤醒 (亮大红点)
+      setTimeout(function() {
+        var bluetooth = require('../../utils/bluetooth.js');
+        bluetooth.sendBLECommand('ATK001#');
+      }, 400);
+    }
+  },
+
+  onStartRemeasure: function() {
+    this.setData({
+      guidedMode: true,
+      guidedEdgeIndex: 0,
+      selectedEdge: 'top',
+      showMeasurePrompt: true
+    });
+    // 触发第一条边的蓝牙唤醒
+    setTimeout(function() {
+      var bluetooth = require('../../utils/bluetooth.js');
+      bluetooth.sendBLECommand('ATK001#');
+    }, 400);
+  },
+
+  onExitGuide: function () {
+    this.setData({ guidedMode: false, selectedEdge: '' });
+  },
+
+  onExitToLibrary: function () {
+    this.setData({ viewMode: 'LIBRARY', selectedIds: [], selectedEdge: '', guidedMode: false });
   },
 
   // === 工具切换 ===
@@ -45,11 +154,29 @@ Page({
     });
   },
 
+  onConfirmMeasure: function () {
+    this.setData({ showMeasurePrompt: false });
+    var bluetooth = require('../../utils/bluetooth.js');
+    bluetooth.sendBLECommand('ATK001#');
+  },
+
+  onAutoConnectBLE: function () {
+    var bluetooth = require('../../utils/bluetooth.js');
+    var that = this;
+    bluetooth.autoConnectBLE(function (distanceInMeters) {
+       that.onBluetoothMeasure(distanceInMeters);
+    }, function (isConnected) {
+       that.setData({ bleConnected: isConnected });
+    });
+  },
+
   onConnectBLE: function () {
     var bluetooth = require('../../utils/bluetooth.js');
     var that = this;
     bluetooth.initBLE(function (distanceInMeters) {
        that.onBluetoothMeasure(distanceInMeters);
+    }, function (isConnected) {
+       that.setData({ bleConnected: isConnected });
     });
   },
 
@@ -96,6 +223,40 @@ Page({
     this.pushToHistory(newRooms);
     
     wx.showToast({ title: '测量成功: ' + distanceInMeters + 'm', icon: 'success' });
+
+    // 如果在向导模式，自动流转到下一条边
+    if (this.data.guidedMode && this.data.currentGuidedRoomId === roomId) {
+      var newEdgeIndex = this.data.guidedEdgeIndex + 1;
+      if (newEdgeIndex >= 4) {
+        // 完成此房间所有的边
+        wx.showToast({ title: '当前房间测量完毕', icon: 'success' });
+        var newPlannedRooms = this.data.plannedRooms.map(function(pr) {
+          return pr.id === roomId ? Object.assign({}, pr, { measured: true }) : pr;
+        });
+        var that = this;
+        setTimeout(function() {
+          that.setData({
+            guidedMode: false,
+            viewMode: 'LIBRARY',
+            plannedRooms: newPlannedRooms,
+            selectedEdge: '',
+            selectedIds: []
+          });
+        }, 1500); // 稍微延迟一下回去，让用户看清更新的尺寸
+      } else {
+        var newEdge = this.data.edgesList[newEdgeIndex];
+        this.setData({
+          guidedEdgeIndex: newEdgeIndex,
+          selectedEdge: newEdge,
+          showMeasurePrompt: true
+        });
+        // 自动激发激光（亮红点供用户瞄准对位）
+        setTimeout(function() {
+          var bluetooth = require('../../utils/bluetooth.js');
+          bluetooth.sendBLECommand('ATK001#');
+        }, 400); 
+      }
+    }
   },
 
   onAddTemplate: function (e) {
