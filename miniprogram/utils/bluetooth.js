@@ -5,6 +5,10 @@ var _writeCharacteristics = []; // 存储所有可写入的特征值以供广播
 var _onMeasureCallback = null;
 var _isConnecting = false;
 var _onConnectCallback = null;
+var _scanTimer = null; // 搜索总时间计时器
+var _foundDevices = []; // 发现的设备列表，用于超时判断
+
+const TARGET_DEVICE_NAME = 'LDMStudio 4D';
 
 function initBLE(callback, connectCallback) {
   _onMeasureCallback = callback;
@@ -12,7 +16,7 @@ function initBLE(callback, connectCallback) {
   wx.openBluetoothAdapter({
     success: function (res) {
       startScan();
-      wx.showToast({ title: '开始搜索蓝牙设备', icon: 'none' });
+      wx.showLoading({ title: '搜索测距仪...', mask: true });
     },
     fail: function (err) {
       wx.showToast({ title: '请打开手机蓝牙', icon: 'none' });
@@ -27,6 +31,22 @@ function initBLE(callback, connectCallback) {
 
 function startScan() {
   if (_isConnecting) return;
+  _foundDevices = []; // 重置搜索列表
+  
+  // 设置 10 秒搜索超时
+  if (_scanTimer) clearTimeout(_scanTimer);
+  _scanTimer = setTimeout(function() {
+    if (_foundDevices.length === 0 && !_isConnecting) {
+      wx.stopBluetoothDevicesDiscovery();
+      wx.hideLoading();
+      wx.showModal({
+        title: '未发现设备',
+        content: '未搜索到测距仪 ' + TARGET_DEVICE_NAME + '，请确保设备已开启并靠近手机',
+        showCancel: false
+      });
+    }
+  }, 10000);
+
   wx.startBluetoothDevicesDiscovery({
     allowDuplicatesKey: false,
     success: function (res) {
@@ -34,8 +54,20 @@ function startScan() {
         var deviceList = devices.devices;
         for (var i = 0; i < deviceList.length; i++) {
           var device = deviceList[i];
-          if (device.name && device.name.length > 0 && !_isConnecting) {
-            offerDevice(device);
+          const name = device.name || device.localName || '';
+          console.log('搜索中...', name, 'ID:', device.deviceId);
+
+          // 更加稳健的匹配：忽略首尾空格，且包含关键词即可
+          if (name.trim().includes(TARGET_DEVICE_NAME) && !_isConnecting) {
+            // 发现目标设备，立刻锁定状态并直接自动连接
+            _isConnecting = true;
+            if (_scanTimer) clearTimeout(_scanTimer);
+            wx.stopBluetoothDevicesDiscovery();
+            wx.hideLoading();
+            
+            console.log('✅ 匹配成功，发起自动连接:', name);
+            connectDevice(device.deviceId, name.trim());
+            return;
           }
         }
       });
@@ -43,46 +75,9 @@ function startScan() {
   });
 }
 
-var _foundDevices = [];
-var _offerTimer = null;
+// 废弃旧的 offerDevice 逻辑，改为直接连接
 function offerDevice(device) {
-  var exists = false;
-  for (var i = 0; i < _foundDevices.length; i++) {
-    if (_foundDevices[i].deviceId === device.deviceId) {
-      _foundDevices[i].RSSI = device.RSSI; // 更新信号强度
-      exists = true; break;
-    }
-  }
-  if (!exists) {
-    _foundDevices.push(device);
-  }
-
-  // 按照信号强度 (RSSI) 降序排序
-  _foundDevices.sort(function (a, b) {
-    return b.RSSI - a.RSSI;
-  });
-
-  if (_offerTimer) {
-    clearTimeout(_offerTimer);
-  }
-  _offerTimer = setTimeout(function () {
-    if (_isConnecting) return;
-    
-    // 只展示前 6 个信号最强的设备
-    var displayDevices = _foundDevices.slice(0, 6);
-
-    var itemList = displayDevices.map(function (d) {
-      return (d.name || '未知设备') + ' (信号:' + d.RSSI + ')';
-    });
-
-    wx.showActionSheet({
-      itemList: itemList,
-      success: function (res) {
-        var selected = displayDevices[res.tapIndex];
-        connectDevice(selected.deviceId, selected.name);
-      }
-    });
-  }, 1500);
+  // 不再使用此函数
 }
 
 function connectDevice(deviceId, name) {
@@ -298,6 +293,8 @@ function autoConnectBLE(callback, connectCallback) {
   var lastId = wx.getStorageSync('last_ble_device_id');
   var lastName = wx.getStorageSync('last_ble_device_name');
   
+  console.log('尝试一键直连，记忆设备名称:', lastName, 'ID:', lastId);
+
   if (lastId) {
     wx.openBluetoothAdapter({
       success: function (res) {
@@ -310,7 +307,7 @@ function autoConnectBLE(callback, connectCallback) {
     });
   } else {
     // 没有记忆设备时，直接调用常规搜索
-    wx.showToast({ title: '无记忆设备，请搜索连接', icon: 'none' });
+    wx.showToast({ title: '无记忆设备，请手动搜索', icon: 'none' });
     initBLE(callback, connectCallback);
   }
 }

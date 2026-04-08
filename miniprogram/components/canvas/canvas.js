@@ -237,19 +237,25 @@ Component({
       ctx.lineWidth = isSelected ? 3 : 2;
       ctx.strokeRect(room.x, room.y, room.width, room.height);
 
-      // 房间名称和尺寸
+      // 房间名称和尺寸 - 根据房间大小动态调整字号 (单位为世界坐标，1px=10cm)
+      // 计算一个合适的字号：大约是最小边长的 1/10，但不小于 1.5 (15cm)，不大于 4 (40cm)
+      var baseFontSize = Math.max(1.5, Math.min(4, Math.min(room.width, room.height) / 10));
+      var nameFontSize = baseFontSize * 1.2; // 标题稍大
+      var dimFontSize = baseFontSize;
+
       ctx.fillStyle = '#141414';
-      ctx.font = '12px sans-serif';
+      ctx.font = nameFontSize + 'px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       var centerX = room.x + room.width / 2;
       var centerY = room.y + room.height / 2;
-      ctx.fillText(room.name, centerX, centerY - 8);
-      ctx.font = '10px sans-serif';
+      ctx.fillText(room.name, centerX, centerY - nameFontSize * 0.7);
+      
+      ctx.font = dimFontSize + 'px sans-serif';
       ctx.fillStyle = '#666666';
       ctx.fillText(
         (room.width / 10).toFixed(2) + 'm × ' + (room.height / 10).toFixed(2) + 'm',
-        centerX, centerY + 8
+        centerX, centerY + dimFontSize * 0.7
       );
 
       // 高亮绘制选中的边 (激光测距用)
@@ -274,17 +280,20 @@ Component({
         ctx.stroke();
       }
 
-      // 尺寸标注 (外部)
+      // 尺寸标注 (外部) - 同样使用动态字号
       ctx.fillStyle = '#666666';
-      ctx.font = '10px sans-serif';
+      ctx.font = dimFontSize + 'px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
-      ctx.fillText((room.width / 10).toFixed(2) + 'm', centerX, room.y - 4);
+      // 动态偏移：根据字号大小调整距离墙体的间距
+      var labelOffset = dimFontSize * 0.4; 
+      ctx.fillText((room.width / 10).toFixed(2) + 'm', centerX, room.y - labelOffset);
+      
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(
         (room.height / 10).toFixed(2) + 'm',
-        room.x + room.width + 5,
+        room.x + room.width + labelOffset,
         room.y + room.height / 2
       );
 

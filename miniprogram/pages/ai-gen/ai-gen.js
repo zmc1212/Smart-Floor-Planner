@@ -154,21 +154,35 @@ Page({
       wallMap[wallName].push(desc);
     });
 
-    const layoutDetails = Object.keys(wallMap)
-      .filter(w => wallMap[w].length > 0)
-      .map(w => `${w} Wall: ${wallMap[w].join('; ')}`)
-      .join(' | ');
-
     const modeReq = mode === 'PLANE' 
-      ? '2D technical floor plan, architectural drawing, top-down orthographic view, blueprint aesthetic'
-      : 'Realistic interior design rendering, perspective view, eye-level camera, cinematic lighting, photorealistic textures';
+      ? '2D technical floor plan, architectural drawing, top-down orthographic view, blueprint aesthetic, clean black and white lines'
+      : 'Photorealistic interior design rendering, eye-level perspective looking straight at the far wall, architectural photography';
 
-    const prompt = `Advanced Room Layout (Mapping):
-Room Type: ${room.name}, Style: ${style}. 
-Dimensions: ${(room.width / 10).toFixed(2)}m (W) x ${(room.height / 10).toFixed(2)}m (H). 
-Architectural Map: ${layoutDetails || 'Enclosed area'}. 
-Visual Mode: ${modeReq}.
-Visual Specs: Professional photography, 8k, photorealistic, strictly no text.`;
+    // 基于墙体位置构建更自然的场景描述
+    let sceneDetails = [];
+    if (wallMap['Top'].length > 0) {
+      sceneDetails.push(`On the far wall ahead: ${wallMap['Top'].join(', ')}.`);
+    }
+    if (wallMap['Left'].length > 0) {
+      sceneDetails.push(`On the left wall: ${wallMap['Left'].join(', ')}.`);
+    }
+    if (wallMap['Right'].length > 0) {
+      sceneDetails.push(`On the right wall: ${wallMap['Right'].join(', ')}.`);
+    }
+    if (wallMap['Bottom'].length > 0) {
+      sceneDetails.push(`Hidden behind the camera (bottom wall): ${wallMap['Bottom'].join(', ')}.`);
+    }
+
+    const furnitureHint = room.name.includes('客厅') 
+      ? 'Place a sofa near the window, and a TV console on a side wall.'
+      : (room.name.includes('卧室') ? 'Place a bed centered against the wall.' : '');
+
+    const prompt = `[PROMPT] ${modeReq}. 
+Room: ${room.name} (${style} style), ${(room.width / 10).toFixed(2)}m x ${(room.height / 10).toFixed(2)}m. 
+Scene Layout: ${sceneDetails.join(' ')} 
+Furniture: ${furnitureHint}
+STRICT RULE: Absolutely NO text, NO numbers, NO dimension lines, NO labels.
+Visuals: 8k resolution, photorealistic, cinematic solar rays, professional photography. [/PROMPT]`;
 
     wx.setClipboardData({
       data: prompt,

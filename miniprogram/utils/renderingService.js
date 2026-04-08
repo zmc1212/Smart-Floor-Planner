@@ -38,17 +38,25 @@ function generateRendering(roomName, style, width, height, openings, mode) {
 
   var prompt = '';
   if (mode === 'PLANE') {
-    // 平面图模式：强调 2D、纯净背景、技术感
-    prompt = '2D technical floor plan, architectural drawing of ' + roomName + ', ' + style + ' style. ' +
+    // 平面图模式：强调 2D、线条、技术感
+    prompt = '2D technical floor plan, professional architectural drawing of ' + roomName + ', ' + style + ' style. ' +
       'Dimensions: ' + (width / 10).toFixed(2) + 'm x ' + (height / 10).toFixed(2) + 'm. ' +
-      'Layout Map: ' + (layoutDetails || 'Enclosed') + '. ' +
-      'Top-down orthographic view, clean white background, blueprint aesthetic, professional drafting, high contrast, strictly no text.';
+      'Layout: ' + (layoutDetails || 'Standard room') + '. ' +
+      'Style: Orthographic top-down, clean white background, drafting pen lines, strictly no text, no fonts, no numbers.';
   } else {
-    // 装修效果图模式：强调透视、照片感、光影、室内设计
-    prompt = 'Realistic interior design rendering of ' + roomName + ', ' + style + ' style. ' +
-      'Room Specs: ' + (width / 10).toFixed(2) + 'm x ' + (height / 10).toFixed(2) + 'm. ' +
-      'Layout: ' + (layoutDetails || 'Modern living space') + '. ' +
-      'Views: Perspective view from entrance, eye-level camera, cinematic natural sunlight, architectural photography style, 8k, photorealistic textures, cozy atmosphere, professional staging, strictly no text.';
+    // 构建室内场景描述
+    var wallDescriptions = [];
+    if (wallMap['Top'].length > 0) wallDescriptions.push('On the far wall (front): ' + wallMap['Top'].join(', '));
+    if (wallMap['Left'].length > 0) wallDescriptions.push('On the left wall: ' + wallMap['Left'].join(', '));
+    if (wallMap['Right'].length > 0) wallDescriptions.push('On the right wall: ' + wallMap['Right'].join(', '));
+    if (wallMap['Bottom'].length > 0) wallDescriptions.push('Note: ' + wallMap['Bottom'].join(', ') + ' are behind the viewer.');
+
+    // 装修效果图模式：基于用户反馈深度优化视角和“去文字化”
+    prompt = 'Hyper-photorealistic interior rendering of a ' + style + ' ' + roomName + '. ' +
+      'View: Eye-level perspective looking straight at the far wall. ' +
+      'Spatial Map: ' + wallDescriptions.join('. ') + '. ' +
+      'Furniture: Modern sofa near window/far wall, TV console on side wall. ' +
+      'Visuals: 8k resolution, cinematic lighting with sun-rays, high-end architectural photography, strictly NO text, NO numbers, NO dimension lines, NO labels, clean walls.';
   }
 
   var encodedPrompt = encodeURIComponent(prompt);
