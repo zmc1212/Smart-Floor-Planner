@@ -1,0 +1,60 @@
+.measure-modal-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.6);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+}
+
+.measure-modal {
+  width: 600rpx;
+  background: #ffffff;
+  border-radius: 24rpx;
+  overflow: hidden;
+  box-shadow: 0 20rpx 50rpx rgba(0,0,0,0.2);
+  display: flex;
+  flex-direction: column;
+}
+
+.measure-modal-header {
+  background: #2563eb;
+  color: #fff;
+  padding: 30rpx;
+  font-size: 36rpx;
+  font-weight: 700;
+  text-align: center;
+}
+
+.measure-modal-content {
+  padding: 60rpx 40rpx;
+  font-size: 32rpx;
+  line-height: 1.6;
+  color: #374151;
+  text-align: center;
+}
+
+.measure-modal-footer {
+  padding: 0 40rpx 40rpx;
+}
+
+.measure-btn-confirm {
+  background: #10b981;
+  color: #fff;
+  font-size: 34rpx;
+  font-weight: 700;
+  padding: 24rpx;
+  border-radius: 100rpx;
+  text-align: center;
+  box-shadow: 0 8rpx 16rpx rgba(16, 185, 129, 0.2);
+}
+
+.measure-btn-confirm:active {
+  opacity: 0.8;
+  transform: scale(0.98);
+}

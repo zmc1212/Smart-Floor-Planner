@@ -1,0 +1,35 @@
+.status-bar {
+  height: 88rpx;
+  background: #ffffff;
+  border-top: 1rpx solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 32rpx;
+}
+
+.status-text {
+  font-size: 24rpx;
+  color: #6b7280;
+  font-family: monospace;
+}
+
+.ble-btn {
+  font-size: 22rpx;
+  background: #ef4444;
+  color: #ffffff;
+  padding: 8rpx 16rpx;
+  border-radius: 8rpx;
+  font-weight: 600;
+}
+
+.ble-btn:active {
+  opacity: 0.8;
+}
+
+.status-ready {
+  font-size: 24rpx;
+  color: #10b981;
+  font-weight: 700;
+  font-family: monospace;
+}

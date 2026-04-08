@@ -2,7 +2,13 @@
   "usingComponents": {
     "toolbar": "../../components/toolbar/toolbar",
     "floor-canvas": "../../components/canvas/canvas",
-    "properties": "../../components/properties/properties"
+    "properties": "../../components/properties/properties",
+    "nav-bar": "../../components/nav-bar/nav-bar",
+    "ble-gate": "../../components/ble-gate/ble-gate",
+    "room-library": "../../components/room-library/room-library",
+    "guided-banner": "../../components/guided-banner/guided-banner",
+    "measure-modal": "../../components/measure-modal/measure-modal",
+    "bottom-bar": "../../components/bottom-bar/bottom-bar"
   },
   "navigationStyle": "custom",
   "disableScroll": true

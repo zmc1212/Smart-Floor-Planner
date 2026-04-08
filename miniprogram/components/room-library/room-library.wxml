@@ -1,0 +1,38 @@
+<view class="library-container">
+  <!-- 未选择户型时显示： -->
+  <block wx:if="{{plannedRooms.length === 0}}">
+    <view class="library-header">请选择需要测量的户型</view>
+    <view class="layout-selector">
+      <view 
+        class="layout-btn" 
+        wx:for="{{layoutTemplates}}" 
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="onSelectLayout"
+      >
+        {{item.name}}
+      </view>
+    </view>
+  </block>
+
+  <!-- 已选择户型，显示待测房间列表 -->
+  <block wx:else>
+    <view class="library-header" style="display: flex; justify-content: space-between;">
+      <text>户型库</text>
+      <text class="reset-btn" bindtap="onResetLayout">重新选择</text>
+    </view>
+    <view class="room-list">
+      <view 
+        class="room-item {{item.measured ? 'room-item-measured' : ''}}" 
+        wx:for="{{plannedRooms}}" 
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="onEnterRoom"
+      >
+        <view class="room-icon">{{item.measured ? '✅' : '🏠'}}</view>
+        <text class="room-name">{{item.name}}</text>
+        <text class="room-status {{item.measured ? 'measured' : ''}}">{{item.measured ? '已测量' : '待测量'}}</text>
+      </view>
+    </view>
+  </block>
+</view>

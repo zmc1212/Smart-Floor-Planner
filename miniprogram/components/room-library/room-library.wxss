@@ -1,0 +1,86 @@
+.library-container {
+  flex: 1;
+  padding: 32rpx;
+  background: #f8f9fa;
+  display: flex;
+  flex-direction: column;
+}
+
+.library-header {
+  font-size: 36rpx;
+  font-weight: 700;
+  margin-bottom: 24rpx;
+  color: #111827;
+}
+
+.reset-btn {
+  font-size: 26rpx;
+  color: #2563eb;
+  font-weight: 500;
+  text-decoration: underline;
+}
+
+.layout-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+  margin-bottom: 32rpx;
+}
+
+.layout-btn {
+  padding: 16rpx 32rpx;
+  background: #ffffff;
+  border: 2rpx solid #e5e7eb;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  color: #374151;
+}
+
+.layout-btn:active {
+  background: #f3f4f6;
+}
+
+.room-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24rpx;
+}
+
+.room-item {
+  width: calc(50% - 12rpx);
+  background: #ffffff;
+  border-radius: 16rpx;
+  padding: 32rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border: 2rpx solid transparent;
+  box-sizing: border-box;
+}
+
+.room-item-measured {
+  background: #f0fdf4;
+  border-color: #34d399;
+}
+
+.room-icon {
+  font-size: 64rpx;
+  margin-bottom: 16rpx;
+}
+
+.room-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 8rpx;
+}
+
+.room-status {
+  font-size: 24rpx;
+  color: #9ca3af;
+}
+
+.room-status.measured {
+  color: #059669;
+}

@@ -1,0 +1,12 @@
+<view class="measure-modal-mask" wx:if="{{show}}">
+  <view class="measure-modal">
+    <view class="measure-modal-header">准备测量</view>
+    <view class="measure-modal-content">
+      <text style="font-size: 32rpx; margin-bottom: 20rpx; display: block;">激光红点已唤醒 🔴</text>
+      <text>请将测距仪靠紧房间的【<text style="color: #ef4444; font-weight: bold; font-size: 36rpx;">{{edgeName}}</text>】墙面，并对准对侧墙壁。</text>
+    </view>
+    <view class="measure-modal-footer">
+      <view class="measure-btn-confirm" bindtap="onConfirm">位置已放好，立刻自动获取</view>
+    </view>
+  </view>
+</view>

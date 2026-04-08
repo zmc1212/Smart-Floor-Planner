@@ -52,7 +52,7 @@ Page({
 
   // === 户型库及引导测量交互 ===
   onSelectLayout: function (e) {
-    var templateId = e.currentTarget.dataset.id;
+    var templateId = e.detail.id;
     var templatesUtil = require('../../utils/templates.js');
     var roomsData = templatesUtil.generateTemplateRooms(templateId);
     this.setData({
@@ -65,7 +65,7 @@ Page({
   },
 
   onEnterRoom: function (e) {
-    var roomId = e.currentTarget.dataset.id;
+    var roomId = e.detail.id;
 
     // 1. 优先检查当前画布中是否已存在该房间
     var existingRoom = null;
