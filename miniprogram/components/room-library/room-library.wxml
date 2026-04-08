@@ -31,7 +31,10 @@
       >
         <view class="room-icon">{{item.measured ? '✅' : '🏠'}}</view>
         <text class="room-name">{{item.name}}</text>
-        <text class="room-status {{item.measured ? 'measured' : ''}}">{{item.measured ? '已测量' : '待测量'}}</text>
+        <view class="room-actions" wx:if="{{item.measured}}">
+          <view class="ai-btn" catchtap="onAIGen" data-id="{{item.id}}">✨ 效果图</view>
+        </view>
+        <text class="room-status {{item.measured ? 'measured' : ''}}" wx:else>{{item.measured ? '已测量' : '待测量'}}</text>
       </view>
     </view>
   </block>

@@ -82,5 +82,27 @@
 }
 
 .room-status.measured {
-  color: #059669;
+  color: #10b981;
+}
+
+.room-actions {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.ai-btn {
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  color: #fff;
+  font-size: 20rpx;
+  padding: 8rpx 20rpx;
+  border-radius: 999rpx;
+  font-weight: 500;
+  box-shadow: 0 4rpx 12rpx rgba(168,85,247,0.2);
+  transition: all 0.2s;
+}
+
+.ai-btn:active {
+  transform: scale(0.95);
+  opacity: 0.9;
 }

@@ -1,6 +1,7 @@
 {
   "pages": [
-    "pages/index/index"
+    "pages/index/index",
+    "pages/ai-gen/ai-gen"
   ],
   "window": {
     "navigationBarTitleText": "智能量房大师",

@@ -29,6 +29,7 @@
         bindselectlayout="onSelectLayout"
         bindresetlayout="onResetLayout"
         bindenterroom="onEnterRoom"
+        bindaigen="onAIGen"
       />
 
       <!-- 4. 画布编辑视图 -->

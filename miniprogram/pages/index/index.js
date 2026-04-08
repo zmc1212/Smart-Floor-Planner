@@ -49,6 +49,48 @@ Page({
       windowWidth: sysInfo.windowWidth,
       windowHeight: sysInfo.windowHeight
     });
+
+    // 注入演示用的测试数据
+    this.loadTestData();
+  },
+
+  loadTestData: function() {
+    const testRoom = {
+      id: "test-room-dev",
+      name: "测试样板间",
+      x: 100,
+      y: 100,
+      width: 40,  // 4.0m
+      height: 30, // 3.0m
+      measured: true,
+      color: "rgba(99, 102, 241, 0.2)",
+      openings: [
+        {
+          id: "test-door-1",
+          type: "DOOR",
+          x: 10,      // 1.0m 偏移 (从左侧算起)
+          y: 30,      // 位于底墙 (y = height)
+          rotation: 0,
+          width: 9,   // 0.9m 宽
+          height: 20
+        },
+        {
+          id: "test-window-1",
+          type: "WINDOW",
+          x: 25,      // 2.5m 偏移 (从左侧算起)
+          y: 0,       // 位于顶墙 (y = 0)
+          rotation: 0,
+          width: 12,  // 1.2m 宽
+          height: 12
+        }
+      ]
+    };
+    
+    this.setData({
+      rooms: [testRoom],
+      plannedRooms: [Object.assign({}, testRoom, { measured: true })]
+    });
+    this.pushToHistory([testRoom]);
   },
 
   // === 户型库及引导测量交互 ===
@@ -153,6 +195,20 @@ Page({
 
     if (!isMeasured) {
       this.openLaser();
+    }
+  },
+
+  onAIGen: function (e) {
+    var roomId = e.detail.id;
+    var room = this.data.rooms.find(function (r) { return r.id === roomId; });
+    
+    if (room) {
+      getApp().globalData.currentAIGenRoom = room;
+      wx.navigateTo({
+        url: '/pages/ai-gen/ai-gen'
+      });
+    } else {
+      wx.showToast({ title: '找不房间数据', icon: 'none' });
     }
   },
 
@@ -523,7 +579,20 @@ Page({
   },
 
   onHighlightOpening: function (e) {
-    this.setData({ highlightedOpeningId: e.detail.id || '' });
+    this.setData({ highlightedOpeningId: e.detail.id });
+  },
+
+  /**
+   * 供外部页面（如AI生成页）同步房间数据更新
+   */
+  updateRoomData: function (roomId, updates) {
+    var newRooms = this.data.rooms.map(function (r) {
+      if (r.id === roomId) {
+        return Object.assign({}, r, updates);
+      }
+      return r;
+    });
+    this.pushToHistory(newRooms);
   },
 
   // === 导出 ===

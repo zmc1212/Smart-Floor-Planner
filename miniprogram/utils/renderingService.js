@@ -8,26 +8,48 @@
  * @param {string} style 装修风格
  * @param {number} width 宽度(px)
  * @param {number} height 高度(px)
+ * @param {number} height 高度(px)
  * @param {Array} openings 门窗列表
+ * @param {string} mode 模式: 'INTERIOR' | 'PLANE'
  * @returns {Promise<string>} 图片URL
  */
-function generateRendering(roomName, style, width, height, openings) {
+function generateRendering(roomName, style, width, height, openings, mode) {
   openings = openings || [];
 
-  var openingsDescription = openings.map(function (o) {
-    var type = o.type === 'DOOR' ? 'Door' : 'Window';
-    var pos = o.rotation === 0
-      ? (o.y < 5 ? 'Top' : 'Bottom') + ' wall (x=' + (o.x / 10).toFixed(1) + 'm)'
-      : (o.x < 5 ? 'Left' : 'Right') + ' wall (y=' + (o.y / 10).toFixed(1) + 'm)';
-    return type + ' on ' + pos;
-  }).join(', ');
+  var wallMap = { 'Top': [], 'Right': [], 'Bottom': [], 'Left': [] };
 
-  var prompt = 'Interior design collage: ' + roomName + ', ' + style + ' style, ' +
-    (width / 10) + 'x' + (height / 10) + 'm. ' +
-    'Layout: ' + (openingsDescription || 'Standard enclosed space') + '. ' +
-    'Views: 3D top-down plan, entrance perspective, detail shot. ' +
-    'Style: Photorealistic, 8k, architectural photography, cinematic lighting, white background. ' +
-    'Strictly NO TEXT, NO LABELS, NO NUMBERS.';
+  openings.forEach(function (o) {
+    var type = o.type === 'DOOR' ? 'Door' : 'Window';
+    var widthM = (o.width / 10).toFixed(1);
+    var distFromStart = (o.rotation === 0) ? (o.x / 10).toFixed(1) : (o.y / 10).toFixed(1);
+    var wallName = '';
+    if (o.rotation === 0) {
+      wallName = o.y < (height / 2) ? 'Top' : 'Bottom';
+    } else {
+      wallName = o.x < (width / 2) ? 'Left' : 'Right';
+    }
+    wallMap[wallName].push(type + ' [width: ' + widthM + 'm, offset: ' + distFromStart + 'm]');
+  });
+
+  var layoutDetails = Object.keys(wallMap)
+    .filter(function (w) { return wallMap[w].length > 0; })
+    .map(function (w) { return w + ' Wall: ' + wallMap[w].join('; '); })
+    .join(' | ');
+
+  var prompt = '';
+  if (mode === 'PLANE') {
+    // 平面图模式：强调 2D、纯净背景、技术感
+    prompt = '2D technical floor plan, architectural drawing of ' + roomName + ', ' + style + ' style. ' +
+      'Dimensions: ' + (width / 10).toFixed(2) + 'm x ' + (height / 10).toFixed(2) + 'm. ' +
+      'Layout Map: ' + (layoutDetails || 'Enclosed') + '. ' +
+      'Top-down orthographic view, clean white background, blueprint aesthetic, professional drafting, high contrast, strictly no text.';
+  } else {
+    // 装修效果图模式：强调透视、照片感、光影、室内设计
+    prompt = 'Realistic interior design rendering of ' + roomName + ', ' + style + ' style. ' +
+      'Room Specs: ' + (width / 10).toFixed(2) + 'm x ' + (height / 10).toFixed(2) + 'm. ' +
+      'Layout: ' + (layoutDetails || 'Modern living space') + '. ' +
+      'Views: Perspective view from entrance, eye-level camera, cinematic natural sunlight, architectural photography style, 8k, photorealistic textures, cozy atmosphere, professional staging, strictly no text.';
+  }
 
   var encodedPrompt = encodeURIComponent(prompt);
   var seed = Math.floor(Math.random() * 1000000);

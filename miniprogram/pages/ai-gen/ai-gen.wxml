@@ -1,0 +1,154 @@
+<view class="container">
+  <scroll-view scroll-y class="content">
+    <!-- 渲染模式选择 -->
+    <view class="section">
+      <view class="section-header">
+        <text class="section-title">0. 选择生成模式</text>
+      </view>
+      <view class="mode-selector">
+        <view 
+          class="mode-item {{selectedMode === 'INTERIOR' ? 'active' : ''}}" 
+          hover-class="mode-item-hover"
+          data-mode="INTERIOR" 
+          catchtap="onModeChange"
+        >
+          <text class="mode-icon">🏠</text>
+          <view class="mode-info">
+            <text class="mode-name">装修效果图</text>
+            <text class="mode-desc">透视视角，真实光影</text>
+          </view>
+        </view>
+        <view 
+          class="mode-item {{selectedMode === 'PLANE' ? 'active' : ''}}" 
+          hover-class="mode-item-hover"
+          data-mode="PLANE" 
+          catchtap="onModeChange"
+        >
+          <text class="mode-icon">📐</text>
+          <view class="mode-info">
+            <text class="mode-name">专业平面图</text>
+            <text class="mode-desc">自顶向下，尺寸标注</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 房间概览 -->
+    <view class="room-card">
+      <view class="room-info">
+        <text class="room-name">{{room.name}}</text>
+        <text class="room-size">{{room.width/10}}m x {{room.height/10}}m</text>
+      </view>
+      <view class="room-badge">已完成测绘</view>
+    </view>
+
+    <!-- 风格选择 -->
+    <view class="section">
+      <view class="section-header">
+        <text class="section-title">1. 选择装修风格</text>
+      </view>
+      <view class="style-grid">
+        <view
+          wx:for="{{styles}}"
+          wx:key="*this"
+          class="style-item {{selectedStyle === item ? 'active' : ''}}"
+          data-style="{{item}}"
+          bindtap="onStyleSelect"
+        >
+          <view class="style-dot"></view>
+          <text>{{item}}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 效果图生成 -->
+    <view class="section">
+      <view class="section-header">
+        <text class="section-title">2. AI 效果图预览</text>
+      </view>
+
+      <view class="preview-container">
+        <block wx:if="{{room.renderingUrl}}">
+          <view class="rendering-preview" bindtap="onPreviewImage">
+            <image
+              src="{{room.renderingUrl}}"
+              mode="aspectFill"
+              class="rendering-image"
+            />
+            <view class="rendering-tag">AI 原创设计</view>
+          </view>
+          <view class="action-row">
+            <view class="action-btn" bindtap="onSaveImage">💾 保存相册</view>
+            <view class="action-btn" bindtap="onPreviewImage">🔍 全屏预览</view>
+          </view>
+        </block>
+        <block wx:else>
+          <view class="empty-preview">
+            <text class="empty-icon">🖼</text>
+            <text class="empty-text">点击下方按钮，立即生成 3D 效果图</text>
+          </view>
+        </block>
+
+        <view class="generate-btn {{isGenerating ? 'loading' : ''}}" bindtap="onGenerate">
+          <block wx:if="{{isGenerating}}">
+            <view class="spinner"></view>
+            <text>正在深度渲染中...</text>
+          </block>
+          <block wx:else>
+            <text>✨ 立即生成效果图</text>
+          </block>
+        </view>
+      </view>
+    </view>
+
+    <!-- 复制提示词 (始终显示) -->
+    <view class="section">
+      <view class="section-header">
+        <text class="section-title">工具：复制精细化提示词</text>
+      </view>
+      <view class="prompt-export-card" bindtap="onExportPrompt">
+        <view class="prompt-header">
+          <text>📋 导出 AI 提示词</text>
+          <text class="copy-tag">一键复制</text>
+        </view>
+        <text class="prompt-preview">已根据 {{room.name}} 的 {{room.openings.length || 0}} 个门窗坐标和 {{selectedStyle}} 风格组装精细化提示词，可直接用于其它 AI 工具。</text>
+      </view>
+    </view>
+
+    <!-- AI 装修建议 -->
+    <view class="section">
+      <view class="section-header">
+        <text class="section-title">3. AI 专业设计建议</text>
+      </view>
+
+      <view class="advice-container">
+        <block wx:if="{{room.designAdvice}}">
+          <view class="advice-card">
+            <view class="advice-header">
+              <text class="advice-tag">AI 设计师</text>
+              <text class="advice-time">刚刚</text>
+            </view>
+            <text class="advice-text">{{room.designAdvice.content}}</text>
+          </view>
+        </block>
+        <block wx:else>
+          <view class="empty-advice">
+            <text>点击获取该房间的硬装与软装建议</text>
+          </view>
+        </block>
+
+        <view class="advice-btn {{isGettingAdvice ? 'loading' : ''}}" bindtap="onGetAdvice">
+          <block wx:if="{{isGettingAdvice}}">
+            <view class="spinner"></view>
+            <text>正在咨询设计师...</text>
+          </block>
+          <block wx:else>
+            <text>💬 获取专业设计建议</text>
+          </block>
+        </view>
+      </view>
+    </view>
+    
+    <view class="footer-spacer"></view>
+  </scroll-view>
+</view>
