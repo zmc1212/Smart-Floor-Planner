@@ -153,7 +153,7 @@
     <!-- 属性面板 (底部弹出) -->
     <properties
       selectedRooms="{{selectedRooms}}"
-      visible="{{selectedIds.length > 0}}"
+      visible="{{selectedIds.length > 0 && !selectedEdge}}"
       selectedEdge="{{selectedEdge}}"
       bindupdate="onUpdateRoom"
       binddelete="onDeleteRooms"

@@ -197,7 +197,7 @@ Component({
       ctx.font = '10px sans-serif';
       ctx.fillStyle = '#666666';
       ctx.fillText(
-        (room.width / 10).toFixed(1) + 'm × ' + (room.height / 10).toFixed(1) + 'm',
+        (room.width / 10).toFixed(2) + 'm × ' + (room.height / 10).toFixed(2) + 'm',
         centerX, centerY + 8
       );
 
@@ -228,11 +228,11 @@ Component({
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
-      ctx.fillText((room.width / 10).toFixed(1) + 'm', centerX, room.y - 4);
+      ctx.fillText((room.width / 10).toFixed(2) + 'm', centerX, room.y - 4);
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(
-        (room.height / 10).toFixed(1) + 'm',
+        (room.height / 10).toFixed(2) + 'm',
         room.x + room.width + 5,
         room.y + room.height / 2
       );

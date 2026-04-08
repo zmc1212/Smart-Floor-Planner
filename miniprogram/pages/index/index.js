@@ -34,11 +34,11 @@ Page({
     // 获取状态栏和胶囊按钮信息
     var sysInfo = wx.getSystemInfoSync();
     var menuButtonInfo = wx.getMenuButtonBoundingClientRect();
-    
+
     // 标准公式：内容高度 = (胶囊顶部 - 状态栏) * 2 + 胶囊高度
     var navBarContentHeight = (menuButtonInfo.top - sysInfo.statusBarHeight) * 2 + menuButtonInfo.height;
     var navBarHeightTotal = sysInfo.statusBarHeight + navBarContentHeight;
-    
+
     this.setData({
       statusBarHeight: sysInfo.statusBarHeight,
       navBarHeightTotal: navBarHeightTotal,
@@ -66,23 +66,47 @@ Page({
 
   onEnterRoom: function (e) {
     var roomId = e.currentTarget.dataset.id;
+
+    // 1. 优先检查当前画布中是否已存在该房间
+    var existingRoom = null;
+    for (var i = 0; i < this.data.rooms.length; i++) {
+      if (this.data.rooms[i].id === roomId) {
+        existingRoom = this.data.rooms[i];
+        break;
+      }
+    }
+
+    // 如果房间已存在，直接进入画布，不重置尺寸
+    if (existingRoom) {
+      this.setData({
+        viewMode: 'CANVAS',
+        currentGuidedRoomId: roomId,
+        currentGuidedRoomName: existingRoom.name,
+        activeTool: 'SELECT',
+        selectedIds: [roomId],
+        guidedMode: false // 再次进入默认不开启引导，除非点击“重新测量”
+      });
+      return;
+    }
+
+    // 2. 如果是首次进入，则从户型库数据创建
     var roomData = null;
     for (var i = 0; i < this.data.plannedRooms.length; i++) {
-        if (this.data.plannedRooms[i].id === roomId) {
-            roomData = this.data.plannedRooms[i];
-            break;
-        }
+      if (this.data.plannedRooms[i].id === roomId) {
+        roomData = this.data.plannedRooms[i];
+        break;
+      }
     }
     if (!roomData) return;
 
     var canvasWidth = this.data.windowWidth;
-    // 换算：88rpx 约等于多少 px
     var rpxRatio = canvasWidth / 750;
     var navHeightPx = 88 * rpxRatio;
     var statusBarHeightPx = this.data.statusBarHeight;
     var bottomBarHeightPx = 88 * rpxRatio;
     var canvasHeight = this.data.windowHeight - statusBarHeightPx - navHeightPx - bottomBarHeightPx;
-    
+
+    // 初始尺寸可以稍微设小一点，或者保持 40
     var roomW = roomData.defaultWidth || 40;
     var roomH = roomData.defaultHeight || 40;
 
@@ -90,7 +114,7 @@ Page({
       id: roomData.id,
       name: roomData.name,
       x: (canvasWidth / 2) - (roomW / 2),
-      y: (canvasHeight / 2) - (roomH / 2) + 20, // 稍微向下偏移一点
+      y: (canvasHeight / 2) - (roomH / 2) + 20,
       width: roomW,
       height: roomH,
       color: roomData.color || 'rgba(255, 255, 255, 0.8)',
@@ -114,15 +138,14 @@ Page({
     this.setData({ selectedIds: [roomId] });
 
     if (!isMeasured) {
-      // 延迟 400ms 自动触发第一条边的蓝牙唤醒 (亮大红点)
-      setTimeout(function() {
+      setTimeout(function () {
         var bluetooth = require('../../utils/bluetooth.js');
         bluetooth.sendBLECommand('ATK001#');
       }, 400);
     }
   },
 
-  onStartRemeasure: function() {
+  onStartRemeasure: function () {
     this.setData({
       guidedMode: true,
       guidedEdgeIndex: 0,
@@ -130,7 +153,7 @@ Page({
       showMeasurePrompt: true
     });
     // 触发第一条边的蓝牙唤醒
-    setTimeout(function() {
+    setTimeout(function () {
       var bluetooth = require('../../utils/bluetooth.js');
       bluetooth.sendBLECommand('ATK001#');
     }, 400);
@@ -174,9 +197,9 @@ Page({
     var bluetooth = require('../../utils/bluetooth.js');
     var that = this;
     bluetooth.autoConnectBLE(function (distanceInMeters) {
-       that.onBluetoothMeasure(distanceInMeters);
+      that.onBluetoothMeasure(distanceInMeters);
     }, function (isConnected) {
-       that.setData({ bleConnected: isConnected });
+      that.setData({ bleConnected: isConnected });
     });
   },
 
@@ -184,9 +207,9 @@ Page({
     var bluetooth = require('../../utils/bluetooth.js');
     var that = this;
     bluetooth.initBLE(function (distanceInMeters) {
-       that.onBluetoothMeasure(distanceInMeters);
+      that.onBluetoothMeasure(distanceInMeters);
     }, function (isConnected) {
-       that.setData({ bleConnected: isConnected });
+      that.setData({ bleConnected: isConnected });
     });
   },
 
@@ -205,7 +228,7 @@ Page({
     var roomId = selectedIds[0];
     var room = null;
     for (var i = 0; i < this.data.rooms.length; i++) {
-       if (this.data.rooms[i].id === roomId) { room = this.data.rooms[i]; break; }
+      if (this.data.rooms[i].id === roomId) { room = this.data.rooms[i]; break; }
     }
     if (!room) return;
 
@@ -213,25 +236,20 @@ Page({
     var newLength = distanceInMeters * 10;
     var updates = {};
 
-    if (selectedEdge === 'right') {
-       updates.width = newLength;
-    } else if (selectedEdge === 'bottom') {
-       updates.height = newLength;
-    } else if (selectedEdge === 'left') {
-       var diffX = newLength - room.width;
-       updates.x = room.x - diffX;
-       updates.width = newLength;
-    } else if (selectedEdge === 'top') {
-       var diffY = newLength - room.height;
-       updates.y = room.y - diffY;
-       updates.height = newLength;
+    // 根据用户直觉重新映射映射关系：
+    // 上(top)/下(bottom) 边对应测量其横向长度 -> 更新 width
+    // 左(left)/右(right) 边对应测量其纵向长度 -> 更新 height
+    if (selectedEdge === 'top' || selectedEdge === 'bottom') {
+      updates.width = newLength;
+    } else if (selectedEdge === 'left' || selectedEdge === 'right') {
+      updates.height = newLength;
     }
 
     var newRooms = this.data.rooms.map(function (r) {
-       return r.id === roomId ? Object.assign({}, r, updates) : r;
+      return r.id === roomId ? Object.assign({}, r, updates) : r;
     });
     this.pushToHistory(newRooms);
-    
+
     wx.showToast({ title: '测量成功: ' + distanceInMeters + 'm', icon: 'success' });
 
     // 如果在向导模式，自动流转到下一条边
@@ -240,11 +258,11 @@ Page({
       if (newEdgeIndex >= 4) {
         // 完成此房间所有的边
         wx.showToast({ title: '当前房间测量完毕', icon: 'success' });
-        var newPlannedRooms = this.data.plannedRooms.map(function(pr) {
+        var newPlannedRooms = this.data.plannedRooms.map(function (pr) {
           return pr.id === roomId ? Object.assign({}, pr, { measured: true }) : pr;
         });
         var that = this;
-        setTimeout(function() {
+        setTimeout(function () {
           that.setData({
             guidedMode: false,
             viewMode: 'LIBRARY',
@@ -261,10 +279,10 @@ Page({
           showMeasurePrompt: true
         });
         // 自动激发激光（亮红点供用户瞄准对位）
-        setTimeout(function() {
+        setTimeout(function () {
           var bluetooth = require('../../utils/bluetooth.js');
           bluetooth.sendBLECommand('ATK001#');
-        }, 400); 
+        }, 400);
       }
     }
   },
