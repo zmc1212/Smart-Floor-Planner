@@ -3,8 +3,9 @@
   <view class="wizard-text">正在测量：{{currentGuidedRoomName}} —— 请测量【<text style="color: #ffeb3b; font-weight: bold; font-size: 32rpx;">{{edgeNames[guidedEdgeIndex]}}</text>】墙面</view>
   <view class="wizard-btn-action" bindtap="onExitGuide">退出引导</view>
 </view>
-<view class="guided-wizard-bar" wx:else style="background: #475569;">
-  <view class="wizard-cancel" bindtap="onExitToLibrary">回库</view>
-  <view class="wizard-text">测量已完成</view>
-  <view class="wizard-btn-action" bindtap="onStartRemeasure">重新测量</view>
+<view class="guided-wizard-bar" wx:else style="background: #0f172a; border-bottom: 4rpx solid #3b82f6;">
+  <view class="wizard-cancel" bindtap="onExitToLibrary">返回</view>
+  <view class="wizard-text">✨ 测绘完成！现在可点击下方工具添加【门、窗】</view>
+  <view class="wizard-btn-action" style="background: #10b981;" bindtap="onExitToLibrary">完成并提交</view>
+  <view class="wizard-btn-action" style="background: #475569; margin-left: 10rpx; font-size: 20rpx;" bindtap="onStartRemeasure">重新测量</view>
 </view>

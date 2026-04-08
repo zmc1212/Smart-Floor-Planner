@@ -85,6 +85,57 @@ Component({
         });
     },
 
+    /**
+     * 将所有房间居中并缩放到合适大小
+     */
+    fitToView: function () {
+      var rooms = this.properties.rooms;
+      if (!rooms || rooms.length === 0) return;
+
+      // 1. 计算所有房间的包围盒 (World units)
+      var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      rooms.forEach(function (r) {
+        minX = Math.min(minX, r.x);
+        minY = Math.min(minY, r.y);
+        maxX = Math.max(maxX, r.x + r.width);
+        maxY = Math.max(maxY, r.y + r.height);
+      });
+
+      var contentWidth = maxX - minX;
+      var contentHeight = maxY - minY;
+      var centerX = (minX + maxX) / 2;
+      var centerY = (minY + maxY) / 2;
+
+      // 2. 获取画布尺寸
+      var canvasWidth = this.data.canvasWidth;
+      var canvasHeight = this.data.canvasHeight;
+      if (!canvasWidth || !canvasHeight) return;
+
+      // 3. 计算缩放比例 (留出 20% 的边距)
+      var padding = 60; // 像素边距
+      var availableWidth = canvasWidth - padding * 2;
+      var availableHeight = canvasHeight - padding * 2;
+
+      var scaleX = availableWidth / (contentWidth || 1);
+      var scaleY = availableHeight / (contentHeight || 1);
+      var newScale = Math.min(scaleX, scaleY);
+      
+      // 限制缩放范围
+      newScale = Math.max(0.2, Math.min(newScale, 3.0));
+
+      // 4. 计算偏移量使中心对齐
+      // 公式: screenPos = worldPos * scale + offset => offset = screenPos - worldPos * scale
+      var newOX = (canvasWidth / 2) - centerX * newScale;
+      var newOY = (canvasHeight / 2) - centerY * newScale;
+
+      this.setData({
+        scale: newScale,
+        offsetX: newOX,
+        offsetY: newOY
+      });
+      this.drawCanvas();
+    },
+
     drawCanvas: function () {
       var ctx = this._ctx;
       if (!ctx) return;
@@ -378,7 +429,7 @@ Component({
         // 检查是否点击了房间
         var room = this.findRoomAtPos(pos);
         if (room) {
-          this.triggerEvent('selectroom', { id: room.id });
+          this.triggerEvent('select', { id: room.id });
           this.setData({
             isDraggingRoom: true,
             dragRoomId: room.id,
@@ -388,13 +439,13 @@ Component({
             touchStartPos: { clientX: touch.clientX, clientY: touch.clientY }
           });
         } else {
-          this.triggerEvent('clearselection');
+          this.triggerEvent('unselect');
           this.setData({ isDraggingStage: true });
         }
       } else if (activeTool === 'ROOM') {
         var room = this.findRoomAtPos(pos);
         if (room) {
-          this.triggerEvent('selectroom', { id: room.id });
+          this.triggerEvent('select', { id: room.id });
         } else {
           this.setData({
             newRoom: { x: snappedPos.x, y: snappedPos.y, width: 0, height: 0 }
@@ -411,15 +462,42 @@ Component({
       var touches = e.touches;
 
       // 双指缩放
-      if (touches.length === 2) {
-        var dx = touches[0].clientX - touches[1].clientX;
-        var dy = touches[0].clientY - touches[1].clientY;
+      if (touches.length === 2 && this._canvasRect) {
+        var rect = this._canvasRect;
+        var p1 = { x: touches[0].clientX - rect.left, y: touches[0].clientY - rect.top };
+        var p2 = { x: touches[1].clientX - rect.left, y: touches[1].clientY - rect.top };
+        
+        var dx = p1.x - p2.x;
+        var dy = p1.y - p2.y;
         var dist = Math.sqrt(dx * dx + dy * dy);
+        
         var lastDist = this.data.lastTouchDist;
         if (lastDist > 0) {
           var ratio = dist / lastDist;
-          var newScale = Math.max(0.3, Math.min(this.data.scale * ratio, 3));
-          this.setData({ scale: newScale, lastTouchDist: dist });
+          var oldScale = this.data.scale;
+          var newScale = Math.max(0.3, Math.min(oldScale * ratio, 5)); // 增加缩放上限到5倍
+          
+          if (newScale !== oldScale) {
+            // 计算缩放中心点（两指中点）
+            var midX = (p1.x + p2.x) / 2;
+            var midY = (p1.y + p2.y) / 2;
+            
+            // 核心逻辑：调整偏移量，使缩放中心点保持在屏幕相同位置
+            var oldOX = this.data.offsetX;
+            var oldOY = this.data.offsetY;
+            
+            var newOX = midX - (midX - oldOX) * (newScale / oldScale);
+            var newOY = midY - (midY - oldOY) * (newScale / oldScale);
+            
+            this.setData({
+              scale: newScale,
+              offsetX: newOX,
+              offsetY: newOY,
+              lastTouchDist: dist
+            });
+          }
+        } else {
+          this.setData({ lastTouchDist: dist });
         }
         return;
       }
@@ -470,7 +548,7 @@ Component({
         var newY = util.snapToGrid(startRoomPos.y + dy, GRID_SIZE);
 
         if (newX !== startRoomPos.x || newY !== startRoomPos.y) {
-          this.triggerEvent('moveroom', {
+          this.triggerEvent('move', {
             id: this.data.dragRoomId,
             x: newX,
             y: newY
@@ -508,7 +586,7 @@ Component({
             name: this.properties.currentRoomType,
             color: 'rgba(255, 255, 255, 0.8)'
           };
-          this.triggerEvent('addroom', { room: room });
+          this.triggerEvent('add', { room: room });
         }
         this.setData({ newRoom: null });
         this.drawCanvas();
@@ -569,7 +647,7 @@ Component({
       }
 
       if (foundWall) {
-        this.triggerEvent('roomschange', { rooms: updatedRooms });
+        this.triggerEvent('change', { rooms: updatedRooms });
       }
     },
 
@@ -619,8 +697,8 @@ Component({
       }
 
       if (erased) {
-        this.triggerEvent('roomschange', { rooms: newRooms });
-        this.triggerEvent('clearselection');
+        this.triggerEvent('change', { rooms: newRooms });
+        this.triggerEvent('unselect');
       }
     },
 
@@ -652,8 +730,16 @@ Component({
     onDeleteFromMenu: function () {
       var id = this.properties.selectedIds[0];
       if (id) {
-        this.triggerEvent('deleteroom', { id: id });
+        this.triggerEvent('delete', { id: id });
       }
+    },
+
+    onStartRemeasure: function () {
+      this.triggerEvent('startremeasure');
+    },
+
+    onFitToView: function () {
+      this.fitToView();
     },
 
     onPropsFromMenu: function () {

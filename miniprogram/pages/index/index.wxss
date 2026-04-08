@@ -40,9 +40,8 @@ properties {
 /* 绘制模式指示器 */
 .drawing-indicator {
   position: absolute;
-  top: 16rpx;
-  left: 50%;
-  transform: translateX(-50%);
+  top: 70rpx;
+  right: 24rpx;
   background: rgba(17,24,39,0.9);
   backdrop-filter: blur(10px);
   color: #ffffff;
@@ -81,4 +80,33 @@ properties {
   font-size: 22rpx;
   text-decoration: underline;
   margin-left: 8rpx;
+}
+
+/* 快速聚焦按钮 */
+.focus-btn {
+  position: absolute;
+  right: 32rpx;
+  bottom: 120rpx;
+  width: 88rpx;
+  height: 88rpx;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8rpx 24rpx rgba(0,0,0,0.15);
+  border: 1rpx solid rgba(0,0,0,0.05);
+  z-index: 40;
+}
+
+.focus-btn:active {
+  transform: scale(0.9);
+  background: #f3f4f6;
+}
+
+.focus-icon {
+  font-size: 40rpx;
+  color: #3b82f6;
+  font-weight: bold;
 }

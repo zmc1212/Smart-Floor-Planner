@@ -88,6 +88,11 @@ Page({
         showPropertyPanel: true, // 再次进入已量过尺寸的房间，可以显示面板
         guidedMode: false // 再次进入默认不开启引导，除非点击“重新测量”
       });
+      // 自动聚焦新房间
+      setTimeout(() => {
+        const canvas = this.selectComponent('#floorCanvas');
+        if (canvas) canvas.fitToView();
+      }, 300);
       return;
     }
 
@@ -139,6 +144,12 @@ Page({
     });
     this.pushToHistory(newRooms);
     this.setData({ selectedIds: [roomId] });
+
+    // 自动聚焦
+    setTimeout(() => {
+      const canvas = this.selectComponent('#floorCanvas');
+      if (canvas) canvas.fitToView();
+    }, 400);
 
     if (!isMeasured) {
       this.openLaser();
@@ -278,27 +289,25 @@ Page({
       var newEdgeIndex = this.data.guidedEdgeIndex + 1;
       if (newEdgeIndex >= 4) {
         // 完成此房间所有的边
-        wx.showToast({ title: '当前房间测量完毕', icon: 'success' });
+        wx.showToast({ title: '房间基础测绘已完成', icon: 'success' });
         var newPlannedRooms = this.data.plannedRooms.map(function (pr) {
           return pr.id === roomId ? Object.assign({}, pr, { measured: true }) : pr;
         });
         
-        // 此处不需要立即调 pushToHistory，因为我们要带延迟返回，
-        // 但为了保证数据原子性，我们在这里先执行一次不带跳转的 push，或者直接等待 timeout
+        // 停留在画布页面，关闭引导激发模式，允许用户布置门窗
         this.pushToHistory(newRooms, {
           plannedRooms: newPlannedRooms,
-          showMeasurePrompt: false
+          showMeasurePrompt: false,
+          guidedMode: false,
+          selectedEdge: '',
+          selectedIds: [roomId] // 保持选中以方便查看面板
         });
 
-        var that = this;
-        setTimeout(function () {
-          that.setData({
-            guidedMode: false,
-            viewMode: 'LIBRARY',
-            selectedEdge: '',
-            selectedIds: []
-          });
-        }, 1500); 
+        // 测量完成后自动聚焦
+        setTimeout(() => {
+          const canvas = this.selectComponent('#floorCanvas');
+          if (canvas) canvas.fitToView();
+        }, 500);
       } else {
         var newEdge = this.data.edgesList[newEdgeIndex];
         // 重要：将房间数据更新与下一条边的状态更新合并到同一个 pushToHistory -> setData 中
