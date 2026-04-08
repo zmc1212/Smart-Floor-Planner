@@ -141,10 +141,7 @@ Page({
     this.setData({ selectedIds: [roomId] });
 
     if (!isMeasured) {
-      setTimeout(function () {
-        var bluetooth = require('../../utils/bluetooth.js');
-        bluetooth.sendBLECommand('ATK001#');
-      }, 400);
+      this.openLaser();
     }
   },
 
@@ -156,11 +153,7 @@ Page({
       showMeasurePrompt: true,
       showPropertyPanel: false // 重新测量开始，立即关闭面板
     });
-    // 触发第一条边的蓝牙唤醒
-    setTimeout(function () {
-      var bluetooth = require('../../utils/bluetooth.js');
-      bluetooth.sendBLECommand('ATK001#');
-    }, 400);
+    this.openLaser();
   },
 
   onExitGuide: function () {
@@ -193,8 +186,7 @@ Page({
 
   onConfirmMeasure: function () {
     this.setData({ showMeasurePrompt: false });
-    var bluetooth = require('../../utils/bluetooth.js');
-    bluetooth.sendBLECommand('ATK001#');
+    this.triggerBluetoothMeasure();
   },
 
   onAutoConnectBLE: function () {
@@ -223,11 +215,19 @@ Page({
       showPropertyPanel: false // 一旦选中测量边，面板必须消失
     });
     // 根据 api.txt，APP端控制仪器测量应发送 ATK001#。第一次发打开激光，第二次发执行测量并返回 ATD 数据。
-    var bluetooth = require('../../utils/bluetooth.js');
-    bluetooth.sendBLECommand('ATK001#');
+    this.triggerBluetoothMeasure();
   },
 
   onBluetoothMeasure: function (distanceInMeters) {
+    if (this.measureTimer) {
+      clearTimeout(this.measureTimer);
+      this.measureTimer = null;
+    }
+    if (this.failTimer) {
+      clearTimeout(this.failTimer);
+      this.failTimer = null;
+    }
+
     var selectedIds = this.data.selectedIds;
     var selectedEdge = this.data.selectedEdge;
     if (selectedIds.length !== 1 || !selectedEdge) return;
@@ -238,6 +238,20 @@ Page({
       if (this.data.rooms[i].id === roomId) { room = this.data.rooms[i]; break; }
     }
     if (!room) return;
+
+    // 处理测量失败或无效数据
+    if (distanceInMeters === null || distanceInMeters <= 0) {
+      wx.showToast({ title: '测量失败，正在重置引导', icon: 'none', duration: 2000 });
+      
+      // 如果在引导模式，重新弹出“准备测量”的提示框，引导用户重新点击“确定”开始
+      if (this.data.guidedMode && this.data.currentGuidedRoomId === roomId) {
+        this.setData({
+          showMeasurePrompt: true
+        });
+        this.openLaser(); // 重新激发激光
+      }
+      return;
+    }
 
     // 10px = 1m
     var newLength = distanceInMeters * 10;
@@ -294,11 +308,7 @@ Page({
           showMeasurePrompt: true
         });
         
-        // 自动激发激光
-        setTimeout(function () {
-          var bluetooth = require('../../utils/bluetooth.js');
-          bluetooth.sendBLECommand('ATK001#');
-        }, 400);
+        this.openLaser();
       }
     } else {
       // 非引导模式下的单次测量
@@ -306,6 +316,39 @@ Page({
       // 用户可以通过点击画布空白处或切换房间逻辑来找回面板
       this.pushToHistory(newRooms);
     }
+  },
+
+  triggerBluetoothMeasure: function () {
+    var bluetooth = require('../../utils/bluetooth.js');
+    var that = this;
+    
+    if (this.measureTimer) {
+      clearTimeout(this.measureTimer);
+    }
+    if (this.failTimer) {
+      clearTimeout(this.failTimer);
+    }
+    
+    console.log('发送测量指令 ATK001#');
+    bluetooth.sendBLECommand('ATK001#');
+    
+    // 设置超时计时器 (2.5秒)，如果没收到 ATD 则主动查一下
+    this.measureTimer = setTimeout(function () {
+      console.log('测量超时，尝试主动查询数据 ATD001#');
+      bluetooth.sendBLECommand('ATD001#');
+      
+      // 再给仪表 2 秒时间响应查询，如果不响应或距离仍不可用，彻底触发失败回调
+      that.failTimer = setTimeout(function () {
+        console.log('主动查询后仍无数据返回，彻底认定失败');
+        that.onBluetoothMeasure(null);
+      }, 2000);
+    }, 2500);
+  },
+
+  openLaser: function() {
+    console.log('提前开启激光辅助对准...');
+    var bluetooth = require('../../utils/bluetooth.js');
+    bluetooth.sendBLECommand('ATK001#');
   },
 
   onAddTemplate: function (e) {

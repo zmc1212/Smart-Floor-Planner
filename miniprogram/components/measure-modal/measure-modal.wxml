@@ -2,8 +2,26 @@
   <view class="measure-modal">
     <view class="measure-modal-header">准备测量</view>
     <view class="measure-modal-content">
-      <text style="font-size: 32rpx; margin-bottom: 20rpx; display: block;">激光红点已唤醒 🔴</text>
-      <text>请将测距仪靠紧房间的【<text style="color: #ef4444; font-weight: bold; font-size: 36rpx;">{{edgeName}}</text>】墙面，并对准对侧墙壁。</text>
+      <view class="visual-guide">
+        <view class="room-box">
+          <view class="wall top {{edgeType === 'top' ? 'active' : ''}}"></view>
+          <view class="wall right {{edgeType === 'right' ? 'active' : ''}}"></view>
+          <view class="wall bottom {{edgeType === 'bottom' ? 'active' : ''}}"></view>
+          <view class="wall left {{edgeType === 'left' ? 'active' : ''}}"></view>
+          
+          <!-- 激光发射指示线 -->
+          <view class="laser-line {{edgeType}}">
+            <view class="laser-dot"></view>
+          </view>
+          
+          <!-- 测距仪图标占位 -->
+          <view class="device-icon {{edgeType}}">
+            <view class="device-body"></view>
+          </view>
+        </view>
+      </view>
+      <text style="font-size: 32rpx; margin-top: 30rpx; display: block;">激光已开启，辅助对准中...</text>
+      <text>请将测距仪靠紧【<text style="color: #2563eb; font-weight: bold; font-size: 36rpx;">{{edgeName}}</text>】墙面</text>
     </view>
     <view class="measure-modal-footer">
       <view class="measure-btn-confirm" bindtap="onConfirm">位置已放好，立刻自动获取</view>

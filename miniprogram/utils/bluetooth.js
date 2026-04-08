@@ -182,34 +182,69 @@ function listenValueChange() {
     }
     console.log('收到蓝牙数据 [UUID: ' + res.characteristicId.substring(4, 8) + '], 长度:', length, '内容: [', hexArr.join(' '), ']');
 
-    // 解析 ATD 测距包 (17字节)
-    while (dataBuffer.length >= 17) {
+    // 解析数据包
+    while (dataBuffer.length >= 7) {
       var a = dataBuffer[0];
       var b = dataBuffer[1];
       var c = dataBuffer[2];
 
-      if (a === 0x41 && b === 0x54 && c === 0x44) {
-        var u8 = new Uint8Array(dataBuffer.slice(3, 7));
-        var dataDv = new DataView(u8.buffer);
+      if (a === 0x41 && b === 0x54 && c === 0x44) { // ATD 开始
+        // 有可能是发出 ATD001# 后仪器的回显 (7字节): A T D 0 0 1 #
+        if (dataBuffer.length >= 7 && dataBuffer[3] === 0x30 && dataBuffer[4] === 0x30 && dataBuffer[5] === 0x31 && dataBuffer[6] === 0x23) {
+          console.log('收到命令反馈: ATD001#');
+          dataBuffer.splice(0, 7);
+          continue;
+        }
+
+        if (dataBuffer.length < 17) break; // 数据不足，等完整的 17 字节数据
+        
+        // 验证帧尾 #
+        if (dataBuffer[16] !== 0x23) {
+          console.log("ATD 数据包帧尾错误，非 #");
+          dataBuffer.shift();
+          continue;
+        }
+
+        // 验证 CRC: 累加前 15 字节 (A 到 最后一个数据字节)
+        var sum = 0;
+        for (var i = 0; i < 15; i++) {
+          sum += dataBuffer[i];
+        }
+        var crc = sum % 256;
+        if (crc !== dataBuffer[15]) {
+          console.log("ATD 数据包 CRC 校验失败, 计算得到: " + crc + ", 实际: " + dataBuffer[15]);
+          dataBuffer.shift();
+          continue;
+        }
+
+        var distU8 = new Uint8Array(dataBuffer.slice(3, 7));
+        var dataDv = new DataView(distU8.buffer);
         // 使用大端控制 (false) 解析: 00 00 02 77 -> 631
         var meadist = dataDv.getUint32(0, false);
 
         var distanceInMeters = meadist / 10000.0;
-        console.log("测距结果:", distanceInMeters, "m, 原始字节:", u8);
+        
+        // 提取角度X和Y (依据文档定义)
+        var angleXU8 = new Uint8Array(dataBuffer.slice(7, 11));
+        var angleYU8 = new Uint8Array(dataBuffer.slice(11, 15));
+        
+        console.log("ATD测距结果:", distanceInMeters, "m", "原始距离字节:", distU8, "角度X:", angleXU8, "角度Y:", angleYU8);
 
         if (_onMeasureCallback) {
           _onMeasureCallback(distanceInMeters);
         }
         dataBuffer.splice(0, 17);
-      } else {
-        // 处理 ATK/ATM 等指令反馈 (7字节)
-        if (a === 0x41 && b === 0x54 && (dataBuffer[2] === 0x4B || dataBuffer[2] === 0x4D)) {
-          if (dataBuffer.length >= 7) {
-            console.log('收到通信回应: ', String.fromCharCode.apply(null, dataBuffer.slice(0, 7)));
-            dataBuffer.splice(0, 7);
-            continue;
+      } else if (a === 0x41 && b === 0x54 && (c === 0x4B || c === 0x4D || c === 0x45)) {
+        // 处理 ATK/ATM/ATE (7字节)
+        var cmdStr = String.fromCharCode.apply(null, dataBuffer.slice(0, 7));
+        console.log('收到命令反馈: ', cmdStr);
+        if (c === 0x45) { // ATE 测量错误
+          if (_onMeasureCallback) {
+            _onMeasureCallback(null); // 传递 null 表示测量失败
           }
         }
+        dataBuffer.splice(0, 7);
+      } else {
         dataBuffer.shift(); // 丢弃无效头部
       }
     }
