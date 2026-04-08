@@ -21,6 +21,7 @@ Page({
     historyIndex: 0,
     selectedIds: [],
     selectedRooms: [],
+    showPropertyPanel: false, // 显式开关：控制属性面板弹出
     highlightedOpeningId: '',
     statusBarHeight: 0,
     showDrawingIndicator: false,
@@ -84,6 +85,7 @@ Page({
         currentGuidedRoomName: existingRoom.name,
         activeTool: 'SELECT',
         selectedIds: [roomId],
+        showPropertyPanel: true, // 再次进入已量过尺寸的房间，可以显示面板
         guidedMode: false // 再次进入默认不开启引导，除非点击“重新测量”
       });
       return;
@@ -132,7 +134,8 @@ Page({
       guidedEdgeIndex: 0,
       activeTool: 'SELECT',
       selectedEdge: isMeasured ? '' : 'top',
-      showMeasurePrompt: !isMeasured
+      showMeasurePrompt: !isMeasured,
+      showPropertyPanel: false // 开启引导或进入新房间时，强制隐藏面板
     });
     this.pushToHistory(newRooms);
     this.setData({ selectedIds: [roomId] });
@@ -150,7 +153,8 @@ Page({
       guidedMode: true,
       guidedEdgeIndex: 0,
       selectedEdge: 'top',
-      showMeasurePrompt: true
+      showMeasurePrompt: true,
+      showPropertyPanel: false // 重新测量开始，立即关闭面板
     });
     // 触发第一条边的蓝牙唤醒
     setTimeout(function () {
@@ -214,7 +218,10 @@ Page({
   },
 
   onEdgeSelect: function (e) {
-    this.setData({ selectedEdge: e.detail.edge });
+    this.setData({ 
+      selectedEdge: e.detail.edge,
+      showPropertyPanel: false // 一旦选中测量边，面板必须消失
+    });
     // 根据 api.txt，APP端控制仪器测量应发送 ATK001#。第一次发打开激光，第二次发执行测量并返回 ATD 数据。
     var bluetooth = require('../../utils/bluetooth.js');
     bluetooth.sendBLECommand('ATK001#');
@@ -261,29 +268,43 @@ Page({
         var newPlannedRooms = this.data.plannedRooms.map(function (pr) {
           return pr.id === roomId ? Object.assign({}, pr, { measured: true }) : pr;
         });
+        
+        // 此处不需要立即调 pushToHistory，因为我们要带延迟返回，
+        // 但为了保证数据原子性，我们在这里先执行一次不带跳转的 push，或者直接等待 timeout
+        this.pushToHistory(newRooms, {
+          plannedRooms: newPlannedRooms,
+          showMeasurePrompt: false
+        });
+
         var that = this;
         setTimeout(function () {
           that.setData({
             guidedMode: false,
             viewMode: 'LIBRARY',
-            plannedRooms: newPlannedRooms,
             selectedEdge: '',
             selectedIds: []
           });
-        }, 1500); // 稍微延迟一下回去，让用户看清更新的尺寸
+        }, 1500); 
       } else {
         var newEdge = this.data.edgesList[newEdgeIndex];
-        this.setData({
+        // 重要：将房间数据更新与下一条边的状态更新合并到同一个 pushToHistory -> setData 中
+        this.pushToHistory(newRooms, {
           guidedEdgeIndex: newEdgeIndex,
           selectedEdge: newEdge,
           showMeasurePrompt: true
         });
-        // 自动激发激光（亮红点供用户瞄准对位）
+        
+        // 自动激发激光
         setTimeout(function () {
           var bluetooth = require('../../utils/bluetooth.js');
           bluetooth.sendBLECommand('ATK001#');
         }, 400);
       }
+    } else {
+      // 非引导模式下的单次测量
+      // 尊重用户“不要弹出”的要求，我们不再主动清空 selectedEdge
+      // 用户可以通过点击画布空白处或切换房间逻辑来找回面板
+      this.pushToHistory(newRooms);
     }
   },
 
@@ -298,7 +319,7 @@ Page({
   },
 
   // === 历史管理 ===
-  pushToHistory: function (newRooms) {
+  pushToHistory: function (newRooms, extraData) {
     var history = this.data.history.slice(0, this.data.historyIndex + 1);
     history.push(newRooms);
     if (history.length > 50) history.shift();
@@ -306,13 +327,21 @@ Page({
     for (var i = 0; i < newRooms.length; i++) {
       total += newRooms[i].width * newRooms[i].height;
     }
-    this.setData({
+
+    var selectedIds = this.data.selectedIds;
+    var selectedRooms = newRooms.filter(function (r) {
+      return selectedIds.indexOf(r.id) !== -1;
+    });
+
+    var setDataObj = Object.assign({
       history: history,
       historyIndex: history.length - 1,
       rooms: newRooms,
+      selectedRooms: selectedRooms, // 直接在此处完成更新，实现真正的原子化
       totalArea: (total / 100).toFixed(2)
-    });
-    this.updateSelectedRooms(newRooms);
+    }, extraData || {});
+
+    this.setData(setDataObj);
   },
 
   onUndo: function () {
@@ -350,12 +379,16 @@ Page({
 
   onSelectRoom: function (e) {
     var id = e.detail.id;
-    this.setData({ selectedIds: [id] });
+    this.setData({ 
+      selectedIds: [id],
+      selectedEdge: '', 
+      showPropertyPanel: true // 只有手动点击房间，才允许弹出属性面板
+    });
     this.updateSelectedRooms(this.data.rooms);
   },
 
   onClearSelection: function () {
-    this.setData({ selectedIds: [], selectedRooms: [] });
+    this.setData({ selectedIds: [], selectedRooms: [], showPropertyPanel: false });
   },
 
   onMoveRoom: function (e) {
@@ -434,7 +467,7 @@ Page({
   },
 
   onCloseProperties: function () {
-    this.setData({ selectedIds: [], selectedRooms: [] });
+    this.setData({ selectedIds: [], selectedRooms: [], showPropertyPanel: false });
   },
 
   onHighlightOpening: function (e) {

@@ -79,8 +79,9 @@
 
         <!-- 属性面板 (底部弹出) -->
         <properties 
+          wx:if="{{showPropertyPanel}}"
           selectedRooms="{{selectedRooms}}" 
-          visible="{{selectedIds.length > 0 && !selectedEdge}}"
+          visible="{{showPropertyPanel}}"
           selectedEdge="{{selectedEdge}}"
           bindupdate="onUpdateRoom"
           binddelete="onDeleteRooms"
