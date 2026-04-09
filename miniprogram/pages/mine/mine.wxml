@@ -1,0 +1,23 @@
+<view class="container">
+  <view class="header">
+    <button class="avatar-wrapper" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar">
+      <image class="avatar" src="{{userInfo.avatar || defaultAvatarUrl}}"></image>
+      <view class="edit-badge">修改</view>
+    </button>
+  </view>
+
+  <view class="form-group">
+    <view class="form-item">
+      <view class="label">昵称</view>
+      <input type="nickname" class="input" placeholder="请输入昵称" value="{{userInfo.nickname}}" bindblur="onNicknameChange"/>
+    </view>
+    <view class="form-item">
+      <view class="label">小区名称</view>
+      <input type="text" class="input" placeholder="请输入小区名称" value="{{userInfo.communityName}}" bindinput="onCommunityNameChange"/>
+    </view>
+  </view>
+
+  <view class="action-area">
+    <button class="save-btn" bindtap="onSaveProfile">保存信息</button>
+  </view>
+</view>
