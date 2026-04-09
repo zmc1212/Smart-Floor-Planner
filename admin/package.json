@@ -12,6 +12,7 @@
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.5.0",
     "@types/three": "^0.183.1",
+    "camera-controls": "^3.1.0",
     "date-fns": "^4.1.0",
     "lucide-react": "^1.7.0",
     "mongoose": "^9.4.1",
