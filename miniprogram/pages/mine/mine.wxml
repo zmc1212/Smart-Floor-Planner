@@ -20,4 +20,17 @@
   <view class="action-area">
     <button class="save-btn" bindtap="onSaveProfile">保存信息</button>
   </view>
+
+  <view class="floorplan-group" wx:if="{{floorPlans.length > 0}}">
+    <view class="group-title">我的户型图 ({{floorPlans.length}})</view>
+    <view class="floorplan-list">
+      <view class="floorplan-item" wx:for="{{floorPlans}}" wx:key="_id" data-id="{{item._id}}" bindtap="onOpenFloorPlan">
+        <view class="fp-info">
+          <text class="fp-name">{{item.name}}</text>
+          <text class="fp-date">{{item.createdAt}}</text>
+        </view>
+        <view class="fp-status">{{item.status === 'completed' ? '已完成' : '草稿'}}</view>
+      </view>
+    </view>
+  </view>
 </view>

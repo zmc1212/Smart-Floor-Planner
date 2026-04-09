@@ -12,18 +12,48 @@ Page({
   },
 
   onShow() {
+    this.setData({ floorPlans: [] });
     // If user info is already loaded into globalData, display it.
     if (app.globalData.userInfo) {
       this.setData({
         userInfo: app.globalData.userInfo
       });
+      this.fetchMyFloorPlans(app.globalData.openid);
     } else {
       // Sometimes globalData isn't populated fast enough, wait and poll or just use default.
       setTimeout(() => {
         if (app.globalData.userInfo) {
           this.setData({ userInfo: app.globalData.userInfo });
+          this.fetchMyFloorPlans(app.globalData.openid);
         }
       }, 1000);
+    }
+  },
+
+  async fetchMyFloorPlans(openid) {
+    if (!openid) return;
+    try {
+      const res = await api.request(`/floorplans?openid=${openid}`, 'GET');
+      if (res.success && res.data) {
+        const formatted = res.data.map(fp => ({
+          ...fp,
+          createdAt: new Date(fp.createdAt).toLocaleString()
+        }));
+        this.setData({ floorPlans: formatted });
+      }
+    } catch (err) {
+      console.error('Failed to fetch floor plans', err);
+    }
+  },
+
+  onOpenFloorPlan(e) {
+    const id = e.currentTarget.dataset.id;
+    const fp = this.data.floorPlans.find(f => f._id === id);
+    if (fp) {
+      app.globalData.restoreFloorPlan = fp;
+      wx.switchTab({
+        url: '/pages/index/index'
+      });
     }
   },
 

@@ -92,3 +92,56 @@
 .save-btn:active {
   opacity: 0.8;
 }
+
+.floorplan-group {
+  margin-top: 60rpx;
+  background-color: #ffffff;
+  border-radius: 16rpx;
+  padding: 30rpx;
+  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
+}
+
+.group-title {
+  font-size: 32rpx;
+  font-weight: bold;
+  color: #171717;
+  margin-bottom: 20rpx;
+  border-bottom: 1rpx solid #f0f0f0;
+  padding-bottom: 20rpx;
+}
+
+.floorplan-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20rpx 0;
+  border-bottom: 1rpx dashed #ebebeb;
+}
+
+.floorplan-item:last-child {
+  border-bottom: none;
+}
+
+.fp-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.fp-name {
+  font-size: 28rpx;
+  color: #333;
+  margin-bottom: 8rpx;
+}
+
+.fp-date {
+  font-size: 22rpx;
+  color: #999;
+}
+
+.fp-status {
+  font-size: 24rpx;
+  color: #10b981;
+  background: #d1fae5;
+  padding: 4rpx 12rpx;
+  border-radius: 8rpx;
+}

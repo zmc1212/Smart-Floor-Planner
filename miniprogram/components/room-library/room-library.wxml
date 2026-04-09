@@ -1,7 +1,20 @@
 <view class="library-container">
   <!-- 未选择户型时显示： -->
   <block wx:if="{{plannedRooms.length === 0}}">
-    <view class="library-header">请选择需要测量的户型</view>
+    <view class="library-header" wx:if="{{myCloudFloorPlans.length > 0}}">我的户型</view>
+    <view class="layout-selector" wx:if="{{myCloudFloorPlans.length > 0}}">
+      <view 
+        class="layout-btn cloud-plan-btn" 
+        wx:for="{{myCloudFloorPlans}}" 
+        wx:key="_id"
+        data-id="{{item._id}}"
+        bindtap="onOpenCloudPlan"
+      >
+        ☁️ {{item.name}}
+      </view>
+    </view>
+
+    <view class="library-header">标准户型模版</view>
     <view class="layout-selector">
       <view 
         class="layout-btn" 

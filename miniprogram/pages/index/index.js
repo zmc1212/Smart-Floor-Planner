@@ -48,11 +48,56 @@ Page({
       menuButtonLeft: menuButtonInfo.left,
       capsulePadding: sysInfo.windowWidth - menuButtonInfo.left,
       windowWidth: sysInfo.windowWidth,
-      windowHeight: sysInfo.windowHeight
+      windowHeight: sysInfo.windowHeight,
+      myCloudFloorPlans: []
     });
 
     // 注入演示用的测试数据
-    this.loadTestData();
+    // this.loadTestData();
+  },
+
+  onShow: function() {
+    const app = getApp();
+    if (app.globalData.restoreFloorPlan) {
+      // 恢复打开特定户型
+      const fp = app.globalData.restoreFloorPlan;
+      app.globalData.restoreFloorPlan = null;
+      
+      this.setData({
+        viewMode: 'CANVAS',
+        rooms: fp.layoutData,
+        plannedRooms: fp.layoutData, // Keep it simple and sync
+        guidedMode: false,
+        showMeasurePrompt: false,
+        activeTool: 'SELECT',
+        selectedIds: [],
+        showPropertyPanel: false
+      });
+      // Initial history push
+      this.setData({ history: [], historyIndex: -1 });
+      this.pushToHistory(fp.layoutData);
+      
+      setTimeout(() => {
+        const canvas = this.selectComponent('#floorCanvas');
+        if (canvas) canvas.fitToView();
+      }, 400);
+    } else if (this.data.viewMode === 'LIBRARY') {
+      this.fetchCloudPlans();
+    }
+  },
+
+  fetchCloudPlans: async function() {
+    const app = getApp();
+    if (!app.globalData.openid) return;
+    const api = require('../../utils/api.js');
+    try {
+      const res = await api.request(`/floorplans?openid=${app.globalData.openid}`, 'GET');
+      if (res.success && res.data) {
+        this.setData({ myCloudFloorPlans: res.data });
+      }
+    } catch(err) {
+      console.error('Failed to fetch library floorplans:', err);
+    }
   },
 
   loadTestData: function() {
@@ -102,6 +147,27 @@ Page({
     this.setData({
       plannedRooms: roomsData
     });
+  },
+
+  onOpenCloudPlan: function(e) {
+    const fp = e.detail.fp;
+    this.setData({
+      viewMode: 'CANVAS',
+      rooms: fp.layoutData,
+      plannedRooms: fp.layoutData,
+      guidedMode: false,
+      showMeasurePrompt: false,
+      activeTool: 'SELECT',
+      selectedIds: [],
+      showPropertyPanel: false
+    });
+    this.setData({ history: [], historyIndex: -1 });
+    this.pushToHistory(fp.layoutData);
+    
+    setTimeout(() => {
+      const canvas = this.selectComponent('#floorCanvas');
+      if (canvas) canvas.fitToView();
+    }, 400);
   },
 
   onResetLayout: function () {
@@ -675,17 +741,46 @@ Page({
   },
 
   // === 导出 ===
-  onExport: function () {
+  onExport: async function () {
     var rooms = this.data.rooms;
     var dataStr = JSON.stringify(rooms, null, 2);
 
-    // 小程序不支持直接下载文件，使用剪贴板
-    wx.setClipboardData({
-      data: dataStr,
-      success: function () {
-        wx.showToast({ title: '户型数据已复制到剪贴板', icon: 'none', duration: 2000 });
-      }
-    });
+    const app = getApp();
+    const openid = app.globalData.openid;
+
+    if (!openid) {
+      wx.showToast({ title: '尚未登录', icon: 'none' });
+      // 小程序不支持直接下载文件，备用：使用剪贴板
+      wx.setClipboardData({
+        data: dataStr,
+        success: function () {
+          wx.showToast({ title: '未登录，仅复制到剪贴板', icon: 'none', duration: 2000 });
+        }
+      });
+      return;
+    }
+
+    wx.showLoading({ title: '正在云端保存' });
+    const api = require('../../utils/api.js');
+    try {
+      await api.request('/floorplans', 'POST', {
+        openid: openid,
+        name: rooms[0]?.name || '默认户型-' + new Date().getTime(),
+        layoutData: rooms
+      });
+      wx.hideLoading();
+      wx.showToast({ title: '云端保存成功！', icon: 'success' });
+    } catch (err) {
+      wx.hideLoading();
+      console.error('Save to cloud failed:', err);
+      // fallback to clipboard
+      wx.setClipboardData({
+        data: dataStr,
+        success: function () {
+          wx.showToast({ title: '保存失败，已复制到剪贴板', icon: 'none', duration: 2000 });
+        }
+      });
+    }
   },
 
   // === 辅助方法 ===
