@@ -7,13 +7,23 @@ Component({
     currentStep: { type: Number, value: 1 }
   },
   data: {
-    selectedDirection: 'E', // 'E' | 'S' | 'W' | 'N'
+    selectedDirection: 'E', // 'H' | 'E' | 'S' | 'W' | 'N'
     directions: [
+      { key: 'H', label: '↕ 高', desc: '测量房间层高' },
       { key: 'E', label: '→ 东', desc: '向右（横向）' },
       { key: 'S', label: '↓ 南', desc: '向下（纵向）' },
       { key: 'W', label: '← 西', desc: '向左（横向）' },
       { key: 'N', label: '↑ 北', desc: '向上（纵向）' }
     ]
+  },
+  observers: {
+    'currentStep': function (step) {
+      if (step === 0) {
+        this.setData({ selectedDirection: 'H' });
+      } else if (this.data.selectedDirection === 'H') {
+        this.setData({ selectedDirection: 'E' });
+      }
+    }
   },
   methods: {
     onSelectDirection(e) {

@@ -1,7 +1,11 @@
 'use client';
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, ZoomIn, ZoomOut, Download } from 'lucide-react';
+import Link from 'next/link';
+import { Canvas } from '@react-three/fiber';
+import { OrbitControls, PerspectiveCamera, Text } from '@react-three/drei';
+import * as THREE from 'three';
+import { ArrowLeft, Box, Plane, Info } from 'lucide-react';
 
 interface Room {
   id: string;
@@ -13,166 +17,135 @@ interface Room {
   polygon?: { x: number; y: number }[];
   polygonClosed?: boolean;
   color?: string;
-  openings?: Opening[];
 }
 
-interface Opening {
-  id: string;
-  type: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  rotation?: number;
+function RoomObject({ room, is3D }: { room: Room; is3D: boolean }) {
+  const width = room.width || 100;
+  const height = room.height || 100;
+
+  return (
+    <group position={[room.x || 0, 0, room.y || 0]}>
+       <mesh position={[width/2, (is3D ? 12.5 : 0.5), height/2]}>
+         <boxGeometry args={[width, is3D ? 25 : 1, height]} />
+         <meshStandardMaterial color={room.color || "#0070f3"} transparent opacity={0.6} />
+       </mesh>
+       
+       <Text
+         position={[width / 2, 30, height / 2]}
+         fontSize={12}
+         color="black"
+         anchorX="center"
+         anchorY="middle"
+         rotation={[-Math.PI / 2, 0, 0]}
+       >
+         {room.name || 'Room'}
+       </Text>
+    </group>
+  );
+}
+
+function Scene({ rooms, is3D }: { rooms: Room[]; is3D: boolean }) {
+  return (
+    <>
+      <OrbitControls enableRotate={is3D} makeDefault />
+      <ambientLight intensity={1.0} />
+      <pointLight position={[100, 100, 100]} intensity={1.5} />
+      <gridHelper args={[2000, 40]} />
+      
+      <mesh position={[0, 5, 0]}>
+        <sphereGeometry args={[5]} />
+        <meshStandardMaterial color="red" />
+      </mesh>
+
+      <group>
+        {rooms.map((room, idx) => (
+          <RoomObject key={room.id || idx} room={room} is3D={is3D} />
+        ))}
+      </group>
+    </>
+  );
 }
 
 export default function FloorPlanViewer({ planData }: { planData: any }) {
-  const router = useRouter();
-  const rooms: Room[] = planData.layoutData || [];
+  const [is3D, setIs3D] = useState(false);
+  
+  const rooms: Room[] = useMemo(() => {
+    if (!planData.layoutData) return [];
+    if (Array.isArray(planData.layoutData)) return planData.layoutData;
+    if (planData.layoutData.rooms && Array.isArray(planData.layoutData.rooms)) return planData.layoutData.rooms;
+    return [];
+  }, [planData.layoutData]);
 
-  // Compute bounding box to set SVG viewBox
-  const viewBox = useMemo(() => {
-    if (!rooms.length) return '0 0 100 100';
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-
-    rooms.forEach(room => {
-      // Basic bounding box based on x, y, width, height
-      if (room.x < minX) minX = room.x;
-      if (room.y < minY) minY = room.y;
-      if (room.x + room.width > maxX) maxX = room.x + room.width;
-      if (room.y + room.height > maxY) maxY = room.y + room.height;
-
-      // Include polygon points if present
-      if (room.polygon && room.polygon.length) {
-        room.polygon.forEach(pt => {
-           const px = room.x + pt.x;
-           const py = room.y + pt.y;
-           if (px < minX) minX = px;
-           if (py < minY) minY = py;
-           if (px > maxX) maxX = px;
-           if (py > maxY) maxY = py;
-        });
-      }
-    });
-
-    const padding = 20;
-    const w = Math.max(maxX - minX, 10);
-    const h = Math.max(maxY - minY, 10);
-    return `${minX - padding} ${minY - padding} ${w + padding * 2} ${h + padding * 2}`;
-  }, [rooms]);
+  const firstRoom = rooms[0] || {} as any;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)]">
-      {/* Viewer Header */}
-      <div className="bg-white px-6 py-4 border-b border-[rgba(0,0,0,0.08)] flex justify-between items-center shrink-0">
+    <div className="flex flex-col h-screen bg-[#f1f1f1]">
+      {/* Header */}
+      <div className="bg-white px-6 py-4 border-b border-gray-200 flex justify-between items-center z-50">
         <div className="flex items-center gap-4">
-          <button 
-            onClick={() => {
-              if (planData.creator?.openid) {
-                router.push(`/users/${planData.creator.openid}`);
-              } else {
-                router.push('/');
-              }
-            }}
-            className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-[#f5f5f5] text-[#666] transition-colors"
+          <Link 
+            href={planData.creator?.openid ? `/users/${planData.creator.openid}` : "/"}
+            className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-600 transition-colors"
           >
-            <ArrowLeft size={18} />
-          </button>
+            <ArrowLeft size={20} />
+          </Link>
           <div>
-            <h2 className="text-[18px] font-semibold tracking-[-0.36px]">{planData.name}</h2>
-            <p className="text-[13px] text-[#808080]">
-              由 {planData.creator?.nickname || '未知用户'} (OpenID: {planData.creator?.openid || '未知'}) 于 {new Date(planData.createdAt).toLocaleDateString()} 创建
+            <h2 className="text-lg font-bold">{planData.name}</h2>
+            <p className="text-sm text-gray-500">
+              由 {planData.creator?.nickname || '未知用户'} 创建
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="text-[13px] font-medium bg-[#f5f5f5] px-3 py-1.5 rounded-md text-[#666]">
-            {rooms.length} 个房间数据
-          </div>
+        
+        <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
+           <button 
+             onClick={() => setIs3D(false)}
+             className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${!is3D ? 'bg-white shadow text-black' : 'text-gray-500'}`}
+           >
+             2D 平面
+           </button>
+           <button 
+             onClick={() => setIs3D(true)}
+             className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${is3D ? 'bg-white shadow text-black' : 'text-gray-500'}`}
+           >
+             3D 视角
+           </button>
         </div>
       </div>
 
-      {/* Canvas Area */}
-      <div className="flex-1 bg-[#f8f9fa] relative overflow-hidden flex items-center justify-center p-8">
-        <div className="absolute top-4 right-4 flex flex-col gap-2 bg-white p-2 rounded-lg shadow-sm border border-[rgba(0,0,0,0.04)]">
-          <button className="p-2 hover:bg-[#f5f5f5] rounded text-[#666] tooltip" aria-label="放大">
-            <ZoomIn size={18} />
-          </button>
-          <button className="p-2 hover:bg-[#f5f5f5] rounded text-[#666] tooltip" aria-label="缩小">
-            <ZoomOut size={18} />
-          </button>
+      {/* R3F Canvas Area */}
+      <div className="flex-1 relative bg-white">
+        <Canvas shadows camera={{ position: [500, 500, 500], fov: 45 }}>
+          <Scene rooms={rooms} is3D={is3D} />
+        </Canvas>
+
+        {/* Console Debug Toggle */}
+        <div className="absolute top-6 right-6 pointer-events-auto max-w-[400px]">
+           <div className="bg-black text-[#00ff00] p-4 rounded-lg text-xs font-mono overflow-auto max-h-[500px] shadow-2xl">
+              <p className="border-b border-[#00ff00] pb-1 mb-2">DEBUG CONSOLE</p>
+              <p>Rooms Count: {rooms.length}</p>
+              <p>Active Mode: {is3D ? '3D' : '2D'}</p>
+              <div className="mt-4">
+                 <p className="text-yellow-400 underline">First Room Data:</p>
+                 <pre>{JSON.stringify(firstRoom, null, 2)}</pre>
+              </div>
+              <div className="mt-4 text-gray-400">
+                 <p>API LayoutData Keys: {Object.keys(planData.layoutData || {}).join(', ')}</p>
+              </div>
+           </div>
         </div>
 
-        {rooms.length === 0 ? (
-          <div className="text-[#999] text-[14px]">暂无对应的户型节点数据</div>
-        ) : (
-          <div className="w-full h-full border-2 border-dashed border-[#e5e5e5] rounded-xl bg-white shadow-sm flex items-center justify-center p-4">
-            <svg viewBox={viewBox} className="w-full h-full max-w-4xl drop-shadow-md">
-              <defs>
-                <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
-                  <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#f0f0f0" strokeWidth="0.5"/>
-                </pattern>
-                <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
-                  <feDropShadow dx="1" dy="2" stdDeviation="3" floodOpacity="0.1"/>
-                </filter>
-              </defs>
-              <rect width="100%" height="100%" fill="url(#grid)" />
-              
-              {/* Rooms */}
-              {rooms.map((room, i) => {
-                const hasPoly = room.polygon && room.polygon.length >= 3 && room.polygonClosed;
-                const pointsStr = hasPoly 
-                  ? room.polygon!.map(p => `${room.x + p.x},${room.y + p.y}`).join(' ')
-                  : '';
-
-                return (
-                  <g key={`room-${room.id || i}`} filter="url(#shadow)">
-                    {hasPoly ? (
-                      <polygon 
-                        points={pointsStr}
-                        fill={room.color || 'rgba(255,255,255,1)'}
-                        stroke="#171717"
-                        strokeWidth="1.5"
-                      />
-                    ) : (
-                      <rect 
-                        x={room.x} y={room.y} width={room.width} height={room.height}
-                        fill={room.color || '#ffffff'}
-                        stroke="#171717"
-                        strokeWidth="1.5"
-                      />
-                    )}
-                    
-                    <text 
-                      x={room.x + room.width / 2} 
-                      y={room.y + room.height / 2} 
-                      textAnchor="middle" 
-                      dominantBaseline="middle"
-                      fontSize="6"
-                      fontWeight="600"
-                      fill="#333"
-                      pointerEvents="none"
-                    >
-                      {room.name}
-                    </text>
-
-                    {/* Openings (Doors/Windows) */}
-                    {room.openings && room.openings.map((op, j) => (
-                       <rect 
-                         key={`op-${op.id || j}`}
-                         x={room.x + op.x} y={room.y + op.y}
-                         width={Math.max(2, op.width)} height={Math.max(2, op.height)}
-                         fill={op.type === 'DOOR' ? '#ffe4e6' : '#e0f2fe'}
-                         stroke="#171717"
-                         strokeWidth="1"
-                       />
-                    ))}
-                  </g>
-                );
-              })}
-            </svg>
+        {/* Simple Footer Info */}
+        <div className="absolute bottom-6 left-6 pointer-events-none">
+          <div className="bg-white shadow-xl rounded-lg p-4 border border-gray-100">
+             <div className="flex items-center gap-2">
+               <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold">
+                 {rooms.length}
+               </div>
+               <span className="text-sm font-bold text-gray-800">已识别房间</span>
+             </div>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );

@@ -36,8 +36,14 @@
 
       <!-- 4. 画布编辑视图 -->
       <view class="canvas-area" wx:if="{{viewMode === 'CANVAS'}}">
+        <!-- 2D/3D Toggle -->
+        <view class="view-toggle" bindtap="onToggle3D">
+          <text>{{is3DView ? '2D编辑' : '3D预览'}}</text>
+        </view>
+
         <!-- 画布工具栏 -->
         <toolbar 
+          wx:if="{{!is3DView}}"
           activeTool="{{activeTool}}" 
           currentRoomType="{{currentRoomType}}"
           bindchange="onToolChange" 
@@ -46,6 +52,7 @@
 
         <!-- 顶部测量横幅 -->
         <guided-banner 
+          wx:if="{{!is3DView}}"
           guidedMode="{{guidedMode}}"
           currentGuidedRoomName="{{currentGuidedRoomName}}"
           guidedEdgeIndex="{{guidedEdgeIndex}}"
@@ -57,8 +64,9 @@
           bindfinishpolygon="onFinishPolygon"
         />
         
-        <!-- 房间画布主体 -->
+        <!-- 房间画布主体 (2D) -->
         <floor-canvas 
+          wx:if="{{!is3DView}}"
           id="floorCanvas"
           rooms="{{rooms}}" 
           activeTool="{{activeTool}}" 
@@ -75,8 +83,22 @@
           bindedgeselect="onEdgeSelect"
         />
 
+        <!-- 3D 预览视图 -->
+        <view wx:if="{{is3DView}}" class="three-canvas-container">
+          <canvas type="webgl" id="webgl" class="three-canvas" bindtouchstart="onTouchStart3D" bindtouchmove="onTouchMove3D" bindtouchend="onTouchEnd3D" disable-scroll="true"></canvas>
+          
+          <!-- 3D 视角快捷键 -->
+          <view class="three-controls">
+            <view class="three-btn" data-view="default" bindtap="onChangeView3D">默认</view>
+            <view class="three-btn" data-view="top" bindtap="onChangeView3D">顶视</view>
+            <view class="three-btn" data-view="front" bindtap="onChangeView3D">正视</view>
+            <view class="three-btn" data-view="left" bindtap="onChangeView3D">左视</view>
+            <view class="three-btn" data-view="right" bindtap="onChangeView3D">右视</view>
+          </view>
+        </view>
+
         <!-- 绘制模式指示器 -->
-        <view class="drawing-indicator" wx:if="{{showDrawingIndicator}}">
+        <view class="drawing-indicator" wx:if="{{!is3DView && showDrawingIndicator}}">
           <view class="indicator-dot"></view>
           <text class="indicator-text">{{activeTool === 'WALL' ? '正在绘制墙体...' : '正在放置门窗...'}}</text>
           <view class="indicator-cancel" bindtap="onCancelDrawing">取消</view>

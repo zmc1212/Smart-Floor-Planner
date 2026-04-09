@@ -5,11 +5,12 @@ Page({
   data: {
     bleConnected: false,
     viewMode: 'LIBRARY',
+    is3DView: false,
     layoutTemplates: require('../../utils/templates.js').templates,
     plannedRooms: [],
     guidedMode: false,
     showMeasurePrompt: false,
-    guidedEdgeIndex: 0,
+    guidedEdgeIndex: -1,
     currentGuidedRoomId: '',
     currentGuidedRoomName: '',
     measurePoints: [],       // [{x,y}] 构建中的多边形顶点（测量空间坐标）
@@ -358,6 +359,281 @@ Page({
     this.triggerBluetoothMeasure();
   },
 
+  onToggle3D: function() {
+    var newMode = !this.data.is3DView;
+    this.setData({ is3DView: newMode });
+    if (newMode) {
+      this.initThreejs();
+    }
+  },
+
+  initThreejs: function() {
+    var that = this;
+    wx.createSelectorQuery()
+      .select('#webgl')
+      .node()
+      .exec((res) => {
+        if (!res[0]) return;
+        const canvas = res[0].node;
+        const { createScopedThreejs } = require('threejs-miniprogram');
+        const THREE = createScopedThreejs(canvas);
+
+        that.render3DScene(THREE, canvas);
+      });
+  },
+
+  render3DScene: function(THREE, canvas) {
+    const width = canvas._width || canvas.width;
+    const height = canvas._height || canvas.height;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf0f0f0);
+    this.threeScene = scene;
+
+    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 5000);
+    this.threeCamera = camera;
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setSize(width, height);
+    this.threeRenderer = renderer;
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+    dirLight.position.set(10, 20, 10);
+    scene.add(dirLight);
+
+    const container = new THREE.Group();
+    this.threeContainer = container;
+    scene.add(container);
+
+    const buildWall = (length, wallHeight, openings, type) => {
+      const shape = new THREE.Shape();
+      shape.moveTo(0, 0);
+      shape.lineTo(length, 0);
+      shape.lineTo(length, wallHeight);
+      shape.lineTo(0, wallHeight);
+      shape.lineTo(0, 0);
+
+      openings.forEach(op => {
+        let ox = 0;
+        if (type === 'top') { ox = op.x; }
+        else if (type === 'bottom') { ox = length - (op.x + op.width); }
+        else if (type === 'left') { ox = length - (op.y + op.width); }
+        else if (type === 'right') { ox = op.y; }
+
+        const ow = op.width;
+        let oh = op.type === 'DOOR' ? 20 : 12;
+        let oy = op.type === 'DOOR' ? 0 : 9;
+
+        const hole = new THREE.Path();
+        hole.moveTo(ox, oy);
+        hole.lineTo(ox + ow, oy);
+        hole.lineTo(ox + ow, oy + oh);
+        hole.lineTo(ox, oy + oh);
+        hole.lineTo(ox, oy);
+        shape.holes.push(hole);
+      });
+
+      const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+      return new THREE.Mesh(new THREE.ShapeGeometry(shape), mat);
+    };
+
+    const rooms = this.data.rooms;
+    let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
+
+    if (!rooms || rooms.length === 0) {
+      minX = 0; minZ = 0; maxX = 100; maxZ = 100;
+    } else {
+      rooms.forEach(room => {
+        const rX = room.x;
+        const rY = room.y;
+        const rWidth = room.width || 1;
+        const rHeight = room.height || 1; 
+        const wallHeight = room.height3D || 28;
+        
+        minX = Math.min(minX, rX);
+        minZ = Math.min(minZ, rY);
+        maxX = Math.max(maxX, rX + rWidth);
+        maxZ = Math.max(maxZ, rY + rHeight);
+
+        const roomGroup = new THREE.Group();
+
+        // Draw floor
+        const floorGeo = new THREE.PlaneGeometry(rWidth, rHeight);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0xe0e0e0, side: THREE.DoubleSide });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        roomGroup.add(floor);
+
+        // Draw walls with openings
+        const topOpenings = (room.openings || []).filter(op => op.rotation === 0 && op.y < rHeight / 2);
+        const bottomOpenings = (room.openings || []).filter(op => op.rotation === 0 && op.y >= rHeight / 2);
+        const leftOpenings = (room.openings || []).filter(op => op.rotation === 90 && op.x < rWidth / 2);
+        const rightOpenings = (room.openings || []).filter(op => op.rotation === 90 && op.x >= rWidth / 2);
+
+        const topWall = buildWall(rWidth, wallHeight, topOpenings, 'top');
+        topWall.position.set(-rWidth/2, 0, -rHeight/2);
+        roomGroup.add(topWall);
+
+        const bottomWall = buildWall(rWidth, wallHeight, bottomOpenings, 'bottom');
+        bottomWall.position.set(rWidth/2, 0, rHeight/2);
+        bottomWall.rotation.y = Math.PI;
+        roomGroup.add(bottomWall);
+
+        const leftWall = buildWall(rHeight, wallHeight, leftOpenings, 'left');
+        leftWall.position.set(-rWidth/2, 0, rHeight/2);
+        leftWall.rotation.y = Math.PI / 2;
+        roomGroup.add(leftWall);
+
+        const rightWall = buildWall(rHeight, wallHeight, rightOpenings, 'right');
+        rightWall.position.set(rWidth/2, 0, -rHeight/2);
+        rightWall.rotation.y = -Math.PI / 2;
+        roomGroup.add(rightWall);
+
+        roomGroup.position.set(rX + rWidth/2, 0, rY + rHeight/2);
+        container.add(roomGroup);
+      });
+    }
+
+    // Center container
+    const cx = (minX + maxX) / 2;
+    const cz = (minZ + maxZ) / 2;
+    container.position.set(-cx, 0, -cz);
+
+    // Auto scale camera
+    const sizeX = maxX - minX;
+    const sizeZ = maxZ - minZ;
+    const maxSize = Math.max(sizeX || 100, sizeZ || 100);
+    const camDist = maxSize * 1.5;
+    
+    camera.position.set(0, camDist, camDist);
+    camera.lookAt(0, 0, 0);
+
+    // Custom OrbitControls substitute
+    this.orbit = {
+      spherical: new THREE.Spherical().setFromVector3(camera.position),
+      target: new THREE.Vector3(0, 0, 0),
+      THREE: THREE
+    };
+
+    const animate = function() {
+      if (!that.data.is3DView) return; 
+      canvas.requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    };
+    
+    var that = this;
+    animate();
+  },
+
+  onTouchStart3D: function(e) {
+    if (e.touches.length === 1) {
+      this.touch3D = {
+        mode: 'rotate',
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY
+      };
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      this.touch3D = {
+        mode: 'zoom_pan',
+        dist: Math.sqrt(dx * dx + dy * dy),
+        cx: cx,
+        cy: cy
+      };
+    }
+  },
+
+  onTouchMove3D: function(e) {
+    if (!this.touch3D || !this.orbit || !this.threeCamera) return;
+    
+    if (e.touches.length === 1 && this.touch3D.mode === 'rotate') {
+      const dx = e.touches[0].clientX - this.touch3D.x;
+      const dy = e.touches[0].clientY - this.touch3D.y;
+      
+      this.orbit.spherical.theta -= dx * 0.01;
+      this.orbit.spherical.phi -= dy * 0.01;
+      
+      // restrict phi (do not allow going below ground)
+      this.orbit.spherical.phi = Math.max(0.1, Math.min(Math.PI / 2, this.orbit.spherical.phi));
+      
+      this.threeCamera.position.setFromSpherical(this.orbit.spherical).add(this.orbit.target);
+      this.threeCamera.lookAt(this.orbit.target);
+      
+      this.touch3D.x = e.touches[0].clientX;
+      this.touch3D.y = e.touches[0].clientY;
+      
+    } else if (e.touches.length === 2 && this.touch3D.mode === 'zoom_pan') {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      
+      // Zoom
+      if (dist > 0 && this.touch3D.dist > 0) {
+        const scale = this.touch3D.dist / dist;
+        this.orbit.spherical.radius *= scale;
+        // restrict radius
+        this.orbit.spherical.radius = Math.max(10, Math.min(1000, this.orbit.spherical.radius));
+      }
+      
+      // Pan
+      const panX = cx - this.touch3D.cx;
+      const panY = cy - this.touch3D.cy;
+      
+      const panSpeed = this.orbit.spherical.radius * 0.002;
+      
+      const right = new this.orbit.THREE.Vector3();
+      right.setFromMatrixColumn(this.threeCamera.matrix, 0);
+      
+      const forward = new this.orbit.THREE.Vector3();
+      forward.setFromMatrixColumn(this.threeCamera.matrix, 2);
+      forward.y = 0;
+      if (forward.lengthSq() > 0) forward.normalize();
+      
+      this.orbit.target.addScaledVector(right, -panX * panSpeed);
+      this.orbit.target.addScaledVector(forward, -panY * panSpeed);
+      
+      this.threeCamera.position.setFromSpherical(this.orbit.spherical).add(this.orbit.target);
+      this.threeCamera.lookAt(this.orbit.target);
+      
+      this.touch3D.dist = dist;
+      this.touch3D.cx = cx;
+      this.touch3D.cy = cy;
+    }
+  },
+
+  onTouchEnd3D: function(e) {
+    this.touch3D = null;
+  },
+
+  onChangeView3D: function(e) {
+    if (!this.orbit || !this.threeCamera) return;
+    const view = e.currentTarget.dataset.view;
+    let targetTheta = this.orbit.spherical.theta;
+    let targetPhi = this.orbit.spherical.phi;
+    
+    if (view === 'default') { 
+      targetTheta = 0; 
+      targetPhi = Math.PI / 4; 
+      this.orbit.target.set(0,0,0);
+    }
+    if (view === 'top') { targetPhi = 0.01; }
+    if (view === 'front') { targetTheta = 0; targetPhi = Math.PI / 2.1; }
+    if (view === 'left') { targetTheta = Math.PI / 2; targetPhi = Math.PI / 2.1; }
+    if (view === 'right') { targetTheta = -Math.PI / 2; targetPhi = Math.PI / 2.1; }
+    
+    this.orbit.spherical.theta = targetTheta;
+    this.orbit.spherical.phi = targetPhi;
+    this.threeCamera.position.setFromSpherical(this.orbit.spherical).add(this.orbit.target);
+    this.threeCamera.lookAt(this.orbit.target);
+  },
+
   onBluetoothMeasure: function (distanceInMeters) {
     if (this.measureTimer) { clearTimeout(this.measureTimer); this.measureTimer = null; }
     if (this.failTimer) { clearTimeout(this.failTimer); this.failTimer = null; }
@@ -383,6 +659,26 @@ Page({
     var newLength = distanceInMeters * 10; // 10px = 1m
 
     if (isGuided) {
+      if (this.data.guidedEdgeIndex === -1) {
+        // 这是层高测量
+        var newRooms = this.data.rooms.map(function (r) {
+          if (r.id === roomId) {
+            return Object.assign({}, r, { height3D: newLength });
+          }
+          return r;
+        });
+
+        wx.showToast({ title: '层高 ' + distanceInMeters + 'm ✓', icon: 'success' });
+
+        this.pushToHistory(newRooms, {
+          guidedEdgeIndex: 0, // 进入第0边（即第一条边）测量
+          showMeasurePrompt: true // 继续提示测量边
+        });
+
+        this.openLaser();
+        return;
+      }
+
       // === 引导多边形模式 ===
       var direction = this.data.pendingDirection || 'E';
       var pts = this.data.measurePoints;

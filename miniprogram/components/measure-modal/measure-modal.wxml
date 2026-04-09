@@ -2,7 +2,7 @@
   <view class="modal-container">
     <view class="title-section">
       <text class="modal-title">准备测量</text>
-      <text class="modal-subtitle">步骤 第 {{currentStep}} 条边</text>
+      <text class="modal-subtitle">{{currentStep === 0 ? '测量层高' : '步骤 第 ' + currentStep + ' 条边'}}</text>
     </view>
 
     <view class="direction-grid">
