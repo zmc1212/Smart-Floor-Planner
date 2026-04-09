@@ -14,7 +14,7 @@
 /* 浮动快捷菜单 */
 .float-menu {
   position: absolute;
-  z-index: 50;
+  z-index: 30; /* 调低层级，避免盖过 properties-panel (z-index: 40) */
   display: flex;
   align-items: center;
   gap: 4rpx;

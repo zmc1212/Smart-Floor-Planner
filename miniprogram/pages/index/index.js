@@ -12,8 +12,8 @@ Page({
     guidedEdgeIndex: 0,
     currentGuidedRoomId: '',
     currentGuidedRoomName: '',
-    edgeNames: ['上方', '右侧', '下方', '左侧'],
-    edgesList: ['top', 'right', 'bottom', 'left'],
+    edgeNames: ['长（横向）', '宽（纵向）'],
+    edgesList: ['top', 'left'],
     activeTool: 'SELECT',
     currentRoomType: '客厅',
     rooms: [],
@@ -343,7 +343,7 @@ Page({
     // 如果在向导模式，自动流转到下一条边
     if (this.data.guidedMode && this.data.currentGuidedRoomId === roomId) {
       var newEdgeIndex = this.data.guidedEdgeIndex + 1;
-      if (newEdgeIndex >= 4) {
+      if (newEdgeIndex >= 2) {
         // 完成此房间所有的边
         wx.showToast({ title: '房间基础测绘已完成', icon: 'success' });
         var newPlannedRooms = this.data.plannedRooms.map(function (pr) {

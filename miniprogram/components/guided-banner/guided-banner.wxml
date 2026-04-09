@@ -1,6 +1,6 @@
 <view class="guided-wizard-bar" wx:if="{{guidedMode}}">
   <view class="wizard-cancel" bindtap="onExitToLibrary">回库</view>
-  <view class="wizard-text">正在测量：{{currentGuidedRoomName}} —— 请测量【<text style="color: #ffeb3b; font-weight: bold; font-size: 32rpx;">{{edgeNames[guidedEdgeIndex]}}</text>】墙面</view>
+  <view class="wizard-text">正在测量：{{currentGuidedRoomName}} —— 请测量【<text style="color: #ffeb3b; font-weight: bold; font-size: 32rpx;">{{edgeNames[guidedEdgeIndex]}}</text>】</view>
   <view class="wizard-btn-action" bindtap="onExitGuide">退出引导</view>
 </view>
 <view class="guided-wizard-bar" wx:else style="background: #0f172a; border-bottom: 4rpx solid #3b82f6;">

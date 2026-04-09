@@ -87,17 +87,17 @@
   100% { opacity: 1; }
 }
 
-/* 激光指示线 */
+/* 激光指示线 (从角落射向对面) */
 .laser-line {
   position: absolute;
   background: rgba(239, 68, 68, 0.4);
   z-index: 5;
 }
 
-.laser-line.top { bottom: 0; left: 50%; width: 2rpx; height: 140rpx; transform: translateX(-50%); border-left: 2rpx dashed #ef4444; }
-.laser-line.bottom { top: 0; left: 50%; width: 2rpx; height: 140rpx; transform: translateX(-50%); border-left: 2rpx dashed #ef4444; }
-.laser-line.left { top: 50%; right: 0; height: 2rpx; width: 200rpx; transform: translateY(-50%); border-top: 2rpx dashed #ef4444; }
-.laser-line.right { top: 50%; left: 0; height: 2rpx; width: 200rpx; transform: translateY(-50%); border-top: 2rpx dashed #ef4444; }
+/* 测量长(top): 横向，从左侧墙射向右侧墙 */
+.laser-line.top { left: 56rpx; bottom: 15rpx; width: 184rpx; height: 2rpx; border-top: 2rpx dashed #ef4444; }
+/* 测量宽(left): 纵向，从底部墙射向上方墙 */
+.laser-line.left { left: 15rpx; bottom: 56rpx; height: 124rpx; width: 2rpx; border-left: 2rpx dashed #ef4444; }
 
 .laser-dot {
   position: absolute;
@@ -108,25 +108,25 @@
   box-shadow: 0 0 8rpx #ef4444;
 }
 
-.laser-line.top .laser-dot { top: 10rpx; left: -4rpx; }
-.laser-line.bottom .laser-dot { bottom: 10rpx; left: -4rpx; }
-.laser-line.left .laser-dot { left: 10rpx; top: -4rpx; }
-.laser-line.right .laser-dot { right: 10rpx; top: -4rpx; }
+/* 小红点始终在激光线终点处的墙上 */
+.laser-line.top .laser-dot { right: -4rpx; top: -4rpx; }
+.laser-line.left .laser-dot { top: -4rpx; left: -4rpx; }
 
-/* 测距仪图标 */
+/* 测距仪图标 (静置在墙角) */
 .device-icon {
   position: absolute;
-  width: 40rpx;
-  height: 60rpx;
   background: #334155;
   border-radius: 4rpx;
   z-index: 20;
 }
 
-.device-icon.top { bottom: -10rpx; left: 50%; transform: translateX(-50%); }
-.device-icon.bottom { top: -10rpx; left: 50%; transform: translateX(-50%); }
-.device-icon.left { right: -10rpx; top: 50%; transform: translateY(-50%) rotate(90deg); }
-.device-icon.right { left: -10rpx; top: 50%; transform: translateY(-50%) rotate(90deg); }
+/* 测量长(top): 横向放置，贴紧左下角，激光向右发射 */
+.device-icon.top { width: 60rpx; height: 40rpx; left: -4rpx; bottom: -4rpx; }
+.device-icon.top .device-body::after { top: 10rpx; bottom: 10rpx; right: 10rpx; left: auto; width: 15rpx; height: auto; }
+
+/* 测量宽(left): 纵向放置，贴紧左下角，激光向上发射 */
+.device-icon.left { width: 40rpx; height: 60rpx; left: -4rpx; bottom: -4rpx; }
+.device-icon.left .device-body::after { top: 10rpx; left: 10rpx; right: 10rpx; bottom: auto; height: 15rpx; width: auto; }
 
 .device-body {
   width: 100%;
@@ -137,10 +137,6 @@
 .device-body::after {
   content: '';
   position: absolute;
-  top: 10rpx;
-  left: 10rpx;
-  right: 10rpx;
-  height: 15rpx;
   background: #94a3b8;
   border-radius: 2rpx;
 }

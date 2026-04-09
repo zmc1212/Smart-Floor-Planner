@@ -6,7 +6,10 @@ Component({
       value: '',
       observer: function(newVal) {
         let type = '';
-        if (newVal === '上方') type = 'top';
+        if (newVal.includes('长')) type = 'top';
+        else if (newVal.includes('宽')) type = 'left';
+        
+        else if (newVal === '上方') type = 'top';
         else if (newVal === '下方') type = 'bottom';
         else if (newVal === '左侧') type = 'left';
         else if (newVal === '右侧') type = 'right';
