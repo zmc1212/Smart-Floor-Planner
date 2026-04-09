@@ -1,14 +1,34 @@
-/* 全局样式 - 智能量房大师 */
+/* 
+ * Vercel (Geist) Design System - Global Styles
+ */
 
 page {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
-  background-color: #f8f9fa;
-  color: #1a1a2e;
+  /* System Fonts prioritizing Geist-like geometric sans */
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-color: #ffffff;
+  color: #171717;
   height: 100%;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  --ds-gray-100: #ebebeb;
+  --ds-gray-400: #808080;
+  --ds-gray-600: #4d4d4d;
+  --ds-gray-900: #171717;
+  --ds-gray-alpha-400: rgba(0, 0, 0, 0.08);
+  --ds-gray-alpha-100: rgba(0, 0, 0, 0.04);
+  
+  /* Workflow Accents */
+  --develop-blue: #0a72ef;
+  --preview-pink: #de1d8d;
+  --ship-red: #ff5b4f;
+  
+  /* Shadow Stacks */
+  --shadow-border: 0 0 0 1rpx var(--ds-gray-alpha-400);
+  --shadow-lift: 0 0 0 1rpx var(--ds-gray-alpha-400), 0 2rpx 2rpx var(--ds-gray-alpha-100);
+  --shadow-card: 0 0 0 1rpx var(--ds-gray-alpha-400), 0 2rpx 2rpx var(--ds-gray-alpha-100), 0 8rpx 8rpx -8rpx var(--ds-gray-alpha-100);
 }
 
-/* 通用容器 */
+/* 布局工具 */
 .flex-row { display: flex; flex-direction: row; }
 .flex-col { display: flex; flex-direction: column; }
 .flex-1 { flex: 1; }
@@ -18,90 +38,93 @@ page {
 .gap-4 { gap: 8rpx; }
 .gap-8 { gap: 16rpx; }
 
-/* 文字 */
-.text-xs { font-size: 20rpx; }
-.text-sm { font-size: 24rpx; }
-.text-base { font-size: 28rpx; }
-.text-lg { font-size: 32rpx; }
-.text-xl { font-size: 36rpx; }
-.font-bold { font-weight: 700; }
+/* 影子描边 (Vercel Signature) */
+.shadow-border { box-shadow: var(--shadow-border); }
+.shadow-lift { box-shadow: var(--shadow-lift); }
+.shadow-card { box-shadow: var(--shadow-card); }
+
+/* 文字与排版 */
+.text-xs { font-size: 20rpx; letter-spacing: 0; }
+.text-sm { font-size: 24rpx; letter-spacing: -0.2rpx; }
+.text-base { font-size: 28rpx; letter-spacing: -0.6rpx; }
+.text-lg { font-size: 32rpx; letter-spacing: -1.28rpx; }
+.text-xl { font-size: 36rpx; letter-spacing: -2.4rpx; font-weight: 600; line-height: 1.1; }
+
+.font-bold { font-weight: 600; } /* Vercel uses 600 as max for headings */
 .font-medium { font-weight: 500; }
+.font-mono { font-family: 'ui-monospace', 'SFMono-Regular', 'Roboto Mono', Menlo, monospace; }
 
 /* 颜色 */
-.text-gray-400 { color: #9ca3af; }
-.text-gray-500 { color: #6b7280; }
-.text-gray-600 { color: #4b5563; }
-.text-gray-900 { color: #111827; }
-.text-blue-500 { color: #3b82f6; }
-.text-blue-600 { color: #2563eb; }
-.text-blue-700 { color: #1d4ed8; }
-.text-red-500 { color: #ef4444; }
-.text-purple-500 { color: #a855f7; }
+.text-muted { color: var(--ds-gray-600); }
+.text-disabled { color: var(--ds-gray-400); }
+.text-main { color: var(--ds-gray-900); }
+.text-blue { color: var(--develop-blue); }
+.text-pink { color: var(--preview-pink); }
+.text-red { color: var(--ship-red); }
 .text-white { color: #ffffff; }
 
+.bg-main { background-color: var(--ds-gray-900); }
 .bg-white { background-color: #ffffff; }
-.bg-blue-50 { background-color: #eff6ff; }
-.bg-blue-600 { background-color: #2563eb; }
-.bg-gray-50 { background-color: #f9fafb; }
-.bg-gray-100 { background-color: #f3f4f6; }
+.bg-sub { background-color: #fafafa; }
+.bg-blue { background-color: var(--develop-blue); }
 
 /* 圆角 */
-.rounded-lg { border-radius: 16rpx; }
-.rounded-xl { border-radius: 24rpx; }
-.rounded-full { border-radius: 999rpx; }
+.rounded-sm { border-radius: 4rpx; }
+.rounded-md { border-radius: 6rpx; } /* Vercel standard */
+.rounded-lg { border-radius: 8rpx; } /* Card standard */
+.rounded-xl { border-radius: 12rpx; }
+.rounded-full { border-radius: 9999rpx; }
 
-/* 边框 */
-.border { border: 1rpx solid #e5e7eb; }
-.border-b { border-bottom: 1rpx solid #e5e7eb; }
-.border-t { border-top: 1rpx solid #e5e7eb; }
-
-/* 阴影 */
-.shadow-sm { box-shadow: 0 2rpx 4rpx rgba(0,0,0,0.05); }
-.shadow-md { box-shadow: 0 8rpx 16rpx rgba(0,0,0,0.1); }
-.shadow-lg { box-shadow: 0 16rpx 40rpx rgba(0,0,0,0.12); }
-.shadow-xl { box-shadow: 0 20rpx 50rpx rgba(0,0,0,0.15); }
-
-/* 按钮通用 */
+/* 按钮基础 */
 .btn {
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
   outline: none;
-  background: none;
-  padding: 0;
+  background: #ffffff;
+  padding: 12rpx 24rpx;
   margin: 0;
-  line-height: 1;
+  line-height: 1; /* Critical for flex centering */
+  box-sizing: border-box;
+  font-size: 28rpx;
+  font-weight: 500;
+  border-radius: 6rpx;
+  box-shadow: var(--shadow-border);
+  transition: all 0.15s ease;
 }
 
 .btn::after {
   border: none;
 }
 
-/* 动画 */
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+.btn-primary {
+  background: #171717;
+  color: #ffffff;
+  box-shadow: none;
 }
 
-.animate-spin {
-  animation: spin 1s linear infinite;
+.btn-blue {
+  background: var(--develop-blue);
+  color: #ffffff;
+  box-shadow: none;
 }
 
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+.btn-ghost {
+  box-shadow: none;
+  background: transparent;
 }
 
-.animate-pulse {
-  animation: pulse 2s ease-in-out infinite;
+.btn:active {
+  opacity: 0.8;
+  transform: translateY(1rpx);
 }
 
 /* 滚动条 */
 ::-webkit-scrollbar {
-  width: 4rpx;
+  width: 2rpx;
 }
 ::-webkit-scrollbar-thumb {
-  background: #e5e7eb;
+  background: var(--ds-gray-100);
   border-radius: 10rpx;
 }

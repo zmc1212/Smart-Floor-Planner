@@ -1,26 +1,31 @@
 .status-bar {
   height: 88rpx;
   background: #ffffff;
-  border-top: 1rpx solid #e5e7eb;
+  box-shadow: 0 -1rpx 0 0 var(--ds-gray-alpha-400);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 32rpx;
+  padding: 0 40rpx;
+  box-sizing: border-box;
 }
 
 .status-text {
-  font-size: 24rpx;
-  color: #6b7280;
-  font-family: monospace;
+  font-size: 20rpx;
+  color: var(--ds-gray-600);
+  font-family: 'ui-monospace', 'SFMono-Regular', Menlo, monospace;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5rpx;
 }
 
 .ble-btn {
-  font-size: 22rpx;
-  background: #ef4444;
+  font-size: 18rpx;
+  background: var(--ship-red);
   color: #ffffff;
-  padding: 8rpx 16rpx;
-  border-radius: 8rpx;
+  padding: 6rpx 16rpx;
+  border-radius: 4rpx;
   font-weight: 600;
+  text-transform: uppercase;
 }
 
 .ble-btn:active {
@@ -28,8 +33,9 @@
 }
 
 .status-ready {
-  font-size: 24rpx;
-  color: #10b981;
-  font-weight: 700;
-  font-family: monospace;
+  font-size: 20rpx;
+  color: var(--develop-blue);
+  font-weight: 600;
+  font-family: 'ui-monospace', 'SFMono-Regular', Menlo, monospace;
+  text-transform: uppercase;
 }

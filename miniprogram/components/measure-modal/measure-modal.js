@@ -1,4 +1,7 @@
 Component({
+  options: {
+    styleIsolation: 'apply-shared'
+  },
   properties: {
     show: { type: Boolean, value: false },
     currentStep: { type: Number, value: 1 }

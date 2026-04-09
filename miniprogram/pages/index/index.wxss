@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #f8f9fa;
+  background: #ffffff;
   overflow: hidden;
 }
 
@@ -20,7 +20,6 @@
   overflow: hidden;
 }
 
-/* 微信小程序自定义组件默认是 inline，必须设置 block 才能有尺寸 */
 floor-canvas {
   display: block;
   width: 100%;
@@ -37,76 +36,81 @@ properties {
   width: 100%;
 }
 
-/* 绘制模式指示器 */
+/* 绘制模式指示器 - Vercel Dark Style */
 .drawing-indicator {
   position: absolute;
-  top: 70rpx;
-  right: 24rpx;
-  background: rgba(17,24,39,0.9);
-  backdrop-filter: blur(10px);
+  top: 40rpx;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #171717;
   color: #ffffff;
-  padding: 12rpx 32rpx;
-  border-radius: 999rpx;
-  font-size: 24rpx;
-  font-weight: 500;
-  box-shadow: 0 16rpx 40rpx rgba(0,0,0,0.3);
+  padding: 16rpx 32rpx;
+  border-radius: 9999rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+  box-shadow: 0 10px 30rpx rgba(0,0,0,0.2);
   display: flex;
   align-items: center;
-  gap: 12rpx;
-  border: 1rpx solid rgba(255,255,255,0.1);
-  z-index: 50;
+  gap: 16rpx;
+  z-index: 100;
   white-space: nowrap;
 }
 
 .indicator-dot {
-  width: 12rpx;
-  height: 12rpx;
+  width: 10rpx;
+  height: 10rpx;
   border-radius: 50%;
-  background: #3b82f6;
+  background: var(--develop-blue);
+  box-shadow: 0 0 10rpx var(--develop-blue);
   animation: pulse 2s ease-in-out infinite;
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
 }
 
 .indicator-text {
   color: #ffffff;
+  letter-spacing: 0.5rpx;
+  text-transform: uppercase;
 }
 
 .indicator-cancel {
-  color: #9ca3af;
-  font-size: 22rpx;
-  text-decoration: underline;
+  color: var(--ds-gray-400);
+  font-size: 20rpx;
+  text-decoration: none;
+  border-left: 1rpx solid rgba(255,255,255,0.2);
+  padding-left: 16rpx;
   margin-left: 8rpx;
 }
 
 /* 快速聚焦按钮 */
 .focus-btn {
   position: absolute;
-  right: 32rpx;
+  right: 48rpx;
   bottom: 120rpx;
   width: 88rpx;
   height: 88rpx;
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(10px);
+  background: #ffffff;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8rpx 24rpx rgba(0,0,0,0.15);
-  border: 1rpx solid rgba(0,0,0,0.05);
+  box-shadow: 
+    0px 0px 0px 1px rgba(0,0,0,0.08), 
+    0px 4rpx 12rpx rgba(0,0,0,0.08);
   z-index: 40;
+  transition: all 0.2s;
 }
 
 .focus-btn:active {
-  transform: scale(0.9);
-  background: #f3f4f6;
+  transform: scale(0.9) translateY(2rpx);
+  background: #fafafa;
 }
 
 .focus-icon {
   font-size: 40rpx;
-  color: #3b82f6;
+  color: #171717;
   font-weight: bold;
 }

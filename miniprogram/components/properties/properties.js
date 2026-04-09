@@ -6,6 +6,9 @@ var RoomTypes = util.RoomTypes;
 var RoomColors = util.RoomColors;
 
 Component({
+  options: {
+    styleIsolation: 'apply-shared'
+  },
   properties: {
     selectedRooms: { type: Array, value: [] },
     visible: { type: Boolean, value: false },

@@ -1,4 +1,7 @@
 Component({
+  options: {
+    styleIsolation: 'apply-shared'
+  },
   properties: {
     roomsCount: { type: Number, value: 0 },
     totalArea: { type: String, value: '0.00' },

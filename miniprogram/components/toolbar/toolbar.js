@@ -4,6 +4,9 @@ var RoomTypes = util.RoomTypes;
 var layouts = require('../../utils/templates.js');
 
 Component({
+  options: {
+    styleIsolation: 'apply-shared'
+  },
   properties: {
     activeTool: {
       type: String,

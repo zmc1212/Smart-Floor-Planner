@@ -1,168 +1,185 @@
-.measure-modal-mask {
-  position: absolute;
+/* Vercel Design System - Measure Modal */
+
+.modal-overlay {
+  position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0,0,0,0.6);
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(10px);
   z-index: 1000;
   display: flex;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(4px);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.measure-modal {
-  width: 640rpx;
+.modal-container {
+  width: 90%;
+  max-width: 680rpx;
   background: #ffffff;
-  border-radius: 24rpx;
+  border-radius: 8rpx;
   overflow: hidden;
-  box-shadow: 0 20rpx 50rpx rgba(0,0,0,0.2);
-  display: flex;
-  flex-direction: column;
+  box-shadow: 
+    0px 0px 0px 1px rgba(0,0,0,0.08), 
+    0px 10px 40rpx rgba(0,0,0,0.08), 
+    rgba(255,255,255,1) 0px 0px 0px 1px inset;
+  padding: 56rpx;
+  box-sizing: border-box;
 }
 
-.measure-modal-header {
-  background: #2563eb;
-  color: #fff;
-  padding: 24rpx 30rpx;
-  font-size: 34rpx;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.title-section {
+  text-align: center;
+  margin-bottom: 48rpx;
 }
 
-.step-badge {
-  font-size: 24rpx;
-  background: rgba(255,255,255,0.25);
-  padding: 6rpx 18rpx;
-  border-radius: 20rpx;
-  font-weight: 500;
-}
-
-.measure-modal-content {
-  padding: 30rpx 36rpx;
-  font-size: 28rpx;
-  color: #374151;
-}
-
-.dir-section-title {
-  font-size: 26rpx;
+.modal-title {
+  font-size: 32rpx;
   font-weight: 600;
-  color: #1e3a5f;
-  margin-bottom: 16rpx;
-  margin-top: 8rpx;
+  color: #171717;
+  letter-spacing: -1.28rpx;
+  display: block;
 }
 
-/* 方向按钮网格 */
+.modal-subtitle {
+  font-size: 18rpx;
+  color: var(--ds-gray-400);
+  letter-spacing: 0.5rpx;
+  text-transform: uppercase;
+  margin-top: 12rpx;
+  display: block;
+  font-weight: 600;
+}
+
 .direction-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16rpx;
-  margin-bottom: 24rpx;
+  margin-bottom: 48rpx;
 }
 
-.dir-btn {
-  background: #f1f5f9;
-  border: 3rpx solid #e2e8f0;
-  border-radius: 16rpx;
-  padding: 18rpx 12rpx;
-  text-align: center;
+.direction-cell {
+  background: #ffffff;
+  box-shadow: var(--shadow-border);
+  border-radius: 6rpx;
+  padding: 32rpx 20rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
-  transition: all 0.2s;
+  justify-content: center;
+  gap: 12rpx;
+  transition: all 0.1s;
 }
 
-.dir-btn.active {
-  background: #eff6ff;
-  border-color: #2563eb;
-  box-shadow: 0 0 0 4rpx rgba(37,99,235,0.15);
+.direction-cell.active {
+  box-shadow: 0 0 0 2rpx #171717;
+  background: #fafafa;
 }
 
-.dir-arrow {
-  font-size: 30rpx;
-  font-weight: 700;
-  color: #334155;
-}
-
-.dir-btn.active .dir-arrow {
-  color: #2563eb;
+.dir-label {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #171717;
+  letter-spacing: -0.2rpx;
 }
 
 .dir-desc {
-  font-size: 22rpx;
-  color: #64748b;
+  font-size: 18rpx;
+  color: var(--ds-gray-600);
+  font-weight: 500;
+}
+
+.hint-section {
+  display: flex;
+  align-items: flex-start;
+  gap: 20rpx;
+  background: #fafafa;
+  padding: 24rpx;
+  border-radius: 6rpx;
+  margin-bottom: 48rpx;
+  box-shadow: inset 0 0 0 1rpx rgba(0,0,0,0.04);
+}
+
+.hint-icon {
+  font-size: 24rpx;
+  color: var(--develop-blue);
   margin-top: 4rpx;
 }
 
-.dir-btn.active .dir-desc {
-  color: #3b82f6;
+.hint-text {
+  font-size: 20rpx;
+  color: var(--ds-gray-600);
+  line-height: 1.6;
 }
 
-/* 方向预览图 */
-.dir-preview {
+/* 方向预览图 - Vercel Engineering Aesthetic */
+.dir-preview-box {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  background: #f8fafc;
-  border-radius: 16rpx;
-  padding: 20rpx;
-  margin-bottom: 16rpx;
+  justify-content: center;
+  margin-bottom: 48rpx;
 }
 
-.dir-room-box {
+.dir-room-simulator {
   position: relative;
-  width: 160rpx;
-  height: 120rpx;
-  border: 4rpx solid #cbd5e1;
-  background: #fff;
+  width: 200rpx;
+  height: 140rpx;
+  box-shadow: var(--shadow-border);
+  background: #ffffff;
   border-radius: 4rpx;
-  margin-bottom: 12rpx;
 }
 
-.dir-origin {
+.simulator-origin {
   position: absolute;
-  width: 14rpx;
-  height: 14rpx;
-  background: #334155;
+  width: 12rpx;
+  height: 12rpx;
+  background: #171717;
   border-radius: 50%;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+  z-index: 2;
 }
 
-.dir-indicator {
+.laser-line {
   position: absolute;
-  background: #e2e8f0;
-  transition: all 0.2s;
-}
-.dir-indicator.active { background: #ef4444; box-shadow: 0 0 8rpx rgba(239,68,68,0.5); }
-
-/* 四个方向条 */
-.dir-indicator.E { top: 50%; right: 0; width: 50%; height: 4rpx; transform: translateY(-50%); transform-origin: left center; }
-.dir-indicator.S { left: 50%; bottom: 0; height: 50%; width: 4rpx; transform: translateX(-50%); transform-origin: center top; }
-.dir-indicator.W { top: 50%; left: 0; width: 50%; height: 4rpx; transform: translateY(-50%); transform-origin: right center; }
-.dir-indicator.N { left: 50%; top: 0; height: 50%; width: 4rpx; transform: translateX(-50%); transform-origin: center bottom; }
-
-.dir-hint {
-  font-size: 22rpx;
-  color: #94a3b8;
+  background: var(--ship-red);
+  opacity: 0;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 1;
 }
 
-/* 底部确认按钮 */
-.measure-modal-footer {
-  padding: 0 36rpx 36rpx;
+.laser-line.active {
+  opacity: 1;
+  box-shadow: 0 0 8rpx rgba(255, 91, 79, 0.4);
 }
 
-.measure-btn-confirm {
-  background: #2563eb;
-  color: #fff;
-  font-size: 32rpx;
-  font-weight: 700;
-  padding: 28rpx;
-  border-radius: 16rpx;
-  text-align: center;
-  box-shadow: 0 8rpx 20rpx rgba(37, 99, 235, 0.2);
+.laser-line.E { top: 50%; left: 50%; width: 50%; height: 2rpx; transform: translateY(-50%); }
+.laser-line.S { left: 50%; top: 50%; width: 2rpx; height: 50%; transform: translateX(-50%); }
+.laser-line.W { top: 50%; right: 50%; width: 50%; height: 2rpx; transform: translateY(-50%); }
+.laser-line.N { left: 50%; bottom: 50%; width: 2rpx; height: 50%; transform: translateX(-50%); }
+
+.action-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.btn-confirm {
+  width: 100% !important;
+  background: #171717 !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  padding: 32rpx 0 !important;
+  border-radius: 6rpx !important;
+  letter-spacing: 0.5rpx !important;
+  margin: 0 !important;
+  font-size: 26rpx !important;
+  line-height: 1 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.btn-confirm:active {
+  opacity: 0.9;
 }

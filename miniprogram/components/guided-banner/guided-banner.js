@@ -1,4 +1,7 @@
 Component({
+  options: {
+    styleIsolation: 'apply-shared'
+  },
   properties: {
     guidedMode: { type: Boolean, value: false },
     currentGuidedRoomName: { type: String, value: '' },

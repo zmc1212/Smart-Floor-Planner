@@ -1,4 +1,7 @@
 Component({
+  options: {
+    styleIsolation: 'apply-shared'
+  },
   properties: {
     navBarHeightTotal: { type: Number, value: 0 },
     statusBarHeight: { type: Number, value: 0 },

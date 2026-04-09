@@ -3,12 +3,11 @@
   flex-direction: row;
   align-items: center;
   background: #ffffff;
-  border-bottom: 1rpx solid #e5e7eb;
-  padding: 16rpx 24rpx;
-  gap: 24rpx;
+  box-shadow: 0 1rpx 0 0 var(--ds-gray-alpha-400);
+  padding: 16rpx 40rpx;
+  gap: 32rpx;
   z-index: 30;
   position: relative;
-  box-shadow: 0 2rpx 8rpx rgba(0,0,0,0.04);
 }
 
 .tool-wrapper {
@@ -16,24 +15,25 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4rpx;
+  gap: 8rpx;
 }
 
 .tool-btn {
-  width: 80rpx;
-  height: 80rpx;
+  width: 72rpx;
+  height: 72rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 20rpx;
+  border-radius: 6rpx;
   transition: all 0.2s;
   position: relative;
-  background: transparent;
+  background: #ffffff;
+  box-shadow: var(--shadow-border);
 }
 
 .tool-btn-active {
-  background: #2563eb;
-  box-shadow: 0 8rpx 20rpx rgba(37,99,235,0.3);
+  background: #171717;
+  box-shadow: none;
 }
 
 .tool-btn-active .tool-icon {
@@ -41,41 +41,45 @@
 }
 
 .tool-icon {
-  font-size: 40rpx;
-  color: #6b7280;
+  font-size: 32rpx;
+  color: var(--ds-gray-900);
   line-height: 1;
 }
 
 .tool-label {
   font-size: 18rpx;
-  color: #9ca3af;
+  color: var(--ds-gray-600);
   white-space: nowrap;
+  font-weight: 500;
+  letter-spacing: -0.2rpx;
 }
 
 .tool-dot {
   position: absolute;
   top: -4rpx;
   right: -4rpx;
-  width: 12rpx;
-  height: 12rpx;
-  background: #60a5fa;
+  width: 10rpx;
+  height: 10rpx;
+  background: var(--develop-blue);
   border-radius: 50%;
   border: 2rpx solid #ffffff;
 }
 
-/* 房间类型菜单 */
+/* 房间类型菜单 - Vercel Multi-layer Shadow Stack */
 .room-type-menu {
   position: absolute;
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
-  margin-bottom: 16rpx;
+  margin-bottom: 20rpx;
   background: #ffffff;
-  border-radius: 24rpx;
-  box-shadow: 0 16rpx 60rpx rgba(0,0,0,0.15);
-  border: 1rpx solid #f3f4f6;
-  padding: 24rpx;
-  min-width: 240rpx;
+  border-radius: 8rpx;
+  box-shadow: 
+    0px 0px 0px 1px rgba(0,0,0,0.08), 
+    0px 2px 2px rgba(0,0,0,0.04), 
+    0px 8px 8px -8px rgba(0,0,0,0.04);
+  padding: 16rpx;
+  min-width: 280rpx;
   z-index: 50;
 }
 
@@ -83,27 +87,29 @@
   display: flex;
   align-items: center;
   gap: 12rpx;
-  margin-bottom: 20rpx;
-  padding: 0 8rpx;
+  margin-bottom: 12rpx;
+  padding: 8rpx 12rpx;
 }
 
 .menu-header-bar {
-  width: 6rpx;
-  height: 28rpx;
-  background: #2563eb;
-  border-radius: 6rpx;
+  width: 4rpx;
+  height: 24rpx;
+  background: #171717;
+  border-radius: 4rpx;
 }
 
 .menu-header-text {
-  font-size: 24rpx;
-  font-weight: 700;
-  color: #111827;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #171717;
+  text-transform: uppercase;
+  letter-spacing: 0.5rpx;
 }
 
 .menu-list {
   display: flex;
   flex-direction: column;
-  gap: 4rpx;
+  gap: 2rpx;
 }
 
 .menu-item {
@@ -111,37 +117,29 @@
   align-items: center;
   justify-content: space-between;
   padding: 16rpx 20rpx;
-  border-radius: 12rpx;
+  border-radius: 6rpx;
   font-size: 26rpx;
-  color: #4b5563;
-  transition: all 0.15s;
+  color: var(--ds-gray-600);
+  transition: all 0.1s;
 }
 
 .menu-item:active {
-  background: #f3f4f6;
+  background: #fafafa;
 }
 
 .menu-item-active {
-  background: #eff6ff;
-  color: #1d4ed8;
-  font-weight: 700;
+  background: #fafafa;
+  color: #171717;
+  font-weight: 600;
 }
 
 .menu-item-check {
-  font-size: 28rpx;
-  font-weight: 700;
+  font-size: 24rpx;
+  color: var(--develop-blue);
 }
 
 .menu-arrow {
-  position: absolute;
-  bottom: -12rpx;
-  left: 50%;
-  transform: translateX(-50%) rotate(45deg);
-  width: 24rpx;
-  height: 24rpx;
-  background: #ffffff;
-  border-right: 1rpx solid #f3f4f6;
-  border-bottom: 1rpx solid #f3f4f6;
+  display: none; /* Vercel style usually avoids decorative arrows */
 }
 
 .menu-overlay {

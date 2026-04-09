@@ -1,62 +1,85 @@
 .guided-wizard-bar {
   width: 100%;
-  background: #3b82f6;
-  color: white;
-  padding: 32rpx 0;
-  text-align: center;
-  font-size: 28rpx;
-  font-weight: 600;
+  background: #ffffff;
+  color: #171717;
+  padding: 16rpx 40rpx; /* Reduced vertical padding, added horizontal padding */
+  font-size: 26rpx;
+  font-weight: 500;
   z-index: 100;
-  box-shadow: 0 4rpx 12rpx rgba(59, 130, 246, 0.3);
+  box-shadow: 0 1rpx 0 0 var(--ds-gray-alpha-400);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  height: 96rpx; /* Fixed height for better control */
+  box-sizing: border-box;
+}
+
+.wizard-btn-action {
+  background: #ffffff;
+  color: #171717;
+  padding: 10rpx 20rpx;
+  border-radius: 6rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+  box-shadow: var(--shadow-border);
+  transition: all 0.1s;
+}
+
+.wizard-btn-finish {
+  background: #171717;
+  color: #ffffff;
+  padding: 10rpx 24rpx;
+  border-radius: 6rpx;
+  font-size: 22rpx;
+  box-shadow: none;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.wizard-btn-finish:active {
+  opacity: 0.9;
+}
+
+.wizard-cancel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8rpx 24rpx;
+  font-size: 20rpx;
+  color: #171717;
+  background: #ffffff;
+  box-shadow: var(--shadow-border);
+  border-radius: 6rpx;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all 0.1s;
+}
+
+.wizard-cancel:active {
+  background: #fafafa;
+  transform: translateY(1rpx);
 }
 
 .wizard-text {
   flex: 1;
   text-align: center;
-}
-
-.wizard-btn-action {
-  background: rgba(255, 255, 255, 0.2);
-  padding: 10rpx 24rpx;
-  border-radius: 8rpx;
-  font-size: 24rpx;
-  margin: 0 16rpx;
-  border: 1rpx solid rgba(255, 255, 255, 0.5);
-}
-
-.wizard-btn-action:active {
-  background: rgba(255, 255, 255, 0.3);
-}
-
-.wizard-cancel {
-  padding: 0 24rpx;
-  font-size: 24rpx;
-  text-decoration: underline;
+  letter-spacing: -0.2rpx;
+  padding: 0 20rpx;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 24rpx;
+  color: var(--ds-gray-600);
 }
 
 .wizard-actions {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
-  padding-right: 16rpx;
-  gap: 8rpx;
+  gap: 12rpx;
 }
 
-.wizard-btn-finish {
-  background: #10b981;
-  padding: 10rpx 20rpx;
-  border-radius: 8rpx;
-  font-size: 24rpx;
-  border: 1rpx solid rgba(255, 255, 255, 0.5);
-  white-space: nowrap;
-  font-weight: 600;
-}
-
-.wizard-btn-finish:active {
-  background: #059669;
+.wizard-cancel:active {
+  color: #171717;
 }
 

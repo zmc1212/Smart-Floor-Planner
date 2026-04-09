@@ -1,4 +1,7 @@
 Component({
+  options: {
+    styleIsolation: 'apply-shared'
+  },
   properties: {
     plannedRooms: { type: Array, value: [] },
     layoutTemplates: { type: Array, value: [] }
