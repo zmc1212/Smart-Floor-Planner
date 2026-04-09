@@ -7,12 +7,14 @@ var _isConnecting = false;
 var _onConnectCallback = null;
 var _scanTimer = null; // 搜索总时间计时器
 var _foundDevices = []; // 发现的设备列表，用于超时判断
+var _verifyingDevices = {}; // 记录正在验证或验证失败的设备，避免重复请求
 
 const TARGET_DEVICE_NAME = 'LDMStudio 4D';
 
 function initBLE(callback, connectCallback) {
   _onMeasureCallback = callback;
   _onConnectCallback = connectCallback;
+  _verifyingDevices = {}; // 重置验证状态
   wx.openBluetoothAdapter({
     success: function (res) {
       wx.showLoading({ title: '搜索测距仪...', mask: true });
@@ -60,7 +62,7 @@ function startScan() {
     console.error('获取系统设置失败', err);
   }
 
-  // 设置 10 秒搜索超时
+  // 设置 15 秒搜索超时 (验证需要额外时间)
   if (_scanTimer) clearTimeout(_scanTimer);
   _scanTimer = setTimeout(function () {
     if (_foundDevices.length === 0 && !_isConnecting) {
@@ -72,11 +74,11 @@ function startScan() {
 
       wx.showModal({
         title: '未发现设备',
-        content: '未搜索到测距仪 ' + TARGET_DEVICE_NAME + '，请确保设备已开启并靠近手机。' + (isAndroid ? '安卓部分版本必须开启“系统定位”和“微信定位权限”才能搜索。' : ''),
+        content: '未搜索到授权的测距仪，请确保设备已开启、已在后台录入编码并靠近手机。',
         showCancel: false
       });
     }
-  }, 10000);
+  }, 15000);
 
   wx.startBluetoothDevicesDiscovery({
     allowDuplicatesKey: false,
@@ -86,19 +88,38 @@ function startScan() {
         for (var i = 0; i < deviceList.length; i++) {
           var device = deviceList[i];
           const name = device.name || device.localName || '';
-          console.log('搜索中...', name, 'ID:', device.deviceId);
 
-          // 更加稳健的匹配：忽略首尾空格，且包含关键词即可
+          // 发现目标类设备
           if (name.trim().includes(TARGET_DEVICE_NAME) && !_isConnecting) {
-            // 发现目标设备，立刻锁定状态并直接自动连接
-            _isConnecting = true;
-            if (_scanTimer) clearTimeout(_scanTimer);
-            wx.stopBluetoothDevicesDiscovery();
-            wx.hideLoading();
+            _foundDevices.push(device);
+            
+            if (_verifyingDevices[device.deviceId]) return; // 已验证或验证中
+            _verifyingDevices[device.deviceId] = true;
 
-            console.log('✅ 匹配成功，发起自动连接:', name);
-            connectDevice(device.deviceId, name.trim());
-            return;
+            console.log('搜索到设备，请求后台验证...', name, 'ID:', device.deviceId);
+
+            var api = require('./api.js');
+            api.request('/devices/verify', 'POST', { 
+              deviceId: device.deviceId, 
+              name: name.trim() 
+            }).then(function(verifyRes) {
+              if (verifyRes.success && verifyRes.authorized) {
+                if (_isConnecting) return; // 可能已连接上其他设备
+                _isConnecting = true;
+                if (_scanTimer) clearTimeout(_scanTimer);
+                wx.stopBluetoothDevicesDiscovery();
+                wx.hideLoading();
+
+                console.log('✅ 设备授权成功，发起连接:', name);
+                connectDevice(device.deviceId, name.trim());
+              } else {
+                console.log('🚫 设备未授权，忽略:', name, device.deviceId);
+              }
+            }).catch(function(err) {
+              console.error('设备验证请求失败:', err);
+              // 验证失败允许重试
+              _verifyingDevices[device.deviceId] = false; 
+            });
           }
         }
       });
@@ -344,7 +365,25 @@ function autoConnectBLE(callback, connectCallback) {
   if (lastId) {
     wx.openBluetoothAdapter({
       success: function (res) {
-        connectDevice(lastId, lastName || '记忆设备');
+        wx.showLoading({ title: '验证授权中...', mask: true });
+        var api = require('./api.js');
+        api.request('/devices/verify', 'POST', { deviceId: lastId, name: lastName })
+          .then(function(verifyRes) {
+            if (verifyRes.success && verifyRes.authorized) {
+              connectDevice(lastId, lastName || '记忆设备');
+            } else {
+              wx.hideLoading();
+              wx.showToast({ title: '设备已被移除或未授权', icon: 'none' });
+              wx.removeStorageSync('last_ble_device_id');
+              wx.removeStorageSync('last_ble_device_name');
+              // 未授权时可以重置去搜索界面
+              if (_onConnectCallback) _onConnectCallback(false);
+            }
+          }).catch(function(err) {
+             wx.hideLoading();
+             wx.showToast({ title: '设备验证失败', icon: 'none' });
+             if (_onConnectCallback) _onConnectCallback(false);
+          });
       },
       fail: function (err) {
         wx.showToast({ title: '请打开手机蓝牙', icon: 'none' });

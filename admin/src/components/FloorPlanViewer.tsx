@@ -6,6 +6,7 @@ import { Canvas } from '@react-three/fiber';
 import { MapControls, PerspectiveCamera, OrthographicCamera, Text, Center, Bounds, ContactShadows, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { ArrowLeft, Activity } from 'lucide-react';
+import BackButton from '@/components/BackButton';
 
 interface Opening {
   id: string;
@@ -313,12 +314,7 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
       {/* Header */}
       <div className="bg-white/90 backdrop-blur-md px-6 py-4 border-b border-gray-200 flex justify-between items-center z-50">
         <div className="flex items-center gap-4">
-          <Link 
-            href={planData?.creator?.openid ? `/users/${planData.creator.openid}` : "/"}
-            className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-gray-100 text-gray-500 transition-colors"
-          >
-            <ArrowLeft size={20} />
-          </Link>
+          <BackButton fallbackPath={planData?.creator?.openid ? `/users/${planData.creator.openid}` : "/"} />
           <div>
             <h2 className="text-lg font-bold tracking-tight">{planData?.name || '户型详情'}</h2>
             <p className="text-xs text-gray-400">

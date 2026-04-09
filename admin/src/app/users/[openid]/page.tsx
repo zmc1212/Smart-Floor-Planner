@@ -3,7 +3,8 @@ import Link from 'next/link';
 import dbConnect from '@/lib/mongodb';
 import { User } from '@/models/User';
 import { FloorPlan } from '@/models/FloorPlan';
-import { ArrowLeft, Map, Calendar, Home } from 'lucide-react';
+import { Map, Calendar, Home } from 'lucide-react';
+import BackButton from '@/components/BackButton';
 
 export default async function UserFloorPlansPage({ params }: { params: Promise<{ openid: string }> }) {
   await dbConnect();
@@ -19,9 +20,7 @@ export default async function UserFloorPlansPage({ params }: { params: Promise<{
       <header className="bg-white border-b border-[rgba(0,0,0,0.08)] sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Link href="/" className="p-2 hover:bg-[#f5f5f5] rounded-full text-[#666] transition-colors">
-              <ArrowLeft size={18} />
-            </Link>
+            <BackButton fallbackPath="/users" />
             <h1 className="text-[16px] font-semibold text-[#171717]">用户户型图导出库</h1>
           </div>
         </div>
