@@ -12,8 +12,9 @@ Page({
     guidedEdgeIndex: 0,
     currentGuidedRoomId: '',
     currentGuidedRoomName: '',
-    edgeNames: ['长（横向）', '宽（纵向）'],
-    edgesList: ['top', 'left'],
+    measurePoints: [],       // [{x,y}] 构建中的多边形顶点（测量空间坐标）
+    pendingDirection: '',    // 'E'|'S'|'W'|'N' 本次待测边的方向
+    canFinishPolygon: false, // 已测 ≥2 条边时可完成轮廓
     activeTool: 'SELECT',
     currentRoomType: '客厅',
     rooms: [],
@@ -179,8 +180,11 @@ Page({
       currentGuidedRoomId: roomId,
       currentGuidedRoomName: roomData.name,
       guidedEdgeIndex: 0,
+      measurePoints: isMeasured ? [] : [{ x: 0, y: 0 }],
+      pendingDirection: '',
+      canFinishPolygon: false,
       activeTool: 'SELECT',
-      selectedEdge: isMeasured ? '' : 'top',
+      selectedEdge: '',
       showMeasurePrompt: !isMeasured,
       showPropertyPanel: false // 开启引导或进入新房间时，强制隐藏面板
     });
@@ -216,9 +220,12 @@ Page({
     this.setData({
       guidedMode: true,
       guidedEdgeIndex: 0,
-      selectedEdge: 'top',
+      measurePoints: [{ x: 0, y: 0 }],
+      pendingDirection: '',
+      canFinishPolygon: false,
+      selectedEdge: '',
       showMeasurePrompt: true,
-      showPropertyPanel: false // 重新测量开始，立即关闭面板
+      showPropertyPanel: false
     });
     this.openLaser();
   },
@@ -251,8 +258,9 @@ Page({
     });
   },
 
-  onConfirmMeasure: function () {
-    this.setData({ showMeasurePrompt: false });
+  onConfirmMeasure: function (e) {
+    var direction = (e && e.detail && e.detail.direction) ? e.detail.direction : 'E';
+    this.setData({ showMeasurePrompt: false, pendingDirection: direction });
     this.triggerBluetoothMeasure();
   },
 
@@ -277,110 +285,169 @@ Page({
   },
 
   onEdgeSelect: function (e) {
-    this.setData({ 
+    this.setData({
       selectedEdge: e.detail.edge,
-      showPropertyPanel: false // 一旦选中测量边，面板必须消失
+      showPropertyPanel: false
     });
-    // 根据 api.txt，APP端控制仪器测量应发送 ATK001#。第一次发打开激光，第二次发执行测量并返回 ATD 数据。
     this.triggerBluetoothMeasure();
   },
 
   onBluetoothMeasure: function (distanceInMeters) {
-    if (this.measureTimer) {
-      clearTimeout(this.measureTimer);
-      this.measureTimer = null;
-    }
-    if (this.failTimer) {
-      clearTimeout(this.failTimer);
-      this.failTimer = null;
-    }
+    if (this.measureTimer) { clearTimeout(this.measureTimer); this.measureTimer = null; }
+    if (this.failTimer) { clearTimeout(this.failTimer); this.failTimer = null; }
 
-    var selectedIds = this.data.selectedIds;
-    var selectedEdge = this.data.selectedEdge;
-    if (selectedIds.length !== 1 || !selectedEdge) return;
+    // 引导模式下优先使用 currentGuidedRoomId，否则使用选中房间
+    var isGuided = this.data.guidedMode;
+    var roomId = isGuided ? this.data.currentGuidedRoomId : (this.data.selectedIds[0] || '');
+    if (!roomId) return;
 
-    var roomId = selectedIds[0];
     var room = null;
     for (var i = 0; i < this.data.rooms.length; i++) {
       if (this.data.rooms[i].id === roomId) { room = this.data.rooms[i]; break; }
     }
     if (!room) return;
 
-    // 处理测量失败或无效数据
+    // 处理测量失败
     if (distanceInMeters === null || distanceInMeters <= 0) {
-      wx.showToast({ title: '测量失败，正在重置引导', icon: 'none', duration: 2000 });
-      
-      // 如果在引导模式，重新弹出“准备测量”的提示框，引导用户重新点击“确定”开始
-      if (this.data.guidedMode && this.data.currentGuidedRoomId === roomId) {
-        this.setData({
-          showMeasurePrompt: true
-        });
-        this.openLaser(); // 重新激发激光
-      }
+      wx.showToast({ title: '测量失败，请重试', icon: 'none', duration: 2000 });
+      if (isGuided) { this.setData({ showMeasurePrompt: true }); this.openLaser(); }
       return;
     }
 
-    // 10px = 1m
-    var newLength = distanceInMeters * 10;
-    var updates = {};
+    var newLength = distanceInMeters * 10; // 10px = 1m
 
-    // 根据用户直觉重新映射映射关系：
-    // 上(top)/下(bottom) 边对应测量其横向长度 -> 更新 width
-    // 左(left)/右(right) 边对应测量其纵向长度 -> 更新 height
-    if (selectedEdge === 'top' || selectedEdge === 'bottom') {
-      updates.width = newLength;
-    } else if (selectedEdge === 'left' || selectedEdge === 'right') {
-      updates.height = newLength;
-    }
+    if (isGuided) {
+      // === 引导多边形模式 ===
+      var direction = this.data.pendingDirection || 'E';
+      var pts = this.data.measurePoints;
+      var lastPt = pts[pts.length - 1] || { x: 0, y: 0 };
 
-    var newRooms = this.data.rooms.map(function (r) {
-      return r.id === roomId ? Object.assign({}, r, updates) : r;
-    });
-    this.pushToHistory(newRooms);
+      var dx = 0, dy = 0;
+      if (direction === 'E') dx = newLength;
+      else if (direction === 'S') dy = newLength;
+      else if (direction === 'W') dx = -newLength;
+      else if (direction === 'N') dy = -newLength;
 
-    wx.showToast({ title: '测量成功: ' + distanceInMeters + 'm', icon: 'success' });
+      var newPt = { x: lastPt.x + dx, y: lastPt.y + dy };
+      var newMeasurePoints = pts.concat([newPt]);
 
-    // 如果在向导模式，自动流转到下一条边
-    if (this.data.guidedMode && this.data.currentGuidedRoomId === roomId) {
-      var newEdgeIndex = this.data.guidedEdgeIndex + 1;
-      if (newEdgeIndex >= 2) {
-        // 完成此房间所有的边
-        wx.showToast({ title: '房间基础测绘已完成', icon: 'success' });
-        var newPlannedRooms = this.data.plannedRooms.map(function (pr) {
-          return pr.id === roomId ? Object.assign({}, pr, { measured: true }) : pr;
-        });
-        
-        // 停留在画布页面，关闭引导激发模式，允许用户布置门窗
-        this.pushToHistory(newRooms, {
-          plannedRooms: newPlannedRooms,
-          showMeasurePrompt: false,
-          guidedMode: false,
-          selectedEdge: '',
-          selectedIds: [roomId] // 保持选中以方便查看面板
-        });
+      // 归一化多边形：平移到 (0,0) 起点
+      var utilLib = require('../../utils/util.js');
+      var bbox = utilLib.polygonBoundingBox(newMeasurePoints);
+      var normalized = newMeasurePoints.map(function (p) {
+        return { x: p.x - bbox.minX, y: p.y - bbox.minY };
+      });
 
-        // 测量完成后自动聚焦
-        setTimeout(() => {
-          const canvas = this.selectComponent('#floorCanvas');
-          if (canvas) canvas.fitToView();
-        }, 500);
-      } else {
-        var newEdge = this.data.edgesList[newEdgeIndex];
-        // 重要：将房间数据更新与下一条边的状态更新合并到同一个 pushToHistory -> setData 中
-        this.pushToHistory(newRooms, {
-          guidedEdgeIndex: newEdgeIndex,
-          selectedEdge: newEdge,
-          showMeasurePrompt: true
-        });
-        
-        this.openLaser();
-      }
+      var newEdgeIndex = newMeasurePoints.length - 1; // 已完成的边数
+      var canFinish = newEdgeIndex >= 2;
+
+      var newRooms = this.data.rooms.map(function (r) {
+        if (r.id === roomId) {
+          return Object.assign({}, r, {
+            width: Math.max(1, bbox.width),
+            height: Math.max(1, bbox.height),
+            polygon: normalized,
+            polygonClosed: false
+          });
+        }
+        return r;
+      });
+
+      wx.showToast({ title: '第' + newEdgeIndex + '边 ' + distanceInMeters + 'm ✓', icon: 'success' });
+
+      this.pushToHistory(newRooms, {
+        measurePoints: newMeasurePoints,
+        guidedEdgeIndex: newEdgeIndex,
+        canFinishPolygon: canFinish,
+        pendingDirection: '',
+        showMeasurePrompt: false
+      });
+
+      setTimeout(function () {
+        var canvas = this.selectComponent('#floorCanvas');
+        if (canvas) canvas.fitToView();
+      }.bind(this), 400);
+
     } else {
-      // 非引导模式下的单次测量
-      // 尊重用户“不要弹出”的要求，我们不再主动清空 selectedEdge
-      // 用户可以通过点击画布空白处或切换房间逻辑来找回面板
-      this.pushToHistory(newRooms);
+      // === 非引导模式：用 selectedEdge 决定方向（向后兼容）===
+      var selectedEdge = this.data.selectedEdge;
+      if (!selectedEdge) return;
+
+      var updates = {};
+      if (selectedEdge === 'top' || selectedEdge === 'bottom') updates.width = newLength;
+      else if (selectedEdge === 'left' || selectedEdge === 'right') updates.height = newLength;
+
+      var newRooms2 = this.data.rooms.map(function (r) {
+        return r.id === roomId ? Object.assign({}, r, updates) : r;
+      });
+      this.pushToHistory(newRooms2);
+      wx.showToast({ title: '测量成功: ' + distanceInMeters + 'm', icon: 'success' });
     }
+  },
+
+  // 用户点击"+ 添加边"按钮
+  onAddMeasureEdge: function () {
+    this.setData({ showMeasurePrompt: true });
+    this.openLaser();
+  },
+
+  // 用户点击"✅ 完成轮廓"按钮
+  onFinishPolygon: function () {
+    var pts = this.data.measurePoints;
+    if (pts.length < 3) {
+      wx.showToast({ title: '至少需要测量 2 条边', icon: 'none' });
+      return;
+    }
+
+    var utilLib = require('../../utils/util.js');
+    var finishedPts = pts.slice();
+
+    // 仅2边时自动补全矩形（推算剩余两个顶点）
+    if (finishedPts.length === 3) {
+      var edge1 = { x: finishedPts[1].x - finishedPts[0].x, y: finishedPts[1].y - finishedPts[0].y };
+      var pt3 = { x: finishedPts[2].x - edge1.x, y: finishedPts[2].y - edge1.y };
+      finishedPts = finishedPts.concat([pt3]);
+    }
+
+    var bbox = utilLib.polygonBoundingBox(finishedPts);
+    var normalized = finishedPts.map(function (p) {
+      return { x: p.x - bbox.minX, y: p.y - bbox.minY };
+    });
+
+    var roomId = this.data.currentGuidedRoomId;
+    var newRooms = this.data.rooms.map(function (r) {
+      if (r.id === roomId) {
+        return Object.assign({}, r, {
+          width: Math.max(1, bbox.width),
+          height: Math.max(1, bbox.height),
+          polygon: normalized,
+          polygonClosed: true
+        });
+      }
+      return r;
+    });
+
+    var newPlannedRooms = this.data.plannedRooms.map(function (pr) {
+      return pr.id === roomId ? Object.assign({}, pr, { measured: true }) : pr;
+    });
+
+    wx.showToast({ title: '房间轮廓已完成！', icon: 'success' });
+
+    this.pushToHistory(newRooms, {
+      plannedRooms: newPlannedRooms,
+      guidedMode: false,
+      showMeasurePrompt: false,
+      selectedEdge: '',
+      selectedIds: [roomId],
+      measurePoints: [],
+      canFinishPolygon: false,
+      pendingDirection: ''
+    });
+
+    setTimeout(function () {
+      var canvas = this.selectComponent('#floorCanvas');
+      if (canvas) canvas.fitToView();
+    }.bind(this), 500);
   },
 
   triggerBluetoothMeasure: function () {
@@ -433,7 +500,19 @@ Page({
     if (history.length > 50) history.shift();
     var total = 0;
     for (var i = 0; i < newRooms.length; i++) {
-      total += newRooms[i].width * newRooms[i].height;
+      var r = newRooms[i];
+      if (r.polygon && r.polygon.length >= 3 && r.polygonClosed) {
+        // Shoelace 公式计算多边形面积（px² → m²: /100）
+        var poly = r.polygon;
+        var areaRaw = 0;
+        for (var k = 0; k < poly.length; k++) {
+          var kn = (k + 1) % poly.length;
+          areaRaw += poly[k].x * poly[kn].y - poly[kn].x * poly[k].y;
+        }
+        total += Math.abs(areaRaw) / 2;
+      } else {
+        total += r.width * r.height;
+      }
     }
 
     var selectedIds = this.data.selectedIds;

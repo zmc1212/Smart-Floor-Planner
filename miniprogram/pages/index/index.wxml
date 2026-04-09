@@ -47,10 +47,12 @@
           guidedMode="{{guidedMode}}"
           currentGuidedRoomName="{{currentGuidedRoomName}}"
           guidedEdgeIndex="{{guidedEdgeIndex}}"
-          edgeNames="{{edgeNames}}"
+          canFinish="{{canFinishPolygon}}"
           bindexitguide="onExitGuide"
           bindstartremeasure="onStartRemeasure"
           bindexittolibrary="onExitToLibrary"
+          bindaddedge="onAddMeasureEdge"
+          bindfinishpolygon="onFinishPolygon"
         />
         
         <!-- 房间画布主体 -->
@@ -106,7 +108,7 @@
   <!-- 6. 测量弹窗 -->
   <measure-modal 
     show="{{showMeasurePrompt}}"
-    edgeName="{{edgeNames[guidedEdgeIndex]}}"
+    currentStep="{{guidedEdgeIndex + 1}}"
     bindconfirm="onConfirmMeasure"
   />
 </view>

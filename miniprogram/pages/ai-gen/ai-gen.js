@@ -54,7 +54,8 @@ Page({
       room.width,
       room.height,
       room.openings || [],
-      this.data.selectedMode
+      this.data.selectedMode,
+      room.polygon || null
     ).then(function (url) {
       const updatedRoom = Object.assign({}, room, { renderingUrl: url });
       that.setData({ 

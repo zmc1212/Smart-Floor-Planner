@@ -35,6 +35,39 @@ function snapToGrid(value, gridSize) {
 }
 
 /**
+ * 多边形面积（Shoelace 公式）
+ * @param {Array<{x,y}>} vertices 多边形顶点序列
+ * @returns {number} 面积（单位与坐标相同的平方单位）
+ */
+function polygonArea(vertices) {
+  var n = vertices.length;
+  if (n < 3) return 0;
+  var area = 0;
+  for (var i = 0; i < n; i++) {
+    var j = (i + 1) % n;
+    area += vertices[i].x * vertices[j].y;
+    area -= vertices[j].x * vertices[i].y;
+  }
+  return Math.abs(area) / 2;
+}
+
+/**
+ * 计算多边形顶点的包围盒
+ * @param {Array<{x,y}>} vertices
+ * @returns {{minX,minY,maxX,maxY,width,height}}
+ */
+function polygonBoundingBox(vertices) {
+  var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (var i = 0; i < vertices.length; i++) {
+    if (vertices[i].x < minX) minX = vertices[i].x;
+    if (vertices[i].y < minY) minY = vertices[i].y;
+    if (vertices[i].x > maxX) maxX = vertices[i].x;
+    if (vertices[i].y > maxY) maxY = vertices[i].y;
+  }
+  return { minX: minX, minY: minY, maxX: maxX, maxY: maxY, width: maxX - minX, height: maxY - minY };
+}
+
+/**
  * 枚举常量
  */
 const ToolType = {
@@ -79,6 +112,8 @@ module.exports = {
   formatArea,
   formatDimension,
   snapToGrid,
+  polygonArea,
+  polygonBoundingBox,
   ToolType,
   StyleType,
   RoomTypes,

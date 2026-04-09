@@ -13,8 +13,23 @@
  * @param {string} mode 模式: 'INTERIOR' | 'PLANE'
  * @returns {Promise<string>} 图片URL
  */
-function generateRendering(roomName, style, width, height, openings, mode) {
+function generateRendering(roomName, style, width, height, openings, mode, polygon) {
   openings = openings || [];
+
+  // 确定形状描述
+  var shapeDesc = '';
+  if (polygon && polygon.length >= 4) {
+    var edgeCount = polygon.length;
+    if (edgeCount === 4) {
+      shapeDesc = 'rectangular ';
+    } else if (edgeCount === 6) {
+      shapeDesc = 'L-shaped ';
+    } else if (edgeCount === 8) {
+      shapeDesc = 'T-shaped or U-shaped ';
+    } else {
+      shapeDesc = edgeCount + '-sided polygon-shaped ';
+    }
+  }
 
   var wallMap = { 'Top': [], 'Right': [], 'Bottom': [], 'Left': [] };
 
@@ -39,7 +54,7 @@ function generateRendering(roomName, style, width, height, openings, mode) {
   var prompt = '';
   if (mode === 'PLANE') {
     // 平面图模式：强调 2D、线条、技术感
-    prompt = '2D technical floor plan, professional architectural drawing of ' + roomName + ', ' + style + ' style. ' +
+    prompt = '2D technical floor plan, professional architectural drawing of ' + shapeDesc + roomName + ', ' + style + ' style. ' +
       'Dimensions: ' + (width / 10).toFixed(2) + 'm x ' + (height / 10).toFixed(2) + 'm. ' +
       'Layout: ' + (layoutDetails || 'Standard room') + '. ' +
       'Style: Orthographic top-down, clean white background, drafting pen lines, strictly no text, no fonts, no numbers.';
@@ -52,7 +67,7 @@ function generateRendering(roomName, style, width, height, openings, mode) {
     if (wallMap['Bottom'].length > 0) wallDescriptions.push('Note: ' + wallMap['Bottom'].join(', ') + ' are behind the viewer.');
 
     // 装修效果图模式：基于用户反馈深度优化视角和“去文字化”
-    prompt = 'Hyper-photorealistic interior rendering of a ' + style + ' ' + roomName + '. ' +
+    prompt = 'Hyper-photorealistic interior rendering of a ' + style + ' ' + shapeDesc + roomName + '. ' +
       'View: Eye-level perspective looking straight at the far wall. ' +
       'Spatial Map: ' + wallDescriptions.join('. ') + '. ' +
       'Furniture: Modern sofa near window/far wall, TV console on side wall. ' +

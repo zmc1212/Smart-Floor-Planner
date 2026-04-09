@@ -227,75 +227,106 @@ Component({
 
     drawRoom: function (ctx, room, selectedIds, highlightedOpeningId) {
       var isSelected = selectedIds.indexOf(room.id) !== -1;
+      var hasPolygon = room.polygon && room.polygon.length >= 3;
 
-      // 房间背景
-      ctx.fillStyle = room.color || 'rgba(255,255,255,0.8)';
-      ctx.fillRect(room.x, room.y, room.width, room.height);
+      ctx.save();
 
-      // 房间边框
-      ctx.strokeStyle = isSelected ? '#3b82f6' : '#141414';
-      ctx.lineWidth = isSelected ? 3 : 2;
-      ctx.strokeRect(room.x, room.y, room.width, room.height);
+      if (hasPolygon) {
+        // ── 多边形路径绘制 ──
+        var poly = room.polygon;
+        ctx.beginPath();
+        ctx.moveTo(room.x + poly[0].x, room.y + poly[0].y);
+        for (var pi = 1; pi < poly.length; pi++) {
+          ctx.lineTo(room.x + poly[pi].x, room.y + poly[pi].y);
+        }
+        ctx.closePath();
 
-      // 房间名称和尺寸 - 根据房间大小动态调整字号 (单位为世界坐标，1px=10cm)
-      // 计算一个合适的字号：大约是最小边长的 1/10，但不小于 1.5 (15cm)，不大于 4 (40cm)
-      var baseFontSize = Math.max(1.5, Math.min(4, Math.min(room.width, room.height) / 10));
-      var nameFontSize = baseFontSize * 1.2; // 标题稍大
+        // 填充
+        ctx.fillStyle = room.color || 'rgba(255,255,255,0.8)';
+        ctx.fill();
+
+        // 边框
+        ctx.strokeStyle = isSelected ? '#3b82f6' : '#141414';
+        ctx.lineWidth = isSelected ? 3 : 2;
+        ctx.stroke();
+
+        // 未闭合时绘制最后一段为虚线预览
+        if (!room.polygonClosed && poly.length >= 2) {
+          ctx.beginPath();
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = '#f59e0b';
+          ctx.lineWidth = 2;
+          ctx.moveTo(room.x + poly[poly.length - 1].x, room.y + poly[poly.length - 1].y);
+          ctx.lineTo(room.x + poly[0].x, room.y + poly[0].y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      } else {
+        // ── 矩形回退（向后兼容）──
+        ctx.fillStyle = room.color || 'rgba(255,255,255,0.8)';
+        ctx.fillRect(room.x, room.y, room.width, room.height);
+        ctx.strokeStyle = isSelected ? '#3b82f6' : '#141414';
+        ctx.lineWidth = isSelected ? 3 : 2;
+        ctx.strokeRect(room.x, room.y, room.width, room.height);
+
+        // 非多边形模式：高亮选中边（激光测距用）
+        if (isSelected && this.properties.selectedEdge) {
+          var edge = this.properties.selectedEdge;
+          ctx.strokeStyle = '#ef4444';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          if (edge === 'top') { ctx.moveTo(room.x, room.y); ctx.lineTo(room.x + room.width, room.y); }
+          else if (edge === 'bottom') { ctx.moveTo(room.x, room.y + room.height); ctx.lineTo(room.x + room.width, room.y + room.height); }
+          else if (edge === 'left') { ctx.moveTo(room.x, room.y); ctx.lineTo(room.x, room.y + room.height); }
+          else if (edge === 'right') { ctx.moveTo(room.x + room.width, room.y); ctx.lineTo(room.x + room.width, room.y + room.height); }
+          ctx.stroke();
+        }
+      }
+
+      ctx.restore();
+
+      // ── 文字标注 ──
+      var minSide = Math.min(room.width, room.height);
+      var baseFontSize = Math.max(1.5, Math.min(4, minSide / 10));
+      var nameFontSize = baseFontSize * 1.2;
       var dimFontSize = baseFontSize;
+
+      var centerX = room.x + room.width / 2;
+      var centerY = room.y + room.height / 2;
+
+      // 计算面积
+      var areaM2;
+      if (hasPolygon && room.polygonClosed) {
+        // Shoelace 公式（坐标单位 px，1px=10cm，100px²=1m²）
+        var poly2 = room.polygon;
+        var areaRaw = 0;
+        for (var ai = 0; ai < poly2.length; ai++) {
+          var aj = (ai + 1) % poly2.length;
+          areaRaw += poly2[ai].x * poly2[aj].y - poly2[aj].x * poly2[ai].y;
+        }
+        areaM2 = (Math.abs(areaRaw) / 2 / 100).toFixed(2);
+      } else {
+        areaM2 = (room.width * room.height / 100).toFixed(2);
+      }
 
       ctx.fillStyle = '#141414';
       ctx.font = nameFontSize + 'px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      var centerX = room.x + room.width / 2;
-      var centerY = room.y + room.height / 2;
-      ctx.fillText(room.name, centerX, centerY - nameFontSize * 0.7);
-      
+      ctx.fillText(room.name, centerX, centerY - nameFontSize * 0.8);
+
       ctx.font = dimFontSize + 'px sans-serif';
       ctx.fillStyle = '#666666';
-      ctx.fillText(
-        (room.width / 10).toFixed(2) + 'm × ' + (room.height / 10).toFixed(2) + 'm',
-        centerX, centerY + dimFontSize * 0.7
-      );
+      ctx.fillText(areaM2 + ' m²', centerX, centerY + dimFontSize * 0.8);
 
-      // 高亮绘制选中的边 (激光测距用)
-      if (isSelected && this.properties.selectedEdge) {
-        var edge = this.properties.selectedEdge;
-        ctx.strokeStyle = '#ef4444'; // Red thick line
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        if (edge === 'top') {
-          ctx.moveTo(room.x, room.y);
-          ctx.lineTo(room.x + room.width, room.y);
-        } else if (edge === 'bottom') {
-           ctx.moveTo(room.x, room.y + room.height);
-           ctx.lineTo(room.x + room.width, room.y + room.height);
-        } else if (edge === 'left') {
-           ctx.moveTo(room.x, room.y);
-           ctx.lineTo(room.x, room.y + room.height);
-        } else if (edge === 'right') {
-           ctx.moveTo(room.x + room.width, room.y);
-           ctx.lineTo(room.x + room.width, room.y + room.height);
-        }
-        ctx.stroke();
-      }
-
-      // 尺寸标注 (外部) - 同样使用动态字号
-      ctx.fillStyle = '#666666';
-      ctx.font = dimFontSize + 'px sans-serif';
+      // 外部尺寸标注（包围盒宽×高）
+      var labelOffset = dimFontSize * 0.4;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'bottom';
-      // 动态偏移：根据字号大小调整距离墙体的间距
-      var labelOffset = dimFontSize * 0.4; 
       ctx.fillText((room.width / 10).toFixed(2) + 'm', centerX, room.y - labelOffset);
-      
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      ctx.fillText(
-        (room.height / 10).toFixed(2) + 'm',
-        room.x + room.width + labelOffset,
-        room.y + room.height / 2
-      );
+      ctx.fillText((room.height / 10).toFixed(2) + 'm', room.x + room.width + labelOffset, centerY);
 
       // 门窗
       var openings = room.openings || [];
@@ -307,6 +338,7 @@ Component({
       ctx.textAlign = 'start';
       ctx.textBaseline = 'alphabetic';
     },
+
 
     drawOpening: function (ctx, room, opening, highlightedOpeningId) {
       var absX = room.x + opening.x;

@@ -1,26 +1,23 @@
 Component({
   properties: {
     show: { type: Boolean, value: false },
-    edgeName: { 
-      type: String, 
-      value: '',
-      observer: function(newVal) {
-        let type = '';
-        if (newVal.includes('长')) type = 'top';
-        else if (newVal.includes('宽')) type = 'left';
-        
-        else if (newVal === '上方') type = 'top';
-        else if (newVal === '下方') type = 'bottom';
-        else if (newVal === '左侧') type = 'left';
-        else if (newVal === '右侧') type = 'right';
-        this.setData({ edgeType: type });
-      }
-    }
+    currentStep: { type: Number, value: 1 }
   },
   data: {
-    edgeType: ''
+    selectedDirection: 'E', // 'E' | 'S' | 'W' | 'N'
+    directions: [
+      { key: 'E', label: '→ 东', desc: '向右（横向）' },
+      { key: 'S', label: '↓ 南', desc: '向下（纵向）' },
+      { key: 'W', label: '← 西', desc: '向左（横向）' },
+      { key: 'N', label: '↑ 北', desc: '向上（纵向）' }
+    ]
   },
   methods: {
-    onConfirm() { this.triggerEvent('confirm'); }
+    onSelectDirection(e) {
+      this.setData({ selectedDirection: e.currentTarget.dataset.dir });
+    },
+    onConfirm() {
+      this.triggerEvent('confirm', { direction: this.data.selectedDirection });
+    }
   }
 });
