@@ -15,13 +15,14 @@ function initBLE(callback, connectCallback) {
   _onConnectCallback = connectCallback;
   wx.openBluetoothAdapter({
     success: function (res) {
-      startScan();
       wx.showLoading({ title: '搜索测距仪...', mask: true });
+      startScan();
     },
     fail: function (err) {
       wx.showToast({ title: '请打开手机蓝牙', icon: 'none' });
       wx.onBluetoothAdapterStateChange(function (res) {
         if (res.available) {
+          wx.showLoading({ title: '搜索测距仪...', mask: true });
           startScan();
         }
       });
@@ -32,16 +33,46 @@ function initBLE(callback, connectCallback) {
 function startScan() {
   if (_isConnecting) return;
   _foundDevices = []; // 重置搜索列表
-  
+
+  // 前置检查安卓系统定位权限与开关
+  try {
+    var sysInfo = wx.getSystemInfoSync();
+    if (sysInfo.platform === 'android') {
+      var sysSetting = typeof wx.getSystemSetting === 'function' ? wx.getSystemSetting() : {};
+      var appAuth = typeof wx.getAppAuthorizeSetting === 'function' ? wx.getAppAuthorizeSetting() : {};
+      
+      var msgs = [];
+      if (sysSetting.locationEnabled === false) msgs.push('【系统定位开关】');
+      if (appAuth.locationAuthorized === 'denied') msgs.push('【微信定位权限】');
+      if (appAuth.bluetoothAuthorized === 'denied') msgs.push('【微信蓝牙权限】');
+      
+      if (msgs.length > 0) {
+        wx.hideLoading();
+        wx.showModal({
+          title: '权限提醒',
+          content: '安卓搜索蓝牙需开启：' + msgs.join('、') + '，请前往设置开启后重试。',
+          showCancel: false
+        });
+        return;
+      }
+    }
+  } catch (err) {
+    console.error('获取系统设置失败', err);
+  }
+
   // 设置 10 秒搜索超时
   if (_scanTimer) clearTimeout(_scanTimer);
-  _scanTimer = setTimeout(function() {
+  _scanTimer = setTimeout(function () {
     if (_foundDevices.length === 0 && !_isConnecting) {
       wx.stopBluetoothDevicesDiscovery();
       wx.hideLoading();
+      
+      var isAndroid = false;
+      try { isAndroid = wx.getSystemInfoSync().platform === 'android'; } catch(e){}
+
       wx.showModal({
         title: '未发现设备',
-        content: '未搜索到测距仪 ' + TARGET_DEVICE_NAME + '，请确保设备已开启并靠近手机',
+        content: '未搜索到测距仪 ' + TARGET_DEVICE_NAME + '，请确保设备已开启并靠近手机。' + (isAndroid ? '安卓部分版本必须开启“系统定位”和“微信定位权限”才能搜索。' : ''),
         showCancel: false
       });
     }
@@ -64,12 +95,27 @@ function startScan() {
             if (_scanTimer) clearTimeout(_scanTimer);
             wx.stopBluetoothDevicesDiscovery();
             wx.hideLoading();
-            
+
             console.log('✅ 匹配成功，发起自动连接:', name);
             connectDevice(device.deviceId, name.trim());
             return;
           }
         }
+      });
+    },
+    fail: function (err) {
+      console.log('搜索设备失败', err);
+      if (_scanTimer) clearTimeout(_scanTimer);
+      wx.hideLoading();
+      
+      var errMsg = '搜索失败，请确保蓝牙正常。';
+      if (err.errCode === 10001 || /location/i.test(err.errMsg) || /system/i.test(err.errMsg)) {
+         errMsg = '蓝牙未准备就绪或权限不足，请检查手机蓝牙、系统定位开关及微信定位权限。';
+      }
+      wx.showModal({
+        title: '搜索异常',
+        content: errMsg + ' (' + (err.errCode || err.errMsg) + ')',
+        showCancel: false
       });
     }
   });
@@ -192,7 +238,7 @@ function listenValueChange() {
         }
 
         if (dataBuffer.length < 17) break; // 数据不足，等完整的 17 字节数据
-        
+
         // 验证帧尾 #
         if (dataBuffer[16] !== 0x23) {
           console.log("ATD 数据包帧尾错误，非 #");
@@ -218,11 +264,11 @@ function listenValueChange() {
         var meadist = dataDv.getUint32(0, false);
 
         var distanceInMeters = meadist / 10000.0;
-        
+
         // 提取角度X和Y (依据文档定义)
         var angleXU8 = new Uint8Array(dataBuffer.slice(7, 11));
         var angleYU8 = new Uint8Array(dataBuffer.slice(11, 15));
-        
+
         console.log("ATD测距结果:", distanceInMeters, "m", "原始距离字节:", distU8, "角度X:", angleXU8, "角度Y:", angleYU8);
 
         if (_onMeasureCallback) {
@@ -292,7 +338,7 @@ function autoConnectBLE(callback, connectCallback) {
   _onConnectCallback = connectCallback;
   var lastId = wx.getStorageSync('last_ble_device_id');
   var lastName = wx.getStorageSync('last_ble_device_name');
-  
+
   console.log('尝试一键直连，记忆设备名称:', lastName, 'ID:', lastId);
 
   if (lastId) {
