@@ -4,6 +4,8 @@ import { FloorPlan } from "@/models/FloorPlan";
 import Navbar from "@/components/Navbar";
 import { Users } from "lucide-react";
 
+export const dynamic = "force-dynamic";
+
 export default async function UsersPage() {
   await dbConnect();
   const users = await User.find({}).sort({ createdAt: -1 }).lean();

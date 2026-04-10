@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+export const dynamic = "force-dynamic";
 import dbConnect from '@/lib/mongodb';
 import { FloorPlan } from '@/models/FloorPlan';
 import { User } from '@/models/User';

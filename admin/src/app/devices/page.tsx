@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import React, { useState, useEffect } from 'react';
 import { Trash2, Plus, RefreshCw, Cpu, Search, Edit2, Check, X, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';

@@ -1,4 +1,5 @@
 import Link from "next/link";
+export const dynamic = "force-dynamic";
 import dbConnect from "@/lib/mongodb";
 import { User } from "@/models/User";
 import { FloorPlan } from "@/models/FloorPlan";

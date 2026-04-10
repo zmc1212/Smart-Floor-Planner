@@ -6,11 +6,12 @@ services:
     container_name: smart-floor-planner-admin
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3005:3000"
     env_file:
       - .env.local
     environment:
       - NODE_ENV=production
+      - MONGODB_URI=mongodb://root:123456@mongo:27017/fastMeasure?authSource=admin
     depends_on:
       - mongo
 

@@ -32,6 +32,12 @@ export default function Navbar() {
     }
   };
 
+  const getLinkClass = (path: string) => {
+    return pathname === path
+      ? "text-[14px] font-medium text-[#171717]"
+      : "text-[14px] font-medium text-[#666666] hover:text-[#171717] transition-colors";
+  };
+
   const menuItems = [
     { key: 'dashboard', label: '总览', href: '/' },
     { key: 'floorplans', label: '户型图', href: '/floorplans' },

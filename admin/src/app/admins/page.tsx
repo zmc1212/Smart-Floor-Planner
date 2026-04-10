@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Shield, Search, Plus, RefreshCw, Edit2, Trash2, Check, X,

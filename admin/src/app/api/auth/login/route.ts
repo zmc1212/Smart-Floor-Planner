@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+export const dynamic = 'force-dynamic';
 import bcrypt from 'bcryptjs';
 import * as jose from 'jose';
 import dbConnect from '@/lib/mongodb';

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+export const dynamic = 'force-dynamic';
 import bcrypt from 'bcryptjs';
 import dbConnect from '@/lib/mongodb';
 import { AdminUser, DEFAULT_PERMISSIONS } from '@/models/AdminUser';
@@ -79,8 +80,7 @@ export async function POST(request: Request) {
     });
 
     // Return without passwordHash
-    const result = admin.toObject();
-    delete result.passwordHash;
+    const { passwordHash: _, ...result } = admin.toObject();
 
     return NextResponse.json({ success: true, data: result }, { status: 201 });
   } catch (error: any) {
