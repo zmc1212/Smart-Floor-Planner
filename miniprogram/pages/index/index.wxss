@@ -115,20 +115,7 @@ properties {
   font-weight: bold;
 }
 
-/* 2D/3D Toggle */
-.view-toggle {
-  position: absolute;
-  top: 120rpx;
-  right: 48rpx;
-  z-index: 100;
-  background: rgba(255,255,255,0.9);
-  padding: 12rpx 24rpx;
-  border-radius: 32rpx;
-  box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.1);
-  font-size: 24rpx;
-  font-weight: bold;
-  color: #333;
-}
+
 .three-canvas-container {
   width: 100%;
   height: 100%;

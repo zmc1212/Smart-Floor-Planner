@@ -35,6 +35,7 @@ Page({
 
   onLoad: function () {
     var that = this;
+    this.isMeasuring = false; // 初始化测量状态锁
     // 获取状态栏和胶囊按钮信息
     var sysInfo = wx.getSystemInfoSync();
     var menuButtonInfo = wx.getMenuButtonBoundingClientRect();
@@ -301,10 +302,16 @@ Page({
   },
 
   onExitGuide: function () {
+    this.isMeasuring = false;
+    if (this.measureTimer) { clearTimeout(this.measureTimer); this.measureTimer = null; }
+    if (this.failTimer) { clearTimeout(this.failTimer); this.failTimer = null; }
     this.setData({ guidedMode: false, selectedEdge: '' });
   },
 
   onExitToLibrary: function () {
+    this.isMeasuring = false;
+    if (this.measureTimer) { clearTimeout(this.measureTimer); this.measureTimer = null; }
+    if (this.failTimer) { clearTimeout(this.failTimer); this.failTimer = null; }
     this.setData({ viewMode: 'LIBRARY', selectedIds: [], selectedEdge: '', guidedMode: false });
   },
 
@@ -329,6 +336,9 @@ Page({
   },
 
   onCancelMeasure: function () {
+    this.isMeasuring = false;
+    if (this.measureTimer) { clearTimeout(this.measureTimer); this.measureTimer = null; }
+    if (this.failTimer) { clearTimeout(this.failTimer); this.failTimer = null; }
     this.setData({ showMeasurePrompt: false });
   },
 
@@ -656,6 +666,12 @@ Page({
   },
 
   onBluetoothMeasure: function (distanceInMeters) {
+    if (!this.isMeasuring) {
+      console.log('收到过时或重复的蓝牙测量回调，忽略');
+      return;
+    }
+    this.isMeasuring = false; // 接收到数据（无论成败），立即解锁
+
     if (this.measureTimer) { clearTimeout(this.measureTimer); this.measureTimer = null; }
     if (this.failTimer) { clearTimeout(this.failTimer); this.failTimer = null; }
 
@@ -751,6 +767,7 @@ Page({
       // 使用 setTimeout 确保 showMeasurePrompt 的切换能触发组件重新渲染/观察
       setTimeout(() => {
         this.setData({ showMeasurePrompt: true });
+        this.openLaser(); // 修复：自动弹出下一条边引导时，同步开启激光辅助
       }, 100);
 
       setTimeout(function () {
@@ -845,6 +862,8 @@ Page({
     var bluetooth = require('../../utils/bluetooth.js');
     var that = this;
     
+    this.isMeasuring = true; // 开启测量状态锁
+    
     if (this.measureTimer) {
       clearTimeout(this.measureTimer);
     }
@@ -855,17 +874,17 @@ Page({
     console.log('发送测量指令 ATK001#');
     bluetooth.sendBLECommand('ATK001#');
     
-    // 设置超时计时器 (2.5秒)，如果没收到 ATD 则主动查一下
+    // 设置超时计时器 (3.5秒)，如果没收到 ATD 则主动查一下
     this.measureTimer = setTimeout(function () {
       console.log('测量超时，尝试主动查询数据 ATD001#');
       bluetooth.sendBLECommand('ATD001#');
       
-      // 再给仪表 2 秒时间响应查询，如果不响应或距离仍不可用，彻底触发失败回调
+      // 再给仪表 4 秒时间响应查询，如果不响应或距离仍不可用，彻底触发失败回调
       that.failTimer = setTimeout(function () {
         console.log('主动查询后仍无数据返回，彻底认定失败');
         that.onBluetoothMeasure(null);
-      }, 2000);
-    }, 2500);
+      }, 4000);
+    }, 3500);
   },
 
   openLaser: function() {

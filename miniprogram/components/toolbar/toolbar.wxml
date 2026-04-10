@@ -1,14 +1,23 @@
 <view class="toolbar">
-  <block wx:for="{{tools}}" wx:key="id">
-    <view class="tool-wrapper">
-      <view
-        class="tool-btn {{activeTool === item.id ? 'tool-btn-active' : ''}}"
-        data-tool="{{item.id}}"
-        bindtap="onToolClick"
-      >
-        <text class="tool-icon">{{item.iconText}}</text>
+  <block wx:if="{{!is3DView}}">
+    <block wx:for="{{tools}}" wx:key="id">
+      <view class="tool-wrapper">
+        <view
+          class="tool-btn {{activeTool === item.id ? 'tool-btn-active' : ''}}"
+          data-tool="{{item.id}}"
+          bindtap="onToolClick"
+        >
+          <text class="tool-icon">{{item.iconText}}</text>
+        </view>
+        <text class="tool-label">{{item.label}}</text>
       </view>
-      <text class="tool-label">{{item.label}}</text>
-    </view>
+    </block>
   </block>
+
+  <view class="tool-wrapper" style="margin-left: auto">
+    <view class="tool-btn {{is3DView ? 'tool-btn-active' : ''}}" bindtap="onToggleClick">
+      <text class="tool-icon" style="font-size: 24rpx; font-weight: bold;">{{is3DView ? '2D' : '3D'}}</text>
+    </view>
+    <text class="tool-label">{{is3DView ? '2D编辑' : '3D预览'}}</text>
+  </view>
 </view>

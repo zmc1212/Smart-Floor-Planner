@@ -15,6 +15,10 @@ Component({
     currentRoomType: {
       type: String,
       value: '客厅'
+    },
+    is3DView: {
+      type: Boolean,
+      value: false
     }
   },
 
@@ -30,6 +34,10 @@ Component({
     onToolClick: function (e) {
       var toolId = e.currentTarget.dataset.tool;
       this.triggerEvent('change', { tool: toolId });
+    },
+
+    onToggleClick: function () {
+      this.triggerEvent('toggle3d');
     },
 
     closeMenu: function () {

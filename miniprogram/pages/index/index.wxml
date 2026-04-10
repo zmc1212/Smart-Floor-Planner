@@ -36,18 +36,14 @@
 
       <!-- 4. 画布编辑视图 -->
       <view class="canvas-area" wx:if="{{viewMode === 'CANVAS'}}">
-        <!-- 2D/3D Toggle -->
-        <view class="view-toggle" bindtap="onToggle3D">
-          <text>{{is3DView ? '2D编辑' : '3D预览'}}</text>
-        </view>
-
         <!-- 画布工具栏 -->
         <toolbar 
-          wx:if="{{!is3DView}}"
           activeTool="{{activeTool}}" 
           currentRoomType="{{currentRoomType}}"
+          is3DView="{{is3DView}}"
           bindchange="onToolChange" 
           bindtypechange="onRoomTypeChange"
+          bindtoggle3d="onToggle3D"
         />
 
         <!-- 顶部测量横幅 -->
