@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Trash2, Plus, RefreshCw, Cpu } from 'lucide-react';
+import { Trash2, Plus, RefreshCw, Cpu, Search, Edit2, Check, X, ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
+import Navbar from '@/components/Navbar';
 
 interface Device {
   _id: string;
@@ -16,6 +18,11 @@ export default function DevicesPage() {
   const [adding, setAdding] = useState(false);
   const [newCode, setNewCode] = useState('');
   const [newDesc, setNewDesc] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editCode, setEditCode] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [updating, setUpdating] = useState(false);
 
   const fetchDevices = async () => {
     setLoading(true);
@@ -77,9 +84,53 @@ export default function DevicesPage() {
     }
   };
 
+  const handleUpdate = async (id: string) => {
+    if (!editCode.trim()) return;
+    setUpdating(true);
+    try {
+      const res = await fetch(`/api/devices/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: editCode.trim(), description: editDesc.trim() })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDevices(devices.map(d => d._id === id ? data.data : d));
+        setEditingId(null);
+      } else {
+        alert(data.error || '更新失败');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('网络错误');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  const startEdit = (device: Device) => {
+    setEditingId(device._id);
+    setEditCode(device.code);
+    setEditDesc(device.description || '');
+  };
+
+  const filteredDevices = devices.filter(d => 
+    d.code.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (d.description && d.description.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <div className="flex justify-between items-center mb-6">
+    <div className="min-h-screen bg-white">
+      <Navbar />
+      <div className="p-6 max-w-6xl mx-auto">
+        <Link 
+          href="/" 
+          className="flex items-center gap-1 text-gray-500 hover:text-blue-600 transition-colors mb-6 w-fit"
+        >
+          <ArrowLeft size={16} />
+          <span className="text-sm font-medium">返回首页</span>
+        </Link>
+        <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Cpu className="text-blue-600" />
@@ -96,6 +147,22 @@ export default function DevicesPage() {
         >
           <RefreshCw size={20} className={loading ? 'animate-spin text-gray-400' : 'text-gray-600'} />
         </button>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6 flex flex-col md:flex-row gap-4 items-center">
+        <div className="relative flex-1 w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+          <input 
+            type="text"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            placeholder="搜索设备编码或备注名称..."
+            className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+          />
+        </div>
+        <div className="text-sm text-gray-400">
+          共 {filteredDevices.length} 个设备
+        </div>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
@@ -151,21 +218,73 @@ export default function DevicesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {devices.map(device => (
+                {filteredDevices.map(device => (
                   <tr key={device._id} className="hover:bg-gray-50/50">
-                    <td className="px-6 py-4 font-mono font-medium text-gray-900">{device.code}</td>
-                    <td className="px-6 py-4 text-gray-600">{device.description || '-'}</td>
+                    <td className="px-6 py-4 font-mono font-medium text-gray-900">
+                      {editingId === device._id ? (
+                        <input 
+                          type="text"
+                          value={editCode}
+                          onChange={e => setEditCode(e.target.value)}
+                          className="w-full p-1 border border-blue-500 rounded font-mono text-sm"
+                          autoFocus
+                        />
+                      ) : (
+                        device.code
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-gray-600">
+                      {editingId === device._id ? (
+                        <input 
+                          type="text"
+                          value={editDesc}
+                          onChange={e => setEditDesc(e.target.value)}
+                          className="w-full p-1 border border-blue-500 rounded text-sm"
+                        />
+                      ) : (
+                        device.description || '-'
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-gray-400">
                       {new Date(device.createdAt).toLocaleString('zh-CN')}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button 
-                        onClick={() => handleDelete(device._id)}
-                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                        title="删除"
-                      >
-                        <Trash2 size={18} />
-                      </button>
+                      {editingId === device._id ? (
+                        <div className="flex justify-end gap-1">
+                          <button 
+                            onClick={() => handleUpdate(device._id)}
+                            disabled={updating}
+                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                            title="保存"
+                          >
+                            <Check size={18} />
+                          </button>
+                          <button 
+                            onClick={() => setEditingId(null)}
+                            className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg transition-colors"
+                            title="取消"
+                          >
+                            <X size={18} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex justify-end gap-1">
+                          <button 
+                            onClick={() => startEdit(device)}
+                            className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="编辑"
+                          >
+                            <Edit2 size={18} />
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(device._id)}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            title="删除"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -175,5 +294,6 @@ export default function DevicesPage() {
         )}
       </div>
     </div>
-  );
+  </div>
+);
 }

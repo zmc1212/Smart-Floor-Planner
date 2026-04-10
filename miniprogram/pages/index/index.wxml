@@ -133,6 +133,10 @@
   <measure-modal 
     show="{{showMeasurePrompt}}"
     currentStep="{{guidedEdgeIndex + 1}}"
+    lastDirection="{{lastMeasuredDirection}}"
+    canFinish="{{canFinishPolygon}}"
     bindconfirm="onConfirmMeasure"
+    bindfinish="onFinishPolygon"
+    bindclose="onCancelMeasure"
   />
 </view>

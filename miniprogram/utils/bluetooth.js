@@ -5,18 +5,37 @@ var _writeCharacteristics = []; // 存储所有可写入的特征值以供广播
 var _onMeasureCallback = null;
 var _isConnecting = false;
 var _onConnectCallback = null;
+var _onDisconnectCallback = null;
 var _scanTimer = null; // 搜索总时间计时器
 var _foundDevices = []; // 发现的设备列表，用于超时判断
 var _verifyingDevices = {}; // 记录正在验证或验证失败的设备，避免重复请求
+var _isStateChangeRegistered = false;
+
+var _heartbeatTimer = null;
+var _lastResponseTime = 0;
+const HEARTBEAT_INTERVAL = 5000; // 5秒发一次心跳
+const HEARTBEAT_TIMEOUT = 12000;  // 12秒没收到任何回复认为断开
 
 const TARGET_DEVICE_NAME = 'LDMStudio 4D';
 
-function initBLE(callback, connectCallback) {
+function initBLE(callback, connectCallback, disconnectCallback) {
   _onMeasureCallback = callback;
   _onConnectCallback = connectCallback;
+  _onDisconnectCallback = disconnectCallback;
   _verifyingDevices = {}; // 重置验证状态
   wx.openBluetoothAdapter({
     success: function (res) {
+      // 注册全局断开监听 (仅注册一次)
+      if (!_isStateChangeRegistered) {
+        wx.onBLEConnectionStateChange(function (res) {
+          console.log('蓝牙连接状态变化:', res.connected, '设备ID:', res.deviceId);
+          if (!res.connected && res.deviceId === _deviceId) {
+            handleDisconnect('系统蓝牙断开信号');
+          }
+        });
+        _isStateChangeRegistered = true;
+      }
+
       wx.showLoading({ title: '搜索测距仪...', mask: true });
       startScan();
     },
@@ -62,10 +81,10 @@ function startScan() {
     console.error('获取系统设置失败', err);
   }
 
-  // 设置 15 秒搜索超时 (验证需要额外时间)
+  // 设置 10 秒搜索超时 (验证需要额外时间)
   if (_scanTimer) clearTimeout(_scanTimer);
   _scanTimer = setTimeout(function () {
-    if (_foundDevices.length === 0 && !_isConnecting) {
+    if (!_isConnecting) {
       wx.stopBluetoothDevicesDiscovery();
       wx.hideLoading();
       
@@ -78,7 +97,7 @@ function startScan() {
         showCancel: false
       });
     }
-  }, 15000);
+  }, 10000);
 
   wx.startBluetoothDevicesDiscovery({
     allowDuplicatesKey: false,
@@ -142,11 +161,6 @@ function startScan() {
   });
 }
 
-// 废弃旧的 offerDevice 逻辑，改为直接连接
-function offerDevice(device) {
-  // 不再使用此函数
-}
-
 function connectDevice(deviceId, name) {
   _isConnecting = true;
   _writeCharacteristics = []; // 连接前重置写入通道
@@ -164,6 +178,8 @@ function connectDevice(deviceId, name) {
       wx.showToast({ title: '连接成功', icon: 'success' });
       getServices(deviceId);
       if (_onConnectCallback) _onConnectCallback(true, name);
+      
+      startHeartbeat();
     },
     fail: function (err) {
       wx.hideLoading();
@@ -232,6 +248,8 @@ function getCharacteristics(deviceId, serviceId) {
 var dataBuffer = [];
 function listenValueChange() {
   wx.onBLECharacteristicValueChange(function (res) {
+    _lastResponseTime = Date.now(); // 收到任何数据都刷新心跳存活时间
+
     var length = res.value.byteLength;
     var arr = new Uint8Array(res.value);
 
@@ -313,6 +331,52 @@ function listenValueChange() {
   });
 }
 
+function startHeartbeat() {
+  stopHeartbeat();
+  _lastResponseTime = Date.now();
+  console.log('启动心跳维持机制...');
+  _heartbeatTimer = setInterval(function() {
+    if (_deviceId) {
+      // 发送 ATD001# 查询距离作为心跳包
+      sendBLECommand('ATD001#');
+      
+      var now = Date.now();
+      if (now - _lastResponseTime > HEARTBEAT_TIMEOUT) {
+        console.log('心跳超时，认为设备已断开连接');
+        handleDisconnect('心跳检测超时');
+      }
+    } else {
+      stopHeartbeat();
+    }
+  }, HEARTBEAT_INTERVAL);
+}
+
+function stopHeartbeat() {
+  if (_heartbeatTimer) {
+    clearInterval(_heartbeatTimer);
+    _heartbeatTimer = null;
+    console.log('已停止心跳维持机制');
+  }
+}
+
+function handleDisconnect(reason) {
+  if (!_deviceId) return;
+  console.log('⚠️ 触发断开处理流程:', reason);
+  
+  var tempId = _deviceId;
+  _deviceId = '';
+  _isConnecting = false;
+  _foundDevices = [];
+  _writeCharacteristics = [];
+  stopHeartbeat();
+  
+  wx.closeBLEConnection({ deviceId: tempId }).catch(function(){});
+  
+  if (_onDisconnectCallback) {
+    _onDisconnectCallback();
+  }
+}
+
 function sendBLECommand(cmd) {
   if (!_deviceId || _writeCharacteristics.length === 0) {
     console.error('蓝牙未连接或未发现写入特征值');
@@ -334,29 +398,25 @@ function sendBLECommand(cmd) {
       value: buffer,
       writeType: channel.writeNoResponse ? 'writeNoResponse' : 'write',
       success: function () {
-        console.log('成功下发指令到:', channel.characteristicId.substring(4, 8), '内容:', cmd);
+        // console.log('成功下发指令到:', channel.characteristicId.substring(4, 8), '内容:', cmd);
       },
       fail: function (err) {
-        console.log('下发失败 (通道:', channel.characteristicId.substring(4, 8) + '):', err.errMsg);
+        // console.log('下发失败 (通道:', channel.characteristicId.substring(4, 8) + '):', err.errMsg);
       }
     });
   });
 }
 
 function closeBLE() {
-  if (_deviceId) {
-    wx.closeBLEConnection({ deviceId: _deviceId });
-    _deviceId = '';
-  }
+  handleDisconnect('用户主动断开');
   wx.closeBluetoothAdapter();
-  _isConnecting = false;
-  _foundDevices = [];
-  _writeCharacteristics = [];
 }
 
-function autoConnectBLE(callback, connectCallback) {
+function autoConnectBLE(callback, connectCallback, disconnectCallback) {
   _onMeasureCallback = callback;
   _onConnectCallback = connectCallback;
+  _onDisconnectCallback = disconnectCallback;
+
   var lastId = wx.getStorageSync('last_ble_device_id');
   var lastName = wx.getStorageSync('last_ble_device_name');
 
@@ -365,6 +425,17 @@ function autoConnectBLE(callback, connectCallback) {
   if (lastId) {
     wx.openBluetoothAdapter({
       success: function (res) {
+        // 注册全局断开监听 (仅注册一次)
+        if (!_isStateChangeRegistered) {
+          wx.onBLEConnectionStateChange(function (res) {
+            console.log('蓝牙连接状态变化:', res.connected, '设备ID:', res.deviceId);
+            if (!res.connected && res.deviceId === _deviceId) {
+              handleDisconnect('系统蓝牙断开信号');
+            }
+          });
+          _isStateChangeRegistered = true;
+        }
+
         wx.showLoading({ title: '验证授权中...', mask: true });
         var api = require('./api.js');
         api.request('/devices/verify', 'POST', { deviceId: lastId, name: lastName })
@@ -393,7 +464,7 @@ function autoConnectBLE(callback, connectCallback) {
   } else {
     // 没有记忆设备时，直接调用常规搜索
     wx.showToast({ title: '无记忆设备，请手动搜索', icon: 'none' });
-    initBLE(callback, connectCallback);
+    initBLE(callback, connectCallback, disconnectCallback);
   }
 }
 

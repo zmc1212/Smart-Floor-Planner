@@ -1,5 +1,8 @@
 <view class="modal-overlay" wx:if="{{show}}">
   <view class="modal-container">
+    <!-- 关闭按钮 -->
+    <view class="modal-close" bindtap="onClose">✕</view>
+
     <view class="title-section">
       <text class="modal-title">准备测量</text>
       <text class="modal-subtitle">{{currentStep === 0 ? '测量层高' : '步骤 第 ' + currentStep + ' 条边'}}</text>
@@ -8,7 +11,7 @@
     <view class="direction-grid">
       <view
         class="direction-cell {{selectedDirection === item.key ? 'active' : ''}}"
-        wx:for="{{directions}}"
+        wx:for="{{availableDirections}}"
         wx:key="key"
         data-dir="{{item.key}}"
         bindtap="onSelectDirection"
@@ -18,7 +21,7 @@
       </view>
     </view>
 
-    <!-- 方向示意图 (Vercel Style) -->
+    <!-- 方向示意图 -->
     <view class="dir-preview-box">
       <view class="dir-room-simulator">
         <view class="laser-line E {{selectedDirection === 'E' ? 'active' : ''}}"></view>
@@ -36,6 +39,8 @@
 
     <view class="action-section">
       <view class="btn btn-primary btn-confirm" bindtap="onConfirm">已放好，开始测量</view>
+      <!-- 新增快捷完成按钮 -->
+      <view class="btn btn-outline btn-finish" wx:if="{{canFinish}}" bindtap="onFinish">✅ 测完了，闭合房间</view>
     </view>
   </view>
 </view>

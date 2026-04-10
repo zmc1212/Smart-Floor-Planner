@@ -25,6 +25,7 @@ Page({
     selectedRooms: [],
     showPropertyPanel: false, // 显式开关：控制属性面板弹出
     highlightedOpeningId: '',
+    lastMeasuredDirection: '', // 新增：记录上一次成功的方向
     statusBarHeight: 0,
     showDrawingIndicator: false,
     totalArea: '0.00',
@@ -246,14 +247,15 @@ Page({
       guidedMode: !isMeasured,
       currentGuidedRoomId: roomId,
       currentGuidedRoomName: roomData.name,
-      guidedEdgeIndex: 0,
+      guidedEdgeIndex: -1, 
       measurePoints: isMeasured ? [] : [{ x: 0, y: 0 }],
       pendingDirection: '',
       canFinishPolygon: false,
       activeTool: 'SELECT',
       selectedEdge: '',
       showMeasurePrompt: !isMeasured,
-      showPropertyPanel: false // 开启引导或进入新房间时，强制隐藏面板
+      showPropertyPanel: false,
+      lastMeasuredDirection: '' // 重置上一次方向
     });
     this.pushToHistory(newRooms);
     this.setData({ selectedIds: [roomId] });
@@ -286,13 +288,14 @@ Page({
   onStartRemeasure: function () {
     this.setData({
       guidedMode: true,
-      guidedEdgeIndex: 0,
+      guidedEdgeIndex: -1, 
       measurePoints: [{ x: 0, y: 0 }],
       pendingDirection: '',
       canFinishPolygon: false,
       selectedEdge: '',
       showMeasurePrompt: true,
-      showPropertyPanel: false
+      showPropertyPanel: false,
+      lastMeasuredDirection: '' // 重置上一次方向
     });
     this.openLaser();
   },
@@ -325,6 +328,10 @@ Page({
     });
   },
 
+  onCancelMeasure: function () {
+    this.setData({ showMeasurePrompt: false });
+  },
+
   onConfirmMeasure: function (e) {
     var direction = (e && e.detail && e.detail.direction) ? e.detail.direction : 'E';
     this.setData({ showMeasurePrompt: false, pendingDirection: direction });
@@ -338,6 +345,8 @@ Page({
       that.onBluetoothMeasure(distanceInMeters);
     }, function (isConnected) {
       that.setData({ bleConnected: isConnected });
+    }, function () {
+      that.onBluetoothDisconnect();
     });
   },
 
@@ -348,6 +357,18 @@ Page({
       that.onBluetoothMeasure(distanceInMeters);
     }, function (isConnected) {
       that.setData({ bleConnected: isConnected });
+    }, function () {
+      that.onBluetoothDisconnect();
+    });
+  },
+
+  onBluetoothDisconnect: function () {
+    this.setData({ bleConnected: false });
+    wx.showModal({
+      title: '蓝牙断开',
+      content: '与测距仪的蓝牙连接已断开，请检查设备是否正常并尝试重新连接。',
+      showCancel: false,
+      confirmText: '我知道了'
     });
   },
 
@@ -671,8 +692,9 @@ Page({
         wx.showToast({ title: '层高 ' + distanceInMeters + 'm ✓', icon: 'success' });
 
         this.pushToHistory(newRooms, {
-          guidedEdgeIndex: 0, // 进入第0边（即第一条边）测量
-          showMeasurePrompt: true // 继续提示测量边
+          guidedEdgeIndex: 0, 
+          lastMeasuredDirection: '', // 层高测完，第一条边无方向限制
+          showMeasurePrompt: true 
         });
 
         this.openLaser();
@@ -693,14 +715,14 @@ Page({
       var newPt = { x: lastPt.x + dx, y: lastPt.y + dy };
       var newMeasurePoints = pts.concat([newPt]);
 
-      // 归一化多边形：平移到 (0,0) 起点
+      // 归一化多边形
       var utilLib = require('../../utils/util.js');
       var bbox = utilLib.polygonBoundingBox(newMeasurePoints);
       var normalized = newMeasurePoints.map(function (p) {
         return { x: p.x - bbox.minX, y: p.y - bbox.minY };
       });
 
-      var newEdgeIndex = newMeasurePoints.length - 1; // 已完成的边数
+      var newEdgeIndex = newMeasurePoints.length - 1; 
       var canFinish = newEdgeIndex >= 2;
 
       var newRooms = this.data.rooms.map(function (r) {
@@ -717,13 +739,19 @@ Page({
 
       wx.showToast({ title: '第' + newEdgeIndex + '边 ' + distanceInMeters + 'm ✓', icon: 'success' });
 
+      // 核心改动：记录方向并推入历史
       this.pushToHistory(newRooms, {
         measurePoints: newMeasurePoints,
         guidedEdgeIndex: newEdgeIndex,
         canFinishPolygon: canFinish,
-        pendingDirection: '',
-        showMeasurePrompt: false
+        lastMeasuredDirection: direction, // 记录本次成功的方向
+        pendingDirection: ''
       });
+
+      // 使用 setTimeout 确保 showMeasurePrompt 的切换能触发组件重新渲染/观察
+      setTimeout(() => {
+        this.setData({ showMeasurePrompt: true });
+      }, 100);
 
       setTimeout(function () {
         var canvas = this.selectComponent('#floorCanvas');
@@ -803,7 +831,8 @@ Page({
       selectedIds: [roomId],
       measurePoints: [],
       canFinishPolygon: false,
-      pendingDirection: ''
+      pendingDirection: '',
+      lastMeasuredDirection: '' // 结束引导，重置方向
     });
 
     setTimeout(function () {
