@@ -34,7 +34,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ openid: 
     const body = await req.json();
     
     // Safety check - don't allow modifying sensitive fields like role here unless authorized 
-    // (For real apps, add JWT middleware)
+    // (For real apps, add JWT proxy)
     delete body.role; 
 
     const isObjectId = mongoose.Types.ObjectId.isValid(openid);
