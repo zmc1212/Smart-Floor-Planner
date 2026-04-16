@@ -38,7 +38,6 @@ const ROLE_COLORS: Record<string, string> = {
 const ALL_MENUS = [
   { key: 'dashboard', label: '总览' },
   { key: 'floorplans', label: '户型图' },
-  { key: 'records', label: '测量记录' },
   { key: 'users', label: '用户列表' },
   { key: 'devices', label: '设备管理' },
   { key: 'admins', label: '管理员管理' },

@@ -29,6 +29,7 @@ export default async function UsersPage() {
             <thead>
               <tr className="bg-[#fafafa] border-b border-[rgba(0,0,0,0.08)]">
                 <th className="p-4 text-[14px] font-semibold text-[#171717]">用户</th>
+                <th className="p-4 text-[14px] font-semibold text-[#171717]">手机号</th>
                 <th className="p-4 text-[14px] font-semibold text-[#171717]">OpenID</th>
                 <th className="p-4 text-[14px] font-semibold text-[#171717]">小区名称</th>
                 <th className="p-4 text-[14px] font-semibold text-[#171717]">户型图数量</th>
@@ -52,6 +53,7 @@ export default async function UsersPage() {
                         <span className="text-[14px] font-medium text-[#171717]">{user.nickname || '未命名用户'}</span>
                       </div>
                     </td>
+                    <td className="p-4 text-[13px] text-[#666]">{user.phone || '-'}</td>
                     <td className="p-4 text-[13px] text-[#666] font-mono">{user.openid}</td>
                     <td className="p-4 text-[13px] text-[#666]">{user.communityName || '-'}</td>
                     <td className="p-4 text-[13px] text-[#666]">{userPlansCount} 份</td>
@@ -63,7 +65,7 @@ export default async function UsersPage() {
               })}
               {users.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-[#666] text-[14px]">
+                  <td colSpan={6} className="p-8 text-center text-[#666] text-[14px]">
                     暂无注册用户
                   </td>
                 </tr>

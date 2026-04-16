@@ -8,6 +8,7 @@ export interface IUser extends Document {
   nickname?: string;
   avatar?: string; // Storing as base64 or URL
   communityName?: string;
+  phone?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -42,6 +43,10 @@ const UserSchema: Schema<IUser> = new Schema(
       type: String, // Large strings allowed for base64
     },
     communityName: {
+      type: String,
+      trim: true,
+    },
+    phone: {
       type: String,
       trim: true,
     },

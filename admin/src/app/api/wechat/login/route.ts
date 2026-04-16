@@ -54,6 +54,7 @@ export async function POST(req: Request) {
         nickname: user.nickname || '',
         avatar: user.avatar || '',
         communityName: user.communityName || '',
+        phone: user.phone || '',
       }
     });
 

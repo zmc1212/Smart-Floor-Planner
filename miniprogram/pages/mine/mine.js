@@ -3,33 +3,77 @@ const api = require('../../utils/api.js');
 
 Page({
   data: {
+    isLoggedIn: false,
     userInfo: {
       nickname: '',
       avatar: '',
-      communityName: ''
+      communityName: '',
+      phone: ''
     },
+    floorPlans: [],
     defaultAvatarUrl: 'https://mmbiz.qpic.cn/mmbiz/icTdbqWNOwNRna42FI242Lcia07jQodd2FJGIYQfG0LAJGFxM4FbnQP6yfMxBgJ0F3YRqJCJ1aPAK2dQagdusBZg/0'
   },
 
   onShow() {
-    this.setData({ floorPlans: [] });
-    // If user info is already loaded into globalData, display it.
-    if (app.globalData.userInfo) {
+    // Check if already logged in
+    if (app.globalData.openid && app.globalData.userInfo) {
       this.setData({
-        userInfo: app.globalData.userInfo
+        isLoggedIn: true,
+        userInfo: app.globalData.userInfo,
+        floorPlans: []
       });
       this.fetchMyFloorPlans(app.globalData.openid);
     } else {
-      // Sometimes globalData isn't populated fast enough, wait and poll or just use default.
-      setTimeout(() => {
-        if (app.globalData.userInfo) {
-          this.setData({ userInfo: app.globalData.userInfo });
-          this.fetchMyFloorPlans(app.globalData.openid);
-        }
-      }, 1000);
+      this.setData({
+        isLoggedIn: false,
+        floorPlans: []
+      });
     }
   },
 
+  // ---- Phone number quick login ----
+  async onGetPhoneNumber(e) {
+    if (e.detail.errMsg !== "getPhoneNumber:ok") {
+      wx.showToast({ title: '已取消授权', icon: 'none' });
+      return;
+    }
+
+    const phoneCode = e.detail.code;
+    if (!phoneCode) {
+      wx.showToast({ title: '获取手机号失败', icon: 'none' });
+      return;
+    }
+
+    wx.showLoading({ title: '登录中' });
+    try {
+      const res = await api.phoneLogin(phoneCode);
+      wx.hideLoading();
+
+      if (res.success && res.openid) {
+        // Save to globalData
+        app.globalData.openid = res.openid;
+        app.globalData.userInfo = res.user;
+
+        this.setData({
+          isLoggedIn: true,
+          userInfo: res.user
+        });
+
+        wx.showToast({ title: '登录成功', icon: 'success' });
+
+        // Load floor plans
+        this.fetchMyFloorPlans(res.openid);
+      } else {
+        throw new Error(res.error || '登录失败');
+      }
+    } catch (err) {
+      wx.hideLoading();
+      console.error('Phone login failed:', err);
+      wx.showToast({ title: err.error || '登录失败', icon: 'none' });
+    }
+  },
+
+  // ---- Floor plans ----
   async fetchMyFloorPlans(openid) {
     if (!openid) return;
     try {
@@ -57,9 +101,9 @@ Page({
     }
   },
 
+  // ---- Profile editing ----
   onChooseAvatar(e) {
     const { avatarUrl } = e.detail;
-    // We need to convert it to base64 to store in MongoDB directly
     wx.getFileSystemManager().readFile({
       filePath: avatarUrl,
       encoding: 'base64',
@@ -113,5 +157,25 @@ Page({
       console.error(err);
       wx.showToast({ title: '保存失败', icon: 'none' });
     }
+  },
+
+  // ---- Logout ----
+  onLogout() {
+    wx.showModal({
+      title: '退出登录',
+      content: '确定要退出登录吗？',
+      success: (res) => {
+        if (res.confirm) {
+          app.globalData.openid = null;
+          app.globalData.userInfo = null;
+          this.setData({
+            isLoggedIn: false,
+            userInfo: { nickname: '', avatar: '', communityName: '', phone: '' },
+            floorPlans: []
+          });
+          wx.showToast({ title: '已退出', icon: 'success' });
+        }
+      }
+    });
   }
 });

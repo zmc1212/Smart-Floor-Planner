@@ -6,25 +6,34 @@ import dbConnect from '@/lib/mongodb';
 import { AdminUser, DEFAULT_PERMISSIONS } from '@/models/AdminUser';
 
 export async function POST(request: Request) {
-  await dbConnect();
   try {
+    console.log("Login route hit, connecting to DB...");
+    await dbConnect();
+    console.log("DB connection successful in login route.");
+    
     const body = await request.json();
     const { username, password } = body;
 
     if (!username || !password) {
+      console.log("Login failed: missing username or password");
       return NextResponse.json({ success: false, error: '请输入用户名和密码' }, { status: 400 });
     }
 
+    console.log(`Looking up user: ${username}`);
     const admin = await AdminUser.findOne({ username: username.trim(), status: 'active' });
     if (!admin) {
+      console.log(`Login failed: user ${username} not found or inactive`);
       return NextResponse.json({ success: false, error: '用户名或密码错误' }, { status: 401 });
     }
 
+    console.log(`User found. Checking password...`);
     const isMatch = await bcrypt.compare(password, admin.passwordHash);
     if (!isMatch) {
+      console.log(`Login failed: password mismatch for user ${username}`);
       return NextResponse.json({ success: false, error: '用户名或密码错误' }, { status: 401 });
     }
 
+    console.log(`Password match. Generating JWT...`);
     // Calculate effective permissions
     const effectivePermissions = 
       admin.menuPermissions && admin.menuPermissions.length > 0
@@ -64,9 +73,11 @@ export async function POST(request: Request) {
       maxAge: 60 * 60 * 24, // 24 hours
       path: '/',
     });
-
+    
+    console.log(`Login successful for user ${username}`);
     return response;
   } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    console.error("Login API Error:", error);
+    return NextResponse.json({ success: false, error: `服务器内部错误: ${error.message}` }, { status: 500 });
   }
 }

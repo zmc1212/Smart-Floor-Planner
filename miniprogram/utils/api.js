@@ -1,4 +1,4 @@
-const BASE_URL = 'http://192.168.10.62:3000/api';
+const BASE_URL = 'http://192.168.10.62:3002/api';
 
 /**
  * Enhanced request method
@@ -27,22 +27,28 @@ function request(url, method = 'GET', data = {}) {
 }
 
 /**
- * Handle WeChat login & get openid
+ * Phone number quick login.
+ * 1. Call wx.login() to get loginCode (for openid)
+ * 2. Send loginCode + phoneCode to backend
+ * 3. Backend returns openid + user info
  */
-function wechatLogin() {
+function phoneLogin(phoneCode) {
   return new Promise((resolve, reject) => {
     wx.login({
-      success: async (res) => {
-        if (res.code) {
+      success: async (loginRes) => {
+        if (loginRes.code) {
           try {
-            const loginRes = await request('/wechat/login', 'POST', { code: res.code });
-            resolve(loginRes);
+            const result = await request('/wechat/phone', 'POST', {
+              loginCode: loginRes.code,
+              phoneCode: phoneCode
+            });
+            resolve(result);
           } catch (err) {
-            console.error('Backend login failed:', err);
+            console.error('Phone login backend call failed:', err);
             reject(err);
           }
         } else {
-          reject(new Error('wx.login failed: ' + res.errMsg));
+          reject(new Error('wx.login failed: ' + loginRes.errMsg));
         }
       },
       fail: reject
@@ -52,5 +58,5 @@ function wechatLogin() {
 
 module.exports = {
   request,
-  wechatLogin
+  phoneLogin
 };

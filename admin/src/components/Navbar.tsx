@@ -41,7 +41,6 @@ export default function Navbar() {
   const menuItems = [
     { key: 'dashboard', label: '总览', href: '/' },
     { key: 'floorplans', label: '户型图', href: '/floorplans' },
-    { key: 'records', label: '测量记录', href: '/records' },
     { key: 'users', label: '用户列表', href: '/users' },
     { key: 'devices', label: '设备管理', href: '/devices' },
     { key: 'admins', label: '管理员', href: '/admins' },

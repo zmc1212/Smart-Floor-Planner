@@ -22,7 +22,6 @@ export const ROLE_LABELS: Record<string, string> = {
 export const ALL_MENUS = [
   { key: 'dashboard', label: '总览' },
   { key: 'floorplans', label: '户型图' },
-  { key: 'records', label: '测量记录' },
   { key: 'users', label: '用户列表' },
   { key: 'devices', label: '设备管理' },
   { key: 'admins', label: '管理员管理' },
@@ -30,7 +29,7 @@ export const ALL_MENUS = [
 
 export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   super_admin: ALL_MENUS.map(m => m.key),
-  admin: ['dashboard', 'floorplans', 'records', 'users', 'devices'],
+  admin: ['dashboard', 'floorplans', 'users', 'devices'],
   viewer: ['dashboard', 'floorplans'],
 };
 

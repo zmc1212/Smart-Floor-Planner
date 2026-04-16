@@ -4,6 +4,64 @@
   min-height: 100vh;
 }
 
+/* ===== Login Section ===== */
+.login-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-top: 200rpx;
+}
+
+.login-icon {
+  width: 180rpx;
+  height: 180rpx;
+  border-radius: 90rpx;
+  background-color: #ebebeb;
+  overflow: hidden;
+  margin-bottom: 40rpx;
+}
+
+.login-logo {
+  width: 180rpx;
+  height: 180rpx;
+}
+
+.login-title {
+  font-size: 40rpx;
+  font-weight: 600;
+  color: #171717;
+  margin-bottom: 16rpx;
+}
+
+.login-subtitle {
+  font-size: 26rpx;
+  color: #999;
+  margin-bottom: 80rpx;
+  text-align: center;
+  padding: 0 60rpx;
+}
+
+.login-btn {
+  width: 80% !important;
+  background-color: #10b981;
+  color: #ffffff;
+  border-radius: 12rpx;
+  font-size: 32rpx;
+  font-weight: 500;
+  padding: 24rpx 0;
+  border: none;
+}
+
+.login-btn::after {
+  border: none;
+}
+
+.login-btn:active {
+  opacity: 0.85;
+}
+
+/* ===== Profile Header ===== */
 .header {
   display: flex;
   justify-content: center;
@@ -46,6 +104,7 @@
   border: 2rpx solid #fff;
 }
 
+/* ===== Form ===== */
 .form-group {
   background-color: #ffffff;
   border-radius: 16rpx;
@@ -76,6 +135,12 @@
   color: #171717;
 }
 
+.phone-display {
+  color: #10b981;
+  font-weight: 500;
+}
+
+/* ===== Actions ===== */
 .action-area {
   margin-top: 80rpx;
 }
@@ -93,6 +158,24 @@
   opacity: 0.8;
 }
 
+.logout-btn {
+  margin-top: 24rpx;
+  background-color: transparent;
+  color: #999;
+  border-radius: 12rpx;
+  font-size: 28rpx;
+  padding: 16rpx 0;
+}
+
+.logout-btn::after {
+  border: none;
+}
+
+.logout-btn:active {
+  color: #e53e3e;
+}
+
+/* ===== Floor Plans ===== */
 .floorplan-group {
   margin-top: 60rpx;
   background-color: #ffffff;

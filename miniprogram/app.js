@@ -1,5 +1,3 @@
-const api = require('./utils/api.js');
-
 App({
   globalData: {
     aiConfig: {
@@ -13,16 +11,6 @@ App({
   },
   onLaunch() {
     console.log('智能量房大师小程序启动');
-    this.login();
-  },
-  async login() {
-    try {
-      const res = await api.wechatLogin();
-      this.globalData.openid = res.openid;
-      this.globalData.userInfo = res.user;
-      console.log('Login success, openid:', res.openid);
-    } catch (err) {
-      console.error('Failed to log in:', err);
-    }
+    // No longer auto-login; user must login via phone number on "我的" page
   }
 });
