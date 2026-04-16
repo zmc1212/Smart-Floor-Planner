@@ -689,7 +689,12 @@ Page({
     // 处理测量失败
     if (distanceInMeters === null || distanceInMeters <= 0) {
       wx.showToast({ title: '测量失败，请重试', icon: 'none', duration: 2000 });
-      if (isGuided) { this.setData({ showMeasurePrompt: true }); this.openLaser(); }
+      if (isGuided) { 
+        this.setData({ showMeasurePrompt: true }); 
+        setTimeout(() => {
+          this.openLaser(); 
+        }, 800);
+      }
       return;
     }
 
@@ -713,7 +718,9 @@ Page({
           showMeasurePrompt: true 
         });
 
-        this.openLaser();
+        setTimeout(() => {
+          this.openLaser();
+        }, 800);
         return;
       }
 
@@ -767,8 +774,12 @@ Page({
       // 使用 setTimeout 确保 showMeasurePrompt 的切换能触发组件重新渲染/观察
       setTimeout(() => {
         this.setData({ showMeasurePrompt: true });
-        this.openLaser(); // 修复：自动弹出下一条边引导时，同步开启激光辅助
       }, 100);
+
+      // 测距仪刚返回数据，硬件可能处于忙碌状态，延迟 800ms 发送 ATK001 打开激光
+      setTimeout(() => {
+        this.openLaser();
+      }, 800);
 
       setTimeout(function () {
         var canvas = this.selectComponent('#floorCanvas');

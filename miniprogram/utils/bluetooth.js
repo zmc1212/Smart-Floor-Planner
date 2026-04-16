@@ -377,11 +377,23 @@ function handleDisconnect(reason) {
   }
 }
 
+var _lastCmdTime = 0;
+var _lastCmdStr = '';
+
 function sendBLECommand(cmd) {
   if (!_deviceId || _writeCharacteristics.length === 0) {
     console.error('蓝牙未连接或未发现写入特征值');
     return;
   }
+
+  // JS层面的防抖：防止短时间内某些回调导致重复发同一条指令
+  var now = Date.now();
+  if (cmd === _lastCmdStr && now - _lastCmdTime < 500) {
+    console.log('阻止极短时间内重复发送相同的指令:', cmd);
+    return;
+  }
+  _lastCmdTime = now;
+  _lastCmdStr = cmd;
 
   var buffer = new ArrayBuffer(cmd.length);
   var dataView = new DataView(buffer);
@@ -389,8 +401,19 @@ function sendBLECommand(cmd) {
     dataView.setUint8(i, cmd.charCodeAt(i));
   }
 
-  // 广播指令到所有可写通道
-  _writeCharacteristics.forEach(function (channel) {
+  // 通道去重：防止某些BLE模块被微信重复枚举了相同的 UUID
+  var uniqueChannels = [];
+  var seenUuids = {};
+  for (var j = 0; j < _writeCharacteristics.length; j++) {
+    var cId = _writeCharacteristics[j].characteristicId;
+    if (!seenUuids[cId]) {
+      seenUuids[cId] = true;
+      uniqueChannels.push(_writeCharacteristics[j]);
+    }
+  }
+
+  // 广播指令到所有不重复的可写通道
+  uniqueChannels.forEach(function (channel) {
     wx.writeBLECharacteristicValue({
       deviceId: _deviceId,
       serviceId: channel.serviceId,
@@ -401,7 +424,7 @@ function sendBLECommand(cmd) {
         // console.log('成功下发指令到:', channel.characteristicId.substring(4, 8), '内容:', cmd);
       },
       fail: function (err) {
-        // console.log('下发失败 (通道:', channel.characteristicId.substring(4, 8) + '):', err.errMsg);
+        // console.log('下发失败:', err.errMsg);
       }
     });
   });

@@ -39,7 +39,8 @@ Component({
     // 浮动菜单
     menuPos: null,
     // 测量提示闪烁状态
-    isBlinkOn: false
+    isBlinkOn: false,
+    animTick: 0
   },
 
   lifetimes: {
@@ -59,10 +60,15 @@ Component({
         }
       }).exec();
 
-      // 闪烁定时器
+      // 闪烁与动画定时器 (50ms 保证呼吸灯平滑)
       this._blinkTimer = setInterval(function () {
-        that.setData({ isBlinkOn: !that.data.isBlinkOn });
-      }, 600);
+        var now = Date.now();
+        var isBlinkOn = Math.floor(now / 500) % 2 === 0;
+        that.setData({ 
+          isBlinkOn: isBlinkOn,
+          animTick: now
+        });
+      }, 50);
     },
     detached: function () {
       if (this._blinkTimer) {
@@ -268,12 +274,20 @@ Component({
 
         // 如果只有一个点（刚测完层高，准备测第一条边）
         if (poly.length === 1 && isGuidedActive) {
+          var t = this.data.animTick || Date.now();
+          var breathing = 0.5 + 0.5 * Math.sin(t / 300); // 呼吸周期约1.8秒
+          
           ctx.beginPath();
-          ctx.arc(room.x + poly[0].x, room.y + poly[0].y, 4, 0, Math.PI * 2);
-          ctx.fillStyle = this.data.isBlinkOn ? '#10b981' : '#3b82f6';
+          ctx.arc(room.x + poly[0].x, room.y + poly[0].y, 4 + 2 * breathing, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(16, 185, 129, ' + (0.4 + 0.6 * breathing) + ')'; // 绿色呼吸灯
           ctx.fill();
           
-          this.drawNextDirectionHint(ctx, room.x + poly[0].x, room.y + poly[0].y, this.properties.pendingDirection || 'E');
+          // 呼吸外圈
+          ctx.beginPath();
+          ctx.arc(room.x + poly[0].x, room.y + poly[0].y, 8 + 4 * breathing, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(59, 130, 246, ' + (0.2 * breathing) + ')';
+          ctx.lineWidth = 2;
+          ctx.stroke();
         }
 
         // 2. 绘制普通边框 (除了最新的一条不绘制，如果是引导模式)
@@ -302,17 +316,16 @@ Component({
             
             if (this.data.isBlinkOn) {
               ctx.strokeStyle = '#10b981'; // 绿色高亮
-              ctx.lineWidth = 5;
+              ctx.lineWidth = 6;
             } else {
-              ctx.strokeStyle = '#3b82f6'; // 默认选中色
-              ctx.lineWidth = 3;
+              ctx.strokeStyle = '#3b82f6'; // 蓝色
+              ctx.lineWidth = 4;
             }
             ctx.stroke();
 
             // 4. 绘制下一条边的可能方向箭头
-            // 这里如果是第一个边刚完成，可能lastMeasuredDirection有效，或者pendingDirection
             var hintDir = this.properties.lastMeasuredDirection;
-            if (!hintDir && poly.length === 2) hintDir = 'E'; // fallback
+            // 如果刚测完第一条边，lastMeasuredDirection 会被设为该边方向
             this.drawNextDirectionHint(ctx, room.x + pB.x, room.y + pB.y, hintDir);
           }
 

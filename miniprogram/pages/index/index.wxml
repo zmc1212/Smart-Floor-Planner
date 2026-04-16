@@ -70,7 +70,7 @@
           currentRoomType="{{currentRoomType}}"
           selectedIds="{{selectedIds}}"
           highlightedOpeningId="{{highlightedOpeningId}}"
-          guidedMode="{{isGuided}}"
+          guidedMode="{{guidedMode}}"
           guidedEdgeIndex="{{guidedEdgeIndex}}"
           lastMeasuredDirection="{{lastMeasuredDirection}}"
           pendingDirection="{{pendingDirection}}"
