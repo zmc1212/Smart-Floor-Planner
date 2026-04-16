@@ -10,7 +10,12 @@ Component({
     selectedIds: { type: Array, value: [] },
     currentRoomType: { type: String, value: '客厅' },
     highlightedOpeningId: { type: String, value: '' },
-    selectedEdge: { type: String, value: '' }
+    selectedEdge: { type: String, value: '' },
+    guidedMode: { type: Boolean, value: false },
+    guidedEdgeIndex: { type: Number, value: -1 },
+    lastMeasuredDirection: { type: String, value: '' },
+    pendingDirection: { type: String, value: '' },
+    measurePoints: { type: Array, value: [] }
   },
 
   data: {
@@ -32,7 +37,9 @@ Component({
     dragDx: 0,
     dragDy: 0,
     // 浮动菜单
-    menuPos: null
+    menuPos: null,
+    // 测量提示闪烁状态
+    isBlinkOn: false
   },
 
   lifetimes: {
@@ -51,11 +58,21 @@ Component({
           });
         }
       }).exec();
+
+      // 闪烁定时器
+      this._blinkTimer = setInterval(function () {
+        that.setData({ isBlinkOn: !that.data.isBlinkOn });
+      }, 600);
+    },
+    detached: function () {
+      if (this._blinkTimer) {
+        clearInterval(this._blinkTimer);
+      }
     }
   },
 
   observers: {
-    'rooms, selectedIds, highlightedOpeningId, selectedEdge, scale, offsetX, offsetY': function () {
+    'rooms, selectedIds, highlightedOpeningId, selectedEdge, scale, offsetX, offsetY, guidedMode, measurePoints, lastMeasuredDirection, pendingDirection, isBlinkOn': function () {
       this.drawCanvas();
       this.updateMenuPos();
     }
@@ -227,39 +244,89 @@ Component({
 
     drawRoom: function (ctx, room, selectedIds, highlightedOpeningId) {
       var isSelected = selectedIds.indexOf(room.id) !== -1;
-      var hasPolygon = room.polygon && room.polygon.length >= 3;
+      var hasPolygon = room.polygon && room.polygon.length >= 1;
 
       ctx.save();
 
       if (hasPolygon) {
         // ── 多边形路径绘制 ──
         var poly = room.polygon;
-        ctx.beginPath();
-        ctx.moveTo(room.x + poly[0].x, room.y + poly[0].y);
-        for (var pi = 1; pi < poly.length; pi++) {
-          ctx.lineTo(room.x + poly[pi].x, room.y + poly[pi].y);
-        }
-        ctx.closePath();
-
-        // 填充
-        ctx.fillStyle = room.color || 'rgba(255,255,255,0.8)';
-        ctx.fill();
-
-        // 边框
-        ctx.strokeStyle = isSelected ? '#3b82f6' : '#141414';
-        ctx.lineWidth = isSelected ? 3 : 2;
-        ctx.stroke();
-
-        // 未闭合时绘制最后一段为虚线预览
-        if (!room.polygonClosed && poly.length >= 2) {
+        
+        // 1. 填充多边形 (仅当顶点>=3时有意义)
+        if (poly.length >= 3) {
           ctx.beginPath();
-          ctx.setLineDash([4, 4]);
-          ctx.strokeStyle = '#f59e0b';
-          ctx.lineWidth = 2;
-          ctx.moveTo(room.x + poly[poly.length - 1].x, room.y + poly[poly.length - 1].y);
-          ctx.lineTo(room.x + poly[0].x, room.y + poly[0].y);
+          ctx.moveTo(room.x + poly[0].x, room.y + poly[0].y);
+          for (var pi = 1; pi < poly.length; pi++) {
+            ctx.lineTo(room.x + poly[pi].x, room.y + poly[pi].y);
+          }
+          if (room.polygonClosed) ctx.closePath();
+          ctx.fillStyle = room.color || 'rgba(255,255,255,0.8)';
+          ctx.fill();
+        }
+
+        var isGuidedActive = this.properties.guidedMode && !room.polygonClosed && isSelected;
+
+        // 如果只有一个点（刚测完层高，准备测第一条边）
+        if (poly.length === 1 && isGuidedActive) {
+          ctx.beginPath();
+          ctx.arc(room.x + poly[0].x, room.y + poly[0].y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = this.data.isBlinkOn ? '#10b981' : '#3b82f6';
+          ctx.fill();
+          
+          this.drawNextDirectionHint(ctx, room.x + poly[0].x, room.y + poly[0].y, this.properties.pendingDirection || 'E');
+        }
+
+        // 2. 绘制普通边框 (除了最新的一条不绘制，如果是引导模式)
+        if (poly.length >= 2) {
+          var normalEdgesEnd = isGuidedActive ? poly.length - 2 : poly.length - 1;
+          if (normalEdgesEnd < 0) normalEdgesEnd = 0;
+          
+          ctx.beginPath();
+          ctx.moveTo(room.x + poly[0].x, room.y + poly[0].y);
+          for (var pi = 1; pi <= normalEdgesEnd; pi++) {
+            ctx.lineTo(room.x + poly[pi].x, room.y + poly[pi].y);
+          }
+          if (room.polygonClosed && poly.length >= 3) ctx.closePath();
+          
+          ctx.strokeStyle = isSelected ? '#3b82f6' : '#141414';
+          ctx.lineWidth = isSelected ? 3 : 2;
           ctx.stroke();
-          ctx.setLineDash([]);
+
+          // 3. 绘制最新一条边（如果还在测量中，则闪烁）
+          if (isGuidedActive) {
+            var pA = poly[poly.length - 2];
+            var pB = poly[poly.length - 1];
+            ctx.beginPath();
+            ctx.moveTo(room.x + pA.x, room.y + pA.y);
+            ctx.lineTo(room.x + pB.x, room.y + pB.y);
+            
+            if (this.data.isBlinkOn) {
+              ctx.strokeStyle = '#10b981'; // 绿色高亮
+              ctx.lineWidth = 5;
+            } else {
+              ctx.strokeStyle = '#3b82f6'; // 默认选中色
+              ctx.lineWidth = 3;
+            }
+            ctx.stroke();
+
+            // 4. 绘制下一条边的可能方向箭头
+            // 这里如果是第一个边刚完成，可能lastMeasuredDirection有效，或者pendingDirection
+            var hintDir = this.properties.lastMeasuredDirection;
+            if (!hintDir && poly.length === 2) hintDir = 'E'; // fallback
+            this.drawNextDirectionHint(ctx, room.x + pB.x, room.y + pB.y, hintDir);
+          }
+
+          // 5. 未闭合时绘制最后一段回到起点的连线为虚线预览
+          if (!room.polygonClosed) {
+            ctx.beginPath();
+            ctx.setLineDash([8, 8]);
+            ctx.strokeStyle = '#f59e0b';
+            ctx.lineWidth = 2;
+            ctx.moveTo(room.x + poly[poly.length - 1].x, room.y + poly[poly.length - 1].y);
+            ctx.lineTo(room.x + poly[0].x, room.y + poly[0].y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
         }
       } else {
         // ── 矩形回退（向后兼容）──
@@ -741,6 +808,58 @@ Component({
         this.triggerEvent('change', { rooms: newRooms });
         this.triggerEvent('unselect');
       }
+    },
+
+    drawNextDirectionHint: function(ctx, x, y, lastDir) {
+      if (!lastDir) return;
+      var arrowLen = 30; // 相对于画布的缩放，实际上可以视作物理坐标
+      var dirs = [];
+      
+      if (lastDir === 'E' || lastDir === 'W') {
+        dirs = [{ dx: 0, dy: arrowLen, label: '南' }, { dx: 0, dy: -arrowLen, label: '北' }];
+      } else if (lastDir === 'S' || lastDir === 'N') {
+        dirs = [{ dx: arrowLen, dy: 0, label: '东' }, { dx: -arrowLen, dy: 0, label: '西' }];
+      }
+
+      ctx.save();
+      if (this.data.isBlinkOn) {
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.9)'; // 红色高亮箭头
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.9)';
+      } else {
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.4)';
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+      }
+      
+      ctx.lineWidth = 2;
+      // 在 Canvas Transform 缩放下，文字不要被缩放那么小，我们反算一个字号
+      var scale = this.data.scale || 1;
+      var fontSize = 12 / scale;
+      ctx.font = 'bold ' + fontSize + 'px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      
+      for (var i = 0; i < dirs.length; i++) {
+        var d = dirs[i];
+        
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + d.dx, y + d.dy);
+        ctx.stroke();
+        
+        // 箭头头部
+        var headLen = 6 / scale;
+        var angle = Math.atan2(d.dy, d.dx);
+        ctx.beginPath();
+        ctx.moveTo(x + d.dx, y + d.dy);
+        ctx.lineTo(x + d.dx - headLen * Math.cos(angle - Math.PI / 6), y + d.dy - headLen * Math.sin(angle - Math.PI / 6));
+        ctx.lineTo(x + d.dx - headLen * Math.cos(angle + Math.PI / 6), y + d.dy - headLen * Math.sin(angle + Math.PI / 6));
+        ctx.lineTo(x + d.dx, y + d.dy);
+        ctx.fill();
+        
+        var textOffset = 16 / scale;
+        ctx.fillText(d.label, x + d.dx + Math.cos(angle) * textOffset, y + d.dy + Math.sin(angle) * textOffset);
+      }
+      ctx.restore();
     },
 
     updateMenuPos: function () {

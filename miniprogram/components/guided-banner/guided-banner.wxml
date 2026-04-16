@@ -8,9 +8,9 @@
   </view>
 
   <view class="wizard-actions">
-    <view class="wizard-btn-action btn-ghost" bindtap="onAddEdge">+ 添加边</view>
+    <view class="wizard-btn-action btn-ghost" wx:if="{{bleConnected}}" bindtap="onAddEdge">+ 添加边</view>
     <view class="wizard-btn-finish" wx:if="{{canFinish}}" bindtap="onFinishPolygon">✅ 完成轮廓</view>
-    <view class="wizard-btn-action btn-ghost" style="font-size:20rpx;" bindtap="onStartRemeasure">重测</view>
+    <view class="wizard-btn-action btn-ghost" wx:if="{{bleConnected}}" style="font-size:20rpx;" bindtap="onStartRemeasure">重测</view>
   </view>
 </view>
 
@@ -19,6 +19,6 @@
   <view class="wizard-text">✨ 测绘完成！可点击下方工具添加门窗</view>
   <view class="wizard-actions">
     <view class="wizard-btn-finish" bindtap="onExitToLibrary">完成提交</view>
-    <view class="wizard-btn-action btn-ghost" style="font-size:20rpx;" bindtap="onStartRemeasure">重新测量</view>
+    <view class="wizard-btn-action btn-ghost" wx:if="{{bleConnected}}" style="font-size:20rpx;" bindtap="onStartRemeasure">重新测量</view>
   </view>
 </view>

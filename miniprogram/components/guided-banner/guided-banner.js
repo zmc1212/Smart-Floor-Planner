@@ -6,7 +6,8 @@ Component({
     guidedMode: { type: Boolean, value: false },
     currentGuidedRoomName: { type: String, value: '' },
     guidedEdgeIndex: { type: Number, value: 0 },
-    canFinish: { type: Boolean, value: false }
+    canFinish: { type: Boolean, value: false },
+    bleConnected: { type: Boolean, value: false }
   },
   methods: {
     onExitGuide() { this.triggerEvent('exitguide'); },

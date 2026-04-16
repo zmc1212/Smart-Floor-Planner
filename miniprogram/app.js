@@ -11,6 +11,13 @@ App({
   },
   onLaunch() {
     console.log('智能量房大师小程序启动');
-    // No longer auto-login; user must login via phone number on "我的" page
+    // Restore session from storage
+    const openid = wx.getStorageSync('openid');
+    const userInfo = wx.getStorageSync('userInfo');
+    if (openid && userInfo) {
+      this.globalData.openid = openid;
+      this.globalData.userInfo = userInfo;
+      console.log('会话已恢复:', openid);
+    }
   }
 });

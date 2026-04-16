@@ -54,6 +54,10 @@ Page({
         app.globalData.openid = res.openid;
         app.globalData.userInfo = res.user;
 
+        // Save to storage for persistence
+        wx.setStorageSync('openid', res.openid);
+        wx.setStorageSync('userInfo', res.user);
+
         this.setData({
           isLoggedIn: true,
           userInfo: res.user
@@ -151,6 +155,8 @@ Page({
       
       // Update global Data
       app.globalData.userInfo = this.data.userInfo;
+      // Update storage
+      wx.setStorageSync('userInfo', this.data.userInfo);
       
     } catch (err) {
       wx.hideLoading();
@@ -168,6 +174,10 @@ Page({
         if (res.confirm) {
           app.globalData.openid = null;
           app.globalData.userInfo = null;
+          // Clear storage
+          wx.removeStorageSync('openid');
+          wx.removeStorageSync('userInfo');
+
           this.setData({
             isLoggedIn: false,
             userInfo: { nickname: '', avatar: '', communityName: '', phone: '' },

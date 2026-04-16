@@ -13,17 +13,21 @@
   },
   "tabBar": {
     "color": "#999999",
-    "selectedColor": "#171717",
+    "selectedColor": "#1296db",
     "backgroundColor": "#ffffff",
     "borderStyle": "white",
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "量房"
+        "text": "量房",
+        "iconPath": "images/meaure0.png",
+        "selectedIconPath": "images/meaure1.png"
       },
       {
         "pagePath": "pages/mine/mine",
-        "text": "我的"
+        "text": "我的",
+        "iconPath": "images/mine0.png",
+        "selectedIconPath": "images/mine1.png"
       }
     ]
   },

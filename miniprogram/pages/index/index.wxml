@@ -15,7 +15,7 @@
   <view class="main-content">
     <!-- 2. 蓝牙强制连接引导页 -->
     <ble-gate 
-      wx:if="{{!bleConnected}}" 
+      wx:if="{{!bleConnected && viewMode === 'LIBRARY'}}" 
       bindautoconnect="onAutoConnectBLE"
       bindconnect="onConnectBLE"
     />
@@ -53,6 +53,7 @@
           currentGuidedRoomName="{{currentGuidedRoomName}}"
           guidedEdgeIndex="{{guidedEdgeIndex}}"
           canFinish="{{canFinishPolygon}}"
+          bleConnected="{{bleConnected}}"
           bindexitguide="onExitGuide"
           bindstartremeasure="onStartRemeasure"
           bindexittolibrary="onExitToLibrary"
@@ -69,6 +70,11 @@
           currentRoomType="{{currentRoomType}}"
           selectedIds="{{selectedIds}}"
           highlightedOpeningId="{{highlightedOpeningId}}"
+          guidedMode="{{isGuided}}"
+          guidedEdgeIndex="{{guidedEdgeIndex}}"
+          lastMeasuredDirection="{{lastMeasuredDirection}}"
+          pendingDirection="{{pendingDirection}}"
+          measurePoints="{{measurePoints}}"
           bindadd="onAddRoom"
           bindselect="onSelectRoom"
           bindunselect="onClearSelection"
