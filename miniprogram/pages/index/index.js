@@ -428,11 +428,17 @@ Page({
     renderer.setSize(width, height);
     this.threeRenderer = renderer;
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
     scene.add(ambientLight);
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
-    dirLight.position.set(10, 20, 10);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    dirLight.position.set(50, 100, 50);
+    dirLight.castShadow = true;
     scene.add(dirLight);
+
+    // Add Grid Helper for better spatial sense
+    const gridHelper = new THREE.GridHelper(2000, 100, 0xcccccc, 0xeeeeee);
+    gridHelper.position.y = -0.1;
+    scene.add(gridHelper);
 
     const container = new THREE.Group();
     this.threeContainer = container;
@@ -466,7 +472,12 @@ Page({
         shape.holes.push(hole);
       });
 
-      const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+      const mat = new THREE.MeshStandardMaterial({ 
+        color: 0xffffff, 
+        side: THREE.DoubleSide,
+        roughness: 0.7,
+        metalness: 0.1
+      });
       return new THREE.Mesh(new THREE.ShapeGeometry(shape), mat);
     };
 
@@ -492,9 +503,14 @@ Page({
 
         // Draw floor
         const floorGeo = new THREE.PlaneGeometry(rWidth, rHeight);
-        const floorMat = new THREE.MeshStandardMaterial({ color: 0xe0e0e0, side: THREE.DoubleSide });
+        const floorMat = new THREE.MeshStandardMaterial({ 
+          color: 0xf5f5f5, 
+          side: THREE.DoubleSide,
+          roughness: 0.8
+        });
         const floor = new THREE.Mesh(floorGeo, floorMat);
         floor.rotation.x = -Math.PI / 2;
+        floor.position.y = 0.05; // Slightly above grid
         roomGroup.add(floor);
 
         // Draw walls with openings
@@ -545,12 +561,34 @@ Page({
     this.orbit = {
       spherical: new THREE.Spherical().setFromVector3(camera.position),
       target: new THREE.Vector3(0, 0, 0),
+      lerpTarget: new THREE.Vector3(0, 0, 0),
+      lerpSpherical: new THREE.Spherical().setFromVector3(camera.position),
+      isLerping: false,
       THREE: THREE
     };
 
     const animate = function() {
       if (!that.data.is3DView) return; 
       canvas.requestAnimationFrame(animate);
+
+      // Smooth interpolation for camera
+      if (that.orbit.isLerping) {
+        const factor = 0.08;
+        that.orbit.spherical.theta += (that.orbit.lerpSpherical.theta - that.orbit.spherical.theta) * factor;
+        that.orbit.spherical.phi += (that.orbit.lerpSpherical.phi - that.orbit.spherical.phi) * factor;
+        that.orbit.spherical.radius += (that.orbit.lerpSpherical.radius - that.orbit.spherical.radius) * factor;
+        that.orbit.target.lerp(that.orbit.lerpTarget, factor);
+
+        if (Math.abs(that.orbit.spherical.theta - that.orbit.lerpSpherical.theta) < 0.001 &&
+            Math.abs(that.orbit.spherical.phi - that.orbit.lerpSpherical.phi) < 0.001 &&
+            that.orbit.target.distanceTo(that.orbit.lerpTarget) < 0.1) {
+          that.orbit.isLerping = false;
+        }
+        
+        camera.position.setFromSpherical(that.orbit.spherical).add(that.orbit.target);
+        camera.lookAt(that.orbit.target);
+      }
+
       renderer.render(scene, camera);
     };
     
@@ -648,21 +686,31 @@ Page({
     const view = e.currentTarget.dataset.view;
     let targetTheta = this.orbit.spherical.theta;
     let targetPhi = this.orbit.spherical.phi;
+    let targetRadius = this.orbit.spherical.radius;
+    let targetPos = new this.orbit.THREE.Vector3(0, 0, 0);
     
     if (view === 'default') { 
       targetTheta = 0; 
       targetPhi = Math.PI / 4; 
-      this.orbit.target.set(0,0,0);
+    } else if (view === 'top') { 
+      targetPhi = 0.01; 
+      targetTheta = 0;
+    } else if (view === 'front') { 
+      targetTheta = 0; 
+      targetPhi = Math.PI / 2.1; 
+    } else if (view === 'left') { 
+      targetTheta = Math.PI / 2; 
+      targetPhi = Math.PI / 2.1; 
+    } else if (view === 'right') { 
+      targetTheta = -Math.PI / 2; 
+      targetPhi = Math.PI / 2.1; 
     }
-    if (view === 'top') { targetPhi = 0.01; }
-    if (view === 'front') { targetTheta = 0; targetPhi = Math.PI / 2.1; }
-    if (view === 'left') { targetTheta = Math.PI / 2; targetPhi = Math.PI / 2.1; }
-    if (view === 'right') { targetTheta = -Math.PI / 2; targetPhi = Math.PI / 2.1; }
     
-    this.orbit.spherical.theta = targetTheta;
-    this.orbit.spherical.phi = targetPhi;
-    this.threeCamera.position.setFromSpherical(this.orbit.spherical).add(this.orbit.target);
-    this.threeCamera.lookAt(this.orbit.target);
+    this.orbit.lerpSpherical.theta = targetTheta;
+    this.orbit.lerpSpherical.phi = targetPhi;
+    this.orbit.lerpSpherical.radius = targetRadius;
+    this.orbit.lerpTarget.copy(targetPos);
+    this.orbit.isLerping = true;
   },
 
   onBluetoothMeasure: function (distanceInMeters) {

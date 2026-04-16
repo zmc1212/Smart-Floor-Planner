@@ -32,12 +32,13 @@ export async function POST(req: Request) {
   }
 }
 
-// Get all floor plans for an openid or general list
+// Get all floor plans or filtered list
 export async function GET(req: Request) {
   try {
     await dbConnect();
     const { searchParams } = new URL(req.url);
     const openid = searchParams.get('openid');
+    const search = searchParams.get('search');
 
     let query: any = {};
     if (openid) {
@@ -48,7 +49,14 @@ export async function GET(req: Request) {
       query.creator = user._id;
     }
 
-    const floorPlans = await FloorPlan.find(query).sort({ createdAt: -1 });
+    if (search) {
+      query.name = { $regex: search, $options: 'i' };
+    }
+
+    const floorPlans = await FloorPlan.find(query)
+      .populate({ path: 'creator', model: User })
+      .sort({ createdAt: -1 });
+
     return NextResponse.json({ success: true, data: floorPlans });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

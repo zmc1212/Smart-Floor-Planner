@@ -1,9 +1,17 @@
-import mongoose from 'mongoose';
+import mongoose, { Schema, Document, Model } from 'mongoose';
 
-const DeviceSchema = new mongoose.Schema({
-  code: { type: String, required: true, unique: true },
-  description: { type: String },
-  createdAt: { type: Date, default: Date.now }
-});
+export interface IDevice extends Document {
+  code: string;
+  description?: string;
+  createdAt: Date;
+}
 
-export const Device = mongoose.models.Device || mongoose.model('Device', DeviceSchema);
+const DeviceSchema: Schema<IDevice> = new Schema(
+  {
+    code: { type: String, required: true, unique: true },
+    description: { type: String },
+    createdAt: { type: Date, default: Date.now }
+  }
+);
+
+export const Device: Model<IDevice> = mongoose.models.Device || mongoose.model<IDevice>('Device', DeviceSchema);
