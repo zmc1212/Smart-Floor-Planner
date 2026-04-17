@@ -759,10 +759,16 @@ Page({
   },
 
   onBluetoothMeasure: function (distanceInMeters) {
-    if (!this.isMeasuring) {
-      console.log('收到过时或重复的蓝牙测量回调，忽略');
+    if (!this.isMeasuring && !this.data.showMeasurePrompt) {
+      console.log('收到非主动触发的蓝牙测量回调，忽略');
       return;
     }
+    
+    if (!this.isMeasuring && this.data.showMeasurePrompt) {
+      console.log('检测到物理按键或其它方式触发了测量，直接接收数据并关闭等待窗！');
+      this.setData({ showMeasurePrompt: false });
+    }
+    
     this.isMeasuring = false; // 接收到数据（无论成败），立即解锁
 
     if (this.measureTimer) { clearTimeout(this.measureTimer); this.measureTimer = null; }

@@ -334,21 +334,21 @@ function listenValueChange() {
 function startHeartbeat() {
   stopHeartbeat();
   _lastResponseTime = Date.now();
-  console.log('启动心跳维持机制...');
-  _heartbeatTimer = setInterval(function() {
-    if (_deviceId) {
-      // 发送 ATD001# 查询距离作为心跳包
-      sendBLECommand('ATD001#');
-      
-      var now = Date.now();
-      if (now - _lastResponseTime > HEARTBEAT_TIMEOUT) {
-        console.log('心跳超时，认为设备已断开连接');
-        handleDisconnect('心跳检测超时');
-      }
-    } else {
-      stopHeartbeat();
-    }
-  }, HEARTBEAT_INTERVAL);
+  console.log('禁用软件心跳，以免ATD001破坏测距仪当前的激光长亮(Preparing)状态');
+  // _heartbeatTimer = setInterval(function() {
+  //   if (_deviceId) {
+  //     // 发送 ATD001# 查询距离作为心跳包 - 这会导致硬件激光被意外关闭并返回旧数据！
+  //     // sendBLECommand('ATD001#');
+  //     
+  //     // var now = Date.now();
+  //     // if (now - _lastResponseTime > HEARTBEAT_TIMEOUT) {
+  //     //   console.log('心跳超时，认为设备已断开连接');
+  //     //   handleDisconnect('心跳检测超时');
+  //     // }
+  //   } else {
+  //     stopHeartbeat();
+  //   }
+  // }, HEARTBEAT_INTERVAL);
 }
 
 function stopHeartbeat() {
