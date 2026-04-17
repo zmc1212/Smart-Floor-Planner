@@ -130,6 +130,20 @@ Page({
     wx.navigateBack();
   },
 
+  onSubmitFloorPlan: async function () {
+    const success = await this.saveToCloudInternal();
+    if (success) {
+      this.isMeasuring = false;
+      if (this.measureTimer) { clearTimeout(this.measureTimer); this.measureTimer = null; }
+      if (this.failTimer) { clearTimeout(this.failTimer); this.failTimer = null; }
+      
+      // Navigate to Mine tab directly to see the saved floor plan
+      wx.switchTab({
+        url: '/pages/mine/mine'
+      });
+    }
+  },
+
   onExitGuide: function () {
     this.isMeasuring = false;
     if (this.measureTimer) { clearTimeout(this.measureTimer); this.measureTimer = null; }
@@ -1100,13 +1114,17 @@ Page({
   },
 
   saveToCloud: async function () {
+    await this.saveToCloudInternal();
+  },
+
+  saveToCloudInternal: async function () {
     const app = getApp();
     const openid = app.globalData.openid;
     const rooms = this.data.rooms;
 
     if (!openid) {
       wx.showToast({ title: '请登录后再试', icon: 'none' });
-      return;
+      return false;
     }
 
     wx.showLoading({ title: '同步中...' });
@@ -1119,10 +1137,12 @@ Page({
       });
       wx.hideLoading();
       wx.showToast({ title: '已同步至云端' });
+      return true;
     } catch (err) {
       wx.hideLoading();
       console.error('Save to cloud failed:', err);
       wx.showToast({ title: '保存失败', icon: 'none' });
+      return false;
     }
   }
 

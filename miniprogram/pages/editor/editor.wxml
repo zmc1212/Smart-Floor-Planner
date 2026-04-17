@@ -37,6 +37,7 @@
         bindexitguide="onExitGuide"
         bindstartremeasure="onStartRemeasure"
         bindexittolibrary="onExitToLibrary"
+        bindsubmitfloorplan="onSubmitFloorPlan"
         bindaddedge="onAddMeasureEdge"
         bindfinishpolygon="onFinishPolygon"
       />

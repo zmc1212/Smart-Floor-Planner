@@ -1,172 +1,144 @@
-<view class="container">
-  <scroll-view scroll-y class="content">
-    <!-- 渲染模式选择 -->
-    <view class="section">
-      <view class="section-header">
-        <text class="section-title">0. 选择生成模式</text>
+<view class="atelier-container">
+  <!-- 1. 顶部导航与模式切换 -->
+  <view class="atelier-header">
+    <view class="nav-back" bindtap="onBack">
+      <icon type="back" size="20" color="#333" />
+    </view>
+    <view class="segmented-control">
+      <view 
+        class="segment-item {{selectedMode === 'INTERIOR' ? 'active' : ''}}" 
+        data-mode="INTERIOR" 
+        bindtap="onModeChange"
+      >效果图</view>
+      <view 
+        class="segment-item {{selectedMode === 'PLANE' ? 'active' : ''}}" 
+        data-mode="PLANE" 
+        bindtap="onModeChange"
+      >平面图</view>
+    </view>
+    <view class="nav-spacer"></view>
+  </view>
+
+  <scroll-view scroll-y class="atelier-content" enhanced show-scrollbar="{{false}}">
+    <!-- 2. Hero 预览区 -->
+    <view class="hero-preview-section">
+      <view class="preview-frame {{isGenerating ? 'is-generating' : ''}}">
+        <block wx:if="{{room.renderingUrl}}">
+          <image 
+            src="{{room.renderingUrl}}" 
+            mode="aspectFill" 
+            class="main-rendering" 
+            bindtap="onPreviewImage"
+          />
+          <view class="glass-tag top-right">AI 原创设计</view>
+          <view class="glass-tag bottom-left dimensions">
+            <text class="dim-text">{{room.width/10}}m × {{room.height/10}}m</text>
+          </view>
+        </block>
+        <block wx:else>
+          <view class="empty-state">
+            <view class="empty-glow"></view>
+            <text class="empty-icon">🎨</text>
+            <text class="empty-title">Studio Preview</text>
+            <text class="empty-desc">配置下方风格，开启智绘空间</text>
+          </view>
+        </block>
+        
+        <!-- 生成中的扫描线动画 -->
+        <view class="scan-line" wx:if="{{isGenerating}}"></view>
       </view>
-      <view class="mode-selector">
-        <view 
-          class="mode-item {{selectedMode === 'INTERIOR' ? 'active' : ''}}" 
-          hover-class="mode-item-hover"
-          data-mode="INTERIOR" 
-          catchtap="onModeChange"
-        >
-          <text class="mode-icon">🏠</text>
-          <view class="mode-info">
-            <text class="mode-name">装修效果图</text>
-            <text class="mode-desc">透视视角，真实光影</text>
-          </view>
+
+      <view class="preview-actions" wx:if="{{room.renderingUrl}}">
+        <view class="action-pill" bindtap="onSaveImage">
+          <text>💾 保存至相册</text>
         </view>
-        <view 
-          class="mode-item {{selectedMode === 'PLANE' ? 'active' : ''}}" 
-          hover-class="mode-item-hover"
-          data-mode="PLANE" 
-          catchtap="onModeChange"
-        >
-          <text class="mode-icon">📐</text>
-          <view class="mode-info">
-            <text class="mode-name">专业平面图</text>
-            <text class="mode-desc">自顶向下，尺寸标注</text>
-          </view>
+        <view class="action-pill primary" bindtap="onExportPrompt">
+          <text>📋 复制提示词</text>
         </view>
       </view>
     </view>
 
-    <!-- 房间概览 -->
-    <view class="room-card">
-      <view class="room-info">
-        <text class="room-name">{{room.name}}</text>
-        <text class="room-size">{{room.width/10}}m x {{room.height/10}}m</text>
-      </view>
-      <view class="room-badge">已完成测绘</view>
+    <!-- 3. 房间基本信息 -->
+    <view class="room-memo">
+      <view class="memo-line"></view>
+      <text class="memo-name">{{room.name}}</text>
+      <text class="memo-status">已连接测绘数据</text>
     </view>
 
-    <!-- 风格选择 -->
-    <view class="section">
-      <view class="section-header">
-        <text class="section-title">1. 选择装修风格</text>
+    <!-- 4. 风格研选 (Horizontal Grid) -->
+    <view class="atelier-section">
+      <view class="section-head">
+        <text class="head-title">风格研选</text>
+        <text class="head-subtitle">Style Selection</text>
       </view>
-      <scroll-view scroll-x class="style-scroll" enable-flex>
-        <view
-          wx:for="{{styleMetadata}}"
-          wx:key="key"
-          class="style-card {{selectedStyleKey === item.key ? 'active' : ''}}"
+      
+      <scroll-view scroll-x class="style-palette" enable-flex enhanced show-scrollbar="{{false}}">
+        <view 
+          wx:for="{{styleMetadata}}" 
+          wx:key="key" 
+          class="palette-item {{selectedStyleKey === item.key ? 'active' : ''}}"
           data-key="{{item.key}}"
           bindtap="onStyleSelect"
         >
-          <view class="style-preview" style="background: {{item.color}}">
-            <text class="style-placeholder" style="color: {{item.textColor}}">{{item.label[0]}}</text>
-            <view class="active-indicator" wx:if="{{selectedStyleKey === item.key}}">
+          <view class="palette-preview" style="background: linear-gradient(135deg, {{item.color}}, {{item.textColor}}22);">
+            <view class="style-initial" style="color: {{item.textColor}}">{{item.label[0]}}</view>
+            <view class="active-check" wx:if="{{selectedStyleKey === item.key}}">
               <icon type="success_no_circle" size="12" color="#fff" />
             </view>
           </view>
-          <text class="style-label">{{item.label}}</text>
+          <text class="palette-label">{{item.label}}</text>
         </view>
       </scroll-view>
     </view>
 
-    <!-- 效果图生成 -->
-    <view class="section">
-      <view class="section-header">
-        <text class="section-title">2. AI 效果图预览</text>
+    <!-- 5. AI 设计建议 -->
+    <view class="atelier-section">
+      <view class="section-head">
+        <text class="head-title">设计策展</text>
+        <text class="head-subtitle">Design Curation</text>
       </view>
 
-      <view class="preview-container">
-        <block wx:if="{{room.renderingUrl}}">
-          <view class="rendering-preview" bindtap="onPreviewImage">
-            <image
-              src="{{room.renderingUrl}}"
-              mode="aspectFill"
-              class="rendering-image"
-            />
-            <view class="rendering-tag">AI 原创设计</view>
-          </view>
-          <view class="action-row">
-            <view class="action-btn" bindtap="onSaveImage">💾 保存相册</view>
-            <view class="action-btn" bindtap="onPreviewImage">🔍 全屏预览</view>
-          </view>
-        </block>
-        <block wx:else>
-          <view class="empty-preview">
-            <text class="empty-icon">🖼</text>
-            <text class="empty-text">点击下方按钮，立即生成 3D 效果图</text>
-          </view>
-        </block>
-
-        <view class="generate-btn {{isGenerating ? 'loading' : ''}}" bindtap="onGenerate">
-          <block wx:if="{{isGenerating}}">
-            <view class="spinner"></view>
-            <text>正在深度渲染中...</text>
-          </block>
-          <block wx:else>
-            <text>✨ 立即生成效果图</text>
-          </block>
-        </view>
-      </view>
-    </view>
-
-    <!-- 复制提示词 (始终显示) -->
-    <view class="section">
-      <view class="section-header">
-        <text class="section-title">工具：复制精细化提示词</text>
-      </view>
-      <view class="prompt-export-card" bindtap="onExportPrompt">
-        <view class="prompt-header">
-          <text>📋 导出 AI 提示词</text>
-          <text class="copy-tag">一键复制</text>
-        </view>
-        <text class="prompt-preview">已根据 {{room.name}} 的 {{room.openings.length || 0}} 个门窗坐标和 {{selectedStyle}} 风格组装精细化提示词，可直接用于其它 AI 工具。</text>
-      </view>
-    </view>
-
-    <!-- AI 装修建议 -->
-    <view class="section">
-      <view class="section-header">
-        <text class="section-title">3. AI 专业设计建议</text>
-      </view>
-
-      <view class="advice-container">
+      <view class="advice-atelier-card {{room.designAdvice ? 'has-content' : ''}}">
         <block wx:if="{{room.designAdvice}}">
-          <view class="advice-card">
-            <view class="advice-header">
-              <text class="advice-tag">AI 设计师</text>
-              <text class="advice-time">刚刚</text>
-            </view>
-            <text class="advice-text">{{room.designAdvice.content}}</text>
+          <view class="advice-quotes">“</view>
+          <text class="advice-body">{{room.designAdvice.content}}</text>
+          <view class="advice-footer">
+            <text class="consultant-tag">AI Senior Designer</text>
           </view>
         </block>
         <block wx:else>
-          <view class="empty-advice">
-            <text>点击获取该房间的硬装与软装建议</text>
+          <view class="advice-empty-body" bindtap="onGetAdvice">
+            <text>点击获取该空间的专业软硬装搭配方案</text>
           </view>
         </block>
-
-        <view class="advice-btn {{isGettingAdvice ? 'loading' : ''}}" bindtap="onGetAdvice">
-          <block wx:if="{{isGettingAdvice}}">
-            <view class="spinner"></view>
-            <text>正在咨询设计师...</text>
-          </block>
-          <block wx:else>
-            <text>💬 获取专业设计建议</text>
-          </block>
-        </view>
       </view>
     </view>
 
-    <!-- 获取设计与报价 (引流) -->
-    <view class="section" style="margin-top: 40rpx;">
-      <view class="lead-banner" bindtap="onOpenLeadModal">
-        <view class="lead-banner-content">
-          <text class="lead-title">喜欢这个设计吗？</text>
-          <text class="lead-desc">留下联系方式，获取完整方案与报价</text>
+    <!-- 6. 底部引流 Banner -->
+    <view class="atelier-section">
+      <view class="lead-atelier-banner" bindtap="onOpenLeadModal">
+        <view class="lead-main">
+          <text class="lead-h1">获取完整设计方案</text>
+          <text class="lead-p">专业设计师 1对1 免费服务</text>
         </view>
-        <view class="lead-btn">免费获取</view>
+        <view class="lead-arrow">→</view>
       </view>
     </view>
 
-    <lead-modal show="{{showLeadModal}}" bindclose="onCloseLeadModal" bindsuccess="onLeadSuccess" />
-    
-    <view class="footer-spacer"></view>
+    <view class="footer-gap"></view>
   </scroll-view>
+
+  <!-- 7. 固定底部操作区 -->
+  <view class="fixed-bottom-bar">
+    <view class="btn-group">
+      <view class="btn-secondary {{isGettingAdvice ? 'is-loading' : ''}}" bindtap="onGetAdvice">
+        <text>{{isGettingAdvice ? '咨询中...' : '咨询设计建议'}}</text>
+      </view>
+      <view class="btn-primary {{isGenerating ? 'is-loading' : ''}}" bindtap="onGenerate">
+        <text>{{isGenerating ? 'AI 智绘中...' : '生成渲染方案'}}</text>
+      </view>
+    </view>
+  </view>
+
+  <lead-modal show="{{showLeadModal}}" bindclose="onCloseLeadModal" bindsuccess="onLeadSuccess" />
 </view>

@@ -17,8 +17,8 @@
 <view class="guided-wizard-bar" wx:else>
   <view class="wizard-cancel" bindtap="onExitToLibrary">返回</view>
   <view class="wizard-text">✨ 测绘完成！可点击下方工具添加门窗</view>
-  <view class="wizard-actions">
-    <view class="wizard-btn-finish" bindtap="onExitToLibrary">完成提交</view>
+    <view class="wizard-actions">
+    <view class="wizard-btn-finish" bindtap="onSubmitFloorPlan">完成提交</view>
     <view class="wizard-btn-action btn-ghost" wx:if="{{bleConnected}}" style="font-size:20rpx;" bindtap="onStartRemeasure">重新测量</view>
   </view>
 </view>

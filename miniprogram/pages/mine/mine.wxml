@@ -49,7 +49,10 @@
             <text class="fp-name">{{item.name}}</text>
             <text class="fp-date">{{item.createdAt}}</text>
           </view>
-          <view class="fp-status">{{item.status === 'completed' ? '已完成' : '草稿'}}</view>
+          <view class="fp-actions">
+            <text class="fp-status">{{item.status === 'completed' ? '已完成' : '草稿'}}</text>
+            <view class="ai-btn" catchtap="onAIGen" data-id="{{item._id}}">✨ 效果图</view>
+          </view>
         </view>
       </view>
     </view>

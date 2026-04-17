@@ -120,7 +120,14 @@ Page({
   },
 
   onAIGen: function (e) {
-    wx.navigateTo({ url: '/pages/ai-gen/ai-gen' });
+    var roomId = e.detail.id;
+    var room = this.data.plannedRooms.find(function(r) { return r.id === roomId; });
+    if (room) {
+      getApp().globalData.currentAIGenRoom = room;
+      wx.navigateTo({ url: '/pages/ai-gen/ai-gen' });
+    } else {
+      wx.showToast({ title: '无法找到房间数据', icon: 'none' });
+    }
   },
 
   onAutoConnectBLE: function () {

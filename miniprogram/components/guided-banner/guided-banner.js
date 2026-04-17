@@ -13,6 +13,7 @@ Component({
     onExitGuide() { this.triggerEvent('exitguide'); },
     onStartRemeasure() { this.triggerEvent('startremeasure'); },
     onExitToLibrary() { this.triggerEvent('exittolibrary'); },
+    onSubmitFloorPlan() { this.triggerEvent('submitfloorplan'); },
     onAddEdge() { this.triggerEvent('addedge'); },
     onFinishPolygon() { this.triggerEvent('finishpolygon'); }
   }

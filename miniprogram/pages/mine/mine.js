@@ -105,6 +105,36 @@ Page({
     }
   },
 
+  onAIGen(e) {
+    const id = e.currentTarget.dataset.id;
+    const fp = this.data.floorPlans.find(f => f._id === id);
+    if (!fp || !fp.layoutData) {
+      wx.showToast({ title: '无法获取户型数据', icon: 'none' });
+      return;
+    }
+
+    let rooms = fp.layoutData;
+    if (typeof rooms === 'string') {
+      try {
+        rooms = JSON.parse(rooms);
+      } catch (e) {
+        console.error('Parse layoutData failed', e);
+      }
+    }
+
+    // AI生成通常针对一个具体房间，我们取第一个房间或整体数据
+    const targetRoom = Array.isArray(rooms) ? rooms[0] : rooms;
+
+    if (targetRoom) {
+      getApp().globalData.currentAIGenRoom = targetRoom;
+      wx.navigateTo({
+        url: '/pages/ai-gen/ai-gen'
+      });
+    } else {
+      wx.showToast({ title: '户型数据为空', icon: 'none' });
+    }
+  },
+
   // ---- Profile editing ----
   onChooseAvatar(e) {
     const { avatarUrl } = e.detail;
