@@ -2,8 +2,29 @@
 
 import React, { useState, useEffect } from 'react';
 import Navbar from "@/components/Navbar";
-import { Loader2, Plus, Trash2, Star, Eye } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2, Plus, Trash2, Star, Eye, ArrowLeft, Search, Image as ImageIcon, Sparkles } from "lucide-react";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogDescription, 
+  DialogFooter, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogTrigger 
+} from "@/components/ui/dialog";
+import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import Link from 'next/link';
 
 export default function InspirationsPage() {
   const [items, setItems] = useState<any[]>([]);
@@ -13,8 +34,8 @@ export default function InspirationsPage() {
     title: '',
     style: '现代简约',
     roomType: '客厅',
-    coverImage: 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=400&q=80',
-    renderingImage: 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?auto=format&fit=crop&w=800&q=80',
+    coverImage: '',
+    renderingImage: '',
     layoutData: [{ id: 'room-1', name: '复刻空间', width: 400, height: 300, openings: [] }],
     isRecommended: false
   });
@@ -68,8 +89,8 @@ export default function InspirationsPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.coverImage || formData.coverImage.startsWith('http')) {
-      alert('请上传案例封面图 (Base64格式)');
+    if (!formData.coverImage) {
+      alert('请上传案例封面图');
       return;
     }
 
@@ -109,200 +130,238 @@ export default function InspirationsPage() {
     }
   };
 
+  const renderInspirationForm = () => (
+    <form onSubmit={handleCreate}>
+      <DialogHeader className="p-10 pb-6 border-b bg-muted/20">
+        <DialogTitle className="text-2xl font-bold">发布新设计案例</DialogTitle>
+        <DialogDescription>
+          上传精美渲染图，为 AI 辅助扩图提供更高质量的学习素材
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="p-10 space-y-8 max-h-[60vh] overflow-y-auto">
+        <div className="space-y-2">
+          <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">案例标题 (必填)</Label>
+          <Input 
+            required
+            className="h-12 rounded-2xl bg-muted/30 border-none focus-visible:ring-primary font-medium"
+            placeholder="例如：极简原木风温馨客厅"
+            value={formData.title}
+            onChange={(e) => setFormData({...formData, title: e.target.value})}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">空间类型</Label>
+            <Select 
+              value={formData.roomType} 
+              onValueChange={(val) => setFormData({...formData, roomType: val})}
+            >
+              <SelectTrigger className="h-12 rounded-2xl bg-muted/30 border-none focus-visible:ring-primary font-medium shadow-none">
+                <SelectValue placeholder="选择空间" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="客厅">客厅</SelectItem>
+                <SelectItem value="主卧">主卧</SelectItem>
+                <SelectItem value="厨房">厨房</SelectItem>
+                <SelectItem value="卫生间">卫生间</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">设计风格</Label>
+            <Select 
+              value={formData.style} 
+              onValueChange={(val) => setFormData({...formData, style: val})}
+            >
+              <SelectTrigger className="h-12 rounded-2xl bg-muted/30 border-none focus-visible:ring-primary font-medium shadow-none">
+                <SelectValue placeholder="选择风格" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="现代简约">现代简约</SelectItem>
+                <SelectItem value="侘寂风">侘寂风</SelectItem>
+                <SelectItem value="原木风">原木风</SelectItem>
+                <SelectItem value="轻法式奶油">轻法式奶油</SelectItem>
+                <SelectItem value="精致轻奢">精致轻奢</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        
+        <div className="space-y-6">
+          <div className="space-y-3">
+            <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">展示封面 (建议 1:1 或 4:5)</Label>
+            <div className="flex items-center gap-6 p-4 bg-muted/20 rounded-[24px] border border-dashed border-muted">
+              <div className="w-24 h-24 rounded-2xl bg-white border border-muted flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
+                {formData.coverImage ? (
+                  <img src={formData.coverImage} className="w-full h-full object-cover" />
+                ) : (
+                  <ImageIcon className="text-muted-foreground/30" size={32} />
+                )}
+              </div>
+              <div className="flex-1 space-y-2">
+                <Input 
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleFileChange(e, 'coverImage')}
+                  className="bg-transparent border-none shadow-none text-xs h-auto p-0 file:bg-primary file:text-primary-foreground file:border-none file:rounded-full file:px-4 file:py-2 file:mr-4 file:cursor-pointer"
+                />
+                <p className="text-[10px] text-muted-foreground leading-relaxed">体积需小于 500KB，建议进行 WebP 压缩后再上传。</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">渲染透视图/效果全图</Label>
+            <div className="flex items-center gap-6 p-4 bg-muted/20 rounded-[24px] border border-dashed border-muted">
+              <div className="w-24 h-24 rounded-2xl bg-white border border-muted flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
+                {formData.renderingImage ? (
+                  <img src={formData.renderingImage} className="w-full h-full object-cover" />
+                ) : (
+                  <ImageIcon className="text-muted-foreground/30" size={32} />
+                )}
+              </div>
+              <div className="flex-1 space-y-2">
+                <Input 
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleFileChange(e, 'renderingImage')}
+                  className="bg-transparent border-none shadow-none text-xs h-auto p-0 file:bg-primary file:text-primary-foreground file:border-none file:rounded-full file:px-4 file:py-2 file:mr-4 file:cursor-pointer"
+                />
+                <p className="text-[10px] text-muted-foreground leading-relaxed">提供给 AI 模型深度学习，要求构图精美、细节丰富。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 p-4 bg-primary/5 rounded-2xl border border-primary/10">
+          <input 
+            type="checkbox" 
+            id="recommended" 
+            checked={formData.isRecommended}
+            onChange={(e) => setFormData({...formData, isRecommended: e.target.checked})}
+            className="w-5 h-5 rounded-[6px] border-muted text-primary focus:ring-primary h-5 w-5"
+          />
+          <Label htmlFor="recommended" className="text-sm font-bold cursor-pointer">设为首页“精选推荐”案例</Label>
+        </div>
+      </div>
+
+      <DialogFooter className="p-10 pt-4 bg-muted/30 border-t">
+        <Button 
+          type="button" 
+          variant="ghost" 
+          className="h-12 rounded-2xl px-8 bg-background hover:bg-muted" 
+          onClick={() => setShowModal(false)}
+        >
+          取消
+        </Button>
+        <Button 
+          type="submit" 
+          className="h-12 rounded-2xl px-12 font-bold shadow-lg shadow-primary/10"
+        >
+          确认发布
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+
   return (
     <div className="min-h-screen bg-white text-[#171717] font-sans">
       <Navbar />
-      <main className="max-w-7xl mx-auto px-6 py-16">
-        <div className="mb-12 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <h2 className="text-[32px] font-semibold tracking-[-1.5px] leading-tight">
-              装修灵感库
+      <main className="max-w-7xl mx-auto px-6 py-12">
+        <Link
+          href="/"
+          className="flex items-center gap-1 text-muted-foreground hover:text-primary transition-colors mb-8 w-fit"
+        >
+          <ArrowLeft size={16} />
+          <span className="text-sm font-medium">返回首页</span>
+        </Link>
+
+        <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div className="space-y-1">
+            <h2 className="text-[32px] font-bold tracking-tight">
+              AI 装修灵感库
             </h2>
-            {!loading && (
-              <span className="bg-[#f5f5f5] text-[#666] px-3 py-1 rounded-full text-[14px] font-medium">
-                {items.length} 个案例
-              </span>
-            )}
+            <p className="text-muted-foreground text-sm flex items-center gap-2">
+               <Sparkles size={14} className="text-primary" /> 精选室内设计案例，为 AI 扩图提供美学深度
+            </p>
           </div>
-          <button 
-            onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 bg-[#171717] text-white px-5 py-2.5 rounded-full text-[14px] font-medium hover:bg-black transition-all"
-          >
-            <Plus size={18} /> 新增灵感案例
-          </button>
+
+          <div className="flex items-center gap-3">
+             {!loading && (
+               <Badge variant="outline" className="h-11 rounded-full px-6 font-bold text-muted-foreground border-muted">
+                 {items.length} 个设计灵感
+               </Badge>
+             )}
+            <Dialog open={showModal} onOpenChange={setShowModal}>
+              <DialogTrigger asChild>
+                <Button className="h-11 rounded-full px-8 font-bold shadow-lg shadow-primary/20">
+                  <Plus size={18} className="mr-2" /> 发布新设计
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl p-0 overflow-hidden rounded-[32px] shadow-2xl border-none">
+                {renderInspirationForm()}
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
-        {loading && (
-          <div className="flex flex-col items-center justify-center py-24 text-[#808080]">
-            <Loader2 className="animate-spin mb-4" size={32} />
-            <p className="text-[14px]">加载灵感库中...</p>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-32 text-muted-foreground">
+            <Loader2 className="animate-spin mb-4" size={48} />
+            <p className="text-sm font-medium">唤醒设计美学库...</p>
           </div>
-        )}
-
-        {!loading && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
             {items.map((item: any) => (
-              <div key={item._id} className="group border border-gray-100 rounded-2xl overflow-hidden hover:shadow-xl transition-all duration-300">
-                <div className="aspect-square relative overflow-hidden bg-gray-100">
-                  <img src={item.coverImage} alt={item.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+              <div key={item._id} className="group bg-white border border-muted rounded-[32px] overflow-hidden hover:shadow-2xl hover:shadow-primary/5 hover:border-primary/20 transition-all duration-500 flex flex-col">
+                <div className="aspect-[4/5] relative overflow-hidden bg-muted">
+                  <img src={item.coverImage} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700" />
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent h-2/3 opacity-40 group-hover:opacity-60 transition-opacity" />
+                  
                   {item.isRecommended && (
-                    <div className="absolute top-3 left-3 bg-[#171717] text-white p-1.5 rounded-full">
-                      <Star size={12} fill="white" />
+                    <div className="absolute top-4 left-4 bg-primary text-primary-foreground p-2 rounded-[14px] shadow-lg">
+                      <Star size={14} fill="currentColor" />
                     </div>
                   )}
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4">
-                    <button className="bg-white p-2 rounded-full hover:bg-gray-100"><Eye size={18} /></button>
-                    <button onClick={() => deleteItem(item._id)} className="bg-white p-2 rounded-full hover:bg-red-50 text-red-600"><Trash2 size={18} /></button>
+
+                  <div className="absolute inset-0 flex items-center justify-center gap-3 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
+                    <Button size="icon" variant="secondary" className="h-12 w-12 rounded-full shadow-xl hover:scale-110">
+                       <Eye size={20} />
+                    </Button>
+                    <Button onClick={() => deleteItem(item._id)} size="icon" variant="secondary" className="h-12 w-12 rounded-full shadow-xl hover:scale-110 text-destructive">
+                       <Trash2 size={20} />
+                    </Button>
+                  </div>
+
+                  <div className="absolute bottom-6 left-6 right-6 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-500">
+                     <p className="text-white text-[11px] font-bold uppercase tracking-widest opacity-80 mb-1">{item.style}</p>
+                     <h3 className="text-white font-bold text-lg leading-tight truncate">{item.title}</h3>
                   </div>
                 </div>
-                <div className="p-4">
-                  <div className="flex justify-between items-start mb-2">
-                    <h3 className="font-semibold text-[15px] truncate flex-1">{item.title}</h3>
-                    <span className="text-[11px] font-medium px-2 py-0.5 bg-gray-100 rounded text-gray-500">{item.viewCount} 阅</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <span className="text-[12px] text-gray-400">{item.style}</span>
-                    <span className="text-[12px] text-gray-400">·</span>
-                    <span className="text-[12px] text-gray-400">{item.roomType}</span>
+                <div className="p-6">
+                  <div className="flex justify-between items-center">
+                    <div className="flex gap-2">
+                       <Badge variant="secondary" className="bg-muted text-muted-foreground border-none font-bold text-[10px] uppercase">{item.roomType}</Badge>
+                    </div>
+                    <div className="flex items-center gap-1 text-[11px] font-bold text-muted-foreground/60">
+                       <Eye size={12} />
+                       <span>{item.viewCount || 0}</span>
+                    </div>
                   </div>
                 </div>
               </div>
             ))}
             {items.length === 0 && (
-              <div className="col-span-full py-24 text-center border-2 border-dashed border-gray-100 rounded-3xl text-gray-400">
-                <p>暂无灵感案例，点击右上角开始添加</p>
+              <div className="col-span-full py-32 text-center text-muted-foreground bg-muted/20 rounded-[40px] border-4 border-dashed border-muted/50">
+                <div className="bg-muted w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                   <ImageIcon size={32} className="opacity-20" />
+                </div>
+                <h3 className="text-xl font-bold text-foreground mb-1">设计库暂无收录</h3>
+                <p>点击上方按钮发布您的第一个 AI 设计案例</p>
               </div>
             )}
-          </div>
-        )}
-
-        {/* Create Modal */}
-        {showModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 sm:p-12">
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowModal(false)} />
-            <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl z-10 overflow-hidden animate-in fade-in zoom-in duration-200">
-              <form onSubmit={handleCreate}>
-                <div className="px-8 py-6 border-b border-gray-50">
-                  <h3 className="text-xl font-bold">发布装修灵感案例</h3>
-                </div>
-                <div className="p-8 space-y-6 max-h-[70vh] overflow-y-auto">
-                  <div className="space-y-2">
-                    <label className="text-[13px] font-semibold text-gray-500">案例名称</label>
-                    <input 
-                      className="w-full px-4 py-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-black/5 transition-all"
-                      placeholder="例如：极简原木风温馨客厅"
-                      value={formData.title}
-                      onChange={(e) => setFormData({...formData, title: e.target.value})}
-                      required
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="text-[13px] font-semibold text-gray-500">空间类型</label>
-                      <Select 
-                        value={formData.roomType} 
-                        onValueChange={(value) => value && setFormData({...formData, roomType: value})}
-                      >
-                        <SelectTrigger className="w-full h-[48px] px-4 bg-gray-50 rounded-xl outline-none border-none shadow-none focus:ring-2 focus:ring-black/5 text-[15px]">
-                          <SelectValue placeholder="空间类型" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="客厅">客厅</SelectItem>
-                          <SelectItem value="主卧">主卧</SelectItem>
-                          <SelectItem value="厨房">厨房</SelectItem>
-                          <SelectItem value="卫生间">卫生间</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[13px] font-semibold text-gray-500">设计风格</label>
-                      <Select 
-                        value={formData.style} 
-                        onValueChange={(value) => value && setFormData({...formData, style: value})}
-                      >
-                        <SelectTrigger className="w-full h-[48px] px-4 bg-gray-50 rounded-xl outline-none border-none shadow-none focus:ring-2 focus:ring-black/5 text-[15px]">
-                          <SelectValue placeholder="设计风格" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="现代简约">现代简约</SelectItem>
-                          <SelectItem value="侘寂风">侘寂风</SelectItem>
-                          <SelectItem value="原木风">原木风</SelectItem>
-                          <SelectItem value="轻法式奶油">轻法式奶油</SelectItem>
-                          <SelectItem value="精致轻奢">精致轻奢</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  
-                  {/* File Uploads */}
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-[13px] font-semibold text-gray-500">案例封面图 (建议小于 500KB)</label>
-                      <div className="flex items-center gap-4">
-                        <div className="w-20 h-20 rounded-xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden shrink-0">
-                          {formData.coverImage ? (
-                            <img src={formData.coverImage} className="w-full h-full object-cover" />
-                          ) : (
-                            <Plus className="text-gray-300" />
-                          )}
-                        </div>
-                        <input 
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => handleFileChange(e, 'coverImage')}
-                          className="text-[13px] file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[13px] file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-[13px] font-semibold text-gray-500">大图或效果图 (建议小于 500KB)</label>
-                      <div className="flex items-center gap-4">
-                        <div className="w-20 h-20 rounded-xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden shrink-0">
-                          {formData.renderingImage ? (
-                            <img src={formData.renderingImage} className="w-full h-full object-cover" />
-                          ) : (
-                            <Plus className="text-gray-300" />
-                          )}
-                        </div>
-                        <input 
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => handleFileChange(e, 'renderingImage')}
-                          className="text-[13px] file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-[13px] file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <input 
-                      type="checkbox" 
-                      id="recommended" 
-                      checked={formData.isRecommended}
-                      onChange={(e) => setFormData({...formData, isRecommended: e.target.checked})}
-                      className="w-4 h-4 rounded border-gray-300 text-black focus:ring-black"
-                    />
-                    <label htmlFor="recommended" className="text-[14px] font-medium">设为首页精选推荐</label>
-                  </div>
-                </div>
-                <div className="px-8 py-6 bg-gray-50 flex gap-4">
-                  <button 
-                    type="button"
-                    onClick={() => setShowModal(false)}
-                    className="flex-1 px-6 py-3 rounded-xl font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
-                  >
-                    取消
-                  </button>
-                  <button 
-                    type="submit"
-                    className="flex-1 px-6 py-3 bg-[#171717] text-white rounded-xl font-semibold hover:bg-black transition-colors"
-                  >
-                    发布案例
-                  </button>
-                </div>
-              </form>
-            </div>
           </div>
         )}
       </main>

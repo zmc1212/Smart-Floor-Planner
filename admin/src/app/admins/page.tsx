@@ -5,11 +5,39 @@ export const dynamic = 'force-dynamic';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Shield, Search, Plus, RefreshCw, Edit2, Trash2, Check, X,
-  ArrowLeft, KeyRound, Ban, CheckCircle, ChevronDown, ChevronUp,
+  ArrowLeft, KeyRound, Ban, CheckCircle, ChevronDown, ChevronUp, Lock, UserCog
 } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 interface AdminUser {
   _id: string;
@@ -30,10 +58,17 @@ const ROLE_LABELS: Record<string, string> = {
   viewer: '只读审计员',
 };
 
-const ROLE_COLORS: Record<string, string> = {
-  super_admin: 'bg-purple-100 text-purple-700 border-purple-200',
-  admin: 'bg-blue-100 text-blue-700 border-blue-200',
-  viewer: 'bg-gray-100 text-gray-600 border-gray-200',
+const getRoleBadge = (role: string) => {
+  switch (role) {
+    case 'super_admin':
+      return <Badge variant="secondary" className="bg-purple-100 text-purple-700 border-none">超级管理员</Badge>;
+    case 'admin':
+      return <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-none">普通管理员</Badge>;
+    case 'viewer':
+      return <Badge variant="outline" className="text-gray-500 border-gray-200">审计员</Badge>;
+    default:
+      return <Badge variant="outline">{role}</Badge>;
+  }
 };
 
 const ALL_MENUS = [
@@ -292,359 +327,282 @@ export default function AdminsPage() {
         </Link>
 
         {/* Header */}
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
           <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <Shield className="text-purple-600" />
-              管理员管理
-            </h1>
-            <p className="text-gray-500 text-sm mt-1">
-              管理后台管理员账号，分配角色与菜单权限。
+            <h1 className="text-[32px] font-bold tracking-tight mb-2">管理员权限中心</h1>
+            <p className="text-muted-foreground text-sm flex items-center gap-2">
+              <Shield size={14} className="text-primary" /> 分配系统角色与各模块菜单权限
             </p>
           </div>
-          <button
-            onClick={fetchAdmins}
-            className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
-            title="刷新列表"
-          >
-            <RefreshCw
-              size={20}
-              className={loading ? 'animate-spin text-gray-400' : 'text-gray-600'}
-            />
-          </button>
+          
+          <div className="flex gap-3">
+            <Button 
+               variant="outline" 
+               size="icon" 
+               onClick={fetchAdmins}
+               className="rounded-full h-10 w-10 shrink-0"
+            >
+              <RefreshCw size={18} className={cn(loading && "animate-spin text-muted-foreground")} />
+            </Button>
+
+            <Dialog open={adding} onOpenChange={setAdding}>
+              <DialogTrigger asChild>
+                <Button className="rounded-full px-6 flex items-center gap-2 shadow-lg shadow-primary/10">
+                  <Plus size={18} /> 新增管理员
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md p-0 overflow-hidden rounded-3xl shadow-2xl">
+                 <form onSubmit={handleAdd}>
+                   <DialogHeader className="p-8 pb-6 border-b bg-muted/20">
+                     <DialogTitle className="text-2xl font-bold">新增管理员账号</DialogTitle>
+                     <DialogDescription>为团队成员创建一个新的后台访问账号</DialogDescription>
+                   </DialogHeader>
+
+                   <div className="p-8 space-y-4">
+                     <div className="space-y-2">
+                       <Label htmlFor="new-user">登录账号 (用户名)</Label>
+                       <Input 
+                        id="new-user"
+                        required 
+                        value={newUsername} 
+                        onChange={e => setNewUsername(e.target.value)}
+                        placeholder="例如: admin_zhang"
+                       />
+                     </div>
+                     <div className="space-y-2">
+                       <Label htmlFor="new-pwd">初始密码 (至少6位)</Label>
+                       <Input 
+                        id="new-pwd"
+                        type="password"
+                        required 
+                        minLength={6}
+                        value={newPassword} 
+                        onChange={e => setNewPassword(e.target.value)}
+                        placeholder="••••••"
+                       />
+                     </div>
+                     <div className="space-y-2">
+                       <Label htmlFor="new-name">显示名称</Label>
+                       <Input 
+                        id="new-name"
+                        value={newDisplayName} 
+                        onChange={e => setNewDisplayName(e.target.value)}
+                        placeholder="例如: 张三"
+                       />
+                     </div>
+                     <div className="space-y-2">
+                       <Label>分配角色</Label>
+                       <Select value={newRole} onValueChange={setNewRole}>
+                        <SelectTrigger className="w-full h-10 rounded-xl bg-muted/50 border-none shadow-none">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="super_admin">超级管理员</SelectItem>
+                          <SelectItem value="admin">普通管理员</SelectItem>
+                          <SelectItem value="viewer">只读审计员</SelectItem>
+                        </SelectContent>
+                      </Select>
+                     </div>
+                   </div>
+
+                   <DialogFooter className="p-8 pt-4 bg-muted/30">
+                     <Button type="button" variant="ghost" onClick={() => setAdding(false)} className="bg-background">取消</Button>
+                     <Button type="submit" disabled={adding} className="shadow-lg shadow-primary/10">确认创建</Button>
+                   </DialogFooter>
+                 </form>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         {/* Search Bar */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6 flex flex-col md:flex-row gap-4 items-center">
-          <div className="relative flex-1 w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-            <input
-              type="text"
+        <div className="flex items-center gap-4 mb-8 bg-muted/30 p-2 rounded-2xl border border-muted">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+            <Input 
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="搜索用户名或显示名称..."
-              className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none transition-all"
+              className="pl-10 h-11 bg-background border-none shadow-none rounded-xl"
             />
           </div>
-          <div className="text-sm text-gray-400">共 {filteredAdmins.length} 个管理员</div>
-        </div>
-
-        {/* Add Form */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
-          <div className="p-4 bg-gray-50 border-b border-gray-100 font-semibold text-gray-700 flex items-center gap-2">
-            <Plus size={18} /> 新增管理员
+          <div className="text-xs text-muted-foreground px-4 font-medium shrink-0">
+             共 {filteredAdmins.length} 位管理人员
           </div>
-          <form onSubmit={handleAdd} className="p-4 grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">用户名 (必填)</label>
-              <input
-                type="text"
-                value={newUsername}
-                onChange={(e) => setNewUsername(e.target.value)}
-                placeholder="login_name"
-                className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">密码 (必填, ≥6位)</label>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="••••••"
-                className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none"
-                required
-                minLength={6}
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">显示名称</label>
-              <input
-                type="text"
-                value={newDisplayName}
-                onChange={(e) => setNewDisplayName(e.target.value)}
-                placeholder="张三"
-                className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">角色</label>
-              <Select value={newRole} onValueChange={(val) => val && setNewRole(val)}>
-                <SelectTrigger className="w-full h-[38px] p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-white border-solid shadow-none">
-                  <SelectValue placeholder="选择角色" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="super_admin">超级管理员</SelectItem>
-                  <SelectItem value="admin">普通管理员</SelectItem>
-                  <SelectItem value="viewer">只读审计员</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <button
-              type="submit"
-              disabled={adding || !newUsername.trim() || !newPassword.trim()}
-              className="px-6 py-2 bg-purple-600 text-white text-sm font-semibold rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors h-[38px]"
-            >
-              {adding ? '添加中...' : '添加管理员'}
-            </button>
-          </form>
         </div>
 
-        {/* Admin List */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          {loading && admins.length === 0 ? (
-            <div className="p-8 text-center text-gray-400">加载中...</div>
-          ) : admins.length === 0 ? (
-            <div className="p-8 text-center text-gray-400">暂无管理员，请在上方添加</div>
-          ) : filteredAdmins.length === 0 ? (
-            <div className="p-8 text-center text-gray-400">未找到匹配的管理员</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead className="bg-gray-50 text-gray-500">
-                  <tr>
-                    <th className="px-6 py-3 font-medium">用户名</th>
-                    <th className="px-6 py-3 font-medium">显示名称</th>
-                    <th className="px-6 py-3 font-medium">角色</th>
-                    <th className="px-6 py-3 font-medium">状态</th>
-                    <th className="px-6 py-3 font-medium">创建时间</th>
-                    <th className="px-6 py-3 font-medium text-right">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {filteredAdmins.map((admin) => (
-                    <React.Fragment key={admin._id}>
-                      <tr className={`hover:bg-gray-50/50 ${admin.status === 'disabled' ? 'opacity-50' : ''}`}>
-                        {/* Username */}
-                        <td className="px-6 py-4 font-mono font-medium text-gray-900">
-                          {admin.username}
-                        </td>
 
-                        {/* Display Name */}
-                        <td className="px-6 py-4 text-gray-600">
-                          {editingId === admin._id ? (
-                            <input
-                              type="text"
-                              value={editDisplayName}
-                              onChange={(e) => setEditDisplayName(e.target.value)}
-                              className="w-full p-1 border border-purple-500 rounded text-sm"
-                              autoFocus
-                            />
-                          ) : (
-                            admin.displayName || '-'
-                          )}
-                        </td>
-
-                        {/* Role */}
-                        <td className="px-6 py-4">
-                          {editingId === admin._id ? (
-                            <Select value={editRole} onValueChange={(val) => val && setEditRole(val)}>
-                              <SelectTrigger className="h-[30px] p-1 px-2 border border-purple-500 rounded text-sm bg-white shadow-none">
-                                <SelectValue placeholder="选择角色" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="super_admin">超级管理员</SelectItem>
-                                <SelectItem value="admin">普通管理员</SelectItem>
-                                <SelectItem value="viewer">只读审计员</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <span
-                              className={`text-xs px-2 py-1 rounded-full border font-medium ${ROLE_COLORS[admin.role] || 'bg-gray-100 text-gray-600'}`}
-                            >
-                              {ROLE_LABELS[admin.role] || admin.role}
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Status */}
-                        <td className="px-6 py-4">
-                          {admin.status === 'active' ? (
-                            <span className="text-xs px-2 py-1 rounded-full bg-green-100 text-green-700 font-medium">
-                              正常
-                            </span>
-                          ) : (
-                            <span className="text-xs px-2 py-1 rounded-full bg-red-100 text-red-600 font-medium">
-                              已禁用
-                            </span>
-                          )}
-                        </td>
-
-                        {/* Created */}
-                        <td className="px-6 py-4 text-gray-400">
-                          {new Date(admin.createdAt).toLocaleString('zh-CN')}
-                        </td>
-
-                        {/* Actions */}
-                        <td className="px-6 py-4 text-right">
-                          {editingId === admin._id ? (
-                            <div className="flex justify-end gap-1">
-                              <button
-                                onClick={() => handleUpdate(admin._id)}
-                                disabled={updating}
-                                className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                                title="保存"
-                              >
-                                <Check size={18} />
-                              </button>
-                              <button
-                                onClick={() => setEditingId(null)}
-                                className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg transition-colors"
-                                title="取消"
-                              >
-                                <X size={18} />
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="flex justify-end gap-1">
-                              <button
-                                onClick={() => toggleExpand(admin)}
-                                className="p-2 text-purple-500 hover:bg-purple-50 rounded-lg transition-colors"
-                                title="菜单权限"
-                              >
-                                {expandedId === admin._id ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                              </button>
-                              <button
-                                onClick={() => startEdit(admin)}
-                                className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
-                                title="编辑"
-                              >
-                                <Edit2 size={18} />
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setResetPwdId(resetPwdId === admin._id ? null : admin._id);
-                                  setResetPwdValue('');
-                                }}
-                                className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg transition-colors"
-                                title="重置密码"
-                              >
-                                <KeyRound size={18} />
-                              </button>
-                              <button
-                                onClick={() => handleToggleStatus(admin)}
-                                className={`p-2 rounded-lg transition-colors ${admin.status === 'active' ? 'text-orange-500 hover:bg-orange-50' : 'text-green-500 hover:bg-green-50'}`}
-                                title={admin.status === 'active' ? '禁用' : '启用'}
-                              >
-                                {admin.status === 'active' ? <Ban size={18} /> : <CheckCircle size={18} />}
-                              </button>
-                              <button
-                                onClick={() => handleDelete(admin._id, admin.username)}
-                                className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                title="删除"
-                              >
-                                <Trash2 size={18} />
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-
-                      {/* Password Reset Row */}
-                      {resetPwdId === admin._id && (
-                        <tr className="bg-amber-50/50">
-                          <td colSpan={6} className="px-6 py-3">
-                            <div className="flex items-center gap-3">
-                              <KeyRound size={16} className="text-amber-500" />
-                              <span className="text-sm text-gray-600">为 <b>{admin.username}</b> 重置密码：</span>
-                              <input
-                                type="password"
-                                value={resetPwdValue}
-                                onChange={(e) => setResetPwdValue(e.target.value)}
-                                placeholder="请输入新密码 (≥6位)"
-                                className="p-1.5 border border-amber-300 rounded text-sm flex-1 max-w-xs focus:ring-2 focus:ring-amber-500 outline-none"
-                              />
-                              <button
-                                onClick={() => handleResetPassword(admin._id)}
-                                className="px-3 py-1.5 bg-amber-500 text-white text-sm rounded hover:bg-amber-600 transition-colors"
-                              >
-                                确认重置
-                              </button>
-                              <button
-                                onClick={() => { setResetPwdId(null); setResetPwdValue(''); }}
-                                className="px-3 py-1.5 bg-gray-100 text-gray-600 text-sm rounded hover:bg-gray-200 transition-colors"
-                              >
-                                取消
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-
-                      {/* Permissions Expanded Row */}
-                      {expandedId === admin._id && (
-                        <tr className="bg-purple-50/30">
-                          <td colSpan={6} className="px-6 py-4">
-                            <div className="space-y-3">
-                              <div className="flex items-center justify-between">
-                                <h4 className="text-sm font-semibold text-gray-700">
-                                  菜单权限配置
-                                  {admin.menuPermissions.length > 0 && (
-                                    <span className="ml-2 text-xs text-purple-500 font-normal">(已自定义)</span>
-                                  )}
-                                </h4>
-                                <div className="flex gap-2">
-                                  {admin.menuPermissions.length > 0 && (
-                                    <button
-                                      onClick={() => clearPermissionOverride(admin._id)}
-                                      className="text-xs px-3 py-1 bg-gray-100 text-gray-600 rounded hover:bg-gray-200 transition-colors"
-                                    >
-                                      恢复角色默认
-                                    </button>
-                                  )}
-                                  <button
-                                    onClick={() => savePermissions(admin._id)}
-                                    className="text-xs px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
-                                  >
-                                    保存权限
-                                  </button>
-                                </div>
-                              </div>
-                              <div className="flex flex-wrap gap-2">
-                                {ALL_MENUS.map((menu) => {
-                                  const isActive = editPermissions.length > 0
-                                    ? editPermissions.includes(menu.key)
-                                    : admin.effectivePermissions.includes(menu.key);
-                                  return (
-                                    <button
-                                      key={menu.key}
-                                      onClick={() => {
-                                        if (editPermissions.length === 0) {
-                                          // Initialize from effective
-                                          setEditPermissions(
-                                            admin.effectivePermissions.includes(menu.key)
-                                              ? admin.effectivePermissions.filter((k) => k !== menu.key)
-                                              : [...admin.effectivePermissions, menu.key]
-                                          );
-                                        } else {
-                                          togglePermission(menu.key);
-                                        }
-                                      }}
-                                      className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${
-                                        isActive
-                                          ? 'bg-purple-100 text-purple-700 border-purple-300'
-                                          : 'bg-gray-50 text-gray-400 border-gray-200'
-                                      }`}
-                                    >
-                                      {menu.label}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                              <p className="text-xs text-gray-400">
-                                角色 "{ROLE_LABELS[admin.role]}" 的默认权限会在未自定义时生效。点击菜单项可自定义覆盖。
-                              </p>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  ))}
-                </tbody>
-              </table>
+        <Dialog open={!!resetPwdId} onOpenChange={(open) => !open && setResetPwdId(null)}>
+          <DialogContent className="max-w-md rounded-3xl p-0 overflow-hidden shadow-2xl border-none">
+            <DialogHeader className="p-8 pb-4 bg-muted/20">
+              <div className="w-12 h-12 bg-amber-100 rounded-2xl flex items-center justify-center mb-4 border border-amber-200 shadow-sm">
+                <KeyRound size={20} className="text-amber-600" />
+              </div>
+              <DialogTitle className="text-xl font-bold">重置管理员密码</DialogTitle>
+              <DialogDescription>
+                正在为用户 <span className="font-bold text-foreground">@{admins.find(a => a._id === resetPwdId)?.username}</span> 修改密码
+              </DialogDescription>
+            </DialogHeader>
+            <div className="p-8 space-y-4">
+               <div className="space-y-2">
+                 <Label>输入新密码 (至少6位)</Label>
+                 <Input 
+                   type="password"
+                   value={resetPwdValue}
+                   onChange={e => setResetPwdValue(e.target.value)}
+                   placeholder="•••••"
+                   className="h-11 rounded-xl"
+                   autoFocus
+                 />
+               </div>
             </div>
-          )}
+            <DialogFooter className="p-8 pt-0">
+               <Button variant="ghost" className="flex-1" onClick={() => setResetPwdId(null)}>取消</Button>
+               <Button className="flex-1 bg-amber-600 hover:bg-amber-700 text-white" onClick={() => resetPwdId && handleResetPassword(resetPwdId)}>确认重置</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Admin List Table */}
+        <div className="border rounded-2xl overflow-hidden shadow-sm">
+          <Table>
+            <TableHeader className="bg-muted/50">
+              <TableRow>
+                <TableHead>登录账号</TableHead>
+                <TableHead>显示名称</TableHead>
+                <TableHead>系统角色</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead className="text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredAdmins.map((admin) => (
+                <React.Fragment key={admin._id}>
+                  <TableRow className={cn(admin.status === 'disabled' && "opacity-50", "transition-colors")}>
+                    <TableCell className="font-mono font-semibold py-4">
+                      <div className="flex items-center gap-2">
+                        <UserCog size={14} className="text-muted-foreground" />
+                        {admin.username}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {editingId === admin._id ? (
+                        <Input 
+                          value={editDisplayName}
+                          onChange={(e) => setEditDisplayName(e.target.value)}
+                          className="h-8 max-w-[150px] rounded-lg border-primary"
+                          autoFocus
+                        />
+                      ) : (
+                        admin.displayName || '-'
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {editingId === admin._id ? (
+                        <Select value={editRole} onValueChange={setEditRole}>
+                          <SelectTrigger className="h-8 py-0 rounded-lg border-primary text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="super_admin">超级管理员</SelectItem>
+                            <SelectItem value="admin">普通管理员</SelectItem>
+                            <SelectItem value="viewer">只读审计员</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        getRoleBadge(admin.role)
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {admin.status === 'active' ? (
+                        <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100/80 border-none px-2 h-5 text-[10px]">正常</Badge>
+                      ) : (
+                        <Badge variant="destructive" className="bg-red-50 text-red-600 hover:bg-red-50 border-none px-2 h-5 text-[10px]">已禁用</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {editingId === admin._id ? (
+                        <div className="flex justify-end gap-1">
+                          <Button size="icon" variant="ghost" onClick={() => handleUpdate(admin._id)} className="text-green-600"><Check size={16} /></Button>
+                          <Button size="icon" variant="ghost" onClick={() => setEditingId(null)}><X size={16} /></Button>
+                        </div>
+                      ) : (
+                        <div className="flex justify-end gap-1">
+                          <Button 
+                            size="icon" 
+                            variant="ghost" 
+                            onClick={() => toggleExpand(admin)}
+                            className={cn(expandedId === admin._id && "bg-muted text-primary")}
+                          >
+                            <ChevronDown size={16} className={cn("transition-transform", expandedId === admin._id && "rotate-180")} />
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => startEdit(admin)}><Edit2 size={14} className="text-blue-500" /></Button>
+                          <Button size="icon" variant="ghost" onClick={() => setResetPwdId(admin._id)}><KeyRound size={14} className="text-amber-500" /></Button>
+                          <Button 
+                            size="icon" 
+                            variant="ghost" 
+                            onClick={() => handleToggleStatus(admin)}
+                          >
+                            {admin.status === 'active' ? <Ban size={14} className="text-orange-500" /> : <CheckCircle size={14} className="text-green-500" />}
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => handleDelete(admin._id, admin.username)}><Trash2 size={14} className="text-red-500" /></Button>
+                        </div>
+                      )}
+                    </TableCell>
+                  </TableRow>
+
+                  {/* Permissions Row */}
+                  {expandedId === admin._id && (
+                    <TableRow className="bg-muted/20 border-t-0 hover:bg-muted/20">
+                      <TableCell colSpan={5} className="p-6">
+                        <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
+                           <div className="flex items-center justify-between">
+                              <div>
+                                <h4 className="text-sm font-bold flex items-center gap-2">
+                                  <Lock size={14} className="text-primary" /> 配置权限覆盖
+                                </h4>
+                                <p className="text-[11px] text-muted-foreground mt-1">您可以为此特定账号设置不同于角色的自定义菜单权限</p>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button variant="ghost" size="sm" onClick={() => clearPermissionOverride(admin._id)} className="h-8 text-xs">重置默认</Button>
+                                <Button size="sm" onClick={() => savePermissions(admin._id)} className="h-8 text-xs">保存自定义权限</Button>
+                              </div>
+                           </div>
+                           
+                           <div className="flex flex-wrap gap-2">
+                              {ALL_MENUS.map(menu => (
+                                <button
+                                  key={menu.key}
+                                  onClick={() => {
+                                    if (editPermissions.length === 0) {
+                                      setEditPermissions(
+                                        admin.effectivePermissions.includes(menu.key)
+                                          ? admin.effectivePermissions.filter((k) => k !== menu.key)
+                                          : [...admin.effectivePermissions, menu.key]
+                                      );
+                                    } else {
+                                      togglePermission(menu.key);
+                                    }
+                                  }}
+                                  className={cn(
+                                    "px-4 py-1.5 rounded-full text-xs font-semibold border transition-all",
+                                    (editPermissions.length > 0 ? editPermissions.includes(menu.key) : admin.effectivePermissions.includes(menu.key))
+                                      ? "bg-primary text-primary-foreground border-primary"
+                                      : "bg-background text-muted-foreground border-muted-foreground/20 hover:border-primary/50"
+                                  )}
+                                >
+                                  {menu.label}
+                                </button>
+                              ))}
+                           </div>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </React.Fragment>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       </div>
     </div>

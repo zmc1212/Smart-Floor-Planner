@@ -2,7 +2,29 @@
 
 import React, { useState, useEffect } from 'react';
 import Navbar from "@/components/Navbar";
-import { Loader2, User, Plus, X, Shield, Pencil, Trash2, Smartphone } from "lucide-react";
+import { Loader2, User as UserIcon, Plus, X, Shield, Pencil, Trash2, Smartphone, ArrowLeft, Mail } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import Link from 'next/link';
 
 export default function StaffPage() {
   const [staff, setStaff] = useState<any[]>([]);
@@ -132,172 +154,222 @@ export default function StaffPage() {
     return labels[role] || role;
   };
 
+  const renderStaffForm = () => (
+    <form onSubmit={handleSubmit}>
+      <DialogHeader className="p-8 pb-6 border-b bg-muted/20">
+        <DialogTitle className="text-2xl font-bold">{isEditMode ? '编辑员工信息' : '录入新员工'}</DialogTitle>
+        <DialogDescription>
+           配置员工的登录账号与协作权限
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="p-8 space-y-5 max-h-[60vh] overflow-y-auto">
+        <div className="space-y-2">
+          <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">登录账号</Label>
+          <Input 
+            required
+            disabled={isEditMode}
+            className="h-12 rounded-2xl bg-muted/30 border-none focus-visible:ring-primary font-medium"
+            placeholder="例如: designer_zhang"
+            value={formData.username}
+            onChange={(e) => setFormData({...formData, username: e.target.value})}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">{isEditMode ? '重置密码 (留空则不修改)' : '登录密码'}</Label>
+          <Input 
+            required={!isEditMode}
+            type="password"
+            className="h-12 rounded-2xl bg-muted/30 border-none focus-visible:ring-primary"
+            placeholder="不少于6位"
+            value={formData.password}
+            onChange={(e) => setFormData({...formData, password: e.target.value})}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">姓名/昵称</Label>
+          <Input 
+            required
+            className="h-12 rounded-2xl bg-muted/30 border-none focus-visible:ring-primary"
+            placeholder="显示名称"
+            value={formData.displayName}
+            onChange={(e) => setFormData({...formData, displayName: e.target.value})}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">联系电话</Label>
+          <Input 
+            className="h-12 rounded-2xl bg-muted/30 border-none focus-visible:ring-primary"
+            placeholder="11位手机号"
+            value={formData.phone}
+            onChange={(e) => setFormData({...formData, phone: e.target.value})}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">岗位角色</Label>
+          <Select 
+            value={formData.role} 
+            onValueChange={(val) => setFormData({...formData, role: val})}
+          >
+            <SelectTrigger className="h-12 rounded-2xl bg-muted/30 border-none focus-visible:ring-primary">
+              <SelectValue placeholder="选择角色" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="designer">设计师</SelectItem>
+              <SelectItem value="salesperson">销售顾问</SelectItem>
+              {currentUser?.role === 'super_admin' && <SelectItem value="enterprise_admin">公司负责人</SelectItem>}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <DialogFooter className="p-8 pt-4 bg-muted/30 border-t">
+        <Button 
+          type="button" 
+          variant="ghost" 
+          className="h-12 rounded-2xl px-6 bg-background hover:bg-muted" 
+          onClick={() => setIsModalOpen(false)}
+        >
+          取消
+        </Button>
+        <Button 
+          type="submit" 
+          disabled={isSubmitting} 
+          className="h-12 rounded-2xl px-10 font-bold shadow-lg shadow-primary/10"
+        >
+          {isSubmitting ? '同步中...' : (isEditMode ? '保存修改' : '确认创建')}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+
   return (
     <div className="min-h-screen bg-white text-[#171717] font-sans">
       <Navbar />
-      <main className="max-w-7xl mx-auto px-6 py-16">
-        <div className="mb-12 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <h2 className="text-[32px] font-semibold tracking-[-1.5px] leading-tight">
+      <main className="max-w-7xl mx-auto px-6 py-12">
+        <Link
+          href="/"
+          className="flex items-center gap-1 text-muted-foreground hover:text-primary transition-colors mb-8 w-fit"
+        >
+          <ArrowLeft size={16} />
+          <span className="text-sm font-medium">返回首页</span>
+        </Link>
+
+        <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div className="space-y-1">
+            <h2 className="text-[32px] font-bold tracking-tight">
               员工与账号管理
             </h2>
+            <p className="text-muted-foreground text-sm flex items-center gap-2">
+               管理您的企业直属员工，分配系统访问权限
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-4">
             {!loading && (
-              <span className="bg-[#f5f5f5] text-[#666] px-3 py-1 rounded-full text-[14px] font-medium">
-                {staff.length} 名成员
-              </span>
+              <Badge variant="secondary" className="bg-muted text-muted-foreground border-none font-bold px-4 py-1.5 h-auto rounded-full">
+                {staff.length} 个成员账户
+              </Badge>
+            )}
+            {(currentUser?.role === 'super_admin' || currentUser?.role === 'enterprise_admin' || currentUser?.role === 'admin') && (
+              <Dialog open={isModalOpen && !isEditMode} onOpenChange={(open) => !open && setIsModalOpen(false)}>
+                <DialogTrigger asChild>
+                  <Button onClick={handleOpenCreateModal} className="h-11 rounded-full px-6 font-bold shadow-lg shadow-primary/20">
+                    <Plus size={18} className="mr-2" /> 新增员工
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md p-0 overflow-hidden rounded-[32px] shadow-2xl border-none">
+                  {renderStaffForm()}
+                </DialogContent>
+              </Dialog>
             )}
           </div>
-          {(currentUser?.role === 'super_admin' || currentUser?.role === 'enterprise_admin' || currentUser?.role === 'admin') && (
-            <button 
-              onClick={handleOpenCreateModal}
-              className="px-6 py-2.5 bg-[#171717] text-white rounded-full text-[14px] font-medium hover:bg-black transition-all flex items-center gap-2"
-            >
-              <Plus size={18} /> 新增员工
-            </button>
-          )}
         </div>
 
-        {loading && (
-          <div className="flex flex-col items-center justify-center py-24 text-[#808080]">
-            <Loader2 className="animate-spin mb-4" size={32} />
-            <p className="text-[14px]">正在加载团队成员...</p>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-32 text-muted-foreground">
+            <Loader2 className="animate-spin mb-4" size={48} />
+            <p className="text-sm font-medium">同步团队数据中...</p>
           </div>
-        )}
-
-        {!loading && (
+        ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {staff.map((member: any) => (
-              <div key={member._id} className="group relative bg-white p-6 rounded-3xl shadow-[0px_0px_0px_1px_rgba(0,0,0,0.08),0px_2px_4px_rgba(0,0,0,0.02)] hover:shadow-xl transition-all border border-transparent hover:border-gray-100">
-                <div className="flex items-start justify-between mb-6">
-                  <div className="w-12 h-12 bg-gray-50 rounded-2xl flex items-center justify-center text-lg font-bold text-gray-400 group-hover:bg-[#171717] group-hover:text-white transition-colors">
+              <div key={member._id} className="group relative bg-white p-8 rounded-[32px] border border-muted hover:border-primary/50 hover:shadow-2xl hover:shadow-primary/5 transition-all duration-300">
+                <div className="flex items-start justify-between mb-8">
+                  <div className="w-14 h-14 bg-muted rounded-[20px] flex items-center justify-center text-xl font-bold text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-500 shadow-inner">
                     {member.displayName?.[0] || member.username[0].toUpperCase()}
                   </div>
-                  <div className={`px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider ${
-                    member.role === 'enterprise_admin' ? 'bg-purple-50 text-purple-600' : 
-                    member.role === 'designer' ? 'bg-blue-50 text-blue-600' : 'bg-green-50 text-green-600'
-                  }`}>
+                  <Badge className={cn(
+                    "px-3 py-1 font-bold text-[10px] uppercase tracking-wider border-none",
+                    member.role === 'enterprise_admin' ? 'bg-purple-100 text-purple-700' : 
+                    member.role === 'designer' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                  )}>
                     {getRoleLabel(member.role)}
-                  </div>
+                  </Badge>
                 </div>
 
-                <div className="space-y-1 mb-6">
-                  <h3 className="text-[18px] font-bold text-gray-900">{member.displayName || member.username}</h3>
-                  <p className="text-[13px] text-gray-400 font-medium">@{member.username}</p>
+                <div className="space-y-1 mb-8">
+                  <h3 className="text-[20px] font-bold text-foreground leading-none">{member.displayName || member.username}</h3>
+                  <p className="text-sm text-muted-foreground font-medium">@{member.username}</p>
                 </div>
 
-                <div className="space-y-3 pt-6 border-t border-gray-50">
-                  <div className="flex items-center gap-2 text-[13px] text-gray-500">
-                    <Smartphone size={14} className="text-gray-300" />
-                    <span>{member.phone || '未绑定手机'}</span>
+                <div className="grid grid-cols-2 gap-4 pt-6 border-t border-muted/50">
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase opacity-50">联系电话</p>
+                    <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+                       <Smartphone size={14} className="text-muted-foreground" />
+                       <span>{member.phone || '未填写'}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 text-[13px] text-gray-500">
-                    <Shield size={14} className="text-gray-300" />
-                    <span className="truncate">{member.openid ? '已绑定微信' : '未绑定微信'}</span>
+                  <div className="space-y-1 text-right">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase opacity-50">微信状态</p>
+                    <div className="flex items-center justify-end gap-2 text-[13px] font-medium">
+                       <Shield size={14} className={member.openid ? "text-green-500" : "text-muted-foreground/30"} />
+                       <span className={cn(member.openid ? "text-green-600" : "text-muted-foreground")}>{member.openid ? '已关联' : '未绑定'}</span>
+                    </div>
                   </div>
                 </div>
 
                 <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-all flex gap-1">
-                   <button 
-                    onClick={() => handleEditClick(member)}
-                    className="p-2 bg-white shadow-lg rounded-full text-gray-400 hover:text-black hover:scale-110 transition-all"
-                   >
-                     <Pencil size={14}/>
-                   </button>
-                   <button 
-                    onClick={() => handleDelete(member._id)}
-                    className="p-2 bg-white shadow-lg rounded-full text-gray-400 hover:text-red-600 hover:scale-110 transition-all"
-                   >
-                    <Trash2 size={14}/>
-                   </button>
+                   {(currentUser?.role === 'super_admin' || currentUser?.role === 'enterprise_admin' || (currentUser?.role === 'admin' && member.role !== 'super_admin')) && (
+                     <>
+                       <Dialog open={isModalOpen && isEditMode && editingId === member._id} onOpenChange={(open) => !open && setIsModalOpen(false)}>
+                         <DialogTrigger asChild>
+                           <Button 
+                             size="icon" 
+                             variant="secondary"
+                             onClick={() => handleEditClick(member)}
+                             className="h-10 w-10 bg-white shadow-xl rounded-full text-muted-foreground hover:text-foreground hover:scale-110 transition-all border border-muted"
+                           >
+                             <Pencil size={14}/>
+                           </Button>
+                         </DialogTrigger>
+                         <DialogContent className="max-w-md p-0 overflow-hidden rounded-[32px] shadow-2xl border-none">
+                           {renderStaffForm()}
+                         </DialogContent>
+                       </Dialog>
+                       <Button 
+                         size="icon"
+                         variant="secondary"
+                         onClick={() => handleDelete(member._id)}
+                         className="h-10 w-10 bg-white shadow-xl rounded-full text-muted-foreground hover:text-destructive hover:scale-110 transition-all border border-muted"
+                       >
+                        <Trash2 size={14}/>
+                       </Button>
+                     </>
+                   )}
                 </div>
               </div>
             ))}
             {staff.length === 0 && (
-              <div className="col-span-full py-24 text-center text-gray-400 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
-                暂无员工数据
+              <div className="col-span-full py-32 text-center text-muted-foreground bg-muted/20 rounded-[40px] border-4 border-dashed border-muted/50">
+                <div className="bg-muted w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                   <UserIcon size={32} className="opacity-20" />
+                </div>
+                <h3 className="text-xl font-bold text-foreground mb-1">您的团队目前空空如也</h3>
+                <p>点击右上角按钮，邀请您的第一位成员加入系统</p>
               </div>
             )}
-          </div>
-        )}
-
-        {/* Create Staff Modal */}
-        {isModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
-            <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-              <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-                <h3 className="text-lg font-bold">{isEditMode ? '编辑员工信息' : '新增员工'}</h3>
-                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                  <X size={20} />
-                </button>
-              </div>
-
-              <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-[12px] font-bold text-gray-400 uppercase">登陆账号</label>
-                  <input 
-                    required
-                    disabled={isEditMode}
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black/5 disabled:opacity-50"
-                    placeholder="例如: designer_zhang"
-                    value={formData.username}
-                    onChange={(e) => setFormData({...formData, username: e.target.value})}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[12px] font-bold text-gray-400 uppercase">{isEditMode ? '修改密码 (留空则不修改)' : '登录密码'}</label>
-                  <input 
-                    required={!isEditMode}
-                    type="password"
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black/5"
-                    placeholder={isEditMode ? "不少于6位" : "不少于6位"}
-                    value={formData.password}
-                    onChange={(e) => setFormData({...formData, password: e.target.value})}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[12px] font-bold text-gray-400 uppercase">姓名/昵称</label>
-                  <input 
-                    required
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black/5"
-                    placeholder="显示名称"
-                    value={formData.displayName}
-                    onChange={(e) => setFormData({...formData, displayName: e.target.value})}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[12px] font-bold text-gray-400 uppercase">联系电话 (用于手机登录)</label>
-                  <input 
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black/5"
-                    placeholder="11位手机号"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[12px] font-bold text-gray-400 uppercase">员工角色</label>
-                  <select 
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black/5"
-                    value={formData.role}
-                    onChange={(e) => setFormData({...formData, role: e.target.value})}
-                  >
-                    <option value="designer">设计师</option>
-                    <option value="salesperson">销售顾问</option>
-                    {currentUser?.role === 'super_admin' && <option value="enterprise_admin">公司负责人</option>}
-                  </select>
-                </div>
-
-                <div className="pt-4">
-                  <button 
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full py-3 bg-[#171717] text-white font-bold rounded-xl hover:bg-black disabled:opacity-50 transition-all"
-                  >
-                    {isSubmitting ? '正在处理...' : (isEditMode ? '保 存 修 改' : '确 认 创 建')}
-                  </button>
-                </div>
-              </form>
-            </div>
           </div>
         )}
       </main>

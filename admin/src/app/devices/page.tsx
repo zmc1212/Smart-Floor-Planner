@@ -6,6 +6,35 @@ import React, { useState, useEffect } from 'react';
 import { Trash2, Plus, RefreshCw, Cpu, Search, Edit2, Check, X, ArrowLeft, Building2, User } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 interface Device {
   _id: string;
@@ -181,145 +210,186 @@ export default function DevicesPage() {
     <div className="min-h-screen bg-white">
       <Navbar />
       <div className="p-6 max-w-7xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
             <div className="flex items-center gap-4">
-                <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl">
-                    <Cpu size={24} />
+                <div className="p-4 bg-primary/10 text-primary rounded-[24px] shadow-inner">
+                    <Cpu size={32} strokeWidth={2.5} />
                 </div>
-                <h1 className="text-[28px] font-bold tracking-tight">测距仪设备池</h1>
+                <div>
+                   <h1 className="text-[32px] font-bold tracking-tight mb-1">测距仪设备池</h1>
+                   <p className="text-muted-foreground text-sm">管理全渠道测距仪资产，进行企业与设计师强绑定</p>
+                </div>
             </div>
-            <button onClick={fetchDevices} className="p-2.5 hover:bg-gray-50 rounded-full transition-colors">
-                <RefreshCw size={20} className={loading ? 'animate-spin text-gray-400' : 'text-gray-400'} />
-            </button>
+            
+            <div className="flex gap-3">
+                <Button 
+                   variant="outline" 
+                   size="icon" 
+                   onClick={fetchDevices} 
+                   className="rounded-full h-12 w-12 border-muted"
+                >
+                    <RefreshCw size={20} className={cn("text-muted-foreground", loading && "animate-spin")} />
+                </Button>
+
+                {(currentUser?.role === 'super_admin' || currentUser?.role === 'admin') && (
+                    <Dialog open={adding} onOpenChange={setAdding}>
+                        <DialogTrigger asChild>
+                            <Button className="rounded-full px-8 h-12 text-base font-semibold shadow-lg shadow-primary/20 flex items-center gap-2">
+                                <Plus size={20} /> 录入新库存
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-md p-0 overflow-hidden rounded-[32px] shadow-2xl border-none">
+                            <form onSubmit={handleAdd}>
+                                <DialogHeader className="p-8 pb-6 border-b bg-muted/20">
+                                    <DialogTitle className="text-2xl font-bold">录入新设备</DialogTitle>
+                                    <DialogDescription>将新的激光测距仪 MAC 地址录入系统库存</DialogDescription>
+                                </DialogHeader>
+                                
+                                <div className="p-8 space-y-5">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="device-code" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">设备编码 / MAC (必填)</Label>
+                                        <Input 
+                                            id="device-code"
+                                            required
+                                            value={newCode}
+                                            onChange={e => setNewCode(e.target.value)}
+                                            placeholder="例如: SN-123456"
+                                            className="h-12 rounded-2xl bg-muted/30 border-none font-mono text-lg focus-visible:ring-primary"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="device-desc" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">备注名称</Label>
+                                        <Input 
+                                            id="device-desc"
+                                            value={newDesc}
+                                            onChange={e => setNewDesc(e.target.value)}
+                                            placeholder="例如: 杭州分公司备机"
+                                            className="h-12 rounded-2xl bg-muted/30 border-none focus-visible:ring-primary"
+                                        />
+                                    </div>
+                                </div>
+
+                                <DialogFooter className="p-8 pt-4 bg-muted/30 border-t">
+                                    <Button type="button" variant="ghost" className="h-12 rounded-2xl px-6 bg-background" onClick={() => setAdding(false)}>取消</Button>
+                                    <Button type="submit" disabled={adding} className="h-12 rounded-2xl px-10 font-bold shadow-lg shadow-primary/10">确认录入</Button>
+                                </DialogFooter>
+                            </form>
+                        </DialogContent>
+                    </Dialog>
+                )}
+            </div>
         </div>
 
         {/* Filters */}
-        <div className="mb-8 flex gap-4">
+        <div className="mb-10 flex gap-4 bg-muted/30 p-2 rounded-[24px] border border-muted/50">
             <div className="relative flex-1">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
-                <input 
-                    className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-2xl outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500/20 transition-all text-sm"
-                    placeholder="按设备编码或备注搜索..."
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
+                <Input 
+                    className="w-full pl-12 h-12 bg-background border-none shadow-none rounded-[20px] focus-visible:ring-2 focus-visible:ring-primary/20 text-base"
+                    placeholder="根据编码或备注检索资产..."
                     value={searchTerm}
                     onChange={e => setSearchTerm(e.target.value)}
                 />
             </div>
         </div>
 
-        {/* Add New Device (Super Admin only) */}
-        {(currentUser?.role === 'super_admin' || currentUser?.role === 'admin') && (
-            <div className="mb-8 p-6 bg-gray-50 rounded-3xl border border-gray-100">
-                <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-                    <div className="space-y-1.5">
-                        <label className="text-[12px] font-bold text-gray-400 uppercase tracking-wider">设备编码 / MAC</label>
-                        <input 
-                            required
-                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/10 text-sm font-mono"
-                            placeholder="例如: SN-123456"
-                            value={newCode}
-                            onChange={e => setNewCode(e.target.value)}
-                        />
-                    </div>
-                    <div className="space-y-1.5">
-                        <label className="text-[12px] font-bold text-gray-400 uppercase tracking-wider">备注名称</label>
-                        <input 
-                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/10 text-sm"
-                            placeholder="例如: 杭州分公司备机"
-                            value={newDesc}
-                            onChange={e => setNewDesc(e.target.value)}
-                        />
-                    </div>
-                    <button 
-                        type="submit"
-                        disabled={adding}
-                        className="py-2.5 bg-[#171717] text-white font-bold rounded-xl hover:bg-black disabled:opacity-50 transition-all"
-                    >
-                        {adding ? '录入中...' : '录入新库存'}
-                    </button>
-                </form>
-            </div>
-        )}
 
-        {/* Device Table */}
-        <div className="bg-white rounded-3xl shadow-[0px_0px_0px_1px_rgba(0,0,0,0.08)] overflow-hidden">
-            <table className="w-full text-left border-collapse">
-                <thead>
-                    <tr className="bg-[#fafafa] border-b border-[rgba(0,0,0,0.08)]">
-                        <th className="px-6 py-4 text-[13px] font-bold">设备编码</th>
-                        <th className="px-6 py-4 text-[13px] font-bold">归属企业</th>
-                        <th className="px-6 py-4 text-[13px] font-bold">当前持有人 (强绑定)</th>
-                        <th className="px-6 py-4 text-[13px] font-bold">状态</th>
-                        <th className="px-6 py-4 text-[13px] font-bold text-right">操作</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-[rgba(0,0,0,0.08)]">
+        <div className="border rounded-[32px] overflow-hidden shadow-sm bg-white">
+            <Table>
+                <TableHeader className="bg-muted/30">
+                    <TableRow className="border-muted/50 hover:bg-transparent">
+                        <TableHead className="px-8 py-5 h-auto text-[13px] font-bold text-foreground">设备编码</TableHead>
+                        <TableHead className="px-8 py-5 h-auto text-[13px] font-bold text-foreground">归属企业</TableHead>
+                        <TableHead className="px-8 py-5 h-auto text-[13px] font-bold text-foreground">持有人 (强绑定)</TableHead>
+                        <TableHead className="px-8 py-5 h-auto text-[13px] font-bold text-foreground">状态</TableHead>
+                        <TableHead className="px-8 py-5 h-auto text-[13px] font-bold text-right text-foreground">操作</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
                     {filteredDevices.map(device => (
-                        <tr key={device._id} className="hover:bg-gray-50/30 transition-colors">
-                            <td className="px-6 py-5">
+                        <TableRow key={device._id} className="border-muted/50 hover:bg-muted/10 transition-colors">
+                            <TableCell className="px-8 py-6">
                                 {editingId === device._id ? (
-                                    <input value={editCode} onChange={e => setEditCode(e.target.value)} className="w-full p-2 border border-blue-200 rounded-lg text-sm font-mono" />
+                                    <Input value={editCode} onChange={e => setEditCode(e.target.value)} className="h-9 font-mono border-primary shadow-none" />
                                 ) : (
-                                    <div>
-                                        <div className="text-[14px] font-mono font-bold">{device.code}</div>
-                                        <div className="text-[11px] text-gray-400 mt-0.5">{device.description || '无备注'}</div>
+                                    <div className="space-y-1">
+                                        <div className="text-[15px] font-mono font-bold leading-none">{device.code}</div>
+                                        <div className="text-xs text-muted-foreground">{device.description || '无备注'}</div>
                                     </div>
                                 )}
-                            </td>
-                            <td className="px-6 py-5">
+                            </TableCell>
+                            <TableCell className="px-8 py-6">
                                 {editingId === device._id && (currentUser?.role === 'super_admin' || currentUser?.role === 'admin') ? (
-                                    <select value={editEnterprise} onChange={e => setEditEnterprise(e.target.value)} className="w-full p-2 border border-blue-200 rounded-lg text-sm">
-                                        <option value="">未分配企业</option>
-                                        {enterprises.map(e => <option key={e._id} value={e._id}>{e.name}</option>)}
-                                    </select>
+                                    <Select value={editEnterprise} onValueChange={setEditEnterprise}>
+                                        <SelectTrigger className="h-9 border-primary shadow-none">
+                                            <SelectValue placeholder="未分配企业" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="">未分配企业</SelectItem>
+                                            {enterprises.map(e => <SelectItem key={e._id} value={e._id}>{e.name}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
                                 ) : (
-                                    <div className="flex items-center gap-2 text-[13px] text-gray-600">
-                                        <Building2 size={14} className="text-gray-300" />
+                                    <div className="flex items-center gap-2 text-sm text-foreground/80">
+                                        <Building2 size={14} className="text-muted-foreground" />
                                         {getEnterpriseName(device.enterpriseId)}
                                     </div>
                                 )}
-                            </td>
-                            <td className="px-6 py-5">
+                            </TableCell>
+                            <TableCell className="px-8 py-6">
                                 {editingId === device._id ? (
-                                    <select value={editStaff} onChange={e => setEditStaff(e.target.value)} className="w-full p-2 border border-blue-200 rounded-lg text-sm">
-                                        <option value="">未指派个人</option>
-                                        {staff.filter(s => (editEnterprise ? s.enterpriseId === editEnterprise : true)).map(s => (
-                                            <option key={s._id} value={s._id}>{s.displayName || s.username} ({getRoleLabelShort(s.role)})</option>
-                                        ))}
-                                    </select>
+                                    <Select value={editStaff} onValueChange={setEditStaff}>
+                                        <SelectTrigger className="h-9 border-primary shadow-none">
+                                            <SelectValue placeholder="未指派个人" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="">未指派个人</SelectItem>
+                                            {staff.filter(s => (editEnterprise ? s.enterpriseId === editEnterprise : true)).map(s => (
+                                                <SelectItem key={s._id} value={s._id}>{s.displayName || s.username} ({getRoleLabelShort(s.role)})</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 ) : (
-                                    <div className="flex items-center gap-2 text-[13px] text-gray-600">
-                                        <User size={14} className="text-gray-300" />
+                                    <div className="flex items-center gap-2 text-sm text-foreground/80">
+                                        <User size={14} className="text-muted-foreground" />
                                         {getStaffName(device.assignedUserId)}
                                     </div>
                                 )}
-                            </td>
-                            <td className="px-6 py-5">
-                                <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
-                                    device.status === 'assigned' ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'
-                                }`}>
-                                    {device.status === 'assigned' ? '已绑定' : '闲置中'}
-                                </span>
-                            </td>
-                            <td className="px-6 py-5 text-right">
+                            </TableCell>
+                            <TableCell className="px-8 py-6">
+                                {device.status === 'assigned' ? (
+                                    <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100 border-none px-3 font-bold h-6">已绑定</Badge>
+                                ) : (
+                                    <Badge variant="secondary" className="bg-muted text-muted-foreground hover:bg-muted border-none px-3 font-bold h-6">闲置中</Badge>
+                                )}
+                            </TableCell>
+                            <TableCell className="px-8 py-6 text-right">
                                 {editingId === device._id ? (
-                                    <div className="flex justify-end gap-2">
-                                        <button onClick={() => handleUpdate(device._id)} className="p-2 text-green-600 hover:bg-green-50 rounded-xl"><Check size={18} /></button>
-                                        <button onClick={() => setEditingId(null)} className="p-2 text-gray-400 hover:bg-gray-50 rounded-xl"><X size={18} /></button>
+                                    <div className="flex justify-end gap-1">
+                                        <Button size="icon" variant="ghost" onClick={() => handleUpdate(device._id)} className="text-green-600 hover:text-green-700 hover:bg-green-50"><Check size={20} /></Button>
+                                        <Button size="icon" variant="ghost" onClick={() => setEditingId(null)} className="text-muted-foreground"><X size={20} /></Button>
                                     </div>
                                 ) : (
-                                    <div className="flex justify-end gap-2">
-                                        <button onClick={() => startEdit(device)} className="p-2 text-gray-400 hover:text-[#171717] hover:bg-gray-100 rounded-xl transition-all"><Edit2 size={18} /></button>
-                                        <button onClick={() => handleDelete(device._id)} className="p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18} /></button>
+                                    <div className="flex justify-end gap-1">
+                                        <Button size="icon" variant="ghost" onClick={() => startEdit(device)} className="text-muted-foreground hover:text-foreground"><Edit2 size={16} /></Button>
+                                        <Button size="icon" variant="ghost" onClick={() => handleDelete(device._id)} className="text-muted-foreground hover:text-destructive"><Trash2 size={16} /></Button>
                                     </div>
                                 )}
-                            </td>
-                        </tr>
+                            </TableCell>
+                        </TableRow>
                     ))}
                     {filteredDevices.length === 0 && (
-                        <tr><td colSpan={5} className="p-12 text-center text-gray-400 text-sm">暂无匹配设备</td></tr>
+                        <TableRow>
+                            <TableCell colSpan={5} className="h-48 text-center text-muted-foreground">
+                                <div className="flex flex-col items-center justify-center space-y-2">
+                                    <Cpu size={32} className="opacity-20" />
+                                    <p>未发现符合条件的设备资产</p>
+                                </div>
+                            </TableCell>
+                        </TableRow>
                     )}
-                </tbody>
-            </table>
+                </TableBody>
+            </Table>
         </div>
       </div>
     </div>

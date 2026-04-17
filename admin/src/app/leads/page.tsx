@@ -2,7 +2,33 @@
 
 import React, { useState, useEffect } from 'react';
 import Navbar from "@/components/Navbar";
-import { Loader2, Phone, CheckCircle, Clock, User, MessageSquare, Plus, X } from "lucide-react";
+import { Loader2, Phone, CheckCircle, Clock, User, MessageSquare, Plus, X, Search, Filter } from "lucide-react";
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<any[]>([]);
@@ -94,15 +120,15 @@ export default function LeadsPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'new':
-        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"><Clock size={12} /> 新线索</span>;
+        return <Badge variant="secondary" className="bg-blue-100 text-blue-800 hover:bg-blue-100/80 border-none">新线索</Badge>;
       case 'contacted':
-        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"><Phone size={12} /> 已联系</span>;
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100/80 border-none">已联系</Badge>;
       case 'converted':
-        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"><CheckCircle size={12} /> 已转化</span>;
+        return <Badge variant="secondary" className="bg-green-100 text-green-800 hover:bg-green-100/80 border-none">已转化</Badge>;
       case 'closed':
-        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">已关闭</span>;
+        return <Badge variant="outline" className="text-gray-500 border-gray-200">已关闭</Badge>;
       default:
-        return <span>{status}</span>;
+        return <Badge variant="outline">{status}</Badge>;
     }
   };
 
@@ -136,168 +162,191 @@ export default function LeadsPage() {
         )}
 
         {!loading && (
-          <div className="bg-white rounded-lg shadow-[0px_0px_0px_1px_rgba(0,0,0,0.08),0px_2px_2px_rgba(0,0,0,0.04)] ring-1 ring-[#fafafa] overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-[#fafafa] border-b border-[rgba(0,0,0,0.08)]">
-                    <th className="p-4 text-[13px] font-semibold text-[#171717]">客户姓名</th>
-                    <th className="p-4 text-[13px] font-semibold text-[#171717]">联系电话</th>
-                    <th className="p-4 text-[13px] font-semibold text-[#171717]">指派设计师</th>
-                    <th className="p-4 text-[13px] font-semibold text-[#171717]">状态</th>
-                    <th className="p-4 text-[13px] font-semibold text-[#171717]">提交时间</th>
-                    <th className="p-4 text-[13px] font-semibold text-[#171717]">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[rgba(0,0,0,0.08)]">
-                  {leads.map((lead: any) => (
-                    <tr key={lead._id} className="hover:bg-[#fcfcfc] transition-colors">
-                      <td className="p-4">
-                        <div className="text-[14px] font-medium text-[#171717]">{lead.name}</div>
-                        <div className="text-[11px] text-gray-400 mt-1">{lead.source}</div>
-                      </td>
-                      <td className="p-4 text-[13px] text-[#666] font-mono">{lead.phone}</td>
-                      <td className="p-4">
-                         {lead.assignedTo ? (
-                           <div className="flex items-center gap-1.5 text-[13px] text-gray-600">
-                             <User size={14} className="text-gray-400" /> {typeof lead.assignedTo === 'object' ? (lead.assignedTo.displayName || lead.assignedTo.username) : lead.assignedTo}
-                           </div>
-                         ) : (
-                           <span className="text-[12px] text-gray-300">未指派</span>
-                         )}
-                      </td>
-                      <td className="p-4 text-[13px]">{getStatusBadge(lead.status)}</td>
-                      <td className="p-4 text-[13px] text-[#666]">
-                        {new Date(lead.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="p-4 text-right">
-                        <button 
-                          onClick={() => setSelectedLead(lead)}
-                          className="px-4 py-1.5 bg-[#171717] text-white rounded-full text-[12px] font-medium hover:bg-black"
-                        >
-                          管理详情
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="border rounded-2xl overflow-hidden shadow-sm">
+            <Table>
+              <TableHeader className="bg-muted/50">
+                <TableRow>
+                  <TableHead className="w-[200px]">客户姓名</TableHead>
+                  <TableHead>联系电话</TableHead>
+                  <TableHead>指派设计师</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>提交时间</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {leads.map((lead: any) => (
+                  <TableRow key={lead._id}>
+                    <TableCell>
+                      <div className="font-semibold text-sm">{lead.name}</div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5">{lead.source}</div>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{lead.phone}</TableCell>
+                    <TableCell>
+                       {lead.assignedTo ? (
+                         <div className="flex items-center gap-1.5 text-xs">
+                           <User size={12} className="text-muted-foreground" /> 
+                           {typeof lead.assignedTo === 'object' ? (lead.assignedTo.displayName || lead.assignedTo.username) : lead.assignedTo}
+                         </div>
+                       ) : (
+                         <span className="text-[11px] text-muted-foreground italic">未指派</span>
+                       )}
+                    </TableCell>
+                    <TableCell>{getStatusBadge(lead.status)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {new Date(lead.createdAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button 
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setSelectedLead(lead)}
+                        className="h-8 text-xs rounded-full font-bold"
+                      >
+                        管理详情
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {leads.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                      暂无客资线索
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
           </div>
         )}
 
-        {/* Lead Detail Modal */}
-        {selectedLead && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-end">
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedLead(null)} />
-            <div className="relative w-full max-w-lg h-full bg-white shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-300">
-              <div className="p-8 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-xl font-bold">
-                    {selectedLead.name[0]}
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold">{selectedLead.name}</h3>
-                    <div className="text-sm text-gray-400">{selectedLead.phone}</div>
-                  </div>
-                </div>
-                <button onClick={() => setSelectedLead(null)} className="p-2 hover:bg-gray-100 rounded-full"><X size={20} /></button>
-              </div>
-
-              <div className="p-8 space-y-8">
-                {/* Status & Assignment */}
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-[12px] font-semibold text-gray-400 uppercase tracking-wider">业务状态</label>
-                    <select 
-                      className="w-full p-2.5 bg-gray-50 border border-gray-100 rounded-xl text-[14px] outline-none"
-                      value={selectedLead.status}
-                      onChange={(e) => updateLead(selectedLead._id, { status: e.target.value })}
-                    >
-                      <option value="new">新线索</option>
-                      <option value="contacted">已联系</option>
-                      <option value="converted">已转化 (成单)</option>
-                      <option value="closed">已关闭 (流失)</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[12px] font-semibold text-gray-400 uppercase tracking-wider">指派设计师</label>
-                    <select 
-                      className="w-full p-2.5 bg-gray-50 border border-gray-100 rounded-xl text-[14px] outline-none"
-                      value={selectedLead.assignedTo?._id || selectedLead.assignedTo || ''}
-                      onChange={(e) => updateLead(selectedLead._id, { assignedTo: e.target.value })}
-                    >
-                      <option value="">待指派</option>
-                      {staffMembers.map(s => (
-                        <option key={s._id} value={s._id}>
-                          {s.displayName || s.username} ({s.role === 'designer' ? '设计师' : '业务员'})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Details */}
-                <div className="bg-gray-50 rounded-2xl p-6 space-y-4">
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-500">意向面积</span>
-                    <span className="font-medium">{selectedLead.area || '-'} ㎡</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-500">偏好风格</span>
-                    <span className="font-medium">{selectedLead.stylePreference || '-'}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-sm text-gray-500">来源渠道</span>
-                    <span className="font-medium">{selectedLead.source}</span>
-                  </div>
-                </div>
-
-                {/* Follow up records */}
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm font-bold text-gray-800">
-                    <MessageSquare size={16} /> 跟进记录
-                  </div>
-                  
-                  <div className="space-y-4">
-                    <div className="flex gap-3">
-                      <input 
-                        className="flex-1 px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-black/5"
-                        placeholder="添加一条更进记录..."
-                        value={newNote}
-                        onChange={(e) => setNewNote(e.target.value)}
-                      />
-                      <button 
-                        onClick={addFollowUp}
-                        disabled={isSubmitting || !newNote.trim()}
-                        className="p-2.5 bg-[#171717] text-white rounded-xl hover:bg-black disabled:opacity-50"
-                      >
-                        <Plus size={20} />
-                      </button>
+        {/* Lead Detail Sheet */}
+        <Sheet open={!!selectedLead} onOpenChange={(open) => !open && setSelectedLead(null)}>
+          <SheetContent className="sm:max-w-md p-0 overflow-hidden border-none shadow-2xl">
+            {selectedLead && (
+              <div className="flex flex-col h-full bg-background animate-in slide-in-from-right duration-500">
+                <SheetHeader className="p-8 pb-6 border-b bg-muted/20">
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 bg-background rounded-full flex items-center justify-center text-xl font-bold border shadow-sm">
+                      {selectedLead.name[0]}
                     </div>
+                    <div className="text-left">
+                      <SheetTitle className="text-2xl font-bold">{selectedLead.name}</SheetTitle>
+                      <SheetDescription className="font-mono text-xs">
+                        {selectedLead.phone}
+                      </SheetDescription>
+                    </div>
+                  </div>
+                </SheetHeader>
 
-                    <div className="space-y-4 mt-6">
-                      {selectedLead.followUpRecords?.slice().reverse().map((record: any, idx: number) => (
-                        <div key={idx} className="flex gap-3">
-                          <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
-                          <div>
-                            <div className="text-[13px] text-gray-800 leading-relaxed">{record.content}</div>
-                            <div className="text-[11px] text-gray-400 mt-1">
-                              {record.operator} · {new Date(record.createdAt).toLocaleString()}
+                <div className="flex-1 overflow-y-auto p-8 space-y-8 scrollbar-none">
+                  {/* Status & Assignment */}
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-3">
+                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">业务状态</label>
+                      <Select 
+                        value={selectedLead.status}
+                        onValueChange={(val) => updateLead(selectedLead._id, { status: val })}
+                      >
+                        <SelectTrigger className="w-full h-10 rounded-xl bg-muted/50 border-none shadow-none focus:ring-1 focus:ring-primary/20">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="new">新线索</SelectItem>
+                          <SelectItem value="contacted">已联系</SelectItem>
+                          <SelectItem value="converted">已转化 (成单)</SelectItem>
+                          <SelectItem value="closed">已关闭 (流失)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-3">
+                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">指派设计师</label>
+                      <Select 
+                        value={selectedLead.assignedTo?._id || selectedLead.assignedTo || "unassigned"}
+                        onValueChange={(val) => updateLead(selectedLead._id, { assignedTo: val === "unassigned" ? null : val })}
+                      >
+                        <SelectTrigger className="w-full h-10 rounded-xl bg-muted/50 border-none shadow-none focus:ring-1 focus:ring-primary/20">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unassigned">待指派</SelectItem>
+                          {staffMembers.map(s => (
+                            <SelectItem key={s._id} value={s._id}>
+                              {s.displayName || s.username}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Details */}
+                  <div className="bg-muted/30 rounded-3xl p-6 border space-y-4">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-muted-foreground">意向面积</span>
+                      <span className="font-semibold">{selectedLead.area || '-'} ㎡</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-muted-foreground">偏好风格</span>
+                      <span className="font-semibold">{selectedLead.stylePreference || '-'}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-muted-foreground">来源渠道</span>
+                      <span className="font-semibold text-xs bg-background px-2 py-0.5 rounded-full border">{selectedLead.source}</span>
+                    </div>
+                  </div>
+
+                  {/* Follow up records */}
+                  <div className="space-y-6">
+                    <div className="flex items-center gap-2 text-sm font-bold tracking-tight">
+                      <MessageSquare size={16} className="text-primary" /> 
+                      跟进记录 
+                      <Badge variant="outline" className="ml-1 px-1.5 h-4 text-[10px]">{selectedLead.followUpRecords?.length || 0}</Badge>
+                    </div>
+                    
+                    <div className="space-y-4">
+                      <div className="flex gap-2">
+                        <Input 
+                          placeholder="添加一条更进记录..."
+                          value={newNote}
+                          onChange={(e) => setNewNote(e.target.value)}
+                          className="h-10 rounded-xl bg-muted/50 border-none focus-visible:ring-1"
+                        />
+                        <Button 
+                          size="icon"
+                          onClick={addFollowUp}
+                          disabled={isSubmitting || !newNote.trim()}
+                          className="h-10 w-10 shrink-0 rounded-xl"
+                        >
+                          <Plus size={18} />
+                        </Button>
+                      </div>
+
+                      <div className="space-y-6 mt-8 relative before:absolute before:left-[7px] before:top-2 before:bottom-2 before:w-px before:bg-muted">
+                        {selectedLead.followUpRecords?.slice().reverse().map((record: any, idx: number) => (
+                          <div key={idx} className="flex gap-4 relative">
+                            <div className="mt-1.5 w-3.5 h-3.5 rounded-full bg-background border-2 border-primary shrink-0 relative z-10" />
+                            <div className="flex-1 -mt-0.5">
+                              <div className="text-[13px] font-medium leading-relaxed">{record.content}</div>
+                              <div className="text-[11px] text-muted-foreground mt-1 flex items-center gap-2">
+                                <User size={10} /> {record.operator} 
+                                <span className="w-1 h-1 rounded-full bg-muted-foreground/30" />
+                                {new Date(record.createdAt).toLocaleString()}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                      {!selectedLead.followUpRecords?.length && (
-                        <div className="text-center py-8 text-gray-300 text-sm">暂无跟进记录</div>
-                      )}
+                        ))}
+                        {!selectedLead.followUpRecords?.length && (
+                          <div className="text-center py-12 text-muted-foreground text-xs italic">暂无跟进记录</div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
-        )}
+            )}
+          </SheetContent>
+        </Sheet>
       </main>
     </div>
   );

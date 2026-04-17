@@ -2,7 +2,28 @@
 
 import React, { useState, useEffect } from 'react';
 import Navbar from "@/components/Navbar";
-import { Loader2, CheckCircle, Clock, X, Building2, User, Phone, Mail } from "lucide-react";
+import { Loader2, Plus, Building2, User, Phone, Mail, Copy, Check, MoreHorizontal } from "lucide-react";
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 export default function EnterprisesPage() {
   const [enterprises, setEnterprises] = useState<any[]>([]);
@@ -111,6 +132,7 @@ export default function EnterprisesPage() {
       if (res.ok && data.success) {
         alert('操作成功');
         await fetchEnterprises();
+        setSelectedEnt(null);
       } else {
         alert(data.error || '操作失败');
       }
@@ -137,13 +159,13 @@ export default function EnterprisesPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'pending_approval':
-        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800"><Clock size={12} /> 待审核</span>;
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100/80 border-none">待审核</Badge>;
       case 'active':
-        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"><CheckCircle size={12} /> 已启用</span>;
+        return <Badge variant="secondary" className="bg-green-100 text-green-800 hover:bg-green-100/80 border-none">已启用</Badge>;
       case 'disabled':
-        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">已禁用</span>;
+        return <Badge variant="outline" className="text-gray-500 border-gray-200">已禁用</Badge>;
       default:
-        return <span>{status}</span>;
+        return <Badge variant="outline">{status}</Badge>;
     }
   };
 
@@ -163,281 +185,297 @@ export default function EnterprisesPage() {
             )}
           </div>
           <div className="flex gap-4">
-            <button 
+            <Button 
+              variant="outline"
               onClick={copyInvitationLink}
-              className="px-6 py-2.5 bg-white border border-gray-200 text-[#171717] rounded-full text-[14px] font-medium hover:bg-gray-50 transition-all flex items-center gap-2"
+              className="rounded-full flex items-center gap-2"
             >
+               {copyFeedback ? <Check size={16} /> : <Copy size={16} />}
                {copyFeedback ? '已复制链接' : '复制邀请链接'}
-            </button>
-            <button 
+            </Button>
+            <Button 
               onClick={() => openModal()}
-              className="px-6 py-2.5 bg-[#171717] text-white rounded-full text-[14px] font-medium hover:bg-black transition-all flex items-center gap-2"
+              className="rounded-full flex items-center gap-2"
             >
+               <Plus size={16} />
                手动添加企业
-            </button>
+            </Button>
           </div>
         </div>
 
         {loading && (
-          <div className="flex flex-col items-center justify-center py-24 text-[#808080]">
+          <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
             <Loader2 className="animate-spin mb-4" size={32} />
-            <p className="text-[14px]">正在获取企业数据...</p>
+            <p className="text-sm">正在获取企业数据...</p>
           </div>
         )}
 
         {!loading && (
-          <div className="bg-white rounded-2xl shadow-[0px_0px_0px_1px_rgba(0,0,0,0.08),0px_2px_2px_rgba(0,0,0,0.04)] ring-1 ring-[#fafafa] overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-[#fafafa] border-b border-[rgba(0,0,0,0.08)]">
-                    <th className="p-4 text-[13px] font-bold text-[#171717]">机构名称</th>
-                    <th className="p-4 text-[13px] font-bold text-[#171717]">社会代码/编号</th>
-                    <th className="p-4 text-[13px] font-bold text-[#171717]">联系人</th>
-                    <th className="p-4 text-[13px] font-bold text-[#171717]">状态</th>
-                    <th className="p-4 text-[13px] font-bold text-[#171717]">入驻模式</th>
-                    <th className="p-4 text-[13px] font-bold text-[#171717]">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[rgba(0,0,0,0.08)]">
-                  {enterprises.map((ent: any) => (
-                    <tr key={ent._id} className="hover:bg-[#fcfcfc] transition-colors">
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
-                            <Building2 size={16} className="text-gray-400" />
-                          </div>
-                          <div className="text-[14px] font-semibold text-[#171717]">{ent.name}</div>
+          <div className="border rounded-2xl overflow-hidden shadow-sm">
+            <Table>
+              <TableHeader className="bg-muted/50">
+                <TableRow>
+                  <TableHead className="w-[30%]">机构名称</TableHead>
+                  <TableHead>代码/编号</TableHead>
+                  <TableHead>联系人</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>模式</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {enterprises.map((ent: any) => (
+                  <TableRow key={ent._id}>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-muted rounded-lg flex items-center justify-center">
+                          <Building2 size={16} className="text-muted-foreground" />
                         </div>
-                      </td>
-                      <td className="p-4 text-[13px] text-[#666] font-mono">{ent.code}</td>
-                      <td className="p-4">
-                        <div className="text-[13px] text-[#171717]">{ent.contactPerson?.name}</div>
-                        <div className="text-[11px] text-[#999]">{ent.contactPerson?.phone}</div>
-                      </td>
-                      <td className="p-4">{getStatusBadge(ent.status)}</td>
-                      <td className="p-4 text-[12px] text-[#666]">
-                        {ent.registrationMode === 'self_service' ? '自助注册' : '后台录入'}
-                      </td>
-                      <td className="p-4">
-                        <div className="flex gap-4">
-                          <button 
-                            onClick={() => setSelectedEnt(ent)}
-                            className="text-[13px] font-medium text-[#171717] hover:underline"
-                          >
-                            详情 & 审核
-                          </button>
-                          <button 
-                            onClick={() => openModal(ent)}
-                            className="text-[13px] font-medium text-blue-600 hover:underline"
-                          >
-                            编辑
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {enterprises.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="p-12 text-center text-gray-400 text-sm">暂无企业数据</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                        <span className="font-semibold">{ent.name}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">{ent.code}</TableCell>
+                    <TableCell>
+                      <div className="text-sm font-medium">{ent.contactPerson?.name}</div>
+                      <div className="text-[11px] text-muted-foreground">{ent.contactPerson?.phone}</div>
+                    </TableCell>
+                    <TableCell>{getStatusBadge(ent.status)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {ent.registrationMode === 'self_service' ? '自助注册' : '后台录入'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => setSelectedEnt(ent)}
+                          className="h-8 text-[13px]"
+                        >
+                          详情 & 审核
+                        </Button>
+                        <Button 
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openModal(ent)}
+                          className="h-8 text-[13px] text-blue-600 hover:text-blue-700"
+                        >
+                          编辑
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {enterprises.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                      暂无企业数据
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
           </div>
         )}
 
         {/* Enterprise Detail Modal */}
-        {selectedEnt && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedEnt(null)} />
-            <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-              <div className="p-8 border-b border-gray-100 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center">
-                    <Building2 size={24} className="text-gray-400" />
+        <Dialog open={!!selectedEnt} onOpenChange={(open) => !open && setSelectedEnt(null)}>
+          <DialogContent className="max-w-2xl p-0 overflow-hidden rounded-3xl border-none shadow-2xl">
+            {selectedEnt && (
+              <div className="animate-in fade-in duration-300">
+                <DialogHeader className="p-8 pb-6 border-b bg-muted/20">
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 bg-background rounded-2xl flex items-center justify-center shadow-sm border">
+                      <Building2 size={24} className="text-muted-foreground" />
+                    </div>
+                    <div className="text-left">
+                      <DialogTitle className="text-2xl font-bold">{selectedEnt.name}</DialogTitle>
+                      <DialogDescription>
+                        注册时间: {new Date(selectedEnt.createdAt).toLocaleString()}
+                      </DialogDescription>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-[20px] font-bold">{selectedEnt.name}</h3>
-                    <div className="text-[13px] text-gray-400">注册时间: {new Date(selectedEnt.createdAt).toLocaleString()}</div>
-                  </div>
-                </div>
-                <button onClick={() => setSelectedEnt(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                  <X size={20} />
-                </button>
-              </div>
+                </DialogHeader>
 
-              <div className="p-8 space-y-8">
-                <div className="grid grid-cols-2 gap-8 text-[14px]">
-                  <div className="space-y-4">
-                    <h4 className="text-[12px] font-bold text-gray-400 uppercase tracking-widest">机构信息</h4>
-                    <div className="space-y-3">
-                      <div className="flex justify-between border-b border-gray-50 pb-2">
-                        <span className="text-gray-500">统一社会代码</span>
-                        <span className="font-mono">{selectedEnt.code}</span>
+                <div className="p-8 space-y-8">
+                  <div className="grid grid-cols-2 gap-8 text-sm">
+                    <div className="space-y-4">
+                      <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">机构信息</h4>
+                      <div className="space-y-3">
+                        <div className="flex justify-between border-b border-muted pb-2">
+                          <span className="text-muted-foreground">统一社会代码</span>
+                          <span className="font-mono font-medium">{selectedEnt.code}</span>
+                        </div>
+                        <div className="flex justify-between border-b border-muted pb-2">
+                          <span className="text-muted-foreground">入驻模式</span>
+                          <span className="font-medium">{selectedEnt.registrationMode === 'self_service' ? '自助申请' : '手动邀约'}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">当前状态</span>
+                          {getStatusBadge(selectedEnt.status)}
+                        </div>
                       </div>
-                      <div className="flex justify-between border-b border-gray-50 pb-2">
-                        <span className="text-gray-500">入驻模式</span>
-                        <span>{selectedEnt.registrationMode === 'self_service' ? '自助申请' : '手动邀约'}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-gray-500">当前状态</span>
-                        {getStatusBadge(selectedEnt.status)}
+                    </div>
+
+                    <div className="space-y-4">
+                      <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">联系人信息</h4>
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3 p-2 bg-muted/30 rounded-lg">
+                          <User size={16} className="text-muted-foreground" />
+                          <span className="font-medium">{selectedEnt.contactPerson?.name}</span>
+                        </div>
+                        <div className="flex items-center gap-3 p-2 bg-muted/30 rounded-lg">
+                          <Phone size={16} className="text-muted-foreground" />
+                          <span className="font-medium">{selectedEnt.contactPerson?.phone}</span>
+                        </div>
+                        {selectedEnt.contactPerson?.email && (
+                          <div className="flex items-center gap-3 p-2 bg-muted/30 rounded-lg">
+                            <Mail size={16} className="text-muted-foreground" />
+                            <span className="font-medium truncate">{selectedEnt.contactPerson?.email}</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
 
-                  <div className="space-y-4">
-                    <h4 className="text-[12px] font-bold text-gray-400 uppercase tracking-widest">联系人信息</h4>
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3">
-                        <User size={16} className="text-gray-300" />
-                        <span>{selectedEnt.contactPerson?.name}</span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <Phone size={16} className="text-gray-300" />
-                        <span>{selectedEnt.contactPerson?.phone}</span>
-                      </div>
-                      {selectedEnt.contactPerson?.email && (
-                        <div className="flex items-center gap-3">
-                          <Mail size={16} className="text-gray-300" />
-                          <span>{selectedEnt.contactPerson?.email}</span>
-                        </div>
+                  <DialogFooter className="pt-8 border-t flex flex-row items-center justify-between sm:justify-between w-full">
+                    <Button 
+                      variant="ghost"
+                      onClick={() => deleteEnterprise(selectedEnt._id)}
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    >
+                      删除企业
+                    </Button>
+                    
+                    <div className="flex gap-3">
+                      {selectedEnt.status === 'pending_approval' && (
+                        <Button 
+                           onClick={() => updateStatus(selectedEnt._id, 'active')}
+                           disabled={isSubmitting}
+                           className="bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : '审核通过并启用'}
+                        </Button>
+                      )}
+                      {selectedEnt.status === 'active' && (
+                        <Button 
+                          variant="outline"
+                          onClick={() => updateStatus(selectedEnt._id, 'disabled')}
+                          disabled={isSubmitting}
+                          className="border-orange-200 text-orange-600 hover:bg-orange-50"
+                        >
+                          禁用账户
+                        </Button>
+                      )}
+                      {selectedEnt.status === 'disabled' && (
+                         <Button 
+                          onClick={() => updateStatus(selectedEnt._id, 'active')}
+                          disabled={isSubmitting}
+                        >
+                          重新启用
+                        </Button>
                       )}
                     </div>
-                  </div>
+                  </DialogFooter>
                 </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
-                <div className="pt-8 border-t border-gray-100 flex items-center justify-between gap-4">
-                  <button 
-                    onClick={() => deleteEnterprise(selectedEnt._id)}
-                    className="px-6 py-2.5 text-red-600 font-medium hover:bg-red-50 rounded-xl transition-colors"
-                  >
-                    删除企业
-                  </button>
-                  
-                  <div className="flex gap-3">
-                    {selectedEnt.status === 'pending_approval' && (
-                      <button 
-                         onClick={() => updateStatus(selectedEnt._id, 'active')}
-                         disabled={isSubmitting}
-                         className="px-8 py-2.5 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 disabled:opacity-50 transition-all"
-                      >
-                        审核通过并启用
-                      </button>
-                    )}
-                    {selectedEnt.status === 'active' && (
-                      <button 
-                        onClick={() => updateStatus(selectedEnt._id, 'disabled')}
-                        disabled={isSubmitting}
-                        className="px-8 py-2.5 bg-orange-500 text-white font-semibold rounded-xl hover:bg-orange-600 disabled:opacity-50 transition-all"
-                      >
-                        禁用账户
-                      </button>
-                    )}
-                    {selectedEnt.status === 'disabled' && (
-                       <button 
-                        onClick={() => updateStatus(selectedEnt._id, 'active')}
-                        disabled={isSubmitting}
-                        className="px-8 py-2.5 bg-[#171717] text-white font-semibold rounded-xl hover:bg-black disabled:opacity-50 transition-all"
-                      >
-                        重新启用
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
         {/* Create/Edit Modal */}
-        {isModalOpen && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
-            <form onSubmit={handleSave} className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-              <div className="p-8 border-b border-gray-100 flex items-center justify-between">
-                <h3 className="text-[20px] font-bold">{editingEnt ? '编辑企业' : '手动添加企业'}</h3>
-                <button type="button" onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full">
-                  <X size={20} />
-                </button>
-              </div>
+        <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+          <DialogContent className="max-w-lg p-0 overflow-hidden rounded-3xl shadow-2xl">
+            <form onSubmit={handleSave}>
+              <DialogHeader className="p-8 pb-6 border-b">
+                <DialogTitle className="text-2xl font-bold">{editingEnt ? '编辑企业' : '手动添加企业'}</DialogTitle>
+                <DialogDescription>
+                  请填写企业的基本信息和联系人资料
+                </DialogDescription>
+              </DialogHeader>
 
               <div className="p-8 space-y-6">
                 <div className="space-y-4">
-                  <div>
-                    <label className="block text-[12px] font-bold text-gray-400 uppercase tracking-widest mb-2">企业名称</label>
-                    <input 
+                  <div className="space-y-2">
+                    <Label htmlFor="ent-name">企业名称</Label>
+                    <Input 
+                      id="ent-name"
                       required
                       value={formData.name}
                       onChange={e => setFormData({...formData, name: e.target.value})}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all placeholder:text-gray-300"
                       placeholder="例如：向总测绘技术有限公司"
+                      className="h-10"
                     />
                   </div>
-                  <div>
-                    <label className="block text-[12px] font-bold text-gray-400 uppercase tracking-widest mb-2">统一社会信用代码</label>
-                    <input 
+                  <div className="space-y-2">
+                    <Label htmlFor="ent-code">统一社会信用代码</Label>
+                    <Input 
+                      id="ent-code"
                       required
                       value={formData.code}
                       onChange={e => setFormData({...formData, code: e.target.value})}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all placeholder:text-gray-300 font-mono"
+                      className="h-10 font-mono"
                       placeholder="18位社会信用代码"
                     />
                   </div>
                 </div>
 
-                <div className="pt-4 space-y-4 border-t border-gray-100">
-                  <h4 className="text-[12px] font-bold text-gray-400 uppercase tracking-widest">联系人资料</h4>
+                <div className="pt-4 space-y-4 border-t">
+                  <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">联系人资料</h4>
                   <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <input 
+                    <div className="space-y-2">
+                      <Label htmlFor="contact-name">姓名</Label>
+                      <Input 
+                        id="contact-name"
                         required
                         value={formData.contactPerson.name}
                         onChange={e => setFormData({...formData, contactPerson: {...formData.contactPerson, name: e.target.value}})}
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all"
-                        placeholder="姓名"
+                        placeholder="负责人姓名"
                       />
                     </div>
-                    <div>
-                      <input 
+                    <div className="space-y-2">
+                      <Label htmlFor="contact-phone">电话</Label>
+                      <Input 
+                        id="contact-phone"
                         required
                         value={formData.contactPerson.phone}
                         onChange={e => setFormData({...formData, contactPerson: {...formData.contactPerson, phone: e.target.value}})}
-                        className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all"
-                        placeholder="电话"
+                        placeholder="联系电话"
                       />
                     </div>
                   </div>
-                  <input 
-                    type="email"
-                    value={formData.contactPerson.email}
-                    onChange={e => setFormData({...formData, contactPerson: {...formData.contactPerson, email: e.target.value}})}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all"
-                    placeholder="电子邮箱 (可选)"
-                  />
+                  <div className="space-y-2">
+                    <Label htmlFor="contact-email">电子邮箱 (可选)</Label>
+                    <Input 
+                      id="contact-email"
+                      type="email"
+                      value={formData.contactPerson.email}
+                      onChange={e => setFormData({...formData, contactPerson: {...formData.contactPerson, email: e.target.value}})}
+                      placeholder="email@example.com"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="p-8 bg-gray-50 flex gap-3">
-                <button 
+              <DialogFooter className="p-8 pt-4 bg-muted/30">
+                <Button 
                   type="button"
+                  variant="outline"
                   onClick={() => setIsModalOpen(false)}
-                  className="flex-1 px-6 py-3 bg-white border border-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-50 transition-all"
+                  className="flex-1 rounded-xl h-11"
                 >
                   取消
-                </button>
-                <button 
+                </Button>
+                <Button 
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex-1 px-6 py-3 bg-[#171717] text-white font-bold rounded-xl hover:bg-black disabled:opacity-50 transition-all shadow-lg shadow-black/10 flex items-center justify-center gap-2"
+                  className="flex-1 rounded-xl h-11 shadow-lg shadow-primary/10"
                 >
                   {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : '确认保存'}
-                </button>
-              </div>
+                </Button>
+              </DialogFooter>
             </form>
-          </div>
-        )}
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );

@@ -2,8 +2,19 @@
 
 import React, { useState, useEffect } from 'react';
 import Navbar from "@/components/Navbar";
-import SearchInput from "@/components/SearchInput";
-import { Users, Loader2 } from "lucide-react";
+import { Users, Loader2, ArrowLeft, Search, Building, Phone } from "lucide-react";
+import { 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableHead, 
+  TableHeader, 
+  TableRow 
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+import Link from 'next/link';
 
 export default function UsersPage() {
   const [users, setUsers] = useState<any[]>([]);
@@ -36,83 +47,110 @@ export default function UsersPage() {
   return (
     <div className="min-h-screen bg-white text-[#171717] font-sans">
       <Navbar />
-      <main className="max-w-7xl mx-auto px-6 py-16">
-        <div className="mb-12 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <h2 className="text-[32px] font-semibold tracking-[-1.5px] leading-tight">
-              用户列表
+      <main className="max-w-7xl mx-auto px-6 py-12">
+        <Link
+          href="/"
+          className="flex items-center gap-1 text-muted-foreground hover:text-primary transition-colors mb-8 w-fit"
+        >
+          <ArrowLeft size={16} />
+          <span className="text-sm font-medium">返回首页</span>
+        </Link>
+
+        <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
+          <div>
+            <h2 className="text-[32px] font-bold tracking-tight mb-2">
+              终端用户池
             </h2>
-            {!loading && (
-              <span className="bg-[#f5f5f5] text-[#666] px-3 py-1 rounded-full text-[14px] font-medium">
-                共 {users.length} 名用户
-              </span>
-            )}
+            <p className="text-muted-foreground text-sm flex items-center gap-2">
+              <Users size={14} className="text-primary" /> 微信小程序注册的普通个人用户
+            </p>
           </div>
 
-          <SearchInput 
-            value={searchTerm} 
-            onChange={setSearchTerm} 
-            placeholder="搜索昵称、手机号或小区..."
-            className="w-full md:w-80"
-          />
+          <div className="flex items-center gap-4 bg-muted/30 p-1.5 rounded-2xl border border-muted w-full md:w-[400px]">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+              <Input 
+                 value={searchTerm} 
+                 onChange={e => setSearchTerm(e.target.value)} 
+                 placeholder="搜索昵称、手机号或小区..."
+                 className="h-10 pl-10 bg-background border-none shadow-none rounded-xl"
+              />
+            </div>
+            <div className="text-[11px] font-bold text-muted-foreground px-3 shrink-0">
+               {users.length} 名活跃用户
+            </div>
+          </div>
         </div>
 
-        {loading && (
-          <div className="flex flex-col items-center justify-center py-24 text-[#808080]">
-            <Loader2 className="animate-spin mb-4" size={32} />
-            <p className="text-[14px]">正在获取用户数据...</p>
+        {loading && users.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-32 text-muted-foreground">
+            <Loader2 className="animate-spin mb-4 opacity-20" size={48} />
+            <p className="text-sm font-medium">正在深度检索系统用户数据...</p>
           </div>
-        )}
-
-        {!loading && (
-          <div className="bg-white rounded-lg shadow-[0px_0px_0px_1px_rgba(0,0,0,0.08),0px_2px_2px_rgba(0,0,0,0.04)] ring-1 ring-[#fafafa] overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-[#fafafa] border-b border-[rgba(0,0,0,0.08)]">
-                    <th className="p-4 text-[14px] font-semibold text-[#171717]">用户</th>
-                    <th className="p-4 text-[14px] font-semibold text-[#171717]">手机号</th>
-                    <th className="p-4 text-[14px] font-semibold text-[#171717]">小区名称</th>
-                    <th className="p-4 text-[14px] font-semibold text-[#171717]">户型图数量</th>
-                    <th className="p-4 text-[14px] font-semibold text-[#171717]">注册时间</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[rgba(0,0,0,0.08)]">
+        ) : (
+          <div className="border rounded-[24px] overflow-hidden shadow-sm bg-white">
+            <Table>
+                <TableHeader className="bg-muted/50 border-b">
+                  <TableRow className="hover:bg-transparent border-muted/50">
+                    <th className="px-8 py-4 text-[13px] font-bold text-foreground">用户信息</th>
+                    <th className="px-8 py-4 text-[13px] font-bold text-foreground">联系方式</th>
+                    <th className="px-8 py-4 text-[13px] font-bold text-foreground">所属小区</th>
+                    <th className="px-8 py-4 text-[13px] font-bold text-foreground">资产统计</th>
+                    <th className="px-8 py-4 text-[13px] font-bold text-foreground">加入时间</th>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {users.map((user: any) => (
-                    <tr key={user._id} className="hover:bg-[#fcfcfc] transition-colors">
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
+                    <TableRow key={user._id} className="border-muted/50 hover:bg-muted/10 transition-colors">
+                      <TableCell className="px-8 py-5">
+                        <div className="flex items-center gap-4">
                           {user.avatar ? (
-                            <img src={user.avatar} alt="avatar" className="w-10 h-10 rounded-full border border-[rgba(0,0,0,0.1)] object-cover" />
+                            <img src={user.avatar} alt="avatar" className="w-12 h-12 rounded-[14px] border border-muted object-cover shadow-sm" />
                           ) : (
-                            <div className="bg-[#f5f5f5] w-10 h-10 rounded-full flex items-center justify-center text-[#666]">
-                              <Users size={18} />
+                            <div className="bg-muted w-12 h-12 rounded-[14px] flex items-center justify-center text-muted-foreground border border-dashed border-muted-foreground/30">
+                              <Users size={20} />
                             </div>
                           )}
-                          <div className="flex flex-col">
-                            <span className="text-[14px] font-medium text-[#171717]">{user.nickname || '未命名用户'}</span>
-                            <span className="text-[11px] text-[#999] font-mono">{user.openid}</span>
+                          <div className="flex flex-col space-y-0.5">
+                            <span className="text-[15px] font-bold text-foreground">{user.nickname || '微信用户'}</span>
+                            <span className="text-[10px] text-muted-foreground font-mono bg-muted/50 px-1.5 py-0.5 rounded w-fit">{user.openid?.substring(0, 16)}...</span>
                           </div>
                         </div>
-                      </td>
-                      <td className="p-4 text-[13px] text-[#666]">{user.phone || '-'}</td>
-                      <td className="p-4 text-[13px] text-[#666]">{user.communityName || '-'}</td>
-                      <td className="p-4 text-[13px] text-[#666] font-medium">{user.planCount || 0} 份</td>
-                      <td className="p-4 text-[13px] text-[#666]">
-                        {user.createdAt ? new Date(user.createdAt).toLocaleString() : '-'}
-                      </td>
-                    </tr>
+                      </TableCell>
+                      <TableCell className="px-8 py-5">
+                         <div className="flex items-center gap-2 text-sm">
+                           <Phone size={14} className="text-muted-foreground/60" />
+                           {user.phone || <span className="opacity-20">-</span>}
+                         </div>
+                      </TableCell>
+                      <TableCell className="px-8 py-5">
+                         <div className="flex items-center gap-2 text-sm">
+                           <Building size={14} className="text-muted-foreground/60" />
+                           {user.communityName || <span className="opacity-20">暂未填写</span>}
+                         </div>
+                      </TableCell>
+                      <TableCell className="px-8 py-5">
+                         <Badge variant="secondary" className="bg-primary/5 text-primary border-none font-bold">
+                            {user.planCount || 0} 个户型方案
+                         </Badge>
+                      </TableCell>
+                      <TableCell className="px-8 py-5 text-[13px] text-muted-foreground">
+                        {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : '-'}
+                      </TableCell>
+                    </TableRow>
                   ))}
-                  {users.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="p-12 text-center text-[#666] text-[14px]">
-                        暂无匹配的用户数据
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+              </Table>
+              
+              {users.length === 0 && !loading && (
+                <div className="py-24 text-center">
+                   <div className="bg-muted/50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Users size={32} className="text-muted-foreground/30" />
+                   </div>
+                   <h3 className="text-lg font-bold text-foreground">未检索到任何用户</h3>
+                   <p className="text-sm text-muted-foreground">您的检索词可能过于严苛，请尝试更换关键词</p>
+                </div>
+              )}
           </div>
         )}
       </main>
