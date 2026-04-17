@@ -11,8 +11,7 @@ Component({
   },
   properties: {
     selectedRooms: { type: Array, value: [] },
-    visible: { type: Boolean, value: false },
-    selectedEdge: { type: String, value: '' }
+    visible: { type: Boolean, value: false }
   },
 
   data: {
@@ -65,9 +64,7 @@ Component({
       }
     },
 
-    onEdgeSelect: function(e) {
-      this.triggerEvent('edgeselect', { edge: e.currentTarget.dataset.edge });
-    },
+
 
     onColorSelect: function (e) {
       var color = e.currentTarget.dataset.color;

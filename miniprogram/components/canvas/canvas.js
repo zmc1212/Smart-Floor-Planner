@@ -113,15 +113,25 @@ Component({
      */
     fitToView: function () {
       var rooms = this.properties.rooms;
+      console.log('执行 fitToView, 当前房间数量:', rooms ? rooms.length : 0);
       if (!rooms || rooms.length === 0) return;
 
       // 1. 计算所有房间的包围盒 (World units)
       var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       rooms.forEach(function (r) {
-        minX = Math.min(minX, r.x);
-        minY = Math.min(minY, r.y);
-        maxX = Math.max(maxX, r.x + r.width);
-        maxY = Math.max(maxY, r.y + r.height);
+        if (r.polygon && r.polygon.length > 0) {
+          r.polygon.forEach(function(p) {
+            minX = Math.min(minX, r.x + p.x);
+            minY = Math.min(minY, r.y + p.y);
+            maxX = Math.max(maxX, r.x + p.x);
+            maxY = Math.max(maxY, r.y + p.y);
+          });
+        } else {
+          minX = Math.min(minX, r.x);
+          minY = Math.min(minY, r.y);
+          maxX = Math.max(maxX, r.x + r.width);
+          maxY = Math.max(maxY, r.y + r.height);
+        }
       });
 
       var contentWidth = maxX - minX;
@@ -499,9 +509,17 @@ Component({
       // 从后往前查找（后绘制的在上面）
       for (var i = rooms.length - 1; i >= 0; i--) {
         var r = rooms[i];
-        if (pos.x >= r.x && pos.x <= r.x + r.width &&
-            pos.y >= r.y && pos.y <= r.y + r.height) {
-          return r;
+        if (r.polygon && r.polygon.length >= 3) {
+          // 相对坐标转换
+          if (util.isPointInPolygon(r.polygon, pos.x - r.x, pos.y - r.y)) {
+            return r;
+          }
+        } else {
+          // 矩形检测
+          if (pos.x >= r.x && pos.x <= r.x + r.width &&
+              pos.y >= r.y && pos.y <= r.y + r.height) {
+            return r;
+          }
         }
       }
       return null;
@@ -808,8 +826,15 @@ Component({
         }
 
         // 检查房间
-        if (pos.x >= room.x && pos.x <= room.x + room.width &&
-            pos.y >= room.y && pos.y <= room.y + room.height) {
+        var isInside = false;
+        if (room.polygon && room.polygon.length >= 3) {
+          isInside = util.isPointInPolygon(room.polygon, pos.x - room.x, pos.y - room.y);
+        } else {
+          isInside = pos.x >= room.x && pos.x <= room.x + room.width &&
+                     pos.y >= room.y && pos.y <= room.y + room.height;
+        }
+
+        if (isInside) {
           erased = true;
           continue; // 不加入，即删除
         }
@@ -887,10 +912,21 @@ Component({
           var scale = this.data.scale;
           var ox = this.data.offsetX;
           var oy = this.data.offsetY;
+          
+          var centerX, topY;
+          if (room.polygon && room.polygon.length >= 3) {
+            var bbox = util.polygonBoundingBox(room.polygon);
+            centerX = room.x + bbox.minX + bbox.width / 2;
+            topY = room.y + bbox.minY;
+          } else {
+            centerX = room.x + room.width / 2;
+            topY = room.y;
+          }
+
           this.setData({
             menuPos: {
-              x: ox + (room.x + room.width / 2) * scale,
-              y: oy + room.y * scale - 10
+              x: ox + centerX * scale,
+              y: oy + topY * scale - 10
             },
             menuRoomName: room.name
           });

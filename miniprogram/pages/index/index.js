@@ -13,6 +13,7 @@ Page({
     guidedEdgeIndex: -1,
     currentGuidedRoomId: '',
     currentGuidedRoomName: '',
+    isLaserOpen: false,      // 新增：激光状态跟踪
     measurePoints: [],       // [{x,y}] 构建中的多边形顶点（测量空间坐标）
     pendingDirection: '',    // 'E'|'S'|'W'|'N' 本次待测边的方向
     canFinishPolygon: false, // 已测 ≥2 条边时可完成轮廓
@@ -66,25 +67,33 @@ Page({
       // 恢复打开特定户型
       const fp = app.globalData.restoreFloorPlan;
       app.globalData.restoreFloorPlan = null;
+      console.log('检测到还原户型请求:', fp);
       
       this.setData({
-        viewMode: 'CANVAS',
-        rooms: fp.layoutData,
-        plannedRooms: fp.layoutData, // Keep it simple and sync
-        guidedMode: false,
-        showMeasurePrompt: false,
-        activeTool: 'SELECT',
-        selectedIds: [],
-        showPropertyPanel: false
+        history: [],
+        historyIndex: -1
+      }, () => {
+        // Atomic push to history which sets rooms, viewMode, etc.
+        this.pushToHistory(fp.layoutData, {
+          viewMode: 'CANVAS',
+          plannedRooms: fp.layoutData,
+          guidedMode: false,
+          showMeasurePrompt: false,
+          activeTool: 'SELECT',
+          selectedIds: [],
+          showPropertyPanel: false
+        });
+        
+        // Wait slightly longer for component to catch up with rooms data
+        setTimeout(() => {
+          const canvas = this.selectComponent('#floorCanvas');
+          console.log('准备执行 fitToView, canvas组件:', !!canvas);
+          if (canvas) {
+            canvas.fitToView();
+            wx.showToast({ title: '已恢复布局', icon: 'success' });
+          }
+        }, 800);
       });
-      // Initial history push
-      this.setData({ history: [], historyIndex: -1 });
-      this.pushToHistory(fp.layoutData);
-      
-      setTimeout(() => {
-        const canvas = this.selectComponent('#floorCanvas');
-        if (canvas) canvas.fitToView();
-      }, 400);
     } else if (this.data.viewMode === 'LIBRARY') {
       this.fetchCloudPlans();
     }
@@ -399,7 +408,7 @@ Page({
     bluetooth.autoConnectBLE(function (distanceInMeters) {
       that.onBluetoothMeasure(distanceInMeters);
     }, function (isConnected) {
-      that.setData({ bleConnected: isConnected });
+      that.setData({ bleConnected: isConnected, isLaserOpen: false });
     }, function () {
       that.onBluetoothDisconnect();
     });
@@ -411,14 +420,14 @@ Page({
     bluetooth.initBLE(function (distanceInMeters) {
       that.onBluetoothMeasure(distanceInMeters);
     }, function (isConnected) {
-      that.setData({ bleConnected: isConnected });
+      that.setData({ bleConnected: isConnected, isLaserOpen: false });
     }, function () {
       that.onBluetoothDisconnect();
     });
   },
 
   onBluetoothDisconnect: function () {
-    this.setData({ bleConnected: false });
+    this.setData({ bleConnected: false, isLaserOpen: false });
     wx.showModal({
       title: '蓝牙断开',
       content: '与测距仪的蓝牙连接已断开，请检查设备是否正常并尝试重新连接。',
@@ -546,42 +555,78 @@ Page({
 
         const roomGroup = new THREE.Group();
 
-        // Draw floor
-        const floorGeo = new THREE.PlaneGeometry(rWidth, rHeight);
-        const floorMat = new THREE.MeshStandardMaterial({ 
-          color: 0xf5f5f5, 
-          side: THREE.DoubleSide,
-          roughness: 0.8
-        });
-        const floor = new THREE.Mesh(floorGeo, floorMat);
-        floor.rotation.x = -Math.PI / 2;
-        floor.position.y = 0.05; // Slightly above grid
-        roomGroup.add(floor);
+        // === 判断是否是测量产生的不规则多边形 ===
+        if (room.polygon && room.polygon.length >= 3 && room.polygonClosed) {
+          // Draw Polygon Floor
+          const floorShape = new THREE.Shape();
+          room.polygon.forEach((p, i) => {
+            const sx = p.x - rWidth / 2;
+            const sy = p.y - rHeight / 2;
+            if (i === 0) floorShape.moveTo(sx, sy);
+            else floorShape.lineTo(sx, sy);
+          });
+          floorShape.lineTo(room.polygon[0].x - rWidth / 2, room.polygon[0].y - rHeight / 2);
+          
+          const floorGeo = new THREE.ShapeGeometry(floorShape);
+          const floorMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, side: THREE.DoubleSide, roughness: 0.8 });
+          const floor = new THREE.Mesh(floorGeo, floorMat);
+          floor.rotation.x = Math.PI / 2; // Y in Shape mapped to Z in 3D
+          floor.position.y = 0.05;
+          roomGroup.add(floor);
 
-        // Draw walls with openings
-        const topOpenings = (room.openings || []).filter(op => op.rotation === 0 && op.y < rHeight / 2);
-        const bottomOpenings = (room.openings || []).filter(op => op.rotation === 0 && op.y >= rHeight / 2);
-        const leftOpenings = (room.openings || []).filter(op => op.rotation === 90 && op.x < rWidth / 2);
-        const rightOpenings = (room.openings || []).filter(op => op.rotation === 90 && op.x >= rWidth / 2);
+          // Draw Polygon Walls
+          for (let i = 0; i < room.polygon.length; i++) {
+            let p1 = room.polygon[i];
+            let p2 = room.polygon[(i + 1) % room.polygon.length];
+            let dx = p2.x - p1.x;
+            let dy = p2.y - p1.y;
+            let length = Math.sqrt(dx * dx + dy * dy);
+            
+            // 构建不规则实心墙体（多边形目前暂不支持在 3D 中渲染门窗洞口）
+            let wall = buildWall(length, wallHeight, [], 'poly');
+            wall.position.set(p1.x - rWidth / 2, 0, p1.y - rHeight / 2);
+            wall.rotation.y = Math.atan2(-dy, dx);
+            roomGroup.add(wall);
+          }
+        } else {
+          // === 传统矩形绘制 ===
+          // Draw floor
+          const floorGeo = new THREE.PlaneGeometry(rWidth, rHeight);
+          const floorMat = new THREE.MeshStandardMaterial({ 
+            color: 0xf5f5f5, 
+            side: THREE.DoubleSide,
+            roughness: 0.8
+          });
+          const floor = new THREE.Mesh(floorGeo, floorMat);
+          floor.rotation.x = -Math.PI / 2;
+          floor.position.y = 0.05; // Slightly above grid
+          roomGroup.add(floor);
 
-        const topWall = buildWall(rWidth, wallHeight, topOpenings, 'top');
-        topWall.position.set(-rWidth/2, 0, -rHeight/2);
-        roomGroup.add(topWall);
+          // Draw walls with openings
+          const topOpenings = (room.openings || []).filter(op => op.rotation === 0 && op.y < rHeight / 2);
+          const bottomOpenings = (room.openings || []).filter(op => op.rotation === 0 && op.y >= rHeight / 2);
+          const leftOpenings = (room.openings || []).filter(op => op.rotation === 90 && op.x < rWidth / 2);
+          const rightOpenings = (room.openings || []).filter(op => op.rotation === 90 && op.x >= rWidth / 2);
 
-        const bottomWall = buildWall(rWidth, wallHeight, bottomOpenings, 'bottom');
-        bottomWall.position.set(rWidth/2, 0, rHeight/2);
-        bottomWall.rotation.y = Math.PI;
-        roomGroup.add(bottomWall);
+          const topWall = buildWall(rWidth, wallHeight, topOpenings, 'top');
+          topWall.position.set(-rWidth/2, 0, -rHeight/2);
+          roomGroup.add(topWall);
 
-        const leftWall = buildWall(rHeight, wallHeight, leftOpenings, 'left');
-        leftWall.position.set(-rWidth/2, 0, rHeight/2);
-        leftWall.rotation.y = Math.PI / 2;
-        roomGroup.add(leftWall);
+          const bottomWall = buildWall(rWidth, wallHeight, bottomOpenings, 'bottom');
+          bottomWall.position.set(rWidth/2, 0, rHeight/2);
+          bottomWall.rotation.y = Math.PI;
+          roomGroup.add(bottomWall);
 
-        const rightWall = buildWall(rHeight, wallHeight, rightOpenings, 'right');
-        rightWall.position.set(rWidth/2, 0, -rHeight/2);
-        rightWall.rotation.y = -Math.PI / 2;
-        roomGroup.add(rightWall);
+          const leftWall = buildWall(rHeight, wallHeight, leftOpenings, 'left');
+          leftWall.position.set(-rWidth/2, 0, rHeight/2);
+          leftWall.rotation.y = Math.PI / 2;
+          roomGroup.add(leftWall);
+
+          const rightWall = buildWall(rHeight, wallHeight, rightOpenings, 'right');
+          rightWall.position.set(rWidth/2, 0, -rHeight/2);
+          rightWall.rotation.y = -Math.PI / 2;
+          roomGroup.add(rightWall);
+        }
 
         roomGroup.position.set(rX + rWidth/2, 0, rY + rHeight/2);
         container.add(roomGroup);
@@ -764,6 +809,9 @@ Page({
       return;
     }
     
+    // 无论是成功还是失败，只要收到回调说明激光被打断或测试结束，重置激光状态
+    this.setData({ isLaserOpen: false });
+
     if (!this.isMeasuring && this.data.showMeasurePrompt) {
       console.log('检测到物理按键或其它方式触发了测量，直接接收数据并关闭等待窗！');
       this.setData({ showMeasurePrompt: false });
@@ -1003,9 +1051,14 @@ Page({
   },
 
   openLaser: function() {
+    if (this.data.isLaserOpen) {
+      console.log('激光已经在开启状态，跳过重复发送指令以免提前触发测量...');
+      return;
+    }
     console.log('提前开启激光辅助对准...');
     var bluetooth = require('../../utils/bluetooth.js');
     bluetooth.sendBLECommand('ATK001#');
+    this.setData({ isLaserOpen: true });
   },
 
   onAddTemplate: function (e) {

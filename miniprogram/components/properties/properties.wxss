@@ -162,32 +162,7 @@
   margin: 24rpx 0;
 }
 
-/* 激光测距边选择 */
-.edge-grid {
-  display: flex;
-  gap: 12rpx;
-  margin-bottom: 32rpx;
-}
 
-.edge-btn {
-  flex: 1;
-  padding: 20rpx 0;
-  text-align: center;
-  font-size: 24rpx;
-  color: var(--ds-gray-600);
-  background: #ffffff;
-  box-shadow: var(--shadow-border);
-  border-radius: 6rpx;
-  transition: all 0.1s;
-  font-weight: 500;
-}
-
-.edge-btn.active {
-  background: #fafafa;
-  box-shadow: 0 0 0 2rpx #171717;
-  color: #171717;
-  font-weight: 600;
-}
 
 /* 合并区域 */
 .merge-section {

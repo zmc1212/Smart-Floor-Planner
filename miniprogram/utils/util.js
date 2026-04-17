@@ -68,6 +68,23 @@ function polygonBoundingBox(vertices) {
 }
 
 /**
+ * 点在多边形内检测 (Ray-casting Algorithm)
+ * @param {Array<{x,y}>} vertices 
+ * @param {number} x 
+ * @param {number} y 
+ */
+function isPointInPolygon(vertices, x, y) {
+  var inside = false;
+  for (var i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+    var xi = vertices[i].x, yi = vertices[i].y;
+    var xj = vertices[j].x, yj = vertices[j].y;
+    var intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/**
  * 枚举常量
  */
 const ToolType = {
@@ -127,6 +144,7 @@ module.exports = {
   snapToGrid,
   polygonArea,
   polygonBoundingBox,
+  isPointInPolygon,
   ToolType,
   StyleType,
   StyleMetadata,

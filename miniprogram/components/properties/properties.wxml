@@ -72,15 +72,7 @@
         </view>
       </view>
 
-      <!-- 激光联动选边 -->
-      <view class="section-divider"></view>
-      <text class="form-label">激光测距 (选择要测量的边)</text>
-      <view class="edge-grid">
-        <view class="edge-btn {{selectedEdge === 'top' ? 'active' : ''}}" data-edge="top" bindtap="onEdgeSelect">上墙</view>
-        <view class="edge-btn {{selectedEdge === 'bottom' ? 'active' : ''}}" data-edge="bottom" bindtap="onEdgeSelect">下墙</view>
-        <view class="edge-btn {{selectedEdge === 'left' ? 'active' : ''}}" data-edge="left" bindtap="onEdgeSelect">左墙</view>
-        <view class="edge-btn {{selectedEdge === 'right' ? 'active' : ''}}" data-edge="right" bindtap="onEdgeSelect">右墙</view>
-      </view>
+
 
       <!-- 门窗管理 -->
       <block wx:if="{{selectedRooms[0].openings && selectedRooms[0].openings.length > 0}}">
