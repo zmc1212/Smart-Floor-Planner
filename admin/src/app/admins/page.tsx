@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface AdminUser {
   _id: string;
@@ -369,15 +370,16 @@ export default function AdminsPage() {
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">角色</label>
-              <select
-                value={newRole}
-                onChange={(e) => setNewRole(e.target.value)}
-                className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-white"
-              >
-                <option value="super_admin">超级管理员</option>
-                <option value="admin">普通管理员</option>
-                <option value="viewer">只读审计员</option>
-              </select>
+              <Select value={newRole} onValueChange={(val) => val && setNewRole(val)}>
+                <SelectTrigger className="w-full h-[38px] p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-purple-500 outline-none bg-white border-solid shadow-none">
+                  <SelectValue placeholder="选择角色" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="super_admin">超级管理员</SelectItem>
+                  <SelectItem value="admin">普通管理员</SelectItem>
+                  <SelectItem value="viewer">只读审计员</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <button
               type="submit"
@@ -437,15 +439,16 @@ export default function AdminsPage() {
                         {/* Role */}
                         <td className="px-6 py-4">
                           {editingId === admin._id ? (
-                            <select
-                              value={editRole}
-                              onChange={(e) => setEditRole(e.target.value)}
-                              className="p-1 border border-purple-500 rounded text-sm bg-white"
-                            >
-                              <option value="super_admin">超级管理员</option>
-                              <option value="admin">普通管理员</option>
-                              <option value="viewer">只读审计员</option>
-                            </select>
+                            <Select value={editRole} onValueChange={(val) => val && setEditRole(val)}>
+                              <SelectTrigger className="h-[30px] p-1 px-2 border border-purple-500 rounded text-sm bg-white shadow-none">
+                                <SelectValue placeholder="选择角色" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="super_admin">超级管理员</SelectItem>
+                                <SelectItem value="admin">普通管理员</SelectItem>
+                                <SelectItem value="viewer">只读审计员</SelectItem>
+                              </SelectContent>
+                            </Select>
                           ) : (
                             <span
                               className={`text-xs px-2 py-1 rounded-full border font-medium ${ROLE_COLORS[admin.role] || 'bg-gray-100 text-gray-600'}`}

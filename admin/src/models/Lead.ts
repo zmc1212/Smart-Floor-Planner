@@ -1,14 +1,22 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
+export interface IFollowUp {
+  content: string;
+  operator: string;
+  createdAt: Date;
+}
+
 export interface ILead extends Document {
   name: string;
   phone: string;
   area?: number;
   stylePreference?: string;
   city?: string;
-  source: string; // e.g., 'ai-gen', 'index-banner'
+  source: string; 
   status: 'new' | 'contacted' | 'converted' | 'closed';
   notes?: string;
+  assignedTo?: string; // Designer/Consultant name or ID
+  followUpRecords: IFollowUp[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,7 +29,13 @@ const LeadSchema: Schema = new Schema({
   city: { type: String },
   source: { type: String, default: 'unknown' },
   status: { type: String, enum: ['new', 'contacted', 'converted', 'closed'], default: 'new' },
-  notes: { type: String }
+  notes: { type: String },
+  assignedTo: { type: String },
+  followUpRecords: [{
+    content: { type: String, required: true },
+    operator: { type: String, default: 'System' },
+    createdAt: { type: Date, default: Date.now }
+  }]
 }, {
   timestamps: true
 });

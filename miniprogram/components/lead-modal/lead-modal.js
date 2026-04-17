@@ -19,7 +19,40 @@ Component({
     loading: false
   },
 
+  lifetimes: {
+    attached() {
+      this.initUserInfo();
+    }
+  },
+
+  observers: {
+    'show': function(show) {
+      if (show) {
+        this.initUserInfo();
+      }
+    }
+  },
+
   methods: {
+    initUserInfo() {
+      const app = getApp();
+      const userInfo = app.globalData.userInfo;
+      if (userInfo) {
+        this.setData({
+          'formData.name': userInfo.name || userInfo.nickName || '',
+          'formData.phone': userInfo.phone || userInfo.phoneNumber || ''
+        });
+      }
+    },
+
+    onInput(e) {
+      const field = e.currentTarget.dataset.field;
+      const value = e.detail.value;
+      this.setData({
+        [`formData.${field}`]: value
+      });
+    },
+
     onClose() {
       this.setData({ show: false });
       this.triggerEvent('close');

@@ -6,11 +6,15 @@ Page({
     cases: [],
     styleMetadata: util.StyleMetadata,
     selectedStyle: 'all',
+    selectedRoomType: '全部',
+    roomTypes: ['全部', '客厅', '主卧', '次卧', '书房', '餐厅', '厨房', '卫生间', '阳台'],
     isLoading: false,
     isRefreshing: false,
     hasMore: true,
     page: 1,
-    showLeadModal: false
+    showLeadModal: false,
+    showPoster: false,
+    currentCase: null
   },
 
   onLoad: function () {
@@ -42,6 +46,9 @@ Page({
       let url = `/inspirations?page=${this.data.page}`;
       if (this.data.selectedStyle !== 'all') {
         url += `&style=${encodeURIComponent(this.data.selectedStyle)}`;
+      }
+      if (this.data.selectedRoomType !== '全部') {
+        url += `&roomType=${encodeURIComponent(this.data.selectedRoomType)}`;
       }
 
       const res = await api.request(url, 'GET');
@@ -75,6 +82,20 @@ Page({
     
     this.setData({
       selectedStyle: style,
+      page: 1,
+      hasMore: true,
+      cases: []
+    }, () => {
+      this.fetchCases(true);
+    });
+  },
+
+  onFilterRoomType: function (e) {
+    const roomType = e.currentTarget.dataset.type;
+    if (this.data.selectedRoomType === roomType) return;
+    
+    this.setData({
+      selectedRoomType: roomType,
       page: 1,
       hasMore: true,
       cases: []
@@ -135,5 +156,20 @@ Page({
 
   onLeadSuccess: function () {
     wx.showToast({ title: '预约成功', icon: 'success' });
+  },
+
+  onOpenPoster: function (e) {
+    const id = e.currentTarget.dataset.id;
+    const item = this.data.cases.find(c => c._id === id);
+    if (item) {
+      this.setData({
+        currentCase: item,
+        showPoster: true
+      });
+    }
+  },
+
+  onClosePoster: function () {
+    this.setData({ showPoster: false });
   }
 });

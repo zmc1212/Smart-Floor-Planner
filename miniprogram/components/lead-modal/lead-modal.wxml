@@ -10,20 +10,20 @@
 
       <view class="form-group">
         <text class="label">称呼<text class="required">*</text></text>
-        <input class="input" placeholder="请输入您的姓名" model:value="{{formData.name}}" />
+        <input class="input" placeholder="请输入您的姓名" value="{{formData.name}}" data-field="name" bindinput="onInput" />
       </view>
 
       <view class="form-group">
         <text class="label">手机号码<text class="required">*</text></text>
         <view class="input-phone-group">
-          <input class="input phone-input" type="number" placeholder="请输入手机号码" model:value="{{formData.phone}}" />
+          <input class="input phone-input" type="number" placeholder="请输入手机号码" value="{{formData.phone}}" data-field="phone" bindinput="onInput" />
           <!-- <button class="auth-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">快捷获取</button> -->
         </view>
       </view>
 
       <view class="form-group">
         <text class="label">房屋面积 (㎡)</text>
-        <input class="input" type="digit" placeholder="例如：90" model:value="{{formData.area}}" />
+        <input class="input" type="digit" placeholder="例如：90" value="{{formData.area}}" data-field="area" bindinput="onInput" />
       </view>
 
       <view class="form-group">

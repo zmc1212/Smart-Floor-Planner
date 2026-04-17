@@ -1,11 +1,12 @@
 <view class="container">
   <!-- 顶部分类筛选 -->
+  <!-- 风格分类筛选 -->
   <scroll-view scroll-x class="filter-bar" enable-flex>
     <view 
       class="filter-item {{selectedStyle === 'all' ? 'active' : ''}}" 
       bindtap="onFilterStyle" 
       data-style="all"
-    >全部</view>
+    >全部风格</view>
     <view 
       wx:for="{{styleMetadata}}" 
       wx:key="key" 
@@ -15,12 +16,30 @@
     >{{item.label}}</view>
   </scroll-view>
 
+  <!-- 空间类型筛选 -->
+  <scroll-view scroll-x class="filter-bar type-bar" enable-flex>
+    <view 
+      wx:for="{{roomTypes}}" 
+      wx:key="*this" 
+      class="filter-item {{selectedRoomType === item ? 'active' : ''}}"
+      bindtap="onFilterRoomType"
+      data-type="{{item}}"
+    >{{item}}</view>
+  </scroll-view>
+
   <scroll-view scroll-y class="case-list" bindscrolltolower="onLoadMore" refresher-enabled refresher-triggered="{{isRefreshing}}" bindrefresherrefresh="onRefresh">
     <view class="case-grid">
       <view class="case-card" wx:for="{{cases}}" wx:key="_id">
         <view class="case-cover-box" bindtap="onPreviewCase" data-id="{{item._id}}">
-          <!-- 这里暂时用颜色块占位，item.coverImage -->
-          <view class="cover-placeholder" style="background: {{item.placeholderColor || '#eee'}}">
+          <!-- 优先显示真实封面图 (支持 URL 或 Base64) -->
+          <image 
+            wx:if="{{item.coverImage}}" 
+            class="case-cover" 
+            src="{{item.coverImage}}" 
+            mode="aspectFill"
+            lazy-load
+          />
+          <view wx:else class="cover-placeholder" style="background: {{item.placeholderColor || '#eee'}}">
             <text class="placeholder-text">{{item.style}}</text>
           </view>
           <view class="case-badge" wx:if="{{item.isRecommended}}">精选</view>
@@ -32,7 +51,11 @@
             <text class="case-views">{{item.viewCount}} 浏览</text>
           </view>
           <view class="case-actions">
-            <view class="btn-copy" bindtap="onCopyLayout" data-id="{{item._id}}">我想要这样装</view>
+            <view class="btn-copy" bindtap="onCopyLayout" data-id="{{item._id}}">一键同款</view>
+            <view class="btn-share" bindtap="onOpenPoster" data-id="{{item._id}}">
+              <icon type="share" size="16" color="#64748b" />
+              分享
+            </view>
           </view>
         </view>
       </view>
@@ -55,4 +78,10 @@
   </view>
 
   <lead-modal show="{{showLeadModal}}" bindclose="onCloseLeadModal" bindsuccess="onLeadSuccess" />
+  
+  <share-poster 
+    show="{{showPoster}}" 
+    caseData="{{currentCase}}" 
+    bindclose="onClosePoster" 
+  />
 </view>

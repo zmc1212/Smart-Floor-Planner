@@ -1,0 +1,29 @@
+<view class="poster-overlay" wx:if="{{show}}" catchtap="onClose">
+  <view class="poster-container" catchtap="onPrevent">
+    <view class="poster-header">
+      <text>保存至相册并分享</text>
+      <view class="close-btn" bindtap="onClose">×</view>
+    </view>
+    
+    <view class="poster-body">
+      <!-- 预览 Canvas 生成的图片 -->
+      <image wx:if="{{posterPath}}" class="poster-preview" src="{{posterPath}}" mode="widthFix" />
+      <view wx:else class="poster-placeholder">
+        <icon type="waiting" size="40" color="#94a3b8" />
+        <text>正在生成海报...</text>
+      </view>
+    </view>
+
+    <view class="poster-footer">
+      <button class="save-btn" bindtap="saveToPhotos" disabled="{{!posterPath}}">保存海报到手机</button>
+      <view class="tip">保存后可发朋友圈或发给好友</view>
+    </view>
+  </view>
+</view>
+
+<!-- 隐藏的 Canvas 绘图区域 -->
+<canvas 
+  type="2d" 
+  id="posterCanvas" 
+  style="width: 750px; height: 1100px; position: fixed; left: -9999px;"
+></canvas>

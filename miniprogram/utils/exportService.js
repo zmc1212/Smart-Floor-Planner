@@ -73,25 +73,50 @@ function _writeLine(x1, y1, x2, y2, layer) {
 }
 
 /**
- * 汇总导出报告所需的数据
+ * 汇总导出报告所需的数据 (增强型)
  */
 function getReportSummary(rooms) {
   let totalArea = 0;
+  
   const roomSummaries = rooms.map(r => {
-    const area = (r.width * r.height / 100);
+    let area = 0;
+    if (r.polygon && r.polygon.length >= 3) {
+      // Shoelace Formula for polygon area
+      let polyArea = 0;
+      for (let i = 0; i < r.polygon.length; i++) {
+        let j = (i + 1) % r.polygon.length;
+        polyArea += r.polygon[i].x * r.polygon[j].y;
+        polyArea -= r.polygon[j].x * r.polygon[i].y;
+      }
+      area = Math.abs(polyArea) / 200; // 这里的单位换算需要注意，假设坐标是0.1m级别
+    } else {
+      area = (r.width * r.height / 100);
+    }
+    
     totalArea += area;
+
+    // 基础比例分析
+    const ratio = Math.max(r.width / r.height, r.height / r.width);
+    const isProportional = ratio < 1.5;
+
     return {
-      name: r.name,
+      name: r.name || '未命名房间',
       dimensions: `${(r.width/10).toFixed(1)}m x ${(r.height/10).toFixed(1)}m`,
-      area: area.toFixed(2) + " m²",
-      openingsCount: (r.openings || []).length
+      area: area.toFixed(2) + " ㎡",
+      openingsCount: (r.openings || []).length,
+      suggestions: [
+        isProportional ? "采光比例均衡，适合对称布局" : "进深较长，建议增加横向照明或功能分区",
+        (r.openings || []).length > 2 ? "门窗丰富，通透度高" : "开口适中，私密性较好"
+      ]
     };
   });
 
   return {
+    title: "智能量房大师 - 数字化量房报告",
     totalArea: totalArea.toFixed(2),
     roomCount: rooms.length,
     rooms: roomSummaries,
+    summaryText: `该户型共包含 ${rooms.length} 个空间节点，总覆盖面积约 ${totalArea.toFixed(2)} ㎡。结构清晰，已完成数字化建模。`,
     date: new Date().toLocaleDateString()
   };
 }

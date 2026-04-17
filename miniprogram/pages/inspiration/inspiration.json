@@ -1,6 +1,7 @@
 {
   "navigationBarTitleText": "装修灵感",
   "usingComponents": {
-    "lead-modal": "../../components/lead-modal/lead-modal"
+    "lead-modal": "../../components/lead-modal/lead-modal",
+    "share-poster": "../../components/share-poster/share-poster"
   }
 }

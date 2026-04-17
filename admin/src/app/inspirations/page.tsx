@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from "@/components/Navbar";
 import { Loader2, Plus, Trash2, Star, Eye } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function InspirationsPage() {
   const [items, setItems] = useState<any[]>([]);
@@ -198,30 +199,38 @@ export default function InspirationsPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-[13px] font-semibold text-gray-500">空间类型</label>
-                      <select 
-                        className="w-full px-4 py-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-black/5"
-                        value={formData.roomType}
-                        onChange={(e) => setFormData({...formData, roomType: e.target.value})}
+                      <Select 
+                        value={formData.roomType} 
+                        onValueChange={(value) => value && setFormData({...formData, roomType: value})}
                       >
-                        <option>客厅</option>
-                        <option>主卧</option>
-                        <option>厨房</option>
-                        <option>卫生间</option>
-                      </select>
+                        <SelectTrigger className="w-full h-[48px] px-4 bg-gray-50 rounded-xl outline-none border-none shadow-none focus:ring-2 focus:ring-black/5 text-[15px]">
+                          <SelectValue placeholder="空间类型" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="客厅">客厅</SelectItem>
+                          <SelectItem value="主卧">主卧</SelectItem>
+                          <SelectItem value="厨房">厨房</SelectItem>
+                          <SelectItem value="卫生间">卫生间</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <label className="text-[13px] font-semibold text-gray-500">设计风格</label>
-                      <select 
-                        className="w-full px-4 py-3 bg-gray-50 rounded-xl outline-none focus:ring-2 focus:ring-black/5"
-                        value={formData.style}
-                        onChange={(e) => setFormData({...formData, style: e.target.value})}
+                      <Select 
+                        value={formData.style} 
+                        onValueChange={(value) => value && setFormData({...formData, style: value})}
                       >
-                        <option>现代简约</option>
-                        <option>侘寂风</option>
-                        <option>原木风</option>
-                        <option>轻法式奶油</option>
-                        <option>精致轻奢</option>
-                      </select>
+                        <SelectTrigger className="w-full h-[48px] px-4 bg-gray-50 rounded-xl outline-none border-none shadow-none focus:ring-2 focus:ring-black/5 text-[15px]">
+                          <SelectValue placeholder="设计风格" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="现代简约">现代简约</SelectItem>
+                          <SelectItem value="侘寂风">侘寂风</SelectItem>
+                          <SelectItem value="原木风">原木风</SelectItem>
+                          <SelectItem value="轻法式奶油">轻法式奶油</SelectItem>
+                          <SelectItem value="精致轻奢">精致轻奢</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                   
