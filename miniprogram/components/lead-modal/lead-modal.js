@@ -87,13 +87,18 @@ Component({
 
       this.setData({ loading: true });
 
+      const app = getApp();
+      const { enterpriseId, staffId } = app.globalData.referral;
+
       try {
         const res = await api.request('/leads', 'POST', {
           name,
           phone,
           area: area ? parseFloat(area) : undefined,
           stylePreference,
-          source: 'miniprogram'
+          source: 'miniprogram',
+          enterpriseId: enterpriseId || undefined,
+          assignedTo: staffId || undefined
         });
 
         if (res.success) {

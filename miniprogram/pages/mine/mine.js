@@ -58,6 +58,9 @@ Page({
         wx.setStorageSync('openid', res.openid);
         wx.setStorageSync('userInfo', res.user);
 
+        // Sync professional context (auto-branding for staff)
+        app.syncProfessionalContext();
+
         this.setData({
           isLoggedIn: true,
           userInfo: res.user

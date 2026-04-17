@@ -67,7 +67,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { username, password, displayName, role } = body;
+    const { username, password, displayName, role, phone } = body;
 
     if (!username || !password || !role) {
       return NextResponse.json({ success: false, error: '请填写完整信息' }, { status: 400 });
@@ -99,6 +99,7 @@ export async function POST(request: Request) {
       username: username.trim(),
       passwordHash,
       displayName: displayName?.trim() || '',
+      phone: phone?.trim() || '',
       role,
       enterpriseId: targetEnterpriseId,
       status: 'active',

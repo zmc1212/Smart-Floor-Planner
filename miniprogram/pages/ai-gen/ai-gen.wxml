@@ -46,17 +46,22 @@
         
         <!-- 生成中的扫描线动画 -->
         <view class="scan-line" wx:if="{{isGenerating}}"></view>
-      </view>
-
-      <view class="preview-actions" wx:if="{{room.renderingUrl}}">
-        <view class="action-pill" bindtap="onSaveImage">
-          <text>💾 保存至相册</text>
-        </view>
-        <view class="action-pill primary" bindtap="onExportPrompt">
-          <text>📋 复制提示词</text>
-        </view>
+      <!-- Result Actions -->
+      <view class="result-actions" wx:if="{{room.renderingUrl && !isGenerating}}">
+        <button class="action-btn" bindtap="onPreviewImage">预览大图</button>
+        <button class="action-btn primary" bindtap="onOpenLeadModal">获取完整设计方案</button>
+        <button class="action-btn secondary" bindtap="onExportPrompt">复制设计提示词</button>
       </view>
     </view>
+  </view>
+
+  <!-- Lead Modal -->
+  <lead-modal 
+    show="{{showLeadModal}}" 
+    roomName="{{room.name}}"
+    bind:close="onCloseLeadModal"
+    bind:success="onLeadSuccess"
+  />
 
     <!-- 3. 房间基本信息 -->
     <view class="room-memo">

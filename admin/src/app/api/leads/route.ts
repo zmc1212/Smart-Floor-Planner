@@ -1,19 +1,39 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Lead from '@/models/Lead';
+import { getTenantContext, getTenantFilter } from '@/lib/auth';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
     await dbConnect();
+    const context = await getTenantContext(request);
+    if (!context) {
+      console.log('Leads API: Unauthorized access attempt');
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const source = searchParams.get('source');
 
-    const query: any = {};
-    if (status) query.status = status;
-    if (source) query.source = source;
+    const basicQuery: any = {};
+    if (status) basicQuery.status = status;
+    if (source) basicQuery.source = source;
 
-    const leads = await Lead.find(query).sort({ createdAt: -1 });
+    // Apply tenant filter
+    const tenantFilter = getTenantFilter(context, { staffField: 'assignedTo' });
+    const query = { ...basicQuery, ...tenantFilter };
+
+    console.log(`Leads API Trace: User=${context.username}, Role=${context.role}, EID=${context.enterpriseId}, Query=${JSON.stringify(query)}`);
+
+    const leads = await Lead.find(query)
+      .populate('assignedTo', 'displayName username')
+      .sort({ createdAt: -1 });
+
+    console.log(`Leads API Result: Found ${leads.length} leads`);
+
     return NextResponse.json({ success: true, data: leads });
   } catch (error: any) {
     console.error('Fetch leads error:', error);

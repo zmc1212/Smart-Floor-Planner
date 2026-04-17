@@ -9,6 +9,8 @@ export default function StaffPage() {
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Form state
@@ -16,6 +18,7 @@ export default function StaffPage() {
     username: '',
     password: '',
     displayName: '',
+    phone: '',
     role: 'designer',
     enterpriseId: ''
   });
@@ -50,25 +53,70 @@ export default function StaffPage() {
     fetchStaff();
   }, []);
 
-  const handleCreateStaff = async (e: React.FormEvent) => {
+  const resetForm = () => {
+    setFormData({ username: '', password: '', displayName: '', phone: '', role: 'designer', enterpriseId: '' });
+    setIsEditMode(false);
+    setEditingId(null);
+  };
+
+  const handleOpenCreateModal = () => {
+    resetForm();
+    setIsModalOpen(true);
+  };
+
+  const handleEditClick = (member: any) => {
+    setFormData({
+      username: member.username,
+      password: '', // Password field blank for editing unless changing
+      displayName: member.displayName || '',
+      phone: member.phone || '',
+      role: member.role,
+      enterpriseId: member.enterpriseId || ''
+    });
+    setEditingId(member._id);
+    setIsEditMode(true);
+    setIsModalOpen(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('确定要删除该员工账号吗？此操作不可撤销。')) return;
+    
+    try {
+      const res = await fetch(`/api/staff/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        fetchStaff();
+      } else {
+        alert(data.error);
+      }
+    } catch (err: any) {
+      alert('删除失败: ' + err.message);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    
+    const url = isEditMode ? `/api/staff/${editingId}` : '/api/staff';
+    const method = isEditMode ? 'PUT' : 'POST';
+
     try {
-      const res = await fetch('/api/staff', {
-        method: 'POST',
+      const res = await fetch(url, {
+        method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData)
       });
       const data = await res.json();
       if (data.success) {
         setIsModalOpen(false);
-        setFormData({ username: '', password: '', displayName: '', role: 'designer', enterpriseId: '' });
+        resetForm();
         fetchStaff();
       } else {
         alert(data.error);
       }
     } catch (err: any) {
-      alert('创建失败: ' + err.message);
+      alert((isEditMode ? '保存失败: ' : '创建失败: ') + err.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -101,7 +149,7 @@ export default function StaffPage() {
           </div>
           {(currentUser?.role === 'super_admin' || currentUser?.role === 'enterprise_admin' || currentUser?.role === 'admin') && (
             <button 
-              onClick={() => setIsModalOpen(true)}
+              onClick={handleOpenCreateModal}
               className="px-6 py-2.5 bg-[#171717] text-white rounded-full text-[14px] font-medium hover:bg-black transition-all flex items-center gap-2"
             >
               <Plus size={18} /> 新增员工
@@ -149,8 +197,18 @@ export default function StaffPage() {
                 </div>
 
                 <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-all flex gap-1">
-                   <button className="p-2 bg-white shadow-lg rounded-full text-gray-400 hover:text-black hover:scale-110 transition-all"><Pencil size={14}/></button>
-                   <button className="p-2 bg-white shadow-lg rounded-full text-gray-400 hover:text-red-600 hover:scale-110 transition-all"><Trash2 size={14}/></button>
+                   <button 
+                    onClick={() => handleEditClick(member)}
+                    className="p-2 bg-white shadow-lg rounded-full text-gray-400 hover:text-black hover:scale-110 transition-all"
+                   >
+                     <Pencil size={14}/>
+                   </button>
+                   <button 
+                    onClick={() => handleDelete(member._id)}
+                    className="p-2 bg-white shadow-lg rounded-full text-gray-400 hover:text-red-600 hover:scale-110 transition-all"
+                   >
+                    <Trash2 size={14}/>
+                   </button>
                 </div>
               </div>
             ))}
@@ -168,30 +226,31 @@ export default function StaffPage() {
             <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
             <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
               <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-                <h3 className="text-lg font-bold">新增员工</h3>
+                <h3 className="text-lg font-bold">{isEditMode ? '编辑员工信息' : '新增员工'}</h3>
                 <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                   <X size={20} />
                 </button>
               </div>
 
-              <form onSubmit={handleCreateStaff} className="p-6 space-y-4">
+              <form onSubmit={handleSubmit} className="p-6 space-y-4">
                 <div className="space-y-1.5">
                   <label className="text-[12px] font-bold text-gray-400 uppercase">登陆账号</label>
                   <input 
                     required
-                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black/5"
+                    disabled={isEditMode}
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black/5 disabled:opacity-50"
                     placeholder="例如: designer_zhang"
                     value={formData.username}
                     onChange={(e) => setFormData({...formData, username: e.target.value})}
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[12px] font-bold text-gray-400 uppercase">登录密码</label>
+                  <label className="text-[12px] font-bold text-gray-400 uppercase">{isEditMode ? '修改密码 (留空则不修改)' : '登录密码'}</label>
                   <input 
-                    required
+                    required={!isEditMode}
                     type="password"
                     className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black/5"
-                    placeholder="不少于6位"
+                    placeholder={isEditMode ? "不少于6位" : "不少于6位"}
                     value={formData.password}
                     onChange={(e) => setFormData({...formData, password: e.target.value})}
                   />
@@ -204,6 +263,15 @@ export default function StaffPage() {
                     placeholder="显示名称"
                     value={formData.displayName}
                     onChange={(e) => setFormData({...formData, displayName: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[12px] font-bold text-gray-400 uppercase">联系电话 (用于手机登录)</label>
+                  <input 
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl outline-none focus:ring-2 focus:ring-black/5"
+                    placeholder="11位手机号"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({...formData, phone: e.target.value})}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -225,7 +293,7 @@ export default function StaffPage() {
                     disabled={isSubmitting}
                     className="w-full py-3 bg-[#171717] text-white font-bold rounded-xl hover:bg-black disabled:opacity-50 transition-all"
                   >
-                    {isSubmitting ? '正在创建...' : '确 认 创 建'}
+                    {isSubmitting ? '正在处理...' : (isEditMode ? '保 存 修 改' : '确 认 创 建')}
                   </button>
                 </div>
               </form>

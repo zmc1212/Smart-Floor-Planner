@@ -10,8 +10,7 @@ export default function LeadsPage() {
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [newNote, setNewNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const designers = ['张工 (主创)', '李工 (资深)', '王工 (经理)', '赵工 (顾问)'];
+  const [staffMembers, setStaffMembers] = useState<any[]>([]);
 
   const fetchLeads = async () => {
     setLoading(true);
@@ -32,8 +31,21 @@ export default function LeadsPage() {
     }
   };
 
+  const fetchStaff = async () => {
+    try {
+      const res = await fetch('/api/staff');
+      const data = await res.json();
+      if (data.success) {
+        setStaffMembers(data.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch staff:', err);
+    }
+  };
+
   useEffect(() => {
     fetchLeads();
+    fetchStaff();
   }, []);
 
   const updateLead = async (id: string, updates: any) => {
@@ -109,6 +121,11 @@ export default function LeadsPage() {
               </span>
             )}
           </div>
+          {leads.length === 0 && !loading && (
+            <div className="bg-yellow-50 border border-yellow-100 p-4 rounded-xl text-sm text-yellow-800">
+              提示：如果您是设计师或业务员，您只能看到正式指派给您的线索。只有企业负责人（Admin/Owner）可以看到全部新线索。
+            </div>
+          )}
         </div>
 
         {loading && (
@@ -143,7 +160,7 @@ export default function LeadsPage() {
                       <td className="p-4">
                          {lead.assignedTo ? (
                            <div className="flex items-center gap-1.5 text-[13px] text-gray-600">
-                             <User size={14} className="text-gray-400" /> {lead.assignedTo}
+                             <User size={14} className="text-gray-400" /> {typeof lead.assignedTo === 'object' ? (lead.assignedTo.displayName || lead.assignedTo.username) : lead.assignedTo}
                            </div>
                          ) : (
                            <span className="text-[12px] text-gray-300">未指派</span>
@@ -207,11 +224,15 @@ export default function LeadsPage() {
                     <label className="text-[12px] font-semibold text-gray-400 uppercase tracking-wider">指派设计师</label>
                     <select 
                       className="w-full p-2.5 bg-gray-50 border border-gray-100 rounded-xl text-[14px] outline-none"
-                      value={selectedLead.assignedTo || ''}
+                      value={selectedLead.assignedTo?._id || selectedLead.assignedTo || ''}
                       onChange={(e) => updateLead(selectedLead._id, { assignedTo: e.target.value })}
                     >
                       <option value="">待指派</option>
-                      {designers.map(d => <option key={d} value={d}>{d}</option>)}
+                      {staffMembers.map(s => (
+                        <option key={s._id} value={s._id}>
+                          {s.displayName || s.username} ({s.role === 'designer' ? '设计师' : '业务员'})
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>

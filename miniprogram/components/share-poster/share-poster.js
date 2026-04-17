@@ -87,13 +87,19 @@ Component({
             ctx.stroke();
 
             // 5. 绘制品牌与二维码区域
+            const app = getApp();
+            const userInfo = app.globalData.userInfo || {};
+            const brandingName = userInfo.enterpriseName || '智能量房大师';
+            const designerName = userInfo.role === 'staff' ? (userInfo.nickname || userInfo.name) : '';
+
             ctx.fillStyle = '#171717';
             ctx.font = 'bold 32px sans-serif';
-            ctx.fillText('智能量房大师', 40, 880);
+            ctx.fillText(brandingName, 40, 880);
 
             ctx.fillStyle = '#94a3b8';
             ctx.font = '24px sans-serif';
-            ctx.fillText('长按小程序码查看更多灵感', 40, 930);
+            const subText = designerName ? `首席设计师 ${designerName} 推荐` : '长按小程序码查看更多灵感';
+            ctx.fillText(subText, 40, 930);
 
             // 二维码占位 (通常使用公司 Logo 或 小程序码)
             ctx.fillStyle = '#f8fafc';

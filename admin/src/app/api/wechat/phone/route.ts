@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import dbConnect from '@/lib/mongodb';
 import { User } from '@/models/User';
+import { AdminUser } from '@/models/AdminUser';
+import { Enterprise } from '@/models/Enterprise';
 
 // Simple in-memory cache for access token
 let cachedToken: { token: string, expiresAt: number } | null = null;
@@ -97,21 +99,36 @@ export async function POST(req: Request) {
     const phoneNumber = phoneData.phone_info.phoneNumber;
     console.log(`Phone login: got phone ${phoneNumber} for openid ${openid}`);
 
-    // ---- Step 3: Find or create user ----
+    // ---- Step 3: Find or create user and link Professional Profile ----
     await dbConnect();
 
-    let user = await User.findOne({ openid });
+    // Check if this user is a Staff Member (AdminUser)
+    const staff = await AdminUser.findOne({ $or: [{ phone: phoneNumber }, { openid }] });
+    let enterpriseName = '';
+    let isStaff = false;
 
+    if (staff) {
+      isStaff = true;
+      // Link openid if not already linked
+      if (!staff.openid) {
+        staff.openid = openid;
+        await staff.save();
+      }
+      // Get Enterprise Name
+      if (staff.enterpriseId) {
+        const ent = await Enterprise.findById(staff.enterpriseId);
+        enterpriseName = ent?.name || '';
+      }
+    }
+
+    let user = await User.findOne({ openid });
     if (!user) {
-      // New user: create with openid + phone
-      user = new User({ openid, phone: phoneNumber, role: 'user' });
+      user = new User({ openid, phone: phoneNumber, role: isStaff ? 'staff' : 'user' });
       await user.save();
-      console.log(`Created new user ${user._id} with phone ${phoneNumber}`);
     } else {
-      // Existing user: update phone
       user.phone = phoneNumber;
+      if (isStaff) user.role = 'staff';
       await user.save();
-      console.log(`Updated existing user ${user._id} with phone ${phoneNumber}`);
     }
 
     // ---- Step 4: Return user data ----
@@ -119,10 +136,14 @@ export async function POST(req: Request) {
       success: true,
       openid: user.openid,
       user: {
-        nickname: user.nickname || '',
+        nickname: user.nickname || staff?.displayName || '',
         avatar: user.avatar || '',
         communityName: user.communityName || '',
         phone: user.phone || '',
+        role: user.role,
+        enterpriseId: staff?.enterpriseId || '',
+        enterpriseName: enterpriseName,
+        staffId: staff?._id || ''
       }
     });
 
