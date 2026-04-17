@@ -1,0 +1,66 @@
+<view class="container">
+  <view class="header">
+    <text class="title">装修方案推荐</text>
+    <text class="subtitle">为您精选最适合的装修方案</text>
+  </view>
+
+  <view class="progress-section">
+    <view class="progress-title">装修进度</view>
+    <view class="progress-steps">
+      <block wx:for="{{progressStages}}" wx:key="id">
+        <view class="step-item {{currentStep >= index ? 'active' : ''}} {{completedSteps.includes(item.id) ? 'completed' : ''}}">
+          <view class="step-number">{{index + 1}}</view>
+          <view class="step-content">
+            <text class="step-title">{{item.title}}</text>
+            <text class="step-description">{{item.description}}</text>
+          </view>
+        </view>
+        <view class="step-line {{completedSteps.includes(nextItem.id) ? 'completed' : ''}}" wx:if="{{index < progressStages.length - 1}}"></view>
+      </block>
+    </view>
+  </view>
+
+  <view class="recommendations-section">
+    <view class="section-title">推荐方案</view>
+    <scroll-view scroll-x="true" class="recommendations-scroll">
+      <block wx:for="{{recommendations}}" wx:key="id">
+        <view class="recommendation-card">
+          <image src="{{item.imageUrl}}" class="recommendation-image" mode="aspectFill"/>
+          <view class="card-content">
+            <text class="card-title">{{item.name}}</text>
+            <text class="card-description">{{item.description}}</text>
+            <view class="budget-info">
+              <text>预算: ¥{{item.estimatedBudget.min | formatNumber}} - ¥{{item.estimatedBudget.max | formatNumber}}</text>
+            </view>
+            <view class="match-score">
+              <text>匹配度: {{Math.round(item.matchScore * 100)}}%</text>
+            </view>
+            <view class="card-actions">
+              <button
+                class="action-btn primary"
+                bindtap="onStyleSelect"
+                data-style-id="{{item.id}}"
+              >
+                {{selectedStyle === item.id ? '已选择' : '查看详情'}}
+              </button>
+              <button
+                class="action-btn secondary"
+                bindtap="onDownloadPdf"
+                data-style-id="{{item.id}}"
+              >
+                下载PDF
+              </button>
+            </view>
+          </view>
+        </view>
+      </block>
+    </scroll-view>
+  </view>
+
+  <view class="share-section" wx:if="{{selectedStyle}}">
+    <view class="share-tips">
+      <text class="tips-text">选择您喜欢的风格，分享给好友获取更多优惠！</text>
+      <button class="share-btn" bindtap="onShare">分享到朋友圈</button>
+    </view>
+  </view>
+</view>

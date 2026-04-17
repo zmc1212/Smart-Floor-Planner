@@ -195,17 +195,15 @@ Page({
 
           app.globalData.restoreFloorPlan = {
             name: item.title + ' (复刻)',
-            layoutData: finalRooms
+            layoutData: finalRooms,
+            isRestore: true
           };
 
           console.log('一键同款数据准备就绪:', app.globalData.restoreFloorPlan);
 
           // 3. 页面跳转
-          wx.switchTab({
-            url: '/pages/index/index',
-            success: () => {
-              wx.showToast({ title: '已应用布局', icon: 'success' });
-            }
+          wx.navigateTo({
+            url: '/pages/editor/editor'
           });
         }
       }

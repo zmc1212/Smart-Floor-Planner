@@ -10,6 +10,7 @@ var _scanTimer = null; // 搜索总时间计时器
 var _foundDevices = []; // 发现的设备列表，用于超时判断
 var _verifyingDevices = {}; // 记录正在验证或验证失败的设备，避免重复请求
 var _isStateChangeRegistered = false;
+var _isValueChangeRegistered = false;
 
 var _heartbeatTimer = null;
 var _lastResponseTime = 0;
@@ -247,6 +248,9 @@ function getCharacteristics(deviceId, serviceId) {
 
 var dataBuffer = [];
 function listenValueChange() {
+  if (_isValueChangeRegistered) return;
+  _isValueChangeRegistered = true;
+  
   wx.onBLECharacteristicValueChange(function (res) {
     _lastResponseTime = Date.now(); // 收到任何数据都刷新心跳存活时间
 
@@ -377,6 +381,11 @@ function handleDisconnect(reason) {
   }
 }
 
+function clearBuffer() {
+  dataBuffer = [];
+  console.log('蓝牙数据缓冲区已清空');
+}
+
 var _lastCmdTime = 0;
 var _lastCmdStr = '';
 
@@ -388,12 +397,17 @@ function sendBLECommand(cmd) {
 
   // JS层面的防抖：防止短时间内某些回调导致重复发同一条指令
   var now = Date.now();
-  if (cmd === _lastCmdStr && now - _lastCmdTime < 500) {
+  if (cmd === _lastCmdStr && now - _lastCmdTime < 50) {
     console.log('阻止极短时间内重复发送相同的指令:', cmd);
     return;
   }
   _lastCmdTime = now;
   _lastCmdStr = cmd;
+
+  // 如果是测量指令，先清空缓冲区旧数据，确保收到的下一包是实时的结果
+  if (cmd.includes('ATK') || cmd.includes('ATD')) {
+    clearBuffer();
+  }
 
   var buffer = new ArrayBuffer(cmd.length);
   var dataView = new DataView(buffer);
@@ -491,9 +505,17 @@ function autoConnectBLE(callback, connectCallback, disconnectCallback) {
   }
 }
 
+function setCallbacks(callback, connectCallback, disconnectCallback) {
+  if (callback !== undefined) _onMeasureCallback = callback;
+  if (connectCallback !== undefined) _onConnectCallback = connectCallback;
+  if (disconnectCallback !== undefined) _onDisconnectCallback = disconnectCallback;
+}
+
 module.exports = {
   initBLE: initBLE,
   closeBLE: closeBLE,
   sendBLECommand: sendBLECommand,
-  autoConnectBLE: autoConnectBLE
+  autoConnectBLE: autoConnectBLE,
+  setCallbacks: setCallbacks,
+  clearBuffer: clearBuffer
 };

@@ -1,0 +1,266 @@
+.container {
+  padding: 20rpx;
+  background-color: #fafafa;
+}
+
+.header {
+  text-align: center;
+  margin-bottom: 40rpx;
+}
+
+.title {
+  font-size: 40rpx;
+  font-weight: 600;
+  color: #171717;
+  display: block;
+  margin-bottom: 12rpx;
+}
+
+.subtitle {
+  font-size: 28rpx;
+  color: #4d4d4d;
+  line-height: 1.5;
+}
+
+.progress-section {
+  background: #ffffff;
+  border-radius: 16rpx;
+  box-shadow: rgba(0, 0, 0, 0.08) 0px 0px 0px 1px,
+              rgba(0, 0, 0, 0.04) 0px 4rpx 4rpx;
+  padding: 32rpx;
+  margin-bottom: 40rpx;
+}
+
+.progress-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #171717;
+  margin-bottom: 32rpx;
+  text-align: center;
+}
+
+.progress-steps {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.step-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  opacity: 0.6;
+}
+
+.step-item.active,
+.step-item.completed {
+  opacity: 1;
+}
+
+.step-number {
+  width: 60rpx;
+  height: 60rpx;
+  border-radius: 50%;
+  background-color: #ebebeb;
+  color: #666666;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
+  margin-bottom: 16rpx;
+}
+
+.step-item.active .step-number,
+.step-item.completed .step-number {
+  background-color: #171717;
+  color: #ffffff;
+}
+
+.step-item.completed .step-number::after {
+  content: '✓';
+  font-size: 32rpx;
+}
+
+.step-content {
+  text-align: center;
+}
+
+.step-title {
+  font-size: 24rpx;
+  font-weight: 500;
+  color: #171717;
+  display: block;
+  margin-bottom: 8rpx;
+}
+
+.step-description {
+  font-size: 20rpx;
+  color: #666666;
+  line-height: 1.4;
+}
+
+.step-line {
+  flex: 0.5;
+  height: 4rpx;
+  background-color: #ebebeb;
+  margin: 0 20rpx;
+}
+
+.step-line.completed {
+  background-color: #171717;
+}
+
+.recommendations-section {
+  margin-bottom: 40rpx;
+}
+
+.section-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #171717;
+  margin-bottom: 32rpx;
+}
+
+.recommendations-scroll {
+  white-space: nowrap;
+  padding-bottom: 20rpx;
+}
+
+.recommendation-card {
+  width: 500rpx;
+  background: #ffffff;
+  border-radius: 16rpx;
+  box-shadow: rgba(0, 0, 0, 0.08) 0px 0px 0px 1px,
+              rgba(0, 0, 0, 0.04) 0px 4rpx 4rpx,
+              #fafafa 0px 0px 0px 1px;
+  margin-right: 24rpx;
+  overflow: hidden;
+  display: inline-block;
+}
+
+.recommendation-image {
+  width: 100%;
+  height: 300rpx;
+}
+
+.card-content {
+  padding: 24rpx;
+}
+
+.card-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #171717;
+  display: block;
+  margin-bottom: 12rpx;
+}
+
+.card-description {
+  font-size: 24rpx;
+  color: #4d4d4d;
+  line-height: 1.5;
+  margin-bottom: 16rpx;
+}
+
+.budget-info {
+  background-color: #fafafa;
+  padding: 12rpx 16rpx;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+  color: #171717;
+  font-weight: 500;
+  margin-bottom: 16rpx;
+}
+
+.match-score {
+  font-size: 20rpx;
+  color: #666666;
+  margin-bottom: 20rpx;
+}
+
+.card-actions {
+  display: flex;
+  gap: 16rpx;
+}
+
+.action-btn {
+  flex: 1;
+  padding: 16rpx 0;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+  font-weight: 500;
+  text-align: center;
+  border: none;
+  cursor: pointer;
+}
+
+.action-btn.primary {
+  background-color: #171717;
+  color: #ffffff;
+}
+
+.action-btn.secondary {
+  background-color: transparent;
+  color: #171717;
+  border: 2rpx solid rgba(0, 0, 0, 0.08);
+}
+
+.share-section {
+  background: #ffffff;
+  border-radius: 16rpx;
+  box-shadow: rgba(0, 0, 0, 0.08) 0px 0px 0px 1px,
+              rgba(0, 0, 0, 0.04) 0px 4rpx 4rpx,
+              #fafafa 0px 0px 0px 1px;
+  padding: 32rpx;
+  margin-bottom: 40rpx;
+}
+
+.share-tips {
+  text-align: center;
+}
+
+.tips-text {
+  font-size: 24rpx;
+  color: #4d4d4d;
+  margin-bottom: 16rpx;
+  display: block;
+}
+
+.share-btn {
+  background-color: #171717;
+  color: #ffffff;
+  border: none;
+  border-radius: 8rpx;
+  padding: 16rpx 32rpx;
+  font-size: 24rpx;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.loading-text {
+  text-align: center;
+  padding: 100rpx 0;
+  color: #666666;
+  font-size: 28rpx;
+}
+
+.error-message {
+  background-color: #fff5f5;
+  border: 2rpx solid #fed7d7;
+  border-radius: 16rpx;
+  padding: 40rpx;
+  text-align: center;
+  color: #c53030;
+  margin: 40rpx 0;
+}
+
+.error-message button {
+  margin-top: 20rpx;
+  padding: 16rpx 32rpx;
+  background-color: #171717;
+  color: #ffffff;
+  border: none;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+}

@@ -98,9 +98,9 @@ Page({
     const id = e.currentTarget.dataset.id;
     const fp = this.data.floorPlans.find(f => f._id === id);
     if (fp) {
-      app.globalData.restoreFloorPlan = fp;
-      wx.switchTab({
-        url: '/pages/index/index'
+      app.globalData.restoreFloorPlan = Object.assign({}, fp, { isRestore: true });
+      wx.navigateTo({
+        url: '/pages/editor/editor'
       });
     }
   },

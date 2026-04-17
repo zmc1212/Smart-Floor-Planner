@@ -1,0 +1,1129 @@
+var util = require('../../utils/util.js');
+var ToolType = util.ToolType;
+
+Page({
+  data: {
+    bleConnected: false,
+    is3DView: false,
+    guidedMode: false,
+    showMeasurePrompt: false,
+    guidedEdgeIndex: -1,
+    currentGuidedRoomId: '',
+    currentGuidedRoomName: '',
+    isLaserOpen: false,      
+    measurePoints: [],       
+    pendingDirection: '',    
+    canFinishPolygon: false, 
+    activeTool: 'SELECT',
+    currentRoomType: '客厅',
+    rooms: [],
+    history: [[]],
+    historyIndex: 0,
+    selectedIds: [],
+    selectedRooms: [],
+    showPropertyPanel: false,
+    highlightedOpeningId: '',
+    lastMeasuredDirection: '',
+    statusBarHeight: 0,
+    showDrawingIndicator: false,
+    totalArea: '0.00',
+    windowWidth: 375,
+    windowHeight: 600
+  },
+
+  onLoad: function (options) {
+    var that = this;
+    this.isMeasuring = false; 
+    this._lastMeasureTime = 0;
+    this._lastMeasureDist = 0;
+    var sysInfo = wx.getSystemInfoSync();
+    var menuButtonInfo = wx.getMenuButtonBoundingClientRect();
+
+    var navBarContentHeight = (menuButtonInfo.top - sysInfo.statusBarHeight) * 2 + menuButtonInfo.height;
+    var navBarHeightTotal = sysInfo.statusBarHeight + navBarContentHeight;
+
+    this.setData({
+      statusBarHeight: sysInfo.statusBarHeight,
+      navBarHeightTotal: navBarHeightTotal,
+      navBarContentHeight: navBarContentHeight,
+      menuButtonLeft: menuButtonInfo.left,
+      capsulePadding: sysInfo.windowWidth - menuButtonInfo.left,
+      windowWidth: sysInfo.windowWidth,
+      windowHeight: sysInfo.windowHeight
+    });
+  },
+
+  onShow: function() {
+    const app = getApp();
+    const bluetooth = require('../../utils/bluetooth.js');
+    var that = this;
+    
+    // 重新绑定蓝牙回调到当前页面
+    if (app.globalData.bleConnected) {
+      bluetooth.setCallbacks(
+        function (dist) { that.onBluetoothMeasure(dist); },
+        function (isConn) { 
+          that.setData({ bleConnected: isConn }); 
+          app.globalData.bleConnected = isConn;
+          if (!isConn) that.onBluetoothDisconnect();
+        },
+        function () { that.onBluetoothDisconnect(); }
+      );
+      this.setData({ bleConnected: true });
+    } else {
+      this.setData({ bleConnected: false });
+    }
+
+    if (app.globalData.restoreFloorPlan) {
+      const fp = app.globalData.restoreFloorPlan;
+      app.globalData.restoreFloorPlan = null;
+    console.log('检测到还原户型请求:', fp);
+    
+    this.setData({
+      history: [],
+      historyIndex: -1
+    }, () => {
+      this.pushToHistory(fp.layoutData, {
+        guidedMode: fp.guidedMode || false,
+        showMeasurePrompt: fp.showMeasurePrompt || false,
+        activeTool: fp.activeTool || 'SELECT',
+        selectedIds: fp.roomId ? [fp.roomId] : (fp.selectedIds || []),
+        showPropertyPanel: fp.showPropertyPanel || false,
+        currentGuidedRoomId: fp.roomId || '',
+        currentGuidedRoomName: fp.roomName || ''
+      });
+      
+      setTimeout(() => {
+        const canvas = this.selectComponent('#floorCanvas');
+        console.log('准备执行 fitToView, canvas组件:', !!canvas);
+        if (canvas) {
+          canvas.fitToView();
+          // 仅当明确标识为恢复（如导入库、云端打开）时才显示提示，避免模板开房时弹出
+          if (fp.isRestore) {
+            wx.showToast({ title: '已恢复布局', icon: 'success' });
+          }
+        }
+      }, 800);
+
+        if (fp.guidedMode && !fp.isMeasured) {
+          this.openLaser();
+        }
+      });
+    }
+  },
+
+  onUnload: function() {
+    this.isMeasuring = false;
+    if (this.measureTimer) { clearTimeout(this.measureTimer); this.measureTimer = null; }
+    if (this.failTimer) { clearTimeout(this.failTimer); this.failTimer = null; }
+  },
+
+  onBack: function() {
+    this.onExitToLibrary();
+  },
+
+  onExitToLibrary: function () {
+    this.isMeasuring = false;
+    if (this.measureTimer) { clearTimeout(this.measureTimer); this.measureTimer = null; }
+    if (this.failTimer) { clearTimeout(this.failTimer); this.failTimer = null; }
+    
+    wx.navigateBack();
+  },
+
+  onExitGuide: function () {
+    this.isMeasuring = false;
+    if (this.measureTimer) { clearTimeout(this.measureTimer); this.measureTimer = null; }
+    if (this.failTimer) { clearTimeout(this.failTimer); this.failTimer = null; }
+    this.setData({ guidedMode: false, selectedEdge: '' });
+  },
+
+  // === 工具切换 ===
+  onToolChange: function (e) {
+    var tool = e.detail.tool;
+    if (tool === 'SHAPE') {
+      this.onShowShapePicker();
+      return;
+    }
+    this.setData({
+      activeTool: tool,
+      showDrawingIndicator: tool !== 'SELECT' && tool !== 'SHAPE'
+    });
+  },
+
+  onShowShapePicker: function () {
+    var templates = require('../../utils/templates.js');
+    var shapes = templates.shapeTemplates;
+    var that = this;
+    
+    wx.showActionSheet({
+      itemList: shapes.map(s => s.name),
+      success: (res) => {
+        var shape = shapes[res.tapIndex];
+        that.insertShapeRoom(shape.id);
+      }
+    });
+  },
+
+  insertShapeRoom: function (shapeId) {
+    var templates = require('../../utils/templates.js');
+    var canvasWidth = this.data.windowWidth;
+    var canvasHeight = this.data.windowHeight - 150;
+
+    var newRoom = templates.generateShapeRoom(
+      shapeId, 
+      this.data.currentRoomType || '客厅',
+      canvasWidth / 2 - 20, 
+      canvasHeight / 2 - 20
+    );
+
+    if (newRoom) {
+      var newRooms = this.data.rooms.concat([newRoom]);
+      this.pushToHistory(newRooms);
+      this.setData({ 
+        selectedIds: [newRoom.id], 
+        activeTool: 'SELECT',
+        showPropertyPanel: true 
+      });
+      this.updateSelectedRooms(newRooms);
+      
+      wx.showToast({ title: '已插入形状', icon: 'none' });
+    }
+  },
+
+  onRoomTypeChange: function (e) {
+    this.setData({ currentRoomType: e.detail.type });
+  },
+
+  onCancelDrawing: function () {
+    this.setData({
+      activeTool: 'SELECT',
+      showDrawingIndicator: false
+    });
+  },
+
+  onCancelMeasure: function () {
+    this.isMeasuring = false;
+    if (this.measureTimer) { clearTimeout(this.measureTimer); this.measureTimer = null; }
+    if (this.failTimer) { clearTimeout(this.failTimer); this.failTimer = null; }
+    this.setData({ showMeasurePrompt: false });
+  },
+
+  onConfirmMeasure: function (e) {
+    var direction = (e && e.detail && e.detail.direction) ? e.detail.direction : 'E';
+    this.setData({ showMeasurePrompt: false, pendingDirection: direction });
+    this.triggerBluetoothMeasure();
+  },
+
+  onConnectBLE: function () {
+    var bluetooth = require('../../utils/bluetooth.js');
+    var that = this;
+    bluetooth.initBLE(function (distanceInMeters) {
+      that.onBluetoothMeasure(distanceInMeters);
+    }, function (isConnected) {
+      that.setData({ bleConnected: isConnected, isLaserOpen: false });
+    }, function () {
+      that.onBluetoothDisconnect();
+    });
+  },
+
+  onBluetoothDisconnect: function () {
+    this.setData({ bleConnected: false, isLaserOpen: false });
+    wx.showModal({
+      title: '蓝牙断开',
+      content: '与测距仪的蓝牙连接已断开，请检查设备是否正常并尝试重新连接。',
+      showCancel: false,
+      confirmText: '我知道了'
+    });
+  },
+
+  onEdgeSelect: function (e) {
+    this.setData({
+      selectedEdge: e.detail.edge,
+      showPropertyPanel: false
+    });
+    this.triggerBluetoothMeasure();
+  },
+
+  onToggle3D: function() {
+    var newMode = !this.data.is3DView;
+    this.setData({ is3DView: newMode });
+    if (newMode) {
+      this.initThreejs();
+    }
+  },
+
+  initThreejs: function() {
+    var that = this;
+    wx.createSelectorQuery()
+      .select('#webgl')
+      .node()
+      .exec((res) => {
+        if (!res[0]) return;
+        const canvas = res[0].node;
+        const { createScopedThreejs } = require('threejs-miniprogram');
+        const THREE = createScopedThreejs(canvas);
+
+        that.render3DScene(THREE, canvas);
+      });
+  },
+
+  render3DScene: function(THREE, canvas) {
+    const width = canvas._width || canvas.width;
+    const height = canvas._height || canvas.height;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xf0f0f0);
+    this.threeScene = scene;
+
+    const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 5000);
+    this.threeCamera = camera;
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setSize(width, height);
+    this.threeRenderer = renderer;
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    dirLight.position.set(50, 100, 50);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
+
+    const gridHelper = new THREE.GridHelper(2000, 100, 0xcccccc, 0xeeeeee);
+    gridHelper.position.y = -0.1;
+    scene.add(gridHelper);
+
+    const container = new THREE.Group();
+    this.threeContainer = container;
+    scene.add(container);
+
+    const buildWall = (length, wallHeight, openings, type) => {
+      const shape = new THREE.Shape();
+      shape.moveTo(0, 0);
+      shape.lineTo(length, 0);
+      shape.lineTo(length, wallHeight);
+      shape.lineTo(0, wallHeight);
+      shape.lineTo(0, 0);
+
+      openings.forEach(op => {
+        let ox = 0;
+        if (type === 'top') { ox = op.x; }
+        else if (type === 'bottom') { ox = length - (op.x + op.width); }
+        else if (type === 'left') { ox = length - (op.y + op.width); }
+        else if (type === 'right') { ox = op.y; }
+
+        const ow = op.width;
+        let oh = op.type === 'DOOR' ? 20 : 12;
+        let oy = op.type === 'DOOR' ? 0 : 9;
+
+        const hole = new THREE.Path();
+        hole.moveTo(ox, oy);
+        hole.lineTo(ox + ow, oy);
+        hole.lineTo(ox + ow, oy + oh);
+        hole.lineTo(ox, oy + oh);
+        hole.lineTo(ox, oy);
+        shape.holes.push(hole);
+      });
+
+      const mat = new THREE.MeshStandardMaterial({ 
+        color: 0xffffff, 
+        side: THREE.DoubleSide,
+        roughness: 0.7,
+        metalness: 0.1
+      });
+      return new THREE.Mesh(new THREE.ShapeGeometry(shape), mat);
+    };
+
+    const rooms = this.data.rooms;
+    let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
+
+    if (!rooms || rooms.length === 0) {
+      minX = 0; minZ = 0; maxX = 100; maxZ = 100;
+    } else {
+      rooms.forEach(room => {
+        const rX = room.x;
+        const rY = room.y;
+        const rWidth = room.width || 1;
+        const rHeight = room.height || 1; 
+        const wallHeight = room.height3D || 28;
+        
+        minX = Math.min(minX, rX);
+        minZ = Math.min(minZ, rY);
+        maxX = Math.max(maxX, rX + rWidth);
+        maxZ = Math.max(maxZ, rY + rHeight);
+
+        const roomGroup = new THREE.Group();
+
+          const floorGeo = new THREE.PlaneGeometry(rWidth, rHeight);
+          const floorMat = new THREE.MeshStandardMaterial({ 
+            color: 0xf5f5f5, 
+            side: THREE.DoubleSide,
+            roughness: 0.8
+          });
+          const floor = new THREE.Mesh(floorGeo, floorMat);
+          floor.rotation.x = -Math.PI / 2;
+          floor.position.y = 0.05;
+          roomGroup.add(floor);
+
+          const topOpenings = (room.openings || []).filter(op => op.rotation === 0 && op.y < rHeight / 2);
+          const bottomOpenings = (room.openings || []).filter(op => op.rotation === 0 && op.y >= rHeight / 2);
+          const leftOpenings = (room.openings || []).filter(op => op.rotation === 90 && op.x < rWidth / 2);
+          const rightOpenings = (room.openings || []).filter(op => op.rotation === 90 && op.x >= rWidth / 2);
+
+          const topWall = buildWall(rWidth, wallHeight, topOpenings, 'top');
+          topWall.position.set(-rWidth/2, 0, -rHeight/2);
+          roomGroup.add(topWall);
+
+          const bottomWall = buildWall(rWidth, wallHeight, bottomOpenings, 'bottom');
+          bottomWall.position.set(rWidth/2, 0, rHeight/2);
+          bottomWall.rotation.y = Math.PI;
+          roomGroup.add(bottomWall);
+
+          const leftWall = buildWall(rHeight, wallHeight, leftOpenings, 'left');
+          leftWall.position.set(-rWidth/2, 0, rHeight/2);
+          leftWall.rotation.y = Math.PI / 2;
+          roomGroup.add(leftWall);
+
+          const rightWall = buildWall(rHeight, wallHeight, rightOpenings, 'right');
+          rightWall.position.set(rWidth/2, 0, -rHeight/2);
+          rightWall.rotation.y = -Math.PI / 2;
+          roomGroup.add(rightWall);
+
+        roomGroup.position.set(rX + rWidth/2, 0, rY + rHeight/2);
+        container.add(roomGroup);
+      });
+    }
+
+    const cx = (minX + maxX) / 2;
+    const cz = (minZ + maxZ) / 2;
+    container.position.set(-cx, 0, -cz);
+
+    const sizeX = maxX - minX;
+    const sizeZ = maxZ - minZ;
+    const maxSize = Math.max(sizeX || 100, sizeZ || 100);
+    const camDist = maxSize * 1.5;
+    
+    camera.position.set(0, camDist, camDist);
+    camera.lookAt(0, 0, 0);
+
+    this.orbit = {
+      spherical: new THREE.Spherical().setFromVector3(camera.position),
+      target: new THREE.Vector3(0, 0, 0),
+      lerpTarget: new THREE.Vector3(0, 0, 0),
+      lerpSpherical: new THREE.Spherical().setFromVector3(camera.position),
+      isLerping: false,
+      THREE: THREE
+    };
+
+    const animate = function() {
+      if (!that.data.is3DView) return; 
+      canvas.requestAnimationFrame(animate);
+
+      if (that.orbit.isLerping) {
+        const factor = 0.08;
+        that.orbit.spherical.theta += (that.orbit.lerpSpherical.theta - that.orbit.spherical.theta) * factor;
+        that.orbit.spherical.phi += (that.orbit.lerpSpherical.phi - that.orbit.spherical.phi) * factor;
+        that.orbit.spherical.radius += (that.orbit.lerpSpherical.radius - that.orbit.spherical.radius) * factor;
+        that.orbit.target.lerp(that.orbit.lerpTarget, factor);
+
+        if (Math.abs(that.orbit.spherical.theta - that.orbit.lerpSpherical.theta) < 0.001 &&
+            Math.abs(that.orbit.spherical.phi - that.orbit.lerpSpherical.phi) < 0.001 &&
+            that.orbit.target.distanceTo(that.orbit.lerpTarget) < 0.1) {
+          that.orbit.isLerping = false;
+        }
+        
+        camera.position.setFromSpherical(that.orbit.spherical).add(that.orbit.target);
+        camera.lookAt(that.orbit.target);
+      }
+
+      renderer.render(scene, camera);
+    };
+    
+    animate();
+  },
+
+  onTouchStart3D: function(e) {
+    if (e.touches.length === 1) {
+      this.touch3D = {
+        mode: 'rotate',
+        x: e.touches[0].clientX,
+        y: e.touches[0].clientY
+      };
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      this.touch3D = {
+        mode: 'zoom_pan',
+        dist: Math.sqrt(dx * dx + dy * dy),
+        cx: cx,
+        cy: cy
+      };
+    }
+  },
+
+  onTouchMove3D: function(e) {
+    if (!this.touch3D || !this.orbit || !this.threeCamera) return;
+    
+    if (e.touches.length === 1 && this.touch3D.mode === 'rotate') {
+      const dx = e.touches[0].clientX - this.touch3D.x;
+      const dy = e.touches[0].clientY - this.touch3D.y;
+      
+      this.orbit.spherical.theta -= dx * 0.01;
+      this.orbit.spherical.phi -= dy * 0.01;
+      
+      this.orbit.spherical.phi = Math.max(0.1, Math.min(Math.PI / 2, this.orbit.spherical.phi));
+      
+      this.threeCamera.position.setFromSpherical(this.orbit.spherical).add(this.orbit.target);
+      this.threeCamera.lookAt(this.orbit.target);
+      
+      this.touch3D.x = e.touches[0].clientX;
+      this.touch3D.y = e.touches[0].clientY;
+      
+    } else if (e.touches.length === 2 && this.touch3D.mode === 'zoom_pan') {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      
+      if (dist > 0 && this.touch3D.dist > 0) {
+        const scale = this.touch3D.dist / dist;
+        this.orbit.spherical.radius *= scale;
+        this.orbit.spherical.radius = Math.max(10, Math.min(1000, this.orbit.spherical.radius));
+      }
+      
+      const panX = cx - this.touch3D.cx;
+      const panY = cy - this.touch3D.cy;
+      
+      const panSpeed = this.orbit.spherical.radius * 0.002;
+      
+      const right = new this.orbit.THREE.Vector3();
+      right.setFromMatrixColumn(this.threeCamera.matrix, 0);
+      
+      const forward = new this.orbit.THREE.Vector3();
+      forward.setFromMatrixColumn(this.threeCamera.matrix, 2);
+      forward.y = 0;
+      if (forward.lengthSq() > 0) forward.normalize();
+      
+      this.orbit.target.addScaledVector(right, -panX * panSpeed);
+      this.orbit.target.addScaledVector(forward, -panY * panSpeed);
+      
+      this.threeCamera.position.setFromSpherical(this.orbit.spherical).add(this.orbit.target);
+      this.threeCamera.lookAt(this.orbit.target);
+      
+      this.touch3D.dist = dist;
+      this.touch3D.cx = cx;
+      this.touch3D.cy = cy;
+    }
+  },
+
+  onTouchEnd3D: function(e) {
+    this.touch3D = null;
+  },
+
+  onChangeView3D: function(e) {
+    if (!this.orbit || !this.threeCamera) return;
+    const view = e.currentTarget.dataset.view;
+    let targetTheta = this.orbit.spherical.theta;
+    let targetPhi = this.orbit.spherical.phi;
+    let targetRadius = this.orbit.spherical.radius;
+    let targetPos = new this.orbit.THREE.Vector3(0, 0, 0);
+    
+    if (view === 'default') { 
+      targetTheta = 0; 
+      targetPhi = Math.PI / 4; 
+    } else if (view === 'top') { 
+      targetPhi = 0.01; 
+      targetTheta = 0;
+    } else if (view === 'front') { 
+      targetTheta = 0; 
+      targetPhi = Math.PI / 2.1; 
+    } else if (view === 'left') { 
+      targetTheta = Math.PI / 2; 
+      targetPhi = Math.PI / 2.1; 
+    } else if (view === 'right') { 
+      targetTheta = -Math.PI / 2; 
+      targetPhi = Math.PI / 2.1; 
+    }
+    
+    this.orbit.lerpSpherical.theta = targetTheta;
+    this.orbit.lerpSpherical.phi = targetPhi;
+    this.orbit.lerpSpherical.radius = targetRadius;
+    this.orbit.lerpTarget.copy(targetPos);
+    this.orbit.isLerping = true;
+  },
+
+  onStartRemeasure: function () {
+    this.setData({
+      guidedMode: true,
+      guidedEdgeIndex: -1, 
+      measurePoints: [{ x: 0, y: 0 }],
+      lastMeasuredDirection: '',
+      pendingDirection: '',
+      showMeasurePrompt: false,
+      is3DView: false,
+      selectedIds: [this.data.currentGuidedRoomId]
+    });
+    this.openLaser();
+    setTimeout(() => {
+      this.setData({ showMeasurePrompt: true });
+    }, 500);
+  },
+
+  onBluetoothMeasure: function (distanceInMeters) {
+    // 只要收到任何蓝牙反馈（无论是测量成功、失败、还是报错超时），物理激光灯都会熄灭，因此第一步强制重置状态
+    this.setData({ isLaserOpen: false });
+
+    if (!this.isMeasuring && !this.data.showMeasurePrompt) {
+      return;
+    }
+
+    if (!this.isMeasuring && this.data.showMeasurePrompt) {
+      this.setData({ showMeasurePrompt: false });
+    }
+
+    // 增加软件层面的防抖：过滤掉 800ms 内数值完全相同的脉冲信号（针对某些连发两包的硬件）
+    const now = Date.now();
+    if (distanceInMeters !== null && distanceInMeters === this._lastMeasureDist && now - this._lastMeasureTime < 800) {
+      console.log('检测到短期内内容重复的信号脉冲，已过滤:', distanceInMeters);
+      return;
+    }
+    this._lastMeasureTime = now;
+    this._lastMeasureDist = distanceInMeters;
+    
+    this.isMeasuring = false; 
+
+    if (this.measureTimer) { clearTimeout(this.measureTimer); this.measureTimer = null; }
+    if (this.failTimer) { clearTimeout(this.failTimer); this.failTimer = null; }
+
+    var isGuided = this.data.guidedMode;
+    var roomId = isGuided ? this.data.currentGuidedRoomId : (this.data.selectedIds[0] || '');
+    if (!roomId) return;
+
+    var room = null;
+    for (var i = 0; i < this.data.rooms.length; i++) {
+      if (this.data.rooms[i].id === roomId) { room = this.data.rooms[i]; break; }
+    }
+    if (!room) return;
+
+    if (distanceInMeters === null || distanceInMeters <= 0) {
+      wx.showToast({ title: '测量失败，请重试', icon: 'none', duration: 2000 });
+      if (isGuided) { 
+        this.setData({ showMeasurePrompt: true }); 
+        setTimeout(() => {
+          this.openLaser(); 
+        }, 800);
+      }
+      return;
+    }
+
+    var newLength = distanceInMeters * 10; 
+
+    if (isGuided) {
+      if (this.data.guidedEdgeIndex === -1) {
+        var newRooms = this.data.rooms.map(function (r) {
+          if (r.id === roomId) {
+            return Object.assign({}, r, { height3D: newLength });
+          }
+          return r;
+        });
+
+        wx.showToast({ title: '层高 ' + distanceInMeters + 'm ✓', icon: 'success' });
+
+        this.pushToHistory(newRooms, {
+          guidedEdgeIndex: 0, 
+          lastMeasuredDirection: '',
+          pendingDirection: 'E',
+          showMeasurePrompt: false 
+        });
+
+        setTimeout(() => {
+          this.openLaser();
+        }, 500);
+
+        setTimeout(() => {
+          this.setData({ showMeasurePrompt: true });
+        }, 900);
+        return;
+      }
+
+      var direction = this.data.pendingDirection || 'E';
+      var pts = this.data.measurePoints;
+      var lastPt = pts[pts.length - 1] || { x: 0, y: 0 };
+
+      var dx = 0, dy = 0;
+      if (direction === 'E') dx = newLength;
+      else if (direction === 'S') dy = newLength;
+      else if (direction === 'W') dx = -newLength;
+      else if (direction === 'N') dy = -newLength;
+
+      var newPt = { x: lastPt.x + dx, y: lastPt.y + dy };
+      var newMeasurePoints = pts.concat([newPt]);
+
+      var utilLib = require('../../utils/util.js');
+      var bbox = utilLib.polygonBoundingBox(newMeasurePoints);
+      var normalized = newMeasurePoints.map(function (p) {
+        return { x: p.x - bbox.minX, y: p.y - bbox.minY };
+      });
+
+      var newEdgeIndex = newMeasurePoints.length - 1; 
+      var canFinish = newEdgeIndex >= 2;
+
+      var newRooms = this.data.rooms.map(function (r) {
+        if (r.id === roomId) {
+          return Object.assign({}, r, {
+            width: Math.max(1, bbox.width),
+            height: Math.max(1, bbox.height),
+            polygon: normalized,
+            polygonClosed: false
+          });
+        }
+        return r;
+      });
+
+      wx.showToast({ title: '第' + newEdgeIndex + '边 ' + distanceInMeters + 'm ✓', icon: 'success' });
+
+      let nextDirection = '';
+      if (newEdgeIndex === 1) nextDirection = 'S'; 
+      else if (newEdgeIndex === 2) nextDirection = 'W'; 
+
+      this.pushToHistory(newRooms, {
+        measurePoints: newMeasurePoints,
+        guidedEdgeIndex: newEdgeIndex,
+        canFinishPolygon: canFinish,
+        lastMeasuredDirection: direction, 
+        pendingDirection: nextDirection 
+      });
+
+      setTimeout(() => {
+        this.openLaser();
+      }, 500);
+
+      setTimeout(() => {
+        this.setData({ showMeasurePrompt: true });
+      }, 900);
+
+      setTimeout(function () {
+        var canvas = this.selectComponent('#floorCanvas');
+        if (canvas) canvas.fitToView();
+      }.bind(this), 400);
+
+    } else {
+      var selectedEdge = this.data.selectedEdge;
+      if (!selectedEdge) return;
+
+      var updates = {};
+      if (selectedEdge === 'top' || selectedEdge === 'bottom') updates.width = newLength;
+      else if (selectedEdge === 'left' || selectedEdge === 'right') updates.height = newLength;
+
+      var newRooms2 = this.data.rooms.map(function (r) {
+        return r.id === roomId ? Object.assign({}, r, updates) : r;
+      });
+      this.pushToHistory(newRooms2);
+      wx.showToast({ title: '测量成功: ' + distanceInMeters + 'm', icon: 'success' });
+    }
+  },
+
+  onAddMeasureEdge: function () {
+    this.openLaser();
+    setTimeout(() => {
+      this.setData({ showMeasurePrompt: true });
+    }, 500);
+  },
+
+  onFinishPolygon: function () {
+    var pts = this.data.measurePoints;
+    if (pts.length < 3) {
+      wx.showToast({ title: '至少需要测量 2 条边', icon: 'none' });
+      return;
+    }
+
+    var utilLib = require('../../utils/util.js');
+    var finishedPts = pts.slice();
+
+    if (finishedPts.length === 3) {
+      var edge1 = { x: finishedPts[1].x - finishedPts[0].x, y: finishedPts[1].y - finishedPts[0].y };
+      var pt3 = { x: finishedPts[2].x - edge1.x, y: finishedPts[2].y - edge1.y };
+      finishedPts = finishedPts.concat([pt3]);
+    }
+
+    var bbox = utilLib.polygonBoundingBox(finishedPts);
+    var normalized = finishedPts.map(function (p) {
+      return { x: p.x - bbox.minX, y: p.y - bbox.minY };
+    });
+
+    var roomId = this.data.currentGuidedRoomId;
+    var newRooms = this.data.rooms.map(function (r) {
+      if (r.id === roomId) {
+        return Object.assign({}, r, {
+          width: Math.max(1, bbox.width),
+          height: Math.max(1, bbox.height),
+          polygon: normalized,
+          polygonClosed: true
+        });
+      }
+      return r;
+    });
+
+    wx.showToast({ title: '房间轮廓已完成！', icon: 'success' });
+
+    this.pushToHistory(newRooms, {
+      guidedMode: false,
+      showMeasurePrompt: false,
+      selectedEdge: '',
+      selectedIds: [roomId],
+      measurePoints: [],
+      canFinishPolygon: false,
+      pendingDirection: '',
+      lastMeasuredDirection: '' 
+    });
+
+    setTimeout(function () {
+      var canvas = this.selectComponent('#floorCanvas');
+      if (canvas) canvas.fitToView();
+    }.bind(this), 500);
+  },
+
+  triggerBluetoothMeasure: function () {
+    var bluetooth = require('../../utils/bluetooth.js');
+    var that = this;
+    
+    this.isMeasuring = true; 
+    
+    if (this.measureTimer) {
+      clearTimeout(this.measureTimer);
+    }
+    if (this.failTimer) {
+      clearTimeout(this.failTimer);
+    }
+    
+    console.log('发送测量指令 ATK001#');
+    bluetooth.sendBLECommand('ATK001#');
+    
+    this.measureTimer = setTimeout(function () {
+      console.log('测量超时，尝试主动查询数据 ATD001#');
+      bluetooth.sendBLECommand('ATD001#');
+      
+      that.failTimer = setTimeout(function () {
+        console.log('主动查询后仍无数据返回，彻底认定失败');
+        that.onBluetoothMeasure(null);
+      }, 4000);
+    }, 3500);
+  },
+
+  openLaser: function() {
+    if (this.data.isLaserOpen) {
+      console.log('激光已经在开启状态，跳过重复发送指令以免提前触发测量...');
+      return;
+    }
+    console.log('提前开启激光辅助对准...');
+    var bluetooth = require('../../utils/bluetooth.js');
+    bluetooth.sendBLECommand('ATK001#');
+    this.setData({ isLaserOpen: true });
+  },
+
+  onBluetoothDisconnect: function () {
+    this.setData({ bleConnected: false, isLaserOpen: false });
+    getApp().globalData.bleConnected = false;
+    wx.showModal({
+      title: '蓝牙断开',
+      content: '与测距仪的蓝牙连接已断开，请检查设备。',
+      showCancel: false
+    });
+  },
+
+  onAddTemplate: function (e) {
+    var templateId = e.detail.templateId;
+    var templatesUtil = require('../../utils/templates.js');
+    var newLayoutRooms = templatesUtil.generateTemplate(templateId, 50, 50); 
+    if (newLayoutRooms && newLayoutRooms.length > 0) {
+      var newRooms = this.data.rooms.concat(newLayoutRooms);
+      this.pushToHistory(newRooms);
+    }
+  },
+
+  pushToHistory: function (newRooms, extraData) {
+    var history = this.data.history.slice(0, this.data.historyIndex + 1);
+    history.push(newRooms);
+    if (history.length > 50) history.shift();
+    var total = 0;
+    for (var i = 0; i < newRooms.length; i++) {
+      var r = newRooms[i];
+      if (r.polygon && r.polygon.length >= 3 && r.polygonClosed) {
+        var poly = r.polygon;
+        var areaRaw = 0;
+        for (var k = 0; k < poly.length; k++) {
+          var kn = (k + 1) % poly.length;
+          areaRaw += poly[k].x * poly[kn].y - poly[kn].x * poly[k].y;
+        }
+        total += Math.abs(areaRaw) / 2;
+      } else {
+        total += r.width * r.height;
+      }
+    }
+
+    var selectedIds = this.data.selectedIds;
+    var selectedRooms = newRooms.filter(function (r) {
+      return selectedIds.indexOf(r.id) !== -1;
+    });
+
+    var setDataObj = Object.assign({
+      history: history,
+      historyIndex: history.length - 1,
+      rooms: newRooms,
+      selectedRooms: selectedRooms,
+      totalArea: (total / 100).toFixed(2)
+    }, extraData || {});
+
+    this.setData(setDataObj);
+  },
+
+  onUndo: function () {
+    if (this.data.historyIndex > 0) {
+      var newIndex = this.data.historyIndex - 1;
+      this.setData({
+        historyIndex: newIndex,
+        rooms: this.data.history[newIndex],
+        selectedIds: [],
+        selectedRooms: []
+      });
+    }
+  },
+
+  onRedo: function () {
+    if (this.data.historyIndex < this.data.history.length - 1) {
+      var newIndex = this.data.historyIndex + 1;
+      this.setData({
+        historyIndex: newIndex,
+        rooms: this.data.history[newIndex],
+        selectedIds: [],
+        selectedRooms: []
+      });
+    }
+  },
+
+  onAddRoom: function (e) {
+    var room = e.detail.room;
+    var newRooms = this.data.rooms.concat([room]);
+    this.pushToHistory(newRooms);
+    this.setData({ selectedIds: [room.id] });
+    this.updateSelectedRooms(newRooms);
+  },
+
+  onSelectRoom: function (e) {
+    var id = e.detail.id;
+    this.setData({ 
+      selectedIds: [id],
+      selectedEdge: '', 
+      showPropertyPanel: true
+    });
+    this.updateSelectedRooms(this.data.rooms);
+  },
+
+  onClearSelection: function () {
+    this.setData({ selectedIds: [], selectedRooms: [], showPropertyPanel: false });
+  },
+
+  onMoveRoom: function (e) {
+    var id = e.detail.id;
+    var x = e.detail.x;
+    var y = e.detail.y;
+    var newRooms = this.data.rooms.map(function (r) {
+      return r.id === id ? Object.assign({}, r, { x: x, y: y }) : r;
+    });
+    this.pushToHistory(newRooms);
+  },
+
+  onRoomsChange: function (e) {
+    var newRooms = e.detail.rooms;
+    this.pushToHistory(newRooms);
+  },
+
+  onDeleteRoom: function (e) {
+    var id = e.detail.id;
+    var newRooms = this.data.rooms.filter(function (r) { return r.id !== id; });
+    this.pushToHistory(newRooms);
+    this.setData({ selectedIds: [], selectedRooms: [] });
+  },
+
+  onUpdateRoom: function (e) {
+    var id = e.detail.id;
+    var updates = e.detail.updates;
+    var newRooms = this.data.rooms.map(function (r) {
+      return r.id === id ? Object.assign({}, r, updates) : r;
+    });
+    this.pushToHistory(newRooms);
+  },
+
+  onDeleteRooms: function () {
+    var selectedIds = this.data.selectedIds;
+    var newRooms = this.data.rooms.filter(function (r) {
+      return selectedIds.indexOf(r.id) === -1;
+    });
+    this.pushToHistory(newRooms);
+    this.setData({ selectedIds: [], selectedRooms: [] });
+  },
+
+  onMergeRooms: function () {
+    var selectedRooms = this.data.selectedRooms;
+    if (selectedRooms.length < 2) return;
+
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (var i = 0; i < selectedRooms.length; i++) {
+      var r = selectedRooms[i];
+      if (r.x < minX) minX = r.x;
+      if (r.y < minY) minY = r.y;
+      if (r.x + r.width > maxX) maxX = r.x + r.width;
+      if (r.y + r.height > maxY) maxY = r.y + r.height;
+    }
+
+    var mergedRoom = {
+      id: util.generateUUID(),
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
+      name: selectedRooms[0].name + ' (合并)',
+      color: selectedRooms[0].color
+    };
+
+    var selectedIds = this.data.selectedIds;
+    var newRooms = this.data.rooms.filter(function (r) {
+      return selectedIds.indexOf(r.id) === -1;
+    });
+    newRooms.push(mergedRoom);
+
+    this.pushToHistory(newRooms);
+    this.setData({ selectedIds: [mergedRoom.id] });
+    this.updateSelectedRooms(newRooms);
+  },
+
+  onCloseProperties: function () {
+    this.setData({ selectedIds: [], selectedRooms: [], showPropertyPanel: false });
+  },
+
+  onHighlightOpening: function (e) {
+    this.setData({ highlightedOpeningId: e.detail.id });
+  },
+
+  onStartRemeasure: function () {
+    this.setData({
+      guidedMode: true,
+      guidedEdgeIndex: -1, 
+      measurePoints: [{ x: 0, y: 0 }],
+      pendingDirection: '',
+      canFinishPolygon: false,
+      selectedEdge: '',
+      showMeasurePrompt: true,
+      showPropertyPanel: false,
+      lastMeasuredDirection: '' 
+    });
+    this.openLaser();
+  },
+
+  updateSelectedRooms: function (rooms) {
+    var selectedIds = this.data.selectedIds;
+    var selectedRooms = rooms.filter(function (r) {
+      return selectedIds.indexOf(r.id) !== -1;
+    });
+    this.setData({ selectedRooms: selectedRooms });
+  },
+
+  // === 导出 ===
+  onExport: function () {
+    const that = this;
+    const rooms = this.data.rooms;
+    if (!rooms || rooms.length === 0) {
+      wx.showToast({ title: '无数据导出', icon: 'none' });
+      return;
+    }
+
+    wx.showActionSheet({
+      itemList: ['导出为 CAD 文件 (DXF)', '导出量房报告 (预览)', '保存到云端'],
+      success: (res) => {
+        if (res.tapIndex === 0) {
+          that.exportDXF();
+        } else if (res.tapIndex === 1) {
+          that.exportReportImage();
+        } else if (res.tapIndex === 2) {
+          that.saveToCloud();
+        }
+      }
+    });
+  },
+
+  exportDXF: function () {
+    const exportService = require('../../utils/exportService.js');
+    const dxfContent = exportService.generateDXF(this.data.rooms);
+    const fs = wx.getFileSystemManager();
+    const fileName = `floorplan_${Date.now()}.dxf`;
+    const filePath = `${wx.env.USER_DATA_PATH}/${fileName}`;
+
+    wx.showLoading({ title: '生成中...' });
+
+    fs.writeFile({
+      filePath: filePath,
+      data: dxfContent,
+      encoding: 'utf8',
+      success: () => {
+        wx.hideLoading();
+        wx.openDocument({
+          filePath: filePath,
+          showMenu: true,
+          success: () => console.log('DXF opened'),
+          fail: (err) => {
+            wx.showToast({ title: '打开失败，请重试', icon: 'none' });
+          }
+        });
+      },
+      fail: (err) => {
+        wx.hideLoading();
+        wx.showToast({ title: '保存文件失败', icon: 'none' });
+      }
+    });
+  },
+
+  exportReportImage: function () {
+    wx.showToast({ title: '准备报告中...', icon: 'loading' });
+    setTimeout(() => {
+      const canvas = this.selectComponent('#floorCanvas');
+      if (canvas && canvas.exportImage) {
+        canvas.exportImage((path) => {
+          wx.previewImage({ urls: [path] });
+        });
+      } else {
+        wx.showToast({ title: '组件不支持图片生成', icon: 'none' });
+      }
+    }, 500);
+  },
+
+  saveToCloud: async function () {
+    const app = getApp();
+    const openid = app.globalData.openid;
+    const rooms = this.data.rooms;
+
+    if (!openid) {
+      wx.showToast({ title: '请登录后再试', icon: 'none' });
+      return;
+    }
+
+    wx.showLoading({ title: '同步中...' });
+    const api = require('../../utils/api.js');
+    try {
+      await api.request('/floorplans', 'POST', {
+        openid: openid,
+        name: rooms[0]?.name || '量房数据-' + new Date().getTime(),
+        layoutData: rooms
+      });
+      wx.hideLoading();
+      wx.showToast({ title: '已同步至云端' });
+    } catch (err) {
+      wx.hideLoading();
+      console.error('Save to cloud failed:', err);
+      wx.showToast({ title: '保存失败', icon: 'none' });
+    }
+  }
+
+});

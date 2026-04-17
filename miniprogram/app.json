@@ -1,6 +1,7 @@
 {
   "pages": [
     "pages/index/index",
+    "pages/editor/editor",
     "pages/inspiration/inspiration",
     "pages/ai-gen/ai-gen",
     "pages/mine/mine"

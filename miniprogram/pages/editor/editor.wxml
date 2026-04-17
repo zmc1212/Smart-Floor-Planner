@@ -1,0 +1,123 @@
+<view class="page-container">
+  <!-- 1. 自定义导航栏 -->
+  <nav-bar 
+    navBarHeightTotal="{{navBarHeightTotal}}"
+    statusBarHeight="{{statusBarHeight}}"
+    capsulePadding="{{capsulePadding}}"
+    canUndo="{{historyIndex > 0}}"
+    canRedo="{{historyIndex < history.length - 1}}"
+    showHistory="{{true}}"
+    bindundo="onUndo"
+    bindredo="onRedo"
+    bindexport="onExport"
+    bindback="onBack"
+  />
+
+  <view class="main-content">
+    <!-- 4. 画布编辑视图 -->
+    <view class="canvas-area">
+      <!-- 画布工具栏 -->
+      <toolbar 
+        activeTool="{{activeTool}}" 
+        currentRoomType="{{currentRoomType}}"
+        is3DView="{{is3DView}}"
+        bindchange="onToolChange" 
+        bindtypechange="onRoomTypeChange"
+        bindtoggle3d="onToggle3D"
+      />
+
+      <!-- 顶部测量横幅 -->
+      <guided-banner 
+        wx:if="{{!is3DView}}"
+        guidedMode="{{guidedMode}}"
+        currentGuidedRoomName="{{currentGuidedRoomName}}"
+        guidedEdgeIndex="{{guidedEdgeIndex}}"
+        canFinish="{{canFinishPolygon}}"
+        bleConnected="{{bleConnected}}"
+        bindexitguide="onExitGuide"
+        bindstartremeasure="onStartRemeasure"
+        bindexittolibrary="onExitToLibrary"
+        bindaddedge="onAddMeasureEdge"
+        bindfinishpolygon="onFinishPolygon"
+      />
+      
+      <!-- 房间画布主体 (2D) -->
+      <floor-canvas 
+        wx:if="{{!is3DView}}"
+        id="floorCanvas"
+        rooms="{{rooms}}" 
+        activeTool="{{activeTool}}" 
+        currentRoomType="{{currentRoomType}}"
+        selectedIds="{{selectedIds}}"
+        highlightedOpeningId="{{highlightedOpeningId}}"
+        guidedMode="{{guidedMode}}"
+        guidedEdgeIndex="{{guidedEdgeIndex}}"
+        lastMeasuredDirection="{{lastMeasuredDirection}}"
+        pendingDirection="{{pendingDirection}}"
+        measurePoints="{{measurePoints}}"
+        bindadd="onAddRoom"
+        bindselect="onSelectRoom"
+        bindunselect="onClearSelection"
+        bindmove="onMoveRoom"
+        bindchange="onRoomsChange"
+        binddelete="onDeleteRoom"
+        bindaddtemplate="onAddTemplate"
+        bindedgeselect="onEdgeSelect"
+      />
+
+      <!-- 3D 预览视图 -->
+      <view wx:if="{{is3DView}}" class="three-canvas-container">
+        <canvas type="webgl" id="webgl" class="three-canvas" bindtouchstart="onTouchStart3D" bindtouchmove="onTouchMove3D" bindtouchend="onTouchEnd3D" disable-scroll="true"></canvas>
+        
+        <!-- 3D 视角快捷键 -->
+        <view class="three-controls">
+          <view class="three-btn" data-view="default" bindtap="onChangeView3D">默认</view>
+          <view class="three-btn" data-view="top" bindtap="onChangeView3D">顶视</view>
+          <view class="three-btn" data-view="front" bindtap="onChangeView3D">正视</view>
+          <view class="three-btn" data-view="left" bindtap="onChangeView3D">左视</view>
+          <view class="three-btn" data-view="right" bindtap="onChangeView3D">右视</view>
+        </view>
+      </view>
+
+      <!-- 绘制模式指示器 -->
+      <view class="drawing-indicator" wx:if="{{!is3DView && showDrawingIndicator}}">
+        <view class="indicator-dot"></view>
+        <text class="indicator-text">{{activeTool === 'WALL' ? '正在绘制墙体...' : '正在放置门窗...'}}</text>
+        <view class="indicator-cancel" bindtap="onCancelDrawing">取消</view>
+      </view>
+
+      <!-- 属性面板 (底部弹出) -->
+      <properties 
+        wx:if="{{showPropertyPanel}}"
+        selectedRooms="{{selectedRooms}}" 
+        visible="{{showPropertyPanel}}"
+        selectedEdge="{{selectedEdge}}"
+        bindupdate="onUpdateRoom"
+        binddelete="onDeleteRooms"
+        bindmerge="onMergeRooms"
+        bindclose="onCloseProperties"
+        bindhighlight="onHighlightOpening"
+      />
+    </view>
+  </view>
+
+  <!-- 5. 底部状态栏 -->
+  <bottom-bar 
+    wx:if="{{bleConnected}}"
+    roomsCount="{{rooms.length}}"
+    totalArea="{{totalArea}}"
+    bleConnected="{{bleConnected}}"
+    bindreconnect="onConnectBLE"
+  />
+
+  <!-- 6. 测量弹窗 -->
+  <measure-modal 
+    show="{{showMeasurePrompt}}"
+    currentStep="{{guidedEdgeIndex + 1}}"
+    lastDirection="{{lastMeasuredDirection}}"
+    canFinish="{{canFinishPolygon}}"
+    bindconfirm="onConfirmMeasure"
+    bindfinish="onFinishPolygon"
+    bindclose="onCancelMeasure"
+  />
+</view>
