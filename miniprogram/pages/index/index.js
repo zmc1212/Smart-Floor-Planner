@@ -28,6 +28,7 @@ Page({
     lastMeasuredDirection: '', // 新增：记录上一次成功的方向
     statusBarHeight: 0,
     showDrawingIndicator: false,
+    showLeadModal: false,
     totalArea: '0.00',
     windowWidth: 375,
     windowHeight: 600
@@ -1203,5 +1204,22 @@ Page({
       total += rooms[i].width * rooms[i].height;
     }
     return (total / 100).toFixed(2);
+  },
+
+  onOpenLeadModal: function () {
+    this.setData({
+      showLeadModal: true
+    });
+  },
+
+  onCloseLeadModal: function () {
+    this.setData({
+      showLeadModal: false
+    });
+  },
+
+  onLeadSuccess: function () {
+    // 可以在这里做一些转化成功后的行为，比如发优惠券等
+    console.log('Lead submitted successfully from index');
   }
 });

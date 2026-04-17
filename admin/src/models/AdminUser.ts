@@ -24,12 +24,13 @@ export const ALL_MENUS = [
   { key: 'floorplans', label: '户型图' },
   { key: 'users', label: '用户列表' },
   { key: 'devices', label: '设备管理' },
+  { key: 'leads', label: '客资线索' },
   { key: 'admins', label: '管理员管理' },
 ];
 
 export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   super_admin: ALL_MENUS.map(m => m.key),
-  admin: ['dashboard', 'floorplans', 'users', 'devices'],
+  admin: ['dashboard', 'floorplans', 'users', 'devices', 'leads'],
   viewer: ['dashboard', 'floorplans'],
 };
 

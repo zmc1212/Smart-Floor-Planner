@@ -10,7 +10,8 @@ Page({
     styles: Object.values(StyleType),
     selectedMode: 'INTERIOR', // 'INTERIOR' | 'PLANE'
     isGenerating: false,
-    isGettingAdvice: false
+    isGettingAdvice: false,
+    showLeadModal: false
   },
 
   onLoad: function () {
@@ -204,5 +205,22 @@ Visuals: 8k resolution, photorealistic, cinematic solar rays, professional photo
     }
     // 同时也更新全局引用
     getApp().globalData.currentAIGenRoom = updatedRoom;
+  },
+
+  onOpenLeadModal: function () {
+    this.setData({
+      showLeadModal: true
+    });
+  },
+
+  onCloseLeadModal: function () {
+    this.setData({
+      showLeadModal: false
+    });
+  },
+
+  onLeadSuccess: function () {
+    // 线索提交成功后，可提供增值服务或提示
+    console.log('Lead submitted successfully from ai-gen');
   }
 });

@@ -148,6 +148,19 @@
         </view>
       </view>
     </view>
+
+    <!-- 获取设计与报价 (引流) -->
+    <view class="section" style="margin-top: 40rpx;">
+      <view class="lead-banner" bindtap="onOpenLeadModal">
+        <view class="lead-banner-content">
+          <text class="lead-title">喜欢这个设计吗？</text>
+          <text class="lead-desc">留下联系方式，获取完整方案与报价</text>
+        </view>
+        <view class="lead-btn">免费获取</view>
+      </view>
+    </view>
+
+    <lead-modal show="{{showLeadModal}}" bindclose="onCloseLeadModal" bindsuccess="onLeadSuccess" />
     
     <view class="footer-spacer"></view>
   </scroll-view>

@@ -31,7 +31,9 @@
       }
     ]
   },
-  "usingComponents": {},
+  "usingComponents": {
+    "lead-modal": "/components/lead-modal/lead-modal"
+  },
   "style": "v2",
   "sitemapLocation": "sitemap.json"
 }

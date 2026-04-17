@@ -1,0 +1,146 @@
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-container {
+  width: 620rpx;
+  background: #ffffff;
+  border-radius: 24rpx;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  padding: 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 2rpx solid #f0f0f0;
+}
+
+.title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #333333;
+}
+
+.close-btn {
+  font-size: 40rpx;
+  color: #999999;
+  line-height: 1;
+  padding: 0 10rpx;
+}
+
+.modal-body {
+  padding: 32rpx;
+}
+
+.desc {
+  font-size: 26rpx;
+  color: #666666;
+  line-height: 1.5;
+  margin-bottom: 32rpx;
+  display: block;
+}
+
+.form-group {
+  margin-bottom: 24rpx;
+}
+
+.label {
+  font-size: 28rpx;
+  color: #333333;
+  margin-bottom: 12rpx;
+  display: block;
+}
+
+.required {
+  color: #ff4d4f;
+  margin-left: 4rpx;
+}
+
+.input {
+  width: 100%;
+  height: 80rpx;
+  background: #f8f9fa;
+  border-radius: 8rpx;
+  padding: 0 24rpx;
+  font-size: 28rpx;
+  color: #333333;
+  box-sizing: border-box;
+}
+
+.input-phone-group {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.phone-input {
+  flex: 1;
+}
+
+.picker-view {
+  width: 100%;
+  height: 80rpx;
+  background: #f8f9fa;
+  border-radius: 8rpx;
+  padding: 0 24rpx;
+  font-size: 28rpx;
+  color: #333333;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+}
+
+.picker-view.placeholder {
+  color: #999999;
+}
+
+.arrow {
+  font-size: 20rpx;
+  color: #999999;
+}
+
+.modal-footer {
+  padding: 0 32rpx 40rpx;
+}
+
+.submit-btn {
+  width: 100%;
+  height: 88rpx;
+  line-height: 88rpx;
+  background: #1296db;
+  color: #ffffff;
+  font-size: 32rpx;
+  font-weight: 500;
+  border-radius: 44rpx;
+  margin: 0;
+  padding: 0;
+}
+
+.submit-btn-hover {
+  opacity: 0.9;
+}
+
+.submit-btn::after {
+  border: none;
+}
+
+.privacy-note {
+  font-size: 22rpx;
+  color: #999999;
+  text-align: center;
+  margin-top: 16rpx;
+}

@@ -141,4 +141,11 @@
     bindfinish="onFinishPolygon"
     bindclose="onCancelMeasure"
   />
+
+  <!-- 浮动：获取报价/设计 -->
+  <view class="floating-btn-lead" bindtap="onOpenLeadModal">
+    <view class="floating-btn-lead-inner">免费设计与报价</view>
+  </view>
+
+  <lead-modal show="{{showLeadModal}}" bindclose="onCloseLeadModal" bindsuccess="onLeadSuccess" />
 </view>

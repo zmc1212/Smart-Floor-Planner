@@ -153,3 +153,31 @@ properties {
   background: #e0e0e0;
 }
 
+/* 浮动：获取报价 */
+.floating-btn-lead {
+  position: absolute;
+  right: 32rpx;
+  bottom: 240rpx;
+  z-index: 100;
+  border-radius: 9999rpx;
+  background: linear-gradient(135deg, #1296db 0%, #0072f5 100%);
+  padding: 4rpx;
+  box-shadow: 0 8rpx 24rpx rgba(18, 150, 219, 0.3);
+  animation: float-pulse 2s infinite ease-in-out;
+}
+
+.floating-btn-lead-inner {
+  background: #ffffff;
+  color: #1296db;
+  font-size: 26rpx;
+  font-weight: 600;
+  padding: 16rpx 32rpx;
+  border-radius: 9999rpx;
+}
+
+@keyframes float-pulse {
+  0% { transform: translateY(0); box-shadow: 0 8rpx 24rpx rgba(18, 150, 219, 0.3); }
+  50% { transform: translateY(-10rpx); box-shadow: 0 16rpx 32rpx rgba(18, 150, 219, 0.4); }
+  100% { transform: translateY(0); box-shadow: 0 8rpx 24rpx rgba(18, 150, 219, 0.3); }
+}
+

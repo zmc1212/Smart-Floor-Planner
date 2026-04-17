@@ -352,3 +352,58 @@
 .footer-spacer {
   height: 80rpx;
 }
+
+/* 引流横幅 */
+.lead-banner {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border-radius: 24rpx;
+  padding: 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 8rpx 32rpx rgba(15,23,42,0.15);
+  position: relative;
+  overflow: hidden;
+}
+
+.lead-banner::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(18,150,219,0.1) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.lead-banner-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  flex: 1;
+  z-index: 1;
+}
+
+.lead-title {
+  color: #ffffff;
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.lead-desc {
+  color: #94a3b8;
+  font-size: 24rpx;
+}
+
+.lead-btn {
+  background: #1296db;
+  color: #ffffff;
+  font-size: 26rpx;
+  font-weight: bold;
+  padding: 16rpx 32rpx;
+  border-radius: 999rpx;
+  z-index: 1;
+  box-shadow: 0 4rpx 12rpx rgba(18,150,219,0.3);
+}
+
