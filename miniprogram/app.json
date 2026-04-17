@@ -1,6 +1,7 @@
 {
   "pages": [
     "pages/index/index",
+    "pages/inspiration/inspiration",
     "pages/ai-gen/ai-gen",
     "pages/mine/mine"
   ],
@@ -22,6 +23,12 @@
         "text": "量房",
         "iconPath": "images/meaure0.png",
         "selectedIconPath": "images/meaure1.png"
+      },
+      {
+        "pagePath": "pages/inspiration/inspiration",
+        "text": "灵感库",
+        "iconPath": "images/idea0.png",
+        "selectedIconPath": "images/idea1.png"
       },
       {
         "pagePath": "pages/mine/mine",

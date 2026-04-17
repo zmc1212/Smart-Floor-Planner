@@ -1,0 +1,58 @@
+<view class="container">
+  <!-- 顶部分类筛选 -->
+  <scroll-view scroll-x class="filter-bar" enable-flex>
+    <view 
+      class="filter-item {{selectedStyle === 'all' ? 'active' : ''}}" 
+      bindtap="onFilterStyle" 
+      data-style="all"
+    >全部</view>
+    <view 
+      wx:for="{{styleMetadata}}" 
+      wx:key="key" 
+      class="filter-item {{selectedStyle === item.label ? 'active' : ''}}"
+      bindtap="onFilterStyle"
+      data-style="{{item.label}}"
+    >{{item.label}}</view>
+  </scroll-view>
+
+  <scroll-view scroll-y class="case-list" bindscrolltolower="onLoadMore" refresher-enabled refresher-triggered="{{isRefreshing}}" bindrefresherrefresh="onRefresh">
+    <view class="case-grid">
+      <view class="case-card" wx:for="{{cases}}" wx:key="_id">
+        <view class="case-cover-box" bindtap="onPreviewCase" data-id="{{item._id}}">
+          <!-- 这里暂时用颜色块占位，item.coverImage -->
+          <view class="cover-placeholder" style="background: {{item.placeholderColor || '#eee'}}">
+            <text class="placeholder-text">{{item.style}}</text>
+          </view>
+          <view class="case-badge" wx:if="{{item.isRecommended}}">精选</view>
+        </view>
+        <view class="case-info">
+          <text class="case-title">{{item.title}}</text>
+          <view class="case-meta">
+            <text class="case-tag">{{item.roomType}}</text>
+            <text class="case-views">{{item.viewCount}} 浏览</text>
+          </view>
+          <view class="case-actions">
+            <view class="btn-copy" bindtap="onCopyLayout" data-id="{{item._id}}">我想要这样装</view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 加载状态 -->
+    <view class="loading-status">
+      <text wx:if="{{isLoading}}">加载中...</text>
+      <text wx:if="{{!hasMore && cases.length > 0}}">没有更多案例了</text>
+      <view class="empty-state" wx:if="{{cases.length === 0 && !isLoading}}">
+        <icon type="info" size="48" color="#cbd5e1" />
+        <text>暂无案例，敬请期待</text>
+      </view>
+    </view>
+  </scroll-view>
+
+  <!-- 底部留资悬浮按钮 -->
+  <view class="float-lead-btn" bindtap="onOpenLeadModal">
+    <text>没有满意的？预约免费设计</text>
+  </view>
+
+  <lead-modal show="{{showLeadModal}}" bindclose="onCloseLeadModal" bindsuccess="onLeadSuccess" />
+</view>

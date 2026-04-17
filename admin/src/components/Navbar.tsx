@@ -44,6 +44,7 @@ export default function Navbar() {
     { key: 'users', label: '用户列表', href: '/users' },
     { key: 'devices', label: '设备管理', href: '/devices' },
     { key: 'leads', label: '客资线索', href: '/leads' },
+    { key: 'inspirations', label: '装修灵感库', href: '/inspirations' },
     { key: 'admins', label: '管理员', href: '/admins' },
   ];
 

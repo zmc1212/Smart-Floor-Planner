@@ -2,12 +2,15 @@ var util = require('../../utils/util.js');
 var renderingService = require('../../utils/renderingService.js');
 
 var StyleType = util.StyleType;
+var StyleMetadata = util.StyleMetadata;
 
 Page({
   data: {
     room: null,
+    selectedStyleKey: 'MODERN',
     selectedStyle: StyleType.MODERN,
     styles: Object.values(StyleType),
+    styleMetadata: StyleMetadata,
     selectedMode: 'INTERIOR', // 'INTERIOR' | 'PLANE'
     isGenerating: false,
     isGettingAdvice: false,
@@ -27,7 +30,13 @@ Page({
   },
 
   onStyleSelect: function (e) {
-    this.setData({ selectedStyle: e.currentTarget.dataset.style });
+    const key = e.currentTarget.dataset.key;
+    this.setData({ 
+      selectedStyleKey: key,
+      selectedStyle: StyleType[key]
+    });
+    // 触感反馈
+    wx.vibrateShort();
   },
 
   onModeChange: function (e) {
@@ -129,6 +138,7 @@ Page({
 
   onExportPrompt: function () {
     const room = this.data.room;
+    const styleKey = this.data.selectedStyleKey;
     const style = this.data.selectedStyle;
     const mode = this.data.selectedMode;
     const openings = room.openings || [];
@@ -160,31 +170,33 @@ Page({
       ? '2D technical floor plan, architectural drawing, top-down orthographic view, blueprint aesthetic, clean black and white lines'
       : 'Photorealistic interior design rendering, eye-level perspective looking straight at the far wall, architectural photography';
 
-    // 基于墙体位置构建更自然的场景描述
-    let sceneDetails = [];
-    if (wallMap['Top'].length > 0) {
-      sceneDetails.push(`On the far wall ahead: ${wallMap['Top'].join(', ')}.`);
-    }
-    if (wallMap['Left'].length > 0) {
-      sceneDetails.push(`On the left wall: ${wallMap['Left'].join(', ')}.`);
-    }
-    if (wallMap['Right'].length > 0) {
-      sceneDetails.push(`On the right wall: ${wallMap['Right'].join(', ')}.`);
-    }
-    if (wallMap['Bottom'].length > 0) {
-      sceneDetails.push(`Hidden behind the camera (bottom wall): ${wallMap['Bottom'].join(', ')}.`);
-    }
+    // 针对不同风格注入专有关键词
+    const styleKeywords = {
+      'MODERN': 'Clean lines, minimalism, high-end materials, neutral tones, functional furniture.',
+      'CREAMY': 'Soft natural light, cream-colored palette, curved furniture, warm cozy atmosphere, bouclé fabric.',
+      'NEW_CHINESE': 'Contemporary meets tradition, dark wood accents, Zen aesthetic, symmetrical layout, oriental porcelain.',
+      'WABI_SABI:': 'Raw textures, microcement walls, aged wood, asymmetrical balance, organic shapes, earthy muted tones.',
+      'NORDIC': 'Scandi design, light oak wood, pops of pastel, large plants, bright and airy, hygge vibe.',
+      'LIGHT_LUXURY': 'Marble flooring, brass accents, velvet chairs, crystal chandelier, sophisticated and elegant.',
+      'INDUSTRIAL': 'Exposed brick, metal pipes, leather sofa, concrete floor, dark moody studio vibe.',
+      'JAPANDI': 'Fusion of Japanese and Scandi, low-profile furniture, rice paper lamps, clutter-free, light wood.'
+    };
 
+    const sceneDetails = [];
+    if (wallMap['Top'].length > 0) sceneDetails.push(`Far wall: ${wallMap['Top'].join(', ')}.`);
+    if (wallMap['Left'].length > 0) sceneDetails.push(`Left wall: ${wallMap['Left'].join(', ')}.`);
+    if (wallMap['Right'].length > 0) sceneDetails.push(`Right wall: ${wallMap['Right'].join(', ')}.`);
+    
     const furnitureHint = room.name.includes('客厅') 
-      ? 'Place a sofa near the window, and a TV console on a side wall.'
-      : (room.name.includes('卧室') ? 'Place a bed centered against the wall.' : '');
+      ? 'Place a premium sofa and a coffee table.'
+      : (room.name.includes('卧室') ? 'A large comfortable bed with neat bedding.' : '');
 
     const prompt = `[PROMPT] ${modeReq}. 
-Room: ${room.name} (${style} style), ${(room.width / 10).toFixed(2)}m x ${(room.height / 10).toFixed(2)}m. 
-Scene Layout: ${sceneDetails.join(' ')} 
+Room: ${room.name} (${style} style). ${styleKeywords[styleKey] || ''}
+Spatial layout: ${(room.width / 10).toFixed(2)}m x ${(room.height / 10).toFixed(2)}m. 
+Openings: ${sceneDetails.join(' ')} 
 Furniture: ${furnitureHint}
-STRICT RULE: Absolutely NO text, NO numbers, NO dimension lines, NO labels.
-Visuals: 8k resolution, photorealistic, cinematic solar rays, professional photography. [/PROMPT]`;
+Visuals: 8k, photorealistic, cinematic lighting, professional interior photography, NO text, NO labels. [/PROMPT]`;
 
     wx.setClipboardData({
       data: prompt,
@@ -194,33 +206,24 @@ Visuals: 8k resolution, photorealistic, cinematic solar rays, professional photo
     });
   },
 
-  /**
-   * 将更新后的数据同步并刷新全局/首页状态
-   */
   syncBack: function (updatedRoom) {
     const pages = getCurrentPages();
     const indexPage = pages.find(p => p.route === 'pages/index/index');
     if (indexPage && indexPage.updateRoomData) {
       indexPage.updateRoomData(updatedRoom.id, updatedRoom);
     }
-    // 同时也更新全局引用
     getApp().globalData.currentAIGenRoom = updatedRoom;
   },
 
   onOpenLeadModal: function () {
-    this.setData({
-      showLeadModal: true
-    });
+    this.setData({ showLeadModal: true });
   },
 
   onCloseLeadModal: function () {
-    this.setData({
-      showLeadModal: false
-    });
+    this.setData({ showLeadModal: false });
   },
 
   onLeadSuccess: function () {
-    // 线索提交成功后，可提供增值服务或提示
     console.log('Lead submitted successfully from ai-gen');
   }
 });

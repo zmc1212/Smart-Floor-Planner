@@ -25,13 +25,14 @@ export const ALL_MENUS = [
   { key: 'users', label: '用户列表' },
   { key: 'devices', label: '设备管理' },
   { key: 'leads', label: '客资线索' },
+  { key: 'inspirations', label: '装修灵感库' },
   { key: 'admins', label: '管理员管理' },
 ];
 
 export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   super_admin: ALL_MENUS.map(m => m.key),
-  admin: ['dashboard', 'floorplans', 'users', 'devices', 'leads'],
-  viewer: ['dashboard', 'floorplans'],
+  admin: ['dashboard', 'floorplans', 'users', 'devices', 'leads', 'inspirations'],
+  viewer: ['dashboard', 'floorplans', 'inspirations'],
 };
 
 const AdminUserSchema: Schema<IAdminUser> = new Schema(

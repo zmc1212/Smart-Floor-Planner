@@ -47,18 +47,23 @@
       <view class="section-header">
         <text class="section-title">1. 选择装修风格</text>
       </view>
-      <view class="style-grid">
+      <scroll-view scroll-x class="style-scroll" enable-flex>
         <view
-          wx:for="{{styles}}"
-          wx:key="*this"
-          class="style-item {{selectedStyle === item ? 'active' : ''}}"
-          data-style="{{item}}"
+          wx:for="{{styleMetadata}}"
+          wx:key="key"
+          class="style-card {{selectedStyleKey === item.key ? 'active' : ''}}"
+          data-key="{{item.key}}"
           bindtap="onStyleSelect"
         >
-          <view class="style-dot"></view>
-          <text>{{item}}</text>
+          <view class="style-preview" style="background: {{item.color}}">
+            <text class="style-placeholder" style="color: {{item.textColor}}">{{item.label[0]}}</text>
+            <view class="active-indicator" wx:if="{{selectedStyleKey === item.key}}">
+              <icon type="success_no_circle" size="12" color="#fff" />
+            </view>
+          </view>
+          <text class="style-label">{{item.label}}</text>
         </view>
-      </view>
+      </scroll-view>
     </view>
 
     <!-- 效果图生成 -->

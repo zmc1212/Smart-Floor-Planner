@@ -319,10 +319,54 @@ Page({
   // === 工具切换 ===
   onToolChange: function (e) {
     var tool = e.detail.tool;
+    if (tool === 'SHAPE') {
+      this.onShowShapePicker();
+      return; // 不切换 activeTool 为 SHAPE，保持原有工具
+    }
     this.setData({
       activeTool: tool,
-      showDrawingIndicator: tool !== 'SELECT'
+      showDrawingIndicator: tool !== 'SELECT' && tool !== 'SHAPE'
     });
+  },
+
+  onShowShapePicker: function () {
+    var templates = require('../../utils/templates.js');
+    var shapes = templates.shapeTemplates;
+    var that = this;
+    
+    wx.showActionSheet({
+      itemList: shapes.map(s => s.name),
+      success: (res) => {
+        var shape = shapes[res.tapIndex];
+        that.insertShapeRoom(shape.id);
+      }
+    });
+  },
+
+  insertShapeRoom: function (shapeId) {
+    var templates = require('../../utils/templates.js');
+    var canvasWidth = this.data.windowWidth;
+    var canvasHeight = this.data.windowHeight - 150; // 粗略估算
+
+    var newRoom = templates.generateShapeRoom(
+      shapeId, 
+      this.data.currentRoomType || '客厅',
+      canvasWidth / 2 - 20, 
+      canvasHeight / 2 - 20
+    );
+
+    if (newRoom) {
+      var newRooms = this.data.rooms.concat([newRoom]);
+      this.pushToHistory(newRooms);
+      this.setData({ 
+        selectedIds: [newRoom.id], 
+        activeTool: 'SELECT',
+        showPropertyPanel: true 
+      });
+      this.updateSelectedRooms(newRooms);
+      
+      wx.showToast({ title: '已插入形状', icon: 'none' });
+    }
   },
 
   onRoomTypeChange: function (e) {
@@ -764,6 +808,7 @@ Page({
         this.pushToHistory(newRooms, {
           guidedEdgeIndex: 0, 
           lastMeasuredDirection: '', // 层高测完，第一条边无方向限制
+          pendingDirection: 'E', // 智能预设：第一条墙体向东测试
           showMeasurePrompt: true 
         });
 
@@ -812,12 +857,16 @@ Page({
       wx.showToast({ title: '第' + newEdgeIndex + '边 ' + distanceInMeters + 'm ✓', icon: 'success' });
 
       // 核心改动：记录方向并推入历史
+      let nextDirection = '';
+      if (newEdgeIndex === 1) nextDirection = 'S'; // 测完长，自动准备测宽
+      else if (newEdgeIndex === 2) nextDirection = 'W'; // 测宽后，自动准备闭合（向西）
+
       this.pushToHistory(newRooms, {
         measurePoints: newMeasurePoints,
         guidedEdgeIndex: newEdgeIndex,
         canFinishPolygon: canFinish,
         lastMeasuredDirection: direction, // 记录本次成功的方向
-        pendingDirection: ''
+        pendingDirection: nextDirection // 自动锁定下一个方向
       });
 
       // 使用 setTimeout 确保 showMeasurePrompt 的切换能触发组件重新渲染/观察
@@ -1145,45 +1194,101 @@ Page({
   },
 
   // === 导出 ===
-  onExport: async function () {
-    var rooms = this.data.rooms;
-    var dataStr = JSON.stringify(rooms, null, 2);
-
-    const app = getApp();
-    const openid = app.globalData.openid;
-
-    if (!openid) {
-      wx.showToast({ title: '尚未登录', icon: 'none' });
-      // 小程序不支持直接下载文件，备用：使用剪贴板
-      wx.setClipboardData({
-        data: dataStr,
-        success: function () {
-          wx.showToast({ title: '未登录，仅复制到剪贴板', icon: 'none', duration: 2000 });
-        }
-      });
+  onExport: function () {
+    const that = this;
+    const rooms = this.data.rooms;
+    if (!rooms || rooms.length === 0) {
+      wx.showToast({ title: '无数据导出', icon: 'none' });
       return;
     }
 
-    wx.showLoading({ title: '正在云端保存' });
+    wx.showActionSheet({
+      itemList: ['导出为 CAD 文件 (DXF)', '导出量房报告 (预览)', '保存到云端'],
+      success: (res) => {
+        if (res.tapIndex === 0) {
+          that.exportDXF();
+        } else if (res.tapIndex === 1) {
+          that.exportReportImage();
+        } else if (res.tapIndex === 2) {
+          that.saveToCloud();
+        }
+      }
+    });
+  },
+
+  exportDXF: function () {
+    const exportService = require('../../utils/exportService.js');
+    const dxfContent = exportService.generateDXF(this.data.rooms);
+    const fs = wx.getFileSystemManager();
+    const fileName = `floorplan_${Date.now()}.dxf`;
+    const filePath = `${wx.env.USER_DATA_PATH}/${fileName}`;
+
+    wx.showLoading({ title: '生成中...' });
+
+    fs.writeFile({
+      filePath: filePath,
+      data: dxfContent,
+      encoding: 'utf8',
+      success: () => {
+        wx.hideLoading();
+        wx.openDocument({
+          filePath: filePath,
+          showMenu: true,
+          success: () => console.log('DXF opened'),
+          fail: (err) => {
+            console.error('Open DXF failed', err);
+            wx.showToast({ title: '打开失败，请重试', icon: 'none' });
+          }
+        });
+      },
+      fail: (err) => {
+        wx.hideLoading();
+        console.error('Write DXF failed', err);
+        wx.showToast({ title: '保存文件失败', icon: 'none' });
+      }
+    });
+  },
+
+  exportReportImage: function () {
+    wx.showToast({ title: '准备报告中...', icon: 'loading' });
+    setTimeout(() => {
+      const canvas = this.selectComponent('#floorCanvas');
+      if (canvas && canvas.exportImage) {
+        canvas.exportImage((path) => {
+          wx.previewImage({
+            urls: [path]
+          });
+        });
+      } else {
+        wx.showToast({ title: '组件不支持图片生成', icon: 'none' });
+      }
+    }, 500);
+  },
+
+  saveToCloud: async function () {
+    const app = getApp();
+    const openid = app.globalData.openid;
+    const rooms = this.data.rooms;
+
+    if (!openid) {
+      wx.showToast({ title: '请登录后再试', icon: 'none' });
+      return;
+    }
+
+    wx.showLoading({ title: '同步中...' });
     const api = require('../../utils/api.js');
     try {
       await api.request('/floorplans', 'POST', {
         openid: openid,
-        name: rooms[0]?.name || '默认户型-' + new Date().getTime(),
+        name: rooms[0]?.name || '量房数据-' + new Date().getTime(),
         layoutData: rooms
       });
       wx.hideLoading();
-      wx.showToast({ title: '云端保存成功！', icon: 'success' });
+      wx.showToast({ title: '已同步至云端' });
     } catch (err) {
       wx.hideLoading();
       console.error('Save to cloud failed:', err);
-      // fallback to clipboard
-      wx.setClipboardData({
-        data: dataStr,
-        success: function () {
-          wx.showToast({ title: '保存失败，已复制到剪贴板', icon: 'none', duration: 2000 });
-        }
-      });
+      wx.showToast({ title: '保存失败', icon: 'none' });
     }
   },
 

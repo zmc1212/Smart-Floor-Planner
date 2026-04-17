@@ -81,14 +81,27 @@ const ToolType = {
 
 const StyleType = {
   MODERN: '现代简约',
-  INDUSTRIAL: '工业风',
-  CREAMY: '奶油风',
-  JAPANDI: '原木风',
-  EUROPEAN: '欧式',
-  CHINESE: '中式'
+  CREAMY: '轻法式奶油',
+  NEW_CHINESE: '新中式',
+  WABI_SABI: '侘寂风',
+  NORDIC: '北欧简约',
+  LIGHT_LUXURY: '精致轻奢',
+  INDUSTRIAL: '工业复古',
+  JAPANDI: '原木风'
 };
 
-const RoomTypes = ['客厅', '主卧', '次卧', '主卫', '次卫', '书房', '厨房'];
+const StyleMetadata = [
+  { key: 'MODERN', label: '现代简约', color: '#f8f9fa', textColor: '#333' },
+  { key: 'CREAMY', label: '轻法式奶油', color: '#fdf5e6', textColor: '#8b4513' },
+  { key: 'NEW_CHINESE', label: '新中式', color: '#fff5f5', textColor: '#a52a2a' },
+  { key: 'WABI_SABI', label: '侘寂风', color: '#ecebe4', textColor: '#4a4a4a' },
+  { key: 'NORDIC', label: '北欧简约', color: '#e0f2f1', textColor: '#00695c' },
+  { key: 'LIGHT_LUXURY', label: '精致轻奢', color: '#fafafa', textColor: '#daa520' },
+  { key: 'INDUSTRIAL', label: '工业复古', color: '#f5f5f5', textColor: '#37474f' },
+  { key: 'JAPANDI', label: '原木风', color: '#fdfbf7', textColor: '#5d4037' }
+];
+
+const RoomTypes = ['客厅', '主卧', '次卧', '儿童房', '书房', '餐厅', '厨房', '主卫', '客卫', '阳台', '玄关'];
 
 const RoomColors = [
   'rgba(255, 255, 255, 0.8)',
@@ -116,6 +129,7 @@ module.exports = {
   polygonBoundingBox,
   ToolType,
   StyleType,
+  StyleMetadata,
   RoomTypes,
   RoomColors,
   RoomColorsSolid

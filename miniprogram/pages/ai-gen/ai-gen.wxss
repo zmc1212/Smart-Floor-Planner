@@ -80,41 +80,70 @@
   color: #475569;
 }
 
-.style-grid {
+.style-scroll {
   display: flex;
-  flex-wrap: wrap;
-  gap: 16rpx;
+  white-space: nowrap;
+  padding: 10rpx 0;
 }
 
-.style-item {
-  padding: 16rpx 28rpx;
-  background: #fff;
-  border: 2rpx solid #f1f5f9;
-  border-radius: 999rpx;
-  font-size: 24rpx;
-  color: #64748b;
+.style-card {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  margin-right: 24rpx;
+  width: 140rpx;
+}
+
+.style-preview {
+  width: 120rpx;
+  height: 120rpx;
+  border-radius: 20rpx;
+  background: #eee;
   display: flex;
   align-items: center;
-  gap: 12rpx;
+  justify-content: center;
+  position: relative;
+  border: 4rpx solid transparent;
   transition: all 0.2s;
+  box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.05);
 }
 
-.active.style-item {
-  background: #eff6ff;
-  border-color: #3b82f6;
-  color: #2563eb;
+.style-card.active .style-preview {
+  border-color: #6366f1;
+  transform: translateY(-4rpx);
+  box-shadow: 0 8rpx 20rpx rgba(99, 102, 241, 0.2);
+}
+
+.style-placeholder {
+  font-size: 40rpx;
+  font-weight: bold;
+  opacity: 0.8;
+}
+
+.style-label {
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  color: #64748b;
+  text-align: center;
+}
+
+.style-card.active .style-label {
+  color: #6366f1;
   font-weight: bold;
 }
 
-.style-dot {
-  width: 12rpx;
-  height: 12rpx;
+.active-indicator {
+  position: absolute;
+  bottom: -4rpx;
+  right: -4rpx;
+  width: 32rpx;
+  height: 32rpx;
+  background: #6366f1;
   border-radius: 50%;
-  background: #cbd5e1;
-}
-
-.active .style-dot {
-  background: #3b82f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2rpx solid #fff;
 }
 
 .preview-container {
