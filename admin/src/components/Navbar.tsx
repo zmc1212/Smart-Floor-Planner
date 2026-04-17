@@ -40,12 +40,14 @@ export default function Navbar() {
 
   const menuItems = [
     { key: 'dashboard', label: '总览', href: '/' },
+    { key: 'enterprises', label: '企业管理', href: '/enterprises' },
     { key: 'floorplans', label: '户型图', href: '/floorplans' },
-    { key: 'users', label: '用户列表', href: '/users' },
+    { key: 'users', label: '小程序用户', href: '/users' },
     { key: 'devices', label: '设备管理', href: '/devices' },
     { key: 'leads', label: '客资线索', href: '/leads' },
     { key: 'inspirations', label: '装修灵感库', href: '/inspirations' },
-    { key: 'admins', label: '管理员', href: '/admins' },
+    { key: 'staff', label: '员工管理', href: '/staff' },
+    { key: 'admins', label: '系统管理', href: '/admins' },
   ];
 
   return (

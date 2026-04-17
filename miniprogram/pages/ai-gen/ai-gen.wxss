@@ -248,7 +248,10 @@
 .style-palette {
   display: flex;
   white-space: nowrap;
-  padding: 10rpx 0;
+  width: 100vw;
+  margin-left: -40rpx;
+  padding: 30rpx 40rpx;
+  box-sizing: border-box;
 }
 
 .palette-item {
@@ -271,6 +274,10 @@
   justify-content: center;
   transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   box-shadow: 0 10rpx 20rpx -5rpx rgba(0, 0, 0, 0.05);
+}
+
+.palette-item:last-child {
+  margin-right: 40rpx;
 }
 
 .palette-item.active .palette-preview {

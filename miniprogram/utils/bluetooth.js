@@ -119,9 +119,11 @@ function startScan() {
             console.log('搜索到设备，请求后台验证...', name, 'ID:', device.deviceId);
 
             var api = require('./api.js');
-            api.request('/devices/verify', 'POST', { 
+            const app = getApp();
+            api.request('/devices/verify-binding', 'POST', { 
               deviceId: device.deviceId, 
-              name: name.trim() 
+              name: name.trim(),
+              openid: app.globalData.openid
             }).then(function(verifyRes) {
               if (verifyRes.success && verifyRes.authorized) {
                 if (_isConnecting) return; // 可能已连接上其他设备
@@ -133,7 +135,8 @@ function startScan() {
                 console.log('✅ 设备授权成功，发起连接:', name);
                 connectDevice(device.deviceId, name.trim());
               } else {
-                console.log('🚫 设备未授权，忽略:', name, device.deviceId);
+                console.log('🚫 设备未授权:', verifyRes.message);
+                // Optionally show feedback if the user specifically tried this device
               }
             }).catch(function(err) {
               console.error('设备验证请求失败:', err);
@@ -475,13 +478,18 @@ function autoConnectBLE(callback, connectCallback, disconnectCallback) {
 
         wx.showLoading({ title: '验证授权中...', mask: true });
         var api = require('./api.js');
-        api.request('/devices/verify', 'POST', { deviceId: lastId, name: lastName })
+        const app = getApp();
+        api.request('/devices/verify-binding', 'POST', { 
+          deviceId: lastId, 
+          name: lastName,
+          openid: app.globalData.openid 
+        })
           .then(function(verifyRes) {
             if (verifyRes.success && verifyRes.authorized) {
               connectDevice(lastId, lastName || '记忆设备');
             } else {
               wx.hideLoading();
-              wx.showToast({ title: '设备已被移除或未授权', icon: 'none' });
+              wx.showToast({ title: verifyRes.message || '设备未授权', icon: 'none' });
               wx.removeStorageSync('last_ble_device_id');
               wx.removeStorageSync('last_ble_device_name');
               // 未授权时可以重置去搜索界面

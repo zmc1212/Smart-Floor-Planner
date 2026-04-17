@@ -47,6 +47,7 @@ export async function POST(request: Request) {
       username: admin.username,
       displayName: admin.displayName,
       role: admin.role,
+      enterpriseId: admin.enterpriseId?.toString() || null,
       permissions: effectivePermissions
     })
       .setProtectedHeader({ alg: 'HS256' })

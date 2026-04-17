@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect } from 'react';
-import { Trash2, Plus, RefreshCw, Cpu, Search, Edit2, Check, X, ArrowLeft } from 'lucide-react';
+import { Trash2, Plus, RefreshCw, Cpu, Search, Edit2, Check, X, ArrowLeft, Building2, User } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 
@@ -11,20 +11,54 @@ interface Device {
   _id: string;
   code: string;
   description: string;
+  status: string;
+  enterpriseId?: any;
+  assignedUserId?: any;
   createdAt: string;
 }
 
 export default function DevicesPage() {
   const [devices, setDevices] = useState<Device[]>([]);
+  const [enterprises, setEnterprises] = useState<any[]>([]);
+  const [staff, setStaff] = useState<any[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [newCode, setNewCode] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // Edit State
   const [editCode, setEditCode] = useState('');
   const [editDesc, setEditDesc] = useState('');
+  const [editEnterprise, setEditEnterprise] = useState('');
+  const [editStaff, setEditStaff] = useState('');
   const [updating, setUpdating] = useState(false);
+
+  const fetchCurrentUser = async () => {
+    try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      if (data.success) setCurrentUser(data.data);
+    } catch (err) { console.error(err); }
+  };
+
+  const fetchEnterprises = async () => {
+    try {
+      const res = await fetch('/api/admin/enterprises');
+      const data = await res.json();
+      if (data.success) setEnterprises(data.data.filter((e: any) => e.status === 'active'));
+    } catch (err) { console.error(err); }
+  };
+
+  const fetchStaff = async () => {
+    try {
+      const res = await fetch('/api/staff');
+      const data = await res.json();
+      if (data.success) setStaff(data.data);
+    } catch (err) { console.error(err); }
+  };
 
   const fetchDevices = async () => {
     setLoading(true);
@@ -40,7 +74,10 @@ export default function DevicesPage() {
   };
 
   useEffect(() => {
+    fetchCurrentUser();
     fetchDevices();
+    fetchEnterprises();
+    fetchStaff();
   }, []);
 
   const handleAdd = async (e: React.FormEvent) => {
@@ -55,7 +92,6 @@ export default function DevicesPage() {
         body: JSON.stringify({ code: newCode.trim(), description: newDesc.trim() })
       });
       const data = await res.json();
-      
       if (data.success) {
         setNewCode('');
         setNewDesc('');
@@ -72,28 +108,32 @@ export default function DevicesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('确定删除该设备吗？删除后小程序将无法连接此设备。')) return;
-    
+    if (!confirm('确定删除该设备吗？')) return;
     try {
       const res = await fetch(`/api/devices/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (data.success) {
         setDevices(devices.filter(d => d._id !== id));
       }
-    } catch (err) {
-      console.error(err);
-      alert('删除失败');
-    }
+    } catch (err) { console.error(err); }
   };
 
   const handleUpdate = async (id: string) => {
     if (!editCode.trim()) return;
     setUpdating(true);
     try {
+      const payload: any = { 
+        code: editCode.trim(), 
+        description: editDesc.trim(),
+        enterpriseId: editEnterprise || null,
+        assignedUserId: editStaff || null,
+        status: editStaff ? 'assigned' : (editEnterprise ? 'assigned' : 'unassigned')
+      };
+
       const res = await fetch(`/api/devices/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: editCode.trim(), description: editDesc.trim() })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (data.success) {
@@ -114,6 +154,22 @@ export default function DevicesPage() {
     setEditingId(device._id);
     setEditCode(device.code);
     setEditDesc(device.description || '');
+    setEditEnterprise(device.enterpriseId?._id || device.enterpriseId || '');
+    setEditStaff(device.assignedUserId?._id || device.assignedUserId || '');
+  };
+
+  const getEnterpriseName = (id: any) => {
+      if (!id) return '-';
+      const entId = typeof id === 'object' ? id._id : id;
+      const ent = enterprises.find(e => e._id === entId);
+      return ent ? ent.name : '未知企业';
+  };
+
+  const getStaffName = (id: any) => {
+      if (!id) return '未指派';
+      const sId = typeof id === 'object' ? id._id : id;
+      const s = staff.find(x => x._id === sId);
+      return s ? (s.displayName || s.username) : '未知员工';
   };
 
   const filteredDevices = devices.filter(d => 
@@ -124,178 +180,155 @@ export default function DevicesPage() {
   return (
     <div className="min-h-screen bg-white">
       <Navbar />
-      <div className="p-6 max-w-6xl mx-auto">
-        <Link 
-          href="/" 
-          className="flex items-center gap-1 text-gray-500 hover:text-blue-600 transition-colors mb-6 w-fit"
-        >
-          <ArrowLeft size={16} />
-          <span className="text-sm font-medium">返回首页</span>
-        </Link>
-        <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Cpu className="text-blue-600" />
-            设备管理
-          </h1>
-          <p className="text-gray-500 text-sm mt-1">
-            只有在此录入设备编码（MAC地址或蓝牙名称中包含的字符串）的测距仪，小程序才能成功连接。
-          </p>
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="flex justify-between items-center mb-8">
+            <div className="flex items-center gap-4">
+                <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl">
+                    <Cpu size={24} />
+                </div>
+                <h1 className="text-[28px] font-bold tracking-tight">测距仪设备池</h1>
+            </div>
+            <button onClick={fetchDevices} className="p-2.5 hover:bg-gray-50 rounded-full transition-colors">
+                <RefreshCw size={20} className={loading ? 'animate-spin text-gray-400' : 'text-gray-400'} />
+            </button>
         </div>
-        <button 
-          onClick={fetchDevices}
-          className="p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
-          title="刷新列表"
-        >
-          <RefreshCw size={20} className={loading ? 'animate-spin text-gray-400' : 'text-gray-600'} />
-        </button>
-      </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-6 flex flex-col md:flex-row gap-4 items-center">
-        <div className="relative flex-1 w-full">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-          <input 
-            type="text"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            placeholder="搜索设备编码或备注名称..."
-            className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-          />
+        {/* Filters */}
+        <div className="mb-8 flex gap-4">
+            <div className="relative flex-1">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-300" size={18} />
+                <input 
+                    className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-transparent rounded-2xl outline-none focus:bg-white focus:ring-2 focus:ring-blue-500/10 focus:border-blue-500/20 transition-all text-sm"
+                    placeholder="按设备编码或备注搜索..."
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                />
+            </div>
         </div>
-        <div className="text-sm text-gray-400">
-          共 {filteredDevices.length} 个设备
-        </div>
-      </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
-        <div className="p-4 bg-gray-50 border-b border-gray-100 font-semibold text-gray-700 flex items-center gap-2">
-          <Plus size={18} /> 录入新设备
-        </div>
-        <form onSubmit={handleAdd} className="p-4 flex flex-col md:flex-row gap-4 items-end">
-          <div className="flex-1 w-full">
-            <label className="block text-xs text-gray-500 mb-1">设备编码 (必填)</label>
-            <input 
-              type="text" 
-              value={newCode}
-              onChange={e => setNewCode(e.target.value)}
-              placeholder="例如: 1A:2B:3C:4D:5E:6F 或 特定序列号" 
-              className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-              required
-            />
-          </div>
-          <div className="flex-1 w-full">
-            <label className="block text-xs text-gray-500 mb-1">备注说明 (可选)</label>
-            <input 
-              type="text" 
-              value={newDesc}
-              onChange={e => setNewDesc(e.target.value)}
-              placeholder="例如: 张工的测距仪" 
-              className="w-full p-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-            />
-          </div>
-          <button 
-            type="submit"
-            disabled={adding || !newCode.trim()}
-            className="w-full md:w-auto px-6 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors h-[38px]"
-          >
-            {adding ? '添加中...' : '添加设备'}
-          </button>
-        </form>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        {loading && devices.length === 0 ? (
-          <div className="p-8 text-center text-gray-400">加载中...</div>
-        ) : devices.length === 0 ? (
-          <div className="p-8 text-center text-gray-400">暂无录入的设备，请在上方添加</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-gray-50 text-gray-500">
-                <tr>
-                  <th className="px-6 py-3 font-medium">设备编码</th>
-                  <th className="px-6 py-3 font-medium">备注说明</th>
-                  <th className="px-6 py-3 font-medium">录入时间</th>
-                  <th className="px-6 py-3 font-medium text-right">操作</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filteredDevices.map(device => (
-                  <tr key={device._id} className="hover:bg-gray-50/50">
-                    <td className="px-6 py-4 font-mono font-medium text-gray-900">
-                      {editingId === device._id ? (
+        {/* Add New Device (Super Admin only) */}
+        {(currentUser?.role === 'super_admin' || currentUser?.role === 'admin') && (
+            <div className="mb-8 p-6 bg-gray-50 rounded-3xl border border-gray-100">
+                <form onSubmit={handleAdd} className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+                    <div className="space-y-1.5">
+                        <label className="text-[12px] font-bold text-gray-400 uppercase tracking-wider">设备编码 / MAC</label>
                         <input 
-                          type="text"
-                          value={editCode}
-                          onChange={e => setEditCode(e.target.value)}
-                          className="w-full p-1 border border-blue-500 rounded font-mono text-sm"
-                          autoFocus
+                            required
+                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/10 text-sm font-mono"
+                            placeholder="例如: SN-123456"
+                            value={newCode}
+                            onChange={e => setNewCode(e.target.value)}
                         />
-                      ) : (
-                        device.code
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-gray-600">
-                      {editingId === device._id ? (
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="text-[12px] font-bold text-gray-400 uppercase tracking-wider">备注名称</label>
                         <input 
-                          type="text"
-                          value={editDesc}
-                          onChange={e => setEditDesc(e.target.value)}
-                          className="w-full p-1 border border-blue-500 rounded text-sm"
+                            className="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/10 text-sm"
+                            placeholder="例如: 杭州分公司备机"
+                            value={newDesc}
+                            onChange={e => setNewDesc(e.target.value)}
                         />
-                      ) : (
-                        device.description || '-'
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-gray-400">
-                      {new Date(device.createdAt).toLocaleString('zh-CN')}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      {editingId === device._id ? (
-                        <div className="flex justify-end gap-1">
-                          <button 
-                            onClick={() => handleUpdate(device._id)}
-                            disabled={updating}
-                            className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                            title="保存"
-                          >
-                            <Check size={18} />
-                          </button>
-                          <button 
-                            onClick={() => setEditingId(null)}
-                            className="p-2 text-gray-400 hover:bg-gray-100 rounded-lg transition-colors"
-                            title="取消"
-                          >
-                            <X size={18} />
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex justify-end gap-1">
-                          <button 
-                            onClick={() => startEdit(device)}
-                            className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="编辑"
-                          >
-                            <Edit2 size={18} />
-                          </button>
-                          <button 
-                            onClick={() => handleDelete(device._id)}
-                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                            title="删除"
-                          >
-                            <Trash2 size={18} />
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </div>
+                    <button 
+                        type="submit"
+                        disabled={adding}
+                        className="py-2.5 bg-[#171717] text-white font-bold rounded-xl hover:bg-black disabled:opacity-50 transition-all"
+                    >
+                        {adding ? '录入中...' : '录入新库存'}
+                    </button>
+                </form>
+            </div>
         )}
+
+        {/* Device Table */}
+        <div className="bg-white rounded-3xl shadow-[0px_0px_0px_1px_rgba(0,0,0,0.08)] overflow-hidden">
+            <table className="w-full text-left border-collapse">
+                <thead>
+                    <tr className="bg-[#fafafa] border-b border-[rgba(0,0,0,0.08)]">
+                        <th className="px-6 py-4 text-[13px] font-bold">设备编码</th>
+                        <th className="px-6 py-4 text-[13px] font-bold">归属企业</th>
+                        <th className="px-6 py-4 text-[13px] font-bold">当前持有人 (强绑定)</th>
+                        <th className="px-6 py-4 text-[13px] font-bold">状态</th>
+                        <th className="px-6 py-4 text-[13px] font-bold text-right">操作</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-[rgba(0,0,0,0.08)]">
+                    {filteredDevices.map(device => (
+                        <tr key={device._id} className="hover:bg-gray-50/30 transition-colors">
+                            <td className="px-6 py-5">
+                                {editingId === device._id ? (
+                                    <input value={editCode} onChange={e => setEditCode(e.target.value)} className="w-full p-2 border border-blue-200 rounded-lg text-sm font-mono" />
+                                ) : (
+                                    <div>
+                                        <div className="text-[14px] font-mono font-bold">{device.code}</div>
+                                        <div className="text-[11px] text-gray-400 mt-0.5">{device.description || '无备注'}</div>
+                                    </div>
+                                )}
+                            </td>
+                            <td className="px-6 py-5">
+                                {editingId === device._id && (currentUser?.role === 'super_admin' || currentUser?.role === 'admin') ? (
+                                    <select value={editEnterprise} onChange={e => setEditEnterprise(e.target.value)} className="w-full p-2 border border-blue-200 rounded-lg text-sm">
+                                        <option value="">未分配企业</option>
+                                        {enterprises.map(e => <option key={e._id} value={e._id}>{e.name}</option>)}
+                                    </select>
+                                ) : (
+                                    <div className="flex items-center gap-2 text-[13px] text-gray-600">
+                                        <Building2 size={14} className="text-gray-300" />
+                                        {getEnterpriseName(device.enterpriseId)}
+                                    </div>
+                                )}
+                            </td>
+                            <td className="px-6 py-5">
+                                {editingId === device._id ? (
+                                    <select value={editStaff} onChange={e => setEditStaff(e.target.value)} className="w-full p-2 border border-blue-200 rounded-lg text-sm">
+                                        <option value="">未指派个人</option>
+                                        {staff.filter(s => (editEnterprise ? s.enterpriseId === editEnterprise : true)).map(s => (
+                                            <option key={s._id} value={s._id}>{s.displayName || s.username} ({getRoleLabelShort(s.role)})</option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <div className="flex items-center gap-2 text-[13px] text-gray-600">
+                                        <User size={14} className="text-gray-300" />
+                                        {getStaffName(device.assignedUserId)}
+                                    </div>
+                                )}
+                            </td>
+                            <td className="px-6 py-5">
+                                <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
+                                    device.status === 'assigned' ? 'bg-green-50 text-green-600' : 'bg-gray-100 text-gray-500'
+                                }`}>
+                                    {device.status === 'assigned' ? '已绑定' : '闲置中'}
+                                </span>
+                            </td>
+                            <td className="px-6 py-5 text-right">
+                                {editingId === device._id ? (
+                                    <div className="flex justify-end gap-2">
+                                        <button onClick={() => handleUpdate(device._id)} className="p-2 text-green-600 hover:bg-green-50 rounded-xl"><Check size={18} /></button>
+                                        <button onClick={() => setEditingId(null)} className="p-2 text-gray-400 hover:bg-gray-50 rounded-xl"><X size={18} /></button>
+                                    </div>
+                                ) : (
+                                    <div className="flex justify-end gap-2">
+                                        <button onClick={() => startEdit(device)} className="p-2 text-gray-400 hover:text-[#171717] hover:bg-gray-100 rounded-xl transition-all"><Edit2 size={18} /></button>
+                                        <button onClick={() => handleDelete(device._id)} className="p-2 text-gray-300 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={18} /></button>
+                                    </div>
+                                )}
+                            </td>
+                        </tr>
+                    ))}
+                    {filteredDevices.length === 0 && (
+                        <tr><td colSpan={5} className="p-12 text-center text-gray-400 text-sm">暂无匹配设备</td></tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+}
+
+function getRoleLabelShort(role: string) {
+    if (role === 'designer') return '设';
+    if (role === 'salesperson') return '销';
+    if (role === 'enterprise_admin') return '管';
+    return '';
 }

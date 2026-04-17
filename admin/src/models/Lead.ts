@@ -15,7 +15,8 @@ export interface ILead extends Document {
   source: string; 
   status: 'new' | 'contacted' | 'converted' | 'closed';
   notes?: string;
-  assignedTo?: string; // Designer/Consultant name or ID
+  enterpriseId?: mongoose.Types.ObjectId;
+  assignedTo?: mongoose.Types.ObjectId; // Designer/Consultant (AdminUser)
   followUpRecords: IFollowUp[];
   createdAt: Date;
   updatedAt: Date;
@@ -30,7 +31,8 @@ const LeadSchema: Schema = new Schema({
   source: { type: String, default: 'unknown' },
   status: { type: String, enum: ['new', 'contacted', 'converted', 'closed'], default: 'new' },
   notes: { type: String },
-  assignedTo: { type: String },
+  enterpriseId: { type: Schema.Types.ObjectId, ref: 'Enterprise' },
+  assignedTo: { type: Schema.Types.ObjectId, ref: 'AdminUser' },
   followUpRecords: [{
     content: { type: String, required: true },
     operator: { type: String, default: 'System' },

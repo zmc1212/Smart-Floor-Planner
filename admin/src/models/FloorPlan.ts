@@ -2,8 +2,10 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export interface IFloorPlan extends Document {
   name: string;
-  creator: mongoose.Types.ObjectId;
-  layoutData: any; // Storing canvas layout or nodes structure
+  creator: mongoose.Types.ObjectId; // Customer (Mini Program User)
+  staffId?: mongoose.Types.ObjectId; // Designer/Sales (AdminUser)
+  enterpriseId?: mongoose.Types.ObjectId; // Tracking Company
+  layoutData: any; 
   status: 'draft' | 'completed';
   createdAt: Date;
   updatedAt: Date;
@@ -20,6 +22,14 @@ const FloorPlanSchema: Schema<IFloorPlan> = new Schema(
       type: Schema.Types.ObjectId,
       ref: 'User',
       required: true,
+    },
+    staffId: {
+      type: Schema.Types.ObjectId,
+      ref: 'AdminUser',
+    },
+    enterpriseId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Enterprise',
     },
     layoutData: {
       type: Schema.Types.Mixed,
