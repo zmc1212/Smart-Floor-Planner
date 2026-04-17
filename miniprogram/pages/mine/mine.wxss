@@ -107,6 +107,29 @@
   border: 2rpx solid #fff;
 }
 
+/* ===== Identity Badge ===== */
+.identity-badge {
+  display: flex;
+  align-items: center;
+  margin-top: 20rpx;
+  background: linear-gradient(135deg, #171717 0%, #333 100%);
+  padding: 8rpx 20rpx;
+  border-radius: 30rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.1);
+}
+
+.id-icon {
+  font-size: 24rpx;
+  margin-right: 8rpx;
+}
+
+.id-text {
+  font-size: 22rpx;
+  color: #fff;
+  font-weight: bold;
+  letter-spacing: 1rpx;
+}
+
 /* ===== Form ===== */
 .form-group {
   background-color: #ffffff;

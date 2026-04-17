@@ -9,6 +9,14 @@ export default function EnterprisesPage() {
   const [loading, setLoading] = useState(true);
   const [selectedEnt, setSelectedEnt] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingEnt, setEditingEnt] = useState<any>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    code: '',
+    contactPerson: { name: '', phone: '', email: '' }
+  });
+  const [copyFeedback, setCopyFeedback] = useState(false);
 
   const fetchEnterprises = async () => {
     setLoading(true);
@@ -29,9 +37,67 @@ export default function EnterprisesPage() {
     }
   };
 
+  const copyInvitationLink = () => {
+    const link = `${window.location.origin}/register`;
+    navigator.clipboard.writeText(link).then(() => {
+      setCopyFeedback(true);
+      setTimeout(() => setCopyFeedback(false), 2000);
+    });
+  };
+
   useEffect(() => {
     fetchEnterprises();
   }, []);
+
+  const openModal = (ent: any = null) => {
+    if (ent) {
+      setEditingEnt(ent);
+      setFormData({
+        name: ent.name || '',
+        code: ent.code || '',
+        contactPerson: {
+          name: ent.contactPerson?.name || '',
+          phone: ent.contactPerson?.phone || '',
+          email: ent.contactPerson?.email || ''
+        }
+      });
+    } else {
+      setEditingEnt(null);
+      setFormData({
+        name: '',
+        code: '',
+        contactPerson: { name: '', phone: '', email: '' }
+      });
+    }
+    setIsModalOpen(true);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const url = editingEnt ? `/api/admin/enterprises/${editingEnt._id}` : '/api/admin/enterprises';
+      const method = editingEnt ? 'PATCH' : 'POST';
+      
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        alert(editingEnt ? '修改成功' : '创建成功');
+        setIsModalOpen(false);
+        fetchEnterprises();
+      } else {
+        alert(data.error || '保存失败');
+      }
+    } catch (err) {
+      console.error('Failed to save enterprise:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const updateStatus = async (id: string, status: string) => {
     setIsSubmitting(true);
@@ -42,8 +108,11 @@ export default function EnterprisesPage() {
         body: JSON.stringify({ status })
       });
       const data = await res.json();
-      if (data.success) {
-        fetchEnterprises();
+      if (res.ok && data.success) {
+        alert('操作成功');
+        await fetchEnterprises();
+      } else {
+        alert(data.error || '操作失败');
       }
     } catch (err) {
       console.error('Failed to update enterprise status:', err);
@@ -93,9 +162,20 @@ export default function EnterprisesPage() {
               </span>
             )}
           </div>
-          <button className="px-6 py-2.5 bg-[#171717] text-white rounded-full text-[14px] font-medium hover:bg-black transition-all flex items-center gap-2">
-             手动添加企业
-          </button>
+          <div className="flex gap-4">
+            <button 
+              onClick={copyInvitationLink}
+              className="px-6 py-2.5 bg-white border border-gray-200 text-[#171717] rounded-full text-[14px] font-medium hover:bg-gray-50 transition-all flex items-center gap-2"
+            >
+               {copyFeedback ? '已复制链接' : '复制邀请链接'}
+            </button>
+            <button 
+              onClick={() => openModal()}
+              className="px-6 py-2.5 bg-[#171717] text-white rounded-full text-[14px] font-medium hover:bg-black transition-all flex items-center gap-2"
+            >
+               手动添加企业
+            </button>
+          </div>
         </div>
 
         {loading && (
@@ -140,12 +220,20 @@ export default function EnterprisesPage() {
                         {ent.registrationMode === 'self_service' ? '自助注册' : '后台录入'}
                       </td>
                       <td className="p-4">
-                        <button 
-                          onClick={() => setSelectedEnt(ent)}
-                          className="text-[13px] font-medium text-[#171717] hover:underline"
-                        >
-                          详情 & 审核
-                        </button>
+                        <div className="flex gap-4">
+                          <button 
+                            onClick={() => setSelectedEnt(ent)}
+                            className="text-[13px] font-medium text-[#171717] hover:underline"
+                          >
+                            详情 & 审核
+                          </button>
+                          <button 
+                            onClick={() => openModal(ent)}
+                            className="text-[13px] font-medium text-blue-600 hover:underline"
+                          >
+                            编辑
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -261,6 +349,93 @@ export default function EnterprisesPage() {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+        {/* Create/Edit Modal */}
+        {isModalOpen && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setIsModalOpen(false)} />
+            <form onSubmit={handleSave} className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+              <div className="p-8 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="text-[20px] font-bold">{editingEnt ? '编辑企业' : '手动添加企业'}</h3>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-8 space-y-6">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-[12px] font-bold text-gray-400 uppercase tracking-widest mb-2">企业名称</label>
+                    <input 
+                      required
+                      value={formData.name}
+                      onChange={e => setFormData({...formData, name: e.target.value})}
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all placeholder:text-gray-300"
+                      placeholder="例如：向总测绘技术有限公司"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[12px] font-bold text-gray-400 uppercase tracking-widest mb-2">统一社会信用代码</label>
+                    <input 
+                      required
+                      value={formData.code}
+                      onChange={e => setFormData({...formData, code: e.target.value})}
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all placeholder:text-gray-300 font-mono"
+                      placeholder="18位社会信用代码"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-4 space-y-4 border-t border-gray-100">
+                  <h4 className="text-[12px] font-bold text-gray-400 uppercase tracking-widest">联系人资料</h4>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <input 
+                        required
+                        value={formData.contactPerson.name}
+                        onChange={e => setFormData({...formData, contactPerson: {...formData.contactPerson, name: e.target.value}})}
+                        className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all"
+                        placeholder="姓名"
+                      />
+                    </div>
+                    <div>
+                      <input 
+                        required
+                        value={formData.contactPerson.phone}
+                        onChange={e => setFormData({...formData, contactPerson: {...formData.contactPerson, phone: e.target.value}})}
+                        className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all"
+                        placeholder="电话"
+                      />
+                    </div>
+                  </div>
+                  <input 
+                    type="email"
+                    value={formData.contactPerson.email}
+                    onChange={e => setFormData({...formData, contactPerson: {...formData.contactPerson, email: e.target.value}})}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all"
+                    placeholder="电子邮箱 (可选)"
+                  />
+                </div>
+              </div>
+
+              <div className="p-8 bg-gray-50 flex gap-3">
+                <button 
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 px-6 py-3 bg-white border border-gray-200 text-gray-600 font-bold rounded-xl hover:bg-gray-50 transition-all"
+                >
+                  取消
+                </button>
+                <button 
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="flex-1 px-6 py-3 bg-[#171717] text-white font-bold rounded-xl hover:bg-black disabled:opacity-50 transition-all shadow-lg shadow-black/10 flex items-center justify-center gap-2"
+                >
+                  {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : '确认保存'}
+                </button>
+              </div>
+            </form>
           </div>
         )}
       </main>

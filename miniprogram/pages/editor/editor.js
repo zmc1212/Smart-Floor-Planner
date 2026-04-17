@@ -282,6 +282,7 @@ Page({
   },
 
   render3DScene: function(THREE, canvas) {
+    var that = this;
     const width = canvas._width || canvas.width;
     const height = canvas._height || canvas.height;
 
@@ -367,13 +368,48 @@ Page({
         maxZ = Math.max(maxZ, rY + rHeight);
 
         const roomGroup = new THREE.Group();
+        const floorMat = new THREE.MeshStandardMaterial({ 
+          color: 0xf5f5f5, 
+          side: THREE.DoubleSide,
+          roughness: 0.8
+        });
 
+        if (room.polygon && room.polygon.length >= 3) {
+          const shape = new THREE.Shape();
+          const pts = room.polygon;
+          
+          shape.moveTo(pts[0].x - rWidth/2, -(pts[0].y - rHeight/2));
+          for (let i = 1; i < pts.length; i++) {
+            shape.lineTo(pts[i].x - rWidth/2, -(pts[i].y - rHeight/2));
+          }
+          if (room.polygonClosed) {
+            shape.closePath();
+          }
+
+          const floor = new THREE.Mesh(new THREE.ShapeGeometry(shape), floorMat);
+          floor.rotation.x = -Math.PI / 2;
+          floor.position.y = 0.05;
+          roomGroup.add(floor);
+
+          for (let i = 0; i < pts.length; i++) {
+            const p1 = pts[i];
+            const p2 = pts[(i + 1) % pts.length];
+            
+            if (i === pts.length - 1 && !room.polygonClosed) continue;
+
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            const angle = Math.atan2(dy, dx);
+
+            const wall = buildWall(length, wallHeight, [], 'top');
+            
+            wall.position.set(p1.x - rWidth/2, 0, p1.y - rHeight/2);
+            wall.rotation.y = -angle;
+            roomGroup.add(wall);
+          }
+        } else {
           const floorGeo = new THREE.PlaneGeometry(rWidth, rHeight);
-          const floorMat = new THREE.MeshStandardMaterial({ 
-            color: 0xf5f5f5, 
-            side: THREE.DoubleSide,
-            roughness: 0.8
-          });
           const floor = new THREE.Mesh(floorGeo, floorMat);
           floor.rotation.x = -Math.PI / 2;
           floor.position.y = 0.05;
@@ -402,6 +438,7 @@ Page({
           rightWall.position.set(rWidth/2, 0, -rHeight/2);
           rightWall.rotation.y = -Math.PI / 2;
           roomGroup.add(rightWall);
+        }
 
         roomGroup.position.set(rX + rWidth/2, 0, rY + rHeight/2);
         container.add(roomGroup);

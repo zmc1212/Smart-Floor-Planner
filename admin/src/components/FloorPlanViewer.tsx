@@ -42,7 +42,7 @@ function RoomObject({ room, is3D }: { room: Room; is3D: boolean }) {
   const wallHeight = is3D ? (room.height3D || 28) : 2; 
   const wallThickness = 2;
 
-  const { topWall, bottomWall, leftWall, rightWall } = useMemo(() => {
+  const { topWall, bottomWall, leftWall, rightWall, polygonFloor, polygonWalls } = useMemo(() => {
     const buildWallShape = (length: number, height: number, openings: Opening[], type: string) => {
       const shape = new THREE.Shape();
       shape.moveTo(0, 0);
@@ -79,6 +79,46 @@ function RoomObject({ room, is3D }: { room: Room; is3D: boolean }) {
       return shape;
     };
 
+    let polyFloor = null;
+    let polyWalls: { shape: THREE.Shape, pos: [number, number, number], rot: [number, number, number] }[] = [];
+
+    if (room.polygon && room.polygon.length >= 3) {
+      const shape = new THREE.Shape();
+      const pts = room.polygon;
+      // Invert Y to align with -90deg X rotation
+      shape.moveTo(pts[0].x - rWidth/2, -(pts[0].y - rHeight/2));
+      for (let i = 1; i < pts.length; i++) {
+        shape.lineTo(pts[i].x - rWidth/2, -(pts[i].y - rHeight/2));
+      }
+      if (room.polygonClosed) shape.closePath();
+      polyFloor = shape;
+
+      for (let i = 0; i < pts.length; i++) {
+        const p1 = pts[i];
+        const p2 = pts[(i + 1) % pts.length];
+        
+        if (i === pts.length - 1 && !room.polygonClosed) continue;
+
+        const dx = p2.x - p1.x;
+        const dy = p2.y - p1.y;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx);
+
+        const wallShape = new THREE.Shape();
+        wallShape.moveTo(0, 0);
+        wallShape.lineTo(length, 0);
+        wallShape.lineTo(length, wallHeight);
+        wallShape.lineTo(0, wallHeight);
+        wallShape.closePath();
+
+        polyWalls.push({
+          shape: wallShape,
+          pos: [p1.x - rWidth/2, 0, p1.y - rHeight/2],
+          rot: [0, -angle, 0]
+        });
+      }
+    }
+
     const topOpenings = (room.openings || []).filter(op => op.rotation === 0 && op.y < rHeight / 2);
     const bottomOpenings = (room.openings || []).filter(op => op.rotation === 0 && op.y >= rHeight / 2);
     const leftOpenings = (room.openings || []).filter(op => op.rotation === 90 && op.x < rWidth / 2);
@@ -88,7 +128,9 @@ function RoomObject({ room, is3D }: { room: Room; is3D: boolean }) {
       topWall: buildWallShape(rWidth, wallHeight, topOpenings, 'top'),
       bottomWall: buildWallShape(rWidth, wallHeight, bottomOpenings, 'bottom'),
       leftWall: buildWallShape(rHeight, wallHeight, leftOpenings, 'left'),
-      rightWall: buildWallShape(rHeight, wallHeight, rightOpenings, 'right')
+      rightWall: buildWallShape(rHeight, wallHeight, rightOpenings, 'right'),
+      polygonFloor: polyFloor,
+      polygonWalls: polyWalls
     };
   }, [room, rWidth, rHeight, wallHeight, is3D]);
 
@@ -130,7 +172,11 @@ function RoomObject({ room, is3D }: { room: Room; is3D: boolean }) {
     <group position={[rX + rWidth / 2, 0, rY + rHeight / 2]}>
       {/* Floor */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow={is3D}>
-        <planeGeometry args={[rWidth, rHeight]} />
+        {polygonFloor ? (
+          <shapeGeometry args={[polygonFloor]} />
+        ) : (
+          <planeGeometry args={[rWidth, rHeight]} />
+        )}
         {is3D ? (
           <meshStandardMaterial color={room.color || '#e0e0e0'} side={THREE.DoubleSide} />
         ) : (
@@ -139,22 +185,33 @@ function RoomObject({ room, is3D }: { room: Room; is3D: boolean }) {
       </mesh>
 
       {/* Walls */}
-      <mesh position={[-rWidth/2, 0, -rHeight/2]} castShadow={is3D} receiveShadow={is3D}>
-        <extrudeGeometry args={[topWall, { depth: wallThickness, bevelEnabled: false }]} />
-        {is3D ? <meshStandardMaterial color={wallColor} /> : <meshBasicMaterial color={wallColor} />}
-      </mesh>
-      <mesh position={[rWidth/2, 0, rHeight/2]} rotation={[0, Math.PI, 0]} castShadow={is3D} receiveShadow={is3D}>
-        <extrudeGeometry args={[bottomWall, { depth: wallThickness, bevelEnabled: false }]} />
-        {is3D ? <meshStandardMaterial color={wallColor} /> : <meshBasicMaterial color={wallColor} />}
-      </mesh>
-      <mesh position={[-rWidth/2, 0, rHeight/2]} rotation={[0, Math.PI/2, 0]} castShadow={is3D} receiveShadow={is3D}>
-        <extrudeGeometry args={[leftWall, { depth: wallThickness, bevelEnabled: false }]} />
-        {is3D ? <meshStandardMaterial color={wallColor} /> : <meshBasicMaterial color={wallColor} />}
-      </mesh>
-      <mesh position={[rWidth/2, 0, -rHeight/2]} rotation={[0, -Math.PI/2, 0]} castShadow={is3D} receiveShadow={is3D}>
-        <extrudeGeometry args={[rightWall, { depth: wallThickness, bevelEnabled: false }]} />
-        {is3D ? <meshStandardMaterial color={wallColor} /> : <meshBasicMaterial color={wallColor} />}
-      </mesh>
+      {polygonWalls && polygonWalls.length > 0 ? (
+        polygonWalls.map((wall, idx) => (
+          <mesh key={`pwall-${idx}`} position={wall.pos} rotation={wall.rot} castShadow={is3D} receiveShadow={is3D}>
+            <extrudeGeometry args={[wall.shape, { depth: wallThickness, bevelEnabled: false }]} />
+            {is3D ? <meshStandardMaterial color={wallColor} /> : <meshBasicMaterial color={wallColor} />}
+          </mesh>
+        ))
+      ) : (
+        <>
+          <mesh position={[-rWidth/2, 0, -rHeight/2]} castShadow={is3D} receiveShadow={is3D}>
+            <extrudeGeometry args={[topWall, { depth: wallThickness, bevelEnabled: false }]} />
+            {is3D ? <meshStandardMaterial color={wallColor} /> : <meshBasicMaterial color={wallColor} />}
+          </mesh>
+          <mesh position={[rWidth/2, 0, rHeight/2]} rotation={[0, Math.PI, 0]} castShadow={is3D} receiveShadow={is3D}>
+            <extrudeGeometry args={[bottomWall, { depth: wallThickness, bevelEnabled: false }]} />
+            {is3D ? <meshStandardMaterial color={wallColor} /> : <meshBasicMaterial color={wallColor} />}
+          </mesh>
+          <mesh position={[-rWidth/2, 0, rHeight/2]} rotation={[0, Math.PI/2, 0]} castShadow={is3D} receiveShadow={is3D}>
+            <extrudeGeometry args={[leftWall, { depth: wallThickness, bevelEnabled: false }]} />
+            {is3D ? <meshStandardMaterial color={wallColor} /> : <meshBasicMaterial color={wallColor} />}
+          </mesh>
+          <mesh position={[rWidth/2, 0, -rHeight/2]} rotation={[0, -Math.PI/2, 0]} castShadow={is3D} receiveShadow={is3D}>
+            <extrudeGeometry args={[rightWall, { depth: wallThickness, bevelEnabled: false }]} />
+            {is3D ? <meshStandardMaterial color={wallColor} /> : <meshBasicMaterial color={wallColor} />}
+          </mesh>
+        </>
+      )}
 
       {/* Openings (Doors / Windows) */}
       {(room.openings || []).map((op, i) => {

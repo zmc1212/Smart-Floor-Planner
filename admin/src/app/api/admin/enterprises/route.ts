@@ -22,6 +22,9 @@ export async function GET(request: Request) {
   }
 }
 
+import { AdminUser, DEFAULT_PERMISSIONS } from '@/models/AdminUser';
+import bcrypt from 'bcryptjs';
+
 // POST /api/admin/enterprises - Manually create an enterprise
 export async function POST(request: Request) {
   try {
@@ -37,6 +40,25 @@ export async function POST(request: Request) {
       ...body,
       registrationMode: 'manual',
     });
+
+    // Create a default administrator account for this enterprise
+    if (enterprise.contactPerson?.phone) {
+      const passwordHash = await bcrypt.hash('Admin123456', 10);
+      // Check if username already exists to avoid conflict
+      const existingUser = await AdminUser.findOne({ username: enterprise.contactPerson.phone });
+      if (!existingUser) {
+        await AdminUser.create({
+          username: enterprise.contactPerson.phone,
+          passwordHash,
+          displayName: enterprise.contactPerson.name,
+          role: 'enterprise_admin',
+          enterpriseId: enterprise._id,
+          phone: enterprise.contactPerson.phone,
+          menuPermissions: DEFAULT_PERMISSIONS['enterprise_admin'],
+          status: 'active'
+        });
+      }
+    }
 
     return NextResponse.json({ success: true, data: enterprise });
   } catch (error: any) {

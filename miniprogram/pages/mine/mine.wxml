@@ -19,6 +19,12 @@
         <image class="avatar" src="{{userInfo.avatar || defaultAvatarUrl}}"></image>
         <view class="edit-badge">修改</view>
       </button>
+      
+      <!-- Identity Badge -->
+      <view class="identity-badge" wx:if="{{userInfo.role === 'staff'}}">
+        <text class="id-icon">✨</text>
+        <text class="id-text">认证设计师 / {{userInfo.enterpriseName || '专业版'}}</text>
+      </view>
     </view>
 
     <view class="form-group">
