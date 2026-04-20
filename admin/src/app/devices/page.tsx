@@ -77,7 +77,8 @@ export default function DevicesPage() {
     try {
       const res = await fetch('/api/admin/enterprises');
       const data = await res.json();
-      if (data.success) setEnterprises(data.data.filter((e: any) => e.status === 'active'));
+      // Show all enterprises to avoid ID display issues for inactive ones
+      if (data.success) setEnterprises(data.data);
     } catch (err) { console.error(err); }
   };
 
@@ -183,8 +184,12 @@ export default function DevicesPage() {
     setEditingId(device._id);
     setEditCode(device.code);
     setEditDesc(device.description || '');
-    setEditEnterprise(device.enterpriseId?._id || device.enterpriseId || '');
-    setEditStaff(device.assignedUserId?._id || device.assignedUserId || '');
+    // Ensure we handle both populated and unpopulated cases
+    const entId = typeof device.enterpriseId === 'object' ? device.enterpriseId?._id : device.enterpriseId;
+    const staffId = typeof device.assignedUserId === 'object' ? device.assignedUserId?._id : device.assignedUserId;
+    
+    setEditEnterprise(String(entId || ''));
+    setEditStaff(String(staffId || ''));
   };
 
   const getEnterpriseName = (id: any) => {
@@ -326,7 +331,7 @@ export default function DevicesPage() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="">未分配企业</SelectItem>
-                                            {enterprises.map(e => <SelectItem key={e._id} value={e._id}>{e.name}</SelectItem>)}
+                                            {enterprises.map(e => <SelectItem key={e._id} value={String(e._id)}>{e.name}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
                                 ) : (
@@ -344,9 +349,22 @@ export default function DevicesPage() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="">未指派个人</SelectItem>
-                                            {staff.filter(s => (editEnterprise ? s.enterpriseId === editEnterprise : true)).map(s => (
-                                                <SelectItem key={s._id} value={s._id}>{s.displayName || s.username} ({getRoleLabelShort(s.role)})</SelectItem>
-                                            ))}
+                                            {staff
+                                                .filter(s => {
+                                                    const sId = String(s._id).toLowerCase();
+                                                    const currentId = String(editStaff).toLowerCase();
+                                                    // ALWAYS include the currently selected staff member to prevent ID display
+                                                    if (currentId && sId === currentId) return true;
+                                                    
+                                                    const sEntId = typeof s.enterpriseId === 'object' ? s.enterpriseId?._id : s.enterpriseId;
+                                                    return !editEnterprise || String(sEntId).toLowerCase() === String(editEnterprise).toLowerCase();
+                                                })
+                                                .map(s => (
+                                                    <SelectItem key={s._id} value={String(s._id)}>
+                                                        {s.displayName || s.username} ({getRoleLabelShort(s.role)})
+                                                    </SelectItem>
+                                                ))
+                                            }
                                         </SelectContent>
                                     </Select>
                                 ) : (

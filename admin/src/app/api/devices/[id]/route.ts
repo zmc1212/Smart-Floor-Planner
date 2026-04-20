@@ -8,11 +8,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     const { id } = await params;
     const body = await request.json();
-    const { code, description } = body;
+    const { code, description, enterpriseId, assignedUserId, status } = body;
 
     const device = await Device.findByIdAndUpdate(
       id,
-      { code: code?.trim(), description: description?.trim() },
+      { 
+        code: code?.trim(), 
+        description: description?.trim(),
+        enterpriseId: enterpriseId || null,
+        assignedUserId: assignedUserId || null,
+        status: status || 'unassigned'
+      },
       { new: true, runValidators: true }
     );
 
