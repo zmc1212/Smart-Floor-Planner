@@ -184,26 +184,32 @@ export default function DevicesPage() {
     setEditingId(device._id);
     setEditCode(device.code);
     setEditDesc(device.description || '');
-    // Ensure we handle both populated and unpopulated cases
+    // Ensure we handle both populated and unpopulated cases correctly by coercing to string
     const entId = typeof device.enterpriseId === 'object' ? device.enterpriseId?._id : device.enterpriseId;
     const staffId = typeof device.assignedUserId === 'object' ? device.assignedUserId?._id : device.assignedUserId;
     
-    setEditEnterprise(String(entId || ''));
-    setEditStaff(String(staffId || ''));
+    setEditEnterprise(entId ? String(entId) : '');
+    setEditStaff(staffId ? String(staffId) : '');
   };
 
   const getEnterpriseName = (id: any) => {
-      if (!id) return '-';
-      const entId = typeof id === 'object' ? id._id : id;
-      const ent = enterprises.find(e => e._id === entId);
-      return ent ? ent.name : '未知企业';
+      if (!id) return null;
+      const entId = String(typeof id === 'object' ? id._id : id);
+      const ent = enterprises.find(e => String(e._id) === entId);
+      if (!ent && enterprises.length > 0) {
+        console.warn(`[Devices] Enterprise ID ${entId} not found in list of ${enterprises.length}`);
+      }
+      return ent ? ent.name : null;
   };
 
   const getStaffName = (id: any) => {
-      if (!id) return '未指派';
-      const sId = typeof id === 'object' ? id._id : id;
-      const s = staff.find(x => x._id === sId);
-      return s ? (s.displayName || s.username) : '未知员工';
+      if (!id) return null;
+      const sId = String(typeof id === 'object' ? id._id : id);
+      const s = staff.find(x => String(x._id) === sId);
+      if (!s && staff.length > 0) {
+        console.warn(`[Devices] Staff ID ${sId} not found in list of ${staff.length}`);
+      }
+      return s ? (s.displayName || s.username) : null;
   };
 
   const filteredDevices = devices.filter(d => 
@@ -326,8 +332,10 @@ export default function DevicesPage() {
                             <TableCell className="px-8 py-6">
                                 {editingId === device._id && (currentUser?.role === 'super_admin' || currentUser?.role === 'admin') ? (
                                     <Select value={editEnterprise} onValueChange={(val) => setEditEnterprise(val || '')}>
-                                        <SelectTrigger className="h-9 border-primary shadow-none">
-                                            <SelectValue placeholder="未分配企业" />
+                                        <SelectTrigger className="h-9 border-primary shadow-none min-w-[200px]">
+                                            <SelectValue placeholder="未分配企业">
+                                                {getEnterpriseName(editEnterprise) || (editEnterprise ? <span className="font-mono text-xs text-red-500">{editEnterprise}</span> : null)}
+                                            </SelectValue>
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="">未分配企业</SelectItem>
@@ -337,27 +345,31 @@ export default function DevicesPage() {
                                 ) : (
                                     <div className="flex items-center gap-2 text-sm text-foreground/80">
                                         <Building2 size={14} className="text-muted-foreground" />
-                                        {getEnterpriseName(device.enterpriseId)}
+                                        {getEnterpriseName(device.enterpriseId) || (device.enterpriseId ? <span className="font-mono text-[10px] text-muted-foreground">{String(device.enterpriseId)}</span> : <span className="text-muted-foreground italic text-xs">未分配</span>)}
                                     </div>
                                 )}
                             </TableCell>
                             <TableCell className="px-8 py-6">
                                 {editingId === device._id ? (
                                     <Select value={editStaff} onValueChange={(val) => setEditStaff(val || '')}>
-                                        <SelectTrigger className="h-9 border-primary shadow-none">
-                                            <SelectValue placeholder="未指派个人" />
+                                        <SelectTrigger className="h-9 border-primary shadow-none min-w-[200px]">
+                                            <SelectValue placeholder="未指派个人">
+                                                {getStaffName(editStaff) || (editStaff ? <span className="font-mono text-xs text-red-500">{editStaff}</span> : "未指派个人")}
+                                            </SelectValue>
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="">未指派个人</SelectItem>
                                             {staff
                                                 .filter(s => {
-                                                    const sId = String(s._id).toLowerCase();
-                                                    const currentId = String(editStaff).toLowerCase();
+                                                    const sId = String(s._id);
+                                                    const currentId = String(editStaff);
+                                                    
                                                     // ALWAYS include the currently selected staff member to prevent ID display
+                                                    // This ensures that even if they belong to a different enterprise, their name shows up
                                                     if (currentId && sId === currentId) return true;
                                                     
                                                     const sEntId = typeof s.enterpriseId === 'object' ? s.enterpriseId?._id : s.enterpriseId;
-                                                    return !editEnterprise || String(sEntId).toLowerCase() === String(editEnterprise).toLowerCase();
+                                                    return !editEnterprise || String(sEntId) === String(editEnterprise);
                                                 })
                                                 .map(s => (
                                                     <SelectItem key={s._id} value={String(s._id)}>
@@ -370,7 +382,7 @@ export default function DevicesPage() {
                                 ) : (
                                     <div className="flex items-center gap-2 text-sm text-foreground/80">
                                         <User size={14} className="text-muted-foreground" />
-                                        {getStaffName(device.assignedUserId)}
+                                        {getStaffName(device.assignedUserId) || (device.assignedUserId ? <span className="font-mono text-[10px] text-muted-foreground">{String(device.assignedUserId)}</span> : <span className="text-muted-foreground italic text-xs">未指派</span>)}
                                     </div>
                                 )}
                             </TableCell>
