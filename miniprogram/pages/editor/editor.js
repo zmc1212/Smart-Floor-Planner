@@ -30,7 +30,8 @@ Page({
     windowWidth: 375,
     windowHeight: 600,
     showAngleMeasure: false,
-    angleMeasureWallA: 0
+    angleMeasureWallA: 0,
+    showTechnicalReport: false
   },
 
   onLoad: function (options) {
@@ -301,16 +302,33 @@ Page({
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 5000);
     this.threeCamera = camera;
 
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
     renderer.setSize(width, height);
+    renderer.setPixelRatio(wx.getSystemInfoSync().pixelRatio);
+    renderer.shadowMap.enabled = true; // CRITICAL: Fix for missing shadows
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.threeRenderer = renderer;
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); // Reduced for more contrast
     scene.add(ambientLight);
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
-    dirLight.position.set(50, 100, 50);
-    dirLight.castShadow = true;
-    scene.add(dirLight);
+    
+    const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.2);
+    dirLight1.position.set(200, 400, 200);
+    dirLight1.castShadow = true;
+    // Optimize shadow camera for typical floor plan size
+    dirLight1.shadow.camera.left = -1000;
+    dirLight1.shadow.camera.right = 1000;
+    dirLight1.shadow.camera.top = 1000;
+    dirLight1.shadow.camera.bottom = -1000;
+    dirLight1.shadow.camera.near = 0.5;
+    dirLight1.shadow.camera.far = 2000;
+    dirLight1.shadow.mapSize.width = 1024;
+    dirLight1.shadow.mapSize.height = 1024;
+    scene.add(dirLight1);
+
+    const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.3);
+    dirLight2.position.set(-200, 200, -200);
+    scene.add(dirLight2);
 
     const gridHelper = new THREE.GridHelper(2000, 100, 0xcccccc, 0xeeeeee);
     gridHelper.position.y = -0.1;
@@ -349,12 +367,17 @@ Page({
       });
 
       const mat = new THREE.MeshStandardMaterial({ 
-        color: 0xffffff, 
+        color: 0xeeeeee, // Softer gray-white for better visual depth
         side: THREE.DoubleSide,
-        roughness: 0.4,
-        metalness: 0.05
+        roughness: 0.7, // More rough to show light gradients
+        metalness: 0.1
       });
-      return new THREE.Mesh(new THREE.ShapeGeometry(shape), mat);
+      // Admin parity: Use ExtrudeGeometry for thickness (2 units = ~20cm)
+      const extrudeSettings = { depth: 2, bevelEnabled: false };
+      const mesh = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, extrudeSettings), mat);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      return mesh;
     };
 
     const rooms = this.data.rooms;
@@ -377,7 +400,7 @@ Page({
 
         const roomGroup = new THREE.Group();
         const floorMat = new THREE.MeshStandardMaterial({ 
-          color: 0xfafafa, 
+          color: room.color || 0xfafafa, // Sync with Admin layout: use room color
           side: THREE.DoubleSide,
           roughness: 0.9,
           metalness: 0
@@ -398,6 +421,7 @@ Page({
           const floor = new THREE.Mesh(new THREE.ShapeGeometry(shape), floorMat);
           floor.rotation.x = -Math.PI / 2;
           floor.position.y = 0.05;
+          floor.receiveShadow = true;
           roomGroup.add(floor);
 
           for (let i = 0; i < pts.length; i++) {
@@ -422,6 +446,7 @@ Page({
           const floor = new THREE.Mesh(floorGeo, floorMat);
           floor.rotation.x = -Math.PI / 2;
           floor.position.y = 0.05;
+          floor.receiveShadow = true;
           roomGroup.add(floor);
 
           const topOpenings = (room.openings || []).filter(op => op.rotation === 0 && op.y < rHeight / 2);
@@ -448,6 +473,38 @@ Page({
           rightWall.rotation.y = -Math.PI / 2;
           roomGroup.add(rightWall);
         }
+
+        // Add Openings (Doors/Windows) logic to match Admin visuals
+        (room.openings || []).forEach(op => {
+          const isTop = op.rotation === 0 && op.y < rHeight / 2;
+          const isBottom = op.rotation === 0 && op.y >= rHeight / 2;
+          const isLeft = op.rotation === 90 && op.x < rWidth / 2;
+          const isRight = op.rotation === 90 && op.x >= rWidth / 2;
+
+          let opX = 0, opZ = 0;
+          let opW = op.width, opD = 4; // Slightly wider than wall for visibility
+          const wallThickness = 2;
+
+          if (isTop || isBottom) {
+            opX = -rWidth/2 + op.x + op.width/2;
+            opZ = isTop ? (-rHeight/2 + wallThickness/2) : (rHeight/2 - wallThickness/2);
+          } else {
+            opZ = -rHeight/2 + op.y + op.width/2;
+            opX = isLeft ? (-rWidth/2 + wallThickness/2) : (rWidth/2 - wallThickness/2);
+            opW = 4; 
+            opD = op.width;
+          }
+
+          const color = op.type === 'DOOR' ? 0xf59e0b : 0x3b82f6;
+          const h = op.type === 'DOOR' ? 20 : 12;
+          const yPos = op.type === 'DOOR' ? h/2 : 9 + h/2;
+
+          const opGeo = new THREE.BoxGeometry(opW, h, opD);
+          const opMat = new THREE.MeshStandardMaterial({ color: color, transparent: true, opacity: 0.8 });
+          const opMesh = new THREE.Mesh(opGeo, opMat);
+          opMesh.position.set(opX, yPos, opZ);
+          roomGroup.add(opMesh);
+        });
 
         roomGroup.position.set(rX + rWidth/2, 0, rY + rHeight/2);
         container.add(roomGroup);
@@ -787,18 +844,52 @@ Page({
       }.bind(this), 400);
 
     } else {
-      var selectedEdge = this.data.selectedEdge;
-      if (!selectedEdge) return;
+      var edgeInfo = this.data.selectedEdgeInfo;
+      if (!edgeInfo) return;
 
-      var updates = {};
-      if (selectedEdge === 'top' || selectedEdge === 'bottom') updates.width = newLength;
-      else if (selectedEdge === 'left' || selectedEdge === 'right') updates.height = newLength;
+      var roomId = edgeInfo.roomId;
+      var newLength = distanceInMeters * 10;
+      var newRooms = this.data.rooms.map((r) => {
+        if (r.id !== roomId) return r;
 
-      var newRooms2 = this.data.rooms.map(function (r) {
-        return r.id === roomId ? Object.assign({}, r, updates) : r;
+        if (edgeInfo.type === 'rect') {
+          // 矩形模式
+          var updates = {};
+          if (edgeInfo.side === 'top' || edgeInfo.side === 'bottom') updates.width = newLength;
+          else if (edgeInfo.side === 'left' || edgeInfo.side === 'right') updates.height = newLength;
+          return Object.assign({}, r, updates);
+        } else if (edgeInfo.type === 'polygon' && r.polygon) {
+          // 多边形边复测逻辑 (简化版：保持方向，推移顶点)
+          var poly = JSON.parse(JSON.stringify(r.polygon));
+          var idx = edgeInfo.index;
+          var nextIdx = (idx + 1) % poly.length;
+          
+          var p1 = poly[idx];
+          var p2 = poly[nextIdx];
+          
+          var currentDist = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+          if (currentDist === 0) return r;
+          
+          var ratio = newLength / currentDist;
+          var dx = (p2.x - p1.x) * (ratio - 1);
+          var dy = (p2.y - p1.y) * (ratio - 1);
+          
+          // 将后续所有点平移，保持后续形状不变
+          for (var k = nextIdx; k < poly.length; k++) {
+            poly[k].x += dx;
+            poly[k].y += dy;
+          }
+          
+          // 如果多边形已闭合，且我们移动了点，可能需要特殊处理最后一个点
+          // 这里采用简单的链式平移，适合 L 型或 U 型连续测量修正
+          
+          return Object.assign({}, r, { polygon: poly });
+        }
+        return r;
       });
-      this.pushToHistory(newRooms2);
-      wx.showToast({ title: '测量成功: ' + distanceInMeters + 'm', icon: 'success' });
+
+      this.pushToHistory(newRooms, { selectedEdgeInfo: null, selectedEdge: '' });
+      wx.showToast({ title: '墙体已更新: ' + distanceInMeters + 'm', icon: 'success' });
     }
   },
 
@@ -1187,6 +1278,7 @@ Page({
       pendingDirection: '',
       canFinishPolygon: false,
       selectedEdge: '',
+      selectedEdgeInfo: null, // Phase 3: Store detailed edge info (roomId, index, side, etc)
       showMeasurePrompt: false,
       showPropertyPanel: false,
       is3DView: false,
@@ -1305,6 +1397,31 @@ Page({
       wx.showToast({ title: '保存失败', icon: 'none' });
       return false;
     }
-  }
+  },
+
+  onEdgeSelect: function (e) {
+    console.log('选中边:', e.detail);
+    this.setData({
+      selectedEdge: 'OVERRIDE', // 特殊标识，表示当前正选中一个具体的边用于复测
+      selectedEdgeInfo: e.detail,
+      selectedIds: [e.detail.roomId],
+      showPropertyPanel: false
+    });
+    this.updateSelectedRooms(this.data.rooms);
+    
+    // 选中边后，如果蓝牙已连接，提示可以测量
+    if (this.data.bleConnected) {
+      wx.showToast({ title: '已选中墙体，可直接测量', icon: 'none' });
+      this.openLaser();
+    }
+  },
+
+  onOpenTechnicalReport() {
+    this.setData({ showTechnicalReport: true });
+  },
+
+  onCloseTechnicalReport() {
+    this.setData({ showTechnicalReport: false });
+  },
 
 });

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+export const dynamic = 'force-dynamic';
 import Navbar from "@/components/Navbar";
 import { Loader2, Phone, CheckCircle, Clock, User, MessageSquare, Plus, X, Search, Filter } from "lucide-react";
 import { 
@@ -37,6 +38,41 @@ export default function LeadsPage() {
   const [newNote, setNewNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [staffMembers, setStaffMembers] = useState<any[]>([]);
+
+  // Helper to get staff display name from ID or Object
+  const getStaffName = (idOrObj: any) => {
+    if (!idOrObj) return null;
+    
+    // If it's already a populated object with the name, return it immediately
+    if (typeof idOrObj === 'object') {
+      const name = idOrObj.displayName || idOrObj.username;
+      if (name) return name;
+    }
+
+    const targetId = String(typeof idOrObj === 'object' ? idOrObj._id : idOrObj);
+    const s = staffMembers.find(member => String(member._id) === targetId);
+    
+    if (s) return s.displayName || s.username;
+    
+    // Diagnostic log if ID exists but not found in list
+    if (targetId && staffMembers.length > 0 && targetId !== "unassigned") {
+      console.warn(`[Leads] Staff ID not found in staffMembers list: ${targetId}`);
+    }
+    return null;
+  };
+
+  const getStatusLabel = (status: string) => {
+    const statusMap: Record<string, string> = {
+      'new': '新线索 (待处理)',
+      'contacted': '已联系 (沟通中)',
+      'measuring': '量房中 (上门测量)',
+      'designing': '设计中 (方案制作)',
+      'quoting': '报价中 (预结算)',
+      'converted': '已转化 (签单成功)',
+      'closed': '已关闭 (暂时流失)'
+    };
+    return statusMap[status] || status;
+  };
 
   const fetchLeads = async () => {
     setLoading(true);
@@ -75,6 +111,11 @@ export default function LeadsPage() {
   }, []);
 
   const updateLead = async (id: string, updates: any) => {
+    // Optimistic update for the selected lead to make UI snappy
+    if (selectedLead && id === selectedLead._id) {
+      setSelectedLead({ ...selectedLead, ...updates });
+    }
+
     try {
       const res = await fetch(`/api/leads/${id}`, {
         method: 'PUT',
@@ -188,11 +229,11 @@ export default function LeadsPage() {
                       <div className="text-[11px] text-muted-foreground mt-0.5">{lead.source}</div>
                     </TableCell>
                     <TableCell className="font-mono text-xs">{lead.phone}</TableCell>
-                    <TableCell>
+                    <TableCell className="py-4">
                        {lead.assignedTo ? (
                          <div className="flex items-center gap-1.5 text-xs">
                            <User size={12} className="text-muted-foreground" /> 
-                           {typeof lead.assignedTo === 'object' ? (lead.assignedTo.displayName || lead.assignedTo.username) : lead.assignedTo}
+                           {getStaffName(lead.assignedTo) || (typeof lead.assignedTo === 'string' ? <span className="font-mono text-[10px] text-muted-foreground">{lead.assignedTo}</span> : "未知人员")}
                          </div>
                        ) : (
                          <span className="text-[11px] text-muted-foreground italic">未指派</span>
@@ -255,7 +296,9 @@ export default function LeadsPage() {
                         onValueChange={(val) => val && updateLead(selectedLead._id, { status: val })}
                       >
                         <SelectTrigger className="w-full h-10 rounded-xl bg-muted/50 border-none shadow-none focus:ring-1 focus:ring-primary/20">
-                          <SelectValue />
+                          <SelectValue>
+                            {getStatusLabel(selectedLead.status)}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="new">新线索 (待处理)</SelectItem>
@@ -275,7 +318,9 @@ export default function LeadsPage() {
                         onValueChange={(val) => updateLead(selectedLead._id, { assignedTo: val === "unassigned" ? null : val })}
                       >
                         <SelectTrigger className="w-full h-10 rounded-xl bg-muted/50 border-none shadow-none focus:ring-1 focus:ring-primary/20">
-                          <SelectValue />
+                          <SelectValue placeholder="待指派">
+                            {getStaffName(selectedLead.assignedTo) || (selectedLead.assignedTo ? <span className="font-mono text-xs text-red-500">{typeof selectedLead.assignedTo === 'object' ? selectedLead.assignedTo._id : selectedLead.assignedTo}</span> : "待指派")}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="unassigned">待指派</SelectItem>

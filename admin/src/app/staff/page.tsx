@@ -212,7 +212,9 @@ export default function StaffPage() {
             onValueChange={(val) => val && setFormData({...formData, role: val})}
           >
             <SelectTrigger className="h-12 rounded-2xl bg-muted/30 border-none focus-visible:ring-primary">
-              <SelectValue placeholder="选择角色" />
+              <SelectValue placeholder="选择角色">
+                {getRoleLabel(formData.role)}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="designer">设计师</SelectItem>

@@ -192,23 +192,24 @@ export default function DevicesPage() {
     setEditStaff(staffId ? String(staffId) : '');
   };
 
-  const getEnterpriseName = (id: any) => {
-      if (!id) return null;
-      const entId = String(typeof id === 'object' ? id._id : id);
-      const ent = enterprises.find(e => String(e._id) === entId);
-      if (!ent && enterprises.length > 0) {
-        console.warn(`[Devices] Enterprise ID ${entId} not found in list of ${enterprises.length}`);
-      }
+  const getEnterpriseName = (idOrObj: any) => {
+      if (!idOrObj) return null;
+      if (typeof idOrObj === 'object' && idOrObj.name) return idOrObj.name;
+      
+      const id = String(idOrObj);
+      const ent = enterprises.find(e => String(e._id) === id);
       return ent ? ent.name : null;
   };
 
-  const getStaffName = (id: any) => {
-      if (!id) return null;
-      const sId = String(typeof id === 'object' ? id._id : id);
-      const s = staff.find(x => String(x._id) === sId);
-      if (!s && staff.length > 0) {
-        console.warn(`[Devices] Staff ID ${sId} not found in list of ${staff.length}`);
+  const getStaffName = (idOrObj: any) => {
+      if (!idOrObj) return null;
+      if (typeof idOrObj === 'object') {
+        const name = idOrObj.displayName || idOrObj.username;
+        if (name) return name;
       }
+      
+      const id = String(idOrObj);
+      const s = staff.find(x => String(x._id) === id);
       return s ? (s.displayName || s.username) : null;
   };
 
@@ -345,7 +346,7 @@ export default function DevicesPage() {
                                 ) : (
                                     <div className="flex items-center gap-2 text-sm text-foreground/80">
                                         <Building2 size={14} className="text-muted-foreground" />
-                                        {getEnterpriseName(device.enterpriseId) || (device.enterpriseId ? <span className="font-mono text-[10px] text-muted-foreground">{String(device.enterpriseId)}</span> : <span className="text-muted-foreground italic text-xs">未分配</span>)}
+                                        {getEnterpriseName(device.enterpriseId) || <span className="text-muted-foreground italic text-xs">未分配企业</span>}
                                     </div>
                                 )}
                             </TableCell>
@@ -382,7 +383,7 @@ export default function DevicesPage() {
                                 ) : (
                                     <div className="flex items-center gap-2 text-sm text-foreground/80">
                                         <User size={14} className="text-muted-foreground" />
-                                        {getStaffName(device.assignedUserId) || (device.assignedUserId ? <span className="font-mono text-[10px] text-muted-foreground">{String(device.assignedUserId)}</span> : <span className="text-muted-foreground italic text-xs">未指派</span>)}
+                                        {getStaffName(device.assignedUserId) || <span className="text-muted-foreground italic text-xs">未指派人员</span>}
                                     </div>
                                 )}
                             </TableCell>

@@ -85,6 +85,16 @@ function isPointInPolygon(vertices, x, y) {
 }
 
 /**
+ * 点在分段上检测
+ */
+function isPointOnSegment(px, py, x1, y1, x2, y2, tolerance) {
+  var d1 = Math.sqrt(Math.pow(px - x1, 2) + Math.pow(py - y1, 2));
+  var d2 = Math.sqrt(Math.pow(px - x2, 2) + Math.pow(py - y2, 2));
+  var lineLen = Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2));
+  return d1 + d2 >= lineLen - tolerance && d1 + d2 <= lineLen + tolerance;
+}
+
+/**
  * 枚举常量
  */
 const ToolType = {
@@ -172,6 +182,7 @@ module.exports = {
   polygonArea,
   polygonBoundingBox,
   isPointInPolygon,
+  isPointOnSegment,
   calculateAngle,
   directionAngle,
   ToolType,

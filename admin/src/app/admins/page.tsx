@@ -394,7 +394,9 @@ export default function AdminsPage() {
                        <Label>分配角色</Label>
                         <Select value={newRole} onValueChange={(val) => val && setNewRole(val)}>
                         <SelectTrigger className="w-full h-10 rounded-xl bg-muted/50 border-none shadow-none">
-                          <SelectValue />
+                          <SelectValue>
+                            {ROLE_LABELS[newRole]}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="super_admin">超级管理员</SelectItem>
@@ -501,7 +503,9 @@ export default function AdminsPage() {
                       {editingId === admin._id ? (
                         <Select value={editRole} onValueChange={(val) => val && setEditRole(val)}>
                           <SelectTrigger className="h-8 py-0 rounded-lg border-primary text-xs">
-                            <SelectValue />
+                            <SelectValue>
+                              {ROLE_LABELS[editRole]}
+                            </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="super_admin">超级管理员</SelectItem>

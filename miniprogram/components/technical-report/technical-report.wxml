@@ -1,0 +1,29 @@
+<view class="report-overlay" wx:if="{{show}}">
+  <view class="report-container">
+    <view class="report-header">
+      <view class="close-hit" bindtap="onClose">
+        <text class="close">关闭</text>
+      </view>
+      <text class="title">专业技术量房报告</text>
+      <view class="header-placeholder"></view>
+    </view>
+    
+    <scroll-view scroll-y class="report-content">
+      <image wx:if="{{tempFile}}" src="{{tempFile}}" mode="widthFix" class="result-image" />
+      <view wx:else class="loading-box">
+        <view class="spinner"></view>
+        <text>正在生成高清长图...</text>
+      </view>
+    </scroll-view>
+
+    <view class="report-footer">
+      <button class="btn-save" bindtap="onSave" disabled="{{!tempFile}}">{{saveText}}</button>
+    </view>
+  </view>
+</view>
+
+<canvas 
+  type="2d" 
+  id="reportCanvas" 
+  style="width: 750px; height: {{canvasHeight}}px; position: fixed; left: 9999px; top: 0;"
+></canvas>

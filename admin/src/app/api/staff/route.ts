@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import dbConnect from '@/lib/mongodb';
 import { AdminUser } from '@/models/AdminUser';
+import { Enterprise } from '@/models/Enterprise';
 import { getTenantContext } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -47,6 +48,7 @@ export async function GET(request: Request) {
     }
 
     const staff = await AdminUser.find(filter)
+      .populate({ path: 'enterpriseId', model: Enterprise, select: 'name' })
       .select('-passwordHash')
       .sort({ createdAt: -1 });
 

@@ -2,11 +2,17 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import dbConnect from '@/lib/mongodb';
 import { Device } from '@/models/Device';
+import { Enterprise } from '@/models/Enterprise';
+import { AdminUser } from '@/models/AdminUser';
 
 export async function GET(request: Request) {
   await dbConnect();
   try {
-    const devices = await Device.find().sort({ createdAt: -1 }).lean();
+    const devices = await Device.find()
+      .populate({ path: 'enterpriseId', model: Enterprise, select: 'name' })
+      .populate({ path: 'assignedUserId', model: AdminUser, select: 'displayName username' })
+      .sort({ createdAt: -1 })
+      .lean();
     return NextResponse.json({ success: true, data: devices });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

@@ -7,7 +7,8 @@
     "guided-banner": "../../components/guided-banner/guided-banner",
     "measure-modal": "../../components/measure-modal/measure-modal",
     "bottom-bar": "../../components/bottom-bar/bottom-bar",
-    "angle-measure": "../../components/angle-measure/angle-measure"
+    "angle-measure": "../../components/angle-measure/angle-measure",
+    "technical-report": "../../components/technical-report/technical-report"
   },
   "navigationStyle": "custom",
   "disableScroll": true

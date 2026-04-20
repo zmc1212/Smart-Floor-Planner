@@ -78,6 +78,7 @@
           <view class="three-btn" data-view="left" bindtap="onChangeView3D">左视</view>
           <view class="three-btn" data-view="right" bindtap="onChangeView3D">右视</view>
           <view class="three-btn primary" data-view="walkthrough" bindtap="onChangeView3D">走进新家</view>
+          <view class="three-btn main" bindtap="onOpenTechnicalReport" style="background: #0070f3; color: #fff;">专业报告</view>
         </view>
       </view>
 
@@ -130,5 +131,14 @@
     wallALength="{{angleMeasureWallA}}"
     bindconfirm="onAngleMeasureConfirm"
     bindclose="onCloseAngleMeasure"
+  />
+
+  <!-- 专业量房报告 -->
+  <technical-report 
+    show="{{showTechnicalReport}}" 
+    rooms="{{rooms}}" 
+    branding="{{branding}}" 
+    planName="{{planName}}"
+    bind:close="onCloseTechnicalReport"
   />
 </view>

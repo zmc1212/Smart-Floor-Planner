@@ -5,8 +5,9 @@ import Link from 'next/link';
 import { Canvas } from '@react-three/fiber';
 import { MapControls, PerspectiveCamera, OrthographicCamera, Text, Center, Bounds, ContactShadows, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { ArrowLeft, Activity } from 'lucide-react';
+import { ArrowLeft, Activity, Download, Loader2 } from 'lucide-react';
 import BackButton from '@/components/BackButton';
+import { Button } from '@/components/ui/button';
 
 interface Opening {
   id: string;
@@ -350,9 +351,34 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
   const [is3D, setIs3D] = useState(false);
   const [mounted, setMounted] = useState(false);
   
+  const [isExporting, setIsExporting] = useState(false);
+  
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const handleExportDXF = async () => {
+    setIsExporting(true);
+    try {
+      const res = await fetch(`/api/floorplans/${planData._id}/export/dxf`);
+      if (!res.ok) throw new Error('Export failed');
+      
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `FloorPlan_${planData.name || planData._id}.dxf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      alert('导出 CAD 失败，请稍后重试');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const rooms: Room[] = useMemo(() => {
     if (!planData?.layoutData) return [];
@@ -380,19 +406,31 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
           </div>
         </div>
         
-        <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-xl">
-           <button 
-             onClick={() => setIs3D(false)}
-             className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${!is3D ? 'bg-white shadow-md text-black' : 'text-gray-400'}`}
-           >
-             2D 平面
-           </button>
-           <button 
-             onClick={() => setIs3D(true)}
-             className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${is3D ? 'bg-white shadow-md text-black' : 'text-gray-400'}`}
-           >
-             3D 视角
-           </button>
+        <div className="flex items-center gap-4">
+          <Button 
+            variant="outline" 
+            onClick={handleExportDXF}
+            disabled={isExporting}
+            className="rounded-xl flex items-center gap-2 h-10 px-4 border-gray-200 hover:bg-gray-50 transition-all font-bold text-xs"
+          >
+            {isExporting ? <Loader2 size={16} className="animate-spin text-primary" /> : <Download size={16} className="text-primary" />}
+            {isExporting ? '生成中...' : '导出 CAD (.dxf)'}
+          </Button>
+
+          <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-xl">
+             <button 
+               onClick={() => setIs3D(false)}
+               className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${!is3D ? 'bg-white shadow-md text-black' : 'text-gray-400'}`}
+             >
+               2D 平面
+             </button>
+             <button 
+               onClick={() => setIs3D(true)}
+               className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${is3D ? 'bg-white shadow-md text-black' : 'text-gray-400'}`}
+             >
+               3D 视角
+             </button>
+          </div>
         </div>
       </div>
 

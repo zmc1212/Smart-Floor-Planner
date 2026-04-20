@@ -505,21 +505,32 @@ Component({
     },
 
     findRoomAtPos: function (pos) {
+      // ... same implementation ...
+    },
+
+    findEdgeAtPos: function (pos) {
       var rooms = this.properties.rooms;
-      // 从后往前查找（后绘制的在上面）
+      var tolerance = 10; // 触摸容差
+
       for (var i = rooms.length - 1; i >= 0; i--) {
         var r = rooms[i];
-        if (r.polygon && r.polygon.length >= 3) {
-          // 相对坐标转换
-          if (util.isPointInPolygon(r.polygon, pos.x - r.x, pos.y - r.y)) {
-            return r;
+        if (r.polygon && r.polygon.length >= 2) {
+          var poly = r.polygon;
+          for (var j = 0; j < poly.length; j++) {
+            var k = (j + 1) % poly.length;
+            var x1 = r.x + poly[j].x, y1 = r.y + poly[j].y;
+            var x2 = r.x + poly[k].x, y2 = r.y + poly[k].y;
+            if (util.isPointOnSegment(pos.x, pos.y, x1, y1, x2, y2, tolerance)) {
+              return { roomId: r.id, type: 'polygon', index: j };
+            }
           }
         } else {
-          // 矩形检测
-          if (pos.x >= r.x && pos.x <= r.x + r.width &&
-              pos.y >= r.y && pos.y <= r.y + r.height) {
-            return r;
-          }
+          // 矩形边
+          var x = r.x, y = r.y, w = r.width, h = r.height;
+          if (util.isPointOnSegment(pos.x, pos.y, x, y, x + w, y, tolerance)) return { roomId: r.id, type: 'rect', side: 'top' };
+          if (util.isPointOnSegment(pos.x, pos.y, x, y + h, x + w, y + h, tolerance)) return { roomId: r.id, type: 'rect', side: 'bottom' };
+          if (util.isPointOnSegment(pos.x, pos.y, x, y, x, y + h, tolerance)) return { roomId: r.id, type: 'rect', side: 'left' };
+          if (util.isPointOnSegment(pos.x, pos.y, x + w, y, x + w, y + h, tolerance)) return { roomId: r.id, type: 'rect', side: 'right' };
         }
       }
       return null;
@@ -565,7 +576,11 @@ Component({
       var activeTool = this.properties.activeTool;
 
       if (activeTool === 'SELECT') {
-        // 检查是否点击了房间
+        var edge = this.findEdgeAtPos(pos);
+        if (edge) {
+          this.triggerEvent('edgeselect', edge);
+          return;
+        }
         var room = this.findRoomAtPos(pos);
         if (room) {
           this.triggerEvent('select', { id: room.id });
