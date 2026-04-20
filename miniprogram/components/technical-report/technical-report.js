@@ -116,10 +116,10 @@ Component({
       ctx.fillStyle = '#666666';
       ctx.font = '24px sans-serif';
       ctx.fillText('空间名称', 60, listY + 70);
-      ctx.fillText('长(m)', 250, listY + 70);
-      ctx.fillText('宽(m)', 400, listY + 70);
-      ctx.fillText('高度', 550, listY + 70);
-      ctx.fillText('面积', 660, listY + 70);
+      ctx.fillText('长(m)', 240, listY + 70);
+      ctx.fillText('宽(m)', 360, listY + 70);
+      ctx.fillText('高度', 480, listY + 70);
+      ctx.fillText('面积', 600, listY + 70);
 
       let currentY = listY + 120;
       rooms.forEach((room, index) => {
@@ -131,13 +131,13 @@ Component({
         ctx.fillText(room.name || `空间 ${index + 1}`, 60, currentY + 15);
         
         ctx.font = 'bold 24px sans-serif';
-        ctx.fillText((room.width / 10).toFixed(2), 250, currentY + 15);
-        ctx.fillText((room.height / 10).toFixed(2), 400, currentY + 15);
-        ctx.fillText(`${(room.height3D || 28)/10}m`, 550, currentY + 15);
+        ctx.fillText((room.width / 10).toFixed(2), 240, currentY + 15);
+        ctx.fillText((room.height / 10).toFixed(2), 360, currentY + 15);
+        ctx.fillText(`${(room.height3D || 28)/10}m`, 480, currentY + 15);
         
         const area = (room.width * room.height / 100).toFixed(2);
         ctx.fillStyle = accentColor;
-        ctx.fillText(`${area}㎡`, 660, currentY + 15);
+        ctx.fillText(`${area}㎡`, 600, currentY + 15);
 
         currentY += 80;
       });

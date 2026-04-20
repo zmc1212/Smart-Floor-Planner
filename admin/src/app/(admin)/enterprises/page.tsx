@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Loader2, Plus, Building2, User, Phone, Mail, Copy, Check, MoreHorizontal } from "lucide-react";
+import { Loader2, Plus, Building2, User, Phone, Mail, Copy, Check, MoreHorizontal, Upload, X, Image as ImageIcon } from "lucide-react";
 import { 
   Table, 
   TableBody, 
@@ -39,6 +39,40 @@ export default function EnterprisesPage() {
     branding: { primaryColor: '#171717', accentColor: '#0070f3' }
   });
   const [copyFeedback, setCopyFeedback] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const toBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check file size (limit to 1MB for base64 efficiency)
+    if (file.size > 1024 * 1024) {
+      alert('图片大小不能超过 1MB');
+      return;
+    }
+
+    try {
+      const base64 = await toBase64(file);
+      setFormData({ ...formData, logo: base64 });
+    } catch (err) {
+      console.error('Failed to convert image to base64:', err);
+      alert('图片上传失败');
+    }
+  };
+
+  const removeLogo = () => {
+    setFormData({ ...formData, logo: '' });
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   const fetchEnterprises = async () => {
     setLoading(true);
@@ -430,14 +464,65 @@ export default function EnterprisesPage() {
                   <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">品牌定制 (Whitelabel)</h4>
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="ent-logo">企业 Logo URL</Label>
-                      <Input 
-                        id="ent-logo"
-                        value={formData.logo}
-                        onChange={e => setFormData({...formData, logo: e.target.value})}
-                        placeholder="https://example.com/logo.png"
-                        className="h-10"
-                      />
+                      <Label htmlFor="ent-logo">企业 Logo</Label>
+                      <div className="flex items-start gap-4">
+                        <div 
+                          onClick={() => fileInputRef.current?.click()}
+                          className={cn(
+                            "w-24 h-24 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-colors overflow-hidden bg-muted/20",
+                            formData.logo ? "border-primary/20" : "hover:border-primary/50 hover:bg-muted/30"
+                          )}
+                        >
+                          {formData.logo ? (
+                            <div className="relative w-full h-full group">
+                              <img src={formData.logo} alt="Logo Preview" className="w-full h-full object-contain" />
+                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                <Upload size={20} className="text-white" />
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <ImageIcon size={24} className="text-muted-foreground mb-1" />
+                              <span className="text-[10px] text-muted-foreground">点击上传</span>
+                            </>
+                          )}
+                        </div>
+                        <div className="flex-1 space-y-2">
+                          <p className="text-[11px] text-muted-foreground">
+                            支持 PNG, JPG。建议尺寸：200x200px 以上正方形图。<br/>
+                            图片将以 Base64 格式保存，限制 1MB 以内。
+                          </p>
+                          <div className="flex gap-2">
+                            <Button 
+                              type="button" 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => fileInputRef.current?.click()}
+                              className="h-8 text-[11px]"
+                            >
+                              选择图片
+                            </Button>
+                            {formData.logo && (
+                              <Button 
+                                type="button" 
+                                variant="ghost" 
+                                size="sm" 
+                                onClick={removeLogo}
+                                className="h-8 text-[11px] text-destructive hover:text-destructive hover:bg-destructive/10"
+                              >
+                                移除
+                              </Button>
+                            )}
+                          </div>
+                          <input 
+                            type="file" 
+                            ref={fileInputRef} 
+                            onChange={handleFileChange} 
+                            accept="image/*" 
+                            className="hidden" 
+                          />
+                        </div>
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">

@@ -86,10 +86,27 @@ Page({
     try {
       const res = await api.request(`/floorplans?openid=${openid}`, 'GET');
       if (res.success && res.data) {
-        const formatted = res.data.map(fp => ({
-          ...fp,
-          createdAt: new Date(fp.createdAt).toLocaleString()
-        }));
+        const formatted = res.data.map(fp => {
+          let roomCount = 0;
+          if (fp.layoutData) {
+            try {
+              const rooms = typeof fp.layoutData === 'string' ? JSON.parse(fp.layoutData) : fp.layoutData;
+              roomCount = Array.isArray(rooms) ? rooms.length : (rooms ? 1 : 0);
+            } catch (e) {
+              console.error('Parse layoutData failed', e);
+            }
+          }
+          return {
+            ...fp,
+            roomCount,
+            createdAt: new Date(fp.createdAt).toLocaleDateString('zh-CN', { 
+              month: '2-digit', 
+              day: '2-digit', 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            }).replace(/\//g, '-')
+          };
+        });
         this.setData({ floorPlans: formatted });
       }
     } catch (err) {
@@ -141,6 +158,7 @@ Page({
   // ---- Profile editing ----
   onChooseAvatar(e) {
     const { avatarUrl } = e.detail;
+    wx.showLoading({ title: '处理中' });
     wx.getFileSystemManager().readFile({
       filePath: avatarUrl,
       encoding: 'base64',
@@ -148,9 +166,13 @@ Page({
         const base64Avatar = 'data:image/jpeg;base64,' + res.data;
         this.setData({
           'userInfo.avatar': base64Avatar
+        }, () => {
+          // Auto-save when avatar changes
+          this.onSaveProfile(true);
         });
       },
       fail: (err) => {
+        wx.hideLoading();
         console.error('Failed to read avatar file', err);
         wx.showToast({ title: '读取头像失败', icon: 'none' });
       }
@@ -169,33 +191,50 @@ Page({
     });
   },
 
-  async onSaveProfile() {
+  async onSaveProfile(isAutoSave = false) {
     const openid = app.globalData.openid;
     if (!openid) {
       wx.showToast({ title: '尚未登录', icon: 'none' });
       return;
     }
 
-    wx.showLoading({ title: '保存中' });
+    if (!isAutoSave) wx.showLoading({ title: '保存中' });
+    
     try {
       const res = await api.request(`/users/${openid}`, 'PUT', {
         nickname: this.data.userInfo.nickname,
         avatar: this.data.userInfo.avatar,
         communityName: this.data.userInfo.communityName
       });
+      
       wx.hideLoading();
-      wx.showToast({ title: '保存成功', icon: 'success' });
       
-      // Update global Data
-      app.globalData.userInfo = this.data.userInfo;
-      // Update storage
-      wx.setStorageSync('userInfo', this.data.userInfo);
-      
+      if (res.success) {
+        wx.showToast({ title: isAutoSave ? '头像更新完成' : '保存成功', icon: 'success' });
+        
+        // Update global Data
+        app.globalData.userInfo = res.data || this.data.userInfo;
+        // Update storage
+        wx.setStorageSync('userInfo', app.globalData.userInfo);
+        
+        // Sync local page state if server returned merged data
+        if (res.data) {
+          this.setData({ userInfo: res.data });
+        }
+      } else {
+        throw new Error(res.error || '保存失败');
+      }
     } catch (err) {
       wx.hideLoading();
-      console.error(err);
-      wx.showToast({ title: '保存失败', icon: 'none' });
+      console.error('Update profile error:', err);
+      wx.showToast({ title: err.error || '保存失败', icon: 'none' });
     }
+  },
+
+  onCreateNew() {
+    wx.navigateTo({
+      url: '/pages/editor/editor'
+    });
   },
 
   // ---- Logout ----

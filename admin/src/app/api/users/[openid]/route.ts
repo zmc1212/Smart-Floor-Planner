@@ -33,6 +33,8 @@ export async function PUT(req: Request, { params }: { params: Promise<{ openid: 
     const { openid } = resolvedParams;
     const body = await req.json();
     
+    console.log(`[API] User update for openid: ${openid}. Body keys: ${Object.keys(body).join(', ')}. Avatar size: ${body.avatar ? body.avatar.length : 0} chars`);
+    
     // Safety check - don't allow modifying sensitive fields like role here unless authorized 
     // (For real apps, add JWT proxy)
     delete body.role; 
