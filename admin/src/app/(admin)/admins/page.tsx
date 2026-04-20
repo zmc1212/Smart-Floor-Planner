@@ -5,10 +5,9 @@ export const dynamic = 'force-dynamic';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Shield, Search, Plus, RefreshCw, Edit2, Trash2, Check, X,
-  ArrowLeft, KeyRound, Ban, CheckCircle, ChevronDown, ChevronUp, Lock, UserCog
+  KeyRound, Ban, CheckCircle, ChevronDown, ChevronUp, Lock, UserCog
 } from 'lucide-react';
 import Link from 'next/link';
-import Navbar from '@/components/Navbar';
 import { 
   Table, 
   TableBody, 
@@ -73,10 +72,14 @@ const getRoleBadge = (role: string) => {
 
 const ALL_MENUS = [
   { key: 'dashboard', label: '总览' },
+  { key: 'leads', label: '客资线索' },
   { key: 'floorplans', label: '户型图' },
-  { key: 'users', label: '用户列表' },
+  { key: 'inspirations', label: '设计灵感' },
+  { key: 'enterprises', label: '企业管理' },
   { key: 'devices', label: '设备管理' },
-  { key: 'admins', label: '管理员管理' },
+  { key: 'staff', label: '员工管理' },
+  { key: 'admins', label: '超级管理' },
+  { key: 'users', label: '小程序用户' },
 ];
 
 export default function AdminsPage() {
@@ -316,15 +319,7 @@ export default function AdminsPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <Navbar />
       <div className="p-6 max-w-6xl mx-auto">
-        <Link
-          href="/"
-          className="flex items-center gap-1 text-gray-500 hover:text-blue-600 transition-colors mb-6 w-fit"
-        >
-          <ArrowLeft size={16} />
-          <span className="text-sm font-medium">返回首页</span>
-        </Link>
 
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">

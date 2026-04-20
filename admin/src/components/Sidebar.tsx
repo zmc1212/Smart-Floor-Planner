@@ -1,0 +1,252 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import { 
+  LayoutDashboard, 
+  Users, 
+  Map, 
+  Smartphone, 
+  ClipboardList, 
+  Sparkles, 
+  UserSquare2, 
+  UserCog, 
+  Building2, 
+  LogOut, 
+  ChevronLeft, 
+  Menu,
+  ChevronRight,
+  ChevronDown
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Button, buttonVariants } from '@/components/ui/button';
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+
+interface MenuItem {
+  key: string;
+  label: string;
+  icon: React.ElementType;
+  href: string;
+  children?: MenuItem[];
+}
+
+interface MenuCategory {
+  title: string;
+  items: MenuItem[];
+}
+
+const MENU_CONFIG: MenuCategory[] = [
+  {
+    title: '运营核心',
+    items: [
+      { key: 'dashboard', label: '总览', icon: LayoutDashboard, href: '/' },
+    ]
+  },
+  {
+    title: '业务管理',
+    items: [
+      { key: 'leads', label: '客资线索', icon: ClipboardList, href: '/leads' },
+      { key: 'floorplans', label: '户型图库', icon: Map, href: '/floorplans' },
+      { key: 'inspirations', label: '灵感库', icon: Sparkles, href: '/inspirations' },
+    ]
+  },
+  {
+    title: '资源与设备',
+    items: [
+      { key: 'enterprises', label: '企业管理', icon: Building2, href: '/enterprises' },
+      { key: 'devices', label: '设备管理', icon: Smartphone, href: '/devices' },
+    ]
+  },
+  {
+    title: '组织与权限',
+    items: [
+      { key: 'staff', label: '员工管理', icon: UserSquare2, href: '/staff' },
+      { key: 'admins', label: '系统管理', icon: UserCog, href: '/admins' },
+      { key: 'users', label: '小程序用户', icon: Users, href: '/users' },
+    ]
+  }
+];
+
+export default function Sidebar() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [admin, setAdmin] = useState<any>(null);
+  const [openCategories, setOpenCategories] = useState<string[]>(['运营核心', '业务管理', '资源与设备', '组织与权限']);
+
+  useEffect(() => {
+    // Load collapse state from local storage
+    const saved = localStorage.getItem('sidebar-collapsed');
+    if (saved !== null) setIsCollapsed(saved === 'true');
+
+    // Fetch user data
+    fetch('/api/auth/me')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) setAdmin(data.data);
+      })
+      .catch(err => console.error('Auth error:', err));
+  }, []);
+
+  const toggleCollapse = () => {
+    const newState = !isCollapsed;
+    setIsCollapsed(newState);
+    localStorage.setItem('sidebar-collapsed', String(newState));
+  };
+
+  const handleLogout = async () => {
+    try {
+      const res = await fetch('/api/auth/logout', { method: 'POST' });
+      if (res.ok) {
+        router.push('/login');
+        router.refresh();
+      }
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
+  const NavItem = ({ item, collapsed }: { item: MenuItem; collapsed: boolean }) => {
+    const isActive = pathname === item.href;
+    const hasPermission = admin?.effectivePermissions?.includes(item.key);
+
+    if (admin && !hasPermission) return null;
+
+    return (
+      <Link
+        href={item.href}
+        className={cn(
+          "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative",
+          isActive 
+            ? "bg-white/10 text-white shadow-sm" 
+            : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5"
+        )}
+        title={collapsed ? item.label : undefined}
+      >
+        <item.icon size={20} className={cn("shrink-0", isActive ? "text-white" : "group-hover:text-zinc-100")} />
+        {!collapsed && (
+          <span className="text-[14px] font-medium tracking-tight whitespace-nowrap overflow-hidden text-ellipsis">
+            {item.label}
+          </span>
+        )}
+        {isActive && !collapsed && (
+          <div className="absolute right-2 w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+        )}
+      </Link>
+    );
+  };
+
+  const SidebarContent = ({ collapsed }: { collapsed: boolean }) => (
+    <div className="flex flex-col h-full bg-zinc-950 text-zinc-100 border-r border-zinc-800">
+      {/* Header */}
+      <div className={cn("h-16 flex items-center px-6 border-b border-zinc-800 shrink-0", collapsed && "px-0 justify-center")}>
+        {!collapsed ? (
+          <h1 className="text-[15px] font-bold tracking-[-0.5px] uppercase">
+            Smart Floor <span className="text-zinc-500">Planner</span>
+          </h1>
+        ) : (
+          <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-zinc-950 font-black text-sm">
+            S
+          </div>
+        )}
+      </div>
+
+      {/* Navigation */}
+      <div className="flex-1 overflow-y-auto py-6 px-3 space-y-8 scrollbar-hide">
+        {MENU_CONFIG.map((category) => {
+          // Check if category has any visible items
+          const visibleItems = category.items.filter(item => !admin || admin.effectivePermissions?.includes(item.key));
+          if (visibleItems.length === 0) return null;
+
+          return (
+            <div key={category.title} className="space-y-2">
+              {!collapsed && (
+                <h2 className="px-3 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.1em] mb-2">
+                  {category.title}
+                </h2>
+              )}
+              <div className="space-y-1">
+                {visibleItems.map(item => (
+                  <NavItem key={item.key} item={item} collapsed={collapsed} />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Footer Profile */}
+      <div className="mt-auto border-t border-zinc-800 p-3 space-y-2">
+        <div className={cn(
+          "flex items-center gap-3 p-2 rounded-xl bg-zinc-900/50 border border-zinc-800/50",
+          collapsed && "justify-center p-1.5 border-none bg-transparent"
+        )}>
+          <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-zinc-950 font-bold shrink-0">
+            {admin?.displayName ? admin.displayName[0] : (admin?.username ? admin.username[0].toUpperCase() : '?')}
+          </div>
+          {!collapsed && (
+            <div className="flex-1 min-w-0">
+              <p className="text-[13px] font-bold truncate leading-none mb-1">
+                {admin?.displayName || admin?.username || 'Loading...'}
+              </p>
+              <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-bold">
+                {admin?.role === 'super_admin' ? 'Super Admin' : 'Staff'}
+              </p>
+            </div>
+          )}
+        </div>
+        
+        <button 
+          onClick={handleLogout}
+          className={cn(
+            "w-full flex items-center gap-3 px-3 py-2 text-zinc-500 hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-colors group",
+            collapsed && "justify-center px-0"
+          )}
+        >
+          <LogOut size={18} className="shrink-0" />
+          {!collapsed && <span className="text-[13px] font-medium">退出系统</span>}
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Desktop Sidebar Container */}
+      <aside 
+        className={cn(
+          "hidden md:flex flex-col h-screen sticky top-0 transition-all duration-300 ease-in-out shrink-0",
+          isCollapsed ? "w-20" : "w-64"
+        )}
+      >
+        <SidebarContent collapsed={isCollapsed} />
+        
+        {/* Collapse Toggle Button */}
+        <button
+          onClick={toggleCollapse}
+          className="absolute -right-3 top-20 w-6 h-6 bg-zinc-800 border border-zinc-700 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700 transition-all z-50 shadow-lg"
+        >
+          {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+        </button>
+      </aside>
+
+      {/* Mobile Menu Trigger (Sticky Header on Mobile) */}
+      <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-white border-b px-4 flex items-center justify-between z-40">
+        <h1 className="text-sm font-bold tracking-tight">QUANTUM PLANNER</h1>
+        <Sheet>
+          <SheetTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon-lg" }), "h-10 w-10 md:hidden")}>
+            <Menu size={20} />
+          </SheetTrigger>
+          <SheetContent side="left" className="p-0 w-72 border-none">
+            <SidebarContent collapsed={false} />
+          </SheetContent>
+        </Sheet>
+      </div>
+    </>
+  );
+}

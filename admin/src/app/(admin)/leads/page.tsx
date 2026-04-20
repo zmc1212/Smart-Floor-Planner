@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 export const dynamic = 'force-dynamic';
-import Navbar from "@/components/Navbar";
 import { Loader2, Phone, CheckCircle, Clock, User, MessageSquare, Plus, X, Search, Filter } from "lucide-react";
 import { 
   Table, 
@@ -181,7 +180,6 @@ export default function LeadsPage() {
 
   return (
     <div className="min-h-screen bg-white text-[#171717] font-sans">
-      <Navbar />
       <main className="max-w-7xl mx-auto px-6 py-16">
         <div className="mb-12 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-4">

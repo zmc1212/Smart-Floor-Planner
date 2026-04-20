@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Navbar from "@/components/Navbar";
-import { Loader2, User as UserIcon, Plus, X, Shield, Pencil, Trash2, Smartphone, ArrowLeft, Mail } from "lucide-react";
+import { Loader2, User as UserIcon, Plus, X, Shield, Pencil, Trash2, Smartphone, Mail } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -247,15 +246,7 @@ export default function StaffPage() {
 
   return (
     <div className="min-h-screen bg-white text-[#171717] font-sans">
-      <Navbar />
       <main className="max-w-7xl mx-auto px-6 py-12">
-        <Link
-          href="/"
-          className="flex items-center gap-1 text-muted-foreground hover:text-primary transition-colors mb-8 w-fit"
-        >
-          <ArrowLeft size={16} />
-          <span className="text-sm font-medium">返回首页</span>
-        </Link>
 
         <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="space-y-1">

@@ -4,7 +4,6 @@ import dbConnect from "@/lib/mongodb";
 import { User } from "@/models/User";
 import { FloorPlan } from "@/models/FloorPlan";
 import UserDashboard from "@/components/UserDashboard";
-import Navbar from "@/components/Navbar";
 
 export default async function Home() {
   // Fetch real data on the server
@@ -35,7 +34,6 @@ export default async function Home() {
 
   return (
     <div className="min-h-screen bg-white text-[#171717] font-sans selection:bg-[#ebebeb]">
-      <Navbar />
 
       <main className="max-w-7xl mx-auto px-6 py-16">
         <div className="mb-12">

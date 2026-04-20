@@ -3,9 +3,8 @@
 export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect } from 'react';
-import { Trash2, Plus, RefreshCw, Cpu, Search, Edit2, Check, X, ArrowLeft, Building2, User } from 'lucide-react';
+import { Trash2, Plus, RefreshCw, Cpu, Search, Edit2, Check, X, Building2, User } from 'lucide-react';
 import Link from 'next/link';
-import Navbar from '@/components/Navbar';
 import { 
   Table, 
   TableBody, 
@@ -220,7 +219,6 @@ export default function DevicesPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      <Navbar />
       <div className="p-6 max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
             <div className="flex items-center gap-4">
