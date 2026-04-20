@@ -246,7 +246,7 @@ export default function LeadsPage() {
                       <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">业务状态</label>
                       <Select 
                         value={selectedLead.status}
-                        onValueChange={(val) => updateLead(selectedLead._id, { status: val })}
+                        onValueChange={(val) => val && updateLead(selectedLead._id, { status: val })}
                       >
                         <SelectTrigger className="w-full h-10 rounded-xl bg-muted/50 border-none shadow-none focus:ring-1 focus:ring-primary/20">
                           <SelectValue />

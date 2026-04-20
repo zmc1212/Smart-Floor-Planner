@@ -156,7 +156,7 @@ export default function InspirationsPage() {
             <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">空间类型</Label>
             <Select 
               value={formData.roomType} 
-              onValueChange={(val) => setFormData({...formData, roomType: val})}
+              onValueChange={(val) => val && setFormData({...formData, roomType: val})}
             >
               <SelectTrigger className="h-12 rounded-2xl bg-muted/30 border-none focus-visible:ring-primary font-medium shadow-none">
                 <SelectValue placeholder="选择空间" />
@@ -173,7 +173,7 @@ export default function InspirationsPage() {
             <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">设计风格</Label>
             <Select 
               value={formData.style} 
-              onValueChange={(val) => setFormData({...formData, style: val})}
+              onValueChange={(val) => val && setFormData({...formData, style: val})}
             >
               <SelectTrigger className="h-12 rounded-2xl bg-muted/30 border-none focus-visible:ring-primary font-medium shadow-none">
                 <SelectValue placeholder="选择风格" />

@@ -209,7 +209,7 @@ export default function StaffPage() {
           <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">岗位角色</Label>
           <Select 
             value={formData.role} 
-            onValueChange={(val) => setFormData({...formData, role: val})}
+            onValueChange={(val) => val && setFormData({...formData, role: val})}
           >
             <SelectTrigger className="h-12 rounded-2xl bg-muted/30 border-none focus-visible:ring-primary">
               <SelectValue placeholder="选择角色" />

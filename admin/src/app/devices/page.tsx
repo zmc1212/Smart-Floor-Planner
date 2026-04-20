@@ -325,7 +325,7 @@ export default function DevicesPage() {
                             </TableCell>
                             <TableCell className="px-8 py-6">
                                 {editingId === device._id && (currentUser?.role === 'super_admin' || currentUser?.role === 'admin') ? (
-                                    <Select value={editEnterprise} onValueChange={setEditEnterprise}>
+                                    <Select value={editEnterprise} onValueChange={(val) => setEditEnterprise(val || '')}>
                                         <SelectTrigger className="h-9 border-primary shadow-none">
                                             <SelectValue placeholder="未分配企业" />
                                         </SelectTrigger>
@@ -343,7 +343,7 @@ export default function DevicesPage() {
                             </TableCell>
                             <TableCell className="px-8 py-6">
                                 {editingId === device._id ? (
-                                    <Select value={editStaff} onValueChange={setEditStaff}>
+                                    <Select value={editStaff} onValueChange={(val) => setEditStaff(val || '')}>
                                         <SelectTrigger className="h-9 border-primary shadow-none">
                                             <SelectValue placeholder="未指派个人" />
                                         </SelectTrigger>

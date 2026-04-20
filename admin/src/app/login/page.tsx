@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Cpu, Lock, User as UserIcon, AlertCircle, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
+import { Cpu, Lock, User as UserIcon, AlertCircle, ArrowRight, ShieldCheck, Sparkles, Loader2 } from 'lucide-react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -79,7 +79,7 @@ export default function LoginPage() {
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-muted-foreground/40 group-focus-within:text-primary transition-colors">
                     <UserIcon size={18} />
                   </div>
-                  <Input
+                   <Input
                     required
                     type="text"
                     value={username}
@@ -87,6 +87,7 @@ export default function LoginPage() {
                     className="h-14 pl-12 bg-muted/30 border-none rounded-[18px] text-foreground focus-visible:ring-primary focus-visible:bg-white font-bold transition-all placeholder:font-normal"
                     placeholder="请输入管理员 ID"
                     autoFocus
+                    suppressHydrationWarning
                   />
                 </div>
               </div>
@@ -100,13 +101,14 @@ export default function LoginPage() {
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-muted-foreground/40 group-focus-within:text-primary transition-colors">
                     <Lock size={18} />
                   </div>
-                  <Input
+                   <Input
                     required
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="h-14 pl-12 bg-muted/30 border-none rounded-[18px] text-foreground focus-visible:ring-primary focus-visible:bg-white transition-all"
                     placeholder="••••••••"
+                    suppressHydrationWarning
                   />
                 </div>
               </div>

@@ -3,7 +3,7 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 export interface IUser extends Document {
   username?: string;
   passwordHash?: string;
-  role: 'admin' | 'user';
+  role: 'admin' | 'user' | 'staff';
   openid?: string;
   nickname?: string;
   avatar?: string; // Storing as base64 or URL

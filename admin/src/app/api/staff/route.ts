@@ -75,7 +75,7 @@ export async function POST(request: Request) {
 
     // Enterprise Isolation: staff must belong to the same enterprise as the creator
     // unless the creator is a super_admin
-    let targetEnterpriseId = context.enterpriseId;
+    let targetEnterpriseId: string | undefined = context.enterpriseId || undefined;
     if ((context.role === 'super_admin' || context.role === 'admin') && body.enterpriseId) {
       targetEnterpriseId = body.enterpriseId;
     }

@@ -392,7 +392,7 @@ export default function AdminsPage() {
                      </div>
                      <div className="space-y-2">
                        <Label>分配角色</Label>
-                       <Select value={newRole} onValueChange={setNewRole}>
+                        <Select value={newRole} onValueChange={(val) => val && setNewRole(val)}>
                         <SelectTrigger className="w-full h-10 rounded-xl bg-muted/50 border-none shadow-none">
                           <SelectValue />
                         </SelectTrigger>
@@ -499,7 +499,7 @@ export default function AdminsPage() {
                     </TableCell>
                     <TableCell>
                       {editingId === admin._id ? (
-                        <Select value={editRole} onValueChange={setEditRole}>
+                        <Select value={editRole} onValueChange={(val) => val && setEditRole(val)}>
                           <SelectTrigger className="h-8 py-0 rounded-lg border-primary text-xs">
                             <SelectValue />
                           </SelectTrigger>
