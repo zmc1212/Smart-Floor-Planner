@@ -10,6 +10,15 @@
   />
 
   <view class="main-content">
+    <!-- 企业品牌展示 (Whitelabel) -->
+    <view class="branding-banner" wx:if="{{branding}}" style="border-left: 8rpx solid {{branding.branding.primaryColor}}">
+      <image class="brand-logo" src="{{branding.logo || '/assets/icons/logo.png'}}" mode="aspectFit" />
+      <view class="brand-info">
+        <text class="brand-name">{{branding.name}}</text>
+        <text class="brand-tagline">专业量房·智能快装</text>
+      </view>
+    </view>
+
     <!-- 2. 蓝牙强制连接引导页 -->
     <ble-gate 
       wx:if="{{!bleConnected}}" 

@@ -67,8 +67,6 @@ App({
   syncProfessionalContext() {
     const userInfo = this.globalData.userInfo;
     if (userInfo && userInfo.role === 'staff' && userInfo.enterpriseId) {
-      // 如果当前没有正在追踪的外部推荐，或者当前推荐就是自己所在的组织
-      // 则始终确保分享和留资指向自己的公司/个人
       if (!this.globalData.referral.enterpriseId || this.globalData.referral.enterpriseId === userInfo.enterpriseId) {
         this.globalData.referral = {
           enterpriseId: userInfo.enterpriseId,
@@ -76,6 +74,32 @@ App({
         };
         console.log('App: Professional context synced to self');
       }
+    }
+    
+    // 如果有企业 ID，同步品牌信息
+    if (this.globalData.referral.enterpriseId) {
+      this.syncBranding(this.globalData.referral.enterpriseId);
+    }
+  },
+
+  async syncBranding(enterpriseId) {
+    const api = require('./utils/api.js');
+    try {
+      const res = await api.request(`/branding/${enterpriseId}`, 'GET');
+      if (res.success && res.data) {
+        this.globalData.branding = res.data;
+        console.log('App: Branding synced:', res.data);
+        // 通知当前页面更新（如果需要）
+        const pages = getCurrentPages();
+        if (pages.length > 0) {
+          const currentPage = pages[pages.length - 1];
+          if (currentPage.onBrandingReady) {
+            currentPage.onBrandingReady(res.data);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('App: Failed to sync branding:', err);
     }
   }
 });

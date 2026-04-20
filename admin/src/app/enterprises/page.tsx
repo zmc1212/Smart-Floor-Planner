@@ -35,7 +35,9 @@ export default function EnterprisesPage() {
   const [formData, setFormData] = useState({
     name: '',
     code: '',
-    contactPerson: { name: '', phone: '', email: '' }
+    contactPerson: { name: '', phone: '', email: '' },
+    logo: '',
+    branding: { primaryColor: '#171717', accentColor: '#0070f3' }
   });
   const [copyFeedback, setCopyFeedback] = useState(false);
 
@@ -80,6 +82,11 @@ export default function EnterprisesPage() {
           name: ent.contactPerson?.name || '',
           phone: ent.contactPerson?.phone || '',
           email: ent.contactPerson?.email || ''
+        },
+        logo: ent.logo || '',
+        branding: {
+          primaryColor: ent.branding?.primaryColor || '#171717',
+          accentColor: ent.branding?.accentColor || '#0070f3'
         }
       });
     } else {
@@ -87,7 +94,9 @@ export default function EnterprisesPage() {
       setFormData({
         name: '',
         code: '',
-        contactPerson: { name: '', phone: '', email: '' }
+        contactPerson: { name: '', phone: '', email: '' },
+        logo: '',
+        branding: { primaryColor: '#171717', accentColor: '#0070f3' }
       });
     }
     setIsModalOpen(true);
@@ -416,6 +425,48 @@ export default function EnterprisesPage() {
                       className="h-10 font-mono"
                       placeholder="18位社会信用代码"
                     />
+                  </div>
+                </div>
+
+                <div className="pt-4 space-y-4 border-t">
+                  <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-widest">品牌定制 (Whitelabel)</h4>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="ent-logo">企业 Logo URL</Label>
+                      <Input 
+                        id="ent-logo"
+                        value={formData.logo}
+                        onChange={e => setFormData({...formData, logo: e.target.value})}
+                        placeholder="https://example.com/logo.png"
+                        className="h-10"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="primary-color">标准色 (Primary)</Label>
+                        <div className="flex gap-2">
+                          <div className="w-10 h-10 rounded-lg border shrink-0" style={{ backgroundColor: formData.branding.primaryColor }}></div>
+                          <Input 
+                            id="primary-color"
+                            value={formData.branding.primaryColor}
+                            onChange={e => setFormData({...formData, branding: {...formData.branding, primaryColor: e.target.value}})}
+                            placeholder="#171717"
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="accent-color">点缀色 (Accent)</Label>
+                        <div className="flex gap-2">
+                          <div className="w-10 h-10 rounded-lg border shrink-0" style={{ backgroundColor: formData.branding.accentColor }}></div>
+                          <Input 
+                            id="accent-color"
+                            value={formData.branding.accentColor}
+                            onChange={e => setFormData({...formData, branding: {...formData.branding, accentColor: e.target.value}})}
+                            placeholder="#0070f3"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
 

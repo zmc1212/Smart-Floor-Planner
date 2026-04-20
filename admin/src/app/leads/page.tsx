@@ -123,6 +123,12 @@ export default function LeadsPage() {
         return <Badge variant="secondary" className="bg-blue-100 text-blue-800 hover:bg-blue-100/80 border-none">新线索</Badge>;
       case 'contacted':
         return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100/80 border-none">已联系</Badge>;
+      case 'measuring':
+        return <Badge variant="secondary" className="bg-purple-100 text-purple-800 hover:bg-purple-100/80 border-none">量房中</Badge>;
+      case 'designing':
+        return <Badge variant="secondary" className="bg-indigo-100 text-indigo-800 hover:bg-indigo-100/80 border-none">方案设计</Badge>;
+      case 'quoting':
+        return <Badge variant="secondary" className="bg-orange-100 text-orange-800 hover:bg-orange-100/80 border-none">报价中</Badge>;
       case 'converted':
         return <Badge variant="secondary" className="bg-green-100 text-green-800 hover:bg-green-100/80 border-none">已转化</Badge>;
       case 'closed':
@@ -252,10 +258,13 @@ export default function LeadsPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="new">新线索</SelectItem>
-                          <SelectItem value="contacted">已联系</SelectItem>
-                          <SelectItem value="converted">已转化 (成单)</SelectItem>
-                          <SelectItem value="closed">已关闭 (流失)</SelectItem>
+                          <SelectItem value="new">新线索 (待处理)</SelectItem>
+                          <SelectItem value="contacted">已联系 (沟通中)</SelectItem>
+                          <SelectItem value="measuring">量房中 (上门测量)</SelectItem>
+                          <SelectItem value="designing">设计中 (方案制作)</SelectItem>
+                          <SelectItem value="quoting">报价中 (预结算)</SelectItem>
+                          <SelectItem value="converted">已转化 (签单成功)</SelectItem>
+                          <SelectItem value="closed">已关闭 (暂时流失)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -277,6 +286,11 @@ export default function LeadsPage() {
                           ))}
                         </SelectContent>
                       </Select>
+                      {selectedLead.assignedAt && (
+                        <div className="text-[10px] text-muted-foreground mt-1">
+                          指派时间: {new Date(selectedLead.assignedAt).toLocaleString()}
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -295,6 +309,9 @@ export default function LeadsPage() {
                       <span className="font-semibold text-xs bg-background px-2 py-0.5 rounded-full border">{selectedLead.source}</span>
                     </div>
                   </div>
+
+                  {/* Related Floor Plans */}
+                  <RelatedFloorPlans phone={selectedLead.phone} />
 
                   {/* Follow up records */}
                   <div className="space-y-6">
@@ -348,6 +365,60 @@ export default function LeadsPage() {
           </SheetContent>
         </Sheet>
       </main>
+    </div>
+  );
+}
+
+function RelatedFloorPlans({ phone }: { phone: string }) {
+  const [floorPlans, setFloorPlans] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchRelatedPlans = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/floorplans?phone=${phone}`);
+        const data = await res.json();
+        if (data.success) {
+          setFloorPlans(data.data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch related plans:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (phone) fetchRelatedPlans();
+  }, [phone]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 text-sm font-bold tracking-tight">
+        <Clock size={16} className="text-primary" /> 
+        关联实测记录 
+        <Badge variant="outline" className="ml-1 px-1.5 h-4 text-[10px]">{floorPlans.length}</Badge>
+      </div>
+      
+      <div className="space-y-2">
+        {loading ? (
+          <div className="text-xs text-muted-foreground animate-pulse">正在加载实测数据...</div>
+        ) : floorPlans.length > 0 ? (
+          floorPlans.map((plan) => (
+            <div key={plan._id} className="flex items-center justify-between p-3 bg-muted/20 border rounded-xl hover:bg-muted/30 transition-colors cursor-pointer group"
+                 onClick={() => window.location.href = `/floorplans?id=${plan._id}`}>
+              <div className="flex flex-col">
+                <span className="text-sm font-medium">{plan.name}</span>
+                <span className="text-[10px] text-muted-foreground">测量日期: {new Date(plan.createdAt).toLocaleDateString()}</span>
+              </div>
+              <Button size="sm" variant="ghost" className="h-7 text-[11px] group-hover:bg-background">查看</Button>
+            </div>
+          ))
+        ) : (
+          <div className="text-center py-6 text-muted-foreground text-[11px] border border-dashed rounded-xl">
+            暂无实测记录
+          </div>
+        )}
+      </div>
     </div>
   );
 }

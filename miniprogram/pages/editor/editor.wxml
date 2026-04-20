@@ -77,6 +77,7 @@
           <view class="three-btn" data-view="front" bindtap="onChangeView3D">正视</view>
           <view class="three-btn" data-view="left" bindtap="onChangeView3D">左视</view>
           <view class="three-btn" data-view="right" bindtap="onChangeView3D">右视</view>
+          <view class="three-btn primary" data-view="walkthrough" bindtap="onChangeView3D">走进新家</view>
         </view>
       </view>
 

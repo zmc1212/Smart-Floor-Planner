@@ -13,6 +13,43 @@
   overflow: hidden;
 }
 
+.branding-banner {
+  margin: 24rpx 32rpx;
+  padding: 24rpx;
+  background: #f8fafc;
+  border-radius: 16rpx;
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
+  box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.03);
+}
+
+.brand-logo {
+  width: 80rpx;
+  height: 80rpx;
+  background: #fff;
+  border-radius: 12rpx;
+  box-shadow: 0 0 0 1rpx rgba(0,0,0,0.05);
+}
+
+.brand-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.brand-name {
+  font-size: 30rpx;
+  font-weight: 700;
+  color: #171717;
+  letter-spacing: -0.5rpx;
+}
+
+.brand-tagline {
+  font-size: 22rpx;
+  color: #64748b;
+  margin-top: 4rpx;
+}
+
 /* 浮动：获取报价 */
 .floating-btn-lead {
   position: absolute;

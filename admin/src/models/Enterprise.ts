@@ -12,6 +12,11 @@ export interface IEnterprise extends Document {
   };
   address?: string;
   description?: string;
+  logo?: string; // URL or Base64 logo
+  branding?: {
+    primaryColor?: string;
+    accentColor?: string;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -37,6 +42,11 @@ const EnterpriseSchema: Schema<IEnterprise> = new Schema(
     },
     address: { type: String },
     description: { type: String },
+    logo: { type: String },
+    branding: {
+      primaryColor: { type: String, default: '#171717' },
+      accentColor: { type: String, default: '#0070f3' }
+    }
   },
   {
     timestamps: true,

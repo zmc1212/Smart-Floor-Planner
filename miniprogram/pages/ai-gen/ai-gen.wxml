@@ -49,6 +49,7 @@
       <!-- Result Actions -->
       <view class="result-actions" wx:if="{{room.renderingUrl && !isGenerating}}">
         <button class="action-btn" bindtap="onPreviewImage">预览大图</button>
+        <button class="action-btn" bindtap="onOpenSharePoster">分享量房海报</button>
         <button class="action-btn primary" bindtap="onOpenLeadModal">获取完整设计方案</button>
         <button class="action-btn secondary" bindtap="onExportPrompt">复制设计提示词</button>
       </view>
@@ -146,4 +147,11 @@
   </view>
 
   <lead-modal show="{{showLeadModal}}" bindclose="onCloseLeadModal" bindsuccess="onLeadSuccess" />
+  
+  <!-- 8. 分享海报组件 -->
+  <share-poster 
+    show="{{showSharePoster}}" 
+    caseData="{{posterData}}" 
+    bind:close="onCloseSharePoster" 
+  />
 </view>

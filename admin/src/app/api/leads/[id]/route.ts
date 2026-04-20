@@ -14,6 +14,11 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     const { id } = await params;
     const body = await request.json();
 
+    // If assigning to someone for the first time or changing assignment, update assignedAt
+    if (body.assignedTo) {
+      body.assignedAt = new Date();
+    }
+
     // Verify ownership/tenant access
     const tenantFilter = getTenantFilter(context, { staffField: 'assignedTo' });
     const lead = await Lead.findOneAndUpdate(

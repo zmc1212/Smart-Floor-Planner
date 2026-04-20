@@ -38,6 +38,7 @@ export async function GET(req: Request) {
     await dbConnect();
     const { searchParams } = new URL(req.url);
     const openid = searchParams.get('openid');
+    const phone = searchParams.get('phone');
     const search = searchParams.get('search');
 
     let query: any = {};
@@ -47,6 +48,14 @@ export async function GET(req: Request) {
         return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
       }
       query.creator = user._id;
+    } else if (phone) {
+      const users = await User.find({ phone });
+      if (users.length > 0) {
+        query.creator = { $in: users.map(u => u._id) };
+      } else {
+        // If no user found by phone, return empty data
+        return NextResponse.json({ success: true, data: [] });
+      }
     }
 
     if (search) {

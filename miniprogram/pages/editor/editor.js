@@ -351,8 +351,8 @@ Page({
       const mat = new THREE.MeshStandardMaterial({ 
         color: 0xffffff, 
         side: THREE.DoubleSide,
-        roughness: 0.7,
-        metalness: 0.1
+        roughness: 0.4,
+        metalness: 0.05
       });
       return new THREE.Mesh(new THREE.ShapeGeometry(shape), mat);
     };
@@ -377,9 +377,10 @@ Page({
 
         const roomGroup = new THREE.Group();
         const floorMat = new THREE.MeshStandardMaterial({ 
-          color: 0xf5f5f5, 
+          color: 0xfafafa, 
           side: THREE.DoubleSide,
-          roughness: 0.8
+          roughness: 0.9,
+          metalness: 0
         });
 
         if (room.polygon && room.polygon.length >= 3) {
@@ -461,6 +462,7 @@ Page({
     const sizeZ = maxZ - minZ;
     const maxSize = Math.max(sizeX || 100, sizeZ || 100);
     const camDist = maxSize * 1.5;
+    this.defaultDist = camDist;
     
     camera.position.set(0, camDist, camDist);
     camera.lookAt(0, 0, 0);
@@ -587,7 +589,7 @@ Page({
     const view = e.currentTarget.dataset.view;
     let targetTheta = this.orbit.spherical.theta;
     let targetPhi = this.orbit.spherical.phi;
-    let targetRadius = this.orbit.spherical.radius;
+    let targetRadius = this.defaultDist || 150;
     let targetPos = new this.orbit.THREE.Vector3(0, 0, 0);
     
     if (view === 'default') { 
@@ -605,6 +607,38 @@ Page({
     } else if (view === 'right') { 
       targetTheta = -Math.PI / 2; 
       targetPhi = Math.PI / 2.1; 
+    } else if (view === 'walkthrough') {
+      const rooms = this.data.rooms;
+      if (rooms && rooms.length > 0) {
+        // 优先选择选中的房间，否则选第一个
+        let targetRoom = rooms[0];
+        if (this.data.selectedIds && this.data.selectedIds.length > 0) {
+          const selected = rooms.find(r => r.id === this.data.selectedIds[0]);
+          if (selected) targetRoom = selected;
+        }
+
+        // 计算包围盒中心 (cx, cz) - 该逻辑对应 build3DScene 中的偏移
+        const minX = Math.min(...rooms.map(r => r.x));
+        const minZ = Math.min(...rooms.map(r => r.y));
+        const maxX = Math.max(...rooms.map(r => r.x + (r.width || 0)));
+        const maxZ = Math.max(...rooms.map(r => r.y + (r.height || 0)));
+        const cx = (minX + maxX) / 2;
+        const cz = (minZ + maxZ) / 2;
+
+        // 计算目标房间中心在场景中的相对位置
+        const targetX = (targetRoom.x + (targetRoom.width || 40) / 2) - cx;
+        const targetZ = (targetRoom.y + (targetRoom.height || 40) / 2) - cz;
+        
+        targetPos = new this.orbit.THREE.Vector3(targetX, 16, targetZ); // 1.6m 视线高度
+        targetRadius = 0.5; // 进入室内
+        targetPhi = Math.PI / 2; // 水平视角
+        targetTheta = 0;
+        
+        wx.showToast({ title: '已进入漫游模式', icon: 'none' });
+      } else {
+        wx.showToast({ title: '请先绘制房间', icon: 'none' });
+        return;
+      }
     }
     
     this.orbit.lerpSpherical.theta = targetTheta;

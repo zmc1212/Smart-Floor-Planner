@@ -14,7 +14,9 @@ Page({
     selectedMode: 'INTERIOR', // 'INTERIOR' | 'PLANE'
     isGenerating: false,
     isGettingAdvice: false,
-    showLeadModal: false
+    showLeadModal: false,
+    showSharePoster: false,
+    posterData: null
   },
 
   onLoad: function () {
@@ -225,5 +227,25 @@ Visuals: 8k, photorealistic, cinematic lighting, professional interior photograp
 
   onLeadSuccess: function () {
     console.log('Lead submitted successfully from ai-gen');
+  },
+
+  onOpenSharePoster: function () {
+    const { room, selectedStyleKey, selectedMode } = this.data;
+    const styleMetadata = StyleMetadata.find(s => s.key === selectedStyleKey) || {};
+    
+    this.setData({
+      showSharePoster: true,
+      posterData: {
+        coverImage: room.renderingUrl,
+        title: `${room.name} · AI 设计方案`,
+        style: styleMetadata.label || '现代简约',
+        roomType: room.name,
+        area: (room.width * room.height / 100).toFixed(1) + '㎡'
+      }
+    });
+  },
+
+  onCloseSharePoster: function () {
+    this.setData({ showSharePoster: false });
   }
 });

@@ -24,13 +24,15 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { name, code, contactPerson, status } = body;
+    const { name, code, contactPerson, status, logo, branding } = body;
     
     const updateData: any = {};
-    if (name) updateData.name = name;
-    if (code) updateData.code = code;
-    if (contactPerson) updateData.contactPerson = contactPerson;
-    if (status) updateData.status = status;
+    if (name !== undefined) updateData.name = name;
+    if (code !== undefined) updateData.code = code;
+    if (contactPerson !== undefined) updateData.contactPerson = contactPerson;
+    if (status !== undefined) updateData.status = status;
+    if (logo !== undefined) updateData.logo = logo;
+    if (branding !== undefined) updateData.branding = branding;
 
     console.log(`[API] Updating with data:`, updateData);
 

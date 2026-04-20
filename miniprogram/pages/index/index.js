@@ -11,7 +11,8 @@ Page({
     navBarHeightTotal: 0,
     capsulePadding: 0,
     windowWidth: 375,
-    windowHeight: 600
+    windowHeight: 600,
+    branding: null
   },
 
   onLoad: function () {
@@ -33,8 +34,13 @@ Page({
   onShow: function() {
     this.fetchCloudPlans();
     this.setData({
-      bleConnected: getApp().globalData.bleConnected || false
+      bleConnected: getApp().globalData.bleConnected || false,
+      branding: getApp().globalData.branding || null
     });
+  },
+
+  onBrandingReady: function (branding) {
+    this.setData({ branding });
   },
 
   fetchCloudPlans: async function() {

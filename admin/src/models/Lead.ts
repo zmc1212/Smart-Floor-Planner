@@ -13,10 +13,11 @@ export interface ILead extends Document {
   stylePreference?: string;
   city?: string;
   source: string; 
-  status: 'new' | 'contacted' | 'converted' | 'closed';
+  status: 'new' | 'contacted' | 'measuring' | 'designing' | 'quoting' | 'converted' | 'closed';
   notes?: string;
   enterpriseId?: mongoose.Types.ObjectId;
   assignedTo?: mongoose.Types.ObjectId; // Designer/Consultant (AdminUser)
+  assignedAt?: Date;
   followUpRecords: IFollowUp[];
   createdAt: Date;
   updatedAt: Date;
@@ -29,10 +30,11 @@ const LeadSchema: Schema = new Schema({
   stylePreference: { type: String },
   city: { type: String },
   source: { type: String, default: 'unknown' },
-  status: { type: String, enum: ['new', 'contacted', 'converted', 'closed'], default: 'new' },
+  status: { type: String, enum: ['new', 'contacted', 'measuring', 'designing', 'quoting', 'converted', 'closed'], default: 'new' },
   notes: { type: String },
   enterpriseId: { type: Schema.Types.ObjectId, ref: 'Enterprise' },
   assignedTo: { type: Schema.Types.ObjectId, ref: 'AdminUser' },
+  assignedAt: { type: Date },
   followUpRecords: [{
     content: { type: String, required: true },
     operator: { type: String, default: 'System' },
