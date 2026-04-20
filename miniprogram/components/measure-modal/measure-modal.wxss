@@ -213,3 +213,61 @@
   font-size: 28rpx;
   z-index: 10;
 }
+
+/* === 斜角模式小三角示意图 === */
+.dir-angle-simulator {
+  position: relative;
+  width: 200rpx;
+  height: 140rpx;
+}
+
+.angle-tri-edge {
+  position: absolute;
+  background: #171717;
+}
+
+.edge-a-mini {
+  left: 20rpx;
+  top: 10rpx;
+  width: 3rpx;
+  height: 110rpx;
+}
+
+.edge-b-mini {
+  left: 20rpx;
+  bottom: 20rpx;
+  width: 160rpx;
+  height: 3rpx;
+}
+
+.edge-d-mini {
+  left: 20rpx;
+  top: 10rpx;
+  width: 195rpx;
+  height: 3rpx;
+  transform-origin: 0 50%;
+  transform: rotate(34deg);
+  background: var(--develop-blue, #0070f3);
+  opacity: 0.6;
+}
+
+.angle-tri-vertex {
+  position: absolute;
+  left: 16rpx;
+  bottom: 16rpx;
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: var(--ship-red, #ff5b4f);
+}
+
+.angle-tri-label {
+  position: absolute;
+  left: 36rpx;
+  bottom: 28rpx;
+  font-size: 24rpx;
+  color: var(--develop-blue, #0070f3);
+  font-weight: 700;
+  font-style: italic;
+  font-family: var(--font-mono, 'Geist Mono', monospace);
+}

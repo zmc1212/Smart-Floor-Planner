@@ -137,6 +137,33 @@ const RoomColorsSolid = [
   '#fef3c7'
 ];
 
+/**
+ * 余弦定理求角度
+ * 给定三角形三条边 a, b, d，求 a 和 b 之间的夹角
+ * @param {number} a - 边A长度
+ * @param {number} b - 边B长度
+ * @param {number} d - 对边（对角线）长度
+ * @returns {number} 角度（度数），无效时返回 NaN
+ */
+function calculateAngle(a, b, d) {
+  if (a <= 0 || b <= 0 || d <= 0) return NaN;
+  // 三角形不等式检查
+  if (d >= a + b || a >= b + d || b >= a + d) return NaN;
+  var cosTheta = (a * a + b * b - d * d) / (2 * a * b);
+  if (cosTheta < -1 || cosTheta > 1) return NaN;
+  return Math.acos(cosTheta) * (180 / Math.PI);
+}
+
+/**
+ * 计算两点之间的方向角（弧度）
+ * @param {{x:number,y:number}} from
+ * @param {{x:number,y:number}} to
+ * @returns {number} 弧度
+ */
+function directionAngle(from, to) {
+  return Math.atan2(to.y - from.y, to.x - from.x);
+}
+
 module.exports = {
   generateUUID,
   formatArea,
@@ -145,6 +172,8 @@ module.exports = {
   polygonArea,
   polygonBoundingBox,
   isPointInPolygon,
+  calculateAngle,
+  directionAngle,
   ToolType,
   StyleType,
   StyleMetadata,

@@ -23,7 +23,16 @@
 
     <!-- 方向示意图 -->
     <view class="dir-preview-box">
-      <view class="dir-room-simulator">
+      <!-- 斜角模式示意 -->
+      <view class="dir-angle-simulator" wx:if="{{selectedDirection === 'ANGLE'}}">
+        <view class="angle-tri-edge edge-a-mini"></view>
+        <view class="angle-tri-edge edge-b-mini"></view>
+        <view class="angle-tri-edge edge-d-mini"></view>
+        <view class="angle-tri-vertex"></view>
+        <text class="angle-tri-label">θ</text>
+      </view>
+      <!-- 正交方向示意 -->
+      <view class="dir-room-simulator" wx:else>
         <view class="laser-line E {{selectedDirection === 'E' ? 'active' : ''}}"></view>
         <view class="laser-line S {{selectedDirection === 'S' ? 'active' : ''}}"></view>
         <view class="laser-line W {{selectedDirection === 'W' ? 'active' : ''}}"></view>

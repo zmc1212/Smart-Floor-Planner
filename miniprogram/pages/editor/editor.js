@@ -28,7 +28,9 @@ Page({
     showDrawingIndicator: false,
     totalArea: '0.00',
     windowWidth: 375,
-    windowHeight: 600
+    windowHeight: 600,
+    showAngleMeasure: false,
+    angleMeasureWallA: 0
   },
 
   onLoad: function (options) {
@@ -83,7 +85,7 @@ Page({
       history: [],
       historyIndex: -1
     }, () => {
-      this.pushToHistory(fp.layoutData, {
+      var extraData = {
         guidedMode: fp.guidedMode || false,
         showMeasurePrompt: fp.showMeasurePrompt || false,
         activeTool: fp.activeTool || 'SELECT',
@@ -91,7 +93,13 @@ Page({
         showPropertyPanel: fp.showPropertyPanel || false,
         currentGuidedRoomId: fp.roomId || '',
         currentGuidedRoomName: fp.roomName || ''
-      });
+      };
+      // 引导模式下初始化测量起点，确保第一条边能正确生成 2 个顶点
+      if (fp.guidedMode) {
+        extraData.measurePoints = [{ x: 0, y: 0 }];
+        extraData.guidedEdgeIndex = -1;
+      }
+      this.pushToHistory(fp.layoutData, extraData);
       
       setTimeout(() => {
         const canvas = this.selectComponent('#floorCanvas');
@@ -606,23 +614,6 @@ Page({
     this.orbit.isLerping = true;
   },
 
-  onStartRemeasure: function () {
-    this.setData({
-      guidedMode: true,
-      guidedEdgeIndex: -1, 
-      measurePoints: [{ x: 0, y: 0 }],
-      lastMeasuredDirection: '',
-      pendingDirection: '',
-      showMeasurePrompt: false,
-      is3DView: false,
-      selectedIds: [this.data.currentGuidedRoomId]
-    });
-    this.openLaser();
-    setTimeout(() => {
-      this.setData({ showMeasurePrompt: true });
-    }, 500);
-  },
-
   onBluetoothMeasure: function (distanceInMeters) {
     // 只要收到任何蓝牙反馈（无论是测量成功、失败、还是报错超时），物理激光灯都会熄灭，因此第一步强制重置状态
     this.setData({ isLaserOpen: false });
@@ -775,6 +766,100 @@ Page({
       this.pushToHistory(newRooms2);
       wx.showToast({ title: '测量成功: ' + distanceInMeters + 'm', icon: 'success' });
     }
+  },
+
+  // === 角度测量流程 ===
+  onStartAngleMeasure: function () {
+    var pts = this.data.measurePoints;
+    var wallALen = 0;
+    if (pts.length >= 2) {
+      var p1 = pts[pts.length - 2];
+      var p2 = pts[pts.length - 1];
+      var dx = p2.x - p1.x;
+      var dy = p2.y - p1.y;
+      wallALen = Math.round(Math.sqrt(dx * dx + dy * dy) / 10 * 1000) / 1000;
+    }
+    this.setData({
+      showMeasurePrompt: false,
+      showAngleMeasure: true,
+      angleMeasureWallA: wallALen
+    });
+  },
+
+  onAngleMeasureConfirm: function (e) {
+    var angle = e.detail.angle;
+    var wallLength = e.detail.wallLength;
+
+    this.setData({ showAngleMeasure: false });
+
+    var pts = this.data.measurePoints;
+    if (pts.length < 2) {
+      wx.showToast({ title: '请先测量至少一条边', icon: 'none' });
+      return;
+    }
+
+    var roomId = this.data.currentGuidedRoomId;
+    if (!roomId) return;
+
+    var newEdgeLenPx = wallLength * 10;
+    var angleRad = angle * (Math.PI / 180);
+
+    var p1 = pts[pts.length - 2];
+    var p2 = pts[pts.length - 1];
+    var prevAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+
+    var newAbsAngle = prevAngle + (Math.PI - angleRad);
+
+    var lastPt = pts[pts.length - 1];
+    var newPt = {
+      x: Math.round((lastPt.x + newEdgeLenPx * Math.cos(newAbsAngle)) * 100) / 100,
+      y: Math.round((lastPt.y + newEdgeLenPx * Math.sin(newAbsAngle)) * 100) / 100
+    };
+
+    var newMeasurePoints = pts.concat([newPt]);
+
+    var utilLib = require('../../utils/util.js');
+    var bbox = utilLib.polygonBoundingBox(newMeasurePoints);
+    var normalized = newMeasurePoints.map(function (p) {
+      return { x: p.x - bbox.minX, y: p.y - bbox.minY };
+    });
+
+    var newEdgeIndex = newMeasurePoints.length - 1;
+    var canFinish = newEdgeIndex >= 2;
+
+    var newRooms = this.data.rooms.map(function (r) {
+      if (r.id === roomId) {
+        return Object.assign({}, r, {
+          width: Math.max(1, bbox.width),
+          height: Math.max(1, bbox.height),
+          polygon: normalized,
+          polygonClosed: false
+        });
+      }
+      return r;
+    });
+
+    wx.showToast({ title: '斜角 ' + angle + '° 边' + newEdgeIndex + ' ✓', icon: 'success' });
+
+    this.pushToHistory(newRooms, {
+      measurePoints: newMeasurePoints,
+      guidedEdgeIndex: newEdgeIndex,
+      canFinishPolygon: canFinish,
+      lastMeasuredDirection: 'ANGLE',
+      pendingDirection: ''
+    });
+
+    var that = this;
+    setTimeout(function () { that.openLaser(); }, 500);
+    setTimeout(function () { that.setData({ showMeasurePrompt: true }); }, 900);
+    setTimeout(function () {
+      var canvas = that.selectComponent('#floorCanvas');
+      if (canvas) canvas.fitToView();
+    }, 400);
+  },
+
+  onCloseAngleMeasure: function () {
+    this.setData({ showAngleMeasure: false, showMeasurePrompt: true });
   },
 
   onAddMeasureEdge: function () {
@@ -1064,14 +1149,19 @@ Page({
       guidedMode: true,
       guidedEdgeIndex: -1, 
       measurePoints: [{ x: 0, y: 0 }],
+      lastMeasuredDirection: '',
       pendingDirection: '',
       canFinishPolygon: false,
       selectedEdge: '',
-      showMeasurePrompt: true,
+      showMeasurePrompt: false,
       showPropertyPanel: false,
-      lastMeasuredDirection: '' 
+      is3DView: false,
+      selectedIds: [this.data.currentGuidedRoomId]
     });
     this.openLaser();
+    setTimeout(() => {
+      this.setData({ showMeasurePrompt: true });
+    }, 500);
   },
 
   updateSelectedRooms: function (rooms) {

@@ -1,0 +1,116 @@
+<view class="modal-overlay" wx:if="{{show}}">
+  <view class="angle-modal-container">
+    <!-- 关闭按钮 -->
+    <view class="modal-close" bindtap="onClose">✕</view>
+
+    <!-- 标题 -->
+    <view class="title-section">
+      <text class="modal-title">📐 角度测量</text>
+      <text class="modal-subtitle">利用三边测距 · 自动计算墙面夹角</text>
+    </view>
+
+    <!-- 步骤指示器 -->
+    <view class="step-indicator">
+      <view class="step-dot {{step >= 1 ? 'done' : ''}} {{step === 1 ? 'current' : ''}}">
+        <text class="step-num">1</text>
+      </view>
+      <view class="step-line {{step >= 2 ? 'done' : ''}}"></view>
+      <view class="step-dot {{step >= 2 ? 'done' : ''}} {{step === 2 ? 'current' : ''}}">
+        <text class="step-num">2</text>
+      </view>
+      <view class="step-line {{step >= 3 ? 'done' : ''}}"></view>
+      <view class="step-dot {{step >= 3 ? 'done' : ''}} {{step === 3 ? 'current' : ''}}">
+        <text class="step-num">3</text>
+      </view>
+      <view class="step-line {{step >= 4 ? 'done' : ''}}"></view>
+      <view class="step-dot {{step >= 4 ? 'done' : ''}} {{step === 4 ? 'current' : ''}}">
+        <text class="step-num">✓</text>
+      </view>
+    </view>
+
+    <!-- 当前步骤文案 -->
+    <view class="step-info">
+      <text class="step-label">{{stepLabels[step - 1]}}</text>
+      <text class="step-desc">{{stepDescs[step - 1]}}</text>
+    </view>
+
+    <!-- 三角形示意图 -->
+    <view class="triangle-preview">
+      <view class="triangle-svg-wrapper">
+        <!-- 三角形示意 (纯 CSS) -->
+        <view class="tri-shape">
+          <!-- 墙A - 左侧竖边 -->
+          <view class="tri-edge edge-a {{step === 1 ? 'measuring' : ''}} {{sideA > 0 ? 'measured' : ''}}">
+            <text class="edge-label" wx:if="{{sideA > 0}}">a = {{sideA}}m</text>
+            <text class="edge-label blink" wx:else>墙A</text>
+          </view>
+          <!-- 墙B - 底边 -->
+          <view class="tri-edge edge-b {{step === 2 ? 'measuring' : ''}} {{sideB > 0 ? 'measured' : ''}}">
+            <text class="edge-label" wx:if="{{sideB > 0}}">b = {{sideB}}m</text>
+            <text class="edge-label blink" wx:else>墙B</text>
+          </view>
+          <!-- 对角线 -->
+          <view class="tri-edge edge-d {{step === 3 ? 'measuring' : ''}} {{diagonal > 0 ? 'measured' : ''}}">
+            <text class="edge-label" wx:if="{{diagonal > 0}}">d = {{diagonal}}m</text>
+            <text class="edge-label blink" wx:else>对角线</text>
+          </view>
+          <!-- 角度标注 -->
+          <view class="tri-angle-arc" wx:if="{{step === 4 && isValid}}">
+            <text class="angle-value">{{angleDeg}}°</text>
+          </view>
+          <!-- 墙角顶点 -->
+          <view class="tri-vertex vertex-origin"></view>
+          <view class="tri-vertex vertex-a"></view>
+          <view class="tri-vertex vertex-b"></view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 已测量数据回显 -->
+    <view class="result-cards" wx:if="{{sideA > 0 || sideB > 0 || diagonal > 0}}">
+      <view class="result-card {{step === 1 ? 'active' : ''}}" wx:if="{{sideA > 0}}" bindtap="onRetryStep" data-step="1">
+        <text class="rc-label">墙A</text>
+        <text class="rc-value">{{sideA}}m</text>
+        <text class="rc-action">重测</text>
+      </view>
+      <view class="result-card {{step === 2 ? 'active' : ''}}" wx:if="{{sideB > 0}}" bindtap="onRetryStep" data-step="2">
+        <text class="rc-label">墙B</text>
+        <text class="rc-value">{{sideB}}m</text>
+        <text class="rc-action">重测</text>
+      </view>
+      <view class="result-card {{step === 3 ? 'active' : ''}}" wx:if="{{diagonal > 0}}" bindtap="onRetryStep" data-step="3">
+        <text class="rc-label">对角线</text>
+        <text class="rc-value">{{diagonal}}m</text>
+        <text class="rc-action">重测</text>
+      </view>
+    </view>
+
+    <!-- 测量结果 -->
+    <view class="angle-result" wx:if="{{step === 4}}">
+      <view class="angle-result-inner {{isValid ? '' : 'invalid'}}">
+        <text class="angle-result-label">{{isValid ? '计算角度' : '测量无效'}}</text>
+        <text class="angle-result-value" wx:if="{{isValid}}">{{angleDeg}}°</text>
+        <text class="angle-result-hint" wx:if="{{!isValid}}">三边数据不满足三角形条件，请重新测量</text>
+      </view>
+    </view>
+
+    <!-- 操作提示 -->
+    <view class="hint-section" wx:if="{{step < 4}}">
+      <text class="hint-icon">!</text>
+      <text class="hint-text">将测距仪贴紧墙角位置，激光对准{{step === 1 ? '第一面墙的远端' : step === 2 ? '第二面墙的远端' : '墙A端点与墙B端点的连线'}}，按下方按钮开始测量。</text>
+    </view>
+
+    <!-- 操作按钮 -->
+    <view class="action-section">
+      <view wx:if="{{step < 4}}" class="btn btn-primary btn-confirm {{isMeasuring ? 'loading' : ''}}" bindtap="onMeasureTap">
+        {{isMeasuring ? '测量中...' : '开始测量'}}
+      </view>
+      <view wx:if="{{step === 4 && isValid}}" class="btn btn-primary btn-confirm" bindtap="onConfirm">
+        确认角度，继续绘制
+      </view>
+      <view wx:if="{{step === 4}}" class="btn btn-outline btn-retry" bindtap="onRetry">
+        🔄 重新测量全部
+      </view>
+    </view>
+  </view>
+</view>

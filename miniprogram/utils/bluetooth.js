@@ -519,11 +519,35 @@ function setCallbacks(callback, connectCallback, disconnectCallback) {
   if (disconnectCallback !== undefined) _onDisconnectCallback = disconnectCallback;
 }
 
+// === 临时回调管理（供角度测量等子流程使用）===
+var _savedMeasureCallback = null;
+
+/**
+ * 临时替换测量回调。调用后蓝牙的测量结果将发往 tempCb，
+ * 直到调用 restoreMeasureCallback() 恢复原始回调。
+ */
+function setTemporaryMeasureCallback(tempCb) {
+  _savedMeasureCallback = _onMeasureCallback;
+  _onMeasureCallback = tempCb;
+}
+
+/**
+ * 恢复之前被替换的测量回调
+ */
+function restoreMeasureCallback() {
+  if (_savedMeasureCallback !== null) {
+    _onMeasureCallback = _savedMeasureCallback;
+    _savedMeasureCallback = null;
+  }
+}
+
 module.exports = {
   initBLE: initBLE,
   closeBLE: closeBLE,
   sendBLECommand: sendBLECommand,
   autoConnectBLE: autoConnectBLE,
   setCallbacks: setCallbacks,
-  clearBuffer: clearBuffer
+  clearBuffer: clearBuffer,
+  setTemporaryMeasureCallback: setTemporaryMeasureCallback,
+  restoreMeasureCallback: restoreMeasureCallback
 };

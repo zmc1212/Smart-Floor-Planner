@@ -6,7 +6,8 @@
     "nav-bar": "../../components/nav-bar/nav-bar",
     "guided-banner": "../../components/guided-banner/guided-banner",
     "measure-modal": "../../components/measure-modal/measure-modal",
-    "bottom-bar": "../../components/bottom-bar/bottom-bar"
+    "bottom-bar": "../../components/bottom-bar/bottom-bar",
+    "angle-measure": "../../components/angle-measure/angle-measure"
   },
   "navigationStyle": "custom",
   "disableScroll": true

@@ -118,7 +118,16 @@
     lastDirection="{{lastMeasuredDirection}}"
     canFinish="{{canFinishPolygon}}"
     bindconfirm="onConfirmMeasure"
+    bindstartangle="onStartAngleMeasure"
     bindfinish="onFinishPolygon"
     bindclose="onCancelMeasure"
+  />
+
+  <!-- 7. 角度测量弹窗 -->
+  <angle-measure
+    show="{{showAngleMeasure}}"
+    wallALength="{{angleMeasureWallA}}"
+    bindconfirm="onAngleMeasureConfirm"
+    bindclose="onCloseAngleMeasure"
   />
 </view>
