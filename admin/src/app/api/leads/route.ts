@@ -31,13 +31,17 @@ export async function GET(request: Request) {
         return NextResponse.json({ success: false, error: 'Staff profile not found' }, { status: 404 });
       }
 
-      // Fetch leads where staff is promoter or assigned
-      const query: any = {
-        $or: [
+      // Fetch leads based on role
+      let query: any = {};
+      if (staffMember.role === 'enterprise_admin' && staffMember.enterpriseId) {
+        query.enterpriseId = staffMember.enterpriseId;
+      } else {
+        query.$or = [
           { promoterId: staffMember._id },
           { assignedTo: staffMember._id }
-        ]
-      };
+        ];
+      }
+
       if (status && status !== 'all') {
         query.status = status;
       }
@@ -103,13 +107,18 @@ export async function POST(request: Request) {
     let promoterId = body.promoterId;
     let enterpriseId = body.enterpriseId || context?.enterpriseId;
 
-    // 1. Handle mini-program submission: 'assignedTo' might be the referrer (staffId)
-    // If the referrer is a salesperson, treat them as the promoter instead.
-    if (assignedTo && !promoterId) {
-      const staff = await AdminUser.findById(assignedTo);
-      if (staff && staff.role === 'salesperson') {
-        promoterId = staff._id;
-        assignedTo = undefined; // Reset to find the designer
+    // 1. Resolve IDs from staff records if they are passed as 'assignedTo' (common in Mini Program)
+    if (assignedTo || promoterId) {
+      const staffRefId = promoterId || assignedTo;
+      const staff = await AdminUser.findById(staffRefId);
+      if (staff) {
+        if (!enterpriseId) enterpriseId = staff.enterpriseId;
+        
+        // If the reference is a salesperson and we don't have a promoterId yet, set it
+        if (staff.role === 'salesperson' && !promoterId) {
+          promoterId = staff._id;
+          assignedTo = undefined; // Trigger auto-designer lookup
+        }
       }
     }
 

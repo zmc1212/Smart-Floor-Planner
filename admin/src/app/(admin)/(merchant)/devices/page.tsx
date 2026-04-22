@@ -51,7 +51,8 @@ export default function DevicesPage() {
   const [staff, setStaff] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [adding, setAdding] = useState(false);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [newCode, setNewCode] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
@@ -113,26 +114,31 @@ export default function DevicesPage() {
     e.preventDefault();
     if (!newCode.trim()) return;
     
-    setAdding(true);
+    setIsSubmitting(true);
     try {
       const res = await fetch('/api/devices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: newCode.trim(), description: newDesc.trim() })
+        body: JSON.stringify({ 
+          code: newCode.trim(), 
+          description: newDesc.trim(),
+          enterpriseId: currentUser?.role === 'enterprise_admin' ? (currentUser.enterpriseId?._id || currentUser.enterpriseId) : undefined,
+          status: currentUser?.role === 'enterprise_admin' ? 'assigned' : 'unassigned'
+        })
       });
       const data = await res.json();
       if (data.success) {
         setNewCode('');
         setNewDesc('');
+        setIsAddModalOpen(false);
         fetchDevices();
       } else {
-        alert(data.error || '添加失败');
+        alert(data.error);
       }
     } catch (err) {
       console.error(err);
-      alert('请求失败');
     } finally {
-      setAdding(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -241,8 +247,8 @@ export default function DevicesPage() {
                     <RefreshCw size={20} className={cn("text-muted-foreground", loading && "animate-spin")} />
                 </Button>
 
-                {(currentUser?.role === 'super_admin' || currentUser?.role === 'admin') && (
-                    <Dialog open={adding} onOpenChange={setAdding}>
+                {(currentUser?.role === 'super_admin' || currentUser?.role === 'admin' || currentUser?.role === 'enterprise_admin') && (
+                    <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
                         <DialogTrigger asChild>
                             <Button className="rounded-full px-8 h-12 text-base font-semibold shadow-lg shadow-primary/20 flex items-center gap-2">
                                 <Plus size={20} /> 录入新库存
@@ -280,8 +286,10 @@ export default function DevicesPage() {
                                 </div>
 
                                 <DialogFooter className="p-8 pt-4 bg-muted/30 border-t">
-                                    <Button type="button" variant="ghost" className="h-12 rounded-2xl px-6 bg-background" onClick={() => setAdding(false)}>取消</Button>
-                                    <Button type="submit" disabled={adding} className="h-12 rounded-2xl px-10 font-bold shadow-lg shadow-primary/10">确认录入</Button>
+                                    <Button type="button" variant="ghost" className="h-12 rounded-2xl px-6 bg-background" onClick={() => setIsAddModalOpen(false)}>取消</Button>
+                                    <Button type="submit" disabled={isSubmitting} className="h-12 rounded-2xl px-10 font-bold shadow-lg shadow-primary/10">
+                                        {isSubmitting ? "正在录入..." : "确认录入"}
+                                    </Button>
                                 </DialogFooter>
                             </form>
                         </DialogContent>
@@ -330,14 +338,16 @@ export default function DevicesPage() {
                             </TableCell>
                             <TableCell className="px-8 py-6">
                                 {editingId === device._id && (currentUser?.role === 'super_admin' || currentUser?.role === 'admin') ? (
-                                    <Select value={editEnterprise} onValueChange={(val) => setEditEnterprise(val || '')}>
+                                    <Select value={editEnterprise || "unassigned"} onValueChange={(val) => setEditEnterprise(val === "unassigned" ? "" : val)}>
                                         <SelectTrigger className="h-9 border-primary shadow-none min-w-[200px]">
                                             <SelectValue placeholder="未分配企业">
-                                                {getEnterpriseName(editEnterprise) || (editEnterprise ? <span className="font-mono text-xs text-red-500">{editEnterprise}</span> : null)}
+                                                {(editEnterprise && editEnterprise !== "unassigned") ? (
+                                                    getEnterpriseName(editEnterprise) || <span className="font-mono text-xs text-red-500">{editEnterprise}</span>
+                                                ) : "未分配企业"}
                                             </SelectValue>
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="">未分配企业</SelectItem>
+                                            <SelectItem value="unassigned">未分配企业</SelectItem>
                                             {enterprises.map(e => <SelectItem key={e._id} value={String(e._id)}>{e.name}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
@@ -350,14 +360,16 @@ export default function DevicesPage() {
                             </TableCell>
                             <TableCell className="px-8 py-6">
                                 {editingId === device._id ? (
-                                    <Select value={editStaff} onValueChange={(val) => setEditStaff(val || '')}>
+                                    <Select value={editStaff || "unassigned"} onValueChange={(val) => setEditStaff(val === "unassigned" ? "" : val)}>
                                         <SelectTrigger className="h-9 border-primary shadow-none min-w-[200px]">
                                             <SelectValue placeholder="未指派个人">
-                                                {getStaffName(editStaff) || (editStaff ? <span className="font-mono text-xs text-red-500">{editStaff}</span> : "未指派个人")}
+                                                {(editStaff && editStaff !== "unassigned") ? (
+                                                    getStaffName(editStaff) || <span className="font-mono text-xs text-red-500">{editStaff}</span>
+                                                ) : "未指派个人"}
                                             </SelectValue>
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="">未指派个人</SelectItem>
+                                            <SelectItem value="unassigned">未指派个人</SelectItem>
                                             {staff
                                                 .filter(s => {
                                                     const sId = String(s._id);
