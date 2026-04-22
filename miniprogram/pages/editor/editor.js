@@ -10,6 +10,7 @@ Page({
     guidedEdgeIndex: -1,
     currentGuidedRoomId: '',
     currentGuidedRoomName: '',
+    currentProject_id: '',
     isLaserOpen: false,      
     measurePoints: [],       
     pendingDirection: '',    
@@ -78,46 +79,85 @@ Page({
     }
 
     if (app.globalData.restoreFloorPlan) {
-      const fp = app.globalData.restoreFloorPlan;
+      var fp = app.globalData.restoreFloorPlan;
       app.globalData.restoreFloorPlan = null;
-    console.log('检测到还原户型请求:', fp);
-    
-    this.setData({
-      history: [],
-      historyIndex: -1
-    }, () => {
+      
+      let rooms = fp.layoutData;
+      let draftState = null;
+      
+      // Parse layoutData if it's an object with draftState
+      if (rooms && typeof rooms === 'object' && !Array.isArray(rooms)) {
+        draftState = rooms.draftState;
+        rooms = rooms.rooms;
+      } else if (typeof rooms === 'string') {
+        try {
+          const parsed = JSON.parse(rooms);
+          if (parsed && parsed.rooms) {
+            rooms = parsed.rooms;
+            draftState = parsed.draftState;
+          } else {
+            rooms = parsed;
+          }
+        } catch (e) {}
+      }
+
+      // 提取目标房间ID（支持传统字段 roomId）
+      const targetRoomId = fp.currentGuidedRoomId || (draftState ? draftState.currentGuidedRoomId : '') || fp.roomId || '';
+      const targetRoomName = fp.currentGuidedRoomName || fp.roomName || '';
+
       var extraData = {
-        guidedMode: fp.guidedMode || false,
-        showMeasurePrompt: fp.showMeasurePrompt || false,
+        currentProject_id: fp._id || '',
+        guidedMode: fp.guidedMode || (!!draftState),
+        currentGuidedRoomId: targetRoomId,
+        currentGuidedRoomName: targetRoomName,
+        showMeasurePrompt: fp.showMeasurePrompt || (!!targetRoomId),
         activeTool: fp.activeTool || 'SELECT',
-        selectedIds: fp.roomId ? [fp.roomId] : (fp.selectedIds || []),
-        showPropertyPanel: fp.showPropertyPanel || false,
-        currentGuidedRoomId: fp.roomId || '',
-        currentGuidedRoomName: fp.roomName || ''
+        selectedIds: targetRoomId ? [targetRoomId] : (fp.selectedIds || []),
+        showPropertyPanel: fp.showPropertyPanel || false
       };
-      // 引导模式下初始化测量起点，确保第一条边能正确生成 2 个顶点
-      if (fp.guidedMode) {
+
+      // Detect if layer height is already measured for this room to skip prompt
+      if (targetRoomId && rooms) {
+        const targetRoom = rooms.find(r => r.id === targetRoomId);
+        if (targetRoom && targetRoom.height3D > 0) {
+          // If height is measured but we haven't started walls, set index to 0
+          if (!draftState) {
+            extraData.guidedEdgeIndex = 0;
+            extraData.pendingDirection = 'E';
+          }
+        }
+      }
+
+      // Restore Draft Measurement State
+      if (draftState) {
+        Object.assign(extraData, {
+          measurePoints: draftState.measurePoints || [{ x: 0, y: 0 }],
+          guidedEdgeIndex: draftState.guidedEdgeIndex !== undefined ? draftState.guidedEdgeIndex : -1,
+          pendingDirection: draftState.pendingDirection || '',
+          lastMeasuredDirection: draftState.lastMeasuredDirection || ''
+        });
+      } else if (extraData.guidedMode) {
+        // Fresh guided mode from template/selection
         extraData.measurePoints = [{ x: 0, y: 0 }];
         extraData.guidedEdgeIndex = -1;
       }
-      this.pushToHistory(fp.layoutData, extraData);
+
+      this.pushToHistory(rooms, extraData);
+      this.updateSelectedRooms(rooms);
       
       setTimeout(() => {
         const canvas = this.selectComponent('#floorCanvas');
-        console.log('准备执行 fitToView, canvas组件:', !!canvas);
         if (canvas) {
           canvas.fitToView();
-          // 仅当明确标识为恢复（如导入库、云端打开）时才显示提示，避免模板开房时弹出
           if (fp.isRestore) {
-            wx.showToast({ title: '已恢复布局', icon: 'success' });
+            wx.showToast({ title: draftState ? '已恢复测量进度' : '已恢复布局', icon: 'success' });
           }
         }
       }, 800);
 
-        if (fp.guidedMode && !fp.isMeasured) {
-          this.openLaser();
-        }
-      });
+      if (extraData.guidedMode) {
+        this.openLaser();
+      }
     }
   },
 
@@ -711,6 +751,7 @@ Page({
     this._lastMeasureDist = distanceInMeters;
     
     this.isMeasuring = false; 
+    this.setData({ isLaserOpen: false, showMeasurePrompt: false });
 
     if (this.measureTimer) { clearTimeout(this.measureTimer); this.measureTimer = null; }
     if (this.failTimer) { clearTimeout(this.failTimer); this.failTimer = null; }
@@ -805,6 +846,7 @@ Page({
       let nextDirection = '';
       if (newEdgeIndex === 1) nextDirection = 'S'; 
       else if (newEdgeIndex === 2) nextDirection = 'W'; 
+      else if (newEdgeIndex === 3) nextDirection = 'N';
 
       this.pushToHistory(newRooms, {
         measurePoints: newMeasurePoints,
@@ -1351,29 +1393,75 @@ Page({
   },
 
   saveToCloud: async function () {
-    await this.saveToCloudInternal();
+    await this.saveToCloudInternal('completed');
   },
 
-  saveToCloudInternal: async function () {
+  onSaveDraft: async function() {
+    await this.saveToCloudInternal('draft');
+    
+    // Support Local Backup
+    try {
+      const backup = {
+        rooms: this.data.rooms,
+        points: this.data.measurePoints,
+        index: this.data.guidedEdgeIndex,
+        time: Date.now()
+      };
+      wx.setStorageSync('last_draft_backup', backup);
+    } catch (e) {}
+  },
+
+  saveToCloudInternal: async function (status = 'completed') {
     const app = getApp();
     const openid = app.globalData.openid;
     const rooms = this.data.rooms;
+    const projectId = this.data.currentProject_id;
 
     if (!openid) {
       wx.showToast({ title: '请登录后再试', icon: 'none' });
       return false;
     }
 
-    wx.showLoading({ title: '同步中...' });
+    wx.showLoading({ title: status === 'draft' ? '保存草稿...' : '同步中...' });
     const api = require('../../utils/api.js');
+
+    // Prepare Layout Data (Enhanced for Drafts)
+    let layoutData = rooms;
+    if (status === 'draft') {
+      layoutData = {
+        rooms: rooms,
+        draftState: {
+          measurePoints: this.data.measurePoints,
+          guidedEdgeIndex: this.data.guidedEdgeIndex,
+          currentGuidedRoomId: this.data.currentGuidedRoomId,
+          pendingDirection: this.data.pendingDirection,
+          lastMeasuredDirection: this.data.lastMeasuredDirection
+        }
+      };
+    }
+
     try {
-      await api.request('/floorplans', 'POST', {
+      let res;
+      const payload = {
         openid: openid,
-        name: rooms[0]?.name || '量房数据-' + new Date().getTime(),
-        layoutData: rooms
-      });
+        name: (rooms[0]?.name || '量房数据') + (status === 'draft' ? '-草稿' : '') + '-' + util.formatTime(new Date()).split(' ')[0].replace(/\//g, ''),
+        layoutData: layoutData,
+        status: status
+      };
+
+      if (projectId) {
+        // Update existing
+        res = await api.request(`/floorplans/${projectId}`, 'PUT', payload);
+      } else {
+        // Create new
+        res = await api.request('/floorplans', 'POST', payload);
+        if (res.success && res.data?._id) {
+          this.setData({ currentProject_id: res.data._id });
+        }
+      }
+
       wx.hideLoading();
-      wx.showToast({ title: '已同步至云端' });
+      wx.showToast({ title: status === 'draft' ? '已保存草稿' : '已完成同步' });
       return true;
     } catch (err) {
       wx.hideLoading();

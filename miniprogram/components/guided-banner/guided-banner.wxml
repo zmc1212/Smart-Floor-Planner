@@ -10,6 +10,7 @@
   <view class="wizard-actions">
     <view class="wizard-btn-action btn-ghost" wx:if="{{bleConnected}}" bindtap="onAddEdge">+ 添加边</view>
     <view class="wizard-btn-finish" wx:if="{{canFinish}}" bindtap="onFinishPolygon">✅ 完成轮廓</view>
+    <view class="wizard-btn-action btn-ghost" bindtap="onSaveDraft">💾 保存草稿</view>
     <view class="wizard-btn-action btn-ghost" wx:if="{{bleConnected}}" style="font-size:20rpx;" bindtap="onStartRemeasure">重测</view>
   </view>
 </view>

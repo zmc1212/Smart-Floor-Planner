@@ -15,6 +15,7 @@ Component({
     onExitToLibrary() { this.triggerEvent('exittolibrary'); },
     onSubmitFloorPlan() { this.triggerEvent('submitfloorplan'); },
     onAddEdge() { this.triggerEvent('addedge'); },
-    onFinishPolygon() { this.triggerEvent('finishpolygon'); }
+    onFinishPolygon() { this.triggerEvent('finishpolygon'); },
+    onSaveDraft() { this.triggerEvent('savedraft'); }
   }
 })

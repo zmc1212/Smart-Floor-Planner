@@ -8,7 +8,7 @@ import { User } from '@/models/User';
 export async function POST(req: Request) {
   try {
     await dbConnect();
-    const { openid, name, layoutData } = await req.json();
+    const { openid, name, layoutData, status } = await req.json();
 
     if (!openid || !layoutData) {
       return NextResponse.json({ success: false, error: 'Missing openid or layoutData' }, { status: 400 });
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
       name: name || '未命名户型',
       creator: user._id,
       layoutData,
-      status: 'completed'
+      status: status || 'completed'
     });
 
     return NextResponse.json({ success: true, data: newPlan });
