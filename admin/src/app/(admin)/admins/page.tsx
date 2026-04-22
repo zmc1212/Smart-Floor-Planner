@@ -324,9 +324,9 @@ export default function AdminsPage() {
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
           <div>
-            <h1 className="text-[32px] font-bold tracking-tight mb-2">管理员权限中心</h1>
+            <h1 className="text-[32px] font-bold tracking-tight mb-2">系统权限中心</h1>
             <p className="text-muted-foreground text-sm flex items-center gap-2">
-              <Shield size={14} className="text-primary" /> 分配系统角色与各模块菜单权限
+              <Shield size={14} className="text-primary" /> 管理平台运维账号与各模块菜单权限
             </p>
           </div>
           

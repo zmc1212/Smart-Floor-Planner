@@ -38,6 +38,12 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ success: false, error: '无权操作此账号' }, { status: 403 });
     }
 
+    // Role check: Ensure only business roles can be set via this API
+    const businessRoles = ['enterprise_admin', 'designer', 'salesperson'];
+    if (role && !businessRoles.includes(role)) {
+       return NextResponse.json({ success: false, error: '此接口仅允许分配业务员工角色' }, { status: 403 });
+    }
+
     // Role check: Enterprise admin can't elevate roles
     if (context.role === 'enterprise_admin' && role && !['designer', 'salesperson'].includes(role)) {
        return NextResponse.json({ success: false, error: '无权设置此角色' }, { status: 403 });

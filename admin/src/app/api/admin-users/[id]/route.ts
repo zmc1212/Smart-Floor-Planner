@@ -16,7 +16,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     if (username !== undefined) updateData.username = username.trim();
     if (displayName !== undefined) updateData.displayName = displayName.trim();
-    if (role !== undefined) updateData.role = role;
+    if (role !== undefined) {
+      const systemRoles = ['super_admin', 'admin', 'viewer'];
+      if (!systemRoles.includes(role)) {
+        return NextResponse.json({ success: false, error: '此接口仅允许分配系统管理角色' }, { status: 400 });
+      }
+      updateData.role = role;
+    }
     if (menuPermissions !== undefined) updateData.menuPermissions = menuPermissions;
     if (status !== undefined) updateData.status = status;
 

@@ -57,7 +57,7 @@
 /* 选项卡 */
 .tabs-nav {
   background: #ffffff;
-  border-bottom: 1rpx solid #efeff1;
+  box-shadow: 0 1rpx 0 0 rgba(0,0,0,0.04);
 }
 
 .tabs-scroll {
@@ -139,13 +139,13 @@
 /* 卡片设计 - Vercel Layered Style */
 .lead-card {
   background: #ffffff;
-  border-radius: 16rpx;
+  border-radius: 20rpx;
   padding: 32rpx;
-  box-shadow: 0px 0px 0px 1px rgba(0,0,0,0.06), 0px 2px 4px rgba(0,0,0,0.02);
+  box-shadow: 0px 0px 0px 1px rgba(0,0,0,0.08), 0px 4px 12px rgba(0,0,0,0.02);
   display: flex;
   flex-direction: column;
-  gap: 24rpx;
-  transition: all 0.2s;
+  gap: 28rpx;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .lead-card:active {
@@ -160,16 +160,17 @@
 }
 
 .status-badge {
-  font-size: 22rpx;
+  font-size: 20rpx;
   padding: 4rpx 16rpx;
-  border-radius: 100rpx;
-  font-weight: 500;
+  border-radius: 6rpx;
+  font-weight: 600;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.06);
 }
 
-.status-badge.new { background: #e0f2fe; color: #0284c7; }
-.status-badge.measuring { background: #fef3c7; color: #d97706; }
-.status-badge.designing { background: #f3e8ff; color: #9333ea; }
-.status-badge.converted { background: #dcfce7; color: #16a34a; }
+.status-badge.new { background: #ffffff; color: #3b82f6; box-shadow: 0 0 0 1px rgba(59,130,246,0.1); }
+.status-badge.measuring { background: #ffffff; color: #f59e0b; box-shadow: 0 0 0 1px rgba(245,158,11,0.1); }
+.status-badge.designing { background: #ffffff; color: #8b5cf6; box-shadow: 0 0 0 1px rgba(139,92,246,0.1); }
+.status-badge.converted { background: #171717; color: #ffffff; }
 
 .date-text {
   font-size: 22rpx;
@@ -201,8 +202,10 @@
 
 .customer-phone {
   font-size: 24rpx;
-  color: #0070f3;
-  font-weight: 500;
+  color: #171717;
+  font-weight: 600;
+  letter-spacing: 0.5rpx;
+  font-family: monospace;
 }
 
 .card-footer {
@@ -232,9 +235,16 @@
   background: #171717;
   color: #ffffff;
   font-size: 24rpx;
-  padding: 12rpx 32rpx;
-  border-radius: 8rpx;
-  font-weight: 500;
+  padding: 14rpx 36rpx;
+  border-radius: 12rpx;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  transition: all 0.2s;
+}
+
+.action-btn:active {
+  transform: translateY(2rpx);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
 
 /* 空状态 */

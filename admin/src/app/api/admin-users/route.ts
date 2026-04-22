@@ -11,12 +11,17 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
 
-    let filter: any = {};
+    // Filter for System Roles only
+    let filter: any = {
+      role: { $in: ['super_admin', 'admin', 'viewer'] }
+    };
+    
     if (search.trim()) {
       const regex = new RegExp(search.trim(), 'i');
-      filter = {
-        $or: [{ username: regex }, { displayName: regex }],
-      };
+      filter.$and = [
+        { role: { $in: ['super_admin', 'admin', 'viewer'] } },
+        { $or: [{ username: regex }, { displayName: regex }] }
+      ];
     }
 
     const admins = await AdminUser.find(filter)
@@ -69,13 +74,24 @@ export async function POST(request: Request) {
       );
     }
 
+    // Validate role: only system roles allowed here
+    const systemRoles = ['super_admin', 'admin', 'viewer'];
+    const targetRole = role || 'admin';
+    
+    if (!systemRoles.includes(targetRole)) {
+      return NextResponse.json(
+        { success: false, error: '此接口仅允许创建系统管理角色' },
+        { status: 400 }
+      );
+    }
+
     const passwordHash = await bcrypt.hash(password, 10);
 
     const admin = await AdminUser.create({
       username: username.trim(),
       passwordHash,
       displayName: displayName?.trim() || '',
-      role: role || 'admin',
+      role: targetRole,
       menuPermissions: menuPermissions || [],
     });
 

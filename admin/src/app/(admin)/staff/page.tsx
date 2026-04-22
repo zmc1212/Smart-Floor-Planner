@@ -161,7 +161,6 @@ export default function StaffPage() {
       enterprise_admin: '公司负责人',
       designer: '设计师',
       salesperson: '销售顾问',
-      super_admin: '超级管理员'
     };
     return labels[role] || role;
   };
@@ -314,10 +313,10 @@ export default function StaffPage() {
         <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="space-y-1">
             <h2 className="text-[32px] font-bold tracking-tight">
-              员工与账号管理
+              业务员工管理
             </h2>
             <p className="text-muted-foreground text-sm flex items-center gap-2">
-               管理您的企业直属员工，分配系统访问权限
+               管理企业直属的业务人员（设计师与销售），配置协作关系
             </p>
           </div>
           

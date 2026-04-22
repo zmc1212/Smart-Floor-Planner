@@ -25,14 +25,16 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
 
-    let filter: any = {};
+    // Business Roles definition
+    const businessRoles = ['enterprise_admin', 'designer', 'salesperson'];
+
+    let filter: any = {
+      role: { $in: businessRoles }
+    };
     
     // Apply Multi-tenant filter
     if (context.role === 'enterprise_admin') {
       filter.enterpriseId = context.enterpriseId;
-      // Don't show the enterprise_admin themselves in the staff list? 
-      // Usually, we show all, but we can filter out super_admins
-      filter.role = { $in: ['designer', 'salesperson', 'enterprise_admin'] };
     } else if (context.role === 'super_admin' || context.role === 'admin') {
       // Super admins can filter by enterpriseId if provided
       const entId = searchParams.get('enterpriseId');
@@ -87,6 +89,11 @@ export async function POST(request: Request) {
     }
 
     // Role check: Enterprise admin can only create designer or salesperson
+    const businessRoles = ['enterprise_admin', 'designer', 'salesperson'];
+    if (!businessRoles.includes(role)) {
+       return NextResponse.json({ success: false, error: '此接口仅允许创建业务员工角色' }, { status: 403 });
+    }
+
     if (context.role === 'enterprise_admin' && !['designer', 'salesperson'].includes(role)) {
        return NextResponse.json({ success: false, error: '无权创建此角色' }, { status: 403 });
     }

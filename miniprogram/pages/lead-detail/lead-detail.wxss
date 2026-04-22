@@ -1,28 +1,30 @@
 .container {
   min-height: 100vh;
-  background-color: #f8f9fa;
+  background-color: #fafafa;
   padding: 32rpx;
 }
 
 .header {
   background: #ffffff;
-  padding: 32rpx;
+  padding: 48rpx 40rpx;
   border-radius: 24rpx;
-  margin-bottom: 32rpx;
-  box-shadow: 0 4rpx 16rpx rgba(0,0,0,0.04);
+  margin-bottom: 48rpx;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.08), 0 4rpx 12rpx rgba(0,0,0,0.02);
 }
 
 .title {
-  font-size: 36rpx;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 16rpx;
+  font-size: 44rpx;
+  font-weight: 700;
+  color: #171717;
+  margin-bottom: 24rpx;
+  letter-spacing: -1rpx;
 }
 
 .info {
-  font-size: 28rpx;
-  color: #666;
-  margin-bottom: 8rpx;
+  font-size: 26rpx;
+  color: #888;
+  margin-bottom: 12rpx;
+  font-weight: 500;
 }
 
 .empty-state {
@@ -55,15 +57,21 @@
 }
 
 .template-item {
-  width: calc(50% - 10rpx);
+  width: calc(50% - 12rpx);
   background: #ffffff;
-  padding: 32rpx 0;
+  padding: 40rpx 0;
   text-align: center;
-  border-radius: 16rpx;
-  font-size: 30rpx;
-  font-weight: 500;
-  color: #1296db;
-  border: 2rpx solid #bae6fd;
+  border-radius: 20rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #171717;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.08);
+  transition: all 0.2s;
+}
+
+.template-item:active {
+  background: #f5f5f5;
+  transform: scale(0.97);
 }
 
 .section-title {
@@ -77,9 +85,12 @@
 }
 
 .add-btn {
-  font-size: 26rpx;
-  color: #1296db;
-  font-weight: normal;
+  font-size: 24rpx;
+  color: #171717;
+  font-weight: 600;
+  background: #f5f5f5;
+  padding: 8rpx 20rpx;
+  border-radius: 8rpx;
 }
 
 .room-list {
@@ -90,11 +101,17 @@
 
 .room-item {
   background: #ffffff;
-  border-radius: 16rpx;
-  padding: 32rpx;
+  border-radius: 20rpx;
+  padding: 40rpx;
   display: flex;
   align-items: center;
-  box-shadow: 0 4rpx 12rpx rgba(0,0,0,0.03);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.08), 0 2rpx 4rpx rgba(0,0,0,0.02);
+  transition: all 0.2s;
+}
+
+.room-item:active {
+  background: #fafafa;
+  transform: scale(0.98);
 }
 
 .room-icon {
@@ -110,14 +127,17 @@
 }
 
 .room-status {
-  font-size: 26rpx;
-  color: #ff9800;
-  background: #fff3e0;
+  font-size: 22rpx;
+  color: #f59e0b;
+  background: #fffbeb;
   padding: 4rpx 16rpx;
-  border-radius: 8rpx;
+  border-radius: 6rpx;
+  font-weight: 600;
+  box-shadow: 0 0 0 1px rgba(245,158,11,0.1);
 }
 
 .room-status.measured {
-  color: #4caf50;
-  background: #e8f5e9;
+  color: #16a34a;
+  background: #f0fdf4;
+  box-shadow: 0 0 0 1px rgba(22,163,74,0.1);
 }
