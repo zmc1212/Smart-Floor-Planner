@@ -39,7 +39,7 @@ export const ALL_MENUS = [
 
 export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   super_admin: ALL_MENUS.map(m => m.key),
-  admin: ['dashboard', 'enterprises', 'floorplans', 'users', 'devices', 'leads', 'inspirations'],
+  admin: ['dashboard', 'enterprises', 'floorplans', 'users', 'devices', 'leads', 'inspirations', 'staff', 'admins'],
   enterprise_admin: ['dashboard', 'floorplans', 'leads', 'staff', 'devices'],
   designer: ['dashboard', 'floorplans', 'leads', 'devices'],
   salesperson: ['dashboard', 'leads'],

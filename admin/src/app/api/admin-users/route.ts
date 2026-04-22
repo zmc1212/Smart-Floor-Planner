@@ -11,15 +11,15 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
 
-    // Filter for System Roles only
+    // Filter for System Roles + Enterprise Owners
     let filter: any = {
-      role: { $in: ['super_admin', 'admin', 'viewer'] }
+      role: { $in: ['super_admin', 'admin', 'viewer', 'enterprise_admin'] }
     };
     
     if (search.trim()) {
       const regex = new RegExp(search.trim(), 'i');
       filter.$and = [
-        { role: { $in: ['super_admin', 'admin', 'viewer'] } },
+        { role: { $in: ['super_admin', 'admin', 'viewer', 'enterprise_admin'] } },
         { $or: [{ username: regex }, { displayName: regex }] }
       ];
     }
@@ -49,11 +49,11 @@ export async function POST(request: Request) {
   await dbConnect();
   try {
     const body = await request.json();
-    const { username, password, displayName, role, menuPermissions } = body;
+    const { username, password, displayName, role, menuPermissions, enterpriseId } = body;
 
     if (!username || !password) {
       return NextResponse.json(
-        { success: false, error: '用户名和密码为必填项' },
+        { success: false, error: '用户名和密码不能为空' },
         { status: 400 }
       );
     }
@@ -74,13 +74,13 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate role: only system roles allowed here
-    const systemRoles = ['super_admin', 'admin', 'viewer'];
+    // Validate role: system roles + enterprise owners allowed
+    const allowedRoles = ['super_admin', 'admin', 'viewer', 'enterprise_admin'];
     const targetRole = role || 'admin';
     
-    if (!systemRoles.includes(targetRole)) {
+    if (!allowedRoles.includes(targetRole)) {
       return NextResponse.json(
-        { success: false, error: '此接口仅允许创建系统管理角色' },
+        { success: false, error: '此接口仅允许创建管理类角色' },
         { status: 400 }
       );
     }
@@ -92,6 +92,7 @@ export async function POST(request: Request) {
       passwordHash,
       displayName: displayName?.trim() || '',
       role: targetRole,
+      enterpriseId: enterpriseId || undefined,
       menuPermissions: menuPermissions || [],
     });
 

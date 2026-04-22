@@ -10,21 +10,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     const { id } = await params;
     const body = await request.json();
-    const { username, displayName, role, menuPermissions, status, newPassword } = body;
+    const { username, displayName, role, menuPermissions, status, newPassword, enterpriseId } = body;
 
     const updateData: any = {};
 
     if (username !== undefined) updateData.username = username.trim();
     if (displayName !== undefined) updateData.displayName = displayName.trim();
     if (role !== undefined) {
-      const systemRoles = ['super_admin', 'admin', 'viewer'];
-      if (!systemRoles.includes(role)) {
-        return NextResponse.json({ success: false, error: '此接口仅允许分配系统管理角色' }, { status: 400 });
+      const allowedRoles = ['super_admin', 'admin', 'viewer', 'enterprise_admin'];
+      if (!allowedRoles.includes(role)) {
+        return NextResponse.json({ success: false, error: '此接口仅允许分配管理类角色' }, { status: 400 });
       }
       updateData.role = role;
     }
     if (menuPermissions !== undefined) updateData.menuPermissions = menuPermissions;
     if (status !== undefined) updateData.status = status;
+    if (enterpriseId !== undefined) updateData.enterpriseId = enterpriseId;
 
     // Password reset
     if (newPassword) {

@@ -42,7 +42,7 @@ interface AdminUser {
   _id: string;
   username: string;
   displayName: string;
-  role: 'super_admin' | 'admin' | 'viewer';
+  role: 'super_admin' | 'admin' | 'viewer' | 'enterprise_admin';
   menuPermissions: string[];
   effectivePermissions: string[];
   status: 'active' | 'disabled';
@@ -55,6 +55,7 @@ const ROLE_LABELS: Record<string, string> = {
   super_admin: '超级管理员',
   admin: '普通管理员',
   viewer: '只读审计员',
+  enterprise_admin: '企业负责人',
 };
 
 const getRoleBadge = (role: string) => {
@@ -65,6 +66,8 @@ const getRoleBadge = (role: string) => {
       return <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-none">普通管理员</Badge>;
     case 'viewer':
       return <Badge variant="outline" className="text-gray-500 border-gray-200">审计员</Badge>;
+    case 'enterprise_admin':
+      return <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-none">企业负责人</Badge>;
     default:
       return <Badge variant="outline">{role}</Badge>;
   }
@@ -88,16 +91,20 @@ export default function AdminsPage() {
   const [searchTerm, setSearchTerm] = useState('');
 
   // Add form
-  const [adding, setAdding] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newDisplayName, setNewDisplayName] = useState('');
   const [newRole, setNewRole] = useState<string>('admin');
+  const [newEnterpriseId, setNewEnterpriseId] = useState<string>('');
+  const [enterprises, setEnterprises] = useState<any[]>([]);
 
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editRole, setEditRole] = useState('admin');
+  const [editEnterpriseId, setEditEnterpriseId] = useState('');
   const [updating, setUpdating] = useState(false);
 
   // Expanded row for permissions
@@ -107,23 +114,6 @@ export default function AdminsPage() {
   // Password reset
   const [resetPwdId, setResetPwdId] = useState<string | null>(null);
   const [resetPwdValue, setResetPwdValue] = useState('');
-
-  const fetchAdmins = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/admin-users');
-      const data = await res.json();
-      if (data.success) setAdmins(data.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchAdmins();
-  }, []);
 
   const filteredAdmins = useMemo(() => {
     if (!searchTerm.trim()) return admins;
@@ -135,12 +125,41 @@ export default function AdminsPage() {
     );
   }, [admins, searchTerm]);
 
-  // --- Handlers ---
+  const fetchAdmins = async () => {
+    setLoading(true);
+    try {
+      const [adminRes, entRes] = await Promise.all([
+        fetch('/api/admin-users'),
+        fetch('/api/admin/enterprises')
+      ]);
+      const adminData = await adminRes.json();
+      const entData = await entRes.json();
+      
+      if (adminData.success) setAdmins(adminData.data);
+      if (entData.success) setEnterprises(entData.data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAdmins();
+  }, []);
+
+  // ... filtering ...
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUsername.trim() || !newPassword.trim()) return;
-    setAdding(true);
+    
+    if (newRole === 'enterprise_admin' && !newEnterpriseId) {
+      alert('请选择所属企业');
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
       const res = await fetch('/api/admin-users', {
         method: 'POST',
@@ -150,6 +169,7 @@ export default function AdminsPage() {
           password: newPassword,
           displayName: newDisplayName.trim(),
           role: newRole,
+          enterpriseId: newRole === 'enterprise_admin' ? newEnterpriseId : undefined,
         }),
       });
       const data = await res.json();
@@ -158,6 +178,8 @@ export default function AdminsPage() {
         setNewPassword('');
         setNewDisplayName('');
         setNewRole('admin');
+        setNewEnterpriseId('');
+        setIsDialogOpen(false);
         fetchAdmins();
       } else {
         alert(data.error || '添加失败');
@@ -166,7 +188,7 @@ export default function AdminsPage() {
       console.error(err);
       alert('请求失败');
     } finally {
-      setAdding(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -186,26 +208,29 @@ export default function AdminsPage() {
     }
   };
 
-  const startEdit = (admin: AdminUser) => {
+  const handleEditClick = (admin: AdminUser) => {
     setEditingId(admin._id);
     setEditDisplayName(admin.displayName);
     setEditRole(admin.role);
+    setEditEnterpriseId(admin.enterpriseId || '');
   };
 
-  const handleUpdate = async (id: string) => {
+  const handleUpdate = async () => {
+    if (!editingId) return;
     setUpdating(true);
     try {
-      const res = await fetch(`/api/admin-users/${id}`, {
+      const res = await fetch(`/api/admin-users/${editingId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           displayName: editDisplayName.trim(),
           role: editRole,
+          enterpriseId: editRole === 'enterprise_admin' ? editEnterpriseId : null,
         }),
       });
       const data = await res.json();
       if (data.success) {
-        setAdmins(admins.map((a) => (a._id === id ? { ...a, ...data.data } : a)));
+        setAdmins(admins.map((a) => (a._id === editingId ? { ...a, ...data.data } : a)));
         setEditingId(null);
         fetchAdmins(); // Refresh to get effectivePermissions
       } else {
@@ -340,7 +365,7 @@ export default function AdminsPage() {
               <RefreshCw size={18} className={cn(loading && "animate-spin text-muted-foreground")} />
             </Button>
 
-            <Dialog open={adding} onOpenChange={setAdding}>
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
                 <Button className="rounded-full px-6 flex items-center gap-2 shadow-lg shadow-primary/10">
                   <Plus size={18} /> 新增管理员
@@ -397,14 +422,31 @@ export default function AdminsPage() {
                           <SelectItem value="super_admin">超级管理员</SelectItem>
                           <SelectItem value="admin">普通管理员</SelectItem>
                           <SelectItem value="viewer">只读审计员</SelectItem>
+                          <SelectItem value="enterprise_admin">企业负责人</SelectItem>
                         </SelectContent>
                       </Select>
                      </div>
+
+                     {newRole === 'enterprise_admin' && (
+                       <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-300">
+                         <Label>关联企业</Label>
+                         <Select value={newEnterpriseId} onValueChange={setNewEnterpriseId}>
+                           <SelectTrigger className="w-full h-10 rounded-xl bg-amber-50 border-amber-100 shadow-none">
+                             <SelectValue placeholder="选择所属装修公司" />
+                           </SelectTrigger>
+                           <SelectContent>
+                             {enterprises.map(ent => (
+                               <SelectItem key={ent._id} value={ent._id}>{ent.name}</SelectItem>
+                             ))}
+                           </SelectContent>
+                         </Select>
+                       </div>
+                     )}
                    </div>
 
                    <DialogFooter className="p-8 pt-4 bg-muted/30">
-                     <Button type="button" variant="ghost" onClick={() => setAdding(false)} className="bg-background">取消</Button>
-                     <Button type="submit" disabled={adding} className="shadow-lg shadow-primary/10">确认创建</Button>
+                     <Button type="button" variant="ghost" onClick={() => setIsDialogOpen(false)} className="bg-background">取消</Button>
+                     <Button type="submit" disabled={isSubmitting} className="shadow-lg shadow-primary/10">确认创建</Button>
                    </DialogFooter>
                  </form>
               </DialogContent>
@@ -496,18 +538,34 @@ export default function AdminsPage() {
                     </TableCell>
                     <TableCell>
                       {editingId === admin._id ? (
-                        <Select value={editRole} onValueChange={(val) => val && setEditRole(val)}>
-                          <SelectTrigger className="h-8 py-0 rounded-lg border-primary text-xs">
-                            <SelectValue>
-                              {ROLE_LABELS[editRole]}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="super_admin">超级管理员</SelectItem>
-                            <SelectItem value="admin">普通管理员</SelectItem>
-                            <SelectItem value="viewer">只读审计员</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <div className="space-y-2">
+                          <Select value={editRole} onValueChange={(val) => val && setEditRole(val)}>
+                            <SelectTrigger className="h-8 py-0 rounded-lg border-primary text-xs">
+                              <SelectValue>
+                                {ROLE_LABELS[editRole]}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="super_admin">超级管理员</SelectItem>
+                              <SelectItem value="admin">普通管理员</SelectItem>
+                              <SelectItem value="viewer">只读审计员</SelectItem>
+                              <SelectItem value="enterprise_admin">企业负责人</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          
+                          {editRole === 'enterprise_admin' && (
+                            <Select value={editEnterpriseId} onValueChange={setEditEnterpriseId}>
+                              <SelectTrigger className="h-8 py-0 rounded-lg border-amber-200 bg-amber-50 text-xs">
+                                <SelectValue placeholder="选择企业" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {enterprises.map(ent => (
+                                  <SelectItem key={ent._id} value={ent._id}>{ent.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </div>
                       ) : (
                         getRoleBadge(admin.role)
                       )}
@@ -522,7 +580,7 @@ export default function AdminsPage() {
                     <TableCell className="text-right">
                       {editingId === admin._id ? (
                         <div className="flex justify-end gap-1">
-                          <Button size="icon" variant="ghost" onClick={() => handleUpdate(admin._id)} className="text-green-600"><Check size={16} /></Button>
+                          <Button size="icon" variant="ghost" onClick={handleUpdate} className="text-green-600"><Check size={16} /></Button>
                           <Button size="icon" variant="ghost" onClick={() => setEditingId(null)}><X size={16} /></Button>
                         </div>
                       ) : (
@@ -535,7 +593,7 @@ export default function AdminsPage() {
                           >
                             <ChevronDown size={16} className={cn("transition-transform", expandedId === admin._id && "rotate-180")} />
                           </Button>
-                          <Button size="icon" variant="ghost" onClick={() => startEdit(admin)}><Edit2 size={14} className="text-blue-500" /></Button>
+                          <Button size="icon" variant="ghost" onClick={() => handleEditClick(admin)}><Edit2 size={14} className="text-blue-500" /></Button>
                           <Button size="icon" variant="ghost" onClick={() => setResetPwdId(admin._id)}><KeyRound size={14} className="text-amber-500" /></Button>
                           <Button 
                             size="icon" 

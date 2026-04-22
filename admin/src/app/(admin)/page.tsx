@@ -1,53 +1,57 @@
-import Link from "next/link";
-export const dynamic = "force-dynamic";
+import { cookies } from "next/headers";
+import * as jose from 'jose';
 import dbConnect from "@/lib/mongodb";
-import { User } from "@/models/User";
-import { FloorPlan } from "@/models/FloorPlan";
-import UserDashboard from "@/components/UserDashboard";
+import { AdminUser } from "@/models/AdminUser";
+import PlatformDashboard from "@/components/PlatformDashboard";
+import MerchantDashboard from "@/components/MerchantDashboard";
+import { redirect } from "next/navigation";
+
+export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  // Fetch real data on the server
   await dbConnect();
   
-  // Lean queries for performance, since we only need to pass them to a client component
-  const users = await User.find({}).sort({ createdAt: -1 }).lean();
-  const plans = await FloorPlan.find({}).sort({ createdAt: -1 }).lean();
+  const cookieStore = await cookies();
+  const token = cookieStore.get('auth_token')?.value;
 
-  // Convert ObjectIds/Dates to strings for pure JSON serialization to Client Components
-  const serializedUsers = users.map((u: any) => ({
-    _id: u._id.toString(),
-    openid: u.openid,
-    nickname: u.nickname,
-    avatar: u.avatar,
-    communityName: u.communityName,
-    createdAt: u.createdAt?.toISOString(),
-  }));
+  if (!token) {
+    redirect('/login');
+  }
 
-  const serializedPlans = plans.map((p: any) => ({
-    _id: p._id.toString(),
-    name: p.name,
-    creator: p.creator.toString(),
-    layoutData: p.layoutData,
-    status: p.status,
-    createdAt: p.createdAt?.toISOString(),
-  }));
+  const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
+  const { payload } = await jose.jwtVerify(token, secret);
+  
+  const admin = await AdminUser.findById(payload.id).populate('enterpriseId');
+  if (!admin) {
+    redirect('/login');
+  }
+
+  const isPlatformAdmin = admin.role === 'super_admin' || admin.role === 'admin';
 
   return (
     <div className="min-h-screen bg-white text-[#171717] font-sans selection:bg-[#ebebeb]">
-
-      <main className="max-w-7xl mx-auto px-6 py-16">
+      <main className="max-w-7xl mx-auto px-6 py-12">
         <div className="mb-12">
-          <h2 className="text-[40px] font-semibold tracking-[-2.4px] leading-tight mb-4">
-            数据大盘
-          </h2>
-          <p className="text-[20px] text-[#4d4d4d] font-normal leading-relaxed">
-            随时管理量房大师的用户、户型与数据状态。
+          <div className="flex items-center gap-3 mb-4">
+             <div className="w-10 h-10 bg-primary rounded-2xl flex items-center justify-center text-primary-foreground font-black">
+                {isPlatformAdmin ? 'P' : 'M'}
+             </div>
+             <h2 className="text-[32px] font-bold tracking-tight">
+                {isPlatformAdmin ? '平台管理中心' : '企业工作台'}
+             </h2>
+          </div>
+          <p className="text-[18px] text-muted-foreground font-medium">
+            {isPlatformAdmin 
+              ? '全局数据洞察与租户管理' 
+              : `欢迎回来，${admin.displayName || admin.username}。这里是 ${admin.enterpriseId?.name || '个人'} 工作台。`}
           </p>
         </div>
 
-        {/* Client Component handling state */}
-        <UserDashboard initialUsers={serializedUsers} initialPlans={serializedPlans} />
-
+        {isPlatformAdmin ? (
+          <PlatformDashboard />
+        ) : (
+          <MerchantDashboard admin={JSON.parse(JSON.stringify(admin))} />
+        )}
       </main>
     </div>
   );

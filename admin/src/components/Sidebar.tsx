@@ -40,37 +40,41 @@ interface MenuCategory {
   items: MenuItem[];
 }
 
-const MENU_CONFIG: MenuCategory[] = [
-  {
-    title: '运营核心',
-    items: [
-      { key: 'dashboard', label: '总览', icon: LayoutDashboard, href: '/' },
-    ]
-  },
-  {
-    title: '业务管理',
-    items: [
-      { key: 'leads', label: '客资线索', icon: ClipboardList, href: '/leads' },
-      { key: 'floorplans', label: '户型图库', icon: Map, href: '/floorplans' },
-      { key: 'inspirations', label: '灵感库', icon: Sparkles, href: '/inspirations' },
-    ]
-  },
-  {
-    title: '资源与设备',
-    items: [
-      { key: 'enterprises', label: '企业管理', icon: Building2, href: '/enterprises' },
-      { key: 'devices', label: '设备管理', icon: Smartphone, href: '/devices' },
-    ]
-  },
-  {
-    title: '组织与权限',
-    items: [
-      { key: 'staff', label: '员工管理', icon: UserSquare2, href: '/staff' },
-      { key: 'admins', label: '系统管理', icon: UserCog, href: '/admins' },
-      { key: 'users', label: '小程序用户', icon: Users, href: '/users' },
-    ]
-  }
-];
+const MENU_CONFIG: Record<string, MenuCategory[]> = {
+  platform: [
+    {
+      title: '平台管理',
+      items: [
+        { key: 'enterprises', label: '企业管理', icon: Building2, href: '/enterprises' },
+        { key: 'admins', label: '系统管理', icon: UserCog, href: '/admins' },
+        { key: 'users', label: '用户审计', icon: Users, href: '/users' },
+      ]
+    }
+  ],
+  merchant: [
+    {
+      title: '运营工作台',
+      items: [
+        { key: 'dashboard', label: '概览', icon: LayoutDashboard, href: '/' },
+        { key: 'leads', label: '线索转化', icon: ClipboardList, href: '/leads' },
+      ]
+    },
+    {
+      title: '户型与灵感',
+      items: [
+        { key: 'floorplans', label: '户型图库', icon: Map, href: '/floorplans' },
+        { key: 'inspirations', label: '灵感方案', icon: Sparkles, href: '/inspirations' },
+      ]
+    },
+    {
+      title: '团队与资产',
+      items: [
+        { key: 'staff', label: '员工管理', icon: UserSquare2, href: '/staff' },
+        { key: 'devices', label: '设备管理', icon: Smartphone, href: '/devices' },
+      ]
+    }
+  ]
+};
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -158,8 +162,29 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <div className="flex-1 overflow-y-auto py-6 px-3 space-y-8 scrollbar-hide">
-        {MENU_CONFIG.map((category) => {
-          // Check if category has any visible items
+        {/* Render Platform Menus - Only for super_admin/admin */}
+        {(admin?.role === 'super_admin' || admin?.role === 'admin') && MENU_CONFIG.platform.map((category) => {
+          const visibleItems = category.items.filter(item => !admin || admin.effectivePermissions?.includes(item.key));
+          if (visibleItems.length === 0) return null;
+
+          return (
+            <div key={category.title} className="space-y-2 border-l-2 border-primary/20 ml-1">
+              {!collapsed && (
+                <h2 className="px-3 text-[10px] font-bold text-primary uppercase tracking-[0.1em] mb-2 opacity-70">
+                  {category.title}
+                </h2>
+              )}
+              <div className="space-y-1">
+                {visibleItems.map(item => (
+                  <NavItem key={item.key} item={item} collapsed={collapsed} />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Render Merchant Menus */}
+        {MENU_CONFIG.merchant.map((category) => {
           const visibleItems = category.items.filter(item => !admin || admin.effectivePermissions?.includes(item.key));
           if (visibleItems.length === 0) return null;
 
@@ -194,9 +219,16 @@ export default function Sidebar() {
               <p className="text-[13px] font-bold truncate leading-none mb-1">
                 {admin?.displayName || admin?.username || 'Loading...'}
               </p>
-              <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-bold">
-                {admin?.role === 'super_admin' ? 'Super Admin' : 'Staff'}
-              </p>
+              <div className="flex flex-col gap-0.5">
+                <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-bold">
+                  {admin?.role === 'super_admin' ? 'System Root' : (admin?.role === 'enterprise_admin' ? 'Manager' : 'Staff')}
+                </p>
+                {admin?.enterpriseId?.name && (
+                  <p className="text-[9px] text-primary font-bold truncate opacity-80">
+                    @{admin.enterpriseId.name}
+                  </p>
+                )}
+              </div>
             </div>
           )}
         </div>

@@ -18,7 +18,9 @@ export async function GET(request: Request) {
     const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
     const { payload } = await jose.jwtVerify(token, secret);
 
-    const admin = await AdminUser.findById(payload.id).select('-passwordHash');
+    const admin = await AdminUser.findById(payload.id)
+      .populate('enterpriseId', 'name')
+      .select('-passwordHash');
     if (!admin || admin.status === 'disabled') {
       return NextResponse.json({ success: false, error: '用户不存在或已禁用' }, { status: 401 });
     }

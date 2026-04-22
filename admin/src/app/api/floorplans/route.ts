@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server';
-export const dynamic = 'force-dynamic';
 import dbConnect from '@/lib/mongodb';
 import { FloorPlan } from '@/models/FloorPlan';
 import { User } from '@/models/User';
 import { AdminUser } from '@/models/AdminUser';
+import { getTenantContext, getTenantFilter } from '@/lib/auth';
+
+export const dynamic = 'force-dynamic';
 
 // Apply FloorPlan mapping: Save layout data from Mini Program
 export async function POST(req: Request) {
@@ -57,19 +59,44 @@ export async function GET(req: Request) {
     const search = searchParams.get('search');
 
     let query: any = {};
+
+    // 1. Mini-Program Context (via openid)
     if (openid) {
       const user = await User.findOne({ openid });
       if (!user) {
         return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
       }
-      query.creator = user._id;
-    } else if (phone) {
+      
+      // If staff, see all company plans or assigned plans
+      if (user.role === 'staff') {
+        const staffMember = await AdminUser.findOne({ phone: user.phone });
+        if (staffMember) {
+          if (staffMember.role === 'enterprise_admin') {
+            query.enterpriseId = staffMember.enterpriseId;
+          } else {
+            query.staffId = staffMember._id;
+          }
+        } else {
+          query.creator = user._id;
+        }
+      } else {
+        query.creator = user._id;
+      }
+    } else {
+      // 2. Admin Dashboard Context (via Auth Token)
+      const context = await getTenantContext(req);
+      if (!context) {
+        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      }
+      const tenantFilter = getTenantFilter(context);
+      query = { ...query, ...tenantFilter };
+    }
+
+    // Additional filters
+    if (phone) {
       const users = await User.find({ phone });
       if (users.length > 0) {
         query.creator = { $in: users.map(u => u._id) };
-      } else {
-        // If no user found by phone, return empty data
-        return NextResponse.json({ success: true, data: [] });
       }
     }
 
