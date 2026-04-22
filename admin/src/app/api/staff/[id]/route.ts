@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
+import mongoose from 'mongoose';
 import dbConnect from '@/lib/mongodb';
 import { AdminUser } from '@/models/AdminUser';
 import { getTenantContext } from '@/lib/auth';
@@ -15,7 +16,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     const body = await request.json();
-    const { username, password, displayName, role, phone, status, promoterIds, wecomUserId } = body;
+    const { username, password, displayName, role, phone, status, promoterIds, wecomUserId, departmentId } = body;
 
     const staff = await AdminUser.findById(id);
     if (!staff) {
@@ -58,6 +59,13 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (status !== undefined) updateData.status = status;
     if (promoterIds !== undefined) updateData.promoterIds = promoterIds;
     if (wecomUserId !== undefined) updateData.wecomUserId = wecomUserId;
+    if (departmentId !== undefined) {
+      if (departmentId && departmentId !== 'none' && mongoose.Types.ObjectId.isValid(departmentId)) {
+        updateData.departmentId = new mongoose.Types.ObjectId(departmentId);
+      } else {
+        updateData.departmentId = null;
+      }
+    }
     
     if (password && password.trim().length >= 6) {
       updateData.passwordHash = await bcrypt.hash(password, 10);

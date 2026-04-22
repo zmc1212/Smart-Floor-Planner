@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
+import mongoose from 'mongoose';
 import dbConnect from '@/lib/mongodb';
 import { AdminUser } from '@/models/AdminUser';
 import { Enterprise } from '@/models/Enterprise';
+import { Department } from '@/models/Department';
 import { getTenantContext } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
@@ -24,33 +26,38 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
+    const departmentId = searchParams.get('departmentId');
 
-    // Business Roles definition
-    const businessRoles = ['enterprise_admin', 'designer', 'salesperson'];
-
-    let filter: any = {
-      role: { $in: businessRoles }
-    };
+    let filter: any = {};
     
-    // Apply Multi-tenant filter
+    // Multi-tenant isolation
     if (context.role === 'enterprise_admin') {
       filter.enterpriseId = context.enterpriseId;
     } else if (context.role === 'super_admin' || context.role === 'admin') {
-      // Super admins can filter by enterpriseId if provided
       const entId = searchParams.get('enterpriseId');
       if (entId) filter.enterpriseId = entId;
     }
 
+    // Department filter
+    if (departmentId && departmentId !== 'none' && departmentId !== 'all') {
+      if (mongoose.Types.ObjectId.isValid(departmentId)) {
+        filter.departmentId = new mongoose.Types.ObjectId(departmentId);
+      } else {
+        filter.departmentId = departmentId;
+      }
+    } else if (departmentId === 'none') {
+      filter.departmentId = null;
+    }
+
+    // Search filter
     if (search.trim()) {
       const regex = new RegExp(search.trim(), 'i');
-      filter.$and = filter.$and || [];
-      filter.$and.push({
-        $or: [{ username: regex }, { displayName: regex }],
-      });
+      filter.$or = [{ username: regex }, { displayName: regex }];
     }
 
     const staff = await AdminUser.find(filter)
-      .populate({ path: 'enterpriseId', model: Enterprise, select: 'name' })
+      .populate({ path: 'enterpriseId', select: 'name' })
+      .populate({ path: 'departmentId', select: 'name' })
       .select('-passwordHash')
       .sort({ createdAt: -1 });
 
@@ -71,7 +78,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
-    const { username, password, displayName, role, phone, promoterIds, wecomUserId } = body;
+    const { username, password, displayName, role, phone, promoterIds, wecomUserId, departmentId } = body;
 
     if (!username || !password || !role) {
       return NextResponse.json({ success: false, error: '请填写完整信息' }, { status: 400 });
@@ -111,6 +118,7 @@ export async function POST(request: Request) {
       phone: phone?.trim() || '',
       role,
       enterpriseId: targetEnterpriseId,
+      departmentId: (departmentId && departmentId !== 'none' && mongoose.Types.ObjectId.isValid(departmentId)) ? new mongoose.Types.ObjectId(departmentId) : null,
       promoterIds,
       wecomUserId,
       status: 'active',

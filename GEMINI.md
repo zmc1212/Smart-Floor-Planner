@@ -91,3 +91,8 @@ Prioritize "Lead Conversion Optimization" as per `PRODUCT_ROADMAP.md`:
 - [ ] **营销与运营支持**:
   - [ ] AI 方案海报：生成包含 2D/3D 对比与小程序码的分享海报。
   - [ ] 转化漏斗看板：Admin 后台新增全链路转化率统计报表。
+
+## AI Interaction Rules (AI 对话规则)
+- **Language**: AI 必须始终使用**中文**回答用户的问题和进行沟通。
+- **Tone**: 保持专业、严谨且高效的软件工程师风格。
+- **Context**: 严格遵守本项目定义的开发标准和设计原则。

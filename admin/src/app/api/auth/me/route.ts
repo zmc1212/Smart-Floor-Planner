@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import * as jose from 'jose';
 import dbConnect from '@/lib/mongodb';
 import { AdminUser, DEFAULT_PERMISSIONS } from '@/models/AdminUser';
+import { Enterprise } from '@/models/Enterprise';
 
 export async function GET(request: Request) {
   await dbConnect();

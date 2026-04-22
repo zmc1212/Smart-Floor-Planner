@@ -6,6 +6,7 @@ export interface IAdminUser extends Document {
   displayName: string;
   role: 'super_admin' | 'admin' | 'enterprise_admin' | 'designer' | 'salesperson' | 'viewer';
   enterpriseId?: mongoose.Types.ObjectId;
+  departmentId?: mongoose.Types.ObjectId;
   openid?: string; // Link to WeChat identity
   phone?: string;  // Link via phone number
   menuPermissions: string[];
@@ -71,6 +72,10 @@ const AdminUserSchema: Schema<IAdminUser> = new Schema(
     enterpriseId: {
       type: Schema.Types.ObjectId,
       ref: 'Enterprise',
+    },
+    departmentId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Department',
     },
     promoterIds: [
       {
