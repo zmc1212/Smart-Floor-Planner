@@ -1,0 +1,131 @@
+.ble-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ble-modal-container {
+  width: 600rpx;
+  background: #ffffff;
+  border-radius: 32rpx;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10rpx 40rpx rgba(0,0,0,0.1);
+}
+
+.ble-modal-header {
+  padding: 32rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1rpx solid #f0f0f0;
+}
+
+.title {
+  font-size: 32rpx;
+  font-weight: 600;
+  color: #333333;
+}
+
+.close-btn {
+  font-size: 40rpx;
+  color: #999999;
+  padding: 10rpx;
+}
+
+.ble-modal-body {
+  padding: 60rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.ble-visual {
+  margin-bottom: 40rpx;
+}
+
+.ble-pulse {
+  width: 120rpx;
+  height: 120rpx;
+  background: #f0f9ff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.ble-icon {
+  font-size: 60rpx;
+  z-index: 2;
+}
+
+.ble-pulse.active::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #1296db;
+  opacity: 0.2;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 0.3; }
+  100% { transform: scale(2); opacity: 0; }
+}
+
+.ble-info {
+  text-align: center;
+}
+
+.status-text {
+  font-size: 36rpx;
+  font-weight: bold;
+  color: #1296db;
+  display: block;
+  margin-bottom: 12rpx;
+}
+
+.status-desc {
+  font-size: 24rpx;
+  color: #94a3b8;
+}
+
+.ble-modal-footer {
+  padding: 0 40rpx 40rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+}
+
+.ble-btn {
+  width: 100%;
+  height: 88rpx;
+  border-radius: 44rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ble-btn.primary {
+  background: #1296db;
+  color: #ffffff;
+}
+
+.ble-btn.outline {
+  background: transparent;
+  color: #64748b;
+  border: 2rpx solid #e2e8f0;
+}

@@ -11,6 +11,12 @@
     </view>
 
     <view class="nav-right">
+      <!-- 蓝牙状态图标 -->
+      <view class="ble-status-icon {{bleConnected ? 'connected' : ''}}">
+        <text>{{bleConnected ? '📡' : '🚫'}}</text>
+      </view>
+      <view class="nav-divider"></view>
+      
       <view class="action-group" wx:if="{{showHistory}}">
         <view class="action-btn {{canUndo ? '' : 'disabled'}}" bindtap="onUndo">
           <text>↩</text>
@@ -20,6 +26,10 @@
         </view>
       </view>
       <view class="nav-divider" wx:if="{{showHistory}}"></view>
+      <view class="action-btn" wx:if="{{showClear}}" bindtap="onClear">
+        <text>🗑️</text>
+      </view>
+      <view class="nav-divider" wx:if="{{showClear}}"></view>
       <view class="action-btn" bindtap="onExport">
         <text>📥</text>
       </view>

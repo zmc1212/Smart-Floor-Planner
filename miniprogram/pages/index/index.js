@@ -14,7 +14,8 @@ Page({
     windowWidth: 375,
     windowHeight: 600,
     branding: null,
-    isStaff: false
+    isStaff: false,
+    showBLEConnector: false
   },
 
   onLoad: function () {
@@ -235,11 +236,24 @@ Page({
   },
 
   onOpenLeadModal: function () {
+    if (!this.data.bleConnected) {
+      this.setData({ showBLEConnector: true });
+      return;
+    }
     this.setData({ showLeadModal: true });
   },
 
   onCloseLeadModal: function () {
     this.setData({ showLeadModal: false });
+  },
+
+  onCloseBLEConnector: function () {
+    this.setData({ showBLEConnector: false });
+  },
+
+  onBLESuccess: function () {
+    this.setData({ bleConnected: true, showBLEConnector: false });
+    getApp().globalData.bleConnected = true;
   },
 
   onShareAppMessage: function () {    return {

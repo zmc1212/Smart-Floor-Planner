@@ -3,7 +3,8 @@
     "nav-bar": "../../components/nav-bar/nav-bar",
     "ble-gate": "../../components/ble-gate/ble-gate",
     "room-library": "../../components/room-library/room-library",
-    "lead-modal": "../../components/lead-modal/lead-modal"
+    "lead-modal": "../../components/lead-modal/lead-modal",
+    "ble-connector": "../../components/ble-connector/ble-connector"
   },
   "navigationStyle": "custom",
   "disableScroll": false

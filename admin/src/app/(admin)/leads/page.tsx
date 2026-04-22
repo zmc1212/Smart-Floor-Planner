@@ -382,7 +382,7 @@ export default function LeadsPage() {
                   </div>
 
                   {/* Related Floor Plans */}
-                  <RelatedFloorPlans phone={selectedLead.phone} />
+                  <RelatedFloorPlans floorPlans={selectedLead.floorPlanIds || []} />
 
                   {/* Follow up records */}
                   <div className="space-y-6">
@@ -440,28 +440,7 @@ export default function LeadsPage() {
   );
 }
 
-function RelatedFloorPlans({ phone }: { phone: string }) {
-  const [floorPlans, setFloorPlans] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchRelatedPlans = async () => {
-      setLoading(true);
-      try {
-        const res = await fetch(`/api/floorplans?phone=${phone}`);
-        const data = await res.json();
-        if (data.success) {
-          setFloorPlans(data.data);
-        }
-      } catch (err) {
-        console.error('Failed to fetch related plans:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    if (phone) fetchRelatedPlans();
-  }, [phone]);
-
+function RelatedFloorPlans({ floorPlans }: { floorPlans: any[] }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 text-sm font-bold tracking-tight">
@@ -471,12 +450,10 @@ function RelatedFloorPlans({ phone }: { phone: string }) {
       </div>
       
       <div className="space-y-2">
-        {loading ? (
-          <div className="text-xs text-muted-foreground animate-pulse">正在加载实测数据...</div>
-        ) : floorPlans.length > 0 ? (
+        {floorPlans.length > 0 ? (
           floorPlans.map((plan) => (
             <div key={plan._id} className="flex items-center justify-between p-3 bg-muted/20 border rounded-xl hover:bg-muted/30 transition-colors cursor-pointer group"
-                 onClick={() => window.location.href = `/floorplans?id=${plan._id}`}>
+                 onClick={() => window.location.href = `/floorplans/${plan._id}`}>
               <div className="flex flex-col">
                 <span className="text-sm font-medium">{plan.name}</span>
                 <span className="text-[10px] text-muted-foreground">测量日期: {new Date(plan.createdAt).toLocaleDateString()}</span>

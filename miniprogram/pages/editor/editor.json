@@ -9,7 +9,8 @@
     "bottom-bar": "../../components/bottom-bar/bottom-bar",
     "angle-measure": "../../components/angle-measure/angle-measure",
     "technical-report": "../../components/technical-report/technical-report",
-    "lead-modal": "../../components/lead-modal/lead-modal"
+    "lead-modal": "../../components/lead-modal/lead-modal",
+    "ble-connector": "../../components/ble-connector/ble-connector"
   },
   "navigationStyle": "custom",
   "disableScroll": true

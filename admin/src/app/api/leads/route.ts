@@ -64,6 +64,7 @@ export async function GET(request: Request) {
     const leads = await Lead.find(query)
       .populate('assignedTo', 'displayName username')
       .populate('promoterId', 'displayName username')
+      .populate({ path: 'floorPlanIds', select: 'name status createdAt', strictPopulate: false })
       .sort({ createdAt: -1 });
 
     console.log(`Leads API Result: Found ${leads.length} leads`);

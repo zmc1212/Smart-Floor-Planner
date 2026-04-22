@@ -4,8 +4,8 @@
   align-items: center;
   background: #ffffff;
   box-shadow: 0 1rpx 0 0 var(--ds-gray-alpha-400);
-  padding: 16rpx 40rpx;
-  gap: 32rpx;
+  padding: 16rpx 24rpx;
+  gap: 20rpx;
   z-index: 30;
   position: relative;
 }
@@ -18,9 +18,21 @@
   gap: 8rpx;
 }
 
+.tool-wrapper.disabled {
+  opacity: 0.2;
+  pointer-events: none;
+}
+
+.tool-divider {
+  width: 1rpx;
+  height: 48rpx;
+  background: var(--ds-gray-200);
+  margin: 0 4rpx;
+}
+
 .tool-btn {
-  width: 72rpx;
-  height: 72rpx;
+  width: 68rpx;
+  height: 68rpx;
   display: flex;
   align-items: center;
   justify-content: center;

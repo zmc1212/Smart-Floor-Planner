@@ -6,9 +6,12 @@
     capsulePadding="{{capsulePadding}}"
     canUndo="{{historyIndex > 0}}"
     canRedo="{{historyIndex < history.length - 1}}"
-    showHistory="{{true}}"
+    showHistory="{{false}}"
+    showClear="{{true}}"
+    bleConnected="{{bleConnected}}"
     bindundo="onUndo"
     bindredo="onRedo"
+    bindclear="onClearCanvas"
     bindexport="onExport"
     bindback="onBack"
   />
@@ -21,14 +24,18 @@
         activeTool="{{activeTool}}" 
         currentRoomType="{{currentRoomType}}"
         is3DView="{{is3DView}}"
+        canUndo="{{historyIndex > 0}}"
+        canRedo="{{historyIndex < history.length - 1}}"
         bindchange="onToolChange" 
         bindtypechange="onRoomTypeChange"
         bindtoggle3d="onToggle3D"
+        bindundo="onUndo"
+        bindredo="onRedo"
       />
 
       <!-- 顶部测量横幅 -->
       <guided-banner 
-        wx:if="{{!is3DView}}"
+        wx:if="{{!is3DView && (guidedMode || rooms.length > 0)}}"
         guidedMode="{{guidedMode}}"
         currentGuidedRoomName="{{currentGuidedRoomName}}"
         guidedEdgeIndex="{{guidedEdgeIndex}}"
@@ -149,5 +156,12 @@
     floorPlanId="{{currentProject_id}}"
     bindclose="onCloseLeadModal"
     bindsuccess="onLeadSuccess"
+  />
+
+  <!-- 蓝牙连接弹窗 -->
+  <ble-connector 
+    show="{{showBLEConnector}}" 
+    bindclose="onCloseBLEConnector" 
+    bindsuccess="onBLESuccess"
   />
 </view>

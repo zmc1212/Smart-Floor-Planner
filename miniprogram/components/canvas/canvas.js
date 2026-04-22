@@ -376,6 +376,9 @@ Component({
       ctx.restore();
 
       // ── 文字标注 ──
+      // 如果房间尚未测量，不显示任何文字标注
+      if (room.measured === false) return;
+
       var minSide = Math.min(room.width, room.height);
       var baseFontSize = Math.max(1.5, Math.min(4, minSide / 10));
       var nameFontSize = baseFontSize * 1.2;

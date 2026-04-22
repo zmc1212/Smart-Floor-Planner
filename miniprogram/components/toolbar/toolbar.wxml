@@ -1,5 +1,17 @@
 <view class="toolbar">
   <block wx:if="{{!is3DView}}">
+    <!-- 撤回/重做 -->
+    <view class="tool-wrapper {{canUndo ? '' : 'disabled'}}" bindtap="onUndo">
+      <view class="tool-btn"><text class="tool-icon">↩</text></view>
+      <text class="tool-label">撤回</text>
+    </view>
+    <view class="tool-wrapper {{canRedo ? '' : 'disabled'}}" bindtap="onRedo">
+      <view class="tool-btn"><text class="tool-icon">↪</text></view>
+      <text class="tool-label">重做</text>
+    </view>
+    
+    <view class="tool-divider"></view>
+
     <block wx:for="{{tools}}" wx:key="id">
       <view class="tool-wrapper">
         <view

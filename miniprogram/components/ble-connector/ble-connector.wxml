@@ -1,0 +1,31 @@
+<view class="ble-modal-overlay" wx:if="{{show}}" catchtap="onClose">
+  <view class="ble-modal-container" catchtap="onContainerTap">
+    <view class="ble-modal-header">
+      <text class="title">连接测距仪</text>
+      <view class="close-btn" bindtap="onClose">×</view>
+    </view>
+    
+    <view class="ble-modal-body">
+      <view class="ble-visual">
+        <view class="ble-pulse {{connecting ? 'active' : ''}}">
+          <text class="ble-icon">📡</text>
+        </view>
+      </view>
+      
+      <view class="ble-info">
+        <text class="status-text">{{statusText}}</text>
+        <text class="status-desc" wx:if="{{!connecting}}">请确保测距仪已开启且靠近手机</text>
+        <text class="status-desc" wx:else>正在搜索授权设备，请稍候...</text>
+      </view>
+    </view>
+
+    <view class="ble-modal-footer">
+      <button class="ble-btn primary" bindtap="onAutoConnect" loading="{{connecting}}" disabled="{{connecting}}">
+        一键连接记忆设备
+      </button>
+      <button class="ble-btn outline" bindtap="onSearchNew" disabled="{{connecting}}">
+        搜索新设备
+      </button>
+    </view>
+  </view>
+</view>

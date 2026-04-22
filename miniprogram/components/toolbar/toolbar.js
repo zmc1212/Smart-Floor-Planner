@@ -19,6 +19,14 @@ Component({
     is3DView: {
       type: Boolean,
       value: false
+    },
+    canUndo: {
+      type: Boolean,
+      value: false
+    },
+    canRedo: {
+      type: Boolean,
+      value: false
     }
   },
 
@@ -32,6 +40,12 @@ Component({
   },
 
   methods: {
+    onUndo: function () {
+      if (this.data.canUndo) this.triggerEvent('undo');
+    },
+    onRedo: function () {
+      if (this.data.canRedo) this.triggerEvent('redo');
+    },
     onToolClick: function (e) {
       var toolId = e.currentTarget.dataset.tool;
       this.triggerEvent('change', { tool: toolId });

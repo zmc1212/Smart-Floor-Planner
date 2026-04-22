@@ -33,7 +33,8 @@ Page({
     windowHeight: 600,
     showAngleMeasure: false,
     angleMeasureWallA: 0,
-    showTechnicalReport: false
+    showTechnicalReport: false,
+    showBLEConnector: false
   },
 
   onLoad: function (options) {
@@ -106,20 +107,25 @@ Page({
       const targetRoomId = fp.currentGuidedRoomId || (draftState ? draftState.currentGuidedRoomId : '') || fp.roomId || '';
       const targetRoomName = fp.currentGuidedRoomName || fp.roomName || '';
 
+      // Find the target room to check its measurement status
+      let targetRoom = null;
+      if (targetRoomId && rooms) {
+        targetRoom = rooms.find(r => r.id === targetRoomId);
+      }
+
       var extraData = {
         currentProject_id: fp._id || '',
         guidedMode: fp.guidedMode || (!!draftState),
         currentGuidedRoomId: targetRoomId,
         currentGuidedRoomName: targetRoomName,
-        showMeasurePrompt: fp.showMeasurePrompt || (!!targetRoomId),
+        showMeasurePrompt: fp.showMeasurePrompt !== undefined ? fp.showMeasurePrompt : (!!targetRoomId && !targetRoom?.measured),
         activeTool: fp.activeTool || 'SELECT',
         selectedIds: targetRoomId ? [targetRoomId] : (fp.selectedIds || []),
-        showPropertyPanel: fp.showPropertyPanel || false
+        showPropertyPanel: false
       };
 
       // Detect if layer height is already measured for this room to skip prompt
       if (targetRoomId && rooms) {
-        const targetRoom = rooms.find(r => r.id === targetRoomId);
         if (targetRoom && targetRoom.height3D > 0) {
           // If height is measured but we haven't started walls, set index to 0
           if (!draftState) {
@@ -156,8 +162,14 @@ Page({
         }
       }, 800);
 
-      if (extraData.guidedMode && extraData.showMeasurePrompt) {
+      // Final check: Never open laser if the room is already measured
+      const shouldOpenLaser = !!(extraData.guidedMode && extraData.showMeasurePrompt && targetRoom && !targetRoom.measured);
+      
+      if (shouldOpenLaser) {
+        console.log('[Editor] Auto-opening laser for unmeasured room');
         this.openLaser();
+      } else {
+        console.log('[Editor] Staying quiet for measured room or non-guided mode');
       }
     }
   },
@@ -279,15 +291,7 @@ Page({
   },
 
   onConnectBLE: function () {
-    var bluetooth = require('../../utils/bluetooth.js');
-    var that = this;
-    bluetooth.initBLE(function (distanceInMeters) {
-      that.onBluetoothMeasure(distanceInMeters);
-    }, function (isConnected) {
-      that.setData({ bleConnected: isConnected, isLaserOpen: false });
-    }, function () {
-      that.onBluetoothDisconnect();
-    });
+    this.setData({ showBLEConnector: true });
   },
 
   onBluetoothDisconnect: function () {
@@ -1015,10 +1019,29 @@ Page({
   },
 
   onAddMeasureEdge: function () {
+    if (!this.data.bleConnected) {
+      wx.showToast({ title: '请先连接测距仪', icon: 'none' });
+      this.setData({ showBLEConnector: true });
+      return;
+    }
     this.openLaser();
     setTimeout(() => {
       this.setData({ showMeasurePrompt: true });
     }, 500);
+  },
+
+  onCloseBLEConnector: function () {
+    this.setData({ showBLEConnector: false });
+  },
+
+  onBLESuccess: function () {
+    this.setData({ bleConnected: true, showBLEConnector: false });
+    getApp().globalData.bleConnected = true;
+    
+    // Auto trigger laser if we were in the middle of something
+    if (this.data.currentGuidedRoomId) {
+      this.openLaser();
+    }
   },
 
   onFinishPolygon: function () {
@@ -1193,6 +1216,58 @@ Page({
     }
   },
 
+  onClearCanvas: function () {
+    var that = this;
+    wx.showModal({
+      title: '清空画布',
+      content: '确定要清空当前所有绘制的数据吗？此操作不可直接撤销。',
+      confirmText: '确定清空',
+      confirmColor: '#ff4d4f',
+      success: (res) => {
+        if (res.confirm) {
+          const isGuided = !!this.data.currentGuidedRoomId;
+          let rooms = [];
+          if (isGuided) {
+            // 如果是引导模式，保留基础房间对象以便后续测量，但重置其形状
+            rooms = [{
+              id: this.data.currentGuidedRoomId,
+              name: this.data.currentGuidedRoomName || '客厅',
+              x: 50,
+              y: 50,
+              width: 1,
+              height: 1,
+              color: '#f0f0f0',
+              measured: false,
+              openings: [],
+              polygon: [],
+              polygonClosed: false,
+              height3D: 28
+            }];
+          }
+
+          this.setData({
+            rooms: rooms,
+            history: [rooms],
+            historyIndex: 0,
+            selectedIds: isGuided ? [this.data.currentGuidedRoomId] : [],
+            selectedRooms: rooms,
+            totalArea: '0.00',
+            showPropertyPanel: false,
+            guidedMode: isGuided,
+            showMeasurePrompt: false,
+            measurePoints: isGuided ? [{ x: 0, y: 0 }] : [],
+            guidedEdgeIndex: -1,
+            pendingDirection: '',
+            lastMeasuredDirection: '',
+            canFinishPolygon: false
+          });
+          
+          wx.showToast({ title: '画布已重置', icon: 'success' });
+        }
+      }
+    });
+  },
+
   onAddRoom: function (e) {
     var room = e.detail.room;
     var newRooms = this.data.rooms.concat([room]);
@@ -1298,7 +1373,33 @@ Page({
   },
 
   onStartRemeasure: function () {
+    const roomId = this.data.currentGuidedRoomId;
+    let rooms = this.data.rooms || [];
+    
+    // 检查当前引导房间是否还存在（可能被清空画布了）
+    const roomExists = rooms.some(r => r.id === roomId);
+    
+    if (!roomExists && roomId) {
+      console.log('[Editor] 画布已清空，正在为重测重新创建房间对象:', roomId);
+      const newRoom = {
+        id: roomId,
+        name: this.data.currentGuidedRoomName || '客厅',
+        x: 50,
+        y: 50,
+        width: 1,
+        height: 1,
+        color: '#f0f0f0',
+        measured: false,
+        openings: [],
+        polygon: [],
+        polygonClosed: false,
+        height3D: 28
+      };
+      rooms = [newRoom]; // 既然清空了，那就重新开始，这里只放这一个房间
+    }
+
     this.setData({
+      rooms: rooms,
       guidedMode: true,
       guidedEdgeIndex: -1, 
       measurePoints: [{ x: 0, y: 0 }],
@@ -1306,11 +1407,11 @@ Page({
       pendingDirection: '',
       canFinishPolygon: false,
       selectedEdge: '',
-      selectedEdgeInfo: null, // Phase 3: Store detailed edge info (roomId, index, side, etc)
+      selectedEdgeInfo: null, 
       showMeasurePrompt: false,
       showPropertyPanel: false,
       is3DView: false,
-      selectedIds: [this.data.currentGuidedRoomId]
+      selectedIds: roomId ? [roomId] : []
     });
     this.openLaser();
     setTimeout(() => {

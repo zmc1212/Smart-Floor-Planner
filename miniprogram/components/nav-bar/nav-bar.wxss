@@ -62,6 +62,23 @@
   gap: 12rpx;
 }
 
+.ble-status-icon {
+  width: 44rpx;
+  height: 44rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24rpx;
+  background: #f1f5f9;
+  border-radius: 50%;
+  transition: all 0.3s;
+}
+
+.ble-status-icon.connected {
+  background: #f0f9ff;
+  color: #1296db;
+}
+
 .action-group {
   display: flex;
   align-items: center;

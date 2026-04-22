@@ -7,6 +7,7 @@
     canUndo="{{false}}"
     canRedo="{{false}}"
     showHistory="{{false}}"
+    bleConnected="{{bleConnected}}"
   />
 
   <view class="main-content">
@@ -48,4 +49,10 @@
   </view>
 
   <lead-modal show="{{showLeadModal}}" bindclose="onCloseLeadModal" bindsuccess="onLeadSuccess" />
+
+  <ble-connector 
+    show="{{showBLEConnector}}" 
+    bindclose="onCloseBLEConnector" 
+    bindsuccess="onBLESuccess"
+  />
 </view>
