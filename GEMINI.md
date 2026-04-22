@@ -92,6 +92,25 @@ Prioritize "Lead Conversion Optimization" as per `PRODUCT_ROADMAP.md`:
   - [ ] AI 方案海报：生成包含 2D/3D 对比与小程序码的分享海报。
   - [ ] 转化漏斗看板：Admin 后台新增全链路转化率统计报表。
 
+## 🏗️ SaaS 架构硬约束 (Tenancy & Performance)
+为了确保系统在百家企业入驻后依然保持高性能与数据安全，必须遵守以下开发约束：
+
+### 1. 数据隔离 (Logical Isolation)
+- **强制过滤**：所有针对 `Leads`, `FloorPlans`, `Staff`, `Devices` 的查询必须包含 `enterpriseId` 过滤。
+- **工具方法**：使用 `admin/src/lib/auth.ts` 中的 `getTenantFilter(context)` 获取过滤条件，严禁手动拼写 `enterpriseId` 逻辑。
+- **Context 校验**：API 必须先调用 `getTenantContext(request)` 获取当前租户上下文，严禁在未校验权限的情况下操作数据。
+
+### 2. 性能索引 (Performance Indexing)
+- **复合索引**：所有多租户核心表必须建立以 `enterpriseId` 为首位的复合索引。
+  - `Lead`: `{ enterpriseId: 1, createdAt: -1 }`
+  - `FloorPlan`: `{ enterpriseId: 1, createdAt: -1 }`
+  - `AdminUser`: `{ enterpriseId: 1, role: 1 }`
+- **避免全表扫描**：严禁执行不带 `enterpriseId` 的 `find` 或 `count` 操作。
+
+### 3. 资源优化 (Resource Optimization)
+- **Redis 缓存**：对高频读取的配置（如 `Enterprise` 配置、`Staff` 列表）应逐步引入 Redis 缓存。
+- **分页强制**：所有列表接口必须实现分页（`page`, `limit`），默认 `limit` 不得超过 50。
+
 ## AI Interaction Rules (AI 对话规则)
 - **Language**: AI 必须始终使用**中文**回答用户的问题和进行沟通。
 - **Tone**: 保持专业、严谨且高效的软件工程师风格。

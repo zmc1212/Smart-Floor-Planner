@@ -116,5 +116,9 @@ const AdminUserSchema: Schema<IAdminUser> = new Schema(
   }
 );
 
+AdminUserSchema.index({ enterpriseId: 1, role: 1 });
+AdminUserSchema.index({ enterpriseId: 1, departmentId: 1 });
+AdminUserSchema.index({ enterpriseId: 1, username: 1 });
+
 export const AdminUser: Model<IAdminUser> =
   mongoose.models.AdminUser || mongoose.model<IAdminUser>('AdminUser', AdminUserSchema);

@@ -50,4 +50,9 @@ const LeadSchema: Schema = new Schema({
   timestamps: true
 });
 
+LeadSchema.index({ enterpriseId: 1, createdAt: -1 });
+LeadSchema.index({ promoterId: 1, createdAt: -1 });
+LeadSchema.index({ assignedTo: 1, createdAt: -1 });
+LeadSchema.index({ phone: 1 });
+
 export default mongoose.models.Lead || mongoose.model<ILead>('Lead', LeadSchema);

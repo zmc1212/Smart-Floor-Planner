@@ -46,4 +46,8 @@ const FloorPlanSchema: Schema<IFloorPlan> = new Schema(
   }
 );
 
+FloorPlanSchema.index({ enterpriseId: 1, createdAt: -1 });
+FloorPlanSchema.index({ staffId: 1, createdAt: -1 });
+FloorPlanSchema.index({ creator: 1, createdAt: -1 });
+
 export const FloorPlan: Model<IFloorPlan> = mongoose.models.FloorPlan || mongoose.model<IFloorPlan>('FloorPlan', FloorPlanSchema);

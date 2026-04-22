@@ -27,4 +27,7 @@ const DeviceSchema: Schema<IDevice> = new Schema(
   }
 );
 
+DeviceSchema.index({ enterpriseId: 1, status: 1 });
+DeviceSchema.index({ enterpriseId: 1, assignedUserId: 1 });
+
 export const Device: Model<IDevice> = mongoose.models.Device || mongoose.model<IDevice>('Device', DeviceSchema);
