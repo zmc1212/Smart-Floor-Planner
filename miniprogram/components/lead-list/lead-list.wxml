@@ -1,0 +1,90 @@
+<view class="lead-list-container">
+  <!-- 搜索与筛选 -->
+  <view class="search-header">
+    <view class="search-bar">
+      <icon type="search" size="14" color="#999" />
+      <input class="search-input" placeholder="搜索客户姓名或小区" bindconfirm="onSearch" />
+    </view>
+    <view class="add-lead-btn" bindtap="onAddLead">
+      <text class="add-icon">+</text>
+    </view>
+  </view>
+
+  <!-- 选项卡导航 -->
+  <view class="tabs-nav">
+    <scroll-view scroll-x class="tabs-scroll" show-scrollbar="{{false}}">
+      <view 
+        wx:for="{{tabs}}" 
+        wx:key="id" 
+        class="tab-item {{currentTab === item.id ? 'active' : ''}}" 
+        bindtap="onTabChange" 
+        data-index="{{index}}"
+      >
+        <text class="tab-label">{{item.label}}</text>
+        <view class="tab-underline" wx:if="{{currentTab === item.id}}"></view>
+      </view>
+    </scroll-view>
+  </view>
+
+  <!-- 滑动内容区域 -->
+  <view class="loading-overlay" wx:if="{{loading && leads.length === 0}}">
+    <view class="spinner"></view>
+    <text>正在加载客户线索...</text>
+  </view>
+
+  <swiper class="swiper-content" current="{{currentTabIndex}}" bindchange="onSwiperChange">
+    <swiper-item wx:for="{{tabs}}" wx:key="id">
+      <scroll-view 
+        scroll-y 
+        class="list-scroll" 
+        refresher-enabled 
+        refresher-triggered="{{refreshing}}" 
+        bindrefresherrefresh="onRefresh" 
+        bindscrolltolower="onLoadMore"
+      >
+        <view class="leads-grid" wx:if="{{leads.length > 0}}">
+          <view 
+            class="lead-card" 
+            wx:for="{{leads}}" 
+            wx:key="_id" 
+            bindtap="onLeadClick" 
+            data-id="{{item._id}}"
+          >
+            <view class="card-header">
+              <view class="status-badge {{item.status}}">{{item.statusLabel}}</view>
+              <text class="date-text">{{item.createdAtFormatted}}</text>
+            </view>
+            
+            <view class="card-main">
+              <view class="customer-info">
+                <text class="customer-name">{{item.name}}</text>
+                <text class="customer-community">{{item.communityName || '未录入小区'}}</text>
+              </view>
+              <view class="customer-phone">{{item.phone}}</view>
+            </view>
+
+            <view class="card-footer">
+              <view class="meta-item">
+                <text class="meta-icon">📐</text>
+                <text class="meta-text">{{item.roomCount}} 个空间</text>
+              </view>
+              <view class="action-btn" catchtap="onStartMeasure" data-id="{{item._id}}">
+                去量房
+              </view>
+            </view>
+          </view>
+          
+          <view class="load-more-tip" wx:if="{{loading}}">正在加载...</view>
+          <view class="load-more-tip" wx:elif="{{!hasMore}}">没有更多了</view>
+        </view>
+
+        <!-- 空状态 -->
+        <view class="empty-state" wx:else>
+          <image class="empty-img" src="/images/mine0.png" mode="aspectFit" />
+          <text class="empty-title">暂无相关线索</text>
+          <text class="empty-desc">在该状态下还没有任何客户记录</text>
+        </view>
+      </scroll-view>
+    </swiper-item>
+  </swiper>
+</view>

@@ -23,7 +23,7 @@ export default async function FloorPlanDetailPage({ params }: { params: Promise<
     }
 
     // Find associated lead
-    const lead = await Lead.findOne({ floorPlanId: plan._id }).lean();
+    const lead = await Lead.findOne({ floorPlanIds: plan._id }).lean();
 
     // Serialize properly for the client component
     const serializedPlan = {

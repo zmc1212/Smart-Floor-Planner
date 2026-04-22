@@ -22,7 +22,7 @@
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "量房",
+        "text": "首页",
         "iconPath": "images/meaure0.png",
         "selectedIconPath": "images/meaure1.png"
       },

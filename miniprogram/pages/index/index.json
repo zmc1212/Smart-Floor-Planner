@@ -4,7 +4,8 @@
     "ble-gate": "../../components/ble-gate/ble-gate",
     "room-library": "../../components/room-library/room-library",
     "lead-modal": "../../components/lead-modal/lead-modal",
-    "ble-connector": "../../components/ble-connector/ble-connector"
+    "ble-connector": "../../components/ble-connector/ble-connector",
+    "lead-list": "../../components/lead-list/lead-list"
   },
   "navigationStyle": "custom",
   "disableScroll": false

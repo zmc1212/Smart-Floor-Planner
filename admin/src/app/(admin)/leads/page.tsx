@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 export const dynamic = 'force-dynamic';
-import { Loader2, Phone, CheckCircle, Clock, User, MessageSquare, Plus, X, Search, Filter } from "lucide-react";
+import { Loader2, Phone, CheckCircle, Clock, User, MessageSquare, Plus, X, Search, Filter, Check, Share2 } from "lucide-react";
 import { 
   Table, 
   TableBody, 
@@ -71,6 +71,39 @@ export default function LeadsPage() {
       'closed': '已关闭 (暂时流失)'
     };
     return statusMap[status] || status;
+  };
+
+  const [isSyncing, setIsSyncing] = useState<string | null>(null);
+  const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
+
+  const handleSyncToWeCom = async (lead: any) => {
+    if (!lead.wecomGroupId) {
+      alert('该线索尚未关联企微群，请确保地推环节已正确录入并拉群。');
+      return;
+    }
+
+    setIsSyncing(lead._id);
+    try {
+      const res = await fetch(`/api/leads/${lead._id}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `【线索同步】系统为您推送了最新的客户需求：${lead.name}（${lead.communityName || '未知小区'}），请及时跟进。`
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSyncSuccess(lead._id);
+        setTimeout(() => setSyncSuccess(null), 3000);
+      } else {
+        alert('同步失败: ' + (data.error || '接口异常'));
+      }
+    } catch (err) {
+      console.error(err);
+      alert('网络异常，无法同步至企微');
+    } finally {
+      setIsSyncing(null);
+    }
   };
 
   const fetchLeads = async () => {
@@ -249,14 +282,28 @@ export default function LeadsPage() {
                       {new Date(lead.createdAt).toLocaleDateString()}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button 
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setSelectedLead(lead)}
-                        className="h-8 text-xs rounded-full font-bold"
-                      >
-                        管理详情
-                      </Button>
+                      <div className="flex items-center justify-end gap-2">
+                        <Button 
+                          size="icon"
+                          variant="ghost"
+                          disabled={isSyncing === lead._id || !lead.wecomGroupId}
+                          onClick={() => handleSyncToWeCom(lead)}
+                          className={cn(
+                            "h-8 w-8 rounded-full",
+                            syncSuccess === lead._id ? "bg-green-500 text-white hover:bg-green-600" : "text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                          )}
+                        >
+                          {isSyncing === lead._id ? <Loader2 size={14} className="animate-spin" /> : (syncSuccess === lead._id ? <Check size={14} /> : <Share2 size={14} />)}
+                        </Button>
+                        <Button 
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setSelectedLead(lead)}
+                          className="h-8 text-xs rounded-full font-bold"
+                        >
+                          管理详情
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -470,3 +517,4 @@ function RelatedFloorPlans({ floorPlans }: { floorPlans: any[] }) {
     </div>
   );
 }
+

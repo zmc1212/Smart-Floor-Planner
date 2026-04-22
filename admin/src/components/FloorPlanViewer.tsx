@@ -5,9 +5,27 @@ import Link from 'next/link';
 import { Canvas } from '@react-three/fiber';
 import { MapControls, PerspectiveCamera, OrthographicCamera, Text, Center, Bounds, ContactShadows, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { ArrowLeft, Activity, Download, Loader2, Wand2, Share2, Check, User as UserIcon, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Activity, Download, Loader2, Wand2, Share2, Check, User as UserIcon, MessageCircle, Sparkles } from 'lucide-react';
 import BackButton from '@/components/BackButton';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 interface Opening {
   id: string;
@@ -355,7 +373,27 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [shareSuccess, setShareSuccess] = useState(false);
+  const [showAIDialog, setShowAIDialog] = useState(false);
+  const [aiPreset, setAiPreset] = useState({
+    style: 'modern',
+    roomType: 'living'
+  });
   
+  const STYLE_OPTIONS = [
+    { id: 'modern', label: '现代简约', icon: '🏠' },
+    { id: 'cream', label: '温馨奶油', icon: '🍦' },
+    { id: 'chinese', label: '新中式', icon: '🏮' },
+    { id: 'luxury', label: '意式轻奢', icon: '💎' },
+    { id: 'wabi', label: '原木侘寂', icon: '🪵' },
+  ];
+
+  const ROOM_TYPE_OPTIONS = [
+    { id: 'living', label: '客厅/客餐厅' },
+    { id: 'bedroom', label: '主卧/次卧' },
+    { id: 'kitchen', label: '厨房' },
+    { id: 'bathroom', label: '卫生间' },
+  ];
+
   const lead = planData.lead;
   
   useEffect(() => {
@@ -387,24 +425,54 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
 
   const handleAIGenerate = async () => {
     setIsGenerating(true);
-    // Simulate AI generation delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setIsGenerating(false);
-    alert('AI 设计方案已生成！您可以在“装修灵感库”中查看并选择发送给客户。');
+    setShowAIDialog(false);
+    
+    // Simulate AI generation with presets
+    console.log(`[AI Engine] Generating ${aiPreset.style} design for ${aiPreset.roomType}`);
+    
+    try {
+      // In real implementation, this would call /api/inspirations/generate
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      alert(`AI ${STYLE_OPTIONS.find(s => s.id === aiPreset.style)?.label}方案已生成！已同步至“装修灵感库”。`);
+    } catch (err) {
+      alert('AI 生成失败，请检查网络后重试');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleShareToGroup = async () => {
-    if (!lead?.wecomGroupId) {
+    if (!lead?._id || !lead?.wecomGroupId) {
       alert('该线索尚未关联企微群，请先在地推环节完成拉群。');
       return;
     }
     
     setIsSharing(true);
-    // Simulate WeCom API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setIsSharing(false);
-    setShareSuccess(true);
-    setTimeout(() => setShareSuccess(false), 3000);
+    try {
+      const styleLabel = STYLE_OPTIONS.find(s => s.id === aiPreset.style)?.label || '现代简约';
+      const roomLabel = ROOM_TYPE_OPTIONS.find(r => r.id === aiPreset.roomType)?.label || '空间';
+      
+      const res = await fetch(`/api/leads/${lead._id}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `【AI设计方案】设计师已为您生成了最新的“${styleLabel}”风格的${roomLabel}效果预览，请进入小程序查看详情。`
+        })
+      });
+      
+      const data = await res.json();
+      if (data.success) {
+        setShareSuccess(true);
+        setTimeout(() => setShareSuccess(false), 3000);
+      } else {
+        alert('同步失败: ' + (data.error || '接口调用异常'));
+      }
+    } catch (err) {
+      console.error(err);
+      alert('网络异常，同步企微失败');
+    } finally {
+      setIsSharing(false);
+    }
   };
 
   const rooms: Room[] = useMemo(() => {
@@ -437,15 +505,90 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
         <div className="flex items-center gap-4">
           {lead && (
             <div className="flex items-center gap-2 mr-4">
-              <Button 
-                variant="ghost" 
-                onClick={handleAIGenerate}
-                disabled={isGenerating}
-                className="rounded-xl flex items-center gap-2 h-10 px-4 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-all font-bold text-xs"
-              >
-                {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
-                {isGenerating ? 'AI 设计中...' : 'AI 风格生成'}
-              </Button>
+              <Dialog open={showAIDialog} onOpenChange={setShowAIDialog}>
+                <DialogTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    disabled={isGenerating}
+                    className="rounded-xl flex items-center gap-2 h-10 px-4 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-all font-bold text-xs"
+                  >
+                    {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
+                    {isGenerating ? 'AI 设计中...' : 'AI 风格生成'}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md rounded-[32px] p-0 overflow-hidden border-none shadow-2xl">
+                  <DialogHeader className="p-8 pb-6 bg-muted/20 border-b">
+                    <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                      <Sparkles className="text-purple-500" size={20} />
+                      AI 智能风格预览
+                    </DialogTitle>
+                    <DialogDescription>
+                      选择目标设计风格，系统将基于当前户型生成 3D 渲染方案
+                    </DialogDescription>
+                  </DialogHeader>
+                  
+                  <div className="p-8 space-y-6">
+                    <div className="space-y-3">
+                      <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">目标设计风格</Label>
+                      <div className="grid grid-cols-2 gap-3">
+                        {STYLE_OPTIONS.map((style) => (
+                          <div 
+                            key={style.id}
+                            onClick={() => setAiPreset({...aiPreset, style: style.id})}
+                            className={cn(
+                              "flex items-center gap-3 p-4 rounded-2xl cursor-pointer transition-all border-2",
+                              aiPreset.style === style.id 
+                                ? "bg-purple-50 border-purple-500 shadow-sm" 
+                                : "bg-white border-gray-100 hover:border-gray-200"
+                            )}
+                          >
+                            <span className="text-xl">{style.icon}</span>
+                            <span className={cn(
+                              "text-sm font-bold",
+                              aiPreset.style === style.id ? "text-purple-700" : "text-gray-600"
+                            )}>{style.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">空间场景</Label>
+                      <Select 
+                        value={aiPreset.roomType} 
+                        onValueChange={(val) => setAiPreset({...aiPreset, roomType: val})}
+                      >
+                        <SelectTrigger className="h-12 rounded-2xl bg-muted/30 border-none focus:ring-purple-500 font-bold">
+                          <SelectValue placeholder="选择空间" />
+                        </SelectTrigger>
+                        <SelectContent className="rounded-2xl border-none shadow-xl">
+                          {ROOM_TYPE_OPTIONS.map(room => (
+                            <SelectItem key={room.id} value={room.id} className="rounded-xl font-medium">
+                              {room.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <DialogFooter className="p-8 pt-4 bg-muted/10 border-t">
+                    <Button 
+                      variant="ghost" 
+                      onClick={() => setShowAIDialog(false)}
+                      className="rounded-2xl h-12 px-6"
+                    >
+                      取消
+                    </Button>
+                    <Button 
+                      onClick={handleAIGenerate}
+                      className="rounded-2xl h-12 px-10 bg-purple-600 hover:bg-purple-700 text-white font-bold shadow-lg shadow-purple-200"
+                    >
+                      开始生成方案
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
 
               <Button 
                 variant="ghost" 

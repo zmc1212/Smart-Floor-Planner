@@ -17,6 +17,10 @@ export async function GET(request: Request) {
     
     // Support Mini-Program fetching leads by openid
     if (openid) {
+      const status = searchParams.get('status');
+      const page = parseInt(searchParams.get('page') || '1');
+      const limit = parseInt(searchParams.get('limit') || '20');
+
       const user = await User.findOne({ openid });
       if (!user || user.role !== 'staff') {
         return NextResponse.json({ success: false, error: 'User is not a staff member' }, { status: 403 });
@@ -28,15 +32,22 @@ export async function GET(request: Request) {
       }
 
       // Fetch leads where staff is promoter or assigned
-      const leads = await Lead.find({
+      const query: any = {
         $or: [
           { promoterId: staffMember._id },
           { assignedTo: staffMember._id }
         ]
-      })
-      .populate({ path: 'floorPlanIds', select: 'name layoutData createdAt', strictPopulate: false })
-      .populate('assignedTo', 'displayName role')
-      .sort({ createdAt: -1 });
+      };
+      if (status && status !== 'all') {
+        query.status = status;
+      }
+
+      const leads = await Lead.find(query)
+        .populate({ path: 'floorPlanIds', select: 'name layoutData createdAt', strictPopulate: false })
+        .populate('assignedTo', 'displayName role')
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit);
 
       return NextResponse.json({ success: true, data: leads });
     }

@@ -60,10 +60,48 @@ export class WeComService {
   }
 
   /**
+   * Internal helper to get WeCom Access Token
+   */
+  private static async getAccessToken(corpId: string, secret: string): Promise<string | null> {
+    try {
+      const res = await fetch(
+        `https://qyapi.weixin.qq.com/cgi-bin/gettoken?corpid=${corpId}&corpsecret=${secret}`
+      );
+      const data = await res.json();
+      return data.access_token || null;
+    } catch (error) {
+      console.error('[WeCom] Failed to get access token:', error);
+      return null;
+    }
+  }
+
+  /**
    * Send a message to the group (e.g., sharing the design)
    */
   static async sendMessage(enterprise: IEnterprise, chatId: string, content: string) {
-    // Implementation for sending messages to WeCom group
-    console.log(`[WeCom] Sending message to ${chatId}: ${content}`);
+    const { corpId, secret } = enterprise.wecomConfig || {};
+    if (!corpId || !secret) return false;
+
+    const token = await this.getAccessToken(corpId, secret);
+    if (!token) return false;
+
+    try {
+      const res = await fetch(
+        `https://qyapi.weixin.qq.com/cgi-bin/externalcontact/groupchat/send_msg?access_token=${token}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            chat_id: chatId,
+            msgtype: 'text',
+            text: { content }
+          })
+        }
+      );
+      const data = await res.json();
+      return data.errcode === 0;
+    } catch (error) {
+      console.error('[WeCom] Message sending failed:', error);
+      return false;
+    }
   }
 }

@@ -20,26 +20,33 @@
       </view>
     </view>
 
-    <!-- 2. 蓝牙强制连接引导页 -->
-    <ble-gate 
-      wx:if="{{!bleConnected}}" 
-      bindautoconnect="onAutoConnectBLE"
-      bindconnect="onConnectBLE"
-    />
+    <!-- 2. 销售人员：显示客资列表 -->
+    <block wx:if="{{isStaff}}">
+      <lead-list openid="{{openid}}" bindadd="onOpenLeadModal" />
+    </block>
 
+    <!-- 3. 普通用户或未连接蓝牙：引导页/库视图 -->
     <block wx:else>
-      <!-- 3. 户型库视图 -->
-      <room-library 
-        plannedRooms="{{plannedRooms}}"
-        layoutTemplates="{{layoutTemplates}}"
-        myCloudFloorPlans="{{myCloudFloorPlans}}"
-        bindselectlayout="onSelectLayout"
-        bindopencloudplan="onOpenCloudPlan"
-        bindresetlayout="onResetLayout"
-        bindenterroom="onEnterRoom"
-        bindaddroom="onAddRoom"
-        bindaigen="onAIGen"
+      <ble-gate 
+        wx:if="{{!bleConnected}}" 
+        bindautoconnect="onAutoConnectBLE"
+        bindconnect="onConnectBLE"
       />
+
+      <block wx:else>
+        <!-- 户型库视图 -->
+        <room-library 
+          plannedRooms="{{plannedRooms}}"
+          layoutTemplates="{{layoutTemplates}}"
+          myCloudFloorPlans="{{myCloudFloorPlans}}"
+          bindselectlayout="onSelectLayout"
+          bindopencloudplan="onOpenCloudPlan"
+          bindresetlayout="onResetLayout"
+          bindenterroom="onEnterRoom"
+          bindaddroom="onAddRoom"
+          bindaigen="onAIGen"
+        />
+      </block>
     </block>
   </view>
 

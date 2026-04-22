@@ -30,7 +30,10 @@ Page({
       capsulePadding: sysInfo.windowWidth - menuButtonInfo.left,
       windowWidth: sysInfo.windowWidth,
       windowHeight: sysInfo.windowHeight,
-      bleConnected: getApp().globalData.bleConnected || false
+      bleConnected: getApp().globalData.bleConnected || false,
+      userInfo: getApp().globalData.userInfo || null,
+      openid: getApp().globalData.openid || '',
+      isStaff: !!(getApp().globalData.userInfo && getApp().globalData.userInfo.role === 'staff')
     });
   },
 
@@ -65,7 +68,8 @@ Page({
       bleConnected: getApp().globalData.bleConnected || false,
       branding: getApp().globalData.branding || null,
       isStaff: isStaffUser,
-      userInfo: app.globalData.userInfo || null
+      userInfo: app.globalData.userInfo || null,
+      openid: app.globalData.openid || ''
     });
   },
 
