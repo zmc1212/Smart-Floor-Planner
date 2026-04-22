@@ -351,7 +351,7 @@ Component({
             ctx.setLineDash([]);
           }
         }
-      } else {
+      } else if (room.measured !== false) {
         // ── 矩形回退（向后兼容）──
         ctx.fillStyle = room.color || 'rgba(255,255,255,0.8)';
         ctx.fillRect(room.x, room.y, room.width, room.height);

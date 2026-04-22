@@ -142,4 +142,12 @@
     planName="{{planName}}"
     bind:close="onCloseTechnicalReport"
   />
+
+  <!-- 绑定客户线索弹窗 -->
+  <lead-modal 
+    show="{{showLeadModal}}"
+    floorPlanId="{{currentProject_id}}"
+    bindclose="onCloseLeadModal"
+    bindsuccess="onLeadSuccess"
+  />
 </view>

@@ -144,3 +144,35 @@
   text-align: center;
   margin-top: 16rpx;
 }
+
+.quick-select-section {
+  margin-bottom: 32rpx;
+  background: #f8fafc;
+  padding: 16rpx;
+  border-radius: 12rpx;
+}
+
+.quick-select-title {
+  font-size: 22rpx;
+  color: #64748b;
+  margin-bottom: 12rpx;
+  display: block;
+}
+
+.quick-select-list {
+  display: flex;
+  flex-direction: row;
+  white-space: nowrap;
+}
+
+.quick-select-item {
+  display: inline-block;
+  background: #ffffff;
+  color: #0284c7;
+  padding: 12rpx 20rpx;
+  border-radius: 8rpx;
+  font-size: 24rpx;
+  margin-right: 16rpx;
+  border: 2rpx solid #bae6fd;
+  box-shadow: 0 2rpx 4rpx rgba(0,0,0,0.02);
+}

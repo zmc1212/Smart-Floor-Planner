@@ -16,6 +16,8 @@ export interface ILead extends Document {
   status: 'new' | 'contacted' | 'measuring' | 'designing' | 'quoting' | 'converted' | 'closed';
   notes?: string;
   enterpriseId?: mongoose.Types.ObjectId;
+  floorPlanIds?: mongoose.Types.ObjectId[];
+  promoterId?: mongoose.Types.ObjectId;
   assignedTo?: mongoose.Types.ObjectId; // Designer/Consultant (AdminUser)
   assignedAt?: Date;
   followUpRecords: IFollowUp[];
@@ -26,6 +28,7 @@ export interface ILead extends Document {
 const LeadSchema: Schema = new Schema({
   name: { type: String, required: true },
   phone: { type: String, required: true },
+  communityName: { type: String },
   area: { type: Number },
   stylePreference: { type: String },
   city: { type: String },
@@ -33,7 +36,10 @@ const LeadSchema: Schema = new Schema({
   status: { type: String, enum: ['new', 'contacted', 'measuring', 'designing', 'quoting', 'converted', 'closed'], default: 'new' },
   notes: { type: String },
   enterpriseId: { type: Schema.Types.ObjectId, ref: 'Enterprise' },
+  floorPlanIds: [{ type: Schema.Types.ObjectId, ref: 'FloorPlan' }],
+  promoterId: { type: Schema.Types.ObjectId, ref: 'AdminUser' },
   assignedTo: { type: Schema.Types.ObjectId, ref: 'AdminUser' },
+  wecomGroupId: { type: String },
   assignedAt: { type: Date },
   followUpRecords: [{
     content: { type: String, required: true },

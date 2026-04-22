@@ -11,6 +11,7 @@ Page({
       phone: ''
     },
     floorPlans: [],
+    leads: [],
     defaultAvatarUrl: 'https://mmbiz.qpic.cn/mmbiz/icTdbqWNOwNRna42FI242Lcia07jQodd2FJGIYQfG0LAJGFxM4FbnQP6yfMxBgJ0F3YRqJCJ1aPAK2dQagdusBZg/0'
   },
 
@@ -20,13 +21,20 @@ Page({
       this.setData({
         isLoggedIn: true,
         userInfo: app.globalData.userInfo,
-        floorPlans: []
+        floorPlans: [],
+        leads: []
       });
-      this.fetchMyFloorPlans(app.globalData.openid);
+      if (app.globalData.userInfo.role === 'staff') {
+        this.fetchMyLeads(app.globalData.openid);
+      } else {
+        this.fetchMyFloorPlans(app.globalData.openid);
+      }
+      this.refreshUserInfo();
     } else {
       this.setData({
         isLoggedIn: false,
-        floorPlans: []
+        floorPlans: [],
+        leads: []
       });
     }
   },
@@ -68,8 +76,12 @@ Page({
 
         wx.showToast({ title: '登录成功', icon: 'success' });
 
-        // Load floor plans
-        this.fetchMyFloorPlans(res.openid);
+        // Load data based on role
+        if (res.user.role === 'staff') {
+          this.fetchMyLeads(res.openid);
+        } else {
+          this.fetchMyFloorPlans(res.openid);
+        }
       } else {
         throw new Error(res.error || '登录失败');
       }
@@ -77,6 +89,73 @@ Page({
       wx.hideLoading();
       console.error('Phone login failed:', err);
       wx.showToast({ title: err.error || '登录失败', icon: 'none' });
+    }
+  },
+
+  // ---- Leads (For Staff) ----
+  async fetchMyLeads(openid) {
+    if (!openid) return;
+    try {
+      const res = await api.request(`/leads?openid=${openid}`, 'GET');
+      if (res.success && res.data) {
+        const formatted = res.data.map(lead => {
+          let roomCount = 0;
+          if (lead.floorPlanIds && Array.isArray(lead.floorPlanIds)) {
+            lead.floorPlanIds.forEach(fp => {
+              if (fp.layoutData) {
+                try {
+                  const rooms = typeof fp.layoutData === 'string' ? JSON.parse(fp.layoutData) : fp.layoutData;
+                  roomCount += Array.isArray(rooms) ? rooms.length : (rooms ? 1 : 0);
+                } catch (e) {}
+              }
+            });
+          }
+          const statusMap = {
+            'new': '新线索',
+            'contacted': '已联系',
+            'measuring': '已初测',
+            'designing': '设计方案',
+            'quoting': '报价中',
+            'converted': '已转化',
+            'closed': '已关闭'
+          };
+          return {
+            ...lead,
+            roomCount,
+            statusLabel: statusMap[lead.status] || lead.status,
+            createdAt: new Date(lead.createdAt).toLocaleDateString('zh-CN', { 
+              month: '2-digit', 
+              day: '2-digit', 
+              hour: '2-digit', 
+              minute: '2-digit' 
+            }).replace(/\//g, '-')
+          };
+        });
+        this.setData({ leads: formatted });
+      }
+    } catch (err) {
+      console.error('Failed to fetch leads', err);
+    }
+  },
+
+  onOpenLeadFloorPlan(e) {
+    const id = e.currentTarget.dataset.id;
+    if (id) {
+      wx.navigateTo({
+        url: `/pages/lead-detail/lead-detail?id=${id}`
+      });
+    }
+  },
+
+  onOpenSpecificFloorPlan(e) {
+    const fp = e.currentTarget.dataset.fp;
+    if (fp) {
+      app.globalData.restoreFloorPlan = Object.assign({}, fp, { isRestore: true });
+      wx.navigateTo({
+        url: '/pages/editor/editor'
+      });
+    } else {
+      wx.showToast({ title: '无法获取户型数据', icon: 'none' });
     }
   },
 
@@ -228,6 +307,25 @@ Page({
       wx.hideLoading();
       console.error('Update profile error:', err);
       wx.showToast({ title: err.error || '保存失败', icon: 'none' });
+    }
+  },
+  
+  async refreshUserInfo() {
+    const openid = app.globalData.openid;
+    if (!openid) return;
+    
+    try {
+      const res = await api.request(`/users/${openid}`, 'GET');
+      if (res.success && res.data) {
+        // Sync to global and storage
+        app.globalData.userInfo = res.data;
+        wx.setStorageSync('userInfo', res.data);
+        
+        // Update local state
+        this.setData({ userInfo: res.data });
+      }
+    } catch (err) {
+      console.error('Refresh user info failed', err);
     }
   },
 

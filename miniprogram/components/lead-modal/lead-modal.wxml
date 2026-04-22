@@ -1,15 +1,31 @@
 <view class="modal-overlay" wx:if="{{show}}" catchtap="onMaskTap">
   <view class="modal-container" catchtap="onContainerTap">
     <view class="modal-header">
-      <text class="title">获取免费设计与报价</text>
+      <text class="title">{{isStaff ? '绑定客户资料' : '获取免费设计与报价'}}</text>
       <view class="close-btn" bindtap="onClose">×</view>
     </view>
     
     <view class="modal-body">
-      <text class="desc">留下您的联系方式，我们的专业设计师将免费为您提供1对1的量房及设计咨询服务。</text>
+      <text class="desc" wx:if="{{!isStaff}}">留下您的联系方式，我们的专业设计师将免费为您提供1对1的量房及设计咨询服务。</text>
+
+      <!-- Quick select for staff -->
+      <view class="quick-select-section" wx:if="{{isStaff && recentLeads.length > 0}}">
+        <text class="quick-select-title">快速选择最近客户</text>
+        <scroll-view scroll-x="true" class="quick-select-list" enable-flex="true">
+          <view 
+            class="quick-select-item" 
+            wx:for="{{recentLeads}}" 
+            wx:key="_id"
+            data-lead="{{item}}"
+            bindtap="onSelectRecentLead"
+          >
+            {{item.name}} · {{item.phone}}
+          </view>
+        </scroll-view>
+      </view>
 
       <view class="form-group">
-        <text class="label">称呼<text class="required">*</text></text>
+        <text class="label">客户称呼<text class="required">*</text></text>
         <input class="input" placeholder="请输入您的姓名" value="{{formData.name}}" data-field="name" bindinput="onInput" />
       </view>
 
@@ -19,6 +35,11 @@
           <input class="input phone-input" type="number" placeholder="请输入手机号码" value="{{formData.phone}}" data-field="phone" bindinput="onInput" />
           <!-- <button class="auth-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">快捷获取</button> -->
         </view>
+      </view>
+
+      <view class="form-group">
+        <text class="label">小区名称<text class="required">*</text></text>
+        <input class="input" placeholder="请输入小区名称，如：万科翡翠华府" value="{{formData.communityName}}" data-field="communityName" bindinput="onInput" />
       </view>
 
       <view class="form-group">
@@ -38,7 +59,7 @@
     </view>
 
     <view class="modal-footer">
-      <button class="submit-btn" hover-class="submit-btn-hover" bindtap="onSubmit" loading="{{loading}}">立即免费获取</button>
+      <button class="submit-btn" hover-class="submit-btn-hover" bindtap="onSubmit" loading="{{loading}}">{{isStaff ? '确认绑定并推送' : '立即免费获取'}}</button>
       <view class="privacy-note">点击按钮即表示同意相关隐私协议</view>
     </view>
   </view>

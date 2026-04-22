@@ -64,3 +64,14 @@ Prioritize "Lead Conversion Optimization" as per `PRODUCT_ROADMAP.md`:
 1.  Capture high-quality leads from measurements.
 2.  Provide AI-generated "Inspirations" to drive intent.
 3.  Support professional export formats (PDF, DXF) for designers.
+
+## Core Workflow Upgrades (Lead Conversion)
+- [x] **地推与设计师的自动指派逻辑**:
+  - [x] 员工绑定：在“员工管理”中，企业管理员现在可以将多个地推人员（销售顾问）绑定到特定的设计师。
+  - [x] 线索自动流转：地推量房后生成的客资线索自动推送到绑定的设计师账号下。
+- [x] **企业微信自动化集成**:
+  - [x] 自动拉群架构：在 `admin/src/lib/wecom.ts` 中封装了企微集成服务，预留建群逻辑（包含老板、设计师、地推、客户）。
+- [x] **设计师 AI 工作台增强**:
+  - [x] 信息全同步：设计师在户型图查看器中直接看到关联客户的小区、意向风格等背景资料。
+  - [x] AI 方案生成：在户型图中新增“AI 风格生成”按钮，辅助出图。
+  - [x] 一键分享闭环：设计师生成效果图后，可通过“同步至企微群”按钮发送至微信群。

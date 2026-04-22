@@ -23,7 +23,7 @@
       <!-- Identity Badge -->
       <view class="identity-badge" wx:if="{{userInfo.role === 'staff'}}">
         <text class="id-icon">✨</text>
-        <text class="id-text">认证设计师 / {{userInfo.enterpriseName || '专业版'}}</text>
+        <text class="id-text">{{userInfo.staffRole === 'salesperson' ? '认证销售顾问' : '认证设计师'}} / {{userInfo.enterpriseName || '专业版'}}</text>
       </view>
     </view>
 
@@ -47,57 +47,121 @@
       <button class="logout-btn" bindtap="onLogout">退出登录</button>
     </view>
 
-    <view class="floorplan-section" wx:if="{{floorPlans.length > 0}}">
-      <view class="section-header">
-        <text class="section-title">我的户型图</text>
-        <text class="section-count">{{floorPlans.length}} 份</text>
-      </view>
-      
-      <view class="floorplan-list">
-        <view class="floorplan-card" wx:for="{{floorPlans}}" wx:key="_id" data-id="{{item._id}}" bindtap="onOpenFloorPlan">
-          <view class="card-body">
-            <view class="fp-icon-container">
-              <text class="fp-emoji">🏘️</text>
-            </view>
-            <view class="fp-content">
-              <view class="fp-title-line">
-                <text class="fp-name">{{item.name}}</text>
-                <view class="status-tag {{item.status}}">
-                  {{item.status === 'completed' ? '已完成' : '草稿'}}
+    <!-- ======== Staff Leads Section ======== -->
+    <block wx:if="{{userInfo.role === 'staff'}}">
+      <view class="floorplan-section" wx:if="{{leads.length > 0}}">
+        <view class="section-header">
+          <text class="section-title">我的客户线索</text>
+          <text class="section-count">{{leads.length}} 个</text>
+        </view>
+        
+        <view class="floorplan-list">
+          <view class="floorplan-card" wx:for="{{leads}}" wx:key="_id" data-id="{{item._id}}" bindtap="onOpenLeadFloorPlan">
+            <view class="card-body">
+              <view class="fp-icon-container" style="background: #e0f2fe; color: #0284c7;">
+                <text class="fp-emoji">👤</text>
+              </view>
+              <view class="fp-content">
+                <view class="fp-title-line">
+                  <text class="fp-name">{{item.name}} · {{item.communityName || '客户'}}</text>
+                  <view class="status-tag {{item.status}}">
+                    {{item.statusLabel}}
+                  </view>
+                </view>
+                <view class="fp-info-line">
+                  <text class="fp-date">{{item.phone}}</text>
+                  <text class="fp-dot">·</text>
+                  <text class="fp-rooms">{{item.roomCount}} 个空间</text>
                 </view>
               </view>
-              <view class="fp-info-line">
-                <text class="fp-date">{{item.createdAt}}</text>
-                <text class="fp-dot">·</text>
-                <text class="fp-rooms">{{item.roomCount}} 个空间</text>
+            </view>
+            
+            <view class="card-actions" wx:if="{{item.floorPlanIds && item.floorPlanIds.length > 0}}">
+              <view style="width: 100%; border-top: 1px dashed #e2e8f0; margin-top: 10px; padding-top: 10px;">
+                <view style="font-size: 11px; color: #64748b; margin-bottom: 8px;">包含实测房间：</view>
+                <view style="display: flex; flex-wrap: wrap; gap: 8px;">
+                  <view 
+                    wx:for="{{item.floorPlanIds}}" 
+                    wx:key="_id" 
+                    wx:for-item="fp"
+                    style="background: #f1f5f9; padding: 6px 12px; border-radius: 6px; font-size: 12px; color: #475569; display: flex; align-items: center; gap: 4px;"
+                  >
+                    <text>📐</text>
+                    <text>{{fp.name}}</text>
+                  </view>
+                </view>
               </view>
             </view>
           </view>
-          
-          <view class="card-actions">
-            <view class="ai-gen-btn" catchtap="onAIGen" data-id="{{item._id}}">
-              <text class="ai-stars">✨</text>
-              <text>生成 AI 效果图</text>
+        </view>
+      </view>
+
+      <view class="empty-container" wx:else>
+        <view class="empty-visual">
+          <view class="empty-circle">
+            <text class="empty-emoji">👥</text>
+          </view>
+        </view>
+        <view class="empty-title">暂无客户线索</view>
+        <view class="empty-subtitle">快去现场量房并录入第一位客户吧</view>
+        <button class="primary-btn" bindtap="onCreateNew">开始新测量</button>
+      </view>
+    </block>
+
+    <!-- ======== Normal User Floor Plans ======== -->
+    <block wx:else>
+      <view class="floorplan-section" wx:if="{{floorPlans.length > 0}}">
+        <view class="section-header">
+          <text class="section-title">我的户型图</text>
+          <text class="section-count">{{floorPlans.length}} 份</text>
+        </view>
+        
+        <view class="floorplan-list">
+          <view class="floorplan-card" wx:for="{{floorPlans}}" wx:key="_id" data-id="{{item._id}}" bindtap="onOpenFloorPlan">
+            <view class="card-body">
+              <view class="fp-icon-container">
+                <text class="fp-emoji">🏘️</text>
+              </view>
+              <view class="fp-content">
+                <view class="fp-title-line">
+                  <text class="fp-name">{{item.name}}</text>
+                  <view class="status-tag {{item.status}}">
+                    {{item.status === 'completed' ? '已完成' : '草稿'}}
+                  </view>
+                </view>
+                <view class="fp-info-line">
+                  <text class="fp-date">{{item.createdAt}}</text>
+                  <text class="fp-dot">·</text>
+                  <text class="fp-rooms">{{item.roomCount}} 个空间</text>
+                </view>
+              </view>
             </view>
-            <view class="fp-arrow">
-              <view class="arrow-icon"></view>
+            
+            <view class="card-actions">
+              <view class="ai-gen-btn" catchtap="onAIGen" data-id="{{item._id}}">
+                <text class="ai-stars">✨</text>
+                <text>生成 AI 效果图</text>
+              </view>
+              <view class="fp-arrow">
+                <view class="arrow-icon"></view>
+              </view>
             </view>
           </view>
         </view>
       </view>
-    </view>
 
-    <!-- Empty State -->
-    <view class="empty-container" wx:else>
-      <view class="empty-visual">
-        <view class="empty-circle">
-          <text class="empty-emoji">📐</text>
+      <!-- Empty State -->
+      <view class="empty-container" wx:else>
+        <view class="empty-visual">
+          <view class="empty-circle">
+            <text class="empty-emoji">📐</text>
+          </view>
         </view>
+        <view class="empty-title">发现您的户型之美</view>
+        <view class="empty-subtitle">使用激光测距仪精准测量，AI 助力设计落地</view>
+        <button class="primary-btn" bindtap="onCreateNew">开始新测量</button>
       </view>
-      <view class="empty-title">发现您的户型之美</view>
-      <view class="empty-subtitle">使用激光测距仪精准测量，AI 助力设计落地</view>
-      <button class="primary-btn" bindtap="onCreateNew">开始新测量</button>
-    </view>
+    </block>
   </view>
 
 </view>

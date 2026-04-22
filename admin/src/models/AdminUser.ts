@@ -72,6 +72,16 @@ const AdminUserSchema: Schema<IAdminUser> = new Schema(
       type: Schema.Types.ObjectId,
       ref: 'Enterprise',
     },
+    promoterIds: [
+      {
+        type: Schema.Types.ObjectId,
+        ref: 'AdminUser',
+      },
+    ],
+    wecomUserId: {
+      type: String,
+      sparse: true,
+    },
     openid: {
       type: String,
       sparse: true,

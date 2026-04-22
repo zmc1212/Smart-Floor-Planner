@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import dbConnect from '@/lib/mongodb';
 import { FloorPlan } from '@/models/FloorPlan';
 import { User } from '@/models/User';
+import { AdminUser } from '@/models/AdminUser';
 
 // Apply FloorPlan mapping: Save layout data from Mini Program
 export async function POST(req: Request) {
@@ -19,9 +20,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'User not found for provided openid' }, { status: 404 });
     }
 
+    // Automatic Association for Staff
+    let staffId = undefined;
+    let enterpriseId = undefined;
+    
+    if (user.role === 'staff') {
+      const staffMember = await AdminUser.findOne({ phone: user.phone });
+      if (staffMember) {
+        staffId = staffMember._id;
+        enterpriseId = staffMember.enterpriseId;
+      }
+    }
+
     const newPlan = await FloorPlan.create({
       name: name || '未命名户型',
       creator: user._id,
+      staffId,
+      enterpriseId,
       layoutData,
       status: status || 'completed'
     });

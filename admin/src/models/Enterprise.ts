@@ -46,6 +46,11 @@ const EnterpriseSchema: Schema<IEnterprise> = new Schema(
     branding: {
       primaryColor: { type: String, default: '#171717' },
       accentColor: { type: String, default: '#0070f3' }
+    },
+    wecomConfig: {
+      corpId: { type: String },
+      agentId: { type: String },
+      secret: { type: String }
     }
   },
   {

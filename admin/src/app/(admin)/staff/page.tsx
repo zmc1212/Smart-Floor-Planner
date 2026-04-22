@@ -41,7 +41,9 @@ export default function StaffPage() {
     displayName: '',
     phone: '',
     role: 'designer',
-    enterpriseId: ''
+    enterpriseId: '',
+    promoterIds: [] as string[],
+    wecomUserId: ''
   });
 
   const fetchCurrentUser = async () => {
@@ -75,7 +77,16 @@ export default function StaffPage() {
   }, []);
 
   const resetForm = () => {
-    setFormData({ username: '', password: '', displayName: '', phone: '', role: 'designer', enterpriseId: '' });
+    setFormData({ 
+      username: '', 
+      password: '', 
+      displayName: '', 
+      phone: '', 
+      role: 'designer', 
+      enterpriseId: '',
+      promoterIds: [],
+      wecomUserId: ''
+    });
     setIsEditMode(false);
     setEditingId(null);
   };
@@ -92,7 +103,9 @@ export default function StaffPage() {
       displayName: member.displayName || '',
       phone: member.phone || '',
       role: member.role,
-      enterpriseId: member.enterpriseId || ''
+      enterpriseId: member.enterpriseId || '',
+      promoterIds: member.promoterIds || [],
+      wecomUserId: member.wecomUserId || ''
     });
     setEditingId(member._id);
     setIsEditMode(true);
@@ -167,7 +180,6 @@ export default function StaffPage() {
           <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">登录账号</Label>
           <Input 
             required
-            disabled={isEditMode}
             className="h-12 rounded-2xl bg-muted/30 border-none focus-visible:ring-primary font-medium"
             placeholder="例如: designer_zhang"
             value={formData.username}
@@ -205,6 +217,15 @@ export default function StaffPage() {
           />
         </div>
         <div className="space-y-2">
+          <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">企业微信成员ID (用于自动拉群)</Label>
+          <Input 
+            className="h-12 rounded-2xl bg-muted/30 border-none focus-visible:ring-primary font-mono"
+            placeholder="WeCom UserID"
+            value={formData.wecomUserId}
+            onChange={(e) => setFormData({...formData, wecomUserId: e.target.value})}
+          />
+        </div>
+        <div className="space-y-2">
           <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">岗位角色</Label>
           <Select 
             value={formData.role} 
@@ -222,6 +243,48 @@ export default function StaffPage() {
             </SelectContent>
           </Select>
         </div>
+
+        {formData.role === 'designer' && (
+          <div className="space-y-3 pt-2">
+            <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">关联地推人员 (线索将自动推送到此设计师)</Label>
+            <div className="grid grid-cols-2 gap-2 max-h-[160px] overflow-y-auto p-2 bg-muted/20 rounded-2xl">
+              {staff.filter(s => s.role === 'salesperson').map(promoter => (
+                <div 
+                  key={promoter._id} 
+                  className={cn(
+                    "flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all border-2",
+                    formData.promoterIds.includes(promoter._id) 
+                      ? "bg-primary/10 border-primary shadow-sm" 
+                      : "bg-white border-transparent hover:border-muted-foreground/20"
+                  )}
+                  onClick={() => {
+                    const current = [...formData.promoterIds];
+                    const idx = current.indexOf(promoter._id);
+                    if (idx > -1) {
+                      current.splice(idx, 1);
+                    } else {
+                      current.push(promoter._id);
+                    }
+                    setFormData({...formData, promoterIds: current});
+                  }}
+                >
+                  <div className={cn(
+                    "w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold",
+                    formData.promoterIds.includes(promoter._id) ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+                  )}>
+                    {promoter.displayName?.[0] || promoter.username[0].toUpperCase()}
+                  </div>
+                  <span className="text-sm font-medium truncate">{promoter.displayName || promoter.username}</span>
+                </div>
+              ))}
+              {staff.filter(s => s.role === 'salesperson').length === 0 && (
+                <div className="col-span-full py-6 text-center text-xs text-muted-foreground italic">
+                  暂无地推人员，请先创建销售顾问角色。
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <DialogFooter className="p-8 pt-4 bg-muted/30 border-t">

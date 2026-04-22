@@ -30,9 +30,12 @@
 
   <!-- 已选择户型，显示待测房间列表 -->
   <block wx:else>
-    <view class="library-header" style="display: flex; justify-content: space-between;">
-      <text>户型库</text>
-      <text class="reset-btn" bindtap="onResetLayout">重新选择</text>
+    <view class="library-header" style="display: flex; justify-content: space-between; align-items: center;">
+      <text>已建量房项目</text>
+      <view>
+        <text class="add-btn" bindtap="onAddRoom" style="color: #1296db; font-size: 24rpx; margin-right: 16rpx;">+ 增加房间</text>
+        <text class="reset-btn" bindtap="onResetLayout" style="font-size: 24rpx; color: #999;">重新选择</text>
+      </view>
     </view>
     <view class="room-list">
       <view 

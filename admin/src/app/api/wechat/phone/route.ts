@@ -141,6 +141,7 @@ export async function POST(req: Request) {
         communityName: user.communityName || '',
         phone: user.phone || '',
         role: user.role,
+        staffRole: staff?.role || '',
         enterpriseId: staff?.enterpriseId || '',
         enterpriseName: enterpriseName,
         staffId: staff?._id || ''

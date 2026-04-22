@@ -1,0 +1,39 @@
+<view class="container">
+  <view class="header" wx:if="{{lead}}">
+    <view class="title">{{lead.name}}</view>
+    <view class="info">手机：{{lead.phone}}</view>
+    <view class="info">小区：{{lead.communityName || '未填写'}}</view>
+    <view class="info">意向风格：{{lead.stylePreference || '未选择'}}</view>
+  </view>
+
+  <view class="content" wx:if="{{!loading}}">
+    <block wx:if="{{rooms.length === 0}}">
+      <view class="empty-state">
+        <view class="icon">🏠</view>
+        <view class="title">当前客户暂无户型数据</view>
+        <view class="subtitle">请选择一个标准户型模板快速开始测量</view>
+      </view>
+
+      <view class="template-list">
+        <view class="template-item" wx:for="{{templates}}" wx:key="id" data-id="{{item.id}}" bindtap="onSelectTemplate">
+          {{item.name}}
+        </view>
+      </view>
+    </block>
+
+    <block wx:else>
+      <view class="section-title">
+        <text>户型房间列表</text>
+        <text class="add-btn" bindtap="onAddRoom">+ 增加房间</text>
+      </view>
+
+      <view class="room-list">
+        <view class="room-item" wx:for="{{rooms}}" wx:key="id" data-id="{{item.id}}" bindtap="onEnterRoom">
+          <view class="room-icon">{{item.measured ? '✅' : '🏠'}}</view>
+          <text class="room-name">{{item.name}}</text>
+          <text class="room-status {{item.measured ? 'measured' : ''}}">{{item.measured ? '已测完' : '待测量'}}</text>
+        </view>
+      </view>
+    </block>
+  </view>
+</view>

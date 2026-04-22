@@ -24,6 +24,9 @@ Component({
     onEnterRoom: function (e) {
       this.triggerEvent('enterroom', { id: e.currentTarget.dataset.id });
     },
+    onAddRoom: function () {
+      this.triggerEvent('addroom');
+    },
 
     onAIGen: function (e) {
       this.triggerEvent('aigen', { id: e.currentTarget.dataset.id });

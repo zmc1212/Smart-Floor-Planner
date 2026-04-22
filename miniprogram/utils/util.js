@@ -174,6 +174,22 @@ function directionAngle(from, to) {
   return Math.atan2(to.y - from.y, to.x - from.x);
 }
 
+function formatTime(date) {
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const hour = date.getHours();
+  const minute = date.getMinutes();
+  const second = date.getSeconds();
+
+  const formatNumber = n => {
+    n = n.toString();
+    return n[1] ? n : '0' + n;
+  };
+
+  return [year, month, day].map(formatNumber).join('/') + ' ' + [hour, minute, second].map(formatNumber).join(':');
+}
+
 module.exports = {
   generateUUID,
   formatArea,
@@ -185,6 +201,7 @@ module.exports = {
   isPointOnSegment,
   calculateAngle,
   directionAngle,
+  formatTime,
   ToolType,
   StyleType,
   StyleMetadata,

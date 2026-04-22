@@ -1,6 +1,7 @@
 {
   "pages": [
     "pages/index/index",
+    "pages/lead-detail/lead-detail",
     "pages/editor/editor",
     "pages/inspiration/inspiration",
     "pages/ai-gen/ai-gen",

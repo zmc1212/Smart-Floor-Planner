@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Canvas } from '@react-three/fiber';
 import { MapControls, PerspectiveCamera, OrthographicCamera, Text, Center, Bounds, ContactShadows, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { ArrowLeft, Activity, Download, Loader2 } from 'lucide-react';
+import { ArrowLeft, Activity, Download, Loader2, Wand2, Share2, Check, User as UserIcon, MessageCircle } from 'lucide-react';
 import BackButton from '@/components/BackButton';
 import { Button } from '@/components/ui/button';
 
@@ -352,6 +352,11 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
   const [mounted, setMounted] = useState(false);
   
   const [isExporting, setIsExporting] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [shareSuccess, setShareSuccess] = useState(false);
+  
+  const lead = planData.lead;
   
   useEffect(() => {
     setMounted(true);
@@ -380,6 +385,28 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
     }
   };
 
+  const handleAIGenerate = async () => {
+    setIsGenerating(true);
+    // Simulate AI generation delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    setIsGenerating(false);
+    alert('AI 设计方案已生成！您可以在“装修灵感库”中查看并选择发送给客户。');
+  };
+
+  const handleShareToGroup = async () => {
+    if (!lead?.wecomGroupId) {
+      alert('该线索尚未关联企微群，请先在地推环节完成拉群。');
+      return;
+    }
+    
+    setIsSharing(true);
+    // Simulate WeCom API call
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    setIsSharing(false);
+    setShareSuccess(true);
+    setTimeout(() => setShareSuccess(false), 3000);
+  };
+
   const rooms: Room[] = useMemo(() => {
     if (!planData?.layoutData) return [];
     const data = planData.layoutData;
@@ -401,12 +428,40 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
           <div>
             <h2 className="text-lg font-bold tracking-tight">{planData?.name || '户型详情'}</h2>
             <p className="text-xs text-gray-400">
-               {planData?.creator?.nickname ? `@${planData.creator.nickname}` : '私有户型'}
+               {lead?.name ? `客户: ${lead.name} · ` : ''}
+               {planData?.creator?.communityName || '私有户型'}
             </p>
           </div>
         </div>
         
         <div className="flex items-center gap-4">
+          {lead && (
+            <div className="flex items-center gap-2 mr-4">
+              <Button 
+                variant="ghost" 
+                onClick={handleAIGenerate}
+                disabled={isGenerating}
+                className="rounded-xl flex items-center gap-2 h-10 px-4 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-all font-bold text-xs"
+              >
+                {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
+                {isGenerating ? 'AI 设计中...' : 'AI 风格生成'}
+              </Button>
+
+              <Button 
+                variant="ghost" 
+                onClick={handleShareToGroup}
+                disabled={isSharing || !lead.wecomGroupId}
+                className={cn(
+                  "rounded-xl flex items-center gap-2 h-10 px-4 transition-all font-bold text-xs",
+                  shareSuccess ? "bg-green-500 text-white" : "bg-blue-50 text-blue-700 hover:bg-blue-100"
+                )}
+              >
+                {isSharing ? <Loader2 size={16} className="animate-spin" /> : (shareSuccess ? <Check size={16} /> : <Share2 size={16} />)}
+                {shareSuccess ? '已发送至群' : '同步至企微群'}
+              </Button>
+            </div>
+          )}
+
           <Button 
             variant="outline" 
             onClick={handleExportDXF}

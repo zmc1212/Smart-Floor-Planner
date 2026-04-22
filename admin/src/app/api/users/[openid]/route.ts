@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import dbConnect from '@/lib/mongodb';
 import { User } from '@/models/User';
+import { AdminUser } from '@/models/AdminUser';
+import { Enterprise } from '@/models/Enterprise';
 import mongoose from 'mongoose';
 
 export async function GET(req: Request, { params }: { params: Promise<{ openid: string }> }) {
@@ -20,7 +22,31 @@ export async function GET(req: Request, { params }: { params: Promise<{ openid: 
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
     
-    return NextResponse.json({ success: true, data: user });
+    // Enrich with professional context if user is staff
+    let extraData = {};
+    if (user.role === 'staff') {
+      const staff = await AdminUser.findOne({ $or: [{ phone: user.phone }, { openid: user.openid }] });
+      if (staff) {
+        let enterpriseName = '';
+        if (staff.enterpriseId) {
+          const ent = await Enterprise.findById(staff.enterpriseId);
+          enterpriseName = ent?.name || '';
+        }
+        extraData = {
+          staffRole: staff.role,
+          enterpriseId: staff.enterpriseId,
+          enterpriseName: enterpriseName,
+          staffId: staff._id
+        };
+      }
+    }
+    
+    const userData = {
+      ...user.toObject(),
+      ...extraData
+    };
+    
+    return NextResponse.json({ success: true, data: userData });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

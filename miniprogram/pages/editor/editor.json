@@ -8,7 +8,8 @@
     "measure-modal": "../../components/measure-modal/measure-modal",
     "bottom-bar": "../../components/bottom-bar/bottom-bar",
     "angle-measure": "../../components/angle-measure/angle-measure",
-    "technical-report": "../../components/technical-report/technical-report"
+    "technical-report": "../../components/technical-report/technical-report",
+    "lead-modal": "../../components/lead-modal/lead-modal"
   },
   "navigationStyle": "custom",
   "disableScroll": true

@@ -211,8 +211,9 @@ export default function LeadsPage() {
             <Table>
               <TableHeader className="bg-muted/50">
                 <TableRow>
-                  <TableHead className="w-[200px]">客户姓名</TableHead>
+                  <TableHead className="w-[180px]">客户姓名/小区</TableHead>
                   <TableHead>联系电话</TableHead>
+                  <TableHead>地推人员</TableHead>
                   <TableHead>指派设计师</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>提交时间</TableHead>
@@ -224,14 +225,20 @@ export default function LeadsPage() {
                   <TableRow key={lead._id}>
                     <TableCell>
                       <div className="font-semibold text-sm">{lead.name}</div>
-                      <div className="text-[11px] text-muted-foreground mt-0.5">{lead.source}</div>
+                      <div className="text-[11px] font-bold text-primary mt-0.5">{lead.communityName || '未记录小区'}</div>
                     </TableCell>
                     <TableCell className="font-mono text-xs">{lead.phone}</TableCell>
                     <TableCell className="py-4">
+                       <div className="flex items-center gap-1.5 text-xs">
+                         <Badge variant="outline" className="text-[10px] h-4 px-1 opacity-60 font-bold">地推</Badge>
+                         {getStaffName(lead.promoterId) || "系统录入"}
+                       </div>
+                    </TableCell>
+                    <TableCell className="py-4">
                        {lead.assignedTo ? (
                          <div className="flex items-center gap-1.5 text-xs">
-                           <User size={12} className="text-muted-foreground" /> 
-                           {getStaffName(lead.assignedTo) || (typeof lead.assignedTo === 'string' ? <span className="font-mono text-[10px] text-muted-foreground">{lead.assignedTo}</span> : "未知人员")}
+                           <User size={12} className="text-primary" /> 
+                           <span className="font-medium">{getStaffName(lead.assignedTo) || "未知人员"}</span>
                          </div>
                        ) : (
                          <span className="text-[11px] text-muted-foreground italic">未指派</span>
@@ -339,6 +346,27 @@ export default function LeadsPage() {
 
                   {/* Details */}
                   <div className="bg-muted/30 rounded-3xl p-6 border space-y-4">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-muted-foreground">小区名称</span>
+                      <span className="font-semibold text-primary">{selectedLead.communityName || '-'}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-muted-foreground">录入人员</span>
+                      <span className="font-semibold">
+                        <Badge variant="outline" className="text-[10px] h-4 mr-1 opacity-60">地推</Badge>
+                        {getStaffName(selectedLead.promoterId) || '系统'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-muted-foreground">企微群聊</span>
+                      <span className={cn(
+                        "text-[10px] px-2 py-0.5 rounded-full font-bold",
+                        selectedLead.wecomGroupId ? "bg-green-100 text-green-700" : "bg-muted text-muted-foreground"
+                      )}>
+                        {selectedLead.wecomGroupId ? '已拉群' : '未拉群'}
+                      </span>
+                    </div>
+                    <div className="border-t border-muted/50 my-2 pt-2"></div>
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-muted-foreground">意向面积</span>
                       <span className="font-semibold">{selectedLead.area || '-'} ㎡</span>

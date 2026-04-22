@@ -7,6 +7,7 @@ Page({
     is3DView: false,
     guidedMode: false,
     showMeasurePrompt: false,
+    showLeadModal: false,
     guidedEdgeIndex: -1,
     currentGuidedRoomId: '',
     currentGuidedRoomName: '',
@@ -155,7 +156,7 @@ Page({
         }
       }, 800);
 
-      if (extraData.guidedMode) {
+      if (extraData.guidedMode && extraData.showMeasurePrompt) {
         this.openLaser();
       }
     }
@@ -1048,7 +1049,8 @@ Page({
           width: Math.max(1, bbox.width),
           height: Math.max(1, bbox.height),
           polygon: normalized,
-          polygonClosed: true
+          polygonClosed: true,
+          measured: true
         });
       }
       return r;
@@ -1329,22 +1331,34 @@ Page({
     const that = this;
     const rooms = this.data.rooms;
     if (!rooms || rooms.length === 0) {
-      wx.showToast({ title: '无数据导出', icon: 'none' });
+      wx.showToast({ title: '无数据操作', icon: 'none' });
       return;
     }
 
     wx.showActionSheet({
-      itemList: ['导出为 CAD 文件 (DXF)', '导出量房报告 (预览)', '保存到云端'],
-      success: (res) => {
+      itemList: ['保存并返回', '导出为 CAD 文件', '导出量房报告'],
+      success: async (res) => {
         if (res.tapIndex === 0) {
-          that.exportDXF();
+          const success = await that.saveToCloudInternal('completed');
+          if (success) {
+            // Return to previous page (lead-detail)
+            setTimeout(() => { wx.navigateBack(); }, 1500);
+          }
         } else if (res.tapIndex === 1) {
-          that.exportReportImage();
+          that.exportDXF();
         } else if (res.tapIndex === 2) {
-          that.saveToCloud();
+          that.exportReportImage();
         }
       }
     });
+  },
+
+  onCloseLeadModal: function() {
+    this.setData({ showLeadModal: false });
+  },
+
+  onLeadSuccess: function() {
+    wx.showToast({ title: '已成功绑定并推送线索', icon: 'success' });
   },
 
   exportDXF: function () {

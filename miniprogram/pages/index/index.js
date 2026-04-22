@@ -1,4 +1,5 @@
 var util = require('../../utils/util.js');
+const api = require('../../utils/api.js');
 
 Page({
   data: {
@@ -12,7 +13,8 @@ Page({
     capsulePadding: 0,
     windowWidth: 375,
     windowHeight: 600,
-    branding: null
+    branding: null,
+    isStaff: false
   },
 
   onLoad: function () {
@@ -31,53 +33,140 @@ Page({
     });
   },
 
-  onShow: function() {
-    this.fetchCloudPlans();
+  onShow: function () {
+    const app = getApp();
+    const isStaffUser = !!(app.globalData.userInfo && app.globalData.userInfo.role === 'staff');
+    console.log('userInfo', app.globalData.userInfo)
+    if (app.globalData.requireLeadFirst) {
+      app.globalData.requireLeadFirst = false;
+      this.setData({ showLeadModal: true, plannedRooms: [], currentProject_id: null, isStaff: isStaffUser });
+    } else if (app.globalData.restoreFloorPlan) {
+      const fp = app.globalData.restoreFloorPlan;
+      app.globalData.restoreFloorPlan = null;
+
+      let rooms = fp.layoutData;
+      if (typeof rooms === 'string') {
+        try { rooms = JSON.parse(rooms); } catch (e) { }
+      }
+
+      this.setData({
+        plannedRooms: rooms || [],
+        currentProject_id: fp._id || null,
+        showLeadModal: false,
+        isStaff: isStaffUser
+      });
+    } else if (!this.data.currentProject_id) {
+      this.fetchCloudPlans();
+      this.setData({ isStaff: isStaffUser });
+    }
+
     this.setData({
       bleConnected: getApp().globalData.bleConnected || false,
-      branding: getApp().globalData.branding || null
+      branding: getApp().globalData.branding || null,
+      isStaff: isStaffUser,
+      userInfo: app.globalData.userInfo || null
     });
   },
 
-  onBrandingReady: function (branding) {
-    this.setData({ branding });
-  },
+  onLeadSuccess: function (e) {
+    this.setData({ 
+      showLeadModal: false,
+      plannedRooms: [], 
+      currentProject_id: null 
+    });
+    const leadId = e.detail ? e.detail._id : null;
 
-  fetchCloudPlans: async function() {
-    const app = getApp();
-    if (!app.globalData.openid) return;
-    const api = require('../../utils/api.js');
-    try {
-      const res = await api.request(`/floorplans?openid=${app.globalData.openid}`, 'GET');
-      if (res.success && res.data) {
-        this.setData({ myCloudFloorPlans: res.data });
-      }
-    } catch(err) {
-      console.error('Failed to fetch library floorplans:', err);
+    if (leadId) {
+      wx.navigateTo({
+        url: `/pages/lead-detail/lead-detail?id=${leadId}`
+      });
+    } else {
+      wx.showToast({ title: '线索创建成功', icon: 'success' });
     }
   },
-
-  onSelectLayout: function (e) {
+  onSelectLayout: async function (e) {
     var templateId = e.detail.id;
     var templatesUtil = require('../../utils/templates.js');
     var roomsData = templatesUtil.generateTemplateRooms(templateId);
+
     this.setData({
       plannedRooms: roomsData
     });
+
+    // Create the FloorPlan immediately
+    wx.showLoading({ title: '创建项目...' });
+    const app = getApp();
+    try {
+      const payload = {
+        openid: app.globalData.openid,
+        name: '量房项目 - ' + util.formatTime(new Date()).split(' ')[0].replace(/\//g, ''),
+        layoutData: roomsData,
+        status: 'draft'
+      };
+      const res = await api.request('/floorplans', 'POST', payload);
+      if (res.success && res.data) {
+        this.setData({ currentProject_id: res.data._id });
+
+        // If there's an active lead, bind this floor plan to it
+        if (app.globalData.activeLeadId) {
+          await api.request(`/leads/${app.globalData.activeLeadId}`, 'PUT', {
+            floorPlanId: res.data._id // Backend will append this to floorPlanIds
+          });
+          app.globalData.activeLeadId = null; // Clear it
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      wx.hideLoading();
+    }
   },
 
-  onOpenCloudPlan: function(e) {
+  onOpenCloudPlan: function (e) {
     const fp = e.detail.fp;
-    
     getApp().globalData.restoreFloorPlan = Object.assign({}, fp, { isRestore: true });
-    
-    wx.navigateTo({
-      url: '/pages/editor/editor'
-    });
+    this.onShow(); // Reload local state
+  },
+
+  async fetchCloudPlans() {
+    const app = getApp();
+    const openid = app.globalData.openid;
+    if (!openid) return;
+    try {
+      const res = await api.request(`/floorplans?openid=${openid}`, 'GET');
+      if (res.success && res.data) {
+        this.setData({ myCloudFloorPlans: res.data });
+      }
+    } catch (err) {
+      console.error('Fetch cloud plans failed', err);
+    }
   },
 
   onResetLayout: function () {
-    this.setData({ plannedRooms: [] });
+    this.setData({ plannedRooms: [], currentProject_id: null });
+  },
+
+  onAddRoom: function () {
+    const plannedRooms = this.data.plannedRooms || [];
+    plannedRooms.push({
+      id: util.generateUUID(),
+      name: '新增房间',
+      measured: false,
+      color: 'rgba(255, 255, 255, 0.8)',
+      defaultWidth: 40,
+      defaultHeight: 40
+    });
+    this.setData({ plannedRooms });
+    this.saveCurrentHubState();
+  },
+
+  saveCurrentHubState: async function () {
+    if (!this.data.currentProject_id) return;
+    const app = getApp();
+    await api.request(`/floorplans/${this.data.currentProject_id}`, 'PUT', {
+      openid: app.globalData.openid,
+      layoutData: this.data.plannedRooms
+    });
   },
 
   onEnterRoom: function (e) {
@@ -91,28 +180,14 @@ Page({
     }
     if (!roomData) return;
 
-    var canvasWidth = this.data.windowWidth;
-    var canvasHeight = this.data.windowHeight - 150; 
-    var roomW = roomData.defaultWidth || 40;
-    var roomH = roomData.defaultHeight || 40;
-
-    var newRoom = {
-      id: roomData.id,
-      name: roomData.name,
-      x: (canvasWidth / 2) - (roomW / 2),
-      y: (canvasHeight / 2) - (roomH / 2) + 20,
-      width: roomW,
-      height: roomH,
-      color: roomData.color || 'rgba(255, 255, 255, 0.8)',
-      openings: []
-    };
-
+    // We pass the full array to editor, so it can update it
     var fpData = {
+      _id: this.data.currentProject_id,
       roomId: roomId,
-      roomName: newRoom.name,
-      layoutData: [newRoom],
+      roomName: roomData.name,
+      layoutData: this.data.plannedRooms, // Pass ALL rooms
       guidedMode: true,
-      showMeasurePrompt: true,
+      showMeasurePrompt: !roomData.measured, // Only prompt if unmeasured
       activeTool: 'SELECT',
       selectedIds: [roomId],
       showPropertyPanel: false
@@ -127,7 +202,7 @@ Page({
 
   onAIGen: function (e) {
     var roomId = e.detail.id;
-    var room = this.data.plannedRooms.find(function(r) { return r.id === roomId; });
+    var room = this.data.plannedRooms.find(function (r) { return r.id === roomId; });
     if (room) {
       getApp().globalData.currentAIGenRoom = room;
       wx.navigateTo({ url: '/pages/ai-gen/ai-gen' });
@@ -167,12 +242,7 @@ Page({
     this.setData({ showLeadModal: false });
   },
 
-  onLeadSuccess: function () {
-    this.setData({ showLeadModal: false });
-  },
-  
-  onShareAppMessage: function () {
-    return {
+  onShareAppMessage: function () {    return {
       title: '智能量房大师 - 专业AR量房设计工具',
       path: '/pages/index/index'
     }

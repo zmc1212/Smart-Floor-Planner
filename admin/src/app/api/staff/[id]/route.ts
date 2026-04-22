@@ -15,11 +15,22 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     const body = await request.json();
-    const { password, displayName, role, phone, status } = body;
+    const { username, password, displayName, role, phone, status, promoterIds, wecomUserId } = body;
 
     const staff = await AdminUser.findById(id);
     if (!staff) {
       return NextResponse.json({ success: false, error: '员工不存在' }, { status: 404 });
+    }
+
+    // Check if new username is already taken
+    if (username && username.trim() !== staff.username) {
+      const existing = await AdminUser.findOne({ 
+        username: username.trim(),
+        _id: { $ne: id }
+      });
+      if (existing) {
+        return NextResponse.json({ success: false, error: '该账号名称已被占用' }, { status: 400 });
+      }
     }
 
     // Tenant Isolation
@@ -34,10 +45,13 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     // Prepare update data
     const updateData: any = {};
+    if (username !== undefined) updateData.username = username.trim();
     if (displayName !== undefined) updateData.displayName = displayName.trim();
     if (role !== undefined) updateData.role = role;
     if (phone !== undefined) updateData.phone = phone.trim();
     if (status !== undefined) updateData.status = status;
+    if (promoterIds !== undefined) updateData.promoterIds = promoterIds;
+    if (wecomUserId !== undefined) updateData.wecomUserId = wecomUserId;
     
     if (password && password.trim().length >= 6) {
       updateData.passwordHash = await bcrypt.hash(password, 10);
