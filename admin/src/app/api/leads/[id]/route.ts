@@ -123,39 +123,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         throw error;
       }
     }
-
-    // If assigning to someone for the first time or changing assignment, update assignedAt
-    if (body.assignedTo) {
-      body.assignedAt = new Date();
-    }
-    
-    // Support appending floorPlanId
-    let updateOps: any = { ...body };
-    let updateDoc: any = {};
-    
-    // Cleanup auth fields from body
-    if (updateOps.openid) delete updateOps.openid;
-    
-    if (body.floorPlanId) {
-      delete updateOps.floorPlanId; 
-      updateDoc.$addToSet = { floorPlanIds: body.floorPlanId };
-    }
-    
-    if (Object.keys(updateOps).length > 0) {
-      updateDoc.$set = updateOps;
-    }
-
-    const lead = await Lead.findOneAndUpdate(
-      { _id: id, ...tenantFilter },
-      Object.keys(updateDoc).length > 0 ? updateDoc : body,
-      { new: true, runValidators: true }
-    );
-    
-    if (!lead) {
-      return NextResponse.json({ success: false, error: 'Lead not found or access denied' }, { status: 404 });
-    }
-
-    return NextResponse.json({ success: true, data: lead });
   } catch (error: any) {
     console.error('Update lead error:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

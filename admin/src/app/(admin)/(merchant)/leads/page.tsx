@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { Building2 } from "lucide-react";
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<any[]>([]);
@@ -37,6 +38,21 @@ export default function LeadsPage() {
   const [newNote, setNewNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [staffMembers, setStaffMembers] = useState<any[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  // No local enterprise state needed, handled globally by auth + cookie
+
+  const fetchCurrentUser = async () => {
+    try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      if (data.success) {
+        setCurrentUser(data.data);
+      }
+    } catch (err) {
+      console.error('Auth error:', err);
+    }
+  };
 
   // Helper to get staff display name from ID or Object
   const getStaffName = (idOrObj: any) => {
@@ -109,7 +125,7 @@ export default function LeadsPage() {
   const fetchLeads = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/leads');
+      const res = await fetch(`/api/leads`);
       const data = await res.json();
       if (data.success) {
         setLeads(data.data);
@@ -127,7 +143,7 @@ export default function LeadsPage() {
 
   const fetchStaff = async () => {
     try {
-      const res = await fetch('/api/staff');
+      const res = await fetch(`/api/staff`);
       const data = await res.json();
       if (data.success) {
         setStaffMembers(data.data);
@@ -136,6 +152,10 @@ export default function LeadsPage() {
       console.error('Failed to fetch staff:', err);
     }
   };
+
+  useEffect(() => {
+    fetchCurrentUser();
+  }, []);
 
   useEffect(() => {
     fetchLeads();
@@ -225,6 +245,9 @@ export default function LeadsPage() {
               </span>
             )}
           </div>
+
+          {/* Enterprise Selector removed, now handled globally in Sidebar */}
+
           {leads.length === 0 && !loading && (
             <div className="bg-neutral-50 shadow-[0_0_0_1px_rgba(0,0,0,0.06)] p-4 rounded-xl text-sm text-neutral-600">
               提示：如果您是设计师或业务员，您只能看到正式指派给您的线索。只有企业负责人（Admin/Owner）可以看到全部新线索。

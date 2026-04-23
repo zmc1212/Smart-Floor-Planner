@@ -2,21 +2,45 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from "next/link";
-import { Map, Loader2, ArrowLeft, Search, Calendar, Layers, User } from "lucide-react";
+import { Map, Loader2, ArrowLeft, Search, Calendar, Layers, User, Building2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function FloorPlansPage() {
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  // No local enterprise state needed, handled globally by auth + cookie
+
+  const fetchCurrentUser = async () => {
+    try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      if (data.success) {
+        setCurrentUser(data.data);
+      }
+    } catch (err) {
+      console.error('Auth error:', err);
+    }
+  };
 
   const fetchPlans = async (search = '') => {
     setLoading(true);
     try {
-      const url = search ? `/api/floorplans?search=${encodeURIComponent(search)}` : '/api/floorplans';
+      let url = '/api/floorplans?';
+      if (search) url += `search=${encodeURIComponent(search)}&`;
+      
       const res = await fetch(url);
       const data = await res.json();
       if (data.success) {
@@ -28,6 +52,10 @@ export default function FloorPlansPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchCurrentUser();
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -45,9 +73,13 @@ export default function FloorPlansPage() {
             <h2 className="text-[32px] font-bold tracking-tight">
               户型图资产库
             </h2>
-            <p className="text-muted-foreground text-sm flex items-center gap-2">
-               查看所有终端用户通过小程序现场测绘生成的原始数据
-            </p>
+            <div className="flex flex-col gap-3">
+              <p className="text-muted-foreground text-sm flex items-center gap-2">
+                 查看所有终端用户通过小程序现场测绘生成的原始数据
+              </p>
+              
+              {/* Enterprise Selector removed, now handled globally in Sidebar */}
+            </div>
           </div>
           
           <div className="flex items-center gap-4 bg-muted/30 p-1.5 rounded-2xl border border-muted w-full md:w-[400px]">

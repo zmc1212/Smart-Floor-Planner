@@ -57,7 +57,9 @@ export default function DevicesPage() {
   const [newDesc, setNewDesc] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
-  
+
+  // Enterprise state (for super_admin to map IDs to names)
+  const [allEnterprises, setAllEnterprises] = useState<any[]>([]);
   // Edit State
   const [editCode, setEditCode] = useState('');
   const [editDesc, setEditDesc] = useState('');
@@ -69,7 +71,9 @@ export default function DevicesPage() {
     try {
       const res = await fetch('/api/auth/me');
       const data = await res.json();
-      if (data.success) setCurrentUser(data.data);
+      if (data.success) {
+        setCurrentUser(data.data);
+      }
     } catch (err) { console.error(err); }
   };
 
@@ -77,14 +81,15 @@ export default function DevicesPage() {
     try {
       const res = await fetch('/api/admin/enterprises');
       const data = await res.json();
-      // Show all enterprises to avoid ID display issues for inactive ones
-      if (data.success) setEnterprises(data.data);
+      if (data.success) {
+        setAllEnterprises(data.data);
+      }
     } catch (err) { console.error(err); }
   };
 
   const fetchStaff = async () => {
     try {
-      const res = await fetch('/api/staff');
+      const res = await fetch(`/api/staff`);
       const data = await res.json();
       if (data.success) setStaff(data.data);
     } catch (err) { console.error(err); }
@@ -93,7 +98,8 @@ export default function DevicesPage() {
   const fetchDevices = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/devices');
+      let url = '/api/devices';
+      const res = await fetch(url);
       const data = await res.json();
       if (data.success) setDevices(data.data);
     } catch (err) {
@@ -105,8 +111,16 @@ export default function DevicesPage() {
 
   useEffect(() => {
     fetchCurrentUser();
+  }, []);
+
+  useEffect(() => {
+    if (currentUser && (currentUser.role === 'super_admin' || currentUser.role === 'admin')) {
+      fetchEnterprises();
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
     fetchDevices();
-    fetchEnterprises();
     fetchStaff();
   }, []);
 
@@ -202,7 +216,7 @@ export default function DevicesPage() {
       if (typeof idOrObj === 'object' && idOrObj.name) return idOrObj.name;
       
       const id = String(idOrObj);
-      const ent = enterprises.find(e => String(e._id) === id);
+      const ent = allEnterprises.find(e => String(e._id) === id);
       return ent ? ent.name : null;
   };
 
@@ -233,7 +247,11 @@ export default function DevicesPage() {
                 </div>
                 <div>
                    <h1 className="text-[32px] font-bold tracking-tight mb-1">测距仪设备池</h1>
-                   <p className="text-muted-foreground text-sm">管理全渠道测距仪资产，进行企业与设计师强绑定</p>
+                   <div className="flex flex-col gap-3">
+                      <p className="text-muted-foreground text-sm">管理全渠道测距仪资产，进行企业与设计师强绑定</p>
+                      
+                      {/* Enterprise Selector removed, now handled globally in Sidebar */}
+                   </div>
                 </div>
             </div>
             
@@ -241,7 +259,7 @@ export default function DevicesPage() {
                 <Button 
                    variant="outline" 
                    size="icon" 
-                   onClick={fetchDevices} 
+                   onClick={() => fetchDevices()} 
                    className="rounded-full h-12 w-12 border-muted"
                 >
                     <RefreshCw size={20} className={cn("text-muted-foreground", loading && "animate-spin")} />
@@ -348,7 +366,7 @@ export default function DevicesPage() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="unassigned">未分配企业</SelectItem>
-                                            {enterprises.map(e => <SelectItem key={e._id} value={String(e._id)}>{e.name}</SelectItem>)}
+                                            {allEnterprises.map(e => <SelectItem key={e._id} value={String(e._id)}>{e.name}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
                                 ) : (

@@ -46,7 +46,7 @@ export function multiTenantPlugin(schema: Schema, options: TenantPluginOptions =
   ];
 
   // 为所有查询方法统一添加前置钩子
-  schema.pre(queryMethods as any, function (this: Query<any, any>) {
+  schema.pre(queryMethods as any, function (this: any) {
     const method = this.op;
     const store = tenantStorage.getStore();
     const modelName = this.model?.modelName || 'UnknownModel';
@@ -61,8 +61,16 @@ export function multiTenantPlugin(schema: Schema, options: TenantPluginOptions =
     }
 
     if (store.role === 'super_admin' || store.role === 'admin') {
-      console.log(`[MultiTenantPlugin] 跳过过滤: ${modelName}.${method} (管理员权限: ${store.role})`);
-      return;
+      if (store.enterpriseId) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[MultiTenantPlugin] 应用超管企业视图: ${modelName}.${method} (Enterprise: ${store.enterpriseId})`);
+        }
+      } else {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[MultiTenantPlugin] 跳过过滤: ${modelName}.${method} (管理员权限: ${store.role})`);
+        }
+        return;
+      }
     }
 
     // 如果已经有enterpriseId过滤条件，则不再注入（允许特殊情况覆盖）
@@ -112,11 +120,11 @@ export function multiTenantPlugin(schema: Schema, options: TenantPluginOptions =
   schema.pre('aggregate', function (this: Aggregate<any>) {
     const store = tenantStorage.getStore();
 
-    if (store && store.role !== 'super_admin' && store.role !== 'admin') {
+    if (store && (store.role !== 'super_admin' && store.role !== 'admin' || store.enterpriseId)) {
       const pipeline = this.pipeline();
 
       // 检查是否已经有匹配条件
-      const hasEnterpriseMatch = pipeline.some(stage =>
+      const hasEnterpriseMatch = pipeline.some((stage: any) =>
         stage.$match && (stage.$match.enterpriseId || stage.$match.staffId)
       );
 
@@ -157,8 +165,7 @@ export function multiTenantPlugin(schema: Schema, options: TenantPluginOptions =
 
     // 如果是新文档且没有enterpriseId，自动注入
     if (this.isNew && store && store.enterpriseId && !this.enterpriseId) {
-      // 只有非超级管理员才自动注入
-      if (store.role !== 'super_admin' && store.role !== 'admin') {
+      if ((store.role !== 'super_admin' && store.role !== 'admin') || store.enterpriseId) {
         this.enterpriseId = store.enterpriseId;
       }
     }

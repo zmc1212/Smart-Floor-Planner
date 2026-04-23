@@ -20,10 +20,21 @@ export async function getTenantContext(request: Request | NextRequest): Promise<
     const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
     const { payload } = await jose.jwtVerify(token, secret);
 
+    let enterpriseId = payload.enterpriseId as string | null;
+
+    // Check for global tenant selector cookie for super admins
+    if (payload.role === 'super_admin' || payload.role === 'admin') {
+      const globalTenantMatch = cookie?.match(/global_tenant_id=([^;]+)/);
+      const globalTenantId = globalTenantMatch ? globalTenantMatch[1] : null;
+      if (globalTenantId && globalTenantId !== 'all') {
+        enterpriseId = globalTenantId;
+      }
+    }
+
     return {
       userId: payload.id as string,
       role: payload.role as any,
-      enterpriseId: payload.enterpriseId as string | null,
+      enterpriseId,
       username: payload.username as string,
     };
   } catch (error) {

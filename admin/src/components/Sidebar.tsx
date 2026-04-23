@@ -26,6 +26,13 @@ import {
   SheetContent,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface MenuItem {
   key: string;
@@ -82,6 +89,8 @@ export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [admin, setAdmin] = useState<any>(null);
   const [openCategories, setOpenCategories] = useState<string[]>(['运营核心', '业务管理', '资源与设备', '组织与权限']);
+  const [enterprises, setEnterprises] = useState<any[]>([]);
+  const [globalTenantId, setGlobalTenantId] = useState<string>('all');
 
   useEffect(() => {
     // Load collapse state from local storage
@@ -92,10 +101,35 @@ export default function Sidebar() {
     fetch('/api/auth/me')
       .then(res => res.json())
       .then(data => {
-        if (data.success) setAdmin(data.data);
+        if (data.success) {
+          setAdmin(data.data);
+          // If super admin, fetch enterprises
+          if (data.data.role === 'super_admin' || data.data.role === 'admin') {
+            fetch('/api/admin/enterprises')
+              .then(res => res.json())
+              .then(entData => {
+                if (entData.success) {
+                  setEnterprises(entData.data);
+                }
+              });
+          }
+        }
       })
       .catch(err => console.error('Auth error:', err));
+      
+    // Load initial global tenant id from cookie
+    const cookies = document.cookie.split('; ');
+    const tenantCookie = cookies.find(row => row.startsWith('global_tenant_id='));
+    if (tenantCookie) {
+      setGlobalTenantId(tenantCookie.split('=')[1]);
+    }
   }, []);
+
+  const handleTenantChange = (value: string) => {
+    setGlobalTenantId(value);
+    document.cookie = `global_tenant_id=${value}; path=/; max-age=86400`; // 1 day
+    router.refresh();
+  };
 
   const toggleCollapse = () => {
     const newState = !isCollapsed;
@@ -150,9 +184,28 @@ export default function Sidebar() {
       {/* Header */}
       <div className={cn("h-16 flex items-center px-6 border-b border-zinc-800 shrink-0", collapsed && "px-0 justify-center")}>
         {!collapsed ? (
-          <h1 className="text-[15px] font-bold tracking-[-0.5px] uppercase">
-            Smart Floor <span className="text-zinc-500">Planner</span>
-          </h1>
+          <div className="flex flex-col">
+            <h1 className="text-[15px] font-bold tracking-[-0.5px] uppercase">
+              Smart Floor <span className="text-zinc-500">Planner</span>
+            </h1>
+            {(admin?.role === 'super_admin' || admin?.role === 'admin') && (
+              <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+                <Select value={globalTenantId} onValueChange={handleTenantChange}>
+                  <SelectTrigger className="h-7 min-w-[180px] bg-zinc-900 border-zinc-800 text-xs font-medium focus:ring-0 shadow-none text-zinc-300">
+                    <SelectValue placeholder="全局企业视图" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl border-zinc-800 bg-zinc-950 text-zinc-300 shadow-2xl">
+                    <SelectItem value="all" className="rounded-lg text-xs font-bold text-primary">-- 所有企业 --</SelectItem>
+                    {enterprises.map(ent => (
+                      <SelectItem key={ent._id} value={ent._id} className="rounded-lg text-xs">
+                        {ent.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
         ) : (
           <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-zinc-950 font-black text-sm">
             S
