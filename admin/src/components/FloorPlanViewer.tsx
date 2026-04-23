@@ -480,21 +480,29 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
   const searchParams = useSearchParams();
   const roomIdParam = searchParams.get('roomId');
 
-  const rooms: Room[] = useMemo(() => {
+  const allRooms: Room[] = useMemo(() => {
     if (!planData?.layoutData) return [];
     const data = planData.layoutData;
-    let allRooms = [];
-    if (Array.isArray(data)) {
-      allRooms = data;
-    } else if (data.rooms && Array.isArray(data.rooms)) {
-      allRooms = data.rooms;
-    }
+    if (Array.isArray(data)) return data;
+    if (data.rooms && Array.isArray(data.rooms)) return data.rooms;
+    return [];
+  }, [planData?.layoutData]);
 
-    if (roomIdParam) {
-      return allRooms.filter((room: any) => room.id === roomIdParam);
+  const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (roomIdParam && allRooms.some(r => r.id === roomIdParam)) {
+      setActiveRoomId(roomIdParam);
+    } else if (allRooms.length > 0 && !activeRoomId) {
+      setActiveRoomId(allRooms[0].id);
     }
-    return allRooms;
-  }, [planData?.layoutData, roomIdParam]);
+  }, [roomIdParam, allRooms, activeRoomId]);
+
+  const roomsToRender: Room[] = useMemo(() => {
+    if (!activeRoomId) return [];
+    return allRooms.filter(room => room.id === activeRoomId);
+  }, [allRooms, activeRoomId]);
+
   if (!mounted) {
     return <div className="h-screen w-screen bg-gray-50 flex items-center justify-center text-gray-500 text-sm">加载中...</div>;
   }
@@ -503,15 +511,35 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
     <div className="flex flex-col h-screen bg-[#f1f1f1]">
       {/* Header */}
       <div className="bg-white/90 backdrop-blur-md px-6 py-4 border-b border-gray-200 flex justify-between items-center z-50">
-        <div className="flex items-center gap-4">
-          <BackButton fallbackPath={planData?.creator?.openid ? `/users/${planData.creator.openid}` : "/"} />
-          <div>
-            <h2 className="text-lg font-bold tracking-tight">{planData?.name || '户型详情'}</h2>
-            <p className="text-xs text-gray-400">
-               {lead?.name ? `客户: ${lead.name} · ` : ''}
-               {planData?.creator?.communityName || '私有户型'}
-            </p>
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-4">
+            <BackButton fallbackPath={planData?.creator?.openid ? `/users/${planData.creator.openid}` : "/"} />
+            <div>
+              <h2 className="text-lg font-bold tracking-tight">{planData?.name || '户型详情'}</h2>
+              <p className="text-xs text-gray-400">
+                 {lead?.name ? `客户: ${lead.name} · ` : ''}
+                 {planData?.creator?.communityName || '私有户型'}
+              </p>
+            </div>
           </div>
+          
+          {allRooms.length > 1 && (
+            <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
+              {allRooms.map((room: any) => (
+                <button
+                  key={room.id}
+                  onClick={() => setActiveRoomId(room.id)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                    activeRoomId === room.id 
+                      ? 'bg-white text-gray-900 shadow-sm' 
+                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {room.name || '未命名房间'}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         
         <div className="flex items-center gap-4">
@@ -648,11 +676,11 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
       <div className="flex-1 relative overflow-hidden">
         {is3D ? (
           <Canvas shadows gl={{ antialias: true }}>
-            <Scene3D rooms={rooms} />
+            <Scene3D rooms={roomsToRender} />
           </Canvas>
         ) : (
           <Canvas gl={{ antialias: true }}>
-            <Scene2D rooms={rooms} />
+            <Scene2D rooms={roomsToRender} />
           </Canvas>
         )}
 
@@ -663,7 +691,7 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
                  <Activity size={14} />
                  <span className="font-bold underline">ENGINE STATUS</span>
               </div>
-              <p><span className="text-blue-400">Rooms:</span> {rooms.length}</p>
+              <p><span className="text-blue-400">Rooms:</span> {roomsToRender.length} / {allRooms.length}</p>
               <p><span className="text-blue-400">View:</span> {is3D ? 'PERSPECTIVE' : 'ORTHO'}</p>
               <p><span className="text-blue-400">Data Check:</span> {planData?.layoutData ? 'FOUND' : 'MISSING'}</p>
               <div className="pt-2 text-[9px] text-gray-400 truncate max-w-[200px]">
@@ -681,7 +709,7 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
                 ))}
              </div>
              <div>
-               <p className="text-sm font-black text-gray-900 leading-none mb-1">{rooms.length} 个空间节点</p>
+               <p className="text-[20px] font-black text-gray-900 leading-none mb-1">{allRooms.length} 个空间节点</p>
                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">智能测绘数据已同步</p>
              </div>
           </div>
