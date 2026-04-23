@@ -51,7 +51,13 @@ FloorPlanSchema.index({ enterpriseId: 1, createdAt: -1 });
 FloorPlanSchema.index({ staffId: 1, createdAt: -1 });
 FloorPlanSchema.index({ creator: 1, createdAt: -1 });
 
-// 应用多租户插件
-FloorPlanSchema.plugin(multiTenantPlugin);
+// 应用多租户插件 - 配置角色级隔离
+FloorPlanSchema.plugin(multiTenantPlugin, {
+  enableRoleBasedFiltering: true,
+  roleFilterFields: {
+    designer: 'staffId',
+    salesperson: 'staffId'
+  }
+});
 
 export const FloorPlan: Model<IFloorPlan> = mongoose.models.FloorPlan || mongoose.model<IFloorPlan>('FloorPlan', FloorPlanSchema);

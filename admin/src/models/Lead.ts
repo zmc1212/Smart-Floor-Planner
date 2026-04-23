@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
-import { multiTenantPlugin } from '../lib/mongoose-tenant-plugin';
+import { multiTenantPlugin, TenantPluginOptions } from '../lib/mongoose-tenant-plugin';
 
 export interface IFollowUp {
   content: string;
@@ -56,7 +56,19 @@ LeadSchema.index({ promoterId: 1, createdAt: -1 });
 LeadSchema.index({ assignedTo: 1, createdAt: -1 });
 LeadSchema.index({ phone: 1 });
 
-// 应用多租户插件
-LeadSchema.plugin(multiTenantPlugin);
+// 应用多租户插件 - 配置角色级隔离
+LeadSchema.plugin(multiTenantPlugin, {
+  enableRoleBasedFiltering: true,
+  roleFilterFields: {
+    designer: 'assignedTo',     // 设计师只能看到分配给自己的线索
+    salesperson: 'promoterId'  // 销售只能看到自己推广的线索
+  }
+});
 
-export default mongoose.models.Lead || mongoose.model<ILead>('Lead', LeadSchema);
+const LeadModel = mongoose.models.Lead || mongoose.model<ILead>('Lead', LeadSchema);
+
+// 调试：检查模型是否有插件
+console.log('[Lead Model] 模型已注册，检查插件钩子...');
+console.log('[Lead Model] find 前置钩子数量:', LeadSchema.listeners('find').length);
+
+export default LeadModel;

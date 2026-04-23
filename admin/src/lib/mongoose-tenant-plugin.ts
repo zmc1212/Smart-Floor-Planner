@@ -2,10 +2,30 @@ import { Schema, Query, Aggregate } from 'mongoose';
 import { tenantStorage } from './tenant-context';
 
 /**
+ * 租户隔离配置选项
+ */
+export interface TenantPluginOptions {
+  // 是否启用角色级别的数据隔离
+  enableRoleBasedFiltering?: boolean;
+  // 针对特定角色的自定义过滤字段
+  roleFilterFields?: {
+    designer?: string;  // 例如: 'staffId'
+    salesperson?: string; // 例如: 'creator'
+  };
+  // 自定义过滤逻辑函数
+  customFilter?: (store: any) => any;
+}
+
+/**
  * Mongoose多租户隔离插件
  * 自动在所有查询中注入租户过滤条件
  */
-export function multiTenantPlugin(schema: Schema) {
+export function multiTenantPlugin(schema: Schema, options: TenantPluginOptions = {}) {
+  const {
+    enableRoleBasedFiltering = true,
+    roleFilterFields = {},
+    customFilter
+  } = options;
   // 定义需要拦截的查询方法
   const queryMethods = [
     'find',
@@ -25,6 +45,7 @@ export function multiTenantPlugin(schema: Schema) {
   // 为每个查询方法添加前置钩子
   queryMethods.forEach((method) => {
     schema.pre(method as any, function (this: Query<any, any>, next) {
+      console.log(`[MultiTenantPlugin] 插件被调用，方法: ${method}`);
       const store = tenantStorage.getStore();
 
       // 如果没有上下文，或者用户是超级管理员，则不进行强制过滤
@@ -38,9 +59,35 @@ export function multiTenantPlugin(schema: Schema) {
         return next();
       }
 
-      // 自动注入 enterpriseId 过滤条件
+      // 构建租户过滤条件
+      const tenantFilter: any = {};
+
+      // 1. 企业级别隔离 - 所有非管理员都需要
       if (store.enterpriseId) {
-        this.where({ enterpriseId: store.enterpriseId });
+        tenantFilter.enterpriseId = store.enterpriseId;
+      }
+
+      // 2. 角色级别隔离 - 如果启用
+      if (enableRoleBasedFiltering) {
+        // 使用自定义过滤逻辑
+        if (customFilter) {
+          const customFilterResult = customFilter(store);
+          Object.assign(tenantFilter, customFilterResult);
+        } else {
+          // 默认角色过滤逻辑
+          const filterField = roleFilterFields[store.role as keyof typeof roleFilterFields] || 'staffId';
+
+          if (store.role === 'designer' || store.role === 'salesperson') {
+            // 设计师和销售只能看到自己创建的数据
+            tenantFilter[filterField] = store.userId;
+          }
+        }
+      }
+
+      // 应用过滤条件
+      if (Object.keys(tenantFilter).length > 0) {
+        console.log(`[MultiTenantPlugin] 注入过滤条件:`, tenantFilter, '用户角色:', store.role);
+        this.where(tenantFilter);
       }
 
       next();
@@ -52,17 +99,40 @@ export function multiTenantPlugin(schema: Schema) {
     const store = tenantStorage.getStore();
 
     if (store && store.role !== 'super_admin' && store.role !== 'admin') {
-      // 检查是否已经有enterpriseId匹配条件
       const pipeline = this.pipeline();
+
+      // 检查是否已经有匹配条件
       const hasEnterpriseMatch = pipeline.some(stage =>
-        stage.$match && stage.$match.enterpriseId
+        stage.$match && (stage.$match.enterpriseId || stage.$match.staffId)
       );
 
-      // 如果没有enterpriseId过滤，则自动注入
-      if (!hasEnterpriseMatch && store.enterpriseId) {
-        this.pipeline().unshift({
-          $match: { enterpriseId: store.enterpriseId }
-        });
+      // 如果没有匹配条件，则自动注入租户过滤
+      if (!hasEnterpriseMatch) {
+        const matchConditions: any = {};
+
+        // 企业级别隔离
+        if (store.enterpriseId) {
+          matchConditions.enterpriseId = store.enterpriseId;
+        }
+
+        // 角色级别隔离
+        if (enableRoleBasedFiltering) {
+          if (customFilter) {
+            const customFilterResult = customFilter(store);
+            Object.assign(matchConditions, customFilterResult);
+          } else {
+            const filterField = roleFilterFields[store.role as keyof typeof roleFilterFields] || 'staffId';
+            if (store.role === 'designer' || store.role === 'salesperson') {
+              matchConditions[filterField] = store.userId;
+            }
+          }
+        }
+
+        if (Object.keys(matchConditions).length > 0) {
+          this.pipeline().unshift({
+            $match: matchConditions
+          });
+        }
       }
     }
 

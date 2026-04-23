@@ -31,7 +31,13 @@ const DeviceSchema: Schema<IDevice> = new Schema(
 DeviceSchema.index({ enterpriseId: 1, status: 1 });
 DeviceSchema.index({ enterpriseId: 1, assignedUserId: 1 });
 
-// 应用多租户插件
-DeviceSchema.plugin(multiTenantPlugin);
+// 应用多租户插件 - 配置角色级隔离
+DeviceSchema.plugin(multiTenantPlugin, {
+  enableRoleBasedFiltering: true,
+  roleFilterFields: {
+    designer: 'assignedUserId',     // 设计师只能看到分配给自己的设备
+    salesperson: 'assignedUserId'  // 销售只能看到分配给自己的设备
+  }
+});
 
 export const Device: Model<IDevice> = mongoose.models.Device || mongoose.model<IDevice>('Device', DeviceSchema);

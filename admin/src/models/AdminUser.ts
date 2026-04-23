@@ -1,5 +1,6 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
-import { multiTenantPlugin } from '../lib/mongoose-tenant-plugin';
+import { multiTenantPlugin, TenantPluginOptions } from '../lib/mongoose-tenant-plugin';
+
 export interface IAdminUser extends Document {
   username: string;
   passwordHash: string;
@@ -122,8 +123,34 @@ AdminUserSchema.index({ enterpriseId: 1, role: 1 });
 AdminUserSchema.index({ enterpriseId: 1, departmentId: 1 });
 AdminUserSchema.index({ enterpriseId: 1, username: 1 });
 
-// 应用多租户插件
-AdminUserSchema.plugin(multiTenantPlugin);
+// 应用多租户插件 - 使用自定义过滤逻辑
+const adminUserPluginOptions: TenantPluginOptions = {
+  enableRoleBasedFiltering: true,
+  customFilter: (store) => {
+    const filter: any = {};
+
+    // 企业级别隔离
+    if (store.enterpriseId) {
+      filter.enterpriseId = store.enterpriseId;
+    }
+
+    // 角色级别特殊逻辑
+    if (store.role === 'enterprise_admin') {
+      // 企业负责人可以看到自己企业的所有员工
+      // 不需要额外的staff过滤
+    } else if (store.role === 'designer' || store.role === 'salesperson') {
+      // 设计师和销售只能看到自己和自己的promoter信息
+      filter.$or = [
+        { _id: store.userId }, // 可以看到自己的信息
+        { promoterIds: store.userId } // 可以看到自己推广的员工
+      ];
+    }
+
+    return filter;
+  }
+};
+
+AdminUserSchema.plugin(multiTenantPlugin, adminUserPluginOptions);
 
 export const AdminUser: Model<IAdminUser> =
   mongoose.models.AdminUser || mongoose.model<IAdminUser>('AdminUser', AdminUserSchema);

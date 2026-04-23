@@ -3,7 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { FloorPlan } from '@/models/FloorPlan';
 import { User } from '@/models/User';
 import { AdminUser } from '@/models/AdminUser';
-import { getTenantContext, getTenantFilter, withTenantContext } from '@/lib/auth';
+import { withTenantContext } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     // Automatic Association for Staff
     let staffId = undefined;
     let enterpriseId = undefined;
-    
+
     if (user.role === 'staff') {
       const staffMember = await AdminUser.findOne({ phone: user.phone });
       if (staffMember) {
@@ -59,15 +59,35 @@ export async function GET(req: Request) {
     const phone = searchParams.get('phone');
     const search = searchParams.get('search');
 
-    let query: any = {};
+    // 💡 抽离公共的查询执行逻辑
+    const executeQuery = async (baseQuery: any = {}) => {
+      // 处理phone过滤
+      if (phone) {
+        const users = await User.find({ phone });
+        if (users.length > 0) {
+          baseQuery.creator = { $in: users.map(u => u._id) };
+        }
+      }
+
+      // 处理search过滤
+      if (search) {
+        baseQuery.name = { $regex: search, $options: 'i' };
+      }
+
+      // 执行查询
+      return await FloorPlan.find(baseQuery)
+        .populate({ path: 'creator', model: User })
+        .sort({ createdAt: -1 });
+    };
 
     // 1. Mini-Program Context (via openid)
     if (openid) {
+      let query: any = {};
       const user = await User.findOne({ openid });
       if (!user) {
         return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
       }
-      
+
       // If staff, see all company plans or assigned plans
       if (user.role === 'staff') {
         const staffMember = await AdminUser.findOne({ phone: user.phone });
@@ -83,26 +103,17 @@ export async function GET(req: Request) {
       } else {
         query.creator = user._id;
       }
-    } else {
-      // 2. Admin Dashboard Context (via Auth Token) - 使用新的租户上下文包装器
+
+      const floorPlans = await executeQuery(query);
+      return NextResponse.json({ success: true, data: floorPlans });
+    }
+
+    // 2. Admin Dashboard Context (via Auth Token) - 使用新的租户上下文包装器
+    else {
       try {
         return await withTenantContext(req, async () => {
-          // 插件会自动注入租户过滤，这里只需要处理额外的查询条件
-          if (phone) {
-            const users = await User.find({ phone });
-            if (users.length > 0) {
-              query.creator = { $in: users.map(u => u._id) };
-            }
-          }
-
-          if (search) {
-            query.name = { $regex: search, $options: 'i' };
-          }
-
-          const floorPlans = await FloorPlan.find(query)
-            .populate({ path: 'creator', model: User })
-            .sort({ createdAt: -1 });
-
+          // 💡 这里传入空对象即可！插件会自动拦截find并加上enterpriseId
+          const floorPlans = await executeQuery({});
           return NextResponse.json({ success: true, data: floorPlans });
         });
       } catch (error: any) {
@@ -112,24 +123,6 @@ export async function GET(req: Request) {
         throw error;
       }
     }
-
-    // Additional filters
-    if (phone) {
-      const users = await User.find({ phone });
-      if (users.length > 0) {
-        query.creator = { $in: users.map(u => u._id) };
-      }
-    }
-
-    if (search) {
-      query.name = { $regex: search, $options: 'i' };
-    }
-
-    const floorPlans = await FloorPlan.find(query)
-      .populate({ path: 'creator', model: User })
-      .sort({ createdAt: -1 });
-
-    return NextResponse.json({ success: true, data: floorPlans });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

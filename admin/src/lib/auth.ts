@@ -46,6 +46,11 @@ export async function withTenantContext<T>(
   }
 
   // 使用 run 方法开启一个新的上下文作用域
+  console.log(`[withTenantContext] 设置上下文:`, {
+    enterpriseId: context.enterpriseId,
+    role: context.role,
+    userId: context.userId
+  });
   return tenantStorage.run(
     {
       enterpriseId: context.enterpriseId,

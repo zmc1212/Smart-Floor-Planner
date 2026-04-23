@@ -4,7 +4,7 @@ import Lead from '@/models/Lead';
 import { AdminUser } from '@/models/AdminUser';
 import { Enterprise } from '@/models/Enterprise';
 import { User } from '@/models/User';
-import { getTenantContext, getTenantFilter } from '@/lib/auth';
+import { getTenantContext, withTenantContext } from '@/lib/auth';
 import { WeComService } from '@/lib/wecom';
 
 export const dynamic = 'force-dynamic';
@@ -56,35 +56,41 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: true, data: leads });
     }
 
-    // Default: Admin Dashboard Auth flow
-    const context = await getTenantContext(request);
-    if (!context) {
-      console.log('Leads API: Unauthorized access attempt');
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
+    // Default: Admin Dashboard Auth flow - 使用新的租户上下文包装器
     const status = searchParams.get('status');
     const source = searchParams.get('source');
 
-    const basicQuery: any = {};
-    if (status) basicQuery.status = status;
-    if (source) basicQuery.source = source;
+    try {
+      return await withTenantContext(request, async () => {
+        const basicQuery: any = {};
+        if (status) basicQuery.status = status;
+        if (source) basicQuery.source = source;
 
-    // Apply tenant filter
-    const tenantFilter = getTenantFilter(context, { staffField: 'assignedTo' });
-    const query = { ...basicQuery, ...tenantFilter };
+        // 插件会自动注入租户过滤，无需手动处理
+        console.log(`Leads API Trace: Admin user accessing leads with query=${JSON.stringify(basicQuery)}`);
 
-    console.log(`Leads API Trace: User=${context.username}, Role=${context.role}, EID=${context.enterpriseId}, Query=${JSON.stringify(query)}`);
+        // 添加查询前的日志
+        const query = Lead.find(basicQuery)
+          .populate('assignedTo', 'displayName username')
+          .populate('promoterId', 'displayName username')
+          .populate({ path: 'floorPlanIds', select: 'name status createdAt', strictPopulate: false })
+          .sort({ createdAt: -1 });
 
-    const leads = await Lead.find(query)
-      .populate('assignedTo', 'displayName username')
-      .populate('promoterId', 'displayName username')
-      .populate({ path: 'floorPlanIds', select: 'name status createdAt', strictPopulate: false })
-      .sort({ createdAt: -1 });
+        console.log(`[Leads API] 执行查询前的过滤条件:`, query.getFilter());
 
-    console.log(`Leads API Result: Found ${leads.length} leads`);
+        const leads = await query;
 
-    return NextResponse.json({ success: true, data: leads });
+        console.log(`Leads API Result: Found ${leads.length} leads`);
+
+        return NextResponse.json({ success: true, data: leads });
+      });
+    } catch (error: any) {
+      if (error.message === 'Unauthorized') {
+        console.log('Leads API: Unauthorized access attempt');
+        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      }
+      throw error;
+    }
   } catch (error: any) {
     console.error('Fetch leads error:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
