@@ -1,6 +1,6 @@
 'use client';
 import React, { useMemo, useState, Suspense, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Canvas } from '@react-three/fiber';
 import { MapControls, PerspectiveCamera, OrthographicCamera, Text, Center, Bounds, ContactShadows, OrbitControls } from '@react-three/drei';
@@ -475,14 +475,26 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
     }
   };
 
+  const router = useRouter();
+  
+  const searchParams = useSearchParams();
+  const roomIdParam = searchParams.get('roomId');
+
   const rooms: Room[] = useMemo(() => {
     if (!planData?.layoutData) return [];
     const data = planData.layoutData;
-    if (Array.isArray(data)) return data;
-    if (data.rooms && Array.isArray(data.rooms)) return data.rooms;
-    return [];
-  }, [planData?.layoutData]);
+    let allRooms = [];
+    if (Array.isArray(data)) {
+      allRooms = data;
+    } else if (data.rooms && Array.isArray(data.rooms)) {
+      allRooms = data.rooms;
+    }
 
+    if (roomIdParam) {
+      return allRooms.filter((room: any) => room.id === roomIdParam);
+    }
+    return allRooms;
+  }, [planData?.layoutData, roomIdParam]);
   if (!mounted) {
     return <div className="h-screen w-screen bg-gray-50 flex items-center justify-center text-gray-500 text-sm">加载中...</div>;
   }

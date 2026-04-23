@@ -175,7 +175,7 @@ export async function POST(request: Request) {
     // Workflow logic: WeCom Group Creation
     if (lead.enterpriseId && lead.promoterId && lead.assignedTo) {
       const enterprise = await Enterprise.findById(lead.enterpriseId);
-      if (enterprise && enterprise.wecomConfig) {
+      if (enterprise && (enterprise as any).wecomConfig) {
         // Trigger WeCom group creation (fire and forget for this request)
         WeComService.createLeadGroup(
           enterprise,

@@ -132,7 +132,7 @@ export default function Sidebar() {
         )}
         title={collapsed ? item.label : undefined}
       >
-        <item.icon size={20} className={cn("shrink-0", isActive ? "text-white" : "group-hover:text-zinc-100")} />
+        {React.createElement(item.icon as any, { size: 20, className: cn("shrink-0", isActive ? "text-white" : "group-hover:text-gray-900") })}
         {!collapsed && (
           <span className="text-[14px] font-medium tracking-tight whitespace-nowrap overflow-hidden text-ellipsis">
             {item.label}

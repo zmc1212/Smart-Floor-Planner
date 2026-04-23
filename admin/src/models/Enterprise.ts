@@ -19,6 +19,11 @@ export interface IEnterprise extends Document {
   };
   createdAt: Date;
   updatedAt: Date;
+  wecomConfig?: {
+    corpId?: string;
+    agentId?: string;
+    secret?: string;
+  };
 }
 
 const EnterpriseSchema: Schema<IEnterprise> = new Schema(

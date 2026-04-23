@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import * as jose from 'jose';
 import dbConnect from "@/lib/mongodb";
 import { AdminUser } from "@/models/AdminUser";
+import { Enterprise } from "@/models/Enterprise";
 import PlatformDashboard from "@/components/PlatformDashboard";
 import MerchantDashboard from "@/components/MerchantDashboard";
 import { redirect } from "next/navigation";
@@ -21,7 +22,7 @@ export default async function Home() {
   const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
   const { payload } = await jose.jwtVerify(token, secret);
   
-  const admin = await AdminUser.findById(payload.id).populate('enterpriseId');
+  const admin = await AdminUser.findById(payload.id).populate({ path: 'enterpriseId', model: Enterprise });
   if (!admin) {
     redirect('/login');
   }
@@ -43,7 +44,7 @@ export default async function Home() {
           <p className="text-[18px] text-muted-foreground font-medium">
             {isPlatformAdmin 
               ? '全局数据洞察与租户管理' 
-              : `欢迎回来，${admin.displayName || admin.username}。这里是 ${admin.enterpriseId?.name || '个人'} 工作台。`}
+              : `欢迎回来，${admin.displayName || admin.username}。这里是 ${(admin.enterpriseId as any)?.name || '个人'} 工作台。`}
           </p>
         </div>
 

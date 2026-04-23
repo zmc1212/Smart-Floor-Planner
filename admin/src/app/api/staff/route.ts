@@ -56,8 +56,8 @@ export async function GET(request: Request) {
     }
 
     const staff = await AdminUser.find(filter)
-      .populate({ path: 'enterpriseId', select: 'name' })
-      .populate({ path: 'departmentId', select: 'name' })
+      .populate({ path: 'enterpriseId', model: Enterprise, select: 'name' })
+      .populate({ path: 'departmentId', model: Department, select: 'name' })
       .select('-passwordHash')
       .sort({ createdAt: -1 });
 
@@ -111,18 +111,19 @@ export async function POST(request: Request) {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const staff = await AdminUser.create({
-      username: username.trim(),
+    const newStaffData: any = {
+      username,
       passwordHash,
       displayName: displayName?.trim() || '',
       phone: phone?.trim() || '',
       role,
       enterpriseId: targetEnterpriseId,
-      departmentId: (departmentId && departmentId !== 'none' && mongoose.Types.ObjectId.isValid(departmentId)) ? new mongoose.Types.ObjectId(departmentId) : null,
+      departmentId: (departmentId && departmentId !== 'none' && mongoose.Types.ObjectId.isValid(departmentId)) ? new mongoose.Types.ObjectId(departmentId) : undefined,
       promoterIds,
       wecomUserId,
       status: 'active',
-    });
+    };
+    const staff = await AdminUser.create(newStaffData);
 
     const { passwordHash: _, ...result } = staff.toObject();
     return NextResponse.json({ success: true, data: result }, { status: 201 });

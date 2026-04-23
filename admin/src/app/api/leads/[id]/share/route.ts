@@ -7,7 +7,7 @@ import { getTenantContext } from '@/lib/auth';
 
 export async function POST(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     await dbConnect();
@@ -16,7 +16,7 @@ export async function POST(
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const leadId = params.id;
+    const { id: leadId } = await params;
     const body = await request.json();
     const { message } = body;
 
@@ -30,7 +30,7 @@ export async function POST(
     }
 
     const enterprise = await Enterprise.findById(lead.enterpriseId);
-    if (!enterprise || !enterprise.wecomConfig) {
+    if (!enterprise || !(enterprise as any).wecomConfig) {
       return NextResponse.json({ success: false, error: 'Enterprise WeCom configuration missing' }, { status: 400 });
     }
 

@@ -60,6 +60,7 @@
         selectedIds="{{selectedIds}}"
         highlightedOpeningId="{{highlightedOpeningId}}"
         guidedMode="{{guidedMode}}"
+        currentGuidedRoomId="{{currentGuidedRoomId}}"
         guidedEdgeIndex="{{guidedEdgeIndex}}"
         lastMeasuredDirection="{{lastMeasuredDirection}}"
         pendingDirection="{{pendingDirection}}"

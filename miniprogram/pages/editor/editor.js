@@ -103,9 +103,9 @@ Page({
         } catch (e) {}
       }
 
-      // 提取目标房间ID（支持传统字段 roomId）
-      const targetRoomId = fp.currentGuidedRoomId || (draftState ? draftState.currentGuidedRoomId : '') || fp.roomId || '';
-      const targetRoomName = fp.currentGuidedRoomName || fp.roomName || '';
+      // 提取目标房间ID（优先使用明确传入的 roomId）
+      const targetRoomId = fp.roomId || fp.currentGuidedRoomId || (draftState ? draftState.currentGuidedRoomId : '') || '';
+      const targetRoomName = fp.roomName || fp.currentGuidedRoomName || '';
 
       // Find the target room to check its measurement status
       let targetRoom = null;
@@ -128,15 +128,15 @@ Page({
       if (targetRoomId && rooms) {
         if (targetRoom && targetRoom.height3D > 0) {
           // If height is measured but we haven't started walls, set index to 0
-          if (!draftState) {
+          if (!draftState || draftState.currentGuidedRoomId !== targetRoomId) {
             extraData.guidedEdgeIndex = 0;
             extraData.pendingDirection = 'E';
           }
         }
       }
 
-      // Restore Draft Measurement State
-      if (draftState) {
+      // Restore Draft Measurement State (Only if it matches the target room)
+      if (draftState && draftState.currentGuidedRoomId === targetRoomId) {
         Object.assign(extraData, {
           measurePoints: draftState.measurePoints || [{ x: 0, y: 0 }],
           guidedEdgeIndex: draftState.guidedEdgeIndex !== undefined ? draftState.guidedEdgeIndex : -1,
@@ -144,7 +144,7 @@ Page({
           lastMeasuredDirection: draftState.lastMeasuredDirection || ''
         });
       } else if (extraData.guidedMode) {
-        // Fresh guided mode from template/selection
+        // Fresh guided mode for this specific room
         extraData.measurePoints = [{ x: 0, y: 0 }];
         extraData.guidedEdgeIndex = -1;
       }
@@ -1220,37 +1220,46 @@ Page({
     var that = this;
     wx.showModal({
       title: '清空画布',
-      content: '确定要清空当前所有绘制的数据吗？此操作不可直接撤销。',
+      content: '确定要清空当前所在房间的测量数据吗？此操作不可直接撤销。',
       confirmText: '确定清空',
       confirmColor: '#ff4d4f',
       success: (res) => {
         if (res.confirm) {
           const isGuided = !!this.data.currentGuidedRoomId;
-          let rooms = [];
+          let newRooms = [];
+          
           if (isGuided) {
-            // 如果是引导模式，保留基础房间对象以便后续测量，但重置其形状
-            rooms = [{
-              id: this.data.currentGuidedRoomId,
-              name: this.data.currentGuidedRoomName || '客厅',
-              x: 50,
-              y: 50,
-              width: 1,
-              height: 1,
-              color: '#f0f0f0',
-              measured: false,
-              openings: [],
-              polygon: [],
-              polygonClosed: false,
-              height3D: 28
-            }];
+            // 在多房间模式下，只重置当前引导的房间，保留其他房间
+            newRooms = this.data.rooms.map(r => {
+              if (r.id === this.data.currentGuidedRoomId) {
+                return {
+                  id: r.id,
+                  name: r.name || '新增房间',
+                  x: r.x || 50,
+                  y: r.y || 50,
+                  width: 1,
+                  height: 1,
+                  color: '#f0f0f0',
+                  measured: false,
+                  openings: [],
+                  polygon: [],
+                  polygonClosed: false,
+                  height3D: 28
+                };
+              }
+              return r;
+            });
+          } else {
+             // 非引导模式，直接清空全部
+             newRooms = [];
           }
 
           this.setData({
-            rooms: rooms,
-            history: [rooms],
+            rooms: newRooms,
+            history: [newRooms],
             historyIndex: 0,
             selectedIds: isGuided ? [this.data.currentGuidedRoomId] : [],
-            selectedRooms: rooms,
+            selectedRooms: isGuided ? newRooms.filter(r => r.id === this.data.currentGuidedRoomId) : [],
             totalArea: '0.00',
             showPropertyPanel: false,
             guidedMode: isGuided,
@@ -1262,7 +1271,7 @@ Page({
             canFinishPolygon: false
           });
           
-          wx.showToast({ title: '画布已重置', icon: 'success' });
+          wx.showToast({ title: '已重置该房间', icon: 'success' });
         }
       }
     });
@@ -1395,7 +1404,7 @@ Page({
         polygonClosed: false,
         height3D: 28
       };
-      rooms = [newRoom]; // 既然清空了，那就重新开始，这里只放这一个房间
+      rooms = [...rooms, newRoom]; // 追加房间，不要覆盖其他房间
     }
 
     this.setData({

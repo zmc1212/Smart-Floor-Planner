@@ -520,7 +520,7 @@ export default function StaffPage() {
                 }}
                 onEdit={(dept) => {
                   setEditingDept(dept);
-                  setDeptFormData({ name: dept.name, parentId: dept.parentId });
+                  setDeptFormData({ name: dept.name, parentId: dept.parentId || null });
                   setIsDeptModalOpen(true);
                 }}
                 onDelete={handleDeleteDept}

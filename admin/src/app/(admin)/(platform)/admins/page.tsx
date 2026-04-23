@@ -208,7 +208,7 @@ export default function AdminsPage() {
     }
   };
 
-  const handleEditClick = (admin: AdminUser) => {
+  const startEdit = (admin: any) => {
     setEditingId(admin._id);
     setEditDisplayName(admin.displayName);
     setEditRole(admin.role);
@@ -593,7 +593,7 @@ export default function AdminsPage() {
                           >
                             <ChevronDown size={16} className={cn("transition-transform", expandedId === admin._id && "rotate-180")} />
                           </Button>
-                          <Button size="icon" variant="ghost" onClick={() => handleEditClick(admin)}><Edit2 size={14} className="text-blue-500" /></Button>
+                          <Button size="icon" variant="ghost" onClick={() => startEdit(admin)}><Edit2 size={14} className="text-gray-500" /></Button>
                           <Button size="icon" variant="ghost" onClick={() => setResetPwdId(admin._id)}><KeyRound size={14} className="text-amber-500" /></Button>
                           <Button 
                             size="icon" 

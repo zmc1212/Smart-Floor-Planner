@@ -67,34 +67,77 @@ export default async function UserFloorPlansPage({ params }: { params: Promise<{
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {plans.map((plan: any) => (
-              <Link 
-                href={`/floorplans/${plan._id}`} 
-                key={plan._id.toString()}
-                className="bg-white border border-[rgba(0,0,0,0.08)] rounded-xl p-6 hover:border-[#171717] hover:shadow-lg transition-all group"
-              >
-                <div className="flex justify-between items-start mb-4">
-                  <h4 className="text-[16px] font-bold text-[#171717] group-hover:text-[#000] truncate max-w-[70%]">{plan.name}</h4>
-                  <span className={`text-[11px] px-2 py-0.5 rounded-full ${plan.status === 'completed' ? 'bg-[#d1fae5] text-[#10b981]' : 'bg-[#fef3c7] text-[#d97706]'}`}>
-                    {plan.status === 'completed' ? '已完成' : '草稿'}
-                  </span>
-                </div>
-                <div className="space-y-2 mb-6 text-[13px] text-[#666]">
-                  <p className="flex justify-between">
-                    <span>包含数据节点</span>
-                    <span className="font-mono">{plan.layoutData?.length || 0} 个</span>
-                  </p>
-                  <p className="flex justify-between">
-                    <span>最后同步时间</span>
-                    <span className="font-mono">{new Date(plan.createdAt).toLocaleString()}</span>
-                  </p>
-                </div>
-                <div className="pt-4 border-t border-[rgba(0,0,0,0.04)] flex justify-between items-center text-[12px] text-[#171717] font-medium">
-                  <span>查看详情图纸</span>
-                  <span className="opacity-0 group-hover:opacity-100 transition-opacity">→</span>
-                </div>
-              </Link>
-            ))}
+            {plans.map((plan: any) => {
+              // Extract rooms from layoutData
+              let rooms = [];
+              if (Array.isArray(plan.layoutData)) {
+                rooms = plan.layoutData;
+              } else if (plan.layoutData?.rooms && Array.isArray(plan.layoutData.rooms)) {
+                rooms = plan.layoutData.rooms;
+              }
+              
+              // If no rooms found, show the plan as a single item
+              if (rooms.length === 0) {
+                return (
+                  <Link 
+                    href={`/floorplans/${plan._id}`} 
+                    key={plan._id.toString()}
+                    className="bg-white border border-[rgba(0,0,0,0.08)] rounded-xl p-6 hover:border-[#171717] hover:shadow-lg transition-all group"
+                  >
+                    <div className="flex justify-between items-start mb-4">
+                      <h4 className="text-[16px] font-bold text-[#171717] group-hover:text-[#000] truncate max-w-[70%]">{plan.name}</h4>
+                      <span className={`text-[11px] px-2 py-0.5 rounded-full ${plan.status === 'completed' ? 'bg-[#d1fae5] text-[#10b981]' : 'bg-[#fef3c7] text-[#d97706]'}`}>
+                        {plan.status === 'completed' ? '已完成' : '草稿'}
+                      </span>
+                    </div>
+                    <div className="space-y-2 mb-6 text-[13px] text-[#666]">
+                      <p className="flex justify-between">
+                        <span>包含数据节点</span>
+                        <span className="font-mono">{plan.layoutData?.length || 0} 个</span>
+                      </p>
+                      <p className="flex justify-between">
+                        <span>最后同步时间</span>
+                        <span className="font-mono">{new Date(plan.createdAt).toLocaleString()}</span>
+                      </p>
+                    </div>
+                    <div className="pt-4 border-t border-[rgba(0,0,0,0.04)] flex justify-between items-center text-[12px] text-[#171717] font-medium">
+                      <span>查看详情图纸</span>
+                      <span className="opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+                    </div>
+                  </Link>
+                );
+              }
+              
+              // Show each room as a separate item
+              return rooms.map((room: any) => (
+                <Link 
+                  href={`/floorplans/${plan._id}?roomId=${room.id}`} 
+                  key={`${plan._id}-${room.id}`}
+                  className="bg-white border border-[rgba(0,0,0,0.08)] rounded-xl p-6 hover:border-[#171717] hover:shadow-lg transition-all group"
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <h4 className="text-[16px] font-bold text-[#171717] group-hover:text-[#000] truncate max-w-[70%]">{room.name || '未命名房间'}</h4>
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full ${room.measured ? 'bg-[#d1fae5] text-[#10b981]' : 'bg-[#fef3c7] text-[#d97706]'}`}>
+                      {room.measured ? '已测量' : '未测量'}
+                    </span>
+                  </div>
+                  <div className="space-y-2 mb-6 text-[13px] text-[#666]">
+                    <p className="flex justify-between">
+                      <span>所属户型</span>
+                      <span className="font-mono truncate max-w-[50%]">{plan.name}</span>
+                    </p>
+                    <p className="flex justify-between">
+                      <span>最后同步时间</span>
+                      <span className="font-mono">{new Date(plan.createdAt).toLocaleString()}</span>
+                    </p>
+                  </div>
+                  <div className="pt-4 border-t border-[rgba(0,0,0,0.04)] flex justify-between items-center text-[12px] text-[#171717] font-medium">
+                    <span>查看房间图纸</span>
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity">→</span>
+                  </div>
+                </Link>
+              ));
+            })}
           </div>
         )}
       </main>

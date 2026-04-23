@@ -12,7 +12,7 @@ export class WeComService {
    * @param staffIds IDs of the promoter and designer
    */
   static async createLeadGroup(
-    enterprise: IEnterprise,
+    enterprise: any,
     leadName: string,
     promoterId: string,
     designerId: string
@@ -35,8 +35,8 @@ export class WeComService {
       }).select('wecomUserId');
 
       const userIds = [
-        ...staff.map(s => s.wecomUserId),
-        boss?.wecomUserId
+        ...staff.map((s: any) => s.wecomUserId),
+        (boss as any)?.wecomUserId
       ].filter(Boolean) as string[];
 
       if (userIds.length === 0) {
@@ -78,7 +78,7 @@ export class WeComService {
   /**
    * Send a message to the group (e.g., sharing the design)
    */
-  static async sendMessage(enterprise: IEnterprise, chatId: string, content: string) {
+  static async sendMessage(enterprise: any, chatId: string, content: string) {
     const { corpId, secret } = enterprise.wecomConfig || {};
     if (!corpId || !secret) return false;
 

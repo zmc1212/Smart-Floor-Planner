@@ -1,5 +1,4 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
-
 export interface IAdminUser extends Document {
   username: string;
   passwordHash: string;
@@ -7,6 +6,8 @@ export interface IAdminUser extends Document {
   role: 'super_admin' | 'admin' | 'enterprise_admin' | 'designer' | 'salesperson' | 'viewer';
   enterpriseId?: mongoose.Types.ObjectId;
   departmentId?: mongoose.Types.ObjectId;
+  promoterIds?: mongoose.Types.ObjectId[];
+  wecomUserId?: string;
   openid?: string; // Link to WeChat identity
   phone?: string;  // Link via phone number
   menuPermissions: string[];

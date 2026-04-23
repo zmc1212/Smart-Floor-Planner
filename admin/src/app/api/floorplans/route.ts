@@ -34,6 +34,7 @@ export async function POST(req: Request) {
       }
     }
 
+    // Create a single FloorPlan with all rooms
     const newPlan = await FloorPlan.create({
       name: name || '未命名户型',
       creator: user._id,

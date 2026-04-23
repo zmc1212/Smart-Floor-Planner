@@ -12,6 +12,7 @@ Component({
     highlightedOpeningId: { type: String, value: '' },
     selectedEdge: { type: String, value: '' },
     guidedMode: { type: Boolean, value: false },
+    currentGuidedRoomId: { type: String, value: '' },
     guidedEdgeIndex: { type: Number, value: -1 },
     lastMeasuredDirection: { type: String, value: '' },
     pendingDirection: { type: String, value: '' },
@@ -78,7 +79,7 @@ Component({
   },
 
   observers: {
-    'rooms, selectedIds, highlightedOpeningId, selectedEdge, scale, offsetX, offsetY, guidedMode, measurePoints, lastMeasuredDirection, pendingDirection, isBlinkOn': function () {
+    'rooms, selectedIds, highlightedOpeningId, selectedEdge, scale, offsetX, offsetY, guidedMode, currentGuidedRoomId, measurePoints, lastMeasuredDirection, pendingDirection, isBlinkOn': function () {
       this.drawCanvas();
       this.updateMenuPos();
     }
@@ -113,6 +114,9 @@ Component({
      */
     fitToView: function () {
       var rooms = this.properties.rooms;
+      if (this.properties.currentGuidedRoomId) {
+        rooms = rooms.filter(r => r.id === this.properties.currentGuidedRoomId);
+      }
       console.log('执行 fitToView, 当前房间数量:', rooms ? rooms.length : 0);
       if (!rooms || rooms.length === 0) return;
 
@@ -179,6 +183,9 @@ Component({
       var ox = this.data.offsetX;
       var oy = this.data.offsetY;
       var rooms = this.properties.rooms;
+      if (this.properties.currentGuidedRoomId) {
+        rooms = rooms.filter(r => r.id === this.properties.currentGuidedRoomId);
+      }
       var selectedIds = this.properties.selectedIds;
       var highlightedOpeningId = this.properties.highlightedOpeningId;
       var newRoom = this.data.newRoom;
@@ -508,11 +515,27 @@ Component({
     },
 
     findRoomAtPos: function (pos) {
-      // ... same implementation ...
+      var rooms = this.properties.rooms;
+      if (this.properties.currentGuidedRoomId) {
+        rooms = rooms.filter(r => r.id === this.properties.currentGuidedRoomId);
+      }
+      for (var i = rooms.length - 1; i >= 0; i--) {
+        var r = rooms[i];
+        if (r.polygon && r.polygon.length >= 3 && r.polygonClosed) {
+          var absPoly = r.polygon.map(p => ({ x: r.x + p.x, y: r.y + p.y }));
+          if (util.isPointInPolygon(absPoly, pos.x, pos.y)) return r.id;
+        } else {
+          if (pos.x >= r.x && pos.x <= r.x + r.width && pos.y >= r.y && pos.y <= r.y + r.height) return r.id;
+        }
+      }
+      return null;
     },
 
     findEdgeAtPos: function (pos) {
       var rooms = this.properties.rooms;
+      if (this.properties.currentGuidedRoomId) {
+        rooms = rooms.filter(r => r.id === this.properties.currentGuidedRoomId);
+      }
       var tolerance = 10; // 触摸容差
 
       for (var i = rooms.length - 1; i >= 0; i--) {
@@ -760,6 +783,10 @@ Component({
 
       for (var i = 0; i < rooms.length; i++) {
         var room = rooms[i];
+        if (this.properties.currentGuidedRoomId && room.id !== this.properties.currentGuidedRoomId) {
+          updatedRooms.push(room);
+          continue;
+        }
         if (foundWall) {
           updatedRooms.push(room);
           continue;
@@ -816,6 +843,10 @@ Component({
 
       for (var i = 0; i < rooms.length; i++) {
         var room = rooms[i];
+        if (this.properties.currentGuidedRoomId && room.id !== this.properties.currentGuidedRoomId) {
+          newRooms.push(room);
+          continue;
+        }
         if (erased) {
           newRooms.push(room);
           continue;
