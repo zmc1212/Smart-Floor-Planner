@@ -38,6 +38,10 @@ export async function GET(request: Request) {
       if (entId) filter.enterpriseId = entId;
     }
 
+    if (!filter.enterpriseId) {
+      return NextResponse.json({ success: true, data: [] });
+    }
+
     // Department filter
     if (departmentId && departmentId !== 'none' && departmentId !== 'all') {
       if (mongoose.Types.ObjectId.isValid(departmentId)) {

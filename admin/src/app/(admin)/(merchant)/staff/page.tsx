@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Loader2, User as UserIcon, Plus, X, Shield, Pencil, Trash2, Smartphone, Mail, LayoutGrid, List, Search, ChevronRight, Folder } from "lucide-react";
+import { Loader2, User as UserIcon, Plus, X, Shield, Pencil, Trash2, Smartphone, Mail, LayoutGrid, List, Search, ChevronRight, Folder, Building2 } from "lucide-react";
 import { DepartmentTree } from "@/components/DepartmentTree";
 import {
   Dialog,
@@ -35,6 +35,10 @@ export default function StaffPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   
+  // Enterprise state (for super_admin)
+  const [enterprises, setEnterprises] = useState<any[]>([]);
+  const [selectedEntId, setSelectedEntId] = useState<string | null>(null);
+
   // Department state
   const [departments, setDepartments] = useState<any[]>([]);
   const [selectedDeptId, setSelectedDeptId] = useState<string | null>(null);
@@ -59,15 +63,37 @@ export default function StaffPage() {
     try {
       const res = await fetch('/api/auth/me');
       const data = await res.json();
-      if (data.success) setCurrentUser(data.data);
+      if (data.success) {
+        setCurrentUser(data.data);
+        if (data.data.enterpriseId) {
+          setSelectedEntId(typeof data.data.enterpriseId === 'object' ? data.data.enterpriseId._id : data.data.enterpriseId);
+        }
+      }
     } catch (err) {
       console.error('Auth error:', err);
     }
   };
 
-  const fetchDepartments = async () => {
+  const fetchEnterprises = async () => {
     try {
-      const res = await fetch('/api/departments');
+      const res = await fetch('/api/admin/enterprises');
+      const data = await res.json();
+      if (data.success) {
+        setEnterprises(data.data);
+        // If super admin and no selection, pick the first one as default
+        if (!selectedEntId && data.data.length > 0) {
+          setSelectedEntId(data.data[0]._id);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch enterprises:', err);
+    }
+  };
+
+  const fetchDepartments = async (entId: string | null = selectedEntId) => {
+    if (!entId) return;
+    try {
+      const res = await fetch(`/api/departments?enterpriseId=${entId}`);
       const data = await res.json();
       if (data.success) setDepartments(data.data);
     } catch (err) {
@@ -75,10 +101,16 @@ export default function StaffPage() {
     }
   };
 
-  const fetchStaff = async (deptId: string | null = selectedDeptId) => {
+  const fetchStaff = async (deptId: string | null = selectedDeptId, entId: string | null = selectedEntId) => {
+    if (!entId) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const url = deptId ? `/api/staff?departmentId=${deptId}` : '/api/staff';
+      let url = `/api/staff?enterpriseId=${entId}`;
+      if (deptId) url += `&departmentId=${deptId}`;
+      
       const res = await fetch(url);
       const data = await res.json();
       if (data.success) {
@@ -93,9 +125,27 @@ export default function StaffPage() {
 
   useEffect(() => {
     fetchCurrentUser();
-    fetchDepartments();
-    fetchStaff(selectedDeptId);
-  }, [selectedDeptId]);
+  }, []);
+
+  useEffect(() => {
+    if (currentUser && (currentUser.role === 'super_admin' || currentUser.role === 'admin')) {
+      fetchEnterprises();
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (selectedEntId) {
+      fetchDepartments(selectedEntId);
+      fetchStaff(selectedDeptId, selectedEntId);
+    }
+  }, [selectedDeptId, selectedEntId]);
+
+  // Reset department when enterprise changes
+  useEffect(() => {
+    if (selectedEntId) {
+      setSelectedDeptId(null);
+    }
+  }, [selectedEntId]);
 
   const handleDeptSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -106,7 +156,10 @@ export default function StaffPage() {
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(deptFormData)
+        body: JSON.stringify({
+          ...deptFormData,
+          enterpriseId: selectedEntId
+        })
       });
       const data = await res.json();
       if (data.success) {
@@ -119,6 +172,7 @@ export default function StaffPage() {
       alert('操作失败: ' + err.message);
     }
   };
+
 
   const handleDeleteDept = async (id: string) => {
     if (!confirm('确定要删除该部门吗？')) return;
@@ -143,7 +197,7 @@ export default function StaffPage() {
       displayName: '', 
       phone: '', 
       role: 'designer', 
-      enterpriseId: '',
+      enterpriseId: selectedEntId || '',
       departmentId: selectedDeptId || '',
       promoterIds: [],
       wecomUserId: ''
@@ -456,9 +510,35 @@ export default function StaffPage() {
                 </Badge>
               )}
             </h2>
-            <p className="text-muted-foreground text-sm flex items-center gap-2">
-               管理企业直属的业务人员（设计师与销售），配置协作关系
-            </p>
+            <div className="flex flex-col gap-3">
+              <p className="text-muted-foreground text-sm flex items-center gap-2">
+                 管理企业直属的业务人员（设计师与销售），配置协作关系
+              </p>
+              
+              {/* Enterprise Selector for Super Admins */}
+              {(currentUser?.role === 'super_admin' || currentUser?.role === 'admin') && enterprises.length > 0 && (
+                <div className="flex items-center gap-3 bg-primary/5 p-2 pr-4 rounded-2xl w-fit border border-primary/10">
+                  <div className="bg-primary/10 p-2 rounded-xl">
+                    <Building2 size={16} className="text-primary" />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold text-primary/60 uppercase tracking-wider leading-none mb-1.5">正在管理企业</span>
+                    <Select value={selectedEntId || ''} onValueChange={setSelectedEntId}>
+                      <SelectTrigger className="h-7 min-w-[200px] bg-transparent border-none p-0 text-sm font-bold focus:ring-0 shadow-none">
+                        <SelectValue placeholder="选择企业..." />
+                      </SelectTrigger>
+                      <SelectContent className="rounded-2xl border-none shadow-2xl">
+                        {enterprises.map(ent => (
+                          <SelectItem key={ent._id} value={ent._id} className="rounded-xl">
+                            {ent.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
           
           <div className="flex items-center gap-4">

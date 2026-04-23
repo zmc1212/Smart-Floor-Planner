@@ -15,7 +15,7 @@ export async function GET(request: Request) {
     await dbConnect();
     const { searchParams } = new URL(request.url);
     const openid = searchParams.get('openid');
-    
+
     // Support Mini-Program fetching leads by openid
     if (openid) {
       const status = searchParams.get('status');
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
       if (!user || user.role !== 'staff') {
         return NextResponse.json({ success: false, error: 'User is not a staff member' }, { status: 403 });
       }
-      
+
       const staffMember = await AdminUser.findOne({ phone: user.phone });
       if (!staffMember) {
         return NextResponse.json({ success: false, error: 'Staff profile not found' }, { status: 404 });
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
     await dbConnect();
     const context = await getTenantContext(request);
     const body = await request.json();
-    
+
     // validate required fields
     if (!body.name || !body.phone) {
       return NextResponse.json({ success: false, error: 'Name and phone are required' }, { status: 400 });
@@ -120,7 +120,7 @@ export async function POST(request: Request) {
       const staff = await AdminUser.findById(staffRefId);
       if (staff) {
         if (!enterpriseId) enterpriseId = staff.enterpriseId;
-        
+
         // If the reference is a salesperson and we don't have a promoterId yet, set it
         if (staff.role === 'salesperson' && !promoterId) {
           promoterId = staff._id;
@@ -137,11 +137,11 @@ export async function POST(request: Request) {
 
     // 3. Find designer linked to this promoter
     if (promoterId && !assignedTo) {
-      const designer = await AdminUser.findOne({ 
+      const designer = await AdminUser.findOne({
         role: 'designer',
-        promoterIds: promoterId 
+        promoterIds: promoterId
       });
-      
+
       if (designer) {
         assignedTo = designer._id;
         console.log(`[Workflow] Auto-assigning lead ${body.name} to designer ${designer.displayName}`);
@@ -159,12 +159,12 @@ export async function POST(request: Request) {
       if (body.communityName) lead.communityName = body.communityName;
       if (body.area) lead.area = body.area;
       if (body.stylePreference) lead.stylePreference = body.stylePreference;
-      
+
       // Keep existing assignments unless missing
       if (!lead.promoterId) lead.promoterId = promoterId;
       if (!lead.assignedTo) lead.assignedTo = assignedTo;
       if (!lead.enterpriseId) lead.enterpriseId = enterpriseId;
-      
+
       await lead.save();
     } else {
       // Create new lead

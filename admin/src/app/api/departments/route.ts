@@ -23,7 +23,7 @@ export async function GET(request: Request) {
       if (entId) filter.enterpriseId = entId;
     }
 
-    if (!filter.enterpriseId && context.role !== 'super_admin') {
+    if (!filter.enterpriseId) {
       return NextResponse.json({ success: true, data: [] });
     }
 
