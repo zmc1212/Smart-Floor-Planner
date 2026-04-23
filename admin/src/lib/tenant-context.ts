@@ -8,7 +8,15 @@ export interface TenantStore {
 }
 
 // 创建全局唯一的 AsyncLocalStorage 实例
-export const tenantStorage = new AsyncLocalStorage<TenantStore>();
+const globalForTenant = globalThis as unknown as {
+  tenantStorage: AsyncLocalStorage<TenantStore> | undefined;
+};
+
+export const tenantStorage = globalForTenant.tenantStorage ?? new AsyncLocalStorage<TenantStore>();
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForTenant.tenantStorage = tenantStorage;
+}
 
 /**
  * 获取当前请求的租户信息

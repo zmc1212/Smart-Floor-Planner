@@ -67,8 +67,4 @@ LeadSchema.plugin(multiTenantPlugin, {
 
 const LeadModel = mongoose.models.Lead || mongoose.model<ILead>('Lead', LeadSchema);
 
-// 调试：检查模型是否有插件
-console.log('[Lead Model] 模型已注册，检查插件钩子...');
-console.log('[Lead Model] find 前置钩子数量:', LeadSchema.listeners('find').length);
-
 export default LeadModel;
