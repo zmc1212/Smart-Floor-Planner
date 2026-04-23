@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
+import { multiTenantPlugin } from '../lib/mongoose-tenant-plugin';
 
 export interface IDepartment extends Document {
   name: string;
@@ -38,6 +39,9 @@ const DepartmentSchema: Schema<IDepartment> = new Schema(
 
 // Index for faster lookups
 DepartmentSchema.index({ enterpriseId: 1, parentId: 1 });
+
+// 应用多租户插件
+DepartmentSchema.plugin(multiTenantPlugin);
 
 export const Department: Model<IDepartment> =
   mongoose.models.Department || mongoose.model<IDepartment>('Department', DepartmentSchema);

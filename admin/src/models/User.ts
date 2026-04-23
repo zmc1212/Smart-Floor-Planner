@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
+import { multiTenantPlugin } from '../lib/mongoose-tenant-plugin';
 
 export interface IUser extends Document {
   username?: string;
@@ -9,6 +10,7 @@ export interface IUser extends Document {
   avatar?: string; // Storing as base64 or URL
   communityName?: string;
   phone?: string;
+  enterpriseId?: mongoose.Types.ObjectId; // For tenant isolation (especially for staff users)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -50,11 +52,19 @@ const UserSchema: Schema<IUser> = new Schema(
       type: String,
       trim: true,
     },
+    enterpriseId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Enterprise',
+      required: false,
+    },
   },
   {
     timestamps: true,
   }
 );
+
+// 应用多租户插件
+UserSchema.plugin(multiTenantPlugin);
 
 // Prevent mongoose from compiling the model multiple times in development
 export const User: Model<IUser> = mongoose.models.User || mongoose.model<IUser>('User', UserSchema);

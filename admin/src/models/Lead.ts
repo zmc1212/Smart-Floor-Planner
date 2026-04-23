@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { multiTenantPlugin } from '../lib/mongoose-tenant-plugin';
 
 export interface IFollowUp {
   content: string;
@@ -54,5 +55,8 @@ LeadSchema.index({ enterpriseId: 1, createdAt: -1 });
 LeadSchema.index({ promoterId: 1, createdAt: -1 });
 LeadSchema.index({ assignedTo: 1, createdAt: -1 });
 LeadSchema.index({ phone: 1 });
+
+// 应用多租户插件
+LeadSchema.plugin(multiTenantPlugin);
 
 export default mongoose.models.Lead || mongoose.model<ILead>('Lead', LeadSchema);

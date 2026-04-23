@@ -3,7 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { FloorPlan } from '@/models/FloorPlan';
 import { User } from '@/models/User';
 import { AdminUser } from '@/models/AdminUser';
-import { getTenantContext, getTenantFilter } from '@/lib/auth';
+import { getTenantContext, getTenantFilter, withTenantContext } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,13 +84,33 @@ export async function GET(req: Request) {
         query.creator = user._id;
       }
     } else {
-      // 2. Admin Dashboard Context (via Auth Token)
-      const context = await getTenantContext(req);
-      if (!context) {
-        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      // 2. Admin Dashboard Context (via Auth Token) - 使用新的租户上下文包装器
+      try {
+        return await withTenantContext(req, async () => {
+          // 插件会自动注入租户过滤，这里只需要处理额外的查询条件
+          if (phone) {
+            const users = await User.find({ phone });
+            if (users.length > 0) {
+              query.creator = { $in: users.map(u => u._id) };
+            }
+          }
+
+          if (search) {
+            query.name = { $regex: search, $options: 'i' };
+          }
+
+          const floorPlans = await FloorPlan.find(query)
+            .populate({ path: 'creator', model: User })
+            .sort({ createdAt: -1 });
+
+          return NextResponse.json({ success: true, data: floorPlans });
+        });
+      } catch (error: any) {
+        if (error.message === 'Unauthorized') {
+          return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+        }
+        throw error;
       }
-      const tenantFilter = getTenantFilter(context);
-      query = { ...query, ...tenantFilter };
     }
 
     // Additional filters

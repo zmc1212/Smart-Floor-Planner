@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
+import { multiTenantPlugin } from '../lib/mongoose-tenant-plugin';
 
 export interface IDevice extends Document {
   code: string;
@@ -29,5 +30,8 @@ const DeviceSchema: Schema<IDevice> = new Schema(
 
 DeviceSchema.index({ enterpriseId: 1, status: 1 });
 DeviceSchema.index({ enterpriseId: 1, assignedUserId: 1 });
+
+// 应用多租户插件
+DeviceSchema.plugin(multiTenantPlugin);
 
 export const Device: Model<IDevice> = mongoose.models.Device || mongoose.model<IDevice>('Device', DeviceSchema);

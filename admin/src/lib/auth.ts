@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import * as jose from 'jose';
+import { tenantStorage, TenantStore } from './tenant-context';
 
 export interface TenantContext {
   userId: string;
@@ -31,15 +32,41 @@ export async function getTenantContext(request: Request | NextRequest): Promise<
 }
 
 /**
+ * 包装器：在租户上下文中运行执行函数
+ * 这是实现自动租户隔离的核心函数
+ */
+export async function withTenantContext<T>(
+  request: Request | NextRequest,
+  handler: () => Promise<T>
+): Promise<T> {
+  const context = await getTenantContext(request);
+
+  if (!context) {
+    throw new Error('Unauthorized');
+  }
+
+  // 使用 run 方法开启一个新的上下文作用域
+  return tenantStorage.run(
+    {
+      enterpriseId: context.enterpriseId,
+      role: context.role,
+      userId: context.userId
+    } as TenantStore,
+    handler
+  );
+}
+
+/**
  * Generates a MongoDB query filter based on the current user's role and enterprise.
  * @param context TenantContext
  * @param options optional overrides
+ * @deprecated 使用 withTenantContext + multiTenantPlugin 替代此方法
  */
-export function getTenantFilter(context: TenantContext, options: { 
-  enterpriseField?: string; 
-  staffField?: string; 
+export function getTenantFilter(context: TenantContext, options: {
+  enterpriseField?: string;
+  staffField?: string;
 } = {}) {
-  const { enterpriseField = 'enterpriseId', staffField = 'staffId' } = options;
+  const { enterpriseField = 'enterpriseId', staffField = 'staffField' } = options;
 
   // Super Admins & System Admins see everything
   if (context.role === 'super_admin' || context.role === 'admin') {
@@ -53,9 +80,9 @@ export function getTenantFilter(context: TenantContext, options: {
 
   // Designers and Sales see only their own data
   if (context.role === 'designer' || context.role === 'salesperson') {
-    return { 
+    return {
       [enterpriseField]: context.enterpriseId,
-      [staffField]: context.userId 
+      [staffField]: context.userId
     };
   }
 

@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
+import { multiTenantPlugin } from '../lib/mongoose-tenant-plugin';
 export interface IAdminUser extends Document {
   username: string;
   passwordHash: string;
@@ -120,6 +121,9 @@ const AdminUserSchema: Schema<IAdminUser> = new Schema(
 AdminUserSchema.index({ enterpriseId: 1, role: 1 });
 AdminUserSchema.index({ enterpriseId: 1, departmentId: 1 });
 AdminUserSchema.index({ enterpriseId: 1, username: 1 });
+
+// 应用多租户插件
+AdminUserSchema.plugin(multiTenantPlugin);
 
 export const AdminUser: Model<IAdminUser> =
   mongoose.models.AdminUser || mongoose.model<IAdminUser>('AdminUser', AdminUserSchema);

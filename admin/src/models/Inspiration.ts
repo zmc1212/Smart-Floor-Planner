@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { multiTenantPlugin } from '../lib/mongoose-tenant-plugin';
 
 export interface IInspiration extends Document {
   title: string;
@@ -25,5 +26,8 @@ const InspirationSchema: Schema = new Schema({
 }, {
   timestamps: true
 });
+
+// 应用多租户插件 - 灵感模板可以按企业隔离
+InspirationSchema.plugin(multiTenantPlugin);
 
 export default mongoose.models.Inspiration || mongoose.model<IInspiration>('Inspiration', InspirationSchema);
