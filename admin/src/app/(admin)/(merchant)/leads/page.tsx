@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 export const dynamic = 'force-dynamic';
 import { Loader2, Phone, CheckCircle, Clock, User, MessageSquare, Plus, X, Search, Filter, Check, Share2 } from "lucide-react";
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { 
   Table, 
   TableBody, 
@@ -38,21 +39,9 @@ export default function LeadsPage() {
   const [newNote, setNewNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [staffMembers, setStaffMembers] = useState<any[]>([]);
-  const [currentUser, setCurrentUser] = useState<any>(null);
 
-  // No local enterprise state needed, handled globally by auth + cookie
-
-  const fetchCurrentUser = async () => {
-    try {
-      const res = await fetch('/api/auth/me');
-      const data = await res.json();
-      if (data.success) {
-        setCurrentUser(data.data);
-      }
-    } catch (err) {
-      console.error('Auth error:', err);
-    }
-  };
+  // @see react-best-practices: client-swr-dedup
+  const { user: currentUser } = useCurrentUser();
 
   // Helper to get staff display name from ID or Object
   const getStaffName = (idOrObj: any) => {
@@ -153,13 +142,9 @@ export default function LeadsPage() {
     }
   };
 
+  // @see react-best-practices: async-parallel — 并行化初始请求
   useEffect(() => {
-    fetchCurrentUser();
-  }, []);
-
-  useEffect(() => {
-    fetchLeads();
-    fetchStaff();
+    Promise.all([fetchLeads(), fetchStaff()]);
   }, []);
 
   const updateLead = async (id: string, updates: any) => {

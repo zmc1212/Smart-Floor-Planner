@@ -6,7 +6,14 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from 'next/link';
 
-export default function MerchantDashboard({ admin }: { admin: any }) {
+interface MerchantAdmin {
+  displayName: string;
+  username: string;
+  role: string;
+  enterpriseName: string | null;
+}
+
+export default function MerchantDashboard({ admin }: { admin: MerchantAdmin }) {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 

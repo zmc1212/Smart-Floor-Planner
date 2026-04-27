@@ -27,6 +27,22 @@ import {
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
+// @see react-best-practices: rendering-hoist-jsx — 静态常量提升到模块级别
+const STYLE_OPTIONS = [
+  { id: 'modern', label: '现代简约', icon: '🏠' },
+  { id: 'cream', label: '温馨奶油', icon: '🍦' },
+  { id: 'chinese', label: '新中式', icon: '🏮' },
+  { id: 'luxury', label: '意式轻奢', icon: '💎' },
+  { id: 'wabi', label: '原木侘寂', icon: '🪵' },
+] as const;
+
+const ROOM_TYPE_OPTIONS = [
+  { id: 'living', label: '客厅/客餐厅' },
+  { id: 'bedroom', label: '主卧/次卧' },
+  { id: 'kitchen', label: '厨房' },
+  { id: 'bathroom', label: '卫生间' },
+] as const;
+
 interface Opening {
   id: string;
   type: 'DOOR' | 'WINDOW';
@@ -379,20 +395,7 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
     roomType: 'living'
   });
   
-  const STYLE_OPTIONS = [
-    { id: 'modern', label: '现代简约', icon: '🏠' },
-    { id: 'cream', label: '温馨奶油', icon: '🍦' },
-    { id: 'chinese', label: '新中式', icon: '🏮' },
-    { id: 'luxury', label: '意式轻奢', icon: '💎' },
-    { id: 'wabi', label: '原木侘寂', icon: '🪵' },
-  ];
-
-  const ROOM_TYPE_OPTIONS = [
-    { id: 'living', label: '客厅/客餐厅' },
-    { id: 'bedroom', label: '主卧/次卧' },
-    { id: 'kitchen', label: '厨房' },
-    { id: 'bathroom', label: '卫生间' },
-  ];
+  // STYLE_OPTIONS and ROOM_TYPE_OPTIONS are now hoisted to module level
 
   const lead = planData.lead;
   

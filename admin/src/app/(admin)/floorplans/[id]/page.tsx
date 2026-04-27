@@ -4,7 +4,7 @@ import dbConnect from '@/lib/mongodb';
 import { FloorPlan } from '@/models/FloorPlan';
 import { User } from '@/models/User';
 import Lead from '@/models/Lead';
-import FloorPlanViewer from '@/components/FloorPlanViewer';
+import FloorPlanViewerWrapper from '@/components/FloorPlanViewerWrapper';
 
 export default async function FloorPlanDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await dbConnect();
@@ -51,7 +51,7 @@ export default async function FloorPlanDetailPage({ params }: { params: Promise<
 
     return (
       <div className="bg-white min-h-screen">
-        <FloorPlanViewer planData={serializedPlan} />
+        <FloorPlanViewerWrapper planData={serializedPlan} />
       </div>
     );
   } catch (error) {

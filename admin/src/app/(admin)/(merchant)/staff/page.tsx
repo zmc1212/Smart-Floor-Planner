@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Loader2, User as UserIcon, Plus, X, Shield, Pencil, Trash2, Smartphone, Mail, LayoutGrid, List, Search, ChevronRight, Folder, Building2 } from "lucide-react";
 import { DepartmentTree } from "@/components/DepartmentTree";
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import {
   Dialog,
   DialogContent,
@@ -29,7 +30,7 @@ import Link from 'next/link';
 export default function StaffPage() {
   const [staff, setStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const { user: currentUser } = useCurrentUser();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -56,18 +57,6 @@ export default function StaffPage() {
     promoterIds: [] as string[],
     wecomUserId: ''
   });
-
-  const fetchCurrentUser = async () => {
-    try {
-      const res = await fetch('/api/auth/me');
-      const data = await res.json();
-      if (data.success) {
-        setCurrentUser(data.data);
-      }
-    } catch (err) {
-      console.error('Auth error:', err);
-    }
-  };
 
   const fetchDepartments = async () => {
     try {
@@ -97,12 +86,9 @@ export default function StaffPage() {
     }
   };
 
+  // @see react-best-practices: async-parallel — 并行化初始请求
   useEffect(() => {
-    fetchCurrentUser();
-  }, []);
-
-  useEffect(() => {
-    fetchDepartments();
+    Promise.all([fetchDepartments(), fetchStaff(selectedDeptId)]);
   }, []);
 
   useEffect(() => {
@@ -414,7 +400,7 @@ export default function StaffPage() {
                     } else {
                       current.push(promoter._id);
                     }
-                    setFormData({...formData, promoterIds: current});
+                    setFormData(prev => ({...prev, promoterIds: current}));
                   }}
                 >
                   <div className={cn(

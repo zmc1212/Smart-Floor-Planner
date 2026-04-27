@@ -1,33 +1,25 @@
-import { cookies } from "next/headers";
-import * as jose from 'jose';
-import dbConnect from "@/lib/mongodb";
-import { AdminUser } from "@/models/AdminUser";
-import { Enterprise } from "@/models/Enterprise";
+import { Suspense } from "react";
+import { redirect } from "next/navigation";
+import { Loader2 } from "lucide-react";
+import { getSessionUser } from "@/lib/session";
 import PlatformDashboard from "@/components/PlatformDashboard";
 import MerchantDashboard from "@/components/MerchantDashboard";
-import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * 首页 — 使用 React.cache() 会话去重 + RSC 最小化序列化。
+ * 
+ * @see react-best-practices: server-cache-react, server-serialization, async-suspense-boundaries
+ */
 export default async function Home() {
-  await dbConnect();
-  
-  const cookieStore = await cookies();
-  const token = cookieStore.get('auth_token')?.value;
+  const user = await getSessionUser();
 
-  if (!token) {
+  if (!user) {
     redirect('/login');
   }
 
-  const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
-  const { payload } = await jose.jwtVerify(token, secret);
-  
-  const admin = await AdminUser.findById(payload.id).populate({ path: 'enterpriseId', model: Enterprise });
-  if (!admin) {
-    redirect('/login');
-  }
-
-  const isPlatformAdmin = admin.role === 'super_admin' || admin.role === 'admin';
+  const isPlatformAdmin = user.role === 'super_admin' || user.role === 'admin';
 
   return (
     <div className="min-h-screen bg-white text-[#171717] font-sans selection:bg-[#ebebeb]">
@@ -44,15 +36,26 @@ export default async function Home() {
           <p className="text-[18px] text-muted-foreground font-medium">
             {isPlatformAdmin 
               ? '全局数据洞察与租户管理' 
-              : `欢迎回来，${admin.displayName || admin.username}。这里是 ${(admin.enterpriseId as any)?.name || '个人'} 工作台。`}
+              : `欢迎回来，${user.displayName}。这里是 ${user.enterpriseName || '个人'} 工作台。`}
           </p>
         </div>
 
-        {isPlatformAdmin ? (
-          <PlatformDashboard />
-        ) : (
-          <MerchantDashboard admin={JSON.parse(JSON.stringify(admin))} />
-        )}
+        <Suspense fallback={
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="animate-spin text-primary" size={40} />
+          </div>
+        }>
+          {isPlatformAdmin ? (
+            <PlatformDashboard />
+          ) : (
+            <MerchantDashboard admin={{
+              displayName: user.displayName,
+              username: user.username,
+              role: user.role,
+              enterpriseName: user.enterpriseName,
+            }} />
+          )}
+        </Suspense>
       </main>
     </div>
   );

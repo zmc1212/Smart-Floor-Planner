@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { 
@@ -17,7 +17,6 @@ import {
   ChevronLeft, 
   Menu,
   ChevronRight,
-  ChevronDown
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -33,7 +32,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 
+// --- Types ---
 interface MenuItem {
   key: string;
   label: string;
@@ -47,6 +48,8 @@ interface MenuCategory {
   items: MenuItem[];
 }
 
+// --- Static Config (hoisted outside component) ---
+// @see react-best-practices: rendering-hoist-jsx
 const MENU_CONFIG: Record<string, MenuCategory[]> = {
   platform: [
     {
@@ -83,39 +86,60 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
   ]
 };
 
+// --- Extracted Memoized NavItem ---
+// @see react-best-practices: rerender-memo
+const NavItem = memo(function NavItem({ 
+  item, 
+  collapsed, 
+  isActive, 
+  hasPermission 
+}: { 
+  item: MenuItem; 
+  collapsed: boolean; 
+  isActive: boolean;
+  hasPermission: boolean;
+}) {
+  if (!hasPermission) return null;
+
+  return (
+    <Link
+      href={item.href}
+      className={cn(
+        "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative",
+        isActive 
+          ? "bg-white/10 text-white shadow-sm" 
+          : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5"
+      )}
+      title={collapsed ? item.label : undefined}
+    >
+      {React.createElement(item.icon as any, { size: 20, className: cn("shrink-0", isActive ? "text-white" : "group-hover:text-gray-900") })}
+      {!collapsed && (
+        <span className="text-[14px] font-medium tracking-tight whitespace-nowrap overflow-hidden text-ellipsis">
+          {item.label}
+        </span>
+      )}
+      {isActive && !collapsed && (
+        <div className="absolute right-2 w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+      )}
+    </Link>
+  );
+});
+
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [admin, setAdmin] = useState<any>(null);
-  const [openCategories, setOpenCategories] = useState<string[]>(['运营核心', '业务管理', '资源与设备', '组织与权限']);
   const [enterprises, setEnterprises] = useState<any[]>([]);
   const [globalTenantId, setGlobalTenantId] = useState<string>('all');
 
+  // @see react-best-practices: client-swr-dedup
+  const { user: admin } = useCurrentUser();
+
   useEffect(() => {
     // Load collapse state from local storage
+    // @see react-best-practices: rerender-lazy-state-init (minor: localStorage read)
     const saved = localStorage.getItem('sidebar-collapsed');
     if (saved !== null) setIsCollapsed(saved === 'true');
-
-    // Fetch user data
-    fetch('/api/auth/me')
-      .then(res => res.json())
-      .then(data => {
-        if (data.success) {
-          setAdmin(data.data);
-          // If super admin, fetch enterprises
-          if (data.data.role === 'super_admin' || data.data.role === 'admin') {
-            fetch('/api/admin/enterprises')
-              .then(res => res.json())
-              .then(entData => {
-                if (entData.success) {
-                  setEnterprises(entData.data);
-                }
-              });
-          }
-        }
-      })
-      .catch(err => console.error('Auth error:', err));
       
     // Load initial global tenant id from cookie
     const cookies = document.cookie.split('; ');
@@ -125,6 +149,18 @@ export default function Sidebar() {
     }
   }, []);
 
+  // Fetch enterprises only when admin is a super_admin (parallel with user fetch via SWR)
+  useEffect(() => {
+    if (admin && (admin.role === 'super_admin' || admin.role === 'admin')) {
+      fetch('/api/admin/enterprises')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) setEnterprises(data.data);
+        })
+        .catch(err => console.error('Enterprises fetch error:', err));
+    }
+  }, [admin]);
+
   const handleTenantChange = (value: string) => {
     setGlobalTenantId(value);
     document.cookie = `global_tenant_id=${value}; path=/; max-age=86400`; // 1 day
@@ -132,9 +168,12 @@ export default function Sidebar() {
   };
 
   const toggleCollapse = () => {
-    const newState = !isCollapsed;
-    setIsCollapsed(newState);
-    localStorage.setItem('sidebar-collapsed', String(newState));
+    // @see react-best-practices: rerender-functional-setstate
+    setIsCollapsed(prev => {
+      const newState = !prev;
+      localStorage.setItem('sidebar-collapsed', String(newState));
+      return newState;
+    });
   };
 
   const handleLogout = async () => {
@@ -147,36 +186,6 @@ export default function Sidebar() {
     } catch (err) {
       console.error('Logout error:', err);
     }
-  };
-
-  const NavItem = ({ item, collapsed }: { item: MenuItem; collapsed: boolean }) => {
-    const isActive = pathname === item.href;
-    const hasPermission = admin?.effectivePermissions?.includes(item.key);
-
-    if (admin && !hasPermission) return null;
-
-    return (
-      <Link
-        href={item.href}
-        className={cn(
-          "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative",
-          isActive 
-            ? "bg-white/10 text-white shadow-sm" 
-            : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5"
-        )}
-        title={collapsed ? item.label : undefined}
-      >
-        {React.createElement(item.icon as any, { size: 20, className: cn("shrink-0", isActive ? "text-white" : "group-hover:text-gray-900") })}
-        {!collapsed && (
-          <span className="text-[14px] font-medium tracking-tight whitespace-nowrap overflow-hidden text-ellipsis">
-            {item.label}
-          </span>
-        )}
-        {isActive && !collapsed && (
-          <div className="absolute right-2 w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-        )}
-      </Link>
-    );
   };
 
   const SidebarContent = ({ collapsed }: { collapsed: boolean }) => (
@@ -229,7 +238,13 @@ export default function Sidebar() {
               )}
               <div className="space-y-1">
                 {visibleItems.map(item => (
-                  <NavItem key={item.key} item={item} collapsed={collapsed} />
+                  <NavItem 
+                    key={item.key} 
+                    item={item} 
+                    collapsed={collapsed}
+                    isActive={pathname === item.href}
+                    hasPermission={!admin || admin.effectivePermissions?.includes(item.key)}
+                  />
                 ))}
               </div>
             </div>
@@ -250,7 +265,13 @@ export default function Sidebar() {
               )}
               <div className="space-y-1">
                 {visibleItems.map(item => (
-                  <NavItem key={item.key} item={item} collapsed={collapsed} />
+                  <NavItem 
+                    key={item.key} 
+                    item={item} 
+                    collapsed={collapsed}
+                    isActive={pathname === item.href}
+                    hasPermission={!admin || admin.effectivePermissions?.includes(item.key)}
+                  />
                 ))}
               </div>
             </div>

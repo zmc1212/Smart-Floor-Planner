@@ -22,6 +22,7 @@ const nextConfig: NextConfig = {
   // @ts-ignore - Support for Next.js 15+ allowed origins
   allowedDevOrigins: [...localIps, 'localhost:3002', '127.0.0.1:3002'],
   experimental: {
+    optimizePackageImports: ['lucide-react', '@radix-ui/react-dialog', '@radix-ui/react-select', '@radix-ui/react-label', '@radix-ui/react-slot', 'date-fns'],
     serverActions: {
       allowedOrigins: [...localIps.map(ip => ip.includes(':') ? ip.replace('http://', '') : `${ip}:3002`), 'localhost:3002']
     }

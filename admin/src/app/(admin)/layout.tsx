@@ -1,7 +1,11 @@
-'use client';
-
 import Sidebar from "@/components/Sidebar";
 
+/**
+ * Admin Layout — 保持为 Server Component。
+ * Sidebar 自带 'use client'，不需要 Layout 级别客户端化。
+ * 
+ * @see react-best-practices: server-serialization
+ */
 export default function AdminLayout({
   children,
 }: {

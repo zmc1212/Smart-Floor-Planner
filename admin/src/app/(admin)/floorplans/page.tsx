@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from "next/link";
 import { Map, Loader2, ArrowLeft, Search, Calendar, Layers, User, Building2 } from "lucide-react";
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -19,21 +20,9 @@ export default function FloorPlansPage() {
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [currentUser, setCurrentUser] = useState<any>(null);
 
-  // No local enterprise state needed, handled globally by auth + cookie
-
-  const fetchCurrentUser = async () => {
-    try {
-      const res = await fetch('/api/auth/me');
-      const data = await res.json();
-      if (data.success) {
-        setCurrentUser(data.data);
-      }
-    } catch (err) {
-      console.error('Auth error:', err);
-    }
-  };
+  // @see react-best-practices: client-swr-dedup
+  const { user: currentUser } = useCurrentUser();
 
   const fetchPlans = async (search = '') => {
     setLoading(true);
@@ -52,10 +41,6 @@ export default function FloorPlansPage() {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    fetchCurrentUser();
-  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {

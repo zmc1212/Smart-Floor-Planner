@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 import React, { useState, useEffect } from 'react';
 import { Trash2, Plus, RefreshCw, Cpu, Search, Edit2, Check, X, Building2, User } from 'lucide-react';
 import Link from 'next/link';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { 
   Table, 
   TableBody, 
@@ -47,10 +48,9 @@ interface Device {
 
 export default function DevicesPage() {
   const [devices, setDevices] = useState<Device[]>([]);
-  const [enterprises, setEnterprises] = useState<any[]>([]);
   const [staff, setStaff] = useState<any[]>([]);
-  const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const { user: currentUser } = useCurrentUser();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newCode, setNewCode] = useState('');
@@ -66,16 +66,6 @@ export default function DevicesPage() {
   const [editEnterprise, setEditEnterprise] = useState('');
   const [editStaff, setEditStaff] = useState('');
   const [updating, setUpdating] = useState(false);
-
-  const fetchCurrentUser = async () => {
-    try {
-      const res = await fetch('/api/auth/me');
-      const data = await res.json();
-      if (data.success) {
-        setCurrentUser(data.data);
-      }
-    } catch (err) { console.error(err); }
-  };
 
   const fetchEnterprises = async () => {
     try {
@@ -109,20 +99,17 @@ export default function DevicesPage() {
     }
   };
 
+  // @see react-best-practices: async-parallel — 并行化初始请求
   useEffect(() => {
-    fetchCurrentUser();
+    Promise.all([fetchDevices(), fetchStaff()]);
   }, []);
 
+  // Fetch enterprises only when admin is a super_admin
   useEffect(() => {
     if (currentUser && (currentUser.role === 'super_admin' || currentUser.role === 'admin')) {
       fetchEnterprises();
     }
   }, [currentUser]);
-
-  useEffect(() => {
-    fetchDevices();
-    fetchStaff();
-  }, []);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
