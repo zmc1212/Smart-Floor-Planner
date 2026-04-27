@@ -17,6 +17,8 @@ import {
   ChevronLeft, 
   Menu,
   ChevronRight,
+  PenTool,
+  Palette,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -73,7 +75,13 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       title: '户型与灵感',
       items: [
         { key: 'floorplans', label: '户型图库', icon: Map, href: '/floorplans' },
-        { key: 'inspirations', label: '灵感方案', icon: Sparkles, href: '/inspirations' },
+      ]
+    },
+    {
+      title: 'AI 工作台',
+      items: [
+        { key: 'ai-floorplan', label: 'AI 室内平面', icon: PenTool, href: '/ai-studio/floor-plan' },
+        { key: 'ai-furnishing', label: 'AI 软装设计', icon: Palette, href: '/ai-studio/furnishing' },
       ]
     },
     {
