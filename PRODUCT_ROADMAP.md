@@ -66,3 +66,4 @@
 
 ## 📅 更新纪录
 - **2026-04-17**: 初始版本建立，明确以“引流获客”为当前第一优先级。
+- **2026-04-27**: 确认采用 **Replicate** 方案升级 AI 渲染引擎，详细计划见 [REPLICATE_AI_PLAN.md](file:///g:/workspace/%E5%90%91%E6%80%BB/Smart-Floor-Planner/docs/REPLICATE_AI_PLAN.md)。

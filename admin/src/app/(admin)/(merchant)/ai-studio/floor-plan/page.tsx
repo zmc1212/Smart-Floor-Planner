@@ -57,6 +57,7 @@ export default function AiFloorPlanPage() {
   const { data: historyData, mutate: mutateHistory } = useFetch<any>('/api/ai/history?type=floor_plan_style&limit=6');
   
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
+  const [selectedRoomIndex, setSelectedRoomIndex] = useState<string>('-1');
   const [selectedStyle, setSelectedStyle] = useState<string>('colorful');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
@@ -67,6 +68,58 @@ export default function AiFloorPlanPage() {
 
   const selectedPlan = floorPlans.find(p => p._id === selectedPlanId);
 
+  const [loadingStage, setLoadingStage] = useState(0);
+  const [generationId, setGenerationId] = useState<string | null>(null);
+
+  const LOADING_STAGES = [
+    "正在解析空间结构...",
+    "正在构思光影和材质...",
+    "正在进行最终渲染...",
+    "正在处理边缘细节...",
+    "即将完成..."
+  ];
+
+  useEffect(() => {
+    let timer: any;
+    if (isGenerating) {
+      timer = setInterval(() => {
+        setLoadingStage(prev => (prev + 1) % LOADING_STAGES.length);
+      }, 3000);
+    } else {
+      setLoadingStage(0);
+    }
+    return () => clearInterval(timer);
+  }, [isGenerating]);
+
+  // 轮询函数
+  const pollStatus = async (id: string) => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/ai/status/${id}`);
+        const data = await res.json();
+        
+        if (data.success) {
+          if (data.data.status === 'succeeded') {
+            setGeneratedImage(data.data.imageUrl);
+            setIsGenerating(false);
+            clearInterval(interval);
+            mutateQuota();
+            mutateHistory();
+          } else if (data.data.status === 'failed') {
+            alert(data.data.error || '生成失败');
+            setIsGenerating(false);
+            clearInterval(interval);
+            mutateQuota();
+          }
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  };
+
   const handleGenerate = async () => {
     if (!selectedPlanId) {
       alert('请先选择一个户型图');
@@ -75,40 +128,97 @@ export default function AiFloorPlanPage() {
 
     setIsGenerating(true);
     setGeneratedImage(null);
+    setLoadingStage(0);
 
     try {
       const plan = selectedPlan;
-      // 提取房间信息构建描述
-      const rooms = plan?.layoutData?.rooms || plan?.layoutData || [];
-      const roomNames = Array.isArray(rooms) ? rooms.map((r: any) => r.name).filter(Boolean).join(', ') : '';
+      // 提取房间信息
+      const allRooms = plan?.layoutData?.rooms || plan?.layoutData || [];
+      
+      let targetRooms = allRooms;
+      let roomNameForPrompt = plan?.name || '住宅';
+      let targetWidth = 500;
+      let targetHeight = 400;
 
-      const res = await fetch('/api/ai/generate', {
+      if (selectedRoomIndex !== '-1') {
+        const idx = parseInt(selectedRoomIndex);
+        const r = allRooms[idx];
+        if (r) {
+          targetRooms = [r];
+          roomNameForPrompt = r.name || `房间 ${idx + 1}`;
+          targetWidth = r.width || 500;
+          targetHeight = r.height || 400;
+        }
+      } else {
+        roomNameForPrompt = Array.isArray(allRooms) ? allRooms.map((r: any) => r.name).filter(Boolean).join(', ') : (plan?.name || '住宅');
+        if (allRooms.length > 0) {
+          targetWidth = allRooms[0].width || 500;
+          targetHeight = allRooms[0].height || 400;
+        }
+      }
+
+      // 第一阶段：生成 Prompt
+      const genRes = await fetch('/api/ai/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'floor_plan_style',
           style: selectedStyle,
           floorPlanId: selectedPlanId,
-          roomName: roomNames || plan?.name || '住宅',
-          width: rooms[0]?.width || 500,
-          height: rooms[0]?.height || 400,
+          roomName: roomNameForPrompt,
+          width: targetWidth,
+          height: targetHeight,
+          roomData: targetRooms,
         }),
       });
 
-      const data = await res.json();
-      if (data.success) {
-        setGeneratedImage(data.data.imageUrl);
-        // 刷新配额和历史
-        mutateQuota();
-        mutateHistory();
-      } else {
-        alert(data.error || 'AI 生成失败');
-        if (data.quota) mutateQuota();
+      const genData = await genRes.json();
+      if (!genData.success) {
+        alert(genData.error || '提示词生成失败');
+        setIsGenerating(false);
+        return;
       }
+
+      const { id, prompt, negativePrompt } = genData.data;
+      setGenerationId(id);
+
+      // 黑底白线预处理 (Canvas Export)
+      let base64Image;
+      try {
+        const { generateBaseMap } = await import('@/lib/canvasExport');
+        base64Image = await generateBaseMap(targetRooms);
+      } catch (exportErr) {
+        console.error('Failed to generate base map', exportErr);
+        alert('无法提取户型线稿，请检查户型数据');
+        setIsGenerating(false);
+        return;
+      }
+
+      // 第二阶段：发起渲染
+      const renderRes = await fetch('/api/ai/render', {
+
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          generationId: id,
+          image: base64Image, 
+          prompt,
+          negativePrompt,
+        }),
+      });
+
+      const renderData = await renderRes.json();
+      if (renderData.success) {
+        // 第三阶段：开启轮询
+        pollStatus(id);
+      } else {
+        alert(renderData.error || '提交渲染失败');
+        setIsGenerating(false);
+      }
+
     } catch (err) {
       console.error(err);
       alert('网络异常，请重试');
-    } finally {
       setIsGenerating(false);
     }
   };
@@ -163,9 +273,12 @@ export default function AiFloorPlanPage() {
           <div className="lg:col-span-2 space-y-6">
 
             {/* Floor Plan Selector */}
-            <div className="flex items-center gap-4">
-              <div className="flex-1">
-                <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
+            <div className="flex flex-col sm:flex-row items-center gap-4">
+              <div className="flex-1 w-full">
+                <Select value={selectedPlanId} onValueChange={(val) => {
+                  setSelectedPlanId(val);
+                  setSelectedRoomIndex('-1');
+                }}>
                   <SelectTrigger className="h-14 rounded-2xl bg-muted/20 border-muted font-medium text-base">
                     <SelectValue placeholder="选择一个户型图作为 AI 输入源..." />
                   </SelectTrigger>
@@ -197,6 +310,26 @@ export default function AiFloorPlanPage() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {selectedPlanId && (
+                <div className="flex-1 w-full">
+                  <Select value={selectedRoomIndex} onValueChange={setSelectedRoomIndex}>
+                    <SelectTrigger className="h-14 rounded-2xl bg-muted/20 border-muted font-medium text-base">
+                      <SelectValue placeholder="选择生成范围..." />
+                    </SelectTrigger>
+                    <SelectContent className="rounded-2xl border-none shadow-2xl">
+                      <SelectItem value="-1" className="rounded-xl py-3">
+                        <span className="font-medium">全部房间 (完整户型)</span>
+                      </SelectItem>
+                      {(selectedPlan?.layoutData?.rooms || selectedPlan?.layoutData || []).map((room: any, idx: number) => (
+                        <SelectItem key={idx} value={idx.toString()} className="rounded-xl py-3">
+                          <span className="font-medium">{room.name || `房间 ${idx + 1}`}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
 
             {/* Canvas / Result Area */}
@@ -210,7 +343,7 @@ export default function AiFloorPlanPage() {
                     <div className="absolute inset-0 rounded-full border-2 border-purple-300 animate-ping" />
                   </div>
                   <div className="text-center">
-                    <p className="text-lg font-bold">AI 正在生成</p>
+                    <p className="text-lg font-bold">{LOADING_STAGES[loadingStage]}</p>
                     <p className="text-sm text-muted-foreground">
                       {FLOOR_PLAN_STYLES.find(s => s.id === selectedStyle)?.label} · 预计 10-30 秒
                     </p>
@@ -244,6 +377,15 @@ export default function AiFloorPlanPage() {
                       }}
                     >
                       <Download size={14} className="mr-1" /> 保存图片
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="rounded-xl shadow-lg font-bold text-xs bg-purple-600 hover:bg-purple-700 text-white"
+                      onClick={() => {
+                        alert('海报分享功能即将上线，敬请期待！(可将历史生成的优质方案沉淀至灵感库)');
+                      }}
+                    >
+                      <Share2 size={14} className="mr-1" /> 生成海报
                     </Button>
                   </div>
                   <div className="absolute bottom-4 left-4">

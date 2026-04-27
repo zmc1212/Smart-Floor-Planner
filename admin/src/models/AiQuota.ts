@@ -112,6 +112,19 @@ AiQuotaSchema.methods.consume = function (): boolean {
   return false;
 };
 
+/**
+ * 失败回退配额
+ */
+AiQuotaSchema.methods.refund = function (): void {
+  if (this.monthlyLimit === -1) {
+    this.usedCount = Math.max(0, this.usedCount - 1);
+  } else if (this.usedCount > 0) {
+    this.usedCount -= 1;
+  } else {
+    this.bonusCredits += 1;
+  }
+};
+
 export { TIER_LIMITS };
 
 export const AiQuota: Model<IAiQuota> =

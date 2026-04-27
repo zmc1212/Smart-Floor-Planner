@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { type, style, roomType, roomName, width, height, floorPlanId, mode } = body;
+    const { type, style, roomType, roomName, width, height, floorPlanId, mode, roomData } = body;
 
     if (!type || !style) {
       return NextResponse.json({ success: false, error: '缺少必填参数 type / style' }, { status: 400 });
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
       floorPlanId: floorPlanId || undefined,
       type,
       input: { style, roomType, roomName, width, height, mode },
-      status: 'generating',
+      status: 'processing',
     });
 
     // --- 构建 Prompt ---
@@ -105,49 +105,54 @@ export async function POST(req: Request) {
         `8K resolution, architectural photography quality. Strictly NO text, NO labels, NO watermarks.`;
     }
 
-    // --- 调用 AI ---
+    // --- 调用 Gemini 构建专业 Prompt ---
+    let promptData;
     try {
-      const seed = Math.floor(Math.random() * 1000000);
-      const encodedPrompt = encodeURIComponent(prompt);
-      const params = `model=flux&width=${imgWidth}&height=${imgHeight}&nologo=true&enhance=true&seed=${seed}`;
-      const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?${params}`;
-
-      // 更新生成记录
-      const duration = Date.now() - startTime;
-      generation.output = { imageUrl, promptUsed: prompt };
-      generation.status = 'completed';
-      generation.durationMs = duration;
+      if (process.env.MOCK_AI === 'true') {
+        promptData = {
+          prompt: 'Mock prompt for testing...',
+          negative_prompt: 'mock negative prompt'
+        };
+        // 模拟网络延迟
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } else {
+        const { generateAIPrompt } = await import('@/lib/gemini');
+        const details = (roomName ? `Room Name: ${roomName}. ` : '') + 
+                       (width && height ? `Dimensions: ${(width / 10).toFixed(1)}m x ${(height / 10).toFixed(1)}m. ` : '') +
+                       (roomData ? `\nArchitectural Data (polygons, doors, windows): ${JSON.stringify(roomData)}` : '');
+        
+        promptData = await generateAIPrompt(style, type === 'floor_plan_style' ? 'floor plan' : (roomType || 'interior'), details);
+      }
+      
+      // 更新生成记录为待渲染状态
+      generation.input.customPrompt = promptData.prompt;
+      generation.output.promptUsed = promptData.prompt;
+      generation.status = 'pending';
       await generation.save();
-
-      // 扣减配额
-      (quota as any).consume();
-      await quota.save();
 
       return NextResponse.json({
         success: true,
         data: {
           id: generation._id,
-          imageUrl,
+          prompt: promptData.prompt,
+          negativePrompt: promptData.negative_prompt,
           type,
           style,
-          durationMs: duration,
         },
         quota: {
           tier: quota.tier,
           used: quota.usedCount,
           limit: quota.monthlyLimit,
           bonus: quota.bonusCredits,
-          remaining: quota.monthlyLimit === -1 ? -1 : Math.max(0, quota.monthlyLimit - quota.usedCount) + quota.bonusCredits,
         }
       });
 
-    } catch (aiError: unknown) {
+    } catch (aiError: any) {
       generation.status = 'failed';
-      generation.errorMessage = aiError instanceof Error ? aiError.message : 'Unknown AI error';
-      generation.durationMs = Date.now() - startTime;
+      generation.errorMessage = aiError.message || 'LongCat Prompt Generation Failed';
       await generation.save();
 
-      return NextResponse.json({ success: false, error: 'AI 生成失败' }, { status: 502 });
+      return NextResponse.json({ success: false, error: 'AI 提示词生成失败 (LongCat)' }, { status: 502 });
     }
 
   } catch (error: unknown) {

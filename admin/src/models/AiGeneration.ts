@@ -28,7 +28,9 @@ export interface IAiGeneration extends Document {
     promptUsed?: string;
   };
   /** 状态 */
-  status: 'pending' | 'generating' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'succeeded' | 'failed';
+  /** Replicate 任务 ID */
+  replicatePredictionId?: string;
   /** 错误信息 */
   errorMessage?: string;
   /** 生成耗时 (ms) */
@@ -74,9 +76,10 @@ const AiGenerationSchema: Schema<IAiGeneration> = new Schema(
     },
     status: {
       type: String,
-      enum: ['pending', 'generating', 'completed', 'failed'],
+      enum: ['pending', 'processing', 'succeeded', 'failed'],
       default: 'pending',
     },
+    replicatePredictionId: { type: String },
     errorMessage: { type: String },
     durationMs: { type: Number },
   },
