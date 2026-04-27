@@ -4,13 +4,14 @@ import dbConnect from '@/lib/mongodb';
 import { AiGeneration } from '@/models/AiGeneration';
 import { AiQuota } from '@/models/AiQuota';
 import { getTenantContext } from '@/lib/auth';
+import { createTensorJob } from '@/lib/ai/tensor';
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
 });
 
-// Default ControlNet model version (MLSD for floor plans)
-const CONTROLNET_MLSD_VERSION = "854e8727697a0a60b9c14857a8ca3d2a02b66708316acc091563f135003b5d27";
+const AI_PLATFORM = process.env.AI_PLATFORM || 'replicate';
+
 
 /**
  * Handle Replicate AI Rendering (Asynchronous)
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { generationId, image, prompt, negativePrompt } = await req.json();
+    const { generationId, image, prompt, negativePrompt, width, height } = await req.json();
 
     if (!generationId || !image || !prompt) {
       return NextResponse.json({ success: false, error: 'Missing required parameters' }, { status: 400 });
@@ -41,13 +42,27 @@ export async function POST(req: Request) {
     }
     await quota.save();
 
-    // --- 调用 Replicate 发起异步任务 ---
+    // --- 调用 AI 平台发起异步任务 ---
     try {
       let predictionId = '';
+      const currentProvider = (AI_PLATFORM as 'replicate' | 'tensor');
+
       if (process.env.MOCK_AI === 'true') {
         predictionId = 'mock_prediction_' + Date.now();
         await new Promise(resolve => setTimeout(resolve, 500));
+      } else if (currentProvider === 'tensor') {
+        // --- Tensor.art 模式 ---
+        const job = await createTensorJob({
+          prompt,
+          negativePrompt,
+          image,
+          width,
+          height,
+        });
+        if (!job) throw new Error('Failed to create Tensor.art job');
+        predictionId = job.id;
       } else {
+        // --- Replicate 模式 ---
         if (!process.env.REPLICATE_API_TOKEN) {
           throw new Error('REPLICATE_API_TOKEN is not configured in .env.local');
         }
@@ -56,7 +71,7 @@ export async function POST(req: Request) {
         }
 
         const prediction = await replicate.predictions.create({
-          version: CONTROLNET_MLSD_VERSION,
+          version: "854e8727697a057c525cdb45ab037f64ecca770a1769cc52287c2e56472a247b",
           input: {
             image: image, // Base64 image
             prompt: prompt,
@@ -73,25 +88,28 @@ export async function POST(req: Request) {
       }
 
       // 更新生成记录
-      generation.replicatePredictionId = predictionId;
+      generation.provider = currentProvider;
+      generation.externalJobId = predictionId;
+      generation.replicatePredictionId = predictionId; // 保持兼容
       generation.status = 'processing';
       await generation.save();
 
       return NextResponse.json({ 
         success: true, 
         predictionId: predictionId,
+        provider: currentProvider,
         status: 'processing'
       });
 
-    } catch (replicateError: any) {
-      console.error('[Replicate API Error]', replicateError);
+    } catch (aiError: any) {
+      console.error(`[AI Render Error - ${AI_PLATFORM}]`, aiError);
       
       // 失败则退回配额
       (quota as any).refund();
       await quota.save();
 
       generation.status = 'failed';
-      generation.errorMessage = replicateError.message || 'Replicate submission failed';
+      generation.errorMessage = aiError.message || 'AI submission failed';
       await generation.save();
 
       return NextResponse.json({ success: false, error: 'AI 渲染请求提交失败' }, { status: 502 });

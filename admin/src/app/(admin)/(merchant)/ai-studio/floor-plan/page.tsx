@@ -496,12 +496,24 @@ export default function AiFloorPlanPage() {
                       key={item._id}
                       className="flex items-center gap-3 p-3 rounded-xl bg-muted/20 hover:bg-muted/40 cursor-pointer transition-all group"
                       onClick={() => {
-                        if (item.output?.imageUrl) setGeneratedImage(item.output.imageUrl);
+                        if (item.status === 'succeeded' && item.output?.imageUrl) {
+                          setGeneratedImage(item.output.imageUrl);
+                          setIsGenerating(false);
+                        } else if (item.status === 'processing' || item.status === 'pending') {
+                          setIsGenerating(true);
+                          setGenerationId(item._id);
+                          setGeneratedImage(null);
+                          pollStatus(item._id);
+                        } else if (item.status === 'failed') {
+                          alert(`生成失败: ${item.errorMessage || '未知错误'}`);
+                        }
                       }}
                     >
-                      <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center overflow-hidden shrink-0">
+                      <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center overflow-hidden shrink-0 relative">
                         {item.output?.imageUrl ? (
                           <img src={item.output.imageUrl} className="w-full h-full object-cover" alt="" />
+                        ) : item.status === 'processing' || item.status === 'pending' ? (
+                          <RefreshCw size={16} className="text-muted-foreground/50 animate-spin" />
                         ) : (
                           <ImageIcon size={16} className="text-muted-foreground/50" />
                         )}

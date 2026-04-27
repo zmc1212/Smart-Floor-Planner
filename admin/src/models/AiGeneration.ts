@@ -29,7 +29,11 @@ export interface IAiGeneration extends Document {
   };
   /** 状态 */
   status: 'pending' | 'processing' | 'succeeded' | 'failed';
-  /** Replicate 任务 ID */
+  /** 服务提供商 */
+  provider: 'replicate' | 'tensor';
+  /** 外部任务 ID (Replicate Prediction ID 或 Tensor Job ID) */
+  externalJobId?: string;
+  /** Replicate 任务 ID (遗留字段) */
   replicatePredictionId?: string;
   /** 错误信息 */
   errorMessage?: string;
@@ -79,6 +83,12 @@ const AiGenerationSchema: Schema<IAiGeneration> = new Schema(
       enum: ['pending', 'processing', 'succeeded', 'failed'],
       default: 'pending',
     },
+    provider: {
+      type: String,
+      enum: ['replicate', 'tensor'],
+      default: 'replicate',
+    },
+    externalJobId: { type: String },
     replicatePredictionId: { type: String },
     errorMessage: { type: String },
     durationMs: { type: Number },
