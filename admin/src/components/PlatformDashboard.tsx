@@ -16,7 +16,7 @@ export default function PlatformDashboard() {
         const [uRes, pRes, eRes] = await Promise.all([
           fetch('/api/users'),
           fetch('/api/floorplans'),
-          fetch('/api/enterprises')
+          fetch('/api/admin/enterprises')
         ]);
         const uData = await uRes.json();
         const pData = await pRes.json();
