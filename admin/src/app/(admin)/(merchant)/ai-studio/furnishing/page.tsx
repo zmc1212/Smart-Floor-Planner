@@ -18,6 +18,7 @@ import {
 import AiQuotaBar from '@/components/ai-studio/AiQuotaBar';
 import RechargeDialog from '@/components/ai-studio/RechargeDialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useFetch } from '@/hooks/useFetch';
 
 // --- 软装风格定义 ---
 const FURNISHING_STYLES = [
@@ -44,34 +45,21 @@ const ROOM_TYPES = [
 
 export default function AiFurnishingPage() {
   const { user } = useCurrentUser();
-  const [floorPlans, setFloorPlans] = useState<any[]>([]);
+  const { data: floorPlansData, isLoading: loadingPlans } = useFetch<any[]>('/api/floorplans');
+  const floorPlans = floorPlansData || [];
+  const { data: quota, mutate: mutateQuota } = useFetch<any>('/api/ai/quota');
+  const { data: historyData, mutate: mutateHistory } = useFetch<any>('/api/ai/history?type=furnishing_render&limit=8');
+
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
   const [selectedStyle, setSelectedStyle] = useState<string>('modern');
   const [selectedRoom, setSelectedRoom] = useState<string>('客厅');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
-  const [quota, setQuota] = useState<any>(null);
-  const [quotaLoading, setQuotaLoading] = useState(true);
   const [showRecharge, setShowRecharge] = useState(false);
-  const [history, setHistory] = useState<any[]>([]);
-  const [loadingPlans, setLoadingPlans] = useState(true);
   const [shareSuccess, setShareSuccess] = useState(false);
 
-  // 并行获取数据
-  useEffect(() => {
-    Promise.all([
-      fetch('/api/floorplans').then(r => r.json()),
-      fetch('/api/ai/quota').then(r => r.json()),
-      fetch('/api/ai/history?type=furnishing_render&limit=8').then(r => r.json()),
-    ]).then(([plansData, quotaData, historyData]) => {
-      if (plansData.success) setFloorPlans(plansData.data);
-      if (quotaData.success) setQuota(quotaData.data);
-      if (historyData.success) setHistory(historyData.data);
-    }).finally(() => {
-      setLoadingPlans(false);
-      setQuotaLoading(false);
-    });
-  }, []);
+  const history = historyData || [];
+
 
   const selectedPlan = floorPlans.find(p => p._id === selectedPlanId);
 
@@ -106,14 +94,11 @@ export default function AiFurnishingPage() {
       const data = await res.json();
       if (data.success) {
         setGeneratedImage(data.data.imageUrl);
-        setQuota(data.quota);
-        // 刷新历史
-        fetch('/api/ai/history?type=furnishing_render&limit=8')
-          .then(r => r.json())
-          .then(d => { if (d.success) setHistory(d.data); });
+        mutateQuota();
+        mutateHistory();
       } else {
         alert(data.error || 'AI 生成失败');
-        if (data.quota) setQuota(data.quota);
+        if (data.quota) mutateQuota();
       }
     } catch (err) {
       console.error(err);
@@ -159,7 +144,7 @@ export default function AiFurnishingPage() {
       body: JSON.stringify({ action: 'upgrade', tier, amount, method: 'manual' }),
     });
     const data = await res.json();
-    if (data.success) setQuota(data.data);
+    if (data.success) mutateQuota();
   };
 
   const handleRecharge = async (credits: number, amount: number) => {
@@ -169,7 +154,7 @@ export default function AiFurnishingPage() {
       body: JSON.stringify({ action: 'recharge', credits, amount, method: 'manual' }),
     });
     const data = await res.json();
-    if (data.success) setQuota(data.data);
+    if (data.success) mutateQuota();
   };
 
   return (
@@ -192,7 +177,7 @@ export default function AiFurnishingPage() {
 
         {/* Quota Bar */}
         <div className="mb-8">
-          <AiQuotaBar quota={quota} loading={quotaLoading} onRecharge={() => setShowRecharge(true)} />
+          <AiQuotaBar quota={quota} loading={!quota && !floorPlans.length} onRecharge={() => setShowRecharge(true)} />
         </div>
 
         {/* Selectors Row */}

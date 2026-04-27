@@ -2,7 +2,19 @@
 
 import useSWR, { SWRConfiguration } from 'swr';
 
-const defaultFetcher = (url: string) => fetch(url).then(res => res.json());
+const defaultFetcher = async (url: string) => {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`HTTP error! status: ${res.status}`);
+  }
+  const contentType = res.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    const text = await res.text();
+    console.error('Expected JSON, got:', text.substring(0, 100));
+    throw new Error('Received non-JSON response from server');
+  }
+  return res.json();
+};
 
 /**
  * 通用 SWR 数据获取钩子。

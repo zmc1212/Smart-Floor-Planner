@@ -36,6 +36,8 @@ export const ALL_MENUS = [
   { key: 'users', label: '小程序用户' },
   { key: 'devices', label: '设备管理' },
   { key: 'leads', label: '客资线索' },
+  { key: 'ai-floorplan', label: 'AI 室内平面' },
+  { key: 'ai-furnishing', label: 'AI 软装设计' },
   { key: 'inspirations', label: '装修灵感库' },
   { key: 'staff', label: '员工管理' },
   { key: 'admins', label: '系统账号管理' },
@@ -43,11 +45,11 @@ export const ALL_MENUS = [
 
 export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   super_admin: ALL_MENUS.map(m => m.key),
-  admin: ['dashboard', 'enterprises', 'floorplans', 'users', 'devices', 'leads', 'inspirations', 'staff', 'admins'],
-  enterprise_admin: ['dashboard', 'floorplans', 'leads', 'staff', 'devices'],
-  designer: ['dashboard', 'floorplans', 'leads', 'devices'],
-  salesperson: ['dashboard', 'leads'],
-  viewer: ['dashboard', 'floorplans', 'inspirations'],
+  admin: ['dashboard', 'enterprises', 'floorplans', 'users', 'devices', 'leads', 'ai-floorplan', 'ai-furnishing', 'inspirations', 'staff', 'admins'],
+  enterprise_admin: ['dashboard', 'floorplans', 'leads', 'ai-floorplan', 'ai-furnishing', 'inspirations', 'staff', 'devices'],
+  designer: ['dashboard', 'floorplans', 'leads', 'ai-floorplan', 'ai-furnishing', 'inspirations', 'devices'],
+  salesperson: ['dashboard', 'leads', 'ai-floorplan', 'ai-furnishing', 'inspirations'],
+  viewer: ['dashboard', 'floorplans', 'ai-floorplan', 'ai-furnishing', 'inspirations'],
 };
 
 const AdminUserSchema: Schema<IAdminUser> = new Schema(

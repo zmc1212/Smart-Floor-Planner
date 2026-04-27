@@ -82,6 +82,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       items: [
         { key: 'ai-floorplan', label: 'AI 室内平面', icon: PenTool, href: '/ai-studio/floor-plan' },
         { key: 'ai-furnishing', label: 'AI 软装设计', icon: Palette, href: '/ai-studio/furnishing' },
+        { key: 'inspirations', label: '灵感方案', icon: Sparkles, href: '/inspirations' },
       ]
     },
     {
