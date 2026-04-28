@@ -79,7 +79,7 @@ export async function generateBaseMap(rooms: Room[]): Promise<string> {
           const x2 = rX + rW;
           const y2 = rY + rH;
 
-          allLines.push({ x1, y1, x2, y1 }); // Top
+          allLines.push({ x1, y1, x2, y2: y1 }); // Top
           allLines.push({ x1: x2, y1, x2, y2 }); // Right
           allLines.push({ x1: x2, y1: y2, x2: x1, y2 }); // Bottom
           allLines.push({ x1, y1: y2, x2: x1, y2: y1 }); // Left

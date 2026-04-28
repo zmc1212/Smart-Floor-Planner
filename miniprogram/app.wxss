@@ -1,96 +1,187 @@
-/* 
- * Vercel (Geist) Design System - Global Styles
+/*
+ * Smart Floor Planner Mini Program - Global Styles
+ * Source of truth:
+ * - miniprogram/DESIGN.md
+ * - miniprogram/design-tokens.json
  */
 
 page {
-  /* System Fonts prioritizing Geist-like geometric sans */
-  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  background-color: #ffffff;
-  color: #171717;
+  font-family: 'Source Han Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background-color: var(--bg-page);
+  color: var(--text-primary);
   height: 100%;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
-  --ds-gray-100: #ebebeb;
-  --ds-gray-400: #808080;
-  --ds-gray-600: #4d4d4d;
-  --ds-gray-900: #171717;
-  --ds-gray-alpha-400: rgba(0, 0, 0, 0.08);
+
+  /* Brand */
+  --brand-primary: #22C55E;
+  --brand-primary-80: #6FD77B;
+  --brand-primary-60: #9BE7A7;
+  --brand-primary-40: #C7F1CC;
+  --brand-primary-20: #EAF8EC;
+
+  /* Accent */
+  --accent-secondary-green: #4CAF50;
+  --accent-mint: #8FD19E;
+  --accent-cyan-mint: #A8E6CF;
+  --accent-yellow: #FFC857;
+  --accent-pink: #FF8BA7;
+
+  /* Neutral */
+  --neutral-900: #1F2937;
+  --neutral-700: #4B5563;
+  --neutral-500: #6B7280;
+  --neutral-300: #D1D5DB;
+  --neutral-100: #F3F4F6;
+  --neutral-0: #FFFFFF;
+
+  /* Text */
+  --text-primary: #1F2937;
+  --text-secondary: #6B7280;
+  --text-muted: #D1D5DB;
+  --text-inverse: #FFFFFF;
+  --text-brand: #22C55E;
+
+  /* Background */
+  --bg-page: #F3F4F6;
+  --bg-surface: #FFFFFF;
+  --bg-surface-soft: #EAF8EC;
+  --bg-brand-soft: #C7F1CC;
+  --bg-white: #FFFFFF;
+
+  /* Border */
+  --border-soft: #D1D5DB;
+  --border-brand: #22C55E;
+  --border-brand-soft: #C7F1CC;
+
+  /* Status */
+  --status-measuring-bg: #EAF8EC;
+  --status-measuring-text: #22C55E;
+  --status-designing-bg: #E8F0FF;
+  --status-designing-text: #3B82F6;
+  --status-converted-bg: #FFF3E0;
+  --status-converted-text: #F59E0B;
+  --status-cancelled-bg: #F3F4F6;
+  --status-cancelled-text: #6B7280;
+
+  /* Radius */
+  --radius-xs: 4rpx;
+  --radius-sm: 8rpx;
+  --radius-md: 12rpx;
+  --radius-lg: 16rpx;
+  --radius-xl: 20rpx;
+  --radius-full: 9999rpx;
+
+  /* Spacing */
+  --space-xs: 4rpx;
+  --space-sm: 8rpx;
+  --space-md: 12rpx;
+  --space-lg: 16rpx;
+  --space-xl: 20rpx;
+  --space-xxl: 24rpx;
+  --space-section: 32rpx;
+
+  /* Typography */
+  --font-size-hero: 56rpx;
+  --font-size-title: 40rpx;
+  --font-size-body: 28rpx;
+  --font-size-caption: 24rpx;
+  --font-weight-bold: 700;
+  --font-weight-medium: 500;
+  --font-weight-regular: 400;
+
+  /* Shadows */
+  --shadow-card: 0 4rpx 20rpx rgba(0, 0, 0, 0.06);
+  --shadow-float: 0 8rpx 24rpx rgba(0, 0, 0, 0.08);
+  --shadow-popup: 0 12rpx 32rpx rgba(0, 0, 0, 0.10);
+  --shadow-border-soft: 0 0 0 1rpx rgba(209, 213, 219, 0.7);
+
+  /* Compatibility aliases for existing pages */
+  --ds-gray-100: var(--neutral-100);
+  --ds-gray-400: var(--neutral-300);
+  --ds-gray-600: var(--neutral-700);
+  --ds-gray-900: var(--neutral-900);
+  --ds-gray-alpha-400: rgba(209, 213, 219, 0.7);
   --ds-gray-alpha-100: rgba(0, 0, 0, 0.04);
-  
-  /* Workflow Accents */
-  --develop-blue: #0a72ef;
-  --preview-pink: #de1d8d;
-  --ship-red: #ff5b4f;
-  
-  /* Shadow Stacks */
-  --shadow-border: 0 0 0 1rpx var(--ds-gray-alpha-400);
-  --shadow-lift: 0 0 0 1rpx var(--ds-gray-alpha-400), 0 2rpx 2rpx var(--ds-gray-alpha-100);
-  --shadow-card: 0 0 0 1rpx var(--ds-gray-alpha-400), 0 2rpx 2rpx var(--ds-gray-alpha-100), 0 8rpx 8rpx -8rpx var(--ds-gray-alpha-100);
+  --develop-blue: var(--status-designing-text);
+  --preview-pink: var(--accent-pink);
+  --ship-red: #EF4444;
+  --shadow-border: var(--shadow-border-soft);
+  --shadow-lift: var(--shadow-float);
 }
 
-/* 布局工具 */
+/* Layout */
 .flex-row { display: flex; flex-direction: row; }
 .flex-col { display: flex; flex-direction: column; }
 .flex-1 { flex: 1; }
 .items-center { align-items: center; }
 .justify-center { justify-content: center; }
 .justify-between { justify-content: space-between; }
-.gap-4 { gap: 8rpx; }
-.gap-8 { gap: 16rpx; }
+.gap-4 { gap: var(--space-sm); }
+.gap-8 { gap: var(--space-lg); }
 
-/* 影子描边 (Vercel Signature) */
+/* Shadows */
 .shadow-border { box-shadow: var(--shadow-border); }
-.shadow-lift { box-shadow: var(--shadow-lift); }
+.shadow-lift { box-shadow: var(--shadow-float); }
 .shadow-card { box-shadow: var(--shadow-card); }
+.shadow-popup { box-shadow: var(--shadow-popup); }
 
-/* 文字与排版 */
+/* Typography */
 .text-xs { font-size: 20rpx; letter-spacing: 0; }
-.text-sm { font-size: 24rpx; letter-spacing: -0.2rpx; }
-.text-base { font-size: 28rpx; letter-spacing: -0.6rpx; }
-.text-lg { font-size: 32rpx; letter-spacing: -1.28rpx; }
-.text-xl { font-size: 36rpx; letter-spacing: -2.4rpx; font-weight: 600; line-height: 1.1; }
+.text-sm { font-size: var(--font-size-caption); letter-spacing: 0; }
+.text-base { font-size: var(--font-size-body); letter-spacing: 0; }
+.text-lg { font-size: 32rpx; letter-spacing: -0.5rpx; }
+.text-xl { font-size: var(--font-size-title); letter-spacing: -1rpx; font-weight: var(--font-weight-medium); line-height: 1.3; }
+.text-hero { font-size: var(--font-size-hero); font-weight: var(--font-weight-bold); line-height: 1.2; }
 
-.font-bold { font-weight: 600; } /* Vercel uses 600 as max for headings */
-.font-medium { font-weight: 500; }
-.font-mono { font-family: 'ui-monospace', 'SFMono-Regular', 'Roboto Mono', Menlo, monospace; }
+.font-bold { font-weight: var(--font-weight-bold); }
+.font-medium { font-weight: var(--font-weight-medium); }
+.font-regular { font-weight: var(--font-weight-regular); }
+.font-mono { font-family: 'SFMono-Regular', 'Roboto Mono', Menlo, monospace; }
 
-/* 颜色 */
-.text-muted { color: var(--ds-gray-600); }
-.text-disabled { color: var(--ds-gray-400); }
-.text-main { color: var(--ds-gray-900); }
-.text-blue { color: var(--develop-blue); }
-.text-pink { color: var(--preview-pink); }
-.text-red { color: var(--ship-red); }
-.text-white { color: #ffffff; }
+/* Colors */
+.text-main { color: var(--text-primary); }
+.text-muted { color: var(--text-secondary); }
+.text-disabled { color: var(--text-muted); }
+.text-brand { color: var(--text-brand); }
+.text-white { color: var(--text-inverse); }
+.text-blue { color: var(--status-designing-text); }
+.text-pink { color: var(--accent-pink); }
+.text-red { color: #EF4444; }
 
-.bg-main { background-color: var(--ds-gray-900); }
-.bg-white { background-color: #ffffff; }
-.bg-sub { background-color: #fafafa; }
-.bg-blue { background-color: var(--develop-blue); }
+.bg-page { background-color: var(--bg-page); }
+.bg-main { background-color: var(--brand-primary); }
+.bg-brand-soft { background-color: var(--bg-brand-soft); }
+.bg-sub { background-color: var(--bg-surface-soft); }
+.bg-surface { background-color: var(--bg-surface); }
+.bg-white { background-color: var(--bg-white); }
+.bg-blue { background-color: var(--status-designing-text); }
 
-/* 圆角 */
-.rounded-sm { border-radius: 4rpx; }
-.rounded-md { border-radius: 6rpx; } /* Vercel standard */
-.rounded-lg { border-radius: 8rpx; } /* Card standard */
-.rounded-xl { border-radius: 12rpx; }
-.rounded-full { border-radius: 9999rpx; }
+/* Radius */
+.rounded-sm { border-radius: var(--radius-xs); }
+.rounded-md { border-radius: var(--radius-sm); }
+.rounded-lg { border-radius: var(--radius-md); }
+.rounded-xl { border-radius: var(--radius-lg); }
+.rounded-2xl { border-radius: var(--radius-xl); }
+.rounded-full { border-radius: var(--radius-full); }
 
-/* 按钮基础 */
+/* Buttons */
 .btn {
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
   outline: none;
-  background: #ffffff;
+  background: var(--bg-surface);
+  color: var(--text-primary);
   padding: 12rpx 24rpx;
   margin: 0;
-  line-height: 1; /* Critical for flex centering */
+  line-height: 1;
   box-sizing: border-box;
-  font-size: 28rpx;
-  font-weight: 500;
-  border-radius: 6rpx;
-  box-shadow: var(--shadow-border);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-border-soft);
   transition: all 0.15s ease;
 }
 
@@ -99,14 +190,20 @@ page {
 }
 
 .btn-primary {
-  background: #171717;
-  color: #ffffff;
+  background: var(--brand-primary);
+  color: var(--text-inverse);
   box-shadow: none;
 }
 
+.btn-secondary {
+  background: var(--bg-surface);
+  color: var(--text-brand);
+  box-shadow: inset 0 0 0 1rpx var(--border-brand);
+}
+
 .btn-blue {
-  background: var(--develop-blue);
-  color: #ffffff;
+  background: var(--status-designing-text);
+  color: var(--text-inverse);
   box-shadow: none;
 }
 
@@ -116,15 +213,41 @@ page {
 }
 
 .btn:active {
-  opacity: 0.8;
+  opacity: 0.88;
   transform: translateY(1rpx);
 }
 
-/* 滚动条 */
+/* Status chips */
+.chip-measuring {
+  background: var(--status-measuring-bg);
+  color: var(--status-measuring-text);
+  border-radius: var(--radius-full);
+}
+
+.chip-designing {
+  background: var(--status-designing-bg);
+  color: var(--status-designing-text);
+  border-radius: var(--radius-full);
+}
+
+.chip-converted {
+  background: var(--status-converted-bg);
+  color: var(--status-converted-text);
+  border-radius: var(--radius-full);
+}
+
+.chip-cancelled {
+  background: var(--status-cancelled-bg);
+  color: var(--status-cancelled-text);
+  border-radius: var(--radius-full);
+}
+
+/* Scrollbar */
 ::-webkit-scrollbar {
   width: 2rpx;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: var(--ds-gray-100);
+  background: var(--neutral-300);
   border-radius: 10rpx;
 }

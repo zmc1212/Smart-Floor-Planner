@@ -1,0 +1,157 @@
+{
+  "meta": {
+    "name": "smart-floor-planner-mini-program",
+    "version": "1.0.0",
+    "description": "Design tokens derived from the mini program design reference image and DESIGN.md"
+  },
+  "color": {
+    "primary": {
+      "100": "#22C55E",
+      "80": "#6FD77B",
+      "60": "#9BE7A7",
+      "40": "#C7F1CC",
+      "20": "#EAF8EC"
+    },
+    "accent": {
+      "secondaryGreen": "#4CAF50",
+      "mint": "#8FD19E",
+      "cyanMint": "#A8E6CF",
+      "yellow": "#FFC857",
+      "pink": "#FF8BA7"
+    },
+    "neutral": {
+      "900": "#1F2937",
+      "700": "#4B5563",
+      "500": "#6B7280",
+      "300": "#D1D5DB",
+      "100": "#F3F4F6",
+      "0": "#FFFFFF"
+    },
+    "text": {
+      "primary": "#1F2937",
+      "secondary": "#6B7280",
+      "muted": "#D1D5DB",
+      "inverse": "#FFFFFF",
+      "brand": "#22C55E"
+    },
+    "background": {
+      "page": "#F3F4F6",
+      "surface": "#FFFFFF",
+      "surfaceSoft": "#EAF8EC",
+      "brandSoft": "#C7F1CC"
+    },
+    "border": {
+      "soft": "#D1D5DB",
+      "brand": "#22C55E",
+      "brandSoft": "#C7F1CC"
+    },
+    "status": {
+      "measuring": {
+        "bg": "#EAF8EC",
+        "text": "#22C55E"
+      },
+      "designing": {
+        "bg": "#E8F0FF",
+        "text": "#3B82F6"
+      },
+      "converted": {
+        "bg": "#FFF3E0",
+        "text": "#F59E0B"
+      },
+      "cancelled": {
+        "bg": "#F3F4F6",
+        "text": "#6B7280"
+      }
+    }
+  },
+  "font": {
+    "family": {
+      "cn": "Source Han Sans",
+      "fallback": "PingFang SC, Microsoft YaHei, sans-serif"
+    },
+    "size": {
+      "hero": 28,
+      "title": 20,
+      "body": 14,
+      "caption": 12
+    },
+    "weight": {
+      "bold": 700,
+      "medium": 500,
+      "regular": 400
+    },
+    "lineHeight": {
+      "hero": 1.2,
+      "title": 1.3,
+      "body": 1.5,
+      "caption": 1.4
+    }
+  },
+  "radius": {
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 20
+  },
+  "shadow": {
+    "card": "0 4px 20px rgba(0,0,0,0.06)",
+    "float": "0 8px 24px rgba(0,0,0,0.08)",
+    "popup": "0 12px 32px rgba(0,0,0,0.10)"
+  },
+  "spacing": {
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 20,
+    "xxl": 24,
+    "section": 32
+  },
+  "component": {
+    "topBar": {
+      "background": "#FFFFFF",
+      "radius": 16,
+      "shadow": "0 4px 20px rgba(0,0,0,0.06)"
+    },
+    "searchBar": {
+      "height": 40,
+      "radius": 12,
+      "background": "#FFFFFF",
+      "buttonBackground": "#22C55E",
+      "buttonText": "#FFFFFF"
+    },
+    "tabs": {
+      "activeText": "#22C55E",
+      "inactiveText": "#6B7280",
+      "activeIndicator": "#22C55E"
+    },
+    "card": {
+      "background": "#FFFFFF",
+      "radius": 16,
+      "shadow": "0 4px 20px rgba(0,0,0,0.06)"
+    },
+    "button": {
+      "primary": {
+        "background": "#22C55E",
+        "text": "#FFFFFF",
+        "radius": 12
+      },
+      "secondary": {
+        "background": "#FFFFFF",
+        "text": "#22C55E",
+        "border": "#22C55E",
+        "radius": 12
+      },
+      "text": {
+        "text": "#22C55E"
+      },
+      "icon": {
+        "background": "#FFFFFF",
+        "text": "#22C55E",
+        "radius": 999,
+        "shadow": "0 4px 20px rgba(0,0,0,0.06)"
+      }
+    }
+  }
+}

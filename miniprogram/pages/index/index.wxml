@@ -1,59 +1,221 @@
 <view class="page-container">
-  <!-- 1. 自定义导航栏 -->
-  <nav-bar 
-    navBarHeightTotal="{{navBarHeightTotal}}"
-    statusBarHeight="{{statusBarHeight}}"
-    capsulePadding="{{capsulePadding}}"
-    canUndo="{{false}}"
-    canRedo="{{false}}"
-    showHistory="{{false}}"
-    bleConnected="{{bleConnected}}"
-  />
+  <block wx:if="{{isStaff}}">
+    <nav-bar 
+      navBarHeightTotal="{{navBarHeightTotal}}"
+      statusBarHeight="{{statusBarHeight}}"
+      capsulePadding="{{capsulePadding}}"
+      canUndo="{{false}}"
+      canRedo="{{false}}"
+      showHistory="{{false}}"
+      bleConnected="{{bleConnected}}"
+    />
 
-  <view class="main-content">
-    <!-- 企业品牌展示 (Whitelabel) -->
-    <view class="branding-banner" wx:if="{{branding}}" style="border-left: 8rpx solid {{branding.branding.primaryColor}}">
-      <image class="brand-logo" src="{{branding.logo || '/assets/icons/logo.png'}}" mode="aspectFit" />
-      <view class="brand-info">
-        <text class="brand-name">{{branding.name}}</text>
-        <text class="brand-tagline">专业量房·智能快装</text>
+    <view class="main-content">
+      <view
+        class="branding-banner"
+        wx:if="{{branding}}"
+        style="border-left: 8rpx solid {{branding.branding.primaryColor}}"
+      >
+        <image class="brand-logo" src="{{branding.logo || '/assets/icons/logo.png'}}" mode="aspectFit" />
+        <view class="brand-info">
+          <text class="brand-name">{{branding.name}}</text>
+          <text class="brand-tagline">专业量房，智能快装</text>
+        </view>
       </view>
+
+      <lead-list openid="{{openid}}" bindadd="onOpenLeadModal" />
     </view>
 
-    <!-- 2. 销售人员：显示客资列表 -->
-    <block wx:if="{{isStaff}}">
-      <lead-list openid="{{openid}}" bindadd="onOpenLeadModal" />
-    </block>
+    <view class="floating-btn-lead" bindtap="onOpenLeadModal">
+      <view class="floating-btn-lead-inner">开始量房绑定客户</view>
+    </view>
+  </block>
 
-    <!-- 3. 普通用户或未连接蓝牙：引导页/库视图 -->
-    <block wx:else>
-      <ble-gate 
-        wx:if="{{!bleConnected}}" 
-        bindautoconnect="onAutoConnectBLE"
-        bindconnect="onConnectBLE"
-      />
+  <block wx:else>
+    <scroll-view class="home-scroll" scroll-y>
+      <view class="status-spacer" style="height: {{statusBarHeight}}px;"></view>
 
-      <block wx:else>
-        <!-- 户型库视图 -->
-        <room-library 
-          plannedRooms="{{plannedRooms}}"
-          layoutTemplates="{{layoutTemplates}}"
-          myCloudFloorPlans="{{myCloudFloorPlans}}"
-          bindselectlayout="onSelectLayout"
-          bindopencloudplan="onOpenCloudPlan"
-          bindresetlayout="onResetLayout"
-          bindenterroom="onEnterRoom"
-          bindaddroom="onAddRoom"
-          bindaigen="onAIGen"
-        />
-      </block>
-    </block>
-  </view>
+      <view class="home-shell">
+        <view class="home-header">
+          <view class="brand-block">
+            <view class="brand-mark">
+              <view class="brand-grid">
+                <view class="brand-grid-cell"></view>
+                <view class="brand-grid-cell"></view>
+                <view class="brand-grid-cell"></view>
+                <view class="brand-grid-cell"></view>
+              </view>
+            </view>
+            <view class="brand-copy">
+              <text class="brand-title">智能量房大师</text>
+              <text class="brand-subtitle">Smart Floor Planner</text>
+            </view>
+          </view>
 
-  <!-- 浮动：获取报价/设计 -->
-  <view class="floating-btn-lead" bindtap="onOpenLeadModal">
-    <view class="floating-btn-lead-inner">{{userInfo.role === 'staff' ? '开始量房绑定客户' : '免费设计与报价'}}</view>
-  </view>
+          <view class="city-chip">
+            <text class="city-icon">⌖</text>
+            <text class="city-text">{{currentCity}}</text>
+            <text class="city-arrow">⌄</text>
+          </view>
+        </view>
+
+        <view class="hero-card">
+          <view class="hero-copy">
+            <text class="hero-title">{{plannedRooms.length > 0 ? '继续量房' : '开始量房'}}</text>
+            <text class="hero-desc">
+              {{plannedRooms.length > 0 ? '继续完善户型测量，进入空间编辑与 AI 设计流程' : '连接设备，绘制户型图，精准测量，3D 呈现'}}
+            </text>
+            <view class="hero-button" bindtap="onPrimaryMeasureTap">
+              <view class="hero-button-icon">→</view>
+              <text class="hero-button-text">{{plannedRooms.length > 0 ? '继续量房' : '开始量房'}}</text>
+            </view>
+          </view>
+
+          <view class="hero-visual">
+            <view class="hero-measure measure-top-left">7200</view>
+            <view class="hero-measure measure-top-right">3600</view>
+            <view class="hero-measure measure-bottom-left">3600</view>
+            <view class="hero-measure measure-bottom-right">4200</view>
+            <view class="hero-house">
+              <view class="house-layer house-layer-base"></view>
+              <view class="house-room house-room-a"></view>
+              <view class="house-room house-room-b"></view>
+              <view class="house-room house-room-c"></view>
+              <view class="house-room house-room-d"></view>
+              <view class="house-outline house-outline-1"></view>
+              <view class="house-outline house-outline-2"></view>
+            </view>
+            <view class="hero-device">
+              <view class="device-screen"></view>
+            </view>
+            <view class="hero-laser"></view>
+          </view>
+        </view>
+
+        <view class="quick-row">
+          <view class="quick-card" bindtap="onQuickBluetoothTap">
+            <view class="quick-card-icon quick-card-icon-green">⌁</view>
+            <view class="quick-card-body">
+              <text class="quick-card-title">蓝牙连接</text>
+              <text class="quick-card-subtitle">{{bleStatusText}}</text>
+            </view>
+            <view class="quick-status-dot {{bleConnected ? 'quick-status-dot-active' : ''}}"></view>
+          </view>
+
+          <view class="quick-card" bindtap="onQuickQuoteTap">
+            <view class="quick-card-icon quick-card-icon-blue">▦</view>
+            <view class="quick-card-body">
+              <text class="quick-card-title">快速报价</text>
+              <text class="quick-card-subtitle">估算装修费用</text>
+            </view>
+            <text class="quick-card-arrow">›</text>
+          </view>
+        </view>
+
+        <view class="section-card">
+          <text class="section-title">我的数据</text>
+          <view class="stats-grid">
+            <view class="stat-card" wx:for="{{dashboardStats}}" wx:key="key">
+              <view class="stat-icon stat-icon-{{item.tone}}">
+                <text class="stat-icon-text">{{item.icon}}</text>
+              </view>
+              <view class="stat-copy">
+                <text class="stat-label">{{item.label}}</text>
+                <view class="stat-value-row">
+                  <text class="stat-value">{{item.value}}</text>
+                  <text class="stat-unit">{{item.unit}}</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <view class="section-card" wx:if="{{plannedRooms.length > 0}}">
+          <view class="section-head">
+            <text class="section-title">进行中的量房</text>
+            <text class="section-link" bindtap="onResetLayout">重新选择</text>
+          </view>
+
+          <view class="project-summary">
+            <view class="project-summary-copy">
+              <text class="project-summary-title">{{activeProjectTitle}}</text>
+              <text class="project-summary-subtitle">{{plannedRooms.length}} 个空间待处理</text>
+            </view>
+            <view class="project-summary-action" bindtap="onContinueProjectTap">继续</view>
+          </view>
+
+          <view class="room-chip-list">
+            <view
+              class="room-chip {{item.measured ? 'room-chip-complete' : ''}}"
+              wx:for="{{plannedRooms}}"
+              wx:key="id"
+              data-id="{{item.id}}"
+              bindtap="onEnterRoom"
+            >
+              <text class="room-chip-text">{{item.name}}</text>
+            </view>
+            <view class="room-chip room-chip-add" bindtap="onAddRoom">+ 添加房间</view>
+          </view>
+        </view>
+
+        <view class="section-card">
+          <view class="section-head">
+            <text class="section-title">最近方案</text>
+            <text class="section-link" bindtap="onOpenAllPlans">全部方案</text>
+          </view>
+
+          <block wx:if="{{recentPlans.length > 0}}">
+            <view
+              class="recent-plan"
+              wx:for="{{recentPlans}}"
+              wx:key="_id"
+              data-id="{{item._id}}"
+              bindtap="onTapRecentPlan"
+            >
+              <view class="recent-plan-thumb">
+                <view class="thumb-line thumb-line-a"></view>
+                <view class="thumb-line thumb-line-b"></view>
+                <view class="thumb-line thumb-line-c"></view>
+              </view>
+              <view class="recent-plan-body">
+                <text class="recent-plan-title">{{item.name}}</text>
+                <text class="recent-plan-meta">{{item.meta}}</text>
+              </view>
+              <view class="recent-plan-side">
+                <view class="recent-plan-status">{{item.statusLabel}}</view>
+                <text class="recent-plan-more">⋯</text>
+              </view>
+            </view>
+          </block>
+
+          <view class="empty-block" wx:else>
+            <text class="empty-block-title">还没有保存的方案</text>
+            <text class="empty-block-desc">点击上方开始量房，系统会自动创建你的第一个项目。</text>
+          </view>
+        </view>
+
+        <view class="section-card">
+          <view class="section-head">
+            <text class="section-title">快速模板</text>
+            <text class="section-caption">优先创建标准户型，再进入逐房间测量</text>
+          </view>
+
+          <view class="template-grid">
+            <view
+              class="template-card"
+              wx:for="{{homeTemplates}}"
+              wx:key="id"
+              data-id="{{item.id}}"
+              bindtap="onSelectLayout"
+            >
+              <text class="template-card-title">{{item.name}}</text>
+              <text class="template-card-desc">一键创建基础户型结构</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+  </block>
 
   <lead-modal show="{{showLeadModal}}" bindclose="onCloseLeadModal" bindsuccess="onLeadSuccess" />
 
