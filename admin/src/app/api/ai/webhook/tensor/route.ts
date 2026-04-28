@@ -9,49 +9,44 @@ import { AiQuota } from '@/models/AiQuota';
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    // Tensor.art webhook payload structure
-    const job = body.job || body.task;
-    if (!job) {
+    // Tensor.art TAMS webhook payload structure: { jobId, status, successInfo, failedInfo }
+    const jobId = body.jobId;
+    if (!jobId) {
       return NextResponse.json({ success: false, error: 'Invalid payload' }, { status: 400 });
     }
 
-    const { id, status, success, msg } = job;
-    console.log(`[Tensor.art Webhook] Job ${id} status: ${status}`);
+    const { status, successInfo, failedInfo } = body;
+    console.log(`[Tensor.art Webhook] Job ${jobId} status: ${status}`);
 
     await dbConnect();
     // 同时支持旧字段和新字段查询
     const generation = await AiGeneration.findOne({ 
       $or: [
-        { externalJobId: id },
-        { replicatePredictionId: id }
+        { externalJobId: jobId },
+        { replicatePredictionId: jobId }
       ]
     });
 
     if (!generation) {
-      console.error(`[Tensor.art Webhook] Generation not found for ID: ${id}`);
+      console.error(`[Tensor.art Webhook] Generation not found for ID: ${jobId}`);
       return NextResponse.json({ success: false, error: 'Not found' }, { status: 404 });
     }
 
-    // Tensor.art status: SUCCESS or FINISH
-    if (status === 'SUCCESS' || status === 'FINISH') {
+    // Tensor.art TAMS status: SUCCESS
+    if (status === 'SUCCESS') {
       generation.status = 'succeeded';
       
       // 提取输出图片 URL
-      // Tensor.art outputs structure: [{ type: 'FILE', url: '...' }] 或 [{ type: 'STRING', value: '...' }]
-      const outputs = job.outputs || [];
-      const imageUrl = outputs.find((o: any) => 
-        (o.type === 'FILE' && o.url) || 
-        (o.type === 'STRING' && o.value && o.value.startsWith('http'))
-      )?.url || outputs.find((o: any) => o.type === 'STRING')?.value;
+      const imageUrl = successInfo?.images?.[0]?.url;
       
       if (imageUrl) {
         generation.output.imageUrl = imageUrl;
       }
       await generation.save();
     } 
-    else if (status === 'FAILED' || status === 'ERROR' || status === 'EXCEPTION' || status === 'CANCELED') {
+    else if (['FAILED', 'CANCELED'].includes(status)) {
       generation.status = 'failed';
-      generation.errorMessage = msg || 'Generation failed on Tensor.art';
+      generation.errorMessage = failedInfo?.reason || 'Generation failed on Tensor.art';
       await generation.save();
 
       // 退回配额

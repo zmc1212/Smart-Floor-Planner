@@ -11,6 +11,8 @@ export async function GET(request: Request) {
     const cookie = request.headers.get('cookie');
     const tokenMatch = cookie?.match(/auth_token=([^;]+)/);
     const token = tokenMatch ? tokenMatch[1] : null;
+    const globalTenantMatch = cookie?.match(/global_tenant_id=([^;]+)/);
+    const globalTenantId = globalTenantMatch ? decodeURIComponent(globalTenantMatch[1]) : null;
 
     if (!token) {
       return NextResponse.json({ success: false, error: '未登录' }, { status: 401 });
@@ -27,6 +29,23 @@ export async function GET(request: Request) {
     }
 
     const a = admin.toObject();
+    if (
+      (a.role === 'super_admin' || a.role === 'admin') &&
+      globalTenantId &&
+      globalTenantId !== 'all'
+    ) {
+      const selectedEnterprise = await Enterprise.findById(globalTenantId)
+        .select('name')
+        .lean();
+
+      if (selectedEnterprise) {
+        a.enterpriseId = {
+          _id: String(selectedEnterprise._id),
+          name: selectedEnterprise.name,
+        };
+      }
+    }
+
     const effectivePermissions = 
       a.menuPermissions && a.menuPermissions.length > 0
         ? a.menuPermissions

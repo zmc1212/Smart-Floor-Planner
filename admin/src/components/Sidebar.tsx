@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, memo } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { 
   LayoutDashboard, 
   Users, 
@@ -136,7 +136,6 @@ const NavItem = memo(function NavItem({
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const router = useRouter();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [enterprises, setEnterprises] = useState<any[]>([]);
   const [globalTenantId, setGlobalTenantId] = useState<string>('all');
@@ -173,7 +172,7 @@ export default function Sidebar() {
   const handleTenantChange = (value: string) => {
     setGlobalTenantId(value);
     document.cookie = `global_tenant_id=${value}; path=/; max-age=86400`; // 1 day
-    router.refresh();
+    window.location.reload();
   };
 
   const toggleCollapse = () => {
@@ -189,8 +188,7 @@ export default function Sidebar() {
     try {
       const res = await fetch('/api/auth/logout', { method: 'POST' });
       if (res.ok) {
-        router.push('/login');
-        router.refresh();
+        window.location.href = '/login';
       }
     } catch (err) {
       console.error('Logout error:', err);

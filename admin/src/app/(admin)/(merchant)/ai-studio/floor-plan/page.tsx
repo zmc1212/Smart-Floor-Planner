@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Loader2, Sparkles, Download, Image as ImageIcon, Clock, ChevronRight, Map, RefreshCw, ExternalLink } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Loader2, Sparkles, Download, Image as ImageIcon, Clock, ChevronRight, Map, RefreshCw, ExternalLink, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -50,6 +51,7 @@ const FLOOR_PLAN_STYLES = [
 ];
 
 export default function AiFloorPlanPage() {
+  const router = useRouter();
   const { user } = useCurrentUser();
   const { data: floorPlansData, isLoading: loadingPlans } = useFetch<any[]>('/api/floorplans');
   const floorPlans = floorPlansData || [];
@@ -68,6 +70,7 @@ export default function AiFloorPlanPage() {
 
   const selectedPlan = floorPlans.find(p => p._id === selectedPlanId);
 
+  const [realProgress, setRealProgress] = useState(0);
   const [loadingStage, setLoadingStage] = useState(0);
   const [generationId, setGenerationId] = useState<string | null>(null);
 
@@ -87,6 +90,7 @@ export default function AiFloorPlanPage() {
       }, 3000);
     } else {
       setLoadingStage(0);
+      setRealProgress(0);
     }
     return () => clearInterval(timer);
   }, [isGenerating]);
@@ -99,9 +103,14 @@ export default function AiFloorPlanPage() {
         const data = await res.json();
         
         if (data.success) {
+          if (data.data.progress) {
+            setRealProgress(data.data.progress);
+          }
+          
           if (data.data.status === 'succeeded') {
             setGeneratedImage(data.data.imageUrl);
             setIsGenerating(false);
+            setRealProgress(100);
             clearInterval(interval);
             mutateQuota();
             mutateHistory();
@@ -209,8 +218,8 @@ export default function AiFloorPlanPage() {
 
       const renderData = await renderRes.json();
       if (renderData.success) {
-        // 第三阶段：开启轮询
-        pollStatus(id);
+        // 跳转到详情页进行轮询和查看
+        router.push(`/ai-studio/floor-plan/${id}`);
       } else {
         alert(renderData.error || '提交渲染失败');
         setIsGenerating(false);
@@ -342,10 +351,22 @@ export default function AiFloorPlanPage() {
                     </div>
                     <div className="absolute inset-0 rounded-full border-2 border-purple-300 animate-ping" />
                   </div>
-                  <div className="text-center">
-                    <p className="text-lg font-bold">{LOADING_STAGES[loadingStage]}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {FLOOR_PLAN_STYLES.find(s => s.id === selectedStyle)?.label} · 预计 10-30 秒
+                  <div className="text-center w-full max-w-[200px]">
+                    <p className="text-lg font-bold mb-1">{LOADING_STAGES[loadingStage]}</p>
+                    <div className="flex flex-col gap-1.5">
+                      <div className="flex justify-between text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                        <span>Progress</span>
+                        <span>{realProgress > 0 ? `${realProgress}%` : 'Queueing...'}</span>
+                      </div>
+                      <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-purple-500 transition-all duration-1000 ease-out" 
+                          style={{ width: `${Math.max(realProgress, 5)}%` }}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-3">
+                      {FLOOR_PLAN_STYLES.find(s => s.id === selectedStyle)?.label} · 1k Resolution
                     </p>
                   </div>
                 </div>
@@ -496,17 +517,7 @@ export default function AiFloorPlanPage() {
                       key={item._id}
                       className="flex items-center gap-3 p-3 rounded-xl bg-muted/20 hover:bg-muted/40 cursor-pointer transition-all group"
                       onClick={() => {
-                        if (item.status === 'succeeded' && item.output?.imageUrl) {
-                          setGeneratedImage(item.output.imageUrl);
-                          setIsGenerating(false);
-                        } else if (item.status === 'processing' || item.status === 'pending') {
-                          setIsGenerating(true);
-                          setGenerationId(item._id);
-                          setGeneratedImage(null);
-                          pollStatus(item._id);
-                        } else if (item.status === 'failed') {
-                          alert(`生成失败: ${item.errorMessage || '未知错误'}`);
-                        }
+                        router.push(`/ai-studio/floor-plan/${item._id}`);
                       }}
                     >
                       <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center overflow-hidden shrink-0 relative">
