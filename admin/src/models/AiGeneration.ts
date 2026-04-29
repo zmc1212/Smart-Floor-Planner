@@ -19,6 +19,7 @@ export interface IAiGeneration extends Document {
     width?: number;
     height?: number;
     mode?: string;
+    roomData?: unknown;
     customPrompt?: string;
   };
   /** AI 生成的结果 */
@@ -71,6 +72,7 @@ const AiGenerationSchema: Schema<IAiGeneration> = new Schema(
       width: { type: Number },
       height: { type: Number },
       mode: { type: String },
+      roomData: { type: Schema.Types.Mixed },
       customPrompt: { type: String },
     },
     output: {

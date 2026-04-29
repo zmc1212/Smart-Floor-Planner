@@ -194,8 +194,30 @@ export async function createTensorJob(params: {
   image: string;
   width?: number;
   height?: number;
+  tensorConfig?: {
+    modelId: string;
+    sampler?: string;
+    steps?: number;
+    cfgScale?: number;
+    width?: number;
+    height?: number;
+    vae?: string;
+    clipSkip?: number;
+    guidance?: number;
+    denoisingStrength?: number;
+    controlnet?: {
+      enabled: boolean;
+      preprocessor: string;
+      model: string;
+      weight: number;
+      guidanceStart?: number;
+      guidanceEnd?: number;
+    };
+  };
 }) {
   const resourceId = await uploadImageResource(params.image);
+  const tensorConfig = params.tensorConfig;
+  const controlnetConfig = tensorConfig?.controlnet;
 
   const jobPayload = {
     request_id: uuidv4(),
@@ -207,26 +229,36 @@ export async function createTensorJob(params: {
       {
         type: 'DIFFUSION',
         diffusion: {
-          width: params.width || 1024,
-          height: params.height || 1024,
+          width: params.width || tensorConfig?.width || 1024,
+          height: params.height || tensorConfig?.height || 1024,
           prompts: [{ text: params.prompt }],
           negativePrompts: [{ text: params.negativePrompt || 'low quality, bad resolution, text, watermark, blurry' }],
-          sdModel: '613045163490732233',
-          sampler: 'Euler a',
-          steps: 25,
-          cfgScale: 7,
-          controlnet: {
-            args: [
-              {
-                inputImageResourceId: resourceId,
-                preprocessor: 'none',
-                model: '619225630271212879',
-                weight: 0.8,
-                guidanceStart: 0,
-                guidanceEnd: 1,
-              },
-            ],
-          },
+          sdModel: tensorConfig?.modelId || '701982267016309424',
+          sampler: tensorConfig?.sampler || 'Euler',
+          steps: tensorConfig?.steps || 20,
+          cfgScale: tensorConfig?.cfgScale || 7,
+          ...(tensorConfig?.vae ? { sdVae: tensorConfig.vae } : {}),
+          ...(typeof tensorConfig?.clipSkip === 'number' ? { clipSkip: tensorConfig.clipSkip } : {}),
+          ...(typeof tensorConfig?.guidance === 'number' ? { guidance: tensorConfig.guidance } : {}),
+          ...(typeof tensorConfig?.denoisingStrength === 'number'
+            ? { denoisingStrength: tensorConfig.denoisingStrength }
+            : {}),
+          ...(controlnetConfig?.enabled
+            ? {
+                controlnet: {
+                  args: [
+                    {
+                      inputImageResourceId: resourceId,
+                      preprocessor: controlnetConfig.preprocessor,
+                      model: controlnetConfig.model,
+                      weight: controlnetConfig.weight,
+                      guidanceStart: controlnetConfig.guidanceStart ?? 0,
+                      guidanceEnd: controlnetConfig.guidanceEnd ?? 1,
+                    },
+                  ],
+                },
+              }
+            : {}),
         },
       },
     ],
@@ -248,7 +280,7 @@ export async function createTensorJob(params: {
   console.log('=============================================');
   console.log('[Tensor.art Job Request] URL:', url);
   console.log('[Tensor.art Job Request] Headers:', JSON.stringify(headers, null, 2));
-  console.log('[Tensor.art Job Request] Body (Truncated):', JSON.stringify(jobPayload).substring(0, 200) + '...');
+  console.log('[Tensor.art Job Request] Full Parameters:', JSON.stringify(jobPayload, null, 2));
   console.log('=============================================');
 
   const response = await fetch(url, {

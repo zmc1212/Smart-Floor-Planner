@@ -10,8 +10,8 @@ export interface IAdminUser extends Document {
   departmentId?: mongoose.Types.ObjectId;
   promoterIds?: mongoose.Types.ObjectId[];
   wecomUserId?: string;
-  openid?: string; // Link to WeChat identity
-  phone?: string;  // Link via phone number
+  openid?: string;
+  phone?: string;
   menuPermissions: string[];
   status: 'active' | 'disabled';
   lastLoginAt?: Date;
@@ -19,7 +19,6 @@ export interface IAdminUser extends Document {
   updatedAt: Date;
 }
 
-// Default menu permissions per role
 export const ROLE_LABELS: Record<string, string> = {
   super_admin: '超级管理员',
   admin: '系统管理员',
@@ -35,17 +34,31 @@ export const ALL_MENUS = [
   { key: 'floorplans', label: '户型图' },
   { key: 'users', label: '小程序用户' },
   { key: 'devices', label: '设备管理' },
-  { key: 'leads', label: '客资线索' },
+  { key: 'leads', label: '客户线索' },
   { key: 'ai-floorplan', label: 'AI 室内平面' },
   { key: 'ai-furnishing', label: 'AI 软装设计' },
+  { key: 'ai-presets', label: 'AI 预设配置' },
   { key: 'inspirations', label: '装修灵感库' },
   { key: 'staff', label: '员工管理' },
   { key: 'admins', label: '系统账号管理' },
 ];
 
 export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
-  super_admin: ALL_MENUS.map(m => m.key),
-  admin: ['dashboard', 'enterprises', 'floorplans', 'users', 'devices', 'leads', 'ai-floorplan', 'ai-furnishing', 'inspirations', 'staff', 'admins'],
+  super_admin: ALL_MENUS.map((m) => m.key),
+  admin: [
+    'dashboard',
+    'enterprises',
+    'floorplans',
+    'users',
+    'devices',
+    'leads',
+    'ai-floorplan',
+    'ai-furnishing',
+    'ai-presets',
+    'inspirations',
+    'staff',
+    'admins',
+  ],
   enterprise_admin: ['dashboard', 'floorplans', 'leads', 'ai-floorplan', 'ai-furnishing', 'inspirations', 'staff', 'devices'],
   designer: ['dashboard', 'floorplans', 'leads', 'ai-floorplan', 'ai-furnishing', 'inspirations', 'devices'],
   salesperson: ['dashboard', 'leads', 'ai-floorplan', 'ai-furnishing', 'inspirations'],
@@ -111,7 +124,6 @@ const AdminUserSchema: Schema<IAdminUser> = new Schema(
       enum: ['active', 'disabled'],
       default: 'active',
     },
-
     lastLoginAt: {
       type: Date,
     },
@@ -125,31 +137,25 @@ AdminUserSchema.index({ enterpriseId: 1, role: 1 });
 AdminUserSchema.index({ enterpriseId: 1, departmentId: 1 });
 AdminUserSchema.index({ enterpriseId: 1, username: 1 });
 
-// 应用多租户插件 - 使用自定义过滤逻辑
 const adminUserPluginOptions: TenantPluginOptions = {
   enableRoleBasedFiltering: true,
   customFilter: (store) => {
-    const filter: any = {};
+    const filter: Record<string, unknown> = {};
 
-    // 企业级别隔离
     if (store.enterpriseId) {
       filter.enterpriseId = store.enterpriseId;
     }
 
-    // 角色级别特殊逻辑
     if (store.role === 'enterprise_admin') {
-      // 企业负责人可以看到自己企业的所有员工
-      // 不需要额外的staff过滤
-    } else if (store.role === 'designer' || store.role === 'salesperson') {
-      // 设计师和销售只能看到自己和自己的promoter信息
-      filter.$or = [
-        { _id: store.userId }, // 可以看到自己的信息
-        { promoterIds: store.userId } // 可以看到自己推广的员工
-      ];
+      return filter;
+    }
+
+    if (store.role === 'designer' || store.role === 'salesperson') {
+      filter.$or = [{ _id: store.userId }, { promoterIds: store.userId }];
     }
 
     return filter;
-  }
+  },
 };
 
 AdminUserSchema.plugin(multiTenantPlugin, adminUserPluginOptions);

@@ -4,6 +4,7 @@ import { AiGeneration } from '@/models/AiGeneration';
 import { AiQuota } from '@/models/AiQuota';
 import Replicate from 'replicate';
 import { withTenantRoute } from '@/lib/tenant-route';
+import { ensureDefaultAiStylePresets, getAiStylePresetByKey } from '@/lib/ai/presets';
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN || '',
@@ -14,6 +15,7 @@ export async function POST(req: Request) {
     await dbConnect();
 
     return await withTenantRoute(req, { requireEnterprise: true }, async (context) => {
+      await ensureDefaultAiStylePresets(context.userId);
       const body = await req.json();
       const { generationId, image, prompt, negativePrompt } = body;
 
@@ -48,10 +50,12 @@ export async function POST(req: Request) {
 
       try {
         if (process.env.MOCK_AI === 'true') {
-          // Simulate AI delay
+          const presetType = generation.type === 'furnishing_render' ? 'furnishing_render' : 'floor_plan_style';
+          const preset = await getAiStylePresetByKey(presetType, generation.input.style);
           await new Promise((resolve) => setTimeout(resolve, 2000));
+          const mockImageUrl = preset?.mockImageUrl || '/colorful.png';
           generation.status = 'succeeded';
-          generation.output.imageUrl = 'https://picsum.photos/800/600'; // mock image
+          generation.output.imageUrl = mockImageUrl;
           await generation.save();
           return NextResponse.json({ success: true, data: { id: generation._id } });
         }
@@ -60,13 +64,16 @@ export async function POST(req: Request) {
 
         if (aiPlatform === 'tensor') {
           const { createTensorJob } = await import('@/lib/ai/tensor');
+          const presetType = generation.type === 'furnishing_render' ? 'furnishing_render' : 'floor_plan_style';
+          const preset = await getAiStylePresetByKey(presetType, generation.input.style);
           try {
             const job = await createTensorJob({
-              prompt: prompt || generation.input.customPrompt || '',
-              negativePrompt: negativePrompt,
+              prompt: prompt || generation.output.promptUsed || generation.input.customPrompt || '',
+              negativePrompt: negativePrompt || preset?.negativePrompt,
               image,
-              width: 1024,
-              height: 1024,
+              width: preset?.tensor.width,
+              height: preset?.tensor.height,
+              tensorConfig: preset?.tensor,
             });
 
             generation.status = 'processing';

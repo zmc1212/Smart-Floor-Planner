@@ -258,6 +258,24 @@ export default function Sidebar() {
           );
         })}
 
+        {(admin?.role === 'super_admin' || admin?.role === 'admin') && (
+          <div className="space-y-2 border-l-2 border-primary/20 ml-1">
+            {!collapsed && (
+              <h2 className="px-3 text-[10px] font-bold text-primary uppercase tracking-[0.1em] mb-2 opacity-70">
+                AI Config
+              </h2>
+            )}
+            <div className="space-y-1">
+              <NavItem
+                item={{ key: 'ai-presets', label: 'AI 预设配置', icon: Sparkles, href: '/ai-presets' }}
+                collapsed={collapsed}
+                isActive={pathname === '/ai-presets'}
+                hasPermission
+              />
+            </div>
+          </div>
+        )}
+
         {/* Render Merchant Menus */}
         {MENU_CONFIG.merchant.map((category) => {
           const visibleItems = category.items.filter(item => !admin || admin.effectivePermissions?.includes(item.key));
