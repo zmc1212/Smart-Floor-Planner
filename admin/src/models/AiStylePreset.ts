@@ -45,7 +45,7 @@ export interface IAiStylePreset extends Document {
 const AiStylePresetSchema = new Schema<IAiStylePreset>(
   {
     key: { type: String, required: true, trim: true },
-    type: { type: String, enum: ['floor_plan_style', 'furnishing_render'], required: true },
+    type: { type: String, enum: ['floor_plan_style', 'furnishing_style'], required: true },
     name: { type: String, required: true, trim: true },
     description: { type: String, default: '' },
     icon: { type: String, default: '' },

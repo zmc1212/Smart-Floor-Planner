@@ -1,8 +1,17 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Sparkles, Download, Image as ImageIcon, Clock, ChevronRight, Map, RefreshCw, ExternalLink, Share2 } from 'lucide-react';
+import {
+  ChevronRight,
+  Clock,
+  Image as ImageIcon,
+  Loader2,
+  Map,
+  PenTool,
+  RefreshCw,
+  Sparkles,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -12,122 +21,115 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from '@/components/ui/select';
 import AiQuotaBar from '@/components/ai-studio/AiQuotaBar';
 import RechargeDialog from '@/components/ai-studio/RechargeDialog';
-import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useFetch } from '@/hooks/useFetch';
 
-// --- 平面风格定义 ---
-const FLOOR_PLAN_STYLES = [
-  {
-    id: 'colorful',
-    label: '彩色风格',
-    description: '鲜明色块区分空间，直观易读',
-    gradient: 'from-pink-400 via-purple-400 to-blue-400',
-    emoji: '🎨',
-  },
-  {
-    id: 'cad',
-    label: 'CAD风格',
-    description: '专业黑白线稿，精确尺寸标注',
-    gradient: 'from-zinc-700 via-zinc-500 to-zinc-400',
-    emoji: '📐',
-  },
-  {
-    id: '3d',
-    label: '3D风格',
-    description: '立体透视图，沉浸感呈现',
-    gradient: 'from-cyan-400 via-blue-500 to-indigo-500',
-    emoji: '🏗️',
-  },
-  {
-    id: 'handdrawn',
-    label: '手绘风格',
-    description: '水彩手绘质感，温暖艺术化',
-    gradient: 'from-amber-300 via-orange-300 to-rose-300',
-    emoji: '✏️',
-  },
+interface AiPreset {
+  _id: string;
+  key: string;
+  name: string;
+  description: string;
+  icon: string;
+  previewClassName: string;
+  mockImageUrl?: string;
+  enabled: boolean;
+  sortOrder: number;
+}
+
+interface FloorPlanRoom {
+  id?: string;
+  name?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  [key: string]: unknown;
+}
+
+interface AiQuotaData {
+  tier: string;
+  usedCount: number;
+  monthlyLimit: number;
+  bonusCredits: number;
+  remaining: number;
+}
+
+interface FloorPlanItem {
+  _id: string;
+  name?: string;
+  layoutData?: FloorPlanRoom[] | { rooms?: FloorPlanRoom[] };
+}
+
+interface AiHistoryItem {
+  _id: string;
+  status?: string;
+  createdAt: string;
+  input?: { style?: string };
+  output?: { imageUrl?: string };
+}
+
+const LOADING_STAGES = [
+  '正在解析空间结构...',
+  '正在匹配图纸表现风格...',
+  '正在生成墙体和门窗关系...',
+  '正在处理边缘细节...',
+  '即将完成...',
 ];
+
+function getRooms(plan?: FloorPlanItem) {
+  const layoutData = plan?.layoutData;
+  const rooms = Array.isArray(layoutData) ? layoutData : layoutData?.rooms || [];
+  return Array.isArray(rooms) ? rooms : [];
+}
 
 export default function AiFloorPlanPage() {
   const router = useRouter();
-  const { user } = useCurrentUser();
-  const { data: floorPlansData, isLoading: loadingPlans } = useFetch<any[]>('/api/floorplans');
-  const floorPlans = floorPlansData || [];
-  const { data: quota, mutate: mutateQuota } = useFetch<any>('/api/ai/quota');
-  const { data: historyData, mutate: mutateHistory } = useFetch<any>('/api/ai/history?type=floor_plan_style&limit=6');
-  
-  const [selectedPlanId, setSelectedPlanId] = useState<string>('');
-  const [selectedRoomIndex, setSelectedRoomIndex] = useState<string>('-1');
-  const [selectedStyle, setSelectedStyle] = useState<string>('colorful');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
-  const [showRecharge, setShowRecharge] = useState(false);
+  const { data: floorPlansData, isLoading: loadingPlans } = useFetch<FloorPlanItem[]>('/api/floorplans');
+  const { data: quota, mutate: mutateQuota } = useFetch<AiQuotaData>('/api/ai/quota');
+  const { data: presetsData, isLoading: loadingPresets } = useFetch<AiPreset[]>(
+    '/api/ai/presets?type=floor_plan_style'
+  );
+  const { data: historyData, mutate: mutateHistory } = useFetch<AiHistoryItem[]>('/api/ai/history?type=floor_plan_style&limit=6');
 
+  const floorPlans = floorPlansData || [];
+  const presets = useMemo(
+    () => [...(presetsData || [])].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)),
+    [presetsData]
+  );
   const history = historyData || [];
 
-
-  const selectedPlan = floorPlans.find(p => p._id === selectedPlanId);
-
-  const [realProgress, setRealProgress] = useState(0);
+  const [selectedPlanId, setSelectedPlanId] = useState('');
+  const [selectedRoomIndex, setSelectedRoomIndex] = useState('-1');
+  const [selectedStyle, setSelectedStyle] = useState('colorful');
+  const [isGenerating, setIsGenerating] = useState(false);
   const [loadingStage, setLoadingStage] = useState(0);
-  const [generationId, setGenerationId] = useState<string | null>(null);
+  const [showRecharge, setShowRecharge] = useState(false);
 
-  const LOADING_STAGES = [
-    "正在解析空间结构...",
-    "正在构思光影和材质...",
-    "正在进行最终渲染...",
-    "正在处理边缘细节...",
-    "即将完成..."
-  ];
+  const selectedPlan = floorPlans.find((plan) => plan._id === selectedPlanId);
+  const selectedPreset = presets.find((preset) => preset.key === selectedStyle);
 
   useEffect(() => {
-    let timer: any;
+    if (presets.length > 0 && !presets.some((preset) => preset.key === selectedStyle)) {
+      setSelectedStyle(presets[0].key);
+    }
+  }, [presets, selectedStyle]);
+
+  useEffect(() => {
+    let timer: number | undefined;
     if (isGenerating) {
-      timer = setInterval(() => {
-        setLoadingStage(prev => (prev + 1) % LOADING_STAGES.length);
-      }, 3000);
+      timer = window.setInterval(() => {
+        setLoadingStage((prev) => (prev + 1) % LOADING_STAGES.length);
+      }, 2500);
     } else {
       setLoadingStage(0);
-      setRealProgress(0);
     }
-    return () => clearInterval(timer);
+
+    return () => {
+      if (timer) window.clearInterval(timer);
+    };
   }, [isGenerating]);
-
-  // 轮询函数
-  const pollStatus = async (id: string) => {
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/ai/status/${id}`);
-        const data = await res.json();
-        
-        if (data.success) {
-          if (data.data.progress) {
-            setRealProgress(data.data.progress);
-          }
-          
-          if (data.data.status === 'succeeded') {
-            setGeneratedImage(data.data.imageUrl);
-            setIsGenerating(false);
-            setRealProgress(100);
-            clearInterval(interval);
-            mutateQuota();
-            mutateHistory();
-          } else if (data.data.status === 'failed') {
-            alert(data.data.error || '生成失败');
-            setIsGenerating(false);
-            clearInterval(interval);
-            mutateQuota();
-          }
-        }
-      } catch (err) {
-        console.error('Polling error:', err);
-      }
-    }, 3000);
-
-    return () => clearInterval(interval);
-  };
 
   const handleGenerate = async () => {
     if (!selectedPlanId) {
@@ -135,38 +137,30 @@ export default function AiFloorPlanPage() {
       return;
     }
 
+    const allRooms = getRooms(selectedPlan);
+    if (allRooms.length === 0) {
+      alert('当前户型缺少 layoutData，无法生成控制图');
+      return;
+    }
+
+    const targetRooms =
+      selectedRoomIndex === '-1' ? allRooms : [allRooms[Number(selectedRoomIndex)]].filter(Boolean);
+
+    if (targetRooms.length === 0) {
+      alert('未找到选中的房间');
+      return;
+    }
+
     setIsGenerating(true);
-    setGeneratedImage(null);
     setLoadingStage(0);
 
     try {
-      const plan = selectedPlan;
-      // 提取房间信息
-      const allRooms = plan?.layoutData?.rooms || plan?.layoutData || [];
-      
-      let targetRooms = allRooms;
-      let roomNameForPrompt = plan?.name || '住宅';
-      let targetWidth = 500;
-      let targetHeight = 400;
+      const roomNameForPrompt =
+        selectedRoomIndex === '-1'
+          ? targetRooms.map((room) => room.name).filter(Boolean).join(', ') || selectedPlan?.name || '住宅'
+          : targetRooms[0]?.name || '房间';
+      const firstRoom = targetRooms[0] || {};
 
-      if (selectedRoomIndex !== '-1') {
-        const idx = parseInt(selectedRoomIndex);
-        const r = allRooms[idx];
-        if (r) {
-          targetRooms = [r];
-          roomNameForPrompt = r.name || `房间 ${idx + 1}`;
-          targetWidth = r.width || 500;
-          targetHeight = r.height || 400;
-        }
-      } else {
-        roomNameForPrompt = Array.isArray(allRooms) ? allRooms.map((r: any) => r.name).filter(Boolean).join(', ') : (plan?.name || '住宅');
-        if (allRooms.length > 0) {
-          targetWidth = allRooms[0].width || 500;
-          targetHeight = allRooms[0].height || 400;
-        }
-      }
-
-      // 第一阶段：生成 Prompt
       const genRes = await fetch('/api/ai/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -175,8 +169,9 @@ export default function AiFloorPlanPage() {
           style: selectedStyle,
           floorPlanId: selectedPlanId,
           roomName: roomNameForPrompt,
-          width: targetWidth,
-          height: targetHeight,
+          width: firstRoom.width || 500,
+          height: firstRoom.height || 400,
+          mode: selectedRoomIndex === '-1' ? 'whole_floor_plan' : 'single_room',
           roomData: targetRooms,
         }),
       });
@@ -188,11 +183,7 @@ export default function AiFloorPlanPage() {
         return;
       }
 
-      const { id, prompt, negativePrompt } = genData.data;
-      setGenerationId(id);
-
-      // 黑底白线预处理 (Canvas Export)
-      let base64Image;
+      let base64Image: string;
       try {
         const { generateBaseMap } = await import('@/lib/canvasExport');
         base64Image = await generateBaseMap(targetRooms);
@@ -203,30 +194,29 @@ export default function AiFloorPlanPage() {
         return;
       }
 
-      // 第二阶段：发起渲染
       const renderRes = await fetch('/api/ai/render', {
-
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          generationId: id,
-          image: base64Image, 
-          prompt,
-          negativePrompt,
+          generationId: genData.data.id,
+          image: base64Image,
+          prompt: genData.data.prompt,
+          negativePrompt: genData.data.negativePrompt,
         }),
       });
 
       const renderData = await renderRes.json();
-      if (renderData.success) {
-        // 跳转到详情页进行轮询和查看
-        router.push(`/ai-studio/floor-plan/${id}`);
-      } else {
+      if (!renderData.success) {
         alert(renderData.error || '提交渲染失败');
         setIsGenerating(false);
+        return;
       }
 
-    } catch (err) {
-      console.error(err);
+      mutateQuota();
+      mutateHistory();
+      router.push(`/ai-studio/floor-plan/${genData.data.id}`);
+    } catch (error) {
+      console.error(error);
       alert('网络异常，请重试');
       setIsGenerating(false);
     }
@@ -252,238 +242,174 @@ export default function AiFloorPlanPage() {
     if (data.success) mutateQuota();
   };
 
+  const selectedRooms = getRooms(selectedPlan);
+
   return (
     <div className="min-h-screen bg-white text-[#171717] font-sans">
-      <main className="max-w-7xl mx-auto px-6 py-8">
-
-        {/* Header */}
+      <main className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center text-white">
-              <Sparkles size={20} />
+          <div className="mb-2 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 text-white">
+              <PenTool size={20} />
             </div>
             <h1 className="text-[28px] font-bold tracking-tight">AI 室内平面</h1>
-            <Badge variant="secondary" className="bg-purple-50 text-purple-700 border-none font-bold text-[10px] uppercase">
+            <Badge variant="secondary" className="border-none bg-purple-50 text-purple-700">
               Beta
             </Badge>
           </div>
-          <p className="text-muted-foreground text-sm">选择已有户型图，一键转换为彩色、CAD、3D、手绘等多种平面风格</p>
+          <p className="text-sm text-muted-foreground">
+            选择已有户型图，一键转换为彩色、CAD、3D、手绘等多种平面表现风格。
+          </p>
         </div>
 
-        {/* Quota Bar */}
         <div className="mb-8">
           <AiQuotaBar quota={quota} loading={!quota && !floorPlans.length} onRecharge={() => setShowRecharge(true)} />
         </div>
 
-        {/* Main Content — Two Column */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-          {/* LEFT: Preview Area */}
-          <div className="lg:col-span-2 space-y-6">
-
-            {/* Floor Plan Selector */}
-            <div className="flex flex-col sm:flex-row items-center gap-4">
-              <div className="flex-1 w-full">
-                <Select value={selectedPlanId} onValueChange={(val) => {
-                  setSelectedPlanId(val);
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+          <div className="space-y-6 lg:col-span-2">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Select
+                value={selectedPlanId}
+                onValueChange={(value) => {
+                  setSelectedPlanId(value);
                   setSelectedRoomIndex('-1');
-                }}>
-                  <SelectTrigger className="h-14 rounded-2xl bg-muted/20 border-muted font-medium text-base">
-                    <SelectValue placeholder="选择一个户型图作为 AI 输入源..." />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-2xl border-none shadow-2xl">
-                    {loadingPlans ? (
-                      <div className="p-6 text-center text-sm text-muted-foreground">
-                        <Loader2 className="animate-spin mx-auto mb-2" size={20} />
-                        加载中...
-                      </div>
-                    ) : floorPlans.length === 0 ? (
-                      <div className="p-6 text-center text-sm text-muted-foreground">
-                        暂无户型图，请先通过小程序量房采集
-                      </div>
-                    ) : (
-                      floorPlans.map(plan => (
-                        <SelectItem key={plan._id} value={plan._id} className="rounded-xl py-3">
-                          <div className="flex items-center gap-3">
-                            <Map size={16} className="text-muted-foreground" />
-                            <div>
-                              <span className="font-medium">{plan.name || '未命名户型'}</span>
-                              <span className="text-xs text-muted-foreground ml-2">
-                                {Array.isArray(plan.layoutData) ? plan.layoutData.length : (plan.layoutData?.rooms?.length || 0)} 个房间
-                              </span>
-                            </div>
+                }}
+              >
+                <SelectTrigger className="h-14 rounded-2xl border-muted bg-muted/20 text-base font-medium">
+                  <SelectValue placeholder="选择一个户型图作为 AI 输入源..." />
+                </SelectTrigger>
+                <SelectContent className="rounded-2xl border-none shadow-2xl">
+                  {loadingPlans ? (
+                    <div className="p-6 text-center text-sm text-muted-foreground">
+                      <Loader2 className="mx-auto mb-2 animate-spin" size={20} />
+                      加载中...
+                    </div>
+                  ) : floorPlans.length === 0 ? (
+                    <div className="p-6 text-center text-sm text-muted-foreground">暂无户型图，请先通过小程序量房采集</div>
+                  ) : (
+                    floorPlans.map((plan) => (
+                      <SelectItem key={plan._id} value={plan._id} className="rounded-xl py-3">
+                        <div className="flex items-center gap-3">
+                          <Map size={16} className="text-muted-foreground" />
+                          <div>
+                            <span className="font-medium">{plan.name || '未命名户型'}</span>
+                            <span className="ml-2 text-xs text-muted-foreground">{getRooms(plan).length} 个房间</span>
                           </div>
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {selectedPlanId && (
-                <div className="flex-1 w-full">
-                  <Select value={selectedRoomIndex} onValueChange={setSelectedRoomIndex}>
-                    <SelectTrigger className="h-14 rounded-2xl bg-muted/20 border-muted font-medium text-base">
-                      <SelectValue placeholder="选择生成范围..." />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-2xl border-none shadow-2xl">
-                      <SelectItem value="-1" className="rounded-xl py-3">
-                        <span className="font-medium">全部房间 (完整户型)</span>
+                        </div>
                       </SelectItem>
-                      {(selectedPlan?.layoutData?.rooms || selectedPlan?.layoutData || []).map((room: any, idx: number) => (
-                        <SelectItem key={idx} value={idx.toString()} className="rounded-xl py-3">
-                          <span className="font-medium">{room.name || `房间 ${idx + 1}`}</span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+
+              <Select value={selectedRoomIndex} onValueChange={setSelectedRoomIndex} disabled={!selectedPlanId}>
+                <SelectTrigger className="h-14 rounded-2xl border-muted bg-muted/20 text-base font-medium">
+                  <SelectValue placeholder="选择生成范围..." />
+                </SelectTrigger>
+                <SelectContent className="rounded-2xl border-none shadow-2xl">
+                  <SelectItem value="-1" className="rounded-xl py-3">
+                    <span className="font-medium">全部房间（完整户型）</span>
+                  </SelectItem>
+                  {selectedRooms.map((room, idx) => (
+                    <SelectItem key={room.id || idx} value={idx.toString()} className="rounded-xl py-3">
+                      <span className="font-medium">{room.name || `房间 ${idx + 1}`}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* Canvas / Result Area */}
-            <div className="relative bg-muted/10 border-2 border-dashed border-muted rounded-[32px] overflow-hidden aspect-[4/3] flex items-center justify-center">
+            <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-[28px] border-2 border-dashed border-muted bg-muted/10">
               {isGenerating ? (
-                <div className="flex flex-col items-center gap-4 animate-pulse">
+                <div className="flex flex-col items-center gap-4">
                   <div className="relative">
-                    <div className="w-20 h-20 rounded-full bg-purple-100 flex items-center justify-center">
-                      <Sparkles className="text-purple-500 animate-spin" size={32} />
+                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-purple-100">
+                      <Sparkles className="animate-spin text-purple-500" size={32} />
                     </div>
-                    <div className="absolute inset-0 rounded-full border-2 border-purple-300 animate-ping" />
+                    <div className="absolute inset-0 animate-ping rounded-full border-2 border-purple-300" />
                   </div>
-                  <div className="text-center w-full max-w-[200px]">
-                    <p className="text-lg font-bold mb-1">{LOADING_STAGES[loadingStage]}</p>
-                    <div className="flex flex-col gap-1.5">
-                      <div className="flex justify-between text-[10px] font-black uppercase tracking-wider text-muted-foreground">
-                        <span>Progress</span>
-                        <span>{realProgress > 0 ? `${realProgress}%` : 'Queueing...'}</span>
-                      </div>
-                      <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-purple-500 transition-all duration-1000 ease-out" 
-                          style={{ width: `${Math.max(realProgress, 5)}%` }}
-                        />
-                      </div>
-                    </div>
-                    <p className="text-[10px] text-muted-foreground mt-3">
-                      {FLOOR_PLAN_STYLES.find(s => s.id === selectedStyle)?.label} · 1k Resolution
-                    </p>
+                  <div className="text-center">
+                    <p className="text-lg font-bold">{LOADING_STAGES[loadingStage]}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{selectedPreset?.name || selectedStyle} · 平面表现图</p>
                   </div>
                 </div>
-              ) : generatedImage ? (
-                <div className="w-full h-full relative group">
-                  <img
-                    src={generatedImage}
-                    alt="AI Generated Floor Plan"
-                    className="w-full h-full object-contain"
-                  />
-                  <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="rounded-xl shadow-lg font-bold text-xs"
-                      onClick={() => window.open(generatedImage, '_blank')}
-                    >
-                      <ExternalLink size={14} className="mr-1" /> 查看大图
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="rounded-xl shadow-lg font-bold text-xs"
-                      onClick={() => {
-                        const a = document.createElement('a');
-                        a.href = generatedImage;
-                        a.download = `AI_${selectedStyle}_${Date.now()}.png`;
-                        a.click();
-                      }}
-                    >
-                      <Download size={14} className="mr-1" /> 保存图片
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="rounded-xl shadow-lg font-bold text-xs bg-purple-600 hover:bg-purple-700 text-white"
-                      onClick={() => {
-                        alert('海报分享功能即将上线，敬请期待！(可将历史生成的优质方案沉淀至灵感库)');
-                      }}
-                    >
-                      <Share2 size={14} className="mr-1" /> 生成海报
-                    </Button>
-                  </div>
+              ) : selectedPreset?.mockImageUrl ? (
+                <div className="relative h-full w-full">
+                  <img src={selectedPreset.mockImageUrl} alt={selectedPreset.name} className="h-full w-full object-contain" />
                   <div className="absolute bottom-4 left-4">
-                    <Badge className="bg-black/70 text-white border-none font-bold text-xs">
-                      {FLOOR_PLAN_STYLES.find(s => s.id === selectedStyle)?.emoji}{' '}
-                      {FLOOR_PLAN_STYLES.find(s => s.id === selectedStyle)?.label}
-                    </Badge>
+                    <Badge className="border-none bg-black/70 text-white">{selectedPreset.name}</Badge>
                   </div>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-4 text-muted-foreground">
-                  <div className="w-24 h-24 rounded-3xl bg-muted/50 flex items-center justify-center">
+                  <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-muted/50">
                     <ImageIcon size={40} className="opacity-30" />
                   </div>
                   <div className="text-center">
                     <p className="font-bold text-foreground">选择户型图和风格</p>
-                    <p className="text-sm">AI 将自动转换为目标平面风格</p>
+                    <p className="text-sm">AI 会自动转换为目标平面表现风格</p>
                   </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* RIGHT: Control Panel */}
           <div className="space-y-8">
-
-            {/* Style Selector */}
             <div>
-              <h3 className="text-xs font-black uppercase tracking-[0.15em] text-muted-foreground mb-4">平面风格</h3>
+              <h3 className="mb-4 text-xs font-black uppercase tracking-[0.15em] text-muted-foreground">平面风格</h3>
               <div className="grid grid-cols-2 gap-3">
-                {FLOOR_PLAN_STYLES.map((style) => (
-                  <div
-                    key={style.id}
-                    onClick={() => setSelectedStyle(style.id)}
-                    className={cn(
-                      "relative flex flex-col items-center p-4 rounded-2xl cursor-pointer transition-all border-2 group",
-                      selectedStyle === style.id
-                        ? "border-purple-500 bg-purple-50/50 shadow-lg shadow-purple-100"
-                        : "border-muted hover:border-muted-foreground/30 hover:shadow-md"
-                    )}
-                  >
-                    <div className={cn(
-                      "w-full aspect-square rounded-xl mb-3 bg-gradient-to-br flex items-center justify-center text-3xl",
-                      style.gradient
-                    )}>
-                      {style.emoji}
-                    </div>
-                    <span className={cn(
-                      "text-xs font-bold text-center",
-                      selectedStyle === style.id ? "text-purple-700" : "text-foreground"
-                    )}>
-                      {style.label}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground text-center mt-0.5 leading-tight">
-                      {style.description}
-                    </span>
-                    {selectedStyle === style.id && (
-                      <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-purple-500 rounded-full flex items-center justify-center">
-                        <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
-                    )}
+                {loadingPresets ? (
+                  <div className="col-span-2 rounded-2xl border p-6 text-center text-sm text-muted-foreground">
+                    <Loader2 className="mx-auto mb-2 animate-spin" size={18} />
+                    正在加载风格...
                   </div>
-                ))}
+                ) : (
+                  presets.map((preset) => (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      onClick={() => setSelectedStyle(preset.key)}
+                      className={cn(
+                        'relative rounded-2xl border-2 p-4 text-left transition-all',
+                        selectedStyle === preset.key
+                          ? 'border-purple-500 bg-purple-50/60 shadow-lg shadow-purple-100'
+                          : 'border-muted hover:border-muted-foreground/30 hover:shadow-sm'
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          'mb-3 flex aspect-square w-full items-center justify-center rounded-xl bg-gradient-to-br text-sm font-black text-white',
+                          preset.previewClassName
+                        )}
+                      >
+                        {preset.icon || 'AI'}
+                      </div>
+                      <div className={cn('text-sm font-bold', selectedStyle === preset.key ? 'text-purple-700' : 'text-foreground')}>
+                        {preset.name}
+                      </div>
+                      <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{preset.description}</div>
+                      {selectedStyle === preset.key && (
+                        <div className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-purple-500">
+                          <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                      )}
+                    </button>
+                  ))
+                )}
               </div>
             </div>
 
-            {/* Generate Button */}
             <Button
-              className="w-full h-14 rounded-2xl font-bold text-base bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-xl shadow-purple-200 transition-all disabled:opacity-50"
-              disabled={isGenerating || !selectedPlanId}
+              className="h-14 w-full rounded-2xl bg-gradient-to-r from-purple-600 to-pink-600 text-base font-bold text-white shadow-xl shadow-purple-200 transition-all hover:from-purple-700 hover:to-pink-700 disabled:opacity-50"
+              disabled={isGenerating || !selectedPlanId || presets.length === 0}
               onClick={handleGenerate}
             >
               {isGenerating ? (
                 <>
-                  <Loader2 className="animate-spin mr-2" size={20} />
+                  <Loader2 className="mr-2 animate-spin" size={20} />
                   AI 生成中...
                 </>
               ) : (
@@ -494,51 +420,43 @@ export default function AiFloorPlanPage() {
               )}
             </Button>
 
-            {generatedImage && (
-              <Button
-                variant="outline"
-                className="w-full h-12 rounded-2xl font-bold text-sm"
-                onClick={handleGenerate}
-              >
-                <RefreshCw size={16} className="mr-2" />
-                重新生成
-              </Button>
-            )}
-
-            {/* History */}
             {history.length > 0 && (
               <div>
-                <h3 className="text-xs font-black uppercase tracking-[0.15em] text-muted-foreground mb-3 flex items-center gap-2">
+                <h3 className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-[0.15em] text-muted-foreground">
                   <Clock size={12} /> 最近生成
                 </h3>
                 <div className="space-y-2">
-                  {history.map((item: any) => (
-                    <div
+                  {history.map((item) => (
+                    <button
                       key={item._id}
-                      className="flex items-center gap-3 p-3 rounded-xl bg-muted/20 hover:bg-muted/40 cursor-pointer transition-all group"
-                      onClick={() => {
-                        router.push(`/ai-studio/floor-plan/${item._id}`);
-                      }}
+                      type="button"
+                      className="group flex w-full items-center gap-3 rounded-xl bg-muted/20 p-3 text-left transition-all hover:bg-muted/40"
+                      onClick={() => router.push(`/ai-studio/floor-plan/${item._id}`)}
                     >
-                      <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center overflow-hidden shrink-0 relative">
+                      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
                         {item.output?.imageUrl ? (
-                          <img src={item.output.imageUrl} className="w-full h-full object-cover" alt="" />
+                          <img src={item.output.imageUrl} className="h-full w-full object-cover" alt="" />
                         ) : item.status === 'processing' || item.status === 'pending' ? (
-                          <RefreshCw size={16} className="text-muted-foreground/50 animate-spin" />
+                          <RefreshCw size={16} className="animate-spin text-muted-foreground/50" />
                         ) : (
                           <ImageIcon size={16} className="text-muted-foreground/50" />
                         )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold truncate">
-                          {FLOOR_PLAN_STYLES.find(s => s.id === item.input?.style)?.label || item.input?.style}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-bold">
+                          {presets.find((preset) => preset.key === item.input?.style)?.name || item.input?.style}
                         </p>
                         <p className="text-[10px] text-muted-foreground">
-                          {new Date(item.createdAt).toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          {new Date(item.createdAt).toLocaleString('zh-CN', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
                         </p>
                       </div>
-                      <ChevronRight size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                    </div>
+                      <ChevronRight size={14} className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                    </button>
                   ))}
                 </div>
               </div>
@@ -547,7 +465,6 @@ export default function AiFloorPlanPage() {
         </div>
       </main>
 
-      {/* Recharge Dialog */}
       <RechargeDialog
         open={showRecharge}
         onOpenChange={setShowRecharge}

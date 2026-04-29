@@ -20,6 +20,9 @@ export interface IAiGeneration extends Document {
     height?: number;
     mode?: string;
     roomData?: unknown;
+    presetSnapshot?: unknown;
+    sourceImage?: string;
+    controlImageResourceId?: string;
     customPrompt?: string;
   };
   /** AI 生成的结果 */
@@ -73,6 +76,9 @@ const AiGenerationSchema: Schema<IAiGeneration> = new Schema(
       height: { type: Number },
       mode: { type: String },
       roomData: { type: Schema.Types.Mixed },
+      presetSnapshot: { type: Schema.Types.Mixed },
+      sourceImage: { type: String },
+      controlImageResourceId: { type: String },
       customPrompt: { type: String },
     },
     output: {

@@ -104,6 +104,7 @@ export async function GET(
       success: true,
       data: {
         id: generation._id,
+        type: generation.type,
         status: generation.status,
         progress: progress,
         imageUrl: generation.output?.imageUrl,

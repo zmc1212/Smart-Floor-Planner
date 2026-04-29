@@ -1,9 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
-  Loader2, Sparkles, Download, Image as ImageIcon, Clock,
-  ChevronRight, Map, RefreshCw, ExternalLink, Share2, Check, Palette
+  ChevronRight,
+  Clock,
+  Image as ImageIcon,
+  Loader2,
+  Map,
+  Palette,
+  RefreshCw,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,54 +21,114 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from '@/components/ui/select';
 import AiQuotaBar from '@/components/ai-studio/AiQuotaBar';
 import RechargeDialog from '@/components/ai-studio/RechargeDialog';
-import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useFetch } from '@/hooks/useFetch';
 
-// --- 软装风格定义 ---
-const FURNISHING_STYLES = [
-  { id: 'modern', label: '现代简约', icon: '🏠', color: 'from-slate-400 to-zinc-500' },
-  { id: 'cream', label: '奶油风', icon: '🍦', color: 'from-amber-200 to-orange-200' },
-  { id: 'chinese', label: '新中式', icon: '🏮', color: 'from-red-500 to-amber-600' },
-  { id: 'luxury', label: '意式轻奢', icon: '💎', color: 'from-yellow-400 to-amber-500' },
-  { id: 'wabi', label: '侘寂风', icon: '🪵', color: 'from-stone-400 to-stone-600' },
-  { id: 'scandinavian', label: '北欧风', icon: '🌿', color: 'from-emerald-300 to-teal-400' },
-  { id: 'japanese', label: '日式原木', icon: '🎋', color: 'from-lime-300 to-green-400' },
-  { id: 'industrial', label: '工业风', icon: '⚙️', color: 'from-gray-500 to-gray-700' },
+interface AiPreset {
+  _id: string;
+  key: string;
+  name: string;
+  description: string;
+  icon: string;
+  previewClassName: string;
+  mockImageUrl?: string;
+  enabled: boolean;
+  sortOrder: number;
+}
+
+interface FloorPlanRoom {
+  id?: string;
+  name?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  [key: string]: unknown;
+}
+
+interface AiQuotaData {
+  tier: string;
+  usedCount: number;
+  monthlyLimit: number;
+  bonusCredits: number;
+  remaining: number;
+}
+
+interface FloorPlanItem {
+  _id: string;
+  name?: string;
+  layoutData?: FloorPlanRoom[] | { rooms?: FloorPlanRoom[] };
+}
+
+interface AiHistoryItem {
+  _id: string;
+  status?: string;
+  createdAt: string;
+  input?: { style?: string };
+  output?: { imageUrl?: string };
+}
+
+const LOADING_STAGES = [
+  '正在解析户型结构...',
+  '正在匹配装修风格...',
+  '正在生成软装材质...',
+  '正在处理门窗和房间关系...',
+  '即将完成...',
 ];
 
-const ROOM_TYPES = [
-  { id: '客厅', label: '客厅/客餐厅', icon: '🛋️' },
-  { id: '主卧', label: '主卧', icon: '🛏️' },
-  { id: '次卧', label: '次卧/儿童房', icon: '🧒' },
-  { id: '厨房', label: '厨房', icon: '🍳' },
-  { id: '卫生间', label: '卫生间', icon: '🚿' },
-  { id: '书房', label: '书房/办公室', icon: '📚' },
-  { id: '阳台', label: '阳台', icon: '🌅' },
-  { id: '玄关', label: '玄关', icon: '🚪' },
-];
+function getRooms(plan?: FloorPlanItem) {
+  const layoutData = plan?.layoutData;
+  const rooms = Array.isArray(layoutData) ? layoutData : layoutData?.rooms || [];
+  return Array.isArray(rooms) ? rooms : [];
+}
 
 export default function AiFurnishingPage() {
-  const { user } = useCurrentUser();
-  const { data: floorPlansData, isLoading: loadingPlans } = useFetch<any[]>('/api/floorplans');
+  const router = useRouter();
+  const { data: floorPlansData, isLoading: loadingPlans } = useFetch<FloorPlanItem[]>('/api/floorplans');
+  const { data: quota, mutate: mutateQuota } = useFetch<AiQuotaData>('/api/ai/quota');
+  const { data: presetsData, isLoading: loadingPresets } = useFetch<AiPreset[]>(
+    '/api/ai/presets?type=furnishing_style'
+  );
+  const { data: historyData, mutate: mutateHistory } = useFetch<AiHistoryItem[]>('/api/ai/history?type=furnishing_render&limit=8');
+
   const floorPlans = floorPlansData || [];
-  const { data: quota, mutate: mutateQuota } = useFetch<any>('/api/ai/quota');
-  const { data: historyData, mutate: mutateHistory } = useFetch<any>('/api/ai/history?type=furnishing_render&limit=8');
-
-  const [selectedPlanId, setSelectedPlanId] = useState<string>('');
-  const [selectedStyle, setSelectedStyle] = useState<string>('modern');
-  const [selectedRoom, setSelectedRoom] = useState<string>('客厅');
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
-  const [showRecharge, setShowRecharge] = useState(false);
-  const [shareSuccess, setShareSuccess] = useState(false);
-
+  const presets = useMemo(
+    () => [...(presetsData || [])].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)),
+    [presetsData]
+  );
   const history = historyData || [];
 
+  const [selectedPlanId, setSelectedPlanId] = useState('');
+  const [selectedStyle, setSelectedStyle] = useState('modern');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [loadingStage, setLoadingStage] = useState(0);
+  const [showRecharge, setShowRecharge] = useState(false);
 
-  const selectedPlan = floorPlans.find(p => p._id === selectedPlanId);
+  const selectedPlan = floorPlans.find((plan) => plan._id === selectedPlanId);
+  const selectedPreset = presets.find((preset) => preset.key === selectedStyle);
+
+  useEffect(() => {
+    if (presets.length > 0 && !presets.some((preset) => preset.key === selectedStyle)) {
+      setSelectedStyle(presets[0].key);
+    }
+  }, [presets, selectedStyle]);
+
+  useEffect(() => {
+    let timer: number | undefined;
+    if (isGenerating) {
+      timer = window.setInterval(() => {
+        setLoadingStage((prev) => (prev + 1) % LOADING_STAGES.length);
+      }, 2500);
+    } else {
+      setLoadingStage(0);
+    }
+
+    return () => {
+      if (timer) window.clearInterval(timer);
+    };
+  }, [isGenerating]);
 
   const handleGenerate = async () => {
     if (!selectedPlanId) {
@@ -69,71 +136,78 @@ export default function AiFurnishingPage() {
       return;
     }
 
+    const rooms = getRooms(selectedPlan);
+    if (rooms.length === 0) {
+      alert('当前户型缺少 layoutData，无法生成控制图');
+      return;
+    }
+
     setIsGenerating(true);
-    setGeneratedImage(null);
+    setLoadingStage(0);
 
     try {
-      const plan = selectedPlan;
-      const rooms = plan?.layoutData?.rooms || plan?.layoutData || [];
-      const roomData = Array.isArray(rooms) ? rooms.find((r: any) => r.name === selectedRoom) : null;
+      const roomNameForPrompt = rooms.map((room) => room.name).filter(Boolean).join(', ') || selectedPlan?.name || '住宅';
+      const firstRoom = rooms[0] || {};
 
-      const res = await fetch('/api/ai/generate', {
+      const genRes = await fetch('/api/ai/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'furnishing_render',
           style: selectedStyle,
-          roomType: selectedRoom,
-          roomName: selectedRoom,
           floorPlanId: selectedPlanId,
-          width: roomData?.width || 500,
-          height: roomData?.height || 400,
+          roomName: roomNameForPrompt,
+          roomType: 'whole_floor_plan',
+          width: firstRoom.width || 500,
+          height: firstRoom.height || 400,
+          mode: 'floor_plan_overview',
+          roomData: rooms,
         }),
       });
 
-      const data = await res.json();
-      if (data.success) {
-        setGeneratedImage(data.data.imageUrl);
-        mutateQuota();
-        mutateHistory();
-      } else {
-        alert(data.error || 'AI 生成失败');
-        if (data.quota) mutateQuota();
+      const genData = await genRes.json();
+      if (!genData.success) {
+        alert(genData.error || '提示词生成失败');
+        setIsGenerating(false);
+        return;
       }
-    } catch (err) {
-      console.error(err);
-      alert('网络异常，请重试');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
 
-  const handleSaveToInspiration = async () => {
-    if (!generatedImage) return;
-    try {
-      const styleLabel = FURNISHING_STYLES.find(s => s.id === selectedStyle)?.label || selectedStyle;
-      const res = await fetch('/api/inspirations', {
+      let base64Image: string;
+      try {
+        const { generateBaseMap } = await import('@/lib/canvasExport');
+        base64Image = await generateBaseMap(rooms);
+      } catch (exportErr) {
+        console.error('Failed to generate base map', exportErr);
+        alert('无法提取户型线稿，请检查户型数据');
+        setIsGenerating(false);
+        return;
+      }
+
+      const renderRes = await fetch('/api/ai/render', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: `AI ${styleLabel} - ${selectedRoom}`,
-          style: styleLabel,
-          roomType: selectedRoom,
-          coverImage: generatedImage,
-          renderingImage: generatedImage,
-          layoutData: selectedPlan?.layoutData || [],
-          isRecommended: false,
+          generationId: genData.data.id,
+          image: base64Image,
+          prompt: genData.data.prompt,
+          negativePrompt: genData.data.negativePrompt,
         }),
       });
-      const data = await res.json();
-      if (data.success) {
-        setShareSuccess(true);
-        setTimeout(() => setShareSuccess(false), 3000);
-      } else {
-        alert('保存失败');
+
+      const renderData = await renderRes.json();
+      if (!renderData.success) {
+        alert(renderData.error || '提交渲染失败');
+        setIsGenerating(false);
+        return;
       }
-    } catch (err) {
-      alert('保存异常');
+
+      mutateQuota();
+      mutateHistory();
+      router.push(`/ai-studio/floor-plan/${genData.data.id}`);
+    } catch (error) {
+      console.error(error);
+      alert('网络异常，请重试');
+      setIsGenerating(false);
     }
   };
 
@@ -159,214 +233,193 @@ export default function AiFurnishingPage() {
 
   return (
     <div className="min-h-screen bg-white text-[#171717] font-sans">
-      <main className="max-w-7xl mx-auto px-6 py-8">
-
-        {/* Header */}
+      <main className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 bg-gradient-to-br from-orange-400 to-pink-500 rounded-2xl flex items-center justify-center text-white">
+          <div className="mb-2 flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-400 to-pink-500 text-white">
               <Palette size={20} />
             </div>
             <h1 className="text-[28px] font-bold tracking-tight">AI 软装设计</h1>
-            <Badge variant="secondary" className="bg-orange-50 text-orange-700 border-none font-bold text-[10px] uppercase">
+            <Badge variant="secondary" className="border-none bg-orange-50 text-orange-700">
               Beta
             </Badge>
           </div>
-          <p className="text-muted-foreground text-sm">基于真实户型数据，一键生成不同装修风格的室内效果图</p>
+          <p className="text-sm text-muted-foreground">
+            基于真实户型结构生成不同装修风格的俯视软装效果图，适合快速比稿和方案沟通。
+          </p>
         </div>
 
-        {/* Quota Bar */}
         <div className="mb-8">
           <AiQuotaBar quota={quota} loading={!quota && !floorPlans.length} onRecharge={() => setShowRecharge(true)} />
         </div>
 
-        {/* Selectors Row */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-          <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
-            <SelectTrigger className="h-14 rounded-2xl bg-muted/20 border-muted font-medium text-base">
-              <SelectValue placeholder="选择户型图..." />
-            </SelectTrigger>
-            <SelectContent className="rounded-2xl border-none shadow-2xl">
-              {loadingPlans ? (
-                <div className="p-4 text-center text-sm text-muted-foreground">
-                  <Loader2 className="animate-spin mx-auto mb-2" size={20} /> 加载中...
-                </div>
-              ) : floorPlans.map(plan => (
-                <SelectItem key={plan._id} value={plan._id} className="rounded-xl py-3">
-                  <div className="flex items-center gap-2">
-                    <Map size={16} className="text-muted-foreground" />
-                    <span className="font-medium">{plan.name || '未命名户型'}</span>
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+          <div className="space-y-6 lg:col-span-2">
+            <Select value={selectedPlanId} onValueChange={setSelectedPlanId}>
+              <SelectTrigger className="h-14 rounded-2xl border-muted bg-muted/20 text-base font-medium">
+                <SelectValue placeholder="选择一个户型图作为 AI 输入源..." />
+              </SelectTrigger>
+              <SelectContent className="rounded-2xl border-none shadow-2xl">
+                {loadingPlans ? (
+                  <div className="p-6 text-center text-sm text-muted-foreground">
+                    <Loader2 className="mx-auto mb-2 animate-spin" size={20} />
+                    加载中...
                   </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={selectedRoom} onValueChange={setSelectedRoom}>
-            <SelectTrigger className="h-14 rounded-2xl bg-muted/20 border-muted font-medium text-base">
-              <SelectValue placeholder="选择空间..." />
-            </SelectTrigger>
-            <SelectContent className="rounded-2xl border-none shadow-2xl">
-              {ROOM_TYPES.map(room => (
-                <SelectItem key={room.id} value={room.id} className="rounded-xl py-3">
-                  <span>{room.icon} {room.label}</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+                ) : floorPlans.length === 0 ? (
+                  <div className="p-6 text-center text-sm text-muted-foreground">暂无户型图，请先通过小程序量房采集</div>
+                ) : (
+                  floorPlans.map((plan) => (
+                    <SelectItem key={plan._id} value={plan._id} className="rounded-xl py-3">
+                      <div className="flex items-center gap-3">
+                        <Map size={16} className="text-muted-foreground" />
+                        <div>
+                          <span className="font-medium">{plan.name || '未命名户型'}</span>
+                          <span className="ml-2 text-xs text-muted-foreground">{getRooms(plan).length} 个房间</span>
+                        </div>
+                      </div>
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
 
-        {/* Main Content — Two Column */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-
-          {/* LEFT: Preview */}
-          <div className="lg:col-span-2">
-            <div className="relative bg-muted/10 border-2 border-dashed border-muted rounded-[32px] overflow-hidden aspect-[16/10] flex items-center justify-center">
+            <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-[28px] border-2 border-dashed border-muted bg-muted/10">
               {isGenerating ? (
                 <div className="flex flex-col items-center gap-4">
                   <div className="relative">
-                    <div className="w-20 h-20 rounded-full bg-orange-100 flex items-center justify-center">
-                      <Palette className="text-orange-500 animate-spin" size={32} />
+                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-orange-100">
+                      <Palette className="animate-spin text-orange-500" size={32} />
                     </div>
-                    <div className="absolute inset-0 rounded-full border-2 border-orange-300 animate-ping" />
+                    <div className="absolute inset-0 animate-ping rounded-full border-2 border-orange-300" />
                   </div>
                   <div className="text-center">
-                    <p className="text-lg font-bold">AI 正在渲染</p>
-                    <p className="text-sm text-muted-foreground">
-                      {FURNISHING_STYLES.find(s => s.id === selectedStyle)?.label} · {selectedRoom} · 预计 15-30 秒
-                    </p>
+                    <p className="text-lg font-bold">{LOADING_STAGES[loadingStage]}</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{selectedPreset?.name || selectedStyle} · 俯视软装效果图</p>
                   </div>
                 </div>
-              ) : generatedImage ? (
-                <div className="w-full h-full relative group">
-                  <img
-                    src={generatedImage}
-                    alt="AI Generated Furnishing"
-                    className="w-full h-full object-contain"
-                  />
-                  <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Button size="sm" variant="secondary" className="rounded-xl shadow-lg font-bold text-xs"
-                      onClick={() => window.open(generatedImage, '_blank')}
-                    >
-                      <ExternalLink size={14} className="mr-1" /> 大图
-                    </Button>
-                    <Button size="sm" variant="secondary" className="rounded-xl shadow-lg font-bold text-xs"
-                      onClick={() => {
-                        const a = document.createElement('a');
-                        a.href = generatedImage;
-                        a.download = `AI_furnishing_${selectedStyle}_${Date.now()}.png`;
-                        a.click();
-                      }}
-                    >
-                      <Download size={14} className="mr-1" /> 保存
-                    </Button>
-                    <Button size="sm"
-                      variant="secondary"
-                      className={cn("rounded-xl shadow-lg font-bold text-xs", shareSuccess && "bg-green-500 text-white")}
-                      onClick={handleSaveToInspiration}
-                    >
-                      {shareSuccess ? <Check size={14} className="mr-1" /> : <Share2 size={14} className="mr-1" />}
-                      {shareSuccess ? '已保存' : '存入灵感库'}
-                    </Button>
-                  </div>
-                  <div className="absolute bottom-4 left-4 flex gap-2">
-                    <Badge className="bg-black/70 text-white border-none font-bold text-xs">
-                      {FURNISHING_STYLES.find(s => s.id === selectedStyle)?.icon}{' '}
-                      {FURNISHING_STYLES.find(s => s.id === selectedStyle)?.label}
-                    </Badge>
-                    <Badge className="bg-white/90 text-foreground border-none font-bold text-xs">
-                      {selectedRoom}
-                    </Badge>
+              ) : selectedPreset?.mockImageUrl ? (
+                <div className="relative h-full w-full">
+                  <img src={selectedPreset.mockImageUrl} alt={selectedPreset.name} className="h-full w-full object-contain" />
+                  <div className="absolute bottom-4 left-4">
+                    <Badge className="border-none bg-black/70 text-white">{selectedPreset.name}</Badge>
                   </div>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-4 text-muted-foreground">
-                  <div className="w-24 h-24 rounded-3xl bg-muted/50 flex items-center justify-center">
+                  <div className="flex h-24 w-24 items-center justify-center rounded-3xl bg-muted/50">
                     <Palette size={40} className="opacity-30" />
                   </div>
                   <div className="text-center">
-                    <p className="font-bold text-foreground">选择户型图、空间和风格</p>
-                    <p className="text-sm">AI 将生成逼真的室内软装效果图</p>
+                    <p className="font-bold text-foreground">选择户型图和装修风格</p>
+                    <p className="text-sm">AI 会基于同一户型生成不同软装方案</p>
                   </div>
                 </div>
               )}
             </div>
           </div>
 
-          {/* RIGHT: Style Panel */}
           <div className="space-y-8">
             <div>
-              <h3 className="text-xs font-black uppercase tracking-[0.15em] text-muted-foreground mb-4">装修风格</h3>
-              <div className="grid grid-cols-2 gap-2.5">
-                {FURNISHING_STYLES.map((style) => (
-                  <div
-                    key={style.id}
-                    onClick={() => setSelectedStyle(style.id)}
-                    className={cn(
-                      "flex items-center gap-2.5 p-3 rounded-xl cursor-pointer transition-all border-2",
-                      selectedStyle === style.id
-                        ? "border-orange-500 bg-orange-50/50 shadow-md"
-                        : "border-muted hover:border-muted-foreground/30"
-                    )}
-                  >
-                    <div className={cn(
-                      "w-9 h-9 rounded-lg bg-gradient-to-br flex items-center justify-center text-lg shrink-0",
-                      style.color
-                    )}>
-                      {style.icon}
-                    </div>
-                    <span className={cn(
-                      "text-xs font-bold",
-                      selectedStyle === style.id ? "text-orange-700" : "text-foreground"
-                    )}>
-                      {style.label}
-                    </span>
+              <h3 className="mb-4 text-xs font-black uppercase tracking-[0.15em] text-muted-foreground">装修风格</h3>
+              <div className="grid grid-cols-2 gap-3">
+                {loadingPresets ? (
+                  <div className="col-span-2 rounded-2xl border p-6 text-center text-sm text-muted-foreground">
+                    <Loader2 className="mx-auto mb-2 animate-spin" size={18} />
+                    正在加载风格...
                   </div>
-                ))}
+                ) : (
+                  presets.map((preset) => (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      onClick={() => setSelectedStyle(preset.key)}
+                      className={cn(
+                        'relative rounded-2xl border-2 p-4 text-left transition-all',
+                        selectedStyle === preset.key
+                          ? 'border-orange-500 bg-orange-50/60 shadow-lg shadow-orange-100'
+                          : 'border-muted hover:border-muted-foreground/30 hover:shadow-sm'
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          'mb-3 flex aspect-square w-full items-center justify-center rounded-xl bg-gradient-to-br text-sm font-black text-white',
+                          preset.previewClassName
+                        )}
+                      >
+                        {preset.icon || 'AI'}
+                      </div>
+                      <div className={cn('text-sm font-bold', selectedStyle === preset.key ? 'text-orange-700' : 'text-foreground')}>
+                        {preset.name}
+                      </div>
+                      <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{preset.description}</div>
+                      {selectedStyle === preset.key && (
+                        <div className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500">
+                          <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </div>
+                      )}
+                    </button>
+                  ))
+                )}
               </div>
             </div>
 
-            {/* Generate */}
             <Button
-              className="w-full h-14 rounded-2xl font-bold text-base bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 text-white shadow-xl shadow-orange-200 transition-all disabled:opacity-50"
-              disabled={isGenerating || !selectedPlanId}
+              className="h-14 w-full rounded-2xl bg-gradient-to-r from-orange-500 to-pink-500 text-base font-bold text-white shadow-xl shadow-orange-200 transition-all hover:from-orange-600 hover:to-pink-600 disabled:opacity-50"
+              disabled={isGenerating || !selectedPlanId || presets.length === 0}
               onClick={handleGenerate}
             >
               {isGenerating ? (
-                <><Loader2 className="animate-spin mr-2" size={20} /> AI 渲染中...</>
+                <>
+                  <Loader2 className="mr-2 animate-spin" size={20} />
+                  AI 生成中...
+                </>
               ) : (
-                <><Sparkles className="mr-2" size={20} /> 生成效果图</>
+                <>
+                  <Sparkles className="mr-2" size={20} />
+                  生成软装效果图
+                </>
               )}
             </Button>
 
-            {generatedImage && (
-              <Button variant="outline" className="w-full h-12 rounded-2xl font-bold text-sm" onClick={handleGenerate}>
-                <RefreshCw size={16} className="mr-2" /> 重新生成
-              </Button>
-            )}
-
-            {/* History */}
             {history.length > 0 && (
               <div>
-                <h3 className="text-xs font-black uppercase tracking-[0.15em] text-muted-foreground mb-3 flex items-center gap-2">
+                <h3 className="mb-3 flex items-center gap-2 text-xs font-black uppercase tracking-[0.15em] text-muted-foreground">
                   <Clock size={12} /> 最近生成
                 </h3>
-                <div className="grid grid-cols-3 gap-2">
-                  {history.map((item: any) => (
-                    <div
+                <div className="space-y-2">
+                  {history.map((item) => (
+                    <button
                       key={item._id}
-                      className="aspect-square rounded-xl bg-muted overflow-hidden cursor-pointer hover:ring-2 ring-primary transition-all"
-                      onClick={() => {
-                        if (item.output?.imageUrl) setGeneratedImage(item.output.imageUrl);
-                      }}
+                      type="button"
+                      className="group flex w-full items-center gap-3 rounded-xl bg-muted/20 p-3 text-left transition-all hover:bg-muted/40"
+                      onClick={() => router.push(`/ai-studio/floor-plan/${item._id}`)}
                     >
-                      {item.output?.imageUrl ? (
-                        <img src={item.output.imageUrl} className="w-full h-full object-cover" alt="" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center">
+                      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted">
+                        {item.output?.imageUrl ? (
+                          <img src={item.output.imageUrl} className="h-full w-full object-cover" alt="" />
+                        ) : item.status === 'processing' || item.status === 'pending' ? (
+                          <RefreshCw size={16} className="animate-spin text-muted-foreground/50" />
+                        ) : (
                           <ImageIcon size={16} className="text-muted-foreground/50" />
-                        </div>
-                      )}
-                    </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-bold">
+                          {presets.find((preset) => preset.key === item.input?.style)?.name || item.input?.style}
+                        </p>
+                        <p className="text-[10px] text-muted-foreground">
+                          {new Date(item.createdAt).toLocaleString('zh-CN', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })}
+                        </p>
+                      </div>
+                      <ChevronRight size={14} className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                    </button>
                   ))}
                 </div>
               </div>

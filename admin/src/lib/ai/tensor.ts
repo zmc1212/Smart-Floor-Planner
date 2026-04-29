@@ -300,7 +300,7 @@ export async function createTensorJob(params: {
     throw new Error(`Tensor.art Error: ${result.message}`);
   }
 
-  return { id: result.jobId || result.data?.jobId };
+  return { id: result.jobId || result.data?.jobId, resourceId };
 }
 
 export async function getTensorJobStatus(jobId: string) {

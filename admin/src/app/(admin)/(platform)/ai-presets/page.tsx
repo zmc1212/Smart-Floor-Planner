@@ -14,11 +14,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
+
+type AiPresetType = 'floor_plan_style' | 'furnishing_style';
 
 interface AiPreset {
   _id: string;
   key: string;
-  type: 'floor_plan_style' | 'furnishing_render';
+  type: AiPresetType;
   name: string;
   description: string;
   icon: string;
@@ -51,6 +54,11 @@ interface AiPreset {
     };
   };
 }
+
+const PRESET_TABS: Array<{ type: AiPresetType; label: string; hint: string }> = [
+  { type: 'floor_plan_style', label: 'AI 室内平面', hint: '3D / 彩平 / CAD / 手绘' },
+  { type: 'furnishing_style', label: 'AI 软装设计', hint: '现代 / 北欧 / 奶油 / 轻奢 / 新中式' },
+];
 
 function toNumber(value: string, fallback = 0) {
   const parsed = Number(value);
@@ -107,8 +115,11 @@ function parseTensorImportText(rawText: string) {
 export default function AiPresetsPage() {
   const { user, isLoading: loadingUser } = useCurrentUser();
   const canManage = user?.role === 'super_admin' || user?.role === 'admin';
-  const { data, isLoading, mutate } = useFetch<AiPreset[]>('/api/ai/presets?type=floor_plan_style&includeDisabled=true');
-  const presets = data || [];
+  const [activeType, setActiveType] = useState<AiPresetType>('floor_plan_style');
+  const { data, isLoading, mutate } = useFetch<AiPreset[]>(
+    `/api/ai/presets?type=${activeType}&includeDisabled=true`
+  );
+  const presets = useMemo(() => data || [], [data]);
 
   const [editingPreset, setEditingPreset] = useState<AiPreset | null>(null);
   const [form, setForm] = useState<AiPreset | null>(null);
@@ -256,7 +267,7 @@ export default function AiPresetsPage() {
   if (!canManage) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-16">
-        <div className="rounded-3xl border bg-white p-10 shadow-sm">
+        <div className="rounded-2xl border bg-white p-10 shadow-sm">
           <h1 className="mb-2 text-2xl font-bold">AI 预设配置</h1>
           <p className="text-sm text-muted-foreground">只有 admin / super_admin 可以配置 Tensor 风格预设。</p>
         </div>
@@ -278,16 +289,35 @@ export default function AiPresetsPage() {
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground">
-            这里维护 AI 室内平面预设。你可以同时配置 Tensor 参数和 MOCK 模式下使用的参考图地址。
+            分别维护 AI 室内平面的图纸表现风格，以及 AI 软装设计的装修风格。
           </p>
+        </div>
+
+        <div className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-2">
+          {PRESET_TABS.map((tab) => (
+            <button
+              key={tab.type}
+              type="button"
+              onClick={() => setActiveType(tab.type)}
+              className={cn(
+                'rounded-2xl border p-4 text-left transition-all',
+                activeType === tab.type ? 'border-violet-500 bg-violet-50 shadow-sm' : 'hover:border-zinc-300'
+              )}
+            >
+              <div className="font-bold">{tab.label}</div>
+              <div className="mt-1 text-sm text-muted-foreground">{tab.hint}</div>
+            </button>
+          ))}
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {sortedPresets.map((preset) => (
-            <div key={preset._id} className="rounded-3xl border bg-white p-6 shadow-sm">
+            <div key={preset._id} className="rounded-2xl border bg-white p-6 shadow-sm">
               <div className="mb-4 flex items-start justify-between gap-4">
                 <div className="flex items-center gap-4">
-                  <div className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br ${preset.previewClassName} text-sm font-bold text-white`}>
+                  <div
+                    className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br ${preset.previewClassName} text-sm font-bold text-white`}
+                  >
                     {preset.icon || 'AI'}
                   </div>
                   <div>
@@ -304,12 +334,33 @@ export default function AiPresetsPage() {
               </div>
 
               <div className="space-y-2 text-sm text-muted-foreground">
-                <div>Key: <span className="font-mono text-foreground">{preset.key}</span></div>
-                <div>Model: <span className="font-mono text-foreground">{preset.tensor.modelKey}</span></div>
-                <div>Model ID: <span className="font-mono text-foreground">{preset.tensor.modelId}</span></div>
-                <div>Mock 图: <span className="font-mono text-foreground">{preset.mockImageUrl || '未配置'}</span></div>
-                <div>Render: <span className="font-mono text-foreground">{preset.tensor.width}x{preset.tensor.height} / {preset.tensor.steps} steps / CFG {preset.tensor.cfgScale}</span></div>
-                <div>ControlNet: <span className="font-mono text-foreground">{preset.tensor.controlnet?.enabled ? `${preset.tensor.controlnet.preprocessor} / ${preset.tensor.controlnet.model}` : 'disabled'}</span></div>
+                <div>
+                  Key: <span className="font-mono text-foreground">{preset.key}</span>
+                </div>
+                <div>
+                  Type: <span className="font-mono text-foreground">{preset.type}</span>
+                </div>
+                <div>
+                  Model: <span className="font-mono text-foreground">{preset.tensor.modelKey}</span>
+                </div>
+                <div>
+                  Mock 图: <span className="font-mono text-foreground">{preset.mockImageUrl || '未配置'}</span>
+                </div>
+                <div>
+                  Render:{' '}
+                  <span className="font-mono text-foreground">
+                    {preset.tensor.width}x{preset.tensor.height} / {preset.tensor.steps} steps / CFG{' '}
+                    {preset.tensor.cfgScale}
+                  </span>
+                </div>
+                <div>
+                  ControlNet:{' '}
+                  <span className="font-mono text-foreground">
+                    {preset.tensor.controlnet?.enabled
+                      ? `${preset.tensor.controlnet.preprocessor} / ${preset.tensor.controlnet.model}`
+                      : 'disabled'}
+                  </span>
+                </div>
               </div>
 
               <div className="mt-5">
@@ -329,7 +380,7 @@ export default function AiPresetsPage() {
                 <Sparkles size={20} />
                 编辑 AI 预设
               </DialogTitle>
-              <DialogDescription>修改后会立即影响后台预设和 MOCK 模式图片。</DialogDescription>
+              <DialogDescription>修改后会影响对应菜单的 Tensor 参数和 MOCK 模式图片。</DialogDescription>
             </DialogHeader>
 
             {form && (
@@ -339,7 +390,7 @@ export default function AiPresetsPage() {
                     从 Tensor 参数导入
                     <textarea
                       className="mt-2 min-h-32 w-full rounded-xl border px-3 py-2 font-mono text-xs"
-                      placeholder="把 Tensor.Art 参数整段粘贴到这里，然后点击“导入参数到表单”"
+                      placeholder="把 Tensor.Art 参数整段粘贴到这里，然后点击导入参数到表单"
                       value={importText}
                       onChange={(e) => setImportText(e.target.value)}
                     />
@@ -368,7 +419,7 @@ export default function AiPresetsPage() {
                     Mock 图地址
                     <input
                       className="mt-2 w-full rounded-xl border px-3 py-2 font-mono text-xs"
-                      placeholder="/colorful.png"
+                      placeholder="/modern.png"
                       value={form.mockImageUrl || ''}
                       onChange={(e) => updateField('mockImageUrl', e.target.value)}
                     />

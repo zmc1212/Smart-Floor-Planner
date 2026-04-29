@@ -9,9 +9,10 @@ import {
   getAiStylePresetByKey,
   getDefaultAiStylePresetByKey,
 } from '@/lib/ai/presets';
+import type { AiPresetType, DefaultAiStylePreset } from '@/lib/ai/preset-definitions';
 
 interface GenerateBody {
-  type?: string;
+  type?: 'floor_plan_style' | 'furnishing_render' | 'advice' | string;
   style?: string;
   roomType?: string;
   roomName?: string;
@@ -20,6 +21,22 @@ interface GenerateBody {
   floorPlanId?: string;
   mode?: string;
   roomData?: unknown;
+}
+
+function resolvePresetType(type?: string): AiPresetType {
+  return type === 'furnishing_render' ? 'furnishing_style' : 'floor_plan_style';
+}
+
+function buildPresetSnapshot(preset: DefaultAiStylePreset | any) {
+  return {
+    key: preset.key,
+    type: preset.type,
+    name: preset.name,
+    promptTemplate: preset.promptTemplate,
+    negativePrompt: preset.negativePrompt,
+    tensor: preset.tensor,
+    mockImageUrl: preset.mockImageUrl,
+  };
 }
 
 export async function POST(req: Request) {
@@ -33,14 +50,14 @@ export async function POST(req: Request) {
       const { type, style, roomType, roomName, width, height, floorPlanId, mode, roomData } = body;
 
       if (!type || !style) {
-        return NextResponse.json({ success: false, error: '缺少必填参数 type / style' }, { status: 400 });
+        return NextResponse.json({ success: false, error: '缺少必要参数 type / style' }, { status: 400 });
       }
 
       const enterpriseId = context.enterpriseId ?? undefined;
       let quota = await AiQuota.findOne({ enterpriseId });
       if (!quota) {
         quota = await AiQuota.create({
-            enterpriseId,
+          enterpriseId,
           tier: 'free',
           monthlyLimit: TIER_LIMITS.free,
         });
@@ -63,36 +80,16 @@ export async function POST(req: Request) {
         );
       }
 
-      const generation: any = await AiGeneration.create({
-        enterpriseId,
-        operatorId: context.userId,
-        floorPlanId: floorPlanId || undefined,
-        type,
-        input: { style, roomType, roomName, width, height, mode, roomData },
-        status: 'processing',
-      });
-
-      const presetType = type === 'furnishing_render' ? 'furnishing_render' : 'floor_plan_style';
+      const presetType = resolvePresetType(type);
       const preset =
         (await getAiStylePresetByKey(presetType, style)) ||
         getDefaultAiStylePresetByKey(presetType, style) ||
         getDefaultAiStylePresetByKey('floor_plan_style', 'colorful');
 
-      const furnishingStyles: Record<string, string> = {
-        modern: '现代简约',
-        cream: '奶油风',
-        chinese: '新中式',
-        luxury: '意式轻奢',
-        wabi: '侘寂风',
-        scandinavian: '北欧风',
-        japanese: '日式原木',
-        industrial: '工业风',
-      };
-
       let prompt = '';
-      let negativePrompt = preset?.negativePrompt;
+      const negativePrompt = preset?.negativePrompt;
 
-      if (presetType === 'floor_plan_style' && preset) {
+      if (preset) {
         prompt = buildPromptFromPreset(preset.promptTemplate, {
           roomName,
           roomType,
@@ -100,14 +97,25 @@ export async function POST(req: Request) {
           height,
           roomData,
         });
-      } else if (type === 'furnishing_render') {
-        const styleName = furnishingStyles[style] || style;
-        const room = roomType || '客厅';
-        prompt =
-          `Hyper-photorealistic interior rendering of a ${styleName} style ${room}. ` +
-          `Eye-level perspective, ${width && height ? `room size approximately ${(width / 10).toFixed(1)}m x ${(height / 10).toFixed(1)}m` : 'spacious room'}. ` +
-          'Complete furniture arrangement, premium materials and textures, warm natural lighting through windows, 8K resolution, architectural photography quality. Strictly NO text, NO labels, NO watermarks.';
       }
+
+      const generation: any = await AiGeneration.create({
+        enterpriseId,
+        operatorId: context.userId,
+        floorPlanId: floorPlanId || undefined,
+        type,
+        input: {
+          style,
+          roomType,
+          roomName,
+          width,
+          height,
+          mode,
+          roomData,
+          presetSnapshot: preset ? buildPresetSnapshot(preset) : undefined,
+        },
+        status: 'processing',
+      });
 
       try {
         let promptData: { prompt: string; negative_prompt?: string };
@@ -119,7 +127,7 @@ export async function POST(req: Request) {
           };
         } else if (process.env.MOCK_AI === 'true') {
           promptData = {
-            prompt: 'Mock prompt for testing...',
+            prompt: 'Mock prompt for testing.',
             negative_prompt: 'mock negative prompt',
           };
           await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -150,6 +158,7 @@ export async function POST(req: Request) {
             negativePrompt: promptData.negative_prompt || negativePrompt,
             type,
             style,
+            presetType,
           },
           quota: {
             tier: quota.tier,

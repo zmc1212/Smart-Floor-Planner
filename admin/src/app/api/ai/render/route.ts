@@ -50,7 +50,7 @@ export async function POST(req: Request) {
 
       try {
         if (process.env.MOCK_AI === 'true') {
-          const presetType = generation.type === 'furnishing_render' ? 'furnishing_render' : 'floor_plan_style';
+          const presetType = generation.type === 'furnishing_render' ? 'furnishing_style' : 'floor_plan_style';
           const preset = await getAiStylePresetByKey(presetType, generation.input.style);
           await new Promise((resolve) => setTimeout(resolve, 2000));
           const mockImageUrl = preset?.mockImageUrl || '/colorful.png';
@@ -64,8 +64,9 @@ export async function POST(req: Request) {
 
         if (aiPlatform === 'tensor') {
           const { createTensorJob } = await import('@/lib/ai/tensor');
-          const presetType = generation.type === 'furnishing_render' ? 'furnishing_render' : 'floor_plan_style';
+          const presetType = generation.type === 'furnishing_render' ? 'furnishing_style' : 'floor_plan_style';
           const preset = await getAiStylePresetByKey(presetType, generation.input.style);
+          generation.input.sourceImage = typeof image === 'string' && image.startsWith('data:image') ? 'data-uri' : image;
           try {
             const job = await createTensorJob({
               prompt: prompt || generation.output.promptUsed || generation.input.customPrompt || '',
@@ -79,6 +80,7 @@ export async function POST(req: Request) {
             generation.status = 'processing';
             generation.provider = 'tensor';
             generation.externalJobId = job.id;
+            generation.input.controlImageResourceId = job.resourceId;
             await generation.save();
 
             return NextResponse.json({ success: true, data: { id: generation._id } });
