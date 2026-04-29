@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, memo } from 'react';
 import Link from 'next/link';
@@ -19,6 +19,7 @@ import {
   ChevronRight,
   PenTool,
   Palette,
+  Sofa,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -81,7 +82,8 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       title: 'AI 工作台',
       items: [
         { key: 'ai-floorplan', label: 'AI 室内平面', icon: PenTool, href: '/ai-studio/floor-plan' },
-        { key: 'ai-furnishing', label: 'AI 软装设计', icon: Palette, href: '/ai-studio/furnishing' },
+        { key: 'ai-furnishing', label: 'AI 风格设计', icon: Palette, href: '/ai-studio/furnishing' },
+        { key: 'ai-soft-furnishing', label: 'AI 软装设计', icon: Sofa, href: '/ai-studio/soft-furnishing' },
         { key: 'inspirations', label: '灵感方案', icon: Sparkles, href: '/inspirations' },
       ]
     },
@@ -195,6 +197,12 @@ export default function Sidebar() {
     }
   };
 
+  const hasMenuPermission = (key: string) => {
+    if (!admin) return true;
+    if (admin.effectivePermissions?.includes(key)) return true;
+    return key === 'ai-soft-furnishing' && admin.effectivePermissions?.includes('ai-furnishing');
+  };
+
   const SidebarContent = ({ collapsed }: { collapsed: boolean }) => (
     <div className="flex flex-col h-full bg-zinc-950 text-zinc-100 border-r border-zinc-800">
       {/* Header */}
@@ -208,10 +216,10 @@ export default function Sidebar() {
               <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                 <Select value={globalTenantId} onValueChange={handleTenantChange}>
                   <SelectTrigger className="h-7 min-w-[180px] bg-zinc-900 border-zinc-800 text-xs font-medium focus:ring-0 shadow-none text-zinc-300">
-                    <SelectValue placeholder="全局企业视图" />
+                    <SelectValue placeholder="鍏ㄥ眬浼佷笟瑙嗗浘" />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl border-zinc-800 bg-zinc-950 text-zinc-300 shadow-2xl">
-                    <SelectItem value="all" className="rounded-lg text-xs font-bold text-primary">-- 所有企业 --</SelectItem>
+                    <SelectItem value="all" className="rounded-lg text-xs font-bold text-primary">-- 鎵€鏈変紒涓?--</SelectItem>
                     {enterprises.map(ent => (
                       <SelectItem key={ent._id} value={ent._id} className="rounded-lg text-xs">
                         {ent.name}
@@ -233,7 +241,7 @@ export default function Sidebar() {
       <div className="flex-1 overflow-y-auto py-6 px-3 space-y-8 scrollbar-hide">
         {/* Render Platform Menus - Only for super_admin/admin */}
         {(admin?.role === 'super_admin' || admin?.role === 'admin') && MENU_CONFIG.platform.map((category) => {
-          const visibleItems = category.items.filter(item => !admin || admin.effectivePermissions?.includes(item.key));
+          const visibleItems = category.items.filter(item => hasMenuPermission(item.key));
           if (visibleItems.length === 0) return null;
 
           return (
@@ -250,7 +258,7 @@ export default function Sidebar() {
                     item={item} 
                     collapsed={collapsed}
                     isActive={pathname === item.href}
-                    hasPermission={!admin || admin.effectivePermissions?.includes(item.key)}
+                    hasPermission={hasMenuPermission(item.key)}
                   />
                 ))}
               </div>
@@ -267,7 +275,7 @@ export default function Sidebar() {
             )}
             <div className="space-y-1">
               <NavItem
-                item={{ key: 'ai-presets', label: 'AI 预设配置', icon: Sparkles, href: '/ai-presets' }}
+                item={{ key: 'ai-presets', label: 'AI 棰勮閰嶇疆', icon: Sparkles, href: '/ai-presets' }}
                 collapsed={collapsed}
                 isActive={pathname === '/ai-presets'}
                 hasPermission
@@ -278,7 +286,7 @@ export default function Sidebar() {
 
         {/* Render Merchant Menus */}
         {MENU_CONFIG.merchant.map((category) => {
-          const visibleItems = category.items.filter(item => !admin || admin.effectivePermissions?.includes(item.key));
+          const visibleItems = category.items.filter(item => hasMenuPermission(item.key));
           if (visibleItems.length === 0) return null;
 
           return (
@@ -295,7 +303,7 @@ export default function Sidebar() {
                     item={item} 
                     collapsed={collapsed}
                     isActive={pathname === item.href}
-                    hasPermission={!admin || admin.effectivePermissions?.includes(item.key)}
+                    hasPermission={hasMenuPermission(item.key)}
                   />
                 ))}
               </div>
@@ -381,3 +389,4 @@ export default function Sidebar() {
     </>
   );
 }
+

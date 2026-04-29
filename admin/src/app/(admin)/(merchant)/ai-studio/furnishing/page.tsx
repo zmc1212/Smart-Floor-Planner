@@ -239,13 +239,13 @@ export default function AiFurnishingPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-400 to-pink-500 text-white">
               <Palette size={20} />
             </div>
-            <h1 className="text-[28px] font-bold tracking-tight">AI 软装设计</h1>
+            <h1 className="text-[28px] font-bold tracking-tight">AI 风格设计</h1>
             <Badge variant="secondary" className="border-none bg-orange-50 text-orange-700">
               Beta
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground">
-            基于真实户型结构生成不同装修风格的俯视软装效果图，适合快速比稿和方案沟通。
+            基于真实户型结构生成不同装修风格的俯视风格效果图，适合快速比稿和方案沟通。
           </p>
         </div>
 

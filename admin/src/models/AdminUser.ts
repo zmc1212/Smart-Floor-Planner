@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document, Model } from 'mongoose';
+import mongoose, { Document, Model, Schema } from 'mongoose';
 import { multiTenantPlugin, TenantPluginOptions } from '../lib/mongoose-tenant-plugin';
 
 export interface IAdminUser extends Document {
@@ -36,7 +36,8 @@ export const ALL_MENUS = [
   { key: 'devices', label: '设备管理' },
   { key: 'leads', label: '客户线索' },
   { key: 'ai-floorplan', label: 'AI 室内平面' },
-  { key: 'ai-furnishing', label: 'AI 软装设计' },
+  { key: 'ai-furnishing', label: 'AI 风格设计' },
+  { key: 'ai-soft-furnishing', label: 'AI 软装设计' },
   { key: 'ai-presets', label: 'AI 预设配置' },
   { key: 'inspirations', label: '装修灵感库' },
   { key: 'staff', label: '员工管理' },
@@ -54,15 +55,35 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'leads',
     'ai-floorplan',
     'ai-furnishing',
+    'ai-soft-furnishing',
     'ai-presets',
     'inspirations',
     'staff',
     'admins',
   ],
-  enterprise_admin: ['dashboard', 'floorplans', 'leads', 'ai-floorplan', 'ai-furnishing', 'inspirations', 'staff', 'devices'],
-  designer: ['dashboard', 'floorplans', 'leads', 'ai-floorplan', 'ai-furnishing', 'inspirations', 'devices'],
-  salesperson: ['dashboard', 'leads', 'ai-floorplan', 'ai-furnishing', 'inspirations'],
-  viewer: ['dashboard', 'floorplans', 'ai-floorplan', 'ai-furnishing', 'inspirations'],
+  enterprise_admin: [
+    'dashboard',
+    'floorplans',
+    'leads',
+    'ai-floorplan',
+    'ai-furnishing',
+    'ai-soft-furnishing',
+    'inspirations',
+    'staff',
+    'devices',
+  ],
+  designer: [
+    'dashboard',
+    'floorplans',
+    'leads',
+    'ai-floorplan',
+    'ai-furnishing',
+    'ai-soft-furnishing',
+    'inspirations',
+    'devices',
+  ],
+  salesperson: ['dashboard', 'leads', 'ai-floorplan', 'ai-furnishing', 'ai-soft-furnishing', 'inspirations'],
+  viewer: ['dashboard', 'floorplans', 'ai-floorplan', 'ai-furnishing', 'ai-soft-furnishing', 'inspirations'],
 };
 
 const AdminUserSchema: Schema<IAdminUser> = new Schema(

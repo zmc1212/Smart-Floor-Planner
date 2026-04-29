@@ -10,7 +10,7 @@ export interface IAiGeneration extends Document {
   /** 关联的户型图 */
   floorPlanId?: mongoose.Types.ObjectId;
   /** 生成类型 */
-  type: 'floor_plan_style' | 'furnishing_render' | 'advice';
+  type: 'floor_plan_style' | 'furnishing_render' | 'soft_furnishing_render' | 'advice';
   /** 输入参数 */
   input: {
     style: string;
@@ -23,6 +23,10 @@ export interface IAiGeneration extends Document {
     presetSnapshot?: unknown;
     sourceImage?: string;
     controlImageResourceId?: string;
+    furnitureItems?: unknown;
+    sceneAnalysis?: unknown;
+    placementPlan?: unknown;
+    placementGuideImage?: string;
     customPrompt?: string;
   };
   /** AI 生成的结果 */
@@ -65,7 +69,7 @@ const AiGenerationSchema: Schema<IAiGeneration> = new Schema(
     },
     type: {
       type: String,
-      enum: ['floor_plan_style', 'furnishing_render', 'advice'],
+      enum: ['floor_plan_style', 'furnishing_render', 'soft_furnishing_render', 'advice'],
       required: true,
     },
     input: {
@@ -79,6 +83,10 @@ const AiGenerationSchema: Schema<IAiGeneration> = new Schema(
       presetSnapshot: { type: Schema.Types.Mixed },
       sourceImage: { type: String },
       controlImageResourceId: { type: String },
+      furnitureItems: { type: Schema.Types.Mixed },
+      sceneAnalysis: { type: Schema.Types.Mixed },
+      placementPlan: { type: Schema.Types.Mixed },
+      placementGuideImage: { type: String },
       customPrompt: { type: String },
     },
     output: {
@@ -110,5 +118,16 @@ AiGenerationSchema.index({ floorPlanId: 1 });
 
 AiGenerationSchema.plugin(multiTenantPlugin);
 
+const existingAiGenerationModel = mongoose.models.AiGeneration as Model<IAiGeneration> | undefined;
+const existingTypePath = existingAiGenerationModel?.schema.path('type') as
+  | { options?: { enum?: string[] } }
+  | undefined;
+const existingTypeEnum = existingTypePath?.options?.enum || [];
+
+if (existingAiGenerationModel && !existingTypeEnum.includes('soft_furnishing_render')) {
+  mongoose.deleteModel('AiGeneration');
+}
+
 export const AiGeneration: Model<IAiGeneration> =
-  mongoose.models.AiGeneration || mongoose.model<IAiGeneration>('AiGeneration', AiGenerationSchema);
+  (mongoose.models.AiGeneration as Model<IAiGeneration> | undefined) ||
+  mongoose.model<IAiGeneration>('AiGeneration', AiGenerationSchema);

@@ -57,7 +57,7 @@ interface AiPreset {
 
 const PRESET_TABS: Array<{ type: AiPresetType; label: string; hint: string }> = [
   { type: 'floor_plan_style', label: 'AI 室内平面', hint: '3D / 彩平 / CAD / 手绘' },
-  { type: 'furnishing_style', label: 'AI 软装设计', hint: '现代 / 北欧 / 奶油 / 轻奢 / 新中式' },
+  { type: 'furnishing_style', label: 'AI 风格设计', hint: '现代 / 北欧 / 奶油 / 轻奢 / 新中式' },
 ];
 
 function toNumber(value: string, fallback = 0) {
@@ -289,7 +289,7 @@ export default function AiPresetsPage() {
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground">
-            分别维护 AI 室内平面的图纸表现风格，以及 AI 软装设计的装修风格。
+            分别维护 AI 室内平面的图纸表现风格，以及 AI 风格设计的装修风格。
           </p>
         </div>
 

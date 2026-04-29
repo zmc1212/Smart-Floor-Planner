@@ -167,7 +167,7 @@ async function uploadImageResource(base64Image: string): Promise<string> {
     throw new Error('Invalid upload configuration received from Tensor.art');
   }
 
-  const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, '');
+  const base64Data = base64Image.replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, '');
   const buffer = Buffer.from(base64Data, 'base64');
 
   const uploadRes = await fetch(putUrl, {

@@ -56,6 +56,14 @@ interface GenerationStatusData {
     roomName?: string;
     customPrompt?: string;
     roomData?: unknown;
+    sourceImage?: string;
+    placementGuideImage?: string;
+    sceneAnalysis?: {
+      roomKind?: string;
+    };
+    placementPlan?: {
+      items?: Array<unknown>;
+    };
     presetSnapshot?: {
       name?: string;
       icon?: string;
@@ -69,6 +77,7 @@ function stripOuterSvg(svg: string) {
 }
 
 function getBackPath(type?: string) {
+  if (type === 'soft_furnishing_render') return '/ai-studio/soft-furnishing';
   return type === 'furnishing_render' ? '/ai-studio/furnishing' : '/ai-studio/floor-plan';
 }
 
@@ -126,6 +135,12 @@ export default function GenerationDetailPage() {
     icon: presetSnapshot?.icon || fallbackStyle.icon,
     gradient: presetSnapshot?.previewClassName || fallbackStyle.gradient,
   };
+  const softGuideImage = data?.type === 'soft_furnishing_render' ? data.input?.placementGuideImage : null;
+  const softSourceImage = data?.type === 'soft_furnishing_render' ? data.input?.sourceImage : null;
+  const softPlacementCount =
+    data?.type === 'soft_furnishing_render' && Array.isArray(data.input?.placementPlan?.items)
+      ? data.input?.placementPlan?.items.length
+      : 0;
 
   const rooms = useMemo(() => normalizeRooms(data?.input?.roomData), [data?.input?.roomData]);
   const layoutMetrics = useMemo(() => getLayoutMetrics(rooms), [rooms]);
@@ -354,7 +369,11 @@ export default function GenerationDetailPage() {
                   <div>
                     <p className="text-lg font-bold">{styleInfo.label}</p>
                     <p className="text-xs text-muted-foreground">
-                      {data.type === 'furnishing_render' ? 'AI 软装设计' : 'AI 室内平面'}
+                      {data.type === 'soft_furnishing_render'
+                        ? 'AI 软装设计'
+                        : data.type === 'furnishing_render'
+                          ? 'AI 风格设计'
+                          : 'AI 室内平面'}
                     </p>
                   </div>
                 </div>
