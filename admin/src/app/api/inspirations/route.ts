@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Inspiration from '@/models/Inspiration';
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Internal server error';
+}
+
 export async function GET(request: Request) {
   try {
     await dbConnect();
@@ -9,17 +13,23 @@ export async function GET(request: Request) {
     const style = searchParams.get('style');
     const roomType = searchParams.get('roomType');
     const recommended = searchParams.get('recommended');
+    const limit = Math.min(parseInt(searchParams.get('limit') || '0', 10) || 0, 50);
 
-    const query: any = {};
+    const query: Record<string, unknown> = {};
     if (style) query.style = style;
     if (roomType) query.roomType = roomType;
     if (recommended === 'true') query.isRecommended = true;
 
-    const inspirations = await Inspiration.find(query).sort({ createdAt: -1 });
+    let inspirationQuery = Inspiration.find(query).sort({ createdAt: -1 });
+    if (limit > 0) {
+      inspirationQuery = inspirationQuery.limit(limit);
+    }
+
+    const inspirations = await inspirationQuery;
     return NextResponse.json({ success: true, data: inspirations });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Fetch inspirations error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
   }
 }
 
@@ -35,9 +45,9 @@ export async function POST(request: Request) {
 
     const inspiration = await Inspiration.create(body);
     return NextResponse.json({ success: true, data: inspiration }, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Create inspiration error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
   }
 }
 
@@ -53,8 +63,8 @@ export async function DELETE(request: Request) {
 
     await Inspiration.findByIdAndDelete(id);
     return NextResponse.json({ success: true });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Delete inspiration error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
   }
 }

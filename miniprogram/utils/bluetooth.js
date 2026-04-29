@@ -541,6 +541,13 @@ function restoreMeasureCallback() {
   }
 }
 
+function getCurrentDeviceInfo() {
+  return {
+    deviceId: _deviceId || wx.getStorageSync('last_ble_device_id') || '',
+    name: wx.getStorageSync('last_ble_device_name') || ''
+  };
+}
+
 module.exports = {
   initBLE: initBLE,
   closeBLE: closeBLE,
@@ -549,5 +556,6 @@ module.exports = {
   setCallbacks: setCallbacks,
   clearBuffer: clearBuffer,
   setTemporaryMeasureCallback: setTemporaryMeasureCallback,
-  restoreMeasureCallback: restoreMeasureCallback
+  restoreMeasureCallback: restoreMeasureCallback,
+  getCurrentDeviceInfo: getCurrentDeviceInfo
 };

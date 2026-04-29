@@ -1,10 +1,79 @@
 var util = require('../../utils/util.js');
 const api = require('../../utils/api.js');
+const templateUtils = require('../../utils/templates.js');
+
+const QUICK_TOOLS = [
+  {
+    key: 'guide',
+    title: '新手引导',
+    subtitle: '3 分钟学会使用',
+    glyph: '导',
+    tone: 'green',
+  },
+  {
+    key: 'help',
+    title: '帮助中心',
+    subtitle: '常见问题解答',
+    glyph: '助',
+    tone: 'blue',
+  },
+  {
+    key: 'support',
+    title: '联系客服',
+    subtitle: '专业顾问服务',
+    glyph: '服',
+    tone: 'orange',
+  },
+];
+
+function buildDashboardStats(stats) {
+  return [
+    { key: 'plans', label: '已保存方案', value: stats.savedPlans || 0, unit: '个', glyph: '档', tone: 'green' },
+    { key: 'ai', label: 'AI 生成案例', value: stats.aiGeneratedCases || 0, unit: '个', glyph: 'AI', tone: 'yellow' },
+    { key: 'records', label: '量房记录', value: stats.measurementRecords || 0, unit: '次', glyph: '图', tone: 'blue' },
+    { key: 'leads', label: '客户线索', value: stats.leadCount || 0, unit: '条', glyph: '客', tone: 'purple' },
+  ];
+}
+
+function formatDateLabel(value) {
+  if (!value) {
+    return '最近创建';
+  }
+
+  const text = String(value).replace('T', ' ');
+  return text.slice(0, 16);
+}
+
+function getRecentPlanStatus(status, index) {
+  if (status === 'completed') {
+    return { label: '已完成', className: 'status-completed' };
+  }
+
+  if (status === 'designing' || index === 2) {
+    return { label: '方案深化中', className: 'status-designing' };
+  }
+
+  return { label: '编辑中', className: 'status-draft' };
+}
+
+function buildRecentPlans(plans) {
+  return (plans || []).slice(0, 3).map((plan, index) => {
+    const statusMeta = getRecentPlanStatus(plan.status, index);
+    return {
+      _id: plan.id || plan._id,
+      name: plan.name || '未命名方案',
+      meta: formatDateLabel(plan.updatedAt || plan.createdAt),
+      statusLabel: statusMeta.label,
+      statusClass: statusMeta.className,
+      thumbVariant: ['a', 'b', 'c'][index] || 'a',
+    };
+  });
+}
 
 Page({
   data: {
     bleConnected: false,
-    layoutTemplates: require('../../utils/templates.js').templates,
+    layoutTemplates: templateUtils.templates,
     plannedRooms: [],
     showLeadModal: false,
     myCloudFloorPlans: [],
@@ -20,8 +89,10 @@ Page({
     bleStatusText: '未连接设备',
     dashboardStats: [],
     recentPlans: [],
+    quickTools: QUICK_TOOLS,
     homeTemplates: [],
-    activeProjectTitle: '当前量房项目'
+    homeDashboard: null,
+    activeProjectTitle: '当前量房项目',
   },
 
   onLoad: function () {
@@ -41,18 +112,19 @@ Page({
       bleConnected: app.globalData.bleConnected || false,
       userInfo: userInfo,
       openid: app.globalData.openid || '',
-      isStaff: !!(userInfo && userInfo.role === 'staff'),
+      isStaff: false,
       currentCity: this.deriveCurrentCity(userInfo),
-      homeTemplates: (this.data.layoutTemplates || []).slice(0, 4)
+      homeTemplates: (this.data.layoutTemplates || []).slice(0, 4),
+      quickTools: QUICK_TOOLS,
     }, () => {
       this.syncHomeDashboard();
+      this.fetchHomeDashboard();
     });
   },
 
   onShow: async function () {
     const app = getApp();
     const userInfo = app.globalData.userInfo || null;
-    const isStaffUser = !!(userInfo && userInfo.role === 'staff');
 
     if (app.globalData.requireLeadFirst) {
       app.globalData.requireLeadFirst = false;
@@ -60,7 +132,7 @@ Page({
         showLeadModal: true,
         plannedRooms: [],
         currentProject_id: null,
-        isStaff: isStaffUser
+        isStaff: false,
       });
     } else if (app.globalData.restoreFloorPlan) {
       const fp = app.globalData.restoreFloorPlan;
@@ -77,23 +149,25 @@ Page({
         plannedRooms: rooms || [],
         currentProject_id: fp._id || null,
         showLeadModal: false,
-        isStaff: isStaffUser
+        isStaff: false,
       });
     } else if (!this.data.currentProject_id) {
       await this.fetchCloudPlans();
-      this.setData({ isStaff: isStaffUser });
+      this.setData({ isStaff: false });
     }
 
     this.setData({
       bleConnected: app.globalData.bleConnected || false,
       branding: app.globalData.branding || null,
-      isStaff: isStaffUser,
+      isStaff: false,
       userInfo: userInfo,
       openid: app.globalData.openid || '',
       currentCity: this.deriveCurrentCity(userInfo),
-      homeTemplates: (this.data.layoutTemplates || []).slice(0, 4)
+      homeTemplates: (this.data.layoutTemplates || []).slice(0, 4),
+      quickTools: QUICK_TOOLS,
     }, () => {
       this.syncHomeDashboard();
+      this.fetchHomeDashboard();
     });
   },
 
@@ -121,16 +195,27 @@ Page({
 
   formatPlanMeta: function (plan) {
     const rooms = this.parseLayoutData(plan.layoutData);
-    const roomCount = rooms.length;
-    const createdAt = plan.updatedAt || plan.createdAt || '';
-    const dateLabel = createdAt ? String(createdAt).replace('T', ' ').slice(0, 16) : '最近创建';
     return {
-      roomCount: roomCount,
-      meta: dateLabel + ' · ' + roomCount + '个空间'
+      roomCount: rooms.length,
+      meta: formatDateLabel(plan.updatedAt || plan.createdAt),
     };
   },
 
   syncHomeDashboard: function () {
+    if (this.data.homeDashboard && (!this.data.plannedRooms || this.data.plannedRooms.length === 0)) {
+      const stats = this.data.homeDashboard.stats || {};
+      const bluetooth = this.data.homeDashboard.bluetooth || {};
+
+      this.setData({
+        bleStatusText: this.data.bleConnected
+          ? (bluetooth.deviceCode ? '已连接 ' + bluetooth.deviceCode : '蓝牙已连接')
+          : (bluetooth.connectedLabel || '未连接设备'),
+        dashboardStats: buildDashboardStats(stats),
+        recentPlans: buildRecentPlans(this.data.homeDashboard.recentPlans || []),
+      });
+      return;
+    }
+
     const cloudPlans = this.data.myCloudFloorPlans || [];
     const plannedRooms = this.data.plannedRooms || [];
     const totalMeasuredRooms = cloudPlans.reduce((sum, plan) => {
@@ -141,27 +226,26 @@ Page({
     const totalRooms = cloudPlans.reduce((sum, plan) => {
       return sum + this.parseLayoutData(plan.layoutData).length;
     }, 0);
-    const activeProjectTitle = this.data.currentProject_id ? '当前量房项目' : '新建量房项目';
-    const recentPlans = cloudPlans.slice(0, 3).map((plan) => {
-      const metaInfo = this.formatPlanMeta(plan);
-      return {
-        _id: plan._id,
-        name: plan.name || '未命名方案',
-        meta: metaInfo.meta,
-        statusLabel: plan.status === 'completed' ? '已完成' : '编辑中'
-      };
-    });
 
     this.setData({
       bleStatusText: this.data.bleConnected ? '已连接 LM-100' : '未连接设备',
-      activeProjectTitle: activeProjectTitle,
+      activeProjectTitle: this.data.currentProject_id ? '当前量房项目' : '新建量房项目',
       dashboardStats: [
-        { key: 'plans', label: '已保存方案', value: cloudPlans.length, unit: '个', icon: '⌂', tone: 'green' },
-        { key: 'templates', label: '标准模板', value: (this.data.layoutTemplates || []).length, unit: '种', icon: '▣', tone: 'yellow' },
-        { key: 'records', label: '量房记录', value: totalMeasuredRooms, unit: '次', icon: '≣', tone: 'blue' },
-        { key: 'rooms', label: '空间数量', value: plannedRooms.length || totalRooms, unit: '间', icon: '◌', tone: 'pink' }
+        { key: 'plans', label: '已保存方案', value: cloudPlans.length, unit: '个', glyph: '档', tone: 'green' },
+        { key: 'templates', label: 'AI 生成案例', value: (this.data.layoutTemplates || []).length, unit: '个', glyph: 'AI', tone: 'yellow' },
+        { key: 'records', label: '量房记录', value: totalMeasuredRooms, unit: '次', glyph: '图', tone: 'blue' },
+        { key: 'rooms', label: '客户线索', value: plannedRooms.length || totalRooms, unit: '条', glyph: '客', tone: 'purple' },
       ],
-      recentPlans: recentPlans
+      recentPlans: buildRecentPlans(cloudPlans.map((plan) => {
+        const metaInfo = this.formatPlanMeta(plan);
+        return {
+          _id: plan._id,
+          id: plan._id,
+          name: plan.name || '未命名方案',
+          updatedAt: metaInfo.meta,
+          status: plan.status || 'draft',
+        };
+      })),
     });
   },
 
@@ -169,7 +253,7 @@ Page({
     this.setData({
       showLeadModal: false,
       plannedRooms: [],
-      currentProject_id: null
+      currentProject_id: null,
     }, () => {
       this.syncHomeDashboard();
     });
@@ -177,7 +261,7 @@ Page({
     const leadId = e.detail ? e.detail._id : null;
     if (leadId) {
       wx.navigateTo({
-        url: `/pages/lead-detail/lead-detail?id=${leadId}`
+        url: `/pages/lead-detail/lead-detail?id=${leadId}`,
       });
     } else {
       wx.showToast({ title: '线索创建成功', icon: 'success' });
@@ -208,12 +292,38 @@ Page({
   },
 
   onQuickQuoteTap: function () {
-    this.setData({ showLeadModal: true });
+    wx.showToast({ title: '快速报价即将上线', icon: 'none' });
+  },
+
+  onQuickToolTap: function (e) {
+    const action = e.currentTarget.dataset.action;
+
+    if (action === 'guide') {
+      wx.showModal({
+        title: '新手引导',
+        content: '先连接蓝牙设备，再创建量房方案，进入房间即可开始测量与出图。',
+        showCancel: false,
+        confirmText: '知道了',
+      });
+      return;
+    }
+
+    if (action === 'support') {
+      wx.showModal({
+        title: '联系客服',
+        content: '如需企业顾问或设备支持，请联系管理员或销售顾问。',
+        showCancel: false,
+        confirmText: '我知道了',
+      });
+      return;
+    }
+
+    wx.showToast({ title: '帮助中心即将上线', icon: 'none' });
   },
 
   onOpenAllPlans: function () {
     wx.switchTab({
-      url: '/pages/mine/mine'
+      url: '/pages/mine/mine',
     });
   },
 
@@ -246,11 +356,10 @@ Page({
 
   onSelectLayout: async function (e) {
     var templateId = e.detail.id || e.currentTarget.dataset.id;
-    var templatesUtil = require('../../utils/templates.js');
-    var roomsData = templatesUtil.generateTemplateRooms(templateId);
+    var roomsData = templateUtils.generateTemplateRooms(templateId);
 
     this.setData({
-      plannedRooms: roomsData
+      plannedRooms: roomsData,
     }, () => {
       this.syncHomeDashboard();
     });
@@ -262,7 +371,7 @@ Page({
         openid: app.globalData.openid,
         name: '量房项目 - ' + util.formatTime(new Date()).split(' ')[0].replace(/\//g, ''),
         layoutData: roomsData,
-        status: 'draft'
+        status: 'draft',
       };
       const res = await api.request('/floorplans', 'POST', payload);
       if (res.success && res.data) {
@@ -272,7 +381,7 @@ Page({
 
         if (app.globalData.activeLeadId) {
           await api.request(`/leads/${app.globalData.activeLeadId}`, 'PUT', {
-            floorPlanId: res.data._id
+            floorPlanId: res.data._id,
           });
           app.globalData.activeLeadId = null;
         }
@@ -312,6 +421,29 @@ Page({
     }
   },
 
+  async fetchHomeDashboard() {
+    const app = getApp();
+    const openid = app.globalData.openid;
+    if (!openid) {
+      return;
+    }
+
+    try {
+      const res = await api.request(`/miniprogram/home?openid=${openid}`, 'GET');
+      if (res.success && res.data) {
+        this.setData({
+          homeDashboard: res.data,
+          currentCity: res.data.user && res.data.user.city ? res.data.user.city : this.data.currentCity,
+          branding: res.data.user ? res.data.user.branding || this.data.branding : this.data.branding,
+        }, () => {
+          this.syncHomeDashboard();
+        });
+      }
+    } catch (err) {
+      console.error('Fetch home dashboard failed', err);
+    }
+  },
+
   onResetLayout: function () {
     this.setData({ plannedRooms: [], currentProject_id: null }, () => {
       this.syncHomeDashboard();
@@ -326,7 +458,7 @@ Page({
       measured: false,
       color: 'rgba(255, 255, 255, 0.8)',
       defaultWidth: 40,
-      defaultHeight: 40
+      defaultHeight: 40,
     });
     this.setData({ plannedRooms }, () => {
       this.syncHomeDashboard();
@@ -339,7 +471,7 @@ Page({
     const app = getApp();
     await api.request(`/floorplans/${this.data.currentProject_id}`, 'PUT', {
       openid: app.globalData.openid,
-      layoutData: this.data.plannedRooms
+      layoutData: this.data.plannedRooms,
     });
   },
 
@@ -363,13 +495,13 @@ Page({
       showMeasurePrompt: !roomData.measured,
       activeTool: 'SELECT',
       selectedIds: [roomId],
-      showPropertyPanel: false
+      showPropertyPanel: false,
     };
 
     getApp().globalData.restoreFloorPlan = fpData;
 
     wx.navigateTo({
-      url: '/pages/editor/editor'
+      url: '/pages/editor/editor',
     });
   },
 
@@ -435,7 +567,7 @@ Page({
   onShareAppMessage: function () {
     return {
       title: '智能量房大师 - 专业 AR 量房设计工具',
-      path: '/pages/index/index'
+      path: '/pages/index/index',
     };
-  }
+  },
 });

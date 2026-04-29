@@ -19,6 +19,7 @@ import {
   ChevronRight,
   PenTool,
   Palette,
+  Ruler,
   Sofa,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -76,6 +77,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       title: '户型与灵感',
       items: [
         { key: 'floorplans', label: '户型图库', icon: Map, href: '/floorplans' },
+        { key: 'measurements', label: '量房记录', icon: Ruler, href: '/measurements' },
       ]
     },
     {

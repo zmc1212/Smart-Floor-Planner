@@ -802,6 +802,14 @@ Page({
           showMeasurePrompt: false 
         });
 
+        this.reportMeasurement({
+          type: 'height',
+          value: distanceInMeters,
+          direction: 'H',
+          roomId: roomId,
+          roomName: room.name
+        });
+
         setTimeout(() => {
           this.openLaser();
         }, 500);
@@ -859,6 +867,14 @@ Page({
         canFinishPolygon: canFinish,
         lastMeasuredDirection: direction, 
         pendingDirection: nextDirection 
+      });
+
+      this.reportMeasurement({
+        type: 'length',
+        value: distanceInMeters,
+        direction: direction,
+        roomId: roomId,
+        roomName: room.name
       });
 
       setTimeout(() => {
@@ -920,7 +936,43 @@ Page({
       });
 
       this.pushToHistory(newRooms, { selectedEdgeInfo: null, selectedEdge: '' });
+      this.reportMeasurement({
+        type: 'length',
+        value: distanceInMeters,
+        direction: edgeInfo.side || String(edgeInfo.index || ''),
+        roomId: roomId,
+        roomName: room.name
+      });
       wx.showToast({ title: '墙体已更新: ' + distanceInMeters + 'm', icon: 'success' });
+    }
+  },
+
+  reportMeasurement: async function (record) {
+    const app = getApp();
+    const projectId = this.data.currentProject_id;
+    if (!app.globalData.openid || !projectId || !record || !record.value) {
+      return;
+    }
+
+    try {
+      const api = require('../../utils/api.js');
+      const bluetooth = require('../../utils/bluetooth.js');
+      const deviceInfo = bluetooth.getCurrentDeviceInfo ? bluetooth.getCurrentDeviceInfo() : {};
+      await api.request('/measurements', 'POST', {
+        openid: app.globalData.openid,
+        floorPlanId: projectId,
+        roomId: record.roomId || this.data.currentGuidedRoomId,
+        roomName: record.roomName || this.data.currentGuidedRoomName,
+        deviceId: deviceInfo.deviceId || deviceInfo.name || '',
+        value: record.value,
+        unit: record.unit || 'meters',
+        type: record.type || 'length',
+        direction: record.direction || '',
+        source: 'ble',
+        measuredAt: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error('Report measurement failed', err);
     }
   },
 
@@ -1003,6 +1055,15 @@ Page({
       canFinishPolygon: canFinish,
       lastMeasuredDirection: 'ANGLE',
       pendingDirection: ''
+    });
+
+    const room = (this.data.rooms || []).find(function (item) { return item.id === roomId; });
+    this.reportMeasurement({
+      type: 'angle',
+      value: wallLength,
+      direction: 'ANGLE',
+      roomId: roomId,
+      roomName: room ? room.name : this.data.currentGuidedRoomName
     });
 
     var that = this;

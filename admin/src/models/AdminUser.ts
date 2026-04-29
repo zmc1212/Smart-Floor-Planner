@@ -34,6 +34,7 @@ export const ALL_MENUS = [
   { key: 'floorplans', label: '户型图' },
   { key: 'users', label: '小程序用户' },
   { key: 'devices', label: '设备管理' },
+  { key: 'measurements', label: '量房记录' },
   { key: 'leads', label: '客户线索' },
   { key: 'ai-floorplan', label: 'AI 室内平面' },
   { key: 'ai-furnishing', label: 'AI 风格设计' },
@@ -52,6 +53,7 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'floorplans',
     'users',
     'devices',
+    'measurements',
     'leads',
     'ai-floorplan',
     'ai-furnishing',
@@ -71,6 +73,7 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'inspirations',
     'staff',
     'devices',
+    'measurements',
   ],
   designer: [
     'dashboard',
@@ -81,8 +84,9 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'ai-soft-furnishing',
     'inspirations',
     'devices',
+    'measurements',
   ],
-  salesperson: ['dashboard', 'leads', 'ai-floorplan', 'ai-furnishing', 'ai-soft-furnishing', 'inspirations'],
+  salesperson: ['dashboard', 'leads', 'measurements', 'ai-floorplan', 'ai-furnishing', 'ai-soft-furnishing', 'inspirations'],
   viewer: ['dashboard', 'floorplans', 'ai-floorplan', 'ai-furnishing', 'ai-soft-furnishing', 'inspirations'],
 };
 
