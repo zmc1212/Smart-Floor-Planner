@@ -17,7 +17,7 @@ export interface IEnterpriseAiUsageSnapshot extends Document {
     keyId?: string;
     keyName?: string;
     maskedKey?: string;
-    status?: string;
+    valid?: boolean;
     allowedModels?: string[];
     pollenBudget?: number | null;
   };
@@ -53,7 +53,7 @@ const EnterpriseAiUsageSnapshotSchema = new Schema<IEnterpriseAiUsageSnapshot>(
       keyId: { type: String },
       keyName: { type: String },
       maskedKey: { type: String },
-      status: { type: String },
+      valid: { type: Boolean },
       allowedModels: { type: [String], default: [] },
       pollenBudget: { type: Number, default: null },
     },

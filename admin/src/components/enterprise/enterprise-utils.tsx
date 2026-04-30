@@ -39,5 +39,14 @@ export function getWecomCompletionText(ent: EnterpriseListItem) {
 }
 
 export function formatAiKeyStatus(ent: EnterpriseListItem) {
-  return ent.aiUsageSnapshot?.keyInfo?.status || ent.aiConfig?.status || 'unconfigured';
+  const keyId = ent.aiUsageSnapshot?.keyInfo?.keyId || ent.aiConfig?.pollinationsKeyRef || '';
+  if (!keyId) {
+    return '未配置';
+  }
+
+  if (ent.aiUsageSnapshot?.keyInfo?.valid === false) {
+    return 'Key 无效';
+  }
+
+  return '已配置';
 }

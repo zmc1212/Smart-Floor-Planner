@@ -12,6 +12,7 @@ import { buildSoftFurnishingPromptFromPreset, FurnitureSelection } from '@/lib/a
 import type { AiPresetType, DefaultAiStylePreset } from '@/lib/ai/preset-definitions';
 import { EnterpriseAiUsageSnapshot } from '@/models/EnterpriseAiUsageSnapshot';
 import {
+  deriveEnterpriseKeyStatus,
   getEnterprisePollinationsRuntimeConfig,
   markEnterpriseAiSyncError,
 } from '@/lib/ai/enterprise-ai';
@@ -58,10 +59,14 @@ export async function POST(req: Request) {
       await ensureDefaultAiStylePresets(context.userId);
 
       const body = (await req.json()) as GenerateBody;
-      const { type, style, roomType, roomName, width, height, floorPlanId, mode, roomData, furnitureItems } = body;
+      const { type, style, roomType, roomName, width, height, floorPlanId, mode, roomData, furnitureItems } =
+        body;
 
       if (!type || !style) {
-        return NextResponse.json({ success: false, error: '缺少必要参数 type / style' }, { status: 400 });
+        return NextResponse.json(
+          { success: false, error: '缺少必要参数 type / style' },
+          { status: 400 }
+        );
       }
 
       let runtimeConfig;
@@ -69,14 +74,25 @@ export async function POST(req: Request) {
         runtimeConfig = await getEnterprisePollinationsRuntimeConfig(String(context.enterpriseId));
       } catch (error) {
         return NextResponse.json(
-          { success: false, error: error instanceof Error ? error.message : '当前企业 AI Key 不可用' },
+          {
+            success: false,
+            error: error instanceof Error ? error.message : '当前企业 AI Key 不可用',
+          },
           { status: 400 }
         );
       }
 
-      const latestSnapshot = await EnterpriseAiUsageSnapshot.findOne({ enterpriseId: context.enterpriseId })
+      const latestSnapshot = await EnterpriseAiUsageSnapshot.findOne({
+        enterpriseId: context.enterpriseId,
+      })
         .select('balance lastSyncedAt keyInfo syncError')
         .lean();
+      const keyStatus = deriveEnterpriseKeyStatus({
+        aiConfig: { pollinationsKeyRef: runtimeConfig.keyId },
+        keyInfo: latestSnapshot?.keyInfo
+          ? { id: latestSnapshot.keyInfo.keyId, valid: latestSnapshot.keyInfo.valid }
+          : null,
+      });
 
       if ((latestSnapshot?.balance ?? 0) <= 0 && process.env.MOCK_AI !== 'true') {
         return NextResponse.json(
@@ -85,7 +101,7 @@ export async function POST(req: Request) {
             error: '当前企业 Pollinations 余额不足，请联系平台管理员充值。',
             quota: {
               balance: latestSnapshot?.balance ?? 0,
-              keyStatus: latestSnapshot?.keyInfo?.status || runtimeConfig.status,
+              keyStatus,
             },
           },
           { status: 402 }
@@ -139,7 +155,7 @@ export async function POST(req: Request) {
         apiKeyName: runtimeConfig.keyName,
         quotaSnapshot: {
           balance: latestSnapshot?.balance ?? 0,
-          keyStatus: latestSnapshot?.keyInfo?.status || runtimeConfig.status,
+          keyStatus,
           allowedModels: latestSnapshot?.keyInfo?.allowedModels || runtimeConfig.allowedModels,
           lastSyncedAt: latestSnapshot?.lastSyncedAt || undefined,
         },
@@ -163,8 +179,12 @@ export async function POST(req: Request) {
           const { generateAIPrompt } = await import('@/lib/gemini');
           const details =
             (roomName ? `Room Name: ${roomName}. ` : '') +
-            (width && height ? `Dimensions: ${(width / 10).toFixed(1)}m x ${(height / 10).toFixed(1)}m. ` : '') +
-            (roomData ? `\nArchitectural Data (polygons, doors, windows): ${JSON.stringify(roomData)}` : '');
+            (width && height
+              ? `Dimensions: ${(width / 10).toFixed(1)}m x ${(height / 10).toFixed(1)}m. `
+              : '') +
+            (roomData
+              ? `\nArchitectural Data (polygons, doors, windows): ${JSON.stringify(roomData)}`
+              : '');
 
           promptData = await generateAIPrompt(
             style,
@@ -190,20 +210,26 @@ export async function POST(req: Request) {
           },
           quota: {
             balance: latestSnapshot?.balance ?? 0,
-            keyStatus: latestSnapshot?.keyInfo?.status || runtimeConfig.status,
+            keyStatus,
             allowedModels: latestSnapshot?.keyInfo?.allowedModels || runtimeConfig.allowedModels,
           },
         });
       } catch (aiError: unknown) {
         generation.status = 'failed';
-        generation.errorMessage = aiError instanceof Error ? aiError.message : 'Prompt generation failed';
+        generation.errorMessage =
+          aiError instanceof Error ? aiError.message : 'Prompt generation failed';
         await generation.save();
 
         if (context.enterpriseId) {
-          await markEnterpriseAiSyncError(String(context.enterpriseId), aiError).catch(() => undefined);
+          await markEnterpriseAiSyncError(String(context.enterpriseId), aiError).catch(
+            () => undefined
+          );
         }
 
-        return NextResponse.json({ success: false, error: 'AI 提示词生成失败' }, { status: 502 });
+        return NextResponse.json(
+          { success: false, error: 'AI 提示词生成失败' },
+          { status: 502 }
+        );
       }
     });
   } catch (error: unknown) {

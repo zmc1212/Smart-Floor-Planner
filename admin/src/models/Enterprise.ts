@@ -42,7 +42,6 @@ export interface IEnterprise extends Document {
     pollinationsMaskedKey?: string;
     allowedModels?: string[];
     pollenBudget?: number | null;
-    status?: 'active' | 'disabled' | 'revoked';
     lastSyncedAt?: Date | null;
   };
 }
@@ -106,11 +105,6 @@ const EnterpriseSchema: Schema<IEnterprise> = new Schema(
       pollinationsMaskedKey: { type: String },
       allowedModels: { type: [String], default: [] },
       pollenBudget: { type: Number, default: null },
-      status: {
-        type: String,
-        enum: ['active', 'disabled', 'revoked'],
-        default: 'disabled',
-      },
       lastSyncedAt: { type: Date, default: null },
     }
   },

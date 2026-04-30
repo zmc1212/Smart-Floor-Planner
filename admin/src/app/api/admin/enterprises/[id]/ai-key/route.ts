@@ -12,7 +12,25 @@ interface AiKeyBody {
   allowedModels?: string[];
   pollenBudget?: number | null;
   rotate?: boolean;
-  status?: 'active' | 'disabled' | 'revoked';
+  status?: 'revoked';
+}
+
+function getErrorResponse(error: unknown, fallbackMessage: string) {
+  const status =
+    error &&
+    typeof error === 'object' &&
+    'status' in error &&
+    typeof (error as { status?: unknown }).status === 'number'
+      ? (error as { status: number }).status
+      : 500;
+
+  return NextResponse.json(
+    {
+      success: false,
+      error: error instanceof Error ? error.message : fallbackMessage,
+    },
+    { status }
+  );
 }
 
 export async function POST(
@@ -44,10 +62,7 @@ export async function POST(
     });
   } catch (error) {
     console.error('[Enterprise AI Key POST]', error);
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : '服务端错误' },
-      { status: 500 }
-    );
+    return getErrorResponse(error, 'Server error');
   }
 }
 
@@ -62,6 +77,19 @@ export async function PATCH(
       const body = (await request.json()) as AiKeyBody;
       const { id } = await params;
 
+      if (
+        (body.status as unknown as string) === 'active' ||
+        (body.status as unknown as string) === 'disabled'
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: 'Pollinations 子 Key 不支持启用或停用，请使用轮换或撤销。',
+          },
+          { status: 400 }
+        );
+      }
+
       if (body.status === 'revoked') {
         await revokeEnterpriseManagedPollinationsKey(id);
       } else {
@@ -69,7 +97,6 @@ export async function PATCH(
           enterpriseId: id,
           allowedModels: body.allowedModels,
           pollenBudget: body.pollenBudget,
-          status: body.status,
         });
       }
 
@@ -81,9 +108,6 @@ export async function PATCH(
     });
   } catch (error) {
     console.error('[Enterprise AI Key PATCH]', error);
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : '服务端错误' },
-      { status: 500 }
-    );
+    return getErrorResponse(error, 'Server error');
   }
 }

@@ -37,14 +37,23 @@ interface AiQuotaBarProps {
 
 function statusTone(status?: string) {
   switch (status) {
-    case 'active':
+    case 'configured':
       return 'bg-emerald-100 text-emerald-700';
-    case 'disabled':
+    case 'invalid':
       return 'bg-amber-100 text-amber-700';
-    case 'revoked':
-      return 'bg-zinc-200 text-zinc-700';
     default:
       return 'bg-zinc-100 text-zinc-600';
+  }
+}
+
+function statusLabel(status?: string) {
+  switch (status) {
+    case 'configured':
+      return '已配置';
+    case 'invalid':
+      return 'Key 无效';
+    default:
+      return '未配置';
   }
 }
 
@@ -63,7 +72,7 @@ export default function AiQuotaBar({ quota, loading, onRecharge }: AiQuotaBarPro
   const balance = Number(quota.balance ?? quota.remaining ?? 0);
   const todayUsage = quota.dailyUsageSummary?.today?.requests ?? quota.usedCount ?? 0;
   const todayCost = quota.dailyUsageSummary?.today?.costUsd ?? 0;
-  const isUnavailable = quota.keyStatus && quota.keyStatus !== 'active';
+  const isUnavailable = quota.keyStatus === 'invalid';
 
   return (
     <div
@@ -80,12 +89,19 @@ export default function AiQuotaBar({ quota, loading, onRecharge }: AiQuotaBarPro
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-bold">Pollinations 企业额度</span>
-              <span className={cn('rounded-full px-2.5 py-1 text-[11px] font-bold uppercase', statusTone(quota.keyStatus))}>
-                {quota.keyStatus || 'unconfigured'}
+              <span
+                className={cn(
+                  'rounded-full px-2.5 py-1 text-[11px] font-bold uppercase',
+                  statusTone(quota.keyStatus)
+                )}
+              >
+                {statusLabel(quota.keyStatus)}
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-              <span>官方余额 {balance.toFixed(2)} {quota.currency || 'USD'}</span>
+              <span>
+                官方余额 {balance.toFixed(2)} {quota.currency || 'USD'}
+              </span>
               <span>今日请求 {todayUsage}</span>
               <span>今日费用 ${todayCost.toFixed(2)}</span>
             </div>

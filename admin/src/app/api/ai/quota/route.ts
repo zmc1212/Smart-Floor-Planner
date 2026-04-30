@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { EnterpriseAiUsageSnapshot } from '@/models/EnterpriseAiUsageSnapshot';
 import {
+  deriveEnterpriseKeyStatus,
   markEnterpriseAiSyncError,
   summarizeDailyUsage,
   syncEnterprisePollinationsSnapshot,
@@ -19,13 +20,15 @@ type SnapshotView = {
   syncError?: string;
   dailyUsage?: Array<{ date: string; model: string; requests: number; costUsd: number }>;
   keyInfo?: {
-    status?: string;
+    keyId?: string;
+    valid?: boolean;
     allowedModels?: string[];
   } | null;
 };
 
 function buildQuotaResponse(snapshot: SnapshotView | null | undefined) {
   const usageSummary = summarizeDailyUsage(snapshot?.dailyUsage || []);
+  const keyStatus = deriveEnterpriseKeyStatus({ keyInfo: snapshot?.keyInfo || null });
 
   return {
     tier: 'pollinations',
@@ -38,7 +41,7 @@ function buildQuotaResponse(snapshot: SnapshotView | null | undefined) {
     balance: snapshot?.balance ?? 0,
     currency: snapshot?.currency || 'USD',
     dailyUsageSummary: usageSummary,
-    keyStatus: snapshot?.keyInfo?.status || 'unconfigured',
+    keyStatus,
     allowedModels: snapshot?.keyInfo?.allowedModels || [],
     lastSyncedAt: snapshot?.lastSyncedAt || null,
     syncError: snapshot?.syncError || '',
@@ -90,7 +93,8 @@ export async function POST(req: Request) {
           return NextResponse.json(
             {
               success: false,
-              error: 'AI 点数已改为 Pollinations 官方余额视图，当前不支持本地充值或升级。',
+              error:
+                'AI 点数已改为 Pollinations 官方余额视图，当前不支持本地充值或升级。',
             },
             { status: 400 }
           );

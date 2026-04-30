@@ -42,7 +42,6 @@ export interface EnterpriseListItem {
     pollinationsMaskedKey?: string;
     allowedModels?: string[];
     pollenBudget?: number | null;
-    status?: 'active' | 'disabled' | 'revoked';
     lastSyncedAt?: string | Date | null;
   };
   aiUsageSnapshot?: {
@@ -52,7 +51,7 @@ export interface EnterpriseListItem {
       keyId?: string;
       keyName?: string;
       maskedKey?: string;
-      status?: string;
+      valid?: boolean;
       allowedModels?: string[];
       pollenBudget?: number | null;
     } | null;
