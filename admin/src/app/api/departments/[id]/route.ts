@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import dbConnect from '@/lib/mongodb';
 import { Department } from '@/models/Department';
 import { AdminUser } from '@/models/AdminUser';
@@ -31,7 +32,9 @@ export async function PUT(
         }
 
         if (name !== undefined) department.name = name;
-        if (parentId !== undefined) department.parentId = parentId || null;
+        if (parentId !== undefined) {
+          (department as any).parentId = parentId ? new mongoose.Types.ObjectId(parentId) : null;
+        }
         if (order !== undefined) department.order = order;
 
         await department.save();

@@ -1,17 +1,11 @@
-import mongoose, { Schema, Document, Model } from 'mongoose';
+import mongoose, { Document, Model, Schema } from 'mongoose';
 import { multiTenantPlugin } from '../lib/mongoose-tenant-plugin';
 
-/**
- * AI 生成记录 — 追踪每一次 AI 生成的参数、结果和消耗
- */
 export interface IAiGeneration extends Document {
   enterpriseId: mongoose.Types.ObjectId;
-  operatorId: mongoose.Types.ObjectId; // AdminUser who triggered
-  /** 关联的户型图 */
+  operatorId: mongoose.Types.ObjectId;
   floorPlanId?: mongoose.Types.ObjectId;
-  /** 生成类型 */
   type: 'floor_plan_style' | 'furnishing_render' | 'soft_furnishing_render' | 'advice';
-  /** 输入参数 */
   input: {
     style: string;
     roomType?: string;
@@ -22,30 +16,31 @@ export interface IAiGeneration extends Document {
     roomData?: unknown;
     presetSnapshot?: unknown;
     sourceImage?: string;
-    controlImageResourceId?: string;
     furnitureItems?: unknown;
     sceneAnalysis?: unknown;
     placementPlan?: unknown;
     placementGuideImage?: string;
     customPrompt?: string;
   };
-  /** AI 生成的结果 */
   output: {
     imageUrl?: string;
     adviceText?: string;
     promptUsed?: string;
   };
-  /** 状态 */
   status: 'pending' | 'processing' | 'succeeded' | 'failed';
-  /** 服务提供商 */
-  provider: 'replicate' | 'tensor';
-  /** 外部任务 ID (Replicate Prediction ID 或 Tensor Job ID) */
-  externalJobId?: string;
-  /** Replicate 任务 ID (遗留字段) */
-  replicatePredictionId?: string;
-  /** 错误信息 */
+  provider: 'pollinations';
+  apiKeyId?: string;
+  apiKeyName?: string;
+  remoteCostUsd?: number;
+  remoteModel?: string;
+  remoteMeterSource?: string;
+  quotaSnapshot?: {
+    balance?: number;
+    keyStatus?: string;
+    allowedModels?: string[];
+    lastSyncedAt?: Date;
+  };
   errorMessage?: string;
-  /** 生成耗时 (ms) */
   durationMs?: number;
   createdAt: Date;
   updatedAt: Date;
@@ -82,7 +77,6 @@ const AiGenerationSchema: Schema<IAiGeneration> = new Schema(
       roomData: { type: Schema.Types.Mixed },
       presetSnapshot: { type: Schema.Types.Mixed },
       sourceImage: { type: String },
-      controlImageResourceId: { type: String },
       furnitureItems: { type: Schema.Types.Mixed },
       sceneAnalysis: { type: Schema.Types.Mixed },
       placementPlan: { type: Schema.Types.Mixed },
@@ -101,11 +95,20 @@ const AiGenerationSchema: Schema<IAiGeneration> = new Schema(
     },
     provider: {
       type: String,
-      enum: ['replicate', 'tensor'],
-      default: 'replicate',
+      enum: ['pollinations'],
+      default: 'pollinations',
     },
-    externalJobId: { type: String },
-    replicatePredictionId: { type: String },
+    apiKeyId: { type: String },
+    apiKeyName: { type: String },
+    remoteCostUsd: { type: Number },
+    remoteModel: { type: String },
+    remoteMeterSource: { type: String },
+    quotaSnapshot: {
+      balance: { type: Number },
+      keyStatus: { type: String },
+      allowedModels: { type: [String], default: [] },
+      lastSyncedAt: { type: Date },
+    },
     errorMessage: { type: String },
     durationMs: { type: Number },
   },

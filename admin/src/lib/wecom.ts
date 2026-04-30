@@ -104,4 +104,48 @@ export class WeComService {
       return false;
     }
   }
+
+  /**
+   * Send a text app message to internal WeCom users.
+   */
+  static async sendAppMessageToUsers(enterprise: any, userIds: string[], content: string) {
+    const { corpId, secret, agentId } = enterprise?.wecomConfig || {};
+    if (!corpId || !secret || !agentId) {
+      return { success: false, reason: 'missing_config' as const };
+    }
+
+    const recipients = userIds.filter(Boolean);
+    if (recipients.length === 0) {
+      return { success: false, reason: 'no_recipients' as const };
+    }
+
+    const token = await this.getAccessToken(corpId, secret);
+    if (!token) {
+      return { success: false, reason: 'missing_token' as const };
+    }
+
+    try {
+      const res = await fetch(`https://qyapi.weixin.qq.com/cgi-bin/message/send?access_token=${token}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          touser: recipients.join('|'),
+          msgtype: 'text',
+          agentid: Number(agentId),
+          text: { content },
+          safe: 0,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.errcode === 0) {
+        return { success: true as const };
+      }
+
+      return { success: false as const, reason: data.errmsg || `errcode:${data.errcode}` };
+    } catch (error: any) {
+      console.error('[WeCom] App message sending failed:', error);
+      return { success: false as const, reason: error?.message || 'unknown_error' };
+    }
+  }
 }

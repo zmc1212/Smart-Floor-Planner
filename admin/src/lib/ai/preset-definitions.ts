@@ -1,28 +1,12 @@
 export type AiPresetType = 'floor_plan_style' | 'furnishing_style';
 
-export interface TensorControlnetConfig {
-  enabled: boolean;
-  preprocessor: string;
-  model: string;
-  weight: number;
-  guidanceStart?: number;
-  guidanceEnd?: number;
-}
+export type PollinationsImageMode = 'generation' | 'edit';
 
-export interface TensorProviderConfig {
-  modelKey: string;
-  modelId: string;
-  width: number;
-  height: number;
-  steps: number;
-  cfgScale: number;
-  sampler: string;
-  scheduler?: string;
-  guidance?: number;
-  clipSkip?: number;
-  denoisingStrength?: number;
-  vae?: string;
-  controlnet?: TensorControlnetConfig;
+export interface PollinationsImageConfig {
+  model: string;
+  size: string;
+  quality: 'standard' | 'hd' | 'low' | 'medium' | 'high';
+  mode: PollinationsImageMode;
 }
 
 export interface DefaultAiStylePreset {
@@ -35,43 +19,27 @@ export interface DefaultAiStylePreset {
   mockImageUrl?: string;
   promptTemplate: string;
   negativePrompt: string;
-  provider: 'tensor';
-  tensor: TensorProviderConfig;
+  provider: 'pollinations';
+  image: PollinationsImageConfig;
   enabled: boolean;
   sortOrder: number;
 }
 
-const BASE_TENSOR_CONFIG: TensorProviderConfig = {
-  modelKey: 'vision_realistic_fp16_v3',
-  modelId: '701982267016309424',
-  width: 640,
-  height: 640,
-  steps: 20,
-  cfgScale: 7,
-  sampler: 'Euler',
-  scheduler: 'normal',
-  guidance: 3.5,
-  clipSkip: 2,
-  denoisingStrength: 0,
-  vae: 'vae-ft-mse-840000-ema-pruned.ckpt',
-  controlnet: {
-    enabled: true,
-    preprocessor: 'canny',
-    model: 'control_v11p_sd15_canny',
-    weight: 1,
-    guidanceStart: 0,
-    guidanceEnd: 1,
-  },
+const BASE_POLLINATIONS_CONFIG: PollinationsImageConfig = {
+  model: 'gptimage',
+  size: '1024x1024',
+  quality: 'medium',
+  mode: 'edit',
 };
 
 const FLOOR_PLAN_NEGATIVE =
-  'EasyNegative, wrong layout, changed floor plan, extra room, missing room, extra door, extra window, distorted walls, curved walls, broken floor plan, perspective interior view, eye-level camera, people, text, watermark, blurry, low detail, surreal';
+  'wrong layout, changed floor plan, extra room, missing room, extra door, extra window, distorted walls, curved walls, broken floor plan, perspective interior view, eye-level camera, people, text, watermark, blurry, low detail, surreal';
 
 const FURNISHING_BASE =
   'top-down 3d floor plan render, architectural floor plan visualization, dollhouse view, isometric interior layout, preserve the exact room layout from the reference image, accurate wall placement, accurate door placement, accurate window placement, realistic apartment floor plan, fully furnished rooms';
 
 const FURNISHING_NEGATIVE =
-  'EasyNegative, wrong layout, changed floor plan, extra room, missing room, extra door, extra window, distorted walls, curved walls, broken floor plan, empty room, missing furniture, eye-level camera, people, text, watermark, blurry, low detail, surreal';
+  'wrong layout, changed floor plan, extra room, missing room, extra door, extra window, distorted walls, curved walls, broken floor plan, empty room, missing furniture, eye-level camera, people, text, watermark, blurry, low detail, surreal';
 
 export const DEFAULT_AI_STYLE_PRESETS: DefaultAiStylePreset[] = [
   {
@@ -85,8 +53,8 @@ export const DEFAULT_AI_STYLE_PRESETS: DefaultAiStylePreset[] = [
     promptTemplate:
       'top-down colored floor plan render, architectural floor plan visualization, preserve the exact room layout from the reference image, accurate wall placement, accurate door placement, accurate window placement, orthographic interior layout, clean apartment floor plan, clearly separated room zones with soft pastel colors, living room, bedroom, kitchen, bathroom, dining area, simple furniture symbols, white background, neat shadows, modern sales presentation board style, high clarity, high detail',
     negativePrompt: FLOOR_PLAN_NEGATIVE,
-    provider: 'tensor',
-    tensor: BASE_TENSOR_CONFIG,
+    provider: 'pollinations',
+    image: { ...BASE_POLLINATIONS_CONFIG, model: 'nanobanana-pro' },
     enabled: true,
     sortOrder: 10,
   },
@@ -101,9 +69,9 @@ export const DEFAULT_AI_STYLE_PRESETS: DefaultAiStylePreset[] = [
     promptTemplate:
       'professional CAD style apartment floor plan, top-down orthographic plan, preserve the exact room layout from the reference image, accurate wall placement, accurate door swings, accurate window placement, precise black and white linework, clean architectural drafting, technical drawing presentation, wall outlines, door arc symbols, window symbols, neat hatch details, high precision, white background, blueprint-like floor plan rendering',
     negativePrompt:
-      'EasyNegative, photorealistic interior, perspective rendering, colorful shading, extra room, wrong door position, wrong window position, distorted walls, messy sketch, people, text, watermark, blurry',
-    provider: 'tensor',
-    tensor: BASE_TENSOR_CONFIG,
+      'photorealistic interior, perspective rendering, colorful shading, extra room, wrong door position, wrong window position, distorted walls, messy sketch, people, text, watermark, blurry',
+    provider: 'pollinations',
+    image: { ...BASE_POLLINATIONS_CONFIG, model: 'flux' },
     enabled: true,
     sortOrder: 20,
   },
@@ -118,8 +86,8 @@ export const DEFAULT_AI_STYLE_PRESETS: DefaultAiStylePreset[] = [
     promptTemplate:
       'top-down 3d floor plan render, architectural floor plan visualization, dollhouse view, isometric interior layout, preserve the exact room layout from the reference image, accurate wall placement, accurate door placement, accurate window placement, realistic apartment floor plan, fully furnished rooms, living room, bedroom, kitchen, bathroom, dining area, clean modern interior design, realistic materials, wood floor, white walls, soft natural lighting, architectural visualization, high detail',
     negativePrompt: FLOOR_PLAN_NEGATIVE,
-    provider: 'tensor',
-    tensor: BASE_TENSOR_CONFIG,
+    provider: 'pollinations',
+    image: { ...BASE_POLLINATIONS_CONFIG, model: 'gptimage-large', size: '1536x1024', quality: 'high' },
     enabled: true,
     sortOrder: 30,
   },
@@ -134,9 +102,9 @@ export const DEFAULT_AI_STYLE_PRESETS: DefaultAiStylePreset[] = [
     promptTemplate:
       'hand-drawn architectural floor plan illustration, top-down apartment plan, preserve the exact room layout from the reference image, accurate wall placement, accurate door placement, accurate window placement, sketch linework, watercolor room zoning, soft artistic presentation, furniture hints, warm paper texture feeling, designer concept board style, clean composition, high detail',
     negativePrompt:
-      'EasyNegative, wrong layout, extra room, missing room, extra door, extra window, distorted walls, photorealistic render, 3d perspective, messy scribbles, people, watermark, blurry',
-    provider: 'tensor',
-    tensor: BASE_TENSOR_CONFIG,
+      'wrong layout, extra room, missing room, extra door, extra window, distorted walls, photorealistic render, 3d perspective, messy scribbles, people, watermark, blurry',
+    provider: 'pollinations',
+    image: { ...BASE_POLLINATIONS_CONFIG, model: 'flux', quality: 'low' },
     enabled: true,
     sortOrder: 40,
   },
@@ -151,8 +119,8 @@ export const DEFAULT_AI_STYLE_PRESETS: DefaultAiStylePreset[] = [
     promptTemplate:
       `${FURNISHING_BASE}, modern minimalist interior decoration, white walls, light wood flooring, clean furniture arrangement, simple sofa and dining set, uncluttered space, soft daylight, realistic materials, architectural visualization, high detail`,
     negativePrompt: FURNISHING_NEGATIVE,
-    provider: 'tensor',
-    tensor: BASE_TENSOR_CONFIG,
+    provider: 'pollinations',
+    image: { ...BASE_POLLINATIONS_CONFIG, model: 'gptimage' },
     enabled: true,
     sortOrder: 110,
   },
@@ -167,8 +135,8 @@ export const DEFAULT_AI_STYLE_PRESETS: DefaultAiStylePreset[] = [
     promptTemplate:
       `${FURNISHING_BASE}, nordic Scandinavian interior style, pale oak flooring, soft fabric furniture, warm white walls, plants, natural daylight, cozy rugs, simple elegant furniture, realistic apartment furnishing, high detail`,
     negativePrompt: FURNISHING_NEGATIVE,
-    provider: 'tensor',
-    tensor: BASE_TENSOR_CONFIG,
+    provider: 'pollinations',
+    image: { ...BASE_POLLINATIONS_CONFIG, model: 'nanobanana-pro' },
     enabled: true,
     sortOrder: 120,
   },
@@ -183,8 +151,8 @@ export const DEFAULT_AI_STYLE_PRESETS: DefaultAiStylePreset[] = [
     promptTemplate:
       `${FURNISHING_BASE}, cream style interior decoration, warm ivory palette, rounded furniture, soft upholstery, gentle lighting, light oak floor, cozy minimalist home, elegant soft textures, high detail architectural visualization`,
     negativePrompt: FURNISHING_NEGATIVE,
-    provider: 'tensor',
-    tensor: BASE_TENSOR_CONFIG,
+    provider: 'pollinations',
+    image: { ...BASE_POLLINATIONS_CONFIG, model: 'gptimage', quality: 'high' },
     enabled: true,
     sortOrder: 130,
   },
@@ -199,8 +167,8 @@ export const DEFAULT_AI_STYLE_PRESETS: DefaultAiStylePreset[] = [
     promptTemplate:
       `${FURNISHING_BASE}, light luxury interior design, marble texture, champagne metal accents, elegant gray palette, refined furniture arrangement, premium lighting, polished materials, high-end apartment visualization, high detail`,
     negativePrompt: FURNISHING_NEGATIVE,
-    provider: 'tensor',
-    tensor: BASE_TENSOR_CONFIG,
+    provider: 'pollinations',
+    image: { ...BASE_POLLINATIONS_CONFIG, model: 'gptimage-large', size: '1536x1024', quality: 'high' },
     enabled: true,
     sortOrder: 140,
   },
@@ -215,8 +183,8 @@ export const DEFAULT_AI_STYLE_PRESETS: DefaultAiStylePreset[] = [
     promptTemplate:
       `${FURNISHING_BASE}, modern new Chinese interior style, warm wood veneer, oriental furniture, calm neutral palette, elegant screen details, balanced negative space, refined dining and living furniture, realistic materials, high detail`,
     negativePrompt: FURNISHING_NEGATIVE,
-    provider: 'tensor',
-    tensor: BASE_TENSOR_CONFIG,
+    provider: 'pollinations',
+    image: { ...BASE_POLLINATIONS_CONFIG, model: 'nanobanana-pro', quality: 'high' },
     enabled: true,
     sortOrder: 150,
   },

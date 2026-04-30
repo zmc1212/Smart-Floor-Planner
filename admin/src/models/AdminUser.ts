@@ -1,11 +1,20 @@
 import mongoose, { Document, Model, Schema } from 'mongoose';
 import { multiTenantPlugin, TenantPluginOptions } from '../lib/mongoose-tenant-plugin';
 
+export type AdminRole =
+  | 'super_admin'
+  | 'admin'
+  | 'enterprise_admin'
+  | 'designer'
+  | 'salesperson'
+  | 'measurer'
+  | 'viewer';
+
 export interface IAdminUser extends Document {
   username: string;
   passwordHash: string;
   displayName: string;
-  role: 'super_admin' | 'admin' | 'enterprise_admin' | 'designer' | 'salesperson' | 'viewer';
+  role: AdminRole;
   enterpriseId?: mongoose.Types.ObjectId;
   departmentId?: mongoose.Types.ObjectId;
   promoterIds?: mongoose.Types.ObjectId[];
@@ -21,26 +30,31 @@ export interface IAdminUser extends Document {
 
 export const ROLE_LABELS: Record<string, string> = {
   super_admin: '超级管理员',
-  admin: '系统管理员',
+  admin: '平台管理员',
   enterprise_admin: '企业负责人',
   designer: '设计师',
-  salesperson: '销售顾问',
+  salesperson: '地推员',
+  measurer: '测量员',
   viewer: '只读审计员',
 };
 
 export const ALL_MENUS = [
-  { key: 'dashboard', label: '总览' },
+  { key: 'dashboard', label: '概览' },
   { key: 'enterprises', label: '企业管理' },
-  { key: 'floorplans', label: '户型图' },
-  { key: 'users', label: '小程序用户' },
+  { key: 'floorplans', label: '户型图库' },
+  { key: 'users', label: '用户审计' },
   { key: 'devices', label: '设备管理' },
   { key: 'measurements', label: '量房记录' },
   { key: 'leads', label: '客户线索' },
+  { key: 'promotion-records', label: '企业报备' },
+  { key: 'workflow-logs', label: '提醒日志' },
+  { key: 'enterprise-orders', label: '成交订单' },
+  { key: 'commissions', label: '提成结算' },
   { key: 'ai-floorplan', label: 'AI 室内平面' },
   { key: 'ai-furnishing', label: 'AI 风格设计' },
   { key: 'ai-soft-furnishing', label: 'AI 软装设计' },
   { key: 'ai-presets', label: 'AI 预设配置' },
-  { key: 'inspirations', label: '装修灵感库' },
+  { key: 'inspirations', label: '灵感方案' },
   { key: 'staff', label: '员工管理' },
   { key: 'admins', label: '系统账号管理' },
 ];
@@ -55,6 +69,10 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'devices',
     'measurements',
     'leads',
+    'promotion-records',
+    'workflow-logs',
+    'enterprise-orders',
+    'commissions',
     'ai-floorplan',
     'ai-furnishing',
     'ai-soft-furnishing',
@@ -67,6 +85,10 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'dashboard',
     'floorplans',
     'leads',
+    'promotion-records',
+    'workflow-logs',
+    'enterprise-orders',
+    'commissions',
     'ai-floorplan',
     'ai-furnishing',
     'ai-soft-furnishing',
@@ -79,6 +101,7 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'dashboard',
     'floorplans',
     'leads',
+    'promotion-records',
     'ai-floorplan',
     'ai-furnishing',
     'ai-soft-furnishing',
@@ -86,7 +109,19 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'devices',
     'measurements',
   ],
-  salesperson: ['dashboard', 'leads', 'measurements', 'ai-floorplan', 'ai-furnishing', 'ai-soft-furnishing', 'inspirations'],
+  salesperson: [
+    'dashboard',
+    'leads',
+    'promotion-records',
+    'enterprise-orders',
+    'commissions',
+    'measurements',
+    'ai-floorplan',
+    'ai-furnishing',
+    'ai-soft-furnishing',
+    'inspirations',
+  ],
+  measurer: ['dashboard', 'promotion-records', 'measurements', 'devices'],
   viewer: ['dashboard', 'floorplans', 'ai-floorplan', 'ai-furnishing', 'ai-soft-furnishing', 'inspirations'],
 };
 
@@ -109,7 +144,7 @@ const AdminUserSchema: Schema<IAdminUser> = new Schema(
     },
     role: {
       type: String,
-      enum: ['super_admin', 'admin', 'enterprise_admin', 'designer', 'salesperson', 'viewer'],
+      enum: ['super_admin', 'admin', 'enterprise_admin', 'designer', 'salesperson', 'measurer', 'viewer'],
       default: 'admin',
     },
     enterpriseId: {
@@ -175,7 +210,7 @@ const adminUserPluginOptions: TenantPluginOptions = {
       return filter;
     }
 
-    if (store.role === 'designer' || store.role === 'salesperson') {
+    if (store.role === 'designer' || store.role === 'salesperson' || store.role === 'measurer') {
       filter.$or = [{ _id: store.userId }, { promoterIds: store.userId }];
     }
 

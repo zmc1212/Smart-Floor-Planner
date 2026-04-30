@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
-import { AiQuota, TIER_LIMITS } from '@/models/AiQuota';
 import { AiGeneration } from '@/models/AiGeneration';
 import { withTenantRoute } from '@/lib/tenant-route';
 import {
@@ -9,7 +8,13 @@ import {
   getAiStylePresetByKey,
   getDefaultAiStylePresetByKey,
 } from '@/lib/ai/presets';
+import { buildSoftFurnishingPromptFromPreset, FurnitureSelection } from '@/lib/ai/soft-furnishing';
 import type { AiPresetType, DefaultAiStylePreset } from '@/lib/ai/preset-definitions';
+import { EnterpriseAiUsageSnapshot } from '@/models/EnterpriseAiUsageSnapshot';
+import {
+  getEnterprisePollinationsRuntimeConfig,
+  markEnterpriseAiSyncError,
+} from '@/lib/ai/enterprise-ai';
 
 interface GenerateBody {
   type?: 'floor_plan_style' | 'furnishing_render' | 'advice' | string;
@@ -21,20 +26,26 @@ interface GenerateBody {
   floorPlanId?: string;
   mode?: string;
   roomData?: unknown;
+  furnitureItems?: FurnitureSelection[];
 }
 
 function resolvePresetType(type?: string): AiPresetType {
-  return type === 'furnishing_render' ? 'furnishing_style' : 'floor_plan_style';
+  return type === 'furnishing_render' || type === 'soft_furnishing_render'
+    ? 'furnishing_style'
+    : 'floor_plan_style';
 }
 
-function buildPresetSnapshot(preset: DefaultAiStylePreset | any) {
+function buildPresetSnapshot(preset: DefaultAiStylePreset) {
   return {
     key: preset.key,
     type: preset.type,
     name: preset.name,
     promptTemplate: preset.promptTemplate,
     negativePrompt: preset.negativePrompt,
-    tensor: preset.tensor,
+    provider: preset.provider,
+    image: preset.image,
+    icon: preset.icon,
+    previewClassName: preset.previewClassName,
     mockImageUrl: preset.mockImageUrl,
   };
 }
@@ -47,36 +58,37 @@ export async function POST(req: Request) {
       await ensureDefaultAiStylePresets(context.userId);
 
       const body = (await req.json()) as GenerateBody;
-      const { type, style, roomType, roomName, width, height, floorPlanId, mode, roomData } = body;
+      const { type, style, roomType, roomName, width, height, floorPlanId, mode, roomData, furnitureItems } = body;
 
       if (!type || !style) {
         return NextResponse.json({ success: false, error: '缺少必要参数 type / style' }, { status: 400 });
       }
 
-      const enterpriseId = context.enterpriseId ?? undefined;
-      let quota = await AiQuota.findOne({ enterpriseId });
-      if (!quota) {
-        quota = await AiQuota.create({
-          enterpriseId,
-          tier: 'free',
-          monthlyLimit: TIER_LIMITS.free,
-        });
+      let runtimeConfig;
+      try {
+        runtimeConfig = await getEnterprisePollinationsRuntimeConfig(String(context.enterpriseId));
+      } catch (error) {
+        return NextResponse.json(
+          { success: false, error: error instanceof Error ? error.message : '当前企业 AI Key 不可用' },
+          { status: 400 }
+        );
       }
 
-      (quota as any).checkAndResetPeriod();
-      if (!(quota as any).hasQuota()) {
+      const latestSnapshot = await EnterpriseAiUsageSnapshot.findOne({ enterpriseId: context.enterpriseId })
+        .select('balance lastSyncedAt keyInfo syncError')
+        .lean();
+
+      if ((latestSnapshot?.balance ?? 0) <= 0 && process.env.MOCK_AI !== 'true') {
         return NextResponse.json(
           {
             success: false,
-            error: 'AI 配额已用完，请升级会员或购买加油包',
+            error: '当前企业 Pollinations 余额不足，请联系平台管理员充值。',
             quota: {
-              tier: quota.tier,
-              used: quota.usedCount,
-              limit: quota.monthlyLimit,
-              bonus: quota.bonusCredits,
+              balance: latestSnapshot?.balance ?? 0,
+              keyStatus: latestSnapshot?.keyInfo?.status || runtimeConfig.status,
             },
           },
-          { status: 429 }
+          { status: 402 }
         );
       }
 
@@ -90,17 +102,24 @@ export async function POST(req: Request) {
       const negativePrompt = preset?.negativePrompt;
 
       if (preset) {
-        prompt = buildPromptFromPreset(preset.promptTemplate, {
-          roomName,
-          roomType,
-          width,
-          height,
-          roomData,
-        });
+        prompt =
+          type === 'soft_furnishing_render'
+            ? buildSoftFurnishingPromptFromPreset({
+                promptTemplate: preset.promptTemplate,
+                furnitureItems: Array.isArray(furnitureItems) ? furnitureItems : [],
+                roomType,
+              })
+            : buildPromptFromPreset(preset.promptTemplate, {
+                roomName,
+                roomType,
+                width,
+                height,
+                roomData,
+              });
       }
 
-      const generation: any = await AiGeneration.create({
-        enterpriseId,
+      const generation = await AiGeneration.create({
+        enterpriseId: context.enterpriseId!,
         operatorId: context.userId,
         floorPlanId: floorPlanId || undefined,
         type,
@@ -112,9 +131,18 @@ export async function POST(req: Request) {
           height,
           mode,
           roomData,
+          furnitureItems,
           presetSnapshot: preset ? buildPresetSnapshot(preset) : undefined,
         },
         status: 'processing',
+        apiKeyId: runtimeConfig.keyId,
+        apiKeyName: runtimeConfig.keyName,
+        quotaSnapshot: {
+          balance: latestSnapshot?.balance ?? 0,
+          keyStatus: latestSnapshot?.keyInfo?.status || runtimeConfig.status,
+          allowedModels: latestSnapshot?.keyInfo?.allowedModels || runtimeConfig.allowedModels,
+          lastSyncedAt: latestSnapshot?.lastSyncedAt || undefined,
+        },
       });
 
       try {
@@ -161,10 +189,9 @@ export async function POST(req: Request) {
             presetType,
           },
           quota: {
-            tier: quota.tier,
-            used: quota.usedCount,
-            limit: quota.monthlyLimit,
-            bonus: quota.bonusCredits,
+            balance: latestSnapshot?.balance ?? 0,
+            keyStatus: latestSnapshot?.keyInfo?.status || runtimeConfig.status,
+            allowedModels: latestSnapshot?.keyInfo?.allowedModels || runtimeConfig.allowedModels,
           },
         });
       } catch (aiError: unknown) {
@@ -172,11 +199,15 @@ export async function POST(req: Request) {
         generation.errorMessage = aiError instanceof Error ? aiError.message : 'Prompt generation failed';
         await generation.save();
 
+        if (context.enterpriseId) {
+          await markEnterpriseAiSyncError(String(context.enterpriseId), aiError).catch(() => undefined);
+        }
+
         return NextResponse.json({ success: false, error: 'AI 提示词生成失败' }, { status: 502 });
       }
     });
   } catch (error: unknown) {
     console.error('[AI Generate]', error);
-    return NextResponse.json({ success: false, error: '服务器内部错误' }, { status: 500 });
+    return NextResponse.json({ success: false, error: '服务端内部错误' }, { status: 500 });
   }
 }

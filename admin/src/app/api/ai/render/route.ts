@@ -1,14 +1,25 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { AiGeneration } from '@/models/AiGeneration';
-import { AiQuota } from '@/models/AiQuota';
-import Replicate from 'replicate';
 import { withTenantRoute } from '@/lib/tenant-route';
+import { editImage, generateImage, uploadMedia } from '@/lib/ai/pollinations';
 import { ensureDefaultAiStylePresets, getAiStylePresetByKey } from '@/lib/ai/presets';
+import {
+  getEnterprisePollinationsRuntimeConfig,
+  markEnterpriseAiSyncError,
+  syncEnterprisePollinationsSnapshot,
+} from '@/lib/ai/enterprise-ai';
 
-const replicate = new Replicate({
-  auth: process.env.REPLICATE_API_TOKEN || '',
-});
+function resolvePresetType(type?: string) {
+  return type === 'furnishing_render' || type === 'soft_furnishing_render'
+    ? 'furnishing_style'
+    : 'floor_plan_style';
+}
+
+function parseUpstreamStatus(error: unknown) {
+  const maybe = error as Error & { status?: number };
+  return maybe?.status || 500;
+}
 
 export async function POST(req: Request) {
   try {
@@ -23,7 +34,6 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, error: 'Missing generationId or image' }, { status: 400 });
       }
 
-      // Fetch generation record
       const generation = await AiGeneration.findOne({
         _id: generationId,
         enterpriseId: context.enterpriseId,
@@ -37,116 +47,91 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, error: 'Generation is already in progress or completed' }, { status: 400 });
       }
 
-      // Fetch and consume quota
-      const quota = await AiQuota.findOne({ enterpriseId: context.enterpriseId });
-      if (!quota) {
-        return NextResponse.json({ success: false, error: 'Quota not found' }, { status: 404 });
+      let runtimeConfig;
+      try {
+        runtimeConfig = await getEnterprisePollinationsRuntimeConfig(String(context.enterpriseId));
+      } catch (error) {
+        generation.status = 'failed';
+        generation.errorMessage = error instanceof Error ? error.message : 'Enterprise AI key unavailable';
+        await generation.save();
+        return NextResponse.json(
+          { success: false, error: generation.errorMessage },
+          { status: 400 }
+        );
       }
-
-      if (!(quota as any).consume()) {
-        return NextResponse.json({ success: false, error: 'Insufficient AI Quota' }, { status: 429 });
-      }
-      await quota.save();
 
       try {
+        generation.status = 'processing';
+        generation.provider = 'pollinations';
+        generation.apiKeyId = runtimeConfig.keyId;
+        generation.apiKeyName = runtimeConfig.keyName;
+        generation.input.sourceImage = typeof image === 'string' && image.startsWith('data:image') ? 'data-uri' : image;
+        await generation.save();
+
         if (process.env.MOCK_AI === 'true') {
-          const presetType = generation.type === 'furnishing_render' ? 'furnishing_style' : 'floor_plan_style';
+          const presetType = resolvePresetType(generation.type);
           const preset = await getAiStylePresetByKey(presetType, generation.input.style);
           await new Promise((resolve) => setTimeout(resolve, 2000));
-          const mockImageUrl = preset?.mockImageUrl || '/colorful.png';
           generation.status = 'succeeded';
-          generation.output.imageUrl = mockImageUrl;
+          generation.output.imageUrl = preset?.mockImageUrl || '/colorful.png';
+          generation.durationMs = 2000;
           await generation.save();
-          return NextResponse.json({ success: true, data: { id: generation._id } });
+          return NextResponse.json({ success: true, data: { id: generation._id, imageUrl: generation.output.imageUrl } });
         }
 
-        const aiPlatform = process.env.AI_PLATFORM || 'replicate';
+        const presetType = resolvePresetType(generation.type);
+        const preset = await getAiStylePresetByKey(presetType, generation.input.style);
+        const referenceImageUrl = await uploadMedia(image, runtimeConfig.apiKey);
+        const startedAt = Date.now();
+        const requestPayload = {
+          prompt: prompt || generation.output.promptUsed || generation.input.customPrompt || '',
+          negativePrompt: negativePrompt || preset?.negativePrompt,
+          referenceImageUrl,
+          model: preset?.image.model || 'gptimage',
+          size: preset?.image.size || '1024x1024',
+          quality: preset?.image.quality || 'medium',
+          user: String(context.userId),
+          apiKey: runtimeConfig.apiKey,
+        };
+        const imageUrl =
+          preset?.image.mode === 'generation'
+            ? await generateImage(requestPayload)
+            : await editImage(requestPayload);
 
-        if (aiPlatform === 'tensor') {
-          const { createTensorJob } = await import('@/lib/ai/tensor');
-          const presetType = generation.type === 'furnishing_render' ? 'furnishing_style' : 'floor_plan_style';
-          const preset = await getAiStylePresetByKey(presetType, generation.input.style);
-          generation.input.sourceImage = typeof image === 'string' && image.startsWith('data:image') ? 'data-uri' : image;
-          try {
-            const job = await createTensorJob({
-              prompt: prompt || generation.output.promptUsed || generation.input.customPrompt || '',
-              negativePrompt: negativePrompt || preset?.negativePrompt,
-              image,
-              width: preset?.tensor.width,
-              height: preset?.tensor.height,
-              tensorConfig: preset?.tensor,
-            });
-
-            generation.status = 'processing';
-            generation.provider = 'tensor';
-            generation.externalJobId = job.id;
-            generation.input.controlImageResourceId = job.resourceId;
-            await generation.save();
-
-            return NextResponse.json({ success: true, data: { id: generation._id } });
-          } catch (err: any) {
-            console.error('[Tensor Render Error]', err);
-            (quota as any).refund();
-            await quota.save();
-
-            generation.status = 'failed';
-            generation.errorMessage = err.message || 'Tensor render initiation failed';
-            await generation.save();
-
-            return NextResponse.json({ success: false, error: 'Failed to initiate Tensor render' }, { status: 500 });
-          }
-        }
-
-        const webhookUrl = process.env.REPLICATE_WEBHOOK_URL;
-        if (!webhookUrl) {
-          throw new Error('REPLICATE_WEBHOOK_URL is not set');
-        }
-
-        // Jagilley ControlNet MLSD model for architectural floor plans
-        // Uses MLSD to find straight lines in the image and render on top
-        const modelVersion = "854e8727697a057c525cdb45ab037f64ecca770a1769cc52287c2e56472a247b"; // jagilley/controlnet-mlsd
-        
-        const prediction = await replicate.predictions.create({
-          version: modelVersion,
-          input: {
-            image, // Base64 data URI
-            prompt: prompt || generation.input.customPrompt,
-            a_prompt: 'best quality, extremely detailed', // positive prompt suffix
-            n_prompt: negativePrompt || 'longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality', // negative prompt
-            num_samples: 1,
-            image_resolution: 512,
-            ddim_steps: 20,
-            scale: 9,
-            eta: 0.0,
-            value_threshold: 0.1,
-            distance_threshold: 0.1
-          },
-          webhook: webhookUrl,
-          webhook_events_filter: ['completed'], // 'start', 'output', 'logs', 'completed'
-        });
-
-        generation.status = 'processing';
-        generation.provider = 'replicate';
-        generation.replicatePredictionId = prediction.id;
-        generation.externalJobId = prediction.id;
+        generation.status = 'succeeded';
+        generation.output.imageUrl = imageUrl;
+        generation.durationMs = Date.now() - startedAt;
+        generation.remoteModel = requestPayload.model;
         await generation.save();
 
-        return NextResponse.json({ success: true, data: { id: generation._id } });
-      } catch (err: any) {
+        await syncEnterprisePollinationsSnapshot(String(context.enterpriseId)).catch((error) =>
+          markEnterpriseAiSyncError(String(context.enterpriseId), error)
+        );
+
+        return NextResponse.json({ success: true, data: { id: generation._id, imageUrl } });
+      } catch (err: unknown) {
         console.error('[AI Render Error]', err);
-        
-        // Refund quota on failure
-        (quota as any).refund();
-        await quota.save();
 
         generation.status = 'failed';
-        generation.errorMessage = err.message || 'Render initiation failed';
+        generation.errorMessage = err instanceof Error ? err.message : 'Render failed';
+        generation.remoteModel = generation.remoteModel || undefined;
         await generation.save();
 
-        return NextResponse.json({ success: false, error: 'Failed to initiate render' }, { status: 500 });
+        await markEnterpriseAiSyncError(String(context.enterpriseId), err).catch(() => undefined);
+        await syncEnterprisePollinationsSnapshot(String(context.enterpriseId)).catch(() => undefined);
+
+        const status = parseUpstreamStatus(err);
+        const readableMessage =
+          status === 402
+            ? '当前企业 Pollinations 余额不足，请联系平台管理员充值。'
+            : status === 403
+              ? '当前企业 Pollinations Key 没有该模型权限或已失效。'
+              : 'Failed to render image';
+
+        return NextResponse.json({ success: false, error: readableMessage }, { status: status >= 400 ? status : 500 });
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[AI Render Server Error]', error);
     return NextResponse.json({ success: false, error: 'Internal Server Error' }, { status: 500 });
   }

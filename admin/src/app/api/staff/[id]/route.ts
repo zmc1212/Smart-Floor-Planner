@@ -31,7 +31,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
         const staff = await AdminUser.findById(id);
         if (!staff) {
-          return NextResponse.json({ success: false, error: '员工不存在' }, { status: 404 });
+          return NextResponse.json({ success: false, error: 'Staff not found' }, { status: 404 });
         }
 
         if (username && username.trim() !== staff.username) {
@@ -40,17 +40,17 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
             _id: { $ne: id },
           });
           if (existing) {
-            return NextResponse.json({ success: false, error: '该账号名称已被占用' }, { status: 400 });
+            return NextResponse.json({ success: false, error: 'Username already exists' }, { status: 400 });
           }
         }
 
-        const businessRoles = ['enterprise_admin', 'designer', 'salesperson'];
+        const businessRoles = ['enterprise_admin', 'designer', 'salesperson', 'measurer'];
         if (role && !businessRoles.includes(role)) {
-          return NextResponse.json({ success: false, error: '此接口仅允许分配业务员工角色' }, { status: 403 });
+          return NextResponse.json({ success: false, error: 'Unsupported staff role' }, { status: 403 });
         }
 
-        if (context.role === 'enterprise_admin' && role && !['designer', 'salesperson'].includes(role)) {
-          return NextResponse.json({ success: false, error: '无权设置此角色' }, { status: 403 });
+        if (context.role === 'enterprise_admin' && role && !['designer', 'salesperson', 'measurer'].includes(role)) {
+          return NextResponse.json({ success: false, error: 'Forbidden role' }, { status: 403 });
         }
 
         const updateData: Record<string, unknown> = {};
@@ -93,15 +93,15 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
         const { id } = await params;
         const staff = await AdminUser.findById(id);
         if (!staff) {
-          return NextResponse.json({ success: false, error: '员工不存在' }, { status: 404 });
+          return NextResponse.json({ success: false, error: 'Staff not found' }, { status: 404 });
         }
 
         if (staff._id.toString() === context.userId) {
-          return NextResponse.json({ success: false, error: '不能删除自己' }, { status: 400 });
+          return NextResponse.json({ success: false, error: 'Cannot delete yourself' }, { status: 400 });
         }
 
         await AdminUser.findByIdAndDelete(id);
-        return NextResponse.json({ success: true, message: '删除成功' });
+        return NextResponse.json({ success: true, message: 'Deleted successfully' });
       }
     );
   } catch (error: unknown) {

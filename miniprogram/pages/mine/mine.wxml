@@ -1,6 +1,4 @@
 <view class="container">
-
-  <!-- ======== 未登录状态 ======== -->
   <view wx:if="{{!isLoggedIn}}" class="login-section">
     <view class="login-icon">
       <image class="login-logo" src="{{defaultAvatarUrl}}"></image>
@@ -12,18 +10,16 @@
     </button>
   </view>
 
-  <!-- ======== 已登录状态 ======== -->
   <view wx:else>
     <view class="header">
       <button class="avatar-wrapper" open-type="chooseAvatar" bind:chooseavatar="onChooseAvatar">
         <image class="avatar" src="{{userInfo.avatar || defaultAvatarUrl}}"></image>
         <view class="edit-badge">修改</view>
       </button>
-      
-      <!-- Identity Badge -->
+
       <view class="identity-badge" wx:if="{{userInfo.role === 'staff'}}">
-        <text class="id-icon">✨</text>
-        <text class="id-text">{{userInfo.staffRole === 'salesperson' ? '认证销售顾问' : '认证设计师'}} / {{userInfo.enterpriseName || '专业版'}}</text>
+        <text class="id-icon">✓</text>
+        <text class="id-text">{{identityLabel}} / {{userInfo.enterpriseName || '企业员工端'}}</text>
       </view>
     </view>
 
@@ -47,80 +43,159 @@
       <button class="logout-btn" bindtap="onLogout">退出登录</button>
     </view>
 
-    <!-- ======== Staff Leads Section ======== -->
     <block wx:if="{{userInfo.role === 'staff'}}">
-      <view class="floorplan-section" wx:if="{{leads.length > 0}}">
+      <view class="floorplan-section">
         <view class="section-header">
-          <text class="section-title">我的客户线索</text>
-          <text class="section-count">{{leads.length}} 个</text>
+          <text class="section-title">员工工作台</text>
         </view>
-        
-        <view class="floorplan-list">
-          <view class="floorplan-card" wx:for="{{leads}}" wx:key="_id" data-id="{{item._id}}" bindtap="onOpenLeadFloorPlan">
+
+        <view class="workbench-cards" wx:if="{{workbenchSummary && workbenchSummary.cards}}">
+          <view class="workbench-card" wx:for="{{workbenchSummary.cards}}" wx:key="key">
+            <view class="workbench-value">{{item.value}}</view>
+            <view class="workbench-label">{{item.label}}</view>
+          </view>
+        </view>
+
+        <view class="quick-actions">
+          <button wx:if="{{userInfo.staffRole === 'salesperson'}}" class="quick-btn primary" bindtap="onCreatePromotionRecord">报备企业</button>
+          <button wx:if="{{userInfo.staffRole === 'salesperson'}}" class="quick-btn" data-view="my" bindtap="onOpenPromotionList">我的企业</button>
+          <button wx:if="{{userInfo.staffRole === 'salesperson'}}" class="quick-btn" bindtap="onOpenCommissions">我的提成</button>
+
+          <button wx:if="{{userInfo.staffRole === 'measurer'}}" class="quick-btn primary" data-view="measure" bindtap="onOpenPromotionList">测量任务</button>
+          <button wx:if="{{userInfo.staffRole === 'designer'}}" class="quick-btn primary" data-view="design" bindtap="onOpenPromotionList">设计任务</button>
+
+          <button wx:if="{{userInfo.staffRole === 'enterprise_admin'}}" class="quick-btn primary" data-view="admin" bindtap="onOpenPromotionList">企业报备</button>
+          <button wx:if="{{userInfo.staffRole === 'enterprise_admin'}}" class="quick-btn" bindtap="onOpenCommissions">提成概览</button>
+        </view>
+
+        <view class="section-header">
+          <text class="section-title">我的待办</text>
+          <text class="section-count">{{todoItems.length}} 条</text>
+        </view>
+
+        <view class="floorplan-list" wx:if="{{todoItems.length > 0}}">
+          <view class="floorplan-card" wx:for="{{todoItems}}" wx:key="key" data-id="{{item.recordId}}" bindtap="onOpenTodoDetail">
             <view class="card-body">
-              <view class="fp-icon-container" style="background: #e0f2fe; color: #0284c7;">
-                <text class="fp-emoji">👤</text>
+              <view class="fp-icon-container" style="background: #eff6ff; color: #2563eb;">
+                <text class="fp-emoji">办</text>
               </view>
               <view class="fp-content">
                 <view class="fp-title-line">
-                  <text class="fp-name">{{item.name}} · {{item.communityName || '客户'}}</text>
-                  <view class="status-tag {{item.status}}">
-                    {{item.statusLabel}}
+                  <text class="fp-name">{{item.title}}</text>
+                  <view class="status-tag {{item.overdue ? 'draft' : 'converted'}}">
+                    {{item.overdue ? '已超时' : '待处理'}}
                   </view>
                 </view>
                 <view class="fp-info-line">
-                  <text class="fp-date">{{item.phone}}</text>
+                  <text class="fp-date">{{item.enterpriseName}}</text>
                   <text class="fp-dot">·</text>
-                  <text class="fp-rooms">{{item.roomCount}} 个空间</text>
+                  <text class="fp-rooms">{{item.contactPerson}}</text>
                 </view>
               </view>
             </view>
-            
-            <view class="card-actions" wx:if="{{item.floorPlanIds && item.floorPlanIds.length > 0}}">
-              <view style="width: 100%; border-top: 1px dashed #e2e8f0; margin-top: 10px; padding-top: 10px;">
-                <view style="font-size: 11px; color: #64748b; margin-bottom: 8px;">包含实测房间：</view>
-                <view style="display: flex; flex-wrap: wrap; gap: 8px;">
-                  <view 
-                    wx:for="{{item.floorPlanIds}}" 
-                    wx:key="_id" 
-                    wx:for-item="fp"
-                    style="background: #f1f5f9; padding: 6px 12px; border-radius: 6px; font-size: 12px; color: #475569; display: flex; align-items: center; gap: 4px;"
-                  >
-                    <text>📐</text>
-                    <text>{{fp.name}}</text>
+          </view>
+        </view>
+
+        <view class="section-header" wx:if="{{overdueTodoItems.length > 0}}">
+          <text class="section-title">超时提醒</text>
+          <text class="section-count">{{overdueTodoItems.length}} 条</text>
+        </view>
+
+        <view class="floorplan-list" wx:if="{{overdueTodoItems.length > 0}}">
+          <view class="floorplan-card" wx:for="{{overdueTodoItems}}" wx:key="key" data-id="{{item.recordId}}" bindtap="onOpenTodoDetail">
+            <view class="card-body">
+              <view class="fp-icon-container" style="background: #fff7ed; color: #ea580c;">
+                <text class="fp-emoji">提醒</text>
+              </view>
+              <view class="fp-content">
+                <view class="fp-title-line">
+                  <text class="fp-name">{{item.title}}</text>
+                  <view class="status-tag draft">已超时</view>
+                </view>
+                <view class="fp-info-line">
+                  <text class="fp-date">{{item.enterpriseName}}</text>
+                  <text class="fp-dot">·</text>
+                  <text class="fp-rooms">{{item.summary}}</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <view class="section-header">
+          <text class="section-title">最近任务</text>
+          <text class="section-count">{{staffItems.length}} 条</text>
+        </view>
+
+        <view class="floorplan-list" wx:if="{{staffItems.length > 0}}">
+          <view class="floorplan-card" wx:for="{{staffItems}}" wx:key="_id" data-id="{{item._id}}" bindtap="onOpenPromotionDetail">
+            <view class="card-body">
+              <view class="fp-icon-container" style="background: #f0fdf4; color: #16a34a;">
+                <text class="fp-emoji">企</text>
+              </view>
+              <view class="fp-content">
+                <view class="fp-title-line">
+                  <text class="fp-name">{{item.enterpriseName}}</text>
+                  <view class="status-tag converted">
+                    {{item.businessStage}}
                   </view>
                 </view>
+                <view class="fp-info-line">
+                  <text class="fp-date">{{item.contactPerson}}</text>
+                  <text class="fp-dot">·</text>
+                  <text class="fp-rooms">{{item.phone}}</text>
+                </view>
               </view>
             </view>
           </view>
         </view>
-      </view>
 
-      <view class="empty-container" wx:else>
-        <view class="empty-visual">
-          <view class="empty-circle">
-            <text class="empty-emoji">👥</text>
+        <view class="empty-container" wx:else>
+          <view class="empty-title">暂无员工任务</view>
+          <view class="empty-subtitle">新的企业报备和任务分配会显示在这里</view>
+        </view>
+
+        <view class="section-header" wx:if="{{userInfo.staffRole === 'salesperson'}}">
+          <text class="section-title">最近提成</text>
+          <text class="section-count">{{commissionItems.length}} 条</text>
+        </view>
+        <view class="floorplan-list" wx:if="{{userInfo.staffRole === 'salesperson' && commissionItems.length > 0}}">
+          <view class="floorplan-card" wx:for="{{commissionItems}}" wx:key="_id" bindtap="onOpenCommissions">
+            <view class="card-body">
+              <view class="fp-icon-container" style="background: #fff7ed; color: #ea580c;">
+                <text class="fp-emoji">¥</text>
+              </view>
+              <view class="fp-content">
+                <view class="fp-title-line">
+                  <text class="fp-name">固定提成</text>
+                  <view class="status-tag {{item.status === 'paid' ? 'converted' : 'designing'}}">
+                    {{item.status}}
+                  </view>
+                </view>
+                <view class="fp-info-line">
+                  <text class="fp-date">¥{{item.commissionAmount}}</text>
+                  <text class="fp-dot">·</text>
+                  <text class="fp-rooms">{{item.commissionType}}</text>
+                </view>
+              </view>
+            </view>
           </view>
         </view>
-        <view class="empty-title">暂无客户线索</view>
-        <view class="empty-subtitle">快去现场量房并录入第一位客户吧</view>
-        <button class="primary-btn" bindtap="onCreateNew">开始新测量</button>
       </view>
     </block>
 
-    <!-- ======== Normal User Floor Plans ======== -->
     <block wx:else>
       <view class="floorplan-section" wx:if="{{floorPlans.length > 0}}">
         <view class="section-header">
           <text class="section-title">我的户型图</text>
           <text class="section-count">{{floorPlans.length}} 份</text>
         </view>
-        
+
         <view class="floorplan-list">
           <view class="floorplan-card" wx:for="{{floorPlans}}" wx:key="_id" data-id="{{item._id}}" bindtap="onOpenFloorPlan">
             <view class="card-body">
               <view class="fp-icon-container">
-                <text class="fp-emoji">🏘️</text>
+                <text class="fp-emoji">图</text>
               </view>
               <view class="fp-content">
                 <view class="fp-title-line">
@@ -136,10 +211,10 @@
                 </view>
               </view>
             </view>
-            
+
             <view class="card-actions">
               <view class="ai-gen-btn" catchtap="onAIGen" data-id="{{item._id}}">
-                <text class="ai-stars">✨</text>
+                <text class="ai-stars">✦</text>
                 <text>生成 AI 效果图</text>
               </view>
               <view class="fp-arrow">
@@ -150,11 +225,10 @@
         </view>
       </view>
 
-      <!-- Empty State -->
       <view class="empty-container" wx:else>
         <view class="empty-visual">
           <view class="empty-circle">
-            <text class="empty-emoji">📐</text>
+            <text class="empty-emoji">图</text>
           </view>
         </view>
         <view class="empty-title">发现您的户型之美</view>
@@ -163,5 +237,4 @@
       </view>
     </block>
   </view>
-
 </view>

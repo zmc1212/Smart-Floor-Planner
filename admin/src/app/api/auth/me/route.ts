@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import * as jose from 'jose';
 import dbConnect from '@/lib/mongodb';
-import { AdminUser, DEFAULT_PERMISSIONS } from '@/models/AdminUser';
+import { AdminUser } from '@/models/AdminUser';
 import { Enterprise } from '@/models/Enterprise';
+import { getEffectivePermissions, getWorkbenchType } from '@/lib/staff-access';
 
 export async function GET(request: Request) {
   await dbConnect();
@@ -28,31 +29,32 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: '用户不存在或已禁用' }, { status: 401 });
     }
 
-    const a = admin.toObject();
+    const result = admin.toObject() as Record<string, any>;
     if (
-      (a.role === 'super_admin' || a.role === 'admin') &&
+      (result.role === 'super_admin' || result.role === 'admin') &&
       globalTenantId &&
       globalTenantId !== 'all'
     ) {
-      const selectedEnterprise = await Enterprise.findById(globalTenantId)
-        .select('name')
-        .lean();
-
+      const selectedEnterprise = await Enterprise.findById(globalTenantId).select('name').lean();
       if (selectedEnterprise) {
-        a.enterpriseId = {
+        result.enterpriseId = {
           _id: String(selectedEnterprise._id),
           name: selectedEnterprise.name,
         };
       }
     }
 
-    const effectivePermissions = 
-      a.menuPermissions && a.menuPermissions.length > 0
-        ? a.menuPermissions
-        : DEFAULT_PERMISSIONS[a.role] || [];
+    const effectivePermissions = getEffectivePermissions(result.role, result.menuPermissions);
 
-    return NextResponse.json({ success: true, data: { ...a, effectivePermissions } });
-  } catch (error: any) {
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...result,
+        effectivePermissions,
+        workbenchType: getWorkbenchType(result.role),
+      },
+    });
+  } catch {
     return NextResponse.json({ success: false, error: '登录失效' }, { status: 401 });
   }
 }

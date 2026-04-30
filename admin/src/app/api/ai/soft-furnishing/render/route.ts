@@ -1,27 +1,28 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { AiQuota, TIER_LIMITS } from '@/models/AiQuota';
 import { AiGeneration } from '@/models/AiGeneration';
 import {
-  buildSoftFurnishingPrompt,
-  createSoftFurnishingPreview,
+  buildDirectSoftFurnishingPrompt,
   FurnitureSelection,
   SOFT_FURNISHING_NEGATIVE,
 } from '@/lib/ai/soft-furnishing';
+import { editImage, uploadMedia } from '@/lib/ai/pollinations';
+import {
+  getEnterprisePollinationsRuntimeConfig,
+  markEnterpriseAiSyncError,
+  syncEnterprisePollinationsSnapshot,
+} from '@/lib/ai/enterprise-ai';
 
 interface SoftFurnishingBody {
   image?: string;
   furnitureItems?: FurnitureSelection[];
   resolution?: '1k' | '2k';
-  placementGuideImage?: string;
 }
 
-interface QuotaWithActions {
-  checkAndResetPeriod: () => void;
-  consume: () => boolean;
-  refund: () => void;
-  save: () => Promise<unknown>;
+function parseUpstreamStatus(error: unknown) {
+  const maybe = error as Error & { status?: number };
+  return maybe?.status || 500;
 }
 
 export async function POST(req: Request) {
@@ -51,64 +52,45 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, error: '请至少选择一件家具类型' }, { status: 400 });
       }
 
-      const preview = createSoftFurnishingPreview(image, furnitureItems);
-      const placementGuideImage =
-        typeof body.placementGuideImage === 'string' && body.placementGuideImage.startsWith('data:image')
-          ? body.placementGuideImage
-          : preview.placementGuideImage;
-
-      const enterpriseId = context.enterpriseId ?? undefined;
-      let quota = await AiQuota.findOne({ enterpriseId });
-      if (!quota) {
-        quota = await AiQuota.create({
-          enterpriseId,
-          tier: 'free',
-          monthlyLimit: TIER_LIMITS.free,
-        });
+      let runtimeConfig;
+      try {
+        runtimeConfig = await getEnterprisePollinationsRuntimeConfig(String(context.enterpriseId));
+      } catch (error) {
+        return NextResponse.json(
+          { success: false, error: error instanceof Error ? error.message : '当前企业 AI Key 不可用' },
+          { status: 400 }
+        );
       }
 
-      const quotaWithActions = quota as typeof quota & QuotaWithActions;
-      quotaWithActions.checkAndResetPeriod();
-      if (!quotaWithActions.consume()) {
-        return NextResponse.json({ success: false, error: 'AI 配额不足' }, { status: 429 });
-      }
-      await quotaWithActions.save();
-
-      const prompt = buildSoftFurnishingPrompt(
-        preview.sceneAnalysis,
-        preview.placementPlan,
-        furnitureItems,
-        resolution
-      );
+      const prompt = buildDirectSoftFurnishingPrompt(furnitureItems, resolution);
+      const roomType = furnitureItems.some((item) => item.placementRole === 'sleeping') ? 'bedroom' : 'living_room';
 
       const generation = await AiGeneration.create({
-        enterpriseId,
+        enterpriseId: context.enterpriseId!,
         operatorId: context.userId,
         type: 'soft_furnishing_render',
         input: {
           style: 'soft_furnishing',
-          roomType: preview.sceneAnalysis.roomKind,
-          roomName: preview.sceneAnalysis.roomKind === 'bedroom' ? '卧室软装' : '客厅软装',
-          mode: 'photo_furniture_staging_auto_type_v1',
+          roomType,
+          roomName: roomType === 'bedroom' ? '卧室软装' : '客厅软装',
+          mode: 'photo_furniture_staging_v2',
           sourceImage: image,
           furnitureItems,
-          sceneAnalysis: preview.sceneAnalysis,
-          placementPlan: preview.placementPlan,
-          placementGuideImage,
           customPrompt: prompt,
         },
         output: {
           promptUsed: prompt,
         },
-        provider: process.env.AI_PLATFORM === 'tensor' ? 'tensor' : 'replicate',
+        provider: 'pollinations',
         status: 'processing',
+        apiKeyId: runtimeConfig.keyId,
+        apiKeyName: runtimeConfig.keyName,
       });
 
       try {
         if (process.env.MOCK_AI === 'true') {
           await new Promise((resolve) => setTimeout(resolve, 1200));
           generation.status = 'succeeded';
-          generation.provider = 'tensor';
           generation.output.imageUrl = '/soft-furnishing-result.png';
           generation.durationMs = 1200;
           await generation.save();
@@ -119,58 +101,53 @@ export async function POST(req: Request) {
           });
         }
 
-        const { createTensorJob } = await import('@/lib/ai/tensor');
-        const width = resolution === '2k' ? 1344 : 1024;
-        const height = resolution === '2k' ? 768 : 576;
-        const steps = resolution === '2k' ? 30 : 24;
-
-        const job = await createTensorJob({
+        const startedAt = Date.now();
+        const referenceImageUrl = await uploadMedia(image, runtimeConfig.apiKey);
+        const imageUrl = await editImage({
           prompt,
           negativePrompt: SOFT_FURNISHING_NEGATIVE,
-          image: placementGuideImage,
-          width,
-          height,
-          tensorConfig: {
-            modelId: '701982267016309424',
-            sampler: 'Euler',
-            steps,
-            cfgScale: 6.5,
-            width,
-            height,
-            vae: 'vae-ft-mse-840000-ema-pruned.ckpt',
-            clipSkip: 2,
-            denoisingStrength: 0.28,
-            controlnet: {
-              enabled: true,
-              preprocessor: 'canny',
-              model: 'control_v11p_sd15_canny',
-              weight: 0.9,
-              guidanceStart: 0,
-              guidanceEnd: 1,
-            },
-          },
+          referenceImageUrl,
+          model: resolution === '2k' ? 'gptimage-large' : 'gptimage',
+          size: resolution === '2k' ? '1536x1024' : '1024x1024',
+          quality: resolution === '2k' ? 'high' : 'medium',
+          user: String(context.userId),
+          apiKey: runtimeConfig.apiKey,
         });
 
-        generation.provider = 'tensor';
-        generation.externalJobId = job.id;
-        generation.input.controlImageResourceId = job.resourceId;
+        generation.status = 'succeeded';
+        generation.output.imageUrl = imageUrl;
+        generation.durationMs = Date.now() - startedAt;
+        generation.remoteModel = resolution === '2k' ? 'gptimage-large' : 'gptimage';
         await generation.save();
 
-        return NextResponse.json({ success: true, data: { id: generation._id } });
+        await syncEnterprisePollinationsSnapshot(String(context.enterpriseId)).catch((error) =>
+          markEnterpriseAiSyncError(String(context.enterpriseId), error)
+        );
+
+        return NextResponse.json({ success: true, data: { id: generation._id, imageUrl } });
       } catch (error) {
-        quotaWithActions.refund();
-        await quotaWithActions.save();
-
         generation.status = 'failed';
-        generation.errorMessage = error instanceof Error ? error.message : 'Soft furnishing render failed';
+        generation.errorMessage =
+          error instanceof Error ? error.message : 'Soft furnishing render failed';
         await generation.save();
 
-        return NextResponse.json({ success: false, error: '提交软装渲染失败' }, { status: 500 });
+        await markEnterpriseAiSyncError(String(context.enterpriseId), error).catch(() => undefined);
+        await syncEnterprisePollinationsSnapshot(String(context.enterpriseId)).catch(() => undefined);
+
+        const status = parseUpstreamStatus(error);
+        const readableMessage =
+          status === 402
+            ? '当前企业 Pollinations 余额不足，请联系平台管理员充值。'
+            : status === 403
+              ? '当前企业 Pollinations Key 没有该模型权限或已失效。'
+              : '提交软装渲染失败';
+
+        return NextResponse.json({ success: false, error: readableMessage }, { status: status >= 400 ? status : 500 });
       }
     });
   } catch (error) {
     console.error('[AI Soft Furnishing Render]', error);
-    const message = error instanceof Error ? error.message : '服务器内部错误';
+    const message = error instanceof Error ? error.message : '服务端内部错误';
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

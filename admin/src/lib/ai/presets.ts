@@ -3,7 +3,7 @@ import {
   AiPresetType,
   DEFAULT_AI_STYLE_PRESETS,
   DefaultAiStylePreset,
-  TensorProviderConfig,
+  PollinationsImageConfig,
 } from './preset-definitions';
 
 export interface SerializedAiStylePreset {
@@ -17,8 +17,8 @@ export interface SerializedAiStylePreset {
   mockImageUrl?: string;
   promptTemplate: string;
   negativePrompt: string;
-  provider: 'tensor';
-  tensor: TensorProviderConfig;
+  provider: 'pollinations';
+  image: PollinationsImageConfig;
   enabled: boolean;
   sortOrder: number;
   createdAt?: string;
@@ -57,7 +57,7 @@ export function serializeAiStylePreset(
     | 'promptTemplate'
     | 'negativePrompt'
     | 'provider'
-    | 'tensor'
+    | 'image'
     | 'enabled'
     | 'sortOrder'
     | 'createdAt'
@@ -76,7 +76,7 @@ export function serializeAiStylePreset(
     promptTemplate: preset.promptTemplate,
     negativePrompt: preset.negativePrompt,
     provider: preset.provider,
-    tensor: preset.tensor,
+    image: preset.image,
     enabled: preset.enabled,
     sortOrder: preset.sortOrder,
     createdAt: preset.createdAt?.toISOString(),

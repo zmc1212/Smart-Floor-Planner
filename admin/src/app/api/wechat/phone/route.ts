@@ -4,9 +4,9 @@ import dbConnect from '@/lib/mongodb';
 import { User } from '@/models/User';
 import { AdminUser } from '@/models/AdminUser';
 import { Enterprise } from '@/models/Enterprise';
+import { getEffectivePermissions, getWorkbenchType } from '@/lib/staff-access';
 
-// Simple in-memory cache for access token
-let cachedToken: { token: string, expiresAt: number } | null = null;
+let cachedToken: { token: string; expiresAt: number } | null = null;
 
 async function getAccessToken(appId: string, appSecret: string) {
   const now = Date.now();
@@ -24,57 +24,37 @@ async function getAccessToken(appId: string, appSecret: string) {
 
   cachedToken = {
     token: data.access_token,
-    expiresAt: now + ((data.expires_in || 7200) - 200) * 1000
+    expiresAt: now + ((data.expires_in || 7200) - 200) * 1000,
   };
 
   return cachedToken.token;
 }
 
-/**
- * Combined phone login endpoint.
- * Accepts:
- *   - loginCode: from wx.login() to get openid
- *   - phoneCode: from getPhoneNumber button to get phone number
- * 
- * Flow:
- *   1. Use loginCode -> WeChat jscode2session -> openid
- *   2. Use phoneCode -> WeChat getuserphonenumber -> phone
- *   3. Find or create user with openid + phone
- *   4. Return user data
- */
 export async function POST(req: Request) {
   try {
     const { loginCode, phoneCode } = await req.json();
 
     if (!loginCode || !phoneCode) {
-      return NextResponse.json(
-        { error: 'Missing loginCode or phoneCode' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing loginCode or phoneCode' }, { status: 400 });
     }
 
     const appId = process.env.WX_APPID;
     const appSecret = process.env.WX_APPSECRET;
 
     if (!appId || !appSecret) {
-      console.error("Missing WeChat AppID or AppSecret");
       return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 });
     }
 
-    // ---- Step 1: Get openid via jscode2session ----
     const wxLoginUrl = `https://api.weixin.qq.com/sns/jscode2session?appid=${appId}&secret=${appSecret}&js_code=${loginCode}&grant_type=authorization_code`;
     const loginRes = await fetch(wxLoginUrl);
     const loginData = await loginRes.json();
 
     if (loginData.errcode) {
-      console.error("WeChat jscode2session Error:", loginData);
       return NextResponse.json({ error: loginData.errmsg || 'WeChat login error' }, { status: 400 });
     }
 
     const { openid } = loginData;
-    console.log(`Phone login: got openid ${openid}`);
 
-    // ---- Step 2: Get phone number ----
     const accessToken = await getAccessToken(appId, appSecret);
     const phoneUrl = `https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token=${accessToken}`;
     const phoneRes = await fetch(phoneUrl, {
@@ -84,37 +64,24 @@ export async function POST(req: Request) {
     });
 
     const phoneData = await phoneRes.json();
-    console.log('WeChat Phone API response:', JSON.stringify(phoneData));
-
-    if (phoneData.errcode !== 0) {
-      console.error("WeChat Phone Error:", phoneData);
+    if (phoneData.errcode !== 0 || !phoneData.phone_info?.phoneNumber) {
       return NextResponse.json({ error: phoneData.errmsg || 'Failed to get phone number' }, { status: 400 });
     }
 
-    if (!phoneData.phone_info || !phoneData.phone_info.phoneNumber) {
-      console.error("No phone info in response:", phoneData);
-      return NextResponse.json({ error: 'Phone info not available' }, { status: 400 });
-    }
-
     const phoneNumber = phoneData.phone_info.phoneNumber;
-    console.log(`Phone login: got phone ${phoneNumber} for openid ${openid}`);
 
-    // ---- Step 3: Find or create user and link Professional Profile ----
     await dbConnect();
 
-    // Check if this user is a Staff Member (AdminUser)
     const staff = await AdminUser.findOne({ $or: [{ phone: phoneNumber }, { openid }] });
     let enterpriseName = '';
     let isStaff = false;
 
     if (staff) {
       isStaff = true;
-      // Link openid if not already linked
       if (!staff.openid) {
         staff.openid = openid;
         await staff.save();
       }
-      // Get Enterprise Name
       if (staff.enterpriseId) {
         const ent = await Enterprise.findById(staff.enterpriseId);
         enterpriseName = ent?.name || '';
@@ -131,7 +98,6 @@ export async function POST(req: Request) {
       await user.save();
     }
 
-    // ---- Step 4: Return user data ----
     return NextResponse.json({
       success: true,
       openid: user.openid,
@@ -142,17 +108,14 @@ export async function POST(req: Request) {
         phone: user.phone || '',
         role: user.role,
         staffRole: staff?.role || '',
+        staffPermissions: staff ? getEffectivePermissions(staff.role, staff.menuPermissions) : [],
         enterpriseId: staff?.enterpriseId || '',
-        enterpriseName: enterpriseName,
-        staffId: staff?._id || ''
-      }
+        enterpriseName,
+        staffId: staff?._id || '',
+        workbenchType: getWorkbenchType(staff?.role),
+      },
     });
-
   } catch (error: any) {
-    console.error("Phone Login Error:", error);
-    return NextResponse.json(
-      { error: error.message || 'Internal Server Error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
   }
 }

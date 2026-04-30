@@ -482,6 +482,49 @@ export function buildSoftFurnishingPrompt(
   ].join(', ');
 }
 
+export function buildDirectSoftFurnishingPrompt(
+  furnitureItems: FurnitureSelection[],
+  resolution: '1k' | '2k'
+) {
+  const roomKind = inferRoomKind(furnitureItems);
+  const furnishingLines = furnitureItems
+    .map((item) => `${item.typePrompt}, ${item.stylePrompt}`)
+    .join('; ');
+
+  return [
+    'photorealistic interior redesign based on the uploaded real empty room photo',
+    'strictly preserve the original room structure, wall geometry, floor perspective, ceiling perspective, lighting direction, window positions, door positions and camera angle',
+    `keep the room readable as a ${roomKind === 'bedroom' ? 'bedroom-like resting space' : 'living-room-like lounge space'}`,
+    'add the selected furniture types in realistic scale with believable spacing, grounded contact shadows and natural occlusion',
+    'do not move walls, do not reshape openings, do not invent extra rooms, doors or windows',
+    furnishingLines || 'add a tasteful and coherent furnishing composition',
+    roomKind === 'bedroom' ? 'create a cozy restful composition' : 'create a welcoming residential composition',
+    resolution === '2k' ? 'high detail, premium render quality' : 'high detail',
+  ].join(', ');
+}
+
+export function buildSoftFurnishingPromptFromPreset(params: {
+  promptTemplate: string;
+  furnitureItems: FurnitureSelection[];
+  roomType?: string;
+}) {
+  const roomTypeLabel =
+    params.roomType === 'bedroom' ? 'bedroom-like resting space' : 'living-room-like lounge space';
+  const furnitureSummary = params.furnitureItems
+    .map((item) => `${item.name}, ${item.typePrompt}, ${item.stylePrompt}`)
+    .join('; ');
+
+  return [
+    params.promptTemplate.trim(),
+    `based on the uploaded real empty room photo, keep the room readable as a ${roomTypeLabel}`,
+    'strictly preserve the original room structure, wall geometry, floor perspective, ceiling perspective, window positions, door positions, lighting direction and camera angle',
+    'do not change the apartment layout or reshape the openings',
+    furnitureSummary || 'add a coherent furnishing composition that fits the space naturally',
+  ]
+    .filter(Boolean)
+    .join(', ');
+}
+
 export const SOFT_FURNISHING_NEGATIVE =
   'EasyNegative, changed room structure, altered perspective, changed window shape, extra windows, extra doors, floating furniture, broken geometry, deformed furniture, bad perspective, text, watermark, people, clutter, blurry, low quality';
 

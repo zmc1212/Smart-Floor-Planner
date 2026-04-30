@@ -11,28 +11,12 @@ export interface IAiStylePreset extends Document {
   mockImageUrl?: string;
   promptTemplate: string;
   negativePrompt: string;
-  provider: 'tensor';
-  tensor: {
-    modelKey: string;
-    modelId: string;
-    width: number;
-    height: number;
-    steps: number;
-    cfgScale: number;
-    sampler: string;
-    scheduler?: string;
-    guidance?: number;
-    clipSkip?: number;
-    denoisingStrength?: number;
-    vae?: string;
-    controlnet?: {
-      enabled: boolean;
-      preprocessor: string;
-      model: string;
-      weight: number;
-      guidanceStart?: number;
-      guidanceEnd?: number;
-    };
+  provider: 'pollinations';
+  image: {
+    model: string;
+    size: string;
+    quality: 'standard' | 'hd' | 'low' | 'medium' | 'high';
+    mode: 'generation' | 'edit';
   };
   enabled: boolean;
   sortOrder: number;
@@ -53,28 +37,12 @@ const AiStylePresetSchema = new Schema<IAiStylePreset>(
     mockImageUrl: { type: String, default: '' },
     promptTemplate: { type: String, required: true },
     negativePrompt: { type: String, default: '' },
-    provider: { type: String, enum: ['tensor'], default: 'tensor' },
-    tensor: {
-      modelKey: { type: String, required: true },
-      modelId: { type: String, required: true },
-      width: { type: Number, default: 640 },
-      height: { type: Number, default: 640 },
-      steps: { type: Number, default: 20 },
-      cfgScale: { type: Number, default: 7 },
-      sampler: { type: String, default: 'Euler' },
-      scheduler: { type: String },
-      guidance: { type: Number },
-      clipSkip: { type: Number },
-      denoisingStrength: { type: Number },
-      vae: { type: String },
-      controlnet: {
-        enabled: { type: Boolean, default: true },
-        preprocessor: { type: String, default: 'canny' },
-        model: { type: String, default: 'control_v11p_sd15_canny' },
-        weight: { type: Number, default: 1 },
-        guidanceStart: { type: Number, default: 0 },
-        guidanceEnd: { type: Number, default: 1 },
-      },
+    provider: { type: String, enum: ['pollinations'], default: 'pollinations' },
+    image: {
+      model: { type: String, required: true },
+      size: { type: String, default: '1024x1024' },
+      quality: { type: String, enum: ['standard', 'hd', 'low', 'medium', 'high'], default: 'medium' },
+      mode: { type: String, enum: ['generation', 'edit'], default: 'edit' },
     },
     enabled: { type: Boolean, default: true },
     sortOrder: { type: Number, default: 0 },

@@ -1,0 +1,22 @@
+<view class="page">
+  <view class="header">
+    <view class="title">我的提成</view>
+    <view class="subtitle">共 {{records.length}} 条</view>
+  </view>
+
+  <view wx:if="{{loading}}" class="empty">加载中...</view>
+
+  <view wx:elif="{{records.length > 0}}">
+    <view class="card" wx:for="{{records}}" wx:key="_id">
+      <view class="row">
+        <view class="name">{{item.commissionType}}</view>
+        <view class="badge">{{item.status}}</view>
+      </view>
+      <view class="amount">¥{{item.commissionAmount}}</view>
+      <view class="meta">{{item.orderId.packageName || '企业订单'}}</view>
+      <view class="meta">{{item.generatedAt}}</view>
+    </view>
+  </view>
+
+  <view wx:else class="empty">暂无提成记录</view>
+</view>

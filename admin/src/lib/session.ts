@@ -9,7 +9,7 @@ export interface SessionUser {
   id: string;
   username: string;
   displayName: string;
-  role: 'super_admin' | 'admin' | 'enterprise_admin' | 'designer' | 'salesperson' | 'viewer';
+  role: 'super_admin' | 'admin' | 'enterprise_admin' | 'designer' | 'salesperson' | 'measurer' | 'viewer';
   enterpriseId: string | null;
   enterpriseName: string | null;
 }
@@ -54,7 +54,7 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
       if (selectedEnterprise) {
         enterprise = {
           _id: String(selectedEnterprise._id),
-          name: selectedEnterprise.name || null,
+          name: selectedEnterprise.name || undefined,
         };
       }
     }

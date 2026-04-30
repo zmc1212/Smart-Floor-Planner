@@ -1,0 +1,83 @@
+<view class="page">
+  <view wx:if="{{mode === 'create'}}" class="card">
+    <view class="title">新建企业报备</view>
+    <input class="input" placeholder="企业名称*" data-field="enterpriseName" bindinput="onInput" value="{{form.enterpriseName}}" />
+    <input class="input" placeholder="统一信用代码" data-field="creditCode" bindinput="onInput" value="{{form.creditCode}}" />
+    <input class="input" placeholder="联系人*" data-field="contactPerson" bindinput="onInput" value="{{form.contactPerson}}" />
+    <input class="input" placeholder="联系电话*" data-field="phone" bindinput="onInput" value="{{form.phone}}" />
+    <input class="input" placeholder="城市" data-field="city" bindinput="onInput" value="{{form.city}}" />
+    <input class="input" placeholder="地址" data-field="address" bindinput="onInput" value="{{form.address}}" />
+    <input class="input" placeholder="行业" data-field="industry" bindinput="onInput" value="{{form.industry}}" />
+    <textarea class="textarea" placeholder="备注" data-field="notes" bindinput="onInput" value="{{form.notes}}" />
+    <button class="secondary-btn" bindtap="onChooseLocation">选择定位 {{locationLabel}}</button>
+    <button class="primary-btn" bindtap="onCreateRecord">提交报备</button>
+  </view>
+
+  <view wx:elif="{{record}}" class="detail">
+    <view class="card">
+      <view class="title">{{record.enterpriseName}}</view>
+      <view class="meta">{{record.contactPerson}} · {{record.phone}}</view>
+      <view class="meta">阶段：{{record.businessStage}} / 归属：{{record.ownershipStatus}}</view>
+      <view class="meta">地址：{{record.address || '未填写'}}</view>
+      <view class="meta">待办角色：{{record.pendingActionRole || 'none'}}</view>
+      <view class="meta">{{followUpStatusText}}</view>
+    </view>
+
+    <view class="card">
+      <view class="section-title">跟进记录</view>
+      <textarea class="textarea" placeholder="记录本次跟进内容" bindinput="onFollowUpInput" value="{{followUpNote}}" />
+      <picker mode="date" value="{{followUpDate}}" bindchange="onFollowUpDateChange">
+        <view class="picker">下次跟进日期：{{followUpDate || '请选择日期'}}</view>
+      </picker>
+      <picker mode="time" value="{{followUpTime}}" bindchange="onFollowUpTimeChange">
+        <view class="picker">下次跟进时间：{{followUpTime || '09:00'}}</view>
+      </picker>
+      <button class="secondary-btn" bindtap="onSaveFollowUp">保存跟进</button>
+      <button class="primary-btn" bindtap="onCompleteFollowUp">标记本次已跟进</button>
+      <view class="log" wx:for="{{record.followUpRecords}}" wx:key="createdAt">
+        <view class="log-title">{{item.operator}}</view>
+        <view class="log-content">{{item.content}}</view>
+      </view>
+    </view>
+
+    <view class="card" wx:if="{{userInfo.staffRole === 'measurer'}}">
+      <view class="section-title">测量任务</view>
+      <view class="meta">当前状态：{{record.measureTask.status}}</view>
+      <view class="meta">{{measureDueText}}</view>
+      <textarea class="textarea" placeholder="填写测量结果摘要" bindinput="onMeasureResultInput" value="{{measureResultSummary}}" />
+      <button class="secondary-btn" bindtap="onAcceptMeasure">接受任务</button>
+      <button class="primary-btn" bindtap="onSubmitMeasure">提交测量结果</button>
+    </view>
+
+    <view class="card" wx:if="{{userInfo.staffRole === 'designer'}}">
+      <view class="section-title">设计任务</view>
+      <view class="meta">当前状态：{{record.designTask.status}}</view>
+      <view class="meta">{{designDueText}}</view>
+      <textarea class="textarea" placeholder="填写设计进度备注" bindinput="onDesignNoteInput" value="{{designNote}}" />
+      <button class="secondary-btn" bindtap="onStartDesign">开始设计</button>
+      <button class="primary-btn" bindtap="onCompleteDesign">标记完成</button>
+    </view>
+
+    <view class="card" wx:if="{{userInfo.staffRole === 'enterprise_admin'}}">
+      <view class="section-title">任务分配</view>
+      <picker mode="selector" range="{{measurers}}" range-key="displayName" bindchange="onMeasurerChange">
+        <view class="picker">测量员：{{selectedMeasurerName}}</view>
+      </picker>
+      <button class="secondary-btn" bindtap="onAssignMeasurer">分配测量员</button>
+
+      <picker mode="selector" range="{{designers}}" range-key="displayName" bindchange="onDesignerChange">
+        <view class="picker">设计师：{{selectedDesignerName}}</view>
+      </picker>
+      <button class="secondary-btn" bindtap="onAssignDesigner">分配设计师</button>
+
+      <view wx:if="{{record.ownershipStatus === 'conflict_pending'}}">
+        <picker mode="selector" range="{{salespeople}}" range-key="displayName" bindchange="onPromoterChange">
+          <view class="picker">冲突归属：{{selectedPromoterName}}</view>
+        </picker>
+        <button class="primary-btn" bindtap="onResolveConflict">确认归属</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:else class="empty">加载中...</view>
+</view>

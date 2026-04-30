@@ -4,7 +4,7 @@ import { tenantStorage, TenantStore } from './tenant-context';
 
 export interface TenantContext {
   userId: string;
-  role: 'super_admin' | 'admin' | 'enterprise_admin' | 'designer' | 'salesperson' | 'viewer';
+  role: 'super_admin' | 'admin' | 'enterprise_admin' | 'designer' | 'salesperson' | 'measurer' | 'viewer';
   enterpriseId: string | null;
   username: string;
 }
@@ -95,7 +95,7 @@ export function getTenantFilter(context: TenantContext, options: {
   }
 
   // Designers and Sales see only their own data
-  if (context.role === 'designer' || context.role === 'salesperson') {
+  if (context.role === 'designer' || context.role === 'salesperson' || context.role === 'measurer') {
     return {
       [enterpriseField]: context.enterpriseId,
       [staffField]: context.userId

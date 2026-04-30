@@ -2,6 +2,9 @@
   "pages": [
     "pages/index/index",
     "pages/lead-detail/lead-detail",
+    "pages/promotion-records/promotion-records",
+    "pages/promotion-record-detail/promotion-record-detail",
+    "pages/commission-records/commission-records",
     "pages/editor/editor",
     "pages/inspiration/inspiration",
     "pages/ai-gen/ai-gen",

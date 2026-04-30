@@ -9,6 +9,7 @@ import {
   Map, 
   Smartphone, 
   ClipboardList, 
+  Coins,
   Sparkles, 
   UserSquare2, 
   UserCog, 
@@ -71,6 +72,10 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       items: [
         { key: 'dashboard', label: '概览', icon: LayoutDashboard, href: '/' },
         { key: 'leads', label: '线索转化', icon: ClipboardList, href: '/leads' },
+        { key: 'promotion-records', label: '企业报备', icon: Building2, href: '/promotion-records' },
+        { key: 'workflow-logs', label: '提醒日志', icon: ClipboardList, href: '/workflow-logs' },
+        { key: 'enterprise-orders', label: '成交订单', icon: ClipboardList, href: '/enterprise-orders' },
+        { key: 'commissions', label: '提成结算', icon: Coins, href: '/commissions' },
       ]
     },
     {
@@ -125,7 +130,7 @@ const NavItem = memo(function NavItem({
       )}
       title={collapsed ? item.label : undefined}
     >
-      {React.createElement(item.icon as any, { size: 20, className: cn("shrink-0", isActive ? "text-white" : "group-hover:text-gray-900") })}
+      {React.createElement(item.icon as any, { size: 20, className: cn("shrink-0 text-current", isActive && "text-white") })}
       {!collapsed && (
         <span className="text-[14px] font-medium tracking-tight whitespace-nowrap overflow-hidden text-ellipsis">
           {item.label}
@@ -218,10 +223,10 @@ export default function Sidebar() {
               <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                 <Select value={globalTenantId} onValueChange={handleTenantChange}>
                   <SelectTrigger className="h-7 min-w-[180px] bg-zinc-900 border-zinc-800 text-xs font-medium focus:ring-0 shadow-none text-zinc-300">
-                    <SelectValue placeholder="鍏ㄥ眬浼佷笟瑙嗗浘" />
+                    <SelectValue placeholder="全局企业视图" />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl border-zinc-800 bg-zinc-950 text-zinc-300 shadow-2xl">
-                    <SelectItem value="all" className="rounded-lg text-xs font-bold text-primary">-- 鎵€鏈変紒涓?--</SelectItem>
+                    <SelectItem value="all" className="rounded-lg text-xs font-bold text-primary">-- 所有企业 --</SelectItem>
                     {enterprises.map(ent => (
                       <SelectItem key={ent._id} value={ent._id} className="rounded-lg text-xs">
                         {ent.name}
@@ -277,7 +282,7 @@ export default function Sidebar() {
             )}
             <div className="space-y-1">
               <NavItem
-                item={{ key: 'ai-presets', label: 'AI 棰勮閰嶇疆', icon: Sparkles, href: '/ai-presets' }}
+                item={{ key: 'ai-presets', label: 'AI 预设配置', icon: Sparkles, href: '/ai-presets' }}
                 collapsed={collapsed}
                 isActive={pathname === '/ai-presets'}
                 hasPermission

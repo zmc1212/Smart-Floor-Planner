@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import dbConnect from '@/lib/mongodb';
 import { Department } from '@/models/Department';
 import { resolveWritableEnterpriseId, withTenantRoute } from '@/lib/tenant-route';
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
         const department = await Department.create({
           name,
           enterpriseId: targetEnterpriseId,
-          parentId: parentId || null,
+          parentId: parentId ? new mongoose.Types.ObjectId(parentId) : undefined,
           order: order || 0,
         });
 

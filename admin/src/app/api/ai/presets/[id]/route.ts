@@ -35,42 +35,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         }
       }
 
-      if (body.tensor && typeof body.tensor === 'object') {
-        const tensorFields = [
-          'modelKey',
-          'modelId',
-          'width',
-          'height',
-          'steps',
-          'cfgScale',
-          'sampler',
-          'scheduler',
-          'guidance',
-          'clipSkip',
-          'denoisingStrength',
-          'vae',
-        ] as const;
-
-        for (const field of tensorFields) {
-          if (body.tensor[field] !== undefined) {
-            update[`tensor.${field}`] = body.tensor[field];
-          }
-        }
-
-        if (body.tensor.controlnet && typeof body.tensor.controlnet === 'object') {
-          const controlnetFields = [
-            'enabled',
-            'preprocessor',
-            'model',
-            'weight',
-            'guidanceStart',
-            'guidanceEnd',
-          ] as const;
-
-          for (const field of controlnetFields) {
-            if (body.tensor.controlnet[field] !== undefined) {
-              update[`tensor.controlnet.${field}`] = body.tensor.controlnet[field];
-            }
+      if (body.image && typeof body.image === 'object') {
+        const imageFields = ['model', 'size', 'quality', 'mode'] as const;
+        for (const field of imageFields) {
+          if (body.image[field] !== undefined) {
+            update[`image.${field}`] = body.image[field];
           }
         }
       }

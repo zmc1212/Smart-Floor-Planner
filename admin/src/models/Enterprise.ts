@@ -17,12 +17,33 @@ export interface IEnterprise extends Document {
     primaryColor?: string;
     accentColor?: string;
   };
+  groundPromotionFixedCommission?: number;
+  automationConfig?: {
+    followUpSlaHours?: number;
+    measureTaskSlaHours?: number;
+    designTaskSlaHours?: number;
+    wecomReminderEnabled?: boolean;
+    reminderIntervalHours?: number;
+    maxReminderTimes?: number;
+  };
   createdAt: Date;
   updatedAt: Date;
   wecomConfig?: {
     corpId?: string;
     agentId?: string;
     secret?: string;
+  };
+  aiConfig?: {
+    provider: 'pollinations';
+    keyMode: 'managed_child_key';
+    pollinationsKeyRef?: string;
+    pollinationsKeyName?: string;
+    pollinationsKeyEncrypted?: string;
+    pollinationsMaskedKey?: string;
+    allowedModels?: string[];
+    pollenBudget?: number | null;
+    status?: 'active' | 'disabled' | 'revoked';
+    lastSyncedAt?: Date | null;
   };
 }
 
@@ -52,10 +73,45 @@ const EnterpriseSchema: Schema<IEnterprise> = new Schema(
       primaryColor: { type: String, default: '#171717' },
       accentColor: { type: String, default: '#0070f3' }
     },
+    groundPromotionFixedCommission: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    automationConfig: {
+      followUpSlaHours: { type: Number, default: 24, min: 1 },
+      measureTaskSlaHours: { type: Number, default: 48, min: 1 },
+      designTaskSlaHours: { type: Number, default: 72, min: 1 },
+      wecomReminderEnabled: { type: Boolean, default: true },
+      reminderIntervalHours: { type: Number, default: 24, min: 1 },
+      maxReminderTimes: { type: Number, default: 3, min: 1 },
+    },
     wecomConfig: {
       corpId: { type: String },
       agentId: { type: String },
       secret: { type: String }
+    },
+    aiConfig: {
+      provider: {
+        type: String,
+        enum: ['pollinations'],
+      },
+      keyMode: {
+        type: String,
+        enum: ['managed_child_key'],
+      },
+      pollinationsKeyRef: { type: String },
+      pollinationsKeyName: { type: String },
+      pollinationsKeyEncrypted: { type: String },
+      pollinationsMaskedKey: { type: String },
+      allowedModels: { type: [String], default: [] },
+      pollenBudget: { type: Number, default: null },
+      status: {
+        type: String,
+        enum: ['active', 'disabled', 'revoked'],
+        default: 'disabled',
+      },
+      lastSyncedAt: { type: Date, default: null },
     }
   },
   {

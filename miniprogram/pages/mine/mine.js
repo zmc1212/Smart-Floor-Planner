@@ -1,6 +1,13 @@
 const app = getApp();
 const api = require('../../utils/api.js');
 
+const IDENTITY_LABELS = {
+  salesperson: '认证地推员',
+  measurer: '认证测量员',
+  designer: '认证设计师',
+  enterprise_admin: '企业管理员',
+};
+
 Page({
   data: {
     isLoggedIn: false,
@@ -8,24 +15,36 @@ Page({
       nickname: '',
       avatar: '',
       communityName: '',
-      phone: ''
+      phone: '',
+      staffRole: ''
     },
     floorPlans: [],
-    leads: [],
-    defaultAvatarUrl: 'https://mmbiz.qpic.cn/mmbiz/icTdbqWNOwNRna42FI242Lcia07jQodd2FJGIYQfG0LAJGFxM4FbnQP6yfMxBgJ0F3YRqJCJ1aPAK2dQagdusBZg/0'
+    workbenchSummary: null,
+    staffItems: [],
+    todoItems: [],
+    overdueTodoItems: [],
+    commissionItems: [],
+    defaultAvatarUrl: 'https://mmbiz.qpic.cn/mmbiz/icTdbqWNOwNRna42FI242Lcia07jQodd2FJGIYQfG0LAJGFxM4FbnQP6yfMxBgJ0F3YRqJCJ1aPAK2dQagdusBZg/0',
+    identityLabel: ''
   },
 
   onShow() {
-    // Check if already logged in
     if (app.globalData.openid && app.globalData.userInfo) {
+      const userInfo = app.globalData.userInfo;
       this.setData({
         isLoggedIn: true,
-        userInfo: app.globalData.userInfo,
+        userInfo,
         floorPlans: [],
-        leads: []
+        staffItems: [],
+        todoItems: [],
+        overdueTodoItems: [],
+        workbenchSummary: null,
+        commissionItems: [],
+        identityLabel: IDENTITY_LABELS[userInfo.staffRole] || '员工账号'
       });
-      if (app.globalData.userInfo.role === 'staff') {
-        this.fetchMyLeads(app.globalData.openid);
+
+      if (userInfo.role === 'staff') {
+        this.fetchWorkbenchData(app.globalData.openid);
       } else {
         this.fetchMyFloorPlans(app.globalData.openid);
       }
@@ -34,12 +53,15 @@ Page({
       this.setData({
         isLoggedIn: false,
         floorPlans: [],
-        leads: []
+        staffItems: [],
+        todoItems: [],
+        overdueTodoItems: [],
+        workbenchSummary: null,
+        commissionItems: []
       });
     }
   },
 
-  // ---- Phone number quick login ----
   async onGetPhoneNumber(e) {
     if (e.detail.errMsg !== "getPhoneNumber:ok") {
       wx.showToast({ title: '已取消授权', icon: 'none' });
@@ -58,27 +80,24 @@ Page({
       wx.hideLoading();
 
       if (res.success && res.openid) {
-        // Save to globalData
         app.globalData.openid = res.openid;
         app.globalData.userInfo = res.user;
 
-        // Save to storage for persistence
         wx.setStorageSync('openid', res.openid);
         wx.setStorageSync('userInfo', res.user);
 
-        // Sync professional context (auto-branding for staff)
         app.syncProfessionalContext();
 
         this.setData({
           isLoggedIn: true,
-          userInfo: res.user
+          userInfo: res.user,
+          identityLabel: IDENTITY_LABELS[res.user.staffRole] || '员工账号'
         });
 
         wx.showToast({ title: '登录成功', icon: 'success' });
 
-        // Load data based on role
         if (res.user.role === 'staff') {
-          this.fetchMyLeads(res.openid);
+          this.fetchWorkbenchData(res.openid);
         } else {
           this.fetchMyFloorPlans(res.openid);
         }
@@ -87,79 +106,45 @@ Page({
       }
     } catch (err) {
       wx.hideLoading();
-      console.error('Phone login failed:', err);
-      wx.showToast({ title: err.error || '登录失败', icon: 'none' });
+      wx.showToast({ title: err.error || err.message || '登录失败', icon: 'none' });
     }
   },
 
-  // ---- Leads (For Staff) ----
-  async fetchMyLeads(openid) {
+  async fetchWorkbenchData(openid) {
     if (!openid) return;
     try {
-      const res = await api.request(`/leads?openid=${openid}`, 'GET');
-      if (res.success && res.data) {
-        const formatted = res.data.map(lead => {
-          let roomCount = 0;
-          if (lead.floorPlanIds && Array.isArray(lead.floorPlanIds)) {
-            lead.floorPlanIds.forEach(fp => {
-              if (fp.layoutData) {
-                try {
-                  const rooms = typeof fp.layoutData === 'string' ? JSON.parse(fp.layoutData) : fp.layoutData;
-                  roomCount += Array.isArray(rooms) ? rooms.length : (rooms ? 1 : 0);
-                } catch (e) {}
-              }
-            });
-          }
-          const statusMap = {
-            'new': '新线索',
-            'contacted': '已联系',
-            'measuring': '已初测',
-            'designing': '设计方案',
-            'quoting': '报价中',
-            'converted': '已转化',
-            'closed': '已关闭'
-          };
-          return {
-            ...lead,
-            roomCount,
-            statusLabel: statusMap[lead.status] || lead.status,
-            createdAt: new Date(lead.createdAt).toLocaleDateString('zh-CN', { 
-              month: '2-digit', 
-              day: '2-digit', 
-              hour: '2-digit', 
-              minute: '2-digit' 
-            }).replace(/\//g, '-')
-          };
-        });
-        this.setData({ leads: formatted });
+      const [summaryRes, recordsRes, commissionRes, todosRes, overdueRes] = await Promise.all([
+        api.request(`/workbench/summary?openid=${openid}`, 'GET'),
+        api.request(`/promotion-records?openid=${openid}`, 'GET'),
+        api.request(`/commission-records?openid=${openid}`, 'GET').catch(() => ({ success: true, data: [] })),
+        api.request(`/workbench/todos?openid=${openid}&view=mine`, 'GET').catch(() => ({ success: true, data: [] })),
+        api.request(`/workbench/todos?openid=${openid}&view=overdue`, 'GET').catch(() => ({ success: true, data: [] }))
+      ]);
+
+      if (summaryRes.success) {
+        this.setData({ workbenchSummary: summaryRes.data });
+      }
+
+      if (recordsRes.success) {
+        this.setData({ staffItems: recordsRes.data.slice(0, 5) });
+      }
+
+      if (commissionRes.success) {
+        this.setData({ commissionItems: commissionRes.data.slice(0, 5) });
+      }
+
+      if (todosRes.success) {
+        this.setData({ todoItems: (todosRes.data || []).slice(0, 5) });
+      }
+
+      if (overdueRes.success) {
+        this.setData({ overdueTodoItems: (overdueRes.data || []).slice(0, 5) });
       }
     } catch (err) {
-      console.error('Failed to fetch leads', err);
+      console.error('Fetch workbench failed', err);
     }
   },
 
-  onOpenLeadFloorPlan(e) {
-    const id = e.currentTarget.dataset.id;
-    if (id) {
-      wx.navigateTo({
-        url: `/pages/lead-detail/lead-detail?id=${id}`
-      });
-    }
-  },
-
-  onOpenSpecificFloorPlan(e) {
-    const fp = e.currentTarget.dataset.fp;
-    if (fp) {
-      app.globalData.restoreFloorPlan = Object.assign({}, fp, { isRestore: true });
-      wx.navigateTo({
-        url: '/pages/editor/editor'
-      });
-    } else {
-      wx.showToast({ title: '无法获取户型数据', icon: 'none' });
-    }
-  },
-
-  // ---- Floor plans ----
   async fetchMyFloorPlans(openid) {
     if (!openid) return;
     try {
@@ -171,18 +156,16 @@ Page({
             try {
               const rooms = typeof fp.layoutData === 'string' ? JSON.parse(fp.layoutData) : fp.layoutData;
               roomCount = Array.isArray(rooms) ? rooms.length : (rooms ? 1 : 0);
-            } catch (e) {
-              console.error('Parse layoutData failed', e);
-            }
+            } catch (e) {}
           }
           return {
             ...fp,
             roomCount,
-            createdAt: new Date(fp.createdAt).toLocaleDateString('zh-CN', { 
-              month: '2-digit', 
-              day: '2-digit', 
-              hour: '2-digit', 
-              minute: '2-digit' 
+            createdAt: new Date(fp.createdAt).toLocaleDateString('zh-CN', {
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit'
             }).replace(/\//g, '-')
           };
         });
@@ -193,14 +176,46 @@ Page({
     }
   },
 
+  onOpenPromotionList(e) {
+    const view = e.currentTarget.dataset.view || 'my';
+    wx.navigateTo({
+      url: `/pages/promotion-records/promotion-records?view=${view}`
+    });
+  },
+
+  onCreatePromotionRecord() {
+    wx.navigateTo({
+      url: '/pages/promotion-record-detail/promotion-record-detail?mode=create'
+    });
+  },
+
+  onOpenPromotionDetail(e) {
+    const id = e.currentTarget.dataset.id;
+    wx.navigateTo({
+      url: `/pages/promotion-record-detail/promotion-record-detail?id=${id}`
+    });
+  },
+
+  onOpenTodoDetail(e) {
+    const id = e.currentTarget.dataset.id;
+    if (!id) return;
+    wx.navigateTo({
+      url: `/pages/promotion-record-detail/promotion-record-detail?id=${id}`
+    });
+  },
+
+  onOpenCommissions() {
+    wx.navigateTo({
+      url: '/pages/commission-records/commission-records'
+    });
+  },
+
   onOpenFloorPlan(e) {
     const id = e.currentTarget.dataset.id;
     const fp = this.data.floorPlans.find(f => f._id === id);
     if (fp) {
       app.globalData.restoreFloorPlan = Object.assign({}, fp, { isRestore: true });
-      wx.navigateTo({
-        url: '/pages/editor/editor'
-      });
+      wx.navigateTo({ url: '/pages/editor/editor' });
     }
   },
 
@@ -214,27 +229,15 @@ Page({
 
     let rooms = fp.layoutData;
     if (typeof rooms === 'string') {
-      try {
-        rooms = JSON.parse(rooms);
-      } catch (e) {
-        console.error('Parse layoutData failed', e);
-      }
+      try { rooms = JSON.parse(rooms); } catch (e) {}
     }
-
-    // AI生成通常针对一个具体房间，我们取第一个房间或整体数据
     const targetRoom = Array.isArray(rooms) ? rooms[0] : rooms;
-
     if (targetRoom) {
-      getApp().globalData.currentAIGenRoom = targetRoom;
-      wx.navigateTo({
-        url: '/pages/ai-gen/ai-gen'
-      });
-    } else {
-      wx.showToast({ title: '户型数据为空', icon: 'none' });
+      app.globalData.currentAIGenRoom = targetRoom;
+      wx.navigateTo({ url: '/pages/ai-gen/ai-gen' });
     }
   },
 
-  // ---- Profile editing ----
   onChooseAvatar(e) {
     const { avatarUrl } = e.detail;
     wx.showLoading({ title: '处理中' });
@@ -243,31 +246,21 @@ Page({
       encoding: 'base64',
       success: (res) => {
         const base64Avatar = 'data:image/jpeg;base64,' + res.data;
-        this.setData({
-          'userInfo.avatar': base64Avatar
-        }, () => {
-          // Auto-save when avatar changes
-          this.onSaveProfile(true);
-        });
+        this.setData({ 'userInfo.avatar': base64Avatar }, () => this.onSaveProfile(true));
       },
-      fail: (err) => {
+      fail: () => {
         wx.hideLoading();
-        console.error('Failed to read avatar file', err);
         wx.showToast({ title: '读取头像失败', icon: 'none' });
       }
     });
   },
 
   onNicknameChange(e) {
-    this.setData({
-      'userInfo.nickname': e.detail.value
-    });
+    this.setData({ 'userInfo.nickname': e.detail.value });
   },
 
   onCommunityNameChange(e) {
-    this.setData({
-      'userInfo.communityName': e.detail.value
-    });
+    this.setData({ 'userInfo.communityName': e.detail.value });
   },
 
   async onSaveProfile(isAutoSave = false) {
@@ -278,51 +271,41 @@ Page({
     }
 
     if (!isAutoSave) wx.showLoading({ title: '保存中' });
-    
+
     try {
       const res = await api.request(`/users/${openid}`, 'PUT', {
         nickname: this.data.userInfo.nickname,
         avatar: this.data.userInfo.avatar,
         communityName: this.data.userInfo.communityName
       });
-      
+
       wx.hideLoading();
-      
+
       if (res.success) {
-        wx.showToast({ title: isAutoSave ? '头像更新完成' : '保存成功', icon: 'success' });
-        
-        // Update global Data
-        app.globalData.userInfo = res.data || this.data.userInfo;
-        // Update storage
+        app.globalData.userInfo = { ...app.globalData.userInfo, ...(res.data || {}) };
         wx.setStorageSync('userInfo', app.globalData.userInfo);
-        
-        // Sync local page state if server returned merged data
-        if (res.data) {
-          this.setData({ userInfo: res.data });
-        }
-      } else {
-        throw new Error(res.error || '保存失败');
+        if (res.data) this.setData({ userInfo: app.globalData.userInfo });
+        wx.showToast({ title: isAutoSave ? '头像更新完成' : '保存成功', icon: 'success' });
       }
     } catch (err) {
       wx.hideLoading();
-      console.error('Update profile error:', err);
       wx.showToast({ title: err.error || '保存失败', icon: 'none' });
     }
   },
-  
+
   async refreshUserInfo() {
     const openid = app.globalData.openid;
     if (!openid) return;
-    
+
     try {
       const res = await api.request(`/users/${openid}`, 'GET');
       if (res.success && res.data) {
-        // Sync to global and storage
-        app.globalData.userInfo = res.data;
-        wx.setStorageSync('userInfo', res.data);
-        
-        // Update local state
-        this.setData({ userInfo: res.data });
+        app.globalData.userInfo = { ...app.globalData.userInfo, ...res.data };
+        wx.setStorageSync('userInfo', app.globalData.userInfo);
+        this.setData({
+          userInfo: app.globalData.userInfo,
+          identityLabel: IDENTITY_LABELS[app.globalData.userInfo.staffRole] || '员工账号'
+        });
       }
     } catch (err) {
       console.error('Refresh user info failed', err);
@@ -330,12 +313,9 @@ Page({
   },
 
   onCreateNew() {
-    wx.navigateTo({
-      url: '/pages/editor/editor'
-    });
+    wx.navigateTo({ url: '/pages/editor/editor' });
   },
 
-  // ---- Logout ----
   onLogout() {
     wx.showModal({
       title: '退出登录',
@@ -344,14 +324,17 @@ Page({
         if (res.confirm) {
           app.globalData.openid = null;
           app.globalData.userInfo = null;
-          // Clear storage
           wx.removeStorageSync('openid');
           wx.removeStorageSync('userInfo');
-
           this.setData({
             isLoggedIn: false,
-            userInfo: { nickname: '', avatar: '', communityName: '', phone: '' },
-            floorPlans: []
+            userInfo: { nickname: '', avatar: '', communityName: '', phone: '', staffRole: '' },
+            floorPlans: [],
+            staffItems: [],
+            todoItems: [],
+            overdueTodoItems: [],
+            workbenchSummary: null,
+            commissionItems: []
           });
           wx.showToast({ title: '已退出', icon: 'success' });
         }
