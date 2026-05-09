@@ -35,6 +35,13 @@ interface AiQuotaData {
   monthlyLimit: number;
   bonusCredits: number;
   remaining: number;
+  allowedModels?: string[];
+}
+
+interface PollinationsModel {
+  name: string;
+  description: string;
+  input_modalities: string[];
 }
 
 interface FurnitureAsset extends FurnitureSelection {
@@ -164,6 +171,51 @@ export default function AiSoftFurnishingPage() {
   const [isRendering, setIsRendering] = useState(false);
   const [showRecharge, setShowRecharge] = useState(false);
   const [generatedImage, setGeneratedImage] = useState('');
+  const [availableModels, setAvailableModels] = useState<PollinationsModel[]>([]);
+  const [selectedModel, setSelectedModel] = useState('flux');
+  const [loadingModels, setLoadingModels] = useState(false);
+
+  React.useEffect(() => {
+    async function fetchModels() {
+      setLoadingModels(true);
+      try {
+        const res = await fetch('https://gen.pollinations.ai/image/models');
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          // 过滤逻辑：
+          // 1. 必须支持 In: image
+          // 2. 如果企业 Key 有 allowedModels 限制，则必须在允许列表中
+          const allowedList = quota?.allowedModels || [];
+          const filtered = data.filter((m: PollinationsModel) => {
+            const supportsImage = m.input_modalities?.includes('image');
+            if (!supportsImage) return false;
+
+            if (allowedList.length > 0 && !allowedList.includes('*')) {
+              return allowedList.includes(m.name);
+            }
+            return true;
+          });
+          setAvailableModels(filtered);
+
+          // 自动选择第一个可用的，或者保留默认的 flux 如果它在列表里
+          if (filtered.length > 0) {
+            const hasFlux = filtered.some(m => m.name === 'flux');
+            if (!hasFlux) {
+              setSelectedModel(filtered[0].name);
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch models:', err);
+      } finally {
+        setLoadingModels(false);
+      }
+    }
+
+    if (quota) {
+      fetchModels();
+    }
+  }, [quota]);
 
   const selectedItems = useMemo(
     () => FURNITURE_ASSETS.filter((asset) => selectedIds.includes(asset.id)),
@@ -256,6 +308,7 @@ export default function AiSoftFurnishingPage() {
           image: sourceImage,
           prompt: genData.data.prompt,
           negativePrompt: genData.data.negativePrompt,
+          model: selectedModel,
         }),
       });
 
@@ -475,11 +528,29 @@ export default function AiSoftFurnishingPage() {
               </div>
             </div>
 
-            <div className="mt-5 rounded-2xl border bg-slate-50 p-4">
-              <div className="mb-2 text-sm font-bold">当前生成策略</div>
-              <p className="text-xs leading-6 text-muted-foreground">
-                V2 会先调用 generate 接口生成提示词，例如“根据毛坯现场图生成法式复古风格，加上奶油转角沙发、低矮茶几，并保持户型结构不变”，再进行最终渲染。
+            <div className="mt-5">
+              <div className="mb-2 text-sm font-bold">渲染模型</div>
+              <p className="text-[10px] text-muted-foreground mb-2">
+                仅显示支持“图生图 (In: image)”且当前 Key 已授权的模型。
               </p>
+              <select
+                className="w-full h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold shadow-sm focus:border-slate-900 focus:outline-none disabled:opacity-50"
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                disabled={loadingModels || availableModels.length === 0}
+              >
+                {loadingModels ? (
+                  <option>加载模型列表中...</option>
+                ) : availableModels.length === 0 ? (
+                  <option>暂无可用的图生图模型</option>
+                ) : (
+                  availableModels.map((m) => (
+                    <option key={m.name} value={m.name}>
+                      {m.name}
+                    </option>
+                  ))
+                )}
+              </select>
             </div>
 
             <div className="mt-5">

@@ -50,7 +50,9 @@ async function parseImageResponse(response: Response) {
   const contentType = response.headers.get('content-type') || '';
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Pollinations request failed (${response.status}): ${errorText}`);
+    const error = new Error(`Pollinations request failed (${response.status}): ${errorText}`);
+    (error as any).status = response.status;
+    throw error;
   }
 
   if (contentType.includes('application/json')) {
@@ -96,7 +98,9 @@ export async function uploadMedia(imageDataUri: string, apiKey?: string) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Failed to upload media to Pollinations (${response.status}): ${errorText}`);
+    const error = new Error(`Failed to upload media to Pollinations (${response.status}): ${errorText}`);
+    (error as any).status = response.status;
+    throw error;
   }
 
   const json = await response.json();

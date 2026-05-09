@@ -102,12 +102,12 @@ export async function POST(req: Request) {
         }
 
         const startedAt = Date.now();
-        const referenceImageUrl = await uploadMedia(image, runtimeConfig.apiKey);
+        const referenceImageUrl = await uploadMedia(image);
         const imageUrl = await editImage({
           prompt,
           negativePrompt: SOFT_FURNISHING_NEGATIVE,
           referenceImageUrl,
-          model: resolution === '2k' ? 'gptimage-large' : 'gptimage',
+          model: 'flux',
           size: resolution === '2k' ? '1536x1024' : '1024x1024',
           quality: resolution === '2k' ? 'high' : 'medium',
           user: String(context.userId),
@@ -117,7 +117,7 @@ export async function POST(req: Request) {
         generation.status = 'succeeded';
         generation.output.imageUrl = imageUrl;
         generation.durationMs = Date.now() - startedAt;
-        generation.remoteModel = resolution === '2k' ? 'gptimage-large' : 'gptimage';
+        generation.remoteModel = 'flux';
         await generation.save();
 
         await syncEnterprisePollinationsSnapshot(String(context.enterpriseId)).catch((error) =>

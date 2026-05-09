@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     return await withTenantRoute(req, { requireEnterprise: true }, async (context) => {
       await ensureDefaultAiStylePresets(context.userId);
       const body = await req.json();
-      const { generationId, image, prompt, negativePrompt } = body;
+      const { generationId, image, prompt, negativePrompt, model } = body;
 
       if (!generationId || !image) {
         return NextResponse.json({ success: false, error: 'Missing generationId or image' }, { status: 400 });
@@ -81,13 +81,13 @@ export async function POST(req: Request) {
 
         const presetType = resolvePresetType(generation.type);
         const preset = await getAiStylePresetByKey(presetType, generation.input.style);
-        const referenceImageUrl = await uploadMedia(image, runtimeConfig.apiKey);
+        const referenceImageUrl = await uploadMedia(image);
         const startedAt = Date.now();
         const requestPayload = {
           prompt: prompt || generation.output.promptUsed || generation.input.customPrompt || '',
           negativePrompt: negativePrompt || preset?.negativePrompt,
           referenceImageUrl,
-          model: preset?.image.model || 'gptimage',
+          model: model || preset?.image.model || 'flux',
           size: preset?.image.size || '1024x1024',
           quality: preset?.image.quality || 'medium',
           user: String(context.userId),

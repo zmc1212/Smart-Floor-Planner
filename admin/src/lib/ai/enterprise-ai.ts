@@ -207,18 +207,13 @@ export async function syncEnterprisePollinationsSnapshot(enterpriseId: string, d
     getPollinationsKeyUsage(runtime.apiKey, days),
   ]);
 
-  let shouldReadBalance = hasOwnBudget(runtime.pollenBudget);
-
   if (keyStateResult.status === 'fulfilled') {
     runtime.accountPermissions = keyStateResult.value.accountPermissions || [];
     runtime.pollenBudget =
       typeof keyStateResult.value.pollenBudget === 'number'
         ? keyStateResult.value.pollenBudget
         : runtime.pollenBudget;
-    shouldReadBalance =
-      hasOwnBudget(keyStateResult.value.pollenBudget) ||
-      keyStateResult.value.accountPermissions.includes('usage');
-
+    
     nextSnapshot.keyInfo = {
       keyId: keyStateResult.value.id || nextSnapshot.keyInfo.keyId,
       keyName: keyStateResult.value.name || nextSnapshot.keyInfo.keyName,
@@ -235,10 +230,13 @@ export async function syncEnterprisePollinationsSnapshot(enterpriseId: string, d
           ? keyStateResult.value.pollenBudget
           : nextSnapshot.keyInfo.pollenBudget,
     };
-
-    if (!shouldReadBalance) {
+    
+    if (hasOwnBudget(keyStateResult.value.pollenBudget)) {
+       nextSnapshot.balance = Number(keyStateResult.value.pollenBudget);
+       nextSnapshot.currency = 'Pollen';
+    } else {
       syncMessages.push(
-        '当前 Key 没有独立预算，也没有 account:usage 权限，因此无法读取余额。'
+        '当前 Key 没有独立预算（额度受主账户限制）。'
       );
     }
   } else {
@@ -247,32 +245,10 @@ export async function syncEnterprisePollinationsSnapshot(enterpriseId: string, d
     );
   }
 
-  if (shouldReadBalance) {
-    const balanceResult = await getPollinationsBalance(runtime.apiKey)
-      .then((value) => ({ ok: true as const, value }))
-      .catch((error) => ({ ok: false as const, error }));
-
-    if (balanceResult.ok) {
-      nextSnapshot.balance = Number(balanceResult.value.balance || 0);
-      nextSnapshot.currency = balanceResult.value.currency || 'USD';
-    } else if (
-      getErrorStatus(balanceResult.error) === 403 &&
-      getErrorMessage(balanceResult.error, '').includes('no budget of its own')
-    ) {
-      syncMessages.push(
-        '当前 Key 没有独立预算，也没有 account:usage 权限，因此无法读取余额。'
-      );
-    } else {
-      syncMessages.push(
-        getErrorMessage(balanceResult.error, 'Failed to sync Pollinations balance.')
-      );
-    }
-  }
-
   if (dailyUsageResult.status === 'fulfilled') {
     nextSnapshot.dailyUsage = normalizeKeyUsageRows(dailyUsageResult.value.items);
     if (dailyUsageResult.value.count >= 50000) {
-      syncMessages.push('Pollinations usage snapshot may be truncated at 50,000 rows.');
+      syncMessages.push('Pollinations usage snapshot may be truncated at 50,000 rows.'); 
     }
   } else {
     syncMessages.push(
@@ -330,6 +306,7 @@ export async function markEnterpriseAiSyncError(enterpriseId: string, error: unk
 
 export async function upsertEnterpriseManagedPollinationsKey(options: {
   enterpriseId: string;
+  allowedCapabilities?: string[];
   allowedModels?: string[];
   pollenBudget?: number | null;
   rotate?: boolean;
@@ -378,6 +355,7 @@ export async function upsertEnterpriseManagedPollinationsKey(options: {
         pollinationsKeyName: created.key.name || `${enterprise.name}-ai`,
         pollinationsKeyEncrypted: encryptText(created.secret),
         pollinationsMaskedKey: maskedKey,
+        allowedCapabilities: options.allowedCapabilities ?? existingConfig?.allowedCapabilities ?? ['image'],
         allowedModels: created.key.allowedModels?.length
           ? created.key.allowedModels
           : options.allowedModels || [],
@@ -427,6 +405,7 @@ export async function upsertEnterpriseManagedPollinationsKey(options: {
 
 export async function updateEnterpriseAiConfig(options: {
   enterpriseId: string;
+  allowedCapabilities?: string[];
   allowedModels?: string[];
   pollenBudget?: number | null;
 }) {
@@ -435,12 +414,14 @@ export async function updateEnterpriseAiConfig(options: {
     throw new Error('当前企业尚未配置 Pollinations 子 Key');
   }
 
+  const nextAllowedCapabilities = options.allowedCapabilities ?? enterprise.aiConfig.allowedCapabilities ?? ['image'];
   const nextAllowedModels = options.allowedModels ?? enterprise.aiConfig.allowedModels ?? [];
   const nextBudget =
     options.pollenBudget !== undefined ? options.pollenBudget : enterprise.aiConfig.pollenBudget ?? null;
 
   await Enterprise.findByIdAndUpdate(enterprise._id, {
     $set: {
+      'aiConfig.allowedCapabilities': nextAllowedCapabilities,
       'aiConfig.allowedModels': nextAllowedModels,
       'aiConfig.pollenBudget': nextBudget,
     },

@@ -11,6 +11,7 @@ interface EnterpriseAiManagerProps {
   enterprise: {
     _id: string;
     aiConfig?: {
+      allowedCapabilities?: string[];
       allowedModels?: string[];
       pollenBudget?: number | null;
       pollinationsKeyName?: string;
@@ -72,6 +73,9 @@ export default function EnterpriseAiManager({ enterprise, onRefresh }: Enterpris
       ? 'invalid'
       : 'configured';
 
+  const [allowedCapabilities, setAllowedCapabilities] = useState<string[]>(
+    aiConfig.allowedCapabilities || ['image']
+  );
   const [allowedModels, setAllowedModels] = useState<string>(
     (aiConfig.allowedModels || snapshot?.keyInfo?.allowedModels || []).join(', ')
   );
@@ -84,6 +88,36 @@ export default function EnterpriseAiManager({ enterprise, onRefresh }: Enterpris
   const [latestSecret, setLatestSecret] = useState('');
   const [latestKeyRef, setLatestKeyRef] = useState('');
   const [latestKeyName, setLatestKeyName] = useState('');
+
+  const [availableModels, setAvailableModels] = useState<{text: any[], image: any[], video: any[]}>({text: [], image: [], video: []});
+  const [loadingModels, setLoadingModels] = useState(false);
+
+  useEffect(() => {
+    async function fetchModels() {
+      setLoadingModels(true);
+      try {
+        const [textRes, imageRes] = await Promise.all([
+          fetch('https://gen.pollinations.ai/text/models').catch(() => ({ json: () => [] })),
+          fetch('https://gen.pollinations.ai/image/models').catch(() => ({ json: () => [] }))
+        ]);
+        const textModelsData = await (textRes as Response).json();
+        const imageModelsData = await (imageRes as Response).json();
+        
+        const textModels = Array.isArray(textModelsData) ? textModelsData : [];
+        const combinedImageModels = Array.isArray(imageModelsData) ? imageModelsData : [];
+        
+        const imageModels = combinedImageModels.filter(m => m.output_modalities?.includes('image'));
+        const videoModels = combinedImageModels.filter(m => m.output_modalities?.includes('video'));
+        
+        setAvailableModels({ text: textModels, image: imageModels, video: videoModels });
+      } catch (err) {
+        console.error('Failed to fetch models:', err);
+      } finally {
+        setLoadingModels(false);
+      }
+    }
+    fetchModels();
+  }, []);
 
   const resolvedKeyRef = latestKeyRef || effectiveKeyRef;
   const resolvedKeyName = latestKeyName || effectiveKeyName;
@@ -110,11 +144,17 @@ export default function EnterpriseAiManager({ enterprise, onRefresh }: Enterpris
   };
 
   const createOrRotateKey = async (rotate = false) => {
+    if (parsedModels.length === 0) {
+      alert('请至少选择一个允许使用的模型');
+      return;
+    }
+    
     await runAction(rotate ? 'rotate' : 'create', async () => {
       const res = await fetch(`/api/admin/enterprises/${enterprise._id}/ai-key`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          allowedCapabilities,
           allowedModels: parsedModels,
           pollenBudget: parsedBudget,
           rotate,
@@ -155,6 +195,26 @@ export default function EnterpriseAiManager({ enterprise, onRefresh }: Enterpris
     });
   };
 
+  const saveConfig = async () => {
+    await runAction('save', async () => {
+      const res = await fetch(`/api/admin/enterprises/${enterprise._id}/ai-key`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          allowedCapabilities,
+          allowedModels: parsedModels,
+          pollenBudget: parsedBudget,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        alert(data.error || '保存配置失败');
+        return;
+      }
+      alert('企业 AI 配置已保存');
+    });
+  };
+
   const syncUsage = async () => {
     await runAction('sync', async () => {
       const res = await fetch(`/api/admin/enterprises/${enterprise._id}/ai-sync`, {
@@ -168,6 +228,8 @@ export default function EnterpriseAiManager({ enterprise, onRefresh }: Enterpris
       alert('企业 AI 余额和每日用量已同步');
     });
   };
+
+  const hasKey = Boolean(resolvedKeyRef || aiConfig.pollinationsMaskedKey || snapshot?.keyInfo?.maskedKey);
 
   return (
     <div className="space-y-5 rounded-3xl border bg-white p-6 shadow-sm">
@@ -202,17 +264,133 @@ export default function EnterpriseAiManager({ enterprise, onRefresh }: Enterpris
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor={`allowed-models-${enterprise._id}`}>允许模型</Label>
-          <Input
-            id={`allowed-models-${enterprise._id}`}
-            value={allowedModels}
-            onChange={(event) => setAllowedModels(event.target.value)}
-            placeholder="例如: gptimage, gptimage-large"
-          />
-          <p className="text-xs text-muted-foreground">多个模型请用英文逗号分隔。</p>
+        <div className="space-y-3 md:col-span-2">
+          <div>
+            <Label>AI 工具权限</Label>
+            <p className="text-xs text-muted-foreground mt-1 mb-2">选择该企业可使用的 AI 类型（文本对话、图像生成、视频生成）。</p>
+            <div className="flex gap-4">
+              {[{ id: 'text', label: '文本对话' }, { id: 'image', label: '图像生成' }, { id: 'video', label: '视频生成' }].map((cap) => (
+                <label key={cap.id} className={cn("flex items-center gap-2 text-sm", hasKey ? "opacity-70 cursor-not-allowed" : "cursor-pointer")}>
+                  <input
+                    type="checkbox"
+                    disabled={hasKey}
+                    checked={allowedCapabilities.includes(cap.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setAllowedCapabilities([...allowedCapabilities, cap.id]);
+                      } else {
+                        setAllowedCapabilities(allowedCapabilities.filter((c) => c !== cap.id));
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-zinc-300 disabled:bg-zinc-100"
+                  />
+                  {cap.label}
+                </label>
+              ))}
+            </div>
+          </div>
         </div>
-        <div className="space-y-2">
+
+        <div className="space-y-2 md:col-span-2">
+          <Label>允许模型</Label>
+          {loadingModels ? (
+            <div className="text-sm text-muted-foreground">正在加载官方模型列表...</div>
+          ) : (availableModels.text.length > 0 || availableModels.image.length > 0 || availableModels.video.length > 0) ? (
+            <div className={cn("flex flex-col gap-6 max-h-[400px] overflow-y-auto rounded-md border p-4", hasKey && "opacity-80 bg-zinc-50")}>
+              {[
+                { type: 'text', title: '文本模型', data: availableModels.text },
+                { type: 'image', title: '图像模型', data: availableModels.image },
+                { type: 'video', title: '视频模型', data: availableModels.video }
+              ].map((category) => (
+                allowedCapabilities.includes(category.type) && category.data.length > 0 ? (
+                  <div key={category.type}>
+                    <h4 className="mb-2 font-semibold text-sm">{category.title}</h4>
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                      {category.data.map((m) => {
+                        const id = m.name || m.id;
+                        
+                        const displayModels = hasKey 
+                          ? (aiConfig.allowedModels?.length ? aiConfig.allowedModels : snapshot?.keyInfo?.allowedModels || [])
+                          : parsedModels;
+                          
+                        const isSelected = displayModels.includes(id);
+                        
+                        // Hide unselected models if key is already created to simplify view
+                        if (hasKey && !isSelected) return null;
+
+                        return (
+                          <div
+                            key={id}
+                            className={cn(
+                              "flex flex-col gap-1 rounded-lg border p-3 text-sm transition-colors",
+                              isSelected ? "border-zinc-900 bg-zinc-50" : "hover:bg-muted/50",
+                              !hasKey && "cursor-pointer"
+                            )}
+                            onClick={() => {
+                              if (hasKey) return;
+                              if (isSelected) {
+                                setAllowedModels(parsedModels.filter(x => x !== id).join(', '));
+                              } else {
+                                setAllowedModels([...parsedModels, id].join(', '));
+                              }
+                            }}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium">{id}</span>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                disabled={hasKey}
+                                readOnly
+                                className="h-4 w-4 rounded border-zinc-300 disabled:opacity-70"
+                              />
+                            </div>
+                            <div className="text-xs text-muted-foreground line-clamp-2">{m.description || '暂无描述'}</div>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {m.input_modalities?.map((mod: string) => (
+                                <Badge key={`in-${mod}`} variant="secondary" className="px-1 py-0 text-[9px] uppercase leading-tight">
+                                  In: {mod}
+                                </Badge>
+                              ))}
+                              {m.output_modalities?.map((mod: string) => (
+                                <Badge key={`out-${mod}`} variant="outline" className="px-1 py-0 text-[9px] uppercase leading-tight">
+                                  Out: {mod}
+                                </Badge>
+                              ))}
+                              {m.pricing?.completionImageTokens && (
+                                <Badge variant="outline" className="border-amber-200 bg-amber-50 px-1 py-0 text-[9px] text-amber-700 leading-tight">
+                                  💰 {m.pricing.completionImageTokens} Pollen/图
+                                </Badge>
+                              )}
+                              {m.pricing?.promptTextTokens && (
+                                <Badge variant="outline" className="border-amber-200 bg-amber-50 px-1 py-0 text-[9px] text-amber-700 leading-tight">
+                                  💰 In: {m.pricing.promptTextTokens} / Out: {m.pricing.completionTextTokens}
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground">无法加载模型列表，请手动输入。</div>
+          )}
+          
+          <div className={cn("mt-2", hasKey && "hidden")}>
+            <Input
+              id={`allowed-models-${enterprise._id}`}
+              value={hasKey ? (aiConfig.allowedModels?.length ? aiConfig.allowedModels : snapshot?.keyInfo?.allowedModels || []).join(', ') : allowedModels}
+              onChange={(event) => setAllowedModels(event.target.value)}
+              placeholder="例如: flux, openai"
+            />
+            <p className="text-xs text-muted-foreground mt-1">可点击上方卡片选择，或在输入框中手动填写，多个模型请用英文逗号分隔。</p>
+          </div>
+        </div>
+        <div className="space-y-2 md:col-span-2">
           <Label htmlFor={`pollen-budget-${enterprise._id}`}>Pollen 预算</Label>
           <Input
             id={`pollen-budget-${enterprise._id}`}
@@ -221,10 +399,14 @@ export default function EnterpriseAiManager({ enterprise, onRefresh }: Enterpris
             placeholder="例如: 100"
             type="number"
             min="0"
+            disabled={hasKey}
+            className={cn(hasKey && "bg-zinc-50 opacity-70")}
           />
-          <p className="text-xs text-muted-foreground">
-            留空时默认按 100 创建子 Key 预算，便于单 Key 独立查看余额。
-          </p>
+          {!hasKey && (
+            <p className="text-xs text-muted-foreground">
+              留空时默认按 100 创建子 Key 预算，便于单 Key 独立查看余额。
+            </p>
+          )}
         </div>
       </div>
 
@@ -270,7 +452,7 @@ export default function EnterpriseAiManager({ enterprise, onRefresh }: Enterpris
 
       {latestSecret ? (
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-          <div className="font-semibold">本次新建/轮换得到的子 Key</div>
+          <div className="font-semibold">本次新建的子 Key</div>
           <div className="mt-1 break-all font-mono text-[12px]">{latestSecret}</div>
           <div className="mt-1 text-[12px] text-emerald-700">
             仅本次展示，后续页面只保留 masked 信息。
@@ -279,25 +461,19 @@ export default function EnterpriseAiManager({ enterprise, onRefresh }: Enterpris
       ) : null}
 
       <div className="flex flex-wrap gap-3">
-        {!resolvedKeyRef ? (
-          <Button onClick={() => createOrRotateKey(false)} disabled={Boolean(loading)}>
+        {!hasKey ? (
+          <Button onClick={() => createOrRotateKey(false)} disabled={Boolean(loading)} variant="default">
             {loading === 'create' ? '创建中...' : '创建企业子 Key'}
           </Button>
         ) : null}
 
-        {resolvedKeyRef ? (
-          <Button variant="outline" onClick={() => createOrRotateKey(true)} disabled={Boolean(loading)}>
-            {loading === 'rotate' ? '轮换中...' : '轮换 Key'}
-          </Button>
-        ) : null}
-
-        {resolvedKeyRef ? (
+        {hasKey ? (
           <Button variant="outline" onClick={syncUsage} disabled={Boolean(loading)}>
             {loading === 'sync' ? '同步中...' : '立即同步余额/用量'}
           </Button>
         ) : null}
 
-        {resolvedKeyRef ? (
+        {hasKey ? (
           <Button
             variant="ghost"
             className="text-destructive hover:text-destructive"

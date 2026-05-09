@@ -40,6 +40,7 @@ export interface IEnterprise extends Document {
     pollinationsKeyName?: string;
     pollinationsKeyEncrypted?: string;
     pollinationsMaskedKey?: string;
+    allowedCapabilities?: string[];
     allowedModels?: string[];
     pollenBudget?: number | null;
     lastSyncedAt?: Date | null;
@@ -103,6 +104,7 @@ const EnterpriseSchema: Schema<IEnterprise> = new Schema(
       pollinationsKeyName: { type: String },
       pollinationsKeyEncrypted: { type: String },
       pollinationsMaskedKey: { type: String },
+      allowedCapabilities: { type: [String], default: ['image'] },
       allowedModels: { type: [String], default: [] },
       pollenBudget: { type: Number, default: null },
       lastSyncedAt: { type: Date, default: null },

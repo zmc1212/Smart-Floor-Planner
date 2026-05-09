@@ -1,4 +1,5 @@
 import Sidebar from "@/components/Sidebar";
+import { FetchInterceptor } from "@/components/FetchInterceptor";
 
 /**
  * Admin Layout — 保持为 Server Component。
@@ -13,6 +14,7 @@ export default function AdminLayout({
 }) {
   return (
     <div className="flex min-h-screen bg-zinc-50/50">
+      <FetchInterceptor />
       {/* Permanent sidebar on desktop, drawer on mobile is handled inside Sidebar component */}
       <Sidebar />
       

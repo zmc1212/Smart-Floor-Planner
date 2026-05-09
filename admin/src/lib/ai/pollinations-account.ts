@@ -133,6 +133,8 @@ function pickArray(source: Record<string, unknown>, candidateKeys: string[]) {
 
 async function parseJson(response: Response) {
   const text = await response.text();
+  console.log(`[Pollinations API] Response text for ${response.url} (status ${response.status}):\n`, text);
+  
   let payload: unknown = null;
 
   if (text) {
@@ -222,6 +224,13 @@ function normalizeRequestError(error: unknown, url: string): PollinationsRequest
 
 async function pollinationsFetch(url: string, init?: RequestInit) {
   let lastError: PollinationsRequestError | null = null;
+
+  console.log(`\n--- [Pollinations API] Request ---`);
+  console.log(`URL: ${url}`);
+  console.log(`Method: ${init?.method || 'GET'}`);
+  if (init?.headers) console.log(`Headers:`, JSON.stringify(init.headers, null, 2));
+  if (init?.body) console.log(`Body:`, init.body);
+  console.log(`----------------------------------\n`);
 
   for (let attempt = 0; attempt <= POLLINATIONS_MAX_RETRIES; attempt += 1) {
     const controller = new AbortController();

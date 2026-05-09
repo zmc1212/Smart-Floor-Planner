@@ -9,6 +9,7 @@ import {
 } from '@/lib/ai/enterprise-ai';
 
 interface AiKeyBody {
+  allowedCapabilities?: string[];
   allowedModels?: string[];
   pollenBudget?: number | null;
   rotate?: boolean;
@@ -45,6 +46,7 @@ export async function POST(
       const { id } = await params;
       const result = await upsertEnterpriseManagedPollinationsKey({
         enterpriseId: id,
+        allowedCapabilities: body.allowedCapabilities,
         allowedModels: body.allowedModels || [],
         pollenBudget: body.pollenBudget ?? null,
         rotate: Boolean(body.rotate),
@@ -95,6 +97,7 @@ export async function PATCH(
       } else {
         await updateEnterpriseAiConfig({
           enterpriseId: id,
+          allowedCapabilities: body.allowedCapabilities,
           allowedModels: body.allowedModels,
           pollenBudget: body.pollenBudget,
         });
