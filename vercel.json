@@ -1,4 +1,0 @@
-{
-    "buildCommand": "cd admin && npm run build",
-    "outputDirectory": "admin/.next"
-}

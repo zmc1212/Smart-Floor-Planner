@@ -144,7 +144,7 @@
                 <view class="fp-title-line">
                   <text class="fp-name">{{item.enterpriseName}}</text>
                   <view class="status-tag converted">
-                    {{item.businessStage}}
+                    {{map.stage(item.businessStage)}}
                   </view>
                 </view>
                 <view class="fp-info-line">

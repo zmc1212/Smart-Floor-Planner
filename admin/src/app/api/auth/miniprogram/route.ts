@@ -137,7 +137,9 @@ export async function POST(request: Request) {
       }
 
       // Re-fetch fresh data to ensure role/enterprise still valid
-      if (payload.role === 'staff') {
+      // 兼容具体的业务角色
+      const isStaff = payload.role !== 'user';
+      if (isStaff) {
         staffData = await AdminUser.findById(payload.id);
         if (!staffData || staffData.status !== 'active') {
            return NextResponse.json({ success: false, error: 'Staff account disabled' }, { status: 403 });
@@ -179,9 +181,13 @@ export async function POST(request: Request) {
       workbenchType: getWorkbenchType(staffData?.role),
     };
 
+    // 关键修复：如果是员工，Token 中的 id 必须是 AdminUser 的 ID
+    const jwtId = (role === 'staff' && staffData) ? staffData._id.toString() : userId;
+
     const token = await signMiniProgramToken({
-      id: userId,
-      role,
+      id: jwtId,
+      // 关键修复：将具体的业务角色写入 role 字段，以便 auth.ts 正确识别
+      role: (role === 'staff' && staffData?.role) ? staffData.role : role,
       staffRole: staffData?.role,
       enterpriseId: staffData?.enterpriseId?.toString(),
       openid: userData?.openid || staffData?.openid,

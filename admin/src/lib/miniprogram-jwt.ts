@@ -5,7 +5,7 @@ const secret = new TextEncoder().encode(JWT_SECRET);
 
 export interface MiniProgramJWTPayload extends jose.JWTPayload {
   id: string;            // AdminUser._id or User._id
-  role: 'staff' | 'user';
+  role: 'staff' | 'user' | 'super_admin' | 'admin' | 'enterprise_admin' | 'designer' | 'salesperson' | 'measurer' | 'viewer';
   staffRole?: string;    // Specific role if staff
   enterpriseId?: string; // Enterprise context
   openid?: string;       // Original openid if available

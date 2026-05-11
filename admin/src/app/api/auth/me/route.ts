@@ -11,7 +11,14 @@ export async function GET(request: Request) {
   try {
     const cookie = request.headers.get('cookie');
     const tokenMatch = cookie?.match(/auth_token=([^;]+)/);
-    const token = tokenMatch ? tokenMatch[1] : null;
+    let token = tokenMatch ? tokenMatch[1] : null;
+
+    if (!token) {
+      const authHeader = request.headers.get('authorization');
+      if (authHeader?.startsWith('Bearer ')) {
+        token = authHeader.slice(7);
+      }
+    }
     const globalTenantMatch = cookie?.match(/global_tenant_id=([^;]+)/);
     const globalTenantId = globalTenantMatch ? decodeURIComponent(globalTenantMatch[1]) : null;
 

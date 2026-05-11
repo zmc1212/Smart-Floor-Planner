@@ -35,13 +35,15 @@ var roleLabels = {
 
 var commissionStatusLabels = {
   pending: '待发放',
-  paid: '已发放',
+  pending_settlement: '待结算',
+  paid: '已结算',
   cancelled: '已取消'
 };
 
 var commissionTypeLabels = {
   fixed: '固定提成',
-  percentage: '比例分成'
+  percentage: '比例分成',
+  fixed_per_paid_order: '已支付订单固定提成'
 };
 
 module.exports = {

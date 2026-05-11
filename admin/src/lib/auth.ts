@@ -11,9 +11,18 @@ export interface TenantContext {
 
 export async function getTenantContext(request: Request | NextRequest): Promise<TenantContext | null> {
   try {
+    // 1. 优先从 Cookie 读取（Admin Dashboard 浏览器端）
     const cookie = request.headers.get('cookie');
     const tokenMatch = cookie?.match(/auth_token=([^;]+)/);
-    const token = tokenMatch ? tokenMatch[1] : null;
+    let token = tokenMatch ? tokenMatch[1] : null;
+
+    // 2. 若 Cookie 中没有，从 Authorization Header 读取（小程序端 Bearer Token）
+    if (!token) {
+      const authHeader = request.headers.get('authorization');
+      if (authHeader?.startsWith('Bearer ')) {
+        token = authHeader.slice(7);
+      }
+    }
 
     if (!token) return null;
 
@@ -102,4 +111,4 @@ export function getTenantFilter(context: TenantContext, options: {
   return { _id: null };
 }
 
-// force recompile
+

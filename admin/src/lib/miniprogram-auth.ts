@@ -27,7 +27,8 @@ export async function resolveMiniProgramContext(req: Request): Promise<MiniProgr
   let user = null;
   let staff = null;
 
-  if (payload.role === 'staff') {
+  const isStaff = payload.role !== 'user';
+  if (isStaff) {
     // Use collection to bypass tenant filter during identity resolution
     staff = await AdminUser.collection.findOne({ _id: new mongoose.Types.ObjectId(payload.id) });
     if (!staff) return null;
