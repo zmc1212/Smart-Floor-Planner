@@ -26,7 +26,17 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
     if (menuPermissions !== undefined) updateData.menuPermissions = menuPermissions;
     if (status !== undefined) updateData.status = status;
-    if (enterpriseId !== undefined) updateData.enterpriseId = enterpriseId;
+    
+    // Enforce salesperson enterprise restriction
+    if (enterpriseId !== undefined) {
+      updateData.enterpriseId = enterpriseId;
+    }
+
+    // If role changed to salesperson, or it IS a salesperson update, ensure enterpriseId is null
+    const checkRole = role || (await AdminUser.findById(id).then(a => a?.role));
+    if (checkRole === 'salesperson') {
+      updateData.enterpriseId = null;
+    }
 
     // Password reset
     if (newPassword) {

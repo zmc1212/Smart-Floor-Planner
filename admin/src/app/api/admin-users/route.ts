@@ -87,13 +87,19 @@ export async function POST(request: Request) {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
+    // Enforce salesperson enterprise restriction
+    let finalEnterpriseId = enterpriseId;
+    if (targetRole === 'salesperson') {
+      finalEnterpriseId = undefined;
+    }
+
     const admin = await AdminUser.create({
       username: username.trim(),
       passwordHash,
       displayName: displayName?.trim() || '',
       phone: phone?.trim() || '',
       role: targetRole,
-      enterpriseId: enterpriseId || undefined,
+      enterpriseId: finalEnterpriseId,
       menuPermissions: menuPermissions || [],
     });
 

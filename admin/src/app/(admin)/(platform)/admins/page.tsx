@@ -42,7 +42,8 @@ interface AdminUser {
   _id: string;
   username: string;
   displayName: string;
-  role: 'super_admin' | 'admin' | 'viewer' | 'enterprise_admin' | 'salesperson';
+  role: 'super_admin' | 'admin' | 'viewer' | 'enterprise_admin' | 'salesperson' | 'designer' | 'measurer';
+  enterpriseId?: string;
   menuPermissions: string[];
   effectivePermissions: string[];
   phone?: string;
@@ -54,10 +55,12 @@ interface AdminUser {
 
 const ROLE_LABELS: Record<string, string> = {
   super_admin: '超级管理员',
-  admin: '普通管理员',
+  admin: '平台管理员',
   viewer: '只读审计员',
   enterprise_admin: '企业负责人',
   salesperson: '渠道地推',
+  designer: '设计师',
+  measurer: '测量员',
 };
 
 const getRoleBadge = (role: string) => {
@@ -65,13 +68,17 @@ const getRoleBadge = (role: string) => {
     case 'super_admin':
       return <Badge variant="secondary" className="bg-purple-100 text-purple-700 border-none">超级管理员</Badge>;
     case 'admin':
-      return <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-none">普通管理员</Badge>;
+      return <Badge variant="secondary" className="bg-blue-100 text-blue-800 border-none">平台管理员</Badge>;
     case 'viewer':
       return <Badge variant="outline" className="text-gray-500 border-gray-200">审计员</Badge>;
     case 'enterprise_admin':
       return <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-none">企业负责人</Badge>;
     case 'salesperson':
       return <Badge variant="secondary" className="bg-green-100 text-green-700 border-none">渠道地推</Badge>;
+    case 'designer':
+      return <Badge variant="secondary" className="bg-pink-100 text-pink-700 border-none">设计师</Badge>;
+    case 'measurer':
+      return <Badge variant="secondary" className="bg-indigo-100 text-indigo-700 border-none">测量员</Badge>;
     default:
       return <Badge variant="outline">{role}</Badge>;
   }
@@ -93,6 +100,7 @@ export default function AdminsPage() {
   const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeTab, setActiveTab] = useState('all');
 
   // Add form
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -122,15 +130,27 @@ export default function AdminsPage() {
   const [resetPwdValue, setResetPwdValue] = useState('');
 
   const filteredAdmins = useMemo(() => {
-    if (!searchTerm.trim()) return admins;
+    let result = admins;
+    
+    // Filter by Tab
+    if (activeTab === 'platform') {
+      result = result.filter(a => ['super_admin', 'admin', 'viewer'].includes(a.role));
+    } else if (activeTab === 'enterprise') {
+      result = result.filter(a => ['enterprise_admin', 'designer', 'measurer'].includes(a.role));
+    } else if (activeTab === 'salesperson') {
+      result = result.filter(a => a.role === 'salesperson');
+    }
+
+    if (!searchTerm.trim()) return result;
+    
     const lower = searchTerm.toLowerCase();
-    return admins.filter(
+    return result.filter(
       (a) =>
         a.username.toLowerCase().includes(lower) ||
         a.displayName.toLowerCase().includes(lower) ||
         (a.phone && a.phone.includes(lower))
     );
-  }, [admins, searchTerm]);
+  }, [admins, searchTerm, activeTab]);
 
   const fetchAdmins = async () => {
     setLoading(true);
@@ -366,6 +386,30 @@ export default function AdminsPage() {
             </p>
           </div>
           
+        {/* Tabs and Action Bar */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+          <div className="flex p-1 bg-muted/30 rounded-xl border border-muted/50 w-fit">
+            {[
+              { id: 'all', label: '全部人员' },
+              { id: 'platform', label: '平台管理' },
+              { id: 'enterprise', label: '企业账号' },
+              { id: 'salesperson', label: '渠道地推' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "px-6 py-2 text-sm font-medium rounded-lg transition-all",
+                  activeTab === tab.id 
+                    ? "bg-white shadow-sm text-primary" 
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
           <div className="flex gap-3">
             <Button 
                variant="outline" 
@@ -432,7 +476,10 @@ export default function AdminsPage() {
                      </div>
                      <div className="space-y-2">
                        <Label>分配角色</Label>
-                        <Select value={newRole} onValueChange={(val) => val && setNewRole(val)}>
+                        <Select value={newRole} onValueChange={(val) => {
+                          val && setNewRole(val);
+                          if (val === 'salesperson') setNewEnterpriseId('');
+                        }}>
                         <SelectTrigger className="w-full h-10 rounded-xl bg-muted/50 border-none shadow-none">
                           <SelectValue>
                             {ROLE_LABELS[newRole]}
@@ -440,15 +487,17 @@ export default function AdminsPage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="super_admin">超级管理员</SelectItem>
-                          <SelectItem value="admin">普通管理员</SelectItem>
+                          <SelectItem value="admin">平台管理员</SelectItem>
                           <SelectItem value="viewer">只读审计员</SelectItem>
                           <SelectItem value="enterprise_admin">企业负责人</SelectItem>
                           <SelectItem value="salesperson">渠道地推</SelectItem>
+                          <SelectItem value="designer">设计师</SelectItem>
+                          <SelectItem value="measurer">测量员</SelectItem>
                         </SelectContent>
                       </Select>
                      </div>
 
-                     {newRole === 'enterprise_admin' && (
+                     {['enterprise_admin', 'designer', 'measurer'].includes(newRole) && (
                        <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-300">
                          <Label>关联企业</Label>
                          <Select value={newEnterpriseId} onValueChange={setNewEnterpriseId}>
@@ -463,6 +512,15 @@ export default function AdminsPage() {
                          </Select>
                        </div>
                      )}
+
+                     {newRole === 'salesperson' && (
+                        <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 flex items-start gap-2 animate-in fade-in duration-300">
+                          <div className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center text-[10px] mt-0.5 shrink-0">!</div>
+                          <p className="text-[11px] text-blue-700 leading-normal">
+                            渠道地推人员属于平台级账号，无需绑定具体企业。系统将自动为其应用全平台报备权限。
+                          </p>
+                        </div>
+                     )}
                    </div>
 
                    <DialogFooter className="p-8 pt-4 bg-muted/30">
@@ -473,6 +531,7 @@ export default function AdminsPage() {
               </DialogContent>
             </Dialog>
           </div>
+        </div>
         </div>
 
         {/* Search Bar */}
@@ -572,7 +631,12 @@ export default function AdminsPage() {
                     <TableCell>
                       {editingId === admin._id ? (
                         <div className="space-y-2">
-                          <Select value={editRole} onValueChange={(val) => val && setEditRole(val)}>
+                          <Select value={editRole} onValueChange={(val) => {
+                            if (val) {
+                              setEditRole(val);
+                              if (val === 'salesperson') setEditEnterpriseId('');
+                            }
+                          }}>
                             <SelectTrigger className="h-8 py-0 rounded-lg border-primary text-xs">
                               <SelectValue>
                                 {ROLE_LABELS[editRole]}
@@ -580,14 +644,16 @@ export default function AdminsPage() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="super_admin">超级管理员</SelectItem>
-                              <SelectItem value="admin">普通管理员</SelectItem>
+                              <SelectItem value="admin">平台管理员</SelectItem>
                               <SelectItem value="viewer">只读审计员</SelectItem>
                               <SelectItem value="enterprise_admin">企业负责人</SelectItem>
                               <SelectItem value="salesperson">渠道地推</SelectItem>
+                              <SelectItem value="designer">设计师</SelectItem>
+                              <SelectItem value="measurer">测量员</SelectItem>
                             </SelectContent>
                           </Select>
                           
-                          {editRole === 'enterprise_admin' && (
+                          {['enterprise_admin', 'designer', 'measurer'].includes(editRole) && (
                             <Select value={editEnterpriseId} onValueChange={setEditEnterpriseId}>
                               <SelectTrigger className="h-8 py-0 rounded-lg border-amber-200 bg-amber-50 text-xs">
                                 <SelectValue placeholder="选择企业" />
@@ -599,9 +665,22 @@ export default function AdminsPage() {
                               </SelectContent>
                             </Select>
                           )}
+
+                          {editRole === 'salesperson' && (
+                            <div className="text-[10px] text-blue-600 bg-blue-50 p-1 rounded border border-blue-100">
+                              地推人员统一由平台管理
+                            </div>
+                          )}
                         </div>
                       ) : (
-                        getRoleBadge(admin.role)
+                        <div className="space-y-1">
+                          <div>{getRoleBadge(admin.role)}</div>
+                          {admin.role === 'salesperson' && admin.enterpriseId && (
+                            <div className="text-[9px] text-red-500 bg-red-50 px-1 py-0.5 rounded border border-red-100 w-fit">
+                              历史数据: 绑定了企业
+                            </div>
+                          )}
+                        </div>
                       )}
                     </TableCell>
                     <TableCell>

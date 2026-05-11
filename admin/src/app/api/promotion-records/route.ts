@@ -61,7 +61,7 @@ export async function GET(request: Request) {
         query['measureTask.assignedTo'] = context.userId;
       } else if (context.role === 'designer') {
         query['designTask.assignedTo'] = context.userId;
-      } else if (context.enterpriseId) {
+      } else if (context.enterpriseId && context.role !== 'super_admin' && context.role !== 'admin') {
         query.enterpriseId = context.enterpriseId;
       }
 

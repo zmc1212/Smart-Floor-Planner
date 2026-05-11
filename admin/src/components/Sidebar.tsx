@@ -22,6 +22,7 @@ import {
   Palette,
   Ruler,
   Sofa,
+  Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -54,11 +55,10 @@ interface MenuCategory {
 }
 
 // --- Static Config (hoisted outside component) ---
-// @see react-best-practices: rendering-hoist-jsx
 const MENU_CONFIG: Record<string, MenuCategory[]> = {
   platform: [
     {
-      title: '平台管理',
+      title: '平台管理中心',
       items: [
         { key: 'enterprises', label: '企业管理', icon: Building2, href: '/enterprises' },
         { key: 'admins', label: '系统管理', icon: UserCog, href: '/admins' },
@@ -66,12 +66,13 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       ]
     },
     {
-      title: 'B2B 渠道管理',
+      title: 'B2B 运营转化',
       items: [
         { key: 'promotion-records', label: '企业报备', icon: Building2, href: '/promotion-records' },
+        { key: 'packages', label: '套餐管理', icon: ClipboardList, href: '/packages' },
         { key: 'workflow-logs', label: '提醒日志', icon: ClipboardList, href: '/workflow-logs' },
         { key: 'enterprise-orders', label: '成交订单', icon: ClipboardList, href: '/enterprise-orders' },
-        { key: 'commissions', label: '提成结算', icon: Coins, href: '/commissions' },
+        { key: 'commissions', label: '提成结算中心', icon: Coins, href: '/commissions' },
       ]
     }
   ],
@@ -79,28 +80,29 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
     {
       title: '运营工作台',
       items: [
-        { key: 'dashboard', label: '概览', icon: LayoutDashboard, href: '/' },
+        { key: 'dashboard', label: '业务概览', icon: LayoutDashboard, href: '/' },
         { key: 'leads', label: '线索转化', icon: ClipboardList, href: '/leads' },
       ]
     },
     {
-      title: '户型与灵感',
+      title: '户型图库',
       items: [
         { key: 'floorplans', label: '户型图库', icon: Map, href: '/floorplans' },
         { key: 'measurements', label: '量房记录', icon: Ruler, href: '/measurements' },
       ]
     },
     {
-      title: 'AI 工作台',
+      title: 'AI 辅助设计',
       items: [
         { key: 'ai-floorplan', label: 'AI 室内平面', icon: PenTool, href: '/ai-studio/floor-plan' },
         { key: 'ai-furnishing', label: 'AI 风格设计', icon: Palette, href: '/ai-studio/furnishing' },
         { key: 'ai-soft-furnishing', label: 'AI 软装设计', icon: Sofa, href: '/ai-studio/soft-furnishing' },
         { key: 'inspirations', label: '灵感方案', icon: Sparkles, href: '/inspirations' },
+        { key: 'ai-presets', label: 'AI 预设配置', icon: Settings, href: '/ai-presets' },
       ]
     },
     {
-      title: '团队与资产',
+      title: '团队资产管理',
       items: [
         { key: 'staff', label: '员工管理', icon: UserSquare2, href: '/staff' },
         { key: 'devices', label: '设备管理', icon: Smartphone, href: '/devices' },
@@ -110,7 +112,6 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
 };
 
 // --- Extracted Memoized NavItem ---
-// @see react-best-practices: rerender-memo
 const NavItem = memo(function NavItem({ 
   item, 
   collapsed, 
@@ -135,14 +136,14 @@ const NavItem = memo(function NavItem({
       )}
       title={collapsed ? item.label : undefined}
     >
-      {React.createElement(item.icon as any, { size: 20, className: cn("shrink-0 text-current", isActive && "text-white") })}
+      {React.createElement(item.icon as any, { size: 18, className: cn("shrink-0 text-current opacity-80", isActive && "opacity-100") })}
       {!collapsed && (
         <span className="text-[14px] font-medium tracking-tight whitespace-nowrap overflow-hidden text-ellipsis">
           {item.label}
         </span>
       )}
       {isActive && !collapsed && (
-        <div className="absolute right-2 w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
+        <div className="absolute right-2 w-1 h-1 rounded-full bg-white animate-pulse" />
       )}
     </Link>
   );
@@ -154,16 +155,12 @@ export default function Sidebar() {
   const [enterprises, setEnterprises] = useState<any[]>([]);
   const [globalTenantId, setGlobalTenantId] = useState<string>('all');
 
-  // @see react-best-practices: client-swr-dedup
   const { user: admin } = useCurrentUser();
 
   useEffect(() => {
-    // Load collapse state from local storage
-    // @see react-best-practices: rerender-lazy-state-init (minor: localStorage read)
     const saved = localStorage.getItem('sidebar-collapsed');
     if (saved !== null) setIsCollapsed(saved === 'true');
       
-    // Load initial global tenant id from cookie
     const cookies = document.cookie.split('; ');
     const tenantCookie = cookies.find(row => row.startsWith('global_tenant_id='));
     if (tenantCookie) {
@@ -171,7 +168,6 @@ export default function Sidebar() {
     }
   }, []);
 
-  // Fetch enterprises only when admin is a super_admin (parallel with user fetch via SWR)
   useEffect(() => {
     if (admin && (admin.role === 'super_admin' || admin.role === 'admin')) {
       fetch('/api/admin/enterprises')
@@ -185,12 +181,11 @@ export default function Sidebar() {
 
   const handleTenantChange = (value: string) => {
     setGlobalTenantId(value);
-    document.cookie = `global_tenant_id=${value}; path=/; max-age=86400`; // 1 day
+    document.cookie = `global_tenant_id=${value}; path=/; max-age=86400`;
     window.location.reload();
   };
 
   const toggleCollapse = () => {
-    // @see react-best-practices: rerender-functional-setstate
     setIsCollapsed(prev => {
       const newState = !prev;
       localStorage.setItem('sidebar-collapsed', String(newState));
@@ -220,14 +215,14 @@ export default function Sidebar() {
       {/* Header */}
       <div className={cn("h-16 flex items-center px-6 border-b border-zinc-800 shrink-0", collapsed && "px-0 justify-center")}>
         {!collapsed ? (
-          <div className="flex flex-col">
-            <h1 className="text-[15px] font-bold tracking-[-0.5px] uppercase">
-              Smart Floor <span className="text-zinc-500">Planner</span>
+          <div className="flex flex-col w-full">
+            <h1 className="text-[13px] font-bold tracking-[0.5px] uppercase">
+              Smart Floor <span className="text-primary">Planner</span>
             </h1>
             {(admin?.role === 'super_admin' || admin?.role === 'admin') && (
               <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                 <Select value={globalTenantId} onValueChange={handleTenantChange}>
-                  <SelectTrigger className="h-7 min-w-[180px] bg-zinc-900 border-zinc-800 text-xs font-medium focus:ring-0 shadow-none text-zinc-300">
+                  <SelectTrigger className="h-7 w-full bg-zinc-900 border-zinc-800 text-[11px] font-medium focus:ring-0 shadow-none text-zinc-400 hover:text-zinc-200 transition-colors">
                     <SelectValue placeholder="全局企业视图" />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl border-zinc-800 bg-zinc-950 text-zinc-300 shadow-2xl">
@@ -243,23 +238,23 @@ export default function Sidebar() {
             )}
           </div>
         ) : (
-          <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-zinc-950 font-black text-sm">
+          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-zinc-950 font-black text-sm">
             S
           </div>
         )}
       </div>
 
       {/* Navigation */}
-      <div className="flex-1 overflow-y-auto py-6 px-3 space-y-8 scrollbar-hide">
-        {/* Render Platform Menus - For super_admin/admin/salesperson */}
+      <div className="flex-1 overflow-y-auto py-6 px-3 space-y-9 scrollbar-hide">
+        {/* Render Platform Menus */}
         {(admin?.role === 'super_admin' || admin?.role === 'admin' || admin?.role === 'salesperson') && MENU_CONFIG.platform.map((category) => {
           const visibleItems = category.items.filter(item => hasMenuPermission(item.key));
           if (visibleItems.length === 0) return null;
 
           return (
-            <div key={category.title} className="space-y-2 border-l-2 border-primary/20 ml-1">
+            <div key={category.title} className="space-y-3">
               {!collapsed && (
-                <h2 className="px-3 text-[10px] font-bold text-primary uppercase tracking-[0.1em] mb-2 opacity-70">
+                <h2 className="px-3 text-[11px] font-bold text-zinc-600 uppercase tracking-[0.12em]">
                   {category.title}
                 </h2>
               )}
@@ -278,33 +273,15 @@ export default function Sidebar() {
           );
         })}
 
-        {(admin?.role === 'super_admin' || admin?.role === 'admin') && (
-          <div className="space-y-2 border-l-2 border-primary/20 ml-1">
-            {!collapsed && (
-              <h2 className="px-3 text-[10px] font-bold text-primary uppercase tracking-[0.1em] mb-2 opacity-70">
-                AI Config
-              </h2>
-            )}
-            <div className="space-y-1">
-              <NavItem
-                item={{ key: 'ai-presets', label: 'AI 预设配置', icon: Sparkles, href: '/ai-presets' }}
-                collapsed={collapsed}
-                isActive={pathname === '/ai-presets'}
-                hasPermission
-              />
-            </div>
-          </div>
-        )}
-
         {/* Render Merchant Menus */}
         {MENU_CONFIG.merchant.map((category) => {
           const visibleItems = category.items.filter(item => hasMenuPermission(item.key));
           if (visibleItems.length === 0) return null;
 
           return (
-            <div key={category.title} className="space-y-2">
+            <div key={category.title} className="space-y-3">
               {!collapsed && (
-                <h2 className="px-3 text-[10px] font-bold text-zinc-500 uppercase tracking-[0.1em] mb-2">
+                <h2 className="px-3 text-[11px] font-bold text-zinc-600 uppercase tracking-[0.12em]">
                   {category.title}
                 </h2>
               )}
@@ -325,12 +302,12 @@ export default function Sidebar() {
       </div>
 
       {/* Footer Profile */}
-      <div className="mt-auto border-t border-zinc-800 p-3 space-y-2">
+      <div className="mt-auto border-t border-zinc-800 p-3 space-y-2 bg-zinc-950/80 backdrop-blur-md">
         <div className={cn(
           "flex items-center gap-3 p-2 rounded-xl bg-zinc-900/50 border border-zinc-800/50",
           collapsed && "justify-center p-1.5 border-none bg-transparent"
         )}>
-          <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-zinc-950 font-bold shrink-0">
+          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-zinc-950 font-bold shrink-0 text-xs">
             {admin?.displayName ? admin.displayName[0] : (admin?.username ? admin.username[0].toUpperCase() : '?')}
           </div>
           {!collapsed && (
@@ -363,7 +340,7 @@ export default function Sidebar() {
             collapsed && "justify-center px-0"
           )}
         >
-          <LogOut size={18} className="shrink-0" />
+          <LogOut size={16} className="shrink-0" />
           {!collapsed && <span className="text-[13px] font-medium">退出系统</span>}
         </button>
       </div>
@@ -390,7 +367,7 @@ export default function Sidebar() {
         </button>
       </aside>
 
-      {/* Mobile Menu Trigger (Sticky Header on Mobile) */}
+      {/* Mobile Menu Trigger */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-white border-b px-4 flex items-center justify-between z-40">
         <h1 className="text-sm font-bold tracking-tight">QUANTUM PLANNER</h1>
         <Sheet>
@@ -405,4 +382,3 @@ export default function Sidebar() {
     </>
   );
 }
-

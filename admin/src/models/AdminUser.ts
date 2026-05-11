@@ -56,6 +56,7 @@ export const ALL_MENUS = [
   { key: 'ai-presets', label: 'AI 预设配置' },
   { key: 'inspirations', label: '灵感方案' },
   { key: 'staff', label: '员工管理' },
+  { key: 'packages', label: '套餐管理' },
   { key: 'admins', label: '系统账号管理' },
 ];
 
@@ -70,6 +71,7 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'measurements',
     'leads',
     'promotion-records',
+    'packages',
     'workflow-logs',
     'enterprise-orders',
     'commissions',

@@ -89,25 +89,37 @@ export function multiTenantPlugin(schema: Schema, options: TenantPluginOptions =
     // 构建租户过滤条件
     const tenantFilter: any = {};
 
-    // 1. 企业级别隔离 - 所有非管理员都需要
-    if (store.enterpriseId) {
-      tenantFilter.enterpriseId = store.enterpriseId;
-    } else {
-      console.warn(`[MultiTenantPlugin] 警告: 非管理员用户 ${store.userId} 没有 enterpriseId! 角色: ${store.role}`);
-    }
-
-    // 2. 角色级别隔离 - 如果启用
-    if (enableRoleBasedFiltering) {
-      // 使用自定义过滤逻辑
-      if (customFilter) {
-        const customFilterResult = customFilter(store);
+    // 角色级别隔离优先：如果模型定义了 customFilter，由它全权负责该角色的隔离策略
+    // customFilter 返回非空 → 使用其结果（如 {promoterId: userId}，个人级隔离，比企业级更严格）
+    // customFilter 返回空对象 → 退回默认企业级隔离
+    if (enableRoleBasedFiltering && customFilter) {
+      const customFilterResult = customFilter(store);
+      if (Object.keys(customFilterResult).length > 0) {
+        // customFilter 已明确定义了隔离策略，直接使用（替换，非合并）
         Object.assign(tenantFilter, customFilterResult);
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`[MultiTenantPlugin] 使用自定义过滤: ${modelName}.${method}`, customFilterResult, '角色:', store.role);
+        }
       } else {
-        // 默认角色过滤逻辑
-        const filterField = roleFilterFields[store.role as keyof typeof roleFilterFields];
+        // customFilter 返回空 → 退回默认企业级隔离
+        if (store.enterpriseId) {
+          tenantFilter.enterpriseId = store.enterpriseId;
+        } else {
+          console.warn(`[MultiTenantPlugin] 警告: 用户 ${store.userId} 无 enterpriseId 且 customFilter 为空! 角色: ${store.role}`);
+        }
+      }
+    } else {
+      // 无自定义过滤器 → 使用默认企业级隔离
+      if (store.enterpriseId) {
+        tenantFilter.enterpriseId = store.enterpriseId;
+      } else {
+        console.warn(`[MultiTenantPlugin] 警告: 非管理员用户 ${store.userId} 没有 enterpriseId! 角色: ${store.role}`);
+      }
 
+      // 默认角色过滤逻辑
+      if (enableRoleBasedFiltering) {
+        const filterField = roleFilterFields[store.role as keyof typeof roleFilterFields];
         if (filterField && (store.role === 'designer' || store.role === 'salesperson')) {
-          // 设计师和销售只能看到自己关联的数据
           tenantFilter[filterField] = store.userId;
         }
       }
@@ -138,17 +150,23 @@ export function multiTenantPlugin(schema: Schema, options: TenantPluginOptions =
       if (!hasEnterpriseMatch) {
         const matchConditions: any = {};
 
-        // 企业级别隔离
-        if (store.enterpriseId) {
-          matchConditions.enterpriseId = store.enterpriseId;
-        }
-
-        // 角色级别隔离
-        if (enableRoleBasedFiltering) {
-          if (customFilter) {
-            const customFilterResult = customFilter(store);
+        // 与查询钩子保持一致：customFilter 返回非空时替换默认隔离
+        if (enableRoleBasedFiltering && customFilter) {
+          const customFilterResult = customFilter(store);
+          if (Object.keys(customFilterResult).length > 0) {
             Object.assign(matchConditions, customFilterResult);
           } else {
+            if (store.enterpriseId) {
+              matchConditions.enterpriseId = store.enterpriseId;
+            }
+          }
+        } else {
+          // 无自定义过滤器 → 使用默认企业级隔离
+          if (store.enterpriseId) {
+            matchConditions.enterpriseId = store.enterpriseId;
+          }
+
+          if (enableRoleBasedFiltering) {
             const filterField = roleFilterFields[store.role as keyof typeof roleFilterFields] || 'staffId';
             if (store.role === 'designer' || store.role === 'salesperson') {
               matchConditions[filterField] = store.userId;
