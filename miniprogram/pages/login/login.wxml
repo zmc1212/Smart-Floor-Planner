@@ -2,6 +2,7 @@
   <view class="login-header">
     <view class="logo-circle">
       <text class="logo-text">量</text>
+      <text class="logo-sparkle">✦</text>
     </view>
     <view class="login-title">智能量房大师</view>
     <view class="login-subtitle">专业 AR 量房与 AI 辅助设计平台</view>
@@ -35,8 +36,8 @@
   <!-- Password Login -->
   <view wx:else class="login-body fade-in">
     <view class="form-group">
-      <text class="label">用户名</text>
-      <input class="input" placeholder="请输入员工账号" bindinput="onInputUsername" value="{{username}}" />
+      <text class="label">账号 / 手机号</text>
+      <input class="input" placeholder="请输入员工账号 / 手机号" bindinput="onInputUsername" value="{{username}}" />
     </view>
     
     <view class="form-group">

@@ -65,9 +65,13 @@ export async function POST(request: Request) {
 
     if (type === 'password') {
       const { username, password } = body;
+      const searchIdentifier = username?.trim();
       // Use raw collection to bypass any Mongoose multi-tenant filters
       const admin = await AdminUser.collection.findOne({ 
-        username: username?.trim(), 
+        $or: [
+          { username: searchIdentifier },
+          { phone: searchIdentifier }
+        ],
         status: 'active'
       });
 

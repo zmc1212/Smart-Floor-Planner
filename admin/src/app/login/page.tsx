@@ -85,7 +85,7 @@ export default function LoginPage() {
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     className="h-14 pl-12 bg-muted/30 border-none rounded-[18px] text-foreground focus-visible:ring-primary focus-visible:bg-white font-bold transition-all placeholder:font-normal"
-                    placeholder="请输入管理员 ID"
+                    placeholder="请输入管理员 ID 或 手机号"
                     autoFocus
                     suppressHydrationWarning
                   />

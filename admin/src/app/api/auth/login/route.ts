@@ -17,7 +17,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: '请输入用户名和密码' }, { status: 400 });
     }
 
-    const admin = await AdminUser.findOne({ username: username.trim(), status: 'active' });
+    const searchIdentifier = username.trim();
+    const admin = await AdminUser.findOne({ 
+      $or: [
+        { username: searchIdentifier },
+        { phone: searchIdentifier }
+      ],
+      status: 'active' 
+    });
     if (!admin) {
       return NextResponse.json({ success: false, error: '用户名或密码错误' }, { status: 401 });
     }
