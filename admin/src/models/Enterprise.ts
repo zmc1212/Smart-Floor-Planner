@@ -11,6 +11,7 @@ export interface IEnterprise extends Document {
     email?: string;
   };
   address?: string;
+  industry?: string;
   description?: string;
   logo?: string; // URL or Base64 logo
   branding?: {
@@ -67,6 +68,7 @@ const EnterpriseSchema: Schema<IEnterprise> = new Schema(
       email: { type: String },
     },
     address: { type: String },
+    industry: { type: String, trim: true },
     description: { type: String },
     logo: { type: String },
     branding: {

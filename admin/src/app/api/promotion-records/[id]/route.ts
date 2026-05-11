@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { Enterprise } from '@/models/Enterprise';
 import { getTenantContext } from '@/lib/auth';
 import { PromotionEnterpriseRecord } from '@/models/PromotionEnterpriseRecord';
+import { AdminUser } from '@/models/AdminUser';
 import { buildPromotionAccessFilter, getMiniProgramStaffContext, extendProtectionPeriod } from '@/lib/promotion-workflow';
 import {
   buildDesignDueAt,
