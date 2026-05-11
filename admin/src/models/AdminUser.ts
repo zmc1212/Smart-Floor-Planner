@@ -33,7 +33,7 @@ export const ROLE_LABELS: Record<string, string> = {
   admin: '平台管理员',
   enterprise_admin: '企业负责人',
   designer: '设计师',
-  salesperson: '地推员',
+  salesperson: '渠道地推',
   measurer: '测量员',
   viewer: '只读审计员',
 };
@@ -85,10 +85,6 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'dashboard',
     'floorplans',
     'leads',
-    'promotion-records',
-    'workflow-logs',
-    'enterprise-orders',
-    'commissions',
     'ai-floorplan',
     'ai-furnishing',
     'ai-soft-furnishing',
@@ -101,7 +97,6 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'dashboard',
     'floorplans',
     'leads',
-    'promotion-records',
     'ai-floorplan',
     'ai-furnishing',
     'ai-soft-furnishing',
@@ -111,15 +106,9 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   ],
   salesperson: [
     'dashboard',
-    'leads',
     'promotion-records',
     'enterprise-orders',
     'commissions',
-    'measurements',
-    'ai-floorplan',
-    'ai-furnishing',
-    'ai-soft-furnishing',
-    'inspirations',
   ],
   measurer: ['dashboard', 'promotion-records', 'measurements', 'devices'],
   viewer: ['dashboard', 'floorplans', 'ai-floorplan', 'ai-furnishing', 'ai-soft-furnishing', 'inspirations'],
@@ -202,6 +191,11 @@ const adminUserPluginOptions: TenantPluginOptions = {
   customFilter: (store) => {
     const filter: Record<string, unknown> = {};
 
+    // salesperson is platform-level, no enterpriseId filtering
+    if (store.role === 'salesperson') {
+      return { _id: store.userId };
+    }
+
     if (store.enterpriseId) {
       filter.enterpriseId = store.enterpriseId;
     }
@@ -210,7 +204,7 @@ const adminUserPluginOptions: TenantPluginOptions = {
       return filter;
     }
 
-    if (store.role === 'designer' || store.role === 'salesperson' || store.role === 'measurer') {
+    if (store.role === 'designer' || store.role === 'measurer') {
       filter.$or = [{ _id: store.userId }, { promoterIds: store.userId }];
     }
 

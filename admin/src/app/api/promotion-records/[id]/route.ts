@@ -3,7 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { Enterprise } from '@/models/Enterprise';
 import { getTenantContext } from '@/lib/auth';
 import { PromotionEnterpriseRecord } from '@/models/PromotionEnterpriseRecord';
-import { buildPromotionAccessFilter, getMiniProgramStaffContext } from '@/lib/promotion-workflow';
+import { buildPromotionAccessFilter, getMiniProgramStaffContext, extendProtectionPeriod } from '@/lib/promotion-workflow';
 import {
   buildDesignDueAt,
   buildNextFollowUpAt,
@@ -122,6 +122,12 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       };
       if (record.businessStage === 'reported') {
         setData.businessStage = 'contacted';
+      }
+      // 跟进后自动延长保护期
+      const extension = extendProtectionPeriod(record);
+      if (extension) {
+        setData.protectionExpiresAt = extension.protectionExpiresAt;
+        setData.protectionExtendedCount = extension.protectionExtendedCount;
       }
     }
 

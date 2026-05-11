@@ -9,6 +9,7 @@ import {
   buildNextFollowUpAt,
   dispatchWorkflowNotifications,
   getEnterpriseAutomationConfig,
+  PLATFORM_PROMOTION_CONFIG,
 } from '@/lib/workflow-automation';
 
 export async function getMiniProgramStaffContext(openid: string) {
@@ -27,13 +28,18 @@ export async function getMiniProgramStaffContext(openid: string) {
 
 export function buildPromotionAccessFilter(staff: { role: string; _id: unknown; enterpriseId?: unknown }) {
   const filter: Record<string, unknown> = {};
+
+  // salesperson 是平台级角色，不按 enterpriseId 过滤
+  if (staff.role === 'salesperson') {
+    filter.promoterId = staff._id;
+    return filter;
+  }
+
   if (staff.enterpriseId) {
     filter.enterpriseId = staff.enterpriseId;
   }
 
-  if (staff.role === 'salesperson') {
-    filter.promoterId = staff._id;
-  } else if (staff.role === 'measurer') {
+  if (staff.role === 'measurer') {
     filter['measureTask.assignedTo'] = staff._id;
   } else if (staff.role === 'designer') {
     filter['designTask.assignedTo'] = staff._id;
@@ -43,11 +49,11 @@ export function buildPromotionAccessFilter(staff: { role: string; _id: unknown; 
 }
 
 export function buildPromotionDuplicateQuery(input: {
-  enterpriseId?: unknown;
   creditCode?: string;
   enterpriseName: string;
   phone: string;
 }) {
+  // 全平台范围查重（不限 enterpriseId）
   const orConditions: Record<string, unknown>[] = [];
   if (input.creditCode) {
     orConditions.push({ creditCode: input.creditCode.trim().toUpperCase() });
@@ -58,12 +64,7 @@ export function buildPromotionDuplicateQuery(input: {
     phone: input.phone.trim(),
   });
 
-  const query: Record<string, unknown> = { $or: orConditions };
-  if (input.enterpriseId) {
-    query.enterpriseId = input.enterpriseId;
-  }
-
-  return query;
+  return { $or: orConditions };
 }
 
 export async function syncCommissionForOrder(order: IEnterpriseOrder, settledBy?: string) {
@@ -86,7 +87,11 @@ export async function syncCommissionForOrder(order: IEnterpriseOrder, settledBy?
 
   const enterprise = record.enterpriseId ? await Enterprise.findById(record.enterpriseId).lean() : null;
   const automationConfig = getEnterpriseAutomationConfig(enterprise);
-  const commissionAmount = Math.max(Number(enterprise?.groundPromotionFixedCommission || 0), 0);
+  // 提成金额：优先使用企业覆盖值，否则用平台默认配置
+  const commissionAmount = Math.max(
+    Number(enterprise?.groundPromotionFixedCommission || PLATFORM_PROMOTION_CONFIG.defaultCommissionAmount),
+    0
+  );
 
   await PromotionEnterpriseRecord.findByIdAndUpdate(record._id, {
     $set: {
@@ -153,4 +158,90 @@ export async function findOrdersForOpenidStaff(staff: { role: string; _id: unkno
 
 export function asObjectId(value?: string | null) {
   return value && mongoose.Types.ObjectId.isValid(value) ? new mongoose.Types.ObjectId(value) : undefined;
+}
+
+/**
+ * 从公海池认领报备记录
+ */
+export async function claimFromPool(recordId: string, salespersonId: string) {
+  const record = await PromotionEnterpriseRecord.findOne({
+    _id: recordId,
+    poolStatus: 'in_pool',
+  });
+  if (!record) return null;
+
+  const config = PLATFORM_PROMOTION_CONFIG;
+  const now = new Date();
+  const protectionExpiresAt = new Date(now.getTime() + config.protectionPeriodDays * 24 * 60 * 60 * 1000);
+
+  if (config.poolClaimRequiresApproval) {
+    // 待审批模式：标记为 claimed 但保留原 promoterId，等待管理员确认
+    record.poolStatus = 'claimed';
+    record.lastActivityAt = now;
+    record.followUpRecords.push({
+      content: `地推员申请认领，等待管理员审批`,
+      operator: 'System',
+      createdAt: now,
+    } as any);
+    await record.save();
+    return record;
+  }
+
+  // 直接认领模式
+  record.promoterId = new mongoose.Types.ObjectId(salespersonId);
+  record.poolStatus = 'protected';
+  record.protectionExpiresAt = protectionExpiresAt;
+  record.protectionExtendedCount = 0;
+  record.ownershipStatus = 'auto_locked';
+  record.pendingActionRole = 'salesperson';
+  record.businessStage = record.businessStage === 'closed_lost' ? 'reported' : record.businessStage;
+  record.lastActivityAt = now;
+  record.followUpRecords.push({
+    content: `从公海池认领`,
+    operator: 'System',
+    createdAt: now,
+  } as any);
+  await record.save();
+  return record;
+}
+
+/**
+ * 手动释放报备记录到公海池
+ */
+export async function releaseToPool(recordId: string) {
+  return PromotionEnterpriseRecord.findByIdAndUpdate(
+    recordId,
+    {
+      $set: {
+        poolStatus: 'in_pool',
+        pendingActionRole: 'none',
+        lastActivityAt: new Date(),
+      },
+      $unset: { nextFollowUpAt: 1 },
+    },
+    { new: true }
+  );
+}
+
+/**
+ * 提交跟进后延长保护期
+ */
+export function extendProtectionPeriod(record: any) {
+  const config = PLATFORM_PROMOTION_CONFIG;
+  if (
+    record.poolStatus !== 'protected' ||
+    record.protectionExtendedCount >= config.maxProtectionExtends
+  ) {
+    return null;
+  }
+
+  const now = new Date();
+  const currentExpiry = record.protectionExpiresAt ? new Date(record.protectionExpiresAt) : now;
+  const base = currentExpiry.getTime() > now.getTime() ? currentExpiry : now;
+  const newExpiry = new Date(base.getTime() + config.protectionExtendDays * 24 * 60 * 60 * 1000);
+
+  return {
+    protectionExpiresAt: newExpiry,
+    protectionExtendedCount: (record.protectionExtendedCount || 0) + 1,
+  };
 }

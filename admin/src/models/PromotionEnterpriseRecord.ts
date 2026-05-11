@@ -3,6 +3,7 @@ import { multiTenantPlugin, TenantPluginOptions } from '../lib/mongoose-tenant-p
 
 export type OwnershipStatus = 'auto_locked' | 'conflict_pending' | 'manually_locked';
 export type BusinessStage = 'reported' | 'contacted' | 'measuring' | 'designing' | 'quoted' | 'paid' | 'closed_lost';
+export type PoolStatus = 'protected' | 'in_pool' | 'claimed';
 export type MeasureTaskStatus = 'unassigned' | 'assigned' | 'accepted' | 'submitted';
 export type DesignTaskStatus = 'unassigned' | 'assigned' | 'in_progress' | 'completed';
 export type PendingActionRole = 'salesperson' | 'measurer' | 'designer' | 'enterprise_admin' | 'none';
@@ -21,6 +22,9 @@ export interface IPromotionEnterpriseRecord extends Document {
   ownershipStatus: OwnershipStatus;
   businessStage: BusinessStage;
   pendingActionRole?: PendingActionRole;
+  poolStatus: PoolStatus;
+  protectionExpiresAt?: Date;
+  protectionExtendedCount: number;
   notes?: string;
   nextFollowUpAt?: Date;
   lastActivityAt?: Date;
@@ -77,6 +81,7 @@ const PromotionEnterpriseRecordSchema = new Schema<IPromotionEnterpriseRecord>(
     industry: { type: String, trim: true },
     sourceChannel: { type: String, enum: ['ground_promotion'], default: 'ground_promotion' },
     promoterId: { type: Schema.Types.ObjectId, ref: 'AdminUser', required: true },
+    // enterpriseId: 成交入驻后回填的企业 ID，报备阶段为空
     enterpriseId: { type: Schema.Types.ObjectId, ref: 'Enterprise' },
     ownershipStatus: {
       type: String,
@@ -93,6 +98,13 @@ const PromotionEnterpriseRecordSchema = new Schema<IPromotionEnterpriseRecord>(
       enum: ['salesperson', 'measurer', 'designer', 'enterprise_admin', 'none'],
       default: 'none',
     },
+    poolStatus: {
+      type: String,
+      enum: ['protected', 'in_pool', 'claimed'],
+      default: 'protected',
+    },
+    protectionExpiresAt: { type: Date },
+    protectionExtendedCount: { type: Number, default: 0 },
     notes: { type: String, trim: true },
     nextFollowUpAt: { type: Date },
     lastActivityAt: { type: Date, default: Date.now },
@@ -156,6 +168,7 @@ PromotionEnterpriseRecordSchema.index({ creditCode: 1 });
 PromotionEnterpriseRecordSchema.index({ enterpriseName: 1, phone: 1 });
 PromotionEnterpriseRecordSchema.index({ ownershipStatus: 1, businessStage: 1 });
 PromotionEnterpriseRecordSchema.index({ pendingActionRole: 1, nextFollowUpAt: 1 });
+PromotionEnterpriseRecordSchema.index({ poolStatus: 1, protectionExpiresAt: 1 });
 
 const promotionRecordPluginOptions: TenantPluginOptions = {
   enableRoleBasedFiltering: true,

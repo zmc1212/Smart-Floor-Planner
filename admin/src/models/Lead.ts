@@ -57,11 +57,11 @@ LeadSchema.index({ assignedTo: 1, createdAt: -1 });
 LeadSchema.index({ phone: 1 });
 
 // 应用多租户插件 - 配置角色级隔离
+// 注意：salesperson（渠道地推）是平台级 B2B 角色，不访问 B2C 客户线索
 LeadSchema.plugin(multiTenantPlugin, {
   enableRoleBasedFiltering: true,
   roleFilterFields: {
     designer: 'assignedTo',     // 设计师只能看到分配给自己的线索
-    salesperson: 'promoterId'  // 销售只能看到自己推广的线索
   }
 });
 

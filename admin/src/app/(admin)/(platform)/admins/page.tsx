@@ -42,7 +42,7 @@ interface AdminUser {
   _id: string;
   username: string;
   displayName: string;
-  role: 'super_admin' | 'admin' | 'viewer' | 'enterprise_admin';
+  role: 'super_admin' | 'admin' | 'viewer' | 'enterprise_admin' | 'salesperson';
   menuPermissions: string[];
   effectivePermissions: string[];
   status: 'active' | 'disabled';
@@ -56,6 +56,7 @@ const ROLE_LABELS: Record<string, string> = {
   admin: '普通管理员',
   viewer: '只读审计员',
   enterprise_admin: '企业负责人',
+  salesperson: '渠道地推',
 };
 
 const getRoleBadge = (role: string) => {
@@ -68,6 +69,8 @@ const getRoleBadge = (role: string) => {
       return <Badge variant="outline" className="text-gray-500 border-gray-200">审计员</Badge>;
     case 'enterprise_admin':
       return <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-none">企业负责人</Badge>;
+    case 'salesperson':
+      return <Badge variant="secondary" className="bg-green-100 text-green-700 border-none">渠道地推</Badge>;
     default:
       return <Badge variant="outline">{role}</Badge>;
   }
@@ -423,6 +426,7 @@ export default function AdminsPage() {
                           <SelectItem value="admin">普通管理员</SelectItem>
                           <SelectItem value="viewer">只读审计员</SelectItem>
                           <SelectItem value="enterprise_admin">企业负责人</SelectItem>
+                          <SelectItem value="salesperson">渠道地推</SelectItem>
                         </SelectContent>
                       </Select>
                      </div>

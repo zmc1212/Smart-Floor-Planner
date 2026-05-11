@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, memo } from 'react';
 import Link from 'next/link';
@@ -64,6 +64,15 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
         { key: 'admins', label: '系统管理', icon: UserCog, href: '/admins' },
         { key: 'users', label: '用户审计', icon: Users, href: '/users' },
       ]
+    },
+    {
+      title: 'B2B 渠道管理',
+      items: [
+        { key: 'promotion-records', label: '企业报备', icon: Building2, href: '/promotion-records' },
+        { key: 'workflow-logs', label: '提醒日志', icon: ClipboardList, href: '/workflow-logs' },
+        { key: 'enterprise-orders', label: '成交订单', icon: ClipboardList, href: '/enterprise-orders' },
+        { key: 'commissions', label: '提成结算', icon: Coins, href: '/commissions' },
+      ]
     }
   ],
   merchant: [
@@ -72,10 +81,6 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       items: [
         { key: 'dashboard', label: '概览', icon: LayoutDashboard, href: '/' },
         { key: 'leads', label: '线索转化', icon: ClipboardList, href: '/leads' },
-        { key: 'promotion-records', label: '企业报备', icon: Building2, href: '/promotion-records' },
-        { key: 'workflow-logs', label: '提醒日志', icon: ClipboardList, href: '/workflow-logs' },
-        { key: 'enterprise-orders', label: '成交订单', icon: ClipboardList, href: '/enterprise-orders' },
-        { key: 'commissions', label: '提成结算', icon: Coins, href: '/commissions' },
       ]
     },
     {
@@ -246,8 +251,8 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <div className="flex-1 overflow-y-auto py-6 px-3 space-y-8 scrollbar-hide">
-        {/* Render Platform Menus - Only for super_admin/admin */}
-        {(admin?.role === 'super_admin' || admin?.role === 'admin') && MENU_CONFIG.platform.map((category) => {
+        {/* Render Platform Menus - For super_admin/admin/salesperson */}
+        {(admin?.role === 'super_admin' || admin?.role === 'admin' || admin?.role === 'salesperson') && MENU_CONFIG.platform.map((category) => {
           const visibleItems = category.items.filter(item => hasMenuPermission(item.key));
           if (visibleItems.length === 0) return null;
 

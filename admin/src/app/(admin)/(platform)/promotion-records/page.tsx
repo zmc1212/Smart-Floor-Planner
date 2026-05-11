@@ -30,6 +30,7 @@ const viewOptions = [
   { key: 'assignMeasure', label: '待分配测量' },
   { key: 'assignDesign', label: '待分配设计' },
   { key: 'overdue', label: '已超时' },
+  { key: 'pool', label: '公海池' },
 ];
 
 function parseDate(value?: string | null) {
@@ -64,6 +65,7 @@ function matchesView(record: any, view: string) {
   if (view === 'assignMeasure') return record.businessStage === 'measuring' && record.measureTask?.status === 'unassigned';
   if (view === 'assignDesign') return record.measureTask?.status === 'submitted' && record.designTask?.status === 'unassigned';
   if (view === 'overdue') return isOverdue(record);
+  if (view === 'pool') return record.poolStatus === 'in_pool';
   return true;
 }
 
@@ -86,8 +88,14 @@ export default function PromotionRecordsPage() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const stageQuery = stageFilter !== 'all' ? `?stage=${stageFilter}` : '';
-      const [recordsRes, staffRes] = await Promise.all([fetch(`/api/promotion-records${stageQuery}`), fetch('/api/staff')]);
+      const isPool = viewFilter === 'pool';
+      const endpoint = isPool ? '/api/promotion-records/pool' : '/api/promotion-records';
+      const stageQuery = stageFilter !== 'all' && !isPool ? `?stage=${stageFilter}` : '';
+      
+      const [recordsRes, staffRes] = await Promise.all([
+        fetch(`${endpoint}${stageQuery}`), 
+        fetch('/api/staff')
+      ]);
       const recordsData = await recordsRes.json();
       const staffData = await staffRes.json();
 
@@ -100,7 +108,7 @@ export default function PromotionRecordsPage() {
 
   useEffect(() => {
     fetchData();
-  }, [stageFilter]);
+  }, [stageFilter, viewFilter]);
 
   const filteredRecords = useMemo(() => records.filter((record) => matchesView(record, viewFilter)), [records, viewFilter]);
 
@@ -112,6 +120,27 @@ export default function PromotionRecordsPage() {
     }),
     [staff]
   );
+
+  const handleClaim = async (recordId: string) => {
+    if (!confirm('确定要从公海池认领这条报备记录吗？认领后您将拥有 30 天保护期。')) return;
+    try {
+      const res = await fetch('/api/promotion-records/pool', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recordId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('认领成功！');
+        setViewFilter('all');
+        await fetchData();
+      } else {
+        alert(data.error || '认领失败');
+      }
+    } catch (err) {
+      alert('认领请求失败');
+    }
+  };
 
   const updateRecord = async (payload: Record<string, unknown>) => {
     if (!selected) return;
@@ -219,9 +248,15 @@ export default function PromotionRecordsPage() {
                       <div className="text-xs text-muted-foreground">设计：{record.designTask?.status || 'unassigned'}</div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button size="sm" variant="ghost" onClick={() => openDetail(record)}>
-                        管理
-                      </Button>
+                      {record.poolStatus === 'in_pool' ? (
+                        <Button size="sm" variant="default" className="bg-primary text-white" onClick={() => handleClaim(record._id)}>
+                          认领
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="ghost" onClick={() => openDetail(record)}>
+                          管理
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

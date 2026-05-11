@@ -14,6 +14,20 @@ export const DEFAULT_AUTOMATION_CONFIG = {
   maxReminderTimes: 3,
 };
 
+// 平台级地推渠道配置（可后台管理）
+export const PLATFORM_PROMOTION_CONFIG = {
+  protectionPeriodDays: 30,          // 保护期天数
+  protectionExtendDays: 15,          // 跟进后延长天数
+  maxProtectionExtends: 3,           // 最大延长次数
+  commissionTiers: [
+    { label: '基础套餐', amount: 500 },
+    { label: '标准套餐', amount: 1000 },
+    { label: '高级套餐', amount: 2000 },
+  ] as Array<{ label: string; amount: number }>,
+  defaultCommissionAmount: 500,      // 默认提成金额
+  poolClaimRequiresApproval: false,  // 公海池认领是否需要审批
+};
+
 export type WorkbenchTodoView = 'mine' | 'overdue' | 'today';
 
 export interface WorkbenchTodoItem {
@@ -115,6 +129,23 @@ export function buildTodoItemsForRecord(record: any, role: string, config?: any)
       items.push(
         buildTodo(record, role, record.businessStage === 'quoted' ? 'quote_follow_up' : 'follow_up', title, `${record.contactPerson} / ${record.phone}`, dueAt)
       );
+    }
+    // 保护期即将到期提醒（7天内）
+    const protectionExpires = toDate(record.protectionExpiresAt);
+    if (protectionExpires && record.poolStatus === 'protected') {
+      const daysLeft = Math.ceil((protectionExpires.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+      if (daysLeft > 0 && daysLeft <= 7) {
+        items.push(
+          buildTodo(
+            record,
+            role,
+            'protection_expiring',
+            `保护期将在 ${daysLeft} 天后到期`,
+            `${record.enterpriseName} — 请及时跟进以延长保护期`,
+            protectionExpires
+          )
+        );
+      }
     }
     return items;
   }
@@ -555,6 +586,42 @@ export async function runWorkflowReminderScan() {
     scanned: records.length,
     processed,
   };
+}
+
+/**
+ * 扫描保护期到期的报备记录，自动释放到公海池
+ */
+export async function runProtectionExpiryScan() {
+  const now = new Date();
+  const expiredRecords = await PromotionEnterpriseRecord.find({
+    poolStatus: 'protected',
+    protectionExpiresAt: { $lte: now },
+    businessStage: { $nin: ['paid', 'closed_lost'] },
+  }).lean();
+
+  let released = 0;
+  for (const record of expiredRecords) {
+    await PromotionEnterpriseRecord.findByIdAndUpdate(record._id, {
+      $set: {
+        poolStatus: 'in_pool',
+        pendingActionRole: 'none',
+        lastActivityAt: now,
+      },
+      $unset: { nextFollowUpAt: 1 },
+    });
+
+    await dispatchWorkflowNotifications({
+      record,
+      notificationType: 'follow_up_overdue',
+      recipientRoles: ['salesperson'],
+      message: `【保护期到期】${record.enterpriseName} 的保护期已到期，已释放至公海池。`,
+      dedupeSuffix: `protection-expired-${String(record._id)}`,
+    });
+
+    released += 1;
+  }
+
+  return { scanned: expiredRecords.length, released };
 }
 
 export function buildNextFollowUpAt(base: Date, enterprise?: any) {

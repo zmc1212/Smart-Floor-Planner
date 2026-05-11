@@ -34,7 +34,6 @@ const DEFAULT_FORM = {
   role: 'designer',
   enterpriseId: '',
   departmentId: '',
-  promoterIds: [] as string[],
   wecomUserId: '',
 };
 
@@ -119,7 +118,6 @@ export default function StaffPage() {
         typeof member.departmentId === 'object' && member.departmentId
           ? member.departmentId._id
           : (member.departmentId || ''),
-      promoterIds: member.promoterIds || [],
       wecomUserId: member.wecomUserId || '',
     });
     setEditingId(member._id);
@@ -216,7 +214,6 @@ export default function StaffPage() {
       enterprise_admin: '企业负责人',
       designer: '设计师',
       measurer: '测量员',
-      salesperson: '地推员',
     };
     return labels[role] || role;
   };
@@ -357,57 +354,12 @@ export default function StaffPage() {
             <SelectContent>
               <SelectItem value="designer">设计师</SelectItem>
               <SelectItem value="measurer">测量员</SelectItem>
-              <SelectItem value="salesperson">地推员</SelectItem>
               {currentUser?.role === 'super_admin' && <SelectItem value="enterprise_admin">企业负责人</SelectItem>}
             </SelectContent>
           </Select>
         </div>
 
-        {formData.role === 'designer' && (
-          <div className="space-y-3 pt-2">
-            <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">关联地推员</Label>
-            <div className="grid max-h-[160px] grid-cols-2 gap-2 overflow-y-auto rounded-2xl bg-muted/20 p-2">
-              {staff.filter((item) => item.role === 'salesperson').map((promoter) => (
-                <div
-                  key={promoter._id}
-                  className={cn(
-                    'flex cursor-pointer items-center gap-3 rounded-xl border-2 p-3 transition-all',
-                    formData.promoterIds.includes(promoter._id)
-                      ? 'border-primary bg-primary/10 shadow-sm'
-                      : 'border-transparent bg-white hover:border-muted-foreground/20'
-                  )}
-                  onClick={() => {
-                    const nextIds = [...formData.promoterIds];
-                    const index = nextIds.indexOf(promoter._id);
-                    if (index > -1) {
-                      nextIds.splice(index, 1);
-                    } else {
-                      nextIds.push(promoter._id);
-                    }
-                    setFormData((prev) => ({ ...prev, promoterIds: nextIds }));
-                  }}
-                >
-                  <div
-                    className={cn(
-                      'flex h-8 w-8 items-center justify-center rounded-lg text-[10px] font-bold',
-                      formData.promoterIds.includes(promoter._id)
-                        ? 'bg-primary text-white'
-                        : 'bg-muted text-muted-foreground'
-                    )}
-                  >
-                    {promoter.displayName?.[0] || promoter.username?.[0]?.toUpperCase()}
-                  </div>
-                  <span className="truncate text-sm font-medium">{promoter.displayName || promoter.username}</span>
-                </div>
-              ))}
-              {staff.filter((item) => item.role === 'salesperson').length === 0 && (
-                <div className="col-span-full py-6 text-center text-xs italic text-muted-foreground">
-                  暂无地推员，请先创建地推角色员工。
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+
       </div>
 
       <DialogFooter className="border-t bg-muted/30 p-8 pt-4">

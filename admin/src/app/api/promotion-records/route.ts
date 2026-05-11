@@ -8,7 +8,7 @@ import {
   buildPromotionDuplicateQuery,
   getMiniProgramStaffContext,
 } from '@/lib/promotion-workflow';
-import { buildNextFollowUpAt, dispatchWorkflowNotifications } from '@/lib/workflow-automation';
+import { buildNextFollowUpAt, dispatchWorkflowNotifications, PLATFORM_PROMOTION_CONFIG } from '@/lib/workflow-automation';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +19,7 @@ function buildListQuery(searchParams: URLSearchParams) {
   const search = searchParams.get('search');
   const view = searchParams.get('view');
   const conflictOnly = searchParams.get('conflictOnly') === 'true';
+  const pool = searchParams.get('pool');
 
   if (stage && stage !== 'all') {
     query.businessStage = stage;
@@ -28,6 +29,9 @@ function buildListQuery(searchParams: URLSearchParams) {
   }
   if (conflictOnly || view === 'conflicts') {
     query.ownershipStatus = 'conflict_pending';
+  }
+  if (pool === 'true') {
+    query.poolStatus = 'in_pool';
   }
   if (search?.trim()) {
     const regex = new RegExp(search.trim(), 'i');
@@ -70,12 +74,16 @@ export async function GET(request: Request) {
 
     return await withTenantContext(request, async () => {
       const query = { ...baseQuery };
+
+      // salesperson 是平台级角色，不受 enterpriseId 过滤
       if (context.role === 'salesperson') {
         query.promoterId = context.userId;
       } else if (context.role === 'measurer') {
         query['measureTask.assignedTo'] = context.userId;
       } else if (context.role === 'designer') {
         query['designTask.assignedTo'] = context.userId;
+      } else if (context.enterpriseId) {
+        query.enterpriseId = context.enterpriseId;
       }
 
       const records = await getPopulateQuery(query).sort({ createdAt: -1 }).lean();
@@ -123,9 +131,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Missing required fields' }, { status: 400 });
     }
 
-    const enterprise = enterpriseId ? await Enterprise.findById(enterpriseId).lean() : null;
+    // salesperson 是平台级角色，enterprise 入驻后才回填
+    const enterprise = body.enterpriseId ? await Enterprise.findById(body.enterpriseId).lean() : null;
     const duplicateQuery = buildPromotionDuplicateQuery({
-      enterpriseId,
       creditCode: body.creditCode,
       enterpriseName: body.enterpriseName,
       phone: body.phone,
@@ -165,6 +173,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, data: updated, created: false });
     }
 
+    const config = PLATFORM_PROMOTION_CONFIG;
+    const protectionExpiresAt = new Date(now.getTime() + config.protectionPeriodDays * 24 * 60 * 60 * 1000);
+
     const created = await PromotionEnterpriseRecord.create({
       enterpriseName: body.enterpriseName.trim(),
       creditCode: body.creditCode?.trim()?.toUpperCase() || undefined,
@@ -175,12 +186,15 @@ export async function POST(request: Request) {
       industry: body.industry?.trim() || '',
       sourceChannel: 'ground_promotion',
       promoterId,
-      enterpriseId,
+      // enterpriseId 报备阶段为空，成交入驻后回填
       ownershipStatus: conflictingRecords.length > 0 ? 'conflict_pending' : 'auto_locked',
       businessStage: 'reported',
       pendingActionRole: conflictingRecords.length > 0 ? 'enterprise_admin' : 'salesperson',
       nextFollowUpAt: conflictingRecords.length > 0 ? undefined : buildNextFollowUpAt(now, enterprise),
       lastActivityAt: now,
+      poolStatus: conflictingRecords.length > 0 ? 'protected' : 'protected',
+      protectionExpiresAt: conflictingRecords.length > 0 ? undefined : protectionExpiresAt,
+      protectionExtendedCount: 0,
       notes: body.notes?.trim() || '',
       followUpRecords: body.notes
         ? [{ content: body.notes.trim(), operator: operatorName, operatorId: promoterId, createdAt: now }]
