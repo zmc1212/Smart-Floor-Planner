@@ -3,7 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { getTenantContext } from '@/lib/auth';
 import { tenantStorage } from '@/lib/tenant-context';
-import { listWorkbenchTodos, WorkbenchTodoView } from '@/lib/workbench';
+import { listWorkbenchTodos, WorkbenchTodoView } from '@/lib/workflow-automation';
 
 export const dynamic = 'force-dynamic';
 

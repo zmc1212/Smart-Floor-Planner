@@ -1,3 +1,9 @@
+import { NextResponse } from 'next/server';
+import dbConnect from '@/lib/mongodb';
+import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import { withTenantContext } from '@/lib/auth';
+import { FloorPlan } from '@/models/FloorPlan';
+import { User } from '@/models/User';
 import { tenantStorage } from '@/lib/tenant-context';
 
 export async function POST(req: Request) {

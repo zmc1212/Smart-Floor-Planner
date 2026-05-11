@@ -364,25 +364,60 @@ page {
 }
 
 /* ===== Empty State ===== */
-.empty-container {
+.empty-wrapper {
+  padding: 40rpx;
+  margin-top: 20rpx;
+}
+
+.empty-state-card {
+  background: #ffffff;
+  border-radius: 24rpx;
   padding: 80rpx 40rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
+  box-shadow: 0 0 0 1rpx rgba(0,0,0,0.05);
+  border: 1rpx dashed rgba(0,0,0,0.1);
+}
+
+.empty-icon-box {
+  width: 120rpx;
+  height: 120rpx;
+  background: #f8fafc;
+  border-radius: 60rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 40rpx;
+}
+
+.empty-emoji {
+  font-size: 48rpx;
 }
 
 .empty-title {
-  font-size: 30rpx;
-  font-weight: 600;
+  font-size: 32rpx;
+  font-weight: 700;
   color: #171717;
-  margin-bottom: 12rpx;
+  margin-bottom: 16rpx;
+  letter-spacing: -0.01em;
 }
 
 .empty-subtitle {
   font-size: 24rpx;
-  color: #999;
-  line-height: 1.5;
-  max-width: 80%;
+  color: #94a3b8;
+  line-height: 1.6;
+  max-width: 480rpx;
+  margin-bottom: 40rpx;
+}
+
+.empty-action {
+  font-size: 24rpx;
+  font-weight: 600;
+  color: #2563eb;
+  padding: 16rpx 32rpx;
+  background: #eff6ff;
+  border-radius: 100rpx;
 }

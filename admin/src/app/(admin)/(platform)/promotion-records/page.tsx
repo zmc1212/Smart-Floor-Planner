@@ -121,11 +121,24 @@ export default function PromotionRecordsPage() {
         fetch(`${endpoint}${stageQuery}`), 
         fetch('/api/staff')
       ]);
-      const recordsData = await recordsRes.json();
-      const staffData = await staffRes.json();
 
-      if (recordsData.success) setRecords(recordsData.data || []);
-      if (staffData.success) setStaff(staffData.data || []);
+      if (recordsRes.ok) {
+        try {
+          const recordsData = await recordsRes.json();
+          if (recordsData.success) setRecords(recordsData.data || []);
+        } catch (e) {
+          console.error('Failed to parse promotion records JSON:', e);
+        }
+      }
+
+      if (staffRes.ok) {
+        try {
+          const staffData = await staffRes.json();
+          if (staffData.success) setStaff(staffData.data || []);
+        } catch (e) {
+          console.error('Failed to parse staff JSON:', e);
+        }
+      }
     } finally {
       setLoading(false);
     }

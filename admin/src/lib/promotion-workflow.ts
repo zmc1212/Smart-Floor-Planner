@@ -13,6 +13,51 @@ import {
 } from '@/lib/workflow-automation';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 
+export { 
+  PLATFORM_PROMOTION_CONFIG, 
+  buildNextFollowUpAt, 
+  dispatchWorkflowNotifications,
+  getEnterpriseAutomationConfig 
+};
+
+export function buildListQuery(searchParams: URLSearchParams) {
+  const query: any = {};
+
+  const search = searchParams.get('search');
+  if (search) {
+    query.$or = [
+      { enterpriseName: { $regex: search, $options: 'i' } },
+      { contactPerson: { $regex: search, $options: 'i' } },
+      { phone: { $regex: search, $options: 'i' } },
+    ];
+  }
+
+  const ownershipStatus = searchParams.get('ownershipStatus');
+  if (ownershipStatus) query.ownershipStatus = ownershipStatus;
+
+  const businessStage = searchParams.get('businessStage');
+  if (businessStage) query.businessStage = businessStage;
+
+  const poolStatus = searchParams.get('poolStatus');
+  if (poolStatus) query.poolStatus = poolStatus;
+
+  const city = searchParams.get('city');
+  if (city) query.city = city;
+
+  const industry = searchParams.get('industry');
+  if (industry) query.industry = industry;
+
+  return query;
+}
+
+export function getPopulateQuery(query: any) {
+  return PromotionEnterpriseRecord.find(query)
+    .populate('promoterId', 'displayName username role phone')
+    .populate('enterpriseId', 'name')
+    .populate('measureTask.assignedTo', 'displayName username phone')
+    .populate('designTask.assignedTo', 'displayName username phone');
+}
+
 export async function getMiniProgramStaffContext(input: string | Request) {
   const context = typeof input === 'string' 
     ? await resolveMiniProgramContext(new Request('http://localhost?openid=' + input)) // Legacy fallback if still needed internally

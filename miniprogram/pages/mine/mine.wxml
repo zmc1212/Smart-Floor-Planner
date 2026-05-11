@@ -1,3 +1,4 @@
+<wxs src="../../utils/mapping.wxs" module="map" />
 <view class="container">
   <view wx:if="{{!isLoggedIn}}" class="login-section">
     <view class="login-icon">
@@ -74,7 +75,7 @@
           </view>
         </view>
 
-        <view class="section-header">
+        <view class="section-header" wx:if="{{todoItems.length > 0}}">
           <text class="section-title">我的待办</text>
           <text class="section-count">{{todoItems.length}} 条</text>
         </view>
@@ -128,7 +129,7 @@
           </view>
         </view>
 
-        <view class="section-header">
+        <view class="section-header" wx:if="{{staffItems.length > 0}}">
           <text class="section-title">最近任务</text>
           <text class="section-count">{{staffItems.length}} 条</text>
         </view>
@@ -156,9 +157,18 @@
           </view>
         </view>
 
-        <view class="empty-container" wx:else>
-          <view class="empty-title">暂无员工任务</view>
-          <view class="empty-subtitle">新的企业报备和任务分配会显示在这里</view>
+        <!-- Unified Empty State -->
+        <view class="empty-wrapper" wx:if="{{todoItems.length === 0 && overdueTodoItems.length === 0 && staffItems.length === 0}}">
+          <view class="empty-state-card">
+            <view class="empty-icon-box">
+              <text class="empty-emoji">📝</text>
+            </view>
+            <view class="empty-title">工作台已就绪</view>
+            <view class="empty-subtitle">暂无待办任务或报备记录。新的业务线索和任务分配会自动出现在这里。</view>
+            <view class="empty-action" wx:if="{{userInfo.staffRole === 'salesperson'}}" bindtap="onCreatePromotionRecord">
+              立即去报备
+            </view>
+          </view>
         </view>
 
         <view class="section-header" wx:if="{{userInfo.staffRole === 'salesperson'}}">

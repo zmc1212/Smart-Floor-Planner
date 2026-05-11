@@ -1,4 +1,25 @@
+import { NextResponse } from 'next/server';
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
+import dbConnect from '@/lib/mongodb';
+import { AdminUser } from '@/models/AdminUser';
+import { Enterprise } from '@/models/Enterprise';
+import { Department } from '@/models/Department';
+import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import { withTenantRoute, resolveWritableEnterpriseId } from '@/lib/tenant-route';
 import { tenantStorage } from '@/lib/tenant-context';
+
+interface StaffCreateBody {
+  username: string;
+  password?: string;
+  displayName?: string;
+  role: string;
+  phone?: string;
+  enterpriseId?: string;
+  departmentId?: string;
+  promoterIds?: string[];
+  wecomUserId?: string;
+}
 
 export async function GET(request: Request) {
   try {

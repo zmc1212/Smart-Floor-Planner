@@ -1,3 +1,11 @@
+import { NextResponse } from 'next/server';
+import dbConnect from '@/lib/mongodb';
+import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import { withTenantContext, getTenantContext } from '@/lib/auth';
+import Lead from '@/models/Lead';
+import { AdminUser } from '@/models/AdminUser';
+import { Enterprise } from '@/models/Enterprise';
+import { WeComService } from '@/lib/wecom';
 import { tenantStorage } from '@/lib/tenant-context';
 
 export async function GET(request: Request) {

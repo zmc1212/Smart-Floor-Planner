@@ -63,7 +63,7 @@ const EnterpriseAiUsageSnapshotSchema = new Schema<IEnterpriseAiUsageSnapshot>(
   { timestamps: true }
 );
 
-EnterpriseAiUsageSnapshotSchema.index({ enterpriseId: 1 });
+// EnterpriseAiUsageSnapshotSchema.index({ enterpriseId: 1 }); // Already unique: true
 EnterpriseAiUsageSnapshotSchema.index({ 'dailyUsage.date': 1 });
 
 export const EnterpriseAiUsageSnapshot: Model<IEnterpriseAiUsageSnapshot> =
