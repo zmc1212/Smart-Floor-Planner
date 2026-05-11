@@ -1,3 +1,4 @@
+<wxs src="../../utils/mapping.wxs" module="map" />
 <view class="page">
   <view class="header">
     <view>
@@ -14,12 +15,11 @@
       <view class="row">
         <view class="name">{{useTodoApi ? item.title : item.enterpriseName}}</view>
         <view class="badge {{useTodoApi && item.overdue ? 'badge-warn' : ''}}">
-          {{useTodoApi ? (item.overdue ? '已超时' : '待处理') : item.businessStage}}
+          {{useTodoApi ? (item.overdue ? '已超时' : '待处理') : map.stage(item.businessStage)}}
         </view>
       </view>
       <view class="meta">{{useTodoApi ? item.enterpriseName : item.contactPerson}} · {{useTodoApi ? item.contactPerson : item.phone}}</view>
-      <view class="meta" wx:if="{{!useTodoApi}}">归属：{{item.promoterId.displayName || item.promoterId.username || '-'}}</view>
-      <view class="meta" wx:if="{{!useTodoApi}}">测量：{{item.measureTask.status}} / 设计：{{item.designTask.status}}</view>
+      <view class="meta" wx:if="{{!useTodoApi}}">业务阶段：{{map.stage(item.businessStage)}}</view>
       <view class="meta" wx:if="{{useTodoApi}}">{{item.summary}}</view>
       <view class="meta" wx:if="{{useTodoApi && item.dueLabel}}">截止：{{item.dueLabel}}</view>
     </view>

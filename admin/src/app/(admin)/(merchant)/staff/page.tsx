@@ -214,6 +214,7 @@ export default function StaffPage() {
       enterprise_admin: '企业负责人',
       designer: '设计师',
       measurer: '测量员',
+      salesperson: '渠道地推',
     };
     return labels[role] || role;
   };
@@ -354,6 +355,7 @@ export default function StaffPage() {
             <SelectContent>
               <SelectItem value="designer">设计师</SelectItem>
               <SelectItem value="measurer">测量员</SelectItem>
+              <SelectItem value="salesperson">渠道地推</SelectItem>
               {currentUser?.role === 'super_admin' && <SelectItem value="enterprise_admin">企业负责人</SelectItem>}
             </SelectContent>
           </Select>

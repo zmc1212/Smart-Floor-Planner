@@ -195,6 +195,27 @@ Page({
     }
   },
 
+  async onClaimRecord() {
+    const openid = app.globalData.openid;
+    if (!openid || !this.data.recordId) return;
+
+    wx.showLoading({ title: '认领中' });
+    try {
+      const res = await api.request(`/promotion-records/pool`, 'POST', {
+        openid,
+        recordId: this.data.recordId
+      });
+      wx.hideLoading();
+      if (res.success) {
+        wx.showToast({ title: '认领成功', icon: 'success' });
+        this.fetchDetail(); // 刷新详情
+      }
+    } catch (err) {
+      wx.hideLoading();
+      wx.showToast({ title: err.error || '认领失败', icon: 'none' });
+    }
+  },
+
   async updateRecord(payload) {
     const openid = app.globalData.openid;
     try {

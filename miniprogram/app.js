@@ -66,10 +66,14 @@ App({
   // 自动同步专业版身份（如果是员工登录，则海报和线索默认指向自己）
   syncProfessionalContext() {
     const userInfo = this.globalData.userInfo;
-    if (userInfo && userInfo.role === 'staff' && userInfo.enterpriseId) {
-      if (!this.globalData.referral.enterpriseId || this.globalData.referral.enterpriseId === userInfo.enterpriseId) {
+    const isStaff = userInfo && userInfo.role === 'staff';
+    const isPlatformSales = userInfo && userInfo.staffRole === 'salesperson';
+
+    if (isStaff || isPlatformSales) {
+      // 平台地推没有企业 ID，但仍需同步 staffId
+      if (userInfo.enterpriseId || isPlatformSales) {
         this.globalData.referral = {
-          enterpriseId: userInfo.enterpriseId,
+          enterpriseId: userInfo.enterpriseId || '',
           staffId: userInfo.staffId || ''
         };
         console.log('App: Professional context synced to self');

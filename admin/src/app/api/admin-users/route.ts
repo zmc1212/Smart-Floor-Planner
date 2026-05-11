@@ -13,13 +13,13 @@ export async function GET(request: Request) {
 
     // Filter for System Roles + Enterprise Owners
     let filter: any = {
-      role: { $in: ['super_admin', 'admin', 'viewer', 'enterprise_admin'] }
+      role: { $in: ['super_admin', 'admin', 'viewer', 'enterprise_admin', 'salesperson'] }
     };
     
     if (search.trim()) {
       const regex = new RegExp(search.trim(), 'i');
       filter.$and = [
-        { role: { $in: ['super_admin', 'admin', 'viewer', 'enterprise_admin'] } },
+        { role: { $in: ['super_admin', 'admin', 'viewer', 'enterprise_admin', 'salesperson'] } },
         { $or: [{ username: regex }, { displayName: regex }] }
       ];
     }
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
   await dbConnect();
   try {
     const body = await request.json();
-    const { username, password, displayName, role, menuPermissions, enterpriseId } = body;
+    const { username, password, displayName, phone, role, menuPermissions, enterpriseId } = body;
 
     if (!username || !password) {
       return NextResponse.json(
@@ -74,8 +74,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate role: system roles + enterprise owners allowed
-    const allowedRoles = ['super_admin', 'admin', 'viewer', 'enterprise_admin'];
+    // Validate role: system roles + enterprise owners + platform salesperson allowed
+    const allowedRoles = ['super_admin', 'admin', 'viewer', 'enterprise_admin', 'salesperson'];
     const targetRole = role || 'admin';
     
     if (!allowedRoles.includes(targetRole)) {
@@ -91,6 +91,7 @@ export async function POST(request: Request) {
       username: username.trim(),
       passwordHash,
       displayName: displayName?.trim() || '',
+      phone: phone?.trim() || '',
       role: targetRole,
       enterpriseId: enterpriseId || undefined,
       menuPermissions: menuPermissions || [],

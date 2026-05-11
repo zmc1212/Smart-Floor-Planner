@@ -17,7 +17,8 @@ Page({
       measure: '测量任务',
       design: '设计任务',
       admin: '企业报备',
-      overdue: '已超时任务'
+      overdue: '已超时任务',
+      pool: '公海报备池'
     };
     this.setData({
       view,
@@ -39,7 +40,7 @@ Page({
     try {
       const path = this.data.useTodoApi
         ? `/workbench/todos?openid=${openid}&view=overdue`
-        : `/promotion-records?openid=${openid}&view=${this.data.view}`;
+        : `/promotion-records?openid=${openid}&view=${this.data.view === 'pool' ? 'all' : this.data.view}${this.data.view === 'pool' ? '&pool=true' : ''}`;
       const res = await api.request(path, 'GET');
       if (res.success) {
         this.setData({

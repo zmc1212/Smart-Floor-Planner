@@ -73,10 +73,16 @@ export function multiTenantPlugin(schema: Schema, options: TenantPluginOptions =
       }
     }
 
-    // 如果已经有enterpriseId过滤条件，则不再注入（允许特殊情况覆盖）
+    // 如果已经有enterpriseId过滤条件，或者显式指定查看公海池，则不再注入
     const existingFilter = this.getFilter();
-    if (existingFilter.enterpriseId) {
-      console.log(`[MultiTenantPlugin] 跳过过滤: ${modelName}.${method} (已存在 enterpriseId 过滤)`);
+    if (existingFilter.enterpriseId || existingFilter.poolStatus === 'in_pool' || existingFilter._bypassTenantFilter) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[MultiTenantPlugin] 跳过过滤: ${modelName}.${method} (满足跳过条件)`);
+      }
+      // 如果是临时跳过标识，消费后删除
+      if (existingFilter._bypassTenantFilter) {
+        delete existingFilter._bypassTenantFilter;
+      }
       return;
     }
 

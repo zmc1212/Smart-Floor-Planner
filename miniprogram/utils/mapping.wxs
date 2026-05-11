@@ -1,0 +1,54 @@
+var stageLabels = {
+  reported: '已报备',
+  contacted: '已联系',
+  measuring: '测量中',
+  designing: '设计中',
+  quoted: '已报价',
+  paid: '已成交',
+  closed_lost: '已失效'
+};
+
+var ownershipLabels = {
+  unassigned: '待分配',
+  auto_locked: '系统锁定',
+  manually_locked: '人工锁定',
+  conflict_pending: '冲突待核'
+};
+
+var taskStatusLabels = {
+  unassigned: '待分配',
+  pending: '待处理',
+  accepted: '已接受',
+  in_progress: '进行中',
+  submitted: '已提交',
+  completed: '已完成',
+  rejected: '已拒绝'
+};
+
+var roleLabels = {
+  none: '无',
+  salesperson: '渠道地推',
+  measurer: '测量员',
+  designer: '设计师',
+  enterprise_admin: '企业负责人'
+};
+
+var commissionStatusLabels = {
+  pending: '待发放',
+  paid: '已发放',
+  cancelled: '已取消'
+};
+
+var commissionTypeLabels = {
+  fixed: '固定提成',
+  percentage: '比例分成'
+};
+
+module.exports = {
+  stage: function(key) { return stageLabels[key] || key || ''; },
+  ownership: function(key) { return ownershipLabels[key] || key || ''; },
+  taskStatus: function(key) { return taskStatusLabels[key] || key || '待分配'; },
+  role: function(key) { return roleLabels[key] || key || '无'; },
+  commissionStatus: function(key) { return commissionStatusLabels[key] || key || ''; },
+  commissionType: function(key) { return commissionTypeLabels[key] || key || ''; }
+};

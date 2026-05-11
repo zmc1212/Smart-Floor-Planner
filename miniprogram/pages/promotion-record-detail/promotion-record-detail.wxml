@@ -1,14 +1,15 @@
+<wxs src="../../utils/mapping.wxs" module="map" />
 <view class="page">
   <view wx:if="{{mode === 'create'}}" class="card">
     <view class="title">新建企业报备</view>
-    <input class="input" placeholder="企业名称*" data-field="enterpriseName" bindinput="onInput" value="{{form.enterpriseName}}" />
-    <input class="input" placeholder="统一信用代码" data-field="creditCode" bindinput="onInput" value="{{form.creditCode}}" />
-    <input class="input" placeholder="联系人*" data-field="contactPerson" bindinput="onInput" value="{{form.contactPerson}}" />
-    <input class="input" placeholder="联系电话*" data-field="phone" bindinput="onInput" value="{{form.phone}}" />
-    <input class="input" placeholder="城市" data-field="city" bindinput="onInput" value="{{form.city}}" />
-    <input class="input" placeholder="地址" data-field="address" bindinput="onInput" value="{{form.address}}" />
-    <input class="input" placeholder="行业" data-field="industry" bindinput="onInput" value="{{form.industry}}" />
-    <textarea class="textarea" placeholder="备注" data-field="notes" bindinput="onInput" value="{{form.notes}}" />
+    <input class="input" placeholder="企业名称*" placeholder-class="placeholder-cls" data-field="enterpriseName" bindinput="onInput" value="{{form.enterpriseName}}" />
+    <input class="input" placeholder="统一信用代码" placeholder-class="placeholder-cls" data-field="creditCode" bindinput="onInput" value="{{form.creditCode}}" />
+    <input class="input" placeholder="联系人*" placeholder-class="placeholder-cls" data-field="contactPerson" bindinput="onInput" value="{{form.contactPerson}}" />
+    <input class="input" placeholder="联系电话*" placeholder-class="placeholder-cls" data-field="phone" bindinput="onInput" value="{{form.phone}}" />
+    <input class="input" placeholder="城市" placeholder-class="placeholder-cls" data-field="city" bindinput="onInput" value="{{form.city}}" />
+    <input class="input" placeholder="地址" placeholder-class="placeholder-cls" data-field="address" bindinput="onInput" value="{{form.address}}" />
+    <input class="input" placeholder="行业" placeholder-class="placeholder-cls" data-field="industry" bindinput="onInput" value="{{form.industry}}" />
+    <textarea class="textarea" placeholder="备注" placeholder-class="placeholder-cls" data-field="notes" bindinput="onInput" value="{{form.notes}}" />
     <button class="secondary-btn" bindtap="onChooseLocation">选择定位 {{locationLabel}}</button>
     <button class="primary-btn" bindtap="onCreateRecord">提交报备</button>
   </view>
@@ -17,15 +18,20 @@
     <view class="card">
       <view class="title">{{record.enterpriseName}}</view>
       <view class="meta">{{record.contactPerson}} · {{record.phone}}</view>
-      <view class="meta">阶段：{{record.businessStage}} / 归属：{{record.ownershipStatus}}</view>
-      <view class="meta">地址：{{record.address || '未填写'}}</view>
-      <view class="meta">待办角色：{{record.pendingActionRole || 'none'}}</view>
+      <view class="meta">业务进度：{{map.stage(record.businessStage)}}</view>
+      <view class="meta">归属状态：{{map.ownership(record.ownershipStatus)}}</view>
       <view class="meta">{{followUpStatusText}}</view>
+    </view>
+
+    <view class="card" wx:if="{{userInfo.staffRole === 'salesperson' && record.poolStatus === 'in_pool'}}">
+      <view class="section-title">公海池认领</view>
+      <view class="meta">该记录目前在公海池，您可以认领并开始跟进。</view>
+      <button class="primary-btn" bindtap="onClaimRecord">立即认领</button>
     </view>
 
     <view class="card">
       <view class="section-title">跟进记录</view>
-      <textarea class="textarea" placeholder="记录本次跟进内容" bindinput="onFollowUpInput" value="{{followUpNote}}" />
+      <textarea class="textarea" placeholder="记录本次跟进内容" placeholder-class="placeholder-cls" bindinput="onFollowUpInput" value="{{followUpNote}}" />
       <picker mode="date" value="{{followUpDate}}" bindchange="onFollowUpDateChange">
         <view class="picker">下次跟进日期：{{followUpDate || '请选择日期'}}</view>
       </picker>
@@ -40,23 +46,7 @@
       </view>
     </view>
 
-    <view class="card" wx:if="{{userInfo.staffRole === 'measurer'}}">
-      <view class="section-title">测量任务</view>
-      <view class="meta">当前状态：{{record.measureTask.status}}</view>
-      <view class="meta">{{measureDueText}}</view>
-      <textarea class="textarea" placeholder="填写测量结果摘要" bindinput="onMeasureResultInput" value="{{measureResultSummary}}" />
-      <button class="secondary-btn" bindtap="onAcceptMeasure">接受任务</button>
-      <button class="primary-btn" bindtap="onSubmitMeasure">提交测量结果</button>
-    </view>
-
-    <view class="card" wx:if="{{userInfo.staffRole === 'designer'}}">
-      <view class="section-title">设计任务</view>
-      <view class="meta">当前状态：{{record.designTask.status}}</view>
-      <view class="meta">{{designDueText}}</view>
-      <textarea class="textarea" placeholder="填写设计进度备注" bindinput="onDesignNoteInput" value="{{designNote}}" />
-      <button class="secondary-btn" bindtap="onStartDesign">开始设计</button>
-      <button class="primary-btn" bindtap="onCompleteDesign">标记完成</button>
-    </view>
+    <!-- Construction tasks hidden for promotion workflow -->
 
     <view class="card" wx:if="{{userInfo.staffRole === 'enterprise_admin'}}">
       <view class="section-title">任务分配</view>

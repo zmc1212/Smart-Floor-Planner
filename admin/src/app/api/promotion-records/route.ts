@@ -62,7 +62,11 @@ export async function GET(request: Request) {
         return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 });
       }
 
-      const query = { ...baseQuery, ...buildPromotionAccessFilter(staff) };
+      let query = { ...baseQuery };
+      // 公海池模式不按个人权限过滤，由插件处理租户隔离（平台级地推无租户）
+      if (baseQuery.poolStatus !== 'in_pool') {
+        query = { ...query, ...buildPromotionAccessFilter(staff) };
+      }
       const records = await getPopulateQuery(query).sort({ createdAt: -1 }).lean();
       return NextResponse.json({ success: true, data: records });
     }

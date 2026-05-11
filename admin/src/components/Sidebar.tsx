@@ -340,7 +340,11 @@ export default function Sidebar() {
               </p>
               <div className="flex flex-col gap-0.5">
                 <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-bold">
-                  {admin?.role === 'super_admin' ? 'System Root' : (admin?.role === 'enterprise_admin' ? 'Manager' : 'Staff')}
+                  {admin?.role === 'super_admin' ? '系统管理员' : 
+                   admin?.role === 'enterprise_admin' ? '企业负责人' : 
+                   admin?.role === 'salesperson' ? '渠道地推' :
+                   admin?.role === 'measurer' ? '测量员' :
+                   admin?.role === 'designer' ? '设计师' : '职员'}
                 </p>
                 {admin?.enterpriseId?.name && (
                   <p className="text-[9px] text-primary font-bold truncate opacity-80">

@@ -10,14 +10,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     const { id } = await params;
     const body = await request.json();
-    const { username, displayName, role, menuPermissions, status, newPassword, enterpriseId } = body;
+    const { username, displayName, phone, role, menuPermissions, status, newPassword, enterpriseId } = body;
 
     const updateData: any = {};
 
     if (username !== undefined) updateData.username = username.trim();
     if (displayName !== undefined) updateData.displayName = displayName.trim();
+    if (phone !== undefined) updateData.phone = phone.trim();
     if (role !== undefined) {
-      const allowedRoles = ['super_admin', 'admin', 'viewer', 'enterprise_admin'];
+      const allowedRoles = ['super_admin', 'admin', 'viewer', 'enterprise_admin', 'salesperson'];
       if (!allowedRoles.includes(role)) {
         return NextResponse.json({ success: false, error: '此接口仅允许分配管理类角色' }, { status: 400 });
       }

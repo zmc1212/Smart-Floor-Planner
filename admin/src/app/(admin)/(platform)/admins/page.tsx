@@ -45,6 +45,7 @@ interface AdminUser {
   role: 'super_admin' | 'admin' | 'viewer' | 'enterprise_admin' | 'salesperson';
   menuPermissions: string[];
   effectivePermissions: string[];
+  phone?: string;
   status: 'active' | 'disabled';
   lastLoginAt?: string;
   createdAt: string;
@@ -99,6 +100,7 @@ export default function AdminsPage() {
   const [newUsername, setNewUsername] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newDisplayName, setNewDisplayName] = useState('');
+  const [newPhone, setNewPhone] = useState('');
   const [newRole, setNewRole] = useState<string>('admin');
   const [newEnterpriseId, setNewEnterpriseId] = useState<string>('');
   const [enterprises, setEnterprises] = useState<any[]>([]);
@@ -106,6 +108,7 @@ export default function AdminsPage() {
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editDisplayName, setEditDisplayName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
   const [editRole, setEditRole] = useState('admin');
   const [editEnterpriseId, setEditEnterpriseId] = useState('');
   const [updating, setUpdating] = useState(false);
@@ -124,7 +127,8 @@ export default function AdminsPage() {
     return admins.filter(
       (a) =>
         a.username.toLowerCase().includes(lower) ||
-        a.displayName.toLowerCase().includes(lower)
+        a.displayName.toLowerCase().includes(lower) ||
+        (a.phone && a.phone.includes(lower))
     );
   }, [admins, searchTerm]);
 
@@ -171,6 +175,7 @@ export default function AdminsPage() {
           username: newUsername.trim(),
           password: newPassword,
           displayName: newDisplayName.trim(),
+          phone: newPhone.trim(),
           role: newRole,
           enterpriseId: newRole === 'enterprise_admin' ? newEnterpriseId : undefined,
         }),
@@ -180,6 +185,7 @@ export default function AdminsPage() {
         setNewUsername('');
         setNewPassword('');
         setNewDisplayName('');
+        setNewPhone('');
         setNewRole('admin');
         setNewEnterpriseId('');
         setIsDialogOpen(false);
@@ -214,6 +220,7 @@ export default function AdminsPage() {
   const startEdit = (admin: any) => {
     setEditingId(admin._id);
     setEditDisplayName(admin.displayName);
+    setEditPhone(admin.phone || '');
     setEditRole(admin.role);
     setEditEnterpriseId(admin.enterpriseId || '');
   };
@@ -227,6 +234,7 @@ export default function AdminsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           displayName: editDisplayName.trim(),
+          phone: editPhone.trim(),
           role: editRole,
           enterpriseId: editRole === 'enterprise_admin' ? editEnterpriseId : null,
         }),
@@ -414,6 +422,15 @@ export default function AdminsPage() {
                        />
                      </div>
                      <div className="space-y-2">
+                       <Label htmlFor="new-phone">联系电话 (用于小程序绑定)</Label>
+                       <Input 
+                        id="new-phone"
+                        value={newPhone} 
+                        onChange={e => setNewPhone(e.target.value)}
+                        placeholder="例如: 13800138000"
+                       />
+                     </div>
+                     <div className="space-y-2">
                        <Label>分配角色</Label>
                         <Select value={newRole} onValueChange={(val) => val && setNewRole(val)}>
                         <SelectTrigger className="w-full h-10 rounded-xl bg-muted/50 border-none shadow-none">
@@ -513,6 +530,7 @@ export default function AdminsPage() {
               <TableRow>
                 <TableHead>登录账号</TableHead>
                 <TableHead>显示名称</TableHead>
+                <TableHead>联系电话</TableHead>
                 <TableHead>系统角色</TableHead>
                 <TableHead>状态</TableHead>
                 <TableHead className="text-right">操作</TableHead>
@@ -542,6 +560,17 @@ export default function AdminsPage() {
                     </TableCell>
                     <TableCell>
                       {editingId === admin._id ? (
+                        <Input 
+                          value={editPhone}
+                          onChange={(e) => setEditPhone(e.target.value)}
+                          className="h-8 max-w-[150px] rounded-lg border-primary"
+                        />
+                      ) : (
+                        admin.phone || '-'
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {editingId === admin._id ? (
                         <div className="space-y-2">
                           <Select value={editRole} onValueChange={(val) => val && setEditRole(val)}>
                             <SelectTrigger className="h-8 py-0 rounded-lg border-primary text-xs">
@@ -554,6 +583,7 @@ export default function AdminsPage() {
                               <SelectItem value="admin">普通管理员</SelectItem>
                               <SelectItem value="viewer">只读审计员</SelectItem>
                               <SelectItem value="enterprise_admin">企业负责人</SelectItem>
+                              <SelectItem value="salesperson">渠道地推</SelectItem>
                             </SelectContent>
                           </Select>
                           

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { getTenantContext } from '@/lib/auth';
 import { PromotionEnterpriseRecord } from '@/models/PromotionEnterpriseRecord';
-import { claimFromPool } from '@/lib/promotion-workflow';
+import { claimFromPool, getMiniProgramStaffContext } from '@/lib/promotion-workflow';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,13 +12,27 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(request: Request) {
   try {
-    await dbConnect();
-    const context = await getTenantContext(request);
-    if (!context || !['salesperson', 'admin', 'super_admin'].includes(context.role)) {
+    const { searchParams } = new URL(request.url);
+    const openid = searchParams.get('openid');
+    let context;
+
+    if (openid) {
+      const staffRes = await getMiniProgramStaffContext(openid);
+      if (staffRes.staff) {
+        context = {
+          role: staffRes.staff.role,
+          userId: staffRes.staff._id.toString(),
+          enterpriseId: staffRes.staff.enterpriseId?.toString(),
+        };
+      }
+    } else {
+      context = await getTenantContext(request);
+    }
+
+    if (!context || !['salesperson', 'enterprise_admin', 'admin', 'super_admin'].includes(context.role)) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { searchParams } = new URL(request.url);
     const search = searchParams.get('search');
 
     const query: Record<string, unknown> = { poolStatus: 'in_pool' };
@@ -51,12 +65,25 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     await dbConnect();
-    const context = await getTenantContext(request);
+    const body = await request.json();
+    const openid = body.openid;
+    let context;
+
+    if (openid) {
+      const staffRes = await getMiniProgramStaffContext(openid);
+      if (staffRes.staff) {
+        context = {
+          role: staffRes.staff.role,
+          userId: staffRes.staff._id.toString(),
+        };
+      }
+    } else {
+      context = await getTenantContext(request);
+    }
+
     if (!context || context.role !== 'salesperson') {
       return NextResponse.json({ success: false, error: 'Only salesperson can claim from pool' }, { status: 403 });
     }
-
-    const body = await request.json();
     if (!body.recordId) {
       return NextResponse.json({ success: false, error: 'Missing recordId' }, { status: 400 });
     }
