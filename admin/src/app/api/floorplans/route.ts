@@ -1,50 +1,43 @@
-import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import { FloorPlan } from '@/models/FloorPlan';
-import { User } from '@/models/User';
-import { AdminUser } from '@/models/AdminUser';
-import { withTenantContext } from '@/lib/auth';
+import { tenantStorage } from '@/lib/tenant-context';
 
-export const dynamic = 'force-dynamic';
-
-// Apply FloorPlan mapping: Save layout data from Mini Program
 export async function POST(req: Request) {
   try {
     await dbConnect();
-    const { openid, name, layoutData, status } = await req.json();
+    const body = await req.json();
+    const { name, layoutData, status } = body;
 
-    if (!openid || !layoutData) {
-      return NextResponse.json({ success: false, error: 'Missing openid or layoutData' }, { status: 400 });
+    const context = await resolveMiniProgramContext(req);
+    if (!context) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const user = await User.findOne({ openid });
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'User not found for provided openid' }, { status: 404 });
+    if (!layoutData) {
+      return NextResponse.json({ success: false, error: 'Missing layoutData' }, { status: 400 });
     }
 
-    // Automatic Association for Staff
-    let staffId = undefined;
-    let enterpriseId = undefined;
+    const { user, staff, enterpriseId } = context;
+    const staffId = staff?._id;
 
-    if (user.role === 'staff') {
-      const staffMember = await AdminUser.findOne({ phone: user.phone });
-      if (staffMember) {
-        staffId = staffMember._id;
-        enterpriseId = staffMember.enterpriseId;
+    return await tenantStorage.run(
+      {
+        enterpriseId: enterpriseId ? String(enterpriseId) : null,
+        role: staff?.role || 'user',
+        userId: staff ? String(staff._id) : String(user._id),
+      },
+      async () => {
+        // Create a single FloorPlan with all rooms
+        const newPlan = await FloorPlan.create({
+          name: name || '未命名户型',
+          creator: user._id,
+          staffId,
+          enterpriseId,
+          layoutData,
+          status: status || 'completed'
+        });
+
+        return NextResponse.json({ success: true, data: newPlan });
       }
-    }
-
-    // Create a single FloorPlan with all rooms
-    const newPlan = await FloorPlan.create({
-      name: name || '未命名户型',
-      creator: user._id,
-      staffId,
-      enterpriseId,
-      layoutData,
-      status: status || 'completed'
-    });
-
-    return NextResponse.json({ success: true, data: newPlan });
+    );
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
@@ -80,32 +73,33 @@ export async function GET(req: Request) {
         .sort({ createdAt: -1 });
     };
 
-    // 1. Mini-Program Context (via openid)
-    if (openid) {
-      let query: any = {};
-      const user = await User.findOne({ openid });
-      if (!user) {
-        return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
-      }
+    // 1. Mini-Program Context (via JWT)
+    const context = await resolveMiniProgramContext(req);
+    if (context) {
+      const { user, staff, enterpriseId } = context;
 
-      // If staff, see all company plans or assigned plans
-      if (user.role === 'staff') {
-        const staffMember = await AdminUser.findOne({ phone: user.phone });
-        if (staffMember) {
-          if (staffMember.role === 'enterprise_admin') {
-            query.enterpriseId = staffMember.enterpriseId;
+      return await tenantStorage.run(
+        {
+          enterpriseId: enterpriseId ? String(enterpriseId) : null,
+          role: staff?.role || 'user',
+          userId: staff ? String(staff._id) : String(user._id),
+        },
+        async () => {
+          let query: any = {};
+          if (staff) {
+            if (staff.role === 'enterprise_admin') {
+              query.enterpriseId = staff.enterpriseId;
+            } else {
+              query.staffId = staff._id;
+            }
           } else {
-            query.staffId = staffMember._id;
+            query.creator = user._id;
           }
-        } else {
-          query.creator = user._id;
-        }
-      } else {
-        query.creator = user._id;
-      }
 
-      const floorPlans = await executeQuery(query);
-      return NextResponse.json({ success: true, data: floorPlans });
+          const floorPlans = await executeQuery(query);
+          return NextResponse.json({ success: true, data: floorPlans });
+        }
+      );
     }
 
     // 2. Admin Dashboard Context (via Auth Token) - 使用新的租户上下文包装器

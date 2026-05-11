@@ -11,19 +11,15 @@ import {
   getEnterpriseAutomationConfig,
   PLATFORM_PROMOTION_CONFIG,
 } from '@/lib/workflow-automation';
+import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 
-export async function getMiniProgramStaffContext(openid: string) {
-  const user = await User.findOne({ openid });
-  if (!user || user.role !== 'staff') {
-    return { user: null, staff: null };
-  }
-
-  const staff = await AdminUser.findOne({
-    status: 'active',
-    $or: [{ openid }, ...(user.phone ? [{ phone: user.phone }] : [])],
-  });
-
-  return { user, staff };
+export async function getMiniProgramStaffContext(input: string | Request) {
+  const context = typeof input === 'string' 
+    ? await resolveMiniProgramContext(new Request('http://localhost?openid=' + input)) // Legacy fallback if still needed internally
+    : await resolveMiniProgramContext(input);
+    
+  if (!context) return { user: null, staff: null };
+  return { user: context.user, staff: context.staff };
 }
 
 export function buildPromotionAccessFilter(staff: { role: string; _id: unknown; enterpriseId?: unknown }) {

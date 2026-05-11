@@ -9,6 +9,7 @@ import { FloorPlan } from '@/models/FloorPlan';
 import Lead from '@/models/Lead';
 import { Measurement } from '@/models/Measurement';
 import { User } from '@/models/User';
+import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,20 +63,7 @@ function deriveCity(user: any) {
   return match?.[1] || '上海市';
 }
 
-async function resolveMiniProgramContext(openid: string) {
-  const user = await User.findOne({ openid }).lean();
-  if (!user) return null;
-
-  const staff = await AdminUser.findOne({
-    status: 'active',
-    $or: [{ openid }, ...((user as any).phone ? [{ phone: (user as any).phone }] : [])],
-  }).lean();
-
-  const enterpriseId = asObjectId((staff as any)?.enterpriseId || (user as any).enterpriseId);
-  const enterprise = enterpriseId ? await Enterprise.findById(enterpriseId).lean() : null;
-
-  return { user, staff, enterprise, enterpriseId };
-}
+// Shared helper resolveMiniProgramContext is now imported from @/lib/miniprogram-auth
 
 function buildVisibilityQueries(context: Awaited<ReturnType<typeof resolveMiniProgramContext>>) {
   if (!context) {
@@ -121,17 +109,13 @@ function buildVisibilityQueries(context: Awaited<ReturnType<typeof resolveMiniPr
 export async function GET(request: Request) {
   try {
     await dbConnect();
-    const { searchParams } = new URL(request.url);
-    const openid = searchParams.get('openid');
-
-    if (!openid) {
-      return NextResponse.json({ success: false, error: 'openid is required' }, { status: 400 });
-    }
-
-    const context = await resolveMiniProgramContext(openid);
+    
+    const context = await resolveMiniProgramContext(request);
     if (!context) {
-      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
+
+    const openid = context.user.openid;
 
     const { floorPlanQuery, leadQuery, measurementQuery, aiQuery } = buildVisibilityQueries(context);
 

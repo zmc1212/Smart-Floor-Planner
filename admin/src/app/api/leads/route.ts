@@ -1,60 +1,57 @@
-import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import Lead from '@/models/Lead';
-import { FloorPlan } from '@/models/FloorPlan';
-import { AdminUser } from '@/models/AdminUser';
-import { Enterprise } from '@/models/Enterprise';
-import { User } from '@/models/User';
-import { getTenantContext, withTenantContext } from '@/lib/auth';
-import { WeComService } from '@/lib/wecom';
-
-export const dynamic = 'force-dynamic';
+import { tenantStorage } from '@/lib/tenant-context';
 
 export async function GET(request: Request) {
   try {
     await dbConnect();
     const { searchParams } = new URL(request.url);
-    const openid = searchParams.get('openid');
 
-    // Support Mini-Program fetching leads by openid
-    if (openid) {
-      const status = searchParams.get('status');
-      const page = parseInt(searchParams.get('page') || '1');
-      const limit = parseInt(searchParams.get('limit') || '20');
+    // Try Mini Program JWT first
+    const mpContext = await resolveMiniProgramContext(request);
+    if (mpContext) {
+      const { user, staff, enterpriseId } = mpContext;
 
-      const user = await User.findOne({ openid });
-      if (!user || user.role !== 'staff') {
-        return NextResponse.json({ success: false, error: 'User is not a staff member' }, { status: 403 });
-      }
+      return await tenantStorage.run(
+        {
+          enterpriseId: enterpriseId ? String(enterpriseId) : null,
+          role: staff?.role || 'user',
+          userId: staff ? String(staff._id) : String(user._id),
+        },
+        async () => {
+          const status = searchParams.get('status');
+          const page = parseInt(searchParams.get('page') || '1');
+          const limit = parseInt(searchParams.get('limit') || '20');
 
-      const staffMember = await AdminUser.findOne({ phone: user.phone });
-      if (!staffMember) {
-        return NextResponse.json({ success: false, error: 'Staff profile not found' }, { status: 404 });
-      }
+          if (!staff) {
+            return NextResponse.json({ success: false, error: 'Staff profile not found' }, { status: 403 });
+          }
 
-      // Fetch leads based on role
-      let query: any = {};
-      if (staffMember.role === 'enterprise_admin' && staffMember.enterpriseId) {
-        query.enterpriseId = staffMember.enterpriseId;
-      } else {
-        query.$or = [
-          { promoterId: staffMember._id },
-          { assignedTo: staffMember._id }
-        ];
-      }
+          const staffMember = staff;
 
-      if (status && status !== 'all') {
-        query.status = status;
-      }
+          // Fetch leads based on role
+          let query: any = {};
+          if (staffMember.role === 'enterprise_admin' && staffMember.enterpriseId) {
+            query.enterpriseId = staffMember.enterpriseId;
+          } else {
+            query.$or = [
+              { promoterId: staffMember._id },
+              { assignedTo: staffMember._id }
+            ];
+          }
 
-      const leads = await Lead.find(query)
-        .populate({ path: 'floorPlanIds', select: 'name layoutData createdAt', strictPopulate: false })
-        .populate('assignedTo', 'displayName role')
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit);
+          if (status && status !== 'all') {
+            query.status = status;
+          }
 
-      return NextResponse.json({ success: true, data: leads });
+          const leads = await Lead.find(query)
+            .populate({ path: 'floorPlanIds', select: 'name layoutData createdAt', strictPopulate: false })
+            .populate('assignedTo', 'displayName role')
+            .sort({ createdAt: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit);
+
+          return NextResponse.json({ success: true, data: leads });
+        }
+      );
     }
 
     // Default: Admin Dashboard Auth flow - 使用新的租户上下文包装器
@@ -101,7 +98,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     await dbConnect();
-    const context = await getTenantContext(request);
+    
+    // Check Mini Program JWT first
+    const mpContext = await resolveMiniProgramContext(request);
+    const adminContext = !mpContext ? await getTenantContext(request) : null;
+    
     const body = await request.json();
 
     // validate required fields
@@ -109,47 +110,61 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Name and phone are required' }, { status: 400 });
     }
 
-    // Workflow logic: Automatic Assignment
-    let assignedTo = body.assignedTo;
-    let promoterId = body.promoterId;
-    let enterpriseId = body.enterpriseId || context?.enterpriseId;
+    const enterpriseId = body.enterpriseId || mpContext?.enterpriseId || adminContext?.enterpriseId;
+    const role = mpContext?.staff?.role || adminContext?.role || 'user';
+    const userId = mpContext?.staff ? String(mpContext.staff._id) : (adminContext?.userId || mpContext?.user?._id);
 
-    // 1. Resolve IDs from staff records if they are passed as 'assignedTo' (common in Mini Program)
-    if (assignedTo || promoterId) {
-      const staffRefId = promoterId || assignedTo;
-      const staff = await AdminUser.findById(staffRefId);
-      if (staff) {
-        if (!enterpriseId) enterpriseId = staff.enterpriseId;
+    return await tenantStorage.run(
+      {
+        enterpriseId: enterpriseId ? String(enterpriseId) : null,
+        role: role as any,
+        userId: String(userId),
+      },
+      async () => {
+        // Workflow logic: Automatic Assignment
+        let assignedTo = body.assignedTo;
+        let promoterId = body.promoterId;
+        let currentEnterpriseId = enterpriseId;
 
-        // If the reference is a salesperson and we don't have a promoterId yet, set it
-        if (staff.role === 'salesperson' && !promoterId) {
-          promoterId = staff._id;
-          assignedTo = undefined; // Trigger auto-designer lookup
+        // 1. Resolve IDs from staff records if they are passed as 'assignedTo' (common in Mini Program)
+        if (assignedTo || promoterId) {
+          const staffRefId = promoterId || assignedTo;
+          const staff = await AdminUser.findById(staffRefId);
+          if (staff) {
+            if (!currentEnterpriseId) currentEnterpriseId = staff.enterpriseId;
+
+            // If the reference is a salesperson and we don't have a promoterId yet, set it
+            if (staff.role === 'salesperson' && !promoterId) {
+              promoterId = staff._id;
+              assignedTo = undefined; // Trigger auto-designer lookup
+            }
+          }
         }
-      }
-    }
 
-    // 2. Handle admin dashboard submission: if logged in user is a salesperson
-    if (context && context.role === 'salesperson') {
-      promoterId = context.userId;
-      assignedTo = undefined; // Reset to find the designer
-    }
+        // 2. Handle admin dashboard submission: if logged in user is a salesperson
+        if (adminContext && adminContext.role === 'salesperson') {
+          promoterId = adminContext.userId;
+          assignedTo = undefined; // Reset to find the designer
+        } else if (mpContext && mpContext.staff?.role === 'salesperson') {
+          promoterId = String(mpContext.staff._id);
+          assignedTo = undefined;
+        }
 
-    // 3. Find designer linked to this promoter
-    if (promoterId && !assignedTo) {
-      const designer = await AdminUser.findOne({
-        role: 'designer',
-        promoterIds: promoterId
-      });
+        // 3. Find designer linked to this promoter
+        if (promoterId && !assignedTo) {
+          const designer = await AdminUser.findOne({
+            role: 'designer',
+            promoterIds: promoterId
+          });
 
-      if (designer) {
-        assignedTo = designer._id;
-        console.log(`[Workflow] Auto-assigning lead ${body.name} to designer ${designer.displayName}`);
-      }
-    }
+          if (designer) {
+            assignedTo = designer._id;
+            console.log(`[Workflow] Auto-assigning lead ${body.name} to designer ${designer.displayName}`);
+          }
+        }
 
-    // 4. Check if lead already exists (by phone) to merge floor plans
-    let lead = await Lead.findOne({ phone: body.phone });
+        // 4. Check if lead already exists (by phone)
+        let lead = await Lead.findOne({ phone: body.phone });
 
     if (lead) {
       // Merge: Update existing lead with new info and append floorPlanId
@@ -201,6 +216,8 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ success: true, data: lead }, { status: 201 });
+      }
+    );
   } catch (error: any) {
     console.error('Create lead error:', error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });

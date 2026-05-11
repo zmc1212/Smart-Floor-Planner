@@ -69,7 +69,7 @@ Page({
 
     this.setData({ loading: true });
     try {
-      const res = await api.request(`/promotion-records/${this.data.recordId}?openid=${openid}`, 'GET');
+      const res = await api.request(`/promotion-records/${this.data.recordId}`, 'GET');
       if (res.success) {
         const record = res.data;
         const nextFollowUpAt = record.nextFollowUpAt ? new Date(record.nextFollowUpAt) : null;
@@ -98,9 +98,9 @@ Page({
     const openid = app.globalData.openid;
     try {
       const [measurersRes, designersRes, salesRes] = await Promise.all([
-        api.request(`/staff?openid=${openid}&roles=measurer`, 'GET'),
-        api.request(`/staff?openid=${openid}&roles=designer`, 'GET'),
-        api.request(`/staff?openid=${openid}&roles=salesperson`, 'GET')
+        api.request('/staff?roles=measurer', 'GET'),
+        api.request('/staff?roles=designer', 'GET'),
+        api.request('/staff?roles=salesperson', 'GET')
       ]);
 
       const measurers = measurersRes.data || [];
@@ -176,7 +176,6 @@ Page({
     wx.showLoading({ title: '提交中' });
     try {
       const res = await api.request('/promotion-records', 'POST', {
-        openid,
         ...form,
         location: this.data.location
       });
@@ -202,7 +201,6 @@ Page({
     wx.showLoading({ title: '认领中' });
     try {
       const res = await api.request(`/promotion-records/pool`, 'POST', {
-        openid,
         recordId: this.data.recordId
       });
       wx.hideLoading();
@@ -220,7 +218,6 @@ Page({
     const openid = app.globalData.openid;
     try {
       const res = await api.request(`/promotion-records/${this.data.recordId}`, 'PUT', {
-        openid,
         ...payload
       });
       if (res.success) {

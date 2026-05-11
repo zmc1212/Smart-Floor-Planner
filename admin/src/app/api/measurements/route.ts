@@ -7,6 +7,7 @@ import { Device } from '@/models/Device';
 import { FloorPlan } from '@/models/FloorPlan';
 import { Measurement } from '@/models/Measurement';
 import { User } from '@/models/User';
+import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,17 +17,7 @@ function normalizeId(value: unknown) {
   return mongoose.Types.ObjectId.isValid(String(id)) ? new mongoose.Types.ObjectId(String(id)) : undefined;
 }
 
-async function resolveStaffByOpenid(openid: string) {
-  const user = await User.findOne({ openid });
-  if (!user) return { user: null, staff: null };
-
-  const staff = await AdminUser.findOne({
-    status: 'active',
-    $or: [{ openid }, ...(user.phone ? [{ phone: user.phone }] : [])],
-  });
-
-  return { user, staff };
-}
+// resolveStaffByOpenid is now replaced by resolveMiniProgramContext from @/lib/miniprogram-auth
 
 function buildTenantMeasurementQuery(context: Awaited<ReturnType<typeof getTenantContext>>) {
   const query: Record<string, unknown> = {};
@@ -98,10 +89,15 @@ export async function POST(request: Request) {
   try {
     await dbConnect();
     const body = await request.json();
-    const { openid, floorPlanId, roomId, roomName, deviceId, value, unit, type, direction, source, measuredAt } = body;
+    const { floorPlanId, roomId, roomName, deviceId, value, unit, type, direction, source, measuredAt } = body;
 
-    if (!openid || !floorPlanId || value === undefined || value === null) {
-      return NextResponse.json({ success: false, error: 'openid, floorPlanId and value are required' }, { status: 400 });
+    const context = await resolveMiniProgramContext(request);
+    if (!context) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!floorPlanId || value === undefined || value === null) {
+      return NextResponse.json({ success: false, error: 'floorPlanId and value are required' }, { status: 400 });
     }
 
     if (!mongoose.Types.ObjectId.isValid(String(floorPlanId))) {
@@ -113,14 +109,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Measurement value must be a positive number' }, { status: 400 });
     }
 
-    const [{ user, staff }, floorPlan] = await Promise.all([
-      resolveStaffByOpenid(openid),
-      FloorPlan.findById(floorPlanId),
-    ]);
+    const floorPlan = await FloorPlan.findById(floorPlanId);
 
-    if (!user) {
-      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
-    }
+    const { user, staff } = context;
 
     if (!floorPlan) {
       return NextResponse.json({ success: false, error: 'FloorPlan not found' }, { status: 404 });

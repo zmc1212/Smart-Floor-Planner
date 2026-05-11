@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { getTenantContext } from '@/lib/auth';
 import { PromotionEnterpriseRecord } from '@/models/PromotionEnterpriseRecord';
 import { claimFromPool, getMiniProgramStaffContext } from '@/lib/promotion-workflow';
+import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,18 +14,17 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const openid = searchParams.get('openid');
+    
+    // Try Mini Program JWT first
+    const mpContext = await resolveMiniProgramContext(request);
     let context;
 
-    if (openid) {
-      const staffRes = await getMiniProgramStaffContext(openid);
-      if (staffRes.staff) {
-        context = {
-          role: staffRes.staff.role,
-          userId: staffRes.staff._id.toString(),
-          enterpriseId: staffRes.staff.enterpriseId?.toString(),
-        };
-      }
+    if (mpContext && mpContext.staff) {
+      context = {
+        role: mpContext.staff.role,
+        userId: mpContext.staff._id.toString(),
+        enterpriseId: mpContext.staff.enterpriseId?.toString(),
+      };
     } else {
       context = await getTenantContext(request);
     }
@@ -66,17 +66,16 @@ export async function POST(request: Request) {
   try {
     await dbConnect();
     const body = await request.json();
-    const openid = body.openid;
+    
+    // Check Mini Program JWT first
+    const mpContext = await resolveMiniProgramContext(request);
     let context;
 
-    if (openid) {
-      const staffRes = await getMiniProgramStaffContext(openid);
-      if (staffRes.staff) {
-        context = {
-          role: staffRes.staff.role,
-          userId: staffRes.staff._id.toString(),
-        };
-      }
+    if (mpContext && mpContext.staff) {
+      context = {
+        role: mpContext.staff.role,
+        userId: mpContext.staff._id.toString(),
+      };
     } else {
       context = await getTenantContext(request);
     }

@@ -17,7 +17,7 @@ Page({
 
     this.setData({ loading: true });
     try {
-      const res = await api.request(`/commission-records?openid=${openid}`, 'GET');
+      const res = await api.request('/commission-records', 'GET');
       if (res.success) {
         this.setData({ records: res.data || [], loading: false });
       }

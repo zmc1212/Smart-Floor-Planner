@@ -63,7 +63,7 @@ Component({
       const app = getApp();
       if (!app.globalData.openid) return;
       try {
-        const res = await api.request(`/leads?openid=${app.globalData.openid}`, 'GET');
+        const res = await api.request('/leads', 'GET');
         if (res.success && res.data) {
           // Unique leads by phone, take top 5
           const uniqueLeads = [];

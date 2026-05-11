@@ -2,9 +2,7 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 import dbConnect from '@/lib/mongodb';
 import { User } from '@/models/User';
-import { AdminUser } from '@/models/AdminUser';
 import { Enterprise } from '@/models/Enterprise';
-import mongoose from 'mongoose';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 
 export async function GET(req: Request) {
@@ -63,20 +61,5 @@ export async function PUT(req: Request) {
     return NextResponse.json({ success: true, data: user });
   } catch (error: any) {
     return NextResponse.json({ success: false, error: error.message }, { status: 400 });
-  }
-}
-
-export async function DELETE(req: Request) {
-  try {
-    await dbConnect();
-    const context = await resolveMiniProgramContext(req);
-    if (!context) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
-    await User.findByIdAndDelete(context.user._id);
-    return NextResponse.json({ success: true, data: {} });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

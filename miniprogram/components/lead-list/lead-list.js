@@ -60,7 +60,7 @@ Component({
       this.setData({ loading: true });
       
       try {
-        let url = `/leads?openid=${openid}&page=${page}&limit=${this.data.pageSize}`;
+        let url = `/leads?page=${page}&limit=${this.data.pageSize}`;
         if (this.data.currentTab !== 'all') {
           url += `&status=${this.data.currentTab}`;
         }

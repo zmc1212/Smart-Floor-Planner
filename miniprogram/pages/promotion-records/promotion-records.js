@@ -39,8 +39,8 @@ Page({
     this.setData({ loading: true });
     try {
       const path = this.data.useTodoApi
-        ? `/workbench/todos?openid=${openid}&view=overdue`
-        : `/promotion-records?openid=${openid}&view=${this.data.view === 'pool' ? 'all' : this.data.view}${this.data.view === 'pool' ? '&pool=true' : ''}`;
+        ? '/workbench/todos?view=overdue'
+        : `/promotion-records?view=${this.data.view === 'pool' ? 'all' : this.data.view}${this.data.view === 'pool' ? '&pool=true' : ''}`;
       const res = await api.request(path, 'GET');
       if (res.success) {
         this.setData({

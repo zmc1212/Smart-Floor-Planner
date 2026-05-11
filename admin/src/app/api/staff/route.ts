@@ -1,70 +1,45 @@
-import { NextResponse } from 'next/server';
-import bcrypt from 'bcryptjs';
-import mongoose from 'mongoose';
-import dbConnect from '@/lib/mongodb';
-import { AdminUser } from '@/models/AdminUser';
-import { Enterprise } from '@/models/Enterprise';
-import { Department } from '@/models/Department';
-import { resolveWritableEnterpriseId, withTenantRoute } from '@/lib/tenant-route';
-
-export const dynamic = 'force-dynamic';
-
-interface StaffCreateBody {
-  username?: string;
-  password?: string;
-  displayName?: string;
-  role?: string;
-  phone?: string;
-  promoterIds?: string[];
-  wecomUserId?: string;
-  departmentId?: string;
-  enterpriseId?: string;
-}
-
-async function getStaffByOpenid(openid: string) {
-  const { User } = await import('@/models/User');
-  const user = await User.findOne({ openid });
-  if (!user || user.role !== 'staff') {
-    return { user: null, staff: null };
-  }
-
-  const staff = await AdminUser.findOne({
-    status: 'active',
-    $or: [{ openid }, ...(user.phone ? [{ phone: user.phone }] : [])],
-  });
-
-  return { user, staff };
-}
+import { tenantStorage } from '@/lib/tenant-context';
 
 export async function GET(request: Request) {
   try {
     await dbConnect();
     const { searchParams } = new URL(request.url);
-    const openid = searchParams.get('openid');
 
-    if (openid) {
-      const roles = searchParams.get('roles')?.split(',').map((item) => item.trim()).filter(Boolean) || [];
-      const { staff } = await getStaffByOpenid(openid);
+    // Try Mini Program JWT first
+    const mpContext = await resolveMiniProgramContext(request);
+    if (mpContext && mpContext.staff) {
+      const { staff } = mpContext;
 
-      if (!staff || staff.role !== 'enterprise_admin') {
-        return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
-      }
+      return await tenantStorage.run(
+        {
+          enterpriseId: staff.enterpriseId ? String(staff.enterpriseId) : null,
+          role: staff.role,
+          userId: String(staff._id),
+        },
+        async () => {
+          const roles = searchParams.get('roles')?.split(',').map((item) => item.trim()).filter(Boolean) || [];
 
-      const filter: Record<string, unknown> = {
-        enterpriseId: staff.enterpriseId,
-        status: 'active',
-      };
+          if (staff.role !== 'enterprise_admin') {
+            return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+          }
 
-      if (roles.length > 0) {
-        filter.role = { $in: roles };
-      }
+          const filter: Record<string, unknown> = {
+            enterpriseId: staff.enterpriseId,
+            status: 'active',
+          };
 
-      const list = await AdminUser.find(filter)
-        .select('displayName username role phone')
-        .sort({ createdAt: -1 })
-        .lean();
+          if (roles.length > 0) {
+            filter.role = { $in: roles };
+          }
 
-      return NextResponse.json({ success: true, data: list });
+          const list = await AdminUser.find(filter)
+            .select('displayName username role phone')
+            .sort({ createdAt: -1 })
+            .lean();
+
+          return NextResponse.json({ success: true, data: list });
+        }
+      );
     }
 
     return await withTenantRoute(

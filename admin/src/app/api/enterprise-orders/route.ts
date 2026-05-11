@@ -3,7 +3,8 @@ import dbConnect from '@/lib/mongodb';
 import { getTenantContext, withTenantContext } from '@/lib/auth';
 import { EnterpriseOrder } from '@/models/EnterpriseOrder';
 import { PromotionEnterpriseRecord } from '@/models/PromotionEnterpriseRecord';
-import { findPromotionRecordIdsForPromoter, getMiniProgramStaffContext, syncCommissionForOrder } from '@/lib/promotion-workflow';
+import { findPromotionRecordIdsForPromoter, syncCommissionForOrder } from '@/lib/promotion-workflow';
+import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,13 +12,11 @@ export async function GET(request: Request) {
   try {
     await dbConnect();
     const { searchParams } = new URL(request.url);
-    const openid = searchParams.get('openid');
 
-    if (openid) {
-      const { staff } = await getMiniProgramStaffContext(openid);
-      if (!staff) {
-        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 });
-      }
+    // Try Mini Program JWT first
+    const mpContext = await resolveMiniProgramContext(request);
+    if (mpContext && mpContext.staff) {
+      const { staff } = mpContext;
 
       const query: Record<string, unknown> = {};
       if (staff.role === 'salesperson') {

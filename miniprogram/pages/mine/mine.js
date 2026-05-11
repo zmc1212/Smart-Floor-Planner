@@ -62,6 +62,12 @@ Page({
     }
   },
 
+  goToLogin() {
+    wx.navigateTo({
+      url: '/pages/login/login'
+    });
+  },
+
   async onGetPhoneNumber(e) {
     if (e.detail.errMsg !== "getPhoneNumber:ok") {
       wx.showToast({ title: '已取消授权', icon: 'none' });
@@ -114,11 +120,11 @@ Page({
     if (!openid) return;
     try {
       const [summaryRes, recordsRes, commissionRes, todosRes, overdueRes] = await Promise.all([
-        api.request(`/workbench/summary?openid=${openid}`, 'GET'),
-        api.request(`/promotion-records?openid=${openid}`, 'GET'),
-        api.request(`/commission-records?openid=${openid}`, 'GET').catch(() => ({ success: true, data: [] })),
-        api.request(`/workbench/todos?openid=${openid}&view=mine`, 'GET').catch(() => ({ success: true, data: [] })),
-        api.request(`/workbench/todos?openid=${openid}&view=overdue`, 'GET').catch(() => ({ success: true, data: [] }))
+        api.request('/workbench/summary', 'GET'),
+        api.request('/promotion-records', 'GET'),
+        api.request('/commission-records', 'GET').catch(() => ({ success: true, data: [] })),
+        api.request('/workbench/todos?view=mine', 'GET').catch(() => ({ success: true, data: [] })),
+        api.request('/workbench/todos?view=overdue', 'GET').catch(() => ({ success: true, data: [] }))
       ]);
 
       if (summaryRes.success) {
@@ -148,7 +154,7 @@ Page({
   async fetchMyFloorPlans(openid) {
     if (!openid) return;
     try {
-      const res = await api.request(`/floorplans?openid=${openid}`, 'GET');
+      const res = await api.request('/floorplans', 'GET');
       if (res.success && res.data) {
         const formatted = res.data.map(fp => {
           let roomCount = 0;
@@ -273,7 +279,7 @@ Page({
     if (!isAutoSave) wx.showLoading({ title: '保存中' });
 
     try {
-      const res = await api.request(`/users/${openid}`, 'PUT', {
+      const res = await api.request('/users/me', 'PUT', {
         nickname: this.data.userInfo.nickname,
         avatar: this.data.userInfo.avatar,
         communityName: this.data.userInfo.communityName
@@ -298,7 +304,7 @@ Page({
     if (!openid) return;
 
     try {
-      const res = await api.request(`/users/${openid}`, 'GET');
+      const res = await api.request('/users/me', 'GET');
       if (res.success && res.data) {
         app.globalData.userInfo = { ...app.globalData.userInfo, ...res.data };
         wx.setStorageSync('userInfo', app.globalData.userInfo);

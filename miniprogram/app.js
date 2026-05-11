@@ -8,6 +8,7 @@ App({
     currentAIGenRoom: null,
     userInfo: null,
     openid: null,
+    token: null,
     referral: {
       enterpriseId: null,
       staffId: null
@@ -17,19 +18,23 @@ App({
     console.log('智能量房大师小程序启动', options);
     this.handleReferral(options);
     
-    // 2. 从本地缓存恢复用户信息并同步专业属性
+    // 1. Restore session from storage (Priority: Token)
+    const token = wx.getStorageSync('token');
     const userInfo = wx.getStorageSync('userInfo');
-    if (userInfo) {
+    const openid = wx.getStorageSync('openid'); // Legacy fallback
+
+    if (token && userInfo) {
+      this.globalData.token = token;
       this.globalData.userInfo = userInfo;
+      this.globalData.openid = openid || (userInfo.openid);
+      console.log('会话已恢复 (JWT):', userInfo.displayName || userInfo.username);
       this.syncProfessionalContext();
-    }
-    
-    // Restore session from storage
-    const openid = wx.getStorageSync('openid');
-    if (openid && userInfo) {
+    } else if (openid && userInfo) {
+      // Legacy session recovery
       this.globalData.openid = openid;
       this.globalData.userInfo = userInfo;
-      console.log('会话已恢复:', openid);
+      console.log('会话已恢复 (Legacy OpenID):', openid);
+      this.syncProfessionalContext();
     }
   },
   onShow(options) {

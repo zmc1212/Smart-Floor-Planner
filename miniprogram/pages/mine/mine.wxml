@@ -4,9 +4,9 @@
       <image class="login-logo" src="{{defaultAvatarUrl}}"></image>
     </view>
     <view class="login-title">智能量房大师</view>
-    <view class="login-subtitle">请使用手机号快捷登录以使用完整功能</view>
-    <button class="login-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">
-      手机号快捷登录
+    <view class="login-subtitle">发现您的户型之美</view>
+    <button class="login-btn" bindtap="goToLogin">
+      立即登录 / 注册
     </button>
   </view>
 
@@ -242,5 +242,9 @@
         <button class="primary-btn" bindtap="onCreateNew">开始新测量</button>
       </view>
     </block>
+
+    <view class="logout-section">
+      <button class="logout-btn-large" bindtap="onLogout">退出登录</button>
+    </view>
   </view>
 </view>

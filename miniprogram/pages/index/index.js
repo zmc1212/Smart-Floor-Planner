@@ -410,7 +410,7 @@ Page({
     }
 
     try {
-      const res = await api.request(`/floorplans?openid=${openid}`, 'GET');
+      const res = await api.request('/floorplans', 'GET');
       if (res.success && res.data) {
         this.setData({ myCloudFloorPlans: res.data }, () => {
           this.syncHomeDashboard();
@@ -429,7 +429,7 @@ Page({
     }
 
     try {
-      const res = await api.request(`/miniprogram/home?openid=${openid}`, 'GET');
+      const res = await api.request('/miniprogram/home', 'GET');
       if (res.success && res.data) {
         this.setData({
           homeDashboard: res.data,
