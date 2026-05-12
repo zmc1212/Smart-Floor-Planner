@@ -269,18 +269,14 @@ Page({
   },
 
   onPrimaryMeasureTap: function () {
+    // 已有进行中的项目 → 继续量房
     if (this.data.plannedRooms && this.data.plannedRooms.length > 0) {
       this.onContinueProjectTap();
       return;
     }
 
-    const firstTemplate = this.data.homeTemplates && this.data.homeTemplates[0];
-    if (!firstTemplate) {
-      wx.showToast({ title: '暂无可用模板', icon: 'none' });
-      return;
-    }
-
-    this.onSelectLayout({ detail: { id: firstTemplate.id } });
+    // 没有项目 → 先收集客户线索，量房数据自动绑定线索
+    this.setData({ showLeadModal: true });
   },
 
   onQuickBluetoothTap: function () {

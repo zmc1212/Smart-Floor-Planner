@@ -46,18 +46,35 @@ export async function GET(request: Request) {
             ];
           }
 
+          const baseQuery = { ...query };
+          
           if (status && status !== 'all') {
             query.status = status;
           }
 
-          const leads = await Lead.find(query)
-            .populate({ path: 'floorPlanIds', select: 'name layoutData createdAt', strictPopulate: false })
-            .populate('assignedTo', 'displayName role')
-            .sort({ createdAt: -1 })
-            .skip((page - 1) * limit)
-            .limit(limit);
+          const [leads, total, newCount, measuringCount, convertedCount] = await Promise.all([
+            Lead.find(query)
+              .populate({ path: 'floorPlanIds', select: 'name layoutData createdAt', strictPopulate: false })
+              .populate('assignedTo', 'displayName role')
+              .sort({ createdAt: -1 })
+              .skip((page - 1) * limit)
+              .limit(limit),
+            Lead.countDocuments(baseQuery),
+            Lead.countDocuments({ ...baseQuery, status: 'new' }),
+            Lead.countDocuments({ ...baseQuery, status: 'measuring' }),
+            Lead.countDocuments({ ...baseQuery, status: 'converted' })
+          ]);
 
-          return NextResponse.json({ success: true, data: leads });
+          return NextResponse.json({ 
+            success: true, 
+            data: leads,
+            stats: {
+              all: total,
+              new: newCount,
+              measuring: measuringCount,
+              converted: convertedCount
+            }
+          });
         }
       );
     }

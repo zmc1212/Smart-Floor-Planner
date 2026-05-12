@@ -96,7 +96,7 @@ Component({
           });
           
           if (reset) {
-            this.updateStats(formatted);
+            this.updateStats(formatted, res.stats);
           }
         }
       } catch (err) {
@@ -160,15 +160,19 @@ Component({
       });
     },
 
-    updateStats(leads) {
-      // In a real app, this would come from a dedicated stats API
-      // Here we simulate it based on the current list for UI demonstration
+    updateStats(leads, apiStats) {
       const stats = this.data.stats.map(s => {
         let count = 0;
-        if (s.key === 'all') count = leads.length * 5; // Simulating larger total
-        else if (s.key === 'new') count = leads.filter(l => l.status === 'new').length;
-        else if (s.key === 'measuring') count = leads.filter(l => l.status === 'measuring').length;
-        else if (s.key === 'converted') count = leads.filter(l => l.status === 'converted').length;
+        if (apiStats && apiStats[s.key] !== undefined) {
+          count = apiStats[s.key];
+        } else {
+          // Fallback to local calculation for UI consistency if API stats missing
+          if (s.key === 'all') {
+            count = leads.length;
+          } else {
+            count = leads.filter(l => l.status === s.key).length;
+          }
+        }
         return { ...s, count };
       });
       this.setData({ stats });
