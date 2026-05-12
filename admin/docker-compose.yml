@@ -1,8 +1,6 @@
 services:
   admin:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: zmc1212/sfp-admin:latest
     container_name: smart-floor-planner-admin
     restart: unless-stopped
     ports:

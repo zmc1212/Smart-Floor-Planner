@@ -18,8 +18,8 @@ export async function GET(
     const { id } = await params;
     const session = await AiChatSession.findOne({
       _id: id,
-      enterpriseId: context.enterpriseId,
-      adminId: context.userId,
+      enterpriseId: context.enterpriseId as any,
+      adminId: context.userId as any,
     });
 
     if (!session) {
@@ -47,8 +47,8 @@ export async function DELETE(
     const { id } = await params;
     const result = await AiChatSession.deleteOne({
       _id: id,
-      enterpriseId: context.enterpriseId,
-      adminId: context.userId,
+      enterpriseId: context.enterpriseId as any,
+      adminId: context.userId as any,
     });
 
     if (result.deletedCount === 0) {

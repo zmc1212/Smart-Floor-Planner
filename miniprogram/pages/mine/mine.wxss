@@ -498,6 +498,67 @@ page {
   opacity: 0.8;
 }
 
+/* ===== Settings Section ===== */
+.settings-list {
+  margin: 40rpx 32rpx;
+  background: var(--bg-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.setting-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 36rpx 32rpx;
+  border-bottom: 1rpx solid var(--neutral-100);
+}
+
+.setting-item:last-child {
+  border-bottom: none;
+}
+
+.setting-item:active {
+  background-color: var(--neutral-50);
+}
+
+.setting-left {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.setting-icon {
+  font-size: 32rpx;
+}
+
+.setting-label {
+  font-size: 28rpx;
+  color: var(--neutral-900);
+  font-weight: var(--font-weight-medium);
+}
+
+.setting-right {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.setting-status {
+  font-size: 24rpx;
+  color: var(--brand-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.arrow-icon {
+  width: 12rpx;
+  height: 12rpx;
+  border-top: 3rpx solid var(--neutral-300);
+  border-right: 3rpx solid var(--neutral-300);
+  transform: rotate(45deg);
+}
+
 /* User FloorPlan Specific */
 .empty-container {
   padding: 120rpx 60rpx;

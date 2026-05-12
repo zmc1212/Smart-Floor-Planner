@@ -80,10 +80,18 @@ Page({
 
         wx.showToast({ title: '登录成功', icon: 'success' });
         
+        // --- New: Request notification permission ---
+        const { requestNotification } = require('../../utils/notification.js');
+        try {
+          await requestNotification();
+        } catch (e) {
+          console.error('Notification request failed', e);
+        }
+
         // Wait a bit for toast, then go back
         setTimeout(() => {
           wx.navigateBack();
-        }, 1500);
+        }, 1000);
       } else {
         throw new Error(res.error || '登录失败');
       }

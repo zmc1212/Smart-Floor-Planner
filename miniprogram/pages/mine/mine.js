@@ -322,6 +322,15 @@ Page({
     wx.navigateTo({ url: '/pages/editor/editor' });
   },
 
+  async onEnableNotification() {
+    const { requestNotification } = require('../../utils/notification.js');
+    try {
+      await requestNotification();
+    } catch (e) {
+      console.error('Notification enable failed', e);
+    }
+  },
+
   onLogout() {
     wx.showModal({
       title: '退出登录',

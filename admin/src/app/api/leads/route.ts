@@ -5,8 +5,10 @@ import { withTenantContext, getTenantContext } from '@/lib/auth';
 import Lead from '@/models/Lead';
 import { AdminUser } from '@/models/AdminUser';
 import { Enterprise } from '@/models/Enterprise';
+import '@/models/FloorPlan';
 import { WeComService } from '@/lib/wecom';
 import { tenantStorage } from '@/lib/tenant-context';
+import { notifyEnterpriseAdminOfNewLead, notifyDesignerOfAssignedLead } from '@/lib/wechat-notification';
 
 export async function GET(request: Request) {
   try {
@@ -156,7 +158,10 @@ export async function POST(request: Request) {
           const staffRefId = promoterId || assignedTo;
           const staff = await AdminUser.findById(staffRefId);
           if (staff) {
-            if (!currentEnterpriseId) currentEnterpriseId = staff.enterpriseId;
+            if (!currentEnterpriseId) {
+              currentEnterpriseId = staff.enterpriseId;
+              console.log(`[Workflow] Resolved enterpriseId ${currentEnterpriseId} from staff ${staff.displayName}`);
+            }
 
             // If the reference is a salesperson and we don't have a promoterId yet, set it
             if (staff.role === 'salesperson' && !promoterId) {
@@ -188,36 +193,56 @@ export async function POST(request: Request) {
           }
         }
 
-        // 4. Check if lead already exists (by phone)
+        // 4. Fallback: If still no responsible person assigned, default to the creator
+        if (!assignedTo) {
+          assignedTo = userId;
+          console.log(`[Workflow] Defaulting responsible person to creator: ${userId}`);
+        }
+
+        // 5. Update status based on assignment
+        // If assigned to a designer, move to 'assigned' status
+        if (assignedTo && (!body.status || body.status === 'new')) {
+          const assignedUser = await AdminUser.findById(assignedTo);
+          if (assignedUser && assignedUser.role === 'designer') {
+            body.status = 'assigned';
+          } else {
+            body.status = 'new';
+          }
+        }
+
+        // 6. Check if lead already exists (by phone)
+        // Note: With multiTenantPlugin, this findOne is already filtered by currentEnterpriseId
         let lead = await Lead.findOne({ phone: body.phone });
 
-    if (lead) {
-      // Merge: Update existing lead with new info and append floorPlanId
-      if (body.floorPlanId && !lead.floorPlanIds.includes(body.floorPlanId)) {
-        lead.floorPlanIds.push(body.floorPlanId);
-      }
-      if (body.communityName) lead.communityName = body.communityName;
-      if (body.area) lead.area = body.area;
-      if (body.stylePreference) lead.stylePreference = body.stylePreference;
+        if (lead) {
+          // Merge: Update existing lead with new info and append floorPlanId
+          if (body.floorPlanId && !lead.floorPlanIds.includes(body.floorPlanId)) {
+            lead.floorPlanIds.push(body.floorPlanId);
+          }
+          if (body.communityName) lead.communityName = body.communityName;
+          if (body.area) lead.area = body.area;
+          if (body.stylePreference) lead.stylePreference = body.stylePreference;
 
-      // Keep existing assignments unless missing
-      if (!lead.promoterId) lead.promoterId = promoterId;
-      if (!lead.assignedTo) lead.assignedTo = assignedTo;
-      if (!lead.enterpriseId) lead.enterpriseId = enterpriseId;
+          // Keep existing assignments unless missing
+          if (!lead.promoterId) lead.promoterId = promoterId;
+          if (!lead.assignedTo) lead.assignedTo = assignedTo;
+          if (!lead.enterpriseId) lead.enterpriseId = currentEnterpriseId;
 
-      await lead.save();
-    } else {
-      // Create new lead
-      const leadData = {
-        ...body,
-        floorPlanIds: body.floorPlanId ? [body.floorPlanId] : [],
-        promoterId,
-        assignedTo,
-        enterpriseId,
-        assignedAt: assignedTo ? new Date() : undefined
-      };
-      lead = await Lead.create(leadData);
-    }
+          await lead.save();
+          console.log(`[Workflow] Updated existing lead: ${lead.name} (${lead.phone})`);
+        } else {
+          // Create new lead
+          const leadData = {
+            ...body,
+            floorPlanIds: body.floorPlanId ? [body.floorPlanId] : [],
+            promoterId,
+            assignedTo,
+            enterpriseId: currentEnterpriseId,
+            assignedAt: assignedTo ? new Date() : undefined
+          };
+          lead = await Lead.create(leadData);
+          console.log(`[Workflow] Created new lead: ${lead.name} under enterprise: ${currentEnterpriseId}`);
+        }
 
     // Workflow logic: WeCom Group Creation
     if (lead.enterpriseId && lead.promoterId && lead.assignedTo) {
@@ -237,6 +262,17 @@ export async function POST(request: Request) {
         }).catch(err => {
           console.error('[Workflow] WeCom group creation background task failed:', err);
         });
+      }
+    }
+
+    // --- New: Mini Program Notifications ---
+    if (lead) {
+      // 1. Notify Enterprise Admin of new lead
+      await notifyEnterpriseAdminOfNewLead(lead);
+
+      // 2. Notify Designer if assigned
+      if (lead.assignedTo) {
+        await notifyDesignerOfAssignedLead(lead, lead.assignedTo.toString());
       }
     }
 

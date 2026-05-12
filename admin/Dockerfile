@@ -45,6 +45,9 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# 2. 【新增】明确拷贝 scripts 目录，这样镜像里才有 seed-admin.js
+COPY --from=builder /app/scripts ./scripts
+
 USER nextjs
 
 EXPOSE 3000

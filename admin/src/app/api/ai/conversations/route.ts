@@ -13,8 +13,8 @@ export async function GET(request: Request) {
 
   try {
     const sessions = await AiChatSession.find({
-      enterpriseId: context.enterpriseId,
-      adminId: context.userId,
+      enterpriseId: context.enterpriseId as any,
+      adminId: context.userId as any,
     })
       .sort({ lastMessageAt: -1 })
       .select('title lastMessageAt createdAt')
@@ -35,9 +35,13 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (!context.enterpriseId) {
+      return NextResponse.json({ success: false, error: '需要企业上下文' }, { status: 400 });
+    }
+
     const session = await AiChatSession.create({
-      enterpriseId: context.enterpriseId,
-      adminId: context.userId,
+      enterpriseId: context.enterpriseId as any,
+      adminId: context.userId as any,
       title: '新对话',
       messages: [],
     });

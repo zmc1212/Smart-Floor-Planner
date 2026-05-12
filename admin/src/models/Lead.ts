@@ -1,6 +1,8 @@
 import mongoose, { Schema, Document } from 'mongoose';
 import { multiTenantPlugin, TenantPluginOptions } from '../lib/mongoose-tenant-plugin';
 
+// Model Version: 20260512-V2 (Trigger Refresh)
+
 export interface IFollowUp {
   content: string;
   operator: string;
@@ -14,7 +16,7 @@ export interface ILead extends Document {
   stylePreference?: string;
   city?: string;
   source: string; 
-  status: 'new' | 'contacted' | 'measuring' | 'designing' | 'quoting' | 'converted' | 'closed';
+  status: 'new' | 'measuring' | 'measured' | 'assigned' | 'converted' | 'closed';
   notes?: string;
   enterpriseId?: mongoose.Types.ObjectId;
   floorPlanIds?: mongoose.Types.ObjectId[];
@@ -34,7 +36,7 @@ const LeadSchema: Schema = new Schema({
   stylePreference: { type: String },
   city: { type: String },
   source: { type: String, default: 'unknown' },
-  status: { type: String, enum: ['new', 'contacted', 'measuring', 'designing', 'quoting', 'converted', 'closed'], default: 'new' },
+  status: { type: String, enum: ['new', 'measuring', 'measured', 'assigned', 'converted', 'closed'], default: 'new' },
   notes: { type: String },
   enterpriseId: { type: Schema.Types.ObjectId, ref: 'Enterprise' },
   floorPlanIds: [{ type: Schema.Types.ObjectId, ref: 'FloorPlan' }],

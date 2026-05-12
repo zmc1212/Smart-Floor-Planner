@@ -318,16 +318,6 @@ export default function StaffPage() {
           />
         </div>
         <div className="space-y-2">
-          <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">企业微信提醒接收 ID</Label>
-          <Input
-            className="h-12 rounded-2xl border-none bg-muted/30 font-mono"
-            value={formData.wecomUserId}
-            onChange={(e) => setFormData({ ...formData, wecomUserId: e.target.value })}
-            placeholder="WeCom UserID"
-          />
-          <p className="text-xs text-muted-foreground">用于接收企业微信催办消息，不填写时系统只保留站内待办。</p>
-        </div>
-        <div className="space-y-2">
           <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">所属部门</Label>
           <Select
             value={formData.departmentId || 'none'}
@@ -359,6 +349,19 @@ export default function StaffPage() {
               {currentUser?.role === 'super_admin' && <SelectItem value="enterprise_admin">企业负责人</SelectItem>}
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">企业微信 UserID</Label>
+            <span className="text-[10px] text-muted-foreground">用于推送提醒</span>
+          </div>
+          <Input
+            className="h-12 rounded-2xl border-none bg-muted/30"
+            value={formData.wecomUserId}
+            onChange={(e) => setFormData({ ...formData, wecomUserId: e.target.value })}
+            placeholder="企业微信后台的 UserID"
+          />
         </div>
 
 
@@ -520,13 +523,6 @@ export default function StaffPage() {
                         </div>
                       </div>
                       <div className="space-y-1 text-right">
-                        <p className="text-[10px] font-bold uppercase opacity-50 text-muted-foreground">企微提醒</p>
-                        <div className="flex items-center justify-end gap-2 text-[13px] font-medium">
-                          <Shield size={14} className={member.wecomUserId ? 'text-green-500' : 'text-muted-foreground/30'} />
-                          <span className={cn(member.wecomUserId ? 'text-green-600' : 'text-muted-foreground')}>
-                            {member.wecomUserId ? '已配置接收 ID' : '未配置'}
-                          </span>
-                        </div>
                       </div>
                     </div>
 

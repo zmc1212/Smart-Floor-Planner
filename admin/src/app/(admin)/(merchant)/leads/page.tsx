@@ -31,6 +31,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Building2 } from "lucide-react";
+import { toast } from "sonner";
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<any[]>([]);
@@ -39,6 +40,7 @@ export default function LeadsPage() {
   const [newNote, setNewNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [staffMembers, setStaffMembers] = useState<any[]>([]);
+  const [activeStatus, setActiveStatus] = useState('all');
 
   // @see react-best-practices: client-swr-dedup
   const { user: currentUser } = useCurrentUser();
@@ -67,13 +69,12 @@ export default function LeadsPage() {
 
   const getStatusLabel = (status: string) => {
     const statusMap: Record<string, string> = {
-      'new': '新线索 (待处理)',
-      'contacted': '已联系 (沟通中)',
-      'measuring': '量房中 (上门测量)',
-      'designing': '设计中 (方案制作)',
-      'quoting': '报价中 (预结算)',
-      'converted': '已转化 (签单成功)',
-      'closed': '已关闭 (暂时流失)'
+      'new': '新线索',
+      'measuring': '量房中',
+      'measured': '量房完成',
+      'assigned': '已指派设计师',
+      'converted': '已转化 (签单)',
+      'closed': '已关闭'
     };
     return statusMap[status] || status;
   };
@@ -114,7 +115,11 @@ export default function LeadsPage() {
   const fetchLeads = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/leads`);
+      let url = `/api/leads`;
+      if (activeStatus && activeStatus !== 'all') {
+        url += `?status=${activeStatus}`;
+      }
+      const res = await fetch(url);
       const data = await res.json();
       if (data.success) {
         setLeads(data.data);
@@ -132,7 +137,8 @@ export default function LeadsPage() {
 
   const fetchStaff = async () => {
     try {
-      const res = await fetch(`/api/staff`);
+      // Only fetch staff with roles that can be assigned to leads
+      const res = await fetch(`/api/staff?roles=designer,measurer,enterprise_admin`);
       const data = await res.json();
       if (data.success) {
         setStaffMembers(data.data);
@@ -144,15 +150,14 @@ export default function LeadsPage() {
 
   // @see react-best-practices: async-parallel — 并行化初始请求
   useEffect(() => {
-    Promise.all([fetchLeads(), fetchStaff()]);
+    fetchStaff();
   }, []);
 
-  const updateLead = async (id: string, updates: any) => {
-    // Optimistic update for the selected lead to make UI snappy
-    if (selectedLead && id === selectedLead._id) {
-      setSelectedLead({ ...selectedLead, ...updates });
-    }
+  useEffect(() => {
+    fetchLeads();
+  }, [activeStatus]);
 
+  const updateLead = async (id: string, updates: any) => {
     try {
       const res = await fetch(`/api/leads/${id}`, {
         method: 'PUT',
@@ -161,10 +166,45 @@ export default function LeadsPage() {
       });
       const data = await res.json();
       if (data.success) {
+        toast.success("操作成功", {
+          description: updates.assignedTo ? "已成功指派负责人" : "线索信息已同步",
+        });
+        
+        // Update the selected lead with the server-calculated fields (like status)
+        if (selectedLead && id === selectedLead._id) {
+          setSelectedLead(data.data);
+          // If it was an assignment, close the sheet after a short delay
+          if (updates.assignedTo) {
+            setTimeout(() => setSelectedLead(null), 800);
+          }
+        }
         fetchLeads();
+      } else {
+        toast.error("操作失败", { description: data.error });
       }
     } catch (err) {
       console.error('Failed to update lead:', err);
+      toast.error("系统错误", { description: "请检查网络或刷新重试" });
+    }
+  };
+
+  const deleteLead = async (id: string) => {
+    if (!confirm('确定要删除该线索吗？此操作不可撤销。')) return;
+    
+    try {
+      const res = await fetch(`/api/leads/${id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success("线索已删除");
+        fetchLeads();
+      } else {
+        toast.error("删除失败", { description: data.error });
+      }
+    } catch (err) {
+      console.error('Failed to delete lead:', err);
+      toast.error("系统错误");
     }
   };
 
@@ -199,14 +239,12 @@ export default function LeadsPage() {
     switch (status) {
       case 'new':
         return <Badge variant="secondary" className="bg-white text-blue-600 shadow-[0_0_0_1px_rgba(59,130,246,0.1)] hover:bg-blue-50/50 border-none font-medium px-2 py-0.5">新线索</Badge>;
-      case 'contacted':
-        return <Badge variant="secondary" className="bg-white text-amber-600 shadow-[0_0_0_1px_rgba(245,158,11,0.1)] hover:bg-amber-50/50 border-none font-medium px-2 py-0.5">已联系</Badge>;
       case 'measuring':
         return <Badge variant="secondary" className="bg-white text-purple-600 shadow-[0_0_0_1px_rgba(147,51,234,0.1)] hover:bg-purple-50/50 border-none font-medium px-2 py-0.5">量房中</Badge>;
-      case 'designing':
-        return <Badge variant="secondary" className="bg-white text-indigo-600 shadow-[0_0_0_1px_rgba(79,70,229,0.1)] hover:bg-indigo-50/50 border-none font-medium px-2 py-0.5">方案设计</Badge>;
-      case 'quoting':
-        return <Badge variant="secondary" className="bg-white text-orange-600 shadow-[0_0_0_1px_rgba(249,115,22,0.1)] hover:bg-orange-50/50 border-none font-medium px-2 py-0.5">报价中</Badge>;
+      case 'measured':
+        return <Badge variant="secondary" className="bg-white text-emerald-600 shadow-[0_0_0_1px_rgba(16,185,129,0.1)] hover:bg-emerald-50/50 border-none font-medium px-2 py-0.5">量房完成</Badge>;
+      case 'assigned':
+        return <Badge variant="secondary" className="bg-white text-indigo-600 shadow-[0_0_0_1px_rgba(79,70,229,0.1)] hover:bg-indigo-50/50 border-none font-medium px-2 py-0.5">已指派设计师</Badge>;
       case 'converted':
         return <Badge variant="secondary" className="bg-[#171717] text-white hover:bg-[#171717]/90 border-none font-medium px-2 py-0.5">已转化</Badge>;
       case 'closed':
@@ -233,11 +271,37 @@ export default function LeadsPage() {
 
           {/* Enterprise Selector removed, now handled globally in Sidebar */}
 
-          {leads.length === 0 && !loading && (
+          {leads.length === 0 && !loading && activeStatus === 'all' && (
             <div className="bg-neutral-50 shadow-[0_0_0_1px_rgba(0,0,0,0.06)] p-4 rounded-xl text-sm text-neutral-600">
               提示：如果您是设计师或业务员，您只能看到正式指派给您的线索。只有企业负责人（Admin/Owner）可以看到全部新线索。
             </div>
           )}
+        </div>
+
+        {/* Status Tabs */}
+        <div className="flex items-center gap-1 mb-8 overflow-x-auto pb-2 scrollbar-hide">
+          {[
+            { id: 'all', label: '全部' },
+            { id: 'new', label: '新线索' },
+            { id: 'measuring', label: '量房中' },
+            { id: 'measured', label: '量房完成' },
+            { id: 'assigned', label: '已指派' },
+            { id: 'converted', label: '已转化' },
+            { id: 'closed', label: '已关闭' }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveStatus(tab.id)}
+              className={cn(
+                "px-4 py-2 text-[13px] font-medium rounded-full transition-all duration-200 whitespace-nowrap",
+                activeStatus === tab.id 
+                  ? "bg-[#171717] text-white shadow-lg" 
+                  : "text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100"
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {loading && (
@@ -306,6 +370,14 @@ export default function LeadsPage() {
                           {isSyncing === lead._id ? <Loader2 size={14} className="animate-spin" /> : (syncSuccess === lead._id ? <Check size={14} /> : <Share2 size={14} />)}
                         </Button>
                         <Button 
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => deleteLead(lead._id)}
+                          className="h-8 w-8 text-neutral-400 hover:text-red-600 hover:bg-red-50/50 rounded-lg transition-all"
+                        >
+                          <X size={14} />
+                        </Button>
+                        <Button 
                           size="sm"
                           variant="ghost"
                           onClick={() => setSelectedLead(lead)}
@@ -354,29 +426,27 @@ export default function LeadsPage() {
                 </SheetHeader>
 
                 <div className="flex-1 overflow-y-auto p-8 space-y-10 scrollbar-hide">
+                  {/* Workflow Progress */}
+                  <WorkflowProgress status={selectedLead.status} />
+
                   {/* Status & Assignment */}
                   <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-2.5">
                       <label className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider ml-1">业务状态</label>
                       <Select 
                         value={selectedLead.status}
-                        onValueChange={(val) => val && updateLead(selectedLead._id, { status: val })}
+                        disabled
                       >
-                        <SelectTrigger className="w-full h-11 rounded-xl bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.08)] border-none hover:shadow-[0_0_0_1px_rgba(0,0,0,0.12)] transition-shadow px-4">
+                        <SelectTrigger className="w-full h-11 rounded-xl bg-neutral-50/50 shadow-[0_0_0_1px_rgba(0,0,0,0.06)] border-none px-4 opacity-100 cursor-default">
                           <SelectValue>
                             <span className="text-[14px] font-medium">{getStatusLabel(selectedLead.status)}</span>
                           </SelectValue>
                         </SelectTrigger>
                         <SelectContent className="rounded-xl shadow-2xl border-none p-1">
-                          <SelectItem value="new" className="rounded-lg">新线索 (待处理)</SelectItem>
-                          <SelectItem value="contacted" className="rounded-lg">已联系 (沟通中)</SelectItem>
-                          <SelectItem value="measuring" className="rounded-lg">量房中 (上门测量)</SelectItem>
-                          <SelectItem value="designing" className="rounded-lg">设计中 (方案制作)</SelectItem>
-                          <SelectItem value="quoting" className="rounded-lg">报价中 (预结算)</SelectItem>
-                          <SelectItem value="converted" className="rounded-lg">已转化 (签单成功)</SelectItem>
-                          <SelectItem value="closed" className="rounded-lg">已关闭 (暂时流失)</SelectItem>
+                          <SelectItem value={selectedLead.status} className="rounded-lg">{getStatusLabel(selectedLead.status)}</SelectItem>
                         </SelectContent>
                       </Select>
+                      <p className="text-[10px] text-neutral-400 mt-1 px-1 italic">* 状态由业务流程自动更新</p>
                     </div>
                     <div className="space-y-2.5">
                       <label className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider ml-1">当前负责人</label>
@@ -503,6 +573,76 @@ export default function LeadsPage() {
           </SheetContent>
         </Sheet>
       </main>
+    </div>
+  );
+}
+
+function WorkflowProgress({ status }: { status: string }) {
+  const steps = [
+    { key: 'new', label: '新线索' },
+    { key: 'measuring', label: '量房中' },
+    { key: 'measured', label: '量房完成' },
+    { key: 'assigned', label: '方案设计' }, // "已指派设计师" context
+    { key: 'converted', label: '已转化' }
+  ];
+
+  const currentIdx = steps.findIndex(s => s.key === status);
+  const isClosed = status === 'closed';
+
+  if (isClosed) {
+    return (
+      <div className="bg-neutral-50 rounded-2xl p-6 border border-dashed border-neutral-200 text-center">
+        <span className="text-[13px] font-medium text-neutral-400">线索已关闭</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between px-1">
+        <label className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">业务流程进度</label>
+        <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+          {currentIdx + 1} / {steps.length}
+        </span>
+      </div>
+      
+      <div className="relative flex justify-between">
+        {/* Connection Line */}
+        <div className="absolute top-[15px] left-0 right-0 h-[2px] bg-neutral-100 z-0 mx-6" />
+        <div 
+          className="absolute top-[15px] left-0 h-[2px] bg-blue-500 z-0 mx-6 transition-all duration-1000 ease-in-out" 
+          style={{ width: `${Math.max(0, (currentIdx / (steps.length - 1)) * 100)}%`, marginLeft: '24px', marginRight: '24px' }}
+        />
+
+        {steps.map((step, idx) => {
+          const isCompleted = idx < currentIdx;
+          const isCurrent = idx === currentIdx;
+          const isUpcoming = idx > currentIdx;
+
+          return (
+            <div key={step.key} className="relative z-10 flex flex-col items-center gap-2 group">
+              <div className={cn(
+                "w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300",
+                isCompleted ? "bg-blue-500 text-white shadow-lg shadow-blue-100" :
+                isCurrent ? "bg-white border-2 border-blue-500 text-blue-600 shadow-xl shadow-blue-50" :
+                "bg-white border-2 border-neutral-100 text-neutral-300"
+              )}>
+                {isCompleted ? <CheckCircle size={16} /> : <span className="text-[12px] font-bold">{idx + 1}</span>}
+              </div>
+              <span className={cn(
+                "text-[11px] font-bold transition-colors",
+                isCurrent ? "text-neutral-900" : "text-neutral-400"
+              )}>
+                {step.label}
+              </span>
+              
+              {isCurrent && (
+                <div className="absolute -top-1 w-1 h-1 bg-blue-500 rounded-full animate-ping" />
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -55,6 +55,12 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         };
 
         // 继续原有的更新逻辑
+        // Fetch current lead to determine status transition
+        const currentLead = await Lead.findOne({ _id: id, ...tenantFilter });
+        if (!currentLead) {
+          return NextResponse.json({ success: false, error: 'Lead not found or access denied' }, { status: 404 });
+        }
+
         if (body.assignedTo) {
           body.assignedAt = new Date();
         }
@@ -64,10 +70,25 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
         if (updateOps.openid) delete updateOps.openid;
 
+        // --- Automation Logic Start ---
+        // 1. If assigned to a designer, move to 'assigned' status
+        if (body.assignedTo) {
+          const assignedUser = await AdminUser.findById(body.assignedTo);
+          if (assignedUser && assignedUser.role === 'designer') {
+            updateOps.status = 'assigned';
+          }
+        }
+
+        // 2. If floorPlanId is being added, move to 'measuring' if current status is 'new'
         if (body.floorPlanId) {
           delete updateOps.floorPlanId;
           updateDoc.$addToSet = { floorPlanIds: body.floorPlanId };
+          
+          if (currentLead.status === 'new') {
+            updateOps.status = 'measuring';
+          }
         }
+        // --- Automation Logic End ---
 
         if (Object.keys(updateOps).length > 0) {
           updateDoc.$set = updateOps;
@@ -98,13 +119,34 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
             body.assignedAt = new Date();
           }
 
+          // Fetch current lead to determine status transition
+          const currentLead = await Lead.findById(id);
+          if (!currentLead) {
+            return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
+          }
+
           let updateOps: any = { ...body };
           let updateDoc: any = {};
 
+          // --- Automation Logic Start ---
+          // 1. If assigned to a designer, move to 'assigned' status
+          if (body.assignedTo) {
+            const assignedUser = await AdminUser.findById(body.assignedTo);
+            if (assignedUser && assignedUser.role === 'designer') {
+              updateOps.status = 'assigned';
+            }
+          }
+
+          // 2. If floorPlanId is being added, move to 'measuring' if current status is 'new'
           if (body.floorPlanId) {
             delete updateOps.floorPlanId;
             updateDoc.$addToSet = { floorPlanIds: body.floorPlanId };
+            
+            if (currentLead.status === 'new') {
+              updateOps.status = 'measuring';
+            }
           }
+          // --- Automation Logic End ---
 
           if (Object.keys(updateOps).length > 0) {
             updateDoc.$set = updateOps;
@@ -148,6 +190,12 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
         if (!lead) {
           return NextResponse.json({ success: false, error: 'Lead not found or access denied' }, { status: 404 });
+        }
+
+        // 级联删除关联的户型图数据
+        if (lead.floorPlanIds && lead.floorPlanIds.length > 0) {
+          console.log(`[Cleanup] Deleting ${lead.floorPlanIds.length} associated floor plans for lead ${lead.name}`);
+          await FloorPlan.deleteMany({ _id: { $in: lead.floorPlanIds } });
         }
 
         return NextResponse.json({ success: true, data: {} });

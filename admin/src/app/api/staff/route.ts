@@ -69,8 +69,13 @@ export async function GET(request: Request) {
       async () => {
         const search = searchParams.get('search') || '';
         const departmentId = searchParams.get('departmentId');
+        const roles = searchParams.get('roles')?.split(',').map((item) => item.trim()).filter(Boolean) || [];
 
         const filter: Record<string, unknown> = {};
+
+        if (roles.length > 0) {
+          filter.role = { $in: roles };
+        }
 
         if (departmentId && departmentId !== 'none' && departmentId !== 'all') {
           filter.departmentId = mongoose.Types.ObjectId.isValid(departmentId)

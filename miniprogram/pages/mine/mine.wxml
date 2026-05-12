@@ -255,6 +255,19 @@
       </view>
     </block>
 
+    <view class="settings-list" wx:if="{{userInfo.role === 'staff'}}">
+      <view class="setting-item" bindtap="onEnableNotification">
+        <view class="setting-left">
+          <view class="setting-icon">🔔</view>
+          <text class="setting-label">业务通知提醒</text>
+        </view>
+        <view class="setting-right">
+          <text class="setting-status">开启</text>
+          <view class="arrow-icon"></view>
+        </view>
+      </view>
+    </view>
+
     <view class="logout-section">
       <button class="logout-btn-large" bindtap="onLogout">切换账号</button>
     </view>

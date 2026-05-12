@@ -29,9 +29,13 @@ export async function POST(req: NextRequest) {
     }
 
     if (!session) {
+      if (!context.enterpriseId) {
+        return NextResponse.json({ success: false, error: 'Enterprise context required' }, { status: 400 });
+      }
+
       session = await AiChatSession.create({
-        enterpriseId: context.enterpriseId,
-        adminId: context.userId,
+        enterpriseId: context.enterpriseId as any,
+        adminId: context.userId as any,
         title: messages[messages.length - 1].content.slice(0, 30),
         messages: []
       });

@@ -222,16 +222,6 @@ export default function EnterprisesPage() {
                         >
                           AI 管理
                         </Link>
-                        <Link
-                          href={`/enterprises/${ent._id}/wecom`}
-                          className={buttonVariants({
-                            variant: 'ghost',
-                            size: 'sm',
-                            className: 'h-8 text-[13px]',
-                          })}
-                        >
-                          企微管理
-                        </Link>
                         <Button
                           variant="ghost"
                           size="sm"

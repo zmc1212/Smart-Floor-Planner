@@ -10,7 +10,6 @@ import { EnterpriseListItem } from './types';
 const NAV_ITEMS = [
   { hrefSuffix: '', label: '企业概览' },
   { hrefSuffix: '/ai', label: 'AI 管理' },
-  { hrefSuffix: '/wecom', label: '企业微信管理' },
 ];
 
 interface EnterprisePageHeaderProps {

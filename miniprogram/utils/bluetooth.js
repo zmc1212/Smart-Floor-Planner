@@ -21,7 +21,7 @@ const HEARTBEAT_TIMEOUT = 12000;  // 12秒没收到任何回复认为断开
 
 const TARGET_DEVICE_NAME = 'LDMStudio 4D';
 
-function initBLE(callback, connectCallback, disconnectCallback) {
+function initBLE(callback, connectCallback, disconnectCallback, silent = false) {
   _onMeasureCallback = callback;
   _onConnectCallback = connectCallback;
   _onDisconnectCallback = disconnectCallback;
@@ -39,22 +39,22 @@ function initBLE(callback, connectCallback, disconnectCallback) {
         _isStateChangeRegistered = true;
       }
 
-      wx.showLoading({ title: '搜索测距仪...', mask: true });
-      startScan();
+      if (!silent) wx.showLoading({ title: '搜索测距仪...', mask: true });
+      startScan(silent);
     },
     fail: function (err) {
-      wx.showToast({ title: '请打开手机蓝牙', icon: 'none' });
+      if (!silent) wx.showToast({ title: '请打开手机蓝牙', icon: 'none' });
       wx.onBluetoothAdapterStateChange(function (res) {
         if (res.available) {
-          wx.showLoading({ title: '搜索测距仪...', mask: true });
-          startScan();
+          if (!silent) wx.showLoading({ title: '搜索测距仪...', mask: true });
+          startScan(silent);
         }
       });
     }
   });
 }
 
-function startScan() {
+function startScan(silent = false) {
   if (_isConnecting) return;
   _foundDevices = []; // 重置搜索列表
 
@@ -71,12 +71,14 @@ function startScan() {
       if (appAuth.bluetoothAuthorized === 'denied') msgs.push('【微信蓝牙权限】');
       
       if (msgs.length > 0) {
-        wx.hideLoading();
-        wx.showModal({
-          title: '权限提醒',
-          content: '安卓搜索蓝牙需开启：' + msgs.join('、') + '，请前往设置开启后重试。',
-          showCancel: false
-        });
+        if (!silent) {
+          wx.hideLoading();
+          wx.showModal({
+            title: '权限提醒',
+            content: '安卓搜索蓝牙需开启：' + msgs.join('、') + '，请前往设置开启后重试。',
+            showCancel: false
+          });
+        }
         return;
       }
     }
@@ -89,16 +91,18 @@ function startScan() {
   _scanTimer = setTimeout(function () {
     if (!_isConnecting) {
       wx.stopBluetoothDevicesDiscovery();
-      wx.hideLoading();
-      
-      var isAndroid = false;
-      try { isAndroid = wx.getSystemInfoSync().platform === 'android'; } catch(e){}
+      if (!silent) {
+        wx.hideLoading();
+        
+        var isAndroid = false;
+        try { isAndroid = wx.getSystemInfoSync().platform === 'android'; } catch(e){}
 
-      wx.showModal({
-        title: '未发现设备',
-        content: '未搜索到授权的测距仪，请确保设备已开启、已在后台录入编码并靠近手机。',
-        showCancel: false
-      });
+        wx.showModal({
+          title: '未发现设备',
+          content: '未搜索到授权的测距仪，请确保设备已开启、已在后台录入编码并靠近手机。',
+          showCancel: false
+        });
+      }
     }
   }, 10000);
 
@@ -132,10 +136,10 @@ function startScan() {
                 _isConnecting = true;
                 if (_scanTimer) clearTimeout(_scanTimer);
                 wx.stopBluetoothDevicesDiscovery();
-                wx.hideLoading();
+                if (!silent) wx.hideLoading();
 
                 console.log('✅ 设备授权成功，发起连接:', name);
-                connectDevice(device.deviceId, name.trim());
+                connectDevice(device.deviceId, name.trim(), silent);
               } else {
                 console.log('🚫 设备未授权:', verifyRes.message);
                 // Optionally show feedback if the user specifically tried this device
@@ -152,17 +156,19 @@ function startScan() {
     fail: function (err) {
       console.log('搜索设备失败', err);
       if (_scanTimer) clearTimeout(_scanTimer);
-      wx.hideLoading();
-      
-      var errMsg = '搜索失败，请确保蓝牙正常。';
-      if (err.errCode === 10001 || /location/i.test(err.errMsg) || /system/i.test(err.errMsg)) {
-         errMsg = '蓝牙未准备就绪或权限不足，请检查手机蓝牙、系统定位开关及微信定位权限。';
+      if (!silent) {
+        wx.hideLoading();
+        
+        var errMsg = '搜索失败，请确保蓝牙正常。';
+        if (err.errCode === 10001 || /location/i.test(err.errMsg) || /system/i.test(err.errMsg)) {
+           errMsg = '蓝牙未准备就绪或权限不足，请检查手机蓝牙、系统定位开关及微信定位权限。';
+        }
+        wx.showModal({
+          title: '搜索异常',
+          content: errMsg + ' (' + (err.errCode || err.errMsg) + ')',
+          showCancel: false
+        });
       }
-      wx.showModal({
-        title: '搜索异常',
-        content: errMsg + ' (' + (err.errCode || err.errMsg) + ')',
-        showCancel: false
-      });
     }
   });
 }
@@ -523,7 +529,7 @@ function autoConnectBLE(callback, connectCallback, disconnectCallback, silent = 
   } else {
     // 没有记忆设备时，直接调用常规搜索
     if (!silent) wx.showToast({ title: '无记忆设备，请手动搜索', icon: 'none' });
-    initBLE(callback, connectCallback, disconnectCallback);
+    initBLE(callback, connectCallback, disconnectCallback, silent);
   }
 }
 

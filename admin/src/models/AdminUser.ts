@@ -187,7 +187,7 @@ const AdminUserSchema: Schema<IAdminUser> = new Schema(
 );
 
 // Pre-save hook to set default permissions if empty
-AdminUserSchema.pre('save', async function (next) {
+AdminUserSchema.pre('save', async function () {
   if (this.isNew && (!this.menuPermissions || this.menuPermissions.length === 0)) {
     try {
       // Try to find custom role config in DB
@@ -203,7 +203,6 @@ AdminUserSchema.pre('save', async function (next) {
       this.menuPermissions = DEFAULT_PERMISSIONS[this.role] || [];
     }
   }
-  next();
 });
 
 AdminUserSchema.index({ enterpriseId: 1, role: 1 });

@@ -107,7 +107,13 @@ export async function POST(request: Request) {
         status: 'active', 
         $or: [{ openid }, ...(userData.phone ? [{ phone: userData.phone }] : [])] 
       });
-      if (staffData) role = 'staff';
+
+      if (staffData) {
+        role = 'staff';
+        if (!staffData.openid) {
+          await AdminUser.collection.updateOne({ _id: staffData._id }, { $set: { openid } });
+        }
+      }
 
     } else if (type === 'wechat_phone') {
       const { loginCode, phoneCode } = body;

@@ -13,6 +13,8 @@ import {
   PLATFORM_PROMOTION_CONFIG,
 } from '@/lib/promotion-workflow';
 import { dispatchWorkflowNotifications } from '@/lib/workflow-automation';
+import { notifyPlatformAdminOfNewReport, notifyEnterpriseAdminOfNewLead, notifyDesignerOfAssignedLead } from '@/lib/wechat-notification';
+import { WeComService } from '@/lib/wecom';
 import { tenantStorage } from '@/lib/tenant-context';
 import { withTenantContext } from '@/lib/auth';
 
@@ -176,6 +178,7 @@ async function handlePostInternal(body: any, mpStaff: any, adminContext: any) {
       },
       { new: true }
     );
+    
     return NextResponse.json({ success: true, data: updated, created: false });
   }
 
@@ -230,10 +233,13 @@ async function handlePostInternal(body: any, mpStaff: any, adminContext: any) {
       await dispatchWorkflowNotifications({
         record: createdRecord,
         notificationType: 'follow_up_created',
-        recipientRoles: ['salesperson'],
+        recipientRoles: ['salesperson', 'admin', 'super_admin'],
         message: `【新报备待跟进】${createdRecord.enterpriseName} 已报备成功，请在时限内完成首次联系。`,
         dedupeSuffix: `create-${createdRecord._id}`,
       });
+      
+      // Also specifically notify platform admins via WeChat
+      await notifyPlatformAdminOfNewReport(createdRecord);
     }
   }
 

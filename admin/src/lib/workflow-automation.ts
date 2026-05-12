@@ -2,8 +2,9 @@ import mongoose from 'mongoose';
 import { AdminUser } from '@/models/AdminUser';
 import { Enterprise } from '@/models/Enterprise';
 import { PromotionEnterpriseRecord } from '@/models/PromotionEnterpriseRecord';
-import { WorkflowNotificationLog, WorkflowNotificationType } from '@/models/WorkflowNotificationLog';
+import { WorkflowNotificationLog, WorkflowNotificationType, WorkflowNotificationChannel, WorkflowNotificationStatus } from '@/models/WorkflowNotificationLog';
 import { WeComService } from '@/lib/wecom';
+import { sendSubscriptionMessage } from '@/lib/wechat-notification';
 
 export const DEFAULT_AUTOMATION_CONFIG = {
   followUpSlaHours: 24,
@@ -315,9 +316,9 @@ export async function createWorkflowNotificationLog(input: {
   recordId: unknown;
   recipientRole: string;
   recipientStaffId?: unknown;
-  channel: 'station' | 'wecom';
+  channel: WorkflowNotificationChannel;
   notificationType: WorkflowNotificationType;
-  status: 'sent' | 'failed' | 'skipped';
+  status: WorkflowNotificationStatus;
   dedupeKey?: string;
   message?: string;
   errorMessage?: string;
@@ -349,32 +350,41 @@ export async function createWorkflowNotificationLog(input: {
 async function resolveRecipientsForRole(record: any, role: string) {
   if (role === 'salesperson' && record.promoterId) {
     const user = await AdminUser.findById(record.promoterId)
-      .select('displayName username role wecomUserId enterpriseId')
+      .select('displayName username role wecomUserId openid enterpriseId')
       .lean();
     return user ? [user] : [];
   }
 
   if (role === 'measurer' && record.measureTask?.assignedTo) {
     const user = await AdminUser.findById(record.measureTask.assignedTo)
-      .select('displayName username role wecomUserId enterpriseId')
+      .select('displayName username role wecomUserId openid enterpriseId')
       .lean();
     return user ? [user] : [];
   }
 
   if (role === 'designer' && record.designTask?.assignedTo) {
     const user = await AdminUser.findById(record.designTask.assignedTo)
-      .select('displayName username role wecomUserId enterpriseId')
+      .select('displayName username role wecomUserId openid enterpriseId')
       .lean();
     return user ? [user] : [];
   }
 
-  if ((role === 'enterprise_admin' || role === 'admin' || role === 'super_admin') && record.enterpriseId) {
+  if ((role === 'admin' || role === 'super_admin')) {
+    return AdminUser.find({
+      role: role,
+      status: 'active',
+    })
+      .select('displayName username role wecomUserId openid enterpriseId')
+      .lean();
+  }
+
+  if (role === 'enterprise_admin' && record.enterpriseId) {
     return AdminUser.find({
       enterpriseId: record.enterpriseId,
       role: 'enterprise_admin',
       status: 'active',
     })
-      .select('displayName username role wecomUserId enterpriseId')
+      .select('displayName username role wecomUserId openid enterpriseId')
       .lean();
   }
 
@@ -461,6 +471,43 @@ export async function dispatchWorkflowNotifications(input: {
         message: input.message,
         errorMessage: sendResult.success ? undefined : sendResult.reason,
       });
+
+      // --- New: Mini Program Subscription Message ---
+      if (recipient.openid) {
+        // --- Mini Program Subscription Message ---
+        const GLOBAL_TEMPLATE_ID = 'j6WMWNX3_-NKfuZPs7XuHYz91EymYKcnob1uDziK5f4';
+        const eventTypeMap: Record<string, string> = {
+          follow_up_overdue: '跟进超时提醒',
+          measure_overdue: '测量超时提醒',
+          design_overdue: '设计超时提醒',
+          design_assigned: '任务派单提醒',
+        };
+
+        const subResult = await sendSubscriptionMessage({
+          touser: recipient.openid,
+          template_id: GLOBAL_TEMPLATE_ID,
+          page: '/pages/leads-management/leads-management',
+          data: {
+            thing1: { value: '系统自动提醒' },
+            time2: { value: new Date().toLocaleString('zh-CN', { hour12: false }) },
+            thing3: { value: eventTypeMap[input.notificationType] || '待办任务提醒' },
+            thing4: { value: input.message.substring(0, 20) },
+          }
+        });
+
+        await createWorkflowNotificationLog({
+          enterpriseId: input.record.enterpriseId,
+          recordId: input.record._id,
+          recipientRole: role,
+          recipientStaffId: recipient._id,
+          channel: 'miniprogram_sub',
+          notificationType: input.notificationType,
+          status: subResult.success ? 'sent' : 'failed',
+          dedupeKey: `${dedupeBase}:miniprogram_sub`,
+          message: input.message,
+          errorMessage: subResult.success ? undefined : subResult.error,
+        });
+      }
     }
   }
 }

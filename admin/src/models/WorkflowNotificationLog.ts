@@ -1,6 +1,6 @@
 import mongoose, { Document, Model, Schema } from 'mongoose';
 
-export type WorkflowNotificationChannel = 'station' | 'wecom';
+export type WorkflowNotificationChannel = 'station' | 'wecom' | 'miniprogram_sub';
 export type WorkflowNotificationStatus = 'sent' | 'failed' | 'skipped';
 export type WorkflowNotificationType =
   | 'follow_up_created'
@@ -37,7 +37,7 @@ const WorkflowNotificationLogSchema = new Schema<IWorkflowNotificationLog>(
     recordId: { type: Schema.Types.ObjectId, ref: 'PromotionEnterpriseRecord', required: true, index: true },
     recipientRole: { type: String, required: true, trim: true },
     recipientStaffId: { type: Schema.Types.ObjectId, ref: 'AdminUser' },
-    channel: { type: String, enum: ['station', 'wecom'], required: true },
+    channel: { type: String, enum: ['station', 'wecom', 'miniprogram_sub'], required: true },
     notificationType: {
       type: String,
       enum: [
