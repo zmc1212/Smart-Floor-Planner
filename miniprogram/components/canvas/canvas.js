@@ -46,22 +46,10 @@ Component({
 
   lifetimes: {
     ready: function () {
-      var that = this;
-      // 获取容器尺寸
-      var query = this.createSelectorQuery();
-      query.select('#canvas-container').boundingClientRect(function (rect) {
-        if (rect) {
-          that.setData({
-            canvasWidth: rect.width,
-            canvasHeight: rect.height
-          }, function() {
-              // Wait for setData to finish before initCanvas
-              that.initCanvas();
-          });
-        }
-      }).exec();
+      this.refreshSize();
 
       // 闪烁与动画定时器 (50ms 保证呼吸灯平滑)
+      var that = this;
       this._blinkTimer = setInterval(function () {
         var now = Date.now();
         var isBlinkOn = Math.floor(now / 500) % 2 === 0;
@@ -86,25 +74,113 @@ Component({
   },
 
   methods: {
+    refreshSize: function (retries = 3) {
+      var that = this;
+      var query = this.createSelectorQuery();
+      query.select('#canvas-container').boundingClientRect(function (rect) {
+        if (rect && rect.width > 0) {
+          console.log('[Canvas] Container size acquired:', rect.width, rect.height);
+          that.setData({
+            canvasWidth: rect.width,
+            canvasHeight: rect.height
+          }, function() {
+            that.initCanvas();
+          });
+        } else if (retries > 0) {
+          console.warn('[Canvas] Failed to get size, retrying...', retries);
+          setTimeout(() => that.refreshSize(retries - 1), 200);
+        } else {
+          console.error('[Canvas] Failed to get container size after retries');
+        }
+      }).exec();
+    },
+
+    /**
+     * 归一化房间数据：兼容 w/h、width/height、defaultWidth/defaultHeight，
+     * 并为缺失坐标的房间分配默认位置
+     */
+    normalizeRooms: function (rooms) {
+      if (!rooms || !Array.isArray(rooms)) return [];
+      var canvasW = this.data.canvasWidth || 390;
+      var canvasH = this.data.canvasHeight || 600;
+
+      return rooms.map(function (r, idx) {
+        var room = Object.assign({}, r);
+
+        // 宽高归一化: w -> width, h -> height, defaultWidth -> width
+        if (room.width === undefined || room.width === null) {
+          room.width = parseFloat(room.w) || parseFloat(room.defaultWidth) || 40;
+        }
+        if (room.height === undefined || room.height === null) {
+          room.height = parseFloat(room.h) || parseFloat(room.defaultHeight) || 40;
+        }
+        room.width = parseFloat(room.width) || 40;
+        room.height = parseFloat(room.height) || 40;
+
+        // 坐标归一化: 缺失 x/y 时，居中排列
+        if (room.x === undefined || room.x === null || isNaN(parseFloat(room.x))) {
+          // 将房间排列在画布中心区域
+          var cols = Math.ceil(Math.sqrt(rooms.length));
+          var col = idx % cols;
+          var row = Math.floor(idx / cols);
+          room.x = col * (room.width + 5);
+          room.y = row * (room.height + 5);
+        } else {
+          room.x = parseFloat(room.x);
+          room.y = parseFloat(room.y) || 0;
+        }
+
+        return room;
+      });
+    },
+
     initCanvas: function () {
       var that = this;
       var query = this.createSelectorQuery();
       query.select('#floor-canvas')
         .fields({ node: true, size: true })
         .exec(function (res) {
-          if (!res || !res[0]) return;
+          if (!res || !res[0]) {
+            console.error('[Canvas] Failed to find #floor-canvas');
+            return;
+          }
           var canvas = res[0].node;
+          if (!canvas) {
+            console.error('[Canvas] Canvas node is null');
+            return;
+          }
           var ctx = canvas.getContext('2d');
           
           // 设置 Canvas 大小（适配高清屏）
-          var dpr = wx.getWindowInfo().pixelRatio;
-          canvas.width = that.data.canvasWidth * dpr;
-          canvas.height = that.data.canvasHeight * dpr;
-          ctx.scale(dpr, dpr);
+          // 兼容性修复: 优先使用 getWindowInfo，兜底使用 getSystemInfoSync
+          var dpr = 1;
+          try {
+            if (wx.getWindowInfo) {
+              dpr = wx.getWindowInfo().pixelRatio;
+            } else {
+              dpr = wx.getSystemInfoSync().pixelRatio;
+            }
+          } catch (e) {
+            dpr = wx.getSystemInfoSync().pixelRatio || 1;
+          }
+          
+          var w = that.data.canvasWidth || res[0].width;
+          var h = that.data.canvasHeight || res[0].height;
+
+          if (!w || !h) {
+            console.warn('[Canvas] Canvas size is 0, retrying init in 100ms');
+            setTimeout(() => that.initCanvas(), 100);
+            return;
+          }
+
+          canvas.width = w * dpr;
+          canvas.height = h * dpr;
+          // 注意：此处不再调用 ctx.scale，统一由 drawCanvas 中的 setTransform 管理
           
           that._canvas = canvas;
           that._ctx = ctx;
           that._dpr = dpr;
+          console.log('[Canvas] Initialized:', w, 'x', h, 'dpr:', dpr);
           that.drawCanvas();
         });
     },
@@ -113,29 +189,19 @@ Component({
      * 将所有房间居中并缩放到合适大小
      */
     fitToView: function () {
-      var rooms = this.properties.rooms;
+      var rooms = this.normalizeRooms(this.properties.rooms);
       if (this.properties.currentGuidedRoomId) {
         rooms = rooms.filter(r => r.id === this.properties.currentGuidedRoomId);
       }
-      console.log('执行 fitToView, 当前房间数量:', rooms ? rooms.length : 0);
       if (!rooms || rooms.length === 0) return;
 
-      // 1. 计算所有房间的包围盒 (World units)
+      // 1. 计算所有房间的包围盒
       var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       rooms.forEach(function (r) {
-        if (r.polygon && r.polygon.length > 0) {
-          r.polygon.forEach(function(p) {
-            minX = Math.min(minX, r.x + p.x);
-            minY = Math.min(minY, r.y + p.y);
-            maxX = Math.max(maxX, r.x + p.x);
-            maxY = Math.max(maxY, r.y + p.y);
-          });
-        } else {
-          minX = Math.min(minX, r.x);
-          minY = Math.min(minY, r.y);
-          maxX = Math.max(maxX, r.x + r.width);
-          maxY = Math.max(maxY, r.y + r.height);
-        }
+        minX = Math.min(minX, r.x);
+        minY = Math.min(minY, r.y);
+        maxX = Math.max(maxX, r.x + r.width);
+        maxY = Math.max(maxY, r.y + r.height);
       });
 
       var contentWidth = maxX - minX;
@@ -148,20 +214,17 @@ Component({
       var canvasHeight = this.data.canvasHeight;
       if (!canvasWidth || !canvasHeight) return;
 
-      // 3. 计算缩放比例 (留出 20% 的边距)
-      var padding = 60; // 像素边距
+      // 3. 计算缩放比例 (留出边距)
+      var padding = 60;
       var availableWidth = canvasWidth - padding * 2;
       var availableHeight = canvasHeight - padding * 2;
 
       var scaleX = availableWidth / (contentWidth || 1);
       var scaleY = availableHeight / (contentHeight || 1);
       var newScale = Math.min(scaleX, scaleY);
-      
-      // 限制缩放范围
       newScale = Math.max(0.2, Math.min(newScale, 3.0));
 
       // 4. 计算偏移量使中心对齐
-      // 公式: screenPos = worldPos * scale + offset => offset = screenPos - worldPos * scale
       var newOX = (canvasWidth / 2) - centerX * newScale;
       var newOY = (canvasHeight / 2) - centerY * newScale;
 
@@ -170,7 +233,6 @@ Component({
         offsetX: newOX,
         offsetY: newOY
       });
-      this.drawCanvas();
     },
 
     drawCanvas: function () {
@@ -182,13 +244,24 @@ Component({
       var scale = this.data.scale;
       var ox = this.data.offsetX;
       var oy = this.data.offsetY;
-      var rooms = this.properties.rooms;
+      var dpr = this._dpr || 1;
+
+      // 归一化房间数据
+      var rooms = this.normalizeRooms(this.properties.rooms);
       if (this.properties.currentGuidedRoomId) {
         rooms = rooms.filter(r => r.id === this.properties.currentGuidedRoomId);
       }
       var selectedIds = this.properties.selectedIds;
       var highlightedOpeningId = this.properties.highlightedOpeningId;
       var newRoom = this.data.newRoom;
+
+      // 防止 NaN 导致的渲染崩溃
+      if (isNaN(ox)) ox = 0;
+      if (isNaN(oy)) oy = 0;
+      if (isNaN(scale) || scale <= 0) scale = 1;
+
+      // 重置变换矩阵并应用 DPR 缩放
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       // 清空画布
       ctx.clearRect(0, 0, w, h);
@@ -250,7 +323,7 @@ Component({
       var endX = startX + Math.ceil(w / scale / GRID_SIZE + 2) * GRID_SIZE;
       var endY = startY + Math.ceil(h / scale / GRID_SIZE + 2) * GRID_SIZE;
 
-      ctx.strokeStyle = '#e0e0e0';
+      ctx.strokeStyle = '#d1d5db'; // 更清晰的网格颜色
       ctx.lineWidth = 0.5 / scale;
 
       ctx.beginPath();

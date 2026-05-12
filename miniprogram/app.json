@@ -9,7 +9,8 @@
     "pages/inspiration/inspiration",
     "pages/ai-gen/ai-gen",
     "pages/mine/mine",
-    "pages/login/login"
+    "pages/login/login",
+    "pages/leads-management/leads-management"
   ],
   "window": {
     "navigationBarTitleText": "智能量房大师",
@@ -29,6 +30,12 @@
         "text": "首页",
         "iconPath": "images/meaure0.png",
         "selectedIconPath": "images/meaure1.png"
+      },
+      {
+        "pagePath": "pages/leads-management/leads-management",
+        "text": "客户线索",
+        "iconPath": "images/mine0.png",
+        "selectedIconPath": "images/mine1.png"
       },
       {
         "pagePath": "pages/inspiration/inspiration",

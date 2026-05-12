@@ -4,6 +4,7 @@ import Lead from '@/models/Lead';
 import { FloorPlan } from '@/models/FloorPlan';
 import { AdminUser } from '@/models/AdminUser';
 import { getTenantContext, withTenantContext } from '@/lib/auth';
+import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -29,57 +30,62 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     await dbConnect();
     const { id } = await params;
     const body = await request.json();
+    const context = await resolveMiniProgramContext(request);
 
-    // Support Mini Program auth via openid
-    if (body.openid) {
-      const { User } = require('@/models/User');
-      const { AdminUser } = require('@/models/AdminUser');
-      const user = await User.findOne({ openid: body.openid });
-      if (user && user.role === 'staff') {
-        const staff = await AdminUser.findOne({ phone: user.phone });
-        if (staff) {
-          const tenantFilter = {
-            $or: [
-              { promoterId: staff._id },
-              { assignedTo: staff._id }
-            ]
-          };
-
-          // 继续原有的更新逻辑
-          if (body.assignedTo) {
-            body.assignedAt = new Date();
-          }
-
-          let updateOps: any = { ...body };
-          let updateDoc: any = {};
-
-          if (updateOps.openid) delete updateOps.openid;
-
-          if (body.floorPlanId) {
-            delete updateOps.floorPlanId;
-            updateDoc.$addToSet = { floorPlanIds: body.floorPlanId };
-          }
-
-          if (Object.keys(updateOps).length > 0) {
-            updateDoc.$set = updateOps;
-          }
-
-          const lead = await Lead.findOneAndUpdate(
-            { _id: id, ...tenantFilter },
-            Object.keys(updateDoc).length > 0 ? updateDoc : body,
-            { new: true, runValidators: true }
-          );
-
-          if (!lead) {
-            return NextResponse.json({ success: false, error: 'Lead not found or access denied' }, { status: 404 });
-          }
-
-          return NextResponse.json({ success: true, data: lead });
-        } else {
-          return NextResponse.json({ success: false, error: 'Staff profile not found' }, { status: 403 });
+    // Support Mini Program auth via JWT or openid
+    if (context?.staff || body.openid) {
+      let staff = context?.staff;
+      
+      // Fallback for legacy requests without JWT
+      if (!staff && body.openid) {
+        const { User } = require('@/models/User');
+        const { AdminUser } = require('@/models/AdminUser');
+        const user = await User.findOne({ openid: body.openid });
+        if (user && user.role === 'staff') {
+          staff = await AdminUser.findOne({ phone: user.phone });
         }
+      }
+
+      if (staff) {
+        const tenantFilter = {
+          $or: [
+            { promoterId: staff._id },
+            { assignedTo: staff._id }
+          ]
+        };
+
+        // 继续原有的更新逻辑
+        if (body.assignedTo) {
+          body.assignedAt = new Date();
+        }
+
+        let updateOps: any = { ...body };
+        let updateDoc: any = {};
+
+        if (updateOps.openid) delete updateOps.openid;
+
+        if (body.floorPlanId) {
+          delete updateOps.floorPlanId;
+          updateDoc.$addToSet = { floorPlanIds: body.floorPlanId };
+        }
+
+        if (Object.keys(updateOps).length > 0) {
+          updateDoc.$set = updateOps;
+        }
+
+        const lead = await Lead.findOneAndUpdate(
+          { _id: id, ...tenantFilter },
+          Object.keys(updateDoc).length > 0 ? updateDoc : body,
+          { new: true, runValidators: true }
+        );
+
+        if (!lead) {
+          return NextResponse.json({ success: false, error: 'Lead not found or access denied' }, { status: 404 });
+        }
+
+        return NextResponse.json({ success: true, data: lead });
       } else {
-        return NextResponse.json({ success: false, error: 'Unauthorized: Miniprogram user is not staff' }, { status: 403 });
+        return NextResponse.json({ success: false, error: 'Staff profile not found or Unauthorized' }, { status: 403 });
       }
     }
 

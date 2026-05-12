@@ -89,18 +89,24 @@ Page({
       
       // Parse layoutData if it's an object with draftState
       if (rooms && typeof rooms === 'object' && !Array.isArray(rooms)) {
-        draftState = rooms.draftState;
-        rooms = rooms.rooms;
+        draftState = rooms.draftState || null;
+        rooms = rooms.rooms || [];
       } else if (typeof rooms === 'string') {
         try {
           const parsed = JSON.parse(rooms);
-          if (parsed && parsed.rooms) {
-            rooms = parsed.rooms;
-            draftState = parsed.draftState;
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            rooms = parsed.rooms || [];
+            draftState = parsed.draftState || null;
           } else {
-            rooms = parsed;
+            rooms = Array.isArray(parsed) ? parsed : [];
           }
-        } catch (e) {}
+        } catch (e) {
+          rooms = [];
+        }
+      }
+
+      if (!Array.isArray(rooms)) {
+        rooms = [];
       }
 
       // 提取目标房间ID（优先使用明确传入的 roomId）
@@ -1233,7 +1239,9 @@ Page({
         }
         total += Math.abs(areaRaw) / 2;
       } else {
-        total += r.width * r.height;
+        var rw = parseFloat(r.width || r.w || r.defaultWidth || 0);
+        var rh = parseFloat(r.height || r.h || r.defaultHeight || 0);
+        total += (rw || 0) * (rh || 0);
       }
     }
 

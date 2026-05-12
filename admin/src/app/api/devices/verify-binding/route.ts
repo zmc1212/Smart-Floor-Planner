@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { Device } from '@/models/Device';
 import { AdminUser } from '@/models/AdminUser';
+import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 
 export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/devices/verify-binding
  * Body: { deviceId (hardware address/code), name, openid }
- * Purpose: Verify if the current Mini Program user (openid) is authorized to use this device.
+ * Purpose: Verify if the current Mini Program user is authorized to use this device.
  */
 export async function POST(request: Request) {
   try {
@@ -18,6 +19,8 @@ export async function POST(request: Request) {
     if (!deviceId) {
       return NextResponse.json({ success: false, error: '未提供设备ID' }, { status: 400 });
     }
+
+    const context = await resolveMiniProgramContext(request);
 
     // 1. Find the device by its code
     // The deviceId from Bluetooth usually contains the code or MAC.
@@ -42,18 +45,22 @@ export async function POST(request: Request) {
     // 2. Strict Binding Check
     // If the device is assigned to a specific user, we must verify the opening person
     if (matchedDevice.assignedUserId) {
-      if (!openid) {
+      let staff = context?.staff;
+      
+      // Fallback for legacy requests without JWT
+      if (!staff && openid) {
+         staff = await AdminUser.findOne({ openid: openid, status: 'active' });
+      }
+
+      if (!staff) {
         return NextResponse.json({ 
           success: true, 
           authorized: false, 
           message: '未能识别当前用户信息，无法验证设备授权' 
         });
       }
-
-      // Find the AdminUser linked to this openid
-      const staff = await AdminUser.findOne({ openid: openid, status: 'active' });
       
-      if (!staff || staff._id.toString() !== matchedDevice.assignedUserId.toString()) {
+      if (staff._id.toString() !== matchedDevice.assignedUserId.toString()) {
         return NextResponse.json({ 
           success: true, 
           authorized: false, 
@@ -64,9 +71,14 @@ export async function POST(request: Request) {
         // Device assigned to enterprise but not to a specific user yet?
         // Based on "Strict binding" requirement, it should ideally be assigned to a user.
         // If not assigned to a user, check if the staff belongs to the same enterprise.
-        if (openid) {
-            const staff = await AdminUser.findOne({ openid: openid, status: 'active' });
-            if (!staff || staff.enterpriseId?.toString() !== matchedDevice.enterpriseId?.toString()) {
+        let staff = context?.staff;
+        
+        if (!staff && openid) {
+           staff = await AdminUser.findOne({ openid: openid, status: 'active' });
+        }
+        
+        if (staff) {
+            if (staff.enterpriseId?.toString() !== matchedDevice.enterpriseId?.toString()) {
                 return NextResponse.json({ 
                     success: true, 
                     authorized: false, 

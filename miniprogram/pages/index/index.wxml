@@ -1,238 +1,217 @@
 <view class="page-container">
-  <block wx:if="{{isStaff}}">
-    <nav-bar 
-      navBarHeightTotal="{{navBarHeightTotal}}"
-      statusBarHeight="{{statusBarHeight}}"
-      capsulePadding="{{capsulePadding}}"
-      canUndo="{{false}}"
-      canRedo="{{false}}"
-      showHistory="{{false}}"
-      bleConnected="{{bleConnected}}"
-    />
+  <scroll-view class="home-scroll" scroll-y show-scrollbar="{{false}}">
+    <view class="status-spacer" style="height: {{statusBarHeight}}px;"></view>
 
-    <view class="main-content">
+    <view class="home-shell">
+      <view class="home-header">
+        <view class="brand-copy">
+          <text class="brand-title">智能量房大师</text>
+          <text class="brand-subtitle">专业量房·高效出图·智能设计</text>
+        </view>
+
+        <view class="header-actions">
+          <view class="city-chip">
+            <view class="city-pin">
+              <view class="city-pin-core"></view>
+            </view>
+            <text class="city-text">{{currentCity}}</text>
+            <view class="city-arrow"></view>
+          </view>
+
+          <view class="header-icon-button" bindtap="onQuickToolTap" data-action="help">
+            <view class="dots-icon">
+              <view class="dots-icon-dot"></view>
+              <view class="dots-icon-dot"></view>
+              <view class="dots-icon-dot"></view>
+            </view>
+          </view>
+
+          <view class="header-icon-button" bindtap="onQuickToolTap" data-action="support">
+            <view class="ring-icon">
+              <view class="ring-icon-core"></view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <!-- Branding Banner for Staff -->
       <view
-        class="branding-banner"
-        wx:if="{{branding}}"
+        class="branding-banner-compact"
+        wx:if="{{isStaff && branding}}"
         style="border-left: 8rpx solid {{branding.branding.primaryColor}}"
       >
-        <image class="brand-logo" src="{{branding.logo || '/assets/icons/logo.png'}}" mode="aspectFit" />
+        <image class="brand-logo" src="{{branding.logo || '/images/meaure1.png'}}" mode="aspectFit" />
         <view class="brand-info">
           <text class="brand-name">{{branding.name}}</text>
-          <text class="brand-tagline">专业量房，智能出图</text>
+          <text class="brand-tagline">企业认证服务商</text>
         </view>
       </view>
 
-      <lead-list openid="{{openid}}" bindadd="onOpenLeadModal" />
-    </view>
+      <view class="hero-card">
+        <view class="hero-copy">
+          <text class="hero-title">{{plannedRooms.length > 0 ? '继续量房' : '开始量房'}}</text>
+          <text class="hero-desc">
+            {{plannedRooms.length > 0 ? '继续完善户型测量，进入空间编辑与 AI 设计流程' : '连接设备，绘制户型图，精准测量，3D 呈现'}}
+          </text>
 
-    <view class="floating-btn-lead" bindtap="onOpenLeadModal">
-      <view class="floating-btn-lead-inner">开始量房绑定客户</view>
-    </view>
-  </block>
-
-  <block wx:else>
-    <scroll-view class="home-scroll" scroll-y show-scrollbar="{{false}}">
-      <view class="status-spacer" style="height: {{statusBarHeight}}px;"></view>
-
-      <view class="home-shell">
-        <view class="home-header">
-          <view class="brand-copy">
-            <text class="brand-title">智能量房大师</text>
-            <text class="brand-subtitle">专业量房·高效出图·智能设计</text>
-          </view>
-
-          <view class="header-actions">
-            <view class="city-chip">
-              <view class="city-pin">
-                <view class="city-pin-core"></view>
-              </view>
-              <text class="city-text">{{currentCity}}</text>
-              <view class="city-arrow"></view>
+          <view class="hero-actions">
+            <view class="hero-button" bindtap="onPrimaryMeasureTap">
+              <text class="hero-button-text">{{plannedRooms.length > 0 ? '继续量房' : '去量房'}}</text>
             </view>
 
-            <view class="header-icon-button" bindtap="onQuickToolTap" data-action="help">
-              <view class="dots-icon">
-                <view class="dots-icon-dot"></view>
-                <view class="dots-icon-dot"></view>
-                <view class="dots-icon-dot"></view>
-              </view>
-            </view>
-
-            <view class="header-icon-button" bindtap="onQuickToolTap" data-action="support">
-              <view class="ring-icon">
-                <view class="ring-icon-core"></view>
-              </view>
+            <view class="hero-tag" wx:if="{{plannedRooms.length > 0}}">
+              <text class="hero-tag-text">{{plannedRooms.length}} 个空间待处理</text>
             </view>
           </view>
         </view>
 
-        <view class="hero-card">
-          <view class="hero-copy">
-            <text class="hero-title">{{plannedRooms.length > 0 ? '继续量房' : '开始量房'}}</text>
-            <text class="hero-desc">
-              {{plannedRooms.length > 0 ? '继续完善户型测量，进入空间编辑与 AI 设计流程' : '连接设备，绘制户型图，精准测量，3D 呈现'}}
-            </text>
+        <view class="hero-visual">
+          <text class="hero-measure hero-measure-top">7200</text>
+          <text class="hero-measure hero-measure-right">4200</text>
+          <text class="hero-measure hero-measure-bottom">3600</text>
+          <text class="hero-measure hero-measure-left">3600</text>
 
-            <view class="hero-actions">
-              <view class="hero-button" bindtap="onPrimaryMeasureTap">
-                <text class="hero-button-text">{{plannedRooms.length > 0 ? '继续量房' : '去量房'}}</text>
-              </view>
-
-              <view class="hero-tag" wx:if="{{plannedRooms.length > 0}}">
-                <text class="hero-tag-text">{{plannedRooms.length}} 个空间待处理</text>
-              </view>
-            </view>
+          <view class="hero-scene">
+            <view class="scene-floor"></view>
+            <view class="scene-room scene-room-a"></view>
+            <view class="scene-room scene-room-b"></view>
+            <view class="scene-room scene-room-c"></view>
+            <view class="scene-room scene-room-d"></view>
+            <view class="scene-wall scene-wall-a"></view>
+            <view class="scene-wall scene-wall-b"></view>
+            <view class="scene-wall scene-wall-c"></view>
+            <view class="scene-wall scene-wall-d"></view>
+            <view class="scene-guide scene-guide-a"></view>
+            <view class="scene-guide scene-guide-b"></view>
+            <view class="scene-guide scene-guide-c"></view>
+            <view class="scene-glow"></view>
           </view>
 
-          <view class="hero-visual">
-            <text class="hero-measure hero-measure-top">7200</text>
-            <text class="hero-measure hero-measure-right">4200</text>
-            <text class="hero-measure hero-measure-bottom">3600</text>
-            <text class="hero-measure hero-measure-left">3600</text>
-
-            <view class="hero-scene">
-              <view class="scene-floor"></view>
-              <view class="scene-room scene-room-a"></view>
-              <view class="scene-room scene-room-b"></view>
-              <view class="scene-room scene-room-c"></view>
-              <view class="scene-room scene-room-d"></view>
-              <view class="scene-wall scene-wall-a"></view>
-              <view class="scene-wall scene-wall-b"></view>
-              <view class="scene-wall scene-wall-c"></view>
-              <view class="scene-wall scene-wall-d"></view>
-              <view class="scene-guide scene-guide-a"></view>
-              <view class="scene-guide scene-guide-b"></view>
-              <view class="scene-guide scene-guide-c"></view>
-              <view class="scene-glow"></view>
-            </view>
-
-            <view class="hero-device">
-              <view class="hero-device-screen"></view>
-            </view>
-
-            <view class="hero-laser"></view>
+          <view class="hero-device">
+            <view class="hero-device-screen"></view>
           </view>
+
+          <view class="hero-laser"></view>
+        </view>
+      </view>
+
+      <view class="quick-row">
+        <view class="quick-card" bindtap="onQuickBluetoothTap">
+          <view class="quick-card-icon quick-card-icon-green">
+            <text class="quick-card-icon-symbol">B</text>
+          </view>
+          <view class="quick-card-body">
+            <text class="quick-card-title">蓝牙连接</text>
+            <text class="quick-card-subtitle">{{bleStatusText}}</text>
+          </view>
+          <view class="quick-status-dot {{bleConnected ? 'quick-status-dot-active' : ''}}"></view>
         </view>
 
-        <view class="quick-row">
-          <view class="quick-card" bindtap="onQuickBluetoothTap">
-            <view class="quick-card-icon quick-card-icon-green">
-              <text class="quick-card-icon-symbol">B</text>
-            </view>
-            <view class="quick-card-body">
-              <text class="quick-card-title">蓝牙连接</text>
-              <text class="quick-card-subtitle">{{bleStatusText}}</text>
-            </view>
-            <view class="quick-status-dot {{bleConnected ? 'quick-status-dot-active' : ''}}"></view>
+        <view class="quick-card" bindtap="onQuickQuoteTap">
+          <view class="quick-card-icon quick-card-icon-green quick-card-icon-soft">
+            <text class="quick-card-icon-symbol quick-card-icon-symbol-money">¥</text>
           </view>
-
-          <view class="quick-card" bindtap="onQuickQuoteTap">
-            <view class="quick-card-icon quick-card-icon-green quick-card-icon-soft">
-              <text class="quick-card-icon-symbol quick-card-icon-symbol-money">¥</text>
-            </view>
-            <view class="quick-card-body">
-              <text class="quick-card-title">快速报价</text>
-              <text class="quick-card-subtitle">10 秒获取报价清单</text>
-            </view>
-            <text class="quick-card-arrow">›</text>
+          <view class="quick-card-body">
+            <text class="quick-card-title">快速报价</text>
+            <text class="quick-card-subtitle">10 秒获取报价清单</text>
           </view>
+          <text class="quick-card-arrow">›</text>
         </view>
+      </view>
 
-        <view class="section-card section-card-compact">
-          <text class="section-title">我的数据</text>
+      <view class="section-card section-card-compact">
+        <text class="section-title">我的数据</text>
 
-          <view class="stats-grid">
-            <view class="stat-card" wx:for="{{dashboardStats}}" wx:key="key">
-              <view class="stat-icon stat-icon-{{item.tone}}">
-                <text class="stat-icon-glyph">{{item.glyph}}</text>
-              </view>
-              <view class="stat-copy">
-                <text class="stat-label">{{item.label}}</text>
-                <view class="stat-value-row">
-                  <text class="stat-value">{{item.value}}</text>
-                  <text class="stat-unit">{{item.unit}}</text>
-                </view>
-              </view>
+        <view class="stats-grid">
+          <view class="stat-card" wx:for="{{dashboardStats}}" wx:key="key">
+            <view class="stat-icon stat-icon-{{item.tone}}">
+              <text class="stat-icon-glyph">{{item.glyph}}</text>
             </view>
-          </view>
-        </view>
-
-        <view class="section-card section-card-recent">
-          <view class="section-head">
-            <text class="section-title">最近方案</text>
-            <text class="section-link" bindtap="onOpenAllPlans">全部方案</text>
-          </view>
-
-          <block wx:if="{{recentPlans.length > 0}}">
-            <view
-              class="recent-plan"
-              wx:for="{{recentPlans}}"
-              wx:key="_id"
-              data-id="{{item._id}}"
-              bindtap="onTapRecentPlan"
-            >
-              <view class="recent-plan-thumb thumb-variant-{{item.thumbVariant}}">
-                <view class="thumb-shell">
-                  <view class="thumb-box thumb-box-a"></view>
-                  <view class="thumb-box thumb-box-b"></view>
-                  <view class="thumb-box thumb-box-c"></view>
-                  <view class="thumb-box thumb-box-d"></view>
-                  <view class="thumb-line thumb-line-a"></view>
-                  <view class="thumb-line thumb-line-b"></view>
-                  <view class="thumb-line thumb-line-c"></view>
-                </view>
+            <view class="stat-copy">
+              <text class="stat-label">{{item.label}}</text>
+              <view class="stat-value-row">
+                <text class="stat-value">{{item.value}}</text>
+                <text class="stat-unit">{{item.unit}}</text>
               </view>
-
-              <view class="recent-plan-body">
-                <text class="recent-plan-title">{{item.name}}</text>
-                <text class="recent-plan-meta">{{item.meta}}</text>
-              </view>
-
-              <view class="recent-plan-side">
-                <view class="recent-plan-status {{item.statusClass}}">
-                  <text class="recent-plan-status-text">{{item.statusLabel}}</text>
-                </view>
-                <view class="recent-plan-more">
-                  <view class="recent-plan-more-dot"></view>
-                  <view class="recent-plan-more-dot"></view>
-                  <view class="recent-plan-more-dot"></view>
-                </view>
-              </view>
-            </view>
-          </block>
-
-          <view class="empty-block" wx:else>
-            <text class="empty-block-title">还没有保存的方案</text>
-            <text class="empty-block-desc">点击上方去量房，系统会自动创建你的第一个项目。</text>
-          </view>
-        </view>
-
-        <view class="section-card section-card-tools">
-          <text class="section-title">快捷工具</text>
-
-          <view class="tool-row">
-            <view
-              class="tool-card"
-              wx:for="{{quickTools}}"
-              wx:key="key"
-              data-action="{{item.key}}"
-              bindtap="onQuickToolTap"
-            >
-              <view class="tool-icon tool-icon-{{item.tone}}">
-                <text class="tool-icon-glyph">{{item.glyph}}</text>
-              </view>
-              <view class="tool-body">
-                <text class="tool-title">{{item.title}}</text>
-                <text class="tool-subtitle">{{item.subtitle}}</text>
-              </view>
-              <text class="tool-arrow">›</text>
             </view>
           </view>
         </view>
       </view>
-    </scroll-view>
-  </block>
+
+      <view class="section-card section-card-recent">
+        <view class="section-head">
+          <text class="section-title">最近方案</text>
+          <text class="section-link" bindtap="onOpenAllPlans">全部方案</text>
+        </view>
+
+        <block wx:if="{{recentPlans.length > 0}}">
+          <view
+            class="recent-plan"
+            wx:for="{{recentPlans}}"
+            wx:key="_id"
+            data-id="{{item._id}}"
+            bindtap="onTapRecentPlan"
+          >
+            <view class="recent-plan-thumb thumb-variant-{{item.thumbVariant}}">
+              <view class="thumb-shell">
+                <view class="thumb-box thumb-box-a"></view>
+                <view class="thumb-box thumb-box-b"></view>
+                <view class="thumb-box thumb-box-c"></view>
+                <view class="thumb-box thumb-box-d"></view>
+                <view class="thumb-line thumb-line-a"></view>
+                <view class="thumb-line thumb-line-b"></view>
+                <view class="thumb-line thumb-line-c"></view>
+              </view>
+            </view>
+
+            <view class="recent-plan-body">
+              <text class="recent-plan-title">{{item.name}}</text>
+              <text class="recent-plan-meta">{{item.meta}}</text>
+            </view>
+
+            <view class="recent-plan-side">
+              <view class="recent-plan-status {{item.statusClass}}">
+                <text class="recent-plan-status-text">{{item.statusLabel}}</text>
+              </view>
+              <view class="recent-plan-more">
+                <view class="recent-plan-more-dot"></view>
+                <view class="recent-plan-more-dot"></view>
+                <view class="recent-plan-more-dot"></view>
+              </view>
+            </view>
+          </view>
+        </block>
+
+        <view class="empty-block" wx:else>
+          <text class="empty-block-title">还没有保存的方案</text>
+          <text class="empty-block-desc">点击上方去量房，系统会自动创建你的第一个项目。</text>
+        </view>
+      </view>
+
+      <view class="section-card section-card-tools">
+        <text class="section-title">快捷工具</text>
+
+        <view class="tool-row">
+          <view
+            class="tool-card"
+            wx:for="{{quickTools}}"
+            wx:key="key"
+            data-action="{{item.key}}"
+            bindtap="onQuickToolTap"
+          >
+            <view class="tool-icon tool-icon-{{item.tone}}">
+              <text class="tool-icon-glyph">{{item.glyph}}</text>
+            </view>
+            <view class="tool-body">
+              <text class="tool-title">{{item.title}}</text>
+              <text class="tool-subtitle">{{item.subtitle}}</text>
+            </view>
+            <text class="tool-arrow">›</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
 
   <lead-modal show="{{showLeadModal}}" bindclose="onCloseLeadModal" bindsuccess="onLeadSuccess" />
 

@@ -112,7 +112,7 @@ Page({
       bleConnected: app.globalData.bleConnected || false,
       userInfo: userInfo,
       openid: app.globalData.openid || '',
-      isStaff: false,
+      isStaff: (userInfo && userInfo.role === 'staff'),
       currentCity: this.deriveCurrentCity(userInfo),
       homeTemplates: (this.data.layoutTemplates || []).slice(0, 4),
       quickTools: QUICK_TOOLS,
@@ -159,7 +159,7 @@ Page({
     this.setData({
       bleConnected: app.globalData.bleConnected || false,
       branding: app.globalData.branding || null,
-      isStaff: false,
+      isStaff: (userInfo && userInfo.role === 'staff'),
       userInfo: userInfo,
       openid: app.globalData.openid || '',
       currentCity: this.deriveCurrentCity(userInfo),
@@ -338,7 +338,8 @@ Page({
       return;
     }
 
-    this.onOpenCloudPlan({ detail: { fp: plan } });
+    getApp().globalData.restoreFloorPlan = Object.assign({}, plan, { isRestore: true });
+    wx.navigateTo({ url: '/pages/editor/editor' });
   },
 
   onContinueProjectTap: function () {

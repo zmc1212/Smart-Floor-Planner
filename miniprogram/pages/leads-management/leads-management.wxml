@@ -1,0 +1,13 @@
+<view class="page-container">
+  <view class="custom-header" style="height: {{navBarHeightTotal}}px;">
+    <view class="header-content" style="margin-top: {{statusBarHeight}}px; height: {{navBarHeightTotal - statusBarHeight}}px;">
+      <text class="page-title">客户线索管理</text>
+    </view>
+  </view>
+
+  <view class="main-content" style="padding-top: {{navBarHeightTotal}}px;">
+    <lead-list id="leadList" openid="{{openid}}" bindadd="onOpenLeadModal" />
+  </view>
+
+  <lead-modal show="{{showLeadModal}}" bindclose="onCloseLeadModal" bindsuccess="onLeadSuccess" />
+</view>

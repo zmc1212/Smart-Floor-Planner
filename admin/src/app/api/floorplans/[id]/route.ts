@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { FloorPlan } from '@/models/FloorPlan';
 import { User } from '@/models/User';
 import { AdminUser } from '@/models/AdminUser';
+import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 
 export async function PUT(
   req: Request,
@@ -15,7 +16,13 @@ export async function PUT(
 
     // Automatic Association for Staff if missing
     let staffUpdate: any = {};
-    if (body.openid) {
+    const context = await resolveMiniProgramContext(req);
+    
+    if (context?.staff) {
+       staffUpdate.staffId = context.staff._id;
+       staffUpdate.enterpriseId = context.staff.enterpriseId;
+    } else if (body.openid) {
+       // Legacy fallback
        const user = await User.findOne({ openid: body.openid });
        if (user && user.role === 'staff') {
          const staffMember = await AdminUser.findOne({ phone: user.phone });

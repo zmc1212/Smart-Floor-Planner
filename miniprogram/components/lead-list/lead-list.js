@@ -38,7 +38,13 @@ Component({
       'quoting': '报价中',
       'converted': '已签约',
       'closed': '已关闭'
-    }
+    },
+    stats: [
+      { key: 'all', label: '全部线索', count: 0, icon: '📋', tone: 'blue' },
+      { key: 'new', label: '待跟进', count: 0, icon: '🔥', tone: 'orange' },
+      { key: 'measuring', label: '量房中', count: 0, icon: '📐', tone: 'green' },
+      { key: 'converted', label: '已成交', count: 0, icon: '✅', tone: 'purple' }
+    ]
   },
 
   lifetimes: {
@@ -88,6 +94,10 @@ Component({
             loading: false,
             refreshing: false
           });
+          
+          if (reset) {
+            this.updateStats(formatted);
+          }
         }
       } catch (err) {
         console.error('Fetch leads failed', err);
@@ -145,10 +155,23 @@ Component({
 
     onStartMeasure(e) {
       const id = e.currentTarget.dataset.id;
-      // Handle navigation to measurement for this specific lead
       wx.navigateTo({
         url: `/pages/lead-detail/lead-detail?id=${id}&action=measure`
       });
+    },
+
+    updateStats(leads) {
+      // In a real app, this would come from a dedicated stats API
+      // Here we simulate it based on the current list for UI demonstration
+      const stats = this.data.stats.map(s => {
+        let count = 0;
+        if (s.key === 'all') count = leads.length * 5; // Simulating larger total
+        else if (s.key === 'new') count = leads.filter(l => l.status === 'new').length;
+        else if (s.key === 'measuring') count = leads.filter(l => l.status === 'measuring').length;
+        else if (s.key === 'converted') count = leads.filter(l => l.status === 'converted').length;
+        return { ...s, count };
+      });
+      this.setData({ stats });
     }
   }
 });

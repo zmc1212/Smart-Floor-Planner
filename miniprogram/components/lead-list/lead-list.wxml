@@ -1,88 +1,127 @@
 <view class="lead-list-container">
-  <!-- 搜索与筛选 -->
-  <view class="search-header">
-    <view class="search-bar">
-      <icon type="search" size="14" color="#999" />
-      <input class="search-input" placeholder="搜索客户姓名或小区" bindconfirm="onSearch" />
-    </view>
-    <view class="add-lead-btn" bindtap="onAddLead">
-      <text class="add-icon">+</text>
+  <!-- Stats Dashboard -->
+  <view class="stats-dashboard">
+    <view class="stat-card-mini" wx:for="{{stats}}" wx:key="key">
+      <view class="stat-icon-bg {{item.tone}}">
+        <text class="stat-icon-text">{{item.icon}}</text>
+      </view>
+      <view class="stat-info">
+        <text class="stat-count">{{item.count}}</text>
+        <text class="stat-label-mini">{{item.label}}</text>
+      </view>
     </view>
   </view>
 
-  <!-- 选项卡导航 -->
-  <view class="tabs-nav">
+  <!-- Search & Filter -->
+  <view class="search-section">
+    <view class="search-box">
+      <view class="search-icon-wrapper">
+        <icon type="search" size="14" color="#999" />
+      </view>
+      <input class="search-input-new" placeholder="搜索客户姓名、手机号、小区" bindconfirm="onSearch" />
+    </view>
+    <view class="action-buttons">
+      <view class="filter-btn">
+        <text class="filter-icon">≡</text>
+      </view>
+      <view class="add-circle-btn" bindtap="onAddLead">
+        <text class="plus-icon">+</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- Tabs Navigation -->
+  <view class="tabs-wrapper">
     <scroll-view scroll-x class="tabs-scroll" show-scrollbar="{{false}}">
       <view 
         wx:for="{{tabs}}" 
         wx:key="id" 
-        class="tab-item {{currentTab === item.id ? 'active' : ''}}" 
+        class="tab-node {{currentTab === item.id ? 'active' : ''}}" 
         bindtap="onTabChange" 
         data-index="{{index}}"
       >
-        <text class="tab-label">{{item.label}}</text>
-        <view class="tab-underline" wx:if="{{currentTab === item.id}}"></view>
+        <text class="tab-text">{{item.label}}</text>
+        <view class="tab-bar-indicator" wx:if="{{currentTab === item.id}}"></view>
       </view>
     </scroll-view>
   </view>
 
-  <!-- 滑动内容区域 -->
-  <view class="loading-overlay" wx:if="{{loading && leads.length === 0}}">
-    <view class="spinner"></view>
-    <text>正在加载客户线索...</text>
+  <!-- List Content -->
+  <view class="loading-state" wx:if="{{loading && leads.length === 0}}">
+    <view class="loading-spinner"></view>
+    <text>加载中...</text>
   </view>
 
-  <swiper class="swiper-content" current="{{currentTabIndex}}" bindchange="onSwiperChange">
+  <swiper class="list-swiper" current="{{currentTabIndex}}" bindchange="onSwiperChange">
     <swiper-item wx:for="{{tabs}}" wx:key="id">
       <scroll-view 
         scroll-y 
-        class="list-scroll" 
+        class="list-scroller" 
         refresher-enabled 
         refresher-triggered="{{refreshing}}" 
         bindrefresherrefresh="onRefresh" 
         bindscrolltolower="onLoadMore"
       >
-        <view class="leads-grid" wx:if="{{leads.length > 0}}">
+        <view class="leads-collection" wx:if="{{leads.length > 0}}">
           <view 
-            class="lead-card" 
+            class="premium-lead-card" 
             wx:for="{{leads}}" 
             wx:key="_id" 
             bindtap="onLeadClick" 
             data-id="{{item._id}}"
           >
-            <view class="card-header">
-              <view class="status-badge {{item.status}}">{{item.statusLabel}}</view>
-              <text class="date-text">{{item.createdAtFormatted}}</text>
+            <view class="card-top">
+              <view class="lead-user-info">
+                <view class="avatar-placeholder">{{item.name[0]}}</view>
+                <view class="user-text">
+                  <text class="user-name">{{item.name}}</text>
+                  <text class="user-phone">{{item.phone}}</text>
+                </view>
+              </view>
+              <view class="status-chip status-{{item.status}}">
+                <text>{{item.statusLabel}}</text>
+              </view>
             </view>
             
-            <view class="card-main">
-              <view class="customer-info">
-                <text class="customer-name">{{item.name}}</text>
-                <text class="customer-community">{{item.communityName || '未录入小区'}}</text>
+            <view class="card-mid">
+              <view class="project-info">
+                <text class="project-label">意向小区</text>
+                <text class="project-value">{{item.communityName || '待录入'}}</text>
               </view>
-              <view class="customer-phone">{{item.phone}}</view>
+              <view class="project-info">
+                <text class="project-label">创建日期</text>
+                <text class="project-value">{{item.createdAtFormatted}}</text>
+              </view>
             </view>
 
-            <view class="card-footer">
-              <view class="meta-item">
-                <text class="meta-icon">📐</text>
-                <text class="meta-text">{{item.roomCount}} 个空间</text>
+            <view class="card-bottom-line">
+              <view class="meta-stats">
+                <view class="meta-pill">
+                  <text class="pill-icon">📐</text>
+                  <text class="pill-text">{{item.roomCount}} 空间</text>
+                </view>
+                <view class="meta-pill" wx:if="{{item.budget}}">
+                  <text class="pill-icon">💰</text>
+                  <text class="pill-text">{{item.budget}}万</text>
+                </view>
               </view>
-              <view class="action-btn" catchtap="onStartMeasure" data-id="{{item._id}}">
-                去量房
+              <view class="card-action-btn" catchtap="onStartMeasure" data-id="{{item._id}}">
+                开始量房
               </view>
             </view>
           </view>
           
-          <view class="load-more-tip" wx:if="{{loading}}">正在加载...</view>
-          <view class="load-more-tip" wx:elif="{{!hasMore}}">没有更多了</view>
+          <view class="footer-tip" wx:if="{{loading}}">正在加载...</view>
+          <view class="footer-tip" wx:elif="{{!hasMore}}">到底了</view>
         </view>
 
-        <!-- 空状态 -->
-        <view class="empty-state" wx:else>
-          <image class="empty-img" src="/images/mine0.png" mode="aspectFit" />
-          <text class="empty-title">暂无相关线索</text>
-          <text class="empty-desc">在该状态下还没有任何客户记录</text>
+        <!-- Empty State -->
+        <view class="empty-placeholder" wx:else>
+          <view class="empty-icon-box">
+            <text class="empty-emoji">📝</text>
+          </view>
+          <text class="empty-msg">暂无此类客户</text>
+          <view class="empty-cta" bindtap="onAddLead">新建一个</view>
         </view>
       </scroll-view>
     </swiper-item>

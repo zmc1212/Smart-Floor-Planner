@@ -1,0 +1,31 @@
+.page-container {
+  min-height: 100vh;
+  background-color: var(--bg-page);
+}
+
+.custom-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: #fff;
+  z-index: 100;
+  box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.02);
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  padding: 0 32rpx;
+}
+
+.page-title {
+  font-size: 34rpx;
+  font-weight: var(--font-weight-bold);
+  color: var(--neutral-900);
+}
+
+.main-content {
+  height: 100vh;
+  box-sizing: border-box;
+}

@@ -2,12 +2,15 @@
 <view class="container">
   <view wx:if="{{!isLoggedIn}}" class="login-section">
     <view class="login-icon">
-      <image class="login-logo" src="{{defaultAvatarUrl}}"></image>
+      <image class="login-logo" src="{{defaultAvatarUrl}}" mode="aspectFit"></image>
     </view>
     <view class="login-title">智能量房大师</view>
-    <view class="login-subtitle">发现您的户型之美</view>
+    <view class="login-subtitle">
+      <text>发现您的户型之美\n</text>
+      <text>专业激光测距 · AI 风格生成 · 装修灵感库</text>
+    </view>
     <button class="login-btn" bindtap="goToLogin">
-      立即登录 / 注册
+      立即开启体验
     </button>
   </view>
 
@@ -30,7 +33,7 @@
         </view>
       </view>
       <view class="logout-icon-btn" bindtap="onLogout">
-        <image src="/assets/icons/logout.png" mode="aspectFit" style="width: 32rpx; height: 32rpx; opacity: 0.3;"></image>
+        <image src="/images/mine1.png" mode="aspectFit" style="width: 32rpx; height: 32rpx;"></image>
       </view>
     </view>
 
@@ -55,17 +58,19 @@
       <view class="action-item full" wx:if="{{userInfo.staffRole === 'measurer'}}" data-view="measure" bindtap="onOpenPromotionList">
         <view class="action-icon primary">测</view>
         <text class="action-label">待处理测量任务</text>
+        <view class="arrow-icon"></view>
       </view>
       <view class="action-item full" wx:if="{{userInfo.staffRole === 'designer'}}" data-view="design" bindtap="onOpenPromotionList">
         <view class="action-icon primary">设</view>
         <text class="action-label">待处理设计任务</text>
+        <view class="arrow-icon"></view>
       </view>
     </view>
 
     <block wx:if="{{userInfo.role === 'staff'}}">
       <view class="floorplan-section">
         <view class="section-header">
-          <text class="section-title">员工工作台</text>
+          <text class="section-title">工作看板</text>
         </view>
 
         <view class="workbench-grid" wx:if="{{workbenchSummary && workbenchSummary.cards}}">
@@ -83,7 +88,7 @@
         <view class="floorplan-list" wx:if="{{todoItems.length > 0}}">
           <view class="floorplan-card" wx:for="{{todoItems}}" wx:key="key" data-id="{{item.recordId}}" bindtap="onOpenTodoDetail">
             <view class="card-body">
-              <view class="fp-icon-container" style="background: #eff6ff; color: #2563eb;">
+              <view class="fp-icon-container">
                 <text class="fp-emoji">办</text>
               </view>
               <view class="fp-content">
@@ -111,8 +116,8 @@
         <view class="floorplan-list" wx:if="{{overdueTodoItems.length > 0}}">
           <view class="floorplan-card" wx:for="{{overdueTodoItems}}" wx:key="key" data-id="{{item.recordId}}" bindtap="onOpenTodoDetail">
             <view class="card-body">
-              <view class="fp-icon-container" style="background: #fff7ed; color: #ea580c;">
-                <text class="fp-emoji">提醒</text>
+              <view class="fp-icon-container" style="background: var(--status-cancelled-bg); color: var(--status-cancelled-text);">
+                <text class="fp-emoji">⏳</text>
               </view>
               <view class="fp-content">
                 <view class="fp-title-line">
@@ -130,14 +135,14 @@
         </view>
 
         <view class="section-header" wx:if="{{staffItems.length > 0}}">
-          <text class="section-title">最近任务</text>
+          <text class="section-title">最近报备</text>
           <text class="section-count">{{staffItems.length}} 条</text>
         </view>
 
         <view class="floorplan-list" wx:if="{{staffItems.length > 0}}">
           <view class="floorplan-card" wx:for="{{staffItems}}" wx:key="_id" data-id="{{item._id}}" bindtap="onOpenPromotionDetail">
             <view class="card-body">
-              <view class="fp-icon-container" style="background: #f0fdf4; color: #16a34a;">
+              <view class="fp-icon-container">
                 <text class="fp-emoji">企</text>
               </view>
               <view class="fp-content">
@@ -161,29 +166,29 @@
         <view class="empty-wrapper" wx:if="{{todoItems.length === 0 && overdueTodoItems.length === 0 && staffItems.length === 0}}">
           <view class="empty-state-card">
             <view class="empty-icon-box">
-              <text class="empty-emoji">📝</text>
+              <text class="empty-emoji">🌱</text>
             </view>
             <view class="empty-title">工作台已就绪</view>
-            <view class="empty-subtitle">暂无待办任务或报备记录。新的业务线索和任务分配会自动出现在这里。</view>
+            <view class="empty-subtitle">暂无待办任务。新的业务线索和任务分配会自动出现在这里，为您提供精准测量支持。</view>
             <view class="empty-action" wx:if="{{userInfo.staffRole === 'salesperson'}}" bindtap="onCreatePromotionRecord">
-              立即去报备
+              立即报备新客户
             </view>
           </view>
         </view>
 
         <view class="section-header" wx:if="{{userInfo.staffRole === 'salesperson'}}">
-          <text class="section-title">最近提成</text>
+          <text class="section-title">提成概览</text>
           <text class="section-count">{{commissionItems.length}} 条</text>
         </view>
         <view class="floorplan-list" wx:if="{{userInfo.staffRole === 'salesperson' && commissionItems.length > 0}}">
           <view class="floorplan-card" wx:for="{{commissionItems}}" wx:key="_id" bindtap="onOpenCommissions">
             <view class="card-body">
-              <view class="fp-icon-container" style="background: #fff7ed; color: #ea580c;">
+              <view class="fp-icon-container">
                 <text class="fp-emoji">¥</text>
               </view>
               <view class="fp-content">
                 <view class="fp-title-line">
-                  <text class="fp-name">固定提成</text>
+                  <text class="fp-name">业绩奖金</text>
                   <view class="status-tag {{item.status === 'paid' ? 'converted' : 'designing'}}">
                     {{map.commissionStatus(item.status)}}
                   </view>
@@ -203,7 +208,7 @@
     <block wx:else>
       <view class="floorplan-section" wx:if="{{floorPlans.length > 0}}">
         <view class="section-header">
-          <text class="section-title">我的户型图</text>
+          <text class="section-title">我的户型</text>
           <text class="section-count">{{floorPlans.length}} 份</text>
         </view>
 
@@ -211,13 +216,13 @@
           <view class="floorplan-card" wx:for="{{floorPlans}}" wx:key="_id" data-id="{{item._id}}" bindtap="onOpenFloorPlan">
             <view class="card-body">
               <view class="fp-icon-container">
-                <text class="fp-emoji">图</text>
+                <text class="fp-emoji">📐</text>
               </view>
               <view class="fp-content">
                 <view class="fp-title-line">
                   <text class="fp-name">{{item.name}}</text>
-                  <view class="status-tag {{item.status}}">
-                    {{item.status === 'completed' ? '已完成' : '草稿'}}
+                  <view class="status-tag {{item.status === 'completed' ? 'converted' : 'draft'}}">
+                    {{item.status === 'completed' ? '测量完成' : '测量中'}}
                   </view>
                 </view>
                 <view class="fp-info-line">
@@ -231,10 +236,7 @@
             <view class="card-actions">
               <view class="ai-gen-btn" catchtap="onAIGen" data-id="{{item._id}}">
                 <text class="ai-stars">✦</text>
-                <text>生成 AI 效果图</text>
-              </view>
-              <view class="fp-arrow">
-                <view class="arrow-icon"></view>
+                <text>AI 设计</text>
               </view>
             </view>
           </view>
@@ -244,17 +246,18 @@
       <view class="empty-container" wx:else>
         <view class="empty-visual">
           <view class="empty-circle">
-            <text class="empty-emoji">图</text>
+            <text class="empty-emoji">🏠</text>
           </view>
         </view>
-        <view class="empty-title">发现您的户型之美</view>
-        <view class="empty-subtitle">使用激光测距仪精准测量，AI 助力设计落地</view>
-        <button class="primary-btn" bindtap="onCreateNew">开始新测量</button>
+        <view class="empty-title">开启智慧测量之旅</view>
+        <view class="empty-subtitle">连接蓝牙测距仪，让每一寸空间都能被精准感知</view>
+        <button class="primary-btn" bindtap="onCreateNew">测量新户型</button>
       </view>
     </block>
 
     <view class="logout-section">
-      <button class="logout-btn-large" bindtap="onLogout">退出登录</button>
+      <button class="logout-btn-large" bindtap="onLogout">切换账号</button>
     </view>
   </view>
 </view>
+
