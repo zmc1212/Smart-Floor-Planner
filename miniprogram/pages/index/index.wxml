@@ -9,12 +9,12 @@
           <text class="brand-subtitle">专业量房·高效出图·智能设计</text>
         </view>
 
-        <view class="header-actions">
-          <view class="city-chip">
+        <view class="header-actions" style="margin-right: {{capsulePadding}}px;">
+          <view class="city-chip" bindtap="onLocationTap">
             <view class="city-pin">
               <view class="city-pin-core"></view>
             </view>
-            <text class="city-text">{{currentCity}}</text>
+            <text class="city-text">{{currentCity || (locationFailed ? '选择城市' : '定位中...')}}</text>
             <view class="city-arrow"></view>
           </view>
 
@@ -213,7 +213,7 @@
     </view>
   </scroll-view>
 
-  <lead-modal show="{{showLeadModal}}" bindclose="onCloseLeadModal" bindsuccess="onLeadSuccess" />
+
 
   <ble-connector 
     show="{{showBLEConnector}}" 

@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 import bcrypt from 'bcryptjs';
 import dbConnect from '@/lib/mongodb';
 import { AdminUser, DEFAULT_PERMISSIONS } from '@/models/AdminUser';
+import { SystemRole } from '@/models/SystemRole';
 
 // GET /api/admin-users — List all admin users (with optional search)
 export async function GET(request: Request) {
@@ -28,13 +29,16 @@ export async function GET(request: Request) {
       .select('-passwordHash') // Never expose password hash
       .sort({ createdAt: -1 });
 
+    const roles = await SystemRole.find().lean();
+    const roleMap = roles.reduce((acc: any, role) => {
+      acc[role.roleKey] = Array.from(role.menuKeys || []);
+      return acc;
+    }, {});
+
     // Attach effective permissions for each admin
     const data = admins.map((admin) => {
       const a = admin.toObject();
-      const effectivePermissions =
-        a.menuPermissions && a.menuPermissions.length > 0
-          ? a.menuPermissions
-          : DEFAULT_PERMISSIONS[a.role] || [];
+      const effectivePermissions = roleMap[a.role] || DEFAULT_PERMISSIONS[a.role] || [];
       return { ...a, effectivePermissions };
     });
 
@@ -100,7 +104,9 @@ export async function POST(request: Request) {
       phone: phone?.trim() || '',
       role: targetRole,
       enterpriseId: finalEnterpriseId,
-      menuPermissions: menuPermissions || [],
+      menuPermissions: menuPermissions && menuPermissions.length > 0 
+        ? menuPermissions 
+        : undefined, // Let pre-save hook handle DB-driven defaults
     });
 
     // Return without passwordHash

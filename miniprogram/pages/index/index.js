@@ -85,7 +85,7 @@ Page({
     branding: null,
     isStaff: false,
     showBLEConnector: false,
-    currentCity: '上海市',
+    currentCity: '',
     bleStatusText: '未连接设备',
     dashboardStats: [],
     recentPlans: [],
@@ -93,6 +93,8 @@ Page({
     homeTemplates: [],
     homeDashboard: null,
     activeProjectTitle: '当前量房项目',
+    hasPreciseLocation: false,
+    locationFailed: false,
   },
 
   onLoad: function () {
@@ -113,12 +115,13 @@ Page({
       userInfo: userInfo,
       openid: app.globalData.openid || '',
       isStaff: (userInfo && userInfo.role === 'staff'),
-      currentCity: this.deriveCurrentCity(userInfo),
+      currentCity: this.data.hasPreciseLocation ? this.data.currentCity : this.deriveCurrentCity(userInfo),
       homeTemplates: (this.data.layoutTemplates || []).slice(0, 4),
       quickTools: QUICK_TOOLS,
     }, () => {
       this.syncHomeDashboard();
       this.fetchHomeDashboard();
+      this.initLocation();
     });
   },
 
@@ -128,11 +131,8 @@ Page({
 
     if (app.globalData.requireLeadFirst) {
       app.globalData.requireLeadFirst = false;
-      this.setData({
-        showLeadModal: true,
-        plannedRooms: [],
-        currentProject_id: null,
-        isStaff: false,
+      wx.navigateTo({
+        url: '/pages/lead-form/lead-form',
       });
     } else if (app.globalData.restoreFloorPlan) {
       const fp = app.globalData.restoreFloorPlan;
@@ -162,19 +162,70 @@ Page({
       isStaff: (userInfo && userInfo.role === 'staff'),
       userInfo: userInfo,
       openid: app.globalData.openid || '',
-      currentCity: this.deriveCurrentCity(userInfo),
+      currentCity: this.data.hasPreciseLocation ? this.data.currentCity : this.deriveCurrentCity(userInfo),
       homeTemplates: (this.data.layoutTemplates || []).slice(0, 4),
       quickTools: QUICK_TOOLS,
     }, () => {
       this.syncHomeDashboard();
       this.fetchHomeDashboard();
+      // Only re-init if city is still empty
+      if (!this.data.currentCity && !this.data.hasPreciseLocation) {
+        this.initLocation();
+      }
     });
   },
 
   deriveCurrentCity: function (userInfo) {
     const communityName = userInfo && userInfo.communityName ? String(userInfo.communityName) : '';
     const cityMatch = communityName.match(/([\u4e00-\u9fa5]+(?:市|区|县))/);
-    return cityMatch && cityMatch[1] ? cityMatch[1] : '上海市';
+    return cityMatch && cityMatch[1] ? cityMatch[1] : '';
+  },
+
+  onLocationTap: function() {
+    this.initLocation(true);
+  },
+
+  initLocation: function (force = false) {
+    const that = this;
+    
+    // Check if we already have a precise location in this session unless forced
+    if (!force && this.data.hasPreciseLocation) return;
+    
+    this.setData({ locationFailed: false });
+
+    wx.getLocation({
+      type: 'gcj02',
+      success: (res) => {
+        console.log('获取经纬度成功:', res.latitude, res.longitude);
+        that.fetchCityByCoords(res.latitude, res.longitude);
+      },
+      fail: (err) => {
+        console.warn('获取经纬度失败', err);
+        that.setData({ locationFailed: true });
+        if (force) {
+          wx.showToast({ title: '请在设置中开启定位权限', icon: 'none' });
+        }
+      }
+    });
+  },
+
+  async fetchCityByCoords(latitude, longitude) {
+    try {
+      const res = await api.request('/location/reverse', 'POST', { latitude, longitude });
+      if (res.success && res.data && res.data.city) {
+        this.setData({
+          currentCity: res.data.city,
+          hasPreciseLocation: true
+        });
+        
+        // Optionally update user profile on backend
+        if (this.data.userInfo) {
+          api.request('/users/me', 'PUT', { city: res.data.city }).catch(e => {});
+        }
+      }
+    } catch (err) {
+      console.error('Reverse geocode failed', err);
+    }
   },
 
   parseLayoutData: function (layoutData) {
@@ -254,6 +305,9 @@ Page({
       showLeadModal: false,
       plannedRooms: [],
       currentProject_id: null,
+      recentPlans: [],
+      hasPreciseLocation: false,
+      locationFailed: false,
     }, () => {
       this.syncHomeDashboard();
     });
@@ -276,7 +330,9 @@ Page({
     }
 
     // 没有项目 → 先收集客户线索，量房数据自动绑定线索
-    this.setData({ showLeadModal: true });
+    wx.navigateTo({
+      url: '/pages/lead-form/lead-form',
+    });
   },
 
   onQuickBluetoothTap: function () {
@@ -431,6 +487,7 @@ Page({
         this.setData({
           homeDashboard: res.data,
           currentCity: res.data.user && res.data.user.city ? res.data.user.city : this.data.currentCity,
+          hasPreciseLocation: !!(res.data.user && res.data.user.city) || this.data.hasPreciseLocation,
           branding: res.data.user ? res.data.user.branding || this.data.branding : this.data.branding,
         }, () => {
           this.syncHomeDashboard();
@@ -543,7 +600,9 @@ Page({
       this.setData({ showBLEConnector: true });
       return;
     }
-    this.setData({ showLeadModal: true });
+    wx.navigateTo({
+      url: '/pages/lead-form/lead-form',
+    });
   },
 
   onCloseLeadModal: function () {

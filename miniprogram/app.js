@@ -36,6 +36,35 @@ App({
       console.log('会话已恢复 (Legacy OpenID):', openid);
       this.syncProfessionalContext();
     }
+
+    // 3. Silent Bluetooth Reconnection (静默自动重连)
+    const bluetooth = require('./utils/bluetooth.js');
+    bluetooth.autoConnectBLE(
+      () => {}, // 测量回调由具体页面在 onShow 中重绑定
+      (success) => {
+        this.globalData.bleConnected = success;
+        console.log('App: 静默蓝牙重连结果:', success);
+        // 通知当前活跃页面更新状态（主要用于更新首页呼吸灯等 UI）
+        const pages = getCurrentPages();
+        if (pages.length > 0) {
+          const currentPage = pages[pages.length - 1];
+          if (success && currentPage.onBLESuccess) {
+            currentPage.onBLESuccess();
+          } else if (!success && currentPage.onBluetoothDisconnect) {
+            currentPage.onBluetoothDisconnect();
+          }
+        }
+      },
+      () => {
+        this.globalData.bleConnected = false;
+        const pages = getCurrentPages();
+        if (pages.length > 0) {
+          const currentPage = pages[pages.length - 1];
+          if (currentPage.onBluetoothDisconnect) currentPage.onBluetoothDisconnect();
+        }
+      },
+      true // silent: true 开启静默模式，无弹窗和提示
+    );
   },
   onShow(options) {
     this.handleReferral(options);

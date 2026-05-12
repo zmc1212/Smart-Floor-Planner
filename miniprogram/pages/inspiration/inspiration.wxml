@@ -77,7 +77,7 @@
     <text>没有满意的？预约免费设计</text>
   </view>
 
-  <lead-modal show="{{showLeadModal}}" bindclose="onCloseLeadModal" bindsuccess="onLeadSuccess" />
+
   
   <share-poster 
     show="{{showPoster}}" 

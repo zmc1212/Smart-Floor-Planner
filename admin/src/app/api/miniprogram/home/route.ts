@@ -60,7 +60,7 @@ function calculateArea(rooms: any[]) {
 function deriveCity(user: any) {
   const text = String(user?.communityName || '');
   const match = text.match(/([\u4e00-\u9fa5]+(?:市|区|县))/);
-  return match?.[1] || '上海市';
+  return match?.[1] || '';
 }
 
 // Shared helper resolveMiniProgramContext is now imported from @/lib/miniprogram-auth

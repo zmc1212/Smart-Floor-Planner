@@ -34,7 +34,8 @@ Page({
     showAngleMeasure: false,
     angleMeasureWallA: 0,
     showTechnicalReport: false,
-    showBLEConnector: false
+    showBLEConnector: false,
+    pendingMeasurePrompt: false
   },
 
   onLoad: function (options) {
@@ -65,16 +66,9 @@ Page({
     var that = this;
     
     // 重新绑定蓝牙回调到当前页面
+    this._bindBluetoothCallbacks();
+    
     if (app.globalData.bleConnected) {
-      bluetooth.setCallbacks(
-        function (dist) { that.onBluetoothMeasure(dist); },
-        function (isConn) { 
-          that.setData({ bleConnected: isConn }); 
-          app.globalData.bleConnected = isConn;
-          if (!isConn) that.onBluetoothDisconnect();
-        },
-        function () { that.onBluetoothDisconnect(); }
-      );
       this.setData({ bleConnected: true });
     } else {
       this.setData({ bleConnected: false });
@@ -119,12 +113,17 @@ Page({
         targetRoom = rooms.find(r => r.id === targetRoomId);
       }
 
+      const isConnected = app.globalData.bleConnected;
+      const intendedShowPrompt = fp.showMeasurePrompt !== undefined ? fp.showMeasurePrompt : (!!targetRoomId && !targetRoom?.measured);
+
       var extraData = {
         currentProject_id: fp._id || '',
         guidedMode: fp.guidedMode || (!!draftState),
         currentGuidedRoomId: targetRoomId,
         currentGuidedRoomName: targetRoomName,
-        showMeasurePrompt: fp.showMeasurePrompt !== undefined ? fp.showMeasurePrompt : (!!targetRoomId && !targetRoom?.measured),
+        showMeasurePrompt: intendedShowPrompt && isConnected,
+        showBLEConnector: intendedShowPrompt && !isConnected,
+        pendingMeasurePrompt: intendedShowPrompt && !isConnected,
         activeTool: fp.activeTool || 'SELECT',
         selectedIds: targetRoomId ? [targetRoomId] : (fp.selectedIds || []),
         showPropertyPanel: false
@@ -780,7 +779,7 @@ Page({
     if (distanceInMeters === null || distanceInMeters <= 0) {
       wx.showToast({ title: '测量失败，请重试', icon: 'none', duration: 2000 });
       if (isGuided) { 
-        this.setData({ showMeasurePrompt: true }); 
+        this.tryShowMeasurePrompt(); 
         setTimeout(() => {
           this.openLaser(); 
         }, 800);
@@ -821,7 +820,7 @@ Page({
         }, 500);
 
         setTimeout(() => {
-          this.setData({ showMeasurePrompt: true });
+          this.tryShowMeasurePrompt();
         }, 900);
         return;
       }
@@ -888,7 +887,7 @@ Page({
       }, 500);
 
       setTimeout(() => {
-        this.setData({ showMeasurePrompt: true });
+        this.tryShowMeasurePrompt();
       }, 900);
 
       setTimeout(function () {
@@ -1074,7 +1073,7 @@ Page({
 
     var that = this;
     setTimeout(function () { that.openLaser(); }, 500);
-    setTimeout(function () { that.setData({ showMeasurePrompt: true }); }, 900);
+    setTimeout(function () { that.tryShowMeasurePrompt(); }, 900);
     setTimeout(function () {
       var canvas = that.selectComponent('#floorCanvas');
       if (canvas) canvas.fitToView();
@@ -1082,7 +1081,8 @@ Page({
   },
 
   onCloseAngleMeasure: function () {
-    this.setData({ showAngleMeasure: false, showMeasurePrompt: true });
+    this.setData({ showAngleMeasure: false });
+    this.tryShowMeasurePrompt();
   },
 
   onAddMeasureEdge: function () {
@@ -1092,9 +1092,8 @@ Page({
       return;
     }
     this.openLaser();
-    setTimeout(() => {
-      this.setData({ showMeasurePrompt: true });
-    }, 500);
+      this.tryShowMeasurePrompt();
+
   },
 
   onCloseBLEConnector: function () {
@@ -1102,12 +1101,45 @@ Page({
   },
 
   onBLESuccess: function () {
+    this._bindBluetoothCallbacks();
     this.setData({ bleConnected: true, showBLEConnector: false });
     getApp().globalData.bleConnected = true;
+    wx.showToast({ title: '连接成功', icon: 'success' });
     
-    // Auto trigger laser if we were in the middle of something
-    if (this.data.currentGuidedRoomId) {
+    if (this.data.pendingMeasurePrompt) {
+      this.setData({ pendingMeasurePrompt: false, showMeasurePrompt: true });
+      // 给蓝牙栈一点点时间（300ms）确保在发现特征值后能够稳定下发第一条指令
+      setTimeout(() => {
+        this.openLaser();
+      }, 300);
+    }
+  },
+
+  _bindBluetoothCallbacks: function() {
+    const bluetooth = require('../../utils/bluetooth.js');
+    const app = getApp();
+    const that = this;
+    
+    bluetooth.setCallbacks(
+      function (dist) { that.onBluetoothMeasure(dist); },
+      function (isConn) { 
+        that.setData({ bleConnected: isConn }); 
+        app.globalData.bleConnected = isConn;
+        if (!isConn) that.onBluetoothDisconnect();
+      },
+      function () { that.onBluetoothDisconnect(); }
+    );
+  },
+
+  tryShowMeasurePrompt: function() {
+    if (this.data.bleConnected) {
+      this.setData({ showMeasurePrompt: true });
       this.openLaser();
+    } else {
+      this.setData({ 
+        showBLEConnector: true,
+        pendingMeasurePrompt: true 
+      });
     }
   },
 
@@ -1493,7 +1525,7 @@ Page({
     });
     this.openLaser();
     setTimeout(() => {
-      this.setData({ showMeasurePrompt: true });
+      this.tryShowMeasurePrompt();
     }, 500);
   },
 

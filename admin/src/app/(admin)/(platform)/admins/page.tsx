@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Shield, Search, Plus, RefreshCw, Edit2, Trash2, Check, X,
-  KeyRound, Ban, CheckCircle, ChevronDown, ChevronUp, Lock, UserCog
+  KeyRound, Ban, CheckCircle, Lock, UserCog
 } from 'lucide-react';
 import Link from 'next/link';
 import { 
@@ -84,17 +84,6 @@ const getRoleBadge = (role: string) => {
   }
 };
 
-const ALL_MENUS = [
-  { key: 'dashboard', label: '总览' },
-  { key: 'leads', label: '客资线索' },
-  { key: 'floorplans', label: '户型图' },
-  { key: 'inspirations', label: '设计灵感' },
-  { key: 'enterprises', label: '企业管理' },
-  { key: 'devices', label: '设备管理' },
-  { key: 'staff', label: '员工管理' },
-  { key: 'admins', label: '超级管理' },
-  { key: 'users', label: '小程序用户' },
-];
 
 export default function AdminsPage() {
   const [admins, setAdmins] = useState<AdminUser[]>([]);
@@ -120,10 +109,6 @@ export default function AdminsPage() {
   const [editRole, setEditRole] = useState('admin');
   const [editEnterpriseId, setEditEnterpriseId] = useState('');
   const [updating, setUpdating] = useState(false);
-
-  // Expanded row for permissions
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [editPermissions, setEditPermissions] = useState<string[]>([]);
 
   // Password reset
   const [resetPwdId, setResetPwdId] = useState<string | null>(null);
@@ -320,56 +305,6 @@ export default function AdminsPage() {
     }
   };
 
-  const toggleExpand = (admin: AdminUser) => {
-    if (expandedId === admin._id) {
-      setExpandedId(null);
-    } else {
-      setExpandedId(admin._id);
-      setEditPermissions(admin.menuPermissions.length > 0 ? [...admin.menuPermissions] : []);
-    }
-  };
-
-  const togglePermission = (key: string) => {
-    setEditPermissions((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
-    );
-  };
-
-  const savePermissions = async (id: string) => {
-    try {
-      const res = await fetch(`/api/admin-users/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ menuPermissions: editPermissions }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        fetchAdmins();
-        setExpandedId(null);
-      } else {
-        alert(data.error || '保存失败');
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const clearPermissionOverride = async (id: string) => {
-    try {
-      const res = await fetch(`/api/admin-users/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ menuPermissions: [] }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        fetchAdmins();
-        setEditPermissions([]);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
 
   // --- Render ---
 
@@ -698,14 +633,6 @@ export default function AdminsPage() {
                         </div>
                       ) : (
                         <div className="flex justify-end gap-1">
-                          <Button 
-                            size="icon" 
-                            variant="ghost" 
-                            onClick={() => toggleExpand(admin)}
-                            className={cn(expandedId === admin._id && "bg-muted text-primary")}
-                          >
-                            <ChevronDown size={16} className={cn("transition-transform", expandedId === admin._id && "rotate-180")} />
-                          </Button>
                           <Button size="icon" variant="ghost" onClick={() => startEdit(admin)}><Edit2 size={14} className="text-gray-500" /></Button>
                           <Button size="icon" variant="ghost" onClick={() => setResetPwdId(admin._id)}><KeyRound size={14} className="text-amber-500" /></Button>
                           <Button 
@@ -721,54 +648,6 @@ export default function AdminsPage() {
                     </TableCell>
                   </TableRow>
 
-                  {/* Permissions Row */}
-                  {expandedId === admin._id && (
-                    <TableRow className="bg-muted/20 border-t-0 hover:bg-muted/20">
-                      <TableCell colSpan={5} className="p-6">
-                        <div className="space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
-                           <div className="flex items-center justify-between">
-                              <div>
-                                <h4 className="text-sm font-bold flex items-center gap-2">
-                                  <Lock size={14} className="text-primary" /> 配置权限覆盖
-                                </h4>
-                                <p className="text-[11px] text-muted-foreground mt-1">您可以为此特定账号设置不同于角色的自定义菜单权限</p>
-                              </div>
-                              <div className="flex gap-2">
-                                <Button variant="ghost" size="sm" onClick={() => clearPermissionOverride(admin._id)} className="h-8 text-xs">重置默认</Button>
-                                <Button size="sm" onClick={() => savePermissions(admin._id)} className="h-8 text-xs">保存自定义权限</Button>
-                              </div>
-                           </div>
-                           
-                           <div className="flex flex-wrap gap-2">
-                              {ALL_MENUS.map(menu => (
-                                <button
-                                  key={menu.key}
-                                  onClick={() => {
-                                    if (editPermissions.length === 0) {
-                                      setEditPermissions(
-                                        admin.effectivePermissions.includes(menu.key)
-                                          ? admin.effectivePermissions.filter((k) => k !== menu.key)
-                                          : [...admin.effectivePermissions, menu.key]
-                                      );
-                                    } else {
-                                      togglePermission(menu.key);
-                                    }
-                                  }}
-                                  className={cn(
-                                    "px-4 py-1.5 rounded-full text-xs font-semibold border transition-all",
-                                    (editPermissions.length > 0 ? editPermissions.includes(menu.key) : admin.effectivePermissions.includes(menu.key))
-                                      ? "bg-primary text-primary-foreground border-primary"
-                                      : "bg-background text-muted-foreground border-muted-foreground/20 hover:border-primary/50"
-                                  )}
-                                >
-                                  {menu.label}
-                                </button>
-                              ))}
-                           </div>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )}
                 </React.Fragment>
               ))}
             </TableBody>

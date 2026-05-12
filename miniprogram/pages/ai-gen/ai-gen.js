@@ -14,6 +14,7 @@ Page({
     selectedMode: 'INTERIOR', // 'INTERIOR' | 'PLANE'
     isGenerating: false,
     isGettingAdvice: false,
+    showMeasurePrompt: false,
     showLeadModal: false,
     showSharePoster: false,
     posterData: null
@@ -218,7 +219,9 @@ Visuals: 8k, photorealistic, cinematic lighting, professional interior photograp
   },
 
   onOpenLeadModal: function () {
-    this.setData({ showLeadModal: true });
+    wx.navigateTo({
+      url: '/pages/lead-form/lead-form?floorPlanId=' + (this.data.currentProject_id || ''),
+    });
   },
 
   onCloseLeadModal: function () {

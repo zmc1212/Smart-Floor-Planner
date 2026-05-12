@@ -9,6 +9,7 @@ export interface IUser extends Document {
   nickname?: string;
   avatar?: string; // Storing as base64 or URL
   communityName?: string;
+  city?: string;
   phone?: string;
   enterpriseId?: mongoose.Types.ObjectId; // For tenant isolation (especially for staff users)
   createdAt: Date;
@@ -45,6 +46,10 @@ const UserSchema: Schema<IUser> = new Schema(
       type: String, // Large strings allowed for base64
     },
     communityName: {
+      type: String,
+      trim: true,
+    },
+    city: {
       type: String,
       trim: true,
     },

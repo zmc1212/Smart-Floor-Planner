@@ -10,7 +10,8 @@
     "pages/ai-gen/ai-gen",
     "pages/mine/mine",
     "pages/login/login",
-    "pages/leads-management/leads-management"
+    "pages/leads-management/leads-management",
+    "pages/lead-form/lead-form"
   ],
   "window": {
     "navigationBarTitleText": "智能量房大师",
@@ -52,7 +53,6 @@
     ]
   },
   "usingComponents": {
-    "lead-modal": "/components/lead-modal/lead-modal"
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json",

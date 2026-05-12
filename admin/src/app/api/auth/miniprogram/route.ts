@@ -178,7 +178,7 @@ export async function POST(request: Request) {
       phone: userData?.phone || staffData?.phone || '',
       role: role,
       staffRole: staffData?.role || '',
-      staffPermissions: staffData ? getEffectivePermissions(staffData.role, staffData.menuPermissions) : [],
+      staffPermissions: staffData ? await getEffectivePermissions(staffData.role, staffData.menuPermissions) : [],
       enterpriseId: staffData?.enterpriseId?.toString() || '',
       enterpriseName,
       staffId: staffData?._id?.toString() || '',

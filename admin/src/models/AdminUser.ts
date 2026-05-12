@@ -1,4 +1,5 @@
 import mongoose, { Document, Model, Schema } from 'mongoose';
+import { SystemRole } from './SystemRole';
 import { multiTenantPlugin, TenantPluginOptions } from '../lib/mongoose-tenant-plugin';
 
 export type AdminRole =
@@ -41,6 +42,7 @@ export const ROLE_LABELS: Record<string, string> = {
 export const ALL_MENUS = [
   { key: 'dashboard', label: '概览' },
   { key: 'enterprises', label: '企业管理' },
+  { key: 'roles', label: '角色权限管理' },
   { key: 'floorplans', label: '户型图库' },
   { key: 'users', label: '用户审计' },
   { key: 'devices', label: '设备管理' },
@@ -51,6 +53,7 @@ export const ALL_MENUS = [
   { key: 'enterprise-orders', label: '成交订单' },
   { key: 'commissions', label: '提成结算' },
   { key: 'ai-floorplan', label: 'AI 室内平面' },
+  { key: 'ai-designer', label: 'AI设计师' },
   { key: 'ai-furnishing', label: 'AI 风格设计' },
   { key: 'ai-soft-furnishing', label: 'AI 软装设计' },
   { key: 'ai-presets', label: 'AI 预设配置' },
@@ -65,6 +68,7 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   admin: [
     'dashboard',
     'enterprises',
+    'roles',
     'floorplans',
     'users',
     'devices',
@@ -76,6 +80,7 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'enterprise-orders',
     'commissions',
     'ai-floorplan',
+    'ai-designer',
     'ai-furnishing',
     'ai-soft-furnishing',
     'ai-presets',
@@ -85,34 +90,31 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   ],
   enterprise_admin: [
     'dashboard',
-    'floorplans',
     'leads',
+    'floorplans',
+    'measurements',
+    'ai-designer',
     'ai-floorplan',
     'ai-furnishing',
     'ai-soft-furnishing',
     'inspirations',
+    'ai-presets',
     'staff',
     'devices',
-    'measurements',
   ],
   designer: [
     'dashboard',
-    'floorplans',
     'leads',
+    'floorplans',
+    'measurements',
+    'ai-designer',
     'ai-floorplan',
     'ai-furnishing',
     'ai-soft-furnishing',
     'inspirations',
-    'devices',
-    'measurements',
   ],
-  salesperson: [
-    'dashboard',
-    'promotion-records',
-    'enterprise-orders',
-    'commissions',
-  ],
-  measurer: ['dashboard', 'promotion-records', 'measurements', 'devices'],
+  salesperson: ['promotion-records'],
+  measurer: ['dashboard', 'leads', 'measurements', 'devices', 'floorplans'],
   viewer: ['dashboard', 'floorplans', 'ai-floorplan', 'ai-furnishing', 'ai-soft-furnishing', 'inspirations'],
 };
 
@@ -183,6 +185,26 @@ const AdminUserSchema: Schema<IAdminUser> = new Schema(
     timestamps: true,
   }
 );
+
+// Pre-save hook to set default permissions if empty
+AdminUserSchema.pre('save', async function (next) {
+  if (this.isNew && (!this.menuPermissions || this.menuPermissions.length === 0)) {
+    try {
+      // Try to find custom role config in DB
+      const roleConfig = await SystemRole.findOne({ roleKey: this.role });
+      if (roleConfig) {
+        this.menuPermissions = roleConfig.menuKeys;
+      } else {
+        // Fallback to hardcoded defaults
+        this.menuPermissions = DEFAULT_PERMISSIONS[this.role] || [];
+      }
+    } catch (err) {
+      console.error('Failed to fetch default permissions for role:', this.role, err);
+      this.menuPermissions = DEFAULT_PERMISSIONS[this.role] || [];
+    }
+  }
+  next();
+});
 
 AdminUserSchema.index({ enterpriseId: 1, role: 1 });
 AdminUserSchema.index({ enterpriseId: 1, departmentId: 1 });

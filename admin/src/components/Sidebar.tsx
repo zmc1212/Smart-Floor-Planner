@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
   LayoutDashboard, 
+  Shield,
   Users, 
   Map, 
   Smartphone, 
@@ -61,6 +62,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       title: '平台管理中心',
       items: [
         { key: 'enterprises', label: '企业管理', icon: Building2, href: '/enterprises' },
+        { key: 'roles', label: '角色权限管理', icon: Shield, href: '/roles' },
         { key: 'admins', label: '系统管理', icon: UserCog, href: '/admins' },
         { key: 'users', label: '用户审计', icon: Users, href: '/users' },
       ]
@@ -94,6 +96,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
     {
       title: 'AI 辅助设计',
       items: [
+        { key: 'ai-designer', label: 'AI设计师', icon: Sparkles, href: '/ai-studio/designer' },
         { key: 'ai-floorplan', label: 'AI 室内平面', icon: PenTool, href: '/ai-studio/floor-plan' },
         { key: 'ai-furnishing', label: 'AI 风格设计', icon: Palette, href: '/ai-studio/furnishing' },
         { key: 'ai-soft-furnishing', label: 'AI 软装设计', icon: Sofa, href: '/ai-studio/soft-furnishing' },

@@ -1,10 +1,19 @@
 import { DEFAULT_PERMISSIONS } from '@/models/AdminUser';
+import { SystemRole } from '@/models/SystemRole';
+import dbConnect from '@/lib/mongodb';
 
-export function getEffectivePermissions(role: string, menuPermissions?: string[]) {
-  if (menuPermissions && menuPermissions.length > 0) {
-    return menuPermissions;
+export async function getEffectivePermissions(role: string, _menuPermissions?: string[]) {
+  try {
+    await dbConnect();
+    const roleConfig = await SystemRole.findOne({ roleKey: role }).lean();
+    if (roleConfig && roleConfig.menuKeys) {
+      return Array.from(roleConfig.menuKeys);
+    }
+  } catch (err) {
+    console.error('Failed to fetch role permissions from DB:', err);
   }
 
+  // Fallback to hardcoded defaults
   return DEFAULT_PERMISSIONS[role] || [];
 }
 

@@ -1,0 +1,73 @@
+<view class="page-container">
+  <view class="custom-header" style="height: {{navBarHeightTotal}}px;">
+    <view class="header-content" style="margin-top: {{statusBarHeight}}px; height: {{navBarHeightTotal - statusBarHeight}}px;">
+      <view class="back-btn" bindtap="onBack">
+        <text class="back-arrow">‹</text>
+      </view>
+      <text class="page-title">{{isStaff ? '绑定客户资料' : '获取免费设计与报价'}}</text>
+    </view>
+  </view>
+
+  <scroll-view class="main-content" scroll-y style="padding-top: {{navBarHeightTotal}}px; height: 100vh; box-sizing: border-box;">
+    <view class="form-wrapper">
+      <view class="form-intro" wx:if="{{!isStaff}}">
+        <text class="desc">留下您的联系方式，我们的专业设计师将免费为您提供1对1的量房及设计咨询服务。</text>
+      </view>
+
+      <!-- Quick select for staff -->
+      <view class="quick-select-section" wx:if="{{isStaff && recentLeads.length > 0}}">
+        <text class="quick-select-title">快速选择最近客户</text>
+        <scroll-view scroll-x="true" class="quick-select-list" enable-flex="true">
+          <view 
+            class="quick-select-item" 
+            wx:for="{{recentLeads}}" 
+            wx:key="_id"
+            data-lead="{{item}}"
+            bindtap="onSelectRecentLead"
+          >
+            {{item.name}} · {{item.phone}}
+          </view>
+        </scroll-view>
+      </view>
+
+      <view class="form-card">
+        <view class="form-group">
+          <text class="label">客户称呼<text class="required">*</text></text>
+          <input class="input" placeholder="请输入您的姓名" value="{{formData.name}}" data-field="name" bindinput="onInput" />
+        </view>
+
+        <view class="form-group">
+          <text class="label">手机号码<text class="required">*</text></text>
+          <view class="input-phone-group">
+            <input class="input phone-input" type="number" placeholder="请输入手机号码" value="{{formData.phone}}" data-field="phone" bindinput="onInput" />
+          </view>
+        </view>
+
+        <view class="form-group">
+          <text class="label">小区名称<text class="required">*</text></text>
+          <input class="input" placeholder="请输入小区名称，如：万科翡翠华府" value="{{formData.communityName}}" data-field="communityName" bindinput="onInput" />
+        </view>
+
+        <view class="form-group">
+          <text class="label">房屋面积 (㎡)</text>
+          <input class="input" type="digit" placeholder="例如：90" value="{{formData.area}}" data-field="area" bindinput="onInput" />
+        </view>
+
+        <view class="form-group">
+          <text class="label">意向风格</text>
+          <picker mode="selector" range="{{styleOptions}}" bindchange="onStyleChange">
+            <view class="picker-view {{formData.stylePreference ? '' : 'placeholder'}}">
+              {{formData.stylePreference || '请选择您喜欢的风格'}}
+              <text class="arrow">▼</text>
+            </view>
+          </picker>
+        </view>
+      </view>
+
+      <view class="form-footer">
+        <button class="submit-btn" hover-class="submit-btn-hover" bindtap="onSubmit" loading="{{loading}}">{{isStaff ? '确认绑定并推送' : '立即免费获取'}}</button>
+        <view class="privacy-note">点击按钮即表示同意相关隐私协议</view>
+      </view>
+    </view>
+  </scroll-view>
+</view>

@@ -34,7 +34,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: '用户名或密码错误' }, { status: 401 });
     }
 
-    const effectivePermissions = getEffectivePermissions(admin.role, admin.menuPermissions);
+    const effectivePermissions = await getEffectivePermissions(admin.role, admin.menuPermissions);
 
     const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
     const token = await new jose.SignJWT({

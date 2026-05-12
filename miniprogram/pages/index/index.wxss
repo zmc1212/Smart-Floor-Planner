@@ -35,17 +35,31 @@
   box-shadow: var(--shadow-card);
 }
 
+.branding-banner-compact {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  padding: 16rpx 24rpx;
+  background: #ffffff;
+  border-radius: 12rpx;
+  margin: 0 8rpx 12rpx;
+  box-shadow: 0 2rpx 12rpx rgba(0, 0, 0, 0.03);
+}
+
 .brand-logo {
   width: 80rpx;
   height: 80rpx;
   background: var(--bg-surface);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-border-soft);
+  flex-shrink: 0;
 }
 
 .brand-info {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
 .brand-name {
@@ -53,6 +67,9 @@
   font-weight: var(--font-weight-bold);
   color: var(--text-primary);
   letter-spacing: -0.5rpx;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .brand-tagline {
@@ -170,6 +187,10 @@
   font-size: 28rpx;
   line-height: 1;
   color: #2e363e;
+  max-width: 160rpx;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .city-arrow {

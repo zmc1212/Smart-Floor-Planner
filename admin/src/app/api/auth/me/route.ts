@@ -51,7 +51,7 @@ export async function GET(request: Request) {
       }
     }
 
-    const effectivePermissions = getEffectivePermissions(result.role, result.menuPermissions);
+    const effectivePermissions = await getEffectivePermissions(result.role, result.menuPermissions);
 
     return NextResponse.json({
       success: true,

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import dbConnect from '@/lib/mongodb';
-import { AdminUser } from '@/models/AdminUser';
+import { AdminUser, DEFAULT_PERMISSIONS } from '@/models/AdminUser';
 import { Enterprise } from '@/models/Enterprise';
 import { Department } from '@/models/Department';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';

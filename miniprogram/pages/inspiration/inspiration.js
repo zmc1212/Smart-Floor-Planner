@@ -222,7 +222,9 @@ Page({
   },
 
   onOpenLeadModal: function () {
-    this.setData({ showLeadModal: true });
+    wx.navigateTo({
+      url: '/pages/lead-form/lead-form',
+    });
   },
 
   onCloseLeadModal: function () {

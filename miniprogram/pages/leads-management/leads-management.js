@@ -34,7 +34,9 @@ Page({
   },
 
   onOpenLeadModal() {
-    this.setData({ showLeadModal: true });
+    wx.navigateTo({
+      url: '/pages/lead-form/lead-form',
+    });
   },
 
   onCloseLeadModal() {

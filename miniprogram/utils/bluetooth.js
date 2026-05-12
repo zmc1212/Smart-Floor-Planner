@@ -11,6 +11,8 @@ var _foundDevices = []; // 发现的设备列表，用于超时判断
 var _verifyingDevices = {}; // 记录正在验证或验证失败的设备，避免重复请求
 var _isStateChangeRegistered = false;
 var _isValueChangeRegistered = false;
+var _deviceName = ''; // 存储当前连接的设备名称
+var _hasTriggeredReady = false; // 确保就绪回调仅触发一次
 
 var _heartbeatTimer = null;
 var _lastResponseTime = 0;
@@ -165,11 +167,11 @@ function startScan() {
   });
 }
 
-function connectDevice(deviceId, name) {
+function connectDevice(deviceId, name, silent = false) {
   _isConnecting = true;
   _writeCharacteristics = []; // 连接前重置写入通道
   wx.stopBluetoothDevicesDiscovery();
-  wx.showLoading({ title: '连接 ' + name + '...' });
+  if (!silent) wx.showLoading({ title: '连接 ' + name + '...' });
 
   wx.createBLEConnection({
     deviceId: deviceId,
@@ -179,19 +181,20 @@ function connectDevice(deviceId, name) {
       wx.setStorageSync('last_ble_device_id', deviceId);
       wx.setStorageSync('last_ble_device_name', name);
 
-      wx.showToast({ title: '连接成功', icon: 'success' });
+      if (!silent) wx.showToast({ title: '连接成功', icon: 'success' });
+      _deviceName = name;
+      _hasTriggeredReady = false;
       getServices(deviceId);
-      if (_onConnectCallback) _onConnectCallback(true, name);
       
       startHeartbeat();
     },
     fail: function (err) {
-      wx.hideLoading();
+      if (!silent) wx.hideLoading();
       console.log('连接失败', err);
       // 如果直连失败，清除缓存
       wx.removeStorageSync('last_ble_device_id');
       wx.removeStorageSync('last_ble_device_name');
-      wx.showToast({ title: '连接失败', icon: 'none' });
+      if (!silent) wx.showToast({ title: '连接失败', icon: 'none' });
       _isConnecting = false;
       if (_onConnectCallback) _onConnectCallback(false);
     }
@@ -243,6 +246,13 @@ function getCharacteristics(deviceId, serviceId) {
             characteristicId: item.uuid,
             writeNoResponse: item.properties.writeNoResponse
           });
+          
+          // 当发现第一个写入通道时，才认为蓝牙真正“就绪”，可以下发指令了
+          if (!_hasTriggeredReady && _onConnectCallback) {
+            _hasTriggeredReady = true;
+            console.log('🚀 发现写入通道，设备就绪');
+            _onConnectCallback(true, _deviceName);
+          }
         }
       }
     }
@@ -452,7 +462,7 @@ function closeBLE() {
   wx.closeBluetoothAdapter();
 }
 
-function autoConnectBLE(callback, connectCallback, disconnectCallback) {
+function autoConnectBLE(callback, connectCallback, disconnectCallback, silent = false) {
   _onMeasureCallback = callback;
   _onConnectCallback = connectCallback;
   _onDisconnectCallback = disconnectCallback;
@@ -476,7 +486,7 @@ function autoConnectBLE(callback, connectCallback, disconnectCallback) {
           _isStateChangeRegistered = true;
         }
 
-        wx.showLoading({ title: '验证授权中...', mask: true });
+        if (!silent) wx.showLoading({ title: '验证授权中...', mask: true });
         var api = require('./api.js');
         const app = getApp();
         api.request('/devices/verify-binding', 'POST', { 
@@ -486,29 +496,33 @@ function autoConnectBLE(callback, connectCallback, disconnectCallback) {
         })
           .then(function(verifyRes) {
             if (verifyRes.success && verifyRes.authorized) {
-              connectDevice(lastId, lastName || '记忆设备');
+              connectDevice(lastId, lastName || '记忆设备', silent);
             } else {
-              wx.hideLoading();
-              wx.showToast({ title: verifyRes.message || '设备未授权', icon: 'none' });
+              if (!silent) {
+                wx.hideLoading();
+                wx.showToast({ title: verifyRes.message || '设备未授权', icon: 'none' });
+              }
               wx.removeStorageSync('last_ble_device_id');
               wx.removeStorageSync('last_ble_device_name');
               // 未授权时可以重置去搜索界面
               if (_onConnectCallback) _onConnectCallback(false);
             }
           }).catch(function(err) {
-             wx.hideLoading();
-             wx.showToast({ title: '设备验证失败', icon: 'none' });
+             if (!silent) {
+               wx.hideLoading();
+               wx.showToast({ title: '设备验证失败', icon: 'none' });
+             }
              if (_onConnectCallback) _onConnectCallback(false);
           });
       },
       fail: function (err) {
-        wx.showToast({ title: '请打开手机蓝牙', icon: 'none' });
+        if (!silent) wx.showToast({ title: '请打开手机蓝牙', icon: 'none' });
         if (_onConnectCallback) _onConnectCallback(false);
       }
     });
   } else {
     // 没有记忆设备时，直接调用常规搜索
-    wx.showToast({ title: '无记忆设备，请手动搜索', icon: 'none' });
+    if (!silent) wx.showToast({ title: '无记忆设备，请手动搜索', icon: 'none' });
     initBLE(callback, connectCallback, disconnectCallback);
   }
 }

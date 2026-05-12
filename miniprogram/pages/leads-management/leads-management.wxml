@@ -9,5 +9,4 @@
     <lead-list id="leadList" openid="{{openid}}" bindadd="onOpenLeadModal" />
   </view>
 
-  <lead-modal show="{{showLeadModal}}" bindclose="onCloseLeadModal" bindsuccess="onLeadSuccess" />
 </view>

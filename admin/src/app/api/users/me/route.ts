@@ -53,7 +53,23 @@ export async function PUT(req: Request) {
     const body = await req.json();
     delete body.role; // Safety check
 
-    const user = await User.findByIdAndUpdate(context.user._id, body, { new: true, runValidators: true });
+    // Try to update existing user
+    let user = await User.findByIdAndUpdate(context.user._id, body, { new: true, runValidators: true });
+    
+    // If not found, it might be a staff user without a User record yet
+    if (!user && context.staff) {
+      console.log('User record not found for staff, creating one...');
+      user = new User({
+        ...body,
+        _id: context.user._id, // Use the ID provided by context (even if mocked)
+        openid: context.staff.openid || `staff_${context.staff._id}`,
+        phone: context.staff.phone,
+        role: 'staff',
+        enterpriseId: context.staff.enterpriseId
+      });
+      await user.save();
+    }
+
     if (!user) {
       return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }

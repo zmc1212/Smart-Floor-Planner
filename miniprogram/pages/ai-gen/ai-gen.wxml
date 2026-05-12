@@ -56,13 +56,7 @@
     </view>
   </view>
 
-  <!-- Lead Modal -->
-  <lead-modal 
-    show="{{showLeadModal}}" 
-    roomName="{{room.name}}"
-    bind:close="onCloseLeadModal"
-    bind:success="onLeadSuccess"
-  />
+
 
     <!-- 3. 房间基本信息 -->
     <view class="room-memo">
@@ -146,7 +140,7 @@
     </view>
   </view>
 
-  <lead-modal show="{{showLeadModal}}" bindclose="onCloseLeadModal" bindsuccess="onLeadSuccess" />
+
   
   <!-- 8. 分享海报组件 -->
   <share-poster 
