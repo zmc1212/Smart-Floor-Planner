@@ -1,7 +1,7 @@
 <view class="container">
   <view class="header">
     <text class="title">装修方案推荐</text>
-    <text class="subtitle">为您精选最适合的装修方案</text>
+    <text class="subtitle">为您精选更适合家的装修方案</text>
   </view>
 
   <view class="progress-section">
@@ -25,15 +25,15 @@
     <scroll-view scroll-x="true" class="recommendations-scroll">
       <block wx:for="{{recommendations}}" wx:key="id">
         <view class="recommendation-card">
-          <image src="{{item.imageUrl}}" class="recommendation-image" mode="aspectFill"/>
+          <image src="{{item.imageUrl}}" class="recommendation-image" mode="aspectFill" />
           <view class="card-content">
             <text class="card-title">{{item.name}}</text>
             <text class="card-description">{{item.description}}</text>
             <view class="budget-info">
-              <text>预算: ¥{{item.estimatedBudget.min | formatNumber}} - ¥{{item.estimatedBudget.max | formatNumber}}</text>
+              <text>预算：¥{{item.estimatedBudget.min | formatNumber}} - ¥{{item.estimatedBudget.max | formatNumber}}</text>
             </view>
             <view class="match-score">
-              <text>匹配度: {{Math.round(item.matchScore * 100)}}%</text>
+              <text>匹配度 {{Math.round(item.matchScore * 100)}}%</text>
             </view>
             <view class="card-actions">
               <button
@@ -48,7 +48,7 @@
                 bindtap="onDownloadPdf"
                 data-style-id="{{item.id}}"
               >
-                下载PDF
+                下载 PDF
               </button>
             </view>
           </view>
@@ -59,8 +59,8 @@
 
   <view class="share-section" wx:if="{{selectedStyle}}">
     <view class="share-tips">
-      <text class="tips-text">选择您喜欢的风格，分享给好友获取更多优惠！</text>
-      <button class="share-btn" bindtap="onShare">分享到朋友圈</button>
+      <text class="tips-text">选择喜欢的风格，分享给好友获取更多优惠。</text>
+      <button class="share-btn" bindtap="onShare">分享给朋友</button>
     </view>
   </view>
 </view>

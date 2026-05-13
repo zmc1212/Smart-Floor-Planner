@@ -2,10 +2,10 @@
   <view class="login-header">
     <view class="logo-circle">
       <text class="logo-text">量</text>
-      <text class="logo-sparkle">✦</text>
+      <text class="logo-sparkle">✓</text>
     </view>
     <view class="login-title">智能量房大师</view>
-    <view class="login-subtitle">专业 AR 量房与 AI 辅助设计平台</view>
+    <view class="login-subtitle">专业量房与 AI 辅助设计平台</view>
   </view>
 
   <view class="login-tabs">
@@ -14,47 +14,45 @@
     <view class="tab-indicator" style="transform: translateX({{loginType === 'phone' ? '0' : '100%'}})"></view>
   </view>
 
-  <!-- Phone Login -->
   <view wx:if="{{loginType === 'phone'}}" class="login-body fade-in">
     <view class="info-card">
-      <view class="info-icon">📱</view>
+      <view class="info-icon">机</view>
       <view class="info-content">
         <view class="info-title">微信授权登录</view>
-        <view class="info-desc">推荐物业/业主用户使用，一键同步手机号</view>
+        <view class="info-desc">推荐业主用户使用，一键同步手机号码</view>
       </view>
     </view>
-    
+
     <button class="primary-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">
       手机号快捷登录
     </button>
-    
+
     <view class="agreement-text">
-      登录即代表同意 <text class="link">《用户协议》</text> 和 <text class="link">《隐私政策》</text>
+      登录即代表同意<text class="link">《用户协议》</text> 和 <text class="link">《隐私政策》</text>
     </view>
   </view>
 
-  <!-- Password Login -->
   <view wx:else class="login-body fade-in">
     <view class="form-group">
       <text class="label">账号 / 手机号</text>
       <input class="input" placeholder="请输入员工账号 / 手机号" bindinput="onInputUsername" value="{{username}}" />
     </view>
-    
+
     <view class="form-group">
       <text class="label">密码</text>
       <input class="input" password placeholder="请输入登录密码" bindinput="onInputPassword" value="{{password}}" />
     </view>
-    
+
     <button class="primary-btn {{(!username || !password) ? 'disabled' : ''}}" bindtap="onPasswordLogin">
       立即登录
     </button>
 
     <view class="staff-tip">
-      <text class="tip-icon">ℹ️</text>
+      <text class="tip-icon">i</text>
       <text>账号登录主要面向设计师、地推员等企业内部员工</text>
     </view>
   </view>
-  
+
   <view class="footer-actions">
     <view class="back-link" bindtap="onBack">返回</view>
   </view>

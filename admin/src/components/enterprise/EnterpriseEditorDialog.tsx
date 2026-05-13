@@ -72,7 +72,6 @@ export default function EnterpriseEditorDialog({
         designTaskSlaHours: String(enterprise.automationConfig?.designTaskSlaHours ?? 72),
         reminderIntervalHours: String(enterprise.automationConfig?.reminderIntervalHours ?? 24),
         maxReminderTimes: String(enterprise.automationConfig?.maxReminderTimes ?? 3),
-        wecomReminderEnabled: enterprise.automationConfig?.wecomReminderEnabled !== false,
       },
     });
   }, [enterprise, open]);
@@ -140,7 +139,7 @@ export default function EnterpriseEditorDialog({
               {enterprise ? '编辑企业基础信息' : '手动添加企业'}
             </DialogTitle>
             <DialogDescription>
-              这里只维护基础资料、品牌信息、联系人与自动化参数；AI 与企业微信配置已迁移到独立页面。
+              这里仅维护基础资料、品牌信息、联系人与自动化 SLA 参数。
             </DialogDescription>
           </DialogHeader>
 
@@ -261,22 +260,6 @@ export default function EnterpriseEditorDialog({
                     }
                   />
                 </div>
-                <label className="flex items-center gap-3 rounded-xl border px-4 py-3 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={formData.automationConfig.wecomReminderEnabled}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        automationConfig: {
-                          ...prev.automationConfig,
-                          wecomReminderEnabled: e.target.checked,
-                        },
-                      }))
-                    }
-                  />
-                  启用企业微信催办
-                </label>
               </div>
             </div>
 
@@ -296,7 +279,7 @@ export default function EnterpriseEditorDialog({
                       )}
                     >
                       {formData.logo ? (
-                        <div className="relative h-full w-full group">
+                        <div className="group relative h-full w-full">
                           <img src={formData.logo} alt="Logo Preview" className="h-full w-full object-contain" />
                           <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
                             <Upload size={20} className="text-white" />

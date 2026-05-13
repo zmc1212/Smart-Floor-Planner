@@ -31,19 +31,19 @@ Component({
     pageSize: 10,
     hasMore: true,
     statusMap: {
-      'new': '新线索',
-      'contacted': '已联系',
-      'measuring': '量房中',
-      'designing': '设计中',
-      'quoting': '报价中',
-      'converted': '已签约',
-      'closed': '已关闭'
+      new: '新线索',
+      contacted: '已联系',
+      measuring: '量房中',
+      designing: '设计中',
+      quoting: '报价中',
+      converted: '已签约',
+      closed: '已关闭'
     },
     stats: [
-      { key: 'all', label: '全部线索', count: 0, icon: '📋', tone: 'blue' },
-      { key: 'new', label: '待跟进', count: 0, icon: '🔥', tone: 'orange' },
-      { key: 'measuring', label: '量房中', count: 0, icon: '📐', tone: 'green' },
-      { key: 'converted', label: '已成交', count: 0, icon: '✅', tone: 'purple' }
+      { key: 'all', label: '全部线索', count: 0, icon: '总', tone: 'green' },
+      { key: 'new', label: '待跟进', count: 0, icon: '新', tone: 'yellow' },
+      { key: 'measuring', label: '量房中', count: 0, icon: '量', tone: 'green' },
+      { key: 'converted', label: '已成交', count: 0, icon: '成', tone: 'mint' }
     ]
   },
 
@@ -57,14 +57,14 @@ Component({
   methods: {
     async fetchLeads(reset = false) {
       if (this.data.loading) return;
-      
+
       const page = reset ? 1 : this.data.page;
       const openid = this.data.openid || getApp().globalData.openid;
-      
+
       if (!openid) return;
 
       this.setData({ loading: true });
-      
+
       try {
         let url = `/leads?page=${page}&limit=${this.data.pageSize}`;
         if (this.data.currentTab !== 'all') {
@@ -73,7 +73,7 @@ Component({
 
         const res = await api.request(url, 'GET');
         console.log('LeadList fetch success:', res);
-        
+
         if (res.success && res.data) {
           const formatted = res.data.map(lead => {
             return {
@@ -94,7 +94,7 @@ Component({
             loading: false,
             refreshing: false
           });
-          
+
           if (reset) {
             this.updateStats(formatted, res.stats);
           }
@@ -108,7 +108,7 @@ Component({
     onTabChange(e) {
       const index = e.currentTarget.dataset.index;
       const tabId = this.data.tabs[index].id;
-      this.setData({ 
+      this.setData({
         currentTabIndex: index,
         currentTab: tabId
       });
@@ -118,7 +118,7 @@ Component({
     onSwiperChange(e) {
       const index = e.detail.current;
       const tabId = this.data.tabs[index].id;
-      this.setData({ 
+      this.setData({
         currentTabIndex: index,
         currentTab: tabId
       });
@@ -149,7 +149,6 @@ Component({
 
     onSearch(e) {
       const query = e.detail.value;
-      // TODO: Implement search
       console.log('Searching for:', query);
     },
 
@@ -165,13 +164,10 @@ Component({
         let count = 0;
         if (apiStats && apiStats[s.key] !== undefined) {
           count = apiStats[s.key];
+        } else if (s.key === 'all') {
+          count = leads.length;
         } else {
-          // Fallback to local calculation for UI consistency if API stats missing
-          if (s.key === 'all') {
-            count = leads.length;
-          } else {
-            count = leads.filter(l => l.status === s.key).length;
-          }
+          count = leads.filter(l => l.status === s.key).length;
         }
         return { ...s, count };
       });

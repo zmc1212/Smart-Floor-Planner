@@ -1,480 +1,184 @@
-/* Vercel Design System — Angle Measure Modal */
-
-/* ===== 容器 ===== */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40rpx;
-  box-sizing: border-box;
-}
+@import "../measure-modal/measure-modal.wxss";
 
 .angle-modal-container {
-  position: relative;
-  width: 100%;
-  max-width: 680rpx;
-  background: #ffffff;
-  border-radius: 12rpx;
+  max-height: 88vh;
   overflow: hidden;
-  box-shadow:
-    0px 0px 0px 1px rgba(0,0,0,0.08),
-    0px 24px 64rpx -12px rgba(0,0,0,0.12),
-    rgba(255,255,255,1) 0px 0px 0px 1px inset;
-  padding: 64rpx 48rpx;
-  box-sizing: border-box;
-  max-height: 92vh;
-  display: flex;
-  flex-direction: column;
 }
 
-.modal-close {
-  position: absolute;
-  top: 32rpx;
-  right: 32rpx;
-  width: 64rpx;
-  height: 64rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #888;
-  font-size: 32rpx;
-  z-index: 10;
-}
-
-/* ===== 标题区 ===== */
-.title-section {
-  text-align: center;
-  margin-bottom: 56rpx;
-}
-
-.modal-title {
-  display: block;
-  font-size: 36rpx;
-  font-weight: 600;
-  color: #171717;
-  letter-spacing: -1.2rpx;
-  margin-bottom: 12rpx;
-}
-
-.modal-subtitle {
-  display: block;
-  font-size: 18rpx;
-  color: #999;
-  letter-spacing: 0.4rpx;
-  text-transform: uppercase;
-  font-weight: 500;
-}
-
-/* ===== 步骤指示器 ===== */
 .step-indicator {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0;
-  margin-bottom: 48rpx;
+  margin-bottom: var(--space-section);
 }
 
 .step-dot {
-  width: 48rpx;
-  height: 48rpx;
-  border-radius: 50%;
-  background: #f5f5f5;
+  width: 46rpx;
+  height: 46rpx;
+  border-radius: var(--radius-full);
+  background: var(--neutral-100);
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: inset 0 0 0 1rpx rgba(0,0,0,0.06);
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-  flex-shrink: 0;
+  font-size: 22rpx;
+  font-weight: var(--font-weight-bold);
 }
 
-.step-dot.done {
-  background: #171717;
-  box-shadow: none;
-}
-
+.step-dot.done,
 .step-dot.current {
-  background: #171717;
-  box-shadow: 0 0 0 4rpx rgba(23,23,23,0.15);
-  transform: scale(1.1);
-}
-
-.step-num {
-  font-size: 20rpx;
-  font-weight: 600;
-  color: #999;
-}
-
-.step-dot.done .step-num,
-.step-dot.current .step-num {
-  color: #ffffff;
+  background: var(--brand-primary);
+  color: var(--text-inverse);
 }
 
 .step-line {
-  width: 56rpx;
-  height: 2rpx;
-  background: #e5e5e5;
-  transition: background 0.3s;
+  flex: 1;
+  height: 4rpx;
+  background: var(--neutral-100);
 }
 
 .step-line.done {
-  background: #171717;
+  background: var(--brand-primary-60);
 }
 
-/* ===== 步骤说明 ===== */
 .step-info {
-  text-align: center;
-  margin-bottom: 48rpx;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-lg);
+  background: var(--bg-surface-soft);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-section);
 }
 
 .step-label {
-  display: block;
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #171717;
-  letter-spacing: -0.8rpx;
-  margin-bottom: 8rpx;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
 }
 
 .step-desc {
-  display: block;
-  font-size: 22rpx;
-  color: #888;
-  line-height: 1.5;
+  font-size: var(--font-size-caption);
+  color: var(--text-secondary);
 }
 
-/* ===== 三角形示意图 ===== */
 .triangle-preview {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 48rpx;
-}
-
-.triangle-svg-wrapper {
-  width: 320rpx;
-  height: 240rpx;
+  height: 260rpx;
+  background: var(--bg-surface-soft);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-section);
   position: relative;
 }
 
+.triangle-svg-wrapper,
 .tri-shape {
-  position: relative;
   width: 100%;
   height: 100%;
+  position: relative;
 }
 
-/* 边 - 基础样式 */
 .tri-edge {
   position: absolute;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: var(--brand-primary-60);
+  border-radius: var(--radius-full);
 }
 
-/* 墙A - 左侧竖边 */
+.tri-edge.measuring,
+.tri-edge.measured {
+  background: var(--brand-primary);
+}
+
 .edge-a {
-  left: 40rpx;
-  top: 20rpx;
-  width: 4rpx;
-  height: 180rpx;
-  background: #e0e0e0;
-  flex-direction: column;
-}
-.edge-a .edge-label {
-  position: absolute;
-  left: -80rpx;
-  white-space: nowrap;
-  font-size: 20rpx;
-  color: #999;
-}
-.edge-a.measured {
-  background: #171717;
-}
-.edge-a.measured .edge-label {
-  color: #171717;
-  font-weight: 600;
-}
-.edge-a.measuring {
-  background: var(--ship-red, #ff5b4f);
-  animation: pulse-edge 1.2s ease-in-out infinite;
+  width: 6rpx;
+  height: 150rpx;
+  left: 170rpx;
+  top: 50rpx;
 }
 
-/* 墙B - 底边 */
 .edge-b {
-  left: 40rpx;
-  bottom: 20rpx;
-  width: 240rpx;
-  height: 4rpx;
-  background: #e0e0e0;
-}
-.edge-b .edge-label {
-  position: absolute;
-  bottom: -36rpx;
-  white-space: nowrap;
-  font-size: 20rpx;
-  color: #999;
-}
-.edge-b.measured {
-  background: #171717;
-}
-.edge-b.measured .edge-label {
-  color: #171717;
-  font-weight: 600;
-}
-.edge-b.measuring {
-  background: var(--ship-red, #ff5b4f);
-  animation: pulse-edge 1.2s ease-in-out infinite;
+  width: 210rpx;
+  height: 6rpx;
+  left: 170rpx;
+  top: 200rpx;
 }
 
-/* 对角线 */
 .edge-d {
-  left: 40rpx;
-  top: 20rpx;
-  width: 308rpx;
-  height: 4rpx;
-  background: #e0e0e0;
-  transform-origin: 0 50%;
-  transform: rotate(35.5deg);
-}
-.edge-d .edge-label {
-  position: absolute;
-  top: -32rpx;
-  right: 20rpx;
-  white-space: nowrap;
-  font-size: 20rpx;
-  color: #999;
-}
-.edge-d.measured {
-  background: var(--develop-blue, #0070f3);
-}
-.edge-d.measured .edge-label {
-  color: var(--develop-blue, #0070f3);
-  font-weight: 600;
-}
-.edge-d.measuring {
-  background: var(--ship-red, #ff5b4f);
-  animation: pulse-edge 1.2s ease-in-out infinite;
+  width: 244rpx;
+  height: 6rpx;
+  left: 154rpx;
+  top: 124rpx;
+  transform: rotate(38deg);
 }
 
-/* 角度弧 */
-.tri-angle-arc {
-  position: absolute;
-  left: 50rpx;
-  bottom: 30rpx;
-  width: 56rpx;
-  height: 56rpx;
-  border: 3rpx solid var(--develop-blue, #0070f3);
-  border-radius: 50%;
-  clip-path: polygon(0 0, 100% 0, 100% 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
+.edge-label,
 .angle-value {
   position: absolute;
-  left: 60rpx;
-  bottom: -8rpx;
-  font-size: 28rpx;
-  font-weight: 700;
-  color: var(--develop-blue, #0070f3);
+  color: var(--text-brand);
+  background: var(--bg-surface);
+  border-radius: var(--radius-full);
+  padding: 4rpx 12rpx;
+  font-size: 20rpx;
   white-space: nowrap;
-  font-family: var(--font-mono, 'Geist Mono', monospace);
 }
 
-/* 顶点 */
 .tri-vertex {
   position: absolute;
-  width: 12rpx;
-  height: 12rpx;
-  border-radius: 50%;
-  background: #171717;
-  z-index: 2;
-}
-.vertex-origin {
-  left: 36rpx;
-  bottom: 16rpx;
-}
-.vertex-a {
-  left: 36rpx;
-  top: 16rpx;
-}
-.vertex-b {
-  right: 36rpx;
-  bottom: 16rpx;
+  width: 18rpx;
+  height: 18rpx;
+  border-radius: var(--radius-full);
+  background: var(--brand-primary);
 }
 
-/* ===== 结果卡片 ===== */
+.vertex-origin { left: 161rpx; top: 192rpx; }
+.vertex-a { left: 161rpx; top: 42rpx; }
+.vertex-b { left: 372rpx; top: 192rpx; }
+
+.tri-angle-arc {
+  position: absolute;
+  left: 210rpx;
+  top: 160rpx;
+}
+
 .result-cards {
-  display: flex;
-  gap: 16rpx;
-  margin-bottom: 48rpx;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-md);
+  margin-bottom: var(--space-section);
 }
 
-.result-card {
-  flex: 1;
-  background: #fafafa;
-  border-radius: 8rpx;
-  padding: 16rpx 12rpx;
-  text-align: center;
-  box-shadow: inset 0 0 0 1rpx rgba(0,0,0,0.04);
+.result-card,
+.angle-result-inner {
+  background: var(--bg-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-border-soft);
+  padding: var(--space-lg);
   display: flex;
   flex-direction: column;
-  gap: 4rpx;
-  position: relative;
+  gap: var(--space-xs);
 }
 
 .result-card.active {
-  box-shadow: 0 0 0 2rpx #171717;
+  background: var(--brand-primary-20);
 }
 
-.rc-label {
-  font-size: 18rpx;
-  color: #888;
-  font-weight: 500;
+.rc-label,
+.rc-action,
+.angle-result-label,
+.angle-result-hint {
+  font-size: 22rpx;
+  color: var(--text-secondary);
 }
 
-.rc-value {
-  font-size: 24rpx;
-  font-weight: 700;
-  color: #171717;
-  font-family: var(--font-mono, 'Geist Mono', monospace);
+.rc-value,
+.angle-result-value {
+  font-size: 30rpx;
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
 }
 
-.rc-action {
-  font-size: 16rpx;
-  color: var(--develop-blue, #0070f3);
-  margin-top: 2rpx;
-}
-
-/* ===== 角度结果 ===== */
 .angle-result {
-  margin-bottom: 48rpx;
-}
-
-.angle-result-inner {
-  background: #f0fdf4;
-  border-radius: 8rpx;
-  padding: 32rpx;
-  text-align: center;
-  box-shadow: inset 0 0 0 1rpx rgba(16,185,129,0.2);
+  margin-bottom: var(--space-section);
 }
 
 .angle-result-inner.invalid {
-  background: #fef2f2;
-  box-shadow: inset 0 0 0 1rpx rgba(239,68,68,0.2);
-}
-
-.angle-result-label {
-  display: block;
-  font-size: 20rpx;
-  color: #888;
-  margin-bottom: 8rpx;
-  text-transform: uppercase;
-  letter-spacing: 1rpx;
-  font-weight: 600;
-}
-
-.angle-result-value {
-  display: block;
-  font-size: 56rpx;
-  font-weight: 800;
-  color: #171717;
-  font-family: var(--font-mono, 'Geist Mono', monospace);
-  letter-spacing: -2rpx;
-}
-
-.angle-result-hint {
-  display: block;
-  font-size: 22rpx;
-  color: #ef4444;
-  margin-top: 8rpx;
-}
-
-/* ===== 提示区 ===== */
-.hint-section {
-  display: flex;
-  align-items: flex-start;
-  gap: 20rpx;
-  background: #fafafa;
-  padding: 32rpx;
-  border-radius: 8rpx;
-  margin-bottom: 56rpx;
-  box-shadow: inset 0 0 0 1rpx rgba(0,0,0,0.04);
-}
-
-.hint-icon {
-  font-size: 24rpx;
-  color: var(--develop-blue, #0070f3);
-  margin-top: 4rpx;
-}
-
-.hint-text {
-  font-size: 22rpx;
-  color: #666;
-  line-height: 1.6;
-}
-
-/* ===== 操作按钮 ===== */
-.action-section {
-  display: flex;
-  flex-direction: column;
-  gap: 20rpx;
-}
-
-.btn-primary {
-  width: 100% !important;
-  background: #171717 !important;
-  color: #ffffff !important;
-  font-weight: 600 !important;
-  padding: 32rpx 0 !important;
-  border-radius: 8rpx !important;
-  font-size: 28rpx !important;
-  margin: 0 !important;
-  box-shadow: none !important;
-}
-
-.btn-outline {
-  width: 100% !important;
-  background: #ffffff !important;
-  color: #171717 !important;
-  font-weight: 500 !important;
-  padding: 28rpx 0 !important;
-  border-radius: 8rpx !important;
-  font-size: 24rpx !important;
-  margin: 0 !important;
-  box-shadow: 0 0 0 1rpx rgba(0,0,0,0.08) !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-}
-
-.btn-retry {
-  margin-top: 8rpx !important;
-}
-
-.btn-confirm.loading {
-  opacity: 0.6;
-  pointer-events: none;
-}
-
-/* ===== 动画 ===== */
-@keyframes pulse-edge {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-
-.blink {
-  animation: blink-text 1.5s ease-in-out infinite;
-}
-
-@keyframes blink-text {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  background: var(--status-cancelled-bg);
 }

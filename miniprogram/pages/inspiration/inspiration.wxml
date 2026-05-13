@@ -1,26 +1,23 @@
 <view class="container">
-  <!-- 顶部分类筛选 -->
-  <!-- 风格分类筛选 -->
   <scroll-view scroll-x class="filter-bar" enable-flex>
-    <view 
-      class="filter-item {{selectedStyle === 'all' ? 'active' : ''}}" 
-      bindtap="onFilterStyle" 
+    <view
+      class="filter-item {{selectedStyle === 'all' ? 'active' : ''}}"
+      bindtap="onFilterStyle"
       data-style="all"
     >全部风格</view>
-    <view 
-      wx:for="{{styleMetadata}}" 
-      wx:key="key" 
+    <view
+      wx:for="{{styleMetadata}}"
+      wx:key="key"
       class="filter-item {{selectedStyle === item.label ? 'active' : ''}}"
       bindtap="onFilterStyle"
       data-style="{{item.label}}"
     >{{item.label}}</view>
   </scroll-view>
 
-  <!-- 空间类型筛选 -->
   <scroll-view scroll-x class="filter-bar type-bar" enable-flex>
-    <view 
-      wx:for="{{roomTypes}}" 
-      wx:key="*this" 
+    <view
+      wx:for="{{roomTypes}}"
+      wx:key="*this"
       class="filter-item {{selectedRoomType === item ? 'active' : ''}}"
       bindtap="onFilterRoomType"
       data-type="{{item}}"
@@ -31,15 +28,14 @@
     <view class="case-grid">
       <view class="case-card" wx:for="{{cases}}" wx:key="_id">
         <view class="case-cover-box" bindtap="onPreviewCase" data-id="{{item._id}}">
-          <!-- 优先显示真实封面图 (支持 URL 或 Base64) -->
-          <image 
-            wx:if="{{item.coverImage}}" 
-            class="case-cover" 
-            src="{{item.coverImage}}" 
+          <image
+            wx:if="{{item.coverImage}}"
+            class="case-cover"
+            src="{{item.coverImage}}"
             mode="aspectFill"
             lazy-load
           />
-          <view wx:else class="cover-placeholder" style="background: {{item.placeholderColor || '#eee'}}">
+          <view wx:else class="cover-placeholder" style="background: {{item.placeholderColor || '#EAF8EC'}}">
             <text class="placeholder-text">{{item.style}}</text>
           </view>
           <view class="case-badge" wx:if="{{item.isRecommended}}">精选</view>
@@ -53,7 +49,7 @@
           <view class="case-actions">
             <view class="btn-copy" bindtap="onCopyLayout" data-id="{{item._id}}">一键同款</view>
             <view class="btn-share" bindtap="onOpenPoster" data-id="{{item._id}}">
-              <icon type="share" size="16" color="#64748b" />
+              <icon type="share" size="16" color="#6B7280" />
               分享
             </view>
           </view>
@@ -61,27 +57,23 @@
       </view>
     </view>
 
-    <!-- 加载状态 -->
     <view class="loading-status">
       <text wx:if="{{isLoading}}">加载中...</text>
       <text wx:if="{{!hasMore && cases.length > 0}}">没有更多案例了</text>
       <view class="empty-state" wx:if="{{cases.length === 0 && !isLoading}}">
-        <icon type="info" size="48" color="#cbd5e1" />
+        <icon type="info" size="48" color="#C7F1CC" />
         <text>暂无案例，敬请期待</text>
       </view>
     </view>
   </scroll-view>
 
-  <!-- 底部留资悬浮按钮 -->
   <view class="float-lead-btn" bindtap="onOpenLeadModal">
     <text>没有满意的？预约免费设计</text>
   </view>
 
-
-  
-  <share-poster 
-    show="{{showPoster}}" 
-    caseData="{{currentCase}}" 
-    bindclose="onClosePoster" 
+  <share-poster
+    show="{{showPoster}}"
+    caseData="{{currentCase}}"
+    bindclose="onClosePoster"
   />
 </view>

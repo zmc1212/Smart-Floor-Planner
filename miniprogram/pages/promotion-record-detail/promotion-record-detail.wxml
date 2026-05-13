@@ -46,8 +46,6 @@
       </view>
     </view>
 
-    <!-- Construction tasks hidden for promotion workflow -->
-
     <view class="card" wx:if="{{userInfo.staffRole === 'enterprise_admin'}}">
       <view class="section-title">任务分配</view>
       <picker mode="selector" range="{{measurers}}" range-key="displayName" bindchange="onMeasurerChange">

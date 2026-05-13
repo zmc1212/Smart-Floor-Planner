@@ -35,7 +35,6 @@ const DEFAULT_FORM = {
   role: 'designer',
   enterpriseId: '',
   departmentId: '',
-  wecomUserId: '',
 };
 
 export default function StaffPage() {
@@ -132,7 +131,6 @@ export default function StaffPage() {
         typeof member.departmentId === 'object' && member.departmentId
           ? member.departmentId._id
           : (member.departmentId || ''),
-      wecomUserId: member.wecomUserId || '',
     });
     setEditingId(member._id);
     setIsEditMode(true);
@@ -364,21 +362,6 @@ export default function StaffPage() {
             </SelectContent>
           </Select>
         </div>
-
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">企业微信 UserID</Label>
-            <span className="text-[10px] text-muted-foreground">用于推送提醒</span>
-          </div>
-          <Input
-            className="h-12 rounded-2xl border-none bg-muted/30"
-            value={formData.wecomUserId}
-            onChange={(e) => setFormData({ ...formData, wecomUserId: e.target.value })}
-            placeholder="企业微信后台的 UserID"
-          />
-        </div>
-
-
       </div>
 
       <DialogFooter className="border-t bg-muted/30 p-8 pt-4">
@@ -473,12 +456,6 @@ export default function StaffPage() {
               />
             </div>
 
-            <div className="rounded-[32px] border border-blue-100/50 bg-blue-50/50 p-6">
-              <h4 className="mb-3 text-xs font-bold uppercase tracking-widest text-blue-700">配置建议</h4>
-              <p className="text-[13px] leading-relaxed text-blue-600/80">
-                企业微信催办要生效，除了企业级 CorpID / AgentID / Secret 外，每位相关员工也需要填写企业微信提醒接收 ID。
-              </p>
-            </div>
           </aside>
 
           <div className="min-w-0 flex-1">
@@ -493,7 +470,7 @@ export default function StaffPage() {
                   {staff.map((member: any) => (
                     <div
                       key={member._id}
-                      className="group relative rounded-[32px] border border-muted bg-white p-8 transition-all duration-300 hover:border-primary/50 hover:shadow-2xl hover:shadow-primary/5"
+                      className="group relative rounded-[32px] border border-black/[0.08] bg-white p-8 transition-all duration-300 hover:border-primary/50 hover:shadow-2xl hover:shadow-primary/5"
                     >
                       <div className="mb-8 flex items-start justify-between">
                         <div className="flex h-14 w-14 items-center justify-center rounded-[20px] bg-muted text-xl font-bold text-muted-foreground shadow-inner transition-all duration-500 group-hover:bg-primary group-hover:text-primary-foreground">
@@ -541,7 +518,7 @@ export default function StaffPage() {
                         </div>
                       </div>
 
-                      <div className="absolute right-4 top-4 flex gap-1 opacity-0 transition-all group-hover:opacity-100">
+                      <div className="absolute right-8 bottom-8 flex gap-1 opacity-0 transition-all group-hover:opacity-100">
                         {(currentUser?.role === 'super_admin' || currentUser?.role === 'enterprise_admin' || (currentUser?.role === 'admin' && member.role !== 'super_admin')) && (
                           <>
                             <Dialog open={isModalOpen && isEditMode && editingId === member._id} onOpenChange={(open) => !open && setIsModalOpen(false)}>

@@ -6,19 +6,19 @@ export function getEnterpriseStatusBadge(status: EnterpriseListItem['status']) {
     case 'pending_approval':
       return (
         <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
-          待审核
+          寰呭鏍?
         </Badge>
       );
     case 'active':
       return (
         <Badge variant="secondary" className="bg-green-100 text-green-800 hover:bg-green-100">
-          已启用
+          宸插惎鐢?
         </Badge>
       );
     case 'disabled':
       return (
         <Badge variant="outline" className="border-gray-200 text-gray-500">
-          已禁用
+          宸茬鐢?
         </Badge>
       );
     default:
@@ -26,27 +26,15 @@ export function getEnterpriseStatusBadge(status: EnterpriseListItem['status']) {
   }
 }
 
-export function isEnterpriseWecomConfigured(ent: EnterpriseListItem) {
-  return Boolean(
-    ent.wecomConfigConfigured || (ent.wecomConfig?.corpId && ent.wecomConfig?.agentId)
-  );
-}
-
-export function getWecomCompletionText(ent: EnterpriseListItem) {
-  const configuredStaff = Number(ent.wecomMemberStats?.configuredStaff || 0);
-  const totalStaff = Number(ent.wecomMemberStats?.totalStaff || 0);
-  return `${configuredStaff}/${totalStaff}`;
-}
-
 export function formatAiKeyStatus(ent: EnterpriseListItem) {
   const keyId = ent.aiUsageSnapshot?.keyInfo?.keyId || ent.aiConfig?.pollinationsKeyRef || '';
   if (!keyId) {
-    return '未配置';
+    return '鏈厤缃?';
   }
 
   if (ent.aiUsageSnapshot?.keyInfo?.valid === false) {
-    return 'Key 无效';
+    return 'Key 鏃犳晥';
   }
 
-  return '已配置';
+  return '宸查厤缃?';
 }

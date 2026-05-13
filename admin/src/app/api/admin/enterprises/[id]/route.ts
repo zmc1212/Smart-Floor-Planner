@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import dbConnect from '@/lib/mongodb';
-import { hasCompleteWecomConfig, normalizeWecomConfig } from '@/lib/enterprise-wecom';
 import { Enterprise } from '@/models/Enterprise';
 import { EnterpriseAiUsageSnapshot } from '@/models/EnterpriseAiUsageSnapshot';
 import { AdminUser, DEFAULT_PERMISSIONS } from '@/models/AdminUser';
@@ -27,14 +26,8 @@ interface EnterprisePatchBody {
     followUpSlaHours?: number;
     measureTaskSlaHours?: number;
     designTaskSlaHours?: number;
-    wecomReminderEnabled?: boolean;
     reminderIntervalHours?: number;
     maxReminderTimes?: number;
-  };
-  wecomConfig?: {
-    corpId?: string;
-    agentId?: string;
-    secret?: string;
   };
 }
 
@@ -51,37 +44,10 @@ function sanitizeEnterpriseForResponse(
       syncError?: string;
       dailyUsage?: Array<{ date: string; model: string; requests: number; costUsd: number }>;
     } | null;
-    wecomMemberStats?: {
-      totalStaff: number;
-      configuredStaff: number;
-    };
   }
 ) {
-  const wecomConfig =
-    enterprise.wecomConfig && typeof enterprise.wecomConfig === 'object'
-      ? {
-          corpId: (enterprise.wecomConfig as { corpId?: string }).corpId || '',
-          agentId: (enterprise.wecomConfig as { agentId?: string }).agentId || '',
-        }
-      : undefined;
-
   return {
     ...enterprise,
-    wecomConfig,
-    wecomSecretConfigured: Boolean(
-      (enterprise.wecomConfig as { secret?: string } | undefined)?.secret
-    ),
-    wecomConfigConfigured: hasCompleteWecomConfig(
-      enterprise.wecomConfig as {
-        corpId?: string;
-        agentId?: string;
-        secret?: string;
-      } | undefined
-    ),
-    wecomMemberStats: options?.wecomMemberStats || {
-      totalStaff: 0,
-      configuredStaff: 0,
-    },
     aiConfig: sanitizeEnterpriseAiConfig(
       enterprise as unknown as Record<string, unknown> & {
         aiConfig?: ReturnType<typeof sanitizeEnterpriseAiConfig>;
@@ -114,43 +80,12 @@ export async function GET(
         return NextResponse.json({ success: false, error: 'Enterprise not found' }, { status: 404 });
       }
 
-      const [aiSnapshot, wecomMemberStatsRow] = await Promise.all([
-        EnterpriseAiUsageSnapshot.findOne({ enterpriseId: id }).lean(),
-        AdminUser.aggregate([
-          {
-            $match: {
-              enterpriseId: enterprise._id,
-              role: { $in: ['enterprise_admin', 'salesperson', 'measurer', 'designer'] },
-            },
-          },
-          {
-            $group: {
-              _id: '$enterpriseId',
-              totalStaff: { $sum: 1 },
-              configuredStaff: {
-                $sum: {
-                  $cond: [
-                    {
-                      $gt: [{ $strLenCP: { $ifNull: ['$wecomUserId', ''] } }, 0],
-                    },
-                    1,
-                    0,
-                  ],
-                },
-              },
-            },
-          },
-        ]),
-      ]);
+      const aiSnapshot = await EnterpriseAiUsageSnapshot.findOne({ enterpriseId: id }).lean();
 
       return NextResponse.json({
         success: true,
         data: sanitizeEnterpriseForResponse(enterprise as unknown as Record<string, unknown>, {
           aiSnapshot,
-          wecomMemberStats: {
-            totalStaff: wecomMemberStatsRow[0]?.totalStaff || 0,
-            configuredStaff: wecomMemberStatsRow[0]?.configuredStaff || 0,
-          },
         }),
       });
     });
@@ -182,16 +117,14 @@ export async function PATCH(
           branding,
           groundPromotionFixedCommission,
           automationConfig,
-          wecomConfig,
         } = body;
 
-        const currentEnterprise = await Enterprise.findById(enterpriseId).select('contactPerson wecomConfig');
+        const currentEnterprise = await Enterprise.findById(enterpriseId).select('contactPerson');
         if (!currentEnterprise) {
           return NextResponse.json({ success: false, error: 'Enterprise not found' }, { status: 404 });
         }
 
         const updateData: Record<string, unknown> = {};
-        const unsetData: Record<string, unknown> = {};
 
         if (name !== undefined) updateData.name = name;
         if (code !== undefined) updateData.code = code;
@@ -207,40 +140,24 @@ export async function PATCH(
             followUpSlaHours: Number(automationConfig.followUpSlaHours || 24),
             measureTaskSlaHours: Number(automationConfig.measureTaskSlaHours || 48),
             designTaskSlaHours: Number(automationConfig.designTaskSlaHours || 72),
-            wecomReminderEnabled: automationConfig.wecomReminderEnabled !== false,
             reminderIntervalHours: Number(automationConfig.reminderIntervalHours || 24),
             maxReminderTimes: Number(automationConfig.maxReminderTimes || 3),
           };
         }
-        if (wecomConfig !== undefined) {
-          const normalizedWecomConfig = normalizeWecomConfig(wecomConfig, {
-            currentSecret: currentEnterprise.wecomConfig?.secret,
-          });
-          if (normalizedWecomConfig.mode === 'set') {
-            updateData.wecomConfig = normalizedWecomConfig.value;
-          } else {
-            unsetData.wecomConfig = 1;
-          }
-        }
 
-        const updateOperation: Record<string, unknown> = {};
-        if (Object.keys(updateData).length > 0) {
-          updateOperation.$set = updateData;
-        }
-        if (Object.keys(unsetData).length > 0) {
-          updateOperation.$unset = unsetData;
-        }
-
-        const enterprise = await Enterprise.findByIdAndUpdate(enterpriseId, updateOperation, { new: true });
+        const enterprise = await Enterprise.findByIdAndUpdate(
+          enterpriseId,
+          { $set: updateData },
+          { new: true }
+        );
         if (!enterprise) {
           return NextResponse.json({ success: false, error: 'Enterprise not found' }, { status: 404 });
         }
 
         if (status === 'active' && enterprise.contactPerson?.phone) {
           const targetPhone = enterprise.contactPerson.phone;
-          // Check both username and phone to be safe
-          const existingUser = await AdminUser.findOne({ 
-            $or: [{ username: targetPhone }, { phone: targetPhone }] 
+          const existingUser = await AdminUser.findOne({
+            $or: [{ username: targetPhone }, { phone: targetPhone }]
           });
 
           if (!existingUser) {
@@ -255,14 +172,11 @@ export async function PATCH(
               menuPermissions: DEFAULT_PERMISSIONS.enterprise_admin,
               status: 'active',
             });
-          } else {
-             // If user already exists but isn't for THIS enterprise, we have a conflict
-             if (existingUser.enterpriseId?.toString() !== enterprise._id.toString()) {
-               return NextResponse.json({ 
-                 success: false, 
-                 error: `激活失败：手机号 ${targetPhone} 已被其他账号使用，请先修改联系电话。` 
-               }, { status: 400 });
-             }
+          } else if (existingUser.enterpriseId?.toString() !== enterprise._id.toString()) {
+            return NextResponse.json({
+              success: false,
+              error: `婵€娲诲け璐ワ細鎵嬫満鍙?${targetPhone} 宸茶鍏朵粬璐﹀彿浣跨敤锛岃鍏堜慨鏀硅仈绯荤數璇濄€?`,
+            }, { status: 400 });
           }
         }
 

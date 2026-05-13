@@ -11,54 +11,54 @@
     "pages/mine/mine",
     "pages/login/login",
     "pages/leads-management/leads-management",
-    "pages/lead-form/lead-form"
+    "pages/lead-form/lead-form",
+    "pages/recommendations/index"
   ],
   "window": {
-    "navigationBarTitleText": "智能量房大师",
+    "navigationBarTitleText": "\u667a\u80fd\u91cf\u623f\u5927\u5e08",
     "navigationBarBackgroundColor": "#ffffff",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#f8f9fa",
+    "backgroundColor": "#F3F4F6",
     "backgroundTextStyle": "light"
   },
   "tabBar": {
-    "color": "#999999",
+    "color": "#6B7280",
     "selectedColor": "#22C55E",
     "backgroundColor": "#ffffff",
     "borderStyle": "white",
     "list": [
       {
         "pagePath": "pages/index/index",
-        "text": "首页",
+        "text": "\u9996\u9875",
         "iconPath": "images/meaure0.png",
         "selectedIconPath": "images/meaure1.png"
       },
       {
         "pagePath": "pages/leads-management/leads-management",
-        "text": "客户线索",
+        "text": "\u5ba2\u6237\u7ebf\u7d22",
         "iconPath": "images/mine0.png",
         "selectedIconPath": "images/mine1.png"
       },
       {
         "pagePath": "pages/inspiration/inspiration",
-        "text": "灵感库",
+        "text": "\u7075\u611f\u5e93",
         "iconPath": "images/idea0.png",
         "selectedIconPath": "images/idea1.png"
       },
       {
         "pagePath": "pages/mine/mine",
-        "text": "我的",
+        "text": "\u6211\u7684",
         "iconPath": "images/mine0.png",
         "selectedIconPath": "images/mine1.png"
       }
     ]
   },
-  "usingComponents": {
-  },
+  "usingComponents": {},
   "style": "v2",
   "sitemapLocation": "sitemap.json",
   "permission": {
     "scope.userLocation": {
-      "desc": "您的位置信息将用于报备企业的地理位置"
+      "desc": "\u60a8\u7684\u4f4d\u7f6e\u4fe1\u606f\u5c06\u7528\u4e8e\u62a5\u5907\u4f01\u4e1a\u7684\u5730\u7406\u4f4d\u7f6e"
     }
   },
   "requiredPrivateInfos": [

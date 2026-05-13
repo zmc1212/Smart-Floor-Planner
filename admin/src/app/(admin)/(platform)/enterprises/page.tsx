@@ -18,8 +18,6 @@ import { EnterpriseListItem } from '@/components/enterprise/types';
 import {
   formatAiKeyStatus,
   getEnterpriseStatusBadge,
-  getWecomCompletionText,
-  isEnterpriseWecomConfigured,
 } from '@/components/enterprise/enterprise-utils';
 
 export default function EnterprisesPage() {
@@ -135,7 +133,6 @@ export default function EnterprisesPage() {
                   <TableHead>编码</TableHead>
                   <TableHead>联系人</TableHead>
                   <TableHead>状态</TableHead>
-                  <TableHead>企微</TableHead>
                   <TableHead>AI 摘要</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
@@ -151,21 +148,15 @@ export default function EnterprisesPage() {
                         <div>
                           <div className="font-semibold">{ent.name}</div>
                           <div className="text-[11px] text-muted-foreground">
-                            {ent.registrationMode === 'self_service'
-                              ? '自主注册'
-                              : '后台录入'}
+                            {ent.registrationMode === 'self_service' ? '自主注册' : '后台录入'}
                           </div>
                         </div>
                       </div>
                     </TableCell>
                     <TableCell className="font-mono text-xs">{ent.code}</TableCell>
                     <TableCell>
-                      <div className="text-sm font-medium">
-                        {ent.contactPerson?.name || '-'}
-                      </div>
-                      <div className="text-[11px] text-muted-foreground">
-                        {ent.contactPerson?.phone || '-'}
-                      </div>
+                      <div className="text-sm font-medium">{ent.contactPerson?.name || '-'}</div>
+                      <div className="text-[11px] text-muted-foreground">{ent.contactPerson?.phone || '-'}</div>
                     </TableCell>
                     <TableCell>
                       <div className="space-y-2">
@@ -179,23 +170,6 @@ export default function EnterprisesPage() {
                             审核通过
                           </Button>
                         )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <Badge
-                          variant="secondary"
-                          className={
-                            isEnterpriseWecomConfigured(ent)
-                              ? 'bg-green-100 text-green-700 hover:bg-green-100'
-                              : 'bg-amber-100 text-amber-700 hover:bg-amber-100'
-                          }
-                        >
-                          {isEnterpriseWecomConfigured(ent) ? '已配置' : '未配置'}
-                        </Badge>
-                        <div className="text-[11px] text-muted-foreground">
-                          员工完成度 {getWecomCompletionText(ent)}
-                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -249,10 +223,7 @@ export default function EnterprisesPage() {
 
                 {enterprises.length === 0 && (
                   <TableRow>
-                    <TableCell
-                      colSpan={7}
-                      className="h-24 text-center text-muted-foreground"
-                    >
+                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                       暂无企业数据
                     </TableCell>
                   </TableRow>

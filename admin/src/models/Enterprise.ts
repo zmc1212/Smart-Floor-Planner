@@ -2,7 +2,7 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 
 export interface IEnterprise extends Document {
   name: string;
-  code: string; // Tax ID or Unique Code
+  code: string;
   status: 'pending_approval' | 'active' | 'disabled';
   registrationMode: 'self_service' | 'manual';
   contactPerson: {
@@ -13,7 +13,7 @@ export interface IEnterprise extends Document {
   address?: string;
   industry?: string;
   description?: string;
-  logo?: string; // URL or Base64 logo
+  logo?: string;
   branding?: {
     primaryColor?: string;
     accentColor?: string;
@@ -23,17 +23,11 @@ export interface IEnterprise extends Document {
     followUpSlaHours?: number;
     measureTaskSlaHours?: number;
     designTaskSlaHours?: number;
-    wecomReminderEnabled?: boolean;
     reminderIntervalHours?: number;
     maxReminderTimes?: number;
   };
   createdAt: Date;
   updatedAt: Date;
-  wecomConfig?: {
-    corpId?: string;
-    agentId?: string;
-    secret?: string;
-  };
   aiConfig?: {
     provider: 'pollinations';
     keyMode: 'managed_child_key';
@@ -84,14 +78,8 @@ const EnterpriseSchema: Schema<IEnterprise> = new Schema(
       followUpSlaHours: { type: Number, default: 24, min: 1 },
       measureTaskSlaHours: { type: Number, default: 48, min: 1 },
       designTaskSlaHours: { type: Number, default: 72, min: 1 },
-      wecomReminderEnabled: { type: Boolean, default: true },
       reminderIntervalHours: { type: Number, default: 24, min: 1 },
       maxReminderTimes: { type: Number, default: 3, min: 1 },
-    },
-    wecomConfig: {
-      corpId: { type: String },
-      agentId: { type: String },
-      secret: { type: String }
     },
     aiConfig: {
       provider: {

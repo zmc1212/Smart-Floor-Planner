@@ -29,7 +29,6 @@ export async function GET(request: Request) {
           );
         }
 
-        // 使用灵活的租户过滤器
         const filter: any = {};
         const matchStage: any = {};
 
@@ -49,7 +48,7 @@ export async function GET(request: Request) {
         const [logs, total, statusCounts] = await Promise.all([
           WorkflowNotificationLog.find(filter)
             .populate({ path: 'recordId', select: 'enterpriseName contactPerson businessStage ownershipStatus' })
-            .populate({ path: 'recipientStaffId', select: 'displayName role wecomUserId' })
+            .populate({ path: 'recipientStaffId', select: 'displayName role' })
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
@@ -66,8 +65,8 @@ export async function GET(request: Request) {
           return acc;
         }, { sent: 0, failed: 0, skipped: 0 });
 
-        return NextResponse.json({ 
-          success: true, 
+        return NextResponse.json({
+          success: true,
           data: logs,
           pagination: createPaginationMetadata(total, page, limit),
           stats

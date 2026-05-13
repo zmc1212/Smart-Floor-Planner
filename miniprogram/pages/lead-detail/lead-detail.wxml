@@ -9,7 +9,7 @@
   <view class="content" wx:if="{{!loading}}">
     <block wx:if="{{rooms.length === 0}}">
       <view class="empty-state">
-        <view class="icon">🏠</view>
+        <view class="icon">家</view>
         <view class="title">当前客户暂无户型数据</view>
         <view class="subtitle">请选择一个标准户型模板快速开始测量</view>
       </view>
@@ -29,7 +29,7 @@
 
       <view class="room-list">
         <view class="room-item" wx:for="{{rooms}}" wx:key="id" data-id="{{item.id}}" bindtap="onEnterRoom">
-          <view class="room-icon">{{item.measured ? '✅' : '🏠'}}</view>
+          <view class="room-icon">{{item.measured ? '✓' : '家'}}</view>
           <text class="room-name">{{item.name}}</text>
           <text class="room-status {{item.measured ? 'measured' : ''}}">{{item.measured ? '已测完' : '待测量'}}</text>
         </view>

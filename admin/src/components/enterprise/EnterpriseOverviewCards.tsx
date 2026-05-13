@@ -1,23 +1,20 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Sparkles, Shield, Workflow } from 'lucide-react';
+import { Sparkles, Workflow } from 'lucide-react';
 import { EnterpriseListItem } from './types';
-import { formatAiKeyStatus, getWecomCompletionText, isEnterpriseWecomConfigured } from './enterprise-utils';
+import { formatAiKeyStatus } from './enterprise-utils';
 
 interface EnterpriseOverviewCardsProps {
   enterprise: EnterpriseListItem;
 }
 
-export default function EnterpriseOverviewCards({
-  enterprise,
-}: EnterpriseOverviewCardsProps) {
+export default function EnterpriseOverviewCards({ enterprise }: EnterpriseOverviewCardsProps) {
   const aiStatus = formatAiKeyStatus(enterprise);
   const aiSummary = enterprise.aiUsageSnapshot?.summary?.today;
 
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
       <Card className="rounded-3xl border-muted shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 p-6 pb-2">
           <CardTitle className="text-base">AI 摘要</CardTitle>
@@ -26,7 +23,9 @@ export default function EnterpriseOverviewCards({
         <CardContent className="space-y-3 p-6 pt-2 text-sm text-muted-foreground">
           <div className="flex items-center justify-between">
             <span>Key 状态</span>
-            <Badge variant="secondary">{aiStatus}</Badge>
+            <span className="inline-flex rounded-md bg-secondary px-2 py-1 text-secondary-foreground">
+              {aiStatus}
+            </span>
           </div>
           <div className="flex items-center justify-between">
             <span>官方余额</span>
@@ -51,35 +50,6 @@ export default function EnterpriseOverviewCards({
 
       <Card className="rounded-3xl border-muted shadow-sm">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 p-6 pb-2">
-          <CardTitle className="text-base">企业微信</CardTitle>
-          <Shield className="text-blue-600" size={18} />
-        </CardHeader>
-        <CardContent className="space-y-3 p-6 pt-2 text-sm text-muted-foreground">
-          <div className="flex items-center justify-between">
-            <span>应用配置</span>
-            <Badge variant="secondary">{isEnterpriseWecomConfigured(enterprise) ? '已配置' : '未配置'}</Badge>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>Secret</span>
-            <span className="font-semibold text-foreground">
-              {enterprise.wecomSecretConfigured ? '已保存' : '未保存'}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>员工接收 ID 完成度</span>
-            <span className="font-semibold text-foreground">{getWecomCompletionText(enterprise)}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>CorpID / AgentID</span>
-            <span className="font-semibold text-foreground">
-              {enterprise.wecomConfig?.corpId && enterprise.wecomConfig?.agentId ? '已配置' : '未补齐'}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="rounded-3xl border-muted shadow-sm">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 p-6 pb-2">
           <CardTitle className="text-base">自动化配置</CardTitle>
           <Workflow className="text-amber-600" size={18} />
         </CardHeader>
@@ -97,10 +67,12 @@ export default function EnterpriseOverviewCards({
             <span className="font-semibold text-foreground">{enterprise.automationConfig?.designTaskSlaHours || 72} 小时</span>
           </div>
           <div className="flex items-center justify-between">
-            <span>企微催办</span>
-            <Badge variant="secondary">
-              {enterprise.automationConfig?.wecomReminderEnabled === false ? '关闭' : '开启'}
-            </Badge>
+            <span>提醒间隔</span>
+            <span className="font-semibold text-foreground">{enterprise.automationConfig?.reminderIntervalHours || 24} 小时</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>最多提醒次数</span>
+            <span className="font-semibold text-foreground">{enterprise.automationConfig?.maxReminderTimes || 3}</span>
           </div>
         </CardContent>
       </Card>

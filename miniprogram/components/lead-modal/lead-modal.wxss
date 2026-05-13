@@ -1,10 +1,9 @@
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
+  inset: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgba(0, 0, 0, 0.5);
+  background: rgba(31, 41, 55, 0.32);
   z-index: 9999;
   display: flex;
   align-items: center;
@@ -13,77 +12,79 @@
 
 .modal-container {
   width: 620rpx;
-  background: #ffffff;
-  border-radius: 24rpx;
+  background: var(--bg-surface);
+  border-radius: var(--radius-xl);
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  box-shadow: var(--shadow-popup);
 }
 
 .modal-header {
-  padding: 32rpx;
+  padding: var(--space-section);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 2rpx solid #f0f0f0;
 }
 
 .title {
   font-size: 34rpx;
-  font-weight: 600;
-  color: #333333;
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
 }
 
 .close-btn {
-  font-size: 40rpx;
-  color: #999999;
+  font-size: 36rpx;
+  color: var(--text-secondary);
   line-height: 1;
   padding: 0 10rpx;
 }
 
 .modal-body {
-  padding: 32rpx;
+  padding: 0 var(--space-section) var(--space-section);
 }
 
 .desc {
   font-size: 26rpx;
-  color: #666666;
+  color: var(--text-secondary);
   line-height: 1.5;
-  margin-bottom: 32rpx;
+  margin-bottom: var(--space-section);
   display: block;
 }
 
 .form-group {
-  margin-bottom: 24rpx;
+  margin-bottom: var(--space-xxl);
 }
 
 .label {
-  font-size: 28rpx;
-  color: #333333;
-  margin-bottom: 12rpx;
+  font-size: var(--font-size-body);
+  color: var(--text-primary);
+  margin-bottom: var(--space-md);
   display: block;
+  font-weight: var(--font-weight-medium);
 }
 
 .required {
-  color: #ff4d4f;
-  margin-left: 4rpx;
+  color: var(--status-converted-text);
+  margin-left: var(--space-xs);
 }
 
-.input {
+.input,
+.picker-view {
   width: 100%;
-  height: 80rpx;
-  background: #f8f9fa;
-  border-radius: 8rpx;
-  padding: 0 24rpx;
-  font-size: 28rpx;
-  color: #333333;
+  height: 84rpx;
+  background: var(--neutral-100);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-xxl);
+  font-size: var(--font-size-body);
+  color: var(--text-primary);
   box-sizing: border-box;
 }
 
 .input-phone-group {
   display: flex;
   align-items: center;
-  gap: 16rpx;
+  gap: var(--space-lg);
 }
 
 .phone-input {
@@ -91,47 +92,31 @@
 }
 
 .picker-view {
-  width: 100%;
-  height: 80rpx;
-  background: #f8f9fa;
-  border-radius: 8rpx;
-  padding: 0 24rpx;
-  font-size: 28rpx;
-  color: #333333;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-sizing: border-box;
 }
 
-.picker-view.placeholder {
-  color: #999999;
-}
-
+.picker-view.placeholder,
 .arrow {
-  font-size: 20rpx;
-  color: #999999;
+  color: var(--text-secondary);
 }
 
 .modal-footer {
-  padding: 0 32rpx 40rpx;
+  padding: 0 var(--space-section) 40rpx;
 }
 
 .submit-btn {
   width: 100%;
   height: 88rpx;
   line-height: 88rpx;
-  background: #1296db;
-  color: #ffffff;
+  background: var(--brand-primary);
+  color: var(--text-inverse);
   font-size: 32rpx;
-  font-weight: 500;
-  border-radius: 44rpx;
+  font-weight: var(--font-weight-medium);
+  border-radius: var(--radius-full);
   margin: 0;
   padding: 0;
-}
-
-.submit-btn-hover {
-  opacity: 0.9;
 }
 
 .submit-btn::after {
@@ -140,22 +125,22 @@
 
 .privacy-note {
   font-size: 22rpx;
-  color: #999999;
+  color: var(--text-secondary);
   text-align: center;
-  margin-top: 16rpx;
+  margin-top: var(--space-lg);
 }
 
 .quick-select-section {
-  margin-bottom: 32rpx;
-  background: #f8fafc;
-  padding: 16rpx;
-  border-radius: 12rpx;
+  margin-bottom: var(--space-section);
+  background: var(--bg-surface-soft);
+  padding: var(--space-lg);
+  border-radius: var(--radius-md);
 }
 
 .quick-select-title {
   font-size: 22rpx;
-  color: #64748b;
-  margin-bottom: 12rpx;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-md);
   display: block;
 }
 
@@ -167,12 +152,10 @@
 
 .quick-select-item {
   display: inline-block;
-  background: #ffffff;
-  color: #0284c7;
+  background: var(--bg-surface);
+  color: var(--text-brand);
   padding: 12rpx 20rpx;
-  border-radius: 8rpx;
-  font-size: 24rpx;
-  margin-right: 16rpx;
-  border: 2rpx solid #bae6fd;
-  box-shadow: 0 2rpx 4rpx rgba(0,0,0,0.02);
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-caption);
+  margin-right: var(--space-lg);
 }

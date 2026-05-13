@@ -20,19 +20,8 @@ export interface EnterpriseListItem {
     followUpSlaHours?: number;
     measureTaskSlaHours?: number;
     designTaskSlaHours?: number;
-    wecomReminderEnabled?: boolean;
     reminderIntervalHours?: number;
     maxReminderTimes?: number;
-  };
-  wecomConfig?: {
-    corpId?: string;
-    agentId?: string;
-  };
-  wecomConfigConfigured?: boolean;
-  wecomSecretConfigured?: boolean;
-  wecomMemberStats?: {
-    totalStaff: number;
-    configuredStaff: number;
   };
   aiConfig?: {
     provider?: 'pollinations';
@@ -91,7 +80,6 @@ export interface EnterpriseFormState {
     designTaskSlaHours: string;
     reminderIntervalHours: string;
     maxReminderTimes: string;
-    wecomReminderEnabled: boolean;
   };
 }
 
@@ -108,6 +96,5 @@ export const DEFAULT_ENTERPRISE_FORM: EnterpriseFormState = {
     designTaskSlaHours: '72',
     reminderIntervalHours: '24',
     maxReminderTimes: '3',
-    wecomReminderEnabled: true,
   },
 };

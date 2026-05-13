@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import dbConnect from '@/lib/mongodb';
-import { hasCompleteWecomConfig, normalizeWecomConfig } from '@/lib/enterprise-wecom';
 import { Enterprise } from '@/models/Enterprise';
 import { EnterpriseAiUsageSnapshot } from '@/models/EnterpriseAiUsageSnapshot';
 import { AdminUser, DEFAULT_PERMISSIONS } from '@/models/AdminUser';
@@ -11,17 +10,8 @@ import { sanitizeEnterpriseAiConfig, summarizeDailyUsage } from '@/lib/ai/enterp
 export const dynamic = 'force-dynamic';
 
 function sanitizeEnterpriseForResponse(enterprise: Record<string, any>) {
-  const wecomConfig = enterprise.wecomConfig
-    ? {
-        corpId: enterprise.wecomConfig.corpId || '',
-        agentId: enterprise.wecomConfig.agentId || '',
-      }
-    : undefined;
-
   return {
     ...enterprise,
-    wecomConfig,
-    wecomSecretConfigured: Boolean(enterprise.wecomConfig?.secret),
     aiConfig: sanitizeEnterpriseAiConfig(enterprise),
   };
 }
@@ -39,50 +29,14 @@ export async function GET(request: Request) {
         const aiSnapshots = enterpriseIds.length
           ? await EnterpriseAiUsageSnapshot.find({ enterpriseId: { $in: enterpriseIds } }).lean()
           : [];
-        const wecomMemberStats = enterpriseIds.length
-          ? await AdminUser.aggregate([
-              {
-                $match: {
-                  enterpriseId: { $in: enterpriseIds },
-                  role: { $in: ['enterprise_admin', 'salesperson', 'measurer', 'designer'] },
-                },
-              },
-              {
-                $group: {
-                  _id: '$enterpriseId',
-                  totalStaff: { $sum: 1 },
-                  configuredStaff: {
-                    $sum: {
-                      $cond: [
-                        {
-                          $gt: [{ $strLenCP: { $ifNull: ['$wecomUserId', ''] } }, 0],
-                        },
-                        1,
-                        0,
-                      ],
-                    },
-                  },
-                },
-              },
-            ])
-          : [];
-        const statsMap = new Map(
-          wecomMemberStats.map((item) => [String(item._id), item])
-        );
         const aiSnapshotMap = new Map(
           aiSnapshots.map((item) => [String(item.enterpriseId), item])
         );
 
         const enriched = enterprises.map((enterprise: any) => {
-          const stats = statsMap.get(String(enterprise._id));
           const aiSnapshot = aiSnapshotMap.get(String(enterprise._id));
           return {
             ...sanitizeEnterpriseForResponse(enterprise),
-            wecomConfigConfigured: hasCompleteWecomConfig(enterprise.wecomConfig),
-            wecomMemberStats: {
-              totalStaff: stats?.totalStaff || 0,
-              configuredStaff: stats?.configuredStaff || 0,
-            },
             aiUsageSnapshot: aiSnapshot
               ? {
                   balance: aiSnapshot.balance || 0,
@@ -113,11 +67,6 @@ export async function POST(request: Request) {
       { roles: ['super_admin', 'admin'] },
       async () => {
         const body = (await request.json()) as Record<string, unknown>;
-        const wecomConfigInput = body.wecomConfig as
-          | { corpId?: unknown; agentId?: unknown; secret?: unknown }
-          | undefined;
-        const normalizedWecomConfig =
-          wecomConfigInput === undefined ? undefined : normalizeWecomConfig(wecomConfigInput);
         const enterprise = await Enterprise.create({
           ...body,
           groundPromotionFixedCommission: Number(body.groundPromotionFixedCommission || 0),
@@ -125,11 +74,9 @@ export async function POST(request: Request) {
             followUpSlaHours: Number((body.automationConfig as any)?.followUpSlaHours || 24),
             measureTaskSlaHours: Number((body.automationConfig as any)?.measureTaskSlaHours || 48),
             designTaskSlaHours: Number((body.automationConfig as any)?.designTaskSlaHours || 72),
-            wecomReminderEnabled: (body.automationConfig as any)?.wecomReminderEnabled !== false,
             reminderIntervalHours: Number((body.automationConfig as any)?.reminderIntervalHours || 24),
             maxReminderTimes: Number((body.automationConfig as any)?.maxReminderTimes || 3),
           },
-          wecomConfig: normalizedWecomConfig?.mode === 'set' ? normalizedWecomConfig.value : undefined,
           registrationMode: 'manual',
         });
 

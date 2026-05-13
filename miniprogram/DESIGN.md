@@ -385,7 +385,6 @@ For AI-assisted implementation, always provide:
 - `miniprogram/DESIGN.md`
 - `miniprogram/design-tokens.json`
 - `miniprogram/app.wxss`
-- `miniprogram/ChatGPT Image 2026年4月28日 16_27_02.png`
 
 Recommended instruction template:
 

@@ -153,69 +153,28 @@ const NavItem = memo(function NavItem({
   );
 });
 
-export default function Sidebar() {
-  const pathname = usePathname();
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [enterprises, setEnterprises] = useState<any[]>([]);
-  const [globalTenantId, setGlobalTenantId] = useState<string>('all');
+interface SidebarContentProps {
+  collapsed: boolean;
+  admin: any;
+  enterprises: any[];
+  globalTenantId: string;
+  handleTenantChange: (val: string) => void;
+  handleLogout: () => void;
+  pathname: string;
+  hasMenuPermission: (key: string) => boolean;
+}
 
-  const { user: admin } = useCurrentUser();
-  useBrowserNotification();
-
-  useEffect(() => {
-    const saved = localStorage.getItem('sidebar-collapsed');
-    if (saved !== null) setIsCollapsed(saved === 'true');
-      
-    const cookies = document.cookie.split('; ');
-    const tenantCookie = cookies.find(row => row.startsWith('global_tenant_id='));
-    if (tenantCookie) {
-      setGlobalTenantId(tenantCookie.split('=')[1]);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (admin && (admin.role === 'super_admin' || admin.role === 'admin')) {
-      fetch('/api/admin/enterprises')
-        .then(res => res.json())
-        .then(data => {
-          if (data.success) setEnterprises(data.data);
-        })
-        .catch(err => console.error('Enterprises fetch error:', err));
-    }
-  }, [admin]);
-
-  const handleTenantChange = (value: string) => {
-    setGlobalTenantId(value);
-    document.cookie = `global_tenant_id=${value}; path=/; max-age=86400`;
-    window.location.reload();
-  };
-
-  const toggleCollapse = () => {
-    setIsCollapsed(prev => {
-      const newState = !prev;
-      localStorage.setItem('sidebar-collapsed', String(newState));
-      return newState;
-    });
-  };
-
-  const handleLogout = async () => {
-    try {
-      const res = await fetch('/api/auth/logout', { method: 'POST' });
-      if (res.ok) {
-        window.location.href = '/login';
-      }
-    } catch (err) {
-      console.error('Logout error:', err);
-    }
-  };
-
-  const hasMenuPermission = (key: string) => {
-    if (!admin) return true;
-    if (admin.effectivePermissions?.includes(key)) return true;
-    return key === 'ai-soft-furnishing' && admin.effectivePermissions?.includes('ai-furnishing');
-  };
-
-  const SidebarContent = ({ collapsed }: { collapsed: boolean }) => (
+const SidebarContent = memo(function SidebarContent({ 
+  collapsed, 
+  admin, 
+  enterprises, 
+  globalTenantId, 
+  handleTenantChange, 
+  handleLogout, 
+  pathname,
+  hasMenuPermission 
+}: SidebarContentProps) {
+  return (
     <div className="flex flex-col h-full bg-zinc-950 text-zinc-100 border-r border-zinc-800">
       {/* Header */}
       <div className={cn("h-16 flex items-center px-6 border-b border-zinc-800 shrink-0", collapsed && "px-0 justify-center")}>
@@ -351,6 +310,69 @@ export default function Sidebar() {
       </div>
     </div>
   );
+});
+
+export default function Sidebar() {
+  const pathname = usePathname();
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [enterprises, setEnterprises] = useState<any[]>([]);
+  const [globalTenantId, setGlobalTenantId] = useState<string>('all');
+
+  const { user: admin } = useCurrentUser();
+  useBrowserNotification();
+
+  useEffect(() => {
+    const saved = localStorage.getItem('sidebar-collapsed');
+    if (saved !== null) setIsCollapsed(saved === 'true');
+      
+    const cookies = document.cookie.split('; ');
+    const tenantCookie = cookies.find(row => row.startsWith('global_tenant_id='));
+    if (tenantCookie) {
+      setGlobalTenantId(tenantCookie.split('=')[1]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (admin && (admin.role === 'super_admin' || admin.role === 'admin')) {
+      fetch('/api/admin/enterprises')
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) setEnterprises(data.data);
+        })
+        .catch(err => console.error('Enterprises fetch error:', err));
+    }
+  }, [admin]);
+
+  const handleTenantChange = (value: string) => {
+    setGlobalTenantId(value);
+    document.cookie = `global_tenant_id=${value}; path=/; max-age=86400`;
+    window.location.reload();
+  };
+
+  const toggleCollapse = () => {
+    setIsCollapsed(prev => {
+      const newState = !prev;
+      localStorage.setItem('sidebar-collapsed', String(newState));
+      return newState;
+    });
+  };
+
+  const handleLogout = async () => {
+    try {
+      const res = await fetch('/api/auth/logout', { method: 'POST' });
+      if (res.ok) {
+        window.location.href = '/login';
+      }
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
+  const hasMenuPermission = (key: string) => {
+    if (!admin) return true;
+    if (admin.effectivePermissions?.includes(key)) return true;
+    return key === 'ai-soft-furnishing' && admin.effectivePermissions?.includes('ai-furnishing');
+  };
 
   return (
     <>
@@ -361,7 +383,16 @@ export default function Sidebar() {
           isCollapsed ? "w-20" : "w-64"
         )}
       >
-        <SidebarContent collapsed={isCollapsed} />
+        <SidebarContent 
+          collapsed={isCollapsed} 
+          admin={admin}
+          enterprises={enterprises}
+          globalTenantId={globalTenantId}
+          handleTenantChange={handleTenantChange}
+          handleLogout={handleLogout}
+          pathname={pathname}
+          hasMenuPermission={hasMenuPermission}
+        />
         
         {/* Collapse Toggle Button */}
         <button
@@ -380,7 +411,16 @@ export default function Sidebar() {
             <Menu size={20} />
           </SheetTrigger>
           <SheetContent side="left" className="p-0 w-72 border-none">
-            <SidebarContent collapsed={false} />
+            <SidebarContent 
+              collapsed={false} 
+              admin={admin}
+              enterprises={enterprises}
+              globalTenantId={globalTenantId}
+              handleTenantChange={handleTenantChange}
+              handleLogout={handleLogout}
+              pathname={pathname}
+              hasMenuPermission={hasMenuPermission}
+            />
           </SheetContent>
         </Sheet>
       </div>

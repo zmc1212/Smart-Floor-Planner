@@ -1,77 +1,69 @@
 .container {
   min-height: 100vh;
-  background-color: #fafafa;
-  padding: 32rpx;
+  background: var(--bg-page);
+  padding: var(--space-section);
+  box-sizing: border-box;
+}
+
+.header,
+.empty-state,
+.template-item,
+.room-item {
+  background: var(--bg-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
 }
 
 .header {
-  background: #ffffff;
-  padding: 48rpx 40rpx;
-  border-radius: 24rpx;
-  margin-bottom: 48rpx;
-  box-shadow: 0 0 0 1px rgba(0,0,0,0.08), 0 4rpx 12rpx rgba(0,0,0,0.02);
+  padding: var(--space-section);
+  margin-bottom: var(--space-section);
 }
 
 .title {
-  font-size: 44rpx;
-  font-weight: 700;
-  color: #171717;
-  margin-bottom: 24rpx;
-  letter-spacing: -1rpx;
+  font-size: 36rpx;
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-lg);
 }
 
-.info {
-  font-size: 26rpx;
-  color: #888;
-  margin-bottom: 12rpx;
-  font-weight: 500;
+.info,
+.subtitle {
+  font-size: var(--font-size-caption);
+  color: var(--text-secondary);
+  margin-bottom: var(--space-sm);
 }
 
 .empty-state {
+  padding: 72rpx var(--space-section);
   text-align: center;
-  padding: 60rpx 0;
+  margin-bottom: var(--space-section);
 }
 
-.empty-state .icon {
-  font-size: 80rpx;
-  margin-bottom: 24rpx;
-}
-
-.empty-state .title {
-  font-size: 32rpx;
-  color: #333;
-  font-weight: bold;
-}
-
-.empty-state .subtitle {
-  font-size: 26rpx;
-  color: #999;
-  margin-top: 8rpx;
-}
-
-.template-list {
+.icon {
+  width: 120rpx;
+  height: 120rpx;
+  margin: 0 auto var(--space-xl);
+  border-radius: var(--radius-full);
+  background: var(--brand-primary-20);
+  color: var(--text-brand);
   display: flex;
-  flex-wrap: wrap;
-  gap: 20rpx;
-  margin-top: 32rpx;
+  align-items: center;
+  justify-content: center;
+  font-size: 44rpx;
 }
 
-.template-item {
-  width: calc(50% - 12rpx);
-  background: #ffffff;
-  padding: 40rpx 0;
-  text-align: center;
-  border-radius: 20rpx;
-  font-size: 28rpx;
-  font-weight: 600;
-  color: #171717;
-  box-shadow: 0 0 0 1px rgba(0,0,0,0.08);
-  transition: all 0.2s;
+.template-list,
+.room-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
 }
 
-.template-item:active {
-  background: #f5f5f5;
-  transform: scale(0.97);
+.template-item,
+.room-item {
+  padding: var(--space-xl);
+  color: var(--text-primary);
+  font-size: var(--font-size-body);
 }
 
 .section-title {
@@ -79,65 +71,49 @@
   justify-content: space-between;
   align-items: center;
   font-size: 32rpx;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 24rpx;
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-xl);
 }
 
 .add-btn {
-  font-size: 24rpx;
-  color: #171717;
-  font-weight: 600;
-  background: #f5f5f5;
-  padding: 8rpx 20rpx;
-  border-radius: 8rpx;
-}
-
-.room-list {
-  display: flex;
-  flex-direction: column;
-  gap: 24rpx;
+  color: var(--text-brand);
+  font-size: var(--font-size-caption);
+  font-weight: var(--font-weight-medium);
 }
 
 .room-item {
-  background: #ffffff;
-  border-radius: 20rpx;
-  padding: 40rpx;
   display: flex;
   align-items: center;
-  box-shadow: 0 0 0 1px rgba(0,0,0,0.08), 0 2rpx 4rpx rgba(0,0,0,0.02);
-  transition: all 0.2s;
-}
-
-.room-item:active {
-  background: #fafafa;
-  transform: scale(0.98);
+  gap: var(--space-lg);
 }
 
 .room-icon {
-  font-size: 40rpx;
-  margin-right: 24rpx;
+  width: 56rpx;
+  height: 56rpx;
+  border-radius: var(--radius-full);
+  background: var(--brand-primary-20);
+  color: var(--text-brand);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .room-name {
   flex: 1;
-  font-size: 32rpx;
-  font-weight: 500;
-  color: #333;
+  color: var(--text-primary);
+  font-weight: var(--font-weight-medium);
 }
 
 .room-status {
+  padding: 8rpx 18rpx;
+  border-radius: var(--radius-full);
+  background: var(--status-cancelled-bg);
+  color: var(--status-cancelled-text);
   font-size: 22rpx;
-  color: #f59e0b;
-  background: #fffbeb;
-  padding: 4rpx 16rpx;
-  border-radius: 6rpx;
-  font-weight: 600;
-  box-shadow: 0 0 0 1px rgba(245,158,11,0.1);
 }
 
 .room-status.measured {
-  color: #16a34a;
-  background: #f0fdf4;
-  box-shadow: 0 0 0 1px rgba(22,163,74,0.1);
+  background: var(--status-measuring-bg);
+  color: var(--status-measuring-text);
 }

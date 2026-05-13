@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
-import { Settings2, Shield, Sparkles } from 'lucide-react';
+import { Settings2, Sparkles } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useFetch } from '@/hooks/useFetch';
@@ -96,19 +96,9 @@ export default function EnterpriseDetailPage() {
               >
                 <div>
                   <div className="font-semibold text-foreground">AI 管理</div>
-                  <div className="text-sm text-muted-foreground">查看企业子 Key、余额、用量和模型权限。</div>
+                  <div className="text-sm text-muted-foreground">查看企业 Key、余额、用量和模型权限。</div>
                 </div>
                 <Sparkles className="text-emerald-600" size={18} />
-              </Link>
-              <Link
-                href={`/enterprises/${enterprise._id}/wecom`}
-                className="flex items-center justify-between rounded-2xl border bg-white px-4 py-4 transition-colors hover:bg-muted/30"
-              >
-                <div>
-                  <div className="font-semibold text-foreground">企业微信管理</div>
-                  <div className="text-sm text-muted-foreground">维护企业微信应用配置与员工接收完成度。</div>
-                </div>
-                <Shield className="text-blue-600" size={18} />
               </Link>
               <div className="flex items-center justify-between rounded-2xl border border-dashed bg-white px-4 py-4">
                 <div>

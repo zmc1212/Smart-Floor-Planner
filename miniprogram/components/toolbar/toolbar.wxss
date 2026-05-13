@@ -2,10 +2,10 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  background: #ffffff;
-  box-shadow: 0 1rpx 0 0 var(--ds-gray-alpha-400);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-card);
   padding: 16rpx 24rpx;
-  gap: 20rpx;
+  gap: var(--space-xl);
   z-index: 30;
   position: relative;
 }
@@ -15,19 +15,19 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8rpx;
+  gap: var(--space-sm);
 }
 
 .tool-wrapper.disabled {
-  opacity: 0.2;
+  opacity: 0.28;
   pointer-events: none;
 }
 
 .tool-divider {
   width: 1rpx;
   height: 48rpx;
-  background: var(--ds-gray-200);
-  margin: 0 4rpx;
+  background: var(--neutral-100);
+  margin: 0 var(--space-xs);
 }
 
 .tool-btn {
@@ -36,34 +36,31 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6rpx;
-  transition: all 0.2s;
-  position: relative;
-  background: #ffffff;
-  box-shadow: var(--shadow-border);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-border-soft);
 }
 
 .tool-btn-active {
-  background: #171717;
-  box-shadow: none;
+  background: var(--brand-primary);
+  box-shadow: var(--shadow-card);
 }
 
 .tool-btn-active .tool-icon {
-  color: #ffffff;
+  color: var(--text-inverse);
 }
 
 .tool-icon {
   font-size: 32rpx;
-  color: var(--ds-gray-900);
+  color: var(--text-primary);
   line-height: 1;
 }
 
 .tool-label {
   font-size: 18rpx;
-  color: var(--ds-gray-600);
+  color: var(--text-secondary);
   white-space: nowrap;
-  font-weight: 500;
-  letter-spacing: -0.2rpx;
+  font-weight: var(--font-weight-medium);
 }
 
 .tool-dot {
@@ -72,25 +69,21 @@
   right: -4rpx;
   width: 10rpx;
   height: 10rpx;
-  background: var(--develop-blue);
-  border-radius: 50%;
-  border: 2rpx solid #ffffff;
+  background: var(--brand-primary);
+  border-radius: var(--radius-full);
+  border: 2rpx solid var(--bg-surface);
 }
 
-/* 房间类型菜单 - Vercel Multi-layer Shadow Stack */
 .room-type-menu {
   position: absolute;
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
   margin-bottom: 20rpx;
-  background: #ffffff;
-  border-radius: 8rpx;
-  box-shadow: 
-    0px 0px 0px 1px rgba(0,0,0,0.08), 
-    0px 2px 2px rgba(0,0,0,0.04), 
-    0px 8px 8px -8px rgba(0,0,0,0.04);
-  padding: 16rpx;
+  background: var(--bg-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-popup);
+  padding: var(--space-lg);
   min-width: 280rpx;
   z-index: 50;
 }
@@ -98,30 +91,28 @@
 .menu-header {
   display: flex;
   align-items: center;
-  gap: 12rpx;
-  margin-bottom: 12rpx;
-  padding: 8rpx 12rpx;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
 }
 
 .menu-header-bar {
-  width: 4rpx;
-  height: 24rpx;
-  background: #171717;
-  border-radius: 4rpx;
+  width: 6rpx;
+  height: 26rpx;
+  background: var(--brand-primary);
+  border-radius: var(--radius-full);
 }
 
 .menu-header-text {
   font-size: 22rpx;
-  font-weight: 600;
-  color: #171717;
-  text-transform: uppercase;
-  letter-spacing: 0.5rpx;
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
 }
 
 .menu-list {
   display: flex;
   flex-direction: column;
-  gap: 2rpx;
+  gap: var(--space-xs);
 }
 
 .menu-item {
@@ -129,29 +120,25 @@
   align-items: center;
   justify-content: space-between;
   padding: 16rpx 20rpx;
-  border-radius: 6rpx;
+  border-radius: var(--radius-md);
   font-size: 26rpx;
-  color: var(--ds-gray-600);
-  transition: all 0.1s;
+  color: var(--text-secondary);
 }
 
-.menu-item:active {
-  background: #fafafa;
-}
-
+.menu-item:active,
 .menu-item-active {
-  background: #fafafa;
-  color: #171717;
-  font-weight: 600;
+  background: var(--brand-primary-20);
+  color: var(--text-brand);
+  font-weight: var(--font-weight-medium);
 }
 
 .menu-item-check {
   font-size: 24rpx;
-  color: var(--develop-blue);
+  color: var(--text-brand);
 }
 
 .menu-arrow {
-  display: none; /* Vercel style usually avoids decorative arrows */
+  display: none;
 }
 
 .menu-overlay {

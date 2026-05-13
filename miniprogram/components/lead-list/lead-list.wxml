@@ -1,5 +1,4 @@
 <view class="lead-list-container">
-  <!-- Stats Dashboard -->
   <view class="stats-dashboard">
     <view class="stat-card-mini" wx:for="{{stats}}" wx:key="key">
       <view class="stat-icon-bg {{item.tone}}">
@@ -12,17 +11,16 @@
     </view>
   </view>
 
-  <!-- Search & Filter -->
   <view class="search-section">
     <view class="search-box">
       <view class="search-icon-wrapper">
-        <icon type="search" size="14" color="#999" />
+        <icon type="search" size="14" color="#6B7280" />
       </view>
       <input class="search-input-new" placeholder="搜索客户姓名、手机号、小区" bindconfirm="onSearch" />
     </view>
     <view class="action-buttons">
       <view class="filter-btn">
-        <text class="filter-icon">≡</text>
+        <text class="filter-icon">筛</text>
       </view>
       <view class="add-circle-btn" bindtap="onAddLead">
         <text class="plus-icon">+</text>
@@ -30,14 +28,13 @@
     </view>
   </view>
 
-  <!-- Tabs Navigation -->
   <view class="tabs-wrapper">
     <scroll-view scroll-x class="tabs-scroll" show-scrollbar="{{false}}">
-      <view 
-        wx:for="{{tabs}}" 
-        wx:key="id" 
-        class="tab-node {{currentTab === item.id ? 'active' : ''}}" 
-        bindtap="onTabChange" 
+      <view
+        wx:for="{{tabs}}"
+        wx:key="id"
+        class="tab-node {{currentTab === item.id ? 'active' : ''}}"
+        bindtap="onTabChange"
         data-index="{{index}}"
       >
         <text class="tab-text">{{item.label}}</text>
@@ -46,7 +43,6 @@
     </scroll-view>
   </view>
 
-  <!-- List Content -->
   <view class="loading-state" wx:if="{{loading && leads.length === 0}}">
     <view class="loading-spinner"></view>
     <text>加载中...</text>
@@ -54,20 +50,20 @@
 
   <swiper class="list-swiper" current="{{currentTabIndex}}" bindchange="onSwiperChange">
     <swiper-item wx:for="{{tabs}}" wx:key="id">
-      <scroll-view 
-        scroll-y 
-        class="list-scroller" 
-        refresher-enabled 
-        refresher-triggered="{{refreshing}}" 
-        bindrefresherrefresh="onRefresh" 
+      <scroll-view
+        scroll-y
+        class="list-scroller"
+        refresher-enabled
+        refresher-triggered="{{refreshing}}"
+        bindrefresherrefresh="onRefresh"
         bindscrolltolower="onLoadMore"
       >
         <view class="leads-collection" wx:if="{{leads.length > 0}}">
-          <view 
-            class="premium-lead-card" 
-            wx:for="{{leads}}" 
-            wx:key="_id" 
-            bindtap="onLeadClick" 
+          <view
+            class="premium-lead-card"
+            wx:for="{{leads}}"
+            wx:key="_id"
+            bindtap="onLeadClick"
             data-id="{{item._id}}"
           >
             <view class="card-top">
@@ -82,7 +78,7 @@
                 <text>{{item.statusLabel}}</text>
               </view>
             </view>
-            
+
             <view class="card-mid">
               <view class="project-info">
                 <text class="project-label">意向小区</text>
@@ -97,11 +93,11 @@
             <view class="card-bottom-line">
               <view class="meta-stats">
                 <view class="meta-pill">
-                  <text class="pill-icon">📐</text>
+                  <text class="pill-icon">户</text>
                   <text class="pill-text">{{item.roomCount}} 空间</text>
                 </view>
                 <view class="meta-pill" wx:if="{{item.budget}}">
-                  <text class="pill-icon">💰</text>
+                  <text class="pill-icon">预</text>
                   <text class="pill-text">{{item.budget}}万</text>
                 </view>
               </view>
@@ -110,15 +106,14 @@
               </view>
             </view>
           </view>
-          
+
           <view class="footer-tip" wx:if="{{loading}}">正在加载...</view>
-          <view class="footer-tip" wx:elif="{{!hasMore}}">到底了</view>
+          <view class="footer-tip" wx:elif="{{!hasMore}}">已经到底了</view>
         </view>
 
-        <!-- Empty State -->
         <view class="empty-placeholder" wx:else>
           <view class="empty-icon-box">
-            <text class="empty-emoji">📝</text>
+            <text class="empty-emoji">线</text>
           </view>
           <text class="empty-msg">暂无此类客户</text>
           <view class="empty-cta" bindtap="onAddLead">新建一个</view>

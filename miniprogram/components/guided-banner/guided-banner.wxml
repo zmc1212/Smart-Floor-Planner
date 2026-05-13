@@ -3,23 +3,23 @@
 
   <view class="wizard-text">
     <text>{{currentGuidedRoomName}} · 已测 </text>
-    <text class="text-blue" style="font-weight:600; font-family:var(--font-mono);">{{guidedEdgeIndex}} 边</text>
-    <text> · 选下个方向并测边</text>
+    <text class="text-blue">{{guidedEdgeIndex}} 边</text>
+    <text> · 选择下一个方向并测边</text>
   </view>
 
   <view class="wizard-actions">
     <view class="wizard-btn-action btn-ghost" wx:if="{{bleConnected}}" bindtap="onAddEdge">+ 添加边</view>
-    <view class="wizard-btn-finish" wx:if="{{canFinish}}" bindtap="onFinishPolygon">✅ 完成轮廓</view>
-    <view class="wizard-btn-action btn-ghost" bindtap="onSaveDraft">💾 保存草稿</view>
-    <view class="wizard-btn-action btn-ghost" wx:if="{{bleConnected}}" style="font-size:20rpx;" bindtap="onStartRemeasure">重测</view>
+    <view class="wizard-btn-finish" wx:if="{{canFinish}}" bindtap="onFinishPolygon">完成轮廓</view>
+    <view class="wizard-btn-action btn-ghost" bindtap="onSaveDraft">保存草稿</view>
+    <view class="wizard-btn-action btn-ghost" wx:if="{{bleConnected}}" bindtap="onStartRemeasure">重测</view>
   </view>
 </view>
 
 <view class="guided-wizard-bar" wx:else>
   <view class="wizard-cancel" bindtap="onExitToLibrary">返回</view>
-  <view class="wizard-text">✨ 测绘完成！可点击下方工具添加门窗</view>
-    <view class="wizard-actions">
+  <view class="wizard-text">测绘完成，可点击下方工具添加门窗</view>
+  <view class="wizard-actions">
     <view class="wizard-btn-finish" bindtap="onSubmitFloorPlan">完成提交</view>
-    <view class="wizard-btn-action btn-ghost" wx:if="{{bleConnected}}" style="font-size:20rpx;" bindtap="onStartRemeasure">重新测量</view>
+    <view class="wizard-btn-action btn-ghost" wx:if="{{bleConnected}}" bindtap="onStartRemeasure">重新测量</view>
   </view>
 </view>

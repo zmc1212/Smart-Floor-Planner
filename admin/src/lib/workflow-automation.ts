@@ -2,31 +2,33 @@ import mongoose from 'mongoose';
 import { AdminUser } from '@/models/AdminUser';
 import { Enterprise } from '@/models/Enterprise';
 import { PromotionEnterpriseRecord } from '@/models/PromotionEnterpriseRecord';
-import { WorkflowNotificationLog, WorkflowNotificationType, WorkflowNotificationChannel, WorkflowNotificationStatus } from '@/models/WorkflowNotificationLog';
-import { WeComService } from '@/lib/wecom';
+import {
+  WorkflowNotificationLog,
+  WorkflowNotificationType,
+  WorkflowNotificationChannel,
+  WorkflowNotificationStatus,
+} from '@/models/WorkflowNotificationLog';
 import { sendSubscriptionMessage } from '@/lib/wechat-notification';
 
 export const DEFAULT_AUTOMATION_CONFIG = {
   followUpSlaHours: 24,
   measureTaskSlaHours: 48,
   designTaskSlaHours: 72,
-  wecomReminderEnabled: true,
   reminderIntervalHours: 24,
   maxReminderTimes: 3,
 };
 
-// 平台级地推渠道配置（可后台管理）
 export const PLATFORM_PROMOTION_CONFIG = {
-  protectionPeriodDays: 30,          // 保护期天数
-  protectionExtendDays: 15,          // 跟进后延长天数
-  maxProtectionExtends: 3,           // 最大延长次数
+  protectionPeriodDays: 30,
+  protectionExtendDays: 15,
+  maxProtectionExtends: 3,
   commissionTiers: [
     { label: '基础套餐', amount: 500 },
     { label: '标准套餐', amount: 1000 },
     { label: '高级套餐', amount: 2000 },
   ] as Array<{ label: string; amount: number }>,
-  defaultCommissionAmount: 500,      // 默认提成金额
-  poolClaimRequiresApproval: false,  // 公海池认领是否需要审批
+  defaultCommissionAmount: 500,
+  poolClaimRequiresApproval: false,
 };
 
 export type WorkbenchTodoView = 'mine' | 'overdue' | 'today';
@@ -126,12 +128,19 @@ export function buildTodoItemsForRecord(record: any, role: string, config?: any)
     if (record.ownershipStatus === 'conflict_pending') return items;
     if (record.pendingActionRole === 'salesperson' || record.businessStage === 'quoted') {
       const dueAt = nextFollowUpAt || addHours(lastActivityAt, automation.followUpSlaHours);
-      const title = record.businessStage === 'quoted' ? '待报价/成交跟进' : '待客户跟进';
+      const title = record.businessStage === 'quoted' ? '待报价成交跟进' : '待客户跟进';
       items.push(
-        buildTodo(record, role, record.businessStage === 'quoted' ? 'quote_follow_up' : 'follow_up', title, `${record.contactPerson} / ${record.phone}`, dueAt)
+        buildTodo(
+          record,
+          role,
+          record.businessStage === 'quoted' ? 'quote_follow_up' : 'follow_up',
+          title,
+          `${record.contactPerson} / ${record.phone}`,
+          dueAt
+        )
       );
     }
-    // 保护期即将到期提醒（7天内）
+
     const protectionExpires = toDate(record.protectionExpiresAt);
     if (protectionExpires && record.poolStatus === 'protected') {
       const daysLeft = Math.ceil((protectionExpires.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
@@ -141,8 +150,8 @@ export function buildTodoItemsForRecord(record: any, role: string, config?: any)
             record,
             role,
             'protection_expiring',
-            `保护期将在 ${daysLeft} 天后到期`,
-            `${record.enterpriseName} — 请及时跟进以延长保护期`,
+            `保护期将于 ${daysLeft} 天后到期`,
+            `${record.enterpriseName} 请及时跟进以延长保护期`,
             protectionExpires
           )
         );
@@ -350,31 +359,31 @@ export async function createWorkflowNotificationLog(input: {
 async function resolveRecipientsForRole(record: any, role: string) {
   if (role === 'salesperson' && record.promoterId) {
     const user = await AdminUser.findById(record.promoterId)
-      .select('displayName username role wecomUserId openid enterpriseId')
+      .select('displayName username role openid enterpriseId')
       .lean();
     return user ? [user] : [];
   }
 
   if (role === 'measurer' && record.measureTask?.assignedTo) {
     const user = await AdminUser.findById(record.measureTask.assignedTo)
-      .select('displayName username role wecomUserId openid enterpriseId')
+      .select('displayName username role openid enterpriseId')
       .lean();
     return user ? [user] : [];
   }
 
   if (role === 'designer' && record.designTask?.assignedTo) {
     const user = await AdminUser.findById(record.designTask.assignedTo)
-      .select('displayName username role wecomUserId openid enterpriseId')
+      .select('displayName username role openid enterpriseId')
       .lean();
     return user ? [user] : [];
   }
 
-  if ((role === 'admin' || role === 'super_admin')) {
+  if (role === 'admin' || role === 'super_admin') {
     return AdminUser.find({
-      role: role,
+      role,
       status: 'active',
     })
-      .select('displayName username role wecomUserId openid enterpriseId')
+      .select('displayName username role openid enterpriseId')
       .lean();
   }
 
@@ -384,7 +393,7 @@ async function resolveRecipientsForRole(record: any, role: string) {
       role: 'enterprise_admin',
       status: 'active',
     })
-      .select('displayName username role wecomUserId openid enterpriseId')
+      .select('displayName username role openid enterpriseId')
       .lean();
   }
 
@@ -398,9 +407,6 @@ export async function dispatchWorkflowNotifications(input: {
   message: string;
   dedupeSuffix?: string;
 }) {
-  const enterprise = input.record.enterpriseId ? await Enterprise.findById(input.record.enterpriseId).lean() : null;
-  const automationConfig = getEnterpriseAutomationConfig(enterprise);
-
   for (const role of input.recipientRoles) {
     const recipients = await resolveRecipientsForRole(input.record, role);
     if (recipients.length === 0) {
@@ -437,77 +443,42 @@ export async function dispatchWorkflowNotifications(input: {
         },
       });
 
-      if (!automationConfig.wecomReminderEnabled) {
-        await createWorkflowNotificationLog({
-          enterpriseId: input.record.enterpriseId,
-          recordId: input.record._id,
-          recipientRole: role,
-          recipientStaffId: recipient._id,
-          channel: 'wecom',
-          notificationType: input.notificationType,
-          status: 'skipped',
-          dedupeKey: `${dedupeBase}:wecom`,
-          message: input.message,
-          errorMessage: 'WeCom reminders disabled',
-        });
+      if (!recipient.openid) {
         continue;
       }
 
-      const sendResult = await WeComService.sendAppMessageToUsers(
-        enterprise,
-        [recipient.wecomUserId].filter(Boolean) as string[],
-        input.message
-      );
+      const globalTemplateId = 'j6WMWNX3_-NKfuZPs7XuHYz91EymYKcnob1uDziK5f4';
+      const eventTypeMap: Record<string, string> = {
+        follow_up_overdue: '跟进超时提醒',
+        measure_overdue: '测量超时提醒',
+        design_overdue: '设计超时提醒',
+        design_assigned: '任务派单提醒',
+      };
+
+      const subResult = await sendSubscriptionMessage({
+        touser: recipient.openid,
+        template_id: globalTemplateId,
+        page: '/pages/leads-management/leads-management',
+        data: {
+          thing1: { value: '系统自动提醒' },
+          time2: { value: new Date().toLocaleString('zh-CN', { hour12: false }) },
+          thing3: { value: eventTypeMap[input.notificationType] || '待办任务提醒' },
+          thing4: { value: input.message.substring(0, 20) },
+        },
+      });
 
       await createWorkflowNotificationLog({
         enterpriseId: input.record.enterpriseId,
         recordId: input.record._id,
         recipientRole: role,
         recipientStaffId: recipient._id,
-        channel: 'wecom',
+        channel: 'miniprogram_sub',
         notificationType: input.notificationType,
-        status: sendResult.success ? 'sent' : sendResult.reason === 'missing_config' || sendResult.reason === 'no_recipients' ? 'skipped' : 'failed',
-        dedupeKey: `${dedupeBase}:wecom`,
+        status: subResult.success ? 'sent' : 'failed',
+        dedupeKey: `${dedupeBase}:miniprogram_sub`,
         message: input.message,
-        errorMessage: sendResult.success ? undefined : sendResult.reason,
+        errorMessage: subResult.success ? undefined : subResult.error,
       });
-
-      // --- New: Mini Program Subscription Message ---
-      if (recipient.openid) {
-        // --- Mini Program Subscription Message ---
-        const GLOBAL_TEMPLATE_ID = 'j6WMWNX3_-NKfuZPs7XuHYz91EymYKcnob1uDziK5f4';
-        const eventTypeMap: Record<string, string> = {
-          follow_up_overdue: '跟进超时提醒',
-          measure_overdue: '测量超时提醒',
-          design_overdue: '设计超时提醒',
-          design_assigned: '任务派单提醒',
-        };
-
-        const subResult = await sendSubscriptionMessage({
-          touser: recipient.openid,
-          template_id: GLOBAL_TEMPLATE_ID,
-          page: '/pages/leads-management/leads-management',
-          data: {
-            thing1: { value: '系统自动提醒' },
-            time2: { value: new Date().toLocaleString('zh-CN', { hour12: false }) },
-            thing3: { value: eventTypeMap[input.notificationType] || '待办任务提醒' },
-            thing4: { value: input.message.substring(0, 20) },
-          }
-        });
-
-        await createWorkflowNotificationLog({
-          enterpriseId: input.record.enterpriseId,
-          recordId: input.record._id,
-          recipientRole: role,
-          recipientStaffId: recipient._id,
-          channel: 'miniprogram_sub',
-          notificationType: input.notificationType,
-          status: subResult.success ? 'sent' : 'failed',
-          dedupeKey: `${dedupeBase}:miniprogram_sub`,
-          message: input.message,
-          errorMessage: subResult.success ? undefined : subResult.error,
-        });
-      }
     }
   }
 }
@@ -545,7 +516,7 @@ export async function runWorkflowReminderScan() {
     new Set(records.map((item) => (item.enterpriseId ? String(item.enterpriseId) : '')).filter(Boolean))
   );
   const enterprises = await Enterprise.find({ _id: { $in: enterpriseIds } })
-    .select('automationConfig wecomConfig name')
+    .select('automationConfig name')
     .lean();
   const enterpriseMap = new Map(enterprises.map((item: any) => [String(item._id), item]));
 
@@ -635,9 +606,6 @@ export async function runWorkflowReminderScan() {
   };
 }
 
-/**
- * 扫描保护期到期的报备记录，自动释放到公海池
- */
 export async function runProtectionExpiryScan() {
   const now = new Date();
   const expiredRecords = await PromotionEnterpriseRecord.find({
@@ -684,5 +652,5 @@ export function buildDesignDueAt(base: Date, enterprise?: any) {
 }
 
 export function asObjectId(value?: string | null) {
-  return value && mongoose.Types.ObjectId.isValid(value) ? new mongoose.Types.ObjectId(value) : undefined;
+  return value ? new mongoose.Types.ObjectId(value) : undefined;
 }

@@ -1,11 +1,10 @@
 <view class="modal-overlay" wx:if="{{show}}">
   <view class="modal-container">
-    <!-- 关闭按钮 -->
-    <view class="modal-close" bindtap="onClose">✕</view>
+    <view class="modal-close" bindtap="onClose">关闭</view>
 
     <view class="title-section">
       <text class="modal-title">准备测量</text>
-      <text class="modal-subtitle">{{currentStep === 0 ? '测量层高' : '步骤 第 ' + currentStep + ' 条边'}}</text>
+      <text class="modal-subtitle">{{currentStep === 0 ? '测量层高' : '步骤 第' + currentStep + ' 条边'}}</text>
     </view>
 
     <view class="direction-grid">
@@ -21,17 +20,14 @@
       </view>
     </view>
 
-    <!-- 方向示意图 -->
     <view class="dir-preview-box">
-      <!-- 斜角模式示意 -->
       <view class="dir-angle-simulator" wx:if="{{selectedDirection === 'ANGLE'}}">
         <view class="angle-tri-edge edge-a-mini"></view>
         <view class="angle-tri-edge edge-b-mini"></view>
         <view class="angle-tri-edge edge-d-mini"></view>
         <view class="angle-tri-vertex"></view>
-        <text class="angle-tri-label">θ</text>
+        <text class="angle-tri-label">角</text>
       </view>
-      <!-- 正交方向示意 -->
       <view class="dir-room-simulator" wx:else>
         <view class="laser-line E {{selectedDirection === 'E' ? 'active' : ''}}"></view>
         <view class="laser-line S {{selectedDirection === 'S' ? 'active' : ''}}"></view>
@@ -43,13 +39,12 @@
 
     <view class="hint-section">
       <text class="hint-icon">!</text>
-      <text class="hint-text">将测距仪背部贴紧对应墙面，确保激光发射口朝向所选方向。点击下方按钮后，测距仪将开始测量。</text>
+      <text class="hint-text">将测距仪背部贴紧对应墙面，确认激光发射口朝向所选方向。点击下方按钮后，测距仪将开始测量。</text>
     </view>
 
     <view class="action-section">
       <view class="btn btn-primary btn-confirm" bindtap="onConfirm">已放好，开始测量</view>
-      <!-- 新增快捷完成按钮 -->
-      <view class="btn btn-outline btn-finish" wx:if="{{canFinish}}" bindtap="onFinish">✅ 测完了，闭合房间</view>
+      <view class="btn btn-outline btn-finish" wx:if="{{canFinish}}" bindtap="onFinish">测完了，闭合房间</view>
     </view>
   </view>
 </view>

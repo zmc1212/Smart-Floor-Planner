@@ -1,18 +1,17 @@
 <view class="atelier-container">
-  <!-- 1. 顶部导航与模式切换 -->
   <view class="atelier-header">
     <view class="nav-back" bindtap="onBack">
-      <icon type="back" size="20" color="#333" />
+      <icon type="back" size="20" color="#22C55E" />
     </view>
     <view class="segmented-control">
-      <view 
-        class="segment-item {{selectedMode === 'INTERIOR' ? 'active' : ''}}" 
-        data-mode="INTERIOR" 
+      <view
+        class="segment-item {{selectedMode === 'INTERIOR' ? 'active' : ''}}"
+        data-mode="INTERIOR"
         bindtap="onModeChange"
       >效果图</view>
-      <view 
-        class="segment-item {{selectedMode === 'PLANE' ? 'active' : ''}}" 
-        data-mode="PLANE" 
+      <view
+        class="segment-item {{selectedMode === 'PLANE' ? 'active' : ''}}"
+        data-mode="PLANE"
         bindtap="onModeChange"
       >平面图</view>
     </view>
@@ -20,14 +19,13 @@
   </view>
 
   <scroll-view scroll-y class="atelier-content" enhanced show-scrollbar="{{false}}">
-    <!-- 2. Hero 预览区 -->
     <view class="hero-preview-section">
       <view class="preview-frame {{isGenerating ? 'is-generating' : ''}}">
         <block wx:if="{{room.renderingUrl}}">
-          <image 
-            src="{{room.renderingUrl}}" 
-            mode="aspectFill" 
-            class="main-rendering" 
+          <image
+            src="{{room.renderingUrl}}"
+            mode="aspectFill"
+            class="main-rendering"
             bindtap="onPreviewImage"
           />
           <view class="glass-tag top-right">AI 原创设计</view>
@@ -38,44 +36,39 @@
         <block wx:else>
           <view class="empty-state">
             <view class="empty-glow"></view>
-            <text class="empty-icon">🎨</text>
-            <text class="empty-title">Studio Preview</text>
-            <text class="empty-desc">配置下方风格，开启智绘空间</text>
+            <text class="empty-icon">家</text>
+            <text class="empty-title">空间预览</text>
+            <text class="empty-desc">选择风格后，开启智能空间设计</text>
           </view>
         </block>
-        
-        <!-- 生成中的扫描线动画 -->
+
         <view class="scan-line" wx:if="{{isGenerating}}"></view>
-      <!-- Result Actions -->
-      <view class="result-actions" wx:if="{{room.renderingUrl && !isGenerating}}">
-        <button class="action-btn" bindtap="onPreviewImage">预览大图</button>
-        <button class="action-btn" bindtap="onOpenSharePoster">分享量房海报</button>
-        <button class="action-btn primary" bindtap="onOpenLeadModal">获取完整设计方案</button>
-        <button class="action-btn secondary" bindtap="onExportPrompt">复制设计提示词</button>
+
+        <view class="result-actions" wx:if="{{room.renderingUrl && !isGenerating}}">
+          <button class="action-btn" bindtap="onPreviewImage">预览大图</button>
+          <button class="action-btn" bindtap="onOpenSharePoster">分享量房海报</button>
+          <button class="action-btn primary" bindtap="onOpenLeadModal">获取完整设计方案</button>
+          <button class="action-btn secondary" bindtap="onExportPrompt">复制设计提示词</button>
+        </view>
       </view>
     </view>
-  </view>
 
-
-
-    <!-- 3. 房间基本信息 -->
     <view class="room-memo">
       <view class="memo-line"></view>
       <text class="memo-name">{{room.name}}</text>
       <text class="memo-status">已连接测绘数据</text>
     </view>
 
-    <!-- 4. 风格研选 (Horizontal Grid) -->
     <view class="atelier-section">
       <view class="section-head">
         <text class="head-title">风格研选</text>
         <text class="head-subtitle">Style Selection</text>
       </view>
-      
+
       <scroll-view scroll-x class="style-palette" enable-flex enhanced show-scrollbar="{{false}}">
-        <view 
-          wx:for="{{styleMetadata}}" 
-          wx:key="key" 
+        <view
+          wx:for="{{styleMetadata}}"
+          wx:key="key"
           class="palette-item {{selectedStyleKey === item.key ? 'active' : ''}}"
           data-key="{{item.key}}"
           bindtap="onStyleSelect"
@@ -91,7 +84,6 @@
       </scroll-view>
     </view>
 
-    <!-- 5. AI 设计建议 -->
     <view class="atelier-section">
       <view class="section-head">
         <text class="head-title">设计策展</text>
@@ -114,21 +106,19 @@
       </view>
     </view>
 
-    <!-- 6. 底部引流 Banner -->
     <view class="atelier-section">
       <view class="lead-atelier-banner" bindtap="onOpenLeadModal">
         <view class="lead-main">
           <text class="lead-h1">获取完整设计方案</text>
-          <text class="lead-p">专业设计师 1对1 免费服务</text>
+          <text class="lead-p">专业设计师 1 对 1 免费服务</text>
         </view>
-        <view class="lead-arrow">→</view>
+        <view class="lead-arrow">›</view>
       </view>
     </view>
 
     <view class="footer-gap"></view>
   </scroll-view>
 
-  <!-- 7. 固定底部操作区 -->
   <view class="fixed-bottom-bar">
     <view class="btn-group">
       <view class="btn-secondary {{isGettingAdvice ? 'is-loading' : ''}}" bindtap="onGetAdvice">
@@ -140,12 +130,9 @@
     </view>
   </view>
 
-
-  
-  <!-- 8. 分享海报组件 -->
-  <share-poster 
-    show="{{showSharePoster}}" 
-    caseData="{{posterData}}" 
-    bind:close="onCloseSharePoster" 
+  <share-poster
+    show="{{showSharePoster}}"
+    caseData="{{posterData}}"
+    bind:close="onCloseSharePoster"
   />
 </view>

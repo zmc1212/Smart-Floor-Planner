@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #ffffff;
+  background: var(--bg-page);
   overflow: hidden;
 }
 
@@ -43,13 +43,13 @@ properties {
   top: 40rpx;
   left: 50%;
   transform: translateX(-50%);
-  background: #171717;
-  color: #ffffff;
+  background: var(--bg-surface);
+  color: var(--text-primary);
   padding: 16rpx 32rpx;
-  border-radius: 9999rpx;
+  border-radius: var(--radius-full);
   font-size: 22rpx;
-  font-weight: 600;
-  box-shadow: 0 10px 30rpx rgba(0,0,0,0.2);
+  font-weight: var(--font-weight-medium);
+  box-shadow: var(--shadow-float);
   display: flex;
   align-items: center;
   gap: 16rpx;
@@ -61,8 +61,8 @@ properties {
   width: 10rpx;
   height: 10rpx;
   border-radius: 50%;
-  background: var(--develop-blue);
-  box-shadow: 0 0 10rpx var(--develop-blue);
+  background: var(--brand-primary);
+  box-shadow: 0 0 10rpx var(--brand-primary);
   animation: pulse 2s ease-in-out infinite;
 }
 
@@ -72,16 +72,16 @@ properties {
 }
 
 .indicator-text {
-  color: #ffffff;
+  color: var(--text-primary);
   letter-spacing: 0.5rpx;
   text-transform: uppercase;
 }
 
 .indicator-cancel {
-  color: var(--ds-gray-400);
+  color: var(--text-brand);
   font-size: 20rpx;
   text-decoration: none;
-  border-left: 1rpx solid rgba(255,255,255,0.2);
+  border-left: 1rpx solid var(--neutral-100);
   padding-left: 16rpx;
   margin-left: 8rpx;
 }
@@ -110,20 +110,25 @@ properties {
   background: rgba(255,255,255,0.9);
   backdrop-filter: blur(20px);
   padding: 24rpx;
-  border-radius: 40rpx;
-  box-shadow: 0 8rpx 32rpx rgba(0,0,0,0.1);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-float);
   box-sizing: border-box;
 }
 
 .three-btn {
   font-size: 24rpx;
-  color: #333;
+  color: var(--text-secondary);
   padding: 10rpx 24rpx;
-  border-radius: 24rpx;
-  background: #f5f5f5;
-  font-weight: 500;
+  border-radius: var(--radius-full);
+  background: var(--neutral-100);
+  font-weight: var(--font-weight-medium);
   white-space: nowrap;
 }
 .three-btn:active {
-  background: #e0e0e0;
+  background: var(--brand-primary-20);
+}
+
+.three-btn.main {
+  background: var(--brand-primary);
+  color: var(--text-inverse);
 }

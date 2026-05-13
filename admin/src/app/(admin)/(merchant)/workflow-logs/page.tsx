@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Loader2, PlayCircle, RefreshCw, Send, ShieldAlert } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Loader2, PlayCircle, RefreshCw, ShieldAlert } from 'lucide-react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,12 +23,6 @@ const STATUS_META: Record<LogStatus, { label: string; className: string }> = {
   skipped: { label: '已跳过', className: 'bg-amber-100 text-amber-700 hover:bg-amber-100' },
 };
 
-const CHANNEL_META: Record<string, { label: string; icon: any }> = {
-  station: { label: '站内待办', icon: Send },
-  wecom: { label: '企业微信', icon: RefreshCw },
-  miniprogram_sub: { label: '小程序通知', icon: PlayCircle },
-};
-
 const TYPE_LABELS: Record<string, string> = {
   follow_up_created: '新跟进提醒',
   follow_up_overdue: '跟进超时',
@@ -48,12 +42,12 @@ export default function WorkflowLogsPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'all' | LogStatus>('all');
   const [scanRunning, setScanRunning] = useState(false);
-  const [stats, setStats] = useState<any>({ sent: 0, failed: 0, skipped: 0 });
-  const [pagination, setPagination] = useState<any>({
+  const [stats, setStats] = useState({ sent: 0, failed: 0, skipped: 0 });
+  const [pagination, setPagination] = useState({
     total: 0,
     page: 1,
     limit: 20,
-    totalPages: 0
+    totalPages: 0,
   });
 
   const canRunScan = user?.role === 'super_admin' || user?.role === 'admin';
@@ -81,10 +75,6 @@ export default function WorkflowLogsPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handlePageChange = (newPage: number) => {
-    fetchLogs(statusFilter, newPage);
   };
 
   useEffect(() => {
@@ -120,11 +110,11 @@ export default function WorkflowLogsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white text-[#171717] font-sans">
-      <main className="max-w-7xl mx-auto px-6 py-16 space-y-8">
+    <div className="min-h-screen bg-white font-sans text-[#171717]">
+      <main className="mx-auto max-w-7xl space-y-8 px-6 py-16">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="space-y-2">
-            <h2 className="text-[32px] font-semibold tracking-[-1.5px] leading-tight">通知记录</h2>
+            <h2 className="text-[32px] font-semibold leading-tight tracking-[-1.5px]">通知记录</h2>
             <p className="text-sm text-muted-foreground">
               查看系统自动发送的站内提醒与小程序订阅消息结果。
             </p>
@@ -155,7 +145,7 @@ export default function WorkflowLogsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="rounded-3xl border bg-white p-5 shadow-sm">
             <div className="flex items-center gap-3 text-green-700">
               <CheckCircle2 size={18} />
@@ -179,7 +169,7 @@ export default function WorkflowLogsPage() {
           </div>
         </div>
 
-        <div className="rounded-3xl border bg-white shadow-sm overflow-hidden">
+        <div className="overflow-hidden rounded-3xl border bg-white shadow-sm">
           <Table>
             <TableHeader className="bg-muted/40">
               <TableRow>
@@ -201,14 +191,14 @@ export default function WorkflowLogsPage() {
                 </TableRow>
               ) : logs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
                     当前没有提醒日志
                   </TableCell>
                 </TableRow>
               ) : (
                 logs.map((log) => (
                   <TableRow key={log._id}>
-                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                       {new Date(log.createdAt).toLocaleString()}
                     </TableCell>
                     <TableCell className="font-medium">
@@ -239,7 +229,7 @@ export default function WorkflowLogsPage() {
             page={pagination.page}
             limit={pagination.limit}
             totalPages={pagination.totalPages}
-            onChange={handlePageChange}
+            onChange={(newPage) => fetchLogs(statusFilter, newPage)}
           />
         )}
       </main>
