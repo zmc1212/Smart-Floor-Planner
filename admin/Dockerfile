@@ -7,7 +7,7 @@ RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci --ignore-scripts
+RUN npm config set registry https://registry.npmmirror.com && npm ci --ignore-scripts
 
 # ============================================
 # Stage 2: Build the application
@@ -31,11 +31,13 @@ RUN npm run build
 # ============================================
 FROM node:20-alpine AS runner
 
+RUN apk add --no-cache curl
+
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV HOSTNAME="0.0.0.0"
-ENV PORT=3000
+ENV PORT=3005
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
@@ -50,6 +52,6 @@ COPY --from=builder /app/scripts ./scripts
 
 USER nextjs
 
-EXPOSE 3000
+EXPOSE 3005
 
 CMD ["node", "server.js"]
