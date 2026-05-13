@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Building2, Check, Copy, Loader2, Plus } from 'lucide-react';
+import { Building2, Check, Copy, Loader2, Plus, RefreshCw } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import {
@@ -91,6 +91,15 @@ export default function EnterprisesPage() {
           </div>
 
           <div className="flex gap-4">
+            <Button
+              variant="outline"
+              onClick={fetchEnterprises}
+              disabled={loading}
+              className="flex items-center gap-2 rounded-full"
+            >
+              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+              刷新
+            </Button>
             <Button
               variant="outline"
               onClick={copyInvitationLink}

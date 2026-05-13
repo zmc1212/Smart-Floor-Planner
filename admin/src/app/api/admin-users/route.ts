@@ -69,11 +69,35 @@ export async function POST(request: Request) {
       );
     }
 
+    // Validate phone is required and well-formatted
+    const trimmedPhone = phone?.trim();
+    if (!trimmedPhone) {
+      return NextResponse.json(
+        { success: false, error: '联系电话为必填项' },
+        { status: 400 }
+      );
+    }
+    if (!/^1[3-9]\d{9}$/.test(trimmedPhone)) {
+      return NextResponse.json(
+        { success: false, error: '手机号格式不正确，请输入11位有效手机号' },
+        { status: 400 }
+      );
+    }
+
     // Check if username already exists
-    const existing = await AdminUser.findOne({ username: username.trim() });
-    if (existing) {
+    const existingUsername = await AdminUser.findOne({ username: username.trim() });
+    if (existingUsername) {
       return NextResponse.json(
         { success: false, error: '用户名已存在' },
+        { status: 400 }
+      );
+    }
+
+    // Check if phone already exists
+    const existingPhone = await AdminUser.findOne({ phone: trimmedPhone });
+    if (existingPhone) {
+      return NextResponse.json(
+        { success: false, error: '该手机号已被其他账号使用' },
         { status: 400 }
       );
     }
@@ -101,7 +125,7 @@ export async function POST(request: Request) {
       username: username.trim(),
       passwordHash,
       displayName: displayName?.trim() || '',
-      phone: phone?.trim() || '',
+      phone: trimmedPhone,
       role: targetRole,
       enterpriseId: finalEnterpriseId,
       menuPermissions: menuPermissions && menuPermissions.length > 0 
@@ -115,7 +139,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, data: result }, { status: 201 });
   } catch (error: any) {
     if (error.code === 11000) {
-      return NextResponse.json({ success: false, error: '用户名已存在' }, { status: 400 });
+      const dupKey = Object.keys(error.keyPattern || {})[0];
+      const msg = dupKey === 'phone' ? '该手机号已被其他账号使用' : '用户名已存在';
+      return NextResponse.json({ success: false, error: msg }, { status: 400 });
     }
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

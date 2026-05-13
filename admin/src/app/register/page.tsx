@@ -120,10 +120,13 @@ export default function RegisterPage() {
                 <input 
                   required
                   type="tel"
+                  pattern="^1[3-9]\d{9}$"
+                  maxLength={11}
                   value={formData.contactPerson.phone}
                   onChange={e => setFormData({...formData, contactPerson: {...formData.contactPerson, phone: e.target.value}})}
                   className="w-full h-14 px-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-black outline-none transition-all font-medium"
                   placeholder="手机号"
+                  title="请输入正确的11位手机号码"
                 />
               </div>
               <input 

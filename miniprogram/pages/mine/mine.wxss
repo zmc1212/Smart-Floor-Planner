@@ -352,47 +352,72 @@ page {
 
 /* ===== Login Section ===== */
 .login-section {
-  min-height: 100vh;
-  padding: 120rpx 60rpx;
-  text-align: center;
+  padding: 80rpx 40rpx;
   background-color: var(--bg-page);
+}
+
+.login-card {
+  background: var(--bg-surface);
+  border-radius: var(--radius-xl);
+  padding: 80rpx 40rpx;
+  box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 60rpx;
 }
 
 .login-icon {
-  width: 220rpx;
-  height: 220rpx;
-  background: var(--bg-surface);
-  border-radius: var(--radius-xl);
-  margin: 0 auto 60rpx;
+  width: 160rpx;
+  height: 160rpx;
+  background: var(--bg-surface-soft);
+  border-radius: var(--radius-lg);
+  margin-bottom: 40rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--shadow-float);
-  position: relative;
+  box-shadow: var(--shadow-sm);
 }
 
 .login-logo {
-  width: 140rpx;
-  height: 140rpx;
-  border-radius: var(--radius-lg);
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: var(--radius-md);
 }
 
 .login-title {
-  font-size: 56rpx;
+  font-size: 48rpx;
   font-weight: var(--font-weight-bold);
   color: var(--neutral-900);
-  letter-spacing: -0.04em;
-  margin-bottom: 20rpx;
+  letter-spacing: -0.02em;
+  margin-bottom: 12rpx;
 }
 
 .login-subtitle {
-  font-size: 32rpx;
+  font-size: 28rpx;
   color: var(--neutral-500);
-  margin-bottom: 100rpx;
-  line-height: 1.5;
+  margin-bottom: 60rpx;
+}
+
+.login-features {
+  display: flex;
+  justify-content: center;
+  gap: 40rpx;
+  flex-wrap: wrap;
+}
+
+.feature-item {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  font-size: 24rpx;
+  color: var(--neutral-400);
+}
+
+.feature-dot {
+  color: var(--brand-primary);
+  font-size: 20rpx;
 }
 
 .login-btn {
@@ -400,11 +425,15 @@ page {
   color: var(--text-inverse) !important;
   border-radius: var(--radius-lg) !important;
   font-weight: var(--font-weight-bold) !important;
-  height: 110rpx !important;
-  line-height: 110rpx !important;
-  font-size: 34rpx !important;
+  height: 100rpx !important;
+  font-size: 32rpx !important;
   box-shadow: 0 16rpx 32rpx rgba(34, 197, 94, 0.25) !important;
   width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  margin: 0 auto !important;
 }
 
 .login-btn:active {

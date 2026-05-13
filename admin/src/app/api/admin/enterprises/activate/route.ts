@@ -55,14 +55,20 @@ export async function POST(request: Request) {
 
         // 2. 创建企业管理员账号
         const passwordHash = await bcrypt.hash('Admin123456', 10);
-        // 检查用户名冲突
-        let username = record.phone;
-        const existingUser = await AdminUser.findOne({ username });
-        if (existingUser) {
-          // 如果手机号已被占用（作为地推员或其他角色），则加上企业后缀
-          username = `${record.phone}_${enterprise.code.slice(-4)}`;
+        
+        // Check for phone conflict first (since it's a unique field in DB now)
+        const conflictUser = await AdminUser.findOne({ 
+          $or: [{ username: record.phone }, { phone: record.phone }] 
+        });
+        
+        if (conflictUser) {
+          return NextResponse.json({ 
+            success: false, 
+            error: `激活失败：手机号 ${record.phone} 已被系统账号占用，请先更换报备手机号。` 
+          }, { status: 400 });
         }
 
+        const username = record.phone;
         await AdminUser.create({
           username,
           passwordHash,

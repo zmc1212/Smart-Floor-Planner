@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 export const dynamic = 'force-dynamic';
 import { Loader2, Phone, CheckCircle, Clock, User, MessageSquare, Plus, X, Search, Filter, Check, Share2 } from "lucide-react";
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { Tabs } from "@/components/ui/tabs";
 import { 
   Table, 
   TableBody, 
@@ -279,8 +280,11 @@ export default function LeadsPage() {
         </div>
 
         {/* Status Tabs */}
-        <div className="flex items-center gap-1 mb-8 overflow-x-auto pb-2 scrollbar-hide">
-          {[
+        <Tabs 
+          activeTab={activeStatus}
+          onChange={setActiveStatus}
+          className="mb-8"
+          tabs={[
             { id: 'all', label: '全部' },
             { id: 'new', label: '新线索' },
             { id: 'measuring', label: '量房中' },
@@ -288,21 +292,8 @@ export default function LeadsPage() {
             { id: 'assigned', label: '已指派' },
             { id: 'converted', label: '已转化' },
             { id: 'closed', label: '已关闭' }
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveStatus(tab.id)}
-              className={cn(
-                "px-4 py-2 text-[13px] font-medium rounded-full transition-all duration-200 whitespace-nowrap",
-                activeStatus === tab.id 
-                  ? "bg-[#171717] text-white shadow-lg" 
-                  : "text-neutral-500 hover:text-neutral-900 hover:bg-neutral-100"
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+          ]}
+        />
 
         {loading && (
           <div className="flex flex-col items-center justify-center py-24 text-[#808080]">

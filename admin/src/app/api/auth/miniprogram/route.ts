@@ -94,25 +94,30 @@ export async function POST(request: Request) {
       loginSource = 'wechat';
 
       userData = await User.findOne({ openid });
+      
+      // Check if this user is a staff (using raw collection to bypass tenant filters)
+      staffData = await AdminUser.collection.findOne({ 
+        status: 'active', 
+        $or: [{ openid }, ...(userData?.phone ? [{ phone: userData.phone }] : [])] 
+      });
+
+      if (!staffData) {
+        return NextResponse.json({ 
+          success: false, 
+          error: '该微信尚未绑定账号，请联系管理员在后台添加您的手机号或绑定信息。' 
+        }, { status: 403 });
+      }
+
       if (!userData) {
-        userData = new User({ openid, role: 'user' });
+        userData = new User({ openid, role: 'staff' });
         await userData.save();
       }
 
       userId = userData._id.toString();
-      role = userData.role;
+      role = 'staff';
 
-      // Check if this user is a staff (using raw collection to bypass tenant filters)
-      staffData = await AdminUser.collection.findOne({ 
-        status: 'active', 
-        $or: [{ openid }, ...(userData.phone ? [{ phone: userData.phone }] : [])] 
-      });
-
-      if (staffData) {
-        role = 'staff';
-        if (!staffData.openid) {
-          await AdminUser.collection.updateOne({ _id: staffData._id }, { $set: { openid } });
-        }
+      if (!staffData.openid) {
+        await AdminUser.collection.updateOne({ _id: staffData._id }, { $set: { openid } });
       }
 
     } else if (type === 'wechat_phone') {
@@ -121,15 +126,23 @@ export async function POST(request: Request) {
       const phone = await getWechatPhoneNumber(phoneCode);
       loginSource = 'phone';
 
-      staffData = await AdminUser.collection.findOne({ $or: [{ phone }, { openid }] });
-      const isStaff = !!staffData;
+      staffData = await AdminUser.collection.findOne({ status: 'active', $or: [{ phone }, { openid }] });
+      
+      if (!staffData) {
+        return NextResponse.json({ 
+          success: false, 
+          error: '该手机号尚未开通账号，请联系管理员在管理后台添加您的账号信息。' 
+        }, { status: 403 });
+      }
+
+      const isStaff = true; // Based on the check above
 
       userData = await User.findOne({ openid });
       if (!userData) {
-        userData = new User({ openid, phone, role: isStaff ? 'staff' : 'user' });
+        userData = new User({ openid, phone, role: 'staff' });
       } else {
         userData.phone = phone;
-        if (isStaff) userData.role = 'staff';
+        userData.role = 'staff';
       }
       await userData.save();
 

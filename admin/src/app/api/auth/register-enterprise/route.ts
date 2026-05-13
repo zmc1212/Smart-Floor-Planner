@@ -17,6 +17,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: '请填写所有必填字段' }, { status: 400 });
     }
 
+    const trimmedPhone = contactPerson.phone.trim();
+    if (!/^1[3-9]\d{9}$/.test(trimmedPhone)) {
+      return NextResponse.json({ success: false, error: '联系人手机号格式不正确' }, { status: 400 });
+    }
+
+    // Check if phone number is already used by an admin account
+    const { AdminUser } = await import('@/models/AdminUser');
+    const existingAdmin = await AdminUser.findOne({ 
+      $or: [
+        { username: trimmedPhone },
+        { phone: trimmedPhone }
+      ]
+    });
+    if (existingAdmin) {
+      return NextResponse.json({ 
+        success: false, 
+        error: '该联系人手机号已被注册为系统账号，请更换手机号或联系平台管理员' 
+      }, { status: 400 });
+    }
+
     // Check if code already registered
     const existing = await Enterprise.findOne({ code });
     if (existing) {

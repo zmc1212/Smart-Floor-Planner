@@ -16,7 +16,29 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     if (username !== undefined) updateData.username = username.trim();
     if (displayName !== undefined) updateData.displayName = displayName.trim();
-    if (phone !== undefined) updateData.phone = phone.trim();
+    if (phone !== undefined) {
+      const trimmedPhone = phone.trim();
+      if (trimmedPhone) {
+        // Validate phone format
+        if (!/^1[3-9]\d{9}$/.test(trimmedPhone)) {
+          return NextResponse.json(
+            { success: false, error: '手机号格式不正确，请输入11位有效手机号' },
+            { status: 400 }
+          );
+        }
+        // Check uniqueness (exclude self)
+        const phoneExists = await AdminUser.findOne({ phone: trimmedPhone, _id: { $ne: id } });
+        if (phoneExists) {
+          return NextResponse.json(
+            { success: false, error: '该手机号已被其他账号使用' },
+            { status: 400 }
+          );
+        }
+        updateData.phone = trimmedPhone;
+      } else {
+        updateData.phone = null;
+      }
+    }
     if (role !== undefined) {
       const allowedRoles = ['super_admin', 'admin', 'viewer', 'enterprise_admin', 'salesperson'];
       if (!allowedRoles.includes(role)) {
@@ -61,7 +83,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     return NextResponse.json({ success: true, data: admin });
   } catch (error: any) {
     if (error.code === 11000) {
-      return NextResponse.json({ success: false, error: '用户名已存在' }, { status: 400 });
+      const dupKey = Object.keys(error.keyPattern || {})[0];
+      const msg = dupKey === 'phone' ? '该手机号已被其他账号使用' : '用户名已存在';
+      return NextResponse.json({ success: false, error: msg }, { status: 400 });
     }
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }

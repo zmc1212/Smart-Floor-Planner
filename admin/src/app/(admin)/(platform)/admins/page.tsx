@@ -8,6 +8,7 @@ import {
   KeyRound, Ban, CheckCircle, Lock, UserCog
 } from 'lucide-react';
 import Link from 'next/link';
+import { Tabs } from "@/components/ui/tabs";
 import { 
   Table, 
   TableBody, 
@@ -165,6 +166,17 @@ export default function AdminsPage() {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUsername.trim() || !newPassword.trim()) return;
+
+    // Validate phone
+    const trimmedPhone = newPhone.trim();
+    if (!trimmedPhone) {
+      alert('请输入联系电话');
+      return;
+    }
+    if (!/^1[3-9]\d{9}$/.test(trimmedPhone)) {
+      alert('手机号格式不正确，请输入11位有效手机号');
+      return;
+    }
     
     if (newRole === 'enterprise_admin' && !newEnterpriseId) {
       alert('请选择所属企业');
@@ -232,6 +244,18 @@ export default function AdminsPage() {
 
   const handleUpdate = async () => {
     if (!editingId) return;
+
+    // Validate phone
+    const trimmedPhone = editPhone.trim();
+    if (!trimmedPhone) {
+      alert('请输入联系电话');
+      return;
+    }
+    if (!/^1[3-9]\d{9}$/.test(trimmedPhone)) {
+      alert('手机号格式不正确，请输入11位有效手机号');
+      return;
+    }
+
     setUpdating(true);
     try {
       const res = await fetch(`/api/admin-users/${editingId}`, {
@@ -323,27 +347,16 @@ export default function AdminsPage() {
           
         {/* Tabs and Action Bar */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-          <div className="flex p-1 bg-muted/30 rounded-xl border border-muted/50 w-fit">
-            {[
+          <Tabs 
+            activeTab={activeTab}
+            onChange={setActiveTab}
+            tabs={[
               { id: 'all', label: '全部人员' },
               { id: 'platform', label: '平台管理' },
               { id: 'enterprise', label: '企业账号' },
               { id: 'salesperson', label: '渠道地推' },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  "px-6 py-2 text-sm font-medium rounded-lg transition-all",
-                  activeTab === tab.id 
-                    ? "bg-white shadow-sm text-primary" 
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+            ]}
+          />
 
           <div className="flex gap-3">
             <Button 
@@ -400,15 +413,19 @@ export default function AdminsPage() {
                         placeholder="例如: 张三"
                        />
                      </div>
-                     <div className="space-y-2">
-                       <Label htmlFor="new-phone">联系电话 (用于小程序绑定)</Label>
-                       <Input 
-                        id="new-phone"
-                        value={newPhone} 
-                        onChange={e => setNewPhone(e.target.value)}
-                        placeholder="例如: 13800138000"
-                       />
-                     </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="new-phone">联系电话 <span className="text-red-500">*</span></Label>
+                        <Input 
+                         id="new-phone"
+                         required
+                         value={newPhone} 
+                         onChange={e => setNewPhone(e.target.value)}
+                         placeholder="例如: 13800138000"
+                         pattern="^1[3-9]\d{9}$"
+                         maxLength={11}
+                         title="请输入11位有效手机号"
+                        />
+                      </div>
                      <div className="space-y-2">
                        <Label>分配角色</Label>
                         <Select value={newRole} onValueChange={(val) => {
@@ -558,6 +575,8 @@ export default function AdminsPage() {
                           value={editPhone}
                           onChange={(e) => setEditPhone(e.target.value)}
                           className="h-8 max-w-[150px] rounded-lg border-primary"
+                          pattern="^1[3-9]\d{9}$"
+                          maxLength={11}
                         />
                       ) : (
                         admin.phone || '-'

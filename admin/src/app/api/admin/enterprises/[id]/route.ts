@@ -237,19 +237,32 @@ export async function PATCH(
         }
 
         if (status === 'active' && enterprise.contactPerson?.phone) {
-          const existingUser = await AdminUser.findOne({ username: enterprise.contactPerson.phone });
+          const targetPhone = enterprise.contactPerson.phone;
+          // Check both username and phone to be safe
+          const existingUser = await AdminUser.findOne({ 
+            $or: [{ username: targetPhone }, { phone: targetPhone }] 
+          });
+
           if (!existingUser) {
             const passwordHash = await bcrypt.hash('Admin123456', 10);
             await AdminUser.create({
-              username: enterprise.contactPerson.phone,
+              username: targetPhone,
               passwordHash,
               displayName: enterprise.contactPerson.name,
               role: 'enterprise_admin',
               enterpriseId: enterprise._id,
-              phone: enterprise.contactPerson.phone,
+              phone: targetPhone,
               menuPermissions: DEFAULT_PERMISSIONS.enterprise_admin,
               status: 'active',
             });
+          } else {
+             // If user already exists but isn't for THIS enterprise, we have a conflict
+             if (existingUser.enterpriseId?.toString() !== enterprise._id.toString()) {
+               return NextResponse.json({ 
+                 success: false, 
+                 error: `激活失败：手机号 ${targetPhone} 已被其他账号使用，请先修改联系电话。` 
+               }, { status: 400 });
+             }
           }
         }
 

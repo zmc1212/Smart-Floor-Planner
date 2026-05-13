@@ -1,4 +1,5 @@
-const BASE_URL = 'http://192.168.10.62:3002/api';
+// const BASE_URL = 'http://192.168.10.62:3005/api';
+const BASE_URL = 'https://smartfloor.zlyun168.com/api';
 
 /**
  * Enhanced request method with JWT support
@@ -20,12 +21,30 @@ function request(url, method = 'GET', data = {}) {
           console.warn('Unauthorized request, clearing token');
           wx.removeStorageSync('token');
           wx.removeStorageSync('userInfo');
-          // Optional: redirect to login if not a public route
+          
           const pages = getCurrentPages();
           const currentPage = pages[pages.length - 1];
-          if (currentPage && currentPage.route !== 'pages/login/index' && currentPage.route !== 'pages/index/index') {
-            wx.navigateTo({ url: '/pages/login/index' });
+          const isLoginPage = currentPage && (currentPage.route === 'pages/login/index' || currentPage.route === 'pages/index/index');
+
+          if (!isLoginPage && !global.isShowingAuthModal) {
+            global.isShowingAuthModal = true;
+            wx.showModal({
+              title: '登录已过期',
+              content: '您的登录信息已过期或无效，请重新登录。',
+              showCancel: true,
+              confirmText: '去登录',
+              cancelText: '取消',
+              success: (modalRes) => {
+                if (modalRes.confirm) {
+                  wx.reLaunch({ url: '/pages/login/index' });
+                }
+              },
+              complete: () => {
+                global.isShowingAuthModal = false;
+              }
+            });
           }
+          
           reject({ error: 'Unauthorized', statusCode: 401 });
           return;
         }
