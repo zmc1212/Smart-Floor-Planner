@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Pagination } from "@/components/ui/pagination";
 import {
   Select,
   SelectContent,
@@ -20,20 +21,29 @@ export default function FloorPlansPage() {
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [pagination, setPagination] = useState<any>({
+    total: 0,
+    page: 1,
+    limit: 12,
+    totalPages: 0
+  });
 
   // @see react-best-practices: client-swr-dedup
   const { user: currentUser } = useCurrentUser();
 
-  const fetchPlans = async (search = '') => {
+  const fetchPlans = async (search = searchTerm, page = pagination.page) => {
     setLoading(true);
     try {
-      let url = '/api/floorplans?';
+      let url = `/api/floorplans?page=${page}&limit=${pagination.limit}&`;
       if (search) url += `search=${encodeURIComponent(search)}&`;
       
       const res = await fetch(url);
       const data = await res.json();
       if (data.success) {
         setPlans(data.data);
+        if (data.pagination) {
+          setPagination(data.pagination);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch floorplans:', err);
@@ -42,9 +52,13 @@ export default function FloorPlansPage() {
     }
   };
 
+  const handlePageChange = (newPage: number) => {
+    fetchPlans(searchTerm, newPage);
+  };
+
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchPlans(searchTerm);
+      fetchPlans(searchTerm, 1);
     }, 300);
     return () => clearTimeout(timer);
   }, [searchTerm]);
@@ -167,6 +181,18 @@ export default function FloorPlansPage() {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {!loading && plans.length > 0 && (
+          <div className="mt-12">
+            <Pagination
+              total={pagination.total}
+              page={pagination.page}
+              limit={pagination.limit}
+              totalPages={pagination.totalPages}
+              onChange={handlePageChange}
+            />
           </div>
         )}
       </main>

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Loader2, Pencil, Plus, Shield, Smartphone, Trash2, User as UserIcon } from 'lucide-react';
+import { Loader2, Pencil, Plus, Smartphone, Trash2, User as UserIcon } from 'lucide-react';
 import { DepartmentTree } from '@/components/DepartmentTree';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import {
@@ -25,6 +25,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { Pagination } from "@/components/ui/pagination";
 
 const DEFAULT_FORM = {
   username: '',
@@ -40,6 +41,12 @@ const DEFAULT_FORM = {
 export default function StaffPage() {
   const [staff, setStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pagination, setPagination] = useState<any>({
+    total: 0,
+    page: 1,
+    limit: 20,
+    totalPages: 0
+  });
   const { user: currentUser } = useCurrentUser();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -64,18 +71,21 @@ export default function StaffPage() {
     }
   };
 
-  const fetchStaff = async (deptId: string | null = selectedDeptId) => {
+  const fetchStaff = async (deptId: string | null = selectedDeptId, page = pagination.page) => {
     setLoading(true);
     try {
-      let url = '/api/staff';
+      let url = `/api/staff?page=${page}&limit=${pagination.limit}`;
       if (deptId) {
-        url += `?departmentId=${deptId}`;
+        url += `&departmentId=${deptId}`;
       }
 
       const res = await fetch(url);
       const data = await res.json();
       if (data.success) {
         setStaff(data.data || []);
+        if (data.pagination) {
+          setPagination(data.pagination);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch staff:', error);
@@ -84,12 +94,16 @@ export default function StaffPage() {
     }
   };
 
+  const handlePageChange = (newPage: number) => {
+    fetchStaff(selectedDeptId, newPage);
+  };
+
   useEffect(() => {
-    Promise.all([fetchDepartments(), fetchStaff(selectedDeptId)]);
+    Promise.all([fetchDepartments(), fetchStaff(selectedDeptId, 1)]);
   }, []);
 
   useEffect(() => {
-    fetchStaff(selectedDeptId);
+    fetchStaff(selectedDeptId, 1);
   }, [selectedDeptId]);
 
   const resetForm = () => {
@@ -397,7 +411,7 @@ export default function StaffPage() {
           <div className="flex items-center gap-4">
             {!loading && (
               <Badge variant="secondary" className="h-auto rounded-full border-none bg-muted px-4 py-1.5 font-bold text-muted-foreground">
-                {staff.length} 个成员账号
+                {pagination.total} 个成员账号
               </Badge>
             )}
             {(currentUser?.role === 'super_admin' || currentUser?.role === 'enterprise_admin' || currentUser?.role === 'admin') && (
@@ -473,101 +487,115 @@ export default function StaffPage() {
                 <Loader2 className="mb-4 animate-spin" size={48} />
                 <p className="text-sm font-medium">正在同步团队数据...</p>
               </div>
-            ) : (
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {staff.map((member: any) => (
-                  <div
-                    key={member._id}
-                    className="group relative rounded-[32px] border border-muted bg-white p-8 transition-all duration-300 hover:border-primary/50 hover:shadow-2xl hover:shadow-primary/5"
-                  >
-                    <div className="mb-8 flex items-start justify-between">
-                      <div className="flex h-14 w-14 items-center justify-center rounded-[20px] bg-muted text-xl font-bold text-muted-foreground shadow-inner transition-all duration-500 group-hover:bg-primary group-hover:text-primary-foreground">
-                        {member.displayName?.[0] || member.username[0].toUpperCase()}
-                      </div>
-                      <div className="flex flex-col items-end gap-2">
-                        <Badge
-                          className={cn(
-                            'border-none px-3 py-1 text-[10px] font-bold uppercase tracking-wider',
-                            member.role === 'enterprise_admin'
-                              ? 'bg-purple-100 text-purple-700'
-                              : member.role === 'designer'
-                                ? 'bg-blue-100 text-blue-700'
-                                : member.role === 'measurer'
-                                  ? 'bg-amber-100 text-amber-700'
-                                  : 'bg-green-100 text-green-700'
+                        ) : (
+              <>
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+                  {staff.map((member: any) => (
+                    <div
+                      key={member._id}
+                      className="group relative rounded-[32px] border border-muted bg-white p-8 transition-all duration-300 hover:border-primary/50 hover:shadow-2xl hover:shadow-primary/5"
+                    >
+                      <div className="mb-8 flex items-start justify-between">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-[20px] bg-muted text-xl font-bold text-muted-foreground shadow-inner transition-all duration-500 group-hover:bg-primary group-hover:text-primary-foreground">
+                          {member.displayName?.[0] || member.username[0].toUpperCase()}
+                        </div>
+                        <div className="flex flex-col items-end gap-2">
+                          <Badge
+                            className={cn(
+                              'border-none px-3 py-1 text-[10px] font-bold uppercase tracking-wider',
+                              member.role === 'enterprise_admin'
+                                ? 'bg-purple-100 text-purple-700'
+                                : member.role === 'designer'
+                                  ? 'bg-blue-100 text-blue-700'
+                                  : member.role === 'measurer'
+                                    ? 'bg-amber-100 text-amber-700'
+                                    : 'bg-green-100 text-green-700'
+                            )}
+                          >
+                            {getRoleLabel(member.role)}
+                          </Badge>
+                          {member.departmentId && (
+                            <span className="text-[10px] font-medium text-muted-foreground">
+                              {typeof member.departmentId === 'object'
+                                ? member.departmentId.name
+                                : departments.find((dept) => String(dept._id) === String(member.departmentId))?.name}
+                            </span>
                           )}
-                        >
-                          {getRoleLabel(member.role)}
-                        </Badge>
-                        {member.departmentId && (
-                          <span className="text-[10px] font-medium text-muted-foreground">
-                            {typeof member.departmentId === 'object'
-                              ? member.departmentId.name
-                              : departments.find((dept) => String(dept._id) === String(member.departmentId))?.name}
-                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mb-8 space-y-1">
+                        <h3 className="text-[20px] font-bold leading-none text-foreground">{member.displayName || member.username}</h3>
+                        <p className="text-sm font-medium text-muted-foreground">@{member.username}</p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 border-t border-muted/50 pt-6">
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold uppercase opacity-50 text-muted-foreground">联系电话</p>
+                          <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
+                            <Smartphone size={14} className="text-muted-foreground" />
+                            <span>{member.phone || '未填写'}</span>
+                          </div>
+                        </div>
+                        <div className="space-y-1 text-right">
+                        </div>
+                      </div>
+
+                      <div className="absolute right-4 top-4 flex gap-1 opacity-0 transition-all group-hover:opacity-100">
+                        {(currentUser?.role === 'super_admin' || currentUser?.role === 'enterprise_admin' || (currentUser?.role === 'admin' && member.role !== 'super_admin')) && (
+                          <>
+                            <Dialog open={isModalOpen && isEditMode && editingId === member._id} onOpenChange={(open) => !open && setIsModalOpen(false)}>
+                              <DialogTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="secondary"
+                                  onClick={() => handleEditClick(member)}
+                                  className="h-10 w-10 rounded-full border border-muted bg-white text-muted-foreground shadow-xl transition-all hover:scale-110 hover:text-foreground"
+                                >
+                                  <Pencil size={14} />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="max-w-md overflow-hidden rounded-[32px] border-none p-0 shadow-2xl">
+                                {renderStaffForm()}
+                              </DialogContent>
+                            </Dialog>
+                            <Button
+                              size="icon"
+                              variant="secondary"
+                              onClick={() => handleDelete(member._id)}
+                              className="h-10 w-10 rounded-full border border-muted bg-white text-muted-foreground shadow-xl transition-all hover:scale-110 hover:text-destructive"
+                            >
+                              <Trash2 size={14} />
+                            </Button>
+                          </>
                         )}
                       </div>
                     </div>
+                  ))}
 
-                    <div className="mb-8 space-y-1">
-                      <h3 className="text-[20px] font-bold leading-none text-foreground">{member.displayName || member.username}</h3>
-                      <p className="text-sm font-medium text-muted-foreground">@{member.username}</p>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4 border-t border-muted/50 pt-6">
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-bold uppercase opacity-50 text-muted-foreground">联系电话</p>
-                        <div className="flex items-center gap-2 text-[13px] font-medium text-foreground">
-                          <Smartphone size={14} className="text-muted-foreground" />
-                          <span>{member.phone || '未填写'}</span>
-                        </div>
+                  {staff.length === 0 && (
+                    <div className="col-span-full rounded-[40px] border-4 border-dashed border-muted/50 bg-muted/20 py-32 text-center text-muted-foreground">
+                      <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-muted">
+                        <UserIcon size={32} className="opacity-20" />
                       </div>
-                      <div className="space-y-1 text-right">
-                      </div>
+                      <h3 className="mb-1 text-xl font-bold text-foreground">当前筛选范围内暂无员工</h3>
+                      <p>可以新增员工，或调整部门筛选条件。</p>
                     </div>
+                  )}
+                </div>
 
-                    <div className="absolute right-4 top-4 flex gap-1 opacity-0 transition-all group-hover:opacity-100">
-                      {(currentUser?.role === 'super_admin' || currentUser?.role === 'enterprise_admin' || (currentUser?.role === 'admin' && member.role !== 'super_admin')) && (
-                        <>
-                          <Dialog open={isModalOpen && isEditMode && editingId === member._id} onOpenChange={(open) => !open && setIsModalOpen(false)}>
-                            <DialogTrigger asChild>
-                              <Button
-                                size="icon"
-                                variant="secondary"
-                                onClick={() => handleEditClick(member)}
-                                className="h-10 w-10 rounded-full border border-muted bg-white text-muted-foreground shadow-xl transition-all hover:scale-110 hover:text-foreground"
-                              >
-                                <Pencil size={14} />
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent className="max-w-md overflow-hidden rounded-[32px] border-none p-0 shadow-2xl">
-                              {renderStaffForm()}
-                            </DialogContent>
-                          </Dialog>
-                          <Button
-                            size="icon"
-                            variant="secondary"
-                            onClick={() => handleDelete(member._id)}
-                            className="h-10 w-10 rounded-full border border-muted bg-white text-muted-foreground shadow-xl transition-all hover:scale-110 hover:text-destructive"
-                          >
-                            <Trash2 size={14} />
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-
-                {staff.length === 0 && (
-                  <div className="col-span-full rounded-[40px] border-4 border-dashed border-muted/50 bg-muted/20 py-32 text-center text-muted-foreground">
-                    <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-muted">
-                      <UserIcon size={32} className="opacity-20" />
-                    </div>
-                    <h3 className="mb-1 text-xl font-bold text-foreground">当前筛选范围内暂无员工</h3>
-                    <p>可以新增员工，或调整部门筛选条件。</p>
+                {staff.length > 0 && (
+                  <div className="mt-12">
+                    <Pagination
+                      total={pagination.total}
+                      page={pagination.page}
+                      limit={pagination.limit}
+                      totalPages={pagination.totalPages}
+                      onChange={handlePageChange}
+                    />
                   </div>
                 )}
-              </div>
+              </>
             )}
           </div>
         </div>

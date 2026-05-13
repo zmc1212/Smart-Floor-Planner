@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, Loader2, PlayCircle, RefreshCw, Send, Shie
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Pagination } from '@/components/ui/pagination';
 import {
   Table,
   TableBody,
@@ -22,23 +23,58 @@ const STATUS_META: Record<LogStatus, { label: string; className: string }> = {
   skipped: { label: '已跳过', className: 'bg-amber-100 text-amber-700 hover:bg-amber-100' },
 };
 
+const CHANNEL_META: Record<string, { label: string; icon: any }> = {
+  station: { label: '站内待办', icon: Send },
+  wecom: { label: '企业微信', icon: RefreshCw },
+  miniprogram_sub: { label: '小程序通知', icon: PlayCircle },
+};
+
+const TYPE_LABELS: Record<string, string> = {
+  follow_up_created: '新跟进提醒',
+  follow_up_overdue: '跟进超时',
+  conflict_pending: '报备冲突',
+  measure_assigned: '测量派单',
+  measure_overdue: '测量超时',
+  measure_submitted: '测量完成',
+  design_assigned: '设计派单',
+  design_overdue: '设计超时',
+  design_completed: '设计完成',
+  record_closed: '流程关闭',
+};
+
 export default function WorkflowLogsPage() {
   const { user } = useCurrentUser();
   const [logs, setLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<'all' | LogStatus>('all');
   const [scanRunning, setScanRunning] = useState(false);
+  const [stats, setStats] = useState<any>({ sent: 0, failed: 0, skipped: 0 });
+  const [pagination, setPagination] = useState<any>({
+    total: 0,
+    page: 1,
+    limit: 20,
+    totalPages: 0
+  });
 
   const canRunScan = user?.role === 'super_admin' || user?.role === 'admin';
 
-  const fetchLogs = async (status = statusFilter) => {
+  const fetchLogs = async (status = statusFilter, page = pagination.page) => {
     setLoading(true);
     try {
-      const query = status === 'all' ? '' : `?status=${status}`;
-      const res = await fetch(`/api/workflow-notification-logs${query}`);
+      let url = `/api/workflow-notification-logs?page=${page}&limit=${pagination.limit}`;
+      if (status !== 'all') {
+        url += `&status=${status}`;
+      }
+      const res = await fetch(url);
       const data = await res.json();
       if (data.success) {
         setLogs(data.data || []);
+        if (data.pagination) {
+          setPagination(data.pagination);
+        }
+        if (data.stats) {
+          setStats(data.stats);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch workflow logs:', error);
@@ -47,8 +83,12 @@ export default function WorkflowLogsPage() {
     }
   };
 
+  const handlePageChange = (newPage: number) => {
+    fetchLogs(statusFilter, newPage);
+  };
+
   useEffect(() => {
-    fetchLogs(statusFilter);
+    fetchLogs(statusFilter, 1);
   }, [statusFilter]);
 
   const handleRunScan = async () => {
@@ -61,7 +101,7 @@ export default function WorkflowLogsPage() {
         return;
       }
       alert(`提醒扫描已执行，处理 ${data.data?.processed || 0} 条记录`);
-      await fetchLogs(statusFilter);
+      await fetchLogs(statusFilter, 1);
     } catch (error) {
       console.error('Failed to run reminder scan:', error);
       alert('提醒扫描执行失败');
@@ -84,9 +124,9 @@ export default function WorkflowLogsPage() {
       <main className="max-w-7xl mx-auto px-6 py-16 space-y-8">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="space-y-2">
-            <h2 className="text-[32px] font-semibold tracking-[-1.5px] leading-tight">提醒日志</h2>
+            <h2 className="text-[32px] font-semibold tracking-[-1.5px] leading-tight">通知记录</h2>
             <p className="text-sm text-muted-foreground">
-              查看站内待办与企业微信催办的最近发送结果，快速定位配置缺失或收件人问题。
+              查看系统自动发送的站内提醒与小程序订阅消息结果。
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -102,7 +142,7 @@ export default function WorkflowLogsPage() {
             <Button type="button" variant={statusFilter === 'failed' ? 'default' : 'outline'} onClick={() => setStatusFilter('failed')}>
               发送失败
             </Button>
-            <Button type="button" variant="outline" onClick={() => fetchLogs(statusFilter)} disabled={loading}>
+            <Button type="button" variant="outline" onClick={() => fetchLogs(statusFilter, 1)} disabled={loading}>
               <RefreshCw size={16} className="mr-2" />
               刷新
             </Button>
@@ -121,21 +161,21 @@ export default function WorkflowLogsPage() {
               <CheckCircle2 size={18} />
               <span className="text-sm font-semibold">已发送</span>
             </div>
-            <div className="mt-3 text-3xl font-black">{logs.filter((item) => item.status === 'sent').length}</div>
+            <div className="mt-3 text-3xl font-black">{stats.sent}</div>
           </div>
           <div className="rounded-3xl border bg-white p-5 shadow-sm">
             <div className="flex items-center gap-3 text-amber-700">
               <AlertTriangle size={18} />
               <span className="text-sm font-semibold">已跳过</span>
             </div>
-            <div className="mt-3 text-3xl font-black">{logs.filter((item) => item.status === 'skipped').length}</div>
+            <div className="mt-3 text-3xl font-black">{stats.skipped}</div>
           </div>
           <div className="rounded-3xl border bg-white p-5 shadow-sm">
             <div className="flex items-center gap-3 text-red-700">
               <ShieldAlert size={18} />
               <span className="text-sm font-semibold">发送失败</span>
             </div>
-            <div className="mt-3 text-3xl font-black">{logs.filter((item) => item.status === 'failed').length}</div>
+            <div className="mt-3 text-3xl font-black">{stats.failed}</div>
           </div>
         </div>
 
@@ -143,19 +183,18 @@ export default function WorkflowLogsPage() {
           <Table>
             <TableHeader className="bg-muted/40">
               <TableRow>
-                <TableHead>时间</TableHead>
+                <TableHead>通知时间</TableHead>
                 <TableHead>类型</TableHead>
-                <TableHead>渠道</TableHead>
                 <TableHead>企业 / 报备</TableHead>
-                <TableHead>接收角色</TableHead>
-                <TableHead>结果</TableHead>
-                <TableHead>说明</TableHead>
+                <TableHead>接收者</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead className="w-[300px]">消息内容</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
                     <Loader2 size={18} className="mx-auto mb-3 animate-spin" />
                     正在加载提醒日志...
                   </TableCell>
@@ -172,12 +211,8 @@ export default function WorkflowLogsPage() {
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                       {new Date(log.createdAt).toLocaleString()}
                     </TableCell>
-                    <TableCell className="font-medium">{log.notificationType}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2 text-sm">
-                        <Send size={14} className="text-muted-foreground" />
-                        {log.channel}
-                      </div>
+                    <TableCell className="font-medium">
+                      {TYPE_LABELS[log.notificationType] || log.notificationType}
                     </TableCell>
                     <TableCell>
                       <div className="text-sm font-medium">{log.recordId?.enterpriseName || '未关联企业'}</div>
@@ -197,6 +232,16 @@ export default function WorkflowLogsPage() {
             </TableBody>
           </Table>
         </div>
+
+        {!loading && logs.length > 0 && (
+          <Pagination
+            total={pagination.total}
+            page={pagination.page}
+            limit={pagination.limit}
+            totalPages={pagination.totalPages}
+            onChange={handlePageChange}
+          />
+        )}
       </main>
     </div>
   );

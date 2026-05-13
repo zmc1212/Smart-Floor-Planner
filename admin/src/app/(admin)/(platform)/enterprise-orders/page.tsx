@@ -180,8 +180,9 @@ export default function EnterpriseOrdersPage() {
                         <Select
                           value={order.status}
                           onValueChange={(val) => updateStatus(order._id, val)}
+                          disabled={order.status === 'paid'}
                         >
-                          <SelectTrigger className="h-8 w-[100px] text-xs rounded-full bg-zinc-50 border-none shadow-none">
+                          <SelectTrigger className="h-8 w-[100px] text-xs rounded-full bg-zinc-50 border-none shadow-none disabled:opacity-70">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>

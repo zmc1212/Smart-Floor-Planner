@@ -18,6 +18,16 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       const body = await request.json();
       const { id } = await params;
 
+      const currentOrder = await EnterpriseOrder.findById(id);
+      if (!currentOrder) {
+        return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
+      }
+
+      // If order is already paid, prevent changing its status back
+      if (currentOrder.status === 'paid' && body.status !== undefined && body.status !== 'paid') {
+        return NextResponse.json({ success: false, error: '已支付的订单不能修改状态' }, { status: 400 });
+      }
+
       const updateData: Record<string, unknown> = {};
       if (body.packageName !== undefined) updateData.packageName = body.packageName.trim();
       if (body.amount !== undefined) updateData.amount = Number(body.amount);

@@ -33,6 +33,7 @@ export default function PackagesPage() {
   const [formData, setFormData] = useState({
     name: '',
     price: '',
+    promotionCommission: '',
     description: '',
     status: 'active'
   });
@@ -63,14 +64,15 @@ export default function PackagesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
-          price: Number(formData.price)
+          price: Number(formData.price),
+          promotionCommission: Number(formData.promotionCommission || 0)
         }),
       });
       const data = await res.json();
       if (data.success) {
         setOpen(false);
         setEditingItem(null);
-        setFormData({ name: '', price: '', description: '', status: 'active' });
+        setFormData({ name: '', price: '', promotionCommission: '', description: '', status: 'active' });
         fetchData();
       } else {
         alert(data.error || '保存失败');
@@ -85,6 +87,7 @@ export default function PackagesPage() {
     setFormData({
       name: item.name,
       price: String(item.price),
+      promotionCommission: String(item.promotionCommission || '0'),
       description: item.description || '',
       status: item.status
     });
@@ -115,7 +118,7 @@ export default function PackagesPage() {
             setOpen(val);
             if (!val) {
               setEditingItem(null);
-              setFormData({ name: '', price: '', description: '', status: 'active' });
+              setFormData({ name: '', price: '', promotionCommission: '', description: '', status: 'active' });
             }
           }}>
             <DialogTrigger asChild>
@@ -146,6 +149,17 @@ export default function PackagesPage() {
                     type="number"
                     value={formData.price} 
                     onChange={(e) => setFormData({...formData, price: e.target.value})} 
+                    placeholder="0.00"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="promotionCommission">地推提成金额 (元)</Label>
+                  <Input 
+                    id="promotionCommission" 
+                    type="number"
+                    value={formData.promotionCommission} 
+                    onChange={(e) => setFormData({...formData, promotionCommission: e.target.value})} 
                     placeholder="0.00"
                     required
                   />
@@ -195,7 +209,8 @@ export default function PackagesPage() {
               <TableHeader className="bg-zinc-50">
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="w-[300px]">套餐名称</TableHead>
-                  <TableHead>金额</TableHead>
+                  <TableHead>套餐金额</TableHead>
+                  <TableHead>地推提成</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>创建时间</TableHead>
                   <TableHead className="text-right">操作</TableHead>
@@ -212,6 +227,9 @@ export default function PackagesPage() {
                     </TableCell>
                     <TableCell className="font-mono font-medium text-lg text-zinc-900">
                       ¥{Number(item.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </TableCell>
+                    <TableCell className="font-mono font-medium text-lg text-pink-600">
+                      ¥{Number(item.promotionCommission || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                     </TableCell>
                     <TableCell>
                       {item.status === 'active' ? (

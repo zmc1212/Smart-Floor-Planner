@@ -5,6 +5,7 @@ import { Enterprise } from '@/models/Enterprise';
 import { EnterpriseOrder, IEnterpriseOrder } from '@/models/EnterpriseOrder';
 import { PromotionEnterpriseRecord } from '@/models/PromotionEnterpriseRecord';
 import { User } from '@/models/User';
+import { Package } from '@/models/Package';
 import {
   buildNextFollowUpAt,
   dispatchWorkflowNotifications,
@@ -128,11 +129,23 @@ export async function syncCommissionForOrder(order: IEnterpriseOrder, settledBy?
 
   const enterprise = record.enterpriseId ? await Enterprise.findById(record.enterpriseId).lean() : null;
   const automationConfig = getEnterpriseAutomationConfig(enterprise);
-  // 提成金额：优先使用企业覆盖值，否则用平台默认配置
-  const commissionAmount = Math.max(
-    Number(enterprise?.groundPromotionFixedCommission || PLATFORM_PROMOTION_CONFIG.defaultCommissionAmount),
-    0
-  );
+  
+  // 提成金额计算优先级：
+  // 1. 套餐级配置 (匹配 order.packageName)
+  // 2. 企业级覆盖 (enterprise.groundPromotionFixedCommission)
+  // 3. 平台默认值 (PLATFORM_PROMOTION_CONFIG.defaultCommissionAmount)
+  let commissionAmount = 0;
+  
+  const packageDoc = await Package.findOne({ name: order.packageName }).lean();
+  if (packageDoc && (packageDoc.promotionCommission ?? 0) > 0) {
+    commissionAmount = packageDoc.promotionCommission;
+  } else if (enterprise?.groundPromotionFixedCommission) {
+    commissionAmount = Number(enterprise.groundPromotionFixedCommission);
+  } else {
+    commissionAmount = Number(PLATFORM_PROMOTION_CONFIG.defaultCommissionAmount);
+  }
+
+  commissionAmount = Math.max(commissionAmount, 0);
 
   await PromotionEnterpriseRecord.findByIdAndUpdate(record._id, {
     $set: {

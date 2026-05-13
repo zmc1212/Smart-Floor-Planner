@@ -8,6 +8,7 @@ import { Department } from '@/models/Department';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withTenantRoute, resolveWritableEnterpriseId } from '@/lib/tenant-route';
 import { tenantStorage } from '@/lib/tenant-context';
+import { getPaginationParams, createPaginationMetadata } from '@/lib/pagination';
 
 interface StaffCreateBody {
   username: string;
@@ -25,6 +26,7 @@ export async function GET(request: Request) {
   try {
     await dbConnect();
     const { searchParams } = new URL(request.url);
+    const { page, limit, skip } = getPaginationParams(request.url);
 
     // Try Mini Program JWT first
     const mpContext = await resolveMiniProgramContext(request);
@@ -53,12 +55,21 @@ export async function GET(request: Request) {
             filter.role = { $in: roles };
           }
 
-          const list = await AdminUser.find(filter)
-            .select('displayName username role phone')
-            .sort({ createdAt: -1 })
-            .lean();
+          const [list, total] = await Promise.all([
+            AdminUser.find(filter)
+              .select('displayName username role phone')
+              .sort({ createdAt: -1 })
+              .skip(skip)
+              .limit(limit)
+              .lean(),
+            AdminUser.countDocuments(filter)
+          ]);
 
-          return NextResponse.json({ success: true, data: list });
+          return NextResponse.json({ 
+            success: true, 
+            data: list,
+            pagination: createPaginationMetadata(total, page, limit)
+          });
         }
       );
     }
@@ -90,13 +101,22 @@ export async function GET(request: Request) {
           filter.$or = [{ username: regex }, { displayName: regex }];
         }
 
-        const staff = await AdminUser.find(filter)
-          .populate({ path: 'enterpriseId', model: Enterprise, select: 'name' })
-          .populate({ path: 'departmentId', model: Department, select: 'name' })
-          .select('-passwordHash')
-          .sort({ createdAt: -1 });
+        const [staff, total] = await Promise.all([
+          AdminUser.find(filter)
+            .populate({ path: 'enterpriseId', model: Enterprise, select: 'name' })
+            .populate({ path: 'departmentId', model: Department, select: 'name' })
+            .select('-passwordHash')
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit),
+          AdminUser.countDocuments(filter)
+        ]);
 
-        return NextResponse.json({ success: true, data: staff });
+        return NextResponse.json({ 
+          success: true, 
+          data: staff,
+          pagination: createPaginationMetadata(total, page, limit)
+        });
       }
     );
   } catch (error: unknown) {

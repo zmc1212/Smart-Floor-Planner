@@ -20,7 +20,9 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     const body = await request.json();
+    console.log('UPDATING PACKAGE:', id, body);
     const item = await Package.findByIdAndUpdate(id, body, { new: true });
+    console.log('UPDATED ITEM RESULT:', item);
 
     if (!item) {
       return NextResponse.json({ success: false, error: 'Package not found' }, { status: 404 });

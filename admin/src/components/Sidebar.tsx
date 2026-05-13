@@ -40,6 +40,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useBrowserNotification } from '@/hooks/useBrowserNotification';
 
 // --- Types ---
 interface MenuItem {
@@ -72,7 +73,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       items: [
         { key: 'promotion-records', label: '企业报备', icon: Building2, href: '/promotion-records' },
         { key: 'packages', label: '套餐管理', icon: ClipboardList, href: '/packages' },
-        { key: 'workflow-logs', label: '提醒日志', icon: ClipboardList, href: '/workflow-logs' },
+        { key: 'workflow-logs', label: '通知记录', icon: ClipboardList, href: '/workflow-logs' },
         { key: 'enterprise-orders', label: '成交订单', icon: ClipboardList, href: '/enterprise-orders' },
         { key: 'commissions', label: '提成结算中心', icon: Coins, href: '/commissions' },
       ]
@@ -159,6 +160,7 @@ export default function Sidebar() {
   const [globalTenantId, setGlobalTenantId] = useState<string>('all');
 
   const { user: admin } = useCurrentUser();
+  useBrowserNotification();
 
   useEffect(() => {
     const saved = localStorage.getItem('sidebar-collapsed');

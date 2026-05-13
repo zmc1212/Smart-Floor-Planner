@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Building2 } from "lucide-react";
 import { toast } from "sonner";
+import { Pagination } from "@/components/ui/pagination";
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<any[]>([]);
@@ -42,6 +43,12 @@ export default function LeadsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [staffMembers, setStaffMembers] = useState<any[]>([]);
   const [activeStatus, setActiveStatus] = useState('all');
+  const [pagination, setPagination] = useState<any>({
+    total: 0,
+    page: 1,
+    limit: 20,
+    totalPages: 0
+  });
 
   // @see react-best-practices: client-swr-dedup
   const { user: currentUser } = useCurrentUser();
@@ -113,17 +120,20 @@ export default function LeadsPage() {
     }
   };
 
-  const fetchLeads = async () => {
+  const fetchLeads = async (page = pagination.page) => {
     setLoading(true);
     try {
-      let url = `/api/leads`;
+      let url = `/api/leads?page=${page}&limit=${pagination.limit}`;
       if (activeStatus && activeStatus !== 'all') {
-        url += `?status=${activeStatus}`;
+        url += `&status=${activeStatus}`;
       }
       const res = await fetch(url);
       const data = await res.json();
       if (data.success) {
         setLeads(data.data);
+        if (data.pagination) {
+          setPagination(data.pagination);
+        }
         if (selectedLead) {
           const updated = data.data.find((l: any) => l._id === selectedLead._id);
           if (updated) setSelectedLead(updated);
@@ -134,6 +144,10 @@ export default function LeadsPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePageChange = (newPage: number) => {
+    fetchLeads(newPage);
   };
 
   const fetchStaff = async () => {
@@ -155,7 +169,7 @@ export default function LeadsPage() {
   }, []);
 
   useEffect(() => {
-    fetchLeads();
+    fetchLeads(1); // Reset to page 1 when status changes
   }, [activeStatus]);
 
   const updateLead = async (id: string, updates: any) => {
@@ -265,7 +279,7 @@ export default function LeadsPage() {
             </h2>
             {!loading && (
               <span className="bg-[#fafafa] text-[#666] px-2.5 py-0.5 rounded-md text-[13px] font-medium shadow-[0_0_0_1px_rgba(0,0,0,0.08)]">
-                {leads.length}
+                {pagination.total}
               </span>
             )}
           </div>
@@ -395,6 +409,16 @@ export default function LeadsPage() {
               </TableBody>
             </Table>
           </div>
+        )}
+
+        {!loading && leads.length > 0 && (
+          <Pagination
+            total={pagination.total}
+            page={pagination.page}
+            limit={pagination.limit}
+            totalPages={pagination.totalPages}
+            onChange={handlePageChange}
+          />
         )}
 
         {/* Lead Detail Sheet */}

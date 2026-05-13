@@ -26,6 +26,8 @@ export interface IWorkflowNotificationLog extends Document {
   message?: string;
   errorMessage?: string;
   metadata?: Record<string, unknown>;
+  isRead: boolean;
+  isAlerted: boolean;
   sentAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -59,6 +61,8 @@ const WorkflowNotificationLogSchema = new Schema<IWorkflowNotificationLog>(
     message: { type: String, trim: true },
     errorMessage: { type: String, trim: true },
     metadata: { type: Schema.Types.Mixed },
+    isRead: { type: Boolean, default: false },
+    isAlerted: { type: Boolean, default: false },
     sentAt: { type: Date },
   },
   { timestamps: true }

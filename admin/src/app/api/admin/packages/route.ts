@@ -46,6 +46,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json();
+    console.log('CREATING PACKAGE:', body);
     const item = await Package.create(body);
 
     return NextResponse.json({ success: true, data: item });

@@ -5,6 +5,7 @@ import { withTenantContext } from '@/lib/auth';
 import { FloorPlan } from '@/models/FloorPlan';
 import { User } from '@/models/User';
 import { tenantStorage } from '@/lib/tenant-context';
+import { getPaginationParams, createPaginationMetadata } from '@/lib/pagination';
 
 export async function POST(req: Request) {
   try {
@@ -57,6 +58,7 @@ export async function GET(req: Request) {
     const openid = searchParams.get('openid');
     const phone = searchParams.get('phone');
     const search = searchParams.get('search');
+    const { page, limit, skip } = getPaginationParams(req.url);
 
     // 💡 抽离公共的查询执行逻辑
     const executeQuery = async (baseQuery: any = {}) => {
@@ -74,9 +76,16 @@ export async function GET(req: Request) {
       }
 
       // 执行查询
-      return await FloorPlan.find(baseQuery)
-        .populate({ path: 'creator', model: User })
-        .sort({ createdAt: -1 });
+      const [floorPlans, total] = await Promise.all([
+        FloorPlan.find(baseQuery)
+          .populate({ path: 'creator', model: User })
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit),
+        FloorPlan.countDocuments(baseQuery)
+      ]);
+
+      return { floorPlans, total };
     };
 
     // 1. Mini-Program Context (via JWT)
@@ -102,8 +111,12 @@ export async function GET(req: Request) {
             query.creator = user._id;
           }
 
-          const floorPlans = await executeQuery(query);
-          return NextResponse.json({ success: true, data: floorPlans });
+          const { floorPlans, total } = await executeQuery(query);
+          return NextResponse.json({ 
+            success: true, 
+            data: floorPlans,
+            pagination: createPaginationMetadata(total, page, limit)
+          });
         }
       );
     }
@@ -113,8 +126,12 @@ export async function GET(req: Request) {
       try {
         return await withTenantContext(req, async () => {
           // 💡 这里传入空对象即可！插件会自动拦截find并加上enterpriseId
-          const floorPlans = await executeQuery({});
-          return NextResponse.json({ success: true, data: floorPlans });
+          const { floorPlans, total } = await executeQuery({});
+          return NextResponse.json({ 
+            success: true, 
+            data: floorPlans,
+            pagination: createPaginationMetadata(total, page, limit)
+          });
         });
       } catch (error: any) {
         if (error.message === 'Unauthorized') {

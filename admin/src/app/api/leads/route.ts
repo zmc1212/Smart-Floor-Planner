@@ -9,6 +9,7 @@ import '@/models/FloorPlan';
 import { WeComService } from '@/lib/wecom';
 import { tenantStorage } from '@/lib/tenant-context';
 import { notifyEnterpriseAdminOfNewLead, notifyDesignerOfAssignedLead } from '@/lib/wechat-notification';
+import { getPaginationParams, createPaginationMetadata } from '@/lib/pagination';
 
 export async function GET(request: Request) {
   try {
@@ -87,6 +88,8 @@ export async function GET(request: Request) {
 
     try {
       return await withTenantContext(request, async () => {
+        const { page, limit, skip } = getPaginationParams(request.url);
+        
         const basicQuery: any = {};
         if (status) basicQuery.status = status;
         if (source) basicQuery.source = source;
@@ -99,15 +102,24 @@ export async function GET(request: Request) {
           .populate('assignedTo', 'displayName username')
           .populate('promoterId', 'displayName username')
           .populate({ path: 'floorPlanIds', select: 'name status createdAt', strictPopulate: false })
-          .sort({ createdAt: -1 });
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit);
 
         console.log(`[Leads API] 执行查询前的过滤条件:`, query.getFilter());
 
-        const leads = await query;
+        const [leads, total] = await Promise.all([
+          query,
+          Lead.countDocuments(basicQuery)
+        ]);
 
-        console.log(`Leads API Result: Found ${leads.length} leads`);
+        console.log(`Leads API Result: Found ${leads.length} leads (Total: ${total})`);
 
-        return NextResponse.json({ success: true, data: leads });
+        return NextResponse.json({ 
+          success: true, 
+          data: leads,
+          pagination: createPaginationMetadata(total, page, limit)
+        });
       });
     } catch (error: any) {
       if (error.message === 'Unauthorized') {

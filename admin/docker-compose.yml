@@ -6,7 +6,7 @@ services:
     ports:
       - "3005:3005"
     env_file:
-      - .env.local
+      - .env.production
     environment:
       - NODE_ENV=production
       - INTERNAL_SECRET=sfp_internal_init_secret_2024
