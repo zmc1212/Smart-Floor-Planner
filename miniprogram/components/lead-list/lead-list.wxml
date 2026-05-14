@@ -1,136 +1,111 @@
 <view class="lead-list-container">
-  <view class="leads-hero">
-    <view class="leads-hero-copy">
-      <text class="leads-hero-title">客户线索</text>
-      <text class="leads-hero-subtitle">跟进客户、量房任务与设计转化</text>
-    </view>
-    <view class="leads-hero-visual">
-      <view class="lead-mini-card lead-mini-card-a"></view>
-      <view class="lead-mini-card lead-mini-card-b"></view>
-      <view class="lead-mini-dot"></view>
-    </view>
-  </view>
-
-  <view class="stats-dashboard">
-    <view class="stat-card-mini" wx:for="{{stats}}" wx:key="key">
-      <view class="stat-icon-bg {{item.tone}}">
-        <text class="stat-icon-text">{{item.icon}}</text>
-      </view>
-      <view class="stat-info">
-        <text class="stat-count">{{item.count}}</text>
-        <text class="stat-label-mini">{{item.label}}</text>
+  <view class="lead-hero-card">
+    <view class="lead-hero-stats">
+      <view class="hero-stat" wx:for="{{heroStats}}" wx:key="key">
+        <text class="hero-stat-label">{{item.label}}</text>
+        <text class="hero-stat-value">{{item.count}}</text>
+        <text class="hero-stat-unit">个客户</text>
       </view>
     </view>
+    <image class="lead-hero-image" src="/images/mockups/leads-hero.png" mode="aspectFit" />
   </view>
 
-  <view class="search-section">
+  <view class="search-row">
     <view class="search-box">
-      <view class="search-icon-wrapper">
-        <icon type="search" size="14" color="#6B7280" />
-      </view>
-      <input class="search-input-new" placeholder="搜索客户 / 小区 / 手机号" bindconfirm="onSearch" />
+      <icon type="search" size="20" color="#657187" />
+      <input class="search-input" placeholder="搜索客户" placeholder-class="search-placeholder" bindconfirm="onSearch" />
     </view>
-    <view class="action-buttons">
-      <view class="filter-btn">
-        <text class="filter-icon">筛</text>
-      </view>
-      <view class="add-circle-btn" bindtap="onAddLead">
-        <text class="plus-icon">+</text>
-      </view>
+    <view class="filter-button" bindtap="onFilterTap">
+      <text class="filter-mark">▽</text>
+      <text class="filter-text">筛选</text>
     </view>
   </view>
 
-  <view class="tabs-wrapper">
-    <scroll-view scroll-x class="tabs-scroll" show-scrollbar="{{false}}">
+  <scroll-view scroll-x class="tabs-scroll" show-scrollbar="{{false}}">
+    <view class="tabs-row">
       <view
         wx:for="{{tabs}}"
         wx:key="id"
-        class="tab-node {{currentTab === item.id ? 'active' : ''}}"
+        class="tab-pill {{currentTab === item.id ? 'active' : ''}}"
         bindtap="onTabChange"
         data-index="{{index}}"
       >
-        <text class="tab-text">{{item.label}}</text>
-        <view class="tab-bar-indicator" wx:if="{{currentTab === item.id}}"></view>
+        {{item.label}}
       </view>
-    </scroll-view>
-  </view>
+    </view>
+  </scroll-view>
 
   <view class="loading-state" wx:if="{{loading && leads.length === 0}}">
     <view class="loading-spinner"></view>
     <text>加载中...</text>
   </view>
 
-  <swiper class="list-swiper" current="{{currentTabIndex}}" bindchange="onSwiperChange">
-    <swiper-item wx:for="{{tabs}}" wx:key="id">
-      <scroll-view
-        scroll-y
-        class="list-scroller"
-        refresher-enabled
-        refresher-triggered="{{refreshing}}"
-        bindrefresherrefresh="onRefresh"
-        bindscrolltolower="onLoadMore"
+  <scroll-view
+    wx:else
+    scroll-y
+    class="list-scroller"
+    refresher-enabled
+    refresher-triggered="{{refreshing}}"
+    bindrefresherrefresh="onRefresh"
+    bindscrolltolower="onLoadMore"
+  >
+    <view class="leads-collection" wx:if="{{leads.length > 0}}">
+      <view
+        class="lead-card"
+        wx:for="{{leads}}"
+        wx:key="_id"
+        bindtap="onLeadClick"
+        data-id="{{item._id}}"
       >
-        <view class="leads-collection" wx:if="{{leads.length > 0}}">
-          <view
-            class="premium-lead-card"
-            wx:for="{{leads}}"
-            wx:key="_id"
-            bindtap="onLeadClick"
-            data-id="{{item._id}}"
-          >
-            <view class="card-top">
-              <view class="lead-user-info">
-                <view class="avatar-placeholder">{{item.name[0]}}</view>
-                <view class="user-text">
-                  <text class="user-name">{{item.name}}</text>
-                  <text class="user-phone">{{item.phone}}</text>
-                </view>
-              </view>
-              <view class="status-chip status-{{item.status}}">
-                <text>{{item.statusLabel}}</text>
-              </view>
-            </view>
-
-            <view class="card-mid">
-              <view class="project-info">
-                <text class="project-label">意向小区</text>
-                <text class="project-value">{{item.communityName || '待录入'}}</text>
-              </view>
-              <view class="project-info">
-                <text class="project-label">创建日期</text>
-                <text class="project-value">{{item.createdAtFormatted}}</text>
-              </view>
-            </view>
-
-            <view class="card-bottom-line">
-              <view class="meta-stats">
-                <view class="meta-pill">
-                  <text class="pill-icon">房</text>
-                  <text class="pill-text">{{item.roomCount}} 空间</text>
-                </view>
-                <view class="meta-pill" wx:if="{{item.budget}}">
-                  <text class="pill-icon">预</text>
-                  <text class="pill-text">{{item.budget}} 万</text>
-                </view>
-              </view>
-              <view class="card-action-btn" catchtap="onStartMeasure" data-id="{{item._id}}">
-                开始量房
-              </view>
-            </view>
-          </view>
-
-          <view class="footer-tip" wx:if="{{loading}}">正在加载...</view>
-          <view class="footer-tip" wx:elif="{{!hasMore}}">已经到底了</view>
+        <view class="avatar-wrap {{item.avatarTone}}">
+          <image wx:if="{{item.avatarUrl}}" class="avatar-image" src="{{item.avatarUrl}}" mode="aspectFill" />
+          <text wx:else class="avatar-text">{{item.avatarText}}</text>
         </view>
 
-        <view class="empty-placeholder" wx:else>
-          <view class="empty-icon-box">
-            <text class="empty-emoji">线</text>
+        <view class="lead-main">
+          <view class="lead-title-row">
+            <text class="lead-name">{{item.displayName}}</text>
+            <view class="status-chip status-{{item.statusTone}}">{{item.statusLabel}}</view>
           </view>
-          <text class="empty-msg">暂无此类客户</text>
-          <view class="empty-cta" bindtap="onAddLead">新建线索</view>
+
+          <view class="info-line">
+            <text class="line-icon">☎</text>
+            <text>{{item.phoneMasked}}</text>
+          </view>
+          <view class="info-line">
+            <text class="line-icon">⌖</text>
+            <text class="line-text">{{item.communityLabel}}</text>
+          </view>
+
+          <view class="meta-row">
+            <view class="meta-pill" wx:if="{{item.areaLabel}}">{{item.areaLabel}}</view>
+            <view class="meta-pill" wx:if="{{item.styleLabel}}">{{item.styleLabel}}</view>
+          </view>
+
+          <view class="follow-row">
+            <text>{{item.followLabel}}</text>
+          </view>
         </view>
-      </scroll-view>
-    </swiper-item>
-  </swiper>
+
+        <view class="lead-actions">
+          <text class="arrow">›</text>
+          <text class="more">•••</text>
+        </view>
+      </view>
+
+      <view class="footer-tip" wx:if="{{loading}}">正在加载...</view>
+      <view class="footer-tip" wx:elif="{{!hasMore}}">已经到底了</view>
+    </view>
+
+    <view class="empty-placeholder" wx:else>
+      <view class="empty-icon-box">线</view>
+      <text class="empty-msg">暂无此类客户</text>
+      <view class="empty-cta" bindtap="onAddLead">新增客户</view>
+    </view>
+  </scroll-view>
+
+  <view class="floating-add" bindtap="onAddLead">
+    <text class="floating-plus">＋</text>
+    <text>新增客户</text>
+  </view>
 </view>

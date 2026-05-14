@@ -1,11 +1,14 @@
 <view class="page-container">
-  <view class="custom-header" style="height: {{navBarHeightTotal}}px;">
-    <view class="header-content" style="margin-top: {{statusBarHeight}}px; height: {{navBarHeightTotal - statusBarHeight}}px;">
+  <view class="top-safe" style="height: {{statusBarHeight}}px;"></view>
+
+  <view class="page-header" style="padding-right: {{capsuleRightInset}}px;">
+    <view class="header-copy">
       <text class="page-title">客户线索</text>
+      <text class="page-subtitle">高效跟进客户，把握每一次机会</text>
     </view>
   </view>
 
-  <view class="main-content" style="padding-top: {{navBarHeightTotal}}px;">
+  <view class="main-content">
     <lead-list id="leadList" openid="{{openid}}" bindadd="onOpenLeadModal" />
   </view>
 </view>

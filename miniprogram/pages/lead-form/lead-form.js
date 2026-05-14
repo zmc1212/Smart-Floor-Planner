@@ -1,5 +1,32 @@
 const api = require('../../utils/api.js');
 
+const DEFAULT_RECENT_LEADS = [
+  {
+    name: '张女士',
+    phone: '13800000000',
+    communityName: '',
+    area: '',
+    stylePreference: '',
+    avatar: '/images/lead-avatar-zhang.png'
+  },
+  {
+    name: '李先生',
+    phone: '13900000000',
+    communityName: '',
+    area: '',
+    stylePreference: '',
+    avatar: '/images/lead-avatar-li.png'
+  },
+  {
+    name: '王女士',
+    phone: '13700000000',
+    communityName: '',
+    area: '',
+    stylePreference: '',
+    fullImage: '/images/lead-avatar-wang.png'
+  }
+];
+
 Page({
   data: {
     statusBarHeight: 0,
@@ -15,7 +42,8 @@ Page({
       area: '',
       stylePreference: ''
     },
-    recentLeads: []
+    recentLeads: [],
+    recentLeadChips: DEFAULT_RECENT_LEADS
   },
 
   onLoad(options) {
@@ -29,8 +57,8 @@ Page({
 
     this.setData({
       statusBarHeight: systemInfo.statusBarHeight,
-      navBarHeightTotal: navBarHeightTotal,
-      isStaff: isStaff,
+      navBarHeightTotal,
+      isStaff,
       floorPlanId: options.floorPlanId || ''
     });
 
@@ -43,8 +71,20 @@ Page({
     try {
       const res = await api.request('/leads', 'GET', { limit: 10 });
       if (res.success) {
+        const recentLeads = res.data || [];
+        const fallbackAvatars = [
+          '/images/lead-avatar-zhang.png',
+          '/images/lead-avatar-li.png',
+          '/images/lead-avatar-zhang.png'
+        ];
+        const recentLeadChips = recentLeads.slice(0, 3).map((lead, index) => ({
+          ...lead,
+          avatar: fallbackAvatars[index] || fallbackAvatars[0]
+        }));
+
         this.setData({
-          recentLeads: res.data || []
+          recentLeads,
+          recentLeadChips: recentLeadChips.length ? recentLeadChips : DEFAULT_RECENT_LEADS
         });
       }
     } catch (err) {
@@ -52,11 +92,17 @@ Page({
     }
   },
 
+  onRefreshRecent() {
+    if (this.data.isStaff) {
+      this.fetchRecentLeads();
+    }
+  },
+
   onBack() {
     wx.navigateBack({
       fail: () => {
         wx.switchTab({
-          url: '/pages/index/index',
+          url: '/pages/index/index'
         });
       }
     });
@@ -78,11 +124,14 @@ Page({
   },
 
   onSelectRecentLead(e) {
-    const lead = e.currentTarget.dataset.lead;
+    const index = e.currentTarget.dataset.index;
+    const lead = this.data.recentLeadChips[index];
+    if (!lead) return;
+
     this.setData({
       formData: {
-        name: lead.name,
-        phone: lead.phone,
+        name: lead.name || '',
+        phone: lead.phone || '',
         communityName: lead.communityName || '',
         area: lead.area || '',
         stylePreference: lead.stylePreference || ''
@@ -91,10 +140,12 @@ Page({
   },
 
   async onSubmit() {
+    if (this.data.loading) return;
+
     const { formData, floorPlanId } = this.data;
 
     if (!formData.name) {
-      return wx.showToast({ title: '请输入姓名', icon: 'none' });
+      return wx.showToast({ title: '请输入称呼', icon: 'none' });
     }
     if (!formData.phone || !/^1[3-9]\d{9}$/.test(formData.phone)) {
       return wx.showToast({ title: '请输入正确手机号', icon: 'none' });
@@ -111,7 +162,7 @@ Page({
         ...formData,
         openid: app.globalData.openid,
         source: 'MiniProgram',
-        floorPlanId: floorPlanId
+        floorPlanId
       };
 
       const res = await api.request('/leads', 'POST', payload);
@@ -136,7 +187,7 @@ Page({
 
           if (res.data && res.data._id) {
             wx.redirectTo({
-              url: `/pages/lead-detail/lead-detail?id=${res.data._id}`,
+              url: `/pages/lead-detail/lead-detail?id=${res.data._id}`
             });
           } else {
             this.onBack();

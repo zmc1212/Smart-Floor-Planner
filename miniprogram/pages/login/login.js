@@ -17,6 +17,8 @@ Page({
 
   switchTab(e) {
     const type = e.currentTarget.dataset.type;
+    if (!type || type === this.data.loginType) return;
+
     this.setData({ loginType: type });
   },
 
@@ -54,6 +56,8 @@ Page({
   },
 
   async performLogin(loginFn) {
+    if (this.data.loading) return;
+
     wx.showLoading({ title: '登录中' });
     this.setData({ loading: true });
 
@@ -101,6 +105,12 @@ Page({
   },
 
   onBack() {
-    wx.navigateBack();
+    const pages = getCurrentPages();
+    if (pages.length > 1) {
+      wx.navigateBack();
+      return;
+    }
+
+    wx.switchTab({ url: '/pages/index/index' });
   }
 });

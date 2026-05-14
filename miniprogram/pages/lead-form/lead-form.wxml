@@ -1,80 +1,95 @@
-<view class="page-container">
+<view class="lead-page">
   <view class="custom-header" style="height: {{navBarHeightTotal}}px;">
     <view class="header-content" style="margin-top: {{statusBarHeight}}px; height: {{navBarHeightTotal - statusBarHeight}}px;">
-      <view class="back-btn" bindtap="onBack">
-        <text class="back-arrow">‹</text>
-      </view>
-      <text class="page-title">{{isStaff ? '绑定客户资料' : '客户资料'}}</text>
+      <view class="back-btn" bindtap="onBack">‹</view>
+      <view class="page-title">客户资料</view>
     </view>
   </view>
 
   <scroll-view class="main-content" scroll-y style="padding-top: {{navBarHeightTotal}}px; height: 100vh; box-sizing: border-box;">
-    <view class="form-wrapper">
-      <view class="form-hero">
-        <view class="hero-copy">
-          <text class="hero-title">{{isStaff ? '完善客户信息' : '获取免费设计与报价'}}</text>
-          <text class="hero-desc">留下联系方式，设计师将为你提供 1 对 1 量房、设计与报价服务。</text>
-        </view>
-        <view class="hero-visual">
-          <view class="visual-paper"></view>
-          <view class="visual-home"></view>
+    <view class="content-shell">
+      <image class="hero-image" src="/images/lead-form-hero.png" mode="widthFix"></image>
+
+      <view class="recent-head">
+        <text class="recent-title">最近客户</text>
+        <view class="refresh-action" bindtap="onRefreshRecent">
+          <text class="refresh-icon">↻</text>
+          <text>换一批</text>
         </view>
       </view>
 
-      <view class="quick-select-section" wx:if="{{isStaff && recentLeads.length > 0}}">
-        <text class="quick-select-title">最近客户</text>
-        <scroll-view scroll-x="true" class="quick-select-list" enable-flex="true" show-scrollbar="{{false}}">
-          <view
-            class="quick-select-item"
-            wx:for="{{recentLeads}}"
-            wx:key="_id"
-            data-lead="{{item}}"
-            bindtap="onSelectRecentLead"
-          >
-            {{item.name}} · {{item.phone}}
-          </view>
-        </scroll-view>
+      <view class="recent-list">
+        <view
+          wx:for="{{recentLeadChips}}"
+          wx:key="name"
+          class="recent-chip"
+          data-index="{{index}}"
+          bindtap="onSelectRecentLead"
+        >
+          <image wx:if="{{item.fullImage}}" class="recent-chip-image" src="{{item.fullImage}}" mode="widthFix"></image>
+          <block wx:else>
+            <image class="recent-avatar" src="{{item.avatar}}" mode="aspectFill"></image>
+            <text class="recent-name">{{item.name}}</text>
+          </block>
+        </view>
       </view>
 
-      <view class="form-card">
-        <view class="form-group">
-          <text class="label">客户称呼<text class="required">*</text></text>
-          <input class="input" placeholder="请输入您的姓名" value="{{formData.name}}" data-field="name" bindinput="onInput" />
-        </view>
+      <view class="section-divider"></view>
 
+      <view class="form-panel">
         <view class="form-group">
-          <text class="label">手机号码<text class="required">*</text></text>
-          <view class="input-phone-group">
-            <input class="input phone-input" type="number" placeholder="请输入手机号" value="{{formData.phone}}" data-field="phone" bindinput="onInput" />
+          <text class="label">客户称呼 <text class="required">*</text></text>
+          <view class="input-shell">
+            <view class="field-icon person-icon"></view>
+            <input class="input" placeholder="请输入称呼，如：张先生" placeholder-class="placeholder" value="{{formData.name}}" data-field="name" bindinput="onInput" />
           </view>
         </view>
 
         <view class="form-group">
-          <text class="label">小区名称<text class="required">*</text></text>
-          <input class="input" placeholder="例如：万科翡翠华庭" value="{{formData.communityName}}" data-field="communityName" bindinput="onInput" />
+          <text class="label">手机号码 <text class="required">*</text></text>
+          <view class="input-shell">
+            <view class="field-icon phone-icon"></view>
+            <input class="input" type="number" placeholder="请输入手机号" placeholder-class="placeholder" value="{{formData.phone}}" data-field="phone" bindinput="onInput" />
+          </view>
         </view>
 
         <view class="form-group">
-          <text class="label">房屋面积 (㎡)</text>
-          <input class="input" type="digit" placeholder="例如：120" value="{{formData.area}}" data-field="area" bindinput="onInput" />
+          <text class="label">小区名称 <text class="required">*</text></text>
+          <view class="input-shell">
+            <view class="field-icon building-icon"></view>
+            <input class="input" placeholder="请输入小区名称" placeholder-class="placeholder" value="{{formData.communityName}}" data-field="communityName" bindinput="onInput" />
+          </view>
+        </view>
+
+        <view class="form-group">
+          <text class="label">房屋面积</text>
+          <view class="input-shell">
+            <view class="field-icon area-icon">㎡</view>
+            <input class="input input-with-unit" type="digit" placeholder="请输入房屋面积" placeholder-class="placeholder" value="{{formData.area}}" data-field="area" bindinput="onInput" />
+            <text class="unit">m²</text>
+          </view>
         </view>
 
         <view class="form-group">
           <text class="label">意向风格</text>
           <picker mode="selector" range="{{styleOptions}}" bindchange="onStyleChange">
-            <view class="picker-view {{formData.stylePreference ? '' : 'placeholder'}}">
-              {{formData.stylePreference || '请选择喜欢的风格'}}
-              <text class="arrow">›</text>
+            <view class="input-shell picker-shell">
+              <view class="field-icon style-icon"></view>
+              <text class="picker-text {{formData.stylePreference ? '' : 'placeholder-text'}}">{{formData.stylePreference || '请选择意向风格'}}</text>
+              <text class="picker-arrow">›</text>
             </view>
           </picker>
         </view>
       </view>
 
-      <view class="form-footer">
-        <button class="submit-btn" hover-class="submit-btn-hover" bindtap="onSubmit" loading="{{loading}}">
-          {{isStaff ? '确认绑定并推进' : '立即免费获取'}}
+      <view class="submit-wrap">
+        <button class="submit-btn" hover-class="submit-btn-hover" bindtap="onSubmit" loading="{{loading}}" disabled="{{loading}}">
+          立即提交
         </button>
-        <view class="privacy-note">点击按钮即表示同意相关隐私协议。</view>
+        <view class="privacy-note">
+          <image class="privacy-icon" src="/images/lead-privacy-icon.png" mode="widthFix"></image>
+          <text>我们将严格保护您的隐私信息，仅用于家装服务</text>
+        </view>
       </view>
     </view>
   </scroll-view>

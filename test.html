@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>报备详情</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #f7f8fa;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .card {
+            background: white;
+            border-radius: 1.25rem;
+            margin-bottom: 0.75rem;
+            padding: 1rem;
+        }
+
+        .step-line {
+            position: absolute;
+            top: 1rem;
+            left: 50%;
+            width: 100%;
+            height: 2px;
+            background: #eee;
+            z-index: 0;
+        }
+
+        .step-line.active {
+            background: #07c160;
+        }
+    </style>
+</head>
+
+<body class="max-w-md mx-auto pb-24 text-gray-800">
+
+    <!-- 顶部导航 -->
+    <header class="sticky top-0 z-50 bg-white flex items-center justify-between px-4 py-3">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+        </svg>
+        <h1 class="text-lg font-bold">报备详情</h1>
+        <div class="flex space-x-2">
+            <span class="text-xl">•••</span>
+            <span class="text-xl">◎</span>
+        </div>
+    </header>
+
+    <main class="px-3 pt-2">
+        <!-- 头部信息卡片 -->
+        <div
+            class="card relative overflow-hidden bg-gradient-to-br from-white to-green-50 shadow-sm border border-white">
+            <div class="relative z-10 space-y-2">
+                <h2 class="text-lg font-bold text-gray-900">上海品宅装饰设计有限公司</h2>
+                <div class="flex items-center gap-4 text-sm text-gray-500">
+                    <span class="flex items-center gap-1">👤 张先生</span>
+                    <span class="flex items-center gap-1">📞 138****5678</span>
+                </div>
+                <p class="text-xs text-gray-400">📍 上海市 · 浦东新区 · 陆家嘴滨江大道 88 号</p>
+
+                <div class="flex gap-4 pt-2">
+                    <div>
+                        <span class="bg-green-50 text-green-600 px-3 py-1 rounded-md text-sm font-medium">方案沟通</span>
+                        <p class="text-[10px] text-gray-400 mt-1 text-center">业务阶段</p>
+                    </div>
+                    <div>
+                        <span
+                            class="bg-orange-50 text-orange-500 px-3 py-1 rounded-md text-sm font-medium border border-orange-100">我的报备</span>
+                        <p class="text-[10px] text-gray-400 mt-1 text-center">报备归属</p>
+                    </div>
+                </div>
+            </div>
+            <!-- 右侧 3D 插画占位 -->
+            <div class="absolute -right-2 top-4 w-32 h-32 opacity-80">
+                <img src="https://img.icons8.com/isometric/200/building.png" alt="building"
+                    class="w-full h-full object-contain">
+            </div>
+        </div>
+
+        <!-- 跟进状态 -->
+        <div class="card shadow-sm">
+            <h3 class="font-bold mb-4">跟进状态</h3>
+            <div class="flex justify-between relative px-2">
+                <!-- 第一阶段 -->
+                <div class="relative z-10 flex flex-col items-center w-1/4">
+                    <div class="w-7 h-7 bg-green-500 text-white rounded-full flex items-center justify-center mb-2">✓
+                    </div>
+                    <p class="text-xs font-bold">已报备</p>
+                    <p class="text-[10px] text-gray-400">05-10 10:30</p>
+                    <div class="step-line active"></div>
+                </div>
+                <!-- 第二阶段 -->
+                <div class="relative z-10 flex flex-col items-center w-1/4">
+                    <div class="w-7 h-7 bg-green-500 text-white rounded-full flex items-center justify-center mb-2">✓
+                    </div>
+                    <p class="text-xs font-bold">已联系</p>
+                    <p class="text-[10px] text-gray-400">05-10 14:20</p>
+                    <div class="step-line"></div>
+                </div>
+                <!-- 第三阶段 -->
+                <div class="relative z-10 flex flex-col items-center w-1/4">
+                    <div
+                        class="w-7 h-7 bg-gray-100 text-gray-400 rounded-full flex items-center justify-center mb-2 border border-gray-200">
+                        📏</div>
+                    <p class="text-xs text-gray-500">待量房</p>
+                    <p class="text-[10px] text-gray-400">待安排</p>
+                    <div class="step-line"></div>
+                </div>
+                <!-- 第四阶段 -->
+                <div class="relative z-10 flex flex-col items-center w-1/4">
+                    <div
+                        class="w-7 h-7 bg-gray-100 text-gray-400 rounded-full flex items-center justify-center mb-2 border border-gray-200">
+                        📝</div>
+                    <p class="text-xs text-gray-500">设计中</p>
+                    <p class="text-[10px] text-gray-400">待开始</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 跟进记录 -->
+        <div class="card shadow-sm">
+            <h3 class="font-bold mb-3">跟进记录</h3>
+            <div class="relative">
+                <textarea class="w-full bg-gray-50 rounded-xl p-3 text-sm min-h-[100px] outline-none"
+                    placeholder="记录本次跟进内容..."></textarea>
+                <span class="absolute bottom-2 right-3 text-[10px] text-gray-400">0/300</span>
+            </div>
+
+            <div class="flex gap-2 my-3">
+                <div class="flex-1 bg-gray-50 px-3 py-2 rounded-lg flex justify-between items-center text-sm">
+                    <span class="text-gray-500">📅 2024-05-20</span>
+                    <span class="text-gray-400">⌵</span>
+                </div>
+                <div class="flex-1 bg-gray-50 px-3 py-2 rounded-lg flex justify-between items-center text-sm">
+                    <span class="text-gray-500">🕒 10:30</span>
+                    <span class="text-gray-400">⌵</span>
+                </div>
+            </div>
+
+            <div class="flex gap-2 mb-6">
+                <button
+                    class="flex-1 border border-green-500 text-green-600 py-2 rounded-lg font-medium text-sm">保存跟进</button>
+                <button class="flex-1 bg-green-500 text-white py-2 rounded-lg font-medium text-sm">标记已跟进</button>
+            </div>
+
+            <!-- 时间轴列表 -->
+            <div class="space-y-6 pl-2 relative border-l border-gray-100 ml-2">
+                <!-- 记录 1 -->
+                <div class="relative">
+                    <div
+                        class="absolute -left-[13px] top-1 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white">
+                    </div>
+                    <div class="flex justify-between items-start">
+                        <div class="space-y-1">
+                            <div class="flex items-center gap-2">
+                                <span class="font-bold text-sm">联系客户，介绍产品与服务</span>
+                                <span class="text-[10px] bg-green-50 text-green-500 px-1.5 py-0.5 rounded">已联系</span>
+                            </div>
+                            <p class="text-xs text-gray-400">李设计师 | 2024-05-10 14:20</p>
+                            <p class="text-xs text-gray-500">客户表示有装修需求，约定后续安排量房时间。</p>
+                        </div>
+                        <span class="text-gray-400">•••</span>
+                    </div>
+                </div>
+                <!-- 记录 2 -->
+                <div class="relative">
+                    <div
+                        class="absolute -left-[13px] top-1 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white">
+                    </div>
+                    <div class="flex justify-between items-start">
+                        <div class="space-y-1">
+                            <div class="flex items-center gap-2">
+                                <span class="font-bold text-sm">客户报备</span>
+                                <span class="text-[10px] bg-green-50 text-green-500 px-1.5 py-0.5 rounded">已报备</span>
+                            </div>
+                            <p class="text-xs text-gray-400">李设计师 | 2024-05-10 10:30</p>
+                            <p class="text-xs text-gray-500">客户通过小程序提交报备信息。</p>
+                        </div>
+                        <span class="text-gray-400">•••</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 任务分配 -->
+        <div class="card shadow-sm">
+            <h3 class="font-bold mb-3">任务分配</h3>
+            <div class="space-y-3">
+                <!-- 测量员 -->
+                <div class="flex items-center gap-2">
+                    <div class="flex-1 bg-gray-50 p-2 rounded-xl flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <div class="bg-green-100 text-green-600 p-1 rounded-lg text-xs">👤</div>
+                            <span class="text-sm">测量员</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <img src="https://ui-avatars.com/api/?name=王测量&background=0D8ABC&color=fff"
+                                class="w-6 h-6 rounded-full">
+                            <span class="text-sm">王测量</span>
+                            <span class="text-gray-400 text-xs">⌵</span>
+                        </div>
+                    </div>
+                    <button class="border border-green-500 text-green-600 px-4 py-2 rounded-lg text-sm">更换</button>
+                </div>
+                <!-- 设计师 -->
+                <div class="flex items-center gap-2">
+                    <div class="flex-1 bg-gray-50 p-2 rounded-xl flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <div class="bg-green-100 text-green-600 p-1 rounded-lg text-xs">📝</div>
+                            <span class="text-sm">设计师</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <img src="https://ui-avatars.com/api/?name=李设计&background=F87171&color=fff"
+                                class="w-6 h-6 rounded-full">
+                            <span class="text-sm">李设计师</span>
+                            <span class="text-gray-400 text-xs">⌵</span>
+                        </div>
+                    </div>
+                    <button class="border border-green-500 text-green-600 px-4 py-2 rounded-lg text-sm">更换</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- 底部固定按钮 -->
+    <footer
+        class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/80 backdrop-blur p-3 border-t flex gap-3 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+        <button
+            class="flex-1 flex items-center justify-center gap-2 border border-gray-100 bg-white py-3 rounded-xl text-green-600 font-bold text-sm">
+            <span>📞</span> 联系客户
+        </button>
+        <button
+            class="flex-1 flex items-center justify-center gap-2 bg-green-500 py-3 rounded-xl text-white font-bold text-sm">
+            <span>↗</span> 分享报备
+        </button>
+    </footer>
+
+</body>
+
+</html>

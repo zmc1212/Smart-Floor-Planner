@@ -1,70 +1,106 @@
-<view class="container">
-  <view class="login-header">
-    <view class="logo-circle">
-      <text class="logo-text">量</text>
-      <text class="logo-sparkle">✓</text>
-    </view>
-    <view class="login-title">智能量房大师</view>
-    <view class="login-subtitle">专业量房 · AI辅助设计平台</view>
-    <view class="login-visual">
-      <view class="visual-room visual-room-a"></view>
-      <view class="visual-room visual-room-b"></view>
-      <view class="visual-device"></view>
-    </view>
+<view class="login-page">
+  <view class="hero-wrap">
+    <image class="hero-image" src="/images/login-hero.png" mode="widthFix"></image>
   </view>
 
-  <view class="login-tabs">
-    <view class="tab {{loginType === 'phone' ? 'active' : ''}}" bindtap="switchTab" data-type="phone">快捷登录</view>
-    <view class="tab {{loginType === 'password' ? 'active' : ''}}" bindtap="switchTab" data-type="password">账号登录</view>
-    <view class="tab-indicator" style="transform: translateX({{loginType === 'phone' ? '0' : '100%'}})"></view>
-  </view>
-
-  <view wx:if="{{loginType === 'phone'}}" class="login-body fade-in">
-    <view class="info-card">
-      <view class="info-icon">机</view>
-      <view class="info-content">
-        <view class="info-title">微信授权登录</view>
-        <view class="info-desc">推荐业主用户使用，一键同步手机号。</view>
+  <view class="login-card">
+    <view class="tabs">
+      <view class="tab {{loginType === 'phone' ? 'active' : ''}}" bindtap="switchTab" data-type="phone">
+        <text>快捷登录</text>
+        <view class="tab-line"></view>
+      </view>
+      <view class="tab {{loginType === 'password' ? 'active' : ''}}" bindtap="switchTab" data-type="password">
+        <text>账号登录</text>
+        <view class="tab-line"></view>
       </view>
     </view>
 
-    <button class="primary-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">
-      手机号快捷登录
-    </button>
+    <view wx:if="{{loginType === 'phone'}}" class="login-body">
+      <view class="wechat-icon">
+        <view class="bubble bubble-large">
+          <view class="eye eye-left"></view>
+          <view class="eye eye-right"></view>
+        </view>
+        <view class="bubble bubble-small">
+          <view class="eye eye-left"></view>
+          <view class="eye eye-right"></view>
+        </view>
+      </view>
 
-    <view class="agreement-text">
-      登录即代表同意 <text class="link">《用户协议》</text> 和 <text class="link">《隐私政策》</text>
+      <view class="login-title">微信授权登录</view>
+      <view class="login-desc">授权后即可使用完整功能</view>
+
+      <button class="primary-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber" loading="{{loading}}" disabled="{{loading}}">
+        手机号快捷登录
+      </button>
+
+      <view class="agreement">
+        <text class="check">✓</text>
+        <text>我已阅读并同意</text>
+        <text class="link">《用户协议》</text>
+        <text>和</text>
+        <text class="link">《隐私政策》</text>
+      </view>
+    </view>
+
+    <view wx:else class="login-body password-body">
+      <view class="field">
+        <text class="label">账号 / 手机号</text>
+        <input class="input" placeholder="请输入员工账号或手机号" placeholder-class="placeholder" bindinput="onInputUsername" value="{{username}}" />
+      </view>
+
+      <view class="field">
+        <text class="label">密码</text>
+        <input class="input" password placeholder="请输入登录密码" placeholder-class="placeholder" bindinput="onInputPassword" value="{{password}}" />
+      </view>
+
+      <button class="primary-btn {{(!username || !password || loading) ? 'disabled' : ''}}" bindtap="onPasswordLogin" loading="{{loading}}" disabled="{{!username || !password || loading}}">
+        立即登录
+      </button>
+
+      <view class="staff-tip">
+        <text class="tip-badge">i</text>
+        <text class="tip-text">账号登录主要面向设计师、地推员等企业内部员工。</text>
+      </view>
     </view>
   </view>
 
-  <view wx:else class="login-body fade-in">
-    <view class="form-group">
-      <text class="label">账号 / 手机号</text>
-      <input class="input" placeholder="请输入员工账号 / 手机号" bindinput="onInputUsername" value="{{username}}" />
+  <view class="feature-row">
+    <view class="feature-card">
+      <view class="feature-icon target-icon">
+        <view class="target-dot"></view>
+      </view>
+      <view class="feature-copy">
+        <view class="feature-title">精准量房</view>
+        <view class="feature-desc">毫米级精度</view>
+      </view>
     </view>
-
-    <view class="form-group">
-      <text class="label">密码</text>
-      <input class="input" password placeholder="请输入登录密码" bindinput="onInputPassword" value="{{password}}" />
+    <view class="feature-card">
+      <view class="feature-icon ai-icon">AI</view>
+      <view class="feature-copy">
+        <view class="feature-title">AI设计</view>
+        <view class="feature-desc">智能设计方案</view>
+      </view>
     </view>
-
-    <button class="primary-btn {{(!username || !password) ? 'disabled' : ''}}" bindtap="onPasswordLogin">
-      立即登录
-    </button>
-
-    <view class="staff-tip">
-      <text class="tip-icon">i</text>
-      <text>账号登录主要面向设计师、地推员等企业内部员工。</text>
+    <view class="feature-card">
+      <view class="feature-icon image-icon">
+        <view class="image-sun"></view>
+        <view class="image-mountain"></view>
+      </view>
+      <view class="feature-copy">
+        <view class="feature-title">灵感图库</view>
+        <view class="feature-desc">海量实景案例</view>
+      </view>
     </view>
   </view>
 
-  <view class="login-features">
-    <view class="feature-chip">精准量房</view>
-    <view class="feature-chip">AI设计</view>
-    <view class="feature-chip">灵感图库</view>
-  </view>
-
-  <view class="footer-actions">
-    <view class="back-link" bindtap="onBack">返回首页</view>
+  <view class="back-row" bindtap="onBack">
+    <view class="back-line"></view>
+    <view class="home-icon">
+      <view class="home-roof"></view>
+      <view class="home-body"></view>
+    </view>
+    <text>返回首页</text>
+    <view class="back-line"></view>
   </view>
 </view>
