@@ -57,37 +57,27 @@ const ROLE_LABELS: Record<string, string> = {
 const ACTIONS_BY_ROLE: Record<string, ActionItem[]> = {
   salesperson: [
     { key: 'create-report', label: '报备企业', sublabel: '拓展合作企业', icon: 'building', target: 'createPromotion' },
-    { key: 'my-enterprise', label: '我的企业', sublabel: '管理合作企业', icon: 'buildingCog', target: 'promotion:my' },
-    { key: 'pool', label: '公海报备', sublabel: '获取公海客户', icon: 'users', target: 'promotion:pool' },
+    { key: 'pool', label: '可认领客户', sublabel: '认领客户继续跟进', icon: 'users', target: 'promotion:pool' },
     { key: 'commissions', label: '我的提成', sublabel: '查看收益明细', icon: 'wallet', target: 'commissions' },
   ],
   enterprise_admin: [
-    { key: 'reports', label: '报备管理', sublabel: '查看企业报备', icon: 'building', target: 'promotion:admin' },
-    { key: 'assignments', label: '分配处理', sublabel: '处理协作任务', icon: 'buildingCog', target: 'promotion:overdue' },
+    { key: 'claimable-customers', label: '线索池管理', sublabel: '查看可认领客户', icon: 'buildingCog', target: 'promotion:pool' },
     { key: 'customers', label: '服务客户', sublabel: '跟进客户线索', icon: 'users', target: 'leads' },
     { key: 'revenue', label: '收益概览', sublabel: '查看成交提成', icon: 'wallet', target: 'commissions' },
   ],
   admin: [
-    { key: 'reports', label: '报备管理', sublabel: '查看全部报备', icon: 'building', target: 'promotion:admin' },
-    { key: 'conflicts', label: '冲突处理', sublabel: '处理公海报备', icon: 'buildingCog', target: 'promotion:pool' },
-    { key: 'enterprises', label: '企业管理', sublabel: '服务合作企业', icon: 'users', target: 'promotion:admin' },
+    { key: 'claimable-customers', label: '线索池管理', sublabel: '查看可认领客户', icon: 'buildingCog', target: 'promotion:pool' },
     { key: 'settlement', label: '提成结算', sublabel: '查看收益明细', icon: 'wallet', target: 'commissions' },
   ],
   super_admin: [
-    { key: 'reports', label: '报备管理', sublabel: '查看全部报备', icon: 'building', target: 'promotion:admin' },
-    { key: 'conflicts', label: '冲突处理', sublabel: '处理公海报备', icon: 'buildingCog', target: 'promotion:pool' },
-    { key: 'enterprises', label: '企业管理', sublabel: '服务合作企业', icon: 'users', target: 'promotion:admin' },
+    { key: 'claimable-customers', label: '线索池管理', sublabel: '查看可认领客户', icon: 'buildingCog', target: 'promotion:pool' },
     { key: 'settlement', label: '提成结算', sublabel: '查看收益明细', icon: 'wallet', target: 'commissions' },
   ],
   designer: [
-    { key: 'design-tasks', label: '设计任务', sublabel: '查看待设计客户', icon: 'buildingCog', target: 'promotion:design' },
-    { key: 'designing', label: '进行中', sublabel: '跟进设计方案', icon: 'building', target: 'promotion:design' },
     { key: 'customers', label: '客户列表', sublabel: '服务客户线索', icon: 'users', target: 'leads' },
     { key: 'inspiration', label: '灵感库', sublabel: '查看设计灵感', icon: 'wallet', target: 'inspiration' },
   ],
   measurer: [
-    { key: 'measure-tasks', label: '量房任务', sublabel: '查看待量房客户', icon: 'building', target: 'promotion:measure' },
-    { key: 'accepted', label: '进行中', sublabel: '现场量房记录', icon: 'buildingCog', target: 'promotion:measure' },
     { key: 'customers', label: '服务客户', sublabel: '查看客户信息', icon: 'users', target: 'leads' },
     { key: 'measure', label: '去量房', sublabel: '打开量房工具', icon: 'wallet', target: 'measure' },
   ],
@@ -178,8 +168,8 @@ async function buildWorkbenchCards(role: string, staff: StaffContext): Promise<W
     );
     return [
       card('reported', '我的报备', reported, '个', '持续跟进', 'home', 'green', 'promotion:my'),
-      card('pendingTodo', '待跟进', todos.length, '个', todos.length ? `+${todos.length}` : '已清空', 'edit', 'blue', 'promotion:my'),
-      card('monthlyPaid', '本月成交', monthlyPaid, '单', monthlyPaid ? `+${monthlyPaid}` : '本月', 'deal', 'green', 'promotion:my'),
+      card('pendingTodo', '待跟进', todos.length, '个', todos.length ? `+${todos.length}` : '已清空', 'edit', 'blue', 'promotion:my?filter=todo'),
+      card('monthlyPaid', '本月成交', monthlyPaid, '单', monthlyPaid ? `+${monthlyPaid}` : '本月', 'deal', 'green', 'promotion:my?filter=paid'),
       card('pendingCommission', '待结算', pendingAmount, '元', pendingAmount ? '待结算' : '暂无', 'user', 'orange', 'commissions'),
     ];
   }
@@ -193,8 +183,8 @@ async function buildWorkbenchCards(role: string, staff: StaffContext): Promise<W
     ]);
 
     return [
-      card('pendingDesign', '待设计', pendingDesign, '个', pendingDesign ? `+${pendingDesign}` : '已清空', 'edit', 'blue', 'promotion:design'),
-      card('designing', '设计中', designing, '个', designing ? `+${designing}` : '推进中', 'home', 'green', 'promotion:design'),
+      card('pendingDesign', '待设计', pendingDesign, '个', pendingDesign ? `+${pendingDesign}` : '已清空', 'edit', 'blue', 'promotion:design?filter=designing'),
+      card('designing', '设计中', designing, '个', designing ? `+${designing}` : '推进中', 'home', 'green', 'promotion:design?filter=designing'),
       card('monthlyDone', '本月完成', monthlyDone, '单', monthlyDone ? `+${monthlyDone}` : '本月', 'deal', 'green', 'promotion:design'),
       card('customers', '服务客户', serviceCustomers, '位', serviceCustomers ? `+${serviceCustomers}` : '暂无', 'user', 'purple', 'leads'),
     ];
@@ -209,8 +199,8 @@ async function buildWorkbenchCards(role: string, staff: StaffContext): Promise<W
     ]);
 
     return [
-      card('pendingMeasure', '待量房', pendingMeasure, '个', pendingMeasure ? `+${pendingMeasure}` : '已清空', 'home', 'green', 'promotion:measure'),
-      card('accepted', '进行中', accepted, '个', accepted ? `+${accepted}` : '推进中', 'edit', 'blue', 'promotion:measure'),
+      card('pendingMeasure', '待量房', pendingMeasure, '个', pendingMeasure ? `+${pendingMeasure}` : '已清空', 'home', 'green', 'promotion:measure?filter=measuring'),
+      card('accepted', '进行中', accepted, '个', accepted ? `+${accepted}` : '推进中', 'edit', 'blue', 'promotion:measure?filter=measuring'),
       card('monthlySubmitted', '本月提交', monthlySubmitted, '单', monthlySubmitted ? `+${monthlySubmitted}` : '本月', 'deal', 'green', 'promotion:measure'),
       card('customers', '服务客户', serviceCustomers, '位', serviceCustomers ? `+${serviceCustomers}` : '暂无', 'user', 'purple', 'leads'),
     ];
@@ -235,9 +225,9 @@ async function buildWorkbenchCards(role: string, staff: StaffContext): Promise<W
     ]);
 
     return [
-      card('pendingMeasure', '待量房', pendingMeasure, '个', pendingMeasure ? `+${pendingMeasure}` : '已清空', 'home', 'green', 'promotion:measure'),
-      card('pendingDesign', '待设计', pendingDesign, '个', pendingDesign ? `+${pendingDesign}` : '推进中', 'edit', 'blue', 'promotion:design'),
-      card('monthlyPaid', '本月成交', monthlyPaid, '单', monthlyPaid ? `+${monthlyPaid}` : '本月', 'deal', 'green', 'promotion:admin'),
+      card('pendingMeasure', '待量房', pendingMeasure, '个', pendingMeasure ? `+${pendingMeasure}` : '已清空', 'home', 'green', 'promotion:measure?filter=measuring'),
+      card('pendingDesign', '待设计', pendingDesign, '个', pendingDesign ? `+${pendingDesign}` : '推进中', 'edit', 'blue', 'promotion:design?filter=designing'),
+      card('monthlyPaid', '本月成交', monthlyPaid, '单', monthlyPaid ? `+${monthlyPaid}` : '本月', 'deal', 'green', 'promotion:admin?filter=paid'),
       card('customers', '服务客户', serviceCustomers, '位', serviceCustomers ? `+${serviceCustomers}` : '暂无', 'user', 'purple', 'leads'),
     ];
   }
@@ -257,8 +247,8 @@ async function buildWorkbenchCards(role: string, staff: StaffContext): Promise<W
 
   return [
     card('newReports', '新报备', newReports, '个', newReports ? `+${newReports}` : '本月', 'home', 'green', 'promotion:admin'),
-    card('pendingActions', '待处理', pendingActions, '个', pendingActions ? `+${pendingActions}` : '已清空', 'edit', 'blue', 'promotion:overdue'),
-    card('monthlyPaid', '本月成交', monthlyPaid, '单', monthlyPaid ? `+${monthlyPaid}` : '本月', 'deal', 'green', 'promotion:admin'),
+    card('pendingActions', '待处理', pendingActions, '个', pendingActions ? `+${pendingActions}` : '已清空', 'edit', 'blue', 'promotion:admin?filter=todo'),
+    card('monthlyPaid', '本月成交', monthlyPaid, '单', monthlyPaid ? `+${monthlyPaid}` : '本月', 'deal', 'green', 'promotion:admin?filter=paid'),
     card('enterprises', '服务企业', serviceEnterprises, '家', serviceEnterprises ? `+${serviceEnterprises}` : '暂无', 'user', 'purple', 'promotion:admin'),
   ];
 }

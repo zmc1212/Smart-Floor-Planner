@@ -1,0 +1,457 @@
+page {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.mine-page {
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+.mine-content {
+  padding: 28rpx;
+  padding-top: 170rpx;
+  padding-bottom: 198rpx;
+  box-sizing: border-box;
+}
+
+.staff-dashboard,
+.user-dashboard {
+}
+
+.profile-card,
+.action-panel,
+.section-card,
+.settings-card,
+.empty-card,
+.login-card {
+  border: 1rpx solid #edf0f2;
+  border-radius: 28rpx;
+  box-shadow: 0 12rpx 36rpx rgba(15, 23, 42, 0.05);
+  box-sizing: border-box;
+}
+
+.profile-card {
+  position: relative;
+  min-height: 242rpx;
+  padding: 40rpx 32rpx;
+  overflow: hidden;
+  background: linear-gradient(105deg, #f8fcf8 0%, #eef9ef 48%, #e5f6e9 100%);
+
+  .profile-main {
+    position: relative;
+    z-index: 2;
+    max-width: 510rpx;
+  }
+
+  .avatar {
+    width: 128rpx;
+    height: 128rpx;
+    flex-shrink: 0;
+    background: #e8edf0;
+    border: 4rpx solid rgba(255, 255, 255, 0.86);
+  }
+
+  .profile-text {
+    min-width: 0;
+    flex: 1;
+
+    .name-row {
+      min-width: 0;
+    }
+
+    .profile-name {
+      max-width: 250rpx;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      line-height: 1.25;
+    }
+
+    .role-badge {
+      flex-shrink: 0;
+      padding: 5rpx 14rpx;
+      border: 1rpx solid #8fdaa2;
+      background: rgba(232, 250, 237, 0.85);
+      color: #07953c;
+      line-height: 1.2;
+    }
+
+    .enterprise-name,
+    .phone-line {
+      margin-top: 14rpx;
+      line-height: 1.3;
+    }
+
+    .enterprise-name {
+      max-width: 360rpx;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .phone-line {
+      display: flex;
+      align-items: center;
+      gap: 10rpx;
+
+      .phone-dot {
+        width: 16rpx;
+        height: 16rpx;
+        border-radius: 50%;
+        border: 4rpx solid #65758b;
+        box-sizing: border-box;
+      }
+    }
+  }
+
+  .edit-profile-btn {
+    position: absolute;
+    top: 34rpx;
+    right: 32rpx;
+    z-index: 3;
+    width: 126rpx !important;
+    min-width: 0 !important;
+    height: 54rpx;
+    padding: 0 18rpx !important;
+    margin: 0;
+    border: 0;
+    background: rgba(255, 255, 255, 0.72);
+    color: #1f2937;
+    line-height: 54rpx !important;
+    white-space: nowrap;
+    box-sizing: border-box;
+  }
+}
+
+.edit-profile-btn,
+.logout-btn,
+.primary-btn {
+  &::after {
+    display: none;
+  }
+}
+
+.inline-icon,
+.button-icon,
+.action-icon-img,
+.mini-icon-img,
+.todo-icon-img,
+.tiny-icon,
+.setting-icon-img {
+  display: block;
+  flex-shrink: 0;
+}
+
+.inline-icon,
+.button-icon,
+.tiny-icon {
+  width: 28rpx;
+  height: 28rpx;
+}
+
+.action-icon-img {
+  width: 58rpx;
+  height: 58rpx;
+}
+
+.mini-icon-img {
+  width: 28rpx;
+  height: 28rpx;
+}
+
+.todo-icon-img {
+  width: 36rpx;
+  height: 36rpx;
+}
+
+.setting-icon-img {
+  width: 38rpx;
+  height: 38rpx;
+}
+
+.room-scene {
+  position: absolute;
+  right: -8rpx;
+  bottom: 10rpx;
+  width: 306rpx;
+  height: 190rpx;
+  opacity: 0.78;
+  transform: skewY(-8deg);
+
+  .scene-wall {
+    position: absolute;
+    right: 16rpx;
+    bottom: 54rpx;
+    width: 198rpx;
+    height: 116rpx;
+    border-radius: 8rpx;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.88), rgba(209, 239, 217, 0.86));
+    box-shadow: inset -20rpx 0 0 rgba(186, 225, 199, 0.35);
+  }
+
+  .scene-sofa {
+    position: absolute;
+    right: 76rpx;
+    bottom: 54rpx;
+    width: 110rpx;
+    height: 46rpx;
+    border-radius: 14rpx 14rpx 8rpx 8rpx;
+    background: #d7f0dd;
+    box-shadow: 0 18rpx 0 #eff8f1;
+  }
+
+  .scene-table {
+    position: absolute;
+    right: 128rpx;
+    bottom: 18rpx;
+    width: 78rpx;
+    height: 28rpx;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.88);
+  }
+
+  .scene-plant {
+    position: absolute;
+    width: 22rpx;
+    height: 58rpx;
+    border-radius: 999rpx 999rpx 8rpx 8rpx;
+    background: #84d198;
+
+    &-left {
+      right: 216rpx;
+      bottom: 34rpx;
+    }
+
+    &-right {
+      right: 18rpx;
+      bottom: 26rpx;
+    }
+  }
+}
+
+.action-panel {
+  min-height: 160rpx;
+  padding: 28rpx 16rpx;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(148rpx, 1fr));
+
+  .action-item {
+    position: relative;
+    min-width: 0;
+
+    & + .action-item {
+      border-left: 1rpx solid #edf0f2;
+    }
+  }
+
+  .action-label {
+    margin-top: 14rpx;
+    line-height: 1.25;
+  }
+
+  .action-sub {
+    margin-top: 6rpx;
+    max-width: 128rpx;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.2;
+  }
+}
+
+.section-card {
+  padding: 28rpx 24rpx 18rpx;
+
+  .section-header {
+    margin-bottom: 22rpx;
+  }
+}
+
+.chevron,
+.item-chevron {
+  color: #667085;
+  font-size: 32rpx;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+
+.workbench-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14rpx;
+
+  .workbench-card {
+    min-width: 0;
+    min-height: 154rpx;
+    padding: 16rpx 12rpx;
+    border: 1rpx solid #e7ece9;
+    border-radius: 14rpx;
+    background: linear-gradient(180deg, #f3fcf5 0%, #ffffff 100%);
+    box-sizing: border-box;
+
+    .card-heading {
+      min-width: 0;
+      line-height: 1.25;
+      white-space: nowrap;
+    }
+
+    .metric-row {
+      align-items: baseline;
+      margin-top: 16rpx;
+
+      .metric-value {
+        line-height: 1;
+      }
+
+      .metric-unit {
+        margin-left: 6rpx;
+      }
+    }
+
+    .metric-delta {
+      margin-top: 12rpx;
+      line-height: 1.2;
+    }
+  }
+}
+
+.todo-list {
+  overflow: hidden;
+  border-radius: 20rpx;
+  border: 1rpx solid #edf0f2;
+
+  .todo-item {
+    min-height: 120rpx;
+    padding: 22rpx 18rpx;
+    box-sizing: border-box;
+
+    & + .todo-item {
+      border-top: 1rpx solid #edf0f2;
+    }
+
+    .todo-icon {
+      flex-shrink: 0;
+      width: 76rpx;
+      height: 76rpx;
+
+      &.green,
+      &.blue,
+      &.orange {
+        background: transparent;
+      }
+    }
+
+    .todo-body {
+      flex: 1;
+      min-width: 0;
+
+      .todo-title {
+        line-height: 1.3;
+      }
+
+      .todo-desc,
+      .todo-time {
+        margin-top: 6rpx;
+        line-height: 1.25;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
+
+    .todo-right {
+      flex-shrink: 0;
+
+      .status-pill {
+        padding: 7rpx 17rpx;
+        line-height: 1;
+
+        &.green {
+          color: #07953c;
+          background: #ecfaef;
+        }
+
+        &.blue {
+          color: #0878e5;
+          background: #edf6ff;
+        }
+
+        &.orange {
+          color: #f08300;
+          background: #fff7e8;
+        }
+      }
+    }
+  }
+}
+
+.settings-card {
+  overflow: hidden;
+  padding: 8rpx 34rpx;
+
+  .setting-item {
+    min-height: 96rpx;
+
+    &.with-border {
+      border-bottom: 1rpx solid #edf0f2;
+    }
+  }
+}
+
+.logout-btn {
+  width: 86%;
+  height: 72rpx;
+  min-height: 0;
+  padding: 0 !important;
+  margin: 0 auto;
+  border: 0;
+  background: #f0f1f3;
+  line-height: normal !important;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.empty-mini,
+.empty-card,
+.login-card {
+  padding: 56rpx 36rpx;
+}
+
+.empty-subtitle {
+  margin-top: 12rpx;
+  line-height: 1.5;
+}
+
+.login-state {
+  padding: 220rpx 32rpx 0;
+
+  .login-avatar {
+    width: 132rpx;
+    height: 132rpx;
+    background: #eef1f4;
+  }
+
+  .login-title {
+    margin-top: 26rpx;
+  }
+
+  .login-subtitle {
+    margin-top: 12rpx;
+  }
+
+  .primary-btn {
+    margin-top: 36rpx;
+    min-width: 286rpx;
+    height: 78rpx;
+    line-height: 78rpx;
+  }
+}
+
+.user-profile {
+  min-height: 170rpx;
+}
+
+.ai-btn {
+  padding: 10rpx 18rpx;
+}

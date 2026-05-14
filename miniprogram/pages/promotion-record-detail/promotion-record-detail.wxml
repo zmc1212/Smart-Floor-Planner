@@ -28,8 +28,8 @@
     </view>
 
     <view class="card" wx:if="{{userInfo.staffRole === 'salesperson' && record.poolStatus === 'in_pool'}}">
-      <view class="section-title">公海池认领</view>
-      <view class="meta">该记录当前在公海池，可认领后开始跟进。</view>
+      <view class="section-title">客户认领</view>
+      <view class="meta">该客户当前可认领，认领后将进入你的跟进列表。</view>
       <button class="primary-btn" bindtap="onClaimRecord">立即认领</button>
     </view>
 

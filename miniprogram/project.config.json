@@ -31,7 +31,7 @@
       "disablePlugins": [],
       "outputPath": ""
     },
-    "condition": false,
+    "condition": true,
     "compileWorklet": false,
     "packNpmManually": false,
     "packNpmRelationList": [],
@@ -39,7 +39,9 @@
     "minifyWXML": true,
     "localPlugins": false,
     "disableUseStrict": false,
-    "useCompilerPlugins": false,
+    "useCompilerPlugins": [
+      "less"
+    ],
     "swc": false,
     "disableSWC": true
   },

@@ -182,8 +182,11 @@ Page({
     if (!target) return;
 
     if (target.indexOf('promotion:') === 0) {
-      const view = target.split(':')[1] || 'my';
-      wx.navigateTo({ url: `/pages/promotion-records/promotion-records?view=${view}` });
+      const payload = target.slice('promotion:'.length);
+      const parts = payload.split('?');
+      const view = parts[0] || 'my';
+      const extraQuery = parts[1] ? `&${parts[1]}` : '';
+      wx.navigateTo({ url: `/pages/promotion-records/promotion-records?view=${view}${extraQuery}` });
       return;
     }
 
