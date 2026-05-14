@@ -9,8 +9,6 @@ page {
   font-family: 'Source Han Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   background-color: var(--bg-page);
   color: var(--text-primary);
-  height: 100%;
-  overflow: hidden;
   -webkit-font-smoothing: antialiased;
 
   /* Brand */

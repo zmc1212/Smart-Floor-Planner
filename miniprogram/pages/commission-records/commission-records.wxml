@@ -1,3 +1,4 @@
+<wxs src="../../utils/mapping.wxs" module="map" />
 <view class="page">
   <view class="header">
     <view>
@@ -10,21 +11,21 @@
 
   <view class="summary-card">
     <view class="summary-main">
-      <text class="summary-label">本月预估提成</text>
-      <text class="summary-amount">¥ 12,860</text>
+      <text class="summary-label">待结算提成</text>
+      <text class="summary-amount">¥ {{summary.pendingAmount}}</text>
     </view>
     <view class="summary-grid">
       <view class="summary-mini">
-        <text class="mini-value">5</text>
+        <text class="mini-value">{{summary.pendingCount}}</text>
         <text class="mini-label">待结算</text>
       </view>
       <view class="summary-mini">
-        <text class="mini-value">18</text>
-        <text class="mini-label">已到账</text>
+        <text class="mini-value">{{summary.paidCount}}</text>
+        <text class="mini-label">已结算</text>
       </view>
       <view class="summary-mini">
-        <text class="mini-value">4</text>
-        <text class="mini-label">本月成交</text>
+        <text class="mini-value">{{summary.monthCount}}</text>
+        <text class="mini-label">本月生成</text>
       </view>
     </view>
   </view>
@@ -33,7 +34,7 @@
     <text class="filter-chip active">全部</text>
     <text class="filter-chip">待结算</text>
     <text class="filter-chip">已结算</text>
-    <text class="filter-chip">已到账</text>
+    <text class="filter-chip">已作废</text>
   </view>
 
   <view wx:if="{{loading}}" class="empty">加载中...</view>
@@ -41,12 +42,12 @@
   <view wx:elif="{{records.length > 0}}">
     <view class="card" wx:for="{{records}}" wx:key="_id">
       <view class="row">
-        <view class="name">{{item.commissionType}}</view>
-        <view class="badge">{{item.status}}</view>
+        <view class="name">{{map.commissionType(item.commissionType)}}</view>
+        <view class="badge">{{map.commissionStatus(item.status)}}</view>
       </view>
       <view class="amount">¥{{item.commissionAmount}}</view>
       <view class="meta">{{item.orderId.packageName || '企业订单'}}</view>
-      <view class="meta">{{item.generatedAt}}</view>
+      <view class="meta">{{item.generatedAtText}}</view>
     </view>
   </view>
 
@@ -54,6 +55,6 @@
 
   <view class="rule-card">
     <view class="section-title">结算说明</view>
-    <view class="meta">提成会在企业订单完成后进入结算流程，到账状态以企业财务确认结果为准。</view>
+    <view class="meta">提成会在企业订单完成后进入结算流程，最终状态以企业财务确认结果为准。</view>
   </view>
 </view>

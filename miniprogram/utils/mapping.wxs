@@ -1,7 +1,7 @@
 var stageLabels = {
   reported: '已报备',
   contacted: '已联系',
-  measuring: '测量中',
+  measuring: '量房中',
   designing: '设计中',
   quoted: '已报价',
   paid: '已成交',
@@ -18,7 +18,8 @@ var ownershipLabels = {
 var taskStatusLabels = {
   unassigned: '待分配',
   pending: '待处理',
-  accepted: '已接受',
+  assigned: '已分配',
+  accepted: '已接收',
   in_progress: '进行中',
   submitted: '已提交',
   completed: '已完成',
@@ -27,23 +28,26 @@ var taskStatusLabels = {
 
 var roleLabels = {
   none: '无',
-  salesperson: '渠道地推',
+  salesperson: '地推',
   measurer: '测量员',
   designer: '设计师',
-  enterprise_admin: '企业负责人'
+  enterprise_admin: '企业负责人',
+  admin: '平台负责人',
+  super_admin: '平台负责人'
 };
 
 var commissionStatusLabels = {
   pending: '待发放',
   pending_settlement: '待结算',
   paid: '已结算',
+  voided: '已作废',
   cancelled: '已取消'
 };
 
 var commissionTypeLabels = {
   fixed: '固定提成',
   percentage: '比例分成',
-  fixed_per_paid_order: '已支付订单固定提成'
+  fixed_per_paid_order: '成交订单固定提成'
 };
 
 module.exports = {

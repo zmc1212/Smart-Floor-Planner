@@ -8,7 +8,7 @@
       bindtap="switchTab"
     >
       <view class="tab-icon {{item.center ? 'center-icon' : ''}}">
-        <text>{{item.icon}}</text>
+        <image class="tab-image {{item.center ? 'center-image' : ''}}" src="{{selected === index ? item.selectedIconPath : item.iconPath}}" mode="aspectFit" />
       </view>
       <text class="tab-text">{{item.text}}</text>
     </view>

@@ -24,7 +24,7 @@ function request(url, method = 'GET', data = {}) {
           
           const pages = getCurrentPages();
           const currentPage = pages[pages.length - 1];
-          const isLoginPage = currentPage && (currentPage.route === 'pages/login/index' || currentPage.route === 'pages/index/index');
+          const isLoginPage = currentPage && (currentPage.route === 'pages/login/login' || currentPage.route === 'pages/index/index');
 
           if (!isLoginPage && !global.isShowingAuthModal) {
             global.isShowingAuthModal = true;
@@ -36,7 +36,7 @@ function request(url, method = 'GET', data = {}) {
               cancelText: '取消',
               success: (modalRes) => {
                 if (modalRes.confirm) {
-                  wx.reLaunch({ url: '/pages/login/index' });
+                  wx.reLaunch({ url: '/pages/login/login' });
                 }
               },
               complete: () => {

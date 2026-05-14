@@ -2,37 +2,11 @@ Component({
   data: {
     selected: 0,
     list: [
-      {
-        key: 'home',
-        pagePath: '/pages/index/index',
-        text: '首页',
-        icon: '⌂'
-      },
-      {
-        key: 'leads',
-        pagePath: '/pages/leads-management/leads-management',
-        text: '线索',
-        icon: '♟'
-      },
-      {
-        key: 'measure',
-        pagePath: '/pages/index/index',
-        text: '量房',
-        icon: '▱',
-        center: true
-      },
-      {
-        key: 'inspiration',
-        pagePath: '/pages/inspiration/inspiration',
-        text: '灵感',
-        icon: '♧'
-      },
-      {
-        key: 'mine',
-        pagePath: '/pages/mine/mine',
-        text: '我的',
-        icon: '○'
-      }
+      { key: 'home', pagePath: '/pages/index/index', text: '首页', iconPath: '/images/meaure0.png', selectedIconPath: '/images/meaure1.png' },
+      { key: 'leads', pagePath: '/pages/leads-management/leads-management', text: '线索', iconPath: '/images/mine0.png', selectedIconPath: '/images/mine1.png' },
+      { key: 'measure', pagePath: '/pages/index/index', text: '量房', iconPath: '/images/meaure1.png', selectedIconPath: '/images/meaure1.png', center: true },
+      { key: 'inspiration', pagePath: '/pages/inspiration/inspiration', text: '灵感', iconPath: '/images/idea0.png', selectedIconPath: '/images/idea1.png' },
+      { key: 'mine', pagePath: '/pages/mine/mine', text: '我的', iconPath: '/images/mine0.png', selectedIconPath: '/images/mine1.png' }
     ]
   },
 
@@ -54,18 +28,14 @@ Component({
       const item = this.data.list[index];
       if (!item) return;
 
-      wx.switchTab({
-        url: item.pagePath
-      });
+      wx.switchTab({ url: item.pagePath });
     },
 
     syncSelected() {
       const pages = getCurrentPages();
       const current = pages && pages.length ? `/${pages[pages.length - 1].route}` : '';
       const index = this.data.list.findIndex((item) => item.pagePath === current && !item.center);
-      this.setData({
-        selected: index >= 0 ? index : this.data.selected
-      });
+      this.setData({ selected: index >= 0 ? index : this.data.selected });
     }
   }
 });
