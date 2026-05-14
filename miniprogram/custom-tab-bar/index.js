@@ -2,11 +2,11 @@ Component({
   data: {
     selected: 0,
     list: [
-      { key: 'home', pagePath: '/pages/index/index', text: '首页', iconPath: '/images/meaure0.png', selectedIconPath: '/images/meaure1.png' },
-      { key: 'leads', pagePath: '/pages/leads-management/leads-management', text: '线索', iconPath: '/images/mine0.png', selectedIconPath: '/images/mine1.png' },
-      { key: 'measure', pagePath: '/pages/index/index', text: '量房', iconPath: '/images/meaure1.png', selectedIconPath: '/images/meaure1.png', center: true },
-      { key: 'inspiration', pagePath: '/pages/inspiration/inspiration', text: '灵感', iconPath: '/images/idea0.png', selectedIconPath: '/images/idea1.png' },
-      { key: 'mine', pagePath: '/pages/mine/mine', text: '我的', iconPath: '/images/mine0.png', selectedIconPath: '/images/mine1.png' }
+      { key: 'home', pagePath: '/pages/index/index', text: '首页', iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home.png' },
+      { key: 'leads', pagePath: '/pages/leads-management/leads-management', text: '线索', iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads.png' },
+      { key: 'measure', pagePath: '/pages/index/index', text: '量房', iconPath: '/images/mine-icons/tab-measure-active.png', selectedIconPath: '/images/mine-icons/tab-measure-active.png', center: true },
+      { key: 'inspiration', pagePath: '/pages/inspiration/inspiration', text: '灵感', iconPath: '/images/mine-icons/tab-bulb.png', selectedIconPath: '/images/mine-icons/tab-bulb.png' },
+      { key: 'mine', pagePath: '/pages/mine/mine', text: '我的', iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
     ]
   },
 
