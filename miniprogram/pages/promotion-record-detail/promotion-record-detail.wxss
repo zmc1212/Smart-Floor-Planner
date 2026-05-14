@@ -1,39 +1,81 @@
 .page {
   min-height: 100vh;
-  background: var(--bg-page);
-  padding: var(--space-section);
+  background:
+    linear-gradient(180deg, #fcfdfb 0%, #f5f7f4 46%, var(--bg-page) 100%);
+  padding: 20rpx;
   box-sizing: border-box;
 }
 
 .card {
-  background: var(--bg-surface);
-  border-radius: var(--radius-lg);
-  padding: var(--space-section);
-  box-shadow: var(--shadow-card);
-  margin-bottom: var(--space-xxl);
+  background: rgba(255, 255, 255, 0.94);
+  border: 1rpx solid rgba(207, 220, 207, 0.55);
+  border-radius: 22rpx;
+  padding: 24rpx;
+  box-shadow: var(--shadow-home-card);
+  margin-bottom: 16rpx;
+  box-sizing: border-box;
+}
+
+.detail > .card:first-child,
+.page > .card:first-child {
+  border-radius: 24rpx;
+  background:
+    radial-gradient(circle at 82% 18%, rgba(168, 230, 191, 0.34) 0%, rgba(168, 230, 191, 0) 34%),
+    linear-gradient(135deg, #eff9ef 0%, #edf8f2 48%, #f9fbf9 100%);
+}
+
+.detail-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 18rpx;
+}
+
+.hero-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.eyebrow {
+  font-size: 22rpx;
+  color: #17a14c;
+  font-weight: 500;
+  margin-bottom: 8rpx;
+}
+
+.hero-chip {
+  align-self: flex-start;
+  max-width: 210rpx;
+  padding: 8rpx 16rpx;
+  border-radius: var(--radius-full);
+  background: rgba(34, 197, 94, 0.12);
+  color: #17a14c;
+  font-size: 21rpx;
+  line-height: 1.4;
+  flex-shrink: 0;
 }
 
 .title {
-  font-size: 36rpx;
-  font-weight: var(--font-weight-bold);
-  color: var(--text-primary);
-  margin-bottom: var(--space-lg);
+  font-size: 38rpx;
+  line-height: 1.2;
+  font-weight: 600;
+  color: #20262d;
+  margin-bottom: 16rpx;
 }
 
 .section-title {
-  font-size: 30rpx;
-  font-weight: var(--font-weight-medium);
-  color: var(--text-primary);
-  margin-bottom: var(--space-lg);
+  font-size: 29rpx;
+  font-weight: 500;
+  color: #21262d;
+  margin-bottom: 16rpx;
 }
 
 .meta,
 .empty,
 .log-content {
-  font-size: var(--font-size-caption);
-  color: var(--text-secondary);
+  font-size: 24rpx;
+  color: #7e8793;
   line-height: 1.6;
-  margin-bottom: var(--space-sm);
+  margin-bottom: 8rpx;
 }
 
 .input,
@@ -41,12 +83,13 @@
 .picker {
   width: 100%;
   box-sizing: border-box;
-  background: var(--neutral-100);
+  background: rgba(248, 250, 248, 0.98);
   color: var(--text-primary);
-  border-radius: var(--radius-md);
-  padding: 0 var(--space-xl);
-  margin-bottom: var(--space-lg);
-  font-size: var(--font-size-body);
+  border-radius: 18rpx;
+  padding: 0 22rpx;
+  margin-bottom: 14rpx;
+  font-size: 28rpx;
+  box-shadow: inset 0 0 0 1rpx rgba(227, 232, 227, 0.95);
 }
 
 .input,
@@ -56,8 +99,37 @@
 }
 
 .textarea {
-  min-height: 150rpx;
-  padding-top: var(--space-lg);
+  min-height: 152rpx;
+  padding-top: 18rpx;
+  line-height: 1.5;
+}
+
+.placeholder-cls {
+  color: #a0a6af;
+}
+
+.stage-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10rpx;
+}
+
+.stage-node {
+  min-height: 58rpx;
+  padding: 0 8rpx;
+  border-radius: var(--radius-full);
+  background: rgba(236, 240, 245, 1);
+  color: #8f98a4;
+  font-size: 21rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.stage-node.active {
+  background: rgba(34, 197, 94, 0.12);
+  color: #17a14c;
 }
 
 .primary-btn,
@@ -66,14 +138,15 @@
   height: 88rpx;
   line-height: 88rpx;
   border-radius: var(--radius-full);
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-medium);
-  margin: var(--space-lg) 0 0;
+  font-size: 28rpx;
+  font-weight: 500;
+  margin: 14rpx 0 0;
 }
 
 .primary-btn {
-  background: var(--brand-primary);
+  background: linear-gradient(135deg, #0fb04d 0%, #18a94b 100%);
   color: var(--text-inverse);
+  box-shadow: 0 10rpx 20rpx rgba(17, 164, 66, 0.18);
 }
 
 .secondary-btn {
@@ -88,20 +161,24 @@
 }
 
 .log {
-  background: var(--bg-surface-soft);
-  border-radius: var(--radius-md);
-  padding: var(--space-lg);
-  margin-top: var(--space-lg);
+  background: rgba(234, 248, 236, 0.62);
+  border-radius: 18rpx;
+  padding: 18rpx;
+  margin-top: 14rpx;
 }
 
 .log-title {
-  font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-medium);
-  color: var(--text-primary);
-  margin-bottom: var(--space-xs);
+  font-size: 24rpx;
+  font-weight: 500;
+  color: #20262d;
+  margin-bottom: 6rpx;
 }
 
 .empty {
-  padding: 120rpx 32rpx;
+  padding: 100rpx 32rpx;
   text-align: center;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1rpx solid rgba(207, 220, 207, 0.55);
+  border-radius: 24rpx;
+  box-shadow: var(--shadow-home-card);
 }

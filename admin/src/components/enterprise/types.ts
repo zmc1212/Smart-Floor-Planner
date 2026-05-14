@@ -22,6 +22,8 @@ export interface EnterpriseListItem {
     designTaskSlaHours?: number;
     reminderIntervalHours?: number;
     maxReminderTimes?: number;
+    browserNotificationEnabled?: boolean;
+    miniprogramNotificationEnabled?: boolean;
   };
   aiConfig?: {
     provider?: 'pollinations';
@@ -74,13 +76,6 @@ export interface EnterpriseFormState {
     accentColor: string;
   };
   groundPromotionFixedCommission: string;
-  automationConfig: {
-    followUpSlaHours: string;
-    measureTaskSlaHours: string;
-    designTaskSlaHours: string;
-    reminderIntervalHours: string;
-    maxReminderTimes: string;
-  };
 }
 
 export const DEFAULT_ENTERPRISE_FORM: EnterpriseFormState = {
@@ -90,11 +85,4 @@ export const DEFAULT_ENTERPRISE_FORM: EnterpriseFormState = {
   logo: '',
   branding: { primaryColor: '#171717', accentColor: '#0070f3' },
   groundPromotionFixedCommission: '0',
-  automationConfig: {
-    followUpSlaHours: '24',
-    measureTaskSlaHours: '48',
-    designTaskSlaHours: '72',
-    reminderIntervalHours: '24',
-    maxReminderTimes: '3',
-  },
 };

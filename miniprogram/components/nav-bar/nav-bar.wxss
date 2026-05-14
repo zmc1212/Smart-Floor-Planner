@@ -1,6 +1,7 @@
 .nav-bar {
-  background: var(--bg-surface);
-  box-shadow: var(--shadow-card);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8rpx 24rpx rgba(85, 104, 90, 0.05);
+  backdrop-filter: blur(16px);
   z-index: 20;
 }
 
@@ -31,12 +32,12 @@
 .logo-box {
   width: 52rpx;
   height: 52rpx;
-  background: var(--brand-primary);
+  background: linear-gradient(135deg, #0fb04d 0%, #18a94b 100%);
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: var(--shadow-card);
+  box-shadow: 0 10rpx 20rpx rgba(17, 164, 66, 0.18);
 }
 
 .logo-icon {
@@ -74,8 +75,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-surface);
-  box-shadow: var(--shadow-border-soft);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 0 0 1rpx rgba(209, 213, 219, 0.45);
   color: var(--text-secondary);
 }
 
@@ -111,6 +112,6 @@
   font-size: var(--font-size-caption);
   font-weight: var(--font-weight-medium);
   border-radius: var(--radius-full);
-  background: var(--brand-primary);
+  background: linear-gradient(135deg, #0fb04d 0%, #18a94b 100%);
   color: var(--text-inverse);
 }

@@ -11,7 +11,7 @@ Page({
     selectedStyle: StyleType.MODERN,
     styles: Object.values(StyleType),
     styleMetadata: StyleMetadata,
-    selectedMode: 'INTERIOR', // 'INTERIOR' | 'PLANE'
+    selectedMode: 'INTERIOR',
     isGenerating: false,
     isGettingAdvice: false,
     showMeasurePrompt: false,
@@ -23,7 +23,7 @@ Page({
   onLoad: function () {
     const app = getApp();
     const room = app.globalData.currentAIGenRoom;
-    
+
     if (room) {
       this.setData({ room: room });
     } else {
@@ -34,20 +34,18 @@ Page({
 
   onStyleSelect: function (e) {
     const key = e.currentTarget.dataset.key;
-    this.setData({ 
+    this.setData({
       selectedStyleKey: key,
       selectedStyle: StyleType[key]
     });
-    // 触感反馈
     wx.vibrateShort();
   },
 
   onModeChange: function (e) {
     const mode = e.currentTarget.dataset.mode;
     this.setData({ selectedMode: mode });
-    // 增加反馈
     wx.vibrateShort();
-    wx.showToast({ 
+    wx.showToast({
       title: mode === 'INTERIOR' ? '已切换为效果图' : '已切换为平面图',
       icon: 'none',
       duration: 1000
@@ -71,14 +69,14 @@ Page({
       room.polygon || null
     ).then(function (url) {
       const updatedRoom = Object.assign({}, room, { renderingUrl: url });
-      that.setData({ 
+      that.setData({
         room: updatedRoom,
-        isGenerating: false 
+        isGenerating: false
       });
       that.syncBack(updatedRoom);
       wx.showToast({ title: '效果图已生成', icon: 'success' });
     }).catch(function (err) {
-      wx.showToast({ title: err.message || '生成中...请稍候', icon: 'none' });
+      wx.showToast({ title: err.message || '生成中断，请稍后重试', icon: 'none' });
       that.setData({ isGenerating: false });
     });
   },
@@ -96,15 +94,15 @@ Page({
       room.width,
       room.height
     ).then(function (advice) {
-      const updatedRoom = Object.assign({}, room, { 
+      const updatedRoom = Object.assign({}, room, {
         designAdvice: {
           content: advice,
           timestamp: Date.now()
-        } 
+        }
       });
-      that.setData({ 
+      that.setData({
         room: updatedRoom,
-        isGettingAdvice: false 
+        isGettingAdvice: false
       });
       that.syncBack(updatedRoom);
     }).catch(function (err) {
@@ -147,57 +145,56 @@ Page({
     const openings = room.openings || [];
 
     const wallMap = {
-      'Top': [],
-      'Right': [],
-      'Bottom': [],
-      'Left': []
+      Top: [],
+      Right: [],
+      Bottom: [],
+      Left: []
     };
 
     openings.forEach(o => {
       const type = o.type === 'DOOR' ? 'Door' : 'Window';
       const widthM = (o.width / 10).toFixed(1);
       const distFromStart = (o.rotation === 0) ? (o.x / 10).toFixed(1) : (o.y / 10).toFixed(1);
-      
+
       let wallName = '';
       if (o.rotation === 0) {
         wallName = o.y < (room.height / 2) ? 'Top' : 'Bottom';
       } else {
         wallName = o.x < (room.width / 2) ? 'Left' : 'Right';
       }
-      
+
       const desc = `${type} [width: ${widthM}m, offset: ${distFromStart}m]`;
       wallMap[wallName].push(desc);
     });
 
-    const modeReq = mode === 'PLANE' 
+    const modeReq = mode === 'PLANE'
       ? '2D technical floor plan, architectural drawing, top-down orthographic view, blueprint aesthetic, clean black and white lines'
       : 'Photorealistic interior design rendering, eye-level perspective looking straight at the far wall, architectural photography';
 
-    // 针对不同风格注入专有关键词
     const styleKeywords = {
-      'MODERN': 'Clean lines, minimalism, high-end materials, neutral tones, functional furniture.',
-      'CREAMY': 'Soft natural light, cream-colored palette, curved furniture, warm cozy atmosphere, bouclé fabric.',
-      'NEW_CHINESE': 'Contemporary meets tradition, dark wood accents, Zen aesthetic, symmetrical layout, oriental porcelain.',
-      'WABI_SABI:': 'Raw textures, microcement walls, aged wood, asymmetrical balance, organic shapes, earthy muted tones.',
-      'NORDIC': 'Scandi design, light oak wood, pops of pastel, large plants, bright and airy, hygge vibe.',
-      'LIGHT_LUXURY': 'Marble flooring, brass accents, velvet chairs, crystal chandelier, sophisticated and elegant.',
-      'INDUSTRIAL': 'Exposed brick, metal pipes, leather sofa, concrete floor, dark moody studio vibe.',
-      'JAPANDI': 'Fusion of Japanese and Scandi, low-profile furniture, rice paper lamps, clutter-free, light wood.'
+      MODERN: 'Clean lines, minimalism, high-end materials, neutral tones, functional furniture.',
+      CREAMY: 'Soft natural light, cream-colored palette, curved furniture, warm cozy atmosphere, boucle fabric.',
+      NEW_CHINESE: 'Contemporary meets tradition, dark wood accents, Zen aesthetic, symmetrical layout, oriental porcelain.',
+      WABI_SABI: 'Raw textures, microcement walls, aged wood, asymmetrical balance, organic shapes, earthy muted tones.',
+      NORDIC: 'Scandi design, light oak wood, pops of pastel, large plants, bright and airy, hygge vibe.',
+      LIGHT_LUXURY: 'Marble flooring, brass accents, velvet chairs, crystal chandelier, sophisticated and elegant.',
+      INDUSTRIAL: 'Exposed brick, metal pipes, leather sofa, concrete floor, dark moody studio vibe.',
+      JAPANDI: 'Fusion of Japanese and Scandi, low-profile furniture, rice paper lamps, clutter-free, light wood.'
     };
 
     const sceneDetails = [];
-    if (wallMap['Top'].length > 0) sceneDetails.push(`Far wall: ${wallMap['Top'].join(', ')}.`);
-    if (wallMap['Left'].length > 0) sceneDetails.push(`Left wall: ${wallMap['Left'].join(', ')}.`);
-    if (wallMap['Right'].length > 0) sceneDetails.push(`Right wall: ${wallMap['Right'].join(', ')}.`);
-    
-    const furnitureHint = room.name.includes('客厅') 
+    if (wallMap.Top.length > 0) sceneDetails.push(`Far wall: ${wallMap.Top.join(', ')}.`);
+    if (wallMap.Left.length > 0) sceneDetails.push(`Left wall: ${wallMap.Left.join(', ')}.`);
+    if (wallMap.Right.length > 0) sceneDetails.push(`Right wall: ${wallMap.Right.join(', ')}.`);
+
+    const furnitureHint = room.name.includes('客厅')
       ? 'Place a premium sofa and a coffee table.'
       : (room.name.includes('卧室') ? 'A large comfortable bed with neat bedding.' : '');
 
-    const prompt = `[PROMPT] ${modeReq}. 
+    const prompt = `[PROMPT] ${modeReq}.
 Room: ${room.name} (${style} style). ${styleKeywords[styleKey] || ''}
-Spatial layout: ${(room.width / 10).toFixed(2)}m x ${(room.height / 10).toFixed(2)}m. 
-Openings: ${sceneDetails.join(' ')} 
+Spatial layout: ${(room.width / 10).toFixed(2)}m x ${(room.height / 10).toFixed(2)}m.
+Openings: ${sceneDetails.join(' ')}
 Furniture: ${furnitureHint}
 Visuals: 8k, photorealistic, cinematic lighting, professional interior photography, NO text, NO labels. [/PROMPT]`;
 
@@ -233,9 +230,9 @@ Visuals: 8k, photorealistic, cinematic lighting, professional interior photograp
   },
 
   onOpenSharePoster: function () {
-    const { room, selectedStyleKey, selectedMode } = this.data;
+    const { room, selectedStyleKey } = this.data;
     const styleMetadata = StyleMetadata.find(s => s.key === selectedStyleKey) || {};
-    
+
     this.setData({
       showSharePoster: true,
       posterData: {

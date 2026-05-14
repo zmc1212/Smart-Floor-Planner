@@ -2,36 +2,35 @@
   <view class="nav-bar-content" style="padding-top: {{statusBarHeight}}px; height: {{navBarHeightTotal}}px; padding-right: {{capsulePadding + 12}}px; box-sizing: border-box;">
     <view class="nav-left">
       <view class="logo-box">
-        <text class="logo-icon">⊞</text>
+        <text class="logo-icon">量</text>
       </view>
       <view class="logo-text">
         <text class="app-title">智能量房大师</text>
-        <text class="app-subtitle">SMART FLOOR PLANNER PRO</text>
+        <text class="app-subtitle">SMART FLOOR PLANNER</text>
       </view>
     </view>
 
     <view class="nav-right">
-      <!-- 蓝牙状态图标 -->
       <view class="ble-status-icon {{bleConnected ? 'connected' : ''}}">
-        <text>{{bleConnected ? '📡' : '🚫'}}</text>
+        <text>{{bleConnected ? '蓝' : '!'}}</text>
       </view>
       <view class="nav-divider"></view>
-      
+
       <view class="action-group" wx:if="{{showHistory}}">
         <view class="action-btn {{canUndo ? '' : 'disabled'}}" bindtap="onUndo">
-          <text>↩</text>
+          <text>↶</text>
         </view>
         <view class="action-btn {{canRedo ? '' : 'disabled'}}" bindtap="onRedo">
-          <text>↪</text>
+          <text>↷</text>
         </view>
       </view>
       <view class="nav-divider" wx:if="{{showHistory}}"></view>
       <view class="action-btn" wx:if="{{showClear}}" bindtap="onClear">
-        <text>🗑️</text>
+        <text>清</text>
       </view>
       <view class="nav-divider" wx:if="{{showClear}}"></view>
       <view class="action-btn" bindtap="onExport">
-        <text>📥</text>
+        <text>出</text>
       </view>
     </view>
   </view>

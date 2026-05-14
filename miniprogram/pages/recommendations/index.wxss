@@ -1,7 +1,8 @@
 .container {
   min-height: 100vh;
-  background: var(--bg-page);
-  padding: var(--space-section);
+  background:
+    linear-gradient(180deg, #fcfdfb 0%, #f5f7f4 46%, var(--bg-page) 100%);
+  padding: 20rpx;
   box-sizing: border-box;
 }
 
@@ -9,22 +10,87 @@
 .progress-section,
 .recommendation-card,
 .share-tips {
-  background: var(--bg-surface);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
+  background: rgba(255, 255, 255, 0.94);
+  border: 1rpx solid rgba(207, 220, 207, 0.55);
+  border-radius: 22rpx;
+  box-shadow: var(--shadow-home-card);
+  box-sizing: border-box;
 }
 
 .header {
-  padding: var(--space-section);
-  margin-bottom: var(--space-section);
+  padding: 28rpx 26rpx;
+  margin-bottom: 16rpx;
+  border-radius: 24rpx;
+  background:
+    radial-gradient(circle at 82% 18%, rgba(168, 230, 191, 0.34) 0%, rgba(168, 230, 191, 0) 34%),
+    linear-gradient(135deg, #eff9ef 0%, #edf8f2 48%, #f9fbf9 100%);
+  display: flex;
+  justify-content: space-between;
+  gap: 18rpx;
+  overflow: hidden;
+}
+
+.header-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.eyebrow {
+  display: block;
+  font-size: 22rpx;
+  color: #17a14c;
+  font-weight: 500;
+  margin-bottom: 8rpx;
+}
+
+.hero-moodboard {
+  position: relative;
+  width: 166rpx;
+  min-width: 166rpx;
+  height: 126rpx;
+}
+
+.mood-card {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.96);
+  border: 2rpx solid rgba(198, 228, 203, 0.86);
+  box-shadow: 0 10rpx 24rpx rgba(90, 110, 92, 0.1);
+}
+
+.mood-a {
+  right: 46rpx;
+  top: 14rpx;
+  width: 96rpx;
+  height: 70rpx;
+  border-radius: 18rpx;
+  transform: rotate(-7deg);
+}
+
+.mood-b {
+  right: 6rpx;
+  top: 52rpx;
+  width: 86rpx;
+  height: 56rpx;
+  border-radius: 16rpx;
+  transform: rotate(8deg);
+}
+
+.mood-chip {
+  position: absolute;
+  right: 118rpx;
+  bottom: 18rpx;
+  width: 30rpx;
+  height: 30rpx;
+  border-radius: 50%;
+  background: rgba(255, 200, 87, 0.26);
 }
 
 .title {
   display: block;
-  font-size: var(--font-size-title);
-  font-weight: var(--font-weight-bold);
-  color: var(--text-primary);
-  margin-bottom: var(--space-sm);
+  font-size: 38rpx;
+  font-weight: 600;
+  color: #20262d;
+  margin-bottom: 10rpx;
 }
 
 .subtitle,
@@ -33,32 +99,32 @@
 .budget-info,
 .tips-text {
   display: block;
-  font-size: var(--font-size-caption);
-  color: var(--text-secondary);
+  font-size: 24rpx;
+  color: #7e8793;
   line-height: 1.5;
 }
 
 .progress-section,
 .recommendations-section,
 .share-section {
-  margin-bottom: var(--space-section);
+  margin-bottom: 16rpx;
 }
 
 .progress-section {
-  padding: var(--space-section);
+  padding: 24rpx;
 }
 
 .progress-title,
 .section-title {
-  font-size: 32rpx;
-  font-weight: var(--font-weight-bold);
-  color: var(--text-primary);
-  margin-bottom: var(--space-xl);
+  font-size: 29rpx;
+  font-weight: 500;
+  color: #21262d;
+  margin-bottom: 18rpx;
 }
 
 .step-item {
   display: flex;
-  gap: var(--space-lg);
+  gap: 14rpx;
   align-items: flex-start;
 }
 
@@ -66,12 +132,13 @@
   width: 52rpx;
   height: 52rpx;
   border-radius: var(--radius-full);
-  background: var(--neutral-100);
-  color: var(--text-secondary);
+  background: rgba(236, 240, 245, 1);
+  color: #8f98a4;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: var(--font-weight-bold);
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
 .step-item.active .step-number,
@@ -83,15 +150,16 @@
 
 .step-title {
   display: block;
-  font-size: var(--font-size-body);
-  font-weight: var(--font-weight-medium);
-  color: var(--text-primary);
+  font-size: 27rpx;
+  font-weight: 500;
+  color: #20262d;
+  margin-bottom: 4rpx;
 }
 
 .step-line {
   width: 4rpx;
   height: 34rpx;
-  background: var(--neutral-100);
+  background: rgba(236, 240, 245, 1);
   margin-left: 24rpx;
 }
 
@@ -101,8 +169,8 @@
 
 .recommendation-card {
   display: inline-block;
-  width: 600rpx;
-  margin-right: var(--space-xxl);
+  width: 610rpx;
+  margin-right: 16rpx;
   overflow: hidden;
   vertical-align: top;
 }
@@ -110,35 +178,36 @@
 .recommendation-image {
   width: 100%;
   height: 300rpx;
+  background: var(--bg-surface-soft);
 }
 
 .card-content {
-  padding: var(--space-section);
+  padding: 22rpx;
 }
 
 .card-title {
   display: block;
-  font-size: 32rpx;
-  font-weight: var(--font-weight-bold);
-  color: var(--text-primary);
-  margin-bottom: var(--space-md);
+  font-size: 31rpx;
+  font-weight: 600;
+  color: #20262d;
+  margin-bottom: 10rpx;
 }
 
 .budget-info,
 .match-score {
-  margin-top: var(--space-md);
+  margin-top: 12rpx;
 }
 
 .match-score {
-  color: var(--text-brand);
-  font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-medium);
+  color: #17a14c;
+  font-size: 24rpx;
+  font-weight: 500;
 }
 
 .card-actions {
   display: flex;
-  gap: var(--space-lg);
-  margin-top: var(--space-xl);
+  gap: 12rpx;
+  margin-top: 18rpx;
 }
 
 .action-btn,
@@ -147,15 +216,16 @@
   height: 76rpx;
   line-height: 76rpx;
   border-radius: var(--radius-full);
-  font-size: var(--font-size-caption);
-  font-weight: var(--font-weight-medium);
+  font-size: 24rpx;
+  font-weight: 500;
   margin: 0;
 }
 
 .action-btn.primary,
 .share-btn {
-  background: var(--brand-primary);
+  background: linear-gradient(135deg, #0fb04d 0%, #18a94b 100%);
   color: var(--text-inverse);
+  box-shadow: 0 10rpx 20rpx rgba(17, 164, 66, 0.18);
 }
 
 .action-btn.secondary {
@@ -170,10 +240,10 @@
 }
 
 .share-tips {
-  padding: var(--space-section);
+  padding: 24rpx;
 }
 
 .share-btn {
   width: 100%;
-  margin-top: var(--space-xl);
+  margin-top: 18rpx;
 }

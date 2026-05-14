@@ -34,13 +34,12 @@ Page({
         let activeFloorPlan = null;
         let rooms = [];
 
-        // Get the latest floor plan
         if (lead.floorPlanIds && lead.floorPlanIds.length > 0) {
           activeFloorPlan = lead.floorPlanIds[lead.floorPlanIds.length - 1];
           if (activeFloorPlan && activeFloorPlan.layoutData) {
             let parsed = activeFloorPlan.layoutData;
             if (typeof parsed === 'string') {
-              try { parsed = JSON.parse(parsed); } catch(e) {}
+              try { parsed = JSON.parse(parsed); } catch (e) {}
             }
             if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
               rooms = parsed.rooms || [];
@@ -51,6 +50,8 @@ Page({
         }
 
         this.setData({ lead, activeFloorPlan, rooms, loading: false });
+      } else {
+        this.setData({ loading: false });
       }
     } catch (err) {
       console.error(err);
@@ -62,8 +63,8 @@ Page({
   async onSelectTemplate(e) {
     const templateId = e.currentTarget.dataset.id;
     const roomsData = templatesUtil.generateTemplateRooms(templateId);
-    
-    wx.showLoading({ title: '创建户型项目...' });
+
+    wx.showLoading({ title: '创建户型...' });
     try {
       const payload = {
         openid: app.globalData.openid,
@@ -71,16 +72,15 @@ Page({
         layoutData: roomsData,
         status: 'draft'
       };
-      
+
       const fpRes = await api.request('/floorplans', 'POST', payload);
-      
+
       if (fpRes.success && fpRes.data) {
-        // Bind to lead
         await api.request(`/leads/${this.data.leadId}`, 'PUT', {
           openid: app.globalData.openid,
           floorPlanId: fpRes.data._id
         });
-        
+
         wx.hideLoading();
         wx.showToast({ title: '创建成功' });
         this.fetchLeadDetail();
@@ -94,21 +94,18 @@ Page({
   onEnterRoom(e) {
     const roomId = e.currentTarget.dataset.id;
     let targetRoom = null;
-    
+
     for (let r of this.data.rooms) {
       if (r.id === roomId) {
         targetRoom = r; break;
       }
     }
-    
+
     if (!targetRoom || !this.data.activeFloorPlan) return;
 
-    // Convert layoutData to the staggered grid like index.js does if needed,
-    // but the backend already saved them. We just pass the entire rooms array.
     const canvasWidth = wx.getSystemInfoSync().windowWidth;
-    const canvasHeight = wx.getSystemInfoSync().windowHeight - 150; 
+    const canvasHeight = wx.getSystemInfoSync().windowHeight - 150;
 
-    // Update positions if they are default (x, y = 0,0) to spread them out
     const updatedRooms = this.data.rooms.map((r, idx) => {
       if (r.x === undefined || (r.x === 0 && r.y === 0 && idx > 0)) {
         let roomW = r.defaultWidth || 40;
@@ -126,7 +123,7 @@ Page({
       return r;
     });
 
-    var fpData = {
+    app.globalData.restoreFloorPlan = {
       _id: this.data.activeFloorPlan._id,
       roomId: roomId,
       roomName: targetRoom.name,
@@ -137,8 +134,6 @@ Page({
       selectedIds: [roomId],
       showPropertyPanel: false
     };
-
-    app.globalData.restoreFloorPlan = fpData;
 
     wx.navigateTo({
       url: '/pages/editor/editor'
@@ -156,7 +151,7 @@ Page({
       defaultWidth: 40,
       defaultHeight: 40
     });
-    
+
     wx.showLoading({ title: '添加中...' });
     api.request(`/floorplans/${this.data.activeFloorPlan._id}`, 'PUT', {
       openid: app.globalData.openid,

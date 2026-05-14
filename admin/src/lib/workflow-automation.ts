@@ -16,6 +16,8 @@ export const DEFAULT_AUTOMATION_CONFIG = {
   designTaskSlaHours: 72,
   reminderIntervalHours: 24,
   maxReminderTimes: 3,
+  browserNotificationEnabled: true,
+  miniprogramNotificationEnabled: true,
 };
 
 export const PLATFORM_PROMOTION_CONFIG = {
@@ -407,6 +409,11 @@ export async function dispatchWorkflowNotifications(input: {
   message: string;
   dedupeSuffix?: string;
 }) {
+  const enterprise = input.record.enterpriseId
+    ? await Enterprise.findById(input.record.enterpriseId).select('automationConfig').lean()
+    : null;
+  const automation = getEnterpriseAutomationConfig(enterprise);
+
   for (const role of input.recipientRoles) {
     const recipients = await resolveRecipientsForRole(input.record, role);
     if (recipients.length === 0) {
@@ -444,6 +451,22 @@ export async function dispatchWorkflowNotifications(input: {
       });
 
       if (!recipient.openid) {
+        continue;
+      }
+
+      if (!automation.miniprogramNotificationEnabled) {
+        await createWorkflowNotificationLog({
+          enterpriseId: input.record.enterpriseId,
+          recordId: input.record._id,
+          recipientRole: role,
+          recipientStaffId: recipient._id,
+          channel: 'miniprogram_sub',
+          notificationType: input.notificationType,
+          status: 'skipped',
+          dedupeKey: `${dedupeBase}:miniprogram_sub`,
+          message: input.message,
+          errorMessage: 'Mini program notifications disabled by enterprise automation config',
+        });
         continue;
       }
 

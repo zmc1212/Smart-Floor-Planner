@@ -1,4 +1,16 @@
 <view class="lead-list-container">
+  <view class="leads-hero">
+    <view class="leads-hero-copy">
+      <text class="leads-hero-title">客户线索</text>
+      <text class="leads-hero-subtitle">跟进客户、量房任务与设计转化</text>
+    </view>
+    <view class="leads-hero-visual">
+      <view class="lead-mini-card lead-mini-card-a"></view>
+      <view class="lead-mini-card lead-mini-card-b"></view>
+      <view class="lead-mini-dot"></view>
+    </view>
+  </view>
+
   <view class="stats-dashboard">
     <view class="stat-card-mini" wx:for="{{stats}}" wx:key="key">
       <view class="stat-icon-bg {{item.tone}}">
@@ -16,7 +28,7 @@
       <view class="search-icon-wrapper">
         <icon type="search" size="14" color="#6B7280" />
       </view>
-      <input class="search-input-new" placeholder="搜索客户姓名、手机号、小区" bindconfirm="onSearch" />
+      <input class="search-input-new" placeholder="搜索客户 / 小区 / 手机号" bindconfirm="onSearch" />
     </view>
     <view class="action-buttons">
       <view class="filter-btn">
@@ -93,12 +105,12 @@
             <view class="card-bottom-line">
               <view class="meta-stats">
                 <view class="meta-pill">
-                  <text class="pill-icon">户</text>
+                  <text class="pill-icon">房</text>
                   <text class="pill-text">{{item.roomCount}} 空间</text>
                 </view>
                 <view class="meta-pill" wx:if="{{item.budget}}">
                   <text class="pill-icon">预</text>
-                  <text class="pill-text">{{item.budget}}万</text>
+                  <text class="pill-text">{{item.budget}} 万</text>
                 </view>
               </view>
               <view class="card-action-btn" catchtap="onStartMeasure" data-id="{{item._id}}">
@@ -116,7 +128,7 @@
             <text class="empty-emoji">线</text>
           </view>
           <text class="empty-msg">暂无此类客户</text>
-          <view class="empty-cta" bindtap="onAddLead">新建一个</view>
+          <view class="empty-cta" bindtap="onAddLead">新建线索</view>
         </view>
       </scroll-view>
     </swiper-item>

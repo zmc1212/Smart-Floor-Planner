@@ -5,7 +5,12 @@
       <text class="logo-sparkle">✓</text>
     </view>
     <view class="login-title">智能量房大师</view>
-    <view class="login-subtitle">专业量房与 AI 辅助设计平台</view>
+    <view class="login-subtitle">专业量房 · AI辅助设计平台</view>
+    <view class="login-visual">
+      <view class="visual-room visual-room-a"></view>
+      <view class="visual-room visual-room-b"></view>
+      <view class="visual-device"></view>
+    </view>
   </view>
 
   <view class="login-tabs">
@@ -19,7 +24,7 @@
       <view class="info-icon">机</view>
       <view class="info-content">
         <view class="info-title">微信授权登录</view>
-        <view class="info-desc">推荐业主用户使用，一键同步手机号码</view>
+        <view class="info-desc">推荐业主用户使用，一键同步手机号。</view>
       </view>
     </view>
 
@@ -28,7 +33,7 @@
     </button>
 
     <view class="agreement-text">
-      登录即代表同意<text class="link">《用户协议》</text> 和 <text class="link">《隐私政策》</text>
+      登录即代表同意 <text class="link">《用户协议》</text> 和 <text class="link">《隐私政策》</text>
     </view>
   </view>
 
@@ -49,11 +54,17 @@
 
     <view class="staff-tip">
       <text class="tip-icon">i</text>
-      <text>账号登录主要面向设计师、地推员等企业内部员工</text>
+      <text>账号登录主要面向设计师、地推员等企业内部员工。</text>
     </view>
   </view>
 
+  <view class="login-features">
+    <view class="feature-chip">精准量房</view>
+    <view class="feature-chip">AI设计</view>
+    <view class="feature-chip">灵感图库</view>
+  </view>
+
   <view class="footer-actions">
-    <view class="back-link" bindtap="onBack">返回</view>
+    <view class="back-link" bindtap="onBack">返回首页</view>
   </view>
 </view>

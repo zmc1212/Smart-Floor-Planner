@@ -10,22 +10,20 @@
         <view class="login-subtitle">
           <text>专业激光测距 · AI 风格生成</text>
         </view>
-        <button class="login-btn" bindtap="goToLogin">
-          立即开启体验
-        </button>
+        <button class="login-btn" bindtap="goToLogin">立即开启体验</button>
       </view>
     </view>
     <view class="login-features">
       <view class="feature-item">
-        <text class="feature-dot">✦</text>
+        <text class="feature-dot">✓</text>
         <text>精准户型测量</text>
       </view>
       <view class="feature-item">
-        <text class="feature-dot">✦</text>
+        <text class="feature-dot">✓</text>
         <text>AI 设计方案</text>
       </view>
       <view class="feature-item">
-        <text class="feature-dot">✦</text>
+        <text class="feature-dot">✓</text>
         <text>装修灵感图库</text>
       </view>
     </view>
@@ -68,12 +66,12 @@
         <text class="action-label">公海报备</text>
       </view>
       <view class="action-item" wx:if="{{userInfo.staffRole === 'salesperson'}}" bindtap="onOpenCommissions">
-        <view class="action-icon">提</view>
+        <view class="action-icon">¥</view>
         <text class="action-label">我的提成</text>
       </view>
 
       <view class="action-item full" wx:if="{{userInfo.staffRole === 'measurer'}}" data-view="measure" bindtap="onOpenPromotionList">
-        <view class="action-icon primary">测</view>
+        <view class="action-icon primary">量</view>
         <text class="action-label">待处理测量任务</text>
         <view class="arrow-icon"></view>
       </view>
@@ -134,7 +132,7 @@
           <view class="floorplan-card" wx:for="{{overdueTodoItems}}" wx:key="key" data-id="{{item.recordId}}" bindtap="onOpenTodoDetail">
             <view class="card-body">
               <view class="fp-icon-container" style="background: var(--status-cancelled-bg); color: var(--status-cancelled-text);">
-                <text class="fp-emoji">⏳</text>
+                <text class="fp-emoji">时</text>
               </view>
               <view class="fp-content">
                 <view class="fp-title-line">
@@ -165,9 +163,7 @@
               <view class="fp-content">
                 <view class="fp-title-line">
                   <text class="fp-name">{{item.enterpriseName}}</text>
-                  <view class="status-tag converted">
-                    {{map.stage(item.businessStage)}}
-                  </view>
+                  <view class="status-tag converted">{{map.stage(item.businessStage)}}</view>
                 </view>
                 <view class="fp-info-line">
                   <text class="fp-date">{{item.contactPerson}}</text>
@@ -179,17 +175,14 @@
           </view>
         </view>
 
-        <!-- Unified Empty State -->
         <view class="empty-wrapper" wx:if="{{todoItems.length === 0 && overdueTodoItems.length === 0 && staffItems.length === 0}}">
           <view class="empty-state-card">
             <view class="empty-icon-box">
-              <text class="empty-emoji">🌱</text>
+              <text class="empty-emoji">✓</text>
             </view>
             <view class="empty-title">工作台已就绪</view>
-            <view class="empty-subtitle">暂无待办任务。新的业务线索和任务分配会自动出现在这里，为您提供精准测量支持。</view>
-            <view class="empty-action" wx:if="{{userInfo.staffRole === 'salesperson'}}" bindtap="onCreatePromotionRecord">
-              立即报备新客户
-            </view>
+            <view class="empty-subtitle">暂无待办任务。新的业务线索和任务分配会自动出现在这里。</view>
+            <view class="empty-action" wx:if="{{userInfo.staffRole === 'salesperson'}}" bindtap="onCreatePromotionRecord">立即报备新客户</view>
           </view>
         </view>
 
@@ -206,9 +199,7 @@
               <view class="fp-content">
                 <view class="fp-title-line">
                   <text class="fp-name">业绩奖金</text>
-                  <view class="status-tag {{item.status === 'paid' ? 'converted' : 'designing'}}">
-                    {{map.commissionStatus(item.status)}}
-                  </view>
+                  <view class="status-tag {{item.status === 'paid' ? 'converted' : 'designing'}}">{{map.commissionStatus(item.status)}}</view>
                 </view>
                 <view class="fp-info-line">
                   <text class="fp-date">¥{{item.commissionAmount}}</text>
@@ -233,14 +224,12 @@
           <view class="floorplan-card" wx:for="{{floorPlans}}" wx:key="_id" data-id="{{item._id}}" bindtap="onOpenFloorPlan">
             <view class="card-body">
               <view class="fp-icon-container">
-                <text class="fp-emoji">📐</text>
+                <text class="fp-emoji">图</text>
               </view>
               <view class="fp-content">
                 <view class="fp-title-line">
                   <text class="fp-name">{{item.name}}</text>
-                  <view class="status-tag {{item.status === 'completed' ? 'converted' : 'draft'}}">
-                    {{item.status === 'completed' ? '测量完成' : '测量中'}}
-                  </view>
+                  <view class="status-tag {{item.status === 'completed' ? 'converted' : 'draft'}}">{{item.status === 'completed' ? '测量完成' : '测量中'}}</view>
                 </view>
                 <view class="fp-info-line">
                   <text class="fp-date">{{item.createdAt}}</text>
@@ -252,7 +241,7 @@
 
             <view class="card-actions">
               <view class="ai-gen-btn" catchtap="onAIGen" data-id="{{item._id}}">
-                <text class="ai-stars">✦</text>
+                <text class="ai-stars">✓</text>
                 <text>AI 设计</text>
               </view>
             </view>
@@ -263,11 +252,11 @@
       <view class="empty-container" wx:else>
         <view class="empty-visual">
           <view class="empty-circle">
-            <text class="empty-emoji">🏠</text>
+            <text class="empty-emoji">房</text>
           </view>
         </view>
         <view class="empty-title">开启智慧测量之旅</view>
-        <view class="empty-subtitle">连接蓝牙测距仪，让每一寸空间都能被精准感知</view>
+        <view class="empty-subtitle">连接蓝牙测距仪，让每一寸空间都被精准感知。</view>
         <button class="primary-btn" bindtap="onCreateNew">测量新户型</button>
       </view>
     </block>
@@ -275,7 +264,7 @@
     <view class="settings-list" wx:if="{{userInfo.role === 'staff'}}">
       <view class="setting-item" bindtap="onEnableNotification">
         <view class="setting-left">
-          <view class="setting-icon">🔔</view>
+          <view class="setting-icon">铃</view>
           <text class="setting-label">业务通知提醒</text>
         </view>
         <view class="setting-right">
@@ -290,4 +279,3 @@
     </view>
   </view>
 </view>
-

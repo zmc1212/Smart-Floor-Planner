@@ -22,10 +22,10 @@ Page({
   },
 
   onRefresh: function () {
-    this.setData({ 
-      page: 1, 
-      hasMore: true, 
-      isRefreshing: true 
+    this.setData({
+      page: 1,
+      hasMore: true,
+      isRefreshing: true
     }, () => {
       this.fetchCases(true);
     });
@@ -52,9 +52,8 @@ Page({
       }
 
       const res = await api.request(url, 'GET');
-      
+
       if (res.success && res.data) {
-        // 模拟占位颜色 (由于目前没图)
         const newCases = res.data.map(item => ({
           ...item,
           placeholderColor: this.getRandomColor(item.style)
@@ -62,7 +61,7 @@ Page({
 
         this.setData({
           cases: isReplace ? newCases : this.data.cases.concat(newCases),
-          hasMore: res.data.length >= 10, // 假设每页10条
+          hasMore: res.data.length >= 10,
           isLoading: false,
           isRefreshing: false
         });
@@ -79,7 +78,7 @@ Page({
   onFilterStyle: function (e) {
     const style = e.currentTarget.dataset.style;
     if (this.data.selectedStyle === style) return;
-    
+
     this.setData({
       selectedStyle: style,
       page: 1,
@@ -93,7 +92,7 @@ Page({
   onFilterRoomType: function (e) {
     const roomType = e.currentTarget.dataset.type;
     if (this.data.selectedRoomType === roomType) return;
-    
+
     this.setData({
       selectedRoomType: roomType,
       page: 1,
@@ -112,14 +111,13 @@ Page({
   onCopyLayout: function (e) {
     const id = e.currentTarget.dataset.id;
     const item = this.data.cases.find(c => c._id === id);
-    
+
     if (!item) {
       wx.showToast({ title: '案例找不到了', icon: 'none' });
       return;
     }
 
     let layoutData = item.layoutData;
-    // 兼容可能被存为字符串的 JSON 数据
     if (typeof layoutData === 'string') {
       try {
         layoutData = JSON.parse(layoutData);
@@ -136,28 +134,24 @@ Page({
     }
 
     wx.showModal({
-      title: '一键复刻',
-      content: `是否要在画布中应用“${item.title}”的户型结构？\n这会覆盖您当前正在绘制的内容。`,
+      title: '一键同款',
+      content: `是否在画布中应用「${item.title}」的户型结构？这会覆盖当前正在绘制的内容。`,
       confirmText: '确认复刻',
       success: (res) => {
         if (res.confirm) {
           const app = getApp();
           const util = require('../../utils/util.js');
 
-          // 1. 数据抽取：兼容 Array 格式 or { rooms: [] } 格式
           let finalRooms = [];
           if (Array.isArray(layoutData)) {
             finalRooms = layoutData;
           } else if (layoutData.rooms && Array.isArray(layoutData.rooms)) {
             finalRooms = layoutData.rooms;
           } else {
-            // 如果只有单个对象且不是数组，封装为数组
             finalRooms = [layoutData];
           }
 
-          // 2. 数据清洗：确保每个房间都有 ID 和基础属性
           finalRooms = finalRooms.map(r => {
-            // 基础属性强制转换
             const newRoom = {
               id: r.id || util.generateUUID(),
               name: r.name || '未命名房间',
@@ -171,16 +165,14 @@ Page({
               polygon: []
             };
 
-            // 处理多边形顶点及其数值类型
             if (r.polygon && Array.isArray(r.polygon)) {
               newRoom.polygon = r.polygon.map(p => ({
                 x: Number(p.x) || 0,
                 y: Number(p.y) || 0
               }));
-              newRoom.polygonClosed = r.polygonClosed !== false; // 默认闭合
+              newRoom.polygonClosed = r.polygonClosed !== false;
             }
 
-            // 关键修复：如果缺少宽/高但有多边形，则计算包围盒宽高
             if ((!newRoom.width || !newRoom.height) && newRoom.polygon.length > 0) {
               const bbox = util.polygonBoundingBox(newRoom.polygon);
               newRoom.width = bbox.width;
@@ -189,19 +181,16 @@ Page({
               newRoom.width = 40;
               newRoom.height = 40;
             }
-            
+
             return newRoom;
           });
 
           app.globalData.restoreFloorPlan = {
-            name: item.title + ' (复刻)',
+            name: item.title + ' (同款)',
             layoutData: finalRooms,
             isRestore: true
           };
 
-          console.log('一键同款数据准备就绪:', app.globalData.restoreFloorPlan);
-
-          // 3. 页面跳转
           wx.navigateTo({
             url: '/pages/editor/editor'
           });
@@ -211,7 +200,6 @@ Page({
   },
 
   onPreviewCase: function (e) {
-    // 暂时直接预览效果图
     const id = e.currentTarget.dataset.id;
     const item = this.data.cases.find(c => c._id === id);
     if (item && item.renderingImage) {

@@ -14,22 +14,26 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Find unread station notifications for the current user
-    // We check either by staffId or by role within the enterprise
-    const logs = await WorkflowNotificationLog.find({
-      enterpriseId: context.enterpriseId,
+    const filter: Record<string, unknown> = {
       channel: 'station',
       recipientStaffId: context.userId,
       isAlerted: false,
       status: 'sent'
-    })
-    .sort({ createdAt: -1 })
-    .limit(5)
-    .lean();
+    };
+
+    if (context.enterpriseId && context.enterpriseId !== 'all') {
+      filter.enterpriseId = context.enterpriseId;
+    }
+
+    const logs = await WorkflowNotificationLog.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .lean();
 
     return NextResponse.json({ success: true, data: logs });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
 
@@ -49,7 +53,8 @@ export async function POST(request: Request) {
     );
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

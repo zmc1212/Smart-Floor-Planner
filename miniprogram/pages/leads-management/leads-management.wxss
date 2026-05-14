@@ -1,6 +1,7 @@
 .page-container {
   min-height: 100vh;
-  background-color: var(--bg-page);
+  background:
+    linear-gradient(180deg, #fcfdfb 0%, #f5f7f4 48%, var(--bg-page) 100%);
 }
 
 .custom-header {
@@ -8,9 +9,10 @@
   top: 0;
   left: 0;
   right: 0;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.94);
   z-index: 100;
-  box-shadow: 0 2rpx 10rpx rgba(0,0,0,0.02);
+  box-shadow: 0 8rpx 24rpx rgba(85, 104, 90, 0.05);
+  backdrop-filter: blur(16px);
 }
 
 .header-content {
@@ -20,12 +22,14 @@
 }
 
 .page-title {
-  font-size: 34rpx;
-  font-weight: var(--font-weight-bold);
-  color: var(--neutral-900);
+  font-size: 32rpx;
+  font-weight: var(--font-weight-medium);
+  color: #20262d;
+  letter-spacing: 0;
 }
 
 .main-content {
   height: 100vh;
   box-sizing: border-box;
+  background: transparent;
 }

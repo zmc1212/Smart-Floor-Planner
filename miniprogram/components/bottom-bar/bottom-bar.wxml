@@ -3,7 +3,7 @@
     <text class="status-text">房间: {{roomsCount}} | 面积: {{totalArea}}㎡</text>
   </view>
   <view class="status-right">
-    <view class="ble-btn" wx:if="{{!bleConnected}}" bindtap="onConnect">蓝牙未连接 ⚠️</view>
-    <text class="status-ready" wx:else>蓝牙已连接 📡</text>
+    <view class="ble-btn" wx:if="{{!bleConnected}}" bindtap="onConnect">蓝牙未连接 ⚠</view>
+    <text class="status-ready" wx:else>蓝牙已连接</text>
   </view>
 </view>

@@ -25,6 +25,8 @@ export interface IEnterprise extends Document {
     designTaskSlaHours?: number;
     reminderIntervalHours?: number;
     maxReminderTimes?: number;
+    browserNotificationEnabled?: boolean;
+    miniprogramNotificationEnabled?: boolean;
   };
   createdAt: Date;
   updatedAt: Date;
@@ -80,6 +82,8 @@ const EnterpriseSchema: Schema<IEnterprise> = new Schema(
       designTaskSlaHours: { type: Number, default: 72, min: 1 },
       reminderIntervalHours: { type: Number, default: 24, min: 1 },
       maxReminderTimes: { type: Number, default: 3, min: 1 },
+      browserNotificationEnabled: { type: Boolean, default: true },
+      miniprogramNotificationEnabled: { type: Boolean, default: true },
     },
     aiConfig: {
       provider: {

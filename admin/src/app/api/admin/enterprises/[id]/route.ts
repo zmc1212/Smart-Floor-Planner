@@ -28,10 +28,34 @@ interface EnterprisePatchBody {
     designTaskSlaHours?: number;
     reminderIntervalHours?: number;
     maxReminderTimes?: number;
+    browserNotificationEnabled?: boolean;
+    miniprogramNotificationEnabled?: boolean;
   };
 }
 
 export const dynamic = 'force-dynamic';
+
+const DEFAULT_ENTERPRISE_AUTOMATION_CONFIG = {
+  followUpSlaHours: 24,
+  measureTaskSlaHours: 48,
+  designTaskSlaHours: 72,
+  reminderIntervalHours: 24,
+  maxReminderTimes: 3,
+  browserNotificationEnabled: true,
+  miniprogramNotificationEnabled: true,
+};
+
+function normalizeAutomationConfig(automationConfig?: Record<string, unknown>) {
+  return {
+    followUpSlaHours: Number(automationConfig?.followUpSlaHours || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.followUpSlaHours),
+    measureTaskSlaHours: Number(automationConfig?.measureTaskSlaHours || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.measureTaskSlaHours),
+    designTaskSlaHours: Number(automationConfig?.designTaskSlaHours || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.designTaskSlaHours),
+    reminderIntervalHours: Number(automationConfig?.reminderIntervalHours || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.reminderIntervalHours),
+    maxReminderTimes: Number(automationConfig?.maxReminderTimes || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.maxReminderTimes),
+    browserNotificationEnabled: automationConfig?.browserNotificationEnabled !== false,
+    miniprogramNotificationEnabled: automationConfig?.miniprogramNotificationEnabled !== false,
+  };
+}
 
 function sanitizeEnterpriseForResponse(
   enterprise: Record<string, unknown>,
@@ -48,6 +72,7 @@ function sanitizeEnterpriseForResponse(
 ) {
   return {
     ...enterprise,
+    automationConfig: normalizeAutomationConfig(enterprise.automationConfig as Record<string, unknown> | undefined),
     aiConfig: sanitizeEnterpriseAiConfig(
       enterprise as unknown as Record<string, unknown> & {
         aiConfig?: ReturnType<typeof sanitizeEnterpriseAiConfig>;
@@ -136,13 +161,7 @@ export async function PATCH(
           updateData.groundPromotionFixedCommission = Number(groundPromotionFixedCommission);
         }
         if (automationConfig !== undefined) {
-          updateData.automationConfig = {
-            followUpSlaHours: Number(automationConfig.followUpSlaHours || 24),
-            measureTaskSlaHours: Number(automationConfig.measureTaskSlaHours || 48),
-            designTaskSlaHours: Number(automationConfig.designTaskSlaHours || 72),
-            reminderIntervalHours: Number(automationConfig.reminderIntervalHours || 24),
-            maxReminderTimes: Number(automationConfig.maxReminderTimes || 3),
-          };
+          updateData.automationConfig = normalizeAutomationConfig(automationConfig as Record<string, unknown>);
         }
 
         const enterprise = await Enterprise.findByIdAndUpdate(

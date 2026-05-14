@@ -1,7 +1,7 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Sparkles, Workflow } from 'lucide-react';
+import { Bell, Smartphone, Sparkles, Workflow } from 'lucide-react';
 import { EnterpriseListItem } from './types';
 import { formatAiKeyStatus } from './enterprise-utils';
 
@@ -12,6 +12,9 @@ interface EnterpriseOverviewCardsProps {
 export default function EnterpriseOverviewCards({ enterprise }: EnterpriseOverviewCardsProps) {
   const aiStatus = formatAiKeyStatus(enterprise);
   const aiSummary = enterprise.aiUsageSnapshot?.summary?.today;
+  const browserNotificationEnabled = enterprise.automationConfig?.browserNotificationEnabled !== false;
+  const miniprogramNotificationEnabled = enterprise.automationConfig?.miniprogramNotificationEnabled !== false;
+  const formatEnabled = (enabled: boolean) => (enabled ? '已开启' : '已关闭');
 
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
@@ -73,6 +76,20 @@ export default function EnterpriseOverviewCards({ enterprise }: EnterpriseOvervi
           <div className="flex items-center justify-between">
             <span>最多提醒次数</span>
             <span className="font-semibold text-foreground">{enterprise.automationConfig?.maxReminderTimes || 3}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="inline-flex items-center gap-2">
+              <Bell size={14} />
+              浏览器通知
+            </span>
+            <span className="font-semibold text-foreground">{formatEnabled(browserNotificationEnabled)}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="inline-flex items-center gap-2">
+              <Smartphone size={14} />
+              微信小程序通知
+            </span>
+            <span className="font-semibold text-foreground">{formatEnabled(miniprogramNotificationEnabled)}</span>
           </div>
         </CardContent>
       </Card>

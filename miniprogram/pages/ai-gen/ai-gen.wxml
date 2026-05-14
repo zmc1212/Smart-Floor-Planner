@@ -38,7 +38,7 @@
             <view class="empty-glow"></view>
             <text class="empty-icon">家</text>
             <text class="empty-title">空间预览</text>
-            <text class="empty-desc">选择风格后，开启智能空间设计</text>
+            <text class="empty-desc">选择风格后，开启智能空间设计。</text>
           </view>
         </block>
 
@@ -46,9 +46,9 @@
 
         <view class="result-actions" wx:if="{{room.renderingUrl && !isGenerating}}">
           <button class="action-btn" bindtap="onPreviewImage">预览大图</button>
-          <button class="action-btn" bindtap="onOpenSharePoster">分享量房海报</button>
-          <button class="action-btn primary" bindtap="onOpenLeadModal">获取完整设计方案</button>
-          <button class="action-btn secondary" bindtap="onExportPrompt">复制设计提示词</button>
+          <button class="action-btn" bindtap="onOpenSharePoster">分享海报</button>
+          <button class="action-btn primary" bindtap="onOpenLeadModal">获取完整方案</button>
+          <button class="action-btn secondary" bindtap="onExportPrompt">复制提示词</button>
         </view>
       </view>
     </view>
@@ -61,7 +61,7 @@
 
     <view class="atelier-section">
       <view class="section-head">
-        <text class="head-title">风格研选</text>
+        <text class="head-title">风格选择</text>
         <text class="head-subtitle">Style Selection</text>
       </view>
 
@@ -86,7 +86,7 @@
 
     <view class="atelier-section">
       <view class="section-head">
-        <text class="head-title">设计策展</text>
+        <text class="head-title">设计建议</text>
         <text class="head-subtitle">Design Curation</text>
       </view>
 
@@ -95,12 +95,12 @@
           <view class="advice-quotes">“</view>
           <text class="advice-body">{{room.designAdvice.content}}</text>
           <view class="advice-footer">
-            <text class="consultant-tag">AI Senior Designer</text>
+            <text class="consultant-tag">AI Designer</text>
           </view>
         </block>
         <block wx:else>
           <view class="advice-empty-body" bindtap="onGetAdvice">
-            <text>点击获取该空间的专业软硬装搭配方案</text>
+            <text>点击获取该空间的专业软硬装搭配建议。</text>
           </view>
         </block>
       </view>
@@ -122,10 +122,10 @@
   <view class="fixed-bottom-bar">
     <view class="btn-group">
       <view class="btn-secondary {{isGettingAdvice ? 'is-loading' : ''}}" bindtap="onGetAdvice">
-        <text>{{isGettingAdvice ? '咨询中...' : '咨询设计建议'}}</text>
+        <text>{{isGettingAdvice ? '咨询中...' : '咨询建议'}}</text>
       </view>
       <view class="btn-primary {{isGenerating ? 'is-loading' : ''}}" bindtap="onGenerate">
-        <text>{{isGenerating ? 'AI 智绘中...' : '生成渲染方案'}}</text>
+        <text>{{isGenerating ? 'AI 绘制中...' : '生成渲染方案'}}</text>
       </view>
     </view>
   </view>

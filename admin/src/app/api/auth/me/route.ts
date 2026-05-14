@@ -30,35 +30,41 @@ export async function GET(request: Request) {
     const { payload } = await jose.jwtVerify(token, secret);
 
     const admin = await AdminUser.findById(payload.id)
-      .populate({ path: 'enterpriseId', model: Enterprise, select: 'name' })
+      .populate({ path: 'enterpriseId', model: Enterprise, select: 'name automationConfig' })
       .select('-passwordHash');
     if (!admin || admin.status === 'disabled') {
       return NextResponse.json({ success: false, error: '用户不存在或已禁用' }, { status: 401 });
     }
 
-    const result = admin.toObject() as Record<string, any>;
+    const result = admin.toObject() as unknown as Record<string, unknown> & {
+      role?: string;
+      menuPermissions?: string[];
+      enterpriseId?: unknown;
+    };
     if (
       (result.role === 'super_admin' || result.role === 'admin') &&
       globalTenantId &&
       globalTenantId !== 'all'
     ) {
-      const selectedEnterprise = await Enterprise.findById(globalTenantId).select('name').lean();
+      const selectedEnterprise = await Enterprise.findById(globalTenantId).select('name automationConfig').lean();
       if (selectedEnterprise) {
         result.enterpriseId = {
           _id: String(selectedEnterprise._id),
           name: selectedEnterprise.name,
+          automationConfig: selectedEnterprise.automationConfig,
         };
       }
     }
 
-    const effectivePermissions = await getEffectivePermissions(result.role, result.menuPermissions);
+    const role = result.role || '';
+    const effectivePermissions = await getEffectivePermissions(role, result.menuPermissions);
 
     return NextResponse.json({
       success: true,
       data: {
         ...result,
         effectivePermissions,
-        workbenchType: getWorkbenchType(result.role),
+        workbenchType: getWorkbenchType(role),
       },
     });
   } catch {

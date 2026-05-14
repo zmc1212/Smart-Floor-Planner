@@ -9,10 +9,34 @@ import { sanitizeEnterpriseAiConfig, summarizeDailyUsage } from '@/lib/ai/enterp
 
 export const dynamic = 'force-dynamic';
 
-function sanitizeEnterpriseForResponse(enterprise: Record<string, any>) {
+const DEFAULT_ENTERPRISE_AUTOMATION_CONFIG = {
+  followUpSlaHours: 24,
+  measureTaskSlaHours: 48,
+  designTaskSlaHours: 72,
+  reminderIntervalHours: 24,
+  maxReminderTimes: 3,
+  browserNotificationEnabled: true,
+  miniprogramNotificationEnabled: true,
+};
+
+function normalizeAutomationConfig(automationConfig?: Record<string, unknown>) {
   return {
-    ...enterprise,
-    aiConfig: sanitizeEnterpriseAiConfig(enterprise),
+    followUpSlaHours: Number(automationConfig?.followUpSlaHours || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.followUpSlaHours),
+    measureTaskSlaHours: Number(automationConfig?.measureTaskSlaHours || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.measureTaskSlaHours),
+    designTaskSlaHours: Number(automationConfig?.designTaskSlaHours || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.designTaskSlaHours),
+    reminderIntervalHours: Number(automationConfig?.reminderIntervalHours || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.reminderIntervalHours),
+    maxReminderTimes: Number(automationConfig?.maxReminderTimes || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.maxReminderTimes),
+    browserNotificationEnabled: automationConfig?.browserNotificationEnabled !== false,
+    miniprogramNotificationEnabled: automationConfig?.miniprogramNotificationEnabled !== false,
+  };
+}
+
+function sanitizeEnterpriseForResponse(enterprise: object & { automationConfig?: unknown }) {
+  const enterpriseRecord = enterprise as Record<string, unknown>;
+  return {
+    ...enterpriseRecord,
+    automationConfig: normalizeAutomationConfig(enterprise.automationConfig as Record<string, unknown> | undefined),
+    aiConfig: sanitizeEnterpriseAiConfig(enterpriseRecord),
   };
 }
 
@@ -33,7 +57,7 @@ export async function GET(request: Request) {
           aiSnapshots.map((item) => [String(item.enterpriseId), item])
         );
 
-        const enriched = enterprises.map((enterprise: any) => {
+        const enriched = enterprises.map((enterprise) => {
           const aiSnapshot = aiSnapshotMap.get(String(enterprise._id));
           return {
             ...sanitizeEnterpriseForResponse(enterprise),
@@ -67,16 +91,11 @@ export async function POST(request: Request) {
       { roles: ['super_admin', 'admin'] },
       async () => {
         const body = (await request.json()) as Record<string, unknown>;
+        const automationConfig = (body.automationConfig || {}) as Record<string, unknown>;
         const enterprise = await Enterprise.create({
           ...body,
           groundPromotionFixedCommission: Number(body.groundPromotionFixedCommission || 0),
-          automationConfig: {
-            followUpSlaHours: Number((body.automationConfig as any)?.followUpSlaHours || 24),
-            measureTaskSlaHours: Number((body.automationConfig as any)?.measureTaskSlaHours || 48),
-            designTaskSlaHours: Number((body.automationConfig as any)?.designTaskSlaHours || 72),
-            reminderIntervalHours: Number((body.automationConfig as any)?.reminderIntervalHours || 24),
-            maxReminderTimes: Number((body.automationConfig as any)?.maxReminderTimes || 3),
-          },
+          automationConfig: normalizeAutomationConfig(automationConfig),
           registrationMode: 'manual',
         });
 
@@ -99,7 +118,7 @@ export async function POST(request: Request) {
 
         return NextResponse.json({
           success: true,
-          data: sanitizeEnterpriseForResponse(enterprise.toObject() as unknown as Record<string, any>),
+          data: sanitizeEnterpriseForResponse(enterprise.toObject() as unknown as Record<string, unknown>),
         });
       }
     );

@@ -2,7 +2,8 @@
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--bg-page);
+  background:
+    linear-gradient(180deg, #fcfdfb 0%, #f5f7f4 46%, var(--bg-page) 100%);
   color: var(--text-primary);
   font-family: 'Source Han Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
@@ -15,7 +16,7 @@
   background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(16px);
   z-index: 100;
-  box-shadow: var(--shadow-card);
+  box-shadow: 0 8rpx 24rpx rgba(85, 104, 90, 0.05);
 }
 
 .nav-back,
@@ -73,7 +74,8 @@
   border-radius: var(--radius-xl);
   overflow: hidden;
   position: relative;
-  box-shadow: var(--shadow-card);
+  border: 1rpx solid rgba(207, 220, 207, 0.55);
+  box-shadow: var(--shadow-home-card);
 }
 
 .preview-frame.is-generating {
@@ -324,11 +326,12 @@
 .lead-atelier-banner {
   border-radius: var(--radius-xl);
   padding: 40rpx;
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-home-card);
 }
 
 .advice-atelier-card {
-  background: var(--bg-surface);
+  background: rgba(255, 255, 255, 0.94);
+  border: 1rpx solid rgba(207, 220, 207, 0.55);
 }
 
 .advice-atelier-card.has-content {
@@ -373,7 +376,7 @@
 }
 
 .lead-atelier-banner {
-  background: linear-gradient(135deg, var(--brand-primary) 0%, var(--accent-secondary-green) 100%);
+  background: linear-gradient(135deg, #0fb04d 0%, #18a94b 100%);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -416,7 +419,7 @@
   background: rgba(255, 255, 255, 0.92);
   backdrop-filter: blur(16px);
   z-index: 1000;
-  box-shadow: var(--shadow-card);
+  box-shadow: 0 -8rpx 24rpx rgba(85, 104, 90, 0.06);
 }
 
 .btn-group {
@@ -437,9 +440,9 @@
 
 .btn-primary {
   flex: 3;
-  background: var(--brand-primary);
+  background: linear-gradient(135deg, #0fb04d 0%, #18a94b 100%);
   color: var(--text-inverse);
-  box-shadow: var(--shadow-float);
+  box-shadow: 0 10rpx 24rpx rgba(17, 164, 66, 0.22);
 }
 
 .btn-secondary {

@@ -20,6 +20,8 @@ Page({
       const res = await api.request('/commission-records', 'GET');
       if (res.success) {
         this.setData({ records: res.data || [], loading: false });
+      } else {
+        this.setData({ loading: false });
       }
     } catch (err) {
       this.setData({ loading: false });

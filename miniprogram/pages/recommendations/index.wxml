@@ -1,7 +1,15 @@
 <view class="container">
   <view class="header">
-    <text class="title">装修方案推荐</text>
-    <text class="subtitle">为您精选更适合家的装修方案</text>
+    <view class="header-copy">
+      <text class="eyebrow">装修推荐</text>
+      <text class="title">为家精选合适方案</text>
+      <text class="subtitle">根据户型与偏好生成适合你的装修方向</text>
+    </view>
+    <view class="hero-moodboard">
+      <view class="mood-card mood-a"></view>
+      <view class="mood-card mood-b"></view>
+      <view class="mood-chip"></view>
+    </view>
   </view>
 
   <view class="progress-section">
@@ -15,14 +23,14 @@
             <text class="step-description">{{item.description}}</text>
           </view>
         </view>
-        <view class="step-line {{completedSteps.includes(nextItem.id) ? 'completed' : ''}}" wx:if="{{index < progressStages.length - 1}}"></view>
+        <view class="step-line {{currentStep > index ? 'completed' : ''}}" wx:if="{{index < progressStages.length - 1}}"></view>
       </block>
     </view>
   </view>
 
   <view class="recommendations-section">
     <view class="section-title">推荐方案</view>
-    <scroll-view scroll-x="true" class="recommendations-scroll">
+    <scroll-view scroll-x="true" class="recommendations-scroll" show-scrollbar="{{false}}">
       <block wx:for="{{recommendations}}" wx:key="id">
         <view class="recommendation-card">
           <image src="{{item.imageUrl}}" class="recommendation-image" mode="aspectFill" />
@@ -30,10 +38,10 @@
             <text class="card-title">{{item.name}}</text>
             <text class="card-description">{{item.description}}</text>
             <view class="budget-info">
-              <text>预算：¥{{item.estimatedBudget.min | formatNumber}} - ¥{{item.estimatedBudget.max | formatNumber}}</text>
+              <text>预算：{{item.budgetLabel}}</text>
             </view>
             <view class="match-score">
-              <text>匹配度 {{Math.round(item.matchScore * 100)}}%</text>
+              <text>匹配度 {{item.matchPercent}}%</text>
             </view>
             <view class="card-actions">
               <button
@@ -59,8 +67,8 @@
 
   <view class="share-section" wx:if="{{selectedStyle}}">
     <view class="share-tips">
-      <text class="tips-text">选择喜欢的风格，分享给好友获取更多优惠。</text>
-      <button class="share-btn" bindtap="onShare">分享给朋友</button>
+      <text class="tips-text">选择喜欢的风格，分享给家人一起确认。</text>
+      <button class="share-btn" bindtap="onShare">分享方案</button>
     </view>
   </view>
 </view>

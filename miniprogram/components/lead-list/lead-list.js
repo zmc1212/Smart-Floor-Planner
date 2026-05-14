@@ -6,7 +6,6 @@ Component({
       type: String,
       value: '',
       observer: function (newVal) {
-        console.log('[LeadList] OpenID changed:', newVal);
         if (newVal) {
           this.fetchLeads(true);
         }
@@ -17,7 +16,7 @@ Component({
   data: {
     tabs: [
       { id: 'all', label: '全部' },
-      { id: 'new', label: '新线索' },
+      { id: 'new', label: '待跟进' },
       { id: 'measuring', label: '量房中' },
       { id: 'designing', label: '设计中' },
       { id: 'converted', label: '已成交' }
@@ -31,12 +30,12 @@ Component({
     pageSize: 10,
     hasMore: true,
     statusMap: {
-      new: '新线索',
+      new: '待跟进',
       contacted: '已联系',
       measuring: '量房中',
       designing: '设计中',
       quoting: '报价中',
-      converted: '已签约',
+      converted: '已成交',
       closed: '已关闭'
     },
     stats: [
@@ -49,7 +48,6 @@ Component({
 
   lifetimes: {
     attached() {
-      console.log('[LeadList] Attached, current openid:', this.data.openid);
       this.fetchLeads(true);
     }
   },
@@ -72,20 +70,17 @@ Component({
         }
 
         const res = await api.request(url, 'GET');
-        console.log('LeadList fetch success:', res);
 
         if (res.success && res.data) {
-          const formatted = res.data.map(lead => {
-            return {
-              ...lead,
-              statusLabel: this.data.statusMap[lead.status] || lead.status,
-              createdAtFormatted: new Date(lead.createdAt).toLocaleDateString('zh-CN', {
-                month: 'short',
-                day: 'numeric'
-              }),
-              roomCount: lead.floorPlanIds ? lead.floorPlanIds.length : 0
-            };
-          });
+          const formatted = res.data.map(lead => ({
+            ...lead,
+            statusLabel: this.data.statusMap[lead.status] || lead.status,
+            createdAtFormatted: new Date(lead.createdAt).toLocaleDateString('zh-CN', {
+              month: 'short',
+              day: 'numeric'
+            }),
+            roomCount: lead.floorPlanIds ? lead.floorPlanIds.length : 0
+          }));
 
           this.setData({
             leads: reset ? formatted : [...this.data.leads, ...formatted],
@@ -98,6 +93,8 @@ Component({
           if (reset) {
             this.updateStats(formatted, res.stats);
           }
+        } else {
+          this.setData({ loading: false, refreshing: false });
         }
       } catch (err) {
         console.error('Fetch leads failed', err);

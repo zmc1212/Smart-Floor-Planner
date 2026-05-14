@@ -1,5 +1,18 @@
 <view class="container">
-  <scroll-view scroll-x class="filter-bar" enable-flex>
+  <view class="inspiration-hero">
+    <view class="hero-copy">
+      <text class="hero-title">灵感库</text>
+      <text class="hero-subtitle">精选真实空间案例，快速找到适合家的设计方向。</text>
+    </view>
+    <view class="hero-visual">
+      <view class="mini-room room-a"></view>
+      <view class="mini-room room-b"></view>
+      <view class="mini-plant"></view>
+      <view class="mini-window"></view>
+    </view>
+  </view>
+
+  <scroll-view scroll-x class="filter-bar" enable-flex show-scrollbar="{{false}}">
     <view
       class="filter-item {{selectedStyle === 'all' ? 'active' : ''}}"
       bindtap="onFilterStyle"
@@ -14,7 +27,7 @@
     >{{item.label}}</view>
   </scroll-view>
 
-  <scroll-view scroll-x class="filter-bar type-bar" enable-flex>
+  <scroll-view scroll-x class="filter-bar type-bar" enable-flex show-scrollbar="{{false}}">
     <view
       wx:for="{{roomTypes}}"
       wx:key="*this"

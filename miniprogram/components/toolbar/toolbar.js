@@ -1,8 +1,3 @@
-var util = require('../../utils/util.js');
-var ToolType = util.ToolType;
-var RoomTypes = util.RoomTypes;
-var layouts = require('../../utils/templates.js');
-
 Component({
   options: {
     styleIsolation: 'apply-shared'
@@ -32,10 +27,10 @@ Component({
 
   data: {
     tools: [
-      { id: 'SELECT', icon: 'select', label: '选择', iconText: '↖' },
-      { id: 'SHAPE', icon: 'shape', label: '空间形状', iconText: '+' },
-      { id: 'DOOR', icon: 'door', label: '门', iconText: '🚪' },
-      { id: 'WINDOW', icon: 'window', label: '窗户', iconText: '▦' }
+      { id: 'SELECT', icon: 'select', label: '选择', iconText: '选' },
+      { id: 'SHAPE', icon: 'shape', label: '空间', iconText: '+' },
+      { id: 'DOOR', icon: 'door', label: '门', iconText: '门' },
+      { id: 'WINDOW', icon: 'window', label: '窗户', iconText: '窗' }
     ]
   },
 
@@ -55,7 +50,6 @@ Component({
       this.triggerEvent('toggle3d');
     },
 
-    closeMenu: function () {
-    }
+    closeMenu: function () {}
   }
 });

@@ -5,4 +5,5 @@ coverage/
 .DS_Store
 *.log
 scratch/smart-floor-planner-intro-video/
+miniprogram/design-mockups/
 

@@ -1,16 +1,30 @@
 <wxs src="../../utils/mapping.wxs" module="map" />
 <view class="page">
   <view class="header">
-    <view>
+    <view class="header-copy">
+      <view class="eyebrow">报备记录</view>
       <view class="title">{{title}}</view>
-      <view class="subtitle">共 {{records.length}} 条</view>
+      <view class="subtitle">共 {{records.length}} 条，持续跟进客户与合作企业</view>
     </view>
     <button wx:if="{{view === 'my'}}" class="create-btn" bindtap="onCreateRecord">新建报备</button>
   </view>
 
+  <view class="record-tools">
+    <view class="search-surface">
+      <icon type="search" size="14" color="#6B7280" />
+      <text>搜索企业 / 联系人</text>
+    </view>
+    <view class="filter-row">
+      <text class="filter-chip active">全部</text>
+      <text class="filter-chip">待处理</text>
+      <text class="filter-chip">量房中</text>
+      <text class="filter-chip">设计中</text>
+    </view>
+  </view>
+
   <view wx:if="{{loading}}" class="empty">加载中...</view>
 
-  <view wx:elif="{{records.length > 0}}">
+  <view wx:elif="{{records.length > 0}}" class="record-list">
     <view class="card" wx:for="{{records}}" wx:key="key" data-id="{{useTodoApi ? item.recordId : item._id}}" bindtap="onOpenDetail">
       <view class="row">
         <view class="name">{{useTodoApi ? item.title : item.enterpriseName}}</view>
@@ -22,6 +36,10 @@
       <view class="meta" wx:if="{{!useTodoApi}}">业务阶段：{{map.stage(item.businessStage)}}</view>
       <view class="meta" wx:if="{{useTodoApi}}">{{item.summary}}</view>
       <view class="meta" wx:if="{{useTodoApi && item.dueLabel}}">截止：{{item.dueLabel}}</view>
+      <view class="card-footer">
+        <text class="footer-pill">继续跟进</text>
+        <text class="card-arrow">›</text>
+      </view>
     </view>
   </view>
 

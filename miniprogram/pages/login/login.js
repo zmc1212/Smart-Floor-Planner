@@ -3,14 +3,13 @@ const api = require('../../utils/api.js');
 
 Page({
   data: {
-    loginType: 'phone', // 'phone' or 'password'
+    loginType: 'phone',
     username: '',
     password: '',
     loading: false
   },
 
   onLoad() {
-    // If already logged in, go back
     if (app.globalData.openid && app.globalData.userInfo) {
       wx.navigateBack();
     }
@@ -30,7 +29,7 @@ Page({
   },
 
   async onGetPhoneNumber(e) {
-    if (e.detail.errMsg !== "getPhoneNumber:ok") {
+    if (e.detail.errMsg !== 'getPhoneNumber:ok') {
       wx.showToast({ title: '已取消授权', icon: 'none' });
       return;
     }
@@ -63,24 +62,20 @@ Page({
       wx.hideLoading();
 
       if (res.success && (res.token || res.openid)) {
-        // Save to global data
         app.globalData.token = res.token;
         app.globalData.openid = res.openid;
         app.globalData.userInfo = res.user;
 
-        // Save to storage
         if (res.token) wx.setStorageSync('token', res.token);
         wx.setStorageSync('openid', res.openid);
         wx.setStorageSync('userInfo', res.user);
 
-        // Sync context (if method exists)
         if (typeof app.syncProfessionalContext === 'function') {
           app.syncProfessionalContext();
         }
 
         wx.showToast({ title: '登录成功', icon: 'success' });
-        
-        // --- New: Request notification permission ---
+
         const { requestNotification } = require('../../utils/notification.js');
         try {
           await requestNotification();
@@ -88,7 +83,6 @@ Page({
           console.error('Notification request failed', e);
         }
 
-        // Wait a bit for toast, then go back
         setTimeout(() => {
           wx.navigateBack();
         }, 1000);
@@ -98,8 +92,8 @@ Page({
     } catch (err) {
       wx.hideLoading();
       this.setData({ loading: false });
-      wx.showToast({ 
-        title: err.error || err.message || '登录失败', 
+      wx.showToast({
+        title: err.error || err.message || '登录失败',
         icon: 'none',
         duration: 2000
       });

@@ -14,7 +14,7 @@ Page({
     completedSteps: ['measurement', 'style-selection']
   },
 
-  onLoad(options) {
+  onLoad() {
     this.fetchRecommendations();
   },
 
@@ -22,46 +22,53 @@ Page({
     try {
       this.setData({ loading: true, error: null });
 
-      // TODO: 替换为真实的API调用
       const mockRecommendations = [
         {
           id: 'modern-simple',
           name: '现代简约',
-          description: '简洁明快的设计风格，功能至上',
+          description: '简洁明快的设计风格，功能至上。',
           estimatedBudget: { min: 150000, max: 250000 },
-          imageUrl: '/images/modern-simple.jpg',
-          features: ['储物空间优化', '开放式布局', '智能家居'],
-          matchScore: 0.85
+          budgetLabel: '¥150,000 - ¥250,000',
+          imageUrl: '/images/share-preview.jpg',
+          features: ['储物优化', '开放布局', '智能家居'],
+          matchScore: 0.85,
+          matchPercent: 85
         },
         {
           id: 'cream-style',
           name: '奶油风',
           category: 'nordic',
-          description: '温馨舒适的北欧风格',
+          description: '温暖舒适的浅色空间方案。',
           estimatedBudget: { min: 180000, max: 300000 },
-          imageUrl: '/images/cream-style.jpg',
-          features: ['温馨色调', '自然材质', '舒适布局'],
-          matchScore: 0.92
+          budgetLabel: '¥180,000 - ¥300,000',
+          imageUrl: '/images/share-preview.jpg',
+          features: ['温柔色调', '自然材质', '舒适布局'],
+          matchScore: 0.92,
+          matchPercent: 92
         },
         {
           id: 'new-chinese',
           name: '新中式',
           category: 'chinese',
-          description: '传统与现代的完美融合',
+          description: '传统气质与现代功能融合。',
           estimatedBudget: { min: 220000, max: 400000 },
-          imageUrl: '/images/new-chinese.jpg',
-          features: ['传统文化元素', '现代功能', '典雅设计'],
-          matchScore: 0.78
+          budgetLabel: '¥220,000 - ¥400,000',
+          imageUrl: '/images/share-preview.jpg',
+          features: ['文化元素', '现代功能', '典雅设计'],
+          matchScore: 0.78,
+          matchPercent: 78
         },
         {
           id: 'luxury-minimal',
           name: '轻奢风',
           category: 'luxury',
-          description: '低调奢华，精致生活',
+          description: '低调精致，强调材质与细节。',
           estimatedBudget: { min: 300000, max: 600000 },
-          imageUrl: '/images/luxury-minimal.jpg',
+          budgetLabel: '¥300,000 - ¥600,000',
+          imageUrl: '/images/share-preview.jpg',
           features: ['高级材质', '精致细节', '智能化'],
-          matchScore: 0.88
+          matchScore: 0.88,
+          matchPercent: 88
         }
       ];
 
@@ -83,19 +90,13 @@ Page({
     const currentSelected = this.data.selectedStyle;
 
     if (currentSelected === styleId) {
-      // 取消选择
       this.setData({ selectedStyle: null });
-      // TODO: 调用API取消选择
     } else {
-      // 选择新风格
       this.setData({ selectedStyle: styleId });
-      // TODO: 调用API保存选择
       wx.showToast({
         title: '已选择该风格',
         icon: 'success'
       });
-
-      // 记录用户交互
       this.trackUserInteraction('style_select', styleId, { position: 0 });
     }
   },
@@ -111,11 +112,7 @@ Page({
         title: 'PDF下载成功',
         icon: 'success'
       });
-
-      // 记录下载事件
       this.trackUserInteraction('pdf_download', styleId, { downloadTime: Date.now() });
-
-      // TODO: 实际实现PDF下载逻辑
     }, 2000);
   },
 
@@ -124,58 +121,23 @@ Page({
 
     if (!styleId) return;
 
-    // 记录分享事件
     this.trackUserInteraction('share', styleId, { platform: 'wechat' });
 
     wx.showActionSheet({
-      itemList: ['分享到朋友圈', '分享给好友'],
-      success(res) {
-        if (res.tapIndex === 0) {
-          // 分享到朋友圈
-          wx.shareAppMessage({
-            title: '我用智能量房大师获得了装修推荐！你也来试试？',
-            path: `/pages/recommendations/index?selected=${styleId}`,
-            imageUrl: '/images/share-preview.jpg'
-          });
-        } else {
-          // 分享给好友
-          wx.shareToChat({
-            url: `/pages/recommendations/index?selected=${styleId}`,
-            title: '智能装修推荐',
-            imageUrl: '/images/share-preview.jpg'
-          });
-        }
-      }
+      itemList: ['分享给朋友', '保存方案海报'],
+      success: () => {}
     });
   },
 
   trackUserInteraction(type, targetId, metadata = {}) {
-    // TODO: 集成真实的埋点系统
     console.log('用户交互:', type, targetId, metadata);
-
-    // 示例埋点数据
-    const eventData = {
-      userId: 'current-user', // TODO: 从全局状态获取真实用户ID
-      sessionId: wx.getStorageSync('sessionId') || 'temp-session',
-      timestamp: Date.now(),
-      eventType: `user_${type}`,
-      properties: {
-        targetId,
-        ...metadata
-      }
-    };
-
-    // TODO: 发送到分析平台
-    // analytics.track(eventData.eventType, eventData.properties);
   },
 
   onReachBottom() {
-    // 加载更多推荐
     this.loadMoreRecommendations();
   },
 
   loadMoreRecommendations() {
-    // TODO: 实现分页加载逻辑
     console.log('加载更多推荐...');
   },
 
@@ -183,7 +145,7 @@ Page({
     const styleId = this.data.selectedStyle;
 
     return {
-      title: styleId ? `我用智能量房大师选择了${this.getStyleName(styleId)}风格！你也来试试？` : '我用智能量房大师获得了3套装修方案！你也来试试？',
+      title: styleId ? `我选择了${this.getStyleName(styleId)}风格，你也来试试` : '智能量房大师为我推荐了装修方案',
       path: `/pages/recommendations/index${styleId ? `?selected=${styleId}` : ''}`,
       imageUrl: '/images/share-preview.jpg'
     };
@@ -196,6 +158,6 @@ Page({
       'new-chinese': '新中式',
       'luxury-minimal': '轻奢风'
     };
-    return styles[styleId] || '精美';
+    return styles[styleId] || '精选';
   }
 });

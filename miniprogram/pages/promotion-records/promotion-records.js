@@ -17,8 +17,8 @@ Page({
       measure: '测量任务',
       design: '设计任务',
       admin: '企业报备',
-      overdue: '已超时任务',
-      pool: '公海报备池'
+      overdue: '超时任务',
+      pool: '公海报备'
     };
     this.setData({
       view,
@@ -50,6 +50,8 @@ Page({
           })),
           loading: false
         });
+      } else {
+        this.setData({ loading: false });
       }
     } catch (err) {
       this.setData({ loading: false });

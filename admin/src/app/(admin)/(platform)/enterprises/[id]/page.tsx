@@ -100,13 +100,16 @@ export default function EnterpriseDetailPage() {
                 </div>
                 <Sparkles className="text-emerald-600" size={18} />
               </Link>
-              <div className="flex items-center justify-between rounded-2xl border border-dashed bg-white px-4 py-4">
+              <Link
+                href={`/enterprises/${enterprise._id}/automation`}
+                className="flex items-center justify-between rounded-2xl border bg-white px-4 py-4 transition-colors hover:bg-muted/30"
+              >
                 <div>
                   <div className="font-semibold text-foreground">自动化配置</div>
-                  <div className="text-sm text-muted-foreground">当前保留在基础信息编辑中，后续可独立成页。</div>
+                  <div className="text-sm text-muted-foreground">配置 SLA、催办频率、浏览器通知和小程序通知。</div>
                 </div>
                 <Settings2 className="text-amber-600" size={18} />
-              </div>
+              </Link>
             </CardContent>
           </Card>
         </div>

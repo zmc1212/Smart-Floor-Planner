@@ -23,7 +23,7 @@ Page({
     const systemInfo = wx.getSystemInfoSync();
     const menuButton = wx.getMenuButtonBoundingClientRect();
     const navBarHeightTotal = menuButton.bottom + (menuButton.top - systemInfo.statusBarHeight);
-    
+
     const userInfo = app.globalData.userInfo || {};
     const isStaff = userInfo.role === 'staff';
 
@@ -118,8 +118,7 @@ Page({
 
       if (res.success) {
         wx.showToast({ title: '提交成功', icon: 'success' });
-        
-        // If there was a floorPlanId, it's now bound
+
         if (floorPlanId) {
           getApp().globalData.requireLeadFirst = false;
         }
@@ -127,14 +126,14 @@ Page({
         setTimeout(() => {
           const pages = getCurrentPages();
           const prevPage = pages[pages.length - 2];
-          
+
           if (prevPage && prevPage.route === 'pages/leads-management/leads-management') {
             const leadList = prevPage.selectComponent('#leadList');
             if (leadList) {
               leadList.onRefresh();
             }
           }
-          
+
           if (res.data && res.data._id) {
             wx.redirectTo({
               url: `/pages/lead-detail/lead-detail?id=${res.data._id}`,

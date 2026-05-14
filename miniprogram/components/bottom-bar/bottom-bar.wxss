@@ -1,7 +1,8 @@
 .status-bar {
   height: 88rpx;
-  background: var(--bg-surface);
-  box-shadow: var(--shadow-card);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 -8rpx 24rpx rgba(85, 104, 90, 0.06);
+  backdrop-filter: blur(16px);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -20,7 +21,7 @@
 
 .ble-btn {
   font-size: 20rpx;
-  background: var(--brand-primary);
+  background: linear-gradient(135deg, #0fb04d 0%, #18a94b 100%);
   color: var(--text-inverse);
   padding: 8rpx 18rpx;
   border-radius: var(--radius-full);

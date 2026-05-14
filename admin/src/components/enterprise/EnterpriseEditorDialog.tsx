@@ -66,13 +66,6 @@ export default function EnterpriseEditorDialog({
         accentColor: enterprise.branding?.accentColor || '#0070f3',
       },
       groundPromotionFixedCommission: String(enterprise.groundPromotionFixedCommission ?? 0),
-      automationConfig: {
-        followUpSlaHours: String(enterprise.automationConfig?.followUpSlaHours ?? 24),
-        measureTaskSlaHours: String(enterprise.automationConfig?.measureTaskSlaHours ?? 48),
-        designTaskSlaHours: String(enterprise.automationConfig?.designTaskSlaHours ?? 72),
-        reminderIntervalHours: String(enterprise.automationConfig?.reminderIntervalHours ?? 24),
-        maxReminderTimes: String(enterprise.automationConfig?.maxReminderTimes ?? 3),
-      },
     });
   }, [enterprise, open]);
 
@@ -107,10 +100,18 @@ export default function EnterpriseEditorDialog({
     try {
       const url = enterprise ? `/api/admin/enterprises/${enterprise._id}` : '/api/admin/enterprises';
       const method = enterprise ? 'PATCH' : 'POST';
+      const payload = {
+        name: formData.name,
+        code: formData.code,
+        contactPerson: formData.contactPerson,
+        logo: formData.logo,
+        branding: formData.branding,
+        groundPromotionFixedCommission: formData.groundPromotionFixedCommission,
+      };
       const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
 
@@ -139,7 +140,7 @@ export default function EnterpriseEditorDialog({
               {enterprise ? '编辑企业基础信息' : '手动添加企业'}
             </DialogTitle>
             <DialogDescription>
-              这里仅维护基础资料、品牌信息、联系人与自动化 SLA 参数。
+              这里仅维护基础资料、品牌信息与联系人；自动化配置请在独立页签中维护。
             </DialogDescription>
           </DialogHeader>
 
@@ -177,89 +178,6 @@ export default function EnterpriseEditorDialog({
                     setFormData((prev) => ({ ...prev, groundPromotionFixedCommission: e.target.value }))
                   }
                 />
-              </div>
-            </div>
-
-            <div className="space-y-4 border-t pt-4">
-              <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                协作自动化配置
-              </h4>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="followup-sla">跟进 SLA（小时）</Label>
-                  <Input
-                    id="followup-sla"
-                    type="number"
-                    min="1"
-                    value={formData.automationConfig.followUpSlaHours}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        automationConfig: { ...prev.automationConfig, followUpSlaHours: e.target.value },
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="measure-sla">测量任务 SLA（小时）</Label>
-                  <Input
-                    id="measure-sla"
-                    type="number"
-                    min="1"
-                    value={formData.automationConfig.measureTaskSlaHours}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        automationConfig: { ...prev.automationConfig, measureTaskSlaHours: e.target.value },
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="design-sla">设计任务 SLA（小时）</Label>
-                  <Input
-                    id="design-sla"
-                    type="number"
-                    min="1"
-                    value={formData.automationConfig.designTaskSlaHours}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        automationConfig: { ...prev.automationConfig, designTaskSlaHours: e.target.value },
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="remind-interval">超时提醒间隔（小时）</Label>
-                  <Input
-                    id="remind-interval"
-                    type="number"
-                    min="1"
-                    value={formData.automationConfig.reminderIntervalHours}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        automationConfig: { ...prev.automationConfig, reminderIntervalHours: e.target.value },
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="max-reminders">最多提醒次数</Label>
-                  <Input
-                    id="max-reminders"
-                    type="number"
-                    min="1"
-                    value={formData.automationConfig.maxReminderTimes}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        automationConfig: { ...prev.automationConfig, maxReminderTimes: e.target.value },
-                      }))
-                    }
-                  />
-                </div>
               </div>
             </div>
 
