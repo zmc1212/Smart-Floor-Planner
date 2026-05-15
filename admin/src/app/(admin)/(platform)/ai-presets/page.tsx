@@ -17,8 +17,18 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
-type AiPresetType = 'floor_plan_style' | 'furnishing_style';
+type AiPresetType = 'floor_plan_style' | 'furnishing_style' | 'scenario';
 type ImageQuality = 'standard' | 'hd' | 'low' | 'medium' | 'high';
 type ImageMode = 'generation' | 'edit';
 
@@ -46,6 +56,7 @@ interface AiPreset {
 const PRESET_TABS: Array<{ type: AiPresetType; label: string; hint: string }> = [
   { type: 'floor_plan_style', label: 'AI 室内平面', hint: '3D / 彩平 / CAD / 手绘' },
   { type: 'furnishing_style', label: 'AI 风格设计', hint: '现代 / 北欧 / 奶油 / 轻奢 / 新中式' },
+  { type: 'scenario', label: 'AI 设计工作流', hint: '选风格 / 出基准方案 / 深化软装 / 生成提案' },
 ];
 
 const QUALITY_OPTIONS: ImageQuality[] = ['low', 'medium', 'high', 'standard', 'hd'];
@@ -235,82 +246,166 @@ export default function AiPresetsPage() {
             </DialogHeader>
 
             {form && (
-              <div className="grid grid-cols-1 gap-6 p-8 lg:grid-cols-2">
-                <div className="space-y-4">
-                  <label className="block text-sm font-medium">
-                    名称
-                    <input className="mt-2 w-full rounded-xl border px-3 py-2" value={form.name} onChange={(e) => updateField('name', e.target.value)} />
-                  </label>
-                  <label className="block text-sm font-medium">
-                    描述
-                    <input className="mt-2 w-full rounded-xl border px-3 py-2" value={form.description} onChange={(e) => updateField('description', e.target.value)} />
-                  </label>
-                  <label className="block text-sm font-medium">
-                    图标简称
-                    <input className="mt-2 w-full rounded-xl border px-3 py-2" value={form.icon} onChange={(e) => updateField('icon', e.target.value)} />
-                  </label>
-                  <label className="block text-sm font-medium">
-                    渐变 class
-                    <input className="mt-2 w-full rounded-xl border px-3 py-2 font-mono text-xs" value={form.previewClassName} onChange={(e) => updateField('previewClassName', e.target.value)} />
-                  </label>
-                  <label className="block text-sm font-medium">
-                    Mock 图地址
-                    <input
-                      className="mt-2 w-full rounded-xl border px-3 py-2 font-mono text-xs"
-                      placeholder="/modern.png"
+              <div className="grid grid-cols-1 gap-8 p-8 lg:grid-cols-2">
+                <div className="space-y-5">
+                  <div className="space-y-2">
+                    <Label>名称</Label>
+                    <Input 
+                      placeholder="例如：彩色风格" 
+                      value={form.name} 
+                      onChange={(e) => updateField('name', e.target.value)} 
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label>描述</Label>
+                    <Input 
+                      placeholder="简单描述预设用途" 
+                      value={form.description} 
+                      onChange={(e) => updateField('description', e.target.value)} 
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>图标简称</Label>
+                      <Input 
+                        placeholder="2-3个大写字母" 
+                        value={form.icon} 
+                        onChange={(e) => updateField('icon', e.target.value)} 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>排序权重</Label>
+                      <Input 
+                        type="number" 
+                        value={form.sortOrder} 
+                        onChange={(e) => updateField('sortOrder', toNumber(e.target.value, 0))} 
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>预览渐变 Class (Tailwind)</Label>
+                    <Input 
+                      className="font-mono text-xs" 
+                      value={form.previewClassName} 
+                      onChange={(e) => updateField('previewClassName', e.target.value)} 
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Mock 预览图地址</Label>
+                    <Input
+                      className="font-mono text-xs"
+                      placeholder="/static/previews/modern.png"
                       value={form.mockImageUrl || ''}
                       onChange={(e) => updateField('mockImageUrl', e.target.value)}
                     />
-                  </label>
-                  <label className="block text-sm font-medium">
-                    Prompt 模板
-                    <textarea className="mt-2 min-h-40 w-full rounded-xl border px-3 py-2" value={form.promptTemplate} onChange={(e) => updateField('promptTemplate', e.target.value)} />
-                  </label>
-                  <label className="block text-sm font-medium">
-                    Negative Prompt
-                    <textarea className="mt-2 min-h-28 w-full rounded-xl border px-3 py-2" value={form.negativePrompt} onChange={(e) => updateField('negativePrompt', e.target.value)} />
-                  </label>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Prompt 提示词模板</Label>
+                    <Textarea 
+                      className="min-h-40 text-sm leading-relaxed" 
+                      value={form.promptTemplate} 
+                      onChange={(e) => updateField('promptTemplate', e.target.value)} 
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>负向提示词 (Negative Prompt)</Label>
+                    <Textarea 
+                      className="min-h-24 text-sm" 
+                      value={form.negativePrompt} 
+                      onChange={(e) => updateField('negativePrompt', e.target.value)} 
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-4">
-                  <label className="block text-sm font-medium">
-                    Model
-                    <input className="mt-2 w-full rounded-xl border px-3 py-2 font-mono text-xs" value={form.image.model} onChange={(e) => updateImageField('model', e.target.value)} />
-                  </label>
-                  <label className="block text-sm font-medium">
-                    Size
-                    <input className="mt-2 w-full rounded-xl border px-3 py-2 font-mono text-xs" value={form.image.size} onChange={(e) => updateImageField('size', e.target.value)} />
-                  </label>
-                  <label className="block text-sm font-medium">
-                    Quality
-                    <select className="mt-2 w-full rounded-xl border px-3 py-2" value={form.image.quality} onChange={(e) => updateImageField('quality', e.target.value)}>
-                      {QUALITY_OPTIONS.map((quality) => (
-                        <option key={quality} value={quality}>
-                          {quality}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block text-sm font-medium">
-                    Mode
-                    <select className="mt-2 w-full rounded-xl border px-3 py-2" value={form.image.mode} onChange={(e) => updateImageField('mode', e.target.value)}>
-                      {MODE_OPTIONS.map((mode) => (
-                        <option key={mode} value={mode}>
-                          {mode}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                <div className="space-y-5">
+                  <div className="rounded-2xl border bg-muted/20 p-6 space-y-5">
+                    <h3 className="text-sm font-bold flex items-center gap-2 mb-2">
+                      <Settings2 size={16} />
+                      图片引擎配置 (Pollinations)
+                    </h3>
+                    
+                    <div className="space-y-2">
+                      <Label>Model (模型名称)</Label>
+                      <Input 
+                        className="font-mono text-xs" 
+                        value={form.image.model} 
+                        onChange={(e) => updateImageField('model', e.target.value)} 
+                      />
+                    </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <label className="block text-sm font-medium">
-                      排序
-                      <input className="mt-2 w-full rounded-xl border px-3 py-2" type="number" value={form.sortOrder} onChange={(e) => updateField('sortOrder', toNumber(e.target.value, 0))} />
-                    </label>
-                    <label className="flex items-center gap-2 pt-8 text-sm font-medium">
-                      <input type="checkbox" checked={form.enabled} onChange={(e) => updateField('enabled', e.target.checked)} />
-                      启用预设
-                    </label>
+                    <div className="space-y-2">
+                      <Label>Size (分辨率)</Label>
+                      <Input 
+                        className="font-mono text-xs" 
+                        value={form.image.size} 
+                        onChange={(e) => updateImageField('size', e.target.value)} 
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Quality (画质)</Label>
+                        <Select 
+                          value={form.image.quality} 
+                          onValueChange={(val) => updateImageField('quality', val)}
+                        >
+                          <SelectTrigger className="w-full h-10 rounded-xl">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {QUALITY_OPTIONS.map((quality) => (
+                              <SelectItem key={quality} value={quality}>
+                                {quality.toUpperCase()}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Mode (工作模式)</Label>
+                        <Select 
+                          value={form.image.mode} 
+                          onValueChange={(val) => updateImageField('mode', val)}
+                        >
+                          <SelectTrigger className="w-full h-10 rounded-xl">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {MODE_OPTIONS.map((mode) => (
+                              <SelectItem key={mode} value={mode}>
+                                {mode === 'edit' ? '图生图 (Edit)' : '文生图 (Gen)'}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-2xl border p-4 bg-white shadow-sm">
+                    <div className="space-y-0.5">
+                      <Label className="text-base">启用此预设</Label>
+                      <p className="text-xs text-muted-foreground">停用后该风格将从用户侧隐藏</p>
+                    </div>
+                    <input 
+                      type="checkbox" 
+                      className="h-5 w-5 rounded border-gray-300 text-violet-600 focus:ring-violet-600"
+                      checked={form.enabled} 
+                      onChange={(e) => updateField('enabled', e.target.checked)} 
+                    />
+                  </div>
+
+                  <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4">
+                    <p className="text-xs text-amber-800 leading-relaxed">
+                      <strong>注意：</strong> 修改提示词模板时，请确保保留空间结构相关的描述，以免 AI 生成的方案偏离原始户型。工作流型 Prompt 通常需要更明确地说明“继承上一阶段产物”和“不要改变空间骨架”。
+                    </p>
                   </div>
                 </div>
               </div>

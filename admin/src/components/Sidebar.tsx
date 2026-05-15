@@ -98,7 +98,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       title: 'AI 辅助设计',
       items: [
         { key: 'ai-designer', label: 'AI设计师', icon: Sparkles, href: '/ai-studio/designer' },
-        { key: 'ai-scenarios', label: '场景魔方', icon: Sparkles, href: '/ai-studio/scenarios' },
+        { key: 'ai-scenarios', label: 'AI 设计工作流', icon: Sparkles, href: '/ai-studio/scenarios' },
         { key: 'ai-floorplan', label: 'AI 室内平面', icon: PenTool, href: '/ai-studio/floor-plan' },
         { key: 'ai-furnishing', label: 'AI 风格设计', icon: Palette, href: '/ai-studio/furnishing' },
         { key: 'ai-soft-furnishing', label: 'AI 软装设计', icon: Sofa, href: '/ai-studio/soft-furnishing' },

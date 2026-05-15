@@ -1,11 +1,19 @@
 import mongoose, { Document, Model, Schema } from 'mongoose';
 import { multiTenantPlugin } from '../lib/mongoose-tenant-plugin';
+import type { AiWorkflowSourceAssetRole, AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
 
 export interface IAiGeneration extends Document {
   enterpriseId: mongoose.Types.ObjectId;
   operatorId: mongoose.Types.ObjectId;
   floorPlanId?: mongoose.Types.ObjectId;
-  type: 'floor_plan_style' | 'furnishing_render' | 'soft_furnishing_render' | 'advice';
+  leadId?: mongoose.Types.ObjectId;
+  workflowId?: mongoose.Types.ObjectId;
+  parentGenerationId?: mongoose.Types.ObjectId;
+  type: 'floor_plan_style' | 'furnishing_render' | 'soft_furnishing_render' | 'advice' | 'scenario';
+  stageKey?: AiWorkflowStageKey;
+  sourceAssetRole?: AiWorkflowSourceAssetRole;
+  isSelectedBaseline?: boolean;
+  nextRecommendedStage?: AiWorkflowStageKey;
   input: {
     style: string;
     roomType?: string;
@@ -58,14 +66,52 @@ const AiGenerationSchema: Schema<IAiGeneration> = new Schema(
       ref: 'AdminUser',
       required: true,
     },
+    leadId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Lead',
+    },
+    workflowId: {
+      type: Schema.Types.ObjectId,
+      ref: 'AiWorkflow',
+    },
+    parentGenerationId: {
+      type: Schema.Types.ObjectId,
+      ref: 'AiGeneration',
+    },
     floorPlanId: {
       type: Schema.Types.ObjectId,
       ref: 'FloorPlan',
     },
     type: {
       type: String,
-      enum: ['floor_plan_style', 'furnishing_render', 'soft_furnishing_render', 'advice'],
+      enum: ['floor_plan_style', 'furnishing_render', 'soft_furnishing_render', 'advice', 'scenario'],
       required: true,
+    },
+    stageKey: {
+      type: String,
+      enum: [
+        'direction',
+        'base_render',
+        'soft_furnishing',
+        'proposal_pack',
+        'lighting',
+        'tour_board',
+        'premium_board',
+        'perspective_upgrade',
+        'cad_detail',
+      ],
+    },
+    sourceAssetRole: {
+      type: String,
+      enum: ['rough_sketch', 'floor_plan', 'base_render', 'approved_render', 'concept_element'],
+    },
+    isSelectedBaseline: {
+      type: Boolean,
+      default: false,
+    },
+    nextRecommendedStage: {
+      type: String,
+      enum: ['direction', 'base_render', 'soft_furnishing', 'proposal_pack', 'lighting'],
     },
     input: {
       style: { type: String, required: true },
@@ -118,6 +164,10 @@ const AiGenerationSchema: Schema<IAiGeneration> = new Schema(
 AiGenerationSchema.index({ enterpriseId: 1, createdAt: -1 });
 AiGenerationSchema.index({ operatorId: 1, createdAt: -1 });
 AiGenerationSchema.index({ floorPlanId: 1 });
+AiGenerationSchema.index({ leadId: 1, createdAt: -1 });
+AiGenerationSchema.index({ workflowId: 1, createdAt: -1 });
+AiGenerationSchema.index({ leadId: 1, workflowId: 1, createdAt: -1 });
+AiGenerationSchema.index({ workflowId: 1, stageKey: 1, createdAt: -1 });
 
 AiGenerationSchema.plugin(multiTenantPlugin);
 
@@ -128,6 +178,10 @@ const existingTypePath = existingAiGenerationModel?.schema.path('type') as
 const existingTypeEnum = existingTypePath?.options?.enum || [];
 
 if (existingAiGenerationModel && !existingTypeEnum.includes('soft_furnishing_render')) {
+  mongoose.deleteModel('AiGeneration');
+}
+
+if (existingAiGenerationModel && !existingTypeEnum.includes('scenario')) {
   mongoose.deleteModel('AiGeneration');
 }
 

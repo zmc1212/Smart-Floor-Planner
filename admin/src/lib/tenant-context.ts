@@ -5,6 +5,7 @@ export interface TenantStore {
   enterpriseId: string | null;
   role: string;
   userId: string;
+  username?: string;
 }
 
 // 创建全局唯一的 AsyncLocalStorage 实例

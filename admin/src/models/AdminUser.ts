@@ -54,7 +54,7 @@ export const ALL_MENUS = [
   { key: 'commissions', label: '提成结算' },
   { key: 'ai-floorplan', label: 'AI 室内平面' },
   { key: 'ai-designer', label: 'AI设计师' },
-  { key: 'ai-scenarios', label: '场景魔方' },
+  { key: 'ai-scenarios', label: 'AI 设计工作流' },
   { key: 'ai-furnishing', label: 'AI 风格设计' },
   { key: 'ai-soft-furnishing', label: 'AI 软装设计' },
   { key: 'ai-presets', label: 'AI 预设配置' },

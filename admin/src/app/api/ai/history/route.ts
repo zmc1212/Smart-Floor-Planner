@@ -15,10 +15,14 @@ export async function GET(req: Request) {
         const page = parseInt(searchParams.get('page') || '1');
         const limit = Math.min(parseInt(searchParams.get('limit') || '20'), 50);
         const type = searchParams.get('type');
+        const workflowId = searchParams.get('workflowId');
+        const leadId = searchParams.get('leadId');
         const skip = (page - 1) * limit;
 
         const filter: Record<string, unknown> = {};
         if (type) filter.type = type;
+        if (workflowId) filter.workflowId = workflowId;
+        if (leadId) filter.leadId = leadId;
 
         const [items, total] = await Promise.all([
           AiGeneration.find(filter)

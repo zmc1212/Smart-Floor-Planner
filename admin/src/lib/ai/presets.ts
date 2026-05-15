@@ -5,6 +5,11 @@ import {
   DefaultAiStylePreset,
   PollinationsImageConfig,
 } from './preset-definitions';
+import type {
+  AiWorkflowCategory,
+  AiWorkflowSourceAssetRole,
+  AiWorkflowStageKey,
+} from './workflow-stages';
 
 export interface SerializedAiStylePreset {
   _id: string;
@@ -19,6 +24,10 @@ export interface SerializedAiStylePreset {
   negativePrompt: string;
   provider: 'pollinations';
   image: PollinationsImageConfig;
+  workflowCategory?: AiWorkflowCategory;
+  workflowStage?: AiWorkflowStageKey;
+  sourceAssetRole?: AiWorkflowSourceAssetRole;
+  nextRecommendedStage?: AiWorkflowStageKey;
   enabled: boolean;
   sortOrder: number;
   createdAt?: string;
@@ -60,6 +69,10 @@ export function serializeAiStylePreset(
     | 'negativePrompt'
     | 'provider'
     | 'image'
+    | 'workflowCategory'
+    | 'workflowStage'
+    | 'sourceAssetRole'
+    | 'nextRecommendedStage'
     | 'enabled'
     | 'sortOrder'
     | 'createdAt'
@@ -79,6 +92,10 @@ export function serializeAiStylePreset(
     negativePrompt: preset.negativePrompt,
     provider: preset.provider,
     image: preset.image,
+    workflowCategory: preset.workflowCategory,
+    workflowStage: preset.workflowStage,
+    sourceAssetRole: preset.sourceAssetRole,
+    nextRecommendedStage: preset.nextRecommendedStage,
     enabled: preset.enabled,
     sortOrder: preset.sortOrder,
     createdAt: preset.createdAt?.toISOString(),

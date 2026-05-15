@@ -19,6 +19,15 @@ export interface PollinationsImageRequest {
   apiKey?: string;
 }
 
+function isPromptImageUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.hostname === 'gen.pollinations.ai' && url.pathname.startsWith('/image/');
+  } catch {
+    return false;
+  }
+}
+
 function getApiKey(explicitApiKey?: string) {
   const apiKey = explicitApiKey?.trim() || process.env.POLLINATIONS_API_KEY?.trim();
   if (!apiKey) {
@@ -46,12 +55,12 @@ function parseDataUri(input: string): DataUriImage {
   };
 }
 
-async function parseImageResponse(response: Response) {
+async function parseImageResponse(response: Response, apiKey?: string) {
   const contentType = response.headers.get('content-type') || '';
   if (!response.ok) {
     const errorText = await response.text();
     const error = new Error(`Pollinations request failed (${response.status}): ${errorText}`);
-    (error as any).status = response.status;
+    (error as Error & { status?: number }).status = response.status;
     throw error;
   }
 
@@ -59,7 +68,9 @@ async function parseImageResponse(response: Response) {
     const json = await response.json();
     const imageData = Array.isArray(json?.data) ? json.data[0] : undefined;
     if (typeof imageData?.url === 'string' && imageData.url) {
-      return imageData.url;
+      return isPromptImageUrl(imageData.url)
+        ? await fetchImageAsDataUri(imageData.url, apiKey)
+        : imageData.url;
     }
 
     if (typeof imageData?.b64_json === 'string' && imageData.b64_json) {
@@ -67,13 +78,36 @@ async function parseImageResponse(response: Response) {
     }
 
     if (typeof json?.url === 'string' && json.url) {
-      return json.url;
+      return isPromptImageUrl(json.url)
+        ? await fetchImageAsDataUri(json.url, apiKey)
+        : json.url;
     }
   }
 
   const arrayBuffer = await response.arrayBuffer();
   const mimeType = contentType.split(';')[0] || 'image/png';
   return `data:${mimeType};base64,${Buffer.from(arrayBuffer).toString('base64')}`;
+}
+
+async function fetchImageAsDataUri(url: string, apiKey?: string) {
+  const response = await fetch(url, {
+    headers: buildHeaders(apiKey, {
+      Accept: 'image/*',
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    const error = new Error(
+      `Pollinations image URL fetch failed (${response.status}): ${errorText}`
+    );
+    (error as Error & { status?: number }).status = response.status;
+    throw error;
+  }
+
+  const contentType = response.headers.get('content-type') || 'image/png';
+  const arrayBuffer = await response.arrayBuffer();
+  return `data:${contentType.split(';')[0]};base64,${Buffer.from(arrayBuffer).toString('base64')}`;
 }
 
 function combinePrompt(prompt: string, negativePrompt?: string) {
@@ -99,7 +133,7 @@ export async function uploadMedia(imageDataUri: string, apiKey?: string) {
   if (!response.ok) {
     const errorText = await response.text();
     const error = new Error(`Failed to upload media to Pollinations (${response.status}): ${errorText}`);
-    (error as any).status = response.status;
+    (error as Error & { status?: number }).status = response.status;
     throw error;
   }
 
@@ -129,7 +163,7 @@ export async function generateImage(params: PollinationsImageRequest) {
     }),
   });
 
-  return parseImageResponse(response);
+  return parseImageResponse(response, params.apiKey);
 }
 
 export async function editImage(params: PollinationsImageRequest) {
@@ -154,5 +188,5 @@ export async function editImage(params: PollinationsImageRequest) {
     }),
   });
 
-  return parseImageResponse(response);
+  return parseImageResponse(response, params.apiKey);
 }

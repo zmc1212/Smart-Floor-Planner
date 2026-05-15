@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { AiGeneration } from '@/models/AiGeneration';
+import { AiWorkflow } from '@/models/AiWorkflow';
+import Lead from '@/models/Lead';
 import { withTenantRoute } from '@/lib/tenant-route';
 import {
   buildPromptFromPreset,
@@ -16,6 +18,8 @@ import {
   getEnterprisePollinationsRuntimeConfig,
   markEnterpriseAiSyncError,
 } from '@/lib/ai/enterprise-ai';
+import type { AiWorkflowSourceAssetRole, AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
+import { getNextWorkflowStage } from '@/lib/ai/workflow-stages';
 
 interface GenerateBody {
   type?: 'floor_plan_style' | 'furnishing_render' | 'advice' | string;
@@ -28,6 +32,10 @@ interface GenerateBody {
   mode?: string;
   roomData?: unknown;
   furnitureItems?: FurnitureSelection[];
+  workflowId?: string;
+  stageKey?: AiWorkflowStageKey;
+  parentGenerationId?: string;
+  sourceAssetRole?: AiWorkflowSourceAssetRole;
 }
 
 function resolvePresetType(type?: string): AiPresetType {
@@ -49,7 +57,37 @@ function buildPresetSnapshot(preset: DefaultAiStylePreset) {
     icon: preset.icon,
     previewClassName: preset.previewClassName,
     mockImageUrl: preset.mockImageUrl,
+    workflowCategory: preset.workflowCategory,
+    workflowStage: preset.workflowStage,
+    sourceAssetRole: preset.sourceAssetRole,
+    nextRecommendedStage: preset.nextRecommendedStage,
   };
+}
+
+function logPromptDraft(input: {
+  generationId: string;
+  workflowId?: string;
+  leadId?: string;
+  type: string;
+  style: string;
+  stageKey?: AiWorkflowStageKey;
+  sourceAssetRole?: AiWorkflowSourceAssetRole;
+  prompt: string;
+  negativePrompt?: string;
+}) {
+  console.log('\n========== AI PROMPT DRAFT ==========');
+  console.log(`generationId: ${input.generationId}`);
+  console.log(`workflowId: ${input.workflowId || '-'}`);
+  console.log(`leadId: ${input.leadId || '-'}`);
+  console.log(`type: ${input.type}`);
+  console.log(`style: ${input.style}`);
+  console.log(`stageKey: ${input.stageKey || '-'}`);
+  console.log(`sourceAssetRole: ${input.sourceAssetRole || '-'}`);
+  console.log('prompt:');
+  console.log(input.prompt);
+  console.log('negativePrompt:');
+  console.log(input.negativePrompt || '-');
+  console.log('========== END AI PROMPT DRAFT ==========\n');
 }
 
 export async function POST(req: Request) {
@@ -60,12 +98,26 @@ export async function POST(req: Request) {
       await ensureDefaultAiStylePresets(context.userId);
 
       const body = (await req.json()) as GenerateBody;
-      const { type, style, roomType, roomName, width, height, floorPlanId, mode, roomData, furnitureItems } =
-        body;
+      const {
+        type,
+        style,
+        roomType,
+        roomName,
+        width,
+        height,
+        floorPlanId,
+        mode,
+        roomData,
+        furnitureItems,
+        workflowId,
+        stageKey,
+        parentGenerationId,
+        sourceAssetRole,
+      } = body;
 
       if (!type || !style) {
         return NextResponse.json(
-          { success: false, error: '缺少必要参数 type / style' },
+          { success: false, error: 'Missing required params: type / style' },
           { status: 400 }
         );
       }
@@ -135,11 +187,59 @@ export async function POST(req: Request) {
               });
       }
 
+      let workflow = null;
+      if (workflowId) {
+        workflow = await AiWorkflow.findOne({
+          _id: workflowId,
+          enterpriseId: context.enterpriseId,
+        });
+
+        if (!workflow) {
+          return NextResponse.json(
+            { success: false, error: '方案会话不存在或已无权限访问' },
+            { status: 404 }
+          );
+        }
+
+        const lead = await Lead.findById(workflow.leadId).select('_id').lean();
+        if (!lead) {
+          return NextResponse.json(
+            { success: false, error: 'Associated lead not found or inaccessible' },
+            { status: 404 }
+          );
+        }
+      }
+
+      let parentGeneration = null;
+      if (parentGenerationId) {
+        parentGeneration = await AiGeneration.findOne({
+          _id: parentGenerationId,
+          enterpriseId: context.enterpriseId,
+        });
+
+        if (!parentGeneration) {
+          return NextResponse.json(
+            { success: false, error: '上一产物不存在或已无权限访问' },
+            { status: 404 }
+          );
+        }
+      }
+
+      const resolvedStageKey = stageKey || preset?.workflowStage;
+      const resolvedSourceAssetRole = sourceAssetRole || preset?.sourceAssetRole;
+      const nextRecommendedStage = preset?.nextRecommendedStage || getNextWorkflowStage(resolvedStageKey);
+
       const generation = await AiGeneration.create({
         enterpriseId: context.enterpriseId!,
         operatorId: context.userId,
+        leadId: workflow?.leadId,
+        workflowId: workflow?._id,
+        parentGenerationId: parentGeneration?._id,
         floorPlanId: floorPlanId || undefined,
         type,
+        stageKey: resolvedStageKey,
+        sourceAssetRole: resolvedSourceAssetRole,
+        nextRecommendedStage,
         input: {
           style,
           roomType,
@@ -199,6 +299,18 @@ export async function POST(req: Request) {
         generation.status = 'pending';
         await generation.save();
 
+        logPromptDraft({
+          generationId: String(generation._id),
+          workflowId: workflow ? String(workflow._id) : undefined,
+          leadId: workflow?.leadId ? String(workflow.leadId) : undefined,
+          type,
+          style,
+          stageKey: resolvedStageKey,
+          sourceAssetRole: resolvedSourceAssetRole,
+          prompt: promptData.prompt,
+          negativePrompt: promptData.negative_prompt || negativePrompt,
+        });
+
         return NextResponse.json({
           success: true,
           data: {
@@ -208,6 +320,10 @@ export async function POST(req: Request) {
             type,
             style,
             presetType,
+            workflowId: workflow ? String(workflow._id) : undefined,
+            leadId: workflow?.leadId ? String(workflow.leadId) : undefined,
+            stageKey: resolvedStageKey,
+            nextRecommendedStage,
           },
           quota: {
             balance: latestSnapshot?.balance ?? 0,

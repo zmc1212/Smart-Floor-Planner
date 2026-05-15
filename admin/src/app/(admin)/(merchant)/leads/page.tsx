@@ -1,11 +1,11 @@
 'use client';
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { notify } from '@/components/ui/operation-feedback';
 
 import React, { useState, useEffect } from 'react';
-export const dynamic = 'force-dynamic';
-import { Loader2, Phone, CheckCircle, Clock, User, MessageSquare, Plus, X, Search, Filter, Check, Share2 } from "lucide-react";
-import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useRouter } from 'next/navigation';
+import { Loader2, CheckCircle, Clock, User, MessageSquare, Plus, X, Check, Share2 } from "lucide-react";
 import { Tabs } from "@/components/ui/tabs";
 import { 
   Table, 
@@ -33,10 +33,12 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { Building2 } from "lucide-react";
 import { Pagination } from "@/components/ui/pagination";
 
+export const dynamic = 'force-dynamic';
+
 export default function LeadsPage() {
+  const router = useRouter();
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLead, setSelectedLead] = useState<any>(null);
@@ -50,9 +52,6 @@ export default function LeadsPage() {
     limit: 20,
     totalPages: 0
   });
-
-  // @see react-best-practices: client-swr-dedup
-  const { user: currentUser } = useCurrentUser();
 
   // Helper to get staff display name from ID or Object
   const getStaffName = (idOrObj: any) => {
@@ -361,6 +360,14 @@ export default function LeadsPage() {
                     </TableCell>
                     <TableCell className="text-right py-5 px-6">
                       <div className="flex items-center justify-end gap-3">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => router.push(`/ai-studio/scenarios?leadId=${lead._id}`)}
+                          className="h-8 text-[12px] rounded-lg font-medium text-amber-700 hover:text-amber-900 hover:bg-amber-50 px-3"
+                        >
+                          {lead.floorPlanIds?.length || lead.followUpRecords?.length ? '查看方案' : '开始方案'}
+                        </Button>
                         <Button 
                           size="icon"
                           variant="ghost"
@@ -438,6 +445,17 @@ export default function LeadsPage() {
                         {selectedLead.phone}
                       </SheetDescription>
                     </div>
+                  </div>
+                  <div className="mt-5 flex gap-3">
+                    <Button
+                      className="rounded-xl bg-neutral-900 text-white hover:bg-neutral-800"
+                      onClick={() => {
+                        setSelectedLead(null);
+                        router.push(`/ai-studio/scenarios?leadId=${selectedLead._id}`);
+                      }}
+                    >
+                      {selectedLead.floorPlanIds?.length || selectedLead.followUpRecords?.length ? '查看方案' : '开始方案'}
+                    </Button>
                   </div>
                 </SheetHeader>
 
@@ -633,8 +651,6 @@ function WorkflowProgress({ status }: { status: string }) {
         {steps.map((step, idx) => {
           const isCompleted = idx < currentIdx;
           const isCurrent = idx === currentIdx;
-          const isUpcoming = idx > currentIdx;
-
           return (
             <div key={step.key} className="relative z-10 flex flex-col items-center gap-2 group">
               <div className={cn(

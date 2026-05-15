@@ -268,7 +268,7 @@ export async function syncEnterprisePollinationsSnapshot(enterpriseId: string, d
         syncError: syncMessages.join(' '),
       },
     },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: 'after' }
   );
 
   await Enterprise.findByIdAndUpdate(enterprise._id, {
@@ -298,7 +298,7 @@ export async function markEnterpriseAiSyncError(enterpriseId: string, error: unk
         syncError: message,
       },
     },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: 'after' }
   );
 
   return message;
@@ -391,7 +391,7 @@ export async function upsertEnterpriseManagedPollinationsKey(options: {
             syncError: message,
           },
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
     }))!;
 
@@ -435,7 +435,7 @@ export async function updateEnterpriseAiConfig(options: {
         'keyInfo.pollenBudget': nextBudget,
       },
     },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: 'after' }
   );
 
   return snapshot;
@@ -472,7 +472,7 @@ export async function revokeEnterpriseManagedPollinationsKey(enterpriseId: strin
         lastSyncedAt: new Date(),
       },
     },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: 'after' }
   );
 }
 

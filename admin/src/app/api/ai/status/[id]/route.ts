@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { AiGeneration } from '@/models/AiGeneration';
 import { getTenantContext } from '@/lib/auth';
+import { getWorkflowStageDefinition } from '@/lib/ai/workflow-stages';
 
 export async function GET(
   req: Request,
@@ -33,12 +34,21 @@ export async function GET(
           : generation.status === 'processing'
             ? 65
             : 0;
+    const stageDefinition = getWorkflowStageDefinition(generation.stageKey);
 
     return NextResponse.json({
       success: true,
       data: {
         id: generation._id,
+        leadId: generation.leadId,
+        workflowId: generation.workflowId,
+        parentGenerationId: generation.parentGenerationId,
         type: generation.type,
+        stageKey: generation.stageKey,
+        stageLabel: stageDefinition?.name,
+        sourceAssetRole: generation.sourceAssetRole,
+        isSelectedBaseline: generation.isSelectedBaseline,
+        nextRecommendedStage: generation.nextRecommendedStage,
         status: generation.status,
         progress,
         imageUrl: generation.output?.imageUrl,
@@ -50,7 +60,8 @@ export async function GET(
         floorPlanId: generation.floorPlanId,
       }
     });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Internal Server Error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
