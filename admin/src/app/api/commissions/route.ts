@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
-import { getTenantContext, withTenantContext } from '@/lib/auth';
+import { withPlatformB2BTenantContext } from '@/lib/auth';
 import { CommissionRecord } from '@/models/CommissionRecord';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 
@@ -38,12 +38,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: true, data: commissions });
     }
 
-    const context = await getTenantContext(request);
-    if (!context) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
-    return await withTenantContext(request, async () => {
+    return await withPlatformB2BTenantContext(request, async (context) => {
       const query: any = {};
       if (context.role === 'salesperson') {
         query.promoterId = context.userId;
@@ -83,6 +78,9 @@ export async function GET(request: Request) {
       });
     });
   } catch (error: any) {
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

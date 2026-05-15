@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { PromotionEnterpriseRecord } from '@/models/PromotionEnterpriseRecord';
 import { Enterprise } from '@/models/Enterprise';
-import { getTenantContext } from '@/lib/auth';
+import { getTenantContext, withPlatformB2BTenantContext } from '@/lib/auth';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import {
   buildPromotionAccessFilter,
@@ -13,10 +13,8 @@ import {
   PLATFORM_PROMOTION_CONFIG,
 } from '@/lib/promotion-workflow';
 import { dispatchWorkflowNotifications } from '@/lib/workflow-automation';
-import { notifyPlatformAdminOfNewReport, notifyEnterpriseAdminOfNewLead, notifyDesignerOfAssignedLead } from '@/lib/wechat-notification';
-import { WeComService } from '@/lib/wecom';
+import { notifyPlatformAdminOfNewReport } from '@/lib/wechat-notification';
 import { tenantStorage } from '@/lib/tenant-context';
-import { withTenantContext } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,12 +48,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const context = await getTenantContext(request);
-    if (!context) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
-    return await withTenantContext(request, async () => {
+    return await withPlatformB2BTenantContext(request, async (context) => {
       const query = { ...baseQuery };
       if (context.role === 'salesperson') {
         query.promoterId = context.userId;
@@ -71,6 +64,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: true, data: records });
     });
   } catch (error: any) {
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
@@ -98,15 +94,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const adminContext = await getTenantContext(request);
-    if (!adminContext) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
-    return await withTenantContext(request, async () => {
+    return await withPlatformB2BTenantContext(request, async (adminContext) => {
       return await handlePostInternal(body, null, adminContext);
     });
   } catch (error: any) {
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
@@ -132,7 +126,7 @@ async function handlePostInternal(body: any, mpStaff: any, adminContext: any) {
     promoterId = body.promoterId || (context.role === 'salesperson' ? context.userId : undefined);
     enterpriseId =
       context.role === 'admin' || context.role === 'super_admin'
-        ? body.enterpriseId || context.enterpriseId || undefined
+        ? body.enterpriseId || undefined
         : context.enterpriseId || undefined;
     operatorName = context.username;
   }

@@ -2,10 +2,14 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { getTenantContext } from '@/lib/auth';
 import { PromotionEnterpriseRecord } from '@/models/PromotionEnterpriseRecord';
-import { claimFromPool, getMiniProgramStaffContext } from '@/lib/promotion-workflow';
+import { assignPoolRecordToPromoter, claimFromPool } from '@/lib/promotion-workflow';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 
 export const dynamic = 'force-dynamic';
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
 
 /**
  * GET /api/promotion-records/pool
@@ -13,6 +17,7 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(request: Request) {
   try {
+    await dbConnect();
     const { searchParams } = new URL(request.url);
     
     // Try Mini Program JWT first
@@ -52,8 +57,8 @@ export async function GET(request: Request) {
       .lean();
 
     return NextResponse.json({ success: true, data: records });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
   }
 }
 
@@ -80,23 +85,41 @@ export async function POST(request: Request) {
       context = await getTenantContext(request);
     }
 
-    if (!context || context.role !== 'salesperson') {
-      return NextResponse.json({ success: false, error: 'Only salesperson can claim from pool' }, { status: 403 });
-    }
     if (!body.recordId) {
       return NextResponse.json({ success: false, error: 'Missing recordId' }, { status: 400 });
     }
 
-    const result = await claimFromPool(body.recordId, context.userId);
+    const action = body.action || 'claim';
+    let result = null;
+
+    if (action === 'assign') {
+      if (!context || !['admin', 'super_admin'].includes(context.role)) {
+        return NextResponse.json({ success: false, error: 'Only managers can assign pool records' }, { status: 403 });
+      }
+      if (!body.promoterId) {
+        return NextResponse.json({ success: false, error: 'Missing promoterId' }, { status: 400 });
+      }
+      result = await assignPoolRecordToPromoter(body.recordId, body.promoterId, context.userId);
+    } else {
+      if (!context || context.role !== 'salesperson') {
+        return NextResponse.json({ success: false, error: 'Only salesperson can claim from pool' }, { status: 403 });
+      }
+      result = await claimFromPool(body.recordId, context.userId);
+    }
+
     if (!result) {
       return NextResponse.json(
-        { success: false, error: 'Record not available for claiming' },
+        { success: false, error: 'Record not available in claimable pool' },
         { status: 404 }
       );
     }
 
     return NextResponse.json({ success: true, data: result });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = getErrorMessage(error);
+    if (message === 'Target salesperson not found') {
+      return NextResponse.json({ success: false, error: 'Target salesperson not found' }, { status: 400 });
+    }
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

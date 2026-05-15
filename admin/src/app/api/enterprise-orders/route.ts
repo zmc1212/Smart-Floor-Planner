@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
-import { getTenantContext, withTenantContext } from '@/lib/auth';
+import { withPlatformB2BTenantContext } from '@/lib/auth';
 import { EnterpriseOrder } from '@/models/EnterpriseOrder';
 import { PromotionEnterpriseRecord } from '@/models/PromotionEnterpriseRecord';
 import { findPromotionRecordIdsForPromoter, syncCommissionForOrder } from '@/lib/promotion-workflow';
@@ -33,12 +33,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: true, data: orders });
     }
 
-    const context = await getTenantContext(request);
-    if (!context) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
-    return await withTenantContext(request, async () => {
+    return await withPlatformB2BTenantContext(request, async (context) => {
       const query: Record<string, unknown> = {};
       if (context.role === 'salesperson') {
         query.recordId = { $in: await findPromotionRecordIdsForPromoter(context.userId) };
@@ -53,6 +48,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: true, data: orders });
     });
   } catch (error: any) {
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
@@ -60,8 +58,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     await dbConnect();
-    return await withTenantContext(request, async () => {
-      const context = await getTenantContext(request);
+    return await withPlatformB2BTenantContext(request, async (context) => {
       if (!context || !['enterprise_admin', 'admin', 'super_admin'].includes(context.role)) {
         return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
       }
@@ -93,6 +90,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, data: order }, { status: 201 });
     });
   } catch (error: any) {
+    if (error.message === 'Unauthorized') {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }

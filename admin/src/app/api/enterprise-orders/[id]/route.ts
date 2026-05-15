@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
-import { getTenantContext, withTenantContext } from '@/lib/auth';
+import { getTenantContext, withPlatformB2BTenantContext } from '@/lib/auth';
 import { EnterpriseOrder } from '@/models/EnterpriseOrder';
 import { syncCommissionForOrder } from '@/lib/promotion-workflow';
 
@@ -14,7 +14,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
-    return await withTenantContext(request, async () => {
+    return await withPlatformB2BTenantContext(request, async () => {
       const body = await request.json();
       const { id } = await params;
 

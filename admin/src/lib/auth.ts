@@ -77,6 +77,37 @@ export async function withTenantContext<T>(
   );
 }
 
+export function getPlatformB2BTenantContext(context: TenantContext): TenantContext {
+  if (context.role === 'super_admin' || context.role === 'admin') {
+    return { ...context, enterpriseId: null };
+  }
+
+  return context;
+}
+
+export async function withPlatformB2BTenantContext<T>(
+  request: Request | NextRequest,
+  handler: (context: TenantContext) => Promise<T>
+): Promise<T> {
+  const context = await getTenantContext(request);
+
+  if (!context) {
+    throw new Error('Unauthorized');
+  }
+
+  const b2bContext = getPlatformB2BTenantContext(context);
+
+  return tenantStorage.run(
+    {
+      enterpriseId: b2bContext.enterpriseId,
+      role: b2bContext.role,
+      userId: b2bContext.userId,
+      username: b2bContext.username,
+    } as TenantStore,
+    () => handler(b2bContext)
+  );
+}
+
 /**
  * Generates a MongoDB query filter based on the current user's role and enterprise.
  * @param context TenantContext
@@ -110,5 +141,4 @@ export function getTenantFilter(context: TenantContext, options: {
   // Fallback: No access
   return { _id: null };
 }
-
 

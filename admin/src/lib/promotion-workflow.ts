@@ -260,6 +260,52 @@ export async function claimFromPool(recordId: string, salespersonId: string) {
 }
 
 /**
+ * 管理员将线索池记录手动分配给渠道地推
+ */
+export async function assignPoolRecordToPromoter(recordId: string, salespersonId: string, operatorId?: string) {
+  const salesperson = await AdminUser.findOne({
+    _id: salespersonId,
+    role: 'salesperson',
+    status: 'active',
+  }).select('displayName username');
+
+  if (!salesperson) {
+    throw new Error('Target salesperson not found');
+  }
+
+  const record = await PromotionEnterpriseRecord.findOne({
+    _id: recordId,
+    poolStatus: 'in_pool',
+  });
+  if (!record) return null;
+
+  const config = PLATFORM_PROMOTION_CONFIG;
+  const now = new Date();
+  const protectionExpiresAt = new Date(now.getTime() + config.protectionPeriodDays * 24 * 60 * 60 * 1000);
+  const operator = operatorId && mongoose.Types.ObjectId.isValid(operatorId)
+    ? new mongoose.Types.ObjectId(operatorId)
+    : undefined;
+
+  record.promoterId = new mongoose.Types.ObjectId(salespersonId);
+  record.poolStatus = 'protected';
+  record.protectionExpiresAt = protectionExpiresAt;
+  record.protectionExtendedCount = 0;
+  record.ownershipStatus = 'manually_locked';
+  record.pendingActionRole = 'salesperson';
+  record.businessStage = record.businessStage === 'closed_lost' ? 'reported' : record.businessStage;
+  record.lastActivityAt = now;
+  record.followUpRecords.push({
+    content: `管理员分配给渠道地推：${salesperson.displayName || salesperson.username}`,
+    operator: 'System',
+    operatorId: operator,
+    createdAt: now,
+  });
+
+  await record.save();
+  return record;
+}
+
+/**
  * 手动释放报备记录到公海池
  */
 export async function releaseToPool(recordId: string) {

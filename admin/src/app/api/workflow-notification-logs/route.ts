@@ -32,7 +32,7 @@ export async function GET(request: Request) {
         const filter: any = {};
         const matchStage: any = {};
 
-        if (context.enterpriseId && context.enterpriseId !== 'all') {
+        if (context.role === 'enterprise_admin' && context.enterpriseId && context.enterpriseId !== 'all') {
           filter.enterpriseId = context.enterpriseId;
           if (mongoose.Types.ObjectId.isValid(context.enterpriseId)) {
             matchStage.enterpriseId = new mongoose.Types.ObjectId(context.enterpriseId);

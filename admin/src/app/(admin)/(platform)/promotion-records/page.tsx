@@ -55,8 +55,20 @@ const viewOptions = [
   { key: 'assignMeasure', label: '待分配测量' },
   { key: 'assignDesign', label: '待分配设计' },
   { key: 'overdue', label: '已超时' },
-  { key: 'pool', label: '公海池' },
+  { key: 'pool', label: '线索池' },
 ];
+
+type PoolRecord = {
+  _id: string;
+  enterpriseName?: string;
+};
+
+type AdminUserOption = {
+  _id: string;
+  role?: string;
+  displayName?: string;
+  username?: string;
+};
 
 function parseDate(value?: string | null) {
   if (!value) return null;
@@ -107,19 +119,24 @@ export default function PromotionRecordsPage() {
   const [assignMeasurer, setAssignMeasurer] = useState('');
   const [assignDesigner, setAssignDesigner] = useState('');
   const [selectedPromoter, setSelectedPromoter] = useState('');
+  const [assigningPoolRecord, setAssigningPoolRecord] = useState<PoolRecord | null>(null);
+  const [poolPromoterId, setPoolPromoterId] = useState('');
 
   const canManage = !!user && ['enterprise_admin', 'admin', 'super_admin'].includes(user.role);
+  const canAssignPool = !!user && ['admin', 'super_admin'].includes(user.role);
+  const canClaimPool = user?.role === 'salesperson';
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const isPool = viewFilter === 'pool';
       const endpoint = isPool ? '/api/promotion-records/pool' : '/api/promotion-records';
-      const stageQuery = stageFilter !== 'all' && !isPool ? `?stage=${stageFilter}` : '';
+      const stageQuery = stageFilter !== 'all' && !isPool ? `?businessStage=${stageFilter}` : '';
       
-      const [recordsRes, staffRes] = await Promise.all([
+      const [recordsRes, staffRes, adminUsersRes] = await Promise.all([
         fetch(`${endpoint}${stageQuery}`), 
-        fetch('/api/staff')
+        fetch('/api/staff'),
+        fetch('/api/admin-users')
       ]);
 
       if (recordsRes.ok) {
@@ -139,6 +156,23 @@ export default function PromotionRecordsPage() {
           console.error('Failed to parse staff JSON:', e);
         }
       }
+
+      if (adminUsersRes.ok) {
+        try {
+          const adminUsersData = await adminUsersRes.json() as { success?: boolean; data?: AdminUserOption[] };
+          if (adminUsersData.success) {
+            setStaff((current) => {
+              const byId = new Map(current.map((item) => [String(item._id), item]));
+              (adminUsersData.data || []).forEach((item) => {
+                if (item.role === 'salesperson') byId.set(String(item._id), item);
+              });
+              return Array.from(byId.values());
+            });
+          }
+        } catch (e) {
+          console.error('Failed to parse admin users JSON:', e);
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -149,6 +183,9 @@ export default function PromotionRecordsPage() {
   }, [stageFilter, viewFilter]);
 
   const filteredRecords = useMemo(() => records.filter((record) => matchesView(record, viewFilter)), [records, viewFilter]);
+  const emptyMessage = viewFilter === 'pool'
+    ? '线索池暂无可分配/认领线索，只有已入池线索会显示在这里。'
+    : '暂无匹配的企业报备';
 
   const staffOptions = useMemo(
     () => ({
@@ -160,7 +197,7 @@ export default function PromotionRecordsPage() {
   );
 
   const handleClaim = async (recordId: string) => {
-    if (!confirm('确定要从公海池认领这条报备记录吗？认领后您将拥有 30 天保护期。')) return;
+    if (!confirm('确定要认领这条客户线索吗？认领后您将拥有 30 天保护期。')) return;
     try {
       const res = await fetch('/api/promotion-records/pool', {
         method: 'POST',
@@ -177,6 +214,32 @@ export default function PromotionRecordsPage() {
       }
     } catch (err) {
       alert('认领请求失败');
+    }
+  };
+
+  const handleAssignPoolRecord = async () => {
+    if (!assigningPoolRecord || !poolPromoterId) return;
+    try {
+      const res = await fetch('/api/promotion-records/pool', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'assign',
+          recordId: assigningPoolRecord._id,
+          promoterId: poolPromoterId,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('分配成功！');
+        setAssigningPoolRecord(null);
+        setPoolPromoterId('');
+        await fetchData();
+      } else {
+        alert(data.error || '分配失败');
+      }
+    } catch (err) {
+      alert('分配请求失败');
     }
   };
 
@@ -212,7 +275,7 @@ export default function PromotionRecordsPage() {
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h2 className="text-[32px] font-semibold tracking-tight">企业报备管理</h2>
-            <p className="text-sm text-muted-foreground mt-2">统一查看地推报备、协作待办、超时任务和冲突单处理。</p>
+            <p className="text-sm text-muted-foreground mt-2">统一查看地推报备、协作待办、超时任务和线索池分配。</p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -284,9 +347,22 @@ export default function PromotionRecordsPage() {
                     </TableCell>
                     <TableCell className="text-right">
                       {record.poolStatus === 'in_pool' ? (
-                        <Button size="sm" variant="default" className="bg-primary text-white" onClick={() => handleClaim(record._id)}>
-                          认领
-                        </Button>
+                        canAssignPool ? (
+                          <Button size="sm" variant="default" className="bg-primary text-white" onClick={() => {
+                            setAssigningPoolRecord(record);
+                            setPoolPromoterId('');
+                          }}>
+                            分配地推
+                          </Button>
+                        ) : canClaimPool ? (
+                          <Button size="sm" variant="default" className="bg-primary text-white" onClick={() => handleClaim(record._id)}>
+                            认领
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="ghost" onClick={() => openDetail(record)}>
+                            查看
+                          </Button>
+                        )
                       ) : (
                         <Button size="sm" variant="ghost" onClick={() => openDetail(record)}>
                           管理
@@ -298,7 +374,7 @@ export default function PromotionRecordsPage() {
                 {filteredRecords.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                      暂无匹配的企业报备
+                      {emptyMessage}
                     </TableCell>
                   </TableRow>
                 )}
@@ -426,6 +502,47 @@ export default function PromotionRecordsPage() {
                 </div>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={!!assigningPoolRecord} onOpenChange={(open) => {
+          if (!open) {
+            setAssigningPoolRecord(null);
+            setPoolPromoterId('');
+          }
+        }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>分配渠道地推</DialogTitle>
+              <DialogDescription>
+                将 {assigningPoolRecord?.enterpriseName || '该客户'} 从线索池分配给指定地推，分配后会重新进入保护期。
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <select
+                className="h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
+                value={poolPromoterId}
+                onChange={(e) => setPoolPromoterId(e.target.value)}
+              >
+                <option value="">选择渠道地推</option>
+                {staffOptions.salespeople.map((item) => (
+                  <option key={item._id} value={item._id}>
+                    {item.displayName || item.username}
+                  </option>
+                ))}
+              </select>
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" className="rounded-xl" onClick={() => {
+                  setAssigningPoolRecord(null);
+                  setPoolPromoterId('');
+                }}>
+                  取消
+                </Button>
+                <Button className="rounded-xl" onClick={handleAssignPoolRecord} disabled={!poolPromoterId}>
+                  确认分配
+                </Button>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
       </main>
