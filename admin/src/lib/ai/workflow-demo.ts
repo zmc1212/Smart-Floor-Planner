@@ -71,7 +71,7 @@ export const AI_WORKFLOW_DEMO_CASES: AiWorkflowDemoCase[] = [
       id: 'demo-workflow-urban-modern',
       title: '李女士 · 现代首轮签单方案',
       workflowLabel: '首页演示版',
-      sourceImage: '/handdrawn.png',
+      sourceImage: '/demo-workflows/source-rough.png',
       sourceAssetRole: 'rough_sketch',
       currentStageKey: 'lighting',
       createdAt: '2026-05-15T09:00:00.000Z',

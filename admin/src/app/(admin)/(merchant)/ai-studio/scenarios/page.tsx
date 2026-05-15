@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { notify } from '@/components/ui/operation-feedback';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -219,7 +219,7 @@ async function readJsonResponse(res: Response) {
   try {
     return await res.json();
   } catch {
-    return { success: false, error: '鏈嶅姟鍝嶅簲寮傚父' };
+    return { success: false, error: '服务响应异常' };
   }
 }
 
@@ -452,7 +452,7 @@ function DemoWorkflowShowcase({
 
                     <div className="mt-5 grid gap-3 md:grid-cols-3">
                       <div className="rounded-2xl bg-zinc-50 p-4">
-                        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">所需输入</div>
+                        <div className="text-xs font-black uppercase tracking-[0.16em] text-zinc-400">选择户型图</div>
                         <div className="mt-2 text-sm font-medium">{stage.inputHint}</div>
                       </div>
                       <div className="rounded-2xl bg-zinc-50 p-4">
@@ -706,7 +706,7 @@ export default function AiScenariosPage() {
     if (!file) return;
 
     if (file.size > 10 * 1024 * 1024) {
-      notify.error('鍥剧墖澶у皬涓嶈兘瓒呰繃 10MB');
+      notify.error('图片大小不能超过 10MB');
       return;
     }
 
@@ -715,7 +715,7 @@ export default function AiScenariosPage() {
       setSourceImage(compressed);
     } catch (error) {
       console.error(error);
-      notify.error('鍥剧墖璇诲彇澶辫触锛岃閲嶈瘯');
+      notify.error('图片读取失败，请重试');
     }
   };
 
@@ -738,7 +738,7 @@ export default function AiScenariosPage() {
 
       const rooms = getRoomsFromLayoutData(floorPlan.layoutData);
       if (!rooms.length) {
-        notify.error('褰撳墠鎴峰瀷缂哄皯 layoutData锛屾棤娉曠敓鎴愭柟妗堟潵婧愬浘');
+        notify.error('当前户型缺少 layoutData，无法生成方案来源图');
         return;
       }
 
@@ -753,7 +753,7 @@ export default function AiScenariosPage() {
         return;
       }
     } else if (!payloadSourceImage) {
-      notify.error('璇蜂笂浼犱竴寮犲弬鑰冨浘');
+      notify.error('请上传一张参考图');
       return;
     }
 
@@ -773,7 +773,7 @@ export default function AiScenariosPage() {
       const json = await readJsonResponse(res);
 
       if (!res.ok || !json.success) {
-        notify.fromAlert(json.error || '鍒涘缓鏂规浼氳瘽澶辫触');
+        notify.fromAlert(json.error || '创建方案会话失败');
         return;
       }
 
@@ -789,7 +789,7 @@ export default function AiScenariosPage() {
       notify.success('方案会话已创建，并已绑定到当前客户线索');
     } catch (error) {
       console.error(error);
-      notify.error('缃戠粶寮傚父锛岃绋嶅悗閲嶈瘯');
+      notify.error('网络异常，请稍后重试');
     } finally {
       setCreatingWorkflow(false);
     }
@@ -802,12 +802,12 @@ export default function AiScenariosPage() {
     }
 
     if (!canRunStage(preset.workflowStage, preset.sourceAssetRole)) {
-      notify.info('褰撳墠姝ラ缂哄皯鏉ユ簮浜х墿锛岃鍏堝畬鎴愪笂涓€闃舵鎴栧厛璁句负褰撳墠瀹氱');
+      notify.info('当前步骤缺少来源产物，请先完成前一阶段或先设为当前定稿');
       return;
     }
 
     setRunningPresetKey(preset.key);
-    const loadingId = notify.loading(`姝ｅ湪鎵ц ${preset.name}...`);
+    const loadingId = notify.loading(`正在执行 ${preset.name}...`);
 
     try {
       const generateRes = await fetch('/api/ai/generate', {
@@ -851,16 +851,16 @@ export default function AiScenariosPage() {
         if (renderRes.status === 402) {
           setShowRecharge(true);
         }
-        notify.fromAlert(renderJson.error || '鐢熸垚澶辫触');
+        notify.fromAlert(renderJson.error || '生成失败');
         return;
       }
 
       await Promise.all([mutateWorkflowDetail(), mutateWorkflows(), mutateLeads(), mutateQuota()]);
-      notify.success(`${preset.name} 宸插畬鎴愶紝骞跺叧鑱斿埌褰撳墠瀹㈡埛绾跨储`);
+      notify.success(`${preset.name} 已完成，并关联到当前客户线索`);
     } catch (error) {
       console.error(error);
       notify.dismiss(loadingId);
-      notify.error('缃戠粶寮傚父锛岃绋嶅悗閲嶈瘯');
+      notify.error('网络异常，请稍后重试');
     } finally {
       setRunningPresetKey(null);
     }
@@ -882,7 +882,7 @@ export default function AiScenariosPage() {
       const json = await readJsonResponse(res);
 
       if (!res.ok || !json.success) {
-        notify.fromAlert(json.error || '璁句负褰撳墠瀹氱澶辫触');
+        notify.fromAlert(json.error || '设为当前定稿失败');
         return;
       }
 
@@ -890,7 +890,7 @@ export default function AiScenariosPage() {
       notify.success('已设为当前定稿，可继续进入下一步');
     } catch (error) {
       console.error(error);
-      notify.error('缃戠粶寮傚父锛岃绋嶅悗閲嶈瘯');
+      notify.error('网络异常，请稍后重试');
     }
   };
 
@@ -909,14 +909,14 @@ export default function AiScenariosPage() {
       const json = await readJsonResponse(res);
 
       if (!res.ok || !json.success) {
-        notify.fromAlert(json.error || '鍒囨崲姝ラ澶辫触');
+        notify.fromAlert(json.error || '切换步骤失败');
         return;
       }
 
       await Promise.all([mutateWorkflowDetail(), mutateWorkflows()]);
     } catch (error) {
       console.error(error);
-      notify.error('缃戠粶寮傚父锛岃绋嶅悗閲嶈瘯');
+      notify.error('网络异常，请稍后重试');
     }
   };
 
@@ -929,10 +929,10 @@ export default function AiScenariosPage() {
 
     try {
       await navigator.clipboard.writeText(prompt);
-      notify.success('鎻愮ず璇嶅凡澶嶅埗鍒板壀璐存澘');
+      notify.success('提示词已复制到剪贴板');
     } catch (error) {
       console.error(error);
-      notify.error('澶嶅埗澶辫触锛岃閲嶈瘯');
+      notify.error('复制失败，请重试');
     }
   };
 
@@ -947,7 +947,8 @@ export default function AiScenariosPage() {
             <div>
               <h1 className="text-[30px] font-black tracking-tight">AI 家装签单工作流</h1>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                鍏堥€変竴鏉″垎閰嶇粰璁捐甯堢殑瀹㈡埛绾跨储锛屽啀鎸夆€滈€夐鏍?鈫?鍑哄熀鍑嗘柟妗?鈫?娣卞寲杞 鈫?鐢熸垚鎻愭 鈫?澧炲己绛惧崟鈥濋『搴忔帹杩涖€?              </p>
+                先选一条分配给设计师的客户线索，再按“选风格 → 出基准方案 → 深化软装 → 生成提案 → 增强签单”顺序推进。
+              </p>
             </div>
           </div>
           <div className="lg:max-w-xl lg:flex-1">
@@ -987,9 +988,9 @@ export default function AiScenariosPage() {
                         {isActive ? (
                           <Badge className="rounded-full border-none bg-white/15 text-white">演示中</Badge>
                         ) : (
-                          <Badge variant="outline" className="rounded-full">
-                            棰勮妗堜緥
-                          </Badge>
+                                  <Badge variant="outline" className="rounded-full bg-zinc-100 font-bold">
+                                    主方案
+                                  </Badge>
                         )}
                       </div>
                       <div className={cn('text-sm font-medium', isActive ? 'text-zinc-200' : 'text-zinc-700')}>
@@ -1021,12 +1022,12 @@ export default function AiScenariosPage() {
         <div className="mb-6 rounded-[28px] border border-zinc-200 bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <div className="text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">褰撳墠瀹㈡埛绾跨储</div>
+              <div className="text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">当前客户线索</div>
               <div className="mt-2 flex flex-wrap gap-3">
                 {leadsLoading ? (
                   <div className="text-sm text-muted-foreground">
                     <Loader2 className="mr-2 inline animate-spin" size={14} />
-                    姝ｅ湪绾跨储涓悓姝ュ彲鍙戣捣鏂规鐨勫鎴?..
+                    正在线索中同步可发起方案的客户...
                   </div>
                 ) : leads.length === 0 ? (
                   <div className="text-sm text-muted-foreground">暂无可用线索，需要先给当前设计师分配客户线索。</div>
@@ -1043,7 +1044,7 @@ export default function AiScenariosPage() {
                           : 'border-zinc-200 bg-zinc-50 text-zinc-700 hover:border-zinc-300 hover:bg-white'
                       )}
                     >
-                      <div className="text-sm font-bold">{lead.name}</div>
+                      <div className="text-sm font-bold">查看最近产物</div>
                       <div className={cn('mt-1 text-xs', selectedLeadId === lead.id ? 'text-zinc-300' : 'text-muted-foreground')}>
                         {lead.communityName || lead.phone} · {lead.workflowCount} 个方案会话</div>
                     </button>
@@ -1054,11 +1055,11 @@ export default function AiScenariosPage() {
 
             <div className="flex flex-wrap gap-3">
               <Button variant="outline" className="rounded-2xl" onClick={() => router.push('/leads')}>
-                杩斿洖绾跨储鍒楄〃
+                返回线索列表
               </Button>
               {selectedLeadId ? (
                 <Button variant="ghost" className="rounded-2xl" onClick={() => handleLeadChange(null)}>
-                  鍙栨秷褰撳墠绾跨储
+                  取消当前线索
                 </Button>
               ) : null}
             </div>
@@ -1071,9 +1072,10 @@ export default function AiScenariosPage() {
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
                 <Wand2 size={24} />
               </div>
-              <h2 className="text-2xl font-black">鍏堥€夋嫨涓€鏉″鎴风嚎绱紝鍐嶅紑濮嬭璁″伐浣滄祦</h2>
+              <h2 className="text-2xl font-black">先选择一条客户线索，再开始设计工作流</h2>
               <p className="text-sm leading-6 text-muted-foreground">
-                宸ヤ綔娴佷笉鍐嶆敮鎸佸尶鍚嶄細璇濄€傛墍鏈夋柟妗堛€佹椂闂寸嚎鍜岀敓鎴愯褰曢兘浼氱粦瀹氬埌褰撳墠璁捐甯堢殑瀹㈡埛绾跨储涓娿€?              </p>
+                工作流不再支持匿名会话。所有方案、时间线和生成记录都会绑定到当前设计师的客户线索上。
+              </p>
             </div>
           </div>
         ) : (
@@ -1100,11 +1102,11 @@ export default function AiScenariosPage() {
                     <div className="mt-2 font-bold">{selectedLead.status}</div>
                   </div>
                   <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">椋庢牸鍋忓ソ</div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">风格偏好</div>
                     <div className="mt-2 font-bold">{selectedLead.stylePreference || '待沟通'}</div>
                   </div>
                   <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">鎴峰瀷绱犳潗</div>
+                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">户型素材</div>
                     <div className="mt-2 font-bold">{selectedLead.floorPlans.length} 份</div>
                   </div>
                 </div>
@@ -1113,14 +1115,14 @@ export default function AiScenariosPage() {
               <div className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm">
                 <div className="border-b border-zinc-100 px-6 py-4">
                   <div className="flex items-center gap-2 text-sm font-bold">
-                    <FolderPlus size={16} className="text-muted-foreground" /> 鏂板缓鏂规浼氳瘽
+                    <FolderPlus size={16} className="text-muted-foreground" /> 新建方案会话
                   </div>
                 </div>
 
                 <div className="space-y-4 p-6">
                   <div>
                     <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">
-                      浼氳瘽鏍囩
+                      会话标签
                     </label>
                     <input
                       value={workflowLabel}
@@ -1132,7 +1134,7 @@ export default function AiScenariosPage() {
 
                   <div>
                     <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">
-                      鏉ユ簮鏂瑰紡
+                      来源方式
                     </label>
                     <div className="grid gap-2">
                       <button
@@ -1148,9 +1150,10 @@ export default function AiScenariosPage() {
                             : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300'
                         )}
                       >
-                        <div className="text-sm font-bold">浣跨敤褰撳墠绾跨储鐨勬埛鍨嬪浘</div>
+                        <div className="text-sm font-bold">使用当前线索的户型图</div>
                         <div className={cn('mt-1 text-xs', sourceMode === 'floor_plan' ? 'text-zinc-300' : 'text-muted-foreground')}>
-                          浼樺厛浠?Lead.floorPlanIds 缁х画璁捐锛岃嚜鍔ㄧ敓鎴愬伐浣滄祦鏉ユ簮鍥俱€?                        </div>
+                          优先从 Lead.floorPlanIds 继续设计，自动生成工作流来源图。
+                        </div>
                       </button>
                       <button
                         type="button"
@@ -1165,9 +1168,10 @@ export default function AiScenariosPage() {
                             : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300'
                         )}
                       >
-                        <div className="text-sm font-bold">涓婁紶绾跨储鍙傝€冨浘</div>
+                        <div className="text-sm font-bold">上传线索参考图</div>
                         <div className={cn('mt-1 text-xs', sourceMode === 'upload' ? 'text-zinc-300' : 'text-muted-foreground')}>
-                          褰撶嚎绱㈡病鏈夊彲鐢ㄦ埛鍨嬪浘鏃讹紝琛ヤ竴寮犲弬鑰冨浘缁х画鍙戣捣鏂规銆?                        </div>
+                          当线索没有可用户型图时，补一张参考图继续发起方案。
+                        </div>
                       </button>
                     </div>
                   </div>
@@ -1175,11 +1179,13 @@ export default function AiScenariosPage() {
                   {sourceMode === 'floor_plan' ? (
                     <div>
                       <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">
-                        閫夋嫨鎴峰瀷鍥?                      </label>
+                        选择户型图
+                      </label>
                       <div className="grid gap-2">
                         {selectedLead.floorPlans.length === 0 ? (
                           <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-4 text-sm text-muted-foreground">
-                            褰撳墠绾跨储鏆傛棤鎴峰瀷鍥撅紝璇峰垏鎹负涓婁紶鍙傝€冨浘鍚庡啀鍒涘缓鏂规銆?                          </div>
+                            当前线索暂无户型图，请切换为上传参考图后再创建方案。
+                          </div>
                         ) : (
                           selectedLead.floorPlans.map((plan) => (
                             <button
@@ -1193,9 +1199,9 @@ export default function AiScenariosPage() {
                                   : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300'
                               )}
                             >
-                              <div className="text-sm font-bold">{plan.name || '鏈懡鍚嶆埛鍨嬪浘'}</div>
+                              <div className="text-sm font-bold">{plan.name || '未命名户型图'}</div>
                               <div className={cn('mt-1 text-xs', sourceFloorPlanId === plan.id ? 'text-zinc-300' : 'text-muted-foreground')}>
-                                {plan.createdAt ? formatTime(plan.createdAt) : '宸插叧鑱斿埌褰撳墠瀹㈡埛绾跨储'}
+                                {plan.createdAt ? formatTime(plan.createdAt) : '已关联到当前客户线索'}
                               </div>
                             </button>
                           ))
@@ -1206,7 +1212,7 @@ export default function AiScenariosPage() {
                     <>
                       <div>
                         <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">
-                          鏉ユ簮绫诲瀷
+                          来源类型
                         </label>
                         <div className="grid gap-2">
                           {SOURCE_ROLE_OPTIONS.filter((item) => item.value !== 'floor_plan').map((option) => (
@@ -1232,7 +1238,7 @@ export default function AiScenariosPage() {
 
                       <div>
                         <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">
-                          涓婁紶鍙傝€冨浘
+                          上传参考图
                         </label>
                         <input
                           ref={fileInputRef}
@@ -1255,16 +1261,17 @@ export default function AiScenariosPage() {
                             <div className="w-full space-y-3">
                               <img
                                 src={sourceImage}
-                                alt="绾跨储鍙傝€冨浘"
+                                alt="线索参考图"
                                 className="h-44 w-full rounded-2xl object-cover"
                               />
                               <div className="text-xs text-muted-foreground">
-                                杩欏紶鍥句細浣滀负褰撳墠瀹㈡埛绾跨储涓嬫柟妗堜細璇濈殑鏉ユ簮绱犳潗銆?                              </div>
+                                这张图会作为当前客户线索下方案会话的来源素材。
+                              </div>
                             </div>
                           ) : (
                             <div className="space-y-2 text-center text-sm text-muted-foreground">
                               <ImageIcon className="mx-auto" size={20} />
-                              <div>鐐瑰嚮涓婁紶涓€寮犲弬鑰冨浘</div>
+                              <div>点击上传一张参考图</div>
                             </div>
                           )}
                         </button>
@@ -1278,7 +1285,7 @@ export default function AiScenariosPage() {
                     className="w-full rounded-2xl bg-zinc-950 text-white hover:bg-zinc-800"
                   >
                     {creatingWorkflow ? <Loader2 className="mr-2 animate-spin" size={16} /> : null}
-                    鍒涘缓骞剁粦瀹氬埌褰撳墠绾跨储
+                    创建并绑定到当前线索
                   </Button>
                 </div>
               </div>
@@ -1286,17 +1293,19 @@ export default function AiScenariosPage() {
               <div className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm">
                 <div className="border-b border-zinc-100 px-6 py-4">
                   <div className="flex items-center gap-2 text-sm font-bold">
-                    <Layers3 size={16} className="text-muted-foreground" /> 璇ョ嚎绱笅鐨勬柟妗堜細璇?                  </div>
+                    <Layers3 size={16} className="text-muted-foreground" /> 该线索下的方案会话
+                  </div>
                 </div>
                 <div className="space-y-3 p-4">
                   {workflowsLoading ? (
                     <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/70 p-6 text-sm text-muted-foreground">
                       <Loader2 className="mr-2 inline animate-spin" size={14} />
-                      姝ｅ湪鍔犺浇璇ョ嚎绱笅鐨勬柟妗堜細璇?..
+                      正在加载该线索下的方案会话...
                     </div>
                   ) : workflows.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/70 p-6 text-sm text-muted-foreground">
-                      杩欐潯绾跨储杩樻病鏈夋柟妗堜細璇濄€傚厛鐢ㄥ乏渚у崱鐗囧垱寤虹涓€涓柟妗堛€?                    </div>
+                      这条线索还没有方案会话。先用左侧卡片创建第一个方案。
+                    </div>
                   ) : (
                     workflows.map((workflow) => (
                       <button
@@ -1316,7 +1325,8 @@ export default function AiScenariosPage() {
                               <div className="text-sm font-black">{workflow.title}</div>
                               {workflow.isPrimary ? (
                                 <Badge className="rounded-full border-none bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                                  涓绘柟妗?                                </Badge>
+                                  主方案
+                                </Badge>
                               ) : null}
                             </div>
                             <div className={cn('mt-1 text-xs', selectedWorkflowId === workflow.id ? 'text-zinc-300' : 'text-muted-foreground')}>
@@ -1341,7 +1351,8 @@ export default function AiScenariosPage() {
                     </div>
                     <h2 className="text-2xl font-black">先进入一个方案会话</h2>
                     <p className="text-sm leading-6 text-muted-foreground">
-                      閫変腑宸︿晶鏌愪釜鏂规浼氳瘽鍚庯紝绯荤粺浼氳嚜鍔ㄦ壙鎺ヨ繖鏉″鎴风嚎绱笅鐨勬潵婧愬浘銆佸畾绋垮浘鍜屾椂闂寸嚎銆?                    </p>
+                      选中左侧某个方案会话后，系统会自动承接这条客户线索下的来源图、定稿图和时间线。
+                    </p>
                   </div>
                 </div>
               ) : (
@@ -1355,12 +1366,8 @@ export default function AiScenariosPage() {
                             绑定线索：{selectedLead.name} · 推荐推进到 {selectedWorkflow.currentStageLabel || '下一步'}
                           </p>
                         </div>
-                        <Button
-                          variant="outline"
-                          className="rounded-2xl border-white/20 bg-transparent text-white hover:bg-white/10"
-                          onClick={() => router.push(`/ai-studio/scenarios/${selectedWorkflow.id}`)}
-                        >
-                          鏌ョ湅璇︽儏
+                        <Button variant="outline" className="rounded-2xl" onClick={() => router.push(`/ai-studio/scenarios/${selectedWorkflow.id}`)}>
+                          查看详情
                         </Button>
                       </div>
                     </div>
@@ -1370,38 +1377,37 @@ export default function AiScenariosPage() {
                         <div className="overflow-hidden rounded-[28px] border border-zinc-200 bg-zinc-50">
                           <div className="border-b border-zinc-100 px-6 py-4">
                             <div className="flex items-center gap-2 text-sm font-bold">
-                              <ImageIcon size={16} className="text-muted-foreground" /> 鏉ユ簮绱犳潗
+                              <ImageIcon size={16} className="text-muted-foreground" /> 来源素材
                             </div>
                           </div>
                           <div className="grid gap-4 p-6 lg:grid-cols-[280px_minmax(0,1fr)]">
                             {selectedWorkflow.sourceImage ? (
                               <img
                                 src={selectedWorkflow.sourceImage}
-                                alt="鏂规鏉ユ簮绱犳潗"
+                                alt="方案来源素材"
                                 className="h-48 w-full rounded-[24px] object-cover shadow-sm"
                               />
                             ) : (
                               <div className="flex h-48 items-center justify-center rounded-[24px] border border-dashed border-zinc-200 bg-white text-sm text-muted-foreground">
-                                褰撳墠浼氳瘽鏉ユ簮浜庣嚎绱㈡埛鍨嬪浘
+                                当前会话来源于线索户型图
                               </div>
                             )}
                             <div className="space-y-3">
                               <div>
                                 <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                                  鏉ユ簮瑙掕壊
+                                  来源角色
                                 </div>
                                 <div className="mt-2 text-sm font-medium">{selectedWorkflow.sourceAssetRole}</div>
                               </div>
                               <div>
                                 <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                                  缁戝畾鏂瑰紡
+                                  绑定方式
                                 </div>
-                                <div className="mt-2 text-sm font-medium">
-                                  {selectedWorkflow.sourceFloorPlanId ? '鏉ヨ嚜褰撳墠瀹㈡埛绾跨储鐨勬埛鍨嬪浘' : '鏉ヨ嚜璁捐甯堜笂浼犵殑鍘熷鍙傝€冨浘'}
-                                </div>
+                                <div className="mt-2 font-bold">{selectedWorkflow.sourceFloorPlanId ? '来自当前客户线索的户型图' : '来自设计师上传的原始参考图'}</div>
                               </div>
                               <div className="text-sm leading-6 text-muted-foreground">
-                                杩欏紶鍥炬槸鏁翠釜鏂规浼氳瘽鐨勮捣鐐圭礌鏉愩€傚悗缁瘡涓€姝ラ兘鍥寸粫瀹冨拰涓婁竴杞畾绋跨户缁敓鎴愶紝閬垮厤鍗佷釜鍦烘櫙褰兼鍓茶銆?                              </div>
+                                这张图是整个方案会话的起点素材。后续每一步都围绕它和上一轮定稿继续生成，避免十个场景彼此割裂。
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -1441,7 +1447,8 @@ export default function AiScenariosPage() {
                                       <h4 className="text-lg font-black">{stage.name}</h4>
                                       {isCurrentStage ? (
                                         <Badge className="rounded-full border-none bg-zinc-950 px-2.5 py-1 text-[11px] font-bold text-white">
-                                          鎺ㄨ崘涓嬩竴姝?                                        </Badge>
+                                          推荐下一步
+                                        </Badge>
                                       ) : null}
                                     </div>
                                     <p className="text-sm text-muted-foreground">{stage.description}</p>
@@ -1451,26 +1458,25 @@ export default function AiScenariosPage() {
                                 <div className="mt-5 grid gap-3 md:grid-cols-3">
                                   <div className="rounded-2xl bg-zinc-50 p-4">
                                     <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                                      鎵€闇€杈撳叆
+                                      所需输入
                                     </div>
                                     <div className="mt-2 text-sm font-medium">{stage.inputHint}</div>
                                   </div>
                                   <div className="rounded-2xl bg-zinc-50 p-4">
                                     <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                                      褰撳墠浜х墿
+                                      当前产物
                                     </div>
-                                    <div className="mt-2 text-sm font-medium">
-                                      {latestGeneration?.status === 'succeeded' ? stage.outputHint : '灏氭湭鐢熸垚'}
-                                    </div>
+                                    <div className="mt-2 text-xs font-bold">{latestGeneration?.status === 'succeeded' ? stage.outputHint : '尚未生成'}</div>
                                   </div>
                                   <div className="rounded-2xl bg-zinc-50 p-4">
                                     <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                                      鎺ㄨ崘涓嬩竴姝?                                    </div>
-                                    <div className="mt-2 text-sm font-medium">
-                                      {stage.nextRecommendedStage
-                                        ? getWorkflowStageDefinition(stage.nextRecommendedStage)?.name
-                                        : '娴佺▼缁撴潫'}
+                                      推荐下一步
                                     </div>
+                                    <div className="mt-2 text-xs font-bold">
+                                    {stage.nextRecommendedStage
+                                        ? getWorkflowStageDefinition(stage.nextRecommendedStage)?.name
+                                        : '流程结束'}
+                                  </div>
                                   </div>
                                 </div>
 
@@ -1485,7 +1491,7 @@ export default function AiScenariosPage() {
                                     ) : (
                                       <Sparkles className="mr-2" size={16} />
                                     )}
-                                    {latestGeneration?.status === 'succeeded' ? `閲嶆柊${stage.actionLabel}` : stage.actionLabel}
+                                    {latestGeneration?.status === 'succeeded' ? `重新${stage.actionLabel}` : stage.actionLabel}
                                   </Button>
 
                                   {latestGeneration?.status === 'succeeded' ? (
@@ -1496,23 +1502,28 @@ export default function AiScenariosPage() {
                                         onClick={() => latestGeneration.output?.imageUrl && window.open(latestGeneration.output.imageUrl, '_blank')}
                                       >
                                         <ExternalLink size={14} className="mr-2" />
-                                        鏌ョ湅浜х墿
+                                        查看产物
                                       </Button>
                                       <Button
                                         variant="outline"
                                         className="rounded-2xl"
                                         onClick={() => handleCopyPrompt(latestGeneration)}
                                       >
-                                        <Copy size={14} className="mr-2" />
-                                        澶嶅埗鎻愮ず璇?                                      </Button>
+                                        <div className="flex items-center gap-2">
+                                          <Copy size={12} />
+                                          复制提示词
+                                        </div>
+                                      </Button>
                                       {(stage.key === 'base_render' || stage.key === 'soft_furnishing') && (
                                         <Button
                                           variant="outline"
                                           className="rounded-2xl"
                                           onClick={() => handleSelectBaseline(latestGeneration)}
                                         >
-                                          <CheckCircle2 size={14} className="mr-2" />
-                                          璁句负褰撳墠瀹氱
+                                          <div className="flex items-center gap-2">
+                                            <CheckCircle size={12} />
+                                            设为当前定稿
+                                          </div>
                                         </Button>
                                       )}
                                     </>
@@ -1523,7 +1534,7 @@ export default function AiScenariosPage() {
                               <div className="border-t border-zinc-100 bg-zinc-50 p-6 lg:border-l lg:border-t-0">
                                 {workflowDetailLoading && selectedWorkflowId === selectedWorkflow.id ? (
                                   <div className="flex h-full min-h-[220px] items-center justify-center text-sm text-muted-foreground">
-                                    <Loader2 className="mr-2 animate-spin" size={16} /> 姝ｅ湪鍚屾姝ラ缁撴灉...
+                                    <Loader2 className="mr-2 animate-spin" size={16} /> 正在同步步骤结果...
                                   </div>
                                 ) : latestGeneration?.output?.imageUrl ? (
                                   <div className="space-y-3">
@@ -1533,7 +1544,7 @@ export default function AiScenariosPage() {
                                       className="h-56 w-full rounded-[24px] object-cover shadow-sm"
                                     />
                                     <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                      <span>{latestGeneration.isSelectedBaseline ? '当前定稿' : '最近产物'}</span>
+                                      <span>{latestGeneration.isSelectedBaseline ? '当前定稿' : '演示产物'}</span>
                                       <span>{formatTime(latestGeneration.createdAt)}</span>
                                     </div>
                                   </div>
@@ -1542,7 +1553,8 @@ export default function AiScenariosPage() {
                                     <Layers3 size={20} className="mb-3 text-zinc-400" />
                                     <p>这个步骤还没有产物。</p>
                                     <p className="mt-1 max-w-[220px] text-xs leading-5">
-                                      鐢熸垚鍚庝細鑷姩娌夋穩鍒板綋鍓嶇嚎绱㈠拰鏂规浼氳瘽閲岋紝鍙充晶鏃堕棿绾夸篃浼氬悓姝ヨ褰曘€?                                    </p>
+                                      生成后会自动沉淀到当前线索和方案会话里，右侧时间线也会同步记录。
+                                    </p>
                                   </div>
                                 )}
                               </div>
@@ -1559,7 +1571,7 @@ export default function AiScenariosPage() {
                         <Sparkles size={18} />
                       </div>
                       <div>
-                        <h3 className="text-lg font-black">楂樼骇宸ュ叿</h3>
+                        <h3 className="text-lg font-black">高级工具</h3>
                         <p className="text-sm text-muted-foreground">不占主流程位置，但仍然承接当前线索与定稿方案。</p>
                       </div>
                     </div>
@@ -1578,9 +1590,12 @@ export default function AiScenariosPage() {
                                 <p className="mt-2 text-sm leading-6 text-muted-foreground">{tool.description}</p>
                               </div>
                               <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.14em]">
-                                楂樼骇
+                                高级
                               </Badge>
                             </div>
+                            <div className="py-8 text-center text-sm text-muted-foreground">
+                        当前会话还没有产物。先从“选风格”或“出基准方案”开始。
+                      </div>
                             <div className="mt-4 text-xs text-muted-foreground">输入：{tool.inputHint}</div>
                             <div className="mt-4 flex flex-wrap gap-3">
                               <Button
@@ -1603,7 +1618,8 @@ export default function AiScenariosPage() {
                                   onClick={() => window.open(latestGeneration.output?.imageUrl, '_blank')}
                                 >
                                   <ExternalLink size={14} className="mr-2" />
-                                  鏌ョ湅鏈€杩戜骇鐗?                                </Button>
+                                  查看最近产物
+                                </Button>
                               ) : null}
                             </div>
                           </div>
@@ -1619,20 +1635,23 @@ export default function AiScenariosPage() {
               <div className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm">
                 <div className="border-b border-zinc-100 px-6 py-4">
                   <div className="flex items-center gap-2 text-sm font-bold">
-                    <Clock size={16} className="text-muted-foreground" /> 浼氳瘽鏃堕棿绾?                  </div>
+                    <Clock size={16} className="text-muted-foreground" /> 会话时间线
+                  </div>
                 </div>
 
                 <div className="max-h-[1320px] space-y-4 overflow-y-auto p-4">
                   {!selectedWorkflow ? (
                     <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/70 p-6 text-sm text-muted-foreground">
-                      閫変腑涓€涓柟妗堜細璇濆悗锛岃繖閲屼細鎸夋椂闂撮『搴忓睍绀烘瘡涓€姝ヤ骇鐗┿€佺姸鎬佸拰鎺ㄨ崘涓嬩竴姝ャ€?                    </div>
+                      选中一个方案会话后，这里会按时间顺序展示每一步产物、状态和推荐下一步。
+                    </div>
                   ) : workflowDetailLoading ? (
                     <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
-                      <Loader2 className="mr-2 animate-spin" size={16} /> 姝ｅ湪鍔犺浇鏃堕棿绾?..
+                      <Loader2 className="mr-2 animate-spin" size={16} /> 正在加载时间线...
                     </div>
                   ) : generations.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/70 p-6 text-sm text-muted-foreground">
-                      褰撳墠浼氳瘽杩樻病鏈変骇鐗┿€傚厛浠庘€滈€夐鏍尖€濇垨鈥滃嚭鍩哄噯鏂规鈥濆紑濮嬨€?                    </div>
+                      当前会话还没有产物。先从“选风格”或“出基准方案”开始。
+                    </div>
                   ) : (
                     <>
                       {selectedWorkflow.sourceImage ? (
@@ -1640,9 +1659,9 @@ export default function AiScenariosPage() {
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <div className="flex flex-wrap items-center gap-2">
-                                <div className="text-sm font-black">璧风偣绱犳潗</div>
+                                <div className="text-sm font-bold">起点素材</div>
                                 <Badge className="rounded-full border-none bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">
-                                  姣涘澂鍥?/ 鍙傝€冨浘
+                                  毛坯图 / 参考图
                                 </Badge>
                               </div>
                               <div className="mt-2 text-xs text-muted-foreground">{formatTime(selectedWorkflow.createdAt)}</div>
@@ -1650,11 +1669,12 @@ export default function AiScenariosPage() {
                           </div>
                           <img
                             src={selectedWorkflow.sourceImage}
-                            alt="璧风偣绱犳潗"
+                                alt="起点素材"
                             className="mt-4 h-48 w-full rounded-[20px] object-cover"
                           />
                           <div className="mt-4 text-xs leading-5 text-muted-foreground">
-                            褰撳墠鏂规浼氳瘽浠庤繖寮犳潵婧愬浘寮€濮嬶紝鍚庣画鎵€鏈夋楠ら兘浼氭壙鎺ヨ繖鏉＄嚎绱笅鐨勫悓涓€绌洪棿缁撴瀯銆?                          </div>
+                            当前方案会话从这张来源图开始，后续所有步骤都会承接这条线索下的同一空间结构。
+                          </div>
                         </div>
                       ) : null}
                       {generations.map((generation) => (
@@ -1667,12 +1687,12 @@ export default function AiScenariosPage() {
                               </div>
                               {generation.isSelectedBaseline ? (
                                 <Badge className="rounded-full border-none bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
-                                  褰撳墠瀹氱
+                                  当前定稿
                                 </Badge>
                               ) : null}
                               {generation.status === 'failed' ? (
                                 <Badge className="rounded-full border-none bg-red-100 px-2.5 py-1 text-[11px] font-bold text-red-700">
-                                  澶辫触
+                                  失败
                                 </Badge>
                               ) : generation.status === 'succeeded' ? (
                                 <Badge className="rounded-full border-none bg-zinc-100 px-2.5 py-1 text-[11px] font-bold text-zinc-700">
@@ -1716,7 +1736,8 @@ export default function AiScenariosPage() {
                               onClick={() => handleCopyPrompt(generation)}
                             >
                               <Copy size={14} className="mr-2" />
-                              澶嶅埗鎻愮ず璇?                            </Button>
+                              复制提示词
+                            </Button>
                           ) : null}
                           {(generation.stageKey === 'base_render' || generation.stageKey === 'soft_furnishing') &&
                           generation.status === 'succeeded' ? (
@@ -1726,7 +1747,7 @@ export default function AiScenariosPage() {
                               onClick={() => handleSelectBaseline(generation)}
                             >
                               <CheckCircle2 size={14} className="mr-2" />
-                              璁句负褰撳墠瀹氱
+                              设为当前定稿
                             </Button>
                           ) : null}
 
@@ -1736,7 +1757,7 @@ export default function AiScenariosPage() {
                               className="rounded-2xl text-sm"
                               onClick={() => handleSetStage(generation.nextRecommendedStage)}
                             >
-                              鎺ㄨ崘杩涘叆 {getWorkflowStageDefinition(generation.nextRecommendedStage)?.name}
+                              推荐进入 {getWorkflowStageDefinition(generation.nextRecommendedStage)?.name}
                               <ArrowRight size={14} className="ml-2" />
                             </Button>
                           ) : null}
