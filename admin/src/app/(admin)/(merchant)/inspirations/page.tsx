@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 import React, { useState, useEffect } from 'react';
 import { Loader2, Plus, Trash2, Star, Eye, Search, Image as ImageIcon, Sparkles } from "lucide-react";
 import { 
@@ -72,7 +74,7 @@ export default function InspirationsPage() {
     if (!file) return;
 
     if (file.size > 500 * 1024) {
-      alert('图片体积超过 500KB 限制，请先压缩图片后再上传。');
+      notify.fromAlert('图片体积超过 500KB 限制，请先压缩图片后再上传。');
       e.target.value = '';
       return;
     }
@@ -82,14 +84,14 @@ export default function InspirationsPage() {
       setFormData({ ...formData, [field]: base64 });
     } catch (err) {
       console.error('File conversion error:', err);
-      alert('图片读取失败');
+      notify.fromAlert('图片读取失败');
     }
   };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.coverImage) {
-      alert('请上传案例封面图');
+      notify.fromAlert('请上传案例封面图');
       return;
     }
 
@@ -112,9 +114,13 @@ export default function InspirationsPage() {
           isRecommended: false
         });
         fetchItems();
+        notify.success('设计案例已发布');
+      } else {
+        notify.fromAlert(data.error || '发布失败');
       }
     } catch (err) {
       console.error('Failed to create inspiration:', err);
+      notify.error('发布失败');
     }
   };
 
@@ -123,9 +129,15 @@ export default function InspirationsPage() {
     try {
       const res = await fetch(`/api/inspirations?id=${id}`, { method: 'DELETE' });
       const data = await res.json();
-      if (data.success) fetchItems();
+      if (data.success) {
+        fetchItems();
+        notify.success('设计案例已删除');
+      } else {
+        notify.fromAlert(data.error || '删除失败');
+      }
     } catch (err) {
       console.error('Delete failed:', err);
+      notify.error('删除失败');
     }
   };
 

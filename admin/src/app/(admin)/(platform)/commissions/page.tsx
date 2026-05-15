@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 import { useEffect, useState } from 'react';
 import { Loader2, CheckCircle2, AlertCircle, Banknote, Filter } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -41,12 +43,13 @@ export default function CommissionsPage() {
       });
       const data = await res.json();
       if (data.success) {
+        notify.success('提成已标记为已发放');
         fetchData();
       } else {
-        alert(data.error || '操作失败');
+        notify.fromAlert(data.error || '操作失败');
       }
     } catch (error) {
-      alert('网络错误');
+      notify.fromAlert('网络错误');
     }
   };
 

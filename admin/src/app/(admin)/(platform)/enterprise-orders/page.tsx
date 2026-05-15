@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 import { useEffect, useState } from 'react';
 import { Loader2, Plus, CheckCircle2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -68,9 +70,10 @@ export default function EnterpriseOrdersPage() {
     if (data.success) {
       setOpen(false);
       setForm({ recordId: '', packageId: '', packageName: '', amount: '', status: 'draft', remark: '' });
+      notify.success('订单创建成功');
       fetchData();
     } else {
-      alert(data.error || '创建失败');
+      notify.fromAlert(data.error || '创建失败');
     }
   };
 
@@ -82,9 +85,10 @@ export default function EnterpriseOrdersPage() {
     });
     const data = await res.json();
     if (data.success) {
+      notify.success('订单状态已更新');
       fetchData();
     } else {
-      alert(data.error || '更新失败');
+      notify.fromAlert(data.error || '更新失败');
     }
   };
 
@@ -102,13 +106,13 @@ export default function EnterpriseOrdersPage() {
       });
       const data = await res.json();
       if (data.success) {
-        alert(`开通成功！\n企业：${data.data.enterpriseName}\n管理员账号：${data.data.adminUsername}\n初始密码：${data.data.tempPassword}\n请通知客户尽快登录并修改密码。`);
+        notify.fromAlert(`开通成功！\n企业：${data.data.enterpriseName}\n管理员账号：${data.data.adminUsername}\n初始密码：${data.data.tempPassword}\n请通知客户尽快登录并修改密码。`);
         fetchData();
       } else {
-        alert(data.error || '开通失败');
+        notify.fromAlert(data.error || '开通失败');
       }
     } catch (error) {
-      alert('网络请求失败');
+      notify.fromAlert('网络请求失败');
     }
   };
 

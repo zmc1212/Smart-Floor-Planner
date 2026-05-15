@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 import { useMemo, useState, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -145,7 +147,7 @@ export default function EnterpriseAiManager({ enterprise, onRefresh }: Enterpris
 
   const createOrRotateKey = async (rotate = false) => {
     if (parsedModels.length === 0) {
-      alert('请至少选择一个允许使用的模型');
+      notify.fromAlert('请至少选择一个允许使用的模型');
       return;
     }
     
@@ -162,14 +164,14 @@ export default function EnterpriseAiManager({ enterprise, onRefresh }: Enterpris
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        alert(data.error || '创建企业 AI Key 失败');
+        notify.fromAlert(data.error || '创建企业 AI Key 失败');
         return;
       }
 
       setLatestSecret(data.data?.secret || '');
       setLatestKeyRef(data.data?.keyInfo?.keyId || '');
       setLatestKeyName(data.data?.keyInfo?.keyName || '');
-      alert(rotate ? '企业 AI Key 已轮换并同步完成' : '企业 AI Key 已创建并同步完成');
+      notify.fromAlert(rotate ? '企业 AI Key 已轮换并同步完成' : '企业 AI Key 已创建并同步完成');
     });
   };
 
@@ -184,14 +186,14 @@ export default function EnterpriseAiManager({ enterprise, onRefresh }: Enterpris
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        alert(data.error || '撤销企业 AI Key 失败');
+        notify.fromAlert(data.error || '撤销企业 AI Key 失败');
         return;
       }
 
       setLatestKeyRef('');
       setLatestKeyName('');
       setLatestSecret('');
-      alert('企业 AI Key 已撤销');
+      notify.fromAlert('企业 AI Key 已撤销');
     });
   };
 
@@ -208,10 +210,10 @@ export default function EnterpriseAiManager({ enterprise, onRefresh }: Enterpris
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        alert(data.error || '保存配置失败');
+        notify.fromAlert(data.error || '保存配置失败');
         return;
       }
-      alert('企业 AI 配置已保存');
+      notify.fromAlert('企业 AI 配置已保存');
     });
   };
 
@@ -222,10 +224,10 @@ export default function EnterpriseAiManager({ enterprise, onRefresh }: Enterpris
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        alert(data.error || '同步企业 AI 用量失败');
+        notify.fromAlert(data.error || '同步企业 AI 用量失败');
         return;
       }
-      alert('企业 AI 余额和每日用量已同步');
+      notify.fromAlert('企业 AI 余额和每日用量已同步');
     });
   };
 

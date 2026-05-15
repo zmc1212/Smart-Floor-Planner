@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 import React, { useEffect, useRef, useState } from 'react';
 import { Image as ImageIcon, Loader2, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -73,7 +75,7 @@ export default function EnterpriseEditorDialog({
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 1024 * 1024) {
-      alert('图片大小不能超过 1MB');
+      notify.fromAlert('图片大小不能超过 1MB');
       return;
     }
 
@@ -82,7 +84,7 @@ export default function EnterpriseEditorDialog({
       setFormData((prev) => ({ ...prev, logo: base64 }));
     } catch (error) {
       console.error('Failed to convert image to base64:', error);
-      alert('图片上传失败');
+      notify.fromAlert('图片上传失败');
     }
   };
 
@@ -116,16 +118,16 @@ export default function EnterpriseEditorDialog({
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        alert(data.error || '保存失败');
+        notify.fromAlert(data.error || '保存失败');
         return;
       }
 
-      alert(enterprise ? '企业更新成功' : '企业创建成功');
+      notify.fromAlert(enterprise ? '企业更新成功' : '企业创建成功');
       onOpenChange(false);
       await onSaved?.();
     } catch (error) {
       console.error('Failed to save enterprise:', error);
-      alert('保存失败');
+      notify.fromAlert('保存失败');
     } finally {
       setIsSubmitting(false);
     }

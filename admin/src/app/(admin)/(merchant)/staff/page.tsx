@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 import React, { useEffect, useState } from 'react';
 import { Loader2, Pencil, Plus, Smartphone, Trash2, User as UserIcon } from 'lucide-react';
 import { DepartmentTree } from '@/components/DepartmentTree';
@@ -143,12 +145,13 @@ export default function StaffPage() {
       const res = await fetch(`/api/staff/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (!data.success) {
-        alert(data.error || '删除失败');
+        notify.fromAlert(data.error || '删除失败');
         return;
       }
       await fetchStaff();
+      notify.success('员工账号已删除');
     } catch (error: any) {
-      alert(`删除失败: ${error.message}`);
+      notify.fromAlert(`删除失败: ${error.message}`);
     }
   };
 
@@ -167,14 +170,15 @@ export default function StaffPage() {
       });
       const data = await res.json();
       if (!data.success) {
-        alert(data.error || '保存失败');
+        notify.fromAlert(data.error || '保存失败');
         return;
       }
       setIsModalOpen(false);
       resetForm();
       await fetchStaff();
+      notify.success(isEditMode ? '员工信息已更新' : '员工账号已创建');
     } catch (error: any) {
-      alert(`保存失败: ${error.message}`);
+      notify.fromAlert(`保存失败: ${error.message}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -193,13 +197,14 @@ export default function StaffPage() {
       });
       const data = await res.json();
       if (!data.success) {
-        alert(data.error || '操作失败');
+        notify.fromAlert(data.error || '操作失败');
         return;
       }
       setIsDeptModalOpen(false);
       await fetchDepartments();
+      notify.success(editingDept ? '部门已更新' : '部门已创建');
     } catch (error: any) {
-      alert(`操作失败: ${error.message}`);
+      notify.fromAlert(`操作失败: ${error.message}`);
     }
   };
 
@@ -209,15 +214,16 @@ export default function StaffPage() {
       const res = await fetch(`/api/departments/${id}`, { method: 'DELETE' });
       const data = await res.json();
       if (!data.success) {
-        alert(data.error || '删除失败');
+        notify.fromAlert(data.error || '删除失败');
         return;
       }
       await fetchDepartments();
       if (selectedDeptId === id) {
         setSelectedDeptId(null);
       }
+      notify.success('部门已删除');
     } catch (error: any) {
-      alert(`删除失败: ${error.message}`);
+      notify.fromAlert(`删除失败: ${error.message}`);
     }
   };
 

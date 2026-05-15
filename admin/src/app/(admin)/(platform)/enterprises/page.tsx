@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Building2, Check, Copy, Loader2, Plus, RefreshCw } from 'lucide-react';
@@ -48,10 +50,16 @@ export default function EnterprisesPage() {
 
   const copyInvitationLink = () => {
     const link = `${window.location.origin}/register`;
-    navigator.clipboard.writeText(link).then(() => {
-      setCopyFeedback(true);
-      setTimeout(() => setCopyFeedback(false), 2000);
-    });
+    navigator.clipboard
+      .writeText(link)
+      .then(() => {
+        setCopyFeedback(true);
+        notify.success('邀请链接已复制');
+        setTimeout(() => setCopyFeedback(false), 2000);
+      })
+      .catch(() => {
+        notify.error('邀请链接复制失败');
+      });
   };
 
   const updateStatus = async (id: string, status: EnterpriseListItem['status']) => {
@@ -63,13 +71,14 @@ export default function EnterprisesPage() {
       });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        alert(data.error || '状态更新失败');
+        notify.fromAlert(data.error || '状态更新失败');
         return;
       }
       await fetchEnterprises();
+      notify.success('企业状态已更新');
     } catch (error) {
       console.error('Failed to update enterprise status:', error);
-      alert('状态更新失败');
+      notify.fromAlert('状态更新失败');
     }
   };
 

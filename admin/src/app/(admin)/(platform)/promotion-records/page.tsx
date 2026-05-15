@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 import { useEffect, useMemo, useState } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -12,6 +14,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const stageLabels: Record<string, string> = {
@@ -123,7 +132,8 @@ export default function PromotionRecordsPage() {
   const [poolPromoterId, setPoolPromoterId] = useState('');
 
   const canManage = !!user && ['enterprise_admin', 'admin', 'super_admin'].includes(user.role);
-  const canAssignPool = !!user && ['admin', 'super_admin'].includes(user.role);
+  const canAssignPromoter = !!user && ['admin', 'super_admin'].includes(user.role);
+  const canAssignPool = canAssignPromoter;
   const canClaimPool = user?.role === 'salesperson';
 
   const fetchData = async () => {
@@ -206,14 +216,14 @@ export default function PromotionRecordsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        alert('认领成功！');
+        notify.fromAlert('认领成功！');
         setViewFilter('all');
         await fetchData();
       } else {
-        alert(data.error || '认领失败');
+        notify.fromAlert(data.error || '认领失败');
       }
     } catch (err) {
-      alert('认领请求失败');
+      notify.fromAlert('认领请求失败');
     }
   };
 
@@ -231,19 +241,22 @@ export default function PromotionRecordsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        alert('分配成功！');
+        notify.fromAlert('分配成功！');
         setAssigningPoolRecord(null);
         setPoolPromoterId('');
         await fetchData();
       } else {
-        alert(data.error || '分配失败');
+        notify.fromAlert(data.error || '分配失败');
       }
     } catch (err) {
-      alert('分配请求失败');
+      notify.fromAlert('分配请求失败');
     }
   };
 
-  const updateRecord = async (payload: Record<string, unknown>) => {
+  const updateRecord = async (
+    payload: Record<string, unknown>,
+    options?: { closeOnSuccess?: boolean; successMessage?: string }
+  ) => {
     if (!selected) return;
     const res = await fetch(`/api/promotion-records/${selected._id}`, {
       method: 'PUT',
@@ -252,12 +265,17 @@ export default function PromotionRecordsPage() {
     });
     const data = await res.json();
     if (data.success) {
-      setSelected(data.data);
+      if (options?.closeOnSuccess) {
+        setSelected(null);
+      } else {
+        setSelected(data.data);
+      }
       setFollowUpNote('');
       setNextFollowUpAt(data.data.nextFollowUpAt ? String(data.data.nextFollowUpAt).slice(0, 16) : '');
+      notify.success(options?.successMessage || '操作成功');
       await fetchData();
     } else {
-      alert(data.error || '更新失败');
+      notify.fromAlert(data.error || '更新失败');
     }
   };
 
@@ -364,9 +382,16 @@ export default function PromotionRecordsPage() {
                           </Button>
                         )
                       ) : (
-                        <Button size="sm" variant="ghost" onClick={() => openDetail(record)}>
-                          管理
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button size="sm" variant="ghost" onClick={() => openDetail(record)}>
+                            管理
+                          </Button>
+                          {canAssignPromoter && (
+                            <Button size="sm" variant="outline" className="border-zinc-200" onClick={() => openDetail(record)}>
+                              指派地推
+                            </Button>
+                          )}
+                        </div>
                       )}
                     </TableCell>
                   </TableRow>
@@ -481,18 +506,52 @@ export default function PromotionRecordsPage() {
                     </div>
                   </section>
 
+                  {selected.ownershipStatus !== 'conflict_pending' && canAssignPromoter && (
+                    <section className="space-y-3 border-t pt-6">
+                      <h3 className="font-semibold text-zinc-900">指派 / 调整渠道地推</h3>
+                      <div className="flex gap-3">
+                        <Select value={selectedPromoter || undefined} onValueChange={setSelectedPromoter}>
+                          <SelectTrigger className="h-10 flex-1 rounded-xl border-zinc-200">
+                            <SelectValue placeholder="选择渠道地推" />
+                          </SelectTrigger>
+                          <SelectContent>
+                          {staffOptions.salespeople.map((item) => (
+                            <SelectItem key={item._id} value={item._id}>
+                              {item.displayName || item.username}
+                            </SelectItem>
+                          ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          className="rounded-xl px-6"
+                          onClick={() => updateRecord(
+                            { ownershipStatus: 'manually_locked', promoterId: selectedPromoter, resolution: 'manual_assign' },
+                            { closeOnSuccess: true, successMessage: '地推指派成功' }
+                          )}
+                          disabled={!selectedPromoter}
+                        >
+                          确认指派
+                        </Button>
+                      </div>
+                    </section>
+                  )}
+
                   {selected.ownershipStatus === 'conflict_pending' && canManage && (
                     <section className="p-4 rounded-2xl bg-amber-50 border border-amber-100 space-y-3">
                       <h4 className="text-sm font-semibold text-amber-900">冲突单归属处理</h4>
                       <div className="flex gap-3">
-                        <select className="h-10 flex-1 rounded-xl border border-amber-200 px-3 text-sm" value={selectedPromoter} onChange={(e) => setSelectedPromoter(e.target.value)}>
-                          <option value="">选择最终归属地推员</option>
+                        <Select value={selectedPromoter || undefined} onValueChange={setSelectedPromoter}>
+                          <SelectTrigger className="h-10 flex-1 rounded-xl border-amber-200 bg-white">
+                            <SelectValue placeholder="选择最终归属地推员" />
+                          </SelectTrigger>
+                          <SelectContent>
                           {staffOptions.salespeople.map((item) => (
-                            <option key={item._id} value={item._id}>
+                            <SelectItem key={item._id} value={item._id}>
                               {item.displayName || item.username}
-                            </option>
+                            </SelectItem>
                           ))}
-                        </select>
+                          </SelectContent>
+                        </Select>
                         <Button className="rounded-xl bg-amber-600 hover:bg-amber-700 border-none px-6" onClick={() => updateRecord({ ownershipStatus: 'manually_locked', promoterId: selectedPromoter })} disabled={!selectedPromoter}>
                           确认归属
                         </Button>
@@ -519,18 +578,18 @@ export default function PromotionRecordsPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              <select
-                className="h-11 w-full rounded-xl border border-zinc-200 px-3 text-sm"
-                value={poolPromoterId}
-                onChange={(e) => setPoolPromoterId(e.target.value)}
-              >
-                <option value="">选择渠道地推</option>
+              <Select value={poolPromoterId || undefined} onValueChange={setPoolPromoterId}>
+                <SelectTrigger className="h-11 w-full rounded-xl border-zinc-200">
+                  <SelectValue placeholder="选择渠道地推" />
+                </SelectTrigger>
+                <SelectContent>
                 {staffOptions.salespeople.map((item) => (
-                  <option key={item._id} value={item._id}>
+                  <SelectItem key={item._id} value={item._id}>
                     {item.displayName || item.username}
-                  </option>
+                  </SelectItem>
                 ))}
-              </select>
+                </SelectContent>
+              </Select>
               <div className="flex justify-end gap-3">
                 <Button variant="outline" className="rounded-xl" onClick={() => {
                   setAssigningPoolRecord(null);

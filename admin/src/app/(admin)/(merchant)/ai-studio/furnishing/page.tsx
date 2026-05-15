@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -132,13 +134,13 @@ export default function AiFurnishingPage() {
 
   const handleGenerate = async () => {
     if (!selectedPlanId) {
-      alert('请先选择一个户型图');
+      notify.fromAlert('请先选择一个户型图');
       return;
     }
 
     const rooms = getRooms(selectedPlan);
     if (rooms.length === 0) {
-      alert('当前户型缺少 layoutData，无法生成控制图');
+      notify.fromAlert('当前户型缺少 layoutData，无法生成控制图');
       return;
     }
 
@@ -167,7 +169,7 @@ export default function AiFurnishingPage() {
 
       const genData = await genRes.json();
       if (!genData.success) {
-        alert(genData.error || '提示词生成失败');
+        notify.fromAlert(genData.error || '提示词生成失败');
         setIsGenerating(false);
         return;
       }
@@ -178,7 +180,7 @@ export default function AiFurnishingPage() {
         base64Image = await generateBaseMap(rooms);
       } catch (exportErr) {
         console.error('Failed to generate base map', exportErr);
-        alert('无法提取户型线稿，请检查户型数据');
+        notify.fromAlert('无法提取户型线稿，请检查户型数据');
         setIsGenerating(false);
         return;
       }
@@ -196,7 +198,7 @@ export default function AiFurnishingPage() {
 
       const renderData = await renderRes.json();
       if (!renderData.success) {
-        alert(renderData.error || '提交渲染失败');
+        notify.fromAlert(renderData.error || '提交渲染失败');
         setIsGenerating(false);
         return;
       }
@@ -206,7 +208,7 @@ export default function AiFurnishingPage() {
       router.push(`/ai-studio/floor-plan/${genData.data.id}`);
     } catch (error) {
       console.error(error);
-      alert('网络异常，请重试');
+      notify.fromAlert('网络异常，请重试');
       setIsGenerating(false);
     }
   };

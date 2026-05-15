@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -170,16 +172,16 @@ export default function AdminsPage() {
     // Validate phone
     const trimmedPhone = newPhone.trim();
     if (!trimmedPhone) {
-      alert('请输入联系电话');
+      notify.fromAlert('请输入联系电话');
       return;
     }
     if (!/^1[3-9]\d{9}$/.test(trimmedPhone)) {
-      alert('手机号格式不正确，请输入11位有效手机号');
+      notify.fromAlert('手机号格式不正确，请输入11位有效手机号');
       return;
     }
     
     if (newRole === 'enterprise_admin' && !newEnterpriseId) {
-      alert('请选择所属企业');
+      notify.fromAlert('请选择所属企业');
       return;
     }
 
@@ -206,13 +208,14 @@ export default function AdminsPage() {
         setNewRole('admin');
         setNewEnterpriseId('');
         setIsDialogOpen(false);
+        notify.success('管理员账号已创建');
         fetchAdmins();
       } else {
-        alert(data.error || '添加失败');
+        notify.fromAlert(data.error || '添加失败');
       }
     } catch (err) {
       console.error(err);
-      alert('请求失败');
+      notify.fromAlert('请求失败');
     } finally {
       setIsSubmitting(false);
     }
@@ -225,12 +228,13 @@ export default function AdminsPage() {
       const data = await res.json();
       if (data.success) {
         setAdmins(admins.filter((a) => a._id !== id));
+        notify.success('管理员账号已删除');
       } else {
-        alert(data.error || '删除失败');
+        notify.fromAlert(data.error || '删除失败');
       }
     } catch (err) {
       console.error(err);
-      alert('删除失败');
+      notify.fromAlert('删除失败');
     }
   };
 
@@ -248,11 +252,11 @@ export default function AdminsPage() {
     // Validate phone
     const trimmedPhone = editPhone.trim();
     if (!trimmedPhone) {
-      alert('请输入联系电话');
+      notify.fromAlert('请输入联系电话');
       return;
     }
     if (!/^1[3-9]\d{9}$/.test(trimmedPhone)) {
-      alert('手机号格式不正确，请输入11位有效手机号');
+      notify.fromAlert('手机号格式不正确，请输入11位有效手机号');
       return;
     }
 
@@ -272,13 +276,14 @@ export default function AdminsPage() {
       if (data.success) {
         setAdmins(admins.map((a) => (a._id === editingId ? { ...a, ...data.data } : a)));
         setEditingId(null);
+        notify.success('管理员信息已更新');
         fetchAdmins(); // Refresh to get effectivePermissions
       } else {
-        alert(data.error || '更新失败');
+        notify.fromAlert(data.error || '更新失败');
       }
     } catch (err) {
       console.error(err);
-      alert('网络错误');
+      notify.fromAlert('网络错误');
     } finally {
       setUpdating(false);
     }
@@ -298,15 +303,19 @@ export default function AdminsPage() {
       const data = await res.json();
       if (data.success) {
         setAdmins(admins.map((a) => (a._id === admin._id ? { ...a, status: newStatus } : a)));
+        notify.success(`账号已${action}`);
+      } else {
+        notify.fromAlert(data.error || `${action}失败`);
       }
     } catch (err) {
       console.error(err);
+      notify.fromAlert(`${action}失败`);
     }
   };
 
   const handleResetPassword = async (id: string) => {
     if (!resetPwdValue || resetPwdValue.length < 6) {
-      alert('密码长度不能少于6位');
+      notify.fromAlert('密码长度不能少于6位');
       return;
     }
     try {
@@ -317,15 +326,15 @@ export default function AdminsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        alert('密码已重置');
+        notify.success('密码已重置');
         setResetPwdId(null);
         setResetPwdValue('');
       } else {
-        alert(data.error || '重置失败');
+        notify.fromAlert(data.error || '重置失败');
       }
     } catch (err) {
       console.error(err);
-      alert('网络错误');
+      notify.fromAlert('网络错误');
     }
   };
 

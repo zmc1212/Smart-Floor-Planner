@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import ChatInterface from '@/components/ai-studio/ChatInterface';
 import { Badge } from '@/components/ui/badge';
 import { Sparkles, Info } from 'lucide-react';
+import { notify } from '@/components/ui/operation-feedback';
 
 interface Message {
   role: 'user' | 'assistant' | 'system' | 'tool';
@@ -73,9 +74,13 @@ export default function AiDesignerPage() {
         if (activeConversationId === id) {
           handleNewChat();
         }
+        notify.success('对话记录已删除');
+      } else {
+        notify.fromAlert(result.error || '删除失败');
       }
     } catch (error) {
       console.error('Failed to delete conversation:', error);
+      notify.error('删除失败');
     }
   };
 

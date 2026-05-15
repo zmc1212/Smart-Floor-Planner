@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Loader2, PlayCircle, RefreshCw, ShieldAlert } from 'lucide-react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -87,14 +89,14 @@ export default function WorkflowLogsPage() {
       const res = await fetch('/api/automation/reminders/run', { method: 'POST' });
       const data = await res.json();
       if (!res.ok || !data.success) {
-        alert(data.error || '提醒扫描执行失败');
+        notify.fromAlert(data.error || '提醒扫描执行失败');
         return;
       }
-      alert(`提醒扫描已执行，处理 ${data.data?.processed || 0} 条记录`);
+      notify.fromAlert(`提醒扫描已执行，处理 ${data.data?.processed || 0} 条记录`);
       await fetchLogs(statusFilter, 1);
     } catch (error) {
       console.error('Failed to run reminder scan:', error);
-      alert('提醒扫描执行失败');
+      notify.fromAlert('提醒扫描执行失败');
     } finally {
       setScanRunning(false);
     }

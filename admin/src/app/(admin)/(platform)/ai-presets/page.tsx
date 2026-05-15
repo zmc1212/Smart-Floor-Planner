@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 import React, { useEffect, useMemo, useState } from 'react';
 import { Loader2, Save, Settings2, Sparkles } from 'lucide-react';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -106,15 +108,16 @@ export default function AiPresetsPage() {
       });
       const result = await res.json();
       if (!result.success) {
-        alert(result.error || '保存失败');
+        notify.fromAlert(result.error || '保存失败');
         return;
       }
 
       await mutate();
       setEditingPreset(null);
+      notify.success('AI 预设已保存');
     } catch (error) {
       console.error(error);
-      alert('保存失败');
+      notify.fromAlert('保存失败');
     } finally {
       setSaving(false);
     }

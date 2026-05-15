@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { OperationFeedbackToaster } from "@/components/ui/operation-feedback";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -17,8 +18,6 @@ export const metadata: Metadata = {
   description: "装修企业智能量房、AI设计与客资转化一站式管理平台",
 };
 
-import { Toaster } from "sonner";
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -31,7 +30,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         {children}
-        <Toaster position="top-center" richColors />
+        <OperationFeedbackToaster />
       </body>
     </html>
   );

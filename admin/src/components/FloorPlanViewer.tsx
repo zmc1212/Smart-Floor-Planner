@@ -1,4 +1,6 @@
 'use client';
+
+import { notify } from '@/components/ui/operation-feedback';
 import React, { useMemo, useState, Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -418,9 +420,10 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
+      notify.success('CAD 文件已导出');
     } catch (err) {
       console.error(err);
-      alert('导出 CAD 失败，请稍后重试');
+      notify.fromAlert('导出 CAD 失败，请稍后重试');
     } finally {
       setIsExporting(false);
     }
@@ -436,9 +439,9 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
     try {
       // In real implementation, this would call /api/inspirations/generate
       await new Promise(resolve => setTimeout(resolve, 3000));
-      alert(`AI ${STYLE_OPTIONS.find(s => s.id === aiPreset.style)?.label}方案已生成！已同步至“装修灵感库”。`);
+      notify.fromAlert(`AI ${STYLE_OPTIONS.find(s => s.id === aiPreset.style)?.label}方案已生成！已同步至“装修灵感库”。`);
     } catch (err) {
-      alert('AI 生成失败，请检查网络后重试');
+      notify.fromAlert('AI 生成失败，请检查网络后重试');
     } finally {
       setIsGenerating(false);
     }
@@ -446,7 +449,7 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
 
   const handleShareToGroup = async () => {
     if (!lead?._id || !lead?.wecomGroupId) {
-      alert('该线索尚未关联企微群，请先在地推环节完成拉群。');
+      notify.fromAlert('该线索尚未关联企微群，请先在地推环节完成拉群。');
       return;
     }
     
@@ -466,13 +469,14 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
       const data = await res.json();
       if (data.success) {
         setShareSuccess(true);
+        notify.success('已同步至企微群');
         setTimeout(() => setShareSuccess(false), 3000);
       } else {
-        alert('同步失败: ' + (data.error || '接口调用异常'));
+        notify.fromAlert('同步失败: ' + (data.error || '接口调用异常'));
       }
     } catch (err) {
       console.error(err);
-      alert('网络异常，同步企微失败');
+      notify.fromAlert('网络异常，同步企微失败');
     } finally {
       setIsSharing(false);
     }

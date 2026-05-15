@@ -11,3 +11,12 @@ Required workflow:
 3. Use imperative or action-oriented phrasing.
 4. Make the subject describe only the changes included in the commit. Do not mention unrelated dirty worktree changes.
 5. If the staged changes span multiple unrelated purposes, pause and ask whether to split the commit instead of inventing a broad message.
+
+## Backend Operation Feedback
+
+All user-visible backend operations triggered by an admin action must show a unified success or failure notification through the shared operation feedback UI.
+
+- Do not add raw `alert()` calls as the normal feedback mechanism.
+- Dangerous operations may keep a native confirmation prompt, but the confirmed result must still show a success or failure notification.
+- Detail dialogs and flows that close after confirmation must still show the result notification after the action completes.
+- Silent polling and automatic background sync tasks do not need toast-style notifications unless they were explicitly triggered by the user.

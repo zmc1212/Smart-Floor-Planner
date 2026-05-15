@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect } from 'react';
@@ -119,11 +121,11 @@ export default function RolesPage() {
       if (data.success) {
         setRoles(roles.map(r => r._id === selectedRole._id ? data.data : r));
         setSelectedRole(data.data);
-        alert('保存成功');
+        notify.fromAlert('保存成功');
       }
     } catch (err) {
       console.error(err);
-      alert('保存失败');
+      notify.fromAlert('保存失败');
     } finally {
       setSaving(false);
     }

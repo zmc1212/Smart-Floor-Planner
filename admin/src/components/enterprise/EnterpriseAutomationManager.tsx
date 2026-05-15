@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 import { useState } from 'react';
 import { Bell, Clock3, Loader2, Save, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -75,15 +77,15 @@ export default function EnterpriseAutomationManager({
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        alert(data.error || '保存自动化配置失败');
+        notify.fromAlert(data.error || '保存自动化配置失败');
         return;
       }
 
-      alert('自动化配置已保存');
+      notify.fromAlert('自动化配置已保存');
       await onRefresh?.();
     } catch (error) {
       console.error('Failed to save enterprise automation config:', error);
-      alert('保存自动化配置失败');
+      notify.fromAlert('保存自动化配置失败');
     } finally {
       setIsSubmitting(false);
     }

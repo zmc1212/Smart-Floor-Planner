@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 import { useEffect, useState } from 'react';
 import { Loader2, Plus, Edit, Trash2, CheckCircle, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -73,12 +75,13 @@ export default function PackagesPage() {
         setOpen(false);
         setEditingItem(null);
         setFormData({ name: '', price: '', promotionCommission: '', description: '', status: 'active' });
+        notify.success(editingItem ? '套餐已更新' : '套餐已创建');
         fetchData();
       } else {
-        alert(data.error || '保存失败');
+        notify.fromAlert(data.error || '保存失败');
       }
     } catch (error) {
-      alert('网络错误');
+      notify.fromAlert('网络错误');
     }
   };
 
@@ -99,9 +102,14 @@ export default function PackagesPage() {
     try {
       const res = await fetch(`/api/admin/packages/${id}`, { method: 'DELETE' });
       const data = await res.json();
-      if (data.success) fetchData();
+      if (data.success) {
+        notify.success('套餐已删除');
+        fetchData();
+      } else {
+        notify.fromAlert(data.error || '删除失败');
+      }
     } catch (error) {
-      alert('删除失败');
+      notify.fromAlert('删除失败');
     }
   };
 

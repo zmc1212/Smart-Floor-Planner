@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
@@ -212,7 +214,7 @@ export default function GenerationDetailPage() {
       URL.revokeObjectURL(blobUrl);
     } catch (downloadError) {
       console.error(downloadError);
-      alert('下载标注版失败');
+      notify.fromAlert('下载标注版失败');
     } finally {
       setDownloadingLabel(false);
     }

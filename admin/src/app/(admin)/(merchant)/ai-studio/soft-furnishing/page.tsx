@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 import React, { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
@@ -243,7 +245,7 @@ export default function AiSoftFurnishingPage() {
         return current.filter((id) => id !== assetId);
       }
       if (current.length >= 8) {
-        alert('最多选择 8 件家具类型');
+        notify.fromAlert('最多选择 8 件家具类型');
         return current;
       }
       return [...current, assetId];
@@ -255,7 +257,7 @@ export default function AiSoftFurnishingPage() {
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
-      alert('请上传图片文件');
+      notify.fromAlert('请上传图片文件');
       return;
     }
 
@@ -266,11 +268,11 @@ export default function AiSoftFurnishingPage() {
 
   const handleRender = async () => {
     if (!sourceImage) {
-      alert('请先上传现场图');
+      notify.fromAlert('请先上传现场图');
       return;
     }
     if (selectedItems.length === 0) {
-      alert('请至少选择一件家具类型');
+      notify.fromAlert('请至少选择一件家具类型');
       return;
     }
 
@@ -296,7 +298,7 @@ export default function AiSoftFurnishingPage() {
 
       const genData = await genRes.json();
       if (!genData.success) {
-        alert(genData.error || '生成提示词失败');
+        notify.fromAlert(genData.error || '生成提示词失败');
         return;
       }
 
@@ -314,7 +316,7 @@ export default function AiSoftFurnishingPage() {
 
       const data = await res.json();
       if (!data.success) {
-        alert(data.error || '提交软装渲染失败');
+        notify.fromAlert(data.error || '提交软装渲染失败');
         return;
       }
 
@@ -327,7 +329,7 @@ export default function AiSoftFurnishingPage() {
       }
     } catch (error) {
       console.error(error);
-      alert('渲染提交失败，请稍后重试');
+      notify.fromAlert('渲染提交失败，请稍后重试');
     } finally {
       setIsRendering(false);
     }

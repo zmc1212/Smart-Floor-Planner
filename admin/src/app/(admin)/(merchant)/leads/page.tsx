@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 import React, { useState, useEffect } from 'react';
 export const dynamic = 'force-dynamic';
 import { Loader2, Phone, CheckCircle, Clock, User, MessageSquare, Plus, X, Search, Filter, Check, Share2 } from "lucide-react";
@@ -32,7 +34,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Building2 } from "lucide-react";
-import { toast } from "sonner";
 import { Pagination } from "@/components/ui/pagination";
 
 export default function LeadsPage() {
@@ -92,7 +93,7 @@ export default function LeadsPage() {
 
   const handleSyncToWeCom = async (lead: any) => {
     if (!lead.wecomGroupId) {
-      alert('该线索尚未关联企微群，请确保地推环节已正确录入并拉群。');
+      notify.fromAlert('该线索尚未关联企微群，请确保地推环节已正确录入并拉群。');
       return;
     }
 
@@ -110,11 +111,11 @@ export default function LeadsPage() {
         setSyncSuccess(lead._id);
         setTimeout(() => setSyncSuccess(null), 3000);
       } else {
-        alert('同步失败: ' + (data.error || '接口异常'));
+        notify.fromAlert('同步失败: ' + (data.error || '接口异常'));
       }
     } catch (err) {
       console.error(err);
-      alert('网络异常，无法同步至企微');
+      notify.fromAlert('网络异常，无法同步至企微');
     } finally {
       setIsSyncing(null);
     }
@@ -181,7 +182,7 @@ export default function LeadsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        toast.success("操作成功", {
+        notify.success("操作成功", {
           description: updates.assignedTo ? "已成功指派负责人" : "线索信息已同步",
         });
         
@@ -195,11 +196,11 @@ export default function LeadsPage() {
         }
         fetchLeads();
       } else {
-        toast.error("操作失败", { description: data.error });
+        notify.error("操作失败", { description: data.error });
       }
     } catch (err) {
       console.error('Failed to update lead:', err);
-      toast.error("系统错误", { description: "请检查网络或刷新重试" });
+      notify.error("系统错误", { description: "请检查网络或刷新重试" });
     }
   };
 
@@ -212,14 +213,14 @@ export default function LeadsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        toast.success("线索已删除");
+        notify.success("线索已删除");
         fetchLeads();
       } else {
-        toast.error("删除失败", { description: data.error });
+        notify.error("删除失败", { description: data.error });
       }
     } catch (err) {
       console.error('Failed to delete lead:', err);
-      toast.error("系统错误");
+      notify.error("系统错误");
     }
   };
 

@@ -1,5 +1,7 @@
 'use client';
 
+import { notify } from '@/components/ui/operation-feedback';
+
 export const dynamic = 'force-dynamic';
 
 import React, { useState, useEffect } from 'react';
@@ -132,12 +134,14 @@ export default function DevicesPage() {
         setNewCode('');
         setNewDesc('');
         setIsAddModalOpen(false);
-        fetchDevices();
+        await fetchDevices();
+        notify.success('设备已添加');
       } else {
-        alert(data.error);
+        notify.fromAlert(data.error);
       }
     } catch (err) {
       console.error(err);
+      notify.error('设备添加失败');
     } finally {
       setIsSubmitting(false);
     }
@@ -150,8 +154,14 @@ export default function DevicesPage() {
       const data = await res.json();
       if (data.success) {
         setDevices(devices.filter(d => d._id !== id));
+        notify.success('设备已删除');
+      } else {
+        notify.fromAlert(data.error || '删除失败');
       }
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+      notify.error('设备删除失败');
+    }
   };
 
   const handleUpdate = async (id: string) => {
@@ -175,12 +185,13 @@ export default function DevicesPage() {
       if (data.success) {
         setDevices(devices.map(d => d._id === id ? data.data : d));
         setEditingId(null);
+        notify.success('设备已更新');
       } else {
-        alert(data.error || '更新失败');
+        notify.fromAlert(data.error || '更新失败');
       }
     } catch (err) {
       console.error(err);
-      alert('网络错误');
+      notify.fromAlert('网络错误');
     } finally {
       setUpdating(false);
     }
