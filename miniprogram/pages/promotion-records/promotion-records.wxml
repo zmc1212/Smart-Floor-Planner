@@ -32,15 +32,22 @@
       <view class="row">
         <view class="name">{{useTodoApi ? item.title : item.enterpriseName}}</view>
         <view class="badge {{useTodoApi && item.overdue ? 'badge-warn' : ''}}">
-          {{useTodoApi ? (item.overdue ? '已超时' : '待处理') : map.stage(item.businessStage)}}
+          {{useTodoApi ? (item.overdue ? '已超时' : '待处理') : (item.poolStatus === 'claimed' && item.claimRequest && item.claimRequest.status === 'pending' ? '待审批认领' : map.stage(item.businessStage))}}
         </view>
       </view>
       <view class="meta">{{useTodoApi ? item.enterpriseName : item.contactPerson}} · {{useTodoApi ? item.contactPerson : item.phone}}</view>
       <view class="meta" wx:if="{{!useTodoApi}}">业务阶段：{{map.stage(item.businessStage)}}</view>
+      <view class="meta" wx:if="{{!useTodoApi && item.poolStatus === 'claimed' && item.claimRequest && item.claimRequest.status === 'pending'}}">认领状态：待管理员审批</view>
       <view class="meta" wx:if="{{useTodoApi}}">{{item.summary}}</view>
       <view class="meta" wx:if="{{useTodoApi && item.dueLabel}}">截止：{{item.dueLabel}}</view>
       <view class="card-footer">
-        <text class="footer-pill">继续跟进</text>
+        <text class="footer-pill">{{view === 'pool' && userInfo.staffRole === 'salesperson' && item.poolStatus === 'in_pool' ? '可认领' : '继续跟进'}}</text>
+        <button
+          wx:if="{{view === 'pool' && userInfo.staffRole === 'salesperson' && item.poolStatus === 'in_pool'}}"
+          class="claim-btn"
+          catchtap="onClaimRecord"
+          data-id="{{item._id}}"
+        >立即认领</button>
         <text class="card-arrow">›</text>
       </view>
     </view>

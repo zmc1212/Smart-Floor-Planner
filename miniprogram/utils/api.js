@@ -5,7 +5,9 @@ const BASE_URL = 'http://192.168.10.62:3005/api';
  * Enhanced request method with JWT support
  */
 function request(url, method = 'GET', data = {}) {
-  const token = wx.getStorageSync('token');
+  const app = getApp();
+  // Prefer in-memory token from globalData to avoid storage latency
+  const token = (app && app.globalData && app.globalData.token) || wx.getStorageSync('token');
   
   return new Promise((resolve, reject) => {
     wx.request({
@@ -18,7 +20,15 @@ function request(url, method = 'GET', data = {}) {
       },
       success: (res) => {
         if (res.statusCode === 401) {
-          console.warn('Unauthorized request, clearing token');
+          console.warn(`Unauthorized request to ${url}, clearing session. Token present: ${!!token}`);
+          if (token) {
+            console.warn(`Token prefix: ${token.substring(0, 10)}...${token.substring(token.length - 10)}`);
+          }
+          
+          if (app && app.globalData) {
+            app.globalData.token = null;
+            app.globalData.userInfo = null;
+          }
           wx.removeStorageSync('token');
           wx.removeStorageSync('userInfo');
           
@@ -80,8 +90,14 @@ function phoneLogin(phoneCode) {
             });
             
             if (result.success && result.token) {
+              if (app && app.globalData) {
+                app.globalData.token = result.token;
+                app.globalData.userInfo = result.user;
+                app.globalData.openid = result.openid || (result.user && result.user.openid);
+              }
               wx.setStorageSync('token', result.token);
               wx.setStorageSync('userInfo', result.user);
+              if (result.openid) wx.setStorageSync('openid', result.openid);
             }
             resolve(result);
           } catch (err) {
@@ -111,6 +127,10 @@ async function passwordLogin(username, password) {
     });
 
     if (result.success && result.token) {
+      if (app && app.globalData) {
+        app.globalData.token = result.token;
+        app.globalData.userInfo = result.user;
+      }
       wx.setStorageSync('token', result.token);
       wx.setStorageSync('userInfo', result.user);
     }

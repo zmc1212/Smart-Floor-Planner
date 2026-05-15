@@ -98,6 +98,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       title: 'AI 辅助设计',
       items: [
         { key: 'ai-designer', label: 'AI设计师', icon: Sparkles, href: '/ai-studio/designer' },
+        { key: 'ai-scenarios', label: '场景魔方', icon: Sparkles, href: '/ai-studio/scenarios' },
         { key: 'ai-floorplan', label: 'AI 室内平面', icon: PenTool, href: '/ai-studio/floor-plan' },
         { key: 'ai-furnishing', label: 'AI 风格设计', icon: Palette, href: '/ai-studio/furnishing' },
         { key: 'ai-soft-furnishing', label: 'AI 软装设计', icon: Sofa, href: '/ai-studio/soft-furnishing' },
@@ -371,7 +372,9 @@ export default function Sidebar() {
   const hasMenuPermission = (key: string) => {
     if (!admin) return true;
     if (admin.effectivePermissions?.includes(key)) return true;
-    return key === 'ai-soft-furnishing' && admin.effectivePermissions?.includes('ai-furnishing');
+    if (key === 'ai-soft-furnishing' && admin.effectivePermissions?.includes('ai-furnishing')) return true;
+    if (key === 'ai-scenarios' && admin.effectivePermissions?.includes('ai-designer')) return true;
+    return false;
   };
 
   return (

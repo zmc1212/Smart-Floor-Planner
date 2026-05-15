@@ -1,36 +1,41 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { jwtVerify } from 'jose';
+import * as jose from 'jose';
 
-const routePermissionMap: Record<string, string> = {
+const ROUTE_PERMISSIONS: Record<string, string> = {
   '/': 'dashboard',
-  '/admins': 'admins',
-  '/devices': 'devices',
+  '/enterprises': 'enterprises',
+  '/roles': 'roles',
   '/floorplans': 'floorplans',
-  '/records': 'records',
   '/users': 'users',
+  '/devices': 'devices',
+  '/measurements': 'measurements',
+  '/leads': 'leads',
+  '/promotion-records': 'promotion-records',
+  '/packages': 'packages',
+  '/staff': 'staff',
+  '/admins': 'admins',
+  '/api/leads': 'leads',
+  '/api/floorplans': 'floorplans',
+  '/api/staff': 'staff',
+  '/api/enterprises': 'enterprises',
 };
 
 export async function proxy(request: NextRequest) {
-  const token = request.cookies.get('auth_token')?.value;
   const { pathname } = request.nextUrl;
 
-  // Allow static files and API auth routes
+  // 1. Allow login page, auth APIs, and Mini Program specific APIs
   if (
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/static') ||
-    pathname.includes('.') ||
-    pathname.startsWith('/api/auth/login')
+    pathname === '/login' || 
+    pathname.startsWith('/api/auth/') || 
+    pathname.startsWith('/api/miniprogram/') ||
+    request.headers.get('Authorization')?.startsWith('Bearer ')
   ) {
-    return NextResponse.next();
-  }
-
-  // Handle Login page
-  if (pathname === '/login') {
-    if (token) {
+    const token = request.cookies.get('auth_token')?.value;
+    if (pathname === '/login' && token) {
       try {
         const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
-        await jwtVerify(token, secret);
+        await jose.jwtVerify(token, secret);
         return NextResponse.redirect(new URL('/', request.url));
       } catch (e) {
         // Invalid token, allow access to login
@@ -40,48 +45,65 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Protect dashboard routes
-  const isProtected = Object.keys(routePermissionMap).some(path => 
-    pathname === path || pathname.startsWith(path + '/')
-  );
+  // 2. Check for auth token
+  const token = request.cookies.get('auth_token')?.value;
 
-  if (isProtected) {
-    if (!token) {
-      return NextResponse.redirect(new URL('/login', request.url));
+  if (!token) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
-
-    try {
-      const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
-      const { payload } = await jwtVerify(token, secret);
-      
-      // Check permissions
-      const userPermissions = (payload.permissions as string[]) || [];
-      
-      // Find the specific permission required for this path
-      // We check for exact match or parent path match
-      const matchingPath = Object.keys(routePermissionMap)
-        .sort((a, b) => b.length - a.length) // Check more specific paths first
-        .find(path => pathname === path || pathname.startsWith(path + '/'));
-
-      const requiredPermission = matchingPath ? routePermissionMap[matchingPath] : null;
-
-      if (requiredPermission && !userPermissions.includes(requiredPermission)) {
-        // Not authorized for this page, redirect to home or somewhere safe
-        return NextResponse.redirect(new URL('/', request.url));
-      }
-
-      return NextResponse.next();
-    } catch (e) {
-      // Invalid token, redirect to login
-      const response = NextResponse.redirect(new URL('/login', request.url));
-      response.cookies.delete('auth_token');
-      return response;
-    }
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  return NextResponse.next();
+  try {
+    const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
+    const { payload } = await jose.jwtVerify(token, secret);
+
+    const role = payload.role as string;
+    const userPermissions = (payload.permissions as string[]) || [];
+
+    // Super admins have all permissions
+    if (role === 'super_admin' || role === 'admin') {
+      return NextResponse.next();
+    }
+
+    // Check permissions for the current route
+    const requiredPermission = ROUTE_PERMISSIONS[pathname] || 
+                               Object.entries(ROUTE_PERMISSIONS).find(([route]) => pathname.startsWith(route))?.[1];
+
+    if (requiredPermission && !userPermissions.includes(requiredPermission)) {
+      // Prevent redirect loop: if already at root and missing dashboard permission, just proceed 
+      // and let the application components handle the empty state/unauthorized view
+      if (pathname === '/') {
+        return NextResponse.next();
+      }
+
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+      }
+
+      // Redirect to home if unauthorized for this specific page
+      return NextResponse.redirect(new URL('/', request.url));
+    }
+
+    return NextResponse.next();
+  } catch (error) {
+    console.error('Middleware Auth Error:', error);
+    const response = NextResponse.redirect(new URL('/login', request.url));
+    response.cookies.delete('auth_token');
+    return response;
+  }
 }
 
 export const config = {
-  matcher: ['/((?!api/auth/login|_next/static|_next/image|favicon.ico).*)'],
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - api/auth/login (login endpoint)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     */
+    '/((?!api/auth/login|_next/static|_next/image|favicon.ico).*)',
+  ],
 };

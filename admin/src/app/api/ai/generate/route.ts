@@ -31,6 +31,7 @@ interface GenerateBody {
 }
 
 function resolvePresetType(type?: string): AiPresetType {
+  if (type === 'scenario') return 'scenario';
   return type === 'furnishing_render' || type === 'soft_furnishing_render'
     ? 'furnishing_style'
     : 'floor_plan_style';

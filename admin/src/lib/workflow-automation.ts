@@ -9,6 +9,7 @@ import {
   WorkflowNotificationStatus,
 } from '@/models/WorkflowNotificationLog';
 import { sendSubscriptionMessage } from '@/lib/wechat-notification';
+import { createPromotionTimelineEntry } from '@/lib/promotion-timeline';
 
 export const DEFAULT_AUTOMATION_CONFIG = {
   followUpSlaHours: 24,
@@ -641,11 +642,23 @@ export async function runProtectionExpiryScan() {
   for (const record of expiredRecords) {
     await PromotionEnterpriseRecord.findByIdAndUpdate(record._id, {
       $set: {
+        promoterId: null,
         poolStatus: 'in_pool',
+        ownershipStatus: 'unassigned',
         pendingActionRole: 'none',
         lastActivityAt: now,
       },
-      $unset: { nextFollowUpAt: 1 },
+      $unset: { nextFollowUpAt: 1, protectionExpiresAt: 1, claimRequest: 1 },
+      $push: {
+        followUpRecords: createPromotionTimelineEntry({
+          type: 'pool_auto_released',
+          content: '系统自动释放到公海池',
+          operator: 'System',
+          operatorRole: 'system',
+          metadata: record.promoterId ? { previousPromoterId: String(record.promoterId) } : undefined,
+          createdAt: now,
+        }),
+      },
     });
 
     await dispatchWorkflowNotifications({

@@ -66,30 +66,35 @@ Page({
       wx.hideLoading();
 
       if (res.success && (res.token || res.openid)) {
-        app.globalData.token = res.token;
-        app.globalData.openid = res.openid;
-        app.globalData.userInfo = res.user;
+        // api.js already handled basic storage, but we ensure globalData and openid are synced
+        app.globalData.token = res.token || app.globalData.token;
+        app.globalData.userInfo = res.user || app.globalData.userInfo;
+        app.globalData.openid = res.openid || app.globalData.openid || (res.user && res.user.openid);
 
-        if (res.token) wx.setStorageSync('token', res.token);
-        wx.setStorageSync('openid', res.openid);
-        wx.setStorageSync('userInfo', res.user);
+        if (res.openid) wx.setStorageSync('openid', res.openid);
 
         if (typeof app.syncProfessionalContext === 'function') {
           app.syncProfessionalContext();
         }
 
-        wx.showToast({ title: '登录成功', icon: 'success' });
-
-        const { requestNotification } = require('../../utils/notification.js');
-        try {
-          await requestNotification();
-        } catch (e) {
-          console.error('Notification request failed', e);
-        }
-
-        setTimeout(() => {
-          wx.navigateBack();
-        }, 1000);
+        // Fix: Use modal to create a new user gesture for notification request
+        wx.showModal({
+          title: '登录成功',
+          content: '建议开启消息通知，以便及时接收任务提醒与业务进度。',
+          confirmText: '开启通知',
+          cancelText: '直接进入',
+          success: async (modalRes) => {
+            if (modalRes.confirm) {
+              const { requestNotification } = require('../../utils/notification.js');
+              try {
+                await requestNotification();
+              } catch (e) {
+                console.error('Notification request failed', e);
+              }
+            }
+            this.finishLogin();
+          }
+        });
       } else {
         throw new Error(res.error || '登录失败');
       }
@@ -101,6 +106,17 @@ Page({
         icon: 'none',
         duration: 2000
       });
+    }
+  },
+
+  finishLogin() {
+    const pages = getCurrentPages();
+    // 如果页面栈大于1，说明是从其他页面跳过来的，直接返回
+    if (pages.length > 1) {
+      wx.navigateBack();
+    } else {
+      // 否则跳转到首页
+      wx.switchTab({ url: '/pages/index/index' });
     }
   },
 

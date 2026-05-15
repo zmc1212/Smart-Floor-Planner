@@ -10,12 +10,12 @@ import {
   buildNextFollowUpAt,
   dispatchWorkflowNotifications,
   getEnterpriseAutomationConfig,
-  PLATFORM_PROMOTION_CONFIG,
 } from '@/lib/workflow-automation';
+import { getPlatformPromotionConfig } from '@/lib/platform-promotion-config';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import { createPromotionTimelineEntry, resolveOperatorName } from '@/lib/promotion-timeline';
 
 export { 
-  PLATFORM_PROMOTION_CONFIG, 
   buildNextFollowUpAt, 
   dispatchWorkflowNotifications,
   getEnterpriseAutomationConfig 
@@ -55,8 +55,15 @@ export function getPopulateQuery(query: any) {
   return PromotionEnterpriseRecord.find(query)
     .populate('promoterId', 'displayName username role phone')
     .populate('enterpriseId', 'name')
+    .populate('claimRequest.requestedBy', 'displayName username role phone')
+    .populate('claimRequest.reviewedBy', 'displayName username role phone')
+    .populate('followUpRecords.operatorId', 'displayName username role phone')
     .populate('measureTask.assignedTo', 'displayName username phone')
     .populate('designTask.assignedTo', 'displayName username phone');
+}
+
+export function getPromotionRecordByIdQuery(id: string | mongoose.Types.ObjectId) {
+  return getPopulateQuery({ _id: id }).findOne();
 }
 
 export async function getMiniProgramStaffContext(input: string | Request) {
@@ -73,7 +80,13 @@ export function buildPromotionAccessFilter(staff: { role: string; _id: unknown; 
 
   // salesperson 是平台级角色，不按 enterpriseId 过滤
   if (staff.role === 'salesperson') {
-    filter.promoterId = staff._id;
+    filter.$or = [
+      { promoterId: staff._id },
+      {
+        'claimRequest.requestedBy': staff._id,
+        'claimRequest.status': 'pending',
+      },
+    ];
     return filter;
   }
 
@@ -110,6 +123,7 @@ export function buildPromotionDuplicateQuery(input: {
 }
 
 export async function syncCommissionForOrder(order: IEnterpriseOrder, settledBy?: string) {
+  const platformPromotionConfig = await getPlatformPromotionConfig();
   const record = await PromotionEnterpriseRecord.findById(order.recordId).lean();
   if (!record || record.ownershipStatus === 'conflict_pending' || !record.promoterId) {
     return null;
@@ -142,7 +156,7 @@ export async function syncCommissionForOrder(order: IEnterpriseOrder, settledBy?
   } else if (enterprise?.groundPromotionFixedCommission) {
     commissionAmount = Number(enterprise.groundPromotionFixedCommission);
   } else {
-    commissionAmount = Number(PLATFORM_PROMOTION_CONFIG.defaultCommissionAmount);
+    commissionAmount = Number(platformPromotionConfig.defaultCommissionAmount);
   }
 
   commissionAmount = Math.max(commissionAmount, 0);
@@ -214,31 +228,63 @@ export function asObjectId(value?: string | null) {
   return value && mongoose.Types.ObjectId.isValid(value) ? new mongoose.Types.ObjectId(value) : undefined;
 }
 
+async function getActiveSalespersonById(salespersonId: string) {
+  return AdminUser.findOne({
+    _id: salespersonId,
+    role: 'salesperson',
+    status: 'active',
+  }).select('displayName username role phone');
+}
+
 /**
  * 从公海池认领报备记录
  */
 export async function claimFromPool(recordId: string, salespersonId: string) {
+  const salesperson = await getActiveSalespersonById(salespersonId);
+  if (!salesperson) {
+    throw new Error('Target salesperson not found');
+  }
+
   const record = await PromotionEnterpriseRecord.findOne({
     _id: recordId,
     poolStatus: 'in_pool',
   });
   if (!record) return null;
 
-  const config = PLATFORM_PROMOTION_CONFIG;
+  const config = await getPlatformPromotionConfig();
   const now = new Date();
   const protectionExpiresAt = new Date(now.getTime() + config.protectionPeriodDays * 24 * 60 * 60 * 1000);
 
   if (config.poolClaimRequiresApproval) {
-    // 待审批模式：标记为 claimed 但保留原 promoterId，等待管理员确认
+    // 待审批模式：进入 claimed，等待管理员确认，不占用当前归属
+    record.promoterId = undefined;
     record.poolStatus = 'claimed';
+    record.ownershipStatus = 'unassigned';
+    record.pendingActionRole = 'none';
+    record.protectionExpiresAt = undefined;
+    record.protectionExtendedCount = 0;
+    record.nextFollowUpAt = undefined;
+    record.claimRequest = {
+      status: 'pending',
+      requestedBy: salesperson._id,
+      requestedAt: now,
+    } as any;
     record.lastActivityAt = now;
-    record.followUpRecords.push({
-      content: `地推员申请认领，等待管理员审批`,
-      operator: 'System',
-      createdAt: now,
-    } as any);
+    record.followUpRecords.push(
+      createPromotionTimelineEntry({
+        type: 'pool_claim_requested',
+        content: `${resolveOperatorName(salesperson)} 申请从公海池认领，等待管理员审批`,
+        operator: resolveOperatorName(salesperson),
+        operatorId: salesperson._id,
+        operatorRole: salesperson.role,
+        metadata: {
+          requestedBy: salesperson._id.toString(),
+        },
+        createdAt: now,
+      }) as any
+    );
     await record.save();
-    return record;
+    return getPromotionRecordByIdQuery(record._id);
   }
 
   // 直接认领模式
@@ -249,25 +295,36 @@ export async function claimFromPool(recordId: string, salespersonId: string) {
   record.ownershipStatus = 'auto_locked';
   record.pendingActionRole = 'salesperson';
   record.businessStage = record.businessStage === 'closed_lost' ? 'reported' : record.businessStage;
+  record.claimRequest = {
+    status: 'approved',
+    requestedBy: salesperson._id,
+    requestedAt: now,
+    reviewedBy: salesperson._id,
+    reviewedAt: now,
+  } as any;
   record.lastActivityAt = now;
-  record.followUpRecords.push({
-    content: `从公海池认领`,
-    operator: 'System',
-    createdAt: now,
-  } as any);
+  record.followUpRecords.push(
+    createPromotionTimelineEntry({
+      type: 'pool_claimed',
+      content: `${resolveOperatorName(salesperson)} 从公海池认领`,
+      operator: resolveOperatorName(salesperson),
+      operatorId: salesperson._id,
+      operatorRole: salesperson.role,
+      metadata: {
+        promoterId: salesperson._id.toString(),
+      },
+      createdAt: now,
+    }) as any
+  );
   await record.save();
-  return record;
+  return getPromotionRecordByIdQuery(record._id);
 }
 
 /**
  * 管理员将线索池记录手动分配给渠道地推
  */
 export async function assignPoolRecordToPromoter(recordId: string, salespersonId: string, operatorId?: string) {
-  const salesperson = await AdminUser.findOne({
-    _id: salespersonId,
-    role: 'salesperson',
-    status: 'active',
-  }).select('displayName username');
+  const salesperson = await getActiveSalespersonById(salespersonId);
 
   if (!salesperson) {
     throw new Error('Target salesperson not found');
@@ -279,7 +336,7 @@ export async function assignPoolRecordToPromoter(recordId: string, salespersonId
   });
   if (!record) return null;
 
-  const config = PLATFORM_PROMOTION_CONFIG;
+  const config = await getPlatformPromotionConfig();
   const now = new Date();
   const protectionExpiresAt = new Date(now.getTime() + config.protectionPeriodDays * 24 * 60 * 60 * 1000);
   const operator = operatorId && mongoose.Types.ObjectId.isValid(operatorId)
@@ -293,41 +350,170 @@ export async function assignPoolRecordToPromoter(recordId: string, salespersonId
   record.ownershipStatus = 'manually_locked';
   record.pendingActionRole = 'salesperson';
   record.businessStage = record.businessStage === 'closed_lost' ? 'reported' : record.businessStage;
+  record.claimRequest = undefined;
   record.lastActivityAt = now;
-  record.followUpRecords.push({
-    content: `管理员分配给渠道地推：${salesperson.displayName || salesperson.username}`,
-    operator: 'System',
-    operatorId: operator,
-    createdAt: now,
-  });
+  record.followUpRecords.push(
+    createPromotionTimelineEntry({
+      type: 'pool_assigned',
+      content: `管理员分配给渠道地推：${resolveOperatorName(salesperson)}`,
+      operator: 'System',
+      operatorId: operator,
+      operatorRole: 'admin',
+      metadata: {
+        promoterId: salesperson._id.toString(),
+      },
+      createdAt: now,
+    }) as any
+  );
 
   await record.save();
-  return record;
+  return getPromotionRecordByIdQuery(record._id);
 }
 
 /**
  * 手动释放报备记录到公海池
  */
-export async function releaseToPool(recordId: string) {
-  return PromotionEnterpriseRecord.findByIdAndUpdate(
-    recordId,
-    {
-      $set: {
-        poolStatus: 'in_pool',
-        pendingActionRole: 'none',
-        lastActivityAt: new Date(),
-      },
-      $unset: { nextFollowUpAt: 1 },
-    },
-    { new: true }
+export async function releaseToPool(recordId: string, operator?: { id?: string; name?: string; role?: string }, timelineType: 'pool_released' | 'pool_auto_released' = 'pool_released') {
+  const record = await PromotionEnterpriseRecord.findById(recordId);
+  if (!record) return null;
+
+  const now = new Date();
+  const previousPromoterId = record.promoterId ? String(record.promoterId) : undefined;
+  const actionLabel = timelineType === 'pool_auto_released' ? '系统自动释放到公海池' : '释放到公海池';
+
+  record.promoterId = undefined;
+  record.poolStatus = 'in_pool';
+  record.ownershipStatus = 'unassigned';
+  record.pendingActionRole = 'none';
+  record.lastActivityAt = now;
+  record.protectionExpiresAt = undefined;
+  record.protectionExtendedCount = 0;
+  record.nextFollowUpAt = undefined;
+  record.claimRequest = undefined;
+  record.followUpRecords.push(
+    createPromotionTimelineEntry({
+      type: timelineType,
+      content: operator?.name ? `${operator.name} ${actionLabel}` : actionLabel,
+      operator: operator?.name || 'System',
+      operatorId: operator?.id,
+      operatorRole: operator?.role || 'system',
+      metadata: previousPromoterId ? { previousPromoterId } : undefined,
+      createdAt: now,
+    }) as any
   );
+  await record.save();
+  return getPromotionRecordByIdQuery(record._id);
+}
+
+export async function approveClaimFromPool(recordId: string, operatorId: string) {
+  const record = await PromotionEnterpriseRecord.findOne({
+    _id: recordId,
+    poolStatus: 'claimed',
+    'claimRequest.status': 'pending',
+  });
+  if (!record || !record.claimRequest?.requestedBy) return null;
+
+  const [salesperson, operator] = await Promise.all([
+    AdminUser.findById(record.claimRequest.requestedBy).select('displayName username role'),
+    AdminUser.findById(operatorId).select('displayName username role'),
+  ]);
+
+  if (!salesperson) {
+    throw new Error('Target salesperson not found');
+  }
+
+  const config = await getPlatformPromotionConfig();
+  const now = new Date();
+  const protectionExpiresAt = new Date(now.getTime() + config.protectionPeriodDays * 24 * 60 * 60 * 1000);
+
+  record.promoterId = salesperson._id;
+  record.poolStatus = 'protected';
+  record.protectionExpiresAt = protectionExpiresAt;
+  record.protectionExtendedCount = 0;
+  record.ownershipStatus = 'manually_locked';
+  record.pendingActionRole = 'salesperson';
+  record.businessStage = record.businessStage === 'closed_lost' ? 'reported' : record.businessStage;
+  record.lastActivityAt = now;
+  record.claimRequest = {
+    ...record.claimRequest,
+    status: 'approved',
+    reviewedBy: operator?._id || new mongoose.Types.ObjectId(operatorId),
+    reviewedAt: now,
+    rejectReason: undefined,
+  } as any;
+  record.followUpRecords.push(
+    createPromotionTimelineEntry({
+      type: 'pool_claim_approved',
+      content: `${resolveOperatorName(operator)} 审批通过，${resolveOperatorName(salesperson)} 认领成功`,
+      operator: resolveOperatorName(operator),
+      operatorId: operator?._id || operatorId,
+      operatorRole: operator?.role || 'admin',
+      metadata: {
+        promoterId: salesperson._id.toString(),
+      },
+      createdAt: now,
+    }) as any
+  );
+
+  await record.save();
+  return getPromotionRecordByIdQuery(record._id);
+}
+
+export async function rejectClaimFromPool(recordId: string, operatorId: string, reason?: string) {
+  const record = await PromotionEnterpriseRecord.findOne({
+    _id: recordId,
+    poolStatus: 'claimed',
+    'claimRequest.status': 'pending',
+  });
+  if (!record) return null;
+
+  const [requester, operator] = await Promise.all([
+    record.claimRequest?.requestedBy
+      ? AdminUser.findById(record.claimRequest.requestedBy).select('displayName username role')
+      : Promise.resolve(null),
+    AdminUser.findById(operatorId).select('displayName username role'),
+  ]);
+
+  const now = new Date();
+  record.promoterId = undefined;
+  record.poolStatus = 'in_pool';
+  record.ownershipStatus = 'unassigned';
+  record.pendingActionRole = 'none';
+  record.protectionExpiresAt = undefined;
+  record.protectionExtendedCount = 0;
+  record.nextFollowUpAt = undefined;
+  record.lastActivityAt = now;
+  record.claimRequest = {
+    ...record.claimRequest,
+    status: 'rejected',
+    reviewedBy: operator?._id || new mongoose.Types.ObjectId(operatorId),
+    reviewedAt: now,
+    rejectReason: reason?.trim() || '',
+  } as any;
+  record.followUpRecords.push(
+    createPromotionTimelineEntry({
+      type: 'pool_claim_rejected',
+      content: `${resolveOperatorName(operator)} 驳回了 ${resolveOperatorName(requester, '地推员')} 的认领申请`,
+      operator: resolveOperatorName(operator),
+      operatorId: operator?._id || operatorId,
+      operatorRole: operator?.role || 'admin',
+      metadata: {
+        requestedBy: requester?._id ? String(requester._id) : undefined,
+        rejectReason: reason?.trim() || '',
+      },
+      createdAt: now,
+    }) as any
+  );
+
+  await record.save();
+  return getPromotionRecordByIdQuery(record._id);
 }
 
 /**
  * 提交跟进后延长保护期
  */
-export function extendProtectionPeriod(record: any) {
-  const config = PLATFORM_PROMOTION_CONFIG;
+export async function extendProtectionPeriod(record: any) {
+  const config = await getPlatformPromotionConfig();
   if (
     record.poolStatus !== 'protected' ||
     record.protectionExtendedCount >= config.maxProtectionExtends

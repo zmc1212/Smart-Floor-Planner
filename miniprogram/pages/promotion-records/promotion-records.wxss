@@ -188,6 +188,24 @@
   font-weight: 500;
 }
 
+.claim-btn {
+  margin: 0 12rpx 0 auto;
+  min-width: 136rpx;
+  height: 56rpx;
+  line-height: 56rpx;
+  padding: 0 22rpx;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, #0fb04d 0%, #18a94b 100%);
+  color: #fff;
+  font-size: 22rpx;
+  font-weight: 500;
+  box-shadow: 0 10rpx 20rpx rgba(17, 164, 66, 0.18);
+}
+
+.claim-btn::after {
+  border: none;
+}
+
 .card-arrow {
   color: #c1c7ce;
   font-size: 42rpx;

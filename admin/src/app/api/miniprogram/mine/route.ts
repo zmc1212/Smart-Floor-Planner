@@ -46,7 +46,7 @@ type CommissionAmount = {
 };
 
 const ROLE_LABELS: Record<string, string> = {
-  salesperson: '企业员工',
+  salesperson: '渠道地推',
   enterprise_admin: '企业负责人',
   admin: '平台负责人',
   super_admin: '平台负责人',

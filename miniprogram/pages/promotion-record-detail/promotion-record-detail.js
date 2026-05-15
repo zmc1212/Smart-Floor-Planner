@@ -32,8 +32,11 @@ Page({
     followUpDate: '',
     followUpTime: '09:00',
     followUpStatusText: '',
+    claimStatusText: '',
+    claimRequestedAtText: '',
     measureDueText: '',
     designDueText: '',
+    timelineRecords: [],
     measureResultSummary: '',
     designNote: '',
     measurers: [],
@@ -79,8 +82,17 @@ Page({
           followUpDate: nextFollowUpAt ? formatPickerDate(nextFollowUpAt) : '',
           followUpTime: nextFollowUpAt ? formatPickerTime(nextFollowUpAt) : '09:00',
           followUpStatusText: this.buildDueStatusText(record.nextFollowUpAt, '跟进'),
+          claimStatusText: this.buildClaimStatusText(record),
+          claimRequestedAtText: record.claimRequest && record.claimRequest.requestedAt ? this.formatTimelineDate(record.claimRequest.requestedAt) : '',
           measureDueText: this.buildDueStatusText(record.measureTask && record.measureTask.dueAt, '测量'),
           designDueText: this.buildDueStatusText(record.designTask && record.designTask.dueAt, '设计'),
+          timelineRecords: (record.followUpRecords || [])
+            .slice()
+            .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+            .map((item) => ({
+              ...item,
+              displayTime: this.formatTimelineDate(item.createdAt),
+            })),
           loading: false
         });
 
@@ -113,10 +125,10 @@ Page({
         salespeople,
         measurerIndex: measurers.findIndex(item => item._id === record.measureTask.assignedTo?._id),
         designerIndex: designers.findIndex(item => item._id === record.designTask.assignedTo?._id),
-        promoterIndex: salespeople.findIndex(item => item._id === (record.promoterId._id || record.promoterId)),
+        promoterIndex: salespeople.findIndex(item => item._id === ((record.promoterId && record.promoterId._id) || record.promoterId)),
         selectedMeasurerName: record.measureTask.assignedTo?.displayName || record.measureTask.assignedTo?.username || '选择测量员',
         selectedDesignerName: record.designTask.assignedTo?.displayName || record.designTask.assignedTo?.username || '选择设计师',
-        selectedPromoterName: record.promoterId.displayName || record.promoterId.username || '选择地推员'
+        selectedPromoterName: (record.promoterId && (record.promoterId.displayName || record.promoterId.username)) || '选择地推员'
       });
     } catch (err) {
       console.error('Failed to load staff options', err);
@@ -205,7 +217,8 @@ Page({
       });
       wx.hideLoading();
       if (res.success) {
-        wx.showToast({ title: '认领成功', icon: 'success' });
+        const isPendingApproval = res.data && res.data.poolStatus === 'claimed' && res.data.claimRequest && res.data.claimRequest.status === 'pending';
+        wx.showToast({ title: isPendingApproval ? '已提交认领申请' : '认领成功', icon: 'success' });
         this.fetchDetail(); // 刷新详情
       }
     } catch (err) {
@@ -337,5 +350,26 @@ Page({
       return `${label}已超时：${text}`;
     }
     return `${label}截止：${text}`;
+  },
+
+  buildClaimStatusText(record) {
+    if (!record || !record.poolStatus) return '';
+    if (record.poolStatus === 'claimed' && record.claimRequest && record.claimRequest.status === 'pending') {
+      return '认领申请待管理员审批';
+    }
+    if (record.poolStatus === 'in_pool') {
+      return '当前在公海池，可认领';
+    }
+    if (record.poolStatus === 'protected') {
+      return '当前处于保护期';
+    }
+    return '';
+  },
+
+  formatTimelineDate(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
   }
 });

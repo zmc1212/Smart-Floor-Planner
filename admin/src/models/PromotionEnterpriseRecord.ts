@@ -1,12 +1,15 @@
 import mongoose, { Document, Model, Schema } from 'mongoose';
 import { multiTenantPlugin, TenantPluginOptions } from '../lib/mongoose-tenant-plugin';
+import type { PromotionTimelineType } from '@/lib/promotion-timeline';
 
-export type OwnershipStatus = 'auto_locked' | 'conflict_pending' | 'manually_locked';
+export type OwnershipStatus = 'unassigned' | 'auto_locked' | 'conflict_pending' | 'manually_locked';
 export type BusinessStage = 'reported' | 'contacted' | 'measuring' | 'designing' | 'quoted' | 'paid' | 'closed_lost';
 export type PoolStatus = 'protected' | 'in_pool' | 'claimed';
 export type MeasureTaskStatus = 'unassigned' | 'assigned' | 'accepted' | 'submitted';
 export type DesignTaskStatus = 'unassigned' | 'assigned' | 'in_progress' | 'completed';
 export type PendingActionRole = 'salesperson' | 'measurer' | 'designer' | 'enterprise_admin' | 'none';
+
+export type ClaimRequestStatus = 'pending' | 'approved' | 'rejected';
 
 export interface IPromotionEnterpriseRecord extends Document {
   enterpriseName: string;
@@ -17,7 +20,7 @@ export interface IPromotionEnterpriseRecord extends Document {
   address?: string;
   industry?: string;
   sourceChannel: 'ground_promotion';
-  promoterId: mongoose.Types.ObjectId;
+  promoterId?: mongoose.Types.ObjectId | null;
   enterpriseId?: mongoose.Types.ObjectId;
   ownershipStatus: OwnershipStatus;
   businessStage: BusinessStage;
@@ -30,10 +33,21 @@ export interface IPromotionEnterpriseRecord extends Document {
   lastActivityAt?: Date;
   followUpRecords: Array<{
     content: string;
+    type?: PromotionTimelineType;
     operator: string;
     operatorId?: mongoose.Types.ObjectId;
+    operatorRole?: string;
+    metadata?: Record<string, unknown>;
     createdAt: Date;
   }>;
+  claimRequest?: {
+    status: ClaimRequestStatus;
+    requestedBy: mongoose.Types.ObjectId;
+    requestedAt: Date;
+    reviewedBy?: mongoose.Types.ObjectId;
+    reviewedAt?: Date;
+    rejectReason?: string;
+  };
   measureTask: {
     status: MeasureTaskStatus;
     assignedTo?: mongoose.Types.ObjectId;
@@ -80,12 +94,12 @@ const PromotionEnterpriseRecordSchema = new Schema<IPromotionEnterpriseRecord>(
     address: { type: String, trim: true },
     industry: { type: String, trim: true },
     sourceChannel: { type: String, enum: ['ground_promotion'], default: 'ground_promotion' },
-    promoterId: { type: Schema.Types.ObjectId, ref: 'AdminUser', required: true },
+    promoterId: { type: Schema.Types.ObjectId, ref: 'AdminUser', default: null },
     // enterpriseId: 成交入驻后回填的企业 ID，报备阶段为空
     enterpriseId: { type: Schema.Types.ObjectId, ref: 'Enterprise' },
     ownershipStatus: {
       type: String,
-      enum: ['auto_locked', 'conflict_pending', 'manually_locked'],
+      enum: ['unassigned', 'auto_locked', 'conflict_pending', 'manually_locked'],
       default: 'auto_locked',
     },
     businessStage: {
@@ -111,11 +125,40 @@ const PromotionEnterpriseRecordSchema = new Schema<IPromotionEnterpriseRecord>(
     followUpRecords: [
       {
         content: { type: String, required: true },
+        type: {
+          type: String,
+          enum: [
+            'note',
+            'follow_up',
+            'report_created',
+            'ownership_assigned',
+            'pool_released',
+            'pool_auto_released',
+            'pool_claimed',
+            'pool_claim_requested',
+            'pool_claim_approved',
+            'pool_claim_rejected',
+            'pool_assigned',
+          ],
+        },
         operator: { type: String, required: true },
         operatorId: { type: Schema.Types.ObjectId, ref: 'AdminUser' },
+        operatorRole: { type: String, trim: true },
+        metadata: { type: Schema.Types.Mixed },
         createdAt: { type: Date, default: Date.now },
       },
     ],
+    claimRequest: {
+      status: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+      },
+      requestedBy: { type: Schema.Types.ObjectId, ref: 'AdminUser' },
+      requestedAt: { type: Date },
+      reviewedBy: { type: Schema.Types.ObjectId, ref: 'AdminUser' },
+      reviewedAt: { type: Date },
+      rejectReason: { type: String, trim: true },
+    },
     measureTask: {
       status: {
         type: String,
@@ -173,7 +216,17 @@ PromotionEnterpriseRecordSchema.index({ poolStatus: 1, protectionExpiresAt: 1 })
 const promotionRecordPluginOptions: TenantPluginOptions = {
   enableRoleBasedFiltering: true,
   customFilter: (store) => {
-    if (store.role === 'salesperson') return { promoterId: store.userId };
+    if (store.role === 'salesperson') {
+      return {
+        $or: [
+          { promoterId: store.userId },
+          {
+            'claimRequest.requestedBy': store.userId,
+            'claimRequest.status': 'pending',
+          },
+        ],
+      };
+    }
     if (store.role === 'measurer') return { 'measureTask.assignedTo': store.userId };
     if (store.role === 'designer') return { 'designTask.assignedTo': store.userId };
     return {};

@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { getTenantContext } from '@/lib/auth';
-import { PromotionEnterpriseRecord } from '@/models/PromotionEnterpriseRecord';
-import { assignPoolRecordToPromoter, claimFromPool } from '@/lib/promotion-workflow';
+import {
+  approveClaimFromPool,
+  assignPoolRecordToPromoter,
+  claimFromPool,
+  getPopulateQuery,
+  rejectClaimFromPool,
+  releaseToPool,
+} from '@/lib/promotion-workflow';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 
 export const dynamic = 'force-dynamic';
@@ -39,8 +45,16 @@ export async function GET(request: Request) {
     }
 
     const search = searchParams.get('search');
-
-    const query: Record<string, unknown> = { poolStatus: 'in_pool' };
+    const requestedPoolStatus = searchParams.get('poolStatus');
+    const isManager = !!context && ['enterprise_admin', 'admin', 'super_admin'].includes(context.role);
+    const query: Record<string, unknown> = {
+      poolStatus:
+        requestedPoolStatus === 'claimed' && isManager
+          ? 'claimed'
+          : requestedPoolStatus === 'all' && isManager
+            ? { $in: ['in_pool', 'claimed'] }
+            : 'in_pool',
+    };
     if (search?.trim()) {
       const regex = new RegExp(search.trim(), 'i');
       query.$or = [
@@ -51,10 +65,7 @@ export async function GET(request: Request) {
       ];
     }
 
-    const records = await PromotionEnterpriseRecord.find(query)
-      .populate('promoterId', 'displayName username role')
-      .sort({ lastActivityAt: -1 })
-      .lean();
+    const records = await getPopulateQuery(query).sort({ lastActivityAt: -1 }).lean();
 
     return NextResponse.json({ success: true, data: records });
   } catch (error: unknown) {
@@ -100,6 +111,25 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: 'Missing promoterId' }, { status: 400 });
       }
       result = await assignPoolRecordToPromoter(body.recordId, body.promoterId, context.userId);
+    } else if (action === 'approve_claim') {
+      if (!context || !['admin', 'super_admin'].includes(context.role)) {
+        return NextResponse.json({ success: false, error: 'Only managers can approve claim requests' }, { status: 403 });
+      }
+      result = await approveClaimFromPool(body.recordId, context.userId);
+    } else if (action === 'reject_claim') {
+      if (!context || !['admin', 'super_admin'].includes(context.role)) {
+        return NextResponse.json({ success: false, error: 'Only managers can reject claim requests' }, { status: 403 });
+      }
+      result = await rejectClaimFromPool(body.recordId, context.userId, body.reason);
+    } else if (action === 'release') {
+      if (!context || !['admin', 'super_admin'].includes(context.role)) {
+        return NextResponse.json({ success: false, error: 'Only managers can release records to pool' }, { status: 403 });
+      }
+      result = await releaseToPool(body.recordId, {
+        id: context.userId,
+        name: context.username,
+        role: context.role,
+      });
     } else {
       if (!context || context.role !== 'salesperson') {
         return NextResponse.json({ success: false, error: 'Only salesperson can claim from pool' }, { status: 403 });

@@ -2,19 +2,19 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { PromotionEnterpriseRecord } from '@/models/PromotionEnterpriseRecord';
 import { Enterprise } from '@/models/Enterprise';
-import { getTenantContext, withPlatformB2BTenantContext } from '@/lib/auth';
+import { withPlatformB2BTenantContext } from '@/lib/auth';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import {
-  buildPromotionAccessFilter,
   buildListQuery,
   getPopulateQuery,
   buildPromotionDuplicateQuery,
   buildNextFollowUpAt,
-  PLATFORM_PROMOTION_CONFIG,
 } from '@/lib/promotion-workflow';
 import { dispatchWorkflowNotifications } from '@/lib/workflow-automation';
 import { notifyPlatformAdminOfNewReport } from '@/lib/wechat-notification';
 import { tenantStorage } from '@/lib/tenant-context';
+import { getPlatformPromotionConfig } from '@/lib/platform-promotion-config';
+import { createPromotionTimelineEntry } from '@/lib/promotion-timeline';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,28 +38,15 @@ export async function GET(request: Request) {
           userId: String(mpContext.staff._id),
         },
         async () => {
-          let query = { ...baseQuery };
-          if (baseQuery.poolStatus !== 'in_pool') {
-            query = { ...query, ...buildPromotionAccessFilter(mpContext.staff) };
-          }
+          const query = { ...baseQuery };
           const records = await getPopulateQuery(query).sort({ createdAt: -1 }).lean();
           return NextResponse.json({ success: true, data: records });
         }
       );
     }
 
-    return await withPlatformB2BTenantContext(request, async (context) => {
+    return await withPlatformB2BTenantContext(request, async () => {
       const query = { ...baseQuery };
-      if (context.role === 'salesperson') {
-        query.promoterId = context.userId;
-      } else if (context.role === 'measurer') {
-        query['measureTask.assignedTo'] = context.userId;
-      } else if (context.role === 'designer') {
-        query['designTask.assignedTo'] = context.userId;
-      } else if (context.enterpriseId && context.role !== 'super_admin' && context.role !== 'admin') {
-        query.enterpriseId = context.enterpriseId;
-      }
-
       const records = await getPopulateQuery(query).sort({ createdAt: -1 }).lean();
       return NextResponse.json({ success: true, data: records });
     });
@@ -176,7 +163,7 @@ async function handlePostInternal(body: any, mpStaff: any, adminContext: any) {
     return NextResponse.json({ success: true, data: updated, created: false });
   }
 
-  const config = PLATFORM_PROMOTION_CONFIG;
+  const config = await getPlatformPromotionConfig();
   const protectionExpiresAt = new Date(now.getTime() + config.protectionPeriodDays * 24 * 60 * 60 * 1000);
 
   const created = await PromotionEnterpriseRecord.create({
@@ -199,9 +186,28 @@ async function handlePostInternal(body: any, mpStaff: any, adminContext: any) {
     protectionExpiresAt: conflictingRecords.length > 0 ? undefined : protectionExpiresAt,
     protectionExtendedCount: 0,
     notes: body.notes?.trim() || '',
-    followUpRecords: body.notes
-      ? [{ content: body.notes.trim(), operator: operatorName, operatorId: promoterId, createdAt: now }]
-      : [],
+    followUpRecords: [
+      createPromotionTimelineEntry({
+        type: 'report_created',
+        content: '创建企业报备',
+        operator: operatorName,
+        operatorId: promoterId,
+        operatorRole: mpStaff?.role || adminContext?.role || 'salesperson',
+        createdAt: now,
+      }),
+      ...(body.notes
+        ? [
+            createPromotionTimelineEntry({
+              type: 'note',
+              content: body.notes.trim(),
+              operator: operatorName,
+              operatorId: promoterId,
+              operatorRole: mpStaff?.role || adminContext?.role || 'salesperson',
+              createdAt: now,
+            }),
+          ]
+        : []),
+    ],
     conflictInfo:
       conflictingRecords.length > 0
         ? {

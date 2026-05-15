@@ -23,6 +23,7 @@
         <view class="meta">{{record.contactPerson}} · {{record.phone}}</view>
         <view class="meta">业务进度：{{map.stage(record.businessStage)}}</view>
         <view class="meta">归属状态：{{map.ownership(record.ownershipStatus)}}</view>
+        <view class="meta" wx:if="{{claimStatusText}}">认领状态：{{claimStatusText}}</view>
       </view>
       <view class="hero-chip">{{followUpStatusText}}</view>
     </view>
@@ -31,6 +32,12 @@
       <view class="section-title">客户认领</view>
       <view class="meta">该客户当前可认领，认领后将进入你的跟进列表。</view>
       <button class="primary-btn" bindtap="onClaimRecord">立即认领</button>
+    </view>
+
+    <view class="card" wx:if="{{record.poolStatus === 'claimed' && record.claimRequest && record.claimRequest.status === 'pending'}}">
+      <view class="section-title">认领申请</view>
+      <view class="meta">该报备已提交认领申请，等待管理员审批。</view>
+      <view class="meta" wx:if="{{claimRequestedAtText}}">申请时间：{{claimRequestedAtText}}</view>
     </view>
 
     <view class="card stage-card">
@@ -54,9 +61,11 @@
       </picker>
       <button class="secondary-btn" bindtap="onSaveFollowUp">保存跟进</button>
       <button class="primary-btn" bindtap="onCompleteFollowUp">标记已跟进</button>
-      <view class="log" wx:for="{{record.followUpRecords}}" wx:key="createdAt">
-        <view class="log-title">{{item.operator}}</view>
+      <view class="log" wx:for="{{timelineRecords}}" wx:key="createdAt">
+        <view class="log-title">{{map.timelineType(item.type)}} · {{item.operator}}</view>
+        <view class="meta" wx:if="{{item.displayTime}}">{{item.displayTime}}</view>
         <view class="log-content">{{item.content}}</view>
+        <view class="meta" wx:if="{{item.type === 'pool_claim_rejected' && item.metadata && item.metadata.rejectReason}}">驳回原因：{{item.metadata.rejectReason}}</view>
       </view>
     </view>
 

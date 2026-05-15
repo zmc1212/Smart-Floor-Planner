@@ -72,11 +72,13 @@ export default function MerchantDashboard({ admin }: { admin: MerchantAdmin }) {
 
   return (
     <div className="space-y-10">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <StatCard title="待跟进线索" value={String(stats?.leadCount || 0)} icon={<ClipboardList size={20} />} color="bg-blue-500" detail="需要及时响应的意向客户" />
-        <StatCard title="本司户型资产" value={String(stats?.planCount || 0)} icon={<Map size={20} />} color="bg-purple-500" detail="设计师创建的数字化户型" />
-        <StatCard title="团队成员" value={String(stats?.staffCount || 0)} icon={<Users size={20} />} color="bg-orange-500" detail="当前活跃的设计师、地推与测量员" />
-      </div>
+      {admin.role !== 'salesperson' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <StatCard title="待跟进线索" value={String(stats?.leadCount || 0)} icon={<ClipboardList size={20} />} color="bg-blue-500" detail="需要及时响应的意向客户" />
+          <StatCard title="本司户型资产" value={String(stats?.planCount || 0)} icon={<Map size={20} />} color="bg-purple-500" detail="设计师创建的数字化户型" />
+          <StatCard title="团队成员" value={String(stats?.staffCount || 0)} icon={<Users size={20} />} color="bg-orange-500" detail="当前活跃的设计师、地推与测量员" />
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-8">
         <section className="space-y-4">
@@ -150,59 +152,63 @@ export default function MerchantDashboard({ admin }: { admin: MerchantAdmin }) {
             )}
           </div>
 
-          <div className="bg-gradient-to-br from-zinc-900 to-zinc-800 p-8 rounded-[32px] text-white space-y-6 shadow-2xl relative overflow-hidden group">
-            <div className="absolute -top-10 -right-10 w-40 h-40 bg-primary/20 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-1000" />
-            <div className="w-12 h-12 bg-primary/20 rounded-2xl flex items-center justify-center">
-              <Sparkles className="text-primary" />
+          {admin.role !== 'salesperson' && (
+            <div className="bg-gradient-to-br from-zinc-900 to-zinc-800 p-8 rounded-[32px] text-white space-y-6 shadow-2xl relative overflow-hidden group">
+              <div className="absolute -top-10 -right-10 w-40 h-40 bg-primary/20 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-1000" />
+              <div className="w-12 h-12 bg-primary/20 rounded-2xl flex items-center justify-center">
+                <Sparkles className="text-primary" />
+              </div>
+              <div className="space-y-2">
+                <h4 className="text-xl font-bold italic tracking-tight">AI Style Generator</h4>
+                <p className="text-sm text-zinc-400 leading-relaxed">一键为您的客户生成全屋 3D 渲染效果图，提升签单成功率。</p>
+              </div>
+              <Link href="/floorplans" className="w-full h-12 bg-white text-zinc-950 rounded-2xl flex items-center justify-center font-bold text-sm hover:bg-primary hover:text-white transition-all">
+                开始生成
+              </Link>
             </div>
-            <div className="space-y-2">
-              <h4 className="text-xl font-bold italic tracking-tight">AI Style Generator</h4>
-              <p className="text-sm text-zinc-400 leading-relaxed">一键为您的客户生成全屋 3D 渲染效果图，提升签单成功率。</p>
-            </div>
-            <Link href="/floorplans" className="w-full h-12 bg-white text-zinc-950 rounded-2xl flex items-center justify-center font-bold text-sm hover:bg-primary hover:text-white transition-all">
-              开始生成
-            </Link>
-          </div>
+          )}
         </section>
       </div>
 
-      <div className="space-y-4">
-        <div className="flex items-center justify-between px-2">
-          <h3 className="text-lg font-bold">最近线索流转</h3>
-          <Link href="/leads" className="text-sm font-bold text-primary flex items-center gap-1 hover:underline">
-            查看全部 <ArrowRight size={14} />
-          </Link>
-        </div>
-        <div className="space-y-3">
-          {(stats?.latestLeads || []).map((lead: any) => (
-            <div key={lead._id} className="bg-white p-5 rounded-2xl border border-muted shadow-sm hover:shadow-md transition-all flex items-center justify-between group">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-muted rounded-full flex items-center justify-center text-muted-foreground font-bold group-hover:bg-primary/10 group-hover:text-primary transition-colors">
-                  {lead.name?.[0] || '客'}
+      {admin.role !== 'salesperson' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between px-2">
+            <h3 className="text-lg font-bold">最近线索流转</h3>
+            <Link href="/leads" className="text-sm font-bold text-primary flex items-center gap-1 hover:underline">
+              查看全部 <ArrowRight size={14} />
+            </Link>
+          </div>
+          <div className="space-y-3">
+            {(stats?.latestLeads || []).map((lead: any) => (
+              <div key={lead._id} className="bg-white p-5 rounded-2xl border border-muted shadow-sm hover:shadow-md transition-all flex items-center justify-between group">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-muted rounded-full flex items-center justify-center text-muted-foreground font-bold group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+                    {lead.name?.[0] || '客'}
+                  </div>
+                  <div>
+                    <p className="font-bold text-sm leading-none mb-1">{lead.name}</p>
+                    <p className="text-xs text-muted-foreground">{lead.phone}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-bold text-sm leading-none mb-1">{lead.name}</p>
-                  <p className="text-xs text-muted-foreground">{lead.phone}</p>
+                <div className="flex items-center gap-6">
+                  <div className="text-right hidden sm:block">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase mb-0.5">意向风格</p>
+                    <p className="text-[12px] font-medium">{lead.stylePreference || '未设置'}</p>
+                  </div>
+                  <Badge className="bg-muted text-muted-foreground border-none font-bold text-[10px]">
+                    {new Date(lead.createdAt).toLocaleDateString()}
+                  </Badge>
                 </div>
               </div>
-              <div className="flex items-center gap-6">
-                <div className="text-right hidden sm:block">
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase mb-0.5">意向风格</p>
-                  <p className="text-[12px] font-medium">{lead.stylePreference || '未设置'}</p>
-                </div>
-                <Badge className="bg-muted text-muted-foreground border-none font-bold text-[10px]">
-                  {new Date(lead.createdAt).toLocaleDateString()}
-                </Badge>
+            ))}
+            {(stats?.latestLeads || []).length === 0 && (
+              <div className="py-20 text-center bg-muted/10 rounded-3xl border-2 border-dashed border-muted">
+                <p className="text-muted-foreground font-medium">暂无最新线索</p>
               </div>
-            </div>
-          ))}
-          {(stats?.latestLeads || []).length === 0 && (
-            <div className="py-20 text-center bg-muted/10 rounded-3xl border-2 border-dashed border-muted">
-              <p className="text-muted-foreground font-medium">暂无最新线索</p>
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

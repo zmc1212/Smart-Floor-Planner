@@ -2,12 +2,12 @@ const app = getApp();
 const api = require('../../utils/api.js');
 
 const TITLE_MAP = {
-  my: '我的企业',
+  my: '我的报备',
   measure: '量房任务',
   design: '设计任务',
   admin: '报备管理',
   overdue: '超时任务',
-  pool: '可认领客户'
+  pool: '可认领客户',
 };
 
 const FILTER_TABS = [
@@ -15,7 +15,7 @@ const FILTER_TABS = [
   { key: 'todo', label: '待处理' },
   { key: 'measuring', label: '量房中', businessStage: 'measuring' },
   { key: 'designing', label: '设计中', businessStage: 'designing' },
-  { key: 'paid', label: '已成交', businessStage: 'paid' }
+  { key: 'paid', label: '已成交', businessStage: 'paid' },
 ];
 
 function getInitialFilter(options, view) {
@@ -46,7 +46,7 @@ function buildListPath(view, filter) {
   return buildPromotionPath(view, filter);
 }
 
-function usesTodoApi(view, filter) {
+function usesTodoApi(filter) {
   return filter === 'todo';
 }
 
@@ -58,7 +58,8 @@ Page({
     activeFilter: 'all',
     records: [],
     loading: true,
-    useTodoApi: false
+    useTodoApi: false,
+    userInfo: {},
   },
 
   onLoad(options) {
@@ -69,12 +70,16 @@ Page({
       view,
       title,
       activeFilter,
-      useTodoApi: usesTodoApi(view, activeFilter)
+      useTodoApi: usesTodoApi(activeFilter),
+      userInfo: app.globalData.userInfo || wx.getStorageSync('userInfo') || {},
     });
     wx.setNavigationBarTitle({ title });
   },
 
   onShow() {
+    this.setData({
+      userInfo: app.globalData.userInfo || wx.getStorageSync('userInfo') || {},
+    });
     this.fetchRecords();
   },
 
@@ -86,15 +91,15 @@ Page({
     this.setData({ loading: true });
     try {
       const { view, activeFilter } = this.data;
-      const useTodoApi = usesTodoApi(view, activeFilter);
+      const useTodoApi = usesTodoApi(activeFilter);
       const res = await api.request(buildListPath(view, activeFilter), 'GET');
       this.setData({
         records: (res.data || []).map((item) => ({
           ...item,
-          key: item.key || item._id || item.recordId
+          key: item.key || item._id || item.recordId,
         })),
         useTodoApi,
-        loading: false
+        loading: false,
       });
     } catch (err) {
       this.setData({ loading: false });
@@ -107,7 +112,7 @@ Page({
     if (!filter || filter === this.data.activeFilter) return;
     this.setData({
       activeFilter: filter,
-      useTodoApi: usesTodoApi(this.data.view, filter)
+      useTodoApi: usesTodoApi(filter),
     });
     this.fetchRecords();
   },
@@ -118,7 +123,26 @@ Page({
     wx.navigateTo({ url: `/pages/promotion-record-detail/promotion-record-detail?id=${id}` });
   },
 
+  async onClaimRecord(e) {
+    const id = e.currentTarget.dataset.id;
+    if (!id) return;
+
+    wx.showLoading({ title: '认领中' });
+    try {
+      const res = await api.request('/promotion-records/pool', 'POST', { recordId: id });
+      wx.hideLoading();
+      if (res.success) {
+        const isPendingApproval = res.data && res.data.poolStatus === 'claimed' && res.data.claimRequest && res.data.claimRequest.status === 'pending';
+        wx.showToast({ title: isPendingApproval ? '已提交认领申请' : '认领成功', icon: 'success' });
+        this.fetchRecords();
+      }
+    } catch (err) {
+      wx.hideLoading();
+      wx.showToast({ title: err.error || '认领失败', icon: 'none' });
+    }
+  },
+
   onCreateRecord() {
     wx.navigateTo({ url: '/pages/promotion-record-detail/promotion-record-detail?mode=create' });
-  }
+  },
 });

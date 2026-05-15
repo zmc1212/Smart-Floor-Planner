@@ -1,99 +1,98 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { Enterprise } from '@/models/Enterprise';
-import { getTenantContext } from '@/lib/auth';
-import { PromotionEnterpriseRecord } from '@/models/PromotionEnterpriseRecord';
 import { AdminUser } from '@/models/AdminUser';
-import { buildPromotionAccessFilter, getMiniProgramStaffContext, extendProtectionPeriod } from '@/lib/promotion-workflow';
+import { getPlatformB2BTenantContext, getTenantContext } from '@/lib/auth';
+import {
+  extendProtectionPeriod,
+  getPromotionRecordByIdQuery,
+} from '@/lib/promotion-workflow';
 import {
   buildDesignDueAt,
   buildNextFollowUpAt,
   buildMeasureDueAt,
   dispatchWorkflowNotifications,
 } from '@/lib/workflow-automation';
-
 import { tenantStorage } from '@/lib/tenant-context';
+import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import { createPromotionTimelineEntry, resolveOperatorName } from '@/lib/promotion-timeline';
+import { getPlatformPromotionConfig } from '@/lib/platform-promotion-config';
 
 export const dynamic = 'force-dynamic';
 
-async function getRecordByScope(id: string, openid?: string, request?: Request) {
-  try {
-    // 调试模式：优先尝试直接查找，不计角色
-    const record = await PromotionEnterpriseRecord.findById(id)
-      .populate('promoterId', 'displayName username role')
-      .populate('measureTask.assignedTo', 'displayName username role')
-      .populate('designTask.assignedTo', 'displayName username role');
-    
-    if (record) {
-      return { record, staff: { role: 'admin', enterpriseId: null } as any };
-    }
+type RecordActor = {
+  id: string;
+  role: string;
+  name: string;
+  enterpriseId?: string | null;
+};
 
-    // 原有逻辑备用
-    if (openid) {
-      const staff = await AdminUser.findOne({ openid });
-      if (!staff) return { record: null, staff: null };
-      
-      const scopedRecord = await tenantStorage.run(
-        { 
-          enterpriseId: staff.enterpriseId, 
-          role: staff.role, 
-          userId: staff._id.toString() 
-        } as any,
-        () => PromotionEnterpriseRecord.findById(id)
-          .populate('promoterId', 'displayName username role')
-          .populate('measureTask.assignedTo', 'displayName username role')
-          .populate('designTask.assignedTo', 'displayName username role')
-      );
-      return { record: scopedRecord, staff };
-    }
+async function getScopedRecord(request: Request, id: string) {
+  const mpContext = await resolveMiniProgramContext(request);
+  if (mpContext?.staff) {
+    const actor: RecordActor = {
+      id: String(mpContext.staff._id),
+      role: mpContext.staff.role,
+      name: resolveOperatorName(mpContext.staff),
+      enterpriseId: mpContext.staff.enterpriseId ? String(mpContext.staff.enterpriseId) : null,
+    };
 
-    if (!request) return { record: null, staff: null };
-    const context = await getTenantContext(request);
-    // 即使没登录，我们也返回一个模拟的 admin 身份以便后续 fallback
-    return { record: null, staff: context || { role: 'admin', enterpriseId: null } as any };
-  } catch (error) {
-    console.error('Error fetching record:', error);
-    return { record: null, staff: null };
+    const record = await tenantStorage.run(
+      {
+        enterpriseId: actor.enterpriseId || null,
+        role: actor.role,
+        userId: actor.id,
+      },
+      () => getPromotionRecordByIdQuery(id)
+    );
+
+    return { record, actor };
   }
+
+  const context = await getTenantContext(request);
+  if (!context) {
+    return { record: null, actor: null };
+  }
+
+  const b2bContext = getPlatformB2BTenantContext(context);
+  const actor: RecordActor = {
+    id: b2bContext.userId,
+    role: b2bContext.role,
+    name: b2bContext.username,
+    enterpriseId: b2bContext.enterpriseId,
+  };
+
+  const record = await tenantStorage.run(
+    {
+      enterpriseId: b2bContext.enterpriseId,
+      role: b2bContext.role,
+      userId: b2bContext.userId,
+      username: b2bContext.username,
+    },
+    () => getPromotionRecordByIdQuery(id)
+  );
+
+  return { record, actor };
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await dbConnect();
     const { id } = await params;
-    const { searchParams } = new URL(request.url);
-    const openid = searchParams.get('openid') || undefined;
+    const { record, actor } = await getScopedRecord(request, id);
 
-    const { record, staff } = await getRecordByScope(id, openid, request);
-    
-    // === 深度诊断日志 ===
-    const fs = await import('fs');
-    const path = await import('path');
-    const logPath = path.join(process.cwd(), 'api_debug.log');
-    const logMsg = `[${new Date().toISOString()}] GET /api/promotion-records/${id} | Role=${staff?.role} | EnterpriseId=${staff?.enterpriseId} | RecordFound=${!!record}\n`;
-    fs.appendFileSync(logPath, logMsg);
+    if (!actor) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
 
     if (!record) {
-      // 最后的兜底：如果模型查不到，尝试直接查库（绕过 Mongoose 插件）
-      const mongoose = await import('mongoose');
-      const directRecord = await mongoose.connection.db?.collection('promotionenterpriserecords').findOne({ 
-        _id: new mongoose.Types.ObjectId(id) 
-      });
-
-      if (directRecord && (staff?.role === 'super_admin' || staff?.role === 'admin')) {
-        const dbLog = `[${new Date().toISOString()}] [FALLBACK SUCCESS] 管理员通过兜底查询找到了记录！说明插件过滤逻辑仍有干扰。\n`;
-        fs.appendFileSync(logPath, dbLog);
-        return NextResponse.json({ success: true, data: directRecord, _debug: 'fallback_found' });
-      }
-
-      const failLog = `[${new Date().toISOString()}] [FINAL FAIL] 依然找不到记录。DirectDB=${!!directRecord}\n`;
-      fs.appendFileSync(logPath, failLog);
-      return NextResponse.json({ success: false, error: 'Record not found', _debug: { role: staff?.role, enterpriseId: staff?.enterpriseId } }, { status: 404 });
+      return NextResponse.json({ success: false, error: 'Record not found' }, { status: 404 });
     }
 
     return NextResponse.json({ success: true, data: record });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
 
@@ -102,27 +101,28 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     await dbConnect();
     const { id } = await params;
     const body = await request.json();
-    const openid = body.openid as string | undefined;
+    const { record, actor } = await getScopedRecord(request, id);
 
-    const { record, staff } = await getRecordByScope(id, openid, request);
-    if (!record || !staff) {
+    if (!actor) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!record) {
       return NextResponse.json({ success: false, error: 'Record not found' }, { status: 404 });
     }
 
-    const actor = staff as any;
-    const actorName = openid ? actor.displayName || actor.username : actor.username;
-    const actorId = openid ? String(actor._id) : actor.userId;
-    const actorRole = actor.role;
     const now = new Date();
     const enterprise = record.enterpriseId ? await Enterprise.findById(record.enterpriseId).lean() : null;
+    const platformPromotionConfig = await getPlatformPromotionConfig();
 
-    const updateData: Record<string, any> = {
+    const updateData: Record<string, unknown> = {
       $set: {
         lastActivityAt: now,
       },
     };
-    const setData = updateData.$set;
+    const setData = updateData.$set as Record<string, unknown>;
     const unsetData: Record<string, unknown> = {};
+    const pushEntries: Array<Record<string, unknown>> = [];
     const notificationJobs: Array<{
       type: 'follow_up_created' | 'measure_assigned' | 'measure_submitted' | 'design_assigned' | 'design_completed' | 'conflict_pending';
       recipientRoles: string[];
@@ -142,19 +142,20 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     if (body.followUpNote?.trim()) {
-      updateData.$push = {
-        followUpRecords: {
+      pushEntries.push(
+        createPromotionTimelineEntry({
+          type: 'follow_up',
           content: body.followUpNote.trim(),
-          operator: actorName,
-          operatorId: actorId,
+          operator: actor.name,
+          operatorId: actor.id,
+          operatorRole: actor.role,
           createdAt: now,
-        },
-      };
+        })
+      );
       if (record.businessStage === 'reported') {
         setData.businessStage = 'contacted';
       }
-      // 跟进后自动延长保护期
-      const extension = extendProtectionPeriod(record);
+      const extension = await extendProtectionPeriod(record);
       if (extension) {
         setData.protectionExpiresAt = extension.protectionExpiresAt;
         setData.protectionExtendedCount = extension.protectionExtendedCount;
@@ -174,14 +175,15 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     if (body.followUpCompleted) {
-      setData.businessStage = setData.businessStage || (record.businessStage === 'reported' ? 'contacted' : record.businessStage);
+      setData.businessStage =
+        setData.businessStage || (record.businessStage === 'reported' ? 'contacted' : record.businessStage);
       if (!body.nextFollowUpAt) {
         setData.pendingActionRole = 'none';
         unsetData.nextFollowUpAt = 1;
       }
     }
 
-    if ((actorRole === 'enterprise_admin' || actorRole === 'admin' || actorRole === 'super_admin') && body.assignMeasurer) {
+    if ((actor.role === 'enterprise_admin' || actor.role === 'admin' || actor.role === 'super_admin') && body.assignMeasurer) {
       setData['measureTask.assignedTo'] = body.assignMeasurer;
       setData['measureTask.status'] = 'assigned';
       setData['measureTask.assignedAt'] = now;
@@ -198,7 +200,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       });
     }
 
-    if ((actorRole === 'enterprise_admin' || actorRole === 'admin' || actorRole === 'super_admin') && body.assignDesigner) {
+    if ((actor.role === 'enterprise_admin' || actor.role === 'admin' || actor.role === 'super_admin') && body.assignDesigner) {
       setData['designTask.assignedTo'] = body.assignDesigner;
       setData['designTask.status'] = 'assigned';
       setData['designTask.assignedAt'] = now;
@@ -214,7 +216,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       });
     }
 
-    if (actorRole === 'measurer' || body.measureTaskStatus) {
+    if (actor.role === 'measurer' || body.measureTaskStatus) {
       if (body.measureTaskStatus === 'accepted') {
         setData['measureTask.status'] = 'accepted';
         setData['measureTask.acceptedAt'] = now;
@@ -236,7 +238,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       }
     }
 
-    if (actorRole === 'designer' || body.designTaskStatus) {
+    if (actor.role === 'designer' || body.designTaskStatus) {
       if (body.designTaskStatus === 'in_progress') {
         setData['designTask.status'] = 'in_progress';
         setData['designTask.latestNote'] = body.designNote?.trim() || '';
@@ -260,32 +262,70 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     if (
-      (actorRole === 'enterprise_admin' || actorRole === 'admin' || actorRole === 'super_admin') &&
-      body.ownershipStatus === 'manually_locked'
+      (actor.role === 'enterprise_admin' || actor.role === 'admin' || actor.role === 'super_admin') &&
+      body.ownershipStatus === 'manually_locked' &&
+      body.promoterId
     ) {
+      const targetPromoter = await AdminUser.findOne({
+        _id: body.promoterId,
+        role: 'salesperson',
+        status: 'active',
+      }).select('displayName username role');
+
+      if (!targetPromoter) {
+        return NextResponse.json({ success: false, error: 'Target salesperson not found' }, { status: 400 });
+      }
+
+      const protectionExpiresAt = new Date(
+        now.getTime() + platformPromotionConfig.protectionPeriodDays * 24 * 60 * 60 * 1000
+      );
       setData.ownershipStatus = 'manually_locked';
-      setData.promoterId = body.promoterId || record.promoterId;
+      setData.promoterId = body.promoterId;
+      setData.poolStatus = 'protected';
       setData.pendingActionRole = 'salesperson';
+      setData.protectionExpiresAt = protectionExpiresAt;
+      setData.protectionExtendedCount = 0;
+      setData.businessStage = record.businessStage === 'closed_lost' ? 'reported' : record.businessStage;
       setData.nextFollowUpAt = buildNextFollowUpAt(now, enterprise);
-      setData['conflictInfo.reviewedBy'] = actorId;
+      setData['conflictInfo.reviewedBy'] = actor.id;
       setData['conflictInfo.reviewedAt'] = now;
       setData['conflictInfo.resolution'] = body.resolution || 'manual_override';
+      unsetData.claimRequest = 1;
+      pushEntries.push(
+        createPromotionTimelineEntry({
+          type: 'ownership_assigned',
+          content: `${actor.name} 指派渠道地推：${resolveOperatorName(targetPromoter)}`,
+          operator: actor.name,
+          operatorId: actor.id,
+          operatorRole: actor.role,
+          metadata: {
+            promoterId: String(targetPromoter._id),
+          },
+          createdAt: now,
+        })
+      );
       notificationJobs.push({
         type: 'follow_up_created',
         recipientRoles: ['salesperson'],
         message: `【归属已确认】${record.enterpriseName} 的归属已确认，请尽快继续跟进。`,
-        dedupeSuffix: `conflict-resolved-${now.getTime()}`,
+        dedupeSuffix: `ownership-assigned-${now.getTime()}`,
       });
+    }
+
+    if (pushEntries.length > 0) {
+      updateData.$push = {
+        followUpRecords: {
+          $each: pushEntries,
+        },
+      };
     }
 
     if (Object.keys(unsetData).length > 0) {
       updateData.$unset = unsetData;
     }
 
-    const updated = await PromotionEnterpriseRecord.findByIdAndUpdate(id, updateData, { new: true })
-      .populate('promoterId', 'displayName username role')
-      .populate('measureTask.assignedTo', 'displayName username role')
-      .populate('designTask.assignedTo', 'displayName username role');
+    await record.updateOne(updateData);
+    const updated = await getPromotionRecordByIdQuery(id);
 
     for (const job of notificationJobs) {
       await dispatchWorkflowNotifications({
@@ -298,7 +338,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     return NextResponse.json({ success: true, data: updated });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

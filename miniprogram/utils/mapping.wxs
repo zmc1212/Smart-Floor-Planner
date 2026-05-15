@@ -28,7 +28,7 @@ var taskStatusLabels = {
 
 var roleLabels = {
   none: '无',
-  salesperson: '地推',
+  salesperson: '渠道地推',
   measurer: '测量员',
   designer: '设计师',
   enterprise_admin: '企业负责人',
@@ -50,11 +50,33 @@ var commissionTypeLabels = {
   fixed_per_paid_order: '成交订单固定提成'
 };
 
+var poolStatusLabels = {
+  protected: '保护中',
+  in_pool: '公海中',
+  claimed: '待审批认领'
+};
+
+var timelineTypeLabels = {
+  report_created: '创建报备',
+  note: '备注',
+  follow_up: '跟进记录',
+  ownership_assigned: '指派地推',
+  pool_released: '释放公海',
+  pool_auto_released: '系统释放',
+  pool_claimed: '认领成功',
+  pool_claim_requested: '申请认领',
+  pool_claim_approved: '认领通过',
+  pool_claim_rejected: '认领驳回',
+  pool_assigned: '公海分配'
+};
+
 module.exports = {
   stage: function(key) { return stageLabels[key] || key || ''; },
   ownership: function(key) { return ownershipLabels[key] || key || ''; },
   taskStatus: function(key) { return taskStatusLabels[key] || key || '待分配'; },
   role: function(key) { return roleLabels[key] || key || '无'; },
   commissionStatus: function(key) { return commissionStatusLabels[key] || key || ''; },
-  commissionType: function(key) { return commissionTypeLabels[key] || key || ''; }
+  commissionType: function(key) { return commissionTypeLabels[key] || key || ''; },
+  poolStatus: function(key) { return poolStatusLabels[key] || key || ''; },
+  timelineType: function(key) { return timelineTypeLabels[key] || key || '操作记录'; }
 };
