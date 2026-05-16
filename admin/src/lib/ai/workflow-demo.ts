@@ -11,6 +11,7 @@ export interface AiWorkflowDemoGeneration {
   createdAt: string;
   input?: {
     customPrompt?: string;
+    styleReferenceImage?: string;
   };
   output?: {
     imageUrl?: string;
@@ -95,7 +96,7 @@ export const AI_WORKFLOW_DEMO_CASES: AiWorkflowDemoCase[] = [
           ),
         },
         output: {
-          imageUrl: '/colorful.png',
+          imageUrl: '/demo-workflows/urban-modern/direction-board.png',
           promptUsed: buildPrompt(
             '选风格',
             '现代、奶油、原木、轻奢和新中式的多风格对比板',
@@ -118,6 +119,7 @@ export const AI_WORKFLOW_DEMO_CASES: AiWorkflowDemoCase[] = [
             '偏现代暖灰木质调',
             '请在保留原始空间结构和镜头逻辑不变的前提下，输出一张可作为后续深化基础的标准效果图。'
           ),
+          styleReferenceImage: '/demo-workflows/urban-modern/style-crop.png',
         },
         output: {
           imageUrl: '/3d.png',

@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { notify } from '@/components/ui/operation-feedback';
 import { useFetch } from '@/hooks/useFetch';
+import { PhotoProvider, PhotoView } from 'react-photo-view';
+import 'react-photo-view/dist/react-photo-view.css';
 import { getWorkflowStageDefinition, type AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
 
 interface WorkflowGeneration {
@@ -106,8 +108,9 @@ export default function ScenarioDetailPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[linear-gradient(180deg,#fffdf7_0%,#ffffff_46%,#fcfcfc_100%)] text-[#171717]">
-      <main className="mx-auto max-w-6xl px-6 py-8">
+    <PhotoProvider>
+      <div className="min-h-screen bg-[linear-gradient(180deg,#fffdf7_0%,#ffffff_46%,#fcfcfc_100%)] text-[#171717]">
+        <main className="mx-auto max-w-6xl px-6 py-8">
         <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-4">
             <Button variant="ghost" className="rounded-xl px-0 hover:bg-transparent" onClick={() => router.push(`/ai-studio/scenarios?leadId=${lead.id}`)}>
@@ -157,11 +160,13 @@ export default function ScenarioDetailPage() {
                   <div className="flex items-center gap-2 text-sm font-bold">起点素材</div>
                 </div>
                 <div className="grid gap-4 p-6 lg:grid-cols-[320px_minmax(0,1fr)]">
-                  <img
-                    src={workflow.sourceImage}
-                    alt="方案来源素材"
-                    className="h-56 w-full rounded-[24px] object-cover"
-                  />
+                  <PhotoView src={workflow.sourceImage}>
+                    <img
+                      src={workflow.sourceImage}
+                      alt="方案来源素材"
+                      className="h-56 w-full cursor-zoom-in rounded-[24px] object-cover"
+                    />
+                  </PhotoView>
                   <div className="space-y-3">
                     <div>
                       <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
@@ -225,11 +230,13 @@ export default function ScenarioDetailPage() {
 
                   <div className="p-6">
                     {generation.output?.imageUrl ? (
-                      <img
-                        src={generation.output.imageUrl}
-                        alt={generation.stageLabel || generation.stageKey || '步骤产物'}
-                        className="h-[420px] w-full rounded-[24px] object-cover"
-                      />
+                      <PhotoView src={generation.output.imageUrl}>
+                        <img
+                          src={generation.output.imageUrl}
+                          alt={generation.stageLabel || generation.stageKey || '步骤产物'}
+                          className="h-[420px] w-full cursor-zoom-in rounded-[24px] object-cover"
+                        />
+                      </PhotoView>
                     ) : (
                       <div className="rounded-[24px] border border-dashed border-zinc-200 bg-zinc-50 px-6 py-16 text-center text-sm text-muted-foreground">
                         {generation.errorMessage || '该步骤暂未返回图片。'}
@@ -263,7 +270,8 @@ export default function ScenarioDetailPage() {
             </div>
           </aside>
         </div>
-      </main>
-    </div>
+       </main>
+     </div>
+    </PhotoProvider>
   );
 }

@@ -15,11 +15,15 @@ type LeanFloorPlan = {
 };
 
 interface WorkflowPatchBody {
-  action?: 'select-generation' | 'set-stage' | 'rename';
+  action?: 'select-generation' | 'set-stage' | 'rename' | 'mock-generation';
   generationId?: string;
   nextStageKey?: AiWorkflowStageKey;
   stageKey?: AiWorkflowStageKey;
   title?: string;
+  imageUrl?: string;
+  parentGenerationId?: string;
+  sourceAssetRole?: string;
+  styleReferenceImage?: string;
 }
 
 async function getWorkflowWithLead(workflowId: string) {
@@ -101,7 +105,7 @@ export async function PATCH(
   try {
     await dbConnect();
 
-    return await withTenantRoute(req, { requireEnterprise: true }, async () => {
+    return await withTenantRoute(req, { requireEnterprise: true }, async (context) => {
       const { id } = await params;
       const body = (await req.json()) as WorkflowPatchBody;
       const { workflow, lead } = await getWorkflowWithLead(id);
@@ -148,6 +152,37 @@ export async function PATCH(
           workflow.currentStageKey = body.nextStageKey;
         }
         await workflow.save();
+      } else if (body.action === 'mock-generation') {
+        if (!body.stageKey || !body.imageUrl) {
+          return NextResponse.json({ success: false, error: 'Missing stageKey or imageUrl' }, { status: 400 });
+        }
+
+        const generation = await AiGeneration.create({
+          enterpriseId: workflow.enterpriseId,
+          leadId: workflow.leadId,
+          workflowId: workflow._id,
+          operatorId: context.userId,
+          parentGenerationId: body.parentGenerationId,
+          type: 'scenario',
+          stageKey: body.stageKey,
+          sourceAssetRole: body.sourceAssetRole || workflow.sourceAssetRole,
+          status: 'succeeded',
+          input: {
+            style: 'mock',
+            customPrompt: '手动上传的本地图片（跳过 AI 生成）',
+            styleReferenceImage: body.styleReferenceImage,
+          },
+          output: {
+            imageUrl: body.imageUrl,
+            promptUsed: '手动上传测试图',
+          },
+          provider: 'pollinations',
+        });
+
+        if (body.nextStageKey) {
+          workflow.currentStageKey = body.nextStageKey;
+          await workflow.save();
+        }
       } else {
         return NextResponse.json({ success: false, error: 'Unsupported action' }, { status: 400 });
       }

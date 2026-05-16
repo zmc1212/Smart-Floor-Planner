@@ -36,6 +36,7 @@ interface GenerateBody {
   stageKey?: AiWorkflowStageKey;
   parentGenerationId?: string;
   sourceAssetRole?: AiWorkflowSourceAssetRole;
+  styleReferenceImage?: string;
 }
 
 function resolvePresetType(type?: string): AiPresetType {
@@ -113,6 +114,7 @@ export async function POST(req: Request) {
         stageKey,
         parentGenerationId,
         sourceAssetRole,
+        styleReferenceImage,
       } = body;
 
       if (!type || !style) {
@@ -250,6 +252,7 @@ export async function POST(req: Request) {
           roomData,
           furnitureItems,
           presetSnapshot: preset ? buildPresetSnapshot(preset) : undefined,
+          styleReferenceImage,
         },
         status: 'processing',
         apiKeyId: runtimeConfig.keyId,

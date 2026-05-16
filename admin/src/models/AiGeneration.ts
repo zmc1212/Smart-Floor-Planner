@@ -29,6 +29,7 @@ export interface IAiGeneration extends Document {
     placementPlan?: unknown;
     placementGuideImage?: string;
     customPrompt?: string;
+    styleReferenceImage?: string;
   };
   output: {
     imageUrl?: string;
@@ -128,6 +129,7 @@ const AiGenerationSchema: Schema<IAiGeneration> = new Schema(
       placementPlan: { type: Schema.Types.Mixed },
       placementGuideImage: { type: String },
       customPrompt: { type: String },
+      styleReferenceImage: { type: String },
     },
     output: {
       imageUrl: { type: String },

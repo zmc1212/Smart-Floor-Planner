@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowRight,
+  CheckCircle,
   CheckCircle2,
   Clock,
   Copy,
@@ -23,6 +24,9 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import AiQuotaBar from '@/components/ai-studio/AiQuotaBar';
 import RechargeDialog from '@/components/ai-studio/RechargeDialog';
+import ImageCropperDialog from '@/components/ai-studio/ImageCropperDialog';
+import { PhotoProvider, PhotoView } from 'react-photo-view';
+import 'react-photo-view/dist/react-photo-view.css';
 import { useFetch } from '@/hooks/useFetch';
 import {
   ADVANCED_WORKFLOW_TOOLS,
@@ -83,6 +87,7 @@ interface WorkflowGeneration {
   status: 'pending' | 'processing' | 'succeeded' | 'failed';
   input?: {
     customPrompt?: string;
+    styleReferenceImage?: string;
   };
   output?: {
     imageUrl?: string;
@@ -262,11 +267,13 @@ function DemoWorkflowShowcase({
           <div className="mt-2 text-xs text-muted-foreground">{formatTime(demo.workflow.createdAt)}</div>
         </div>
       </div>
-      <img
-        src={demo.workflow.sourceImage}
-        alt={`${demo.name} 起点素材`}
-        className="mt-4 h-48 w-full rounded-[20px] object-cover"
-      />
+      <PhotoView src={demo.workflow.sourceImage}>
+        <img
+          src={demo.workflow.sourceImage}
+          alt={`${demo.name} 起点素材`}
+          className="mt-4 h-48 w-full cursor-zoom-in rounded-[20px] object-cover"
+        />
+      </PhotoView>
       <div className="mt-4 text-xs leading-5 text-muted-foreground">
         这张图是演示工作流的起点。后续每一步都围绕同一空间结构继续推进，专门用来展示“顺序式工作流”的关联感。
       </div>
@@ -326,11 +333,13 @@ function DemoWorkflowShowcase({
                 </div>
               </div>
               <div className="grid gap-4 p-6 lg:grid-cols-[260px_minmax(0,1fr)]">
-                <img
-                  src={demo.workflow.sourceImage}
-                  alt={`${demo.name} 来源图`}
-                  className="h-52 w-full rounded-[24px] object-cover"
-                />
+                <PhotoView src={demo.workflow.sourceImage}>
+                  <img
+                    src={demo.workflow.sourceImage}
+                    alt={`${demo.name} 来源图`}
+                    className="h-52 w-full cursor-zoom-in rounded-[24px] object-cover"
+                  />
+                </PhotoView>
                 <div className="space-y-3">
                   <div>
                     <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">来源角色</div>
@@ -373,11 +382,13 @@ function DemoWorkflowShowcase({
                       </div>
                     </div>
                     {generation.output?.imageUrl ? (
-                      <img
-                        src={generation.output.imageUrl}
-                        alt={generation.stageKey}
-                        className="mt-4 h-48 w-full rounded-[20px] object-cover"
-                      />
+                      <PhotoView src={generation.output.imageUrl}>
+                        <img
+                          src={generation.output.imageUrl}
+                          alt={generation.stageKey}
+                          className="mt-4 h-48 w-full cursor-zoom-in rounded-[20px] object-cover"
+                        />
+                      </PhotoView>
                     ) : null}
                     <div className="mt-4 flex flex-wrap gap-3">
                       <Button variant="outline" className="rounded-2xl" onClick={() => onCopyPrompt(generation)}>
@@ -490,11 +501,13 @@ function DemoWorkflowShowcase({
                   <div className="border-t border-zinc-100 bg-zinc-50 p-6 lg:border-l lg:border-t-0">
                     {latestGeneration?.output?.imageUrl ? (
                       <div className="space-y-3">
-                        <img
-                          src={latestGeneration.output.imageUrl}
-                          alt={stage.name}
-                          className="h-56 w-full rounded-[24px] object-cover shadow-sm"
-                        />
+                        <PhotoView src={latestGeneration.output.imageUrl}>
+                          <img
+                            src={latestGeneration.output.imageUrl}
+                            alt={stage.name}
+                            className="h-56 w-full cursor-zoom-in rounded-[24px] object-cover shadow-sm"
+                          />
+                        </PhotoView>
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>{latestGeneration.isSelectedBaseline ? '当前定稿' : '演示产物'}</span>
                           <span>{formatTime(latestGeneration.createdAt)}</span>
@@ -556,6 +569,12 @@ export default function AiScenariosPage() {
   const [runningPresetKey, setRunningPresetKey] = useState<string | null>(null);
   const [showRecharge, setShowRecharge] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mockImageInputRef = useRef<HTMLInputElement>(null);
+  const [mockingStage, setMockingStage] = useState<AiWorkflowStageKey | null>(null);
+
+  const [cropDialogOpen, setCropDialogOpen] = useState(false);
+  const [cropImageUrl, setCropImageUrl] = useState('');
+  const [pendingPreset, setPendingPreset] = useState<AiPreset | null>(null);
 
   const leads = useMemo(() => leadsData || [], [leadsData]);
   const selectedDemo = useMemo(() => getAiWorkflowDemoCaseById(selectedDemoId), [selectedDemoId]);
@@ -795,17 +814,7 @@ export default function AiScenariosPage() {
     }
   };
 
-  const handleRunPreset = async (preset: AiPreset) => {
-    if (!selectedWorkflow) {
-      notify.error('请先选择一个方案会话');
-      return;
-    }
-
-    if (!canRunStage(preset.workflowStage, preset.sourceAssetRole)) {
-      notify.info('当前步骤缺少来源产物，请先完成前一阶段或先设为当前定稿');
-      return;
-    }
-
+  const executePresetGeneration = async (preset: AiPreset, styleReferenceImage?: string) => {
     setRunningPresetKey(preset.key);
     const loadingId = notify.loading(`正在执行 ${preset.name}...`);
 
@@ -817,10 +826,11 @@ export default function AiScenariosPage() {
           type: 'scenario',
           style: preset.key,
           mode: preset.image?.mode || 'generation',
-          workflowId: selectedWorkflow.id,
+          workflowId: selectedWorkflow!.id,
           stageKey: preset.workflowStage,
           parentGenerationId: resolveParentGenerationId(preset.workflowStage),
           sourceAssetRole: preset.sourceAssetRole,
+          styleReferenceImage,
         }),
       });
       const generateJson = await readJsonResponse(generateRes);
@@ -863,6 +873,89 @@ export default function AiScenariosPage() {
       notify.error('网络异常，请稍后重试');
     } finally {
       setRunningPresetKey(null);
+    }
+  };
+
+  const handleRunPreset = async (preset: AiPreset) => {
+    if (!selectedWorkflow) {
+      notify.error('请先选择一个方案会话');
+      return;
+    }
+
+    if (!canRunStage(preset.workflowStage, preset.sourceAssetRole)) {
+      notify.info('当前步骤缺少来源产物，请先完成前一阶段或先设为当前定稿');
+      return;
+    }
+
+    if (preset.workflowStage === 'base_render') {
+      const parentGenId = resolveParentGenerationId(preset.workflowStage);
+      const parentGen = generations.find(g => g.id === parentGenId);
+      if (parentGen && parentGen.stageKey === 'direction' && parentGen.output?.imageUrl) {
+        setCropImageUrl(parentGen.output.imageUrl);
+        setPendingPreset(preset);
+        setCropDialogOpen(true);
+        return;
+      }
+    }
+
+    await executePresetGeneration(preset);
+  };
+
+  const handleCropComplete = async (croppedDataUrl: string) => {
+    if (!pendingPreset) return;
+    await executePresetGeneration(pendingPreset, croppedDataUrl);
+    setPendingPreset(null);
+  };
+
+  const handleMockImageSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !mockingStage || !selectedWorkflow) {
+      setMockingStage(null);
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      notify.error('图片大小不能超过 10MB');
+      setMockingStage(null);
+      return;
+    }
+
+    const loadingId = notify.loading(`正在上传 ${getWorkflowStageDefinition(mockingStage)?.name} 的测试图...`);
+
+    try {
+      const compressed = await compressImageFile(file);
+      const res = await fetch(`/api/ai/workflows/${selectedWorkflow.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'mock-generation',
+          stageKey: mockingStage,
+          imageUrl: compressed,
+          parentGenerationId: resolveParentGenerationId(mockingStage),
+          sourceAssetRole: presetByStage.get(mockingStage)?.sourceAssetRole,
+          nextStageKey: presetByStage.get(mockingStage)?.nextRecommendedStage,
+        }),
+      });
+      const json = await readJsonResponse(res);
+
+      notify.dismiss(loadingId);
+
+      if (!res.ok || !json.success) {
+        notify.fromAlert(json.error || '上传测试图失败');
+        return;
+      }
+
+      await Promise.all([mutateWorkflowDetail(), mutateWorkflows()]);
+      notify.success('测试图已上传并设为该步骤产物');
+    } catch (error) {
+      console.error(error);
+      notify.dismiss(loadingId);
+      notify.error('网络异常，请稍后重试');
+    } finally {
+      if (mockImageInputRef.current) {
+        mockImageInputRef.current.value = '';
+      }
+      setMockingStage(null);
     }
   };
 
@@ -937,7 +1030,8 @@ export default function AiScenariosPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.12),_transparent_30%),linear-gradient(180deg,#fffdf7_0%,#ffffff_46%,#fcfcfc_100%)] text-[#171717]">
+    <PhotoProvider>
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.12),_transparent_30%),linear-gradient(180deg,#fffdf7_0%,#ffffff_46%,#fcfcfc_100%)] text-[#171717]">
       <main className="mx-auto max-w-[1500px] px-6 py-8">
         <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-3">
@@ -977,11 +1071,13 @@ export default function AiScenariosPage() {
                   )}
                 >
                   <div className="grid gap-0 md:grid-cols-[220px_minmax(0,1fr)]">
-                    <img
-                      src={demo.workflow.sourceImage}
-                      alt={demo.name}
-                      className="h-full min-h-[180px] w-full object-cover"
-                    />
+                    <PhotoView src={demo.workflow.sourceImage}>
+                      <img
+                        src={demo.workflow.sourceImage}
+                        alt={demo.name}
+                        className="h-full min-h-[180px] w-full cursor-zoom-in object-cover"
+                      />
+                    </PhotoView>
                     <div className="space-y-3 p-5">
                       <div className="flex items-center justify-between gap-3">
                         <div className="text-base font-black">{demo.name}</div>
@@ -1258,12 +1354,14 @@ export default function AiScenariosPage() {
                           )}
                         >
                           {sourceImage ? (
-                            <div className="w-full space-y-3">
-                              <img
-                                src={sourceImage}
-                                alt="线索参考图"
-                                className="h-44 w-full rounded-2xl object-cover"
-                              />
+                            <div className="w-full space-y-3" onClick={(e) => e.stopPropagation()}>
+                              <PhotoView src={sourceImage}>
+                                <img
+                                  src={sourceImage}
+                                  alt="线索参考图"
+                                  className="h-44 w-full cursor-zoom-in rounded-2xl object-cover"
+                                />
+                              </PhotoView>
                               <div className="text-xs text-muted-foreground">
                                 这张图会作为当前客户线索下方案会话的来源素材。
                               </div>
@@ -1382,11 +1480,13 @@ export default function AiScenariosPage() {
                           </div>
                           <div className="grid gap-4 p-6 lg:grid-cols-[280px_minmax(0,1fr)]">
                             {selectedWorkflow.sourceImage ? (
-                              <img
-                                src={selectedWorkflow.sourceImage}
-                                alt="方案来源素材"
-                                className="h-48 w-full rounded-[24px] object-cover shadow-sm"
-                              />
+                              <PhotoView src={selectedWorkflow.sourceImage}>
+                                <img
+                                  src={selectedWorkflow.sourceImage}
+                                  alt="方案来源素材"
+                                  className="h-48 w-full cursor-zoom-in rounded-[24px] object-cover shadow-sm"
+                                />
+                              </PhotoView>
                             ) : (
                               <div className="flex h-48 items-center justify-center rounded-[24px] border border-dashed border-zinc-200 bg-white text-sm text-muted-foreground">
                                 当前会话来源于线索户型图
@@ -1494,6 +1594,18 @@ export default function AiScenariosPage() {
                                     {latestGeneration?.status === 'succeeded' ? `重新${stage.actionLabel}` : stage.actionLabel}
                                   </Button>
 
+                                  <Button
+                                    variant="outline"
+                                    className="rounded-2xl"
+                                    disabled={!preset || isRunning || !canRunStage(stage.key, preset?.sourceAssetRole)}
+                                    onClick={() => {
+                                      setMockingStage(stage.key);
+                                      mockImageInputRef.current?.click();
+                                    }}
+                                  >
+                                    上传测试图
+                                  </Button>
+
                                   {latestGeneration?.status === 'succeeded' ? (
                                     <>
                                       <Button
@@ -1538,11 +1650,13 @@ export default function AiScenariosPage() {
                                   </div>
                                 ) : latestGeneration?.output?.imageUrl ? (
                                   <div className="space-y-3">
-                                    <img
-                                      src={latestGeneration.output.imageUrl}
-                                      alt={stage.name}
-                                      className="h-56 w-full rounded-[24px] object-cover shadow-sm"
-                                    />
+                                    <PhotoView src={latestGeneration.output.imageUrl}>
+                                      <img
+                                        src={latestGeneration.output.imageUrl}
+                                        alt={stage.name}
+                                        className="h-56 w-full cursor-zoom-in rounded-[24px] object-cover shadow-sm"
+                                      />
+                                    </PhotoView>
                                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                                       <span>{latestGeneration.isSelectedBaseline ? '当前定稿' : '演示产物'}</span>
                                       <span>{formatTime(latestGeneration.createdAt)}</span>
@@ -1611,15 +1725,40 @@ export default function AiScenariosPage() {
                                 )}
                                 {preset?.name || tool.actionLabel}
                               </Button>
+
+                              <Button
+                                variant="outline"
+                                className="rounded-2xl"
+                                disabled={!preset || isRunning || !canRunStage(tool.key, preset?.sourceAssetRole)}
+                                onClick={() => {
+                                  setMockingStage(tool.key);
+                                  mockImageInputRef.current?.click();
+                                }}
+                              >
+                                上传测试图
+                              </Button>
+
                               {latestGeneration?.output?.imageUrl ? (
-                                <Button
-                                  variant="ghost"
-                                  className="rounded-2xl"
-                                  onClick={() => window.open(latestGeneration.output?.imageUrl, '_blank')}
-                                >
-                                  <ExternalLink size={14} className="mr-2" />
-                                  查看最近产物
-                                </Button>
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    className="rounded-2xl"
+                                    onClick={() => window.open(latestGeneration.output?.imageUrl, '_blank')}
+                                  >
+                                    <ExternalLink size={14} className="mr-2" />
+                                    查看最近产物
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    className="rounded-2xl"
+                                    onClick={() => handleCopyPrompt(latestGeneration)}
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <Copy size={12} />
+                                      复制提示词
+                                    </div>
+                                  </Button>
+                                </>
                               ) : null}
                             </div>
                           </div>
@@ -1667,11 +1806,13 @@ export default function AiScenariosPage() {
                               <div className="mt-2 text-xs text-muted-foreground">{formatTime(selectedWorkflow.createdAt)}</div>
                             </div>
                           </div>
-                          <img
-                            src={selectedWorkflow.sourceImage}
-                                alt="起点素材"
-                            className="mt-4 h-48 w-full rounded-[20px] object-cover"
-                          />
+                          <PhotoView src={selectedWorkflow.sourceImage}>
+                            <img
+                              src={selectedWorkflow.sourceImage}
+                              alt="起点素材"
+                              className="mt-4 h-48 w-full cursor-zoom-in rounded-[20px] object-cover"
+                            />
+                          </PhotoView>
                           <div className="mt-4 text-xs leading-5 text-muted-foreground">
                             当前方案会话从这张来源图开始，后续所有步骤都会承接这条线索下的同一空间结构。
                           </div>
@@ -1716,12 +1857,29 @@ export default function AiScenariosPage() {
                           ) : null}
                         </div>
 
+                        {generation.input?.styleReferenceImage && (
+                          <div className="mt-4 rounded-[20px] border border-zinc-100 bg-zinc-50 p-3">
+                            <div className="mb-2 text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
+                              局部风格参考图
+                            </div>
+                            <PhotoView src={generation.input.styleReferenceImage}>
+                              <img
+                                src={generation.input.styleReferenceImage}
+                                alt="参考图"
+                                className="h-24 w-auto cursor-zoom-in rounded-[12px] object-contain shadow-sm border border-zinc-200 bg-white"
+                              />
+                            </PhotoView>
+                          </div>
+                        )}
+
                         {generation.output?.imageUrl ? (
-                          <img
-                            src={generation.output.imageUrl}
-                            alt={generation.stageLabel || generation.stageKey || '步骤产物'}
-                            className="mt-4 h-48 w-full rounded-[20px] object-cover"
-                          />
+                          <PhotoView src={generation.output.imageUrl}>
+                            <img
+                              src={generation.output.imageUrl}
+                              alt={generation.stageLabel || generation.stageKey || '步骤产物'}
+                              className="mt-4 h-48 w-full cursor-zoom-in rounded-[20px] object-cover"
+                            />
+                          </PhotoView>
                         ) : (
                           <div className="mt-4 rounded-[20px] border border-dashed border-zinc-200 bg-zinc-50 px-4 py-10 text-center text-sm text-muted-foreground">
                             {generation.errorMessage || '该步骤暂未返回图片。'}
@@ -1775,6 +1933,20 @@ export default function AiScenariosPage() {
       </main>
 
       <RechargeDialog open={showRecharge} onOpenChange={setShowRecharge} />
+      <input
+        ref={mockImageInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleMockImageSelect}
+      />
+      <ImageCropperDialog 
+        open={cropDialogOpen} 
+        onOpenChange={setCropDialogOpen} 
+        imageUrl={cropImageUrl} 
+        onCropComplete={handleCropComplete} 
+      />
     </div>
+    </PhotoProvider>
   );
 }

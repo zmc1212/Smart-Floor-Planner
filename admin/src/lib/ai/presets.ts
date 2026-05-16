@@ -40,11 +40,8 @@ export async function ensureDefaultAiStylePresets(userId?: string) {
       AiStylePreset.updateOne(
         { type: preset.type, key: preset.key },
         {
-          $set: {
-            ...preset,
-            updatedBy: userId,
-          },
           $setOnInsert: {
+            ...preset,
             createdBy: userId,
           },
         },
