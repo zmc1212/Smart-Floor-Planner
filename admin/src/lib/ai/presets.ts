@@ -21,6 +21,7 @@ export interface SerializedAiStylePreset {
   previewClassName: string;
   mockImageUrl?: string;
   promptTemplate: string;
+  promptTemplateSecondStage?: string;
   negativePrompt: string;
   provider: 'pollinations';
   image: PollinationsImageConfig;
@@ -40,9 +41,24 @@ export async function ensureDefaultAiStylePresets(userId?: string) {
       AiStylePreset.updateOne(
         { type: preset.type, key: preset.key },
         {
+          $set: {
+            name: preset.name,
+            description: preset.description,
+            icon: preset.icon,
+            previewClassName: preset.previewClassName,
+            promptTemplate: preset.promptTemplate,
+            promptTemplateSecondStage: preset.promptTemplateSecondStage || '',
+            negativePrompt: preset.negativePrompt,
+            image: preset.image,
+            workflowCategory: preset.workflowCategory,
+            workflowStage: preset.workflowStage,
+            sourceAssetRole: preset.sourceAssetRole,
+            nextRecommendedStage: preset.nextRecommendedStage,
+            sortOrder: preset.sortOrder,
+          },
           $setOnInsert: {
-            ...preset,
             createdBy: userId,
+            enabled: preset.enabled,
           },
         },
         { upsert: true }
@@ -63,6 +79,7 @@ export function serializeAiStylePreset(
     | 'previewClassName'
     | 'mockImageUrl'
     | 'promptTemplate'
+    | 'promptTemplateSecondStage'
     | 'negativePrompt'
     | 'provider'
     | 'image'
@@ -86,6 +103,7 @@ export function serializeAiStylePreset(
     previewClassName: preset.previewClassName,
     mockImageUrl: preset.mockImageUrl,
     promptTemplate: preset.promptTemplate,
+    promptTemplateSecondStage: preset.promptTemplateSecondStage,
     negativePrompt: preset.negativePrompt,
     provider: preset.provider,
     image: preset.image,

@@ -2,10 +2,16 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { AiGeneration } from '@/models/AiGeneration';
 import { withTenantRoute } from '@/lib/tenant-route';
+import { AdminUser } from '@/models/AdminUser';
+import { FloorPlan } from '@/models/FloorPlan';
 
 export async function GET(req: Request) {
   try {
     await dbConnect();
+
+    // Force Mongoose model registration and prevent ESM tree-shaking
+    const _forceAdminUser = AdminUser.modelName;
+    const _forceFloorPlan = FloorPlan.modelName;
 
     return await withTenantRoute(
       req,

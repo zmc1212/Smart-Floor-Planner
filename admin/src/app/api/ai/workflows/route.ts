@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { AiWorkflow } from '@/models/AiWorkflow';
 import { AiGeneration } from '@/models/AiGeneration';
+import { FloorPlan } from '@/models/FloorPlan';
 import Lead from '@/models/Lead';
 import type { AiWorkflowSourceAssetRole, AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
 import { serializeAiGeneration, serializeAiWorkflow } from '@/lib/ai/workflow-utils';
@@ -15,6 +16,9 @@ interface CreateWorkflowBody {
   sourceFloorPlanId?: string;
   sourceAssetRole?: AiWorkflowSourceAssetRole;
 }
+
+// Force Mongoose model registration and prevent ESM tree-shaking
+const _forceFloorPlan = FloorPlan.modelName;
 
 type LeanGeneration = {
   _id: unknown;

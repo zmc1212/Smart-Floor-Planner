@@ -4,6 +4,7 @@ import { AiStylePreset } from '@/models/AiStylePreset';
 import { AdminUser } from '@/models/AdminUser';
 import dbConnect from '@/lib/mongodb';
 import { getTenantFilter } from '@/lib/auth';
+import { getEnterprisePollinationsRuntimeConfig } from '@/lib/ai/enterprise-ai';
 
 /**
  * AI Designer Agent Service
@@ -24,8 +25,7 @@ export interface AgentContext {
   userName: string;
 }
 
-const LONGCAT_API_URL = 'https://api.longcat.chat/openai/v1/chat/completions';
-const MODEL = 'LongCat-Flash-Chat';
+const POLLINATIONS_CHAT_URL = 'https://gen.pollinations.ai/v1/chat/completions';
 
 // Define tools available to the agent
 const TOOLS = [
@@ -79,10 +79,19 @@ export async function runAgent(messages: Message[], context: AgentContext, depth
   }
 
   await dbConnect();
-  const apiKey = process.env.LONGCAT_API_KEY;
-  if (!apiKey) throw new Error('LONGCAT_API_KEY is not configured');
+
+  let runtimeConfig;
+  try {
+    runtimeConfig = await getEnterprisePollinationsRuntimeConfig(context.enterpriseId);
+  } catch (err) {
+    console.warn('[AI Agent] Failed to resolve enterprise key, falling back to process env:', err);
+  }
+
+  const apiKey = runtimeConfig?.apiKey || process.env.POLLINATIONS_API_KEY;
+  if (!apiKey) {
+    throw new Error('Pollinations API key is not configured');
+  }
   
-  // ... (rest of the logic)
   const systemPrompt = `你是一个专业的“AI设计师”助手，集成在 Smart Floor Planner (智能量房大师) 系统中。
 你的目标是协助设计师和销售人员管理客户、查看户型、并提供设计建议。
 
@@ -111,8 +120,8 @@ export async function runAgent(messages: Message[], context: AgentContext, depth
     ...messages
   ];
 
-  // 2. Call LONGCAT
-  const response = await fetch(LONGCAT_API_URL, {
+  // 2. Call Pollinations Chat Completion with tool call capability
+  const response = await fetch(POLLINATIONS_CHAT_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

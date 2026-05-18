@@ -2,7 +2,9 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
 import Lead from '@/models/Lead';
+import { FloorPlan } from '@/models/FloorPlan';
 import { AiWorkflow } from '@/models/AiWorkflow';
+import { getTenantFilter } from '@/lib/auth';
 
 type LeanFloorPlan = {
   _id: unknown;
@@ -11,6 +13,9 @@ type LeanFloorPlan = {
   createdAt?: Date | string;
   status?: string;
 };
+
+// Force Mongoose model registration and prevent ESM tree-shaking
+const _forceFloorPlan = FloorPlan.modelName;
 
 type LeanLead = {
   _id: unknown;
@@ -27,18 +32,27 @@ export async function GET(req: Request) {
   try {
     await dbConnect();
 
-    return await withTenantRoute(req, { requireEnterprise: true }, async () => {
+    return await withTenantRoute(req, { requireEnterprise: true }, async (context) => {
       const url = new URL(req.url);
       const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 100);
       const search = url.searchParams.get('search')?.trim();
 
-      const query: Record<string, unknown> = {};
+      const tenantFilter = getTenantFilter(context);
+      let query: Record<string, any> = { ...tenantFilter };
+
       if (search) {
-        query.$or = [
-          { name: { $regex: search, $options: 'i' } },
-          { phone: { $regex: search, $options: 'i' } },
-          { communityName: { $regex: search, $options: 'i' } },
-        ];
+        query = {
+          $and: [
+            tenantFilter,
+            {
+              $or: [
+                { name: { $regex: search, $options: 'i' } },
+                { phone: { $regex: search, $options: 'i' } },
+                { communityName: { $regex: search, $options: 'i' } },
+              ]
+            }
+          ]
+        };
       }
 
       const leads = await Lead.find(query)

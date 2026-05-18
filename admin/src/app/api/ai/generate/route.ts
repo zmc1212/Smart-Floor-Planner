@@ -18,6 +18,7 @@ import {
   getEnterprisePollinationsRuntimeConfig,
   markEnterpriseAiSyncError,
 } from '@/lib/ai/enterprise-ai';
+import { uploadMedia, generateChatCompletion } from '@/lib/ai/pollinations';
 import type { AiWorkflowSourceAssetRole, AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
 import { getNextWorkflowStage } from '@/lib/ai/workflow-stages';
 
@@ -268,7 +269,141 @@ export async function POST(req: Request) {
       try {
         let promptData: { prompt: string; negative_prompt?: string };
 
-        if (prompt) {
+        if (resolvedStageKey === 'lighting') {
+          // Check for reference image
+          let referenceImageUrl = styleReferenceImage;
+          if (!referenceImageUrl && parentGeneration) {
+            referenceImageUrl = parentGeneration.output?.imageUrl || parentGeneration.input?.styleReferenceImage;
+          }
+
+          if (!referenceImageUrl) {
+            return NextResponse.json(
+              { success: false, error: '“增强签单”阶段必须提供白天参考效果图以供分析与重绘。' },
+              { status: 400 }
+            );
+          }
+
+          // 1. Upload reference image if it is base64
+          let publicImageUrl = referenceImageUrl;
+          if (publicImageUrl && publicImageUrl.startsWith('data:')) {
+            try {
+              publicImageUrl = await uploadMedia(publicImageUrl, runtimeConfig.apiKey);
+            } catch (uploadErr) {
+              console.error('[AI Generate Lighting] Failed to upload reference image:', uploadErr);
+              throw new Error('白天参考图上传失败：' + (uploadErr instanceof Error ? uploadErr.message : String(uploadErr)));
+            }
+          }
+
+          // Update styleReferenceImage with public URL to ensure rendering has access
+          generation.input.styleReferenceImage = publicImageUrl;
+
+          // 2. Stage 1: 脑力规划 (Mental Planning)
+          const formattedFirstStagePrompt = buildPromptFromPreset(preset?.promptTemplate || '', {
+            roomName,
+            roomType,
+            width,
+            height,
+            roomData,
+          });
+
+          console.log('[AI Generate Lighting] Stage 1 - Mentally planning with prompt:', formattedFirstStagePrompt);
+
+          const sceneAnalysisText = await generateChatCompletion({
+            apiKey: runtimeConfig.apiKey,
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'text',
+                    text: formattedFirstStagePrompt,
+                  },
+                  {
+                    type: 'image_url',
+                    image_url: {
+                      url: publicImageUrl,
+                    },
+                  },
+                ],
+              },
+            ],
+            temperature: 0.7,
+          });
+
+          console.log('[AI Generate Lighting] Stage 1 - Mental Plan result:', sceneAnalysisText);
+
+          // Save sceneAnalysis text to the generation input record
+          generation.input.sceneAnalysis = sceneAnalysisText;
+
+          // 3. Stage 2: 大图绘制编译 (Board Prompt Compilation)
+          const formattedSecondStagePrompt = preset?.promptTemplateSecondStage || '直接生成展板图片，把灯光设计分析，灯光清单，跟夜景效果图，罗列出来';
+
+          const compilePrompt = `
+            Task: Compile a highly detailed, professional English image generation prompt for Stable Diffusion/Flux.
+            
+            Inputs:
+            1. Space Design & Analysis (Mental Plan):
+            ${sceneAnalysisText}
+            
+            2. Generation Goal:
+            ${formattedSecondStagePrompt}
+            
+            Requirements:
+            - Translate the design analysis, night scene requirements, and lighting list into a visual description of a professional interior design presentation board (mood board).
+            - Describe a structured, beautiful design presentation poster/board layout. For example, "A professional interior design presentation board featuring: on the left, a detailed night scene rendering of a ${style} style ${roomType} with warm ambient lighting, elegant shadow play, and refined textures; on the right, neatly formatted text columns showing the 'Lighting Concept', 'Color Temperature Analysis', and a structured 'Lighting Equipment List' with clean typography. Minimalist design, high-end architectural portfolio aesthetic, photorealistic, 8k resolution, volumetric light, highly detailed."
+            - Make it highly visual, photorealistic, and focused on layout, colors, lighting, and presentation.
+            - Avoid generic placeholder words or instructions. Do not include any greeting or conversational filler.
+            - Output MUST be a JSON object with keys "prompt" and "negative_prompt".
+            
+            Format:
+            {
+              "prompt": "...",
+              "negative_prompt": "..."
+            }
+          `;
+
+          console.log('[AI Generate Lighting] Stage 2 - Compiling board prompt...');
+
+          const compileResponse = await generateChatCompletion({
+            apiKey: runtimeConfig.apiKey,
+            messages: [
+              { role: 'system', content: 'You are an expert compiler of visual design boards and interior design prompts.' },
+              { role: 'user', content: compilePrompt },
+            ],
+            temperature: 0.7,
+          });
+
+          console.log('[AI Generate Lighting] Stage 2 - Compilation response:', compileResponse);
+
+          let secondStageData: { prompt: string; negative_prompt?: string } = {
+            prompt: '',
+            negative_prompt: '',
+          };
+
+          const jsonMatch = compileResponse.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try {
+              secondStageData = JSON.parse(jsonMatch[0]);
+            } catch (e) {
+              console.error('Failed to parse compiled prompt JSON:', compileResponse);
+              secondStageData = {
+                prompt: `A professional interior design presentation board showing: night scene rendering of a ${style} style ${roomType} with warm lighting; clean typography showing lighting list and analysis. High-end, photorealistic, 8k.`,
+                negative_prompt: 'ugly, blurry, low quality',
+              };
+            }
+          } else {
+            secondStageData = {
+              prompt: `A professional interior design presentation board showing: night scene rendering of a ${style} style ${roomType} with warm lighting; clean typography showing lighting list and analysis. High-end, photorealistic, 8k.`,
+              negative_prompt: 'ugly, blurry, low quality',
+            };
+          }
+
+          promptData = {
+            prompt: secondStageData.prompt,
+            negative_prompt: secondStageData.negative_prompt || negativePrompt,
+          };
+
+        } else if (prompt) {
           promptData = {
             prompt,
             negative_prompt: negativePrompt,
@@ -293,7 +428,8 @@ export async function POST(req: Request) {
           promptData = await generateAIPrompt(
             style,
             type === 'floor_plan_style' ? 'floor plan' : roomType || 'interior',
-            details
+            details,
+            runtimeConfig.apiKey
           );
         }
 

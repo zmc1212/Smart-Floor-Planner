@@ -1,7 +1,7 @@
 'use client';
 
 import { notify } from '@/components/ui/operation-feedback';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ArrowRight,
@@ -533,7 +533,7 @@ function DemoWorkflowShowcase({
   );
 }
 
-export default function AiScenariosPage() {
+function AiScenariosPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialLeadId = searchParams.get('leadId');
@@ -1950,3 +1950,12 @@ export default function AiScenariosPage() {
     </PhotoProvider>
   );
 }
+
+export default function AiScenariosPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-sm text-muted-foreground">正在加载场景数据...</div>}>
+      <AiScenariosPageContent />
+    </Suspense>
+  );
+}
+

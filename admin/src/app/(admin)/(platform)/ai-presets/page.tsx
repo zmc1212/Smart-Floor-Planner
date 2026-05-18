@@ -42,6 +42,7 @@ interface AiPreset {
   previewClassName: string;
   mockImageUrl?: string;
   promptTemplate: string;
+  promptTemplateSecondStage?: string;
   negativePrompt: string;
   enabled: boolean;
   sortOrder: number;
@@ -111,6 +112,7 @@ export default function AiPresetsPage() {
           previewClassName: form.previewClassName,
           mockImageUrl: form.mockImageUrl,
           promptTemplate: form.promptTemplate,
+          promptTemplateSecondStage: form.promptTemplateSecondStage,
           negativePrompt: form.negativePrompt,
           enabled: form.enabled,
           sortOrder: form.sortOrder,
@@ -310,6 +312,16 @@ export default function AiPresetsPage() {
                       className="min-h-40 text-sm leading-relaxed" 
                       value={form.promptTemplate} 
                       onChange={(e) => updateField('promptTemplate', e.target.value)} 
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Prompt 提示词模板 (第二阶段/级联生成 - 可选)</Label>
+                    <Textarea 
+                      className="min-h-32 text-sm leading-relaxed" 
+                      placeholder="仅用于需要两阶段级联生成的场景（如增强签单中脑力分析后的展板绘制）"
+                      value={form.promptTemplateSecondStage || ''} 
+                      onChange={(e) => updateField('promptTemplateSecondStage', e.target.value)} 
                     />
                   </div>
 

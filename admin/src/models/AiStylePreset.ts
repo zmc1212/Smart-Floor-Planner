@@ -15,6 +15,7 @@ export interface IAiStylePreset extends Document {
   previewClassName: string;
   mockImageUrl?: string;
   promptTemplate: string;
+  promptTemplateSecondStage?: string;
   negativePrompt: string;
   provider: 'pollinations';
   image: {
@@ -45,6 +46,7 @@ const AiStylePresetSchema = new Schema<IAiStylePreset>(
     previewClassName: { type: String, default: '' },
     mockImageUrl: { type: String, default: '' },
     promptTemplate: { type: String, required: true },
+    promptTemplateSecondStage: { type: String, default: '' },
     negativePrompt: { type: String, default: '' },
     provider: { type: String, enum: ['pollinations'], default: 'pollinations' },
     image: {

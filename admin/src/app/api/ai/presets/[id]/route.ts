@@ -24,6 +24,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         'previewClassName',
         'mockImageUrl',
         'promptTemplate',
+        'promptTemplateSecondStage',
         'negativePrompt',
         'enabled',
         'sortOrder',

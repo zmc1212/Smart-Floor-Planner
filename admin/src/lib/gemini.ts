@@ -1,4 +1,6 @@
-export async function generateAIPrompt(style: string, roomType: string, details?: string) {
+import { generateChatCompletion } from '@/lib/ai/pollinations';
+
+export async function generateAIPrompt(style: string, roomType: string, details?: string, apiKey?: string) {
   const prompt = `
     Task: Generate a high-quality, professional English prompt and a negative prompt for a ${style} style ${roomType}.
     
@@ -25,49 +27,19 @@ export async function generateAIPrompt(style: string, roomType: string, details?
     }
   `;
 
-  // 调用 LongCat API
-  const apiKey = process.env.LONGCAT_API_KEY || process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) {
-    throw new Error("Missing API Key for LongCat AI");
-  }
+  // 打印完整的请求信息
+  console.log("========== POLLINATIONS PROMPT CHAT REQUEST START ==========");
+  console.log("Prompt input:", prompt);
+  console.log("=======================================");
 
-  const apiUrl = 'https://api.longcat.chat/openai/v1/chat/completions';
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${apiKey}`
-  };
-  const body = {
-    model: "LongCat-Flash-Chat",
+  const text = await generateChatCompletion({
+    apiKey,
     messages: [
       { role: "system", content: "You are an expert interior design prompt engineer for Stable Diffusion." },
       { role: "user", content: prompt }
     ],
-    stream: false,
-    max_tokens: 1500,
     temperature: 0.7
-  };
-
-  // 打印完整的请求信息供 Postman 测试
-  console.log("========== API REQUEST START ==========");
-  console.log("URL:", apiUrl);
-  console.log("Headers:", JSON.stringify(headers, null, 2));
-  console.log("Body:", JSON.stringify(body, null, 2));
-  console.log("=======================================");
-
-  const response = await fetch(apiUrl, {
-    method: 'POST',
-    headers: headers,
-    body: JSON.stringify(body)
   });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    console.error("[LongCat API Error]", errText);
-    throw new Error(`LongCat API failed with status ${response.status}`);
-  }
-
-  const result = await response.json();
-  const text = result.choices[0].message.content;
 
   // Extract JSON from the response (sometimes it wraps it in markdown)
   const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -75,9 +47,9 @@ export async function generateAIPrompt(style: string, roomType: string, details?
     try {
       return JSON.parse(jsonMatch[0]);
     } catch (e) {
-      console.error("Failed to parse JSON from LongCat:", text);
+      console.error("Failed to parse JSON from Pollinations Chat:", text);
     }
   }
 
-  throw new Error("Failed to generate valid prompt JSON from LongCat");
+  throw new Error("Failed to generate valid prompt JSON from Pollinations Chat");
 }

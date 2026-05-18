@@ -190,3 +190,55 @@ export async function editImage(params: PollinationsImageRequest) {
 
   return parseImageResponse(response, params.apiKey);
 }
+
+export interface PollinationsChatMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string | Array<{
+    type: 'text' | 'image_url';
+    text?: string;
+    image_url?: {
+      url: string;
+      detail?: 'low' | 'high' | 'auto';
+    };
+  }>;
+}
+
+export interface PollinationsChatRequest {
+  model?: string;
+  messages: PollinationsChatMessage[];
+  temperature?: number;
+  max_tokens?: number;
+  apiKey?: string;
+}
+
+export async function generateChatCompletion(params: PollinationsChatRequest): Promise<string> {
+  const model = params.model || process.env.POLLINATIONS_CHAT_MODEL || 'openai';
+  const response = await fetch(`${POLLINATIONS_BASE_URL}/v1/chat/completions`, {
+    method: 'POST',
+    headers: buildHeaders(params.apiKey, {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    }),
+    body: JSON.stringify({
+      model,
+      messages: params.messages,
+      temperature: params.temperature ?? 0.7,
+      max_tokens: params.max_tokens,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    const error = new Error(`Pollinations chat completion failed (${response.status}): ${errorText}`);
+    (error as Error & { status?: number }).status = response.status;
+    throw error;
+  }
+
+  const json = await response.json();
+  const content = json?.choices?.[0]?.message?.content;
+  if (typeof content !== 'string') {
+    throw new Error('Invalid chat completion response from Pollinations.');
+  }
+
+  return content;
+}

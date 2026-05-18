@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { AiWorkflow } from '@/models/AiWorkflow';
 import { AiGeneration } from '@/models/AiGeneration';
+import { FloorPlan } from '@/models/FloorPlan';
 import Lead from '@/models/Lead';
 import type { AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
 import { serializeAiGeneration, serializeAiWorkflow } from '@/lib/ai/workflow-utils';
@@ -13,6 +14,9 @@ type LeanFloorPlan = {
   createdAt?: Date | string;
   status?: string;
 };
+
+// Force Mongoose model registration and prevent ESM tree-shaking
+const _forceFloorPlan = FloorPlan.modelName;
 
 interface WorkflowPatchBody {
   action?: 'select-generation' | 'set-stage' | 'rename' | 'mock-generation';

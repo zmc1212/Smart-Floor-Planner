@@ -24,6 +24,7 @@ export interface DefaultAiStylePreset {
   previewClassName: string;
   mockImageUrl?: string;
   promptTemplate: string;
+  promptTemplateSecondStage?: string;
   negativePrompt: string;
   provider: 'pollinations';
   image: PollinationsImageConfig;
@@ -373,7 +374,9 @@ export const DEFAULT_AI_STYLE_PRESETS: DefaultAiStylePreset[] = [
     icon: 'S10',
     previewClassName: 'from-yellow-400 via-amber-500 to-indigo-800',
     promptTemplate:
-      '请基于当前定稿效果图，生成一张用于增强成交说服力的灯光提案板。提案板需要包含夜景效果图、灯光分层说明、色温与照度建议，以及简洁的灯具配置清单。整体表达要专业但易于客户理解，重点用于签单前的信任建立和专业背书。',
+      '这个是空间室内白天效果图，现在你帮我分析下，如何做一个灯光设计，并且需要出灯光清单，色温分析，照度分析，并且出一个夜景效果图，现在你先帮我分析设计，然后再出个对应情绪版跟清单出来',
+    promptTemplateSecondStage:
+      '直接生成展板图片，把灯光设计分析，灯光清单，跟夜景效果图，罗列出来',
     negativePrompt: 'inconsistent layout, bad text, poor layout, blurry, low resolution',
     provider: 'pollinations',
     image: { ...BASE_POLLINATIONS_CONFIG, model: 'flux', quality: 'high', mode: 'generation' },
