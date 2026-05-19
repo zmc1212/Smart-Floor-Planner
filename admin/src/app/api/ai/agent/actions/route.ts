@@ -27,6 +27,7 @@ type AgentActionBody = {
   sourceFloorPlanId?: string;
   sourceImage?: string;
   sourceAssetRole?: AiWorkflowSourceAssetRole;
+  styleReferenceImage?: string;
   stageKey?: AiWorkflowStageKey;
   generationId?: string;
   confirmed?: boolean;
@@ -133,6 +134,7 @@ export async function POST(req: NextRequest) {
         {
           workflowId,
           stageKey: requireString(body.stageKey, 'stageKey') as AiWorkflowStageKey,
+          styleReferenceImage: body.styleReferenceImage,
           confirmed: true,
         },
         tenantContext

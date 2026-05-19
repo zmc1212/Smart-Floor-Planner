@@ -24,7 +24,12 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import AiQuotaBar from '@/components/ai-studio/AiQuotaBar';
 import RechargeDialog from '@/components/ai-studio/RechargeDialog';
-import ImageCropperDialog from '@/components/ai-studio/ImageCropperDialog';
+import {
+  resolveWorkflowParentGeneration,
+  useAiWorkflowRunner,
+  WorkflowStageActionButton,
+  type WorkflowRunnerDetail,
+} from '@/components/ai-studio/workflow-runner';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
 import { useFetch } from '@/hooks/useFetch';
@@ -567,15 +572,10 @@ function AiScenariosPageContent() {
   const [sourceImage, setSourceImage] = useState('');
   const [sourceAssetRole, setSourceAssetRole] = useState<AiWorkflowSourceAssetRole>('floor_plan');
   const [creatingWorkflow, setCreatingWorkflow] = useState(false);
-  const [runningPresetKey, setRunningPresetKey] = useState<string | null>(null);
   const [showRecharge, setShowRecharge] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mockImageInputRef = useRef<HTMLInputElement>(null);
   const [mockingStage, setMockingStage] = useState<AiWorkflowStageKey | null>(null);
-
-  const [cropDialogOpen, setCropDialogOpen] = useState(false);
-  const [cropImageUrl, setCropImageUrl] = useState('');
-  const [pendingPreset, setPendingPreset] = useState<AiPreset | null>(null);
 
   const leads = useMemo(() => leadsData || [], [leadsData]);
   const selectedDemo = useMemo(() => getAiWorkflowDemoCaseById(selectedDemoId), [selectedDemoId]);
@@ -658,58 +658,17 @@ function AiScenariosPageContent() {
   const selectedWorkflow =
     workflowDetail?.workflow || workflows.find((item) => item.id === selectedWorkflowId) || null;
   const generations = useMemo(() => workflowDetail?.generations || [], [workflowDetail?.generations]);
-
-  const selectedBaseline = useMemo(
-    () =>
-      generations.find((generation) => generation.isSelectedBaseline) ||
-      (selectedWorkflow?.selectedGenerationId
-        ? generations.find((generation) => generation.id === selectedWorkflow.selectedGenerationId)
-        : undefined),
-    [generations, selectedWorkflow?.selectedGenerationId]
-  );
+  const workflowRunner = useAiWorkflowRunner({
+    workflowId: selectedWorkflow?.id,
+    workflowDetail: workflowDetail as WorkflowRunnerDetail | null,
+    fetchDetail: false,
+    onAfterAction: async () => {
+      await Promise.all([mutateWorkflowDetail(), mutateWorkflows(), mutateLeads(), mutateQuota()]);
+    },
+  });
 
   const getLatestGenerationForStage = (stageKey: AiWorkflowStageKey) =>
     generations.find((generation) => generation.stageKey === stageKey);
-
-  const resolveParentGenerationId = (stageKey?: AiWorkflowStageKey) => {
-    if (!stageKey) return undefined;
-    if (stageKey === 'direction' || stageKey === 'premium_board' || stageKey === 'perspective_upgrade') {
-      return undefined;
-    }
-    if (stageKey === 'base_render') {
-      return getLatestGenerationForStage('direction')?.id;
-    }
-    if (stageKey === 'soft_furnishing') {
-      return selectedBaseline?.id || getLatestGenerationForStage('base_render')?.id;
-    }
-    return (
-      selectedBaseline?.id ||
-      getLatestGenerationForStage('soft_furnishing')?.id ||
-      getLatestGenerationForStage('base_render')?.id
-    );
-  };
-
-  const canRunStage = (stageKey?: AiWorkflowStageKey, role?: AiWorkflowSourceAssetRole) => {
-    if (!selectedWorkflow) {
-      return false;
-    }
-
-    if (stageKey === 'direction' || stageKey === 'base_render') {
-      return Boolean(selectedWorkflow.sourceImage || selectedWorkflow.sourceFloorPlanId);
-    }
-
-    if (stageKey === 'premium_board') {
-      return Boolean(
-        (selectedWorkflow.sourceImage || selectedWorkflow.sourceFloorPlanId) && role === 'concept_element'
-      );
-    }
-
-    if (stageKey === 'perspective_upgrade') {
-      return Boolean(selectedWorkflow.sourceImage || selectedWorkflow.sourceFloorPlanId);
-    }
-
-    return Boolean(resolveParentGenerationId(stageKey));
-  };
 
   const handleLeadChange = (leadId: string | null) => {
     setSelectedDemoId(null);
@@ -826,97 +785,24 @@ function AiScenariosPageContent() {
     }
   };
 
-  const executePresetGeneration = async (preset: AiPreset, styleReferenceImage?: string) => {
-    setRunningPresetKey(preset.key);
-    const loadingId = notify.loading(`正在执行 ${preset.name}...`);
-
-    try {
-      const generateRes = await fetch('/api/ai/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'scenario',
-          style: preset.key,
-          mode: preset.image?.mode || 'generation',
-          workflowId: selectedWorkflow!.id,
-          stageKey: preset.workflowStage,
-          parentGenerationId: resolveParentGenerationId(preset.workflowStage),
-          sourceAssetRole: preset.sourceAssetRole,
-          styleReferenceImage,
-        }),
-      });
-      const generateJson = await readJsonResponse(generateRes);
-
-      if (!generateRes.ok || !generateJson.success) {
-        notify.dismiss(loadingId);
-        if (generateRes.status === 402) {
-          setShowRecharge(true);
-        }
-        notify.fromAlert(generateJson.error || '场景任务初始化失败');
-        return;
-      }
-
-      const renderRes = await fetch('/api/ai/render', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          generationId: generateJson.data.id,
-          prompt: generateJson.data.prompt,
-          negativePrompt: generateJson.data.negativePrompt,
-        }),
-      });
-      const renderJson = await readJsonResponse(renderRes);
-
-      notify.dismiss(loadingId);
-
-      if (!renderRes.ok || !renderJson.success) {
-        if (renderRes.status === 402) {
-          setShowRecharge(true);
-        }
-        notify.fromAlert(renderJson.error || '生成失败');
-        return;
-      }
-
-      await Promise.all([mutateWorkflowDetail(), mutateWorkflows(), mutateLeads(), mutateQuota()]);
-      notify.success(`${preset.name} 已完成，并关联到当前客户线索`);
-    } catch (error) {
-      console.error(error);
-      notify.dismiss(loadingId);
-      notify.error('网络异常，请稍后重试');
-    } finally {
-      setRunningPresetKey(null);
-    }
-  };
-
   const handleRunPreset = async (preset: AiPreset) => {
     if (!selectedWorkflow) {
       notify.error('请先选择一个方案会话');
       return;
     }
 
-    if (!canRunStage(preset.workflowStage, preset.sourceAssetRole)) {
-      notify.info('当前步骤缺少来源产物，请先完成前一阶段或先设为当前定稿');
+    if (!preset.workflowStage) {
+      notify.error('当前预设缺少工作流阶段配置');
       return;
     }
 
-    if (preset.workflowStage === 'base_render') {
-      const parentGenId = resolveParentGenerationId(preset.workflowStage);
-      const parentGen = generations.find(g => g.id === parentGenId);
-      if (parentGen && parentGen.stageKey === 'direction' && parentGen.output?.imageUrl) {
-        setCropImageUrl(parentGen.output.imageUrl);
-        setPendingPreset(preset);
-        setCropDialogOpen(true);
-        return;
-      }
+    const action = workflowRunner.actions.find((item) => item.stageKey === preset.workflowStage);
+    if (!action) {
+      notify.error('当前步骤没有可执行动作');
+      return;
     }
 
-    await executePresetGeneration(preset);
-  };
-
-  const handleCropComplete = async (croppedDataUrl: string) => {
-    if (!pendingPreset) return;
-    await executePresetGeneration(pendingPreset, croppedDataUrl);
-    setPendingPreset(null);
+    await workflowRunner.runAction(action);
   };
 
   const handleMockImageSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -943,7 +829,7 @@ function AiScenariosPageContent() {
           action: 'mock-generation',
           stageKey: mockingStage,
           imageUrl: compressed,
-          parentGenerationId: resolveParentGenerationId(mockingStage),
+          parentGenerationId: resolveWorkflowParentGeneration(mockingStage, selectedWorkflow, generations)?.id,
           sourceAssetRole: presetByStage.get(mockingStage)?.sourceAssetRole,
           nextStageKey: presetByStage.get(mockingStage)?.nextRecommendedStage,
         }),
@@ -1532,7 +1418,8 @@ function AiScenariosPageContent() {
                         const preset = presetByStage.get(stage.key);
                         const latestGeneration = getLatestGenerationForStage(stage.key);
                         const isCurrentStage = selectedWorkflow.currentStageKey === stage.key;
-                        const isRunning = runningPresetKey === preset?.key;
+                        const runnerAction = workflowRunner.actions.find((action) => action.stageKey === stage.key);
+                        const isRunning = workflowRunner.runningStageKey === stage.key;
 
                         return (
                           <div
@@ -1596,23 +1483,24 @@ function AiScenariosPageContent() {
                                 </div>
 
                                 <div className="mt-5 flex flex-wrap items-center gap-3">
-                                  <Button
-                                    onClick={() => preset && handleRunPreset(preset)}
-                                    disabled={!preset || isRunning || !canRunStage(stage.key, preset?.sourceAssetRole)}
-                                    className="rounded-2xl bg-zinc-950 px-5 text-white hover:bg-zinc-800"
-                                  >
-                                    {isRunning ? (
-                                      <Loader2 className="mr-2 animate-spin" size={16} />
-                                    ) : (
-                                      <Sparkles className="mr-2" size={16} />
-                                    )}
-                                    {latestGeneration?.status === 'succeeded' ? `重新${stage.actionLabel}` : stage.actionLabel}
-                                  </Button>
+                                  {runnerAction ? (
+                                    <WorkflowStageActionButton
+                                      action={{
+                                        ...runnerAction,
+                                        label: latestGeneration?.status === 'succeeded'
+                                          ? `重新${stage.actionLabel}`
+                                          : runnerAction.label,
+                                      }}
+                                      isRunning={isRunning}
+                                      onRun={() => preset && handleRunPreset(preset)}
+                                      className="rounded-2xl bg-zinc-950 px-5 text-white hover:bg-zinc-800"
+                                    />
+                                  ) : null}
 
                                   <Button
                                     variant="outline"
                                     className="rounded-2xl"
-                                    disabled={!preset || isRunning || !canRunStage(stage.key, preset?.sourceAssetRole)}
+                                    disabled={!preset || isRunning || !runnerAction || runnerAction.status === 'blocked'}
                                     onClick={() => {
                                       setMockingStage(stage.key);
                                       mockImageInputRef.current?.click();
@@ -1709,7 +1597,8 @@ function AiScenariosPageContent() {
                       {ADVANCED_WORKFLOW_TOOLS.map((tool) => {
                         const preset = advancedPresets.find((item) => item.workflowStage === tool.key);
                         const latestGeneration = getLatestGenerationForStage(tool.key);
-                        const isRunning = runningPresetKey === preset?.key;
+                        const runnerAction = workflowRunner.actions.find((action) => action.stageKey === tool.key);
+                        const isRunning = workflowRunner.runningStageKey === tool.key;
 
                         return (
                           <div key={tool.key} className="rounded-[28px] border border-zinc-200 bg-white p-5 shadow-sm">
@@ -1727,24 +1616,22 @@ function AiScenariosPageContent() {
                       </div>
                             <div className="mt-4 text-xs text-muted-foreground">输入：{tool.inputHint}</div>
                             <div className="mt-4 flex flex-wrap gap-3">
-                              <Button
-                                variant="outline"
-                                className="rounded-2xl"
-                                disabled={!preset || isRunning || !canRunStage(tool.key, preset?.sourceAssetRole)}
-                                onClick={() => preset && handleRunPreset(preset)}
-                              >
-                                {isRunning ? (
-                                  <Loader2 className="mr-2 animate-spin" size={16} />
-                                ) : (
-                                  <Sparkles className="mr-2" size={16} />
-                                )}
-                                {preset?.name || tool.actionLabel}
-                              </Button>
+                              {runnerAction ? (
+                                <WorkflowStageActionButton
+                                  action={{
+                                    ...runnerAction,
+                                    label: preset?.name || runnerAction.label,
+                                  }}
+                                  isRunning={isRunning}
+                                  onRun={() => preset && handleRunPreset(preset)}
+                                  className="rounded-2xl border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50"
+                                />
+                              ) : null}
 
                               <Button
                                 variant="outline"
                                 className="rounded-2xl"
-                                disabled={!preset || isRunning || !canRunStage(tool.key, preset?.sourceAssetRole)}
+                                disabled={!preset || isRunning || !runnerAction || runnerAction.status === 'blocked'}
                                 onClick={() => {
                                   setMockingStage(tool.key);
                                   mockImageInputRef.current?.click();
@@ -1955,12 +1842,7 @@ function AiScenariosPageContent() {
         className="hidden"
         onChange={handleMockImageSelect}
       />
-      <ImageCropperDialog 
-        open={cropDialogOpen} 
-        onOpenChange={setCropDialogOpen} 
-        imageUrl={cropImageUrl} 
-        onCropComplete={handleCropComplete} 
-      />
+      {workflowRunner.cropDialog}
     </div>
     </PhotoProvider>
   );

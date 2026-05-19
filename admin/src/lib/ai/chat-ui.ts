@@ -42,6 +42,7 @@ export type ChatWorkflowDetail = {
     generationCount: number;
   };
   latestGeneration?: {
+    stageKey?: string;
     stageLabel?: string;
     status?: string;
     createdAt?: string;
@@ -54,6 +55,7 @@ export type ChatWorkflowDetail = {
   };
   timeline?: Array<{
     id: string;
+    stageKey?: string;
     stageLabel?: string;
     status?: string;
     isSelectedBaseline?: boolean;

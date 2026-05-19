@@ -43,6 +43,12 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import {
+  useAiWorkflowRunner,
+  WorkflowActionPanel,
+  type WorkflowRunnerDetail,
+} from '@/components/ai-studio/workflow-runner';
+import type { AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
 
 type ConfirmToolAction = Extract<ChatAction, { kind: 'confirm_tool' }>;
 
@@ -170,8 +176,78 @@ export default function ChatInterface({
       return undefined;
     }
 
-    return workflowCards.find((card) => card.id === selectedWorkflowId) || workflowCards[workflowCards.length - 1];
+    return (
+      [...workflowCards].reverse().find((card) => card.id === selectedWorkflowId) ||
+      workflowCards[workflowCards.length - 1]
+    );
   }, [selectedWorkflowId, workflowCards]);
+
+  const latestWorkflowId = workflowCards[workflowCards.length - 1]?.id;
+
+  useEffect(() => {
+    if (latestWorkflowId) {
+      setSelectedWorkflowId(latestWorkflowId);
+    }
+  }, [latestWorkflowId]);
+
+  const runnerWorkflowDetail = React.useMemo<WorkflowRunnerDetail | null>(() => {
+    if (!activeWorkflowCard) {
+      return null;
+    }
+
+    const detail = activeWorkflowCard.detail;
+    const generations = [
+      ...(detail?.latestGeneration?.imageUrl
+        ? [
+            {
+              id: `${activeWorkflowCard.id}-latest`,
+              stageKey: detail.latestGeneration.stageKey as AiWorkflowStageKey | undefined,
+              status: detail.latestGeneration.status,
+              output: { imageUrl: detail.latestGeneration.imageUrl },
+              createdAt: detail.latestGeneration.createdAt,
+            },
+          ]
+        : []),
+      ...(detail?.timeline || []).map((item) => ({
+        id: item.id,
+        stageKey: item.stageKey as AiWorkflowStageKey | undefined,
+        status: item.status,
+        isSelectedBaseline: item.isSelectedBaseline,
+        output: { imageUrl: item.imageUrl },
+        createdAt: item.createdAt,
+      })),
+    ];
+
+    return {
+      workflow: {
+        id: activeWorkflowCard.id,
+        currentStageKey: detail?.recommendedNextAction?.stageKey as AiWorkflowStageKey | undefined,
+      },
+      generations,
+    };
+  }, [activeWorkflowCard]);
+
+  const workflowRunner = useAiWorkflowRunner({
+    workflowId: activeWorkflowCard?.id,
+    workflowDetail: runnerWorkflowDetail,
+    fetchDetail: false,
+    showSuccessNotification: false,
+    runStageRequest: async ({ workflowId, stageKey, styleReferenceImage }) => {
+      await onRunAction({
+        label: '执行工作流步骤',
+        kind: 'confirm_tool',
+        actionName: 'run_workflow_stage',
+        arguments: {
+          workflowId,
+          stageKey,
+          ...(styleReferenceImage ? { styleReferenceImage } : {}),
+        },
+        confirmTitle: '确认执行该工作流步骤？',
+        confirmDescription: '系统会按当前工作流规则继续生成下一阶段产物。',
+        variant: 'primary',
+      });
+    },
+  });
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -245,6 +321,18 @@ export default function ChatInterface({
     }
 
     if (action.kind === 'confirm_tool') {
+      if (action.actionName === 'run_workflow_stage') {
+        const runnerAction = workflowRunner.actions.find(
+          (item) => item.stageKey === action.arguments.stageKey
+        );
+        if (runnerAction) {
+          workflowRunner.runAction(runnerAction);
+        } else {
+          setPendingAction(action);
+        }
+        return;
+      }
+
       if (action.actionName === 'create_workflow' && action.needsUpload) {
         setPendingUploadAction(action);
         fileInputRef.current?.click();
@@ -479,6 +567,7 @@ export default function ChatInterface({
 
     const detail = card.detail;
     const leadInfo = [detail?.lead?.name, detail?.lead?.communityName].filter(Boolean).join(' / ');
+    const stageText = card.subtitle?.replace(/^当前阶段[:：]\s*/, '') || card.badge || '待确认';
 
     return (
       <div className="flex h-full min-h-0 flex-col bg-white">
@@ -522,18 +611,45 @@ export default function ChatInterface({
           {detail ? (
             renderWorkflowDetail(card.id, detail)
           ) : (
-            <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-6 text-center">
-              <p className="text-sm font-black text-zinc-800">暂无详细进度</p>
-              <p className="mt-2 text-xs leading-5 text-zinc-500">
-                可以让 Agent 刷新或查看该工作流详情，最新进度会同步到这里。
-              </p>
+            <div className="space-y-3">
+              <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 p-4">
+                <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">方案摘要</p>
+                <div className="mt-3 grid gap-2">
+                  <div className="rounded-xl bg-white px-3 py-2.5">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">当前阶段</p>
+                    <p className="mt-1 text-sm font-black text-zinc-900">{stageText}</p>
+                  </div>
+                  {card.meta?.map((item) => (
+                    <div key={item} className="rounded-xl bg-white px-3 py-2.5">
+                      <p className="text-xs font-bold text-zinc-700">{item}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                <p className="text-xs font-black text-emerald-800">可继续同步完整详情</p>
+                <p className="mt-1 text-xs leading-5 text-emerald-700">
+                  使用底部的查看详情或刷新状态，可以同步完整阶段进度和产物预览。
+                </p>
+              </div>
             </div>
           )}
         </div>
 
         <div className="border-t border-zinc-100 bg-white p-5">
           <div className="flex flex-wrap gap-2">
-            {card.actions.map((action, index) => renderChatAction(action, index, card))}
+            {card.detail?.recommendedNextAction?.stageKey && (
+              <WorkflowActionPanel
+                actions={workflowRunner.actions}
+                stageKey={card.detail.recommendedNextAction.stageKey as AiWorkflowStageKey}
+                isRunning={workflowRunner.isRunning || isActionRunning}
+                runningStageKey={workflowRunner.runningStageKey}
+                onRun={workflowRunner.runAction}
+              />
+            )}
+            {card.actions
+              .filter((action) => action.kind !== 'confirm_tool' || action.actionName !== 'run_workflow_stage')
+              .map((action, index) => renderChatAction(action, index, card))}
           </div>
         </div>
       </div>
@@ -541,21 +657,67 @@ export default function ChatInterface({
   };
 
   const renderBusinessCard = (card: ChatCard) => {
+    if (card.type === 'workflow') {
+      const isActiveWorkflow = activeWorkflowCard?.id === card.id;
+
+      return (
+        <div
+          key={`${card.type}-${card.id}`}
+          className={cn(
+            'rounded-2xl border bg-white px-4 py-3 shadow-sm transition-all',
+            isActiveWorkflow ? 'border-emerald-200 bg-emerald-50/40' : 'border-zinc-200'
+          )}
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+              <Workflow size={16} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="truncate text-sm font-black text-zinc-900">已定位方案：{card.title}</p>
+                {card.badge && (
+                  <Badge className="border-none bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-700">
+                    {card.badge}
+                  </Badge>
+                )}
+              </div>
+              <p className="mt-1 text-xs font-semibold text-emerald-700 xl:text-zinc-500">
+                {isActiveWorkflow ? '详情已在右侧工作区打开' : '点击可切换到右侧工作区'}
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setSelectedWorkflowId(card.id);
+              setIsWorkflowSheetOpen(true);
+            }}
+            className="mt-3 h-9 w-full justify-center rounded-xl border-emerald-100 bg-white text-xs font-black text-emerald-700 hover:bg-emerald-50 xl:hidden"
+          >
+            <PanelRightOpen size={14} className="mr-1.5" />
+            打开方案工作区
+          </Button>
+          <button
+            type="button"
+            onClick={() => setSelectedWorkflowId(card.id)}
+            className="mt-3 hidden w-full rounded-xl border border-emerald-100 bg-white px-3 py-2 text-xs font-black text-emerald-700 transition-colors hover:bg-emerald-50 xl:block"
+          >
+            {isActiveWorkflow ? '当前右侧工作区正在显示该方案' : '切换右侧工作区到该方案'}
+          </button>
+        </div>
+      );
+    }
+
     const isLead = card.type === 'lead';
-    const isWorkflow = card.type === 'workflow';
     const Icon = isLead ? UserRound : Workflow;
-    const badge = card.type === 'workflow' ? card.badge : undefined;
     const floorPlans = card.type === 'workflow_empty' ? card.floorPlans || [] : [];
 
     return (
       <div
         key={`${card.type}-${card.id}`}
-        className={cn(
-          'rounded-2xl border bg-white p-4 shadow-sm transition-all',
-          isWorkflow && activeWorkflowCard?.id === card.id
-            ? 'border-emerald-200 shadow-emerald-100/60'
-            : 'border-zinc-200'
-        )}
+        className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm transition-all"
       >
         <div className="flex items-start gap-3">
           <div className={cn(
@@ -567,11 +729,6 @@ export default function ChatInterface({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <p className="truncate text-sm font-black text-zinc-900">{card.title}</p>
-              {badge && (
-                <Badge className="border-none bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-700">
-                  {badge}
-                </Badge>
-              )}
             </div>
             {card.subtitle && (
               <p className="mt-1 truncate text-xs font-medium text-zinc-500">{card.subtitle}</p>
@@ -613,33 +770,6 @@ export default function ChatInterface({
                 ))}
               </div>
             )}
-          </div>
-        )}
-        {isWorkflow && (
-          <div className="mt-4">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setSelectedWorkflowId(card.id);
-                setIsWorkflowSheetOpen(true);
-              }}
-              className="h-9 w-full justify-center rounded-xl border-emerald-100 bg-emerald-50 text-xs font-black text-emerald-700 hover:bg-emerald-100 xl:hidden"
-            >
-              <PanelRightOpen size={14} className="mr-1.5" />
-              在工作区查看
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setSelectedWorkflowId(card.id)}
-              className="hidden h-9 w-full justify-center rounded-xl border-emerald-100 bg-emerald-50 text-xs font-black text-emerald-700 hover:bg-emerald-100 xl:inline-flex"
-            >
-              <PanelRightOpen size={14} className="mr-1.5" />
-              在右侧查看
-            </Button>
           </div>
         )}
         <div className="mt-4 flex flex-wrap gap-2">
@@ -1036,6 +1166,7 @@ export default function ChatInterface({
         className="hidden"
         onChange={handleReferenceImageSelected}
       />
+      {workflowRunner.cropDialog}
     </div>
   );
 }

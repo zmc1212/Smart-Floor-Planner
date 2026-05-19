@@ -744,6 +744,7 @@ function buildWorkflowDetailPayload(output: Record<string, unknown>): ChatWorkfl
     ...(latestGeneration
       ? {
           latestGeneration: {
+            stageKey: toUiString(latestGeneration.stageKey),
             stageLabel:
               toUiString(latestGeneration.stageLabel) ||
               toUiString(latestGeneration.stageKey),
@@ -775,6 +776,7 @@ function buildWorkflowDetailPayload(output: Record<string, unknown>): ChatWorkfl
 
               return {
                 id,
+                stageKey: toUiString(generation.stageKey),
                 stageLabel: toUiString(generation.stageLabel) || toUiString(generation.stageKey),
                 status: toUiString(generation.status),
                 isSelectedBaseline: Boolean(generation.isSelectedBaseline),
