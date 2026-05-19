@@ -4,7 +4,8 @@ import { AiGeneration } from '@/models/AiGeneration';
 import { AiWorkflow } from '@/models/AiWorkflow';
 import Lead from '@/models/Lead';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { editImage, generateImage, uploadMedia } from '@/lib/ai/pollinations';
+import { editImage, generateImage } from '@/lib/ai/pollinations';
+import { ensureModelAccessibleImageUrl, persistImageReference } from '@/lib/ai/media-assets';
 import { ensureDefaultAiStylePresets, getAiStylePresetByKey } from '@/lib/ai/presets';
 import {
   getEnterprisePollinationsRuntimeConfig,
@@ -161,10 +162,11 @@ export async function POST(req: Request) {
 
         const presetType = resolvePresetType(generation.type);
         const preset = await getAiStylePresetByKey(presetType, generation.input.style);
-        const referenceImageUrl =
-          typeof resolvedImage === 'string' && resolvedImage.startsWith('data:image')
-            ? await uploadMedia(resolvedImage)
-            : resolvedImage;
+        const referenceImageUrl = await ensureModelAccessibleImageUrl(
+          resolvedImage,
+          String(context.enterpriseId),
+          runtimeConfig.apiKey
+        );
         const startedAt = Date.now();
         const requestPayload = {
           prompt: prompt || generation.output.promptUsed || generation.input.customPrompt || '',
@@ -194,8 +196,15 @@ export async function POST(req: Request) {
             ? await generateImage(requestPayload)
             : await editImage(requestPayload);
 
+        const persistedImageUrl = await persistImageReference({
+          enterpriseId: String(context.enterpriseId),
+          ownerType: 'ai_generation_output',
+          ownerId: generation._id,
+          image: imageUrl,
+        });
+
         generation.status = 'succeeded';
-        generation.output.imageUrl = imageUrl;
+        generation.output.imageUrl = persistedImageUrl;
         generation.durationMs = Date.now() - startedAt;
         generation.remoteModel = requestPayload.model;
         await generation.save();
@@ -239,7 +248,7 @@ export async function POST(req: Request) {
           markEnterpriseAiSyncError(String(context.enterpriseId), error)
         );
 
-        return NextResponse.json({ success: true, data: { id: generation._id, imageUrl } });
+        return NextResponse.json({ success: true, data: { id: generation._id, imageUrl: persistedImageUrl } });
       } catch (err: unknown) {
         console.error('[AI Render Error]', err);
 

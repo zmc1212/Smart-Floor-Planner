@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
 import Lead from '@/models/Lead';
@@ -15,7 +16,7 @@ type LeanFloorPlan = {
 };
 
 // Force Mongoose model registration and prevent ESM tree-shaking
-const _forceFloorPlan = FloorPlan.modelName;
+void FloorPlan.modelName;
 
 type LeanLead = {
   _id: unknown;
@@ -38,7 +39,7 @@ export async function GET(req: Request) {
       const search = url.searchParams.get('search')?.trim();
 
       const tenantFilter = getTenantFilter(context);
-      let query: Record<string, any> = { ...tenantFilter };
+      let query: Record<string, unknown> = { ...tenantFilter };
 
       if (search) {
         query = {
@@ -62,10 +63,19 @@ export async function GET(req: Request) {
         .lean();
 
       const leadIds = leads.map((lead) => lead._id);
+      const workflowEnterpriseId = context.enterpriseId
+        ? new mongoose.Types.ObjectId(String(context.enterpriseId))
+        : context.enterpriseId;
       const workflowCounts =
         leadIds.length > 0
           ? await AiWorkflow.aggregate([
-              { $match: { leadId: { $in: leadIds }, status: 'active' } },
+              {
+                $match: {
+                  enterpriseId: workflowEnterpriseId,
+                  leadId: { $in: leadIds },
+                  status: 'active',
+                },
+              },
               { $sort: { updatedAt: -1 } },
               {
                 $group: {

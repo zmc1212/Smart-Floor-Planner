@@ -537,6 +537,7 @@ function AiScenariosPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialLeadId = searchParams.get('leadId');
+  const initialWorkflowId = searchParams.get('workflowId');
   const initialDemoId = searchParams.get('demo');
 
   const { data: quota, mutate: mutateQuota, isLoading: quotaLoading } = useFetch<AiQuotaData>('/api/ai/quota');
@@ -553,7 +554,7 @@ function AiScenariosPageContent() {
     isLoading: workflowsLoading,
   } = useFetch<WorkflowSummary[]>(workflowsUrl);
 
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(initialWorkflowId);
   const {
     data: workflowDetail,
     mutate: mutateWorkflowDetail,
@@ -622,6 +623,12 @@ function AiScenariosPageContent() {
   }, [initialDemoId]);
 
   useEffect(() => {
+    if (initialWorkflowId) {
+      setSelectedWorkflowId(initialWorkflowId);
+    }
+  }, [initialWorkflowId]);
+
+  useEffect(() => {
     if (!selectedLeadId) {
       setSelectedWorkflowId(null);
       return;
@@ -632,10 +639,15 @@ function AiScenariosPageContent() {
       return;
     }
 
+    if (initialWorkflowId && workflows.some((workflow) => workflow.id === initialWorkflowId)) {
+      setSelectedWorkflowId(initialWorkflowId);
+      return;
+    }
+
     if (!selectedWorkflowId || !workflows.some((workflow) => workflow.id === selectedWorkflowId)) {
       setSelectedWorkflowId(workflows[0].id);
     }
-  }, [selectedLeadId, selectedWorkflowId, workflows]);
+  }, [initialWorkflowId, selectedLeadId, selectedWorkflowId, workflows]);
 
   useEffect(() => {
     if (selectedLead?.floorPlans?.length && !sourceFloorPlanId) {
@@ -1409,7 +1421,10 @@ function AiScenariosPageContent() {
                       <button
                         key={workflow.id}
                         type="button"
-                        onClick={() => setSelectedWorkflowId(workflow.id)}
+                        onClick={() => {
+                          setSelectedWorkflowId(workflow.id);
+                          router.replace(`/ai-studio/scenarios?leadId=${selectedLeadId}&workflowId=${workflow.id}`);
+                        }}
                         className={cn(
                           'w-full rounded-[24px] border p-4 text-left transition',
                           selectedWorkflowId === workflow.id

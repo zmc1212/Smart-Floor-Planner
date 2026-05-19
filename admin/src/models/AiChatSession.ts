@@ -1,11 +1,13 @@
 import mongoose, { Document, Model, Schema } from 'mongoose';
 import { multiTenantPlugin } from '../lib/mongoose-tenant-plugin';
+import type { ChatUiPayload } from '@/lib/ai/chat-ui';
 
 export interface IChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
-  tool_calls?: any[];
-  tool_outputs?: any[];
+  tool_calls?: Record<string, unknown>[];
+  tool_outputs?: Record<string, unknown>[];
+  uiPayload?: ChatUiPayload;
   createdAt: Date;
 }
 
@@ -50,6 +52,7 @@ const AiChatSessionSchema: Schema<IAiChatSession> = new Schema(
         },
         tool_calls: [Schema.Types.Mixed],
         tool_outputs: [Schema.Types.Mixed],
+        uiPayload: Schema.Types.Mixed,
         createdAt: {
           type: Date,
           default: Date.now,
@@ -69,5 +72,12 @@ const AiChatSessionSchema: Schema<IAiChatSession> = new Schema(
 AiChatSessionSchema.index({ adminId: 1, lastMessageAt: -1 });
 AiChatSessionSchema.plugin(multiTenantPlugin);
 
+const existingAiChatSessionModel = mongoose.models.AiChatSession as Model<IAiChatSession> | undefined;
+
+if (existingAiChatSessionModel && !existingAiChatSessionModel.schema.path('messages.uiPayload')) {
+  mongoose.deleteModel('AiChatSession');
+}
+
 export const AiChatSession: Model<IAiChatSession> =
-  mongoose.models.AiChatSession || mongoose.model<IAiChatSession>('AiChatSession', AiChatSessionSchema);
+  (mongoose.models.AiChatSession as Model<IAiChatSession> | undefined) ||
+  mongoose.model<IAiChatSession>('AiChatSession', AiChatSessionSchema);

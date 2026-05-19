@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { AiGeneration } from '@/models/AiGeneration';
 import { AiWorkflow } from '@/models/AiWorkflow';
@@ -18,7 +18,8 @@ import {
   getEnterprisePollinationsRuntimeConfig,
   markEnterpriseAiSyncError,
 } from '@/lib/ai/enterprise-ai';
-import { uploadMedia, generateChatCompletion } from '@/lib/ai/pollinations';
+import { generateChatCompletion } from '@/lib/ai/pollinations';
+import { ensureModelAccessibleImageUrl, persistImageReference, updateMediaAssetOwner } from '@/lib/ai/media-assets';
 import type { AiWorkflowSourceAssetRole, AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
 import { getNextWorkflowStage } from '@/lib/ai/workflow-stages';
 
@@ -199,7 +200,7 @@ export async function POST(req: Request) {
 
         if (!workflow) {
           return NextResponse.json(
-            { success: false, error: '方案会话不存在或已无权限访问' },
+            { success: false, error: '鏂规浼氳瘽涓嶅瓨鍦ㄦ垨宸叉棤鏉冮檺璁块棶' },
             { status: 404 }
           );
         }
@@ -222,7 +223,7 @@ export async function POST(req: Request) {
 
         if (!parentGeneration) {
           return NextResponse.json(
-            { success: false, error: '上一产物不存在或已无权限访问' },
+            { success: false, error: '涓婁竴浜х墿涓嶅瓨鍦ㄦ垨宸叉棤鏉冮檺璁块棶' },
             { status: 404 }
           );
         }
@@ -231,6 +232,13 @@ export async function POST(req: Request) {
       const resolvedStageKey = stageKey || preset?.workflowStage;
       const resolvedSourceAssetRole = sourceAssetRole || preset?.sourceAssetRole;
       const nextRecommendedStage = preset?.nextRecommendedStage || getNextWorkflowStage(resolvedStageKey);
+      const persistedStyleReferenceImage = styleReferenceImage
+        ? await persistImageReference({
+            enterpriseId: String(context.enterpriseId),
+            ownerType: 'ai_generation_input',
+            image: styleReferenceImage,
+          })
+        : undefined;
 
       const generation = await AiGeneration.create({
         enterpriseId: context.enterpriseId!,
@@ -253,7 +261,7 @@ export async function POST(req: Request) {
           roomData,
           furnitureItems,
           presetSnapshot: preset ? buildPresetSnapshot(preset) : undefined,
-          styleReferenceImage,
+          styleReferenceImage: persistedStyleReferenceImage,
         },
         status: 'processing',
         apiKeyId: runtimeConfig.keyId,
@@ -265,39 +273,36 @@ export async function POST(req: Request) {
           lastSyncedAt: latestSnapshot?.lastSyncedAt || undefined,
         },
       });
+      await updateMediaAssetOwner(persistedStyleReferenceImage, generation._id);
 
       try {
         let promptData: { prompt: string; negative_prompt?: string };
 
         if (resolvedStageKey === 'lighting') {
           // Check for reference image
-          let referenceImageUrl = styleReferenceImage;
+          let referenceImageUrl = persistedStyleReferenceImage;
           if (!referenceImageUrl && parentGeneration) {
             referenceImageUrl = parentGeneration.output?.imageUrl || parentGeneration.input?.styleReferenceImage;
           }
 
           if (!referenceImageUrl) {
             return NextResponse.json(
-              { success: false, error: '“增强签单”阶段必须提供白天参考效果图以供分析与重绘。' },
+              { success: false, error: '增强签单阶段必须提供白天参考效果图，以供分析与重绘。' },
               { status: 400 }
             );
           }
 
           // 1. Upload reference image if it is base64
-          let publicImageUrl = referenceImageUrl;
-          if (publicImageUrl && publicImageUrl.startsWith('data:')) {
-            try {
-              publicImageUrl = await uploadMedia(publicImageUrl, runtimeConfig.apiKey);
-            } catch (uploadErr) {
-              console.error('[AI Generate Lighting] Failed to upload reference image:', uploadErr);
-              throw new Error('白天参考图上传失败：' + (uploadErr instanceof Error ? uploadErr.message : String(uploadErr)));
-            }
-          }
+          const publicImageUrl = await ensureModelAccessibleImageUrl(
+            referenceImageUrl,
+            String(context.enterpriseId),
+            runtimeConfig.apiKey
+          );
 
           // Update styleReferenceImage with public URL to ensure rendering has access
-          generation.input.styleReferenceImage = publicImageUrl;
+          generation.input.styleReferenceImage = referenceImageUrl;
 
-          // 2. Stage 1: 脑力规划 (Mental Planning)
+          // 2. Stage 1: 鑴戝姏瑙勫垝 (Mental Planning)
           const formattedFirstStagePrompt = buildPromptFromPreset(preset?.promptTemplate || '', {
             roomName,
             roomType,
@@ -335,8 +340,8 @@ export async function POST(req: Request) {
           // Save sceneAnalysis text to the generation input record
           generation.input.sceneAnalysis = sceneAnalysisText;
 
-          // 3. Stage 2: 大图绘制编译 (Board Prompt Compilation)
-          const formattedSecondStagePrompt = preset?.promptTemplateSecondStage || '直接生成展板图片，把灯光设计分析，灯光清单，跟夜景效果图，罗列出来';
+          // 3. Stage 2: 澶у浘缁樺埗缂栬瘧 (Board Prompt Compilation)
+          const formattedSecondStagePrompt = preset?.promptTemplateSecondStage || '直接生成展板图片，把灯光设计分析、灯光清单、夜景效果图排列出来。';
 
           const compilePrompt = `
             Task: Compile a highly detailed, professional English image generation prompt for Stable Diffusion/Flux.
@@ -384,7 +389,7 @@ export async function POST(req: Request) {
           if (jsonMatch) {
             try {
               secondStageData = JSON.parse(jsonMatch[0]);
-            } catch (e) {
+            } catch {
               console.error('Failed to parse compiled prompt JSON:', compileResponse);
               secondStageData = {
                 prompt: `A professional interior design presentation board showing: night scene rendering of a ${style} style ${roomType} with warm lighting; clean typography showing lighting list and analysis. High-end, photorealistic, 8k.`,

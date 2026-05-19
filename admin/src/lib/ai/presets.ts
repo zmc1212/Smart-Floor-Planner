@@ -41,7 +41,7 @@ export async function ensureDefaultAiStylePresets(userId?: string) {
       AiStylePreset.updateOne(
         { type: preset.type, key: preset.key },
         {
-          $set: {
+          $setOnInsert: {
             name: preset.name,
             description: preset.description,
             icon: preset.icon,
@@ -55,8 +55,6 @@ export async function ensureDefaultAiStylePresets(userId?: string) {
             sourceAssetRole: preset.sourceAssetRole,
             nextRecommendedStage: preset.nextRecommendedStage,
             sortOrder: preset.sortOrder,
-          },
-          $setOnInsert: {
             createdBy: userId,
             enabled: preset.enabled,
           },

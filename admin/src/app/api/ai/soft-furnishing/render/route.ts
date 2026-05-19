@@ -7,7 +7,8 @@ import {
   FurnitureSelection,
   SOFT_FURNISHING_NEGATIVE,
 } from '@/lib/ai/soft-furnishing';
-import { editImage, uploadMedia } from '@/lib/ai/pollinations';
+import { editImage } from '@/lib/ai/pollinations';
+import { ensureModelAccessibleImageUrl, persistImageReference, updateMediaAssetOwner } from '@/lib/ai/media-assets';
 import {
   getEnterprisePollinationsRuntimeConfig,
   markEnterpriseAiSyncError,
@@ -65,6 +66,12 @@ export async function POST(req: Request) {
       const prompt = buildDirectSoftFurnishingPrompt(furnitureItems, resolution);
       const roomType = furnitureItems.some((item) => item.placementRole === 'sleeping') ? 'bedroom' : 'living_room';
 
+      const persistedSourceImage = await persistImageReference({
+        enterpriseId: String(context.enterpriseId),
+        ownerType: 'ai_generation_input',
+        image,
+      });
+
       const generation = await AiGeneration.create({
         enterpriseId: context.enterpriseId!,
         operatorId: context.userId,
@@ -74,7 +81,7 @@ export async function POST(req: Request) {
           roomType,
           roomName: roomType === 'bedroom' ? '卧室软装' : '客厅软装',
           mode: 'photo_furniture_staging_v2',
-          sourceImage: image,
+          sourceImage: persistedSourceImage,
           furnitureItems,
           customPrompt: prompt,
         },
@@ -86,6 +93,7 @@ export async function POST(req: Request) {
         apiKeyId: runtimeConfig.keyId,
         apiKeyName: runtimeConfig.keyName,
       });
+      await updateMediaAssetOwner(persistedSourceImage, generation._id);
 
       try {
         if (process.env.MOCK_AI === 'true') {
@@ -102,7 +110,11 @@ export async function POST(req: Request) {
         }
 
         const startedAt = Date.now();
-        const referenceImageUrl = await uploadMedia(image);
+        const referenceImageUrl = await ensureModelAccessibleImageUrl(
+          persistedSourceImage || image,
+          String(context.enterpriseId),
+          runtimeConfig.apiKey
+        );
         const imageUrl = await editImage({
           prompt,
           negativePrompt: SOFT_FURNISHING_NEGATIVE,
@@ -114,8 +126,15 @@ export async function POST(req: Request) {
           apiKey: runtimeConfig.apiKey,
         });
 
+        const persistedImageUrl = await persistImageReference({
+          enterpriseId: String(context.enterpriseId),
+          ownerType: 'ai_generation_output',
+          ownerId: generation._id,
+          image: imageUrl,
+        });
+
         generation.status = 'succeeded';
-        generation.output.imageUrl = imageUrl;
+        generation.output.imageUrl = persistedImageUrl;
         generation.durationMs = Date.now() - startedAt;
         generation.remoteModel = 'flux';
         await generation.save();
@@ -124,7 +143,7 @@ export async function POST(req: Request) {
           markEnterpriseAiSyncError(String(context.enterpriseId), error)
         );
 
-        return NextResponse.json({ success: true, data: { id: generation._id, imageUrl } });
+        return NextResponse.json({ success: true, data: { id: generation._id, imageUrl: persistedImageUrl } });
       } catch (error) {
         generation.status = 'failed';
         generation.errorMessage =

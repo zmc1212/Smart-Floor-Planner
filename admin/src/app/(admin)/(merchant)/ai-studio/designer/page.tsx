@@ -5,10 +5,14 @@ import ChatInterface from '@/components/ai-studio/ChatInterface';
 import { Badge } from '@/components/ui/badge';
 import { Sparkles, Info } from 'lucide-react';
 import { notify } from '@/components/ui/operation-feedback';
+import type { ChatAction, ChatUiPayload } from '@/lib/ai/chat-ui';
+
+type ConfirmToolAction = Extract<ChatAction, { kind: 'confirm_tool' }>;
 
 interface Message {
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
+  uiPayload?: ChatUiPayload;
 }
 
 interface Conversation {
@@ -84,7 +88,7 @@ export default function AiDesignerPage() {
     }
   };
 
-  const handleSendMessage = async (content: string) => {
+  const handleSendMessage = async (content: string, contextHint?: string) => {
     const userMessage: Message = { role: 'user', content };
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
@@ -98,7 +102,8 @@ export default function AiDesignerPage() {
         },
         body: JSON.stringify({
           messages: [userMessage], // 仅发送当前消息，后端会从 Session 中恢复上下文
-          conversationId: activeConversationId
+          conversationId: activeConversationId,
+          contextHint
         })
       });
 
@@ -129,9 +134,46 @@ export default function AiDesignerPage() {
     }
   };
 
+  const handleRunAction = async (action: ConfirmToolAction) => {
+    if (!activeConversationId) {
+      notify.error('请先在当前对话中执行操作');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/ai/agent/actions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          conversationId: activeConversationId,
+          actionName: action.actionName,
+          confirmed: true,
+          ...action.arguments
+        })
+      });
+
+      const result = await res.json();
+      if (result.success) {
+        setMessages((prev) => [...prev, result.data]);
+        notify.success('操作已完成');
+        fetchConversations();
+      } else {
+        notify.fromAlert(result.error || '操作失败');
+      }
+    } catch (error) {
+      console.error('Agent action failed:', error);
+      notify.error('操作失败，请稍后再试');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#fafafa] text-[#171717] font-sans">
-      <main className="mx-auto max-w-6xl px-6 py-8">
+      <main className="mx-auto max-w-[1680px] px-6 py-8">
         {/* Header Section */}
         <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="space-y-2">
@@ -175,6 +217,7 @@ export default function AiDesignerPage() {
             onSelectConversation={handleSelectConversation}
             onNewChat={handleNewChat}
             onDeleteConversation={handleDeleteConversation}
+            onRunAction={handleRunAction}
           />
         </div>
       </main>

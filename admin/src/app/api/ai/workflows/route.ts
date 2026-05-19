@@ -7,6 +7,7 @@ import { FloorPlan } from '@/models/FloorPlan';
 import Lead from '@/models/Lead';
 import type { AiWorkflowSourceAssetRole, AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
 import { serializeAiGeneration, serializeAiWorkflow } from '@/lib/ai/workflow-utils';
+import { createAiWorkflow } from '@/lib/ai/workflow-service';
 
 interface CreateWorkflowBody {
   leadId?: string;
@@ -18,7 +19,7 @@ interface CreateWorkflowBody {
 }
 
 // Force Mongoose model registration and prevent ESM tree-shaking
-const _forceFloorPlan = FloorPlan.modelName;
+void FloorPlan.modelName;
 
 type LeanGeneration = {
   _id: unknown;
@@ -39,14 +40,6 @@ type LeanGeneration = {
   createdAt: Date;
   updatedAt: Date;
 };
-
-function buildDefaultWorkflowTitle(leadName: string, workflowCount: number, workflowLabel?: string) {
-  if (workflowLabel?.trim()) {
-    return `${leadName} · ${workflowLabel.trim()}`;
-  }
-
-  return workflowCount === 0 ? `${leadName} · 首轮方案` : `${leadName} · 方案 ${workflowCount + 1}`;
-}
 
 export async function GET(req: Request) {
   try {
@@ -127,70 +120,25 @@ export async function POST(req: Request) {
 
     return await withTenantRoute(req, { requireEnterprise: true }, async (context) => {
       const body = (await req.json()) as CreateWorkflowBody;
-      const leadId = body.leadId?.trim();
-      const sourceImage = body.sourceImage?.trim();
-      const sourceFloorPlanId = body.sourceFloorPlanId?.trim();
-
-      if (!leadId) {
-        return NextResponse.json({ success: false, error: 'Missing leadId' }, { status: 400 });
-      }
-
-      const lead = await Lead.findById(leadId).lean();
-      if (!lead) {
-        return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
-      }
-
-      if (sourceFloorPlanId) {
-        const hasFloorPlan = Array.isArray(lead.floorPlanIds)
-          ? lead.floorPlanIds.some((item: unknown) => String(item) === sourceFloorPlanId)
-          : false;
-
-        if (!hasFloorPlan) {
-          return NextResponse.json(
-            { success: false, error: 'Selected floor plan does not belong to the lead' },
-            { status: 400 }
-          );
-        }
-      }
-
-      if (!sourceFloorPlanId && (!sourceImage || !sourceImage.startsWith('data:image'))) {
+      let workflow;
+      try {
+        workflow = await createAiWorkflow(
+          {
+            leadId: body.leadId || '',
+            title: body.title,
+            workflowLabel: body.workflowLabel,
+            sourceImage: body.sourceImage,
+            sourceFloorPlanId: body.sourceFloorPlanId,
+            sourceAssetRole: body.sourceAssetRole,
+          },
+          context
+        );
+      } catch (error) {
         return NextResponse.json(
-          { success: false, error: 'Please choose a lead asset or upload a reference image first' },
+          { success: false, error: error instanceof Error ? error.message : 'Failed to create workflow' },
           { status: 400 }
         );
       }
-
-      const workflowCount = await AiWorkflow.countDocuments({ leadId: lead._id });
-      const workflowLabel = body.workflowLabel?.trim();
-      const title =
-        body.title?.trim() ||
-        buildDefaultWorkflowTitle(lead.name || '客户方案', workflowCount, workflowLabel);
-
-      const workflow = await AiWorkflow.create({
-        enterpriseId: context.enterpriseId!,
-        leadId: lead._id,
-        operatorId: context.userId,
-        title,
-        workflowLabel,
-        isPrimary: workflowCount === 0,
-        sourceImage,
-        sourceFloorPlanId: sourceFloorPlanId || undefined,
-        sourceAssetRole: body.sourceAssetRole || (sourceFloorPlanId ? 'floor_plan' : 'rough_sketch'),
-        currentStageKey: 'direction',
-      });
-
-      await Lead.updateOne(
-        { _id: lead._id },
-        {
-          $push: {
-            followUpRecords: {
-              content: `已发起 AI 设计方案：${title}`,
-              operator: context.username || 'System',
-              createdAt: new Date(),
-            },
-          },
-        }
-      ).catch(() => undefined);
 
       return NextResponse.json({
         success: true,

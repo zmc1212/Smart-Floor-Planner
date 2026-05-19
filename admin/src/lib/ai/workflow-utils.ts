@@ -37,11 +37,46 @@ type WorkflowLike = {
   updatedAt: Date | string;
 };
 
-export function serializeAiGeneration(generation: GenerationLike) {
-  const stageDefinition = getWorkflowStageDefinition(String(generation.stageKey || ''));
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function sanitizeGenerationOutput(generationId: string, output: unknown) {
+  if (!isRecord(output)) {
+    return output;
+  }
+
+  const imageUrl = typeof output.imageUrl === 'string' ? output.imageUrl : undefined;
+  return {
+    ...output,
+    ...(imageUrl?.startsWith('data:image')
+      ? { imageUrl: `/api/ai/generations/${generationId}/image` }
+      : {}),
+  };
+}
+
+function sanitizeGenerationInput(input: unknown) {
+  if (!isRecord(input)) {
+    return input;
+  }
 
   return {
-    id: String(generation._id),
+    ...input,
+    ...(typeof input.sourceImage === 'string' && input.sourceImage.startsWith('data:image')
+      ? { sourceImage: 'data-uri' }
+      : {}),
+    ...(typeof input.styleReferenceImage === 'string' && input.styleReferenceImage.startsWith('data:image')
+      ? { styleReferenceImage: 'data-uri' }
+      : {}),
+  };
+}
+
+export function serializeAiGeneration(generation: GenerationLike) {
+  const stageDefinition = getWorkflowStageDefinition(String(generation.stageKey || ''));
+  const id = String(generation._id);
+
+  return {
+    id,
     leadId: generation.leadId ? String(generation.leadId) : undefined,
     workflowId: generation.workflowId ? String(generation.workflowId) : undefined,
     parentGenerationId: generation.parentGenerationId
@@ -54,8 +89,8 @@ export function serializeAiGeneration(generation: GenerationLike) {
     isSelectedBaseline: Boolean(generation.isSelectedBaseline),
     nextRecommendedStage: generation.nextRecommendedStage,
     status: generation.status,
-    input: generation.input,
-    output: generation.output,
+    input: sanitizeGenerationInput(generation.input),
+    output: sanitizeGenerationOutput(id, generation.output),
     errorMessage: generation.errorMessage,
     provider: generation.provider,
     durationMs: generation.durationMs,
@@ -72,15 +107,19 @@ export function serializeAiGeneration(generation: GenerationLike) {
 
 export function serializeAiWorkflow(workflow: WorkflowLike) {
   const stageDefinition = getWorkflowStageDefinition(String(workflow.currentStageKey || ''));
+  const id = String(workflow._id);
 
   return {
-    id: String(workflow._id),
+    id,
     leadId: workflow.leadId ? String(workflow.leadId) : undefined,
     title: workflow.title,
     workflowLabel: workflow.workflowLabel,
     isPrimary: Boolean(workflow.isPrimary),
     status: workflow.status,
-    sourceImage: workflow.sourceImage,
+    sourceImage:
+      typeof workflow.sourceImage === 'string' && workflow.sourceImage.startsWith('data:image')
+        ? `/api/ai/workflows/${id}/source-image`
+        : workflow.sourceImage,
     sourceFloorPlanId: workflow.sourceFloorPlanId ? String(workflow.sourceFloorPlanId) : undefined,
     sourceAssetRole: workflow.sourceAssetRole,
     currentStageKey: workflow.currentStageKey,

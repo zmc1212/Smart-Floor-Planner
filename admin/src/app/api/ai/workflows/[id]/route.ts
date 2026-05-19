@@ -7,6 +7,7 @@ import { FloorPlan } from '@/models/FloorPlan';
 import Lead from '@/models/Lead';
 import type { AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
 import { serializeAiGeneration, serializeAiWorkflow } from '@/lib/ai/workflow-utils';
+import { persistImageReference, updateMediaAssetOwner } from '@/lib/ai/media-assets';
 
 type LeanFloorPlan = {
   _id: unknown;
@@ -16,7 +17,7 @@ type LeanFloorPlan = {
 };
 
 // Force Mongoose model registration and prevent ESM tree-shaking
-const _forceFloorPlan = FloorPlan.modelName;
+void FloorPlan.modelName;
 
 interface WorkflowPatchBody {
   action?: 'select-generation' | 'set-stage' | 'rename' | 'mock-generation';
@@ -161,6 +162,12 @@ export async function PATCH(
           return NextResponse.json({ success: false, error: 'Missing stageKey or imageUrl' }, { status: 400 });
         }
 
+        const persistedImageUrl = await persistImageReference({
+          enterpriseId: String(workflow.enterpriseId),
+          ownerType: 'ai_generation_output',
+          image: body.imageUrl,
+        });
+
         const generation = await AiGeneration.create({
           enterpriseId: workflow.enterpriseId,
           leadId: workflow.leadId,
@@ -177,11 +184,12 @@ export async function PATCH(
             styleReferenceImage: body.styleReferenceImage,
           },
           output: {
-            imageUrl: body.imageUrl,
+            imageUrl: persistedImageUrl,
             promptUsed: '手动上传测试图',
           },
           provider: 'pollinations',
         });
+        await updateMediaAssetOwner(persistedImageUrl, generation._id);
 
         if (body.nextStageKey) {
           workflow.currentStageKey = body.nextStageKey;
