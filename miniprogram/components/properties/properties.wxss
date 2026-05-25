@@ -170,6 +170,17 @@
   font-weight: var(--font-weight-medium);
 }
 
+.opening-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.opening-measure {
+  color: var(--text-brand);
+  font-size: var(--font-size-caption);
+}
+
 .opening-delete {
   color: var(--status-converted-text);
   font-size: var(--font-size-caption);

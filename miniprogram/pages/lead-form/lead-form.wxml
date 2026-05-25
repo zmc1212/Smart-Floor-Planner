@@ -8,7 +8,7 @@
 
   <scroll-view class="main-content" scroll-y style="padding-top: {{navBarHeightTotal}}px; height: 100vh; box-sizing: border-box;">
     <view class="content-shell">
-      <image class="hero-image" src="/images/lead-form-hero.png" mode="widthFix"></image>
+      <image class="hero-image" src="/images/login-hero.png" mode="widthFix"></image>
 
       <view class="recent-head">
         <text class="recent-title">最近客户</text>

@@ -68,6 +68,7 @@
         binddelete="onDeleteRoom"
         bindaddtemplate="onAddTemplate"
         bindedgeselect="onEdgeSelect"
+        bindopeningwallselect="onOpeningWallSelect"
       />
 
       <view wx:if="{{is3DView}}" class="three-canvas-container">
@@ -99,6 +100,7 @@
         bindmerge="onMergeRooms"
         bindclose="onCloseProperties"
         bindhighlight="onHighlightOpening"
+        bindremeasureopening="onRemeasureOpening"
       />
     </view>
   </view>
@@ -127,6 +129,16 @@
     wallALength="{{angleMeasureWallA}}"
     bindconfirm="onAngleMeasureConfirm"
     bindclose="onCloseAngleMeasure"
+  />
+
+  <opening-measure
+    show="{{showOpeningMeasure}}"
+    openingType="{{openingMeasureType}}"
+    wallLabel="{{openingMeasureWallLabel}}"
+    wallLength="{{openingMeasureWallLength}}"
+    reference="{{openingMeasureReference}}"
+    bindconfirm="onOpeningMeasureConfirm"
+    bindclose="onOpeningMeasureClose"
   />
 
   <technical-report

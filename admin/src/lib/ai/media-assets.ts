@@ -21,8 +21,12 @@ const INTERNAL_ASSET_URL_RE = /^\/api\/ai\/assets\/([a-f0-9]{24})\/image/i;
 const INTERNAL_GENERATION_URL_RE = /^\/api\/ai\/generations\/([a-f0-9]{24})\/image/i;
 const INTERNAL_WORKFLOW_SOURCE_URL_RE = /^\/api\/ai\/workflows\/([a-f0-9]{24})\/source-image/i;
 
-function getStorageRoot() {
-  return process.env.AI_ASSET_STORAGE_DIR || path.join(process.cwd(), 'uploads', 'ai-assets');
+function resolveStoragePath(storageKey: string) {
+  if (process.env.AI_ASSET_STORAGE_DIR) {
+    return path.join(process.env.AI_ASSET_STORAGE_DIR, storageKey);
+  }
+
+  return path.join(/* turbopackIgnore: true */ process.cwd(), 'uploads', 'ai-assets', storageKey);
 }
 
 function toObjectId(value?: string | mongoose.Types.ObjectId) {
@@ -76,7 +80,7 @@ export async function storeMediaBuffer(input: StoreMediaInput) {
     new Date().getFullYear().toString(),
     `${assetId}.${getExtension(input.mimeType)}`,
   ].join('/');
-  const fullPath = path.join(getStorageRoot(), storageKey);
+  const fullPath = resolveStoragePath(storageKey);
 
   await fs.mkdir(path.dirname(fullPath), { recursive: true });
   await fs.writeFile(fullPath, input.buffer);
@@ -187,7 +191,7 @@ export async function readMediaAssetBuffer(asset: Pick<IMediaAsset, 'storageProv
     throw new Error('Unsupported storage provider');
   }
 
-  return fs.readFile(path.join(getStorageRoot(), asset.storageKey));
+  return fs.readFile(resolveStoragePath(asset.storageKey));
 }
 
 export async function readInternalAssetAsDataUri(imageUrl: string, enterpriseId: string | mongoose.Types.ObjectId) {

@@ -2,12 +2,11 @@
 
 import { notify } from '@/components/ui/operation-feedback';
 import React, { useMemo, useState, Suspense, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Canvas } from '@react-three/fiber';
 import { MapControls, PerspectiveCamera, OrthographicCamera, Text, Center, Bounds, ContactShadows, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { ArrowLeft, Activity, Download, Loader2, Wand2, Share2, Check, User as UserIcon, MessageCircle, Sparkles } from 'lucide-react';
+import { Activity, Download, Loader2, Wand2, Share2, Check, Sparkles } from 'lucide-react';
 import BackButton from '@/components/BackButton';
 import { Button } from '@/components/ui/button';
 import {
@@ -53,6 +52,14 @@ interface Opening {
   width: number;
   height: number;
   rotation: number;
+  angle?: number;
+  wall?: {
+    type?: 'rect' | 'polygon';
+    side?: string;
+    index?: number;
+  };
+  offset?: number;
+  ref?: 'start' | 'end';
 }
 
 interface Room {
@@ -67,6 +74,45 @@ interface Room {
   polygonClosed?: boolean;
   color?: string;
   openings?: Opening[];
+}
+
+interface FloorPlanViewerData {
+  _id: string;
+  name?: string;
+  status?: string;
+  layoutData?: Room[] | { rooms?: Room[] };
+  creator?: {
+    openid?: string;
+    communityName?: string;
+  };
+  lead?: {
+    _id?: string;
+    name?: string;
+    wecomGroupId?: string;
+  };
+}
+
+function getOpeningAngleRad(opening: Opening) {
+  const angle = Number(opening.angle);
+  if (Number.isFinite(angle)) return angle * Math.PI / 180;
+  return opening.rotation === 90 ? Math.PI / 2 : 0;
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function getWallCutStart(opening: Opening, length: number, wallType: string) {
+  const width = Number(opening.width || 0);
+  const maxStart = Math.max(0, length - width);
+
+  if (opening.wall?.type === 'polygon' && Number.isFinite(Number(opening.offset))) {
+    return clampNumber(Number(opening.offset) - width / 2, 0, maxStart);
+  }
+  if (wallType === 'top') return clampNumber(Number(opening.x || 0) - width / 2, 0, maxStart);
+  if (wallType === 'bottom') return clampNumber(length - (Number(opening.x || 0) + width / 2), 0, maxStart);
+  if (wallType === 'left') return clampNumber(length - (Number(opening.y || 0) + width / 2), 0, maxStart);
+  return clampNumber(Number(opening.y || 0) - width / 2, 0, maxStart);
 }
 
 function RoomObject({ room, is3D }: { room: Room; is3D: boolean }) {
@@ -89,11 +135,7 @@ function RoomObject({ room, is3D }: { room: Room; is3D: boolean }) {
       shape.lineTo(0, 0);
 
       openings.forEach(op => {
-        let ox = 0;
-        if (type === 'top') { ox = op.x; }
-        else if (type === 'bottom') { ox = length - (op.x + op.width); }
-        else if (type === 'left') { ox = length - (op.y + op.width); }
-        else if (type === 'right') { ox = op.y; }
+        const ox = getWallCutStart(op, length, type);
 
         const ow = op.width;
         let oh = op.type === 'DOOR' ? 20 : 12;
@@ -117,7 +159,7 @@ function RoomObject({ room, is3D }: { room: Room; is3D: boolean }) {
     };
 
     let polyFloor = null;
-    let polyWalls: { shape: THREE.Shape, pos: [number, number, number], rot: [number, number, number] }[] = [];
+    const polyWalls: { shape: THREE.Shape, pos: [number, number, number], rot: [number, number, number] }[] = [];
 
     if (room.polygon && room.polygon.length >= 3) {
       const shape = new THREE.Shape();
@@ -141,12 +183,8 @@ function RoomObject({ room, is3D }: { room: Room; is3D: boolean }) {
         const length = Math.sqrt(dx * dx + dy * dy);
         const angle = Math.atan2(dy, dx);
 
-        const wallShape = new THREE.Shape();
-        wallShape.moveTo(0, 0);
-        wallShape.lineTo(length, 0);
-        wallShape.lineTo(length, wallHeight);
-        wallShape.lineTo(0, wallHeight);
-        wallShape.closePath();
+        const wallOpenings = (room.openings || []).filter(op => op.wall?.type === 'polygon' && Number(op.wall.index) === i);
+        const wallShape = buildWallShape(length, wallHeight, wallOpenings, 'polygon');
 
         polyWalls.push({
           shape: wallShape,
@@ -252,19 +290,22 @@ function RoomObject({ room, is3D }: { room: Room; is3D: boolean }) {
 
       {/* Openings (Doors / Windows) */}
       {(room.openings || []).map((op, i) => {
+         const isPolygonOpening = op.wall?.type === 'polygon';
          const isTop = op.rotation === 0 && op.y < rHeight / 2;
          const isBottom = op.rotation === 0 && op.y >= rHeight / 2;
          const isLeft = op.rotation === 90 && op.x < rWidth / 2;
-         const isRight = op.rotation === 90 && op.x >= rWidth / 2;
 
          let opX = 0; let opZ = 0;
          let opW = op.width; let opD = wallThickness + 2; 
 
-         if (isTop || isBottom) {
-             opX = -rWidth/2 + op.x + op.width/2;
+         if (isPolygonOpening) {
+             opX = op.x - rWidth/2;
+             opZ = op.y - rHeight/2;
+         } else if (isTop || isBottom) {
+             opX = -rWidth/2 + op.x;
              opZ = isTop ? (-rHeight/2 + wallThickness/2) : (rHeight/2 - wallThickness/2);
          } else {
-             opZ = -rHeight/2 + op.y + op.width/2;
+             opZ = -rHeight/2 + op.y;
              opX = isLeft ? (-rWidth/2 + wallThickness/2) : (rWidth/2 - wallThickness/2);
              opW = wallThickness + 2; 
              opD = op.width;
@@ -275,7 +316,7 @@ function RoomObject({ room, is3D }: { room: Room; is3D: boolean }) {
          const yPos = is3D ? (op.type === 'DOOR' ? h/2 : 9 + h/2) : 1.25;
 
          return (
-            <mesh key={op.id || i} position={[opX, yPos, opZ]}>
+            <mesh key={op.id || i} position={[opX, yPos, opZ]} rotation={isPolygonOpening ? [0, -getOpeningAngleRad(op), 0] : undefined}>
                <boxGeometry args={[opW, h, opD]} />
                {is3D ? (
                  <meshStandardMaterial color={color} opacity={0.8} transparent />
@@ -300,7 +341,7 @@ function RoomObject({ room, is3D }: { room: Room; is3D: boolean }) {
            color="#111827"
            anchorX="center"
            anchorY="middle"
-           rotation={m.rot as any}
+           rotation={m.rot}
          >
            {m.val}
          </Text>
@@ -383,7 +424,7 @@ function Scene3D({ rooms }: { rooms: Room[] }) {
   );
 }
 
-export default function FloorPlanViewer({ planData }: { planData: any }) {
+export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewerData }) {
   const [is3D, setIs3D] = useState(false);
   const [mounted, setMounted] = useState(false);
   
@@ -440,7 +481,7 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
       // In real implementation, this would call /api/inspirations/generate
       await new Promise(resolve => setTimeout(resolve, 3000));
       notify.fromAlert(`AI ${STYLE_OPTIONS.find(s => s.id === aiPreset.style)?.label}方案已生成！已同步至“装修灵感库”。`);
-    } catch (err) {
+    } catch {
       notify.fromAlert('AI 生成失败，请检查网络后重试');
     } finally {
       setIsGenerating(false);
@@ -482,8 +523,6 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
     }
   };
 
-  const router = useRouter();
-  
   const searchParams = useSearchParams();
   const roomIdParam = searchParams.get('roomId');
 
@@ -491,7 +530,7 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
     if (!planData?.layoutData) return [];
     const data = planData.layoutData;
     if (Array.isArray(data)) return data;
-    if (data.rooms && Array.isArray(data.rooms)) return data.rooms;
+    if ('rooms' in data && Array.isArray(data.rooms)) return data.rooms;
     return [];
   }, [planData?.layoutData]);
 
@@ -532,7 +571,7 @@ export default function FloorPlanViewer({ planData }: { planData: any }) {
           
           {allRooms.length > 1 && (
             <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
-              {allRooms.map((room: any) => (
+              {allRooms.map((room) => (
                 <button
                   key={room.id}
                   onClick={() => setActiveRoomId(room.id)}

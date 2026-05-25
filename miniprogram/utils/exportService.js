@@ -1,3 +1,5 @@
+const openingGeometry = require('./openingGeometry.js');
+
 /**
  * 专业导出服务
  * 支持生成 DXF (CAD) 格式文本及量房报告数据汇总
@@ -39,19 +41,8 @@ function generateDXF(rooms) {
         // 计算门窗在全局坐标系下的起止点
         // 注意：这里简化逻辑，假设旋转为0或90，且依附于墙体
         // 实际 DXF 需要更精确的坐标转换，这里先记录基本线段
-        const startX = room.x + op.x;
-        const startY = room.y + op.y;
-        
-        let endX = startX;
-        let endY = startY;
-
-        if (op.rotation === 0 || op.rotation === 180) {
-          endX = startX + op.width;
-        } else {
-          endY = startY + op.width;
-        }
-
-        dxf += _writeLine(startX, -startY, endX, -endY, "OPENINGS");
+        const endpoints = openingGeometry.getOpeningEndpoints(room, op);
+        dxf += _writeLine(endpoints.start.x, -endpoints.start.y, endpoints.end.x, -endpoints.end.y, "OPENINGS");
         
         // 如果是门，画个简单的 45 度虚线代表开启方向（可选）
       });

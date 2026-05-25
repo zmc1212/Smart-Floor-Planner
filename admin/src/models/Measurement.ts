@@ -9,8 +9,9 @@ export interface IMeasurement extends Document {
   deviceId?: string;
   value: number;
   unit: string;
-  type: 'length' | 'height' | 'area' | 'volume' | 'angle';
+  type: 'length' | 'height' | 'area' | 'volume' | 'angle' | 'opening_offset' | 'opening_width';
   direction?: string;
+  metadata?: Record<string, unknown>;
   source: 'ble' | 'manual' | 'system';
   enterpriseId?: mongoose.Types.ObjectId;
   measuredAt: Date;
@@ -55,7 +56,7 @@ const MeasurementSchema: Schema<IMeasurement> = new Schema(
     },
     type: {
       type: String,
-      enum: ['length', 'height', 'area', 'volume', 'angle'],
+      enum: ['length', 'height', 'area', 'volume', 'angle', 'opening_offset', 'opening_width'],
       default: 'length',
     },
     direction: {
@@ -67,6 +68,11 @@ const MeasurementSchema: Schema<IMeasurement> = new Schema(
       type: String,
       enum: ['ble', 'manual', 'system'],
       default: 'ble',
+    },
+    metadata: {
+      type: Schema.Types.Mixed,
+      required: false,
+      default: {},
     },
     enterpriseId: {
       type: Schema.Types.ObjectId,

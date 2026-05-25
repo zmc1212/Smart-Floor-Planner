@@ -1,5 +1,6 @@
 var util = require('../../utils/util.js');
 var ToolType = util.ToolType;
+var openingGeometry = require('../../utils/openingGeometry.js');
 
 Page({
   data: {
@@ -33,6 +34,12 @@ Page({
     windowHeight: 600,
     showAngleMeasure: false,
     angleMeasureWallA: 0,
+    showOpeningMeasure: false,
+    pendingOpening: null,
+    openingMeasureType: 'DOOR',
+    openingMeasureWallLabel: '',
+    openingMeasureWallLength: 0,
+    openingMeasureReference: 'start',
     showTechnicalReport: false,
     showBLEConnector: false,
     pendingMeasurePrompt: false
@@ -225,9 +232,11 @@ Page({
       this.onShowShapePicker();
       return;
     }
+    var isOpeningTool = tool === 'DOOR' || tool === 'WINDOW';
     this.setData({
       activeTool: tool,
-      showDrawingIndicator: tool !== 'SELECT' && tool !== 'SHAPE'
+      showDrawingIndicator: tool !== 'SELECT' && tool !== 'SHAPE',
+      showPropertyPanel: isOpeningTool ? false : this.data.showPropertyPanel
     });
   },
 
@@ -293,6 +302,189 @@ Page({
     var direction = (e && e.detail && e.detail.direction) ? e.detail.direction : 'E';
     this.setData({ showMeasurePrompt: false, pendingDirection: direction });
     this.triggerBluetoothMeasure();
+  },
+
+  onOpeningWallSelect: function (e) {
+    var detail = e.detail || {};
+    if (!detail.roomId || !detail.wall) return;
+
+    if (!this.data.bleConnected) {
+      this.addManualOpening(detail);
+      return;
+    }
+
+    this.setData({
+      showOpeningMeasure: true,
+      pendingOpening: detail,
+      openingMeasureType: detail.toolType === 'DOOR' ? 'DOOR' : 'WINDOW',
+      openingMeasureWallLabel: openingGeometry.getWallLabel(detail.wall),
+      openingMeasureWallLength: detail.wall.length || 0,
+      openingMeasureReference: detail.reference === 'end' ? 'end' : 'start',
+      showDrawingIndicator: false
+    });
+  },
+
+  addManualOpening: function (detail) {
+    var roomId = detail.roomId;
+    var rooms = this.data.rooms || [];
+    var targetRoom = rooms.find(function (room) { return room.id === roomId; });
+    if (!targetRoom) return;
+
+    var opening = openingGeometry.buildOpeningAtPoint(
+      targetRoom,
+      detail.wall,
+      detail.touchPoint || detail.point,
+      detail.toolType,
+      util.generateUUID()
+    );
+
+    if (!opening) {
+      wx.showToast({ title: '\u95e8\u7a97\u653e\u7f6e\u5931\u8d25', icon: 'none' });
+      return;
+    }
+
+    var newRooms = rooms.map(function (room) {
+      if (room.id !== roomId) return room;
+      return Object.assign({}, room, {
+        openings: (room.openings || []).concat([opening])
+      });
+    });
+
+    this.pushToHistory(newRooms, {
+      selectedIds: [roomId]
+    });
+    this.updateSelectedRooms(newRooms);
+    wx.showToast({ title: '\u5df2\u6dfb\u52a0\uff0c\u53ef\u540e\u7eed\u8865\u6d4b', icon: 'none' });
+  },
+
+  onOpeningMeasureConfirm: function (e) {
+    var pending = this.data.pendingOpening;
+    if (!pending || !pending.roomId || !pending.wall) return;
+
+    var rooms = this.data.rooms || [];
+    var targetRoom = rooms.find(function (room) { return room.id === pending.roomId; });
+    if (!targetRoom) return;
+
+    var detail = e.detail || {};
+    var openingId = pending.existingOpeningId || util.generateUUID();
+    var result = openingGeometry.buildOpeningFromMeasurement(targetRoom, pending.wall, {
+      id: openingId,
+      toolType: pending.toolType,
+      ref: detail.ref,
+      measuredOffset: Number(detail.offsetMeters || 0) * 10,
+      width: Number(detail.widthMeters || 0) * 10,
+      source: 'ble',
+      measuredAt: new Date().toISOString()
+    });
+
+    if (result.error) {
+      wx.showToast({ title: '\u95e8\u7a97\u6570\u636e\u8d85\u51fa\u5899\u957f\uff0c\u8bf7\u91cd\u6d4b', icon: 'none' });
+      return;
+    }
+
+    var opening = result.opening;
+    var newRooms = rooms.map(function (room) {
+      if (room.id !== pending.roomId) return room;
+      if (pending.existingOpeningId) {
+        return Object.assign({}, room, {
+          openings: (room.openings || []).map(function (item) {
+            return item.id === pending.existingOpeningId ? opening : item;
+          })
+        });
+      }
+      return Object.assign({}, room, {
+        openings: (room.openings || []).concat([opening])
+      });
+    });
+
+    this.pushToHistory(newRooms, {
+      selectedIds: [pending.roomId],
+      showOpeningMeasure: false,
+      pendingOpening: null
+    });
+    this.updateSelectedRooms(newRooms);
+
+    this.reportMeasurement({
+      type: 'opening_offset',
+      value: Number(detail.offsetMeters || 0),
+      direction: opening.wall && opening.wall.type === 'polygon' ? 'P' + opening.wall.index : opening.wall.side,
+      roomId: pending.roomId,
+      roomName: targetRoom.name,
+      metadata: {
+        openingId: opening.id,
+        openingType: opening.type,
+        wall: opening.wall,
+        reference: opening.ref
+      }
+    });
+
+    this.reportMeasurement({
+      type: 'opening_width',
+      value: Number(detail.widthMeters || 0),
+      direction: opening.wall && opening.wall.type === 'polygon' ? 'P' + opening.wall.index : opening.wall.side,
+      roomId: pending.roomId,
+      roomName: targetRoom.name,
+      metadata: {
+        openingId: opening.id,
+        openingType: opening.type,
+        wall: opening.wall,
+        reference: opening.ref
+      }
+    });
+
+    wx.showToast({ title: '\u95e8\u7a97\u5df2\u7cbe\u51c6\u6dfb\u52a0', icon: 'success' });
+  },
+
+  onOpeningMeasureClose: function () {
+    this.setData({
+      showOpeningMeasure: false,
+      pendingOpening: null,
+      isLaserOpen: false,
+      showDrawingIndicator: this.data.activeTool !== 'SELECT' && this.data.activeTool !== 'SHAPE'
+    });
+  },
+
+  onRemeasureOpening: function (e) {
+    var detail = e.detail || {};
+    var rooms = this.data.rooms || [];
+    var targetRoom = rooms.find(function (room) { return room.id === detail.roomId; });
+    if (!targetRoom) return;
+
+    var opening = (targetRoom.openings || []).find(function (item) { return item.id === detail.openingId; });
+    if (!opening) return;
+
+    if (!this.data.bleConnected) {
+      wx.showToast({ title: '\u8bf7\u5148\u8fde\u63a5\u6d4b\u8ddd\u4eea\u540e\u8865\u6d4b', icon: 'none' });
+      this.setData({ showBLEConnector: true });
+      return;
+    }
+
+    var point = {
+      x: (targetRoom.x || 0) + (opening.x || 0),
+      y: (targetRoom.y || 0) + (opening.y || 0)
+    };
+    var hit = openingGeometry.findNearestWall([targetRoom], point, '', 40);
+    if (!hit) {
+      wx.showToast({ title: '\u672a\u627e\u5230\u95e8\u7a97\u6240\u5728\u5899\u8fb9', icon: 'none' });
+      return;
+    }
+
+    this.setData({
+      showOpeningMeasure: true,
+      pendingOpening: {
+        toolType: opening.type,
+        roomId: targetRoom.id,
+        wall: hit.wall,
+        reference: opening.ref || hit.reference,
+        existingOpeningId: opening.id
+      },
+      openingMeasureType: opening.type === 'DOOR' ? 'DOOR' : 'WINDOW',
+      openingMeasureWallLabel: openingGeometry.getWallLabel(hit.wall),
+      openingMeasureWallLength: hit.wall.length || 0,
+      openingMeasureReference: opening.ref || hit.reference,
+      showPropertyPanel: false,
+      showDrawingIndicator: false
+    });
   },
 
   onConnectBLE: function () {
@@ -397,11 +589,7 @@ Page({
       shape.lineTo(0, 0);
 
       openings.forEach(op => {
-        let ox = 0;
-        if (type === 'top') { ox = op.x; }
-        else if (type === 'bottom') { ox = length - (op.x + op.width); }
-        else if (type === 'left') { ox = length - (op.y + op.width); }
-        else if (type === 'right') { ox = op.y; }
+        let ox = openingGeometry.getWallCutStart(op, length, type);
 
         const ow = op.width;
         let oh = op.type === 'DOOR' ? 20 : 12;
@@ -485,7 +673,8 @@ Page({
             const length = Math.sqrt(dx * dx + dy * dy);
             const angle = Math.atan2(dy, dx);
 
-            const wall = buildWall(length, wallHeight, [], 'top');
+            const wallOpenings = (room.openings || []).filter(op => op.wall && op.wall.type === 'polygon' && op.wall.index === i);
+            const wall = buildWall(length, wallHeight, wallOpenings, 'polygon');
             
             wall.position.set(p1.x - rWidth/2, 0, p1.y - rHeight/2);
             wall.rotation.y = -angle;
@@ -526,6 +715,7 @@ Page({
 
         // Add Openings (Doors/Windows) logic to match Admin visuals
         (room.openings || []).forEach(op => {
+          const isPolygonOpening = op.wall && op.wall.type === 'polygon';
           const isTop = op.rotation === 0 && op.y < rHeight / 2;
           const isBottom = op.rotation === 0 && op.y >= rHeight / 2;
           const isLeft = op.rotation === 90 && op.x < rWidth / 2;
@@ -535,11 +725,14 @@ Page({
           let opW = op.width, opD = 4; // Slightly wider than wall for visibility
           const wallThickness = 2;
 
-          if (isTop || isBottom) {
-            opX = -rWidth/2 + op.x + op.width/2;
+          if (isPolygonOpening) {
+            opX = op.x - rWidth/2;
+            opZ = op.y - rHeight/2;
+          } else if (isTop || isBottom) {
+            opX = -rWidth/2 + op.x;
             opZ = isTop ? (-rHeight/2 + wallThickness/2) : (rHeight/2 - wallThickness/2);
           } else {
-            opZ = -rHeight/2 + op.y + op.width/2;
+            opZ = -rHeight/2 + op.y;
             opX = isLeft ? (-rWidth/2 + wallThickness/2) : (rWidth/2 - wallThickness/2);
             opW = 4; 
             opD = op.width;
@@ -553,6 +746,9 @@ Page({
           const opMat = new THREE.MeshStandardMaterial({ color: color, transparent: true, opacity: 0.8 });
           const opMesh = new THREE.Mesh(opGeo, opMat);
           opMesh.position.set(opX, yPos, opZ);
+          if (isPolygonOpening) {
+            opMesh.rotation.y = -openingGeometry.getOpeningAngleRad(op);
+          }
           roomGroup.add(opMesh);
         });
 
@@ -974,6 +1170,7 @@ Page({
         type: record.type || 'length',
         direction: record.direction || '',
         source: 'ble',
+        metadata: record.metadata || {},
         measuredAt: new Date().toISOString()
       });
     } catch (err) {

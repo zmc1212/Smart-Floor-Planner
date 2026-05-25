@@ -37,6 +37,17 @@ interface MeasurementItem {
   type: string;
   direction?: string;
   source?: string;
+  metadata?: Record<string, unknown>;
+}
+
+interface NamedOption {
+  _id: string;
+  displayName?: string;
+  username?: string;
+  name?: string;
+  role?: string;
+  status?: string;
+  code?: string;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -45,6 +56,8 @@ const TYPE_LABELS: Record<string, string> = {
   area: '面积',
   volume: '体积',
   angle: '角度',
+  opening_offset: '门窗偏移',
+  opening_width: '门窗宽度',
 };
 
 const DIRECTION_LABELS: Record<string, string> = {
@@ -53,9 +66,13 @@ const DIRECTION_LABELS: Record<string, string> = {
   W: '西向',
   N: '北向',
   ANGLE: '斜边',
+  top: '上墙',
+  right: '右墙',
+  bottom: '下墙',
+  left: '左墙',
 };
 
-function getName(value: any, fallback = '-') {
+function getName(value: NamedOption | string | null | undefined, fallback = '-') {
   if (!value) return fallback;
   if (typeof value === 'string') return value;
   return value.displayName || value.username || value.name || fallback;
@@ -77,11 +94,17 @@ function formatValue(item: MeasurementItem) {
   return `${value.toFixed(2)} ${item.unit || 'meters'}`;
 }
 
+function formatDirection(value?: string) {
+  if (!value) return '-';
+  if (/^P\d+$/.test(value)) return `多边形墙 ${Number(value.slice(1)) + 1}`;
+  return DIRECTION_LABELS[value] || value;
+}
+
 export default function MeasurementsPage() {
   const [items, setItems] = useState<MeasurementItem[]>([]);
-  const [staff, setStaff] = useState<any[]>([]);
-  const [floorPlans, setFloorPlans] = useState<any[]>([]);
-  const [devices, setDevices] = useState<any[]>([]);
+  const [staff, setStaff] = useState<NamedOption[]>([]);
+  const [floorPlans, setFloorPlans] = useState<NamedOption[]>([]);
+  const [devices, setDevices] = useState<NamedOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [type, setType] = useState('all');
   const [operatorId, setOperatorId] = useState('all');
@@ -188,6 +211,8 @@ export default function MeasurementsPage() {
               <SelectItem value="length">边长</SelectItem>
               <SelectItem value="height">层高</SelectItem>
               <SelectItem value="angle">角度/斜边</SelectItem>
+              <SelectItem value="opening_offset">门窗偏移</SelectItem>
+              <SelectItem value="opening_width">门窗宽度</SelectItem>
             </SelectContent>
           </Select>
           <Select value={operatorId} onValueChange={setOperatorId}>
@@ -223,8 +248,8 @@ export default function MeasurementsPage() {
             <SelectContent>
               <SelectItem value="all">全部设备</SelectItem>
               {devices.map((device) => (
-                <SelectItem key={device._id} value={device.code}>
-                  {device.code}
+                <SelectItem key={device._id} value={device.code || device._id}>
+                  {device.code || device.name || device._id}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -261,7 +286,7 @@ export default function MeasurementsPage() {
                     </Badge>
                   </TableCell>
                   <TableCell className="px-5 py-4 text-sm text-muted-foreground">
-                    {item.direction ? DIRECTION_LABELS[item.direction] || item.direction : '-'}
+                    {formatDirection(item.direction)}
                   </TableCell>
                   <TableCell className="px-5 py-4 text-right font-mono font-semibold">{formatValue(item)}</TableCell>
                 </TableRow>

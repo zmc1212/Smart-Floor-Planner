@@ -8,6 +8,7 @@
     "measure-modal": "../../components/measure-modal/measure-modal",
     "bottom-bar": "../../components/bottom-bar/bottom-bar",
     "angle-measure": "../../components/angle-measure/angle-measure",
+    "opening-measure": "../../components/opening-measure/opening-measure",
     "technical-report": "../../components/technical-report/technical-report",
     "lead-modal": "../../components/lead-modal/lead-modal",
     "ble-connector": "../../components/ble-connector/ble-connector"

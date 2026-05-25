@@ -2,19 +2,21 @@ import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import dbConnect from '@/lib/mongodb';
 import { getTenantContext, withTenantContext } from '@/lib/auth';
-import { AdminUser } from '@/models/AdminUser';
 import { Device } from '@/models/Device';
 import { FloorPlan } from '@/models/FloorPlan';
 import { Measurement } from '@/models/Measurement';
-import { User } from '@/models/User';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 
 export const dynamic = 'force-dynamic';
 
 function normalizeId(value: unknown) {
   if (!value) return undefined;
-  const id = typeof value === 'object' && value !== null && '_id' in value ? (value as any)._id : value;
+  const id = typeof value === 'object' && value !== null && '_id' in value ? (value as { _id?: unknown })._id : value;
   return mongoose.Types.ObjectId.isValid(String(id)) ? new mongoose.Types.ObjectId(String(id)) : undefined;
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Unknown error';
 }
 
 // resolveStaffByOpenid is now replaced by resolveMiniProgramContext from @/lib/miniprogram-auth
@@ -79,9 +81,9 @@ export async function GET(request: Request) {
         pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
       });
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Fetch measurements error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
   }
 }
 
@@ -89,7 +91,7 @@ export async function POST(request: Request) {
   try {
     await dbConnect();
     const body = await request.json();
-    const { floorPlanId, roomId, roomName, deviceId, value, unit, type, direction, source, measuredAt } = body;
+    const { floorPlanId, roomId, roomName, deviceId, value, unit, type, direction, source, metadata, measuredAt } = body;
 
     const context = await resolveMiniProgramContext(request);
     if (!context) {
@@ -111,14 +113,14 @@ export async function POST(request: Request) {
 
     const floorPlan = await FloorPlan.findById(floorPlanId);
 
-    const { user, staff } = context;
+    const { staff } = context;
 
     if (!floorPlan) {
       return NextResponse.json({ success: false, error: 'FloorPlan not found' }, { status: 404 });
     }
 
-    const floorPlanEnterpriseId = normalizeId((floorPlan as any).enterpriseId);
-    const staffEnterpriseId = normalizeId((staff as any)?.enterpriseId);
+    const floorPlanEnterpriseId = normalizeId(floorPlan.enterpriseId);
+    const staffEnterpriseId = normalizeId(staff && typeof staff === 'object' && 'enterpriseId' in staff ? (staff as { enterpriseId?: unknown }).enterpriseId : undefined);
     const enterpriseId = floorPlanEnterpriseId || staffEnterpriseId;
 
     if (staffEnterpriseId && floorPlanEnterpriseId && String(staffEnterpriseId) !== String(floorPlanEnterpriseId)) {
@@ -141,14 +143,15 @@ export async function POST(request: Request) {
       unit: unit || 'meters',
       type: type || 'length',
       direction,
+      metadata: metadata && typeof metadata === 'object' ? metadata : {},
       source: source || 'ble',
       enterpriseId,
       measuredAt: measuredAt ? new Date(measuredAt) : new Date(),
     });
 
     return NextResponse.json({ success: true, data: measurement }, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Create measurement error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
   }
 }

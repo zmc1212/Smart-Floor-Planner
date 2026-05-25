@@ -1,5 +1,6 @@
 var util = require('../../utils/util.js');
 var ToolType = util.ToolType;
+var openingGeometry = require('../../utils/openingGeometry.js');
 var GRID_SIZE = 20;
 var SCALE_FACTOR = 10; // 1px = 10cm
 
@@ -37,8 +38,6 @@ Component({
     dragStartRoomPos: null,
     dragDx: 0,
     dragDy: 0,
-    // 浮动菜单
-    menuPos: null,
     // 测量提示闪烁状态
     isBlinkOn: false,
     animTick: 0
@@ -69,7 +68,6 @@ Component({
   observers: {
     'rooms, selectedIds, highlightedOpeningId, selectedEdge, scale, offsetX, offsetY, guidedMode, currentGuidedRoomId, measurePoints, lastMeasuredDirection, pendingDirection, isBlinkOn': function () {
       this.drawCanvas();
-      this.updateMenuPos();
     }
   },
 
@@ -455,6 +453,12 @@ Component({
 
       ctx.restore();
 
+      // 门窗要在未闭合/未完成测量的房间里也可见。
+      var openings = room.openings || [];
+      for (var j = 0; j < openings.length; j++) {
+        this.drawOpening(ctx, room, openings[j], highlightedOpeningId);
+      }
+
       // ── 文字标注 ──
       // 如果房间尚未测量，不显示任何文字标注
       if (room.measured === false) return;
@@ -501,12 +505,6 @@ Component({
       ctx.textBaseline = 'middle';
       ctx.fillText((room.height / 10).toFixed(2) + 'm', room.x + room.width + labelOffset, centerY);
 
-      // 门窗
-      var openings = room.openings || [];
-      for (var j = 0; j < openings.length; j++) {
-        this.drawOpening(ctx, room, openings[j], highlightedOpeningId);
-      }
-
       // 重置对齐
       ctx.textAlign = 'start';
       ctx.textBaseline = 'alphabetic';
@@ -521,51 +519,53 @@ Component({
       ctx.save();
       ctx.translate(absX, absY);
 
-      if (opening.rotation === 90) {
-        ctx.rotate(Math.PI / 2);
+      ctx.rotate(openingGeometry.getOpeningAngleRad(opening));
+
+      var width = Math.max(4, parseFloat(opening.width) || 0);
+      var half = width / 2;
+      var cutThickness = Math.max(6, Math.min(12, width * 0.18));
+
+      if (isHighlighted) {
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.18)';
+        ctx.fillRect(-half - 5, -width - 6, width + 10, width + 12);
       }
 
+      // Make the wall break obvious even when the opening sits on a thick colored wall.
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-half - 1, -cutThickness / 2, width + 2, cutThickness);
+
       if (opening.type === 'DOOR') {
-        // 高亮背景
-        if (isHighlighted) {
-          ctx.fillStyle = 'rgba(59, 130, 246, 0.2)';
-          ctx.fillRect(-opening.width / 2 - 4, -opening.width - 4, opening.width + 8, opening.width + 8);
-        }
-        // 开口间隙（白色覆盖墙线）
+        var doorColor = '#f59e0b';
+        var leaf = Math.max(width, 8);
+
+        ctx.strokeStyle = doorColor;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(-half, 0);
+        ctx.lineTo(-half, -leaf);
+        ctx.stroke();
+
+        ctx.strokeStyle = doorColor;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(-half, 0, leaf, -Math.PI / 2, 0);
+        ctx.stroke();
+
+        ctx.fillStyle = doorColor;
+        ctx.fillRect(-half, -cutThickness / 2, width, cutThickness);
         ctx.fillStyle = '#ffffff';
-        ctx.fillRect(-opening.width / 2, -1.5, opening.width, 3);
-        // 门扇
-        ctx.strokeStyle = '#3b82f6';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(-opening.width / 2, 0);
-        ctx.lineTo(-opening.width / 2, -opening.width);
-        ctx.stroke();
-        // 门弧线
-        ctx.strokeStyle = '#3b82f6';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([2, 2]);
-        ctx.beginPath();
-        ctx.moveTo(-opening.width / 2, -opening.width);
-        ctx.lineTo(opening.width / 2, 0);
-        ctx.stroke();
-        ctx.setLineDash([]);
+        ctx.fillRect(-half + 2, -cutThickness / 2 + 2, Math.max(1, width - 4), Math.max(1, cutThickness - 4));
       } else {
-        // 窗户
-        if (isHighlighted) {
-          ctx.fillStyle = 'rgba(59, 130, 246, 0.2)';
-          ctx.fillRect(-opening.width / 2 - 4, -6, opening.width + 8, 12);
-        }
-        // 窗框
-        ctx.fillStyle = '#93c5fd';
-        ctx.fillRect(-opening.width / 2, -2, opening.width, 4);
-        ctx.strokeStyle = '#3b82f6';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(-opening.width / 2, -2, opening.width, 4);
-        // 中线
+        var windowColor = '#2563eb';
+
+        ctx.fillStyle = '#dbeafe';
+        ctx.fillRect(-half, -cutThickness / 2, width, cutThickness);
+        ctx.strokeStyle = windowColor;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-half, -cutThickness / 2, width, cutThickness);
         ctx.beginPath();
-        ctx.moveTo(-opening.width / 2, 0);
-        ctx.lineTo(opening.width / 2, 0);
+        ctx.moveTo(-half, 0);
+        ctx.lineTo(half, 0);
         ctx.stroke();
       }
 
@@ -705,7 +705,7 @@ Component({
           });
         }
       } else if (activeTool === 'DOOR' || activeTool === 'WINDOW') {
-        this.placeOpening(pos, activeTool);
+        this.selectOpeningWall(pos, activeTool);
       } else if (activeTool === 'ERASER') {
         this.eraseAt(pos);
       }
@@ -850,55 +850,35 @@ Component({
 
     placeOpening: function (pos, toolType) {
       var rooms = this.properties.rooms;
-      var threshold = 15;
       var foundWall = false;
       var updatedRooms = [];
+      var wallHit = openingGeometry.findNearestWall(
+        rooms,
+        pos,
+        this.properties.currentGuidedRoomId,
+        15
+      );
+
+      if (!wallHit) return;
 
       for (var i = 0; i < rooms.length; i++) {
         var room = rooms[i];
-        if (this.properties.currentGuidedRoomId && room.id !== this.properties.currentGuidedRoomId) {
-          updatedRooms.push(room);
-          continue;
-        }
-        if (foundWall) {
-          updatedRooms.push(room);
-          continue;
-        }
-
-        var walls = [
-          { side: 'top', dist: Math.abs(pos.y - room.y), x: pos.x, y: room.y, rotation: 0 },
-          { side: 'bottom', dist: Math.abs(pos.y - (room.y + room.height)), x: pos.x, y: room.y + room.height, rotation: 0 },
-          { side: 'left', dist: Math.abs(pos.x - room.x), x: room.x, y: pos.y, rotation: 90 },
-          { side: 'right', dist: Math.abs(pos.x - (room.x + room.width)), x: room.x + room.width, y: pos.y, rotation: 90 }
-        ];
-
-        var nearestWall = walls[0];
-        for (var j = 1; j < walls.length; j++) {
-          if (walls[j].dist < nearestWall.dist) nearestWall = walls[j];
-        }
-
-        if (nearestWall.dist < threshold) {
-          var isWithinLength = nearestWall.rotation === 0
-            ? (pos.x >= room.x && pos.x <= room.x + room.width)
-            : (pos.y >= room.y && pos.y <= room.y + room.height);
-
-          if (isWithinLength) {
-            foundWall = true;
-            var openingWidth = toolType === 'DOOR' ? 10 : 15;
-            var openingHeight = toolType === 'DOOR' ? 20 : 12;
-            var opening = {
-              id: util.generateUUID(),
-              type: toolType === 'DOOR' ? 'DOOR' : 'WINDOW',
-              x: (nearestWall.rotation === 0 ? Math.round(pos.x / 5) * 5 : nearestWall.x) - room.x,
-              y: (nearestWall.rotation === 90 ? Math.round(pos.y / 5) * 5 : nearestWall.y) - room.y,
-              rotation: nearestWall.rotation,
-              width: openingWidth,
-              height: openingHeight
-            };
-            var newOpenings = (room.openings || []).concat([opening]);
-            updatedRooms.push(Object.assign({}, room, { openings: newOpenings }));
+        if (room.id === wallHit.room.id && !foundWall) {
+          foundWall = true;
+          var opening = openingGeometry.buildOpeningAtPoint(
+            room,
+            wallHit.wall,
+            pos,
+            toolType,
+            util.generateUUID()
+          );
+          if (!opening) {
+            updatedRooms.push(room);
             continue;
           }
+          var newOpenings = (room.openings || []).concat([opening]);
+          updatedRooms.push(Object.assign({}, room, { openings: newOpenings }));
+          continue;
         }
         updatedRooms.push(room);
       }
@@ -906,6 +886,30 @@ Component({
       if (foundWall) {
         this.triggerEvent('change', { rooms: updatedRooms });
       }
+    },
+
+    selectOpeningWall: function (pos, toolType) {
+      var hit = openingGeometry.findNearestWall(
+        this.properties.rooms,
+        pos,
+        this.properties.currentGuidedRoomId,
+        15
+      );
+
+      if (!hit) {
+        wx.showToast({ title: '\u8bf7\u70b9\u51fb\u95e8\u7a97\u6240\u5728\u7684\u5899\u8fb9', icon: 'none' });
+        return;
+      }
+
+      this.triggerEvent('openingwallselect', {
+        toolType: toolType,
+        roomId: hit.room.id,
+        wall: hit.wall,
+        point: hit.point,
+        along: hit.along,
+        reference: hit.reference,
+        touchPoint: pos
+      });
     },
 
     eraseAt: function (pos) {
@@ -1022,59 +1026,12 @@ Component({
       ctx.restore();
     },
 
-    updateMenuPos: function () {
-      var selectedIds = this.properties.selectedIds;
-      var rooms = this.properties.rooms;
-      if (selectedIds.length === 1) {
-        var room = null;
-        for (var i = 0; i < rooms.length; i++) {
-          if (rooms[i].id === selectedIds[0]) { room = rooms[i]; break; }
-        }
-        if (room) {
-          var scale = this.data.scale;
-          var ox = this.data.offsetX;
-          var oy = this.data.offsetY;
-          
-          var centerX, topY;
-          if (room.polygon && room.polygon.length >= 3) {
-            var bbox = util.polygonBoundingBox(room.polygon);
-            centerX = room.x + bbox.minX + bbox.width / 2;
-            topY = room.y + bbox.minY;
-          } else {
-            centerX = room.x + room.width / 2;
-            topY = room.y;
-          }
-
-          this.setData({
-            menuPos: {
-              x: ox + centerX * scale,
-              y: oy + topY * scale - 10
-            },
-            menuRoomName: room.name
-          });
-          return;
-        }
-      }
-      this.setData({ menuPos: null, menuRoomName: '' });
-    },
-
-    onDeleteFromMenu: function () {
-      var id = this.properties.selectedIds[0];
-      if (id) {
-        this.triggerEvent('delete', { id: id });
-      }
-    },
-
     onStartRemeasure: function () {
       this.triggerEvent('startremeasure');
     },
 
     onFitToView: function () {
       this.fitToView();
-    },
-
-    onPropsFromMenu: function () {
-      this.triggerEvent('showprops');
     }
   }
 });

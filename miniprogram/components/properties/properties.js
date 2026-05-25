@@ -82,6 +82,13 @@ Component({
       this.triggerEvent('update', { id: room.id, updates: { openings: newOpenings } });
     },
 
+    onRemeasureOpening: function (e) {
+      var openingId = e.currentTarget.dataset.id;
+      var room = this.properties.selectedRooms[0];
+      if (!room || !openingId) return;
+      this.triggerEvent('remeasureopening', { roomId: room.id, openingId: openingId });
+    },
+
     onHighlightOpening: function (e) {
       var id = e.currentTarget.dataset.id;
       this.triggerEvent('highlightopening', { id: id });

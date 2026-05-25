@@ -72,7 +72,7 @@ export class DXFGenerator {
   /**
    * Main entry point to convert FloorPlan model data to DXF string
    */
-  public generateFromData(rooms: any[]) {
+  public generateFromData(rooms: DXFRoom[]) {
     this.startEntities();
 
     rooms.forEach(room => {
@@ -102,18 +102,9 @@ export class DXFGenerator {
 
       // Draw Openings (Doors/Windows)
       if (room.openings && room.openings.length > 0) {
-        room.openings.forEach((op: any) => {
-          const absX = rx + op.x;
-          const absY = ry + op.y;
-          const ow = op.width || 10;
-          
-          if (op.rotation === 90) {
-            // Vertical opening
-            this.addLine(absX, absY - ow/2, absX, absY + ow/2, 'OPENINGS');
-          } else {
-            // Horizontal opening
-            this.addLine(absX - ow/2, absY, absX + ow/2, absY, 'OPENINGS');
-          }
+        room.openings.forEach((op) => {
+          const endpoints = getOpeningEndpoints(room, op);
+          this.addLine(endpoints.start.x, endpoints.start.y, endpoints.end.x, endpoints.end.y, 'OPENINGS');
         });
       }
 
@@ -123,4 +114,54 @@ export class DXFGenerator {
 
     return this.end();
   }
+}
+
+interface DXFPoint {
+  x: number;
+  y: number;
+}
+
+interface DXFOpening {
+  x?: number;
+  y?: number;
+  width?: number;
+  rotation?: number;
+  angle?: number;
+}
+
+interface DXFRoom {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  name?: string;
+  polygon?: DXFPoint[];
+  polygonClosed?: boolean;
+  openings?: DXFOpening[];
+}
+
+function getOpeningAngleRad(opening: DXFOpening) {
+  const angle = Number(opening?.angle);
+  if (Number.isFinite(angle)) return angle * Math.PI / 180;
+  return opening?.rotation === 90 ? Math.PI / 2 : 0;
+}
+
+function getOpeningEndpoints(room: DXFRoom, opening: DXFOpening) {
+  const centerX = Number(room?.x || 0) + Number(opening?.x || 0);
+  const centerY = Number(room?.y || 0) + Number(opening?.y || 0);
+  const width = Number(opening?.width || 0);
+  const angle = getOpeningAngleRad(opening);
+  const ux = Math.cos(angle);
+  const uy = Math.sin(angle);
+
+  return {
+    start: {
+      x: centerX - ux * width / 2,
+      y: centerY - uy * width / 2,
+    },
+    end: {
+      x: centerX + ux * width / 2,
+      y: centerY + uy * width / 2,
+    },
+  };
 }

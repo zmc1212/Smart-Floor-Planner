@@ -79,8 +79,13 @@
           >
             <view class="opening-header">
               <text class="opening-type">{{item.type === 'DOOR' ? '门' : '窗户'}} #{{index + 1}}</text>
-              <view class="opening-delete" data-id="{{item.id}}" bindtap="onDeleteOpening">
-                <text>删除</text>
+              <view class="opening-actions">
+                <view class="opening-measure" data-id="{{item.id}}" bindtap="onRemeasureOpening">
+                  <text>补测</text>
+                </view>
+                <view class="opening-delete" data-id="{{item.id}}" bindtap="onDeleteOpening">
+                  <text>删除</text>
+                </view>
               </view>
             </view>
             <view class="form-row">

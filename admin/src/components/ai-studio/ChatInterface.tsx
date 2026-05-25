@@ -48,7 +48,12 @@ import {
   WorkflowActionPanel,
   type WorkflowRunnerDetail,
 } from '@/components/ai-studio/workflow-runner';
-import type { AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
+import {
+  ADVANCED_WORKFLOW_TOOLS,
+  MAIN_WORKFLOW_STAGES,
+  getWorkflowStageDefinition,
+  type AiWorkflowStageKey,
+} from '@/lib/ai/workflow-stages';
 
 type ConfirmToolAction = Extract<ChatAction, { kind: 'confirm_tool' }>;
 
@@ -90,6 +95,72 @@ const QUICK_ACTIONS = [
   "我该如何提高转化率？"
 ];
 
+type WorkflowTimelineItem = NonNullable<ChatWorkflowDetail['timeline']>[number];
+
+type WorkflowResultItem = WorkflowTimelineItem & {
+  stageKey?: AiWorkflowStageKey;
+  stageLabel: string;
+};
+
+const WORKFLOW_RESULT_STAGES = [...MAIN_WORKFLOW_STAGES, ...ADVANCED_WORKFLOW_TOOLS];
+
+function normalizeWorkflowStageKey(stageKey?: string): AiWorkflowStageKey | undefined {
+  if (!stageKey) {
+    return undefined;
+  }
+
+  return getWorkflowStageDefinition(stageKey) ? (stageKey as AiWorkflowStageKey) : undefined;
+}
+
+function getWorkflowStageLabel(stageKey?: string, fallback?: string) {
+  return getWorkflowStageDefinition(stageKey)?.name || fallback || stageKey || '未命名阶段';
+}
+
+function buildWorkflowResultItems(workflowId: string, detail?: ChatWorkflowDetail): WorkflowResultItem[] {
+  if (!detail) {
+    return [];
+  }
+
+  const items: WorkflowResultItem[] = [];
+  const seenIds = new Set<string>();
+
+  for (const item of detail.timeline || []) {
+    if (!item.id || seenIds.has(item.id)) {
+      continue;
+    }
+
+    seenIds.add(item.id);
+    items.push({
+      ...item,
+      stageKey: normalizeWorkflowStageKey(item.stageKey),
+      stageLabel: getWorkflowStageLabel(item.stageKey, item.stageLabel),
+    });
+  }
+
+  const latest = detail.latestGeneration;
+  if (latest?.imageUrl) {
+    const latestStageKey = normalizeWorkflowStageKey(latest.stageKey);
+    const alreadyIncluded = items.some((item) =>
+      item.imageUrl === latest.imageUrl &&
+      item.createdAt === latest.createdAt &&
+      item.stageKey === latestStageKey
+    );
+
+    if (!alreadyIncluded) {
+      items.unshift({
+        id: `${workflowId}-latest`,
+        stageKey: latestStageKey,
+        stageLabel: getWorkflowStageLabel(latest.stageKey, latest.stageLabel),
+        status: latest.status,
+        createdAt: latest.createdAt,
+        imageUrl: latest.imageUrl,
+      });
+    }
+  }
+
+  return items;
+}
+
 export default function ChatInterface({ 
   onSendMessage, 
   messages, 
@@ -110,6 +181,8 @@ export default function ChatInterface({
   const [selectedFloorPlanId, setSelectedFloorPlanId] = useState('');
   const [isActionRunning, setIsActionRunning] = useState(false);
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
+  const [selectedWorkflowStageById, setSelectedWorkflowStageById] = useState<Record<string, AiWorkflowStageKey>>({});
+  const [selectedWorkflowGenerationById, setSelectedWorkflowGenerationById] = useState<Record<string, string>>({});
   const [isWorkflowSheetOpen, setIsWorkflowSheetOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -452,9 +525,37 @@ export default function ChatInterface({
       detail.lead?.communityName,
       detail.lead?.status,
     ].filter(Boolean).join(' / ');
+    const resultItems = buildWorkflowResultItems(workflowId, detail);
+    const resultsByStage = resultItems.reduce((groups, item) => {
+      if (!item.stageKey) {
+        return groups;
+      }
+
+      const current = groups.get(item.stageKey) || [];
+      groups.set(item.stageKey, [...current, item]);
+      return groups;
+    }, new Map<AiWorkflowStageKey, WorkflowResultItem[]>());
+    const latestStageKey =
+      resultItems.find((item) => item.stageKey)?.stageKey ||
+      normalizeWorkflowStageKey(latestGeneration?.stageKey) ||
+      normalizeWorkflowStageKey(nextAction?.stageKey) ||
+      MAIN_WORKFLOW_STAGES[0]?.key;
+    const selectedStageKey = selectedWorkflowStageById[workflowId] || latestStageKey;
+    const selectedStage = selectedStageKey ? getWorkflowStageDefinition(selectedStageKey) : undefined;
+    const selectedStageResults = selectedStageKey ? resultsByStage.get(selectedStageKey) || [] : [];
+    const selectedGenerationId = selectedWorkflowGenerationById[workflowId];
+    const selectedResult =
+      selectedStageResults.find((item) => item.id === selectedGenerationId) ||
+      selectedStageResults[0];
+    const selectedStageAction = workflowRunner.actions.find((action) => action.stageKey === selectedStageKey);
+    const canSelectBaseline = Boolean(
+      selectedResult &&
+      !selectedResult.isSelectedBaseline &&
+      !selectedResult.id.endsWith('-latest')
+    );
 
     return (
-      <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 p-4">
+      <div className="space-y-3">
         <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-1 2xl:grid-cols-3">
           <div className="rounded-xl bg-white px-3 py-2.5">
             <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">关联客户</p>
@@ -467,25 +568,154 @@ export default function ChatInterface({
             </p>
           </div>
           <div className="rounded-xl bg-white px-3 py-2.5">
-            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">最近产物</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">阶段版本</p>
             <p className="mt-1 truncate text-xs font-bold text-zinc-800">
-              {latestGeneration
-                ? [latestGeneration.stageLabel, latestGeneration.status, latestGeneration.createdAt].filter(Boolean).join(' / ')
+              {selectedResult
+                ? [selectedResult.stageLabel, selectedResult.status, selectedResult.createdAt].filter(Boolean).join(' / ')
                 : '暂无产物'}
             </p>
           </div>
         </div>
-        {latestGeneration?.imageUrl && (
-          <div className="mt-2 overflow-hidden rounded-xl bg-white">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={latestGeneration.imageUrl}
-              alt=""
-              className="h-56 w-full object-cover"
-              loading="lazy"
-            />
+        <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 p-3">
+          <div className="grid grid-cols-2 gap-2 2xl:grid-cols-3">
+            {WORKFLOW_RESULT_STAGES.map((stage) => {
+              const stageResults = resultsByStage.get(stage.key) || [];
+              const isSelected = selectedStageKey === stage.key;
+              const isNext = nextAction?.stageKey === stage.key;
+              const isRunningStage = workflowRunner.runningStageKey === stage.key;
+              const outputCount = stageResults.filter((item) => item.imageUrl && item.status !== 'failed').length;
+              const hasFailed = stageResults.some((item) => item.status === 'failed');
+              const statusText = isRunningStage
+                ? '生成中'
+                : outputCount > 0
+                  ? `${outputCount} 个成果`
+                  : hasFailed
+                    ? '生成失败'
+                  : isNext
+                    ? '推荐下一步'
+                    : '暂无成果';
+
+              return (
+                <button
+                  key={stage.key}
+                  type="button"
+                  onClick={() => {
+                    setSelectedWorkflowStageById((current) => ({ ...current, [workflowId]: stage.key }));
+                    setSelectedWorkflowGenerationById((current) => {
+                      const next = { ...current };
+                      delete next[workflowId];
+                      return next;
+                    });
+                  }}
+                  className={cn(
+                    'rounded-xl border px-3 py-2 text-left transition',
+                    isSelected
+                      ? 'border-emerald-200 bg-white shadow-sm ring-1 ring-emerald-100'
+                      : 'border-transparent bg-white/70 hover:border-zinc-200 hover:bg-white'
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-xs font-black text-zinc-900">{stage.name}</span>
+                    <span
+                      className={cn(
+                        'h-2 w-2 shrink-0 rounded-full',
+                        isRunningStage
+                          ? 'bg-blue-500'
+                          : outputCount > 0
+                            ? 'bg-emerald-500'
+                            : hasFailed
+                              ? 'bg-red-400'
+                              : isNext
+                              ? 'bg-amber-400'
+                              : 'bg-zinc-300'
+                      )}
+                    />
+                  </div>
+                  <p className="mt-1 truncate text-[10px] font-bold text-zinc-500">{statusText}</p>
+                </button>
+              );
+            })}
           </div>
-        )}
+        </div>
+
+        <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">当前查看</p>
+              <h4 className="mt-1 truncate text-base font-black text-zinc-950">
+                {selectedStage?.name || selectedResult?.stageLabel || '工作流成果'}
+              </h4>
+              <p className="mt-1 text-xs font-semibold text-zinc-500">
+                {selectedResult
+                  ? [selectedResult.status, selectedResult.createdAt].filter(Boolean).join(' / ')
+                  : selectedStage?.description || '该阶段暂时还没有生成成果'}
+              </p>
+            </div>
+            {selectedResult?.isSelectedBaseline && (
+              <Badge className="border-none bg-emerald-50 text-[10px] font-black text-emerald-700">
+                当前定稿
+              </Badge>
+            )}
+          </div>
+
+          {selectedResult?.imageUrl ? (
+            <div className="mt-3 overflow-hidden rounded-xl bg-white">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={selectedResult.imageUrl}
+                alt=""
+                className="h-60 w-full object-cover"
+                loading="lazy"
+              />
+            </div>
+          ) : (
+            <div className="mt-3 rounded-xl border border-dashed border-zinc-200 bg-white px-4 py-6 text-center">
+              <p className="text-sm font-black text-zinc-900">该阶段暂无成果</p>
+              <p className="mx-auto mt-1 max-w-xs text-xs leading-5 text-zinc-500">
+                {selectedStage?.inputHint && selectedStage?.outputHint
+                  ? `${selectedStage.inputHint} -> ${selectedStage.outputHint}`
+                  : '可以从这里直接执行该阶段，系统会复用同一套工作流规则。'}
+              </p>
+              {selectedStageAction && (
+                <div className="mt-4 flex justify-center">
+                  <WorkflowActionPanel
+                    actions={workflowRunner.actions}
+                    stageKey={selectedStageAction.stageKey}
+                    isRunning={workflowRunner.isRunning || isActionRunning}
+                    runningStageKey={workflowRunner.runningStageKey}
+                    onRun={workflowRunner.runAction}
+                  />
+                </div>
+              )}
+              {selectedStageAction?.disabledReason && (
+                <p className="mt-2 text-xs font-semibold text-amber-700">{selectedStageAction.disabledReason}</p>
+              )}
+            </div>
+          )}
+
+          {canSelectBaseline && selectedResult && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isLoading || isActionRunning}
+              onClick={() =>
+                setPendingAction({
+                  label: '设为定稿',
+                  kind: 'confirm_tool',
+                  actionName: 'select_generation_baseline',
+                  arguments: { workflowId, generationId: selectedResult.id },
+                  confirmTitle: '确认设为当前定稿？',
+                  confirmDescription: '该操作会影响后续软装、提案和灯光等步骤使用的来源产物。',
+                  variant: 'secondary',
+                })
+              }
+              className="mt-3 h-9 rounded-xl bg-white px-3 text-xs font-bold"
+            >
+              设为定稿
+            </Button>
+          )}
+        </div>
         {nextAction?.stageLabel && (
           <div className="mt-2 rounded-xl bg-white px-3 py-2">
             <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">推荐下一步</p>
@@ -505,12 +735,31 @@ export default function ChatInterface({
             </div>
           </div>
         )}
-        {detail.timeline && detail.timeline.length > 0 && (
+        {selectedStageResults.length > 1 && (
           <div className="mt-2 rounded-xl bg-white px-3 py-2">
             <p className="text-[10px] font-black uppercase tracking-widest text-zinc-400">最近产物</p>
             <div className="mt-2 space-y-2">
-              {detail.timeline.map((item) => (
-                <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-zinc-50 px-3 py-2">
+              {selectedStageResults.map((item) => (
+                <div
+                  key={item.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() =>
+                    setSelectedWorkflowGenerationById((current) => ({ ...current, [workflowId]: item.id }))
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      setSelectedWorkflowGenerationById((current) => ({ ...current, [workflowId]: item.id }));
+                    }
+                  }}
+                  className={cn(
+                    'flex flex-wrap items-center justify-between gap-2 rounded-lg px-3 py-2 transition',
+                    selectedResult?.id === item.id
+                      ? 'bg-emerald-50 ring-1 ring-emerald-100'
+                      : 'bg-zinc-50 hover:bg-zinc-100'
+                  )}
+                >
                   <div className="min-w-0">
                     <p className="truncate text-xs font-bold text-zinc-800">
                       {[item.stageLabel, item.status, item.createdAt].filter(Boolean).join(' / ') || '未命名产物'}
@@ -519,13 +768,14 @@ export default function ChatInterface({
                       <p className="mt-0.5 text-[10px] font-black text-emerald-600">当前定稿</p>
                     )}
                   </div>
-                  {!item.isSelectedBaseline && (
+                  {!item.isSelectedBaseline && !item.id.endsWith('-latest') && (
                     <Button
                       type="button"
                       size="sm"
                       variant="outline"
                       disabled={isLoading || isActionRunning}
-                      onClick={() =>
+                      onClick={(event) => {
+                        event.stopPropagation();
                         setPendingAction({
                           label: '设为定稿',
                           kind: 'confirm_tool',
@@ -534,8 +784,8 @@ export default function ChatInterface({
                           confirmTitle: '确认设为当前定稿？',
                           confirmDescription: '该操作会影响后续软装、提案和灯光等步骤使用的来源产物。',
                           variant: 'secondary',
-                        })
-                      }
+                        });
+                      }}
                       className="h-7 rounded-lg bg-white px-2 text-[11px] font-bold"
                     >
                       设为定稿

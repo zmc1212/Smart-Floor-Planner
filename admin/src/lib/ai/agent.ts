@@ -713,7 +713,7 @@ function buildWorkflowDetailPayload(output: Record<string, unknown>): ChatWorkfl
   const lead = isRecord(output.lead) ? output.lead : undefined;
   const stageState = isRecord(workflow.stageState) ? workflow.stageState : undefined;
   const latestGeneration = isRecord(workflow.latestGeneration) ? workflow.latestGeneration : undefined;
-  const generations = toRecordArray(output.generations).slice(0, 3);
+  const generations = toRecordArray(output.generations).slice(0, 20);
   const recommendedNextAction =
     stageState && isRecord(stageState.recommendedNextAction)
       ? stageState.recommendedNextAction
