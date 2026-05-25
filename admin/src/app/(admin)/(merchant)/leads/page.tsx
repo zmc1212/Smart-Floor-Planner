@@ -37,6 +37,12 @@ import { Pagination } from "@/components/ui/pagination";
 
 export const dynamic = 'force-dynamic';
 
+function getFloorPlanSourceLabel(source?: string) {
+  if (source === 'kujiale') return '酷家乐';
+  if (source === 'template') return '模板';
+  return '手动';
+}
+
 export default function LeadsPage() {
   const router = useRouter();
   const [leads, setLeads] = useState<any[]>([]);
@@ -543,7 +549,10 @@ export default function LeadsPage() {
                   </div>
 
                   {/* Related Floor Plans */}
-                  <RelatedFloorPlans floorPlans={selectedLead.floorPlanIds || []} />
+                  <RelatedFloorPlans
+                    floorPlans={selectedLead.floorPlanIds || []}
+                    primaryFloorPlanId={selectedLead.primaryFloorPlanId?._id || selectedLead.primaryFloorPlanId}
+                  />
 
                   {/* Follow up records */}
                   <div className="space-y-6">
@@ -679,7 +688,13 @@ function WorkflowProgress({ status }: { status: string }) {
   );
 }
 
-function RelatedFloorPlans({ floorPlans }: { floorPlans: any[] }) {
+function RelatedFloorPlans({ floorPlans, primaryFloorPlanId }: { floorPlans: any[]; primaryFloorPlanId?: string }) {
+  const sortedFloorPlans = [...floorPlans].sort((a, b) => {
+    if (primaryFloorPlanId && String(a._id) === String(primaryFloorPlanId)) return -1;
+    if (primaryFloorPlanId && String(b._id) === String(primaryFloorPlanId)) return 1;
+    return 0;
+  });
+
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-2 text-[14px] font-bold tracking-tight text-neutral-900">
@@ -691,14 +706,23 @@ function RelatedFloorPlans({ floorPlans }: { floorPlans: any[] }) {
       </div>
       
       <div className="grid grid-cols-1 gap-3">
-        {floorPlans.length > 0 ? (
-          floorPlans.map((plan) => (
+        {sortedFloorPlans.length > 0 ? (
+          sortedFloorPlans.map((plan) => (
             <div key={plan._id} className="flex items-center justify-between p-4 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.08)] rounded-xl hover:shadow-[0_4px_12px_rgba(0,0,0,0.05)] transition-all cursor-pointer group"
                  onClick={() => window.location.href = `/floorplans/${plan._id}`}>
               <div className="flex flex-col gap-1">
-                <span className="text-[14px] font-semibold text-neutral-900 group-hover:text-blue-600 transition-colors">{plan.name}</span>
+                <span className="text-[14px] font-semibold text-neutral-900 group-hover:text-blue-600 transition-colors flex items-center gap-2">
+                  {plan.name}
+                  {primaryFloorPlanId && String(plan._id) === String(primaryFloorPlanId) && (
+                    <Badge variant="secondary" className="bg-green-50 text-green-700 border-none">主户型</Badge>
+                  )}
+                </span>
                 <span className="text-[11px] text-neutral-400 font-medium flex items-center gap-1">
                   <Clock size={10} /> 测量于 {new Date(plan.createdAt).toLocaleDateString()}
+                </span>
+                <span className="text-[11px] text-blue-600 font-bold">
+                  {getFloorPlanSourceLabel(plan.source)}
+                  {plan.externalSource?.layoutLabel ? ` · ${plan.externalSource.layoutLabel}` : ''}
                 </span>
               </div>
               <Button size="sm" variant="ghost" className="h-8 text-[12px] rounded-lg bg-neutral-50 group-hover:bg-neutral-900 group-hover:text-white transition-all font-medium">查看详情</Button>

@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   try {
     await dbConnect();
     const body = await req.json();
-    const { name, layoutData, status } = body;
+    const { name, layoutData, status, source, externalSource } = body;
 
     const context = await resolveMiniProgramContext(req);
     if (!context) {
@@ -39,6 +39,8 @@ export async function POST(req: Request) {
           staffId,
           enterpriseId,
           layoutData,
+          source: source || 'manual',
+          externalSource,
           status: status || 'completed'
         });
 

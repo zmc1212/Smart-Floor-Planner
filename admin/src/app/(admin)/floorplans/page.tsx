@@ -17,6 +17,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+function getFloorPlanSourceLabel(source?: string) {
+  if (source === 'kujiale') return '酷家乐';
+  if (source === 'template') return '模板';
+  return '手动';
+}
+
+function getRoomCount(layoutData: any) {
+  if (Array.isArray(layoutData)) return layoutData.length;
+  if (layoutData && Array.isArray(layoutData.rooms)) return layoutData.rooms.length;
+  return 0;
+}
+
 export default function FloorPlansPage() {
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,6 +144,15 @@ export default function FloorPlansPage() {
                     {plan.status === 'completed' ? '已收录' : '测绘中'}
                   </Badge>
                 </div>
+
+                <div className="mb-4 flex items-center gap-2">
+                  <Badge variant="outline" className="border-none bg-blue-50 text-blue-700 font-bold">
+                    {getFloorPlanSourceLabel(plan.source)}
+                  </Badge>
+                  {plan.externalSource?.layoutLabel && (
+                    <span className="text-xs font-medium text-muted-foreground">{plan.externalSource.layoutLabel}</span>
+                  )}
+                </div>
                 
                 <div className="space-y-4 mb-8 flex-1">
                   <div className="grid grid-cols-2 gap-4">
@@ -139,7 +160,7 @@ export default function FloorPlansPage() {
                        <p className="text-[10px] font-bold text-muted-foreground uppercase opacity-50 mb-1">测绘深度</p>
                        <div className="flex items-center gap-2 font-bold text-sm">
                           <Layers size={14} className="text-primary/40" />
-                          <span>{plan.layoutData?.length || 0} 个空间节点</span>
+                          <span>{getRoomCount(plan.layoutData)} 个空间节点</span>
                        </div>
                     </div>
                     <div className="bg-muted/30 p-4 rounded-2xl">

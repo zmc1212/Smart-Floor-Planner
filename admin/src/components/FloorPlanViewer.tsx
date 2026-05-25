@@ -80,6 +80,16 @@ interface FloorPlanViewerData {
   _id: string;
   name?: string;
   status?: string;
+  source?: 'manual' | 'template' | 'kujiale';
+  externalSource?: {
+    provider?: string;
+    externalId?: string;
+    communityName?: string;
+    city?: string;
+    area?: number;
+    layoutLabel?: string;
+    previewUrl?: string;
+  };
   layoutData?: Room[] | { rooms?: Room[] };
   creator?: {
     openid?: string;
@@ -90,6 +100,12 @@ interface FloorPlanViewerData {
     name?: string;
     wecomGroupId?: string;
   };
+}
+
+function getFloorPlanSourceLabel(source?: string) {
+  if (source === 'kujiale') return '酷家乐户型';
+  if (source === 'template') return '户型模板';
+  return '手动测绘';
 }
 
 function getOpeningAngleRad(opening: Opening) {
@@ -564,7 +580,9 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
               <h2 className="text-lg font-bold tracking-tight">{planData?.name || '户型详情'}</h2>
               <p className="text-xs text-gray-400">
                  {lead?.name ? `客户: ${lead.name} · ` : ''}
-                 {planData?.creator?.communityName || '私有户型'}
+                 {planData?.externalSource?.communityName || planData?.creator?.communityName || '私有户型'}
+                 {' · '}
+                 {getFloorPlanSourceLabel(planData?.source)}
               </p>
             </div>
           </div>

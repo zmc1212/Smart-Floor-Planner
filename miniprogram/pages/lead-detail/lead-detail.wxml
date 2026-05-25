@@ -27,10 +27,50 @@
         <text class="summary-value">{{activeFloorPlan.status || '草稿'}}</text>
         <text class="summary-label">状态</text>
       </view>
+      <view class="source-pill" wx:if="{{activeSourceLabel}}">{{activeSourceLabel}}</view>
       <view class="summary-action" bindtap="onAddRoom">增加房间</view>
     </view>
 
     <block wx:if="{{rooms.length === 0}}">
+      <view class="kujiale-panel">
+        <view class="kujiale-header">
+          <view>
+            <view class="kujiale-title">优先选择真实户型</view>
+            <view class="kujiale-subtitle">从酷家乐户型库匹配小区、面积和户室，导入后可继续补测编辑。</view>
+          </view>
+          <view class="kujiale-badge">酷家乐</view>
+        </view>
+
+        <view class="kujiale-form">
+          <input class="kujiale-input" placeholder="城市" value="{{kujialeQuery.city}}" data-field="city" bindinput="onKujialeInput" />
+          <input class="kujiale-input main" placeholder="小区名称" value="{{kujialeQuery.communityName}}" data-field="communityName" bindinput="onKujialeInput" />
+          <input class="kujiale-input" placeholder="面积" value="{{kujialeQuery.area}}" data-field="area" type="digit" bindinput="onKujialeInput" />
+          <input class="kujiale-input" placeholder="户室，如 3室2厅" value="{{kujialeQuery.layout}}" data-field="layout" bindinput="onKujialeInput" />
+        </view>
+
+        <view class="kujiale-search-btn" bindtap="searchKujialeFloorPlans">
+          {{kujialeLoading ? '搜索中...' : '搜索酷家乐户型'}}
+        </view>
+
+        <view class="kujiale-error" wx:if="{{kujialeError}}">{{kujialeError}}</view>
+
+        <view class="kujiale-list" wx:if="{{kujialeResults.length > 0}}">
+          <view class="kujiale-item" wx:for="{{kujialeResults}}" wx:key="externalId">
+            <view class="kujiale-preview" wx:if="{{item.previewUrl}}">
+              <image src="{{item.previewUrl}}" mode="aspectFill"></image>
+            </view>
+            <view class="kujiale-preview placeholder" wx:else>户</view>
+            <view class="kujiale-copy">
+              <text class="kujiale-name">{{item.communityName}}</text>
+              <text class="kujiale-meta">{{item.displayLayout}} · {{item.displayArea}}</text>
+              <text class="kujiale-origin">{{item.city || '城市未填'}} · {{item.sourceLabel}}</text>
+            </view>
+            <view class="kujiale-import" data-id="{{item.externalId}}" bindtap="onImportKujiale">
+              {{kujialeImportingId === item.externalId ? '导入中' : '导入'}}
+            </view>
+          </view>
+        </view>
+      </view>
       <view class="empty-state">
         <view class="icon">房</view>
         <view class="title">当前客户暂无户型数据</view>

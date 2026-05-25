@@ -12,6 +12,7 @@ export interface IFollowUp {
 export interface ILead extends Document {
   name: string;
   phone: string;
+  communityName?: string;
   area?: number;
   stylePreference?: string;
   city?: string;
@@ -20,6 +21,7 @@ export interface ILead extends Document {
   notes?: string;
   enterpriseId?: mongoose.Types.ObjectId;
   floorPlanIds?: mongoose.Types.ObjectId[];
+  primaryFloorPlanId?: mongoose.Types.ObjectId;
   promoterId?: mongoose.Types.ObjectId;
   assignedTo?: mongoose.Types.ObjectId; // Designer/Consultant (AdminUser)
   assignedAt?: Date;
@@ -40,6 +42,7 @@ const LeadSchema: Schema = new Schema({
   notes: { type: String },
   enterpriseId: { type: Schema.Types.ObjectId, ref: 'Enterprise' },
   floorPlanIds: [{ type: Schema.Types.ObjectId, ref: 'FloorPlan' }],
+  primaryFloorPlanId: { type: Schema.Types.ObjectId, ref: 'FloorPlan' },
   promoterId: { type: Schema.Types.ObjectId, ref: 'AdminUser' },
   assignedTo: { type: Schema.Types.ObjectId, ref: 'AdminUser' },
   wecomGroupId: { type: String },
@@ -56,6 +59,7 @@ const LeadSchema: Schema = new Schema({
 LeadSchema.index({ enterpriseId: 1, createdAt: -1 });
 LeadSchema.index({ promoterId: 1, createdAt: -1 });
 LeadSchema.index({ assignedTo: 1, createdAt: -1 });
+LeadSchema.index({ primaryFloorPlanId: 1 });
 LeadSchema.index({ phone: 1 });
 
 // 应用多租户插件 - 配置角色级隔离

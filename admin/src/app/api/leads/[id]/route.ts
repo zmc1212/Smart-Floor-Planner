@@ -11,7 +11,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     await dbConnect();
     const { id } = await params;
     const lead = await Lead.findById(id)
-      .populate({ path: 'floorPlanIds', select: 'name layoutData createdAt status', strictPopulate: false })
+      .populate({ path: 'floorPlanIds', select: 'name layoutData createdAt status source externalSource', strictPopulate: false })
+      .populate({ path: 'primaryFloorPlanId', select: 'name layoutData createdAt status source externalSource', strictPopulate: false })
       .populate('assignedTo', 'displayName role');
 
     if (!lead) {
@@ -83,6 +84,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         if (body.floorPlanId) {
           delete updateOps.floorPlanId;
           updateDoc.$addToSet = { floorPlanIds: body.floorPlanId };
+          updateOps.primaryFloorPlanId = body.floorPlanId;
           
           if (currentLead.status === 'new') {
             updateOps.status = 'measuring';
@@ -141,6 +143,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
           if (body.floorPlanId) {
             delete updateOps.floorPlanId;
             updateDoc.$addToSet = { floorPlanIds: body.floorPlanId };
+            updateOps.primaryFloorPlanId = body.floorPlanId;
             
             if (currentLead.status === 'new') {
               updateOps.status = 'measuring';

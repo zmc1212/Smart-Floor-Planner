@@ -25,6 +25,8 @@ All user-visible backend operations triggered by an admin action must show a uni
 
 Maintain `AGENTS.zh-CN.md` as the Chinese companion to this file. Whenever project instructions, backend feedback rules, or the Mini Program Editor measurement inventory are changed, update `AGENTS.zh-CN.md` in the same task and keep section names, numbering, file paths, and behavioral notes aligned.
 
+Maintain paired project documents the same way. In particular, when `docs/admin-system-modules.md` changes, update `docs/admin-system-modules.zh-CN.md` in the same task.
+
 ## Mini Program Editor Measurement Feature Inventory
 
 When changing the measurement experience under `miniprogram/pages/editor/editor.*`, first identify which completed modules below are affected and tell the user explicitly. Keep this inventory up to date whenever a measurement feature is added, removed, or behaviorally changed.

@@ -9,7 +9,18 @@ Page({
     lead: null,
     templates: templatesUtil.templates,
     loading: true,
+    kujialeLoading: false,
+    kujialeImportingId: '',
+    kujialeError: '',
+    kujialeResults: [],
+    kujialeQuery: {
+      city: '',
+      communityName: '',
+      area: '',
+      layout: ''
+    },
     activeFloorPlan: null,
+    activeSourceLabel: '',
     rooms: []
   },
 
@@ -33,9 +44,16 @@ Page({
         const lead = res.data;
         let activeFloorPlan = null;
         let rooms = [];
+        let activeSourceLabel = '';
 
-        if (lead.floorPlanIds && lead.floorPlanIds.length > 0) {
+        if (lead.primaryFloorPlanId) {
+          activeFloorPlan = lead.primaryFloorPlanId;
+        } else if (lead.floorPlanIds && lead.floorPlanIds.length > 0) {
           activeFloorPlan = lead.floorPlanIds[lead.floorPlanIds.length - 1];
+        }
+
+        if (activeFloorPlan) {
+          activeSourceLabel = this.getFloorPlanSourceLabel(activeFloorPlan);
           if (activeFloorPlan && activeFloorPlan.layoutData) {
             let parsed = activeFloorPlan.layoutData;
             if (typeof parsed === 'string') {
@@ -49,7 +67,23 @@ Page({
           }
         }
 
-        this.setData({ lead, activeFloorPlan, rooms, loading: false });
+        this.setData({
+          lead,
+          activeFloorPlan,
+          activeSourceLabel,
+          rooms,
+          loading: false,
+          kujialeQuery: {
+            city: lead.city || '',
+            communityName: lead.communityName || '',
+            area: lead.area || '',
+            layout: this.data.kujialeQuery.layout || ''
+          }
+        });
+
+        if (!activeFloorPlan && lead.communityName) {
+          this.searchKujialeFloorPlans();
+        }
       } else {
         this.setData({ loading: false });
       }
@@ -57,6 +91,88 @@ Page({
       console.error(err);
       wx.showToast({ title: '加载失败', icon: 'none' });
       this.setData({ loading: false });
+    }
+  },
+
+  getFloorPlanSourceLabel(plan) {
+    if (!plan) return '';
+    if (plan.source === 'kujiale') return '酷家乐户型';
+    if (plan.source === 'template') return '户型模板';
+    return '手动测绘';
+  },
+
+  onKujialeInput(e) {
+    const field = e.currentTarget.dataset.field;
+    this.setData({
+      [`kujialeQuery.${field}`]: e.detail.value
+    });
+  },
+
+  async searchKujialeFloorPlans() {
+    if (this.data.kujialeLoading) return;
+    const query = this.data.kujialeQuery || {};
+    const communityName = (query.communityName || '').trim();
+
+    if (!communityName) {
+      this.setData({ kujialeError: '请先填写小区名称', kujialeResults: [] });
+      return;
+    }
+
+    this.setData({ kujialeLoading: true, kujialeError: '' });
+
+    try {
+      const res = await api.request('/kujiale/floorplans/search', 'GET', {
+        city: query.city || '',
+        communityName,
+        area: query.area || '',
+        layout: query.layout || '',
+        page: 1,
+        limit: 10
+      });
+
+      const results = (res.data || []).map(item => ({
+        ...item,
+        displayArea: item.area ? `${item.area}㎡` : '面积未知',
+        displayLayout: item.layoutLabel || '户型待确认'
+      }));
+
+      this.setData({
+        kujialeResults: results,
+        kujialeError: results.length ? '' : '未找到匹配户型，可继续使用模板或现场测绘'
+      });
+    } catch (err) {
+      console.error('Search KuJiale floor plans failed:', err);
+      this.setData({
+        kujialeResults: [],
+        kujialeError: (err && err.error) || '酷家乐户型搜索失败，请稍后重试'
+      });
+    } finally {
+      this.setData({ kujialeLoading: false });
+    }
+  },
+
+  async onImportKujiale(e) {
+    const externalId = e.currentTarget.dataset.id;
+    if (!externalId || this.data.kujialeImportingId) return;
+
+    this.setData({ kujialeImportingId: externalId });
+    wx.showLoading({ title: '导入户型...' });
+
+    try {
+      const res = await api.request(`/leads/${this.data.leadId}/floorplans/kujiale`, 'POST', {
+        externalId
+      });
+
+      if (res.success) {
+        wx.showToast({ title: '户型已导入', icon: 'success' });
+        await this.fetchLeadDetail();
+      }
+    } catch (err) {
+      console.error('Import KuJiale floor plan failed:', err);
+      wx.showToast({ title: (err && err.error) || '导入失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+      this.setData({ kujialeImportingId: '' });
     }
   },
 
@@ -70,6 +186,7 @@ Page({
         openid: app.globalData.openid,
         name: `${this.data.lead.name} 的户型 - ` + util.formatTime(new Date()).split(' ')[0].replace(/\//g, ''),
         layoutData: roomsData,
+        source: 'template',
         status: 'draft'
       };
 

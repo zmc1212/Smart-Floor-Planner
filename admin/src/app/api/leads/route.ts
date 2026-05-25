@@ -57,7 +57,8 @@ export async function GET(request: Request) {
 
           const [leads, total, newCount, measuringCount, convertedCount] = await Promise.all([
             Lead.find(query)
-              .populate({ path: 'floorPlanIds', select: 'name layoutData createdAt', strictPopulate: false })
+              .populate({ path: 'floorPlanIds', select: 'name layoutData createdAt status source externalSource', strictPopulate: false })
+              .populate({ path: 'primaryFloorPlanId', select: 'name layoutData createdAt status source externalSource', strictPopulate: false })
               .populate('assignedTo', 'displayName role')
               .sort({ createdAt: -1 })
               .skip((page - 1) * limit)
@@ -101,7 +102,8 @@ export async function GET(request: Request) {
         const query = Lead.find(basicQuery)
           .populate('assignedTo', 'displayName username')
           .populate('promoterId', 'displayName username')
-          .populate({ path: 'floorPlanIds', select: 'name status createdAt', strictPopulate: false })
+          .populate({ path: 'floorPlanIds', select: 'name status createdAt source externalSource', strictPopulate: false })
+          .populate({ path: 'primaryFloorPlanId', select: 'name status createdAt source externalSource', strictPopulate: false })
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(limit);
@@ -231,6 +233,7 @@ export async function POST(request: Request) {
           if (body.floorPlanId && !lead.floorPlanIds.includes(body.floorPlanId)) {
             lead.floorPlanIds.push(body.floorPlanId);
           }
+          if (body.floorPlanId) lead.primaryFloorPlanId = body.floorPlanId;
           if (body.communityName) lead.communityName = body.communityName;
           if (body.area) lead.area = body.area;
           if (body.stylePreference) lead.stylePreference = body.stylePreference;
@@ -247,6 +250,7 @@ export async function POST(request: Request) {
           const leadData = {
             ...body,
             floorPlanIds: body.floorPlanId ? [body.floorPlanId] : [],
+            primaryFloorPlanId: body.floorPlanId || undefined,
             promoterId,
             assignedTo,
             enterpriseId: currentEnterpriseId,

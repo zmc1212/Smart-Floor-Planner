@@ -31,6 +31,8 @@ export default async function FloorPlanDetailPage({ params }: { params: Promise<
       name: plan.name,
       layoutData: plan.layoutData,
       status: plan.status,
+      source: plan.source,
+      externalSource: plan.externalSource,
       createdAt: plan.createdAt?.toISOString(),
       creator: plan.creator ? {
         _id: (plan.creator as any)._id.toString(),

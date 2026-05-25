@@ -27,6 +27,8 @@
 
 `AGENTS.zh-CN.md` 是 `AGENTS.md` 的中文版伴随文件。每次修改项目指令、后台反馈规则或小程序编辑器量房功能清单时，必须在同一次任务中更新 `AGENTS.zh-CN.md`，并保持章节名称、编号、文件路径和行为说明同步。
 
+其他成对项目文档也按同样规则维护。尤其是修改 `docs/admin-system-modules.md` 时，必须在同一次任务中同步更新 `docs/admin-system-modules.zh-CN.md`。
+
 ## 小程序编辑器量房功能清单
 
 修改 `miniprogram/pages/editor/editor.*` 下的量房体验时，先识别下面哪些已完成模块会受到影响，并明确告诉用户。每次新增、移除或改变量房功能行为时，都要同步更新这份清单。
