@@ -2,6 +2,7 @@ const app = getApp();
 const api = require('../../utils/api.js');
 const util = require('../../utils/util.js');
 const templatesUtil = require('../../utils/templates.js');
+const wholeHomeGeometry = require('../../utils/wholeHomeGeometry.js');
 
 Page({
   data: {
@@ -21,7 +22,10 @@ Page({
     },
     activeFloorPlan: null,
     activeSourceLabel: '',
-    rooms: []
+    rooms: [],
+    measurementMode: 'room',
+    homeOutline: null,
+    partitions: []
   },
 
   onLoad(options) {
@@ -45,6 +49,9 @@ Page({
         let activeFloorPlan = null;
         let rooms = [];
         let activeSourceLabel = '';
+        let measurementMode = 'room';
+        let homeOutline = null;
+        let partitions = [];
 
         if (lead.primaryFloorPlanId) {
           activeFloorPlan = lead.primaryFloorPlanId;
@@ -54,17 +61,12 @@ Page({
 
         if (activeFloorPlan) {
           activeSourceLabel = this.getFloorPlanSourceLabel(activeFloorPlan);
-          if (activeFloorPlan && activeFloorPlan.layoutData) {
-            let parsed = activeFloorPlan.layoutData;
-            if (typeof parsed === 'string') {
-              try { parsed = JSON.parse(parsed); } catch (e) {}
-            }
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-              rooms = parsed.rooms || [];
-            } else {
-              rooms = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
-            }
-          }
+          const parsed = wholeHomeGeometry.parseLayoutData(activeFloorPlan.layoutData);
+          rooms = parsed.rooms || [];
+          measurementMode = parsed.measurementMode || 'room';
+          if (measurementMode === 'whole_home') activeSourceLabel = '全屋测量';
+          homeOutline = parsed.homeOutline || null;
+          partitions = parsed.partitions || [];
         }
 
         this.setData({
@@ -72,6 +74,9 @@ Page({
           activeFloorPlan,
           activeSourceLabel,
           rooms,
+          measurementMode,
+          homeOutline,
+          partitions,
           loading: false,
           kujialeQuery: {
             city: lead.city || '',
@@ -98,6 +103,7 @@ Page({
     if (!plan) return '';
     if (plan.source === 'kujiale') return '酷家乐户型';
     if (plan.source === 'template') return '户型模板';
+    if (this.data.measurementMode === 'whole_home') return '全屋测量';
     return '手动测绘';
   },
 
@@ -133,7 +139,7 @@ Page({
       const results = (res.data || []).map(item => ({
         ...item,
         displayArea: item.area ? `${item.area}㎡` : '面积未知',
-        displayLayout: item.layoutLabel || '户型待确认'
+        displayLayout: item.layoutLabel || '户室待确认'
       }));
 
       this.setData({
@@ -179,13 +185,14 @@ Page({
   async onSelectTemplate(e) {
     const templateId = e.currentTarget.dataset.id;
     const roomsData = templatesUtil.generateTemplateRooms(templateId);
+    const layoutData = wholeHomeGeometry.createEmptyLayout(roomsData);
 
     wx.showLoading({ title: '创建户型...' });
     try {
       const payload = {
         openid: app.globalData.openid,
         name: `${this.data.lead.name} 的户型 - ` + util.formatTime(new Date()).split(' ')[0].replace(/\//g, ''),
-        layoutData: roomsData,
+        layoutData,
         source: 'template',
         status: 'draft'
       };
@@ -208,6 +215,75 @@ Page({
     }
   },
 
+  async ensureWholeHomeFloorPlan() {
+    if (this.data.activeFloorPlan) {
+      const parsed = wholeHomeGeometry.parseLayoutData(this.data.activeFloorPlan.layoutData);
+      if (parsed.measurementMode === 'whole_home') return this.data.activeFloorPlan;
+
+      const layoutData = {
+        ...wholeHomeGeometry.createEmptyLayout(parsed.rooms || []),
+        rooms: parsed.rooms || []
+      };
+      const res = await api.request(`/floorplans/${this.data.activeFloorPlan._id}`, 'PUT', {
+        openid: app.globalData.openid,
+        name: this.data.activeFloorPlan.name,
+        layoutData,
+        status: this.data.activeFloorPlan.status || 'draft'
+      });
+      return res.success ? { ...this.data.activeFloorPlan, layoutData } : this.data.activeFloorPlan;
+    }
+
+    const layoutData = wholeHomeGeometry.createEmptyLayout([]);
+    const fpRes = await api.request('/floorplans', 'POST', {
+      openid: app.globalData.openid,
+      name: `${this.data.lead.name} 的全屋测量 - ` + util.formatTime(new Date()).split(' ')[0].replace(/\//g, ''),
+      layoutData,
+      source: 'manual',
+      status: 'draft'
+    });
+
+    if (fpRes.success && fpRes.data) {
+      await api.request(`/leads/${this.data.leadId}`, 'PUT', {
+        openid: app.globalData.openid,
+        floorPlanId: fpRes.data._id
+      });
+      return fpRes.data;
+    }
+
+    return null;
+  },
+
+  async onStartWholeHomeMeasure() {
+    wx.showLoading({ title: '准备全屋测量...' });
+    try {
+      const floorPlan = await this.ensureWholeHomeFloorPlan();
+      wx.hideLoading();
+      if (!floorPlan) {
+        wx.showToast({ title: '创建户型失败', icon: 'none' });
+        return;
+      }
+
+      const parsed = wholeHomeGeometry.parseLayoutData(floorPlan.layoutData);
+      app.globalData.restoreFloorPlan = {
+        _id: floorPlan._id,
+        layoutData: floorPlan.layoutData,
+        measurementMode: 'whole_home',
+        wholeHomeStage: parsed.homeOutline && parsed.homeOutline.polygonClosed ? 'partition' : 'height',
+        guidedMode: !(parsed.homeOutline && parsed.homeOutline.polygonClosed),
+        showMeasurePrompt: !(parsed.homeOutline && parsed.homeOutline.polygonClosed),
+        activeTool: 'SELECT',
+        selectedIds: [],
+        showPropertyPanel: false
+      };
+
+      wx.navigateTo({ url: '/pages/editor/editor' });
+    } catch (err) {
+      wx.hideLoading();
+      console.error(err);
+      wx.showToast({ title: '无法开始测量', icon: 'none' });
+    }
+  },
+
   onEnterRoom(e) {
     const roomId = e.currentTarget.dataset.id;
     let targetRoom = null;
@@ -220,45 +296,27 @@ Page({
 
     if (!targetRoom || !this.data.activeFloorPlan) return;
 
-    const canvasWidth = wx.getSystemInfoSync().windowWidth;
-    const canvasHeight = wx.getSystemInfoSync().windowHeight - 150;
-
-    const updatedRooms = this.data.rooms.map((r, idx) => {
-      if (r.x === undefined || (r.x === 0 && r.y === 0 && idx > 0)) {
-        let roomW = r.defaultWidth || 40;
-        let roomH = r.defaultHeight || 40;
-        let offsetX = (idx % 2 === 0) ? (idx * 25) : -(idx * 25);
-        let offsetY = (idx * 20);
-        return {
-          ...r,
-          x: (canvasWidth / 2) - (roomW / 2) + offsetX,
-          y: (canvasHeight / 2) - (roomH / 2) + 20 + offsetY,
-          width: roomW,
-          height: roomH
-        };
-      }
-      return r;
-    });
+    const parsed = wholeHomeGeometry.parseLayoutData(this.data.activeFloorPlan.layoutData);
 
     app.globalData.restoreFloorPlan = {
       _id: this.data.activeFloorPlan._id,
       roomId: roomId,
       roomName: targetRoom.name,
-      layoutData: updatedRooms,
-      guidedMode: true,
-      showMeasurePrompt: !targetRoom.measured,
+      layoutData: parsed.measurementMode === 'whole_home' ? this.data.activeFloorPlan.layoutData : this.data.rooms,
+      measurementMode: parsed.measurementMode,
+      guidedMode: parsed.measurementMode === 'whole_home' ? false : true,
+      showMeasurePrompt: parsed.measurementMode === 'whole_home' ? false : !targetRoom.measured,
       activeTool: 'SELECT',
       selectedIds: [roomId],
-      showPropertyPanel: false
+      showPropertyPanel: parsed.measurementMode === 'whole_home'
     };
 
-    wx.navigateTo({
-      url: '/pages/editor/editor'
-    });
+    wx.navigateTo({ url: '/pages/editor/editor' });
   },
 
   onAddRoom() {
     if (!this.data.activeFloorPlan) return;
+    const parsed = wholeHomeGeometry.parseLayoutData(this.data.activeFloorPlan.layoutData);
     const newRooms = [...this.data.rooms];
     newRooms.push({
       id: util.generateUUID(),
@@ -269,15 +327,25 @@ Page({
       defaultHeight: 40
     });
 
+    const layoutData = parsed.measurementMode === 'whole_home'
+      ? Object.assign({}, parsed, { rooms: newRooms, draftState: parsed.draftState || null })
+      : newRooms;
+
     wx.showLoading({ title: '添加中...' });
     api.request(`/floorplans/${this.data.activeFloorPlan._id}`, 'PUT', {
       openid: app.globalData.openid,
-      layoutData: newRooms
+      name: this.data.activeFloorPlan.name,
+      layoutData,
+      status: this.data.activeFloorPlan.status || 'draft'
     }).then(res => {
       wx.hideLoading();
       if (res.success) {
         this.fetchLeadDetail();
       }
+    }).catch(err => {
+      wx.hideLoading();
+      console.error(err);
+      wx.showToast({ title: '添加失败', icon: 'none' });
     });
   }
 });

@@ -1,5 +1,19 @@
 const openingGeometry = require('./openingGeometry.js');
 
+function normalizeLayout(layoutOrRooms) {
+  if (Array.isArray(layoutOrRooms)) {
+    return { rooms: layoutOrRooms, homeOutline: null, partitions: [] };
+  }
+  if (layoutOrRooms && typeof layoutOrRooms === 'object') {
+    return {
+      rooms: Array.isArray(layoutOrRooms.rooms) ? layoutOrRooms.rooms : [],
+      homeOutline: layoutOrRooms.homeOutline || null,
+      partitions: Array.isArray(layoutOrRooms.partitions) ? layoutOrRooms.partitions : []
+    };
+  }
+  return { rooms: [], homeOutline: null, partitions: [] };
+}
+
 /**
  * 专业导出服务
  * 支持生成 DXF (CAD) 格式文本及量房报告数据汇总
@@ -9,30 +23,64 @@ const openingGeometry = require('./openingGeometry.js');
  * 生成 DXF (R12) 格式字符串
  * @param {Array} rooms 房间列表
  */
-function generateDXF(rooms) {
+function generateDXF(layoutOrRooms) {
+  const layout = normalizeLayout(layoutOrRooms);
+  const rooms = layout.rooms;
   let dxf = "0\nSECTION\n2\nHEADER\n0\nENDSEC\n";
   dxf += "0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n70\n2\n";
   dxf += "0\nLAYER\n2\nWALLS\n70\n64\n62\n7\n6\nCONTINUOUS\n";
   dxf += "0\nLAYER\n2\nOPENINGS\n70\n64\n62\n1\n6\nCONTINUOUS\n";
   dxf += "0\nENDTAB\n0\nENDSEC\n";
   dxf += "0\nSECTION\n2\nENTITIES\n";
+  const wallKeys = {};
+
+  function addWallLine(x1, y1, x2, y2) {
+    const key = _lineKey(x1, y1, x2, y2);
+    if (wallKeys[key]) return;
+    wallKeys[key] = true;
+    dxf += _writeLine(x1, y1, x2, y2, "WALLS");
+  }
+
+  if (layout.homeOutline && layout.homeOutline.polygon && layout.homeOutline.polygon.length >= 3) {
+    const outline = layout.homeOutline;
+    const ox = outline.x || 0;
+    const oy = outline.y || 0;
+    for (let i = 0; i < outline.polygon.length; i++) {
+      const p1 = outline.polygon[i];
+      const p2 = outline.polygon[(i + 1) % outline.polygon.length];
+      addWallLine(ox + p1.x, -(oy + p1.y), ox + p2.x, -(oy + p2.y));
+    }
+  }
+
+  (layout.partitions || []).forEach(partition => {
+    const pts = partition.points || [];
+    if (pts.length >= 2) {
+      addWallLine(pts[0].x, -pts[0].y, pts[1].x, -pts[1].y);
+    }
+  });
+
+  const exportRoomWalls = !(layout.homeOutline && layout.homeOutline.polygon && layout.homeOutline.polygon.length >= 3);
 
   rooms.forEach(room => {
     // 1. 导出墙体 (如果是矩形房间使用 width/height，如果是多边形使用 polygon)
-    if (room.polygon && room.polygon.length >= 3) {
+    if (!exportRoomWalls) {
+      // Whole-home layouts use homeOutline + partitions as the authoritative wall graph.
+    } else if (room.polygon && room.polygon.length >= 3) {
       // 多边形房间
       for (let i = 0; i < room.polygon.length; i++) {
         const p1 = room.polygon[i];
         const p2 = room.polygon[(i + 1) % room.polygon.length];
-        dxf += _writeLine(p1.x, -p1.y, p2.x, -p2.y, "WALLS");
+        const rx = room.x || 0;
+        const ry = room.y || 0;
+        addWallLine(rx + p1.x, -(ry + p1.y), rx + p2.x, -(ry + p2.y));
       }
     } else {
       // 矩形房间
       const x = room.x, y = room.y, w = room.width, h = room.height;
-      dxf += _writeLine(x, -y, x + w, -y, "WALLS");
-      dxf += _writeLine(x + w, -y, x + w, -(y + h), "WALLS");
-      dxf += _writeLine(x + w, -(y + h), x, -(y + h), "WALLS");
-      dxf += _writeLine(x, -(y + h), x, -y, "WALLS");
+      addWallLine(x, -y, x + w, -y);
+      addWallLine(x + w, -y, x + w, -(y + h));
+      addWallLine(x + w, -(y + h), x, -(y + h));
+      addWallLine(x, -(y + h), x, -y);
     }
 
     // 2. 导出门窗
@@ -57,16 +105,37 @@ function generateDXF(rooms) {
 }
 
 function _writeLine(x1, y1, x2, y2, layer) {
+  x1 = _safeNumber(x1);
+  y1 = _safeNumber(y1);
+  x2 = _safeNumber(x2);
+  y2 = _safeNumber(y2);
   let line = "0\nLINE\n8\n" + layer + "\n";
   line += "10\n" + x1.toFixed(2) + "\n20\n" + y1.toFixed(2) + "\n30\n0.0\n";
   line += "11\n" + x2.toFixed(2) + "\n21\n" + y2.toFixed(2) + "\n31\n0.0\n";
   return line;
 }
 
+function _lineKey(x1, y1, x2, y2) {
+  const a = _pointKey(x1, y1);
+  const b = _pointKey(x2, y2);
+  return a < b ? a + '|' + b : b + '|' + a;
+}
+
+function _pointKey(x, y) {
+  return (Math.round(_safeNumber(x) * 1000) / 1000) + ',' + (Math.round(_safeNumber(y) * 1000) / 1000);
+}
+
+function _safeNumber(value) {
+  const number = parseFloat(value);
+  return isFinite(number) ? number : 0;
+}
+
 /**
  * 汇总导出报告所需的数据 (增强型)
  */
-function getReportSummary(rooms) {
+function getReportSummary(layoutOrRooms) {
+  const layout = normalizeLayout(layoutOrRooms);
+  const rooms = layout.rooms;
   let totalArea = 0;
   
   const roomSummaries = rooms.map(r => {

@@ -11,6 +11,14 @@ Component({
       type: Array,
       value: []
     },
+    homeOutline: {
+      type: Object,
+      value: null
+    },
+    partitions: {
+      type: Array,
+      value: []
+    },
     branding: {
       type: Object,
       value: null
@@ -102,7 +110,7 @@ Component({
       this.drawGrid(ctx, 40, planY, 670, 500);
 
       // Draw Floor Plan Logic
-      this.drawFloorPlan(ctx, 40, planY, 670, 500, rooms);
+      this.drawFloorPlan(ctx, 40, planY, 670, 500, rooms, this.data.homeOutline, this.data.partitions);
 
       // 4. Room Data List Section
       const listY = planY + 540;
@@ -135,7 +143,7 @@ Component({
         ctx.fillText((room.height / 10).toFixed(2), 360, currentY + 15);
         ctx.fillText(`${(room.height3D || 28)/10}m`, 480, currentY + 15);
         
-        const area = (room.width * room.height / 100).toFixed(2);
+        const area = this.getRoomArea(room).toFixed(2);
         ctx.fillStyle = accentColor;
         ctx.fillText(`${area}㎡`, 600, currentY + 15);
 
@@ -161,13 +169,13 @@ Component({
       }, this);
     },
 
-    drawFloorPlan(ctx, x, y, w, h, rooms) {
-      if (!rooms.length) return;
+    drawFloorPlan(ctx, x, y, w, h, rooms, homeOutline, partitions) {
+      if (!rooms.length && !homeOutline) return;
       
       // Calculate Bounding Box and Scale accurately for all room types
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       
-      rooms.forEach(r => {
+      const collectBounds = (r) => {
         if (r.polygon && r.polygon.length > 0) {
           r.polygon.forEach(p => {
             const worldX = r.x + p.x;
@@ -183,7 +191,9 @@ Component({
           if (r.x + r.width > maxX) maxX = r.x + r.width;
           if (r.y + r.height > maxY) maxY = r.y + r.height;
         }
-      });
+      };
+      rooms.forEach(collectBounds);
+      if (homeOutline) collectBounds(homeOutline);
       
       const planW = maxX - minX;
       const planH = maxY - minY;
@@ -193,6 +203,32 @@ Component({
       const offsetY = y + (h - planH * scale) / 2 - minY * scale;
 
       ctx.save();
+
+      if (homeOutline && homeOutline.polygon && homeOutline.polygon.length >= 3) {
+        ctx.beginPath();
+        const ox = homeOutline.x * scale + offsetX;
+        const oy = homeOutline.y * scale + offsetY;
+        const pts = homeOutline.polygon;
+        ctx.moveTo(pts[0].x * scale + ox, pts[0].y * scale + oy);
+        for (let i = 1; i < pts.length; i++) {
+          ctx.lineTo(pts[i].x * scale + ox, pts[i].y * scale + oy);
+        }
+        ctx.closePath();
+        ctx.strokeStyle = '#0f766e';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+      }
+
+      (partitions || []).forEach(partition => {
+        const pts = partition.points || [];
+        if (pts.length < 2) return;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x * scale + offsetX, pts[0].y * scale + offsetY);
+        ctx.lineTo(pts[1].x * scale + offsetX, pts[1].y * scale + offsetY);
+        ctx.strokeStyle = '#64748b';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+      });
       
       rooms.forEach(room => {
         const rx = room.x * scale + offsetX;
@@ -233,6 +269,18 @@ Component({
       });
 
       ctx.restore();
+    },
+
+    getRoomArea(room) {
+      if (room.polygon && room.polygon.length >= 3) {
+        let areaRaw = 0;
+        for (let i = 0; i < room.polygon.length; i++) {
+          const j = (i + 1) % room.polygon.length;
+          areaRaw += room.polygon[i].x * room.polygon[j].y - room.polygon[j].x * room.polygon[i].y;
+        }
+        return Math.abs(areaRaw) / 200;
+      }
+      return (room.width || 0) * (room.height || 0) / 100;
     },
 
     drawGrid(ctx, x, y, w, h) {

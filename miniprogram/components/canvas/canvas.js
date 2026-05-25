@@ -17,7 +17,11 @@ Component({
     guidedEdgeIndex: { type: Number, value: -1 },
     lastMeasuredDirection: { type: String, value: '' },
     pendingDirection: { type: String, value: '' },
-    measurePoints: { type: Array, value: [] }
+    measurePoints: { type: Array, value: [] },
+    measurementMode: { type: String, value: 'room' },
+    wholeHomeStage: { type: String, value: '' },
+    homeOutline: { type: Object, value: null },
+    partitions: { type: Array, value: [] }
   },
 
   data: {
@@ -27,8 +31,9 @@ Component({
     offsetX: 0,
     offsetY: 0,
     scale: 1,
-    // 绘制中的新房间
+    // 绘制中的新房间/内墙
     newRoom: null,
+    newPartition: null,
     // 触摸状态
     touchStartPos: null,
     lastTouchDist: 0,
@@ -66,7 +71,7 @@ Component({
   },
 
   observers: {
-    'rooms, selectedIds, highlightedOpeningId, selectedEdge, scale, offsetX, offsetY, guidedMode, currentGuidedRoomId, measurePoints, lastMeasuredDirection, pendingDirection, isBlinkOn': function () {
+    'rooms, selectedIds, highlightedOpeningId, selectedEdge, scale, offsetX, offsetY, guidedMode, currentGuidedRoomId, measurePoints, lastMeasuredDirection, pendingDirection, measurementMode, wholeHomeStage, homeOutline, partitions, isBlinkOn': function () {
       this.drawCanvas();
     }
   },
@@ -191,11 +196,16 @@ Component({
       if (this.properties.currentGuidedRoomId) {
         rooms = rooms.filter(r => r.id === this.properties.currentGuidedRoomId);
       }
-      if (!rooms || rooms.length === 0) return;
+      var outline = this.properties.homeOutline;
+      var boundsRooms = rooms.slice();
+      if (outline && outline.polygon && outline.polygon.length) {
+        boundsRooms.push(outline);
+      }
+      if (!boundsRooms || boundsRooms.length === 0) return;
 
       // 1. 计算所有房间的包围盒
       var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      rooms.forEach(function (r) {
+      boundsRooms.forEach(function (r) {
         minX = Math.min(minX, r.x);
         minY = Math.min(minY, r.y);
         maxX = Math.max(maxX, r.x + r.width);
@@ -252,6 +262,7 @@ Component({
       var selectedIds = this.properties.selectedIds;
       var highlightedOpeningId = this.properties.highlightedOpeningId;
       var newRoom = this.data.newRoom;
+      var newPartition = this.data.newPartition;
 
       // 防止 NaN 导致的渲染崩溃
       if (isNaN(ox)) ox = 0;
@@ -273,6 +284,10 @@ Component({
       // 绘制网格
       this.drawGrid(ctx, w, h, scale, ox, oy);
 
+      if (this.properties.measurementMode === 'whole_home' && this.properties.homeOutline) {
+        this.drawHomeOutline(ctx, this.properties.homeOutline);
+      }
+
       // 绘制房间
       for (var i = 0; i < rooms.length; i++) {
         var r = rooms[i];
@@ -284,6 +299,8 @@ Component({
           this.drawRoom(ctx, r, selectedIds, highlightedOpeningId);
         }
       }
+
+      this.drawPartitions(ctx, this.properties.partitions || []);
 
       // 绘制中的预览
       if (newRoom) {
@@ -298,6 +315,17 @@ Component({
         ctx.lineWidth = 1;
         ctx.setLineDash([5, 5]);
         ctx.strokeRect(nx, ny, nw, nh);
+        ctx.setLineDash([]);
+      }
+
+      if (newPartition) {
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 4;
+        ctx.setLineDash([6, 6]);
+        ctx.beginPath();
+        ctx.moveTo(newPartition.start.x, newPartition.start.y);
+        ctx.lineTo(newPartition.end.x, newPartition.end.y);
+        ctx.stroke();
         ctx.setLineDash([]);
       }
 
@@ -334,6 +362,54 @@ Component({
         ctx.lineTo(endX, y);
       }
       ctx.stroke();
+    },
+
+    drawHomeOutline: function (ctx, outline) {
+      if (!outline || !outline.polygon || outline.polygon.length < 2) return;
+      var pts = outline.polygon;
+      var ox = parseFloat(outline.x) || 0;
+      var oy = parseFloat(outline.y) || 0;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(ox + pts[0].x, oy + pts[0].y);
+      for (var i = 1; i < pts.length; i++) {
+        ctx.lineTo(ox + pts[i].x, oy + pts[i].y);
+      }
+      if (outline.polygonClosed && pts.length >= 3) {
+        ctx.closePath();
+        ctx.fillStyle = outline.color || 'rgba(219, 234, 254, 0.22)';
+        ctx.fill();
+      }
+      ctx.strokeStyle = '#0f766e';
+      ctx.lineWidth = outline.polygonClosed ? 4 : 3;
+      ctx.setLineDash(outline.polygonClosed ? [] : [8, 8]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      if (pts.length) {
+        ctx.fillStyle = '#0f766e';
+        ctx.beginPath();
+        ctx.arc(ox + pts[0].x, oy + pts[0].y, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    },
+
+    drawPartitions: function (ctx, partitions) {
+      if (!partitions || !partitions.length) return;
+      ctx.save();
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = 3;
+      partitions.forEach(function (partition) {
+        var pts = partition.points || [];
+        if (pts.length < 2) return;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        ctx.lineTo(pts[1].x, pts[1].y);
+        ctx.stroke();
+      });
+      ctx.restore();
     },
 
     drawRoom: function (ctx, room, selectedIds, highlightedOpeningId) {
@@ -704,6 +780,13 @@ Component({
             newRoom: { x: snappedPos.x, y: snappedPos.y, width: 0, height: 0 }
           });
         }
+      } else if (activeTool === 'PARTITION') {
+        this.setData({
+          newPartition: {
+            start: snappedPos,
+            end: snappedPos
+          }
+        });
       } else if (activeTool === 'DOOR' || activeTool === 'WINDOW') {
         this.selectOpeningWall(pos, activeTool);
       } else if (activeTool === 'ERASER') {
@@ -789,6 +872,19 @@ Component({
           }
         });
         this.drawCanvas();
+      } else if (this.data.newPartition && this.properties.activeTool === 'PARTITION') {
+        var partitionPos = this.getCanvasPos(touch);
+        var snappedPartitionPos = {
+          x: util.snapToGrid(partitionPos.x, GRID_SIZE),
+          y: util.snapToGrid(partitionPos.y, GRID_SIZE)
+        };
+        this.setData({
+          newPartition: {
+            start: this.data.newPartition.start,
+            end: snappedPartitionPos
+          }
+        });
+        this.drawCanvas();
       }
     },
 
@@ -842,6 +938,19 @@ Component({
           this.triggerEvent('add', { room: room });
         }
         this.setData({ newRoom: null });
+        this.drawCanvas();
+      }
+
+      if (this.data.newPartition && this.properties.activeTool === 'PARTITION') {
+        var partition = this.data.newPartition;
+        var pdx = partition.end.x - partition.start.x;
+        var pdy = partition.end.y - partition.start.y;
+        if (Math.sqrt(pdx * pdx + pdy * pdy) >= GRID_SIZE) {
+          this.triggerEvent('partitionadd', {
+            points: [partition.start, partition.end]
+          });
+        }
+        this.setData({ newPartition: null });
         this.drawCanvas();
       }
 

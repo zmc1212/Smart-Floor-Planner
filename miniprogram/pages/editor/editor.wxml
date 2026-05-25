@@ -33,6 +33,8 @@
       <guided-banner
         wx:if="{{!is3DView && (guidedMode || rooms.length > 0)}}"
         guidedMode="{{guidedMode}}"
+        measurementMode="{{measurementMode}}"
+        wholeHomeStage="{{wholeHomeStage}}"
         currentGuidedRoomName="{{currentGuidedRoomName}}"
         guidedEdgeIndex="{{guidedEdgeIndex}}"
         canFinish="{{canFinishPolygon}}"
@@ -55,6 +57,10 @@
         selectedIds="{{selectedIds}}"
         highlightedOpeningId="{{highlightedOpeningId}}"
         guidedMode="{{guidedMode}}"
+        measurementMode="{{measurementMode}}"
+        wholeHomeStage="{{wholeHomeStage}}"
+        homeOutline="{{homeOutline}}"
+        partitions="{{partitions}}"
         currentGuidedRoomId="{{currentGuidedRoomId}}"
         guidedEdgeIndex="{{guidedEdgeIndex}}"
         lastMeasuredDirection="{{lastMeasuredDirection}}"
@@ -67,6 +73,7 @@
         bindchange="onRoomsChange"
         binddelete="onDeleteRoom"
         bindaddtemplate="onAddTemplate"
+        bindpartitionadd="onAddPartition"
         bindedgeselect="onEdgeSelect"
         bindopeningwallselect="onOpeningWallSelect"
       />
@@ -86,7 +93,7 @@
 
       <view class="drawing-indicator" wx:if="{{!is3DView && showDrawingIndicator}}">
         <view class="indicator-dot"></view>
-        <text class="indicator-text">{{activeTool === 'WALL' ? '正在绘制墙体...' : '正在放置门窗...'}}</text>
+        <text class="indicator-text">{{activeTool === 'PARTITION' ? '正在绘制内墙...' : '正在放置门窗...'}}</text>
         <view class="indicator-cancel" bindtap="onCancelDrawing">取消</view>
       </view>
 
@@ -144,6 +151,8 @@
   <technical-report
     show="{{showTechnicalReport}}"
     rooms="{{rooms}}"
+    homeOutline="{{homeOutline}}"
+    partitions="{{partitions}}"
     branding="{{branding}}"
     planName="{{planName}}"
     bind:close="onCloseTechnicalReport"

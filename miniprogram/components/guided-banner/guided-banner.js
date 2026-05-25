@@ -4,6 +4,8 @@ Component({
   },
   properties: {
     guidedMode: { type: Boolean, value: false },
+    measurementMode: { type: String, value: 'room' },
+    wholeHomeStage: { type: String, value: '' },
     currentGuidedRoomName: { type: String, value: '' },
     guidedEdgeIndex: { type: Number, value: 0 },
     canFinish: { type: Boolean, value: false },

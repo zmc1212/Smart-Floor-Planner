@@ -29,6 +29,7 @@ Component({
     tools: [
       { id: 'SELECT', icon: 'select', label: '选择', iconText: '选' },
       { id: 'SHAPE', icon: 'shape', label: '空间', iconText: '+' },
+      { id: 'PARTITION', icon: 'partition', label: '内墙', iconText: '墙' },
       { id: 'DOOR', icon: 'door', label: '门', iconText: '门' },
       { id: 'WINDOW', icon: 'window', label: '窗户', iconText: '窗' }
     ]

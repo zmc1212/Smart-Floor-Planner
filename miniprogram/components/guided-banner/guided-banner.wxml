@@ -1,15 +1,19 @@
 <view class="guided-wizard-bar" wx:if="{{guidedMode}}">
-  <view class="wizard-cancel" bindtap="onExitToLibrary">回库</view>
+  <view class="wizard-cancel" bindtap="onExitToLibrary">返回</view>
 
-  <view class="wizard-text">
+  <view class="wizard-text" wx:if="{{measurementMode === 'whole_home'}}">
+    <text>全屋测量 · {{wholeHomeStage === 'partition' ? '补内墙/门窗' : '顺时针外轮廓'}}</text>
+    <text class="text-blue"> {{guidedEdgeIndex}} 边</text>
+  </view>
+  <view class="wizard-text" wx:else>
     <text>{{currentGuidedRoomName}} · 已测 </text>
     <text class="text-blue">{{guidedEdgeIndex}} 边</text>
     <text> · 选择下一方向并测边</text>
   </view>
 
   <view class="wizard-actions">
-    <view class="wizard-btn-action btn-ghost" wx:if="{{bleConnected}}" bindtap="onAddEdge">+ 添加边</view>
-    <view class="wizard-btn-finish" wx:if="{{canFinish}}" bindtap="onFinishPolygon">完成轮廓</view>
+    <view class="wizard-btn-action btn-ghost" wx:if="{{bleConnected && wholeHomeStage !== 'partition'}}" bindtap="onAddEdge">+ 测下一边</view>
+    <view class="wizard-btn-finish" wx:if="{{canFinish}}" bindtap="onFinishPolygon">闭合轮廓</view>
     <view class="wizard-btn-action btn-ghost" bindtap="onSaveDraft">保存草稿</view>
     <view class="wizard-btn-action btn-ghost" wx:if="{{bleConnected}}" bindtap="onStartRemeasure">重测</view>
   </view>
@@ -17,7 +21,8 @@
 
 <view class="guided-wizard-bar" wx:else>
   <view class="wizard-cancel" bindtap="onExitToLibrary">返回</view>
-  <view class="wizard-text">测绘完成，可点击下方工具添加门窗。</view>
+  <view class="wizard-text" wx:if="{{measurementMode === 'whole_home'}}">全屋骨架已生成，可用内墙、门窗和空间属性继续完善。</view>
+  <view class="wizard-text" wx:else>测绘完成，可点击下方工具添加门窗。</view>
   <view class="wizard-actions">
     <view class="wizard-btn-finish" bindtap="onSubmitFloorPlan">完成提交</view>
     <view class="wizard-btn-action btn-ghost" wx:if="{{bleConnected}}" bindtap="onStartRemeasure">重新测量</view>

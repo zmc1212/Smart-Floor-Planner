@@ -1,12 +1,18 @@
 var util = require('../../utils/util.js');
 var ToolType = util.ToolType;
 var openingGeometry = require('../../utils/openingGeometry.js');
+var wholeHomeGeometry = require('../../utils/wholeHomeGeometry.js');
 
 Page({
   data: {
     bleConnected: false,
     is3DView: false,
     guidedMode: false,
+    measurementMode: 'room',
+    wholeHomeStage: '',
+    homeOutline: null,
+    partitions: [],
+    wholeHomeHeight3D: 0,
     showMeasurePrompt: false,
     showLeadModal: false,
     guidedEdgeIndex: -1,
@@ -85,8 +91,10 @@ Page({
       var fp = app.globalData.restoreFloorPlan;
       app.globalData.restoreFloorPlan = null;
       
-      let rooms = fp.layoutData;
-      let draftState = null;
+      const parsedLayout = wholeHomeGeometry.parseLayoutData(fp.layoutData);
+      let rooms = parsedLayout.rooms || [];
+      let draftState = parsedLayout.draftState || null;
+      const isWholeHome = fp.measurementMode === 'whole_home' || parsedLayout.measurementMode === 'whole_home';
       
       // Parse layoutData if it's an object with draftState
       if (rooms && typeof rooms === 'object' && !Array.isArray(rooms)) {
@@ -111,8 +119,8 @@ Page({
       }
 
       // 提取目标房间ID（优先使用明确传入的 roomId）
-      const targetRoomId = fp.roomId || fp.currentGuidedRoomId || (draftState ? draftState.currentGuidedRoomId : '') || '';
-      const targetRoomName = fp.roomName || fp.currentGuidedRoomName || '';
+      const targetRoomId = isWholeHome ? '' : (fp.roomId || fp.currentGuidedRoomId || (draftState ? draftState.currentGuidedRoomId : '') || '');
+      const targetRoomName = isWholeHome ? '全屋' : (fp.roomName || fp.currentGuidedRoomName || '');
 
       // Find the target room to check its measurement status
       let targetRoom = null;
@@ -121,11 +129,23 @@ Page({
       }
 
       const isConnected = app.globalData.bleConnected;
-      const intendedShowPrompt = fp.showMeasurePrompt !== undefined ? fp.showMeasurePrompt : (!!targetRoomId && !targetRoom?.measured);
+      const wholeHomeClosed = !!(parsedLayout.homeOutline && parsedLayout.homeOutline.polygonClosed);
+      const restoredWholeHomeStage = (draftState && draftState.stage) || fp.wholeHomeStage || (wholeHomeClosed ? 'partition' : 'height');
+      const restoredGuidedMode = isWholeHome
+        ? (fp.guidedMode !== undefined ? fp.guidedMode : (!wholeHomeClosed && restoredWholeHomeStage !== 'partition'))
+        : (fp.guidedMode || (!!draftState));
+      const intendedShowPrompt = fp.showMeasurePrompt !== undefined
+        ? fp.showMeasurePrompt
+        : (isWholeHome ? (!wholeHomeClosed && restoredWholeHomeStage !== 'partition') : (!!targetRoomId && !(targetRoom && targetRoom.measured)));
 
       var extraData = {
         currentProject_id: fp._id || '',
-        guidedMode: fp.guidedMode || (!!draftState),
+        measurementMode: isWholeHome ? 'whole_home' : 'room',
+        wholeHomeStage: restoredWholeHomeStage,
+        homeOutline: parsedLayout.homeOutline || null,
+        partitions: parsedLayout.partitions || [],
+        wholeHomeHeight3D: (parsedLayout.homeOutline && parsedLayout.homeOutline.height3D) || (draftState && draftState.wholeHomeHeight3D) || 0,
+        guidedMode: restoredGuidedMode,
         currentGuidedRoomId: targetRoomId,
         currentGuidedRoomName: targetRoomName,
         showMeasurePrompt: intendedShowPrompt && isConnected,
@@ -133,7 +153,7 @@ Page({
         pendingMeasurePrompt: intendedShowPrompt && !isConnected,
         activeTool: fp.activeTool || 'SELECT',
         selectedIds: targetRoomId ? [targetRoomId] : (fp.selectedIds || []),
-        showPropertyPanel: false
+        showPropertyPanel: !!fp.showPropertyPanel
       };
 
       // Detect if layer height is already measured for this room to skip prompt
@@ -148,7 +168,15 @@ Page({
       }
 
       // Restore Draft Measurement State (Only if it matches the target room)
-      if (draftState && draftState.currentGuidedRoomId === targetRoomId) {
+      if (isWholeHome && draftState) {
+        Object.assign(extraData, {
+          measurePoints: draftState.measurePoints || [{ x: 0, y: 0 }],
+          guidedEdgeIndex: draftState.guidedEdgeIndex !== undefined ? draftState.guidedEdgeIndex : -1,
+          pendingDirection: draftState.pendingDirection || '',
+          lastMeasuredDirection: draftState.lastMeasuredDirection || '',
+          wholeHomeStage: draftState.stage || extraData.wholeHomeStage
+        });
+      } else if (draftState && draftState.currentGuidedRoomId === targetRoomId) {
         Object.assign(extraData, {
           measurePoints: draftState.measurePoints || [{ x: 0, y: 0 }],
           guidedEdgeIndex: draftState.guidedEdgeIndex !== undefined ? draftState.guidedEdgeIndex : -1,
@@ -175,7 +203,9 @@ Page({
       }, 800);
 
       // Final check: Never open laser if the room is already measured
-      const shouldOpenLaser = !!(extraData.guidedMode && extraData.showMeasurePrompt && targetRoom && !targetRoom.measured);
+      const shouldOpenLaser = isWholeHome
+        ? !!(extraData.guidedMode && extraData.showMeasurePrompt && extraData.wholeHomeStage !== 'partition')
+        : !!(extraData.guidedMode && extraData.showMeasurePrompt && targetRoom && !targetRoom.measured);
       
       if (shouldOpenLaser) {
         console.log('[Editor] Auto-opening laser for unmeasured room');
@@ -618,7 +648,9 @@ Page({
       return mesh;
     };
 
-    const rooms = this.data.rooms;
+    const rooms = (this.data.rooms && this.data.rooms.length)
+      ? this.data.rooms
+      : wholeHomeGeometry.buildRoomsFromOutlineAndPartitions(this.data.homeOutline, this.data.partitions, []);
     let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
 
     if (!rooms || rooms.length === 0) {
@@ -963,6 +995,19 @@ Page({
     if (this.failTimer) { clearTimeout(this.failTimer); this.failTimer = null; }
 
     var isGuided = this.data.guidedMode;
+    if (this.data.measurementMode === 'whole_home' && isGuided) {
+      if (distanceInMeters === null || distanceInMeters <= 0) {
+        wx.showToast({ title: '测量失败，请重试', icon: 'none', duration: 2000 });
+        this.tryShowMeasurePrompt();
+        setTimeout(() => {
+          this.openLaser();
+        }, 800);
+        return;
+      }
+      this.handleWholeHomeMeasure(distanceInMeters);
+      return;
+    }
+
     var roomId = isGuided ? this.data.currentGuidedRoomId : (this.data.selectedIds[0] || '');
     if (!roomId) return;
 
@@ -1148,6 +1193,97 @@ Page({
     }
   },
 
+  handleWholeHomeMeasure: function (distanceInMeters) {
+    var newLength = distanceInMeters * 10;
+
+    if (this.data.guidedEdgeIndex === -1) {
+      var outlineWithHeight = this.data.homeOutline
+        ? Object.assign({}, this.data.homeOutline, { height3D: newLength })
+        : null;
+
+      wx.showToast({ title: '全屋层高 ' + distanceInMeters + 'm ✓', icon: 'success' });
+      this.pushToHistory(this.data.rooms, {
+        homeOutline: outlineWithHeight,
+        wholeHomeHeight3D: newLength,
+        wholeHomeStage: 'outline',
+        guidedEdgeIndex: 0,
+        lastMeasuredDirection: '',
+        pendingDirection: 'E',
+        showMeasurePrompt: false
+      });
+
+      this.reportMeasurement({
+        type: 'height',
+        value: distanceInMeters,
+        direction: 'H',
+        roomId: '',
+        roomName: '全屋',
+        metadata: {
+          measurementMode: 'whole_home',
+          stage: 'height'
+        }
+      });
+
+      setTimeout(() => { this.openLaser(); }, 500);
+      setTimeout(() => { this.tryShowMeasurePrompt(); }, 900);
+      return;
+    }
+
+    var direction = this.data.pendingDirection || 'E';
+    var pts = this.data.measurePoints && this.data.measurePoints.length ? this.data.measurePoints : [{ x: 0, y: 0 }];
+    var lastPt = pts[pts.length - 1] || { x: 0, y: 0 };
+    var dx = 0, dy = 0;
+    if (direction === 'E') dx = newLength;
+    else if (direction === 'S') dy = newLength;
+    else if (direction === 'W') dx = -newLength;
+    else if (direction === 'N') dy = -newLength;
+
+    var newPt = { x: lastPt.x + dx, y: lastPt.y + dy };
+    var newMeasurePoints = pts.concat([newPt]);
+    var newEdgeIndex = newMeasurePoints.length - 1;
+    var previewOutline = wholeHomeGeometry.buildOutlineFromPoints(newMeasurePoints, {
+      id: (this.data.homeOutline && this.data.homeOutline.id) || 'home-outline',
+      height3D: this.data.wholeHomeHeight3D,
+      closed: false
+    });
+
+    var nextDirection = '';
+    if (newEdgeIndex === 1) nextDirection = 'S';
+    else if (newEdgeIndex === 2) nextDirection = 'W';
+    else if (newEdgeIndex === 3) nextDirection = 'N';
+
+    wx.showToast({ title: '全屋第' + newEdgeIndex + '边 ' + distanceInMeters + 'm ✓', icon: 'success' });
+    this.pushToHistory(this.data.rooms, {
+      homeOutline: previewOutline,
+      measurePoints: newMeasurePoints,
+      guidedEdgeIndex: newEdgeIndex,
+      canFinishPolygon: newEdgeIndex >= 3,
+      lastMeasuredDirection: direction,
+      pendingDirection: nextDirection,
+      wholeHomeStage: 'outline'
+    });
+
+    this.reportMeasurement({
+      type: 'length',
+      value: distanceInMeters,
+      direction: direction,
+      roomId: '',
+      roomName: '全屋',
+      metadata: {
+        measurementMode: 'whole_home',
+        stage: 'home_outline',
+        homeOutlineId: previewOutline.id
+      }
+    });
+
+    setTimeout(() => { this.openLaser(); }, 500);
+    setTimeout(() => { this.tryShowMeasurePrompt(); }, 900);
+    setTimeout(function () {
+      var canvas = this.selectComponent('#floorCanvas');
+      if (canvas) canvas.fitToView();
+    }.bind(this), 400);
+  },
+
   reportMeasurement: async function (record) {
     const app = getApp();
     const projectId = this.data.currentProject_id;
@@ -1159,18 +1295,22 @@ Page({
       const api = require('../../utils/api.js');
       const bluetooth = require('../../utils/bluetooth.js');
       const deviceInfo = bluetooth.getCurrentDeviceInfo ? bluetooth.getCurrentDeviceInfo() : {};
+      const recordSource = record.source || 'ble';
       await api.request('/measurements', 'POST', {
         openid: app.globalData.openid,
         floorPlanId: projectId,
         roomId: record.roomId || this.data.currentGuidedRoomId,
         roomName: record.roomName || this.data.currentGuidedRoomName,
-        deviceId: deviceInfo.deviceId || deviceInfo.name || '',
+        deviceId: recordSource === 'manual' ? '' : (deviceInfo.deviceId || deviceInfo.name || ''),
         value: record.value,
         unit: record.unit || 'meters',
         type: record.type || 'length',
         direction: record.direction || '',
-        source: 'ble',
-        metadata: record.metadata || {},
+        source: recordSource,
+        metadata: Object.assign({
+          measurementMode: this.data.measurementMode || 'room',
+          stage: this.data.measurementMode === 'whole_home' ? this.data.wholeHomeStage : undefined
+        }, record.metadata || {}),
         measuredAt: new Date().toISOString()
       });
     } catch (err) {
@@ -1201,6 +1341,11 @@ Page({
     var wallLength = e.detail.wallLength;
 
     this.setData({ showAngleMeasure: false });
+
+    if (this.data.measurementMode === 'whole_home') {
+      this.handleWholeHomeAngleMeasure(angle, wallLength);
+      return;
+    }
 
     var pts = this.data.measurePoints;
     if (pts.length < 2) {
@@ -1277,12 +1422,76 @@ Page({
     }, 400);
   },
 
+  handleWholeHomeAngleMeasure: function (angle, wallLength) {
+    var pts = this.data.measurePoints;
+    if (!pts || pts.length < 2) {
+      wx.showToast({ title: '请先测量至少一条边', icon: 'none' });
+      return;
+    }
+
+    var newEdgeLenPx = wallLength * 10;
+    var angleRad = angle * (Math.PI / 180);
+    var p1 = pts[pts.length - 2];
+    var p2 = pts[pts.length - 1];
+    var prevAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+    var newAbsAngle = prevAngle + (Math.PI - angleRad);
+    var lastPt = pts[pts.length - 1];
+    var newPt = {
+      x: Math.round((lastPt.x + newEdgeLenPx * Math.cos(newAbsAngle)) * 100) / 100,
+      y: Math.round((lastPt.y + newEdgeLenPx * Math.sin(newAbsAngle)) * 100) / 100
+    };
+    var newMeasurePoints = pts.concat([newPt]);
+    var newEdgeIndex = newMeasurePoints.length - 1;
+    var previewOutline = wholeHomeGeometry.buildOutlineFromPoints(newMeasurePoints, {
+      id: (this.data.homeOutline && this.data.homeOutline.id) || 'home-outline',
+      height3D: this.data.wholeHomeHeight3D,
+      closed: false
+    });
+
+    wx.showToast({ title: '全屋斜角 ' + angle + '° ✓', icon: 'success' });
+    this.pushToHistory(this.data.rooms, {
+      homeOutline: previewOutline,
+      measurePoints: newMeasurePoints,
+      guidedEdgeIndex: newEdgeIndex,
+      canFinishPolygon: newEdgeIndex >= 3,
+      lastMeasuredDirection: 'ANGLE',
+      pendingDirection: '',
+      wholeHomeStage: 'outline'
+    });
+
+    this.reportMeasurement({
+      type: 'angle',
+      value: wallLength,
+      direction: 'ANGLE',
+      roomId: '',
+      roomName: '全屋',
+      metadata: {
+        measurementMode: 'whole_home',
+        stage: 'home_outline',
+        angle: angle,
+        homeOutlineId: previewOutline.id
+      }
+    });
+
+    var that = this;
+    setTimeout(function () { that.openLaser(); }, 500);
+    setTimeout(function () { that.tryShowMeasurePrompt(); }, 900);
+    setTimeout(function () {
+      var canvas = that.selectComponent('#floorCanvas');
+      if (canvas) canvas.fitToView();
+    }, 400);
+  },
+
   onCloseAngleMeasure: function () {
     this.setData({ showAngleMeasure: false });
     this.tryShowMeasurePrompt();
   },
 
   onAddMeasureEdge: function () {
+    if (this.data.measurementMode === 'whole_home' && this.data.wholeHomeStage === 'partition') {
+      wx.showToast({ title: '请使用“内墙”工具补分区', icon: 'none' });
+      return;
+    }
     if (!this.data.bleConnected) {
       wx.showToast({ title: '请先连接测距仪', icon: 'none' });
       this.setData({ showBLEConnector: true });
@@ -1341,6 +1550,11 @@ Page({
   },
 
   onFinishPolygon: function () {
+    if (this.data.measurementMode === 'whole_home') {
+      this.onFinishWholeHomeOutline();
+      return;
+    }
+
     var pts = this.data.measurePoints;
     if (pts.length < 3) {
       wx.showToast({ title: '至少需要测量 2 条边', icon: 'none' });
@@ -1387,6 +1601,51 @@ Page({
       pendingDirection: '',
       lastMeasuredDirection: '' 
     });
+
+    setTimeout(function () {
+      var canvas = this.selectComponent('#floorCanvas');
+      if (canvas) canvas.fitToView();
+    }.bind(this), 500);
+  },
+
+  onFinishWholeHomeOutline: function () {
+    var pts = this.data.measurePoints || [];
+    if (pts.length < 4) {
+      wx.showToast({ title: '全屋外轮廓至少需要 3 条边', icon: 'none' });
+      return;
+    }
+
+    var snap = wholeHomeGeometry.snapClosedPoints(pts, wholeHomeGeometry.CLOSE_TOLERANCE);
+    if (!snap.closed) {
+      wx.showToast({ title: '闭合误差超过 0.20m，请补测最后一边', icon: 'none', duration: 2400 });
+      return;
+    }
+
+    var outline = wholeHomeGeometry.buildOutlineFromPoints(snap.points, {
+      id: (this.data.homeOutline && this.data.homeOutline.id) || 'home-outline',
+      height3D: this.data.wholeHomeHeight3D,
+      closed: true
+    });
+    var generatedRooms = wholeHomeGeometry.buildRoomsFromOutlineAndPartitions(
+      outline,
+      this.data.partitions,
+      this.data.rooms
+    );
+
+    wx.showToast({ title: '全屋外轮廓已闭合', icon: 'success' });
+    this.pushToHistory(generatedRooms, {
+      homeOutline: outline,
+      wholeHomeStage: 'partition',
+      guidedMode: false,
+      showMeasurePrompt: false,
+      selectedEdge: '',
+      selectedIds: generatedRooms[0] ? [generatedRooms[0].id] : [],
+      measurePoints: [],
+      canFinishPolygon: false,
+      pendingDirection: '',
+      lastMeasuredDirection: ''
+    });
+    this.updateSelectedRooms(generatedRooms);
 
     setTimeout(function () {
       var canvas = this.selectComponent('#floorCanvas');
@@ -1452,13 +1711,98 @@ Page({
     }
   },
 
-  pushToHistory: function (newRooms, extraData) {
-    var history = this.data.history.slice(0, this.data.historyIndex + 1);
-    history.push(newRooms);
-    if (history.length > 50) history.shift();
+  cloneHistoryValue: function (value) {
+    if (value === undefined || value === null) return value;
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch (e) {
+      return value;
+    }
+  },
+
+  createHistorySnapshot: function (newRooms, extraData) {
+    var data = extraData || {};
+    var isWholeHomeSnapshot = this.data.measurementMode === 'whole_home' ||
+      data.measurementMode === 'whole_home' ||
+      data.homeOutline !== undefined ||
+      data.partitions !== undefined ||
+      data.wholeHomeStage !== undefined;
+
+    if (!isWholeHomeSnapshot) {
+      return this.cloneHistoryValue(newRooms);
+    }
+
+    return {
+      rooms: this.cloneHistoryValue(newRooms),
+      measurementMode: data.measurementMode || this.data.measurementMode,
+      homeOutline: data.homeOutline !== undefined ? this.cloneHistoryValue(data.homeOutline) : this.cloneHistoryValue(this.data.homeOutline),
+      partitions: data.partitions !== undefined ? this.cloneHistoryValue(data.partitions) : this.cloneHistoryValue(this.data.partitions),
+      wholeHomeStage: data.wholeHomeStage !== undefined ? data.wholeHomeStage : this.data.wholeHomeStage,
+      wholeHomeHeight3D: data.wholeHomeHeight3D !== undefined ? data.wholeHomeHeight3D : this.data.wholeHomeHeight3D,
+      measurePoints: data.measurePoints !== undefined ? this.cloneHistoryValue(data.measurePoints) : this.cloneHistoryValue(this.data.measurePoints),
+      guidedEdgeIndex: data.guidedEdgeIndex !== undefined ? data.guidedEdgeIndex : this.data.guidedEdgeIndex,
+      pendingDirection: data.pendingDirection !== undefined ? data.pendingDirection : this.data.pendingDirection,
+      lastMeasuredDirection: data.lastMeasuredDirection !== undefined ? data.lastMeasuredDirection : this.data.lastMeasuredDirection,
+      canFinishPolygon: data.canFinishPolygon !== undefined ? data.canFinishPolygon : this.data.canFinishPolygon,
+      guidedMode: data.guidedMode !== undefined ? data.guidedMode : this.data.guidedMode,
+      showMeasurePrompt: data.showMeasurePrompt !== undefined ? data.showMeasurePrompt : this.data.showMeasurePrompt
+    };
+  },
+
+  getRoomsFromHistorySnapshot: function (snapshot) {
+    return Array.isArray(snapshot) ? snapshot : ((snapshot && snapshot.rooms) || []);
+  },
+
+  applyHistorySnapshot: function (newIndex) {
+    var snapshot = this.data.history[newIndex];
+    var rooms = this.getRoomsFromHistorySnapshot(snapshot);
+    var setDataObj = {
+      historyIndex: newIndex,
+      rooms: rooms,
+      selectedIds: [],
+      selectedRooms: [],
+      totalArea: this.calculateRoomsAreaText(rooms)
+    };
+
+    if (snapshot && !Array.isArray(snapshot)) {
+      Object.assign(setDataObj, {
+        measurementMode: snapshot.measurementMode || this.data.measurementMode,
+        homeOutline: snapshot.homeOutline || null,
+        partitions: snapshot.partitions || [],
+        wholeHomeStage: snapshot.wholeHomeStage || '',
+        wholeHomeHeight3D: snapshot.wholeHomeHeight3D || 0,
+        measurePoints: snapshot.measurePoints || [],
+        guidedEdgeIndex: snapshot.guidedEdgeIndex !== undefined ? snapshot.guidedEdgeIndex : -1,
+        pendingDirection: snapshot.pendingDirection || '',
+        lastMeasuredDirection: snapshot.lastMeasuredDirection || '',
+        canFinishPolygon: !!snapshot.canFinishPolygon,
+        guidedMode: !!snapshot.guidedMode,
+        showMeasurePrompt: !!snapshot.showMeasurePrompt
+      });
+    } else if (this.data.measurementMode === 'whole_home') {
+      Object.assign(setDataObj, {
+        homeOutline: null,
+        partitions: [],
+        wholeHomeStage: 'height',
+        wholeHomeHeight3D: 0,
+        measurePoints: [{ x: 0, y: 0 }],
+        guidedEdgeIndex: -1,
+        pendingDirection: '',
+        lastMeasuredDirection: '',
+        canFinishPolygon: false,
+        guidedMode: true,
+        showMeasurePrompt: false
+      });
+    }
+
+    this.setData(setDataObj);
+  },
+
+  calculateRoomsAreaText: function (rooms) {
     var total = 0;
-    for (var i = 0; i < newRooms.length; i++) {
-      var r = newRooms[i];
+    var list = Array.isArray(rooms) ? rooms : [];
+    for (var i = 0; i < list.length; i++) {
+      var r = list[i];
       if (r.polygon && r.polygon.length >= 3 && r.polygonClosed) {
         var poly = r.polygon;
         var areaRaw = 0;
@@ -1473,8 +1817,15 @@ Page({
         total += (rw || 0) * (rh || 0);
       }
     }
+    return (total / 100).toFixed(2);
+  },
 
-    var selectedIds = this.data.selectedIds;
+  pushToHistory: function (newRooms, extraData) {
+    var history = this.data.history.slice(0, this.data.historyIndex + 1);
+    history.push(this.createHistorySnapshot(newRooms, extraData));
+    if (history.length > 50) history.shift();
+
+    var selectedIds = (extraData && extraData.selectedIds) || this.data.selectedIds;
     var selectedRooms = newRooms.filter(function (r) {
       return selectedIds.indexOf(r.id) !== -1;
     });
@@ -1484,7 +1835,7 @@ Page({
       historyIndex: history.length - 1,
       rooms: newRooms,
       selectedRooms: selectedRooms,
-      totalArea: (total / 100).toFixed(2)
+      totalArea: this.calculateRoomsAreaText(newRooms)
     }, extraData || {});
 
     this.setData(setDataObj);
@@ -1493,24 +1844,14 @@ Page({
   onUndo: function () {
     if (this.data.historyIndex > 0) {
       var newIndex = this.data.historyIndex - 1;
-      this.setData({
-        historyIndex: newIndex,
-        rooms: this.data.history[newIndex],
-        selectedIds: [],
-        selectedRooms: []
-      });
+      this.applyHistorySnapshot(newIndex);
     }
   },
 
   onRedo: function () {
     if (this.data.historyIndex < this.data.history.length - 1) {
       var newIndex = this.data.historyIndex + 1;
-      this.setData({
-        historyIndex: newIndex,
-        rooms: this.data.history[newIndex],
-        selectedIds: [],
-        selectedRooms: []
-      });
+      this.applyHistorySnapshot(newIndex);
     }
   },
 
@@ -1523,6 +1864,31 @@ Page({
       confirmColor: '#ff4d4f',
       success: (res) => {
         if (res.confirm) {
+          if (this.data.measurementMode === 'whole_home') {
+            this.setData({
+              rooms: [],
+              history: [[]],
+              historyIndex: 0,
+              homeOutline: null,
+              partitions: [],
+              wholeHomeStage: 'height',
+              wholeHomeHeight3D: 0,
+              selectedIds: [],
+              selectedRooms: [],
+              totalArea: '0.00',
+              showPropertyPanel: false,
+              guidedMode: true,
+              showMeasurePrompt: false,
+              measurePoints: [{ x: 0, y: 0 }],
+              guidedEdgeIndex: -1,
+              pendingDirection: '',
+              lastMeasuredDirection: '',
+              canFinishPolygon: false
+            });
+            wx.showToast({ title: '已重置全屋测量', icon: 'success' });
+            return;
+          }
+
           const isGuided = !!this.data.currentGuidedRoomId;
           let newRooms = [];
           
@@ -1612,6 +1978,46 @@ Page({
     this.pushToHistory(newRooms);
   },
 
+  onAddPartition: function (e) {
+    if (this.data.measurementMode !== 'whole_home' || !this.data.homeOutline || !this.data.homeOutline.polygonClosed) {
+      wx.showToast({ title: '请先完成全屋外轮廓', icon: 'none' });
+      return;
+    }
+
+    var partition = wholeHomeGeometry.normalizePartition(e.detail.points);
+    if (!partition) return;
+    var partitions = (this.data.partitions || []).concat([partition]);
+    var generatedRooms = wholeHomeGeometry.buildRoomsFromOutlineAndPartitions(
+      this.data.homeOutline,
+      partitions,
+      this.data.rooms
+    );
+
+    this.pushToHistory(generatedRooms, {
+      partitions: partitions,
+      wholeHomeStage: 'partition',
+      selectedIds: generatedRooms[0] ? [generatedRooms[0].id] : []
+    });
+    this.updateSelectedRooms(generatedRooms);
+    var p0 = partition.points[0];
+    var p1 = partition.points[1];
+    var partitionLength = Math.sqrt(Math.pow(p1.x - p0.x, 2) + Math.pow(p1.y - p0.y, 2)) / 10;
+    this.reportMeasurement({
+      type: 'length',
+      value: partitionLength,
+      direction: 'PARTITION',
+      roomId: '',
+      roomName: '全屋',
+      source: partition.source || 'manual',
+      metadata: {
+        measurementMode: 'whole_home',
+        stage: 'partition',
+        partitionId: partition.id
+      }
+    });
+    wx.showToast({ title: '已添加内墙分区', icon: 'success' });
+  },
+
   onDeleteRoom: function (e) {
     var id = e.detail.id;
     var newRooms = this.data.rooms.filter(function (r) { return r.id !== id; });
@@ -1680,6 +2086,37 @@ Page({
   },
 
   onStartRemeasure: function () {
+    if (this.data.measurementMode === 'whole_home') {
+      this.setData({
+        rooms: [],
+        history: [[]],
+        historyIndex: 0,
+        homeOutline: null,
+        partitions: [],
+        wholeHomeStage: 'height',
+        wholeHomeHeight3D: 0,
+        guidedMode: true,
+        guidedEdgeIndex: -1,
+        measurePoints: [{ x: 0, y: 0 }],
+        lastMeasuredDirection: '',
+        pendingDirection: '',
+        canFinishPolygon: false,
+        selectedEdge: '',
+        selectedEdgeInfo: null,
+        showMeasurePrompt: false,
+        showPropertyPanel: false,
+        is3DView: false,
+        selectedIds: [],
+        selectedRooms: [],
+        totalArea: '0.00'
+      });
+      this.openLaser();
+      setTimeout(() => {
+        this.tryShowMeasurePrompt();
+      }, 500);
+      return;
+    }
+
     const roomId = this.data.currentGuidedRoomId;
     let rooms = this.data.rooms || [];
     
@@ -1738,7 +2175,7 @@ Page({
   onExport: function () {
     const that = this;
     const rooms = this.data.rooms;
-    if (!rooms || rooms.length === 0) {
+    if ((!rooms || rooms.length === 0) && !this.data.homeOutline) {
       wx.showToast({ title: '无数据操作', icon: 'none' });
       return;
     }
@@ -1771,7 +2208,10 @@ Page({
 
   exportDXF: function () {
     const exportService = require('../../utils/exportService.js');
-    const dxfContent = exportService.generateDXF(this.data.rooms);
+    const exportLayout = this.data.measurementMode === 'whole_home'
+      ? wholeHomeGeometry.buildLayoutData(this.data, 'completed')
+      : this.data.rooms;
+    const dxfContent = exportService.generateDXF(exportLayout);
     const fs = wx.getFileSystemManager();
     const fileName = `floorplan_${Date.now()}.dxf`;
     const filePath = `${wx.env.USER_DATA_PATH}/${fileName}`;
@@ -1825,6 +2265,10 @@ Page({
     try {
       const backup = {
         rooms: this.data.rooms,
+        homeOutline: this.data.homeOutline,
+        partitions: this.data.partitions,
+        measurementMode: this.data.measurementMode,
+        stage: this.data.wholeHomeStage,
         points: this.data.measurePoints,
         index: this.data.guidedEdgeIndex,
         time: Date.now()
@@ -1849,7 +2293,9 @@ Page({
 
     // Prepare Layout Data (Enhanced for Drafts)
     let layoutData = rooms;
-    if (status === 'draft') {
+    if (this.data.measurementMode === 'whole_home') {
+      layoutData = wholeHomeGeometry.buildLayoutData(this.data, status);
+    } else if (status === 'draft') {
       layoutData = {
         rooms: rooms,
         draftState: {
