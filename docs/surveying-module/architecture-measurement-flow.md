@@ -113,3 +113,9 @@ stateDiagram-v2
 | BLE 断线 | 保留几何与历史，仅清除连接等待状态。 |
 | 重置光标 | 清除未提交墙；已确认墙必须通过撤销或明确重置草稿操作删除。 |
 | 页面退出 | 提示原型数据不进入正式户型；若启用本地草稿则允许恢复。 |
+
+## Phase 2 启动记录
+
+- Phase 2 已开始实现，仅覆盖手动墙体原型：墙图内存模型、画布光标/预览、毫米手输、墙厚/墙侧、闭合、复尺与撤销重做。
+- 本阶段继续禁止写入正式 floor plan、旧版草稿、测量日志、导出、3D 或 BLE 读数；BLE 输入与本地原型恢复保留到 Phase 3。
+- 手动原型的墙图工具先落在 `miniprogram/utils/surveyWallGraph.js`，页面会话由 `miniprogram/pages/surveying-editor/surveying-editor.*` 消费。

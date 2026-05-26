@@ -163,3 +163,9 @@ SurveyFloor = {
 | 报告/CAD/3D | 先消费适配结果；后续可逐步直接消费墙图。 |
 
 原型阶段不得调用该适配器写入正式 floor plan。
+
+## Phase 2 落地接口记录
+
+- `miniprogram/utils/surveyWallGraph.js` 已承载原型墙图内存模型，导出 `createSurveyDraft`、`placeCursor`、`startPreview`、`commitPreviewLength`、`confirmClosure`、`selectWall`、`startRemeasure`、`remeasureSelectedWall`、`setMeasurementSide`、`setThickness`、`resetCursor` 和 `updateViewport` 等页面消费接口。
+- 当前实现仅维护单楼层、单连续墙链和单闭合空间；所有坐标、长度、墙厚和闭合容差均以整数毫米保存。
+- 闭合空间仍停留在原型内存态，不调用 `surveyLegacyAdapter`，也不写入旧版 `rooms/homeOutline/partitions`。

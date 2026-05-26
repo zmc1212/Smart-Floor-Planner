@@ -29,46 +29,87 @@
       </view>
 
       <view class="measurement-bubble">
-        <text class="bubble-title">当前墙段</text>
-        <text class="bubble-value">拖拽光标后输入 mm</text>
+        <text class="bubble-title">{{measurementTitle}}</text>
+        <text class="bubble-value">{{measurementValue}}</text>
       </view>
 
-      <view class="grid-canvas">
+      <view
+        class="grid-canvas"
+        bindtouchstart="onCanvasTouchStart"
+        bindtouchmove="onCanvasTouchMove"
+        bindtouchend="onCanvasTouchEnd"
+        bindtouchcancel="onCanvasTouchEnd"
+      >
         <view class="origin-axis x-axis"></view>
         <view class="origin-axis y-axis"></view>
 
-        <view class="wall-preview">
-          <view class="wall-body"></view>
+        <view
+          wx:for="{{renderWalls}}"
+          wx:key="id"
+          class="wall-render {{item.selected ? 'selected' : ''}}"
+          style="{{item.style}}"
+          data-id="{{item.id}}"
+          catchtap="onWallTap"
+        >
+          <view class="wall-body" style="{{item.bodyStyle}}"></view>
           <view class="wall-redline"></view>
-          <text class="wall-length">2600 mm</text>
+          <text class="wall-length" style="{{item.labelStyle}}">{{item.label}}</text>
         </view>
 
-        <view class="confirmed-wall wall-a">
-          <text>2600</text>
-        </view>
-        <view class="confirmed-wall wall-b">
-          <text>90°</text>
+        <view wx:if="{{previewWall}}" class="wall-render preview" style="{{previewWall.style}}">
+          <view class="wall-body preview-body" style="{{previewWall.bodyStyle}}"></view>
+          <view class="wall-redline preview-line"></view>
+          <text class="wall-length preview-label" style="{{previewWall.labelStyle}}">{{previewWall.label}}</text>
         </view>
 
-        <view class="cursor-anchor">
+        <view wx:if="{{cursorVisible}}" class="cursor-anchor" style="{{cursorStyle}}">
           <view class="cursor-line horizontal"></view>
           <view class="cursor-line vertical"></view>
           <view class="cursor-core"></view>
         </view>
+      </view>
 
-        <view class="close-hint">靠近起点后可闭合单空间</view>
+      <view wx:if="{{closeHintVisible}}" class="close-hint {{closeHintActionVisible ? 'actionable' : ''}}" bindtap="onConfirmClose">
+        {{closeHintText}}
+      </view>
+
+      <view wx:if="{{spaceSummary}}" class="space-summary">
+        <text>{{spaceSummary.label}}</text>
+        <text class="space-area">{{spaceSummary.area}}</text>
+      </view>
+
+      <view wx:if="{{selectedWall}}" class="wall-context">
+        <view class="wall-context-title">当前墙体</view>
+        <view class="wall-context-meta">
+          <text>{{selectedWall.mode}}</text>
+          <text>{{selectedWall.length}}</text>
+          <text>{{selectedWall.side}}</text>
+          <text>{{selectedWall.thickness}}</text>
+        </view>
+        <view class="wall-context-actions">
+          <view class="context-action primary" bindtap="onStartRemeasure">复尺</view>
+          <view class="context-action" bindtap="onToggleSide">切墙侧</view>
+          <view class="context-action" data-tool="thickness" bindtap="onToolTap">墙厚</view>
+          <view class="context-action muted" bindtap="onExitWallSelection">退出</view>
+        </view>
       </view>
 
       <view class="undo-redo">
-        <view class="round-action disabled" bindtap="onDisabledTap">撤销</view>
-        <view class="round-action disabled" bindtap="onDisabledTap">重做</view>
+        <view class="round-action {{historySummary.undo ? '' : 'disabled'}}" bindtap="onUndo">
+          <text>撤销</text>
+          <text class="history-count">{{historySummary.undo}}</text>
+        </view>
+        <view class="round-action {{historySummary.redo ? '' : 'disabled'}}" bindtap="onRedo">
+          <text>重做</text>
+          <text class="history-count">{{historySummary.redo}}</text>
+        </view>
       </view>
     </view>
 
     <view class="right-rail">
       <view class="tool-group primary-tools">
         <view
-          class="tool-button {{activeTool === item.key ? 'active' : ''}}"
+          class="tool-button {{item.active ? 'active' : ''}}"
           wx:for="{{coreTools}}"
           wx:key="key"
           data-tool="{{item.key}}"
@@ -99,21 +140,45 @@
 
   <view class="bottom-controls">
     <view class="mode-pill active">测墙模式</view>
-    <view class="bottom-action" data-action="bluetooth" bindtap="onBottomAction">
+    <view class="bottom-action disabled" data-action="bluetooth" bindtap="onBottomAction">
       <text class="bottom-title">蓝牙</text>
       <text class="bottom-subtitle">Phase 3</text>
     </view>
     <view class="bottom-action" data-action="manual" bindtap="onBottomAction">
       <text class="bottom-title">手输 mm</text>
-      <text class="bottom-subtitle">Phase 2</text>
+      <text class="bottom-subtitle">输入当前墙</text>
     </view>
     <view class="bottom-action" data-action="cursor" bindtap="onBottomAction">
       <text class="bottom-title">重置光标</text>
-      <text class="bottom-subtitle">中心点</text>
+      <text class="bottom-subtitle">保留已测墙</text>
     </view>
     <view class="bottom-action disabled" data-action="add" bindtap="onBottomAction">
       <text class="bottom-title">新增</text>
       <text class="bottom-subtitle">待开放</text>
     </view>
+  </view>
+
+  <view wx:if="{{numberPadVisible}}" class="number-pad-mask" bindtap="onNumberClose"></view>
+  <view wx:if="{{numberPadVisible}}" class="number-pad-panel">
+    <view class="number-pad-header">
+      <view>
+        <text class="number-pad-title">{{numberPadTitle}}</text>
+        <text class="number-pad-subtitle">{{numberPadSubtitle}}</text>
+      </view>
+      <view class="number-pad-close" bindtap="onNumberClose">关闭</view>
+    </view>
+    <view class="number-display">{{numberInput || '0'}}<text> mm</text></view>
+    <view class="number-grid">
+      <view
+        class="number-key {{item === '清空' || item === '退格' ? 'utility' : ''}}"
+        wx:for="{{numberKeys}}"
+        wx:key="*this"
+        data-key="{{item}}"
+        bindtap="onNumberKey"
+      >
+        {{item}}
+      </view>
+    </view>
+    <view class="number-confirm" bindtap="onNumberConfirm">确认</view>
   </view>
 </view>
