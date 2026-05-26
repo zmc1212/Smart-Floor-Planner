@@ -21,6 +21,17 @@ All user-visible backend operations triggered by an admin action must show a uni
 - Detail dialogs and flows that close after confirmation must still show the result notification after the action completes.
 - Silent polling and automatic background sync tasks do not need toast-style notifications unless they were explicitly triggered by the user.
 
+## Admin UI Component Library
+
+The `admin` frontend must use the shared shadcn/ui component system.
+
+- Use Radix as the shared primitive layer; do not introduce Base UI for admin UI primitives.
+- Put reusable controls in `admin/src/components/ui/*` before using them across business pages.
+- Business pages should prefer shared `Button`, `Input`, `Textarea`, `Select`, `Table`, `Dialog`, `Sheet`, `AlertDialog`, `Badge`, `Card`, `Tabs`, `DropdownMenu`, `Separator`, and `Skeleton` components.
+- Do not use raw `alert()` as normal admin feedback; user-visible admin operation results must continue to use `operation-feedback`.
+- Avoid broad hard-coded colors and arbitrary radii in business pages. Prefer Tailwind/shadcn semantic tokens such as `background`, `card`, `muted`, `border`, `primary`, and `destructive`.
+- If a special visual pattern is needed, first decide whether it should become a shared component or variant.
+
 ## Chinese Documentation Sync
 
 Maintain `AGENTS.zh-CN.md` as the Chinese companion to this file. Whenever project instructions, backend feedback rules, or the Mini Program Editor measurement inventory are changed, update `AGENTS.zh-CN.md` in the same task and keep section names, numbering, file paths, and behavioral notes aligned.
@@ -45,9 +56,9 @@ Completed measurement modules:
 2. BLE connection flow: `ble-connector` supports remembered-device auto connect and new-device search; `editor._bindBluetoothCallbacks` restores measurement/connect/disconnect callbacks; `bottom-bar` exposes reconnect while connected.
 3. Laser command lifecycle: measurement uses `ATK001#` to open/trigger the device and falls back to `ATD001#` after timeout; `bluetooth.clearBuffer()` is used before live reads; duplicate short-interval readings are filtered in `editor.onBluetoothMeasure`.
 4. Layer-height measurement: in guided mode, `guidedEdgeIndex === -1` means the first reading is height. Room mode saves it to `room.height3D`; whole-home mode saves it as the full-home height and `homeOutline.height3D`; both report measurement type `height` before wall measurement begins.
-5. Straight wall measurement: `measure-modal` offers direction choices (`E`, `S`, `W`, `N`) based on the previous direction. `editor.onBluetoothMeasure` converts meters to internal geometry units with `meters * 10`, appends to `measurePoints`, updates either the room polygon or `homeOutline` preview, sets `canFinishPolygon`, reports type `length`, and refits the canvas.
+5. Straight wall measurement: `measure-modal` auto-recommends the next direction from `pendingDirection` or the previous direction, keeps manual direction choices (`E`, `S`, `W`, `N`) collapsed behind an override, and can still expose angled measurement after enough edges. `editor.onBluetoothMeasure` converts meters to internal geometry units with `meters * 10`, appends to `measurePoints`, updates either the room polygon or `homeOutline` preview, sets `canFinishPolygon`, reports type `length`, and refits the canvas.
 6. Irregular/angled wall measurement: after enough edges, `measure-modal` can start `angle-measure`. The angle flow temporarily owns the BLE callback, measures wall A/B/diagonal, calculates the angle with `util.calculateAngle`, appends the computed edge to the active room or whole-home outline, and reports type `angle`.
-7. Polygon finish and remeasure: `guided-banner` can finish the measured outline when `canFinishPolygon` is true. Room mode closes the room polygon. Whole-home mode requires the final point to close within `0.20m`, snaps the outline closed, saves `homeOutline`, generates initial `rooms`, and switches to partition/editing. `onStartRemeasure` resets only the active room or the whole-home skeleton depending on `measurementMode`.
+7. Polygon finish and remeasure: `guided-banner` shows the recommended next measurement step and can finish the measured outline when `canFinishPolygon` is true. Room mode closes the room polygon. Whole-home mode requires the final point to close within `0.20m`, snaps the outline closed, saves `homeOutline`, generates initial `rooms`, and switches to partition/editing. `onStartRemeasure` resets only the active room or the whole-home skeleton depending on `measurementMode`.
 8. Canvas measurement visualization: `floor-canvas` renders measured polygons, whole-home outlines, interior partition lines, the active/latest measured edge, blinking measurement state, dashed close-back preview, next-direction arrows, dimension labels, area labels, pan/zoom, room drag, edge hit-testing, and fit-to-view.
 9. Manual room, shape, and partition support: the toolbar can insert preset shapes, manually drawn rooms, and whole-home interior partition lines; room width/height edits in `properties` use the same internal unit convention (`meters * 10`).
 10. Door/window wall selection: in `DOOR` or `WINDOW` mode, the canvas finds the nearest wall through `openingGeometry.findNearestWall`, restricted to the current guided room when present. In whole-home mode, door/window placement targets generated rooms after the outline is closed. The canvas emits `openingwallselect` with wall, point, offset, and reference direction.

@@ -3,21 +3,17 @@
     <view class="modal-close" bindtap="onClose">关闭</view>
 
     <view class="title-section">
-      <text class="modal-title">准备测量</text>
-      <text class="modal-subtitle">{{currentStep === 0 ? '测量层高' : '步骤 第' + currentStep + ' 条边'}}</text>
+      <text class="modal-title">{{guidanceTitle}}</text>
+      <text class="modal-subtitle">{{currentStep === 0 ? '测量层高' : '步骤 ' + currentStep + ' · 测量墙边'}}</text>
     </view>
 
-    <view class="direction-grid">
-      <view
-        class="direction-cell {{selectedDirection === item.key ? 'active' : ''}}"
-        wx:for="{{availableDirections}}"
-        wx:key="key"
-        data-dir="{{item.key}}"
-        bindtap="onSelectDirection"
-      >
-        <text class="dir-label">{{item.label}}</text>
-        <text class="dir-desc">{{item.desc}}</text>
+    <view class="smart-card">
+      <view class="smart-card-main">
+        <text class="smart-kicker">{{smartKicker}}</text>
+        <text class="smart-title">{{activeDirectionLabel}}</text>
+        <text class="smart-desc">{{activeDirectionDesc}}</text>
       </view>
+      <view class="smart-badge">{{smartBadgeText}}</view>
     </view>
 
     <view class="dir-preview-box">
@@ -39,12 +35,30 @@
 
     <view class="hint-section">
       <text class="hint-icon">!</text>
-      <text class="hint-text">将测距仪背部贴紧对应墙面，确认激光发射口朝向所选方向。点击下方按钮后，测距仪将开始测量。</text>
+      <text class="hint-text">{{guidanceText}}</text>
+    </view>
+
+    <view class="advanced-toggle" wx:if="{{canOverrideDirection}}" bindtap="onToggleAdvanced">
+      <text>{{showAdvancedDirections ? '收起方向选择' : '方向不对？手动修改'}}</text>
+      <text class="toggle-arrow">{{showAdvancedDirections ? '↑' : '↓'}}</text>
+    </view>
+
+    <view class="direction-grid" wx:if="{{showAdvancedDirections}}">
+      <view
+        class="direction-cell {{selectedDirection === item.key ? 'active' : ''}}"
+        wx:for="{{availableDirections}}"
+        wx:key="key"
+        data-dir="{{item.key}}"
+        bindtap="onSelectDirection"
+      >
+        <text class="dir-label">{{item.label}}</text>
+        <text class="dir-desc">{{item.desc}}</text>
+      </view>
     </view>
 
     <view class="action-section">
-      <view class="btn btn-primary btn-confirm" bindtap="onConfirm">已放好，开始测量</view>
-      <view class="btn btn-outline btn-finish" wx:if="{{canFinish}}" bindtap="onFinish">测完了，闭合房间</view>
+      <view class="btn btn-primary btn-confirm" bindtap="onConfirm">{{primaryActionText}}</view>
+      <view class="btn btn-outline btn-finish" wx:if="{{canFinish}}" bindtap="onFinish">测完了，闭合轮廓</view>
     </view>
   </view>
 </view>

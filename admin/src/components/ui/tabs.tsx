@@ -1,41 +1,91 @@
-'use client';
+"use client"
 
-import * as React from 'react';
-import { cn } from '@/lib/utils';
+import * as React from "react"
+import { Tabs as TabsPrimitive } from "radix-ui"
 
-interface Tab {
-  id: string;
-  label: string | React.ReactNode;
+import { cn } from "@/lib/utils"
+
+type LegacyTab = {
+  id: string
+  label: React.ReactNode
 }
 
-interface TabsProps {
-  tabs: Tab[];
-  activeTab: string;
-  onChange: (id: string) => void;
-  className?: string;
+type TabsProps =
+  | React.ComponentPropsWithoutRef<typeof TabsPrimitive.Root>
+  | {
+      tabs: LegacyTab[]
+      activeTab: string
+      onChange: (id: string) => void
+      className?: string
+    }
+
+function Tabs(props: TabsProps) {
+  if ("tabs" in props) {
+    const { tabs, activeTab, onChange, className } = props
+
+    return (
+      <TabsPrimitive.Root
+        value={activeTab}
+        onValueChange={onChange}
+        className={className}
+      >
+        <TabsList>
+          {tabs.map((tab) => (
+            <TabsTrigger key={tab.id} value={tab.id}>
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </TabsPrimitive.Root>
+    )
+  }
+
+  return <TabsPrimitive.Root {...props} />
 }
 
-/**
- * 通用 Tab 切换组件 (Segmented Control 风格)
- * 参考 admins 页面的设计规范：bg-muted/30 容器 + bg-white 激活项
- */
-export function Tabs({ tabs, activeTab, onChange, className }: TabsProps) {
-  return (
-    <div className={cn("flex p-1 bg-muted/30 rounded-xl border border-muted/50 w-fit", className)}>
-      {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          onClick={() => onChange(tab.id)}
-          className={cn(
-            "px-6 py-2 text-sm font-medium rounded-lg transition-all whitespace-nowrap",
-            activeTab === tab.id 
-              ? "bg-white shadow-sm text-primary" 
-              : "text-muted-foreground hover:text-foreground"
-          )}
-        >
-          {tab.label}
-        </button>
-      ))}
-    </div>
-  );
-}
+const TabsList = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.List>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
+>(({ className, ...props }, ref) => (
+  <TabsPrimitive.List
+    ref={ref}
+    className={cn(
+      "inline-flex h-9 items-center justify-center rounded-lg border border-border bg-muted/40 p-1 text-muted-foreground",
+      className
+    )}
+    {...props}
+  />
+))
+TabsList.displayName = TabsPrimitive.List.displayName
+
+const TabsTrigger = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
+>(({ className, ...props }, ref) => (
+  <TabsPrimitive.Trigger
+    ref={ref}
+    className={cn(
+      "inline-flex items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm",
+      className
+    )}
+    {...props}
+  />
+))
+TabsTrigger.displayName = TabsPrimitive.Trigger.displayName
+
+const TabsContent = React.forwardRef<
+  React.ElementRef<typeof TabsPrimitive.Content>,
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.Content>
+>(({ className, ...props }, ref) => (
+  <TabsPrimitive.Content
+    ref={ref}
+    className={cn(
+      "mt-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+      className
+    )}
+    {...props}
+  />
+))
+TabsContent.displayName = TabsPrimitive.Content.displayName
+
+export { Tabs, TabsList, TabsTrigger, TabsContent }

@@ -33,6 +33,9 @@ export async function GET(request: Request) {
       communityName,
       area: searchParams.get('area'),
       layout: searchParams.get('layout'),
+      areaId: searchParams.get('areaId'),
+      specType: searchParams.get('specType'),
+      areaType: searchParams.get('areaType'),
       page: Number(searchParams.get('page') || '1'),
       limit: Number(searchParams.get('limit') || '10'),
     });

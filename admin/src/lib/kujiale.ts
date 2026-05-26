@@ -1,10 +1,23 @@
+import crypto from 'crypto';
+
 type KujialeSearchParams = {
   city?: string;
   communityName: string;
   area?: string | number | null;
   layout?: string | null;
+  areaId?: string | number | null;
+  specType?: string | number | null;
+  areaType?: string | number | null;
   page?: number;
   limit?: number;
+};
+
+export type KujialeCity = {
+  province: string;
+  cities: Array<{
+    name: string;
+    cityid: number;
+  }>;
 };
 
 export type KujialeFloorPlanCard = {
@@ -50,20 +63,20 @@ type KujialeConfig = {
   baseUrl?: string;
   searchPath: string;
   detailPath: string;
-  tokenPath: string;
+  cityListUrl: string;
   useMock: boolean;
 };
 
-let tokenCache: { token: string; expiresAt: number } | null = null;
+let cityCache: { data: KujialeCity[]; expiresAt: number } | null = null;
 
 function getConfig(): KujialeConfig {
   return {
     appKey: process.env.KUJIALE_APP_KEY,
     appSecret: process.env.KUJIALE_APP_SECRET,
     baseUrl: process.env.KUJIALE_BASE_URL?.replace(/\/+$/, ''),
-    searchPath: process.env.KUJIALE_SEARCH_PATH || '/floorplans/search',
-    detailPath: process.env.KUJIALE_DETAIL_PATH || '/floorplans/:id',
-    tokenPath: process.env.KUJIALE_TOKEN_PATH || '/oauth/token',
+    searchPath: process.env.KUJIALE_SEARCH_PATH || '/p/openapi/v2/floorplan/image/search',
+    detailPath: process.env.KUJIALE_DETAIL_PATH || '/p/openapi/v2/floorplan/:id/basic/v2',
+    cityListUrl: process.env.KUJIALE_CITY_LIST_URL || 'http://qhstatic.oss.aliyuncs.com/openapi/cities.json',
     useMock: process.env.KUJIALE_USE_MOCK === 'true',
   };
 }
@@ -130,19 +143,28 @@ function summarizeRaw(raw: Record<string, unknown>) {
     'houseId',
     'name',
     'title',
+    'communityId',
     'communityName',
     'community',
+    'commName',
     'city',
+    'cityName',
     'area',
+    'buildArea',
+    'buildAreaFloat',
+    'srcArea',
+    'srcAreaFloat',
     'layout',
     'layoutName',
-    'bedroomCount',
-    'livingRoomCount',
-    'kitchenCount',
-    'bathroomCount',
+    'specsInfo',
+    'publicType',
     'previewUrl',
     'coverUrl',
     'imageUrl',
+    'png',
+    'wallCenterLine',
+    'withoutDimensionLine',
+    'insideTheWall',
   ];
 
   return summaryKeys.reduce<Record<string, unknown>>((summary, key) => {
@@ -155,7 +177,7 @@ function getItems(raw: unknown): Record<string, unknown>[] {
   if (Array.isArray(raw)) return raw.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object');
   if (!raw || typeof raw !== 'object') return [];
   const obj = raw as Record<string, unknown>;
-  const candidates = [obj.data, obj.items, obj.list, obj.records, obj.result];
+  const candidates = [obj.data, obj.d, obj.items, obj.list, obj.records, obj.result];
   for (const candidate of candidates) {
     if (Array.isArray(candidate)) {
       return candidate.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object');
@@ -168,15 +190,28 @@ function getItems(raw: unknown): Record<string, unknown>[] {
   return [];
 }
 
+function getTotal(raw: unknown, fallback: number): number {
+  if (!raw || typeof raw !== 'object') return fallback;
+  const obj = raw as Record<string, unknown>;
+  return (
+    toNumber(obj.total) ||
+    toNumber(obj.count) ||
+    (obj.d && typeof obj.d === 'object' ? getTotal(obj.d, fallback) : fallback)
+  );
+}
+
 function normalizeCard(raw: Record<string, unknown>, fallbackCommunityName?: string): KujialeFloorPlanCard {
-  const externalId = pickString(raw, ['externalId', 'id', 'planId', 'houseId', 'floorPlanId', 'guid']) || '';
-  const communityName = pickString(raw, ['communityName', 'community', 'estateName', 'residentialName']) || fallbackCommunityName || '';
+  const externalId = pickString(raw, ['externalId', 'planId', 'id', 'houseId', 'floorPlanId', 'guid']) || '';
+  const communityName =
+    pickString(raw, ['communityName', 'commName', 'community', 'estateName', 'residentialName']) ||
+    fallbackCommunityName ||
+    '';
   const city = pickString(raw, ['city', 'cityName']);
-  const area = pickNumber(raw, ['area', 'houseArea', 'buildingArea', 'usableArea']);
+  const area = pickNumber(raw, ['area', 'buildAreaFloat', 'houseArea', 'buildingArea', 'usableArea']);
   const layoutLabel =
-    pickString(raw, ['layoutLabel', 'layoutName', 'layout', 'houseType']) ||
+    pickString(raw, ['layoutLabel', 'specsInfo', 'layoutName', 'layout', 'houseType']) ||
     buildLayoutLabel(raw);
-  const previewUrl = pickString(raw, ['previewUrl', 'coverUrl', 'imageUrl', 'thumbnailUrl', 'picUrl']);
+  const previewUrl = pickString(raw, ['previewUrl', 'imageUrl', 'png', 'wallCenterLine', 'coverUrl', 'thumbnailUrl', 'picUrl']);
 
   return {
     externalId,
@@ -239,7 +274,7 @@ function normalizeRoom(raw: Record<string, unknown>, index: number): ImportedKuj
 }
 
 function extractRooms(raw: Record<string, unknown>): ImportedKujialeRoom[] {
-  const roomCandidates = [raw.rooms, raw.spaces, raw.roomList, raw.spaceList, raw.data];
+  const roomCandidates = [raw.rooms, raw.spaces, raw.roomList, raw.spaceList, raw.data, raw.d];
   for (const candidate of roomCandidates) {
     if (Array.isArray(candidate)) {
       return candidate
@@ -256,7 +291,7 @@ function extractRooms(raw: Record<string, unknown>): ImportedKujialeRoom[] {
 
 function mockCard(params: KujialeSearchParams, index: number): KujialeFloorPlanCard {
   const area = toNumber(params.area) || 89 + index * 12;
-  const layoutLabel = params.layout || (index === 0 ? '3室2厅1厨2卫' : '2室2厅1厨1卫');
+  const layoutLabel = params.layout || (index === 0 ? '3室2厅1厨2卫' : '2室1厅1厨1卫');
   return {
     externalId: `mock-kujiale-${encodeURIComponent(params.communityName)}-${index + 1}`,
     communityName: params.communityName,
@@ -302,38 +337,8 @@ function mockDetail(externalId: string): KujialeFloorPlanDetail {
   };
 }
 
-async function getAccessToken(config: KujialeConfig) {
-  assertConfigured(config);
-  if (config.useMock) return 'mock-token';
-  if (tokenCache && tokenCache.expiresAt > Date.now() + 60_000) return tokenCache.token;
-
-  const res = await fetch(`${config.baseUrl}${config.tokenPath}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      grant_type: 'client_credentials',
-      client_id: config.appKey,
-      client_secret: config.appSecret,
-      appKey: config.appKey,
-      appSecret: config.appSecret,
-    }),
-    cache: 'no-store',
-  });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data?.error || data?.message || 'Failed to authenticate with KuJiale API.');
-  }
-
-  const token = data.access_token || data.accessToken || data.token;
-  if (!token) throw new Error('KuJiale token response did not include an access token.');
-
-  const expiresIn = Number(data.expires_in || data.expiresIn || 7200);
-  tokenCache = {
-    token,
-    expiresAt: Date.now() + Math.max(300, expiresIn - 60) * 1000,
-  };
-  return token;
+function md5(input: string) {
+  return crypto.createHash('md5').update(input, 'utf8').digest('hex');
 }
 
 function appendQuery(url: URL, params: Record<string, string | number | undefined | null>) {
@@ -344,12 +349,69 @@ function appendQuery(url: URL, params: Record<string, string | number | undefine
   });
 }
 
+function appendOpenApiAuth(url: URL, config: KujialeConfig, appuid?: string) {
+  if (!config.appKey || !config.appSecret) return;
+  const timestamp = String(Date.now());
+  const sign = appuid
+    ? md5(config.appSecret + config.appKey + appuid + timestamp)
+    : md5(config.appSecret + config.appKey + timestamp);
+  appendQuery(url, {
+    appkey: config.appKey,
+    timestamp,
+    sign,
+    appuid,
+  });
+}
+
+function normalizeCityName(name?: string) {
+  return (name || '').replace(/市$/, '').trim();
+}
+
+async function resolveAreaId(params: KujialeSearchParams) {
+  if (params.areaId) return params.areaId;
+  const cityName = normalizeCityName(params.city);
+  if (!cityName) return undefined;
+
+  const cities = await getKujialeCities();
+  for (const group of cities) {
+    const matched = group.cities.find((city) => normalizeCityName(city.name) === cityName);
+    if (matched) return matched.cityid;
+  }
+  return undefined;
+}
+
+export async function getKujialeCities(): Promise<KujialeCity[]> {
+  const config = getConfig();
+
+  if (config.useMock) {
+    return [
+      { province: '浙江', cities: [{ name: '杭州', cityid: 175 }] },
+      { province: '上海', cities: [{ name: '上海', cityid: 39 }] },
+    ];
+  }
+
+  if (cityCache && cityCache.expiresAt > Date.now()) return cityCache.data;
+
+  const res = await fetch(config.cityListUrl, { cache: 'no-store' });
+  const data = await res.json().catch(() => []);
+  if (!res.ok || !Array.isArray(data)) {
+    throw new Error('Failed to fetch KuJiale city list.');
+  }
+
+  cityCache = {
+    data: data as KujialeCity[],
+    expiresAt: Date.now() + 1000 * 60 * 60 * 6,
+  };
+  return cityCache.data;
+}
+
 export async function searchKujialeFloorPlans(params: KujialeSearchParams) {
   const config = getConfig();
   assertConfigured(config);
 
   const page = Math.max(Number(params.page) || 1, 1);
-  const limit = Math.min(Math.max(Number(params.limit) || 10, 1), 50);
+  const limit = Math.min(Math.max(Number(params.limit) || 10, 1), 100);
+  const start = (page - 1) * limit;
 
   if (config.useMock) {
     return {
@@ -358,35 +420,34 @@ export async function searchKujialeFloorPlans(params: KujialeSearchParams) {
     };
   }
 
-  const token = await getAccessToken(config);
+  const areaId = await resolveAreaId(params);
+  if (!areaId) {
+    throw new Error('KuJiale areaId is required. Select a city before searching floor plans.');
+  }
+
   const url = new URL(`${config.baseUrl}${config.searchPath}`);
   appendQuery(url, {
-    city: params.city,
-    communityName: params.communityName,
     keyword: params.communityName,
-    area: params.area,
-    layout: params.layout,
-    page,
-    limit,
+    area_id: areaId,
+    spec_type: params.specType,
+    area_type: params.areaType,
+    num: limit,
+    start,
+    locale: 'zh_CN',
   });
+  appendOpenApiAuth(url, config);
 
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'X-App-Key': config.appKey || '',
-    },
-    cache: 'no-store',
-  });
+  const res = await fetch(url, { cache: 'no-store' });
   const data = await res.json().catch(() => ({}));
 
-  if (!res.ok) {
-    throw new Error(data?.error || data?.message || 'Failed to search KuJiale floor plans.');
+  if (!res.ok || data?.c !== '0') {
+    throw new Error(data?.m || data?.error || data?.message || 'Failed to search KuJiale floor plans.');
   }
 
   const items = getItems(data)
     .map((item) => normalizeCard(item, params.communityName))
     .filter((item) => item.externalId);
-  const total = toNumber((data as Record<string, unknown>).total) || toNumber((data as Record<string, unknown>).count) || items.length;
+  const total = getTotal(data, items.length);
 
   return {
     items,
@@ -405,24 +466,18 @@ export async function getKujialeFloorPlanDetail(externalId: string): Promise<Kuj
 
   if (config.useMock) return mockDetail(externalId);
 
-  const token = await getAccessToken(config);
   const detailPath = config.detailPath.replace(':id', encodeURIComponent(externalId));
   const url = new URL(`${config.baseUrl}${detailPath}`);
+  appendOpenApiAuth(url, config);
 
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'X-App-Key': config.appKey || '',
-    },
-    cache: 'no-store',
-  });
+  const res = await fetch(url, { cache: 'no-store' });
   const data = await res.json().catch(() => ({}));
 
-  if (!res.ok) {
-    throw new Error(data?.error || data?.message || 'Failed to fetch KuJiale floor plan detail.');
+  if (!res.ok || (data?.c !== undefined && data.c !== '0')) {
+    throw new Error(data?.m || data?.error || data?.message || 'Failed to fetch KuJiale floor plan detail.');
   }
 
-  const raw = (data?.data && typeof data.data === 'object' ? data.data : data) as Record<string, unknown>;
+  const raw = (data?.d && typeof data.d === 'object' ? data.d : data?.data && typeof data.data === 'object' ? data.data : data) as Record<string, unknown>;
   const card = normalizeCard(raw);
   const rooms = extractRooms(raw);
 

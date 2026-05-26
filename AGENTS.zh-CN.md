@@ -23,6 +23,17 @@
 - 详情弹窗或确认后会关闭的流程，也必须在操作完成后显示结果通知。
 - 静默轮询和自动后台同步任务不需要 toast 类通知，除非它们是用户明确触发的。
 
+## Admin UI 组件库
+
+`admin` 前端必须统一使用共享的 shadcn/ui 组件体系。
+
+- 使用 Radix 作为共享 primitive 底层；不要再为后台 UI primitive 引入 Base UI。
+- 可复用控件应优先沉淀到 `admin/src/components/ui/*`，再在业务页面中复用。
+- 业务页面应优先使用共享的 `Button`、`Input`、`Textarea`、`Select`、`Table`、`Dialog`、`Sheet`、`AlertDialog`、`Badge`、`Card`、`Tabs`、`DropdownMenu`、`Separator` 和 `Skeleton` 组件。
+- 不要把原生 `alert()` 作为后台常规反馈；用户可见的后台操作结果必须继续使用 `operation-feedback`。
+- 不要在业务页面大面积使用硬编码颜色和任意圆角。优先使用 Tailwind/shadcn 语义 token，例如 `background`、`card`、`muted`、`border`、`primary` 和 `destructive`。
+- 如果必须新增特殊视觉样式，先判断它是否应该沉淀为共享组件或 variant。
+
 ## 中文文档同步
 
 维护 `AGENTS.zh-CN.md` 作为 `AGENTS.md` 的中文伴随文件。每次修改项目指令、后台反馈规则或小程序编辑器量房功能清单时，必须在同一次任务中更新 `AGENTS.zh-CN.md`，并保持章节名称、编号、文件路径和行为说明同步。
@@ -47,9 +58,9 @@
 2. BLE 连接流程：`ble-connector` 支持记忆设备自动连接和新设备搜索；`editor._bindBluetoothCallbacks` 恢复测量/连接/断开回调；`bottom-bar` 在已连接时提供重新连接入口。
 3. 激光指令生命周期：测量使用 `ATK001#` 打开/触发设备，超时后回退发送 `ATD001#` 查询；实时读取前使用 `bluetooth.clearBuffer()`；`editor.onBluetoothMeasure` 会过滤短时间重复读数。
 4. 层高测量：引导模式下 `guidedEdgeIndex === -1` 表示第一次读数是高度。房间模式保存到 `room.height3D`；全屋模式保存为全屋高度和 `homeOutline.height3D`；两者都会以 `height` 类型上报，然后进入墙体测量。
-5. 直墙测量：`measure-modal` 根据上一方向提供 `E`、`S`、`W`、`N` 方向选择。`editor.onBluetoothMeasure` 将米转换为内部几何单位 `meters * 10`，追加到 `measurePoints`，更新房间多边形或 `homeOutline` 预览，设置 `canFinishPolygon`，上报 `length` 类型，并重新适配画布。
+5. 直墙测量：`measure-modal` 会根据 `pendingDirection` 或上一方向自动推荐下一方向，并将手动方向选择（`E`、`S`、`W`、`N`）折叠到覆盖入口；边数足够后仍可进入斜角测量。`editor.onBluetoothMeasure` 将米转换为内部几何单位 `meters * 10`，追加到 `measurePoints`，更新房间多边形或 `homeOutline` 预览，设置 `canFinishPolygon`，上报 `length` 类型，并重新适配画布。
 6. 异形/斜角墙测量：边数足够后，`measure-modal` 可启动 `angle-measure`。斜角流程临时接管 BLE 回调，测量墙 A、墙 B 和对角线，用 `util.calculateAngle` 计算角度，将计算出的边追加到当前房间或全屋外轮廓，并上报 `angle` 类型。
-7. 轮廓闭合和重测：`guided-banner` 在 `canFinishPolygon` 为 true 时可完成测量轮廓。房间模式闭合房间多边形。全屋模式要求最终点在 `0.20m` 内闭合，自动吸附并保存 `homeOutline`，生成初始 `rooms`，切换到分区/编辑阶段。`onStartRemeasure` 会根据 `measurementMode` 重置当前房间或全屋骨架。
+7. 轮廓闭合和重测：`guided-banner` 会显示推荐的下一测量步骤，并在 `canFinishPolygon` 为 true 时可完成测量轮廓。房间模式闭合房间多边形。全屋模式要求最终点在 `0.20m` 内闭合，自动吸附并保存 `homeOutline`，生成初始 `rooms`，切换到分区/编辑阶段。`onStartRemeasure` 会根据 `measurementMode` 重置当前房间或全屋骨架。
 8. 画布测量可视化：`floor-canvas` 渲染测量多边形、全屋外轮廓、内墙分区线、当前/最新测量边、闪烁测量状态、虚线闭合预览、下一方向箭头、尺寸标签、面积标签、平移/缩放、房间拖拽、边命中测试和适配视图。
 9. 手动房间、形状和分区支持：工具栏可以插入预设形状、手绘房间和全屋内墙分区线；`properties` 中房间宽高编辑使用同一内部单位约定（`meters * 10`）。
 10. 门窗墙体选择：在 `DOOR` 或 `WINDOW` 模式下，画布通过 `openingGeometry.findNearestWall` 找到最近墙体；存在当前引导房间时会限制到该房间。全屋模式下，门窗放置目标是外轮廓闭合后生成的房间。画布通过 `openingwallselect` 发出墙体、点位、偏移和参考方向。

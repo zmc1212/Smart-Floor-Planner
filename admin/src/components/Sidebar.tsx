@@ -24,6 +24,7 @@ import {
   Ruler,
   Sofa,
   Settings,
+  Search,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -91,6 +92,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       title: '户型图库',
       items: [
         { key: 'floorplans', label: '户型图库', icon: Map, href: '/floorplans' },
+        { key: 'kujiale-floorplans', label: '酷家乐搜索', icon: Search, href: '/floorplans/kujiale' },
         { key: 'measurements', label: '量房记录', icon: Ruler, href: '/measurements' },
       ]
     },
@@ -372,6 +374,7 @@ export default function Sidebar() {
   const hasMenuPermission = (key: string) => {
     if (!admin) return true;
     if (admin.effectivePermissions?.includes(key)) return true;
+    if (key === 'kujiale-floorplans' && admin.effectivePermissions?.includes('floorplans')) return true;
     if (key === 'ai-soft-furnishing' && admin.effectivePermissions?.includes('ai-furnishing')) return true;
     if (key === 'ai-scenarios' && admin.effectivePermissions?.includes('ai-designer')) return true;
     return false;

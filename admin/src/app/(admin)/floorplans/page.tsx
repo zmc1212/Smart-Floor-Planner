@@ -6,7 +6,7 @@ import { Map, Loader2, ArrowLeft, Search, Calendar, Layers, User, Building2 } fr
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Pagination } from "@/components/ui/pagination";
 import {
@@ -93,21 +93,30 @@ export default function FloorPlansPage() {
             </div>
           </div>
           
-          <div className="flex items-center gap-4 bg-muted/30 p-1.5 rounded-2xl border border-muted w-full md:w-[400px]">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
-              <Input 
-                 value={searchTerm} 
-                 onChange={e => setSearchTerm(e.target.value)} 
-                 placeholder="输入户型或小区关键词查询..."
-                 className="h-10 pl-10 bg-background border-none shadow-none rounded-xl"
-              />
-            </div>
-            {!loading && (
-              <div className="text-[11px] font-bold text-muted-foreground px-3 shrink-0">
-                {plans.length} 份资产
+          <div className="flex w-full flex-col gap-3 md:w-[520px]">
+            <Link
+              href="/floorplans/kujiale"
+              className={cn(buttonVariants({ variant: 'outline', size: 'lg' }), "self-start bg-white font-bold")}
+            >
+              <Search size={16} />
+              酷家乐户型搜索
+            </Link>
+            <div className="flex items-center gap-4 bg-muted/30 p-1.5 rounded-2xl border border-muted w-full">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+                <Input 
+                   value={searchTerm} 
+                   onChange={e => setSearchTerm(e.target.value)} 
+                   placeholder="输入户型或小区关键词查询..."
+                   className="h-10 pl-10 bg-background border-none shadow-none rounded-xl"
+                />
               </div>
-            )}
+              {!loading && (
+                <div className="text-[11px] font-bold text-muted-foreground px-3 shrink-0">
+                  {plans.length} 份资产
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

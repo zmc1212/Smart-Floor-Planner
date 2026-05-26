@@ -9,6 +9,7 @@
   box-shadow: 0 8rpx 24rpx rgba(85, 104, 90, 0.05);
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   border-bottom: 1rpx solid rgba(207, 220, 207, 0.55);
+  flex-wrap: wrap;
 }
 
 .wizard-cancel,
@@ -38,11 +39,10 @@
 
 .wizard-text {
   flex: 1;
+  min-width: 220rpx;
   color: var(--text-secondary);
   font-size: var(--font-size-caption);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .wizard-text .text-blue {
@@ -50,8 +50,25 @@
   font-weight: var(--font-weight-bold);
 }
 
+.wizard-main-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wizard-sub-line {
+  display: block;
+  margin-top: 4rpx;
+  color: var(--text-brand);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .wizard-actions {
   display: flex;
   align-items: center;
   gap: var(--space-sm);
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }

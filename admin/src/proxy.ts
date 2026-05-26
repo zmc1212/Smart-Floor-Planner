@@ -7,6 +7,7 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/enterprises': 'enterprises',
   '/roles': 'roles',
   '/floorplans': 'floorplans',
+  '/floorplans/kujiale': 'floorplans',
   '/users': 'users',
   '/devices': 'devices',
   '/measurements': 'measurements',
@@ -17,6 +18,7 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/admins': 'admins',
   '/api/leads': 'leads',
   '/api/floorplans': 'floorplans',
+  '/api/kujiale': 'floorplans',
   '/api/staff': 'staff',
   '/api/enterprises': 'enterprises',
 };
@@ -68,8 +70,11 @@ export async function proxy(request: NextRequest) {
     }
 
     // Check permissions for the current route
-    const requiredPermission = ROUTE_PERMISSIONS[pathname] || 
-                               Object.entries(ROUTE_PERMISSIONS).find(([route]) => pathname.startsWith(route))?.[1];
+    const requiredPermission = ROUTE_PERMISSIONS[pathname] ||
+      Object.entries(ROUTE_PERMISSIONS)
+        .filter(([route]) => route !== '/' && pathname.startsWith(route))
+        .sort((a, b) => b[0].length - a[0].length)[0]?.[1] ||
+      ROUTE_PERMISSIONS['/'];
 
     if (requiredPermission && !userPermissions.includes(requiredPermission)) {
       // Prevent redirect loop: if already at root and missing dashboard permission, just proceed 
