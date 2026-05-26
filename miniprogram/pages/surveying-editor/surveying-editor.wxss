@@ -297,6 +297,11 @@ page {
   z-index: 4;
 }
 
+.wall-render.wall-redline-render {
+  z-index: 5;
+  pointer-events: none;
+}
+
 .wall-body {
   position: absolute;
   border-radius: 0;
@@ -479,7 +484,7 @@ page {
   flex-direction: column;
   align-items: center;
   gap: 12rpx;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .measure-position-tip {

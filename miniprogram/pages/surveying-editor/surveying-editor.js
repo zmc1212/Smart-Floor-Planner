@@ -338,6 +338,7 @@ Page({
       angleDeg: wall.angleDeg,
       lengthMm: wall.lengthMm,
       relativeAngle,
+      measurementSide: wall.measurementSide,
       style: `left:${roundPx(startPoint.x)}px; top:${roundPx(startPoint.y - WALL_HIT_HALF_PX)}px; width:${roundPx(width)}px; transform:rotate(${wall.angleDeg}deg);`,
       bodyStyle: `left:0; width:${roundPx(width)}px; height:${thicknessPx}px; top:${roundPx(bodyOffset)}px;`,
       outerLineStyle: `left:${roundPx(outerLine.left)}px; width:${roundPx(outerLine.width)}px; top:${roundPx(outlineTop)}px;`,
@@ -375,10 +376,11 @@ Page({
 
     const midX = (segment.startPoint.x + segment.endPoint.x) / 2;
     const midY = (segment.startPoint.y + segment.endPoint.y) / 2;
+    const side = segment.measurementSide || session.measurementSide;
     return {
       visible: session.state !== 'spaceClosed' && session.state !== 'wallSelected' && session.state !== 'remeasureAwaitingInput',
       style: `left:${roundPx(midX - 70)}px; top:${roundPx(midY + 96)}px;`,
-      buttonLabel: session.measurementSide === 'left' ? '↑' : '↓'
+      buttonLabel: side === 'left' ? '↑' : '↓'
     };
   },
 
@@ -569,14 +571,17 @@ Page({
   onToggleSide() {
     const floor = surveyGraph.getActiveFloor(this.draft);
     const session = floor.session;
-    const nextSide = session.measurementSide === 'right' ? 'left' : 'right';
-    const selectedWallId = session.selectedWallId;
-    const nextDraft = surveyGraph.setMeasurementSide(this.draft, nextSide, selectedWallId);
+    const lastWall = floor.walls[floor.walls.length - 1] || null;
+    const activeWallId = session.selectedWallId || (session.state === 'wallCommitted' && lastWall ? lastWall.id : '');
+    const activeWall = activeWallId ? surveyGraph.getWall(floor, activeWallId) : null;
+    const currentSide = activeWall ? activeWall.measurementSide : session.measurementSide;
+    const nextSide = currentSide === 'right' ? 'left' : 'right';
+    const nextDraft = surveyGraph.setMeasurementSide(this.draft, nextSide, activeWallId);
     this.applyDraft(nextDraft, {
-      recordHistory: !!selectedWallId,
+      recordHistory: !!activeWallId,
       extraData: { numberPadVisible: this.data.numberPadVisible }
     });
-    wx.showToast({ title: selectedWallId ? '墙侧已更新' : '后续墙侧已切换', icon: 'none' });
+    wx.showToast({ title: activeWallId ? '墙侧已更新' : '后续墙侧已切换', icon: 'none' });
   },
 
   onDisabledTap() {
@@ -705,8 +710,14 @@ Page({
 
     if (movedWall) {
       if (session.previewLengthMm >= surveyGraph.MIN_WALL_LENGTH_MM) {
-        this.draft = surveyGraph.holdPreviewForInput(this.draft);
-        this.syncFromDraft();
+        try {
+          const nextDraft = surveyGraph.commitPreviewLength(this.draft, session.previewLengthMm, 'manual');
+          this.applyDraft(nextDraft, { recordHistory: true });
+        } catch (err) {
+          wx.showToast({ title: err.message || '成墙失败，请重试', icon: 'none' });
+          this.draft = surveyGraph.cancelPending(this.draft);
+          this.syncFromDraft();
+        }
       } else {
         this.draft = surveyGraph.cancelPending(this.draft);
         this.syncFromDraft();

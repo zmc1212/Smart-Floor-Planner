@@ -60,7 +60,6 @@
           <view class="wall-outer-line" style="{{item.outerLineStyle}}"></view>
           <view wx:if="{{item.startCapVisible}}" class="wall-cap" style="{{item.startCapStyle}}"></view>
           <view wx:if="{{item.endCapVisible}}" class="wall-cap" style="{{item.endCapStyle}}"></view>
-          <view class="wall-redline"></view>
           <view wx:if="{{item.showDimension}}" class="wall-dimension" style="{{item.dimensionStyle}}">
             <view class="dimension-extension start"></view>
             <view class="dimension-extension end"></view>
@@ -71,24 +70,36 @@
           </view>
         </view>
 
-        <view wx:if="{{previewWall}}" class="wall-render preview {{previewWall.lineOnly ? 'line-only' : ''}}" style="{{previewWall.style}}">
+        <view wx:if="{{previewWall && !previewWall.lineOnly}}" class="wall-render preview" style="{{previewWall.style}}">
+          <view class="wall-body preview-body" style="{{previewWall.bodyStyle}}"></view>
+          <view class="wall-outer-line" style="{{previewWall.outerLineStyle}}"></view>
+          <view wx:if="{{previewWall.startCapVisible}}" class="wall-cap" style="{{previewWall.startCapStyle}}"></view>
+          <view wx:if="{{previewWall.endCapVisible}}" class="wall-cap" style="{{previewWall.endCapStyle}}"></view>
+          <view wx:if="{{previewWall.showDimension}}" class="wall-dimension preview-dimension" style="{{previewWall.dimensionStyle}}">
+            <view class="dimension-extension start"></view>
+            <view class="dimension-extension end"></view>
+            <view class="dimension-main"></view>
+            <view class="dimension-arrow start"></view>
+            <view class="dimension-arrow end"></view>
+            <text class="dimension-label">{{previewWall.dimensionLabel}}</text>
+          </view>
+        </view>
+
+        <view
+          wx:for="{{renderWalls}}"
+          wx:key="id"
+          class="wall-render wall-redline-render"
+          style="{{item.style}}"
+        >
+          <view class="wall-redline"></view>
+        </view>
+
+        <view wx:if="{{previewWall}}" class="wall-render wall-redline-render preview {{previewWall.lineOnly ? 'line-only' : ''}}" style="{{previewWall.style}}">
           <block wx:if="{{previewWall.lineOnly}}">
             <view class="drag-preview-line"></view>
           </block>
           <block wx:else>
-            <view class="wall-body preview-body" style="{{previewWall.bodyStyle}}"></view>
-            <view class="wall-outer-line" style="{{previewWall.outerLineStyle}}"></view>
-            <view wx:if="{{previewWall.startCapVisible}}" class="wall-cap" style="{{previewWall.startCapStyle}}"></view>
-            <view wx:if="{{previewWall.endCapVisible}}" class="wall-cap" style="{{previewWall.endCapStyle}}"></view>
             <view class="wall-redline preview-line"></view>
-            <view wx:if="{{previewWall.showDimension}}" class="wall-dimension preview-dimension" style="{{previewWall.dimensionStyle}}">
-              <view class="dimension-extension start"></view>
-              <view class="dimension-extension end"></view>
-              <view class="dimension-main"></view>
-              <view class="dimension-arrow start"></view>
-              <view class="dimension-arrow end"></view>
-              <text class="dimension-label">{{previewWall.dimensionLabel}}</text>
-            </view>
           </block>
         </view>
 
