@@ -28,17 +28,27 @@
         <text class="summary-label">状态</text>
       </view>
       <view class="source-pill" wx:if="{{activeSourceLabel}}">{{activeSourceLabel}}</view>
-      <view class="summary-action primary" bindtap="onStartWholeHomeMeasure">
-        {{homeOutline && homeOutline.polygonClosed ? '继续全屋编辑' : '开始全屋测量'}}
+      <view class="summary-actions">
+        <view class="summary-action" bindtap="onStartWholeHomeMeasure">
+          旧版测量
+        </view>
+        <view class="summary-action primary" bindtap="onStartSurveyingPrototype">
+          新版测绘体验
+        </view>
       </view>
     </view>
 
-    <view class="whole-home-card" bindtap="onStartWholeHomeMeasure">
-      <view>
+    <view class="whole-home-card">
+      <view class="whole-home-copy">
         <view class="whole-home-title">全屋骨架测量</view>
-        <view class="whole-home-subtitle">从入户点顺时针闭合外轮廓，再补内墙、门窗和空间命名。</view>
+        <view class="whole-home-subtitle">旧版继续稳定生产；新版测绘体验独立验证光标、网格和工作台外壳，不会同步正式户型。</view>
       </view>
-      <view class="whole-home-action">{{homeOutline && homeOutline.polygonClosed ? '继续' : '开始'}}</view>
+      <view class="whole-home-actions">
+        <view class="whole-home-action secondary" bindtap="onStartWholeHomeMeasure">
+          {{homeOutline && homeOutline.polygonClosed ? '继续旧版' : '旧版测量'}}
+        </view>
+        <view class="whole-home-action" bindtap="onStartSurveyingPrototype">新版体验</view>
+      </view>
     </view>
 
     <block wx:if="{{rooms.length === 0}}">

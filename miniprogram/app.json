@@ -6,6 +6,7 @@
     "pages/promotion-record-detail/promotion-record-detail",
     "pages/commission-records/commission-records",
     "pages/editor/editor",
+    "pages/surveying-editor/surveying-editor",
     "pages/inspiration/inspiration",
     "pages/ai-gen/ai-gen",
     "pages/mine/mine",

@@ -42,6 +42,13 @@ Maintain paired project documents the same way. In particular, when `docs/admin-
 
 When changing the measurement experience under `miniprogram/pages/editor/editor.*`, first identify which completed modules below are affected and tell the user explicitly. Keep this inventory up to date whenever a measurement feature is added, removed, or behaviorally changed.
 
+New surveying prototype note:
+
+- The new surveying workspace starts in `miniprogram/pages/surveying-editor/` and is documented under `docs/surveying-module/`. It is a parallel prototype shell, not a replacement for `miniprogram/pages/editor/`.
+- Business entry points that expose the prototype must keep an explicit dual choice: `旧版测量` continues to enter `miniprogram/pages/editor/editor`, while `新版测绘体验` enters `miniprogram/pages/surveying-editor/surveying-editor`.
+- During the prototype phases, `surveying-editor` must not write formal floor plan data, overwrite legacy drafts, submit measurement audit logs, or bypass the existing downstream compatibility flow.
+- Adding or changing the prototype entry does not by itself change the completed legacy measurement modules below. If shared BLE, formal saving, export/report, 3D, measurement logs, or `editor.*` are touched, identify and update the affected completed modules.
+
 Primary files:
 
 - Page coordinator: `miniprogram/pages/editor/editor.js`, `editor.wxml`, `editor.json`, `editor.wxss`.

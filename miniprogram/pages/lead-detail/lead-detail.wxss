@@ -104,7 +104,7 @@
 
 .summary-card {
   display: grid;
-  grid-template-columns: 1fr 1fr auto auto;
+  grid-template-columns: 1fr 1fr auto;
   gap: 12rpx;
   align-items: center;
   padding: 18rpx;
@@ -149,6 +149,15 @@
   color: #ffffff;
 }
 
+.summary-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .whole-home-card {
   padding: 24rpx;
   margin-bottom: 18rpx;
@@ -156,6 +165,11 @@
   align-items: center;
   justify-content: space-between;
   gap: 18rpx;
+}
+
+.whole-home-copy {
+  flex: 1;
+  min-width: 0;
 }
 
 .whole-home-title {
@@ -174,16 +188,30 @@
 
 .whole-home-action {
   flex-shrink: 0;
-  min-width: 96rpx;
+  min-width: 120rpx;
   height: 60rpx;
+  padding: 0 18rpx;
   border-radius: var(--radius-full);
-  background: rgba(34, 197, 94, 0.12);
-  color: #17a14c;
+  background: #17a14c;
+  color: #ffffff;
   font-size: 24rpx;
   font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
+}
+
+.whole-home-actions {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.whole-home-action.secondary {
+  background: rgba(34, 197, 94, 0.12);
+  color: #17a14c;
 }
 
 .source-pill {

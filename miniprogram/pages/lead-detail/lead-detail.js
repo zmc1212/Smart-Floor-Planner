@@ -284,6 +284,19 @@ Page({
     }
   },
 
+  onStartSurveyingPrototype() {
+    app.globalData.surveyingPrototypeContext = {
+      leadId: this.data.leadId,
+      leadName: this.data.lead && this.data.lead.name,
+      floorPlanId: this.data.activeFloorPlan && this.data.activeFloorPlan._id,
+      source: 'lead-detail'
+    };
+
+    wx.navigateTo({
+      url: `/pages/surveying-editor/surveying-editor?leadId=${this.data.leadId || ''}`
+    });
+  },
+
   onEnterRoom(e) {
     const roomId = e.currentTarget.dataset.id;
     let targetRoom = null;

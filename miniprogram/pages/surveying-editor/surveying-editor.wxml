@@ -1,0 +1,119 @@
+<view class="survey-page">
+  <view class="survey-topbar" style="margin-top: {{statusBarHeight}}px;">
+    <view class="topbar-left">
+      <view class="back-button" bindtap="onBack">‹</view>
+      <view class="title-group">
+        <text class="page-title">{{title}}</text>
+        <text class="page-subtitle">{{prototypeNotice}}</text>
+      </view>
+    </view>
+
+    <view class="view-tabs">
+      <view class="view-tab {{activeView === '2D' ? 'active' : ''}}" data-view="2D" bindtap="onViewTap">2D</view>
+      <view class="view-tab disabled" data-view="3D" bindtap="onViewTap">3D</view>
+      <view class="view-tab disabled" data-view="tour" bindtap="onViewTap">漫游</view>
+      <view class="view-tab disabled" data-view="floor" bindtap="onViewTap">楼层</view>
+    </view>
+
+    <view class="topbar-actions" style="margin-right: {{capsulePadding}}px;">
+      <view class="topbar-chip disabled" bindtap="onDisabledTap">助手</view>
+      <view class="topbar-chip save disabled" bindtap="onDisabledTap">保存</view>
+    </view>
+  </view>
+
+  <view class="survey-stage">
+    <view class="canvas-shell">
+      <view class="compass">
+        <view class="compass-needle"></view>
+        <text>N</text>
+      </view>
+
+      <view class="measurement-bubble">
+        <text class="bubble-title">当前墙段</text>
+        <text class="bubble-value">拖拽光标后输入 mm</text>
+      </view>
+
+      <view class="grid-canvas">
+        <view class="origin-axis x-axis"></view>
+        <view class="origin-axis y-axis"></view>
+
+        <view class="wall-preview">
+          <view class="wall-body"></view>
+          <view class="wall-redline"></view>
+          <text class="wall-length">2600 mm</text>
+        </view>
+
+        <view class="confirmed-wall wall-a">
+          <text>2600</text>
+        </view>
+        <view class="confirmed-wall wall-b">
+          <text>90°</text>
+        </view>
+
+        <view class="cursor-anchor">
+          <view class="cursor-line horizontal"></view>
+          <view class="cursor-line vertical"></view>
+          <view class="cursor-core"></view>
+        </view>
+
+        <view class="close-hint">靠近起点后可闭合单空间</view>
+      </view>
+
+      <view class="undo-redo">
+        <view class="round-action disabled" bindtap="onDisabledTap">撤销</view>
+        <view class="round-action disabled" bindtap="onDisabledTap">重做</view>
+      </view>
+    </view>
+
+    <view class="right-rail">
+      <view class="tool-group primary-tools">
+        <view
+          class="tool-button {{activeTool === item.key ? 'active' : ''}}"
+          wx:for="{{coreTools}}"
+          wx:key="key"
+          data-tool="{{item.key}}"
+          bindtap="onToolTap"
+        >
+          <text class="tool-label">{{item.label}}</text>
+          <text class="tool-helper">{{item.helper}}</text>
+        </view>
+      </view>
+
+      <view class="side-switch" bindtap="onToggleSide">
+        <text class="side-label">墙侧</text>
+        <text class="side-value">{{measurementSide === 'right' ? '右侧' : '左侧'}}</text>
+      </view>
+
+      <view class="tool-group reserved-tools">
+        <view
+          class="reserved-button disabled"
+          wx:for="{{reservedTools}}"
+          wx:key="key"
+          bindtap="onDisabledTap"
+        >
+          {{item.label}}
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="bottom-controls">
+    <view class="mode-pill active">测墙模式</view>
+    <view class="bottom-action" data-action="bluetooth" bindtap="onBottomAction">
+      <text class="bottom-title">蓝牙</text>
+      <text class="bottom-subtitle">Phase 3</text>
+    </view>
+    <view class="bottom-action" data-action="manual" bindtap="onBottomAction">
+      <text class="bottom-title">手输 mm</text>
+      <text class="bottom-subtitle">Phase 2</text>
+    </view>
+    <view class="bottom-action" data-action="cursor" bindtap="onBottomAction">
+      <text class="bottom-title">重置光标</text>
+      <text class="bottom-subtitle">中心点</text>
+    </view>
+    <view class="bottom-action disabled" data-action="add" bindtap="onBottomAction">
+      <text class="bottom-title">新增</text>
+      <text class="bottom-subtitle">待开放</text>
+    </view>
+  </view>
+</view>

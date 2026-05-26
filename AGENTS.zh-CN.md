@@ -44,6 +44,13 @@
 
 修改 `miniprogram/pages/editor/editor.*` 下的量房体验时，先识别下面哪些已完成模块会受到影响，并明确告知用户。每次新增、移除或改变量房功能行为时，都要同步更新这份清单。
 
+新版测绘原型说明：
+
+- 新版测绘工作台从 `miniprogram/pages/surveying-editor/` 开始落地，并在 `docs/surveying-module/` 下维护文档。它是并行原型外壳，不替代 `miniprogram/pages/editor/`。
+- 暴露原型的业务入口必须保持清晰双入口：`旧版测量` 继续进入 `miniprogram/pages/editor/editor`，`新版测绘体验` 进入 `miniprogram/pages/surveying-editor/surveying-editor`。
+- 原型阶段的 `surveying-editor` 不得写入正式户型数据、覆盖旧草稿、提交测量审计日志，或绕过既有下游兼容流程。
+- 仅新增或调整原型入口，本身不改变下方旧版已完成测量模块。若触及共享 BLE、正式保存、导出/报告、3D、测量日志或 `editor.*`，必须识别并更新受影响的已完成模块。
+
 主要文件：
 
 - 页面编排：`miniprogram/pages/editor/editor.js`、`editor.wxml`、`editor.json`、`editor.wxss`。
