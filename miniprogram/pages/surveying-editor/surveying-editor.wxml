@@ -1,5 +1,5 @@
-<view class="survey-page">
-  <view class="survey-topbar" style="margin-top: {{statusBarHeight}}px;">
+<view class="survey-page" style="padding-bottom: calc(112rpx + {{bottomSafeArea}}px);">
+  <view class="survey-topbar" style="margin-top: {{navigationSafeTop}}px;">
     <view class="topbar-left">
       <view class="back-button" bindtap="onBack">‹</view>
       <view class="title-group">
@@ -15,7 +15,7 @@
       <view class="view-tab disabled" data-view="floor" bindtap="onViewTap">楼层</view>
     </view>
 
-    <view class="topbar-actions" style="margin-right: {{capsulePadding}}px;">
+    <view class="topbar-actions">
       <view class="topbar-chip disabled" bindtap="onDisabledTap">助手</view>
       <view class="topbar-chip save disabled" bindtap="onDisabledTap">保存</view>
     </view>
@@ -28,7 +28,12 @@
         <text>N</text>
       </view>
 
-      <view class="measurement-bubble">
+      <view wx:if="{{topMetricVisible}}" class="top-measure-bubble">
+        <text>{{topMetricLength}}</text>
+        <text wx:if="{{topMetricAngle}}" class="top-measure-angle">{{topMetricAngle}}</text>
+      </view>
+
+      <view wx:else class="measurement-bubble">
         <text class="bubble-title">{{measurementTitle}}</text>
         <text class="bubble-value">{{measurementValue}}</text>
       </view>
@@ -40,8 +45,8 @@
         bindtouchend="onCanvasTouchEnd"
         bindtouchcancel="onCanvasTouchEnd"
       >
-        <view class="origin-axis x-axis"></view>
-        <view class="origin-axis y-axis"></view>
+        <view wx:if="{{guideVisible}}" class="origin-axis x-axis" style="{{cursorHorizontalGuideStyle}}"></view>
+        <view wx:if="{{guideVisible}}" class="origin-axis y-axis" style="{{cursorVerticalGuideStyle}}"></view>
 
         <view
           wx:for="{{renderWalls}}"
@@ -52,25 +57,57 @@
           catchtap="onWallTap"
         >
           <view class="wall-body" style="{{item.bodyStyle}}"></view>
+          <view class="wall-outer-line" style="{{item.outerLineStyle}}"></view>
+          <view wx:if="{{item.startCapVisible}}" class="wall-cap" style="{{item.startCapStyle}}"></view>
+          <view wx:if="{{item.endCapVisible}}" class="wall-cap" style="{{item.endCapStyle}}"></view>
           <view class="wall-redline"></view>
-          <text class="wall-length" style="{{item.labelStyle}}">{{item.label}}</text>
+          <view wx:if="{{item.showDimension}}" class="wall-dimension" style="{{item.dimensionStyle}}">
+            <view class="dimension-extension start"></view>
+            <view class="dimension-extension end"></view>
+            <view class="dimension-main"></view>
+            <view class="dimension-arrow start"></view>
+            <view class="dimension-arrow end"></view>
+            <text class="dimension-label">{{item.dimensionLabel}}</text>
+          </view>
         </view>
 
-        <view wx:if="{{previewWall}}" class="wall-render preview" style="{{previewWall.style}}">
-          <view class="wall-body preview-body" style="{{previewWall.bodyStyle}}"></view>
-          <view class="wall-redline preview-line"></view>
-          <text class="wall-length preview-label" style="{{previewWall.labelStyle}}">{{previewWall.label}}</text>
+        <view wx:if="{{previewWall}}" class="wall-render preview {{previewWall.lineOnly ? 'line-only' : ''}}" style="{{previewWall.style}}">
+          <block wx:if="{{previewWall.lineOnly}}">
+            <view class="drag-preview-line"></view>
+          </block>
+          <block wx:else>
+            <view class="wall-body preview-body" style="{{previewWall.bodyStyle}}"></view>
+            <view class="wall-outer-line" style="{{previewWall.outerLineStyle}}"></view>
+            <view wx:if="{{previewWall.startCapVisible}}" class="wall-cap" style="{{previewWall.startCapStyle}}"></view>
+            <view wx:if="{{previewWall.endCapVisible}}" class="wall-cap" style="{{previewWall.endCapStyle}}"></view>
+            <view class="wall-redline preview-line"></view>
+            <view wx:if="{{previewWall.showDimension}}" class="wall-dimension preview-dimension" style="{{previewWall.dimensionStyle}}">
+              <view class="dimension-extension start"></view>
+              <view class="dimension-extension end"></view>
+              <view class="dimension-main"></view>
+              <view class="dimension-arrow start"></view>
+              <view class="dimension-arrow end"></view>
+              <text class="dimension-label">{{previewWall.dimensionLabel}}</text>
+            </view>
+          </block>
         </view>
 
-        <view wx:if="{{cursorVisible}}" class="cursor-anchor" style="{{cursorStyle}}">
-          <view class="cursor-line horizontal"></view>
-          <view class="cursor-line vertical"></view>
-          <view class="cursor-core"></view>
-        </view>
-      </view>
+        <view wx:if="{{closureGuideVisible}}" class="closure-guide" style="{{closureGuideStyle}}"></view>
+        <view wx:if="{{closeActionVisible}}" class="closure-action" style="{{closeActionStyle}}" bindtap="onConfirmClose">合</view>
 
-      <view wx:if="{{closeHintVisible}}" class="close-hint {{closeHintActionVisible ? 'actionable' : ''}}" bindtap="onConfirmClose">
-        {{closeHintText}}
+        <view wx:if="{{measurePositionVisible}}" class="measure-position" style="{{measurePositionStyle}}">
+          <view class="measure-position-tip">当前测量位置</view>
+          <view class="measure-side-button" bindtap="onToggleSide">
+            <view class="measure-side-line"></view>
+            <text>{{measurePositionButtonLabel}}</text>
+          </view>
+        </view>
+
+        <view wx:if="{{cursorVisible}}" class="cursor-anchor" style="{{cursorStyle}}" data-cursor-hit="true">
+          <view class="cursor-line horizontal" data-cursor-hit="true"></view>
+          <view class="cursor-line vertical" data-cursor-hit="true"></view>
+          <view class="cursor-core" data-cursor-hit="true"></view>
+        </view>
       </view>
 
       <view wx:if="{{spaceSummary}}" class="space-summary">
@@ -138,7 +175,7 @@
     </view>
   </view>
 
-  <view class="bottom-controls">
+  <view class="bottom-controls" style="bottom: calc(16rpx + {{bottomSafeArea}}px);">
     <view class="mode-pill active">测墙模式</view>
     <view class="bottom-action disabled" data-action="bluetooth" bindtap="onBottomAction">
       <text class="bottom-title">蓝牙</text>

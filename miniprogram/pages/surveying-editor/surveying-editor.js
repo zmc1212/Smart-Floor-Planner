@@ -12,11 +12,11 @@ const RESERVED_TOOLS = [
 
 const NUMBER_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '清空', '0', '退格'];
 const TOUCH_SLOP_PX = 8;
-const CURSOR_HIT_RADIUS_PX = 48;
 const WALL_HIT_HALF_PX = 40;
-const MIN_SCALE = 0.03;
-const MAX_SCALE = 0.18;
+const MIN_SCALE = 0.05;
+const MAX_SCALE = 0.36;
 const MAX_HISTORY = 40;
+const MEASURE_LINE_TOP_PX = 40;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -28,6 +28,11 @@ function roundPx(value) {
 
 function formatMm(value) {
   return `${Math.round(value || 0)} mm`;
+}
+
+function normalizeAngleDiff(currentAngle, previousAngle) {
+  const diff = Math.abs(((currentAngle - previousAngle + 540) % 360) - 180);
+  return Math.round(diff);
 }
 
 function buildCoreTools(activeTool, thicknessMm) {
@@ -46,6 +51,17 @@ function distancePx(a, b) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+function buildLineRange(startPx, endPx, fallbackWidth) {
+  if (!isFinite(startPx) || !isFinite(endPx)) {
+    return { left: 0, width: fallbackWidth };
+  }
+
+  return {
+    left: Math.min(startPx, endPx),
+    width: Math.abs(endPx - startPx)
+  };
+}
+
 function getTouchPoint(touch) {
   return { x: touch.clientX, y: touch.clientY };
 }
@@ -53,12 +69,13 @@ function getTouchPoint(touch) {
 Page({
   data: {
     statusBarHeight: 0,
-    capsulePadding: 0,
+    navigationSafeTop: 0,
+    bottomSafeArea: 0,
     leadId: '',
     title: '新版测绘体验',
     activeView: '2D',
     activeTool: 'straight',
-    measurementSide: 'right',
+    measurementSide: 'left',
     thicknessMm: 200,
     prototypeNotice: '体验版不会同步正式户型数据',
     coreTools: buildCoreTools('straight', 200),
@@ -66,9 +83,22 @@ Page({
     renderWalls: [],
     previewWall: null,
     cursorStyle: '',
+    cursorHorizontalGuideStyle: '',
+    cursorVerticalGuideStyle: '',
     cursorVisible: false,
+    guideVisible: false,
+    topMetricVisible: false,
+    topMetricLength: '',
+    topMetricAngle: '',
+    measurePositionVisible: false,
+    measurePositionStyle: '',
+    measurePositionButtonLabel: '↓',
+    closureGuideVisible: false,
+    closureGuideStyle: '',
+    closeActionVisible: false,
+    closeActionStyle: '',
     measurementTitle: '准备测墙',
-    measurementValue: '点击画布放置光标',
+    measurementValue: '从橙色光标拖出墙体方向',
     closeHintVisible: false,
     closeHintText: '',
     closeHintActionVisible: false,
@@ -89,15 +119,21 @@ Page({
     const sysInfo = wx.getSystemInfoSync();
     const menuButtonInfo = wx.getMenuButtonBoundingClientRect();
     const context = app.globalData.surveyingPrototypeContext || {};
+    const screenHeight = sysInfo.screenHeight || sysInfo.windowHeight || 0;
+    const safeAreaBottom = sysInfo.safeArea && screenHeight
+      ? Math.max(0, screenHeight - sysInfo.safeArea.bottom)
+      : 0;
+    const capsuleBottom = menuButtonInfo.bottom || (sysInfo.statusBarHeight || 0);
 
-    this.draft = surveyGraph.createSurveyDraft();
+    this.draft = surveyGraph.resetCursor(surveyGraph.createSurveyDraft());
     this.history = { undo: [], redo: [] };
     this.touchState = null;
     this.canvasRect = null;
 
     this.setData({
       statusBarHeight: sysInfo.statusBarHeight || 0,
-      capsulePadding: Math.max(0, sysInfo.windowWidth - menuButtonInfo.left),
+      navigationSafeTop: capsuleBottom + 6,
+      bottomSafeArea: safeAreaBottom,
       leadId: options.leadId || context.leadId || '',
       title: context.leadName ? `${context.leadName} · 新版测绘` : '新版测绘体验'
     });
@@ -146,7 +182,20 @@ Page({
       renderWalls: renderData.renderWalls,
       previewWall: renderData.previewWall,
       cursorStyle: renderData.cursorStyle,
+      cursorHorizontalGuideStyle: renderData.cursorHorizontalGuideStyle,
+      cursorVerticalGuideStyle: renderData.cursorVerticalGuideStyle,
       cursorVisible: renderData.cursorVisible,
+      guideVisible: renderData.guideVisible,
+      topMetricVisible: renderData.topMetricVisible,
+      topMetricLength: renderData.topMetricLength,
+      topMetricAngle: renderData.topMetricAngle,
+      measurePositionVisible: renderData.measurePositionVisible,
+      measurePositionStyle: renderData.measurePositionStyle,
+      measurePositionButtonLabel: renderData.measurePositionButtonLabel,
+      closureGuideVisible: renderData.closureGuideVisible,
+      closureGuideStyle: renderData.closureGuideStyle,
+      closeActionVisible: renderData.closeActionVisible,
+      closeActionStyle: renderData.closeActionStyle,
       closeHintVisible: renderData.closeHintVisible,
       closeHintText: renderData.closeHintText,
       closeHintActionVisible: session.state === 'closing',
@@ -162,10 +211,13 @@ Page({
   },
 
   buildCanvasRenderData(floor, session) {
-    const renderWalls = floor.walls.map((wall) => this.buildWallRender(floor, wall, false));
+    const renderWalls = floor.walls.map((wall, index) => this.buildWallRender(floor, wall, false, index));
     let previewWall = null;
     let cursorVisible = false;
+    let guideVisible = false;
     let cursorStyle = '';
+    let cursorHorizontalGuideStyle = '';
+    let cursorVerticalGuideStyle = '';
     let closeHintVisible = false;
     let closeHintText = '';
 
@@ -183,26 +235,62 @@ Page({
     if (session.anchorNodeId && session.state !== 'spaceClosed' && session.state !== 'wallSelected' && session.state !== 'remeasureAwaitingInput') {
       const anchor = surveyGraph.getNode(floor, session.anchorNodeId);
       if (anchor) {
-        const point = this.mmToCanvasPoint(anchor);
+        const cursorPoint = session.previewPoint || anchor;
+        const cursorScreenPoint = this.mmToCanvasPoint(cursorPoint);
         cursorVisible = true;
-        cursorStyle = `left:${roundPx(point.x - 24)}px; top:${roundPx(point.y - 24)}px;`;
+        cursorStyle = `left:${roundPx(cursorScreenPoint.x - 24)}px; top:${roundPx(cursorScreenPoint.y - 24)}px;`;
+
+        if (floor.walls.length > 0) {
+          const anchorScreenPoint = this.mmToCanvasPoint(anchor);
+          guideVisible = true;
+          cursorHorizontalGuideStyle = `top:${roundPx(anchorScreenPoint.y)}px;`;
+          cursorVerticalGuideStyle = `left:${roundPx(anchorScreenPoint.x)}px;`;
+        }
       }
     }
 
-    return { renderWalls, previewWall, cursorVisible, cursorStyle, closeHintVisible, closeHintText };
+    const activeSegment = previewWall || renderWalls[renderWalls.length - 1] || null;
+    const topMetric = this.buildTopMetric(activeSegment);
+    const measurePosition = this.buildMeasurePosition(activeSegment, session);
+    const closure = this.buildClosureRender(floor, session);
+
+    return {
+      renderWalls,
+      previewWall,
+      cursorVisible,
+      guideVisible,
+      cursorStyle,
+      cursorHorizontalGuideStyle,
+      cursorVerticalGuideStyle,
+      topMetricVisible: topMetric.visible,
+      topMetricLength: topMetric.length,
+      topMetricAngle: topMetric.angle,
+      measurePositionVisible: measurePosition.visible,
+      measurePositionStyle: measurePosition.style,
+      measurePositionButtonLabel: measurePosition.buttonLabel,
+      closureGuideVisible: closure.guideVisible,
+      closureGuideStyle: closure.guideStyle,
+      closeActionVisible: closure.actionVisible,
+      closeActionStyle: closure.actionStyle,
+      closeHintVisible,
+      closeHintText
+    };
   },
 
-  buildWallRender(floor, wall, isPreview) {
+  buildWallRender(floor, wall, isPreview, index) {
     const start = surveyGraph.getNode(floor, wall.startNodeId);
     const end = surveyGraph.getNode(floor, wall.endNodeId);
     if (!start || !end) return null;
-    return this.buildSegmentRender(start, end, wall, isPreview);
+    const previousWall = index > 0 ? floor.walls[index - 1] : null;
+    const geometry = surveyGraph.buildWallRenderGeometry(floor, wall);
+    return this.buildSegmentRender(start, end, wall, isPreview, previousWall, geometry);
   },
 
   buildPreviewRender(floor, session) {
     const anchor = surveyGraph.getNode(floor, session.anchorNodeId);
     if (!anchor || !session.previewPoint) return null;
-    return this.buildSegmentRender(anchor, session.previewPoint, {
+    const previousWall = floor.walls[floor.walls.length - 1] || null;
+    const previewWall = {
       id: 'preview-wall',
       mode: session.mode,
       lengthMm: session.previewLengthMm,
@@ -210,27 +298,122 @@ Page({
       thicknessMm: session.thicknessMm,
       measurementSide: session.measurementSide,
       status: 'preview'
-    }, true);
+    };
+    const geometry = surveyGraph.buildWallRenderGeometry(floor, previewWall, {
+      startPoint: anchor,
+      endPoint: session.previewPoint,
+      previousWall,
+      nextWall: null
+    });
+    const render = this.buildSegmentRender(anchor, session.previewPoint, previewWall, true, previousWall, geometry);
+    if (!render) return null;
+    render.lineOnly = session.state === 'wallPreview';
+    render.showDimension = !render.lineOnly;
+    return render;
   },
 
-  buildSegmentRender(start, end, wall, isPreview) {
+  buildSegmentRender(start, end, wall, isPreview, previousWall, geometry) {
     const startPoint = this.mmToCanvasPoint(start);
     const endPoint = this.mmToCanvasPoint(end);
     const width = distancePx(startPoint, endPoint);
-    const thicknessPx = Math.max(8, Math.round((wall.thicknessMm || 200) * this.getViewport().scale));
-    const bodyOffset = wall.measurementSide === 'left' ? WALL_HIT_HALF_PX - thicknessPx : WALL_HIT_HALF_PX;
+    const viewport = this.getViewport();
+    const thicknessPx = Math.max(8, Math.round((wall.thicknessMm || 200) * viewport.scale));
+    const bodyOffset = wall.measurementSide === 'left' ? MEASURE_LINE_TOP_PX - thicknessPx : MEASURE_LINE_TOP_PX;
+    const bodyEdgeStart = Math.min(bodyOffset, MEASURE_LINE_TOP_PX);
+    const outlineTop = wall.measurementSide === 'left' ? bodyOffset : MEASURE_LINE_TOP_PX + thicknessPx;
+    const dimensionOffset = wall.measurementSide === 'left'
+      ? MEASURE_LINE_TOP_PX + 28
+      : MEASURE_LINE_TOP_PX - 72;
     const selected = !isPreview && this.draft && surveyGraph.getActiveFloor(this.draft).session.selectedWallId === wall.id;
+    const relativeAngle = previousWall ? normalizeAngleDiff(wall.angleDeg, previousWall.angleDeg) : null;
+    const outerStartPx = geometry ? geometry.outerStartAlongMm * viewport.scale : 0;
+    const outerEndPx = geometry ? geometry.outerEndAlongMm * viewport.scale : width;
+    const outerLine = buildLineRange(outerStartPx, outerEndPx, width);
 
     return {
       id: wall.id,
+      startPoint,
+      endPoint,
+      width,
+      angleDeg: wall.angleDeg,
+      lengthMm: wall.lengthMm,
+      relativeAngle,
       style: `left:${roundPx(startPoint.x)}px; top:${roundPx(startPoint.y - WALL_HIT_HALF_PX)}px; width:${roundPx(width)}px; transform:rotate(${wall.angleDeg}deg);`,
-      bodyStyle: `height:${thicknessPx}px; top:${bodyOffset}px;`,
-      labelStyle: `left:${roundPx(width / 2)}px;`,
+      bodyStyle: `left:0; width:${roundPx(width)}px; height:${thicknessPx}px; top:${roundPx(bodyOffset)}px;`,
+      outerLineStyle: `left:${roundPx(outerLine.left)}px; width:${roundPx(outerLine.width)}px; top:${roundPx(outlineTop)}px;`,
+      startCapVisible: geometry ? geometry.startOpen : !previousWall,
+      endCapVisible: geometry ? geometry.endOpen : true,
+      startCapStyle: `left:-1px; top:${roundPx(bodyEdgeStart)}px; height:${roundPx(thicknessPx)}px;`,
+      endCapStyle: `left:${roundPx(width - 1)}px; top:${roundPx(bodyEdgeStart)}px; height:${roundPx(thicknessPx)}px;`,
+      dimensionStyle: `top:${roundPx(dimensionOffset)}px;`,
+      dimensionLabel: `${Math.round(wall.lengthMm || 0)}`,
+      showDimension: true,
       label: this.formatWallLabel(wall),
       sideLabel: wall.measurementSide === 'left' ? '左侧' : '右侧',
       modeLabel: wall.mode === 'diagonal' ? '斜墙' : '直墙',
       selected,
       preview: isPreview
+    };
+  },
+
+  buildTopMetric(segment) {
+    if (!segment || !segment.lengthMm) {
+      return { visible: false, length: '', angle: '' };
+    }
+
+    return {
+      visible: true,
+      length: `L ${Math.round(segment.lengthMm)}`,
+      angle: segment.relativeAngle ? `∠ ${segment.relativeAngle}°` : ''
+    };
+  },
+
+  buildMeasurePosition(segment, session) {
+    if (!segment || segment.lineOnly || !segment.startPoint || !segment.endPoint) {
+      return { visible: false, style: '', buttonLabel: '↓' };
+    }
+
+    const midX = (segment.startPoint.x + segment.endPoint.x) / 2;
+    const midY = (segment.startPoint.y + segment.endPoint.y) / 2;
+    return {
+      visible: session.state !== 'spaceClosed' && session.state !== 'wallSelected' && session.state !== 'remeasureAwaitingInput',
+      style: `left:${roundPx(midX - 70)}px; top:${roundPx(midY + 96)}px;`,
+      buttonLabel: session.measurementSide === 'left' ? '↑' : '↓'
+    };
+  },
+
+  buildClosureRender(floor, session) {
+    if (!session.closeCandidateNodeId || (!session.previewPoint && !session.anchorNodeId)) {
+      return { guideVisible: false, guideStyle: '', actionVisible: false, actionStyle: '' };
+    }
+
+    const targetNode = surveyGraph.getNode(floor, session.closeCandidateNodeId);
+    let currentNode = null;
+    if (session.previewPoint) {
+      currentNode = session.previewPoint;
+    } else if (session.anchorNodeId) {
+      currentNode = surveyGraph.getNode(floor, session.anchorNodeId);
+    }
+    if (!targetNode || !currentNode) {
+      return { guideVisible: false, guideStyle: '', actionVisible: false, actionStyle: '' };
+    }
+
+    const startPoint = this.mmToCanvasPoint(currentNode);
+    const endPoint = this.mmToCanvasPoint(targetNode);
+    const rawWidth = distancePx(startPoint, endPoint);
+    const lastWall = floor.walls[floor.walls.length - 1] || null;
+    const width = session.state === 'closing' ? Math.max(rawWidth, 72) : rawWidth;
+    const angleDeg = rawWidth > 1
+      ? Math.atan2(endPoint.y - startPoint.y, endPoint.x - startPoint.x) * 180 / Math.PI
+      : (lastWall ? lastWall.angleDeg : 0);
+    const midX = (startPoint.x + endPoint.x) / 2;
+    const midY = (startPoint.y + endPoint.y) / 2;
+
+    return {
+      guideVisible: width > 1,
+      guideStyle: `left:${roundPx(startPoint.x)}px; top:${roundPx(startPoint.y)}px; width:${roundPx(width)}px; transform:rotate(${roundPx(angleDeg)}deg);`,
+      actionVisible: session.state === 'closing',
+      actionStyle: `left:${roundPx(midX - 34)}px; top:${roundPx(midY - 34)}px;`
     };
   },
 
@@ -268,7 +451,7 @@ Page({
 
   buildStageMessage(floor, session, selectedWall) {
     if (session.state === 'idle') {
-      return { title: '准备测墙', value: '点击画布放置光标，或直接拖出第一墙' };
+      return { title: '准备测墙', value: '重置光标后，从橙色光标拖出墙体方向' };
     }
     if (session.state === 'cursorPlaced') {
       return { title: '光标已放置', value: '从光标拖出墙体方向' };
@@ -277,7 +460,7 @@ Page({
       return { title: '当前墙段', value: '释放后输入毫米长度' };
     }
     if (session.state === 'awaitingLength') {
-      return { title: '等待长度', value: `请输入 ${formatMm(session.previewLengthMm)} 附近的实测值` };
+      return { title: '等待长度', value: `点击“输入”并录入 ${formatMm(session.previewLengthMm)} 附近的实测值` };
     }
     if (session.state === 'wallCommitted') {
       return { title: '墙体已确认', value: '继续从光标拖出下一面墙' };
@@ -320,12 +503,10 @@ Page({
     };
   },
 
-  getAnchorCanvasPoint() {
-    const floor = surveyGraph.getActiveFloor(this.draft);
-    const session = floor.session;
-    if (!session.anchorNodeId) return null;
-    const anchor = surveyGraph.getNode(floor, session.anchorNodeId);
-    return anchor ? this.mmToCanvasPoint(anchor) : null;
+  isCursorTouchTarget(e) {
+    const dataset = e && e.target && e.target.dataset;
+    if (!dataset) return false;
+    return dataset.cursorHit === true || dataset.cursorHit === 'true';
   },
 
   applyDraft(nextDraft, options) {
@@ -446,16 +627,13 @@ Page({
     const point = getTouchPoint(touches[0]);
     const floor = surveyGraph.getActiveFloor(this.draft);
     const session = floor.session;
-    const anchorPoint = this.getAnchorCanvasPoint();
-    const localPoint = { x: point.x - this.canvasRect.left, y: point.y - this.canvasRect.top };
-    const nearCursor = !!anchorPoint && distancePx(localPoint, anchorPoint) <= CURSOR_HIT_RADIUS_PX;
+    const nearCursor = this.isCursorTouchTarget(e);
     const viewport = this.getViewport();
 
     this.touchState = {
       mode: 'pending',
       startPoint: point,
       lastPoint: point,
-      startMm: this.canvasPointToMm(point),
       nearCursor,
       sessionState: session.state,
       startViewport: {
@@ -492,11 +670,7 @@ Page({
     if (this.touchState.mode === 'pending') {
       if (moved < TOUCH_SLOP_PX) return;
 
-      if (this.touchState.sessionState === 'idle') {
-        this.draft = surveyGraph.placeCursor(this.draft, this.touchState.startMm);
-        this.draft = surveyGraph.startPreview(this.draft, currentMm);
-        this.touchState.mode = 'wall';
-      } else if (this.touchState.nearCursor && (this.touchState.sessionState === 'cursorPlaced' || this.touchState.sessionState === 'wallCommitted')) {
+      if (this.touchState.nearCursor && (this.touchState.sessionState === 'cursorPlaced' || this.touchState.sessionState === 'wallCommitted')) {
         this.draft = surveyGraph.startPreview(this.draft, currentMm);
         this.touchState.mode = 'wall';
       } else {
@@ -526,8 +700,6 @@ Page({
     const floor = surveyGraph.getActiveFloor(this.draft);
     const session = floor.session;
     const movedWall = this.touchState.mode === 'wall';
-    const wasPendingTap = this.touchState.mode === 'pending';
-    const startMm = this.touchState.startMm;
 
     this.touchState = null;
 
@@ -535,17 +707,11 @@ Page({
       if (session.previewLengthMm >= surveyGraph.MIN_WALL_LENGTH_MM) {
         this.draft = surveyGraph.holdPreviewForInput(this.draft);
         this.syncFromDraft();
-        this.openNumberPad('length');
       } else {
         this.draft = surveyGraph.cancelPending(this.draft);
         this.syncFromDraft();
       }
       return;
-    }
-
-    if (wasPendingTap && session.state === 'idle') {
-      this.draft = surveyGraph.placeCursor(this.draft, startMm);
-      this.syncFromDraft();
     }
   },
 
@@ -570,9 +736,13 @@ Page({
     const session = surveyGraph.getActiveFloor(this.draft).session;
     if (session.state !== 'closing') return;
 
-    const nextDraft = surveyGraph.confirmClosure(this.draft);
-    this.applyDraft(nextDraft, { recordHistory: true });
-    wx.showToast({ title: '单空间已闭合', icon: 'success' });
+    try {
+      const nextDraft = surveyGraph.confirmClosure(this.draft);
+      this.applyDraft(nextDraft, { recordHistory: true });
+      wx.showToast({ title: '单空间已闭合', icon: 'success' });
+    } catch (err) {
+      wx.showToast({ title: err.message || '闭合失败，请重新测量', icon: 'none' });
+    }
   },
 
   onUndo() {

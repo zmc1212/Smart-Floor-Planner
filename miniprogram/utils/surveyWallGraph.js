@@ -1,5 +1,5 @@
 const DEFAULT_THICKNESS_MM = 200;
-const DEFAULT_SCALE = 0.08;
+const DEFAULT_SCALE = 0.16;
 const CLOSE_TOLERANCE_MM = 200;
 const MIN_WALL_LENGTH_MM = 100;
 const MIN_THICKNESS_MM = 50;
@@ -28,7 +28,7 @@ function createSession() {
     previewLengthMm: 0,
     mode: 'straight',
     thicknessMm: DEFAULT_THICKNESS_MM,
-    measurementSide: 'right',
+    measurementSide: 'left',
     pendingWallId: '',
     selectedWallId: '',
     closeCandidateNodeId: ''
@@ -87,11 +87,159 @@ function angleDeg(a, b) {
   return normalizeAngle(Math.atan2(b.yMm - a.yMm, b.xMm - a.xMm) * 180 / Math.PI);
 }
 
+function dot(a, b) {
+  return a.x * b.x + a.y * b.y;
+}
+
+function cross(a, b) {
+  return a.x * b.y - a.y * b.x;
+}
+
 function normalizeAngle(angle) {
   let normalized = angle;
   while (normalized <= -180) normalized += 360;
   while (normalized > 180) normalized -= 360;
   return Math.round(normalized * 10) / 10;
+}
+
+function hasClosedSpace(floor) {
+  return !!(floor && floor.spaces && floor.spaces.some((space) => space.closed));
+}
+
+function pointsNearlyEqual(a, b) {
+  return distanceMm(a, b) <= 1;
+}
+
+function addVector(point, vector, amount) {
+  return {
+    xMm: point.xMm + vector.x * amount,
+    yMm: point.yMm + vector.y * amount
+  };
+}
+
+function resolveAdjacentWalls(floor, wall, options) {
+  const opts = options || {};
+  const hasPrevious = Object.prototype.hasOwnProperty.call(opts, 'previousWall');
+  const hasNext = Object.prototype.hasOwnProperty.call(opts, 'nextWall');
+  const index = floor.walls.findIndex((item) => item.id === wall.id);
+  const closed = hasClosedSpace(floor);
+  let previousWall = null;
+  let nextWall = null;
+
+  if (hasPrevious) {
+    previousWall = opts.previousWall;
+  } else if (index > 0) {
+    previousWall = floor.walls[index - 1];
+  } else if (closed && floor.walls.length > 1) {
+    previousWall = floor.walls[floor.walls.length - 1];
+  }
+
+  if (hasNext) {
+    nextWall = opts.nextWall;
+  } else if (index >= 0 && index < floor.walls.length - 1) {
+    nextWall = floor.walls[index + 1];
+  } else if (closed && floor.walls.length > 1) {
+    nextWall = floor.walls[0];
+  }
+
+  return { previousWall, nextWall };
+}
+
+function buildResolvedSegment(floor, wall, options) {
+  const opts = options || {};
+  const start = opts.startPoint || getNode(floor, wall.startNodeId);
+  const end = opts.endPoint || getNode(floor, wall.endNodeId);
+  if (!start || !end) return null;
+
+  const dx = end.xMm - start.xMm;
+  const dy = end.yMm - start.yMm;
+  const rawLength = Math.sqrt(dx * dx + dy * dy);
+  if (!rawLength) return null;
+
+  const direction = { x: dx / rawLength, y: dy / rawLength };
+  const leftNormal = { x: direction.y, y: -direction.x };
+  const rightNormal = { x: -direction.y, y: direction.x };
+  const normal = wall.measurementSide === 'left' ? leftNormal : rightNormal;
+  const thicknessMm = wall.thicknessMm || DEFAULT_THICKNESS_MM;
+
+  return {
+    wall,
+    start,
+    end,
+    direction,
+    normal,
+    thicknessMm,
+    lengthMm: distanceMm(start, end),
+    outerStart: addVector(start, normal, thicknessMm),
+    outerEnd: addVector(end, normal, thicknessMm)
+  };
+}
+
+function intersectLines(a1, a2, b1, b2) {
+  const p = { x: a1.xMm, y: a1.yMm };
+  const r = { x: a2.xMm - a1.xMm, y: a2.yMm - a1.yMm };
+  const q = { x: b1.xMm, y: b1.yMm };
+  const s = { x: b2.xMm - b1.xMm, y: b2.yMm - b1.yMm };
+  const denominator = cross(r, s);
+
+  if (Math.abs(denominator) < 0.000001) {
+    return null;
+  }
+
+  const t = cross({ x: q.x - p.x, y: q.y - p.y }, s) / denominator;
+  return {
+    xMm: p.x + t * r.x,
+    yMm: p.y + t * r.y
+  };
+}
+
+function projectAlong(segment, point) {
+  return dot(
+    { x: point.xMm - segment.start.xMm, y: point.yMm - segment.start.yMm },
+    segment.direction
+  );
+}
+
+function isUsableJoinPoint(segment, point) {
+  if (!point) return false;
+  const along = projectAlong(segment, point);
+  const limit = Math.max(segment.thicknessMm * 4, CLOSE_TOLERANCE_MM);
+  return along >= -limit && along <= segment.lengthMm + limit;
+}
+
+function offsetJoinPoint(current, adjacent) {
+  if (!current || !adjacent) return null;
+  const point = intersectLines(current.outerStart, current.outerEnd, adjacent.outerStart, adjacent.outerEnd);
+  return isUsableJoinPoint(current, point) ? point : null;
+}
+
+function buildWallRenderGeometry(floor, wall, options) {
+  const current = buildResolvedSegment(floor, wall, options);
+  if (!current) return null;
+
+  const adjacent = resolveAdjacentWalls(floor, wall, options);
+  const previous = adjacent.previousWall ? buildResolvedSegment(floor, adjacent.previousWall) : null;
+  const next = adjacent.nextWall ? buildResolvedSegment(floor, adjacent.nextWall) : null;
+  const startJoined = !!(previous && pointsNearlyEqual(previous.end, current.start));
+  const endJoined = !!(next && pointsNearlyEqual(next.start, current.end));
+  const outerStart = (startJoined && offsetJoinPoint(current, previous)) || current.outerStart;
+  const outerEnd = (endJoined && offsetJoinPoint(current, next)) || current.outerEnd;
+
+  return {
+    start: current.start,
+    end: current.end,
+    lengthMm: current.lengthMm,
+    angleDeg: angleDeg(current.start, current.end),
+    startJoined,
+    endJoined,
+    startOpen: !startJoined,
+    endOpen: !endJoined,
+    outerStart,
+    outerEnd,
+    outerStartAlongMm: projectAlong(current, outerStart),
+    outerEndAlongMm: projectAlong(current, outerEnd),
+    thicknessMm: current.thicknessMm
+  };
 }
 
 function addNode(floor, point) {
@@ -362,6 +510,12 @@ function confirmClosure(draft) {
 
   const lastWall = getLastWall(floor);
   const oldEndNodeId = lastWall.endNodeId;
+  const oldEndNode = getNode(floor, oldEndNodeId);
+  const closeTargetNode = getNode(floor, session.closeCandidateNodeId);
+  if (!oldEndNode || !closeTargetNode || distanceMm(oldEndNode, closeTargetNode) > CLOSE_TOLERANCE_MM) {
+    throw new Error(`闭合误差超过 ${CLOSE_TOLERANCE_MM} mm，请补测最后一面墙`);
+  }
+
   lastWall.endNodeId = session.closeCandidateNodeId;
   refreshWallMetrics(floor);
 
@@ -560,6 +714,7 @@ module.exports = {
   getWall,
   distanceMm,
   angleDeg,
+  buildWallRenderGeometry,
   calculateSpaceAreaMm2,
   setMode,
   placeCursor,
