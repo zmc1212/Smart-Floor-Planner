@@ -1,6 +1,7 @@
 'use client';
 
 import { notify } from '@/components/ui/operation-feedback';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 import React, { useEffect, useState } from 'react';
 import { Loader2, Pencil, Plus, Smartphone, Trash2, User as UserIcon } from 'lucide-react';
@@ -40,6 +41,7 @@ const DEFAULT_FORM = {
 };
 
 export default function StaffPage() {
+  const confirmAction = useConfirmDialog();
   const [staff, setStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState<any>({
@@ -140,7 +142,13 @@ export default function StaffPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('确定要删除该员工账号吗？此操作不可撤销。')) return;
+    const confirmed = await confirmAction({
+      title: '删除员工账号',
+      description: '确定要删除该员工账号吗？此操作不可撤销。',
+      confirmText: '删除',
+      destructive: true,
+    });
+    if (!confirmed) return;
     try {
       const res = await fetch(`/api/staff/${id}`, { method: 'DELETE' });
       const data = await res.json();
@@ -209,7 +217,13 @@ export default function StaffPage() {
   };
 
   const handleDeleteDept = async (id: string) => {
-    if (!confirm('确定要删除该部门吗？')) return;
+    const confirmed = await confirmAction({
+      title: '删除部门',
+      description: '确定要删除该部门吗？',
+      confirmText: '删除',
+      destructive: true,
+    });
+    if (!confirmed) return;
     try {
       const res = await fetch(`/api/departments/${id}`, { method: 'DELETE' });
       const data = await res.json();

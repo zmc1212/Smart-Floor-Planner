@@ -1,6 +1,7 @@
 'use client';
 
 import { notify } from '@/components/ui/operation-feedback';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 export const dynamic = 'force-dynamic';
 
@@ -89,6 +90,7 @@ const getRoleBadge = (role: string) => {
 
 
 export default function AdminsPage() {
+  const confirmAction = useConfirmDialog();
   const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -222,7 +224,13 @@ export default function AdminsPage() {
   };
 
   const handleDelete = async (id: string, username: string) => {
-    if (!confirm(`确定删除管理员 "${username}" 吗？此操作不可恢复。`)) return;
+    const confirmed = await confirmAction({
+      title: '删除管理员',
+      description: `确定删除管理员 "${username}" 吗？此操作不可恢复。`,
+      confirmText: '删除',
+      destructive: true,
+    });
+    if (!confirmed) return;
     try {
       const res = await fetch(`/api/admin-users/${id}`, { method: 'DELETE' });
       const data = await res.json();
@@ -292,7 +300,13 @@ export default function AdminsPage() {
   const handleToggleStatus = async (admin: AdminUser) => {
     const newStatus = admin.status === 'active' ? 'disabled' : 'active';
     const action = newStatus === 'disabled' ? '禁用' : '启用';
-    if (!confirm(`确定${action}管理员 "${admin.username}" 吗？`)) return;
+    const confirmed = await confirmAction({
+      title: `${action}管理员`,
+      description: `确定${action}管理员 "${admin.username}" 吗？`,
+      confirmText: action,
+      destructive: newStatus === 'disabled',
+    });
+    if (!confirmed) return;
 
     try {
       const res = await fetch(`/api/admin-users/${admin._id}`, {

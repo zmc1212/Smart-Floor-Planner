@@ -1,6 +1,7 @@
 'use client';
 
 import { notify } from '@/components/ui/operation-feedback';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 import React, { useState, useEffect } from 'react';
 import { Loader2, Plus, Trash2, Star, Eye, Search, Image as ImageIcon, Sparkles } from "lucide-react";
@@ -28,6 +29,7 @@ import { cn } from "@/lib/utils";
 import Link from 'next/link';
 
 export default function InspirationsPage() {
+  const confirmAction = useConfirmDialog();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -125,7 +127,13 @@ export default function InspirationsPage() {
   };
 
   const deleteItem = async (id: string) => {
-    if (!confirm('确定删除此案例吗？')) return;
+    const confirmed = await confirmAction({
+      title: '删除设计案例',
+      description: '确定删除此案例吗？',
+      confirmText: '删除',
+      destructive: true,
+    });
+    if (!confirmed) return;
     try {
       const res = await fetch(`/api/inspirations?id=${id}`, { method: 'DELETE' });
       const data = await res.json();

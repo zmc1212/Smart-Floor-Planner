@@ -8,6 +8,9 @@ type KujialeSearchParams = {
   areaId?: string | number | null;
   specType?: string | number | null;
   areaType?: string | number | null;
+  precise?: string | number | null;
+  publicType?: string | number | null;
+  projectType?: string | number | null;
   page?: number;
   limit?: number;
 };
@@ -431,6 +434,9 @@ export async function searchKujialeFloorPlans(params: KujialeSearchParams) {
     area_id: areaId,
     spec_type: params.specType,
     area_type: params.areaType,
+    precise: params.precise,
+    public_type: params.publicType,
+    project_type: params.projectType ?? 0,
     num: limit,
     start,
     locale: 'zh_CN',

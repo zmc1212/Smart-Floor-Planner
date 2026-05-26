@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { notify } from '@/components/ui/operation-feedback';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -44,6 +45,7 @@ function getFloorPlanSourceLabel(source?: string) {
 }
 
 export default function LeadsPage() {
+  const confirmAction = useConfirmDialog();
   const router = useRouter();
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -210,7 +212,13 @@ export default function LeadsPage() {
   };
 
   const deleteLead = async (id: string) => {
-    if (!confirm('确定要删除该线索吗？此操作不可撤销。')) return;
+    const confirmed = await confirmAction({
+      title: '删除线索',
+      description: '确定要删除该线索吗？此操作不可撤销。',
+      confirmText: '删除',
+      destructive: true,
+    });
+    if (!confirmed) return;
     
     try {
       const res = await fetch(`/api/leads/${id}`, {

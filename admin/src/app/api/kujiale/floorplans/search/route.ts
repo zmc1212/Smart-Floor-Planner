@@ -34,8 +34,11 @@ export async function GET(request: Request) {
       area: searchParams.get('area'),
       layout: searchParams.get('layout'),
       areaId: searchParams.get('areaId'),
-      specType: searchParams.get('specType'),
-      areaType: searchParams.get('areaType'),
+      specType: searchParams.get('specType') ?? searchParams.get('spec_type'),
+      areaType: searchParams.get('areaType') ?? searchParams.get('area_type'),
+      precise: searchParams.get('precise'),
+      publicType: searchParams.get('publicType') ?? searchParams.get('public_type'),
+      projectType: searchParams.get('projectType') ?? searchParams.get('project_type'),
       page: Number(searchParams.get('page') || '1'),
       limit: Number(searchParams.get('limit') || '10'),
     });

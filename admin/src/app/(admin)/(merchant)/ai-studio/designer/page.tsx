@@ -5,6 +5,7 @@ import ChatInterface from '@/components/ai-studio/ChatInterface';
 import { Badge } from '@/components/ui/badge';
 import { Sparkles, Info } from 'lucide-react';
 import { notify } from '@/components/ui/operation-feedback';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import type { ChatAction, ChatUiPayload } from '@/lib/ai/chat-ui';
 
 type ConfirmToolAction = Extract<ChatAction, { kind: 'confirm_tool' }>;
@@ -23,6 +24,7 @@ interface Conversation {
 }
 
 export default function AiDesignerPage() {
+  const confirmAction = useConfirmDialog();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -68,7 +70,13 @@ export default function AiDesignerPage() {
   };
 
   const handleDeleteConversation = async (id: string) => {
-    if (!confirm('确定要删除这段对话记录吗？')) return;
+    const confirmed = await confirmAction({
+      title: '删除对话记录',
+      description: '确定要删除这段对话记录吗？',
+      confirmText: '删除',
+      destructive: true,
+    });
+    if (!confirmed) return;
     
     try {
       const res = await fetch(`/api/ai/conversations/${id}`, { method: 'DELETE' });

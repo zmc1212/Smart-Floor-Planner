@@ -1,6 +1,7 @@
 'use client';
 
 import { notify } from '@/components/ui/operation-feedback';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 import { useEffect, useState } from 'react';
 import { Loader2, Plus, CheckCircle2 } from 'lucide-react';
@@ -20,6 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 
 export default function EnterpriseOrdersPage() {
+  const confirmAction = useConfirmDialog();
   const [orders, setOrders] = useState<any[]>([]);
   const [records, setRecords] = useState<any[]>([]);
   const [packages, setPackages] = useState<any[]>([]);
@@ -93,7 +95,12 @@ export default function EnterpriseOrdersPage() {
   };
 
   const activateEnterprise = async (order: any) => {
-    if (!confirm(`确定要为 ${order.enterpriseNameSnapshot} 开通正式账号吗？\n系统将自动创建企业并分配管理员账号。`)) return;
+    const confirmed = await confirmAction({
+      title: '开通正式账号',
+      description: `确定要为 ${order.enterpriseNameSnapshot} 开通正式账号吗？\n系统将自动创建企业并分配管理员账号。`,
+      confirmText: '开通',
+    });
+    if (!confirmed) return;
 
     try {
       const res = await fetch('/api/admin/enterprises/activate', {

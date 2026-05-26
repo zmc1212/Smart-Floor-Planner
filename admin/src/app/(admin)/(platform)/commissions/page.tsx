@@ -1,6 +1,7 @@
 'use client';
 
 import { notify } from '@/components/ui/operation-feedback';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 import { useEffect, useState } from 'react';
 import { Loader2, CheckCircle2, AlertCircle, Banknote, Filter } from 'lucide-react';
@@ -10,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { cn } from '@/lib/utils';
 
 export default function CommissionsPage() {
+  const confirmAction = useConfirmDialog();
   const [items, setItems] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>({});
   const [loading, setLoading] = useState(true);
@@ -35,7 +37,12 @@ export default function CommissionsPage() {
   }, [statusFilter]);
 
   const settleCommission = async (id: string) => {
-    if (!confirm('确认已完成线下打款并标记为已结算吗？')) return;
+    const confirmed = await confirmAction({
+      title: '确认结算',
+      description: '确认已完成线下打款并标记为已结算吗？',
+      confirmText: '标记已结算',
+    });
+    if (!confirmed) return;
     
     try {
       const res = await fetch(`/api/commissions/${id}/settle`, {

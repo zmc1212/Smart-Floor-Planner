@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, RefreshCw, Save } from 'lucide-react';
 import { notify } from '@/components/ui/operation-feedback';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -222,6 +223,7 @@ function matchesView(record: PromotionRecord, view: string) {
 }
 
 export default function PromotionRecordsPage() {
+  const confirmAction = useConfirmDialog();
   const { user } = useCurrentUser();
   const [records, setRecords] = useState<PromotionRecord[]>([]);
   const [staff, setStaff] = useState<AdminUserOption[]>([]);
@@ -339,7 +341,12 @@ export default function PromotionRecordsPage() {
     const claimPrompt = promotionConfig?.poolClaimRequiresApproval
       ? '确定提交这条客户线索的认领申请吗？审批通过后将进入你的保护期。'
       : `确定要认领这条客户线索吗？认领后您将拥有 ${protectionDays} 天保护期。`;
-    if (!confirm(claimPrompt)) return;
+    const claimConfirmed = await confirmAction({
+      title: promotionConfig?.poolClaimRequiresApproval ? '提交认领申请' : '认领客户线索',
+      description: claimPrompt,
+      confirmText: promotionConfig?.poolClaimRequiresApproval ? '提交申请' : '认领',
+    });
+    if (!claimConfirmed) return;
     try {
       const res = await fetch('/api/promotion-records/pool', {
         method: 'POST',
@@ -387,7 +394,13 @@ export default function PromotionRecordsPage() {
   };
 
   const handleReleaseToPool = async (recordId: string) => {
-    if (!confirm('确定将这条客户线索释放到公海池吗？释放后渠道地推可重新认领。')) return;
+    const confirmed = await confirmAction({
+      title: '释放到公海池',
+      description: '确定将这条客户线索释放到公海池吗？释放后渠道地推可重新认领。',
+      confirmText: '释放',
+      destructive: true,
+    });
+    if (!confirmed) return;
     try {
       const res = await fetch('/api/promotion-records/pool', {
         method: 'POST',

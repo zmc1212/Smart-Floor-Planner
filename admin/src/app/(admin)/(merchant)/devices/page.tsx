@@ -1,6 +1,7 @@
 'use client';
 
 import { notify } from '@/components/ui/operation-feedback';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +50,7 @@ interface Device {
 }
 
 export default function DevicesPage() {
+  const confirmAction = useConfirmDialog();
   const [devices, setDevices] = useState<Device[]>([]);
   const [staff, setStaff] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -148,7 +150,13 @@ export default function DevicesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('确定删除该设备吗？')) return;
+    const confirmed = await confirmAction({
+      title: '删除设备',
+      description: '确定删除该设备吗？',
+      confirmText: '删除',
+      destructive: true,
+    });
+    if (!confirmed) return;
     try {
       const res = await fetch(`/api/devices/${id}`, { method: 'DELETE' });
       const data = await res.json();

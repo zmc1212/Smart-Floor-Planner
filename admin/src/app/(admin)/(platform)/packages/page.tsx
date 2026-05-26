@@ -1,6 +1,7 @@
 'use client';
 
 import { notify } from '@/components/ui/operation-feedback';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 import { useEffect, useState } from 'react';
 import { Loader2, Plus, Edit, Trash2, CheckCircle, XCircle } from 'lucide-react';
@@ -28,6 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export default function PackagesPage() {
+  const confirmAction = useConfirmDialog();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -98,7 +100,13 @@ export default function PackagesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('确认删除该套餐吗？')) return;
+    const confirmed = await confirmAction({
+      title: '删除套餐',
+      description: '确认删除该套餐吗？',
+      confirmText: '删除',
+      destructive: true,
+    });
+    if (!confirmed) return;
     try {
       const res = await fetch(`/api/admin/packages/${id}`, { method: 'DELETE' });
       const data = await res.json();
