@@ -49,17 +49,50 @@
         <view wx:if="{{guideVisible}}" class="origin-axis y-axis" style="{{cursorVerticalGuideStyle}}"></view>
 
         <view
+          wx:for="{{wallJoinFills}}"
+          wx:key="id"
+          class="wall-join-fill"
+          style="{{item.style}}"
+        ></view>
+
+        <view
           wx:for="{{renderWalls}}"
           wx:key="id"
-          class="wall-render {{item.selected ? 'selected' : ''}}"
+          class="wall-render wall-body-render {{item.selected ? 'selected' : ''}}"
           style="{{item.style}}"
           data-id="{{item.id}}"
           catchtap="onWallTap"
         >
           <view class="wall-body" style="{{item.bodyStyle}}"></view>
+        </view>
+
+        <view wx:if="{{previewWall && !previewWall.lineOnly}}" class="wall-render wall-body-render preview" style="{{previewWall.style}}">
+          <view class="wall-body preview-body" style="{{previewWall.bodyStyle}}"></view>
+        </view>
+
+        <view
+          wx:for="{{renderWalls}}"
+          wx:key="id"
+          class="wall-render wall-outline-render"
+          style="{{item.style}}"
+        >
           <view class="wall-outer-line" style="{{item.outerLineStyle}}"></view>
           <view wx:if="{{item.startCapVisible}}" class="wall-cap" style="{{item.startCapStyle}}"></view>
           <view wx:if="{{item.endCapVisible}}" class="wall-cap" style="{{item.endCapStyle}}"></view>
+        </view>
+
+        <view wx:if="{{previewWall && !previewWall.lineOnly}}" class="wall-render wall-outline-render preview" style="{{previewWall.style}}">
+          <view class="wall-outer-line" style="{{previewWall.outerLineStyle}}"></view>
+          <view wx:if="{{previewWall.startCapVisible}}" class="wall-cap" style="{{previewWall.startCapStyle}}"></view>
+          <view wx:if="{{previewWall.endCapVisible}}" class="wall-cap" style="{{previewWall.endCapStyle}}"></view>
+        </view>
+
+        <view
+          wx:for="{{renderWalls}}"
+          wx:key="id"
+          class="wall-render wall-dimension-render"
+          style="{{item.style}}"
+        >
           <view wx:if="{{item.showDimension}}" class="wall-dimension" style="{{item.dimensionStyle}}">
             <view class="dimension-extension start"></view>
             <view class="dimension-extension end"></view>
@@ -70,12 +103,8 @@
           </view>
         </view>
 
-        <view wx:if="{{previewWall && !previewWall.lineOnly}}" class="wall-render preview" style="{{previewWall.style}}">
-          <view class="wall-body preview-body" style="{{previewWall.bodyStyle}}"></view>
-          <view class="wall-outer-line" style="{{previewWall.outerLineStyle}}"></view>
-          <view wx:if="{{previewWall.startCapVisible}}" class="wall-cap" style="{{previewWall.startCapStyle}}"></view>
-          <view wx:if="{{previewWall.endCapVisible}}" class="wall-cap" style="{{previewWall.endCapStyle}}"></view>
-          <view wx:if="{{previewWall.showDimension}}" class="wall-dimension preview-dimension" style="{{previewWall.dimensionStyle}}">
+        <view wx:if="{{previewWall && previewWall.showDimension}}" class="wall-render wall-dimension-render preview" style="{{previewWall.style}}">
+          <view class="wall-dimension preview-dimension" style="{{previewWall.dimensionStyle}}">
             <view class="dimension-extension start"></view>
             <view class="dimension-extension end"></view>
             <view class="dimension-main"></view>

@@ -117,6 +117,15 @@ function addVector(point, vector, amount) {
   };
 }
 
+function resolveRenderThicknessMm(wall, options) {
+  const opts = options || {};
+  const thicknessMap = opts.renderThicknessMmMap || {};
+  const mappedThickness = wall && wall.id ? thicknessMap[wall.id] : null;
+  const explicitThickness = opts.renderThicknessMm;
+  const resolved = mappedThickness || explicitThickness || (wall && wall.thicknessMm) || DEFAULT_THICKNESS_MM;
+  return Math.max(MIN_THICKNESS_MM, resolved);
+}
+
 function resolveAdjacentWalls(floor, wall, options) {
   const opts = options || {};
   const hasPrevious = Object.prototype.hasOwnProperty.call(opts, 'previousWall');
@@ -160,7 +169,7 @@ function buildResolvedSegment(floor, wall, options) {
   const leftNormal = { x: direction.y, y: -direction.x };
   const rightNormal = { x: -direction.y, y: direction.x };
   const normal = wall.measurementSide === 'left' ? leftNormal : rightNormal;
-  const thicknessMm = wall.thicknessMm || DEFAULT_THICKNESS_MM;
+  const thicknessMm = resolveRenderThicknessMm(wall, opts);
 
   return {
     wall,
@@ -214,12 +223,16 @@ function offsetJoinPoint(current, adjacent) {
 }
 
 function buildWallRenderGeometry(floor, wall, options) {
+  const opts = options || {};
   const current = buildResolvedSegment(floor, wall, options);
   if (!current) return null;
 
   const adjacent = resolveAdjacentWalls(floor, wall, options);
-  const previous = adjacent.previousWall ? buildResolvedSegment(floor, adjacent.previousWall) : null;
-  const next = adjacent.nextWall ? buildResolvedSegment(floor, adjacent.nextWall) : null;
+  const adjacentOptions = {
+    renderThicknessMmMap: opts.renderThicknessMmMap
+  };
+  const previous = adjacent.previousWall ? buildResolvedSegment(floor, adjacent.previousWall, adjacentOptions) : null;
+  const next = adjacent.nextWall ? buildResolvedSegment(floor, adjacent.nextWall, adjacentOptions) : null;
   const startJoined = !!(previous && pointsNearlyEqual(previous.end, current.start));
   const endJoined = !!(next && pointsNearlyEqual(next.start, current.end));
   const outerStart = (startJoined && offsetJoinPoint(current, previous)) || current.outerStart;
@@ -240,6 +253,52 @@ function buildWallRenderGeometry(floor, wall, options) {
     outerEndAlongMm: projectAlong(current, outerEnd),
     thicknessMm: current.thicknessMm
   };
+}
+
+function pointsToJoinFill(previous, next) {
+  if (!previous || !next || !pointsNearlyEqual(previous.end, next.start)) {
+    return null;
+  }
+  if (Math.abs(dot(previous.normal, next.normal)) > 0.98) {
+    return null;
+  }
+
+  const joint = previous.end;
+  const previousOffset = addVector(joint, previous.normal, previous.thicknessMm);
+  const cornerOffset = addVector(previousOffset, next.normal, next.thicknessMm);
+  const nextOffset = addVector(joint, next.normal, next.thicknessMm);
+
+  return {
+    id: `${previous.wall.id}-${next.wall.id}`,
+    joint,
+    points: [joint, previousOffset, cornerOffset, nextOffset]
+  };
+}
+
+function buildWallJoinRenderGeometries(floor, options) {
+  if (!floor || !floor.walls || floor.walls.length < 2) return [];
+
+  const opts = options || {};
+  const segmentOptions = {
+    renderThicknessMmMap: opts.renderThicknessMmMap
+  };
+  const joins = [];
+
+  for (let index = 0; index < floor.walls.length - 1; index += 1) {
+    const previous = buildResolvedSegment(floor, floor.walls[index], segmentOptions);
+    const next = buildResolvedSegment(floor, floor.walls[index + 1], segmentOptions);
+    const join = pointsToJoinFill(previous, next);
+    if (join) joins.push(join);
+  }
+
+  if (hasClosedSpace(floor) && floor.walls.length > 2) {
+    const previous = buildResolvedSegment(floor, floor.walls[floor.walls.length - 1], segmentOptions);
+    const next = buildResolvedSegment(floor, floor.walls[0], segmentOptions);
+    const join = pointsToJoinFill(previous, next);
+    if (join) joins.push(join);
+  }
+
+  return joins;
 }
 
 function addNode(floor, point) {
@@ -715,6 +774,7 @@ module.exports = {
   distanceMm,
   angleDeg,
   buildWallRenderGeometry,
+  buildWallJoinRenderGeometries,
   calculateSpaceAreaMm2,
   setMode,
   placeCursor,

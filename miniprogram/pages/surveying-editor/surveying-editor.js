@@ -17,6 +17,14 @@ const MIN_SCALE = 0.05;
 const MAX_SCALE = 0.36;
 const MAX_HISTORY = 40;
 const MEASURE_LINE_TOP_PX = 40;
+const WALL_VISUAL_SCALE = 0.56;
+const MIN_WALL_THICKNESS_PX = 10;
+const MAX_WALL_THICKNESS_PX = 22;
+const DIMENSION_LINE_CENTER_PX = 16;
+const DIMENSION_LABEL_HEIGHT_PX = 24;
+const DIMENSION_COLLISION_GAP_PX = 8;
+const DIMENSION_PRIMARY_GAP_PX = 22;
+const DIMENSION_OUTER_GAP_PX = 12;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -62,6 +70,24 @@ function buildLineRange(startPx, endPx, fallbackWidth) {
   };
 }
 
+function boxesOverlap(first, second, padding) {
+  const gap = padding || 0;
+  return !(
+    first.right + gap < second.left ||
+    first.left - gap > second.right ||
+    first.bottom + gap < second.top ||
+    first.top - gap > second.bottom
+  );
+}
+
+function dimensionCollides(option, acceptedOption) {
+  const angleDiff = normalizeAngleDiff(option.angleDeg, acceptedOption.angleDeg);
+  const useBandBox = angleDiff <= 20 || angleDiff >= 160;
+  const currentBox = useBandBox ? option.collisionBox : option.labelBox;
+  const acceptedBox = useBandBox ? acceptedOption.collisionBox : acceptedOption.labelBox;
+  return boxesOverlap(currentBox, acceptedBox, DIMENSION_COLLISION_GAP_PX);
+}
+
 function getTouchPoint(touch) {
   return { x: touch.clientX, y: touch.clientY };
 }
@@ -81,6 +107,7 @@ Page({
     coreTools: buildCoreTools('straight', 200),
     reservedTools: RESERVED_TOOLS,
     renderWalls: [],
+    wallJoinFills: [],
     previewWall: null,
     cursorStyle: '',
     cursorHorizontalGuideStyle: '',
@@ -180,6 +207,7 @@ Page({
       thicknessMm: session.thicknessMm,
       coreTools: buildCoreTools(session.mode, session.thicknessMm),
       renderWalls: renderData.renderWalls,
+      wallJoinFills: renderData.wallJoinFills,
       previewWall: renderData.previewWall,
       cursorStyle: renderData.cursorStyle,
       cursorHorizontalGuideStyle: renderData.cursorHorizontalGuideStyle,
@@ -211,7 +239,11 @@ Page({
   },
 
   buildCanvasRenderData(floor, session) {
-    const renderWalls = floor.walls.map((wall, index) => this.buildWallRender(floor, wall, false, index));
+    const renderThicknessMmMap = this.buildRenderThicknessMmMap(floor);
+    const renderWalls = floor.walls
+      .map((wall, index) => this.buildWallRender(floor, wall, false, index, renderThicknessMmMap))
+      .filter(Boolean);
+    const wallJoinFills = this.buildWallJoinFills(floor, renderThicknessMmMap);
     let previewWall = null;
     let cursorVisible = false;
     let guideVisible = false;
@@ -222,7 +254,7 @@ Page({
     let closeHintText = '';
 
     if (session.previewPoint) {
-      previewWall = this.buildPreviewRender(floor, session);
+      previewWall = this.buildPreviewRender(floor, session, renderThicknessMmMap);
       closeHintVisible = !!session.closeCandidateNodeId;
       closeHintText = closeHintVisible ? '预览端点已接近起点，确认长度后可闭合' : '';
     }
@@ -253,9 +285,11 @@ Page({
     const topMetric = this.buildTopMetric(activeSegment);
     const measurePosition = this.buildMeasurePosition(activeSegment, floor, session);
     const closure = this.buildClosureRender(floor, session);
+    this.resolveDimensionVisibility(renderWalls, previewWall);
 
     return {
       renderWalls,
+      wallJoinFills,
       previewWall,
       cursorVisible,
       guideVisible,
@@ -277,16 +311,57 @@ Page({
     };
   },
 
-  buildWallRender(floor, wall, isPreview, index) {
+  buildRenderThicknessMmMap(floor) {
+    const viewport = this.getViewport();
+    const scale = viewport.scale || surveyGraph.DEFAULT_SCALE;
+    const thicknessMap = {};
+    floor.walls.forEach((wall) => {
+      thicknessMap[wall.id] = this.getVisualThicknessPx(wall.thicknessMm) / scale;
+    });
+    return thicknessMap;
+  },
+
+  getVisualThicknessPx(thicknessMm) {
+    const viewport = this.getViewport();
+    const scale = viewport.scale || surveyGraph.DEFAULT_SCALE;
+    const rawThickness = (thicknessMm || 200) * scale * WALL_VISUAL_SCALE;
+    return Math.round(clamp(rawThickness, MIN_WALL_THICKNESS_PX, MAX_WALL_THICKNESS_PX));
+  },
+
+  getRenderThicknessMm(thicknessMm) {
+    const viewport = this.getViewport();
+    const scale = viewport.scale || surveyGraph.DEFAULT_SCALE;
+    return this.getVisualThicknessPx(thicknessMm) / scale;
+  },
+
+  buildWallJoinFills(floor, renderThicknessMmMap) {
+    return surveyGraph.buildWallJoinRenderGeometries(floor, { renderThicknessMmMap })
+      .map((join) => {
+        const points = join.points.map((point) => this.mmToCanvasPoint(point));
+        const xs = points.map((point) => point.x);
+        const ys = points.map((point) => point.y);
+        const left = Math.min.apply(null, xs);
+        const right = Math.max.apply(null, xs);
+        const top = Math.min.apply(null, ys);
+        const bottom = Math.max.apply(null, ys);
+
+        return {
+          id: join.id,
+          style: `left:${roundPx(left)}px; top:${roundPx(top)}px; width:${roundPx(Math.max(1, right - left))}px; height:${roundPx(Math.max(1, bottom - top))}px;`
+        };
+      });
+  },
+
+  buildWallRender(floor, wall, isPreview, index, renderThicknessMmMap) {
     const start = surveyGraph.getNode(floor, wall.startNodeId);
     const end = surveyGraph.getNode(floor, wall.endNodeId);
     if (!start || !end) return null;
     const previousWall = index > 0 ? floor.walls[index - 1] : null;
-    const geometry = surveyGraph.buildWallRenderGeometry(floor, wall);
+    const geometry = surveyGraph.buildWallRenderGeometry(floor, wall, { renderThicknessMmMap });
     return this.buildSegmentRender(start, end, wall, isPreview, previousWall, geometry);
   },
 
-  buildPreviewRender(floor, session) {
+  buildPreviewRender(floor, session, renderThicknessMmMap) {
     const anchor = surveyGraph.getNode(floor, session.anchorNodeId);
     if (!anchor || !session.previewPoint) return null;
     const previousWall = floor.walls[floor.walls.length - 1] || null;
@@ -299,11 +374,15 @@ Page({
       measurementSide: session.measurementSide,
       status: 'preview'
     };
+    const previewThicknessMap = Object.assign({}, renderThicknessMmMap, {
+      [previewWall.id]: this.getRenderThicknessMm(previewWall.thicknessMm)
+    });
     const geometry = surveyGraph.buildWallRenderGeometry(floor, previewWall, {
       startPoint: anchor,
       endPoint: session.previewPoint,
       previousWall,
-      nextWall: null
+      nextWall: null,
+      renderThicknessMmMap: previewThicknessMap
     });
     const render = this.buildSegmentRender(anchor, session.previewPoint, previewWall, true, previousWall, geometry);
     if (!render) return null;
@@ -317,18 +396,23 @@ Page({
     const endPoint = this.mmToCanvasPoint(end);
     const width = distancePx(startPoint, endPoint);
     const viewport = this.getViewport();
-    const thicknessPx = Math.max(8, Math.round((wall.thicknessMm || 200) * viewport.scale));
+    const thicknessPx = geometry
+      ? Math.round(geometry.thicknessMm * viewport.scale)
+      : this.getVisualThicknessPx(wall.thicknessMm);
     const bodyOffset = wall.measurementSide === 'left' ? MEASURE_LINE_TOP_PX - thicknessPx : MEASURE_LINE_TOP_PX;
     const bodyEdgeStart = Math.min(bodyOffset, MEASURE_LINE_TOP_PX);
     const outlineTop = wall.measurementSide === 'left' ? bodyOffset : MEASURE_LINE_TOP_PX + thicknessPx;
-    const dimensionOffset = wall.measurementSide === 'left'
-      ? MEASURE_LINE_TOP_PX + 28
-      : MEASURE_LINE_TOP_PX - 72;
     const selected = !isPreview && this.draft && surveyGraph.getActiveFloor(this.draft).session.selectedWallId === wall.id;
     const relativeAngle = previousWall ? normalizeAngleDiff(wall.angleDeg, previousWall.angleDeg) : null;
     const outerStartPx = geometry ? geometry.outerStartAlongMm * viewport.scale : 0;
     const outerEndPx = geometry ? geometry.outerEndAlongMm * viewport.scale : width;
     const outerLine = buildLineRange(outerStartPx, outerEndPx, width);
+    const bodyLeft = Math.min(0, outerStartPx, outerEndPx);
+    const bodyRight = Math.max(width, outerStartPx, outerEndPx);
+    const bodyLine = {
+      left: bodyLeft,
+      width: Math.max(1, bodyRight - bodyLeft)
+    };
 
     return {
       id: wall.id,
@@ -340,13 +424,13 @@ Page({
       relativeAngle,
       measurementSide: wall.measurementSide,
       style: `left:${roundPx(startPoint.x)}px; top:${roundPx(startPoint.y - WALL_HIT_HALF_PX)}px; width:${roundPx(width)}px; transform:rotate(${wall.angleDeg}deg);`,
-      bodyStyle: `left:0; width:${roundPx(width)}px; height:${thicknessPx}px; top:${roundPx(bodyOffset)}px;`,
+      bodyStyle: `left:${roundPx(bodyLine.left)}px; width:${roundPx(bodyLine.width)}px; height:${thicknessPx}px; top:${roundPx(bodyOffset)}px;`,
       outerLineStyle: `left:${roundPx(outerLine.left)}px; width:${roundPx(outerLine.width)}px; top:${roundPx(outlineTop)}px;`,
       startCapVisible: geometry ? geometry.startOpen : !previousWall,
       endCapVisible: geometry ? geometry.endOpen : true,
-      startCapStyle: `left:-1px; top:${roundPx(bodyEdgeStart)}px; height:${roundPx(thicknessPx)}px;`,
-      endCapStyle: `left:${roundPx(width - 1)}px; top:${roundPx(bodyEdgeStart)}px; height:${roundPx(thicknessPx)}px;`,
-      dimensionStyle: `top:${roundPx(dimensionOffset)}px;`,
+      startCapStyle: `left:${roundPx(bodyLine.left - 1)}px; top:${roundPx(bodyEdgeStart)}px; height:${roundPx(thicknessPx)}px;`,
+      endCapStyle: `left:${roundPx(bodyLine.left + bodyLine.width - 1)}px; top:${roundPx(bodyEdgeStart)}px; height:${roundPx(thicknessPx)}px;`,
+      dimensionOptions: this.buildDimensionOptions(startPoint, width, wall.angleDeg, wall, thicknessPx),
       dimensionLabel: `${Math.round(wall.lengthMm || 0)}`,
       showDimension: true,
       label: this.formatWallLabel(wall),
@@ -355,6 +439,102 @@ Page({
       selected,
       preview: isPreview
     };
+  },
+
+  buildDimensionOptions(startPoint, width, angleDeg, wall, thicknessPx) {
+    const primaryCenter = wall.measurementSide === 'left'
+      ? MEASURE_LINE_TOP_PX + DIMENSION_PRIMARY_GAP_PX
+      : MEASURE_LINE_TOP_PX - DIMENSION_PRIMARY_GAP_PX;
+    const fallbackCenter = wall.measurementSide === 'left'
+      ? MEASURE_LINE_TOP_PX - thicknessPx - DIMENSION_OUTER_GAP_PX
+      : MEASURE_LINE_TOP_PX + thicknessPx + DIMENSION_OUTER_GAP_PX;
+
+    return [primaryCenter, fallbackCenter].map((lineCenter) => {
+      const dimensionOffset = lineCenter - DIMENSION_LINE_CENTER_PX;
+      return {
+        style: `top:${roundPx(dimensionOffset)}px;`,
+        angleDeg,
+        labelBox: this.buildDimensionLabelBox(startPoint, width, angleDeg, dimensionOffset, wall.lengthMm),
+        collisionBox: this.buildDimensionBandBox(startPoint, width, angleDeg, dimensionOffset)
+      };
+    });
+  },
+
+  buildDimensionLabelBox(startPoint, width, angleDeg, dimensionOffset, lengthMm) {
+    const angleRad = angleDeg * Math.PI / 180;
+    const localY = dimensionOffset + DIMENSION_LINE_CENTER_PX - WALL_HIT_HALF_PX;
+    const centerX = startPoint.x + Math.cos(angleRad) * (width / 2) - Math.sin(angleRad) * localY;
+    const centerY = startPoint.y + Math.sin(angleRad) * (width / 2) + Math.cos(angleRad) * localY;
+    const label = `${Math.round(lengthMm || 0)}`;
+    const labelWidth = Math.max(34, label.length * 9 + 20);
+    const labelHeight = DIMENSION_LABEL_HEIGHT_PX;
+    const vertical = Math.abs(Math.sin(angleRad)) > 0.7;
+    const boxWidth = vertical ? labelHeight : labelWidth;
+    const boxHeight = vertical ? labelWidth : labelHeight;
+
+    return {
+      left: centerX - boxWidth / 2,
+      right: centerX + boxWidth / 2,
+      top: centerY - boxHeight / 2,
+      bottom: centerY + boxHeight / 2
+    };
+  },
+
+  buildDimensionBandBox(startPoint, width, angleDeg, dimensionOffset) {
+    const angleRad = angleDeg * Math.PI / 180;
+    const localTop = dimensionOffset - WALL_HIT_HALF_PX;
+    const localBottom = localTop + DIMENSION_LINE_CENTER_PX * 2;
+    const corners = [
+      { x: 0, y: localTop },
+      { x: width, y: localTop },
+      { x: width, y: localBottom },
+      { x: 0, y: localBottom }
+    ].map((point) => ({
+      x: startPoint.x + Math.cos(angleRad) * point.x - Math.sin(angleRad) * point.y,
+      y: startPoint.y + Math.sin(angleRad) * point.x + Math.cos(angleRad) * point.y
+    }));
+    const xs = corners.map((point) => point.x);
+    const ys = corners.map((point) => point.y);
+
+    return {
+      left: Math.min.apply(null, xs),
+      right: Math.max.apply(null, xs),
+      top: Math.min.apply(null, ys),
+      bottom: Math.max.apply(null, ys)
+    };
+  },
+
+  resolveDimensionVisibility(renderWalls, previewWall) {
+    const candidates = [];
+
+    renderWalls.forEach((wall, index) => {
+      wall.showDimension = true;
+      if (!wall.dimensionOptions || !wall.dimensionOptions.length) return;
+      candidates.push({
+        wall,
+        priority: (wall.selected ? 900 : 0) + (index === renderWalls.length - 1 ? 500 : 0) + (index === 0 ? 250 : 0) + index
+      });
+    });
+
+    if (previewWall && previewWall.showDimension && previewWall.dimensionOptions && previewWall.dimensionOptions.length) {
+      candidates.push({ wall: previewWall, priority: 1000 });
+    }
+
+    candidates.sort((first, second) => second.priority - first.priority);
+    const accepted = [];
+    candidates.forEach((candidate) => {
+      const options = candidate.wall.dimensionOptions;
+      let selectedOption = options.find((option) => !accepted.some((acceptedOption) => dimensionCollides(option, acceptedOption)));
+      if (!selectedOption && candidate.priority >= 750) {
+        selectedOption = options[0];
+      }
+
+      candidate.wall.showDimension = !!selectedOption;
+      if (selectedOption) {
+        candidate.wall.dimensionStyle = selectedOption.style;
+        accepted.push(selectedOption);
+      }
+    });
   },
 
   buildTopMetric(segment) {
