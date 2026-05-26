@@ -108,7 +108,7 @@
 
         <view wx:if="{{measurePositionVisible}}" class="measure-position" style="{{measurePositionStyle}}">
           <view class="measure-position-tip">当前测量位置</view>
-          <view class="measure-side-button" bindtap="onToggleSide">
+          <view class="measure-side-button" data-source="measure-position" bindtap="onToggleSide">
             <view class="measure-side-line"></view>
             <text>{{measurePositionButtonLabel}}</text>
           </view>

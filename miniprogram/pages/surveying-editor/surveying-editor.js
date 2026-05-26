@@ -251,7 +251,7 @@ Page({
 
     const activeSegment = previewWall || renderWalls[renderWalls.length - 1] || null;
     const topMetric = this.buildTopMetric(activeSegment);
-    const measurePosition = this.buildMeasurePosition(activeSegment, session);
+    const measurePosition = this.buildMeasurePosition(activeSegment, floor, session);
     const closure = this.buildClosureRender(floor, session);
 
     return {
@@ -369,8 +369,19 @@ Page({
     };
   },
 
-  buildMeasurePosition(segment, session) {
-    if (!segment || segment.lineOnly || !segment.startPoint || !segment.endPoint) {
+  isFirstMeasurePositionStage(floor, session) {
+    if (!floor || !session) return false;
+    if (session.state === 'spaceClosed' || session.state === 'wallSelected' || session.state === 'remeasureAwaitingInput') {
+      return false;
+    }
+    if (floor.walls.length === 0 && session.previewPoint && (session.state === 'wallPreview' || session.state === 'awaitingLength')) {
+      return true;
+    }
+    return floor.walls.length === 1 && session.state === 'wallCommitted' && !session.previewPoint;
+  },
+
+  buildMeasurePosition(segment, floor, session) {
+    if (!this.isFirstMeasurePositionStage(floor, session) || !segment || !segment.startPoint || !segment.endPoint) {
       return { visible: false, style: '', buttonLabel: '↓' };
     }
 
@@ -514,7 +525,7 @@ Page({
   applyDraft(nextDraft, options) {
     const opts = options || {};
     if (opts.recordHistory) {
-      this.history.undo.push(surveyGraph.cloneDraft(this.draft));
+      this.history.undo.push(opts.historyDraft ? surveyGraph.cloneDraft(opts.historyDraft) : surveyGraph.cloneDraft(this.draft));
       if (this.history.undo.length > MAX_HISTORY) {
         this.history.undo.shift();
       }
@@ -568,11 +579,21 @@ Page({
     }
   },
 
-  onToggleSide() {
+  onToggleSide(e) {
     const floor = surveyGraph.getActiveFloor(this.draft);
     const session = floor.session;
-    const lastWall = floor.walls[floor.walls.length - 1] || null;
-    const activeWallId = session.selectedWallId || (session.state === 'wallCommitted' && lastWall ? lastWall.id : '');
+    const dataset = e && e.currentTarget ? e.currentTarget.dataset : {};
+    const source = dataset && dataset.source;
+    const firstWall = floor.walls[0] || null;
+    const activeWallId = source === 'measure-position'
+      ? (this.isFirstMeasurePositionStage(floor, session) && firstWall ? firstWall.id : '')
+      : session.selectedWallId;
+
+    if (source === 'measure-position' && !this.isFirstMeasurePositionStage(floor, session)) {
+      wx.showToast({ title: '测量位置仅在第一条边设置', icon: 'none' });
+      return;
+    }
+
     const activeWall = activeWallId ? surveyGraph.getWall(floor, activeWallId) : null;
     const currentSide = activeWall ? activeWall.measurementSide : session.measurementSide;
     const nextSide = currentSide === 'right' ? 'left' : 'right';
@@ -581,7 +602,7 @@ Page({
       recordHistory: !!activeWallId,
       extraData: { numberPadVisible: this.data.numberPadVisible }
     });
-    wx.showToast({ title: activeWallId ? '墙侧已更新' : '后续墙侧已切换', icon: 'none' });
+    wx.showToast({ title: source === 'measure-position' ? '测量位置已更新' : (activeWallId ? '墙侧已更新' : '后续墙侧已切换'), icon: 'none' });
   },
 
   onDisabledTap() {
@@ -676,6 +697,9 @@ Page({
       if (moved < TOUCH_SLOP_PX) return;
 
       if (this.touchState.nearCursor && (this.touchState.sessionState === 'cursorPlaced' || this.touchState.sessionState === 'wallCommitted')) {
+        if (!this.touchState.historyDraft) {
+          this.touchState.historyDraft = surveyGraph.cloneDraft(this.draft);
+        }
         this.draft = surveyGraph.startPreview(this.draft, currentMm);
         this.touchState.mode = 'wall';
       } else {
@@ -705,6 +729,7 @@ Page({
     const floor = surveyGraph.getActiveFloor(this.draft);
     const session = floor.session;
     const movedWall = this.touchState.mode === 'wall';
+    const historyDraft = this.touchState.historyDraft;
 
     this.touchState = null;
 
@@ -712,7 +737,7 @@ Page({
       if (session.previewLengthMm >= surveyGraph.MIN_WALL_LENGTH_MM) {
         try {
           const nextDraft = surveyGraph.commitPreviewLength(this.draft, session.previewLengthMm, 'manual');
-          this.applyDraft(nextDraft, { recordHistory: true });
+          this.applyDraft(nextDraft, { recordHistory: true, historyDraft });
         } catch (err) {
           wx.showToast({ title: err.message || '成墙失败，请重试', icon: 'none' });
           this.draft = surveyGraph.cancelPending(this.draft);
@@ -759,7 +784,11 @@ Page({
   onUndo() {
     if (!this.history.undo.length) return;
     this.history.redo.push(surveyGraph.cloneDraft(this.draft));
-    this.draft = this.history.undo.pop();
+    const restoredDraft = this.history.undo.pop();
+    const restoredSession = surveyGraph.getActiveFloor(restoredDraft).session;
+    this.draft = (restoredSession.state === 'wallPreview' || restoredSession.state === 'awaitingLength')
+      ? surveyGraph.cancelPending(restoredDraft)
+      : restoredDraft;
     this.syncFromDraft({ numberPadVisible: false });
   },
 
