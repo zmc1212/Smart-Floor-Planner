@@ -25,6 +25,9 @@ const DIMENSION_LABEL_HEIGHT_PX = 24;
 const DIMENSION_COLLISION_GAP_PX = 8;
 const DIMENSION_PRIMARY_GAP_PX = 22;
 const DIMENSION_OUTER_GAP_PX = 12;
+const REDLINE_JOIN_TRIM_PX = 0;
+const REDLINE_THICKNESS_PX = 3;
+const REDLINE_OVERLAP_TOLERANCE_PX = 6;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -88,6 +91,54 @@ function dimensionCollides(option, acceptedOption) {
   return boxesOverlap(currentBox, acceptedBox, DIMENSION_COLLISION_GAP_PX);
 }
 
+function canvasPointLineDistance(point, start, direction) {
+  return Math.abs((point.x - start.x) * direction.y - (point.y - start.y) * direction.x);
+}
+
+function getCanvasSegmentOverlapInterval(current, existing) {
+  const length = current.width || distancePx(current.startPoint, current.endPoint);
+  if (!length) return null;
+
+  const direction = {
+    x: (current.endPoint.x - current.startPoint.x) / length,
+    y: (current.endPoint.y - current.startPoint.y) / length
+  };
+
+  if (
+    canvasPointLineDistance(existing.startPoint, current.startPoint, direction) > REDLINE_OVERLAP_TOLERANCE_PX ||
+    canvasPointLineDistance(existing.endPoint, current.startPoint, direction) > REDLINE_OVERLAP_TOLERANCE_PX
+  ) {
+    return null;
+  }
+
+  const existingStartAlong = (existing.startPoint.x - current.startPoint.x) * direction.x +
+    (existing.startPoint.y - current.startPoint.y) * direction.y;
+  const existingEndAlong = (existing.endPoint.x - current.startPoint.x) * direction.x +
+    (existing.endPoint.y - current.startPoint.y) * direction.y;
+  const overlapStart = Math.max(0, Math.min(existingStartAlong, existingEndAlong));
+  const overlapEnd = Math.min(length, Math.max(existingStartAlong, existingEndAlong));
+  if (overlapEnd - overlapStart <= 1) return null;
+  return { start: overlapStart, end: overlapEnd };
+}
+
+function subtractInterval(intervals, cut) {
+  if (!cut) return intervals;
+  const result = [];
+  intervals.forEach((interval) => {
+    if (cut.end <= interval.start || cut.start >= interval.end) {
+      result.push(interval);
+      return;
+    }
+    if (cut.start > interval.start) {
+      result.push({ start: interval.start, end: Math.min(cut.start, interval.end) });
+    }
+    if (cut.end < interval.end) {
+      result.push({ start: Math.max(cut.end, interval.start), end: interval.end });
+    }
+  });
+  return result.filter((interval) => interval.end - interval.start > 1);
+}
+
 function getTouchPoint(touch) {
   return { x: touch.clientX, y: touch.clientY };
 }
@@ -108,6 +159,7 @@ Page({
     reservedTools: RESERVED_TOOLS,
     renderWalls: [],
     wallJoinFills: [],
+    redlineJoinFills: [],
     previewWall: null,
     cursorStyle: '',
     cursorHorizontalGuideStyle: '',
@@ -208,6 +260,7 @@ Page({
       coreTools: buildCoreTools(session.mode, session.thicknessMm),
       renderWalls: renderData.renderWalls,
       wallJoinFills: renderData.wallJoinFills,
+      redlineJoinFills: renderData.redlineJoinFills,
       previewWall: renderData.previewWall,
       cursorStyle: renderData.cursorStyle,
       cursorHorizontalGuideStyle: renderData.cursorHorizontalGuideStyle,
@@ -244,6 +297,7 @@ Page({
       .map((wall, index) => this.buildWallRender(floor, wall, false, index, renderThicknessMmMap))
       .filter(Boolean);
     const wallJoinFills = this.buildWallJoinFills(floor, renderThicknessMmMap);
+    const redlineJoinFills = this.buildRedlineJoinFills(floor);
     let previewWall = null;
     let cursorVisible = false;
     let guideVisible = false;
@@ -286,10 +340,12 @@ Page({
     const measurePosition = this.buildMeasurePosition(activeSegment, floor, session);
     const closure = this.buildClosureRender(floor, session);
     this.resolveDimensionVisibility(renderWalls, previewWall);
+    this.resolveRedlineVisibility(renderWalls, previewWall);
 
     return {
       renderWalls,
       wallJoinFills,
+      redlineJoinFills,
       previewWall,
       cursorVisible,
       guideVisible,
@@ -348,6 +404,17 @@ Page({
         return {
           id: join.id,
           style: `left:${roundPx(left)}px; top:${roundPx(top)}px; width:${roundPx(Math.max(1, right - left))}px; height:${roundPx(Math.max(1, bottom - top))}px;`
+        };
+      });
+  },
+
+  buildRedlineJoinFills(floor) {
+    return surveyGraph.buildWallJoinRenderGeometries(floor)
+      .map((join) => {
+        const point = this.mmToCanvasPoint(join.joint);
+        return {
+          id: join.id,
+          style: `left:${roundPx(point.x - REDLINE_THICKNESS_PX / 2)}px; top:${roundPx(point.y - REDLINE_THICKNESS_PX / 2)}px; width:${REDLINE_THICKNESS_PX}px; height:${REDLINE_THICKNESS_PX}px;`
         };
       });
   },
@@ -433,6 +500,10 @@ Page({
       dimensionOptions: this.buildDimensionOptions(startPoint, width, wall.angleDeg, wall, thicknessPx),
       dimensionLabel: `${Math.round(wall.lengthMm || 0)}`,
       showDimension: true,
+      redlineVisible: true,
+      redlineStartInsetPx: geometry && geometry.startJoined ? REDLINE_JOIN_TRIM_PX : 0,
+      redlineEndInsetPx: geometry && geometry.endJoined ? REDLINE_JOIN_TRIM_PX : 0,
+      redlineParts: [],
       label: this.formatWallLabel(wall),
       sideLabel: wall.measurementSide === 'left' ? '左侧' : '右侧',
       modeLabel: wall.mode === 'diagonal' ? '斜墙' : '直墙',
@@ -535,6 +606,36 @@ Page({
         accepted.push(selectedOption);
       }
     });
+  },
+
+  resolveRedlineVisibility(renderWalls, previewWall) {
+    const accepted = [];
+    renderWalls.forEach((wall) => {
+      wall.redlineParts = this.buildRedlineParts(wall, accepted);
+      wall.redlineVisible = wall.redlineParts.length > 0;
+      accepted.push(wall);
+    });
+
+    if (previewWall) {
+      previewWall.redlineParts = this.buildRedlineParts(previewWall, accepted);
+      previewWall.redlineVisible = previewWall.redlineParts.length > 0;
+    }
+  },
+
+  buildRedlineParts(segment, acceptedSegments) {
+    const startInset = segment.redlineStartInsetPx || 0;
+    const endInset = segment.redlineEndInsetPx || 0;
+    const end = Math.max(startInset, segment.width - endInset);
+    let intervals = [{ start: startInset, end }];
+
+    acceptedSegments.forEach((acceptedSegment) => {
+      intervals = subtractInterval(intervals, getCanvasSegmentOverlapInterval(segment, acceptedSegment));
+    });
+
+    return intervals.map((interval) => ({
+      key: `${roundPx(interval.start)}-${roundPx(interval.end)}`,
+      style: `left:${roundPx(interval.start)}px; width:${roundPx(interval.end - interval.start)}px;`
+    }));
   },
 
   buildTopMetric(segment) {

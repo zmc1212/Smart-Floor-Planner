@@ -3,6 +3,7 @@ const DEFAULT_SCALE = 0.16;
 const CLOSE_TOLERANCE_MM = 200;
 const MIN_WALL_LENGTH_MM = 100;
 const MIN_THICKNESS_MM = 50;
+const WALL_OVERLAP_TOLERANCE_MM = 30;
 
 let idSeed = 1;
 
@@ -93,6 +94,13 @@ function dot(a, b) {
 
 function cross(a, b) {
   return a.x * b.y - a.y * b.x;
+}
+
+function pointLineDistanceMm(point, start, direction) {
+  return Math.abs(cross({
+    x: point.xMm - start.xMm,
+    y: point.yMm - start.yMm
+  }, direction));
 }
 
 function normalizeAngle(angle) {
@@ -207,6 +215,43 @@ function projectAlong(segment, point) {
     { x: point.xMm - segment.start.xMm, y: point.yMm - segment.start.yMm },
     segment.direction
   );
+}
+
+function segmentOverlapLengthMm(start, end, otherStart, otherEnd) {
+  const dx = end.xMm - start.xMm;
+  const dy = end.yMm - start.yMm;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  if (!length) return 0;
+
+  const direction = { x: dx / length, y: dy / length };
+  if (
+    pointLineDistanceMm(otherStart, start, direction) > WALL_OVERLAP_TOLERANCE_MM ||
+    pointLineDistanceMm(otherEnd, start, direction) > WALL_OVERLAP_TOLERANCE_MM
+  ) {
+    return 0;
+  }
+
+  const otherStartAlong = dot({ x: otherStart.xMm - start.xMm, y: otherStart.yMm - start.yMm }, direction);
+  const otherEndAlong = dot({ x: otherEnd.xMm - start.xMm, y: otherEnd.yMm - start.yMm }, direction);
+  const overlapStart = Math.max(0, Math.min(otherStartAlong, otherEndAlong));
+  const overlapEnd = Math.min(length, Math.max(otherStartAlong, otherEndAlong));
+  return Math.max(0, overlapEnd - overlapStart);
+}
+
+function findOverlappingWall(floor, start, end) {
+  const currentLength = distanceMm(start, end);
+  if (!floor || !floor.walls || currentLength < MIN_WALL_LENGTH_MM) return null;
+
+  return floor.walls.find((wall) => {
+    const wallStart = getNode(floor, wall.startNodeId);
+    const wallEnd = getNode(floor, wall.endNodeId);
+    if (!wallStart || !wallEnd) return false;
+
+    const overlapLength = segmentOverlapLengthMm(start, end, wallStart, wallEnd);
+    const wallLength = distanceMm(wallStart, wallEnd);
+    const meaningfulOverlap = Math.min(currentLength, wallLength) * 0.25;
+    return overlapLength > Math.max(WALL_OVERLAP_TOLERANCE_MM, meaningfulOverlap);
+  }) || null;
 }
 
 function isUsableJoinPoint(segment, point) {
@@ -523,6 +568,10 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   }
 
   const endPoint = pointFromLength(anchor, session.previewPoint, parsedLength);
+  if (findOverlappingWall(floor, anchor, endPoint)) {
+    throw new Error('当前墙与已测墙重叠，请从光标转角继续测量');
+  }
+
   const endNode = addNode(floor, endPoint);
   const wall = {
     id: nextId('wall'),

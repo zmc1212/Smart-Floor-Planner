@@ -46,10 +46,51 @@ flowchart LR
   Manual["数字输入"] --> Input
   Input --> Session
   Session --> Graph["Wall Graph<br/>nodes / walls / spaces / floors"]
+  Graph --> Canvas["CanvasRenderer<br/>网格 / 墙体 / 红线 / 标注"]
+  Canvas --> UI
   Graph --> Local["原型本地草稿<br/>非正式数据"]
   Graph -. "正式接入阶段" .-> Adapter["LegacyLayoutAdapter"]
   Adapter -.-> Existing["现有保存 / 报告 / CAD / 3D"]
 ```
+
+## Canvas 渲染层重构计划
+
+当前原型曾用多层 `view + CSS rotate` 拼接灰墙、黑线、红线和尺寸标注。该方式适合快速验证交互，但在连续转角、闭合首尾、短边标注和局部重叠场景下容易出现 1px 缝隙、红线变粗、拐角断线和层级遮挡。后续应将几何绘制迁移到 Canvas，DOM 只保留交互控件和可点击浮层。
+
+### 渲染职责划分
+
+| 层级 | 归属 | 内容 | 原则 |
+| --- | --- | --- | --- |
+| 背景网格 | Canvas | 细网格、主网格、蓝色光标轴线 | 跟随视口平移缩放绘制，不依赖 CSS 背景定位。 |
+| 灰色墙体 | Canvas | 按红线、墙侧、视觉墙厚生成的墙体多边形 | 从墙图几何计算 polygon 后统一填充，转角处不得露白。 |
+| 黑色墙线 | Canvas | 外轮廓线、开放端帽、闭合后的首尾连接 | 使用同一套转角交点几何绘制 path，不按墙段 DOM 拼接。 |
+| 红色测量线 | Canvas | 实际测距基线、预览橙线、转角红线连接 | 以 `startNode -> endNode` 为准，线宽统一，转角连续，不因墙厚裁剪。 |
+| 尺寸标注 | Canvas | 尺寸辅助线、箭头、蓝色数值标签 | 每条边独立布局，按边方向和空间内外侧避让。 |
+| 闭合辅助线 | Canvas | 橙色闭合虚线、闭合目标提示 | 仅在 `closing` 或接近首点的预览状态绘制。 |
+| 操作控件 | DOM | 工具栏、输入键盘、光标拖拽热区、“合”按钮、测量位置按钮 | 保持可点击、可命中、可无障碍调试，不塞进 Canvas。 |
+
+### 数据流
+
+1. `surveyWallGraph` 继续作为唯一测量源数据，保存节点、墙段、空间、楼层、墙厚和测量侧。
+2. 新增 `surveyCanvasRenderer` 或同等模块，把墙图和 viewport 转成 Canvas 绘制指令。
+3. 页面 `surveying-editor` 只负责状态更新、手势、输入和触发重绘，不再在 WXML 中循环绘制墙体 DOM。
+4. Canvas 绘制指令与未来 `normalizedLayout` 适配层共享几何算法，避免 UI、CAD、3D 各自计算一套墙体结果。
+
+### 实施步骤
+
+1. 增加 Canvas 节点和绘制生命周期：在 `onReady` 获取 canvas context，`syncFromDraft` 后统一调度重绘。
+2. 先迁移背景网格、灰色墙体、黑色墙线和红色测量线，保留现有 DOM 标注作为过渡。
+3. 迁移尺寸标注和闭合辅助线，删除墙体相关 `.wall-render` DOM 层和补丁式 `joinFill/redlineParts` 逻辑。
+4. 保留光标、按钮、工具栏、数字键盘、墙体点击热区等 DOM 交互；需要命中墙体时从墙图几何做 hit-test。
+5. 补充 Canvas 级视觉验收用例，覆盖 L 型、U 型、闭合、短边、缩放和平移。
+
+### 验收标准
+
+- L 型、U 型和闭合首尾交汇处灰墙连续、黑线闭合、红线不断角也不加粗。
+- 红线始终表示真实测量基线，墙厚变化不改变红线端点和长度。
+- 尺寸标注按每条边绘制，短边和相邻边不互相压住。
+- 平移、缩放、撤销、重做、复尺后 Canvas 与墙图数据保持一致。
+- 该重构不写正式户型数据，不触碰旧版 `miniprogram/pages/editor/editor.*`。
 
 ## 实施边界
 

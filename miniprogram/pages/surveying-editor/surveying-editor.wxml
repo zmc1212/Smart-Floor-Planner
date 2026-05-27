@@ -120,7 +120,13 @@
           class="wall-render wall-redline-render"
           style="{{item.style}}"
         >
-          <view class="wall-redline"></view>
+          <view
+            wx:for="{{item.redlineParts}}"
+            wx:for-item="part"
+            wx:key="key"
+            class="wall-redline"
+            style="{{part.style}}"
+          ></view>
         </view>
 
         <view wx:if="{{previewWall}}" class="wall-render wall-redline-render preview {{previewWall.lineOnly ? 'line-only' : ''}}" style="{{previewWall.style}}">
@@ -128,9 +134,22 @@
             <view class="drag-preview-line"></view>
           </block>
           <block wx:else>
-            <view class="wall-redline preview-line"></view>
+            <view
+              wx:for="{{previewWall.redlineParts}}"
+              wx:for-item="part"
+              wx:key="key"
+              class="wall-redline preview-line"
+              style="{{part.style}}"
+            ></view>
           </block>
         </view>
+
+        <view
+          wx:for="{{redlineJoinFills}}"
+          wx:key="id"
+          class="redline-join-fill"
+          style="{{item.style}}"
+        ></view>
 
         <view wx:if="{{closureGuideVisible}}" class="closure-guide" style="{{closureGuideStyle}}"></view>
         <view wx:if="{{closeActionVisible}}" class="closure-action" style="{{closeActionStyle}}" bindtap="onConfirmClose">合</view>

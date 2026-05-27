@@ -358,14 +358,19 @@ page {
 
 .wall-redline {
   position: absolute;
-  left: 0;
-  right: 0;
-  top: 38px;
-  height: 5px;
+  top: 39px;
+  height: 3px;
   border-radius: 0;
   background: #d71920;
   box-shadow: none;
   z-index: 4;
+}
+
+.redline-join-fill {
+  position: absolute;
+  z-index: 5;
+  background: #d71920;
+  pointer-events: none;
 }
 
 .preview-line {
@@ -376,11 +381,11 @@ page {
   position: absolute;
   left: 0;
   right: 0;
-  top: 38px;
-  height: 5px;
+  top: 39px;
+  height: 3px;
   border-radius: 0;
   background: #f07a21;
-  box-shadow: 0 0 0 3rpx rgba(240, 122, 33, 0.12);
+  box-shadow: 0 0 0 2rpx rgba(240, 122, 33, 0.12);
 }
 
 .wall-dimension {
