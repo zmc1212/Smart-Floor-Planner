@@ -23,183 +23,56 @@
 
   <view class="survey-stage">
     <view class="canvas-shell">
-      <view class="compass">
-        <view class="compass-needle"></view>
-        <text>N</text>
-      </view>
+      <cover-view class="compass">
+        <cover-view class="compass-needle"></cover-view>
+        <cover-view>N</cover-view>
+      </cover-view>
 
-      <view wx:if="{{topMetricVisible}}" class="top-measure-bubble">
-        <text>{{topMetricLength}}</text>
-        <text wx:if="{{topMetricAngle}}" class="top-measure-angle">{{topMetricAngle}}</text>
-      </view>
+      <cover-view wx:if="{{topMetricVisible}}" class="top-measure-bubble">
+        <cover-view>{{topMetricLength}}</cover-view>
+        <cover-view wx:if="{{topMetricAngle}}" class="top-measure-angle">{{topMetricAngle}}</cover-view>
+      </cover-view>
 
-      <view wx:else class="measurement-bubble">
-        <text class="bubble-title">{{measurementTitle}}</text>
-        <text class="bubble-value">{{measurementValue}}</text>
-      </view>
+      <cover-view wx:else class="measurement-bubble">
+        <cover-view class="bubble-title">{{measurementTitle}}</cover-view>
+        <cover-view class="bubble-value">{{measurementValue}}</cover-view>
+      </cover-view>
 
       <view
         class="grid-canvas"
-        bindtouchstart="onCanvasTouchStart"
-        bindtouchmove="onCanvasTouchMove"
-        bindtouchend="onCanvasTouchEnd"
-        bindtouchcancel="onCanvasTouchEnd"
       >
-        <view wx:if="{{guideVisible}}" class="origin-axis x-axis" style="{{cursorHorizontalGuideStyle}}"></view>
-        <view wx:if="{{guideVisible}}" class="origin-axis y-axis" style="{{cursorVerticalGuideStyle}}"></view>
-
-        <view
-          wx:for="{{wallJoinFills}}"
-          wx:key="id"
-          class="wall-join-fill"
-          style="{{item.style}}"
-        ></view>
-
-        <view
-          wx:for="{{renderWalls}}"
-          wx:key="id"
-          class="wall-render wall-body-render {{item.selected ? 'selected' : ''}}"
-          style="{{item.style}}"
-          data-id="{{item.id}}"
-          catchtap="onWallTap"
-        >
-          <view class="wall-body" style="{{item.bodyStyle}}"></view>
-        </view>
-
-        <view wx:if="{{previewWall && !previewWall.lineOnly}}" class="wall-render wall-body-render preview" style="{{previewWall.style}}">
-          <view class="wall-body preview-body" style="{{previewWall.bodyStyle}}"></view>
-        </view>
-
-        <view
-          wx:for="{{renderWalls}}"
-          wx:key="id"
-          class="wall-render wall-outline-render"
-          style="{{item.style}}"
-        >
-          <view class="wall-outer-line" style="{{item.outerLineStyle}}"></view>
-          <view wx:if="{{item.startCapVisible}}" class="wall-cap" style="{{item.startCapStyle}}"></view>
-          <view wx:if="{{item.endCapVisible}}" class="wall-cap" style="{{item.endCapStyle}}"></view>
-        </view>
-
-        <view wx:if="{{previewWall && !previewWall.lineOnly}}" class="wall-render wall-outline-render preview" style="{{previewWall.style}}">
-          <view class="wall-outer-line" style="{{previewWall.outerLineStyle}}"></view>
-          <view wx:if="{{previewWall.startCapVisible}}" class="wall-cap" style="{{previewWall.startCapStyle}}"></view>
-          <view wx:if="{{previewWall.endCapVisible}}" class="wall-cap" style="{{previewWall.endCapStyle}}"></view>
-        </view>
-
-        <view
-          wx:for="{{renderWalls}}"
-          wx:key="id"
-          class="wall-render wall-dimension-render"
-          style="{{item.style}}"
-        >
-          <view wx:if="{{item.showDimension}}" class="wall-dimension" style="{{item.dimensionStyle}}">
-            <view class="dimension-extension start"></view>
-            <view class="dimension-extension end"></view>
-            <view class="dimension-main"></view>
-            <view class="dimension-arrow start"></view>
-            <view class="dimension-arrow end"></view>
-            <text class="dimension-label">{{item.dimensionLabel}}</text>
-          </view>
-        </view>
-
-        <view wx:if="{{previewWall && previewWall.showDimension}}" class="wall-render wall-dimension-render preview" style="{{previewWall.style}}">
-          <view class="wall-dimension preview-dimension" style="{{previewWall.dimensionStyle}}">
-            <view class="dimension-extension start"></view>
-            <view class="dimension-extension end"></view>
-            <view class="dimension-main"></view>
-            <view class="dimension-arrow start"></view>
-            <view class="dimension-arrow end"></view>
-            <text class="dimension-label">{{previewWall.dimensionLabel}}</text>
-          </view>
-        </view>
-
-        <view
-          wx:for="{{renderWalls}}"
-          wx:key="id"
-          class="wall-render wall-redline-render"
-          style="{{item.style}}"
-        >
-          <view
-            wx:for="{{item.redlineParts}}"
-            wx:for-item="part"
-            wx:key="key"
-            class="wall-redline"
-            style="{{part.style}}"
-          ></view>
-        </view>
-
-        <view wx:if="{{previewWall}}" class="wall-render wall-redline-render preview {{previewWall.lineOnly ? 'line-only' : ''}}" style="{{previewWall.style}}">
-          <block wx:if="{{previewWall.lineOnly}}">
-            <view class="drag-preview-line"></view>
-          </block>
-          <block wx:else>
-            <view
-              wx:for="{{previewWall.redlineParts}}"
-              wx:for-item="part"
-              wx:key="key"
-              class="wall-redline preview-line"
-              style="{{part.style}}"
-            ></view>
-          </block>
-        </view>
-
-        <view
-          wx:for="{{redlineJoinFills}}"
-          wx:key="id"
-          class="redline-join-fill"
-          style="{{item.style}}"
-        ></view>
-
-        <view wx:if="{{closureGuideVisible}}" class="closure-guide" style="{{closureGuideStyle}}"></view>
-        <view wx:if="{{closeActionVisible}}" class="closure-action" style="{{closeActionStyle}}" bindtap="onConfirmClose">合</view>
-
-        <view wx:if="{{measurePositionVisible}}" class="measure-position" style="{{measurePositionStyle}}">
-          <view class="measure-position-tip">当前测量位置</view>
-          <view class="measure-side-button" data-source="measure-position" bindtap="onToggleSide">
-            <view class="measure-side-line"></view>
-            <text>{{measurePositionButtonLabel}}</text>
-          </view>
-        </view>
-
-        <view wx:if="{{cursorVisible}}" class="cursor-anchor" style="{{cursorStyle}}" data-cursor-hit="true">
-          <view class="cursor-line horizontal" data-cursor-hit="true"></view>
-          <view class="cursor-line vertical" data-cursor-hit="true"></view>
-          <view class="cursor-core" data-cursor-hit="true"></view>
-        </view>
+        <canvas
+          type="2d"
+          id="survey-canvas"
+          class="survey-canvas"
+          bindtouchstart="onCanvasTouchStart"
+          bindtouchmove="onCanvasTouchMove"
+          bindtouchend="onCanvasTouchEnd"
+          bindtouchcancel="onCanvasTouchEnd"
+        ></canvas>
       </view>
 
-      <view wx:if="{{spaceSummary}}" class="space-summary">
-        <text>{{spaceSummary.label}}</text>
-        <text class="space-area">{{spaceSummary.area}}</text>
-      </view>
+      <cover-view wx:if="{{spaceSummary}}" class="space-summary">
+        <cover-view>{{spaceSummary.label}}</cover-view>
+        <cover-view class="space-area">{{spaceSummary.area}}</cover-view>
+      </cover-view>
 
-      <view wx:if="{{selectedWall}}" class="wall-context">
-        <view class="wall-context-title">当前墙体</view>
-        <view class="wall-context-meta">
-          <text>{{selectedWall.mode}}</text>
-          <text>{{selectedWall.length}}</text>
-          <text>{{selectedWall.side}}</text>
-          <text>{{selectedWall.thickness}}</text>
-        </view>
-        <view class="wall-context-actions">
-          <view class="context-action primary" bindtap="onStartRemeasure">复尺</view>
-          <view class="context-action" bindtap="onToggleSide">切墙侧</view>
-          <view class="context-action" data-tool="thickness" bindtap="onToolTap">墙厚</view>
-          <view class="context-action muted" bindtap="onExitWallSelection">退出</view>
-        </view>
-      </view>
+      <cover-view wx:if="{{selectedWall}}" class="wall-context">
+        <cover-view class="wall-context-title">当前墙体</cover-view>
+        <cover-view class="wall-context-meta">
+          <cover-view>{{selectedWall.mode}}</cover-view>
+          <cover-view>{{selectedWall.length}}</cover-view>
+          <cover-view>{{selectedWall.side}}</cover-view>
+          <cover-view>{{selectedWall.thickness}}</cover-view>
+        </cover-view>
+        <cover-view class="wall-context-actions">
+          <cover-view class="context-action primary" bindtap="onStartRemeasure">复尺</cover-view>
+          <cover-view class="context-action" bindtap="onToggleSide">切墙侧</cover-view>
+          <cover-view class="context-action" data-tool="thickness" bindtap="onToolTap">墙厚</cover-view>
+          <cover-view class="context-action muted" bindtap="onExitWallSelection">退出</cover-view>
+        </cover-view>
+      </cover-view>
 
-      <view class="undo-redo">
-        <view class="round-action {{historySummary.undo ? '' : 'disabled'}}" bindtap="onUndo">
-          <text>撤销</text>
-          <text class="history-count">{{historySummary.undo}}</text>
-        </view>
-        <view class="round-action {{historySummary.redo ? '' : 'disabled'}}" bindtap="onRedo">
-          <text>重做</text>
-          <text class="history-count">{{historySummary.redo}}</text>
-        </view>
-      </view>
     </view>
 
     <view class="right-rail">

@@ -1,5 +1,6 @@
 const app = getApp();
 const surveyGraph = require('../../utils/surveyWallGraph.js');
+const surveyCanvasRenderer = require('../../utils/surveyCanvasRenderer.js');
 
 const RESERVED_TOOLS = [
   { key: 'settings', label: '设置' },
@@ -139,8 +140,18 @@ function subtractInterval(intervals, cut) {
   return result.filter((interval) => interval.end - interval.start > 1);
 }
 
-function getTouchPoint(touch) {
-  return { x: touch.clientX, y: touch.clientY };
+function getTouchPoint(touch, rect) {
+  if (!touch) return { x: 0, y: 0 };
+  if (Number.isFinite(touch.clientX) && Number.isFinite(touch.clientY)) {
+    return { x: touch.clientX, y: touch.clientY };
+  }
+  if (Number.isFinite(touch.pageX) && Number.isFinite(touch.pageY)) {
+    return { x: touch.pageX, y: touch.pageY };
+  }
+  if (rect && Number.isFinite(touch.x) && Number.isFinite(touch.y)) {
+    return { x: rect.left + touch.x, y: rect.top + touch.y };
+  }
+  return { x: Number(touch.x) || 0, y: Number(touch.y) || 0 };
 }
 
 Page({
@@ -157,10 +168,8 @@ Page({
     prototypeNotice: '体验版不会同步正式户型数据',
     coreTools: buildCoreTools('straight', 200),
     reservedTools: RESERVED_TOOLS,
-    renderWalls: [],
-    wallJoinFills: [],
-    redlineJoinFills: [],
-    previewWall: null,
+    canvasWidth: 0,
+    canvasHeight: 0,
     cursorStyle: '',
     cursorHorizontalGuideStyle: '',
     cursorVerticalGuideStyle: '',
@@ -208,6 +217,11 @@ Page({
     this.history = { undo: [], redo: [] };
     this.touchState = null;
     this.canvasRect = null;
+    this.surveyCanvas = null;
+    this.surveyCtx = null;
+    this.surveyCanvasDpr = sysInfo.pixelRatio || 1;
+    this.surveyRenderScene = null;
+    this.canvasControls = {};
 
     this.setData({
       statusBarHeight: sysInfo.statusBarHeight || 0,
@@ -238,10 +252,143 @@ Page({
       .boundingClientRect((rect) => {
         if (rect && rect.width && rect.height) {
           this.canvasRect = rect;
-          this.syncFromDraft();
+          this.setData({
+            canvasWidth: rect.width,
+            canvasHeight: rect.height
+          }, () => {
+            this.initSurveyCanvas();
+            this.syncFromDraft();
+          });
         }
       })
       .exec();
+  },
+
+  initSurveyCanvas() {
+    if (!this.canvasRect || !this.canvasRect.width || !this.canvasRect.height) return;
+
+    wx.createSelectorQuery()
+      .in(this)
+      .select('#survey-canvas')
+      .fields({ node: true, size: true })
+      .exec((res) => {
+        const target = res && res[0];
+        const canvas = target && target.node;
+        if (!canvas) return;
+
+        let dpr = this.surveyCanvasDpr || 1;
+        try {
+          dpr = wx.getWindowInfo ? wx.getWindowInfo().pixelRatio : wx.getSystemInfoSync().pixelRatio;
+        } catch (err) {
+          dpr = this.surveyCanvasDpr || 1;
+        }
+
+        const width = this.canvasRect.width || target.width || 0;
+        const height = this.canvasRect.height || target.height || 0;
+        if (!width || !height) return;
+
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
+        this.surveyCanvas = canvas;
+        this.surveyCtx = canvas.getContext('2d');
+        this.surveyCanvasDpr = dpr || 1;
+        this.drawSurveyCanvas();
+      });
+  },
+
+  drawSurveyCanvas() {
+    if (!this.surveyCtx || !this.surveyRenderScene) return;
+    surveyCanvasRenderer.drawSurveyScene(this.surveyCtx, this.surveyRenderScene, {
+      dpr: this.surveyCanvasDpr || 1
+    });
+    this.drawCanvasControls();
+  },
+
+  drawRoundRect(ctx, x, y, width, height, radius) {
+    const r = Math.min(radius, width / 2, height / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + width - r, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+    ctx.lineTo(x + width, y + height - r);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+    ctx.lineTo(x + r, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  },
+
+  drawCanvasControls() {
+    const ctx = this.surveyCtx;
+    const rect = this.canvasRect;
+    if (!ctx || !rect || !rect.width || !rect.height) return;
+
+    const dpr = this.surveyCanvasDpr || 1;
+    const controls = this.canvasControls || {};
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    if (controls.closeAction) {
+      const close = controls.closeAction;
+      ctx.beginPath();
+      ctx.fillStyle = '#f07a21';
+      ctx.arc(close.cx, close.cy, close.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('合', close.cx, close.cy + 1);
+    }
+
+    if (controls.measurePosition) {
+      const measure = controls.measurePosition;
+      ctx.shadowColor = 'rgba(15, 23, 42, 0.16)';
+      ctx.shadowBlur = 10;
+      ctx.shadowOffsetY = 3;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
+      this.drawRoundRect(ctx, measure.tip.x, measure.tip.y, measure.tip.width, measure.tip.height, 18);
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.fillStyle = '#111827';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('当前测量位置', measure.tip.x + measure.tip.width / 2, measure.tip.y + measure.tip.height / 2);
+
+      ctx.beginPath();
+      ctx.fillStyle = 'rgba(65, 65, 69, 0.92)';
+      ctx.arc(measure.button.cx, measure.button.cy, measure.button.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ef4444';
+      this.drawRoundRect(ctx, measure.button.cx - 17, measure.button.cy - 10, 34, 6, 3);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 24px sans-serif';
+      ctx.fillText(measure.label, measure.button.cx, measure.button.cy + 13);
+    }
+
+    if (controls.undoRedo) {
+      ['undo', 'redo'].forEach((key) => {
+        const button = controls.undoRedo[key];
+        const enabled = button.count > 0;
+        ctx.beginPath();
+        ctx.fillStyle = enabled ? 'rgba(255, 255, 255, 0.94)' : 'rgba(255, 255, 255, 0.72)';
+        ctx.arc(button.cx, button.cy, button.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = enabled ? '#4b5563' : '#9ca3af';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(button.label, button.cx, button.cy - 7);
+        ctx.fillStyle = enabled ? '#17a14c' : '#9ca3af';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.fillText(String(button.count), button.cx, button.cy + 10);
+      });
+    }
+
+    ctx.restore();
   },
 
   syncFromDraft(extraData) {
@@ -258,10 +405,6 @@ Page({
       measurementSide: session.measurementSide,
       thicknessMm: session.thicknessMm,
       coreTools: buildCoreTools(session.mode, session.thicknessMm),
-      renderWalls: renderData.renderWalls,
-      wallJoinFills: renderData.wallJoinFills,
-      redlineJoinFills: renderData.redlineJoinFills,
-      previewWall: renderData.previewWall,
       cursorStyle: renderData.cursorStyle,
       cursorHorizontalGuideStyle: renderData.cursorHorizontalGuideStyle,
       cursorVerticalGuideStyle: renderData.cursorVerticalGuideStyle,
@@ -288,17 +431,19 @@ Page({
         undo: this.history.undo.length,
         redo: this.history.redo.length
       }
-    }, extraData || {}));
+    }, extraData || {}), () => {
+      this.drawSurveyCanvas();
+    });
   },
 
   buildCanvasRenderData(floor, session) {
-    const renderThicknessMmMap = this.buildRenderThicknessMmMap(floor);
-    const renderWalls = floor.walls
-      .map((wall, index) => this.buildWallRender(floor, wall, false, index, renderThicknessMmMap))
-      .filter(Boolean);
-    const wallJoinFills = this.buildWallJoinFills(floor, renderThicknessMmMap);
-    const redlineJoinFills = this.buildRedlineJoinFills(floor);
-    let previewWall = null;
+    const scene = surveyCanvasRenderer.createSurveyRenderScene({
+      floor,
+      session,
+      viewport: this.getViewport(),
+      rect: this.canvasRect || { width: 0, height: 0 }
+    });
+    this.surveyRenderScene = scene;
     let cursorVisible = false;
     let guideVisible = false;
     let cursorStyle = '';
@@ -308,7 +453,6 @@ Page({
     let closeHintText = '';
 
     if (session.previewPoint) {
-      previewWall = this.buildPreviewRender(floor, session, renderThicknessMmMap);
       closeHintVisible = !!session.closeCandidateNodeId;
       closeHintText = closeHintVisible ? '预览端点已接近起点，确认长度后可闭合' : '';
     }
@@ -335,20 +479,15 @@ Page({
       }
     }
 
-    const activeSegment = previewWall || renderWalls[renderWalls.length - 1] || null;
+    const activeSegment = scene.activeSegment;
     const topMetric = this.buildTopMetric(activeSegment);
     const measurePosition = this.buildMeasurePosition(activeSegment, floor, session);
     const closure = this.buildClosureRender(floor, session);
-    this.resolveDimensionVisibility(renderWalls, previewWall);
-    this.resolveRedlineVisibility(renderWalls, previewWall);
+    this.canvasControls = this.buildCanvasControls(measurePosition, closure);
 
     return {
-      renderWalls,
-      wallJoinFills,
-      redlineJoinFills,
-      previewWall,
       cursorVisible,
-      guideVisible,
+      guideVisible: false,
       cursorStyle,
       cursorHorizontalGuideStyle,
       cursorVerticalGuideStyle,
@@ -358,12 +497,44 @@ Page({
       measurePositionVisible: measurePosition.visible,
       measurePositionStyle: measurePosition.style,
       measurePositionButtonLabel: measurePosition.buttonLabel,
-      closureGuideVisible: closure.guideVisible,
-      closureGuideStyle: closure.guideStyle,
+      closureGuideVisible: false,
+      closureGuideStyle: '',
       closeActionVisible: closure.actionVisible,
       closeActionStyle: closure.actionStyle,
       closeHintVisible,
       closeHintText
+    };
+  },
+
+  buildCanvasControls(measurePosition, closure) {
+    const rect = this.canvasRect || { width: 0, height: 0 };
+    const buttonSize = 46;
+    const right = 16;
+    const bottom = 16;
+    const gap = 8;
+    const redo = {
+      key: 'redo',
+      label: '重做',
+      count: this.history.redo.length,
+      cx: rect.width - right - buttonSize / 2,
+      cy: rect.height - bottom - buttonSize / 2,
+      radius: buttonSize / 2
+    };
+    const undo = {
+      key: 'undo',
+      label: '撤销',
+      count: this.history.undo.length,
+      cx: redo.cx,
+      cy: redo.cy - buttonSize - gap,
+      radius: buttonSize / 2
+    };
+
+    return {
+      closeAction: closure && closure.action
+        ? Object.assign({ key: 'close', radius: 34 }, closure.action)
+        : null,
+      measurePosition: measurePosition && measurePosition.control ? measurePosition.control : null,
+      undoRedo: { undo, redo }
     };
   },
 
@@ -663,16 +834,25 @@ Page({
 
   buildMeasurePosition(segment, floor, session) {
     if (!this.isFirstMeasurePositionStage(floor, session) || !segment || !segment.startPoint || !segment.endPoint) {
-      return { visible: false, style: '', buttonLabel: '↓' };
+      return { visible: false, style: '', buttonLabel: '↓', control: null };
     }
 
     const midX = (segment.startPoint.x + segment.endPoint.x) / 2;
     const midY = (segment.startPoint.y + segment.endPoint.y) / 2;
     const side = segment.measurementSide || session.measurementSide;
+    const left = midX - 70;
+    const top = midY + 96;
+    const label = side === 'left' ? '↑' : '↓';
     return {
       visible: session.state !== 'spaceClosed' && session.state !== 'wallSelected' && session.state !== 'remeasureAwaitingInput',
-      style: `left:${roundPx(midX - 70)}px; top:${roundPx(midY + 96)}px;`,
-      buttonLabel: side === 'left' ? '↑' : '↓'
+      style: `left:${roundPx(left)}px; top:${roundPx(top)}px;`,
+      buttonLabel: label,
+      control: {
+        key: 'measure-position',
+        label,
+        tip: { x: left + 4, y: top, width: 132, height: 36 },
+        button: { cx: left + 70, cy: top + 86, radius: 38 }
+      }
     };
   },
 
@@ -707,7 +887,8 @@ Page({
       guideVisible: width > 1,
       guideStyle: `left:${roundPx(startPoint.x)}px; top:${roundPx(startPoint.y)}px; width:${roundPx(width)}px; transform:rotate(${roundPx(angleDeg)}deg);`,
       actionVisible: session.state === 'closing',
-      actionStyle: `left:${roundPx(midX - 34)}px; top:${roundPx(midY - 34)}px;`
+      actionStyle: `left:${roundPx(midX - 34)}px; top:${roundPx(midY - 34)}px;`,
+      action: { cx: midX, cy: midY }
     };
   },
 
@@ -801,6 +982,24 @@ Page({
     const dataset = e && e.target && e.target.dataset;
     if (!dataset) return false;
     return dataset.cursorHit === true || dataset.cursorHit === 'true';
+  },
+
+  isNearCursorPoint(clientPoint) {
+    if (!this.canvasRect || !clientPoint || !this.draft) return false;
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const session = floor.session;
+    if (!session || !session.anchorNodeId) return false;
+    if (session.state !== 'cursorPlaced' && session.state !== 'wallCommitted') return false;
+
+    const anchor = surveyGraph.getNode(floor, session.anchorNodeId);
+    if (!anchor) return false;
+
+    const cursorPoint = this.mmToCanvasPoint(anchor);
+    const localPoint = {
+      x: clientPoint.x - this.canvasRect.left,
+      y: clientPoint.y - this.canvasRect.top
+    };
+    return distancePx(cursorPoint, localPoint) <= 44;
   },
 
   applyDraft(nextDraft, options) {
@@ -913,13 +1112,64 @@ Page({
     wx.showToast({ title: labels[action] || '功能规划中', icon: 'none' });
   },
 
+  hitCircle(point, circle) {
+    if (!point || !circle) return false;
+    return distancePx(point, { x: circle.cx, y: circle.cy }) <= circle.radius;
+  },
+
+  hitTestCanvasControl(clientPoint) {
+    if (!this.canvasRect || !clientPoint) return null;
+    const localPoint = {
+      x: clientPoint.x - this.canvasRect.left,
+      y: clientPoint.y - this.canvasRect.top
+    };
+    const controls = this.canvasControls || {};
+
+    if (controls.closeAction && this.hitCircle(localPoint, controls.closeAction)) {
+      return { key: 'close' };
+    }
+    if (controls.measurePosition && this.hitCircle(localPoint, controls.measurePosition.button)) {
+      return { key: 'measure-position' };
+    }
+    if (controls.undoRedo) {
+      if (this.hitCircle(localPoint, controls.undoRedo.undo)) {
+        return { key: 'undo' };
+      }
+      if (this.hitCircle(localPoint, controls.undoRedo.redo)) {
+        return { key: 'redo' };
+      }
+    }
+    return null;
+  },
+
+  handleCanvasControlTap(control) {
+    if (!control) return false;
+    if (control.key === 'close') {
+      this.onConfirmClose();
+      return true;
+    }
+    if (control.key === 'measure-position') {
+      this.onToggleSide({ currentTarget: { dataset: { source: 'measure-position' } } });
+      return true;
+    }
+    if (control.key === 'undo') {
+      if (this.history.undo.length) this.onUndo();
+      return true;
+    }
+    if (control.key === 'redo') {
+      if (this.history.redo.length) this.onRedo();
+      return true;
+    }
+    return false;
+  },
+
   onCanvasTouchStart(e) {
     if (this.data.numberPadVisible || !this.canvasRect) return;
     const touches = e.touches || [];
 
     if (touches.length >= 2) {
-      const first = getTouchPoint(touches[0]);
-      const second = getTouchPoint(touches[1]);
+      const first = getTouchPoint(touches[0], this.canvasRect);
+      const second = getTouchPoint(touches[1], this.canvasRect);
       const viewport = this.getViewport();
       this.touchState = {
         mode: 'pinch',
@@ -931,10 +1181,20 @@ Page({
 
     if (!touches.length) return;
 
-    const point = getTouchPoint(touches[0]);
+    const point = getTouchPoint(touches[0], this.canvasRect);
+    const controlHit = this.hitTestCanvasControl(point);
+    if (controlHit) {
+      this.touchState = {
+        mode: 'control',
+        control: controlHit,
+        startPoint: point
+      };
+      return;
+    }
+
     const floor = surveyGraph.getActiveFloor(this.draft);
     const session = floor.session;
-    const nearCursor = this.isCursorTouchTarget(e);
+    const nearCursor = this.isCursorTouchTarget(e) || this.isNearCursorPoint(point);
     const viewport = this.getViewport();
 
     this.touchState = {
@@ -956,8 +1216,8 @@ Page({
     const touches = e.touches || [];
 
     if (this.touchState.mode === 'pinch' && touches.length >= 2) {
-      const first = getTouchPoint(touches[0]);
-      const second = getTouchPoint(touches[1]);
+      const first = getTouchPoint(touches[0], this.canvasRect);
+      const second = getTouchPoint(touches[1], this.canvasRect);
       const nextDistance = distancePx(first, second);
       if (!this.touchState.startDistance) return;
       const scale = clamp(this.touchState.startScale * (nextDistance / this.touchState.startDistance), MIN_SCALE, MAX_SCALE);
@@ -968,7 +1228,7 @@ Page({
 
     if (!touches.length) return;
 
-    const point = getTouchPoint(touches[0]);
+    const point = getTouchPoint(touches[0], this.canvasRect);
     const dx = point.x - this.touchState.startPoint.x;
     const dy = point.y - this.touchState.startPoint.y;
     const moved = Math.sqrt(dx * dx + dy * dy);
@@ -1009,10 +1269,27 @@ Page({
 
     const floor = surveyGraph.getActiveFloor(this.draft);
     const session = floor.session;
-    const movedWall = this.touchState.mode === 'wall';
-    const historyDraft = this.touchState.historyDraft;
+    const touchState = this.touchState;
+    const controlTap = touchState.mode === 'control';
+    const movedWall = touchState.mode === 'wall';
+    const wasTap = touchState.mode === 'pending';
+    const historyDraft = touchState.historyDraft;
 
     this.touchState = null;
+
+    if (controlTap) {
+      this.handleCanvasControlTap(touchState.control);
+      return;
+    }
+
+    if (wasTap && !touchState.nearCursor) {
+      const wallHit = this.hitTestWallAtClientPoint(touchState.startPoint);
+      if (wallHit && wallHit.wallId) {
+        this.draft = surveyGraph.selectWall(this.draft, wallHit.wallId);
+        this.syncFromDraft({ numberPadVisible: false });
+      }
+      return;
+    }
 
     if (movedWall) {
       if (session.previewLengthMm >= surveyGraph.MIN_WALL_LENGTH_MM) {
@@ -1030,6 +1307,14 @@ Page({
       }
       return;
     }
+  },
+
+  hitTestWallAtClientPoint(point) {
+    if (!this.canvasRect || !this.surveyRenderScene || !point) return null;
+    return surveyCanvasRenderer.hitTestSurveyWall(this.surveyRenderScene, {
+      x: point.x - this.canvasRect.left,
+      y: point.y - this.canvasRect.top
+    });
   },
 
   onWallTap(e) {
