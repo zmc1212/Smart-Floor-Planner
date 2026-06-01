@@ -10,7 +10,8 @@ stateDiagram-v2
   [*] --> idle
   idle --> cursorPlaced: 放置或重置光标
   cursorPlaced --> wallPreview: 拖出墙方向
-  wallPreview --> awaitingLength: 释放预览墙
+  wallPreview --> wallCommitted: 释放预览墙快速成墙
+  wallPreview --> awaitingLength: 需要精确手输
   awaitingLength --> wallCommitted: 手输或 BLE 成功
   wallCommitted --> wallPreview: 从新端点继续拖墙
   wallCommitted --> closing: 端点接近首点
@@ -28,7 +29,7 @@ stateDiagram-v2
 | --- | --- | --- |
 | `idle` | 空画布或已有结果；无活动红线。 | 放置光标、导航画布、恢复原型草稿。 |
 | `cursorPlaced` | 光标定位在起点。 | 拖出第一墙、重置、切换直/斜线及墙厚。 |
-| `wallPreview` | 半透明墙体和红线预览。 | 调整方向与端点，释放后等待长度。 |
+| `wallPreview` | 半透明墙体和红线预览。 | 调整方向与端点，释放后按预览长度快速成墙；需要精确值时再选墙复尺或打开手输。 |
 | `awaitingLength` | 当前测量位置提示、尺寸待输入、输入/BLE 可用。 | 手输毫米、触发 BLE、切墙侧/墙厚、取消当前墙。 |
 | `wallCommitted` | 已确认墙显示稳定尺寸，光标在新端点。 | 继续下一墙、撤销或进入闭合。 |
 | `closing` | 起点吸附和“闭合空间”确认反馈。 | 确认闭合或继续绘制。 |
@@ -54,6 +55,7 @@ stateDiagram-v2
 
 | 输入来源 | 行为 |
 | --- | --- |
+| 拖拽预览 | 原型阶段释放有效预览墙后立即提交，`inputSource` 标为 `preview`，只表示快速草图长度。 |
 | 手动数字输入 | 打开数字面板，单位固定显示 `mm`；合法整数确认后提交当前墙或当前复尺墙。 |
 | BLE 测距 | 页面通过输入适配器接收米值并换算为整数毫米；只有存在明确输入目标时才落图。 |
 
@@ -101,7 +103,7 @@ stateDiagram-v2
 
 - 每次墙提交、闭合、复尺、墙厚/墙侧确认作为独立撤销快照。
 - 平移缩放不写入几何历史，可单独保存在会话视口中。
-- Phase 2 默认只保存在内存；Phase 3 可以使用专用键 `surveying_prototype_draft_v1` 保存本地体验草稿。
+- Phase 2 后续补强已使用专用键 `surveying_prototype_draft_v1` 保存本地体验草稿；该草稿只服务新版原型，不写入正式 floor plan，也不覆盖旧版 `editor` 草稿。
 - 原型草稿不得提交到现有 floor plan API，也不得覆盖旧 `editor` 草稿。
 
 ## 失败恢复
@@ -119,3 +121,4 @@ stateDiagram-v2
 - Phase 2 已开始实现，仅覆盖手动墙体原型：墙图内存模型、画布光标/预览、毫米手输、墙厚/墙侧、闭合、复尺与撤销重做。
 - 本阶段继续禁止写入正式 floor plan、旧版草稿、测量日志、导出、3D 或 BLE 读数；BLE 输入与本地原型恢复保留到 Phase 3。
 - 手动原型的墙图工具先落在 `miniprogram/utils/surveyWallGraph.js`，页面会话由 `miniprogram/pages/surveying-editor/surveying-editor.*` 消费。
+- `surveying-editor` 已支持无墙状态点击空白画布移动光标，并通过顶部“保存”保存/重进恢复本地体验草稿；恢复时会取消未完成的预览墙或复尺输入状态。

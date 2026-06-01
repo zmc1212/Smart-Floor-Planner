@@ -1,7 +1,19 @@
 {
   "libVersion": "3.15.1",
   "projectname": "miniprogram",
-  "condition": {},
+  "condition": {
+    "miniprogram": {
+      "list": [
+        {
+          "name": "pages/surveying-editor/surveying-editor",
+          "pathName": "pages/surveying-editor/surveying-editor",
+          "query": "",
+          "scene": null,
+          "launchMode": "default"
+        }
+      ]
+    }
+  },
   "setting": {
     "urlCheck": false,
     "coverView": true,

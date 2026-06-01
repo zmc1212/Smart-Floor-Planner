@@ -77,7 +77,7 @@ SurveyFloor = {
   angleDeg: 90,
   thicknessMm: 200,
   measurementSide: 'left' | 'right',
-  inputSource: 'manual' | 'ble',
+  inputSource: 'manual' | 'ble' | 'preview',
   status: 'preview' | 'confirmed',
   measuredAt: 'ISO timestamp'
 }
@@ -135,6 +135,7 @@ SurveyFloor = {
 
 - 输入只能应用于 `pendingWallId` 或 `selectedWallId` 处于复尺等待状态的墙段。
 - 未存在活动目标时到达的 BLE 读数仅提示用户，不创建墙、不更新任何墙。
+- `preview` 仅表示原型阶段拖拽释放后按预览长度快速成墙，不代表真实手输或 BLE 读数；正式接入审计日志前必须与 `manual`、`ble` 区分处理。
 
 ## 墙面推导规则
 
@@ -163,6 +164,40 @@ SurveyFloor = {
 | 报告/CAD/3D | 先消费适配结果；后续可逐步直接消费墙图。 |
 
 原型阶段不得调用该适配器写入正式 floor plan。
+
+## 门窗与构件占位边界
+
+本地操作录屏证明后续需要在墙图之上支持门窗/构件。当前仅为 `frame_074.jpg` 选墙语境增加本地原型门窗对象，不作为正式输出合同；Phase 8 设计时遵循以下占位边界：
+
+- 门窗/构件必须挂靠到 `WallSegment` 或由 `SpaceBoundary` 推导出的空间边界，不能只保存屏幕坐标。
+- 长度、宽度、高度、距地、边距1、边距2继续使用整数毫米；边距字段必须先定义参考边和方向后才能进入 schema。
+- 2D 选中态、3D 预览和材质选择应读写同一对象属性，不维护第二套 3D 专用状态。
+- 在 `LegacyLayoutAdapter` 未定义门窗/构件输出前，不得把这些对象写入正式 floor plan、报告、CAD 或 3D 下游。
+- 第一原型的 `SurveyDraft`、`WallSegment` 和 `SpaceBoundary` 合同保持不变；本地门窗对象只作为 Phase 8 前的交互参照，不进入正式 schema。
+
+### 本地原型 `SurveyOpening`
+
+当前新版测绘体验为选墙后“新增门/窗、编辑尺寸”保留以下 prototype-only 字段：
+
+```js
+SurveyOpening = {
+  id: 'opening-id',
+  wallId: 'wall-id',
+  type: 'door' | 'window',
+  centerOffsetMm: 1200,
+  widthMm: 900,
+  heightMm: 2100,
+  sillHeightMm: 0,
+  source: 'prototype',
+  createdAt: 'ISO timestamp',
+  updatedAt: 'ISO timestamp'
+}
+```
+
+- `SurveyOpening` 存在于新版本地草稿的 `SurveyFloor.openings`，只用于画布对照、选中编辑和本地恢复。
+- 新增门默认 `900 x 2100 mm`、距地 `0`；新增窗默认 `1500 x 1500 mm`、距地 `900 mm`，默认放在所选墙体中点并限制在墙长范围内。
+- 删除、编辑仅影响选中的本地原型门窗；墙体删除、打断、排布、门窗正式测量、3D 材质和下游输出仍未接入。
+- 正式 Phase 8 启动时必须复核该字段是否升级为正式合同，不能直接把 prototype-only 数据写入旧版 `openingGeometry`、floor plan、报告、CAD 或 3D。
 
 ## Phase 2 落地接口记录
 

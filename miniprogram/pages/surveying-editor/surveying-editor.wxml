@@ -17,7 +17,7 @@
 
     <view class="topbar-actions">
       <view class="topbar-chip disabled" bindtap="onDisabledTap">助手</view>
-      <view class="topbar-chip save disabled" bindtap="onDisabledTap">保存</view>
+      <view class="topbar-chip save" bindtap="onSavePrototypeDraft">保存</view>
     </view>
   </view>
 
@@ -57,7 +57,38 @@
         <cover-view class="space-area">{{spaceSummary.area}}</cover-view>
       </cover-view>
 
-      <cover-view wx:if="{{selectedWall}}" class="wall-context">
+      <cover-view wx:if="{{closeHintVisible}}" class="close-hint {{closeHintActionVisible ? 'actionable' : ''}}">
+        {{closeHintText}}
+      </cover-view>
+
+      <cover-view wx:if="{{selectedWall && !selectedOpening}}" class="wall-object-toolbar" style="{{selectedWall.actionStyle}}">
+        <cover-view class="wall-object-action primary" data-action="door" aria-label="添加门" bindtap="onWallContextAction">
+          <cover-view class="wall-action-icon door-icon">
+            <cover-view class="door-frame"></cover-view>
+            <cover-view class="door-swing"></cover-view>
+          </cover-view>
+        </cover-view>
+        <cover-view class="wall-object-action primary" data-action="window" aria-label="添加窗" bindtap="onWallContextAction">
+          <cover-view class="wall-action-icon window-icon">
+            <cover-view class="window-frame"></cover-view>
+            <cover-view class="window-line"></cover-view>
+          </cover-view>
+        </cover-view>
+        <cover-view class="wall-object-action" data-action="edit" aria-label="编辑墙体" bindtap="onWallContextAction">
+          <cover-view class="wall-action-icon edit-icon">
+            <cover-view class="edit-stem"></cover-view>
+            <cover-view class="edit-tip"></cover-view>
+          </cover-view>
+        </cover-view>
+        <cover-view class="wall-object-action muted" data-action="exit" aria-label="退出选择" bindtap="onWallContextAction">
+          <cover-view class="wall-action-icon exit-icon">
+            <cover-view class="exit-line one"></cover-view>
+            <cover-view class="exit-line two"></cover-view>
+          </cover-view>
+        </cover-view>
+      </cover-view>
+
+      <cover-view wx:if="{{selectedWall && !selectedOpening}}" class="wall-context">
         <cover-view class="wall-context-title">当前墙体</cover-view>
         <cover-view class="wall-context-meta">
           <cover-view>{{selectedWall.mode}}</cover-view>
@@ -69,6 +100,7 @@
           <cover-view class="context-action primary" bindtap="onStartRemeasure">复尺</cover-view>
           <cover-view class="context-action" bindtap="onToggleSide">切墙侧</cover-view>
           <cover-view class="context-action" data-tool="thickness" bindtap="onToolTap">墙厚</cover-view>
+          <cover-view class="context-action muted" data-action="delete" bindtap="onWallContextAction">删除</cover-view>
           <cover-view class="context-action muted" bindtap="onExitWallSelection">退出</cover-view>
         </cover-view>
       </cover-view>
@@ -76,7 +108,29 @@
     </view>
 
     <view class="right-rail">
-      <view class="tool-group primary-tools">
+      <view wx:if="{{selectedOpening}}" class="opening-context {{selectedOpening.type}}">
+        <text class="opening-title">{{selectedOpening.typeLabel}} · 本地原型</text>
+        <view class="opening-fields">
+          <view class="opening-field" data-field="width" bindtap="onOpeningEditField">宽 {{selectedOpening.width}}</view>
+          <view class="opening-field" data-field="height" bindtap="onOpeningEditField">高 {{selectedOpening.height}}</view>
+          <view class="opening-field" data-field="sill" bindtap="onOpeningEditField">距地 {{selectedOpening.sill}}</view>
+        </view>
+      </view>
+
+      <view wx:if="{{objectToolsVisible}}" class="tool-group primary-tools object-tools">
+        <view
+          class="tool-button"
+          wx:for="{{objectTools}}"
+          wx:key="key"
+          data-tool="{{item.key}}"
+          bindtap="onToolTap"
+        >
+          <text class="tool-label">{{item.label}}</text>
+          <text class="tool-helper">{{item.helper}}</text>
+        </view>
+      </view>
+
+      <view wx:else class="tool-group primary-tools">
         <view
           class="tool-button {{item.active ? 'active' : ''}}"
           wx:for="{{coreTools}}"
@@ -90,8 +144,8 @@
       </view>
 
       <view class="side-switch" bindtap="onToggleSide">
-        <text class="side-label">墙侧</text>
-        <text class="side-value">{{measurementSide === 'right' ? '右侧' : '左侧'}}</text>
+        <text class="side-label">{{selectedOpening ? (selectedOpening.type === 'door' ? '开向' : '窗位') : '墙侧'}}</text>
+        <text class="side-value">{{selectedOpening ? (selectedOpening.type === 'door' ? selectedOpening.openDirectionLabel : '固定') : (measurementSide === 'right' ? '右侧' : '左侧')}}</text>
       </view>
 
       <view class="tool-group reserved-tools">
@@ -108,22 +162,22 @@
   </view>
 
   <view class="bottom-controls" style="bottom: calc(16rpx + {{bottomSafeArea}}px);">
-    <view class="mode-pill active">测墙模式</view>
+    <view class="mode-pill active">{{modePillText}}</view>
     <view class="bottom-action disabled" data-action="bluetooth" bindtap="onBottomAction">
       <text class="bottom-title">蓝牙</text>
       <text class="bottom-subtitle">Phase 3</text>
     </view>
-    <view class="bottom-action" data-action="manual" bindtap="onBottomAction">
+    <view class="bottom-action {{manualActionActive ? 'active' : ''}}" data-action="manual" bindtap="onBottomAction">
       <text class="bottom-title">手输 mm</text>
-      <text class="bottom-subtitle">输入当前墙</text>
+      <text class="bottom-subtitle">{{manualActionSubtitle}}</text>
     </view>
     <view class="bottom-action" data-action="cursor" bindtap="onBottomAction">
       <text class="bottom-title">重置光标</text>
-      <text class="bottom-subtitle">保留已测墙</text>
+      <text class="bottom-subtitle">{{cursorActionSubtitle}}</text>
     </view>
-    <view class="bottom-action disabled" data-action="add" bindtap="onBottomAction">
-      <text class="bottom-title">新增</text>
-      <text class="bottom-subtitle">待开放</text>
+    <view class="bottom-action" data-action="add" bindtap="onBottomAction">
+      <text class="bottom-title">新房间</text>
+      <text class="bottom-subtitle">吸附墙体</text>
     </view>
   </view>
 

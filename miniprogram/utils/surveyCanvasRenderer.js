@@ -203,6 +203,10 @@ function buildWallScene(floor, wall, options) {
   const localY = { x: -direction.y, y: direction.x };
   const outerStart = project(geometry.outerStart);
   const outerEnd = project(geometry.outerEnd);
+  const outerOffsetPx = (
+    (outerStart.x - startPoint.x) * localY.x +
+    (outerStart.y - startPoint.y) * localY.y
+  );
   const previousWall = opts.relativePreviousWall || opts.previousWall || null;
 
   return {
@@ -224,6 +228,7 @@ function buildWallScene(floor, wall, options) {
     relativeAngle: previousWall ? normalizeAngleDiff(wall.angleDeg, previousWall.angleDeg) : null,
     measurementSide: wall.measurementSide,
     thicknessPx: Math.round(geometry.thicknessMm * viewport.scale),
+    centerLineYPx: outerOffsetPx / 2,
     startOpen: geometry.startOpen,
     endOpen: geometry.endOpen,
     selected: opts.selectedWallId === wall.id,
@@ -272,11 +277,20 @@ function buildPreviewWall(floor, session, options) {
 }
 
 function buildClosureGuide(floor, session, project) {
-  if (!session || !session.closeCandidateNodeId || (!session.previewPoint && !session.anchorNodeId)) {
+  if (!session || (!session.closeCandidateNodeId && !session.closeCandidatePoint) || (!session.previewPoint && !session.anchorNodeId)) {
     return null;
   }
 
-  const targetNode = surveyGraph.getNode(floor, session.closeCandidateNodeId);
+  const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+    ? session.activeSpaceStartWallIndex
+    : 0;
+  const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
+  const previewCountsAsWall = !!session.previewPoint;
+  if (activeWallCount + (previewCountsAsWall ? 1 : 0) < 3) {
+    return null;
+  }
+
+  const targetNode = session.closeCandidatePoint || surveyGraph.getNode(floor, session.closeCandidateNodeId);
   const currentNode = session.previewPoint || surveyGraph.getNode(floor, session.anchorNodeId);
   if (!targetNode || !currentNode) return null;
 
@@ -285,6 +299,61 @@ function buildClosureGuide(floor, session, project) {
     endPoint: project(targetNode),
     active: session.state === 'closing'
   };
+}
+
+function shouldCloseWholeWallPath(floor, previewWall) {
+  if (previewWall) return false;
+  const walls = floor.walls || [];
+  const closedSpaces = (floor.spaces || []).filter((space) => space.closed && Array.isArray(space.wallIds));
+  if (!walls.length || closedSpaces.length !== 1) return false;
+
+  const closedWallIds = closedSpaces[0].wallIds || [];
+  if (closedWallIds.length !== walls.length || walls.length < 3) return false;
+  return walls.every((wall, index) => wall.id === closedWallIds[index]);
+}
+
+function buildOpeningScene(opening, wallScene, session) {
+  if (!opening || !wallScene || !wallScene.lengthMm) return null;
+  const scale = wallScene.widthPx / wallScene.lengthMm;
+  const widthPx = Math.max(10, (opening.widthMm || 0) * scale);
+  const centerPx = (opening.centerOffsetMm || 0) * scale;
+  const startPx = clamp(centerPx - widthPx / 2, 0, wallScene.widthPx);
+  const endPx = clamp(centerPx + widthPx / 2, 0, wallScene.widthPx);
+  const centerYPx = wallScene.centerLineYPx || 0;
+  const hitHalfHeight = Math.max(18, wallScene.thicknessPx);
+  const center = localPointToCanvas(wallScene, centerPx, centerYPx);
+  const hitPoints = [
+    localPointToCanvas(wallScene, startPx, centerYPx - hitHalfHeight),
+    localPointToCanvas(wallScene, endPx, centerYPx - hitHalfHeight),
+    localPointToCanvas(wallScene, endPx, centerYPx + hitHalfHeight),
+    localPointToCanvas(wallScene, startPx, centerYPx + hitHalfHeight)
+  ];
+
+  return {
+    id: opening.id,
+    opening,
+    wall: wallScene,
+    type: opening.type,
+    startPx,
+    endPx,
+    centerPx,
+    centerYPx,
+    widthPx: Math.max(1, endPx - startPx),
+    center,
+    selected: session && session.selectedOpeningId === opening.id,
+    hitPolygon: hitPoints,
+    label: opening.type === 'window' ? 'W' : 'D'
+  };
+}
+
+function buildOpeningScenes(floor, walls, session) {
+  const wallMap = {};
+  walls.forEach((wall) => {
+    wallMap[wall.id] = wall;
+  });
+  return (floor.openings || [])
+    .map((opening) => buildOpeningScene(opening, wallMap[opening.wallId], session))
+    .filter(Boolean);
 }
 
 function buildCursor(floor, session, project) {
@@ -326,18 +395,20 @@ function createSurveyRenderScene(input) {
     selectedWallId: session.selectedWallId
   });
   const dimensions = resolveDimensions(walls, previewWall);
+  const openings = buildOpeningScenes(floor, walls, session);
 
   return {
     rect,
     viewport,
     walls,
+    openings,
     previewWall,
     dimensions,
     joinFills: buildJoinFills(floor, renderThicknessMmMap, project),
     closureGuide: buildClosureGuide(floor, session, project),
     cursor: buildCursor(floor, session, project),
     activeSegment: previewWall || walls[walls.length - 1] || null,
-    closed: !!(floor.spaces || []).some((space) => space.closed)
+    closed: shouldCloseWholeWallPath(floor, previewWall)
   };
 }
 
@@ -411,7 +482,7 @@ function drawAxes(ctx, scene) {
 
 function drawWallBodies(ctx, scene) {
   scene.walls.forEach((wall) => {
-    drawPolygon(ctx, wall.bodyPolygon, wall.selected ? 'rgba(226, 226, 224, 0.98)' : 'rgba(226, 226, 224, 0.94)');
+    drawPolygon(ctx, wall.bodyPolygon, wall.selected ? 'rgba(187, 247, 208, 0.92)' : 'rgba(226, 226, 224, 0.94)');
   });
   scene.joinFills.forEach((join) => {
     drawPolygon(ctx, join.points, 'rgba(226, 226, 224, 0.94)');
@@ -510,6 +581,118 @@ function drawRedlines(ctx, scene) {
     drawRedlinePath(ctx, [scene.previewWall], scene.previewWall.lineOnly ? '#f07a21' : '#d71920');
   }
   ctx.restore();
+}
+
+function drawSelectedWallHighlight(ctx, scene) {
+  const selectedWall = (scene.walls || []).find((wall) => wall.selected);
+  if (!selectedWall) return;
+
+  ctx.save();
+  ctx.strokeStyle = '#16a34a';
+  ctx.lineWidth = 3;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(selectedWall.bodyPolygon[0].x, selectedWall.bodyPolygon[0].y);
+  for (let index = 1; index < selectedWall.bodyPolygon.length; index += 1) {
+    ctx.lineTo(selectedWall.bodyPolygon[index].x, selectedWall.bodyPolygon[index].y);
+  }
+  ctx.closePath();
+  ctx.stroke();
+
+  ctx.strokeStyle = '#f07a21';
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(selectedWall.startPoint.x, selectedWall.startPoint.y);
+  ctx.lineTo(selectedWall.endPoint.x, selectedWall.endPoint.y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawDoorOpening(ctx, opening) {
+  const wall = opening.wall;
+  const swing = Math.min(Math.max(opening.widthPx * 0.72, 16), 42);
+  const centerY = opening.centerYPx || 0;
+  const openDirection = opening.opening && opening.opening.openDirection === 'outside' ? 'outside' : 'inside';
+  const swingSide = openDirection === 'outside'
+    ? (wall.measurementSide === 'left' ? 'right' : 'left')
+    : wall.measurementSide;
+  const sideSign = swingSide === 'left' ? -1 : 1;
+  const baseY = centerY + sideSign * 4;
+  const swingY = centerY + sideSign * swing;
+  const color = opening.selected ? '#f07a21' : '#111827';
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = opening.selected ? 4 : 2;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(opening.startPx, baseY);
+  ctx.lineTo(opening.startPx, swingY);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(opening.startPx, baseY, swing, swingSide === 'left' ? -Math.PI / 2 : 0, swingSide === 'left' ? 0 : Math.PI / 2);
+  ctx.stroke();
+}
+
+function drawWindowOpening(ctx, opening) {
+  const y = opening.centerYPx || 0;
+  const color = opening.selected ? '#f07a21' : '#0ea5e9';
+  ctx.strokeStyle = color;
+  ctx.lineWidth = opening.selected ? 6 : 4;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(opening.startPx, y);
+  ctx.lineTo(opening.endPx, y);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(opening.startPx + 4, y);
+  ctx.lineTo(opening.endPx - 4, y);
+  ctx.stroke();
+}
+
+function drawOpenings(ctx, scene) {
+  (scene.openings || []).forEach((opening) => {
+    const wall = opening.wall;
+    ctx.save();
+    ctx.translate(wall.startPoint.x, wall.startPoint.y);
+    ctx.rotate(wall.angleRad);
+
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = Math.max(8, wall.thicknessPx + 4);
+    ctx.lineCap = 'butt';
+    ctx.beginPath();
+    ctx.moveTo(opening.startPx, opening.centerYPx);
+    ctx.lineTo(opening.endPx, opening.centerYPx);
+    ctx.stroke();
+
+    if (opening.selected) {
+      ctx.strokeStyle = 'rgba(240, 122, 33, 0.18)';
+      ctx.lineWidth = Math.max(16, wall.thicknessPx + 10);
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(opening.startPx, opening.centerYPx);
+      ctx.lineTo(opening.endPx, opening.centerYPx);
+      ctx.stroke();
+    }
+
+    if (opening.type === 'window') {
+      drawWindowOpening(ctx, opening);
+    } else {
+      drawDoorOpening(ctx, opening);
+    }
+
+    if (opening.selected) {
+      ctx.fillStyle = '#f07a21';
+      ctx.beginPath();
+      ctx.arc(opening.startPx, opening.centerYPx, 5, 0, Math.PI * 2);
+      ctx.arc(opening.endPx, opening.centerYPx, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  });
 }
 
 function drawArrow(ctx, x, y, direction, size) {
@@ -624,6 +807,8 @@ function drawSurveyScene(ctx, scene, options) {
   drawWallBodies(ctx, scene);
   drawWallOutlines(ctx, scene);
   drawRedlines(ctx, scene);
+  drawSelectedWallHighlight(ctx, scene);
+  drawOpenings(ctx, scene);
   drawDimensions(ctx, scene);
   drawClosureGuide(ctx, scene);
   drawCursor(ctx, scene);
@@ -673,8 +858,24 @@ function hitTestSurveyWall(scene, canvasPoint) {
   return nearest;
 }
 
+function hitTestSurveyOpening(scene, canvasPoint) {
+  if (!scene || !canvasPoint) return null;
+  let nearest = null;
+
+  (scene.openings || []).forEach((opening) => {
+    if (!pointInPolygon(canvasPoint, opening.hitPolygon)) return;
+    const distance = distancePx(canvasPoint, opening.center);
+    if (!nearest || distance < nearest.distance) {
+      nearest = { openingId: opening.id, wallId: opening.opening.wallId, distance };
+    }
+  });
+
+  return nearest;
+}
+
 module.exports = {
   createSurveyRenderScene,
   drawSurveyScene,
-  hitTestSurveyWall
+  hitTestSurveyWall,
+  hitTestSurveyOpening
 };

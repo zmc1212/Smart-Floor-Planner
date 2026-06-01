@@ -10,8 +10,16 @@ const RESERVED_TOOLS = [
   { key: 'cad', label: 'CAD' },
   { key: 'more', label: '更多' }
 ];
+const OBJECT_TOOLS = [
+  { key: 'object-edit', label: '编辑', helper: '尺寸' },
+  { key: 'object-split', label: '打断', helper: '后续' },
+  { key: 'object-add', label: '添加', helper: '门窗' },
+  { key: 'object-arrange', label: '排布', helper: '后续' },
+  { key: 'object-delete', label: '删除', helper: '墙体/门窗' }
+];
 
 const NUMBER_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '清空', '0', '退格'];
+const PROTOTYPE_DRAFT_KEY = 'surveying_prototype_draft_v1';
 const TOUCH_SLOP_PX = 8;
 const WALL_HIT_HALF_PX = 40;
 const MIN_SCALE = 0.05;
@@ -154,6 +162,17 @@ function getTouchPoint(touch, rect) {
   return { x: Number(touch.x) || 0, y: Number(touch.y) || 0 };
 }
 
+function canStartWallDrag(state) {
+  return state === 'cursorPlaced' || state === 'wallCommitted' || state === 'awaitingLength';
+}
+
+function isRestorablePrototypeDraft(draft) {
+  if (!draft || draft.kind !== 'survey-wall-graph' || draft.source !== 'surveying-editor') return false;
+  if (!Array.isArray(draft.floors) || !draft.floors.length) return false;
+  const floor = draft.floors.find((item) => item.id === draft.activeFloorId) || draft.floors[0];
+  return !!(floor && Array.isArray(floor.nodes) && Array.isArray(floor.walls) && floor.session);
+}
+
 Page({
   data: {
     statusBarHeight: 0,
@@ -167,6 +186,7 @@ Page({
     thicknessMm: 200,
     prototypeNotice: '体验版不会同步正式户型数据',
     coreTools: buildCoreTools('straight', 200),
+    objectTools: OBJECT_TOOLS,
     reservedTools: RESERVED_TOOLS,
     canvasWidth: 0,
     canvasHeight: 0,
@@ -187,10 +207,16 @@ Page({
     closeActionStyle: '',
     measurementTitle: '准备测墙',
     measurementValue: '从橙色光标拖出墙体方向',
+    modePillText: '测墙模式',
+    manualActionActive: false,
+    manualActionSubtitle: '输入当前墙',
+    cursorActionSubtitle: '保留已测墙',
     closeHintVisible: false,
     closeHintText: '',
     closeHintActionVisible: false,
     selectedWall: null,
+    selectedOpening: null,
+    objectToolsVisible: false,
     spaceSummary: null,
     numberPadVisible: false,
     numberPadTitle: '输入长度',
@@ -213,7 +239,8 @@ Page({
       : 0;
     const capsuleBottom = menuButtonInfo.bottom || (sysInfo.statusBarHeight || 0);
 
-    this.draft = surveyGraph.resetCursor(surveyGraph.createSurveyDraft());
+    const restoredDraft = this.loadPrototypeDraft();
+    this.draft = restoredDraft || surveyGraph.resetCursor(surveyGraph.createSurveyDraft());
     this.history = { undo: [], redo: [] };
     this.touchState = null;
     this.canvasRect = null;
@@ -228,7 +255,8 @@ Page({
       navigationSafeTop: capsuleBottom + 6,
       bottomSafeArea: safeAreaBottom,
       leadId: options.leadId || context.leadId || '',
-      title: context.leadName ? `${context.leadName} · 新版测绘` : '新版测绘体验'
+      title: context.leadName ? `${context.leadName} · 新版测绘` : '新版测绘体验',
+      prototypeNotice: restoredDraft ? '已恢复本地体验草稿，不会同步正式户型' : '体验版不会同步正式户型数据'
     });
     this.syncFromDraft();
   },
@@ -243,6 +271,42 @@ Page({
 
   onUnload() {
     app.globalData.surveyingPrototypeContext = null;
+    this.persistPrototypeDraft();
+  },
+
+  loadPrototypeDraft() {
+    try {
+      const draft = wx.getStorageSync(PROTOTYPE_DRAFT_KEY);
+      if (!isRestorablePrototypeDraft(draft)) return null;
+      const restored = surveyGraph.cloneDraft(draft);
+      const floor = surveyGraph.getActiveFloor(restored);
+      const session = floor.session || {};
+      if (session.state === 'wallPreview' || session.state === 'awaitingLength' || session.state === 'remeasureAwaitingInput') {
+        return surveyGraph.cancelPending(restored);
+      }
+      return restored;
+    } catch (err) {
+      return null;
+    }
+  },
+
+  persistPrototypeDraft() {
+    if (!this.draft) return;
+    try {
+      wx.setStorageSync(PROTOTYPE_DRAFT_KEY, surveyGraph.cloneDraft(this.draft));
+    } catch (err) {
+      // Local prototype persistence is best-effort and must not block measuring.
+    }
+  },
+
+  schedulePrototypePersist() {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+    }
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = null;
+      this.persistPrototypeDraft();
+    }, 300);
   },
 
   refreshCanvasRect() {
@@ -398,7 +462,9 @@ Page({
     const session = floor.session;
     const selectedWall = this.buildSelectedWall(floor, session.selectedWallId);
     const stageMessage = this.buildStageMessage(floor, session, selectedWall);
+    const bottomState = this.buildBottomActionState(floor, session);
     const renderData = this.buildCanvasRenderData(floor, session);
+    const selectedOpening = this.buildSelectedOpening(floor, session.selectedOpeningId);
 
     this.setData(Object.assign({
       activeTool: session.mode,
@@ -424,9 +490,15 @@ Page({
       closeHintText: renderData.closeHintText,
       closeHintActionVisible: session.state === 'closing',
       selectedWall,
+      selectedOpening,
+      objectToolsVisible: !!(selectedWall || selectedOpening),
       spaceSummary: this.buildSpaceSummary(),
       measurementTitle: stageMessage.title,
       measurementValue: stageMessage.value,
+      modePillText: bottomState.modePillText,
+      manualActionActive: bottomState.manualActionActive,
+      manualActionSubtitle: bottomState.manualActionSubtitle,
+      cursorActionSubtitle: bottomState.cursorActionSubtitle,
       historySummary: {
         undo: this.history.undo.length,
         redo: this.history.redo.length
@@ -453,7 +525,7 @@ Page({
     let closeHintText = '';
 
     if (session.previewPoint) {
-      closeHintVisible = !!session.closeCandidateNodeId;
+      closeHintVisible = !!(session.closeCandidateNodeId || session.closeCandidatePoint);
       closeHintText = closeHintVisible ? '预览端点已接近起点，确认长度后可闭合' : '';
     }
 
@@ -857,11 +929,19 @@ Page({
   },
 
   buildClosureRender(floor, session) {
-    if (!session.closeCandidateNodeId || (!session.previewPoint && !session.anchorNodeId)) {
+    if ((!session.closeCandidateNodeId && !session.closeCandidatePoint) || (!session.previewPoint && !session.anchorNodeId)) {
       return { guideVisible: false, guideStyle: '', actionVisible: false, actionStyle: '' };
     }
 
-    const targetNode = surveyGraph.getNode(floor, session.closeCandidateNodeId);
+    const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+      ? session.activeSpaceStartWallIndex
+      : 0;
+    const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
+    if (activeWallCount + (session.previewPoint ? 1 : 0) < 3) {
+      return { guideVisible: false, guideStyle: '', actionVisible: false, actionStyle: '' };
+    }
+
+    const targetNode = session.closeCandidatePoint || surveyGraph.getNode(floor, session.closeCandidateNodeId);
     let currentNode = null;
     if (session.previewPoint) {
       currentNode = session.previewPoint;
@@ -904,6 +984,38 @@ Page({
     if (!wallId) return null;
     const wall = surveyGraph.getWall(floor, wallId);
     if (!wall) return null;
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    let actionStyle = '';
+    if (start && end) {
+      const startPoint = this.mmToCanvasPoint(start);
+      const endPoint = this.mmToCanvasPoint(end);
+      const midX = (startPoint.x + endPoint.x) / 2;
+      const midY = (startPoint.y + endPoint.y) / 2;
+      const rect = this.canvasRect || { width: 0, height: 0 };
+      const dx = endPoint.x - startPoint.x;
+      const dy = endPoint.y - startPoint.y;
+      const length = Math.sqrt(dx * dx + dy * dy) || 1;
+      const normal = { x: -dy / length, y: dx / length };
+      const toolbarWidth = 184;
+      const toolbarHeight = 48;
+      const candidateOffsets = [76, -94, 132, -150];
+      const toolbarPoint = candidateOffsets.map((offset) => ({
+        left: midX + normal.x * offset - toolbarWidth / 2,
+        top: midY + normal.y * offset - toolbarHeight / 2,
+        offset
+      })).find((candidate) => (
+        candidate.left >= 12 &&
+        candidate.top >= 18 &&
+        candidate.left + toolbarWidth <= rect.width - 12 &&
+        candidate.top + toolbarHeight <= rect.height - 18
+      )) || {
+        left: clamp(midX - toolbarWidth / 2, 12, Math.max(12, rect.width - toolbarWidth - 12)),
+        top: clamp(midY - 118, 18, Math.max(18, rect.height - toolbarHeight - 18)),
+        offset: -118
+      };
+      actionStyle = `left:${roundPx(toolbarPoint.left)}px; top:${roundPx(toolbarPoint.top)}px;`;
+    }
 
     return {
       id: wall.id,
@@ -911,7 +1023,27 @@ Page({
       angle: `${Math.round(wall.angleDeg)}°`,
       thickness: formatMm(wall.thicknessMm),
       side: wall.measurementSide === 'left' ? '左侧' : '右侧',
-      mode: wall.mode === 'diagonal' ? '斜墙' : '直墙'
+      mode: wall.mode === 'diagonal' ? '斜墙' : '直墙',
+      actionStyle
+    };
+  },
+
+  buildSelectedOpening(floor, openingId) {
+    if (!openingId) return null;
+    const opening = surveyGraph.getOpening(floor, openingId);
+    if (!opening) return null;
+
+    return {
+      id: opening.id,
+      wallId: opening.wallId,
+      type: opening.type,
+      typeLabel: opening.type === 'window' ? '窗' : '门',
+      width: formatMm(opening.widthMm),
+      height: formatMm(opening.heightMm),
+      sill: formatMm(opening.sillHeightMm || 0),
+      offset: formatMm(opening.centerOffsetMm || 0),
+      openDirection: opening.openDirection === 'outside' ? 'outside' : 'inside',
+      openDirectionLabel: opening.openDirection === 'outside' ? '外开' : '内开'
     };
   },
 
@@ -924,6 +1056,60 @@ Page({
     };
   },
 
+  buildBottomActionState(floor, session) {
+    if (session.state === 'awaitingLength' || session.state === 'wallPreview') {
+      return {
+        modePillText: '待输入长度',
+        manualActionActive: true,
+        manualActionSubtitle: '确认当前墙',
+        cursorActionSubtitle: '取消待测墙'
+      };
+    }
+
+    if (session.state === 'remeasureAwaitingInput') {
+      return {
+        modePillText: '复尺模式',
+        manualActionActive: true,
+        manualActionSubtitle: '输入复尺值',
+        cursorActionSubtitle: '退出复尺'
+      };
+    }
+
+    if (session.state === 'closing') {
+      return {
+        modePillText: '可闭合',
+        manualActionActive: false,
+        manualActionSubtitle: '继续补测',
+        cursorActionSubtitle: '保留闭合点'
+      };
+    }
+
+    if (session.state === 'wallSnapPending') {
+      return {
+        modePillText: '吸附墙体',
+        manualActionActive: false,
+        manualActionSubtitle: '先选墙体',
+        cursorActionSubtitle: '取消吸附'
+      };
+    }
+
+    if (session.state === 'spaceClosed') {
+      return {
+        modePillText: '已闭合',
+        manualActionActive: false,
+        manualActionSubtitle: '选择墙复尺',
+        cursorActionSubtitle: '已完成'
+      };
+    }
+
+    return {
+      modePillText: floor.walls.length ? '继续测墙' : '测墙模式',
+      manualActionActive: false,
+      manualActionSubtitle: floor.walls.length ? '拖墙后输入' : '输入当前墙',
+      cursorActionSubtitle: '保留已测墙'
+    };
+  },
+
   buildStageMessage(floor, session, selectedWall) {
     if (session.state === 'idle') {
       return { title: '准备测墙', value: '重置光标后，从橙色光标拖出墙体方向' };
@@ -931,11 +1117,14 @@ Page({
     if (session.state === 'cursorPlaced') {
       return { title: '光标已放置', value: '从光标拖出墙体方向' };
     }
+    if (session.state === 'wallSnapPending') {
+      return { title: '新房间起点', value: '点击已有墙体附近吸附光标' };
+    }
     if (session.state === 'wallPreview') {
-      return { title: '当前墙段', value: '释放后输入毫米长度' };
+      return { title: '当前墙段', value: '释放后生成待测墙，不会自动落图' };
     }
     if (session.state === 'awaitingLength') {
-      return { title: '等待长度', value: `点击“输入”并录入 ${formatMm(session.previewLengthMm)} 附近的实测值` };
+      return { title: '等待长度', value: `点击“手输 mm”录入 ${formatMm(session.previewLengthMm)} 附近的实测值` };
     }
     if (session.state === 'wallCommitted') {
       return { title: '墙体已确认', value: '继续从光标拖出下一面墙' };
@@ -945,6 +1134,12 @@ Page({
     }
     if (session.state === 'spaceClosed') {
       return { title: '单空间已闭合', value: '点击墙体可复尺、改墙侧或墙厚' };
+    }
+    if (session.state === 'wallSelected' && session.selectedOpeningId) {
+      const opening = surveyGraph.getOpening(floor, session.selectedOpeningId);
+      if (opening) {
+        return { title: opening.type === 'window' ? '已选窗' : '已选门', value: `${formatMm(opening.widthMm)} x ${formatMm(opening.heightMm)} · 本地原型` };
+      }
     }
     if (session.state === 'wallSelected' && selectedWall) {
       return { title: '已选墙体', value: `${selectedWall.length} · ${selectedWall.side} · ${selectedWall.thickness}` };
@@ -978,6 +1173,23 @@ Page({
     };
   },
 
+  projectOpeningOffsetMm(point, wallId) {
+    if (!point || !wallId) return null;
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const wall = surveyGraph.getWall(floor, wallId);
+    if (!wall) return null;
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    if (!start || !end) return null;
+
+    const pointMm = this.canvasPointToMm(point);
+    const length = surveyGraph.distanceMm(start, end);
+    if (!length) return null;
+    const dx = (end.xMm - start.xMm) / length;
+    const dy = (end.yMm - start.yMm) / length;
+    return Math.round((pointMm.xMm - start.xMm) * dx + (pointMm.yMm - start.yMm) * dy);
+  },
+
   isCursorTouchTarget(e) {
     const dataset = e && e.target && e.target.dataset;
     if (!dataset) return false;
@@ -989,12 +1201,15 @@ Page({
     const floor = surveyGraph.getActiveFloor(this.draft);
     const session = floor.session;
     if (!session || !session.anchorNodeId) return false;
-    if (session.state !== 'cursorPlaced' && session.state !== 'wallCommitted') return false;
+    if (!canStartWallDrag(session.state)) return false;
 
     const anchor = surveyGraph.getNode(floor, session.anchorNodeId);
-    if (!anchor) return false;
+    const cursorSource = session.state === 'awaitingLength' && session.previewPoint
+      ? session.previewPoint
+      : anchor;
+    if (!cursorSource) return false;
 
-    const cursorPoint = this.mmToCanvasPoint(anchor);
+    const cursorPoint = this.mmToCanvasPoint(cursorSource);
     const localPoint = {
       x: clientPoint.x - this.canvasRect.left,
       y: clientPoint.y - this.canvasRect.top
@@ -1013,6 +1228,9 @@ Page({
     }
     this.draft = nextDraft;
     this.syncFromDraft(opts.extraData);
+    if (opts.persist !== false) {
+      this.schedulePrototypePersist();
+    }
   },
 
   onBack() {
@@ -1036,9 +1254,13 @@ Page({
   onToolTap(e) {
     const tool = e.currentTarget.dataset.tool;
 
+    if (tool && tool.indexOf('object-') === 0) {
+      this.onObjectToolTap(tool);
+      return;
+    }
+
     if (tool === 'straight' || tool === 'diagonal') {
-      this.draft = surveyGraph.setMode(this.draft, tool);
-      this.syncFromDraft();
+      this.applyDraft(surveyGraph.setMode(this.draft, tool), { persist: false });
       return;
     }
 
@@ -1053,15 +1275,159 @@ Page({
     }
 
     if (tool === 'reset') {
-      this.draft = surveyGraph.resetCursor(this.draft);
-      this.syncFromDraft();
+      this.applyDraft(surveyGraph.resetCursor(this.draft), { persist: true });
       wx.showToast({ title: '光标已重置', icon: 'none' });
+    }
+  },
+
+  onObjectToolTap(tool) {
+    if (tool === 'object-edit') {
+      this.openSelectedObjectEditor();
+      return;
+    }
+
+    if (tool === 'object-add') {
+      this.addPrototypeOpening('door');
+      return;
+    }
+
+    if (tool === 'object-delete') {
+      this.deleteSelectedObject();
+      return;
+    }
+
+    wx.showToast({ title: '该对象工具将在 Phase 8 继续定义', icon: 'none' });
+  },
+
+  onWallContextAction(e) {
+    const action = e.currentTarget.dataset.action;
+    if (action === 'door' || action === 'window') {
+      this.addPrototypeOpening(action);
+      return;
+    }
+    if (action === 'edit') {
+      this.openSelectedObjectEditor();
+      return;
+    }
+    if (action === 'delete') {
+      this.deleteSelectedObject();
+      return;
+    }
+    if (action === 'exit') {
+      this.onExitWallSelection();
+    }
+  },
+
+  addPrototypeOpening(type) {
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const wallId = floor.session.selectedWallId;
+    if (!wallId) {
+      wx.showToast({ title: '请先选择墙体', icon: 'none' });
+      return;
+    }
+
+    try {
+      const nextDraft = surveyGraph.addOpeningToWall(this.draft, wallId, type);
+      this.applyDraft(nextDraft, { recordHistory: true });
+      wx.showToast({ title: type === 'window' ? '已添加窗' : '已添加门', icon: 'none' });
+    } catch (err) {
+      wx.showToast({ title: err.message || '添加失败', icon: 'none' });
+    }
+  },
+
+  openSelectedObjectEditor() {
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    if (floor.session.selectedOpeningId) {
+      this.openNumberPad('openingWidth');
+      return;
+    }
+    if (floor.session.selectedWallId) {
+      this.openNumberPad('thickness');
+      return;
+    }
+    wx.showToast({ title: '请先选择墙体或门窗', icon: 'none' });
+  },
+
+  deleteSelectedOpening() {
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    if (!floor.session.selectedOpeningId) {
+      wx.showToast({ title: '请先选择门窗', icon: 'none' });
+      return;
+    }
+    const nextDraft = surveyGraph.deleteOpening(this.draft, floor.session.selectedOpeningId);
+    this.applyDraft(nextDraft, { recordHistory: true });
+    wx.showToast({ title: '门窗已删除', icon: 'none' });
+  },
+
+  deleteSelectedObject() {
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    if (floor.session.selectedOpeningId) {
+      this.deleteSelectedOpening();
+      return;
+    }
+    if (floor.session.selectedWallId) {
+      this.deleteSelectedWall();
+      return;
+    }
+    wx.showToast({ title: '请先选择墙体或门窗', icon: 'none' });
+  },
+
+  deleteSelectedWall() {
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const wallId = floor.session.selectedWallId;
+    if (!wallId || !surveyGraph.getWall(floor, wallId)) {
+      wx.showToast({ title: '请先选择墙体', icon: 'none' });
+      return;
+    }
+
+    wx.showModal({
+      title: '删除墙体',
+      content: '将删除当前墙体及其上的门窗，已闭合空间会转回未闭合状态。',
+      confirmText: '删除',
+      confirmColor: '#d71920',
+      success: (res) => {
+        if (!res.confirm) return;
+        const nextDraft = surveyGraph.deleteWall(this.draft, wallId);
+        this.applyDraft(nextDraft, { recordHistory: true });
+        wx.showToast({ title: '墙体已删除', icon: 'none' });
+      }
+    });
+  },
+
+  onOpeningEditField(e) {
+    const field = e.currentTarget.dataset.field;
+    if (field === 'width') {
+      this.openNumberPad('openingWidth');
+      return;
+    }
+    if (field === 'height') {
+      this.openNumberPad('openingHeight');
+      return;
+    }
+    if (field === 'sill') {
+      this.openNumberPad('openingSill');
     }
   },
 
   onToggleSide(e) {
     const floor = surveyGraph.getActiveFloor(this.draft);
     const session = floor.session;
+    const selectedOpening = session.selectedOpeningId ? surveyGraph.getOpening(floor, session.selectedOpeningId) : null;
+    if (selectedOpening) {
+      if (selectedOpening.type !== 'door') {
+        wx.showToast({ title: '窗不支持开向切换', icon: 'none' });
+        return;
+      }
+      const nextDirection = selectedOpening.openDirection === 'outside' ? 'inside' : 'outside';
+      const nextDraft = surveyGraph.updateOpening(this.draft, selectedOpening.id, { openDirection: nextDirection });
+      this.applyDraft(nextDraft, {
+        recordHistory: true,
+        extraData: { numberPadVisible: this.data.numberPadVisible }
+      });
+      wx.showToast({ title: nextDirection === 'outside' ? '门开向已设为外开' : '门开向已设为内开', icon: 'none' });
+      return;
+    }
+
     const dataset = e && e.currentTarget ? e.currentTarget.dataset : {};
     const source = dataset && dataset.source;
     const firstWall = floor.walls[0] || null;
@@ -1089,6 +1455,14 @@ Page({
     this.showPlannedToast();
   },
 
+  onSavePrototypeDraft() {
+    this.persistPrototypeDraft();
+    this.setData({
+      prototypeNotice: '本地体验草稿已保存，不会同步正式户型'
+    });
+    wx.showToast({ title: '体验草稿已保存', icon: 'success' });
+  },
+
   onBottomAction(e) {
     const action = e.currentTarget.dataset.action;
 
@@ -1098,9 +1472,22 @@ Page({
     }
 
     if (action === 'cursor') {
-      this.draft = surveyGraph.resetCursor(this.draft);
-      this.syncFromDraft();
+      this.applyDraft(surveyGraph.resetCursor(this.draft), { persist: true });
       wx.showToast({ title: '光标已重置', icon: 'none' });
+      return;
+    }
+
+    if (action === 'add') {
+      const floor = surveyGraph.getActiveFloor(this.draft);
+      if (!floor.walls.length) {
+        wx.showToast({ title: '请先完成第一个房间', icon: 'none' });
+        return;
+      }
+      this.applyDraft(surveyGraph.startWallSnap(this.draft), {
+        recordHistory: true,
+        extraData: { numberPadVisible: false }
+      });
+      wx.showToast({ title: '点击已有墙体放置光标', icon: 'none' });
       return;
     }
 
@@ -1194,14 +1581,17 @@ Page({
 
     const floor = surveyGraph.getActiveFloor(this.draft);
     const session = floor.session;
+    const openingHit = this.hitTestOpeningAtClientPoint(point);
     const nearCursor = this.isCursorTouchTarget(e) || this.isNearCursorPoint(point);
     const viewport = this.getViewport();
+    const snapPending = session.state === 'wallSnapPending';
 
     this.touchState = {
-      mode: 'pending',
+      mode: snapPending ? 'wallSnapPending' : (openingHit && openingHit.openingId ? 'openingPending' : 'pending'),
       startPoint: point,
       lastPoint: point,
       nearCursor,
+      openingHit: snapPending ? null : openingHit,
       sessionState: session.state,
       startViewport: {
         scale: viewport.scale,
@@ -1229,15 +1619,37 @@ Page({
     if (!touches.length) return;
 
     const point = getTouchPoint(touches[0], this.canvasRect);
+    this.touchState.lastPoint = point;
     const dx = point.x - this.touchState.startPoint.x;
     const dy = point.y - this.touchState.startPoint.y;
     const moved = Math.sqrt(dx * dx + dy * dy);
     const currentMm = this.canvasPointToMm(point);
 
+    if (this.touchState.mode === 'wallSnapPending') {
+      return;
+    }
+
+    if (this.touchState.mode === 'openingPending') {
+      if (moved < TOUCH_SLOP_PX) return;
+      if (!this.touchState.historyDraft) {
+        this.touchState.historyDraft = surveyGraph.cloneDraft(this.draft);
+      }
+      this.touchState.mode = 'opening';
+    }
+
+    if (this.touchState.mode === 'opening') {
+      const openingHit = this.touchState.openingHit || {};
+      const nextOffset = this.projectOpeningOffsetMm(point, openingHit.wallId);
+      if (nextOffset === null) return;
+      this.draft = surveyGraph.updateOpening(this.draft, openingHit.openingId, { centerOffsetMm: nextOffset });
+      this.syncFromDraft();
+      return;
+    }
+
     if (this.touchState.mode === 'pending') {
       if (moved < TOUCH_SLOP_PX) return;
 
-      if (this.touchState.nearCursor && (this.touchState.sessionState === 'cursorPlaced' || this.touchState.sessionState === 'wallCommitted')) {
+      if (this.touchState.nearCursor && canStartWallDrag(this.touchState.sessionState)) {
         if (!this.touchState.historyDraft) {
           this.touchState.historyDraft = surveyGraph.cloneDraft(this.draft);
         }
@@ -1272,6 +1684,8 @@ Page({
     const touchState = this.touchState;
     const controlTap = touchState.mode === 'control';
     const movedWall = touchState.mode === 'wall';
+    const movedOpening = touchState.mode === 'opening';
+    const openingTap = touchState.mode === 'openingPending';
     const wasTap = touchState.mode === 'pending';
     const historyDraft = touchState.historyDraft;
 
@@ -1282,11 +1696,77 @@ Page({
       return;
     }
 
+    if (touchState.mode === 'wallSnapPending') {
+      const wallHit = this.hitTestWallAtClientPoint(touchState.startPoint);
+      if (!wallHit || !wallHit.wallId) {
+        wx.showToast({ title: '请点击已有墙体附近', icon: 'none' });
+        return;
+      }
+      const pointMm = this.canvasPointToMm(touchState.startPoint);
+      const nextDraft = surveyGraph.snapCursorToWall(this.draft, pointMm);
+      this.applyDraft(nextDraft, {
+        recordHistory: true,
+        extraData: { numberPadVisible: false }
+      });
+      wx.showToast({ title: '光标已吸附到墙体', icon: 'none' });
+      return;
+    }
+
+    if (openingTap) {
+      const openingHit = touchState.openingHit || {};
+      if (openingHit.openingId) {
+        this.applyDraft(surveyGraph.selectOpening(this.draft, openingHit.openingId), {
+          extraData: { numberPadVisible: false },
+          persist: false
+        });
+      }
+      return;
+    }
+
+    if (movedOpening) {
+      const openingHit = touchState.openingHit || {};
+      if (openingHit.openingId) {
+        const nextOffset = this.projectOpeningOffsetMm(touchState.lastPoint || touchState.startPoint, openingHit.wallId);
+        const nextDraft = nextOffset === null
+          ? surveyGraph.selectOpening(this.draft, openingHit.openingId)
+          : surveyGraph.updateOpening(this.draft, openingHit.openingId, { centerOffsetMm: nextOffset });
+        this.applyDraft(nextDraft, {
+          recordHistory: true,
+          historyDraft,
+          extraData: { numberPadVisible: false }
+        });
+        wx.showToast({ title: '门窗位置已更新', icon: 'none' });
+      }
+      return;
+    }
+
     if (wasTap && !touchState.nearCursor) {
+      const openingHit = this.hitTestOpeningAtClientPoint(touchState.startPoint);
+      if (openingHit && openingHit.openingId) {
+        this.applyDraft(surveyGraph.selectOpening(this.draft, openingHit.openingId), {
+          extraData: { numberPadVisible: false },
+          persist: false
+        });
+        return;
+      }
+
       const wallHit = this.hitTestWallAtClientPoint(touchState.startPoint);
       if (wallHit && wallHit.wallId) {
-        this.draft = surveyGraph.selectWall(this.draft, wallHit.wallId);
-        this.syncFromDraft({ numberPadVisible: false });
+        this.applyDraft(surveyGraph.selectWall(this.draft, wallHit.wallId), {
+          extraData: { numberPadVisible: false },
+          persist: false
+        });
+        return;
+      }
+
+      if ((session.state === 'idle' || session.state === 'cursorPlaced') && !floor.walls.length) {
+        const pointMm = this.canvasPointToMm(touchState.startPoint);
+        const nextDraft = surveyGraph.placeCursor(this.draft, pointMm);
+        this.applyDraft(nextDraft, {
+          recordHistory: !!session.anchorNodeId,
+          extraData: { numberPadVisible: false }
+        });
+        wx.showToast({ title: '光标已放置', icon: 'none' });
       }
       return;
     }
@@ -1294,18 +1774,28 @@ Page({
     if (movedWall) {
       if (session.previewLengthMm >= surveyGraph.MIN_WALL_LENGTH_MM) {
         try {
-          const nextDraft = surveyGraph.commitPreviewLength(this.draft, session.previewLengthMm, 'manual');
-          this.applyDraft(nextDraft, { recordHistory: true, historyDraft });
+          const nextDraft = surveyGraph.commitPreviewLength(this.draft, session.previewLengthMm, 'preview');
+          const nextSession = surveyGraph.getActiveFloor(nextDraft).session;
+          this.applyDraft(nextDraft, {
+            recordHistory: true,
+            historyDraft
+          });
+          wx.showToast({
+            title: nextSession.state === 'closing' ? '接近起点，可闭合' : '墙体已确认',
+            icon: 'none'
+          });
         } catch (err) {
           wx.showToast({ title: err.message || '成墙失败，请重试', icon: 'none' });
-          this.draft = surveyGraph.cancelPending(this.draft);
-          this.syncFromDraft();
+          this.applyDraft(surveyGraph.cancelPending(this.draft), { persist: false });
         }
       } else {
-        this.draft = surveyGraph.cancelPending(this.draft);
-        this.syncFromDraft();
+        this.applyDraft(surveyGraph.cancelPending(this.draft));
       }
       return;
+    }
+
+    if (touchState.mode === 'pan' || touchState.mode === 'pinch') {
+      this.schedulePrototypePersist();
     }
   },
 
@@ -1319,18 +1809,26 @@ Page({
 
   onWallTap(e) {
     const wallId = e.currentTarget.dataset.id;
-    this.draft = surveyGraph.selectWall(this.draft, wallId);
-    this.syncFromDraft({ numberPadVisible: false });
+    this.applyDraft(surveyGraph.selectWall(this.draft, wallId), {
+      extraData: { numberPadVisible: false },
+      persist: false
+    });
+  },
+
+  hitTestOpeningAtClientPoint(point) {
+    if (!this.canvasRect || !this.surveyRenderScene || !point) return null;
+    return surveyCanvasRenderer.hitTestSurveyOpening(this.surveyRenderScene, {
+      x: point.x - this.canvasRect.left,
+      y: point.y - this.canvasRect.top
+    });
   },
 
   onExitWallSelection() {
-    this.draft = surveyGraph.cancelPending(this.draft);
-    this.syncFromDraft();
+    this.applyDraft(surveyGraph.cancelPending(this.draft), { persist: false });
   },
 
   onStartRemeasure() {
-    this.draft = surveyGraph.startRemeasure(this.draft);
-    this.syncFromDraft();
+    this.applyDraft(surveyGraph.startRemeasure(this.draft), { persist: false });
     this.openNumberPad('length');
   },
 
@@ -1356,6 +1854,7 @@ Page({
       ? surveyGraph.cancelPending(restoredDraft)
       : restoredDraft;
     this.syncFromDraft({ numberPadVisible: false });
+    this.schedulePrototypePersist();
   },
 
   onRedo() {
@@ -1363,6 +1862,7 @@ Page({
     this.history.undo.push(surveyGraph.cloneDraft(this.draft));
     this.draft = this.history.redo.pop();
     this.syncFromDraft({ numberPadVisible: false });
+    this.schedulePrototypePersist();
   },
 
   openLengthPad() {
@@ -1415,6 +1915,33 @@ Page({
       this.numberPadMode = 'thickness';
       return;
     }
+
+    if (mode === 'openingWidth' || mode === 'openingHeight' || mode === 'openingSill') {
+      const floor = surveyGraph.getActiveFloor(this.draft);
+      const opening = surveyGraph.getOpening(floor, floor.session.selectedOpeningId);
+      if (!opening) {
+        wx.showToast({ title: '请先选择门窗', icon: 'none' });
+        return;
+      }
+      const titleMap = {
+        openingWidth: '修改门窗宽度',
+        openingHeight: '修改门窗高度',
+        openingSill: opening.type === 'window' ? '修改窗距地' : '修改门距地'
+      };
+      const valueMap = {
+        openingWidth: opening.widthMm,
+        openingHeight: opening.heightMm,
+        openingSill: opening.sillHeightMm || 0
+      };
+      this.setData({
+        numberPadVisible: true,
+        numberPadTitle: titleMap[mode],
+        numberPadSubtitle: '单位：mm，仅保存为新版本地原型门窗',
+        numberInput: String(valueMap[mode])
+      });
+      this.numberPadMode = mode;
+      return;
+    }
   },
 
   onNumberKey(e) {
@@ -1447,6 +1974,21 @@ Page({
           extraData: { numberPadVisible: false, numberInput: '' }
         });
         wx.showToast({ title: selectedWallId ? '墙厚已更新' : '后续墙厚已设置', icon: 'none' });
+        return;
+      }
+
+      if (this.numberPadMode === 'openingWidth' || this.numberPadMode === 'openingHeight' || this.numberPadMode === 'openingSill') {
+        const patch = {};
+        if (this.numberPadMode === 'openingWidth') patch.widthMm = value;
+        if (this.numberPadMode === 'openingHeight') patch.heightMm = value;
+        if (this.numberPadMode === 'openingSill') patch.sillHeightMm = value;
+        const nextDraft = surveyGraph.updateOpening(this.draft, session.selectedOpeningId, patch);
+        this.numberPadMode = '';
+        this.applyDraft(nextDraft, {
+          recordHistory: true,
+          extraData: { numberPadVisible: false, numberInput: '' }
+        });
+        wx.showToast({ title: '门窗尺寸已更新', icon: 'none' });
         return;
       }
 

@@ -1,9 +1,16 @@
 const DEFAULT_THICKNESS_MM = 200;
-const DEFAULT_SCALE = 0.16;
+const DEFAULT_SCALE = 0.05;
 const CLOSE_TOLERANCE_MM = 200;
 const MIN_WALL_LENGTH_MM = 100;
 const MIN_THICKNESS_MM = 50;
 const WALL_OVERLAP_TOLERANCE_MM = 30;
+const DEFAULT_DOOR_WIDTH_MM = 900;
+const DEFAULT_DOOR_HEIGHT_MM = 2100;
+const DEFAULT_WINDOW_WIDTH_MM = 1500;
+const DEFAULT_WINDOW_HEIGHT_MM = 1500;
+const DEFAULT_WINDOW_SILL_HEIGHT_MM = 900;
+const MIN_OPENING_SIZE_MM = 100;
+const MAX_OPENING_WALL_RATIO = 0.6;
 
 let idSeed = 1;
 
@@ -32,7 +39,13 @@ function createSession() {
     measurementSide: 'left',
     pendingWallId: '',
     selectedWallId: '',
-    closeCandidateNodeId: ''
+    selectedOpeningId: '',
+    closeCandidateNodeId: '',
+    closeCandidatePoint: null,
+    activeSpaceStartNodeId: '',
+    activeSpaceStartWallIndex: 0,
+    activeSpaceSharedWallId: '',
+    activeSpaceSharedStartT: null
   };
 }
 
@@ -50,6 +63,7 @@ function createSurveyDraft() {
         elevationMm: 0,
         nodes: [],
         walls: [],
+        openings: [],
         spaces: [],
         session: createSession(),
         viewport: { scale: DEFAULT_SCALE, offsetX: 0, offsetY: 0 }
@@ -74,6 +88,41 @@ function getNode(floor, nodeId) {
 
 function getWall(floor, wallId) {
   return floor.walls.find((wall) => wall.id === wallId);
+}
+
+function ensureOpenings(floor) {
+  if (!Array.isArray(floor.openings)) {
+    floor.openings = [];
+  }
+  return floor.openings;
+}
+
+function getOpening(floor, openingId) {
+  return ensureOpenings(floor).find((opening) => opening.id === openingId);
+}
+
+function ensureSessionSpaceTracking(floor) {
+  const session = floor.session || createSession();
+  floor.session = session;
+  if (typeof session.activeSpaceStartNodeId !== 'string') {
+    session.activeSpaceStartNodeId = '';
+  }
+  if (!Number.isInteger(session.activeSpaceStartWallIndex) || session.activeSpaceStartWallIndex < 0) {
+    session.activeSpaceStartWallIndex = 0;
+  }
+  if (session.activeSpaceStartWallIndex > floor.walls.length) {
+    session.activeSpaceStartWallIndex = floor.walls.length;
+  }
+  if (typeof session.activeSpaceSharedWallId !== 'string') {
+    session.activeSpaceSharedWallId = '';
+  }
+  if (typeof session.activeSpaceSharedStartT !== 'number') {
+    session.activeSpaceSharedStartT = null;
+  }
+  if (!Object.prototype.hasOwnProperty.call(session, 'closeCandidatePoint')) {
+    session.closeCandidatePoint = null;
+  }
+  return session;
 }
 
 function distanceMm(a, b) {
@@ -238,11 +287,13 @@ function segmentOverlapLengthMm(start, end, otherStart, otherEnd) {
   return Math.max(0, overlapEnd - overlapStart);
 }
 
-function findOverlappingWall(floor, start, end) {
+function findOverlappingWall(floor, start, end, options) {
   const currentLength = distanceMm(start, end);
   if (!floor || !floor.walls || currentLength < MIN_WALL_LENGTH_MM) return null;
+  const ignoredWallIds = (options && options.ignoredWallIds) || [];
 
   return floor.walls.find((wall) => {
+    if (ignoredWallIds.indexOf(wall.id) !== -1) return false;
     const wallStart = getNode(floor, wall.startNodeId);
     const wallEnd = getNode(floor, wall.endNodeId);
     if (!wallStart || !wallEnd) return false;
@@ -336,7 +387,16 @@ function buildWallJoinRenderGeometries(floor, options) {
     if (join) joins.push(join);
   }
 
-  if (hasClosedSpace(floor) && floor.walls.length > 2) {
+  const singleWholePathClosed = floor.spaces &&
+    floor.spaces.filter((space) => space.closed && Array.isArray(space.wallIds)).length === 1 &&
+    floor.spaces.some((space) => (
+      space.closed &&
+      Array.isArray(space.wallIds) &&
+      space.wallIds.length === floor.walls.length &&
+      floor.walls.every((wall, index) => wall.id === space.wallIds[index])
+    ));
+
+  if (singleWholePathClosed && floor.walls.length > 2) {
     const previous = buildResolvedSegment(floor, floor.walls[floor.walls.length - 1], segmentOptions);
     const next = buildResolvedSegment(floor, floor.walls[0], segmentOptions);
     const join = pointsToJoinFill(previous, next);
@@ -447,6 +507,255 @@ function validateThickness(thicknessMm) {
   return parsed;
 }
 
+function validateOpeningSize(value, label) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < MIN_OPENING_SIZE_MM) {
+    throw new Error(`${label || 'opening size'} must be an integer >= ${MIN_OPENING_SIZE_MM} mm`);
+  }
+  return parsed;
+}
+
+function projectPointToWallSegment(point, start, end) {
+  if (!point || !start || !end) return null;
+  const dx = end.xMm - start.xMm;
+  const dy = end.yMm - start.yMm;
+  const lengthSq = dx * dx + dy * dy;
+  if (!lengthSq) return null;
+  const rawT = ((point.xMm - start.xMm) * dx + (point.yMm - start.yMm) * dy) / lengthSq;
+  const t = clampNumber(rawT, 0, 1);
+  const projected = {
+    xMm: Math.round(start.xMm + dx * t),
+    yMm: Math.round(start.yMm + dy * t)
+  };
+  return {
+    point: projected,
+    t,
+    distanceMm: distanceMm(point, projected)
+  };
+}
+
+function findNearestWallProjection(floor, point) {
+  if (!floor || !point) return null;
+  let best = null;
+  floor.walls.forEach((wall) => {
+    const start = getNode(floor, wall.startNodeId);
+    const end = getNode(floor, wall.endNodeId);
+    const projection = projectPointToWallSegment(point, start, end);
+    if (!projection) return;
+    if (!best || projection.distanceMm < best.distanceMm) {
+      best = {
+        wall,
+        start,
+        end,
+        point: projection.point,
+        t: projection.t,
+        distanceMm: projection.distanceMm
+      };
+    }
+  });
+  return best;
+}
+
+function getOrCreateSnapNode(floor, projection) {
+  if (!projection) return null;
+  if (projection.t <= 0.0001) return projection.start;
+  if (projection.t >= 0.9999) return projection.end;
+
+  const existing = floor.nodes.find((node) => distanceMm(node, projection.point) <= 1);
+  return existing || addNode(floor, projection.point);
+}
+
+function getSharedWallProjection(floor, session, point) {
+  if (!session || !session.activeSpaceSharedWallId || !point) return null;
+  const wall = getWall(floor, session.activeSpaceSharedWallId);
+  if (!wall) return null;
+  const start = getNode(floor, wall.startNodeId);
+  const end = getNode(floor, wall.endNodeId);
+  const projection = projectPointToWallSegment(point, start, end);
+  if (!projection || projection.distanceMm > CLOSE_TOLERANCE_MM) return null;
+  const startT = typeof session.activeSpaceSharedStartT === 'number' ? session.activeSpaceSharedStartT : null;
+  if (startT !== null && Math.abs(projection.t - startT) * distanceMm(start, end) < MIN_WALL_LENGTH_MM) {
+    return null;
+  }
+  return projection;
+}
+
+function cloneWallSegment(sourceWall, startNodeId, endNodeId, id) {
+  return {
+    id: id || nextId('wall'),
+    startNodeId,
+    endNodeId,
+    mode: sourceWall.mode,
+    lengthMm: sourceWall.lengthMm,
+    angleDeg: sourceWall.angleDeg,
+    thicknessMm: sourceWall.thicknessMm,
+    measurementSide: sourceWall.measurementSide,
+    inputSource: sourceWall.inputSource || 'manual',
+    status: sourceWall.status || 'confirmed',
+    measuredAt: sourceWall.measuredAt || nowIso()
+  };
+}
+
+function pointAlongWall(floor, wall, nodeId) {
+  const start = getNode(floor, wall.startNodeId);
+  const end = getNode(floor, wall.endNodeId);
+  const node = getNode(floor, nodeId);
+  const projection = projectPointToWallSegment(node, start, end);
+  return projection ? Math.round(projection.t * distanceMm(start, end)) : 0;
+}
+
+function uniqueCutNodesByAlong(items) {
+  const sorted = items
+    .filter((item) => item && item.node)
+    .sort((a, b) => a.alongMm - b.alongMm);
+  const result = [];
+  sorted.forEach((item) => {
+    const previous = result[result.length - 1];
+    if (previous && Math.abs(previous.alongMm - item.alongMm) <= 1) {
+      return;
+    }
+    result.push(item);
+  });
+  return result;
+}
+
+function replaceWallInSpaces(floor, wallId, replacementIds) {
+  floor.spaces = (floor.spaces || []).map((space) => {
+    if (!Array.isArray(space.wallIds) || space.wallIds.indexOf(wallId) === -1) return space;
+    const wallIds = [];
+    space.wallIds.forEach((id) => {
+      if (id === wallId) {
+        replacementIds.forEach((replacementId) => wallIds.push(replacementId));
+      } else {
+        wallIds.push(id);
+      }
+    });
+    return Object.assign({}, space, { wallIds });
+  });
+}
+
+function remapOpeningsForSplitWall(floor, originalWall, segments) {
+  ensureOpenings(floor).forEach((opening) => {
+    if (opening.wallId !== originalWall.id) return;
+    const centerOffset = opening.centerOffsetMm || 0;
+    const target = segments.find((segment) => (
+      centerOffset >= segment.startAlongMm - 1 &&
+      centerOffset <= segment.endAlongMm + 1
+    )) || segments[segments.length - 1];
+    if (!target) return;
+    opening.wallId = target.wall.id;
+    opening.centerOffsetMm = Math.round(centerOffset - target.startAlongMm);
+    normalizeOpeningToWall(floor, opening);
+    normalizeOpeningDirection(opening);
+  });
+}
+
+function splitWallAtNodes(floor, wallId, cutNodeIds) {
+  const wallIndex = floor.walls.findIndex((wall) => wall.id === wallId);
+  const originalWall = floor.walls[wallIndex];
+  if (wallIndex === -1 || !originalWall) return { sharedWallId: wallId, segmentIds: [wallId] };
+
+  const wallLength = originalWall.lengthMm || distanceMm(
+    getNode(floor, originalWall.startNodeId),
+    getNode(floor, originalWall.endNodeId)
+  );
+  const cutItems = uniqueCutNodesByAlong([
+    { node: getNode(floor, originalWall.startNodeId), alongMm: 0 },
+    ...cutNodeIds.map((nodeId) => ({
+      node: getNode(floor, nodeId),
+      alongMm: pointAlongWall(floor, originalWall, nodeId)
+    })),
+    { node: getNode(floor, originalWall.endNodeId), alongMm: wallLength }
+  ]);
+
+  const segmentRecords = [];
+  for (let index = 0; index < cutItems.length - 1; index += 1) {
+    const current = cutItems[index];
+    const next = cutItems[index + 1];
+    if (!current.node || !next.node || Math.abs(next.alongMm - current.alongMm) < MIN_WALL_LENGTH_MM) {
+      continue;
+    }
+    const wall = cloneWallSegment(
+      originalWall,
+      current.node.id,
+      next.node.id,
+      segmentRecords.length === 0 ? originalWall.id : undefined
+    );
+    segmentRecords.push({
+      wall,
+      startAlongMm: current.alongMm,
+      endAlongMm: next.alongMm
+    });
+  }
+
+  if (!segmentRecords.length) return { sharedWallId: wallId, segmentIds: [wallId] };
+  floor.walls.splice(wallIndex, 1, ...segmentRecords.map((record) => record.wall));
+  refreshWallMetrics(floor);
+  replaceWallInSpaces(floor, originalWall.id, segmentRecords.map((record) => record.wall.id));
+  remapOpeningsForSplitWall(floor, originalWall, segmentRecords);
+
+  return {
+    segmentIds: segmentRecords.map((record) => record.wall.id),
+    getSegmentBetween(nodeAId, nodeBId) {
+      return segmentRecords.find((record) => (
+        (record.wall.startNodeId === nodeAId && record.wall.endNodeId === nodeBId) ||
+        (record.wall.startNodeId === nodeBId && record.wall.endNodeId === nodeAId)
+      ));
+    }
+  };
+}
+
+function normalizeOpeningToWall(floor, opening) {
+  const wall = getWall(floor, opening.wallId);
+  if (!wall) return opening;
+
+  const maxWidth = Math.max(MIN_OPENING_SIZE_MM, Math.floor((wall.lengthMm || 0) * MAX_OPENING_WALL_RATIO));
+  opening.widthMm = clampNumber(opening.widthMm, MIN_OPENING_SIZE_MM, maxWidth);
+  const halfWidth = opening.widthMm / 2;
+  opening.centerOffsetMm = Math.round(clampNumber(
+    opening.centerOffsetMm,
+    halfWidth,
+    Math.max(halfWidth, wall.lengthMm - halfWidth)
+  ));
+  return opening;
+}
+
+function normalizeOpeningDirection(opening) {
+  if (!opening || opening.type !== 'door') return opening;
+  opening.openDirection = opening.openDirection === 'outside' ? 'outside' : 'inside';
+  return opening;
+}
+
+function normalizeOpeningsForWall(floor, wallId) {
+  ensureOpenings(floor).forEach((opening) => {
+    if (opening.wallId === wallId) {
+      normalizeOpeningToWall(floor, opening);
+      normalizeOpeningDirection(opening);
+    }
+  });
+}
+
+function getSingleSharedEndpoint(floor, wall) {
+  if (!floor || !wall) return null;
+  const startShared = floor.walls.some((item) => (
+    item.id !== wall.id &&
+    (item.startNodeId === wall.startNodeId || item.endNodeId === wall.startNodeId)
+  ));
+  const endShared = floor.walls.some((item) => (
+    item.id !== wall.id &&
+    (item.startNodeId === wall.endNodeId || item.endNodeId === wall.endNodeId)
+  ));
+
+  if (startShared === endShared) return null;
+  return startShared
+    ? { fixedNodeId: wall.startNodeId, movingNodeId: wall.endNodeId }
+    : { fixedNodeId: wall.endNodeId, movingNodeId: wall.startNodeId };
+}
+
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
 function setMode(draft, mode) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
@@ -458,7 +767,7 @@ function setMode(draft, mode) {
 function placeCursor(draft, point) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
-  const session = floor.session;
+  const session = ensureSessionSpaceTracking(floor);
 
   if (floor.walls.length) {
     const endNode = getLastEndNode(floor);
@@ -479,14 +788,20 @@ function placeCursor(draft, point) {
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
   session.selectedWallId = '';
+  session.selectedOpeningId = '';
   session.closeCandidateNodeId = '';
+  session.closeCandidatePoint = null;
+  session.activeSpaceStartNodeId = '';
+  session.activeSpaceStartWallIndex = floor.walls.length;
+  session.activeSpaceSharedWallId = '';
+  session.activeSpaceSharedStartT = null;
   return touchDraft(next);
 }
 
 function startPreview(draft, rawPoint) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
-  const session = floor.session;
+  const session = ensureSessionSpaceTracking(floor);
   let anchor = getNode(floor, session.anchorNodeId);
 
   if (!anchor) {
@@ -503,12 +818,18 @@ function startPreview(draft, rawPoint) {
   session.previewAngleDeg = angleDeg(anchor, previewPoint);
   session.pendingWallId = '';
   session.selectedWallId = '';
+  session.selectedOpeningId = '';
   session.closeCandidateNodeId = '';
+  session.closeCandidatePoint = null;
 
-  if (floor.walls.length >= 2) {
-    const firstNode = getFirstNode(floor);
-    if (distanceMm(previewPoint, firstNode) <= CLOSE_TOLERANCE_MM) {
-      session.closeCandidateNodeId = firstNode.id;
+  const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
+  const activeWallCount = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
+  if (activeStartNode && activeWallCount >= 2) {
+    const sharedProjection = getSharedWallProjection(floor, session, previewPoint);
+    if (sharedProjection) {
+      session.closeCandidatePoint = sharedProjection.point;
+    } else if (distanceMm(previewPoint, activeStartNode) <= CLOSE_TOLERANCE_MM) {
+      session.closeCandidateNodeId = activeStartNode.id;
     }
   }
 
@@ -531,14 +852,16 @@ function holdPreviewForInput(draft) {
 function cancelPending(draft) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
-  const session = floor.session;
+  const session = ensureSessionSpaceTracking(floor);
 
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
   session.pendingWallId = '';
   session.closeCandidateNodeId = '';
+  session.closeCandidatePoint = null;
   session.selectedWallId = '';
+  session.selectedOpeningId = '';
 
   if (floor.spaces.some((space) => space.closed)) {
     session.state = 'spaceClosed';
@@ -560,15 +883,29 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   const parsedLength = validateLength(lengthMm);
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
-  const session = floor.session;
+  const session = ensureSessionSpaceTracking(floor);
   const anchor = getNode(floor, session.anchorNodeId);
 
   if (!anchor || !session.previewPoint || (session.state !== 'awaitingLength' && session.state !== 'wallPreview')) {
     throw new Error('请先拖出待确认墙体');
   }
 
-  const endPoint = pointFromLength(anchor, session.previewPoint, parsedLength);
-  if (findOverlappingWall(floor, anchor, endPoint)) {
+  let endPoint = pointFromLength(anchor, session.previewPoint, parsedLength);
+  const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
+  const activeWallCountBeforeCommit = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
+  const sharedProjection = activeWallCountBeforeCommit >= 2
+    ? getSharedWallProjection(floor, session, endPoint)
+    : null;
+  const isClosingCurrentSpace = activeStartNode &&
+    activeWallCountBeforeCommit >= 2 &&
+    (sharedProjection || distanceMm(endPoint, activeStartNode) <= CLOSE_TOLERANCE_MM);
+  if (sharedProjection) {
+    endPoint = sharedProjection.point;
+  }
+  const ignoredWallIds = isClosingCurrentSpace
+    ? floor.walls.slice(0, session.activeSpaceStartWallIndex).map((wall) => wall.id)
+    : [];
+  if (findOverlappingWall(floor, anchor, endPoint, { ignoredWallIds })) {
     throw new Error('当前墙与已测墙重叠，请从光标转角继续测量');
   }
 
@@ -591,15 +928,21 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   session.anchorNodeId = endNode.id;
   session.pendingWallId = '';
   session.selectedWallId = '';
+  session.selectedOpeningId = '';
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
   session.closeCandidateNodeId = '';
+  session.closeCandidatePoint = null;
 
-  const firstNode = getFirstNode(floor);
-  if (floor.walls.length >= 3 && distanceMm(endNode, firstNode) <= CLOSE_TOLERANCE_MM) {
+  const activeWallCount = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
+  if (sharedProjection && activeWallCount >= 3) {
     session.state = 'closing';
-    session.closeCandidateNodeId = firstNode.id;
+    session.closeCandidateNodeId = endNode.id;
+    session.closeCandidatePoint = sharedProjection.point;
+  } else if (activeStartNode && activeWallCount >= 3 && distanceMm(endNode, activeStartNode) <= CLOSE_TOLERANCE_MM) {
+    session.state = 'closing';
+    session.closeCandidateNodeId = activeStartNode.id;
   } else {
     session.state = 'wallCommitted';
   }
@@ -610,9 +953,11 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
 function confirmClosure(draft) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
-  const session = floor.session;
+  const session = ensureSessionSpaceTracking(floor);
+  const startWallIndex = session.activeSpaceStartWallIndex || 0;
+  const activeWallCount = Math.max(0, floor.walls.length - startWallIndex);
 
-  if (session.state !== 'closing' || !session.closeCandidateNodeId || floor.walls.length < 3) {
+  if (session.state !== 'closing' || !session.closeCandidateNodeId || activeWallCount < 3) {
     return next;
   }
 
@@ -627,11 +972,33 @@ function confirmClosure(draft) {
   lastWall.endNodeId = session.closeCandidateNodeId;
   refreshWallMetrics(floor);
 
-  if (!floor.spaces.some((space) => space.closed)) {
+  const newWallIds = floor.walls.slice(startWallIndex).map((wall) => wall.id);
+  let sharedWallId = '';
+  if (
+    session.activeSpaceSharedWallId &&
+    session.activeSpaceStartNodeId &&
+    session.closeCandidatePoint
+  ) {
+    const splitResult = splitWallAtNodes(floor, session.activeSpaceSharedWallId, [
+      session.activeSpaceStartNodeId,
+      closeTargetNode.id
+    ]);
+    const sharedSegment = splitResult.getSegmentBetween &&
+      splitResult.getSegmentBetween(session.activeSpaceStartNodeId, closeTargetNode.id);
+    sharedWallId = sharedSegment && sharedSegment.wall ? sharedSegment.wall.id : '';
+  }
+
+  const wallIds = sharedWallId ? newWallIds.concat(sharedWallId) : newWallIds;
+  const hasSameSpace = floor.spaces.some((space) => {
+    if (!space.closed || !Array.isArray(space.wallIds) || space.wallIds.length !== wallIds.length) return false;
+    return space.wallIds.every((wallId, index) => wallId === wallIds[index]);
+  });
+
+  if (!hasSameSpace) {
     floor.spaces.push({
       id: nextId('space'),
       name: '未命名空间',
-      wallIds: floor.walls.map((wall) => wall.id),
+      wallIds,
       closed: true,
       source: 'measured'
     });
@@ -641,11 +1008,17 @@ function confirmClosure(draft) {
   session.anchorNodeId = '';
   session.pendingWallId = '';
   session.selectedWallId = '';
+  session.selectedOpeningId = '';
   session.closeCandidateNodeId = '';
+  session.closeCandidatePoint = null;
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
   session.closedFromNodeId = oldEndNodeId;
+  session.activeSpaceStartNodeId = '';
+  session.activeSpaceStartWallIndex = floor.walls.length;
+  session.activeSpaceSharedWallId = '';
+  session.activeSpaceSharedStartT = null;
   removeUnreferencedNodes(floor);
 
   return touchDraft(next);
@@ -659,10 +1032,213 @@ function selectWall(draft, wallId) {
 
   floor.session.state = 'wallSelected';
   floor.session.selectedWallId = wallId;
+  floor.session.selectedOpeningId = '';
   floor.session.previewPoint = null;
   floor.session.previewLengthMm = 0;
   floor.session.previewAngleDeg = 0;
   floor.session.closeCandidateNodeId = '';
+  return touchDraft(next);
+}
+
+function selectOpening(draft, openingId) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const opening = getOpening(floor, openingId);
+  if (!opening || !getWall(floor, opening.wallId)) return next;
+
+  floor.session.state = 'wallSelected';
+  floor.session.selectedWallId = opening.wallId;
+  floor.session.selectedOpeningId = opening.id;
+  floor.session.previewPoint = null;
+  floor.session.previewLengthMm = 0;
+  floor.session.previewAngleDeg = 0;
+  floor.session.closeCandidateNodeId = '';
+  return touchDraft(next);
+}
+
+function addOpeningToWall(draft, wallId, type) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const wall = getWall(floor, wallId || floor.session.selectedWallId);
+  if (!wall) {
+    throw new Error('Please select a wall before adding an opening');
+  }
+
+  const openingType = type === 'window' ? 'window' : 'door';
+  const widthMm = openingType === 'window' ? DEFAULT_WINDOW_WIDTH_MM : DEFAULT_DOOR_WIDTH_MM;
+  const opening = {
+    id: nextId('opening'),
+    wallId: wall.id,
+    type: openingType,
+    centerOffsetMm: Math.round((wall.lengthMm || 0) / 2),
+    widthMm,
+    heightMm: openingType === 'window' ? DEFAULT_WINDOW_HEIGHT_MM : DEFAULT_DOOR_HEIGHT_MM,
+    sillHeightMm: openingType === 'window' ? DEFAULT_WINDOW_SILL_HEIGHT_MM : 0,
+    openDirection: openingType === 'door' ? 'inside' : '',
+    source: 'prototype',
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  };
+
+  normalizeOpeningToWall(floor, opening);
+  normalizeOpeningDirection(opening);
+  ensureOpenings(floor).push(opening);
+  floor.session.state = 'wallSelected';
+  floor.session.selectedWallId = wall.id;
+  floor.session.selectedOpeningId = opening.id;
+  return touchDraft(next);
+}
+
+function updateOpening(draft, openingId, patch) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const opening = getOpening(floor, openingId || floor.session.selectedOpeningId);
+  if (!opening) {
+    throw new Error('Please select a door or window first');
+  }
+
+  const updates = patch || {};
+  if (Object.prototype.hasOwnProperty.call(updates, 'widthMm')) {
+    opening.widthMm = validateOpeningSize(updates.widthMm, 'opening width');
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'heightMm')) {
+    opening.heightMm = validateOpeningSize(updates.heightMm, 'opening height');
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'sillHeightMm')) {
+    const parsedSill = Number(updates.sillHeightMm);
+    if (!Number.isInteger(parsedSill) || parsedSill < 0) {
+      throw new Error('opening sill height must be an integer >= 0 mm');
+    }
+    opening.sillHeightMm = parsedSill;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'centerOffsetMm')) {
+    const parsedOffset = Number(updates.centerOffsetMm);
+    if (!Number.isInteger(parsedOffset)) {
+      throw new Error('opening offset must be an integer');
+    }
+    opening.centerOffsetMm = parsedOffset;
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'openDirection') && opening.type === 'door') {
+    opening.openDirection = updates.openDirection === 'outside' ? 'outside' : 'inside';
+  }
+
+  normalizeOpeningToWall(floor, opening);
+  normalizeOpeningDirection(opening);
+  opening.updatedAt = nowIso();
+  floor.session.state = 'wallSelected';
+  floor.session.selectedWallId = opening.wallId;
+  floor.session.selectedOpeningId = opening.id;
+  return touchDraft(next);
+}
+
+function deleteOpening(draft, openingId) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const targetId = openingId || floor.session.selectedOpeningId;
+  const opening = getOpening(floor, targetId);
+  if (!opening) return next;
+
+  floor.openings = ensureOpenings(floor).filter((item) => item.id !== targetId);
+  floor.session.state = 'wallSelected';
+  floor.session.selectedWallId = opening.wallId;
+  floor.session.selectedOpeningId = '';
+  return touchDraft(next);
+}
+
+function deleteWall(draft, wallId) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const session = floor.session;
+  const targetId = wallId || session.selectedWallId;
+  const wall = getWall(floor, targetId);
+  if (!wall) return next;
+
+  const deletedStartNode = getNode(floor, wall.startNodeId);
+  floor.walls = floor.walls.filter((item) => item.id !== targetId);
+  floor.openings = ensureOpenings(floor).filter((opening) => opening.wallId !== targetId);
+  floor.spaces = (floor.spaces || []).filter((space) => {
+    return !Array.isArray(space.wallIds) || space.wallIds.indexOf(targetId) === -1;
+  });
+
+  refreshWallMetrics(floor);
+
+  session.previewPoint = null;
+  session.previewLengthMm = 0;
+  session.previewAngleDeg = 0;
+  session.pendingWallId = '';
+  session.closeCandidateNodeId = '';
+  session.closeCandidatePoint = null;
+  session.closedFromNodeId = '';
+  session.selectedWallId = '';
+  session.selectedOpeningId = '';
+  session.activeSpaceStartNodeId = '';
+  session.activeSpaceStartWallIndex = floor.walls.length;
+  session.activeSpaceSharedWallId = '';
+  session.activeSpaceSharedStartT = null;
+
+  if (floor.walls.length) {
+    const lastEnd = getLastEndNode(floor);
+    session.anchorNodeId = lastEnd ? lastEnd.id : '';
+    session.state = 'wallCommitted';
+  } else if (deletedStartNode) {
+    session.anchorNodeId = deletedStartNode.id;
+    session.state = 'cursorPlaced';
+  } else {
+    session.anchorNodeId = '';
+    session.state = 'idle';
+  }
+
+  removeUnreferencedNodes(floor);
+  return touchDraft(next);
+}
+
+function startWallSnap(draft) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const session = ensureSessionSpaceTracking(floor);
+
+  session.state = 'wallSnapPending';
+  session.anchorNodeId = '';
+  session.previewPoint = null;
+  session.previewLengthMm = 0;
+  session.previewAngleDeg = 0;
+  session.pendingWallId = '';
+  session.selectedWallId = '';
+  session.selectedOpeningId = '';
+  session.closeCandidateNodeId = '';
+  session.closeCandidatePoint = null;
+  session.activeSpaceStartNodeId = '';
+  session.activeSpaceStartWallIndex = floor.walls.length;
+  session.activeSpaceSharedWallId = '';
+  session.activeSpaceSharedStartT = null;
+
+  return touchDraft(next);
+}
+
+function snapCursorToWall(draft, point) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const session = ensureSessionSpaceTracking(floor);
+  const projection = findNearestWallProjection(floor, point);
+  const node = getOrCreateSnapNode(floor, projection);
+
+  if (!node) return next;
+
+  session.state = 'cursorPlaced';
+  session.anchorNodeId = node.id;
+  session.previewPoint = null;
+  session.previewLengthMm = 0;
+  session.previewAngleDeg = 0;
+  session.pendingWallId = '';
+  session.selectedWallId = '';
+  session.selectedOpeningId = '';
+  session.closeCandidateNodeId = '';
+  session.closeCandidatePoint = null;
+  session.activeSpaceStartNodeId = node.id;
+  session.activeSpaceStartWallIndex = floor.walls.length;
+  session.activeSpaceSharedWallId = projection.wall.id;
+  session.activeSpaceSharedStartT = projection.t;
+
   return touchDraft(next);
 }
 
@@ -689,17 +1265,21 @@ function remeasureSelectedWall(draft, lengthMm, inputSource) {
 
   const startNode = getNode(floor, wall.startNodeId);
   const endNode = getNode(floor, wall.endNodeId);
-  const currentLength = distanceMm(startNode, endNode);
+  const sharedEndpoint = getSingleSharedEndpoint(floor, wall);
+  const fixedNode = sharedEndpoint ? getNode(floor, sharedEndpoint.fixedNodeId) : startNode;
+  const movingNode = sharedEndpoint ? getNode(floor, sharedEndpoint.movingNodeId) : endNode;
+  const currentLength = distanceMm(fixedNode, movingNode);
   const safeLength = currentLength || 1;
-  const dx = (endNode.xMm - startNode.xMm) / safeLength;
-  const dy = (endNode.yMm - startNode.yMm) / safeLength;
+  const dx = (movingNode.xMm - fixedNode.xMm) / safeLength;
+  const dy = (movingNode.yMm - fixedNode.yMm) / safeLength;
 
-  endNode.xMm = Math.round(startNode.xMm + dx * parsedLength);
-  endNode.yMm = Math.round(startNode.yMm + dy * parsedLength);
+  movingNode.xMm = Math.round(fixedNode.xMm + dx * parsedLength);
+  movingNode.yMm = Math.round(fixedNode.yMm + dy * parsedLength);
   wall.inputSource = inputSource || 'manual';
   wall.measuredAt = nowIso();
 
   refreshWallMetrics(floor);
+  normalizeOpeningsForWall(floor, wall.id);
 
   if (floor.spaces.some((space) => space.closed)) {
     session.state = 'spaceClosed';
@@ -710,6 +1290,7 @@ function remeasureSelectedWall(draft, lengthMm, inputSource) {
   }
 
   session.selectedWallId = wall.id;
+  session.selectedOpeningId = '';
   return touchDraft(next);
 }
 
@@ -747,14 +1328,20 @@ function setThickness(draft, thicknessMm, wallId) {
 function resetCursor(draft) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
-  const session = floor.session;
+  const session = ensureSessionSpaceTracking(floor);
 
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
   session.pendingWallId = '';
   session.closeCandidateNodeId = '';
+  session.closeCandidatePoint = null;
   session.selectedWallId = '';
+  session.selectedOpeningId = '';
+  session.activeSpaceStartNodeId = '';
+  session.activeSpaceStartWallIndex = floor.walls.length;
+  session.activeSpaceSharedWallId = '';
+  session.activeSpaceSharedStartT = null;
 
   if (floor.spaces.some((space) => space.closed)) {
     session.state = 'spaceClosed';
@@ -793,10 +1380,7 @@ function calculateSpaceAreaMm2(draft) {
   const closedSpace = floor.spaces.find((space) => space.closed);
   if (!closedSpace) return 0;
 
-  const points = closedSpace.wallIds.map((wallId) => {
-    const wall = getWall(floor, wallId);
-    return wall ? getNode(floor, wall.startNodeId) : null;
-  }).filter(Boolean);
+  const points = buildSpaceBoundaryPoints(floor, closedSpace.wallIds);
 
   if (points.length < 3) return 0;
 
@@ -807,6 +1391,44 @@ function calculateSpaceAreaMm2(draft) {
     area += current.xMm * nextPoint.yMm - nextPoint.xMm * current.yMm;
   }
   return Math.round(Math.abs(area) / 2);
+}
+
+function buildSpaceBoundaryPoints(floor, wallIds) {
+  if (!Array.isArray(wallIds) || !wallIds.length) return [];
+  const firstWall = getWall(floor, wallIds[0]);
+  if (!firstWall) return [];
+  const firstStart = getNode(floor, firstWall.startNodeId);
+  const firstEnd = getNode(floor, firstWall.endNodeId);
+  if (!firstStart || !firstEnd) return [];
+
+  const points = [firstStart, firstEnd];
+  let currentNodeId = firstWall.endNodeId;
+
+  for (let index = 1; index < wallIds.length; index += 1) {
+    const wall = getWall(floor, wallIds[index]);
+    if (!wall) continue;
+    let nextNodeId = '';
+    if (wall.startNodeId === currentNodeId) {
+      nextNodeId = wall.endNodeId;
+    } else if (wall.endNodeId === currentNodeId) {
+      nextNodeId = wall.startNodeId;
+    } else {
+      const currentNode = getNode(floor, currentNodeId);
+      const startNode = getNode(floor, wall.startNodeId);
+      const endNode = getNode(floor, wall.endNodeId);
+      nextNodeId = distanceMm(currentNode, startNode) <= distanceMm(currentNode, endNode)
+        ? wall.endNodeId
+        : wall.startNodeId;
+    }
+    const nextNode = getNode(floor, nextNodeId);
+    if (nextNode) points.push(nextNode);
+    currentNodeId = nextNodeId;
+  }
+
+  if (points.length > 1 && distanceMm(points[0], points[points.length - 1]) <= 1) {
+    points.pop();
+  }
+  return points;
 }
 
 module.exports = {
@@ -820,6 +1442,7 @@ module.exports = {
   getActiveFloor,
   getNode,
   getWall,
+  getOpening,
   distanceMm,
   angleDeg,
   buildWallRenderGeometry,
@@ -833,6 +1456,13 @@ module.exports = {
   commitPreviewLength,
   confirmClosure,
   selectWall,
+  selectOpening,
+  addOpeningToWall,
+  updateOpening,
+  deleteOpening,
+  deleteWall,
+  startWallSnap,
+  snapCursorToWall,
   startRemeasure,
   remeasureSelectedWall,
   setMeasurementSide,
