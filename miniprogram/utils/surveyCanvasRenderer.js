@@ -301,6 +301,20 @@ function buildClosureGuide(floor, session, project) {
   };
 }
 
+function buildAlignmentSnapGuide(session, project) {
+  const guide = session && session.alignmentSnapGuide;
+  if (!guide || guide.type !== 'rectangle-third-wall' || !guide.referencePoint || !guide.snappedPoint) {
+    return null;
+  }
+
+  return {
+    type: guide.type,
+    direction: guide.direction,
+    startPoint: project(guide.referencePoint),
+    endPoint: project(guide.snappedPoint)
+  };
+}
+
 function shouldCloseWholeWallPath(floor, previewWall) {
   if (previewWall) return false;
   const walls = floor.walls || [];
@@ -406,6 +420,7 @@ function createSurveyRenderScene(input) {
     dimensions,
     joinFills: buildJoinFills(floor, renderThicknessMmMap, project),
     closureGuide: buildClosureGuide(floor, session, project),
+    alignmentSnapGuide: buildAlignmentSnapGuide(session, project),
     cursor: buildCursor(floor, session, project),
     activeSegment: previewWall || walls[walls.length - 1] || null,
     closed: shouldCloseWholeWallPath(floor, previewWall)
@@ -769,6 +784,39 @@ function drawClosureGuide(ctx, scene) {
   ctx.restore();
 }
 
+function drawAlignmentSnapGuide(ctx, scene) {
+  const guide = scene.alignmentSnapGuide;
+  if (!guide || !guide.startPoint || !guide.endPoint) return;
+
+  const dx = guide.endPoint.x - guide.startPoint.x;
+  const dy = guide.endPoint.y - guide.startPoint.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  if (!length) return;
+
+  const extend = 18;
+  const ux = dx / length;
+  const uy = dy / length;
+  const startPoint = {
+    x: guide.startPoint.x - ux * extend,
+    y: guide.startPoint.y - uy * extend
+  };
+  const endPoint = {
+    x: guide.endPoint.x + ux * extend,
+    y: guide.endPoint.y + uy * extend
+  };
+
+  ctx.save();
+  ctx.strokeStyle = '#2875b4';
+  ctx.lineWidth = 2;
+  if (ctx.setLineDash) ctx.setLineDash([6, 6]);
+  ctx.beginPath();
+  ctx.moveTo(startPoint.x, startPoint.y);
+  ctx.lineTo(endPoint.x, endPoint.y);
+  ctx.stroke();
+  if (ctx.setLineDash) ctx.setLineDash([]);
+  ctx.restore();
+}
+
 function drawCursor(ctx, scene) {
   if (!scene.cursor || !scene.cursor.point) return;
   const point = scene.cursor.point;
@@ -810,6 +858,7 @@ function drawSurveyScene(ctx, scene, options) {
   drawSelectedWallHighlight(ctx, scene);
   drawOpenings(ctx, scene);
   drawDimensions(ctx, scene);
+  drawAlignmentSnapGuide(ctx, scene);
   drawClosureGuide(ctx, scene);
   drawCursor(ctx, scene);
 }

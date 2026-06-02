@@ -1,6 +1,7 @@
 const DEFAULT_THICKNESS_MM = 200;
 const DEFAULT_SCALE = 0.05;
 const CLOSE_TOLERANCE_MM = 200;
+const RECTANGLE_ALIGNMENT_TOLERANCE_MM = CLOSE_TOLERANCE_MM;
 const MIN_WALL_LENGTH_MM = 100;
 const MIN_THICKNESS_MM = 50;
 const WALL_OVERLAP_TOLERANCE_MM = 30;
@@ -9,6 +10,7 @@ const DEFAULT_DOOR_HEIGHT_MM = 2100;
 const DEFAULT_WINDOW_WIDTH_MM = 1500;
 const DEFAULT_WINDOW_HEIGHT_MM = 1500;
 const DEFAULT_WINDOW_SILL_HEIGHT_MM = 900;
+const DEFAULT_OPENING_DEPTH_MM = DEFAULT_THICKNESS_MM;
 const MIN_OPENING_SIZE_MM = 100;
 const MAX_OPENING_WALL_RATIO = 0.6;
 
@@ -42,10 +44,14 @@ function createSession() {
     selectedOpeningId: '',
     closeCandidateNodeId: '',
     closeCandidatePoint: null,
+    alignmentSnapGuide: null,
     activeSpaceStartNodeId: '',
     activeSpaceStartWallIndex: 0,
     activeSpaceSharedWallId: '',
-    activeSpaceSharedStartT: null
+    activeSpaceSharedStartT: null,
+    lastWallSnapNodeId: '',
+    lastWallSnapWallId: '',
+    lastWallSnapT: null
   };
 }
 
@@ -119,8 +125,20 @@ function ensureSessionSpaceTracking(floor) {
   if (typeof session.activeSpaceSharedStartT !== 'number') {
     session.activeSpaceSharedStartT = null;
   }
+  if (typeof session.lastWallSnapNodeId !== 'string') {
+    session.lastWallSnapNodeId = '';
+  }
+  if (typeof session.lastWallSnapWallId !== 'string') {
+    session.lastWallSnapWallId = '';
+  }
+  if (typeof session.lastWallSnapT !== 'number') {
+    session.lastWallSnapT = null;
+  }
   if (!Object.prototype.hasOwnProperty.call(session, 'closeCandidatePoint')) {
     session.closeCandidatePoint = null;
+  }
+  if (!Object.prototype.hasOwnProperty.call(session, 'alignmentSnapGuide')) {
+    session.alignmentSnapGuide = null;
   }
   return session;
 }
@@ -442,6 +460,58 @@ function snapPreviewPoint(anchor, rawPoint, mode) {
   return { xMm: anchor.xMm, yMm: point.yMm };
 }
 
+function isHorizontalSegment(start, end) {
+  return Math.abs((end || {}).xMm - (start || {}).xMm) >= Math.abs((end || {}).yMm - (start || {}).yMm);
+}
+
+function maybeSnapThirdWallForRectangle(floor, session, anchor, previewPoint) {
+  if (!floor || !session || session.mode !== 'straight' || !anchor || !previewPoint) {
+    return { point: previewPoint, guide: null };
+  }
+
+  const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+    ? session.activeSpaceStartWallIndex
+    : 0;
+  const activeWallCount = Math.max(0, floor.walls.length - startWallIndex);
+  if (activeWallCount !== 2) {
+    return { point: previewPoint, guide: null };
+  }
+
+  const firstWall = floor.walls[startWallIndex];
+  const firstStart = firstWall ? getNode(floor, firstWall.startNodeId) : null;
+  const firstEnd = firstWall ? getNode(floor, firstWall.endNodeId) : null;
+  if (!firstStart || !firstEnd) {
+    return { point: previewPoint, guide: null };
+  }
+
+  const firstIsHorizontal = isHorizontalSegment(firstStart, firstEnd);
+  const previewIsHorizontal = isHorizontalSegment(anchor, previewPoint);
+  if (firstIsHorizontal !== previewIsHorizontal) {
+    return { point: previewPoint, guide: null };
+  }
+
+  const alignedPoint = firstIsHorizontal
+    ? { xMm: firstStart.xMm, yMm: previewPoint.yMm }
+    : { xMm: previewPoint.xMm, yMm: firstStart.yMm };
+  const offset = firstIsHorizontal
+    ? Math.abs(previewPoint.xMm - firstStart.xMm)
+    : Math.abs(previewPoint.yMm - firstStart.yMm);
+
+  if (offset > RECTANGLE_ALIGNMENT_TOLERANCE_MM || distanceMm(anchor, alignedPoint) < MIN_WALL_LENGTH_MM) {
+    return { point: previewPoint, guide: null };
+  }
+
+  return {
+    point: alignedPoint,
+    guide: {
+      type: 'rectangle-third-wall',
+      direction: firstIsHorizontal ? 'vertical' : 'horizontal',
+      referencePoint: { xMm: firstStart.xMm, yMm: firstStart.yMm },
+      snappedPoint: { xMm: alignedPoint.xMm, yMm: alignedPoint.yMm }
+    }
+  };
+}
+
 function pointFromLength(anchor, previewPoint, lengthMm) {
   const dx = previewPoint.xMm - anchor.xMm;
   const dy = previewPoint.yMm - anchor.yMm;
@@ -515,6 +585,14 @@ function validateOpeningSize(value, label) {
   return parsed;
 }
 
+function validateOpeningDepth(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < MIN_THICKNESS_MM) {
+    throw new Error(`opening depth must be an integer >= ${MIN_THICKNESS_MM} mm`);
+  }
+  return parsed;
+}
+
 function projectPointToWallSegment(point, start, end) {
   if (!point || !start || !end) return null;
   const dx = end.xMm - start.xMm;
@@ -556,8 +634,51 @@ function findNearestWallProjection(floor, point) {
   return best;
 }
 
+function getNodeWallUseCount(floor, nodeId) {
+  if (!floor || !nodeId) return 0;
+  return (floor.walls || []).filter((wall) => wall.startNodeId === nodeId || wall.endNodeId === nodeId).length;
+}
+
+function findNearestSharedEndpointProjection(floor, point) {
+  if (!floor || !point) return null;
+  let best = null;
+
+  (floor.walls || []).forEach((wall) => {
+    const start = getNode(floor, wall.startNodeId);
+    const end = getNode(floor, wall.endNodeId);
+    if (!start || !end) return;
+
+    [
+      { node: start, t: 0 },
+      { node: end, t: 1 }
+    ].forEach((candidate) => {
+      if (getNodeWallUseCount(floor, candidate.node.id) < 2) return;
+      const candidateDistance = distanceMm(point, candidate.node);
+      if (candidateDistance > CLOSE_TOLERANCE_MM) return;
+      if (!best || candidateDistance < best.distanceMm) {
+        best = {
+          wall,
+          start,
+          end,
+          point: { xMm: candidate.node.xMm, yMm: candidate.node.yMm },
+          node: candidate.node,
+          t: candidate.t,
+          distanceMm: candidateDistance
+        };
+      }
+    });
+  });
+
+  return best;
+}
+
+function findWallSnapProjection(floor, point) {
+  return findNearestSharedEndpointProjection(floor, point) || findNearestWallProjection(floor, point);
+}
+
 function getOrCreateSnapNode(floor, projection) {
   if (!projection) return null;
+  if (projection.node) return projection.node;
   if (projection.t <= 0.0001) return projection.start;
   if (projection.t >= 0.9999) return projection.end;
 
@@ -577,6 +698,11 @@ function getSharedWallProjection(floor, session, point) {
   if (startT !== null && Math.abs(projection.t - startT) * distanceMm(start, end) < MIN_WALL_LENGTH_MM) {
     return null;
   }
+  if (projection.t <= 0.0001) projection.node = start;
+  if (projection.t >= 0.9999) projection.node = end;
+  projection.wall = wall;
+  projection.start = start;
+  projection.end = end;
   return projection;
 }
 
@@ -791,6 +917,7 @@ function placeCursor(draft, point) {
   session.selectedOpeningId = '';
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
+  session.alignmentSnapGuide = null;
   session.activeSpaceStartNodeId = '';
   session.activeSpaceStartWallIndex = floor.walls.length;
   session.activeSpaceSharedWallId = '';
@@ -809,7 +936,9 @@ function startPreview(draft, rawPoint) {
     session.anchorNodeId = anchor.id;
   }
 
-  const previewPoint = snapPreviewPoint(anchor, rawPoint, session.mode);
+  const orthogonalPoint = snapPreviewPoint(anchor, rawPoint, session.mode);
+  const rectangleSnap = maybeSnapThirdWallForRectangle(floor, session, anchor, orthogonalPoint);
+  const previewPoint = rectangleSnap.point;
   const previewLengthMm = distanceMm(anchor, previewPoint);
 
   session.state = 'wallPreview';
@@ -821,6 +950,7 @@ function startPreview(draft, rawPoint) {
   session.selectedOpeningId = '';
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
+  session.alignmentSnapGuide = rectangleSnap.guide;
 
   const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
   const activeWallCount = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
@@ -860,6 +990,7 @@ function cancelPending(draft) {
   session.pendingWallId = '';
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
+  session.alignmentSnapGuide = null;
   session.selectedWallId = '';
   session.selectedOpeningId = '';
 
@@ -909,7 +1040,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     throw new Error('当前墙与已测墙重叠，请从光标转角继续测量');
   }
 
-  const endNode = addNode(floor, endPoint);
+  const endNode = sharedProjection ? getOrCreateSnapNode(floor, sharedProjection) : addNode(floor, endPoint);
   const wall = {
     id: nextId('wall'),
     startNodeId: anchor.id,
@@ -934,6 +1065,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   session.previewAngleDeg = 0;
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
+  session.alignmentSnapGuide = null;
 
   const activeWallCount = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
   if (sharedProjection && activeWallCount >= 3) {
@@ -957,14 +1089,29 @@ function confirmClosure(draft) {
   const startWallIndex = session.activeSpaceStartWallIndex || 0;
   const activeWallCount = Math.max(0, floor.walls.length - startWallIndex);
 
-  if (session.state !== 'closing' || !session.closeCandidateNodeId || activeWallCount < 3) {
+  if (session.state !== 'closing' || (!session.closeCandidateNodeId && !session.closeCandidatePoint) || activeWallCount < 3) {
     return next;
   }
 
   const lastWall = getLastWall(floor);
   const oldEndNodeId = lastWall.endNodeId;
   const oldEndNode = getNode(floor, oldEndNodeId);
-  const closeTargetNode = getNode(floor, session.closeCandidateNodeId);
+  let closeTargetNode = getNode(floor, session.closeCandidateNodeId);
+  if (!closeTargetNode && session.closeCandidatePoint && session.activeSpaceSharedWallId) {
+    const sharedWall = getWall(floor, session.activeSpaceSharedWallId);
+    const sharedStart = sharedWall ? getNode(floor, sharedWall.startNodeId) : null;
+    const sharedEnd = sharedWall ? getNode(floor, sharedWall.endNodeId) : null;
+    const projection = projectPointToWallSegment(session.closeCandidatePoint, sharedStart, sharedEnd);
+    if (projection) {
+      projection.wall = sharedWall;
+      projection.start = sharedStart;
+      projection.end = sharedEnd;
+      if (projection.t <= 0.0001) projection.node = sharedStart;
+      if (projection.t >= 0.9999) projection.node = sharedEnd;
+      closeTargetNode = getOrCreateSnapNode(floor, projection);
+      session.closeCandidateNodeId = closeTargetNode ? closeTargetNode.id : '';
+    }
+  }
   if (!oldEndNode || !closeTargetNode || distanceMm(oldEndNode, closeTargetNode) > CLOSE_TOLERANCE_MM) {
     throw new Error(`闭合误差超过 ${CLOSE_TOLERANCE_MM} mm，请补测最后一面墙`);
   }
@@ -1014,6 +1161,7 @@ function confirmClosure(draft) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  session.alignmentSnapGuide = null;
   session.closedFromNodeId = oldEndNodeId;
   session.activeSpaceStartNodeId = '';
   session.activeSpaceStartWallIndex = floor.walls.length;
@@ -1037,6 +1185,7 @@ function selectWall(draft, wallId) {
   floor.session.previewLengthMm = 0;
   floor.session.previewAngleDeg = 0;
   floor.session.closeCandidateNodeId = '';
+  floor.session.alignmentSnapGuide = null;
   return touchDraft(next);
 }
 
@@ -1053,6 +1202,7 @@ function selectOpening(draft, openingId) {
   floor.session.previewLengthMm = 0;
   floor.session.previewAngleDeg = 0;
   floor.session.closeCandidateNodeId = '';
+  floor.session.alignmentSnapGuide = null;
   return touchDraft(next);
 }
 
@@ -1075,6 +1225,11 @@ function addOpeningToWall(draft, wallId, type) {
     heightMm: openingType === 'window' ? DEFAULT_WINDOW_HEIGHT_MM : DEFAULT_DOOR_HEIGHT_MM,
     sillHeightMm: openingType === 'window' ? DEFAULT_WINDOW_SILL_HEIGHT_MM : 0,
     openDirection: openingType === 'door' ? 'inside' : '',
+    modelId: openingType === 'window' ? 'window-flat-basic' : 'door-single-basic',
+    modelCategory: openingType === 'window' ? 'flat-window' : 'single-door',
+    materialId: openingType === 'window' ? 'dark-gray' : 'warm-white',
+    depthMm: wall.thicknessMm || DEFAULT_OPENING_DEPTH_MM,
+    entryDoor: false,
     source: 'prototype',
     createdAt: nowIso(),
     updatedAt: nowIso()
@@ -1111,6 +1266,9 @@ function updateOpening(draft, openingId, patch) {
     }
     opening.sillHeightMm = parsedSill;
   }
+  if (Object.prototype.hasOwnProperty.call(updates, 'depthMm')) {
+    opening.depthMm = validateOpeningDepth(updates.depthMm);
+  }
   if (Object.prototype.hasOwnProperty.call(updates, 'centerOffsetMm')) {
     const parsedOffset = Number(updates.centerOffsetMm);
     if (!Number.isInteger(parsedOffset)) {
@@ -1120,6 +1278,23 @@ function updateOpening(draft, openingId, patch) {
   }
   if (Object.prototype.hasOwnProperty.call(updates, 'openDirection') && opening.type === 'door') {
     opening.openDirection = updates.openDirection === 'outside' ? 'outside' : 'inside';
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'modelId')) {
+    opening.modelId = String(updates.modelId || '');
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'modelCategory')) {
+    opening.modelCategory = String(updates.modelCategory || '');
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'materialId')) {
+    opening.materialId = String(updates.materialId || '');
+  }
+  if (Object.prototype.hasOwnProperty.call(updates, 'entryDoor') && opening.type === 'door') {
+    const nextEntryDoor = !!updates.entryDoor;
+    ensureOpenings(floor).forEach((item) => {
+      if (item.type === 'door') {
+        item.entryDoor = nextEntryDoor && item.id === opening.id;
+      }
+    });
   }
 
   normalizeOpeningToWall(floor, opening);
@@ -1168,6 +1343,7 @@ function deleteWall(draft, wallId) {
   session.pendingWallId = '';
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
+  session.alignmentSnapGuide = null;
   session.closedFromNodeId = '';
   session.selectedWallId = '';
   session.selectedOpeningId = '';
@@ -1207,6 +1383,7 @@ function startWallSnap(draft) {
   session.selectedOpeningId = '';
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
+  session.alignmentSnapGuide = null;
   session.activeSpaceStartNodeId = '';
   session.activeSpaceStartWallIndex = floor.walls.length;
   session.activeSpaceSharedWallId = '';
@@ -1219,7 +1396,7 @@ function snapCursorToWall(draft, point) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
   const session = ensureSessionSpaceTracking(floor);
-  const projection = findNearestWallProjection(floor, point);
+  const projection = findWallSnapProjection(floor, point);
   const node = getOrCreateSnapNode(floor, projection);
 
   if (!node) return next;
@@ -1234,10 +1411,14 @@ function snapCursorToWall(draft, point) {
   session.selectedOpeningId = '';
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
+  session.alignmentSnapGuide = null;
   session.activeSpaceStartNodeId = node.id;
   session.activeSpaceStartWallIndex = floor.walls.length;
   session.activeSpaceSharedWallId = projection.wall.id;
   session.activeSpaceSharedStartT = projection.t;
+  session.lastWallSnapNodeId = node.id;
+  session.lastWallSnapWallId = projection.wall.id;
+  session.lastWallSnapT = projection.t;
 
   return touchDraft(next);
 }
@@ -1336,12 +1517,25 @@ function resetCursor(draft) {
   session.pendingWallId = '';
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
+  session.alignmentSnapGuide = null;
   session.selectedWallId = '';
   session.selectedOpeningId = '';
   session.activeSpaceStartNodeId = '';
   session.activeSpaceStartWallIndex = floor.walls.length;
   session.activeSpaceSharedWallId = '';
   session.activeSpaceSharedStartT = null;
+
+  const lastSnapNode = session.lastWallSnapNodeId ? getNode(floor, session.lastWallSnapNodeId) : null;
+  const lastSnapWall = session.lastWallSnapWallId ? getWall(floor, session.lastWallSnapWallId) : null;
+  if (lastSnapNode && lastSnapWall) {
+    session.state = 'cursorPlaced';
+    session.anchorNodeId = lastSnapNode.id;
+    session.activeSpaceStartNodeId = lastSnapNode.id;
+    session.activeSpaceStartWallIndex = floor.walls.length;
+    session.activeSpaceSharedWallId = lastSnapWall.id;
+    session.activeSpaceSharedStartT = typeof session.lastWallSnapT === 'number' ? session.lastWallSnapT : pointAlongWall(floor, lastSnapWall, lastSnapNode.id) / Math.max(1, lastSnapWall.lengthMm || 1);
+    return touchDraft(next);
+  }
 
   if (floor.spaces.some((space) => space.closed)) {
     session.state = 'spaceClosed';

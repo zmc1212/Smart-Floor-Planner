@@ -22,6 +22,97 @@
   </view>
 
   <view class="survey-stage">
+    <view wx:if="{{componentEditorVisible}}" class="component-editor">
+      <view class="component-topbar" style="top: {{navigationSafeTop}}px;">
+        <view class="component-back" bindtap="closeComponentEditor">&lt;</view>
+        <view class="component-title">{{componentEditorTitle}}</view>
+        <view class="component-lock">锁</view>
+      </view>
+
+      <canvas
+        type="webgl"
+        id="component-webgl"
+        class="component-webgl"
+        bindtouchstart="onComponentTouchStart"
+        bindtouchmove="onComponentTouchMove"
+        bindtouchend="onComponentTouchEnd"
+        bindtouchcancel="onComponentTouchEnd"
+        disable-scroll="true"
+      ></canvas>
+
+      <view wx:if="{{componentSelectedOpening && componentSelectedOpening.type === 'door'}}" class="entry-door-action" bindtap="onToggleEntryDoor">
+        {{componentSelectedOpening.entryDoor ? '已设为入户门' : '设为入户门'}}
+      </view>
+
+      <view class="component-panel">
+        <view class="component-panel-tabs">
+          <view
+            class="component-panel-tab {{componentPanelMode === item.key ? 'active' : ''}}"
+            wx:for="{{componentPanelTabs}}"
+            wx:key="key"
+            data-mode="{{item.key}}"
+            bindtap="onComponentPanelTab"
+          >{{item.label}}</view>
+        </view>
+
+        <view wx:if="{{componentPanelMode === 'spec'}}" class="component-spec">
+          <view class="component-spec-tabs">
+            <view
+              class="component-spec-tab {{componentSpecMode === item.key ? 'active' : ''}}"
+              wx:for="{{componentSpecTabs}}"
+              wx:key="key"
+              data-mode="{{item.key}}"
+              bindtap="onComponentSpecTab"
+            >{{item.label}}</view>
+          </view>
+          <view class="component-value-row" bindtap="openActiveComponentNumberPad">
+            <text class="component-value">{{componentSpecValue}}</text>
+            <text class="component-unit">mm</text>
+            <text class="component-edit-hint">点击输入</text>
+          </view>
+          <view class="component-sync-row" bindtap="onToggleComponentThicknessSync">
+            <view class="sync-dot {{componentSyncWallThickness ? 'active' : ''}}"></view>
+            <text>同步更改墙体厚度</text>
+          </view>
+        </view>
+
+        <view wx:elif="{{componentPanelMode === 'flip'}}" class="component-flip">
+          <view class="flip-card {{componentSelectedOpening && componentSelectedOpening.openDirection === 'inside' ? 'active' : ''}}" data-direction="inside" bindtap="onComponentFlip">内开</view>
+          <view class="flip-card {{componentSelectedOpening && componentSelectedOpening.openDirection === 'outside' ? 'active' : ''}}" data-direction="outside" bindtap="onComponentFlip">外开</view>
+          <view wx:if="{{componentSelectedOpening && componentSelectedOpening.type === 'window'}}" class="component-note">窗构件暂固定窗位，不支持开向切换。</view>
+        </view>
+
+        <view wx:else class="component-library">
+          <view class="library-toolbar">
+            <view class="library-type">{{componentSelectedOpening.modelLabel}}</view>
+            <view class="library-source">公共库 ▾</view>
+          </view>
+          <view class="category-row">
+            <view
+              class="category-chip {{item.active ? 'active' : ''}}"
+              wx:for="{{componentCategories}}"
+              wx:key="key"
+              data-category="{{item.key}}"
+              bindtap="onComponentCategoryTap"
+            >{{item.label}}</view>
+          </view>
+          <view class="library-grid">
+            <view
+              class="library-item {{item.active ? 'active' : ''}}"
+              wx:for="{{componentLibraryItems}}"
+              wx:key="id"
+              data-id="{{item.id}}"
+              bindtap="onComponentModelTap"
+            >
+              <view class="library-thumb" style="background:{{item.swatch}};"></view>
+              <text>{{item.label}}</text>
+              <view wx:if="{{item.active}}" class="library-check">选</view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
     <view class="canvas-shell">
       <cover-view class="compass">
         <cover-view class="compass-needle"></cover-view>

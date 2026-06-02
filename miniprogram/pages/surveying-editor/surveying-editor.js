@@ -1,25 +1,70 @@
-const app = getApp();
+﻿const app = getApp();
 const surveyGraph = require('../../utils/surveyWallGraph.js');
 const surveyCanvasRenderer = require('../../utils/surveyCanvasRenderer.js');
 
 const RESERVED_TOOLS = [
-  { key: 'settings', label: '设置' },
-  { key: 'reference', label: '参照' },
-  { key: 'lock', label: '锁层' },
-  { key: 'area', label: '面积' },
+  { key: 'settings', label: '璁剧疆' },
+  { key: 'reference', label: '鍙傜収' },
+  { key: 'lock', label: '閿佸眰' },
+  { key: 'area', label: '闈㈢Н' },
   { key: 'cad', label: 'CAD' },
-  { key: 'more', label: '更多' }
+  { key: 'more', label: '鏇村' }
 ];
 const OBJECT_TOOLS = [
-  { key: 'object-edit', label: '编辑', helper: '尺寸' },
-  { key: 'object-split', label: '打断', helper: '后续' },
-  { key: 'object-add', label: '添加', helper: '门窗' },
-  { key: 'object-arrange', label: '排布', helper: '后续' },
-  { key: 'object-delete', label: '删除', helper: '墙体/门窗' }
+  { key: 'object-edit', label: '缂栬緫', helper: '灏哄' },
+  { key: 'object-split', label: '鎵撴柇', helper: '鍚庣画' },
+  { key: 'object-add', label: '娣诲姞', helper: '闂ㄧ獥' },
+  { key: 'object-arrange', label: '鎺掑竷', helper: '鍚庣画' },
+  { key: 'object-delete', label: '鍒犻櫎', helper: '澧欎綋/闂ㄧ獥' }
 ];
 
 const NUMBER_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '清空', '0', '退格'];
 const PROTOTYPE_DRAFT_KEY = 'surveying_prototype_draft_v1';
+const COMPONENT_SPEC_TABS = [
+  { key: 'length', label: '长度' },
+  { key: 'depth', label: '宽度' },
+  { key: 'height', label: '高度' },
+  { key: 'sill', label: '距地' },
+  { key: 'edge1', label: '边距1' },
+  { key: 'edge2', label: '边距2' }
+];
+const COMPONENT_PANEL_TABS = [
+  { key: 'spec', label: '规格' },
+  { key: 'flip', label: '翻转' },
+  { key: 'library', label: '模型' }
+];
+const COMPONENT_CATEGORY_OPTIONS = {
+  door: [
+    { key: 'single-door', label: '单开门' },
+    { key: 'double-door', label: '双开门' },
+    { key: 'sliding-door', label: '推拉门' },
+    { key: 'entry-door', label: '入户门' }
+  ],
+  window: [
+    { key: 'flat-window', label: '平开窗' },
+    { key: 'floor-window', label: '落地窗' },
+    { key: 'sliding-window', label: '推拉窗' },
+    { key: 'bay-window', label: '飘窗' }
+  ]
+};
+const COMPONENT_LIBRARY = {
+  door: [
+    { id: 'door-single-basic', category: 'single-door', materialId: 'warm-white', label: '素色单开门', swatch: '#eadfce' },
+    { id: 'door-double-dark', category: 'double-door', materialId: 'dark-wood', label: '深色双开门', swatch: '#3f332a' },
+    { id: 'door-sliding-glass', category: 'sliding-door', materialId: 'glass-gray', label: '玻璃推拉门', swatch: '#cfd8dc' },
+    { id: 'door-entry-bronze', category: 'entry-door', materialId: 'bronze', label: '入户门', swatch: '#8b5e34' },
+    { id: 'door-arch-light', category: 'single-door', materialId: 'warm-white', label: '拱形门', swatch: '#f1ede4' },
+    { id: 'door-minimal-gray', category: 'single-door', materialId: 'dark-gray', label: '极简灰门', swatch: '#8a8f8d' }
+  ],
+  window: [
+    { id: 'window-flat-basic', category: 'flat-window', materialId: 'dark-gray', label: '平开窗', swatch: '#4b5563' },
+    { id: 'window-floor-basic', category: 'floor-window', materialId: 'glass-gray', label: '落地窗', swatch: '#dbeafe' },
+    { id: 'window-sliding-dark', category: 'sliding-window', materialId: 'dark-gray', label: '推拉窗', swatch: '#374151' },
+    { id: 'window-bay-light', category: 'bay-window', materialId: 'warm-white', label: '飘窗', swatch: '#f2e8d5' },
+    { id: 'window-grid-bronze', category: 'flat-window', materialId: 'bronze', label: '格栅窗', swatch: '#9a7a4f' },
+    { id: 'window-round-basic', category: 'flat-window', materialId: 'glass-gray', label: '圆窗', swatch: '#e0f2fe' }
+  ]
+};
 const TOUCH_SLOP_PX = 8;
 const WALL_HIT_HALF_PX = 40;
 const MIN_SCALE = 0.05;
@@ -57,11 +102,11 @@ function normalizeAngleDiff(currentAngle, previousAngle) {
 
 function buildCoreTools(activeTool, thicknessMm) {
   return [
-    { key: 'straight', label: '直线', helper: '正交吸附', enabled: true, active: activeTool === 'straight' },
-    { key: 'diagonal', label: '斜线', helper: '自由角度', enabled: true, active: activeTool === 'diagonal' },
-    { key: 'thickness', label: '墙厚', helper: formatMm(thicknessMm), enabled: true, active: false },
-    { key: 'input', label: '输入', helper: '手输 mm', enabled: true, active: false },
-    { key: 'reset', label: '重置', helper: '光标', enabled: true, active: false }
+    { key: 'straight', label: '鐩寸嚎', helper: '姝ｄ氦鍚搁檮', enabled: true, active: activeTool === 'straight' },
+    { key: 'diagonal', label: '鏂滅嚎', helper: '鑷敱瑙掑害', enabled: true, active: activeTool === 'diagonal' },
+    { key: 'thickness', label: '澧欏帤', helper: formatMm(thicknessMm), enabled: true, active: false },
+    { key: 'input', label: '杈撳叆', helper: '鎵嬭緭 mm', enabled: true, active: false },
+    { key: 'reset', label: '閲嶇疆', helper: '鍏夋爣', enabled: true, active: false }
   ];
 }
 
@@ -200,7 +245,7 @@ Page({
     topMetricAngle: '',
     measurePositionVisible: false,
     measurePositionStyle: '',
-    measurePositionButtonLabel: '↓',
+    measurePositionButtonLabel: '↔',
     closureGuideVisible: false,
     closureGuideStyle: '',
     closeActionVisible: false,
@@ -219,14 +264,26 @@ Page({
     objectToolsVisible: false,
     spaceSummary: null,
     numberPadVisible: false,
-    numberPadTitle: '输入长度',
-    numberPadSubtitle: '单位：mm',
+    numberPadTitle: '杈撳叆闀垮害',
+    numberPadSubtitle: '鍗曚綅锛歮m',
     numberInput: '',
     numberKeys: NUMBER_KEYS,
     historySummary: {
       undo: 0,
       redo: 0
-    }
+    },
+    componentEditorVisible: false,
+    componentEditorMode: '',
+    componentPanelMode: 'spec',
+    componentSpecMode: 'length',
+    componentSyncWallThickness: false,
+    componentPanelTabs: COMPONENT_PANEL_TABS,
+    componentSpecTabs: COMPONENT_SPEC_TABS,
+    componentCategories: [],
+    componentLibraryItems: [],
+    componentEditorTitle: '鏋勪欢缂栬緫',
+    componentSpecValue: '0',
+    componentSelectedOpening: null
   },
 
   onLoad(options) {
@@ -246,6 +303,14 @@ Page({
     this.canvasRect = null;
     this.surveyCanvas = null;
     this.surveyCtx = null;
+    this.componentCanvas = null;
+    this.componentRenderer = null;
+    this.componentScene = null;
+    this.componentCamera = null;
+    this.componentOrbit = null;
+    this.componentOrbitOpeningId = '';
+    this.componentTouch = null;
+    this.componentAnimationRunning = false;
     this.surveyCanvasDpr = sysInfo.pixelRatio || 1;
     this.surveyRenderScene = null;
     this.canvasControls = {};
@@ -272,6 +337,7 @@ Page({
   onUnload() {
     app.globalData.surveyingPrototypeContext = null;
     this.persistPrototypeDraft();
+    this.destroyComponentScene();
   },
 
   loadPrototypeDraft() {
@@ -419,7 +485,7 @@ Page({
       ctx.font = 'bold 13px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('当前测量位置', measure.tip.x + measure.tip.width / 2, measure.tip.y + measure.tip.height / 2);
+      ctx.fillText('褰撳墠娴嬮噺浣嶇疆', measure.tip.x + measure.tip.width / 2, measure.tip.y + measure.tip.height / 2);
 
       ctx.beginPath();
       ctx.fillStyle = 'rgba(65, 65, 69, 0.92)';
@@ -465,6 +531,7 @@ Page({
     const bottomState = this.buildBottomActionState(floor, session);
     const renderData = this.buildCanvasRenderData(floor, session);
     const selectedOpening = this.buildSelectedOpening(floor, session.selectedOpeningId);
+    const componentState = this.buildComponentEditorState(floor, selectedOpening);
 
     this.setData(Object.assign({
       activeTool: session.mode,
@@ -492,6 +559,12 @@ Page({
       selectedWall,
       selectedOpening,
       objectToolsVisible: !!(selectedWall || selectedOpening),
+      componentEditorMode: componentState.mode,
+      componentEditorTitle: componentState.title,
+      componentCategories: componentState.categories,
+      componentLibraryItems: componentState.libraryItems,
+      componentSelectedOpening: componentState.opening,
+      componentSpecValue: componentState.specValue,
       spaceSummary: this.buildSpaceSummary(),
       measurementTitle: stageMessage.title,
       measurementValue: stageMessage.value,
@@ -505,7 +578,51 @@ Page({
       }
     }, extraData || {}), () => {
       this.drawSurveyCanvas();
+      if (this.data.componentEditorVisible) {
+        this.scheduleComponentSceneRender();
+      }
     });
+  },
+
+  buildComponentEditorState(floor, selectedOpening) {
+    const mode = selectedOpening && selectedOpening.type === 'window' ? 'window' : 'door';
+    const categories = (COMPONENT_CATEGORY_OPTIONS[mode] || []).map((item) => Object.assign({}, item, {
+      active: selectedOpening ? item.key === selectedOpening.modelCategory : false
+    }));
+    const activeCategory = selectedOpening ? selectedOpening.modelCategory : '';
+    const libraryItems = (COMPONENT_LIBRARY[mode] || [])
+      .filter((item) => !activeCategory || item.category === activeCategory)
+      .map((item) => Object.assign({}, item, {
+      active: selectedOpening ? item.id === selectedOpening.modelId : false
+    }));
+
+    return {
+      mode,
+      title: selectedOpening ? `${selectedOpening.typeLabel}鏋勪欢缂栬緫` : '鏋勪欢缂栬緫',
+      categories,
+      libraryItems,
+      opening: selectedOpening,
+      specValue: selectedOpening ? this.getComponentSpecRawValue(floor, selectedOpening.id, this.data.componentSpecMode) : '0'
+    };
+  },
+
+  getComponentSpecRawValue(floor, openingId, mode) {
+    const opening = surveyGraph.getOpening(floor, openingId);
+    if (!opening) return '0';
+    const wall = surveyGraph.getWall(floor, opening.wallId);
+    const wallLength = wall ? wall.lengthMm || 0 : 0;
+    const openingWidth = opening.widthMm || 0;
+    const edge1 = Math.max(0, Math.round((opening.centerOffsetMm || 0) - openingWidth / 2));
+    const edge2 = Math.max(0, Math.round(wallLength - edge1 - openingWidth));
+    const valueMap = {
+      length: opening.widthMm || 0,
+      depth: opening.depthMm || (wall && wall.thicknessMm) || 0,
+      height: opening.heightMm || 0,
+      sill: opening.sillHeightMm || 0,
+      edge1,
+      edge2
+    };
+    return String(Math.round(valueMap[mode] || 0));
   },
 
   buildCanvasRenderData(floor, session) {
@@ -526,12 +643,12 @@ Page({
 
     if (session.previewPoint) {
       closeHintVisible = !!(session.closeCandidateNodeId || session.closeCandidatePoint);
-      closeHintText = closeHintVisible ? '预览端点已接近起点，确认长度后可闭合' : '';
+      closeHintText = closeHintVisible ? '棰勮绔偣宸叉帴杩戣捣鐐癸紝纭闀垮害鍚庡彲闂悎' : '';
     }
 
     if (session.state === 'closing') {
       closeHintVisible = true;
-      closeHintText = '当前端点已接近起点，可闭合单空间';
+      closeHintText = '褰撳墠绔偣宸叉帴杩戣捣鐐癸紝鍙棴鍚堝崟绌洪棿';
     }
 
     if (session.anchorNodeId && session.state !== 'spaceClosed' && session.state !== 'wallSelected' && session.state !== 'remeasureAwaitingInput') {
@@ -586,7 +703,7 @@ Page({
     const gap = 8;
     const redo = {
       key: 'redo',
-      label: '重做',
+      label: '閲嶅仛',
       count: this.history.redo.length,
       cx: rect.width - right - buttonSize / 2,
       cy: rect.height - bottom - buttonSize / 2,
@@ -594,7 +711,7 @@ Page({
     };
     const undo = {
       key: 'undo',
-      label: '撤销',
+      label: '鎾ら攢',
       count: this.history.undo.length,
       cx: redo.cx,
       cy: redo.cy - buttonSize - gap,
@@ -748,8 +865,8 @@ Page({
       redlineEndInsetPx: geometry && geometry.endJoined ? REDLINE_JOIN_TRIM_PX : 0,
       redlineParts: [],
       label: this.formatWallLabel(wall),
-      sideLabel: wall.measurementSide === 'left' ? '左侧' : '右侧',
-      modeLabel: wall.mode === 'diagonal' ? '斜墙' : '直墙',
+      sideLabel: wall.measurementSide === 'left' ? '宸︿晶' : '鍙充晶',
+      modeLabel: wall.mode === 'diagonal' ? '鏂滃' : '鐩村',
       selected,
       preview: isPreview
     };
@@ -889,7 +1006,7 @@ Page({
     return {
       visible: true,
       length: `L ${Math.round(segment.lengthMm)}`,
-      angle: segment.relativeAngle ? `∠ ${segment.relativeAngle}°` : ''
+      angle: segment.relativeAngle ? `鈭?${segment.relativeAngle}掳` : ''
     };
   },
 
@@ -906,7 +1023,7 @@ Page({
 
   buildMeasurePosition(segment, floor, session) {
     if (!this.isFirstMeasurePositionStage(floor, session) || !segment || !segment.startPoint || !segment.endPoint) {
-      return { visible: false, style: '', buttonLabel: '↓', control: null };
+      return { visible: false, style: '', buttonLabel: '↔', control: null };
     }
 
     const midX = (segment.startPoint.x + segment.endPoint.x) / 2;
@@ -914,7 +1031,7 @@ Page({
     const side = segment.measurementSide || session.measurementSide;
     const left = midX - 70;
     const top = midY + 96;
-    const label = side === 'left' ? '↑' : '↓';
+    const label = side === 'left' ? '↔' : '↔';
     return {
       visible: session.state !== 'spaceClosed' && session.state !== 'wallSelected' && session.state !== 'remeasureAwaitingInput',
       style: `left:${roundPx(left)}px; top:${roundPx(top)}px;`,
@@ -975,7 +1092,7 @@ Page({
   formatWallLabel(wall) {
     const lengthLabel = formatMm(wall.lengthMm);
     if (wall.mode === 'diagonal') {
-      return `${lengthLabel} · ${Math.round(wall.angleDeg)}°`;
+      return `${lengthLabel} 路 ${Math.round(wall.angleDeg)}掳`;
     }
     return lengthLabel;
   },
@@ -1020,10 +1137,10 @@ Page({
     return {
       id: wall.id,
       length: formatMm(wall.lengthMm),
-      angle: `${Math.round(wall.angleDeg)}°`,
+      angle: `${Math.round(wall.angleDeg)}掳`,
       thickness: formatMm(wall.thicknessMm),
-      side: wall.measurementSide === 'left' ? '左侧' : '右侧',
-      mode: wall.mode === 'diagonal' ? '斜墙' : '直墙',
+      side: wall.measurementSide === 'left' ? '宸︿晶' : '鍙充晶',
+      mode: wall.mode === 'diagonal' ? '鏂滃' : '鐩村',
       actionStyle
     };
   },
@@ -1032,6 +1149,11 @@ Page({
     if (!openingId) return null;
     const opening = surveyGraph.getOpening(floor, openingId);
     if (!opening) return null;
+    const wall = surveyGraph.getWall(floor, opening.wallId);
+    const wallLength = wall ? (wall.lengthMm || 0) : 0;
+    const width = opening.widthMm || 0;
+    const edge1 = Math.max(0, Math.round((opening.centerOffsetMm || 0) - width / 2));
+    const edge2 = Math.max(0, Math.round(wallLength - edge1 - width));
 
     return {
       id: opening.id,
@@ -1039,12 +1161,34 @@ Page({
       type: opening.type,
       typeLabel: opening.type === 'window' ? '窗' : '门',
       width: formatMm(opening.widthMm),
+      depth: formatMm(opening.depthMm || (wall && wall.thicknessMm) || 0),
       height: formatMm(opening.heightMm),
       sill: formatMm(opening.sillHeightMm || 0),
       offset: formatMm(opening.centerOffsetMm || 0),
+      edge1: formatMm(edge1),
+      edge2: formatMm(edge2),
+      wallLength: formatMm(wallLength),
+      modelId: opening.modelId || '',
+      modelCategory: opening.modelCategory || '',
+      materialId: opening.materialId || '',
+      modelLabel: this.getComponentModelLabel(opening),
+      swatch: this.getComponentModelSwatch(opening),
+      entryDoor: !!opening.entryDoor,
       openDirection: opening.openDirection === 'outside' ? 'outside' : 'inside',
-      openDirectionLabel: opening.openDirection === 'outside' ? '外开' : '内开'
+      openDirectionLabel: opening.openDirection === 'outside' ? '澶栧紑' : '鍐呭紑'
     };
+  },
+
+  getComponentModelLabel(opening) {
+    const type = opening && opening.type === 'window' ? 'window' : 'door';
+    const item = (COMPONENT_LIBRARY[type] || []).find((option) => option.id === opening.modelId);
+    return item ? item.label : (type === 'window' ? '本地窗模型' : '本地门模型');
+  },
+
+  getComponentModelSwatch(opening) {
+    const type = opening && opening.type === 'window' ? 'window' : 'door';
+    const item = (COMPONENT_LIBRARY[type] || []).find((option) => option.id === opening.modelId);
+    return item ? item.swatch : '#9ca3af';
   },
 
   buildSpaceSummary() {
@@ -1145,7 +1289,7 @@ Page({
       return { title: '已选墙体', value: `${selectedWall.length} · ${selectedWall.side} · ${selectedWall.thickness}` };
     }
     if (session.state === 'remeasureAwaitingInput' && selectedWall) {
-      return { title: '复尺中', value: `请输入 ${selectedWall.mode} 的新毫米长度` };
+      return { title: '复尺中', value: `请输入${selectedWall.mode}的新毫米长度` };
     }
     return { title: '测绘原型', value: `${floor.walls.length} 面墙` };
   },
@@ -1234,6 +1378,10 @@ Page({
   },
 
   onBack() {
+    if (this.data.componentEditorVisible) {
+      this.closeComponentEditor();
+      return;
+    }
     wx.navigateBack({
       fail: () => {
         wx.switchTab({ url: '/pages/index/index' });
@@ -1296,7 +1444,7 @@ Page({
       return;
     }
 
-    wx.showToast({ title: '该对象工具将在 Phase 8 继续定义', icon: 'none' });
+    wx.showToast({ title: '璇ュ璞″伐鍏峰皢鍦?Phase 8 缁х画瀹氫箟', icon: 'none' });
   },
 
   onWallContextAction(e) {
@@ -1322,23 +1470,25 @@ Page({
     const floor = surveyGraph.getActiveFloor(this.draft);
     const wallId = floor.session.selectedWallId;
     if (!wallId) {
-      wx.showToast({ title: '请先选择墙体', icon: 'none' });
+      wx.showToast({ title: '璇峰厛閫夋嫨澧欎綋', icon: 'none' });
       return;
     }
 
     try {
       const nextDraft = surveyGraph.addOpeningToWall(this.draft, wallId, type);
-      this.applyDraft(nextDraft, { recordHistory: true });
-      wx.showToast({ title: type === 'window' ? '已添加窗' : '已添加门', icon: 'none' });
+      this.applyDraft(nextDraft, {
+        recordHistory: true
+      });
+      wx.showToast({ title: type === 'window' ? '宸叉坊鍔犵獥' : '宸叉坊鍔犻棬', icon: 'none' });
     } catch (err) {
-      wx.showToast({ title: err.message || '添加失败', icon: 'none' });
+      wx.showToast({ title: err.message || '娣诲姞澶辫触', icon: 'none' });
     }
   },
 
   openSelectedObjectEditor() {
     const floor = surveyGraph.getActiveFloor(this.draft);
     if (floor.session.selectedOpeningId) {
-      this.openNumberPad('openingWidth');
+      this.openComponentEditor();
       return;
     }
     if (floor.session.selectedWallId) {
@@ -1348,10 +1498,33 @@ Page({
     wx.showToast({ title: '请先选择墙体或门窗', icon: 'none' });
   },
 
+  openComponentEditor() {
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const opening = surveyGraph.getOpening(floor, floor.session.selectedOpeningId);
+    if (!opening) {
+      wx.showToast({ title: '璇峰厛閫夋嫨闂ㄧ獥', icon: 'none' });
+      return;
+    }
+    this.setData({
+      componentEditorVisible: true,
+      componentPanelMode: 'spec',
+      componentSpecMode: 'length'
+    }, () => {
+      this.scheduleComponentSceneRender();
+    });
+  },
+
+  closeComponentEditor() {
+    this.setData({ componentEditorVisible: false }, () => {
+      this.destroyComponentScene();
+      this.refreshCanvasRect();
+    });
+  },
+
   deleteSelectedOpening() {
     const floor = surveyGraph.getActiveFloor(this.draft);
     if (!floor.session.selectedOpeningId) {
-      wx.showToast({ title: '请先选择门窗', icon: 'none' });
+      wx.showToast({ title: '璇峰厛閫夋嫨闂ㄧ獥', icon: 'none' });
       return;
     }
     const nextDraft = surveyGraph.deleteOpening(this.draft, floor.session.selectedOpeningId);
@@ -1376,14 +1549,14 @@ Page({
     const floor = surveyGraph.getActiveFloor(this.draft);
     const wallId = floor.session.selectedWallId;
     if (!wallId || !surveyGraph.getWall(floor, wallId)) {
-      wx.showToast({ title: '请先选择墙体', icon: 'none' });
+      wx.showToast({ title: '璇峰厛閫夋嫨澧欎綋', icon: 'none' });
       return;
     }
 
     wx.showModal({
-      title: '删除墙体',
+      title: '鍒犻櫎澧欎綋',
       content: '将删除当前墙体及其上的门窗，已闭合空间会转回未闭合状态。',
-      confirmText: '删除',
+      confirmText: '鍒犻櫎',
       confirmColor: '#d71920',
       success: (res) => {
         if (!res.confirm) return;
@@ -1424,7 +1597,7 @@ Page({
         recordHistory: true,
         extraData: { numberPadVisible: this.data.numberPadVisible }
       });
-      wx.showToast({ title: nextDirection === 'outside' ? '门开向已设为外开' : '门开向已设为内开', icon: 'none' });
+      wx.showToast({ title: nextDirection === 'outside' ? '闂ㄥ紑鍚戝凡璁句负澶栧紑' : '闂ㄥ紑鍚戝凡璁句负鍐呭紑', icon: 'none' });
       return;
     }
 
@@ -1436,7 +1609,7 @@ Page({
       : session.selectedWallId;
 
     if (source === 'measure-position' && !this.isFirstMeasurePositionStage(floor, session)) {
-      wx.showToast({ title: '测量位置仅在第一条边设置', icon: 'none' });
+      wx.showToast({ title: '娴嬮噺浣嶇疆浠呭湪绗竴鏉¤竟璁剧疆', icon: 'none' });
       return;
     }
 
@@ -1458,7 +1631,7 @@ Page({
   onSavePrototypeDraft() {
     this.persistPrototypeDraft();
     this.setData({
-      prototypeNotice: '本地体验草稿已保存，不会同步正式户型'
+      prototypeNotice: '鏈湴浣撻獙鑽夌宸蹭繚瀛橈紝涓嶄細鍚屾姝ｅ紡鎴峰瀷'
     });
     wx.showToast({ title: '体验草稿已保存', icon: 'success' });
   },
@@ -1487,7 +1660,7 @@ Page({
         recordHistory: true,
         extraData: { numberPadVisible: false }
       });
-      wx.showToast({ title: '点击已有墙体放置光标', icon: 'none' });
+      wx.showToast({ title: '鐐瑰嚮宸叉湁澧欎綋鏀剧疆鍏夋爣', icon: 'none' });
       return;
     }
 
@@ -1708,7 +1881,7 @@ Page({
         recordHistory: true,
         extraData: { numberPadVisible: false }
       });
-      wx.showToast({ title: '光标已吸附到墙体', icon: 'none' });
+      wx.showToast({ title: '鍏夋爣宸插惛闄勫埌澧欎綋', icon: 'none' });
       return;
     }
 
@@ -1785,7 +1958,7 @@ Page({
             icon: 'none'
           });
         } catch (err) {
-          wx.showToast({ title: err.message || '成墙失败，请重试', icon: 'none' });
+          wx.showToast({ title: err.message || '鎴愬澶辫触锛岃閲嶈瘯', icon: 'none' });
           this.applyDraft(surveyGraph.cancelPending(this.draft), { persist: false });
         }
       } else {
@@ -1839,9 +2012,9 @@ Page({
     try {
       const nextDraft = surveyGraph.confirmClosure(this.draft);
       this.applyDraft(nextDraft, { recordHistory: true });
-      wx.showToast({ title: '单空间已闭合', icon: 'success' });
+      wx.showToast({ title: '鍗曠┖闂村凡闂悎', icon: 'success' });
     } catch (err) {
-      wx.showToast({ title: err.message || '闭合失败，请重新测量', icon: 'none' });
+      wx.showToast({ title: err.message || '闂悎澶辫触锛岃閲嶆柊娴嬮噺', icon: 'none' });
     }
   },
 
@@ -1890,10 +2063,79 @@ Page({
     this.numberPadMode = 'length';
     this.syncFromDraft({
       numberPadVisible: true,
-      numberPadTitle: session.state === 'wallSelected' || session.state === 'remeasureAwaitingInput' ? '输入复尺长度' : '输入当前墙长',
-      numberPadSubtitle: '单位：mm，确认后落图',
+      numberPadTitle: session.state === 'wallSelected' || session.state === 'remeasureAwaitingInput' ? '杈撳叆澶嶅昂闀垮害' : '杈撳叆褰撳墠澧欓暱',
+      numberPadSubtitle: '鍗曚綅锛歮m锛岀‘璁ゅ悗钀藉浘',
       numberInput: inputValue
     });
+  },
+
+  updateComponentSpecValue(draft, openingId, specMode, value) {
+    const floor = surveyGraph.getActiveFloor(draft);
+    const opening = surveyGraph.getOpening(floor, openingId);
+    if (!opening) throw new Error('璇峰厛閫夋嫨闂ㄧ獥');
+    const wall = surveyGraph.getWall(floor, opening.wallId);
+    const wallLength = wall ? wall.lengthMm || 0 : 0;
+    const currentWidth = opening.widthMm || 0;
+    const patch = {};
+
+    if (specMode === 'length') {
+      patch.widthMm = value;
+    } else if (specMode === 'depth') {
+      patch.depthMm = value;
+    } else if (specMode === 'height') {
+      patch.heightMm = value;
+    } else if (specMode === 'sill') {
+      patch.sillHeightMm = value;
+    } else if (specMode === 'edge1') {
+      patch.centerOffsetMm = Math.round(value + currentWidth / 2);
+    } else if (specMode === 'edge2') {
+      patch.centerOffsetMm = Math.round(wallLength - value - currentWidth / 2);
+    }
+
+    let nextDraft = surveyGraph.updateOpening(draft, openingId, patch);
+    if (specMode === 'depth' && this.data.componentSyncWallThickness && wall) {
+      nextDraft = surveyGraph.setThickness(nextDraft, value, wall.id);
+    }
+    return nextDraft;
+  },
+
+  isComponentNumberPadMode() {
+    return !!(this.numberPadMode && this.numberPadMode.indexOf('component') === 0);
+  },
+
+  getComponentSpecModeFromNumberPad() {
+    if (!this.isComponentNumberPadMode()) return '';
+    return this.numberPadMode.replace('component', '').replace(/^./, (letter) => letter.toLowerCase());
+  },
+
+  applyLiveComponentNumberInput(inputValue) {
+    if (!this.isComponentNumberPadMode()) return;
+    if (inputValue === '') {
+      this.setData({ componentSpecValue: '0' });
+      return;
+    }
+
+    const value = parseInt(inputValue, 10);
+    if (!Number.isFinite(value)) return;
+
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const openingId = floor.session.selectedOpeningId;
+    const specMode = this.getComponentSpecModeFromNumberPad();
+
+    try {
+      const nextDraft = this.updateComponentSpecValue(this.draft, openingId, specMode, value);
+      this.draft = nextDraft;
+      this.syncFromDraft({
+        componentEditorVisible: true,
+        componentPanelMode: 'spec',
+        componentSpecMode: specMode,
+        numberPadVisible: true,
+        numberInput: inputValue
+      });
+      this.schedulePrototypePersist();
+    } catch (err) {
+      wx.showToast({ title: err.message || '输入无效', icon: 'none' });
+    }
   },
 
   openNumberPad(mode) {
@@ -1913,6 +2155,34 @@ Page({
         numberInput: String(selectedWall ? selectedWall.thicknessMm : session.thicknessMm)
       });
       this.numberPadMode = 'thickness';
+      return;
+    }
+
+    if (mode && mode.indexOf('component') === 0) {
+      const floor = surveyGraph.getActiveFloor(this.draft);
+      const openingId = floor.session.selectedOpeningId;
+      const opening = surveyGraph.getOpening(floor, openingId);
+      if (!opening) {
+        wx.showToast({ title: '请先选择门窗', icon: 'none' });
+        return;
+      }
+      const specMode = mode.replace('component', '').replace(/^./, (letter) => letter.toLowerCase());
+      const titleMap = {
+        length: '修改构件长度',
+        depth: '修改构件宽度',
+        height: '修改构件高度',
+        sill: '修改距地高度',
+        edge1: '修改边距1',
+        edge2: '修改边距2'
+      };
+      this.setData({
+        componentSpecMode: specMode,
+        numberPadVisible: true,
+        numberPadTitle: titleMap[specMode] || '修改构件尺寸',
+        numberPadSubtitle: '单位：mm，仅保存为新版本地原型门窗',
+        numberInput: this.getComponentSpecRawValue(floor, openingId, specMode)
+      });
+      this.numberPadMode = mode;
       return;
     }
 
@@ -1957,6 +2227,9 @@ Page({
     }
 
     this.setData({ numberInput: value });
+    if (this.isComponentNumberPadMode()) {
+      this.applyLiveComponentNumberInput(value);
+    }
   },
 
   onNumberConfirm() {
@@ -1974,6 +2247,19 @@ Page({
           extraData: { numberPadVisible: false, numberInput: '' }
         });
         wx.showToast({ title: selectedWallId ? '墙厚已更新' : '后续墙厚已设置', icon: 'none' });
+        return;
+      }
+
+      if (this.numberPadMode && this.numberPadMode.indexOf('component') === 0) {
+        const specMode = this.getComponentSpecModeFromNumberPad();
+        this.numberPadMode = '';
+        this.syncFromDraft({
+          numberPadVisible: false,
+          numberInput: '',
+          componentEditorVisible: true,
+          componentSpecMode: specMode
+        });
+
         return;
       }
 
@@ -2017,15 +2303,358 @@ Page({
         return;
       }
 
-      wx.showToast({ title: '当前没有可输入的墙体', icon: 'none' });
+      wx.showToast({ title: '褰撳墠娌℃湁鍙緭鍏ョ殑澧欎綋', icon: 'none' });
     } catch (err) {
-      wx.showToast({ title: err.message || '输入无效', icon: 'none' });
+      wx.showToast({ title: err.message || '杈撳叆鏃犳晥', icon: 'none' });
     }
   },
 
   onNumberClose() {
     this.numberPadMode = '';
     this.setData({ numberPadVisible: false, numberInput: '' });
+  },
+
+  componentNumberPadMode(specMode) {
+    return `component${specMode.charAt(0).toUpperCase()}${specMode.slice(1)}`;
+  },
+
+  onComponentPanelTab(e) {
+    const mode = e.currentTarget.dataset.mode || 'spec';
+    this.setData({ componentPanelMode: mode }, () => {
+      this.scheduleComponentSceneRender();
+    });
+  },
+
+  onComponentSpecTab(e) {
+    const mode = e.currentTarget.dataset.mode || 'length';
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    this.setData({
+      componentSpecMode: mode,
+      componentSpecValue: this.getComponentSpecRawValue(floor, floor.session.selectedOpeningId, mode)
+    }, () => {
+      this.scheduleComponentSceneRender();
+      this.openNumberPad(this.componentNumberPadMode(mode));
+    });
+  },
+
+  openActiveComponentNumberPad() {
+    this.openNumberPad(this.componentNumberPadMode(this.data.componentSpecMode || 'length'));
+  },
+
+  onToggleComponentThicknessSync() {
+    this.setData({ componentSyncWallThickness: !this.data.componentSyncWallThickness });
+  },
+
+  onComponentFlip(e) {
+    const direction = e.currentTarget.dataset.direction === 'outside' ? 'outside' : 'inside';
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const opening = surveyGraph.getOpening(floor, floor.session.selectedOpeningId);
+    if (!opening) return;
+    if (opening.type !== 'door') {
+      wx.showToast({ title: '窗构件暂不支持开向切换', icon: 'none' });
+      return;
+    }
+    const nextDraft = surveyGraph.updateOpening(this.draft, opening.id, { openDirection: direction });
+    this.applyDraft(nextDraft, {
+      recordHistory: true,
+      extraData: { componentEditorVisible: true, componentPanelMode: 'flip' }
+    });
+  },
+
+  onComponentCategoryTap(e) {
+    const category = e.currentTarget.dataset.category || '';
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const opening = surveyGraph.getOpening(floor, floor.session.selectedOpeningId);
+    if (!opening) return;
+    const type = opening.type === 'window' ? 'window' : 'door';
+    const model = (COMPONENT_LIBRARY[type] || []).find((item) => item.category === category) || {};
+    const nextDraft = surveyGraph.updateOpening(this.draft, opening.id, {
+      modelCategory: category,
+      modelId: model.id || opening.modelId,
+      materialId: model.materialId || opening.materialId
+    });
+    this.applyDraft(nextDraft, {
+      recordHistory: true,
+      extraData: { componentEditorVisible: true, componentPanelMode: 'library' }
+    });
+  },
+
+  onComponentModelTap(e) {
+    const modelId = e.currentTarget.dataset.id || '';
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const opening = surveyGraph.getOpening(floor, floor.session.selectedOpeningId);
+    if (!opening) return;
+    const type = opening.type === 'window' ? 'window' : 'door';
+    const model = (COMPONENT_LIBRARY[type] || []).find((item) => item.id === modelId);
+    if (!model) return;
+    const nextDraft = surveyGraph.updateOpening(this.draft, opening.id, {
+      modelId: model.id,
+      modelCategory: model.category,
+      materialId: model.materialId
+    });
+    this.applyDraft(nextDraft, {
+      recordHistory: true,
+      extraData: { componentEditorVisible: true, componentPanelMode: 'library' }
+    });
+  },
+
+  onToggleEntryDoor() {
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const opening = surveyGraph.getOpening(floor, floor.session.selectedOpeningId);
+    if (!opening || opening.type !== 'door') return;
+    const nextDraft = surveyGraph.updateOpening(this.draft, opening.id, { entryDoor: !opening.entryDoor });
+    this.applyDraft(nextDraft, {
+      recordHistory: true,
+      extraData: { componentEditorVisible: true }
+    });
+  },
+
+  scheduleComponentSceneRender() {
+    if (this.componentRenderTimer) {
+      clearTimeout(this.componentRenderTimer);
+    }
+    this.componentRenderTimer = setTimeout(() => {
+      this.componentRenderTimer = null;
+      this.initComponentScene();
+    }, 30);
+  },
+
+  initComponentScene() {
+    if (!this.data.componentEditorVisible) return;
+    wx.createSelectorQuery()
+      .in(this)
+      .select('#component-webgl')
+      .fields({ node: true, size: true })
+      .exec((res) => {
+        const target = res && res[0];
+        const canvas = target && target.node;
+        if (!canvas) return;
+        const width = target.width || canvas._width || canvas.width || 1;
+        const height = target.height || canvas._height || canvas.height || 1;
+        const dpr = this.surveyCanvasDpr || 1;
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
+        if (!this.componentRenderer || this.componentCanvas !== canvas) {
+          const { createScopedThreejs } = require('threejs-miniprogram');
+          this.componentTHREE = createScopedThreejs(canvas);
+          this.componentCanvas = canvas;
+          this.componentRenderer = new this.componentTHREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+          this.componentRenderer.setPixelRatio(dpr);
+          this.componentRenderer.setSize(width, height);
+        } else {
+          this.componentRenderer.setSize(width, height);
+        }
+        this.rebuildComponentScene(width, height);
+        this.startComponentAnimation();
+      });
+  },
+
+  destroyComponentScene() {
+    this.componentAnimationRunning = false;
+    this.componentTouch = null;
+    this.componentScene = null;
+    this.componentCamera = null;
+    this.componentOrbit = null;
+    this.componentOrbitOpeningId = '';
+    if (this.componentRenderer && this.componentRenderer.dispose) {
+      this.componentRenderer.dispose();
+    }
+    this.componentRenderer = null;
+    this.componentCanvas = null;
+    this.componentTHREE = null;
+  },
+
+  rebuildComponentScene(width, height) {
+    const THREE = this.componentTHREE;
+    if (!THREE || !this.componentRenderer) return;
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const opening = surveyGraph.getOpening(floor, floor.session.selectedOpeningId);
+    const wall = opening ? surveyGraph.getWall(floor, opening.wallId) : null;
+    if (!opening || !wall) return;
+
+    const scale = 0.01;
+    const wallLength = Math.max(wall.lengthMm || 0, opening.widthMm || 900, 1200) * scale;
+    const wallHeight = Math.max(2800, (opening.sillHeightMm || 0) + (opening.heightMm || 0) + 300) * scale;
+    const wallDepth = Math.max(wall.thicknessMm || 200, 80) * scale;
+    const openingWidth = Math.max(opening.widthMm || 0, 100) * scale;
+    const openingHeight = Math.max(opening.heightMm || 0, 100) * scale;
+    const openingSill = Math.max(opening.sillHeightMm || 0, 0) * scale;
+    const edge1 = Math.max(0, (opening.centerOffsetMm || 0) - (opening.widthMm || 0) / 2) * scale;
+    const edge2 = Math.max(0, wallLength - edge1 - openingWidth);
+    const openingCenterX = -wallLength / 2 + edge1 + openingWidth / 2;
+    const openingCenterY = openingSill + openingHeight / 2;
+    const canReuseOrbit = this.componentOrbit && this.componentOrbitOpeningId === opening.id;
+    const previousSpherical = canReuseOrbit ? this.componentOrbit.spherical.clone() : null;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xffffff);
+    const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 2000);
+    const radius = Math.max(wallLength, wallHeight) * 1.55;
+    const orbitTarget = new THREE.Vector3(0, wallHeight * 0.42, 0);
+    if (previousSpherical) {
+      camera.position.setFromSpherical(previousSpherical).add(orbitTarget);
+    } else {
+      camera.position.set(wallLength * 0.18, wallHeight * 0.52, -radius);
+    }
+    camera.lookAt(orbitTarget);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.72));
+    const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    keyLight.position.set(-20, 32, 28);
+    scene.add(keyLight);
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.35);
+    fillLight.position.set(20, 16, -20);
+    scene.add(fillLight);
+
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xf8f8f3, roughness: 0.92, metalness: 0.01 });
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x7f8580, roughness: 0.97, metalness: 0.01 });
+    const doorFrameMat = new THREE.MeshStandardMaterial({ color: 0x3f2b1f, roughness: 0.68, metalness: 0.04 });
+    const doorPanelMat = new THREE.MeshStandardMaterial({ color: 0xc0783d, roughness: 0.72, metalness: 0.03 });
+    const handleMat = new THREE.MeshStandardMaterial({ color: 0xd4aa62, roughness: 0.36, metalness: 0.25 });
+    const windowFrameMat = new THREE.MeshStandardMaterial({ color: 0x323a3d, roughness: 0.56, metalness: 0.08 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0xa7d8f0, roughness: 0.14, metalness: 0.02, transparent: true, opacity: 0.5 });
+    const openingFrameMat = opening.type === 'window' ? windowFrameMat : doorFrameMat;
+    const redMat = new THREE.LineBasicMaterial({ color: 0xe12d2d, linewidth: 3, depthTest: false, depthWrite: false });
+
+    const addBox = (x, y, z, sx, sy, sz, mat) => {
+      if (sx <= 0.01 || sy <= 0.01 || sz <= 0.01) return null;
+      const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+      mesh.position.set(x, y, z);
+      scene.add(mesh);
+      return mesh;
+    };
+
+    addBox(0, -0.04, -wallDepth * 0.55, wallLength + 4, 0.08, wallDepth + 2, floorMat);
+    addBox(-wallLength / 2 + edge1 / 2, wallHeight / 2, 0, edge1, wallHeight, wallDepth, wallMat);
+    addBox(wallLength / 2 - edge2 / 2, wallHeight / 2, 0, edge2, wallHeight, wallDepth, wallMat);
+    addBox(openingCenterX, openingSill / 2, 0, openingWidth, openingSill, wallDepth, wallMat);
+    addBox(openingCenterX, openingSill + openingHeight + (wallHeight - openingSill - openingHeight) / 2, 0, openingWidth, Math.max(0, wallHeight - openingSill - openingHeight), wallDepth, wallMat);
+
+    const frameDepth = Math.max(wallDepth * 1.18, 0.16);
+    const frame = Math.max(0.08, Math.min(openingWidth, openingHeight) * 0.08);
+    addBox(openingCenterX, openingSill + openingHeight + frame / 2, -wallDepth * 0.58, openingWidth + frame * 2, frame, frameDepth, openingFrameMat);
+    addBox(openingCenterX, openingSill - frame / 2, -wallDepth * 0.58, openingWidth + frame * 2, frame, frameDepth, openingFrameMat);
+    addBox(openingCenterX - openingWidth / 2 - frame / 2, openingCenterY, -wallDepth * 0.58, frame, openingHeight + frame * 2, frameDepth, openingFrameMat);
+    addBox(openingCenterX + openingWidth / 2 + frame / 2, openingCenterY, -wallDepth * 0.58, frame, openingHeight + frame * 2, frameDepth, openingFrameMat);
+
+    if (opening.type === 'window') {
+      addBox(openingCenterX, openingCenterY, -wallDepth * 0.64, openingWidth * 0.92, openingHeight * 0.9, 0.04, glassMat);
+      addBox(openingCenterX, openingCenterY, -wallDepth * 0.72, frame * 0.72, openingHeight * 0.9, frameDepth * 0.6, windowFrameMat);
+      addBox(openingCenterX - openingWidth * 0.24, openingCenterY, -wallDepth * 0.72, frame * 0.42, openingHeight * 0.9, frameDepth * 0.45, windowFrameMat);
+      addBox(openingCenterX + openingWidth * 0.24, openingCenterY, -wallDepth * 0.72, frame * 0.42, openingHeight * 0.9, frameDepth * 0.45, windowFrameMat);
+      addBox(openingCenterX, openingCenterY, -wallDepth * 0.72, openingWidth * 0.9, frame * 0.45, frameDepth * 0.45, windowFrameMat);
+    } else {
+      const swing = opening.openDirection === 'outside' ? -0.28 : 0.18;
+      const door = addBox(openingCenterX + swing, openingHeight / 2, -wallDepth * 0.68, openingWidth * 0.9, openingHeight * 0.96, Math.max(0.08, wallDepth * 0.42), doorPanelMat);
+      if (door && opening.modelCategory === 'double-door') {
+        addBox(openingCenterX, openingHeight / 2, -wallDepth * 0.95, frame * 0.35, openingHeight * 0.86, frameDepth * 0.35, doorFrameMat);
+      }
+      addBox(openingCenterX + openingWidth * 0.28, openingHeight * 0.52, -wallDepth * 0.94, frame * 0.6, frame * 0.45, frameDepth * 0.45, handleMat);
+    }
+
+    const makeLine = (points) => {
+      const geometry = new THREE.BufferGeometry().setFromPoints(points.map((point) => new THREE.Vector3(point[0], point[1], point[2])));
+      const line = new THREE.Line(geometry, redMat);
+      line.renderOrder = 20;
+      scene.add(line);
+    };
+    const frontZ = -wallDepth * 1.7;
+    const backZ = wallDepth * 1.7;
+    const makeDoubleSideLine = (points) => {
+      makeLine(points.map((point) => [point[0], point[1], frontZ]));
+      makeLine(points.map((point) => [point[0], point[1], backZ]));
+    };
+    const makeDepthLine = (x, y) => {
+      makeLine([[x, y, frontZ], [x, y, backZ]]);
+      makeLine([[x - 0.24, y, frontZ], [x + 0.24, y, frontZ]]);
+      makeLine([[x - 0.24, y, backZ], [x + 0.24, y, backZ]]);
+    };
+    if (this.data.componentSpecMode === 'height') {
+      makeDoubleSideLine([[openingCenterX + openingWidth / 2 + 0.45, openingSill], [openingCenterX + openingWidth / 2 + 0.45, openingSill + openingHeight]]);
+    } else if (this.data.componentSpecMode === 'depth') {
+      makeDepthLine(openingCenterX, openingCenterY);
+    } else if (this.data.componentSpecMode === 'sill') {
+      makeDoubleSideLine([[openingCenterX, 0], [openingCenterX, openingSill]]);
+    } else if (this.data.componentSpecMode === 'edge1') {
+      makeDoubleSideLine([[-wallLength / 2, openingCenterY], [openingCenterX - openingWidth / 2, openingCenterY]]);
+    } else if (this.data.componentSpecMode === 'edge2') {
+      makeDoubleSideLine([[openingCenterX + openingWidth / 2, openingCenterY], [wallLength / 2, openingCenterY]]);
+    } else {
+      makeDoubleSideLine([[openingCenterX - openingWidth / 2, openingSill + openingHeight + 0.45], [openingCenterX + openingWidth / 2, openingSill + openingHeight + 0.45]]);
+    }
+
+    this.componentScene = scene;
+    this.componentCamera = camera;
+    this.componentOrbit = {
+      target: orbitTarget,
+      spherical: previousSpherical || new THREE.Spherical().setFromVector3(camera.position.clone().sub(orbitTarget)),
+      THREE
+    };
+    this.componentOrbitOpeningId = opening.id;
+  },
+
+  startComponentAnimation() {
+    if (this.componentAnimationRunning || !this.componentCanvas) return;
+    this.componentAnimationRunning = true;
+    const animate = () => {
+      if (!this.componentAnimationRunning || !this.data.componentEditorVisible) return;
+      if (this.componentRenderer && this.componentScene && this.componentCamera) {
+        this.componentRenderer.render(this.componentScene, this.componentCamera);
+      }
+      this.componentCanvas.requestAnimationFrame(animate);
+    };
+    this.componentCanvas.requestAnimationFrame(animate);
+  },
+
+  updateComponentCamera() {
+    if (!this.componentOrbit || !this.componentCamera) return;
+    this.componentCamera.position.setFromSpherical(this.componentOrbit.spherical).add(this.componentOrbit.target);
+    this.componentCamera.lookAt(this.componentOrbit.target);
+  },
+
+  onComponentTouchStart(e) {
+    const touches = e.touches || [];
+    if (touches.length === 1) {
+      this.componentTouch = {
+        mode: 'rotate',
+        x: touches[0].clientX,
+        y: touches[0].clientY
+      };
+    } else if (touches.length === 2) {
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      this.componentTouch = {
+        mode: 'zoom',
+        dist: Math.sqrt(dx * dx + dy * dy)
+      };
+    }
+  },
+
+  onComponentTouchMove(e) {
+    if (!this.componentTouch || !this.componentOrbit) return;
+    const touches = e.touches || [];
+    if (this.componentTouch.mode === 'rotate' && touches.length === 1) {
+      const dx = touches[0].clientX - this.componentTouch.x;
+      const dy = touches[0].clientY - this.componentTouch.y;
+      this.componentOrbit.spherical.theta -= dx * 0.01;
+      this.componentOrbit.spherical.phi = clamp(this.componentOrbit.spherical.phi - dy * 0.008, 0.24, Math.PI / 2.05);
+      this.componentTouch.x = touches[0].clientX;
+      this.componentTouch.y = touches[0].clientY;
+      this.updateComponentCamera();
+    } else if (this.componentTouch.mode === 'zoom' && touches.length === 2) {
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 0 && this.componentTouch.dist > 0) {
+        this.componentOrbit.spherical.radius = clamp(this.componentOrbit.spherical.radius * (this.componentTouch.dist / dist), 8, 100);
+        this.componentTouch.dist = dist;
+        this.updateComponentCamera();
+      }
+    }
+  },
+
+  onComponentTouchEnd() {
+    this.componentTouch = null;
   },
 
   showPlannedToast() {
