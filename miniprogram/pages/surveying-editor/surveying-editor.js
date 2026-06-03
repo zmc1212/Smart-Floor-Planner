@@ -1,21 +1,21 @@
-﻿const app = getApp();
+const app = getApp();
 const surveyGraph = require('../../utils/surveyWallGraph.js');
 const surveyCanvasRenderer = require('../../utils/surveyCanvasRenderer.js');
 
 const RESERVED_TOOLS = [
-  { key: 'settings', label: '璁剧疆' },
-  { key: 'reference', label: '鍙傜収' },
-  { key: 'lock', label: '閿佸眰' },
-  { key: 'area', label: '闈㈢Н' },
+  { key: 'settings', label: '设置' },
+  { key: 'reference', label: '参考' },
+  { key: 'lock', label: '锁定' },
+  { key: 'area', label: '面积' },
   { key: 'cad', label: 'CAD' },
-  { key: 'more', label: '鏇村' }
+  { key: 'more', label: '更多' }
 ];
 const OBJECT_TOOLS = [
-  { key: 'object-edit', label: '缂栬緫', helper: '灏哄' },
-  { key: 'object-split', label: '鎵撴柇', helper: '鍚庣画' },
-  { key: 'object-add', label: '娣诲姞', helper: '闂ㄧ獥' },
-  { key: 'object-arrange', label: '鎺掑竷', helper: '鍚庣画' },
-  { key: 'object-delete', label: '鍒犻櫎', helper: '澧欎綋/闂ㄧ獥' }
+  { key: 'object-edit', label: '编辑', helper: '尺寸' },
+  { key: 'object-split', label: '拆分', helper: '后续' },
+  { key: 'object-add', label: '添加', helper: '门窗' },
+  { key: 'object-arrange', label: '布置', helper: '后续' },
+  { key: 'object-delete', label: '删除', helper: '墙体/门窗' }
 ];
 
 const NUMBER_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '清空', '0', '退格'];
@@ -102,11 +102,11 @@ function normalizeAngleDiff(currentAngle, previousAngle) {
 
 function buildCoreTools(activeTool, thicknessMm) {
   return [
-    { key: 'straight', label: '鐩寸嚎', helper: '姝ｄ氦鍚搁檮', enabled: true, active: activeTool === 'straight' },
-    { key: 'diagonal', label: '鏂滅嚎', helper: '鑷敱瑙掑害', enabled: true, active: activeTool === 'diagonal' },
-    { key: 'thickness', label: '澧欏帤', helper: formatMm(thicknessMm), enabled: true, active: false },
-    { key: 'input', label: '杈撳叆', helper: '鎵嬭緭 mm', enabled: true, active: false },
-    { key: 'reset', label: '閲嶇疆', helper: '鍏夋爣', enabled: true, active: false }
+    { key: 'straight', label: '直线', helper: '正交吸附', enabled: true, active: activeTool === 'straight' },
+    { key: 'diagonal', label: '斜线', helper: '自由角度', enabled: true, active: activeTool === 'diagonal' },
+    { key: 'thickness', label: '墙厚', helper: formatMm(thicknessMm), enabled: true, active: false },
+    { key: 'input', label: '输入', helper: '手输 mm', enabled: true, active: false },
+    { key: 'reset', label: '重置', helper: '光标', enabled: true, active: false }
   ];
 }
 
@@ -264,8 +264,8 @@ Page({
     objectToolsVisible: false,
     spaceSummary: null,
     numberPadVisible: false,
-    numberPadTitle: '杈撳叆闀垮害',
-    numberPadSubtitle: '鍗曚綅锛歮m',
+    numberPadTitle: '输入长度',
+    numberPadSubtitle: '单位：mm',
     numberInput: '',
     numberKeys: NUMBER_KEYS,
     historySummary: {
@@ -281,7 +281,7 @@ Page({
     componentSpecTabs: COMPONENT_SPEC_TABS,
     componentCategories: [],
     componentLibraryItems: [],
-    componentEditorTitle: '鏋勪欢缂栬緫',
+    componentEditorTitle: '构件编辑',
     componentSpecValue: '0',
     componentSelectedOpening: null
   },
@@ -485,7 +485,7 @@ Page({
       ctx.font = 'bold 13px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('褰撳墠娴嬮噺浣嶇疆', measure.tip.x + measure.tip.width / 2, measure.tip.y + measure.tip.height / 2);
+      ctx.fillText('当前测量位置', measure.tip.x + measure.tip.width / 2, measure.tip.y + measure.tip.height / 2);
 
       ctx.beginPath();
       ctx.fillStyle = 'rgba(65, 65, 69, 0.92)';
@@ -584,6 +584,37 @@ Page({
     });
   },
 
+  centerSelectedWall(numPadVisible) {
+    if (!this.canvasRect || !this.draft) return;
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const session = floor.session;
+    const wallId = session.selectedWallId;
+    if (!wallId) return;
+
+    const wall = surveyGraph.getWall(floor, wallId);
+    if (!wall) return;
+
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    if (!start || !end) return;
+
+    const midXMm = (start.xMm + end.xMm) / 2;
+    const midYMm = (start.yMm + end.yMm) / 2;
+
+    const viewport = this.getViewport();
+    const scale = viewport.scale;
+
+    const padHeight = numPadVisible ? 240 : 0;
+
+    const nextOffsetX = -midXMm * scale;
+    const nextOffsetY = -midYMm * scale - (padHeight / 2);
+
+    this.draft = surveyGraph.updateViewport(this.draft, {
+      offsetX: nextOffsetX,
+      offsetY: nextOffsetY
+    });
+  },
+
   buildComponentEditorState(floor, selectedOpening) {
     const mode = selectedOpening && selectedOpening.type === 'window' ? 'window' : 'door';
     const categories = (COMPONENT_CATEGORY_OPTIONS[mode] || []).map((item) => Object.assign({}, item, {
@@ -598,7 +629,7 @@ Page({
 
     return {
       mode,
-      title: selectedOpening ? `${selectedOpening.typeLabel}鏋勪欢缂栬緫` : '鏋勪欢缂栬緫',
+      title: selectedOpening ? `${selectedOpening.typeLabel}构件编辑` : '构件编辑',
       categories,
       libraryItems,
       opening: selectedOpening,
@@ -643,12 +674,12 @@ Page({
 
     if (session.previewPoint) {
       closeHintVisible = !!(session.closeCandidateNodeId || session.closeCandidatePoint);
-      closeHintText = closeHintVisible ? '棰勮绔偣宸叉帴杩戣捣鐐癸紝纭闀垮害鍚庡彲闂悎' : '';
+      closeHintText = closeHintVisible ? '预览端点已接近起点，确认长度后可闭合' : '';
     }
 
     if (session.state === 'closing') {
       closeHintVisible = true;
-      closeHintText = '褰撳墠绔偣宸叉帴杩戣捣鐐癸紝鍙棴鍚堝崟绌洪棿';
+      closeHintText = '当前端点已接近起点，可闭合单空间';
     }
 
     if (session.anchorNodeId && session.state !== 'spaceClosed' && session.state !== 'wallSelected' && session.state !== 'remeasureAwaitingInput') {
@@ -703,7 +734,7 @@ Page({
     const gap = 8;
     const redo = {
       key: 'redo',
-      label: '閲嶅仛',
+      label: '重做',
       count: this.history.redo.length,
       cx: rect.width - right - buttonSize / 2,
       cy: rect.height - bottom - buttonSize / 2,
@@ -711,7 +742,7 @@ Page({
     };
     const undo = {
       key: 'undo',
-      label: '鎾ら攢',
+      label: '撤销',
       count: this.history.undo.length,
       cx: redo.cx,
       cy: redo.cy - buttonSize - gap,
@@ -865,8 +896,8 @@ Page({
       redlineEndInsetPx: geometry && geometry.endJoined ? REDLINE_JOIN_TRIM_PX : 0,
       redlineParts: [],
       label: this.formatWallLabel(wall),
-      sideLabel: wall.measurementSide === 'left' ? '宸︿晶' : '鍙充晶',
-      modeLabel: wall.mode === 'diagonal' ? '鏂滃' : '鐩村',
+      sideLabel: wall.measurementSide === 'left' ? '左侧' : '右侧',
+      modeLabel: wall.mode === 'diagonal' ? '斜墙' : '直墙',
       selected,
       preview: isPreview
     };
@@ -1006,7 +1037,7 @@ Page({
     return {
       visible: true,
       length: `L ${Math.round(segment.lengthMm)}`,
-      angle: segment.relativeAngle ? `鈭?${segment.relativeAngle}掳` : ''
+      angle: segment.relativeAngle ? `∠${segment.relativeAngle}°` : ''
     };
   },
 
@@ -1092,7 +1123,7 @@ Page({
   formatWallLabel(wall) {
     const lengthLabel = formatMm(wall.lengthMm);
     if (wall.mode === 'diagonal') {
-      return `${lengthLabel} 路 ${Math.round(wall.angleDeg)}掳`;
+      return `${lengthLabel} ∠ ${Math.round(wall.angleDeg)}°`;
     }
     return lengthLabel;
   },
@@ -1114,9 +1145,9 @@ Page({
       const dy = endPoint.y - startPoint.y;
       const length = Math.sqrt(dx * dx + dy * dy) || 1;
       const normal = { x: -dy / length, y: dx / length };
-      const toolbarWidth = 184;
-      const toolbarHeight = 48;
-      const candidateOffsets = [76, -94, 132, -150];
+      const toolbarWidth = 196;
+      const toolbarHeight = 36;
+      const candidateOffsets = [56, -74, 92, -110];
       const toolbarPoint = candidateOffsets.map((offset) => ({
         left: midX + normal.x * offset - toolbarWidth / 2,
         top: midY + normal.y * offset - toolbarHeight / 2,
@@ -1128,8 +1159,8 @@ Page({
         candidate.top + toolbarHeight <= rect.height - 18
       )) || {
         left: clamp(midX - toolbarWidth / 2, 12, Math.max(12, rect.width - toolbarWidth - 12)),
-        top: clamp(midY - 118, 18, Math.max(18, rect.height - toolbarHeight - 18)),
-        offset: -118
+        top: clamp(midY - 80, 18, Math.max(18, rect.height - toolbarHeight - 18)),
+        offset: -80
       };
       actionStyle = `left:${roundPx(toolbarPoint.left)}px; top:${roundPx(toolbarPoint.top)}px;`;
     }
@@ -1137,10 +1168,10 @@ Page({
     return {
       id: wall.id,
       length: formatMm(wall.lengthMm),
-      angle: `${Math.round(wall.angleDeg)}掳`,
+      angle: `${Math.round(wall.angleDeg)}°`,
       thickness: formatMm(wall.thicknessMm),
-      side: wall.measurementSide === 'left' ? '宸︿晶' : '鍙充晶',
-      mode: wall.mode === 'diagonal' ? '鏂滃' : '鐩村',
+      side: wall.measurementSide === 'left' ? '左侧' : '右侧',
+      mode: wall.mode === 'diagonal' ? '斜墙' : '直墙',
       actionStyle
     };
   },
@@ -1175,7 +1206,7 @@ Page({
       swatch: this.getComponentModelSwatch(opening),
       entryDoor: !!opening.entryDoor,
       openDirection: opening.openDirection === 'outside' ? 'outside' : 'inside',
-      openDirectionLabel: opening.openDirection === 'outside' ? '澶栧紑' : '鍐呭紑'
+      openDirectionLabel: opening.openDirection === 'outside' ? '外开' : '内开'
     };
   },
 
@@ -1444,7 +1475,7 @@ Page({
       return;
     }
 
-    wx.showToast({ title: '璇ュ璞″伐鍏峰皢鍦?Phase 8 缁х画瀹氫箟', icon: 'none' });
+    wx.showToast({ title: '该对象工具将在 Phase 8 继续定义', icon: 'none' });
   },
 
   onWallContextAction(e) {
@@ -1470,7 +1501,7 @@ Page({
     const floor = surveyGraph.getActiveFloor(this.draft);
     const wallId = floor.session.selectedWallId;
     if (!wallId) {
-      wx.showToast({ title: '璇峰厛閫夋嫨澧欎綋', icon: 'none' });
+      wx.showToast({ title: '请先选择墙体', icon: 'none' });
       return;
     }
 
@@ -1479,9 +1510,9 @@ Page({
       this.applyDraft(nextDraft, {
         recordHistory: true
       });
-      wx.showToast({ title: type === 'window' ? '宸叉坊鍔犵獥' : '宸叉坊鍔犻棬', icon: 'none' });
+      wx.showToast({ title: type === 'window' ? '已添加窗' : '已添加门', icon: 'none' });
     } catch (err) {
-      wx.showToast({ title: err.message || '娣诲姞澶辫触', icon: 'none' });
+      wx.showToast({ title: err.message || '添加失败', icon: 'none' });
     }
   },
 
@@ -1502,13 +1533,17 @@ Page({
     const floor = surveyGraph.getActiveFloor(this.draft);
     const opening = surveyGraph.getOpening(floor, floor.session.selectedOpeningId);
     if (!opening) {
-      wx.showToast({ title: '璇峰厛閫夋嫨闂ㄧ獥', icon: 'none' });
+      wx.showToast({ title: '请先选择门窗', icon: 'none' });
       return;
     }
+    const specMode = 'length';
+    const rawVal = this.getComponentSpecRawValue(floor, opening.id, specMode);
     this.setData({
       componentEditorVisible: true,
       componentPanelMode: 'spec',
-      componentSpecMode: 'length'
+      componentSpecMode: specMode,
+      componentSpecInput: rawVal,
+      componentSpecValue: rawVal
     }, () => {
       this.scheduleComponentSceneRender();
     });
@@ -1524,7 +1559,7 @@ Page({
   deleteSelectedOpening() {
     const floor = surveyGraph.getActiveFloor(this.draft);
     if (!floor.session.selectedOpeningId) {
-      wx.showToast({ title: '璇峰厛閫夋嫨闂ㄧ獥', icon: 'none' });
+      wx.showToast({ title: '请先选择门窗', icon: 'none' });
       return;
     }
     const nextDraft = surveyGraph.deleteOpening(this.draft, floor.session.selectedOpeningId);
@@ -1549,14 +1584,14 @@ Page({
     const floor = surveyGraph.getActiveFloor(this.draft);
     const wallId = floor.session.selectedWallId;
     if (!wallId || !surveyGraph.getWall(floor, wallId)) {
-      wx.showToast({ title: '璇峰厛閫夋嫨澧欎綋', icon: 'none' });
+      wx.showToast({ title: '请先选择墙体', icon: 'none' });
       return;
     }
 
     wx.showModal({
-      title: '鍒犻櫎澧欎綋',
+      title: '删除墙体',
       content: '将删除当前墙体及其上的门窗，已闭合空间会转回未闭合状态。',
-      confirmText: '鍒犻櫎',
+      confirmText: '删除',
       confirmColor: '#d71920',
       success: (res) => {
         if (!res.confirm) return;
@@ -1597,7 +1632,7 @@ Page({
         recordHistory: true,
         extraData: { numberPadVisible: this.data.numberPadVisible }
       });
-      wx.showToast({ title: nextDirection === 'outside' ? '闂ㄥ紑鍚戝凡璁句负澶栧紑' : '闂ㄥ紑鍚戝凡璁句负鍐呭紑', icon: 'none' });
+      wx.showToast({ title: nextDirection === 'outside' ? '门开向已设为外开' : '门开向已设为内开', icon: 'none' });
       return;
     }
 
@@ -1609,7 +1644,7 @@ Page({
       : session.selectedWallId;
 
     if (source === 'measure-position' && !this.isFirstMeasurePositionStage(floor, session)) {
-      wx.showToast({ title: '娴嬮噺浣嶇疆浠呭湪绗竴鏉¤竟璁剧疆', icon: 'none' });
+      wx.showToast({ title: '测量位置仅在第一条边设置', icon: 'none' });
       return;
     }
 
@@ -1631,7 +1666,7 @@ Page({
   onSavePrototypeDraft() {
     this.persistPrototypeDraft();
     this.setData({
-      prototypeNotice: '鏈湴浣撻獙鑽夌宸蹭繚瀛橈紝涓嶄細鍚屾姝ｅ紡鎴峰瀷'
+      prototypeNotice: '本地体验草稿已保存，不会同步正式户型'
     });
     wx.showToast({ title: '体验草稿已保存', icon: 'success' });
   },
@@ -1660,7 +1695,7 @@ Page({
         recordHistory: true,
         extraData: { numberPadVisible: false }
       });
-      wx.showToast({ title: '鐐瑰嚮宸叉湁澧欎綋鏀剧疆鍏夋爣', icon: 'none' });
+      wx.showToast({ title: '点击已有墙体放置光标', icon: 'none' });
       return;
     }
 
@@ -1723,6 +1758,37 @@ Page({
     return false;
   },
 
+  hitTestLockHandles(clientPoint) {
+    if (!this.canvasRect || !clientPoint || !this.draft) return null;
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const session = floor.session;
+    if (!session || session.state !== 'remeasureAwaitingInput') return null;
+
+    const wall = surveyGraph.getWall(floor, session.selectedWallId);
+    if (!wall) return null;
+
+    const startNode = surveyGraph.getNode(floor, wall.startNodeId);
+    const endNode = surveyGraph.getNode(floor, wall.endNodeId);
+    if (!startNode || !endNode) return null;
+
+    const startPt = this.mmToCanvasPoint(startNode);
+    const endPt = this.mmToCanvasPoint(endNode);
+
+    const localPoint = {
+      x: clientPoint.x - this.canvasRect.left,
+      y: clientPoint.y - this.canvasRect.top
+    };
+
+    const threshold = 28; // visual circle radius is 14px, 28px hits comfortably
+    if (distancePx(startPt, localPoint) <= threshold) {
+      return { nodeId: startNode.id };
+    }
+    if (distancePx(endPt, localPoint) <= threshold) {
+      return { nodeId: endNode.id };
+    }
+    return null;
+  },
+
   onCanvasTouchStart(e) {
     if (this.data.numberPadVisible || !this.canvasRect) return;
     const touches = e.touches || [];
@@ -1742,6 +1808,18 @@ Page({
     if (!touches.length) return;
 
     const point = getTouchPoint(touches[0], this.canvasRect);
+    
+    // Check lock handles hit first
+    const lockHit = this.hitTestLockHandles(point);
+    if (lockHit) {
+      this.touchState = {
+        mode: 'lockHandle',
+        lockHit,
+        startPoint: point
+      };
+      return;
+    }
+
     const controlHit = this.hitTestCanvasControl(point);
     if (controlHit) {
       this.touchState = {
@@ -1855,6 +1933,7 @@ Page({
     const floor = surveyGraph.getActiveFloor(this.draft);
     const session = floor.session;
     const touchState = this.touchState;
+    const lockTap = touchState.mode === 'lockHandle';
     const controlTap = touchState.mode === 'control';
     const movedWall = touchState.mode === 'wall';
     const movedOpening = touchState.mode === 'opening';
@@ -1863,6 +1942,12 @@ Page({
     const historyDraft = touchState.historyDraft;
 
     this.touchState = null;
+
+    if (lockTap) {
+      const nextDraft = surveyGraph.setFixedNode(this.draft, touchState.lockHit.nodeId);
+      this.applyDraft(nextDraft, { persist: false });
+      return;
+    }
 
     if (controlTap) {
       this.handleCanvasControlTap(touchState.control);
@@ -1881,7 +1966,7 @@ Page({
         recordHistory: true,
         extraData: { numberPadVisible: false }
       });
-      wx.showToast({ title: '鍏夋爣宸插惛闄勫埌澧欎綋', icon: 'none' });
+      wx.showToast({ title: '光标已吸附到墙体', icon: 'none' });
       return;
     }
 
@@ -1925,7 +2010,9 @@ Page({
 
       const wallHit = this.hitTestWallAtClientPoint(touchState.startPoint);
       if (wallHit && wallHit.wallId) {
-        this.applyDraft(surveyGraph.selectWall(this.draft, wallHit.wallId), {
+        this.draft = surveyGraph.selectWall(this.draft, wallHit.wallId);
+        this.centerSelectedWall(false);
+        this.applyDraft(this.draft, {
           extraData: { numberPadVisible: false },
           persist: false
         });
@@ -1958,7 +2045,7 @@ Page({
             icon: 'none'
           });
         } catch (err) {
-          wx.showToast({ title: err.message || '鎴愬澶辫触锛岃閲嶈瘯', icon: 'none' });
+          wx.showToast({ title: err.message || '成墙失败，请重试', icon: 'none' });
           this.applyDraft(surveyGraph.cancelPending(this.draft), { persist: false });
         }
       } else {
@@ -1982,7 +2069,9 @@ Page({
 
   onWallTap(e) {
     const wallId = e.currentTarget.dataset.id;
-    this.applyDraft(surveyGraph.selectWall(this.draft, wallId), {
+    this.draft = surveyGraph.selectWall(this.draft, wallId);
+    this.centerSelectedWall(false);
+    this.applyDraft(this.draft, {
       extraData: { numberPadVisible: false },
       persist: false
     });
@@ -2001,7 +2090,9 @@ Page({
   },
 
   onStartRemeasure() {
-    this.applyDraft(surveyGraph.startRemeasure(this.draft), { persist: false });
+    this.draft = surveyGraph.startRemeasure(this.draft);
+    this.centerSelectedWall(true);
+    this.applyDraft(this.draft, { persist: false });
     this.openNumberPad('length');
   },
 
@@ -2012,9 +2103,9 @@ Page({
     try {
       const nextDraft = surveyGraph.confirmClosure(this.draft);
       this.applyDraft(nextDraft, { recordHistory: true });
-      wx.showToast({ title: '鍗曠┖闂村凡闂悎', icon: 'success' });
+      wx.showToast({ title: '单空间已闭合', icon: 'success' });
     } catch (err) {
-      wx.showToast({ title: err.message || '闂悎澶辫触锛岃閲嶆柊娴嬮噺', icon: 'none' });
+      wx.showToast({ title: err.message || '闭合失败，请重新测量', icon: 'none' });
     }
   },
 
@@ -2061,10 +2152,11 @@ Page({
     }
 
     this.numberPadMode = 'length';
+    this.centerSelectedWall(true);
     this.syncFromDraft({
       numberPadVisible: true,
-      numberPadTitle: session.state === 'wallSelected' || session.state === 'remeasureAwaitingInput' ? '杈撳叆澶嶅昂闀垮害' : '杈撳叆褰撳墠澧欓暱',
-      numberPadSubtitle: '鍗曚綅锛歮m锛岀‘璁ゅ悗钀藉浘',
+      numberPadTitle: session.state === 'wallSelected' || session.state === 'remeasureAwaitingInput' ? '输入复尺长度' : '输入当前墙长',
+      numberPadSubtitle: '单位：mm，确认后落图',
       numberInput: inputValue
     });
   },
@@ -2072,7 +2164,7 @@ Page({
   updateComponentSpecValue(draft, openingId, specMode, value) {
     const floor = surveyGraph.getActiveFloor(draft);
     const opening = surveyGraph.getOpening(floor, openingId);
-    if (!opening) throw new Error('璇峰厛閫夋嫨闂ㄧ獥');
+    if (!opening) throw new Error('请先选择门窗');
     const wall = surveyGraph.getWall(floor, opening.wallId);
     const wallLength = wall ? wall.lengthMm || 0 : 0;
     const currentWidth = opening.widthMm || 0;
@@ -2294,8 +2386,9 @@ Page({
 
       if (session.state === 'remeasureAwaitingInput') {
         const wasClosed = floor.spaces.some((space) => space.closed);
-        const nextDraft = surveyGraph.remeasureSelectedWall(this.draft, value, 'manual');
-        this.applyDraft(nextDraft, {
+        this.draft = surveyGraph.remeasureSelectedWall(this.draft, value, 'manual');
+        this.centerSelectedWall(false);
+        this.applyDraft(this.draft, {
           recordHistory: true,
           extraData: { numberPadVisible: false, numberInput: '' }
         });
@@ -2303,14 +2396,16 @@ Page({
         return;
       }
 
-      wx.showToast({ title: '褰撳墠娌℃湁鍙緭鍏ョ殑澧欎綋', icon: 'none' });
+      wx.showToast({ title: '当前没有可输入的墙体', icon: 'none' });
     } catch (err) {
-      wx.showToast({ title: err.message || '杈撳叆鏃犳晥', icon: 'none' });
+      wx.showToast({ title: err.message || '输入无效', icon: 'none' });
     }
   },
 
   onNumberClose() {
     this.numberPadMode = '';
+    this.centerSelectedWall(false);
+    this.applyDraft(this.draft, { persist: false });
     this.setData({ numberPadVisible: false, numberInput: '' });
   },
 
@@ -2320,7 +2415,15 @@ Page({
 
   onComponentPanelTab(e) {
     const mode = e.currentTarget.dataset.mode || 'spec';
-    this.setData({ componentPanelMode: mode }, () => {
+    const updateData = { componentPanelMode: mode };
+    if (mode === 'spec') {
+      const floor = surveyGraph.getActiveFloor(this.draft);
+      const specMode = this.data.componentSpecMode || 'length';
+      const rawVal = this.getComponentSpecRawValue(floor, floor.session.selectedOpeningId, specMode);
+      updateData.componentSpecInput = rawVal;
+      updateData.componentSpecValue = rawVal;
+    }
+    this.setData(updateData, () => {
       this.scheduleComponentSceneRender();
     });
   },
@@ -2328,17 +2431,60 @@ Page({
   onComponentSpecTab(e) {
     const mode = e.currentTarget.dataset.mode || 'length';
     const floor = surveyGraph.getActiveFloor(this.draft);
+    const rawVal = this.getComponentSpecRawValue(floor, floor.session.selectedOpeningId, mode);
     this.setData({
       componentSpecMode: mode,
-      componentSpecValue: this.getComponentSpecRawValue(floor, floor.session.selectedOpeningId, mode)
+      componentSpecValue: rawVal,
+      componentSpecInput: rawVal
     }, () => {
       this.scheduleComponentSceneRender();
-      this.openNumberPad(this.componentNumberPadMode(mode));
     });
   },
 
   openActiveComponentNumberPad() {
-    this.openNumberPad(this.componentNumberPadMode(this.data.componentSpecMode || 'length'));
+    // Embedded keyboard takes over; no-op.
+  },
+
+  onComponentKeyboardKey(e) {
+    const key = e.currentTarget.dataset.key;
+    let value = this.data.componentSpecInput || '';
+
+    if (key === '清空') {
+      value = '';
+    } else if (key === '退格') {
+      value = value.slice(0, -1);
+    } else if (/^\d$/.test(key)) {
+      value = value === '0' ? key : `${value}${key}`;
+    }
+
+    this.setData({
+      componentSpecInput: value,
+      componentSpecValue: value || '0'
+    });
+
+    if (value === '') {
+      return;
+    }
+
+    const intVal = parseInt(value, 10);
+    if (!Number.isFinite(intVal)) return;
+
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const openingId = floor.session.selectedOpeningId;
+    const specMode = this.data.componentSpecMode || 'length';
+
+    try {
+      const nextDraft = this.updateComponentSpecValue(this.draft, openingId, specMode, intVal);
+      this.draft = nextDraft;
+      this.syncFromDraft({
+        componentEditorVisible: true,
+        componentPanelMode: 'spec',
+        componentSpecMode: specMode
+      });
+      this.schedulePrototypePersist();
+    } catch (err) {
+      wx.showToast({ title: err.message || '输入无效', icon: 'none' });
+    }
   },
 
   onToggleComponentThicknessSync() {
@@ -2431,6 +2577,8 @@ Page({
         if (!canvas) return;
         const width = target.width || canvas._width || canvas.width || 1;
         const height = target.height || canvas._height || canvas.height || 1;
+        this.componentCanvasWidth = width;
+        this.componentCanvasHeight = height;
         const dpr = this.surveyCanvasDpr || 1;
         canvas.width = Math.round(width * dpr);
         canvas.height = Math.round(height * dpr);
@@ -2456,6 +2604,8 @@ Page({
     this.componentCamera = null;
     this.componentOrbit = null;
     this.componentOrbitOpeningId = '';
+    this.componentCanvasWidth = 0;
+    this.componentCanvasHeight = 0;
     if (this.componentRenderer && this.componentRenderer.dispose) {
       this.componentRenderer.dispose();
     }
@@ -2545,11 +2695,11 @@ Page({
       addBox(openingCenterX, openingCenterY, -wallDepth * 0.72, openingWidth * 0.9, frame * 0.45, frameDepth * 0.45, windowFrameMat);
     } else {
       const swing = opening.openDirection === 'outside' ? -0.28 : 0.18;
-      const door = addBox(openingCenterX + swing, openingHeight / 2, -wallDepth * 0.68, openingWidth * 0.9, openingHeight * 0.96, Math.max(0.08, wallDepth * 0.42), doorPanelMat);
+      const door = addBox(openingCenterX + swing, openingSill + openingHeight / 2, -wallDepth * 0.68, openingWidth * 0.9, openingHeight * 0.96, Math.max(0.08, wallDepth * 0.42), doorPanelMat);
       if (door && opening.modelCategory === 'double-door') {
-        addBox(openingCenterX, openingHeight / 2, -wallDepth * 0.95, frame * 0.35, openingHeight * 0.86, frameDepth * 0.35, doorFrameMat);
+        addBox(openingCenterX, openingSill + openingHeight / 2, -wallDepth * 0.95, frame * 0.35, openingHeight * 0.86, frameDepth * 0.35, doorFrameMat);
       }
-      addBox(openingCenterX + openingWidth * 0.28, openingHeight * 0.52, -wallDepth * 0.94, frame * 0.6, frame * 0.45, frameDepth * 0.45, handleMat);
+      addBox(openingCenterX + openingWidth * 0.28, openingSill + openingHeight * 0.52, -wallDepth * 0.94, frame * 0.6, frame * 0.45, frameDepth * 0.45, handleMat);
     }
 
     const makeLine = (points) => {
@@ -2558,30 +2708,98 @@ Page({
       line.renderOrder = 20;
       scene.add(line);
     };
+    const dimMat = new THREE.LineBasicMaterial({ color: 0x475569, linewidth: 1.5 });
+    const makeDimLine = (points) => {
+      const geometry = new THREE.BufferGeometry().setFromPoints(points.map((point) => new THREE.Vector3(point[0], point[1], point[2])));
+      const line = new THREE.Line(geometry, dimMat);
+      scene.add(line);
+    };
     const frontZ = -wallDepth * 1.7;
     const backZ = wallDepth * 1.7;
     const makeDoubleSideLine = (points) => {
       makeLine(points.map((point) => [point[0], point[1], frontZ]));
       makeLine(points.map((point) => [point[0], point[1], backZ]));
     };
+    const makeDoubleSideDimLine = (points) => {
+      makeDimLine(points.map((point) => [point[0], point[1], frontZ]));
+      makeDimLine(points.map((point) => [point[0], point[1], backZ]));
+    };
     const makeDepthLine = (x, y) => {
       makeLine([[x, y, frontZ], [x, y, backZ]]);
       makeLine([[x - 0.24, y, frontZ], [x + 0.24, y, frontZ]]);
       makeLine([[x - 0.24, y, backZ], [x + 0.24, y, backZ]]);
     };
-    if (this.data.componentSpecMode === 'height') {
-      makeDoubleSideLine([[openingCenterX + openingWidth / 2 + 0.45, openingSill], [openingCenterX + openingWidth / 2 + 0.45, openingSill + openingHeight]]);
-    } else if (this.data.componentSpecMode === 'depth') {
-      makeDepthLine(openingCenterX, openingCenterY);
-    } else if (this.data.componentSpecMode === 'sill') {
-      makeDoubleSideLine([[openingCenterX, 0], [openingCenterX, openingSill]]);
-    } else if (this.data.componentSpecMode === 'edge1') {
-      makeDoubleSideLine([[-wallLength / 2, openingCenterY], [openingCenterX - openingWidth / 2, openingCenterY]]);
-    } else if (this.data.componentSpecMode === 'edge2') {
-      makeDoubleSideLine([[openingCenterX + openingWidth / 2, openingCenterY], [wallLength / 2, openingCenterY]]);
-    } else {
-      makeDoubleSideLine([[openingCenterX - openingWidth / 2, openingSill + openingHeight + 0.45], [openingCenterX + openingWidth / 2, openingSill + openingHeight + 0.45]]);
+    const makeParamLine = (paramKey, points) => {
+      const isSpecLength = paramKey === 'length' && (this.data.componentSpecMode === 'length' || this.data.componentSpecMode === 'spec');
+      const isActive = isSpecLength || (this.data.componentSpecMode === paramKey);
+      const mat = isActive ? redMat : dimMat;
+      const geometry = new THREE.BufferGeometry().setFromPoints(points.map((point) => new THREE.Vector3(point[0], point[1], point[2])));
+      const line = new THREE.Line(geometry, mat);
+      if (isActive) {
+        line.renderOrder = 20;
+      }
+      scene.add(line);
+    };
+    const makeDoubleSideParamLine = (paramKey, points) => {
+      makeParamLine(paramKey, points.map((p) => [p[0], p[1], frontZ]));
+      makeParamLine(paramKey, points.map((p) => [p[0], p[1], backZ]));
+    };
+
+    // 1. Left Margin (edge1)
+    if (edge1 > 0.01) {
+      makeDoubleSideParamLine('edge1', [[-wallLength / 2, openingCenterY], [openingCenterX - openingWidth / 2, openingCenterY]]);
+      makeDoubleSideParamLine('edge1', [[-wallLength / 2 - 0.04, openingCenterY - 0.04], [-wallLength / 2 + 0.04, openingCenterY + 0.04]]);
+      makeDoubleSideParamLine('edge1', [[openingCenterX - openingWidth / 2 - 0.04, openingCenterY - 0.04], [openingCenterX - openingWidth / 2 + 0.04, openingCenterY + 0.04]]);
     }
+
+    // 2. Right Margin (edge2)
+    if (edge2 > 0.01) {
+      makeDoubleSideParamLine('edge2', [[openingCenterX + openingWidth / 2, openingCenterY], [wallLength / 2, openingCenterY]]);
+      makeDoubleSideParamLine('edge2', [[openingCenterX + openingWidth / 2 - 0.04, openingCenterY - 0.04], [openingCenterX + openingWidth / 2 + 0.04, openingCenterY + 0.04]]);
+      makeDoubleSideParamLine('edge2', [[wallLength / 2 - 0.04, openingCenterY - 0.04], [wallLength / 2 + 0.04, openingCenterY + 0.04]]);
+    }
+
+    // 3. Opening Width (length)
+    makeDoubleSideParamLine('length', [[openingCenterX - openingWidth / 2, openingSill + openingHeight + 0.28], [openingCenterX + openingWidth / 2, openingSill + openingHeight + 0.28]]);
+    makeDoubleSideParamLine('length', [[openingCenterX - openingWidth / 2, openingSill + openingHeight], [openingCenterX - openingWidth / 2, openingSill + openingHeight + 0.34]]);
+    makeDoubleSideParamLine('length', [[openingCenterX + openingWidth / 2, openingSill + openingHeight], [openingCenterX + openingWidth / 2, openingSill + openingHeight + 0.34]]);
+    makeDoubleSideParamLine('length', [[openingCenterX - openingWidth / 2 - 0.04, openingSill + openingHeight + 0.28 - 0.04], [openingCenterX - openingWidth / 2 + 0.04, openingSill + openingHeight + 0.28 + 0.04]]);
+    makeDoubleSideParamLine('length', [[openingCenterX + openingWidth / 2 - 0.04, openingSill + openingHeight + 0.28 - 0.04], [openingCenterX + openingWidth / 2 + 0.04, openingSill + openingHeight + 0.28 + 0.04]]);
+
+    // 4. Opening Height (height)
+    makeDoubleSideParamLine('height', [[openingCenterX + openingWidth / 2 + 0.22, openingSill], [openingCenterX + openingWidth / 2 + 0.22, openingSill + openingHeight]]);
+    makeDoubleSideParamLine('height', [[openingCenterX + openingWidth / 2, openingSill], [openingCenterX + openingWidth / 2 + 0.28, openingSill]]);
+    makeDoubleSideParamLine('height', [[openingCenterX + openingWidth / 2, openingSill + openingHeight], [openingCenterX + openingWidth / 2 + 0.28, openingSill + openingHeight]]);
+    makeDoubleSideParamLine('height', [[openingCenterX + openingWidth / 2 + 0.22 - 0.04, openingSill - 0.04], [openingCenterX + openingWidth / 2 + 0.22 + 0.04, openingSill + 0.04]]);
+    makeDoubleSideParamLine('height', [[openingCenterX + openingWidth / 2 + 0.22 - 0.04, openingSill + openingHeight - 0.04], [openingCenterX + openingWidth / 2 + 0.22 + 0.04, openingSill + openingHeight + 0.04]]);
+
+    // 5. Sill Height (sill)
+    if (openingSill > 0.01) {
+      makeDoubleSideParamLine('sill', [[openingCenterX - 0.18, 0], [openingCenterX - 0.18, openingSill]]);
+      makeDoubleSideParamLine('sill', [[openingCenterX, 0], [openingCenterX - 0.24, 0]]);
+      makeDoubleSideParamLine('sill', [[openingCenterX, openingSill], [openingCenterX - 0.24, openingSill]]);
+      makeDoubleSideParamLine('sill', [[openingCenterX - 0.18 - 0.04, -0.04], [openingCenterX - 0.18 + 0.04, 0.04]]);
+      makeDoubleSideParamLine('sill', [[openingCenterX - 0.18 - 0.04, openingSill - 0.04], [openingCenterX - 0.18 + 0.04, openingSill + 0.04]]);
+    }
+
+    // 6. Thickness/Depth (depth)
+    if (this.data.componentSpecMode === 'depth') {
+      makeDepthLine(openingCenterX, openingCenterY);
+    }
+
+    // Draw Wall Length Dimension
+    makeDoubleSideDimLine([[-wallLength / 2, -0.28], [wallLength / 2, -0.28]]);
+    makeDoubleSideDimLine([[-wallLength / 2, 0], [-wallLength / 2, -0.34]]);
+    makeDoubleSideDimLine([[wallLength / 2, 0], [wallLength / 2, -0.34]]);
+    makeDoubleSideDimLine([[-wallLength / 2 - 0.04, -0.28 - 0.04], [-wallLength / 2 + 0.04, -0.28 + 0.04]]);
+    makeDoubleSideDimLine([[wallLength / 2 - 0.04, -0.28 - 0.04], [wallLength / 2 + 0.04, -0.28 + 0.04]]);
+
+    // Draw Wall Height Dimension
+    makeDoubleSideDimLine([[wallLength / 2 + 0.35, 0], [wallLength / 2 + 0.35, wallHeight]]);
+    makeDoubleSideDimLine([[wallLength / 2, 0], [wallLength / 2 + 0.41, 0]]);
+    makeDoubleSideDimLine([[wallLength / 2, wallHeight], [wallLength / 2 + 0.41, wallHeight]]);
+    makeDoubleSideDimLine([[wallLength / 2 + 0.35 - 0.04, -0.04], [wallLength / 2 + 0.35 + 0.04, 0.04]]);
+    makeDoubleSideDimLine([[wallLength / 2 + 0.35 - 0.04, wallHeight - 0.04], [wallLength / 2 + 0.35 + 0.04, wallHeight + 0.04]]);
 
     this.componentScene = scene;
     this.componentCamera = camera;
@@ -2591,6 +2809,7 @@ Page({
       THREE
     };
     this.componentOrbitOpeningId = opening.id;
+    this.updateDimensionLabels();
   },
 
   startComponentAnimation() {
@@ -2610,6 +2829,108 @@ Page({
     if (!this.componentOrbit || !this.componentCamera) return;
     this.componentCamera.position.setFromSpherical(this.componentOrbit.spherical).add(this.componentOrbit.target);
     this.componentCamera.lookAt(this.componentOrbit.target);
+    this.updateDimensionLabels();
+  },
+
+  updateDimensionLabels() {
+    const THREE = this.componentTHREE;
+    if (!THREE || !this.componentCamera || !this.componentCanvas) return;
+
+    this.componentCamera.updateMatrixWorld(true);
+    this.componentCamera.matrixWorldInverse.getInverse(this.componentCamera.matrixWorld);
+
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const opening = surveyGraph.getOpening(floor, floor.session.selectedOpeningId);
+    const wall = opening ? surveyGraph.getWall(floor, opening.wallId) : null;
+    if (!opening || !wall) return;
+
+    const scale = 0.01;
+    const wallLength = Math.max(wall.lengthMm || 0, opening.widthMm || 900, 1200) * scale;
+    const wallHeight = Math.max(2800, (opening.sillHeightMm || 0) + (opening.heightMm || 0) + 300) * scale;
+    const wallDepth = Math.max(wall.thicknessMm || 200, 80) * scale;
+
+    const openingWidth = Math.max(opening.widthMm || 0, 100) * scale;
+    const openingHeight = Math.max(opening.heightMm || 0, 100) * scale;
+    const openingSill = Math.max(opening.sillHeightMm || 0, 0) * scale;
+    const edge1 = Math.max(0, (opening.centerOffsetMm || 0) - (opening.widthMm || 0) / 2) * scale;
+    const edge2 = Math.max(0, wallLength - edge1 - openingWidth);
+    const openingCenterX = -wallLength / 2 + edge1 + openingWidth / 2;
+    const openingCenterY = openingSill + openingHeight / 2;
+
+    const frontZ = -wallDepth * 1.7;
+    const backZ = wallDepth * 1.7;
+    const activeZ = this.componentCamera.position.z > 0 ? backZ : frontZ;
+
+    const width = this.componentCanvasWidth || 375;
+    const height = this.componentCanvasHeight || 400;
+
+    // 1. Wall Length Label (bottom)
+    const wallLengthVec = new THREE.Vector3(0, -0.38, activeZ);
+    wallLengthVec.project(this.componentCamera);
+    const wlX = (wallLengthVec.x * 0.5 + 0.5) * width - 40;
+    const wlY = (-(wallLengthVec.y * 0.5) + 0.5) * height - 8;
+
+    // 2. Wall Height Label (right side)
+    const wallHeightVec = new THREE.Vector3(wallLength / 2 + 0.45, wallHeight / 2, activeZ);
+    wallHeightVec.project(this.componentCamera);
+    const whX = (wallHeightVec.x * 0.5 + 0.5) * width - 40;
+    const whY = (-(wallHeightVec.y * 0.5) + 0.5) * height - 8;
+
+    // 3. Opening Edge1 Label
+    const edge1Vec = new THREE.Vector3((-wallLength / 2 + openingCenterX - openingWidth / 2) / 2, openingCenterY + 0.12, activeZ);
+    edge1Vec.project(this.componentCamera);
+    const e1X = (edge1Vec.x * 0.5 + 0.5) * width - 40;
+    const e1Y = (-(edge1Vec.y * 0.5) + 0.5) * height - 8;
+
+    // 4. Opening Edge2 Label
+    const edge2Vec = new THREE.Vector3((openingCenterX + openingWidth / 2 + wallLength / 2) / 2, openingCenterY + 0.12, activeZ);
+    edge2Vec.project(this.componentCamera);
+    const e2X = (edge2Vec.x * 0.5 + 0.5) * width - 40;
+    const e2Y = (-(edge2Vec.y * 0.5) + 0.5) * height - 8;
+
+    // 5. Opening Width (length) Label
+    const lengthVec = new THREE.Vector3(openingCenterX, openingSill + openingHeight + 0.38, activeZ);
+    lengthVec.project(this.componentCamera);
+    const lenX = (lengthVec.x * 0.5 + 0.5) * width - 40;
+    const lenY = (-(lengthVec.y * 0.5) + 0.5) * height - 8;
+
+    // 6. Opening Height Label
+    const heightVec = new THREE.Vector3(openingCenterX + openingWidth / 2 + 0.35, openingCenterY, activeZ);
+    heightVec.project(this.componentCamera);
+    const hX = (heightVec.x * 0.5 + 0.5) * width - 40;
+    const hY = (-(heightVec.y * 0.5) + 0.5) * height - 8;
+
+    // 7. Opening Sill Height Label
+    const sillVec = new THREE.Vector3(openingCenterX - 0.32, openingSill / 2, activeZ);
+    sillVec.project(this.componentCamera);
+    const sX = (sillVec.x * 0.5 + 0.5) * width - 40;
+    const sY = (-(sillVec.y * 0.5) + 0.5) * height - 8;
+
+    const showWL = wallLengthVec.z <= 1;
+    const showWH = wallHeightVec.z <= 1;
+    const showE1 = edge1Vec.z <= 1 && edge1 > 0.01;
+    const showE2 = edge2Vec.z <= 1 && edge2 > 0.01;
+    const showLen = lengthVec.z <= 1;
+    const showH = heightVec.z <= 1;
+    const showS = sillVec.z <= 1 && openingSill > 0.01;
+
+    this.setData({
+      wallLengthLabel: `${Math.round(wall.lengthMm)} mm`,
+      wallHeightLabel: `${Math.round(wallHeight / scale)} mm`,
+      paramEdge1Label: `${Math.round(edge1 / scale)} mm`,
+      paramEdge2Label: `${Math.round(edge2 / scale)} mm`,
+      paramLengthLabel: `${Math.round(opening.widthMm)} mm`,
+      paramHeightLabel: `${Math.round(opening.heightMm)} mm`,
+      paramSillLabel: `${Math.round(opening.sillHeightMm || 0)} mm`,
+
+      wallLengthStyle: showWL ? `left: ${wlX}px; top: ${wlY}px; display: block;` : 'display: none;',
+      wallHeightStyle: showWH ? `left: ${whX}px; top: ${whY}px; display: block;` : 'display: none;',
+      paramEdge1Style: showE1 ? `left: ${e1X}px; top: ${e1Y}px; display: block;` : 'display: none;',
+      paramEdge2Style: showE2 ? `left: ${e2X}px; top: ${e2Y}px; display: block;` : 'display: none;',
+      paramLengthStyle: showLen ? `left: ${lenX}px; top: ${lenY}px; display: block;` : 'display: none;',
+      paramHeightStyle: showH ? `left: ${hX}px; top: ${hY}px; display: block;` : 'display: none;',
+      paramSillStyle: showS ? `left: ${sX}px; top: ${sY}px; display: block;` : 'display: none;'
+    });
   },
 
   onComponentTouchStart(e) {

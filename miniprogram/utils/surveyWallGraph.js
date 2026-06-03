@@ -1426,11 +1426,25 @@ function snapCursorToWall(draft, point) {
 function startRemeasure(draft) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
-  if (!floor.session.selectedWallId || !getWall(floor, floor.session.selectedWallId)) {
+  const wall = getWall(floor, floor.session.selectedWallId);
+  if (!wall) {
     return next;
   }
 
   floor.session.state = 'remeasureAwaitingInput';
+  const existingFixed = floor.session.fixedNodeId;
+  const isWallEndpoint = existingFixed === wall.startNodeId || existingFixed === wall.endNodeId;
+  if (!isWallEndpoint) {
+    const sharedEndpoint = getSingleSharedEndpoint(floor, wall);
+    floor.session.fixedNodeId = sharedEndpoint ? sharedEndpoint.fixedNodeId : wall.startNodeId;
+  }
+  return touchDraft(next);
+}
+
+function setFixedNode(draft, nodeId) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  floor.session.fixedNodeId = nodeId;
   return touchDraft(next);
 }
 
@@ -1444,11 +1458,11 @@ function remeasureSelectedWall(draft, lengthMm, inputSource) {
     throw new Error('请先选择需要复尺的墙体');
   }
 
-  const startNode = getNode(floor, wall.startNodeId);
-  const endNode = getNode(floor, wall.endNodeId);
   const sharedEndpoint = getSingleSharedEndpoint(floor, wall);
-  const fixedNode = sharedEndpoint ? getNode(floor, sharedEndpoint.fixedNodeId) : startNode;
-  const movingNode = sharedEndpoint ? getNode(floor, sharedEndpoint.movingNodeId) : endNode;
+  const fixedNodeId = session.fixedNodeId || (sharedEndpoint ? sharedEndpoint.fixedNodeId : wall.startNodeId);
+  const movingNodeId = fixedNodeId === wall.startNodeId ? wall.endNodeId : wall.startNodeId;
+  const fixedNode = getNode(floor, fixedNodeId);
+  const movingNode = getNode(floor, movingNodeId);
   const currentLength = distanceMm(fixedNode, movingNode);
   const safeLength = currentLength || 1;
   const dx = (movingNode.xMm - fixedNode.xMm) / safeLength;
@@ -1659,6 +1673,7 @@ module.exports = {
   snapCursorToWall,
   startRemeasure,
   remeasureSelectedWall,
+  setFixedNode,
   setMeasurementSide,
   setThickness,
   resetCursor,

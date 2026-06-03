@@ -417,10 +417,11 @@ page {
 .wall-object-toolbar {
   position: absolute;
   z-index: 9;
-  height: 48px;
-  min-width: 184px;
-  padding: 6px;
-  border-radius: 13px;
+  height: 36px;
+  width: 196px;
+  min-width: 196px;
+  padding: 4px;
+  border-radius: 18px;
   background: rgba(31, 41, 55, 0.94);
   box-shadow: var(--shadow-float);
   display: flex;
@@ -430,11 +431,11 @@ page {
 }
 
 .wall-object-action {
-  width: 40px;
-  min-width: 40px;
-  height: 36px;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
   padding: 0;
-  border-radius: 10px;
+  border-radius: 14px;
   background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
   display: flex;
@@ -452,10 +453,69 @@ page {
   background: rgba(255, 255, 255, 0.08);
 }
 
+.wall-object-action.delete {
+  background: rgba(239, 68, 68, 0.25);
+  color: #f87171;
+}
+
+.delete-lid {
+  position: absolute;
+  left: 5px;
+  top: 5px;
+  width: 14px;
+  height: 2px;
+  background: currentColor;
+  border-radius: 1px;
+}
+
+.delete-body {
+  position: absolute;
+  left: 7px;
+  top: 9px;
+  width: 10px;
+  height: 10px;
+  border: 1.8px solid currentColor;
+  border-top: none;
+  box-sizing: border-box;
+  border-radius: 0 0 2px 2px;
+}
+
+.side-wall-line {
+  position: absolute;
+  left: 11px;
+  top: 4px;
+  width: 2px;
+  height: 16px;
+  background: currentColor;
+}
+
+.side-dot-left {
+  position: absolute;
+  left: 4px;
+  top: 10px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.side-dot-right {
+  position: absolute;
+  right: 4px;
+  top: 10px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.3;
+}
+
 .wall-action-icon {
   position: relative;
   width: 24px;
   height: 24px;
+  transform: scale(0.7);
+  transform-origin: center;
 }
 
 .door-frame {
@@ -692,7 +752,15 @@ page {
   overflow-y: auto;
   padding-bottom: 12rpx;
   box-sizing: border-box;
+  pointer-events: none;
 }
+
+.right-rail > .tool-group:not(.reserved-tools),
+.right-rail > .side-switch,
+.right-rail > .opening-context {
+  pointer-events: auto;
+}
+
 
 .tool-group,
 .side-switch {
@@ -881,6 +949,11 @@ page {
   font-size: 42rpx;
 }
 
+.back-icon {
+  width: 32rpx;
+  height: 32rpx;
+}
+
 .component-lock {
   font-size: 28rpx;
 }
@@ -897,7 +970,7 @@ page {
   right: 0;
   top: 0;
   width: 100%;
-  height: 68%;
+  height: calc(100% - 620rpx - env(safe-area-inset-bottom));
   background: #ffffff;
 }
 
@@ -927,7 +1000,7 @@ page {
   right: 0;
   bottom: 0;
   z-index: 5;
-  min-height: 470rpx;
+  height: calc(620rpx + env(safe-area-inset-bottom));
   padding: 26rpx 22rpx calc(24rpx + env(safe-area-inset-bottom));
   border-radius: 30rpx 30rpx 0 0;
   background: rgba(255, 255, 255, 0.98);
@@ -1015,6 +1088,59 @@ page {
 
 .component-edit-hint {
   color: #6b7280;
+}
+
+.component-spec-display {
+  margin-top: 14rpx;
+  height: 68rpx;
+  border-radius: 12rpx;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8rpx;
+}
+
+.component-spec-val {
+  color: #e2702e;
+  font-size: 38rpx;
+  font-weight: 700;
+}
+
+.component-spec-unit {
+  color: #9ca3af;
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+.component-spec-keyboard {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10rpx;
+  margin-top: 16rpx;
+}
+
+.keyboard-key {
+  height: 70rpx;
+  border-radius: 16rpx;
+  background: #f8faf8;
+  color: #111827;
+  font-size: 28rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0px 0px 0px 1rpx rgba(17, 24, 39, 0.05);
+}
+
+.keyboard-key:active {
+  background: #e2e8f0;
+}
+
+.keyboard-key.utility {
+  color: #647268;
+  font-size: 23rpx;
+  font-weight: 600;
 }
 
 .component-sync-row {
@@ -1274,4 +1400,26 @@ page {
 
 .disabled {
   opacity: 0.58;
+}
+
+.dimension-overlay-label {
+  position: absolute;
+  font-family: monospace;
+  font-size: 20rpx;
+  color: #171717;
+  font-weight: 600;
+  padding: 4rpx 10rpx;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  border-radius: 6rpx;
+  box-shadow: 0px 0px 0px 1px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+  pointer-events: none;
+  z-index: 99;
+}
+
+.dimension-overlay-label.active {
+  color: #e12d2d;
+  background: rgba(254, 242, 242, 0.95);
+  border-color: rgba(239, 68, 68, 0.35);
+  box-shadow: 0px 0px 0px 1px rgba(239, 68, 68, 0.15), 0 2px 4px rgba(225, 45, 45, 0.08);
 }

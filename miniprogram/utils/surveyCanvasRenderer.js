@@ -112,20 +112,54 @@ function createLabelBox(wall, y, label) {
 function createDimensionOptions(wall, priority) {
   const innerSign = wall.measurementSide === 'left' ? 1 : -1;
   const outerSign = -innerSign;
-  const label = `${Math.round(wall.lengthMm || 0)}`;
-  const offsets = [
-    innerSign * DIMENSION_GAP_PX,
-    outerSign * (wall.thicknessPx + DIMENSION_OUTER_GAP_PX),
-    innerSign * (DIMENSION_GAP_PX + DIMENSION_LABEL_HEIGHT_PX + 10),
-    outerSign * (wall.thicknessPx + DIMENSION_OUTER_GAP_PX + DIMENSION_LABEL_HEIGHT_PX + 10)
+  const innerLabel = `${Math.round(wall.lengthMm || 0)}`;
+  const outerLabel = `${Math.round(wall.outerLengthMm || wall.lengthMm || 0)}`;
+  
+  const configs = [
+    {
+      offset: innerSign * DIMENSION_GAP_PX,
+      label: innerLabel,
+      startX: 0,
+      endX: wall.widthPx,
+      startY: 0,
+      endY: 0
+    },
+    {
+      offset: outerSign * (wall.thicknessPx + DIMENSION_OUTER_GAP_PX),
+      label: outerLabel,
+      startX: wall.outerStartAlongPx || 0,
+      endX: wall.outerEndPx || wall.widthPx,
+      startY: outerSign * wall.thicknessPx,
+      endY: outerSign * wall.thicknessPx
+    },
+    {
+      offset: innerSign * (DIMENSION_GAP_PX + DIMENSION_LABEL_HEIGHT_PX + 10),
+      label: innerLabel,
+      startX: 0,
+      endX: wall.widthPx,
+      startY: 0,
+      endY: 0
+    },
+    {
+      offset: outerSign * (wall.thicknessPx + DIMENSION_OUTER_GAP_PX + DIMENSION_LABEL_HEIGHT_PX + 10),
+      label: outerLabel,
+      startX: wall.outerStartAlongPx || 0,
+      endX: wall.outerEndPx || wall.widthPx,
+      startY: outerSign * wall.thicknessPx,
+      endY: outerSign * wall.thicknessPx
+    }
   ];
 
-  return offsets.map((offset, index) => {
-    const labelBox = createLabelBox(wall, offset, label);
+  return configs.map((cfg, index) => {
+    const labelBox = createLabelBox(wall, cfg.offset, cfg.label);
     return {
       wall,
-      label,
-      offset,
+      label: cfg.label,
+      offset: cfg.offset,
+      startX: cfg.startX,
+      endX: cfg.endX,
+      startY: cfg.startY,
+      endY: cfg.endY,
       priority: priority - index,
       labelBox
     };
@@ -133,37 +167,52 @@ function createDimensionOptions(wall, priority) {
 }
 
 function resolveDimensions(walls, previewWall) {
-  const candidates = [];
+  const dimensions = [];
+  const accepted = [];
   const renderWalls = walls.filter((wall) => !wall.lineOnly);
+
+  function processGroup(groupOptions) {
+    groupOptions.sort((first, second) => second.priority - first.priority);
+    groupOptions.forEach((candidate) => {
+      const selected = candidate.options.find((option) => {
+        return !accepted.some((acceptedOption) => boxesOverlap(option.labelBox, acceptedOption.labelBox, DIMENSION_COLLISION_GAP_PX));
+      }) || candidate.options[0];
+      accepted.push(selected);
+      dimensions.push(selected);
+    });
+  }
+
+  const innerGroup = [];
+  const outerGroup = [];
+
   renderWalls.forEach((wall, index) => {
     const priority = (wall.selected ? 900 : 0) + (index === renderWalls.length - 1 ? 500 : 0) + index;
-    candidates.push({
+    const allOptions = createDimensionOptions(wall, priority);
+    
+    innerGroup.push({
       wall,
-      options: createDimensionOptions(wall, priority),
+      options: [allOptions[0], allOptions[2]],
+      priority
+    });
+
+    outerGroup.push({
+      wall,
+      options: [allOptions[1], allOptions[3]],
       priority
     });
   });
 
   if (previewWall && !previewWall.lineOnly) {
-    candidates.push({
+    const previewOptions = createDimensionOptions(previewWall, 1000);
+    innerGroup.push({
       wall: previewWall,
-      options: createDimensionOptions(previewWall, 1000),
+      options: [previewOptions[0], previewOptions[2]],
       priority: 1000
     });
   }
 
-  candidates.sort((first, second) => second.priority - first.priority);
-  const accepted = [];
-  const dimensions = [];
-
-  candidates.forEach((candidate) => {
-    const selected = candidate.options.find((option) => {
-      return !accepted.some((acceptedOption) => boxesOverlap(option.labelBox, acceptedOption.labelBox, DIMENSION_COLLISION_GAP_PX));
-    }) || candidate.options[0];
-
-    accepted.push(selected);
-    dimensions.push(selected);
-  });
+  processGroup(innerGroup);
+  processGroup(outerGroup);
 
   return dimensions;
 }
@@ -209,6 +258,10 @@ function buildWallScene(floor, wall, options) {
   );
   const previousWall = opts.relativePreviousWall || opts.previousWall || null;
 
+  const outerStartAlongPx = geometry ? geometry.outerStartAlongMm * viewport.scale : 0;
+  const outerEndPx = geometry ? geometry.outerEndAlongMm * viewport.scale : widthPx;
+  const outerLengthMm = Math.round(surveyGraph.distanceMm(geometry.outerStart, geometry.outerEnd));
+
   return {
     id: wall.id,
     wall,
@@ -218,6 +271,9 @@ function buildWallScene(floor, wall, options) {
     endPoint,
     outerStart,
     outerEnd,
+    outerStartAlongPx,
+    outerEndPx,
+    outerLengthMm,
     bodyPolygon: [startPoint, endPoint, outerEnd, outerStart],
     direction,
     localY,
@@ -423,7 +479,8 @@ function createSurveyRenderScene(input) {
     alignmentSnapGuide: buildAlignmentSnapGuide(session, project),
     cursor: buildCursor(floor, session, project),
     activeSegment: previewWall || walls[walls.length - 1] || null,
-    closed: shouldCloseWholeWallPath(floor, previewWall)
+    closed: shouldCloseWholeWallPath(floor, previewWall),
+    session
   };
 }
 
@@ -497,7 +554,7 @@ function drawAxes(ctx, scene) {
 
 function drawWallBodies(ctx, scene) {
   scene.walls.forEach((wall) => {
-    drawPolygon(ctx, wall.bodyPolygon, wall.selected ? 'rgba(187, 247, 208, 0.92)' : 'rgba(226, 226, 224, 0.94)');
+    drawPolygon(ctx, wall.bodyPolygon, wall.selected ? 'rgba(239, 68, 68, 0.25)' : 'rgba(226, 226, 224, 0.94)');
   });
   scene.joinFills.forEach((join) => {
     drawPolygon(ctx, join.points, 'rgba(226, 226, 224, 0.94)');
@@ -603,8 +660,8 @@ function drawSelectedWallHighlight(ctx, scene) {
   if (!selectedWall) return;
 
   ctx.save();
-  ctx.strokeStyle = '#16a34a';
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = '#ef4444';
+  ctx.lineWidth = 1.5;
   ctx.lineJoin = 'round';
   ctx.beginPath();
   ctx.moveTo(selectedWall.bodyPolygon[0].x, selectedWall.bodyPolygon[0].y);
@@ -615,7 +672,7 @@ function drawSelectedWallHighlight(ctx, scene) {
   ctx.stroke();
 
   ctx.strokeStyle = '#f07a21';
-  ctx.lineWidth = 5;
+  ctx.lineWidth = 3;
   ctx.lineCap = 'round';
   ctx.beginPath();
   ctx.moveTo(selectedWall.startPoint.x, selectedWall.startPoint.y);
@@ -721,42 +778,66 @@ function drawArrow(ctx, x, y, direction, size) {
   ctx.fill();
 }
 
+function drawSlashTick(ctx, x, y, size) {
+  const s = size || 4;
+  ctx.save();
+  ctx.strokeStyle = '#333333';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x - s, y + s);
+  ctx.lineTo(x + s, y - s);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawDimension(ctx, dimension) {
   const wall = dimension.wall;
   const y = dimension.offset;
   const width = wall.widthPx;
-  const arrowSize = clamp(width / 7, 5, 8);
-  const inset = Math.min(Math.max(10, arrowSize + 4), Math.max(10, width / 3));
   const labelWidth = Math.max(34, String(dimension.label).length * 8 + 16);
   const labelHeight = DIMENSION_LABEL_HEIGHT_PX;
   const flipLabel = wall.angleDeg > 90 || wall.angleDeg <= -90;
 
+  const startX = typeof dimension.startX === 'number' ? dimension.startX : 0;
+  const endX = typeof dimension.endX === 'number' ? dimension.endX : width;
+  const startY = typeof dimension.startY === 'number' ? dimension.startY : 0;
+  const endY = typeof dimension.endY === 'number' ? dimension.endY : 0;
+
   ctx.save();
   ctx.translate(wall.startPoint.x, wall.startPoint.y);
   ctx.rotate(wall.angleRad);
-  ctx.strokeStyle = '#111111';
-  ctx.fillStyle = '#111111';
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = '#333333';
+  ctx.fillStyle = '#333333';
+  ctx.lineWidth = 1.2;
 
+  // Draw extension lines
   ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(0, y);
-  ctx.moveTo(width, 0);
-  ctx.lineTo(width, y);
-  ctx.moveTo(inset, y);
-  ctx.lineTo(Math.max(inset, width - inset), y);
+  ctx.moveTo(startX, startY);
+  ctx.lineTo(startX, y);
+  ctx.moveTo(endX, endY);
+  ctx.lineTo(endX, y);
   ctx.stroke();
 
-  drawArrow(ctx, inset, y, 1, arrowSize);
-  drawArrow(ctx, width - inset, y, -1, arrowSize);
+  // Draw dimension line (overshoot slightly past the extension lines)
+  const overshoot = 4;
+  ctx.beginPath();
+  ctx.moveTo(startX - overshoot, y);
+  ctx.lineTo(endX + overshoot, y);
+  ctx.stroke();
 
+  // Draw architectural slash ticks at intersections
+  drawSlashTick(ctx, startX, y, 4);
+  drawSlashTick(ctx, endX, y, 4);
+
+  // Draw value label
   ctx.save();
-  ctx.translate(width / 2, y);
+  ctx.translate((startX + endX) / 2, y);
   if (flipLabel) ctx.rotate(Math.PI);
-  ctx.fillStyle = 'rgba(196, 210, 222, 0.96)';
+  // Clear space for text using light background
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
   ctx.fillRect(-labelWidth / 2, -labelHeight / 2, labelWidth, labelHeight);
-  ctx.fillStyle = '#2875b4';
-  ctx.font = 'bold 12px sans-serif';
+  ctx.fillStyle = '#111111';
+  ctx.font = 'bold 12px monospace';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(dimension.label, 0, 0.5);
@@ -843,6 +924,52 @@ function drawCursor(ctx, scene) {
   ctx.restore();
 }
 
+function drawLockIcon(ctx, cx, cy, isLocked) {
+  ctx.save();
+  // Draw background circle
+  ctx.fillStyle = isLocked ? '#ef4444' : '#9ca3af';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 14, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Draw lock body
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(cx - 5, cy - 2, 10, 8);
+
+  // Draw lock shackle
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1.8;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  if (isLocked) {
+    // Closed shackle
+    ctx.arc(cx, cy - 2, 4, Math.PI, 0);
+  } else {
+    // Open shackle
+    ctx.arc(cx - 2, cy - 2, 4, Math.PI, -Math.PI / 4);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawLockHandles(ctx, scene) {
+  const session = scene.session;
+  if (!session || session.state !== 'remeasureAwaitingInput') return;
+
+  const selectedWall = (scene.walls || []).find((wall) => wall.id === session.selectedWallId);
+  if (!selectedWall) return;
+
+  const startPt = selectedWall.startPoint;
+  const endPt = selectedWall.endPoint;
+  const fixedNodeId = session.fixedNodeId || selectedWall.wall.startNodeId;
+
+  const startLocked = fixedNodeId === selectedWall.wall.startNodeId;
+  const endLocked = fixedNodeId === selectedWall.wall.endNodeId;
+
+  drawLockIcon(ctx, startPt.x, startPt.y, startLocked);
+  drawLockIcon(ctx, endPt.x, endPt.y, endLocked);
+}
+
 function drawSurveyScene(ctx, scene, options) {
   if (!ctx || !scene || !scene.rect.width || !scene.rect.height) return;
   const dpr = (options && options.dpr) || 1;
@@ -858,6 +985,7 @@ function drawSurveyScene(ctx, scene, options) {
   drawSelectedWallHighlight(ctx, scene);
   drawOpenings(ctx, scene);
   drawDimensions(ctx, scene);
+  drawLockHandles(ctx, scene);
   drawAlignmentSnapGuide(ctx, scene);
   drawClosureGuide(ctx, scene);
   drawCursor(ctx, scene);

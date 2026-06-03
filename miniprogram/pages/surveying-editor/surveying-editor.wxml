@@ -24,7 +24,9 @@
   <view class="survey-stage">
     <view wx:if="{{componentEditorVisible}}" class="component-editor">
       <view class="component-topbar" style="top: {{navigationSafeTop}}px;">
-        <view class="component-back" bindtap="closeComponentEditor">&lt;</view>
+        <view class="component-back" bindtap="closeComponentEditor">
+          <image class="back-icon" src="/images/back-arrow.png"></image>
+        </view>
         <view class="component-title">{{componentEditorTitle}}</view>
         <view class="component-lock">锁</view>
       </view>
@@ -39,6 +41,17 @@
         bindtouchcancel="onComponentTouchEnd"
         disable-scroll="true"
       ></canvas>
+
+      <!-- 墙体尺寸标注悬浮层 -->
+      <cover-view class="dimension-overlay-label" style="{{wallLengthStyle}}">{{wallLengthLabel}}</cover-view>
+      <cover-view class="dimension-overlay-label" style="{{wallHeightStyle}}">{{wallHeightLabel}}</cover-view>
+
+      <!-- 门窗构件参数标注悬浮层 -->
+      <cover-view class="dimension-overlay-label {{componentSpecMode === 'edge1' ? 'active' : ''}}" style="{{paramEdge1Style}}">{{paramEdge1Label}}</cover-view>
+      <cover-view class="dimension-overlay-label {{componentSpecMode === 'edge2' ? 'active' : ''}}" style="{{paramEdge2Style}}">{{paramEdge2Label}}</cover-view>
+      <cover-view class="dimension-overlay-label {{componentSpecMode === 'length' || componentSpecMode === 'spec' ? 'active' : ''}}" style="{{paramLengthStyle}}">{{paramLengthLabel}}</cover-view>
+      <cover-view class="dimension-overlay-label {{componentSpecMode === 'height' ? 'active' : ''}}" style="{{paramHeightStyle}}">{{paramHeightLabel}}</cover-view>
+      <cover-view class="dimension-overlay-label {{componentSpecMode === 'sill' ? 'active' : ''}}" style="{{paramSillStyle}}">{{paramSillLabel}}</cover-view>
 
       <view wx:if="{{componentSelectedOpening && componentSelectedOpening.type === 'door'}}" class="entry-door-action" bindtap="onToggleEntryDoor">
         {{componentSelectedOpening.entryDoor ? '已设为入户门' : '设为入户门'}}
@@ -65,10 +78,20 @@
               bindtap="onComponentSpecTab"
             >{{item.label}}</view>
           </view>
-          <view class="component-value-row" bindtap="openActiveComponentNumberPad">
-            <text class="component-value">{{componentSpecValue}}</text>
-            <text class="component-unit">mm</text>
-            <text class="component-edit-hint">点击输入</text>
+          <view class="component-spec-display">
+            <text class="component-spec-val">{{componentSpecValue}}</text>
+            <text class="component-spec-unit">mm</text>
+          </view>
+          <view class="component-spec-keyboard">
+            <view
+              class="keyboard-key {{item === '清空' || item === '退格' ? 'utility' : ''}}"
+              wx:for="{{numberKeys}}"
+              wx:key="*this"
+              data-key="{{item}}"
+              bindtap="onComponentKeyboardKey"
+            >
+              {{item}}
+            </view>
           </view>
           <view class="component-sync-row" bindtap="onToggleComponentThicknessSync">
             <view class="sync-dot {{componentSyncWallThickness ? 'active' : ''}}"></view>
@@ -165,13 +188,26 @@
             <cover-view class="window-line"></cover-view>
           </cover-view>
         </cover-view>
-        <cover-view class="wall-object-action" data-action="edit" aria-label="编辑墙体" bindtap="onWallContextAction">
+        <cover-view class="wall-object-action" data-source="selected-wall" aria-label="切墙侧" bindtap="onToggleSide">
+          <cover-view class="wall-action-icon side-icon">
+            <cover-view class="side-wall-line"></cover-view>
+            <cover-view class="side-dot-left"></cover-view>
+            <cover-view class="side-dot-right"></cover-view>
+          </cover-view>
+        </cover-view>
+        <cover-view class="wall-object-action" data-action="edit" aria-label="编辑墙厚" bindtap="onWallContextAction">
           <cover-view class="wall-action-icon edit-icon">
             <cover-view class="edit-stem"></cover-view>
             <cover-view class="edit-tip"></cover-view>
           </cover-view>
         </cover-view>
-        <cover-view class="wall-object-action muted" data-action="exit" aria-label="退出选择" bindtap="onWallContextAction">
+        <cover-view class="wall-object-action delete" data-action="delete" aria-label="删除墙" bindtap="onWallContextAction">
+          <cover-view class="wall-action-icon delete-icon">
+            <cover-view class="delete-lid"></cover-view>
+            <cover-view class="delete-body"></cover-view>
+          </cover-view>
+        </cover-view>
+        <cover-view class="wall-object-action" data-action="exit" aria-label="退出" bindtap="onWallContextAction">
           <cover-view class="wall-action-icon exit-icon">
             <cover-view class="exit-line one"></cover-view>
             <cover-view class="exit-line two"></cover-view>
