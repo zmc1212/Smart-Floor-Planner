@@ -166,10 +166,7 @@
         ></canvas>
       </view>
 
-      <cover-view wx:if="{{spaceSummary}}" class="space-summary">
-        <cover-view>{{spaceSummary.label}}</cover-view>
-        <cover-view class="space-area">{{spaceSummary.area}}</cover-view>
-      </cover-view>
+
 
       <cover-view wx:if="{{closeHintVisible}}" class="close-hint {{closeHintActionVisible ? 'actionable' : ''}}">
         {{closeHintText}}

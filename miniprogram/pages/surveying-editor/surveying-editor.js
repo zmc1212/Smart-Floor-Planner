@@ -500,22 +500,36 @@ Page({
     }
 
     if (controls.undoRedo) {
-      ['undo', 'redo'].forEach((key) => {
-        const button = controls.undoRedo[key];
-        const enabled = button.count > 0;
-        ctx.beginPath();
-        ctx.fillStyle = enabled ? 'rgba(255, 255, 255, 0.94)' : 'rgba(255, 255, 255, 0.72)';
-        ctx.arc(button.cx, button.cy, button.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = enabled ? '#4b5563' : '#9ca3af';
-        ctx.font = '12px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(button.label, button.cx, button.cy - 7);
-        ctx.fillStyle = enabled ? '#17a14c' : '#9ca3af';
-        ctx.font = 'bold 11px sans-serif';
-        ctx.fillText(String(button.count), button.cx, button.cy + 10);
-      });
+      // 撤销按钮
+      const undoButton = controls.undoRedo.undo;
+      const undoEnabled = undoButton.count > 0;
+      ctx.beginPath();
+      ctx.fillStyle = undoEnabled ? 'rgba(255, 255, 255, 0.94)' : 'rgba(255, 255, 255, 0.72)';
+      ctx.arc(undoButton.cx, undoButton.cy, undoButton.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = undoEnabled ? '#4b5563' : '#9ca3af';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(undoButton.label, undoButton.cx, undoButton.cy - 7);
+      ctx.fillStyle = undoEnabled ? '#17a14c' : '#9ca3af';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText(String(undoButton.count), undoButton.cx, undoButton.cy + 10);
+
+      // 重做按钮（清空画布）
+      const redoButton = controls.undoRedo.redo;
+      ctx.beginPath();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+      ctx.arc(redoButton.cx, redoButton.cy, redoButton.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#4b5563';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(redoButton.label, redoButton.cx, redoButton.cy - 7);
+      ctx.fillStyle = '#ef4444';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.fillText('✕', redoButton.cx, redoButton.cy + 10);
     }
 
     ctx.restore();
@@ -735,7 +749,7 @@ Page({
     const redo = {
       key: 'redo',
       label: '重做',
-      count: this.history.redo.length,
+      count: 0,
       cx: rect.width - right - buttonSize / 2,
       cy: rect.height - bottom - buttonSize / 2,
       radius: buttonSize / 2
@@ -1752,7 +1766,7 @@ Page({
       return true;
     }
     if (control.key === 'redo') {
-      if (this.history.redo.length) this.onRedo();
+      this.onRequestResetCanvas();
       return true;
     }
     return false;
@@ -2127,6 +2141,39 @@ Page({
     this.draft = this.history.redo.pop();
     this.syncFromDraft({ numberPadVisible: false });
     this.schedulePrototypePersist();
+  },
+
+  onRequestResetCanvas() {
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const hasContent = floor.walls.length > 0 || (floor.nodes && floor.nodes.length > 0);
+    if (!hasContent) {
+      wx.showToast({ title: '画布已经是空的', icon: 'none' });
+      return;
+    }
+    wx.showModal({
+      title: '重做确认',
+      content: '将清空当前画布的所有墙体和门窗，该操作不可撤销。是否继续？',
+      confirmText: '清空重做',
+      confirmColor: '#d71920',
+      cancelText: '取消',
+      success: (res) => {
+        if (!res.confirm) return;
+        this.onResetCanvas();
+      }
+    });
+  },
+
+  onResetCanvas() {
+    const freshDraft = surveyGraph.resetCursor(surveyGraph.createSurveyDraft());
+    this.history = { undo: [], redo: [] };
+    this.draft = freshDraft;
+    try {
+      wx.removeStorageSync(PROTOTYPE_DRAFT_KEY);
+    } catch (err) {
+      // 清除本地草稿失败不阻塞操作
+    }
+    this.syncFromDraft({ numberPadVisible: false });
+    wx.showToast({ title: '画布已清空', icon: 'success' });
   },
 
   openLengthPad() {

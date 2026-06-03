@@ -1142,9 +1142,10 @@ function confirmClosure(draft) {
   });
 
   if (!hasSameSpace) {
+    const roomIndex = floor.spaces.filter((space) => space.closed).length + 1;
     floor.spaces.push({
       id: nextId('space'),
-      name: '未命名空间',
+      name: `\u623f\u95f4${roomIndex}`,
       wallIds,
       closed: true,
       source: 'measured'
@@ -1655,6 +1656,7 @@ module.exports = {
   angleDeg,
   buildWallRenderGeometry,
   buildWallJoinRenderGeometries,
+  buildSpaceBoundaryPoints,
   calculateSpaceAreaMm2,
   setMode,
   placeCursor,

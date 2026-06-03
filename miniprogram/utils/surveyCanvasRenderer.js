@@ -444,6 +444,72 @@ function buildCursor(floor, session, project) {
   };
 }
 
+function buildClosedSpaceLabels(floor, project) {
+  const closedSpaces = (floor.spaces || []).filter((space) => space.closed && Array.isArray(space.wallIds));
+  if (!closedSpaces.length) return [];
+
+  return closedSpaces.map((space) => {
+    const boundaryPoints = surveyGraph.buildSpaceBoundaryPoints(floor, space.wallIds);
+    if (!boundaryPoints || boundaryPoints.length < 3) return null;
+
+    // Shoelace centroid
+    let cx = 0;
+    let cy = 0;
+    let area = 0;
+    for (let i = 0; i < boundaryPoints.length; i += 1) {
+      const current = boundaryPoints[i];
+      const next = boundaryPoints[(i + 1) % boundaryPoints.length];
+      const cross = current.xMm * next.yMm - next.xMm * current.yMm;
+      area += cross;
+      cx += (current.xMm + next.xMm) * cross;
+      cy += (current.yMm + next.yMm) * cross;
+    }
+    area = area / 2;
+    if (!area) return null;
+    cx = cx / (6 * area);
+    cy = cy / (6 * area);
+
+    const centroid = project({ xMm: cx, yMm: cy });
+
+    // Inner dimensions from wall.lengthMm (user-measured inner face lengths)
+    // Group walls: horizontal (angleDeg near 0°/180°) vs vertical (near 90°)
+    const walls = space.wallIds
+      .map((id) => surveyGraph.getWall(floor, id))
+      .filter(Boolean);
+
+    const hWalls = walls.filter((w) => {
+      const a = Math.abs(w.angleDeg || 0);
+      return a < 45 || a > 135;
+    });
+    const vWalls = walls.filter((w) => {
+      const a = Math.abs(w.angleDeg || 0);
+      return a >= 45 && a <= 135;
+    });
+
+    const widthMm = hWalls.length
+      ? Math.round(Math.max.apply(null, hWalls.map((w) => w.lengthMm || 0)))
+      : Math.round(Math.max.apply(null, boundaryPoints.map((p) => p.xMm)) -
+          Math.min.apply(null, boundaryPoints.map((p) => p.xMm)));
+
+    const heightMm = vWalls.length
+      ? Math.round(Math.max.apply(null, vWalls.map((w) => w.lengthMm || 0)))
+      : Math.round(Math.max.apply(null, boundaryPoints.map((p) => p.yMm)) -
+          Math.min.apply(null, boundaryPoints.map((p) => p.yMm)));
+
+    // Inner area = inner W × inner H
+    const areaMm2 = widthMm * heightMm;
+    const areaM2 = (areaMm2 / 1000000).toFixed(1);
+
+    return {
+      centroid,
+      roomName: space.name || '房间1',
+      widthMm,
+      heightMm,
+      areaM2
+    };
+  }).filter(Boolean);
+}
+
 function createSurveyRenderScene(input) {
   const floor = input.floor || { walls: [], nodes: [], spaces: [] };
   const session = input.session || floor.session || {};
@@ -478,6 +544,7 @@ function createSurveyRenderScene(input) {
     closureGuide: buildClosureGuide(floor, session, project),
     alignmentSnapGuide: buildAlignmentSnapGuide(session, project),
     cursor: buildCursor(floor, session, project),
+    closedSpaceLabels: buildClosedSpaceLabels(floor, project),
     activeSegment: previewWall || walls[walls.length - 1] || null,
     closed: shouldCloseWholeWallPath(floor, previewWall),
     session
@@ -970,6 +1037,74 @@ function drawLockHandles(ctx, scene) {
   drawLockIcon(ctx, endPt.x, endPt.y, endLocked);
 }
 
+function drawClosedSpaceLabel(ctx, scene) {
+  const labels = scene.closedSpaceLabels;
+  if (!labels || !labels.length) return;
+
+  labels.forEach((label) => {
+    if (!label || !label.centroid) return;
+
+    const { centroid, roomName, widthMm, heightMm, areaM2 } = label;
+    const cx = centroid.x;
+    const cy = centroid.y;
+
+    ctx.save();
+
+    // Background card with rounded corners
+    const cardW = 148;
+    const cardH = 108;
+    const cardX = cx - cardW / 2;
+    const cardY = cy - cardH / 2;
+    const radius = 10;
+
+    ctx.beginPath();
+    ctx.moveTo(cardX + radius, cardY);
+    ctx.lineTo(cardX + cardW - radius, cardY);
+    ctx.quadraticCurveTo(cardX + cardW, cardY, cardX + cardW, cardY + radius);
+    ctx.lineTo(cardX + cardW, cardY + cardH - radius);
+    ctx.quadraticCurveTo(cardX + cardW, cardY + cardH, cardX + cardW - radius, cardY + cardH);
+    ctx.lineTo(cardX + radius, cardY + cardH);
+    ctx.quadraticCurveTo(cardX, cardY + cardH, cardX, cardY + cardH - radius);
+    ctx.lineTo(cardX, cardY + radius);
+    ctx.quadraticCurveTo(cardX, cardY, cardX + radius, cardY);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.12)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 2;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+
+    // Room name (large, bold)
+    ctx.fillStyle = '#111111';
+    ctx.font = 'bold 17px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(roomName, cx, cardY + 20);
+
+    // Divider
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
+    ctx.lineWidth = 1;
+    ctx.moveTo(cardX + 12, cardY + 34);
+    ctx.lineTo(cardX + cardW - 12, cardY + 34);
+    ctx.stroke();
+
+    // W =
+    ctx.font = '12px sans-serif';
+    ctx.fillStyle = '#555555';
+    ctx.fillText(`W = ${widthMm} mm`, cx, cardY + 52);
+
+    // H =
+    ctx.fillText(`H = ${heightMm} mm`, cx, cardY + 70);
+
+    // S =
+    ctx.fillText(`S ≈ ${areaM2} m²`, cx, cardY + 88);
+
+    ctx.restore();
+  });
+}
+
 function drawSurveyScene(ctx, scene, options) {
   if (!ctx || !scene || !scene.rect.width || !scene.rect.height) return;
   const dpr = (options && options.dpr) || 1;
@@ -985,6 +1120,7 @@ function drawSurveyScene(ctx, scene, options) {
   drawSelectedWallHighlight(ctx, scene);
   drawOpenings(ctx, scene);
   drawDimensions(ctx, scene);
+  drawClosedSpaceLabel(ctx, scene);
   drawLockHandles(ctx, scene);
   drawAlignmentSnapGuide(ctx, scene);
   drawClosureGuide(ctx, scene);
