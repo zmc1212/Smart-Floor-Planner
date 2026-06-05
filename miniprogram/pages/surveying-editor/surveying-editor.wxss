@@ -1,43 +1,35 @@
 page {
-  background: #eef3ef;
+  background: #000;
 }
 
 .survey-page {
-  position: relative;
-  height: 100vh;
-  min-height: 0;
-  padding: 22rpx 22rpx 118rpx;
-  box-sizing: border-box;
-  background:
-    radial-gradient(circle at 18% 14%, rgba(168, 230, 207, 0.38) 0%, rgba(168, 230, 207, 0) 30%),
-    linear-gradient(180deg, #fbfdfb 0%, #eef4ef 100%);
+  position: fixed;
+  inset: 0;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
 }
 
+
+/* ─── 顶部导航浮层 ─── */
 .survey-topbar {
-  position: relative;
-  z-index: 10;
-  min-height: 108rpx;
+  position: absolute;
+  left: 16rpx;
+  right: 16rpx;
+  top: 0;
+  z-index: 20;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 14rpx 18rpx;
-  padding: 16rpx 18rpx;
-  border-radius: 28rpx;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: var(--shadow-home-card);
+  gap: 12rpx;
+  padding: 12rpx 18rpx;
+  border-radius: 0 0 24rpx 24rpx;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4rpx 20rpx rgba(15, 23, 42, 0.1);
   box-sizing: border-box;
-  flex-shrink: 0;
 }
 
 .topbar-left,
-.view-tabs,
-.topbar-actions,
-.bottom-controls,
-.bottom-action,
+.topbar-right,
 .title-group {
   display: flex;
   align-items: center;
@@ -145,15 +137,13 @@ page {
   overflow: hidden;
 }
 
+/* ─── 全屏画布 ─── */
 .canvas-shell {
-  position: relative;
-  flex: none;
-  width: 100vw;
-  min-width: 100vw;
-  border-radius: 0;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: #f8f8f8;
   overflow: hidden;
-  background: #ffffff;
-  box-shadow: var(--shadow-home-card);
 }
 
 .grid-canvas {
@@ -402,9 +392,11 @@ page {
 }
 
 .wall-context {
+  position: fixed;
   left: 22rpx;
   right: 22rpx;
-  bottom: 22rpx;
+  bottom: 160rpx;
+  z-index: 16;
   width: auto;
   max-width: none;
   padding: 16rpx 18rpx;
@@ -412,14 +404,16 @@ page {
   background: rgba(255, 255, 255, 0.96);
   color: #374151;
   box-sizing: border-box;
+  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.12);
 }
+
 
 .wall-object-toolbar {
   position: absolute;
   z-index: 9;
   height: 36px;
-  width: 196px;
-  min-width: 196px;
+  width: 228px;
+  min-width: 228px;
   padding: 4px;
   border-radius: 18px;
   background: rgba(31, 41, 55, 0.94);
@@ -584,6 +578,38 @@ page {
   transform: rotate(42deg);
 }
 
+
+.remeasure-ruler {
+  position: absolute;
+  left: 3px;
+  top: 9px;
+  width: 18px;
+  height: 6px;
+  border: 1.8px solid currentColor;
+  box-sizing: border-box;
+  border-radius: 1px;
+}
+
+.remeasure-tick {
+  position: absolute;
+  top: 9px;
+  width: 1.5px;
+  height: 3px;
+  background: currentColor;
+}
+
+.remeasure-tick.one {
+  left: 7px;
+}
+
+.remeasure-tick.two {
+  left: 11px;
+}
+
+.remeasure-tick.three {
+  left: 15px;
+}
+
 .exit-line {
   position: absolute;
   left: 5px;
@@ -623,8 +649,9 @@ page {
 }
 
 .wall-context-actions {
-  gap: 10rpx;
+  gap: 8rpx;
   margin-top: 14rpx;
+  flex-wrap: wrap;
 }
 
 .context-action {
@@ -739,12 +766,13 @@ page {
   font-weight: 700;
 }
 
+/* ─── 右侧工具栏 ─── */
 .right-rail {
-  position: absolute;
+  position: fixed;
   right: 18rpx;
-  top: 18rpx;
-  bottom: 14rpx;
-  z-index: 11;
+  top: 200rpx;
+  bottom: 160rpx;
+  z-index: 15;
   width: 136rpx;
   display: flex;
   flex-direction: column;
@@ -859,6 +887,32 @@ page {
   box-shadow: var(--shadow-float);
   box-sizing: border-box;
   z-index: 12;
+}
+
+.bottom-reset-cursor {
+  position: absolute;
+  right: 22rpx;
+  z-index: 13;
+  height: 68rpx;
+  min-width: 160rpx;
+  padding: 0 28rpx;
+  border-radius: 999rpx;
+  background: rgba(31, 41, 55, 0.88);
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8rpx 24rpx rgba(15, 23, 42, 0.22);
+  box-sizing: border-box;
+}
+
+.reset-cursor-label {
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
 }
 
 .mode-pill {
@@ -1423,3 +1477,460 @@ page {
   border-color: rgba(239, 68, 68, 0.35);
   box-shadow: 0px 0px 0px 1px rgba(239, 68, 68, 0.15), 0 2px 4px rgba(225, 45, 45, 0.08);
 }
+
+/* ════════════════════════════════════════
+   顶部右侧按钮组
+════════════════════════════════════════ */
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  flex-shrink: 0;
+}
+
+/* ════════════════════════════════════════
+   底部圆形图标浮动按钮 (FAB)
+════════════════════════════════════════ */
+.bottom-fab-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 18;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 0 28rpx;
+}
+
+/* 通用圆形按钮 */
+.fab-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+}
+
+/* 绿色主色大圆 */
+.fab-btn.fab-primary .fab-icon {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 50%;
+  background: #17a14c;
+  box-shadow: 0 12rpx 28rpx rgba(23, 161, 76, 0.36);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* 灰色空心圆 */
+.fab-btn.fab-secondary .fab-icon {
+  width: 88rpx;
+  height: 88rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 4rpx 16rpx rgba(15, 23, 42, 0.14), 0 0 0 1.5rpx rgba(15, 23, 42, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.fab-btn.fab-dimmed .fab-icon {
+  opacity: 0.5;
+}
+
+/* 加号按钮也是绿色大圆 */
+.fab-btn.fab-plus .fab-icon {
+  background: #17a14c;
+}
+
+/* 子标签（光标拖动到墙体） */
+.fab-sublabel {
+  color: #4b5563;
+  font-size: 18rpx;
+  text-align: center;
+  white-space: nowrap;
+  margin-top: 2rpx;
+}
+
+/* ─ 测量图标 ─ */
+.fab-icon-measure {
+  position: relative;
+}
+
+.measure-line-h {
+  position: absolute;
+  left: 18rpx;
+  right: 18rpx;
+  top: 50%;
+  height: 3rpx;
+  background: rgba(255,255,255,0.9);
+  transform: translateY(-50%);
+  border-radius: 2rpx;
+}
+
+.measure-line-v {
+  position: absolute;
+  top: 18rpx;
+  bottom: 18rpx;
+  left: 50%;
+  width: 3rpx;
+  background: rgba(255,255,255,0.9);
+  transform: translateX(-50%);
+  border-radius: 2rpx;
+}
+
+.measure-corner {
+  position: absolute;
+  width: 14rpx;
+  height: 14rpx;
+  border: 3rpx solid rgba(255,255,255,0.9);
+  box-sizing: border-box;
+}
+
+.measure-corner.tl {
+  top: 18rpx;
+  left: 18rpx;
+  border-right: none;
+  border-bottom: none;
+  border-radius: 2rpx 0 0 0;
+}
+
+.measure-corner.br {
+  bottom: 18rpx;
+  right: 18rpx;
+  border-left: none;
+  border-top: none;
+  border-radius: 0 0 2rpx 0;
+}
+
+/* ─ 蓝牙图标 ─ */
+.fab-icon-bluetooth {
+  position: relative;
+}
+
+.bt-stem {
+  position: absolute;
+  left: 50%;
+  top: 14rpx;
+  bottom: 14rpx;
+  width: 3rpx;
+  background: #4b5563;
+  transform: translateX(-50%);
+  border-radius: 2rpx;
+}
+
+.bt-bar {
+  position: absolute;
+  width: 20rpx;
+  height: 3rpx;
+  background: #4b5563;
+  border-radius: 2rpx;
+  left: 50%;
+}
+
+.bt-bar.top {
+  top: 22rpx;
+  transform: translateX(0) rotate(45deg);
+  transform-origin: left center;
+}
+
+.bt-bar.bottom {
+  bottom: 22rpx;
+  transform: translateX(0) rotate(-45deg);
+  transform-origin: left center;
+}
+
+.bt-dot {
+  position: absolute;
+  width: 7rpx;
+  height: 7rpx;
+  border-radius: 50%;
+  background: #4b5563;
+}
+
+.bt-dot.left {
+  left: 18rpx;
+  top: 50%;
+  transform: translateY(-8rpx);
+}
+
+.bt-dot.right {
+  left: 18rpx;
+  top: 50%;
+  transform: translateY(2rpx);
+}
+
+/* ─ 光标图标 ─ */
+.fab-icon-cursor {
+  position: relative;
+}
+
+.cursor-cross-h {
+  position: absolute;
+  left: 14rpx;
+  right: 14rpx;
+  top: 50%;
+  height: 2rpx;
+  background: #f07a21;
+  transform: translateY(-50%);
+  border-radius: 1rpx;
+}
+
+.cursor-cross-v {
+  position: absolute;
+  top: 14rpx;
+  bottom: 14rpx;
+  left: 50%;
+  width: 2rpx;
+  background: #f07a21;
+  transform: translateX(-50%);
+  border-radius: 1rpx;
+}
+
+.cursor-box {
+  position: absolute;
+  width: 22rpx;
+  height: 22rpx;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border: 2rpx solid #f07a21;
+  background: rgba(240, 122, 33, 0.12);
+  box-sizing: border-box;
+}
+
+/* ─ 加号图标 ─ */
+.plus-h {
+  position: absolute;
+  left: 22rpx;
+  right: 22rpx;
+  top: 50%;
+  height: 4rpx;
+  background: #ffffff;
+  transform: translateY(-50%);
+  border-radius: 2rpx;
+}
+
+.plus-v {
+  position: absolute;
+  top: 22rpx;
+  bottom: 22rpx;
+  left: 50%;
+  width: 4rpx;
+  background: #ffffff;
+  transform: translateX(-50%);
+  border-radius: 2rpx;
+}
+
+/* ════════════════════════════════════════
+   手输 mm 激活悬浮按钮
+════════════════════════════════════════ */
+.manual-fab {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 19;
+  height: 72rpx;
+  min-width: 220rpx;
+  padding: 0 36rpx;
+  border-radius: 999rpx;
+  background: #17a14c;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2rpx;
+  box-shadow: 0 12rpx 28rpx rgba(23, 161, 76, 0.32);
+}
+
+.manual-fab-label {
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.manual-fab-sub {
+  color: rgba(255,255,255,0.78);
+  font-size: 18rpx;
+}
+
+/* ─ 去掉旧的 bottom-controls / bottom-reset-cursor ─ */
+.bottom-controls,
+.bottom-reset-cursor,
+.reset-cursor-label,
+.bottom-action,
+.bottom-title,
+.bottom-subtitle,
+.mode-pill {
+  display: none;
+}
+
+/* ─ survey-stage 旧布局清除 ─ */
+.survey-stage {
+  display: none;
+}
+
+/* ════════════════════════════════════════
+   新建光标 FAB 按钮（底部唯一按钮）
+════════════════════════════════════════ */
+/* 覆盖 bottom-fab-bar 为居中单按钮 */
+.bottom-fab-bar {
+  justify-content: center;
+}
+
+.fab-new-cursor {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.fab-new-cursor-icon {
+  position: relative;
+  width: 100rpx;
+  height: 100rpx;
+  border-radius: 50%;
+  background: #17a14c;
+  box-shadow: 0 14rpx 32rpx rgba(23, 161, 76, 0.38);
+}
+
+/* 十字横线 */
+.nc-h {
+  position: absolute;
+  left: 22rpx;
+  right: 22rpx;
+  top: 50%;
+  height: 3rpx;
+  background: #ffffff;
+  transform: translateY(-50%);
+  border-radius: 2rpx;
+}
+
+/* 十字竖线 */
+.nc-v {
+  position: absolute;
+  top: 22rpx;
+  bottom: 22rpx;
+  left: 50%;
+  width: 3rpx;
+  background: #ffffff;
+  transform: translateX(-50%);
+  border-radius: 2rpx;
+}
+
+/* 中心小圆环 */
+.nc-ring {
+  position: absolute;
+  width: 28rpx;
+  height: 28rpx;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border: 3rpx solid #ffffff;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.fab-new-cursor-label {
+  color: #374151;
+  font-size: 20rpx;
+  font-weight: 600;
+  letter-spacing: 0.5rpx;
+}
+
+/* ════════════════════════════════════════
+   拖拽放置光标覆盖层
+════════════════════════════════════════ */
+.cursor-drag-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+/* 顶部提示 + 取消 */
+.cursor-drag-hint-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 24rpx 28rpx 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(15, 23, 42, 0.72);
+  box-sizing: border-box;
+}
+
+.cursor-drag-hint-text {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 24rpx;
+  flex: 1;
+}
+
+.cursor-drag-cancel {
+  color: #ffffff;
+  font-size: 26rpx;
+  font-weight: 600;
+  padding: 8rpx 24rpx;
+  border-radius: 999rpx;
+  background: rgba(255, 255, 255, 0.18);
+  margin-left: 24rpx;
+  flex-shrink: 0;
+}
+
+/* 跟随手指的光标标记（以手指位置为圆心） */
+.cursor-drag-marker {
+  position: absolute;
+  width: 0;
+  height: 0;
+  /* 通过负 margin 让中心对齐手指位置 */
+  pointer-events: none;
+}
+
+/* 外圆环 */
+.cdm-ring-outer {
+  position: absolute;
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 50%;
+  border: 3rpx solid rgba(255, 255, 255, 0.6);
+  background: transparent;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+}
+
+/* 内圆 */
+.cdm-ring-inner {
+  position: absolute;
+  width: 20rpx;
+  height: 20rpx;
+  border-radius: 50%;
+  background: #f07a21;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 3rpx rgba(240, 122, 33, 0.4);
+}
+
+/* 横向准星线 */
+.cdm-cross-h {
+  position: absolute;
+  width: 120rpx;
+  height: 2rpx;
+  background: rgba(240, 122, 33, 0.85);
+  transform: translate(-50%, -50%);
+  border-radius: 1rpx;
+}
+
+/* 纵向准星线 */
+.cdm-cross-v {
+  position: absolute;
+  width: 2rpx;
+  height: 120rpx;
+  background: rgba(240, 122, 33, 0.85);
+  transform: translate(-50%, -50%);
+  border-radius: 1rpx;
+}
+
+

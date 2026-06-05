@@ -256,6 +256,10 @@ Page({
     manualActionActive: false,
     manualActionSubtitle: '输入当前墙',
     cursorActionSubtitle: '保留已测墙',
+    showResetCursorButton: false,
+    cursorDragMode: false,
+    dragCursorX: 0,
+    dragCursorY: 0,
     closeHintVisible: false,
     closeHintText: '',
     closeHintActionVisible: false,
@@ -586,6 +590,7 @@ Page({
       manualActionActive: bottomState.manualActionActive,
       manualActionSubtitle: bottomState.manualActionSubtitle,
       cursorActionSubtitle: bottomState.cursorActionSubtitle,
+      showResetCursorButton: this.buildShowResetCursorButton(floor, session),
       historySummary: {
         undo: this.history.undo.length,
         redo: this.history.redo.length
@@ -1299,6 +1304,40 @@ Page({
     };
   },
 
+  buildShowResetCursorButton(floor, session) {
+    // 显示条件：有墙体且房间尚未全部闭合
+    if (!floor || !session) return false;
+    if (floor.walls.length === 0) return false;
+    // 已闭合状态下不需要重置光标
+    return session.state !== 'spaceClosed';
+  },
+
+  buildGuideSnapPoint(floor, session, rawMm) {
+    // 仅在 spaceClosed 状态下，拖动光标时根据辅助线交叉点吸附
+    if (!floor || !session || session.state !== 'spaceClosed') return rawMm;
+    if (!rawMm) return rawMm;
+    const nodes = floor.nodes || [];
+    if (!nodes.length) return rawMm;
+
+    const SNAP_THRESHOLD_MM = 120; // 吸附阈值
+    let bestX = null;
+    let bestY = null;
+    let minDx = SNAP_THRESHOLD_MM;
+    let minDy = SNAP_THRESHOLD_MM;
+
+    nodes.forEach((node) => {
+      const dx = Math.abs(rawMm.xMm - node.xMm);
+      const dy = Math.abs(rawMm.yMm - node.yMm);
+      if (dx < minDx) { minDx = dx; bestX = node.xMm; }
+      if (dy < minDy) { minDy = dy; bestY = node.yMm; }
+    });
+
+    return {
+      xMm: bestX !== null ? bestX : rawMm.xMm,
+      yMm: bestY !== null ? bestY : rawMm.yMm
+    };
+  },
+
   buildStageMessage(floor, session, selectedWall) {
     if (session.state === 'idle') {
       return { title: '准备测墙', value: '重置光标后，从橙色光标拖出墙体方向' };
@@ -1498,6 +1537,10 @@ Page({
       this.addPrototypeOpening(action);
       return;
     }
+    if (action === 'remeasure') {
+      this.onStartRemeasure();
+      return;
+    }
     if (action === 'edit') {
       this.openSelectedObjectEditor();
       return;
@@ -1510,6 +1553,7 @@ Page({
       this.onExitWallSelection();
     }
   },
+
 
   addPrototypeOpening(type) {
     const floor = surveyGraph.getActiveFloor(this.draft);
@@ -1926,7 +1970,11 @@ Page({
     }
 
     if (this.touchState.mode === 'wall') {
-      this.draft = surveyGraph.startPreview(this.draft, currentMm);
+      // 如果已封闭（spaceClosed），拖动时开启辅助线交叉吸附
+      const _floor = surveyGraph.getActiveFloor(this.draft);
+      const _session = _floor.session;
+      const snappedMm = this.buildGuideSnapPoint(_floor, _session, currentMm);
+      this.draft = surveyGraph.startPreview(this.draft, snappedMm);
       this.syncFromDraft();
       return;
     }
@@ -2134,6 +2182,90 @@ Page({
     this.syncFromDraft({ numberPadVisible: false });
     this.schedulePrototypePersist();
   },
+
+  // ─── 新建光标：拖拽放置流程 ───
+
+  onNewCursorTap() {
+    // 进入拖拽放置模式，初始光标显示在画布中心
+    const rect = this.canvasRect || { width: 375, height: 667, left: 0, top: 0 };
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    this.setData({
+      cursorDragMode: true,
+      dragCursorX: centerX,
+      dragCursorY: centerY
+    });
+  },
+
+  onCursorDragStart(e) {
+    const touch = (e.touches || [])[0];
+    if (!touch) return;
+    this.setData({
+      dragCursorX: touch.clientX,
+      dragCursorY: touch.clientY
+    });
+  },
+
+  onCursorDragMove(e) {
+    const touch = (e.touches || [])[0];
+    if (!touch) return;
+    this.setData({
+      dragCursorX: touch.clientX,
+      dragCursorY: touch.clientY
+    });
+  },
+
+  onCursorDragEnd(e) {
+    const { dragCursorX, dragCursorY } = this.data;
+    this.setData({ cursorDragMode: false });
+
+    // 屏幕坐标 → 画布 mm 坐标
+    const pointMm = this.canvasPointToMm({ x: dragCursorX, y: dragCursorY });
+
+    // 直接操作 draft：placeCursor 在有墙时会强制把 anchor 锁到最后一面墙的终点，
+    // 所以我们绕过它，手动 clone draft 并添加新的 anchor 节点。
+    const next = surveyGraph.cloneDraft(this.draft);
+    const floor = surveyGraph.getActiveFloor(next);
+    const session = floor.session;
+
+    // 取消任何 pending 状态
+    session.previewPoint = null;
+    session.previewLengthMm = 0;
+    session.previewAngleDeg = 0;
+    session.pendingWallId = '';
+    session.selectedWallId = '';
+    session.selectedOpeningId = '';
+    session.closeCandidateNodeId = '';
+    session.closeCandidatePoint = null;
+    session.alignmentSnapGuide = null;
+    session.activeSpaceSharedWallId = '';
+    session.activeSpaceSharedStartT = null;
+
+    // 添加新节点作为光标位置（anchor），不影响已有墙体
+    const newNode = {
+      id: `node-drag-${Date.now()}`,
+      xMm: Math.round(pointMm.xMm),
+      yMm: Math.round(pointMm.yMm),
+      createdAt: new Date().toISOString()
+    };
+    floor.nodes.push(newNode);
+    session.anchorNodeId = newNode.id;
+    session.activeSpaceStartNodeId = newNode.id;
+    session.activeSpaceStartWallIndex = floor.walls.length;
+    session.state = 'cursorPlaced';
+    next.updatedAt = new Date().toISOString();
+
+    this.history.undo.push(surveyGraph.cloneDraft(this.draft));
+    this.history.redo = [];
+    this.draft = next;
+    this.syncFromDraft();
+    this.schedulePrototypePersist();
+  },
+
+  onCursorDragCancel() {
+    this.setData({ cursorDragMode: false });
+  },
+
 
   onRedo() {
     if (!this.history.redo.length) return;

@@ -1,5 +1,96 @@
-<view class="survey-page" style="padding-bottom: calc(112rpx + {{bottomSafeArea}}px);">
-  <view class="survey-topbar" style="margin-top: {{navigationSafeTop}}px;">
+<view class="survey-page">
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!--  全屏画布                                      -->
+  <!-- ══════════════════════════════════════════════ -->
+  <view class="canvas-shell">
+    <view class="grid-canvas">
+      <canvas
+        type="2d"
+        id="survey-canvas"
+        class="survey-canvas"
+        bindtouchstart="onCanvasTouchStart"
+        bindtouchmove="onCanvasTouchMove"
+        bindtouchend="onCanvasTouchEnd"
+        bindtouchcancel="onCanvasTouchEnd"
+      ></canvas>
+    </view>
+
+    <!-- 顶部量测气泡 -->
+    <cover-view wx:if="{{topMetricVisible}}" class="top-measure-bubble">
+      <cover-view>{{topMetricLength}}</cover-view>
+      <cover-view wx:if="{{topMetricAngle}}" class="top-measure-angle">{{topMetricAngle}}</cover-view>
+    </cover-view>
+    <cover-view wx:else class="measurement-bubble">
+      <cover-view class="bubble-title">{{measurementTitle}}</cover-view>
+      <cover-view class="bubble-value">{{measurementValue}}</cover-view>
+    </cover-view>
+
+    <!-- 闭合提示 -->
+    <cover-view wx:if="{{closeHintVisible}}" class="close-hint {{closeHintActionVisible ? 'actionable' : ''}}">
+      {{closeHintText}}
+    </cover-view>
+
+    <!-- 选中墙体时的浮动工具栏（图标行） -->
+    <cover-view wx:if="{{selectedWall && !selectedOpening}}" class="wall-object-toolbar" style="{{selectedWall.actionStyle}}">
+      <cover-view class="wall-object-action primary" data-action="door" aria-label="添加门" bindtap="onWallContextAction">
+        <cover-view class="wall-action-icon door-icon">
+          <cover-view class="door-frame"></cover-view>
+          <cover-view class="door-swing"></cover-view>
+        </cover-view>
+      </cover-view>
+      <cover-view class="wall-object-action primary" data-action="window" aria-label="添加窗" bindtap="onWallContextAction">
+        <cover-view class="wall-action-icon window-icon">
+          <cover-view class="window-frame"></cover-view>
+          <cover-view class="window-line"></cover-view>
+        </cover-view>
+      </cover-view>
+      <cover-view class="wall-object-action" data-source="selected-wall" aria-label="切墙侧" bindtap="onToggleSide">
+        <cover-view class="wall-action-icon side-icon">
+          <cover-view class="side-wall-line"></cover-view>
+          <cover-view class="side-dot-left"></cover-view>
+          <cover-view class="side-dot-right"></cover-view>
+        </cover-view>
+      </cover-view>
+      <cover-view class="wall-object-action" data-action="remeasure" aria-label="复尺" bindtap="onWallContextAction">
+        <cover-view class="wall-action-icon remeasure-icon">
+          <cover-view class="remeasure-ruler"></cover-view>
+          <cover-view class="remeasure-tick one"></cover-view>
+          <cover-view class="remeasure-tick two"></cover-view>
+          <cover-view class="remeasure-tick three"></cover-view>
+        </cover-view>
+      </cover-view>
+      <cover-view class="wall-object-action" data-action="edit" aria-label="编辑墙厚" bindtap="onWallContextAction">
+        <cover-view class="wall-action-icon edit-icon">
+          <cover-view class="edit-stem"></cover-view>
+          <cover-view class="edit-tip"></cover-view>
+        </cover-view>
+      </cover-view>
+      <cover-view class="wall-object-action delete" data-action="delete" aria-label="删除墙" bindtap="onWallContextAction">
+        <cover-view class="wall-action-icon delete-icon">
+          <cover-view class="delete-lid"></cover-view>
+          <cover-view class="delete-body"></cover-view>
+        </cover-view>
+      </cover-view>
+      <cover-view class="wall-object-action" data-action="exit" aria-label="退出" bindtap="onWallContextAction">
+        <cover-view class="wall-action-icon exit-icon">
+          <cover-view class="exit-line one"></cover-view>
+          <cover-view class="exit-line two"></cover-view>
+        </cover-view>
+      </cover-view>
+    </cover-view>
+
+    <!-- 罗盘 -->
+    <cover-view class="compass">
+      <cover-view class="compass-needle"></cover-view>
+      <cover-view>N</cover-view>
+    </cover-view>
+  </view>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!--  顶部导航浮层                                   -->
+  <!-- ══════════════════════════════════════════════ -->
+  <view class="survey-topbar" style="top: {{navigationSafeTop}}px;">
     <view class="topbar-left">
       <view class="back-button" bindtap="onBack">‹</view>
       <view class="title-group">
@@ -7,304 +98,228 @@
         <text class="page-subtitle">{{prototypeNotice}}</text>
       </view>
     </view>
-
-    <view class="view-tabs">
-      <view class="view-tab {{activeView === '2D' ? 'active' : ''}}" data-view="2D" bindtap="onViewTap">2D</view>
-      <view class="view-tab disabled" data-view="3D" bindtap="onViewTap">3D</view>
-      <view class="view-tab disabled" data-view="tour" bindtap="onViewTap">漫游</view>
-      <view class="view-tab disabled" data-view="floor" bindtap="onViewTap">楼层</view>
-    </view>
-
-    <view class="topbar-actions">
+    <view class="topbar-right">
       <view class="topbar-chip disabled" bindtap="onDisabledTap">助手</view>
       <view class="topbar-chip save" bindtap="onSavePrototypeDraft">保存</view>
     </view>
   </view>
 
-  <view class="survey-stage">
-    <view wx:if="{{componentEditorVisible}}" class="component-editor">
-      <view class="component-topbar" style="top: {{navigationSafeTop}}px;">
-        <view class="component-back" bindtap="closeComponentEditor">
-          <image class="back-icon" src="/images/back-arrow.png"></image>
-        </view>
-        <view class="component-title">{{componentEditorTitle}}</view>
-        <view class="component-lock">锁</view>
+  <!-- ══════════════════════════════════════════════ -->
+  <!--  右侧工具栏（浮层）                              -->
+  <!-- ══════════════════════════════════════════════ -->
+  <view class="right-rail">
+    <view wx:if="{{selectedOpening}}" class="opening-context {{selectedOpening.type}}">
+      <text class="opening-title">{{selectedOpening.typeLabel}} · 本地原型</text>
+      <view class="opening-fields">
+        <view class="opening-field" data-field="width" bindtap="onOpeningEditField">宽 {{selectedOpening.width}}</view>
+        <view class="opening-field" data-field="height" bindtap="onOpeningEditField">高 {{selectedOpening.height}}</view>
+        <view class="opening-field" data-field="sill" bindtap="onOpeningEditField">距地 {{selectedOpening.sill}}</view>
+      </view>
+    </view>
+
+    <view wx:if="{{objectToolsVisible}}" class="tool-group primary-tools object-tools">
+      <view
+        class="tool-button"
+        wx:for="{{objectTools}}"
+        wx:key="key"
+        data-tool="{{item.key}}"
+        bindtap="onToolTap"
+      >
+        <text class="tool-label">{{item.label}}</text>
+        <text class="tool-helper">{{item.helper}}</text>
+      </view>
+    </view>
+
+    <view wx:else class="tool-group primary-tools">
+      <view
+        class="tool-button {{item.active ? 'active' : ''}}"
+        wx:for="{{coreTools}}"
+        wx:key="key"
+        data-tool="{{item.key}}"
+        bindtap="onToolTap"
+      >
+        <text class="tool-label">{{item.label}}</text>
+        <text class="tool-helper">{{item.helper}}</text>
+      </view>
+    </view>
+
+    <view class="side-switch" bindtap="onToggleSide">
+      <text class="side-label">{{selectedOpening ? (selectedOpening.type === 'door' ? '开向' : '窗位') : '墙侧'}}</text>
+      <text class="side-value">{{selectedOpening ? (selectedOpening.type === 'door' ? selectedOpening.openDirectionLabel : '固定') : (measurementSide === 'right' ? '右侧' : '左侧')}}</text>
+    </view>
+
+    <view class="tool-group reserved-tools">
+      <view
+        class="reserved-button disabled"
+        wx:for="{{reservedTools}}"
+        wx:key="key"
+        bindtap="onDisabledTap"
+      >
+        {{item.label}}
+      </view>
+    </view>
+  </view>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!--  底部唯一按钮：新建光标                          -->
+  <!-- ══════════════════════════════════════════════ -->
+  <view class="bottom-fab-bar" style="bottom: calc(36rpx + {{bottomSafeArea}}px);">
+    <view class="fab-new-cursor" bindtap="onNewCursorTap">
+      <view class="fab-new-cursor-icon">
+        <view class="nc-h"></view>
+        <view class="nc-v"></view>
+        <view class="nc-ring"></view>
+      </view>
+      <text class="fab-new-cursor-label">新建光标</text>
+    </view>
+  </view>
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!--  拖拽放置光标的全屏覆盖层                        -->
+  <!-- ══════════════════════════════════════════════ -->
+  <view
+    wx:if="{{cursorDragMode}}"
+    class="cursor-drag-overlay"
+    bindtouchstart="onCursorDragStart"
+    bindtouchmove="onCursorDragMove"
+    bindtouchend="onCursorDragEnd"
+    bindtouchcancel="onCursorDragEnd"
+  >
+    <!-- 提示文字 -->
+    <view class="cursor-drag-hint-bar">
+      <text class="cursor-drag-hint-text">拖动手指到目标位置后松开放置光标</text>
+      <view class="cursor-drag-cancel" bindtap="onCursorDragCancel">取消</view>
+    </view>
+    <!-- 跟随手指的光标标记 -->
+    <view class="cursor-drag-marker" style="left:{{dragCursorX}}px; top:{{dragCursorY}}px;">
+      <view class="cdm-ring-outer"></view>
+      <view class="cdm-ring-inner"></view>
+      <view class="cdm-cross-h"></view>
+      <view class="cdm-cross-v"></view>
+    </view>
+  </view>
+
+
+  <!-- ══════════════════════════════════════════════ -->
+  <!--  门窗构件编辑器（全屏覆盖）                       -->
+  <!-- ══════════════════════════════════════════════ -->
+  <view wx:if="{{componentEditorVisible}}" class="component-editor">
+    <view class="component-topbar" style="top: {{navigationSafeTop}}px;">
+      <view class="component-back" bindtap="closeComponentEditor">
+        <image class="back-icon" src="/images/back-arrow.png"></image>
+      </view>
+      <view class="component-title">{{componentEditorTitle}}</view>
+      <view class="component-lock">锁</view>
+    </view>
+
+    <canvas
+      type="webgl"
+      id="component-webgl"
+      class="component-webgl"
+      bindtouchstart="onComponentTouchStart"
+      bindtouchmove="onComponentTouchMove"
+      bindtouchend="onComponentTouchEnd"
+      bindtouchcancel="onComponentTouchEnd"
+      disable-scroll="true"
+    ></canvas>
+
+    <!-- 墙体尺寸标注悬浮层 -->
+    <cover-view class="dimension-overlay-label" style="{{wallLengthStyle}}">{{wallLengthLabel}}</cover-view>
+    <cover-view class="dimension-overlay-label" style="{{wallHeightStyle}}">{{wallHeightLabel}}</cover-view>
+
+    <!-- 门窗构件参数标注悬浮层 -->
+    <cover-view class="dimension-overlay-label {{componentSpecMode === 'edge1' ? 'active' : ''}}" style="{{paramEdge1Style}}">{{paramEdge1Label}}</cover-view>
+    <cover-view class="dimension-overlay-label {{componentSpecMode === 'edge2' ? 'active' : ''}}" style="{{paramEdge2Style}}">{{paramEdge2Label}}</cover-view>
+    <cover-view class="dimension-overlay-label {{componentSpecMode === 'length' || componentSpecMode === 'spec' ? 'active' : ''}}" style="{{paramLengthStyle}}">{{paramLengthLabel}}</cover-view>
+    <cover-view class="dimension-overlay-label {{componentSpecMode === 'height' ? 'active' : ''}}" style="{{paramHeightStyle}}">{{paramHeightLabel}}</cover-view>
+    <cover-view class="dimension-overlay-label {{componentSpecMode === 'sill' ? 'active' : ''}}" style="{{paramSillStyle}}">{{paramSillLabel}}</cover-view>
+
+    <view wx:if="{{componentSelectedOpening && componentSelectedOpening.type === 'door'}}" class="entry-door-action" bindtap="onToggleEntryDoor">
+      {{componentSelectedOpening.entryDoor ? '已设为入户门' : '设为入户门'}}
+    </view>
+
+    <view class="component-panel">
+      <view class="component-panel-tabs">
+        <view
+          class="component-panel-tab {{componentPanelMode === item.key ? 'active' : ''}}"
+          wx:for="{{componentPanelTabs}}"
+          wx:key="key"
+          data-mode="{{item.key}}"
+          bindtap="onComponentPanelTab"
+        >{{item.label}}</view>
       </view>
 
-      <canvas
-        type="webgl"
-        id="component-webgl"
-        class="component-webgl"
-        bindtouchstart="onComponentTouchStart"
-        bindtouchmove="onComponentTouchMove"
-        bindtouchend="onComponentTouchEnd"
-        bindtouchcancel="onComponentTouchEnd"
-        disable-scroll="true"
-      ></canvas>
-
-      <!-- 墙体尺寸标注悬浮层 -->
-      <cover-view class="dimension-overlay-label" style="{{wallLengthStyle}}">{{wallLengthLabel}}</cover-view>
-      <cover-view class="dimension-overlay-label" style="{{wallHeightStyle}}">{{wallHeightLabel}}</cover-view>
-
-      <!-- 门窗构件参数标注悬浮层 -->
-      <cover-view class="dimension-overlay-label {{componentSpecMode === 'edge1' ? 'active' : ''}}" style="{{paramEdge1Style}}">{{paramEdge1Label}}</cover-view>
-      <cover-view class="dimension-overlay-label {{componentSpecMode === 'edge2' ? 'active' : ''}}" style="{{paramEdge2Style}}">{{paramEdge2Label}}</cover-view>
-      <cover-view class="dimension-overlay-label {{componentSpecMode === 'length' || componentSpecMode === 'spec' ? 'active' : ''}}" style="{{paramLengthStyle}}">{{paramLengthLabel}}</cover-view>
-      <cover-view class="dimension-overlay-label {{componentSpecMode === 'height' ? 'active' : ''}}" style="{{paramHeightStyle}}">{{paramHeightLabel}}</cover-view>
-      <cover-view class="dimension-overlay-label {{componentSpecMode === 'sill' ? 'active' : ''}}" style="{{paramSillStyle}}">{{paramSillLabel}}</cover-view>
-
-      <view wx:if="{{componentSelectedOpening && componentSelectedOpening.type === 'door'}}" class="entry-door-action" bindtap="onToggleEntryDoor">
-        {{componentSelectedOpening.entryDoor ? '已设为入户门' : '设为入户门'}}
-      </view>
-
-      <view class="component-panel">
-        <view class="component-panel-tabs">
+      <view wx:if="{{componentPanelMode === 'spec'}}" class="component-spec">
+        <view class="component-spec-tabs">
           <view
-            class="component-panel-tab {{componentPanelMode === item.key ? 'active' : ''}}"
-            wx:for="{{componentPanelTabs}}"
+            class="component-spec-tab {{componentSpecMode === item.key ? 'active' : ''}}"
+            wx:for="{{componentSpecTabs}}"
             wx:key="key"
             data-mode="{{item.key}}"
-            bindtap="onComponentPanelTab"
+            bindtap="onComponentSpecTab"
           >{{item.label}}</view>
         </view>
-
-        <view wx:if="{{componentPanelMode === 'spec'}}" class="component-spec">
-          <view class="component-spec-tabs">
-            <view
-              class="component-spec-tab {{componentSpecMode === item.key ? 'active' : ''}}"
-              wx:for="{{componentSpecTabs}}"
-              wx:key="key"
-              data-mode="{{item.key}}"
-              bindtap="onComponentSpecTab"
-            >{{item.label}}</view>
-          </view>
-          <view class="component-spec-display">
-            <text class="component-spec-val">{{componentSpecValue}}</text>
-            <text class="component-spec-unit">mm</text>
-          </view>
-          <view class="component-spec-keyboard">
-            <view
-              class="keyboard-key {{item === '清空' || item === '退格' ? 'utility' : ''}}"
-              wx:for="{{numberKeys}}"
-              wx:key="*this"
-              data-key="{{item}}"
-              bindtap="onComponentKeyboardKey"
-            >
-              {{item}}
-            </view>
-          </view>
-          <view class="component-sync-row" bindtap="onToggleComponentThicknessSync">
-            <view class="sync-dot {{componentSyncWallThickness ? 'active' : ''}}"></view>
-            <text>同步更改墙体厚度</text>
+        <view class="component-spec-display">
+          <text class="component-spec-val">{{componentSpecValue}}</text>
+          <text class="component-spec-unit">mm</text>
+        </view>
+        <view class="component-spec-keyboard">
+          <view
+            class="keyboard-key {{item === '清空' || item === '退格' ? 'utility' : ''}}"
+            wx:for="{{numberKeys}}"
+            wx:key="*this"
+            data-key="{{item}}"
+            bindtap="onComponentKeyboardKey"
+          >
+            {{item}}
           </view>
         </view>
-
-        <view wx:elif="{{componentPanelMode === 'flip'}}" class="component-flip">
-          <view class="flip-card {{componentSelectedOpening && componentSelectedOpening.openDirection === 'inside' ? 'active' : ''}}" data-direction="inside" bindtap="onComponentFlip">内开</view>
-          <view class="flip-card {{componentSelectedOpening && componentSelectedOpening.openDirection === 'outside' ? 'active' : ''}}" data-direction="outside" bindtap="onComponentFlip">外开</view>
-          <view wx:if="{{componentSelectedOpening && componentSelectedOpening.type === 'window'}}" class="component-note">窗构件暂固定窗位，不支持开向切换。</view>
-        </view>
-
-        <view wx:else class="component-library">
-          <view class="library-toolbar">
-            <view class="library-type">{{componentSelectedOpening.modelLabel}}</view>
-            <view class="library-source">公共库 ▾</view>
-          </view>
-          <view class="category-row">
-            <view
-              class="category-chip {{item.active ? 'active' : ''}}"
-              wx:for="{{componentCategories}}"
-              wx:key="key"
-              data-category="{{item.key}}"
-              bindtap="onComponentCategoryTap"
-            >{{item.label}}</view>
-          </view>
-          <view class="library-grid">
-            <view
-              class="library-item {{item.active ? 'active' : ''}}"
-              wx:for="{{componentLibraryItems}}"
-              wx:key="id"
-              data-id="{{item.id}}"
-              bindtap="onComponentModelTap"
-            >
-              <view class="library-thumb" style="background:{{item.swatch}};"></view>
-              <text>{{item.label}}</text>
-              <view wx:if="{{item.active}}" class="library-check">选</view>
-            </view>
-          </view>
-        </view>
-      </view>
-    </view>
-
-    <view class="canvas-shell">
-      <cover-view class="compass">
-        <cover-view class="compass-needle"></cover-view>
-        <cover-view>N</cover-view>
-      </cover-view>
-
-      <cover-view wx:if="{{topMetricVisible}}" class="top-measure-bubble">
-        <cover-view>{{topMetricLength}}</cover-view>
-        <cover-view wx:if="{{topMetricAngle}}" class="top-measure-angle">{{topMetricAngle}}</cover-view>
-      </cover-view>
-
-      <cover-view wx:else class="measurement-bubble">
-        <cover-view class="bubble-title">{{measurementTitle}}</cover-view>
-        <cover-view class="bubble-value">{{measurementValue}}</cover-view>
-      </cover-view>
-
-      <view
-        class="grid-canvas"
-      >
-        <canvas
-          type="2d"
-          id="survey-canvas"
-          class="survey-canvas"
-          bindtouchstart="onCanvasTouchStart"
-          bindtouchmove="onCanvasTouchMove"
-          bindtouchend="onCanvasTouchEnd"
-          bindtouchcancel="onCanvasTouchEnd"
-        ></canvas>
-      </view>
-
-
-
-      <cover-view wx:if="{{closeHintVisible}}" class="close-hint {{closeHintActionVisible ? 'actionable' : ''}}">
-        {{closeHintText}}
-      </cover-view>
-
-      <cover-view wx:if="{{selectedWall && !selectedOpening}}" class="wall-object-toolbar" style="{{selectedWall.actionStyle}}">
-        <cover-view class="wall-object-action primary" data-action="door" aria-label="添加门" bindtap="onWallContextAction">
-          <cover-view class="wall-action-icon door-icon">
-            <cover-view class="door-frame"></cover-view>
-            <cover-view class="door-swing"></cover-view>
-          </cover-view>
-        </cover-view>
-        <cover-view class="wall-object-action primary" data-action="window" aria-label="添加窗" bindtap="onWallContextAction">
-          <cover-view class="wall-action-icon window-icon">
-            <cover-view class="window-frame"></cover-view>
-            <cover-view class="window-line"></cover-view>
-          </cover-view>
-        </cover-view>
-        <cover-view class="wall-object-action" data-source="selected-wall" aria-label="切墙侧" bindtap="onToggleSide">
-          <cover-view class="wall-action-icon side-icon">
-            <cover-view class="side-wall-line"></cover-view>
-            <cover-view class="side-dot-left"></cover-view>
-            <cover-view class="side-dot-right"></cover-view>
-          </cover-view>
-        </cover-view>
-        <cover-view class="wall-object-action" data-action="edit" aria-label="编辑墙厚" bindtap="onWallContextAction">
-          <cover-view class="wall-action-icon edit-icon">
-            <cover-view class="edit-stem"></cover-view>
-            <cover-view class="edit-tip"></cover-view>
-          </cover-view>
-        </cover-view>
-        <cover-view class="wall-object-action delete" data-action="delete" aria-label="删除墙" bindtap="onWallContextAction">
-          <cover-view class="wall-action-icon delete-icon">
-            <cover-view class="delete-lid"></cover-view>
-            <cover-view class="delete-body"></cover-view>
-          </cover-view>
-        </cover-view>
-        <cover-view class="wall-object-action" data-action="exit" aria-label="退出" bindtap="onWallContextAction">
-          <cover-view class="wall-action-icon exit-icon">
-            <cover-view class="exit-line one"></cover-view>
-            <cover-view class="exit-line two"></cover-view>
-          </cover-view>
-        </cover-view>
-      </cover-view>
-
-      <cover-view wx:if="{{selectedWall && !selectedOpening}}" class="wall-context">
-        <cover-view class="wall-context-title">当前墙体</cover-view>
-        <cover-view class="wall-context-meta">
-          <cover-view>{{selectedWall.mode}}</cover-view>
-          <cover-view>{{selectedWall.length}}</cover-view>
-          <cover-view>{{selectedWall.side}}</cover-view>
-          <cover-view>{{selectedWall.thickness}}</cover-view>
-        </cover-view>
-        <cover-view class="wall-context-actions">
-          <cover-view class="context-action primary" bindtap="onStartRemeasure">复尺</cover-view>
-          <cover-view class="context-action" bindtap="onToggleSide">切墙侧</cover-view>
-          <cover-view class="context-action" data-tool="thickness" bindtap="onToolTap">墙厚</cover-view>
-          <cover-view class="context-action muted" data-action="delete" bindtap="onWallContextAction">删除</cover-view>
-          <cover-view class="context-action muted" bindtap="onExitWallSelection">退出</cover-view>
-        </cover-view>
-      </cover-view>
-
-    </view>
-
-    <view class="right-rail">
-      <view wx:if="{{selectedOpening}}" class="opening-context {{selectedOpening.type}}">
-        <text class="opening-title">{{selectedOpening.typeLabel}} · 本地原型</text>
-        <view class="opening-fields">
-          <view class="opening-field" data-field="width" bindtap="onOpeningEditField">宽 {{selectedOpening.width}}</view>
-          <view class="opening-field" data-field="height" bindtap="onOpeningEditField">高 {{selectedOpening.height}}</view>
-          <view class="opening-field" data-field="sill" bindtap="onOpeningEditField">距地 {{selectedOpening.sill}}</view>
+        <view class="component-sync-row" bindtap="onToggleComponentThicknessSync">
+          <view class="sync-dot {{componentSyncWallThickness ? 'active' : ''}}"></view>
+          <text>同步更改墙体厚度</text>
         </view>
       </view>
 
-      <view wx:if="{{objectToolsVisible}}" class="tool-group primary-tools object-tools">
-        <view
-          class="tool-button"
-          wx:for="{{objectTools}}"
-          wx:key="key"
-          data-tool="{{item.key}}"
-          bindtap="onToolTap"
-        >
-          <text class="tool-label">{{item.label}}</text>
-          <text class="tool-helper">{{item.helper}}</text>
+      <view wx:elif="{{componentPanelMode === 'flip'}}" class="component-flip">
+        <view class="flip-card {{componentSelectedOpening && componentSelectedOpening.openDirection === 'inside' ? 'active' : ''}}" data-direction="inside" bindtap="onComponentFlip">内开</view>
+        <view class="flip-card {{componentSelectedOpening && componentSelectedOpening.openDirection === 'outside' ? 'active' : ''}}" data-direction="outside" bindtap="onComponentFlip">外开</view>
+        <view wx:if="{{componentSelectedOpening && componentSelectedOpening.type === 'window'}}" class="component-note">窗构件暂固定窗位，不支持开向切换。</view>
+      </view>
+
+      <view wx:else class="component-library">
+        <view class="library-toolbar">
+          <view class="library-type">{{componentSelectedOpening.modelLabel}}</view>
+          <view class="library-source">公共库 ▾</view>
         </view>
-      </view>
-
-      <view wx:else class="tool-group primary-tools">
-        <view
-          class="tool-button {{item.active ? 'active' : ''}}"
-          wx:for="{{coreTools}}"
-          wx:key="key"
-          data-tool="{{item.key}}"
-          bindtap="onToolTap"
-        >
-          <text class="tool-label">{{item.label}}</text>
-          <text class="tool-helper">{{item.helper}}</text>
+        <view class="category-row">
+          <view
+            class="category-chip {{item.active ? 'active' : ''}}"
+            wx:for="{{componentCategories}}"
+            wx:key="key"
+            data-category="{{item.key}}"
+            bindtap="onComponentCategoryTap"
+          >{{item.label}}</view>
         </view>
-      </view>
-
-      <view class="side-switch" bindtap="onToggleSide">
-        <text class="side-label">{{selectedOpening ? (selectedOpening.type === 'door' ? '开向' : '窗位') : '墙侧'}}</text>
-        <text class="side-value">{{selectedOpening ? (selectedOpening.type === 'door' ? selectedOpening.openDirectionLabel : '固定') : (measurementSide === 'right' ? '右侧' : '左侧')}}</text>
-      </view>
-
-      <view class="tool-group reserved-tools">
-        <view
-          class="reserved-button disabled"
-          wx:for="{{reservedTools}}"
-          wx:key="key"
-          bindtap="onDisabledTap"
-        >
-          {{item.label}}
+        <view class="library-grid">
+          <view
+            class="library-item {{item.active ? 'active' : ''}}"
+            wx:for="{{componentLibraryItems}}"
+            wx:key="id"
+            data-id="{{item.id}}"
+            bindtap="onComponentModelTap"
+          >
+            <view class="library-thumb" style="background:{{item.swatch}};"></view>
+            <text>{{item.label}}</text>
+            <view wx:if="{{item.active}}" class="library-check">选</view>
+          </view>
         </view>
       </view>
     </view>
   </view>
 
-  <view class="bottom-controls" style="bottom: calc(16rpx + {{bottomSafeArea}}px);">
-    <view class="mode-pill active">{{modePillText}}</view>
-    <view class="bottom-action disabled" data-action="bluetooth" bindtap="onBottomAction">
-      <text class="bottom-title">蓝牙</text>
-      <text class="bottom-subtitle">Phase 3</text>
-    </view>
-    <view class="bottom-action {{manualActionActive ? 'active' : ''}}" data-action="manual" bindtap="onBottomAction">
-      <text class="bottom-title">手输 mm</text>
-      <text class="bottom-subtitle">{{manualActionSubtitle}}</text>
-    </view>
-    <view class="bottom-action" data-action="cursor" bindtap="onBottomAction">
-      <text class="bottom-title">重置光标</text>
-      <text class="bottom-subtitle">{{cursorActionSubtitle}}</text>
-    </view>
-    <view class="bottom-action" data-action="add" bindtap="onBottomAction">
-      <text class="bottom-title">新房间</text>
-      <text class="bottom-subtitle">吸附墙体</text>
-    </view>
-  </view>
-
+  <!-- ══════════════════════════════════════════════ -->
+  <!--  数字键盘弹层                                   -->
+  <!-- ══════════════════════════════════════════════ -->
   <view wx:if="{{numberPadVisible}}" class="number-pad-mask" bindtap="onNumberClose"></view>
   <view wx:if="{{numberPadVisible}}" class="number-pad-panel">
     <view class="number-pad-header">
@@ -328,4 +343,5 @@
     </view>
     <view class="number-confirm" bindtap="onNumberConfirm">确认</view>
   </view>
+
 </view>
