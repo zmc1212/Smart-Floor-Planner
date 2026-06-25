@@ -85,6 +85,17 @@
       <cover-view class="compass-needle"></cover-view>
       <cover-view>N</cover-view>
     </cover-view>
+
+    <cover-view class="undo-redo">
+      <cover-view class="round-action {{historySummary.undo > 0 ? '' : 'disabled'}}" bindtap="onUndoTap">
+        <cover-view>撤销</cover-view>
+        <cover-view class="history-count">{{historySummary.undo}}</cover-view>
+      </cover-view>
+      <cover-view class="round-action reset-action" bindtap="onRequestResetCanvas">
+        <cover-view>重做</cover-view>
+        <cover-view class="reset-mark">×</cover-view>
+      </cover-view>
+    </cover-view>
   </view>
 
   <!-- ══════════════════════════════════════════════ -->
@@ -341,7 +352,10 @@
         {{item}}
       </view>
     </view>
-    <view class="number-confirm" bindtap="onNumberConfirm">确认</view>
+    <view class="number-actions">
+      <view class="number-measure" bindtap="triggerBluetoothNumberMeasure">测距</view>
+      <view class="number-confirm" bindtap="onNumberConfirm">确认</view>
+    </view>
   </view>
 
 </view>

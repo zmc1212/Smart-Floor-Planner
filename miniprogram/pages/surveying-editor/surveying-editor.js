@@ -1,6 +1,7 @@
 const app = getApp();
 const surveyGraph = require('../../utils/surveyWallGraph.js');
 const surveyCanvasRenderer = require('../../utils/surveyCanvasRenderer.js');
+const bluetooth = require('../../utils/bluetooth.js');
 
 const RESERVED_TOOLS = [
   { key: 'settings', label: '设置' },
@@ -78,6 +79,8 @@ const DIMENSION_LINE_CENTER_PX = 16;
 const DIMENSION_LABEL_HEIGHT_PX = 24;
 const DIMENSION_COLLISION_GAP_PX = 8;
 const DIMENSION_PRIMARY_GAP_PX = 22;
+const CURSOR_GRID_MM = 500;
+const BLE_DUPLICATE_WINDOW_MS = 800;
 const DIMENSION_OUTER_GAP_PX = 12;
 const REDLINE_JOIN_TRIM_PX = 0;
 const REDLINE_THICKNESS_PX = 3;
@@ -106,6 +109,7 @@ function buildCoreTools(activeTool, thicknessMm) {
     { key: 'diagonal', label: '斜线', helper: '自由角度', enabled: true, active: activeTool === 'diagonal' },
     { key: 'thickness', label: '墙厚', helper: formatMm(thicknessMm), enabled: true, active: false },
     { key: 'input', label: '输入', helper: '手输 mm', enabled: true, active: false },
+    { key: 'ble-measure', label: '测距', helper: '蓝牙读数', enabled: true, active: false },
     { key: 'reset', label: '重置', helper: '光标', enabled: true, active: false }
   ];
 }
@@ -205,6 +209,13 @@ function getTouchPoint(touch, rect) {
     return { x: rect.left + touch.x, y: rect.top + touch.y };
   }
   return { x: Number(touch.x) || 0, y: Number(touch.y) || 0 };
+}
+
+function getMidPoint(first, second) {
+  return {
+    x: (first.x + second.x) / 2,
+    y: (first.y + second.y) / 2
+  };
 }
 
 function canStartWallDrag(state) {
@@ -318,6 +329,11 @@ Page({
     this.surveyCanvasDpr = sysInfo.pixelRatio || 1;
     this.surveyRenderScene = null;
     this.canvasControls = {};
+    this._lastBleNumberDist = null;
+    this._lastBleNumberTime = 0;
+    this.bleMeasureTimer = null;
+    this.bleFailTimer = null;
+    this._bindBluetoothCallbacks();
 
     this.setData({
       statusBarHeight: sysInfo.statusBarHeight || 0,
@@ -340,6 +356,7 @@ Page({
 
   onUnload() {
     app.globalData.surveyingPrototypeContext = null;
+    this.clearBleMeasureTimers();
     this.persistPrototypeDraft();
     this.destroyComponentScene();
   },
@@ -377,6 +394,92 @@ Page({
       this.persistTimer = null;
       this.persistPrototypeDraft();
     }, 300);
+  },
+
+  _bindBluetoothCallbacks() {
+    bluetooth.setCallbacks(
+      (distanceInMeters) => {
+        this.onBluetoothMeasure(distanceInMeters);
+      },
+      (isConnected) => {
+        app.globalData.bleConnected = !!isConnected;
+      },
+      () => {
+        app.globalData.bleConnected = false;
+      }
+    );
+  },
+
+  clearBleMeasureTimers() {
+    if (this.blePrimeTimer) {
+      clearTimeout(this.blePrimeTimer);
+      this.blePrimeTimer = null;
+    }
+    if (this.bleMeasureTimer) {
+      clearTimeout(this.bleMeasureTimer);
+      this.bleMeasureTimer = null;
+    }
+    if (this.bleFailTimer) {
+      clearTimeout(this.bleFailTimer);
+      this.bleFailTimer = null;
+    }
+  },
+
+  onBluetoothMeasure(distanceInMeters) {
+    this.clearBleMeasureTimers();
+    this.applyBleReadingToNumberPad(distanceInMeters);
+  },
+
+  triggerBluetoothNumberMeasure() {
+    if (!this.data.numberPadVisible || !this.numberPadMode) {
+      wx.showToast({ title: '请先打开数字修改', icon: 'none' });
+      return;
+    }
+
+    if (!app.globalData.bleConnected) {
+      wx.showToast({ title: '蓝牙未连接', icon: 'none' });
+      return;
+    }
+
+    this.clearBleMeasureTimers();
+    wx.showToast({ title: '正在测距...', icon: 'none' });
+    bluetooth.sendBLECommand('ATK001#');
+
+    this.blePrimeTimer = setTimeout(() => {
+      this.blePrimeTimer = null;
+      bluetooth.sendBLECommand('ATK001#');
+
+      this.bleMeasureTimer = setTimeout(() => {
+        bluetooth.sendBLECommand('ATD001#');
+        this.bleFailTimer = setTimeout(() => {
+          this.onBluetoothMeasure(null);
+        }, 4000);
+      }, 3500);
+    }, 260);
+  },
+
+  applyBleReadingToNumberPad(distanceInMeters) {
+    if (!this.data.numberPadVisible || !this.numberPadMode) {
+      return;
+    }
+
+    if (distanceInMeters === null || distanceInMeters <= 0) {
+      wx.showToast({ title: '测量失败，请重试', icon: 'none' });
+      return;
+    }
+
+    const now = Date.now();
+    if (distanceInMeters === this._lastBleNumberDist && now - this._lastBleNumberTime < BLE_DUPLICATE_WINDOW_MS) {
+      return;
+    }
+    this._lastBleNumberDist = distanceInMeters;
+    this._lastBleNumberTime = now;
+
+    const valueMm = Math.round(distanceInMeters * 1000);
+    const inputValue = String(valueMm);
+    this.setData({ numberInput: inputValue }, () => {
+      wx.showToast({ title: '已填入测距结果', icon: 'none' });
+    });
   },
 
   refreshCanvasRect() {
@@ -1072,27 +1175,7 @@ Page({
   },
 
   buildMeasurePosition(segment, floor, session) {
-    if (!this.isFirstMeasurePositionStage(floor, session) || !segment || !segment.startPoint || !segment.endPoint) {
-      return { visible: false, style: '', buttonLabel: '↔', control: null };
-    }
-
-    const midX = (segment.startPoint.x + segment.endPoint.x) / 2;
-    const midY = (segment.startPoint.y + segment.endPoint.y) / 2;
-    const side = segment.measurementSide || session.measurementSide;
-    const left = midX - 70;
-    const top = midY + 96;
-    const label = side === 'left' ? '↔' : '↔';
-    return {
-      visible: session.state !== 'spaceClosed' && session.state !== 'wallSelected' && session.state !== 'remeasureAwaitingInput',
-      style: `left:${roundPx(left)}px; top:${roundPx(top)}px;`,
-      buttonLabel: label,
-      control: {
-        key: 'measure-position',
-        label,
-        tip: { x: left + 4, y: top, width: 132, height: 36 },
-        button: { cx: left + 70, cy: top + 86, radius: 38 }
-      }
-    };
+    return { visible: false, style: '', buttonLabel: '↔', control: null };
   },
 
   buildClosureRender(floor, session) {
@@ -1392,12 +1475,46 @@ Page({
     };
   },
 
+  mmToClientPoint(point) {
+    const rect = this.canvasRect || { left: 0, top: 0, width: 0, height: 0 };
+    const canvasPoint = this.mmToCanvasPoint(point);
+    return {
+      x: rect.left + canvasPoint.x,
+      y: rect.top + canvasPoint.y
+    };
+  },
+
   canvasPointToMm(point) {
     const rect = this.canvasRect || { left: 0, top: 0, width: 0, height: 0 };
     const viewport = this.getViewport();
     return {
       xMm: Math.round((point.x - rect.left - rect.width / 2 - viewport.offsetX) / viewport.scale),
       yMm: Math.round((point.y - rect.top - rect.height / 2 - viewport.offsetY) / viewport.scale)
+    };
+  },
+
+  snapPointToCursorGrid(pointMm) {
+    if (!pointMm) return pointMm;
+    return {
+      xMm: Math.round(pointMm.xMm / CURSOR_GRID_MM) * CURSOR_GRID_MM,
+      yMm: Math.round(pointMm.yMm / CURSOR_GRID_MM) * CURSOR_GRID_MM
+    };
+  },
+
+  getCursorPlacementCandidate(clientPoint) {
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const gridPoint = this.snapPointToCursorGrid(this.canvasPointToMm(clientPoint));
+    if (!floor || !gridPoint) return { pointMm: gridPoint, snappedToWall: false };
+
+    const hasClosedSpace = (floor.spaces || []).some((space) => space.closed);
+    if (!hasClosedSpace || !floor.walls.length) {
+      return { pointMm: gridPoint, snappedToWall: false };
+    }
+
+    const wallPoint = surveyGraph.getWallSnapPoint(floor, gridPoint);
+    return {
+      pointMm: wallPoint || gridPoint,
+      snappedToWall: !!wallPoint
     };
   },
 
@@ -1503,6 +1620,11 @@ Page({
 
     if (tool === 'input') {
       this.openLengthPad();
+      return;
+    }
+
+    if (tool === 'ble-measure') {
+      this.triggerBluetoothNumberMeasure();
       return;
     }
 
@@ -1854,11 +1976,14 @@ Page({
     if (touches.length >= 2) {
       const first = getTouchPoint(touches[0], this.canvasRect);
       const second = getTouchPoint(touches[1], this.canvasRect);
+      const center = getMidPoint(first, second);
       const viewport = this.getViewport();
       this.touchState = {
         mode: 'pinch',
         startDistance: distancePx(first, second),
-        startScale: viewport.scale
+        startScale: viewport.scale,
+        startCenter: center,
+        startCenterMm: this.canvasPointToMm(center)
       };
       return;
     }
@@ -1917,10 +2042,19 @@ Page({
     if (this.touchState.mode === 'pinch' && touches.length >= 2) {
       const first = getTouchPoint(touches[0], this.canvasRect);
       const second = getTouchPoint(touches[1], this.canvasRect);
+      const center = getMidPoint(first, second);
       const nextDistance = distancePx(first, second);
       if (!this.touchState.startDistance) return;
       const scale = clamp(this.touchState.startScale * (nextDistance / this.touchState.startDistance), MIN_SCALE, MAX_SCALE);
-      this.draft = surveyGraph.updateViewport(this.draft, { scale });
+      const anchorMm = this.touchState.startCenterMm || this.canvasPointToMm(center);
+      const rect = this.canvasRect;
+      const offsetX = center.x - rect.left - rect.width / 2 - anchorMm.xMm * scale;
+      const offsetY = center.y - rect.top - rect.height / 2 - anchorMm.yMm * scale;
+      this.draft = surveyGraph.updateViewport(this.draft, {
+        scale,
+        offsetX,
+        offsetY
+      });
       this.syncFromDraft();
       return;
     }
@@ -2183,44 +2317,73 @@ Page({
     this.schedulePrototypePersist();
   },
 
+  onUndoTap() {
+    if (!this.history.undo.length) return;
+    this.onUndo();
+  },
+
   // ─── 新建光标：拖拽放置流程 ───
 
   onNewCursorTap() {
     // 进入拖拽放置模式，初始光标显示在画布中心
     const rect = this.canvasRect || { width: 375, height: 667, left: 0, top: 0 };
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
+    const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    const candidate = this.getCursorPlacementCandidate(center);
+    const displayPoint = candidate && candidate.pointMm ? this.mmToClientPoint(candidate.pointMm) : center;
     this.setData({
       cursorDragMode: true,
-      dragCursorX: centerX,
-      dragCursorY: centerY
+      dragCursorX: displayPoint.x,
+      dragCursorY: displayPoint.y
     });
   },
 
   onCursorDragStart(e) {
     const touch = (e.touches || [])[0];
     if (!touch) return;
+    const candidate = this.getCursorPlacementCandidate({ x: touch.clientX, y: touch.clientY });
+    const displayPoint = candidate && candidate.pointMm
+      ? this.mmToClientPoint(candidate.pointMm)
+      : { x: touch.clientX, y: touch.clientY };
     this.setData({
-      dragCursorX: touch.clientX,
-      dragCursorY: touch.clientY
+      dragCursorX: displayPoint.x,
+      dragCursorY: displayPoint.y
     });
   },
 
   onCursorDragMove(e) {
     const touch = (e.touches || [])[0];
     if (!touch) return;
+    const candidate = this.getCursorPlacementCandidate({ x: touch.clientX, y: touch.clientY });
+    const displayPoint = candidate && candidate.pointMm
+      ? this.mmToClientPoint(candidate.pointMm)
+      : { x: touch.clientX, y: touch.clientY };
     this.setData({
-      dragCursorX: touch.clientX,
-      dragCursorY: touch.clientY
+      dragCursorX: displayPoint.x,
+      dragCursorY: displayPoint.y
     });
   },
 
   onCursorDragEnd(e) {
-    const { dragCursorX, dragCursorY } = this.data;
+    const touch = ((e && e.changedTouches) || (e && e.touches) || [])[0];
+    const releasePoint = touch
+      ? { x: touch.clientX, y: touch.clientY }
+      : { x: this.data.dragCursorX, y: this.data.dragCursorY };
+    const candidate = this.getCursorPlacementCandidate(releasePoint);
     this.setData({ cursorDragMode: false });
 
     // 屏幕坐标 → 画布 mm 坐标
-    const pointMm = this.canvasPointToMm({ x: dragCursorX, y: dragCursorY });
+    const pointMm = candidate && candidate.pointMm
+      ? candidate.pointMm
+      : this.snapPointToCursorGrid(this.canvasPointToMm(releasePoint));
+
+    if (candidate && candidate.snappedToWall) {
+      this.applyDraft(surveyGraph.snapCursorToWall(this.draft, pointMm), {
+        recordHistory: true,
+        extraData: { numberPadVisible: false }
+      });
+      wx.showToast({ title: '光标已贴合墙体', icon: 'none' });
+      return;
+    }
 
     // 直接操作 draft：placeCursor 在有墙时会强制把 anchor 锁到最后一面墙的终点，
     // 所以我们绕过它，手动 clone draft 并添加新的 anchor 节点。
@@ -2237,6 +2400,8 @@ Page({
     session.selectedOpeningId = '';
     session.closeCandidateNodeId = '';
     session.closeCandidatePoint = null;
+    session.closeCandidateType = '';
+    session.closeCandidateSharedWallId = '';
     session.alignmentSnapGuide = null;
     session.activeSpaceSharedWallId = '';
     session.activeSpaceSharedStartT = null;
@@ -2277,7 +2442,12 @@ Page({
 
   onRequestResetCanvas() {
     const floor = surveyGraph.getActiveFloor(this.draft);
-    const hasContent = floor.walls.length > 0 || (floor.nodes && floor.nodes.length > 0);
+    const hasContent = floor.walls.length > 0
+      || (floor.nodes && floor.nodes.length > 0)
+      || (floor.openings && floor.openings.length > 0)
+      || (floor.spaces && floor.spaces.length > 0)
+      || this.history.undo.length > 0
+      || this.history.redo.length > 0;
     if (!hasContent) {
       wx.showToast({ title: '画布已经是空的', icon: 'none' });
       return;
@@ -2297,10 +2467,14 @@ Page({
 
   onResetCanvas() {
     const freshDraft = surveyGraph.resetCursor(surveyGraph.createSurveyDraft());
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = null;
+    }
     this.history = { undo: [], redo: [] };
     this.draft = freshDraft;
     try {
-      wx.removeStorageSync(PROTOTYPE_DRAFT_KEY);
+      wx.setStorageSync(PROTOTYPE_DRAFT_KEY, surveyGraph.cloneDraft(this.draft));
     } catch (err) {
       // 清除本地草稿失败不阻塞操作
     }

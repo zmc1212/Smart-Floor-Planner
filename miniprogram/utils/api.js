@@ -1,5 +1,5 @@
-const BASE_URL = 'http://192.168.10.62:3005/api';
-// const BASE_URL = 'https://smartfloor.zlyun168.com/api';
+// const BASE_URL = 'http://192.168.10.62:3005/api';
+const BASE_URL = 'https://smartfloor.zlyun168.com/api';
 
 /**
  * Enhanced request method with JWT support
