@@ -684,8 +684,15 @@ function findWallSnapProjection(floor, point) {
   return findNearestSharedEndpointProjection(floor, point) || findNearestWallProjection(floor, point);
 }
 
-function getWallSnapPoint(floor, point) {
+function getWallSnapPoint(floor, point, maxDistanceMm) {
   const projection = findWallSnapProjection(floor, point);
+  if (
+    projection &&
+    typeof maxDistanceMm === 'number' &&
+    projection.distanceMm > maxDistanceMm
+  ) {
+    return null;
+  }
   return projection ? projection.point : null;
 }
 
@@ -1559,13 +1566,14 @@ function remeasureSelectedWall(draft, lengthMm, inputSource) {
 
   if (floor.spaces.some((space) => space.closed)) {
     session.state = 'spaceClosed';
+    session.anchorNodeId = '';
+    session.selectedWallId = wall.id;
   } else {
-    const lastEnd = getLastEndNode(floor);
     session.state = 'wallCommitted';
-    session.anchorNodeId = lastEnd ? lastEnd.id : '';
+    session.anchorNodeId = movingNodeId;
+    session.selectedWallId = '';
   }
 
-  session.selectedWallId = wall.id;
   session.selectedOpeningId = '';
   return touchDraft(next);
 }

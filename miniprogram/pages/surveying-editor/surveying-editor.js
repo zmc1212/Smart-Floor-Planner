@@ -298,6 +298,7 @@ Page({
     componentLibraryItems: [],
     componentEditorTitle: '构件编辑',
     componentSpecValue: '0',
+    componentSpecInput: '0',
     componentSelectedOpening: null
   },
 
@@ -427,6 +428,12 @@ Page({
 
   onBluetoothMeasure(distanceInMeters) {
     this.clearBleMeasureTimers();
+    const target = this.bleMeasureTarget || 'numberPad';
+    this.bleMeasureTarget = '';
+    if (target === 'componentSpec') {
+      this.applyBleReadingToComponentSpec(distanceInMeters);
+      return;
+    }
     this.applyBleReadingToNumberPad(distanceInMeters);
   },
 
@@ -441,6 +448,27 @@ Page({
       return;
     }
 
+    this.startBluetoothMeasure('numberPad');
+  },
+
+  triggerComponentSpecBluetoothMeasure() {
+    const floor = this.draft ? surveyGraph.getActiveFloor(this.draft) : null;
+    const openingId = floor && floor.session ? floor.session.selectedOpeningId : '';
+    if (!this.data.componentEditorVisible || this.data.componentPanelMode !== 'spec' || !openingId) {
+      wx.showToast({ title: '请先选择门窗参数', icon: 'none' });
+      return;
+    }
+
+    if (!app.globalData.bleConnected) {
+      wx.showToast({ title: '蓝牙未连接', icon: 'none' });
+      return;
+    }
+
+    this.startBluetoothMeasure('componentSpec');
+  },
+
+  startBluetoothMeasure(target) {
+    this.bleMeasureTarget = target || 'numberPad';
     this.clearBleMeasureTimers();
     wx.showToast({ title: '正在测距...', icon: 'none' });
     bluetooth.sendBLECommand('ATK001#');
@@ -458,6 +486,16 @@ Page({
     }, 260);
   },
 
+  shouldIgnoreDuplicateBleReading(distanceInMeters) {
+    const now = Date.now();
+    if (distanceInMeters === this._lastBleNumberDist && now - this._lastBleNumberTime < BLE_DUPLICATE_WINDOW_MS) {
+      return true;
+    }
+    this._lastBleNumberDist = distanceInMeters;
+    this._lastBleNumberTime = now;
+    return false;
+  },
+
   applyBleReadingToNumberPad(distanceInMeters) {
     if (!this.data.numberPadVisible || !this.numberPadMode) {
       return;
@@ -468,18 +506,51 @@ Page({
       return;
     }
 
-    const now = Date.now();
-    if (distanceInMeters === this._lastBleNumberDist && now - this._lastBleNumberTime < BLE_DUPLICATE_WINDOW_MS) {
+    if (this.shouldIgnoreDuplicateBleReading(distanceInMeters)) {
       return;
     }
-    this._lastBleNumberDist = distanceInMeters;
-    this._lastBleNumberTime = now;
 
     const valueMm = Math.round(distanceInMeters * 1000);
     const inputValue = String(valueMm);
     this.setData({ numberInput: inputValue }, () => {
       wx.showToast({ title: '已填入测距结果', icon: 'none' });
     });
+  },
+
+  applyBleReadingToComponentSpec(distanceInMeters) {
+    if (!this.data.componentEditorVisible || this.data.componentPanelMode !== 'spec') {
+      return;
+    }
+
+    if (distanceInMeters === null || distanceInMeters <= 0) {
+      wx.showToast({ title: '测量失败，请重试', icon: 'none' });
+      return;
+    }
+
+    if (this.shouldIgnoreDuplicateBleReading(distanceInMeters)) {
+      return;
+    }
+
+    const valueMm = Math.round(distanceInMeters * 1000);
+    const inputValue = String(valueMm);
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const openingId = floor.session.selectedOpeningId;
+    const specMode = this.data.componentSpecMode || 'length';
+
+    try {
+      const nextDraft = this.updateComponentSpecValue(this.draft, openingId, specMode, valueMm);
+      this.draft = nextDraft;
+      this.syncFromDraft({
+        componentEditorVisible: true,
+        componentPanelMode: 'spec',
+        componentSpecMode: specMode,
+        componentSpecInput: inputValue
+      });
+      this.schedulePrototypePersist();
+      wx.showToast({ title: '已填入测距结果', icon: 'none' });
+    } catch (err) {
+      wx.showToast({ title: err.message || '输入无效', icon: 'none' });
+    }
   },
 
   refreshCanvasRect() {
@@ -1503,15 +1574,15 @@ Page({
 
   getCursorPlacementCandidate(clientPoint) {
     const floor = surveyGraph.getActiveFloor(this.draft);
-    const gridPoint = this.snapPointToCursorGrid(this.canvasPointToMm(clientPoint));
+    const rawPoint = this.canvasPointToMm(clientPoint);
+    const gridPoint = this.snapPointToCursorGrid(rawPoint);
     if (!floor || !gridPoint) return { pointMm: gridPoint, snappedToWall: false };
 
-    const hasClosedSpace = (floor.spaces || []).some((space) => space.closed);
-    if (!hasClosedSpace || !floor.walls.length) {
+    if (!floor.walls.length) {
       return { pointMm: gridPoint, snappedToWall: false };
     }
 
-    const wallPoint = surveyGraph.getWallSnapPoint(floor, gridPoint);
+    const wallPoint = surveyGraph.getWallSnapPoint(floor, rawPoint, surveyGraph.CLOSE_TOLERANCE_MM);
     return {
       pointMm: wallPoint || gridPoint,
       snappedToWall: !!wallPoint

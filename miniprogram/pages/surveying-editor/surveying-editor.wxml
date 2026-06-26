@@ -86,7 +86,7 @@
       <cover-view>N</cover-view>
     </cover-view>
 
-    <cover-view class="undo-redo">
+    <cover-view wx:if="{{!componentEditorVisible}}" class="undo-redo">
       <cover-view class="round-action {{historySummary.undo > 0 ? '' : 'disabled'}}" bindtap="onUndoTap">
         <cover-view>撤销</cover-view>
         <cover-view class="history-count">{{historySummary.undo}}</cover-view>
@@ -285,9 +285,12 @@
             {{item}}
           </view>
         </view>
-        <view class="component-sync-row" bindtap="onToggleComponentThicknessSync">
-          <view class="sync-dot {{componentSyncWallThickness ? 'active' : ''}}"></view>
-          <text>同步更改墙体厚度</text>
+        <view class="component-spec-actions">
+          <view class="component-spec-measure" bindtap="triggerComponentSpecBluetoothMeasure">测距</view>
+          <view class="component-sync-row" bindtap="onToggleComponentThicknessSync">
+            <view class="sync-dot {{componentSyncWallThickness ? 'active' : ''}}"></view>
+            <text>同步更改墙体厚度</text>
+          </view>
         </view>
       </view>
 

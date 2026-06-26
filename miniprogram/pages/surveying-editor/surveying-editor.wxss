@@ -1081,7 +1081,7 @@ page {
   display: flex;
   justify-content: center;
   gap: 80rpx;
-  margin-bottom: 28rpx;
+  margin-bottom: 20rpx;
 }
 
 .component-panel-tab {
@@ -1160,8 +1160,8 @@ page {
 }
 
 .component-spec-display {
-  margin-top: 14rpx;
-  height: 68rpx;
+  margin-top: 10rpx;
+  height: 62rpx;
   border-radius: 12rpx;
   background: #f8fafc;
   display: flex;
@@ -1185,12 +1185,12 @@ page {
 .component-spec-keyboard {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10rpx;
-  margin-top: 16rpx;
+  gap: 8rpx;
+  margin-top: 12rpx;
 }
 
 .keyboard-key {
-  height: 70rpx;
+  height: 64rpx;
   border-radius: 16rpx;
   background: #f8faf8;
   color: #111827;
@@ -1212,13 +1212,43 @@ page {
   font-weight: 600;
 }
 
-.component-sync-row {
-  margin-top: 20rpx;
+.component-spec-actions {
+  margin-top: 12rpx;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+
+.component-spec-measure {
+  min-width: 156rpx;
+  height: 64rpx;
+  padding: 0 30rpx;
+  border-radius: 22rpx;
+  background: #eef8f0;
+  color: #17a14c;
+  font-size: 28rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.component-spec-measure:active {
+  background: #dff3e4;
+}
+
+.component-sync-row {
+  flex: 1;
+  margin-top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   gap: 12rpx;
   color: #4b5563;
-  font-size: 24rpx;
+  font-size: 23rpx;
+  min-width: 0;
 }
 
 .sync-dot {
