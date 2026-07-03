@@ -70,6 +70,7 @@ Page({
         app.globalData.token = res.token || app.globalData.token;
         app.globalData.userInfo = res.user || app.globalData.userInfo;
         app.globalData.openid = res.openid || app.globalData.openid || (res.user && res.user.openid);
+        app.globalData.justLoggedIn = true;
 
         if (res.openid) wx.setStorageSync('openid', res.openid);
 

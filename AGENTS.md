@@ -46,7 +46,8 @@ New surveying prototype note:
 
 - The new surveying workspace starts in `miniprogram/pages/surveying-editor/` and is documented under `docs/surveying-module/`. It is a parallel prototype shell, not a replacement for `miniprogram/pages/editor/`.
 - Business entry points that expose the prototype must keep an explicit dual choice: `旧版测量` continues to enter `miniprogram/pages/editor/editor`, while `新版测绘体验` enters `miniprogram/pages/surveying-editor/surveying-editor`.
-- During the prototype phases, `surveying-editor` must not write formal floor plan data, overwrite legacy drafts, submit measurement audit logs, or bypass the existing downstream compatibility flow.
+- During the prototype phases, `surveying-editor` may save a server-side draft only when the payload is explicitly marked as prototype-only (`measurementMode: 'surveying_prototype'`, `prototypeOnly: true`) and keeps the raw wall-graph under `surveyDraft`. It must not overwrite legacy drafts, submit measurement audit logs, feed CAD/report/3D downstream compatibility flows, or present prototype data as formal floor plan output.
+- Prototype-only drafts may be linked to a lead and shown read-only in the admin leads and floor plan detail pages so operators can inspect the Mini Program wall graph. This visibility does not make the data a formal floor plan and must keep CAD/report/3D actions disabled for the prototype record.
 - Adding or changing the prototype entry does not by itself change the completed legacy measurement modules below. If shared BLE, formal saving, export/report, 3D, measurement logs, or `editor.*` are touched, identify and update the affected completed modules.
 
 Primary files:

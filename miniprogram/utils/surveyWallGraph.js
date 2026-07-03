@@ -1,6 +1,6 @@
 const DEFAULT_THICKNESS_MM = 200;
 const DEFAULT_SCALE = 0.05;
-const CLOSE_TOLERANCE_MM = 200;
+const CLOSE_TOLERANCE_MM = 350;
 const RECTANGLE_ALIGNMENT_TOLERANCE_MM = CLOSE_TOLERANCE_MM;
 const MIN_WALL_LENGTH_MM = 100;
 const MIN_THICKNESS_MM = 50;
@@ -51,9 +51,12 @@ function createSession() {
     activeSpaceStartWallIndex: 0,
     activeSpaceSharedWallId: '',
     activeSpaceSharedStartT: null,
+    activeSpaceSharedSnapLine: '',
     lastWallSnapNodeId: '',
     lastWallSnapWallId: '',
-    lastWallSnapT: null
+    lastWallSnapT: null,
+    lastWallSnapLine: '',
+    previewMeasurementSide: ''
   };
 }
 
@@ -127,6 +130,9 @@ function ensureSessionSpaceTracking(floor) {
   if (typeof session.activeSpaceSharedStartT !== 'number') {
     session.activeSpaceSharedStartT = null;
   }
+  if (typeof session.activeSpaceSharedSnapLine !== 'string') {
+    session.activeSpaceSharedSnapLine = '';
+  }
   if (typeof session.lastWallSnapNodeId !== 'string') {
     session.lastWallSnapNodeId = '';
   }
@@ -135,6 +141,12 @@ function ensureSessionSpaceTracking(floor) {
   }
   if (typeof session.lastWallSnapT !== 'number') {
     session.lastWallSnapT = null;
+  }
+  if (typeof session.lastWallSnapLine !== 'string') {
+    session.lastWallSnapLine = '';
+  }
+  if (typeof session.previewMeasurementSide !== 'string') {
+    session.previewMeasurementSide = '';
   }
   if (!Object.prototype.hasOwnProperty.call(session, 'closeCandidatePoint')) {
     session.closeCandidatePoint = null;
@@ -267,6 +279,62 @@ function buildResolvedSegment(floor, wall, options) {
   };
 }
 
+function normalForMeasurementSide(start, end, side) {
+  if (!start || !end) return null;
+  const dx = end.xMm - start.xMm;
+  const dy = end.yMm - start.yMm;
+  const rawLength = Math.sqrt(dx * dx + dy * dy);
+  if (!rawLength) return null;
+
+  const direction = { x: dx / rawLength, y: dy / rawLength };
+  const leftNormal = { x: direction.y, y: -direction.x };
+  const rightNormal = { x: -direction.y, y: direction.x };
+  return side === 'left' ? leftNormal : rightNormal;
+}
+
+function resolveStableAxisMeasurementSide(start, end) {
+  const leftNormal = normalForMeasurementSide(start, end, 'left');
+  const rightNormal = normalForMeasurementSide(start, end, 'right');
+  if (!leftNormal || !rightNormal) return 'left';
+
+  const dx = Math.abs(end.xMm - start.xMm);
+  const dy = Math.abs(end.yMm - start.yMm);
+  const preferredNormal = dy >= dx
+    ? { x: 1, y: 0 }
+    : { x: 0, y: 1 };
+  return dot(leftNormal, preferredNormal) >= dot(rightNormal, preferredNormal) ? 'left' : 'right';
+}
+
+function resolveBoundaryAlignedMeasurementSide(floor, session, start, end) {
+  if (!floor || !session || !start || !end) return session ? session.measurementSide : 'left';
+  const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+    ? session.activeSpaceStartWallIndex
+    : 0;
+  const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
+  if (activeWallCount !== 0 || !session.activeSpaceSharedWallId || !session.activeSpaceSharedSnapLine) {
+    return session.measurementSide;
+  }
+
+  const sourceWall = getWall(floor, session.activeSpaceSharedWallId);
+  const sourceSegment = sourceWall ? buildResolvedSegment(floor, sourceWall) : null;
+  if (!sourceSegment || !sourceSegment.normal) return session.measurementSide;
+
+  const towardWallBody = session.activeSpaceSharedSnapLine === 'outer'
+    ? { x: -sourceSegment.normal.x, y: -sourceSegment.normal.y }
+    : sourceSegment.normal;
+  const leftNormal = normalForMeasurementSide(start, end, 'left');
+  const rightNormal = normalForMeasurementSide(start, end, 'right');
+  if (!leftNormal || !rightNormal) return session.measurementSide;
+
+  const leftScore = dot(leftNormal, towardWallBody);
+  const rightScore = dot(rightNormal, towardWallBody);
+  if (Math.max(Math.abs(leftScore), Math.abs(rightScore)) < 0.25) {
+    return resolveStableAxisMeasurementSide(start, end);
+  }
+
+  return leftScore >= rightScore ? 'left' : 'right';
+}
+
 function intersectLines(a1, a2, b1, b2) {
   const p = { x: a1.xMm, y: a1.yMm };
   const r = { x: a2.xMm - a1.xMm, y: a2.yMm - a1.yMm };
@@ -374,6 +442,17 @@ function buildWallRenderGeometry(floor, wall, options) {
     outerStartAlongMm: projectAlong(current, outerStart),
     outerEndAlongMm: projectAlong(current, outerEnd),
     thicknessMm: current.thicknessMm
+  };
+}
+
+function buildWallSnapGeometry(floor, wall) {
+  const segment = buildResolvedSegment(floor, wall);
+  if (!segment) return null;
+  return {
+    start: segment.start,
+    end: segment.end,
+    outerStart: segment.outerStart,
+    outerEnd: segment.outerEnd
   };
 }
 
@@ -620,24 +699,52 @@ function projectPointToWallSegment(point, start, end) {
   };
 }
 
+function buildWallProjectionCandidate(wall, start, end, projection, snapLine) {
+  if (!projection) return null;
+  return {
+    wall,
+    start,
+    end,
+    point: projection.point,
+    t: projection.t,
+    distanceMm: projection.distanceMm,
+    snapLine
+  };
+}
+
 function findNearestWallProjection(floor, point) {
   if (!floor || !point) return null;
   let best = null;
   floor.walls.forEach((wall) => {
     const start = getNode(floor, wall.startNodeId);
     const end = getNode(floor, wall.endNodeId);
-    const projection = projectPointToWallSegment(point, start, end);
-    if (!projection) return;
-    if (!best || projection.distanceMm < best.distanceMm) {
-      best = {
+    if (!start || !end) return;
+
+    const candidates = [
+      buildWallProjectionCandidate(
         wall,
         start,
         end,
-        point: projection.point,
-        t: projection.t,
-        distanceMm: projection.distanceMm
-      };
+        projectPointToWallSegment(point, start, end),
+        'inner'
+      )
+    ];
+    const segment = buildResolvedSegment(floor, wall);
+    if (segment && segment.outerStart && segment.outerEnd) {
+      candidates.push(buildWallProjectionCandidate(
+        wall,
+        start,
+        end,
+        projectPointToWallSegment(point, segment.outerStart, segment.outerEnd),
+        'outer'
+      ));
     }
+
+    candidates.filter(Boolean).forEach((projection) => {
+      if (!best || projection.distanceMm < best.distanceMm) {
+        best = projection;
+      }
+    });
   });
   return best;
 }
@@ -699,8 +806,24 @@ function getWallSnapPoint(floor, point, maxDistanceMm) {
 function getOrCreateSnapNode(floor, projection) {
   if (!projection) return null;
   if (projection.node) return projection.node;
-  if (projection.t <= 0.0001) return projection.start;
-  if (projection.t >= 0.9999) return projection.end;
+  if (projection.snapLine !== 'outer') {
+    if (projection.t <= 0.0001) return projection.start;
+    if (projection.t >= 0.9999) return projection.end;
+  }
+
+  const existing = floor.nodes.find((node) => distanceMm(node, projection.point) <= 1);
+  return existing || addNode(floor, projection.point);
+}
+
+function getOrCreateWallCenterNode(floor, wallId, point) {
+  const wall = getWall(floor, wallId);
+  if (!wall || !point) return null;
+  const start = getNode(floor, wall.startNodeId);
+  const end = getNode(floor, wall.endNodeId);
+  const projection = projectPointToWallSegment(point, start, end);
+  if (!projection) return null;
+  if (projection.t <= 0.0001) return start;
+  if (projection.t >= 0.9999) return end;
 
   const existing = floor.nodes.find((node) => distanceMm(node, projection.point) <= 1);
   return existing || addNode(floor, projection.point);
@@ -761,6 +884,68 @@ function findSharedWallClosureProjection(floor, session, point) {
   if (best.t <= 0.0001) best.node = best.start;
   if (best.t >= 0.9999) best.node = best.end;
   return best;
+}
+
+function findAnySharedWallClosureProjection(floor, session, point) {
+  const sameWallProjection = findSharedWallClosureProjection(floor, session, point);
+  if (sameWallProjection) return sameWallProjection;
+  if (!floor || !session || !point || !session.activeSpaceSharedWallId) return null;
+
+  const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+    ? session.activeSpaceStartWallIndex
+    : 0;
+  let best = null;
+  (floor.walls || []).forEach((wall, index) => {
+    if (index >= startWallIndex || wall.id === session.activeSpaceSharedWallId) return;
+    const start = getNode(floor, wall.startNodeId);
+    const end = getNode(floor, wall.endNodeId);
+    if (!start || !end) return;
+
+    const projection = projectPointToWallSegment(point, start, end);
+    if (!projection || projection.distanceMm > CLOSE_TOLERANCE_MM) return;
+    if (!best || projection.distanceMm < best.distanceMm) {
+      best = Object.assign({}, projection, { wall, start, end });
+    }
+  });
+
+  if (!best) return null;
+  if (best.t <= 0.0001) best.node = best.start;
+  if (best.t >= 0.9999) best.node = best.end;
+  return best;
+}
+
+function findWallPathBetweenNodes(floor, fromNodeId, toNodeId, excludedWallIds) {
+  if (!floor || !fromNodeId || !toNodeId) return [];
+  if (fromNodeId === toNodeId) return [];
+
+  const excluded = excludedWallIds || {};
+  const visited = {};
+  const queue = [{ nodeId: fromNodeId, wallIds: [] }];
+  visited[fromNodeId] = true;
+
+  while (queue.length) {
+    const current = queue.shift();
+    const walls = floor.walls || [];
+    for (let index = 0; index < walls.length; index += 1) {
+      const wall = walls[index];
+      if (!wall || excluded[wall.id]) continue;
+      let nextNodeId = '';
+      if (wall.startNodeId === current.nodeId) {
+        nextNodeId = wall.endNodeId;
+      } else if (wall.endNodeId === current.nodeId) {
+        nextNodeId = wall.startNodeId;
+      }
+      if (!nextNodeId || visited[nextNodeId]) continue;
+      const nextWallIds = current.wallIds.concat(wall.id);
+      if (nextNodeId === toNodeId) {
+        return nextWallIds;
+      }
+      visited[nextNodeId] = true;
+      queue.push({ nodeId: nextNodeId, wallIds: nextWallIds });
+    }
+  }
+
+  return [];
 }
 
 function cloneWallSegment(sourceWall, startNodeId, endNodeId, id) {
@@ -981,6 +1166,7 @@ function placeCursor(draft, point) {
   session.activeSpaceStartWallIndex = floor.walls.length;
   session.activeSpaceSharedWallId = '';
   session.activeSpaceSharedStartT = null;
+  session.activeSpaceSharedSnapLine = '';
   return touchDraft(next);
 }
 
@@ -999,11 +1185,13 @@ function startPreview(draft, rawPoint) {
   const rectangleSnap = maybeSnapThirdWallForRectangle(floor, session, anchor, orthogonalPoint);
   const previewPoint = rectangleSnap.point;
   const previewLengthMm = distanceMm(anchor, previewPoint);
+  const previewMeasurementSide = resolveBoundaryAlignedMeasurementSide(floor, session, anchor, previewPoint);
 
   session.state = 'wallPreview';
   session.previewPoint = previewPoint;
   session.previewLengthMm = previewLengthMm;
   session.previewAngleDeg = angleDeg(anchor, previewPoint);
+  session.previewMeasurementSide = previewMeasurementSide;
   session.pendingWallId = '';
   session.selectedWallId = '';
   session.selectedOpeningId = '';
@@ -1051,6 +1239,7 @@ function cancelPending(draft) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  session.previewMeasurementSide = '';
   session.pendingWallId = '';
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
@@ -1090,11 +1279,13 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   let endPoint = pointFromLength(anchor, session.previewPoint, parsedLength);
   const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
   const activeWallCountBeforeCommit = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
-  const sharedProjection = activeWallCountBeforeCommit >= 2
-    ? findSharedWallClosureProjection(floor, session, endPoint)
+  const canCloseWithSharedBoundary = activeWallCountBeforeCommit >= 2 ||
+    (activeWallCountBeforeCommit >= 1 && !!session.activeSpaceSharedWallId);
+  const sharedProjection = canCloseWithSharedBoundary
+    ? findAnySharedWallClosureProjection(floor, session, endPoint)
     : null;
   const isClosingCurrentSpace = activeStartNode &&
-    activeWallCountBeforeCommit >= 2 &&
+    (activeWallCountBeforeCommit >= 2 || !!sharedProjection) &&
     (sharedProjection || distanceMm(endPoint, activeStartNode) <= CLOSE_TOLERANCE_MM);
   if (sharedProjection) {
     endPoint = sharedProjection.point;
@@ -1107,6 +1298,8 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   }
 
   const endNode = sharedProjection ? getOrCreateSnapNode(floor, sharedProjection) : addNode(floor, endPoint);
+  const measurementSide = session.previewMeasurementSide ||
+    resolveBoundaryAlignedMeasurementSide(floor, session, anchor, endNode);
   const wall = {
     id: nextId('wall'),
     startNodeId: anchor.id,
@@ -1115,7 +1308,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     lengthMm: distanceMm(anchor, endNode),
     angleDeg: angleDeg(anchor, endNode),
     thicknessMm: session.thicknessMm,
-    measurementSide: session.measurementSide,
+    measurementSide,
     inputSource: inputSource || 'manual',
     status: 'confirmed',
     measuredAt: nowIso()
@@ -1129,6 +1322,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  session.previewMeasurementSide = '';
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
   session.closeCandidateType = '';
@@ -1136,9 +1330,11 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   session.alignmentSnapGuide = null;
 
   const activeWallCount = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
-  if (sharedProjection && activeWallCount >= 3) {
+  if (sharedProjection && activeWallCount >= 2) {
     session.state = 'closing';
-    session.activeSpaceSharedWallId = sharedProjection.wall.id;
+    if (!session.activeSpaceSharedWallId) {
+      session.activeSpaceSharedWallId = sharedProjection.wall.id;
+    }
     session.closeCandidateNodeId = endNode.id;
     session.closeCandidatePoint = sharedProjection.point;
     session.closeCandidateType = 'shared-wall';
@@ -1160,15 +1356,17 @@ function confirmClosure(draft) {
   const session = ensureSessionSpaceTracking(floor);
   const startWallIndex = session.activeSpaceStartWallIndex || 0;
   const activeWallCount = Math.max(0, floor.walls.length - startWallIndex);
+  const closeCandidateSharedWallId = session.closeCandidateSharedWallId || session.activeSpaceSharedWallId;
+  const hasSharedBoundary = !!(session.activeSpaceSharedWallId || closeCandidateSharedWallId);
+  const minimumActiveWallCount = hasSharedBoundary ? 2 : 3;
 
-  if (session.state !== 'closing' || (!session.closeCandidateNodeId && !session.closeCandidatePoint) || activeWallCount < 3) {
+  if (session.state !== 'closing' || (!session.closeCandidateNodeId && !session.closeCandidatePoint) || activeWallCount < minimumActiveWallCount) {
     return next;
   }
 
   const lastWall = getLastWall(floor);
   const oldEndNodeId = lastWall.endNodeId;
   const oldEndNode = getNode(floor, oldEndNodeId);
-  const closeCandidateSharedWallId = session.closeCandidateSharedWallId || session.activeSpaceSharedWallId;
   let closeTargetNode = getNode(floor, session.closeCandidateNodeId);
   if (!closeTargetNode && session.closeCandidatePoint && closeCandidateSharedWallId) {
     const sharedWall = getWall(floor, closeCandidateSharedWallId);
@@ -1193,22 +1391,43 @@ function confirmClosure(draft) {
   refreshWallMetrics(floor);
 
   const newWallIds = floor.walls.slice(startWallIndex).map((wall) => wall.id);
-  let sharedWallId = '';
-  if (
-    closeCandidateSharedWallId &&
-    session.activeSpaceStartNodeId &&
-    session.closeCandidatePoint
-  ) {
-    const splitResult = splitWallAtNodes(floor, closeCandidateSharedWallId, [
-      session.activeSpaceStartNodeId,
-      closeTargetNode.id
-    ]);
-    const sharedSegment = splitResult.getSegmentBetween &&
-      splitResult.getSegmentBetween(session.activeSpaceStartNodeId, closeTargetNode.id);
-    sharedWallId = sharedSegment && sharedSegment.wall ? sharedSegment.wall.id : '';
+  const excludedWallIds = {};
+  newWallIds.forEach((wallId) => { excludedWallIds[wallId] = true; });
+
+  const sharedBoundaryWallIds = [
+    session.activeSpaceSharedWallId,
+    closeCandidateSharedWallId
+  ].filter((wallId, index, list) => wallId && list.indexOf(wallId) === index);
+
+  let sharedStartNodeId = session.activeSpaceStartNodeId;
+  let sharedCloseNodeId = closeTargetNode.id;
+  if (session.activeSpaceSharedWallId && session.activeSpaceStartNodeId) {
+    const activeStartNode = getNode(floor, session.activeSpaceStartNodeId);
+    const sharedStartNode = getOrCreateWallCenterNode(floor, session.activeSpaceSharedWallId, activeStartNode);
+    if (sharedStartNode) sharedStartNodeId = sharedStartNode.id;
+  }
+  if (closeCandidateSharedWallId) {
+    const sharedCloseNode = getOrCreateWallCenterNode(floor, closeCandidateSharedWallId, closeTargetNode);
+    if (sharedCloseNode) sharedCloseNodeId = sharedCloseNode.id;
   }
 
-  const wallIds = sharedWallId ? newWallIds.concat(sharedWallId) : newWallIds;
+  if (sharedBoundaryWallIds.length && session.activeSpaceStartNodeId) {
+    sharedBoundaryWallIds.forEach((wallId) => {
+      splitWallAtNodes(floor, wallId, [
+        sharedStartNodeId,
+        sharedCloseNodeId
+      ]);
+    });
+  }
+
+  const sharedWallIds = session.activeSpaceStartNodeId
+    ? findWallPathBetweenNodes(floor, sharedCloseNodeId, sharedStartNodeId, excludedWallIds)
+    : [];
+  if (sharedBoundaryWallIds.length && !sharedWallIds.length && !closeCandidateSharedWallId) {
+    throw new Error('公共边未连通，请从相邻墙边重新吸附光标');
+  }
+
+  const wallIds = newWallIds.concat(sharedWallIds.length ? sharedWallIds : sharedBoundaryWallIds);
   const hasSameSpace = floor.spaces.some((space) => {
     if (!space.closed || !Array.isArray(space.wallIds) || space.wallIds.length !== wallIds.length) return false;
     return space.wallIds.every((wallId, index) => wallId === wallIds[index]);
@@ -1243,6 +1462,7 @@ function confirmClosure(draft) {
   session.activeSpaceStartWallIndex = floor.walls.length;
   session.activeSpaceSharedWallId = '';
   session.activeSpaceSharedStartT = null;
+  session.activeSpaceSharedSnapLine = '';
   removeUnreferencedNodes(floor);
 
   return touchDraft(next);
@@ -1422,6 +1642,7 @@ function deleteWall(draft, wallId) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  session.previewMeasurementSide = '';
   session.pendingWallId = '';
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
@@ -1435,6 +1656,7 @@ function deleteWall(draft, wallId) {
   session.activeSpaceStartWallIndex = floor.walls.length;
   session.activeSpaceSharedWallId = '';
   session.activeSpaceSharedStartT = null;
+  session.activeSpaceSharedSnapLine = '';
 
   if (floor.walls.length) {
     const lastEnd = getLastEndNode(floor);
@@ -1474,6 +1696,7 @@ function startWallSnap(draft) {
   session.activeSpaceStartWallIndex = floor.walls.length;
   session.activeSpaceSharedWallId = '';
   session.activeSpaceSharedStartT = null;
+  session.activeSpaceSharedSnapLine = '';
 
   return touchDraft(next);
 }
@@ -1492,6 +1715,7 @@ function snapCursorToWall(draft, point) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  session.previewMeasurementSide = '';
   session.pendingWallId = '';
   session.selectedWallId = '';
   session.selectedOpeningId = '';
@@ -1504,9 +1728,11 @@ function snapCursorToWall(draft, point) {
   session.activeSpaceStartWallIndex = floor.walls.length;
   session.activeSpaceSharedWallId = projection.wall.id;
   session.activeSpaceSharedStartT = projection.t;
+  session.activeSpaceSharedSnapLine = projection.snapLine || 'inner';
   session.lastWallSnapNodeId = node.id;
   session.lastWallSnapWallId = projection.wall.id;
   session.lastWallSnapT = projection.t;
+  session.lastWallSnapLine = projection.snapLine || 'inner';
 
   return touchDraft(next);
 }
@@ -1629,6 +1855,7 @@ function resetCursor(draft) {
   session.activeSpaceStartWallIndex = floor.walls.length;
   session.activeSpaceSharedWallId = '';
   session.activeSpaceSharedStartT = null;
+  session.activeSpaceSharedSnapLine = '';
 
   const lastSnapNode = session.lastWallSnapNodeId ? getNode(floor, session.lastWallSnapNodeId) : null;
   const lastSnapWall = session.lastWallSnapWallId ? getWall(floor, session.lastWallSnapWallId) : null;
@@ -1639,6 +1866,7 @@ function resetCursor(draft) {
     session.activeSpaceStartWallIndex = floor.walls.length;
     session.activeSpaceSharedWallId = lastSnapWall.id;
     session.activeSpaceSharedStartT = typeof session.lastWallSnapT === 'number' ? session.lastWallSnapT : pointAlongWall(floor, lastSnapWall, lastSnapNode.id) / Math.max(1, lastSnapWall.lengthMm || 1);
+    session.activeSpaceSharedSnapLine = session.lastWallSnapLine || 'inner';
     return touchDraft(next);
   }
 
@@ -1745,6 +1973,7 @@ module.exports = {
   getWallSnapPoint,
   distanceMm,
   angleDeg,
+  buildWallSnapGeometry,
   buildWallRenderGeometry,
   buildWallJoinRenderGeometries,
   buildSpaceBoundaryPoints,

@@ -527,10 +527,18 @@ function autoConnectBLE(callback, connectCallback, disconnectCallback, silent = 
       }
     });
   } else {
-    // 没有记忆设备时，直接调用常规搜索
+    if (silent) {
+      if (_onConnectCallback) _onConnectCallback(false);
+      return;
+    }
+    // 没有记忆设备时，用户主动触发时再进入常规搜索
     if (!silent) wx.showToast({ title: '无记忆设备，请手动搜索', icon: 'none' });
     initBLE(callback, connectCallback, disconnectCallback, silent);
   }
+}
+
+function hasRememberedDevice() {
+  return !!wx.getStorageSync('last_ble_device_id');
 }
 
 function setCallbacks(callback, connectCallback, disconnectCallback) {
@@ -577,5 +585,6 @@ module.exports = {
   clearBuffer: clearBuffer,
   setTemporaryMeasureCallback: setTemporaryMeasureCallback,
   restoreMeasureCallback: restoreMeasureCallback,
-  getCurrentDeviceInfo: getCurrentDeviceInfo
+  getCurrentDeviceInfo: getCurrentDeviceInfo,
+  hasRememberedDevice: hasRememberedDevice
 };

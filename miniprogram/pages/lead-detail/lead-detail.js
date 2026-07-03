@@ -4,6 +4,45 @@ const util = require('../../utils/util.js');
 const templatesUtil = require('../../utils/templates.js');
 const wholeHomeGeometry = require('../../utils/wholeHomeGeometry.js');
 
+function parseLayoutObject(layoutData) {
+  if (!layoutData) return null;
+  if (typeof layoutData === 'string') {
+    try {
+      return JSON.parse(layoutData);
+    } catch (e) {
+      return null;
+    }
+  }
+  return layoutData;
+}
+
+function isSurveyingPrototypeLayout(layoutData) {
+  const parsed = parseLayoutObject(layoutData);
+  return !!(
+    parsed &&
+    typeof parsed === 'object' &&
+    !Array.isArray(parsed) &&
+    parsed.measurementMode === 'surveying_prototype' &&
+    parsed.prototypeOnly === true &&
+    parsed.surveyDraft &&
+    parsed.surveyDraft.kind === 'survey-wall-graph'
+  );
+}
+
+function getPlanTimestamp(plan, fallbackIndex) {
+  const value = Date.parse(plan && (plan.updatedAt || plan.createdAt || ''));
+  return isFinite(value) ? value : fallbackIndex;
+}
+
+function getLatestSurveyingPrototypePlan(plans) {
+  const list = (plans || []).filter((plan) => plan && typeof plan === 'object');
+  const matched = list
+    .map((plan, index) => ({ plan, index }))
+    .filter((item) => isSurveyingPrototypeLayout(item.plan.layoutData))
+    .sort((a, b) => getPlanTimestamp(b.plan, b.index) - getPlanTimestamp(a.plan, a.index));
+  return matched.length ? matched[0].plan : null;
+}
+
 Page({
   data: {
     leadId: null,
@@ -25,7 +64,8 @@ Page({
     rooms: [],
     measurementMode: 'room',
     homeOutline: null,
-    partitions: []
+    partitions: [],
+    surveyingPrototypePlan: null
   },
 
   onLoad(options) {
@@ -52,11 +92,22 @@ Page({
         let measurementMode = 'room';
         let homeOutline = null;
         let partitions = [];
+        const floorPlanList = Array.isArray(lead.floorPlanIds)
+          ? lead.floorPlanIds.filter((plan) => plan && typeof plan === 'object')
+          : [];
+        const primaryFloorPlan = lead.primaryFloorPlanId && typeof lead.primaryFloorPlanId === 'object'
+          ? lead.primaryFloorPlanId
+          : null;
+        const allFloorPlans = primaryFloorPlan ? [primaryFloorPlan, ...floorPlanList] : floorPlanList;
+        const surveyingPrototypePlan = getLatestSurveyingPrototypePlan(allFloorPlans);
 
-        if (lead.primaryFloorPlanId) {
-          activeFloorPlan = lead.primaryFloorPlanId;
-        } else if (lead.floorPlanIds && lead.floorPlanIds.length > 0) {
-          activeFloorPlan = lead.floorPlanIds[lead.floorPlanIds.length - 1];
+        if (primaryFloorPlan && !isSurveyingPrototypeLayout(primaryFloorPlan.layoutData)) {
+          activeFloorPlan = primaryFloorPlan;
+        } else {
+          const compatibleFloorPlans = floorPlanList.filter((plan) => !isSurveyingPrototypeLayout(plan.layoutData));
+          if (compatibleFloorPlans.length > 0) {
+            activeFloorPlan = compatibleFloorPlans[compatibleFloorPlans.length - 1];
+          }
         }
 
         if (activeFloorPlan) {
@@ -77,6 +128,7 @@ Page({
           measurementMode,
           homeOutline,
           partitions,
+          surveyingPrototypePlan,
           loading: false,
           kujialeQuery: {
             city: lead.city || '',
@@ -101,6 +153,7 @@ Page({
 
   getFloorPlanSourceLabel(plan) {
     if (!plan) return '';
+    if (isSurveyingPrototypeLayout(plan.layoutData)) return '新版测绘原型';
     if (plan.source === 'kujiale') return '酷家乐户型';
     if (plan.source === 'template') return '户型模板';
     if (this.data.measurementMode === 'whole_home') return '全屋测量';
@@ -285,15 +338,19 @@ Page({
   },
 
   onStartSurveyingPrototype() {
+    const prototypePlan = this.data.surveyingPrototypePlan || null;
+    const prototypeLayout = prototypePlan ? parseLayoutObject(prototypePlan.layoutData) : null;
     app.globalData.surveyingPrototypeContext = {
       leadId: this.data.leadId,
       leadName: this.data.lead && this.data.lead.name,
-      floorPlanId: this.data.activeFloorPlan && this.data.activeFloorPlan._id,
+      floorPlanId: prototypePlan && prototypePlan._id,
+      surveyDraft: prototypeLayout && prototypeLayout.surveyDraft,
       source: 'lead-detail'
     };
 
+    const floorPlanQuery = prototypePlan && prototypePlan._id ? `&floorPlanId=${prototypePlan._id}` : '';
     wx.navigateTo({
-      url: `/pages/surveying-editor/surveying-editor?leadId=${this.data.leadId || ''}`
+      url: `/pages/surveying-editor/surveying-editor?leadId=${this.data.leadId || ''}${floorPlanQuery}`
     });
   },
 

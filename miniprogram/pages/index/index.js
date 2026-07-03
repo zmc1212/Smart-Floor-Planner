@@ -95,6 +95,7 @@ Page({
     activeProjectTitle: '当前量房项目',
     hasPreciseLocation: false,
     locationFailed: false,
+    bleAutoConnecting: false,
   },
 
   onLoad: function () {
@@ -172,7 +173,47 @@ Page({
       if (!this.data.currentCity && !this.data.hasPreciseLocation) {
         this.initLocation();
       }
+      this.handleBluetoothAfterLogin();
     });
+  },
+
+  isLoggedIn: function () {
+    const app = getApp();
+    return !!(
+      (app.globalData && (app.globalData.token || (app.globalData.openid && app.globalData.userInfo))) ||
+      wx.getStorageSync('token')
+    );
+  },
+
+  hasRememberedBLEDevice: function () {
+    const bluetooth = require('../../utils/bluetooth.js');
+    return !!(bluetooth.hasRememberedDevice && bluetooth.hasRememberedDevice());
+  },
+
+  handleBluetoothAfterLogin: function () {
+    const app = getApp();
+    if (!this.isLoggedIn() || this.data.bleConnected || this.data.bleAutoConnecting) {
+      return;
+    }
+
+    const pendingBluetoothTap = !!app.globalData.pendingBluetoothAutoConnect;
+    const shouldConnectAfterLogin = !!(pendingBluetoothTap || app.globalData.justLoggedIn);
+    if (!shouldConnectAfterLogin) {
+      return;
+    }
+
+    app.globalData.pendingBluetoothAutoConnect = false;
+    app.globalData.justLoggedIn = false;
+
+    if (this.hasRememberedBLEDevice()) {
+      this.autoConnectRememberedBLE(false);
+      return;
+    }
+
+    if (pendingBluetoothTap) {
+      this.setData({ showBLEConnector: true });
+      wx.showToast({ title: '请手动连接蓝牙设备', icon: 'none' });
+    }
   },
 
   deriveCurrentCity: function (userInfo) {
@@ -340,7 +381,20 @@ Page({
       wx.showToast({ title: '蓝牙设备已连接', icon: 'none' });
       return;
     }
-    this.onConnectBLE();
+
+    const app = getApp();
+    if (!this.isLoggedIn()) {
+      app.globalData.pendingBluetoothAutoConnect = true;
+      wx.navigateTo({ url: '/pages/login/login' });
+      return;
+    }
+
+    if (this.hasRememberedBLEDevice()) {
+      this.autoConnectRememberedBLE(false);
+      return;
+    }
+
+    this.setData({ showBLEConnector: true });
   },
 
   onQuickQuoteTap: function () {
@@ -571,10 +625,49 @@ Page({
   },
 
   onAutoConnectBLE: function () {
-    this.onConnectBLE();
+    if (!this.isLoggedIn()) {
+      getApp().globalData.pendingBluetoothAutoConnect = true;
+      wx.navigateTo({ url: '/pages/login/login' });
+      return;
+    }
+
+    if (this.hasRememberedBLEDevice()) {
+      this.autoConnectRememberedBLE(false);
+      return;
+    }
+
+    this.setData({ showBLEConnector: true });
+  },
+
+  autoConnectRememberedBLE: function (silent) {
+    if (this.data.bleAutoConnecting) return;
+
+    var bluetooth = require('../../utils/bluetooth.js');
+    var that = this;
+    this.setData({ bleAutoConnecting: true });
+    bluetooth.autoConnectBLE(function () {
+    }, function (isConnected) {
+      that.setData({
+        bleConnected: isConnected,
+        bleAutoConnecting: false,
+        showBLEConnector: isConnected ? false : that.data.showBLEConnector,
+      }, function () {
+        that.syncHomeDashboard();
+      });
+      getApp().globalData.bleConnected = isConnected;
+    }, function () {
+      that.setData({ bleAutoConnecting: false });
+      that.onBluetoothDisconnect();
+    }, !!silent);
   },
 
   onConnectBLE: function () {
+    if (!this.isLoggedIn()) {
+      getApp().globalData.pendingBluetoothAutoConnect = true;
+      wx.navigateTo({ url: '/pages/login/login' });
+      return;
+    }
+
     var bluetooth = require('../../utils/bluetooth.js');
     var that = this;
     bluetooth.initBLE(function () {

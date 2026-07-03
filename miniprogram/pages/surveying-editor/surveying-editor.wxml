@@ -31,6 +31,15 @@
       {{closeHintText}}
     </cover-view>
 
+    <cover-view
+      wx:if="{{closeActionVisible}}"
+      class="closure-action"
+      style="{{closeActionStyle}}"
+      catchtap="onConfirmClose"
+    >
+      <cover-view class="closure-action-label">合</cover-view>
+    </cover-view>
+
     <!-- 选中墙体时的浮动工具栏（图标行） -->
     <cover-view wx:if="{{selectedWall && !selectedOpening}}" class="wall-object-toolbar" style="{{selectedWall.actionStyle}}">
       <cover-view class="wall-object-action primary" data-action="door" aria-label="添加门" bindtap="onWallContextAction">
@@ -86,16 +95,6 @@
       <cover-view>N</cover-view>
     </cover-view>
 
-    <cover-view wx:if="{{!componentEditorVisible}}" class="undo-redo">
-      <cover-view class="round-action {{historySummary.undo > 0 ? '' : 'disabled'}}" bindtap="onUndoTap">
-        <cover-view>撤销</cover-view>
-        <cover-view class="history-count">{{historySummary.undo}}</cover-view>
-      </cover-view>
-      <cover-view class="round-action reset-action" bindtap="onRequestResetCanvas">
-        <cover-view>重做</cover-view>
-        <cover-view class="reset-mark">×</cover-view>
-      </cover-view>
-    </cover-view>
   </view>
 
   <!-- ══════════════════════════════════════════════ -->
@@ -111,7 +110,7 @@
     </view>
     <view class="topbar-right">
       <view class="topbar-chip disabled" bindtap="onDisabledTap">助手</view>
-      <view class="topbar-chip save" bindtap="onSavePrototypeDraft">保存</view>
+      <view class="topbar-chip save" bindtap="onSaveDraft">保存草稿</view>
     </view>
   </view>
 
@@ -174,6 +173,11 @@
   <!-- ══════════════════════════════════════════════ -->
   <!--  底部唯一按钮：新建光标                          -->
   <!-- ══════════════════════════════════════════════ -->
+  <view class="history-action-bar" style="bottom: calc(42rpx + {{bottomSafeArea}}px);">
+    <view class="history-action {{historySummary.undo > 0 ? '' : 'disabled'}}" bindtap="onUndoTap">撤销</view>
+    <view class="history-action danger" bindtap="onRequestResetCanvas">重画</view>
+  </view>
+
   <view class="bottom-fab-bar" style="bottom: calc(36rpx + {{bottomSafeArea}}px);">
     <view class="fab-new-cursor" bindtap="onNewCursorTap">
       <view class="fab-new-cursor-icon">
@@ -200,6 +204,35 @@
     <view class="cursor-drag-hint-bar">
       <text class="cursor-drag-hint-text">拖动手指到目标位置后松开放置光标</text>
       <view class="cursor-drag-cancel" bindtap="onCursorDragCancel">取消</view>
+    </view>
+    <view wx:if="{{cursorLensVisible}}" class="cursor-lens">
+      <view class="cursor-lens-grid">
+        <view
+          wx:for="{{cursorLensVerticalLines}}"
+          wx:key="key"
+          class="cursor-lens-line vertical {{item.major ? 'major' : ''}}"
+          style="{{item.style}}"
+        ></view>
+        <view
+          wx:for="{{cursorLensHorizontalLines}}"
+          wx:key="key"
+          class="cursor-lens-line horizontal {{item.major ? 'major' : ''}}"
+          style="{{item.style}}"
+        ></view>
+        <view
+          wx:for="{{cursorLensWalls}}"
+          wx:key="key"
+          class="cursor-lens-wall {{item.selected ? 'selected' : ''}}"
+          style="{{item.style}}"
+        ></view>
+        <view class="cursor-lens-cross horizontal"></view>
+        <view class="cursor-lens-cross vertical"></view>
+        <view class="cursor-lens-target"></view>
+      </view>
+      <view class="cursor-lens-meta">
+        <text>{{cursorLensSnapLabel}}</text>
+        <text>{{cursorLensXLabel}} / {{cursorLensYLabel}}</text>
+      </view>
     </view>
     <!-- 跟随手指的光标标记 -->
     <view class="cursor-drag-marker" style="left:{{dragCursorX}}px; top:{{dragCursorY}}px;">

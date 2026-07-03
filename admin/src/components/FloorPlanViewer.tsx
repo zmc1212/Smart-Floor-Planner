@@ -1,7 +1,7 @@
 'use client';
 
 import { notify } from '@/components/ui/operation-feedback';
-import React, { useMemo, useState, Suspense, useEffect } from 'react';
+import React, { useMemo, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Canvas } from '@react-three/fiber';
 import { MapControls, PerspectiveCamera, OrthographicCamera, Text, Center, Bounds, ContactShadows, OrbitControls } from '@react-three/drei';
@@ -90,7 +90,7 @@ interface FloorPlanViewerData {
     layoutLabel?: string;
     previewUrl?: string;
   };
-  layoutData?: Room[] | { rooms?: Room[] };
+  layoutData?: unknown;
   creator?: {
     openid?: string;
     communityName?: string;
@@ -102,10 +102,201 @@ interface FloorPlanViewerData {
   };
 }
 
+interface SurveyNode {
+  id: string;
+  xMm?: number;
+  yMm?: number;
+}
+
+interface SurveyWall {
+  id: string;
+  startNodeId?: string;
+  endNodeId?: string;
+  lengthMm?: number;
+  thicknessMm?: number;
+  mode?: string;
+}
+
+interface SurveyOpening {
+  id: string;
+  wallId?: string;
+  type?: 'door' | 'window';
+  centerOffsetMm?: number;
+  widthMm?: number;
+  heightMm?: number;
+  sillHeightMm?: number;
+}
+
+interface SurveySpace {
+  id: string;
+  name?: string;
+  wallIds?: string[];
+  closed?: boolean;
+}
+
+interface SurveyFloor {
+  id: string;
+  name?: string;
+  nodes?: SurveyNode[];
+  walls?: SurveyWall[];
+  openings?: SurveyOpening[];
+  spaces?: SurveySpace[];
+}
+
+interface SurveyDraft {
+  kind?: string;
+  activeFloorId?: string;
+  floors?: SurveyFloor[];
+}
+
+interface SurveyingPrototypeLayout {
+  measurementMode?: string;
+  prototypeOnly?: boolean;
+  surveyDraft?: SurveyDraft;
+}
+
 function getFloorPlanSourceLabel(source?: string) {
   if (source === 'kujiale') return '酷家乐户型';
   if (source === 'template') return '户型模板';
   return '手动测绘';
+}
+
+function parseLayoutData(layoutData: unknown): unknown {
+  if (!layoutData) return null;
+  if (typeof layoutData === 'string') {
+    try {
+      return JSON.parse(layoutData);
+    } catch {
+      return null;
+    }
+  }
+  return layoutData;
+}
+
+function getSurveyingPrototypeLayout(layoutData: unknown): SurveyingPrototypeLayout | null {
+  const parsed = parseLayoutData(layoutData);
+  if (
+    parsed &&
+    typeof parsed === 'object' &&
+    !Array.isArray(parsed) &&
+    (parsed as SurveyingPrototypeLayout).measurementMode === 'surveying_prototype' &&
+    (parsed as SurveyingPrototypeLayout).prototypeOnly === true &&
+    (parsed as SurveyingPrototypeLayout).surveyDraft?.kind === 'survey-wall-graph'
+  ) {
+    return parsed as SurveyingPrototypeLayout;
+  }
+  return null;
+}
+
+function getActiveSurveyFloor(draft?: SurveyDraft) {
+  const floors = Array.isArray(draft?.floors) ? draft.floors : [];
+  return floors.find((floor) => floor.id === draft?.activeFloorId) || floors[0] || null;
+}
+
+function getSurveyStats(floor: SurveyFloor | null) {
+  return {
+    walls: floor?.walls?.length || 0,
+    spaces: floor?.spaces?.filter((space) => space.closed).length || 0,
+    openings: floor?.openings?.length || 0,
+    nodes: floor?.nodes?.length || 0,
+  };
+}
+
+function getSurveyNodeMap(floor: SurveyFloor | null) {
+  const map = new Map<string, Required<Pick<SurveyNode, 'id' | 'xMm' | 'yMm'>>>();
+  (floor?.nodes || []).forEach((node) => {
+    if (!node.id) return;
+    map.set(node.id, {
+      id: node.id,
+      xMm: Number(node.xMm || 0),
+      yMm: Number(node.yMm || 0),
+    });
+  });
+  return map;
+}
+
+function getSurveyWallEndpoints(floor: SurveyFloor | null, wall: SurveyWall, nodeMap = getSurveyNodeMap(floor)) {
+  const start = wall.startNodeId ? nodeMap.get(wall.startNodeId) : null;
+  const end = wall.endNodeId ? nodeMap.get(wall.endNodeId) : null;
+  if (!start || !end) return null;
+  return { start, end };
+}
+
+function getSurveyBounds(floor: SurveyFloor | null) {
+  const nodes = floor?.nodes || [];
+  if (!nodes.length) return { minX: -500, minY: -500, width: 1000, height: 1000 };
+  const xs = nodes.map((node) => Number(node.xMm || 0));
+  const ys = nodes.map((node) => Number(node.yMm || 0));
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const padding = Math.max(600, Math.max(maxX - minX, maxY - minY) * 0.08);
+  return {
+    minX: minX - padding,
+    minY: minY - padding,
+    width: Math.max(1000, maxX - minX + padding * 2),
+    height: Math.max(1000, maxY - minY + padding * 2),
+  };
+}
+
+function getSurveyWallLengthMm(floor: SurveyFloor | null, wall: SurveyWall) {
+  const endpoints = getSurveyWallEndpoints(floor, wall);
+  if (!endpoints) return Number(wall.lengthMm || 0);
+  const dx = endpoints.end.xMm - endpoints.start.xMm;
+  const dy = endpoints.end.yMm - endpoints.start.yMm;
+  return Number(wall.lengthMm || Math.sqrt(dx * dx + dy * dy));
+}
+
+function formatSurveyLength(mm: number) {
+  return `${(mm / 1000).toFixed(2)}m`;
+}
+
+function buildSurveySpacePoints(floor: SurveyFloor | null, space: SurveySpace, nodeMap: ReturnType<typeof getSurveyNodeMap>) {
+  const wallIds = Array.isArray(space.wallIds) ? space.wallIds : [];
+  const walls = wallIds
+    .map((id) => (floor?.walls || []).find((wall) => wall.id === id))
+    .filter(Boolean) as SurveyWall[];
+  if (!walls.length) return [];
+
+  const first = getSurveyWallEndpoints(floor, walls[0], nodeMap);
+  if (!first) return [];
+  const points = [first.start, first.end];
+  let currentNodeId = walls[0].endNodeId;
+
+  walls.slice(1).forEach((wall) => {
+    const endpoints = getSurveyWallEndpoints(floor, wall, nodeMap);
+    if (!endpoints) return;
+    const next = wall.startNodeId === currentNodeId ? endpoints.end : endpoints.start;
+    points.push(next);
+    currentNodeId = wall.startNodeId === currentNodeId ? wall.endNodeId : wall.startNodeId;
+  });
+
+  if (points.length > 1 && points[0].id === points[points.length - 1].id) points.pop();
+  return points;
+}
+
+function getSurveyOpeningSegment(floor: SurveyFloor | null, opening: SurveyOpening, nodeMap: ReturnType<typeof getSurveyNodeMap>) {
+  const wall = (floor?.walls || []).find((item) => item.id === opening.wallId);
+  if (!wall) return null;
+  const endpoints = getSurveyWallEndpoints(floor, wall, nodeMap);
+  if (!endpoints) return null;
+  const dx = endpoints.end.xMm - endpoints.start.xMm;
+  const dy = endpoints.end.yMm - endpoints.start.yMm;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  if (!length) return null;
+  const ux = dx / length;
+  const uy = dy / length;
+  const centerOffset = clampNumber(Number(opening.centerOffsetMm || length / 2), 0, length);
+  const halfWidth = clampNumber(Number(opening.widthMm || 0) / 2, 40, length / 2);
+  const centerX = endpoints.start.xMm + ux * centerOffset;
+  const centerY = endpoints.start.yMm + uy * centerOffset;
+  return {
+    x1: centerX - ux * halfWidth,
+    y1: centerY - uy * halfWidth,
+    x2: centerX + ux * halfWidth,
+    y2: centerY + uy * halfWidth,
+  };
 }
 
 function getOpeningAngleRad(opening: Opening) {
@@ -440,9 +631,159 @@ function Scene3D({ rooms }: { rooms: Room[] }) {
   );
 }
 
+function SurveyPrototypePlanViewer({ planData, layoutData }: { planData: FloorPlanViewerData; layoutData: SurveyingPrototypeLayout }) {
+  const floor = getActiveSurveyFloor(layoutData.surveyDraft);
+  const nodeMap = useMemo(() => getSurveyNodeMap(floor), [floor]);
+  const bounds = useMemo(() => getSurveyBounds(floor), [floor]);
+  const stats = useMemo(() => getSurveyStats(floor), [floor]);
+  const viewBox = `${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}`;
+  const textSize = Math.max(120, Math.min(260, Math.max(bounds.width, bounds.height) / 34));
+  const nodeRadius = Math.max(45, textSize * 0.32);
+
+  return (
+    <div className="flex h-screen flex-col bg-neutral-50 text-neutral-950">
+      <div className="z-20 flex items-center justify-between border-b border-neutral-200 bg-white px-6 py-4">
+        <div className="flex items-center gap-4">
+          <BackButton fallbackPath={planData?.creator?.openid ? `/users/${planData.creator.openid}` : "/leads"} />
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold tracking-tight">{planData?.name || '新版测绘草稿'}</h2>
+              <span className="rounded-md bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700">新版测绘原型</span>
+            </div>
+            <p className="mt-1 text-xs text-neutral-500">
+              {planData.lead?.name ? `客户: ${planData.lead.name} · ` : ''}
+              原型草稿只读展示，不进入 CAD、报告或正式 3D 输出
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-4 gap-2 text-center">
+          {[
+            ['墙体', stats.walls],
+            ['空间', stats.spaces],
+            ['门窗', stats.openings],
+            ['节点', stats.nodes],
+          ].map(([label, value]) => (
+            <div key={label} className="min-w-16 rounded-lg bg-neutral-100 px-3 py-2">
+              <div className="text-base font-black">{value}</div>
+              <div className="text-[10px] font-bold text-neutral-500">{label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="relative flex-1 overflow-hidden p-6">
+        <div className="h-full rounded-2xl bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_24px_60px_rgba(15,23,42,0.08)]">
+          <svg className="h-full w-full" viewBox={viewBox} role="img" aria-label="新版测绘原型墙图">
+            <defs>
+              <pattern id="survey-grid" width="500" height="500" patternUnits="userSpaceOnUse">
+                <path d="M 500 0 L 0 0 0 500" fill="none" stroke="#e5e7eb" strokeWidth="18" />
+              </pattern>
+            </defs>
+            <rect x={bounds.minX} y={bounds.minY} width={bounds.width} height={bounds.height} fill="url(#survey-grid)" />
+
+            {(floor?.spaces || []).filter((space) => space.closed).map((space) => {
+              const points = buildSurveySpacePoints(floor, space, nodeMap);
+              if (points.length < 3) return null;
+              return (
+                <polygon
+                  key={space.id}
+                  points={points.map((point) => `${point.xMm},${point.yMm}`).join(' ')}
+                  fill="rgba(59,130,246,0.08)"
+                  stroke="rgba(37,99,235,0.22)"
+                  strokeWidth="40"
+                />
+              );
+            })}
+
+            {(floor?.walls || []).map((wall) => {
+              const endpoints = getSurveyWallEndpoints(floor, wall, nodeMap);
+              if (!endpoints) return null;
+              const midX = (endpoints.start.xMm + endpoints.end.xMm) / 2;
+              const midY = (endpoints.start.yMm + endpoints.end.yMm) / 2;
+              return (
+                <g key={wall.id}>
+                  <line
+                    x1={endpoints.start.xMm}
+                    y1={endpoints.start.yMm}
+                    x2={endpoints.end.xMm}
+                    y2={endpoints.end.yMm}
+                    stroke="#111827"
+                    strokeWidth={Math.max(90, Math.min(260, Number(wall.thicknessMm || 200)))}
+                    strokeLinecap="round"
+                    opacity="0.18"
+                  />
+                  <line
+                    x1={endpoints.start.xMm}
+                    y1={endpoints.start.yMm}
+                    x2={endpoints.end.xMm}
+                    y2={endpoints.end.yMm}
+                    stroke="#ef4444"
+                    strokeWidth="34"
+                    strokeLinecap="round"
+                  />
+                  <text
+                    x={midX}
+                    y={midY - textSize * 0.7}
+                    textAnchor="middle"
+                    fontSize={textSize}
+                    fontWeight="700"
+                    fill="#374151"
+                    paintOrder="stroke"
+                    stroke="#ffffff"
+                    strokeWidth={textSize * 0.22}
+                  >
+                    {formatSurveyLength(getSurveyWallLengthMm(floor, wall))}
+                  </text>
+                </g>
+              );
+            })}
+
+            {(floor?.openings || []).map((opening) => {
+              const segment = getSurveyOpeningSegment(floor, opening, nodeMap);
+              if (!segment) return null;
+              const labelX = (segment.x1 + segment.x2) / 2;
+              const labelY = (segment.y1 + segment.y2) / 2;
+              const isDoor = opening.type === 'door';
+              return (
+                <g key={opening.id}>
+                  <line
+                    x1={segment.x1}
+                    y1={segment.y1}
+                    x2={segment.x2}
+                    y2={segment.y2}
+                    stroke={isDoor ? '#f59e0b' : '#2563eb'}
+                    strokeWidth="95"
+                    strokeLinecap="round"
+                  />
+                  <text
+                    x={labelX}
+                    y={labelY - textSize * 0.65}
+                    textAnchor="middle"
+                    fontSize={textSize * 0.78}
+                    fontWeight="800"
+                    fill={isDoor ? '#92400e' : '#1d4ed8'}
+                    paintOrder="stroke"
+                    stroke="#ffffff"
+                    strokeWidth={textSize * 0.18}
+                  >
+                    {isDoor ? '门' : '窗'}
+                  </text>
+                </g>
+              );
+            })}
+
+            {(floor?.nodes || []).map((node) => (
+              <circle key={node.id} cx={Number(node.xMm || 0)} cy={Number(node.yMm || 0)} r={nodeRadius} fill="#ffffff" stroke="#ef4444" strokeWidth="30" />
+            ))}
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewerData }) {
   const [is3D, setIs3D] = useState(false);
-  const [mounted, setMounted] = useState(false);
   
   const [isExporting, setIsExporting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -457,10 +798,6 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
   // STYLE_OPTIONS and ROOM_TYPE_OPTIONS are now hoisted to module level
 
   const lead = planData.lead;
-  
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const handleExportDXF = async () => {
     setIsExporting(true);
@@ -541,32 +878,38 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
 
   const searchParams = useSearchParams();
   const roomIdParam = searchParams.get('roomId');
+  const layoutData = planData.layoutData;
+  const prototypeLayout = useMemo(() => getSurveyingPrototypeLayout(layoutData), [layoutData]);
 
   const allRooms: Room[] = useMemo(() => {
-    if (!planData?.layoutData) return [];
-    const data = planData.layoutData;
-    if (Array.isArray(data)) return data;
-    if ('rooms' in data && Array.isArray(data.rooms)) return data.rooms;
-    return [];
-  }, [planData?.layoutData]);
-
-  const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (roomIdParam && allRooms.some(r => r.id === roomIdParam)) {
-      setActiveRoomId(roomIdParam);
-    } else if (allRooms.length > 0 && !activeRoomId) {
-      setActiveRoomId(allRooms[0].id);
+    if (!layoutData) return [];
+    const data = parseLayoutData(layoutData);
+    if (Array.isArray(data)) return data as Room[];
+    if (
+      data &&
+      typeof data === 'object' &&
+      'rooms' in data &&
+      Array.isArray((data as { rooms?: Room[] }).rooms)
+    ) {
+      return (data as { rooms?: Room[] }).rooms || [];
     }
-  }, [roomIdParam, allRooms, activeRoomId]);
+    return [];
+  }, [layoutData]);
+
+  const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null);
+  const activeRoomId = useMemo(() => {
+    if (selectedRoomId && allRooms.some((room) => room.id === selectedRoomId)) return selectedRoomId;
+    if (roomIdParam && allRooms.some((room) => room.id === roomIdParam)) return roomIdParam;
+    return allRooms[0]?.id || null;
+  }, [selectedRoomId, roomIdParam, allRooms]);
 
   const roomsToRender: Room[] = useMemo(() => {
     if (!activeRoomId) return [];
     return allRooms.filter(room => room.id === activeRoomId);
   }, [allRooms, activeRoomId]);
 
-  if (!mounted) {
-    return <div className="h-screen w-screen bg-gray-50 flex items-center justify-center text-gray-500 text-sm">加载中...</div>;
+  if (prototypeLayout) {
+    return <SurveyPrototypePlanViewer planData={planData} layoutData={prototypeLayout} />;
   }
 
   return (
@@ -592,7 +935,7 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
               {allRooms.map((room) => (
                 <button
                   key={room.id}
-                  onClick={() => setActiveRoomId(room.id)}
+                  onClick={() => setSelectedRoomId(room.id)}
                   className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                     activeRoomId === room.id 
                       ? 'bg-white text-gray-900 shadow-sm' 

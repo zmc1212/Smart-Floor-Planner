@@ -4,6 +4,35 @@ import { FloorPlan } from '@/models/FloorPlan';
 import { User } from '@/models/User';
 import { AdminUser } from '@/models/AdminUser';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import { linkFloorPlanToLead } from '@/lib/floorplan-lead-link';
+
+interface FloorPlanUpdateBody {
+  openid?: string;
+  name?: string;
+  layoutData?: unknown;
+  status?: 'draft' | 'completed';
+  leadId?: string;
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
+
+function isSurveyingPrototypeLayout(layoutData: unknown) {
+  if (!layoutData || typeof layoutData !== 'object' || Array.isArray(layoutData)) {
+    return false;
+  }
+
+  const parsed = layoutData as {
+    measurementMode?: unknown;
+    prototypeOnly?: unknown;
+    surveyDraft?: { kind?: unknown };
+  };
+
+  return parsed.measurementMode === 'surveying_prototype' &&
+    parsed.prototypeOnly === true &&
+    parsed.surveyDraft?.kind === 'survey-wall-graph';
+}
 
 export async function PUT(
   req: Request,
@@ -12,10 +41,10 @@ export async function PUT(
   try {
     await dbConnect();
     const { id } = await params;
-    const body = await req.json();
+    const body = await req.json() as FloorPlanUpdateBody;
 
     // Automatic Association for Staff if missing
-    let staffUpdate: any = {};
+    const staffUpdate: Record<string, unknown> = {};
     const context = await resolveMiniProgramContext(req);
     
     if (context?.staff) {
@@ -31,6 +60,16 @@ export async function PUT(
            staffUpdate.enterpriseId = staffMember.enterpriseId;
          }
        }
+    }
+
+    if (isSurveyingPrototypeLayout(body.layoutData)) {
+      const existingPlan = await FloorPlan.findById(id).select('layoutData');
+      if (existingPlan && !isSurveyingPrototypeLayout(existingPlan.layoutData)) {
+        return NextResponse.json(
+          { success: false, error: 'Cannot overwrite a formal floor plan with a surveying prototype draft' },
+          { status: 409 }
+        );
+      }
     }
 
     const updatedPlan = await FloorPlan.findByIdAndUpdate(
@@ -50,9 +89,13 @@ export async function PUT(
       return NextResponse.json({ success: false, error: 'FloorPlan not found' }, { status: 404 });
     }
 
+    if (body.leadId) {
+      await linkFloorPlanToLead(body.leadId, updatedPlan._id);
+    }
+
     return NextResponse.json({ success: true, data: updatedPlan });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
   }
 }
 
@@ -65,7 +108,7 @@ export async function DELETE(
     const { id } = await params;
     await FloorPlan.findByIdAndDelete(id);
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
   }
 }

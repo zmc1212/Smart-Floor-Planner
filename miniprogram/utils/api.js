@@ -1,5 +1,28 @@
-// const BASE_URL = 'http://192.168.10.62:3005/api';
-const BASE_URL = 'https://smartfloor.zlyun168.com/api';
+const LOCAL_BASE_URL = 'http://localhost:3005/api';
+const LAN_BASE_URL = 'http://192.168.10.155:3005/api';
+// const PROD_BASE_URL = 'https://smartfloor.zlyun168.com/api';
+
+function normalizeBaseUrl(baseUrl) {
+  return String(baseUrl || '').replace(/\/+$/, '');
+}
+
+function getBaseUrls() {
+  let customBaseUrl = '';
+  try {
+    customBaseUrl = wx.getStorageSync('apiBaseUrl') || '';
+  } catch (err) {
+    customBaseUrl = '';
+  }
+
+  const candidates = customBaseUrl
+    ? [customBaseUrl]
+    : [LOCAL_BASE_URL, LAN_BASE_URL];
+
+  return candidates
+    .map(normalizeBaseUrl)
+    .filter(Boolean)
+    .filter((item, index, list) => list.indexOf(item) === index);
+}
 
 /**
  * Enhanced request method with JWT support
@@ -8,10 +31,19 @@ function request(url, method = 'GET', data = {}) {
   const app = getApp();
   // Prefer in-memory token from globalData to avoid storage latency
   const token = (app && app.globalData && app.globalData.token) || wx.getStorageSync('token');
+  const baseUrls = getBaseUrls();
   
   return new Promise((resolve, reject) => {
-    wx.request({
-      url: `${BASE_URL}${url}`,
+    const send = (baseIndex) => {
+      const baseUrl = baseUrls[baseIndex];
+
+      if (!baseUrl) {
+        reject({ error: 'Missing API base URL' });
+        return;
+      }
+
+      wx.request({
+      url: `${baseUrl}${url}`,
       method,
       data,
       header: {
@@ -66,9 +98,18 @@ function request(url, method = 'GET', data = {}) {
         }
       },
       fail: (err) => {
+        if (baseIndex < baseUrls.length - 1) {
+          console.warn(`Request to ${baseUrl}${url} failed, retrying next API base:`, err);
+          send(baseIndex + 1);
+          return;
+        }
+
         reject(err);
       }
     });
+    };
+
+    send(0);
   });
 }
 

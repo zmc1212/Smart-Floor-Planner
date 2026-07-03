@@ -471,38 +471,36 @@ function buildClosedSpaceLabels(floor, project) {
 
     const centroid = project({ xMm: cx, yMm: cy });
 
-    // Inner dimensions from wall.lengthMm (user-measured inner face lengths)
-    // Group walls: horizontal (angleDeg near 0°/180°) vs vertical (near 90°)
+    // Inner dimensions come from the same measured wall lengths shown inside
+    // the room. Boundary points can sit on the outside corner after wall joins.
     const walls = space.wallIds
       .map((id) => surveyGraph.getWall(floor, id))
       .filter(Boolean);
-
-    const hWalls = walls.filter((w) => {
-      const a = Math.abs(w.angleDeg || 0);
-      return a < 45 || a > 135;
+    const hWalls = walls.filter((wall) => {
+      const angle = Math.abs(wall.angleDeg || 0);
+      return angle < 45 || angle > 135;
     });
-    const vWalls = walls.filter((w) => {
-      const a = Math.abs(w.angleDeg || 0);
-      return a >= 45 && a <= 135;
+    const vWalls = walls.filter((wall) => {
+      const angle = Math.abs(wall.angleDeg || 0);
+      return angle >= 45 && angle <= 135;
     });
-
+    const fallbackWidthMm = Math.round(Math.max.apply(null, boundaryPoints.map((p) => p.xMm)) -
+      Math.min.apply(null, boundaryPoints.map((p) => p.xMm)));
+    const fallbackHeightMm = Math.round(Math.max.apply(null, boundaryPoints.map((p) => p.yMm)) -
+      Math.min.apply(null, boundaryPoints.map((p) => p.yMm)));
     const widthMm = hWalls.length
-      ? Math.round(Math.max.apply(null, hWalls.map((w) => w.lengthMm || 0)))
-      : Math.round(Math.max.apply(null, boundaryPoints.map((p) => p.xMm)) -
-          Math.min.apply(null, boundaryPoints.map((p) => p.xMm)));
-
+      ? Math.round(Math.max.apply(null, hWalls.map((wall) => wall.lengthMm || 0)))
+      : fallbackWidthMm;
     const heightMm = vWalls.length
-      ? Math.round(Math.max.apply(null, vWalls.map((w) => w.lengthMm || 0)))
-      : Math.round(Math.max.apply(null, boundaryPoints.map((p) => p.yMm)) -
-          Math.min.apply(null, boundaryPoints.map((p) => p.yMm)));
-
-    // Inner area = inner W × inner H
-    const areaMm2 = widthMm * heightMm;
-    const areaM2 = (areaMm2 / 1000000).toFixed(1);
+      ? Math.round(Math.max.apply(null, vWalls.map((wall) => wall.lengthMm || 0)))
+      : fallbackHeightMm;
+    const areaM2 = (widthMm && heightMm
+      ? widthMm * heightMm / 1000000
+      : Math.abs(area) / 1000000).toFixed(1);
 
     return {
       centroid,
-      roomName: space.name || '房间1',
+      roomName: space.name || '\u623f\u95f41',
       widthMm,
       heightMm,
       areaM2
@@ -1050,12 +1048,25 @@ function drawClosedSpaceLabel(ctx, scene) {
 
     ctx.save();
 
-    // Background card with rounded corners
-    const cardW = 148;
-    const cardH = 108;
+    const titleText = String(roomName);
+    const widthText = `W = ${widthMm} mm`;
+    const heightText = `H = ${heightMm} mm`;
+    const areaText = `S = ${areaM2} m2`;
+    ctx.font = 'bold 12px sans-serif';
+    const titleWidth = ctx.measureText(titleText).width;
+    ctx.font = '9px sans-serif';
+    const metricWidth = Math.max(
+      ctx.measureText(widthText).width,
+      ctx.measureText(heightText).width,
+      ctx.measureText(areaText).width
+    );
+
+    // Background card with compact content-fit sizing
+    const cardW = Math.ceil(Math.max(titleWidth, metricWidth) + 24);
+    const cardH = 62;
     const cardX = cx - cardW / 2;
     const cardY = cy - cardH / 2;
-    const radius = 10;
+    const radius = 8;
 
     ctx.beginPath();
     ctx.moveTo(cardX + radius, cardY);
@@ -1069,37 +1080,37 @@ function drawClosedSpaceLabel(ctx, scene) {
     ctx.quadraticCurveTo(cardX, cardY, cardX + radius, cardY);
     ctx.closePath();
     ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.12)';
-    ctx.shadowBlur = 12;
-    ctx.shadowOffsetY = 2;
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.1)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 1;
     ctx.fill();
     ctx.shadowColor = 'transparent';
 
-    // Room name (large, bold)
+    // Room name
     ctx.fillStyle = '#111111';
-    ctx.font = 'bold 17px sans-serif';
+    ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(roomName, cx, cardY + 20);
+    ctx.fillText(titleText, cx, cardY + 12);
 
     // Divider
     ctx.beginPath();
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
     ctx.lineWidth = 1;
-    ctx.moveTo(cardX + 12, cardY + 34);
-    ctx.lineTo(cardX + cardW - 12, cardY + 34);
+    ctx.moveTo(cardX + 8, cardY + 22);
+    ctx.lineTo(cardX + cardW - 8, cardY + 22);
     ctx.stroke();
 
     // W =
-    ctx.font = '12px sans-serif';
+    ctx.font = '9px sans-serif';
     ctx.fillStyle = '#555555';
-    ctx.fillText(`W = ${widthMm} mm`, cx, cardY + 52);
+    ctx.fillText(widthText, cx, cardY + 34);
 
     // H =
-    ctx.fillText(`H = ${heightMm} mm`, cx, cardY + 70);
+    ctx.fillText(heightText, cx, cardY + 46);
 
     // S =
-    ctx.fillText(`S ≈ ${areaM2} m²`, cx, cardY + 88);
+    ctx.fillText(areaText, cx, cardY + 58);
 
     ctx.restore();
   });

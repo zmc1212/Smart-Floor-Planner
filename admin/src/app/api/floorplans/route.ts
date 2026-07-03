@@ -6,11 +6,25 @@ import { FloorPlan } from '@/models/FloorPlan';
 import { User } from '@/models/User';
 import { tenantStorage } from '@/lib/tenant-context';
 import { getPaginationParams, createPaginationMetadata } from '@/lib/pagination';
+import { linkFloorPlanToLead } from '@/lib/floorplan-lead-link';
+
+interface FloorPlanRequestBody {
+  name?: string;
+  layoutData?: unknown;
+  status?: 'draft' | 'completed';
+  source?: 'manual' | 'template' | 'kujiale';
+  externalSource?: unknown;
+  leadId?: string;
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
 
 export async function POST(req: Request) {
   try {
     await dbConnect();
-    const body = await req.json();
+    const body = await req.json() as FloorPlanRequestBody;
     const { name, layoutData, status, source, externalSource } = body;
 
     const context = await resolveMiniProgramContext(req);
@@ -44,11 +58,15 @@ export async function POST(req: Request) {
           status: status || 'completed'
         });
 
+        if (body.leadId) {
+          await linkFloorPlanToLead(body.leadId, newPlan._id);
+        }
+
         return NextResponse.json({ success: true, data: newPlan });
       }
     );
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
   }
 }
 
@@ -57,13 +75,12 @@ export async function GET(req: Request) {
   try {
     await dbConnect();
     const { searchParams } = new URL(req.url);
-    const openid = searchParams.get('openid');
     const phone = searchParams.get('phone');
     const search = searchParams.get('search');
     const { page, limit, skip } = getPaginationParams(req.url);
 
     // 💡 抽离公共的查询执行逻辑
-    const executeQuery = async (baseQuery: any = {}) => {
+    const executeQuery = async (baseQuery: Record<string, unknown> = {}) => {
       // 处理phone过滤
       if (phone) {
         const users = await User.find({ phone });
@@ -102,7 +119,7 @@ export async function GET(req: Request) {
           userId: staff ? String(staff._id) : String(user._id),
         },
         async () => {
-          let query: any = {};
+          const query: Record<string, unknown> = {};
           if (staff) {
             if (staff.role === 'enterprise_admin') {
               query.enterpriseId = staff.enterpriseId;
@@ -135,14 +152,14 @@ export async function GET(req: Request) {
             pagination: createPaginationMetadata(total, page, limit)
           });
         });
-      } catch (error: any) {
-        if (error.message === 'Unauthorized') {
+      } catch (error: unknown) {
+        if (getErrorMessage(error) === 'Unauthorized') {
           return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
         }
         throw error;
       }
     }
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
   }
 }

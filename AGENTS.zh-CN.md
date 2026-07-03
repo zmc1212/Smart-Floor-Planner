@@ -48,7 +48,8 @@
 
 - 新版测绘工作台从 `miniprogram/pages/surveying-editor/` 开始落地，并在 `docs/surveying-module/` 下维护文档。它是并行原型外壳，不替代 `miniprogram/pages/editor/`。
 - 暴露原型的业务入口必须保持清晰双入口：`旧版测量` 继续进入 `miniprogram/pages/editor/editor`，`新版测绘体验` 进入 `miniprogram/pages/surveying-editor/surveying-editor`。
-- 原型阶段的 `surveying-editor` 不得写入正式户型数据、覆盖旧草稿、提交测量审计日志，或绕过既有下游兼容流程。
+- 原型阶段的 `surveying-editor` 可以保存服务端草稿，但 payload 必须明确标记为原型数据（`measurementMode: 'surveying_prototype'`、`prototypeOnly: true`），并将原始墙图放在 `surveyDraft`。不得覆盖旧草稿、提交测量审计日志、进入 CAD/报告/3D 下游兼容流程，也不得把原型数据当作正式户型输出。
+- 原型草稿可以关联到线索，并在后台线索和户型详情页只读展示，便于运营查看小程序墙图数据。该可见性不代表数据已经成为正式户型，prototype 记录必须继续禁用 CAD/报告/3D 操作。
 - 仅新增或调整原型入口，本身不改变下方旧版已完成测量模块。若触及共享 BLE、正式保存、导出/报告、3D、测量日志或 `editor.*`，必须识别并更新受影响的已完成模块。
 
 主要文件：

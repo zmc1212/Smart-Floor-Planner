@@ -2,6 +2,8 @@ const app = getApp();
 const surveyGraph = require('../../utils/surveyWallGraph.js');
 const surveyCanvasRenderer = require('../../utils/surveyCanvasRenderer.js');
 const bluetooth = require('../../utils/bluetooth.js');
+const api = require('../../utils/api.js');
+const util = require('../../utils/util.js');
 
 const RESERVED_TOOLS = [
   { key: 'settings', label: '设置' },
@@ -21,6 +23,8 @@ const OBJECT_TOOLS = [
 
 const NUMBER_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '清空', '0', '退格'];
 const PROTOTYPE_DRAFT_KEY = 'surveying_prototype_draft_v1';
+const PROTOTYPE_DRAFT_BACKUP_KEY = 'surveying_last_draft_backup';
+const PROTOTYPE_SERVER_DRAFT_ID_KEY = 'surveying_prototype_server_draft_id';
 const COMPONENT_SPEC_TABS = [
   { key: 'length', label: '长度' },
   { key: 'depth', label: '宽度' },
@@ -80,6 +84,9 @@ const DIMENSION_LABEL_HEIGHT_PX = 24;
 const DIMENSION_COLLISION_GAP_PX = 8;
 const DIMENSION_PRIMARY_GAP_PX = 22;
 const CURSOR_GRID_MM = 500;
+const CURSOR_LENS_SIZE_PX = 180;
+const CURSOR_LENS_SCALE = 0.12;
+const CURSOR_LENS_LINE_RANGE = 2500;
 const BLE_DUPLICATE_WINDOW_MS = 800;
 const DIMENSION_OUTER_GAP_PX = 12;
 const REDLINE_JOIN_TRIM_PX = 0;
@@ -240,7 +247,7 @@ Page({
     activeTool: 'straight',
     measurementSide: 'left',
     thicknessMm: 200,
-    prototypeNotice: '体验版不会同步正式户型数据',
+    prototypeNotice: '体验版草稿可同步服务端，不进入正式输出',
     coreTools: buildCoreTools('straight', 200),
     objectTools: OBJECT_TOOLS,
     reservedTools: RESERVED_TOOLS,
@@ -271,6 +278,13 @@ Page({
     cursorDragMode: false,
     dragCursorX: 0,
     dragCursorY: 0,
+    cursorLensVisible: false,
+    cursorLensXLabel: 'X 0',
+    cursorLensYLabel: 'Y 0',
+    cursorLensSnapLabel: '网格吸附',
+    cursorLensVerticalLines: [],
+    cursorLensHorizontalLines: [],
+    cursorLensWalls: [],
     closeHintVisible: false,
     closeHintText: '',
     closeHintActionVisible: false,
@@ -312,7 +326,11 @@ Page({
       : 0;
     const capsuleBottom = menuButtonInfo.bottom || (sysInfo.statusBarHeight || 0);
 
-    const restoredDraft = this.loadPrototypeDraft();
+    const leadId = options.leadId || context.leadId || '';
+    const contextFloorPlanId = options.floorPlanId || context.floorPlanId || '';
+    this.prototypeDraftKey = this.getPrototypeDraftKey(leadId);
+    this.serverDraftId = contextFloorPlanId || this.getStoredServerDraftId(leadId);
+    const restoredDraft = this.loadPrototypeDraft(leadId, context.surveyDraft);
     this.draft = restoredDraft || surveyGraph.resetCursor(surveyGraph.createSurveyDraft());
     this.history = { undo: [], redo: [] };
     this.touchState = null;
@@ -340,9 +358,10 @@ Page({
       statusBarHeight: sysInfo.statusBarHeight || 0,
       navigationSafeTop: capsuleBottom + 6,
       bottomSafeArea: safeAreaBottom,
-      leadId: options.leadId || context.leadId || '',
+      leadId,
+      serverDraftId: this.serverDraftId || '',
       title: context.leadName ? `${context.leadName} · 新版测绘` : '新版测绘体验',
-      prototypeNotice: restoredDraft ? '已恢复本地体验草稿，不会同步正式户型' : '体验版不会同步正式户型数据'
+      prototypeNotice: restoredDraft ? '已恢复本地体验草稿，可继续保存到服务端' : '体验版草稿可同步服务端，不进入正式输出'
     });
     this.syncFromDraft();
   },
@@ -362,29 +381,178 @@ Page({
     this.destroyComponentScene();
   },
 
-  loadPrototypeDraft() {
+  getPrototypeDraftKey(leadId) {
+    return `${PROTOTYPE_DRAFT_KEY}_${leadId || 'standalone'}`;
+  },
+
+  normalizeRestoredPrototypeDraft(draft) {
+    if (!isRestorablePrototypeDraft(draft)) return null;
+    const restored = surveyGraph.cloneDraft(draft);
+    const floor = surveyGraph.getActiveFloor(restored);
+    const session = floor.session || {};
+    if (session.state === 'wallPreview' || session.state === 'awaitingLength' || session.state === 'remeasureAwaitingInput') {
+      return surveyGraph.cancelPending(restored);
+    }
+    return restored;
+  },
+
+  loadPrototypeDraft(leadId, serverDraft) {
     try {
-      const draft = wx.getStorageSync(PROTOTYPE_DRAFT_KEY);
-      if (!isRestorablePrototypeDraft(draft)) return null;
-      const restored = surveyGraph.cloneDraft(draft);
-      const floor = surveyGraph.getActiveFloor(restored);
-      const session = floor.session || {};
-      if (session.state === 'wallPreview' || session.state === 'awaitingLength' || session.state === 'remeasureAwaitingInput') {
-        return surveyGraph.cancelPending(restored);
-      }
-      return restored;
+      const draft = wx.getStorageSync(this.getPrototypeDraftKey(leadId));
+      const localDraft = this.normalizeRestoredPrototypeDraft(draft);
+      if (localDraft) return localDraft;
+      return this.normalizeRestoredPrototypeDraft(serverDraft);
     } catch (err) {
-      return null;
+      return this.normalizeRestoredPrototypeDraft(serverDraft);
     }
   },
 
   persistPrototypeDraft() {
-    if (!this.draft) return;
+    if (!this.draft) return false;
     try {
-      wx.setStorageSync(PROTOTYPE_DRAFT_KEY, surveyGraph.cloneDraft(this.draft));
+      wx.setStorageSync(this.prototypeDraftKey || this.getPrototypeDraftKey(this.data.leadId || ''), surveyGraph.cloneDraft(this.draft));
+      return true;
     } catch (err) {
       // Local prototype persistence is best-effort and must not block measuring.
+      return false;
     }
+  },
+
+  getStoredServerDraftId(leadId) {
+    const suffix = leadId || 'standalone';
+    try {
+      return wx.getStorageSync(`${PROTOTYPE_SERVER_DRAFT_ID_KEY}_${suffix}`) || '';
+    } catch (err) {
+      return '';
+    }
+  },
+
+  clearStoredServerDraftId(leadId) {
+    const suffix = leadId || 'standalone';
+    this.serverDraftId = '';
+    try {
+      wx.removeStorageSync(`${PROTOTYPE_SERVER_DRAFT_ID_KEY}_${suffix}`);
+    } catch (err) {
+      // 清理本地服务端草稿 ID 失败不阻塞后续重新创建。
+    }
+    this.setData({ serverDraftId: '' });
+  },
+
+  persistServerDraftId(leadId, floorPlanId) {
+    if (!floorPlanId) return;
+    const suffix = leadId || 'standalone';
+    this.serverDraftId = floorPlanId;
+    try {
+      wx.setStorageSync(`${PROTOTYPE_SERVER_DRAFT_ID_KEY}_${suffix}`, floorPlanId);
+    } catch (err) {
+      // 服务端草稿 ID 本地缓存失败不影响本次保存结果。
+    }
+    this.setData({ serverDraftId: floorPlanId });
+  },
+
+  getCurrentOpenid() {
+    const userInfo = app.globalData.userInfo || wx.getStorageSync('userInfo') || {};
+    return app.globalData.openid || wx.getStorageSync('openid') || userInfo.openid || '';
+  },
+
+  getCurrentToken() {
+    return app.globalData.token || wx.getStorageSync('token') || '';
+  },
+
+  getPrototypeDraftStats(draft) {
+    if (!draft || !Array.isArray(draft.floors) || !draft.floors.length) {
+      return { wallCount: 0, spaceCount: 0, openingCount: 0 };
+    }
+
+    const floor = surveyGraph.getActiveFloor(draft);
+    const walls = Array.isArray(floor.walls) ? floor.walls : [];
+    const spaces = Array.isArray(floor.spaces) ? floor.spaces : [];
+    const openings = Array.isArray(floor.openings) ? floor.openings : [];
+
+    return {
+      wallCount: walls.length,
+      spaceCount: spaces.filter((space) => space && space.closed).length,
+      openingCount: openings.length
+    };
+  },
+
+  buildPrototypeCloudLayoutData() {
+    return {
+      version: 3,
+      measurementMode: 'surveying_prototype',
+      prototypeOnly: true,
+      source: 'surveying-editor',
+      rooms: [],
+      homeOutline: null,
+      partitions: [],
+      draftState: {
+        schema: 'survey-wall-graph',
+        savedAt: new Date().toISOString()
+      },
+      surveyDraft: this.draft ? surveyGraph.cloneDraft(this.draft) : null
+    };
+  },
+
+  async savePrototypeDraftToCloud() {
+    const leadId = this.data.leadId || '';
+    const openid = this.getCurrentOpenid();
+    const token = this.getCurrentToken();
+
+    if (!openid && !token) {
+      throw new Error('Please log in before saving the surveying draft');
+    }
+
+    const layoutData = this.buildPrototypeCloudLayoutData();
+    const stats = this.getPrototypeDraftStats(layoutData.surveyDraft);
+    const nameDate = util.formatTime(new Date()).split(' ')[0].replace(/\//g, '');
+    const payload = {
+      openid,
+      leadId,
+      name: `新版测绘草稿-${nameDate}`,
+      layoutData,
+      source: 'manual',
+      status: 'draft'
+    };
+
+    const currentDraftId = this.serverDraftId || this.data.serverDraftId || this.getStoredServerDraftId(leadId);
+    console.info('[surveying-editor] Saving prototype draft to cloud', {
+      leadId,
+      floorPlanId: currentDraftId || '(new)',
+      stats
+    });
+
+    let res;
+    if (currentDraftId) {
+      try {
+        res = await api.request(`/floorplans/${currentDraftId}`, 'PUT', payload);
+      } catch (err) {
+        console.warn('Update surveying draft failed, creating a new draft:', err);
+        res = null;
+        this.clearStoredServerDraftId(leadId);
+      }
+    }
+
+    if (!res) {
+      res = await api.request('/floorplans', 'POST', payload);
+    }
+
+    if (res && res.success && res.data && res.data._id) {
+      this.persistServerDraftId(leadId, res.data._id);
+      if (leadId) {
+        await api.request(`/leads/${leadId}`, 'PUT', {
+          openid,
+          floorPlanId: res.data._id
+        });
+      }
+      console.info('[surveying-editor] Prototype draft saved to cloud', {
+        leadId,
+        floorPlanId: res.data._id,
+        stats
+      });
+      return res;
+    }
+
+    throw new Error('Cloud save did not return a floorPlanId');
   },
 
   schedulePrototypePersist() {
@@ -694,20 +862,20 @@ Page({
       ctx.font = 'bold 11px sans-serif';
       ctx.fillText(String(undoButton.count), undoButton.cx, undoButton.cy + 10);
 
-      // 重做按钮（清空画布）
       const redoButton = controls.undoRedo.redo;
+      const redoEnabled = redoButton.count > 0;
       ctx.beginPath();
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.88)';
+      ctx.fillStyle = redoEnabled ? 'rgba(255, 255, 255, 0.94)' : 'rgba(255, 255, 255, 0.72)';
       ctx.arc(redoButton.cx, redoButton.cy, redoButton.radius, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#4b5563';
+      ctx.fillStyle = redoEnabled ? '#4b5563' : '#9ca3af';
       ctx.font = '12px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(redoButton.label, redoButton.cx, redoButton.cy - 7);
-      ctx.fillStyle = '#ef4444';
+      ctx.fillStyle = redoEnabled ? '#17a14c' : '#9ca3af';
       ctx.font = 'bold 11px sans-serif';
-      ctx.fillText('✕', redoButton.cx, redoButton.cy + 10);
+      ctx.fillText(String(redoButton.count), redoButton.cx, redoButton.cy + 10);
     }
 
     ctx.restore();
@@ -923,22 +1091,22 @@ Page({
     const rect = this.canvasRect || { width: 0, height: 0 };
     const buttonSize = 46;
     const right = 16;
-    const bottom = 16;
+    const top = 104;
     const gap = 8;
-    const redo = {
-      key: 'redo',
-      label: '重做',
-      count: 0,
-      cx: rect.width - right - buttonSize / 2,
-      cy: rect.height - bottom - buttonSize / 2,
-      radius: buttonSize / 2
-    };
     const undo = {
       key: 'undo',
       label: '撤销',
       count: this.history.undo.length,
-      cx: redo.cx,
-      cy: redo.cy - buttonSize - gap,
+      cx: rect.width - right - buttonSize / 2,
+      cy: top + buttonSize / 2,
+      radius: buttonSize / 2
+    };
+    const redo = {
+      key: 'redo',
+      label: '重做',
+      count: this.history.redo.length,
+      cx: undo.cx,
+      cy: undo.cy + buttonSize + gap,
       radius: buttonSize / 2
     };
 
@@ -1022,7 +1190,7 @@ Page({
       lengthMm: session.previewLengthMm,
       angleDeg: session.previewAngleDeg,
       thicknessMm: session.thicknessMm,
-      measurementSide: session.measurementSide,
+      measurementSide: session.previewMeasurementSide || session.measurementSide,
       status: 'preview'
     };
     const previewThicknessMap = Object.assign({}, renderThicknessMmMap, {
@@ -1258,7 +1426,9 @@ Page({
       ? session.activeSpaceStartWallIndex
       : 0;
     const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
-    if (activeWallCount + (session.previewPoint ? 1 : 0) < 3) {
+    const hasSharedBoundary = !!(session.activeSpaceSharedWallId || session.closeCandidateSharedWallId);
+    const minimumActiveWallCount = hasSharedBoundary ? 2 : 3;
+    if (activeWallCount + (session.previewPoint ? 1 : 0) < minimumActiveWallCount) {
       return { guideVisible: false, guideStyle: '', actionVisible: false, actionStyle: '' };
     }
 
@@ -1283,13 +1453,21 @@ Page({
       : (lastWall ? lastWall.angleDeg : 0);
     const midX = (startPoint.x + endPoint.x) / 2;
     const midY = (startPoint.y + endPoint.y) / 2;
+    const rect = this.canvasRect || { width: 0, height: 0 };
+    const actionRadius = 38;
+    const safePadding = actionRadius + 8;
+    const bottomReserved = 132;
+    const preferredActionX = session.state === 'closing' ? startPoint.x : midX;
+    const preferredActionY = session.state === 'closing' ? startPoint.y - 88 : midY;
+    const actionX = clamp(preferredActionX, safePadding, Math.max(safePadding, rect.width - safePadding));
+    const actionY = clamp(preferredActionY, safePadding, Math.max(safePadding, rect.height - safePadding - bottomReserved));
 
     return {
       guideVisible: width > 1,
       guideStyle: `left:${roundPx(startPoint.x)}px; top:${roundPx(startPoint.y)}px; width:${roundPx(width)}px; transform:rotate(${roundPx(angleDeg)}deg);`,
       actionVisible: session.state === 'closing',
-      actionStyle: `left:${roundPx(midX - 34)}px; top:${roundPx(midY - 34)}px;`,
-      action: { cx: midX, cy: midY }
+      actionStyle: `left:${roundPx(actionX - actionRadius)}px; top:${roundPx(actionY - actionRadius)}px;`,
+      action: { cx: actionX, cy: actionY }
     };
   },
 
@@ -1587,6 +1765,107 @@ Page({
       pointMm: wallPoint || gridPoint,
       snappedToWall: !!wallPoint
     };
+  },
+
+  buildCursorLens(pointMm, snappedToWall) {
+    const point = pointMm || { xMm: 0, yMm: 0 };
+    const halfSize = CURSOR_LENS_SIZE_PX / 2;
+    const verticalLines = [];
+    const horizontalLines = [];
+    const wallLines = [];
+
+    const firstX = Math.floor((point.xMm - CURSOR_LENS_LINE_RANGE) / CURSOR_GRID_MM) * CURSOR_GRID_MM;
+    const lastX = Math.ceil((point.xMm + CURSOR_LENS_LINE_RANGE) / CURSOR_GRID_MM) * CURSOR_GRID_MM;
+    for (let xMm = firstX; xMm <= lastX; xMm += CURSOR_GRID_MM) {
+      const left = halfSize + (xMm - point.xMm) * CURSOR_LENS_SCALE;
+      if (left < -1 || left > CURSOR_LENS_SIZE_PX + 1) continue;
+      verticalLines.push({
+        key: `v-${xMm}`,
+        major: xMm % 2500 === 0,
+        style: `left:${roundPx(left)}px;`
+      });
+    }
+
+    const firstY = Math.floor((point.yMm - CURSOR_LENS_LINE_RANGE) / CURSOR_GRID_MM) * CURSOR_GRID_MM;
+    const lastY = Math.ceil((point.yMm + CURSOR_LENS_LINE_RANGE) / CURSOR_GRID_MM) * CURSOR_GRID_MM;
+    for (let yMm = firstY; yMm <= lastY; yMm += CURSOR_GRID_MM) {
+      const top = halfSize + (yMm - point.yMm) * CURSOR_LENS_SCALE;
+      if (top < -1 || top > CURSOR_LENS_SIZE_PX + 1) continue;
+      horizontalLines.push({
+        key: `h-${yMm}`,
+        major: yMm % 2500 === 0,
+        style: `top:${roundPx(top)}px;`
+      });
+    }
+
+    const addLensWallLine = (lineStart, lineEnd, key, selected) => {
+      if (!lineStart || !lineEnd) return;
+      const startX = halfSize + (lineStart.xMm - point.xMm) * CURSOR_LENS_SCALE;
+      const startY = halfSize + (lineStart.yMm - point.yMm) * CURSOR_LENS_SCALE;
+      const endX = halfSize + (lineEnd.xMm - point.xMm) * CURSOR_LENS_SCALE;
+      const endY = halfSize + (lineEnd.yMm - point.yMm) * CURSOR_LENS_SCALE;
+      const padding = 60;
+      if (
+        Math.max(startX, endX) < -padding ||
+        Math.min(startX, endX) > CURSOR_LENS_SIZE_PX + padding ||
+        Math.max(startY, endY) < -padding ||
+        Math.min(startY, endY) > CURSOR_LENS_SIZE_PX + padding
+      ) {
+        return;
+      }
+
+      const dx = endX - startX;
+      const dy = endY - startY;
+      const length = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      wallLines.push({
+        key,
+        selected,
+        style: `left:${roundPx(startX)}px; top:${roundPx(startY)}px; width:${roundPx(length)}px; transform:rotate(${roundPx(angle)}deg);`
+      });
+    };
+
+    const floor = this.draft ? surveyGraph.getActiveFloor(this.draft) : null;
+    if (floor && Array.isArray(floor.walls)) {
+      floor.walls.forEach((wall, index) => {
+        const start = surveyGraph.getNode(floor, wall.startNodeId);
+        const end = surveyGraph.getNode(floor, wall.endNodeId);
+        if (!start || !end) return;
+        const selected = !!(floor.session && floor.session.selectedWallId === wall.id);
+        const baseKey = wall.id || `wall-${index}`;
+        addLensWallLine(start, end, `${baseKey}-inner`, selected);
+
+        const geometry = surveyGraph.buildWallSnapGeometry(floor, wall);
+        if (geometry && geometry.outerStart && geometry.outerEnd) {
+          addLensWallLine(geometry.outerStart, geometry.outerEnd, `${baseKey}-outer`, selected);
+        }
+      });
+    }
+
+    return {
+      cursorLensVisible: true,
+      cursorLensXLabel: `X ${Math.round(point.xMm)}`,
+      cursorLensYLabel: `Y ${Math.round(point.yMm)}`,
+      cursorLensSnapLabel: snappedToWall ? '墙体吸附' : '网格吸附',
+      cursorLensVerticalLines: verticalLines,
+      cursorLensHorizontalLines: horizontalLines,
+      cursorLensWalls: wallLines
+    };
+  },
+
+  resolveCursorDragPoint(clientPoint) {
+    const candidate = this.getCursorPlacementCandidate(clientPoint);
+    const displayPoint = candidate && candidate.pointMm
+      ? this.mmToClientPoint(candidate.pointMm)
+      : clientPoint;
+
+    return Object.assign({
+      dragCursorX: displayPoint.x,
+      dragCursorY: displayPoint.y
+    }, this.buildCursorLens(
+      candidate && candidate.pointMm ? candidate.pointMm : this.canvasPointToMm(clientPoint),
+      !!(candidate && candidate.snappedToWall)
+    ));
   },
 
   projectOpeningOffsetMm(point, wallId) {
@@ -1914,12 +2193,44 @@ Page({
     this.showPlannedToast();
   },
 
+  async onSaveDraft() {
+    wx.showLoading({ title: '保存草稿...' });
+    const saved = this.persistPrototypeDraft();
+    try {
+      wx.setStorageSync(PROTOTYPE_DRAFT_BACKUP_KEY, {
+        draft: this.draft ? surveyGraph.cloneDraft(this.draft) : null,
+        leadId: this.data.leadId || '',
+        time: Date.now()
+      });
+    } catch (err) {
+      // 备份失败不影响专用原型草稿保存结果。
+    }
+
+    if (!saved) {
+      wx.hideLoading();
+      wx.showToast({ title: '保存失败', icon: 'none' });
+      return;
+    }
+
+    try {
+      await this.savePrototypeDraftToCloud();
+      wx.hideLoading();
+      this.setData({
+        prototypeNotice: '草稿已保存到服务端，仍为新版测绘原型数据'
+      });
+      wx.showToast({ title: '已保存草稿', icon: 'success' });
+    } catch (err) {
+      wx.hideLoading();
+      console.error('Save surveying draft to cloud failed:', err);
+      this.setData({
+        prototypeNotice: '本地草稿已保存，服务端保存失败'
+      });
+      wx.showToast({ title: '服务端保存失败', icon: 'none' });
+    }
+  },
+
   onSavePrototypeDraft() {
-    this.persistPrototypeDraft();
-    this.setData({
-      prototypeNotice: '本地体验草稿已保存，不会同步正式户型'
-    });
-    wx.showToast({ title: '体验草稿已保存', icon: 'success' });
+    this.onSaveDraft();
   },
 
   onBottomAction(e) {
@@ -2003,7 +2314,7 @@ Page({
       return true;
     }
     if (control.key === 'redo') {
-      this.onRequestResetCanvas();
+      if (this.history.redo.length) this.onRedo();
       return true;
     }
     return false;
@@ -2376,6 +2687,10 @@ Page({
     }
   },
 
+  onConfirmClosure() {
+    this.onConfirmClose();
+  },
+
   onUndo() {
     if (!this.history.undo.length) return;
     this.history.redo.push(surveyGraph.cloneDraft(this.draft));
@@ -2399,39 +2714,21 @@ Page({
     // 进入拖拽放置模式，初始光标显示在画布中心
     const rect = this.canvasRect || { width: 375, height: 667, left: 0, top: 0 };
     const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-    const candidate = this.getCursorPlacementCandidate(center);
-    const displayPoint = candidate && candidate.pointMm ? this.mmToClientPoint(candidate.pointMm) : center;
-    this.setData({
+    this.setData(Object.assign({
       cursorDragMode: true,
-      dragCursorX: displayPoint.x,
-      dragCursorY: displayPoint.y
-    });
+    }, this.resolveCursorDragPoint(center)));
   },
 
   onCursorDragStart(e) {
     const touch = (e.touches || [])[0];
     if (!touch) return;
-    const candidate = this.getCursorPlacementCandidate({ x: touch.clientX, y: touch.clientY });
-    const displayPoint = candidate && candidate.pointMm
-      ? this.mmToClientPoint(candidate.pointMm)
-      : { x: touch.clientX, y: touch.clientY };
-    this.setData({
-      dragCursorX: displayPoint.x,
-      dragCursorY: displayPoint.y
-    });
+    this.setData(this.resolveCursorDragPoint({ x: touch.clientX, y: touch.clientY }));
   },
 
   onCursorDragMove(e) {
     const touch = (e.touches || [])[0];
     if (!touch) return;
-    const candidate = this.getCursorPlacementCandidate({ x: touch.clientX, y: touch.clientY });
-    const displayPoint = candidate && candidate.pointMm
-      ? this.mmToClientPoint(candidate.pointMm)
-      : { x: touch.clientX, y: touch.clientY };
-    this.setData({
-      dragCursorX: displayPoint.x,
-      dragCursorY: displayPoint.y
-    });
+    this.setData(this.resolveCursorDragPoint({ x: touch.clientX, y: touch.clientY }));
   },
 
   onCursorDragEnd(e) {
@@ -2440,7 +2737,7 @@ Page({
       ? { x: touch.clientX, y: touch.clientY }
       : { x: this.data.dragCursorX, y: this.data.dragCursorY };
     const candidate = this.getCursorPlacementCandidate(releasePoint);
-    this.setData({ cursorDragMode: false });
+    this.setData({ cursorDragMode: false, cursorLensVisible: false });
 
     // 屏幕坐标 → 画布 mm 坐标
     const pointMm = candidate && candidate.pointMm
@@ -2499,7 +2796,7 @@ Page({
   },
 
   onCursorDragCancel() {
-    this.setData({ cursorDragMode: false });
+    this.setData({ cursorDragMode: false, cursorLensVisible: false });
   },
 
 
@@ -2545,7 +2842,7 @@ Page({
     this.history = { undo: [], redo: [] };
     this.draft = freshDraft;
     try {
-      wx.setStorageSync(PROTOTYPE_DRAFT_KEY, surveyGraph.cloneDraft(this.draft));
+      wx.setStorageSync(this.prototypeDraftKey || this.getPrototypeDraftKey(this.data.leadId || ''), surveyGraph.cloneDraft(this.draft));
     } catch (err) {
       // 清除本地草稿失败不阻塞操作
     }

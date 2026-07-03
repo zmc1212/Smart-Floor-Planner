@@ -44,12 +44,49 @@ function getFloorPlanSourceLabel(source?: string) {
   return '手动';
 }
 
+function parseLayoutData(layoutData: any) {
+  if (!layoutData) return null;
+  if (typeof layoutData === 'string') {
+    try {
+      return JSON.parse(layoutData);
+    } catch {
+      return null;
+    }
+  }
+  return layoutData;
+}
+
+function isSurveyingPrototypePlan(plan: any) {
+  const layoutData = parseLayoutData(plan?.layoutData);
+  return Boolean(
+    layoutData &&
+    typeof layoutData === 'object' &&
+    !Array.isArray(layoutData) &&
+    layoutData.measurementMode === 'surveying_prototype' &&
+    layoutData.prototypeOnly === true &&
+    layoutData.surveyDraft?.kind === 'survey-wall-graph'
+  );
+}
+
+function getSurveyDraftStats(layoutData: any) {
+  const parsed = parseLayoutData(layoutData);
+  const draft = parsed?.surveyDraft;
+  const floors = Array.isArray(draft?.floors) ? draft.floors : [];
+  const activeFloor = floors.find((floor: any) => floor?.id === draft?.activeFloorId) || floors[0] || {};
+  return {
+    wallCount: Array.isArray(activeFloor.walls) ? activeFloor.walls.length : 0,
+    spaceCount: Array.isArray(activeFloor.spaces) ? activeFloor.spaces.filter((space: any) => space?.closed).length : 0,
+    openingCount: Array.isArray(activeFloor.openings) ? activeFloor.openings.length : 0,
+  };
+}
+
 export default function LeadsPage() {
   const confirmAction = useConfirmDialog();
   const router = useRouter();
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedLead, setSelectedLead] = useState<any>(null);
+  const [selectedLeadLoading, setSelectedLeadLoading] = useState(false);
   const [newNote, setNewNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [staffMembers, setStaffMembers] = useState<any[]>([]);
@@ -144,7 +181,14 @@ export default function LeadsPage() {
         }
         if (selectedLead) {
           const updated = data.data.find((l: any) => l._id === selectedLead._id);
-          if (updated) setSelectedLead(updated);
+          if (updated) {
+            setSelectedLead((current: any) => current ? {
+              ...current,
+              ...updated,
+              floorPlanIds: current.floorPlanIds || updated.floorPlanIds,
+              primaryFloorPlanId: current.primaryFloorPlanId || updated.primaryFloorPlanId,
+            } : updated);
+          }
         }
       }
     } catch (err) {
@@ -156,6 +200,25 @@ export default function LeadsPage() {
 
   const handlePageChange = (newPage: number) => {
     fetchLeads(newPage);
+  };
+
+  const openLeadDetail = async (lead: any) => {
+    setSelectedLead(lead);
+    setSelectedLeadLoading(true);
+    try {
+      const res = await fetch(`/api/leads/${lead._id}`);
+      const data = await res.json();
+      if (data.success) {
+        setSelectedLead(data.data);
+      } else {
+        notify.error('线索详情加载失败', { description: data.error || '请稍后重试' });
+      }
+    } catch (err) {
+      console.error('Failed to fetch lead detail:', err);
+      notify.error('线索详情加载失败', { description: '请检查网络或刷新重试' });
+    } finally {
+      setSelectedLeadLoading(false);
+    }
   };
 
   const fetchStaff = async () => {
@@ -173,11 +236,18 @@ export default function LeadsPage() {
 
   // @see react-best-practices: async-parallel — 并行化初始请求
   useEffect(() => {
-    fetchStaff();
+    const timer = setTimeout(() => {
+      void fetchStaff();
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    fetchLeads(1); // Reset to page 1 when status changes
+    const timer = setTimeout(() => {
+      void fetchLeads(1); // Reset to page 1 when status changes
+    }, 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStatus]);
 
   const updateLead = async (id: string, updates: any) => {
@@ -407,7 +477,7 @@ export default function LeadsPage() {
                         <Button 
                           size="sm"
                           variant="ghost"
-                          onClick={() => setSelectedLead(lead)}
+                          onClick={() => openLeadDetail(lead)}
                           className="h-8 text-[12px] rounded-lg font-medium text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100/80 shadow-[0_0_0_1px_rgba(0,0,0,0.06)] hover:shadow-[0_0_0_1px_rgba(0,0,0,0.1)] px-3"
                         >
                           管理
@@ -555,6 +625,13 @@ export default function LeadsPage() {
                       <span className="font-medium text-[11px] bg-white px-2 py-0.5 rounded-md shadow-[0_0_0_1px_rgba(0,0,0,0.08)] text-neutral-600">{selectedLead.source}</span>
                     </div>
                   </div>
+
+                  {selectedLeadLoading && (
+                    <div className="flex items-center gap-2 rounded-2xl bg-neutral-50 px-4 py-3 text-[12px] font-medium text-neutral-500 shadow-[0_0_0_1px_rgba(0,0,0,0.04)]">
+                      <Loader2 size={14} className="animate-spin" />
+                      正在加载小程序测绘数据...
+                    </div>
+                  )}
 
                   {/* Related Floor Plans */}
                   <RelatedFloorPlans
@@ -715,7 +792,10 @@ function RelatedFloorPlans({ floorPlans, primaryFloorPlanId }: { floorPlans: any
       
       <div className="grid grid-cols-1 gap-3">
         {sortedFloorPlans.length > 0 ? (
-          sortedFloorPlans.map((plan) => (
+          sortedFloorPlans.map((plan) => {
+            const isPrototype = isSurveyingPrototypePlan(plan);
+            const stats = getSurveyDraftStats(plan.layoutData);
+            return (
             <div key={plan._id} className="flex items-center justify-between p-4 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.08)] rounded-xl hover:shadow-[0_4px_12px_rgba(0,0,0,0.05)] transition-all cursor-pointer group"
                  onClick={() => window.location.href = `/floorplans/${plan._id}`}>
               <div className="flex flex-col gap-1">
@@ -724,18 +804,27 @@ function RelatedFloorPlans({ floorPlans, primaryFloorPlanId }: { floorPlans: any
                   {primaryFloorPlanId && String(plan._id) === String(primaryFloorPlanId) && (
                     <Badge variant="secondary" className="bg-green-50 text-green-700 border-none">主户型</Badge>
                   )}
+                  {isPrototype && (
+                    <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-none">新版测绘原型</Badge>
+                  )}
                 </span>
                 <span className="text-[11px] text-neutral-400 font-medium flex items-center gap-1">
                   <Clock size={10} /> 测量于 {new Date(plan.createdAt).toLocaleDateString()}
                 </span>
                 <span className="text-[11px] text-blue-600 font-bold">
-                  {getFloorPlanSourceLabel(plan.source)}
+                  {isPrototype ? '新版测绘原型' : getFloorPlanSourceLabel(plan.source)}
                   {plan.externalSource?.layoutLabel ? ` · ${plan.externalSource.layoutLabel}` : ''}
                 </span>
+                {isPrototype && (
+                  <span className="text-[11px] font-medium text-neutral-500">
+                    {stats.wallCount} 面墙 · {stats.spaceCount} 个空间 · {stats.openingCount} 个门窗
+                  </span>
+                )}
               </div>
               <Button size="sm" variant="ghost" className="h-8 text-[12px] rounded-lg bg-neutral-50 group-hover:bg-neutral-900 group-hover:text-white transition-all font-medium">查看详情</Button>
             </div>
-          ))
+            );
+          })
         ) : (
           <div className="text-center py-8 text-neutral-300 text-[12px] border border-dashed rounded-2xl border-neutral-100 font-medium">
             暂无关联的实测记录

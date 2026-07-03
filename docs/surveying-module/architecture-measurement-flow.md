@@ -104,7 +104,7 @@ stateDiagram-v2
 
 - 每次墙提交、闭合、复尺、墙厚/墙侧确认作为独立撤销快照。
 - 平移缩放不写入几何历史，可单独保存在会话视口中。
-- Phase 2 后续补强已使用专用键 `surveying_prototype_draft_v1` 保存本地体验草稿；该草稿只服务新版原型，不写入正式 floor plan，也不覆盖旧版 `editor` 草稿。
+- Phase 2 后续补强已使用按线索隔离的专用键 `surveying_prototype_draft_v1_{leadId}` 保存本地体验草稿；用户显式点击“保存草稿”时还会同步并关联服务端 draft floorplan，但该 payload 必须标记为 `measurementMode: 'surveying_prototype'`、`prototypeOnly: true`，只服务新版原型，不覆盖旧版 `editor` 草稿。
 - 原型草稿不得提交到现有 floor plan API，也不得覆盖旧 `editor` 草稿。
 
 ## 失败恢复
@@ -120,6 +120,6 @@ stateDiagram-v2
 ## Phase 2 启动记录
 
 - Phase 2 已开始实现，仅覆盖手动墙体原型：墙图内存模型、画布光标/预览、毫米手输、墙厚/墙侧、闭合、复尺与撤销重做。
-- 本阶段继续禁止写入正式 floor plan、旧版草稿、测量日志、导出、3D 或 BLE 读数；BLE 输入与本地原型恢复保留到 Phase 3。
+- 本阶段允许写入并关联带 `surveying_prototype` 标记的服务端草稿，后台可只读查看原始墙图；继续禁止覆盖旧版草稿、写测量日志、进入导出/报告/3D 下游或提交正式 BLE 读数；BLE 输入与原型恢复保留到 Phase 3。
 - 手动原型的墙图工具先落在 `miniprogram/utils/surveyWallGraph.js`，页面会话由 `miniprogram/pages/surveying-editor/surveying-editor.*` 消费。
-- `surveying-editor` 已支持无墙状态点击空白画布移动光标，并通过顶部“保存”保存/重进恢复本地体验草稿；恢复时会取消未完成的预览墙或复尺输入状态。
+- `surveying-editor` 已支持无墙状态点击空白画布移动光标，并通过顶部“保存草稿”保存本地与服务端原型草稿；重进时本地恢复会取消未完成的预览墙或复尺输入状态。
