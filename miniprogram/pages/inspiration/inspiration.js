@@ -21,6 +21,14 @@ Page({
     this.fetchCases();
   },
 
+  onShow: function () {
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({
+        selected: 3
+      });
+    }
+  },
+
   onRefresh: function () {
     this.setData({
       page: 1,

@@ -110,7 +110,7 @@
 }
 
 .home-shell {
-  padding: 16rpx 20rpx 56rpx;
+  padding: 16rpx 20rpx 180rpx;
   display: flex;
   flex-direction: column;
   gap: 16rpx;

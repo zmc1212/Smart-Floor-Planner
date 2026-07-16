@@ -10,7 +10,7 @@
       <view class="tab-icon {{item.center ? 'center-icon' : ''}}">
         <image class="tab-image {{item.center ? 'center-image' : ''}}" src="{{selected === index ? item.selectedIconPath : item.iconPath}}" mode="aspectFit" />
       </view>
-      <text class="tab-text">{{item.text}}</text>
+      <text class="tab-text" wx:if="{{!item.center}}">{{item.text}}</text>
     </view>
   </view>
 </view>

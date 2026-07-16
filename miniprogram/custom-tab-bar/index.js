@@ -2,11 +2,42 @@ Component({
   data: {
     selected: 0,
     list: [
-      { key: 'home', pagePath: '/pages/index/index', text: '首页', iconPath: '/images/mine-icons/tab-home.png', selectedIconPath: '/images/mine-icons/tab-home.png' },
-      { key: 'leads', pagePath: '/pages/leads-management/leads-management', text: '线索', iconPath: '/images/mine-icons/tab-leads.png', selectedIconPath: '/images/mine-icons/tab-leads.png' },
-      { key: 'measure', pagePath: '/pages/surveying-editor/surveying-editor', text: '量房', iconPath: '/images/mine-icons/tab-measure-active.png', selectedIconPath: '/images/mine-icons/tab-measure-active.png', center: true },
-      { key: 'inspiration', pagePath: '/pages/inspiration/inspiration', text: '灵感', iconPath: '/images/mine-icons/tab-bulb.png', selectedIconPath: '/images/mine-icons/tab-bulb.png' },
-      { key: 'mine', pagePath: '/pages/mine/mine', text: '我的', iconPath: '/images/mine-icons/tab-mine.png', selectedIconPath: '/images/mine-icons/tab-mine-active.png' }
+      {
+        key: 'home',
+        pagePath: '/pages/index/index',
+        text: '首页',
+        iconPath: '/images/mine-icons/tab-home.png',
+        selectedIconPath: '/images/mine-icons/tab-home-active.png'
+      },
+      {
+        key: 'leads',
+        pagePath: '/pages/leads-management/leads-management',
+        text: '线索',
+        iconPath: '/images/mine-icons/tab-leads.png',
+        selectedIconPath: '/images/mine-icons/tab-leads-active.png'
+      },
+      {
+        key: 'measure',
+        pagePath: '/pages/surveying-editor/surveying-editor',
+        text: '量房',
+        iconPath: '/images/mine-icons/tab-measure.png',
+        selectedIconPath: '/images/mine-icons/tab-measure.png',
+        center: true
+      },
+      {
+        key: 'inspiration',
+        pagePath: '/pages/inspiration/inspiration',
+        text: '灵感',
+        iconPath: '/images/mine-icons/tab-bulb.png',
+        selectedIconPath: '/images/mine-icons/tab-bulb-active.png'
+      },
+      {
+        key: 'mine',
+        pagePath: '/pages/mine/mine',
+        text: '我的',
+        iconPath: '/images/mine-icons/tab-mine.png',
+        selectedIconPath: '/images/mine-icons/tab-mine-active.png'
+      }
     ]
   },
 

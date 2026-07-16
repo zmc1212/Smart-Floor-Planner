@@ -16,12 +16,17 @@
       ></canvas>
     </view>
 
+  </view>
+
+  <!-- 所有测绘覆盖 UI 与 canvas-shell 保持同级，由本层统一承载。 -->
+  <view class="canvas-overlay-layer">
+
     <!-- 顶部量测气泡 -->
-    <cover-view wx:if="{{topMetricVisible}}" class="top-measure-bubble">
+    <cover-view wx:if="{{topMetricVisible}}" class="top-measure-bubble" style="top: {{overlayContentTop}}px;">
       <cover-view>{{topMetricLength}}</cover-view>
       <cover-view wx:if="{{topMetricAngle}}" class="top-measure-angle">{{topMetricAngle}}</cover-view>
     </cover-view>
-    <cover-view wx:else class="measurement-bubble">
+    <cover-view wx:else class="measurement-bubble" style="top: {{overlayContentTop}}px;">
       <cover-view class="bubble-title">{{measurementTitle}}</cover-view>
       <cover-view class="bubble-value">{{measurementValue}}</cover-view>
     </cover-view>
@@ -89,159 +94,165 @@
       </cover-view>
     </cover-view>
 
-    <!-- 罗盘 -->
-    <cover-view class="compass">
-      <cover-view class="compass-needle"></cover-view>
-      <cover-view>N</cover-view>
-    </cover-view>
-
-  </view>
+  <!-- 使用 cover-view 作为组件根节点，验证组件是否可覆盖原生画布。 -->
+  <survey-canvas-compass wx:if="{{showPrototypeExtras}}" safe-top="{{overlayContentTop}}" bind:tap="onDisabledTap"></survey-canvas-compass>
 
   <!-- ══════════════════════════════════════════════ -->
   <!--  顶部导航浮层                                   -->
   <!-- ══════════════════════════════════════════════ -->
-  <view class="survey-topbar" style="top: {{navigationSafeTop}}px;">
-    <view class="topbar-left">
-      <view class="back-button" bindtap="onBack">‹</view>
-      <view class="title-group">
-        <text class="page-title">{{title}}</text>
-        <text class="page-subtitle">{{prototypeNotice}}</text>
-      </view>
-    </view>
-    <view class="topbar-right">
-      <view class="topbar-chip disabled" bindtap="onDisabledTap">助手</view>
-      <view class="topbar-chip save" bindtap="onSaveDraft">保存草稿</view>
-    </view>
-  </view>
+  <cover-view class="survey-topbar native-canvas-overlay" style="top: {{navigationSafeTop}}px;">
+    <cover-view class="topbar-left">
+      <cover-view class="back-button" bindtap="onBack">
+        <cover-image class="topbar-icon topbar-back-icon" src="/images/surveying-icons/topbar-back.png"></cover-image>
+      </cover-view>
+      <cover-view class="title-group">
+        <cover-view class="page-title">{{title}}</cover-view>
+        <cover-view class="page-subtitle">{{prototypeNotice}}</cover-view>
+      </cover-view>
+    </cover-view>
+    <cover-view class="topbar-right">
+      <cover-view class="topbar-chip assistant-chip disabled" bindtap="onDisabledTap">
+        <cover-image class="topbar-icon" src="/images/surveying-icons/topbar-assistant.png"></cover-image>
+        <cover-view>助手</cover-view>
+      </cover-view>
+      <cover-view class="topbar-chip save" bindtap="onSaveDraft">
+        <cover-image class="topbar-icon" src="/images/surveying-icons/topbar-save.png"></cover-image>
+        <cover-view>保存</cover-view>
+      </cover-view>
+    </cover-view>
+  </cover-view>
 
   <!-- ══════════════════════════════════════════════ -->
   <!--  右侧工具栏（浮层）                              -->
   <!-- ══════════════════════════════════════════════ -->
-  <view class="right-rail">
-    <view wx:if="{{selectedOpening}}" class="opening-context {{selectedOpening.type}}">
-      <text class="opening-title">{{selectedOpening.typeLabel}} · 本地原型</text>
-      <view class="opening-fields">
-        <view class="opening-field" data-field="width" bindtap="onOpeningEditField">宽 {{selectedOpening.width}}</view>
-        <view class="opening-field" data-field="height" bindtap="onOpeningEditField">高 {{selectedOpening.height}}</view>
-        <view class="opening-field" data-field="sill" bindtap="onOpeningEditField">距地 {{selectedOpening.sill}}</view>
-      </view>
-    </view>
+  <cover-view class="right-rail native-canvas-overlay" style="top: {{rightRailTop}}px; bottom: {{rightRailBottom}}px;">
+    <cover-view wx:if="{{selectedOpening}}" class="opening-context {{selectedOpening.type}}">
+      <cover-view class="opening-title">{{selectedOpening.typeLabel}} · 本地原型</cover-view>
+      <cover-view class="opening-fields">
+        <cover-view class="opening-field" data-field="width" bindtap="onOpeningEditField">宽 {{selectedOpening.width}}</cover-view>
+        <cover-view class="opening-field" data-field="height" bindtap="onOpeningEditField">高 {{selectedOpening.height}}</cover-view>
+        <cover-view class="opening-field" data-field="sill" bindtap="onOpeningEditField">距地 {{selectedOpening.sill}}</cover-view>
+      </cover-view>
+    </cover-view>
 
-    <view wx:if="{{objectToolsVisible}}" class="tool-group primary-tools object-tools">
-      <view
+    <cover-view wx:if="{{objectToolsVisible}}" class="tool-group primary-tools object-tools">
+      <cover-view
         class="tool-button"
         wx:for="{{objectTools}}"
         wx:key="key"
         data-tool="{{item.key}}"
         bindtap="onToolTap"
       >
-        <text class="tool-label">{{item.label}}</text>
-        <text class="tool-helper">{{item.helper}}</text>
-      </view>
-    </view>
+        <cover-view class="tool-label">{{item.label}}</cover-view>
+        <cover-view class="tool-helper">{{item.helper}}</cover-view>
+      </cover-view>
+    </cover-view>
 
-    <view wx:else class="tool-group primary-tools">
-      <view
+    <cover-view wx:else class="tool-group primary-tools">
+      <cover-view
         class="tool-button {{item.active ? 'active' : ''}}"
         wx:for="{{coreTools}}"
         wx:key="key"
         data-tool="{{item.key}}"
         bindtap="onToolTap"
       >
-        <text class="tool-label">{{item.label}}</text>
-        <text class="tool-helper">{{item.helper}}</text>
-      </view>
-    </view>
+        <cover-view class="tool-label">{{item.label}}</cover-view>
+        <cover-view class="tool-helper">{{item.helper}}</cover-view>
+      </cover-view>
+    </cover-view>
 
-    <view class="side-switch" bindtap="onToggleSide">
-      <text class="side-label">{{selectedOpening ? (selectedOpening.type === 'door' ? '开向' : '窗位') : '墙侧'}}</text>
-      <text class="side-value">{{selectedOpening ? (selectedOpening.type === 'door' ? selectedOpening.openDirectionLabel : '固定') : (measurementSide === 'right' ? '右侧' : '左侧')}}</text>
-    </view>
+    <cover-view class="side-switch" bindtap="onToggleSide">
+      <cover-view class="side-label">{{selectedOpening ? (selectedOpening.type === 'door' ? '开向' : '窗位') : '墙侧'}}</cover-view>
+      <cover-view class="side-value">{{selectedOpening ? (selectedOpening.type === 'door' ? selectedOpening.openDirectionLabel : '固定') : (measurementSide === 'right' ? '右侧' : '左侧')}}</cover-view>
+    </cover-view>
 
-    <view class="tool-group reserved-tools">
-      <view
+    <cover-view wx:if="{{showPrototypeExtras}}" class="tool-group reserved-tools">
+      <cover-view
         class="reserved-button disabled"
         wx:for="{{reservedTools}}"
         wx:key="key"
         bindtap="onDisabledTap"
       >
         {{item.label}}
-      </view>
-    </view>
-  </view>
+      </cover-view>
+    </cover-view>
+  </cover-view>
 
   <!-- ══════════════════════════════════════════════ -->
   <!--  底部唯一按钮：新建光标                          -->
   <!-- ══════════════════════════════════════════════ -->
-  <view class="history-action-bar" style="bottom: calc(42rpx + {{bottomSafeArea}}px);">
-    <view class="history-action {{historySummary.undo > 0 ? '' : 'disabled'}}" bindtap="onUndoTap">撤销</view>
-    <view class="history-action danger" bindtap="onRequestResetCanvas">重画</view>
-  </view>
+  <cover-view class="history-action-bar native-canvas-overlay" style="bottom: calc(42rpx + {{bottomSafeArea}}px);">
+    <cover-view class="history-action {{historySummary.undo > 0 ? '' : 'disabled'}}" bindtap="onUndoTap">
+      <cover-view>撤销</cover-view>
+      <cover-view wx:if="{{historySummary.undo > 0}}" class="history-action-count">{{historySummary.undo}}</cover-view>
+    </cover-view>
+    <cover-view class="history-action danger" bindtap="onRequestResetCanvas">重画</cover-view>
+  </cover-view>
 
-  <view class="bottom-fab-bar" style="bottom: calc(36rpx + {{bottomSafeArea}}px);">
-    <view class="fab-new-cursor" bindtap="onNewCursorTap">
-      <view class="fab-new-cursor-icon">
-        <view class="nc-h"></view>
-        <view class="nc-v"></view>
-        <view class="nc-ring"></view>
-      </view>
-      <text class="fab-new-cursor-label">新建光标</text>
-    </view>
-  </view>
+  <cover-view class="bottom-fab-bar native-canvas-overlay" style="bottom: calc(36rpx + {{bottomSafeArea}}px);">
+    <cover-view class="fab-new-cursor" bindtap="onNewCursorTap">
+      <cover-view class="fab-new-cursor-icon">
+        <cover-view class="nc-h"></cover-view>
+        <cover-view class="nc-v"></cover-view>
+        <cover-view class="nc-ring"></cover-view>
+      </cover-view>
+      <cover-view class="fab-new-cursor-label">新建光标</cover-view>
+    </cover-view>
+  </cover-view>
 
   <!-- ══════════════════════════════════════════════ -->
   <!--  拖拽放置光标的全屏覆盖层                        -->
   <!-- ══════════════════════════════════════════════ -->
-  <view
+  <cover-view
     wx:if="{{cursorDragMode}}"
-    class="cursor-drag-overlay"
+    class="cursor-drag-overlay native-canvas-overlay"
     bindtouchstart="onCursorDragStart"
     bindtouchmove="onCursorDragMove"
     bindtouchend="onCursorDragEnd"
     bindtouchcancel="onCursorDragEnd"
   >
     <!-- 提示文字 -->
-    <view class="cursor-drag-hint-bar">
-      <text class="cursor-drag-hint-text">拖动手指到目标位置后松开放置光标</text>
-      <view class="cursor-drag-cancel" bindtap="onCursorDragCancel">取消</view>
-    </view>
-    <view wx:if="{{cursorLensVisible}}" class="cursor-lens">
-      <view class="cursor-lens-grid">
-        <view
+    <cover-view class="cursor-drag-hint-bar">
+      <cover-view class="cursor-drag-hint-text">拖动手指到目标位置后松开放置光标</cover-view>
+      <cover-view class="cursor-drag-cancel" bindtap="onCursorDragCancel">取消</cover-view>
+    </cover-view>
+    <cover-view wx:if="{{cursorLensVisible}}" class="cursor-lens">
+      <cover-view class="cursor-lens-grid">
+        <cover-view
           wx:for="{{cursorLensVerticalLines}}"
           wx:key="key"
           class="cursor-lens-line vertical {{item.major ? 'major' : ''}}"
           style="{{item.style}}"
-        ></view>
-        <view
+        ></cover-view>
+        <cover-view
           wx:for="{{cursorLensHorizontalLines}}"
           wx:key="key"
           class="cursor-lens-line horizontal {{item.major ? 'major' : ''}}"
           style="{{item.style}}"
-        ></view>
-        <view
+        ></cover-view>
+        <cover-view
           wx:for="{{cursorLensWalls}}"
           wx:key="key"
           class="cursor-lens-wall {{item.selected ? 'selected' : ''}}"
           style="{{item.style}}"
-        ></view>
-        <view class="cursor-lens-cross horizontal"></view>
-        <view class="cursor-lens-cross vertical"></view>
-        <view class="cursor-lens-target"></view>
-      </view>
-      <view class="cursor-lens-meta">
-        <text>{{cursorLensSnapLabel}}</text>
-        <text>{{cursorLensXLabel}} / {{cursorLensYLabel}}</text>
-      </view>
-    </view>
+        ></cover-view>
+        <cover-view class="cursor-lens-cross horizontal"></cover-view>
+        <cover-view class="cursor-lens-cross vertical"></cover-view>
+        <cover-view class="cursor-lens-target"></cover-view>
+      </cover-view>
+      <cover-view class="cursor-lens-meta">
+        <cover-view>{{cursorLensSnapLabel}}</cover-view>
+        <cover-view>{{cursorLensXLabel}} / {{cursorLensYLabel}}</cover-view>
+      </cover-view>
+    </cover-view>
     <!-- 跟随手指的光标标记 -->
-    <view class="cursor-drag-marker" style="left:{{dragCursorX}}px; top:{{dragCursorY}}px;">
-      <view class="cdm-ring-outer"></view>
-      <view class="cdm-ring-inner"></view>
-      <view class="cdm-cross-h"></view>
-      <view class="cdm-cross-v"></view>
-    </view>
-  </view>
+    <cover-view class="cursor-drag-marker" style="left:{{dragCursorX}}px; top:{{dragCursorY}}px;">
+      <cover-view class="cdm-ring-outer"></cover-view>
+      <cover-view class="cdm-ring-inner"></cover-view>
+      <cover-view class="cdm-cross-h"></cover-view>
+      <cover-view class="cdm-cross-v"></cover-view>
+    </cover-view>
+  </cover-view>
 
 
   <!-- ══════════════════════════════════════════════ -->
@@ -367,18 +378,18 @@
   <!-- ══════════════════════════════════════════════ -->
   <!--  数字键盘弹层                                   -->
   <!-- ══════════════════════════════════════════════ -->
-  <view wx:if="{{numberPadVisible}}" class="number-pad-mask" bindtap="onNumberClose"></view>
-  <view wx:if="{{numberPadVisible}}" class="number-pad-panel">
-    <view class="number-pad-header">
-      <view>
-        <text class="number-pad-title">{{numberPadTitle}}</text>
-        <text class="number-pad-subtitle">{{numberPadSubtitle}}</text>
-      </view>
-      <view class="number-pad-close" bindtap="onNumberClose">关闭</view>
-    </view>
-    <view class="number-display">{{numberInput || '0'}}<text> mm</text></view>
-    <view class="number-grid">
-      <view
+  <cover-view wx:if="{{numberPadVisible}}" class="number-pad-mask native-canvas-overlay" bindtap="onNumberClose"></cover-view>
+  <cover-view wx:if="{{numberPadVisible}}" class="number-pad-panel native-canvas-overlay">
+    <cover-view class="number-pad-header">
+      <cover-view>
+        <cover-view class="number-pad-title">{{numberPadTitle}}</cover-view>
+        <cover-view class="number-pad-subtitle">{{numberPadSubtitle}}</cover-view>
+      </cover-view>
+      <cover-view class="number-pad-close" bindtap="onNumberClose">关闭</cover-view>
+    </cover-view>
+    <cover-view class="number-display">{{numberInput || '0'}}<cover-view class="number-display-unit"> mm</cover-view></cover-view>
+    <cover-view class="number-grid">
+      <cover-view
         class="number-key {{item === '清空' || item === '退格' ? 'utility' : ''}}"
         wx:for="{{numberKeys}}"
         wx:key="*this"
@@ -386,12 +397,13 @@
         bindtap="onNumberKey"
       >
         {{item}}
-      </view>
-    </view>
-    <view class="number-actions">
-      <view class="number-measure" bindtap="triggerBluetoothNumberMeasure">测距</view>
-      <view class="number-confirm" bindtap="onNumberConfirm">确认</view>
-    </view>
-  </view>
+      </cover-view>
+    </cover-view>
+    <cover-view class="number-actions">
+      <cover-view class="number-measure" bindtap="triggerBluetoothNumberMeasure">测距</cover-view>
+      <cover-view class="number-confirm" bindtap="onNumberConfirm">确认</cover-view>
+    </cover-view>
+  </cover-view>
 
+  </view>
 </view>

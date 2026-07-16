@@ -169,7 +169,7 @@ function createDimensionOptions(wall, priority) {
 function resolveDimensions(walls, previewWall) {
   const dimensions = [];
   const accepted = [];
-  const renderWalls = walls.filter((wall) => !wall.lineOnly);
+  const renderWalls = walls.filter((wall) => !wall.lineOnly && !wall.closed);
 
   function processGroup(groupOptions) {
     groupOptions.sort((first, second) => second.priority - first.priority);
@@ -261,6 +261,31 @@ function buildWallScene(floor, wall, options) {
   const outerStartAlongPx = geometry ? geometry.outerStartAlongMm * viewport.scale : 0;
   const outerEndPx = geometry ? geometry.outerEndAlongMm * viewport.scale : widthPx;
   const outerLengthMm = Math.round(surveyGraph.distanceMm(geometry.outerStart, geometry.outerEnd));
+  const thicknessPx = Math.round(geometry.thicknessMm * viewport.scale);
+  const rawOuterStart = {
+    x: startPoint.x + localY.x * outerOffsetPx,
+    y: startPoint.y + localY.y * outerOffsetPx
+  };
+  const rawOuterEnd = {
+    x: endPoint.x + localY.x * outerOffsetPx,
+    y: endPoint.y + localY.y * outerOffsetPx
+  };
+  const selectionStartPoint = {
+    x: startPoint.x,
+    y: startPoint.y
+  };
+  const selectionEndPoint = {
+    x: endPoint.x,
+    y: endPoint.y
+  };
+  const selectionOuterStart = {
+    x: rawOuterStart.x,
+    y: rawOuterStart.y
+  };
+  const selectionOuterEnd = {
+    x: rawOuterEnd.x,
+    y: rawOuterEnd.y
+  };
 
   return {
     id: wall.id,
@@ -271,10 +296,13 @@ function buildWallScene(floor, wall, options) {
     endPoint,
     outerStart,
     outerEnd,
+    rawOuterStart,
+    rawOuterEnd,
     outerStartAlongPx,
     outerEndPx,
     outerLengthMm,
     bodyPolygon: [startPoint, endPoint, outerEnd, outerStart],
+    selectionPolygon: [selectionStartPoint, selectionEndPoint, selectionOuterEnd, selectionOuterStart],
     direction,
     localY,
     widthPx,
@@ -283,21 +311,24 @@ function buildWallScene(floor, wall, options) {
     lengthMm: geometry.lengthMm,
     relativeAngle: previousWall ? normalizeAngleDiff(wall.angleDeg, previousWall.angleDeg) : null,
     measurementSide: wall.measurementSide,
-    thicknessPx: Math.round(geometry.thicknessMm * viewport.scale),
+    thicknessPx,
     centerLineYPx: outerOffsetPx / 2,
     startOpen: geometry.startOpen,
     endOpen: geometry.endOpen,
+    startJoined: geometry.startJoined,
+    endJoined: geometry.endJoined,
     selected: opts.selectedWallId === wall.id,
     preview: !!opts.preview,
     lineOnly: !!opts.lineOnly
   };
 }
 
-function buildJoinFills(floor, renderThicknessMmMap, project) {
+function buildJoinFills(floor, renderThicknessMmMap, project, closedWallIds) {
   return surveyGraph.buildWallJoinRenderGeometries(floor, { renderThicknessMmMap })
     .map((join) => ({
       id: join.id,
-      points: join.points.map(project)
+      points: join.points.map(project),
+      closed: !!(join.wallIds && join.wallIds.every((wallId) => closedWallIds[wallId]))
     }));
 }
 
@@ -353,7 +384,7 @@ function buildClosureGuide(floor, session, project) {
   return {
     startPoint: project(currentNode),
     endPoint: project(targetNode),
-    active: session.state === 'closing'
+    active: session.state === 'closing' || session.state === 'mergeClosing'
   };
 }
 
@@ -508,6 +539,19 @@ function buildClosedSpaceLabels(floor, project) {
   }).filter(Boolean);
 }
 
+function buildClosedSpaceFills(floor, project) {
+  return (floor.spaces || []).filter((space) => space.closed && Array.isArray(space.wallIds))
+    .map((space) => {
+      const boundaryPoints = surveyGraph.buildSpaceBoundaryPoints(floor, space.wallIds);
+      if (!boundaryPoints || boundaryPoints.length < 3) return null;
+      return {
+        id: space.id,
+        points: boundaryPoints.map(project)
+      };
+    })
+    .filter(Boolean);
+}
+
 function createSurveyRenderScene(input) {
   const floor = input.floor || { walls: [], nodes: [], spaces: [] };
   const session = input.session || floor.session || {};
@@ -515,13 +559,17 @@ function createSurveyRenderScene(input) {
   const rect = resolveRect(input.rect);
   const project = createProjector(viewport, rect);
   const renderThicknessMmMap = buildRenderThicknessMmMap(floor, viewport);
+  const closedWallIds = {};
+  (floor.spaces || []).filter((space) => space.closed && Array.isArray(space.wallIds)).forEach((space) => {
+    space.wallIds.forEach((wallId) => { closedWallIds[wallId] = true; });
+  });
   const walls = (floor.walls || []).map((wall, index) => buildWallScene(floor, wall, {
     project,
     viewport,
     renderThicknessMmMap,
     relativePreviousWall: index > 0 ? floor.walls[index - 1] : null,
     selectedWallId: session.selectedWallId
-  })).filter(Boolean);
+  })).filter(Boolean).map((wall) => Object.assign(wall, { closed: !!closedWallIds[wall.id] }));
   const previewWall = buildPreviewWall(floor, session, {
     project,
     viewport,
@@ -538,12 +586,13 @@ function createSurveyRenderScene(input) {
     openings,
     previewWall,
     dimensions,
-    joinFills: buildJoinFills(floor, renderThicknessMmMap, project),
+    joinFills: buildJoinFills(floor, renderThicknessMmMap, project, closedWallIds),
     closureGuide: buildClosureGuide(floor, session, project),
     alignmentSnapGuide: buildAlignmentSnapGuide(session, project),
     cursor: buildCursor(floor, session, project),
+    closedSpaceFills: buildClosedSpaceFills(floor, project),
     closedSpaceLabels: buildClosedSpaceLabels(floor, project),
-    activeSegment: previewWall || walls[walls.length - 1] || null,
+    activeSegment: session.state === 'spaceClosed' ? null : (previewWall || walls[walls.length - 1] || null),
     closed: shouldCloseWholeWallPath(floor, previewWall),
     session
   };
@@ -617,12 +666,22 @@ function drawAxes(ctx, scene) {
   ctx.restore();
 }
 
+function drawClosedSpaceFills(ctx, scene) {
+  (scene.closedSpaceFills || []).forEach((space) => {
+    drawPolygon(ctx, space.points, 'rgba(209, 209, 207, 0.86)');
+  });
+}
+
 function drawWallBodies(ctx, scene) {
   scene.walls.forEach((wall) => {
-    drawPolygon(ctx, wall.bodyPolygon, wall.selected ? 'rgba(239, 68, 68, 0.25)' : 'rgba(226, 226, 224, 0.94)');
+    const fill = wall.closed ? 'rgba(142, 142, 140, 0.98)' : 'rgba(226, 226, 224, 0.94)';
+    drawPolygon(ctx, wall.bodyPolygon, fill);
+    if (wall.selected) {
+      drawPolygon(ctx, wall.selectionPolygon, 'rgba(226, 73, 79, 0.92)');
+    }
   });
   scene.joinFills.forEach((join) => {
-    drawPolygon(ctx, join.points, 'rgba(226, 226, 224, 0.94)');
+    drawPolygon(ctx, join.points, join.closed ? 'rgba(142, 142, 140, 0.98)' : 'rgba(226, 226, 224, 0.94)');
   });
   if (scene.previewWall && !scene.previewWall.lineOnly) {
     drawPolygon(ctx, scene.previewWall.bodyPolygon, 'rgba(226, 226, 224, 0.86)');
@@ -665,6 +724,13 @@ function drawWallOutlines(ctx, scene) {
   ctx.lineJoin = 'miter';
   ctx.miterLimit = 2;
   drawOuterPath(ctx, walls, scene.closed && !scene.previewWall);
+
+  walls.forEach((wall) => {
+    ctx.beginPath();
+    ctx.moveTo(wall.startPoint.x, wall.startPoint.y);
+    ctx.lineTo(wall.endPoint.x, wall.endPoint.y);
+    ctx.stroke();
+  });
 
   walls.forEach((wall) => {
     if (wall.startOpen) {
@@ -712,7 +778,8 @@ function drawRedlines(ctx, scene) {
   ctx.lineCap = 'butt';
   ctx.lineJoin = 'miter';
   ctx.miterLimit = 2;
-  drawRedlinePath(ctx, scene.walls, '#d71920', scene.closed && !scene.previewWall);
+  const measuringWalls = scene.walls.filter((wall) => !wall.closed);
+  drawRedlinePath(ctx, measuringWalls, '#d71920', false);
 
   if (scene.previewWall) {
     drawRedlinePath(ctx, [scene.previewWall], scene.previewWall.lineOnly ? '#f07a21' : '#d71920');
@@ -725,23 +792,14 @@ function drawSelectedWallHighlight(ctx, scene) {
   if (!selectedWall) return;
 
   ctx.save();
-  ctx.strokeStyle = '#ef4444';
-  ctx.lineWidth = 1.5;
-  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#2f2f2f';
+  ctx.lineWidth = 1;
+  ctx.lineJoin = 'miter';
   ctx.beginPath();
-  ctx.moveTo(selectedWall.bodyPolygon[0].x, selectedWall.bodyPolygon[0].y);
-  for (let index = 1; index < selectedWall.bodyPolygon.length; index += 1) {
-    ctx.lineTo(selectedWall.bodyPolygon[index].x, selectedWall.bodyPolygon[index].y);
-  }
-  ctx.closePath();
-  ctx.stroke();
-
-  ctx.strokeStyle = '#f07a21';
-  ctx.lineWidth = 3;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(selectedWall.startPoint.x, selectedWall.startPoint.y);
-  ctx.lineTo(selectedWall.endPoint.x, selectedWall.endPoint.y);
+  ctx.moveTo(selectedWall.selectionPolygon[0].x, selectedWall.selectionPolygon[0].y);
+  ctx.lineTo(selectedWall.selectionPolygon[1].x, selectedWall.selectionPolygon[1].y);
+  ctx.moveTo(selectedWall.selectionPolygon[3].x, selectedWall.selectionPolygon[3].y);
+  ctx.lineTo(selectedWall.selectionPolygon[2].x, selectedWall.selectionPolygon[2].y);
   ctx.stroke();
   ctx.restore();
 }
@@ -1125,6 +1183,7 @@ function drawSurveyScene(ctx, scene, options) {
 
   drawGrid(ctx, scene);
   drawAxes(ctx, scene);
+  drawClosedSpaceFills(ctx, scene);
   drawWallBodies(ctx, scene);
   drawWallOutlines(ctx, scene);
   drawRedlines(ctx, scene);

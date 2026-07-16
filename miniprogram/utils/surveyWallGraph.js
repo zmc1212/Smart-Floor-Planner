@@ -5,6 +5,7 @@ const RECTANGLE_ALIGNMENT_TOLERANCE_MM = CLOSE_TOLERANCE_MM;
 const MIN_WALL_LENGTH_MM = 100;
 const MIN_THICKNESS_MM = 50;
 const WALL_OVERLAP_TOLERANCE_MM = 30;
+const MIN_CLOSED_SPACE_AREA_MM2 = MIN_WALL_LENGTH_MM * MIN_WALL_LENGTH_MM;
 const DEFAULT_DOOR_WIDTH_MM = 900;
 const DEFAULT_DOOR_HEIGHT_MM = 2100;
 const DEFAULT_WINDOW_WIDTH_MM = 1500;
@@ -399,6 +400,80 @@ function findOverlappingWall(floor, start, end, options) {
   }) || null;
 }
 
+function hasClosureInteriorIntersection(start, end, otherStart, otherEnd) {
+  const direction = { x: end.xMm - start.xMm, y: end.yMm - start.yMm };
+  const otherDirection = { x: otherEnd.xMm - otherStart.xMm, y: otherEnd.yMm - otherStart.yMm };
+  const denominator = cross(direction, otherDirection);
+
+  if (Math.abs(denominator) < 0.000001) {
+    return segmentOverlapLengthMm(start, end, otherStart, otherEnd) > WALL_OVERLAP_TOLERANCE_MM;
+  }
+
+  const offset = { x: otherStart.xMm - start.xMm, y: otherStart.yMm - start.yMm };
+  const t = cross(offset, otherDirection) / denominator;
+  const u = cross(offset, direction) / denominator;
+  const epsilon = 0.0001;
+
+  // The virtual closing edge may meet the first/last wall at either endpoint,
+  // but it cannot pass through any existing wall in its interior.
+  return t > epsilon && t < 1 - epsilon && u >= -epsilon && u <= 1 + epsilon;
+}
+
+function calculatePolygonAreaMm2(points) {
+  if (!Array.isArray(points) || points.length < 3) return 0;
+  let twiceArea = 0;
+  points.forEach((point, index) => {
+    const next = points[(index + 1) % points.length];
+    twiceArea += point.xMm * next.yMm - next.xMm * point.yMm;
+  });
+  return Math.abs(twiceArea) / 2;
+}
+
+function findMergeClosureCandidate(floor, session, endPoint) {
+  if (!floor || !session || !endPoint) return null;
+
+  const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+    ? session.activeSpaceStartWallIndex
+    : 0;
+  const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
+  const activeWalls = (floor.walls || []).slice(startWallIndex);
+  const anchor = getNode(floor, session.anchorNodeId);
+  const includesPreview = !!session.previewPoint;
+  const requiredWallCount = activeWalls.length + (includesPreview ? 1 : 0);
+
+  if (!activeStartNode || !anchor || requiredWallCount < 3 || distanceMm(endPoint, activeStartNode) < MIN_WALL_LENGTH_MM) {
+    return null;
+  }
+
+  const outlinePoints = [activeStartNode];
+  let previousNodeId = activeStartNode.id;
+  for (let index = 0; index < activeWalls.length; index += 1) {
+    const wall = activeWalls[index];
+    if (!wall || wall.startNodeId !== previousNodeId) return null;
+    const wallEnd = getNode(floor, wall.endNodeId);
+    if (!wallEnd) return null;
+    outlinePoints.push(wallEnd);
+    previousNodeId = wallEnd.id;
+  }
+
+  if (previousNodeId !== anchor.id) return null;
+  if (includesPreview) outlinePoints.push(endPoint);
+  if (calculatePolygonAreaMm2(outlinePoints) < MIN_CLOSED_SPACE_AREA_MM2) return null;
+
+  const segments = (floor.walls || []).map((wall) => ({
+    start: getNode(floor, wall.startNodeId),
+    end: getNode(floor, wall.endNodeId)
+  }));
+  if (includesPreview) {
+    segments.push({ start: anchor, end: endPoint });
+  }
+
+  const intersectsExistingWall = segments.some((segment) => (
+    segment.start && segment.end && hasClosureInteriorIntersection(endPoint, activeStartNode, segment.start, segment.end)
+  ));
+  return intersectsExistingWall ? null : activeStartNode;
+}
+
 function isUsableJoinPoint(segment, point) {
   if (!point) return false;
   const along = projectAlong(segment, point);
@@ -465,14 +540,19 @@ function pointsToJoinFill(previous, next) {
   }
 
   const joint = previous.end;
-  const previousOffset = addVector(joint, previous.normal, previous.thicknessMm);
-  const cornerOffset = addVector(previousOffset, next.normal, next.thicknessMm);
-  const nextOffset = addVector(joint, next.normal, next.thicknessMm);
+  const miter = intersectLines(previous.outerStart, previous.outerEnd, next.outerStart, next.outerEnd);
+  const hasSharedMiter = isUsableJoinPoint(previous, miter) && isUsableJoinPoint(next, miter);
+
+  // Each wall body already reaches the shared miter point. Adding the former
+  // four-point patch here created a second, offset corner on diagonal joins.
+  if (hasSharedMiter) return null;
 
   return {
     id: `${previous.wall.id}-${next.wall.id}`,
+    wallIds: [previous.wall.id, next.wall.id],
     joint,
-    points: [joint, previousOffset, cornerOffset, nextOffset]
+    // Only cover the small open gap when an extreme join cannot be mitered.
+    points: [joint, previous.outerEnd, next.outerStart]
   };
 }
 
@@ -1212,6 +1292,12 @@ function startPreview(draft, rawPoint) {
     } else if (distanceMm(previewPoint, activeStartNode) <= CLOSE_TOLERANCE_MM) {
       session.closeCandidateNodeId = activeStartNode.id;
       session.closeCandidateType = 'start';
+    } else {
+      const mergeCandidate = findMergeClosureCandidate(floor, session, previewPoint);
+      if (mergeCandidate) {
+        session.closeCandidateNodeId = mergeCandidate.id;
+        session.closeCandidateType = 'merge';
+      }
     }
   }
 
@@ -1344,7 +1430,14 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     session.closeCandidateNodeId = activeStartNode.id;
     session.closeCandidateType = 'start';
   } else {
-    session.state = 'wallCommitted';
+    const mergeCandidate = findMergeClosureCandidate(floor, session, endNode);
+    if (mergeCandidate) {
+      session.state = 'mergeClosing';
+      session.closeCandidateNodeId = mergeCandidate.id;
+      session.closeCandidateType = 'merge';
+    } else {
+      session.state = 'wallCommitted';
+    }
   }
 
   return touchDraft(next);
@@ -1354,6 +1447,35 @@ function confirmClosure(draft) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
   const session = ensureSessionSpaceTracking(floor);
+
+  if (session.state === 'mergeClosing') {
+    const anchor = getNode(floor, session.anchorNodeId);
+    const closeTargetNode = findMergeClosureCandidate(floor, session, anchor);
+    if (!anchor || !closeTargetNode) {
+      throw new Error('当前轮廓不能安全闭合，请继续补测墙体');
+    }
+
+    floor.walls.push({
+      id: nextId('wall'),
+      startNodeId: anchor.id,
+      endNodeId: closeTargetNode.id,
+      mode: session.mode,
+      lengthMm: distanceMm(anchor, closeTargetNode),
+      angleDeg: angleDeg(anchor, closeTargetNode),
+      thicknessMm: session.thicknessMm,
+      measurementSide: resolveBoundaryAlignedMeasurementSide(floor, session, anchor, closeTargetNode),
+      inputSource: 'closure-merge',
+      status: 'confirmed',
+      measuredAt: nowIso()
+    });
+    session.anchorNodeId = closeTargetNode.id;
+    session.state = 'closing';
+    session.closeCandidateNodeId = closeTargetNode.id;
+    session.closeCandidatePoint = null;
+    session.closeCandidateType = 'merge';
+    session.closeCandidateSharedWallId = '';
+  }
+
   const startWallIndex = session.activeSpaceStartWallIndex || 0;
   const activeWallCount = Math.max(0, floor.walls.length - startWallIndex);
   const closeCandidateSharedWallId = session.closeCandidateSharedWallId || session.activeSpaceSharedWallId;

@@ -219,17 +219,23 @@
   background: linear-gradient(100deg, #06bd45 0%, #00a83b 100%);
   color: #ffffff;
   font-size: 31rpx;
-  line-height: 90rpx;
   font-weight: 700;
   box-shadow: 0 14rpx 28rpx rgba(0, 168, 59, 0.22);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
 
 .primary-btn::after {
   border: none;
 }
 
-.primary-btn.disabled {
-  opacity: 0.5;
+.primary-btn.disabled,
+button.primary-btn[disabled] {
+  opacity: 0.6;
+  color: rgba(255, 255, 255, 0.85) !important;
+  background: linear-gradient(100deg, #06bd45 0%, #00a83b 100%) !important;
 }
 
 .agreement {

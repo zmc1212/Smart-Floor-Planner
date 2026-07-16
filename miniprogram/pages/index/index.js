@@ -127,6 +127,12 @@ Page({
   },
 
   onShow: async function () {
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({
+        selected: 0
+      });
+    }
+
     const app = getApp();
     const userInfo = app.globalData.userInfo || null;
 

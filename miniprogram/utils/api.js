@@ -1,6 +1,8 @@
 const LOCAL_BASE_URL = 'http://localhost:3005/api';
-const LAN_BASE_URL = 'http://192.168.10.155:3005/api';
+const LAN_BASE_URL = 'http://192.168.10.19:3005/api';
 // const PROD_BASE_URL = 'https://smartfloor.zlyun168.com/api';
+
+let isShowingAuthModal = false;
 
 function normalizeBaseUrl(baseUrl) {
   return String(baseUrl || '').replace(/\/+$/, '');
@@ -66,10 +68,10 @@ function request(url, method = 'GET', data = {}) {
           
           const pages = getCurrentPages();
           const currentPage = pages[pages.length - 1];
-          const isLoginPage = currentPage && (currentPage.route === 'pages/login/login' || currentPage.route === 'pages/index/index');
+          const isLoginPage = currentPage && currentPage.route === 'pages/login/login';
 
-          if (!isLoginPage && !global.isShowingAuthModal) {
-            global.isShowingAuthModal = true;
+          if (!isLoginPage && !isShowingAuthModal) {
+            isShowingAuthModal = true;
             wx.showModal({
               title: '登录已过期',
               content: '您的登录信息已过期或无效，请重新登录。',
@@ -82,7 +84,7 @@ function request(url, method = 'GET', data = {}) {
                 }
               },
               complete: () => {
-                global.isShowingAuthModal = false;
+                isShowingAuthModal = false;
               }
             });
           }

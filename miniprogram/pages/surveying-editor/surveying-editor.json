@@ -1,4 +1,7 @@
 {
   "navigationStyle": "custom",
-  "disableScroll": true
+  "disableScroll": true,
+  "usingComponents": {
+    "survey-canvas-compass": "/components/survey-canvas-compass/survey-canvas-compass"
+  }
 }

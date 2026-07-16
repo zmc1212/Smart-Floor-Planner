@@ -240,6 +240,9 @@ Page({
   data: {
     statusBarHeight: 0,
     navigationSafeTop: 0,
+    overlayContentTop: 0,
+    rightRailTop: 0,
+    rightRailBottom: 0,
     bottomSafeArea: 0,
     leadId: '',
     title: '新版测绘体验',
@@ -248,6 +251,7 @@ Page({
     measurementSide: 'left',
     thicknessMm: 200,
     prototypeNotice: '体验版草稿可同步服务端，不进入正式输出',
+    showPrototypeExtras: false,
     coreTools: buildCoreTools('straight', 200),
     objectTools: OBJECT_TOOLS,
     reservedTools: RESERVED_TOOLS,
@@ -325,6 +329,9 @@ Page({
       ? Math.max(0, screenHeight - sysInfo.safeArea.bottom)
       : 0;
     const capsuleBottom = menuButtonInfo.bottom || (sysInfo.statusBarHeight || 0);
+    const navigationSafeTop = capsuleBottom + 6;
+    // Keep every floating control below the custom header and above the bottom dock.
+    const overlayContentTop = navigationSafeTop + 56;
 
     const leadId = options.leadId || context.leadId || '';
     const contextFloorPlanId = options.floorPlanId || context.floorPlanId || '';
@@ -356,7 +363,10 @@ Page({
 
     this.setData({
       statusBarHeight: sysInfo.statusBarHeight || 0,
-      navigationSafeTop: capsuleBottom + 6,
+      navigationSafeTop,
+      overlayContentTop,
+      rightRailTop: overlayContentTop + 10,
+      rightRailBottom: safeAreaBottom + 154,
       bottomSafeArea: safeAreaBottom,
       leadId,
       serverDraftId: this.serverDraftId || '',
@@ -845,39 +855,6 @@ Page({
       ctx.fillText(measure.label, measure.button.cx, measure.button.cy + 13);
     }
 
-    if (controls.undoRedo) {
-      // 撤销按钮
-      const undoButton = controls.undoRedo.undo;
-      const undoEnabled = undoButton.count > 0;
-      ctx.beginPath();
-      ctx.fillStyle = undoEnabled ? 'rgba(255, 255, 255, 0.94)' : 'rgba(255, 255, 255, 0.72)';
-      ctx.arc(undoButton.cx, undoButton.cy, undoButton.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = undoEnabled ? '#4b5563' : '#9ca3af';
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(undoButton.label, undoButton.cx, undoButton.cy - 7);
-      ctx.fillStyle = undoEnabled ? '#17a14c' : '#9ca3af';
-      ctx.font = 'bold 11px sans-serif';
-      ctx.fillText(String(undoButton.count), undoButton.cx, undoButton.cy + 10);
-
-      const redoButton = controls.undoRedo.redo;
-      const redoEnabled = redoButton.count > 0;
-      ctx.beginPath();
-      ctx.fillStyle = redoEnabled ? 'rgba(255, 255, 255, 0.94)' : 'rgba(255, 255, 255, 0.72)';
-      ctx.arc(redoButton.cx, redoButton.cy, redoButton.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = redoEnabled ? '#4b5563' : '#9ca3af';
-      ctx.font = '12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(redoButton.label, redoButton.cx, redoButton.cy - 7);
-      ctx.fillStyle = redoEnabled ? '#17a14c' : '#9ca3af';
-      ctx.font = 'bold 11px sans-serif';
-      ctx.fillText(String(redoButton.count), redoButton.cx, redoButton.cy + 10);
-    }
-
     ctx.restore();
   },
 
@@ -915,7 +892,7 @@ Page({
       closeActionStyle: renderData.closeActionStyle,
       closeHintVisible: renderData.closeHintVisible,
       closeHintText: renderData.closeHintText,
-      closeHintActionVisible: session.state === 'closing',
+      closeHintActionVisible: session.state === 'closing' || session.state === 'mergeClosing',
       selectedWall,
       selectedOpening,
       objectToolsVisible: !!(selectedWall || selectedOpening),
@@ -1035,12 +1012,19 @@ Page({
 
     if (session.previewPoint) {
       closeHintVisible = !!(session.closeCandidateNodeId || session.closeCandidatePoint);
-      closeHintText = closeHintVisible ? '预览端点已接近起点，确认长度后可闭合' : '';
+      closeHintText = closeHintVisible
+        ? (session.closeCandidateType === 'merge' ? '已检测到可合并闭合边，松开后可直接闭合' : '预览端点已接近起点，确认长度后可闭合')
+        : '';
     }
 
     if (session.state === 'closing') {
       closeHintVisible = true;
       closeHintText = '当前端点已接近起点，可闭合单空间';
+    }
+
+    if (session.state === 'mergeClosing') {
+      closeHintVisible = true;
+      closeHintText = '已检测到可合并闭合边，点击“合”即可闭合';
     }
 
     if (session.anchorNodeId && session.state !== 'spaceClosed' && session.state !== 'wallSelected' && session.state !== 'remeasureAwaitingInput') {
@@ -1088,34 +1072,11 @@ Page({
   },
 
   buildCanvasControls(measurePosition, closure) {
-    const rect = this.canvasRect || { width: 0, height: 0 };
-    const buttonSize = 46;
-    const right = 16;
-    const top = 104;
-    const gap = 8;
-    const undo = {
-      key: 'undo',
-      label: '撤销',
-      count: this.history.undo.length,
-      cx: rect.width - right - buttonSize / 2,
-      cy: top + buttonSize / 2,
-      radius: buttonSize / 2
-    };
-    const redo = {
-      key: 'redo',
-      label: '重做',
-      count: this.history.redo.length,
-      cx: undo.cx,
-      cy: undo.cy + buttonSize + gap,
-      radius: buttonSize / 2
-    };
-
     return {
       closeAction: closure && closure.action
         ? Object.assign({ key: 'close', radius: 34 }, closure.action)
         : null,
-      measurePosition: measurePosition && measurePosition.control ? measurePosition.control : null,
-      undoRedo: { undo, redo }
+      measurePosition: measurePosition && measurePosition.control ? measurePosition.control : null
     };
   },
 
@@ -1465,7 +1426,7 @@ Page({
     return {
       guideVisible: width > 1,
       guideStyle: `left:${roundPx(startPoint.x)}px; top:${roundPx(startPoint.y)}px; width:${roundPx(width)}px; transform:rotate(${roundPx(angleDeg)}deg);`,
-      actionVisible: session.state === 'closing',
+      actionVisible: session.state === 'closing' || session.state === 'mergeClosing',
       actionStyle: `left:${roundPx(actionX - actionRadius)}px; top:${roundPx(actionY - actionRadius)}px;`,
       action: { cx: actionX, cy: actionY }
     };
@@ -1601,7 +1562,7 @@ Page({
       };
     }
 
-    if (session.state === 'closing') {
+    if (session.state === 'closing' || session.state === 'mergeClosing') {
       return {
         modePillText: '可闭合',
         manualActionActive: false,
@@ -1691,6 +1652,9 @@ Page({
     }
     if (session.state === 'closing') {
       return { title: '可闭合空间', value: '端点已接近起点，确认后吸附闭合' };
+    }
+    if (session.state === 'mergeClosing') {
+      return { title: '可闭合空间', value: '已检测到安全闭合边，点击“合”即可闭合' };
     }
     if (session.state === 'spaceClosed') {
       return { title: '单空间已闭合', value: '点击墙体可复尺、改墙侧或墙厚' };
@@ -2288,14 +2252,6 @@ Page({
     if (controls.measurePosition && this.hitCircle(localPoint, controls.measurePosition.button)) {
       return { key: 'measure-position' };
     }
-    if (controls.undoRedo) {
-      if (this.hitCircle(localPoint, controls.undoRedo.undo)) {
-        return { key: 'undo' };
-      }
-      if (this.hitCircle(localPoint, controls.undoRedo.redo)) {
-        return { key: 'redo' };
-      }
-    }
     return null;
   },
 
@@ -2307,14 +2263,6 @@ Page({
     }
     if (control.key === 'measure-position') {
       this.onToggleSide({ currentTarget: { dataset: { source: 'measure-position' } } });
-      return true;
-    }
-    if (control.key === 'undo') {
-      if (this.history.undo.length) this.onUndo();
-      return true;
-    }
-    if (control.key === 'redo') {
-      if (this.history.redo.length) this.onRedo();
       return true;
     }
     return false;
@@ -2619,7 +2567,7 @@ Page({
             historyDraft
           });
           wx.showToast({
-            title: nextSession.state === 'closing' ? '接近起点，可闭合' : '墙体已确认',
+            title: (nextSession.state === 'closing' || nextSession.state === 'mergeClosing') ? '可闭合，点击“合”确认' : '墙体已确认',
             icon: 'none'
           });
         } catch (err) {
@@ -2676,7 +2624,7 @@ Page({
 
   onConfirmClose() {
     const session = surveyGraph.getActiveFloor(this.draft).session;
-    if (session.state !== 'closing') return;
+    if (session.state !== 'closing' && session.state !== 'mergeClosing') return;
 
     try {
       const nextDraft = surveyGraph.confirmClosure(this.draft);
@@ -3099,7 +3047,7 @@ Page({
           extraData: { numberPadVisible: false, numberInput: '' }
         });
         wx.showToast({
-          title: nextSession.state === 'closing' ? '接近起点，可闭合' : '墙体已确认',
+          title: (nextSession.state === 'closing' || nextSession.state === 'mergeClosing') ? '可闭合，点击“合”确认' : '墙体已确认',
           icon: 'none'
         });
         return;

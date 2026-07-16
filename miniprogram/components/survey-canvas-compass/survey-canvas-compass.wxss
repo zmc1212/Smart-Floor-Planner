@@ -1,0 +1,31 @@
+.survey-canvas-compass {
+  position: fixed;
+  left: 26rpx;
+  top: 132rpx;
+  z-index: 9999;
+  width: 86rpx;
+  height: 86rpx;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 8rpx 24rpx rgba(0, 0, 0, 0.12);
+  color: #17a14c;
+  font-size: 22rpx;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.compass-needle {
+  position: absolute;
+  width: 4rpx;
+  height: 44rpx;
+  border-radius: 999rpx;
+  background: linear-gradient(180deg, #17a14c 0%, rgba(23, 161, 76, 0.15) 100%);
+  transform: translateY(-8rpx);
+}
+
+.compass-label {
+  position: absolute;
+  top: 8rpx;
+}

@@ -1,0 +1,4 @@
+<cover-view class="survey-canvas-compass" style="top: {{safeTop}}px;" bindtap="onTap">
+  <cover-view class="compass-needle"></cover-view>
+  <cover-view class="compass-label">N</cover-view>
+</cover-view>
