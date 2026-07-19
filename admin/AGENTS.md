@@ -1,59 +1,45 @@
-# 室内设计十大实战运用场景（含**优化版专用提示词**，可直接复制使用）
-## 场景一：现场手稿出风格定方向
-**核心用途**：现场手绘毛坯手稿，一键出10种不同风格同空间效果图，供业主现场选定风格方向，提升签单效率。
-**优化后提示词**：
-这是一个毛坯房客厅需要经过行室内设计装修设计的手稿，根据手稿布装设计，帮我生成一个效果图空间设计，需要1o个不同的设计风格(现代风格，奶油风格，托斯卡纳风，南洋复古风，宋氏美学，自然主义，法式田园风，原木风，包豪斯风格，孟菲斯风格)，包括软装，材质组合，灯光，舞蹈，色彩，空间逻辑等设计，1张风格图片拼图成对比，每张图都跟原来空间构图需要比例一致，超写实、建筑摄影、8k、高度细致，整体空间保持结构不变，构图比例，镜头等保持不变。
+# Admin Directory Instructions
 
-## 场景二：保留硬装，仅替换软装、材质与全屋色调
-**核心用途**：已有确定效果图，硬装不动，只按参考图更换家具、软装、地面墙面材质和整体色调。
-**优化后提示词**：
-以图1室内效果图为基底，严格保留原有硬装结构、空间布局、构图视角完全不变；参照图2的软装款式、家具造型、墙体地面材质、整体色调与搭配逻辑，全屋同步替换软装及材质，不改动户型与硬装轮廓。输出效果为超写实建筑摄影、8K分辨率、细节精致、光影自然，整体构图比例、镜头角度与原图保持一致。
+Read the repository-level `../AGENTS.md` first. The current admin feature map is
+`../docs/admin-system-modules.md`; its Chinese mirror is
+`../docs/admin-system-modules.zh-CN.md`.
 
-## 场景三：单图生成九宫格多视角，再一键转设计漫游视频
-**核心用途**：一张效果图生成9个不同特色角度，做成3×3九宫格，再导入工具生成空间漫游视频，增强业主观感。
-**优化后提示词**：
-基于上传的室内效果图，在保持空间结构、设计风格、材质灯光完全统一的前提下，生成9张不同拍摄角度、不同特色镜头的空间分镜图；将九张图片以3x3的形式单张16:9拼接在一起，整体画面超写实、建筑摄影级质感、8K高清、细节高度还原，空间风格与原图无偏差。
+## Runtime And Architecture
 
-## 场景四：效果图/现场照片自动生成软装清单+材质情绪板
-**核心用途**：任意室内效果图、实景照片，自动拆解所有家具、灯具、摆件，输出软装采购清单+设计情绪板。
-**优化后提示词**：
-深度分析这张室内效果图里所有软装家具、灯具、装饰摆件、布艺饰品与地面墙面材质，整理一份专业完整的软装配置清单，标注物品品类、材质、色彩、风格适配；同时制作一张高级设计感的材质色彩情绪板，分类呈现主材、软装面料、配色体系，排版整洁、适合设计提案使用。
+- This is a Next.js 16 App Router application using React 19, Tailwind CSS 4,
+  shadcn/ui, Radix primitives, Mongoose, and MongoDB.
+- The local development server runs on port `3005` (`npm run dev`).
+- UI routes live under `src/app/(admin)`, with platform and merchant route groups.
+- API routes live under `src/app/api`; shared auth, tenant, workflow, AI, WeCom,
+  and survey adapters live under `src/lib`.
 
-## 场景五：单一设计元素推演整套概念方案+设计展板
-**核心用途**：一个造型/元素，推演出手绘草图、概念演变、材质板、平立剖面、效果图，自动拼成竞赛级设计展板。
-**优化后提示词**：
-根据我上传的设计元素图片，演绎生成一套完整的室内空间竞赛设计展板（设计情绪板/Concept Board），包含以下部分：
-1. 概念来源分析：从上传元素到建筑形态的演变说明
-2. 手绘概念草图与设计演变过程
-3. 材质情绪板：关键材料与纹理展示
-4. 技术线稿与平立剖面图（平面图、立面图、剖面图）
-5. 最终空间效果图与拆解示意图
-6. 整体排版：按竞赛展板规范编排，带清晰标题与文字标签，整体风格统一、专业、有设计感。
+## Required Patterns
 
-## 场景六：模型草图/线稿反推写实效果图，AI自动生成专业提示词
-**核心用途**：普通模型图、草图质感差，用AI反推高级写实画质，同时自动产出可用生图提示词，不用手动编写。
-**优化后提示词**：
-将上传的室内模型线稿/简易模型图，升级改造为超写实建筑摄影级效果图，还原真实物理材质、自然光影、环境氛围与细节纹理，8K超清、空间比例结构不变；同时基于这张写实效果图，反向推理生成一套专业、可复用的室内设计生图标准提示词，适配同类型空间反复使用。
+- Use `withTenantRoute`, `withTenantContext`, `resolveMiniProgramContext`, and the
+  Mongoose tenant plugin instead of duplicating authentication or enterprise
+  filtering logic.
+- Check the endpoint role boundary and whether a route supports platform-wide
+  `global_tenant_id` before reading or mutating tenant data.
+- Add reusable UI to `src/components/ui/*` and use existing shadcn/Radix controls
+  in business pages. Do not introduce Base UI or arbitrary hard-coded styling.
+- Every visible admin mutation uses the shared operation feedback UI for success
+  and failure. Native `alert()` is not normal feedback.
+- When adding a page or menu, update Sidebar permissions, route guards, default
+  role permissions, and the admin module inventory together.
 
-## 场景七：彩色平面图风格转换，一键生成对应空间效果图
-**核心用途**：普通户型彩平，切换不同设计风格，固定视角直接生成室内透视效果图。
-**优化后提示词**：
-严格保留原有建筑外墙轮廓、门窗位置、出入口布局和户型动线，仅优化室内功能分区与陈设排布；套用指定设计风格语言重构空间氛围，搭配适配软装、材质与造型，生成同户型全新风格彩色平面图；再以固定入口视角，生成对应的室内写实透视效果图，构图端正、质感高级。
+## Mandatory Module Preflight And Handoff
 
-## 场景八：同一空间多风格方案PK，统一视角做成对比展板
-**核心用途**：同一个户型，固定镜头角度，一次性出5种不同风格效果图，拼成对比展板方便甲方选型。
-**优化后提示词**：
-保持当前室内空间户型结构、相机视角、构图比例完全不变，不改变空间框架；在此基础上生成5种完全不同设计风格的装修方案，每套方案独立搭配专属软装、材质、色彩与灯光氛围；全部效果图统一8K高清、超写实光影、细节丰富，整合编排为一张多方案对比展板，方便风格选型对比。
+Before changing any backend page, API, model, workflow, or shared component,
+read `../AGENTS.md` and the applicable sections of both admin module inventories.
+Before handoff, update both inventories in the same change with the new route/API,
+model or data behavior, permission boundary, status, and limitations. Treat a
+missing documentation update as incomplete work; if the change has no functional
+impact, record that explicitly in the handoff.
 
-## 场景九：效果图一键生成线稿、立面施工图，可导入CAD微调
-**核心用途**：效果图转出结构线稿、立面图、节点标注，省去手绘时间，直接进CAD细化施工图。
-**优化后提示词**：
-分析室内效果图的结构，生成专业的室内平面，各立面面，剖面图，专业工程图框排版，Cad黑白线条，工程制图线宽表达，16:9画幅，制图公司为俊湘工作室，并且生成图框logo。
+## Verification And Documentation
 
-## 场景十：空间日景/夜景双版本、光影分析+灯光布局及灯具清单
-**核心用途**：做日夜双氛围对比，同时输出灯光布局分析、色温搭配、灯具选型清单，体现设计师专业性。
-**优化后提示词**：
-提示词:第一段
-这个是空间室内白天效果图，现在你帮我分析下，如何做一个灯光设计，并且需要出灯光清单，色温分析，照度分析，并且出一个夜景效果图，现在你先帮我分析设计，然后再出个对应情绪版跟清单出来
-第二段
-直接生成展板图片，把灯光设计分析，灯光清单，跟夜景效果图，罗列出来
+- Run `npm run lint` for UI/API changes and `npm run build` when route or schema
+  changes could affect the production bundle.
+- Update both admin module documents whenever routes, APIs, permissions, models,
+  or workflows change. Mark features `Implemented`, `Limited`, or `Placeholder`
+  based on executable behavior, not mock data or planned UI.

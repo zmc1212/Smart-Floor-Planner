@@ -1,124 +1,114 @@
-# Admin 后台系统功能模块清单
+# 后台系统当前功能清单
 
-本文档整理当前 `admin` Next.js 后台系统的功能模块。每次后台路由、API、权限、模型或业务流程变化时，必须同步更新 `docs/admin-system-modules.md` 和本中文版文件。
+本文档记录 `admin/` 的当前实现。路由、API、模型、权限或工作流变化时，必须同步更新本文件和 `admin-system-modules.md`。
 
-## 范围
+## 状态与范围
 
-- 应用根目录：`admin/src/app`。
-- 框架：Next.js App Router，后台路由按 `(admin)`、`(platform)`、`(merchant)` 分组。
-- 数据层：`admin/src/models` 下的 Mongoose 模型连接 MongoDB。
-- 租户模型：主要业务数据通过 `withTenantContext`、`withTenantRoute` 和 `multiTenantPlugin` 做企业租户隔离。
-- 主要角色：`super_admin`、`admin`、`enterprise_admin`、`designer`、`salesperson`、`measurer`、`viewer`。
+- `Implemented`（已实现）：存在真实页面、API 和数据链路。
+- `Limited`（有限支持）：仅在特定角色、供应商、数据形态或运行条件下可用。
+- `Placeholder`（占位/未开放）：只有 UI、mock、规划动作或没有真实持久化/集成。
+- 技术栈：Next.js 16 App Router、React 19、Tailwind CSS 4、shadcn/ui + Radix、Mongoose、MongoDB、Three.js 和客户端数据请求。
+- 路由分组：`(platform)` 为平台/B2B 运营，`(merchant)` 为企业工作台资产，公共页面位于 `(admin)`。
 
 ## 共享架构
 
-- 后台外壳：`admin/src/app/(admin)/layout.tsx`、`admin/src/components/Sidebar.tsx`、`admin/src/components/FetchInterceptor.tsx`。
-- 登录/会话：`admin/src/lib/auth.ts`、`session.ts`、`tenant-context.ts`、`tenant-route.ts`、`miniprogram-auth.ts`、`proxy.ts`。
-- UI 基础组件：`admin/src/components/ui/*`，包括共享的 `operation-feedback`。
-- 租户隔离：`admin/src/lib/mongoose-tenant-plugin.ts` 中的模型插件；平台管理员可通过 `global_tenant_id` 做全局企业视图切换。
-- 权限：菜单 key 和默认权限在 `admin/src/models/AdminUser.ts`；角色权限覆盖使用 `admin/src/models/SystemRole.ts`。
+- 外壳和导航：`src/app/(admin)/layout.tsx`、`Sidebar.tsx`、`FetchInterceptor.tsx` 和 `useCurrentUser`。
+- 认证与租户：`src/lib/auth.ts`、`session.ts`、`proxy.ts`、`tenant-context.ts`、`tenant-route.ts`、`miniprogram-auth.ts`。
+- 租户隔离：使用 `withTenantRoute`、`withTenantContext`、租户解析器和 `multiTenantPlugin`；平台管理员通过 `global_tenant_id` Cookie 切换全局视图。
+- 角色：`super_admin`、`admin`、`enterprise_admin`、`designer`、`salesperson`、`measurer`、`viewer`。菜单和默认权限在 `models/AdminUser.ts`，自定义角色在 `models/SystemRole.ts`。
+- 共享反馈：可见变更使用 `components/ui/operation-feedback`，常规操作不得使用原生 `alert()`。
 
 ## 功能模块
 
-### 1. 登录、注册和会话管理
+### 1. 登录、注册与会话
 
 - 页面：`/login`、`/register`。
-- API：`/api/auth/login`、`/api/auth/logout`、`/api/auth/me`、`/api/auth/miniprogram`、`/api/auth/register-company`、`/api/auth/register-enterprise`。
-- 模型/工具：`AdminUser`、`User`、`Enterprise`、`session.ts`、`auth.ts`、`miniprogram-jwt.ts`。
-- 职责：后台登录/退出、会话校验、企业注册、小程序登录绑定、JWT/cookie 处理，以及 401 自动跳转。
+- API：`/api/auth/login`、`/logout`、`/me`、`/miniprogram`、`/register-company`、`/register-enterprise`。
+- 模型/工具：`AdminUser`、`User`、`Enterprise`、会话/认证工具、`miniprogram-jwt`。
+- 状态：`Implemented`。支持后台会话、企业注册、小程序身份绑定、JWT/Cookie 处理和未授权跳转。
+- 用户审计页面：`/users`、`/users/[openid]`，由 `/api/users`、`/users/[openid]`、`/users/me` 支撑，可查询小程序用户及其关联户型导出库，状态为 `Implemented`。
 
-### 2. 导航、角色和访问控制
+### 2. 导航、角色与访问控制
 
-- 页面：共享后台布局、`/roles`。
-- API：`/api/roles`。
-- 模型/工具：`AdminUser`、`SystemRole`、`staff-access.ts`、`proxy.ts`。
-- 职责：菜单可见性、路由权限校验、默认角色权限、自定义角色菜单 key，以及侧边栏有效权限计算。
+- 页面：`/roles`、共享 Sidebar、路由守卫。
+- API：`/api/roles`、管理员、员工和部门接口。
+- 状态：`Implemented`。支持菜单可见性、有效权限、角色默认值、自定义菜单 key、账号状态、部门归属和路由角色校验。
 
-### 3. 平台仪表盘和全局运营视图
+### 3. 平台概览与企业租户
 
-- 页面/组件：`/`、`PlatformDashboard`。
-- 依赖 API：`/api/users`、`/api/floorplans`、`/api/admin/enterprises`。
-- 职责：平台级用户、户型资产、入驻企业和系统运行概况统计。
+- 页面：`/`、`/enterprises`、`/enterprises/[id]`，以及企业 AI、自动化、企微子页面。
+- API：`/api/admin/enterprises`、`/activate`、`[id]`、`[id]/ai-key`、`[id]/ai-sync`、`[id]/ai-usage`、`/api/branding/[id]`。
+- 模型/工具：`Enterprise`、`EnterpriseAiUsageSnapshot`、`AdminUser`、`enterprise-ai`、`enterprise-wecom`。
+- 状态：`Implemented`。覆盖企业入驻/激活、资料、品牌、自动化、企微、AI 配置/用量和平台概览。
 
-### 4. 企业租户管理
+### 4. 员工、部门与系统账号
 
-- 页面：`/enterprises`、`/enterprises/[id]`、`/enterprises/[id]/ai`、`/enterprises/[id]/automation`、`/enterprises/[id]/wecom`。
-- API：`/api/admin/enterprises`、`/api/admin/enterprises/[id]`、`/api/admin/enterprises/activate`、`/api/admin/enterprises/[id]/ai-key`、`/api/admin/enterprises/[id]/ai-sync`、`/api/admin/enterprises/[id]/ai-usage`、`/api/branding/[id]`。
-- 模型/工具：`Enterprise`、`EnterpriseAiUsageSnapshot`、`AdminUser`、`enterprise-wecom.ts`、`enterprise-ai.ts`。
-- 职责：企业入驻、激活、租户资料、品牌色/logo、自动化 SLA 配置、企微配置、企业 AI key/运行时配置和 AI 用量概览。
+- 页面：`/staff`、`/admins`。
+- API：`/api/staff`、`/staff/[id]`、`/departments`、`/departments/[id]`、`/admin-users`、`/admin-users/[id]`。
+- 模型：`AdminUser`、`Department`、`SystemRole`。
+- 状态：`Implemented`。支持企业员工、平台管理员、角色、部门树、状态和地推/设计师/测量员关系管理。
 
-### 5. 系统管理员、员工和部门
-
-- 页面：`/admins`、`/staff`。
-- API：`/api/admin-users`、`/api/admin-users/[id]`、`/api/staff`、`/api/staff/[id]`、`/api/departments`、`/api/departments/[id]`。
-- 模型/工具：`AdminUser`、`Department`、`SystemRole`。
-- 职责：平台管理员账号、企业员工账号、员工角色、部门树、账号状态管理和权限分配。
-
-### 6. B2B 企业报备和协作流程
+### 5. B2B 企业报备与协作工作流
 
 - 页面：`/promotion-records`、`/workflow-logs`。
-- API：`/api/promotion-records`、`/api/promotion-records/[id]`、`/api/promotion-records/conflicts`、`/api/promotion-records/pool`、`/api/platform/promotion-config`、`/api/workbench/summary`、`/api/workbench/todos`、`/api/workflow-notification-logs`、`/api/workflow-notification-logs/poll`。
-- 模型/工具：`PromotionEnterpriseRecord`、`WorkflowNotificationLog`、`promotion-workflow.ts`、`promotion-timeline.ts`、`workflow-automation.ts`、`wechat-notification.ts`。
-- 职责：地推企业报备、重复/冲突处理、公海和认领流程、跟进 SLA、量房/设计任务分配、商机阶段时间线、协作待办、提醒和通知日志。
+- API：报备、`/promotion-records/pool`、`/conflicts`、平台报备配置、工作台 summary/todos、通知日志和提醒执行。
+- 模型/工具：`PromotionEnterpriseRecord`、`WorkflowNotificationLog`、`promotion-workflow`、`promotion-timeline`、`workflow-automation`、微信/企微通知工具。
+- 状态：`Implemented`。支持报备、重复/冲突、公海、认领/审批、分配、业务阶段、跟进时间线、SLA 提醒、通知去重和审计。
 
-### 7. 套餐、订单和提成结算
+### 6. 套餐、订单与提成
 
 - 页面：`/packages`、`/enterprise-orders`、`/commissions`。
-- API：`/api/admin/packages`、`/api/admin/packages/[id]`、`/api/enterprise-orders`、`/api/enterprise-orders/[id]`、`/api/commissions`、`/api/commissions/[id]/settle`、`/api/commission-records`、`/api/commission-records/[id]`。
-- 模型/工具：`Package`、`EnterpriseOrder`、`CommissionRecord`。
-- 职责：套餐目录、企业成交订单、地推提成计算、提成记录和结算操作。
+- API：`/api/admin/packages`、`/enterprise-orders`、`/commissions`、结算和提成记录接口。
+- 模型：`Package`、`EnterpriseOrder`、`CommissionRecord`。
+- 状态：`Implemented`。支持套餐目录、企业订单生命周期、付费订单提成生成、提成列表、结算和作废。
 
-### 8. 线索和客户转化
+### 7. 线索与转化资产
 
 - 页面：`/leads`。
-- API：`/api/leads`、`/api/leads/[id]`、`/api/leads/[id]/share`。
-- 模型/工具：`Lead`、`FloorPlan`、`AdminUser`、`wecom.ts`、`wechat-notification.ts`。
-- 职责：客户线索录入、状态跟踪、关联正式墙图户型、地推/设计师分配、跟进记录、企微群创建和线索分享。
+- API：`/api/leads`、`/leads/[id]`、`/leads/[id]/share` 及户型、员工关联接口。
+- 模型/工具：`Lead`、`FloorPlan`、`AdminUser`、微信/企微工具。
+- 状态：`Implemented`。支持线索录入/状态、跟进、分配、正式户型关联、分享和转化上下文。
 
-### 9. 户型图、量房记录和设备
+### 8. 正式户型、搜索与查看
 
-- 页面：`/floorplans`、`/floorplans/[id]`、`/measurements`、`/devices`。
-- API：`/api/floorplans`、`/api/floorplans/[id]`、`/api/floorplans/[id]/export/dxf`、`/api/measurements`、`/api/devices`、`/api/devices/[id]`、`/api/devices/verify`、`/api/devices/verify-binding`。
-- 模型/工具：`FloorPlan`、`Measurement`、`Device`、`User`、`dxf.ts`、`FloorPlanViewer`。
-- 职责：正式量房墙图数据存储与查看、DXF 导出、蓝牙测距设备管理、设备绑定校验和量房审计日志。
+- 页面：`/floorplans`、`/floorplans/[id]`、`/floorplans/kujiale`、`/measurements`。
+- API：户型 CRUD、`/floorplans/[id]/export/dxf`、测量、酷家乐城市/搜索和线索关联接口。
+- 组件/工具：`FloorPlanViewer`、`FloorPlanViewerWrapper`、`survey-graph`、`dxf`。
+- 状态：正式 v4 墙图解析、后台 2D/3D 查看、测量筛选和 DXF 下载为 `Implemented`；酷家乐搜索受上游数据和查询条件影响，为 `Limited`。
+- 边界：后台从 `surveyGraph` 派生房间/开口渲染数据，不持久化旧 `rooms` 或其他旧布局字段。
 
-### 10. AI 工作室和设计生成
+### 9. 测量审计与蓝牙设备资产
 
-- 页面：`/ai-studio/designer`、`/ai-studio/scenarios`、`/ai-studio/scenarios/[id]`、`/ai-studio/floor-plan`、`/ai-studio/floor-plan/[id]`、`/ai-studio/furnishing`、`/ai-studio/soft-furnishing`、`/inspirations`、`/ai-presets`。
-- API：`/api/ai/agent`、`/api/ai/agent/actions`、`/api/ai/conversations`、`/api/ai/conversations/[id]`、`/api/ai/generate`、`/api/ai/render`、`/api/ai/advice`、`/api/ai/soft-furnishing/render`、`/api/ai/history`、`/api/ai/status/[id]`、`/api/ai/usage`、`/api/ai/quota`、`/api/ai/presets`、`/api/ai/presets/[id]`、`/api/ai/workflows`、`/api/ai/workflows/[id]`、`/api/ai/workflows/[id]/run-stage`、`/api/ai/workflows/[id]/source-image`、`/api/ai/workflow-leads`、`/api/ai/assets/[id]/image`、`/api/ai/generations/[id]/image`、`/api/ai/image-proxy`、`/api/inspirations`。
-- 模型/工具：`AiGeneration`、`AiWorkflow`、`AiChatSession`、`AiStylePreset`、`AiQuota`、`EnterpriseAiUsageSnapshot`、`MediaAsset`、`Inspiration`、`ai/*`、`gemini.ts`、`dxf.ts`。
-- 职责：AI 设计师聊天、设计场景工作流、户型标注/渲染、风格渲染、软装渲染、提示词/预设配置、生成历史、用量/额度校验、媒体资产持久化和灵感库。
+- 页面：`/devices`、`/measurements`。
+- API：设备 CRUD、`/devices/verify`、`/devices/verify-binding`、`/measurements`。
+- 模型：`Device`、`Measurement`、`User`。
+- 状态：`Implemented`。支持设备池、企业/用户绑定、校验、状态管理，以及来源为 BLE、手动或系统的长度/高度/面积/角度/门窗审计记录。
 
-### 11. 小程序支撑 API
+### 10. AI 工作室与设计生成
 
-- API：`/api/auth/miniprogram`、`/api/miniprogram/home`、`/api/miniprogram/mine`、`/api/location/reverse`、`/api/branding/[id]`。
-- 模型/工具：`User`、`AdminUser`、`Enterprise`、`FloorPlan`、`Lead`、`Measurement`、`CommissionRecord`、`EnterpriseOrder`、`PromotionEnterpriseRecord`。
-- 职责：小程序身份上下文、首页数据、我的/个人数据、逆地理编码、品牌信息查询和跨端业务数据访问。
+- 页面：`/ai-studio/designer`、`/ai-studio/scenarios` 及详情、`/ai-studio/floor-plan` 及详情、`/ai-studio/furnishing`、`/ai-studio/soft-furnishing`、`/inspirations`、`/ai-presets`。
+- API：AI 对话/Agent、生成/渲染/建议、状态/历史、额度/用量、预设、工作流及阶段、来源图片/线索、媒体资源、生成图片、代理和软装渲染。
+- 模型/工具：`AiGeneration`、`AiWorkflow`、`AiChatSession`、`AiStylePreset`、`AiQuota`、`EnterpriseAiUsageSnapshot`、`MediaAsset`、`Inspiration`、`src/lib/ai/*`。
+- 状态：对话、场景工作流、正式户型输入、风格/软装渲染、历史、额度、预设和媒体持久化为 `Implemented`；供应商或企业 AI 配置缺失时为 `Limited`。
 
-### 12. 自动化、通知和提醒
+### 11. 小程序支撑与跨端 API
 
-- API：`/api/automation/reminders/run`、`/api/workflow-notification-logs`、`/api/workflow-notification-logs/poll`。
-- 模型/工具：`WorkflowNotificationLog`、`workflow-automation.ts`、`wechat-notification.ts`、`enterprise-wecom.ts`、`wecom.ts`、`useBrowserNotification.ts`。
-- 职责：定时提醒执行、通知去重、浏览器通知轮询、小程序/微信通知和企业企微集成。
+- API：`/api/auth/miniprogram`、`/api/miniprogram/home`、`/mine`、`/api/users/me`、`/location/reverse`、`/branding/[id]`，以及共享线索、户型、测量、提成、订单、报备接口。
+- 状态：`Implemented`。负责小程序身份、员工上下文、首页/我的工作台、定位、品牌和共享业务资产。
 
-### 13. 诊断、种子数据和部署支撑
+### 12. 通知、自动化与诊断
 
-- API：`/api/health`、`/api/debug`、`/api/debug/tenant-context`、`/api/internal/seed`。
-- 工具：`admin/scripts/seed-admin.js`、`seed-inspirations.ts`、`Dockerfile`、`docker-compose.yml`、`deploy.sh`、`release.sh`。
-- 职责：健康检查、租户上下文调试、种子数据、Docker 部署和发布打包。
+- API：提醒执行、通知列表/轮询、`/api/health`、`/api/debug`、`/api/debug/tenant-context`、`/api/internal/seed`。
+- 状态：提醒、浏览器轮询、通知日志、健康/调试、种子和 Docker/发布工具为 `Implemented`；接口仍需遵守对应角色和运行环境限制。
 
-## 核心数据模型
+## 核心模型
 
-- 身份和权限：`AdminUser`、`SystemRole`、`User`、`Department`。
-- 租户和商业运营：`Enterprise`、`Package`、`EnterpriseOrder`、`CommissionRecord`、`PromotionEnterpriseRecord`。
+- 身份：`AdminUser`、`SystemRole`、`User`、`Department`。
+- 租户/商业：`Enterprise`、`Package`、`EnterpriseOrder`、`CommissionRecord`、`PromotionEnterpriseRecord`。
 - 客户资产：`Lead`、`FloorPlan`、`Measurement`、`Device`、`Inspiration`。
-- AI 系统：`AiGeneration`、`AiWorkflow`、`AiChatSession`、`AiStylePreset`、`AiQuota`、`EnterpriseAiUsageSnapshot`、`MediaAsset`。
-- 通知：`WorkflowNotificationLog`、`PlatformConfig`。
+- AI/媒体：`AiGeneration`、`AiWorkflow`、`AiChatSession`、`AiStylePreset`、`AiQuota`、`EnterpriseAiUsageSnapshot`、`MediaAsset`。
+- 通知/配置：`WorkflowNotificationLog`、`PlatformConfig`。
 
-## 维护说明
+## 维护清单
 
-- 在 `admin/src/app/(admin)` 下新增页面时，要检查 `Sidebar.tsx` 的菜单权限、`proxy.ts` 的路由守卫，以及 `AdminUser.ts` 的默认角色权限。
-- 新增涉及租户数据的 API 时，优先使用 `withTenantRoute` 或 `withTenantContext`，并确认相关模型在需要时使用 `multiTenantPlugin`。
-- 用户可见的后台管理操作应使用共享操作反馈 UI，不要使用原生 `alert()` 作为常规反馈。
-- 扩展 AI 工作流时，要同步页面路由、API 路由、`AiGeneration`/`AiWorkflow` 模型类型、预设定义和本文档对。
-- 改动 B2B 报备流程状态或 SLA 行为时，要同步 `PromotionEnterpriseRecord`、工作流工具、通知日志、工作台 API 和本文档对。
+修改后台页面、API、模型、工作流或共享组件前，先阅读根目录/后台目录指令和本中英文清单。完成后必须在同一份 diff 中更新页面/API、数据行为、权限边界、状态和限制，并检查 Sidebar 菜单 key、`proxy.ts`、角色默认权限、租户解析、模型索引和操作反馈。没有真实路由、处理器和持久化/供应商链路的 roadmap 项目不得标记为已实现；如果确实没有功能文档影响，必须在交接说明中明确写出。

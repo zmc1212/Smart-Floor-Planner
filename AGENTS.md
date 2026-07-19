@@ -1,38 +1,109 @@
-# Codex Project Instructions
+# Smart Floor Planner Project Instructions
 
-## Git Commit Messages
+This repository contains the Smart Floor Planner product: a Next.js/Mongoose
+administration system and a native WeChat Mini Program for renovation leads,
+formal surveying, and AI-assisted design.
 
-Use a Conventional Commit English subject when creating a commit: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, or `test:`. Keep it concise and action-oriented, and describe only related staged changes. Ask to split unrelated staged changes.
+## Source Of Truth
 
-## Backend Operation Feedback
+- Treat the current code, route handlers, schemas, and tests as authoritative.
+- `docs/admin-system-modules.md` describes the current admin surface.
+- `docs/miniprogram-system-modules.md` describes the current Mini Program surface.
+- `docs/surveying-module/README.md` and `formal-surveying.md` describe the formal
+  surveying contract and its operational cleanup procedure.
+- `PRODUCT_ROADMAP.md`, `docs/**/implementation_plan.md`, and old design notes are
+  historical/planning material, not proof that a feature is implemented.
+- Feature status uses `Implemented`, `Limited`, or `Placeholder`. A label, mock
+  response, or toast is not an implemented backend capability.
 
-Every admin-triggered visible backend operation must use the shared operation feedback UI for success or failure. Do not use raw `alert()` as normal feedback. A dangerous-action confirmation may remain native, but its result still needs a notification.
+Read the relevant module document before changing that module, and update its
+English/Chinese pair when routes, APIs, permissions, or user flows change.
 
-## Admin UI Component Library
+## Mandatory Development Documentation Gate
 
-The `admin` frontend uses shadcn/ui with Radix primitives. Put reusable controls in `admin/src/components/ui/*`; business pages should prefer shared shadcn components and semantic Tailwind tokens. Do not introduce Base UI or broad hard-coded visual styling.
+This gate applies to every feature, bug fix, refactor, and UI/API change:
 
-## Chinese Documentation Sync
+1. Before editing, read this file, the nearest nested instruction file, and the
+   module inventory for the affected surface. For surveying work, also read the
+   formal surveying document and data contract.
+2. During implementation, treat the module inventory as part of the feature
+   change. Update its status, page/route entry, API, model/data contract,
+   permission or role boundary, and known limitations whenever the behavior
+   changes. Update the English and Chinese pair in the same change.
+3. Before declaring the work complete, inspect the diff and confirm that the
+   documentation reflects the code. If a change genuinely has no documented
+   impact, state that explicitly in the handoff; do not silently skip the check.
 
-Keep `AGENTS.zh-CN.md` synchronized with this file. When `docs/admin-system-modules.md` changes, update `docs/admin-system-modules.zh-CN.md` in the same task.
+This is a completion requirement, not optional follow-up work. Documentation is
+the durable project memory used by later AI sessions; code comments, a prompt,
+or a roadmap do not replace the current module inventory.
 
-## Mini Program Formal Surveying Feature Inventory
+## Repository Map
 
-The only formal measurement page is `miniprogram/pages/surveying-editor/surveying-editor.*`. When its behavior changes, identify the affected modules below to the user and update this inventory.
+- `admin/`: Next.js 16 App Router, React 19, Tailwind 4, shadcn/ui + Radix,
+  Mongoose, and MongoDB-backed APIs. Local development uses port `3005`.
+- `miniprogram/`: native WeChat Mini Program. BLE laser integration is in
+  `utils/bluetooth.js`; graph and canvas logic are in `utils/surveyWallGraph.js`
+  and `utils/surveyCanvasRenderer.js`; Three.js is used for opening previews.
+- `docs/`: current module inventories and focused technical contracts.
+- `admin/src/models/`: tenant-aware business schemas.
+- `admin/src/app/api/`: server route handlers; `admin/src/lib/` contains auth,
+  tenant, workflow, AI, WeCom, and survey adapters.
 
-- Every measurement entry navigates to `pages/surveying-editor/surveying-editor` with `leadId` and/or `floorPlanId`; never restore `pages/editor/editor`, `restoreFloorPlan`, or a dual entry.
-- Lead detail can continue its active formal plan, create a separate formal measurement that bypasses prior draft restoration, or delete the active plan; deletion must also remove its lead references and local resume pointer.
-- Formal `FloorPlan.layoutData` only uses `version: 4`, `measurementMode: 'surveying'`, and `surveyGraph`. Never persist `rooms`, `homeOutline`, `partitions`, `surveyDraft`, `prototypeOnly`, or `surveying_prototype`.
-- `surveying-editor` owns startup restore, BLE connection and laser lifecycle, straight/angled/remeasure walls, shared-wall closure, openings, draft/completed saves, measurement audit logging, CAD, reports, and full-plan 3D.
-- A diagonal drag remains a preview until its length is confirmed or the user continues dragging from its endpoint; continuation commits that preview at its live length and starts the next wall from that endpoint. A new diagonal within 8 degrees of the preceding diagonal's forward direction snaps to that direction while retaining its dragged length; otherwise it remains free-angle. Its top `∠` value and the in-canvas label at the active corner open the existing number-pad shell for angle entry; only the latest diagonal and its preceding wall retain an in-canvas angle label. A confirmed latest diagonal may be reopened from that label only while it is unclosed and has no opening; closing the panel restores the original wall. Phone motion supplies an operator-confirmed relative angle, while the `勾股定理测量角度` entry takes three BLE side readings, validates the triangle with the cosine rule, and logs each valid reading. Confirming the angle preserves the drag side and preview length, then returns to the normal length workflow; closing the panel changes no wall geometry and stops device-motion listening.
-- The 2D surveying canvas must render doors and windows as restrained CAD plan symbols across their full measured opening width: door leaves and swing arcs meet the opposite jamb, and windows use slim framed triple rails rather than a coloured centre line.
-- While a space is unfinished, its current wall chain shows only inner-edge dimensions and keeps that inner edge highlighted red; preview walls use the live top reading rather than a dimension label. The inside/outside measurement edge is selectable only immediately after the first wall is committed, then remains locked for later walls. Once the space is explicitly closed, derive each dimension's outside direction from the closed-space geometry (never its stored wall side), render both inner and outer whole-wall dimensions outside the wall boundary with thin extension lines and inward-facing arrowheads. A door wall replaces its inner whole-wall value with one nearest-wall chain dimension (wall segment, door width, wall segment), while a window wall keeps whole-wall dimensions only. The room centre shows only its name, ceiling height, and area, scaled with the canvas.
-- While an unfinished wall chain is edited, a selected door or window must expose an explicit action to resume measuring from that chain's last endpoint. Its details, continuation action, and opening-side value must form one responsive card wide enough to show measured `mm` values without clipping. “New room starting point” creates a separate wall chain and is not the continuation control.
-- After a space closes or the cursor is reset, the bottom cursor control may be dragged to an existing vertex, any wall position, or a free canvas position to start a separate wall chain. The persistent page gesture path owns drag movement/release; while dragging, its empty circular status container stays fixed at the bottom and one dedicated lightweight canvas exclusively renders both the moving square crosshair and dashed guides without redrawing the formal survey scene or creating a duplicate overlay.
-- While a wall or opening is selected, the toolbar’s collapse action, an exit from the opening component editor, and a tap on an otherwise empty canvas all clear the selection and return to the appropriate measuring state. The wall-thickness action is currently hidden from the selected-wall toolbar, whose width is driven by its visible actions, gaps, and padding.
-- Tapping a door or window must select that opening before its parent wall. A native canvas `tap` emitted after the opening's `touchend` must not clear the newly selected opening or hide its toolbar.
-- In the opening component editor, the `spec` panel must clear the fixed undo/reset controls so its Bluetooth measurement action remains reachable; flip and model panels keep their normal position.
-- A close candidate is advisory: users may continue dragging from its endpoint, and only the explicit `合` action confirms a closure.
-- Wall-graph values are millimeters. The graph adapter may derive spaces, openings, area, and heights for CAD, reports, 3D, admin, and AI consumers, but it must not persist a legacy layout copy.
-- Any flow that temporarily owns the BLE callback must restore the normal callback when it closes and must log valid formal measurements. Readings captured before the first cloud save are queued and flushed only after a formal `floorPlanId` exists.
-- Legacy modules 1-19 are removed historical coverage. Do not reintroduce `editor.*`, its dedicated components, or old layout utilities.
+## Cross-Client Architecture
+
+- Admin sessions use cookie/JWT authentication and role/menu permissions.
+- Mini Program sessions use `/api/auth/miniprogram` and a bearer JWT. The same
+  API resolves professional staff context, enterprise referral, branding, leads,
+  floor plans, measurements, commissions, and promotion records.
+- Business data is enterprise-scoped whenever an enterprise context exists.
+  Use the shared tenant helpers and model plugin; do not hand-roll an alternate
+  tenant filter.
+- A formal floor plan is a version-4 surveying wall graph. Admin viewers, DXF,
+  3D, AI, and other consumers derive read models through adapters; they must not
+  write a legacy layout copy back to `FloorPlan.layoutData`.
+
+## Mandatory Engineering Rules
+
+### Git
+
+Use a Conventional Commit English subject: `feat:`, `fix:`, `refactor:`,
+`docs:`, `chore:`, or `test:`. Keep it concise and limited to the related
+staged change; split unrelated work.
+
+### Admin UI And Feedback
+
+- Use shadcn/ui and Radix primitives. Reusable controls belong in
+  `admin/src/components/ui/*`; business pages should use shared components and
+  semantic Tailwind tokens.
+- Every visible admin-triggered mutation must use the shared operation feedback
+  UI for success and failure. Do not use raw `alert()` as normal feedback.
+- Dangerous confirmations may be native, but the resulting operation still needs
+  a success or failure notification.
+- Tenant-aware routes must use `withTenantRoute`, `withTenantContext`, or the
+  corresponding shared resolver and must enforce the endpoint's role boundary.
+
+### Mini Program Design And Navigation
+
+- Follow `miniprogram/DESIGN.md`, `design-tokens.json`, and `app.wxss` tokens for
+  new UI. Preserve the bright green, calm home-design visual language.
+- The only formal measurement page is
+  `miniprogram/pages/surveying-editor/surveying-editor.*`.
+- Every measurement entry uses that page with `leadId` and/or `floorPlanId`.
+  Never reintroduce `pages/editor/editor`, `restoreFloorPlan`, or a dual entry.
+- Formal `FloorPlan.layoutData` contains only `version: 4`,
+  `measurementMode: 'surveying'`, and `surveyGraph`. Never persist `rooms`,
+  `homeOutline`, `partitions`, `surveyDraft`, `prototypeOnly`, or
+  `surveying_prototype`.
+- Wall-graph values are millimetres. BLE readings are logged as formal measurement
+  audits; readings captured before the first cloud save remain queued until a
+  formal `floorPlanId` exists. Temporary BLE callback owners must restore the
+  normal callback when they close.
+- Do not bring back the removed legacy editor components or old geometry utilities.
+
+## Verification
+
+For documentation-only changes, run `git diff --check` and verify referenced
+paths, route names, status labels, and English/Chinese parity. For code changes,
+run the narrowest relevant tests (`cd miniprogram && npm test`, or the applicable
+`admin` lint/build checks) in addition to the document checks.

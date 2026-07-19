@@ -1,41 +1,66 @@
-# Codex 项目指令（中文版）
+# Smart Floor Planner 项目指令
 
-量房入口补充：线索详情页可以继续当前正式户型、新增一份绕过旧草稿恢复的正式量房，或删除当前户型；删除必须同步移除线索关联和本地续测指针。
+本仓库包含 Smart Floor Planner 产品：一个基于 Next.js/Mongoose 的管理后台，
+以及面向装修获客、正式量房和 AI 辅助设计的微信小程序。
 
-本文是 `AGENTS.md` 的中文配套文件。修改项目指令、后台反馈规则或量房功能清单时，必须同步维护两份文件。
+## 事实来源
 
-## Git 提交信息
+- 当前代码、路由处理器、数据模型和测试是最高优先级事实来源。
+- `docs/admin-system-modules.zh-CN.md` 记录当前后台功能。
+- `docs/miniprogram-system-modules.zh-CN.md` 记录当前小程序功能。
+- `docs/surveying-module/README.md` 与 `formal-surveying.md` 记录正式量房合同及清理运维流程。
+- `PRODUCT_ROADMAP.md`、`docs/**/implementation_plan.md` 和旧设计说明属于历史/规划材料，不能证明功能已经实现。
+- 功能状态统一使用 `Implemented`（已实现）、`Limited`（有限支持）、`Placeholder`（占位/未开放）。按钮文案、mock 响应或 toast 不等于后端能力已实现。
 
-创建提交时使用 Conventional Commit 英文主题，前缀只能为 `feat:`、`fix:`、`refactor:`、`docs:`、`chore:` 或 `test:`。主题应简洁、动作导向，并只描述已暂存的相关修改；多个不相关目标必须拆分提交。
+修改模块前先阅读对应清单；路由、API、权限或用户流程变化时，必须同步更新中英文配套文档。
 
-## 后台操作反馈
+## 强制开发文档门禁
 
-管理员显式触发的后端操作必须经共享 `operation-feedback` 显示成功或失败通知。不得以原生 `alert()` 作为常规反馈；危险操作可保留确认框，但确认后的结果仍须通知用户。
+以下流程适用于每一个新功能、缺陷修复、重构以及 UI/API 修改：
 
-## Admin UI 组件
+1. 修改前先阅读本文件、最近的目录级指令文件和受影响模块清单。量房相关工作还必须阅读正式量房说明和数据合同。
+2. 开发过程中把模块清单视为功能变更的一部分。只要行为发生变化，就同步更新功能状态、页面/路由入口、API、模型/数据合同、权限或角色边界以及已知限制；英文和中文配套文件必须在同一次修改中更新。
+3. 宣布完成前检查代码与文档 diff，确认文档反映当前实现。如果确实没有文档影响，必须在交接说明中明确写出，不能静默跳过检查。
 
-`admin` 必须使用 shadcn/ui 和 Radix。可复用控件先放入 `admin/src/components/ui/*`；业务页面优先使用共享组件和语义化 Tailwind token，避免任意硬编码颜色、圆角和 Base UI primitive。
+这是完成条件，不是可选的后续工作。文档清单是后续 AI 会话使用的持久项目记忆；代码注释、临时提示词或 roadmap 都不能替代当前模块清单。
 
-## 文档同步
+## 仓库结构
 
-维护本文件作为 `AGENTS.md` 中文配套。修改 `docs/admin-system-modules.md` 时，同时更新 `docs/admin-system-modules.zh-CN.md`。
+- `admin/`：Next.js 16 App Router、React 19、Tailwind 4、shadcn/ui + Radix、Mongoose 和 MongoDB API；本地开发端口为 `3005`。
+- `miniprogram/`：原生微信小程序。`utils/bluetooth.js` 负责蓝牙测距，`utils/surveyWallGraph.js` 与 `utils/surveyCanvasRenderer.js` 负责墙图和画布，Three.js 用于门窗构件预览。
+- `docs/`：当前模块清单和专项技术合同。
+- `admin/src/models/`：支持租户隔离的业务模型。
+- `admin/src/app/api/`：服务端路由；`admin/src/lib/` 包含认证、租户、工作流、AI、企微和墙图适配器。
 
-## 小程序正式量房功能清单
+## 跨端架构
 
-唯一正式量房页面是 `miniprogram/pages/surveying-editor/surveying-editor.*`。量房行为变更时，先说明受影响模块并同步本清单。
+- 后台使用 Cookie/JWT 会话、角色和菜单权限。
+- 小程序通过 `/api/auth/miniprogram` 登录并携带 Bearer JWT；同一组 API 负责员工身份、企业推荐、品牌、线索、户型、测量、提成和企业报备。
+- 存在企业上下文时，业务数据必须按企业隔离。使用共享租户工具和模型插件，不得另写一套租户过滤逻辑。
+- 正式户型唯一数据源是 v4 量房墙图。后台查看器、DXF、3D、AI 等消费者通过适配层派生读模型，不得把旧布局副本写回 `FloorPlan.layoutData`。
 
-- 所有入口使用 `leadId` 和/或 `floorPlanId` 进入 `pages/surveying-editor/surveying-editor`；不得恢复 `pages/editor/editor`、`restoreFloorPlan` 或双入口。
-- 正式布局只允许 `version: 4`、`measurementMode: 'surveying'` 和 `surveyGraph`。禁止持久化 `rooms`、`homeOutline`、`partitions`、`surveyDraft`、`prototypeOnly` 与 `surveying_prototype`。
-- 新版统一承担启动回显、BLE 连接和激光命令、直墙/斜墙/复尺、共享墙闭合、门窗、草稿/完成保存、测量审计、CAD、报告、全户型 3D 与后台读取。
-- 斜线拖出后保持预览，直到确认墙长；若用户从预览终点继续拖拽，则按实时预览长度落定该墙，并以该终点开始下一条墙。新斜线与上一条斜线正向相差不超过 8° 时会吸附到该方向并保持拖拽长度，超过阈值仍保持自由角度。顶部 `∠` 值和画布当前拐角的角度标注均打开复用数字面板外壳的测角界面。画布只保留最后一条斜墙与前一条墙的夹角；最后确认的斜墙未闭合且没有门窗时，也可由该标注重开，关闭面板会还原原墙。手机姿态仅提供由操作员确认的相对角度；“勾股定理测量角度”入口依次读取三条蓝牙边长、以余弦定理校验并计算夹角，并审计每条有效读数。确认角度时保持拖拽侧和预览长度后回到常规墙长流程；关闭面板不得改变墙体几何，且必须停止设备姿态监听。
-- 二维量房画布必须以覆盖实测门洞全宽的简洁 CAD 平面符号绘制门窗：门扇与开启弧线连接到对侧门框，窗户使用细线三轨窗框，而非带颜色的墙中线。
-- 空间未闭合时，当前墙链只显示内测边尺寸并持续以红线高亮该内测边；预览墙使用顶部实时读数而不显示尺寸标注。内外墙测量边只能在第一条墙确认后立即切换，后续墙体保持锁定。空间明确闭合后，必须依据闭合空间几何关系（不得依据已存的墙侧）判定每面墙的外侧，内、外两组整墙尺寸都必须放在该外侧，并使用细延长线与向内箭头端点；门所在墙以最靠墙的一层“墙段—门宽—墙段”链式尺寸替代内侧整墙尺寸，窗所在墙仅保留整墙尺寸。房间中心仅显示随画布缩放的名称、层高与面积。
-- 未闭合墙链编辑门窗时，门窗选中面板必须提供从该墙链末端“继续测墙”的明确操作；详情、续拉操作与开口侧值必须组成同一张自适应卡片，且宽度必须完整显示实测 `mm` 数值而不裁切。“新建房间起点”用于创建独立墙链，不能替代续拉当前墙。
-- 空间闭合或重置光标后，底部光标控件允许拖到已有顶点、墙体任意位置或画布空白位置，以创建独立墙链；拖动和松手由常驻页面手势链路承接。拖动中，空的圆形状态容器固定保留在底部，且只能由一张独立轻量 Canvas 绘制跟手方框十字与虚线辅助线，不得重绘正式量房场景或再叠加展示层副本。
-- 墙体或门窗处于选中状态时，工具栏的“收起”操作、退出门窗构件编辑器，以及点击画布其他空白处都必须取消选中，并返回相应的量测状态。墙体选中工具栏当前隐藏“墙厚”操作，宽度由可见操作、间距和内边距共同撑开。
-- 点击门或窗时必须优先选中该开口而非其所在墙体。原生 Canvas 在开口 `touchend` 后派发的 `tap` 不得清除刚选中的开口或隐藏其工具栏。
-- 门窗构件编辑器的“规格”面板必须避开固定的撤销/重画控件，确保蓝牙测距操作始终可触达；翻转和模型面板保持原有位置。
-- 闭合候选仅为提示：用户可从当前端点继续拖拽测墙，只有明确点击“合”才会确认闭合。
-- 墙图内部使用毫米；适配层仅在报告、CAD、3D、后台和 AI 读取时派生空间、面积、开口和层高，绝不回写旧布局格式。
-- `surveying-editor` 临时接管 BLE 回调的流程必须在关闭时恢复常规回调，并在读取到有效值后写入测量审计。首次云端保存前取得的读数先入会话队列，正式 `floorPlanId` 创建成功后再补写审计。
-- 本次删除的旧版模块 1-19 仅作为历史覆盖范围；后续不得重新引用旧 `editor.*`、旧组件或旧几何工具。
+## 强制工程规则
+
+### Git
+
+创建提交时使用 Conventional Commit 英文主题：`feat:`、`fix:`、`refactor:`、`docs:`、`chore:` 或 `test:`。主题简洁、动作导向，只描述相关暂存修改；不相关目标必须拆分。
+
+### 后台 UI 与反馈
+
+- 使用 shadcn/ui 和 Radix primitive。可复用控件放在 `admin/src/components/ui/*`；业务页面优先使用共享组件和语义化 Tailwind token。
+- 管理员显式触发且用户可见的变更，成功和失败都必须使用共享操作反馈 UI；不得用原生 `alert()` 作为常规反馈。
+- 危险操作可以使用原生确认框，但操作结果仍必须通知用户。
+- 涉及租户的路由必须使用 `withTenantRoute`、`withTenantContext` 或对应共享解析器，并校验接口角色边界。
+
+### 小程序设计与入口
+
+- 新 UI 遵循 `miniprogram/DESIGN.md`、`design-tokens.json` 和 `app.wxss` token，保持明亮绿色、平静的家装设计风格。
+- 唯一正式量房页面是 `miniprogram/pages/surveying-editor/surveying-editor.*`。
+- 所有量房入口都带 `leadId` 和/或 `floorPlanId` 进入该页面。不得恢复 `pages/editor/editor`、`restoreFloorPlan` 或双入口。
+- 正式 `FloorPlan.layoutData` 只允许 `version: 4`、`measurementMode: 'surveying'` 和 `surveyGraph`。禁止持久化 `rooms`、`homeOutline`、`partitions`、`surveyDraft`、`prototypeOnly` 或 `surveying_prototype`。
+- 墙图单位为毫米。有效 BLE 读数必须写入正式测量审计；首次云端保存前的读数要等正式 `floorPlanId` 创建后再补写。临时接管 BLE 回调的流程关闭时必须恢复常规回调。
+- 不得重新引入已删除的旧编辑器组件和旧几何工具。
+
+## 验证
+
+文档修改至少运行 `git diff --check`，并核对引用路径、路由名称、状态标签和中英文语义一致性。代码修改还要运行对应窄范围测试，例如 `cd miniprogram && npm test` 或后台 lint/build。
