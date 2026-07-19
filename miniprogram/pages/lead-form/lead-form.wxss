@@ -51,6 +51,7 @@
 }
 
 .content-shell {
+  padding-bottom: calc(36rpx + env(safe-area-inset-bottom));
   position: relative;
   padding: 40rpx 38rpx 40rpx;
   box-sizing: border-box;
@@ -93,12 +94,14 @@
   margin-top: 28rpx;
   display: flex;
   align-items: center;
-  gap: 38rpx;
+  justify-content: space-between;
+  gap: 12rpx;
   padding: 0 10rpx;
 }
 
 .recent-chip {
-  width: 190rpx;
+  flex: 1;
+  min-width: 0;
   height: 70rpx;
   border-radius: 999rpx;
   background: #f1faf3;
@@ -117,14 +120,19 @@
 }
 
 .recent-name {
+  min-width: 0;
+  flex: 1;
   margin-left: 16rpx;
   font-size: 23rpx;
   color: #010101;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .recent-chip-image {
-  width: 190rpx;
+  width: 100%;
+  height: 100%;
 }
 
 .section-divider {
@@ -395,11 +403,16 @@
   font-size: 20rpx;
   line-height: 1.3;
   color: #777e92;
+  text-align: center;
 }
 
 .privacy-icon {
   width: 18rpx;
   flex-shrink: 0;
+}
+
+.privacy-note text {
+  min-width: 0;
 }
 
 @media (max-height: 700px) {

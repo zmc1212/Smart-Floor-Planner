@@ -2,7 +2,7 @@
   min-height: 100vh;
   background:
     linear-gradient(180deg, #fcfdfb 0%, #f5f7f4 46%, var(--bg-page) 100%);
-  padding: 20rpx;
+  padding: 20rpx 20rpx calc(36rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
 
@@ -91,6 +91,7 @@
   font-weight: 600;
   color: #20262d;
   margin-bottom: 10rpx;
+  line-height: 1.25;
 }
 
 .subtitle,
@@ -126,6 +127,11 @@
   display: flex;
   gap: 14rpx;
   align-items: flex-start;
+}
+
+.step-content {
+  min-width: 0;
+  flex: 1;
 }
 
 .step-number {
@@ -210,15 +216,27 @@
   margin-top: 18rpx;
 }
 
+.card-actions .action-btn {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .action-btn,
 .share-btn {
   flex: 1;
   height: 76rpx;
-  line-height: 76rpx;
   border-radius: var(--radius-full);
   font-size: 24rpx;
   font-weight: 500;
   margin: 0;
+  padding: 0 16rpx;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 .action-btn.primary,

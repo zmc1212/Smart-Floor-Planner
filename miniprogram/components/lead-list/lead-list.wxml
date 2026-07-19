@@ -15,6 +15,10 @@
       <icon type="search" size="20" color="#657187" />
       <input class="search-input" placeholder="搜索客户" placeholder-class="search-placeholder" bindconfirm="onSearch" />
     </view>
+    <view class="add-lead-button" bindtap="onAddLead">
+      <text class="add-lead-plus">+</text>
+      <text>新增客户</text>
+    </view>
     <view class="filter-button" bindtap="onFilterTap">
       <text class="filter-mark">▽</text>
       <text class="filter-text">筛选</text>
@@ -104,8 +108,4 @@
     </view>
   </scroll-view>
 
-  <view class="floating-add" bindtap="onAddLead">
-    <text class="floating-plus">＋</text>
-    <text>新增客户</text>
-  </view>
 </view>

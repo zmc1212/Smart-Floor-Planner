@@ -2,6 +2,7 @@ const DEFAULT_THICKNESS_MM = 200;
 const DEFAULT_SCALE = 0.05;
 const CLOSE_TOLERANCE_MM = 350;
 const RECTANGLE_ALIGNMENT_TOLERANCE_MM = CLOSE_TOLERANCE_MM;
+const DIAGONAL_DIRECTION_SNAP_TOLERANCE_DEG = 8;
 const MIN_WALL_LENGTH_MM = 100;
 const MIN_THICKNESS_MM = 50;
 const WALL_OVERLAP_TOLERANCE_MM = 30;
@@ -37,6 +38,8 @@ function createSession() {
     previewPoint: null,
     previewAngleDeg: 0,
     previewLengthMm: 0,
+    previewAngleSource: '',
+    previewInteriorAngleDeg: null,
     mode: 'straight',
     thicknessMm: DEFAULT_THICKNESS_MM,
     measurementSide: 'left',
@@ -66,7 +69,7 @@ function createSurveyDraft() {
   return {
     schemaVersion: 1,
     kind: 'survey-wall-graph',
-    status: 'prototype',
+    status: 'draft',
     activeFloorId: 'floor-1',
     floors: [
       {
@@ -148,6 +151,12 @@ function ensureSessionSpaceTracking(floor) {
   }
   if (typeof session.previewMeasurementSide !== 'string') {
     session.previewMeasurementSide = '';
+  }
+  if (typeof session.previewAngleSource !== 'string') {
+    session.previewAngleSource = '';
+  }
+  if (!Object.prototype.hasOwnProperty.call(session, 'previewInteriorAngleDeg')) {
+    session.previewInteriorAngleDeg = null;
   }
   if (!Object.prototype.hasOwnProperty.call(session, 'closeCandidatePoint')) {
     session.closeCandidatePoint = null;
@@ -694,6 +703,76 @@ function pointFromLength(anchor, previewPoint, lengthMm) {
   };
 }
 
+function maybeSnapToPreviousDiagonalDirection(floor, session, anchor, previewPoint) {
+  if (!floor || !session || session.mode !== 'diagonal' || !anchor || !previewPoint) {
+    return { point: previewPoint, guide: null };
+  }
+
+  const previousWall = getIncomingWallAtAnchor(floor, session.anchorNodeId);
+  const previousAngle = getIncomingAngleAtAnchor(floor, previousWall, session.anchorNodeId);
+  if (!previousWall || previousWall.mode !== 'diagonal' || previousAngle === null) {
+    return { point: previewPoint, guide: null };
+  }
+
+  const length = distanceMm(anchor, previewPoint);
+  if (length < MIN_WALL_LENGTH_MM) {
+    return { point: previewPoint, guide: null };
+  }
+
+  const rawAngle = angleDeg(anchor, previewPoint);
+  if (Math.abs(normalizeSignedAngle(rawAngle - previousAngle)) > DIAGONAL_DIRECTION_SNAP_TOLERANCE_DEG) {
+    return { point: previewPoint, guide: null };
+  }
+
+  const radians = previousAngle * Math.PI / 180;
+  const snappedPoint = {
+    xMm: Math.round(anchor.xMm + Math.cos(radians) * length),
+    yMm: Math.round(anchor.yMm + Math.sin(radians) * length)
+  };
+  return {
+    point: snappedPoint,
+    guide: {
+      type: 'previous-diagonal-direction',
+      anchorPoint: { xMm: anchor.xMm, yMm: anchor.yMm },
+      snappedPoint: { xMm: snappedPoint.xMm, yMm: snappedPoint.yMm }
+    }
+  };
+}
+
+function getIncomingWallAtAnchor(floor, anchorNodeId) {
+  if (!floor || !anchorNodeId) return null;
+  for (let index = floor.walls.length - 1; index >= 0; index -= 1) {
+    const wall = floor.walls[index];
+    if (wall.endNodeId === anchorNodeId || wall.startNodeId === anchorNodeId) {
+      return wall;
+    }
+  }
+  return null;
+}
+
+function getIncomingAngleAtAnchor(floor, wall, anchorNodeId) {
+  if (!wall) return null;
+  const start = getNode(floor, wall.startNodeId);
+  const end = getNode(floor, wall.endNodeId);
+  if (!start || !end) return null;
+  return wall.endNodeId === anchorNodeId ? angleDeg(start, end) : angleDeg(end, start);
+}
+
+function normalizeSignedAngle(angle) {
+  let normalized = angle;
+  while (normalized <= -180) normalized += 360;
+  while (normalized > 180) normalized -= 360;
+  return normalized;
+}
+
+function validateInteriorAngle(angle) {
+  const parsed = Number(angle);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed >= 180) {
+    throw new Error('Angle must be between 0 and 180 degrees');
+  }
+  return Math.round(parsed * 10) / 10;
+}
+
 function getFirstNode(floor) {
   if (!floor.walls.length) return null;
   return getNode(floor, floor.walls[0].startNodeId);
@@ -883,6 +962,59 @@ function getWallSnapPoint(floor, point, maxDistanceMm) {
   return projection ? projection.point : null;
 }
 
+/**
+ * Resolve a new wall-chain cursor target without changing the graph.
+ * Existing vertices intentionally win over a nearby wall segment so users can
+ * reliably restart a room from a measured corner.
+ */
+function getCursorPlacementTarget(floor, point, maxDistanceMm) {
+  if (!floor || !point) {
+    return { type: 'none', pointMm: null, distanceMm: Infinity };
+  }
+
+  const freeTarget = {
+    type: 'free',
+    pointMm: { xMm: Math.round(point.xMm), yMm: Math.round(point.yMm) },
+    distanceMm: 0
+  };
+  if (!Array.isArray(floor.walls) || !floor.walls.length) return freeTarget;
+
+  const limit = typeof maxDistanceMm === 'number' ? maxDistanceMm : CLOSE_TOLERANCE_MM;
+  const wallNodeIds = new Set();
+  (floor.walls || []).forEach((wall) => {
+    wallNodeIds.add(wall.startNodeId);
+    wallNodeIds.add(wall.endNodeId);
+  });
+  let nearestVertex = null;
+  (floor.nodes || []).forEach((node) => {
+    if (!wallNodeIds.has(node.id)) return;
+    const candidateDistance = distanceMm(point, node);
+    if (candidateDistance > limit) return;
+    if (!nearestVertex || candidateDistance < nearestVertex.distanceMm) {
+      nearestVertex = {
+        type: 'vertex',
+        pointMm: { xMm: node.xMm, yMm: node.yMm },
+        nodeId: node.id,
+        distanceMm: candidateDistance
+      };
+    }
+  });
+
+  if (nearestVertex) return nearestVertex;
+
+  const projection = findNearestWallProjection(floor, point);
+  if (!projection || projection.distanceMm > limit) {
+    return freeTarget;
+  }
+
+  return {
+    type: 'wall',
+    pointMm: projection.point,
+    wallId: projection.wall && projection.wall.id,
+    distanceMm: projection.distanceMm
+  };
+}
+
 function getOrCreateSnapNode(floor, projection) {
   if (!projection) return null;
   if (projection.node) return projection.node;
@@ -1039,6 +1171,8 @@ function cloneWallSegment(sourceWall, startNodeId, endNodeId, id) {
     thicknessMm: sourceWall.thicknessMm,
     measurementSide: sourceWall.measurementSide,
     inputSource: sourceWall.inputSource || 'manual',
+    angleSource: sourceWall.angleSource || '',
+    angleInteriorDeg: Number.isFinite(sourceWall.angleInteriorDeg) ? sourceWall.angleInteriorDeg : null,
     status: sourceWall.status || 'confirmed',
     measuredAt: sourceWall.measuredAt || nowIso()
   };
@@ -1262,7 +1396,8 @@ function startPreview(draft, rawPoint) {
   }
 
   const orthogonalPoint = snapPreviewPoint(anchor, rawPoint, session.mode);
-  const rectangleSnap = maybeSnapThirdWallForRectangle(floor, session, anchor, orthogonalPoint);
+  const directionSnap = maybeSnapToPreviousDiagonalDirection(floor, session, anchor, orthogonalPoint);
+  const rectangleSnap = maybeSnapThirdWallForRectangle(floor, session, anchor, directionSnap.point);
   const previewPoint = rectangleSnap.point;
   const previewLengthMm = distanceMm(anchor, previewPoint);
   const previewMeasurementSide = resolveBoundaryAlignedMeasurementSide(floor, session, anchor, previewPoint);
@@ -1271,6 +1406,8 @@ function startPreview(draft, rawPoint) {
   session.previewPoint = previewPoint;
   session.previewLengthMm = previewLengthMm;
   session.previewAngleDeg = angleDeg(anchor, previewPoint);
+  session.previewAngleSource = '';
+  session.previewInteriorAngleDeg = null;
   session.previewMeasurementSide = previewMeasurementSide;
   session.pendingWallId = '';
   session.selectedWallId = '';
@@ -1279,7 +1416,7 @@ function startPreview(draft, rawPoint) {
   session.closeCandidatePoint = null;
   session.closeCandidateType = '';
   session.closeCandidateSharedWallId = '';
-  session.alignmentSnapGuide = rectangleSnap.guide;
+  session.alignmentSnapGuide = rectangleSnap.guide || directionSnap.guide;
 
   const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
   const activeWallCount = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
@@ -1317,6 +1454,82 @@ function holdPreviewForInput(draft) {
   return touchDraft(next);
 }
 
+function applyPreviewInteriorAngle(draft, interiorAngleDeg, source) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const session = ensureSessionSpaceTracking(floor);
+  const anchor = getNode(floor, session.anchorNodeId);
+  const incomingWall = getIncomingWallAtAnchor(floor, session.anchorNodeId);
+  const incomingAngle = getIncomingAngleAtAnchor(floor, incomingWall, session.anchorNodeId);
+  const angle = validateInteriorAngle(interiorAngleDeg);
+
+  if (!anchor || !session.previewPoint || !session.previewLengthMm || session.mode !== 'diagonal' || incomingAngle === null) {
+    throw new Error('A connected diagonal preview is required before measuring its angle');
+  }
+
+  const currentAngle = angleDeg(anchor, session.previewPoint);
+  const turn = normalizeSignedAngle(currentAngle - incomingAngle);
+  const turnSign = turn < 0 ? -1 : 1;
+  const outgoingAngle = incomingAngle + turnSign * (180 - angle);
+  const radians = outgoingAngle * Math.PI / 180;
+  const nextPoint = {
+    xMm: Math.round(anchor.xMm + Math.cos(radians) * session.previewLengthMm),
+    yMm: Math.round(anchor.yMm + Math.sin(radians) * session.previewLengthMm)
+  };
+
+  const previewed = startPreview(next, nextPoint);
+  const previewSession = getActiveFloor(previewed).session;
+  previewSession.state = 'awaitingLength';
+  previewSession.previewAngleSource = source || 'manual';
+  previewSession.previewInteriorAngleDeg = angle;
+  return touchDraft(previewed);
+}
+
+function reopenLastDiagonalWallForAngle(draft) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const session = ensureSessionSpaceTracking(floor);
+  const lastWall = floor.walls[floor.walls.length - 1];
+  const hasAttachedOpening = lastWall && floor.openings.some((opening) => opening.wallId === lastWall.id);
+
+  if (!lastWall || lastWall.mode !== 'diagonal' || floor.walls.length < 2 ||
+    session.state !== 'wallCommitted' || session.previewPoint || hasAttachedOpening) {
+    throw new Error('Only the latest unadorned diagonal wall can be remeasured by angle');
+  }
+
+  const start = getNode(floor, lastWall.startNodeId);
+  const end = getNode(floor, lastWall.endNodeId);
+  if (!start || !end) {
+    throw new Error('The latest diagonal wall is incomplete');
+  }
+
+  floor.walls.pop();
+  if (!floor.walls.some((wall) => wall.startNodeId === end.id || wall.endNodeId === end.id)) {
+    floor.nodes = floor.nodes.filter((node) => node.id !== end.id);
+  }
+  session.anchorNodeId = start.id;
+  session.mode = 'diagonal';
+  session.state = 'awaitingLength';
+  session.previewPoint = { xMm: end.xMm, yMm: end.yMm };
+  session.previewLengthMm = lastWall.lengthMm;
+  session.previewAngleDeg = lastWall.angleDeg;
+  session.previewAngleSource = lastWall.angleSource || 'manual';
+  session.previewInteriorAngleDeg = Number.isFinite(lastWall.angleInteriorDeg)
+    ? lastWall.angleInteriorDeg
+    : null;
+  session.previewMeasurementSide = lastWall.measurementSide || session.measurementSide;
+  session.pendingWallId = '';
+  session.selectedWallId = '';
+  session.selectedOpeningId = '';
+  session.closeCandidateNodeId = '';
+  session.closeCandidatePoint = null;
+  session.closeCandidateType = '';
+  session.closeCandidateSharedWallId = '';
+  session.alignmentSnapGuide = null;
+
+  return touchDraft(next);
+}
+
 function cancelPending(draft) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
@@ -1325,6 +1538,8 @@ function cancelPending(draft) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  session.previewAngleSource = '';
+  session.previewInteriorAngleDeg = null;
   session.previewMeasurementSide = '';
   session.pendingWallId = '';
   session.closeCandidateNodeId = '';
@@ -1396,6 +1611,8 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     thicknessMm: session.thicknessMm,
     measurementSide,
     inputSource: inputSource || 'manual',
+    angleSource: session.previewAngleSource || '',
+    angleInteriorDeg: session.previewInteriorAngleDeg,
     status: 'confirmed',
     measuredAt: nowIso()
   };
@@ -1408,6 +1625,8 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  session.previewAngleSource = '';
+  session.previewInteriorAngleDeg = null;
   session.previewMeasurementSide = '';
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
@@ -1654,7 +1873,7 @@ function addOpeningToWall(draft, wallId, type) {
     materialId: openingType === 'window' ? 'dark-gray' : 'warm-white',
     depthMm: wall.thicknessMm || DEFAULT_OPENING_DEPTH_MM,
     entryDoor: false,
-    source: 'prototype',
+    source: 'manual',
     createdAt: nowIso(),
     updatedAt: nowIso()
   };
@@ -1933,11 +2152,58 @@ function setMeasurementSide(draft, side, wallId) {
   const targetWallId = wallId || floor.session.selectedWallId;
   const wall = targetWallId ? getWall(floor, targetWallId) : null;
 
-  floor.session.measurementSide = targetSide;
-  if (wall) {
-    wall.measurementSide = targetSide;
-  }
+  // The measuring edge establishes the convention for the complete room. It is
+  // intentionally selectable only after the first wall is committed and before
+  // any later wall can inherit or resolve its side from that convention.
+  const firstWall = floor.walls[0] || null;
+  const isInitialSideSelection = !!(
+    wall &&
+    firstWall &&
+    wall.id === firstWall.id &&
+    floor.walls.length === 1 &&
+    floor.session.state === 'wallCommitted' &&
+    !floor.session.previewPoint &&
+    !floor.spaces.some((space) => space.closed)
+  );
+  if (!isInitialSideSelection) return next;
 
+  floor.session.measurementSide = targetSide;
+  wall.measurementSide = targetSide;
+
+  return touchDraft(next);
+}
+
+function placeNewWallChainCursor(draft, point) {
+  const next = cloneDraft(draft);
+  const floor = getActiveFloor(next);
+  const session = ensureSessionSpaceTracking(floor);
+  const node = addNode(floor, point);
+
+  session.state = 'cursorPlaced';
+  session.anchorNodeId = node.id;
+  session.previewPoint = null;
+  session.previewLengthMm = 0;
+  session.previewAngleDeg = 0;
+  session.previewAngleSource = '';
+  session.previewInteriorAngleDeg = null;
+  session.previewMeasurementSide = '';
+  session.pendingWallId = '';
+  session.selectedWallId = '';
+  session.selectedOpeningId = '';
+  session.closeCandidateNodeId = '';
+  session.closeCandidatePoint = null;
+  session.closeCandidateType = '';
+  session.closeCandidateSharedWallId = '';
+  session.alignmentSnapGuide = null;
+  session.activeSpaceStartNodeId = node.id;
+  session.activeSpaceStartWallIndex = floor.walls.length;
+  session.activeSpaceSharedWallId = '';
+  session.activeSpaceSharedStartT = null;
+  session.activeSpaceSharedSnapLine = '';
+  session.lastWallSnapNodeId = '';
+  session.lastWallSnapWallId = '';
+  session.lastWallSnapT = null;
+  session.lastWallSnapLine = '';
   return touchDraft(next);
 }
 
@@ -2093,6 +2359,7 @@ module.exports = {
   getWall,
   getOpening,
   getWallSnapPoint,
+  getCursorPlacementTarget,
   distanceMm,
   angleDeg,
   buildWallSnapGeometry,
@@ -2102,8 +2369,11 @@ module.exports = {
   calculateSpaceAreaMm2,
   setMode,
   placeCursor,
+  placeNewWallChainCursor,
   startPreview,
   holdPreviewForInput,
+  applyPreviewInteriorAngle,
+  reopenLastDiagonalWallForAngle,
   cancelPending,
   commitPreviewLength,
   confirmClosure,

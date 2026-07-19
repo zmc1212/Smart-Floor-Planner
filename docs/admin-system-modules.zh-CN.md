@@ -73,14 +73,14 @@
 - 页面：`/leads`。
 - API：`/api/leads`、`/api/leads/[id]`、`/api/leads/[id]/share`。
 - 模型/工具：`Lead`、`FloorPlan`、`AdminUser`、`wecom.ts`、`wechat-notification.ts`。
-- 职责：客户线索录入、状态跟踪、关联户型图、新版测绘原型草稿可见、地推/设计师分配、跟进记录、企微群创建和线索分享。
+- 职责：客户线索录入、状态跟踪、关联正式墙图户型、地推/设计师分配、跟进记录、企微群创建和线索分享。
 
 ### 9. 户型图、量房记录和设备
 
 - 页面：`/floorplans`、`/floorplans/[id]`、`/measurements`、`/devices`。
 - API：`/api/floorplans`、`/api/floorplans/[id]`、`/api/floorplans/[id]/export/dxf`、`/api/measurements`、`/api/devices`、`/api/devices/[id]`、`/api/devices/verify`、`/api/devices/verify-binding`。
 - 模型/工具：`FloorPlan`、`Measurement`、`Device`、`User`、`dxf.ts`、`FloorPlanViewer`。
-- 职责：量房户型数据存储、布局查看、新版测绘原型墙图只读展示、正式布局 DXF 导出、蓝牙测距设备管理、设备绑定校验和量房审计日志。
+- 职责：正式量房墙图数据存储与查看、DXF 导出、蓝牙测距设备管理、设备绑定校验和量房审计日志。
 
 ### 10. AI 工作室和设计生成
 

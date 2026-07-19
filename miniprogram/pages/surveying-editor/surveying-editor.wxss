@@ -16,14 +16,23 @@ page {
   pointer-events: none;
 }
 
+.cursor-drag-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
 .canvas-overlay-layer > .survey-topbar,
 .canvas-overlay-layer > .right-rail,
 .canvas-overlay-layer > .history-action-bar,
 .canvas-overlay-layer > .bottom-fab-bar,
-.canvas-overlay-layer > .cursor-drag-overlay,
 .canvas-overlay-layer > .component-editor,
 .canvas-overlay-layer > .number-pad-mask,
 .canvas-overlay-layer > .number-pad-panel,
+.canvas-overlay-layer > .top-measure-bubble,
 .canvas-overlay-layer > .closure-action,
 .canvas-overlay-layer > .wall-object-toolbar,
 .canvas-overlay-layer > survey-canvas-compass {
@@ -61,7 +70,15 @@ page {
 .topbar-left {
   min-width: 0;
   flex: 1;
-  gap: 14rpx;
+}
+
+.topbar-right {
+  flex-shrink: 0;
+  gap: 0;
+}
+
+.back-button + .title-group {
+  margin-left: 18rpx;
 }
 
 .back-button {
@@ -96,7 +113,7 @@ page {
 }
 
 .page-title {
-  max-width: 250rpx;
+  max-width: 220rpx;
   color: var(--text-primary);
   font-size: 30rpx;
   font-weight: 600;
@@ -106,9 +123,12 @@ page {
 }
 
 .page-subtitle {
+  max-width: 220rpx;
   color: #7b8794;
   font-size: 21rpx;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .view-tabs {
@@ -126,7 +146,7 @@ page {
 .topbar-chip {
   height: 80rpx;
   min-width: 108rpx;
-  padding: 0 18rpx;
+  padding: 0 12rpx;
   border-radius: 18rpx;
   color: #647268;
   font-size: 22rpx;
@@ -155,15 +175,10 @@ page {
 }
 
 .topbar-chip.save {
-  min-width: 128rpx;
+  min-width: 108rpx;
   color: #ffffff;
   background: #17a14c;
   box-shadow: 0 8rpx 18rpx rgba(23, 161, 76, 0.22);
-}
-
-.topbar-chip.assistant-chip {
-  opacity: 1;
-  color: #475569;
 }
 
 .survey-stage {
@@ -290,11 +305,15 @@ page {
   border-left: 1px solid rgba(255, 255, 255, 0.22);
 }
 
+.top-measure-angle.actionable {
+  color: #fbbf24;
+}
+
 .closure-action {
   position: absolute;
   z-index: 28;
-  width: 76px;
-  height: 76px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: #f07a21;
   color: #ffffff;
@@ -306,7 +325,7 @@ page {
 
 .closure-action-label {
   color: #ffffff;
-  font-size: 40rpx;
+  font-size: 26rpx;
   font-weight: 700;
 }
 
@@ -458,35 +477,44 @@ page {
 .wall-object-toolbar {
   position: absolute;
   z-index: 9;
-  height: 36px;
-  width: 228px;
-  min-width: 228px;
-  padding: 4px;
+  height: 54px;
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 18px;
-  background: rgba(31, 41, 55, 0.94);
-  box-shadow: var(--shadow-float);
-  display: flex;
+  background: rgba(23, 32, 43, 0.96);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.24);
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: flex-start;
   box-sizing: border-box;
 }
 
+.wall-object-action + .wall-object-action {
+  margin-left: 8px;
+}
+
 .wall-object-action {
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
+  position: relative;
+  width: 36px;
+  min-width: 36px;
+  height: 42px;
   padding: 0;
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 2px;
   box-sizing: border-box;
 }
 
 .wall-object-action.primary {
-  background: #17a14c;
+  border-color: rgba(134, 239, 172, 0.32);
+  background: linear-gradient(135deg, #23b85d, #159447);
+  color: #ffffff;
 }
 
 .wall-object-action.muted {
@@ -495,184 +523,32 @@ page {
 }
 
 .wall-object-action.delete {
-  background: rgba(239, 68, 68, 0.25);
-  color: #f87171;
+  border-color: rgba(252, 165, 165, 0.18);
+  background: rgba(239, 68, 68, 0.18);
+  color: #fca5a5;
 }
 
-.delete-lid {
+.wall-action-image {
   position: absolute;
-  left: 5px;
-  top: 5px;
-  width: 14px;
-  height: 2px;
-  background: currentColor;
-  border-radius: 1px;
-}
-
-.delete-body {
-  position: absolute;
-  left: 7px;
-  top: 9px;
-  width: 10px;
-  height: 10px;
-  border: 1.8px solid currentColor;
-  border-top: none;
-  box-sizing: border-box;
-  border-radius: 0 0 2px 2px;
-}
-
-.side-wall-line {
-  position: absolute;
-  left: 11px;
+  left: 50%;
   top: 4px;
-  width: 2px;
-  height: 16px;
-  background: currentColor;
+  width: 20px;
+  height: 20px;
+  margin-left: -10px;
 }
 
-.side-dot-left {
+.wall-action-label {
   position: absolute;
-  left: 4px;
-  top: 10px;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.side-dot-right {
-  position: absolute;
-  right: 4px;
-  top: 10px;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: currentColor;
-  opacity: 0.3;
-}
-
-.wall-action-icon {
-  position: relative;
-  width: 24px;
-  height: 24px;
-  transform: scale(0.7);
-  transform-origin: center;
-}
-
-.door-frame {
-  position: absolute;
-  left: 6px;
-  top: 4px;
-  width: 11px;
-  height: 16px;
-  border: 2px solid currentColor;
-  border-bottom: none;
-  box-sizing: border-box;
-}
-
-.door-swing {
-  position: absolute;
-  left: 6px;
-  top: 7px;
-  width: 14px;
-  height: 14px;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
-  border-left-color: transparent;
-  border-radius: 0 0 14px 0;
-  transform: rotate(-8deg);
-  box-sizing: border-box;
-}
-
-.window-frame {
-  position: absolute;
-  left: 4px;
-  top: 7px;
-  width: 16px;
-  height: 10px;
-  border: 2px solid currentColor;
-  box-sizing: border-box;
-}
-
-.window-line {
-  position: absolute;
-  left: 11px;
-  top: 7px;
-  width: 2px;
-  height: 10px;
-  background: currentColor;
-}
-
-.edit-stem {
-  position: absolute;
-  left: 11px;
-  top: 3px;
-  width: 4px;
-  height: 17px;
-  border-radius: 3px;
-  background: currentColor;
-  transform: rotate(42deg);
-}
-
-.edit-tip {
-  position: absolute;
-  left: 5px;
-  top: 16px;
-  width: 8px;
-  height: 3px;
-  border-radius: 999rpx;
-  background: currentColor;
-  transform: rotate(42deg);
-}
-
-
-.remeasure-ruler {
-  position: absolute;
-  left: 3px;
-  top: 9px;
-  width: 18px;
-  height: 6px;
-  border: 1.8px solid currentColor;
-  box-sizing: border-box;
-  border-radius: 1px;
-}
-
-.remeasure-tick {
-  position: absolute;
-  top: 9px;
-  width: 1.5px;
-  height: 3px;
-  background: currentColor;
-}
-
-.remeasure-tick.one {
-  left: 7px;
-}
-
-.remeasure-tick.two {
-  left: 11px;
-}
-
-.remeasure-tick.three {
-  left: 15px;
-}
-
-.exit-line {
-  position: absolute;
-  left: 5px;
-  top: 11px;
-  width: 14px;
-  height: 2px;
-  border-radius: 999rpx;
-  background: currentColor;
-}
-
-.exit-line.one {
-  transform: rotate(45deg);
-}
-
-.exit-line.two {
-  transform: rotate(-45deg);
+  left: 0;
+  right: 0;
+  bottom: 3px;
+  color: currentColor;
+  font-size: 8px;
+  line-height: 10px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .wall-context-title {
@@ -722,13 +598,16 @@ page {
 
 .opening-context {
   width: 100%;
-  padding: 12rpx;
+  padding: 14rpx;
   border-radius: 20rpx;
   background: rgba(255, 255, 255, 0.97);
   color: #111827;
   box-shadow: var(--shadow-home-card);
   box-sizing: border-box;
   border: 1px solid rgba(148, 163, 184, 0.22);
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
 }
 
 .opening-context.door {
@@ -759,7 +638,6 @@ page {
   display: flex;
   flex-direction: column;
   gap: 6rpx;
-  margin-top: 10rpx;
 }
 
 .opening-field {
@@ -770,6 +648,9 @@ page {
   font-size: 19rpx;
   font-weight: 600;
   line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .opening-context.door .opening-field {
@@ -782,6 +663,57 @@ page {
   color: #075985;
 }
 
+.opening-resume-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 60rpx;
+  min-height: 60rpx;
+  margin: 0;
+  padding: 0;
+  border-radius: 12rpx;
+  color: #ffffff;
+  background: #00a63c;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.opening-resume-label {
+  display: block;
+  width: 100%;
+  color: #ffffff;
+  font-size: 22rpx;
+  font-weight: 800;
+  line-height: 60rpx;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.opening-side-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56rpx;
+  padding: 0 10rpx;
+  border-radius: 12rpx;
+  background: #f3f7f4;
+  box-sizing: border-box;
+}
+
+.opening-context.window .opening-side-switch {
+  background: #eff8ff;
+}
+
+.opening-context.door .opening-side-switch {
+  background: #fff7ed;
+}
+
+.opening-side-switch .side-label,
+.opening-side-switch .side-value {
+  line-height: 1;
+}
+
 /* ─── 右侧工具栏 ─── */
 .right-rail {
   position: fixed;
@@ -789,9 +721,11 @@ page {
   top: 200rpx;
   bottom: 160rpx;
   z-index: 15;
-  width: 136rpx;
+  width: auto;
+  max-width: calc(100vw - 32rpx);
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
   gap: 10rpx;
   overflow-y: auto;
   padding-bottom: 12rpx;
@@ -808,10 +742,12 @@ page {
 
 .tool-group,
 .side-switch {
+  width: auto;
+  align-self: flex-end;
   border-radius: 22rpx;
   background: rgba(255, 255, 255, 0.94);
   box-shadow: var(--shadow-home-card);
-  padding: 10rpx;
+  padding: 8rpx;
   box-sizing: border-box;
 }
 
@@ -826,11 +762,13 @@ page {
 .tool-button {
   min-height: 74rpx;
   margin-bottom: 8rpx;
+  padding: 0 12rpx;
   border-radius: 18rpx;
   color: #5f6e65;
   background: #f5f8f5;
   flex-direction: column;
   gap: 4rpx;
+  white-space: nowrap;
 }
 
 .tool-button:last-child {
@@ -1076,6 +1014,11 @@ page {
   background: rgba(255, 255, 255, 0.98);
   box-shadow: 0 -12rpx 30rpx rgba(15, 23, 42, 0.1);
   box-sizing: border-box;
+}
+
+/* Native canvas overlays keep the undo/reset controls above web views. */
+.component-panel-raised {
+  bottom: 112rpx;
 }
 
 .component-panel-tabs {
@@ -1411,6 +1354,8 @@ page {
   background: #ffffff;
   box-shadow: var(--shadow-float);
   box-sizing: border-box;
+  max-height: calc(100vh - 44rpx);
+  overflow-y: auto;
 }
 
 .number-pad-header {
@@ -1444,39 +1389,214 @@ page {
 
 .number-display {
   margin-top: 18rpx;
-  padding: 18rpx 22rpx;
+  position: relative;
+  height: 78rpx;
+  padding: 0 78rpx 0 22rpx;
   border-radius: 22rpx;
   background: #f4f8f4;
   color: #17a14c;
   font-size: 42rpx;
   font-weight: 800;
+  line-height: 78rpx;
+  text-align: right;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+.number-display-value {
+  display: block;
+  height: 78rpx;
+  line-height: 78rpx;
   text-align: right;
 }
 
 .number-display-unit {
-  margin-left: 8rpx;
+  position: absolute;
+  top: 0;
+  right: 22rpx;
+  height: 78rpx;
+  line-height: 78rpx;
   color: #6b7280;
   font-size: 24rpx;
   font-weight: 600;
 }
 
+.angle-measure-tools {
+  margin-top: 18rpx;
+  border-radius: 20rpx;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.angle-measure-tabs {
+  display: flex;
+  background: #ffffff;
+  border-bottom: 1rpx solid #e5e7eb;
+}
+
+.angle-measure-tab {
+  flex: 1;
+  height: 72rpx;
+  color: #6b7280;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 72rpx;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.angle-measure-tab.active {
+  color: #f97316;
+  border-bottom: 6rpx solid #f97316;
+}
+
+.phone-angle-tool {
+  padding: 18rpx 22rpx 20rpx;
+  text-align: center;
+}
+
+.phone-angle-dial {
+  position: relative;
+  width: 170rpx;
+  height: 170rpx;
+  margin: 0 auto;
+  border: 3rpx solid #d1d5db;
+  border-radius: 50%;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.phone-angle-dial.level {
+  border-color: #3b9ff3;
+  box-shadow: inset 0 0 0 16rpx rgba(59, 159, 243, 0.12);
+}
+
+.phone-angle-needle {
+  position: absolute;
+  left: 50%;
+  top: 12rpx;
+  width: 6rpx;
+  height: 62rpx;
+  margin-left: -3rpx;
+  border-radius: 99rpx;
+  background: #f97316;
+  transform-origin: 3rpx 73rpx;
+}
+
+.phone-angle-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 36rpx;
+  height: 36rpx;
+  margin: -18rpx 0 0 -18rpx;
+  border-radius: 50%;
+  background: #f97316;
+}
+
+.phone-angle-center.level {
+  background: #3b9ff3;
+}
+
+.phone-angle-value {
+  margin-top: 8rpx;
+  color: #111827;
+  font-size: 48rpx;
+  font-weight: 800;
+}
+
+.phone-angle-status,
+.triangle-angle-hint {
+  margin-top: 4rpx;
+  color: #6b7280;
+  font-size: 22rpx;
+  line-height: 32rpx;
+}
+
+.phone-angle-baseline,
+.triangle-reset {
+  height: 58rpx;
+  margin-top: 14rpx;
+  border-radius: 14rpx;
+  background: #fff1e8;
+  color: #f97316;
+  font-size: 24rpx;
+  font-weight: 700;
+  line-height: 58rpx;
+}
+
+.phone-angle-baseline.disabled {
+  opacity: 0.45;
+}
+
+.triangle-angle-tool {
+  padding: 16rpx 22rpx 18rpx;
+}
+
+.triangle-side-row {
+  display: flex;
+  align-items: center;
+  min-height: 62rpx;
+  margin-top: 10rpx;
+  padding: 0 14rpx;
+  border-radius: 14rpx;
+  background: #ffffff;
+}
+
+.triangle-side-name {
+  width: 110rpx;
+  color: #374151;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.triangle-side-value {
+  flex: 1;
+  color: #6b7280;
+  font-size: 22rpx;
+}
+
+.triangle-side-action {
+  color: #1689df;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.triangle-angle-result {
+  margin-top: 12rpx;
+  color: #1689df;
+  font-size: 25rpx;
+  font-weight: 700;
+  text-align: center;
+}
+
+.triangle-angle-error {
+  margin-top: 10rpx;
+  color: #dc2626;
+  font-size: 22rpx;
+  text-align: center;
+}
+
 .number-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12rpx;
+  display: flex;
+  flex-wrap: wrap;
   margin-top: 18rpx;
 }
 
 .number-key {
+  width: calc((100% - 24rpx) / 3);
   height: 78rpx;
+  margin-right: 8rpx;
+  margin-bottom: 12rpx;
   border-radius: 22rpx;
   background: #f8faf8;
   color: #111827;
   font-size: 30rpx;
   font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  line-height: 78rpx;
+  text-align: center;
+  box-sizing: border-box;
 }
 
 .number-key.utility {
@@ -1486,21 +1606,26 @@ page {
 }
 
 .number-actions {
-  margin-top: 16rpx;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12rpx;
+  margin-top: 28rpx;
+  display: flex;
 }
 
 .number-measure,
 .number-confirm {
+  width: calc((100% - 12rpx) / 2);
   height: 76rpx;
   border-radius: 24rpx;
   font-size: 28rpx;
   font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
+  line-height: 76rpx;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.number-confirm.full {
+  width: 100%;
+  margin-left: 0;
 }
 
 .number-measure {
@@ -1509,6 +1634,7 @@ page {
 }
 
 .number-confirm {
+  margin-left: 12rpx;
   color: #ffffff;
   background: #17a14c;
 }
@@ -1545,8 +1671,12 @@ page {
 .topbar-right {
   display: flex;
   align-items: center;
-  gap: 10rpx;
+  min-width: 0;
   flex-shrink: 0;
+}
+
+.topbar-right .topbar-chip + .topbar-chip {
+  margin-left: 8rpx;
 }
 
 /* ════════════════════════════════════════
@@ -1606,7 +1736,7 @@ page {
   background: #17a14c;
 }
 
-/* 子标签（光标拖动到墙体） */
+/* 光标拖放子标签 */
 .fab-sublabel {
   color: #4b5563;
   font-size: 18rpx;
@@ -1834,7 +1964,7 @@ page {
 }
 
 /* ════════════════════════════════════════
-   新建光标 FAB 按钮（底部唯一按钮）
+   底部光标三态控件
 ════════════════════════════════════════ */
 /* 覆盖 bottom-fab-bar 为居中单按钮 */
 .bottom-fab-bar {
@@ -1896,111 +2026,109 @@ page {
   text-align: center;
 }
 
-.fab-new-cursor {
+.cursor-fab {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 10rpx;
 }
 
-.fab-new-cursor-icon {
+/* 拖拽时保留底部圆形状态容器，只把其中的光标图形“拖走”。 */
+.cursor-fab-drop.is-dragging {
+  opacity: 1;
+}
+
+.cursor-fab-drop.is-dragging .cursor-fab-icon {
+  border: 3rpx solid #f07a21;
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.cursor-fab-drop.is-dragging .cursor-drop-h,
+.cursor-fab-drop.is-dragging .cursor-drop-v,
+.cursor-fab-drop.is-dragging .cursor-drop-box,
+.cursor-fab-drop.is-dragging .cursor-fab-label {
+  opacity: 0;
+}
+
+.cursor-fab-icon {
   position: relative;
   width: 100rpx;
   height: 100rpx;
   border-radius: 50%;
-  background: #17a14c;
-  box-shadow: 0 14rpx 32rpx rgba(23, 161, 76, 0.38);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 14rpx 32rpx rgba(15, 23, 42, 0.2);
 }
 
-/* 十字横线 */
-.nc-h {
-  position: absolute;
-  left: 22rpx;
-  right: 22rpx;
-  top: 50%;
-  height: 3rpx;
-  background: #ffffff;
-  transform: translateY(-50%);
-  border-radius: 2rpx;
-}
-
-/* 十字竖线 */
-.nc-v {
-  position: absolute;
-  top: 22rpx;
-  bottom: 22rpx;
-  left: 50%;
-  width: 3rpx;
-  background: #ffffff;
-  transform: translateX(-50%);
-  border-radius: 2rpx;
-}
-
-/* 中心小圆环 */
-.nc-ring {
-  position: absolute;
-  width: 28rpx;
-  height: 28rpx;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  border: 3rpx solid #ffffff;
-  border-radius: 50%;
-  box-sizing: border-box;
-}
-
-.fab-new-cursor-label {
+.cursor-fab-label {
   color: #374151;
-  font-size: 20rpx;
+  font-size: 18rpx;
   font-weight: 600;
   letter-spacing: 0.5rpx;
 }
 
-/* ════════════════════════════════════════
-   拖拽放置光标覆盖层
-════════════════════════════════════════ */
-.cursor-drag-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 30;
-  background: rgba(15, 23, 42, 0.35);
-}
-
-/* 顶部提示 + 取消 */
-.cursor-drag-hint-bar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  padding: 24rpx 28rpx 20rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: rgba(15, 23, 42, 0.72);
+.cursor-reset-icon {
+  border: 3rpx solid #f07a21;
   box-sizing: border-box;
 }
 
-.cursor-drag-hint-text {
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 24rpx;
-  flex: 1;
+.cursor-reset-image {
+  width: 100%;
+  height: 100%;
 }
 
-.cursor-drag-cancel {
-  color: #ffffff;
-  font-size: 26rpx;
-  font-weight: 600;
-  padding: 8rpx 24rpx;
-  border-radius: 999rpx;
-  background: rgba(255, 255, 255, 0.18);
-  margin-left: 24rpx;
-  flex-shrink: 0;
+.cursor-drop-icon {
+  background: rgba(255, 255, 255, 0.98);
+  border: 2rpx solid rgba(240, 122, 33, 0.2);
+  box-sizing: border-box;
+}
+
+.cursor-drop-h,
+.cursor-drop-v {
+  position: absolute;
+  background: #f07a21;
+  border-radius: 2rpx;
+}
+
+.cursor-drop-h {
+  left: 14rpx;
+  right: 14rpx;
+  top: 49rpx;
+  height: 3rpx;
+}
+
+.cursor-drop-v {
+  top: 14rpx;
+  bottom: 14rpx;
+  left: 50%;
+  width: 3rpx;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+}
+
+.cursor-drop-box {
+  position: absolute;
+  left: 36rpx;
+  top: 36rpx;
+  width: 28rpx;
+  height: 28rpx;
+  border: 3rpx solid #f07a21;
+  box-sizing: border-box;
+}
+
+/* ════════════════════════════════════════
+   拖拽放置光标展示层
+════════════════════════════════════════ */
+.cursor-drag-lens-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
 }
 
 .cursor-lens {
   position: absolute;
-  right: 28rpx;
-  top: 118rpx;
+  left: 24rpx;
+  top: 176rpx;
   z-index: 32;
   width: 196px;
   padding: 8px;
@@ -2055,6 +2183,15 @@ page {
   background: #f07a21;
 }
 
+.cursor-lens.vertex .cursor-lens-target {
+  border-color: #1677ff;
+  background: rgba(22, 119, 255, 0.14);
+}
+
+.cursor-lens.vertex .cursor-lens-cross {
+  background: #1677ff;
+}
+
 .cursor-lens-cross {
   position: absolute;
   left: 50%;
@@ -2095,58 +2232,6 @@ page {
   font-size: 20rpx;
   font-weight: 600;
   white-space: nowrap;
-}
-
-/* 跟随手指的光标标记（以手指位置为圆心） */
-.cursor-drag-marker {
-  position: absolute;
-  width: 0;
-  height: 0;
-  /* 通过负 margin 让中心对齐手指位置 */
-  pointer-events: none;
-}
-
-/* 外圆环 */
-.cdm-ring-outer {
-  position: absolute;
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 50%;
-  border: 3rpx solid rgba(255, 255, 255, 0.6);
-  background: transparent;
-  transform: translate(-50%, -50%);
-  box-sizing: border-box;
-}
-
-/* 内圆 */
-.cdm-ring-inner {
-  position: absolute;
-  width: 20rpx;
-  height: 20rpx;
-  border-radius: 50%;
-  background: #f07a21;
-  transform: translate(-50%, -50%);
-  box-shadow: 0 0 0 3rpx rgba(240, 122, 33, 0.4);
-}
-
-/* 横向准星线 */
-.cdm-cross-h {
-  position: absolute;
-  width: 120rpx;
-  height: 2rpx;
-  background: rgba(240, 122, 33, 0.85);
-  transform: translate(-50%, -50%);
-  border-radius: 1rpx;
-}
-
-/* 纵向准星线 */
-.cdm-cross-v {
-  position: absolute;
-  width: 2rpx;
-  height: 120rpx;
-  background: rgba(240, 122, 33, 0.85);
-  transform: translate(-50%, -50%);
-  border-radius: 1rpx;
 }
 
 

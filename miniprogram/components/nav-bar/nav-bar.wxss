@@ -22,6 +22,8 @@
 
 .nav-left {
   gap: var(--space-lg);
+  min-width: 0;
+  flex: 1;
 }
 
 .nav-right,
@@ -49,6 +51,7 @@
 .logo-text {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .app-title {
@@ -56,6 +59,9 @@
   font-weight: var(--font-weight-bold);
   color: var(--text-primary);
   line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .app-subtitle {
@@ -114,4 +120,31 @@
   border-radius: var(--radius-full);
   background: linear-gradient(135deg, #0fb04d 0%, #18a94b 100%);
   color: var(--text-inverse);
+}
+
+@media (max-width: 360px) {
+  .nav-bar-content {
+    padding-left: 24rpx;
+    padding-right: 24rpx;
+  }
+
+  .nav-left {
+    gap: var(--space-sm);
+  }
+
+  .app-subtitle,
+  .nav-divider {
+    display: none;
+  }
+
+  .nav-right,
+  .action-group {
+    gap: var(--space-sm);
+  }
+
+  .ble-status-icon,
+  .action-btn {
+    width: 56rpx;
+    height: 56rpx;
+  }
 }

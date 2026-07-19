@@ -1,6 +1,7 @@
 var util = require('../../utils/util.js');
 const api = require('../../utils/api.js');
 const templateUtils = require('../../utils/templates.js');
+const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
 
 const QUICK_TOOLS = [
   {
@@ -140,23 +141,6 @@ Page({
       app.globalData.requireLeadFirst = false;
       wx.navigateTo({
         url: '/pages/lead-form/lead-form',
-      });
-    } else if (app.globalData.restoreFloorPlan) {
-      const fp = app.globalData.restoreFloorPlan;
-      app.globalData.restoreFloorPlan = null;
-
-      let rooms = fp.layoutData;
-      if (typeof rooms === 'string') {
-        try {
-          rooms = JSON.parse(rooms);
-        } catch (e) {}
-      }
-
-      this.setData({
-        plannedRooms: rooms || [],
-        currentProject_id: fp._id || null,
-        showLeadModal: false,
-        isStaff: false,
       });
     } else if (!this.data.currentProject_id) {
       await this.fetchCloudPlans();
@@ -450,8 +434,7 @@ Page({
       return;
     }
 
-    getApp().globalData.restoreFloorPlan = Object.assign({}, plan, { isRestore: true });
-    wx.navigateTo({ url: '/pages/editor/editor' });
+    openSurveyingEditor({ floorPlanId: plan._id });
   },
 
   onContinueProjectTap: function () {
@@ -468,6 +451,8 @@ Page({
   },
 
   onSelectLayout: async function (e) {
+    openSurveyingEditor({ leadId: getApp().globalData.activeLeadId || '' });
+    return;
     var templateId = e.detail.id || e.currentTarget.dataset.id;
     var roomsData = templateUtils.generateTemplateRooms(templateId);
 
@@ -510,8 +495,7 @@ Page({
 
   onOpenCloudPlan: function (e) {
     const fp = e.detail.fp;
-    getApp().globalData.restoreFloorPlan = Object.assign({}, fp, { isRestore: true });
-    this.onShow();
+    if (fp && fp._id) openSurveyingEditor({ floorPlanId: fp._id });
   },
 
   async fetchCloudPlans() {
@@ -581,6 +565,7 @@ Page({
   },
 
   saveCurrentHubState: async function () {
+    return;
     if (!this.data.currentProject_id) return;
     const app = getApp();
     await api.request(`/floorplans/${this.data.currentProject_id}`, 'PUT', {
@@ -612,11 +597,7 @@ Page({
       showPropertyPanel: false,
     };
 
-    getApp().globalData.restoreFloorPlan = fpData;
-
-    wx.navigateTo({
-      url: '/pages/editor/editor',
-    });
+    openSurveyingEditor({ floorPlanId: fpData._id || '' });
   },
 
   onAIGen: function (e) {

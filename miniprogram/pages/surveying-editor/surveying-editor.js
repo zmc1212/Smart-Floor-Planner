@@ -4,6 +4,7 @@ const surveyCanvasRenderer = require('../../utils/surveyCanvasRenderer.js');
 const bluetooth = require('../../utils/bluetooth.js');
 const api = require('../../utils/api.js');
 const util = require('../../utils/util.js');
+const surveyLayout = require('../../utils/surveyLayout.js');
 
 const RESERVED_TOOLS = [
   { key: 'settings', label: '设置' },
@@ -22,9 +23,9 @@ const OBJECT_TOOLS = [
 ];
 
 const NUMBER_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '清空', '0', '退格'];
-const PROTOTYPE_DRAFT_KEY = 'surveying_prototype_draft_v1';
-const PROTOTYPE_DRAFT_BACKUP_KEY = 'surveying_last_draft_backup';
-const PROTOTYPE_SERVER_DRAFT_ID_KEY = 'surveying_prototype_server_draft_id';
+const FORMAL_DRAFT_KEY = 'surveying_draft_v1';
+const FORMAL_DRAFT_BACKUP_KEY = 'surveying_last_draft_backup';
+const FORMAL_SERVER_DRAFT_ID_KEY = 'surveying_floorplan_id';
 const COMPONENT_SPEC_TABS = [
   { key: 'length', label: '长度' },
   { key: 'depth', label: '宽度' },
@@ -79,6 +80,11 @@ const MEASURE_LINE_TOP_PX = 40;
 const WALL_VISUAL_SCALE = 0.56;
 const MIN_WALL_THICKNESS_PX = 10;
 const MAX_WALL_THICKNESS_PX = 22;
+const WALL_TOOLBAR_ACTION_WIDTH_PX = 36;
+const WALL_TOOLBAR_ACTION_GAP_PX = 8;
+const WALL_TOOLBAR_HORIZONTAL_PADDING_PX = 16;
+const WALL_TOOLBAR_BORDER_PX = 2;
+const WALL_TOOLBAR_VISIBLE_ACTIONS = 5;
 const DIMENSION_LINE_CENTER_PX = 16;
 const DIMENSION_LABEL_HEIGHT_PX = 24;
 const DIMENSION_COLLISION_GAP_PX = 8;
@@ -88,6 +94,8 @@ const CURSOR_LENS_SIZE_PX = 180;
 const CURSOR_LENS_SCALE = 0.12;
 const CURSOR_LENS_LINE_RANGE = 2500;
 const BLE_DUPLICATE_WINDOW_MS = 800;
+const PHONE_LEVEL_TOLERANCE_DEG = 8;
+const PHONE_HEADING_SAMPLE_COUNT = 9;
 const DIMENSION_OUTER_GAP_PX = 12;
 const REDLINE_JOIN_TRIM_PX = 0;
 const REDLINE_THICKNESS_PX = 3;
@@ -108,6 +116,20 @@ function formatMm(value) {
 function normalizeAngleDiff(currentAngle, previousAngle) {
   const diff = Math.abs(((currentAngle - previousAngle + 540) % 360) - 180);
   return Math.round(diff);
+}
+
+function normalizeHeading(angle) {
+  return ((Number(angle) % 360) + 360) % 360;
+}
+
+function headingDifference(first, second) {
+  return Math.abs(((normalizeHeading(first) - normalizeHeading(second) + 540) % 360) - 180);
+}
+
+function median(values) {
+  if (!values || !values.length) return null;
+  const sorted = values.slice().sort((first, second) => first - second);
+  return sorted[Math.floor(sorted.length / 2)];
 }
 
 function buildCoreTools(activeTool, thicknessMm) {
@@ -226,10 +248,12 @@ function getMidPoint(first, second) {
 }
 
 function canStartWallDrag(state) {
-  return state === 'cursorPlaced' || state === 'wallCommitted' || state === 'awaitingLength';
+  // Closing is a suggestion, not a modal state: users may keep measuring from this endpoint.
+  return state === 'cursorPlaced' || state === 'wallCommitted' || state === 'awaitingLength' ||
+    state === 'closing' || state === 'mergeClosing';
 }
 
-function isRestorablePrototypeDraft(draft) {
+function isRestorableSurveyDraft(draft) {
   if (!draft || draft.kind !== 'survey-wall-graph' || draft.source !== 'surveying-editor') return false;
   if (!Array.isArray(draft.floors) || !draft.floors.length) return false;
   const floor = draft.floors.find((item) => item.id === draft.activeFloorId) || draft.floors[0];
@@ -245,13 +269,13 @@ Page({
     rightRailBottom: 0,
     bottomSafeArea: 0,
     leadId: '',
-    title: '新版测绘体验',
+    title: '正式量房',
     activeView: '2D',
     activeTool: 'straight',
     measurementSide: 'left',
     thicknessMm: 200,
-    prototypeNotice: '体验版草稿可同步服务端，不进入正式输出',
-    showPrototypeExtras: false,
+    formalNotice: '正式量房草稿',
+    showFormalExtras: false,
     coreTools: buildCoreTools('straight', 200),
     objectTools: OBJECT_TOOLS,
     reservedTools: RESERVED_TOOLS,
@@ -278,14 +302,14 @@ Page({
     manualActionActive: false,
     manualActionSubtitle: '输入当前墙',
     cursorActionSubtitle: '保留已测墙',
-    showResetCursorButton: false,
-    cursorDragMode: false,
+    cursorPlacementState: 'placed',
     dragCursorX: 0,
     dragCursorY: 0,
     cursorLensVisible: false,
     cursorLensXLabel: 'X 0',
     cursorLensYLabel: 'Y 0',
     cursorLensSnapLabel: '网格吸附',
+    cursorLensSnapType: 'none',
     cursorLensVerticalLines: [],
     cursorLensHorizontalLines: [],
     cursorLensWalls: [],
@@ -295,12 +319,27 @@ Page({
     selectedWall: null,
     selectedOpening: null,
     objectToolsVisible: false,
+    canResumeWallDrawing: false,
     spaceSummary: null,
     numberPadVisible: false,
     numberPadTitle: '输入长度',
     numberPadSubtitle: '单位：mm',
     numberInput: '',
+    numberUnit: 'mm',
     numberKeys: NUMBER_KEYS,
+    angleActionAvailable: false,
+    angleMeasureVisible: false,
+    angleMeasureTab: 'phone',
+    angleMeasureStatus: '请先将手机水平放置',
+    anglePhoneLevelReady: false,
+    anglePhoneReferenceReady: false,
+    anglePhoneDialStyle: 'transform: rotate(0deg);',
+    anglePhoneLiveValue: '0',
+    angleTriangleA: '',
+    angleTriangleB: '',
+    angleTriangleD: '',
+    angleTriangleResult: '',
+    angleTriangleError: '',
     historySummary: {
       undo: 0,
       redo: 0
@@ -323,7 +362,7 @@ Page({
   onLoad(options) {
     const sysInfo = wx.getSystemInfoSync();
     const menuButtonInfo = wx.getMenuButtonBoundingClientRect();
-    const context = app.globalData.surveyingPrototypeContext || {};
+    const context = app.globalData.surveyingEditorContext || {};
     const screenHeight = sysInfo.screenHeight || sysInfo.windowHeight || 0;
     const safeAreaBottom = sysInfo.safeArea && screenHeight
       ? Math.max(0, screenHeight - sysInfo.safeArea.bottom)
@@ -335,15 +374,34 @@ Page({
 
     const leadId = options.leadId || context.leadId || '';
     const contextFloorPlanId = options.floorPlanId || context.floorPlanId || '';
-    this.prototypeDraftKey = this.getPrototypeDraftKey(leadId);
-    this.serverDraftId = contextFloorPlanId || this.getStoredServerDraftId(leadId);
-    const restoredDraft = this.loadPrototypeDraft(leadId, context.surveyDraft);
+    const startNewSurvey = options.newSurvey === '1' || !!context.startNewSurvey;
+    const newSurveyKey = options.newSurveyKey || context.newSurveyKey || '';
+    const newSurveyDraftScope = startNewSurvey ? `new_${newSurveyKey || Date.now()}` : '';
+    this.isNewSurveySession = startNewSurvey;
+    this.formalDraftKey = this.getFormalDraftKey(leadId, newSurveyDraftScope);
+    this.serverDraftId = startNewSurvey ? '' : (contextFloorPlanId || this.getStoredServerDraftId(leadId));
+    const restoredDraft = startNewSurvey
+      ? null
+      : this.loadFormalDraft(leadId, context.surveyGraph, this.formalDraftKey);
     this.draft = restoredDraft || surveyGraph.resetCursor(surveyGraph.createSurveyDraft());
+    const initialFloor = surveyGraph.getActiveFloor(this.draft);
+    this.cursorPlacementState = initialFloor && initialFloor.session && initialFloor.session.state === 'spaceClosed'
+      ? 'awaitingWallDrop'
+      : 'placed';
     this.history = { undo: [], redo: [] };
+    this.pendingMeasurementRecords = [];
+    this.reportedMeasurementKeys = Object.create(null);
     this.touchState = null;
     this.canvasRect = null;
     this.surveyCanvas = null;
     this.surveyCtx = null;
+    this.cursorDragCanvas = null;
+    this.cursorDragCtx = null;
+    this.cursorDragCanvasDpr = sysInfo.pixelRatio || 1;
+    this.cursorDragCanvasPoint = null;
+    this.cursorDragClientPoint = null;
+    this.cursorDragAnimationFrame = null;
+    this.cursorLensLastUpdateAt = 0;
     this.componentCanvas = null;
     this.componentRenderer = null;
     this.componentScene = null;
@@ -354,11 +412,22 @@ Page({
     this.componentAnimationRunning = false;
     this.surveyCanvasDpr = sysInfo.pixelRatio || 1;
     this.surveyRenderScene = null;
+    this.cursorDragPending = false;
+    this.cursorDragTouchId = null;
+    this.cursorControlRect = null;
     this.canvasControls = {};
     this._lastBleNumberDist = null;
     this._lastBleNumberTime = 0;
     this.bleMeasureTimer = null;
     this.bleFailTimer = null;
+    this.angleMeasurementSource = 'manual';
+    this.anglePhoneHeading = null;
+    this.anglePhoneBaseline = null;
+    this.anglePhoneSamples = [];
+    this.deviceMotionListening = false;
+    this.deviceMotionHandler = this.onDeviceMotionChange.bind(this);
+    this.angleRemeasureOriginalDraft = null;
+    this.angleRemeasureHistoryDraft = null;
     this._bindBluetoothCallbacks();
 
     this.setData({
@@ -370,10 +439,11 @@ Page({
       bottomSafeArea: safeAreaBottom,
       leadId,
       serverDraftId: this.serverDraftId || '',
-      title: context.leadName ? `${context.leadName} · 新版测绘` : '新版测绘体验',
-      prototypeNotice: restoredDraft ? '已恢复本地体验草稿，可继续保存到服务端' : '体验版草稿可同步服务端，不进入正式输出'
+      title: context.leadName ? `${context.leadName} · 正式量房` : '正式量房',
+      formalNotice: restoredDraft ? '已恢复本地草稿' : '新建正式量房'
     });
     this.syncFromDraft();
+    if (this.serverDraftId) this.loadFormalFloorPlan(this.serverDraftId);
   },
 
   onReady() {
@@ -382,21 +452,30 @@ Page({
 
   onShow() {
     this.refreshCanvasRect();
+    if (this.data.angleMeasureVisible && this.data.angleMeasureTab === 'phone') {
+      this.startPhoneAngleMeasurement();
+    }
+  },
+
+  onHide() {
+    this.stopPhoneAngleMeasurement();
   },
 
   onUnload() {
-    app.globalData.surveyingPrototypeContext = null;
+    app.globalData.surveyingEditorContext = null;
+    this.clearCursorDragCanvas();
     this.clearBleMeasureTimers();
-    this.persistPrototypeDraft();
+    this.stopPhoneAngleMeasurement();
+    this.persistFormalDraft();
     this.destroyComponentScene();
   },
 
-  getPrototypeDraftKey(leadId) {
-    return `${PROTOTYPE_DRAFT_KEY}_${leadId || 'standalone'}`;
+  getFormalDraftKey(leadId, scope) {
+    return `${FORMAL_DRAFT_KEY}_${leadId || 'standalone'}${scope ? `_${scope}` : ''}`;
   },
 
-  normalizeRestoredPrototypeDraft(draft) {
-    if (!isRestorablePrototypeDraft(draft)) return null;
+  normalizeRestoredFormalDraft(draft) {
+    if (!isRestorableSurveyDraft(draft)) return null;
     const restored = surveyGraph.cloneDraft(draft);
     const floor = surveyGraph.getActiveFloor(restored);
     const session = floor.session || {};
@@ -406,24 +485,24 @@ Page({
     return restored;
   },
 
-  loadPrototypeDraft(leadId, serverDraft) {
+  loadFormalDraft(leadId, serverDraft, draftKey) {
     try {
-      const draft = wx.getStorageSync(this.getPrototypeDraftKey(leadId));
-      const localDraft = this.normalizeRestoredPrototypeDraft(draft);
+      const draft = wx.getStorageSync(draftKey || this.getFormalDraftKey(leadId));
+      const localDraft = this.normalizeRestoredFormalDraft(draft);
       if (localDraft) return localDraft;
-      return this.normalizeRestoredPrototypeDraft(serverDraft);
+      return this.normalizeRestoredFormalDraft(serverDraft);
     } catch (err) {
-      return this.normalizeRestoredPrototypeDraft(serverDraft);
+      return this.normalizeRestoredFormalDraft(serverDraft);
     }
   },
 
-  persistPrototypeDraft() {
+  persistFormalDraft() {
     if (!this.draft) return false;
     try {
-      wx.setStorageSync(this.prototypeDraftKey || this.getPrototypeDraftKey(this.data.leadId || ''), surveyGraph.cloneDraft(this.draft));
+      wx.setStorageSync(this.formalDraftKey || this.getFormalDraftKey(this.data.leadId || ''), surveyGraph.cloneDraft(this.draft));
       return true;
     } catch (err) {
-      // Local prototype persistence is best-effort and must not block measuring.
+      // 本地草稿持久化失败不应阻塞量房。
       return false;
     }
   },
@@ -431,7 +510,7 @@ Page({
   getStoredServerDraftId(leadId) {
     const suffix = leadId || 'standalone';
     try {
-      return wx.getStorageSync(`${PROTOTYPE_SERVER_DRAFT_ID_KEY}_${suffix}`) || '';
+      return wx.getStorageSync(`${FORMAL_SERVER_DRAFT_ID_KEY}_${suffix}`) || '';
     } catch (err) {
       return '';
     }
@@ -441,7 +520,7 @@ Page({
     const suffix = leadId || 'standalone';
     this.serverDraftId = '';
     try {
-      wx.removeStorageSync(`${PROTOTYPE_SERVER_DRAFT_ID_KEY}_${suffix}`);
+      wx.removeStorageSync(`${FORMAL_SERVER_DRAFT_ID_KEY}_${suffix}`);
     } catch (err) {
       // 清理本地服务端草稿 ID 失败不阻塞后续重新创建。
     }
@@ -453,7 +532,7 @@ Page({
     const suffix = leadId || 'standalone';
     this.serverDraftId = floorPlanId;
     try {
-      wx.setStorageSync(`${PROTOTYPE_SERVER_DRAFT_ID_KEY}_${suffix}`, floorPlanId);
+      wx.setStorageSync(`${FORMAL_SERVER_DRAFT_ID_KEY}_${suffix}`, floorPlanId);
     } catch (err) {
       // 服务端草稿 ID 本地缓存失败不影响本次保存结果。
     }
@@ -469,7 +548,7 @@ Page({
     return app.globalData.token || wx.getStorageSync('token') || '';
   },
 
-  getPrototypeDraftStats(draft) {
+  getSurveyGraphStats(draft) {
     if (!draft || !Array.isArray(draft.floors) || !draft.floors.length) {
       return { wallCount: 0, spaceCount: 0, openingCount: 0 };
     }
@@ -486,24 +565,28 @@ Page({
     };
   },
 
-  buildPrototypeCloudLayoutData() {
-    return {
-      version: 3,
-      measurementMode: 'surveying_prototype',
-      prototypeOnly: true,
-      source: 'surveying-editor',
-      rooms: [],
-      homeOutline: null,
-      partitions: [],
-      draftState: {
-        schema: 'survey-wall-graph',
-        savedAt: new Date().toISOString()
-      },
-      surveyDraft: this.draft ? surveyGraph.cloneDraft(this.draft) : null
-    };
+  buildFormalCloudLayoutData(status) {
+    return surveyLayout.createFormalSurveyLayout(this.draft, status);
   },
 
-  async savePrototypeDraftToCloud() {
+  async loadFormalFloorPlan(floorPlanId) {
+    try {
+      const res = await api.request(`/floorplans/${floorPlanId}`, 'GET');
+      const layout = res && res.data ? surveyLayout.parseFormalSurveyLayout(res.data.layoutData) : null;
+      if (!layout) throw new Error('该旧版户型已下线，请新建正式量房');
+      const restored = this.normalizeRestoredFormalDraft(layout.surveyGraph);
+      if (!restored) throw new Error('正式量房墙图无效');
+      this.serverDraftId = res.data._id;
+      this.draft = restored;
+      this.persistServerDraftId(this.data.leadId || '', res.data._id);
+      this.setData({ title: res.data.name || this.data.title, formalNotice: res.data.status === 'completed' ? '已完成量房' : '已恢复正式草稿' });
+      this.syncFromDraft();
+    } catch (err) {
+      wx.showToast({ title: (err && err.error) || err.message || '户型加载失败', icon: 'none' });
+    }
+  },
+
+  async saveFormalFloorPlan(status) {
     const leadId = this.data.leadId || '';
     const openid = this.getCurrentOpenid();
     const token = this.getCurrentToken();
@@ -512,20 +595,22 @@ Page({
       throw new Error('Please log in before saving the surveying draft');
     }
 
-    const layoutData = this.buildPrototypeCloudLayoutData();
-    const stats = this.getPrototypeDraftStats(layoutData.surveyDraft);
+    const layoutData = this.buildFormalCloudLayoutData(status);
+    const stats = this.getSurveyGraphStats(layoutData.surveyGraph);
     const nameDate = util.formatTime(new Date()).split(' ')[0].replace(/\//g, '');
     const payload = {
       openid,
       leadId,
-      name: `新版测绘草稿-${nameDate}`,
+      name: `正式量房-${nameDate}`,
       layoutData,
       source: 'manual',
-      status: 'draft'
+      status: status === 'completed' ? 'completed' : 'draft'
     };
 
-    const currentDraftId = this.serverDraftId || this.data.serverDraftId || this.getStoredServerDraftId(leadId);
-    console.info('[surveying-editor] Saving prototype draft to cloud', {
+    const currentDraftId = this.isNewSurveySession
+      ? ''
+      : (this.serverDraftId || this.data.serverDraftId || this.getStoredServerDraftId(leadId));
+    console.info('[surveying-editor] Saving formal survey plan to cloud', {
       leadId,
       floorPlanId: currentDraftId || '(new)',
       stats
@@ -548,13 +633,15 @@ Page({
 
     if (res && res.success && res.data && res.data._id) {
       this.persistServerDraftId(leadId, res.data._id);
+      this.isNewSurveySession = false;
       if (leadId) {
         await api.request(`/leads/${leadId}`, 'PUT', {
           openid,
           floorPlanId: res.data._id
         });
       }
-      console.info('[surveying-editor] Prototype draft saved to cloud', {
+      await this.flushPendingMeasurements(res.data._id);
+      console.info('[surveying-editor] Formal survey plan saved to cloud', {
         leadId,
         floorPlanId: res.data._id,
         stats
@@ -565,13 +652,13 @@ Page({
     throw new Error('Cloud save did not return a floorPlanId');
   },
 
-  schedulePrototypePersist() {
+  scheduleFormalPersist() {
     if (this.persistTimer) {
       clearTimeout(this.persistTimer);
     }
     this.persistTimer = setTimeout(() => {
       this.persistTimer = null;
-      this.persistPrototypeDraft();
+      this.persistFormalDraft();
     }, 300);
   },
 
@@ -608,6 +695,29 @@ Page({
     this.clearBleMeasureTimers();
     const target = this.bleMeasureTarget || 'numberPad';
     this.bleMeasureTarget = '';
+    const isAngleTriangleTarget = target.indexOf('angleTriangle') === 0;
+    if (distanceInMeters && distanceInMeters > 0) {
+      const floor = this.draft ? surveyGraph.getActiveFloor(this.draft) : null;
+      const session = floor && floor.session ? floor.session : {};
+      const opening = floor && session.selectedOpeningId ? surveyGraph.getOpening(floor, session.selectedOpeningId) : null;
+      this.reportMeasurement({
+        value: distanceInMeters,
+        type: isAngleTriangleTarget ? 'angle_triangle_side' :
+          (target === 'componentSpec' ? (opening ? 'opening_width' : 'length') : 'length'),
+        direction: session.selectedWallId || (opening && opening.wallId) ||
+          (isAngleTriangleTarget ? session.anchorNodeId || '' : ''),
+        metadata: {
+          target,
+          wallId: session.selectedWallId || '',
+          openingId: opening ? opening.id : '',
+          angleSide: isAngleTriangleTarget ? target.replace('angleTriangle', '').toLowerCase() : ''
+        }
+      });
+    }
+    if (isAngleTriangleTarget) {
+      this.applyBleReadingToAngleTriangle(target, distanceInMeters);
+      return;
+    }
     if (target === 'componentSpec') {
       this.applyBleReadingToComponentSpec(distanceInMeters);
       return;
@@ -724,11 +834,220 @@ Page({
         componentSpecMode: specMode,
         componentSpecInput: inputValue
       });
-      this.schedulePrototypePersist();
+      this.scheduleFormalPersist();
       wx.showToast({ title: '已填入测距结果', icon: 'none' });
     } catch (err) {
       wx.showToast({ title: err.message || '输入无效', icon: 'none' });
     }
+  },
+
+  canRemeasureLastDiagonalAngle(floor, session) {
+    const lastWall = floor && floor.walls && floor.walls[floor.walls.length - 1];
+    return !!lastWall && floor.walls.length >= 2 && lastWall.mode === 'diagonal' &&
+      session && session.state === 'wallCommitted' && !session.previewPoint &&
+      !(floor.openings || []).some((opening) => opening.wallId === lastWall.id);
+  },
+
+  openAngleMeasurement() {
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const session = floor.session;
+    const canRemeasureLastWall = this.canRemeasureLastDiagonalAngle(floor, session);
+    if ((!session.previewPoint || session.mode !== 'diagonal') && !canRemeasureLastWall) {
+      wx.showToast({ title: '请先拖出与上一面墙相连的斜线', icon: 'none' });
+      return;
+    }
+
+    if (canRemeasureLastWall) {
+      this.angleRemeasureOriginalDraft = surveyGraph.cloneDraft(this.draft);
+      this.draft = surveyGraph.reopenLastDiagonalWallForAngle(this.draft);
+    }
+
+    this.draft = surveyGraph.holdPreviewForInput(this.draft);
+    this.numberPadMode = 'angle';
+    this.angleMeasurementSource = 'manual';
+    this.resetAngleTriangle();
+    this.resetPhoneAngleState();
+    this.syncFromDraft({
+      numberPadVisible: true,
+      numberPadTitle: '测量角度',
+      numberPadSubtitle: '确认后锁定斜线方向，再测量墙长',
+      numberInput: '',
+      numberUnit: '°',
+      angleMeasureVisible: true,
+      angleMeasureTab: 'phone',
+      angleMeasureStatus: '将手机水平贴合上一面墙后设为基准',
+      anglePhoneLevelReady: false,
+      anglePhoneReferenceReady: false,
+      anglePhoneDialStyle: 'transform: rotate(0deg);',
+      anglePhoneLiveValue: '0'
+    });
+    this.startPhoneAngleMeasurement();
+  },
+
+  resetPhoneAngleState() {
+    this.anglePhoneHeading = null;
+    this.anglePhoneBaseline = null;
+    this.anglePhoneSamples = [];
+  },
+
+  startPhoneAngleMeasurement() {
+    this.stopPhoneAngleMeasurement();
+    this.resetPhoneAngleState();
+    if (!wx.startDeviceMotionListening || !wx.onDeviceMotionChange) {
+      this.setData({ angleMeasureStatus: '当前设备不支持手机姿态测角' });
+      return;
+    }
+
+    wx.onDeviceMotionChange(this.deviceMotionHandler);
+    wx.startDeviceMotionListening({
+      interval: 'game',
+      success: () => {
+        this.deviceMotionListening = true;
+      },
+      fail: () => {
+        if (wx.offDeviceMotionChange) wx.offDeviceMotionChange(this.deviceMotionHandler);
+        this.setData({ angleMeasureStatus: '无法启用手机姿态传感器，请手输或使用勾股定理测量' });
+      }
+    });
+  },
+
+  stopPhoneAngleMeasurement() {
+    if (wx.offDeviceMotionChange && this.deviceMotionHandler) {
+      wx.offDeviceMotionChange(this.deviceMotionHandler);
+    }
+    if (this.deviceMotionListening && wx.stopDeviceMotionListening) {
+      wx.stopDeviceMotionListening({ fail: () => {} });
+    }
+    this.deviceMotionListening = false;
+  },
+
+  onDeviceMotionChange(event) {
+    if (!this.data.angleMeasureVisible || this.data.angleMeasureTab !== 'phone') return;
+    const heading = Number(event && event.alpha);
+    if (!Number.isFinite(heading)) return;
+
+    const pitch = Math.abs(Number(event.beta) || 0);
+    const roll = Math.abs(Number(event.gamma) || 0);
+    const levelReady = pitch <= PHONE_LEVEL_TOLERANCE_DEG && roll <= PHONE_LEVEL_TOLERANCE_DEG;
+    this.anglePhoneHeading = normalizeHeading(heading);
+    if (!levelReady) {
+      this.setData({
+        anglePhoneLevelReady: false,
+        angleMeasureStatus: '请保持手机水平，圆盘变蓝后再设基准'
+      });
+      return;
+    }
+
+    this.anglePhoneSamples.push(this.anglePhoneHeading);
+    if (this.anglePhoneSamples.length > PHONE_HEADING_SAMPLE_COUNT) this.anglePhoneSamples.shift();
+    const stableHeading = median(this.anglePhoneSamples);
+    if (stableHeading === null) return;
+    this.anglePhoneHeading = stableHeading;
+
+    if (!Number.isFinite(this.anglePhoneBaseline)) {
+      this.setData({
+        anglePhoneLevelReady: true,
+        angleMeasureStatus: '手机已水平，请设为基准墙方向'
+      });
+      return;
+    }
+
+    const angle = Math.round(headingDifference(this.anglePhoneHeading, this.anglePhoneBaseline));
+    this.angleMeasurementSource = 'phone-motion';
+    this.setData({
+      anglePhoneLevelReady: true,
+      anglePhoneReferenceReady: true,
+      anglePhoneLiveValue: String(angle),
+      anglePhoneDialStyle: `transform: rotate(${angle}deg);`,
+      angleMeasureStatus: '将手机对齐当前斜墙，确认实时角度',
+      numberInput: String(angle)
+    });
+  },
+
+  onPhoneSetAngleBaseline() {
+    if (!this.data.anglePhoneLevelReady || !Number.isFinite(this.anglePhoneHeading)) {
+      wx.showToast({ title: '请先将手机水平放稳', icon: 'none' });
+      return;
+    }
+    this.anglePhoneBaseline = this.anglePhoneHeading;
+    this.anglePhoneSamples = [];
+    this.setData({
+      anglePhoneReferenceReady: true,
+      angleMeasureStatus: '基准已设定，请将手机转向当前斜墙'
+    });
+  },
+
+  onAngleMeasureTab(e) {
+    const tab = e.currentTarget.dataset.tab === 'pythagorean' ? 'pythagorean' : 'phone';
+    this.setData({ angleMeasureTab: tab });
+    if (tab === 'phone') {
+      this.startPhoneAngleMeasurement();
+    } else {
+      this.stopPhoneAngleMeasurement();
+    }
+  },
+
+  resetAngleTriangle() {
+    this.angleTriangle = { a: null, b: null, d: null };
+  },
+
+  onResetAngleTriangle() {
+    this.resetAngleTriangle();
+    this.angleMeasurementSource = 'manual';
+    this.setData({
+      angleTriangleA: '',
+      angleTriangleB: '',
+      angleTriangleD: '',
+      angleTriangleResult: '',
+      angleTriangleError: '',
+      numberInput: ''
+    });
+  },
+
+  onTriangleMeasure(e) {
+    if (!app.globalData.bleConnected) {
+      wx.showToast({ title: '蓝牙未连接', icon: 'none' });
+      return;
+    }
+    const side = e.currentTarget.dataset.side || 'a';
+    const targetMap = { a: 'angleTriangleA', b: 'angleTriangleB', d: 'angleTriangleD' };
+    const target = targetMap[side];
+    if (!target) return;
+    this.startBluetoothMeasure(target);
+  },
+
+  applyBleReadingToAngleTriangle(target, distanceInMeters) {
+    if (!this.data.angleMeasureVisible || this.data.angleMeasureTab !== 'pythagorean') return;
+    if (distanceInMeters === null || distanceInMeters <= 0) {
+      wx.showToast({ title: '测量失败，请重试', icon: 'none' });
+      return;
+    }
+    if (this.shouldIgnoreDuplicateBleReading(distanceInMeters)) return;
+
+    const side = target.replace('angleTriangle', '').toLowerCase();
+    const nextTriangle = Object.assign({}, this.angleTriangle || {});
+    nextTriangle[side] = distanceInMeters;
+    this.angleTriangle = nextTriangle;
+    const patch = {
+      angleTriangleA: nextTriangle.a ? nextTriangle.a.toFixed(3) : '',
+      angleTriangleB: nextTriangle.b ? nextTriangle.b.toFixed(3) : '',
+      angleTriangleD: nextTriangle.d ? nextTriangle.d.toFixed(3) : '',
+      angleTriangleError: ''
+    };
+
+    if (nextTriangle.a && nextTriangle.b && nextTriangle.d) {
+      const angle = util.calculateAngle(nextTriangle.a, nextTriangle.b, nextTriangle.d);
+      if (!Number.isFinite(angle)) {
+        patch.angleTriangleError = '三边数据无法构成有效夹角，请重测';
+        patch.angleTriangleResult = '';
+      } else {
+        const roundedAngle = Math.round(angle);
+        this.angleMeasurementSource = 'pythagorean';
+        patch.angleTriangleResult = `${roundedAngle}°`;
+        patch.numberInput = String(roundedAngle);
+      }
+    }
+    this.setData(patch);
   },
 
   refreshCanvasRect() {
@@ -743,6 +1062,7 @@ Page({
             canvasHeight: rect.height
           }, () => {
             this.initSurveyCanvas();
+            this.initCursorDragCanvas();
             this.syncFromDraft();
           });
         }
@@ -780,6 +1100,84 @@ Page({
         this.surveyCanvasDpr = dpr || 1;
         this.drawSurveyCanvas();
       });
+  },
+
+  initCursorDragCanvas() {
+    if (!this.canvasRect || !this.canvasRect.width || !this.canvasRect.height) return;
+
+    wx.createSelectorQuery()
+      .in(this)
+      .select('#cursor-drag-canvas')
+      .fields({ node: true, size: true })
+      .exec((res) => {
+        const target = res && res[0];
+        const canvas = target && target.node;
+        if (!canvas) return;
+
+        let dpr = this.cursorDragCanvasDpr || 1;
+        try {
+          dpr = wx.getWindowInfo ? wx.getWindowInfo().pixelRatio : wx.getSystemInfoSync().pixelRatio;
+        } catch (err) {
+          dpr = this.cursorDragCanvasDpr || 1;
+        }
+
+        const width = this.canvasRect.width || target.width || 0;
+        const height = this.canvasRect.height || target.height || 0;
+        if (!width || !height) return;
+
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
+        this.cursorDragCanvas = canvas;
+        this.cursorDragCtx = canvas.getContext('2d');
+        this.cursorDragCanvasDpr = dpr || 1;
+        surveyCanvasRenderer.clearDraggingCursor(
+          this.cursorDragCtx,
+          { width, height },
+          { dpr: this.cursorDragCanvasDpr }
+        );
+      });
+  },
+
+  queueCursorDragCanvas(point) {
+    if (!point || !this.canvasRect) return;
+    this.cursorDragCanvasPoint = {
+      x: point.x - this.canvasRect.left,
+      y: point.y - this.canvasRect.top
+    };
+    if (!this.cursorDragCanvas || !this.cursorDragCtx || this.cursorDragAnimationFrame !== null) return;
+
+    const render = () => {
+      this.cursorDragAnimationFrame = null;
+      if (!this.cursorDragCanvasPoint || this.cursorPlacementState !== 'dragging') return;
+      surveyCanvasRenderer.drawDraggingCursor(
+        this.cursorDragCtx,
+        { width: this.canvasRect.width, height: this.canvasRect.height },
+        this.cursorDragCanvasPoint,
+        { dpr: this.cursorDragCanvasDpr || 1 }
+      );
+    };
+
+    if (typeof this.cursorDragCanvas.requestAnimationFrame === 'function') {
+      this.cursorDragAnimationFrame = this.cursorDragCanvas.requestAnimationFrame(render);
+    } else {
+      render();
+    }
+  },
+
+  clearCursorDragCanvas() {
+    if (this.cursorDragCanvas && this.cursorDragAnimationFrame !== null
+      && typeof this.cursorDragCanvas.cancelAnimationFrame === 'function') {
+      this.cursorDragCanvas.cancelAnimationFrame(this.cursorDragAnimationFrame);
+    }
+    this.cursorDragAnimationFrame = null;
+    this.cursorDragCanvasPoint = null;
+    this.cursorDragClientPoint = null;
+    if (!this.cursorDragCtx || !this.canvasRect) return;
+    surveyCanvasRenderer.clearDraggingCursor(
+      this.cursorDragCtx,
+      { width: this.canvasRect.width, height: this.canvasRect.height },
+      { dpr: this.cursorDragCanvasDpr || 1 }
+    );
   },
 
   drawSurveyCanvas() {
@@ -822,10 +1220,34 @@ Page({
       ctx.arc(close.cx, close.cy, close.radius, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 24px sans-serif';
+      ctx.font = 'bold 14px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('合', close.cx, close.cy + 1);
+    }
+
+    if (controls.activeAngle) {
+      const angle = controls.activeAngle;
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(angle.anchor.x, angle.anchor.y, angle.arcRadius, angle.startAngle, angle.endAngle, angle.anticlockwise);
+      ctx.stroke();
+
+      ctx.shadowColor = 'rgba(249, 115, 22, 0.2)';
+      ctx.shadowBlur = 6;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
+      this.drawRoundRect(ctx, angle.left, angle.top, angle.width, angle.height, 15);
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.strokeStyle = 'rgba(249, 115, 22, 0.76)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = '#ea580c';
+      ctx.font = '700 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(angle.text, angle.left + angle.width / 2, angle.top + angle.height / 2 + 1);
     }
 
     if (controls.measurePosition) {
@@ -838,21 +1260,43 @@ Page({
       ctx.fill();
       ctx.shadowColor = 'transparent';
       ctx.fillStyle = '#111827';
-      ctx.font = 'bold 13px sans-serif';
+      ctx.font = '600 11px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('当前测量位置', measure.tip.x + measure.tip.width / 2, measure.tip.y + measure.tip.height / 2);
+      ctx.fillText(measure.tip.text, measure.tip.x + measure.tip.width / 2, measure.tip.y + measure.tip.height / 2);
 
       ctx.beginPath();
       ctx.fillStyle = 'rgba(65, 65, 69, 0.92)';
       ctx.arc(measure.button.cx, measure.button.cy, measure.button.radius, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#ef4444';
-      this.drawRoundRect(ctx, measure.button.cx - 17, measure.button.cy - 10, 34, 6, 3);
+      this.drawRoundRect(ctx, measure.button.cx - 14, measure.button.cy - 8, 28, 4, 2);
       ctx.fill();
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 24px sans-serif';
-      ctx.fillText(measure.label, measure.button.cx, measure.button.cy + 13);
+      ctx.font = 'bold 20px sans-serif';
+      ctx.fillText(measure.label, measure.button.cx, measure.button.cy + 11);
+    }
+
+    if (controls.initialGuide) {
+      const guide = controls.initialGuide;
+      ctx.shadowColor = 'rgba(15, 23, 42, 0.16)';
+      ctx.shadowBlur = 10;
+      ctx.shadowOffsetY = 3;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
+      this.drawRoundRect(ctx, guide.tip.x, guide.tip.y, guide.tip.width, guide.tip.height, 18);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(guide.pointer.x - 9, guide.tip.y + guide.tip.height - 1);
+      ctx.lineTo(guide.pointer.x + 9, guide.tip.y + guide.tip.height - 1);
+      ctx.lineTo(guide.pointer.x, guide.pointer.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.fillStyle = '#111827';
+      ctx.font = '600 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(guide.tip.text, guide.tip.x + guide.tip.width / 2, guide.tip.y + guide.tip.height / 2);
     }
 
     ctx.restore();
@@ -866,6 +1310,10 @@ Page({
     const selectedWall = this.buildSelectedWall(floor, session.selectedWallId);
     const stageMessage = this.buildStageMessage(floor, session, selectedWall);
     const bottomState = this.buildBottomActionState(floor, session);
+    const cursorPlacementState = this.resolveCursorPlacementState(floor, session);
+    if (cursorPlacementState !== 'dragging') {
+      this.cursorPlacementState = cursorPlacementState;
+    }
     const renderData = this.buildCanvasRenderData(floor, session);
     const selectedOpening = this.buildSelectedOpening(floor, session.selectedOpeningId);
     const componentState = this.buildComponentEditorState(floor, selectedOpening);
@@ -883,9 +1331,13 @@ Page({
       topMetricVisible: renderData.topMetricVisible,
       topMetricLength: renderData.topMetricLength,
       topMetricAngle: renderData.topMetricAngle,
+      angleActionAvailable: (session.mode === 'diagonal' && !!session.previewPoint &&
+        (session.state === 'wallPreview' || session.state === 'awaitingLength') && floor.walls.length > 0) ||
+        this.canRemeasureLastDiagonalAngle(floor, session),
       measurePositionVisible: renderData.measurePositionVisible,
       measurePositionStyle: renderData.measurePositionStyle,
       measurePositionButtonLabel: renderData.measurePositionButtonLabel,
+      canSwitchInitialMeasurementSide: this.isFirstMeasurePositionStage(floor, session),
       closureGuideVisible: renderData.closureGuideVisible,
       closureGuideStyle: renderData.closureGuideStyle,
       closeActionVisible: renderData.closeActionVisible,
@@ -896,6 +1348,7 @@ Page({
       selectedWall,
       selectedOpening,
       objectToolsVisible: !!(selectedWall || selectedOpening),
+      canResumeWallDrawing: !!selectedOpening && floor.walls.length > 0 && !floor.spaces.some((space) => space.closed),
       componentEditorMode: componentState.mode,
       componentEditorTitle: componentState.title,
       componentCategories: componentState.categories,
@@ -909,13 +1362,18 @@ Page({
       manualActionActive: bottomState.manualActionActive,
       manualActionSubtitle: bottomState.manualActionSubtitle,
       cursorActionSubtitle: bottomState.cursorActionSubtitle,
-      showResetCursorButton: this.buildShowResetCursorButton(floor, session),
+      cursorPlacementState,
       historySummary: {
         undo: this.history.undo.length,
         redo: this.history.redo.length
       }
     }, extraData || {}), () => {
       this.drawSurveyCanvas();
+      if (this.data.cursorPlacementState === 'awaitingWallDrop') {
+        this.refreshCursorControlRect();
+      } else if (this.data.cursorPlacementState !== 'dragging') {
+        this.cursorControlRect = null;
+      }
       if (this.data.componentEditorVisible) {
         this.scheduleComponentSceneRender();
       }
@@ -1027,7 +1485,13 @@ Page({
       closeHintText = '已检测到可合并闭合边，点击“合”即可闭合';
     }
 
-    if (session.anchorNodeId && session.state !== 'spaceClosed' && session.state !== 'wallSelected' && session.state !== 'remeasureAwaitingInput') {
+    if (
+      this.resolveCursorPlacementState(floor, session) === 'placed' &&
+      session.anchorNodeId &&
+      session.state !== 'spaceClosed' &&
+      session.state !== 'wallSelected' &&
+      session.state !== 'remeasureAwaitingInput'
+    ) {
       const anchor = surveyGraph.getNode(floor, session.anchorNodeId);
       if (anchor) {
         const cursorPoint = session.previewPoint || anchor;
@@ -1045,10 +1509,27 @@ Page({
     }
 
     const activeSegment = scene.activeSegment;
+    const angleActionAvailable = (session.mode === 'diagonal' && !!session.previewPoint &&
+      (session.state === 'wallPreview' || session.state === 'awaitingLength') && floor.walls.length > 0) ||
+      this.canRemeasureLastDiagonalAngle(floor, session);
     const topMetric = this.buildTopMetric(activeSegment);
+    if (angleActionAvailable && !topMetric.angle) {
+      const previousWall = floor.walls[floor.walls.length - 1];
+      const turningAngle = previousWall
+        ? normalizeAngleDiff(session.previewAngleDeg, previousWall.angleDeg)
+        : null;
+      const interiorAngle = Number.isFinite(session.previewInteriorAngleDeg)
+        ? session.previewInteriorAngleDeg
+        : (turningAngle === null ? null : 180 - turningAngle);
+      if (Number.isFinite(interiorAngle)) {
+        topMetric.angle = `∠${Math.round(interiorAngle)}°`;
+      }
+    }
     const measurePosition = this.buildMeasurePosition(activeSegment, floor, session);
     const closure = this.buildClosureRender(floor, session);
-    this.canvasControls = this.buildCanvasControls(measurePosition, closure);
+    const initialGuide = this.buildInitialMeasurementGuide(floor, session);
+    const activeAngle = this.buildActiveAngleControl(scene, angleActionAvailable);
+    this.canvasControls = this.buildCanvasControls(measurePosition, closure, initialGuide, activeAngle);
 
     return {
       cursorVisible,
@@ -1071,12 +1552,64 @@ Page({
     };
   },
 
-  buildCanvasControls(measurePosition, closure) {
+  buildCanvasControls(measurePosition, closure, initialGuide, activeAngle) {
     return {
       closeAction: closure && closure.action
-        ? Object.assign({ key: 'close', radius: 34 }, closure.action)
+        ? Object.assign({ key: 'close', radius: 14 }, closure.action)
         : null,
-      measurePosition: measurePosition && measurePosition.control ? measurePosition.control : null
+      measurePosition: measurePosition && measurePosition.control ? measurePosition.control : null,
+      initialGuide: initialGuide || null,
+      activeAngle: activeAngle || null
+    };
+  },
+
+  buildActiveAngleControl(scene, angleActionAvailable) {
+    const segment = scene && scene.activeSegment;
+    const walls = (scene && scene.walls) || [];
+    const previousWall = segment && segment.preview
+      ? walls[walls.length - 1]
+      : walls[walls.length - 2];
+    if (!angleActionAvailable || !segment || !previousWall ||
+      !Number.isFinite(segment.interiorAngleDeg)) {
+      return null;
+    }
+
+    const anchor = segment.startPoint;
+    const incoming = { x: -previousWall.direction.x, y: -previousWall.direction.y };
+    const outgoing = segment.direction;
+    const bisectorRaw = { x: incoming.x + outgoing.x, y: incoming.y + outgoing.y };
+    const bisectorLength = Math.sqrt(bisectorRaw.x * bisectorRaw.x + bisectorRaw.y * bisectorRaw.y);
+    if (!anchor) return null;
+
+    const bisector = bisectorLength
+      ? { x: bisectorRaw.x / bisectorLength, y: bisectorRaw.y / bisectorLength }
+      : { x: -incoming.y, y: incoming.x };
+    const arcRadius = 26;
+    const labelWidth = 68;
+    const labelHeight = 30;
+    const rect = this.canvasRect || { width: 0, height: 0 };
+    const labelCenter = {
+      x: clamp(anchor.x + bisector.x * 54, labelWidth / 2 + 8, Math.max(labelWidth / 2 + 8, rect.width - labelWidth / 2 - 8)),
+      y: clamp(anchor.y + bisector.y * 54, labelHeight / 2 + 8, Math.max(labelHeight / 2 + 8, rect.height - labelHeight / 2 - 8))
+    };
+    const startAngle = Math.atan2(incoming.y, incoming.x);
+    const rawSweep = Math.atan2(
+      incoming.x * outgoing.y - incoming.y * outgoing.x,
+      incoming.x * outgoing.x + incoming.y * outgoing.y
+    );
+
+    return {
+      key: 'angle',
+      anchor,
+      arcRadius,
+      startAngle,
+      endAngle: startAngle + rawSweep,
+      anticlockwise: rawSweep < 0,
+      left: labelCenter.x - labelWidth / 2,
+      top: labelCenter.y - labelHeight / 2,
+      width: labelWidth,
+      height: labelHeight,
+      text: `∠${Math.round(segment.interiorAngleDeg)}°`
     };
   },
 
@@ -1359,23 +1892,97 @@ Page({
     return {
       visible: true,
       length: `L ${Math.round(segment.lengthMm)}`,
-      angle: segment.relativeAngle ? `∠${segment.relativeAngle}°` : ''
+      angle: Number.isFinite(segment.interiorAngleDeg)
+        ? `∠${Math.round(segment.interiorAngleDeg)}°`
+        : ''
     };
   },
 
   isFirstMeasurePositionStage(floor, session) {
     if (!floor || !session) return false;
-    if (session.state === 'spaceClosed' || session.state === 'wallSelected' || session.state === 'remeasureAwaitingInput') {
-      return false;
-    }
-    if (floor.walls.length === 0 && session.previewPoint && (session.state === 'wallPreview' || session.state === 'awaitingLength')) {
-      return true;
-    }
-    return floor.walls.length === 1 && session.state === 'wallCommitted' && !session.previewPoint;
+    return session.state === 'wallCommitted' &&
+      !session.previewPoint &&
+      floor.walls.length === 1 &&
+      !floor.spaces.some((space) => space.closed);
   },
 
   buildMeasurePosition(segment, floor, session) {
-    return { visible: false, style: '', buttonLabel: '↔', control: null };
+    if (!this.isFirstMeasurePositionStage(floor, session)) {
+      return { visible: false, style: '', buttonLabel: '↔', control: null };
+    }
+
+    const wall = floor.walls[0];
+    const start = wall && surveyGraph.getNode(floor, wall.startNodeId);
+    const end = wall && surveyGraph.getNode(floor, wall.endNodeId);
+    if (!wall || !start || !end) {
+      return { visible: false, style: '', buttonLabel: '↔', control: null };
+    }
+
+    const startPoint = this.mmToCanvasPoint(start);
+    const endPoint = this.mmToCanvasPoint(end);
+    const dx = endPoint.x - startPoint.x;
+    const dy = endPoint.y - startPoint.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    if (!length) return { visible: false, style: '', buttonLabel: '↔', control: null };
+
+    const leftNormal = { x: -dy / length, y: dx / length };
+    const sideNormal = wall.measurementSide === 'right'
+      ? { x: -leftNormal.x, y: -leftNormal.y }
+      : leftNormal;
+    const rect = this.canvasRect || { width: 0, height: 0 };
+    const radius = 22;
+    const rightRailReserve = 96;
+    const button = {
+      cx: clamp((startPoint.x + endPoint.x) / 2 + sideNormal.x * 156, radius + 8, Math.max(radius + 8, rect.width - rightRailReserve - radius)),
+      cy: clamp((startPoint.y + endPoint.y) / 2 + sideNormal.y * 156, radius + 8, Math.max(radius + 8, rect.height - radius - 128)),
+      radius
+    };
+    const tip = {
+      width: 202,
+      height: 38,
+      text: '切换内外墙方向，红线为测量位置'
+    };
+    tip.x = clamp(button.cx - tip.width / 2, 12, Math.max(12, rect.width - rightRailReserve - tip.width));
+    tip.y = sideNormal.y >= 0
+      ? Math.max(12, button.cy - tip.height - 16)
+      : Math.min(Math.max(12, rect.height - tip.height - 12), button.cy + radius + 16);
+
+    return {
+      visible: true,
+      style: '',
+      buttonLabel: '↕',
+      control: {
+        key: 'measure-position',
+        label: '↕',
+        button,
+        tip
+      }
+    };
+  },
+
+  buildInitialMeasurementGuide(floor, session) {
+    if (!floor || !session || floor.walls.length || session.state !== 'cursorPlaced' || !session.anchorNodeId) {
+      return null;
+    }
+    const anchor = surveyGraph.getNode(floor, session.anchorNodeId);
+    if (!anchor) return null;
+
+    const cursor = this.mmToCanvasPoint(anchor);
+    const rect = this.canvasRect || { width: 0, height: 0 };
+    const tip = {
+      width: 202,
+      height: 38,
+      text: '拖动光标，拉出第一条墙边'
+    };
+    tip.x = clamp(cursor.x - tip.width / 2, 12, Math.max(12, rect.width - tip.width - 12));
+    tip.y = clamp(cursor.y - 96, 12, Math.max(12, rect.height - tip.height - 12));
+    return {
+      tip,
+      pointer: {
+        x: clamp(cursor.x, tip.x + 20, tip.x + tip.width - 20),
+        y: Math.min(cursor.y - 28, tip.y + tip.height + 18)
+      }
+    };
   },
 
   buildClosureRender(floor, session) {
@@ -1415,7 +2022,7 @@ Page({
     const midX = (startPoint.x + endPoint.x) / 2;
     const midY = (startPoint.y + endPoint.y) / 2;
     const rect = this.canvasRect || { width: 0, height: 0 };
-    const actionRadius = 38;
+    const actionRadius = 14;
     const safePadding = actionRadius + 8;
     const bottomReserved = 132;
     const preferredActionX = session.state === 'closing' ? startPoint.x : midX;
@@ -1457,8 +2064,10 @@ Page({
       const dy = endPoint.y - startPoint.y;
       const length = Math.sqrt(dx * dx + dy * dy) || 1;
       const normal = { x: -dy / length, y: dx / length };
-      const toolbarWidth = 196;
-      const toolbarHeight = 36;
+      const toolbarWidth = WALL_TOOLBAR_VISIBLE_ACTIONS * WALL_TOOLBAR_ACTION_WIDTH_PX +
+        (WALL_TOOLBAR_VISIBLE_ACTIONS - 1) * WALL_TOOLBAR_ACTION_GAP_PX +
+        WALL_TOOLBAR_HORIZONTAL_PADDING_PX + WALL_TOOLBAR_BORDER_PX;
+      const toolbarHeight = 54;
       const candidateOffsets = [56, -74, 92, -110];
       const toolbarPoint = candidateOffsets.map((offset) => ({
         left: midX + normal.x * offset - toolbarWidth / 2,
@@ -1573,9 +2182,9 @@ Page({
 
     if (session.state === 'wallSnapPending') {
       return {
-        modePillText: '吸附墙体',
+        modePillText: '放置光标',
         manualActionActive: false,
-        manualActionSubtitle: '先选墙体',
+        manualActionSubtitle: '拖到目标位置',
         cursorActionSubtitle: '取消吸附'
       };
     }
@@ -1597,12 +2206,27 @@ Page({
     };
   },
 
-  buildShowResetCursorButton(floor, session) {
-    // 显示条件：有墙体且房间尚未全部闭合
-    if (!floor || !session) return false;
-    if (floor.walls.length === 0) return false;
-    // 已闭合状态下不需要重置光标
-    return session.state !== 'spaceClosed';
+  resolveCursorPlacementState(floor, session) {
+    if (this.cursorPlacementState === 'dragging') return 'dragging';
+    if (!floor || !session) return 'placed';
+    if (session.state === 'spaceClosed' || session.state === 'wallSnapPending') {
+      return 'awaitingWallDrop';
+    }
+    return this.cursorPlacementState === 'awaitingWallDrop' ? 'awaitingWallDrop' : 'placed';
+  },
+
+  resetCursorPlacement() {
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    if (!floor.walls.length) {
+      this.cursorPlacementState = 'placed';
+      this.applyDraft(surveyGraph.resetCursor(this.draft), { persist: true });
+      wx.showToast({ title: '光标已复位', icon: 'none' });
+      return;
+    }
+
+    this.cursorPlacementState = 'awaitingWallDrop';
+    this.applyDraft(surveyGraph.startWallSnap(this.draft), { persist: true });
+    wx.showToast({ title: '请拖动光标到目标位置', icon: 'none' });
   },
 
   buildGuideSnapPoint(floor, session, rawMm) {
@@ -1639,7 +2263,7 @@ Page({
       return { title: '光标已放置', value: '从光标拖出墙体方向' };
     }
     if (session.state === 'wallSnapPending') {
-      return { title: '新房间起点', value: '点击已有墙体附近吸附光标' };
+      return { title: '新房间起点', value: '拖到墙体可吸附，也可放在画布空白处' };
     }
     if (session.state === 'wallPreview') {
       return { title: '当前墙段', value: '释放后生成待测墙，不会自动落图' };
@@ -1662,7 +2286,7 @@ Page({
     if (session.state === 'wallSelected' && session.selectedOpeningId) {
       const opening = surveyGraph.getOpening(floor, session.selectedOpeningId);
       if (opening) {
-        return { title: opening.type === 'window' ? '已选窗' : '已选门', value: `${formatMm(opening.widthMm)} x ${formatMm(opening.heightMm)} · 本地原型` };
+        return { title: opening.type === 'window' ? '已选窗' : '已选门', value: `${formatMm(opening.widthMm)} x ${formatMm(opening.heightMm)} · 正式量房` };
       }
     }
     if (session.state === 'wallSelected' && selectedWall) {
@@ -1671,7 +2295,7 @@ Page({
     if (session.state === 'remeasureAwaitingInput' && selectedWall) {
       return { title: '复尺中', value: `请输入${selectedWall.mode}的新毫米长度` };
     }
-    return { title: '测绘原型', value: `${floor.walls.length} 面墙` };
+    return { title: '正式量房', value: `${floor.walls.length} 面墙` };
   },
 
   getViewport() {
@@ -1706,32 +2330,22 @@ Page({
     };
   },
 
-  snapPointToCursorGrid(pointMm) {
-    if (!pointMm) return pointMm;
-    return {
-      xMm: Math.round(pointMm.xMm / CURSOR_GRID_MM) * CURSOR_GRID_MM,
-      yMm: Math.round(pointMm.yMm / CURSOR_GRID_MM) * CURSOR_GRID_MM
-    };
-  },
-
   getCursorPlacementCandidate(clientPoint) {
     const floor = surveyGraph.getActiveFloor(this.draft);
     const rawPoint = this.canvasPointToMm(clientPoint);
-    const gridPoint = this.snapPointToCursorGrid(rawPoint);
-    if (!floor || !gridPoint) return { pointMm: gridPoint, snappedToWall: false };
-
-    if (!floor.walls.length) {
-      return { pointMm: gridPoint, snappedToWall: false };
-    }
-
-    const wallPoint = surveyGraph.getWallSnapPoint(floor, rawPoint, surveyGraph.CLOSE_TOLERANCE_MM);
+    if (!floor || !rawPoint) return { type: 'none', pointMm: null };
+    const target = surveyGraph.getCursorPlacementTarget(
+      floor,
+      rawPoint,
+      surveyGraph.CLOSE_TOLERANCE_MM
+    );
     return {
-      pointMm: wallPoint || gridPoint,
-      snappedToWall: !!wallPoint
+      type: target.type,
+      pointMm: target.pointMm
     };
   },
 
-  buildCursorLens(pointMm, snappedToWall) {
+  buildCursorLens(pointMm, targetType) {
     const point = pointMm || { xMm: 0, yMm: 0 };
     const halfSize = CURSOR_LENS_SIZE_PX / 2;
     const verticalLines = [];
@@ -1810,25 +2424,34 @@ Page({
       cursorLensVisible: true,
       cursorLensXLabel: `X ${Math.round(point.xMm)}`,
       cursorLensYLabel: `Y ${Math.round(point.yMm)}`,
-      cursorLensSnapLabel: snappedToWall ? '墙体吸附' : '网格吸附',
+      cursorLensSnapLabel: targetType === 'vertex'
+        ? '顶点吸附'
+        : (targetType === 'wall' ? '墙体吸附' : '自由放置'),
+      cursorLensSnapType: targetType || 'none',
       cursorLensVerticalLines: verticalLines,
       cursorLensHorizontalLines: horizontalLines,
       cursorLensWalls: wallLines
     };
   },
 
-  resolveCursorDragPoint(clientPoint) {
+  resolveCursorDragPoint(clientPoint, includeLens) {
     const candidate = this.getCursorPlacementCandidate(clientPoint);
-    const displayPoint = candidate && candidate.pointMm
+    // 自由放置必须严格跟随手指。只有真正命中顶点或墙体时，才把
+    // 十字光标移动到吸附后的坐标，避免一次 mm 往返换算造成初始跳位。
+    const isSnapped = candidate && (candidate.type === 'vertex' || candidate.type === 'wall');
+    const displayPoint = isSnapped && candidate.pointMm
       ? this.mmToClientPoint(candidate.pointMm)
       : clientPoint;
-
-    return Object.assign({
+    this.cursorDragClientPoint = { x: displayPoint.x, y: displayPoint.y };
+    this.queueCursorDragCanvas(displayPoint);
+    const dragData = {
       dragCursorX: displayPoint.x,
       dragCursorY: displayPoint.y
-    }, this.buildCursorLens(
+    };
+    if (!includeLens) return dragData;
+    return Object.assign(dragData, this.buildCursorLens(
       candidate && candidate.pointMm ? candidate.pointMm : this.canvasPointToMm(clientPoint),
-      !!(candidate && candidate.snappedToWall)
+      candidate && candidate.type
     ));
   },
 
@@ -1888,7 +2511,7 @@ Page({
     this.draft = nextDraft;
     this.syncFromDraft(opts.extraData);
     if (opts.persist !== false) {
-      this.schedulePrototypePersist();
+      this.scheduleFormalPersist();
     }
   },
 
@@ -1912,6 +2535,11 @@ Page({
     }
 
     this.showPlannedToast();
+  },
+
+  onTopMetricAngleTap() {
+    if (!this.data.angleActionAvailable) return;
+    this.openAngleMeasurement();
   },
 
   onToolTap(e) {
@@ -1943,8 +2571,7 @@ Page({
     }
 
     if (tool === 'reset') {
-      this.applyDraft(surveyGraph.resetCursor(this.draft), { persist: true });
-      wx.showToast({ title: '光标已重置', icon: 'none' });
+      this.resetCursorPlacement();
     }
   },
 
@@ -1955,7 +2582,7 @@ Page({
     }
 
     if (tool === 'object-add') {
-      this.addPrototypeOpening('door');
+      this.addOpening('door');
       return;
     }
 
@@ -1970,7 +2597,7 @@ Page({
   onWallContextAction(e) {
     const action = e.currentTarget.dataset.action;
     if (action === 'door' || action === 'window') {
-      this.addPrototypeOpening(action);
+      this.addOpening(action);
       return;
     }
     if (action === 'remeasure') {
@@ -1991,7 +2618,7 @@ Page({
   },
 
 
-  addPrototypeOpening(type) {
+  addOpening(type) {
     const floor = surveyGraph.getActiveFloor(this.draft);
     const wallId = floor.session.selectedWallId;
     if (!wallId) {
@@ -2004,7 +2631,10 @@ Page({
       this.applyDraft(nextDraft, {
         recordHistory: true
       });
-      wx.showToast({ title: type === 'window' ? '已添加窗' : '已添加门', icon: 'none' });
+      wx.showToast({
+        title: type === 'window' ? '已添加窗，可继续测墙' : '已添加门，可继续测墙',
+        icon: 'none'
+      });
     } catch (err) {
       wx.showToast({ title: err.message || '添加失败', icon: 'none' });
     }
@@ -2046,6 +2676,7 @@ Page({
   closeComponentEditor() {
     this.setData({ componentEditorVisible: false }, () => {
       this.destroyComponentScene();
+      this.onExitWallSelection();
       this.refreshCanvasRect();
     });
   },
@@ -2132,17 +2763,15 @@ Page({
 
     const dataset = e && e.currentTarget ? e.currentTarget.dataset : {};
     const source = dataset && dataset.source;
-    const firstWall = floor.walls[0] || null;
-    const activeWallId = source === 'measure-position'
-      ? (this.isFirstMeasurePositionStage(floor, session) && firstWall ? firstWall.id : '')
-      : session.selectedWallId;
-
-    if (source === 'measure-position' && !this.isFirstMeasurePositionStage(floor, session)) {
-      wx.showToast({ title: '测量位置仅在第一条边设置', icon: 'none' });
+    if (source !== 'measure-position' || !this.isFirstMeasurePositionStage(floor, session)) {
+      wx.showToast({ title: '内外墙方向只能在第一条边确认', icon: 'none' });
       return;
     }
 
+    const firstWall = floor.walls[0] || null;
+    const activeWallId = firstWall ? firstWall.id : '';
     const activeWall = activeWallId ? surveyGraph.getWall(floor, activeWallId) : null;
+    if (!activeWall) return;
     const currentSide = activeWall ? activeWall.measurementSide : session.measurementSide;
     const nextSide = currentSide === 'right' ? 'left' : 'right';
     const nextDraft = surveyGraph.setMeasurementSide(this.draft, nextSide, activeWallId);
@@ -2150,7 +2779,7 @@ Page({
       recordHistory: !!activeWallId,
       extraData: { numberPadVisible: this.data.numberPadVisible }
     });
-    wx.showToast({ title: source === 'measure-position' ? '测量位置已更新' : (activeWallId ? '墙侧已更新' : '后续墙侧已切换'), icon: 'none' });
+    wx.showToast({ title: '测量位置已更新', icon: 'none' });
   },
 
   onDisabledTap() {
@@ -2159,15 +2788,15 @@ Page({
 
   async onSaveDraft() {
     wx.showLoading({ title: '保存草稿...' });
-    const saved = this.persistPrototypeDraft();
+    const saved = this.persistFormalDraft();
     try {
-      wx.setStorageSync(PROTOTYPE_DRAFT_BACKUP_KEY, {
+      wx.setStorageSync(FORMAL_DRAFT_BACKUP_KEY, {
         draft: this.draft ? surveyGraph.cloneDraft(this.draft) : null,
         leadId: this.data.leadId || '',
         time: Date.now()
       });
     } catch (err) {
-      // 备份失败不影响专用原型草稿保存结果。
+      // 备份失败不影响正式草稿保存结果。
     }
 
     if (!saved) {
@@ -2177,24 +2806,109 @@ Page({
     }
 
     try {
-      await this.savePrototypeDraftToCloud();
+      await this.saveFormalFloorPlan('draft');
       wx.hideLoading();
       this.setData({
-        prototypeNotice: '草稿已保存到服务端，仍为新版测绘原型数据'
+        formalNotice: '草稿已保存到服务端'
       });
       wx.showToast({ title: '已保存草稿', icon: 'success' });
     } catch (err) {
       wx.hideLoading();
       console.error('Save surveying draft to cloud failed:', err);
       this.setData({
-        prototypeNotice: '本地草稿已保存，服务端保存失败'
+        formalNotice: '本地草稿已保存，服务端保存失败'
       });
       wx.showToast({ title: '服务端保存失败', icon: 'none' });
     }
   },
 
-  onSavePrototypeDraft() {
-    this.onSaveDraft();
+  async onSubmitFloorPlan() {
+    const floor = this.draft ? surveyGraph.getActiveFloor(this.draft) : null;
+    if (!floor || !(floor.spaces || []).some((space) => space.closed)) {
+      wx.showToast({ title: '请先完成至少一个闭合空间', icon: 'none' });
+      return;
+    }
+    wx.showLoading({ title: '提交量房...' });
+    try {
+      await this.saveFormalFloorPlan('completed');
+      wx.hideLoading();
+      this.setData({ formalNotice: '量房已完成' });
+      wx.showToast({ title: '量房已完成', icon: 'success' });
+    } catch (err) {
+      wx.hideLoading();
+      wx.showToast({ title: (err && err.error) || '提交失败', icon: 'none' });
+    }
+  },
+
+  reportMeasurement(record) {
+    if (!record || !record.value) return Promise.resolve(false);
+
+    const measurement = {
+      ...record,
+      auditId: record.auditId || `survey-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      measuredAt: record.measuredAt || new Date().toISOString()
+    };
+    const floorPlanId = this.serverDraftId || this.data.serverDraftId || this.getStoredServerDraftId(this.data.leadId || '');
+    if (!floorPlanId) {
+      this.enqueuePendingMeasurement(measurement);
+      return Promise.resolve(false);
+    }
+
+    return this.sendMeasurementRecord(floorPlanId, measurement).catch((err) => {
+      this.enqueuePendingMeasurement(measurement);
+      console.warn('[surveying-editor] Measurement audit logging failed', err);
+      return false;
+    });
+  },
+
+  enqueuePendingMeasurement(record) {
+    if (!record || !record.auditId) return;
+    const pending = this.pendingMeasurementRecords || [];
+    if (!pending.some((item) => item.auditId === record.auditId)) {
+      pending.push(record);
+    }
+    this.pendingMeasurementRecords = pending;
+  },
+
+  async sendMeasurementRecord(floorPlanId, record) {
+    if (!floorPlanId || !record || !record.auditId) return false;
+    const reportKey = `${floorPlanId}:${record.auditId}`;
+    if (this.reportedMeasurementKeys && this.reportedMeasurementKeys[reportKey]) return true;
+
+    await api.request('/measurements', 'POST', {
+      floorPlanId,
+      value: record.value,
+      unit: 'meters',
+      type: record.type || 'length',
+      direction: record.direction || '',
+      source: 'ble',
+      metadata: {
+        measurementMode: 'surveying',
+        auditId: record.auditId,
+        ...(record.metadata || {})
+      },
+      measuredAt: record.measuredAt
+    });
+
+    this.reportedMeasurementKeys[reportKey] = true;
+    return true;
+  },
+
+  async flushPendingMeasurements(floorPlanId) {
+    const pending = this.pendingMeasurementRecords || [];
+    if (!floorPlanId || !pending.length) return;
+    this.pendingMeasurementRecords = [];
+
+    const failed = [];
+    for (const record of pending) {
+      try {
+        await this.sendMeasurementRecord(floorPlanId, record);
+      } catch (err) {
+        failed.push(record);
+        console.warn('[surveying-editor] Deferred measurement audit logging failed', err);
+      }
+    }
+    failed.forEach((record) => this.enqueuePendingMeasurement(record));
   },
 
   onBottomAction(e) {
@@ -2206,8 +2920,7 @@ Page({
     }
 
     if (action === 'cursor') {
-      this.applyDraft(surveyGraph.resetCursor(this.draft), { persist: true });
-      wx.showToast({ title: '光标已重置', icon: 'none' });
+      this.resetCursorPlacement();
       return;
     }
 
@@ -2238,6 +2951,11 @@ Page({
     return distancePx(point, { x: circle.cx, y: circle.cy }) <= circle.radius;
   },
 
+  hitRect(point, rect) {
+    return !!point && !!rect && point.x >= rect.left && point.x <= rect.left + rect.width &&
+      point.y >= rect.top && point.y <= rect.top + rect.height;
+  },
+
   hitTestCanvasControl(clientPoint) {
     if (!this.canvasRect || !clientPoint) return null;
     const localPoint = {
@@ -2252,6 +2970,9 @@ Page({
     if (controls.measurePosition && this.hitCircle(localPoint, controls.measurePosition.button)) {
       return { key: 'measure-position' };
     }
+    if (controls.activeAngle && this.hitRect(localPoint, controls.activeAngle)) {
+      return { key: 'angle' };
+    }
     return null;
   },
 
@@ -2263,6 +2984,10 @@ Page({
     }
     if (control.key === 'measure-position') {
       this.onToggleSide({ currentTarget: { dataset: { source: 'measure-position' } } });
+      return true;
+    }
+    if (control.key === 'angle') {
+      this.onTopMetricAngleTap();
       return true;
     }
     return false;
@@ -2301,6 +3026,7 @@ Page({
 
   onCanvasTouchStart(e) {
     if (this.data.numberPadVisible || !this.canvasRect) return;
+    this.canvasTapSelectedObject = false;
     const touches = e.touches || [];
 
     if (touches.length >= 2) {
@@ -2426,6 +3152,22 @@ Page({
         if (!this.touchState.historyDraft) {
           this.touchState.historyDraft = surveyGraph.cloneDraft(this.draft);
         }
+        if (this.touchState.sessionState === 'awaitingLength') {
+          const pendingFloor = surveyGraph.getActiveFloor(this.draft);
+          const pendingSession = pendingFloor.session;
+          try {
+            this.draft = surveyGraph.commitPreviewLength(
+              this.draft,
+              pendingSession.previewLengthMm,
+              'preview-continuation'
+            );
+            this.touchState.sessionState = 'wallCommitted';
+          } catch (err) {
+            wx.showToast({ title: err.message || '无法继续当前墙段', icon: 'none' });
+            this.touchState.mode = 'pan';
+            return;
+          }
+        }
         this.draft = surveyGraph.startPreview(this.draft, currentMm);
         this.touchState.mode = 'wall';
       } else {
@@ -2499,6 +3241,9 @@ Page({
     if (openingTap) {
       const openingHit = touchState.openingHit || {};
       if (openingHit.openingId) {
+        // Native canvas may emit tap after touchend. Mark this selection so the
+        // fallback blank-canvas handler does not immediately clear it.
+        this.canvasTapSelectedObject = true;
         this.applyDraft(surveyGraph.selectOpening(this.draft, openingHit.openingId), {
           extraData: { numberPadVisible: false },
           persist: false
@@ -2527,6 +3272,7 @@ Page({
     if (wasTap && !touchState.nearCursor) {
       const openingHit = this.hitTestOpeningAtClientPoint(touchState.startPoint);
       if (openingHit && openingHit.openingId) {
+        this.canvasTapSelectedObject = true;
         this.applyDraft(surveyGraph.selectOpening(this.draft, openingHit.openingId), {
           extraData: { numberPadVisible: false },
           persist: false
@@ -2536,12 +3282,19 @@ Page({
 
       const wallHit = this.hitTestWallAtClientPoint(touchState.startPoint);
       if (wallHit && wallHit.wallId) {
+        this.canvasTapSelectedObject = true;
         this.draft = surveyGraph.selectWall(this.draft, wallHit.wallId);
         this.centerSelectedWall(false);
         this.applyDraft(this.draft, {
           extraData: { numberPadVisible: false },
           persist: false
         });
+        return;
+      }
+
+      // 选中墙体（含其上的门窗）后，点击画布空白处应退出对象编辑状态。
+      if (session.state === 'wallSelected') {
+        this.onExitWallSelection();
         return;
       }
 
@@ -2559,6 +3312,12 @@ Page({
 
     if (movedWall) {
       if (session.previewLengthMm >= surveyGraph.MIN_WALL_LENGTH_MM) {
+        if (session.mode === 'diagonal') {
+          const nextDraft = surveyGraph.holdPreviewForInput(this.draft);
+          this.applyDraft(nextDraft, { persist: false });
+          wx.showToast({ title: '点击顶部角度可校准方向，或直接测量墙长', icon: 'none' });
+          return;
+        }
         try {
           const nextDraft = surveyGraph.commitPreviewLength(this.draft, session.previewLengthMm, 'preview');
           const nextSession = surveyGraph.getActiveFloor(nextDraft).session;
@@ -2581,7 +3340,19 @@ Page({
     }
 
     if (touchState.mode === 'pan' || touchState.mode === 'pinch') {
-      this.schedulePrototypePersist();
+      this.scheduleFormalPersist();
+    }
+  },
+
+  onCanvasTap() {
+    // 部分原生 canvas 叠层只派发 tap；作为 touchend 的兜底，空白处仍应收起工具栏。
+    if (this.canvasTapSelectedObject) {
+      this.canvasTapSelectedObject = false;
+      return;
+    }
+    const floor = this.draft && surveyGraph.getActiveFloor(this.draft);
+    if (floor && floor.session && floor.session.state === 'wallSelected') {
+      this.onExitWallSelection();
     }
   },
 
@@ -2612,7 +3383,29 @@ Page({
   },
 
   onExitWallSelection() {
-    this.applyDraft(surveyGraph.cancelPending(this.draft), { persist: false });
+    if (!this.draft) return;
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    if (!floor.session.selectedWallId && !floor.session.selectedOpeningId) return;
+    this.touchState = null;
+    this.applyDraft(surveyGraph.cancelPending(this.draft), {
+      extraData: {
+        selectedWall: null,
+        selectedOpening: null,
+        objectToolsVisible: false
+      },
+      persist: false
+    });
+  },
+
+  onResumeWallDrawing() {
+    const nextDraft = surveyGraph.cancelPending(this.draft);
+    const nextFloor = surveyGraph.getActiveFloor(nextDraft);
+    if (nextFloor.session.state !== 'wallCommitted') {
+      wx.showToast({ title: '请使用新建房间起点开始测量', icon: 'none' });
+      return;
+    }
+    this.applyDraft(nextDraft, { persist: false });
+    wx.showToast({ title: '已回到末端，拖动光标继续测墙', icon: 'none' });
   },
 
   onStartRemeasure() {
@@ -2648,7 +3441,7 @@ Page({
       ? surveyGraph.cancelPending(restoredDraft)
       : restoredDraft;
     this.syncFromDraft({ numberPadVisible: false });
-    this.schedulePrototypePersist();
+    this.scheduleFormalPersist();
   },
 
   onUndoTap() {
@@ -2656,95 +3449,170 @@ Page({
     this.onUndo();
   },
 
-  // ─── 新建光标：拖拽放置流程 ───
+  // ─── 光标三态：已放置 → 等待拖放 → 正在拖拽 ───
 
-  onNewCursorTap() {
-    // 进入拖拽放置模式，初始光标显示在画布中心
-    const rect = this.canvasRect || { width: 375, height: 667, left: 0, top: 0 };
-    const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-    this.setData(Object.assign({
-      cursorDragMode: true,
-    }, this.resolveCursorDragPoint(center)));
+  getCursorEventTouch(e, allowChangedTouch) {
+    const touches = Array.prototype.slice.call((e && e.touches) || []);
+    const changedTouches = allowChangedTouch
+      ? Array.prototype.slice.call((e && e.changedTouches) || [])
+      : [];
+    // touchmove 时 changedTouches 才是本次真正发生变化的触点；部分
+    // Android 基础库中的 touches 会保留按下时的位置。
+    const candidates = changedTouches.concat(touches);
+    if (!candidates.length) return null;
+    if (this.cursorDragTouchId === null || this.cursorDragTouchId === undefined) {
+      return candidates[0];
+    }
+    return candidates.find((touch) => touch && touch.identifier === this.cursorDragTouchId)
+      || candidates[0];
   },
 
-  onCursorDragStart(e) {
-    const touch = (e.touches || [])[0];
-    if (!touch) return;
-    this.setData(this.resolveCursorDragPoint({ x: touch.clientX, y: touch.clientY }));
+  getCursorDragTouch(e, allowChangedTouch) {
+    const touch = this.getCursorEventTouch(e, allowChangedTouch);
+    if (!touch) return null;
+
+    const numberOrNull = (value) => {
+      if (value === '' || value === null || value === undefined) return null;
+      const numeric = Number(value);
+      return Number.isFinite(numeric) ? numeric : null;
+    };
+    const pageX = numberOrNull(touch.pageX);
+    const pageY = numberOrNull(touch.pageY);
+    const clientX = numberOrNull(touch.clientX);
+    const clientY = numberOrNull(touch.clientY);
+
+    // 当前页面固定且不可滚动，page 坐标与 fixed 展示层同源；优先使用
+    // 它可避开少数 Android cover-view 中 client 坐标停留在 0 的问题。
+    if (pageX !== null && pageY !== null) {
+      return { x: pageX, y: pageY };
+    }
+    if (clientX !== null && clientY !== null) {
+      return { x: clientX, y: clientY };
+    }
+    const detail = e && e.detail;
+    const detailX = numberOrNull(detail && detail.x);
+    const detailY = numberOrNull(detail && detail.y);
+    if (detailX !== null && detailY !== null) {
+      return { x: detailX, y: detailY };
+    }
+
+    const localX = numberOrNull(touch.x);
+    const localY = numberOrNull(touch.y);
+    if (localX === null || localY === null) return null;
+    const dataset = e && e.currentTarget && e.currentTarget.dataset;
+    const fromCursorControl = dataset
+      && (dataset.cursorControl === true || dataset.cursorControl === 'true');
+    if (fromCursorControl) {
+      // cover-view 的 x/y 是相对控件本身的局部坐标。手指移出按钮后
+      // 数值仍沿原触摸目标变化，因此加上按钮矩形即可得到屏幕坐标。
+      const controlRect = this.cursorControlRect;
+      if (!controlRect) return null;
+      return { x: controlRect.left + localX, y: controlRect.top + localY };
+    }
+
+    // 非 cover-view 事件的最后兜底；当前正式拖拽路径不会走到这里。
+    return { x: localX, y: localY };
   },
 
-  onCursorDragMove(e) {
-    const touch = (e.touches || [])[0];
+  refreshCursorControlRect() {
+    const query = wx.createSelectorQuery();
+    query.select('.cursor-fab-drop').boundingClientRect((rect) => {
+      if (rect) this.cursorControlRect = rect;
+    });
+    query.exec();
+  },
+
+  onResetCursorTap() {
+    this.resetCursorPlacement();
+  },
+
+  onCursorControlTouchStart(e) {
+    if (this.resolveCursorPlacementState(
+      surveyGraph.getActiveFloor(this.draft),
+      surveyGraph.getActiveFloor(this.draft).session
+    ) !== 'awaitingWallDrop') {
+      return;
+    }
+    const touch = this.getCursorEventTouch(e, false);
     if (!touch) return;
-    this.setData(this.resolveCursorDragPoint({ x: touch.clientX, y: touch.clientY }));
+    this.cursorDragTouchId = touch.identifier === undefined ? null : touch.identifier;
+    this.cursorLensLastUpdateAt = 0;
+    this.clearCursorDragCanvas();
+    this.refreshCursorControlRect();
+    // Do not replace the touch target on touchstart.  On WeChat, changing the
+    // conditional tree here can drop every following touchmove event.
+    this.cursorDragPending = true;
+  },
+
+  onCursorControlTouchMove(e) {
+    if (!this.cursorDragPending && this.cursorPlacementState !== 'dragging') return;
+    const point = this.getCursorDragTouch(e, true);
+    if (!point) return;
+    this.cursorDragPending = false;
+    const wasDragging = this.cursorPlacementState === 'dragging';
+    this.cursorPlacementState = 'dragging';
+    const now = Date.now();
+    const shouldUpdateLens = !wasDragging || now - this.cursorLensLastUpdateAt >= 80;
+    const dragData = this.resolveCursorDragPoint(point, shouldUpdateLens);
+    if (shouldUpdateLens) {
+      this.cursorLensLastUpdateAt = now;
+      this.setData(Object.assign({
+        cursorPlacementState: 'dragging'
+      }, dragData));
+    }
   },
 
   onCursorDragEnd(e) {
-    const touch = ((e && e.changedTouches) || (e && e.touches) || [])[0];
-    const releasePoint = touch
-      ? { x: touch.clientX, y: touch.clientY }
-      : { x: this.data.dragCursorX, y: this.data.dragCursorY };
+    const wasDragging = this.cursorPlacementState === 'dragging';
+    this.cursorDragPending = false;
+    const releasePoint = this.getCursorDragTouch(e, true) || this.cursorDragClientPoint || {
+      x: this.data.dragCursorX,
+      y: this.data.dragCursorY
+    };
+    this.cursorDragTouchId = null;
+    if (!wasDragging) return;
+    this.clearCursorDragCanvas();
     const candidate = this.getCursorPlacementCandidate(releasePoint);
-    this.setData({ cursorDragMode: false, cursorLensVisible: false });
 
-    // 屏幕坐标 → 画布 mm 坐标
-    const pointMm = candidate && candidate.pointMm
-      ? candidate.pointMm
-      : this.snapPointToCursorGrid(this.canvasPointToMm(releasePoint));
-
-    if (candidate && candidate.snappedToWall) {
-      this.applyDraft(surveyGraph.snapCursorToWall(this.draft, pointMm), {
-        recordHistory: true,
-        extraData: { numberPadVisible: false }
-      });
-      wx.showToast({ title: '光标已贴合墙体', icon: 'none' });
+    if (!candidate || candidate.type === 'none' || !candidate.pointMm) {
+      this.cursorPlacementState = 'awaitingWallDrop';
+      this.setData({
+        cursorPlacementState: 'awaitingWallDrop',
+        cursorLensVisible: false
+      }, () => this.drawSurveyCanvas());
+      wx.showToast({ title: '光标放置失败，请重试', icon: 'none' });
       return;
     }
 
-    // 直接操作 draft：placeCursor 在有墙时会强制把 anchor 锁到最后一面墙的终点，
-    // 所以我们绕过它，手动 clone draft 并添加新的 anchor 节点。
-    const next = surveyGraph.cloneDraft(this.draft);
-    const floor = surveyGraph.getActiveFloor(next);
-    const session = floor.session;
-
-    // 取消任何 pending 状态
-    session.previewPoint = null;
-    session.previewLengthMm = 0;
-    session.previewAngleDeg = 0;
-    session.pendingWallId = '';
-    session.selectedWallId = '';
-    session.selectedOpeningId = '';
-    session.closeCandidateNodeId = '';
-    session.closeCandidatePoint = null;
-    session.closeCandidateType = '';
-    session.closeCandidateSharedWallId = '';
-    session.alignmentSnapGuide = null;
-    session.activeSpaceSharedWallId = '';
-    session.activeSpaceSharedStartT = null;
-
-    // 添加新节点作为光标位置（anchor），不影响已有墙体
-    const newNode = {
-      id: `node-drag-${Date.now()}`,
-      xMm: Math.round(pointMm.xMm),
-      yMm: Math.round(pointMm.yMm),
-      createdAt: new Date().toISOString()
-    };
-    floor.nodes.push(newNode);
-    session.anchorNodeId = newNode.id;
-    session.activeSpaceStartNodeId = newNode.id;
-    session.activeSpaceStartWallIndex = floor.walls.length;
-    session.state = 'cursorPlaced';
-    next.updatedAt = new Date().toISOString();
-
-    this.history.undo.push(surveyGraph.cloneDraft(this.draft));
-    this.history.redo = [];
-    this.draft = next;
-    this.syncFromDraft();
-    this.schedulePrototypePersist();
+    this.cursorPlacementState = 'placed';
+    const nextDraft = candidate.type === 'vertex' || candidate.type === 'wall'
+      ? surveyGraph.snapCursorToWall(this.draft, candidate.pointMm)
+      : surveyGraph.placeNewWallChainCursor(this.draft, candidate.pointMm);
+    this.applyDraft(nextDraft, {
+      recordHistory: true,
+      extraData: {
+        cursorPlacementState: 'placed',
+        cursorLensVisible: false,
+        numberPadVisible: false
+      }
+    });
+    const placedMessage = candidate.type === 'vertex'
+      ? '光标已吸附到顶点'
+      : (candidate.type === 'wall' ? '光标已吸附到墙体' : '光标已放置');
+    wx.showToast({ title: placedMessage, icon: 'none' });
   },
 
   onCursorDragCancel() {
-    this.setData({ cursorDragMode: false, cursorLensVisible: false });
+    const wasDragging = this.cursorPlacementState === 'dragging';
+    this.cursorDragPending = false;
+    this.cursorDragTouchId = null;
+    if (!wasDragging) return;
+    this.clearCursorDragCanvas();
+    this.cursorPlacementState = 'awaitingWallDrop';
+    this.setData({
+      cursorPlacementState: 'awaitingWallDrop',
+      cursorLensVisible: false
+    }, () => this.drawSurveyCanvas());
   },
 
 
@@ -2753,7 +3621,7 @@ Page({
     this.history.undo.push(surveyGraph.cloneDraft(this.draft));
     this.draft = this.history.redo.pop();
     this.syncFromDraft({ numberPadVisible: false });
-    this.schedulePrototypePersist();
+    this.scheduleFormalPersist();
   },
 
   onRequestResetCanvas() {
@@ -2788,9 +3656,10 @@ Page({
       this.persistTimer = null;
     }
     this.history = { undo: [], redo: [] };
+    this.pendingMeasurementRecords = [];
     this.draft = freshDraft;
     try {
-      wx.setStorageSync(this.prototypeDraftKey || this.getPrototypeDraftKey(this.data.leadId || ''), surveyGraph.cloneDraft(this.draft));
+      wx.setStorageSync(this.formalDraftKey || this.getFormalDraftKey(this.data.leadId || ''), surveyGraph.cloneDraft(this.draft));
     } catch (err) {
       // 清除本地草稿失败不阻塞操作
     }
@@ -2893,7 +3762,7 @@ Page({
         numberPadVisible: true,
         numberInput: inputValue
       });
-      this.schedulePrototypePersist();
+      this.scheduleFormalPersist();
     } catch (err) {
       wx.showToast({ title: err.message || '输入无效', icon: 'none' });
     }
@@ -2940,7 +3809,7 @@ Page({
         componentSpecMode: specMode,
         numberPadVisible: true,
         numberPadTitle: titleMap[specMode] || '修改构件尺寸',
-        numberPadSubtitle: '单位：mm，仅保存为新版本地原型门窗',
+        numberPadSubtitle: '单位：mm，保存到正式量房门窗',
         numberInput: this.getComponentSpecRawValue(floor, openingId, specMode)
       });
       this.numberPadMode = mode;
@@ -2967,7 +3836,7 @@ Page({
       this.setData({
         numberPadVisible: true,
         numberPadTitle: titleMap[mode],
-        numberPadSubtitle: '单位：mm，仅保存为新版本地原型门窗',
+        numberPadSubtitle: '单位：mm，保存到正式量房门窗',
         numberInput: String(valueMap[mode])
       });
       this.numberPadMode = mode;
@@ -2999,6 +3868,29 @@ Page({
     const session = floor.session;
 
     try {
+      if (this.numberPadMode === 'angle') {
+        const nextDraft = surveyGraph.applyPreviewInteriorAngle(
+          this.draft,
+          value,
+          this.angleMeasurementSource || 'manual'
+        );
+        this.stopPhoneAngleMeasurement();
+        this.draft = nextDraft;
+        if (this.angleRemeasureOriginalDraft) {
+          this.angleRemeasureHistoryDraft = this.angleRemeasureOriginalDraft;
+          this.angleRemeasureOriginalDraft = null;
+        }
+        this.numberPadMode = '';
+        this.setData({
+          numberPadVisible: false,
+          numberInput: '',
+          numberUnit: 'mm',
+          angleMeasureVisible: false
+        });
+        this.openLengthPad();
+        return;
+      }
+
       if (this.numberPadMode === 'thickness') {
         const selectedWallId = session.selectedWallId;
         const nextDraft = surveyGraph.setThickness(this.draft, value, selectedWallId);
@@ -3044,8 +3936,10 @@ Page({
         const nextSession = surveyGraph.getActiveFloor(nextDraft).session;
         this.applyDraft(nextDraft, {
           recordHistory: true,
+          historyDraft: this.angleRemeasureHistoryDraft || undefined,
           extraData: { numberPadVisible: false, numberInput: '' }
         });
+        this.angleRemeasureHistoryDraft = null;
         wx.showToast({
           title: (nextSession.state === 'closing' || nextSession.state === 'mergeClosing') ? '可闭合，点击“合”确认' : '墙体已确认',
           icon: 'none'
@@ -3072,10 +3966,24 @@ Page({
   },
 
   onNumberClose() {
+    if (this.numberPadMode === 'angle') {
+      this.stopPhoneAngleMeasurement();
+      this.resetPhoneAngleState();
+      this.resetAngleTriangle();
+      if (this.angleRemeasureOriginalDraft) {
+        this.draft = this.angleRemeasureOriginalDraft;
+        this.angleRemeasureOriginalDraft = null;
+      }
+    }
     this.numberPadMode = '';
     this.centerSelectedWall(false);
     this.applyDraft(this.draft, { persist: false });
-    this.setData({ numberPadVisible: false, numberInput: '' });
+    this.setData({
+      numberPadVisible: false,
+      numberInput: '',
+      numberUnit: 'mm',
+      angleMeasureVisible: false
+    });
   },
 
   componentNumberPadMode(specMode) {
@@ -3150,7 +4058,7 @@ Page({
         componentPanelMode: 'spec',
         componentSpecMode: specMode
       });
-      this.schedulePrototypePersist();
+      this.scheduleFormalPersist();
     } catch (err) {
       wx.showToast({ title: err.message || '输入无效', icon: 'none' });
     }

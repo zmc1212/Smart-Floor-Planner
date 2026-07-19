@@ -56,21 +56,21 @@ function parseLayoutData(layoutData: any) {
   return layoutData;
 }
 
-function isSurveyingPrototypePlan(plan: any) {
+function isFormalSurveyPlan(plan: any) {
   const layoutData = parseLayoutData(plan?.layoutData);
   return Boolean(
     layoutData &&
     typeof layoutData === 'object' &&
     !Array.isArray(layoutData) &&
-    layoutData.measurementMode === 'surveying_prototype' &&
-    layoutData.prototypeOnly === true &&
-    layoutData.surveyDraft?.kind === 'survey-wall-graph'
+    layoutData.version === 4 &&
+    layoutData.measurementMode === 'surveying' &&
+    layoutData.surveyGraph?.kind === 'survey-wall-graph'
   );
 }
 
-function getSurveyDraftStats(layoutData: any) {
+function getSurveyGraphStats(layoutData: any) {
   const parsed = parseLayoutData(layoutData);
-  const draft = parsed?.surveyDraft;
+  const draft = parsed?.surveyGraph;
   const floors = Array.isArray(draft?.floors) ? draft.floors : [];
   const activeFloor = floors.find((floor: any) => floor?.id === draft?.activeFloorId) || floors[0] || {};
   return {
@@ -793,8 +793,8 @@ function RelatedFloorPlans({ floorPlans, primaryFloorPlanId }: { floorPlans: any
       <div className="grid grid-cols-1 gap-3">
         {sortedFloorPlans.length > 0 ? (
           sortedFloorPlans.map((plan) => {
-            const isPrototype = isSurveyingPrototypePlan(plan);
-            const stats = getSurveyDraftStats(plan.layoutData);
+            const isSurveying = isFormalSurveyPlan(plan);
+            const stats = getSurveyGraphStats(plan.layoutData);
             return (
             <div key={plan._id} className="flex items-center justify-between p-4 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.08)] rounded-xl hover:shadow-[0_4px_12px_rgba(0,0,0,0.05)] transition-all cursor-pointer group"
                  onClick={() => window.location.href = `/floorplans/${plan._id}`}>
@@ -804,18 +804,18 @@ function RelatedFloorPlans({ floorPlans, primaryFloorPlanId }: { floorPlans: any
                   {primaryFloorPlanId && String(plan._id) === String(primaryFloorPlanId) && (
                     <Badge variant="secondary" className="bg-green-50 text-green-700 border-none">主户型</Badge>
                   )}
-                  {isPrototype && (
-                    <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-none">新版测绘原型</Badge>
+                  {isSurveying && (
+                    <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-none">正式量房</Badge>
                   )}
                 </span>
                 <span className="text-[11px] text-neutral-400 font-medium flex items-center gap-1">
                   <Clock size={10} /> 测量于 {new Date(plan.createdAt).toLocaleDateString()}
                 </span>
                 <span className="text-[11px] text-blue-600 font-bold">
-                  {isPrototype ? '新版测绘原型' : getFloorPlanSourceLabel(plan.source)}
+                  {isSurveying ? '正式量房' : getFloorPlanSourceLabel(plan.source)}
                   {plan.externalSource?.layoutLabel ? ` · ${plan.externalSource.layoutLabel}` : ''}
                 </span>
-                {isPrototype && (
+                {isSurveying && (
                   <span className="text-[11px] font-medium text-neutral-500">
                     {stats.wallCount} 面墙 · {stats.spaceCount} 个空间 · {stats.openingCount} 个门窗
                   </span>

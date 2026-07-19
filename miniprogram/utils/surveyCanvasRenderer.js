@@ -111,12 +111,16 @@ function createLabelBox(wall, y, label) {
 
 function createDimensionOptions(wall, priority) {
   const innerSign = wall.measurementSide === 'left' ? 1 : -1;
-  const outerSign = -innerSign;
+  const outerSign = typeof wall.closedOutsideSign === 'number'
+    ? wall.closedOutsideSign
+    : -innerSign;
   const innerLabel = `${Math.round(wall.lengthMm || 0)}`;
   const outerLabel = `${Math.round(wall.outerLengthMm || wall.lengthMm || 0)}`;
   
   const configs = [
     {
+      kind: 'inner',
+      placement: 'inside',
       offset: innerSign * DIMENSION_GAP_PX,
       label: innerLabel,
       startX: 0,
@@ -125,6 +129,8 @@ function createDimensionOptions(wall, priority) {
       endY: 0
     },
     {
+      kind: 'outer',
+      placement: 'outside',
       offset: outerSign * (wall.thicknessPx + DIMENSION_OUTER_GAP_PX),
       label: outerLabel,
       startX: wall.outerStartAlongPx || 0,
@@ -133,6 +139,8 @@ function createDimensionOptions(wall, priority) {
       endY: outerSign * wall.thicknessPx
     },
     {
+      kind: 'inner',
+      placement: 'inside',
       offset: innerSign * (DIMENSION_GAP_PX + DIMENSION_LABEL_HEIGHT_PX + 10),
       label: innerLabel,
       startX: 0,
@@ -141,7 +149,51 @@ function createDimensionOptions(wall, priority) {
       endY: 0
     },
     {
+      kind: 'outer',
+      placement: 'outside',
       offset: outerSign * (wall.thicknessPx + DIMENSION_OUTER_GAP_PX + DIMENSION_LABEL_HEIGHT_PX + 10),
+      label: outerLabel,
+      startX: wall.outerStartAlongPx || 0,
+      endX: wall.outerEndPx || wall.widthPx,
+      startY: outerSign * wall.thicknessPx,
+      endY: outerSign * wall.thicknessPx
+    },
+    // Once a room closes, both values move outside the wall: the measured
+    // inside length stays nearer to the wall and the outline length sits beyond it.
+    {
+      kind: 'inner',
+      placement: 'outside',
+      offset: outerSign * (wall.thicknessPx + DIMENSION_OUTER_GAP_PX),
+      label: innerLabel,
+      startX: 0,
+      endX: wall.widthPx,
+      startY: 0,
+      endY: 0
+    },
+    {
+      kind: 'inner',
+      placement: 'outside',
+      offset: outerSign * (wall.thicknessPx + DIMENSION_OUTER_GAP_PX + (DIMENSION_LABEL_HEIGHT_PX + 10) * 2),
+      label: innerLabel,
+      startX: 0,
+      endX: wall.widthPx,
+      startY: 0,
+      endY: 0
+    },
+    {
+      kind: 'outer',
+      placement: 'outside',
+      offset: outerSign * (wall.thicknessPx + DIMENSION_OUTER_GAP_PX + DIMENSION_LABEL_HEIGHT_PX + 10),
+      label: outerLabel,
+      startX: wall.outerStartAlongPx || 0,
+      endX: wall.outerEndPx || wall.widthPx,
+      startY: outerSign * wall.thicknessPx,
+      endY: outerSign * wall.thicknessPx
+    },
+    {
+      kind: 'outer',
+      placement: 'outside',
+      offset: outerSign * (wall.thicknessPx + DIMENSION_OUTER_GAP_PX + (DIMENSION_LABEL_HEIGHT_PX + 10) * 3),
       label: outerLabel,
       startX: wall.outerStartAlongPx || 0,
       endX: wall.outerEndPx || wall.widthPx,
@@ -154,6 +206,8 @@ function createDimensionOptions(wall, priority) {
     const labelBox = createLabelBox(wall, cfg.offset, cfg.label);
     return {
       wall,
+      kind: cfg.kind,
+      placement: cfg.placement,
       label: cfg.label,
       offset: cfg.offset,
       startX: cfg.startX,
@@ -166,10 +220,62 @@ function createDimensionOptions(wall, priority) {
   });
 }
 
-function resolveDimensions(walls, previewWall) {
+function createOpeningSegmentDimensions(walls, openings) {
+  const dimensions = [];
+  const openingsByWall = {};
+  (openings || []).forEach((opening) => {
+    // The compact chain dimension is reserved for doors. Windows are shown
+    // with their CAD rails and the normal whole-wall dimensions only.
+    if (!opening || opening.type !== 'door' || !opening.wall || !opening.wall.id) return;
+    if (!openingsByWall[opening.wall.id]) openingsByWall[opening.wall.id] = [];
+    openingsByWall[opening.wall.id].push(opening);
+  });
+
+  walls.filter((wall) => wall.closed && !wall.lineOnly).forEach((wall) => {
+    const wallOpenings = (openingsByWall[wall.id] || []).slice().sort((first, second) => first.startPx - second.startPx);
+    if (!wallOpenings.length) return;
+
+    const outerSign = typeof wall.closedOutsideSign === 'number'
+      ? wall.closedOutsideSign
+      : (wall.measurementSide === 'left' ? -1 : 1);
+    const offset = outerSign * (wall.thicknessPx + DIMENSION_OUTER_GAP_PX);
+    const segments = [];
+    let cursor = 0;
+    wallOpenings.forEach((opening) => {
+      const start = clamp(opening.startPx, cursor, wall.widthPx);
+      const end = clamp(opening.endPx, start, wall.widthPx);
+      if (start - cursor >= 1) segments.push({ startX: cursor, endX: start });
+      if (end - start >= 1) segments.push({ startX: start, endX: end });
+      cursor = end;
+    });
+    if (wall.widthPx - cursor >= 1) segments.push({ startX: cursor, endX: wall.widthPx });
+
+    segments.forEach((segment, index) => {
+      const lengthMm = Math.round((segment.endX - segment.startX) / wall.widthPx * wall.lengthMm);
+      if (!lengthMm) return;
+      dimensions.push({
+        wall,
+        kind: 'opening-segment',
+        placement: 'outside',
+        label: `${lengthMm}`,
+        offset,
+        startX: segment.startX,
+        endX: segment.endX,
+        startY: outerSign * wall.thicknessPx,
+        endY: outerSign * wall.thicknessPx,
+        priority: 1000 + index,
+        labelBox: createLabelBox(wall, offset, `${lengthMm}`)
+      });
+    });
+  });
+  return dimensions;
+}
+
+function resolveDimensions(walls, openings) {
   const dimensions = [];
   const accepted = [];
-  const renderWalls = walls.filter((wall) => !wall.lineOnly && !wall.closed);
+  const activeWalls = walls.filter((wall) => !wall.lineOnly && wall.isActiveMeasurement && !wall.closed);
+  const closedWalls = walls.filter((wall) => !wall.lineOnly && wall.closed);
 
   function processGroup(groupOptions) {
     groupOptions.sort((first, second) => second.priority - first.priority);
@@ -184,35 +290,50 @@ function resolveDimensions(walls, previewWall) {
 
   const innerGroup = [];
   const outerGroup = [];
+  const doorWallIds = new Set((openings || [])
+    .filter((opening) => opening && opening.type === 'door' && opening.wall)
+    .map((opening) => opening.wall.id));
 
-  renderWalls.forEach((wall, index) => {
-    const priority = (wall.selected ? 900 : 0) + (index === renderWalls.length - 1 ? 500 : 0) + index;
+  // While measuring, measured values describe only the inside edge. The exterior
+  // length is useful only after the space is explicitly closed.
+  activeWalls.forEach((wall, index) => {
+    const priority = (wall.selected ? 900 : 0) + (index === activeWalls.length - 1 ? 500 : 0) + index;
     const allOptions = createDimensionOptions(wall, priority);
-    
     innerGroup.push({
       wall,
       options: [allOptions[0], allOptions[2]],
       priority
     });
+  });
 
+  // A closed space needs both the measured inner edge and the finished outer
+  // wall edge, matching the completed-plan annotation convention.
+  closedWalls.forEach((wall, index) => {
+    const priority = (wall.selected ? 900 : 0) + index;
+    const allOptions = createDimensionOptions(wall, priority);
+    // A door wall carries the nearby chain dimension plus one total. Keeping
+    // its second whole-wall value would repeat the same information and make
+    // a completed room look crowded.
+    if (!doorWallIds.has(wall.id)) {
+      innerGroup.push({
+        wall,
+        options: [allOptions[5]],
+        priority
+      });
+    }
     outerGroup.push({
       wall,
-      options: [allOptions[1], allOptions[3]],
+      options: [allOptions[7]],
       priority
     });
   });
 
-  if (previewWall && !previewWall.lineOnly) {
-    const previewOptions = createDimensionOptions(previewWall, 1000);
-    innerGroup.push({
-      wall: previewWall,
-      options: [previewOptions[0], previewOptions[2]],
-      priority: 1000
-    });
-  }
-
   processGroup(innerGroup);
   processGroup(outerGroup);
+
+  // A door wall receives a compact chain dimension nearest to the wall:
+  // left remaining wall, opening width, then right remaining wall.
+  dimensions.push(...createOpeningSegmentDimensions(closedWalls, openings));
 
   return dimensions;
 }
@@ -257,6 +378,12 @@ function buildWallScene(floor, wall, options) {
     (outerStart.y - startPoint.y) * localY.y
   );
   const previousWall = opts.relativePreviousWall || opts.previousWall || null;
+  const relativeAngle = previousWall ? normalizeAngleDiff(wall.angleDeg, previousWall.angleDeg) : null;
+  // The measurement UI works with the interior angle at a corner, not the
+  // directional bearing delta between two wall vectors.
+  const interiorAngleDeg = Number.isFinite(wall.angleInteriorDeg)
+    ? Math.round(wall.angleInteriorDeg)
+    : (relativeAngle === null ? null : 180 - relativeAngle);
 
   const outerStartAlongPx = geometry ? geometry.outerStartAlongMm * viewport.scale : 0;
   const outerEndPx = geometry ? geometry.outerEndAlongMm * viewport.scale : widthPx;
@@ -309,7 +436,8 @@ function buildWallScene(floor, wall, options) {
     angleDeg: geometry.angleDeg,
     angleRad: Math.atan2(endPoint.y - startPoint.y, endPoint.x - startPoint.x),
     lengthMm: geometry.lengthMm,
-    relativeAngle: previousWall ? normalizeAngleDiff(wall.angleDeg, previousWall.angleDeg) : null,
+    relativeAngle,
+    interiorAngleDeg,
     measurementSide: wall.measurementSide,
     thicknessPx,
     centerLineYPx: outerOffsetPx / 2,
@@ -342,6 +470,7 @@ function buildPreviewWall(floor, session, options) {
     mode: session.mode,
     lengthMm: session.previewLengthMm,
     angleDeg: session.previewAngleDeg,
+    angleInteriorDeg: session.previewInteriorAngleDeg,
     thicknessMm: session.thicknessMm,
     measurementSide: session.measurementSide,
     status: 'preview'
@@ -390,7 +519,18 @@ function buildClosureGuide(floor, session, project) {
 
 function buildAlignmentSnapGuide(session, project) {
   const guide = session && session.alignmentSnapGuide;
-  if (!guide || guide.type !== 'rectangle-third-wall' || !guide.referencePoint || !guide.snappedPoint) {
+  if (!guide || !guide.snappedPoint) {
+    return null;
+  }
+
+  if (guide.type === 'previous-diagonal-direction' && guide.anchorPoint) {
+    return {
+      startPoint: project(guide.anchorPoint),
+      endPoint: project(guide.snappedPoint)
+    };
+  }
+
+  if (guide.type !== 'rectangle-third-wall' || !guide.referencePoint) {
     return null;
   }
 
@@ -475,32 +615,56 @@ function buildCursor(floor, session, project) {
   };
 }
 
-function buildClosedSpaceLabels(floor, project) {
+function calculatePolygonCentroid(points) {
+  if (!points || points.length < 3) return null;
+
+  let cx = 0;
+  let cy = 0;
+  let area = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    const current = points[index];
+    const next = points[(index + 1) % points.length];
+    const cross = current.xMm * next.yMm - next.xMm * current.yMm;
+    area += cross;
+    cx += (current.xMm + next.xMm) * cross;
+    cy += (current.yMm + next.yMm) * cross;
+  }
+  area = area / 2;
+  if (!area) return null;
+  return {
+    xMm: cx / (6 * area),
+    yMm: cy / (6 * area)
+  };
+}
+
+function getRoomDetailScale(viewport) {
+  const currentScale = (viewport && viewport.scale) || surveyGraph.DEFAULT_SCALE;
+  const relativeScale = currentScale / surveyGraph.DEFAULT_SCALE;
+  // A square-root curve keeps the room card readable while still making its
+  // text and spacing visibly follow pinch zoom.
+  return clamp(Math.sqrt(relativeScale), 0.8, 1.45);
+}
+
+function buildClosedSpaceLabels(floor, project, viewport) {
   const closedSpaces = (floor.spaces || []).filter((space) => space.closed && Array.isArray(space.wallIds));
   if (!closedSpaces.length) return [];
+  const detailScale = getRoomDetailScale(viewport);
+  const detailViewportScale = (viewport && viewport.scale) || surveyGraph.DEFAULT_SCALE;
 
   return closedSpaces.map((space) => {
     const boundaryPoints = surveyGraph.buildSpaceBoundaryPoints(floor, space.wallIds);
     if (!boundaryPoints || boundaryPoints.length < 3) return null;
 
-    // Shoelace centroid
-    let cx = 0;
-    let cy = 0;
+    const centroidMm = calculatePolygonCentroid(boundaryPoints);
+    if (!centroidMm) return null;
+    const centroid = project(centroidMm);
     let area = 0;
-    for (let i = 0; i < boundaryPoints.length; i += 1) {
-      const current = boundaryPoints[i];
-      const next = boundaryPoints[(i + 1) % boundaryPoints.length];
-      const cross = current.xMm * next.yMm - next.xMm * current.yMm;
-      area += cross;
-      cx += (current.xMm + next.xMm) * cross;
-      cy += (current.yMm + next.yMm) * cross;
+    for (let index = 0; index < boundaryPoints.length; index += 1) {
+      const current = boundaryPoints[index];
+      const next = boundaryPoints[(index + 1) % boundaryPoints.length];
+      area += current.xMm * next.yMm - next.xMm * current.yMm;
     }
     area = area / 2;
-    if (!area) return null;
-    cx = cx / (6 * area);
-    cy = cy / (6 * area);
-
-    const centroid = project({ xMm: cx, yMm: cy });
 
     // Inner dimensions come from the same measured wall lengths shown inside
     // the room. Boundary points can sit on the outside corner after wall joins.
@@ -534,7 +698,11 @@ function buildClosedSpaceLabels(floor, project) {
       roomName: space.name || '\u623f\u95f41',
       widthMm,
       heightMm,
-      areaM2
+      ceilingHeightMm: Math.round(Number(floor.ceilingHeightMm || 2800)),
+      areaM2,
+      detailScale,
+      detailMaxWidthPx: Math.max(0, widthMm * detailViewportScale - 16),
+      detailMaxHeightPx: Math.max(0, heightMm * detailViewportScale - 16)
     };
   }).filter(Boolean);
 }
@@ -560,24 +728,53 @@ function createSurveyRenderScene(input) {
   const project = createProjector(viewport, rect);
   const renderThicknessMmMap = buildRenderThicknessMmMap(floor, viewport);
   const closedWallIds = {};
+  const closedWallCentroids = {};
   (floor.spaces || []).filter((space) => space.closed && Array.isArray(space.wallIds)).forEach((space) => {
-    space.wallIds.forEach((wallId) => { closedWallIds[wallId] = true; });
+    const boundaryPoints = surveyGraph.buildSpaceBoundaryPoints(floor, space.wallIds);
+    const centroid = calculatePolygonCentroid(boundaryPoints);
+    space.wallIds.forEach((wallId) => {
+      closedWallIds[wallId] = true;
+      if (centroid && !closedWallCentroids[wallId]) {
+        closedWallCentroids[wallId] = project(centroid);
+      }
+    });
   });
+  const activeWallStartIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+    ? Math.max(0, Math.min(session.activeSpaceStartWallIndex, (floor.walls || []).length))
+    : 0;
   const walls = (floor.walls || []).map((wall, index) => buildWallScene(floor, wall, {
     project,
     viewport,
     renderThicknessMmMap,
     relativePreviousWall: index > 0 ? floor.walls[index - 1] : null,
     selectedWallId: session.selectedWallId
-  })).filter(Boolean).map((wall) => Object.assign(wall, { closed: !!closedWallIds[wall.id] }));
+  })).filter(Boolean).map((wall) => {
+    const centroid = closedWallCentroids[wall.id];
+    const midpoint = {
+      x: (wall.startPoint.x + wall.endPoint.x) / 2,
+      y: (wall.startPoint.y + wall.endPoint.y) / 2
+    };
+    const centerOffset = centroid
+      ? (centroid.x - midpoint.x) * wall.localY.x + (centroid.y - midpoint.y) * wall.localY.y
+      : 0;
+    const closedOutsideSign = centroid
+      ? (centerOffset >= 0 ? -1 : 1)
+      : null;
+
+    return Object.assign(wall, {
+      closed: !!closedWallIds[wall.id],
+      closedOutsideSign,
+      isActiveMeasurement: (floor.walls || []).indexOf(wall.wall) >= activeWallStartIndex && !closedWallIds[wall.id]
+    });
+  });
   const previewWall = buildPreviewWall(floor, session, {
     project,
     viewport,
     renderThicknessMmMap,
     selectedWallId: session.selectedWallId
   });
-  const dimensions = resolveDimensions(walls, previewWall);
   const openings = buildOpeningScenes(floor, walls, session);
+  const dimensions = resolveDimensions(walls, openings);
 
   return {
     rect,
@@ -586,12 +783,15 @@ function createSurveyRenderScene(input) {
     openings,
     previewWall,
     dimensions,
+    activeMeasurementWallIds: walls
+      .filter((wall) => wall.isActiveMeasurement)
+      .map((wall) => wall.id),
     joinFills: buildJoinFills(floor, renderThicknessMmMap, project, closedWallIds),
     closureGuide: buildClosureGuide(floor, session, project),
     alignmentSnapGuide: buildAlignmentSnapGuide(session, project),
     cursor: buildCursor(floor, session, project),
     closedSpaceFills: buildClosedSpaceFills(floor, project),
-    closedSpaceLabels: buildClosedSpaceLabels(floor, project),
+    closedSpaceLabels: buildClosedSpaceLabels(floor, project, viewport),
     activeSegment: session.state === 'spaceClosed' ? null : (previewWall || walls[walls.length - 1] || null),
     closed: shouldCloseWholeWallPath(floor, previewWall),
     session
@@ -654,8 +854,8 @@ function drawAxes(ctx, scene) {
 
   ctx.save();
   ctx.strokeStyle = 'rgba(0, 126, 220, 0.92)';
-  ctx.lineWidth = 4;
-  if (ctx.setLineDash) ctx.setLineDash([18, 14]);
+  ctx.lineWidth = 2;
+  if (ctx.setLineDash) ctx.setLineDash([14, 10]);
   ctx.beginPath();
   ctx.moveTo(0, point.y);
   ctx.lineTo(scene.rect.width, point.y);
@@ -778,7 +978,7 @@ function drawRedlines(ctx, scene) {
   ctx.lineCap = 'butt';
   ctx.lineJoin = 'miter';
   ctx.miterLimit = 2;
-  const measuringWalls = scene.walls.filter((wall) => !wall.closed);
+  const measuringWalls = scene.walls.filter((wall) => wall.isActiveMeasurement);
   drawRedlinePath(ctx, measuringWalls, '#d71920', false);
 
   if (scene.previewWall) {
@@ -804,48 +1004,100 @@ function drawSelectedWallHighlight(ctx, scene) {
   ctx.restore();
 }
 
-function drawDoorOpening(ctx, opening) {
-  const wall = opening.wall;
-  const swing = Math.min(Math.max(opening.widthPx * 0.72, 16), 42);
-  const centerY = opening.centerYPx || 0;
-  const openDirection = opening.opening && opening.opening.openDirection === 'outside' ? 'outside' : 'inside';
-  const swingSide = openDirection === 'outside'
-    ? (wall.measurementSide === 'left' ? 'right' : 'left')
-    : wall.measurementSide;
-  const sideSign = swingSide === 'left' ? -1 : 1;
-  const baseY = centerY + sideSign * 4;
-  const swingY = centerY + sideSign * swing;
-  const color = opening.selected ? '#f07a21' : '#111827';
-
-  ctx.strokeStyle = color;
-  ctx.lineWidth = opening.selected ? 4 : 2;
-  ctx.lineCap = 'round';
+function drawOpeningSegment(ctx, startX, startY, endX, endY) {
   ctx.beginPath();
-  ctx.moveTo(opening.startPx, baseY);
-  ctx.lineTo(opening.startPx, swingY);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.arc(opening.startPx, baseY, swing, swingSide === 'left' ? -Math.PI / 2 : 0, swingSide === 'left' ? 0 : Math.PI / 2);
+  ctx.moveTo(startX, startY);
+  ctx.lineTo(endX, endY);
   ctx.stroke();
 }
 
-function drawWindowOpening(ctx, opening) {
-  const y = opening.centerYPx || 0;
-  const color = opening.selected ? '#f07a21' : '#0ea5e9';
-  ctx.strokeStyle = color;
-  ctx.lineWidth = opening.selected ? 6 : 4;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(opening.startPx, y);
-  ctx.lineTo(opening.endPx, y);
-  ctx.stroke();
+function getDoorSwingSide(opening) {
+  const wall = opening.wall;
+  const openDirection = opening.opening && opening.opening.openDirection === 'outside' ? 'outside' : 'inside';
+  if (openDirection === 'outside') {
+    return wall.measurementSide === 'left' ? 'right' : 'left';
+  }
+  return wall.measurementSide === 'left' ? 'left' : 'right';
+}
 
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 1.5;
+// Draw a CAD door leaf and the quarter-circle traced by its outside corner.
+// `endOnRight` selects which edge of the clear opening the arc reaches.
+function drawDoorLeaf(ctx, hingeX, baseY, radius, sideSign, endOnRight) {
+  const leafAngle = sideSign < 0 ? -Math.PI / 2 : Math.PI / 2;
+  const endAngle = endOnRight ? 0 : Math.PI;
+  const anticlockwise = (sideSign > 0 && endOnRight) || (sideSign < 0 && !endOnRight);
+
+  drawOpeningSegment(ctx, hingeX, baseY, hingeX, baseY + sideSign * radius);
   ctx.beginPath();
-  ctx.moveTo(opening.startPx + 4, y);
-  ctx.lineTo(opening.endPx - 4, y);
+  ctx.arc(hingeX, baseY, radius, leafAngle, endAngle, anticlockwise);
   ctx.stroke();
+}
+
+function drawSlidingDoorOpening(ctx, opening, centerY) {
+  const panelOffset = Math.max(3, opening.wall.thicknessPx * 0.28);
+  const centerX = (opening.startPx + opening.endPx) / 2;
+
+  // Two staggered panels are the conventional plan-view symbol for a sliding door.
+  drawOpeningSegment(ctx, opening.startPx, centerY - panelOffset, centerX, centerY - panelOffset);
+  drawOpeningSegment(ctx, centerX, centerY + panelOffset, opening.endPx, centerY + panelOffset);
+  drawOpeningSegment(ctx, opening.startPx, centerY - panelOffset, opening.startPx, centerY + panelOffset);
+  drawOpeningSegment(ctx, centerX, centerY - panelOffset, centerX, centerY + panelOffset);
+  drawOpeningSegment(ctx, opening.endPx, centerY - panelOffset, opening.endPx, centerY + panelOffset);
+}
+
+function drawDoorOpening(ctx, opening) {
+  const centerY = opening.centerYPx || 0;
+  const category = opening.opening && opening.opening.modelCategory;
+  const sideSign = getDoorSwingSide(opening) === 'left' ? -1 : 1;
+  const color = opening.selected ? '#f07a21' : '#111827';
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = opening.selected ? 3 : 2;
+  ctx.lineCap = 'butt';
+  ctx.lineJoin = 'miter';
+
+  if (category === 'sliding-door') {
+    drawSlidingDoorOpening(ctx, opening, centerY);
+    return;
+  }
+
+  // Do not cap this value: a door leaf must use the measured clear opening
+  // width, otherwise the arc no longer meets the opposite jamb.
+  if (category === 'double-door') {
+    const leafWidth = opening.widthPx / 2;
+    drawDoorLeaf(ctx, opening.startPx, centerY, leafWidth, sideSign, true);
+    drawDoorLeaf(ctx, opening.endPx, centerY, leafWidth, sideSign, false);
+    return;
+  }
+  drawDoorLeaf(ctx, opening.startPx, centerY, opening.widthPx, sideSign, true);
+}
+
+function drawWindowOpening(ctx, opening) {
+  const centerY = opening.centerYPx || 0;
+  const railOffset = Math.max(3, opening.wall.thicknessPx * 0.24);
+  const centerX = (opening.startPx + opening.endPx) / 2;
+  const color = opening.selected ? '#f07a21' : '#2f2f2f';
+
+  // CAD windows are a framed break in the wall: two parallel rails, jambs,
+  // and mullions instead of a single coloured line along the wall centre.
+  ctx.strokeStyle = color;
+  ctx.lineWidth = opening.selected ? 3 : 1.5;
+  ctx.lineCap = 'butt';
+  ctx.lineJoin = 'miter';
+  drawOpeningSegment(ctx, opening.startPx, centerY - railOffset, opening.endPx, centerY - railOffset);
+  drawOpeningSegment(ctx, opening.startPx, centerY, opening.endPx, centerY);
+  drawOpeningSegment(ctx, opening.startPx, centerY + railOffset, opening.endPx, centerY + railOffset);
+  drawOpeningSegment(ctx, opening.startPx, centerY - railOffset, opening.startPx, centerY + railOffset);
+  drawOpeningSegment(ctx, opening.endPx, centerY - railOffset, opening.endPx, centerY + railOffset);
+
+  if (opening.widthPx >= 36) {
+    drawOpeningSegment(ctx, centerX, centerY - railOffset, centerX, centerY + railOffset);
+  }
+  if (opening.opening && opening.opening.modelCategory === 'sliding-window' && opening.widthPx >= 72) {
+    const quarterWidth = opening.widthPx / 4;
+    drawOpeningSegment(ctx, centerX - quarterWidth, centerY - railOffset, centerX - quarterWidth, centerY + railOffset);
+    drawOpeningSegment(ctx, centerX + quarterWidth, centerY - railOffset, centerX + quarterWidth, centerY + railOffset);
+  }
 }
 
 function drawOpenings(ctx, scene) {
@@ -856,7 +1108,7 @@ function drawOpenings(ctx, scene) {
     ctx.rotate(wall.angleRad);
 
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = Math.max(8, wall.thicknessPx + 4);
+    ctx.lineWidth = Math.max(8, wall.thicknessPx + WALL_STROKE_PX * 3);
     ctx.lineCap = 'butt';
     ctx.beginPath();
     ctx.moveTo(opening.startPx, opening.centerYPx);
@@ -901,24 +1153,10 @@ function drawArrow(ctx, x, y, direction, size) {
   ctx.fill();
 }
 
-function drawSlashTick(ctx, x, y, size) {
-  const s = size || 4;
-  ctx.save();
-  ctx.strokeStyle = '#333333';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(x - s, y + s);
-  ctx.lineTo(x + s, y - s);
-  ctx.stroke();
-  ctx.restore();
-}
-
 function drawDimension(ctx, dimension) {
   const wall = dimension.wall;
   const y = dimension.offset;
   const width = wall.widthPx;
-  const labelWidth = Math.max(34, String(dimension.label).length * 8 + 16);
-  const labelHeight = DIMENSION_LABEL_HEIGHT_PX;
   const flipLabel = wall.angleDeg > 90 || wall.angleDeg <= -90;
 
   const startX = typeof dimension.startX === 'number' ? dimension.startX : 0;
@@ -931,7 +1169,7 @@ function drawDimension(ctx, dimension) {
   ctx.rotate(wall.angleRad);
   ctx.strokeStyle = '#333333';
   ctx.fillStyle = '#333333';
-  ctx.lineWidth = 1.2;
+  ctx.lineWidth = 1;
 
   // Draw extension lines
   ctx.beginPath();
@@ -941,26 +1179,23 @@ function drawDimension(ctx, dimension) {
   ctx.lineTo(endX, y);
   ctx.stroke();
 
-  // Draw dimension line (overshoot slightly past the extension lines)
-  const overshoot = 4;
+  // Dimension endpoints meet the extension lines; only arrowheads extend into
+  // the dimension line, so the drawing stays compact at small scales.
   ctx.beginPath();
-  ctx.moveTo(startX - overshoot, y);
-  ctx.lineTo(endX + overshoot, y);
+  ctx.moveTo(startX, y);
+  ctx.lineTo(endX, y);
   ctx.stroke();
 
-  // Draw architectural slash ticks at intersections
-  drawSlashTick(ctx, startX, y, 4);
-  drawSlashTick(ctx, endX, y, 4);
+  // Use inward-facing arrows at both endpoints instead of architectural slashes.
+  drawArrow(ctx, startX, y, 1, 6);
+  drawArrow(ctx, endX, y, -1, 6);
 
   // Draw value label
   ctx.save();
   ctx.translate((startX + endX) / 2, y);
   if (flipLabel) ctx.rotate(Math.PI);
-  // Clear space for text using light background
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
-  ctx.fillRect(-labelWidth / 2, -labelHeight / 2, labelWidth, labelHeight);
   ctx.fillStyle = '#111111';
-  ctx.font = 'bold 12px monospace';
+  ctx.font = '600 12px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(dimension.label, 0, 0.5);
@@ -978,8 +1213,8 @@ function drawClosureGuide(ctx, scene) {
   if (!guide) return;
   ctx.save();
   ctx.strokeStyle = '#f07a21';
-  ctx.lineWidth = 2;
-  if (ctx.setLineDash) ctx.setLineDash([10, 8]);
+  ctx.lineWidth = 1.5;
+  if (ctx.setLineDash) ctx.setLineDash([7, 6]);
   ctx.beginPath();
   ctx.moveTo(guide.startPoint.x, guide.startPoint.y);
   ctx.lineTo(guide.endPoint.x, guide.endPoint.y);
@@ -1011,8 +1246,8 @@ function drawAlignmentSnapGuide(ctx, scene) {
 
   ctx.save();
   ctx.strokeStyle = '#2875b4';
-  ctx.lineWidth = 2;
-  if (ctx.setLineDash) ctx.setLineDash([6, 6]);
+  ctx.lineWidth = 1.5;
+  if (ctx.setLineDash) ctx.setLineDash([5, 5]);
   ctx.beginPath();
   ctx.moveTo(startPoint.x, startPoint.y);
   ctx.lineTo(endPoint.x, endPoint.y);
@@ -1044,6 +1279,66 @@ function drawCursor(ctx, scene) {
   ctx.strokeStyle = '#f07a21';
   ctx.fillRect(point.x - core / 2, point.y - core / 2, core, core);
   ctx.strokeRect(point.x - core / 2, point.y - core / 2, core, core);
+  ctx.restore();
+}
+
+function clearDraggingCursor(ctx, rect, options) {
+  if (!ctx || !rect || !rect.width || !rect.height) return;
+  const dpr = (options && options.dpr) || 1;
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, rect.width, rect.height);
+  ctx.restore();
+}
+
+/**
+ * Lightweight drag-only canvas renderer. It never redraws the formal survey
+ * scene, so touchmove can update at the canvas refresh rate without setData.
+ */
+function drawDraggingCursor(ctx, rect, point, options) {
+  if (!ctx || !rect || !rect.width || !rect.height || !point) return;
+  const dpr = (options && options.dpr) || 1;
+  clearDraggingCursor(ctx, rect, { dpr });
+
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+
+  ctx.strokeStyle = 'rgba(22, 119, 255, 0.92)';
+  ctx.lineWidth = 2;
+  if (ctx.setLineDash) ctx.setLineDash([18, 12]);
+  ctx.beginPath();
+  ctx.moveTo(0, point.y);
+  ctx.lineTo(rect.width, point.y);
+  ctx.moveTo(point.x, 0);
+  ctx.lineTo(point.x, rect.height);
+  ctx.stroke();
+  if (ctx.setLineDash) ctx.setLineDash([]);
+
+  const outerSize = 68;
+  const crossHalf = 48;
+  const coreSize = 18;
+  ctx.fillStyle = 'rgba(240, 122, 33, 0.16)';
+  ctx.strokeStyle = 'rgba(240, 122, 33, 0.56)';
+  ctx.lineWidth = 1.5;
+  ctx.fillRect(point.x - outerSize / 2, point.y - outerSize / 2, outerSize, outerSize);
+  ctx.strokeRect(point.x - outerSize / 2, point.y - outerSize / 2, outerSize, outerSize);
+
+  ctx.strokeStyle = '#f07a21';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(point.x - crossHalf, point.y);
+  ctx.lineTo(point.x + crossHalf, point.y);
+  ctx.moveTo(point.x, point.y - crossHalf);
+  ctx.lineTo(point.x, point.y + crossHalf);
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
+  ctx.strokeStyle = '#f07a21';
+  ctx.lineWidth = 3;
+  ctx.fillRect(point.x - coreSize / 2, point.y - coreSize / 2, coreSize, coreSize);
+  ctx.strokeRect(point.x - coreSize / 2, point.y - coreSize / 2, coreSize, coreSize);
   ctx.restore();
 }
 
@@ -1100,31 +1395,47 @@ function drawClosedSpaceLabel(ctx, scene) {
   labels.forEach((label) => {
     if (!label || !label.centroid) return;
 
-    const { centroid, roomName, widthMm, heightMm, areaM2 } = label;
+    const { centroid, roomName, ceilingHeightMm, areaM2 } = label;
+    const detailScale = label.detailScale || 1;
     const cx = centroid.x;
     const cy = centroid.y;
 
     ctx.save();
 
     const titleText = String(roomName);
-    const widthText = `W = ${widthMm} mm`;
-    const heightText = `H = ${heightMm} mm`;
-    const areaText = `S = ${areaM2} m2`;
-    ctx.font = 'bold 12px sans-serif';
+    const heightText = `H=${ceilingHeightMm}mm`;
+    const areaText = `S≈${areaM2}m²`;
+    const titleFontSize = 12 * detailScale;
+    const metricFontSize = 9 * detailScale;
+    const horizontalPadding = 12 * detailScale;
+    const cardHeight = 52 * detailScale;
+    const titleOffset = 12 * detailScale;
+    const heightOffset = 34 * detailScale;
+    const areaOffset = 46 * detailScale;
+
+    ctx.font = `bold ${titleFontSize}px sans-serif`;
     const titleWidth = ctx.measureText(titleText).width;
-    ctx.font = '9px sans-serif';
+    ctx.font = `${metricFontSize}px sans-serif`;
     const metricWidth = Math.max(
-      ctx.measureText(widthText).width,
       ctx.measureText(heightText).width,
       ctx.measureText(areaText).width
     );
 
     // Background card with compact content-fit sizing
-    const cardW = Math.ceil(Math.max(titleWidth, metricWidth) + 24);
-    const cardH = 62;
+    const cardW = Math.ceil(Math.max(titleWidth, metricWidth) + horizontalPadding * 2);
+    const cardH = cardHeight;
     const cardX = cx - cardW / 2;
     const cardY = cy - cardH / 2;
-    const radius = 8;
+    const radius = 8 * detailScale;
+    const widthFit = label.detailMaxWidthPx ? label.detailMaxWidthPx / cardW : 1;
+    const heightFit = label.detailMaxHeightPx ? label.detailMaxHeightPx / cardH : 1;
+    const fitScale = Math.min(1, widthFit, heightFit);
+
+    if (fitScale < 1) {
+      ctx.translate(cx, cy);
+      ctx.scale(fitScale, fitScale);
+      ctx.translate(-cx, -cy);
+    }
 
     ctx.beginPath();
     ctx.moveTo(cardX + radius, cardY);
@@ -1137,38 +1448,20 @@ function drawClosedSpaceLabel(ctx, scene) {
     ctx.lineTo(cardX, cardY + radius);
     ctx.quadraticCurveTo(cardX, cardY, cardX + radius, cardY);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.1)';
-    ctx.shadowBlur = 8;
-    ctx.shadowOffsetY = 1;
+    ctx.fillStyle = 'transparent';
     ctx.fill();
-    ctx.shadowColor = 'transparent';
 
     // Room name
     ctx.fillStyle = '#111111';
-    ctx.font = 'bold 12px sans-serif';
+    ctx.font = `bold ${titleFontSize}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(titleText, cx, cardY + 12);
+    ctx.fillText(titleText, cx, cardY + titleOffset);
 
-    // Divider
-    ctx.beginPath();
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
-    ctx.lineWidth = 1;
-    ctx.moveTo(cardX + 8, cardY + 22);
-    ctx.lineTo(cardX + cardW - 8, cardY + 22);
-    ctx.stroke();
-
-    // W =
-    ctx.font = '9px sans-serif';
+    ctx.font = `${metricFontSize}px sans-serif`;
     ctx.fillStyle = '#555555';
-    ctx.fillText(widthText, cx, cardY + 34);
-
-    // H =
-    ctx.fillText(heightText, cx, cardY + 46);
-
-    // S =
-    ctx.fillText(areaText, cx, cardY + 58);
+    ctx.fillText(heightText, cx, cardY + heightOffset);
+    ctx.fillText(areaText, cx, cardY + areaOffset);
 
     ctx.restore();
   });
@@ -1259,6 +1552,8 @@ function hitTestSurveyOpening(scene, canvasPoint) {
 module.exports = {
   createSurveyRenderScene,
   drawSurveyScene,
+  drawDraggingCursor,
+  clearDraggingCursor,
   hitTestSurveyWall,
   hitTestSurveyOpening
 };

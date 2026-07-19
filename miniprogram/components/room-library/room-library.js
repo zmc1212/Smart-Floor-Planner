@@ -13,11 +13,8 @@ Component({
       const id = e.currentTarget.dataset.id;
       const fp = this.properties.myCloudFloorPlans.find(f => f._id === id);
       if (fp) {
-        const app = getApp();
-        app.globalData.restoreFloorPlan = fp;
-        // The index page will re-trigger its onShow since it's already the current page,
-        // but triggering a custom event is cleaner to tell the parent index page to reload.
-        this.triggerEvent('opencloudplan', { fp });
+        const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
+        openSurveyingEditor({ floorPlanId: fp._id });
       }
     },
     onResetLayout() { this.triggerEvent('resetlayout'); },

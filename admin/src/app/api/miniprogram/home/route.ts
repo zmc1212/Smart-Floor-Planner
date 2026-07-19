@@ -10,6 +10,7 @@ import Lead from '@/models/Lead';
 import { Measurement } from '@/models/Measurement';
 import { User } from '@/models/User';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import { adaptSurveyGraphToRooms, isFormalSurveyLayout } from '@/lib/survey-graph';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,10 @@ function asObjectId(value: unknown) {
 function parseRooms(layoutData: unknown): any[] {
   if (!layoutData) return [];
 
+  if (isFormalSurveyLayout(layoutData)) {
+    return adaptSurveyGraphToRooms(layoutData);
+  }
+
   let parsed = layoutData;
   if (typeof layoutData === 'string') {
     try {
@@ -31,12 +36,7 @@ function parseRooms(layoutData: unknown): any[] {
     }
   }
 
-  if (Array.isArray(parsed)) return parsed;
-  if (parsed && typeof parsed === 'object' && Array.isArray((parsed as any).rooms)) {
-    return (parsed as any).rooms;
-  }
-
-  return parsed ? [parsed] : [];
+  return isFormalSurveyLayout(parsed) ? adaptSurveyGraphToRooms(parsed) : [];
 }
 
 function calculateArea(rooms: any[]) {
@@ -118,13 +118,19 @@ export async function GET(request: Request) {
     const openid = context.user.openid;
 
     const { floorPlanQuery, leadQuery, measurementQuery, aiQuery } = buildVisibilityQueries(context);
+    const formalFloorPlanQuery = {
+      ...floorPlanQuery,
+      'layoutData.version': 4,
+      'layoutData.measurementMode': 'surveying',
+      'layoutData.surveyGraph.kind': 'survey-wall-graph',
+    };
 
     const [savedPlans, aiGeneratedCases, measurementRecords, leadCount, recentPlans, assignedDevice] = await Promise.all([
-      FloorPlan.countDocuments(floorPlanQuery),
+      FloorPlan.countDocuments(formalFloorPlanQuery),
       AiGeneration.countDocuments(aiQuery),
       Measurement.countDocuments(measurementQuery),
       Lead.countDocuments(leadQuery),
-      FloorPlan.find(floorPlanQuery).sort({ updatedAt: -1, createdAt: -1 }).limit(3).lean(),
+      FloorPlan.find(formalFloorPlanQuery).sort({ updatedAt: -1, createdAt: -1 }).limit(3).lean(),
       context.staff
         ? Device.findOne({ assignedUserId: (context.staff as any)._id, status: 'assigned' }).sort({ updatedAt: -1 }).lean()
         : null,

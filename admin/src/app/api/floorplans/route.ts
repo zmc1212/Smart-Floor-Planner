@@ -7,13 +7,13 @@ import { User } from '@/models/User';
 import { tenantStorage } from '@/lib/tenant-context';
 import { getPaginationParams, createPaginationMetadata } from '@/lib/pagination';
 import { linkFloorPlanToLead } from '@/lib/floorplan-lead-link';
+import { isFormalSurveyLayout } from '@/lib/survey-graph';
 
 interface FloorPlanRequestBody {
   name?: string;
   layoutData?: unknown;
   status?: 'draft' | 'completed';
-  source?: 'manual' | 'template' | 'kujiale';
-  externalSource?: unknown;
+  source?: 'manual';
   leadId?: string;
 }
 
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   try {
     await dbConnect();
     const body = await req.json() as FloorPlanRequestBody;
-    const { name, layoutData, status, source, externalSource } = body;
+    const { name, layoutData, status } = body;
 
     const context = await resolveMiniProgramContext(req);
     if (!context) {
@@ -36,8 +36,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: false, error: 'Missing layoutData' }, { status: 400 });
     }
 
+    if (!isFormalSurveyLayout(layoutData)) {
+      return NextResponse.json({ success: false, error: 'layoutData must use the formal surveyGraph contract' }, { status: 400 });
+    }
+
     const { user, staff, enterpriseId } = context;
     const staffId = staff?._id;
+    const planStatus = status || 'completed';
 
     return await tenantStorage.run(
       {
@@ -53,9 +58,9 @@ export async function POST(req: Request) {
           staffId,
           enterpriseId,
           layoutData,
-          source: source || 'manual',
-          externalSource,
-          status: status || 'completed'
+          source: 'manual',
+          status: planStatus,
+          completedAt: planStatus === 'completed' ? new Date() : undefined,
         });
 
         if (body.leadId) {
@@ -81,6 +86,9 @@ export async function GET(req: Request) {
 
     // 💡 抽离公共的查询执行逻辑
     const executeQuery = async (baseQuery: Record<string, unknown> = {}) => {
+      baseQuery['layoutData.version'] = 4;
+      baseQuery['layoutData.measurementMode'] = 'surveying';
+      baseQuery['layoutData.surveyGraph.kind'] = 'survey-wall-graph';
       // 处理phone过滤
       if (phone) {
         const users = await User.find({ phone });
@@ -98,7 +106,7 @@ export async function GET(req: Request) {
       const [floorPlans, total] = await Promise.all([
         FloorPlan.find(baseQuery)
           .populate({ path: 'creator', model: User })
-          .sort({ createdAt: -1 })
+          .sort({ updatedAt: -1, createdAt: -1 })
           .skip(skip)
           .limit(limit),
         FloorPlan.countDocuments(baseQuery)

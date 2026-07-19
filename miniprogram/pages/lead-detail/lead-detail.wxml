@@ -1,140 +1,40 @@
-<view class="container">
+<view class="container" wx:if="{{!loading}}">
   <view class="detail-hero" wx:if="{{lead}}">
     <view class="hero-copy">
       <text class="eyebrow">客户详情</text>
       <text class="title">{{lead.name}}</text>
       <text class="info">手机：{{lead.phone}}</text>
       <text class="info">小区：{{lead.communityName || '未填写'}}</text>
-      <text class="info">意向风格：{{lead.stylePreference || '未选择'}}</text>
     </view>
-    <view class="hero-status">
-      <view class="status-pill">量房中</view>
-      <view class="hero-house">
-        <view class="house-room house-room-a"></view>
-        <view class="house-room house-room-b"></view>
-        <view class="house-room house-room-c"></view>
+  </view>
+  <view class="whole-home-card">
+    <view class="whole-home-copy">
+      <view class="whole-home-title">正式量房</view>
+      <view class="whole-home-subtitle">{{activeFloorPlan ? '继续编辑已保存的正式墙图' : '从墙图开始创建客户户型'}}</view>
+    </view>
+    <view class="whole-home-actions">
+      <view class="whole-home-action" bindtap="onStartMeasure">{{activeFloorPlan ? '继续量房' : '开始量房'}}</view>
+      <view class="whole-home-secondary-actions" wx:if="{{activeFloorPlan}}">
+        <view class="whole-home-action secondary" bindtap="onStartNewMeasure">新增量房</view>
+        <view class="whole-home-action danger" bindtap="onDeleteMeasure">{{deleting ? '删除中' : '删除'}}</view>
       </view>
     </view>
   </view>
-
-  <view class="content" wx:if="{{!loading}}">
-    <view class="summary-card" wx:if="{{rooms.length > 0 || activeFloorPlan}}">
-      <view class="summary-item">
-        <text class="summary-value">{{rooms.length}}</text>
-        <text class="summary-label">空间</text>
+  <view class="measurement-history" wx:if="{{previousFloorPlans.length > 0}}">
+    <view class="measurement-history-heading">
+      <text>历史量房记录</text>
+      <text>{{previousFloorPlans.length}} 份</text>
+    </view>
+    <view class="measurement-record" wx:for="{{previousFloorPlans}}" wx:key="_id">
+      <view class="measurement-record-copy">
+        <text class="measurement-record-name">{{item.displayName}}</text>
+        <text class="measurement-record-meta">{{item.displayMeta}}</text>
       </view>
-      <view class="summary-item">
-        <text class="summary-value">{{activeFloorPlan.status || 'draft'}}</text>
-        <text class="summary-label">状态</text>
-      </view>
-      <view class="source-pill" wx:if="{{activeSourceLabel}}">{{activeSourceLabel}}</view>
-      <view class="summary-actions">
-        <view class="summary-action" bindtap="onStartWholeHomeMeasure">
-          旧版测量
-        </view>
-        <view class="summary-action primary" bindtap="onStartSurveyingPrototype">
-          新版测绘体验
-        </view>
+      <view class="measurement-record-actions">
+        <view class="measurement-record-continue" data-id="{{item._id}}" bindtap="onContinueMeasure">继续</view>
+        <view class="measurement-record-delete" data-id="{{item._id}}" bindtap="onDeleteMeasure">删除</view>
       </view>
     </view>
-
-    <view class="whole-home-card">
-      <view class="whole-home-copy">
-        <view class="whole-home-title">全屋骨架测量</view>
-        <view class="whole-home-subtitle">旧版继续稳定生产；新版测绘体验独立验证光标、网格和工作台外壳，不会同步正式户型。</view>
-      </view>
-      <view class="whole-home-actions">
-        <view class="whole-home-action secondary" bindtap="onStartWholeHomeMeasure">
-          {{homeOutline && homeOutline.polygonClosed ? '继续旧版' : '旧版测量'}}
-        </view>
-        <view class="whole-home-action" bindtap="onStartSurveyingPrototype">新版体验</view>
-      </view>
-    </view>
-
-    <block wx:if="{{rooms.length === 0}}">
-      <view class="kujiale-panel">
-        <view class="kujiale-header">
-          <view>
-            <view class="kujiale-title">优先选择真实户型</view>
-            <view class="kujiale-subtitle">从酷家乐户型库匹配小区、面积和户室，导入后可继续补测编辑。</view>
-          </view>
-          <view class="kujiale-badge">酷家乐</view>
-        </view>
-
-        <view class="kujiale-form">
-          <input class="kujiale-input" placeholder="城市" value="{{kujialeQuery.city}}" data-field="city" bindinput="onKujialeInput" />
-          <input class="kujiale-input main" placeholder="小区名称" value="{{kujialeQuery.communityName}}" data-field="communityName" bindinput="onKujialeInput" />
-          <input class="kujiale-input" placeholder="面积" value="{{kujialeQuery.area}}" data-field="area" type="digit" bindinput="onKujialeInput" />
-          <input class="kujiale-input" placeholder="户室，如 3室2厅" value="{{kujialeQuery.layout}}" data-field="layout" bindinput="onKujialeInput" />
-        </view>
-
-        <view class="kujiale-search-btn" bindtap="searchKujialeFloorPlans">
-          {{kujialeLoading ? '搜索中...' : '搜索酷家乐户型'}}
-        </view>
-
-        <view class="kujiale-error" wx:if="{{kujialeError}}">{{kujialeError}}</view>
-
-        <view class="kujiale-list" wx:if="{{kujialeResults.length > 0}}">
-          <view class="kujiale-item" wx:for="{{kujialeResults}}" wx:key="externalId">
-            <view class="kujiale-preview" wx:if="{{item.previewUrl}}">
-              <image src="{{item.previewUrl}}" mode="aspectFill"></image>
-            </view>
-            <view class="kujiale-preview placeholder" wx:else>户</view>
-            <view class="kujiale-copy">
-              <text class="kujiale-name">{{item.communityName}}</text>
-              <text class="kujiale-meta">{{item.displayLayout}} · {{item.displayArea}}</text>
-              <text class="kujiale-origin">{{item.city || '城市未填'}} · {{item.sourceLabel}}</text>
-            </view>
-            <view class="kujiale-import" data-id="{{item.externalId}}" bindtap="onImportKujiale">
-              {{kujialeImportingId === item.externalId ? '导入中' : '导入'}}
-            </view>
-          </view>
-        </view>
-      </view>
-
-      <view class="empty-state" wx:if="{{!activeFloorPlan}}">
-        <view class="icon">房</view>
-        <view class="title">当前客户暂无户型数据</view>
-        <view class="subtitle">建议直接从全屋骨架测量开始，也可以选择模板快速创建。</view>
-      </view>
-
-      <view class="section-title">
-        <text>选择户型模板</text>
-      </view>
-      <view class="template-list">
-        <view class="template-item" wx:for="{{templates}}" wx:key="id" data-id="{{item.id}}" bindtap="onSelectTemplate">
-          <view class="template-thumb">
-            <view class="template-line line-a"></view>
-            <view class="template-line line-b"></view>
-            <view class="template-line line-c"></view>
-          </view>
-          <view class="template-copy">
-            <text class="template-name">{{item.name}}</text>
-            <text class="template-desc">快速生成空间结构</text>
-          </view>
-          <text class="template-action">使用</text>
-        </view>
-      </view>
-    </block>
-
-    <block wx:else>
-      <view class="section-title">
-        <text>户型空间</text>
-        <text class="add-btn" bindtap="onAddRoom">+ 手动补房</text>
-      </view>
-
-      <view class="room-list">
-        <view class="room-item" wx:for="{{rooms}}" wx:key="id" data-id="{{item.id}}" bindtap="onEnterRoom">
-          <view class="room-icon">{{item.measured ? '✓' : '房'}}</view>
-          <view class="room-copy">
-            <text class="room-name">{{item.name}}</text>
-            <text class="room-meta">{{item.width || item.defaultWidth || 40}} × {{item.height || item.defaultHeight || 40}}</text>
-          </view>
-          <text class="room-status {{item.measured ? 'measured' : ''}}">{{item.measured ? '已测量' : '待测量'}}</text>
-        </view>
-      </view>
-    </block>
   </view>
-
-  <view class="loading-state" wx:else>加载中...</view>
 </view>
+<view class="loading-state" wx:else>加载中...</view>

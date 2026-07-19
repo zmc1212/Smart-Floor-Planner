@@ -110,7 +110,7 @@
 }
 
 .home-shell {
-  padding: 16rpx 20rpx 180rpx;
+  padding: 16rpx 20rpx var(--sfp-custom-tabbar-safe-height);
   display: flex;
   flex-direction: column;
   gap: 16rpx;

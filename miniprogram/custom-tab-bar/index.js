@@ -1,3 +1,6 @@
+const api = require('../utils/api.js');
+const { openSurveyingEditor } = require('../utils/surveyNavigation.js');
+
 Component({
   data: {
     selected: 0,
@@ -54,17 +57,43 @@ Component({
   },
 
   methods: {
-    switchTab(e) {
+    async switchTab(e) {
       const index = e.currentTarget.dataset.index;
       const item = this.data.list[index];
       if (!item) return;
 
       if (item.center) {
-        wx.navigateTo({ url: item.pagePath });
+        await this.openMostRecentlyEditedSurvey();
         return;
       }
 
       wx.switchTab({ url: item.pagePath });
+    },
+
+    async openMostRecentlyEditedSurvey() {
+      if (this.isOpeningSurvey) return;
+      this.isOpeningSurvey = true;
+      wx.showLoading({ title: '加载量房记录' });
+
+      try {
+        const res = await api.request('/floorplans?page=1&limit=1', 'GET');
+        const latestPlan = Array.isArray(res && res.data) ? res.data[0] : null;
+
+        if (latestPlan && latestPlan._id) {
+          openSurveyingEditor({ floorPlanId: latestPlan._id });
+          return;
+        }
+
+        openSurveyingEditor({ startNewSurvey: true });
+      } catch (err) {
+        wx.showToast({
+          title: (err && err.error) || '加载最近量房失败',
+          icon: 'none'
+        });
+      } finally {
+        wx.hideLoading();
+        this.isOpeningSurvey = false;
+      }
     },
 
     syncSelected() {

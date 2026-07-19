@@ -1,5 +1,6 @@
 const app = getApp();
 const api = require('../../utils/api.js');
+const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
 
 const DEFAULT_AVATAR =
   'https://mmbiz.qpic.cn/mmbiz/icTdbqWNOwNRna42FI242Lcia07jQodd2FJGIYQfG0LAJGFxM4FbnQP6yfMxBgJ0F3YRqJCJ1aPAK2dQagdusBZg/0';
@@ -222,8 +223,7 @@ Page({
     const id = e.currentTarget.dataset.id;
     const floorPlan = this.data.floorPlans.find((item) => item._id === id);
     if (!floorPlan) return;
-    app.globalData.restoreFloorPlan = { ...floorPlan, isRestore: true };
-    wx.navigateTo({ url: '/pages/editor/editor' });
+    openSurveyingEditor({ floorPlanId: floorPlan._id });
   },
 
   onAIGen(e) {

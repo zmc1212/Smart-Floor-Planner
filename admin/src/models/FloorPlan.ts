@@ -24,6 +24,7 @@ export interface IFloorPlan extends Document {
   source: FloorPlanSource;
   externalSource?: IFloorPlanExternalSource;
   status: 'draft' | 'completed';
+  completedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -74,6 +75,9 @@ const FloorPlanSchema: Schema<IFloorPlan> = new Schema(
       enum: ['draft', 'completed'],
       default: 'draft',
     },
+    completedAt: {
+      type: Date,
+    },
   },
   {
     timestamps: true,
@@ -82,6 +86,7 @@ const FloorPlanSchema: Schema<IFloorPlan> = new Schema(
 
 FloorPlanSchema.index({ enterpriseId: 1, createdAt: -1 });
 FloorPlanSchema.index({ staffId: 1, createdAt: -1 });
+FloorPlanSchema.index({ staffId: 1, status: 1, completedAt: -1 });
 FloorPlanSchema.index({ creator: 1, createdAt: -1 });
 FloorPlanSchema.index({ enterpriseId: 1, 'externalSource.provider': 1, 'externalSource.externalId': 1 });
 

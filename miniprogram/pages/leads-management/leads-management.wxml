@@ -1,4 +1,4 @@
-<view class="page-container">
+<view class="page-container sfp-tab-page">
   <view class="top-safe" style="height: {{statusBarHeight}}px;"></view>
 
   <view class="page-header" style="padding-right: {{capsuleRightInset}}px;">

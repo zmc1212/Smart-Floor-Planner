@@ -76,7 +76,7 @@
               <text class="metric-value text-xl font-bold text-main">{{item.value}}</text>
               <text class="metric-unit text-xs text-main">{{item.unit}}</text>
             </view>
-            <view class="metric-delta text-xs text-muted">较本月 {{item.deltaText}}</view>
+            <view class="metric-delta text-xs text-muted">{{item.detailText || item.deltaText}}</view>
           </view>
         </view>
       </view>

@@ -1,4 +1,4 @@
-<view class="container">
+<view class="container sfp-tab-page">
   <view class="inspiration-hero">
     <view class="hero-copy">
       <text class="hero-title">灵感库</text>
@@ -60,7 +60,6 @@
             <text class="case-views">{{item.viewCount}} 浏览</text>
           </view>
           <view class="case-actions">
-            <view class="btn-copy" bindtap="onCopyLayout" data-id="{{item._id}}">一键同款</view>
             <view class="btn-share" bindtap="onOpenPoster" data-id="{{item._id}}">
               <icon type="share" size="16" color="#6B7280" />
               分享

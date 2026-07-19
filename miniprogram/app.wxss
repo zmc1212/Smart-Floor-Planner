@@ -6,10 +6,16 @@
  */
 
 page {
+  width: 100%;
+  overflow-x: hidden;
   font-family: 'Source Han Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
   background-color: var(--bg-page);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
+
+  /* Fixed custom TabBar contract for every page declared in app.json.tabBar. */
+  --sfp-custom-tabbar-height: 126rpx;
+  --sfp-custom-tabbar-safe-height: calc(var(--sfp-custom-tabbar-height) + env(safe-area-inset-bottom));
 
   /* Brand */
   --brand-primary: #22C55E;
@@ -119,8 +125,29 @@ page {
   color: var(--text-primary);
 }
 
+/*
+ * The custom TabBar is fixed and therefore excluded from normal page layout.
+ * Tab pages must use this root class rather than hard-coding a bottom offset.
+ */
+page .sfp-tab-page {
+  height: calc(100vh - var(--sfp-custom-tabbar-safe-height));
+  min-height: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.sfp-tab-scroll-content {
+  padding-bottom: calc(var(--sfp-custom-tabbar-safe-height) + 32rpx);
+  box-sizing: border-box;
+}
+
 .sfp-scroll {
   min-height: 100vh;
+  box-sizing: border-box;
+}
+
+.sfp-scroll-content {
+  padding-bottom: calc(32rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
 

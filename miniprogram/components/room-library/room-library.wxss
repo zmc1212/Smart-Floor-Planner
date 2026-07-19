@@ -17,6 +17,20 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: var(--space-lg);
+}
+
+.library-header-row > text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-header-row > view {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .layout-selector,
@@ -72,9 +86,13 @@
 
 .room-name {
   flex: 1;
+  min-width: 0;
   font-size: var(--font-size-body);
   color: var(--text-primary);
   font-weight: var(--font-weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .room-status,
@@ -90,4 +108,10 @@
 .ai-btn {
   background: var(--brand-primary);
   color: var(--text-inverse);
+}
+
+.room-status,
+.ai-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
 }

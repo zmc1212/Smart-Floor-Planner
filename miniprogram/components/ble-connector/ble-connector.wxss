@@ -11,7 +11,9 @@
 }
 
 .ble-modal-container {
-  width: 600rpx;
+  width: calc(100vw - 64rpx);
+  max-width: 600rpx;
+  max-height: calc(100vh - 64rpx);
   background: var(--bg-surface);
   border-radius: var(--radius-xl);
   overflow: hidden;
@@ -28,6 +30,8 @@
 }
 
 .title {
+  min-width: 0;
+  flex: 1;
   font-size: 32rpx;
   font-weight: var(--font-weight-bold);
   color: var(--text-primary);
@@ -37,6 +41,7 @@
   font-size: 36rpx;
   color: var(--text-secondary);
   padding: 10rpx;
+  flex-shrink: 0;
 }
 
 .ble-modal-body {
@@ -98,6 +103,7 @@
 .status-desc {
   font-size: var(--font-size-caption);
   color: var(--text-secondary);
+  line-height: 1.5;
 }
 
 .ble-modal-footer {

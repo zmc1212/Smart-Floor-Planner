@@ -13,10 +13,19 @@
         bindtouchmove="onCanvasTouchMove"
         bindtouchend="onCanvasTouchEnd"
         bindtouchcancel="onCanvasTouchEnd"
+        bindtap="onCanvasTap"
       ></canvas>
     </view>
 
   </view>
+
+  <!-- 常驻轻量拖拽画布：只绘制跟手光标和十字辅助线，不重绘正式墙图。 -->
+  <canvas
+    type="2d"
+    id="cursor-drag-canvas"
+    class="cursor-drag-canvas"
+    disable-scroll="true"
+  ></canvas>
 
   <!-- 所有测绘覆盖 UI 与 canvas-shell 保持同级，由本层统一承载。 -->
   <view class="canvas-overlay-layer">
@@ -24,7 +33,11 @@
     <!-- 顶部量测气泡 -->
     <cover-view wx:if="{{topMetricVisible}}" class="top-measure-bubble" style="top: {{overlayContentTop}}px;">
       <cover-view>{{topMetricLength}}</cover-view>
-      <cover-view wx:if="{{topMetricAngle}}" class="top-measure-angle">{{topMetricAngle}}</cover-view>
+      <cover-view
+        wx:if="{{topMetricAngle}}"
+        class="top-measure-angle {{angleActionAvailable ? 'actionable' : ''}}"
+        bindtap="onTopMetricAngleTap"
+      >{{topMetricAngle}}</cover-view>
     </cover-view>
     <cover-view wx:else class="measurement-bubble" style="top: {{overlayContentTop}}px;">
       <cover-view class="bubble-title">{{measurementTitle}}</cover-view>
@@ -48,54 +61,29 @@
     <!-- 选中墙体时的浮动工具栏（图标行） -->
     <cover-view wx:if="{{selectedWall && !selectedOpening}}" class="wall-object-toolbar" style="{{selectedWall.actionStyle}}">
       <cover-view class="wall-object-action primary" data-action="door" aria-label="添加门" bindtap="onWallContextAction">
-        <cover-view class="wall-action-icon door-icon">
-          <cover-view class="door-frame"></cover-view>
-          <cover-view class="door-swing"></cover-view>
-        </cover-view>
+        <cover-image class="wall-action-image" src="/images/surveying-icons/wall-toolbar/door.png" mode="aspectFit"></cover-image>
+        <cover-view class="wall-action-label">添门</cover-view>
       </cover-view>
       <cover-view class="wall-object-action primary" data-action="window" aria-label="添加窗" bindtap="onWallContextAction">
-        <cover-view class="wall-action-icon window-icon">
-          <cover-view class="window-frame"></cover-view>
-          <cover-view class="window-line"></cover-view>
-        </cover-view>
-      </cover-view>
-      <cover-view class="wall-object-action" data-source="selected-wall" aria-label="切墙侧" bindtap="onToggleSide">
-        <cover-view class="wall-action-icon side-icon">
-          <cover-view class="side-wall-line"></cover-view>
-          <cover-view class="side-dot-left"></cover-view>
-          <cover-view class="side-dot-right"></cover-view>
-        </cover-view>
+        <cover-image class="wall-action-image" src="/images/surveying-icons/wall-toolbar/window.png" mode="aspectFit"></cover-image>
+        <cover-view class="wall-action-label">添窗</cover-view>
       </cover-view>
       <cover-view class="wall-object-action" data-action="remeasure" aria-label="复尺" bindtap="onWallContextAction">
-        <cover-view class="wall-action-icon remeasure-icon">
-          <cover-view class="remeasure-ruler"></cover-view>
-          <cover-view class="remeasure-tick one"></cover-view>
-          <cover-view class="remeasure-tick two"></cover-view>
-          <cover-view class="remeasure-tick three"></cover-view>
-        </cover-view>
-      </cover-view>
-      <cover-view class="wall-object-action" data-action="edit" aria-label="编辑墙厚" bindtap="onWallContextAction">
-        <cover-view class="wall-action-icon edit-icon">
-          <cover-view class="edit-stem"></cover-view>
-          <cover-view class="edit-tip"></cover-view>
-        </cover-view>
+        <cover-image class="wall-action-image" src="/images/surveying-icons/wall-toolbar/remeasure.png" mode="aspectFit"></cover-image>
+        <cover-view class="wall-action-label">复尺</cover-view>
       </cover-view>
       <cover-view class="wall-object-action delete" data-action="delete" aria-label="删除墙" bindtap="onWallContextAction">
-        <cover-view class="wall-action-icon delete-icon">
-          <cover-view class="delete-lid"></cover-view>
-          <cover-view class="delete-body"></cover-view>
-        </cover-view>
+        <cover-image class="wall-action-image" src="/images/surveying-icons/wall-toolbar/delete.png" mode="aspectFit"></cover-image>
+        <cover-view class="wall-action-label">删除</cover-view>
       </cover-view>
-      <cover-view class="wall-object-action" data-action="exit" aria-label="退出" bindtap="onWallContextAction">
-        <cover-view class="wall-action-icon exit-icon">
-          <cover-view class="exit-line one"></cover-view>
-          <cover-view class="exit-line two"></cover-view>
-        </cover-view>
+      <cover-view class="wall-object-action" aria-label="退出" catchtouchend="onExitWallSelection" catchtap="onExitWallSelection">
+        <cover-image class="wall-action-image" src="/images/surveying-icons/wall-toolbar/close.png" mode="aspectFit"></cover-image>
+        <cover-view class="wall-action-label">收起</cover-view>
       </cover-view>
     </cover-view>
 
   <!-- 使用 cover-view 作为组件根节点，验证组件是否可覆盖原生画布。 -->
-  <survey-canvas-compass wx:if="{{showPrototypeExtras}}" safe-top="{{overlayContentTop}}" bind:tap="onDisabledTap"></survey-canvas-compass>
+  <survey-canvas-compass wx:if="{{showFormalExtras}}" safe-top="{{overlayContentTop}}" bind:tap="onDisabledTap"></survey-canvas-compass>
 
   <!-- ══════════════════════════════════════════════ -->
   <!--  顶部导航浮层                                   -->
@@ -107,17 +95,16 @@
       </cover-view>
       <cover-view class="title-group">
         <cover-view class="page-title">{{title}}</cover-view>
-        <cover-view class="page-subtitle">{{prototypeNotice}}</cover-view>
+        <cover-view class="page-subtitle">{{formalNotice}}</cover-view>
       </cover-view>
     </cover-view>
     <cover-view class="topbar-right">
-      <cover-view class="topbar-chip assistant-chip disabled" bindtap="onDisabledTap">
-        <cover-image class="topbar-icon" src="/images/surveying-icons/topbar-assistant.png"></cover-image>
-        <cover-view>助手</cover-view>
-      </cover-view>
       <cover-view class="topbar-chip save" bindtap="onSaveDraft">
         <cover-image class="topbar-icon" src="/images/surveying-icons/topbar-save.png"></cover-image>
         <cover-view>保存</cover-view>
+      </cover-view>
+      <cover-view class="topbar-chip save" bindtap="onSubmitFloorPlan">
+        <cover-view>完成</cover-view>
       </cover-view>
     </cover-view>
   </cover-view>
@@ -127,11 +114,18 @@
   <!-- ══════════════════════════════════════════════ -->
   <cover-view class="right-rail native-canvas-overlay" style="top: {{rightRailTop}}px; bottom: {{rightRailBottom}}px;">
     <cover-view wx:if="{{selectedOpening}}" class="opening-context {{selectedOpening.type}}">
-      <cover-view class="opening-title">{{selectedOpening.typeLabel}} · 本地原型</cover-view>
+      <cover-view class="opening-title">{{selectedOpening.typeLabel}} · 正式量房</cover-view>
       <cover-view class="opening-fields">
         <cover-view class="opening-field" data-field="width" bindtap="onOpeningEditField">宽 {{selectedOpening.width}}</cover-view>
         <cover-view class="opening-field" data-field="height" bindtap="onOpeningEditField">高 {{selectedOpening.height}}</cover-view>
         <cover-view class="opening-field" data-field="sill" bindtap="onOpeningEditField">距地 {{selectedOpening.sill}}</cover-view>
+      </cover-view>
+      <cover-view wx:if="{{canResumeWallDrawing}}" class="opening-resume-action" bindtap="onResumeWallDrawing">
+        <cover-view class="opening-resume-label">继续测墙</cover-view>
+      </cover-view>
+      <cover-view class="opening-side-switch" bindtap="onToggleSide">
+        <cover-view class="side-label">{{selectedOpening.type === 'door' ? '开向' : '窗位'}}</cover-view>
+        <cover-view class="side-value">{{selectedOpening.type === 'door' ? selectedOpening.openDirectionLabel : '固定'}}</cover-view>
       </cover-view>
     </cover-view>
 
@@ -161,12 +155,7 @@
       </cover-view>
     </cover-view>
 
-    <cover-view class="side-switch" bindtap="onToggleSide">
-      <cover-view class="side-label">{{selectedOpening ? (selectedOpening.type === 'door' ? '开向' : '窗位') : '墙侧'}}</cover-view>
-      <cover-view class="side-value">{{selectedOpening ? (selectedOpening.type === 'door' ? selectedOpening.openDirectionLabel : '固定') : (measurementSide === 'right' ? '右侧' : '左侧')}}</cover-view>
-    </cover-view>
-
-    <cover-view wx:if="{{showPrototypeExtras}}" class="tool-group reserved-tools">
+    <cover-view wx:if="{{showFormalExtras}}" class="tool-group reserved-tools">
       <cover-view
         class="reserved-button disabled"
         wx:for="{{reservedTools}}"
@@ -179,7 +168,7 @@
   </cover-view>
 
   <!-- ══════════════════════════════════════════════ -->
-  <!--  底部唯一按钮：新建光标                          -->
+  <!--  底部光标控件：已放置 / 等待拖放 / 拖拽中为空      -->
   <!-- ══════════════════════════════════════════════ -->
   <cover-view class="history-action-bar native-canvas-overlay" style="bottom: calc(42rpx + {{bottomSafeArea}}px);">
     <cover-view class="history-action {{historySummary.undo > 0 ? '' : 'disabled'}}" bindtap="onUndoTap">
@@ -190,33 +179,38 @@
   </cover-view>
 
   <cover-view class="bottom-fab-bar native-canvas-overlay" style="bottom: calc(36rpx + {{bottomSafeArea}}px);">
-    <cover-view class="fab-new-cursor" bindtap="onNewCursorTap">
-      <cover-view class="fab-new-cursor-icon">
-        <cover-view class="nc-h"></cover-view>
-        <cover-view class="nc-v"></cover-view>
-        <cover-view class="nc-ring"></cover-view>
+    <cover-view wx:if="{{cursorPlacementState === 'placed'}}" class="cursor-fab cursor-fab-reset" bindtap="onResetCursorTap">
+      <cover-view class="cursor-fab-icon cursor-reset-icon">
+        <cover-image class="cursor-reset-image" src="/images/surveying-icons/wall-toolbar/reset.png" mode="aspectFit"></cover-image>
       </cover-view>
-      <cover-view class="fab-new-cursor-label">新建光标</cover-view>
+      <cover-view class="cursor-fab-label">重置光标</cover-view>
+    </cover-view>
+    <cover-view
+      wx:elif="{{cursorPlacementState === 'awaitingWallDrop' || cursorPlacementState === 'dragging'}}"
+      class="cursor-fab cursor-fab-drop {{cursorPlacementState === 'dragging' ? 'is-dragging' : ''}}"
+      data-cursor-control="true"
+      bindtouchstart="onCursorControlTouchStart"
+      catchtouchmove="onCursorControlTouchMove"
+      bindtouchend="onCursorDragEnd"
+      bindtouchcancel="onCursorDragCancel"
+    >
+      <cover-view class="cursor-fab-icon cursor-drop-icon">
+        <cover-view class="cursor-drop-h"></cover-view>
+        <cover-view class="cursor-drop-v"></cover-view>
+        <cover-view class="cursor-drop-box"></cover-view>
+      </cover-view>
+      <cover-view class="cursor-fab-label">拖动放置光标</cover-view>
     </cover-view>
   </cover-view>
 
   <!-- ══════════════════════════════════════════════ -->
-  <!--  拖拽放置光标的全屏覆盖层                        -->
+  <!--  拖拽放置光标的纯展示层（不接收触摸，事件始终由底部按钮承接） -->
   <!-- ══════════════════════════════════════════════ -->
   <cover-view
-    wx:if="{{cursorDragMode}}"
-    class="cursor-drag-overlay native-canvas-overlay"
-    bindtouchstart="onCursorDragStart"
-    bindtouchmove="onCursorDragMove"
-    bindtouchend="onCursorDragEnd"
-    bindtouchcancel="onCursorDragEnd"
+    wx:if="{{cursorPlacementState === 'dragging'}}"
+    class="cursor-drag-lens-layer"
   >
-    <!-- 提示文字 -->
-    <cover-view class="cursor-drag-hint-bar">
-      <cover-view class="cursor-drag-hint-text">拖动手指到目标位置后松开放置光标</cover-view>
-      <cover-view class="cursor-drag-cancel" bindtap="onCursorDragCancel">取消</cover-view>
-    </cover-view>
-    <cover-view wx:if="{{cursorLensVisible}}" class="cursor-lens">
+    <cover-view wx:if="{{cursorLensVisible}}" class="cursor-lens {{cursorLensSnapType}}">
       <cover-view class="cursor-lens-grid">
         <cover-view
           wx:for="{{cursorLensVerticalLines}}"
@@ -244,13 +238,6 @@
         <cover-view>{{cursorLensSnapLabel}}</cover-view>
         <cover-view>{{cursorLensXLabel}} / {{cursorLensYLabel}}</cover-view>
       </cover-view>
-    </cover-view>
-    <!-- 跟随手指的光标标记 -->
-    <cover-view class="cursor-drag-marker" style="left:{{dragCursorX}}px; top:{{dragCursorY}}px;">
-      <cover-view class="cdm-ring-outer"></cover-view>
-      <cover-view class="cdm-ring-inner"></cover-view>
-      <cover-view class="cdm-cross-h"></cover-view>
-      <cover-view class="cdm-cross-v"></cover-view>
     </cover-view>
   </cover-view>
 
@@ -293,7 +280,7 @@
       {{componentSelectedOpening.entryDoor ? '已设为入户门' : '设为入户门'}}
     </view>
 
-    <view class="component-panel">
+    <view class="component-panel {{componentPanelMode === 'spec' ? 'component-panel-raised' : ''}}">
       <view class="component-panel-tabs">
         <view
           class="component-panel-tab {{componentPanelMode === item.key ? 'active' : ''}}"
@@ -387,7 +374,60 @@
       </cover-view>
       <cover-view class="number-pad-close" bindtap="onNumberClose">关闭</cover-view>
     </cover-view>
-    <cover-view class="number-display">{{numberInput || '0'}}<cover-view class="number-display-unit"> mm</cover-view></cover-view>
+    <cover-view wx:if="{{angleMeasureVisible}}" class="angle-measure-tools">
+      <cover-view class="angle-measure-tabs">
+        <cover-view
+          class="angle-measure-tab {{angleMeasureTab === 'phone' ? 'active' : ''}}"
+          data-tab="phone"
+          bindtap="onAngleMeasureTab"
+        >手机测量角度</cover-view>
+        <cover-view
+          class="angle-measure-tab {{angleMeasureTab === 'pythagorean' ? 'active' : ''}}"
+          data-tab="pythagorean"
+          bindtap="onAngleMeasureTab"
+        >勾股定理测量角度</cover-view>
+      </cover-view>
+
+      <cover-view wx:if="{{angleMeasureTab === 'phone'}}" class="phone-angle-tool">
+        <cover-view class="phone-angle-dial {{anglePhoneLevelReady ? 'level' : ''}}">
+          <cover-view class="phone-angle-needle" style="{{anglePhoneDialStyle}}"></cover-view>
+          <cover-view class="phone-angle-center {{anglePhoneLevelReady ? 'level' : ''}}"></cover-view>
+        </cover-view>
+        <cover-view class="phone-angle-value">{{anglePhoneLiveValue}}°</cover-view>
+        <cover-view class="phone-angle-status">{{angleMeasureStatus}}</cover-view>
+        <cover-view
+          wx:if="{{!anglePhoneReferenceReady}}"
+          class="phone-angle-baseline {{anglePhoneLevelReady ? '' : 'disabled'}}"
+          bindtap="onPhoneSetAngleBaseline"
+        >设为基准</cover-view>
+      </cover-view>
+
+      <cover-view wx:else class="triangle-angle-tool">
+        <cover-view class="triangle-angle-hint">从同一拐角向两面墙取点，依次测量两边和两点连线。</cover-view>
+        <cover-view class="triangle-side-row">
+          <cover-view class="triangle-side-name">边 A</cover-view>
+          <cover-view class="triangle-side-value">{{angleTriangleA ? angleTriangleA + ' m' : '待测'}}</cover-view>
+          <cover-view class="triangle-side-action" data-side="a" bindtap="onTriangleMeasure">测量</cover-view>
+        </cover-view>
+        <cover-view class="triangle-side-row">
+          <cover-view class="triangle-side-name">边 B</cover-view>
+          <cover-view class="triangle-side-value">{{angleTriangleB ? angleTriangleB + ' m' : '待测'}}</cover-view>
+          <cover-view class="triangle-side-action" data-side="b" bindtap="onTriangleMeasure">测量</cover-view>
+        </cover-view>
+        <cover-view class="triangle-side-row">
+          <cover-view class="triangle-side-name">连线 D</cover-view>
+          <cover-view class="triangle-side-value">{{angleTriangleD ? angleTriangleD + ' m' : '待测'}}</cover-view>
+          <cover-view class="triangle-side-action" data-side="d" bindtap="onTriangleMeasure">测量</cover-view>
+        </cover-view>
+        <cover-view wx:if="{{angleTriangleResult}}" class="triangle-angle-result">计算结果 {{angleTriangleResult}}</cover-view>
+        <cover-view wx:if="{{angleTriangleError}}" class="triangle-angle-error">{{angleTriangleError}}</cover-view>
+        <cover-view class="triangle-reset" bindtap="onResetAngleTriangle">重新测量三边</cover-view>
+      </cover-view>
+    </cover-view>
+    <cover-view class="number-display">
+      <cover-view class="number-display-value">{{numberInput || '0'}}</cover-view>
+      <cover-view class="number-display-unit">{{numberUnit}}</cover-view>
+    </cover-view>
     <cover-view class="number-grid">
       <cover-view
         class="number-key {{item === '清空' || item === '退格' ? 'utility' : ''}}"
@@ -400,8 +440,8 @@
       </cover-view>
     </cover-view>
     <cover-view class="number-actions">
-      <cover-view class="number-measure" bindtap="triggerBluetoothNumberMeasure">测距</cover-view>
-      <cover-view class="number-confirm" bindtap="onNumberConfirm">确认</cover-view>
+      <cover-view wx:if="{{!angleMeasureVisible}}" class="number-measure" bindtap="triggerBluetoothNumberMeasure">测距</cover-view>
+      <cover-view class="number-confirm {{angleMeasureVisible ? 'full' : ''}}" bindtap="onNumberConfirm">确认</cover-view>
     </cover-view>
   </cover-view>
 

@@ -11,7 +11,9 @@
 }
 
 .modal-container {
-  width: 620rpx;
+  width: calc(100vw - 64rpx);
+  max-width: 620rpx;
+  max-height: calc(100vh - 64rpx);
   background: rgba(255, 255, 255, 0.96);
   border-radius: var(--radius-xl);
   overflow: hidden;
@@ -29,6 +31,8 @@
 }
 
 .title {
+  min-width: 0;
+  flex: 1;
   font-size: 34rpx;
   font-weight: var(--font-weight-bold);
   color: var(--text-primary);
@@ -39,10 +43,14 @@
   color: var(--text-secondary);
   line-height: 1;
   padding: 0 10rpx;
+  flex-shrink: 0;
 }
 
 .modal-body {
   padding: 0 var(--space-section) var(--space-section);
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
 }
 
 .desc {
@@ -91,6 +99,7 @@
 
 .phone-input {
   flex: 1;
+  min-width: 0;
 }
 
 .picker-view {

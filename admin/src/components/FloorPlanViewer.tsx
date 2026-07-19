@@ -115,6 +115,7 @@ interface SurveyWall {
   lengthMm?: number;
   thicknessMm?: number;
   mode?: string;
+  measurementSide?: 'left' | 'right';
 }
 
 interface SurveyOpening {
@@ -125,6 +126,8 @@ interface SurveyOpening {
   widthMm?: number;
   heightMm?: number;
   sillHeightMm?: number;
+  openDirection?: 'inside' | 'outside';
+  modelCategory?: string;
 }
 
 interface SurveySpace {
@@ -137,6 +140,7 @@ interface SurveySpace {
 interface SurveyFloor {
   id: string;
   name?: string;
+  ceilingHeightMm?: number;
   nodes?: SurveyNode[];
   walls?: SurveyWall[];
   openings?: SurveyOpening[];
@@ -149,10 +153,10 @@ interface SurveyDraft {
   floors?: SurveyFloor[];
 }
 
-interface SurveyingPrototypeLayout {
+interface FormalSurveyingLayout {
+  version?: number;
   measurementMode?: string;
-  prototypeOnly?: boolean;
-  surveyDraft?: SurveyDraft;
+  surveyGraph?: SurveyDraft;
 }
 
 function getFloorPlanSourceLabel(source?: string) {
@@ -173,17 +177,17 @@ function parseLayoutData(layoutData: unknown): unknown {
   return layoutData;
 }
 
-function getSurveyingPrototypeLayout(layoutData: unknown): SurveyingPrototypeLayout | null {
+function getFormalSurveyingLayout(layoutData: unknown): FormalSurveyingLayout | null {
   const parsed = parseLayoutData(layoutData);
   if (
     parsed &&
     typeof parsed === 'object' &&
     !Array.isArray(parsed) &&
-    (parsed as SurveyingPrototypeLayout).measurementMode === 'surveying_prototype' &&
-    (parsed as SurveyingPrototypeLayout).prototypeOnly === true &&
-    (parsed as SurveyingPrototypeLayout).surveyDraft?.kind === 'survey-wall-graph'
+    (parsed as FormalSurveyingLayout).version === 4 &&
+    (parsed as FormalSurveyingLayout).measurementMode === 'surveying' &&
+    (parsed as FormalSurveyingLayout).surveyGraph?.kind === 'survey-wall-graph'
   ) {
-    return parsed as SurveyingPrototypeLayout;
+    return parsed as FormalSurveyingLayout;
   }
   return null;
 }
@@ -248,10 +252,6 @@ function getSurveyWallLengthMm(floor: SurveyFloor | null, wall: SurveyWall) {
   return Number(wall.lengthMm || Math.sqrt(dx * dx + dy * dy));
 }
 
-function formatSurveyLength(mm: number) {
-  return `${(mm / 1000).toFixed(2)}m`;
-}
-
 function buildSurveySpacePoints(floor: SurveyFloor | null, space: SurveySpace, nodeMap: ReturnType<typeof getSurveyNodeMap>) {
   const wallIds = Array.isArray(space.wallIds) ? space.wallIds : [];
   const walls = wallIds
@@ -297,6 +297,96 @@ function getSurveyOpeningSegment(floor: SurveyFloor | null, opening: SurveyOpeni
     x2: centerX + ux * halfWidth,
     y2: centerY + uy * halfWidth,
   };
+}
+
+type SurveyPoint = { xMm: number; yMm: number };
+
+function getSurveyWallBody(floor: SurveyFloor | null, wall: SurveyWall, nodeMap: ReturnType<typeof getSurveyNodeMap>) {
+  const endpoints = getSurveyWallEndpoints(floor, wall, nodeMap);
+  if (!endpoints) return null;
+  const dx = endpoints.end.xMm - endpoints.start.xMm;
+  const dy = endpoints.end.yMm - endpoints.start.yMm;
+  const length = Math.hypot(dx, dy);
+  if (!length) return null;
+  const direction = { x: dx / length, y: dy / length };
+  const normal = wall.measurementSide === 'right'
+    ? { x: -direction.y, y: direction.x }
+    : { x: direction.y, y: -direction.x };
+  const thickness = Math.max(80, Number(wall.thicknessMm || 200));
+  const outerStart = {
+    xMm: endpoints.start.xMm + normal.x * thickness,
+    yMm: endpoints.start.yMm + normal.y * thickness,
+  };
+  const outerEnd = {
+    xMm: endpoints.end.xMm + normal.x * thickness,
+    yMm: endpoints.end.yMm + normal.y * thickness,
+  };
+  return { ...endpoints, direction, normal, thickness, outerStart, outerEnd };
+}
+
+function getPolygonCentroid(points: SurveyPoint[]) {
+  let twiceArea = 0;
+  let x = 0;
+  let y = 0;
+  points.forEach((point, index) => {
+    const next = points[(index + 1) % points.length];
+    const cross = point.xMm * next.yMm - next.xMm * point.yMm;
+    twiceArea += cross;
+    x += (point.xMm + next.xMm) * cross;
+    y += (point.yMm + next.yMm) * cross;
+  });
+  if (!twiceArea) return null;
+  return { xMm: x / (3 * twiceArea), yMm: y / (3 * twiceArea) };
+}
+
+function getSurveySpaceDetails(floor: SurveyFloor | null, space: SurveySpace, nodeMap: ReturnType<typeof getSurveyNodeMap>) {
+  const points = buildSurveySpacePoints(floor, space, nodeMap);
+  if (points.length < 3) return null;
+  const walls = (space.wallIds || [])
+    .map((wallId) => (floor?.walls || []).find((wall) => wall.id === wallId))
+    .filter(Boolean) as SurveyWall[];
+  const horizontalLengths = walls
+    .map((wall) => ({ wall, endpoints: getSurveyWallEndpoints(floor, wall, nodeMap) }))
+    .filter((entry) => entry.endpoints)
+    .filter((entry) => Math.abs(entry.endpoints!.end.xMm - entry.endpoints!.start.xMm) >= Math.abs(entry.endpoints!.end.yMm - entry.endpoints!.start.yMm))
+    .map((entry) => getSurveyWallLengthMm(floor, entry.wall));
+  const verticalLengths = walls
+    .map((wall) => ({ wall, endpoints: getSurveyWallEndpoints(floor, wall, nodeMap) }))
+    .filter((entry) => entry.endpoints)
+    .filter((entry) => Math.abs(entry.endpoints!.end.xMm - entry.endpoints!.start.xMm) < Math.abs(entry.endpoints!.end.yMm - entry.endpoints!.start.yMm))
+    .map((entry) => getSurveyWallLengthMm(floor, entry.wall));
+  const xs = points.map((point) => point.xMm);
+  const ys = points.map((point) => point.yMm);
+  const widthMm = Math.round(horizontalLengths.length ? Math.max(...horizontalLengths) : Math.max(...xs) - Math.min(...xs));
+  const heightMm = Math.round(verticalLengths.length ? Math.max(...verticalLengths) : Math.max(...ys) - Math.min(...ys));
+  const area = Math.abs(points.reduce((sum, point, index) => {
+    const next = points[(index + 1) % points.length];
+    return sum + point.xMm * next.yMm - next.xMm * point.yMm;
+  }, 0)) / 2 / 1_000_000;
+  return { points, centroid: getPolygonCentroid(points), widthMm, heightMm, area };
+}
+
+function getOpeningDimensionSegments(floor: SurveyFloor | null, wall: SurveyWall) {
+  const wallLength = getSurveyWallLengthMm(floor, wall);
+  if (!wallLength) return [];
+  const openings = (floor?.openings || [])
+    .filter((opening) => opening.wallId === wall.id && opening.type === 'door')
+    .map((opening) => {
+      const width = Math.min(wallLength, Math.max(0, Number(opening.widthMm || 0)));
+      const center = Math.min(wallLength - width / 2, Math.max(width / 2, Number(opening.centerOffsetMm || wallLength / 2)));
+      return { start: center - width / 2, end: center + width / 2 };
+    })
+    .sort((first, second) => first.start - second.start);
+  if (!openings.length) return [];
+  const segments: Array<{ start: number; end: number }> = [];
+  let cursor = 0;
+  openings.forEach((opening) => {
+    if (opening.start > cursor) segments.push({ start: cursor, end: opening.start });
+    if (opening.end > opening.start) segments.push(opening);
+    cursor = Math.max(cursor, opening.end);
+  });
+  if (cursor < wallLength) segments.push({ start: cursor, end: wallLength });
+  return segments.filter((segment) => segment.end - segment.start >= 1);
 }
 
 function getOpeningAngleRad(opening: Opening) {
@@ -631,28 +721,59 @@ function Scene3D({ rooms }: { rooms: Room[] }) {
   );
 }
 
-function SurveyPrototypePlanViewer({ planData, layoutData }: { planData: FloorPlanViewerData; layoutData: SurveyingPrototypeLayout }) {
-  const floor = getActiveSurveyFloor(layoutData.surveyDraft);
+function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerData; layoutData: FormalSurveyingLayout }) {
+  const floor = getActiveSurveyFloor(layoutData.surveyGraph);
   const nodeMap = useMemo(() => getSurveyNodeMap(floor), [floor]);
   const bounds = useMemo(() => getSurveyBounds(floor), [floor]);
   const stats = useMemo(() => getSurveyStats(floor), [floor]);
+  const wallBodies = useMemo(
+    () => (floor?.walls || []).map((wall) => ({ wall, body: getSurveyWallBody(floor, wall, nodeMap) })).filter((item) => item.body),
+    [floor, nodeMap],
+  );
+  const spaceDetails = useMemo(
+    () => (floor?.spaces || []).filter((space) => space.closed).map((space) => ({ space, detail: getSurveySpaceDetails(floor, space, nodeMap) })).filter((item) => item.detail),
+    [floor, nodeMap],
+  );
+  const closedWallOutsideSigns = useMemo(() => {
+    const signs = new Map<string, number>();
+    spaceDetails.forEach(({ space, detail }) => {
+      const centroid = detail?.centroid;
+      if (!centroid) return;
+      (space.wallIds || []).forEach((wallId) => {
+        const wall = (floor?.walls || []).find((item) => item.id === wallId);
+        const body = wall ? getSurveyWallBody(floor, wall, nodeMap) : null;
+        if (!body || signs.has(wallId)) return;
+        const midpoint = {
+          xMm: (body.start.xMm + body.end.xMm) / 2,
+          yMm: (body.start.yMm + body.end.yMm) / 2,
+        };
+        const localY = { x: -body.direction.y, y: body.direction.x };
+        const centroidOffset = (centroid.xMm - midpoint.xMm) * localY.x + (centroid.yMm - midpoint.yMm) * localY.y;
+        signs.set(wallId, centroidOffset >= 0 ? -1 : 1);
+      });
+    });
+    return signs;
+  }, [floor, nodeMap, spaceDetails]);
   const viewBox = `${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}`;
-  const textSize = Math.max(120, Math.min(260, Math.max(bounds.width, bounds.height) / 34));
-  const nodeRadius = Math.max(45, textSize * 0.32);
+  const drawingScale = Math.max(bounds.width, bounds.height);
+  const dimensionOffset = Math.max(160, drawingScale * 0.035);
+  const dimensionTextSize = Math.max(76, Math.min(130, drawingScale / 40));
+  const roomTitleSize = Math.max(72, Math.min(120, drawingScale / 42));
+  const roomDetailSize = Math.max(54, Math.min(86, drawingScale / 56));
 
   return (
-    <div className="flex h-screen flex-col bg-neutral-50 text-neutral-950">
+    <div className="flex h-screen flex-col bg-[#f8f8f8] text-neutral-950">
       <div className="z-20 flex items-center justify-between border-b border-neutral-200 bg-white px-6 py-4">
         <div className="flex items-center gap-4">
           <BackButton fallbackPath={planData?.creator?.openid ? `/users/${planData.creator.openid}` : "/leads"} />
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold tracking-tight">{planData?.name || '新版测绘草稿'}</h2>
-              <span className="rounded-md bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-700">新版测绘原型</span>
+              <h2 className="text-lg font-bold tracking-tight">{planData?.name || '测量户型图'}</h2>
+              <span className="rounded-md bg-orange-50 px-2 py-1 text-[11px] font-bold text-orange-700">正式测量</span>
             </div>
             <p className="mt-1 text-xs text-neutral-500">
               {planData.lead?.name ? `客户: ${planData.lead.name} · ` : ''}
-              原型草稿只读展示，不进入 CAD、报告或正式 3D 输出
+              与小程序测量画布一致的只读平面展示
             </p>
           </div>
         </div>
@@ -672,109 +793,151 @@ function SurveyPrototypePlanViewer({ planData, layoutData }: { planData: FloorPl
       </div>
 
       <div className="relative flex-1 overflow-hidden p-6">
-        <div className="h-full rounded-2xl bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_24px_60px_rgba(15,23,42,0.08)]">
-          <svg className="h-full w-full" viewBox={viewBox} role="img" aria-label="新版测绘原型墙图">
+        <div className="h-full overflow-hidden rounded-2xl bg-[#f8f8f8] shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_24px_60px_rgba(15,23,42,0.08)]">
+          <svg className="h-full w-full" viewBox={viewBox} role="img" aria-label="测量户型图">
             <defs>
-              <pattern id="survey-grid" width="500" height="500" patternUnits="userSpaceOnUse">
-                <path d="M 500 0 L 0 0 0 500" fill="none" stroke="#e5e7eb" strokeWidth="18" />
+              <pattern id="survey-grid-minor" width="500" height="500" patternUnits="userSpaceOnUse">
+                <path d="M 500 0 L 0 0 0 500" fill="none" stroke="rgba(141,148,158,0.25)" strokeWidth="8" />
+              </pattern>
+              <pattern id="survey-grid-major" width="2500" height="2500" patternUnits="userSpaceOnUse">
+                <path d="M 2500 0 L 0 0 0 2500" fill="none" stroke="rgba(111,118,128,0.25)" strokeWidth="12" />
               </pattern>
             </defs>
-            <rect x={bounds.minX} y={bounds.minY} width={bounds.width} height={bounds.height} fill="url(#survey-grid)" />
+            <rect x={bounds.minX} y={bounds.minY} width={bounds.width} height={bounds.height} fill="#f8f8f8" />
+            <rect x={bounds.minX} y={bounds.minY} width={bounds.width} height={bounds.height} fill="url(#survey-grid-minor)" />
+            <rect x={bounds.minX} y={bounds.minY} width={bounds.width} height={bounds.height} fill="url(#survey-grid-major)" />
 
-            {(floor?.spaces || []).filter((space) => space.closed).map((space) => {
-              const points = buildSurveySpacePoints(floor, space, nodeMap);
-              if (points.length < 3) return null;
+            {spaceDetails.map(({ space, detail }) => {
+              if (!detail) return null;
               return (
                 <polygon
                   key={space.id}
-                  points={points.map((point) => `${point.xMm},${point.yMm}`).join(' ')}
-                  fill="rgba(59,130,246,0.08)"
-                  stroke="rgba(37,99,235,0.22)"
-                  strokeWidth="40"
+                  points={detail.points.map((point) => `${point.xMm},${point.yMm}`).join(' ')}
+                  fill="rgba(209,209,207,0.86)"
                 />
               );
             })}
 
-            {(floor?.walls || []).map((wall) => {
-              const endpoints = getSurveyWallEndpoints(floor, wall, nodeMap);
-              if (!endpoints) return null;
-              const midX = (endpoints.start.xMm + endpoints.end.xMm) / 2;
-              const midY = (endpoints.start.yMm + endpoints.end.yMm) / 2;
+            {wallBodies.map(({ wall, body }) => {
+              if (!body) return null;
               return (
                 <g key={wall.id}>
-                  <line
-                    x1={endpoints.start.xMm}
-                    y1={endpoints.start.yMm}
-                    x2={endpoints.end.xMm}
-                    y2={endpoints.end.yMm}
-                    stroke="#111827"
-                    strokeWidth={Math.max(90, Math.min(260, Number(wall.thicknessMm || 200)))}
-                    strokeLinecap="round"
-                    opacity="0.18"
+                  <polygon
+                    points={`${body.start.xMm},${body.start.yMm} ${body.end.xMm},${body.end.yMm} ${body.outerEnd.xMm},${body.outerEnd.yMm} ${body.outerStart.xMm},${body.outerStart.yMm}`}
+                    fill="rgba(142,142,140,0.98)"
                   />
-                  <line
-                    x1={endpoints.start.xMm}
-                    y1={endpoints.start.yMm}
-                    x2={endpoints.end.xMm}
-                    y2={endpoints.end.yMm}
-                    stroke="#ef4444"
-                    strokeWidth="34"
-                    strokeLinecap="round"
-                  />
-                  <text
-                    x={midX}
-                    y={midY - textSize * 0.7}
-                    textAnchor="middle"
-                    fontSize={textSize}
-                    fontWeight="700"
-                    fill="#374151"
-                    paintOrder="stroke"
-                    stroke="#ffffff"
-                    strokeWidth={textSize * 0.22}
-                  >
-                    {formatSurveyLength(getSurveyWallLengthMm(floor, wall))}
-                  </text>
+                </g>
+              );
+            })}
+
+            {wallBodies.map(({ wall, body }) => {
+              if (!body) return null;
+              return (
+                <g key={`${wall.id}-outline`} fill="none" stroke="#1f1f1f" strokeWidth="20" strokeLinecap="butt" strokeLinejoin="miter">
+                  <line x1={body.start.xMm} y1={body.start.yMm} x2={body.end.xMm} y2={body.end.yMm} />
+                  <line x1={body.outerStart.xMm} y1={body.outerStart.yMm} x2={body.outerEnd.xMm} y2={body.outerEnd.yMm} />
+                  <line x1={body.start.xMm} y1={body.start.yMm} x2={body.outerStart.xMm} y2={body.outerStart.yMm} />
+                  <line x1={body.end.xMm} y1={body.end.yMm} x2={body.outerEnd.xMm} y2={body.outerEnd.yMm} />
                 </g>
               );
             })}
 
             {(floor?.openings || []).map((opening) => {
               const segment = getSurveyOpeningSegment(floor, opening, nodeMap);
-              if (!segment) return null;
-              const labelX = (segment.x1 + segment.x2) / 2;
-              const labelY = (segment.y1 + segment.y2) / 2;
+              const wall = (floor?.walls || []).find((item) => item.id === opening.wallId);
+              const body = wall ? getSurveyWallBody(floor, wall, nodeMap) : null;
+              if (!segment || !body) return null;
               const isDoor = opening.type === 'door';
+              const angle = Math.atan2(body.direction.y, body.direction.x) * 180 / Math.PI;
+              const width = Math.max(1, Number(opening.widthMm || 0));
+              const centerOffset = Number(opening.centerOffsetMm || getSurveyWallLengthMm(floor, wall!) / 2);
+              const hingeAtEnd = opening.openDirection === 'outside';
+              const hingeX = hingeAtEnd ? centerOffset + width / 2 : centerOffset - width / 2;
+              const swingSign = (wall?.measurementSide === 'left' ? -1 : 1) * (opening.openDirection === 'outside' ? -1 : 1);
+              const wallBodySign = wall?.measurementSide === 'left' ? -1 : 1;
+              const railOffset = Math.max(36, body.thickness * 0.24);
+              const windowCenterY = wallBodySign * body.thickness / 2;
               return (
-                <g key={opening.id}>
+                <g key={opening.id} transform={`translate(${body.start.xMm} ${body.start.yMm}) rotate(${angle})`}>
                   <line
-                    x1={segment.x1}
-                    y1={segment.y1}
-                    x2={segment.x2}
-                    y2={segment.y2}
-                    stroke={isDoor ? '#f59e0b' : '#2563eb'}
-                    strokeWidth="95"
-                    strokeLinecap="round"
+                    x1={centerOffset - width / 2}
+                    y1={wallBodySign * body.thickness * 0.55}
+                    x2={centerOffset + width / 2}
+                    y2={wallBodySign * body.thickness * 0.55}
+                    stroke="#f8f8f8"
+                    strokeWidth={body.thickness + 46}
+                    strokeLinecap="butt"
                   />
-                  <text
-                    x={labelX}
-                    y={labelY - textSize * 0.65}
-                    textAnchor="middle"
-                    fontSize={textSize * 0.78}
-                    fontWeight="800"
-                    fill={isDoor ? '#92400e' : '#1d4ed8'}
-                    paintOrder="stroke"
-                    stroke="#ffffff"
-                    strokeWidth={textSize * 0.18}
-                  >
-                    {isDoor ? '门' : '窗'}
-                  </text>
+                  {isDoor ? (
+                    <g fill="none" stroke="#111827" strokeWidth="18" strokeLinecap="butt">
+                      <line x1={hingeX} y1="0" x2={hingeX} y2={swingSign * width} />
+                      <path d={`M ${hingeX} ${swingSign * width} A ${width} ${width} 0 0 ${swingSign > 0 ? 0 : 1} ${hingeAtEnd ? centerOffset - width / 2 : centerOffset + width / 2} 0`} />
+                    </g>
+                  ) : (
+                    <g fill="none" stroke="#2f2f2f" strokeWidth="14" strokeLinecap="butt">
+                      <line x1={centerOffset - width / 2} y1={windowCenterY - railOffset} x2={centerOffset + width / 2} y2={windowCenterY - railOffset} />
+                      <line x1={centerOffset - width / 2} y1={windowCenterY} x2={centerOffset + width / 2} y2={windowCenterY} />
+                      <line x1={centerOffset - width / 2} y1={windowCenterY + railOffset} x2={centerOffset + width / 2} y2={windowCenterY + railOffset} />
+                      <line x1={centerOffset - width / 2} y1={windowCenterY - railOffset} x2={centerOffset - width / 2} y2={windowCenterY + railOffset} />
+                      <line x1={centerOffset + width / 2} y1={windowCenterY - railOffset} x2={centerOffset + width / 2} y2={windowCenterY + railOffset} />
+                      {width >= 900 && <line x1={centerOffset} y1={windowCenterY - railOffset} x2={centerOffset} y2={windowCenterY + railOffset} />}
+                    </g>
+                  )}
                 </g>
               );
             })}
 
-            {(floor?.nodes || []).map((node) => (
-              <circle key={node.id} cx={Number(node.xMm || 0)} cy={Number(node.yMm || 0)} r={nodeRadius} fill="#ffffff" stroke="#ef4444" strokeWidth="30" />
-            ))}
+            {wallBodies.map(({ wall, body }) => {
+              if (!body) return null;
+              const dimensionSign = closedWallOutsideSigns.get(wall.id) || (wall.measurementSide === 'left' ? -1 : 1);
+              const offset = dimensionSign * (body.thickness + dimensionOffset);
+              const segmentOffset = dimensionSign * (body.thickness + dimensionOffset * 0.42);
+              const wallLength = Math.round(getSurveyWallLengthMm(floor, wall));
+              const openingSegments = getOpeningDimensionSegments(floor, wall);
+              const outerLength = Math.round(Math.hypot(body.outerEnd.xMm - body.outerStart.xMm, body.outerEnd.yMm - body.outerStart.yMm));
+              const wholeDimensions = openingSegments.length
+                ? [{ label: wallLength, y: offset }]
+                : [{ label: wallLength, y: offset }, { label: outerLength, y: offset + dimensionSign * dimensionTextSize * 1.45 }];
+              const isUpsideDown = body.direction.x < 0;
+              return (
+                <g key={`${wall.id}-dimensions`} transform={`translate(${body.start.xMm} ${body.start.yMm}) rotate(${Math.atan2(body.direction.y, body.direction.x) * 180 / Math.PI})`} fill="none" stroke="#333" strokeWidth="12" strokeLinecap="butt">
+                  {openingSegments.map((segment, index) => {
+                    const label = Math.round(segment.end - segment.start);
+                    return (
+                      <g key={`${wall.id}-opening-segment-${index}`}>
+                        <line x1={segment.start} y1="0" x2={segment.start} y2={segmentOffset} />
+                        <line x1={segment.end} y1="0" x2={segment.end} y2={segmentOffset} />
+                        <line x1={segment.start} y1={segmentOffset} x2={segment.end} y2={segmentOffset} />
+                        <path d={`M ${segment.start} ${segmentOffset} l ${dimensionTextSize * 0.32} ${-dimensionTextSize * 0.2} v ${dimensionTextSize * 0.4} z`} fill="#333" stroke="none" />
+                        <path d={`M ${segment.end} ${segmentOffset} l ${-dimensionTextSize * 0.32} ${-dimensionTextSize * 0.2} v ${dimensionTextSize * 0.4} z`} fill="#333" stroke="none" />
+                        <text x={(segment.start + segment.end) / 2} y={segmentOffset} fill="#111" stroke="#f8f8f8" strokeWidth={dimensionTextSize * 0.22} paintOrder="stroke" textAnchor="middle" dominantBaseline="middle" fontSize={dimensionTextSize * 0.84} fontWeight="600" transform={isUpsideDown ? `rotate(180 ${(segment.start + segment.end) / 2} ${segmentOffset})` : undefined}>{label}</text>
+                      </g>
+                    );
+                  })}
+                  {wholeDimensions.map(({ label, y }) => (
+                    <g key={`${wall.id}-${label}-${y}`}>
+                      <line x1="0" y1="0" x2="0" y2={y} />
+                      <line x1={wallLength} y1="0" x2={wallLength} y2={y} />
+                      <line x1="0" y1={y} x2={wallLength} y2={y} />
+                      <path d={`M 0 ${y} l ${dimensionTextSize * 0.42} ${-dimensionTextSize * 0.26} v ${dimensionTextSize * 0.52} z`} fill="#333" stroke="none" />
+                      <path d={`M ${wallLength} ${y} l ${-dimensionTextSize * 0.42} ${-dimensionTextSize * 0.26} v ${dimensionTextSize * 0.52} z`} fill="#333" stroke="none" />
+                      <text x={wallLength / 2} y={y} fill="#111" stroke="#f8f8f8" strokeWidth={dimensionTextSize * 0.25} paintOrder="stroke" textAnchor="middle" dominantBaseline="middle" fontSize={dimensionTextSize} fontWeight="600" transform={isUpsideDown ? `rotate(180 ${wallLength / 2} ${y})` : undefined}>{label}</text>
+                    </g>
+                  ))}
+                </g>
+              );
+            })}
+
+            {spaceDetails.map(({ space, detail }, index) => {
+              if (!detail?.centroid) return null;
+              return (
+                <g key={`${space.id}-detail`} transform={`translate(${detail.centroid.xMm} ${detail.centroid.yMm})`} textAnchor="middle">
+                  <text y={-roomDetailSize * 1.35} fontSize={roomTitleSize} fontWeight="700" fill="#111">{space.name || `房间${index + 1}`}</text>
+                  <text y={0} fontSize={roomDetailSize} fill="#333">H={Math.round(Number(floor?.ceilingHeightMm || 2800))}mm</text>
+                  <text y={roomDetailSize * 1.2} fontSize={roomDetailSize} fill="#333">S≈{detail.area.toFixed(1)}m²</text>
+                </g>
+              );
+            })}
           </svg>
         </div>
       </div>
@@ -879,7 +1042,7 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
   const searchParams = useSearchParams();
   const roomIdParam = searchParams.get('roomId');
   const layoutData = planData.layoutData;
-  const prototypeLayout = useMemo(() => getSurveyingPrototypeLayout(layoutData), [layoutData]);
+  const surveyLayout = useMemo(() => getFormalSurveyingLayout(layoutData), [layoutData]);
 
   const allRooms: Room[] = useMemo(() => {
     if (!layoutData) return [];
@@ -908,8 +1071,8 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
     return allRooms.filter(room => room.id === activeRoomId);
   }, [allRooms, activeRoomId]);
 
-  if (prototypeLayout) {
-    return <SurveyPrototypePlanViewer planData={planData} layoutData={prototypeLayout} />;
+  if (surveyLayout) {
+    return <SurveyPlanViewer planData={planData} layoutData={surveyLayout} />;
   }
 
   return (

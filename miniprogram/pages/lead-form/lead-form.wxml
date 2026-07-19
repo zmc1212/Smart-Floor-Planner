@@ -26,7 +26,7 @@
           data-index="{{index}}"
           bindtap="onSelectRecentLead"
         >
-          <image wx:if="{{item.fullImage}}" class="recent-chip-image" src="{{item.fullImage}}" mode="widthFix"></image>
+          <image wx:if="{{item.fullImage}}" class="recent-chip-image" src="{{item.fullImage}}" mode="aspectFill"></image>
           <block wx:else>
             <image class="recent-avatar" src="{{item.avatar}}" mode="aspectFill"></image>
             <text class="recent-name">{{item.name}}</text>

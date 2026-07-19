@@ -73,14 +73,14 @@ This document summarizes the current functional modules in the `admin` Next.js b
 - Pages: `/leads`.
 - APIs: `/api/leads`, `/api/leads/[id]`, `/api/leads/[id]/share`.
 - Models/libs: `Lead`, `FloorPlan`, `AdminUser`, `wecom.ts`, `wechat-notification.ts`.
-- Responsibilities: customer lead intake, status tracking, floor plan association, surveying prototype draft visibility, promoter/designer assignment, follow-up records, WeCom group creation, and lead sharing.
+- Responsibilities: customer lead intake, status tracking, formal survey-graph floor plan association and visibility, promoter/designer assignment, follow-up records, WeCom group creation, and lead sharing.
 
 ### 9. Floor Plans, Measurement Records, and Devices
 
 - Pages: `/floorplans`, `/floorplans/[id]`, `/measurements`, `/devices`.
 - APIs: `/api/floorplans`, `/api/floorplans/[id]`, `/api/floorplans/[id]/export/dxf`, `/api/measurements`, `/api/devices`, `/api/devices/[id]`, `/api/devices/verify`, `/api/devices/verify-binding`.
 - Models/libs: `FloorPlan`, `Measurement`, `Device`, `User`, `dxf.ts`, `FloorPlanViewer`.
-- Responsibilities: measured floor plan storage, layout viewing, read-only surveying prototype wall-graph display, DXF export for formal layouts, BLE measuring device management, device binding verification, and measurement audit logs.
+- Responsibilities: formal survey-graph floor plan storage and viewing, DXF export, BLE measuring device management, device binding verification, and measurement audit logs.
 
 ### 10. AI Studio and Design Generation
 

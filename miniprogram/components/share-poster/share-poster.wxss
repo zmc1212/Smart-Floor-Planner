@@ -1,4 +1,5 @@
-.poster-mask {
+.poster-mask,
+.poster-overlay {
   position: fixed;
   inset: 0;
   background: rgba(31, 41, 55, 0.32);
@@ -16,13 +17,57 @@
 }
 
 .poster-panel {
-  width: 650rpx;
+  width: calc(100vw - 64rpx);
+  max-width: 650rpx;
+  max-height: calc(100vh - 64rpx);
   overflow: hidden;
+}
+
+.poster-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+}
+
+.poster-container {
+  width: calc(100vw - 64rpx);
+  max-width: 650rpx;
+  max-height: calc(100vh - 64rpx);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
 }
 
 .poster-header,
 .poster-actions {
   padding: var(--space-section);
+}
+
+.poster-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-lg);
+  font-size: 32rpx;
+  font-weight: var(--font-weight-bold);
+  color: var(--text-primary);
+  flex-shrink: 0;
+}
+
+.poster-header text {
+  min-width: 0;
+  flex: 1;
+}
+
+.poster-header .close-btn {
+  flex: 0 0 56rpx;
+  padding: 0;
+  color: var(--text-secondary);
+  box-shadow: none;
+  background: transparent;
 }
 
 .poster-title {
@@ -38,9 +83,47 @@
 }
 
 .poster-container {
-  margin: 0 var(--space-section);
-  padding: var(--space-section);
-  background: linear-gradient(180deg, var(--bg-surface) 0%, var(--brand-primary-20) 100%);
+  background: var(--bg-surface);
+}
+
+.poster-body {
+  min-height: 0;
+  flex: 1;
+  padding: 0 var(--space-section);
+  box-sizing: border-box;
+}
+
+.poster-preview {
+  display: block;
+  width: 100%;
+  max-height: calc(100vh - 280rpx);
+}
+
+.poster-placeholder {
+  min-height: 420rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-lg);
+  color: var(--text-secondary);
+}
+
+.poster-footer {
+  padding: var(--space-lg) var(--space-section) calc(var(--space-section) + env(safe-area-inset-bottom));
+  flex-shrink: 0;
+}
+
+.poster-footer .save-btn {
+  width: 100%;
+}
+
+.poster-footer .tip {
+  margin-top: var(--space-md);
+  color: var(--text-secondary);
+  font-size: 22rpx;
+  line-height: 1.45;
+  text-align: center;
 }
 
 .poster-cover {

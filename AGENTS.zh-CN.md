@@ -1,92 +1,41 @@
 # Codex 项目指令（中文版）
 
-本文档是 `AGENTS.md` 的中文伴随文件。每次修改项目指令、后台反馈规则或小程序编辑器量房功能清单时，必须在同一次任务中同步更新本文档，并保持章节名称、编号、文件路径和行为说明一致。
+量房入口补充：线索详情页可以继续当前正式户型、新增一份绕过旧草稿恢复的正式量房，或删除当前户型；删除必须同步移除线索关联和本地续测指针。
+
+本文是 `AGENTS.md` 的中文配套文件。修改项目指令、后台反馈规则或量房功能清单时，必须同步维护两份文件。
 
 ## Git 提交信息
 
-当 Codex 被要求在本仓库创建 git commit 时，必须使用 Conventional Commit 风格的提交标题。
-
-必需流程：
-
-1. 使用以下前缀之一：`feat:`、`fix:`、`refactor:`、`docs:`、`chore:` 或 `test:`。
-2. 前缀后写简洁的英文标题。
-3. 使用祈使句或行动导向表达。
-4. 标题只描述本次提交包含的改动，不要提及无关的脏工作区改动。
-5. 如果已暂存改动包含多个互不相关的目的，先暂停并询问是否拆分提交，不要自行编造宽泛标题。
+创建提交时使用 Conventional Commit 英文主题，前缀只能为 `feat:`、`fix:`、`refactor:`、`docs:`、`chore:` 或 `test:`。主题应简洁、动作导向，并只描述已暂存的相关修改；多个不相关目标必须拆分提交。
 
 ## 后台操作反馈
 
-所有由管理员操作触发、用户可见的后台操作，都必须通过共享的操作反馈 UI 显示统一的成功或失败通知。
+管理员显式触发的后端操作必须经共享 `operation-feedback` 显示成功或失败通知。不得以原生 `alert()` 作为常规反馈；危险操作可保留确认框，但确认后的结果仍须通知用户。
 
-- 不要把原生 `alert()` 作为正常反馈机制。
-- 危险操作可以保留原生确认弹窗，但用户确认后，操作结果仍必须显示成功或失败通知。
-- 详情弹窗或确认后会关闭的流程，也必须在操作完成后显示结果通知。
-- 静默轮询和自动后台同步任务不需要 toast 类通知，除非它们是用户明确触发的。
+## Admin UI 组件
 
-## Admin UI 组件库
+`admin` 必须使用 shadcn/ui 和 Radix。可复用控件先放入 `admin/src/components/ui/*`；业务页面优先使用共享组件和语义化 Tailwind token，避免任意硬编码颜色、圆角和 Base UI primitive。
 
-`admin` 前端必须统一使用共享的 shadcn/ui 组件体系。
+## 文档同步
 
-- 使用 Radix 作为共享 primitive 底层；不要再为后台 UI primitive 引入 Base UI。
-- 可复用控件应优先沉淀到 `admin/src/components/ui/*`，再在业务页面中复用。
-- 业务页面应优先使用共享的 `Button`、`Input`、`Textarea`、`Select`、`Table`、`Dialog`、`Sheet`、`AlertDialog`、`Badge`、`Card`、`Tabs`、`DropdownMenu`、`Separator` 和 `Skeleton` 组件。
-- 不要把原生 `alert()` 作为后台常规反馈；用户可见的后台操作结果必须继续使用 `operation-feedback`。
-- 不要在业务页面大面积使用硬编码颜色和任意圆角。优先使用 Tailwind/shadcn 语义 token，例如 `background`、`card`、`muted`、`border`、`primary` 和 `destructive`。
-- 如果必须新增特殊视觉样式，先判断它是否应该沉淀为共享组件或 variant。
+维护本文件作为 `AGENTS.md` 中文配套。修改 `docs/admin-system-modules.md` 时，同时更新 `docs/admin-system-modules.zh-CN.md`。
 
-## 中文文档同步
+## 小程序正式量房功能清单
 
-维护 `AGENTS.zh-CN.md` 作为 `AGENTS.md` 的中文伴随文件。每次修改项目指令、后台反馈规则或小程序编辑器量房功能清单时，必须在同一次任务中更新 `AGENTS.zh-CN.md`，并保持章节名称、编号、文件路径和行为说明同步。
+唯一正式量房页面是 `miniprogram/pages/surveying-editor/surveying-editor.*`。量房行为变更时，先说明受影响模块并同步本清单。
 
-其他成对项目文档也按同样规则维护。尤其是修改 `docs/admin-system-modules.md` 时，必须在同一次任务中同步更新 `docs/admin-system-modules.zh-CN.md`。
-
-## 小程序编辑器量房功能清单
-
-修改 `miniprogram/pages/editor/editor.*` 下的量房体验时，先识别下面哪些已完成模块会受到影响，并明确告知用户。每次新增、移除或改变量房功能行为时，都要同步更新这份清单。
-
-新版测绘原型说明：
-
-- 新版测绘工作台从 `miniprogram/pages/surveying-editor/` 开始落地，并在 `docs/surveying-module/` 下维护文档。它是并行原型外壳，不替代 `miniprogram/pages/editor/`。
-- 暴露原型的业务入口必须保持清晰双入口：`旧版测量` 继续进入 `miniprogram/pages/editor/editor`，`新版测绘体验` 进入 `miniprogram/pages/surveying-editor/surveying-editor`。
-- 原型阶段的 `surveying-editor` 可以保存服务端草稿，但 payload 必须明确标记为原型数据（`measurementMode: 'surveying_prototype'`、`prototypeOnly: true`），并将原始墙图放在 `surveyDraft`。不得覆盖旧草稿、提交测量审计日志、进入 CAD/报告/3D 下游兼容流程，也不得把原型数据当作正式户型输出。
-- 原型草稿可以关联到线索，并在后台线索和户型详情页只读展示，便于运营查看小程序墙图数据。该可见性不代表数据已经成为正式户型，prototype 记录必须继续禁用 CAD/报告/3D 操作。
-- 仅新增或调整原型入口，本身不改变下方旧版已完成测量模块。若触及共享 BLE、正式保存、导出/报告、3D、测量日志或 `editor.*`，必须识别并更新受影响的已完成模块。
-
-主要文件：
-
-- 页面编排：`miniprogram/pages/editor/editor.js`、`editor.wxml`、`editor.json`、`editor.wxss`。
-- 量房 UI 组件：`miniprogram/components/measure-modal`、`angle-measure`、`opening-measure`、`guided-banner`、`ble-connector`、`bottom-bar`。
-- 画布和属性组件：`miniprogram/components/canvas`、`miniprogram/components/properties`。
-- 几何和设备工具：`miniprogram/utils/openingGeometry.js`、`wholeHomeGeometry.js`、`bluetooth.js`、`util.js`、`exportService.js`。
-- 测量日志后端：`admin/src/app/api/measurements/route.ts`、`admin/src/models/Measurement.ts`。
-
-已完成测量模块：
-
-1. 引导测量恢复/启动：`editor.onShow` 恢复旧版房间布局和 v2 全屋布局，包括 `measurementMode`、`homeOutline`、`partitions`、`guidedMode`、`currentGuidedRoomId`、`measurePoints`、`guidedEdgeIndex`、`pendingDirection`，并根据设备状态打开量房弹窗或 BLE 连接器。
-2. BLE 连接流程：`ble-connector` 支持记忆设备自动连接和新设备搜索；`editor._bindBluetoothCallbacks` 恢复测量/连接/断开回调；`bottom-bar` 在已连接时提供重新连接入口。
-3. 激光指令生命周期：测量使用 `ATK001#` 打开/触发设备，超时后回退发送 `ATD001#` 查询；实时读取前使用 `bluetooth.clearBuffer()`；`editor.onBluetoothMeasure` 会过滤短时间重复读数。
-4. 层高测量：引导模式下 `guidedEdgeIndex === -1` 表示第一次读数是高度。房间模式保存到 `room.height3D`；全屋模式保存为全屋高度和 `homeOutline.height3D`；两者都会以 `height` 类型上报，然后进入墙体测量。
-5. 直墙测量：`measure-modal` 会根据 `pendingDirection` 或上一方向自动推荐下一方向，并将手动方向选择（`E`、`S`、`W`、`N`）折叠到覆盖入口；边数足够后仍可进入斜角测量。`editor.onBluetoothMeasure` 将米转换为内部几何单位 `meters * 10`，追加到 `measurePoints`，更新房间多边形或 `homeOutline` 预览，设置 `canFinishPolygon`，上报 `length` 类型，并重新适配画布。
-6. 异形/斜角墙测量：边数足够后，`measure-modal` 可启动 `angle-measure`。斜角流程临时接管 BLE 回调，测量墙 A、墙 B 和对角线，用 `util.calculateAngle` 计算角度，将计算出的边追加到当前房间或全屋外轮廓，并上报 `angle` 类型。
-7. 轮廓闭合和重测：`guided-banner` 会显示推荐的下一测量步骤，并在 `canFinishPolygon` 为 true 时可完成测量轮廓。房间模式闭合房间多边形。全屋模式要求最终点在 `0.20m` 内闭合，自动吸附并保存 `homeOutline`，生成初始 `rooms`，切换到分区/编辑阶段。`onStartRemeasure` 会根据 `measurementMode` 重置当前房间或全屋骨架。
-8. 画布测量可视化：`floor-canvas` 渲染测量多边形、全屋外轮廓、内墙分区线、当前/最新测量边、闪烁测量状态、虚线闭合预览、下一方向箭头、尺寸标签、面积标签、平移/缩放、房间拖拽、边命中测试和适配视图。
-9. 手动房间、形状和分区支持：工具栏可以插入预设形状、手绘房间和全屋内墙分区线；`properties` 中房间宽高编辑使用同一内部单位约定（`meters * 10`）。
-10. 门窗墙体选择：在 `DOOR` 或 `WINDOW` 模式下，画布通过 `openingGeometry.findNearestWall` 找到最近墙体；存在当前引导房间时会限制到该房间。全屋模式下，门窗放置目标是外轮廓闭合后生成的房间。画布通过 `openingwallselect` 发出墙体、点位、偏移和参考方向。
-11. 门窗手动放置兜底：如果 BLE 未连接，`editor.addManualOpening` 会在点击的墙体点位放置默认宽度开口，标记 `source: 'manual'`，让用户先添加、后续再补测。
-12. 门窗 BLE 精确测量：`opening-measure` 临时接管 BLE 回调，测量从所选墙体起点/终点到洞口起边的偏移，再测量洞口宽度；校验偏移 + 宽度不超过墙长，显示墙体预览，并把结果返回给 `editor.onOpeningMeasureConfirm`。
-13. 门窗几何持久化：`openingGeometry.buildOpeningFromMeasurement` 保存开口 id、类型、本地 x/y、墙体快照、参考端、测量偏移、中心偏移、宽度、默认高度、来源、角度/旋转和时间戳。它同时支持矩形墙体和多边形墙体。
-14. 门窗管理：`properties` 列出开口，支持触摸高亮、宽高编辑、删除，以及“补测”；补测会用原开口 id 重新打开 BLE 门窗测量流程。
-15. 测量审计日志：`editor.reportMeasurement` 将 BLE 读数提交到 `/measurements`，包含户型、房间、设备、数值、单位、类型、方向、来源、元数据和时间戳。全屋读数会附加 `measurementMode`、`stage`、`homeOutlineId` 或 `partitionId` 等元数据。后端按租户保存 `length`、`height`、`angle`、`opening_offset`、`opening_width` 记录。
-16. 草稿/云端持久化：`onSaveDraft` 和 `saveToCloudInternal('draft')` 保存旧版房间草稿和 v2 全屋草稿，包含 `version`、`measurementMode`、`rooms`、`homeOutline`、`partitions` 和草稿状态（`stage`、`measurePoints`、`guidedEdgeIndex`、`currentGuidedRoomId`、`pendingDirection`、`lastMeasuredDirection`、`activePartitionId`）；完成保存会同步完整测量布局。
-17. 导出/报告集成：`exportService.generateDXF` 接受旧版房间数组和 v2 布局对象，将全屋外墙、内墙分区、房间墙体和开口导出到 CAD 图层；技术/报告流程消费已测房间、多边形、开口、`homeOutline` 和 `partitions`。
-18. 3D 预览集成：`editor` 可以切换到 Three.js 预览，使用已测房间尺寸、多边形/门窗和 `height3D`；全屋模式可从 `homeOutline` 和 `partitions` 生成的房间回退预览。
-19. 全屋骨架测量入口：`lead-detail` 优先提供“开始/继续全屋测量”，创建或升级户型图为 v2 `measurementMode: 'whole_home'`，并将房间卡片视为自动生成/可编辑结果，而不是主要测量入口。
-
-维护说明：
-
-- 内部几何约定是 `1 米 = 10 单位`；UI 输入和设备读数以米为单位，保存到房间/门窗几何前要乘以 10，显示标签时再除以 10。
-- 全屋布局必须保留 `layoutData.rooms` 以兼容下游，并将全屋数据存到 `layoutData.homeOutline` 和 `layoutData.partitions`。
-- `angle-measure` 和 `opening-measure` 在关闭或组件卸载时，必须恢复正常 BLE 测量回调。
-- 不要绕过 `openingGeometry` 放置门窗；墙体投影、校验、序列化和角度处理都集中在这里。
-- `editor.js` 目前存在 `onBluetoothDisconnect` 和 `onEdgeSelect` 的对象字面量重复方法名；JavaScript 会保留后面的定义。编辑这两个流程时，要合并并确认重复定义，不要假设两个都会执行。
-- 量房行为改动后，必须更新本清单，并在回复用户时说明受影响的已完成模块。
+- 所有入口使用 `leadId` 和/或 `floorPlanId` 进入 `pages/surveying-editor/surveying-editor`；不得恢复 `pages/editor/editor`、`restoreFloorPlan` 或双入口。
+- 正式布局只允许 `version: 4`、`measurementMode: 'surveying'` 和 `surveyGraph`。禁止持久化 `rooms`、`homeOutline`、`partitions`、`surveyDraft`、`prototypeOnly` 与 `surveying_prototype`。
+- 新版统一承担启动回显、BLE 连接和激光命令、直墙/斜墙/复尺、共享墙闭合、门窗、草稿/完成保存、测量审计、CAD、报告、全户型 3D 与后台读取。
+- 斜线拖出后保持预览，直到确认墙长；若用户从预览终点继续拖拽，则按实时预览长度落定该墙，并以该终点开始下一条墙。新斜线与上一条斜线正向相差不超过 8° 时会吸附到该方向并保持拖拽长度，超过阈值仍保持自由角度。顶部 `∠` 值和画布当前拐角的角度标注均打开复用数字面板外壳的测角界面。画布只保留最后一条斜墙与前一条墙的夹角；最后确认的斜墙未闭合且没有门窗时，也可由该标注重开，关闭面板会还原原墙。手机姿态仅提供由操作员确认的相对角度；“勾股定理测量角度”入口依次读取三条蓝牙边长、以余弦定理校验并计算夹角，并审计每条有效读数。确认角度时保持拖拽侧和预览长度后回到常规墙长流程；关闭面板不得改变墙体几何，且必须停止设备姿态监听。
+- 二维量房画布必须以覆盖实测门洞全宽的简洁 CAD 平面符号绘制门窗：门扇与开启弧线连接到对侧门框，窗户使用细线三轨窗框，而非带颜色的墙中线。
+- 空间未闭合时，当前墙链只显示内测边尺寸并持续以红线高亮该内测边；预览墙使用顶部实时读数而不显示尺寸标注。内外墙测量边只能在第一条墙确认后立即切换，后续墙体保持锁定。空间明确闭合后，必须依据闭合空间几何关系（不得依据已存的墙侧）判定每面墙的外侧，内、外两组整墙尺寸都必须放在该外侧，并使用细延长线与向内箭头端点；门所在墙以最靠墙的一层“墙段—门宽—墙段”链式尺寸替代内侧整墙尺寸，窗所在墙仅保留整墙尺寸。房间中心仅显示随画布缩放的名称、层高与面积。
+- 未闭合墙链编辑门窗时，门窗选中面板必须提供从该墙链末端“继续测墙”的明确操作；详情、续拉操作与开口侧值必须组成同一张自适应卡片，且宽度必须完整显示实测 `mm` 数值而不裁切。“新建房间起点”用于创建独立墙链，不能替代续拉当前墙。
+- 空间闭合或重置光标后，底部光标控件允许拖到已有顶点、墙体任意位置或画布空白位置，以创建独立墙链；拖动和松手由常驻页面手势链路承接。拖动中，空的圆形状态容器固定保留在底部，且只能由一张独立轻量 Canvas 绘制跟手方框十字与虚线辅助线，不得重绘正式量房场景或再叠加展示层副本。
+- 墙体或门窗处于选中状态时，工具栏的“收起”操作、退出门窗构件编辑器，以及点击画布其他空白处都必须取消选中，并返回相应的量测状态。墙体选中工具栏当前隐藏“墙厚”操作，宽度由可见操作、间距和内边距共同撑开。
+- 点击门或窗时必须优先选中该开口而非其所在墙体。原生 Canvas 在开口 `touchend` 后派发的 `tap` 不得清除刚选中的开口或隐藏其工具栏。
+- 门窗构件编辑器的“规格”面板必须避开固定的撤销/重画控件，确保蓝牙测距操作始终可触达；翻转和模型面板保持原有位置。
+- 闭合候选仅为提示：用户可从当前端点继续拖拽测墙，只有明确点击“合”才会确认闭合。
+- 墙图内部使用毫米；适配层仅在报告、CAD、3D、后台和 AI 读取时派生空间、面积、开口和层高，绝不回写旧布局格式。
+- `surveying-editor` 临时接管 BLE 回调的流程必须在关闭时恢复常规回调，并在读取到有效值后写入测量审计。首次云端保存前取得的读数先入会话队列，正式 `floorPlanId` 创建成功后再补写审计。
+- 本次删除的旧版模块 1-19 仅作为历史覆盖范围；后续不得重新引用旧 `editor.*`、旧组件或旧几何工具。

@@ -70,7 +70,7 @@
 .search-row {
   display: flex;
   align-items: center;
-  gap: 20rpx;
+  gap: 16rpx;
   padding: 0 36rpx 28rpx;
   box-sizing: border-box;
 }
@@ -102,7 +102,7 @@
 }
 
 .filter-button {
-  width: 126rpx;
+  width: 92rpx;
   height: 82rpx;
   border-radius: 26rpx;
   border: 1rpx solid #e1e7ef;
@@ -114,6 +114,29 @@
   justify-content: center;
   color: #657187;
   box-sizing: border-box;
+}
+
+.add-lead-button {
+  flex-shrink: 0;
+  height: 82rpx;
+  padding: 0 18rpx;
+  border-radius: 26rpx;
+  background: #0ab84f;
+  box-shadow: 0 8rpx 22rpx rgba(8, 172, 72, 0.2);
+  color: #ffffff;
+  font-size: 26rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  box-sizing: border-box;
+}
+
+.add-lead-plus {
+  font-size: 34rpx;
+  line-height: 1;
+  font-weight: 500;
 }
 
 .filter-mark {
@@ -167,7 +190,7 @@
 }
 
 .leads-collection {
-  padding: 0 34rpx 250rpx;
+  padding: 0 34rpx 48rpx;
   box-sizing: border-box;
 }
 
@@ -185,7 +208,7 @@
 }
 
 .lead-card:active,
-.floating-add:active,
+.add-lead-button:active,
 .tab-pill:active,
 .filter-button:active {
   opacity: 0.88;
@@ -368,37 +391,6 @@
   line-height: 1;
 }
 
-.floating-add {
-  position: absolute;
-  left: 132rpx;
-  right: 132rpx;
-  bottom: calc(118rpx + env(safe-area-inset-bottom));
-  z-index: 5;
-  height: 74rpx;
-  border-radius: 40rpx;
-  background: linear-gradient(135deg, #08b64d 0%, #00a840 100%);
-  box-shadow: 0 16rpx 32rpx rgba(9, 164, 68, 0.28);
-  color: #ffffff;
-  font-size: 30rpx;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14rpx;
-}
-
-.floating-plus {
-  width: 34rpx;
-  height: 34rpx;
-  border-radius: 50%;
-  background: #ffffff;
-  color: #09ad49;
-  font-size: 30rpx;
-  line-height: 34rpx;
-  text-align: center;
-  font-weight: 700;
-}
-
 .loading-state,
 .empty-placeholder {
   flex: 1;
@@ -406,7 +398,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 120rpx 32rpx 260rpx;
+  padding: 120rpx 32rpx 72rpx;
   color: #657187;
   box-sizing: border-box;
 }

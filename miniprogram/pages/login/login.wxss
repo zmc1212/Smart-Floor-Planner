@@ -1,7 +1,7 @@
 .login-page {
   position: relative;
   min-height: 100vh;
-  padding: 110rpx 38rpx 42rpx;
+  padding: 110rpx 38rpx calc(42rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
   background:
     linear-gradient(180deg, #eef6ed 0%, #f6f8f5 48%, #f7f7f7 100%);
@@ -450,6 +450,7 @@ button.primary-btn[disabled] {
 
 .feature-copy {
   min-width: 0;
+  overflow: hidden;
 }
 
 .feature-title {
@@ -458,6 +459,8 @@ button.primary-btn[disabled] {
   font-weight: 700;
   color: #17202d;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .feature-desc {
@@ -466,6 +469,8 @@ button.primary-btn[disabled] {
   line-height: 1.2;
   color: #8a93a2;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .back-row {

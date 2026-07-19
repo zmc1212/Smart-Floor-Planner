@@ -5,14 +5,14 @@
       <view class="close-btn" bindtap="onClose">×</view>
     </view>
     
-    <view class="poster-body">
+    <scroll-view scroll-y class="poster-body">
       <!-- 预览 Canvas 生成的图片 -->
       <image wx:if="{{posterPath}}" class="poster-preview" src="{{posterPath}}" mode="widthFix" />
       <view wx:else class="poster-placeholder">
         <icon type="waiting" size="40" color="#94a3b8" />
         <text>正在生成海报...</text>
       </view>
-    </view>
+    </scroll-view>
 
     <view class="poster-footer">
       <button class="save-btn" bindtap="saveToPhotos" disabled="{{!posterPath}}">保存海报到手机</button>

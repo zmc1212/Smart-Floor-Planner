@@ -5,7 +5,7 @@
       <view class="close-btn" bindtap="onClose">×</view>
     </view>
     
-    <view class="modal-body">
+    <scroll-view scroll-y class="modal-body">
       <text class="desc" wx:if="{{!isStaff}}">留下您的联系方式，我们的专业设计师将免费为您提供1对1的量房及设计咨询服务。</text>
 
       <!-- Quick select for staff -->
@@ -56,7 +56,7 @@
           </view>
         </picker>
       </view>
-    </view>
+    </scroll-view>
 
     <view class="modal-footer">
       <button class="submit-btn" hover-class="submit-btn-hover" bindtap="onSubmit" loading="{{loading}}">{{isStaff ? '确认绑定并推送' : '立即免费获取'}}</button>

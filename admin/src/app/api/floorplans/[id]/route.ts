@@ -1,13 +1,12 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { FloorPlan } from '@/models/FloorPlan';
-import { User } from '@/models/User';
-import { AdminUser } from '@/models/AdminUser';
+import Lead from '@/models/Lead';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { linkFloorPlanToLead } from '@/lib/floorplan-lead-link';
+import { isFormalSurveyLayout } from '@/lib/survey-graph';
 
 interface FloorPlanUpdateBody {
-  openid?: string;
   name?: string;
   layoutData?: unknown;
   status?: 'draft' | 'completed';
@@ -18,95 +17,86 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown error';
 }
 
-function isSurveyingPrototypeLayout(layoutData: unknown) {
-  if (!layoutData || typeof layoutData !== 'object' || Array.isArray(layoutData)) {
-    return false;
+function canAccessPlan(plan: { creator?: unknown; enterpriseId?: unknown }, context: Awaited<ReturnType<typeof resolveMiniProgramContext>>) {
+  if (!context) return false;
+  if (context.staff) {
+    return String(plan.enterpriseId || '') === String(context.staff.enterpriseId || '');
   }
-
-  const parsed = layoutData as {
-    measurementMode?: unknown;
-    prototypeOnly?: unknown;
-    surveyDraft?: { kind?: unknown };
-  };
-
-  return parsed.measurementMode === 'surveying_prototype' &&
-    parsed.prototypeOnly === true &&
-    parsed.surveyDraft?.kind === 'survey-wall-graph';
+  return String(plan.creator || '') === String(context.user._id || '');
 }
 
-export async function PUT(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+async function getPlanForContext(id: string, context: Awaited<ReturnType<typeof resolveMiniProgramContext>>) {
+  const plan = await FloorPlan.findById(id);
+  return plan && canAccessPlan(plan, context) ? plan : null;
+}
+
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await dbConnect();
-    const { id } = await params;
-    const body = await req.json() as FloorPlanUpdateBody;
-
-    // Automatic Association for Staff if missing
-    const staffUpdate: Record<string, unknown> = {};
     const context = await resolveMiniProgramContext(req);
-    
-    if (context?.staff) {
-       staffUpdate.staffId = context.staff._id;
-       staffUpdate.enterpriseId = context.staff.enterpriseId;
-    } else if (body.openid) {
-       // Legacy fallback
-       const user = await User.findOne({ openid: body.openid });
-       if (user && user.role === 'staff') {
-         const staffMember = await AdminUser.findOne({ phone: user.phone });
-         if (staffMember) {
-           staffUpdate.staffId = staffMember._id;
-           staffUpdate.enterpriseId = staffMember.enterpriseId;
-         }
-       }
-    }
-
-    if (isSurveyingPrototypeLayout(body.layoutData)) {
-      const existingPlan = await FloorPlan.findById(id).select('layoutData');
-      if (existingPlan && !isSurveyingPrototypeLayout(existingPlan.layoutData)) {
-        return NextResponse.json(
-          { success: false, error: 'Cannot overwrite a formal floor plan with a surveying prototype draft' },
-          { status: 409 }
-        );
-      }
-    }
-
-    const updatedPlan = await FloorPlan.findByIdAndUpdate(
-      id,
-      { 
-        $set: {
-          name: body.name,
-          layoutData: body.layoutData,
-          status: body.status,
-          ...staffUpdate
-        }
-      },
-      { new: true }
-    );
-
-    if (!updatedPlan) {
-      return NextResponse.json({ success: false, error: 'FloorPlan not found' }, { status: 404 });
-    }
-
-    if (body.leadId) {
-      await linkFloorPlanToLead(body.leadId, updatedPlan._id);
-    }
-
-    return NextResponse.json({ success: true, data: updatedPlan });
+    if (!context) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    const { id } = await params;
+    const plan = await getPlanForContext(id, context);
+    if (!plan) return NextResponse.json({ success: false, error: 'Floor plan not found' }, { status: 404 });
+    return NextResponse.json({ success: true, data: plan });
   } catch (error: unknown) {
     return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
   }
 }
 
-export async function DELETE(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await dbConnect();
+    const context = await resolveMiniProgramContext(req);
+    if (!context) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     const { id } = await params;
-    await FloorPlan.findByIdAndDelete(id);
+    const body = await req.json() as FloorPlanUpdateBody;
+    if (!isFormalSurveyLayout(body.layoutData)) {
+      return NextResponse.json({ success: false, error: 'layoutData must use the formal surveyGraph contract' }, { status: 400 });
+    }
+    const plan = await getPlanForContext(id, context);
+    if (!plan) return NextResponse.json({ success: false, error: 'Floor plan not found' }, { status: 404 });
+    const previousStatus = plan.status;
+    const nextStatus = body.status || plan.status;
+    plan.name = body.name || plan.name;
+    plan.layoutData = body.layoutData;
+    plan.status = nextStatus;
+    if (previousStatus !== 'completed' && nextStatus === 'completed') {
+      plan.completedAt = new Date();
+    }
+    if (context.staff) {
+      plan.staffId = context.staff._id;
+      plan.enterpriseId = context.staff.enterpriseId;
+    }
+    await plan.save();
+    if (body.leadId) await linkFloorPlanToLead(body.leadId, plan._id);
+    return NextResponse.json({ success: true, data: plan });
+  } catch (error: unknown) {
+    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    await dbConnect();
+    const context = await resolveMiniProgramContext(req);
+    if (!context) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    const { id } = await params;
+    const plan = await getPlanForContext(id, context);
+    if (!plan) return NextResponse.json({ success: false, error: 'Floor plan not found' }, { status: 404 });
+
+    const tenantFilter = plan.enterpriseId ? { enterpriseId: plan.enterpriseId } : {};
+    await Promise.all([
+      Lead.updateMany(
+        { ...tenantFilter, floorPlanIds: plan._id },
+        { $pull: { floorPlanIds: plan._id } }
+      ),
+      Lead.updateMany(
+        { ...tenantFilter, primaryFloorPlanId: plan._id },
+        { $unset: { primaryFloorPlanId: 1 } }
+      )
+    ]);
+    await plan.deleteOne();
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
     return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });

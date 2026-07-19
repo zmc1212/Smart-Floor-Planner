@@ -4,6 +4,7 @@ import dbConnect from '@/lib/mongodb';
 import { CommissionRecord } from '@/models/CommissionRecord';
 import { Enterprise } from '@/models/Enterprise';
 import { EnterpriseOrder } from '@/models/EnterpriseOrder';
+import { FloorPlan } from '@/models/FloorPlan';
 import Lead from '@/models/Lead';
 import { PromotionEnterpriseRecord } from '@/models/PromotionEnterpriseRecord';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
@@ -26,7 +27,7 @@ type WorkbenchCard = {
   label: string;
   value: number;
   unit: string;
-  deltaText: string;
+  detailText: string;
   icon: string;
   tone: 'green' | 'blue' | 'orange' | 'purple';
   target: string;
@@ -93,6 +94,28 @@ function startOfMonth() {
   return new Date(now.getFullYear(), now.getMonth(), 1);
 }
 
+function getShanghaiMonthRange(now = new Date()) {
+  const values = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: 'numeric',
+  }).formatToParts(now).reduce<Record<string, number>>((result, part) => {
+    if (part.type === 'year' || part.type === 'month') result[part.type] = Number(part.value);
+    return result;
+  }, {});
+
+  const year = values.year || now.getUTCFullYear();
+  const month = values.month || now.getUTCMonth() + 1;
+  const nextYear = month === 12 ? year + 1 : year;
+  const nextMonth = month === 12 ? 1 : month + 1;
+  const shanghaiOffsetMs = 8 * 60 * 60 * 1000;
+
+  return {
+    start: new Date(Date.UTC(year, month - 1, 1) - shanghaiOffsetMs),
+    end: new Date(Date.UTC(nextYear, nextMonth - 1, 1) - shanghaiOffsetMs),
+  };
+}
+
 function formatDueLabel(value?: string) {
   if (!value) return '近期';
   const date = new Date(value);
@@ -133,12 +156,12 @@ function card(
   label: string,
   value: number,
   unit: string,
-  deltaText: string,
+  detailText: string,
   icon: string,
   tone: WorkbenchCard['tone'],
   target: string
 ): WorkbenchCard {
-  return { key, label, value, unit, deltaText, icon, tone, target };
+  return { key, label, value, unit, detailText, icon, tone, target };
 }
 
 async function buildWorkbenchCards(role: string, staff: StaffContext): Promise<WorkbenchCard[]> {
@@ -191,18 +214,26 @@ async function buildWorkbenchCards(role: string, staff: StaffContext): Promise<W
   }
 
   if (role === 'measurer') {
-    const [pendingMeasure, accepted, monthlySubmitted, serviceCustomers] = await Promise.all([
+    const completedPlanFilter = {
+      staffId: staff._id,
+      status: 'completed',
+      'layoutData.version': 4,
+      'layoutData.measurementMode': 'surveying',
+      'layoutData.surveyGraph.kind': 'survey-wall-graph',
+    };
+    const monthRange = getShanghaiMonthRange();
+    const [pendingMeasure, accepted, monthlyCompleted, totalCompleted] = await Promise.all([
       PromotionEnterpriseRecord.countDocuments({ ...accessFilter, 'measureTask.status': 'assigned' }),
       PromotionEnterpriseRecord.countDocuments({ ...accessFilter, 'measureTask.status': 'accepted' }),
-      PromotionEnterpriseRecord.countDocuments({ ...accessFilter, 'measureTask.status': 'submitted', 'measureTask.submittedAt': { $gte: monthStart } }),
-      PromotionEnterpriseRecord.countDocuments(accessFilter),
+      FloorPlan.countDocuments({ ...completedPlanFilter, completedAt: { $gte: monthRange.start, $lt: monthRange.end } }),
+      FloorPlan.countDocuments(completedPlanFilter),
     ]);
 
     return [
-      card('pendingMeasure', '待量房', pendingMeasure, '个', pendingMeasure ? `+${pendingMeasure}` : '已清空', 'home', 'green', 'promotion:measure?filter=measuring'),
-      card('accepted', '进行中', accepted, '个', accepted ? `+${accepted}` : '推进中', 'edit', 'blue', 'promotion:measure?filter=measuring'),
-      card('monthlySubmitted', '本月提交', monthlySubmitted, '单', monthlySubmitted ? `+${monthlySubmitted}` : '本月', 'deal', 'green', 'promotion:measure'),
-      card('customers', '服务客户', serviceCustomers, '位', serviceCustomers ? `+${serviceCustomers}` : '暂无', 'user', 'purple', 'leads'),
+      card('pendingMeasure', '待量房', pendingMeasure, '个', pendingMeasure ? '等待接单' : '暂无待接任务', 'home', 'green', 'promotion:measure?filter=measuring'),
+      card('accepted', '进行中', accepted, '个', accepted ? '已接单任务' : '暂无进行中任务', 'edit', 'blue', 'promotion:measure?filter=measuring'),
+      card('monthlyCompleted', '本月完成', monthlyCompleted, '单', '按完成时间统计', 'deal', 'green', 'measure'),
+      card('totalCompleted', '累计完成', totalCompleted, '单', '正式量房方案', 'user', 'purple', 'measure'),
     ];
   }
 

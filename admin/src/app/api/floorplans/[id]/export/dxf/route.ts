@@ -2,21 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { FloorPlan } from '@/models/FloorPlan';
 import { DXFGenerator } from '@/lib/dxf';
-
-function isSurveyingPrototypeLayout(layoutData: unknown) {
-  const parsed = layoutData && typeof layoutData === 'object' ? layoutData as {
-    measurementMode?: string;
-    prototypeOnly?: boolean;
-    surveyDraft?: { kind?: string };
-  } : null;
-  return Boolean(
-    parsed &&
-    !Array.isArray(layoutData) &&
-    parsed.measurementMode === 'surveying_prototype' &&
-    parsed.prototypeOnly === true &&
-    parsed.surveyDraft?.kind === 'survey-wall-graph'
-  );
-}
+import { adaptSurveyGraphToRooms, isFormalSurveyLayout } from '@/lib/survey-graph';
 
 export async function GET(
   request: Request,
@@ -31,11 +17,11 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Floor plan not found' }, { status: 404 });
     }
 
-    if (isSurveyingPrototypeLayout(plan.layoutData)) {
-      return NextResponse.json({ success: false, error: 'Surveying prototype drafts cannot be exported to DXF' }, { status: 400 });
+    if (!isFormalSurveyLayout(plan.layoutData)) {
+      return NextResponse.json({ success: false, error: 'Floor plan does not use the formal surveyGraph contract' }, { status: 400 });
     }
 
-    const rooms = plan.layoutData || [];
+    const rooms = adaptSurveyGraphToRooms(plan.layoutData);
     const dxfGen = new DXFGenerator(plan.name || 'FloorPlan');
     const dxfString = dxfGen.generateFromData(rooms);
 

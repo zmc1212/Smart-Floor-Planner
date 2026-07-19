@@ -2,7 +2,7 @@
   min-height: 100vh;
   background:
     linear-gradient(180deg, #fcfdfb 0%, #f5f7f4 46%, var(--bg-page) 100%);
-  padding: 20rpx;
+  padding: 20rpx 20rpx calc(36rpx + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
 
@@ -23,6 +23,7 @@
 }
 
 .header-copy {
+  flex: 1;
   min-width: 0;
 }
 
@@ -49,6 +50,7 @@
 
 .subtitle {
   margin-top: 8rpx;
+  line-height: 1.5;
 }
 
 .record-tools {
@@ -70,11 +72,18 @@
   box-sizing: border-box;
 }
 
+.search-surface text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .filter-row {
   margin-top: 12rpx;
   display: flex;
+  flex-wrap: wrap;
   gap: 10rpx;
-  overflow: hidden;
 }
 
 .filter-chip {
@@ -177,15 +186,20 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12rpx;
 }
 
 .footer-pill {
+  min-width: 0;
   padding: 8rpx 16rpx;
   border-radius: var(--radius-full);
   background: rgba(34, 197, 94, 0.1);
   color: #17a14c;
   font-size: 22rpx;
   font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .claim-btn {
@@ -199,6 +213,7 @@
   color: #fff;
   font-size: 22rpx;
   font-weight: 500;
+  flex-shrink: 0;
   box-shadow: 0 10rpx 20rpx rgba(17, 164, 66, 0.18);
 }
 
