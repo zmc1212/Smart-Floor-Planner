@@ -116,8 +116,10 @@ permission, or workflow changes.
 - Components/helpers: `FloorPlanViewer`, `FloorPlanViewerWrapper`, `survey-graph`,
   and `dxf`.
 - Status: `Implemented` for formal v4 wall-graph parsing, admin 2D/3D viewing,
-  measurement filtering, and DXF download. Kujiale search is `Limited` by the
-  upstream search/provider response and city/query availability.
+  exterior-boundary-only dimensions for completed plans (no annotations on
+  shared interior walls), measurement filtering, and DXF download. Kujiale
+  search is `Limited` by the upstream search/provider response and city/query
+  availability.
 - Boundary: the backend derives room/opening render data from `surveyGraph`; it
   does not persist legacy `rooms` or other old layout fields.
 
@@ -133,28 +135,87 @@ permission, or workflow changes.
 
 ### 10. AI Studio And Design Generation
 
-- Pages: `/ai-studio/designer`, `/ai-studio/scenarios`, scenario detail,
-  `/ai-studio/floor-plan`, floor-plan detail, `/ai-studio/furnishing`,
-  `/ai-studio/soft-furnishing`, `/inspirations`, and `/ai-presets`.
+- Pages: `/ai-studio/scenarios` is the single AI execution workbench with
+  customer workflows, quick tools, and the AI assistant. Legacy
+  `/ai-studio/designer`, `/ai-studio/floor-plan`, `/ai-studio/furnishing`,
+  `/ai-studio/soft-furnishing`, and scenario-detail URLs preserve relevant
+  query parameters and redirect into that workbench. `/inspirations`, `/ai-presets`,
+  `/ai-providers`, `/ai-credit-prices`, and AI-credit management on the enterprise AI page.
 - APIs: AI agent/chat, generation/render/advice, status/history, quota/usage,
-  presets, workflows and stages, workflow source images/leads, media assets,
-  generation images, image proxy, soft-furnishing render, and inspirations.
+  presets, workflow search/pagination and stages, design capabilities/action
+  catalog, workflow source images/leads, media assets,
+  generation images, image proxy, soft-furnishing render, provider CRUD/key
+  rotation/connectivity/model sync/upstream balance query, protected task reconciliation, platform
+  action pricing, enterprise grants/adjustments/ledger/tasks, and failed Mini
+  Program task retries. Legacy enterprise `ai-key`/`ai-sync` reads remain
+  compatibility-only while writes return `410`.
 - Models/helpers: `AiGeneration`, `AiWorkflow`, `AiChatSession`, `AiStylePreset`,
-  `AiQuota`, `EnterpriseAiUsageSnapshot`, `MediaAsset`, `Inspiration`, and
-  `src/lib/ai/*`.
-- Status: `Implemented` for chat, scenario workflows, formal floor-plan input,
-  style/furnishing/soft-furnishing rendering, history, quotas, presets, and
-  persisted media. Provider availability and enterprise AI configuration make
-  some generation paths `Limited`.
+  `AiProviderConfig`, `AiProviderAttempt`, `MediaAsset`, `AiCreditAccount`,
+  `AiCreditLedger`, `AiCreditPrice`, `Inspiration`, and `src/lib/ai/*`.
+- Status: `Implemented`. The workbench starts customer designs with a
+  customer/material/goal wizard, shows the selected result and candidates in a
+  two-column workspace, and keeps one recommended next action prominent. The
+  shared action catalog supplies names, inputs, billing keys, supported clients,
+  output boundaries, and next actions. Legacy AI execution permission keys are
+  compatibility aliases for `ai-scenarios`; role configuration exposes one
+  permission without expanding the B2B channel `salesperson` boundary.
+  User-facing AI credits and `AiWorkflow` records are
+  shared across Admin and Mini Program. Customer/formal-plan Mini Program tasks
+  for reference recreation, whole-space styling, floor-plan concepts, and soft
+  furnishing map into the existing baseline, perspective-upgrade, and
+  soft-furnishing stages. The first successful base/soft-furnishing generation
+  is selected and advances automatically; later successes at the same stage stay
+  as candidates until explicitly adopted. Active duplicate stage runs are
+  rejected before another hold or upstream task is created. Successful baselines
+  can continue into proposal and lighting. Floor-plan-only workflow generation adds read-only dimensions,
+  ceiling height, and opening summaries from the formal v4 graph to the prompt,
+  does not require a fabricated source image, and never mutates
+  `FloorPlan.layoutData`. Credit operations use
+  hold-on-create, consume-on-success, and release-on-failure semantics. Only
+  platform `super_admin`/`admin` roles may configure providers, rotate credentials,
+  test/sync models, query GRS API-key credit balance, run reconciliation, grant/adjust credits, and edit action
+  prices; enterprise staff consume them. GRS connectivity testing validates both
+  host and key through its credit-balance endpoint; model sync returns configured
+  mappings when that node does not implement `/v1/models`. Business routes use logical model keys
+  and `AiExecutionService`; GRS submits documented asynchronous image requests to
+  `POST /v1/api/generate` with `replyType: "async"` and polls
+  `GET /v1/api/result?id=...`; `violation` and `failed` are refunded failures. The provider
+  capability and logical/remote model fields drive routing, while currency and
+  estimated cost are optional internal-only accounting metadata. Temporary images
+  are persisted to `MediaAsset` before settlement. Fallback is
+  allowed only for connection/unaccepted/refunded-safe failures; accepted,
+  timed-out, or unknown attempts retain the hold and never create a second
+  upstream task. Provider cost uses currency micro-units and does not change
+  business prices. Provider balance and enterprise AI credits are separate
+  ledgers: enterprises buy platform credits while operators replenish the shared
+  provider pool against balance thresholds, not once per enterprise purchase.
+  Enterprise AI policy controls enabled action keys and the
+  `standard` logical-model tier before credits are held. `Limited`:
+  balance/model discovery for other adapters depends on upstream support,
+  there is no WeChat/self-service recharge or automated low-balance alert, and production media requires durable
+  shared storage.
+- Migration/operations: run `npm run migrate:ai-platform` before enabling the
+  new routes on an existing database. It preserves existing AI-credit balances,
+  creates zero-balance accounts when absent, does not convert Pollen, maps legacy
+  generations/presets, and seeds environment-backed provider configs. Credit-price
+  initialization removes the obsolete unique `mode_1` index so platform actions
+  without a mode cannot collide on repeated `null`; `actionKey_1` remains the
+  unique business index. Configure
+  `AI_RECONCILIATION_SECRET` for scheduled `/api/ai/reconcile` calls.
 
 ### 11. Mini Program Support And Cross-Client APIs
 
-- APIs: `/api/auth/miniprogram`, `/api/miniprogram/home`, `/mine`,
-  `/api/users/me`, `/location/reverse`, `/branding/[id]`, plus shared leads,
+- APIs: `/api/auth/miniprogram`, `/api/miniprogram/home`, `/mine`, Mini Program
+  AI capabilities/sources/workflows/media/tasks/history endpoints, plus shared leads,
   floor-plans, measurements, commissions, orders, and promotion APIs.
 - Status: `Implemented`. These endpoints resolve Mini Program identity,
-  professional context, home dashboard, mine/workbench data, location, branding,
-  and shared business assets.
+  professional context, workbench data, shared business assets, and enterprise-
+  staff AI design. AI endpoints enforce bearer JWT plus enterprise/operator
+  ownership; `/api/miniprogram/ai/sources` exposes only role-accessible formal
+  plans and closed rooms. The workflow endpoint returns only context-visible
+  active schemes and executable Mini Program actions. An explicit workflow is
+  continued; a unique customer/formal-plan match is reused automatically; when
+  multiple schemes match, the client must choose instead of silently merging.
 
 ### 12. Notifications, Automation, And Diagnostics
 
@@ -172,7 +233,9 @@ permission, or workflow changes.
   `CommissionRecord`, `PromotionEnterpriseRecord`.
 - Customer assets: `Lead`, `FloorPlan`, `Measurement`, `Device`, `Inspiration`.
 - AI/media: `AiGeneration`, `AiWorkflow`, `AiChatSession`, `AiStylePreset`,
-  `AiQuota`, `EnterpriseAiUsageSnapshot`, `MediaAsset`.
+  `AiProviderConfig`, `AiProviderAttempt`, `MediaAsset`, `AiCreditAccount`,
+  `AiCreditLedger`, and `AiCreditPrice`; `EnterpriseAiUsageSnapshot` is
+  legacy Pollinations history only.
 - Notifications/config: `WorkflowNotificationLog`, `PlatformConfig`.
 
 ## Maintenance Checklist

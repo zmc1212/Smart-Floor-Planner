@@ -28,6 +28,54 @@ function createClosedRectangleDraft() {
   return surveyGraph.confirmClosure(draft);
 }
 
+function createTwoClosedRoomsWithSharedDoorDraft() {
+  const draft = surveyGraph.createSurveyDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  floor.nodes = [
+    { id: 'a', xMm: 0, yMm: 0 },
+    { id: 'b', xMm: 3000, yMm: 0 },
+    { id: 'c', xMm: 3000, yMm: 2000 },
+    { id: 'd', xMm: 0, yMm: 2000 },
+    { id: 'e', xMm: 6000, yMm: 0 },
+    { id: 'f', xMm: 6000, yMm: 2000 }
+  ];
+  floor.walls = [
+    ['wall-1', 'a', 'b', 3000, 0],
+    ['wall-2', 'b', 'c', 2000, 90],
+    ['wall-3', 'c', 'd', 3000, 180],
+    ['wall-4', 'd', 'a', 2000, -90],
+    ['wall-5', 'b', 'e', 3000, 0],
+    ['wall-6', 'e', 'f', 2000, 90],
+    ['wall-7', 'f', 'c', 3000, 180]
+  ].map(([id, startNodeId, endNodeId, lengthMm, angleDeg]) => ({
+    id,
+    startNodeId,
+    endNodeId,
+    mode: 'straight',
+    lengthMm,
+    angleDeg,
+    thicknessMm: 200,
+    measurementSide: 'left'
+  }));
+  floor.spaces = [
+    { id: 'space-1', name: '左侧房间', wallIds: ['wall-1', 'wall-2', 'wall-3', 'wall-4'], closed: true },
+    { id: 'space-2', name: '右侧房间', wallIds: ['wall-5', 'wall-6', 'wall-7', 'wall-2'], closed: true }
+  ];
+  floor.openings = [{
+    id: 'opening-shared',
+    wallId: 'wall-2',
+    type: 'door',
+    centerOffsetMm: 1000,
+    widthMm: 900,
+    heightMm: 2100,
+    sillHeightMm: 0,
+    depthMm: 200
+  }];
+  floor.session.state = 'spaceClosed';
+  floor.session.activeSpaceStartWallIndex = floor.walls.length;
+  return draft;
+}
+
 function createScene(draft) {
   const floor = surveyGraph.getActiveFloor(draft);
   return surveyCanvasRenderer.createSurveyRenderScene({
@@ -108,7 +156,7 @@ test('a connected diagonal preview exposes its interior angle for the top measur
   assert.equal(scene.activeSegment.interiorAngleDeg, 120);
 });
 
-test('inside/outside measurement edge can change only while the first wall is confirmed', () => {
+test('inside/outside measurement edge can change only while a wall chain first wall is confirmed', () => {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
   draft = commitWall(draft, { xMm: 3000, yMm: 0 }, 3000);
@@ -124,6 +172,21 @@ test('inside/outside measurement edge can change only while the first wall is co
   floor = surveyGraph.getActiveFloor(lockedDraft);
   assert.equal(floor.session.measurementSide, 'right');
   assert.equal(floor.walls[0].measurementSide, 'right');
+
+  draft = surveyGraph.placeNewWallChainCursor(draft, { xMm: 6000, yMm: 0 });
+  draft = commitWall(draft, { xMm: 9000, yMm: 0 }, 3000);
+  const newChainFirstWall = surveyGraph.getActiveFloor(draft).walls[2];
+  draft = surveyGraph.setMeasurementSide(draft, 'left', newChainFirstWall.id);
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.session.measurementSide, 'left');
+  assert.equal(newChainFirstWall.id, floor.walls[2].id);
+  assert.equal(floor.walls[2].measurementSide, 'left');
+
+  draft = commitWall(draft, { xMm: 9000, yMm: 2000 }, 2000);
+  const newChainLockedDraft = surveyGraph.setMeasurementSide(draft, 'right', newChainFirstWall.id);
+  floor = surveyGraph.getActiveFloor(newChainLockedDraft);
+  assert.equal(floor.session.measurementSide, 'left');
+  assert.equal(floor.walls[2].measurementSide, 'left');
 });
 
 test('closed space adds outer dimensions while a new wall chain remains inner-only', () => {
@@ -179,6 +242,56 @@ test('closed space adds outer dimensions while a new wall chain remains inner-on
   assert.equal(mixedScene.dimensions.filter((dimension) => dimension.wall.id === 'next-wall').length, 1);
   assert.equal(mixedScene.dimensions.find((dimension) => dimension.wall.id === 'next-wall').kind, 'inner');
   assert.deepEqual(mixedScene.activeMeasurementWallIds, ['next-wall']);
+});
+
+test('closed room shell stays outside the boundary for either initial measurement side', () => {
+  const draft = createClosedRectangleDraft();
+  const variants = ['left', 'right'];
+
+  variants.forEach((measurementSide) => {
+    const variant = surveyGraph.cloneDraft(draft);
+    const floor = surveyGraph.getActiveFloor(variant);
+    floor.walls.forEach((wall) => { wall.measurementSide = measurementSide; });
+    const scene = createScene(variant);
+    const boundary = scene.closedSpaceFills[0].points;
+    const centroid = boundary.reduce((result, point) => ({
+      x: result.x + point.x / boundary.length,
+      y: result.y + point.y / boundary.length
+    }), { x: 0, y: 0 });
+
+    scene.walls.forEach((wall) => {
+      const midpoint = {
+        x: (wall.startPoint.x + wall.endPoint.x) / 2,
+        y: (wall.startPoint.y + wall.endPoint.y) / 2
+      };
+      const outerMidpoint = {
+        x: (wall.rawOuterStart.x + wall.rawOuterEnd.x) / 2,
+        y: (wall.rawOuterStart.y + wall.rawOuterEnd.y) / 2
+      };
+      const fromRoomCenter = { x: midpoint.x - centroid.x, y: midpoint.y - centroid.y };
+      const outerOffset = { x: outerMidpoint.x - midpoint.x, y: outerMidpoint.y - midpoint.y };
+      assert.ok(
+        fromRoomCenter.x * outerOffset.x + fromRoomCenter.y * outerOffset.y > 0,
+        `expected ${measurementSide} measurement side to render outward`
+      );
+    });
+
+    scene.walls.forEach((wall, index) => {
+      const nextWall = scene.walls[(index + 1) % scene.walls.length];
+      assert.ok(Math.hypot(wall.outerEnd.x - nextWall.outerStart.x, wall.outerEnd.y - nextWall.outerStart.y) < 0.01);
+    });
+  });
+});
+
+test('shared walls between closed rooms never receive whole-wall or door-chain dimensions', () => {
+  const scene = createScene(createTwoClosedRoomsWithSharedDoorDraft());
+  const sharedWall = scene.walls.find((wall) => wall.id === 'wall-2');
+
+  assert.equal(sharedWall.closed, true);
+  assert.equal(sharedWall.isExteriorBoundary, false);
+  assert.equal(scene.dimensions.some((dimension) => dimension.wall.id === 'wall-2'), false);
+  assert.equal(scene.dimensions.length, 12);
+  assert.equal(scene.dimensions.every((dimension) => dimension.wall.isExteriorBoundary), true);
 });
 
 test('closed wall with an opening renders a wall-opening-wall chain dimension', () => {
@@ -255,6 +368,8 @@ test('drag-only canvas renders one dashed cross guide and one square cursor', ()
   );
 
   assert.deepEqual(recorder.dashes.filter((dash) => dash.length), [[18, 12]]);
+  assert.ok(recorder.widths.includes(1.5));
+  assert.equal(recorder.widths.includes(3), false);
   assert.ok(recorder.strokes.some((path) => (
     path.some((command) => command[0] === 'moveTo' && command[1] === 0 && command[2] === 220) &&
     path.some((command) => command[0] === 'lineTo' && command[1] === 400 && command[2] === 220) &&

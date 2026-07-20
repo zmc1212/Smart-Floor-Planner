@@ -7,6 +7,7 @@ import { Sparkles, Info } from 'lucide-react';
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import type { ChatAction, ChatUiPayload } from '@/lib/ai/chat-ui';
+import { useRouter } from 'next/navigation';
 
 type ConfirmToolAction = Extract<ChatAction, { kind: 'confirm_tool' }>;
 
@@ -23,7 +24,7 @@ interface Conversation {
   createdAt: string;
 }
 
-export default function AiDesignerPage() {
+export function AiDesignerLegacyPage() {
   const confirmAction = useConfirmDialog();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -231,4 +232,14 @@ export default function AiDesignerPage() {
       </main>
     </div>
   );
+}
+
+export default function AiDesignerPage() {
+  const router = useRouter();
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    params.set('view', 'assistant');
+    router.replace(`/ai-studio/scenarios?${params.toString()}`);
+  }, [router]);
+  return <div className="p-8 text-sm text-muted-foreground">正在进入统一 AI 设计工作台...</div>;
 }

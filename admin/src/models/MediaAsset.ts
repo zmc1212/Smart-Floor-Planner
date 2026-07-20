@@ -12,6 +12,7 @@ export interface IMediaAsset extends Document {
   storageProvider: MediaAssetStorageProvider;
   storageKey: string;
   originalUrl?: string;
+  deletedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -56,6 +57,7 @@ const MediaAssetSchema: Schema<IMediaAsset> = new Schema(
     originalUrl: {
       type: String,
     },
+    deletedAt: { type: Date, index: true },
   },
   { timestamps: true }
 );
@@ -63,6 +65,11 @@ const MediaAssetSchema: Schema<IMediaAsset> = new Schema(
 MediaAssetSchema.index({ enterpriseId: 1, ownerType: 1, ownerId: 1, createdAt: -1 });
 
 MediaAssetSchema.plugin(multiTenantPlugin);
+
+const existingMediaAssetModel = mongoose.models.MediaAsset as Model<IMediaAsset> | undefined;
+if (existingMediaAssetModel && !existingMediaAssetModel.schema.path('deletedAt')) {
+  mongoose.deleteModel('MediaAsset');
+}
 
 export const MediaAsset: Model<IMediaAsset> =
   (mongoose.models.MediaAsset as Model<IMediaAsset> | undefined) ||

@@ -74,7 +74,7 @@
 - 页面：`/floorplans`、`/floorplans/[id]`、`/floorplans/kujiale`、`/measurements`。
 - API：户型 CRUD、`/floorplans/[id]/export/dxf`、测量、酷家乐城市/搜索和线索关联接口。
 - 组件/工具：`FloorPlanViewer`、`FloorPlanViewerWrapper`、`survey-graph`、`dxf`。
-- 状态：正式 v4 墙图解析、后台 2D/3D 查看、测量筛选和 DXF 下载为 `Implemented`；酷家乐搜索受上游数据和查询条件影响，为 `Limited`。
+- 状态：正式 v4 墙图解析、后台 2D/3D 查看、闭合户型仅在外边界标注尺寸（共享内墙不标注）、测量筛选和 DXF 下载为 `Implemented`；酷家乐搜索受上游数据和查询条件影响，为 `Limited`。
 - 边界：后台从 `surveyGraph` 派生房间/开口渲染数据，不持久化旧 `rooms` 或其他旧布局字段。
 
 ### 9. 测量审计与蓝牙设备资产
@@ -86,15 +86,16 @@
 
 ### 10. AI 工作室与设计生成
 
-- 页面：`/ai-studio/designer`、`/ai-studio/scenarios` 及详情、`/ai-studio/floor-plan` 及详情、`/ai-studio/furnishing`、`/ai-studio/soft-furnishing`、`/inspirations`、`/ai-presets`。
-- API：AI 对话/Agent、生成/渲染/建议、状态/历史、额度/用量、预设、工作流及阶段、来源图片/线索、媒体资源、生成图片、代理和软装渲染。
-- 模型/工具：`AiGeneration`、`AiWorkflow`、`AiChatSession`、`AiStylePreset`、`AiQuota`、`EnterpriseAiUsageSnapshot`、`MediaAsset`、`Inspiration`、`src/lib/ai/*`。
-- 状态：对话、场景工作流、正式户型输入、风格/软装渲染、历史、额度、预设和媒体持久化为 `Implemented`；供应商或企业 AI 配置缺失时为 `Limited`。
+- 页面：`/ai-studio/scenarios` 是唯一 AI 执行工作台，包含“客户方案、快速工具、AI 助手”；旧 `/ai-studio/designer`、`/ai-studio/floor-plan`、`/ai-studio/furnishing`、`/ai-studio/soft-furnishing` 和方案详情 URL 保留相关查询参数后跳入统一工作台。资源/配置入口继续为 `/inspirations`、`/ai-presets`、`/ai-providers`、`/ai-credit-prices`，企业 AI 页继续管理统一点数。
+- API：AI 对话/Agent、生成/渲染/建议、状态/历史、预设、工作流搜索分页及阶段、设计能力/共享动作目录、媒体资源、供应商 CRUD/密钥轮换/连通测试/模型同步/上游余额查询、受保护任务对账、平台业务动作价格、企业点数发放/调整/流水/任务和失败任务重试接口。旧企业 `ai-key`/`ai-sync` 仅保留只读兼容，写接口返回 `410`。
+- 模型/工具：`AiGeneration`、`AiWorkflow`、`AiChatSession`、`AiStylePreset`、`AiProviderConfig`、`AiProviderAttempt`、`MediaAsset`、`AiCreditAccount`、`AiCreditLedger`、`AiCreditPrice`、`Inspiration`、`src/lib/ai/*`。
+- 状态：`Implemented`。工作台以“客户/素材/目标”向导发起方案，双栏工作区突出当前定稿、候选版本和唯一推荐下一步；共享动作目录统一名称、输入、计费键、支持端、结果边界和推荐动作。旧 AI 执行权限键兼容解析为 `ai-scenarios`，角色配置只展示一个“AI 设计”，不会扩大 B2B 渠道 `salesperson` 的数据边界。后台与小程序共用企业 AI 点数和 `AiWorkflow`；带客户/正式户型上下文的小程序参考复刻、整体换风格、户型概念图和软装深化分别映射到后台基准、彩平转透视和软装阶段。基准/软装阶段首个成功版本自动采用并推进，同阶段后续成功版本只成为候选，须手动采用才推进；同方案同阶段存在活动任务时拒绝重复冻结和上游提交。成功基准可继续提案/灯光。后台工作流的纯户型图片生成会把正式 v4 墙图的尺寸、层高与开口摘要加入提示词，不要求伪造来源图片，也不修改 `FloorPlan.layoutData`。任务创建冻结、正式结果持久化后扣费、明确失败释放；平台 `super_admin`/`admin` 可管理供应商、轮换凭证、测试/同步模型、查询 GRS API Key 上游积分余额、执行对账、发放/调整点数、配置业务动作价格及企业允许功能/`standard` 逻辑档位，企业员工只消费。GRS 连通测试使用积分余额接口同时校验 Host 与 API Key；其节点不支持 `/v1/models` 时，模型同步保留并返回后台配置的模型映射。业务层使用逻辑模型键和 `AiExecutionService`；GRS 图片按当前文档向 `POST /v1/api/generate` 提交 `replyType: "async"`，并通过 `GET /v1/api/result?id=...` 轮询，`violation`/`failed` 均按已退款失败处理，临时结果必须先保存到 `MediaAsset`。仅连接失败、明确未受理或已确认退款时切备用；已受理、超时或状态未知不会创建第二个上游任务并继续冻结。上游成本和余额与企业 AI 点数分账记录：企业购买平台点数，运营方按资金池预警批量补充供应商余额，不做逐笔充值联动。上游成本按原币种微单位单独记录，不改变业务点数价格。供应商页的能力与逻辑/远程模型字段用于路由；成本币种和预计成本只用于内部核算，可为 0 且不发送给供应商。`Limited`：其他适配器的余额/模型发现取决于供应商协议，首期不接微信/自助充值和低余额自动告警，生产媒体仍需持久共享存储。
+- 迁移/运维：现有数据库启用新路由前运行 `npm run migrate:ai-platform`；脚本保留既有 AI 点数原值、为缺失企业创建 0 点账户、不转换 Pollen，并迁移旧生成/预设和写入环境变量供应商配置。点数价格初始化会移除旧版唯一 `mode_1` 索引，避免无 `mode` 的平台动作价格因重复 `null` 导致能力接口失败；`actionKey_1` 仍是价格记录的唯一业务索引。定时调用 `/api/ai/reconcile` 时配置 `AI_RECONCILIATION_SECRET`。
 
 ### 11. 小程序支撑与跨端 API
 
-- API：`/api/auth/miniprogram`、`/api/miniprogram/home`、`/mine`、`/api/users/me`、`/location/reverse`、`/branding/[id]`，以及共享线索、户型、测量、提成、订单、报备接口。
-- 状态：`Implemented`。负责小程序身份、员工上下文、首页/我的工作台、定位、品牌和共享业务资产。
+- API：`/api/auth/miniprogram`、`/api/miniprogram/home`、`/mine`、小程序 AI 能力/来源/方案/媒体/任务/历史接口，以及共享线索、户型、测量、提成、订单、报备接口。
+- 状态：`Implemented`。负责小程序身份、员工上下文、首页/我的工作台、定位、品牌、共享业务资产和企业员工 AI 设计；AI API 强制 Bearer JWT、企业和操作员归属校验，`/api/miniprogram/ai/sources` 只暴露当前角色可访问的正式户型和闭合房间。显式方案直接续接；同客户/户型只有一个活动方案时自动复用，存在多个方案时必须由客户端选择，不会静默合并，并可明确新建备选方案。
 
 ### 12. 通知、自动化与诊断
 
@@ -106,7 +107,7 @@
 - 身份：`AdminUser`、`SystemRole`、`User`、`Department`。
 - 租户/商业：`Enterprise`、`Package`、`EnterpriseOrder`、`CommissionRecord`、`PromotionEnterpriseRecord`。
 - 客户资产：`Lead`、`FloorPlan`、`Measurement`、`Device`、`Inspiration`。
-- AI/媒体：`AiGeneration`、`AiWorkflow`、`AiChatSession`、`AiStylePreset`、`AiQuota`、`EnterpriseAiUsageSnapshot`、`MediaAsset`。
+- AI/媒体：`AiGeneration`、`AiWorkflow`、`AiChatSession`、`AiStylePreset`、`AiProviderConfig`、`AiProviderAttempt`、`MediaAsset`、`AiCreditAccount`、`AiCreditLedger`、`AiCreditPrice`；`EnterpriseAiUsageSnapshot` 仅保留为 Pollinations 历史数据。
 - 通知/配置：`WorkflowNotificationLog`、`PlatformConfig`。
 
 ## 维护清单

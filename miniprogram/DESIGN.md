@@ -55,6 +55,12 @@ When image reference and implementation differ:
 - Medium-low density
 - Prioritize clarity over showing too much at once
 
+### Viewport And One-Screen Baseline
+- Use iPhone 13 Pro at `390x844` as the primary visual QA viewport
+- Standard fixed-content result and action pages should show the page heading, primary content, key actions, and final CTA in one screen, including the navigation bar and bottom safe area
+- Preserve hierarchy by reducing oversized media height and redundant whitespace before reducing readable type or touch targets
+- Lists, dynamic content, accessibility text, and smaller viewports may scroll; critical actions should not require scrolling solely because of avoidable spacing
+
 ## 4. Color System
 
 ### Primary
@@ -134,6 +140,11 @@ When image reference and implementation differ:
 - Avoid hard-edged shadows
 - Do not stack multiple strong shadows in one component
 
+### Hairline Rules
+- Use separators only where they clarify grouping, and keep them shorter than their containing control when possible
+- For a subpixel visual weight, render a `1px` line and apply `transform: scaleX(0.5)` to a vertical line or `transform: scaleY(0.5)` to a horizontal line
+- Do not use a heavy full-height border between adjacent text actions
+
 ## 7. Icon Style
 
 ### Style
@@ -155,6 +166,14 @@ When image reference and implementation differ:
 ### Rules
 - Default icon color should be brand green or muted neutral
 - Avoid filled heavy icons unless used for tiny badges or emphasis
+- Primary action icons must come from one coherent, locally stored icon set with its source and license recorded in the repository
+- Do not use emoji, mixed Unicode symbols, or multi-stroke CSS drawings as product icons
+- CSS geometry remains acceptable for simple status dots, chevrons, loading indicators, and separators
+
+### Raster Micro-Icon Budget
+- Small UI icons (navigation, toolbar, and inline actions) should use a transparent raster asset at no more than 2× its displayed logical size and must be **10KB or smaller** after export.
+- The filename extension must match the actual encoded format; do not store JPEG data under a `.png` name.
+- Keep the editable vector source and its license under `docs/icon-sources/`; record any necessary size-budget exception beside that source.
 
 ## 8. Component Rules
 

@@ -87,6 +87,23 @@ staged change; split unrelated work.
 
 - Follow `miniprogram/DESIGN.md`, `design-tokens.json`, and `app.wxss` tokens for
   new UI. Preserve the bright green, calm home-design visual language.
+- Store AI-generated design-reference images only in the repository-root
+  `design-references/` directory. It is Git-ignored and must never be placed
+  under `miniprogram/`, so reference assets cannot inflate the Mini Program
+  package.
+- Use the iPhone 13 Pro `390x844` viewport as the primary visual QA baseline.
+  Standard fixed-content result/action pages should keep the page heading,
+  primary content, key actions, and final CTA visible in one screen including
+  the navigation bar and safe area. Lists, dynamic content, accessibility text,
+  and smaller viewports may scroll, but critical actions must not be hidden by
+  avoidable spacing.
+- Use one coherent, locally stored, license-documented icon set for primary
+  actions. Do not ship emoji, mixed Unicode symbols, or multi-stroke CSS-drawn
+  icons as product icons; CSS is reserved for simple geometry such as status
+  dots, chevrons, and separators.
+- Where the design calls for a hairline separator, render a short `1px` line and
+  use `transform: scaleX(0.5)` or `scaleY(0.5)` on the thickness axis instead of
+  a visually heavy full-length border.
 - The only formal measurement page is
   `miniprogram/pages/surveying-editor/surveying-editor.*`.
 - Every measurement entry uses that page with `leadId` and/or `floorPlanId`.

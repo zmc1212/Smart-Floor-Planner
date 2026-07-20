@@ -1,0 +1,100 @@
+<scroll-view scroll-y enhanced show-scrollbar="{{false}}" scroll-top="{{pageScrollTop}}" class="result-page">
+  <view class="result-shell sfp-scroll-content">
+    <view wx:if="{{loading}}" class="state-panel">
+      <view class="state-spinner"></view>
+      <text class="state-title">正在加载成果</text>
+      <text class="state-meta">请稍候，正在读取本次设计任务</text>
+    </view>
+
+    <block wx:elif="{{task}}">
+      <view wx:if="{{task.status === 'created' || task.status === 'processing'}}" class="state-panel processing">
+        <view class="processing-mark">AI</view>
+        <text class="state-title">正在重塑空间</text>
+        <view class="progress-track"><view class="progress-bar" style="width: {{task.progress}}%;"></view></view>
+        <text class="state-meta">已冻结 {{task.credits}} 点，失败会自动释放</text>
+      </view>
+
+      <view wx:elif="{{task.status === 'failed'}}" class="state-panel failed">
+        <view class="failed-mark">!</view>
+        <text class="state-title">本次生成没有完成</text>
+        <text class="error-message">{{task.error || 'AI 服务暂时不可用'}}</text>
+        <button class="retry-button" disabled="{{running}}" bindtap="retry">{{running ? '重试中...' : '重新生成'}}</button>
+      </view>
+
+      <block wx:elif="{{task.status === 'succeeded'}}">
+        <view class="result-heading">
+          <view class="heading-copy">
+            <text class="result-title">设计成果</text>
+            <text class="result-subtitle">{{task.spaceImageUrl ? '拖动查看设计前后变化' : '基于正式户型数据生成的概念效果'}}</text>
+          </view>
+          <view class="complete-chip">{{task.workflowId ? '已同步方案' : '已完成'}}</view>
+        </view>
+
+        <view wx:if="{{task.spaceImageUrl}}" class="compare-stage" bindtouchstart="handleCompareTouch" catchtouchmove="handleCompareTouch">
+          <image class="compare-image" src="{{task.resultImageUrl}}" mode="aspectFill"></image>
+          <view class="before-layer" style="width: {{comparePercent}}%;">
+            <image class="compare-image before-image" src="{{task.spaceImageUrl}}" mode="aspectFill"></image>
+          </view>
+          <view class="compare-line" style="left: {{comparePercent}}%;">
+            <view class="compare-handle">
+              <image class="compare-handle-icon" src="/images/ai-result-icons/move-horizontal.png" mode="aspectFit"></image>
+            </view>
+          </view>
+          <view class="compare-label before-label">原空间</view>
+          <view class="compare-label after-label">AI 方案</view>
+        </view>
+
+        <view wx:else class="compare-stage single-result">
+          <image class="compare-image" src="{{task.resultImageUrl}}" mode="aspectFill"></image>
+          <view class="compare-label after-label">AI 概念方案</view>
+        </view>
+
+        <view class="result-actions">
+          <button class="result-action" hover-class="action-pressed" bindtap="previewResult">
+            <image class="action-icon-image" src="/images/ai-result-icons/eye.png" mode="aspectFit"></image>
+            <text>预览</text>
+          </button>
+          <button class="result-action action-save" hover-class="action-pressed" bindtap="saveResult">
+            <image class="action-icon-image" src="/images/ai-result-icons/download.png" mode="aspectFit"></image>
+            <text>保存</text>
+          </button>
+          <button class="result-action action-share" hover-class="primary-pressed" open-type="share">
+            <image class="action-icon-image" src="/images/ai-result-icons/share-white.png" mode="aspectFit"></image>
+            <text>分享</text>
+          </button>
+          <view class="action-hairline"></view>
+        </view>
+
+        <view class="task-summary">
+          <view wx:if="{{task.workflowId}}" class="workflow-summary">
+            <view class="workflow-summary-copy">
+              <text class="workflow-summary-label">所属客户方案</text>
+              <text class="workflow-summary-title">{{task.workflowTitle || '客户 AI 方案'}}</text>
+              <text wx:if="{{task.leadName}}" class="workflow-summary-meta">{{task.leadName}}</text>
+            </view>
+            <text class="workflow-summary-status">{{task.isSelectedBaseline ? '当前定稿' : '候选版本'}}</text>
+          </view>
+          <view class="summary-item">
+            <text class="summary-label">生成模式</text>
+            <text class="summary-value">{{task.modeTitle}}</text>
+          </view>
+          <view class="summary-item">
+            <text class="summary-label">消耗点数</text>
+            <text class="summary-value summary-points">{{task.credits}} 点</text>
+          </view>
+        </view>
+
+        <view class="bottom-actions">
+          <button class="bottom-action" hover-class="outline-pressed" bindtap="handlePrimaryAction">
+            <image class="bottom-action-icon-image" src="/images/ai-result-icons/refresh-cw.png" mode="aspectFit"></image>
+            <text>{{task.workflowId && task.nextStageKey === 'soft_furnishing' ? '继续软装' : task.workflowId && task.nextStageKey === 'base_render' ? '换风格' : task.workflowId && task.nextStageKey ? '后台继续深化' : '再次设计'}}</text>
+          </button>
+          <button class="bottom-action" hover-class="outline-pressed" bindtap="openHistory">
+            <image class="bottom-action-icon-image" src="/images/ai-result-icons/history.png" mode="aspectFit"></image>
+            <text>查看历史</text>
+          </button>
+        </view>
+      </block>
+    </block>
+  </view>
+</scroll-view>

@@ -107,13 +107,13 @@
           <view class="quick-status-dot {{bleConnected ? 'quick-status-dot-active' : ''}}"></view>
         </view>
 
-        <view class="quick-card" bindtap="onQuickQuoteTap">
+        <view class="quick-card" bindtap="onOpenAIDesign">
           <view class="quick-card-icon quick-card-icon-green quick-card-icon-soft">
-            <text class="quick-card-icon-symbol quick-card-icon-symbol-money">¥</text>
+            <text class="quick-card-icon-symbol">AI</text>
           </view>
           <view class="quick-card-body">
-            <text class="quick-card-title">快速报价</text>
-            <text class="quick-card-subtitle">10 秒获取报价清单</text>
+            <text class="quick-card-title">AI 设计</text>
+            <text class="quick-card-subtitle">网图复刻 · 空间换风格</text>
           </view>
           <text class="quick-card-arrow">›</text>
         </view>

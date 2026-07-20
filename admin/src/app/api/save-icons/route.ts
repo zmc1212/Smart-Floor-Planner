@@ -4,7 +4,7 @@ import { exec } from 'child_process';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  return new Promise((resolve) => {
+  return new Promise<Response>((resolve) => {
     exec('node -v', (error, stdout, stderr) => {
       resolve(NextResponse.json({
         error: error ? error.message : null,

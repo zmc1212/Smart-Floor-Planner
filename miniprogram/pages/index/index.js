@@ -284,7 +284,9 @@ Page({
   },
 
   syncHomeDashboard: function () {
-    if (this.data.homeDashboard && (!this.data.plannedRooms || this.data.plannedRooms.length === 0)) {
+    // The server dashboard is the authoritative, role-scoped list of formal
+    // plans. A local unfinished draft must not hide recently saved cloud plans.
+    if (this.data.homeDashboard) {
       const stats = this.data.homeDashboard.stats || {};
       const bluetooth = this.data.homeDashboard.bluetooth || {};
 
@@ -387,8 +389,22 @@ Page({
     this.setData({ showBLEConnector: true });
   },
 
-  onQuickQuoteTap: function () {
-    wx.showToast({ title: '快速报价即将上线', icon: 'none' });
+  onOpenAIDesign: function () {
+    if (!this.isLoggedIn()) {
+      wx.navigateTo({ url: '/pages/login/login' });
+      return;
+    }
+
+    const app = getApp();
+    const userInfo = app.globalData.userInfo || wx.getStorageSync('userInfo') || {};
+    if (userInfo.role !== 'staff') {
+      wx.showToast({ title: '仅企业员工可使用 AI 设计', icon: 'none' });
+      return;
+    }
+
+    const floorPlanId = this.data.currentProject_id;
+    const query = floorPlanId ? `?floorPlanId=${encodeURIComponent(floorPlanId)}` : '';
+    wx.navigateTo({ url: `/pages/ai-design/ai-design${query}` });
   },
 
   onQuickToolTap: function (e) {
@@ -425,16 +441,14 @@ Page({
 
   onTapRecentPlan: function (e) {
     const planId = e.currentTarget.dataset.id;
-    const plan = (this.data.myCloudFloorPlans || []).find(function (item) {
-      return item._id === planId;
-    });
-
-    if (!plan) {
+    if (!planId) {
       wx.showToast({ title: '方案不存在', icon: 'none' });
       return;
     }
 
-    openSurveyingEditor({ floorPlanId: plan._id });
+    // Recent cards are supplied by /miniprogram/home, so they can be opened
+    // directly even while the legacy cloud-plan list has not finished loading.
+    openSurveyingEditor({ floorPlanId: planId });
   },
 
   onContinueProjectTap: function () {
@@ -604,8 +618,11 @@ Page({
     var roomId = e.detail.id;
     var room = this.data.plannedRooms.find(function (r) { return r.id === roomId; });
     if (room) {
-      getApp().globalData.currentAIGenRoom = room;
-      wx.navigateTo({ url: '/pages/ai-gen/ai-gen' });
+      var query = [
+        this.data.currentProject_id ? 'floorPlanId=' + this.data.currentProject_id : '',
+        roomId ? 'roomId=' + roomId : ''
+      ].filter(Boolean).join('&');
+      wx.navigateTo({ url: '/pages/ai-design/ai-design' + (query ? '?' + query : '') });
     } else {
       wx.showToast({ title: '无法找到房间数据', icon: 'none' });
     }

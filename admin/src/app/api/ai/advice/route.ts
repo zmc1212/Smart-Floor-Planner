@@ -1,44 +1,57 @@
 import { NextResponse } from 'next/server';
+import dbConnect from '@/lib/mongodb';
+import { withTenantRoute } from '@/lib/tenant-route';
+import { AiGeneration } from '@/models/AiGeneration';
+import { consumeGenerationCredits, ensureGenerationCreditHold, executeAiChat, releaseGenerationCredits } from '@/lib/ai/execution-service';
 
-/**
- * Proxy AI Design Advice requests.
- */
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   try {
-    const body = await req.json();
-    const { roomName, style, width, height } = body;
-
-    if (!roomName || !style) {
-      return NextResponse.json({ success: false, error: 'Missing required parameters' }, { status: 400 });
-    }
-
-    const systemPrompt = 'You are a professional interior design consultant. Provide concise, expert advice for a room based on its type, dimensions, and style. Focus on furniture layout, color palettes, and lighting. Use bullet points and keep it under 150 words. Respond in Chinese.';
-    const userPrompt = `Room: ${roomName}, Style: ${style}, Dimensions: ${width / 10}m x ${height / 10}m!`;
-
-    const url = 'https://gen.pollinations.ai/v1/chat/completions';
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'gemini-fast',
-        messages: [
-          { role: 'user', content: systemPrompt + userPrompt }
-        ]
-      })
+    await dbConnect();
+    return await withTenantRoute(request, { requireEnterprise: true }, async (context) => {
+      const body = await request.json();
+      const { roomName, style, width, height } = body;
+      if (!roomName || !style) return NextResponse.json({ success: false, error: '缺少房间或风格参数' }, { status: 400 });
+      const generation = await AiGeneration.create({
+        enterpriseId: context.enterpriseId!,
+        operatorId: context.userId,
+        type: 'advice',
+        actionKey: 'text.design_advice',
+        capability: 'chat',
+        logicalModelKey: 'chat.general',
+        status: 'processing',
+        input: { style, roomName, width, height },
+        output: {},
+        billing: { cycle: 0, actionKey: 'text.design_advice', status: 'unbilled' },
+      });
+      try {
+        await ensureGenerationCreditHold(generation);
+        const result = await executeAiChat({
+          enterpriseId: String(context.enterpriseId),
+          generationId: String(generation._id),
+          logicalModelKey: 'chat.general',
+          messages: [
+            { role: 'system', content: 'You are a professional interior design consultant. Provide concise expert advice in Chinese, focused on furniture layout, color palettes, and lighting. Keep it under 150 Chinese characters.' },
+            { role: 'user', content: `Room: ${roomName}, Style: ${style}, Dimensions: ${Number(width || 0) / 10}m x ${Number(height || 0) / 10}m.` },
+          ],
+          temperature: 0.7,
+        });
+        generation.provider = result.provider;
+        generation.remoteModel = result.model;
+        generation.output.adviceText = result.content;
+        generation.status = 'succeeded';
+        await consumeGenerationCredits(generation);
+        await generation.save();
+        return NextResponse.json({ success: true, advice: result.content, generationId: generation._id });
+      } catch (error) {
+        generation.status = 'failed';
+        generation.errorMessage = error instanceof Error ? error.message : 'AI 建议生成失败';
+        await releaseGenerationCredits(generation, generation.errorMessage).catch(() => undefined);
+        await generation.save();
+        throw error;
+      }
     });
-
-    const data = await response.json();
-
-    if (response.ok && data && data.choices) {
-      const content = data.choices[0]?.message?.content;
-      return NextResponse.json({ success: true, advice: content || '无法生成建议。' });
-    } else {
-      return NextResponse.json({ success: false, error: 'AI 建议接口返回异常' }, { status: 502 });
-    }
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error) {
+    const status = (error as { status?: number })?.status || 500;
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'AI 建议生成失败' }, { status });
   }
 }

@@ -29,11 +29,19 @@ function formatPlanDate(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function getPlanSpaceCount(plan) {
+  const floor = surveyLayout.getActiveFloor(plan && plan.layoutData);
+  return Array.isArray(floor && floor.spaces)
+    ? floor.spaces.filter((space) => space && space.closed).length
+    : 0;
+}
+
 function toPlanDisplay(plan, index) {
+  const spaceCount = getPlanSpaceCount(plan);
   return {
     ...plan,
     displayName: plan.name || `正式量房 ${index + 1}`,
-    displayMeta: `${plan.status === 'completed' ? '已完成' : '量房中'}${formatPlanDate(plan.createdAt) ? ` · ${formatPlanDate(plan.createdAt)}` : ''}`
+    displayMeta: `${plan.status === 'completed' ? '已完成' : '量房中'}${spaceCount ? ` · ${spaceCount} 个空间` : ''}${formatPlanDate(plan.createdAt) ? ` · ${formatPlanDate(plan.createdAt)}` : ''}`
   };
 }
 

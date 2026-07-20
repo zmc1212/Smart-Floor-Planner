@@ -4,14 +4,8 @@ import { AiGeneration } from '@/models/AiGeneration';
 import { AiWorkflow } from '@/models/AiWorkflow';
 import Lead from '@/models/Lead';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { editImage, generateImage } from '@/lib/ai/pollinations';
-import { ensureModelAccessibleImageUrl, persistImageReference } from '@/lib/ai/media-assets';
 import { ensureDefaultAiStylePresets, getAiStylePresetByKey } from '@/lib/ai/presets';
-import {
-  getEnterprisePollinationsRuntimeConfig,
-  markEnterpriseAiSyncError,
-  syncEnterprisePollinationsSnapshot,
-} from '@/lib/ai/enterprise-ai';
+import { executeGenerationImage } from '@/lib/ai/execution-service';
 import { getNextWorkflowStage } from '@/lib/ai/workflow-stages';
 
 function resolvePresetType(type?: string) {
@@ -70,7 +64,7 @@ export async function POST(req: Request) {
     return await withTenantRoute(req, { requireEnterprise: true }, async (context) => {
       await ensureDefaultAiStylePresets(context.userId);
       const body = await req.json();
-      const { generationId, image, prompt, negativePrompt, model } = body;
+      const { generationId, image, prompt, negativePrompt } = body;
 
       if (!generationId) {
         return NextResponse.json({ success: false, error: 'Missing generationId' }, { status: 400 });
@@ -87,19 +81,6 @@ export async function POST(req: Request) {
 
       if (generation.status !== 'pending' && generation.status !== 'failed') {
         return NextResponse.json({ success: false, error: 'Generation is already in progress or completed' }, { status: 400 });
-      }
-
-      let runtimeConfig;
-      try {
-        runtimeConfig = await getEnterprisePollinationsRuntimeConfig(String(context.enterpriseId));
-      } catch (error) {
-        generation.status = 'failed';
-        generation.errorMessage = error instanceof Error ? error.message : 'Enterprise AI key unavailable';
-        await generation.save();
-        return NextResponse.json(
-          { success: false, error: generation.errorMessage },
-          { status: 400 }
-        );
       }
 
       const workflow = generation.workflowId
@@ -124,9 +105,6 @@ export async function POST(req: Request) {
 
       try {
         generation.status = 'processing';
-        generation.provider = 'pollinations';
-        generation.apiKeyId = runtimeConfig.keyId;
-        generation.apiKeyName = runtimeConfig.keyName;
         const resolvedImage = await resolveSourceImage({
           explicitImage: image,
           generation,
@@ -149,65 +127,34 @@ export async function POST(req: Request) {
             : resolvedImage;
         await generation.save();
 
-        if (process.env.MOCK_AI === 'true') {
-          const presetType = resolvePresetType(generation.type);
-          const preset = await getAiStylePresetByKey(presetType, generation.input.style);
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          generation.status = 'succeeded';
-          generation.output.imageUrl = preset?.mockImageUrl || '/colorful.png';
-          generation.durationMs = 2000;
-          await generation.save();
-          return NextResponse.json({ success: true, data: { id: generation._id, imageUrl: generation.output.imageUrl } });
-        }
-
         const presetType = resolvePresetType(generation.type);
         const preset = await getAiStylePresetByKey(presetType, generation.input.style);
-        const referenceImageUrl = await ensureModelAccessibleImageUrl(
-          resolvedImage,
-          String(context.enterpriseId),
-          runtimeConfig.apiKey
-        );
-        const startedAt = Date.now();
         const requestPayload = {
           prompt: prompt || generation.output.promptUsed || generation.input.customPrompt || '',
           negativePrompt: negativePrompt || preset?.negativePrompt,
-          referenceImageUrl,
-          model: model || preset?.image.model || 'flux',
+          images: preset?.image.mode === 'generation' ? undefined : [resolvedImage],
+          logicalModelKey: preset?.image.mode === 'generation' ? 'image.generate.standard' as const : 'image.edit.standard' as const,
           size: preset?.image.size || '1024x1024',
           quality: preset?.image.quality || 'medium',
           user: String(context.userId),
-          apiKey: runtimeConfig.apiKey,
         };
         logRenderPayload({
           generationId: String(generation._id),
           workflowId: generation.workflowId ? String(generation.workflowId) : undefined,
           leadId: generation.leadId ? String(generation.leadId) : undefined,
           stageKey: generation.stageKey,
-          model: requestPayload.model,
+          model: requestPayload.logicalModelKey,
           size: requestPayload.size,
           quality: requestPayload.quality,
           mode: preset?.image.mode === 'generation' ? 'generation' : 'edit',
-          hasReferenceImage: Boolean(referenceImageUrl),
+          hasReferenceImage: Boolean(requestPayload.images?.length),
           prompt: requestPayload.prompt,
           negativePrompt: requestPayload.negativePrompt,
         });
-        const imageUrl =
-          preset?.image.mode === 'generation'
-            ? await generateImage(requestPayload)
-            : await editImage(requestPayload);
-
-        const persistedImageUrl = await persistImageReference({
-          enterpriseId: String(context.enterpriseId),
-          ownerType: 'ai_generation_output',
-          ownerId: generation._id,
-          image: imageUrl,
-        });
-
-        generation.status = 'succeeded';
-        generation.output.imageUrl = persistedImageUrl;
-        generation.durationMs = Date.now() - startedAt;
-        generation.remoteModel = requestPayload.model;
-        await generation.save();
+        const completedGeneration = await executeGenerationImage(generation, requestPayload);
+        if (completedGeneration.status !== 'succeeded') {
+          return NextResponse.json({ success: true, data: { id: generation._id, status: completedGeneration.status } });
+        }
 
         if (workflow) {
           workflow.lastGenerationId = generation._id;
@@ -244,29 +191,19 @@ export async function POST(req: Request) {
           }
         }
 
-        await syncEnterprisePollinationsSnapshot(String(context.enterpriseId)).catch((error) =>
-          markEnterpriseAiSyncError(String(context.enterpriseId), error)
-        );
-
-        return NextResponse.json({ success: true, data: { id: generation._id, imageUrl: persistedImageUrl } });
+        return NextResponse.json({ success: true, data: { id: generation._id, status: generation.status, imageUrl: generation.output.imageUrl } });
       } catch (err: unknown) {
         console.error('[AI Render Error]', err);
 
-        generation.status = 'failed';
+        if (generation.status !== 'processing') generation.status = 'failed';
         generation.errorMessage = err instanceof Error ? err.message : 'Render failed';
         generation.remoteModel = generation.remoteModel || undefined;
         await generation.save();
 
-        await markEnterpriseAiSyncError(String(context.enterpriseId), err).catch(() => undefined);
-        await syncEnterprisePollinationsSnapshot(String(context.enterpriseId)).catch(() => undefined);
-
         const status = parseUpstreamStatus(err);
-        const readableMessage =
-          status === 402
-            ? '当前企业 Pollinations 余额不足，请联系平台管理员充值。'
-            : status === 403
-              ? '当前企业 Pollinations Key 没有该模型权限或已失效。'
-              : 'Failed to render image';
+        const readableMessage = status === 402
+          ? '当前企业 AI 点数不足，请联系平台管理员调整。'
+          : err instanceof Error ? err.message : '图片生成失败';
 
         return NextResponse.json({ success: false, error: readableMessage }, { status: status >= 400 ? status : 500 });
       }

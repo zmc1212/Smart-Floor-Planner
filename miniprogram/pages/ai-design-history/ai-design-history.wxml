@@ -1,0 +1,34 @@
+<scroll-view scroll-y class="history-page" lower-threshold="120" bindscrolltolower="loadMore" refresher-enabled refresher-triggered="{{refreshing}}" bindrefresherrefresh="reload">
+  <view class="history-shell">
+    <view class="history-head">
+      <text class="history-title">设计成果</text>
+      <text class="history-count">{{items.length}} 条</text>
+    </view>
+
+    <view wx:if="{{items.length}}" class="history-list">
+      <view wx:for="{{items}}" wx:key="id" class="history-item">
+        <image class="history-image" src="{{item.resultImageUrl || item.spaceImageUrl}}" mode="aspectFill" data-id="{{item.id}}" bindtap="openResult"></image>
+        <view class="history-body">
+          <view class="history-info" data-id="{{item.id}}" bindtap="openResult">
+            <text class="item-title">{{item.modeTitle}}</text>
+            <view class="sync-row">
+              <text class="sync-chip {{item.syncedToWorkflow ? 'synced' : ''}}">{{item.syncedToWorkflow ? '已同步方案' : '独立任务'}}</text>
+              <text wx:if="{{item.workflowTitle}}" class="workflow-name">{{item.workflowTitle}}</text>
+            </view>
+            <text class="item-meta">{{item.status === 'succeeded' ? '已完成' : item.status === 'failed' ? '生成失败' : '生成中'}} · {{item.credits}} 点</text>
+          </view>
+          <view class="item-actions">
+            <button class="mini-action" data-id="{{item.id}}" bindtap="reuse">再设计</button>
+            <button class="mini-action danger" data-id="{{item.id}}" bindtap="remove">删除</button>
+          </view>
+        </view>
+      </view>
+      <view wx:if="{{loading}}" class="loading-more">加载中...</view>
+    </view>
+
+    <view wx:else class="history-empty">
+      <view class="empty-mark">AI</view>
+      <text class="empty-title">还没有 AI 设计记录</text>
+    </view>
+  </view>
+</scroll-view>

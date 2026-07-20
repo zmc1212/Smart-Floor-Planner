@@ -1,14 +1,8 @@
 import { AiGeneration } from '@/models/AiGeneration';
 import { AiWorkflow, IAiWorkflow } from '@/models/AiWorkflow';
-import { EnterpriseAiUsageSnapshot } from '@/models/EnterpriseAiUsageSnapshot';
 import Lead from '@/models/Lead';
+import { FloorPlan } from '@/models/FloorPlan';
 import type { TenantContext } from '@/lib/auth';
-import {
-  deriveEnterpriseKeyStatus,
-  getEnterprisePollinationsRuntimeConfig,
-  markEnterpriseAiSyncError,
-  syncEnterprisePollinationsSnapshot,
-} from '@/lib/ai/enterprise-ai';
 import {
   buildPromptFromPreset,
   ensureDefaultAiStylePresets,
@@ -16,12 +10,12 @@ import {
   getDefaultAiStylePresetByKey,
 } from '@/lib/ai/presets';
 import type { AiPresetType, DefaultAiStylePreset } from '@/lib/ai/preset-definitions';
-import { editImage, generateChatCompletion, generateImage } from '@/lib/ai/pollinations';
 import {
-  ensureModelAccessibleImageUrl,
   persistImageReference,
+  resolveAiProviderImageInput,
   updateMediaAssetOwner,
 } from '@/lib/ai/media-assets';
+import { ensureGenerationCreditHold, executeAiChat, executeGenerationImage, releaseGenerationCredits } from '@/lib/ai/execution-service';
 import {
   ADVANCED_WORKFLOW_TOOLS,
   MAIN_WORKFLOW_STAGES,
@@ -31,6 +25,8 @@ import {
   type AiWorkflowStageKey,
 } from '@/lib/ai/workflow-stages';
 import { serializeAiGeneration, serializeAiWorkflow } from '@/lib/ai/workflow-utils';
+import { adaptSurveyGraphToRooms, isFormalSurveyLayout } from '@/lib/survey-graph';
+import { syncSuccessfulGenerationToWorkflow } from '@/lib/ai/workflow-baseline';
 
 type WorkflowGenerationDoc = Awaited<ReturnType<typeof AiGeneration.findOne>>;
 
@@ -101,6 +97,18 @@ function buildDefaultWorkflowTitle(leadName: string, workflowCount: number, work
 function parseUpstreamStatus(error: unknown) {
   const maybe = error as Error & { status?: number };
   return maybe?.status || 500;
+}
+
+async function buildWorkflowFloorPlanContext(sourceFloorPlanId?: unknown, enterpriseId?: string) {
+  if (!sourceFloorPlanId || !enterpriseId) return '';
+  const plan = await FloorPlan.findOne({ _id: sourceFloorPlanId, enterpriseId }).select('layoutData').lean();
+  if (!plan || !isFormalSurveyLayout(plan.layoutData)) return '';
+  const rooms = adaptSurveyGraphToRooms(plan.layoutData).slice(0, 8);
+  if (!rooms.length) return '';
+  const summaries = rooms.map((room) =>
+    `${room.name}: approximately ${(room.width / 10).toFixed(2)}m by ${(room.height / 10).toFixed(2)}m, ceiling ${(room.height3D / 10).toFixed(2)}m, ${room.openings.length} measured openings`
+  );
+  return `Formal measured floor-plan context (read-only): ${summaries.join('; ')}. Treat these dimensions as constraints and do not claim construction-grade accuracy.`;
 }
 
 async function findWorkflowForEnterprise(workflowId: string, enterpriseId: string) {
@@ -229,10 +237,9 @@ async function buildPromptForGeneration(input: {
   style: string;
   styleReferenceImage?: string;
   parentGeneration: WorkflowGenerationDoc;
-  runtimeApiKey: string;
   enterpriseId: string;
 }) {
-  const { preset, stageKey, style, styleReferenceImage, parentGeneration, runtimeApiKey, enterpriseId } = input;
+  const { preset, stageKey, style, styleReferenceImage, parentGeneration, enterpriseId } = input;
   const negativePrompt = preset?.negativePrompt;
 
   if (stageKey === 'lighting') {
@@ -245,10 +252,11 @@ async function buildPromptForGeneration(input: {
       throw new Error('“增强签单”阶段必须提供白天参考效果图以供分析与重绘。');
     }
 
-    publicImageUrl = await ensureModelAccessibleImageUrl(publicImageUrl, enterpriseId, runtimeApiKey);
+    publicImageUrl = await resolveAiProviderImageInput(publicImageUrl, enterpriseId);
 
-    const sceneAnalysisText = await generateChatCompletion({
-      apiKey: runtimeApiKey,
+    const sceneAnalysis = await executeAiChat({
+      enterpriseId,
+      logicalModelKey: 'vision.reference_analysis',
       messages: [
         {
           role: 'user',
@@ -260,9 +268,11 @@ async function buildPromptForGeneration(input: {
       ],
       temperature: 0.7,
     });
+    const sceneAnalysisText = sceneAnalysis.content;
 
-    const compileResponse = await generateChatCompletion({
-      apiKey: runtimeApiKey,
+    const compileResult = await executeAiChat({
+      enterpriseId,
+      logicalModelKey: 'chat.general',
       messages: [
         { role: 'system', content: 'You are an expert compiler of visual design boards and interior design prompts.' },
         {
@@ -283,6 +293,7 @@ Output MUST be a JSON object with keys "prompt" and "negative_prompt".
       ],
       temperature: 0.7,
     });
+    const compileResponse = compileResult.content;
 
     const jsonMatch = compileResponse.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
@@ -567,6 +578,18 @@ export async function runAiWorkflowStage(input: RunWorkflowStageInput, context: 
   }
 
   const generations = await getWorkflowGenerations(input.workflowId);
+  const activeGeneration = generations.find(
+    (generation) =>
+      generation.stageKey === input.stageKey &&
+      ['created', 'pending', 'processing'].includes(generation.status)
+  );
+  if (activeGeneration) {
+    throw Object.assign(new Error('该步骤已在生成中，请稍候查看结果'), {
+      status: 409,
+      code: 'ACTIVE_GENERATION_EXISTS',
+      generationId: String(activeGeneration._id),
+    });
+  }
   const preset =
     (input.presetKey
       ? await getAiStylePresetByKey('scenario', input.presetKey)
@@ -588,23 +611,6 @@ export async function runAiWorkflowStage(input: RunWorkflowStageInput, context: 
     throw new Error(availability.reason || '当前阶段暂不可执行');
   }
 
-  const runtimeConfig = await getEnterprisePollinationsRuntimeConfig(enterpriseId);
-  const latestSnapshot = await EnterpriseAiUsageSnapshot.findOne({ enterpriseId })
-    .select('balance lastSyncedAt keyInfo syncError')
-    .lean();
-  const keyStatus = deriveEnterpriseKeyStatus({
-    aiConfig: { pollinationsKeyRef: runtimeConfig.keyId },
-    keyInfo: latestSnapshot?.keyInfo
-      ? { id: latestSnapshot.keyInfo.keyId, valid: latestSnapshot.keyInfo.valid }
-      : null,
-  });
-
-  if ((latestSnapshot?.balance ?? 0) <= 0 && process.env.MOCK_AI !== 'true') {
-    const error = new Error('当前企业 Pollinations 余额不足，请联系平台管理员充值。');
-    (error as Error & { status?: number }).status = 402;
-    throw error;
-  }
-
   const parentGenerationId = resolveParentGenerationIdFromGenerations(input.stageKey, workflow, generations);
   const resolvedParentGenerationId = parentGenerationId ? String(parentGenerationId) : undefined;
   const parentGeneration = resolvedParentGenerationId ? await AiGeneration.findById(resolvedParentGenerationId) : null;
@@ -616,9 +622,10 @@ export async function runAiWorkflowStage(input: RunWorkflowStageInput, context: 
     style: preset.key,
     styleReferenceImage: input.styleReferenceImage,
     parentGeneration,
-    runtimeApiKey: runtimeConfig.apiKey,
     enterpriseId,
   });
+  const floorPlanContext = await buildWorkflowFloorPlanContext(workflow.sourceFloorPlanId, enterpriseId);
+  if (floorPlanContext) promptData.prompt = `${promptData.prompt} ${floorPlanContext}`;
 
   const generation = new AiGeneration({
     enterpriseId,
@@ -627,6 +634,10 @@ export async function runAiWorkflowStage(input: RunWorkflowStageInput, context: 
     workflowId: workflow._id,
     parentGenerationId: resolvedParentGenerationId,
     type: 'scenario',
+    channel: 'admin',
+    actionKey: 'image.scenario',
+    capability: preset.image.mode === 'generation' ? 'image.generate' : 'image.edit',
+    logicalModelKey: preset.image.mode === 'generation' ? 'image.generate.standard' : 'image.edit.standard',
     stageKey: input.stageKey,
     sourceAssetRole: preset.sourceAssetRole,
     nextRecommendedStage,
@@ -641,16 +652,9 @@ export async function runAiWorkflowStage(input: RunWorkflowStageInput, context: 
       promptUsed: promptData.prompt,
     },
     status: 'pending',
-    apiKeyId: runtimeConfig.keyId,
-    apiKeyName: runtimeConfig.keyName,
-    quotaSnapshot: {
-      balance: latestSnapshot?.balance ?? 0,
-      keyStatus,
-      allowedModels: latestSnapshot?.keyInfo?.allowedModels || runtimeConfig.allowedModels,
-      lastSyncedAt: latestSnapshot?.lastSyncedAt || undefined,
-    },
   });
   await generation.save();
+  await ensureGenerationCreditHold(generation);
 
   try {
     generation.status = 'processing';
@@ -662,66 +666,24 @@ export async function runAiWorkflowStage(input: RunWorkflowStageInput, context: 
       workflow,
     });
 
-    if (!resolvedImage) {
+    if (!resolvedImage && preset.image.mode !== 'generation') {
       throw new Error('当前步骤缺少来源图片，请先创建方案会话或选择上一步产物');
     }
 
-    if (process.env.MOCK_AI === 'true') {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      generation.status = 'succeeded';
-      generation.output.imageUrl = preset.mockImageUrl || '/colorful.png';
-      generation.durationMs = 1000;
-      await generation.save();
-    } else {
-      const referenceImageUrl = await ensureModelAccessibleImageUrl(
-        resolvedImage,
-        enterpriseId,
-        runtimeConfig.apiKey
-      );
-      const startedAt = Date.now();
-      const requestPayload = {
-        prompt: promptData.prompt,
-        negativePrompt: promptData.negativePrompt,
-        referenceImageUrl,
-        model: preset.image.model || 'flux',
-        size: preset.image.size || '1024x1024',
-        quality: preset.image.quality || 'medium',
-        user: String(context.userId),
-        apiKey: runtimeConfig.apiKey,
-      };
-      const imageUrl =
-        preset.image.mode === 'generation'
-          ? await generateImage(requestPayload)
-          : await editImage(requestPayload);
-
-      const persistedImageUrl = await persistImageReference({
-        enterpriseId,
-        ownerType: 'ai_generation_output',
-        ownerId: generation._id,
-        image: imageUrl,
-      });
-
-      generation.status = 'succeeded';
-      generation.output.imageUrl = persistedImageUrl;
-      generation.durationMs = Date.now() - startedAt;
-      generation.remoteModel = requestPayload.model;
-      await generation.save();
+    const completed = await executeGenerationImage(generation, {
+      logicalModelKey: preset.image.mode === 'generation' ? 'image.generate.standard' : 'image.edit.standard',
+      prompt: promptData.prompt,
+      negativePrompt: promptData.negativePrompt,
+      images: preset.image.mode === 'generation' || !resolvedImage ? undefined : [resolvedImage],
+      size: preset.image.size || '1024x1024',
+      quality: preset.image.quality || 'medium',
+      user: String(context.userId),
+    });
+    if (completed.status !== 'succeeded') {
+      return { workflow: serializeAiWorkflow(workflow), generation: serializeAiGeneration(completed), presetType };
     }
 
-    workflow.lastGenerationId = generation._id;
-    if (generation.stageKey === 'base_render' || generation.stageKey === 'soft_furnishing') {
-      await AiGeneration.updateMany(
-        { workflowId: workflow._id, isSelectedBaseline: true },
-        { $set: { isSelectedBaseline: false } }
-      );
-      generation.isSelectedBaseline = true;
-      await generation.save();
-      workflow.selectedGenerationId = generation._id;
-    }
-
-    workflow.currentStageKey =
-      generation.nextRecommendedStage || getNextWorkflowStage(generation.stageKey) || workflow.currentStageKey;
-    await workflow.save();
+    await syncSuccessfulGenerationToWorkflow(generation);
 
     const followUpContent = buildLeadFollowUp(generation.stageKey);
     if (followUpContent) {
@@ -739,25 +701,21 @@ export async function runAiWorkflowStage(input: RunWorkflowStageInput, context: 
       ).catch(() => undefined);
     }
 
-    await syncEnterprisePollinationsSnapshot(enterpriseId).catch((error) =>
-      markEnterpriseAiSyncError(enterpriseId, error)
-    );
-
     return {
       workflow: serializeAiWorkflow(workflow),
       generation: serializeAiGeneration(generation),
       presetType,
     };
   } catch (error) {
-    generation.status = 'failed';
+    if (generation.status !== 'processing') generation.status = 'failed';
     generation.errorMessage =
       parseUpstreamStatus(error) === 402
-        ? '当前企业 Pollinations 余额不足，请联系平台管理员充值。'
+        ? '当前企业 AI 点数不足，请联系平台管理员调整。'
         : error instanceof Error
           ? error.message
           : '生成失败';
+    if (generation.status === 'failed') await releaseGenerationCredits(generation, generation.errorMessage || '生成失败').catch(() => undefined);
     await generation.save();
-    await markEnterpriseAiSyncError(enterpriseId, error).catch(() => undefined);
     throw error;
   }
 }

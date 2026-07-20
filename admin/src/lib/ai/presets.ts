@@ -23,7 +23,7 @@ export interface SerializedAiStylePreset {
   promptTemplate: string;
   promptTemplateSecondStage?: string;
   negativePrompt: string;
-  provider: 'pollinations';
+  provider?: string;
   image: PollinationsImageConfig;
   workflowCategory?: AiWorkflowCategory;
   workflowStage?: AiWorkflowStageKey;

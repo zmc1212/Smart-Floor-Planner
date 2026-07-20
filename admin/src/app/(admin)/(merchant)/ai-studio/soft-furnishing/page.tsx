@@ -2,7 +2,7 @@
 
 import { notify } from '@/components/ui/operation-feedback';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Armchair,
@@ -38,12 +38,6 @@ interface AiQuotaData {
   bonusCredits: number;
   remaining: number;
   allowedModels?: string[];
-}
-
-interface PollinationsModel {
-  name: string;
-  description: string;
-  input_modalities: string[];
 }
 
 interface FurnitureAsset extends FurnitureSelection {
@@ -152,7 +146,7 @@ async function compressImageFile(file: File) {
   });
 }
 
-export default function AiSoftFurnishingPage() {
+export function AiSoftFurnishingLegacyPage() {
   const router = useRouter();
   const { data: quota, mutate: mutateQuota } = useFetch<AiQuotaData>('/api/ai/quota');
   const { data: presetsData } = useFetch<AiPreset[]>('/api/ai/presets?type=furnishing_style');
@@ -173,51 +167,6 @@ export default function AiSoftFurnishingPage() {
   const [isRendering, setIsRendering] = useState(false);
   const [showRecharge, setShowRecharge] = useState(false);
   const [generatedImage, setGeneratedImage] = useState('');
-  const [availableModels, setAvailableModels] = useState<PollinationsModel[]>([]);
-  const [selectedModel, setSelectedModel] = useState('flux');
-  const [loadingModels, setLoadingModels] = useState(false);
-
-  React.useEffect(() => {
-    async function fetchModels() {
-      setLoadingModels(true);
-      try {
-        const res = await fetch('https://gen.pollinations.ai/image/models');
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          // 过滤逻辑：
-          // 1. 必须支持 In: image
-          // 2. 如果企业 Key 有 allowedModels 限制，则必须在允许列表中
-          const allowedList = quota?.allowedModels || [];
-          const filtered = data.filter((m: PollinationsModel) => {
-            const supportsImage = m.input_modalities?.includes('image');
-            if (!supportsImage) return false;
-
-            if (allowedList.length > 0 && !allowedList.includes('*')) {
-              return allowedList.includes(m.name);
-            }
-            return true;
-          });
-          setAvailableModels(filtered);
-
-          // 自动选择第一个可用的，或者保留默认的 flux 如果它在列表里
-          if (filtered.length > 0) {
-            const hasFlux = filtered.some(m => m.name === 'flux');
-            if (!hasFlux) {
-              setSelectedModel(filtered[0].name);
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch models:', err);
-      } finally {
-        setLoadingModels(false);
-      }
-    }
-
-    if (quota) {
-      fetchModels();
-    }
-  }, [quota]);
 
   const selectedItems = useMemo(
     () => FURNITURE_ASSETS.filter((asset) => selectedIds.includes(asset.id)),
@@ -310,7 +259,6 @@ export default function AiSoftFurnishingPage() {
           image: sourceImage,
           prompt: genData.data.prompt,
           negativePrompt: genData.data.negativePrompt,
-          model: selectedModel,
         }),
       });
 
@@ -333,26 +281,6 @@ export default function AiSoftFurnishingPage() {
     } finally {
       setIsRendering(false);
     }
-  };
-
-  const handleUpgrade = async (tier: string, amount: number) => {
-    const res = await fetch('/api/ai/quota', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'upgrade', tier, amount, method: 'manual' }),
-    });
-    const data = await res.json();
-    if (data.success) mutateQuota();
-  };
-
-  const handleRecharge = async (credits: number, amount: number) => {
-    const res = await fetch('/api/ai/quota', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'recharge', credits, amount, method: 'manual' }),
-    });
-    const data = await res.json();
-    if (data.success) mutateQuota();
   };
 
   return (
@@ -531,31 +459,6 @@ export default function AiSoftFurnishingPage() {
             </div>
 
             <div className="mt-5">
-              <div className="mb-2 text-sm font-bold">渲染模型</div>
-              <p className="text-[10px] text-muted-foreground mb-2">
-                仅显示支持“图生图 (In: image)”且当前 Key 已授权的模型。
-              </p>
-              <select
-                className="w-full h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold shadow-sm focus:border-slate-900 focus:outline-none disabled:opacity-50"
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                disabled={loadingModels || availableModels.length === 0}
-              >
-                {loadingModels ? (
-                  <option>加载模型列表中...</option>
-                ) : availableModels.length === 0 ? (
-                  <option>暂无可用的图生图模型</option>
-                ) : (
-                  availableModels.map((m) => (
-                    <option key={m.name} value={m.name}>
-                      {m.name}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
-
-            <div className="mt-5">
               <div className="mb-2 text-sm font-bold">生成尺寸</div>
               <div className="grid grid-cols-2 gap-2">
                 <button
@@ -626,10 +529,18 @@ export default function AiSoftFurnishingPage() {
       <RechargeDialog
         open={showRecharge}
         onOpenChange={setShowRecharge}
-        currentTier={quota?.tier}
-        onUpgrade={handleUpgrade}
-        onRecharge={handleRecharge}
       />
     </div>
   );
+}
+
+export default function AiSoftFurnishingPage() {
+  const router = useRouter();
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    params.set('view', 'quick');
+    params.set('action', 'soft_furnishing_render');
+    router.replace(`/ai-studio/scenarios?${params.toString()}`);
+  }, [router]);
+  return <div className="p-8 text-sm text-muted-foreground">正在进入统一 AI 设计工作台...</div>;
 }

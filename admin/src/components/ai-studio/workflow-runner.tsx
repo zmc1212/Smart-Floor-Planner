@@ -158,23 +158,17 @@ export function buildWorkflowActionPlan(
 
   if (stageKey === 'base_render') {
     const referenceImageUrl = resolveCropReferenceImage(stageKey, workflow, generations);
-    if (!referenceImageUrl) {
-      return {
-        stageKey,
-        label,
-        status: 'blocked',
-        userInputType: 'crop_image',
-        disabledReason: '需要先完成“选风格”，再从风格图中框选参考区域',
-      };
-    }
-
-    return {
-      stageKey,
-      label,
-      status: 'requires_user_input',
-      userInputType: 'crop_image',
-      referenceImageUrl,
-    };
+    return referenceImageUrl
+      ? {
+          stageKey,
+          label,
+          status: 'requires_user_input',
+          userInputType: 'crop_image',
+          referenceImageUrl,
+        }
+      : workflow.sourceImage || workflow.sourceFloorPlanId
+        ? { stageKey, label, status: 'ready' }
+        : { stageKey, label, status: 'blocked', disabledReason: '需要先提供起点素材或户型图' };
   }
 
   if (stageKey === 'premium_board') {
@@ -274,7 +268,12 @@ export function useAiWorkflowRunner(options: UseAiWorkflowRunnerOptions) {
       }
       await onAfterAction?.();
       if (showSuccessNotification) {
-        notify.success(`${action.label}已完成`);
+        const latestStatus = result?.generations?.[0]?.status;
+        if (latestStatus === 'created' || latestStatus === 'pending' || latestStatus === 'processing') {
+          notify.info(`${action.label}已提交，正在后台生成`);
+        } else {
+          notify.success(`${action.label}已完成`);
+        }
       }
     } catch (error) {
       notify.dismiss(loadingId);

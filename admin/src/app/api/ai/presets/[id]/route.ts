@@ -37,7 +37,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       }
 
       if (body.image && typeof body.image === 'object') {
-        const imageFields = ['model', 'size', 'quality', 'mode'] as const;
+        const imageFields = ['model', 'logicalModelKey', 'size', 'quality', 'mode'] as const;
         for (const field of imageFields) {
           if (body.image[field] !== undefined) {
             update[`image.${field}`] = body.image[field];

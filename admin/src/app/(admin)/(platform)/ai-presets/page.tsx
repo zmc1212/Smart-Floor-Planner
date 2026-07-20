@@ -48,6 +48,7 @@ interface AiPreset {
   sortOrder: number;
   image: {
     model: string;
+    logicalModelKey?: 'image.generate.standard' | 'image.edit.standard';
     size: string;
     quality: ImageQuality;
     mode: ImageMode;
@@ -221,7 +222,7 @@ export default function AiPresetsPage() {
                   Type: <span className="font-mono text-foreground">{preset.type}</span>
                 </div>
                 <div>
-                  Model: <span className="font-mono text-foreground">{preset.image.model}</span>
+                  逻辑模型: <span className="font-mono text-foreground">{preset.image.logicalModelKey || (preset.image.mode === 'generation' ? 'image.generate.standard' : 'image.edit.standard')}</span>
                 </div>
                 <div>
                   Output: <span className="font-mono text-foreground">{preset.image.size} / {preset.image.quality}</span>
@@ -339,16 +340,12 @@ export default function AiPresetsPage() {
                   <div className="rounded-2xl border bg-muted/20 p-6 space-y-5">
                     <h3 className="text-sm font-bold flex items-center gap-2 mb-2">
                       <Settings2 size={16} />
-                      图片引擎配置 (Pollinations)
+                      图片能力配置
                     </h3>
                     
                     <div className="space-y-2">
-                      <Label>Model (模型名称)</Label>
-                      <Input 
-                        className="font-mono text-xs" 
-                        value={form.image.model} 
-                        onChange={(e) => updateImageField('model', e.target.value)} 
-                      />
+                      <Label>逻辑模型</Label>
+                      <Select value={form.image.logicalModelKey || (form.image.mode === 'generation' ? 'image.generate.standard' : 'image.edit.standard')} onValueChange={(value) => updateImageField('logicalModelKey', value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="image.generate.standard">image.generate.standard</SelectItem><SelectItem value="image.edit.standard">image.edit.standard</SelectItem></SelectContent></Select>
                     </div>
 
                     <div className="space-y-2">

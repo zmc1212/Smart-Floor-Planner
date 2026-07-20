@@ -23,11 +23,9 @@ import {
   UserSquare2,
   UserCog,
   Building2,
-  PenTool,
-  Palette,
   Ruler,
-  Sofa,
-  Settings
+  Settings,
+  Cable
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +41,7 @@ interface RoleConfig {
 const ALL_MENUS = [
   { key: 'dashboard', label: '概览', icon: LayoutDashboard },
   { key: 'enterprises', label: '企业管理', icon: Building2 },
+  { key: 'ai-providers', label: 'AI 供应商', icon: Cable },
   { key: 'roles', label: '角色权限管理', icon: Shield },
   { key: 'floorplans', label: '户型图库', icon: Map },
   { key: 'users', label: '用户审计', icon: Users },
@@ -53,11 +52,9 @@ const ALL_MENUS = [
   { key: 'workflow-logs', label: '提醒日志', icon: ClipboardList },
   { key: 'enterprise-orders', label: '成交订单', icon: ClipboardList },
   { key: 'commissions', label: '提成结算', icon: Coins },
-  { key: 'ai-floorplan', label: 'AI 室内平面', icon: PenTool },
-  { key: 'ai-designer', label: 'AI设计师', icon: Sparkles },
-  { key: 'ai-furnishing', label: 'AI 风格设计', icon: Palette },
-  { key: 'ai-soft-furnishing', label: 'AI 软装设计', icon: Sofa },
+  { key: 'ai-scenarios', label: 'AI 设计', icon: Sparkles },
   { key: 'ai-presets', label: 'AI 预设配置', icon: Settings },
+  { key: 'ai-credit-prices', label: 'AI 点数价格', icon: Coins },
   { key: 'inspirations', label: '灵感方案', icon: Sparkles },
   { key: 'staff', label: '员工管理', icon: UserSquare2 },
   { key: 'packages', label: '套餐管理', icon: ClipboardList },

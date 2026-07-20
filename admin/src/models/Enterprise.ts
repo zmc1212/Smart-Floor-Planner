@@ -42,6 +42,10 @@ export interface IEnterprise extends Document {
     pollenBudget?: number | null;
     lastSyncedAt?: Date | null;
   };
+  aiPolicy?: {
+    enabledActionKeys?: string[];
+    logicalModelTier?: 'standard';
+  };
 }
 
 const EnterpriseSchema: Schema<IEnterprise> = new Schema(
@@ -102,6 +106,10 @@ const EnterpriseSchema: Schema<IEnterprise> = new Schema(
       allowedModels: { type: [String], default: [] },
       pollenBudget: { type: Number, default: null },
       lastSyncedAt: { type: Date, default: null },
+    },
+    aiPolicy: {
+      enabledActionKeys: { type: [String], default: undefined },
+      logicalModelTier: { type: String, enum: ['standard'], default: 'standard' },
     }
   },
   {

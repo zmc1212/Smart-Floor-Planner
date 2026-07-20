@@ -1,0 +1,87 @@
+<scroll-view scroll-y class="create-page">
+  <view class="create-shell">
+    <view class="create-head">
+      <view>
+        <text class="create-title">{{modeTitle}}</text>
+        <text class="create-step">准备素材</text>
+      </view>
+      <view class="cost-pill"><view class="diamond"></view>{{price}} 点</view>
+    </view>
+
+    <view wx:if="{{workflowId || leadId || createNewWorkflow}}" class="workflow-context">
+      <view class="workflow-dot"></view>
+      <view class="workflow-copy">
+        <text class="workflow-title">{{createNewWorkflow ? '新建备选方案' : (workflowTitle || '已关联客户 AI 方案')}}</text>
+        <text class="workflow-meta" wx:if="{{!createNewWorkflow && (workflowLeadName || workflowStageLabel)}}">{{workflowLeadName}}{{workflowLeadName && workflowStageLabel ? ' · ' : ''}}{{workflowStageLabel}}</text>
+        <text class="workflow-meta">{{createNewWorkflow ? '本次会创建新的客户方案，不覆盖已有方案' : '本次成果会同步到该方案，可在后台继续深化'}}</text>
+      </view>
+    </view>
+
+    <view wx:if="{{mode === 'floor_plan_render'}}" class="plan-source {{floorPlanId ? 'ready' : ''}}">
+      <view class="plan-mark">户型</view>
+      <view class="plan-copy">
+        <text class="plan-title">{{floorPlanId ? '已载入正式量房户型' : '尚未选择正式户型'}}</text>
+        <text class="plan-meta">{{floorPlanId ? '将按房间尺寸与门窗开口生成概念效果图' : '请从客户或户型卡片的 AI 设计入口进入'}}</text>
+      </view>
+    </view>
+
+    <view wx:if="{{mode !== 'floor_plan_render' && floorPlanId}}" class="plan-source ready">
+      <view class="plan-mark">户型</view>
+      <view class="plan-copy">
+        <text class="plan-title">已关联正式户型房间</text>
+        <text class="plan-meta">生成时会同时参考量房尺寸、层高与门窗开口约束</text>
+      </view>
+    </view>
+
+    <view wx:if="{{mode === 'reference_recreate'}}" class="upload-block" data-role="reference" bindtap="selectImage">
+      <image wx:if="{{referenceImagePath}}" class="upload-preview" src="{{referenceImagePath}}" mode="aspectFill"></image>
+      <view wx:else class="upload-empty">
+        <view class="upload-add">+</view>
+        <text class="upload-title">参考图</text>
+        <text class="upload-meta">{{uploadingRole === 'reference' ? '上传中...' : '相册或拍摄'}}</text>
+      </view>
+      <view wx:if="{{referenceImagePath}}" class="replace-chip">更换</view>
+    </view>
+
+    <view wx:if="{{mode === 'reference_recreate'}}" class="flow-arrow">↓</view>
+
+    <view wx:if="{{mode !== 'floor_plan_render'}}" class="upload-block" data-role="space" bindtap="selectImage">
+      <image wx:if="{{spaceImagePath}}" class="upload-preview" src="{{spaceImagePath}}" mode="aspectFill"></image>
+      <view wx:else class="upload-empty">
+        <view class="upload-add">+</view>
+        <text class="upload-title">{{mode === 'soft_furnishing' ? '当前空间 / 基准效果图' : '我的空间图'}}</text>
+        <text class="upload-meta">{{uploadingRole === 'space' ? '上传中...' : '相册或拍摄'}}</text>
+      </view>
+      <view wx:if="{{spaceImagePath}}" class="replace-chip">更换</view>
+    </view>
+
+    <view wx:if="{{mode !== 'reference_recreate'}}" class="style-section">
+      <text class="style-heading">目标风格</text>
+      <scroll-view scroll-x class="style-scroll" enhanced show-scrollbar="{{false}}">
+        <view class="style-row">
+          <view wx:for="{{styles}}" wx:key="key" class="style-chip {{selectedStyleKey === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="selectStyle">
+            <view class="style-initial">{{item.name[0]}}</view>
+            <text>{{item.name}}</text>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <view class="mode-note">
+      <text wx:if="{{mode === 'reference_recreate'}}">参考图用于提取风格语言，生成时会优先保留现场空间结构。</text>
+      <text wx:elif="{{mode === 'style_transform'}}">更换整体材质、家具与氛围，同时尽量保持门窗和视角不变。</text>
+      <text wx:elif="{{mode === 'floor_plan_render'}}">仅凭户型数据生成概念效果，不等同于施工图或像素级空间还原。</text>
+      <text wx:else>仅调整家具、窗帘、地毯、挂画、绿植和装饰灯，保留硬装与固定柜体。</text>
+    </view>
+
+    <view class="privacy-row">
+      <text class="privacy-dot"></text>
+      <text>图片仅用于本企业 AI 设计任务，可在历史记录中删除。</text>
+    </view>
+
+    <button class="generate-button" disabled="{{submitting || uploadingRole}}" bindtap="submit">
+      <text>{{submitting ? '正在创建任务...' : '开始 AI 生成'}}</text>
+      <text class="button-cost">{{price}} 点</text>
+    </button>
+  </view>
+</scroll-view>

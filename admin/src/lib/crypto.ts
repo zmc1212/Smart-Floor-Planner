@@ -5,7 +5,7 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
 
 function getSecret() {
-  return process.env.POLLINATIONS_KEY_ENCRYPTION_SECRET || process.env.JWT_SECRET || DEFAULT_SECRET;
+  return process.env.AI_PROVIDER_KEY_ENCRYPTION_SECRET || process.env.POLLINATIONS_KEY_ENCRYPTION_SECRET || process.env.JWT_SECRET || DEFAULT_SECRET;
 }
 
 function getKey() {

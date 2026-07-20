@@ -207,8 +207,35 @@ function normalizeAngle(angle) {
   return Math.round(normalized * 10) / 10;
 }
 
-function hasClosedSpace(floor) {
-  return !!(floor && floor.spaces && floor.spaces.some((space) => space.closed));
+function findClosedSpaceForWall(floor, wallId) {
+  if (!floor || !wallId || !Array.isArray(floor.spaces)) return null;
+  return floor.spaces.find((space) => (
+    space &&
+    space.closed &&
+    Array.isArray(space.wallIds) &&
+    space.wallIds.indexOf(wallId) !== -1
+  )) || null;
+}
+
+function calculateBoundaryCentroid(floor, wallIds) {
+  const points = buildSpaceBoundaryPoints(floor, wallIds);
+  if (!points || points.length < 3) return null;
+
+  let twiceArea = 0;
+  let centroidX = 0;
+  let centroidY = 0;
+  points.forEach((point, index) => {
+    const next = points[(index + 1) % points.length];
+    const crossValue = point.xMm * next.yMm - next.xMm * point.yMm;
+    twiceArea += crossValue;
+    centroidX += (point.xMm + next.xMm) * crossValue;
+    centroidY += (point.yMm + next.yMm) * crossValue;
+  });
+  if (Math.abs(twiceArea) < 0.000001) return null;
+  return {
+    xMm: centroidX / (3 * twiceArea),
+    yMm: centroidY / (3 * twiceArea)
+  };
 }
 
 function pointsNearlyEqual(a, b) {
@@ -236,24 +263,26 @@ function resolveAdjacentWalls(floor, wall, options) {
   const hasPrevious = Object.prototype.hasOwnProperty.call(opts, 'previousWall');
   const hasNext = Object.prototype.hasOwnProperty.call(opts, 'nextWall');
   const index = floor.walls.findIndex((item) => item.id === wall.id);
-  const closed = hasClosedSpace(floor);
+  const closedSpace = findClosedSpaceForWall(floor, wall.id);
+  const closedWallIds = closedSpace ? closedSpace.wallIds : [];
+  const closedIndex = closedWallIds.indexOf(wall.id);
   let previousWall = null;
   let nextWall = null;
 
   if (hasPrevious) {
     previousWall = opts.previousWall;
+  } else if (closedIndex >= 0 && closedWallIds.length > 1) {
+    previousWall = getWall(floor, closedWallIds[(closedIndex - 1 + closedWallIds.length) % closedWallIds.length]);
   } else if (index > 0) {
     previousWall = floor.walls[index - 1];
-  } else if (closed && floor.walls.length > 1) {
-    previousWall = floor.walls[floor.walls.length - 1];
   }
 
   if (hasNext) {
     nextWall = opts.nextWall;
+  } else if (closedIndex >= 0 && closedWallIds.length > 1) {
+    nextWall = getWall(floor, closedWallIds[(closedIndex + 1) % closedWallIds.length]);
   } else if (index >= 0 && index < floor.walls.length - 1) {
     nextWall = floor.walls[index + 1];
-  } else if (closed && floor.walls.length > 1) {
-    nextWall = floor.walls[0];
   }
 
   return { previousWall, nextWall };
@@ -273,7 +302,21 @@ function buildResolvedSegment(floor, wall, options) {
   const direction = { x: dx / rawLength, y: dy / rawLength };
   const leftNormal = { x: direction.y, y: -direction.x };
   const rightNormal = { x: -direction.y, y: direction.x };
-  const normal = wall.measurementSide === 'left' ? leftNormal : rightNormal;
+  const closedSpace = findClosedSpaceForWall(floor, wall.id);
+  const centroid = closedSpace ? calculateBoundaryCentroid(floor, closedSpace.wallIds) : null;
+  const midpoint = {
+    xMm: (start.xMm + end.xMm) / 2,
+    yMm: (start.yMm + end.yMm) / 2
+  };
+  const outward = centroid
+    ? { x: midpoint.xMm - centroid.xMm, y: midpoint.yMm - centroid.yMm }
+    : null;
+  // Once a space is explicitly closed, its physical wall body must always
+  // expand away from the room centroid. The first-wall measurement-side choice
+  // controls the redline while measuring; it cannot invert a closed room shell.
+  const normal = outward && dot(leftNormal, outward) >= dot(rightNormal, outward)
+    ? leftNormal
+    : (outward ? rightNormal : (wall.measurementSide === 'left' ? leftNormal : rightNormal));
   const thicknessMm = resolveRenderThicknessMm(wall, opts);
 
   return {
@@ -2152,20 +2195,22 @@ function setMeasurementSide(draft, side, wallId) {
   const targetWallId = wallId || floor.session.selectedWallId;
   const wall = targetWallId ? getWall(floor, targetWallId) : null;
 
-  // The measuring edge establishes the convention for the complete room. It is
-  // intentionally selectable only after the first wall is committed and before
-  // any later wall can inherit or resolve its side from that convention.
-  const firstWall = floor.walls[0] || null;
-  const isInitialSideSelection = !!(
+  // The measuring edge establishes the convention for the active wall chain. It
+  // is intentionally selectable only after that chain's first wall is committed
+  // and before any later wall can inherit or resolve its side from it.
+  const startWallIndex = Number.isInteger(floor.session.activeSpaceStartWallIndex)
+    ? floor.session.activeSpaceStartWallIndex
+    : 0;
+  const firstWall = floor.walls[startWallIndex] || null;
+  const isFirstWallOfActiveChain = !!(
     wall &&
     firstWall &&
     wall.id === firstWall.id &&
-    floor.walls.length === 1 &&
+    floor.walls.length === startWallIndex + 1 &&
     floor.session.state === 'wallCommitted' &&
-    !floor.session.previewPoint &&
-    !floor.spaces.some((space) => space.closed)
+    !floor.session.previewPoint
   );
-  if (!isInitialSideSelection) return next;
+  if (!isFirstWallOfActiveChain) return next;
 
   floor.session.measurementSide = targetSide;
   wall.measurementSide = targetSide;

@@ -3,6 +3,8 @@ import dbConnect from '@/lib/mongodb';
 import { AiGeneration } from '@/models/AiGeneration';
 import { getTenantContext } from '@/lib/auth';
 import { getWorkflowStageDefinition } from '@/lib/ai/workflow-stages';
+import { reconcileAiGeneration } from '@/lib/ai/execution-service';
+import { syncSuccessfulGenerationToWorkflow } from '@/lib/ai/workflow-baseline';
 
 export async function GET(
   req: Request,
@@ -26,38 +28,45 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
+    const current = generation.status === 'processing'
+      ? await reconcileAiGeneration(generation)
+      : generation;
+    if (current.status === 'succeeded' && current.workflowId) {
+      await syncSuccessfulGenerationToWorkflow(current);
+    }
     const progress =
-      generation.status === 'succeeded'
+      current.status === 'succeeded'
         ? 100
-        : generation.status === 'failed'
+        : current.status === 'failed'
           ? 100
-          : generation.status === 'processing'
+          : current.status === 'processing'
             ? 65
             : 0;
-    const stageDefinition = getWorkflowStageDefinition(generation.stageKey);
+    const stageDefinition = getWorkflowStageDefinition(current.stageKey);
 
     return NextResponse.json({
       success: true,
       data: {
-        id: generation._id,
-        leadId: generation.leadId,
-        workflowId: generation.workflowId,
-        parentGenerationId: generation.parentGenerationId,
-        type: generation.type,
-        stageKey: generation.stageKey,
+        id: current._id,
+        leadId: current.leadId,
+        workflowId: current.workflowId,
+        parentGenerationId: current.parentGenerationId,
+        type: current.type,
+        stageKey: current.stageKey,
         stageLabel: stageDefinition?.name,
-        sourceAssetRole: generation.sourceAssetRole,
-        isSelectedBaseline: generation.isSelectedBaseline,
-        nextRecommendedStage: generation.nextRecommendedStage,
-        status: generation.status,
+        sourceAssetRole: current.sourceAssetRole,
+        isSelectedBaseline: current.isSelectedBaseline,
+        nextRecommendedStage: current.nextRecommendedStage,
+        status: current.status,
         progress,
-        imageUrl: generation.output?.imageUrl,
-        error: generation.errorMessage,
-        duration: generation.durationMs,
-        input: generation.input,
-        createdAt: generation.createdAt,
-        provider: generation.provider,
-        floorPlanId: generation.floorPlanId,
+        imageUrl: current.output?.imageUrl,
+        error: current.errorMessage,
+        duration: current.durationMs,
+        input: current.input,
+        createdAt: current.createdAt,
+        provider: current.provider,
+        externalStatus: current.externalTask?.status,
+        floorPlanId: current.floorPlanId,
       }
     });
   } catch (error: unknown) {

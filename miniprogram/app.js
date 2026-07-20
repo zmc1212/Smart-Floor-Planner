@@ -1,11 +1,5 @@
 App({
   globalData: {
-    aiConfig: {
-      pollinationsImageUrl: 'https://image.pollinations.ai/prompt/',
-      pollinationsGenUrl: 'https://gen.pollinations.ai',
-      pollinationsChatUrl: 'https://gen.pollinations.ai/v1/chat/completions'
-    },
-    currentAIGenRoom: null,
     userInfo: null,
     openid: null,
     token: null,

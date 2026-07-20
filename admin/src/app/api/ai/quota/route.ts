@@ -1,114 +1,49 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { EnterpriseAiUsageSnapshot } from '@/models/EnterpriseAiUsageSnapshot';
-import {
-  deriveEnterpriseKeyStatus,
-  markEnterpriseAiSyncError,
-  summarizeDailyUsage,
-  syncEnterprisePollinationsSnapshot,
-} from '@/lib/ai/enterprise-ai';
+import { ensureAiCreditAccount, serializeAiCreditAccount } from '@/lib/ai/credits';
 
-interface QuotaActionBody {
-  action?: 'sync';
-}
-
-type SnapshotView = {
-  balance?: number;
-  currency?: string;
-  lastSyncedAt?: Date | string | null;
-  syncError?: string;
-  dailyUsage?: Array<{ date: string; model: string; requests: number; costUsd: number }>;
-  keyInfo?: {
-    keyId?: string;
-    valid?: boolean;
-    allowedModels?: string[];
-  } | null;
-};
-
-function buildQuotaResponse(snapshot: SnapshotView | null | undefined) {
-  const usageSummary = summarizeDailyUsage(snapshot?.dailyUsage || []);
-  const keyStatus = deriveEnterpriseKeyStatus({ keyInfo: snapshot?.keyInfo || null });
-
+function quotaResponse(account: { balance?: number; frozenBalance?: number; version?: number }) {
+  const credits = serializeAiCreditAccount(account);
   return {
-    tier: 'pollinations',
-    usedCount: usageSummary.today.requests,
+    credits,
+    // One-version compatibility fields for older admin clients.
+    tier: 'ai_credits',
+    usedCount: 0,
     monthlyLimit: -1,
     bonusCredits: 0,
-    remaining: snapshot?.balance ?? 0,
-    periodStart: snapshot?.lastSyncedAt ?? null,
+    remaining: credits.availableBalance,
+    balance: credits.balance,
+    frozenBalance: credits.frozenBalance,
+    availableBalance: credits.availableBalance,
+    periodStart: null,
     rechargeHistory: [],
-    balance: snapshot?.balance ?? 0,
-    currency: snapshot?.currency || 'USD',
-    dailyUsageSummary: usageSummary,
-    keyStatus,
-    allowedModels: snapshot?.keyInfo?.allowedModels || [],
-    lastSyncedAt: snapshot?.lastSyncedAt || null,
-    syncError: snapshot?.syncError || '',
-    keyInfo: snapshot?.keyInfo || null,
+    currency: 'AI_CREDITS',
+    dailyUsageSummary: null,
+    keyStatus: 'managed_by_platform',
+    allowedModels: [],
+    lastSyncedAt: null,
+    syncError: '',
+    keyInfo: null,
   };
 }
 
-export async function GET(req: Request) {
+export async function GET(request: Request) {
   try {
     await dbConnect();
-
-    return await withTenantRoute(req, { requireEnterprise: true }, async (context) => {
-      const enterpriseId = context.enterpriseId ?? undefined;
-      let snapshot = enterpriseId
-        ? await EnterpriseAiUsageSnapshot.findOne({ enterpriseId }).lean()
-        : null;
-
-      if (enterpriseId && !snapshot) {
-        try {
-          const synced = await syncEnterprisePollinationsSnapshot(String(enterpriseId));
-          snapshot = synced.toObject();
-        } catch (error) {
-          await markEnterpriseAiSyncError(String(enterpriseId), error);
-          snapshot = await EnterpriseAiUsageSnapshot.findOne({ enterpriseId }).lean();
-        }
-      }
-
-      return NextResponse.json({
-        success: true,
-        data: buildQuotaResponse(snapshot),
-      });
+    return await withTenantRoute(request, { requireEnterprise: true }, async (context) => {
+      const account = await ensureAiCreditAccount(String(context.enterpriseId));
+      return NextResponse.json({ success: true, data: quotaResponse(account) });
     });
   } catch (error) {
     console.error('[AI Quota GET]', error);
-    return NextResponse.json({ success: false, error: '服务端错误' }, { status: 500 });
+    return NextResponse.json({ success: false, error: '读取 AI 点数失败' }, { status: 500 });
   }
 }
 
-export async function POST(req: Request) {
-  try {
-    await dbConnect();
-
-    return await withTenantRoute(
-      req,
-      { roles: ['enterprise_admin', 'super_admin', 'admin'], requireEnterprise: true },
-      async (context) => {
-        const body = (await req.json()) as QuotaActionBody;
-        if (body.action !== 'sync') {
-          return NextResponse.json(
-            {
-              success: false,
-              error:
-                'AI 点数已改为 Pollinations 官方余额视图，当前不支持本地充值或升级。',
-            },
-            { status: 400 }
-          );
-        }
-
-        const snapshot = await syncEnterprisePollinationsSnapshot(String(context.enterpriseId));
-        return NextResponse.json({
-          success: true,
-          data: buildQuotaResponse(snapshot.toObject()),
-        });
-      }
-    );
-  } catch (error) {
-    console.error('[AI Quota POST]', error);
-    return NextResponse.json({ success: false, error: '服务端错误' }, { status: 500 });
-  }
+export async function POST() {
+  return NextResponse.json(
+    { success: false, error: '企业自助充值与供应商余额同步已弃用，请由平台管理员调整 AI 点数。' },
+    { status: 410 }
+  );
 }

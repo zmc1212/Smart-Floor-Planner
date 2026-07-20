@@ -175,6 +175,14 @@
   line-height: 1.25;
 }
 
+.whole-home-plan-name {
+  margin-top: 12rpx;
+  color: #20262d;
+  font-size: 26rpx;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
 .whole-home-subtitle {
   margin-top: 8rpx;
   color: #7e8793;

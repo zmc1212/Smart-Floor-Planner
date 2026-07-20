@@ -229,22 +229,15 @@ Page({
   onAIGen(e) {
     const id = e.currentTarget.dataset.id;
     const floorPlan = this.data.floorPlans.find((item) => item._id === id);
-    if (!floorPlan || !floorPlan.layoutData) {
+    if (!floorPlan) {
       wx.showToast({ title: '无法获取户型数据', icon: 'none' });
       return;
     }
+    wx.navigateTo({ url: `/pages/ai-design/ai-design?floorPlanId=${floorPlan._id}` });
+  },
 
-    let rooms = floorPlan.layoutData;
-    if (typeof rooms === 'string') {
-      try {
-        rooms = JSON.parse(rooms);
-      } catch (e) {}
-    }
-    const targetRoom = Array.isArray(rooms) ? rooms[0] : rooms;
-    if (targetRoom) {
-      app.globalData.currentAIGenRoom = targetRoom;
-      wx.navigateTo({ url: '/pages/ai-gen/ai-gen' });
-    }
+  onOpenAIHome() {
+    wx.navigateTo({ url: '/pages/ai-design/ai-design' });
   },
 
   onCreateNew() {

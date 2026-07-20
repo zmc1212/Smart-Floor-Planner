@@ -17,6 +17,7 @@ export async function GET(
       const generation = await AiGeneration.findOne({
         _id: id,
         enterpriseId: context.enterpriseId,
+        deletedAt: { $exists: false },
       })
         .select('output.imageUrl')
         .lean();
@@ -28,7 +29,11 @@ export async function GET(
       const imageUrl = generation.output.imageUrl;
       const assetId = getAssetIdFromImageUrl(imageUrl);
       if (assetId) {
-        const asset = await MediaAsset.findOne({ _id: assetId, enterpriseId: context.enterpriseId });
+        const asset = await MediaAsset.findOne({
+          _id: assetId,
+          enterpriseId: context.enterpriseId,
+          deletedAt: { $exists: false },
+        });
         if (!asset) {
           return NextResponse.json({ success: false, error: 'Asset not found' }, { status: 404 });
         }

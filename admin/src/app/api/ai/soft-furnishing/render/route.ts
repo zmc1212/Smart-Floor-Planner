@@ -7,13 +7,8 @@ import {
   FurnitureSelection,
   SOFT_FURNISHING_NEGATIVE,
 } from '@/lib/ai/soft-furnishing';
-import { editImage } from '@/lib/ai/pollinations';
-import { ensureModelAccessibleImageUrl, persistImageReference, updateMediaAssetOwner } from '@/lib/ai/media-assets';
-import {
-  getEnterprisePollinationsRuntimeConfig,
-  markEnterpriseAiSyncError,
-  syncEnterprisePollinationsSnapshot,
-} from '@/lib/ai/enterprise-ai';
+import { persistImageReference, updateMediaAssetOwner } from '@/lib/ai/media-assets';
+import { executeGenerationImage } from '@/lib/ai/execution-service';
 
 interface SoftFurnishingBody {
   image?: string;
@@ -53,16 +48,6 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: false, error: '请至少选择一件家具类型' }, { status: 400 });
       }
 
-      let runtimeConfig;
-      try {
-        runtimeConfig = await getEnterprisePollinationsRuntimeConfig(String(context.enterpriseId));
-      } catch (error) {
-        return NextResponse.json(
-          { success: false, error: error instanceof Error ? error.message : '当前企业 AI Key 不可用' },
-          { status: 400 }
-        );
-      }
-
       const prompt = buildDirectSoftFurnishingPrompt(furnitureItems, resolution);
       const roomType = furnitureItems.some((item) => item.placementRole === 'sleeping') ? 'bedroom' : 'living_room';
 
@@ -76,6 +61,9 @@ export async function POST(req: Request) {
         enterpriseId: context.enterpriseId!,
         operatorId: context.userId,
         type: 'soft_furnishing_render',
+        actionKey: 'image.soft_furnishing_render',
+        capability: 'image.edit',
+        logicalModelKey: 'image.edit.standard',
         input: {
           style: 'soft_furnishing',
           roomType,
@@ -88,78 +76,31 @@ export async function POST(req: Request) {
         output: {
           promptUsed: prompt,
         },
-        provider: 'pollinations',
         status: 'processing',
-        apiKeyId: runtimeConfig.keyId,
-        apiKeyName: runtimeConfig.keyName,
       });
       await updateMediaAssetOwner(persistedSourceImage, generation._id);
 
       try {
-        if (process.env.MOCK_AI === 'true') {
-          await new Promise((resolve) => setTimeout(resolve, 1200));
-          generation.status = 'succeeded';
-          generation.output.imageUrl = '/soft-furnishing-result.png';
-          generation.durationMs = 1200;
-          await generation.save();
-
-          return NextResponse.json({
-            success: true,
-            data: { id: generation._id, imageUrl: generation.output.imageUrl },
-          });
-        }
-
-        const startedAt = Date.now();
-        const referenceImageUrl = await ensureModelAccessibleImageUrl(
-          persistedSourceImage || image,
-          String(context.enterpriseId),
-          runtimeConfig.apiKey
-        );
-        const imageUrl = await editImage({
+        const completed = await executeGenerationImage(generation, {
+          logicalModelKey: 'image.edit.standard',
           prompt,
           negativePrompt: SOFT_FURNISHING_NEGATIVE,
-          referenceImageUrl,
-          model: 'flux',
+          images: [persistedSourceImage || image],
           size: resolution === '2k' ? '1536x1024' : '1024x1024',
           quality: resolution === '2k' ? 'high' : 'medium',
           user: String(context.userId),
-          apiKey: runtimeConfig.apiKey,
         });
-
-        const persistedImageUrl = await persistImageReference({
-          enterpriseId: String(context.enterpriseId),
-          ownerType: 'ai_generation_output',
-          ownerId: generation._id,
-          image: imageUrl,
-        });
-
-        generation.status = 'succeeded';
-        generation.output.imageUrl = persistedImageUrl;
-        generation.durationMs = Date.now() - startedAt;
-        generation.remoteModel = 'flux';
-        await generation.save();
-
-        await syncEnterprisePollinationsSnapshot(String(context.enterpriseId)).catch((error) =>
-          markEnterpriseAiSyncError(String(context.enterpriseId), error)
-        );
-
-        return NextResponse.json({ success: true, data: { id: generation._id, imageUrl: persistedImageUrl } });
+        return NextResponse.json({ success: true, data: { id: completed._id, status: completed.status, imageUrl: completed.output.imageUrl } });
       } catch (error) {
-        generation.status = 'failed';
+        if (generation.status !== 'processing') generation.status = 'failed';
         generation.errorMessage =
           error instanceof Error ? error.message : 'Soft furnishing render failed';
         await generation.save();
 
-        await markEnterpriseAiSyncError(String(context.enterpriseId), error).catch(() => undefined);
-        await syncEnterprisePollinationsSnapshot(String(context.enterpriseId)).catch(() => undefined);
-
         const status = parseUpstreamStatus(error);
-        const readableMessage =
-          status === 402
-            ? '当前企业 Pollinations 余额不足，请联系平台管理员充值。'
-            : status === 403
-              ? '当前企业 Pollinations Key 没有该模型权限或已失效。'
-              : '提交软装渲染失败';
+        const readableMessage = status === 402
+          ? '当前企业 AI 点数不足，请联系平台管理员调整。'
+          : error instanceof Error ? error.message : '提交软装渲染失败';
 
         return NextResponse.json({ success: false, error: readableMessage }, { status: status >= 400 ? status : 500 });
       }

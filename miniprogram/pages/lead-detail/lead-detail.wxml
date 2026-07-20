@@ -10,7 +10,8 @@
   <view class="whole-home-card">
     <view class="whole-home-copy">
       <view class="whole-home-title">正式量房</view>
-      <view class="whole-home-subtitle">{{activeFloorPlan ? '继续编辑已保存的正式墙图' : '从墙图开始创建客户户型'}}</view>
+      <view class="whole-home-plan-name" wx:if="{{activeFloorPlan}}">{{activeFloorPlan.displayName}}</view>
+      <view class="whole-home-subtitle">{{activeFloorPlan ? activeFloorPlan.displayMeta : '从墙图开始创建客户户型'}}</view>
     </view>
     <view class="whole-home-actions">
       <view class="whole-home-action" bindtap="onStartMeasure">{{activeFloorPlan ? '继续量房' : '开始量房'}}</view>

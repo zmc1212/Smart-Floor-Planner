@@ -12,14 +12,9 @@ import {
 } from '@/lib/ai/presets';
 import { buildSoftFurnishingPromptFromPreset, FurnitureSelection } from '@/lib/ai/soft-furnishing';
 import type { AiPresetType, DefaultAiStylePreset } from '@/lib/ai/preset-definitions';
-import { EnterpriseAiUsageSnapshot } from '@/models/EnterpriseAiUsageSnapshot';
-import {
-  deriveEnterpriseKeyStatus,
-  getEnterprisePollinationsRuntimeConfig,
-  markEnterpriseAiSyncError,
-} from '@/lib/ai/enterprise-ai';
-import { generateChatCompletion } from '@/lib/ai/pollinations';
-import { ensureModelAccessibleImageUrl, persistImageReference, updateMediaAssetOwner } from '@/lib/ai/media-assets';
+import { persistImageReference, resolveAiProviderImageInput, updateMediaAssetOwner } from '@/lib/ai/media-assets';
+import { ensureGenerationCreditHold, executeAiChat, releaseGenerationCredits } from '@/lib/ai/execution-service';
+import { actionKeyForGenerationType } from '@/lib/ai/provider-types';
 import type { AiWorkflowSourceAssetRole, AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
 import { getNextWorkflowStage } from '@/lib/ai/workflow-stages';
 
@@ -126,45 +121,6 @@ export async function POST(req: Request) {
         );
       }
 
-      let runtimeConfig;
-      try {
-        runtimeConfig = await getEnterprisePollinationsRuntimeConfig(String(context.enterpriseId));
-      } catch (error) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: error instanceof Error ? error.message : '当前企业 AI Key 不可用',
-          },
-          { status: 400 }
-        );
-      }
-
-      const latestSnapshot = await EnterpriseAiUsageSnapshot.findOne({
-        enterpriseId: context.enterpriseId,
-      })
-        .select('balance lastSyncedAt keyInfo syncError')
-        .lean();
-      const keyStatus = deriveEnterpriseKeyStatus({
-        aiConfig: { pollinationsKeyRef: runtimeConfig.keyId },
-        keyInfo: latestSnapshot?.keyInfo
-          ? { id: latestSnapshot.keyInfo.keyId, valid: latestSnapshot.keyInfo.valid }
-          : null,
-      });
-
-      if ((latestSnapshot?.balance ?? 0) <= 0 && process.env.MOCK_AI !== 'true') {
-        return NextResponse.json(
-          {
-            success: false,
-            error: '当前企业 Pollinations 余额不足，请联系平台管理员充值。',
-            quota: {
-              balance: latestSnapshot?.balance ?? 0,
-              keyStatus,
-            },
-          },
-          { status: 402 }
-        );
-      }
-
       const presetType = resolvePresetType(type);
       const preset =
         (await getAiStylePresetByKey(presetType, style)) ||
@@ -248,6 +204,7 @@ export async function POST(req: Request) {
         parentGenerationId: parentGeneration?._id,
         floorPlanId: floorPlanId || undefined,
         type,
+        actionKey: actionKeyForGenerationType(type),
         stageKey: resolvedStageKey,
         sourceAssetRole: resolvedSourceAssetRole,
         nextRecommendedStage,
@@ -264,16 +221,16 @@ export async function POST(req: Request) {
           styleReferenceImage: persistedStyleReferenceImage,
         },
         status: 'processing',
-        apiKeyId: runtimeConfig.keyId,
-        apiKeyName: runtimeConfig.keyName,
-        quotaSnapshot: {
-          balance: latestSnapshot?.balance ?? 0,
-          keyStatus,
-          allowedModels: latestSnapshot?.keyInfo?.allowedModels || runtimeConfig.allowedModels,
-          lastSyncedAt: latestSnapshot?.lastSyncedAt || undefined,
-        },
       });
       await updateMediaAssetOwner(persistedStyleReferenceImage, generation._id);
+      try {
+        await ensureGenerationCreditHold(generation);
+      } catch (error) {
+        generation.status = 'failed';
+        generation.errorMessage = error instanceof Error ? error.message : 'AI 点数不足';
+        await generation.save();
+        return NextResponse.json({ success: false, error: generation.errorMessage }, { status: 402 });
+      }
 
       try {
         let promptData: { prompt: string; negative_prompt?: string };
@@ -293,11 +250,7 @@ export async function POST(req: Request) {
           }
 
           // 1. Upload reference image if it is base64
-          const publicImageUrl = await ensureModelAccessibleImageUrl(
-            referenceImageUrl,
-            String(context.enterpriseId),
-            runtimeConfig.apiKey
-          );
+          const publicImageUrl = await resolveAiProviderImageInput(referenceImageUrl, String(context.enterpriseId));
 
           // Update styleReferenceImage with public URL to ensure rendering has access
           generation.input.styleReferenceImage = referenceImageUrl;
@@ -313,8 +266,10 @@ export async function POST(req: Request) {
 
           console.log('[AI Generate Lighting] Stage 1 - Mentally planning with prompt:', formattedFirstStagePrompt);
 
-          const sceneAnalysisText = await generateChatCompletion({
-            apiKey: runtimeConfig.apiKey,
+          const sceneAnalysis = await executeAiChat({
+            enterpriseId: String(context.enterpriseId),
+            generationId: String(generation._id),
+            logicalModelKey: 'vision.reference_analysis',
             messages: [
               {
                 role: 'user',
@@ -334,6 +289,7 @@ export async function POST(req: Request) {
             ],
             temperature: 0.7,
           });
+          const sceneAnalysisText = sceneAnalysis.content;
 
           console.log('[AI Generate Lighting] Stage 1 - Mental Plan result:', sceneAnalysisText);
 
@@ -369,14 +325,17 @@ export async function POST(req: Request) {
 
           console.log('[AI Generate Lighting] Stage 2 - Compiling board prompt...');
 
-          const compileResponse = await generateChatCompletion({
-            apiKey: runtimeConfig.apiKey,
+          const compileResult = await executeAiChat({
+            enterpriseId: String(context.enterpriseId),
+            generationId: String(generation._id),
+            logicalModelKey: 'chat.general',
             messages: [
               { role: 'system', content: 'You are an expert compiler of visual design boards and interior design prompts.' },
               { role: 'user', content: compilePrompt },
             ],
             temperature: 0.7,
           });
+          const compileResponse = compileResult.content;
 
           console.log('[AI Generate Lighting] Stage 2 - Compilation response:', compileResponse);
 
@@ -434,7 +393,8 @@ export async function POST(req: Request) {
             style,
             type === 'floor_plan_style' ? 'floor plan' : roomType || 'interior',
             details,
-            runtimeConfig.apiKey
+            String(context.enterpriseId),
+            String(generation._id)
           );
         }
 
@@ -469,23 +429,13 @@ export async function POST(req: Request) {
             stageKey: resolvedStageKey,
             nextRecommendedStage,
           },
-          quota: {
-            balance: latestSnapshot?.balance ?? 0,
-            keyStatus,
-            allowedModels: latestSnapshot?.keyInfo?.allowedModels || runtimeConfig.allowedModels,
-          },
         });
       } catch (aiError: unknown) {
         generation.status = 'failed';
         generation.errorMessage =
           aiError instanceof Error ? aiError.message : 'Prompt generation failed';
+        await releaseGenerationCredits(generation, generation.errorMessage).catch(() => undefined);
         await generation.save();
-
-        if (context.enterpriseId) {
-          await markEnterpriseAiSyncError(String(context.enterpriseId), aiError).catch(
-            () => undefined
-          );
-        }
 
         return NextResponse.json(
           { success: false, error: 'AI 提示词生成失败' },

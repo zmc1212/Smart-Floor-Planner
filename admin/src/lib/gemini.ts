@@ -1,6 +1,6 @@
-import { generateChatCompletion } from '@/lib/ai/pollinations';
+import { executeAiChat } from '@/lib/ai/execution-service';
 
-export async function generateAIPrompt(style: string, roomType: string, details?: string, apiKey?: string) {
+export async function generateAIPrompt(style: string, roomType: string, details: string | undefined, enterpriseId: string, generationId?: string) {
   const prompt = `
     Task: Generate a high-quality, professional English prompt and a negative prompt for a ${style} style ${roomType}.
     
@@ -28,28 +28,31 @@ export async function generateAIPrompt(style: string, roomType: string, details?
   `;
 
   // 打印完整的请求信息
-  console.log("========== POLLINATIONS PROMPT CHAT REQUEST START ==========");
+  console.log("========== AI PROMPT CHAT REQUEST START ==========");
   console.log("Prompt input:", prompt);
   console.log("=======================================");
 
-  const text = await generateChatCompletion({
-    apiKey,
+  const result = await executeAiChat({
+    enterpriseId,
+    generationId,
+    logicalModelKey: 'chat.general',
     messages: [
       { role: "system", content: "You are an expert interior design prompt engineer for Stable Diffusion." },
       { role: "user", content: prompt }
     ],
     temperature: 0.7
   });
+  const text = result.content;
 
   // Extract JSON from the response (sometimes it wraps it in markdown)
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (jsonMatch) {
     try {
       return JSON.parse(jsonMatch[0]);
-    } catch (e) {
-      console.error("Failed to parse JSON from Pollinations Chat:", text);
+    } catch {
+      console.error("Failed to parse JSON from AI chat:", text);
     }
   }
 
-  throw new Error("Failed to generate valid prompt JSON from Pollinations Chat");
+  throw new Error("Failed to generate valid prompt JSON from AI chat");
 }

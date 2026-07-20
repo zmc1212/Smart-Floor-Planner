@@ -24,14 +24,14 @@
 
 - 页面：`pages/index/index`。
 - API：`/api/miniprogram/home`、`/api/floorplans`、户型 POST/PUT、`/api/leads/[id]`、`/api/location/reverse`、`/api/users/me`。
-- 已实现：首页统计、定位/城市、最近云端户型、留资弹窗、BLE 连接状态、记忆设备自动连接、新建/继续正式量房、房间进入和 AI 入口。
-- 占位：快速报价、帮助中心和部分快捷卡片只显示“即将上线/规划中”消息。
+- 已实现：首页统计、定位/城市、按角色过滤的最近云端户型（本地草稿存在时仍显示，且可直接进入正式量房编辑器）、留资弹窗、BLE 连接状态、记忆设备自动连接、新建/继续正式量房、房间进入，以及企业员工常驻 AI 设计快捷入口。
+- 占位：帮助中心和部分快捷卡片只显示“即将上线/规划中”消息。
 
 ### 线索与客户记录
 
 - 页面：`pages/lead-form/lead-form`、`pages/leads-management/leads-management`、`pages/lead-detail/lead-detail`。
 - API：`/api/leads`、`/api/leads/[id]`、`/api/floorplans/[id]` DELETE。
-- 已实现：客户称呼/手机号/小区/面积/风格采集、最近客户、列表/详情、正式户型关联、继续量房、新建独立量房，以及删除正式户型时清理本地续测指针。
+- 已实现：客户称呼/手机号/小区/面积/风格采集、最近客户、列表/详情、正式户型关联、线索详情中的主户型名称/状态/闭合空间数、继续量房、新建独立量房，以及删除正式户型时清理本地续测指针。
 - 有限支持：需要有效小程序会话；手机号和小区既有客户端校验也有服务端校验。
 
 ### 企业报备与员工任务
@@ -55,18 +55,21 @@
 - 已实现：分页、下拉刷新、风格/空间筛选、图片预览、分享海报外壳和免费设计留资入口。
 - 有限支持：内容数量取决于后台已发布的灵感数据。
 
-### AI 房间生成
+### AI 设计与企业点数
 
-- 页面：`pages/ai-gen/ai-gen`。
-- API：`utils/renderingService.js` 调用 `/api/ai/render`、`/api/ai/advice`。
-- 已实现：接收正式户型派生房间，选择风格和效果图/平面图模式，将尺寸/门窗/多边形提交后台，下载效果图，获取设计建议，预览图片，生成分享海报和复制提示词。
-- 有限支持：依赖当前房间上下文、登录、可用企业 AI 服务和对应配置；留资另走 `lead-form`。
+- 页面：`pages/ai-design/ai-design`、`pages/ai-design-create/ai-design-create`、`pages/ai-design-result/ai-design-result`、`pages/ai-design-history/ai-design-history`；旧 `pages/ai-gen/ai-gen` 仅兼容跳转。
+- API：小程序 AI 能力、按角色过滤的正式户型/房间来源、当前上下文可见活动方案、媒体上传/签名读取、任务创建/执行/状态/重试、历史读取/删除；`utils/aiDesignService.js` 统一携带 Bearer JWT。
+- 已实现：企业共享 AI 点数与业务动作价格展示；首页以“参考图复刻、空间换风格、户型生成、软装深化”四个现场任务组织入口，并提供统一的“客户－正式户型－房间”选择器，选择后的 `leadId`、`floorPlanId`、`roomId` 由四种任务共同继承，只有户型生成强制要求先关联。首页紧凑方案卡会自动带入唯一活动方案，多个方案时要求用户选择，并保留“新建备选方案”；创建页、结果页和历史记录显示客户/方案归属及“已同步方案/独立任务”。参考图复刻使用双图，整体换风格和软装深化使用空间图加后台风格预设，户型生成直接读取正式量房房间摘要并调用图片生成能力。页面支持相册/拍摄上传、异步供应商任务状态、失败重试/点数释放、可拖动分割线的原图结果对比、户型概念图单图成果、预览、保存、分享、历史复用和删除。
+- 工作流协同：显式 `workflowId` 会直接续接；未显式选择时，同一客户/户型只有一个活动方案则自动复用，存在多个方案则拒绝静默合并并要求客户端选择，也可明确新建备选方案。任务映射为 `base_render`、`perspective_upgrade` 或 `soft_furnishing` 阶段；基准/软装阶段首个成功成果自动采用，后续同阶段成果只作为候选。换风格/软装可在小程序继续，提案/灯光提示到后台深化。无客户上下文时仍可作为独立快速任务运行。
+- 视觉：成功态使用本地渲染的 Lucide 操作图标和极细分隔线，并以 iPhone 13 Pro `390x844` 为基准调整为一屏布局。首页视觉基准为 `design-references/ai-design-home-v2.png`，成果页视觉基准为 `design-references/ai-design-result-v2.png`；首页室内图为生成式资产 `miniprogram/images/ai-design-hero-v2.jpg`。
+- 正式户型：入口只传 `floorPlanId`/`roomId`，后台通过正式墙图读适配层派生房间尺寸、层高和开口摘要，不修改 `FloorPlan.layoutData`；来源选择器只返回当前企业角色可访问的正式闭合房间（设计师按分配线索、量房员按归属户型、企业负责人按企业范围）；仅凭户型数据生成的是概念效果，不是施工级或像素级还原。
+- 有限支持：仅企业员工可用，依赖平台统一供应商路由和企业 AI 点数；服务端可在不改变小程序 API 的情况下路由到 GRS、Pollinations 或其他已配置兼容供应商。首期复刻采用“视觉分析参考图 + 空间图编辑”，不保证像素级 1:1；纯户型生成无法推断未测量的材质和精确镜头。没有微信支付、局部遮罩替换或普通业主账户。生产环境必须配置共享 `AI_ASSET_STORAGE_DIR`，并通过 HTTPS `MINIPROGRAM_API_PUBLIC_ORIGIN` 生成签名媒体地址。
 
 ### 我的与工作台
 
 - 页面：`pages/mine/mine`。
-- API：`/api/miniprogram/mine`、`/api/floorplans`，并跳转线索、报备、提成、量房和 AI 页面。
-- 已实现：资料/角色、工作台摘要、待办、户型列表、通知/账号入口、退出登录、新建量房和户型卡片 AI 入口。
+- API：`/api/miniprogram/mine`、`/api/floorplans`，并跳转线索、报备、提成、量房和新的 AI 设计首页。
+- 已实现：资料/角色、工作台摘要、待办、户型列表、通知/账号入口、退出登录、新建量房、企业员工 AI 设计首页入口和户型卡片上下文 AI 入口。
 - 有限支持：工作台内容和任务操作随专业角色变化；部分账号/通知卡片只是信息展示。
 
 ### 推荐方案分享页
@@ -79,9 +82,9 @@
 
 - 页面：`pages/surveying-editor/surveying-editor`；所有入口由 `utils/surveyNavigation.js` 传递 `leadId` 和/或 `floorPlanId`。
 - 数据合同：`FloorPlan.layoutData` 只能是 `{ version: 4, measurementMode: 'surveying', surveyGraph }`，墙图单位为毫米。
-- 已实现编辑行为：启动恢复、本地/云端草稿、直墙和斜墙预览/确认、BLE/手输墙长、复尺、共享墙闭合、提示性闭合候选、门窗、开口尺寸/开向、创建独立墙链的光标放置、撤销/重画、完成提交和测量审计队列/补写。
+- 已实现编辑行为：启动恢复、本地/云端草稿、直墙和斜墙预览/确认、BLE/手输墙长、复尺、共享墙闭合、提示性闭合候选、门窗、开口尺寸/开向、创建独立墙链的光标放置，以及随首墙移动并在边界限位的每条新墙链第一面确认墙内/外测量边提示；闭合房间的墙体外壳及外侧转角由闭合边界推导，不受所选测量边影响；撤销/重画、完成提交和测量审计队列/补写。
 - 已实现测角：斜线方向阈值吸附、数字面板输入、操作员确认的手机姿态角度，以及三次 BLE 三角边长读数和余弦定理校验。关闭面板不改墙体几何，也不遗留姿态监听。
-- 已实现绘制/编辑：覆盖全开口宽度的 CAD 风格门窗符号、未闭合内测边红线、闭合空间内外尺寸、门洞链式尺寸、构件规格、构件 BLE 测距、翻转/模型面板，以及选中门窗的 Three.js 预览。
+- 已实现绘制/编辑：覆盖全开口宽度的 CAD 风格门窗符号、未闭合内测边红线、闭合户型仅在外边界标注尺寸（门洞链尺寸也不进入共享内墙/房间内部）、画布、拖拽层和底部拖放控件统一的细线十字/方框光标，以及会避开墙体和固定控件的画布锚定闭合提示；构件规格、构件 BLE 测距、翻转/模型面板，以及选中门窗的 Three.js 预览。
 - 有限支持：BLE 操作要求兼容且已连接设备；部分保留底部/对象工具会有意显示规划中或暂未开放。
 - 边界：小程序当前没有真实报告导出，也不提供全户型 CAD/3D 导出；后台 `FloorPlanViewer` 通过适配层提供全户型 2D/3D 查看和 DXF 下载。不得保存旧布局镜像。
 - 运维细节和清理流程：`docs/surveying-module/README.md`、`formal-surveying.md`。
@@ -90,7 +93,7 @@
 
 - BLE：`components/ble-connector`、`components/ble-gate`、`utils/bluetooth.js`。
 - 导航：`utils/surveyNavigation.js` 负责正式编辑器入口和本地续测指针清理。
-- 墙图/渲染：`surveyWallGraph.js`、`surveyCanvasRenderer.js`、`surveyLayout.js`、`renderingService.js`。
+- 墙图/渲染：`surveyWallGraph.js`、`surveyCanvasRenderer.js`、`surveyLayout.js`；AI 设计使用 `aiDesignService.js` 和 `aiDesignValidation.js`。
 - UI：导航栏、自定义 Tab、线索列表/弹窗、分享海报、房间库和量房指南针。
 
 ## 维护规则

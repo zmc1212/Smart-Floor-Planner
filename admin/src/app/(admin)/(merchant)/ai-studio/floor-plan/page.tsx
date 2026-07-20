@@ -86,7 +86,7 @@ function getRooms(plan?: FloorPlanItem) {
   return Array.isArray(rooms) ? rooms : [];
 }
 
-export default function AiFloorPlanPage() {
+export function AiFloorPlanLegacyPage() {
   const router = useRouter();
   const { data: floorPlansData, isLoading: loadingPlans } = useFetch<FloorPlanItem[]>('/api/floorplans');
   const { data: quota, mutate: mutateQuota } = useFetch<AiQuotaData>('/api/ai/quota');
@@ -222,26 +222,6 @@ export default function AiFloorPlanPage() {
       notify.fromAlert('网络异常，请重试');
       setIsGenerating(false);
     }
-  };
-
-  const handleUpgrade = async (tier: string, amount: number) => {
-    const res = await fetch('/api/ai/quota', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'upgrade', tier, amount, method: 'manual' }),
-    });
-    const data = await res.json();
-    if (data.success) mutateQuota();
-  };
-
-  const handleRecharge = async (credits: number, amount: number) => {
-    const res = await fetch('/api/ai/quota', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'recharge', credits, amount, method: 'manual' }),
-    });
-    const data = await res.json();
-    if (data.success) mutateQuota();
   };
 
   const selectedRooms = getRooms(selectedPlan);
@@ -470,10 +450,18 @@ export default function AiFloorPlanPage() {
       <RechargeDialog
         open={showRecharge}
         onOpenChange={setShowRecharge}
-        currentTier={quota?.tier}
-        onUpgrade={handleUpgrade}
-        onRecharge={handleRecharge}
       />
     </div>
   );
+}
+
+export default function AiFloorPlanPage() {
+  const router = useRouter();
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    params.set('view', 'quick');
+    params.set('action', 'floor_plan_style');
+    router.replace(`/ai-studio/scenarios?${params.toString()}`);
+  }, [router]);
+  return <div className="p-8 text-sm text-muted-foreground">正在进入统一 AI 设计工作台...</div>;
 }

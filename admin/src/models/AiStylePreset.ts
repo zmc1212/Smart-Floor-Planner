@@ -17,9 +17,10 @@ export interface IAiStylePreset extends Document {
   promptTemplate: string;
   promptTemplateSecondStage?: string;
   negativePrompt: string;
-  provider: 'pollinations';
+  provider?: string;
   image: {
     model: string;
+    logicalModelKey?: 'image.generate.standard' | 'image.edit.standard';
     size: string;
     quality: 'standard' | 'hd' | 'low' | 'medium' | 'high';
     mode: 'generation' | 'edit';
@@ -48,9 +49,10 @@ const AiStylePresetSchema = new Schema<IAiStylePreset>(
     promptTemplate: { type: String, required: true },
     promptTemplateSecondStage: { type: String, default: '' },
     negativePrompt: { type: String, default: '' },
-    provider: { type: String, enum: ['pollinations'], default: 'pollinations' },
+    provider: { type: String },
     image: {
       model: { type: String, required: true },
+      logicalModelKey: { type: String, enum: ['image.generate.standard', 'image.edit.standard'] },
       size: { type: String, default: '1024x1024' },
       quality: { type: String, enum: ['standard', 'hd', 'low', 'medium', 'high'], default: 'medium' },
       mode: { type: String, enum: ['generation', 'edit'], default: 'edit' },
@@ -88,6 +90,10 @@ const AiStylePresetSchema = new Schema<IAiStylePreset>(
 
 AiStylePresetSchema.index({ type: 1, enabled: 1, sortOrder: 1 });
 AiStylePresetSchema.index({ type: 1, key: 1 }, { unique: true });
+
+const existingAiStylePreset = mongoose.models.AiStylePreset as Model<IAiStylePreset> | undefined;
+const existingProviderPath = existingAiStylePreset?.schema.path('provider') as { options?: { enum?: string[] } } | undefined;
+if (existingAiStylePreset && existingProviderPath?.options?.enum?.length) mongoose.deleteModel('AiStylePreset');
 
 export const AiStylePreset: Model<IAiStylePreset> =
   mongoose.models.AiStylePreset || mongoose.model<IAiStylePreset>('AiStylePreset', AiStylePresetSchema);

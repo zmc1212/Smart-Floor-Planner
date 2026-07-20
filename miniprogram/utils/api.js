@@ -29,7 +29,7 @@ function getBaseUrls() {
 /**
  * Enhanced request method with JWT support
  */
-function request(url, method = 'GET', data = {}) {
+function request(url, method = 'GET', data = {}, options = {}) {
   const app = getApp();
   // Prefer in-memory token from globalData to avoid storage latency
   const token = (app && app.globalData && app.globalData.token) || wx.getStorageSync('token');
@@ -48,6 +48,7 @@ function request(url, method = 'GET', data = {}) {
       url: `${baseUrl}${url}`,
       method,
       data,
+      timeout: options.timeout || 30000,
       header: {
         'content-type': 'application/json',
         'Authorization': token ? `Bearer ${token}` : ''
@@ -186,6 +187,7 @@ async function passwordLogin(username, password) {
 
 module.exports = {
   request,
+  getBaseUrls,
   phoneLogin,
   passwordLogin
 };

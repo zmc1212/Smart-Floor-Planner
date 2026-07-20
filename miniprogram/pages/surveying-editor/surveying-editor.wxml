@@ -44,11 +44,6 @@
       <cover-view class="bubble-value">{{measurementValue}}</cover-view>
     </cover-view>
 
-    <!-- 闭合提示 -->
-    <cover-view wx:if="{{closeHintVisible}}" class="close-hint {{closeHintActionVisible ? 'actionable' : ''}}">
-      {{closeHintText}}
-    </cover-view>
-
     <cover-view
       wx:if="{{closeActionVisible}}"
       class="closure-action"

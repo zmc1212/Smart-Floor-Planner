@@ -1,193 +1,167 @@
 'use client';
 
-import { notify } from '@/components/ui/operation-feedback';
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
+  ArrowLeft,
   ArrowRight,
-  CheckCircle,
-  CheckCircle2,
-  Clock,
-  Copy,
-  ExternalLink,
-  FolderPlus,
+  Check,
+  ChevronDown,
+  Clock3,
   Image as ImageIcon,
-  Layers3,
   Loader2,
-  PlayCircle,
-  Phone,
+  Plus,
+  Search,
   Sparkles,
-  Wand2,
+  Upload,
+  Users,
+  WandSparkles,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
-import AiQuotaBar from '@/components/ai-studio/AiQuotaBar';
-import RechargeDialog from '@/components/ai-studio/RechargeDialog';
-import {
-  resolveWorkflowParentGeneration,
-  useAiWorkflowRunner,
-  WorkflowStageActionButton,
-  type WorkflowRunnerDetail,
-} from '@/components/ai-studio/workflow-runner';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+import { notify } from '@/components/ui/operation-feedback';
 import { useFetch } from '@/hooks/useFetch';
+import { cn } from '@/lib/utils';
 import {
   ADVANCED_WORKFLOW_TOOLS,
   MAIN_WORKFLOW_STAGES,
+  getWorkflowStageDefinition,
   type AiWorkflowSourceAssetRole,
   type AiWorkflowStageKey,
-  getWorkflowStageDefinition,
 } from '@/lib/ai/workflow-stages';
 import {
-  AI_WORKFLOW_DEMO_CASES,
-  getAiWorkflowDemoCaseById,
-  type AiWorkflowDemoCase,
-  type AiWorkflowDemoGeneration,
-} from '@/lib/ai/workflow-demo';
+  useAiWorkflowRunner,
+  type WorkflowRunnerDetail,
+} from '@/components/ai-studio/workflow-runner';
+import { AiDesignerLegacyPage } from '../designer/page';
+import { AiFloorPlanLegacyPage } from '../floor-plan/page';
+import { AiFurnishingLegacyPage } from '../furnishing/page';
+import { AiSoftFurnishingLegacyPage } from '../soft-furnishing/page';
 
-interface AiPreset {
-  _id: string;
+type WorkbenchView = 'workflows' | 'quick' | 'assistant';
+type WorkflowFilter = 'all' | 'not_started' | 'review' | 'processing' | 'failed' | 'ready';
+
+interface DesignAction {
   key: string;
-  name: string;
-  description: string;
-  icon: string;
-  previewClassName: string;
+  label: string;
+  shortDescription: string;
+  resultBoundary: string;
+  stageKey?: AiWorkflowStageKey;
+  credits: number;
   enabled: boolean;
-  sortOrder: number;
-  workflowCategory?: 'main' | 'advanced';
-  workflowStage?: AiWorkflowStageKey;
-  sourceAssetRole?: AiWorkflowSourceAssetRole;
-  nextRecommendedStage?: AiWorkflowStageKey;
-  image?: {
-    mode: string;
-  };
+  disabledReason?: string;
 }
 
-interface AiQuotaData {
-  tier: string;
-  usedCount: number;
-  monthlyLimit: number;
-  bonusCredits: number;
-  remaining: number;
-  balance?: number;
-  currency?: string;
-  keyStatus?: string;
-  allowedModels?: string[];
-  lastSyncedAt?: string;
+interface DesignCapabilities {
+  account: { balance: number; frozenBalance: number; availableBalance: number };
+  provider: { available: boolean; supportsEdit: boolean; supportsGenerate: boolean };
+  actions: DesignAction[];
 }
 
 interface WorkflowGeneration {
   id: string;
-  leadId?: string;
-  workflowId?: string;
-  parentGenerationId?: string;
-  type: string;
   stageKey?: AiWorkflowStageKey;
   stageLabel?: string;
-  sourceAssetRole?: AiWorkflowSourceAssetRole;
+  channel?: 'admin' | 'miniprogram';
+  status: 'created' | 'pending' | 'processing' | 'succeeded' | 'failed';
   isSelectedBaseline: boolean;
   nextRecommendedStage?: AiWorkflowStageKey;
-  status: 'pending' | 'processing' | 'succeeded' | 'failed';
-  input?: {
-    customPrompt?: string;
-    styleReferenceImage?: string;
-  };
-  output?: {
-    imageUrl?: string;
-    promptUsed?: string;
-  };
+  output?: { imageUrl?: string; promptUsed?: string };
   errorMessage?: string;
   createdAt: string;
 }
 
+interface LeadSummary {
+  id: string;
+  name: string;
+  phone: string;
+  communityName?: string;
+  status: string;
+  stylePreference?: string;
+  floorPlans: Array<{ id: string; name?: string; status?: string; createdAt?: string }>;
+  workflowCount?: number;
+}
+
 interface WorkflowSummary {
   id: string;
-  leadId?: string;
+  leadId: string;
   title: string;
   workflowLabel?: string;
   isPrimary: boolean;
-  status: 'active' | 'archived';
   sourceImage?: string;
   sourceFloorPlanId?: string;
   sourceAssetRole: AiWorkflowSourceAssetRole;
   currentStageKey: AiWorkflowStageKey;
   currentStageLabel?: string;
   selectedGenerationId?: string;
-  lastGenerationId?: string;
-  createdAt: string;
-  updatedAt: string;
   generationCount: number;
   latestGeneration?: WorkflowGeneration;
-}
-
-interface WorkflowLeadFloorPlan {
-  id: string;
-  name?: string;
-  layoutData?: unknown;
-  createdAt?: string;
-  status?: string;
-}
-
-interface WorkflowLeadSummary {
-  id: string;
-  name: string;
-  phone: string;
-  status: string;
-  stylePreference?: string;
-  communityName?: string;
-  floorPlans: WorkflowLeadFloorPlan[];
-  workflowCount: number;
-  latestWorkflowId?: string;
-  latestWorkflowTitle?: string;
-  latestWorkflowUpdatedAt?: string;
-  followUpCount: number;
+  selectedGeneration?: WorkflowGeneration;
+  lead?: Omit<LeadSummary, 'floorPlans'>;
+  stageState?: {
+    completedStages: string[];
+    recommendedNextAction?: { stageKey?: AiWorkflowStageKey; stageLabel?: string; reason?: string };
+  };
+  updatedAt: string;
 }
 
 interface WorkflowDetail {
   workflow: WorkflowSummary;
-  lead: WorkflowLeadSummary;
+  lead: LeadSummary;
   generations: WorkflowGeneration[];
 }
 
-interface FloorPlanRoom {
-  id?: string;
-  name?: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  polygon?: Array<{ x: number; y: number }>;
-  polygonClosed?: boolean;
-  openings?: Array<{
-    id: string;
-    type: 'DOOR' | 'WINDOW';
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    rotation: number;
-  }>;
-}
-
-const SOURCE_ROLE_OPTIONS: Array<{
-  value: AiWorkflowSourceAssetRole;
-  label: string;
-  hint: string;
-}> = [
-  { value: 'rough_sketch', label: '手稿 / 毛坯图', hint: '适合选风格、出首轮方向。' },
-  { value: 'floor_plan', label: '户型图 / 量房图', hint: '优先复用当前线索下的户型素材。' },
-  { value: 'concept_element', label: '概念元素图', hint: '适合高级提案工具。' },
+const FILTERS: Array<{ key: WorkflowFilter; label: string }> = [
+  { key: 'all', label: '全部' },
+  { key: 'not_started', label: '待开始' },
+  { key: 'review', label: '待选稿' },
+  { key: 'processing', label: '处理中' },
+  { key: 'failed', label: '生成失败' },
+  { key: 'ready', label: '可深化' },
 ];
+
+const QUICK_TOOLS = [
+  { key: 'floor_plan_style', label: '户型表现', description: '彩平、CAD、3D 与手绘户型表现。' },
+  { key: 'furnishing_render', label: '快速风格设计', description: '从正式户型快速生成装修风格图。' },
+  { key: 'soft_furnishing_render', label: '快速软装改造', description: '上传现场图，快速优化软装表达。' },
+] as const;
 
 function formatTime(value?: string) {
   if (!value) return '--';
-  return new Date(value).toLocaleString('zh-CN');
+  return new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-function getGenerationPrompt(generation?: WorkflowGeneration | null) {
-  return generation?.output?.promptUsed || generation?.input?.customPrompt || '';
+function workflowState(workflow: WorkflowSummary): WorkflowFilter {
+  const latest = workflow.latestGeneration;
+  if (!latest || workflow.generationCount === 0) return 'not_started';
+  if (['created', 'pending', 'processing'].includes(latest.status)) return 'processing';
+  if (latest.status === 'failed') return 'failed';
+  if (
+    latest.status === 'succeeded' &&
+    ['base_render', 'soft_furnishing'].includes(latest.stageKey || '') &&
+    !latest.isSelectedBaseline &&
+    workflow.selectedGenerationId !== latest.id
+  ) return 'review';
+  return 'ready';
 }
 
 function readFileAsDataUrl(file: File) {
@@ -199,33 +173,7 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
-async function compressImageFile(file: File) {
-  const dataUrl = await readFileAsDataUrl(file);
-
-  return new Promise<string>((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => {
-      const canvas = document.createElement('canvas');
-      const maxSide = 1600;
-      const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
-      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-      const ctx = canvas.getContext('2d');
-
-      if (!ctx) {
-        resolve(dataUrl);
-        return;
-      }
-
-      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL('image/jpeg', 0.84));
-    };
-    image.onerror = reject;
-    image.src = dataUrl;
-  });
-}
-
-async function readJsonResponse(res: Response) {
+async function readJson(res: Response) {
   try {
     return await res.json();
   } catch {
@@ -233,635 +181,217 @@ async function readJsonResponse(res: Response) {
   }
 }
 
-function getRoomsFromLayoutData(layoutData?: unknown): FloorPlanRoom[] {
-  if (!layoutData) return [];
-  if (Array.isArray(layoutData)) return layoutData as FloorPlanRoom[];
-  if (
-    typeof layoutData === 'object' &&
-    layoutData !== null &&
-    'rooms' in layoutData &&
-    Array.isArray((layoutData as { rooms?: FloorPlanRoom[] }).rooms)
-  ) {
-    return (layoutData as { rooms?: FloorPlanRoom[] }).rooms || [];
-  }
-  return [];
-}
-
-function DemoWorkflowShowcase({
-  demo,
-  onClose,
-  onCopyPrompt,
-}: {
-  demo: AiWorkflowDemoCase;
-  onClose: () => void;
-  onCopyPrompt: (generation?: AiWorkflowDemoGeneration | null) => Promise<void>;
-}) {
-  const getDemoGenerationForStage = (stageKey: AiWorkflowStageKey) =>
-    demo.generations.find((generation) => generation.stageKey === stageKey);
-
-  const sourceTimelineCard = (
-    <div key={`${demo.id}-source`} className="rounded-[24px] border border-zinc-200 bg-white p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="text-sm font-black">起点素材</div>
-            <Badge className="rounded-full border-none bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">
-              演示毛坯图
-            </Badge>
-          </div>
-          <div className="mt-2 text-xs text-muted-foreground">{formatTime(demo.workflow.createdAt)}</div>
-        </div>
-      </div>
-      <PhotoView src={demo.workflow.sourceImage}>
-        <img
-          src={demo.workflow.sourceImage}
-          alt={`${demo.name} 起点素材`}
-          className="mt-4 h-48 w-full cursor-zoom-in rounded-[20px] object-cover"
-        />
-      </PhotoView>
-      <div className="mt-4 text-xs leading-5 text-muted-foreground">
-        这张图是演示工作流的起点。后续每一步都围绕同一空间结构继续推进，专门用来展示“顺序式工作流”的关联感。
-      </div>
-    </div>
-  );
-
-  return (
-    <div className="space-y-6">
-      <div className="overflow-hidden rounded-[32px] border border-amber-200 bg-[linear-gradient(135deg,rgba(251,191,36,0.14),rgba(255,255,255,1))] shadow-sm">
-        <div className="grid gap-6 p-6 lg:grid-cols-[1.05fr_0.95fr]">
-          <div className="space-y-4">
-            <Badge className="rounded-full border-none bg-amber-500 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-white">
-              Demo Workflow
-            </Badge>
-            <div>
-              <h2 className="text-[28px] font-black tracking-tight">{demo.name}</h2>
-              <p className="mt-2 text-base font-medium text-zinc-700">{demo.tagline}</p>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">{demo.summary}</p>
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-2xl bg-white/80 p-4 shadow-sm">
-                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">演示客户</div>
-                <div className="mt-2 text-sm font-bold">{demo.lead.name}</div>
-                <div className="mt-1 text-xs text-muted-foreground">{demo.lead.communityName}</div>
-              </div>
-              <div className="rounded-2xl bg-white/80 p-4 shadow-sm">
-                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">当前阶段</div>
-                <div className="mt-2 text-sm font-bold">
-                  {getWorkflowStageDefinition(demo.workflow.currentStageKey)?.name || demo.workflow.currentStageKey}
-                </div>
-                <div className="mt-1 text-xs text-muted-foreground">{demo.generations.length} 个演示节点</div>
-              </div>
-              <div className="rounded-2xl bg-white/80 p-4 shadow-sm">
-                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">替换提示</div>
-                <div className="mt-2 text-sm font-bold">本地图可替换</div>
-                <div className="mt-1 text-xs text-muted-foreground">改 `workflow-demo.ts` 即可</div>
-              </div>
-            </div>
-            <div className="rounded-[24px] border border-amber-200 bg-white/90 p-4 text-sm leading-6 text-zinc-700">
-              {demo.attraction}
-            </div>
-            <div className="rounded-[24px] border border-zinc-200 bg-white p-4 text-xs leading-5 text-muted-foreground">
-              {demo.replaceHint}
-            </div>
-            <div className="flex flex-wrap gap-3">
-              <Button className="rounded-2xl bg-zinc-950 text-white hover:bg-zinc-800" onClick={onClose}>
-                回到真实工作流
-              </Button>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm">
-              <div className="border-b border-zinc-100 px-6 py-4">
-                <div className="flex items-center gap-2 text-sm font-bold">
-                  <ImageIcon size={16} className="text-muted-foreground" /> 演示起点素材
-                </div>
-              </div>
-              <div className="grid gap-4 p-6 lg:grid-cols-[260px_minmax(0,1fr)]">
-                <PhotoView src={demo.workflow.sourceImage}>
-                  <img
-                    src={demo.workflow.sourceImage}
-                    alt={`${demo.name} 来源图`}
-                    className="h-52 w-full cursor-zoom-in rounded-[24px] object-cover"
-                  />
-                </PhotoView>
-                <div className="space-y-3">
-                  <div>
-                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">来源角色</div>
-                    <div className="mt-2 text-sm font-medium">{demo.workflow.sourceAssetRole}</div>
-                  </div>
-                  <div>
-                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">演示会话</div>
-                    <div className="mt-2 text-sm font-medium">{demo.workflow.title}</div>
-                  </div>
-                  <div className="text-sm leading-6 text-muted-foreground">
-                    你后续可以把这张图替换成 gpt-image-1 或 Nano Banana 生成的真实毛坯图，让演示更像正式产品案例。
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm">
-              <div className="border-b border-zinc-100 px-6 py-4">
-                <div className="flex items-center gap-2 text-sm font-bold">
-                  <Clock size={16} className="text-muted-foreground" /> 演示时间线
-                </div>
-              </div>
-              <div className="max-h-[600px] space-y-4 overflow-y-auto p-4">
-                {sourceTimelineCard}
-                {demo.generations.map((generation) => (
-                  <div key={generation.id} className="rounded-[24px] border border-zinc-200 bg-white p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-sm font-black">
-                            {getWorkflowStageDefinition(generation.stageKey)?.name || generation.stageKey}
-                          </div>
-                          {generation.isSelectedBaseline ? (
-                            <Badge className="rounded-full border-none bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
-                              当前定稿
-                            </Badge>
-                          ) : null}
-                        </div>
-                        <div className="mt-2 text-xs text-muted-foreground">{formatTime(generation.createdAt)}</div>
-                      </div>
-                    </div>
-                    {generation.output?.imageUrl ? (
-                      <PhotoView src={generation.output.imageUrl}>
-                        <img
-                          src={generation.output.imageUrl}
-                          alt={generation.stageKey}
-                          className="mt-4 h-48 w-full cursor-zoom-in rounded-[20px] object-cover"
-                        />
-                      </PhotoView>
-                    ) : null}
-                    <div className="mt-4 flex flex-wrap gap-3">
-                      <Button variant="outline" className="rounded-2xl" onClick={() => onCopyPrompt(generation)}>
-                        <Copy size={14} className="mr-2" />
-                        复制提示词
-                      </Button>
-                      {generation.output?.imageUrl ? (
-                        <Button
-                          variant="ghost"
-                          className="rounded-2xl"
-                          onClick={() => window.open(generation.output?.imageUrl, '_blank')}
-                        >
-                          <ExternalLink size={14} className="mr-2" />
-                          查看产物
-                        </Button>
-                      ) : null}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-violet-100 text-violet-700">
-            <Sparkles size={18} />
-          </div>
-          <div>
-            <h3 className="text-lg font-black">演示步骤总览</h3>
-            <p className="text-sm text-muted-foreground">
-              直接把一条完整的演示链路摆在首页，帮助用户一眼看懂每一步的价值。
-            </p>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          {MAIN_WORKFLOW_STAGES.map((stage, index) => {
-            const latestGeneration = getDemoGenerationForStage(stage.key);
-
-            return (
-              <div key={stage.key} className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm">
-                <div className="grid gap-0 lg:grid-cols-[1.2fr_0.8fr]">
-                  <div className="p-6">
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={cn(
-                          'flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-black text-white',
-                          index === 0 && 'bg-gradient-to-br from-blue-500 to-indigo-600',
-                          index === 1 && 'bg-gradient-to-br from-zinc-700 to-slate-500',
-                          index === 2 && 'bg-gradient-to-br from-emerald-500 to-teal-500',
-                          index === 3 && 'bg-gradient-to-br from-rose-500 to-pink-500',
-                          index === 4 && 'bg-gradient-to-br from-amber-500 to-indigo-700'
-                        )}
-                      >
-                        {index + 1}
-                      </div>
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="text-lg font-black">{stage.name}</h4>
-                          {demo.workflow.currentStageKey === stage.key ? (
-                            <Badge className="rounded-full border-none bg-zinc-950 px-2.5 py-1 text-[11px] font-bold text-white">
-                              演示推进到这里
-                            </Badge>
-                          ) : null}
-                        </div>
-                        <p className="text-sm text-muted-foreground">{stage.description}</p>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 grid gap-3 md:grid-cols-3">
-                      <div className="rounded-2xl bg-zinc-50 p-4">
-                        <div className="text-xs font-black uppercase tracking-[0.16em] text-zinc-400">选择户型图</div>
-                        <div className="mt-2 text-sm font-medium">{stage.inputHint}</div>
-                      </div>
-                      <div className="rounded-2xl bg-zinc-50 p-4">
-                        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">当前产物</div>
-                        <div className="mt-2 text-sm font-medium">{latestGeneration ? stage.outputHint : '尚未演示'}</div>
-                      </div>
-                      <div className="rounded-2xl bg-zinc-50 p-4">
-                        <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">推荐下一步</div>
-                        <div className="mt-2 text-sm font-medium">
-                          {stage.nextRecommendedStage
-                            ? getWorkflowStageDefinition(stage.nextRecommendedStage)?.name
-                            : '流程结束'}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-5 flex flex-wrap items-center gap-3">
-                      <Button variant="outline" className="rounded-2xl" onClick={() => onCopyPrompt(latestGeneration)}>
-                        <Copy size={14} className="mr-2" />
-                        复制提示词
-                      </Button>
-                      {latestGeneration?.output?.imageUrl ? (
-                        <Button
-                          variant="ghost"
-                          className="rounded-2xl"
-                          onClick={() => window.open(latestGeneration.output?.imageUrl, '_blank')}
-                        >
-                          <ExternalLink size={14} className="mr-2" />
-                          查看产物
-                        </Button>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="border-t border-zinc-100 bg-zinc-50 p-6 lg:border-l lg:border-t-0">
-                    {latestGeneration?.output?.imageUrl ? (
-                      <div className="space-y-3">
-                        <PhotoView src={latestGeneration.output.imageUrl}>
-                          <img
-                            src={latestGeneration.output.imageUrl}
-                            alt={stage.name}
-                            className="h-56 w-full cursor-zoom-in rounded-[24px] object-cover shadow-sm"
-                          />
-                        </PhotoView>
-                        <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>{latestGeneration.isSelectedBaseline ? '当前定稿' : '演示产物'}</span>
-                          <span>{formatTime(latestGeneration.createdAt)}</span>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex h-full min-h-[220px] flex-col items-center justify-center rounded-[24px] border border-dashed border-zinc-200 bg-white text-center text-sm text-muted-foreground">
-                        <Layers3 size={20} className="mb-3 text-zinc-400" />
-                        <p>这个步骤还没放演示图。</p>
-                        <p className="mt-1 max-w-[220px] text-xs leading-5">
-                          你后面可以把这一步的本地成图换进来，让整条演示链更完整。
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function AiScenariosPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initialLeadId = searchParams.get('leadId');
-  const initialWorkflowId = searchParams.get('workflowId');
-  const initialDemoId = searchParams.get('demo');
+  const confirmAction = useConfirmDialog();
+  const requestedView = searchParams.get('view');
+  const initialView: WorkbenchView = requestedView === 'quick' || requestedView === 'assistant' ? requestedView : 'workflows';
+  const requestedAction = searchParams.get('action');
+  const initialLeadId = searchParams.get('leadId') || '';
+  const initialWorkflowId = searchParams.get('workflowId') || '';
 
-  const { data: quota, mutate: mutateQuota, isLoading: quotaLoading } = useFetch<AiQuotaData>('/api/ai/quota');
-  const { data: presetsData } = useFetch<AiPreset[]>('/api/ai/presets?type=scenario');
-  const { data: leadsData, mutate: mutateLeads, isLoading: leadsLoading } =
-    useFetch<WorkflowLeadSummary[]>('/api/ai/workflow-leads?limit=50');
-
-  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(initialLeadId);
-  const [selectedDemoId, setSelectedDemoId] = useState<string | null>(initialDemoId);
-  const workflowsUrl = selectedLeadId ? `/api/ai/workflows?leadId=${selectedLeadId}&limit=20` : null;
-  const {
-    data: workflowsData,
-    mutate: mutateWorkflows,
-    isLoading: workflowsLoading,
-  } = useFetch<WorkflowSummary[]>(workflowsUrl);
-
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(initialWorkflowId);
-  const {
-    data: workflowDetail,
-    mutate: mutateWorkflowDetail,
-    isLoading: workflowDetailLoading,
-  } = useFetch<WorkflowDetail>(selectedWorkflowId ? `/api/ai/workflows/${selectedWorkflowId}` : null);
-
-  const [workflowLabel, setWorkflowLabel] = useState('');
+  const [view, setView] = useState<WorkbenchView>(initialView);
+  const [quickAction, setQuickAction] = useState(requestedAction || '');
+  const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<WorkflowFilter>('all');
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState(initialWorkflowId);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState(1);
+  const [wizardLeadId, setWizardLeadId] = useState(initialLeadId);
   const [sourceMode, setSourceMode] = useState<'floor_plan' | 'upload'>('floor_plan');
   const [sourceFloorPlanId, setSourceFloorPlanId] = useState('');
   const [sourceImage, setSourceImage] = useState('');
-  const [sourceAssetRole, setSourceAssetRole] = useState<AiWorkflowSourceAssetRole>('floor_plan');
-  const [creatingWorkflow, setCreatingWorkflow] = useState(false);
-  const [showRecharge, setShowRecharge] = useState(false);
+  const [goalStage, setGoalStage] = useState<AiWorkflowStageKey>('base_render');
+  const [creating, setCreating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const mockImageInputRef = useRef<HTMLInputElement>(null);
-  const [mockingStage, setMockingStage] = useState<AiWorkflowStageKey | null>(null);
 
-  const leads = useMemo(() => leadsData || [], [leadsData]);
-  const selectedDemo = useMemo(() => getAiWorkflowDemoCaseById(selectedDemoId), [selectedDemoId]);
-  const selectedLead = useMemo(
-    () => leads.find((lead) => lead.id === selectedLeadId) || workflowDetail?.lead || null,
-    [leads, selectedLeadId, workflowDetail?.lead]
-  );
-  const workflows = useMemo(
-    () => [...(workflowsData || [])].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)),
-    [workflowsData]
-  );
-  const presets = useMemo(
-    () =>
-      [...(presetsData || [])]
-        .filter((preset) => preset.enabled)
-        .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)),
-    [presetsData]
-  );
+  const workflowsUrl = `/api/ai/workflows?limit=50${search.trim() ? `&q=${encodeURIComponent(search.trim())}` : ''}`;
+  const { data: workflowsData, mutate: mutateWorkflows, isLoading: workflowsLoading } = useFetch<WorkflowSummary[]>(workflowsUrl);
+  const { data: leadsData, isLoading: leadsLoading, mutate: mutateLeads } = useFetch<LeadSummary[]>('/api/ai/workflow-leads?limit=100');
+  const { data: capabilities, mutate: mutateCapabilities } = useFetch<DesignCapabilities>('/api/ai/design-capabilities');
+  const {
+    data: workflowDetail,
+    mutate: mutateWorkflowDetail,
+    isLoading: detailLoading,
+  } = useFetch<WorkflowDetail>(selectedWorkflowId ? `/api/ai/workflows/${selectedWorkflowId}` : null);
 
-  const presetByStage = useMemo(() => {
-    const entries = new Map<AiWorkflowStageKey, AiPreset>();
-    presets.forEach((preset) => {
-      if (preset.workflowStage && preset.workflowCategory === 'main' && !entries.has(preset.workflowStage)) {
-        entries.set(preset.workflowStage, preset);
-      }
-    });
-    return entries;
-  }, [presets]);
-
-  const advancedPresets = useMemo(
-    () => presets.filter((preset) => preset.workflowCategory === 'advanced'),
-    [presets]
-  );
-
-  useEffect(() => {
-    if (initialLeadId) {
-      setSelectedLeadId(initialLeadId);
-    }
-  }, [initialLeadId]);
-
-  useEffect(() => {
-    if (initialDemoId) {
-      setSelectedDemoId(initialDemoId);
-    }
-  }, [initialDemoId]);
-
-  useEffect(() => {
-    if (initialWorkflowId) {
-      setSelectedWorkflowId(initialWorkflowId);
-    }
-  }, [initialWorkflowId]);
-
-  useEffect(() => {
-    if (!selectedLeadId) {
-      setSelectedWorkflowId(null);
-      return;
-    }
-
-    if (!workflows.length) {
-      setSelectedWorkflowId(null);
-      return;
-    }
-
-    if (initialWorkflowId && workflows.some((workflow) => workflow.id === initialWorkflowId)) {
-      setSelectedWorkflowId(initialWorkflowId);
-      return;
-    }
-
-    if (!selectedWorkflowId || !workflows.some((workflow) => workflow.id === selectedWorkflowId)) {
-      setSelectedWorkflowId(workflows[0].id);
-    }
-  }, [initialWorkflowId, selectedLeadId, selectedWorkflowId, workflows]);
-
-  useEffect(() => {
-    if (selectedLead?.floorPlans?.length && !sourceFloorPlanId) {
-      setSourceFloorPlanId(selectedLead.floorPlans[0].id);
-    }
-  }, [selectedLead?.floorPlans, sourceFloorPlanId]);
-
-  const selectedWorkflow =
-    workflowDetail?.workflow || workflows.find((item) => item.id === selectedWorkflowId) || null;
+  const workflows = useMemo(() => {
+    const items = workflowsData || [];
+    return filter === 'all' ? items : items.filter((item) => workflowState(item) === filter);
+  }, [filter, workflowsData]);
+  const leads = leadsData || [];
+  const selectedWizardLead = leads.find((lead) => lead.id === wizardLeadId);
+  const workflow = workflowDetail?.workflow;
   const generations = useMemo(() => workflowDetail?.generations || [], [workflowDetail?.generations]);
+  const selectedGeneration = generations.find((item) => item.isSelectedBaseline || item.id === workflow?.selectedGenerationId);
+  const latestSucceeded = generations.find((item) => item.status === 'succeeded' && item.output?.imageUrl);
+  const heroGeneration = selectedGeneration || latestSucceeded;
+  const scenarioPrice = capabilities?.actions.find((action) => action.key === goalStage)?.credits || 0;
+  const activeGenerationIds = useMemo(
+    () => generations
+      .filter((generation) => ['created', 'pending', 'processing'].includes(generation.status))
+      .map((generation) => generation.id),
+    [generations]
+  );
+
+  useEffect(() => {
+    if (initialLeadId && !initialWorkflowId && workflowsData?.length) {
+      const match = workflowsData.find((item) => item.leadId === initialLeadId);
+      if (match) setSelectedWorkflowId(match.id);
+      else {
+        setWizardLeadId(initialLeadId);
+        setWizardOpen(true);
+      }
+    }
+  }, [initialLeadId, initialWorkflowId, workflowsData]);
+
+  useEffect(() => {
+    if (!selectedWizardLead) return;
+    if (selectedWizardLead.floorPlans.length === 1) {
+      setSourceMode('floor_plan');
+      setSourceFloorPlanId(selectedWizardLead.floorPlans[0].id);
+    } else if (!selectedWizardLead.floorPlans.some((plan) => plan.id === sourceFloorPlanId)) {
+      setSourceFloorPlanId('');
+    }
+  }, [selectedWizardLead, sourceFloorPlanId]);
+
+  useEffect(() => {
+    if (!selectedWorkflowId || !activeGenerationIds.length) return;
+    let cancelled = false;
+    const poll = async () => {
+      await Promise.all(activeGenerationIds.map((id) => fetch(`/api/ai/status/${id}`).catch(() => null)));
+      if (!cancelled) await Promise.all([mutateWorkflowDetail(), mutateWorkflows(), mutateCapabilities()]);
+    };
+    const timer = window.setInterval(poll, 2500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [activeGenerationIds, mutateCapabilities, mutateWorkflowDetail, mutateWorkflows, selectedWorkflowId]);
+
   const workflowRunner = useAiWorkflowRunner({
-    workflowId: selectedWorkflow?.id,
+    workflowId: selectedWorkflowId,
     workflowDetail: workflowDetail as WorkflowRunnerDetail | null,
     fetchDetail: false,
     onAfterAction: async () => {
-      await Promise.all([mutateWorkflowDetail(), mutateWorkflows(), mutateLeads(), mutateQuota()]);
+      await Promise.all([mutateWorkflowDetail(), mutateWorkflows(), mutateCapabilities()]);
     },
+    showSuccessNotification: true,
   });
 
-  const getLatestGenerationForStage = (stageKey: AiWorkflowStageKey) =>
-    generations.find((generation) => generation.stageKey === stageKey);
+  const setWorkbenchView = (nextView: WorkbenchView) => {
+    setView(nextView);
+    setQuickAction('');
+    router.replace(`/ai-studio/scenarios${nextView === 'workflows' ? '' : `?view=${nextView}`}`);
+  };
 
-  const handleLeadChange = (leadId: string | null) => {
-    setSelectedDemoId(null);
-    setSelectedLeadId(leadId);
-    setSelectedWorkflowId(null);
-    setSourceImage('');
+  const selectWorkflow = (id: string) => {
+    setSelectedWorkflowId(id);
+    router.replace(`/ai-studio/scenarios?workflowId=${id}`);
+  };
+
+  const startWizard = (leadId?: string) => {
+    setWizardStep(1);
+    setWizardLeadId(leadId || '');
+    setSourceMode('floor_plan');
     setSourceFloorPlanId('');
-    router.replace(leadId ? `/ai-studio/scenarios?leadId=${leadId}` : '/ai-studio/scenarios');
+    setSourceImage('');
+    setGoalStage('base_render');
+    setWizardOpen(true);
   };
 
-  const handleDemoChange = (demoId: string | null) => {
-    setSelectedDemoId(demoId);
-    if (demoId) {
-      setSelectedLeadId(null);
-      setSelectedWorkflowId(null);
-      router.replace(`/ai-studio/scenarios?demo=${demoId}`);
-      return;
-    }
-
-    router.replace('/ai-studio/scenarios');
-  };
-
-  const handleSelectFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 10 * 1024 * 1024) {
-      notify.error('图片大小不能超过 10MB');
+    if (!file?.type.startsWith('image/')) {
+      notify.error('请选择图片文件');
       return;
     }
-
     try {
-      const compressed = await compressImageFile(file);
-      setSourceImage(compressed);
-    } catch (error) {
-      console.error(error);
-      notify.error('图片读取失败，请重试');
+      setSourceImage(await readFileAsDataUrl(file));
+    } catch {
+      notify.error('读取图片失败');
     }
   };
 
-  const handleCreateWorkflow = async () => {
-    if (!selectedLead) {
-      notify.error('请先选择一条客户线索');
-      return;
-    }
+  const createAndRun = async () => {
+    if (!selectedWizardLead) return notify.error('请先选择客户');
+    if (sourceMode === 'floor_plan' && !sourceFloorPlanId) return notify.error('请选择正式户型');
+    if (sourceMode === 'upload' && !sourceImage) return notify.error('请上传来源图');
+    const action = capabilities?.actions.find((item) => item.key === goalStage);
+    if (!action?.enabled) return notify.error(action?.disabledReason || '当前目标暂不可用');
+    const confirmed = await confirmAction({
+      title: `确认${action.label}？`,
+      description: `将为${selectedWizardLead.name}创建客户方案并执行首个动作，预计使用 ${action.credits} 点。首个成功版本会自动采用，之后重新生成只作为候选。`,
+      confirmText: '创建并开始生成',
+    });
+    if (!confirmed) return;
 
-    let payloadSourceImage = sourceImage;
-    let payloadSourceFloorPlanId: string | undefined;
-    let payloadRole = sourceAssetRole;
-
-    if (sourceMode === 'floor_plan') {
-      const floorPlan = selectedLead.floorPlans.find((item) => item.id === sourceFloorPlanId);
-      if (!floorPlan) {
-        notify.error('请先选择当前线索下的户型图');
-        return;
-      }
-
-      const rooms = getRoomsFromLayoutData(floorPlan.layoutData);
-      if (!rooms.length) {
-        notify.error('当前户型缺少 layoutData，无法生成方案来源图');
-        return;
-      }
-
-      try {
-        const { generateBaseMap } = await import('@/lib/canvasExport');
-        payloadSourceImage = await generateBaseMap(rooms);
-        payloadSourceFloorPlanId = floorPlan.id;
-        payloadRole = 'floor_plan';
-      } catch (error) {
-        console.error(error);
-        notify.error('户型图转换失败，请稍后重试');
-        return;
-      }
-    } else if (!payloadSourceImage) {
-      notify.error('请上传一张参考图');
-      return;
-    }
-
-    setCreatingWorkflow(true);
+    setCreating(true);
+    let createdId = '';
     try {
-      const res = await fetch('/api/ai/workflows', {
+      const createRes = await fetch('/api/ai/workflows', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          leadId: selectedLead.id,
-          workflowLabel: workflowLabel.trim() || undefined,
-          sourceImage: payloadSourceImage,
-          sourceFloorPlanId: payloadSourceFloorPlanId,
-          sourceAssetRole: payloadRole,
+          leadId: selectedWizardLead.id,
+          sourceFloorPlanId: sourceMode === 'floor_plan' ? sourceFloorPlanId : undefined,
+          sourceImage: sourceMode === 'upload' ? sourceImage : undefined,
+          sourceAssetRole: sourceMode === 'floor_plan' ? 'floor_plan' : 'rough_sketch',
         }),
       });
-      const json = await readJsonResponse(res);
+      const created = await readJson(createRes);
+      if (!createRes.ok || !created.success) throw new Error(created.error || '创建方案失败');
+      createdId = created.data.id;
+      setSelectedWorkflowId(createdId);
+      setWizardOpen(false);
+      router.replace(`/ai-studio/scenarios?workflowId=${createdId}`);
+      await Promise.all([mutateWorkflows(), mutateLeads()]);
 
-      if (!res.ok || !json.success) {
-        notify.fromAlert(json.error || '创建方案会话失败');
-        return;
-      }
-
-      setWorkflowLabel('');
-      setSourceImage('');
-      setSourceFloorPlanId(selectedLead.floorPlans[0]?.id || '');
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-
-      setSelectedWorkflowId(json.data.id);
-      await Promise.all([mutateWorkflows(), mutateWorkflowDetail(), mutateLeads(), mutateQuota()]);
-      notify.success('方案会话已创建，并已绑定到当前客户线索');
-    } catch (error) {
-      console.error(error);
-      notify.error('网络异常，请稍后重试');
-    } finally {
-      setCreatingWorkflow(false);
-    }
-  };
-
-  const handleRunPreset = async (preset: AiPreset) => {
-    if (!selectedWorkflow) {
-      notify.error('请先选择一个方案会话');
-      return;
-    }
-
-    if (!preset.workflowStage) {
-      notify.error('当前预设缺少工作流阶段配置');
-      return;
-    }
-
-    const action = workflowRunner.actions.find((item) => item.stageKey === preset.workflowStage);
-    if (!action) {
-      notify.error('当前步骤没有可执行动作');
-      return;
-    }
-
-    await workflowRunner.runAction(action);
-  };
-
-  const handleMockImageSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !mockingStage || !selectedWorkflow) {
-      setMockingStage(null);
-      return;
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-      notify.error('图片大小不能超过 10MB');
-      setMockingStage(null);
-      return;
-    }
-
-    const loadingId = notify.loading(`正在上传 ${getWorkflowStageDefinition(mockingStage)?.name} 的测试图...`);
-
-    try {
-      const compressed = await compressImageFile(file);
-      const res = await fetch(`/api/ai/workflows/${selectedWorkflow.id}`, {
-        method: 'PATCH',
+      const runRes = await fetch(`/api/ai/workflows/${createdId}/run-stage`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'mock-generation',
-          stageKey: mockingStage,
-          imageUrl: compressed,
-          parentGenerationId: resolveWorkflowParentGeneration(mockingStage, selectedWorkflow, generations)?.id,
-          sourceAssetRole: presetByStage.get(mockingStage)?.sourceAssetRole,
-          nextStageKey: presetByStage.get(mockingStage)?.nextRecommendedStage,
-        }),
+        body: JSON.stringify({ stageKey: goalStage, confirmed: true }),
       });
-      const json = await readJsonResponse(res);
-
-      notify.dismiss(loadingId);
-
-      if (!res.ok || !json.success) {
-        notify.fromAlert(json.error || '上传测试图失败');
-        return;
-      }
-
-      await Promise.all([mutateWorkflowDetail(), mutateWorkflows()]);
-      notify.success('测试图已上传并设为该步骤产物');
+      const run = await readJson(runRes);
+      if (!runRes.ok || !run.success) throw new Error(run.error || '首轮生成失败');
+      await Promise.all([mutateWorkflowDetail(), mutateWorkflows(), mutateCapabilities()]);
+      const runStatus = run.data?.generations?.[0]?.status;
+      if (['created', 'pending', 'processing'].includes(runStatus)) notify.info('方案已创建，首轮成果正在后台生成');
+      else notify.success('方案已创建，首轮成果已生成');
     } catch (error) {
-      console.error(error);
-      notify.dismiss(loadingId);
-      notify.error('网络异常，请稍后重试');
+      if (createdId) notify.error(`方案已保留，${error instanceof Error ? error.message : '首轮生成失败'}，可进入方案重试`);
+      else notify.fromAlert(error);
     } finally {
-      if (mockImageInputRef.current) {
-        mockImageInputRef.current.value = '';
-      }
-      setMockingStage(null);
+      setCreating(false);
     }
   };
 
-  const handleSelectBaseline = async (generation: WorkflowGeneration) => {
-    if (!selectedWorkflow) return;
+  const runStage = async (stageKey: AiWorkflowStageKey) => {
+    const runnerAction = workflowRunner.actions.find((item) => item.stageKey === stageKey);
+    if (!runnerAction) return;
+    if (runnerAction.status === 'blocked') return notify.info(runnerAction.disabledReason || '当前步骤暂不可用');
+    const action = capabilities?.actions.find((item) => item.stageKey === stageKey);
+    const confirmed = await confirmAction({
+      title: `确认${action?.label || runnerAction.label}？`,
+      description: `将使用当前方案素材生成新版本，预计使用 ${action?.credits || 0} 点。已有定稿时，新结果不会自动覆盖。`,
+      confirmText: '开始生成',
+    });
+    if (confirmed) await workflowRunner.runAction(runnerAction);
+  };
 
+  const selectBaseline = async (generation: WorkflowGeneration) => {
+    if (!workflow) return;
+    const confirmed = await confirmAction({
+      title: '采用这个版本？',
+      description: '后续软装、提案和灯光都会以这张图为准。',
+      confirmText: '采用此版本',
+    });
+    if (!confirmed) return;
     try {
-      const res = await fetch(`/api/ai/workflows/${selectedWorkflow.id}`, {
+      const res = await fetch(`/api/ai/workflows/${workflow.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -870,989 +400,352 @@ function AiScenariosPageContent() {
           nextStageKey: generation.nextRecommendedStage,
         }),
       });
-      const json = await readJsonResponse(res);
-
-      if (!res.ok || !json.success) {
-        notify.fromAlert(json.error || '设为当前定稿失败');
-        return;
-      }
-
+      const json = await readJson(res);
+      if (!res.ok || !json.success) throw new Error(json.error || '选择版本失败');
       await Promise.all([mutateWorkflowDetail(), mutateWorkflows()]);
-      notify.success('已设为当前定稿，可继续进入下一步');
+      notify.success('已设为当前方案');
     } catch (error) {
-      console.error(error);
-      notify.error('网络异常，请稍后重试');
+      notify.fromAlert(error);
     }
   };
 
-  const handleSetStage = async (stageKey?: AiWorkflowStageKey) => {
-    if (!selectedWorkflow || !stageKey) return;
+  if (view === 'assistant') {
+    return (
+      <div>
+        <WorkbenchTabs view={view} onChange={setWorkbenchView} />
+        <AiDesignerLegacyPage />
+      </div>
+    );
+  }
 
-    try {
-      const res = await fetch(`/api/ai/workflows/${selectedWorkflow.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'set-stage',
-          stageKey,
-        }),
-      });
-      const json = await readJsonResponse(res);
-
-      if (!res.ok || !json.success) {
-        notify.fromAlert(json.error || '切换步骤失败');
-        return;
-      }
-
-      await Promise.all([mutateWorkflowDetail(), mutateWorkflows()]);
-    } catch (error) {
-      console.error(error);
-      notify.error('网络异常，请稍后重试');
+  if (view === 'quick') {
+    const tool = QUICK_TOOLS.find((item) => item.key === quickAction);
+    if (tool) {
+      return (
+        <div>
+          <div className="mx-auto max-w-[1480px] px-6 pt-6">
+            <Button variant="ghost" onClick={() => setQuickAction('')} className="rounded-xl">
+              <ArrowLeft size={16} className="mr-2" />返回快速工具
+            </Button>
+          </div>
+          {quickAction === 'floor_plan_style' ? <AiFloorPlanLegacyPage /> : null}
+          {quickAction === 'furnishing_render' ? <AiFurnishingLegacyPage /> : null}
+          {quickAction === 'soft_furnishing_render' ? <AiSoftFurnishingLegacyPage /> : null}
+        </div>
+      );
     }
-  };
-
-  const handleCopyPrompt = async (generation?: WorkflowGeneration | null) => {
-    const prompt = getGenerationPrompt(generation);
-    if (!prompt) {
-      notify.info('这一步暂时还没有可复制的提示词');
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(prompt);
-      notify.success('提示词已复制到剪贴板');
-    } catch (error) {
-      console.error(error);
-      notify.error('复制失败，请重试');
-    }
-  };
+    return (
+      <main className="mx-auto max-w-[1480px] space-y-8 px-6 py-8">
+        <WorkbenchTabs view={view} onChange={setWorkbenchView} />
+        <div>
+          <h1 className="text-3xl font-black tracking-tight">AI 快速工具</h1>
+          <p className="mt-2 text-sm text-muted-foreground">不需要客户方案时，可以直接生成一次性沟通图。</p>
+        </div>
+        <div className="grid gap-5 md:grid-cols-3">
+          {QUICK_TOOLS.map((item) => (
+            <button key={item.key} type="button" onClick={() => setQuickAction(item.key)} className="rounded-3xl border bg-card p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700"><WandSparkles size={20} /></div>
+              <div className="mt-5 text-lg font-black">{item.label}</div>
+              <div className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</div>
+              <div className="mt-5 flex items-center text-sm font-bold text-emerald-700">打开工具 <ArrowRight size={15} className="ml-2" /></div>
+            </button>
+          ))}
+        </div>
+      </main>
+    );
+  }
 
   return (
     <PhotoProvider>
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.12),_transparent_30%),linear-gradient(180deg,#fffdf7_0%,#ffffff_46%,#fcfcfc_100%)] text-[#171717]">
-      <main className="mx-auto max-w-[1500px] px-6 py-8">
-        <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div className="space-y-3">
-            <Badge className="w-fit rounded-full border-none bg-amber-100 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-amber-700">
-              AI Design Workflow
-            </Badge>
-            <div>
-              <h1 className="text-[30px] font-black tracking-tight">AI 家装签单工作流</h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                先选一条分配给设计师的客户线索，再按“选风格 → 出基准方案 → 深化软装 → 生成提案 → 增强签单”顺序推进。
-              </p>
-            </div>
+      <main className="mx-auto max-w-[1480px] space-y-6 px-6 py-8">
+        <WorkbenchTabs view={view} onChange={setWorkbenchView} />
+
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <Badge className="border-none bg-emerald-100 text-emerald-700">AI 设计工作台</Badge>
+            <h1 className="mt-3 text-3xl font-black tracking-tight">从客户素材到可沟通方案</h1>
+            <p className="mt-2 text-sm text-muted-foreground">选择想得到的成果，系统会自动承接正确素材和当前定稿。</p>
           </div>
-          <div className="lg:max-w-xl lg:flex-1">
-            <AiQuotaBar quota={quota} loading={quotaLoading} onRecharge={() => setShowRecharge(true)} />
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="rounded-2xl border bg-card px-4 py-3 text-sm">
+              <span className="text-muted-foreground">可用点数</span>
+              <span className="ml-2 font-black text-emerald-700">{capabilities?.account.availableBalance ?? '--'}</span>
+            </div>
+            <Button onClick={() => startWizard()} className="rounded-2xl bg-zinc-950 text-white hover:bg-zinc-800"><Plus size={16} className="mr-2" />开始新设计</Button>
           </div>
         </div>
 
-        <div className="mb-6 overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm">
-          <div className="border-b border-zinc-100 px-6 py-4">
-            <div className="flex items-center gap-2 text-sm font-bold">
-              <PlayCircle size={16} className="text-amber-600" /> 演示工作流
-                </div>
-              </div><div className="grid gap-4 p-6 lg:grid-cols-2">
-            {AI_WORKFLOW_DEMO_CASES.map((demo) => {
-              const isActive = selectedDemo?.id === demo.id;
-              return (
-                <button
-                  key={demo.id}
-                  type="button"
-                  onClick={() => handleDemoChange(demo.id)}
-                  className={cn(
-                    'overflow-hidden rounded-[28px] border text-left transition',
-                    isActive
-                      ? 'border-zinc-950 bg-zinc-950 text-white'
-                      : 'border-zinc-200 bg-zinc-50 hover:border-zinc-300 hover:bg-white'
-                  )}
-                >
-                  <div className="grid gap-0 md:grid-cols-[220px_minmax(0,1fr)]">
-                    <PhotoView src={demo.workflow.sourceImage}>
-                      <img
-                        src={demo.workflow.sourceImage}
-                        alt={demo.name}
-                        className="h-full min-h-[180px] w-full cursor-zoom-in object-cover"
-                      />
-                    </PhotoView>
-                    <div className="space-y-3 p-5">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-base font-black">{demo.name}</div>
-                        {isActive ? (
-                          <Badge className="rounded-full border-none bg-white/15 text-white">演示中</Badge>
-                        ) : (
-                                  <Badge variant="outline" className="rounded-full bg-zinc-100 font-bold">
-                                    主方案
-                                  </Badge>
-                        )}
-                      </div>
-                      <div className={cn('text-sm font-medium', isActive ? 'text-zinc-200' : 'text-zinc-700')}>
-                        {demo.tagline}
-                      </div>
-                      <div className={cn('text-sm leading-6', isActive ? 'text-zinc-300' : 'text-muted-foreground')}>
-                        {demo.summary}
-                      </div>
-                      <div className={cn('text-xs leading-5', isActive ? 'text-zinc-400' : 'text-muted-foreground')}>
-                        {demo.replaceHint}
-                      </div>
-                    </div>
+        {!selectedWorkflowId ? (
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+            <section className="space-y-4">
+              <div className="rounded-3xl border bg-card p-5 shadow-sm">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+                  <div className="relative flex-1">
+                    <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索客户、手机号或小区" className="h-11 rounded-2xl pl-10" />
                   </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {selectedDemo ? (
-          <DemoWorkflowShowcase
-            demo={selectedDemo}
-            onClose={() => handleDemoChange(null)}
-            onCopyPrompt={handleCopyPrompt}
-          />
-        ) : (
-          <>
-
-        <div className="mb-6 rounded-[28px] border border-zinc-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <div className="text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">当前客户线索</div>
-              <div className="mt-2 flex flex-wrap gap-3">
-                {leadsLoading ? (
-                  <div className="text-sm text-muted-foreground">
-                    <Loader2 className="mr-2 inline animate-spin" size={14} />
-                    正在线索中同步可发起方案的客户...
-                  </div>
-                ) : leads.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">暂无可用线索，需要先给当前设计师分配客户线索。</div>
-                ) : (
-                  leads.map((lead) => (
-                    <button
-                      key={lead.id}
-                      type="button"
-                      onClick={() => handleLeadChange(lead.id)}
-                      className={cn(
-                        'rounded-2xl border px-4 py-3 text-left transition',
-                        selectedLeadId === lead.id
-                          ? 'border-zinc-950 bg-zinc-950 text-white'
-                          : 'border-zinc-200 bg-zinc-50 text-zinc-700 hover:border-zinc-300 hover:bg-white'
-                      )}
-                    >
-                      <div className="text-sm font-bold">查看最近产物</div>
-                      <div className={cn('mt-1 text-xs', selectedLeadId === lead.id ? 'text-zinc-300' : 'text-muted-foreground')}>
-                        {lead.communityName || lead.phone} · {lead.workflowCount} 个方案会话</div>
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-3">
-              <Button variant="outline" className="rounded-2xl" onClick={() => router.push('/leads')}>
-                返回线索列表
-              </Button>
-              {selectedLeadId ? (
-                <Button variant="ghost" className="rounded-2xl" onClick={() => handleLeadChange(null)}>
-                  取消当前线索
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        {!selectedLead ? (
-          <div className="rounded-[28px] border border-dashed border-zinc-300 bg-white/80 px-8 py-20 text-center shadow-sm">
-            <div className="mx-auto max-w-xl space-y-3">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
-                <Wand2 size={24} />
-              </div>
-              <h2 className="text-2xl font-black">先选择一条客户线索，再开始设计工作流</h2>
-              <p className="text-sm leading-6 text-muted-foreground">
-                工作流不再支持匿名会话。所有方案、时间线和生成记录都会绑定到当前设计师的客户线索上。
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-[340px_minmax(0,1fr)_360px]">
-            <section className="space-y-5">
-              <div className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm">
-                <div className="border-b border-zinc-100 bg-zinc-950 px-6 py-5 text-white">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10">
-                      <Phone size={20} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-bold">{selectedLead.name}</p>
-                      <p className="text-xs text-zinc-400">
-                        {selectedLead.phone} · {selectedLead.communityName || '未登记小区'}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4 p-6 text-sm">
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">客户状态</div>
-                    <div className="mt-2 font-bold">{selectedLead.status}</div>
-                  </div>
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">风格偏好</div>
-                    <div className="mt-2 font-bold">{selectedLead.stylePreference || '待沟通'}</div>
-                  </div>
-                  <div className="rounded-2xl bg-zinc-50 p-4">
-                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">户型素材</div>
-                    <div className="mt-2 font-bold">{selectedLead.floorPlans.length} 份</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm">
-                <div className="border-b border-zinc-100 px-6 py-4">
-                  <div className="flex items-center gap-2 text-sm font-bold">
-                    <FolderPlus size={16} className="text-muted-foreground" /> 新建方案会话
-                  </div>
-                </div>
-
-                <div className="space-y-4 p-6">
-                  <div>
-                    <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">
-                      会话标签
-                    </label>
-                    <input
-                      value={workflowLabel}
-                      onChange={(event) => setWorkflowLabel(event.target.value)}
-                      placeholder="例如：现代首轮 / 奶油备选 / 夜景增强版"
-                      className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-zinc-400"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">
-                      来源方式
-                    </label>
-                    <div className="grid gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSourceMode('floor_plan');
-                          setSourceAssetRole('floor_plan');
-                        }}
-                        className={cn(
-                          'rounded-2xl border px-4 py-3 text-left transition',
-                          sourceMode === 'floor_plan'
-                            ? 'border-zinc-950 bg-zinc-950 text-white'
-                            : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300'
-                        )}
-                      >
-                        <div className="text-sm font-bold">使用当前线索的户型图</div>
-                        <div className={cn('mt-1 text-xs', sourceMode === 'floor_plan' ? 'text-zinc-300' : 'text-muted-foreground')}>
-                          优先从 Lead.floorPlanIds 继续设计，自动生成工作流来源图。
-                        </div>
+                  <div className="flex flex-wrap gap-2">
+                    {FILTERS.map((item) => (
+                      <button key={item.key} type="button" onClick={() => setFilter(item.key)} className={cn('rounded-full px-3 py-2 text-xs font-bold transition', filter === item.key ? 'bg-zinc-950 text-white' : 'bg-muted text-muted-foreground hover:text-foreground')}>
+                        {item.label}
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSourceMode('upload');
-                          setSourceAssetRole('rough_sketch');
-                        }}
-                        className={cn(
-                          'rounded-2xl border px-4 py-3 text-left transition',
-                          sourceMode === 'upload'
-                            ? 'border-zinc-950 bg-zinc-950 text-white'
-                            : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300'
-                        )}
-                      >
-                        <div className="text-sm font-bold">上传线索参考图</div>
-                        <div className={cn('mt-1 text-xs', sourceMode === 'upload' ? 'text-zinc-300' : 'text-muted-foreground')}>
-                          当线索没有可用户型图时，补一张参考图继续发起方案。
-                        </div>
-                      </button>
-                    </div>
+                    ))}
                   </div>
+                </div>
+              </div>
 
-                  {sourceMode === 'floor_plan' ? (
-                    <div>
-                      <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">
-                        选择户型图
-                      </label>
-                      <div className="grid gap-2">
-                        {selectedLead.floorPlans.length === 0 ? (
-                          <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 p-4 text-sm text-muted-foreground">
-                            当前线索暂无户型图，请切换为上传参考图后再创建方案。
+              {workflowsLoading ? (
+                <div className="flex min-h-80 items-center justify-center rounded-3xl border bg-card text-sm text-muted-foreground"><Loader2 size={16} className="mr-2 animate-spin" />正在加载客户方案...</div>
+              ) : workflows.length ? (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {workflows.map((item) => {
+                    const state = workflowState(item);
+                    const preview = item.selectedGeneration?.output?.imageUrl || item.latestGeneration?.output?.imageUrl || item.sourceImage;
+                    return (
+                      <button key={item.id} type="button" onClick={() => selectWorkflow(item.id)} className="group overflow-hidden rounded-3xl border bg-card text-left shadow-sm transition hover:border-zinc-300 hover:shadow-md">
+                        <div className="grid min-h-48 grid-cols-[148px_minmax(0,1fr)]">
+                          <div className="bg-muted">
+                            {preview ? <img src={preview} alt={item.title} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-muted-foreground"><ImageIcon size={24} /></div>}
                           </div>
-                        ) : (
-                          selectedLead.floorPlans.map((plan) => (
-                            <button
-                              key={plan.id}
-                              type="button"
-                              onClick={() => setSourceFloorPlanId(plan.id)}
-                              className={cn(
-                                'rounded-2xl border px-4 py-3 text-left transition',
-                                sourceFloorPlanId === plan.id
-                                  ? 'border-zinc-950 bg-zinc-950 text-white'
-                                  : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300'
-                              )}
-                            >
-                              <div className="text-sm font-bold">{plan.name || '未命名户型图'}</div>
-                              <div className={cn('mt-1 text-xs', sourceFloorPlanId === plan.id ? 'text-zinc-300' : 'text-muted-foreground')}>
-                                {plan.createdAt ? formatTime(plan.createdAt) : '已关联到当前客户线索'}
-                              </div>
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div>
-                        <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">
-                          来源类型
-                        </label>
-                        <div className="grid gap-2">
-                          {SOURCE_ROLE_OPTIONS.filter((item) => item.value !== 'floor_plan').map((option) => (
-                            <button
-                              key={option.value}
-                              type="button"
-                              onClick={() => setSourceAssetRole(option.value)}
-                              className={cn(
-                                'rounded-2xl border px-4 py-3 text-left transition',
-                                sourceAssetRole === option.value
-                                  ? 'border-zinc-950 bg-zinc-950 text-white'
-                                  : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-300'
-                              )}
-                            >
-                              <div className="text-sm font-bold">{option.label}</div>
-                              <div className={cn('mt-1 text-xs', sourceAssetRole === option.value ? 'text-zinc-300' : 'text-muted-foreground')}>
-                                {option.hint}
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="mb-2 block text-xs font-black uppercase tracking-[0.18em] text-muted-foreground">
-                          上传参考图
-                        </label>
-                        <input
-                          ref={fileInputRef}
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={handleSelectFile}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className={cn(
-                            'flex w-full items-center justify-center rounded-[24px] border-2 border-dashed px-4 py-6 transition',
-                            sourceImage
-                              ? 'border-zinc-200 bg-zinc-50'
-                              : 'border-zinc-300 bg-zinc-50/80 hover:border-zinc-400 hover:bg-zinc-50'
-                          )}
-                        >
-                          {sourceImage ? (
-                            <div className="w-full space-y-3" onClick={(e) => e.stopPropagation()}>
-                              <PhotoView src={sourceImage}>
-                                <img
-                                  src={sourceImage}
-                                  alt="线索参考图"
-                                  className="h-44 w-full cursor-zoom-in rounded-2xl object-cover"
-                                />
-                              </PhotoView>
-                              <div className="text-xs text-muted-foreground">
-                                这张图会作为当前客户线索下方案会话的来源素材。
-                              </div>
+                          <div className="flex min-w-0 flex-col p-5">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="truncate font-black">{item.title}</div>
+                              <StateBadge state={state} />
                             </div>
-                          ) : (
-                            <div className="space-y-2 text-center text-sm text-muted-foreground">
-                              <ImageIcon className="mx-auto" size={20} />
-                              <div>点击上传一张参考图</div>
+                            <div className="mt-2 text-sm text-muted-foreground">{item.lead?.communityName || item.lead?.phone || '已关联客户'}</div>
+                            <div className="mt-5 rounded-2xl bg-muted/60 p-3 text-xs">
+                              <div className="font-bold">下一步：{item.stageState?.recommendedNextAction?.stageLabel || item.currentStageLabel || '查看方案'}</div>
+                              <div className="mt-1 text-muted-foreground">{item.generationCount} 个版本 · {formatTime(item.updatedAt)}</div>
                             </div>
-                          )}
-                        </button>
-                      </div>
-                    </>
-                  )}
-
-                  <Button
-                    onClick={handleCreateWorkflow}
-                    disabled={creatingWorkflow || (sourceMode === 'floor_plan' && selectedLead.floorPlans.length === 0)}
-                    className="w-full rounded-2xl bg-zinc-950 text-white hover:bg-zinc-800"
-                  >
-                    {creatingWorkflow ? <Loader2 className="mr-2 animate-spin" size={16} /> : null}
-                    创建并绑定到当前线索
-                  </Button>
-                </div>
-              </div>
-
-              <div className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm">
-                <div className="border-b border-zinc-100 px-6 py-4">
-                  <div className="flex items-center gap-2 text-sm font-bold">
-                    <Layers3 size={16} className="text-muted-foreground" /> 该线索下的方案会话
-                  </div>
-                </div>
-                <div className="space-y-3 p-4">
-                  {workflowsLoading ? (
-                    <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/70 p-6 text-sm text-muted-foreground">
-                      <Loader2 className="mr-2 inline animate-spin" size={14} />
-                      正在加载该线索下的方案会话...
-                    </div>
-                  ) : workflows.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/70 p-6 text-sm text-muted-foreground">
-                      这条线索还没有方案会话。先用左侧卡片创建第一个方案。
-                    </div>
-                  ) : (
-                    workflows.map((workflow) => (
-                      <button
-                        key={workflow.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedWorkflowId(workflow.id);
-                          router.replace(`/ai-studio/scenarios?leadId=${selectedLeadId}&workflowId=${workflow.id}`);
-                        }}
-                        className={cn(
-                          'w-full rounded-[24px] border p-4 text-left transition',
-                          selectedWorkflowId === workflow.id
-                            ? 'border-zinc-950 bg-zinc-950 text-white'
-                            : 'border-zinc-200 bg-white text-zinc-800 hover:border-zinc-300 hover:bg-zinc-50'
-                        )}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <div className="text-sm font-black">{workflow.title}</div>
-                              {workflow.isPrimary ? (
-                                <Badge className="rounded-full border-none bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                                  主方案
-                                </Badge>
-                              ) : null}
-                            </div>
-                            <div className={cn('mt-1 text-xs', selectedWorkflowId === workflow.id ? 'text-zinc-300' : 'text-muted-foreground')}>
-                              {workflow.generationCount} 个产物 · {workflow.currentStageLabel || '待推进'}
-                            </div>
+                            <div className="mt-auto pt-4 text-sm font-bold text-emerald-700">继续设计 <ArrowRight size={14} className="ml-1 inline" /></div>
                           </div>
-                          <ArrowRight size={14} className={selectedWorkflowId === workflow.id ? 'text-zinc-300' : 'text-zinc-400'} />
                         </div>
                       </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            </section>
-
-            <section className="space-y-5">
-              {!selectedWorkflow ? (
-                <div className="rounded-[28px] border border-dashed border-zinc-300 bg-white px-8 py-20 text-center shadow-sm">
-                  <div className="mx-auto max-w-xl space-y-3">
-                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
-                      <Sparkles size={24} />
-                    </div>
-                    <h2 className="text-2xl font-black">先进入一个方案会话</h2>
-                    <p className="text-sm leading-6 text-muted-foreground">
-                      选中左侧某个方案会话后，系统会自动承接这条客户线索下的来源图、定稿图和时间线。
-                    </p>
-                  </div>
+                    );
+                  })}
                 </div>
               ) : (
-                <>
-                  <div className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm">
-                    <div className="border-b border-zinc-100 bg-zinc-950 px-6 py-5 text-white">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-bold">{selectedWorkflow.title}</p>
-                          <p className="text-xs text-zinc-400">
-                            绑定线索：{selectedLead.name} · 推荐推进到 {selectedWorkflow.currentStageLabel || '下一步'}
-                          </p>
-                        </div>
-                        <Button variant="outline" className="rounded-2xl" onClick={() => router.push(`/ai-studio/scenarios/${selectedWorkflow.id}`)}>
-                          查看详情
-                        </Button>
-                      </div>
-                    </div>
-
-                  <div className="space-y-4 p-6">
-                      {(selectedWorkflow.sourceImage || selectedWorkflow.sourceFloorPlanId) && (
-                        <div className="overflow-hidden rounded-[28px] border border-zinc-200 bg-zinc-50">
-                          <div className="border-b border-zinc-100 px-6 py-4">
-                            <div className="flex items-center gap-2 text-sm font-bold">
-                              <ImageIcon size={16} className="text-muted-foreground" /> 来源素材
-                            </div>
-                          </div>
-                          <div className="grid gap-4 p-6 lg:grid-cols-[280px_minmax(0,1fr)]">
-                            {selectedWorkflow.sourceImage ? (
-                              <PhotoView src={selectedWorkflow.sourceImage}>
-                                <img
-                                  src={selectedWorkflow.sourceImage}
-                                  alt="方案来源素材"
-                                  className="h-48 w-full cursor-zoom-in rounded-[24px] object-cover shadow-sm"
-                                />
-                              </PhotoView>
-                            ) : (
-                              <div className="flex h-48 items-center justify-center rounded-[24px] border border-dashed border-zinc-200 bg-white text-sm text-muted-foreground">
-                                当前会话来源于线索户型图
-                              </div>
-                            )}
-                            <div className="space-y-3">
-                              <div>
-                                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                                  来源角色
-                                </div>
-                                <div className="mt-2 text-sm font-medium">{selectedWorkflow.sourceAssetRole}</div>
-                              </div>
-                              <div>
-                                <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                                  绑定方式
-                                </div>
-                                <div className="mt-2 font-bold">{selectedWorkflow.sourceFloorPlanId ? '来自当前客户线索的户型图' : '来自设计师上传的原始参考图'}</div>
-                              </div>
-                              <div className="text-sm leading-6 text-muted-foreground">
-                                这张图是整个方案会话的起点素材。后续每一步都围绕它和上一轮定稿继续生成，避免十个场景彼此割裂。
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {MAIN_WORKFLOW_STAGES.map((stage, index) => {
-                        const preset = presetByStage.get(stage.key);
-                        const latestGeneration = getLatestGenerationForStage(stage.key);
-                        const isCurrentStage = selectedWorkflow.currentStageKey === stage.key;
-                        const runnerAction = workflowRunner.actions.find((action) => action.stageKey === stage.key);
-                        const isRunning = workflowRunner.runningStageKey === stage.key;
-
-                        return (
-                          <div
-                            key={stage.key}
-                            className={cn(
-                              'overflow-hidden rounded-[28px] border bg-white shadow-sm transition',
-                              isCurrentStage ? 'border-zinc-950 ring-1 ring-zinc-950' : 'border-zinc-200'
-                            )}
-                          >
-                            <div className="grid gap-0 lg:grid-cols-[1.2fr_0.8fr]">
-                              <div className="p-6">
-                                <div className="flex items-center gap-3">
-                                  <div
-                                    className={cn(
-                                      'flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-black text-white',
-                                      index === 0 && 'bg-gradient-to-br from-blue-500 to-indigo-600',
-                                      index === 1 && 'bg-gradient-to-br from-zinc-700 to-slate-500',
-                                      index === 2 && 'bg-gradient-to-br from-emerald-500 to-teal-500',
-                                      index === 3 && 'bg-gradient-to-br from-rose-500 to-pink-500',
-                                      index === 4 && 'bg-gradient-to-br from-amber-500 to-indigo-700'
-                                    )}
-                                  >
-                                    {index + 1}
-                                  </div>
-                                  <div>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <h4 className="text-lg font-black">{stage.name}</h4>
-                                      {isCurrentStage ? (
-                                        <Badge className="rounded-full border-none bg-zinc-950 px-2.5 py-1 text-[11px] font-bold text-white">
-                                          推荐下一步
-                                        </Badge>
-                                      ) : null}
-                                    </div>
-                                    <p className="text-sm text-muted-foreground">{stage.description}</p>
-                                  </div>
-                                </div>
-
-                                <div className="mt-5 grid gap-3 md:grid-cols-3">
-                                  <div className="rounded-2xl bg-zinc-50 p-4">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                                      所需输入
-                                    </div>
-                                    <div className="mt-2 text-sm font-medium">{stage.inputHint}</div>
-                                  </div>
-                                  <div className="rounded-2xl bg-zinc-50 p-4">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                                      当前产物
-                                    </div>
-                                    <div className="mt-2 text-xs font-bold">{latestGeneration?.status === 'succeeded' ? stage.outputHint : '尚未生成'}</div>
-                                  </div>
-                                  <div className="rounded-2xl bg-zinc-50 p-4">
-                                    <div className="text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                                      推荐下一步
-                                    </div>
-                                    <div className="mt-2 text-xs font-bold">
-                                    {stage.nextRecommendedStage
-                                        ? getWorkflowStageDefinition(stage.nextRecommendedStage)?.name
-                                        : '流程结束'}
-                                  </div>
-                                  </div>
-                                </div>
-
-                                <div className="mt-5 flex flex-wrap items-center gap-3">
-                                  {runnerAction ? (
-                                    <WorkflowStageActionButton
-                                      action={{
-                                        ...runnerAction,
-                                        label: latestGeneration?.status === 'succeeded'
-                                          ? `重新${stage.actionLabel}`
-                                          : runnerAction.label,
-                                      }}
-                                      isRunning={isRunning}
-                                      onRun={() => preset && handleRunPreset(preset)}
-                                      className="rounded-2xl bg-zinc-950 px-5 text-white hover:bg-zinc-800"
-                                    />
-                                  ) : null}
-
-                                  <Button
-                                    variant="outline"
-                                    className="rounded-2xl"
-                                    disabled={!preset || isRunning || !runnerAction || runnerAction.status === 'blocked'}
-                                    onClick={() => {
-                                      setMockingStage(stage.key);
-                                      mockImageInputRef.current?.click();
-                                    }}
-                                  >
-                                    上传测试图
-                                  </Button>
-
-                                  {latestGeneration?.status === 'succeeded' ? (
-                                    <>
-                                      <Button
-                                        variant="outline"
-                                        className="rounded-2xl"
-                                        onClick={() => latestGeneration.output?.imageUrl && window.open(latestGeneration.output.imageUrl, '_blank')}
-                                      >
-                                        <ExternalLink size={14} className="mr-2" />
-                                        查看产物
-                                      </Button>
-                                      <Button
-                                        variant="outline"
-                                        className="rounded-2xl"
-                                        onClick={() => handleCopyPrompt(latestGeneration)}
-                                      >
-                                        <div className="flex items-center gap-2">
-                                          <Copy size={12} />
-                                          复制提示词
-                                        </div>
-                                      </Button>
-                                      {(stage.key === 'base_render' || stage.key === 'soft_furnishing') && (
-                                        <Button
-                                          variant="outline"
-                                          className="rounded-2xl"
-                                          onClick={() => handleSelectBaseline(latestGeneration)}
-                                        >
-                                          <div className="flex items-center gap-2">
-                                            <CheckCircle size={12} />
-                                            设为当前定稿
-                                          </div>
-                                        </Button>
-                                      )}
-                                    </>
-                                  ) : null}
-                                </div>
-                              </div>
-
-                              <div className="border-t border-zinc-100 bg-zinc-50 p-6 lg:border-l lg:border-t-0">
-                                {workflowDetailLoading && selectedWorkflowId === selectedWorkflow.id ? (
-                                  <div className="flex h-full min-h-[220px] items-center justify-center text-sm text-muted-foreground">
-                                    <Loader2 className="mr-2 animate-spin" size={16} /> 正在同步步骤结果...
-                                  </div>
-                                ) : latestGeneration?.output?.imageUrl ? (
-                                  <div className="space-y-3">
-                                    <PhotoView src={latestGeneration.output.imageUrl}>
-                                      <img
-                                        src={latestGeneration.output.imageUrl}
-                                        alt={stage.name}
-                                        className="h-56 w-full cursor-zoom-in rounded-[24px] object-cover shadow-sm"
-                                      />
-                                    </PhotoView>
-                                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                      <span>{latestGeneration.isSelectedBaseline ? '当前定稿' : '演示产物'}</span>
-                                      <span>{formatTime(latestGeneration.createdAt)}</span>
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="flex h-full min-h-[220px] flex-col items-center justify-center rounded-[24px] border border-dashed border-zinc-200 bg-white text-center text-sm text-muted-foreground">
-                                    <Layers3 size={20} className="mb-3 text-zinc-400" />
-                                    <p>这个步骤还没有产物。</p>
-                                    <p className="mt-1 max-w-[220px] text-xs leading-5">
-                                      生成后会自动沉淀到当前线索和方案会话里，右侧时间线也会同步记录。
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-violet-100 text-violet-700">
-                        <Sparkles size={18} />
-                      </div>
-                      <div>
-                        <h3 className="text-lg font-black">高级工具</h3>
-                        <p className="text-sm text-muted-foreground">不占主流程位置，但仍然承接当前线索与定稿方案。</p>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 md:grid-cols-2">
-                      {ADVANCED_WORKFLOW_TOOLS.map((tool) => {
-                        const preset = advancedPresets.find((item) => item.workflowStage === tool.key);
-                        const latestGeneration = getLatestGenerationForStage(tool.key);
-                        const runnerAction = workflowRunner.actions.find((action) => action.stageKey === tool.key);
-                        const isRunning = workflowRunner.runningStageKey === tool.key;
-
-                        return (
-                          <div key={tool.key} className="rounded-[28px] border border-zinc-200 bg-white p-5 shadow-sm">
-                            <div className="flex items-start justify-between gap-4">
-                              <div>
-                                <h4 className="text-base font-black">{tool.name}</h4>
-                                <p className="mt-2 text-sm leading-6 text-muted-foreground">{tool.description}</p>
-                              </div>
-                              <Badge variant="outline" className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.14em]">
-                                高级
-                              </Badge>
-                            </div>
-                            <div className="py-8 text-center text-sm text-muted-foreground">
-                        当前会话还没有产物。先从“选风格”或“出基准方案”开始。
-                      </div>
-                            <div className="mt-4 text-xs text-muted-foreground">输入：{tool.inputHint}</div>
-                            <div className="mt-4 flex flex-wrap gap-3">
-                              {runnerAction ? (
-                                <WorkflowStageActionButton
-                                  action={{
-                                    ...runnerAction,
-                                    label: preset?.name || runnerAction.label,
-                                  }}
-                                  isRunning={isRunning}
-                                  onRun={() => preset && handleRunPreset(preset)}
-                                  className="rounded-2xl border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50"
-                                />
-                              ) : null}
-
-                              <Button
-                                variant="outline"
-                                className="rounded-2xl"
-                                disabled={!preset || isRunning || !runnerAction || runnerAction.status === 'blocked'}
-                                onClick={() => {
-                                  setMockingStage(tool.key);
-                                  mockImageInputRef.current?.click();
-                                }}
-                              >
-                                上传测试图
-                              </Button>
-
-                              {latestGeneration?.output?.imageUrl ? (
-                                <>
-                                  <Button
-                                    variant="ghost"
-                                    className="rounded-2xl"
-                                    onClick={() => window.open(latestGeneration.output?.imageUrl, '_blank')}
-                                  >
-                                    <ExternalLink size={14} className="mr-2" />
-                                    查看最近产物
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    className="rounded-2xl"
-                                    onClick={() => handleCopyPrompt(latestGeneration)}
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <Copy size={12} />
-                                      复制提示词
-                                    </div>
-                                  </Button>
-                                </>
-                              ) : null}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </>
+                <div className="rounded-3xl border border-dashed bg-card px-8 py-20 text-center">
+                  <Users size={30} className="mx-auto text-emerald-600" />
+                  <h2 className="mt-4 text-xl font-black">还没有匹配的客户方案</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">从客户和素材开始，选择本次想获得的成果。</p>
+                  <Button onClick={() => startWizard()} className="mt-6 rounded-2xl"><Plus size={16} className="mr-2" />开始新设计</Button>
+                </div>
               )}
             </section>
 
-            <section className="space-y-5">
-              <div className="overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-sm">
-                <div className="border-b border-zinc-100 px-6 py-4">
-                  <div className="flex items-center gap-2 text-sm font-bold">
-                    <Clock size={16} className="text-muted-foreground" /> 会话时间线
+            <aside className="space-y-4">
+              <div className="rounded-3xl border bg-card p-6 shadow-sm">
+                <div className="text-sm font-black">现在可以做什么</div>
+                <div className="mt-4 space-y-3 text-sm text-muted-foreground">
+                  <p>• 新客户：直接生成风格方向或空间效果。</p>
+                  <p>• 已有方案：采用候选版本后继续软装和提案。</p>
+                  <p>• 现场小程序成果：会自动出现在同一客户方案中。</p>
+                </div>
+              </div>
+            </aside>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <Button variant="ghost" className="rounded-xl px-0 hover:bg-transparent" onClick={() => { setSelectedWorkflowId(''); router.replace('/ai-studio/scenarios'); }}><ArrowLeft size={16} className="mr-2" />返回客户方案</Button>
+            {detailLoading || !workflowDetail || !workflow ? (
+              <div className="flex min-h-[55vh] items-center justify-center rounded-3xl border bg-card text-sm text-muted-foreground"><Loader2 size={18} className="mr-2 animate-spin" />正在读取方案...</div>
+            ) : (
+              <>
+                <div className="rounded-3xl border bg-card p-5 shadow-sm">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h2 className="text-2xl font-black">{workflow.title}</h2>
+                        <Badge variant="outline">{workflowDetail.lead.name}</Badge>
+                        {heroGeneration?.channel === 'miniprogram' ? <Badge className="border-none bg-emerald-100 text-emerald-700">来自小程序</Badge> : null}
+                      </div>
+                      <p className="mt-2 text-sm text-muted-foreground">{workflowDetail.lead.communityName || workflowDetail.lead.phone} · {workflow.sourceFloorPlanId ? '正式户型' : '上传来源图'}</p>
+                    </div>
+                    <Button variant="outline" className="rounded-2xl" onClick={() => setTimelineOpen(true)}><Clock3 size={16} className="mr-2" />全部时间线</Button>
+                  </div>
+                  <div className="mt-5 grid grid-cols-5 gap-2">
+                    {MAIN_WORKFLOW_STAGES.map((stage, index) => {
+                      const completed = generations.some((generation) => generation.stageKey === stage.key && generation.status === 'succeeded');
+                      const current = workflow.currentStageKey === stage.key;
+                      return (
+                        <div key={stage.key} className={cn('rounded-2xl px-3 py-3 text-center text-xs font-bold', current ? 'bg-zinc-950 text-white' : completed ? 'bg-emerald-100 text-emerald-700' : 'bg-muted text-muted-foreground')}>
+                          <div>{completed ? <Check size={14} className="mx-auto mb-1" /> : index + 1}</div>
+                          <div className="truncate">{stage.name}</div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
-                <div className="max-h-[1320px] space-y-4 overflow-y-auto p-4">
-                  {!selectedWorkflow ? (
-                    <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/70 p-6 text-sm text-muted-foreground">
-                      选中一个方案会话后，这里会按时间顺序展示每一步产物、状态和推荐下一步。
-                    </div>
-                  ) : workflowDetailLoading ? (
-                    <div className="flex items-center justify-center py-20 text-sm text-muted-foreground">
-                      <Loader2 className="mr-2 animate-spin" size={16} /> 正在加载时间线...
-                    </div>
-                  ) : generations.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/70 p-6 text-sm text-muted-foreground">
-                      当前会话还没有产物。先从“选风格”或“出基准方案”开始。
-                    </div>
-                  ) : (
-                    <>
-                      {selectedWorkflow.sourceImage ? (
-                        <div key="source-image" className="rounded-[24px] border border-zinc-200 bg-white p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="flex flex-wrap items-center gap-2">
-                                <div className="text-sm font-bold">起点素材</div>
-                                <Badge className="rounded-full border-none bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">
-                                  毛坯图 / 参考图
-                                </Badge>
-                              </div>
-                              <div className="mt-2 text-xs text-muted-foreground">{formatTime(selectedWorkflow.createdAt)}</div>
-                            </div>
-                          </div>
-                          <PhotoView src={selectedWorkflow.sourceImage}>
-                            <img
-                              src={selectedWorkflow.sourceImage}
-                              alt="起点素材"
-                              className="mt-4 h-48 w-full cursor-zoom-in rounded-[20px] object-cover"
-                            />
-                          </PhotoView>
-                          <div className="mt-4 text-xs leading-5 text-muted-foreground">
-                            当前方案会话从这张来源图开始，后续所有步骤都会承接这条线索下的同一空间结构。
-                          </div>
+                <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+                  <section className="space-y-5">
+                    <div className="overflow-hidden rounded-3xl border bg-card shadow-sm">
+                      <div className="flex items-center justify-between border-b px-6 py-4">
+                        <div>
+                          <div className="font-black">当前方案</div>
+                          <div className="mt-1 text-xs text-muted-foreground">{selectedGeneration ? '已采用的版本，后续深化以此为准' : '还没有采用版本'}</div>
                         </div>
-                      ) : null}
-                      {generations.map((generation) => (
-                      <div key={generation.id} className="rounded-[24px] border border-zinc-200 bg-white p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <div className="text-sm font-black">
-                                {generation.stageLabel || getWorkflowStageDefinition(generation.stageKey)?.name || '未命名步骤'}
+                        {selectedGeneration ? <Badge className="border-none bg-emerald-100 text-emerald-700">当前定稿</Badge> : null}
+                      </div>
+                      {heroGeneration?.output?.imageUrl ? (
+                        <PhotoView src={heroGeneration.output.imageUrl}>
+                          <img src={heroGeneration.output.imageUrl} alt="当前方案" className="h-[520px] w-full cursor-zoom-in object-cover" />
+                        </PhotoView>
+                      ) : (
+                        <div className="flex h-[420px] flex-col items-center justify-center bg-muted/40 text-center text-sm text-muted-foreground"><ImageIcon size={28} className="mb-3" />还没有生成成果，从右侧的推荐动作开始。</div>
+                      )}
+                    </div>
+
+                    {generations.filter((item) => item.status === 'succeeded' && item.output?.imageUrl).length > 0 ? (
+                      <div className="rounded-3xl border bg-card p-5 shadow-sm">
+                        <div className="font-black">版本候选</div>
+                        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                          {generations.filter((item) => item.status === 'succeeded' && item.output?.imageUrl).map((generation) => (
+                            <div key={generation.id} className={cn('overflow-hidden rounded-2xl border', generation.isSelectedBaseline && 'border-emerald-500 ring-1 ring-emerald-500')}>
+                              <PhotoView src={generation.output!.imageUrl!}><img src={generation.output!.imageUrl} alt={generation.stageLabel} className="h-40 w-full cursor-zoom-in object-cover" /></PhotoView>
+                              <div className="p-3">
+                                <div className="flex items-center justify-between gap-2"><span className="text-sm font-bold">{generation.stageLabel || getWorkflowStageDefinition(generation.stageKey)?.name}</span><span className="text-[11px] text-muted-foreground">{generation.channel === 'miniprogram' ? '小程序' : '后台'}</span></div>
+                                <div className="mt-3 flex items-center justify-between">
+                                  <span className="text-xs text-muted-foreground">{formatTime(generation.createdAt)}</span>
+                                  {generation.isSelectedBaseline ? <Badge className="border-none bg-emerald-100 text-emerald-700">已采用</Badge> : ['base_render', 'soft_furnishing'].includes(generation.stageKey || '') ? <Button size="sm" variant="outline" className="h-8 rounded-xl" onClick={() => selectBaseline(generation)}>采用</Button> : null}
+                                </div>
                               </div>
-                              {generation.isSelectedBaseline ? (
-                                <Badge className="rounded-full border-none bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
-                                  当前定稿
-                                </Badge>
-                              ) : null}
-                              {generation.status === 'failed' ? (
-                                <Badge className="rounded-full border-none bg-red-100 px-2.5 py-1 text-[11px] font-bold text-red-700">
-                                  失败
-                                </Badge>
-                              ) : generation.status === 'succeeded' ? (
-                                <Badge className="rounded-full border-none bg-zinc-100 px-2.5 py-1 text-[11px] font-bold text-zinc-700">
-                                  已完成                                </Badge>
-                              ) : (
-                                <Badge className="rounded-full border-none bg-blue-100 px-2.5 py-1 text-[11px] font-bold text-blue-700">
-                                  处理中                                </Badge>
-                              )}
                             </div>
-                            <div className="mt-2 text-xs text-muted-foreground">{formatTime(generation.createdAt)}</div>
-                          </div>
-                          {generation.output?.imageUrl ? (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="rounded-xl"
-                              onClick={() => window.open(generation.output?.imageUrl, '_blank')}
-                            >
-                              <ExternalLink size={14} />
-                            </Button>
-                          ) : null}
-                        </div>
-
-                        {generation.input?.styleReferenceImage && (
-                          <div className="mt-4 rounded-[20px] border border-zinc-100 bg-zinc-50 p-3">
-                            <div className="mb-2 text-[11px] font-black uppercase tracking-[0.16em] text-muted-foreground">
-                              局部风格参考图
-                            </div>
-                            <PhotoView src={generation.input.styleReferenceImage}>
-                              <img
-                                src={generation.input.styleReferenceImage}
-                                alt="参考图"
-                                className="h-24 w-auto cursor-zoom-in rounded-[12px] object-contain shadow-sm border border-zinc-200 bg-white"
-                              />
-                            </PhotoView>
-                          </div>
-                        )}
-
-                        {generation.output?.imageUrl ? (
-                          <PhotoView src={generation.output.imageUrl}>
-                            <img
-                              src={generation.output.imageUrl}
-                              alt={generation.stageLabel || generation.stageKey || '步骤产物'}
-                              className="mt-4 h-48 w-full cursor-zoom-in rounded-[20px] object-cover"
-                            />
-                          </PhotoView>
-                        ) : (
-                          <div className="mt-4 rounded-[20px] border border-dashed border-zinc-200 bg-zinc-50 px-4 py-10 text-center text-sm text-muted-foreground">
-                            {generation.errorMessage || '该步骤暂未返回图片。'}
-                          </div>
-                        )}
-
-                        <div className="mt-4 flex flex-wrap gap-3">
-                          {getGenerationPrompt(generation) ? (
-                            <Button
-                              variant="outline"
-                              className="rounded-2xl"
-                              onClick={() => handleCopyPrompt(generation)}
-                            >
-                              <Copy size={14} className="mr-2" />
-                              复制提示词
-                            </Button>
-                          ) : null}
-                          {(generation.stageKey === 'base_render' || generation.stageKey === 'soft_furnishing') &&
-                          generation.status === 'succeeded' ? (
-                            <Button
-                              variant="outline"
-                              className="rounded-2xl"
-                              onClick={() => handleSelectBaseline(generation)}
-                            >
-                              <CheckCircle2 size={14} className="mr-2" />
-                              设为当前定稿
-                            </Button>
-                          ) : null}
-
-                          {generation.nextRecommendedStage && generation.status === 'succeeded' ? (
-                            <Button
-                              variant="ghost"
-                              className="rounded-2xl text-sm"
-                              onClick={() => handleSetStage(generation.nextRecommendedStage)}
-                            >
-                              推荐进入 {getWorkflowStageDefinition(generation.nextRecommendedStage)?.name}
-                              <ArrowRight size={14} className="ml-2" />
-                            </Button>
-                          ) : null}
+                          ))}
                         </div>
                       </div>
-                      ))}
-                    </>
-                  )}
-                </div>
-              </div>
-            </section>
-          </div>
-        )}</>
-        )}
-      </main>
+                    ) : null}
+                  </section>
 
-      <RechargeDialog open={showRecharge} onOpenChange={setShowRecharge} />
-      <input
-        ref={mockImageInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleMockImageSelect}
-      />
-      {workflowRunner.cropDialog}
-    </div>
+                  <aside className="space-y-4">
+                    <div className="rounded-3xl border bg-card p-6 shadow-sm">
+                      <div className="text-xs font-black uppercase tracking-[0.16em] text-muted-foreground">推荐下一步</div>
+                      <div className="mt-3 text-xl font-black">{getWorkflowStageDefinition(workflow.currentStageKey)?.name || '继续完善方案'}</div>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">{getWorkflowStageDefinition(workflow.currentStageKey)?.description}</p>
+                      <Button className="mt-5 w-full rounded-2xl bg-zinc-950 text-white hover:bg-zinc-800" disabled={workflowRunner.isRunning} onClick={() => runStage(workflow.currentStageKey)}>
+                        {workflowRunner.runningStageKey === workflow.currentStageKey ? <Loader2 size={16} className="mr-2 animate-spin" /> : <Sparkles size={16} className="mr-2" />}
+                        {getWorkflowStageDefinition(workflow.currentStageKey)?.actionLabel || '执行下一步'}
+                      </Button>
+                      <div className="mt-3 text-center text-xs text-muted-foreground">预计 {capabilities?.actions.find((item) => item.stageKey === workflow.currentStageKey)?.credits || 0} 点 · 生成前再次确认</div>
+                    </div>
+
+                    <div className="rounded-3xl border bg-card p-5 shadow-sm">
+                      <button type="button" className="flex w-full items-center justify-between text-left" onClick={() => setAdvancedOpen((open) => !open)}>
+                        <div><div className="font-black">更多设计工具</div><div className="mt-1 text-xs text-muted-foreground">仅在需要时使用</div></div>
+                        <ChevronDown size={17} className={cn('transition', advancedOpen && 'rotate-180')} />
+                      </button>
+                      {advancedOpen ? (
+                        <div className="mt-4 space-y-2">
+                          {ADVANCED_WORKFLOW_TOOLS.map((tool) => {
+                            const action = workflowRunner.actions.find((item) => item.stageKey === tool.key);
+                            return <Button key={tool.key} variant="outline" className="h-auto w-full justify-start rounded-2xl px-4 py-3 text-left" disabled={!action || action.status === 'blocked' || workflowRunner.isRunning} onClick={() => runStage(tool.key)}><span><span className="block font-bold">{tool.name}</span><span className="mt-1 block text-xs font-normal text-muted-foreground">{action?.disabledReason || tool.outputHint}</span></span></Button>;
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
+                  </aside>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        <Dialog open={wizardOpen} onOpenChange={setWizardOpen}>
+          <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto rounded-3xl">
+            <DialogHeader>
+              <DialogTitle>开始新设计</DialogTitle>
+              <DialogDescription>第 {wizardStep} / 3 步 · {wizardStep === 1 ? '选择客户' : wizardStep === 2 ? '准备素材' : '选择想要的成果'}</DialogDescription>
+            </DialogHeader>
+            <div className="grid grid-cols-3 gap-2">
+              {[1, 2, 3].map((step) => <div key={step} className={cn('h-1.5 rounded-full', step <= wizardStep ? 'bg-emerald-500' : 'bg-muted')} />)}
+            </div>
+
+            {wizardStep === 1 ? (
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => { setWizardOpen(false); setWorkbenchView('quick'); }}
+                  className="flex w-full items-center justify-between rounded-2xl border border-dashed p-4 text-left hover:bg-muted/50"
+                >
+                  <span><span className="block font-bold">无客户，作为临时任务</span><span className="mt-1 block text-xs text-muted-foreground">进入快速工具，成果不会自动归入客户方案。</span></span>
+                  <ArrowRight size={18} className="text-muted-foreground" />
+                </button>
+                {leadsLoading ? <div className="py-12 text-center text-sm text-muted-foreground">正在加载客户...</div> : leads.map((lead) => (
+                  <button key={lead.id} type="button" onClick={() => setWizardLeadId(lead.id)} className={cn('flex w-full items-center justify-between rounded-2xl border p-4 text-left', wizardLeadId === lead.id ? 'border-zinc-950 bg-zinc-950 text-white' : 'hover:bg-muted/50')}>
+                    <span><span className="block font-bold">{lead.name}</span><span className={cn('mt-1 block text-xs', wizardLeadId === lead.id ? 'text-zinc-300' : 'text-muted-foreground')}>{lead.communityName || lead.phone} · {lead.floorPlans.length} 份户型</span></span>
+                    {wizardLeadId === lead.id ? <Check size={18} /> : null}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
+            {wizardStep === 2 ? (
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button type="button" onClick={() => setSourceMode('floor_plan')} className={cn('rounded-2xl border p-4 text-left', sourceMode === 'floor_plan' && 'border-zinc-950 bg-zinc-950 text-white')}><div className="font-bold">使用正式户型</div><div className={cn('mt-1 text-xs', sourceMode === 'floor_plan' ? 'text-zinc-300' : 'text-muted-foreground')}>自动带入房间尺寸、层高和门窗。</div></button>
+                  <button type="button" onClick={() => setSourceMode('upload')} className={cn('rounded-2xl border p-4 text-left', sourceMode === 'upload' && 'border-zinc-950 bg-zinc-950 text-white')}><div className="font-bold">上传现场或参考图</div><div className={cn('mt-1 text-xs', sourceMode === 'upload' ? 'text-zinc-300' : 'text-muted-foreground')}>适合还没有正式户型的客户。</div></button>
+                </div>
+                {sourceMode === 'floor_plan' ? (
+                  <div className="space-y-2">
+                    {selectedWizardLead?.floorPlans.length ? selectedWizardLead.floorPlans.map((plan) => <button key={plan.id} type="button" onClick={() => setSourceFloorPlanId(plan.id)} className={cn('flex w-full items-center justify-between rounded-2xl border p-4 text-left', sourceFloorPlanId === plan.id && 'border-emerald-500 bg-emerald-50')}><span><span className="block font-bold">{plan.name || '未命名户型'}</span><span className="mt-1 block text-xs text-muted-foreground">{plan.createdAt ? formatTime(plan.createdAt) : '已关联客户'}</span></span>{sourceFloorPlanId === plan.id ? <Check size={18} className="text-emerald-700" /> : null}</button>) : <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">当前客户没有正式户型，请改为上传图片。</div>}
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => fileInputRef.current?.click()} className="flex min-h-56 w-full items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed bg-muted/30">
+                    {sourceImage ? <img src={sourceImage} alt="来源图" className="h-64 w-full object-contain" /> : <span className="text-center text-sm text-muted-foreground"><Upload size={24} className="mx-auto mb-3" />点击上传一张图片</span>}
+                  </button>
+                )}
+                <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleUpload} />
+              </div>
+            ) : null}
+
+            {wizardStep === 3 ? (
+              <div className="space-y-4">
+                {(['direction', 'base_render'] as AiWorkflowStageKey[]).map((stageKey) => {
+                  const action = capabilities?.actions.find((item) => item.key === stageKey);
+                  return <button key={stageKey} type="button" disabled={!action?.enabled} onClick={() => setGoalStage(stageKey)} className={cn('w-full rounded-2xl border p-5 text-left', goalStage === stageKey ? 'border-zinc-950 bg-zinc-950 text-white' : 'hover:bg-muted/50', !action?.enabled && 'cursor-not-allowed opacity-50')}><div className="flex items-start justify-between gap-4"><span><span className="block font-black">{action?.label || getWorkflowStageDefinition(stageKey)?.name}</span><span className={cn('mt-2 block text-sm leading-6', goalStage === stageKey ? 'text-zinc-300' : 'text-muted-foreground')}>{action?.shortDescription}</span><span className={cn('mt-2 block text-xs', goalStage === stageKey ? 'text-zinc-400' : 'text-muted-foreground')}>{action?.resultBoundary}</span></span><Badge variant={goalStage === stageKey ? 'secondary' : 'outline'}>{action?.credits || 0} 点</Badge></div></button>;
+                })}
+                <div className="rounded-2xl bg-amber-50 p-4 text-sm leading-6 text-amber-900">首个成功版本会自动成为当前方案；之后重新生成只会增加候选，不会覆盖已认可版本。</div>
+              </div>
+            ) : null}
+
+            <DialogFooter className="gap-2 sm:space-x-0">
+              {wizardStep > 1 ? <Button variant="outline" className="rounded-2xl" onClick={() => setWizardStep((step) => step - 1)}>上一步</Button> : null}
+              {wizardStep < 3 ? <Button className="rounded-2xl" disabled={wizardStep === 1 ? !wizardLeadId : sourceMode === 'floor_plan' ? !sourceFloorPlanId : !sourceImage} onClick={() => setWizardStep((step) => step + 1)}>下一步</Button> : <Button className="rounded-2xl bg-zinc-950 text-white" disabled={creating || scenarioPrice > (capabilities?.account.availableBalance || 0)} onClick={createAndRun}>{creating ? <Loader2 size={16} className="mr-2 animate-spin" /> : <Sparkles size={16} className="mr-2" />}创建并开始 · {scenarioPrice} 点</Button>}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Sheet open={timelineOpen} onOpenChange={setTimelineOpen}>
+          <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+            <SheetHeader><SheetTitle>方案时间线</SheetTitle><SheetDescription>查看后台和小程序产生的全部版本、失败原因和当前定稿。</SheetDescription></SheetHeader>
+            <div className="mt-6 space-y-4">
+              {generations.map((generation) => <div key={generation.id} className="rounded-2xl border p-4"><div className="flex items-start justify-between gap-3"><div><div className="font-bold">{generation.stageLabel || getWorkflowStageDefinition(generation.stageKey)?.name || '未命名步骤'}</div><div className="mt-1 text-xs text-muted-foreground">{formatTime(generation.createdAt)} · {generation.channel === 'miniprogram' ? '小程序' : '后台'}</div></div><StateBadge state={generation.status === 'failed' ? 'failed' : ['created', 'pending', 'processing'].includes(generation.status) ? 'processing' : generation.isSelectedBaseline ? 'ready' : 'review'} /></div>{generation.output?.imageUrl ? <PhotoView src={generation.output.imageUrl}><img src={generation.output.imageUrl} alt="版本成果" className="mt-4 h-52 w-full cursor-zoom-in rounded-2xl object-cover" /></PhotoView> : <div className="mt-4 rounded-2xl bg-muted p-5 text-sm text-muted-foreground">{generation.errorMessage || '正在等待生成结果'}</div>}</div>)}
+            </div>
+          </SheetContent>
+        </Sheet>
+        {workflowRunner.cropDialog}
+      </main>
     </PhotoProvider>
   );
 }
 
-export default function AiScenariosPage() {
-  return (
-    <Suspense fallback={<div className="p-8 text-center text-sm text-muted-foreground">正在加载场景数据...</div>}>
-      <AiScenariosPageContent />
-    </Suspense>
-  );
+function WorkbenchTabs({ view, onChange }: { view: WorkbenchView; onChange: (view: WorkbenchView) => void }) {
+  return <div className="inline-flex rounded-2xl border bg-muted/40 p-1">{([{ key: 'workflows', label: '客户方案' }, { key: 'quick', label: '快速工具' }, { key: 'assistant', label: 'AI 助手' }] as Array<{ key: WorkbenchView; label: string }>).map((item) => <button key={item.key} type="button" onClick={() => onChange(item.key)} className={cn('rounded-xl px-4 py-2 text-sm font-bold transition', view === item.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>{item.label}</button>)}</div>;
 }
 
+function StateBadge({ state }: { state: WorkflowFilter }) {
+  const config: Record<WorkflowFilter, { label: string; className: string }> = {
+    all: { label: '全部', className: 'bg-muted text-muted-foreground' },
+    not_started: { label: '待开始', className: 'bg-amber-100 text-amber-700' },
+    review: { label: '待选稿', className: 'bg-blue-100 text-blue-700' },
+    processing: { label: '处理中', className: 'bg-violet-100 text-violet-700' },
+    failed: { label: '生成失败', className: 'bg-red-100 text-red-700' },
+    ready: { label: '可深化', className: 'bg-emerald-100 text-emerald-700' },
+  };
+  return <Badge className={cn('shrink-0 border-none', config[state].className)}>{config[state].label}</Badge>;
+}
+
+export default function AiScenariosPage() {
+  return <Suspense fallback={<div className="p-8 text-sm text-muted-foreground">正在加载 AI 设计工作台...</div>}><AiScenariosPageContent /></Suspense>;
+}

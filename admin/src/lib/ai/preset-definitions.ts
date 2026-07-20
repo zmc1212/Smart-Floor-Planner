@@ -10,6 +10,7 @@ export type PollinationsImageMode = 'generation' | 'edit';
 
 export interface PollinationsImageConfig {
   model: string;
+  logicalModelKey?: 'image.generate.standard' | 'image.edit.standard';
   size: string;
   quality: 'standard' | 'hd' | 'low' | 'medium' | 'high';
   mode: PollinationsImageMode;
@@ -26,7 +27,7 @@ export interface DefaultAiStylePreset {
   promptTemplate: string;
   promptTemplateSecondStage?: string;
   negativePrompt: string;
-  provider: 'pollinations';
+  provider?: string;
   image: PollinationsImageConfig;
   workflowCategory?: AiWorkflowCategory;
   workflowStage?: AiWorkflowStageKey;

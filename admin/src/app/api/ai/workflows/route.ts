@@ -8,6 +8,8 @@ import Lead from '@/models/Lead';
 import type { AiWorkflowSourceAssetRole, AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
 import { serializeAiGeneration, serializeAiWorkflow } from '@/lib/ai/workflow-utils';
 import { createAiWorkflow } from '@/lib/ai/workflow-service';
+import { getAiWorkflowStageAvailabilityFromDocs } from '@/lib/ai/workflow-service';
+import type { IAiGeneration } from '@/models/AiGeneration';
 
 interface CreateWorkflowBody {
   leadId?: string;
@@ -26,16 +28,16 @@ type LeanGeneration = {
   leadId?: unknown;
   workflowId?: unknown;
   parentGenerationId?: unknown;
-  type: 'floor_plan_style' | 'furnishing_render' | 'soft_furnishing_render' | 'advice' | 'scenario';
+  type: IAiGeneration['type'];
   stageKey?: AiWorkflowStageKey;
   sourceAssetRole?: AiWorkflowSourceAssetRole;
   isSelectedBaseline?: boolean;
   nextRecommendedStage?: AiWorkflowStageKey;
-  status: 'pending' | 'processing' | 'succeeded' | 'failed';
+  status: IAiGeneration['status'];
   input: Record<string, unknown>;
   output: Record<string, unknown>;
   errorMessage?: string;
-  provider: 'pollinations';
+  provider?: string;
   durationMs?: number;
   createdAt: Date;
   updatedAt: Date;
@@ -48,38 +50,55 @@ export async function GET(req: Request) {
     return await withTenantRoute(req, { requireEnterprise: true }, async () => {
       const url = new URL(req.url);
       const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 50);
+      const page = Math.max(1, parseInt(url.searchParams.get('page') || '1', 10));
       const leadId = url.searchParams.get('leadId');
+      const q = url.searchParams.get('q')?.trim();
+      const requestedStatus = url.searchParams.get('status');
+      const workflowFilter: Record<string, unknown> = {
+        status: requestedStatus === 'archived' ? 'archived' : 'active',
+      };
 
-      if (!leadId) {
-        return NextResponse.json(
-          { success: false, error: 'Missing leadId' },
-          { status: 400 }
-        );
+      if (leadId) {
+        const lead = await Lead.findById(leadId).select('_id').lean();
+        if (!lead) {
+          return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
+        }
+        workflowFilter.leadId = lead._id;
+      } else if (q) {
+        const matchingLeads = await Lead.find({
+          $or: [
+            { name: { $regex: q, $options: 'i' } },
+            { phone: { $regex: q, $options: 'i' } },
+            { communityName: { $regex: q, $options: 'i' } },
+          ],
+        }).select('_id').limit(100).lean();
+        workflowFilter.leadId = { $in: matchingLeads.map((lead) => lead._id) };
       }
 
-      const lead = await Lead.findById(leadId)
-        .populate({ path: 'floorPlanIds', select: 'name layoutData createdAt status', strictPopulate: false })
-        .lean();
-
-      if (!lead) {
-        return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
-      }
-
-      const workflows = await AiWorkflow.find({ leadId: lead._id, status: 'active' })
+      const [workflows, total] = await Promise.all([
+        AiWorkflow.find(workflowFilter)
         .sort({ updatedAt: -1 })
+        .skip((page - 1) * limit)
         .limit(limit)
-        .lean();
+        .lean(),
+        AiWorkflow.countDocuments(workflowFilter),
+      ]);
 
       const workflowIds = workflows.map((workflow) => workflow._id);
-      const generations =
+      const leadIds = Array.from(new Set(workflows.map((workflow) => String(workflow.leadId))));
+      const [generations, leads] = await Promise.all([
         workflowIds.length > 0
-          ? await AiGeneration.find({ workflowId: { $in: workflowIds } })
-              .sort({ createdAt: -1 })
-              .lean()
-          : [];
+          ? AiGeneration.find({ workflowId: { $in: workflowIds } }).sort({ createdAt: -1 }).lean()
+          : [],
+        leadIds.length > 0
+          ? Lead.find({ _id: { $in: leadIds } }).select('name phone communityName status').lean()
+          : [],
+      ]);
 
       const latestByWorkflow = new Map<string, LeanGeneration>();
       const countByWorkflow = new Map<string, number>();
+      const generationsByWorkflow = new Map<string, LeanGeneration[]>();
+      const leadById = new Map(leads.map((lead) => [String(lead._id), lead]));
 
       generations.forEach((generation) => {
         const workflowId = String(generation.workflowId || '');
@@ -92,6 +111,9 @@ export async function GET(req: Request) {
         }
 
         countByWorkflow.set(workflowId, (countByWorkflow.get(workflowId) || 0) + 1);
+        const entries = generationsByWorkflow.get(workflowId) || [];
+        entries.push(generation);
+        generationsByWorkflow.set(workflowId, entries);
       });
 
       return NextResponse.json({
@@ -99,13 +121,30 @@ export async function GET(req: Request) {
         data: workflows.map((workflow) => {
           const workflowId = String(workflow._id);
           const latestGeneration = latestByWorkflow.get(workflowId);
+          const workflowGenerations = generationsByWorkflow.get(workflowId) || [];
+          const selectedGeneration = workflow.selectedGenerationId
+            ? workflowGenerations.find((generation) => String(generation._id) === String(workflow.selectedGenerationId))
+            : workflowGenerations.find((generation) => generation.isSelectedBaseline);
+          const lead = leadById.get(String(workflow.leadId));
 
           return {
             ...serializeAiWorkflow(workflow),
             generationCount: countByWorkflow.get(workflowId) || 0,
             latestGeneration: latestGeneration ? serializeAiGeneration(latestGeneration) : undefined,
+            selectedGeneration: selectedGeneration ? serializeAiGeneration(selectedGeneration) : undefined,
+            lead: lead
+              ? {
+                  id: String(lead._id),
+                  name: lead.name,
+                  phone: lead.phone,
+                  communityName: lead.communityName,
+                  status: lead.status,
+                }
+              : undefined,
+            stageState: getAiWorkflowStageAvailabilityFromDocs(workflow, workflowGenerations),
           };
         }),
+        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
       });
     });
   } catch (error) {

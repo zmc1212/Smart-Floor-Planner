@@ -231,7 +231,7 @@ function createOpeningSegmentDimensions(walls, openings) {
     openingsByWall[opening.wall.id].push(opening);
   });
 
-  walls.filter((wall) => wall.closed && !wall.lineOnly).forEach((wall) => {
+  walls.filter((wall) => wall.closed && wall.isExteriorBoundary && !wall.lineOnly).forEach((wall) => {
     const wallOpenings = (openingsByWall[wall.id] || []).slice().sort((first, second) => first.startPx - second.startPx);
     if (!wallOpenings.length) return;
 
@@ -275,7 +275,9 @@ function resolveDimensions(walls, openings) {
   const dimensions = [];
   const accepted = [];
   const activeWalls = walls.filter((wall) => !wall.lineOnly && wall.isActiveMeasurement && !wall.closed);
-  const closedWalls = walls.filter((wall) => !wall.lineOnly && wall.closed);
+  // A shared wall's “outside” is another closed room. Dimension only the
+  // exterior boundary so a completed plan never receives interior annotations.
+  const closedWalls = walls.filter((wall) => !wall.lineOnly && wall.closed && wall.isExteriorBoundary);
 
   function processGroup(groupOptions) {
     groupOptions.sort((first, second) => second.priority - first.priority);
@@ -728,12 +730,14 @@ function createSurveyRenderScene(input) {
   const project = createProjector(viewport, rect);
   const renderThicknessMmMap = buildRenderThicknessMmMap(floor, viewport);
   const closedWallIds = {};
+  const closedWallSpaceCounts = {};
   const closedWallCentroids = {};
   (floor.spaces || []).filter((space) => space.closed && Array.isArray(space.wallIds)).forEach((space) => {
     const boundaryPoints = surveyGraph.buildSpaceBoundaryPoints(floor, space.wallIds);
     const centroid = calculatePolygonCentroid(boundaryPoints);
     space.wallIds.forEach((wallId) => {
       closedWallIds[wallId] = true;
+      closedWallSpaceCounts[wallId] = (closedWallSpaceCounts[wallId] || 0) + 1;
       if (centroid && !closedWallCentroids[wallId]) {
         closedWallCentroids[wallId] = project(centroid);
       }
@@ -764,6 +768,7 @@ function createSurveyRenderScene(input) {
     return Object.assign(wall, {
       closed: !!closedWallIds[wall.id],
       closedOutsideSign,
+      isExteriorBoundary: closedWallSpaceCounts[wall.id] === 1,
       isActiveMeasurement: (floor.walls || []).indexOf(wall.wall) >= activeWallStartIndex && !closedWallIds[wall.id]
     });
   });
@@ -1265,7 +1270,7 @@ function drawCursor(ctx, scene) {
   ctx.save();
   ctx.strokeStyle = '#f07a21';
   ctx.fillStyle = 'rgba(240, 122, 33, 0.16)';
-  ctx.lineWidth = 4;
+  ctx.lineWidth = 1.5;
   ctx.lineCap = 'butt';
 
   ctx.beginPath();
@@ -1275,7 +1280,7 @@ function drawCursor(ctx, scene) {
   ctx.lineTo(point.x, point.y + half);
   ctx.stroke();
 
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 1.5;
   ctx.strokeStyle = '#f07a21';
   ctx.fillRect(point.x - core / 2, point.y - core / 2, core, core);
   ctx.strokeRect(point.x - core / 2, point.y - core / 2, core, core);
@@ -1306,7 +1311,7 @@ function drawDraggingCursor(ctx, rect, point, options) {
   ctx.globalAlpha = 1;
 
   ctx.strokeStyle = 'rgba(22, 119, 255, 0.92)';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 1.5;
   if (ctx.setLineDash) ctx.setLineDash([18, 12]);
   ctx.beginPath();
   ctx.moveTo(0, point.y);
@@ -1326,7 +1331,7 @@ function drawDraggingCursor(ctx, rect, point, options) {
   ctx.strokeRect(point.x - outerSize / 2, point.y - outerSize / 2, outerSize, outerSize);
 
   ctx.strokeStyle = '#f07a21';
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(point.x - crossHalf, point.y);
   ctx.lineTo(point.x + crossHalf, point.y);
@@ -1336,7 +1341,7 @@ function drawDraggingCursor(ctx, rect, point, options) {
 
   ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
   ctx.strokeStyle = '#f07a21';
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 1.5;
   ctx.fillRect(point.x - coreSize / 2, point.y - coreSize / 2, coreSize, coreSize);
   ctx.strokeRect(point.x - coreSize / 2, point.y - coreSize / 2, coreSize, coreSize);
   ctx.restore();

@@ -3,15 +3,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Bell, Smartphone, Sparkles, Workflow } from 'lucide-react';
 import { EnterpriseListItem } from './types';
-import { formatAiKeyStatus } from './enterprise-utils';
 
 interface EnterpriseOverviewCardsProps {
   enterprise: EnterpriseListItem;
 }
 
 export default function EnterpriseOverviewCards({ enterprise }: EnterpriseOverviewCardsProps) {
-  const aiStatus = formatAiKeyStatus(enterprise);
-  const aiSummary = enterprise.aiUsageSnapshot?.summary?.today;
   const browserNotificationEnabled = enterprise.automationConfig?.browserNotificationEnabled !== false;
   const miniprogramNotificationEnabled = enterprise.automationConfig?.miniprogramNotificationEnabled !== false;
   const formatEnabled = (enabled: boolean) => (enabled ? '已开启' : '已关闭');
@@ -25,28 +22,22 @@ export default function EnterpriseOverviewCards({ enterprise }: EnterpriseOvervi
         </CardHeader>
         <CardContent className="space-y-3 p-6 pt-2 text-sm text-muted-foreground">
           <div className="flex items-center justify-between">
-            <span>Key 状态</span>
+            <span>供应商模式</span>
             <span className="inline-flex rounded-md bg-secondary px-2 py-1 text-secondary-foreground">
-              {aiStatus}
+              平台统一路由
             </span>
           </div>
           <div className="flex items-center justify-between">
-            <span>官方余额</span>
-            <span className="font-semibold text-foreground">
-              {Number(enterprise.aiUsageSnapshot?.balance || 0).toFixed(2)} {enterprise.aiUsageSnapshot?.currency || 'USD'}
-            </span>
+            <span>计费单位</span>
+            <span className="font-semibold text-foreground">AI 点数</span>
           </div>
           <div className="flex items-center justify-between">
-            <span>今日请求</span>
-            <span className="font-semibold text-foreground">{aiSummary?.requests || 0}</span>
+            <span>点数范围</span>
+            <span className="font-semibold text-foreground">后台与小程序共享</span>
           </div>
           <div className="flex items-center justify-between">
-            <span>最近同步</span>
-            <span className="font-semibold text-foreground">
-              {enterprise.aiUsageSnapshot?.lastSyncedAt
-                ? new Date(enterprise.aiUsageSnapshot.lastSyncedAt).toLocaleString()
-                : '未同步'}
-            </span>
+            <span>管理入口</span>
+            <span className="font-semibold text-foreground">企业 AI 管理</span>
           </div>
         </CardContent>
       </Card>

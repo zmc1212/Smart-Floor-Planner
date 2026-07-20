@@ -61,8 +61,14 @@ export async function POST(
   } catch (error: unknown) {
     console.error('[AI Workflow Run Stage]', error);
     const status = (error as Error & { status?: number })?.status;
+    const conflict = error as Error & { code?: string; generationId?: string };
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Failed to run workflow stage' },
+      {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to run workflow stage',
+        code: conflict.code,
+        existingGenerationId: conflict.generationId,
+      },
       { status: status && status >= 400 ? status : 500 }
     );
   }

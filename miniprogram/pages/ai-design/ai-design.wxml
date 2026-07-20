@@ -1,0 +1,160 @@
+<view class="ai-page sfp-scroll">
+  <view class="ai-shell">
+    <view class="balance-row">
+      <text class="page-title">AI 设计</text>
+      <view class="balance-pill">
+        <view class="credit-dot"></view>
+        <text class="balance-value">{{account.availableBalance}} 点</text>
+      </view>
+    </view>
+
+    <view wx:if="{{!provider.available && !loading}}" class="service-banner">
+      <text class="service-title">AI 服务暂不可用</text>
+      <text class="service-message">{{provider.error || '请联系平台管理员配置企业 AI 服务'}}</text>
+    </view>
+
+    <view class="hero-card">
+      <image class="hero-image" src="/images/ai-design-hero-v2.jpg" mode="aspectFill"></image>
+      <view class="hero-shade"></view>
+      <view class="hero-copy">
+        <text class="hero-title">把灵感，落进真实空间</text>
+        <text class="hero-meta">现场快出图 · 方案接着做</text>
+      </view>
+    </view>
+
+    <view wx:if="{{selectedSource}}" class="source-card selected" bindtap="openSourcePicker">
+      <view class="source-badge">户型</view>
+      <view class="source-copy">
+        <text class="source-title">{{selectedSource.leadName}} · {{selectedSource.roomName}}</text>
+        <text class="source-meta">{{selectedSource.communityName || selectedSource.floorPlanName}} · {{selectedSource.roomSize}} · {{selectedSource.openingCount}} 个开口</text>
+      </view>
+      <view class="source-actions">
+        <text class="source-change">更换</text>
+        <text class="source-clear" catchtap="clearSource">清除</text>
+      </view>
+    </view>
+
+    <view wx:else class="source-card" bindtap="openSourcePicker">
+      <view class="source-badge">户型</view>
+      <view class="source-copy">
+        <text class="source-title">关联客户户型（推荐）</text>
+        <text class="source-meta">四种任务统一继承客户、户型和房间数据</text>
+      </view>
+      <text class="source-change">选择</text>
+    </view>
+
+    <view wx:if="{{selectedWorkflow}}" class="scheme-card" bindtap="openWorkflowPicker">
+      <view class="scheme-status"></view>
+      <view class="scheme-copy">
+        <text class="scheme-eyebrow">{{selectedWorkflow.lead && selectedWorkflow.lead.name ? selectedWorkflow.lead.name : '客户'}} · 当前客户方案</text>
+        <text class="scheme-title">{{selectedWorkflow.title}}</text>
+        <text class="scheme-meta">{{selectedWorkflow.currentStageLabel}} · {{selectedWorkflow.selectedTask ? '已有当前定稿' : '暂无当前定稿'}}</text>
+        <text class="scheme-next">{{selectedWorkflow.recommendedLabel}}</text>
+      </view>
+      <text class="scheme-change">更换</text>
+    </view>
+
+    <view wx:elif="{{createNewWorkflow && selectedSource}}" class="scheme-card alternative" bindtap="openWorkflowPicker">
+      <view class="scheme-status"></view>
+      <view class="scheme-copy">
+        <text class="scheme-eyebrow">新建备选方案</text>
+        <text class="scheme-title">{{selectedSource.leadName}} · 现场快速方案</text>
+        <text class="scheme-meta">本次不覆盖已有客户方案</text>
+      </view>
+    </view>
+
+    <view class="section-head task-head">
+      <view class="section-label"><view class="section-mark"></view><text class="section-title">选择设计任务</text></view>
+      <text wx:if="{{selectedSource}}" class="context-chip">{{selectedSource.roomName}}</text>
+    </view>
+
+    <view class="workflow-grid">
+      <view wx:for="{{workflows}}" wx:key="key" class="workflow-card {{item.enabled ? '' : 'disabled'}} {{item.recommended ? 'recommended' : ''}}" data-mode="{{item.key}}" bindtap="openMode">
+        <text wx:if="{{item.recommended}}" class="recommend-chip">推荐</text>
+        <image class="workflow-icon" src="{{item.icon}}" mode="aspectFit"></image>
+        <text class="workflow-title">{{item.title}}</text>
+        <text class="workflow-desc">{{item.description}}</text>
+        <text class="workflow-cost">{{item.credits}} 点</text>
+      </view>
+    </view>
+
+    <view class="section-head">
+      <view class="section-label"><view class="section-mark"></view><text class="section-title">最近成果</text></view>
+      <view class="history-link" bindtap="openHistory">查看全部 <text class="link-arrow">›</text></view>
+    </view>
+
+    <scroll-view wx:if="{{recent.length}}" scroll-x class="recent-strip" enhanced show-scrollbar="{{false}}">
+      <view class="recent-row">
+        <view wx:for="{{recent}}" wx:key="id" class="result-card" data-id="{{item.id}}" bindtap="openResult">
+          <image class="result-image" src="{{item.resultImageUrl || item.spaceImageUrl}}" mode="aspectFill"></image>
+          <view class="result-footer">
+            <text class="result-mode">{{item.modeTitle}}</text>
+            <text class="result-status">{{item.status === 'succeeded' ? '已完成' : item.status === 'failed' ? '生成失败' : '生成中'}}</text>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+
+    <view wx:else class="empty-result">
+      <view class="empty-icon">AI</view>
+      <text class="empty-title">还没有设计成果</text>
+    </view>
+  </view>
+
+  <view wx:if="{{sourcePickerOpen}}" class="source-mask" catchtap="closeSourcePicker"></view>
+  <view wx:if="{{sourcePickerOpen}}" class="source-sheet" catchtap="noop">
+    <view class="sheet-handle"></view>
+    <view class="sheet-head">
+      <view>
+        <text class="sheet-title">选择客户户型与房间</text>
+        <text class="sheet-subtitle">选择后，四种 AI 任务都会使用这份量房上下文</text>
+      </view>
+      <text class="sheet-close" bindtap="closeSourcePicker">关闭</text>
+    </view>
+    <scroll-view scroll-y class="source-list" enhanced show-scrollbar="{{false}}">
+      <view
+        wx:for="{{sources}}"
+        wx:key="sourceKey"
+        class="source-item {{item.selected ? 'active' : ''}}"
+        data-index="{{index}}"
+        bindtap="selectSource"
+      >
+        <view class="source-item-main">
+          <text class="source-item-title">{{item.leadName}} · {{item.roomName}}</text>
+          <text class="source-item-meta">{{item.communityName || item.floorPlanName}} · {{item.roomSize}}</text>
+          <text class="source-item-detail">{{item.floorPlanName}} · {{item.openingCount}} 个门窗开口</text>
+        </view>
+        <text class="source-check">{{item.selected ? '已选' : '选择'}}</text>
+      </view>
+    </scroll-view>
+  </view>
+
+  <view wx:if="{{workflowPickerOpen}}" class="source-mask" catchtap="closeWorkflowPicker"></view>
+  <view wx:if="{{workflowPickerOpen}}" class="source-sheet" catchtap="noop">
+    <view class="sheet-handle"></view>
+    <view class="sheet-head">
+      <view>
+        <text class="sheet-title">选择客户方案</text>
+        <text class="sheet-subtitle">本次成果会继续写入选中的方案</text>
+      </view>
+      <text class="sheet-close" bindtap="closeWorkflowPicker">关闭</text>
+    </view>
+    <scroll-view scroll-y class="source-list" enhanced show-scrollbar="{{false}}">
+      <view wx:for="{{schemeOptions}}" wx:key="id" class="source-item {{item.id === workflowId ? 'active' : ''}}" data-index="{{index}}" bindtap="selectWorkflow">
+        <view class="source-item-main">
+          <text class="source-item-title">{{item.title}}</text>
+          <text class="source-item-meta">{{item.currentStageLabel}} · {{item.recommendedLabel}}</text>
+          <text class="source-item-detail">{{item.isPrimary ? '主方案' : '备选方案'}}</text>
+        </view>
+        <text class="source-check">{{item.id === workflowId ? '已选' : '选择'}}</text>
+      </view>
+      <view class="source-item new-scheme" bindtap="createAlternativeWorkflow">
+        <view class="source-item-main">
+          <text class="source-item-title">新建备选方案</text>
+          <text class="source-item-meta">保留现有方案，另外创建一条设计路线</text>
+        </view>
+        <text class="source-check">新建</text>
+      </view>
+    </scroll-view>
+  </view>
+</view>

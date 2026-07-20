@@ -1203,6 +1203,43 @@ Page({
     ctx.closePath();
   },
 
+  drawCanvasCallout(ctx, callout) {
+    if (!callout || !callout.tip || !callout.pointer) return;
+    const { tip, pointer } = callout;
+    const centerX = tip.x + tip.width / 2;
+    const centerY = tip.y + tip.height / 2;
+    const dx = pointer.x - centerX;
+    const dy = pointer.y - centerY;
+
+    ctx.shadowColor = 'rgba(15, 23, 42, 0.16)';
+    ctx.shadowBlur = 10;
+    ctx.shadowOffsetY = 3;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
+    this.drawRoundRect(ctx, tip.x, tip.y, tip.width, tip.height, 18);
+    ctx.fill();
+
+    ctx.beginPath();
+    if (Math.abs(dx) > Math.abs(dy)) {
+      const baseX = dx >= 0 ? tip.x + tip.width - 1 : tip.x + 1;
+      ctx.moveTo(baseX, centerY - 9);
+      ctx.lineTo(baseX, centerY + 9);
+    } else {
+      const baseY = dy >= 0 ? tip.y + tip.height - 1 : tip.y + 1;
+      ctx.moveTo(centerX - 9, baseY);
+      ctx.lineTo(centerX + 9, baseY);
+    }
+    ctx.lineTo(pointer.x, pointer.y);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.shadowColor = 'transparent';
+    ctx.fillStyle = '#111827';
+    ctx.font = '600 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(tip.text, centerX, centerY);
+  },
+
   drawCanvasControls() {
     const ctx = this.surveyCtx;
     const rect = this.canvasRect;
@@ -1212,6 +1249,10 @@ Page({
     const controls = this.canvasControls || {};
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    if (controls.closeHint) {
+      this.drawCanvasCallout(ctx, controls.closeHint);
+    }
 
     if (controls.closeAction) {
       const close = controls.closeAction;
@@ -1252,18 +1293,7 @@ Page({
 
     if (controls.measurePosition) {
       const measure = controls.measurePosition;
-      ctx.shadowColor = 'rgba(15, 23, 42, 0.16)';
-      ctx.shadowBlur = 10;
-      ctx.shadowOffsetY = 3;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
-      this.drawRoundRect(ctx, measure.tip.x, measure.tip.y, measure.tip.width, measure.tip.height, 18);
-      ctx.fill();
-      ctx.shadowColor = 'transparent';
-      ctx.fillStyle = '#111827';
-      ctx.font = '600 11px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(measure.tip.text, measure.tip.x + measure.tip.width / 2, measure.tip.y + measure.tip.height / 2);
+      this.drawCanvasCallout(ctx, measure);
 
       ctx.beginPath();
       ctx.fillStyle = 'rgba(65, 65, 69, 0.92)';
@@ -1278,25 +1308,7 @@ Page({
     }
 
     if (controls.initialGuide) {
-      const guide = controls.initialGuide;
-      ctx.shadowColor = 'rgba(15, 23, 42, 0.16)';
-      ctx.shadowBlur = 10;
-      ctx.shadowOffsetY = 3;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
-      this.drawRoundRect(ctx, guide.tip.x, guide.tip.y, guide.tip.width, guide.tip.height, 18);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(guide.pointer.x - 9, guide.tip.y + guide.tip.height - 1);
-      ctx.lineTo(guide.pointer.x + 9, guide.tip.y + guide.tip.height - 1);
-      ctx.lineTo(guide.pointer.x, guide.pointer.y);
-      ctx.closePath();
-      ctx.fill();
-      ctx.shadowColor = 'transparent';
-      ctx.fillStyle = '#111827';
-      ctx.font = '600 11px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(guide.tip.text, guide.tip.x + guide.tip.width / 2, guide.tip.y + guide.tip.height / 2);
+      this.drawCanvasCallout(ctx, controls.initialGuide);
     }
 
     ctx.restore();
@@ -1557,6 +1569,7 @@ Page({
       closeAction: closure && closure.action
         ? Object.assign({ key: 'close', radius: 14 }, closure.action)
         : null,
+      closeHint: closure && closure.hint ? closure.hint : null,
       measurePosition: measurePosition && measurePosition.control ? measurePosition.control : null,
       initialGuide: initialGuide || null,
       activeAngle: activeAngle || null
@@ -1900,10 +1913,61 @@ Page({
 
   isFirstMeasurePositionStage(floor, session) {
     if (!floor || !session) return false;
+    const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+      ? session.activeSpaceStartWallIndex
+      : 0;
     return session.state === 'wallCommitted' &&
       !session.previewPoint &&
-      floor.walls.length === 1 &&
-      !floor.spaces.some((space) => space.closed);
+      startWallIndex >= 0 &&
+      floor.walls.length === startWallIndex + 1;
+  },
+
+  getCanvasControlSafeArea(rect) {
+    const rightRailReserve = 96;
+    const bottomDockReserve = 128;
+    const topInset = Math.max(12, (this.data.overlayContentTop || 0) + 12);
+    return {
+      left: 12,
+      top: topInset,
+      right: Math.max(12, rect.width - rightRailReserve - 12),
+      bottom: Math.max(topInset, rect.height - bottomDockReserve)
+    };
+  },
+
+  buildAnchoredCallout(text, target, tipCenter, safeArea, pointerLength) {
+    const tip = {
+      width: 202,
+      height: 38,
+      text,
+      x: clamp(tipCenter.x - 101, safeArea.left, Math.max(safeArea.left, safeArea.right - 202)),
+      y: clamp(tipCenter.y - 19, safeArea.top, Math.max(safeArea.top, safeArea.bottom - 38))
+    };
+    if (!Number.isFinite(pointerLength)) return { tip, pointer: target };
+
+    const centerX = tip.x + tip.width / 2;
+    const centerY = tip.y + tip.height / 2;
+    const dx = target.x - centerX;
+    const dy = target.y - centerY;
+    const distance = Math.sqrt(dx * dx + dy * dy) || 1;
+    const direction = { x: dx / distance, y: dy / distance };
+    const horizontal = Math.abs(direction.x) > Math.abs(direction.y);
+    const base = horizontal
+      ? { x: direction.x >= 0 ? tip.x + tip.width - 1 : tip.x + 1, y: centerY }
+      : { x: centerX, y: direction.y >= 0 ? tip.y + tip.height - 1 : tip.y + 1 };
+    return {
+      tip,
+      pointer: {
+        x: base.x + direction.x * pointerLength,
+        y: base.y + direction.y * pointerLength
+      }
+    };
+  },
+
+  constrainCanvasCircle(circle, safeArea) {
+    return Object.assign({}, circle, {
+      cx: clamp(circle.cx, safeArea.left + circle.radius, safeArea.right - circle.radius),
+      cy: clamp(circle.cy, safeArea.top + circle.radius, safeArea.bottom - circle.radius)
+    });
   },
 
   buildMeasurePosition(segment, floor, session) {
@@ -1911,7 +1975,10 @@ Page({
       return { visible: false, style: '', buttonLabel: '↔', control: null };
     }
 
-    const wall = floor.walls[0];
+    const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+      ? session.activeSpaceStartWallIndex
+      : 0;
+    const wall = floor.walls[startWallIndex];
     const start = wall && surveyGraph.getNode(floor, wall.startNodeId);
     const end = wall && surveyGraph.getNode(floor, wall.endNodeId);
     if (!wall || !start || !end) {
@@ -1930,33 +1997,35 @@ Page({
       ? { x: -leftNormal.x, y: -leftNormal.y }
       : leftNormal;
     const rect = this.canvasRect || { width: 0, height: 0 };
+    const safeArea = this.getCanvasControlSafeArea(rect);
     const radius = 22;
-    const rightRailReserve = 96;
-    const button = {
-      cx: clamp((startPoint.x + endPoint.x) / 2 + sideNormal.x * 156, radius + 8, Math.max(radius + 8, rect.width - rightRailReserve - radius)),
-      cy: clamp((startPoint.y + endPoint.y) / 2 + sideNormal.y * 156, radius + 8, Math.max(radius + 8, rect.height - radius - 128)),
+    const target = {
+      x: (startPoint.x + endPoint.x) / 2,
+      y: (startPoint.y + endPoint.y) / 2
+    };
+    const button = this.constrainCanvasCircle({
+      cx: target.x + sideNormal.x * 94,
+      cy: target.y + sideNormal.y * 94,
       radius
-    };
-    const tip = {
-      width: 202,
-      height: 38,
-      text: '切换内外墙方向，红线为测量位置'
-    };
-    tip.x = clamp(button.cx - tip.width / 2, 12, Math.max(12, rect.width - rightRailReserve - tip.width));
-    tip.y = sideNormal.y >= 0
-      ? Math.max(12, button.cy - tip.height - 16)
-      : Math.min(Math.max(12, rect.height - tip.height - 12), button.cy + radius + 16);
+    }, safeArea);
+    const callout = this.buildAnchoredCallout(
+      '切换内外墙方向，红线为测量位置',
+      target,
+      { x: target.x - sideNormal.x * 66, y: target.y - sideNormal.y * 66 },
+      safeArea,
+      18
+    );
+    const control = Object.assign({
+      key: 'measure-position',
+      label: '↕',
+      button
+    }, callout);
 
     return {
       visible: true,
       style: '',
       buttonLabel: '↕',
-      control: {
-        key: 'measure-position',
-        label: '↕',
-        button,
-        tip
-      }
+      control
     };
   },
 
@@ -1969,20 +2038,12 @@ Page({
 
     const cursor = this.mmToCanvasPoint(anchor);
     const rect = this.canvasRect || { width: 0, height: 0 };
-    const tip = {
-      width: 202,
-      height: 38,
-      text: '拖动光标，拉出第一条墙边'
-    };
-    tip.x = clamp(cursor.x - tip.width / 2, 12, Math.max(12, rect.width - tip.width - 12));
-    tip.y = clamp(cursor.y - 96, 12, Math.max(12, rect.height - tip.height - 12));
-    return {
-      tip,
-      pointer: {
-        x: clamp(cursor.x, tip.x + 20, tip.x + tip.width - 20),
-        y: Math.min(cursor.y - 28, tip.y + tip.height + 18)
-      }
-    };
+    return this.buildAnchoredCallout(
+      '拖动光标，拉出第一条墙边',
+      cursor,
+      { x: cursor.x, y: cursor.y - 74 },
+      this.getCanvasControlSafeArea(rect)
+    );
   },
 
   buildClosureRender(floor, session) {
@@ -2030,13 +2091,72 @@ Page({
     const actionX = clamp(preferredActionX, safePadding, Math.max(safePadding, rect.width - safePadding));
     const actionY = clamp(preferredActionY, safePadding, Math.max(safePadding, rect.height - safePadding - bottomReserved));
 
+    const actionVisible = session.state === 'closing' || session.state === 'mergeClosing';
+    const action = { cx: actionX, cy: actionY };
     return {
       guideVisible: width > 1,
       guideStyle: `left:${roundPx(startPoint.x)}px; top:${roundPx(startPoint.y)}px; width:${roundPx(width)}px; transform:rotate(${roundPx(angleDeg)}deg);`,
-      actionVisible: session.state === 'closing' || session.state === 'mergeClosing',
+      actionVisible,
       actionStyle: `left:${roundPx(actionX - actionRadius)}px; top:${roundPx(actionY - actionRadius)}px;`,
-      action: { cx: actionX, cy: actionY }
+      action,
+      hint: actionVisible ? this.buildClosureHint(action, startPoint, endPoint) : null
     };
+  },
+
+  buildClosureHint(action, startPoint, endPoint) {
+    const rect = this.canvasRect || { width: 0, height: 0 };
+    const safeArea = this.getCanvasControlSafeArea(rect);
+    const tipWidth = 202;
+    const tipHeight = 38;
+    const scene = this.surveyRenderScene || {};
+    const wallObstacles = ((scene.walls || []).concat(scene.previewWall ? [scene.previewWall] : []))
+      .filter((wall) => wall && wall.startPoint && wall.endPoint)
+      .map((wall) => ({
+        left: Math.min(wall.startPoint.x, wall.endPoint.x) - (wall.thicknessPx || 0) / 2 - 8,
+        right: Math.max(wall.startPoint.x, wall.endPoint.x) + (wall.thicknessPx || 0) / 2 + 8,
+        top: Math.min(wall.startPoint.y, wall.endPoint.y) - (wall.thicknessPx || 0) / 2 - 8,
+        bottom: Math.max(wall.startPoint.y, wall.endPoint.y) + (wall.thicknessPx || 0) / 2 + 8,
+        weight: 1
+      }));
+    const segmentObstacle = {
+      left: Math.min(startPoint.x, endPoint.x) - 12,
+      right: Math.max(startPoint.x, endPoint.x) + 12,
+      top: Math.min(startPoint.y, endPoint.y) - 12,
+      bottom: Math.max(startPoint.y, endPoint.y) + 12,
+      weight: 8
+    };
+    const actionObstacle = {
+      left: action.cx - 26,
+      right: action.cx + 26,
+      top: action.cy - 26,
+      bottom: action.cy + 26,
+      weight: 100
+    };
+    const obstacles = wallObstacles.concat([segmentObstacle, actionObstacle]);
+    const candidateCenters = [
+      { x: action.cx - tipWidth / 2 - 28, y: action.cy },
+      { x: action.cx + tipWidth / 2 + 28, y: action.cy },
+      { x: action.cx, y: action.cy - tipHeight / 2 - 34 },
+      { x: action.cx, y: action.cy + tipHeight / 2 + 34 }
+    ].map((center) => ({
+      x: clamp(center.x, safeArea.left + tipWidth / 2, Math.max(safeArea.left + tipWidth / 2, safeArea.right - tipWidth / 2)),
+      y: clamp(center.y, safeArea.top + tipHeight / 2, Math.max(safeArea.top + tipHeight / 2, safeArea.bottom - tipHeight / 2))
+    }));
+    const scoreCandidate = (center) => {
+      const tipBox = {
+        left: center.x - tipWidth / 2,
+        right: center.x + tipWidth / 2,
+        top: center.y - tipHeight / 2,
+        bottom: center.y + tipHeight / 2
+      };
+      return obstacles.reduce((score, obstacle) => (
+        boxesOverlap(tipBox, obstacle, 6) ? score + obstacle.weight : score
+      ), 0);
+    };
+    const tipCenter = candidateCenters.reduce((best, candidate) => (
+      scoreCandidate(candidate) < scoreCandidate(best) ? candidate : best
+    ), candidateCenters[0]);
+    return this.buildAnchoredCallout('点击“合”即可闭合', action, tipCenter, safeArea, 8);
   },
 
   formatWallLabel(wall) {
@@ -2768,7 +2888,10 @@ Page({
       return;
     }
 
-    const firstWall = floor.walls[0] || null;
+    const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+      ? session.activeSpaceStartWallIndex
+      : 0;
+    const firstWall = floor.walls[startWallIndex] || null;
     const activeWallId = firstWall ? firstWall.id : '';
     const activeWall = activeWallId ? surveyGraph.getWall(floor, activeWallId) : null;
     if (!activeWall) return;

@@ -734,6 +734,15 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
     () => (floor?.spaces || []).filter((space) => space.closed).map((space) => ({ space, detail: getSurveySpaceDetails(floor, space, nodeMap) })).filter((item) => item.detail),
     [floor, nodeMap],
   );
+  const exteriorClosedWallIds = useMemo(() => {
+    const usage = new Map<string, number>();
+    (floor?.spaces || []).filter((space) => space.closed).forEach((space) => {
+      (space.wallIds || []).forEach((wallId) => {
+        usage.set(wallId, (usage.get(wallId) || 0) + 1);
+      });
+    });
+    return new Set(Array.from(usage.entries()).filter(([, count]) => count === 1).map(([wallId]) => wallId));
+  }, [floor]);
   const closedWallOutsideSigns = useMemo(() => {
     const signs = new Map<string, number>();
     spaceDetails.forEach(({ space, detail }) => {
@@ -889,6 +898,10 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
 
             {wallBodies.map(({ wall, body }) => {
               if (!body) return null;
+              // A shared wall separates two closed rooms. Its annotation would
+              // necessarily land inside one of them, so only dimension the
+              // completed plan's exterior boundary.
+              if (!exteriorClosedWallIds.has(wall.id)) return null;
               const dimensionSign = closedWallOutsideSigns.get(wall.id) || (wall.measurementSide === 'left' ? -1 : 1);
               const offset = dimensionSign * (body.thickness + dimensionOffset);
               const segmentOffset = dimensionSign * (body.thickness + dimensionOffset * 0.42);

@@ -4,7 +4,6 @@ import mongoose from 'mongoose';
 import { MediaAsset, type IMediaAsset } from '@/models/MediaAsset';
 import { AiGeneration } from '@/models/AiGeneration';
 import { AiWorkflow } from '@/models/AiWorkflow';
-import { uploadMedia } from '@/lib/ai/pollinations';
 
 type MediaOwnerType = IMediaAsset['ownerType'];
 
@@ -198,27 +197,28 @@ export async function readInternalAssetAsDataUri(imageUrl: string, enterpriseId:
   const assetId = getAssetIdFromImageUrl(imageUrl);
   if (!assetId) return undefined;
 
-  const asset = await MediaAsset.findOne({ _id: assetId, enterpriseId: toObjectId(enterpriseId) });
+  const asset = await MediaAsset.findOne({
+    _id: assetId,
+    enterpriseId: toObjectId(enterpriseId),
+    deletedAt: { $exists: false },
+  });
   if (!asset) return undefined;
 
   const buffer = await readMediaAssetBuffer(asset);
   return `data:${asset.mimeType};base64,${buffer.toString('base64')}`;
 }
 
-export async function ensureModelAccessibleImageUrl(
+export async function resolveAiProviderImageInput(
   image: string,
-  enterpriseId: string | mongoose.Types.ObjectId,
-  apiKey?: string
-) {
+  enterpriseId: string | mongoose.Types.ObjectId
+): Promise<string> {
   const generationId = image.match(INTERNAL_GENERATION_URL_RE)?.[1];
   if (generationId) {
     const generation = await AiGeneration.findOne({ _id: generationId, enterpriseId: toObjectId(enterpriseId) })
       .select('output.imageUrl')
       .lean();
-    if (!generation?.output?.imageUrl) {
-      throw new Error('Generation image asset not found or inaccessible');
-    }
-    return ensureModelAccessibleImageUrl(generation.output.imageUrl, enterpriseId, apiKey);
+    if (!generation?.output?.imageUrl) throw new Error('Generation image asset not found or inaccessible');
+    return resolveAiProviderImageInput(generation.output.imageUrl, enterpriseId);
   }
 
   const workflowId = image.match(INTERNAL_WORKFLOW_SOURCE_URL_RE)?.[1];
@@ -226,23 +226,14 @@ export async function ensureModelAccessibleImageUrl(
     const workflow = await AiWorkflow.findOne({ _id: workflowId, enterpriseId: toObjectId(enterpriseId) })
       .select('sourceImage')
       .lean();
-    if (!workflow?.sourceImage) {
-      throw new Error('Workflow source image not found or inaccessible');
-    }
-    return ensureModelAccessibleImageUrl(workflow.sourceImage, enterpriseId, apiKey);
+    if (!workflow?.sourceImage) throw new Error('Workflow source image not found or inaccessible');
+    return resolveAiProviderImageInput(workflow.sourceImage, enterpriseId);
   }
 
   if (isInternalAssetImageUrl(image)) {
     const dataUri = await readInternalAssetAsDataUri(image, enterpriseId);
-    if (!dataUri) {
-      throw new Error('Image asset not found or inaccessible');
-    }
-    return uploadMedia(dataUri, apiKey);
+    if (!dataUri) throw new Error('Image asset not found or inaccessible');
+    return dataUri;
   }
-
-  if (image.startsWith('data:image')) {
-    return uploadMedia(image, apiKey);
-  }
-
   return image;
 }

@@ -5,6 +5,8 @@ import * as jose from 'jose';
 const ROUTE_PERMISSIONS: Record<string, string> = {
   '/': 'dashboard',
   '/enterprises': 'enterprises',
+  '/ai-providers': 'ai-providers',
+  '/ai-credit-prices': 'ai-credit-prices',
   '/roles': 'roles',
   '/floorplans': 'floorplans',
   '/floorplans/kujiale': 'floorplans',
@@ -21,7 +23,13 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/api/kujiale': 'floorplans',
   '/api/staff': 'staff',
   '/api/enterprises': 'enterprises',
+  '/ai-studio': 'ai-scenarios',
+  '/api/ai/workflows': 'ai-scenarios',
+  '/api/ai/workflow-leads': 'ai-scenarios',
+  '/api/ai/design-capabilities': 'ai-scenarios',
 };
+
+const LEGACY_AI_PERMISSIONS = ['ai-designer', 'ai-floorplan', 'ai-furnishing', 'ai-soft-furnishing'];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -76,7 +84,11 @@ export async function proxy(request: NextRequest) {
         .sort((a, b) => b[0].length - a[0].length)[0]?.[1] ||
       ROUTE_PERMISSIONS['/'];
 
-    if (requiredPermission && !userPermissions.includes(requiredPermission)) {
+    const hasRequiredPermission = !requiredPermission || userPermissions.includes(requiredPermission) || (
+      requiredPermission === 'ai-scenarios' && LEGACY_AI_PERMISSIONS.some((permission) => userPermissions.includes(permission))
+    );
+
+    if (!hasRequiredPermission) {
       // Prevent redirect loop: if already at root and missing dashboard permission, just proceed 
       // and let the application components handle the empty state/unauthorized view
       if (pathname === '/') {

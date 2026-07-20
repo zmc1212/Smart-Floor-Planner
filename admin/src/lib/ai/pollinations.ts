@@ -120,11 +120,16 @@ function combinePrompt(prompt: string, negativePrompt?: string) {
 
 export async function uploadMedia(imageDataUri: string, apiKey?: string) {
   const { mimeType, buffer } = parseDataUri(imageDataUri);
-  const body = new Blob([Uint8Array.from(buffer)], { type: mimeType });
+  const extension = mimeType === 'image/jpeg' ? 'jpg' : mimeType.split('/')[1] || 'bin';
+  const body = new FormData();
+  body.append(
+    'file',
+    new Blob([Uint8Array.from(buffer)], { type: mimeType }),
+    `image.${extension}`
+  );
   const response = await fetch(`${POLLINATIONS_MEDIA_URL}/upload`, {
     method: 'POST',
     headers: buildHeaders(apiKey, {
-      'Content-Type': mimeType,
       Accept: 'application/json',
     }),
     body,

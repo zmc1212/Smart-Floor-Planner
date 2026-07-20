@@ -16,6 +16,7 @@ export async function GET(
       const asset = await MediaAsset.findOne({
         _id: id,
         enterpriseId: context.enterpriseId,
+        deletedAt: { $exists: false },
       });
 
       if (!asset) {

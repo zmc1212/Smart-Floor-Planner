@@ -187,7 +187,8 @@ export async function PATCH(
             imageUrl: persistedImageUrl,
             promptUsed: '手动上传测试图',
           },
-          provider: 'pollinations',
+          provider: 'manual_upload',
+          billing: { price: 0, status: 'consumed' },
         });
         await updateMediaAssetOwner(persistedImageUrl, generation._id);
 

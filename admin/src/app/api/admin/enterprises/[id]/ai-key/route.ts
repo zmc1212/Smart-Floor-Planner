@@ -1,116 +1,30 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
-import {
-  revokeEnterpriseManagedPollinationsKey,
-  syncEnterprisePollinationsSnapshot,
-  updateEnterpriseAiConfig,
-  upsertEnterpriseManagedPollinationsKey,
-} from '@/lib/ai/enterprise-ai';
+import { Enterprise } from '@/models/Enterprise';
+import { EnterpriseAiUsageSnapshot } from '@/models/EnterpriseAiUsageSnapshot';
 
-interface AiKeyBody {
-  allowedCapabilities?: string[];
-  allowedModels?: string[];
-  pollenBudget?: number | null;
-  rotate?: boolean;
-  status?: 'revoked';
-}
-
-function getErrorResponse(error: unknown, fallbackMessage: string) {
-  const status =
-    error &&
-    typeof error === 'object' &&
-    'status' in error &&
-    typeof (error as { status?: unknown }).status === 'number'
-      ? (error as { status: number }).status
-      : 500;
-
-  return NextResponse.json(
-    {
-      success: false,
-      error: error instanceof Error ? error.message : fallbackMessage,
-    },
-    { status }
-  );
-}
-
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await dbConnect();
-
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
-      const body = (await request.json().catch(() => ({}))) as AiKeyBody;
       const { id } = await params;
-      const result = await upsertEnterpriseManagedPollinationsKey({
-        enterpriseId: id,
-        allowedCapabilities: body.allowedCapabilities,
-        allowedModels: body.allowedModels || [],
-        pollenBudget: body.pollenBudget ?? null,
-        rotate: Boolean(body.rotate),
-      });
-
-      return NextResponse.json({
-        success: true,
-        data: {
-          secret: result.secret,
-          maskedKey: result.maskedKey,
-          keyInfo: result.keyInfo,
-          snapshot: result.snapshot,
-        },
-      });
+      const [enterprise, snapshot] = await Promise.all([
+        Enterprise.findById(id).select('aiConfig.provider aiConfig.keyMode aiConfig.pollinationsKeyRef aiConfig.pollinationsKeyName aiConfig.pollinationsMaskedKey aiConfig.allowedCapabilities aiConfig.allowedModels aiConfig.pollenBudget aiConfig.lastSyncedAt').lean(),
+        EnterpriseAiUsageSnapshot.findOne({ enterpriseId: id }).lean(),
+      ]);
+      if (!enterprise) return NextResponse.json({ success: false, error: 'Enterprise not found' }, { status: 404 });
+      return NextResponse.json({ success: true, deprecated: true, data: { aiConfig: enterprise.aiConfig || null, snapshot } });
     });
   } catch (error) {
-    console.error('[Enterprise AI Key POST]', error);
-    return getErrorResponse(error, 'Server error');
+    console.error('[Legacy Enterprise AI Key GET]', error);
+    return NextResponse.json({ success: false, error: '读取旧 AI 配置失败' }, { status: 500 });
   }
 }
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    await dbConnect();
-
-    return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
-      const body = (await request.json()) as AiKeyBody;
-      const { id } = await params;
-
-      if (
-        (body.status as unknown as string) === 'active' ||
-        (body.status as unknown as string) === 'disabled'
-      ) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: 'Pollinations 子 Key 不支持启用或停用，请使用轮换或撤销。',
-          },
-          { status: 400 }
-        );
-      }
-
-      if (body.status === 'revoked') {
-        await revokeEnterpriseManagedPollinationsKey(id);
-      } else {
-        await updateEnterpriseAiConfig({
-          enterpriseId: id,
-          allowedCapabilities: body.allowedCapabilities,
-          allowedModels: body.allowedModels,
-          pollenBudget: body.pollenBudget,
-        });
-      }
-
-      const snapshot = await syncEnterprisePollinationsSnapshot(id).catch(() => null);
-      return NextResponse.json({
-        success: true,
-        data: snapshot,
-      });
-    });
-  } catch (error) {
-    console.error('[Enterprise AI Key PATCH]', error);
-    return getErrorResponse(error, 'Server error');
-  }
+export async function POST() {
+  return NextResponse.json({ success: false, error: '企业 Pollinations 子 Key 管理已弃用，供应商凭证改由平台统一维护。' }, { status: 410 });
+}
+export async function PATCH() {
+  return NextResponse.json({ success: false, error: '企业 Pollinations 子 Key 管理已弃用，供应商凭证改由平台统一维护。' }, { status: 410 });
 }

@@ -6,5 +6,6 @@ coverage/
 *.log
 scratch/smart-floor-planner-intro-video/
 miniprogram/design-mockups/
+/design-references/
 admin/uploads/
 

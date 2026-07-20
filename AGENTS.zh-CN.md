@@ -55,6 +55,7 @@
 ### 小程序设计与入口
 
 - 新 UI 遵循 `miniprogram/DESIGN.md`、`design-tokens.json` 和 `app.wxss` token，保持明亮绿色、平静的家装设计风格。
+- AI 生成的设计参考图统一放在仓库根目录 `design-references/`。该目录已加入 Git 忽略规则，且不得放入 `miniprogram/`，避免参考资源增大小程序包体积。
 - 唯一正式量房页面是 `miniprogram/pages/surveying-editor/surveying-editor.*`。
 - 所有量房入口都带 `leadId` 和/或 `floorPlanId` 进入该页面。不得恢复 `pages/editor/editor`、`restoreFloorPlan` 或双入口。
 - 正式 `FloorPlan.layoutData` 只允许 `version: 4`、`measurementMode: 'surveying'` 和 `surveyGraph`。禁止持久化 `rooms`、`homeOutline`、`partitions`、`surveyDraft`、`prototypeOnly` 或 `surveying_prototype`。

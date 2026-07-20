@@ -52,6 +52,15 @@
         </view>
       </view>
 
+      <view class="ai-home-entry bg-white" bindtap="onOpenAIHome">
+        <image class="ai-home-entry-image" src="/images/login-hero.png" mode="aspectFill" />
+        <view class="ai-home-entry-copy">
+          <text class="ai-home-entry-title">AI 设计</text>
+          <text class="ai-home-entry-subtitle">网图复刻 · 空间换风格</text>
+        </view>
+        <text class="ai-home-entry-arrow">›</text>
+      </view>
+
       <view class="section-card bg-white">
         <view class="section-header flex-row items-center justify-between">
           <text class="section-title text-lg font-bold text-main">工作看板</text>

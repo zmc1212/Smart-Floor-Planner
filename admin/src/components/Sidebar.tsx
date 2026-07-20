@@ -19,12 +19,10 @@ import {
   ChevronLeft, 
   Menu,
   ChevronRight,
-  PenTool,
-  Palette,
   Ruler,
-  Sofa,
   Settings,
   Search,
+  Cable,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -64,6 +62,8 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       title: '平台管理中心',
       items: [
         { key: 'enterprises', label: '企业管理', icon: Building2, href: '/enterprises' },
+        { key: 'ai-providers', label: 'AI 供应商', icon: Cable, href: '/ai-providers' },
+        { key: 'ai-credit-prices', label: 'AI 点数价格', icon: Coins, href: '/ai-credit-prices' },
         { key: 'roles', label: '角色权限管理', icon: Shield, href: '/roles' },
         { key: 'admins', label: '系统管理', icon: UserCog, href: '/admins' },
         { key: 'users', label: '用户审计', icon: Users, href: '/users' },
@@ -99,11 +99,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
     {
       title: 'AI 辅助设计',
       items: [
-        { key: 'ai-designer', label: 'AI设计师', icon: Sparkles, href: '/ai-studio/designer' },
-        { key: 'ai-scenarios', label: 'AI 设计工作流', icon: Sparkles, href: '/ai-studio/scenarios' },
-        { key: 'ai-floorplan', label: 'AI 室内平面', icon: PenTool, href: '/ai-studio/floor-plan' },
-        { key: 'ai-furnishing', label: 'AI 风格设计', icon: Palette, href: '/ai-studio/furnishing' },
-        { key: 'ai-soft-furnishing', label: 'AI 软装设计', icon: Sofa, href: '/ai-studio/soft-furnishing' },
+        { key: 'ai-scenarios', label: 'AI 设计', icon: Sparkles, href: '/ai-studio/scenarios' },
         { key: 'inspirations', label: '灵感方案', icon: Sparkles, href: '/inspirations' },
         { key: 'ai-presets', label: 'AI 预设配置', icon: Settings, href: '/ai-presets' },
       ]
@@ -373,10 +369,14 @@ export default function Sidebar() {
 
   const hasMenuPermission = (key: string) => {
     if (!admin) return true;
+    if (['ai-credit-prices', 'ai-providers'].includes(key) && (admin.role === 'super_admin' || admin.role === 'admin')) return true;
     if (admin.effectivePermissions?.includes(key)) return true;
     if (key === 'kujiale-floorplans' && admin.effectivePermissions?.includes('floorplans')) return true;
-    if (key === 'ai-soft-furnishing' && admin.effectivePermissions?.includes('ai-furnishing')) return true;
-    if (key === 'ai-scenarios' && admin.effectivePermissions?.includes('ai-designer')) return true;
+    if (
+      key === 'ai-scenarios' &&
+      ['ai-designer', 'ai-floorplan', 'ai-furnishing', 'ai-soft-furnishing']
+        .some((permission) => admin.effectivePermissions?.includes(permission))
+    ) return true;
     return false;
   };
 

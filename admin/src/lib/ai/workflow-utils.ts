@@ -6,6 +6,7 @@ type GenerationLike = {
   workflowId?: unknown;
   parentGenerationId?: unknown;
   type: string;
+  channel?: string;
   stageKey?: string;
   sourceAssetRole?: string;
   isSelectedBaseline?: boolean;
@@ -83,11 +84,20 @@ export function serializeAiGeneration(generation: GenerationLike) {
       ? String(generation.parentGenerationId)
       : undefined,
     type: generation.type,
+    channel: generation.channel || 'admin',
+    hasCustomerContext: Boolean(generation.leadId),
+    syncedToWorkflow: Boolean(generation.workflowId),
     stageKey: generation.stageKey,
     stageLabel: stageDefinition?.name,
     sourceAssetRole: generation.sourceAssetRole,
     isSelectedBaseline: Boolean(generation.isSelectedBaseline),
+    selectionStatus: generation.isSelectedBaseline
+      ? 'selected'
+      : generation.status === 'succeeded' && ['base_render', 'soft_furnishing'].includes(String(generation.stageKey || ''))
+        ? 'candidate'
+        : 'not_applicable',
     nextRecommendedStage: generation.nextRecommendedStage,
+    recommendedAction: generation.nextRecommendedStage,
     status: generation.status,
     input: sanitizeGenerationInput(generation.input),
     output: sanitizeGenerationOutput(id, generation.output),

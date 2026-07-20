@@ -416,7 +416,6 @@ page {
   box-sizing: border-box;
 }
 
-.close-hint,
 .space-summary,
 .wall-context {
   position: absolute;
@@ -424,20 +423,6 @@ page {
   background: rgba(31, 41, 55, 0.78);
   color: #ffffff;
   box-shadow: var(--shadow-float);
-}
-
-.close-hint {
-  left: 32rpx;
-  bottom: 34rpx;
-  max-width: 520rpx;
-  padding: 14rpx 22rpx;
-  border-radius: 999rpx;
-  font-size: 22rpx;
-}
-
-.close-hint.actionable {
-  background: #17a14c;
-  font-weight: 600;
 }
 
 .space-summary {
@@ -2093,14 +2078,14 @@ page {
   left: 14rpx;
   right: 14rpx;
   top: 49rpx;
-  height: 3rpx;
+  height: 2rpx;
 }
 
 .cursor-drop-v {
   top: 14rpx;
   bottom: 14rpx;
   left: 50%;
-  width: 3rpx;
+  width: 2rpx;
   transform: translateX(-50%);
   box-sizing: border-box;
 }
@@ -2109,9 +2094,9 @@ page {
   position: absolute;
   left: 36rpx;
   top: 36rpx;
-  width: 28rpx;
-  height: 28rpx;
-  border: 3rpx solid #f07a21;
+  width: 26rpx;
+  height: 26rpx;
+  border: 2rpx solid #f07a21;
   box-sizing: border-box;
 }
 
