@@ -32,6 +32,10 @@ export async function GET(request: Request) {
       provider: editRuntimes[0]?.key || generateRuntimes[0]?.key || '',
       supportsEdit: editRuntimes.length > 0,
       supportsGenerate: generateRuntimes.length > 0,
+      floorPlanTargetSupport: {
+        whole_floor_plan: editRuntimes.length > 0,
+        single_room: generateRuntimes.length > 0,
+      },
       error: editRuntimes.length || generateRuntimes.length ? '' : 'AI 图片服务未配置',
       allowedModels: [] as string[],
     };
@@ -42,7 +46,11 @@ export async function GET(request: Request) {
         account: serializeAiCreditAccount(account),
         modes: listAiDesignActions('miniprogram').map((action) => {
           const price = prices.find((item) => item.actionKey === action.actionKey);
-          const providerReady = action.capability === 'image.edit' ? providerState.supportsEdit : providerState.supportsGenerate;
+          const providerReady = action.miniMode === 'floor_plan_render'
+            ? providerState.supportsEdit || providerState.supportsGenerate
+            : action.capability === 'image.edit'
+              ? providerState.supportsEdit
+              : providerState.supportsGenerate;
           return {
             key: action.miniMode,
             label: action.label,
@@ -51,6 +59,9 @@ export async function GET(request: Request) {
             requiredInputs: action.requiredInputs,
             credits: Number(price?.credits || 0),
             enabled: Boolean(price?.enabled) && policy.enabledActionKeys.includes(action.actionKey) && providerReady,
+            targetSupport: action.miniMode === 'floor_plan_render'
+              ? providerState.floorPlanTargetSupport
+              : undefined,
           };
         }),
         styles: styles.map((style) => ({

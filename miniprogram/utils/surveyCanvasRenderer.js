@@ -1,4 +1,6 @@
 const surveyGraph = require('./surveyWallGraph.js');
+const dimensionLayout = require('./surveyDimensionPlan.js');
+const wallSolidLayout = require('./surveyWallSolidPlan.js');
 
 const GRID_MINOR_MM = 500;
 const GRID_MAJOR_MM = 2500;
@@ -220,64 +222,41 @@ function createDimensionOptions(wall, priority) {
   });
 }
 
-function createOpeningSegmentDimensions(walls, openings) {
-  const dimensions = [];
-  const openingsByWall = {};
-  (openings || []).forEach((opening) => {
-    // The compact chain dimension is reserved for doors. Windows are shown
-    // with their CAD rails and the normal whole-wall dimensions only.
-    if (!opening || opening.type !== 'door' || !opening.wall || !opening.wall.id) return;
-    if (!openingsByWall[opening.wall.id]) openingsByWall[opening.wall.id] = [];
-    openingsByWall[opening.wall.id].push(opening);
+function createClosedDimensionPlan(walls, openings, sourceWalls) {
+  const wallById = {};
+  (sourceWalls || []).forEach((wall) => { wallById[wall.id] = wall; });
+  const plan = dimensionLayout.createExteriorDimensionPlan({
+    baseGap: DIMENSION_OUTER_GAP_PX,
+    laneGap: DIMENSION_LABEL_HEIGHT_PX + 12,
+    groupTolerance: 2,
+    walls,
+    openings: (openings || []).map((opening) => ({
+      id: opening.id,
+      wallId: opening.wall && opening.wall.id,
+      type: opening.type,
+      start: opening.startPx,
+      end: opening.endPx
+    }))
   });
 
-  walls.filter((wall) => wall.closed && wall.isExteriorBoundary && !wall.lineOnly).forEach((wall) => {
-    const wallOpenings = (openingsByWall[wall.id] || []).slice().sort((first, second) => first.startPx - second.startPx);
-    if (!wallOpenings.length) return;
-
-    const outerSign = typeof wall.closedOutsideSign === 'number'
-      ? wall.closedOutsideSign
-      : (wall.measurementSide === 'left' ? -1 : 1);
-    const offset = outerSign * (wall.thicknessPx + DIMENSION_OUTER_GAP_PX);
-    const segments = [];
-    let cursor = 0;
-    wallOpenings.forEach((opening) => {
-      const start = clamp(opening.startPx, cursor, wall.widthPx);
-      const end = clamp(opening.endPx, start, wall.widthPx);
-      if (start - cursor >= 1) segments.push({ startX: cursor, endX: start });
-      if (end - start >= 1) segments.push({ startX: start, endX: end });
-      cursor = end;
-    });
-    if (wall.widthPx - cursor >= 1) segments.push({ startX: cursor, endX: wall.widthPx });
-
-    segments.forEach((segment, index) => {
-      const lengthMm = Math.round((segment.endX - segment.startX) / wall.widthPx * wall.lengthMm);
-      if (!lengthMm) return;
-      dimensions.push({
-        wall,
-        kind: 'opening-segment',
-        placement: 'outside',
-        label: `${lengthMm}`,
-        offset,
-        startX: segment.startX,
-        endX: segment.endX,
-        startY: outerSign * wall.thicknessPx,
-        endY: outerSign * wall.thicknessPx,
-        priority: 1000 + index,
-        labelBox: createLabelBox(wall, offset, `${lengthMm}`)
-      });
-    });
-  });
-  return dimensions;
+  return plan.items.map((item) => ({
+    id: item.id,
+    wall: wallById[item.sourceWallId] || null,
+    kind: item.kind,
+    placement: 'outside',
+    label: item.label,
+    lane: item.lane,
+    startPoint: item.start,
+    endPoint: item.end,
+    extensionStart: item.extensionStart,
+    extensionEnd: item.extensionEnd
+  }));
 }
 
-function resolveDimensions(walls, openings) {
+function resolveDimensions(walls, openings, exteriorBoundaryWalls) {
   const dimensions = [];
   const accepted = [];
   const activeWalls = walls.filter((wall) => !wall.lineOnly && wall.isActiveMeasurement && !wall.closed);
-  // A shared wall's “outside” is another closed room. Dimension only the
-  // exterior boundary so a completed plan never receives interior annotations.
-  const closedWalls = walls.filter((wall) => !wall.lineOnly && wall.closed && wall.isExteriorBoundary);
 
   function processGroup(groupOptions) {
     groupOptions.sort((first, second) => second.priority - first.priority);
@@ -291,10 +270,6 @@ function resolveDimensions(walls, openings) {
   }
 
   const innerGroup = [];
-  const outerGroup = [];
-  const doorWallIds = new Set((openings || [])
-    .filter((opening) => opening && opening.type === 'door' && opening.wall)
-    .map((opening) => opening.wall.id));
 
   // While measuring, measured values describe only the inside edge. The exterior
   // length is useful only after the space is explicitly closed.
@@ -308,34 +283,12 @@ function resolveDimensions(walls, openings) {
     });
   });
 
-  // A closed space needs both the measured inner edge and the finished outer
-  // wall edge, matching the completed-plan annotation convention.
-  closedWalls.forEach((wall, index) => {
-    const priority = (wall.selected ? 900 : 0) + index;
-    const allOptions = createDimensionOptions(wall, priority);
-    // A door wall carries the nearby chain dimension plus one total. Keeping
-    // its second whole-wall value would repeat the same information and make
-    // a completed room look crowded.
-    if (!doorWallIds.has(wall.id)) {
-      innerGroup.push({
-        wall,
-        options: [allOptions[5]],
-        priority
-      });
-    }
-    outerGroup.push({
-      wall,
-      options: [allOptions[7]],
-      priority
-    });
-  });
-
   processGroup(innerGroup);
-  processGroup(outerGroup);
-
-  // A door wall receives a compact chain dimension nearest to the wall:
-  // left remaining wall, opening width, then right remaining wall.
-  dimensions.push(...createOpeningSegmentDimensions(closedWalls, openings));
+  dimensions.push(...createClosedDimensionPlan(
+    exteriorBoundaryWalls,
+    openings,
+    walls
+  ));
 
   return dimensions;
 }
@@ -778,8 +731,40 @@ function createSurveyRenderScene(input) {
     renderThicknessMmMap,
     selectedWallId: session.selectedWallId
   });
+  const solidWalls = walls.concat(previewWall && !previewWall.lineOnly ? [previewWall] : []);
+  const createSolidPlan = (items) => wallSolidLayout.createWallSolidPlan({
+    walls: items.map((wall) => ({
+      id: wall.id,
+      start: wall.startPoint,
+      end: wall.endPoint,
+      outerStart: wall.rawOuterStart,
+      outerEnd: wall.rawOuterEnd,
+      thickness: wall.thicknessPx,
+      polygon: [wall.startPoint, wall.endPoint, wall.rawOuterEnd, wall.rawOuterStart]
+    }))
+  });
+  const wallSolidPlan = createSolidPlan(solidWalls);
+  const wallSolidPlans = {
+    closed: createSolidPlan(solidWalls.filter((wall) => wall.closed)),
+    open: createSolidPlan(solidWalls.filter((wall) => !wall.closed))
+  };
   const openings = buildOpeningScenes(floor, walls, session);
-  const dimensions = resolveDimensions(walls, openings);
+  const exteriorBoundaryWalls = dimensionLayout.createExteriorBoundarySegments({
+    tolerance: 2,
+    walls: walls.filter((wall) => !wall.lineOnly && wall.closed).map((wall) => ({
+      id: wall.id,
+      start: wall.startPoint,
+      end: wall.endPoint,
+      coordinateLength: wall.widthPx,
+      measurementLength: wall.lengthMm,
+      thickness: wall.thicknessPx
+    })),
+    spaces: (floor.spaces || []).filter((space) => space.closed)
+  });
+  const exteriorSourceWallIds = {};
+  exteriorBoundaryWalls.forEach((wall) => { exteriorSourceWallIds[wall.sourceWallId] = true; });
+  walls.forEach((wall) => { wall.isExteriorBoundary = !!exteriorSourceWallIds[wall.id]; });
+  const dimensions = resolveDimensions(walls, openings, exteriorBoundaryWalls);
 
   return {
     rect,
@@ -792,6 +777,8 @@ function createSurveyRenderScene(input) {
       .filter((wall) => wall.isActiveMeasurement)
       .map((wall) => wall.id),
     joinFills: buildJoinFills(floor, renderThicknessMmMap, project, closedWallIds),
+    wallSolidPlan,
+    wallSolidPlans,
     closureGuide: buildClosureGuide(floor, session, project),
     alignmentSnapGuide: buildAlignmentSnapGuide(session, project),
     cursor: buildCursor(floor, session, project),
@@ -878,17 +865,16 @@ function drawClosedSpaceFills(ctx, scene) {
 }
 
 function drawWallBodies(ctx, scene) {
+  const solids = scene.wallSolidPlans || {};
+  drawCompoundRings(ctx, solids.closed && solids.closed.rings, '#8e8e8c');
+  drawCompoundRings(ctx, solids.open && solids.open.rings, '#e2e2e0');
   scene.walls.forEach((wall) => {
-    const fill = wall.closed ? 'rgba(142, 142, 140, 0.98)' : 'rgba(226, 226, 224, 0.94)';
-    drawPolygon(ctx, wall.bodyPolygon, fill);
     if (wall.selected) {
       drawPolygon(ctx, wall.selectionPolygon, 'rgba(226, 73, 79, 0.92)');
     }
   });
-  scene.joinFills.forEach((join) => {
-    drawPolygon(ctx, join.points, join.closed ? 'rgba(142, 142, 140, 0.98)' : 'rgba(226, 226, 224, 0.94)');
-  });
-  if (scene.previewWall && !scene.previewWall.lineOnly) {
+  if (scene.previewWall && !scene.previewWall.lineOnly &&
+      !(scene.wallSolidPlan && scene.wallSolidPlan.rings && scene.wallSolidPlan.rings.length)) {
     drawPolygon(ctx, scene.previewWall.bodyPolygon, 'rgba(226, 226, 224, 0.86)');
   }
 }
@@ -918,39 +904,18 @@ function drawOuterPath(ctx, walls, closed) {
 }
 
 function drawWallOutlines(ctx, scene) {
-  const walls = scene.previewWall && !scene.previewWall.lineOnly
-    ? scene.walls.concat(scene.previewWall)
-    : scene.walls;
-
   ctx.save();
   ctx.strokeStyle = '#1f1f1f';
   ctx.lineWidth = WALL_STROKE_PX;
   ctx.lineCap = 'butt';
   ctx.lineJoin = 'miter';
-  ctx.miterLimit = 2;
-  drawOuterPath(ctx, walls, scene.closed && !scene.previewWall);
-
-  walls.forEach((wall) => {
+  drawCompoundRings(ctx, scene.wallSolidPlan && scene.wallSolidPlan.rings, null, '#1f1f1f', WALL_STROKE_PX);
+  if (scene.previewWall && scene.previewWall.lineOnly) {
     ctx.beginPath();
-    ctx.moveTo(wall.startPoint.x, wall.startPoint.y);
-    ctx.lineTo(wall.endPoint.x, wall.endPoint.y);
+    ctx.moveTo(scene.previewWall.startPoint.x, scene.previewWall.startPoint.y);
+    ctx.lineTo(scene.previewWall.endPoint.x, scene.previewWall.endPoint.y);
     ctx.stroke();
-  });
-
-  walls.forEach((wall) => {
-    if (wall.startOpen) {
-      ctx.beginPath();
-      ctx.moveTo(wall.startPoint.x, wall.startPoint.y);
-      ctx.lineTo(wall.outerStart.x, wall.outerStart.y);
-      ctx.stroke();
-    }
-    if (wall.endOpen) {
-      ctx.beginPath();
-      ctx.moveTo(wall.endPoint.x, wall.endPoint.y);
-      ctx.lineTo(wall.outerEnd.x, wall.outerEnd.y);
-      ctx.stroke();
-    }
-  });
+  }
   ctx.restore();
 }
 
@@ -1112,7 +1077,7 @@ function drawOpenings(ctx, scene) {
     ctx.translate(wall.startPoint.x, wall.startPoint.y);
     ctx.rotate(wall.angleRad);
 
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = '#f8f8f8';
     ctx.lineWidth = Math.max(8, wall.thicknessPx + WALL_STROKE_PX * 3);
     ctx.lineCap = 'butt';
     ctx.beginPath();
@@ -1158,7 +1123,98 @@ function drawArrow(ctx, x, y, direction, size) {
   ctx.fill();
 }
 
+function drawCompoundRings(ctx, rings, fillStyle, strokeStyle, lineWidth) {
+  if (!rings || !rings.length) return;
+  ctx.beginPath();
+  rings.forEach((ring) => {
+    if (!ring || ring.length < 3) return;
+    ctx.moveTo(ring[0].x, ring[0].y);
+    for (let index = 1; index < ring.length; index += 1) {
+      ctx.lineTo(ring[index].x, ring[index].y);
+    }
+    ctx.closePath();
+  });
+  if (fillStyle) {
+    ctx.fillStyle = fillStyle;
+    ctx.fill();
+  }
+  if (strokeStyle) {
+    ctx.strokeStyle = strokeStyle;
+    ctx.lineWidth = lineWidth || 1;
+    ctx.stroke();
+  }
+}
+
+function drawPlannedDimension(ctx, dimension) {
+  const start = dimension.startPoint;
+  const end = dimension.endPoint;
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (!length) return;
+  const direction = { x: dx / length, y: dy / length };
+  const localY = { x: -direction.y, y: direction.x };
+  const toLocal = (value) => ({
+    x: (value.x - start.x) * direction.x + (value.y - start.y) * direction.y,
+    y: (value.x - start.x) * localY.x + (value.y - start.y) * localY.y
+  });
+  const extensionStart = toLocal(dimension.extensionStart || start);
+  const extensionEnd = toLocal(dimension.extensionEnd || end);
+  const flipLabel = Math.atan2(dy, dx) > Math.PI / 2 || Math.atan2(dy, dx) <= -Math.PI / 2;
+  const extensionLine = (source, targetX) => {
+    const vector = { x: targetX - source.x, y: -source.y };
+    const vectorLength = Math.hypot(vector.x, vector.y);
+    if (!vectorLength) return null;
+    const unit = { x: vector.x / vectorLength, y: vector.y / vectorLength };
+    return {
+      start: { x: source.x + unit.x * 3, y: source.y + unit.y * 3 },
+      end: { x: targetX + unit.x * 3, y: unit.y * 3 }
+    };
+  };
+  const startGuide = extensionLine(extensionStart, 0);
+  const endGuide = extensionLine(extensionEnd, length);
+
+  ctx.save();
+  ctx.translate(start.x, start.y);
+  ctx.rotate(Math.atan2(dy, dx));
+  ctx.strokeStyle = '#4b5563';
+  ctx.fillStyle = '#374151';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  if (startGuide) {
+    ctx.moveTo(startGuide.start.x, startGuide.start.y);
+    ctx.lineTo(startGuide.end.x, startGuide.end.y);
+  }
+  if (endGuide) {
+    ctx.moveTo(endGuide.start.x, endGuide.start.y);
+    ctx.lineTo(endGuide.end.x, endGuide.end.y);
+  }
+  ctx.moveTo(0, 0);
+  ctx.lineTo(length, 0);
+  ctx.stroke();
+  drawArrow(ctx, 0, 0, 1, 4.5);
+  drawArrow(ctx, length, 0, -1, 4.5);
+  ctx.save();
+  ctx.translate(length / 2, 0);
+  if (flipLabel) ctx.rotate(Math.PI);
+  const fontWeight = dimension.kind === 'chain-total' ? '600' : '500';
+  ctx.font = `${fontWeight} 11px sans-serif`;
+  const labelWidth = ctx.measureText(dimension.label).width;
+  ctx.fillStyle = 'rgba(248, 248, 248, 0.96)';
+  ctx.fillRect(-labelWidth / 2 - 3, -7, labelWidth + 6, 14);
+  ctx.fillStyle = '#111111';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(dimension.label, 0, 0);
+  ctx.restore();
+  ctx.restore();
+}
+
 function drawDimension(ctx, dimension) {
+  if (dimension.startPoint && dimension.endPoint) {
+    drawPlannedDimension(ctx, dimension);
+    return;
+  }
   const wall = dimension.wall;
   const y = dimension.offset;
   const width = wall.widthPx;

@@ -1211,10 +1211,10 @@ Page({
     const dx = pointer.x - centerX;
     const dy = pointer.y - centerY;
 
-    ctx.shadowColor = 'rgba(15, 23, 42, 0.16)';
+    ctx.shadowColor = 'rgba(23, 161, 76, 0.28)';
     ctx.shadowBlur = 10;
     ctx.shadowOffsetY = 3;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
+    ctx.fillStyle = '#17a14c';
     this.drawRoundRect(ctx, tip.x, tip.y, tip.width, tip.height, 18);
     ctx.fill();
 
@@ -1233,7 +1233,7 @@ Page({
     ctx.fill();
 
     ctx.shadowColor = 'transparent';
-    ctx.fillStyle = '#111827';
+    ctx.fillStyle = '#ffffff';
     ctx.font = '600 11px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';

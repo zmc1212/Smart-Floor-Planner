@@ -20,16 +20,16 @@
     <view wx:if="{{mode === 'floor_plan_render'}}" class="plan-source {{floorPlanId ? 'ready' : ''}}">
       <view class="plan-mark">户型</view>
       <view class="plan-copy">
-        <text class="plan-title">{{floorPlanId ? '已载入正式量房户型' : '尚未选择正式户型'}}</text>
-        <text class="plan-meta">{{floorPlanId ? '将按房间尺寸与门窗开口生成概念效果图' : '请从客户或户型卡片的 AI 设计入口进入'}}</text>
+        <text class="plan-title">{{floorPlanId ? floorPlanName + ' · ' + targetLabel : '尚未选择正式户型'}}</text>
+        <text class="plan-meta">{{floorPlanId ? targetMeta : '请从 AI 设计首页选择客户户型和设计范围'}}</text>
       </view>
     </view>
 
     <view wx:if="{{mode !== 'floor_plan_render' && floorPlanId}}" class="plan-source ready">
       <view class="plan-mark">户型</view>
       <view class="plan-copy">
-        <text class="plan-title">已关联正式户型房间</text>
-        <text class="plan-meta">生成时会同时参考量房尺寸、层高与门窗开口约束</text>
+        <text class="plan-title">已关联 {{floorPlanName}} · {{targetLabel}}</text>
+        <text class="plan-meta">{{targetScope === 'single_room' ? '生成时会参考该房间的尺寸、层高与门窗开口' : '用于关联客户户型与方案，不会把整户几何强加给单张现场图'}}</text>
       </view>
     </view>
 
@@ -70,7 +70,7 @@
     <view class="mode-note">
       <text wx:if="{{mode === 'reference_recreate'}}">参考图用于提取风格语言，生成时会优先保留现场空间结构。</text>
       <text wx:elif="{{mode === 'style_transform'}}">更换整体材质、家具与氛围，同时尽量保持门窗和视角不变。</text>
-      <text wx:elif="{{mode === 'floor_plan_render'}}">仅凭户型数据生成概念效果，不等同于施工图或像素级空间还原。</text>
+      <text wx:elif="{{mode === 'floor_plan_render'}}">{{targetScope === 'whole_floor_plan' ? '基于完整量房墙图生成全屋俯视概念效果。' : '基于指定房间量房数据生成室内视角概念效果。'}}不等同于施工图或像素级空间还原。</text>
       <text wx:else>仅调整家具、窗帘、地毯、挂画、绿植和装饰灯，保留硬装与固定柜体。</text>
     </view>
 

@@ -7,6 +7,14 @@ const MODE_TITLES = {
   soft_furnishing: '软装深化',
 };
 
+function decorateTask(task) {
+  return {
+    ...task,
+    modeTitle: MODE_TITLES[task.mode] || 'AI 设计',
+    sourceCompareImageUrl: task.controlImageUrl || task.spaceImageUrl || '',
+  };
+}
+
 Page({
   data: {
     id: '',
@@ -45,7 +53,7 @@ Page({
   async loadTask() {
     try {
       const response = await aiService.getTask(this.data.id);
-      const task = { ...response, modeTitle: MODE_TITLES[response.mode] || 'AI 设计' };
+      const task = decorateTask(response);
       this.setData({ task, loading: false });
       if (task.status === 'succeeded') this.resetPageScroll();
       if (this.shouldRun && task.status === 'created' && !this.data.running) {
@@ -68,7 +76,7 @@ Page({
     this.startPolling();
     aiService.runTask(this.data.id)
       .then((task) => {
-        this.setData({ task: { ...task, modeTitle: MODE_TITLES[task.mode] || 'AI 设计' }, running: false });
+        this.setData({ task: decorateTask(task), running: false });
         if (task.status !== 'processing') this.stopPolling();
       })
       .catch(() => {
@@ -140,7 +148,7 @@ Page({
     this.setData({ running: true });
     try {
       const task = await aiService.retryTask(this.data.id);
-      this.setData({ task: { ...task, modeTitle: MODE_TITLES[task.mode] || 'AI 设计' }, running: false });
+      this.setData({ task: decorateTask(task), running: false });
       this.startPolling();
     } catch (error) {
       this.setData({ running: false });

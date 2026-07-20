@@ -34,6 +34,7 @@ export interface IAiGeneration extends Document {
     styleReferenceImage?: string;
     spaceImage?: string;
     referenceImage?: string;
+    controlImage?: string;
     referenceAnalysis?: string;
     providerImages?: string[];
     providerRequest?: unknown;
@@ -169,6 +170,7 @@ const AiGenerationSchema: Schema<IAiGeneration> = new Schema(
       styleReferenceImage: { type: String },
       spaceImage: { type: String },
       referenceImage: { type: String },
+      controlImage: { type: String },
       referenceAnalysis: { type: String },
       providerImages: { type: [String], default: undefined },
       providerRequest: { type: Schema.Types.Mixed },

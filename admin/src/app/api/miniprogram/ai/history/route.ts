@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { AiGeneration } from '@/models/AiGeneration';
 import { resolveMiniAiContext } from '@/lib/ai/mini-ai-auth';
 import { serializeMiniAiTask } from '@/lib/ai/mini-ai-tasks';
+import { reconcileAiGeneration } from '@/lib/ai/execution-service';
 import { AiWorkflow } from '@/models/AiWorkflow';
 import Lead from '@/models/Lead';
 
@@ -24,6 +25,18 @@ export async function GET(request: Request) {
       AiGeneration.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
       AiGeneration.countDocuments(filter),
     ]);
+    let reconciledProcessingTasks = 0;
+    for (let index = 0; index < items.length && reconciledProcessingTasks < 4; index += 1) {
+      if (items[index].status !== 'processing') continue;
+      reconciledProcessingTasks += 1;
+      try {
+        const reconciled = await reconcileAiGeneration(items[index], { force: true });
+        items[index] = reconciled as typeof items[number];
+      } catch (error) {
+        console.error('[Mini AI History Reconcile]', error);
+        items[index] = await AiGeneration.findById(items[index]._id) || items[index];
+      }
+    }
     const workflowIds = Array.from(new Set(items.map((item) => item.workflowId).filter(Boolean).map(String)));
     const leadIds = Array.from(new Set(items.map((item) => item.leadId).filter(Boolean).map(String)));
     const [workflows, leads] = await Promise.all([

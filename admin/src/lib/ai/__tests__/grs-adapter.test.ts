@@ -69,6 +69,10 @@ test('GRS result polling parses success and refunded failure', async () => {
     assert.deepEqual(await grsAdapter.pollImage(runtime, 'remote-123'), {
       status: 'failed', remoteTaskId: 'remote-123', remoteStatus: 'violation', error: 'policy rejected', refunded: true,
     });
+    response = { id: 'remote-123', status: 'failed', message: 'render failed' };
+    assert.deepEqual(await grsAdapter.pollImage(runtime, 'remote-123'), {
+      status: 'failed', remoteTaskId: 'remote-123', remoteStatus: 'failed', error: 'render failed', refunded: true,
+    });
   } finally { restore(); }
 });
 

@@ -76,6 +76,77 @@ function createTwoClosedRoomsWithSharedDoorDraft() {
   return draft;
 }
 
+function createReverseFirstWallRectangleDraft() {
+  const draft = surveyGraph.createSurveyDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  floor.nodes = [
+    { id: 'a', xMm: 0, yMm: 0 },
+    { id: 'b', xMm: 3000, yMm: 0 },
+    { id: 'c', xMm: 3000, yMm: 2000 },
+    { id: 'd', xMm: 0, yMm: 2000 }
+  ];
+  floor.walls = [
+    ['wall-1', 'a', 'b', 3000, 0],
+    ['wall-2', 'b', 'c', 2000, 90],
+    ['wall-3', 'c', 'd', 3000, 180],
+    ['wall-4', 'd', 'a', 2000, -90]
+  ].map(([id, startNodeId, endNodeId, lengthMm, angleDeg]) => ({
+    id,
+    startNodeId,
+    endNodeId,
+    mode: 'straight',
+    lengthMm,
+    angleDeg,
+    thicknessMm: 200,
+    measurementSide: 'left'
+  }));
+  floor.spaces = [{
+    id: 'space-reversed',
+    name: '反向首墙房间',
+    wallIds: ['wall-1', 'wall-4', 'wall-3', 'wall-2'],
+    closed: true
+  }];
+  floor.session.state = 'spaceClosed';
+  floor.session.activeSpaceStartWallIndex = floor.walls.length;
+  return draft;
+}
+
+function createTJoinDraft() {
+  const draft = surveyGraph.createSurveyDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  floor.nodes = [
+    { id: 'left', xMm: 0, yMm: 0 },
+    { id: 'right', xMm: 3000, yMm: 0 },
+    { id: 'branch-start', xMm: 1500, yMm: 1200 },
+    { id: 'branch-end', xMm: 1500, yMm: 0 }
+  ];
+  floor.walls = [
+    {
+      id: 'main-wall',
+      startNodeId: 'left',
+      endNodeId: 'right',
+      mode: 'straight',
+      lengthMm: 3000,
+      angleDeg: 0,
+      thicknessMm: 200,
+      measurementSide: 'left'
+    },
+    {
+      id: 'branch-wall',
+      startNodeId: 'branch-start',
+      endNodeId: 'branch-end',
+      mode: 'straight',
+      lengthMm: 1200,
+      angleDeg: -90,
+      thicknessMm: 200,
+      measurementSide: 'left'
+    }
+  ];
+  floor.session.state = 'wallCommitted';
+  floor.session.activeSpaceStartWallIndex = 0;
+  return draft;
+}
+
 function createScene(draft) {
   const floor = surveyGraph.getActiveFloor(draft);
   return surveyCanvasRenderer.createSurveyRenderScene({
@@ -142,6 +213,30 @@ test('open wall chain renders only inner dimensions and keeps its full chain red
   assert.equal(previewScene.dimensions.some((dimension) => dimension.wall.id === 'preview-wall'), false);
 });
 
+test('closed space reverses its first wall when that is the only complete boundary chain', () => {
+  const draft = createReverseFirstWallRectangleDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const points = surveyGraph.buildSpaceBoundaryPoints(floor, floor.spaces[0].wallIds);
+  const scene = createScene(draft);
+
+  assert.deepEqual(points.map((point) => point.id), ['b', 'a', 'd', 'c']);
+  assert.equal(surveyGraph.calculateSpaceAreaMm2(draft), 6000000);
+  assert.equal(scene.closedSpaceFills.length, 1);
+  assert.equal(scene.closedSpaceFills[0].points.length, 4);
+  assert.equal(scene.walls.every((wall) => !wall.startOpen && !wall.endOpen), true);
+});
+
+test('a T join suppresses the branch end cap even when it lands inside another wall', () => {
+  const scene = createScene(createTJoinDraft());
+  const mainWall = scene.walls.find((wall) => wall.id === 'main-wall');
+  const branchWall = scene.walls.find((wall) => wall.id === 'branch-wall');
+
+  assert.equal(mainWall.startOpen, true);
+  assert.equal(mainWall.endOpen, true);
+  assert.equal(branchWall.startOpen, true);
+  assert.equal(branchWall.endOpen, false);
+});
+
 test('a connected diagonal preview exposes its interior angle for the top measurement action', () => {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
@@ -189,19 +284,16 @@ test('inside/outside measurement edge can change only while a wall chain first w
   assert.equal(floor.walls[2].measurementSide, 'left');
 });
 
-test('closed space adds outer dimensions while a new wall chain remains inner-only', () => {
+test('closed space creates one exterior dimension chain while a new wall chain remains inner-only', () => {
   const closedDraft = createClosedRectangleDraft();
   const closedFloor = surveyGraph.getActiveFloor(closedDraft);
   const closedScene = createScene(closedDraft);
 
-  assert.equal(closedScene.dimensions.length, closedFloor.walls.length * 2);
-  assert.equal(closedScene.dimensions.filter((dimension) => dimension.kind === 'inner').length, closedFloor.walls.length);
-  assert.equal(closedScene.dimensions.filter((dimension) => dimension.kind === 'outer').length, closedFloor.walls.length);
+  assert.equal(closedScene.dimensions.length, closedFloor.walls.length);
+  assert.equal(closedScene.dimensions.filter((dimension) => dimension.kind === 'chain-segment').length, closedFloor.walls.length);
+  assert.equal(closedScene.dimensions.filter((dimension) => dimension.kind === 'chain-total').length, 0);
   assert.equal(closedScene.dimensions.every((dimension) => dimension.placement === 'outside'), true);
-  closedScene.dimensions.forEach((dimension) => {
-    assert.ok(dimension.wall.closedOutsideSign === -1 || dimension.wall.closedOutsideSign === 1);
-    assert.ok(dimension.offset * dimension.wall.closedOutsideSign > 0);
-  });
+  assert.equal(closedScene.dimensions.every((dimension) => dimension.startPoint && dimension.endPoint), true);
   assert.deepEqual(closedScene.activeMeasurementWallIds, []);
   assert.equal(closedScene.closedSpaceLabels[0].detailScale, 1);
 
@@ -214,9 +306,7 @@ test('closed space adds outer dimensions while a new wall chain remains inner-on
     wall.measurementSide = wall.measurementSide === 'left' ? 'right' : 'left';
   });
   const reversedSideScene = createScene(reversedSideDraft);
-  reversedSideScene.dimensions.forEach((dimension) => {
-    assert.ok(dimension.offset * dimension.wall.closedOutsideSign > 0);
-  });
+  assert.equal(reversedSideScene.dimensions.length, closedFloor.walls.length);
 
   const nextDraft = surveyGraph.cloneDraft(closedDraft);
   const nextFloor = surveyGraph.getActiveFloor(nextDraft);
@@ -238,7 +328,7 @@ test('closed space adds outer dimensions while a new wall chain remains inner-on
   nextFloor.session.state = 'wallCommitted';
 
   const mixedScene = createScene(nextDraft);
-  assert.equal(mixedScene.dimensions.filter((dimension) => dimension.kind === 'outer').length, closedFloor.walls.length);
+  assert.equal(mixedScene.dimensions.filter((dimension) => dimension.kind === 'chain-segment').length, closedFloor.walls.length);
   assert.equal(mixedScene.dimensions.filter((dimension) => dimension.wall.id === 'next-wall').length, 1);
   assert.equal(mixedScene.dimensions.find((dimension) => dimension.wall.id === 'next-wall').kind, 'inner');
   assert.deepEqual(mixedScene.activeMeasurementWallIds, ['next-wall']);
@@ -289,9 +379,10 @@ test('shared walls between closed rooms never receive whole-wall or door-chain d
 
   assert.equal(sharedWall.closed, true);
   assert.equal(sharedWall.isExteriorBoundary, false);
-  assert.equal(scene.dimensions.some((dimension) => dimension.wall.id === 'wall-2'), false);
-  assert.equal(scene.dimensions.length, 12);
-  assert.equal(scene.dimensions.every((dimension) => dimension.wall.isExteriorBoundary), true);
+  assert.equal(scene.dimensions.some((dimension) => dimension.wall && dimension.wall.id === 'wall-2'), false);
+  assert.equal(scene.dimensions.length, 8);
+  assert.equal(scene.dimensions.filter((dimension) => dimension.kind === 'chain-total').length, 2);
+  assert.equal(scene.dimensions.every((dimension) => !dimension.wall || dimension.wall.isExteriorBoundary), true);
 });
 
 test('closed wall with an opening renders a wall-opening-wall chain dimension', () => {
@@ -306,9 +397,9 @@ test('closed wall with an opening renders a wall-opening-wall chain dimension', 
   assert.equal(chainDimensions.length, 3);
   assert.deepEqual(chainDimensions.map((dimension) => dimension.label), ['1050', '900', '1050']);
   assert.equal(chainDimensions.every((dimension) => dimension.placement === 'outside'), true);
-  assert.equal(chainDimensions.every((dimension) => dimension.offset * dimension.wall.closedOutsideSign > 0), true);
-  assert.equal(scene.dimensions.filter((dimension) => dimension.wall.id === firstWallId && dimension.kind === 'inner').length, 0);
-  assert.equal(scene.dimensions.filter((dimension) => dimension.wall.id === firstWallId && dimension.kind === 'outer').length, 1);
+  assert.equal(chainDimensions.every((dimension) => dimension.startPoint && dimension.endPoint), true);
+  assert.equal(scene.dimensions.filter((dimension) => dimension.wall && dimension.wall.id === firstWallId && dimension.kind === 'chain-segment').length, 0);
+  assert.equal(scene.dimensions.filter((dimension) => dimension.kind === 'chain-total').length, 0);
   assert.equal(scene.closedSpaceLabels[0].ceilingHeightMm, 2800);
 });
 
@@ -319,8 +410,7 @@ test('window walls retain whole-wall dimensions without a chain dimension', () =
   const scene = createScene(draft);
 
   assert.equal(scene.dimensions.filter((dimension) => dimension.wall.id === firstWallId && dimension.kind === 'opening-segment').length, 0);
-  assert.equal(scene.dimensions.filter((dimension) => dimension.wall.id === firstWallId && dimension.kind === 'inner').length, 1);
-  assert.equal(scene.dimensions.filter((dimension) => dimension.wall.id === firstWallId && dimension.kind === 'outer').length, 1);
+  assert.equal(scene.dimensions.filter((dimension) => dimension.wall.id === firstWallId && dimension.kind === 'chain-segment').length, 1);
 });
 
 test('dimension arrows and guidance lines use the compact drawing treatment', () => {

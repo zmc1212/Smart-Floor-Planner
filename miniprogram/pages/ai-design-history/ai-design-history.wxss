@@ -9,6 +9,7 @@
 .history-body { min-width: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 22rpx; box-sizing: border-box; }
 .history-info { min-width: 0; }
 .item-title { display: block; overflow: hidden; color: var(--text-primary); font-size: 27rpx; font-weight: 600; white-space: nowrap; text-overflow: ellipsis; }
+.item-target { display: block; margin-top: 6rpx; overflow: hidden; color: var(--text-brand); font-size: 20rpx; white-space: nowrap; text-overflow: ellipsis; }
 .sync-row { display: flex; align-items: center; min-width: 0; margin-top: 8rpx; }
 .sync-chip { flex-shrink: 0; padding: 4rpx 10rpx; border-radius: var(--radius-full); background: var(--neutral-100); color: var(--text-secondary); font-size: 18rpx; }
 .sync-chip.synced { background: var(--brand-primary-20); color: var(--text-brand); }

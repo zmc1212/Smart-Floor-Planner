@@ -11,6 +11,7 @@
         <view class="history-body">
           <view class="history-info" data-id="{{item.id}}" bindtap="openResult">
             <text class="item-title">{{item.modeTitle}}</text>
+            <text wx:if="{{item.targetLabel}}" class="item-target">{{item.targetLabel}}</text>
             <view class="sync-row">
               <text class="sync-chip {{item.syncedToWorkflow ? 'synced' : ''}}">{{item.syncedToWorkflow ? '已同步方案' : '独立任务'}}</text>
               <text wx:if="{{item.workflowTitle}}" class="workflow-name">{{item.workflowTitle}}</text>

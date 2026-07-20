@@ -43,8 +43,40 @@ function loadCapabilities() {
   return api.request('/miniprogram/ai/capabilities', 'GET').then((res) => res.data);
 }
 
+function groupFlatSources(items) {
+  const plans = [];
+  const byId = {};
+  (items || []).forEach((item) => {
+    let plan = byId[item.floorPlanId];
+    if (!plan) {
+      plan = {
+        leadId: item.leadId || '',
+        leadName: item.leadName || '未关联客户',
+        communityName: item.communityName || '',
+        floorPlanId: item.floorPlanId,
+        floorPlanName: item.floorPlanName || '正式户型',
+        floorPlanStatus: item.floorPlanStatus,
+        updatedAt: item.updatedAt,
+        rooms: [],
+      };
+      byId[item.floorPlanId] = plan;
+      plans.push(plan);
+    }
+    plan.rooms.push({
+      roomId: item.roomId,
+      roomName: item.roomName,
+      roomSize: item.roomSize,
+      openingCount: item.openingCount,
+    });
+    plan.closedRoomCount = plan.rooms.length;
+  });
+  return plans;
+}
+
 function loadSources() {
-  return api.request('/miniprogram/ai/sources', 'GET').then((res) => res.data || []);
+  return api.request('/miniprogram/ai/sources', 'GET').then((res) => (
+    Array.isArray(res.plans) ? res.plans : groupFlatSources(res.data || [])
+  ));
 }
 
 function loadWorkflows(params = {}) {
@@ -90,4 +122,5 @@ module.exports = {
   retryTask,
   loadHistory,
   deleteHistory,
+  groupFlatSources,
 };

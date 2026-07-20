@@ -21,9 +21,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       deletedAt: { $exists: false },
     });
     if (!generation) return NextResponse.json({ success: false, error: '任务不存在' }, { status: 404 });
-    const current = generation.status === 'processing'
-      ? await reconcileAiGeneration(generation)
-      : generation;
+    let current = generation;
+    if (generation.status === 'processing') {
+      try {
+        const reconciled = await reconcileAiGeneration(generation, { force: true });
+        current = reconciled as typeof current;
+      } catch (error) {
+        // A refunded provider task may exhaust fallback providers after saving
+        // the terminal state. Return that state instead of masking it with 500.
+        console.error('[Mini AI Task Reconcile]', error);
+        current = await AiGeneration.findById(generation._id) || generation;
+      }
+    }
     await syncMiniAiWorkflow(current, context);
     const [workflow, lead] = await Promise.all([
       current.workflowId ? AiWorkflow.findById(current.workflowId).select('title').lean() : null,

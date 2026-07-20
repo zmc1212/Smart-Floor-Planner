@@ -25,23 +25,23 @@
         <view class="result-heading">
           <view class="heading-copy">
             <text class="result-title">设计成果</text>
-            <text class="result-subtitle">{{task.spaceImageUrl ? '拖动查看设计前后变化' : '基于正式户型数据生成的概念效果'}}</text>
+            <text class="result-subtitle">{{task.sourceCompareImageUrl ? (task.controlImageUrl ? '拖动对比原始户型与全屋效果' : '拖动查看设计前后变化') : '基于正式户型数据生成的概念效果'}}</text>
           </view>
           <view class="complete-chip">{{task.workflowId ? '已同步方案' : '已完成'}}</view>
         </view>
 
-        <view wx:if="{{task.spaceImageUrl}}" class="compare-stage" bindtouchstart="handleCompareTouch" catchtouchmove="handleCompareTouch">
-          <image class="compare-image" src="{{task.resultImageUrl}}" mode="aspectFill"></image>
+        <view wx:if="{{task.sourceCompareImageUrl}}" class="compare-stage {{task.controlImageUrl ? 'floor-plan-compare' : ''}}" bindtouchstart="handleCompareTouch" catchtouchmove="handleCompareTouch">
+          <image class="compare-image" src="{{task.resultImageUrl}}" mode="{{task.controlImageUrl ? 'aspectFit' : 'aspectFill'}}"></image>
           <view class="before-layer" style="width: {{comparePercent}}%;">
-            <image class="compare-image before-image" src="{{task.spaceImageUrl}}" mode="aspectFill"></image>
+            <image class="compare-image before-image" src="{{task.sourceCompareImageUrl}}" mode="{{task.controlImageUrl ? 'aspectFit' : 'aspectFill'}}"></image>
           </view>
           <view class="compare-line" style="left: {{comparePercent}}%;">
             <view class="compare-handle">
               <image class="compare-handle-icon" src="/images/ai-result-icons/move-horizontal.png" mode="aspectFit"></image>
             </view>
           </view>
-          <view class="compare-label before-label">原空间</view>
-          <view class="compare-label after-label">AI 方案</view>
+          <view class="compare-label before-label">{{task.controlImageUrl ? '原始户型' : '原空间'}}</view>
+          <view class="compare-label after-label">{{task.controlImageUrl ? '全屋效果' : 'AI 方案'}}</view>
         </view>
 
         <view wx:else class="compare-stage single-result">
@@ -77,6 +77,10 @@
           <view class="summary-item">
             <text class="summary-label">生成模式</text>
             <text class="summary-value">{{task.modeTitle}}</text>
+          </view>
+          <view wx:if="{{task.targetLabel}}" class="summary-item">
+            <text class="summary-label">设计范围</text>
+            <text class="summary-value">{{task.targetLabel}}</text>
           </view>
           <view class="summary-item">
             <text class="summary-label">消耗点数</text>

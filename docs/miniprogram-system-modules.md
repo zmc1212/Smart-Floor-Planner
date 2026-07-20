@@ -104,11 +104,17 @@ utilities, and the admin APIs they call.
   formal-floor-plan concept rendering, and soft-furnishing refinement; dual-image
   reference input, source-image plus preset styles, camera/album upload,
   asynchronous provider states, failure retry and credit release, draggable
-  before/after comparison, a single-image floor-plan result, preview/save/share,
-  history reuse, and deletion. The home page provides one shared
-  customer/formal-plan/room selector; its `leadId`, `floorPlanId`, and `roomId`
-  are inherited by all four tasks, while only formal-plan rendering makes that
-  context mandatory. A compact current-scheme card auto-selects one active match,
+  before/after comparison, single-image floor-plan results, preview/save/share,
+  history reuse, and deletion. Task-detail reads force an upstream status query
+  for processing jobs, while the home page refreshes recent results every five
+  seconds until visible processing jobs reach a terminal state; history reads
+  reconcile up to four visible processing jobs before serialization. The home
+  page provides a two-step shared selector:
+  first choose a customer formal plan, then choose the complete plan or one closed
+  room. Its `leadId`, `floorPlanId`, `targetScope`, and optional `roomId` are
+  inherited by all four tasks, while only formal-plan rendering makes that
+  context mandatory. Complete-plan rendering produces one furnished top-down
+  concept; single-room rendering produces one eye-level room concept. A compact current-scheme card auto-selects one active match,
   asks the user to choose when multiple schemes exist, and retains an explicit
   create-alternative option. Create/results/history show scheme ownership and
   synchronization state.
@@ -126,10 +132,14 @@ utilities, and the admin APIs they call.
   `design-references/ai-design-home-v2.png` and
   `design-references/ai-design-result-v2.png`; the generated home hero
   is `miniprogram/images/ai-design-hero-v2.jpg`.
-- Formal-plan boundary: entries pass only `floorPlanId`/`roomId`; the backend
-  derives room dimensions, ceiling height, and opening summaries through the
-  formal survey-graph read adapter and never mutates `FloorPlan.layoutData`.
-  The source selector returns only formal closed rooms visible to the current
+- Formal-plan boundary: entries pass `floorPlanId`, explicit
+  `targetScope: whole_floor_plan | single_room`, and `roomId` only for a single
+  room. The backend derives dimensions, ceiling height, and opening summaries
+  through the formal survey-graph read adapter and never mutates
+  `FloorPlan.layoutData`. For complete-plan rendering it rasterizes a derived
+  1024px wall/opening control image into a separate `MediaAsset` and uses image
+  editing; a single room uses measured prompt context and image generation.
+  The source selector returns only formal plans and closed rooms visible to the current
   enterprise role (assigned leads for designers, assigned plans for measurers,
   and enterprise-scoped plans for enterprise administrators).
   Floor-plan-only output is a concept visualization, not construction-grade or
@@ -184,12 +194,28 @@ utilities, and the admin APIs they call.
   three BLE triangle readings validated with the cosine rule. Closing the angle
   panel does not mutate wall geometry or leave motion listening active.
 - Implemented rendering/editor behavior: CAD-like full-width door/window symbols,
-  inner-edge unfinished redline, exterior-boundary-only dimensions for closed
-  plans (including door chains only on exterior walls, never shared interior
-  walls), thin, consistent crosshair/square cursor treatment in the canvas,
+  inner-edge unfinished redline, room fills that accept only a fully connected
+  closed wall chain in either first-wall direction, and a compound wall-solid
+  union built from one-sided wall bodies plus connected-node fills. Filling and
+  outlining the union once removes internal caps, diagonal seams, and boxed ends
+  at connected nodes, L/T joins, and overlapping segments; opening cuts cover
+  the complete wall thickness.
+  An engineering-style exterior DimensionPlan is used for
+  closed plans (opening detail chain, segmented chain, and one total per
+  continuous collinear exterior run). Closed-space edges are geometrically
+  split and merged before annotation, excluding differently identified/split
+  shared walls and enclosed inner holes. CAD-style thin extension lines start at
+  the exterior wall face; compact arrows and masked dimension text replace
+  duplicate whole-wall pairs; thin,
+  consistent crosshair/square cursor treatment remains in the canvas,
   drag layer, and bottom drop control, plus a canvas-anchored closure callout
-  that selects a clear position away from walls and fixed controls; opening component specifications, BLE component measurement,
+  that selects a clear position away from walls and fixed controls. All
+  action-guidance callouts use the same green surface; opening component specifications, BLE component measurement,
   flip/model panels, and a Three.js preview for the selected door/window.
+- `miniprogram/utils/surveyDimensionPlan.js` and
+  `miniprogram/utils/surveyWallSolidPlan.js` are the dependency-free sources for
+  both renderers; admin development and production builds synchronize local
+  mirrors instead of expanding the Turbopack watch root across the repository.
 - Limited: BLE actions require a compatible connected device; some reserved
   bottom/object tools intentionally display a planned/unavailable message.
 - Boundary: the Mini Program editor does not expose a current report exporter or

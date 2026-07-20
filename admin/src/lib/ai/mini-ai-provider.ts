@@ -1,4 +1,5 @@
 import { executeAiChat } from '@/lib/ai/execution-service';
+import type { MiniAiTargetScope } from '@/lib/ai/mini-ai-floorplan';
 
 export type MiniAiRenderMode =
   | 'reference_recreate'
@@ -14,6 +15,7 @@ export interface MiniAiPromptInput {
   styleName?: string;
   stylePrompt?: string;
   roomSummary?: string;
+  targetScope?: MiniAiTargetScope;
 }
 
 export async function buildMiniAiRenderPrompt(input: MiniAiPromptInput) {
@@ -49,13 +51,24 @@ export async function buildMiniAiRenderPrompt(input: MiniAiPromptInput) {
     ].filter(Boolean).join(' ');
   } else if (input.mode === 'floor_plan_render') {
     if (!input.roomSummary) throw new Error('户型生成缺少有效的正式房间数据');
-    prompt = [
-      input.stylePrompt || `Create a ${input.styleName || 'modern'} interior concept rendering.`,
-      'Generate a photorealistic eye-level interior concept for the measured room described below.',
-      'Respect the stated room dimensions and opening count. Use coherent architectural scale, practical circulation, natural light, high material fidelity, no text, no labels.',
-      'This is a concept visualization based on measured data; do not invent unusual structural features.',
-      input.roomSummary,
-    ].join(' ');
+    if (input.targetScope === 'whole_floor_plan') {
+      prompt = [
+        input.stylePrompt || `Create a ${input.styleName || 'modern'} furnished whole-floor-plan rendering.`,
+        'Transform the provided measured control drawing into one complete top-down orthographic furnished floor-plan visualization.',
+        'Strictly preserve every wall, opening, room count, room adjacency, and the complete outer footprint. Do not crop out any room.',
+        'Use practical furniture layouts, coherent scale, clear circulation, realistic materials, clean natural lighting, no text, and no labels.',
+        'This is a concept visualization based on measured data, not a construction drawing.',
+        input.roomSummary,
+      ].join(' ');
+    } else {
+      prompt = [
+        input.stylePrompt || `Create a ${input.styleName || 'modern'} interior concept rendering.`,
+        'Generate a photorealistic eye-level interior concept for the single measured room described below.',
+        'Respect the stated room dimensions, ceiling height, and opening count. Use coherent architectural scale, practical circulation, natural light, high material fidelity, no text, no labels.',
+        'This is a concept visualization based on measured data; do not invent unusual structural features.',
+        input.roomSummary,
+      ].join(' ');
+    }
   } else if (input.mode === 'soft_furnishing') {
     prompt = [
       input.stylePrompt || `Refine this room with ${input.styleName || 'modern'} soft furnishings.`,

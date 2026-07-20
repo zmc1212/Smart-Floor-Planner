@@ -165,7 +165,8 @@ export async function consumeGenerationCredits(generation: GenerationDocument) {
     amount,
     operationId,
   });
-  generation.billing = { ...generation.billing, status: 'consumed', consumeOperationId: operationId };
+  generation.billing.status = 'consumed';
+  generation.billing.consumeOperationId = operationId;
 }
 
 export async function releaseGenerationCredits(generation: GenerationDocument, note: string) {
@@ -181,7 +182,34 @@ export async function releaseGenerationCredits(generation: GenerationDocument, n
     operationId,
     note,
   });
-  generation.billing = { ...generation.billing, status: 'released', releaseOperationId: operationId };
+  generation.billing.status = 'released';
+  generation.billing.releaseOperationId = operationId;
+}
+
+async function persistFailedGeneration(
+  generation: GenerationDocument,
+  input: {
+    errorCode: string;
+    errorMessage: string;
+    remoteTaskId?: string;
+    remoteStatus?: string;
+  }
+) {
+  generation.status = 'failed';
+  generation.errorCode = input.errorCode;
+  generation.errorMessage = input.errorMessage;
+  generation.externalTask = {
+    status: 'failed',
+    remoteTaskId: input.remoteTaskId,
+    remoteStatus: input.remoteStatus || 'failed',
+    lastPolledAt: new Date(),
+  };
+  try {
+    await releaseGenerationCredits(generation, input.errorMessage);
+  } finally {
+    await generation.save();
+  }
+  return generation;
 }
 
 async function persistSuccess(
@@ -367,11 +395,12 @@ export async function executeGenerationImage(
         : attempt.estimatedCost;
       await attempt.save();
       if (!result.refunded) {
-        await releaseGenerationCredits(generation, result.error);
-        generation.status = 'failed';
-        generation.errorMessage = result.error;
-        await generation.save();
-        return generation;
+        return persistFailedGeneration(generation, {
+          errorCode: 'PROVIDER_TASK_FAILED',
+          errorMessage: result.error,
+          remoteTaskId: result.remoteTaskId,
+          remoteStatus: result.remoteStatus,
+        });
       }
       lastError = new Error(result.error);
     } catch (error) {
@@ -395,24 +424,35 @@ export async function executeGenerationImage(
     }
   }
 
-  await releaseGenerationCredits(generation, lastError instanceof Error ? lastError.message : '供应商均未受理任务');
-  generation.status = 'failed';
-  generation.errorCode = 'ALL_PROVIDERS_REJECTED';
-  generation.errorMessage = lastError instanceof Error ? lastError.message : '所有供应商均未受理任务';
-  await generation.save();
+  const finalError = lastError instanceof Error ? lastError.message : '所有供应商均未受理任务';
+  await persistFailedGeneration(generation, {
+    errorCode: 'ALL_PROVIDERS_REJECTED',
+    errorMessage: finalError,
+  });
   throw lastError || new Error(generation.errorMessage);
 }
 
-export async function reconcileAiGeneration(generationOrId: GenerationDocument | string) {
+export async function reconcileAiGeneration(
+  generationOrId: GenerationDocument | string,
+  options: { force?: boolean } = {}
+) {
   const generation = typeof generationOrId === 'string'
     ? await AiGeneration.findById(generationOrId)
     : generationOrId;
   if (!generation) throw new Error('AI 任务不存在');
   if (generation.status !== 'processing' || !generation.currentAttemptId) return generation;
-  if (generation.externalTask?.nextPollAt && generation.externalTask.nextPollAt.getTime() > Date.now()) return generation;
+  if (!options.force && generation.externalTask?.nextPollAt && generation.externalTask.nextPollAt.getTime() > Date.now()) return generation;
 
   const attempt = await AiProviderAttempt.findById(generation.currentAttemptId);
-  if (!attempt || !attempt.remoteTaskId) return generation;
+  if (!attempt) return generation;
+  if (attempt.status === 'failed' && !attempt.remoteTaskId) {
+    return persistFailedGeneration(generation, {
+      errorCode: attempt.errorCode || 'ALL_PROVIDERS_REJECTED',
+      errorMessage: attempt.errorMessage || '供应商未受理任务',
+      remoteStatus: attempt.remoteStatus || 'failed',
+    });
+  }
+  if (!attempt.remoteTaskId) return generation;
   const runtime = await getProviderRuntimeById(String(attempt.providerConfigId));
   const startedAt = Date.now();
   try {
@@ -439,13 +479,13 @@ export async function reconcileAiGeneration(generationOrId: GenerationDocument |
         });
       }
     }
-    generation.status = 'failed';
-    generation.errorCode = 'PROVIDER_TASK_FAILED';
-    generation.errorMessage = result.error;
-    generation.externalTask = { status: 'failed', remoteTaskId: attempt.remoteTaskId, remoteStatus: attempt.remoteStatus, lastPolledAt: new Date() };
-    await releaseGenerationCredits(generation, result.error);
-    await Promise.all([attempt.save(), generation.save()]);
-    return generation;
+    await attempt.save();
+    return persistFailedGeneration(generation, {
+      errorCode: 'PROVIDER_TASK_FAILED',
+      errorMessage: result.error,
+      remoteTaskId: attempt.remoteTaskId,
+      remoteStatus: attempt.remoteStatus,
+    });
   } catch (error) {
     await markAttemptError(attempt, error, 'unknown', true, startedAt);
     generation.externalTask = {

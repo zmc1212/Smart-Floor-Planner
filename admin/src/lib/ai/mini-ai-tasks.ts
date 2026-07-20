@@ -4,7 +4,6 @@ import { MediaAsset } from '@/models/MediaAsset';
 import { FloorPlan } from '@/models/FloorPlan';
 import { AiWorkflow } from '@/models/AiWorkflow';
 import Lead from '@/models/Lead';
-import { adaptSurveyGraphToRooms, isFormalSurveyLayout } from '@/lib/survey-graph';
 import {
   getAssetIdFromImageUrl,
   getMediaAssetImageUrl,
@@ -21,6 +20,12 @@ import type { MiniAiContext } from '@/lib/ai/mini-ai-auth';
 import type { AiActionKey, AiLogicalModelKey } from '@/lib/ai/provider-types';
 import type { AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
 import { syncSuccessfulGenerationToWorkflow } from '@/lib/ai/workflow-baseline';
+import { findAccessibleMiniAiFloorPlan } from '@/lib/ai/mini-ai-floorplan-access';
+import {
+  renderMiniAiFloorPlanControlPng,
+  resolveMiniAiFloorPlanTarget,
+  type MiniAiTargetScope,
+} from '@/lib/ai/mini-ai-floorplan';
 
 export interface CreateMiniAiTaskInput {
   mode: MiniAiRenderMode;
@@ -30,6 +35,7 @@ export interface CreateMiniAiTaskInput {
   floorPlanId?: string;
   leadId?: string;
   roomId?: string;
+  targetScope?: MiniAiTargetScope;
   workflowId?: string;
   createNewWorkflow?: boolean;
 }
@@ -83,14 +89,16 @@ async function cloneGenerationOutputAsInput(asset: Awaited<ReturnType<typeof fin
   return cloned.asset;
 }
 
-async function deriveRoomSummary(input: CreateMiniAiTaskInput, enterpriseId: mongoose.Types.ObjectId) {
-  if (!input.floorPlanId || !mongoose.Types.ObjectId.isValid(input.floorPlanId)) return '';
-  const plan = await FloorPlan.findOne({ _id: input.floorPlanId, enterpriseId }).select('layoutData').lean();
-  if (!plan || !isFormalSurveyLayout(plan.layoutData)) return '';
-  const rooms = adaptSurveyGraphToRooms(plan.layoutData);
-  const room = rooms.find((item) => item.id === input.roomId) || rooms[0];
-  if (!room) return '';
-  return `Measured room context: ${room.name}, approximately ${(room.width / 10).toFixed(2)}m by ${(room.height / 10).toFixed(2)}m, with ${room.openings.length} measured openings.`;
+async function deriveFloorPlanTarget(input: CreateMiniAiTaskInput, context: MiniAiContext) {
+  if (!input.floorPlanId) return null;
+  const plan = await findAccessibleMiniAiFloorPlan(input.floorPlanId, context);
+  if (!plan) {
+    throw Object.assign(new Error('当前角色无权使用所选正式户型'), { status: 403 });
+  }
+  return {
+    plan,
+    target: resolveMiniAiFloorPlanTarget(plan.layoutData, input.targetScope, input.roomId),
+  };
 }
 
 async function findAccessibleLead(
@@ -145,7 +153,13 @@ async function resolveWorkflow(input: CreateMiniAiTaskInput, context: MiniAiCont
 
   let leadId = input.leadId;
   if ((!leadId || !mongoose.Types.ObjectId.isValid(leadId)) && input.floorPlanId && mongoose.Types.ObjectId.isValid(input.floorPlanId)) {
-    const owner = await Lead.findOne({ enterpriseId: context.enterpriseId, floorPlanIds: input.floorPlanId }).select('_id').lean();
+    const owner = await Lead.findOne({
+      enterpriseId: context.enterpriseId,
+      $or: [
+        { floorPlanIds: input.floorPlanId },
+        { primaryFloorPlanId: input.floorPlanId },
+      ],
+    }).select('_id').lean();
     leadId = owner ? String(owner._id) : undefined;
   }
   if (!leadId || !mongoose.Types.ObjectId.isValid(leadId)) return null;
@@ -200,15 +214,18 @@ export async function syncMiniAiWorkflow(generation: IAiGeneration, context: Min
 
 export async function createMiniAiTask(input: CreateMiniAiTaskInput, context: MiniAiContext) {
   if (!MODE_CONFIG[input.mode]) throw new Error('不支持的 AI 生成模式');
+  if (!input.floorPlanId && (input.roomId || input.targetScope)) {
+    throw new Error('设计范围必须关联正式户型');
+  }
   const config = MODE_CONFIG[input.mode];
-  const [rawSpaceAsset, rawReferenceAsset, price, roomSummary] = await Promise.all([
+  const [rawSpaceAsset, rawReferenceAsset, price, floorPlanTarget] = await Promise.all([
     input.spaceAssetId ? findOwnedAsset(input.spaceAssetId, context.enterpriseId) : Promise.resolve(null),
     input.referenceAssetId ? findOwnedAsset(input.referenceAssetId, context.enterpriseId) : Promise.resolve(null),
     getAiCreditPrice(config.actionKey),
-    deriveRoomSummary(input, context.enterpriseId),
+    deriveFloorPlanTarget(input, context),
   ]);
   if (input.mode !== 'floor_plan_render' && !rawSpaceAsset) throw new Error('空间图片不存在或无权访问');
-  if (input.mode === 'floor_plan_render' && !roomSummary) throw new Error('请选择包含正式闭合房间的户型');
+  if (input.mode === 'floor_plan_render' && !floorPlanTarget) throw new Error('请选择包含正式闭合房间的户型');
   if (input.mode === 'reference_recreate' && !rawReferenceAsset) throw new Error('请上传有效的参考图片');
   if (input.mode !== 'reference_recreate' && !input.styleKey) throw new Error('请选择目标风格');
 
@@ -236,7 +253,25 @@ export async function createMiniAiTask(input: CreateMiniAiTaskInput, context: Mi
     }
   }
 
+  const target = floorPlanTarget?.target;
+  const usesWholePlanControl = input.mode === 'floor_plan_render' && target?.targetScope === 'whole_floor_plan';
+  const logicalModelKey: AiLogicalModelKey = usesWholePlanControl
+    ? 'image.edit.standard'
+    : config.logicalModelKey;
+  const generationId = new mongoose.Types.ObjectId();
+  const controlAsset = usesWholePlanControl && floorPlanTarget
+    ? await storeMediaBuffer({
+        enterpriseId: context.enterpriseId,
+        ownerType: 'ai_generation_input',
+        ownerId: generationId,
+        mimeType: 'image/png',
+        buffer: await renderMiniAiFloorPlanControlPng(floorPlanTarget.plan.layoutData),
+      })
+    : null;
+  const controlImage = controlAsset ? getMediaAssetImageUrl(String(controlAsset.asset._id)) : undefined;
+
   const generation = await AiGeneration.create({
+    _id: generationId,
     enterpriseId: context.enterpriseId,
     operatorId: context.operatorId,
     floorPlanId: input.floorPlanId || undefined,
@@ -249,14 +284,21 @@ export async function createMiniAiTask(input: CreateMiniAiTaskInput, context: Mi
     nextRecommendedStage: config.nextStageKey,
     status: 'created',
     actionKey: config.actionKey,
-    capability: config.logicalModelKey === 'image.generate.standard' ? 'image.generate' : 'image.edit',
-    logicalModelKey: config.logicalModelKey,
+    capability: logicalModelKey === 'image.generate.standard' ? 'image.generate' : 'image.edit',
+    logicalModelKey,
     retryCount: 0,
     input: {
       style: input.styleKey || 'reference', mode: input.mode,
-      roomData: roomSummary ? { summary: roomSummary, roomId: input.roomId } : undefined,
+      roomData: target ? {
+        summary: target.summary,
+        roomId: target.roomId,
+        targetScope: target.targetScope,
+        targetLabel: target.targetLabel,
+        roomCount: target.roomCount,
+      } : undefined,
       spaceImage,
       referenceImage: referenceAsset ? getMediaAssetImageUrl(String(referenceAsset._id)) : undefined,
+      controlImage,
     },
     billing: { cycle: 0, actionKey: config.actionKey, price: price.credits, status: 'unbilled' },
   });
@@ -290,23 +332,51 @@ export async function executeMiniAiTask(generation: IAiGeneration, context: Mini
     if (mode !== 'reference_recreate' && !stylePreset) throw new Error('目标风格已停用或不存在');
     if (mode !== 'floor_plan_render' && !generation.input.spaceImage) throw new Error('任务缺少空间图片');
 
+    const roomData = generation.input.roomData && typeof generation.input.roomData === 'object'
+      ? generation.input.roomData as {
+          summary?: string;
+          targetScope?: MiniAiTargetScope;
+        }
+      : undefined;
+    const targetScope = roomData?.targetScope || (mode === 'floor_plan_render' ? 'single_room' : undefined);
+    const usesWholePlanControl = mode === 'floor_plan_render' && targetScope === 'whole_floor_plan';
+    if (usesWholePlanControl && !generation.input.controlImage) {
+      throw new Error('完整户型任务缺少量房控制图');
+    }
+
     const referenceImageUrl = generation.input.referenceImage
       ? await resolveAiProviderImageInput(generation.input.referenceImage, context.enterpriseId)
+      : undefined;
+    const controlImageUrl = generation.input.controlImage
+      ? await resolveAiProviderImageInput(generation.input.controlImage, context.enterpriseId)
       : undefined;
     const promptResult = await buildMiniAiRenderPrompt({
       enterpriseId: String(context.enterpriseId), generationId: String(generation._id),
       mode, referenceImageUrl,
-      styleName: stylePreset?.name, stylePrompt: stylePreset?.promptTemplate,
-      roomSummary: generation.input.roomData && typeof generation.input.roomData === 'object' && 'summary' in generation.input.roomData
-        ? String((generation.input.roomData as { summary?: string }).summary || '') : '',
+      styleName: stylePreset?.name,
+      stylePrompt: usesWholePlanControl
+        ? stylePreset?.promptTemplate
+        : stylePreset?.description,
+      roomSummary: mode === 'floor_plan_render' || targetScope === 'single_room'
+        ? roomData?.summary || ''
+        : '',
+      targetScope,
     });
     generation.output.promptUsed = promptResult.prompt;
     generation.input.referenceAnalysis = promptResult.referenceAnalysis;
     await generation.save();
+    const logicalModelKey = (generation.logicalModelKey || config.logicalModelKey) as 'image.generate.standard' | 'image.edit.standard';
+    const sourceImages = controlImageUrl
+      ? [controlImageUrl]
+      : generation.input.spaceImage
+        ? [generation.input.spaceImage]
+        : undefined;
     const completed = await executeGenerationImage(generation, {
-      logicalModelKey: config.logicalModelKey as 'image.generate.standard' | 'image.edit.standard', prompt: promptResult.prompt,
-      negativePrompt: stylePreset?.negativePrompt || 'changed architecture, changed window position, changed door position, warped walls, distorted perspective, duplicate furniture, floating objects, text, watermark, low quality',
-      images: generation.input.spaceImage ? [generation.input.spaceImage] : undefined,
+      logicalModelKey, prompt: promptResult.prompt,
+      negativePrompt: usesWholePlanControl
+        ? stylePreset?.negativePrompt
+        : 'changed architecture, changed window position, changed door position, warped walls, distorted perspective, duplicate furniture, floating objects, top-down floor plan, text, watermark, low quality',
+      images: sourceImages,
       size: '1024x1024', quality: 'high', user: String(context.operatorId),
     });
     return syncMiniAiWorkflow(completed, context);
@@ -346,13 +416,22 @@ export function serializeMiniAiTask(
   context?: { workflowTitle?: string; leadName?: string }
 ) {
   const enterpriseId = String(generation.enterpriseId);
-  const roomData = generation.input?.roomData as { roomId?: string } | undefined;
+  const roomData = generation.input?.roomData as {
+    roomId?: string;
+    summary?: string;
+    targetScope?: MiniAiTargetScope;
+    targetLabel?: string;
+  } | undefined;
+  const targetScope = roomData?.targetScope
+    || (roomData?.roomId || roomData?.summary ? 'single_room' : undefined);
+  const targetLabel = roomData?.targetLabel
+    || (targetScope === 'whole_floor_plan' ? '完整户型' : targetScope === 'single_room' ? '单房间（旧任务）' : undefined);
   return {
     id: String(generation._id), mode: generation.input?.mode || generation.type, status: generation.status,
     progress: generation.status === 'succeeded' || generation.status === 'failed' ? 100 : generation.status === 'processing' ? 65 : 10,
     styleKey: generation.input?.style,
     spaceAssetId: getAssetIdFromImageUrl(generation.input?.spaceImage), referenceAssetId: getAssetIdFromImageUrl(generation.input?.referenceImage),
-    spaceImageUrl: assetUrlFromImage(generation.input?.spaceImage, request, enterpriseId), referenceImageUrl: assetUrlFromImage(generation.input?.referenceImage, request, enterpriseId), resultImageUrl: assetUrlFromImage(generation.output?.imageUrl, request, enterpriseId),
+    spaceImageUrl: assetUrlFromImage(generation.input?.spaceImage, request, enterpriseId), referenceImageUrl: assetUrlFromImage(generation.input?.referenceImage, request, enterpriseId), controlImageUrl: assetUrlFromImage(generation.input?.controlImage, request, enterpriseId), resultImageUrl: assetUrlFromImage(generation.output?.imageUrl, request, enterpriseId),
     resultAssetId: getAssetIdFromImageUrl(generation.output?.imageUrl),
     errorCode: generation.errorCode, error: generation.errorMessage, retryCount: Number(generation.retryCount || 0),
     credits: Number(generation.billing?.price || 0), billingStatus: generation.billing?.status,
@@ -366,6 +445,8 @@ export function serializeMiniAiTask(
     floorPlanId: generation.floorPlanId ? String(generation.floorPlanId) : undefined,
     leadId: generation.leadId ? String(generation.leadId) : undefined,
     roomId: roomData?.roomId,
+    targetScope,
+    targetLabel,
     createdAt: generation.createdAt, updatedAt: generation.updatedAt,
   };
 }

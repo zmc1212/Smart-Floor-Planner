@@ -258,34 +258,97 @@ function resolveRenderThicknessMm(wall, options) {
   return Math.max(MIN_THICKNESS_MM, resolved);
 }
 
+function traceClosedSpaceWallChain(floor, wallIds, reverseFirstWall) {
+  if (!floor || !Array.isArray(wallIds) || wallIds.length < 3) return [];
+  const firstWall = getWall(floor, wallIds[0]);
+  if (!firstWall) return [];
+
+  const initialNodeId = reverseFirstWall ? firstWall.endNodeId : firstWall.startNodeId;
+  let currentNodeId = initialNodeId;
+  const chain = [];
+
+  for (let index = 0; index < wallIds.length; index += 1) {
+    const wall = getWall(floor, wallIds[index]);
+    if (!wall) return [];
+    let nextNodeId = '';
+    if (wall.startNodeId === currentNodeId) {
+      nextNodeId = wall.endNodeId;
+    } else if (wall.endNodeId === currentNodeId) {
+      nextNodeId = wall.startNodeId;
+    } else {
+      return [];
+    }
+    const start = getNode(floor, currentNodeId);
+    const end = getNode(floor, nextNodeId);
+    if (!start || !end) return [];
+    chain.push({ wall, start, end, reversed: wall.endNodeId === currentNodeId });
+    currentNodeId = nextNodeId;
+  }
+
+  return currentNodeId === initialNodeId ? chain : [];
+}
+
+function buildClosedSpaceWallChain(floor, wallIds) {
+  const forward = traceClosedSpaceWallChain(floor, wallIds, false);
+  return forward.length ? forward : traceClosedSpaceWallChain(floor, wallIds, true);
+}
+
 function resolveAdjacentWalls(floor, wall, options) {
   const opts = options || {};
   const hasPrevious = Object.prototype.hasOwnProperty.call(opts, 'previousWall');
   const hasNext = Object.prototype.hasOwnProperty.call(opts, 'nextWall');
   const index = floor.walls.findIndex((item) => item.id === wall.id);
   const closedSpace = findClosedSpaceForWall(floor, wall.id);
-  const closedWallIds = closedSpace ? closedSpace.wallIds : [];
-  const closedIndex = closedWallIds.indexOf(wall.id);
-  let previousWall = null;
-  let nextWall = null;
+  let startWall = null;
+  let endWall = null;
+
+  if (!hasPrevious && !hasNext && closedSpace) {
+    const chain = buildClosedSpaceWallChain(floor, closedSpace.wallIds);
+    const closedIndex = chain.findIndex((entry) => entry.wall.id === wall.id);
+    if (closedIndex >= 0) {
+      const entry = chain[closedIndex];
+      const previousWall = chain[(closedIndex - 1 + chain.length) % chain.length].wall;
+      const nextWall = chain[(closedIndex + 1) % chain.length].wall;
+      return entry.reversed
+        ? { startWall: nextWall, endWall: previousWall }
+        : { startWall: previousWall, endWall: nextWall };
+    }
+  }
 
   if (hasPrevious) {
-    previousWall = opts.previousWall;
-  } else if (closedIndex >= 0 && closedWallIds.length > 1) {
-    previousWall = getWall(floor, closedWallIds[(closedIndex - 1 + closedWallIds.length) % closedWallIds.length]);
+    startWall = opts.previousWall;
   } else if (index > 0) {
-    previousWall = floor.walls[index - 1];
+    startWall = floor.walls[index - 1];
   }
 
   if (hasNext) {
-    nextWall = opts.nextWall;
-  } else if (closedIndex >= 0 && closedWallIds.length > 1) {
-    nextWall = getWall(floor, closedWallIds[(closedIndex + 1) % closedWallIds.length]);
+    endWall = opts.nextWall;
   } else if (index >= 0 && index < floor.walls.length - 1) {
-    nextWall = floor.walls[index + 1];
+    endWall = floor.walls[index + 1];
   }
 
-  return { previousWall, nextWall };
+  return { startWall, endWall };
+}
+
+function pointTouchesWallSegment(point, start, end) {
+  if (!point || !start || !end) return false;
+  const dx = end.xMm - start.xMm;
+  const dy = end.yMm - start.yMm;
+  const lengthSquared = dx * dx + dy * dy;
+  if (!lengthSquared) return distanceMm(point, start) <= 1;
+  const t = ((point.xMm - start.xMm) * dx + (point.yMm - start.yMm) * dy) / lengthSquared;
+  if (t < -0.0001 || t > 1.0001) return false;
+  const projected = { xMm: start.xMm + dx * t, yMm: start.yMm + dy * t };
+  return distanceMm(point, projected) <= 1;
+}
+
+function hasWallConnectionAtPoint(floor, wall, point) {
+  return (floor.walls || []).some((candidate) => {
+    if (!candidate || candidate.id === wall.id) return false;
+    const start = getNode(floor, candidate.startNodeId);
+    const end = getNode(floor, candidate.endNodeId);
+    return pointTouchesWallSegment(point, start, end);
+  });
 }
 
 function buildResolvedSegment(floor, wall, options) {
@@ -548,12 +611,16 @@ function buildWallRenderGeometry(floor, wall, options) {
   const adjacentOptions = {
     renderThicknessMmMap: opts.renderThicknessMmMap
   };
-  const previous = adjacent.previousWall ? buildResolvedSegment(floor, adjacent.previousWall, adjacentOptions) : null;
-  const next = adjacent.nextWall ? buildResolvedSegment(floor, adjacent.nextWall, adjacentOptions) : null;
-  const startJoined = !!(previous && pointsNearlyEqual(previous.end, current.start));
-  const endJoined = !!(next && pointsNearlyEqual(next.start, current.end));
-  const outerStart = (startJoined && offsetJoinPoint(current, previous)) || current.outerStart;
-  const outerEnd = (endJoined && offsetJoinPoint(current, next)) || current.outerEnd;
+  const startAdjacent = adjacent.startWall ? buildResolvedSegment(floor, adjacent.startWall, adjacentOptions) : null;
+  const endAdjacent = adjacent.endWall ? buildResolvedSegment(floor, adjacent.endWall, adjacentOptions) : null;
+  const startJoined = !!(startAdjacent && (
+    pointsNearlyEqual(startAdjacent.start, current.start) || pointsNearlyEqual(startAdjacent.end, current.start)
+  ));
+  const endJoined = !!(endAdjacent && (
+    pointsNearlyEqual(endAdjacent.start, current.end) || pointsNearlyEqual(endAdjacent.end, current.end)
+  ));
+  const outerStart = (startJoined && offsetJoinPoint(current, startAdjacent)) || current.outerStart;
+  const outerEnd = (endJoined && offsetJoinPoint(current, endAdjacent)) || current.outerEnd;
 
   return {
     start: current.start,
@@ -562,8 +629,8 @@ function buildWallRenderGeometry(floor, wall, options) {
     angleDeg: angleDeg(current.start, current.end),
     startJoined,
     endJoined,
-    startOpen: !startJoined,
-    endOpen: !endJoined,
+    startOpen: !hasWallConnectionAtPoint(floor, wall, current.start),
+    endOpen: !hasWallConnectionAtPoint(floor, wall, current.end),
     outerStart,
     outerEnd,
     outerStartAlongMm: projectAlong(current, outerStart),
@@ -2354,41 +2421,10 @@ function calculateSpaceAreaMm2(draft) {
 }
 
 function buildSpaceBoundaryPoints(floor, wallIds) {
-  if (!Array.isArray(wallIds) || !wallIds.length) return [];
-  const firstWall = getWall(floor, wallIds[0]);
-  if (!firstWall) return [];
-  const firstStart = getNode(floor, firstWall.startNodeId);
-  const firstEnd = getNode(floor, firstWall.endNodeId);
-  if (!firstStart || !firstEnd) return [];
-
-  const points = [firstStart, firstEnd];
-  let currentNodeId = firstWall.endNodeId;
-
-  for (let index = 1; index < wallIds.length; index += 1) {
-    const wall = getWall(floor, wallIds[index]);
-    if (!wall) continue;
-    let nextNodeId = '';
-    if (wall.startNodeId === currentNodeId) {
-      nextNodeId = wall.endNodeId;
-    } else if (wall.endNodeId === currentNodeId) {
-      nextNodeId = wall.startNodeId;
-    } else {
-      const currentNode = getNode(floor, currentNodeId);
-      const startNode = getNode(floor, wall.startNodeId);
-      const endNode = getNode(floor, wall.endNodeId);
-      nextNodeId = distanceMm(currentNode, startNode) <= distanceMm(currentNode, endNode)
-        ? wall.endNodeId
-        : wall.startNodeId;
-    }
-    const nextNode = getNode(floor, nextNodeId);
-    if (nextNode) points.push(nextNode);
-    currentNodeId = nextNodeId;
-  }
-
-  if (points.length > 1 && distanceMm(points[0], points[points.length - 1]) <= 1) {
-    points.pop();
-  }
-  return points;
+  const forward = traceClosedSpaceWallChain(floor, wallIds, false);
+  const chain = forward.length ? forward : traceClosedSpaceWallChain(floor, wallIds, true);
+  if (!chain.length) return [];
+  return chain.map((entry) => entry.start);
 }
 
 module.exports = {

@@ -25,7 +25,7 @@
     <view wx:if="{{selectedSource}}" class="source-card selected" bindtap="openSourcePicker">
       <view class="source-badge">户型</view>
       <view class="source-copy">
-        <text class="source-title">{{selectedSource.leadName}} · {{selectedSource.roomName}}</text>
+        <text class="source-title">{{selectedSource.leadName}} · {{selectedSource.targetLabel}}</text>
         <text class="source-meta">{{selectedSource.communityName || selectedSource.floorPlanName}} · {{selectedSource.roomSize}} · {{selectedSource.openingCount}} 个开口</text>
       </view>
       <view class="source-actions">
@@ -38,7 +38,7 @@
       <view class="source-badge">户型</view>
       <view class="source-copy">
         <text class="source-title">关联客户户型（推荐）</text>
-        <text class="source-meta">四种任务统一继承客户、户型和房间数据</text>
+        <text class="source-meta">先选客户户型，再选完整户型或单个房间</text>
       </view>
       <text class="source-change">选择</text>
     </view>
@@ -65,7 +65,7 @@
 
     <view class="section-head task-head">
       <view class="section-label"><view class="section-mark"></view><text class="section-title">选择设计任务</text></view>
-      <text wx:if="{{selectedSource}}" class="context-chip">{{selectedSource.roomName}}</text>
+      <text wx:if="{{selectedSource}}" class="context-chip">{{selectedSource.targetLabel}}</text>
     </view>
 
     <view class="workflow-grid">
@@ -90,6 +90,7 @@
           <view class="result-footer">
             <text class="result-mode">{{item.modeTitle}}</text>
             <text class="result-status">{{item.status === 'succeeded' ? '已完成' : item.status === 'failed' ? '生成失败' : '生成中'}}</text>
+            <text wx:if="{{item.targetLabel}}" class="result-target">{{item.targetLabel}}</text>
           </view>
         </view>
       </view>
@@ -106,26 +107,41 @@
     <view class="sheet-handle"></view>
     <view class="sheet-head">
       <view>
-        <text class="sheet-title">选择客户户型与房间</text>
-        <text class="sheet-subtitle">选择后，四种 AI 任务都会使用这份量房上下文</text>
+        <text class="sheet-title">{{sourcePickerStep === 'plans' ? '选择客户户型' : '选择设计范围'}}</text>
+        <text class="sheet-subtitle">{{sourcePickerStep === 'plans' ? '选择一份正式量房户型' : (activeSourcePlan ? activeSourcePlan.leadName + ' · ' + activeSourcePlan.floorPlanName : '')}}</text>
       </view>
       <text class="sheet-close" bindtap="closeSourcePicker">关闭</text>
     </view>
     <scroll-view scroll-y class="source-list" enhanced show-scrollbar="{{false}}">
-      <view
-        wx:for="{{sources}}"
-        wx:key="sourceKey"
-        class="source-item {{item.selected ? 'active' : ''}}"
-        data-index="{{index}}"
-        bindtap="selectSource"
-      >
-        <view class="source-item-main">
-          <text class="source-item-title">{{item.leadName}} · {{item.roomName}}</text>
-          <text class="source-item-meta">{{item.communityName || item.floorPlanName}} · {{item.roomSize}}</text>
-          <text class="source-item-detail">{{item.floorPlanName}} · {{item.openingCount}} 个门窗开口</text>
+      <block wx:if="{{sourcePickerStep === 'plans'}}">
+        <view wx:for="{{sources}}" wx:key="sourceKey" class="source-item {{item.selected ? 'active' : ''}}" data-index="{{index}}" bindtap="selectSourcePlan">
+          <view class="source-item-main">
+            <text class="source-item-title">{{item.leadName}} · {{item.floorPlanName}}</text>
+            <text class="source-item-meta">{{item.communityName || '未填写小区'}} · {{item.closedRoomCount}} 个闭合房间</text>
+            <text class="source-item-detail">选择后可设计完整户型或其中一个房间</text>
+          </view>
+          <text class="source-check">下一步</text>
         </view>
-        <text class="source-check">{{item.selected ? '已选' : '选择'}}</text>
-      </view>
+      </block>
+      <block wx:else>
+        <view class="source-back" bindtap="backSourcePlans">返回户型列表</view>
+        <view class="source-item target-item {{selectedSource && selectedSource.floorPlanId === activeSourcePlan.floorPlanId && selectedSource.targetScope === 'whole_floor_plan' ? 'active' : ''}}" bindtap="selectWholeSource">
+          <view class="source-item-main">
+            <text class="source-item-title">完整户型</text>
+            <text class="source-item-meta">{{activeSourcePlan.closedRoomCount}} 个闭合房间 · 全屋俯视效果</text>
+            <text class="source-item-detail">生成一张完整户型的彩平或鸟瞰概念图</text>
+          </view>
+          <text class="source-check">选择</text>
+        </view>
+        <view wx:for="{{activeSourcePlan.rooms}}" wx:key="roomId" class="source-item target-item {{selectedSource && selectedSource.roomId === item.roomId ? 'active' : ''}}" data-index="{{index}}" bindtap="selectRoomSource">
+          <view class="source-item-main">
+            <text class="source-item-title">{{item.roomName}}</text>
+            <text class="source-item-meta">{{item.roomSize}} · {{item.openingCount}} 个门窗开口</text>
+            <text class="source-item-detail">生成该房间的室内视角概念图</text>
+          </view>
+          <text class="source-check">选择</text>
+        </view>
+      </block>
     </scroll-view>
   </view>
 

@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { createExteriorBoundarySegments, createExteriorDimensionPlan } from '@/lib/surveyDimensionPlan.js';
+import { createWallSolidPlan } from '@/lib/surveyWallSolidPlan.js';
 
 // @see react-best-practices: rendering-hoist-jsx — 静态常量提升到模块级别
 const STYLE_OPTIONS = [
@@ -135,6 +137,15 @@ interface SurveySpace {
   name?: string;
   wallIds?: string[];
   closed?: boolean;
+}
+
+type SurveyNodePoint = Required<Pick<SurveyNode, 'id' | 'xMm' | 'yMm'>>;
+
+interface SurveySpaceWallEntry {
+  wall: SurveyWall;
+  start: SurveyNodePoint;
+  end: SurveyNodePoint;
+  reversed: boolean;
 }
 
 interface SurveyFloor {
@@ -252,28 +263,55 @@ function getSurveyWallLengthMm(floor: SurveyFloor | null, wall: SurveyWall) {
   return Number(wall.lengthMm || Math.sqrt(dx * dx + dy * dy));
 }
 
-function buildSurveySpacePoints(floor: SurveyFloor | null, space: SurveySpace, nodeMap: ReturnType<typeof getSurveyNodeMap>) {
+function traceSurveySpaceWallChain(
+  floor: SurveyFloor | null,
+  wallIds: string[],
+  nodeMap: ReturnType<typeof getSurveyNodeMap>,
+  reverseFirstWall: boolean,
+): SurveySpaceWallEntry[] {
+  if (!floor || wallIds.length < 3) return [];
+  const firstWall = (floor.walls || []).find((wall) => wall.id === wallIds[0]);
+  if (!firstWall) return [];
+
+  const initialNodeId = reverseFirstWall ? firstWall.endNodeId : firstWall.startNodeId;
+  if (!initialNodeId) return [];
+  let currentNodeId = initialNodeId;
+  const chain: SurveySpaceWallEntry[] = [];
+
+  for (const wallId of wallIds) {
+    const wall = (floor.walls || []).find((candidate) => candidate.id === wallId);
+    if (!wall) return [];
+    let nextNodeId: string | undefined;
+    if (wall.startNodeId === currentNodeId) {
+      nextNodeId = wall.endNodeId;
+    } else if (wall.endNodeId === currentNodeId) {
+      nextNodeId = wall.startNodeId;
+    } else {
+      return [];
+    }
+    if (!nextNodeId) return [];
+    const start = nodeMap.get(currentNodeId);
+    const end = nodeMap.get(nextNodeId);
+    if (!start || !end) return [];
+    chain.push({ wall, start, end, reversed: wall.endNodeId === currentNodeId });
+    currentNodeId = nextNodeId;
+  }
+
+  return currentNodeId === initialNodeId ? chain : [];
+}
+
+function buildSurveySpaceWallChain(
+  floor: SurveyFloor | null,
+  space: SurveySpace,
+  nodeMap: ReturnType<typeof getSurveyNodeMap>,
+) {
   const wallIds = Array.isArray(space.wallIds) ? space.wallIds : [];
-  const walls = wallIds
-    .map((id) => (floor?.walls || []).find((wall) => wall.id === id))
-    .filter(Boolean) as SurveyWall[];
-  if (!walls.length) return [];
+  const forward = traceSurveySpaceWallChain(floor, wallIds, nodeMap, false);
+  return forward.length ? forward : traceSurveySpaceWallChain(floor, wallIds, nodeMap, true);
+}
 
-  const first = getSurveyWallEndpoints(floor, walls[0], nodeMap);
-  if (!first) return [];
-  const points = [first.start, first.end];
-  let currentNodeId = walls[0].endNodeId;
-
-  walls.slice(1).forEach((wall) => {
-    const endpoints = getSurveyWallEndpoints(floor, wall, nodeMap);
-    if (!endpoints) return;
-    const next = wall.startNodeId === currentNodeId ? endpoints.end : endpoints.start;
-    points.push(next);
-    currentNodeId = wall.startNodeId === currentNodeId ? wall.endNodeId : wall.startNodeId;
-  });
-
-  if (points.length > 1 && points[0].id === points[points.length - 1].id) points.pop();
-  return points;
+function buildSurveySpacePoints(floor: SurveyFloor | null, space: SurveySpace, nodeMap: ReturnType<typeof getSurveyNodeMap>) {
+  return buildSurveySpaceWallChain(floor, space, nodeMap).map((entry) => entry.start);
 }
 
 function getSurveyOpeningSegment(floor: SurveyFloor | null, opening: SurveyOpening, nodeMap: ReturnType<typeof getSurveyNodeMap>) {
@@ -301,7 +339,15 @@ function getSurveyOpeningSegment(floor: SurveyFloor | null, opening: SurveyOpeni
 
 type SurveyPoint = { xMm: number; yMm: number };
 
-function getSurveyWallBody(floor: SurveyFloor | null, wall: SurveyWall, nodeMap: ReturnType<typeof getSurveyNodeMap>) {
+function getSurveySpaceCentroid(points: SurveyPoint[]) {
+  return getPolygonCentroid(points);
+}
+
+function getSurveyWallRawBody(
+  floor: SurveyFloor | null,
+  wall: SurveyWall,
+  nodeMap: ReturnType<typeof getSurveyNodeMap>,
+) {
   const endpoints = getSurveyWallEndpoints(floor, wall, nodeMap);
   if (!endpoints) return null;
   const dx = endpoints.end.xMm - endpoints.start.xMm;
@@ -309,19 +355,115 @@ function getSurveyWallBody(floor: SurveyFloor | null, wall: SurveyWall, nodeMap:
   const length = Math.hypot(dx, dy);
   if (!length) return null;
   const direction = { x: dx / length, y: dy / length };
-  const normal = wall.measurementSide === 'right'
-    ? { x: -direction.y, y: direction.x }
-    : { x: direction.y, y: -direction.x };
+  const leftNormal = { x: direction.y, y: -direction.x };
+  const rightNormal = { x: -direction.y, y: direction.x };
+  const closedSpace = (floor?.spaces || []).find((space) => (
+    space.closed && Array.isArray(space.wallIds) && space.wallIds.includes(wall.id)
+  ));
+  const centroid = closedSpace
+    ? getSurveySpaceCentroid(buildSurveySpacePoints(floor, closedSpace, nodeMap))
+    : null;
+  const midpoint = {
+    xMm: (endpoints.start.xMm + endpoints.end.xMm) / 2,
+    yMm: (endpoints.start.yMm + endpoints.end.yMm) / 2,
+  };
+  const outward = centroid
+    ? { x: midpoint.xMm - centroid.xMm, y: midpoint.yMm - centroid.yMm }
+    : null;
+  const normal = outward
+    ? ((leftNormal.x * outward.x + leftNormal.y * outward.y) >= (rightNormal.x * outward.x + rightNormal.y * outward.y)
+      ? leftNormal
+      : rightNormal)
+    : (wall.measurementSide === 'right' ? rightNormal : leftNormal);
   const thickness = Math.max(80, Number(wall.thicknessMm || 200));
-  const outerStart = {
-    xMm: endpoints.start.xMm + normal.x * thickness,
-    yMm: endpoints.start.yMm + normal.y * thickness,
+  return {
+    ...endpoints,
+    direction,
+    normal,
+    thickness,
+    outerStart: {
+      xMm: endpoints.start.xMm + normal.x * thickness,
+      yMm: endpoints.start.yMm + normal.y * thickness,
+    },
+    outerEnd: {
+      xMm: endpoints.end.xMm + normal.x * thickness,
+      yMm: endpoints.end.yMm + normal.y * thickness,
+    },
   };
-  const outerEnd = {
-    xMm: endpoints.end.xMm + normal.x * thickness,
-    yMm: endpoints.end.yMm + normal.y * thickness,
+}
+
+function intersectSurveyLines(firstStart: SurveyPoint, firstEnd: SurveyPoint, secondStart: SurveyPoint, secondEnd: SurveyPoint) {
+  const first = { x: firstEnd.xMm - firstStart.xMm, y: firstEnd.yMm - firstStart.yMm };
+  const second = { x: secondEnd.xMm - secondStart.xMm, y: secondEnd.yMm - secondStart.yMm };
+  const denominator = first.x * second.y - first.y * second.x;
+  if (Math.abs(denominator) < 0.000001) return null;
+  const offset = { x: secondStart.xMm - firstStart.xMm, y: secondStart.yMm - firstStart.yMm };
+  const t = (offset.x * second.y - offset.y * second.x) / denominator;
+  return { xMm: firstStart.xMm + first.x * t, yMm: firstStart.yMm + first.y * t };
+}
+
+function getSurveyMiterPoint(
+  body: NonNullable<ReturnType<typeof getSurveyWallRawBody>>,
+  adjacent: NonNullable<ReturnType<typeof getSurveyWallRawBody>> | null,
+  endpoint: SurveyNodePoint,
+) {
+  if (!adjacent) return null;
+  const point = intersectSurveyLines(body.outerStart, body.outerEnd, adjacent.outerStart, adjacent.outerEnd);
+  if (!point) return null;
+  const distance = Math.hypot(point.xMm - endpoint.xMm, point.yMm - endpoint.yMm);
+  return distance <= Math.max(body.thickness, adjacent.thickness) * 4 ? point : null;
+}
+
+function surveyPointTouchesWall(point: SurveyNodePoint, endpoints: ReturnType<typeof getSurveyWallEndpoints>) {
+  if (!endpoints) return false;
+  const dx = endpoints.end.xMm - endpoints.start.xMm;
+  const dy = endpoints.end.yMm - endpoints.start.yMm;
+  const lengthSquared = dx * dx + dy * dy;
+  if (!lengthSquared) return false;
+  const t = ((point.xMm - endpoints.start.xMm) * dx + (point.yMm - endpoints.start.yMm) * dy) / lengthSquared;
+  if (t < -0.0001 || t > 1.0001) return false;
+  const x = endpoints.start.xMm + dx * t;
+  const y = endpoints.start.yMm + dy * t;
+  return Math.hypot(point.xMm - x, point.yMm - y) <= 1;
+}
+
+function isSurveyWallEndpointOpen(
+  floor: SurveyFloor | null,
+  wall: SurveyWall,
+  point: SurveyNodePoint,
+  nodeMap: ReturnType<typeof getSurveyNodeMap>,
+) {
+  return !(floor?.walls || []).some((candidate) => (
+    candidate.id !== wall.id && surveyPointTouchesWall(point, getSurveyWallEndpoints(floor, candidate, nodeMap))
+  ));
+}
+
+function getSurveyWallBody(floor: SurveyFloor | null, wall: SurveyWall, nodeMap: ReturnType<typeof getSurveyNodeMap>) {
+  const body = getSurveyWallRawBody(floor, wall, nodeMap);
+  if (!body) return null;
+  const closedSpace = (floor?.spaces || []).find((space) => (
+    space.closed && Array.isArray(space.wallIds) && space.wallIds.includes(wall.id)
+  ));
+  const chain = closedSpace ? buildSurveySpaceWallChain(floor, closedSpace, nodeMap) : [];
+  const index = chain.findIndex((entry) => entry.wall.id === wall.id);
+  let startWall: SurveyWall | null = null;
+  let endWall: SurveyWall | null = null;
+  if (index >= 0) {
+    const entry = chain[index];
+    const previous = chain[(index - 1 + chain.length) % chain.length].wall;
+    const next = chain[(index + 1) % chain.length].wall;
+    startWall = entry.reversed ? next : previous;
+    endWall = entry.reversed ? previous : next;
+  }
+  const startAdjacent = startWall ? getSurveyWallRawBody(floor, startWall, nodeMap) : null;
+  const endAdjacent = endWall ? getSurveyWallRawBody(floor, endWall, nodeMap) : null;
+  return {
+    ...body,
+    outerStart: getSurveyMiterPoint(body, startAdjacent, body.start) || body.outerStart,
+    outerEnd: getSurveyMiterPoint(body, endAdjacent, body.end) || body.outerEnd,
+    startOpen: isSurveyWallEndpointOpen(floor, wall, body.start, nodeMap),
+    endOpen: isSurveyWallEndpointOpen(floor, wall, body.end, nodeMap),
   };
-  return { ...endpoints, direction, normal, thickness, outerStart, outerEnd };
 }
 
 function getPolygonCentroid(points: SurveyPoint[]) {
@@ -337,6 +479,13 @@ function getPolygonCentroid(points: SurveyPoint[]) {
   });
   if (!twiceArea) return null;
   return { xMm: x / (3 * twiceArea), yMm: y / (3 * twiceArea) };
+}
+
+function buildSurveyCompoundPath(rings: SurveyPoint[][]) {
+  return rings.map((ring) => {
+    if (!ring.length) return '';
+    return `M ${ring[0].xMm} ${ring[0].yMm} ${ring.slice(1).map((point) => `L ${point.xMm} ${point.yMm}`).join(' ')} Z`;
+  }).filter(Boolean).join(' ');
 }
 
 function getSurveySpaceDetails(floor: SurveyFloor | null, space: SurveySpace, nodeMap: ReturnType<typeof getSurveyNodeMap>) {
@@ -364,29 +513,6 @@ function getSurveySpaceDetails(floor: SurveyFloor | null, space: SurveySpace, no
     return sum + point.xMm * next.yMm - next.xMm * point.yMm;
   }, 0)) / 2 / 1_000_000;
   return { points, centroid: getPolygonCentroid(points), widthMm, heightMm, area };
-}
-
-function getOpeningDimensionSegments(floor: SurveyFloor | null, wall: SurveyWall) {
-  const wallLength = getSurveyWallLengthMm(floor, wall);
-  if (!wallLength) return [];
-  const openings = (floor?.openings || [])
-    .filter((opening) => opening.wallId === wall.id && opening.type === 'door')
-    .map((opening) => {
-      const width = Math.min(wallLength, Math.max(0, Number(opening.widthMm || 0)));
-      const center = Math.min(wallLength - width / 2, Math.max(width / 2, Number(opening.centerOffsetMm || wallLength / 2)));
-      return { start: center - width / 2, end: center + width / 2 };
-    })
-    .sort((first, second) => first.start - second.start);
-  if (!openings.length) return [];
-  const segments: Array<{ start: number; end: number }> = [];
-  let cursor = 0;
-  openings.forEach((opening) => {
-    if (opening.start > cursor) segments.push({ start: cursor, end: opening.start });
-    if (opening.end > opening.start) segments.push(opening);
-    cursor = Math.max(cursor, opening.end);
-  });
-  if (cursor < wallLength) segments.push({ start: cursor, end: wallLength });
-  return segments.filter((segment) => segment.end - segment.start >= 1);
 }
 
 function getOpeningAngleRad(opening: Opening) {
@@ -727,46 +853,77 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
   const bounds = useMemo(() => getSurveyBounds(floor), [floor]);
   const stats = useMemo(() => getSurveyStats(floor), [floor]);
   const wallBodies = useMemo(
-    () => (floor?.walls || []).map((wall) => ({ wall, body: getSurveyWallBody(floor, wall, nodeMap) })).filter((item) => item.body),
+    () => (floor?.walls || []).flatMap((wall) => {
+      const body = getSurveyWallBody(floor, wall, nodeMap);
+      return body ? [{ wall, body }] : [];
+    }),
     [floor, nodeMap],
   );
+  const wallSolidPlan = useMemo(() => createWallSolidPlan({
+    walls: wallBodies.map(({ wall, body }) => {
+      const start = { x: body.start.xMm, y: body.start.yMm };
+      const end = { x: body.end.xMm, y: body.end.yMm };
+      const outerStart = {
+        x: body.start.xMm + body.normal.x * body.thickness,
+        y: body.start.yMm + body.normal.y * body.thickness,
+      };
+      const outerEnd = {
+        x: body.end.xMm + body.normal.x * body.thickness,
+        y: body.end.yMm + body.normal.y * body.thickness,
+      };
+      return {
+        id: wall.id,
+        start,
+        end,
+        outerStart,
+        outerEnd,
+        thickness: body.thickness,
+        polygon: [start, end, outerEnd, outerStart],
+      };
+    }),
+  }) as { rings: Array<Array<{ x: number; y: number }>> }, [wallBodies]);
+  const wallSolidPath = useMemo(() => buildSurveyCompoundPath(
+    wallSolidPlan.rings.map((ring) => ring.map((point) => ({ xMm: point.x, yMm: point.y }))),
+  ), [wallSolidPlan]);
   const spaceDetails = useMemo(
     () => (floor?.spaces || []).filter((space) => space.closed).map((space) => ({ space, detail: getSurveySpaceDetails(floor, space, nodeMap) })).filter((item) => item.detail),
     [floor, nodeMap],
   );
-  const exteriorClosedWallIds = useMemo(() => {
-    const usage = new Map<string, number>();
-    (floor?.spaces || []).filter((space) => space.closed).forEach((space) => {
-      (space.wallIds || []).forEach((wallId) => {
-        usage.set(wallId, (usage.get(wallId) || 0) + 1);
-      });
-    });
-    return new Set(Array.from(usage.entries()).filter(([, count]) => count === 1).map(([wallId]) => wallId));
-  }, [floor]);
-  const closedWallOutsideSigns = useMemo(() => {
-    const signs = new Map<string, number>();
-    spaceDetails.forEach(({ space, detail }) => {
-      const centroid = detail?.centroid;
-      if (!centroid) return;
-      (space.wallIds || []).forEach((wallId) => {
-        const wall = (floor?.walls || []).find((item) => item.id === wallId);
-        const body = wall ? getSurveyWallBody(floor, wall, nodeMap) : null;
-        if (!body || signs.has(wallId)) return;
-        const midpoint = {
-          xMm: (body.start.xMm + body.end.xMm) / 2,
-          yMm: (body.start.yMm + body.end.yMm) / 2,
-        };
-        const localY = { x: -body.direction.y, y: body.direction.x };
-        const centroidOffset = (centroid.xMm - midpoint.xMm) * localY.x + (centroid.yMm - midpoint.yMm) * localY.y;
-        signs.set(wallId, centroidOffset >= 0 ? -1 : 1);
-      });
-    });
-    return signs;
-  }, [floor, nodeMap, spaceDetails]);
-  const viewBox = `${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}`;
   const drawingScale = Math.max(bounds.width, bounds.height);
   const dimensionOffset = Math.max(160, drawingScale * 0.035);
   const dimensionTextSize = Math.max(76, Math.min(130, drawingScale / 40));
+  const exteriorBoundaryWalls = useMemo(() => createExteriorBoundarySegments({
+    tolerance: Math.max(12, drawingScale * 0.002),
+    walls: wallBodies.map(({ wall, body }) => ({
+      id: wall.id,
+      start: { x: body.start.xMm, y: body.start.yMm },
+      end: { x: body.end.xMm, y: body.end.yMm },
+      coordinateLength: getSurveyWallLengthMm(floor, wall),
+      measurementLength: getSurveyWallLengthMm(floor, wall),
+      thickness: body.thickness,
+    })),
+    spaces: (floor?.spaces || []).filter((space) => space.closed),
+  }), [drawingScale, floor, wallBodies]);
+  const dimensionItems = useMemo(() => createExteriorDimensionPlan({
+    baseGap: dimensionOffset * 0.28,
+    laneGap: dimensionTextSize * 1.45,
+    groupTolerance: Math.max(12, drawingScale * 0.002),
+    walls: exteriorBoundaryWalls,
+    openings: (floor?.openings || []).map((opening) => {
+      const wall = (floor?.walls || []).find((item) => item.id === opening.wallId);
+      const wallLength = wall ? getSurveyWallLengthMm(floor, wall) : 0;
+      const width = Math.min(wallLength, Math.max(0, Number(opening.widthMm || 0)));
+      const center = Math.min(wallLength - width / 2, Math.max(width / 2, Number(opening.centerOffsetMm || wallLength / 2)));
+      return {
+        id: opening.id,
+        wallId: opening.wallId,
+        type: opening.type,
+        start: center - width / 2,
+        end: center + width / 2,
+      };
+    }),
+  }).items, [dimensionOffset, dimensionTextSize, drawingScale, exteriorBoundaryWalls, floor]);
+  const viewBox = `${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}`;
   const roomTitleSize = Math.max(72, Math.min(120, drawingScale / 42));
   const roomDetailSize = Math.max(54, Math.min(86, drawingScale / 56));
 
@@ -827,29 +984,17 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
               );
             })}
 
-            {wallBodies.map(({ wall, body }) => {
-              if (!body) return null;
-              return (
-                <g key={wall.id}>
-                  <polygon
-                    points={`${body.start.xMm},${body.start.yMm} ${body.end.xMm},${body.end.yMm} ${body.outerEnd.xMm},${body.outerEnd.yMm} ${body.outerStart.xMm},${body.outerStart.yMm}`}
-                    fill="rgba(142,142,140,0.98)"
-                  />
-                </g>
-              );
-            })}
-
-            {wallBodies.map(({ wall, body }) => {
-              if (!body) return null;
-              return (
-                <g key={`${wall.id}-outline`} fill="none" stroke="#1f1f1f" strokeWidth="20" strokeLinecap="butt" strokeLinejoin="miter">
-                  <line x1={body.start.xMm} y1={body.start.yMm} x2={body.end.xMm} y2={body.end.yMm} />
-                  <line x1={body.outerStart.xMm} y1={body.outerStart.yMm} x2={body.outerEnd.xMm} y2={body.outerEnd.yMm} />
-                  <line x1={body.start.xMm} y1={body.start.yMm} x2={body.outerStart.xMm} y2={body.outerStart.yMm} />
-                  <line x1={body.end.xMm} y1={body.end.yMm} x2={body.outerEnd.xMm} y2={body.outerEnd.yMm} />
-                </g>
-              );
-            })}
+            {wallSolidPath && (
+              <path
+                d={wallSolidPath}
+                fill="#8e8e8c"
+                fillRule="nonzero"
+                stroke="#1f1f1f"
+                strokeWidth="20"
+                strokeLinecap="butt"
+                strokeLinejoin="miter"
+              />
+            )}
 
             {(floor?.openings || []).map((opening) => {
               const segment = getSurveyOpeningSegment(floor, opening, nodeMap);
@@ -863,7 +1008,8 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
               const hingeAtEnd = opening.openDirection === 'outside';
               const hingeX = hingeAtEnd ? centerOffset + width / 2 : centerOffset - width / 2;
               const swingSign = (wall?.measurementSide === 'left' ? -1 : 1) * (opening.openDirection === 'outside' ? -1 : 1);
-              const wallBodySign = wall?.measurementSide === 'left' ? -1 : 1;
+              const localY = { x: -body.direction.y, y: body.direction.x };
+              const wallBodySign = body.normal.x * localY.x + body.normal.y * localY.y >= 0 ? 1 : -1;
               const railOffset = Math.max(36, body.thickness * 0.24);
               const windowCenterY = wallBodySign * body.thickness / 2;
               return (
@@ -896,47 +1042,47 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
               );
             })}
 
-            {wallBodies.map(({ wall, body }) => {
-              if (!body) return null;
-              // A shared wall separates two closed rooms. Its annotation would
-              // necessarily land inside one of them, so only dimension the
-              // completed plan's exterior boundary.
-              if (!exteriorClosedWallIds.has(wall.id)) return null;
-              const dimensionSign = closedWallOutsideSigns.get(wall.id) || (wall.measurementSide === 'left' ? -1 : 1);
-              const offset = dimensionSign * (body.thickness + dimensionOffset);
-              const segmentOffset = dimensionSign * (body.thickness + dimensionOffset * 0.42);
-              const wallLength = Math.round(getSurveyWallLengthMm(floor, wall));
-              const openingSegments = getOpeningDimensionSegments(floor, wall);
-              const outerLength = Math.round(Math.hypot(body.outerEnd.xMm - body.outerStart.xMm, body.outerEnd.yMm - body.outerStart.yMm));
-              const wholeDimensions = openingSegments.length
-                ? [{ label: wallLength, y: offset }]
-                : [{ label: wallLength, y: offset }, { label: outerLength, y: offset + dimensionSign * dimensionTextSize * 1.45 }];
-              const isUpsideDown = body.direction.x < 0;
+            {dimensionItems.map((dimension) => {
+              const dx = dimension.end.x - dimension.start.x;
+              const dy = dimension.end.y - dimension.start.y;
+              const length = Math.hypot(dx, dy);
+              if (!length) return null;
+              const direction = { x: dx / length, y: dy / length };
+              const localY = { x: -direction.y, y: direction.x };
+              const toLocal = (value: { x: number; y: number }) => ({
+                x: (value.x - dimension.start.x) * direction.x + (value.y - dimension.start.y) * direction.y,
+                y: (value.x - dimension.start.x) * localY.x + (value.y - dimension.start.y) * localY.y,
+              });
+              const startExtension = toLocal(dimension.extensionStart);
+              const endExtension = toLocal(dimension.extensionEnd);
+              const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+              const isUpsideDown = dx < 0;
+              const textSize = dimension.kind === 'opening-segment' ? dimensionTextSize * 0.84 : dimensionTextSize;
+              const extensionGuide = (source: { x: number; y: number }, targetX: number) => {
+                const guideDx = targetX - source.x;
+                const guideDy = -source.y;
+                const guideLength = Math.hypot(guideDx, guideDy);
+                if (!guideLength) return null;
+                const unit = { x: guideDx / guideLength, y: guideDy / guideLength };
+                const objectGap = textSize * 0.08;
+                const overshoot = textSize * 0.12;
+                return {
+                  start: { x: source.x + unit.x * objectGap, y: source.y + unit.y * objectGap },
+                  end: { x: targetX + unit.x * overshoot, y: unit.y * overshoot },
+                };
+              };
+              const startGuide = extensionGuide(startExtension, 0);
+              const endGuide = extensionGuide(endExtension, length);
+              const arrowLength = textSize * 0.24;
+              const arrowHalfHeight = textSize * 0.14;
               return (
-                <g key={`${wall.id}-dimensions`} transform={`translate(${body.start.xMm} ${body.start.yMm}) rotate(${Math.atan2(body.direction.y, body.direction.x) * 180 / Math.PI})`} fill="none" stroke="#333" strokeWidth="12" strokeLinecap="butt">
-                  {openingSegments.map((segment, index) => {
-                    const label = Math.round(segment.end - segment.start);
-                    return (
-                      <g key={`${wall.id}-opening-segment-${index}`}>
-                        <line x1={segment.start} y1="0" x2={segment.start} y2={segmentOffset} />
-                        <line x1={segment.end} y1="0" x2={segment.end} y2={segmentOffset} />
-                        <line x1={segment.start} y1={segmentOffset} x2={segment.end} y2={segmentOffset} />
-                        <path d={`M ${segment.start} ${segmentOffset} l ${dimensionTextSize * 0.32} ${-dimensionTextSize * 0.2} v ${dimensionTextSize * 0.4} z`} fill="#333" stroke="none" />
-                        <path d={`M ${segment.end} ${segmentOffset} l ${-dimensionTextSize * 0.32} ${-dimensionTextSize * 0.2} v ${dimensionTextSize * 0.4} z`} fill="#333" stroke="none" />
-                        <text x={(segment.start + segment.end) / 2} y={segmentOffset} fill="#111" stroke="#f8f8f8" strokeWidth={dimensionTextSize * 0.22} paintOrder="stroke" textAnchor="middle" dominantBaseline="middle" fontSize={dimensionTextSize * 0.84} fontWeight="600" transform={isUpsideDown ? `rotate(180 ${(segment.start + segment.end) / 2} ${segmentOffset})` : undefined}>{label}</text>
-                      </g>
-                    );
-                  })}
-                  {wholeDimensions.map(({ label, y }) => (
-                    <g key={`${wall.id}-${label}-${y}`}>
-                      <line x1="0" y1="0" x2="0" y2={y} />
-                      <line x1={wallLength} y1="0" x2={wallLength} y2={y} />
-                      <line x1="0" y1={y} x2={wallLength} y2={y} />
-                      <path d={`M 0 ${y} l ${dimensionTextSize * 0.42} ${-dimensionTextSize * 0.26} v ${dimensionTextSize * 0.52} z`} fill="#333" stroke="none" />
-                      <path d={`M ${wallLength} ${y} l ${-dimensionTextSize * 0.42} ${-dimensionTextSize * 0.26} v ${dimensionTextSize * 0.52} z`} fill="#333" stroke="none" />
-                      <text x={wallLength / 2} y={y} fill="#111" stroke="#f8f8f8" strokeWidth={dimensionTextSize * 0.25} paintOrder="stroke" textAnchor="middle" dominantBaseline="middle" fontSize={dimensionTextSize} fontWeight="600" transform={isUpsideDown ? `rotate(180 ${wallLength / 2} ${y})` : undefined}>{label}</text>
-                    </g>
-                  ))}
+                <g key={dimension.id} transform={`translate(${dimension.start.x} ${dimension.start.y}) rotate(${angle})`} fill="none" stroke="#4b5563" strokeWidth={Math.max(6, textSize * 0.065)} strokeLinecap="butt">
+                  {startGuide && <line x1={startGuide.start.x} y1={startGuide.start.y} x2={startGuide.end.x} y2={startGuide.end.y} />}
+                  {endGuide && <line x1={endGuide.start.x} y1={endGuide.start.y} x2={endGuide.end.x} y2={endGuide.end.y} />}
+                  <line x1="0" y1="0" x2={length} y2="0" />
+                  <path d={`M 0 0 l ${arrowLength} ${-arrowHalfHeight} v ${arrowHalfHeight * 2} z`} fill="#374151" stroke="none" />
+                  <path d={`M ${length} 0 l ${-arrowLength} ${-arrowHalfHeight} v ${arrowHalfHeight * 2} z`} fill="#374151" stroke="none" />
+                  <text x={length / 2} y="0" fill="#111" stroke="#f8f8f8" strokeWidth={textSize * 0.32} paintOrder="stroke" textAnchor="middle" dominantBaseline="middle" fontSize={textSize} fontWeight={dimension.kind === 'chain-total' ? "600" : "500"} transform={isUpsideDown ? `rotate(180 ${length / 2} 0)` : undefined}>{dimension.label}</text>
                 </g>
               );
             })}

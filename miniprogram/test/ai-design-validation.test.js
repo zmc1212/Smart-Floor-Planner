@@ -18,6 +18,9 @@ test('style transform requires style and enough enterprise credits', () => {
 test('floor-plan rendering requires a formal plan context instead of a space photo', () => {
   assert.equal(validateTaskInput({ mode: 'floor_plan_render', styleKey: 'modern', availableBalance: 20, price: 10 }).error, '请先从客户户型进入，或选择正式户型');
   assert.equal(validateTaskInput({ mode: 'floor_plan_render', floorPlanId: 'plan', styleKey: 'modern', availableBalance: 20, price: 10 }).valid, true);
+  assert.equal(validateTaskInput({ mode: 'floor_plan_render', floorPlanId: 'plan', targetScope: 'single_room', styleKey: 'modern', availableBalance: 20, price: 10 }).error, '单房间设计必须选择具体房间');
+  assert.equal(validateTaskInput({ mode: 'floor_plan_render', floorPlanId: 'plan', targetScope: 'whole_floor_plan', roomId: 'living', styleKey: 'modern', availableBalance: 20, price: 10 }).error, '完整户型设计不能同时指定房间');
+  assert.equal(validateTaskInput({ mode: 'floor_plan_render', floorPlanId: 'plan', targetScope: 'single_room', roomId: 'living', styleKey: 'modern', availableBalance: 20, price: 10 }).valid, true);
 });
 
 test('soft furnishing requires a baseline image and style', () => {

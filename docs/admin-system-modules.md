@@ -114,12 +114,24 @@ permission, or workflow changes.
   `/measurements`, `/kujiale/cities`, `/kujiale/floorplans/search`, and lead
   Kuaile floor-plan association.
 - Components/helpers: `FloorPlanViewer`, `FloorPlanViewerWrapper`, `survey-graph`,
-  and `dxf`.
+  `surveyDimensionPlan`, `surveyWallSolidPlan`, and `dxf`. The dependency-free
+  dimension and wall-solid planners are authored under `miniprogram/utils` and
+  synchronized into `admin/src/lib` before admin development and production
+  builds.
 - Status: `Implemented` for formal v4 wall-graph parsing, admin 2D/3D viewing,
-  exterior-boundary-only dimensions for completed plans (no annotations on
-  shared interior walls), measurement filtering, and DXF download. Kujiale
-  search is `Limited` by the upstream search/provider response and city/query
-  availability.
+  room fills that accept only a fully connected closed wall chain in either
+  first-wall direction, and a compound wall-solid union derived from one-sided
+  wall bodies plus connected-node fills. The union is filled and outlined once,
+  so connected nodes, L/T joins, and overlapping segments have no internal caps,
+  diagonal seams, or boxed wall ends. Door/window cuts cover the complete wall
+  thickness. Completed layouts use engineering-style exterior dimension plans:
+  one opening
+  detail chain, one segmented dimension chain, and at most one total dimension
+  per continuous exterior run. Closed-space edges are geometrically split and
+  merged, so differently identified/split shared walls and enclosed inner holes
+  never receive annotations; extension lines start at the exterior wall face.
+  Measurement filtering and DXF download are implemented. Kujiale search is
+  `Limited` by the upstream search/provider response and city/query availability.
 - Boundary: the backend derives room/opening render data from `surveyGraph`; it
   does not persist legacy `rooms` or other old layout fields.
 
@@ -179,7 +191,10 @@ permission, or workflow changes.
   mappings when that node does not implement `/v1/models`. Business routes use logical model keys
   and `AiExecutionService`; GRS submits documented asynchronous image requests to
   `POST /v1/api/generate` with `replyType: "async"` and polls
-  `GET /v1/api/result?id=...`; `violation` and `failed` are refunded failures. The provider
+  `GET /v1/api/result?id=...`; `violation` and `failed` are refunded failures.
+  Mini Program task-detail and history reads force this upstream status query
+  for visible processing jobs and return a terminal database state even when a
+  refunded failure exhausts configured fallback providers. The provider
   capability and logical/remote model fields drive routing, while currency and
   estimated cost are optional internal-only accounting metadata. Temporary images
   are persisted to `MediaAsset` before settlement. Fallback is
@@ -212,7 +227,12 @@ permission, or workflow changes.
   professional context, workbench data, shared business assets, and enterprise-
   staff AI design. AI endpoints enforce bearer JWT plus enterprise/operator
   ownership; `/api/miniprogram/ai/sources` exposes only role-accessible formal
-  plans and closed rooms. The workflow endpoint returns only context-visible
+  plans and closed rooms, preserves the legacy flat room array, and also returns
+  grouped plans for the complete-plan/single-room selector. Mini Program tasks
+  validate the same role boundary and persist an explicit
+  `whole_floor_plan`/`single_room` target. Complete-plan tasks derive a separate
+  1024px control-image `MediaAsset` and use image editing; single-room tasks use
+  measured prompt context and image generation. The workflow endpoint returns only context-visible
   active schemes and executable Mini Program actions. An explicit workflow is
   continued; a unique customer/formal-plan match is reused automatically; when
   multiple schemes match, the client must choose instead of silently merging.

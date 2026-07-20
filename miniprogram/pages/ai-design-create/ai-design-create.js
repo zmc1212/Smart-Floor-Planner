@@ -8,6 +8,10 @@ Page({
     floorPlanId: '',
     leadId: '',
     roomId: '',
+    targetScope: '',
+    targetLabel: '',
+    floorPlanName: '',
+    targetMeta: '',
     sourceTaskId: '',
     workflowId: '',
     workflowTitle: '',
@@ -42,6 +46,7 @@ Page({
       floorPlanId: options.floorPlanId || '',
       leadId: options.leadId || '',
       roomId: options.roomId || '',
+      targetScope: options.targetScope || (options.roomId ? 'single_room' : options.floorPlanId ? 'whole_floor_plan' : ''),
       sourceTaskId: options.sourceTaskId || '',
       workflowId: options.workflowId || '',
       createNewWorkflow: options.createNewWorkflow === '1',
@@ -51,7 +56,10 @@ Page({
 
   async loadInitialData() {
     try {
-      const capabilities = await aiService.loadCapabilities();
+      const [capabilities, sourcePlans] = await Promise.all([
+        aiService.loadCapabilities(),
+        this.data.floorPlanId ? aiService.loadSources().catch(() => []) : Promise.resolve([]),
+      ]);
       const priceItem = (capabilities.modes || []).find((item) => item.key === this.data.mode);
       const styles = capabilities.styles || [];
       const nextData = {
@@ -60,6 +68,19 @@ Page({
         styles,
         selectedStyleKey: styles[0] ? styles[0].key : '',
       };
+      const sourcePlan = sourcePlans.find((item) => item.floorPlanId === this.data.floorPlanId);
+      const sourceRoom = sourcePlan && this.data.targetScope === 'single_room'
+        ? (sourcePlan.rooms || []).find((item) => item.roomId === this.data.roomId)
+        : null;
+      if (sourcePlan) {
+        nextData.floorPlanName = sourcePlan.floorPlanName || '正式户型';
+        nextData.targetLabel = this.data.targetScope === 'single_room' && sourceRoom
+          ? sourceRoom.roomName
+          : '完整户型';
+        nextData.targetMeta = this.data.targetScope === 'single_room' && sourceRoom
+          ? `${sourceRoom.roomSize} · ${sourceRoom.openingCount} 个门窗开口`
+          : `${sourcePlan.closedRoomCount || (sourcePlan.rooms || []).length} 个闭合房间 · 全屋俯视效果`;
+      }
       if (this.data.sourceTaskId) {
         const source = await aiService.getTask(this.data.sourceTaskId);
         const useResultAsSource = this.data.mode !== source.mode && source.resultAssetId && source.resultImageUrl;
@@ -75,6 +96,12 @@ Page({
         nextData.floorPlanId = source.floorPlanId || this.data.floorPlanId;
         nextData.leadId = source.leadId || this.data.leadId;
         nextData.roomId = source.roomId || this.data.roomId;
+        nextData.targetScope = source.targetScope || (source.roomId ? 'single_room' : this.data.targetScope);
+        nextData.targetLabel = source.targetLabel || nextData.targetLabel;
+        nextData.floorPlanName = nextData.floorPlanName || (source.floorPlanId ? '正式户型' : '');
+        nextData.targetMeta = nextData.targetMeta || (nextData.targetScope === 'whole_floor_plan'
+          ? '完整户型 · 全屋俯视效果'
+          : nextData.targetLabel || '单房间设计');
       } else if (this.data.workflowId) {
         const workflows = await aiService.loadWorkflows({ workflowId: this.data.workflowId });
         const workflow = workflows[0];
@@ -84,6 +111,12 @@ Page({
           nextData.workflowLeadName = workflow.lead && workflow.lead.name ? workflow.lead.name : '';
           nextData.workflowStageLabel = workflow.currentStageLabel || '';
           nextData.floorPlanId = workflow.sourceFloorPlanId || this.data.floorPlanId;
+          nextData.floorPlanName = nextData.floorPlanName || (nextData.floorPlanId ? '正式户型' : '');
+          if (nextData.floorPlanId && !this.data.targetScope) {
+            nextData.targetScope = 'whole_floor_plan';
+            nextData.targetLabel = '完整户型';
+            nextData.targetMeta = '完整户型 · 全屋俯视效果';
+          }
           nextData.leadId = workflow.lead && workflow.lead.id ? workflow.lead.id : this.data.leadId;
           const baselineTask = workflow.selectedTask || workflow.latestTask;
           if (this.data.mode !== 'floor_plan_render' && baselineTask && baselineTask.resultAssetId && baselineTask.resultImageUrl) {
@@ -143,12 +176,25 @@ Page({
     const available = this.data.capabilities && this.data.capabilities.account
       ? this.data.capabilities.account.availableBalance
       : 0;
+    if (this.data.mode === 'floor_plan_render') {
+      const provider = (this.data.capabilities && this.data.capabilities.provider) || {};
+      const support = provider.floorPlanTargetSupport || {};
+      if (support[this.data.targetScope] === false) {
+        wx.showToast({
+          title: this.data.targetScope === 'whole_floor_plan' ? '全屋俯视生成服务暂未配置' : '单房间生成服务暂未配置',
+          icon: 'none',
+        });
+        return;
+      }
+    }
     const validation = validateTaskInput({
       mode: this.data.mode,
       spaceAssetId: this.data.spaceAssetId,
       referenceAssetId: this.data.referenceAssetId,
       styleKey: this.data.selectedStyleKey,
       floorPlanId: this.data.floorPlanId,
+      targetScope: this.data.targetScope,
+      roomId: this.data.roomId,
       availableBalance: available,
       price: this.data.price,
     });
@@ -175,6 +221,7 @@ Page({
         floorPlanId: this.data.floorPlanId || undefined,
         leadId: this.data.leadId || undefined,
         roomId: this.data.roomId || undefined,
+        targetScope: this.data.targetScope || undefined,
         workflowId: this.data.workflowId || undefined,
         createNewWorkflow: this.data.createNewWorkflow,
       });
