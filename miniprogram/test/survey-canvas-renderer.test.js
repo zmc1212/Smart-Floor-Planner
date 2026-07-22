@@ -162,6 +162,7 @@ function createRecordingContext() {
   const fills = [];
   const dashes = [];
   const widths = [];
+  const texts = [];
   let path = [];
 
   const context = {
@@ -174,6 +175,7 @@ function createRecordingContext() {
     translate() {},
     scale() {},
     rotate() {},
+    clip() {},
     arc() { path.push(['arc']); },
     quadraticCurveTo() { path.push(['quadraticCurveTo']); },
     beginPath() { path = []; },
@@ -184,7 +186,7 @@ function createRecordingContext() {
     fill() { fills.push(path.slice()); },
     setLineDash(value) { dashes.push(value.slice()); },
     measureText(text) { return { width: String(text).length * 7 }; },
-    fillText() {}
+    fillText(text, x, y) { texts.push({ text, x, y }); }
   };
 
   Object.defineProperty(context, 'lineWidth', {
@@ -194,7 +196,7 @@ function createRecordingContext() {
   ['fillStyle', 'strokeStyle', 'lineCap', 'lineJoin', 'font', 'textAlign', 'textBaseline', 'shadowColor', 'shadowBlur', 'shadowOffsetY', 'miterLimit']
     .forEach((property) => Object.defineProperty(context, property, { set() {}, get() { return undefined; } }));
 
-  return { context, strokes, fills, dashes, widths };
+  return { context, strokes, fills, dashes, widths, texts };
 }
 
 test('open wall chain renders only inner dimensions and keeps its full chain red', () => {
@@ -469,4 +471,85 @@ test('drag-only canvas renders one dashed cross guide and one square cursor', ()
   assert.equal(recorder.strokes.some((path) => (
     path.some((command) => command[0] === 'arc')
   )), false);
+});
+
+test('cursor lens reuses the formal wall scene around the drag target', () => {
+  const draft = createTwoClosedRoomsWithSharedDoorDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const scene = surveyCanvasRenderer.createSurveyLensScene({
+    floor,
+    session: floor.session,
+    centerPoint: { xMm: 3000, yMm: 1000 },
+    size: 180,
+    scale: 0.12
+  });
+
+  assert.deepEqual(scene.rect, { width: 180, height: 180 });
+  assert.equal(scene.openings.length, 1);
+  assert.equal(Math.round(scene.openings[0].center.y), 90);
+  const sharedWall = scene.walls.find((wall) => wall.id === 'wall-2');
+  assert.equal(Math.round(sharedWall.startPoint.x), 90);
+  assert.equal(Math.round(sharedWall.endPoint.x), 90);
+  assert.ok(scene.wallSolidPlan.rings.length > 0);
+  assert.ok(scene.walls.every((wall) => wall.thicknessPx >= 10));
+
+  const recorder = createRecordingContext();
+  surveyCanvasRenderer.drawDraggingCursor(
+    recorder.context,
+    { width: 390, height: 650 },
+    { x: 220, y: 420 },
+    {
+      dpr: 1,
+      lensScene: scene,
+      lensRect: { left: 20, top: 98, size: 180 }
+    }
+  );
+  assert.ok(recorder.fills.length > 0);
+  assert.ok(recorder.strokes.length > 0);
+});
+
+test('viewport interaction transform matches a full scene rebuilt at the target viewport', () => {
+  const rect = { width: 390, height: 650 };
+  const baseViewport = { scale: 0.03, offsetX: 23, offsetY: -108 };
+  const viewport = { scale: 0.045, offsetX: -34, offsetY: 72 };
+  const pointMm = { xMm: 2750, yMm: 1600 };
+  const basePoint = {
+    x: rect.width / 2 + baseViewport.offsetX + pointMm.xMm * baseViewport.scale,
+    y: rect.height / 2 + baseViewport.offsetY + pointMm.yMm * baseViewport.scale
+  };
+  const targetPoint = {
+    x: rect.width / 2 + viewport.offsetX + pointMm.xMm * viewport.scale,
+    y: rect.height / 2 + viewport.offsetY + pointMm.yMm * viewport.scale
+  };
+  const transform = surveyCanvasRenderer.resolveViewportInteractionTransform(baseViewport, viewport, rect);
+  const transformedPoint = {
+    x: basePoint.x * transform.scale + transform.translateX,
+    y: basePoint.y * transform.scale + transform.translateY
+  };
+
+  assert.ok(Math.abs(transformedPoint.x - targetPoint.x) < 0.0001);
+  assert.ok(Math.abs(transformedPoint.y - targetPoint.y) < 0.0001);
+});
+
+test('viewport interaction keeps structural drawing and skips dimensions, labels, and guides', () => {
+  const draft = createTwoClosedRoomsWithSharedDoorDraft();
+  const scene = createScene(draft);
+  const fullRecorder = createRecordingContext();
+  const interactionRecorder = createRecordingContext();
+
+  surveyCanvasRenderer.drawSurveyScene(fullRecorder.context, scene, { dpr: 1 });
+  surveyCanvasRenderer.drawSurveyInteractionScene(interactionRecorder.context, scene, {
+    dpr: 1,
+    baseViewport: scene.viewport,
+    viewport: Object.assign({}, scene.viewport, { offsetX: scene.viewport.offsetX + 48 })
+  });
+
+  assert.ok(fullRecorder.texts.length > 0);
+  assert.equal(interactionRecorder.texts.length, 0);
+  assert.ok(interactionRecorder.fills.length > 0);
+  assert.ok(interactionRecorder.strokes.length > 0);
+  assert.equal(
+    interactionRecorder.dashes.some((dash) => dash.length && dash[0] === 14 && dash[1] === 10),
+    false
+  );
 });

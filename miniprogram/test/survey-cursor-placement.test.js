@@ -50,6 +50,55 @@ test('cursor placement falls back to a wall point outside vertex tolerance', () 
 
   assert.equal(target.type, 'wall');
   assert.deepEqual(target.pointMm, { xMm: 1500, yMm: 0 });
+  assert.equal(target.snapLine, 'inner');
+});
+
+test('cursor placement can snap to the outer wall edge', () => {
+  const draft = createWallDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const wall = floor.walls[0];
+  const geometry = surveyGraph.buildWallSnapGeometry(floor, wall);
+  const outerMidpoint = {
+    xMm: Math.round((geometry.outerStart.xMm + geometry.outerEnd.xMm) / 2),
+    yMm: Math.round((geometry.outerStart.yMm + geometry.outerEnd.yMm) / 2)
+  };
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    outerMidpoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+
+  assert.equal(target.type, 'wall');
+  assert.equal(target.snapLine, 'outer');
+  assert.deepEqual(target.pointMm, outerMidpoint);
+});
+
+test('a closer outer edge wins over the nearby inner vertex and remains outer after placement', () => {
+  const draft = createWallDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const wall = floor.walls[0];
+  const geometry = surveyGraph.buildWallSnapGeometry(floor, wall);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    geometry.outerStart,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+
+  assert.equal(target.type, 'wall');
+  assert.equal(target.snapLine, 'outer');
+
+  const next = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  const nextFloor = surveyGraph.getActiveFloor(next);
+  const anchor = surveyGraph.getNode(nextFloor, nextFloor.session.anchorNodeId);
+  assert.equal(nextFloor.session.activeSpaceSharedSnapLine, 'outer');
+  assert.deepEqual(
+    { xMm: anchor.xMm, yMm: anchor.yMm },
+    target.pointMm
+  );
 });
 
 test('cursor placement away from walls returns a free target without mutating the wall graph', () => {

@@ -1,6 +1,7 @@
 const app = getApp();
 const surveyGraph = require('../../utils/surveyWallGraph.js');
 const surveyCanvasRenderer = require('../../utils/surveyCanvasRenderer.js');
+const surveyViewportInteraction = require('../../utils/surveyViewportInteraction.js');
 const bluetooth = require('../../utils/bluetooth.js');
 const api = require('../../utils/api.js');
 const util = require('../../utils/util.js');
@@ -89,10 +90,8 @@ const DIMENSION_LINE_CENTER_PX = 16;
 const DIMENSION_LABEL_HEIGHT_PX = 24;
 const DIMENSION_COLLISION_GAP_PX = 8;
 const DIMENSION_PRIMARY_GAP_PX = 22;
-const CURSOR_GRID_MM = 500;
 const CURSOR_LENS_SIZE_PX = 180;
 const CURSOR_LENS_SCALE = 0.12;
-const CURSOR_LENS_LINE_RANGE = 2500;
 const BLE_DUPLICATE_WINDOW_MS = 800;
 const PHONE_LEVEL_TOLERANCE_DEG = 8;
 const PHONE_HEADING_SAMPLE_COUNT = 9;
@@ -310,9 +309,6 @@ Page({
     cursorLensYLabel: 'Y 0',
     cursorLensSnapLabel: '网格吸附',
     cursorLensSnapType: 'none',
-    cursorLensVerticalLines: [],
-    cursorLensHorizontalLines: [],
-    cursorLensWalls: [],
     closeHintVisible: false,
     closeHintText: '',
     closeHintActionVisible: false,
@@ -401,7 +397,18 @@ Page({
     this.cursorDragCanvasPoint = null;
     this.cursorDragClientPoint = null;
     this.cursorDragAnimationFrame = null;
+    this.transientCanvasMode = null;
+    this.viewportInteraction = null;
+    this.viewportInteractionFrameQueue = null;
+    this.viewportInteractionAwaitingHandoff = false;
     this.cursorLensLastUpdateAt = 0;
+    this.cursorLensScene = null;
+    const rpxScale = (sysInfo.windowWidth || 375) / 750;
+    this.cursorLensRect = {
+      left: 24 * rpxScale + 8,
+      top: 176 * rpxScale + 8,
+      size: CURSOR_LENS_SIZE_PX
+    };
     this.componentCanvas = null;
     this.componentRenderer = null;
     this.componentScene = null;
@@ -458,12 +465,14 @@ Page({
   },
 
   onHide() {
+    this.finishViewportInteraction({ sync: true, persist: false });
     this.stopPhoneAngleMeasurement();
   },
 
   onUnload() {
     app.globalData.surveyingEditorContext = null;
-    this.clearCursorDragCanvas();
+    this.finishViewportInteraction({ sync: false, persist: false });
+    this.clearCursorDragCanvas({ force: true });
     this.clearBleMeasureTimers();
     this.stopPhoneAngleMeasurement();
     this.persistFormalDraft();
@@ -1130,6 +1139,22 @@ Page({
         this.cursorDragCanvas = canvas;
         this.cursorDragCtx = canvas.getContext('2d');
         this.cursorDragCanvasDpr = dpr || 1;
+        this.resetViewportInteractionFrameQueue();
+        this.viewportInteractionFrameQueue = surveyViewportInteraction.createLatestFrameQueue({
+          requestFrame: (callback) => (
+            typeof canvas.requestAnimationFrame === 'function'
+              ? canvas.requestAnimationFrame(callback)
+              : setTimeout(callback, 16)
+          ),
+          cancelFrame: (frameId) => {
+            if (typeof canvas.cancelAnimationFrame === 'function') {
+              canvas.cancelAnimationFrame(frameId);
+            } else {
+              clearTimeout(frameId);
+            }
+          },
+          onFrame: (viewport) => this.drawViewportInteractionFrame(viewport)
+        });
         surveyCanvasRenderer.clearDraggingCursor(
           this.cursorDragCtx,
           { width, height },
@@ -1138,8 +1163,17 @@ Page({
       });
   },
 
+  resetViewportInteractionFrameQueue() {
+    if (this.viewportInteractionFrameQueue) {
+      this.viewportInteractionFrameQueue.cancel();
+    }
+    this.viewportInteractionFrameQueue = null;
+  },
+
   queueCursorDragCanvas(point) {
     if (!point || !this.canvasRect) return;
+    if (this.transientCanvasMode === 'viewport') return;
+    this.transientCanvasMode = 'cursor';
     this.cursorDragCanvasPoint = {
       x: point.x - this.canvasRect.left,
       y: point.y - this.canvasRect.top
@@ -1153,7 +1187,11 @@ Page({
         this.cursorDragCtx,
         { width: this.canvasRect.width, height: this.canvasRect.height },
         this.cursorDragCanvasPoint,
-        { dpr: this.cursorDragCanvasDpr || 1 }
+        {
+          dpr: this.cursorDragCanvasDpr || 1,
+          lensScene: this.cursorLensScene,
+          lensRect: this.cursorLensRect
+        }
       );
     };
 
@@ -1164,7 +1202,9 @@ Page({
     }
   },
 
-  clearCursorDragCanvas() {
+  clearCursorDragCanvas(options) {
+    const force = !!(options && options.force);
+    if (!force && this.transientCanvasMode === 'viewport') return;
     if (this.cursorDragCanvas && this.cursorDragAnimationFrame !== null
       && typeof this.cursorDragCanvas.cancelAnimationFrame === 'function') {
       this.cursorDragCanvas.cancelAnimationFrame(this.cursorDragAnimationFrame);
@@ -1172,6 +1212,10 @@ Page({
     this.cursorDragAnimationFrame = null;
     this.cursorDragCanvasPoint = null;
     this.cursorDragClientPoint = null;
+    this.cursorLensScene = null;
+    if (this.transientCanvasMode === 'cursor' || force) {
+      this.transientCanvasMode = null;
+    }
     if (!this.cursorDragCtx || !this.canvasRect) return;
     surveyCanvasRenderer.clearDraggingCursor(
       this.cursorDragCtx,
@@ -1180,12 +1224,103 @@ Page({
     );
   },
 
+  beginViewportInteraction(baseViewport) {
+    if (this.viewportInteraction) return true;
+    if (!this.cursorDragCtx || !this.canvasRect || !this.surveyRenderScene || !this.viewportInteractionFrameQueue) {
+      return false;
+    }
+
+    this.clearCursorDragCanvas({ force: true });
+    const viewport = Object.assign({}, baseViewport || this.getViewport());
+    this.viewportInteraction = {
+      baseScene: this.surveyRenderScene,
+      baseViewport: viewport,
+      viewport,
+      dirty: false
+    };
+    this.transientCanvasMode = 'viewport';
+    return true;
+  },
+
+  updateViewportInteraction(viewport) {
+    if (!this.viewportInteraction || !viewport) return false;
+    this.viewportInteraction.viewport = Object.assign({}, viewport);
+    this.viewportInteraction.dirty = true;
+    if (this.viewportInteractionFrameQueue) {
+      this.viewportInteractionFrameQueue.queue(this.viewportInteraction.viewport);
+    }
+    return true;
+  },
+
+  drawViewportInteractionFrame(viewport) {
+    const interaction = this.viewportInteraction;
+    if (!interaction || this.transientCanvasMode !== 'viewport' || !viewport || !this.cursorDragCtx) return;
+    surveyCanvasRenderer.drawSurveyInteractionScene(
+      this.cursorDragCtx,
+      interaction.baseScene,
+      {
+        dpr: this.cursorDragCanvasDpr || 1,
+        baseViewport: interaction.baseViewport,
+        viewport
+      }
+    );
+  },
+
+  clearViewportInteractionCanvas() {
+    if (this.viewportInteractionFrameQueue) {
+      this.viewportInteractionFrameQueue.cancel();
+    }
+    if (this.transientCanvasMode === 'viewport') {
+      this.transientCanvasMode = null;
+    }
+    if (!this.cursorDragCtx || !this.canvasRect) return;
+    surveyCanvasRenderer.clearDraggingCursor(
+      this.cursorDragCtx,
+      { width: this.canvasRect.width, height: this.canvasRect.height },
+      { dpr: this.cursorDragCanvasDpr || 1 }
+    );
+  },
+
+  finishViewportInteraction(options) {
+    const interaction = this.viewportInteraction;
+    if (!interaction) return false;
+    const opts = Object.assign({ sync: true, persist: true }, options || {});
+    const dirty = interaction.dirty;
+    const viewport = interaction.viewport;
+
+    if (this.viewportInteractionFrameQueue) {
+      this.viewportInteractionFrameQueue.cancel();
+    }
+    this.viewportInteraction = null;
+
+    if (dirty && this.draft) {
+      this.draft = surveyGraph.updateViewport(this.draft, viewport);
+    }
+
+    if (dirty && opts.sync) {
+      this.viewportInteractionAwaitingHandoff = true;
+      this.syncFromDraft();
+    } else {
+      this.viewportInteractionAwaitingHandoff = false;
+      this.clearViewportInteractionCanvas();
+    }
+
+    if (dirty && opts.persist) {
+      this.scheduleFormalPersist();
+    }
+    return dirty;
+  },
+
   drawSurveyCanvas() {
     if (!this.surveyCtx || !this.surveyRenderScene) return;
     surveyCanvasRenderer.drawSurveyScene(this.surveyCtx, this.surveyRenderScene, {
       dpr: this.surveyCanvasDpr || 1
     });
     this.drawCanvasControls();
+    if (this.viewportInteractionAwaitingHandoff) {
+      this.viewportInteractionAwaitingHandoff = false;
+      this.clearViewportInteractionCanvas();
+    }
   },
 
   drawRoundRect(ctx, x, y, width, height, radius) {
@@ -2419,6 +2554,9 @@ Page({
   },
 
   getViewport() {
+    if (this.viewportInteraction && this.viewportInteraction.viewport) {
+      return this.viewportInteraction.viewport;
+    }
     const floor = surveyGraph.getActiveFloor(this.draft);
     return floor.viewport || { scale: surveyGraph.DEFAULT_SCALE, offsetX: 0, offsetY: 0 };
   },
@@ -2461,84 +2599,24 @@ Page({
     );
     return {
       type: target.type,
-      pointMm: target.pointMm
+      pointMm: target.pointMm,
+      wallId: target.wallId || '',
+      snapLine: target.snapLine || ''
     };
   },
 
-  buildCursorLens(pointMm, targetType) {
+  buildCursorLens(pointMm, targetType, snapLine) {
     const point = pointMm || { xMm: 0, yMm: 0 };
-    const halfSize = CURSOR_LENS_SIZE_PX / 2;
-    const verticalLines = [];
-    const horizontalLines = [];
-    const wallLines = [];
-
-    const firstX = Math.floor((point.xMm - CURSOR_LENS_LINE_RANGE) / CURSOR_GRID_MM) * CURSOR_GRID_MM;
-    const lastX = Math.ceil((point.xMm + CURSOR_LENS_LINE_RANGE) / CURSOR_GRID_MM) * CURSOR_GRID_MM;
-    for (let xMm = firstX; xMm <= lastX; xMm += CURSOR_GRID_MM) {
-      const left = halfSize + (xMm - point.xMm) * CURSOR_LENS_SCALE;
-      if (left < -1 || left > CURSOR_LENS_SIZE_PX + 1) continue;
-      verticalLines.push({
-        key: `v-${xMm}`,
-        major: xMm % 2500 === 0,
-        style: `left:${roundPx(left)}px;`
-      });
-    }
-
-    const firstY = Math.floor((point.yMm - CURSOR_LENS_LINE_RANGE) / CURSOR_GRID_MM) * CURSOR_GRID_MM;
-    const lastY = Math.ceil((point.yMm + CURSOR_LENS_LINE_RANGE) / CURSOR_GRID_MM) * CURSOR_GRID_MM;
-    for (let yMm = firstY; yMm <= lastY; yMm += CURSOR_GRID_MM) {
-      const top = halfSize + (yMm - point.yMm) * CURSOR_LENS_SCALE;
-      if (top < -1 || top > CURSOR_LENS_SIZE_PX + 1) continue;
-      horizontalLines.push({
-        key: `h-${yMm}`,
-        major: yMm % 2500 === 0,
-        style: `top:${roundPx(top)}px;`
-      });
-    }
-
-    const addLensWallLine = (lineStart, lineEnd, key, selected) => {
-      if (!lineStart || !lineEnd) return;
-      const startX = halfSize + (lineStart.xMm - point.xMm) * CURSOR_LENS_SCALE;
-      const startY = halfSize + (lineStart.yMm - point.yMm) * CURSOR_LENS_SCALE;
-      const endX = halfSize + (lineEnd.xMm - point.xMm) * CURSOR_LENS_SCALE;
-      const endY = halfSize + (lineEnd.yMm - point.yMm) * CURSOR_LENS_SCALE;
-      const padding = 60;
-      if (
-        Math.max(startX, endX) < -padding ||
-        Math.min(startX, endX) > CURSOR_LENS_SIZE_PX + padding ||
-        Math.max(startY, endY) < -padding ||
-        Math.min(startY, endY) > CURSOR_LENS_SIZE_PX + padding
-      ) {
-        return;
-      }
-
-      const dx = endX - startX;
-      const dy = endY - startY;
-      const length = Math.max(1, Math.sqrt(dx * dx + dy * dy));
-      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-      wallLines.push({
-        key,
-        selected,
-        style: `left:${roundPx(startX)}px; top:${roundPx(startY)}px; width:${roundPx(length)}px; transform:rotate(${roundPx(angle)}deg);`
-      });
-    };
-
     const floor = this.draft ? surveyGraph.getActiveFloor(this.draft) : null;
-    if (floor && Array.isArray(floor.walls)) {
-      floor.walls.forEach((wall, index) => {
-        const start = surveyGraph.getNode(floor, wall.startNodeId);
-        const end = surveyGraph.getNode(floor, wall.endNodeId);
-        if (!start || !end) return;
-        const selected = !!(floor.session && floor.session.selectedWallId === wall.id);
-        const baseKey = wall.id || `wall-${index}`;
-        addLensWallLine(start, end, `${baseKey}-inner`, selected);
-
-        const geometry = surveyGraph.buildWallSnapGeometry(floor, wall);
-        if (geometry && geometry.outerStart && geometry.outerEnd) {
-          addLensWallLine(geometry.outerStart, geometry.outerEnd, `${baseKey}-outer`, selected);
-        }
-      });
-    }
+    this.cursorLensScene = floor
+      ? surveyCanvasRenderer.createSurveyLensScene({
+        floor,
+        session: floor.session,
+        centerPoint: point,
+        size: CURSOR_LENS_SIZE_PX,
+        scale: CURSOR_LENS_SCALE
+      })
+      : null;
 
     return {
       cursorLensVisible: true,
@@ -2546,11 +2624,10 @@ Page({
       cursorLensYLabel: `Y ${Math.round(point.yMm)}`,
       cursorLensSnapLabel: targetType === 'vertex'
         ? '顶点吸附'
-        : (targetType === 'wall' ? '墙体吸附' : '自由放置'),
-      cursorLensSnapType: targetType || 'none',
-      cursorLensVerticalLines: verticalLines,
-      cursorLensHorizontalLines: horizontalLines,
-      cursorLensWalls: wallLines
+        : (targetType === 'wall'
+          ? (snapLine === 'outer' ? '外边吸附' : '内边吸附')
+          : '自由放置'),
+      cursorLensSnapType: targetType || 'none'
     };
   },
 
@@ -2563,16 +2640,19 @@ Page({
       ? this.mmToClientPoint(candidate.pointMm)
       : clientPoint;
     this.cursorDragClientPoint = { x: displayPoint.x, y: displayPoint.y };
-    this.queueCursorDragCanvas(displayPoint);
     const dragData = {
       dragCursorX: displayPoint.x,
       dragCursorY: displayPoint.y
     };
-    if (!includeLens) return dragData;
-    return Object.assign(dragData, this.buildCursorLens(
-      candidate && candidate.pointMm ? candidate.pointMm : this.canvasPointToMm(clientPoint),
-      candidate && candidate.type
-    ));
+    const lensData = includeLens
+      ? this.buildCursorLens(
+        candidate && candidate.pointMm ? candidate.pointMm : this.canvasPointToMm(clientPoint),
+        candidate && candidate.type,
+        candidate && candidate.snapLine
+      )
+      : null;
+    this.queueCursorDragCanvas(displayPoint);
+    return lensData ? Object.assign(dragData, lensData) : dragData;
   },
 
   projectOpeningOffsetMm(point, wallId) {
@@ -3157,6 +3237,7 @@ Page({
       const second = getTouchPoint(touches[1], this.canvasRect);
       const center = getMidPoint(first, second);
       const viewport = this.getViewport();
+      this.beginViewportInteraction(viewport);
       this.touchState = {
         mode: 'pinch',
         startDistance: distancePx(first, second),
@@ -3229,12 +3310,15 @@ Page({
       const rect = this.canvasRect;
       const offsetX = center.x - rect.left - rect.width / 2 - anchorMm.xMm * scale;
       const offsetY = center.y - rect.top - rect.height / 2 - anchorMm.yMm * scale;
-      this.draft = surveyGraph.updateViewport(this.draft, {
+      const nextViewport = {
         scale,
         offsetX,
         offsetY
-      });
-      this.syncFromDraft();
+      };
+      if (!this.updateViewportInteraction(nextViewport)) {
+        this.draft = surveyGraph.updateViewport(this.draft, nextViewport);
+        this.syncFromDraft();
+      }
       return;
     }
 
@@ -3288,6 +3372,7 @@ Page({
           } catch (err) {
             wx.showToast({ title: err.message || '无法继续当前墙段', icon: 'none' });
             this.touchState.mode = 'pan';
+            this.beginViewportInteraction(this.touchState.startViewport);
             return;
           }
         }
@@ -3295,6 +3380,7 @@ Page({
         this.touchState.mode = 'wall';
       } else {
         this.touchState.mode = 'pan';
+        this.beginViewportInteraction(this.touchState.startViewport);
       }
     }
 
@@ -3310,11 +3396,15 @@ Page({
 
     if (this.touchState.mode === 'pan') {
       const startViewport = this.touchState.startViewport;
-      this.draft = surveyGraph.updateViewport(this.draft, {
+      const nextViewport = {
+        scale: startViewport.scale,
         offsetX: startViewport.offsetX + dx,
         offsetY: startViewport.offsetY + dy
-      });
-      this.syncFromDraft();
+      };
+      if (!this.updateViewportInteraction(nextViewport)) {
+        this.draft = surveyGraph.updateViewport(this.draft, nextViewport);
+        this.syncFromDraft();
+      }
     }
   },
 
@@ -3463,7 +3553,9 @@ Page({
     }
 
     if (touchState.mode === 'pan' || touchState.mode === 'pinch') {
-      this.scheduleFormalPersist();
+      if (!this.finishViewportInteraction()) {
+        this.scheduleFormalPersist();
+      }
     }
   },
 
@@ -3709,7 +3801,7 @@ Page({
 
     this.cursorPlacementState = 'placed';
     const nextDraft = candidate.type === 'vertex' || candidate.type === 'wall'
-      ? surveyGraph.snapCursorToWall(this.draft, candidate.pointMm)
+      ? surveyGraph.snapCursorToWall(this.draft, candidate.pointMm, candidate)
       : surveyGraph.placeNewWallChainCursor(this.draft, candidate.pointMm);
     this.applyDraft(nextDraft, {
       recordHistory: true,
@@ -3721,7 +3813,9 @@ Page({
     });
     const placedMessage = candidate.type === 'vertex'
       ? '光标已吸附到顶点'
-      : (candidate.type === 'wall' ? '光标已吸附到墙体' : '光标已放置');
+      : (candidate.type === 'wall'
+        ? `光标已吸附到${candidate.snapLine === 'outer' ? '外边' : '内边'}`
+        : '光标已放置');
     wx.showToast({ title: placedMessage, icon: 'none' });
   },
 

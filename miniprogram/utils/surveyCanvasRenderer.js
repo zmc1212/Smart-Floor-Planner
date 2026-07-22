@@ -1343,6 +1343,68 @@ function drawCursor(ctx, scene) {
   ctx.restore();
 }
 
+function resolveViewportInteractionTransform(baseViewport, viewport, rect) {
+  const base = resolveViewport(baseViewport);
+  const target = resolveViewport(viewport);
+  const box = resolveRect(rect);
+  const scale = target.scale / base.scale;
+  const centerX = box.width / 2;
+  const centerY = box.height / 2;
+
+  return {
+    scale,
+    translateX: centerX + target.offsetX - scale * (centerX + base.offsetX),
+    translateY: centerY + target.offsetY - scale * (centerY + base.offsetY)
+  };
+}
+
+function createSurveyLensScene(input) {
+  const opts = input || {};
+  const centerPoint = opts.centerPoint || { xMm: 0, yMm: 0 };
+  const size = opts.size || 180;
+  const scale = opts.scale || 0.12;
+
+  return createSurveyRenderScene({
+    floor: opts.floor,
+    session: opts.session,
+    rect: { width: size, height: size },
+    viewport: {
+      scale,
+      offsetX: -centerPoint.xMm * scale,
+      offsetY: -centerPoint.yMm * scale
+    }
+  });
+}
+
+/**
+ * Draws the lightweight viewport gesture frame from an already-built scene.
+ * The formal scene remains untouched while pan/pinch events only update the
+ * viewport matrix. Expensive dimensions, labels, guides, and controls return
+ * when the gesture commits and the full scene is rebuilt once.
+ */
+function drawSurveyInteractionScene(ctx, scene, options) {
+  if (!ctx || !scene || !scene.rect.width || !scene.rect.height) return;
+  const opts = options || {};
+  const dpr = opts.dpr || 1;
+  const viewport = resolveViewport(opts.viewport || scene.viewport);
+  const baseViewport = resolveViewport(opts.baseViewport || scene.viewport);
+  const transform = resolveViewportInteractionTransform(baseViewport, viewport, scene.rect);
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, scene.rect.width, scene.rect.height);
+  drawGrid(ctx, Object.assign({}, scene, { viewport }));
+
+  ctx.save();
+  ctx.translate(transform.translateX, transform.translateY);
+  ctx.scale(transform.scale, transform.scale);
+  drawClosedSpaceFills(ctx, scene);
+  drawWallBodies(ctx, scene);
+  drawWallOutlines(ctx, scene);
+  drawRedlines(ctx, scene);
+  drawOpenings(ctx, scene);
+  ctx.restore();
+}
+
 function clearDraggingCursor(ctx, rect, options) {
   if (!ctx || !rect || !rect.width || !rect.height) return;
   const dpr = (options && options.dpr) || 1;
@@ -1352,9 +1414,66 @@ function clearDraggingCursor(ctx, rect, options) {
   ctx.restore();
 }
 
+function drawRoundedRectPath(ctx, left, top, width, height, radius) {
+  const safeRadius = Math.min(radius, width / 2, height / 2);
+  ctx.beginPath();
+  ctx.moveTo(left + safeRadius, top);
+  ctx.lineTo(left + width - safeRadius, top);
+  ctx.quadraticCurveTo(left + width, top, left + width, top + safeRadius);
+  ctx.lineTo(left + width, top + height - safeRadius);
+  ctx.quadraticCurveTo(left + width, top + height, left + width - safeRadius, top + height);
+  ctx.lineTo(left + safeRadius, top + height);
+  ctx.quadraticCurveTo(left, top + height, left, top + height - safeRadius);
+  ctx.lineTo(left, top + safeRadius);
+  ctx.quadraticCurveTo(left, top, left + safeRadius, top);
+  ctx.closePath();
+}
+
+function drawCursorLensScene(ctx, scene, lensRect) {
+  if (!scene || !lensRect) return;
+  const left = lensRect.left || 0;
+  const top = lensRect.top || 0;
+  const size = lensRect.size || scene.rect.width || 180;
+  const panelPadding = 8;
+  const panelMetaHeight = 40;
+  const panelLeft = left - panelPadding;
+  const panelTop = top - panelPadding;
+  const panelWidth = size + panelPadding * 2;
+  const panelHeight = size + panelPadding * 2 + panelMetaHeight;
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(15, 23, 42, 0.24)';
+  ctx.shadowBlur = 17;
+  ctx.shadowOffsetY = 6;
+  drawRoundedRectPath(ctx, panelLeft, panelTop, panelWidth, panelHeight, 11);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  drawRoundedRectPath(ctx, left, top, size, size, 8);
+  ctx.clip();
+  ctx.translate(left, top);
+  drawGrid(ctx, scene);
+  drawClosedSpaceFills(ctx, scene);
+  drawWallBodies(ctx, scene);
+  drawWallOutlines(ctx, scene);
+  drawRedlines(ctx, scene);
+  drawSelectedWallHighlight(ctx, scene);
+  drawOpenings(ctx, scene);
+  ctx.restore();
+
+  ctx.save();
+  drawRoundedRectPath(ctx, left, top, size, size, 8);
+  ctx.strokeStyle = 'rgba(15, 23, 42, 0.08)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.restore();
+}
+
 /**
- * Lightweight drag-only canvas renderer. It never redraws the formal survey
- * scene, so touchmove can update at the canvas refresh rate without setData.
+ * Lightweight drag-only canvas renderer. It avoids redrawing the full survey
+ * viewport; the optional magnifier draws only a clipped formal structural scene.
  */
 function drawDraggingCursor(ctx, rect, point, options) {
   if (!ctx || !rect || !rect.width || !rect.height || !point) return;
@@ -1400,6 +1519,8 @@ function drawDraggingCursor(ctx, rect, point, options) {
   ctx.lineWidth = 1.5;
   ctx.fillRect(point.x - coreSize / 2, point.y - coreSize / 2, coreSize, coreSize);
   ctx.strokeRect(point.x - coreSize / 2, point.y - coreSize / 2, coreSize, coreSize);
+
+  drawCursorLensScene(ctx, options && options.lensScene, options && options.lensRect);
   ctx.restore();
 }
 
@@ -1612,9 +1733,12 @@ function hitTestSurveyOpening(scene, canvasPoint) {
 
 module.exports = {
   createSurveyRenderScene,
+  createSurveyLensScene,
   drawSurveyScene,
+  drawSurveyInteractionScene,
   drawDraggingCursor,
   clearDraggingCursor,
+  resolveViewportInteractionTransform,
   hitTestSurveyWall,
   hitTestSurveyOpening
 };

@@ -207,24 +207,6 @@
   >
     <cover-view wx:if="{{cursorLensVisible}}" class="cursor-lens {{cursorLensSnapType}}">
       <cover-view class="cursor-lens-grid">
-        <cover-view
-          wx:for="{{cursorLensVerticalLines}}"
-          wx:key="key"
-          class="cursor-lens-line vertical {{item.major ? 'major' : ''}}"
-          style="{{item.style}}"
-        ></cover-view>
-        <cover-view
-          wx:for="{{cursorLensHorizontalLines}}"
-          wx:key="key"
-          class="cursor-lens-line horizontal {{item.major ? 'major' : ''}}"
-          style="{{item.style}}"
-        ></cover-view>
-        <cover-view
-          wx:for="{{cursorLensWalls}}"
-          wx:key="key"
-          class="cursor-lens-wall {{item.selected ? 'selected' : ''}}"
-          style="{{item.style}}"
-        ></cover-view>
         <cover-view class="cursor-lens-cross horizontal"></cover-view>
         <cover-view class="cursor-lens-cross vertical"></cover-view>
         <cover-view class="cursor-lens-target"></cover-view>

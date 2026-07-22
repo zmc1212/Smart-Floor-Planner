@@ -202,7 +202,8 @@ utilities, and the admin APIs they call.
 - Implemented editor behavior: startup restore, local draft and cloud draft
   persistence, straight and diagonal wall preview/commit, live BLE/manual length,
   remeasure, shared-wall closure, advisory close candidate, openings, opening
-  dimensions and side, cursor placement for new wall chains, and an inner/outer
+  dimensions and side, cursor placement for new wall chains on existing
+  vertices, inner edges, outer edges, or free canvas positions, and an inner/outer
   wall-tracking, boundary-constrained measurement-edge prompt on the first
   committed wall of every new chain; closed room wall shells and outer joins are
   derived from the closed boundary rather than the selected measurement edge.
@@ -217,7 +218,12 @@ utilities, and the admin APIs they call.
   union built from one-sided wall bodies plus connected-node fills. Filling and
   outlining the union once removes internal caps, diagonal seams, and boxed ends
   at connected nodes, L/T joins, and overlapping segments; opening cuts cover
-  the complete wall thickness.
+  the complete wall thickness. The cursor-drag magnifier rebuilds its local view
+  through the same formal Canvas scene renderer, so wall solids, joins, selected
+  states, and door/window symbols match the main canvas instead of using a
+  separate line approximation. Its status distinguishes vertex, inner-edge,
+  outer-edge, and free placement; a closer outer edge is not overridden by the
+  nearby inner vertex.
   An engineering-style exterior DimensionPlan is used for
   closed plans (opening detail chain, segmented chain, and one total per
   continuous collinear exterior run). Closed-space edges are geometrically
@@ -230,6 +236,11 @@ utilities, and the admin APIs they call.
   that selects a clear position away from walls and fixed controls. All
   action-guidance callouts use the same green surface; opening component specifications, BLE component measurement,
   flip/model panels, and a Three.js preview for the selected door/window.
+  Canvas pan and pinch gestures use an animation-frame-coalesced transient
+  render layer: walls, room fills, outlines, and openings remain visible while
+  dimensions, room labels, guides, and callouts return after one final formal
+  scene rebuild when the gesture ends. Gesture frames do not update page data
+  or recompute wall solids and dimension plans.
 - `miniprogram/utils/surveyDimensionPlan.js` and
   `miniprogram/utils/surveyWallSolidPlan.js` are the dependency-free sources for
   both renderers; admin development and production builds synchronize local

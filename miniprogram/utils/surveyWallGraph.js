@@ -1060,6 +1060,35 @@ function findWallSnapProjection(floor, point) {
   return findNearestSharedEndpointProjection(floor, point) || findNearestWallProjection(floor, point);
 }
 
+function findTargetWallProjection(floor, point, target) {
+  if (!floor || !point || !target || !target.wallId || !target.snapLine) return null;
+  const wall = getWall(floor, target.wallId);
+  if (!wall) return null;
+  const start = getNode(floor, wall.startNodeId);
+  const end = getNode(floor, wall.endNodeId);
+  if (!start || !end) return null;
+
+  if (target.snapLine === 'outer') {
+    const segment = buildResolvedSegment(floor, wall);
+    if (!segment || !segment.outerStart || !segment.outerEnd) return null;
+    return buildWallProjectionCandidate(
+      wall,
+      start,
+      end,
+      projectPointToWallSegment(point, segment.outerStart, segment.outerEnd),
+      'outer'
+    );
+  }
+
+  return buildWallProjectionCandidate(
+    wall,
+    start,
+    end,
+    projectPointToWallSegment(point, start, end),
+    'inner'
+  );
+}
+
 function getWallSnapPoint(floor, point, maxDistanceMm) {
   const projection = findWallSnapProjection(floor, point);
   if (
@@ -1110,9 +1139,13 @@ function getCursorPlacementTarget(floor, point, maxDistanceMm) {
     }
   });
 
-  if (nearestVertex) return nearestVertex;
-
   const projection = findNearestWallProjection(floor, point);
+  const outerProjectionWins = nearestVertex && projection &&
+    projection.snapLine === 'outer' &&
+    projection.distanceMm <= limit &&
+    projection.distanceMm < nearestVertex.distanceMm;
+  if (nearestVertex && !outerProjectionWins) return nearestVertex;
+
   if (!projection || projection.distanceMm > limit) {
     return freeTarget;
   }
@@ -1121,6 +1154,7 @@ function getCursorPlacementTarget(floor, point, maxDistanceMm) {
     type: 'wall',
     pointMm: projection.point,
     wallId: projection.wall && projection.wall.id,
+    snapLine: projection.snapLine || 'inner',
     distanceMm: projection.distanceMm
   };
 }
@@ -2152,11 +2186,11 @@ function startWallSnap(draft) {
   return touchDraft(next);
 }
 
-function snapCursorToWall(draft, point) {
+function snapCursorToWall(draft, point, target) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
   const session = ensureSessionSpaceTracking(floor);
-  const projection = findWallSnapProjection(floor, point);
+  const projection = findTargetWallProjection(floor, point, target) || findWallSnapProjection(floor, point);
   const node = getOrCreateSnapNode(floor, projection);
 
   if (!node) return next;
