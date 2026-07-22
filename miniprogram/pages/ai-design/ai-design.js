@@ -1,4 +1,5 @@
 const aiService = require('../../utils/aiDesignService.js');
+const { prioritizeProcessingTasks } = require('../../utils/aiDesignTaskOrdering.js');
 
 const WORKFLOW_DEFINITIONS = [
   { key: 'reference_recreate', title: '参考图复刻', description: '参考灵感图，还原到真实空间', icon: '/images/ai-design-icons/reference.png', requires: 'edit' },
@@ -101,7 +102,9 @@ Page({
         const providerReady = item.requires === 'generate' ? provider.supportsGenerate : provider.supportsEdit;
         return { ...item, credits: capability.credits || 10, enabled: capability.enabled !== false && providerReady !== false };
       });
-      const recent = (history.data || []).map((item) => ({ ...item, modeTitle: MODE_TITLES[item.mode] || 'AI 设计' }));
+      const recent = prioritizeProcessingTasks(
+        (history.data || []).map((item) => ({ ...item, modeTitle: MODE_TITLES[item.mode] || 'AI 设计' })),
+      );
       const selectedPlan = sourceData.find((item) => item.floorPlanId === this.data.floorPlanId) || null;
       const requestedScope = this.data.targetScope || (this.data.roomId ? 'single_room' : 'whole_floor_plan');
       const selectedRoom = selectedPlan && requestedScope === 'single_room'
@@ -165,7 +168,9 @@ Page({
     if (!this.recentPageVisible) return;
     try {
       const history = await aiService.loadHistory(1, 4);
-      const recent = (history.data || []).map((item) => ({ ...item, modeTitle: MODE_TITLES[item.mode] || 'AI 设计' }));
+      const recent = prioritizeProcessingTasks(
+        (history.data || []).map((item) => ({ ...item, modeTitle: MODE_TITLES[item.mode] || 'AI 设计' })),
+      );
       this.setData({ recent });
       this.scheduleRecentPolling(recent);
     } catch (error) {

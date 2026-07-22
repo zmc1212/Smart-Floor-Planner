@@ -71,3 +71,25 @@ test('control image deduplicates shared walls and renders a stable PNG', async (
   assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
   assert.ok(png.length > 1000);
 });
+
+test('single-room control image contains only the selected closed room', async () => {
+  const svg = createMiniAiFloorPlanControlSvg(layout, 1024, 'bedroom');
+  assert.equal((svg.match(/<line /g) || []).length, 4);
+  assert.throws(
+    () => createMiniAiFloorPlanControlSvg(layout, 1024, 'missing'),
+    /不属于该户型或尚未闭合/
+  );
+  const png = await renderMiniAiFloorPlanControlPng(layout, 1024, 'bedroom');
+  assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+});
+
+test('single-room control image includes only openings on the selected room walls', () => {
+  const layoutWithOpenings = structuredClone(layout);
+  layoutWithOpenings.surveyGraph.floors[0].openings = [
+    { id: 'living-door', wallId: 'w1', type: 'door', centerOffsetMm: 1000, widthMm: 900 },
+    { id: 'bedroom-window', wallId: 'w6', type: 'window', centerOffsetMm: 1500, widthMm: 1200 },
+  ];
+
+  const svg = createMiniAiFloorPlanControlSvg(layoutWithOpenings, 1024, 'bedroom');
+  assert.equal((svg.match(/<line /g) || []).length, 7);
+});

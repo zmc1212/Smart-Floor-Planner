@@ -175,13 +175,27 @@ permission, or workflow changes.
   shared across Admin and Mini Program. Customer/formal-plan Mini Program tasks
   for reference recreation, whole-space styling, floor-plan concepts, and soft
   furnishing map into the existing baseline, perspective-upgrade, and
-  soft-furnishing stages. The first successful base/soft-furnishing generation
+  soft-furnishing stages. Media assets persist image width and height; legacy
+  assets backfill them from the stored file when first reused. Mini Program
+  output ratios map those dimensions to provider-supported specifications:
+  reference recreation follows the reference image ratio; when a formal-plan
+  target is selected, the server submits an isolated room/plan control image
+  first as the authoritative wall/door/window structure and the reference image
+  second as the camera, framing, composition, and style source. Without a formal
+  plan, reference recreation retains the reference-first/room-image-second path.
+  Style/soft-furnishing edits follow the room image, whole-plan concepts stay
+  square, and single-room concepts default to landscape. The first successful base/soft-furnishing generation
   is selected and advances automatically; later successes at the same stage stay
   as candidates until explicitly adopted. Active duplicate stage runs are
   rejected before another hold or upstream task is created. Successful baselines
-  can continue into proposal and lighting. Floor-plan-only workflow generation adds read-only dimensions,
-  ceiling height, and opening summaries from the formal v4 graph to the prompt,
-  does not require a fabricated source image, and never mutates
+  can continue into proposal and lighting. The Admin workflow wizard exposes
+  only completed formal v4 plans with closed rooms and rejects stale, draft, or
+  legacy plan IDs again on creation and execution. Floor-plan-backed direction,
+  baseline, and perspective stages derive a 1024px control-image `MediaAsset`;
+  direction generation always uses `image.edit.standard` and sends that control
+  image (or the uploaded source image) in the provider `images` input. The prompt
+  also includes read-only room, wall-topology, dimension, ceiling-height, door,
+  and window constraints from the formal graph. This derivation never mutates
   `FloorPlan.layoutData`. Credit operations use
   hold-on-create, consume-on-success, and release-on-failure semantics. Only
   platform `super_admin`/`admin` roles may configure providers, rotate credentials,
@@ -191,16 +205,24 @@ permission, or workflow changes.
   mappings when that node does not implement `/v1/models`. Business routes use logical model keys
   and `AiExecutionService`; GRS submits documented asynchronous image requests to
   `POST /v1/api/generate` with `replyType: "async"` and polls
-  `GET /v1/api/result?id=...`; `violation` and `failed` are refunded failures.
+  `GET /v1/api/result?id=...`; standard `gpt-image-2` requests use its documented
+  aspect ratios while VIP requests retain compatible source pixel dimensions
+  and otherwise use a documented valid fallback size.
+  `violation` and `failed` are refunded failures.
   Mini Program task-detail and history reads force this upstream status query
   for visible processing jobs and return a terminal database state even when a
   refunded failure exhausts configured fallback providers. The provider
   capability and logical/remote model fields drive routing, while currency and
   estimated cost are optional internal-only accounting metadata. Temporary images
   are persisted to `MediaAsset` before settlement. Fallback is
-  allowed only for connection/unaccepted/refunded-safe failures; accepted,
-  timed-out, or unknown attempts retain the hold and never create a second
-  upstream task. Provider cost uses currency micro-units and does not change
+  allowed only for connection/unaccepted/refunded-safe failures. Accepted or
+  unknown attempts with a remote task ID retain the hold and never create a
+  second upstream task. An untrackable submission response without a remote
+  task ID terminates as failed without automatic fallback, releases the hold,
+  and may be retried manually after operator verification instead of remaining
+  in `processing` indefinitely. Retries rebuild the billing price snapshot from
+  the current action price and remain compatible with legacy tasks that have no
+  stored snapshot. Provider cost uses currency micro-units and does not change
   business prices. Provider balance and enterprise AI credits are separate
   ledgers: enterprises buy platform credits while operators replenish the shared
   provider pool against balance thresholds, not once per enterprise purchase.
@@ -226,13 +248,19 @@ permission, or workflow changes.
 - Status: `Implemented`. These endpoints resolve Mini Program identity,
   professional context, workbench data, shared business assets, and enterprise-
   staff AI design. AI endpoints enforce bearer JWT plus enterprise/operator
-  ownership; `/api/miniprogram/ai/sources` exposes only role-accessible formal
+  ownership. Media uploads identify supported JPG/PNG content and dimensions
+  from file bytes so WeChat multipart uploads do not depend on a client-provided
+  MIME type;
+  `/api/miniprogram/ai/sources` exposes only role-accessible formal
   plans and closed rooms, preserves the legacy flat room array, and also returns
   grouped plans for the complete-plan/single-room selector. Mini Program tasks
   validate the same role boundary and persist an explicit
-  `whole_floor_plan`/`single_room` target. Complete-plan tasks derive a separate
-  1024px control-image `MediaAsset` and use image editing; single-room tasks use
-  measured prompt context and image generation. The workflow endpoint returns only context-visible
+  `whole_floor_plan`/`single_room` target. Complete-plan rendering tasks derive a
+  separate 1024px control-image `MediaAsset` and use image editing; standalone
+  single-room rendering tasks use measured prompt context and image generation.
+  Plan-backed reference recreation also derives a control image, isolating the
+  selected room when `roomId` is present, and submits it before the visual
+  reference without requiring a separate room photo. The workflow endpoint returns only context-visible
   active schemes and executable Mini Program actions. An explicit workflow is
   continued; a unique customer/formal-plan match is reused automatically; when
   multiple schemes match, the client must choose instead of silently merging.

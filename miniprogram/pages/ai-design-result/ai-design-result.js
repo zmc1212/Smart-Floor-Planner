@@ -8,11 +8,55 @@ const MODE_TITLES = {
 };
 
 function decorateTask(task) {
+  const ratioParts = String(task.outputAspectRatio || '1:1').split(':').map(Number);
+  const ratio = ratioParts.length === 2 && ratioParts[0] > 0 && ratioParts[1] > 0
+    ? ratioParts[0] / ratioParts[1]
+    : 1;
   return {
     ...task,
     modeTitle: MODE_TITLES[task.mode] || 'AI 设计',
-    sourceCompareImageUrl: task.controlImageUrl || task.spaceImageUrl || '',
+    sourceCompareImageUrl: (task.mode === 'reference_recreate' ? task.referenceImageUrl : task.controlImageUrl)
+      || task.spaceImageUrl
+      || '',
+    preserveComposition: task.mode === 'reference_recreate',
+    floorPlanCompare: Boolean(task.controlImageUrl) && task.mode !== 'reference_recreate',
+    resultStageHeight: Math.round(670 / ratio),
   };
+}
+
+function downloadImage(url) {
+  return new Promise((resolve, reject) => {
+    wx.downloadFile({
+      url,
+      success: (result) => {
+        if (result.statusCode === 200 && result.tempFilePath) {
+          resolve(result.tempFilePath);
+          return;
+        }
+        reject({ type: 'download', detail: result });
+      },
+      fail: (error) => reject({ type: 'download', detail: error }),
+    });
+  });
+}
+
+function saveImageToAlbum(filePath) {
+  return new Promise((resolve, reject) => {
+    wx.saveImageToPhotosAlbum({
+      filePath,
+      success: resolve,
+      fail: (error) => reject({ type: 'album', detail: error }),
+    });
+  });
+}
+
+function isAlbumPermissionError(error) {
+  if (!error || error.type !== 'album') return false;
+  const message = String((error.detail && error.detail.errMsg) || '').toLowerCase();
+  return message.includes('auth deny')
+    || message.includes('auth denied')
+    || message.includes('authorize no response')
+    || message.includes('permission denied');
 }
 
 Page({
@@ -21,6 +65,7 @@ Page({
     task: null,
     loading: true,
     running: false,
+    saving: false,
     comparePercent: 50,
     pageScrollTop: 0,
   },
@@ -54,6 +99,7 @@ Page({
     try {
       const response = await aiService.getTask(this.data.id);
       const task = decorateTask(response);
+      this.compareRect = null;
       this.setData({ task, loading: false });
       if (task.status === 'succeeded') this.resetPageScroll();
       if (this.shouldRun && task.status === 'created' && !this.data.running) {
@@ -121,26 +167,39 @@ Page({
     if (task && task.resultImageUrl) wx.previewImage({ urls: [task.resultImageUrl], current: task.resultImageUrl });
   },
 
-  saveResult() {
+  async saveResult() {
     const task = this.data.task;
-    if (!task || !task.resultImageUrl) return;
+    if (!task || !task.resultImageUrl || this.data.saving) return;
+    this.setData({ saving: true });
     wx.showLoading({ title: '保存中...' });
-    wx.downloadFile({
-      url: task.resultImageUrl,
-      success: (download) => {
-        if (download.statusCode !== 200) {
-          wx.showToast({ title: '图片下载失败', icon: 'none' });
-          return;
-        }
-        wx.saveImageToPhotosAlbum({
-          filePath: download.tempFilePath,
-          success: () => wx.showToast({ title: '已保存到相册', icon: 'success' }),
-          fail: () => wx.showToast({ title: '保存失败，请检查相册权限', icon: 'none' }),
-        });
-      },
-      fail: () => wx.showToast({ title: '图片下载失败', icon: 'none' }),
-      complete: () => wx.hideLoading(),
-    });
+    let feedback = { title: '已保存到相册', icon: 'success' };
+    let needsAlbumPermission = false;
+    try {
+      const filePath = await downloadImage(task.resultImageUrl);
+      await saveImageToAlbum(filePath);
+    } catch (error) {
+      needsAlbumPermission = isAlbumPermissionError(error);
+      feedback = {
+        title: error && error.type === 'download' ? '图片下载失败' : '图片保存失败',
+        icon: 'none',
+      };
+    } finally {
+      wx.hideLoading();
+      this.setData({ saving: false });
+    }
+
+    if (needsAlbumPermission) {
+      wx.showModal({
+        title: '需要相册权限',
+        content: '请在设置中允许保存图片到相册后重试。',
+        confirmText: '去设置',
+        success: (result) => {
+          if (result.confirm) wx.openSetting();
+        },
+      });
+      return;
+    }
+    wx.showToast(feedback);
   },
 
   async retry() {

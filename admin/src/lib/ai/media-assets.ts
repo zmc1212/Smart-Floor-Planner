@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import mongoose from 'mongoose';
+import sharp from 'sharp';
 import { MediaAsset, type IMediaAsset } from '@/models/MediaAsset';
 import { AiGeneration } from '@/models/AiGeneration';
 import { AiWorkflow } from '@/models/AiWorkflow';
@@ -14,6 +15,8 @@ type StoreMediaInput = {
   mimeType: string;
   buffer: Buffer;
   originalUrl?: string;
+  width?: number;
+  height?: number;
 };
 
 const INTERNAL_ASSET_URL_RE = /^\/api\/ai\/assets\/([a-f0-9]{24})\/image/i;
@@ -84,6 +87,14 @@ export async function storeMediaBuffer(input: StoreMediaInput) {
   await fs.mkdir(path.dirname(fullPath), { recursive: true });
   await fs.writeFile(fullPath, input.buffer);
 
+  let width = Number(input.width) || undefined;
+  let height = Number(input.height) || undefined;
+  if (!width || !height) {
+    const metadata = await sharp(input.buffer).metadata().catch(() => null);
+    width = Number(metadata?.width) || undefined;
+    height = Number(metadata?.height) || undefined;
+  }
+
   const asset = await MediaAsset.create({
     _id: assetId,
     enterpriseId,
@@ -91,6 +102,8 @@ export async function storeMediaBuffer(input: StoreMediaInput) {
     ownerId: toObjectId(input.ownerId),
     mimeType: input.mimeType,
     size: input.buffer.length,
+    width,
+    height,
     storageProvider: 'local',
     storageKey,
     originalUrl: input.originalUrl,
@@ -191,6 +204,24 @@ export async function readMediaAssetBuffer(asset: Pick<IMediaAsset, 'storageProv
   }
 
   return fs.readFile(resolveStoragePath(asset.storageKey));
+}
+
+export async function ensureMediaAssetDimensions(asset: IMediaAsset | null | undefined) {
+  if (!asset) return undefined;
+  const storedWidth = Number(asset.width);
+  const storedHeight = Number(asset.height);
+  if (storedWidth > 0 && storedHeight > 0) {
+    return { width: storedWidth, height: storedHeight };
+  }
+
+  const metadata = await sharp(await readMediaAssetBuffer(asset)).metadata().catch(() => null);
+  const width = Number(metadata?.width);
+  const height = Number(metadata?.height);
+  if (!(width > 0 && height > 0)) return undefined;
+  await MediaAsset.updateOne({ _id: asset._id }, { $set: { width, height } });
+  asset.width = width;
+  asset.height = height;
+  return { width, height };
 }
 
 export async function readInternalAssetAsDataUri(imageUrl: string, enterpriseId: string | mongoose.Types.ObjectId) {

@@ -211,7 +211,7 @@ export const DEFAULT_AI_STYLE_PRESETS: DefaultAiStylePreset[] = [
       '请基于上传的毛坯图、现场手稿或彩平，生成一张用于家装首次谈单的风格方向对比板。输出 4 到 5 套明显不同但都适合家装落地的室内设计方向，例如现代、奶油、原木、轻奢、新中式。每个方向都需要体现软装搭配、材质语言、色彩氛围和灯光气质，并保持同一空间结构和镜头逻辑不变。整体画面采用一张高质感多方案对比板排版，适合给客户快速选风格，不需要施工深化信息。',
     negativePrompt: 'distorted walls, wrong perspective, messy, bad quality, low res, text, watermark',
     provider: 'pollinations',
-    image: { ...BASE_POLLINATIONS_CONFIG, model: 'flux', quality: 'high', mode: 'generation' },
+    image: { ...BASE_POLLINATIONS_CONFIG, model: 'flux', quality: 'high', mode: 'edit' },
     workflowCategory: 'main',
     workflowStage: 'direction',
     sourceAssetRole: 'rough_sketch',

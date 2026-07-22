@@ -62,6 +62,7 @@ export type AiImageSubmitInput = {
   prompt: string;
   negativePrompt?: string;
   size?: string;
+  aspectRatio?: string;
   quality?: string;
   images?: string[];
   user?: string;
@@ -104,6 +105,16 @@ export class AiProviderError extends Error {
 
 export function isSafeProviderFallback(error: unknown) {
   return error instanceof AiProviderError && error.disposition === 'safe_fallback';
+}
+
+export function classifyImageSubmissionError(error: unknown, remoteTaskId?: string) {
+  if (isSafeProviderFallback(error)) {
+    return { attemptStatus: 'failed', accepted: false, action: 'fallback' } as const;
+  }
+  if (remoteTaskId) {
+    return { attemptStatus: 'unknown', accepted: true, action: 'wait' } as const;
+  }
+  return { attemptStatus: 'failed', accepted: false, action: 'fail_untrackable' } as const;
 }
 
 export function capabilityForLogicalModel(key: AiLogicalModelKey): AiCapability {

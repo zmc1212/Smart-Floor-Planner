@@ -54,10 +54,18 @@ export function asObject(value: unknown): JsonObject {
 }
 
 export async function parseJson(response: Response, label: string): Promise<JsonObject> {
+  const body = await response.text();
   try {
-    return asObject(await response.json());
+    return asObject(JSON.parse(body.replace(/^\uFEFF/, '')));
   } catch {
-    throw new AiProviderError(`${label} returned invalid JSON`, 'INVALID_PROVIDER_RESPONSE', 'unknown', 502);
+    const contentType = response.headers.get('content-type') || 'unknown content-type';
+    const byteLength = Buffer.byteLength(body, 'utf8');
+    throw new AiProviderError(
+      `${label} returned invalid JSON (${contentType}, ${byteLength} bytes)`,
+      'INVALID_PROVIDER_RESPONSE',
+      'unknown',
+      502
+    );
   }
 }
 

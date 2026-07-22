@@ -2,6 +2,15 @@ import type { AiProviderAdapter } from '@/lib/ai/provider-types';
 import { AiProviderError } from '@/lib/ai/provider-types';
 import { bearerHeaders, extractChatContent, extractImage, listOpenAiModels, parseJson, providerFetch, providerUrl } from './http';
 
+function normalizeOpenAiImageSize(size?: string) {
+  const dimensions = String(size || '').match(/^(\d+)x(\d+)$/i);
+  if (!dimensions) return '1024x1024';
+  const width = Number(dimensions[1]);
+  const height = Number(dimensions[2]);
+  if (width === height) return '1024x1024';
+  return width > height ? '1536x1024' : '1024x1536';
+}
+
 export const openAiCompatibleAdapter: AiProviderAdapter = {
   type: 'openai_compatible',
   async chat(runtime, input) {
@@ -27,7 +36,7 @@ export const openAiCompatibleAdapter: AiProviderAdapter = {
         body: JSON.stringify({
           model: input.model,
           prompt: input.negativePrompt ? `${input.prompt}\n\nNegative prompt: ${input.negativePrompt}` : input.prompt,
-          size: input.size || '1024x1024',
+          size: normalizeOpenAiImageSize(input.size),
           quality: input.quality || 'high',
           response_format: 'url',
           ...(isEdit ? { image: input.images?.[0] } : {}),

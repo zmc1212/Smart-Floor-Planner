@@ -19,6 +19,8 @@
 .upload-add { display: flex; align-items: center; justify-content: center; width: 88rpx; height: 88rpx; background: var(--brand-primary-20); border-radius: var(--radius-full); color: var(--brand-primary); font-size: 56rpx; line-height: 1; font-weight: 300; }
 .upload-title { margin-top: 20rpx; font-size: 29rpx; font-weight: 600; }
 .upload-meta { margin-top: 8rpx; color: var(--text-secondary); font-size: 22rpx; }
+.upload-status { position: absolute; left: 20rpx; bottom: 20rpx; padding: 10rpx 20rpx; background: rgba(31,41,55,.82); border-radius: var(--radius-full); color: var(--text-inverse); font-size: 22rpx; }
+.upload-status.error { background: rgba(31,41,55,.9); }
 .replace-chip { position: absolute; right: 20rpx; bottom: 20rpx; padding: 10rpx 20rpx; background: rgba(255,255,255,.92); border-radius: var(--radius-full); color: var(--text-brand); font-size: 22rpx; box-shadow: var(--shadow-card); }
 .flow-arrow { height: 68rpx; display: flex; align-items: center; justify-content: center; color: var(--brand-primary); font-size: 34rpx; }
 .style-section { margin-top: 36rpx; }

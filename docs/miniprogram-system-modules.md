@@ -102,11 +102,23 @@ utilities, and the admin APIs they call.
 - Implemented: enterprise-shared AI-credit and action-price display; a four-task
   home surface for reference recreation, whole-space style transformation,
   formal-floor-plan concept rendering, and soft-furnishing refinement; dual-image
-  reference input, source-image plus preset styles, camera/album upload,
-  asynchronous provider states, failure retry and credit release, draggable
-  before/after comparison, single-image floor-plan results, preview/save/share,
+  reference input, source-image plus preset styles, camera/album upload with
+  byte-signature validation, stable local previews and in-place upload retry,
+  server-derived output proportions that map the composition source to a
+  provider-supported specification. Plan-backed reference recreation submits an
+  isolated selected-room (or complete-plan) control image first as the
+  authoritative wall/door/window structure and the reference image second for
+  camera, framing, composition, and style; its output ratio still follows the
+  reference and it does not require another room photo. Standalone recreation
+  retains reference-first/room-image-second input,
+  asynchronous provider states, task failure retry and credit release, draggable
+  before/after comparison, single-image floor-plan results, preview/share, and
+  real result-image saving that waits for the album write and guides denied users
+  to WeChat photo-album settings,
   history reuse, and deletion. Task-detail reads force an upstream status query
-  for processing jobs, while the home page refreshes recent results every five
+  for processing jobs. The home page keeps processing jobs ahead of other recent
+  results, shows their numeric stage progress in green, preserves recency within
+  each group, and refreshes every five
   seconds until visible processing jobs reach a terminal state; history reads
   reconcile up to four visible processing jobs before serialization. The home
   page provides a two-step shared selector:
@@ -127,8 +139,9 @@ utilities, and the admin APIs they call.
   furnishing steps directly, while proposal and lighting hand off to Admin.
   Ad-hoc tasks without customer context
   remain supported as quick standalone generations.
-- Visuals: locally rendered Lucide icons, hairline separators, and the iPhone 13
-  Pro `390x844` baseline. References are
+- Visuals: locally rendered Lucide icons, hairline separators, output-ratio-aware
+  result/compare stages that use the reference image for recreation comparisons,
+  and the iPhone 13 Pro `390x844` baseline. References are
   `design-references/ai-design-home-v2.png` and
   `design-references/ai-design-result-v2.png`; the generated home hero
   is `miniprogram/images/ai-design-hero-v2.jpg`.
@@ -138,7 +151,10 @@ utilities, and the admin APIs they call.
   through the formal survey-graph read adapter and never mutates
   `FloorPlan.layoutData`. For complete-plan rendering it rasterizes a derived
   1024px wall/opening control image into a separate `MediaAsset` and uses image
-  editing; a single room uses measured prompt context and image generation.
+  editing; a standalone single-room render uses measured prompt context and
+  image generation. Reference recreation with a selected formal target also
+  rasterizes a control image, limited to that closed room when `roomId` is
+  present, and sends it before the visual reference.
   The source selector returns only formal plans and closed rooms visible to the current
   enterprise role (assigned leads for designers, assigned plans for measurers,
   and enterprise-scoped plans for enterprise administrators).
@@ -147,9 +163,11 @@ utilities, and the admin APIs they call.
 - Limited: enterprise staff only; requires available platform-managed provider
   routing and enterprise AI credits. The server may route GRS, Pollinations, or
   another configured compatible provider without changing Mini Program APIs.
-  V1 analyzes the reference then edits the room image instead of native
-  pixel-perfect dual-image transfer. Floor-plan-only generation cannot infer an
-  exact camera or unmeasured finishes. There is no
+  Plan-backed reference recreation sends the measured control and visual
+  reference together, but a 2D wall graph has no measured camera pose and the
+  provider still cannot guarantee pixel-perfect reference duplication. The
+  structural control takes precedence when constraints conflict. Floor-plan-only
+  generation cannot infer an exact camera or unmeasured finishes. There is no
   WeChat recharge, mask-based replacement, or homeowner account. Production
   requires shared `AI_ASSET_STORAGE_DIR` and an HTTPS
   `MINIPROGRAM_API_PUBLIC_ORIGIN` for signed media URLs.

@@ -15,6 +15,7 @@
 .sync-chip.synced { background: var(--brand-primary-20); color: var(--text-brand); }
 .workflow-name { min-width: 0; margin-left: 8rpx; overflow: hidden; color: var(--text-secondary); font-size: 19rpx; white-space: nowrap; text-overflow: ellipsis; }
 .item-meta { display: block; margin-top: 10rpx; color: var(--text-secondary); font-size: 21rpx; }
+.item-meta.processing { color: var(--text-brand); font-weight: 600; }
 .item-actions { display: flex; justify-content: flex-end; gap: 10rpx; }
 .mini-action { min-width: 104rpx; height: 54rpx; margin: 0; padding: 0 16rpx; border: none; border-radius: var(--radius-full); background: var(--brand-primary-20); color: var(--text-brand); font-size: 21rpx; line-height: 54rpx; }
 .mini-action::after { border: none; }

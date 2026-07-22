@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { AiGeneration } from '@/models/AiGeneration';
 import { AiWorkflow, IAiWorkflow } from '@/models/AiWorkflow';
 import Lead from '@/models/Lead';
@@ -11,8 +12,10 @@ import {
 } from '@/lib/ai/presets';
 import type { AiPresetType, DefaultAiStylePreset } from '@/lib/ai/preset-definitions';
 import {
+  getMediaAssetImageUrl,
   persistImageReference,
   resolveAiProviderImageInput,
+  storeMediaBuffer,
   updateMediaAssetOwner,
 } from '@/lib/ai/media-assets';
 import { ensureGenerationCreditHold, executeAiChat, executeGenerationImage, releaseGenerationCredits } from '@/lib/ai/execution-service';
@@ -25,8 +28,14 @@ import {
   type AiWorkflowStageKey,
 } from '@/lib/ai/workflow-stages';
 import { serializeAiGeneration, serializeAiWorkflow } from '@/lib/ai/workflow-utils';
-import { adaptSurveyGraphToRooms, isFormalSurveyLayout } from '@/lib/survey-graph';
 import { syncSuccessfulGenerationToWorkflow } from '@/lib/ai/workflow-baseline';
+import { renderMiniAiFloorPlanControlPng } from '@/lib/ai/mini-ai-floorplan';
+import {
+  assertEligibleWorkflowFloorPlan,
+  buildWorkflowFloorPlanContext,
+  isEligibleWorkflowFloorPlan,
+  resolveWorkflowImageMode,
+} from '@/lib/ai/workflow-floorplan';
 
 type WorkflowGenerationDoc = Awaited<ReturnType<typeof AiGeneration.findOne>>;
 
@@ -97,18 +106,6 @@ function buildDefaultWorkflowTitle(leadName: string, workflowCount: number, work
 function parseUpstreamStatus(error: unknown) {
   const maybe = error as Error & { status?: number };
   return maybe?.status || 500;
-}
-
-async function buildWorkflowFloorPlanContext(sourceFloorPlanId?: unknown, enterpriseId?: string) {
-  if (!sourceFloorPlanId || !enterpriseId) return '';
-  const plan = await FloorPlan.findOne({ _id: sourceFloorPlanId, enterpriseId }).select('layoutData').lean();
-  if (!plan || !isFormalSurveyLayout(plan.layoutData)) return '';
-  const rooms = adaptSurveyGraphToRooms(plan.layoutData).slice(0, 8);
-  if (!rooms.length) return '';
-  const summaries = rooms.map((room) =>
-    `${room.name}: approximately ${(room.width / 10).toFixed(2)}m by ${(room.height / 10).toFixed(2)}m, ceiling ${(room.height3D / 10).toFixed(2)}m, ${room.openings.length} measured openings`
-  );
-  return `Formal measured floor-plan context (read-only): ${summaries.join('; ')}. Treat these dimensions as constraints and do not claim construction-grade accuracy.`;
 }
 
 async function findWorkflowForEnterprise(workflowId: string, enterpriseId: string) {
@@ -357,6 +354,14 @@ export async function createAiWorkflow(input: CreateWorkflowInput, context: Tena
     if (!hasFloorPlan) {
       throw new Error('所选户型图不属于当前客户线索');
     }
+
+    const floorPlan = await FloorPlan.findOne({ _id: sourceFloorPlanId, enterpriseId })
+      .select('status layoutData')
+      .lean();
+    if (!floorPlan) {
+      throw new Error('所选户型图不存在或无权访问');
+    }
+    assertEligibleWorkflowFloorPlan(floorPlan);
   }
 
   if (!sourceFloorPlanId && (!sourceImage || !sourceImage.startsWith('data:image'))) {
@@ -441,12 +446,14 @@ export async function getAiWorkflowContext(workflowId: string, context: TenantCo
       stylePreference: lead.stylePreference,
       communityName: lead.communityName,
       floorPlans: Array.isArray(lead.floorPlanIds)
-        ? (lead.floorPlanIds as Array<{ _id: unknown; name?: string; createdAt?: Date; status?: string }>).map((plan) => ({
-            id: String(plan._id),
-            name: plan.name,
-            createdAt: plan.createdAt,
-            status: plan.status,
-          }))
+        ? (lead.floorPlanIds as Array<{ _id: unknown; name?: string; layoutData?: unknown; createdAt?: Date; status?: string }>)
+            .filter(isEligibleWorkflowFloorPlan)
+            .map((plan) => ({
+              id: String(plan._id),
+              name: plan.name,
+              createdAt: plan.createdAt,
+              status: plan.status,
+            }))
         : [],
       followUpCount: Array.isArray(lead.followUpRecords) ? lead.followUpRecords.length : 0,
     },
@@ -616,6 +623,16 @@ export async function runAiWorkflowStage(input: RunWorkflowStageInput, context: 
   const parentGeneration = resolvedParentGenerationId ? await AiGeneration.findById(resolvedParentGenerationId) : null;
   const presetType = resolvePresetType('scenario');
   const nextRecommendedStage = preset.nextRecommendedStage || getNextWorkflowStage(input.stageKey);
+  const workflowFloorPlan = workflow.sourceFloorPlanId
+    ? await FloorPlan.findOne({ _id: workflow.sourceFloorPlanId, enterpriseId })
+        .select('status layoutData')
+        .lean()
+    : null;
+  if (workflow.sourceFloorPlanId && !workflowFloorPlan) {
+    throw new Error('方案关联的正式户型不存在或无权访问');
+  }
+  if (workflowFloorPlan) assertEligibleWorkflowFloorPlan(workflowFloorPlan);
+
   const promptData = await buildPromptForGeneration({
     preset,
     stageKey: input.stageKey,
@@ -624,28 +641,51 @@ export async function runAiWorkflowStage(input: RunWorkflowStageInput, context: 
     parentGeneration,
     enterpriseId,
   });
-  const floorPlanContext = await buildWorkflowFloorPlanContext(workflow.sourceFloorPlanId, enterpriseId);
+  const floorPlanContext = workflowFloorPlan
+    ? buildWorkflowFloorPlanContext(workflowFloorPlan.layoutData)
+    : '';
   if (floorPlanContext) promptData.prompt = `${promptData.prompt} ${floorPlanContext}`;
 
+  const imageMode = resolveWorkflowImageMode(input.stageKey, preset.image.mode);
+  const logicalModelKey = imageMode === 'edit' ? 'image.edit.standard' : 'image.generate.standard';
+  const generationId = new mongoose.Types.ObjectId();
+  const usesFloorPlanControl = Boolean(workflowFloorPlan) &&
+    ['direction', 'base_render', 'perspective_upgrade'].includes(input.stageKey);
+  const controlAsset = usesFloorPlanControl && workflowFloorPlan
+    ? await storeMediaBuffer({
+        enterpriseId,
+        ownerType: 'ai_generation_input',
+        ownerId: generationId,
+        mimeType: 'image/png',
+        buffer: await renderMiniAiFloorPlanControlPng(workflowFloorPlan.layoutData),
+      })
+    : null;
+  const controlImage = controlAsset ? getMediaAssetImageUrl(String(controlAsset.asset._id)) : undefined;
+  const presetSnapshot = buildPresetSnapshot(preset);
+  presetSnapshot.image = { ...presetSnapshot.image, mode: imageMode };
+
   const generation = new AiGeneration({
+    _id: generationId,
     enterpriseId,
     operatorId: context.userId,
     leadId: workflow.leadId,
     workflowId: workflow._id,
+    floorPlanId: workflow.sourceFloorPlanId,
     parentGenerationId: resolvedParentGenerationId,
     type: 'scenario',
     channel: 'admin',
     actionKey: 'image.scenario',
-    capability: preset.image.mode === 'generation' ? 'image.generate' : 'image.edit',
-    logicalModelKey: preset.image.mode === 'generation' ? 'image.generate.standard' : 'image.edit.standard',
+    capability: imageMode === 'edit' ? 'image.edit' : 'image.generate',
+    logicalModelKey,
     stageKey: input.stageKey,
-    sourceAssetRole: preset.sourceAssetRole,
+    sourceAssetRole: controlImage ? 'floor_plan' : preset.sourceAssetRole,
     nextRecommendedStage,
     input: {
       style: preset.key,
-      presetSnapshot: buildPresetSnapshot(preset),
+      presetSnapshot,
       customPrompt: promptData.prompt,
       styleReferenceImage: promptData.styleReferenceImage,
+      controlImage,
       sceneAnalysis: promptData.sceneAnalysis,
     },
     output: {
@@ -660,21 +700,21 @@ export async function runAiWorkflowStage(input: RunWorkflowStageInput, context: 
     generation.status = 'processing';
     await generation.save();
 
-    const resolvedImage = await resolveSourceImage({
+    const resolvedImage = controlImage || await resolveSourceImage({
       explicitImage: input.styleReferenceImage,
       generation,
       workflow,
     });
 
-    if (!resolvedImage && preset.image.mode !== 'generation') {
+    if (!resolvedImage && imageMode === 'edit') {
       throw new Error('当前步骤缺少来源图片，请先创建方案会话或选择上一步产物');
     }
 
     const completed = await executeGenerationImage(generation, {
-      logicalModelKey: preset.image.mode === 'generation' ? 'image.generate.standard' : 'image.edit.standard',
+      logicalModelKey,
       prompt: promptData.prompt,
       negativePrompt: promptData.negativePrompt,
-      images: preset.image.mode === 'generation' || !resolvedImage ? undefined : [resolvedImage],
+      images: imageMode === 'edit' && resolvedImage ? [resolvedImage] : undefined,
       size: preset.image.size || '1024x1024',
       quality: preset.image.quality || 'medium',
       user: String(context.userId),

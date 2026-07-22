@@ -2,10 +2,23 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { validateTaskInput } = require('../utils/aiDesignValidation.js');
 
-test('reference recreate requires both source images', () => {
+test('standalone reference recreate requires both source images', () => {
   assert.equal(validateTaskInput({ mode: 'reference_recreate', availableBalance: 100, price: 10 }).error, '请先上传我的空间图');
   assert.equal(validateTaskInput({ mode: 'reference_recreate', spaceAssetId: 'space', availableBalance: 100, price: 10 }).error, '请先上传参考图');
   assert.equal(validateTaskInput({ mode: 'reference_recreate', spaceAssetId: 'space', referenceAssetId: 'reference', availableBalance: 100, price: 10 }).valid, true);
+});
+
+test('plan-backed reference recreate uses the selected room control and only requires a reference image', () => {
+  const planInput = {
+    mode: 'reference_recreate',
+    floorPlanId: 'plan',
+    targetScope: 'single_room',
+    roomId: 'bedroom',
+    availableBalance: 100,
+    price: 10,
+  };
+  assert.equal(validateTaskInput(planInput).error, '请先上传参考图');
+  assert.equal(validateTaskInput({ ...planInput, referenceAssetId: 'reference' }).valid, true);
 });
 
 test('style transform requires style and enough enterprise credits', () => {

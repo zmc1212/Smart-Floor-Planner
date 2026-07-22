@@ -1,0 +1,63 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const aiService = require('../utils/aiDesignService.js');
+
+function loadPageDefinition() {
+  let definition = null;
+  global.Page = (config) => { definition = config; };
+  const pagePath = require.resolve('../pages/ai-design-create/ai-design-create.js');
+  delete require.cache[pagePath];
+  require(pagePath);
+  delete global.Page;
+  return definition;
+}
+
+function createPage(definition) {
+  return {
+    ...definition,
+    data: { ...definition.data },
+    setData(update) {
+      Object.assign(this.data, update);
+    },
+  };
+}
+
+test('AI image upload keeps the local preview on success and failure', async () => {
+  const originalUploadAsset = aiService.uploadAsset;
+  const originalWx = global.wx;
+  const feedbackCalls = [];
+  global.wx = {
+    showLoading() { feedbackCalls.push('showLoading'); },
+    hideLoading() { feedbackCalls.push('hideLoading'); },
+    showToast(options) { feedbackCalls.push(`showToast:${options.title}`); },
+  };
+
+  try {
+    const page = createPage(loadPageDefinition());
+    aiService.uploadAsset = async () => ({ id: 'asset-1', previewUrl: 'https://example.com/signed-preview' });
+    await page.uploadImage('space', 'wxfile://space-photo.jpg');
+
+    assert.equal(page.data.spaceAssetId, 'asset-1');
+    assert.equal(page.data.spaceImagePath, 'wxfile://space-photo.jpg');
+    assert.equal(page.data.uploadErrorRole, '');
+    assert.deepEqual(feedbackCalls.slice(-3), ['showLoading', 'hideLoading', 'showToast:图片已上传']);
+
+    aiService.uploadAsset = async () => { throw { error: 'network failed' }; };
+    await page.uploadImage('space', 'wxfile://replacement.jpg');
+
+    assert.equal(page.data.spaceAssetId, '');
+    assert.equal(page.data.spaceImagePath, 'wxfile://replacement.jpg');
+    assert.equal(page.data.uploadErrorRole, 'space');
+    assert.deepEqual(feedbackCalls.slice(-3), ['showLoading', 'hideLoading', 'showToast:network failed']);
+
+    aiService.uploadAsset = async () => ({ id: 'asset-2' });
+    await page.retryImage({ currentTarget: { dataset: { role: 'space' } } });
+
+    assert.equal(page.data.spaceAssetId, 'asset-2');
+    assert.equal(page.data.spaceImagePath, 'wxfile://replacement.jpg');
+    assert.equal(page.data.uploadErrorRole, '');
+  } finally {
+    aiService.uploadAsset = originalUploadAsset;
+    global.wx = originalWx;
+  }
+});

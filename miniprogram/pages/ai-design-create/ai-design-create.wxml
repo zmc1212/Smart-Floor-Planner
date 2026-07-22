@@ -29,7 +29,7 @@
       <view class="plan-mark">户型</view>
       <view class="plan-copy">
         <text class="plan-title">已关联 {{floorPlanName}} · {{targetLabel}}</text>
-        <text class="plan-meta">{{targetScope === 'single_room' ? '生成时会参考该房间的尺寸、层高与门窗开口' : '用于关联客户户型与方案，不会把整户几何强加给单张现场图'}}</text>
+        <text class="plan-meta">{{mode === 'reference_recreate' ? (targetScope === 'single_room' ? '该房间墙体与门窗将作为生成结构基准' : '完整墙图将作为生成结构基准') : (targetScope === 'single_room' ? '生成时会参考该房间的尺寸、层高与门窗开口' : '用于关联客户户型与方案，不会把整户几何强加给单张现场图')}}</text>
       </view>
     </view>
 
@@ -40,18 +40,22 @@
         <text class="upload-title">参考图</text>
         <text class="upload-meta">{{uploadingRole === 'reference' ? '上传中...' : '相册或拍摄'}}</text>
       </view>
+      <view wx:if="{{uploadingRole === 'reference'}}" class="upload-status">上传中...</view>
+      <view wx:elif="{{uploadErrorRole === 'reference'}}" class="upload-status error" data-role="reference" catchtap="retryImage">上传失败，点击重试</view>
       <view wx:if="{{referenceImagePath}}" class="replace-chip">更换</view>
     </view>
 
-    <view wx:if="{{mode === 'reference_recreate'}}" class="flow-arrow">↓</view>
+    <view wx:if="{{mode === 'reference_recreate' && !floorPlanId}}" class="flow-arrow">↓</view>
 
-    <view wx:if="{{mode !== 'floor_plan_render'}}" class="upload-block" data-role="space" bindtap="selectImage">
+    <view wx:if="{{mode !== 'floor_plan_render' && !(mode === 'reference_recreate' && floorPlanId)}}" class="upload-block" data-role="space" bindtap="selectImage">
       <image wx:if="{{spaceImagePath}}" class="upload-preview" src="{{spaceImagePath}}" mode="aspectFill"></image>
       <view wx:else class="upload-empty">
         <view class="upload-add">+</view>
         <text class="upload-title">{{mode === 'soft_furnishing' ? '当前空间 / 基准效果图' : '我的空间图'}}</text>
         <text class="upload-meta">{{uploadingRole === 'space' ? '上传中...' : '相册或拍摄'}}</text>
       </view>
+      <view wx:if="{{uploadingRole === 'space'}}" class="upload-status">上传中...</view>
+      <view wx:elif="{{uploadErrorRole === 'space'}}" class="upload-status error" data-role="space" catchtap="retryImage">上传失败，点击重试</view>
       <view wx:if="{{spaceImagePath}}" class="replace-chip">更换</view>
     </view>
 
@@ -68,7 +72,8 @@
     </view>
 
     <view class="mode-note">
-      <text wx:if="{{mode === 'reference_recreate'}}">参考图用于提取风格语言，生成时会优先保留现场空间结构。</text>
+      <text wx:if="{{mode === 'reference_recreate' && floorPlanId}}">所选户型决定墙体与门窗结构；参考图决定输出比例、镜头、构图与风格。约束冲突时以户型结构为准。</text>
+      <text wx:elif="{{mode === 'reference_recreate'}}">参考图决定输出比例、镜头与构图；我的空间图仅提供可兼容的现场细节。</text>
       <text wx:elif="{{mode === 'style_transform'}}">更换整体材质、家具与氛围，同时尽量保持门窗和视角不变。</text>
       <text wx:elif="{{mode === 'floor_plan_render'}}">{{targetScope === 'whole_floor_plan' ? '基于完整量房墙图生成全屋俯视概念效果。' : '基于指定房间量房数据生成室内视角概念效果。'}}不等同于施工图或像素级空间还原。</text>
       <text wx:else>仅调整家具、窗帘、地毯、挂画、绿植和装饰灯，保留硬装与固定柜体。</text>

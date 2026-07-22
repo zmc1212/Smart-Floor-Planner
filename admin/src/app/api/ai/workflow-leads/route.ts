@@ -6,6 +6,7 @@ import Lead from '@/models/Lead';
 import { FloorPlan } from '@/models/FloorPlan';
 import { AiWorkflow } from '@/models/AiWorkflow';
 import { getTenantFilter } from '@/lib/auth';
+import { isEligibleWorkflowFloorPlan } from '@/lib/ai/workflow-floorplan';
 
 type LeanFloorPlan = {
   _id: unknown;
@@ -113,7 +114,7 @@ export async function GET(req: Request) {
             stylePreference: lead.stylePreference,
             communityName: lead.communityName,
             floorPlans: Array.isArray(lead.floorPlanIds)
-              ? lead.floorPlanIds.map((plan) => ({
+              ? lead.floorPlanIds.filter(isEligibleWorkflowFloorPlan).map((plan) => ({
                   id: String(plan._id),
                   name: plan.name,
                   layoutData: plan.layoutData,

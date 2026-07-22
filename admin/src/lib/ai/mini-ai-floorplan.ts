@@ -89,11 +89,15 @@ function openingSegment(opening: SurveyOpening, wall: SurveyWall, nodes: Map<str
   };
 }
 
-export function createMiniAiFloorPlanControlSvg(layoutData: unknown, size = 1024) {
+export function createMiniAiFloorPlanControlSvg(layoutData: unknown, size = 1024, roomId?: string) {
   const layout = parseFormalSurveyLayout(layoutData);
   const floor = layout ? getActiveSurveyFloor(layout) : null;
   if (!floor) throw new Error('正式户型缺少可用楼层');
-  const closedSpaces = (floor.spaces || []).filter((space) => space.closed);
+  const allClosedSpaces = (floor.spaces || []).filter((space) => space.closed);
+  const closedSpaces = roomId
+    ? allClosedSpaces.filter((space) => space.id === roomId)
+    : allClosedSpaces;
+  if (roomId && !closedSpaces.length) throw new Error('所选房间不属于该户型或尚未闭合');
   const wallIds = new Set(closedSpaces.flatMap((space) => space.wallIds || []));
   const walls = (floor.walls || []).filter((wall) => wallIds.has(wall.id));
   const nodes = new Map((floor.nodes || []).map((node) => [node.id, { x: node.xMm, y: node.yMm }]));
@@ -143,9 +147,9 @@ export function createMiniAiFloorPlanControlSvg(layoutData: unknown, size = 1024
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><rect width="100%" height="100%" fill="#000000"/>${wallLines}${openingLines}</svg>`;
 }
 
-export async function renderMiniAiFloorPlanControlPng(layoutData: unknown, size = 1024) {
+export async function renderMiniAiFloorPlanControlPng(layoutData: unknown, size = 1024, roomId?: string) {
   const { default: sharp } = await import('sharp');
-  return sharp(Buffer.from(createMiniAiFloorPlanControlSvg(layoutData, size)))
+  return sharp(Buffer.from(createMiniAiFloorPlanControlSvg(layoutData, size, roomId)))
     .png()
     .toBuffer();
 }

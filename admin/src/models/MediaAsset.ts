@@ -9,6 +9,8 @@ export interface IMediaAsset extends Document {
   ownerId?: mongoose.Types.ObjectId;
   mimeType: string;
   size: number;
+  width?: number;
+  height?: number;
   storageProvider: MediaAssetStorageProvider;
   storageKey: string;
   originalUrl?: string;
@@ -43,6 +45,8 @@ const MediaAssetSchema: Schema<IMediaAsset> = new Schema(
       type: Number,
       required: true,
     },
+    width: { type: Number, min: 1 },
+    height: { type: Number, min: 1 },
     storageProvider: {
       type: String,
       enum: ['local', 'object_storage'],
@@ -67,7 +71,12 @@ MediaAssetSchema.index({ enterpriseId: 1, ownerType: 1, ownerId: 1, createdAt: -
 MediaAssetSchema.plugin(multiTenantPlugin);
 
 const existingMediaAssetModel = mongoose.models.MediaAsset as Model<IMediaAsset> | undefined;
-if (existingMediaAssetModel && !existingMediaAssetModel.schema.path('deletedAt')) {
+if (
+  existingMediaAssetModel
+  && (!existingMediaAssetModel.schema.path('deletedAt')
+    || !existingMediaAssetModel.schema.path('width')
+    || !existingMediaAssetModel.schema.path('height'))
+) {
   mongoose.deleteModel('MediaAsset');
 }
 

@@ -5,6 +5,7 @@ import { FloorPlan } from '@/models/FloorPlan';
 import { AiWorkflow } from '@/models/AiWorkflow';
 import Lead from '@/models/Lead';
 import {
+  ensureMediaAssetDimensions,
   getAssetIdFromImageUrl,
   getMediaAssetImageUrl,
   readMediaAssetBuffer,
@@ -12,7 +13,12 @@ import {
   storeMediaBuffer,
 } from '@/lib/ai/media-assets';
 import { ensureDefaultAiStylePresets, getAiStylePresetByKey } from '@/lib/ai/presets';
-import { buildMiniAiRenderPrompt, type MiniAiRenderMode } from '@/lib/ai/mini-ai-provider';
+import {
+  buildMiniAiRenderPrompt,
+  selectMiniAiOutputSpec,
+  selectReferenceRecreateImageInputs,
+  type MiniAiRenderMode,
+} from '@/lib/ai/mini-ai-provider';
 import { ensureGenerationCreditHold, executeGenerationImage, releaseGenerationCredits } from '@/lib/ai/execution-service';
 import { getAiCreditPrice } from '@/lib/ai/credits';
 import { getMiniAiPublicRequestUrl, getSignedMiniAiAssetUrl } from '@/lib/ai/mini-ai-assets';
@@ -224,7 +230,10 @@ export async function createMiniAiTask(input: CreateMiniAiTaskInput, context: Mi
     getAiCreditPrice(config.actionKey),
     deriveFloorPlanTarget(input, context),
   ]);
-  if (input.mode !== 'floor_plan_render' && !rawSpaceAsset) throw new Error('空间图片不存在或无权访问');
+  const usesReferenceFloorPlanControl = input.mode === 'reference_recreate' && Boolean(floorPlanTarget);
+  if (input.mode !== 'floor_plan_render' && !usesReferenceFloorPlanControl && !rawSpaceAsset) {
+    throw new Error('空间图片不存在或无权访问');
+  }
   if (input.mode === 'floor_plan_render' && !floorPlanTarget) throw new Error('请选择包含正式闭合房间的户型');
   if (input.mode === 'reference_recreate' && !rawReferenceAsset) throw new Error('请上传有效的参考图片');
   if (input.mode !== 'reference_recreate' && !input.styleKey) throw new Error('请选择目标风格');
@@ -232,6 +241,10 @@ export async function createMiniAiTask(input: CreateMiniAiTaskInput, context: Mi
   const [spaceAsset, referenceAsset] = await Promise.all([
     cloneGenerationOutputAsInput(rawSpaceAsset, context.enterpriseId),
     cloneGenerationOutputAsInput(rawReferenceAsset, context.enterpriseId),
+  ]);
+  const [spaceDimensions, referenceDimensions] = await Promise.all([
+    ensureMediaAssetDimensions(spaceAsset),
+    ensureMediaAssetDimensions(referenceAsset),
   ]);
 
   const spaceImage = spaceAsset ? getMediaAssetImageUrl(String(spaceAsset._id)) : undefined;
@@ -254,18 +267,29 @@ export async function createMiniAiTask(input: CreateMiniAiTaskInput, context: Mi
   }
 
   const target = floorPlanTarget?.target;
+  const outputSpec = selectMiniAiOutputSpec({
+    mode: input.mode,
+    targetScope: target?.targetScope,
+    spaceDimensions,
+    referenceDimensions,
+  });
   const usesWholePlanControl = input.mode === 'floor_plan_render' && target?.targetScope === 'whole_floor_plan';
-  const logicalModelKey: AiLogicalModelKey = usesWholePlanControl
+  const usesFloorPlanControl = usesWholePlanControl || usesReferenceFloorPlanControl;
+  const logicalModelKey: AiLogicalModelKey = usesFloorPlanControl
     ? 'image.edit.standard'
     : config.logicalModelKey;
   const generationId = new mongoose.Types.ObjectId();
-  const controlAsset = usesWholePlanControl && floorPlanTarget
+  const controlAsset = usesFloorPlanControl && floorPlanTarget
     ? await storeMediaBuffer({
         enterpriseId: context.enterpriseId,
         ownerType: 'ai_generation_input',
         ownerId: generationId,
         mimeType: 'image/png',
-        buffer: await renderMiniAiFloorPlanControlPng(floorPlanTarget.plan.layoutData),
+        buffer: await renderMiniAiFloorPlanControlPng(
+          floorPlanTarget.plan.layoutData,
+          1024,
+          target?.targetScope === 'single_room' ? target.roomId : undefined
+        ),
       })
     : null;
   const controlImage = controlAsset ? getMediaAssetImageUrl(String(controlAsset.asset._id)) : undefined;
@@ -280,7 +304,7 @@ export async function createMiniAiTask(input: CreateMiniAiTaskInput, context: Mi
     type: config.type,
     channel: 'miniprogram',
     stageKey: config.stageKey,
-    sourceAssetRole: input.mode === 'floor_plan_render' ? 'floor_plan' : 'rough_sketch',
+    sourceAssetRole: usesFloorPlanControl ? 'floor_plan' : 'rough_sketch',
     nextRecommendedStage: config.nextStageKey,
     status: 'created',
     actionKey: config.actionKey,
@@ -299,6 +323,8 @@ export async function createMiniAiTask(input: CreateMiniAiTaskInput, context: Mi
       spaceImage,
       referenceImage: referenceAsset ? getMediaAssetImageUrl(String(referenceAsset._id)) : undefined,
       controlImage,
+      outputAspectRatio: outputSpec.aspectRatio,
+      outputSize: outputSpec.size,
     },
     billing: { cycle: 0, actionKey: config.actionKey, price: price.credits, status: 'unbilled' },
   });
@@ -330,8 +356,6 @@ export async function executeMiniAiTask(generation: IAiGeneration, context: Mini
       ? await getAiStylePresetByKey('furnishing_style', generation.input.style)
       : null;
     if (mode !== 'reference_recreate' && !stylePreset) throw new Error('目标风格已停用或不存在');
-    if (mode !== 'floor_plan_render' && !generation.input.spaceImage) throw new Error('任务缺少空间图片');
-
     const roomData = generation.input.roomData && typeof generation.input.roomData === 'object'
       ? generation.input.roomData as {
           summary?: string;
@@ -340,6 +364,10 @@ export async function executeMiniAiTask(generation: IAiGeneration, context: Mini
       : undefined;
     const targetScope = roomData?.targetScope || (mode === 'floor_plan_render' ? 'single_room' : undefined);
     const usesWholePlanControl = mode === 'floor_plan_render' && targetScope === 'whole_floor_plan';
+    const usesReferenceFloorPlanControl = mode === 'reference_recreate' && Boolean(generation.input.controlImage);
+    if (mode !== 'floor_plan_render' && !usesReferenceFloorPlanControl && !generation.input.spaceImage) {
+      throw new Error('任务缺少空间图片');
+    }
     if (usesWholePlanControl && !generation.input.controlImage) {
       throw new Error('完整户型任务缺少量房控制图');
     }
@@ -357,27 +385,38 @@ export async function executeMiniAiTask(generation: IAiGeneration, context: Mini
       stylePrompt: usesWholePlanControl
         ? stylePreset?.promptTemplate
         : stylePreset?.description,
-      roomSummary: mode === 'floor_plan_render' || targetScope === 'single_room'
+      roomSummary: mode === 'floor_plan_render' || usesReferenceFloorPlanControl || targetScope === 'single_room'
         ? roomData?.summary || ''
         : '',
       targetScope,
+      usesFloorPlanControl: usesReferenceFloorPlanControl,
     });
     generation.output.promptUsed = promptResult.prompt;
     generation.input.referenceAnalysis = promptResult.referenceAnalysis;
     await generation.save();
     const logicalModelKey = (generation.logicalModelKey || config.logicalModelKey) as 'image.generate.standard' | 'image.edit.standard';
-    const sourceImages = controlImageUrl
-      ? [controlImageUrl]
-      : generation.input.spaceImage
-        ? [generation.input.spaceImage]
-        : undefined;
+    const sourceImages = mode === 'reference_recreate'
+      ? selectReferenceRecreateImageInputs({
+          controlImage: usesReferenceFloorPlanControl ? generation.input.controlImage : undefined,
+          referenceImage: generation.input.referenceImage,
+          spaceImage: generation.input.spaceImage,
+        })
+      : controlImageUrl
+        ? [controlImageUrl]
+        : generation.input.spaceImage
+          ? [generation.input.spaceImage]
+          : undefined;
     const completed = await executeGenerationImage(generation, {
       logicalModelKey, prompt: promptResult.prompt,
       negativePrompt: usesWholePlanControl
         ? stylePreset?.negativePrompt
-        : 'changed architecture, changed window position, changed door position, warped walls, distorted perspective, duplicate furniture, floating objects, top-down floor plan, text, watermark, low quality',
+        : mode === 'reference_recreate'
+          ? 'changed wall geometry, moved door, moved window, invented opening, missing opening, changed crop, changed framing, changed camera position, changed focal length, top-down floor plan, diagram, warped walls, text, watermark, low quality'
+          : 'changed architecture, changed window position, changed door position, warped walls, distorted perspective, duplicate furniture, floating objects, top-down floor plan, text, watermark, low quality',
       images: sourceImages,
-      size: '1024x1024', quality: 'high', user: String(context.operatorId),
+      size: generation.input.outputSize || '1024x1024',
+      aspectRatio: generation.input.outputAspectRatio || '1:1',
+      quality: 'high', user: String(context.operatorId),
     });
     return syncMiniAiWorkflow(completed, context);
   } catch (error) {
@@ -397,7 +436,7 @@ export async function retryMiniAiTask(generation: IAiGeneration, context: MiniAi
   const cycle = Number(generation.billing?.cycle ?? generation.retryCount ?? 0) + 1;
   generation.retryCount = cycle; generation.status = 'created'; generation.errorCode = undefined; generation.errorMessage = undefined;
   generation.currentAttemptId = undefined; generation.externalTask = undefined;
-  generation.billing = { cycle, actionKey: generation.billing?.actionKey, price: generation.billing?.price, priceSnapshot: generation.billing?.priceSnapshot, status: 'unbilled' };
+  generation.billing = { cycle, status: 'unbilled' };
   await generation.save();
   await ensureGenerationCreditHold(generation);
   return executeMiniAiTask(generation, context);
@@ -436,6 +475,8 @@ export function serializeMiniAiTask(
     errorCode: generation.errorCode, error: generation.errorMessage, retryCount: Number(generation.retryCount || 0),
     credits: Number(generation.billing?.price || 0), billingStatus: generation.billing?.status,
     provider: generation.provider, model: generation.remoteModel, externalStatus: generation.externalTask?.status,
+    outputAspectRatio: generation.input?.outputAspectRatio,
+    outputSize: generation.input?.outputSize,
     workflowId: generation.workflowId ? String(generation.workflowId) : undefined,
     workflowTitle: context?.workflowTitle,
     leadName: context?.leadName,

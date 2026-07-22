@@ -90,10 +90,26 @@ button::after {
 .progress-track {
   width: 78%;
   height: 10rpx;
-  margin-top: 34rpx;
+  margin-top: 10rpx;
   overflow: hidden;
   background: var(--brand-primary-20);
   border-radius: var(--radius-full);
+}
+
+.progress-copy {
+  width: 78%;
+  margin-top: 30rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-secondary);
+  font-size: 22rpx;
+}
+
+.progress-value {
+  color: var(--text-brand);
+  font-size: 27rpx;
+  font-weight: var(--font-weight-bold);
 }
 
 .progress-bar {

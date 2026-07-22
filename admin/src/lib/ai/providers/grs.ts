@@ -20,10 +20,13 @@ function remoteError(payload: JsonObject) {
   return String(error.message || payload.error || payload.message || data.message || 'GRS image task failed');
 }
 
-function grsAspectRatio(model: string, size?: string) {
+function grsAspectRatio(model: string, size?: string, aspectRatio?: string) {
   const value = String(size || '').trim();
-  if (!model.startsWith('nano-banana')) return value || '1024x1024';
+  if (model === 'gpt-image-2-vip') return value || '1024x1024';
+  if (!model.startsWith('nano-banana')) return String(aspectRatio || '').trim() || value || '1024x1024';
   const supported = new Set(['auto', '1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '5:4', '4:5', '21:9', '1:4', '4:1', '1:8', '8:1']);
+  const requestedAspectRatio = String(aspectRatio || '').trim();
+  if (supported.has(requestedAspectRatio)) return requestedAspectRatio;
   if (supported.has(value)) return value;
   const dimensions = value.match(/^(\d+)x(\d+)$/i);
   if (!dimensions) return 'auto';
@@ -112,7 +115,7 @@ export const grsAdapter: AiProviderAdapter = {
           model: input.model,
           prompt: input.negativePrompt ? `${input.prompt}\n\nNegative prompt: ${input.negativePrompt}` : input.prompt,
           images: input.images || [],
-          aspectRatio: grsAspectRatio(input.model, input.size),
+          aspectRatio: grsAspectRatio(input.model, input.size, input.aspectRatio),
           replyType: 'async',
           ...(input.model.startsWith('nano-banana') && /^(1K|2K|4K)$/i.test(input.quality || '')
             ? { imageSize: String(input.quality).toUpperCase() }

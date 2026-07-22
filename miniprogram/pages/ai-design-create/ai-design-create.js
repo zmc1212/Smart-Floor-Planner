@@ -21,6 +21,7 @@ Page({
     loading: true,
     submitting: false,
     uploadingRole: '',
+    uploadErrorRole: '',
     capabilities: null,
     price: 10,
     spaceAssetId: '',
@@ -149,22 +150,31 @@ Page({
     });
   },
 
+  retryImage(event) {
+    const role = event.currentTarget.dataset.role;
+    const pathKey = role === 'reference' ? 'referenceImagePath' : 'spaceImagePath';
+    if (this.data.uploadingRole || this.data.submitting || !this.data[pathKey]) return;
+    return this.uploadImage(role, this.data[pathKey]);
+  },
+
   async uploadImage(role, filePath) {
     const pathKey = role === 'reference' ? 'referenceImagePath' : 'spaceImagePath';
     const assetKey = role === 'reference' ? 'referenceAssetId' : 'spaceAssetId';
-    this.setData({ uploadingRole: role, [pathKey]: filePath, [assetKey]: '' });
+    this.setData({ uploadingRole: role, uploadErrorRole: '', [pathKey]: filePath, [assetKey]: '' });
     wx.showLoading({ title: '上传中...' });
+    let feedback;
     try {
       const asset = await aiService.uploadAsset(filePath);
-      this.setData({ [assetKey]: asset.id, [pathKey]: asset.previewUrl || filePath });
-      wx.showToast({ title: '图片已上传', icon: 'success' });
+      this.setData({ [assetKey]: asset.id });
+      feedback = { title: '图片已上传', icon: 'success' };
     } catch (error) {
-      this.setData({ [pathKey]: '', [assetKey]: '' });
-      wx.showToast({ title: error.error || '图片上传失败', icon: 'none' });
+      this.setData({ uploadErrorRole: role, [assetKey]: '' });
+      feedback = { title: error.error || '图片上传失败', icon: 'none' };
     } finally {
       wx.hideLoading();
       this.setData({ uploadingRole: '' });
     }
+    wx.showToast(feedback);
   },
 
   selectStyle(event) {
@@ -215,7 +225,9 @@ Page({
     try {
       const task = await aiService.createTask({
         mode: this.data.mode,
-        spaceAssetId: this.data.spaceAssetId,
+        spaceAssetId: this.data.mode === 'reference_recreate' && this.data.floorPlanId
+          ? undefined
+          : this.data.spaceAssetId,
         referenceAssetId: this.data.mode === 'reference_recreate' ? this.data.referenceAssetId : undefined,
         styleKey: this.data.mode === 'reference_recreate' ? undefined : this.data.selectedStyleKey,
         floorPlanId: this.data.floorPlanId || undefined,

@@ -20,14 +20,16 @@ export async function POST(request: Request) {
     if (!(file instanceof File)) {
       return NextResponse.json({ success: false, error: '请选择要上传的图片' }, { status: 400 });
     }
-    const mimeType = file.type.toLowerCase();
     const buffer = Buffer.from(await file.arrayBuffer());
-    const dimensions = validateAiImage({ mimeType, buffer });
+    const dimensions = validateAiImage({ buffer });
+    const mimeType = dimensions.mimeType;
     const stored = await storeMediaBuffer({
       enterpriseId: context.enterpriseId,
       ownerType: 'manual_upload',
       mimeType,
       buffer,
+      width: dimensions.width,
+      height: dimensions.height,
     });
 
     return NextResponse.json({

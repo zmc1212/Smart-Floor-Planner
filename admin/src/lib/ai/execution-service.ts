@@ -13,6 +13,7 @@ import {
   AiProviderError,
   actionKeyForGenerationType,
   capabilityForLogicalModel,
+  classifyImageSubmissionError,
   isSafeProviderFallback,
   type AiActionKey,
   type AiChatMessage,
@@ -334,6 +335,7 @@ export async function executeGenerationImage(
     prompt: input.prompt,
     negativePrompt: input.negativePrompt,
     size: input.size,
+    aspectRatio: input.aspectRatio,
     quality: input.quality,
     user: input.user,
     images: resolvedImages,
@@ -344,6 +346,7 @@ export async function executeGenerationImage(
     prompt: input.prompt,
     negativePrompt: input.negativePrompt,
     size: input.size,
+    aspectRatio: input.aspectRatio,
     quality: input.quality,
     user: input.user,
     images: imageRefs,
@@ -405,9 +408,16 @@ export async function executeGenerationImage(
       lastError = new Error(result.error);
     } catch (error) {
       lastError = error;
-      const safe = isSafeProviderFallback(error);
-      await markAttemptError(attempt, error, safe ? 'failed' : 'unknown', !safe, startedAt);
-      if (!safe) {
+      const resolution = classifyImageSubmissionError(error, attempt.remoteTaskId);
+      await markAttemptError(attempt, error, resolution.attemptStatus, resolution.accepted, startedAt);
+      if (resolution.action === 'fail_untrackable') {
+        return persistFailedGeneration(generation, {
+          errorCode: 'PROVIDER_SUBMISSION_UNTRACKABLE',
+          errorMessage: `供应商提交响应不可追踪，未返回任务 ID：${attempt.errorMessage || '未知错误'}`,
+          remoteStatus: 'untrackable',
+        });
+      }
+      if (resolution.action === 'wait') {
         generation.status = 'processing';
         generation.errorCode = 'PROVIDER_STATUS_UNKNOWN';
         generation.errorMessage = error instanceof Error ? error.message : String(error);
@@ -445,14 +455,22 @@ export async function reconcileAiGeneration(
 
   const attempt = await AiProviderAttempt.findById(generation.currentAttemptId);
   if (!attempt) return generation;
-  if (attempt.status === 'failed' && !attempt.remoteTaskId) {
+  if (!attempt.remoteTaskId) {
+    const untrackable = attempt.status === 'unknown';
+    if (untrackable) {
+      attempt.status = 'failed';
+      attempt.accepted = false;
+      attempt.remoteStatus = 'untrackable';
+      await attempt.save();
+    }
     return persistFailedGeneration(generation, {
-      errorCode: attempt.errorCode || 'ALL_PROVIDERS_REJECTED',
-      errorMessage: attempt.errorMessage || '供应商未受理任务',
-      remoteStatus: attempt.remoteStatus || 'failed',
+      errorCode: untrackable ? 'PROVIDER_SUBMISSION_UNTRACKABLE' : attempt.errorCode || 'ALL_PROVIDERS_REJECTED',
+      errorMessage: untrackable
+        ? `供应商提交响应不可追踪，未返回任务 ID：${attempt.errorMessage || '未知错误'}`
+        : attempt.errorMessage || '供应商未受理任务',
+      remoteStatus: attempt.remoteStatus || (untrackable ? 'untrackable' : 'failed'),
     });
   }
-  if (!attempt.remoteTaskId) return generation;
   const runtime = await getProviderRuntimeById(String(attempt.providerConfigId));
   const startedAt = Date.now();
   try {

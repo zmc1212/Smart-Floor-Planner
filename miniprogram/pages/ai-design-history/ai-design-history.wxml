@@ -16,7 +16,7 @@
               <text class="sync-chip {{item.syncedToWorkflow ? 'synced' : ''}}">{{item.syncedToWorkflow ? '已同步方案' : '独立任务'}}</text>
               <text wx:if="{{item.workflowTitle}}" class="workflow-name">{{item.workflowTitle}}</text>
             </view>
-            <text class="item-meta">{{item.status === 'succeeded' ? '已完成' : item.status === 'failed' ? '生成失败' : '生成中'}} · {{item.credits}} 点</text>
+            <text class="item-meta {{item.status === 'created' || item.status === 'pending' || item.status === 'processing' ? 'processing' : ''}}">{{item.status === 'succeeded' ? '已完成' : item.status === 'failed' ? '生成失败' : '生成中 ' + item.progress + '%'}} · {{item.credits}} 点</text>
           </view>
           <view class="item-actions">
             <button class="mini-action" data-id="{{item.id}}" bindtap="reuse">再设计</button>

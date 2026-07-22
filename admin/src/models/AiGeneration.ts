@@ -36,6 +36,8 @@ export interface IAiGeneration extends Document {
     referenceImage?: string;
     controlImage?: string;
     referenceAnalysis?: string;
+    outputAspectRatio?: string;
+    outputSize?: string;
     providerImages?: string[];
     providerRequest?: unknown;
   };
@@ -172,6 +174,8 @@ const AiGenerationSchema: Schema<IAiGeneration> = new Schema(
       referenceImage: { type: String },
       controlImage: { type: String },
       referenceAnalysis: { type: String },
+      outputAspectRatio: { type: String },
+      outputSize: { type: String },
       providerImages: { type: [String], default: undefined },
       providerRequest: { type: Schema.Types.Mixed },
     },
@@ -259,12 +263,14 @@ const existingTypeEnum = existingTypePath?.options?.enum || [];
 const existingProviderPath = existingAiGenerationModel?.schema.path('provider') as
   | { options?: { enum?: string[] } }
   | undefined;
+const existingOutputAspectRatioPath = existingAiGenerationModel?.schema.path('input.outputAspectRatio');
 
 if (
   existingAiGenerationModel &&
   (!existingTypeEnum.includes('soft_furnishing_render') ||
     !existingTypeEnum.includes('scenario') ||
     !existingTypeEnum.includes('reference_recreate') ||
+    !existingOutputAspectRatioPath ||
     Boolean(existingProviderPath?.options?.enum?.length))
 ) {
   mongoose.deleteModel('AiGeneration');

@@ -7,9 +7,13 @@
     </view>
 
     <block wx:elif="{{task}}">
-      <view wx:if="{{task.status === 'created' || task.status === 'processing'}}" class="state-panel processing">
+      <view wx:if="{{task.status === 'created' || task.status === 'pending' || task.status === 'processing'}}" class="state-panel processing">
         <view class="processing-mark">AI</view>
         <text class="state-title">正在重塑空间</text>
+        <view class="progress-copy">
+          <text>生成进度</text>
+          <text class="progress-value">{{task.progress}}%</text>
+        </view>
         <view class="progress-track"><view class="progress-bar" style="width: {{task.progress}}%;"></view></view>
         <text class="state-meta">已冻结 {{task.credits}} 点，失败会自动释放</text>
       </view>
@@ -30,21 +34,21 @@
           <view class="complete-chip">{{task.workflowId ? '已同步方案' : '已完成'}}</view>
         </view>
 
-        <view wx:if="{{task.sourceCompareImageUrl}}" class="compare-stage {{task.controlImageUrl ? 'floor-plan-compare' : ''}}" bindtouchstart="handleCompareTouch" catchtouchmove="handleCompareTouch">
-          <image class="compare-image" src="{{task.resultImageUrl}}" mode="{{task.controlImageUrl ? 'aspectFit' : 'aspectFill'}}"></image>
+        <view wx:if="{{task.sourceCompareImageUrl}}" class="compare-stage {{task.floorPlanCompare ? 'floor-plan-compare' : ''}}" style="height: {{task.resultStageHeight}}rpx;" bindtouchstart="handleCompareTouch" catchtouchmove="handleCompareTouch">
+          <image class="compare-image" src="{{task.resultImageUrl}}" mode="{{task.floorPlanCompare || task.preserveComposition ? 'aspectFit' : 'aspectFill'}}"></image>
           <view class="before-layer" style="width: {{comparePercent}}%;">
-            <image class="compare-image before-image" src="{{task.sourceCompareImageUrl}}" mode="{{task.controlImageUrl ? 'aspectFit' : 'aspectFill'}}"></image>
+            <image class="compare-image before-image" src="{{task.sourceCompareImageUrl}}" mode="{{task.floorPlanCompare || task.preserveComposition ? 'aspectFit' : 'aspectFill'}}"></image>
           </view>
           <view class="compare-line" style="left: {{comparePercent}}%;">
             <view class="compare-handle">
               <image class="compare-handle-icon" src="/images/ai-result-icons/move-horizontal.png" mode="aspectFit"></image>
             </view>
           </view>
-          <view class="compare-label before-label">{{task.controlImageUrl ? '原始户型' : '原空间'}}</view>
-          <view class="compare-label after-label">{{task.controlImageUrl ? '全屋效果' : 'AI 方案'}}</view>
+          <view class="compare-label before-label">{{task.preserveComposition ? '参考构图' : task.floorPlanCompare ? '原始户型' : '原空间'}}</view>
+          <view class="compare-label after-label">{{task.floorPlanCompare ? '全屋效果' : 'AI 方案'}}</view>
         </view>
 
-        <view wx:else class="compare-stage single-result">
+        <view wx:else class="compare-stage single-result" style="height: {{task.resultStageHeight}}rpx;">
           <image class="compare-image" src="{{task.resultImageUrl}}" mode="aspectFill"></image>
           <view class="compare-label after-label">AI 概念方案</view>
         </view>
@@ -54,9 +58,9 @@
             <image class="action-icon-image" src="/images/ai-result-icons/eye.png" mode="aspectFit"></image>
             <text>预览</text>
           </button>
-          <button class="result-action action-save" hover-class="action-pressed" bindtap="saveResult">
+          <button class="result-action action-save" hover-class="action-pressed" disabled="{{saving}}" bindtap="saveResult">
             <image class="action-icon-image" src="/images/ai-result-icons/download.png" mode="aspectFit"></image>
-            <text>保存</text>
+            <text>{{saving ? '保存中' : '保存'}}</text>
           </button>
           <button class="result-action action-share" hover-class="primary-pressed" open-type="share">
             <image class="action-icon-image" src="/images/ai-result-icons/share-white.png" mode="aspectFit"></image>

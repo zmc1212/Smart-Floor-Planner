@@ -20,7 +20,8 @@ function validateTaskInput(input) {
       return { valid: false, error: '完整户型设计不能同时指定房间' };
     }
   }
-  if (input.mode !== 'floor_plan_render' && !input.spaceAssetId) {
+  const usesReferenceFloorPlanControl = input.mode === 'reference_recreate' && Boolean(input.floorPlanId);
+  if (input.mode !== 'floor_plan_render' && !usesReferenceFloorPlanControl && !input.spaceAssetId) {
     return { valid: false, error: input.mode === 'soft_furnishing' ? '请先上传当前空间或基准效果图' : '请先上传我的空间图' };
   }
   if (input.mode === 'reference_recreate' && !input.referenceAssetId) {

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { grsAdapter } from '@/lib/ai/providers/grs';
-import { AiProviderError, actionKeyForGenerationType, isSafeProviderFallback, type AiProviderRuntimeConfig } from '@/lib/ai/provider-types';
+import { openAiCompatibleAdapter } from '@/lib/ai/providers/openai-compatible';
+import { AiProviderError, actionKeyForGenerationType, classifyImageSubmissionError, isSafeProviderFallback, type AiProviderRuntimeConfig } from '@/lib/ai/provider-types';
 import { serializeProviderConfig } from '@/lib/ai/provider-admin';
 
 const runtime: AiProviderRuntimeConfig = {
@@ -50,6 +51,54 @@ test('GRS image submit follows the documented async generation protocol', async 
   try {
     const result = await grsAdapter.submitImage(runtime, { model: 'gpt-image-2', prompt: 'room', images: ['data:image/png;base64,abc'] });
     assert.deepEqual(result, { status: 'processing', remoteTaskId: 'remote-123', remoteStatus: 'running', nextPollMs: 5000 });
+  } finally { restore(); }
+});
+
+test('GRS standard image model prefers an explicit aspect ratio over pixel size', async () => {
+  const restore = mockFetch((_url, init) => {
+    const body = JSON.parse(String(init?.body));
+    assert.equal(body.aspectRatio, '16:9');
+    return Response.json({ id: 'remote-wide', status: 'running' });
+  });
+  try {
+    await grsAdapter.submitImage(runtime, {
+      model: 'gpt-image-2',
+      prompt: 'room',
+      size: '1672x941',
+      aspectRatio: '16:9',
+    });
+  } finally { restore(); }
+});
+
+test('GRS VIP image model uses the documented custom pixel size', async () => {
+  const restore = mockFetch((_url, init) => {
+    const body = JSON.parse(String(init?.body));
+    assert.equal(body.aspectRatio, '1376x768');
+    return Response.json({ id: 'remote-vip', status: 'running' });
+  });
+  try {
+    await grsAdapter.submitImage(runtime, {
+      model: 'gpt-image-2-vip',
+      prompt: 'room',
+      size: '1376x768',
+      aspectRatio: '16:9',
+    });
+  } finally { restore(); }
+});
+
+test('OpenAI-compatible fallback normalizes a wide provider specification', async () => {
+  const restore = mockFetch((_url, init) => {
+    const body = JSON.parse(String(init?.body));
+    assert.equal(body.size, '1536x1024');
+    return Response.json({ data: [{ url: 'https://temp.example/wide.png' }] });
+  });
+  try {
+    await openAiCompatibleAdapter.submitImage(runtime, {
+      model: 'gpt-image-1',
+      prompt: 'room',
+      size: '1672x941',
+      aspectRatio: '16:9',
+    });
   } finally { restore(); }
 });
 
@@ -156,6 +205,26 @@ test('explicit unaccepted HTTP error is safe to fallback', async () => {
   } finally { restore(); }
 });
 
+test('invalid JSON response includes safe diagnostics without exposing its body', async () => {
+  const restore = mockFetch(() => new Response('<html>gateway error secret-token</html>', {
+    status: 200,
+    headers: { 'Content-Type': 'text/html' },
+  }));
+  try {
+    await assert.rejects(
+      () => grsAdapter.submitImage(runtime, { model: 'gpt-image-2', prompt: 'x' }),
+      (error: unknown) => {
+        assert.ok(error instanceof AiProviderError);
+        assert.equal(error.code, 'INVALID_PROVIDER_RESPONSE');
+        assert.match(error.message, /text\/html/);
+        assert.match(error.message, /bytes/);
+        assert.equal(error.message.includes('secret-token'), false);
+        return true;
+      }
+    );
+  } finally { restore(); }
+});
+
 test('provider API serialization never exposes encrypted or plaintext keys', () => {
   const serialized = serializeProviderConfig({
     _id: '1', key: 'grs', name: 'GRS', adapterType: 'grs', baseUrl: 'https://example',
@@ -176,4 +245,19 @@ test('accepted timeout and unknown status never allow a second upstream task', (
   assert.equal(isSafeProviderFallback(new AiProviderError('connect failed', 'CONNECT', 'safe_fallback')), true);
   assert.equal(isSafeProviderFallback(new AiProviderError('timed out', 'TIMEOUT', 'unknown')), false);
   assert.equal(isSafeProviderFallback(new AiProviderError('accepted', 'ACCEPTED', 'definitive_failure')), false);
+});
+
+test('image submission errors only remain pending when a remote task id is available', () => {
+  const unknown = new AiProviderError('invalid response', 'INVALID_PROVIDER_RESPONSE', 'unknown');
+  assert.deepEqual(classifyImageSubmissionError(unknown), {
+    attemptStatus: 'failed', accepted: false, action: 'fail_untrackable',
+  });
+  assert.deepEqual(classifyImageSubmissionError(unknown, 'remote-123'), {
+    attemptStatus: 'unknown', accepted: true, action: 'wait',
+  });
+  assert.deepEqual(classifyImageSubmissionError(
+    new AiProviderError('connection failed', 'CONNECTION', 'safe_fallback')
+  ), {
+    attemptStatus: 'failed', accepted: false, action: 'fallback',
+  });
 });
