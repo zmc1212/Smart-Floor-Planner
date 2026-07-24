@@ -203,6 +203,31 @@ test('confirming a diagonal preview for continuation advances the next wall anch
   assert.notEqual(floor.session.previewPoint.yMm, anchor.yMm);
 });
 
+test('the close action commits and closes a pending diagonal preview', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 3600, yMm: 0 }, 3600);
+  draft = commitWall(draft, { xMm: 3600, yMm: 3000 }, 3000);
+  draft = surveyGraph.setMode(draft, 'diagonal');
+  draft = surveyGraph.startPreview(draft, { xMm: 0, yMm: 0 });
+  draft = surveyGraph.holdPreviewForInput(draft);
+
+  const pendingSession = surveyGraph.getActiveFloor(draft).session;
+  assert.equal(pendingSession.state, 'awaitingLength');
+  assert.ok(pendingSession.closeCandidateNodeId);
+
+  const next = surveyGraph.confirmClosure(draft);
+  const floor = surveyGraph.getActiveFloor(next);
+  const diagonalWall = floor.walls[2];
+
+  assert.equal(floor.walls.length, 3);
+  assert.equal(diagonalWall.mode, 'diagonal');
+  assert.equal(diagonalWall.inputSource, 'closure-preview');
+  assert.equal(floor.spaces.length, 1);
+  assert.equal(floor.spaces[0].closed, true);
+  assert.equal(floor.session.state, 'spaceClosed');
+});
+
 test('a new diagonal snaps to the previous diagonal direction within the tolerance', () => {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });

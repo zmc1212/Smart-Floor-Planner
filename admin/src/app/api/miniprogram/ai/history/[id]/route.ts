@@ -26,6 +26,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     const assetIds = [
       getAssetIdFromImageUrl(generation.input.spaceImage),
       getAssetIdFromImageUrl(generation.input.referenceImage),
+      getAssetIdFromImageUrl(generation.input.controlImage),
       getAssetIdFromImageUrl(generation.output.imageUrl),
     ].filter((assetId): assetId is string => Boolean(assetId));
     const deletedAt = new Date();

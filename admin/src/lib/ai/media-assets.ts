@@ -1,10 +1,10 @@
-import { promises as fs } from 'fs';
-import path from 'path';
 import mongoose from 'mongoose';
 import sharp from 'sharp';
 import { MediaAsset, type IMediaAsset } from '@/models/MediaAsset';
 import { AiGeneration } from '@/models/AiGeneration';
 import { AiWorkflow } from '@/models/AiWorkflow';
+import { persistMediaObject, resolveMediaObjectDelivery } from '@/lib/media-storage/operations';
+import { getDefaultMediaStorageProvider, getMediaStorageProvider } from '@/lib/media-storage/registry';
 
 type MediaOwnerType = IMediaAsset['ownerType'];
 
@@ -22,14 +22,6 @@ type StoreMediaInput = {
 const INTERNAL_ASSET_URL_RE = /^\/api\/ai\/assets\/([a-f0-9]{24})\/image/i;
 const INTERNAL_GENERATION_URL_RE = /^\/api\/ai\/generations\/([a-f0-9]{24})\/image/i;
 const INTERNAL_WORKFLOW_SOURCE_URL_RE = /^\/api\/ai\/workflows\/([a-f0-9]{24})\/source-image/i;
-
-function resolveStoragePath(storageKey: string) {
-  if (process.env.AI_ASSET_STORAGE_DIR) {
-    return path.join(process.env.AI_ASSET_STORAGE_DIR, storageKey);
-  }
-
-  return path.join(/* turbopackIgnore: true */ process.cwd(), 'uploads', 'ai-assets', storageKey);
-}
 
 function toObjectId(value?: string | mongoose.Types.ObjectId) {
   if (!value) return undefined;
@@ -77,15 +69,13 @@ export async function storeMediaBuffer(input: StoreMediaInput) {
     throw new Error('Missing enterpriseId');
   }
 
-  const storageKey = [
+  const logicalStorageKey = [
     String(enterpriseId),
     new Date().getFullYear().toString(),
     `${assetId}.${getExtension(input.mimeType)}`,
   ].join('/');
-  const fullPath = resolveStoragePath(storageKey);
-
-  await fs.mkdir(path.dirname(fullPath), { recursive: true });
-  await fs.writeFile(fullPath, input.buffer);
+  const provider = await getDefaultMediaStorageProvider();
+  const storageKey = provider.buildObjectKey?.(logicalStorageKey) || logicalStorageKey;
 
   let width = Number(input.width) || undefined;
   let height = Number(input.height) || undefined;
@@ -95,18 +85,26 @@ export async function storeMediaBuffer(input: StoreMediaInput) {
     height = Number(metadata?.height) || undefined;
   }
 
-  const asset = await MediaAsset.create({
-    _id: assetId,
-    enterpriseId,
-    ownerType: input.ownerType,
-    ownerId: toObjectId(input.ownerId),
-    mimeType: input.mimeType,
-    size: input.buffer.length,
-    width,
-    height,
-    storageProvider: 'local',
-    storageKey,
-    originalUrl: input.originalUrl,
+  const { value: asset } = await persistMediaObject({
+    provider,
+    objectKey: storageKey,
+    buffer: input.buffer,
+    contentType: input.mimeType,
+    commit: (stored) => MediaAsset.create({
+      _id: assetId,
+      enterpriseId,
+      ownerType: input.ownerType,
+      ownerId: toObjectId(input.ownerId),
+      mimeType: input.mimeType,
+      size: input.buffer.length,
+      width,
+      height,
+      storageProvider: provider.key,
+      storageKey,
+      storageBucket: stored.bucket,
+      checksumSha256: stored.checksumSha256,
+      originalUrl: input.originalUrl,
+    }),
   });
 
   return {
@@ -198,12 +196,27 @@ export async function updateMediaAssetOwner(imageUrl: string | undefined, ownerI
   await MediaAsset.updateOne({ _id: assetId }, { $set: { ownerId: toObjectId(ownerId) } });
 }
 
-export async function readMediaAssetBuffer(asset: Pick<IMediaAsset, 'storageProvider' | 'storageKey'>) {
-  if (asset.storageProvider !== 'local') {
-    throw new Error('Unsupported storage provider');
-  }
+export async function readMediaAssetBuffer(
+  asset: Pick<IMediaAsset, 'storageProvider' | 'storageKey' | 'storageBucket'>
+) {
+  const provider = await getMediaStorageProvider(asset.storageProvider || 'local');
+  return provider.getObject({ objectKey: asset.storageKey, bucket: asset.storageBucket });
+}
 
-  return fs.readFile(resolveStoragePath(asset.storageKey));
+function signedReadTtlSeconds() {
+  const configured = Number(process.env.MEDIA_ASSET_SIGNED_URL_TTL_SECONDS || 3600);
+  return Number.isFinite(configured) && configured > 0 ? Math.floor(configured) : 3600;
+}
+
+export async function resolveMediaAssetDelivery(
+  asset: Pick<IMediaAsset, 'storageProvider' | 'storageKey' | 'storageBucket'>
+) {
+  const provider = await getMediaStorageProvider(asset.storageProvider || 'local');
+  return resolveMediaObjectDelivery({
+    provider,
+    location: { objectKey: asset.storageKey, bucket: asset.storageBucket },
+    expiresInSeconds: signedReadTtlSeconds(),
+  });
 }
 
 export async function ensureMediaAssetDimensions(asset: IMediaAsset | null | undefined) {

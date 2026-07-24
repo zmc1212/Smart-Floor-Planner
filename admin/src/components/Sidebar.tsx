@@ -23,6 +23,7 @@ import {
   Settings,
   Search,
   Cable,
+  HardDrive,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -63,6 +64,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       items: [
         { key: 'enterprises', label: '企业管理', icon: Building2, href: '/enterprises' },
         { key: 'ai-providers', label: 'AI 供应商', icon: Cable, href: '/ai-providers' },
+        { key: 'media-storage', label: '媒体存储', icon: HardDrive, href: '/media-storage' },
         { key: 'ai-credit-prices', label: 'AI 点数价格', icon: Coins, href: '/ai-credit-prices' },
         { key: 'roles', label: '角色权限管理', icon: Shield, href: '/roles' },
         { key: 'admins', label: '系统管理', icon: UserCog, href: '/admins' },
@@ -369,6 +371,7 @@ export default function Sidebar() {
 
   const hasMenuPermission = (key: string) => {
     if (!admin) return true;
+    if (key === 'media-storage') return admin.role === 'super_admin' || admin.role === 'admin';
     if (['ai-credit-prices', 'ai-providers'].includes(key) && (admin.role === 'super_admin' || admin.role === 'admin')) return true;
     if (admin.effectivePermissions?.includes(key)) return true;
     if (key === 'kujiale-floorplans' && admin.effectivePermissions?.includes('floorplans')) return true;

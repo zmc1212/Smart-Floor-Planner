@@ -61,6 +61,12 @@ When image reference and implementation differ:
 - Preserve hierarchy by reducing oversized media height and redundant whitespace before reducing readable type or touch targets
 - Lists, dynamic content, accessibility text, and smaller viewports may scroll; critical actions should not require scrolling solely because of avoidable spacing
 
+### Design Research Before Visual Work
+- Before creating a new high-fidelity page direction or AI-generated visual reference, research current, relevant mobile UI examples online. Use Huaban (花瓣网) as the preferred first source when it is available, then search the product category, the core interaction, and the target surface (for example: WeChat Mini Program home pages, renovation project progress, interior-design apps, or field-service tools).
+- Use at least three relevant references or patterns to inform hierarchy, card composition, illustration/photo treatment, icon rhythm, and interaction affordances. A supplied reference image is valuable input, but it must not be the only design source.
+- Translate research into an original composition that follows this project’s product flows, token system, and accessibility requirements. Never copy another product’s branding, text, icons, screen layout, or assets.
+- If Huaban or another named design site cannot be reached, use equivalent public current examples and state that substitution in the design handoff. Do not silently fall back to an old local reference image alone.
+
 ## 4. Color System
 
 ### Primary
@@ -92,10 +98,20 @@ When image reference and implementation differ:
 - Light neutral is used for page background blocks, borders, and soft surfaces
 - Yellow, pink, and cyan should only be used as supporting accents, not dominant page themes
 
+### Color Composition And Page Rhythm
+- The product is **green-led, not green-only**. Green is the brand anchor and should make the primary action, selected state, or one hero scene immediately recognizable; it must not fill every card, icon background, status treatment, and lower-page module.
+- On a standard page, use one dominant green moment at most (for example, the home hero or a single primary CTA). Let the remaining content breathe on white or light-neutral surfaces so the hierarchy does not become flat or monotonous.
+- Build visual rhythm in lower-page content with a layered composition: neutral/white as the base, mint for soft grouping, and a restrained yellow, pink, or cyan accent for selected feature icons, illustrations, thumbnails, or supportive highlights. Do not repeat the same green fill across adjacent modules.
+- Accent colors must have a role rather than being decorative noise. For example: warm yellow can identify a creative/AI shortcut, pink can support a lightweight communication or promotion cue, and cyan/mint can support device, location, or environmental information. Keep all business status meanings aligned with the status token system.
+- A colourful icon grid may use different **soft accent backgrounds**, but its icons must remain one coherent line/filled family with consistent stroke weight, size, padding, and corner treatment. Never compensate for weak hierarchy by mixing arbitrary icon styles.
+- Ongoing-plan and recent-plan cards should gain character from a real plan thumbnail or restrained home-related illustration, progress, and a compact status chip. Use green only for progress and positive state; do not turn the entire card into another green banner.
+- When a rich green scene is used at the top of a home page, use a deliberate overlap into the white content area (for example, an elevated primary-task card) and then transition to calmer, differently accented modules below. The visual goal is a fresh, lively home-service product with depth, not a monochrome green dashboard.
+
 ### Forbidden Color Behavior
 - Do not replace the primary green with blue or purple
 - Do not use saturated red as a major UI theme
 - Do not use black backgrounds for standard business pages
+- Do not make an entire screen or a run of adjacent cards the same primary-green treatment; this produces a rigid, single-note interface and weakens the primary action.
 
 ## 5. Typography
 
@@ -169,6 +185,8 @@ When image reference and implementation differ:
 - Primary action icons must come from one coherent, locally stored icon set with its source and license recorded in the repository
 - Do not use emoji, mixed Unicode symbols, or multi-stroke CSS drawings as product icons
 - CSS geometry remains acceptable for simple status dots, chevrons, loading indicators, and separators
+- Design icons as refined, recognisable micro-illustrations rather than generic one-stroke placeholders: use a consistent 1.75–2px rounded stroke, intentional inner details (for example dimension ticks on a ruler, door swing on a floor-plan tool, or a small badge on a lead), and a compact two-tone accent only where it improves recognition. Preserve one icon family, fixed visual weight, and generous optical padding; never mix flat glyphs, emojis, and unrelated outline styles in the same screen.
+- When a coloured icon tile is used, pair a light semantic surface with a more saturated main stroke and at most one restrained supporting detail. Keep the tile background, icon silhouette, and label distinct enough to scan at a glance; do not paint every icon green.
 
 ### Raster Micro-Icon Budget
 - Small UI icons (navigation, toolbar, and inline actions) should use a transparent raster asset at no more than 2× its displayed logical size and must be **10KB or smaller** after export.
@@ -234,6 +252,20 @@ Status chips should be:
 - Prefer large cards and grouped modules
 - Avoid spreadsheet-style information blocks
 
+### Formal Surveying Editor State Coverage
+- A formal measurement design review must cover the real editor states instead of approving a single static canvas: `idle` / `cursorPlaced` / `wallSnapPending`, `wallPreview` / `awaitingLength`, `wallCommitted` / `closing` / `mergeClosing` / `spaceClosed`, `wallSelected` / `remeasureAwaitingInput`, and the selected-opening state.
+- The design set must also cover every full-screen or bottom-sheet editing branch: manual length and wall-thickness input, BLE-assisted measurement, phone-sensor and Pythagorean angle measurement, and the component editor's `spec`, `flip`, and `library` panels.
+- Preserve spatial continuity between states: the plan canvas, selected geometry, dimension label, and active anchor must remain visually identifiable when a sheet or contextual toolbar opens. Use overlay elevation and local colour emphasis rather than replacing the canvas with an unrelated screen.
+- State feedback is part of the design: show saved/draft status, connected or unavailable measurement-device state, disabled undo/redo, destructive reset confirmation, successful room closure, and recoverable validation feedback with concise, non-blocking treatments.
+
+### Formal Surveying Editor Fixed Chrome
+- Every formal-surveying reference and implementation state must reuse one fixed shell. Do not redesign the surrounding application chrome per state.
+- The canvas top bar is invariant: white surface, the same safe-area height, left 40px back target, title format `云栖花园 · 正式量房`, one compact green-dot saved indicator, then the text actions `保存` and `完成` aligned at the same right positions. A component-editor state may replace only the title with `构件编辑`; its height, icon placement, saved indicator, and action positions remain unchanged.
+- The right-side tool rail has a stable width, alignment, icon size, and 2px rounded-outline family in every canvas state. A context panel may appear beside it, but must not replace it with a different navigation pattern.
+- The bottom shell is invariant: left history controls, a centered context action, and a right primary action remain on the same baseline. `重置光标` is one named cursor control with one icon, label, shape, and placement; it may be disabled or replaced only when the state makes cursor placement impossible, never visually redesigned.
+- A number pad, closure prompt, angle sheet, or component panel rises above this shell with the same 20px top radius, handle, shadow, horizontal inset, typography, and CTA alignment. It changes content only; it does not invent a new bottom navigation, toolbar, or top bar.
+- Across a state set, keep page background, 8px spacing rhythm, canvas grid, wall/dimension rendering, corner radii, type scale, status-dot treatment, and green/amber/coral semantics identical. State difference must be readable from selected geometry and local overlays, not from a new visual identity.
+
 ## 10. Illustration Style
 
 ### Style Keywords
@@ -279,6 +311,7 @@ Status chips should be:
 
 When generating UI for this mini program:
 - Use the green design system from this file
+- Treat green as the brand anchor rather than a blanket fill; follow the Color Composition And Page Rhythm rules to introduce intentional white, neutral, mint, yellow, pink, and cyan variation
 - Keep interfaces bright and spacious
 - Prefer white cards on soft light backgrounds
 - Reuse the radius and shadow system consistently

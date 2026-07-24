@@ -168,9 +168,19 @@ utilities, and the admin APIs they call.
   provider still cannot guarantee pixel-perfect reference duplication. The
   structural control takes precedence when constraints conflict. Floor-plan-only
   generation cannot infer an exact camera or unmeasured finishes. There is no
-  WeChat recharge, mask-based replacement, or homeowner account. Production
-  requires shared `AI_ASSET_STORAGE_DIR` and an HTTPS
-  `MINIPROGRAM_API_PUBLIC_ORIGIN` for signed media URLs.
+  WeChat recharge, mask-based replacement, or homeowner account. Media URLs stay
+  on the authenticated Mini Program asset endpoint: the local provider streams
+  bytes, while the Qiniu private-bucket provider redirects to a short-lived
+  signed URL without changing the page contract. A server-side Qiniu object
+  prefix affects only new persisted object keys and is transparent to Mini
+  Program pages and URLs. Qiniu upload failures do not fall back to local
+  storage, historical assets stay readable through their own stable provider
+  config, and the HTTPS download domain must be allowlisted in
+  WeChat. By default, GRS `http(s)` result URLs are returned directly and their
+  host must also be an allowed Mini Program download domain in production. When
+  the platform enables GRS output transfer with a Qiniu default provider, only
+  subsequent results use the Qiniu signed-read path. Production local storage requires shared `AI_ASSET_STORAGE_DIR`;
+  signed Mini Program media also requires an HTTPS `MINIPROGRAM_API_PUBLIC_ORIGIN`.
 
 ### Mine And Workbench
 
@@ -201,7 +211,9 @@ utilities, and the admin APIs they call.
   measurementMode: 'surveying', surveyGraph }`; graph units are millimetres.
 - Implemented editor behavior: startup restore, local draft and cloud draft
   persistence, straight and diagonal wall preview/commit, live BLE/manual length,
-  remeasure, shared-wall closure, advisory close candidate, openings, opening
+  remeasure, shared-wall closure, advisory close candidate, and direct closure
+  from a pending diagonal preview (the close action commits its current preview
+  length before closing), openings, opening
   dimensions and side, cursor placement for new wall chains on existing
   vertices, inner edges, outer edges, or free canvas positions, and an inner/outer
   wall-tracking, boundary-constrained measurement-edge prompt on the first

@@ -163,7 +163,8 @@ permission, or workflow changes.
   compatibility-only while writes return `410`.
 - Models/helpers: `AiGeneration`, `AiWorkflow`, `AiChatSession`, `AiStylePreset`,
   `AiProviderConfig`, `AiProviderAttempt`, `MediaAsset`, `AiCreditAccount`,
-  `AiCreditLedger`, `AiCreditPrice`, `Inspiration`, and `src/lib/ai/*`.
+  `AiCreditLedger`, `AiCreditPrice`, `Inspiration`, `src/lib/ai/*`, and
+  `src/lib/media-storage/*`.
 - Status: `Implemented`. The workbench starts customer designs with a
   customer/material/goal wizard, shows the selected result and candidates in a
   two-column workspace, and keeps one recommended next action prominent. The
@@ -176,7 +177,13 @@ permission, or workflow changes.
   for reference recreation, whole-space styling, floor-plan concepts, and soft
   furnishing map into the existing baseline, perspective-upgrade, and
   soft-furnishing stages. Media assets persist image width and height; legacy
-  assets backfill them from the stored file when first reused. Mini Program
+  assets backfill them from the stored file when first reused. All media writes,
+  reads, deletes, and optional signed-read redirects go through the registered
+  `MediaStorageProvider`. Each `MediaAsset` retains its provider, portable object
+  key, optional bucket, and SHA-256 checksum, so local and Qiniu/object-storage
+  assets can coexist without changing Admin or Mini Program asset URLs. The
+  bundled `local` provider confines paths to `AI_ASSET_STORAGE_DIR`; production
+  Docker mounts that directory as a persistent volume. Mini Program
   output ratios map those dimensions to provider-supported specifications:
   reference recreation follows the reference image ratio; when a formal-plan
   target is selected, the server submits an isolated room/plan control image
@@ -213,8 +220,13 @@ permission, or workflow changes.
   for visible processing jobs and return a terminal database state even when a
   refunded failure exhausts configured fallback providers. The provider
   capability and logical/remote model fields drive routing, while currency and
-  estimated cost are optional internal-only accounting metadata. Temporary images
-  are persisted to `MediaAsset` before settlement. Fallback is
+  estimated cost are optional internal-only accounting metadata. GRS `http(s)`
+  output URLs remain the default result reference and are not copied to platform
+  storage. Platform operators can enable the Media Storage page's GRS
+  output-transfer policy only when an active Qiniu configuration is the default
+  provider; then subsequent GRS outputs are persisted to that Qiniu configuration
+  before settlement. Data-URI outputs, user uploads, and generated control images
+  continue to use `MediaAsset` regardless of the policy. Fallback is
   allowed only for connection/unaccepted/refunded-safe failures. Accepted or
   unknown attempts with a remote task ID retain the hold and never create a
   second upstream task. An untrackable submission response without a remote
@@ -229,18 +241,62 @@ permission, or workflow changes.
   Enterprise AI policy controls enabled action keys and the
   `standard` logical-model tier before credits are held. `Limited`:
   balance/model discovery for other adapters depends on upstream support,
-  there is no WeChat/self-service recharge or automated low-balance alert, and production media requires durable
-  shared storage.
+  there is no WeChat/self-service recharge or automated low-balance alert, and
+  production local media requires durable shared storage. The bundled Qiniu Kodo
+  driver requires a private bucket, HTTPS download domain, server-only encrypted
+  credentials, and a successful full read/write/delete probe before activation.
+  Qiniu upload failures are returned directly and never fall back to local storage.
 - Migration/operations: run `npm run migrate:ai-platform` before enabling the
   new routes on an existing database. It preserves existing AI-credit balances,
   creates zero-balance accounts when absent, does not convert Pollen, maps legacy
   generations/presets, and seeds environment-backed provider configs. Credit-price
   initialization removes the obsolete unique `mode_1` index so platform actions
   without a mode cannot collide on repeated `null`; `actionKey_1` remains the
-  unique business index. Configure
-  `AI_RECONCILIATION_SECRET` for scheduled `/api/ai/reconcile` calls.
+  unique business index. `npm run cleanup:media-assets` is dry-run by default
+  and physically purges soft-deleted media only after the configured grace period;
+  `npm run migrate:media-assets -- --from=<provider-key> --to=<provider-key>` previews a
+  checksum-verified provider migration and requires `--execute` to write. A
+  migration commits the target location before deleting the source object.
+  Configure `AI_RECONCILIATION_SECRET` for scheduled `/api/ai/reconcile` calls.
 
-### 11. Mini Program Support And Cross-Client APIs
+### 11. Platform Media Storage Management
+
+- Page/permission: `/media-storage` with the `media-storage` menu permission;
+  only platform `super_admin` and `admin` roles may access it.
+- APIs: `GET/POST/PATCH /api/admin/media-storage`, `PATCH/DELETE
+  /api/admin/media-storage/[id]`, `POST /api/admin/media-storage/[id]/test`, and
+  `POST /api/admin/media-storage/[id]/activate`.
+- Models/helpers: `MediaStorageConfig`, `PlatformConfig.mediaStorage`,
+  `MediaAsset`, and `src/lib/media-storage/*`.
+- Status: `Implemented`. The page shows the current default, credential/config
+  state, active/pending/total asset counts and bytes, and the last connectivity
+  result. It manages the built-in local provider plus multiple Qiniu Kodo
+  configurations, masks credentials in every response, encrypts them server-side,
+  and accepts an optional relative object prefix for each Qiniu configuration.
+  Prefixes isolate projects within a shared bucket, accept only slash-separated
+  alphanumeric, `.`, `_`, and `-` segments, and reject traversal. A prefix is
+  normalized with one trailing slash and applies only to subsequent uploads and
+  health probes. The persisted `MediaAsset.storageKey` always includes that
+  prefix, so changing a configuration never breaks existing assets. Bucket,
+  region, domain, prefix, or credential changes invalidate the previous test
+  result and require a new full upload/stat/private-signed-download/content/delete probe.
+  Only a non-archived Qiniu config with a successful probe can be activated. Stable
+  config keys are immutable and are stored in `MediaAsset.storageProvider`.
+  Archived configs cannot write, test, or reactivate, but remain resolvable for
+  historical asset reads/deletes; the current default cannot be archived.
+  Switching defaults affects new uploads only and does not migrate old assets.
+  The GRS output policy defaults to keeping the upstream image URL; its explicit
+  transfer option requires the current default to be a usable Qiniu configuration,
+  persists only subsequent remote GRS outputs, and prevents switching the default
+  back to local until transfer is disabled.
+  `local` remains the compatibility default until a platform choice is persisted.
+- Limitations/operations: production cloud credentials require the dedicated
+  `MEDIA_STORAGE_KEY_ENCRYPTION_SECRET`; Qiniu buckets are treated as private, download
+  domains must be HTTPS and must be allowlisted in the WeChat Mini Program. The
+  page does not launch migration or purge jobs; operators continue to use the
+  dry-run-first media CLI commands.
+
+### 12. Mini Program Support And Cross-Client APIs
 
 - APIs: `/api/auth/miniprogram`, `/api/miniprogram/home`, `/mine`, Mini Program
   AI capabilities/sources/workflows/media/tasks/history endpoints, plus shared leads,
@@ -265,7 +321,7 @@ permission, or workflow changes.
   continued; a unique customer/formal-plan match is reused automatically; when
   multiple schemes match, the client must choose instead of silently merging.
 
-### 12. Notifications, Automation, And Diagnostics
+### 13. Notifications, Automation, And Diagnostics
 
 - APIs: `/api/automation/reminders/run`, workflow notification list/poll,
   `/api/health`, `/api/debug`, `/api/debug/tenant-context`, and
@@ -281,7 +337,7 @@ permission, or workflow changes.
   `CommissionRecord`, `PromotionEnterpriseRecord`.
 - Customer assets: `Lead`, `FloorPlan`, `Measurement`, `Device`, `Inspiration`.
 - AI/media: `AiGeneration`, `AiWorkflow`, `AiChatSession`, `AiStylePreset`,
-  `AiProviderConfig`, `AiProviderAttempt`, `MediaAsset`, `AiCreditAccount`,
+  `AiProviderConfig`, `AiProviderAttempt`, `MediaStorageConfig`, `MediaAsset`, `AiCreditAccount`,
   `AiCreditLedger`, and `AiCreditPrice`; `EnterpriseAiUsageSnapshot` is
   legacy Pollinations history only.
 - Notifications/config: `WorkflowNotificationLog`, `PlatformConfig`.

@@ -1,7 +1,7 @@
 import mongoose, { Document, Model, Schema } from 'mongoose';
 import { multiTenantPlugin } from '../lib/mongoose-tenant-plugin';
 
-export type MediaAssetStorageProvider = 'local' | 'object_storage';
+export type MediaAssetStorageProvider = string;
 
 export interface IMediaAsset extends Document {
   enterpriseId: mongoose.Types.ObjectId;
@@ -13,8 +13,12 @@ export interface IMediaAsset extends Document {
   height?: number;
   storageProvider: MediaAssetStorageProvider;
   storageKey: string;
+  storageBucket?: string;
+  checksumSha256?: string;
   originalUrl?: string;
   deletedAt?: Date;
+  purgedAt?: Date;
+  purgeError?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -49,7 +53,6 @@ const MediaAssetSchema: Schema<IMediaAsset> = new Schema(
     height: { type: Number, min: 1 },
     storageProvider: {
       type: String,
-      enum: ['local', 'object_storage'],
       default: 'local',
       required: true,
     },
@@ -58,10 +61,14 @@ const MediaAssetSchema: Schema<IMediaAsset> = new Schema(
       required: true,
       unique: true,
     },
+    storageBucket: { type: String },
+    checksumSha256: { type: String },
     originalUrl: {
       type: String,
     },
     deletedAt: { type: Date, index: true },
+    purgedAt: { type: Date, index: true },
+    purgeError: { type: String },
   },
   { timestamps: true }
 );
@@ -75,7 +82,10 @@ if (
   existingMediaAssetModel
   && (!existingMediaAssetModel.schema.path('deletedAt')
     || !existingMediaAssetModel.schema.path('width')
-    || !existingMediaAssetModel.schema.path('height'))
+    || !existingMediaAssetModel.schema.path('height')
+    || !existingMediaAssetModel.schema.path('storageBucket')
+    || !existingMediaAssetModel.schema.path('checksumSha256')
+    || !existingMediaAssetModel.schema.path('purgedAt'))
 ) {
   mongoose.deleteModel('MediaAsset');
 }

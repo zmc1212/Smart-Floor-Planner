@@ -5,6 +5,10 @@ import mongoose from 'mongoose';
 import { AiGeneration, type IAiGeneration } from '@/models/AiGeneration';
 import { AiProviderAttempt, type IAiProviderAttempt } from '@/models/AiProviderAttempt';
 import { persistImageReference, resolveAiProviderImageInput } from '@/lib/ai/media-assets';
+import {
+  getGrsAiOutputPersistenceEnabled,
+  shouldKeepGrsAiOutputUrl,
+} from '@/lib/media-storage/config-service';
 import { syncSuccessfulGenerationToWorkflow } from '@/lib/ai/workflow-baseline';
 import { consumeHeldAiCredits, getAiCreditPrice, holdAiCredits, releaseHeldAiCredits } from '@/lib/ai/credits';
 import { getAiProviderAdapter, getProviderRuntimeById, listProviderRuntimes } from '@/lib/ai/provider-registry';
@@ -220,12 +224,19 @@ async function persistSuccess(
   startedAt: number
 ) {
   try {
-    const imageUrl = await persistImageReference({
-      enterpriseId: generation.enterpriseId,
-      ownerType: 'ai_generation_output',
-      ownerId: generation._id,
+    const persistGrsAiOutputs = await getGrsAiOutputPersistenceEnabled();
+    const imageUrl = shouldKeepGrsAiOutputUrl({
+      adapterType: attempt.adapterType,
       image: result.image,
-    });
+      persistGrsAiOutputs,
+    })
+      ? result.image
+      : await persistImageReference({
+          enterpriseId: generation.enterpriseId,
+          ownerType: 'ai_generation_output',
+          ownerId: generation._id,
+          image: result.image,
+        });
     if (!imageUrl) throw new Error('供应商未返回可持久化图片');
     generation.output.imageUrl = imageUrl;
     generation.status = 'succeeded';

@@ -6,6 +6,7 @@ import { ensureDefaultAiStylePresets, listAiStylePresets } from '@/lib/ai/preset
 import { listProviderRuntimes } from '@/lib/ai/provider-registry';
 import { getEnterpriseAiPolicy } from '@/lib/ai/enterprise-policy';
 import { listAiDesignActions } from '@/lib/ai/design-actions';
+import { getDefaultMediaStorageProvider } from '@/lib/media-storage/registry';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +40,20 @@ export async function GET(request: Request) {
       error: editRuntimes.length || generateRuntimes.length ? '' : 'AI 图片服务未配置',
       allowedModels: [] as string[],
     };
+    const configuredMediaStorageProvider = process.env.MEDIA_STORAGE_PROVIDER?.trim().toLowerCase() || 'local';
+    let mediaStorageProvider = configuredMediaStorageProvider;
+    let mediaStoragePersistent = false;
+    let mediaStorageWarning = '';
+    try {
+      const storageProvider = await getDefaultMediaStorageProvider();
+      mediaStorageProvider = storageProvider.key;
+      mediaStoragePersistent = storageProvider.key !== 'local' || Boolean(process.env.AI_ASSET_STORAGE_DIR);
+      if (process.env.NODE_ENV === 'production' && !mediaStoragePersistent) {
+        mediaStorageWarning = '生产环境尚未配置共享 AI_ASSET_STORAGE_DIR';
+      }
+    } catch (error) {
+      mediaStorageWarning = error instanceof Error ? error.message : '媒体存储配置不可用';
+    }
 
     return NextResponse.json({
       success: true,
@@ -73,11 +88,9 @@ export async function GET(request: Request) {
         provider: providerState,
         logicalModelTier: policy.logicalModelTier,
         storage: {
-          persistent: process.env.NODE_ENV !== 'production' || Boolean(process.env.AI_ASSET_STORAGE_DIR),
-          warning:
-            process.env.NODE_ENV === 'production' && !process.env.AI_ASSET_STORAGE_DIR
-              ? '生产环境尚未配置共享 AI_ASSET_STORAGE_DIR'
-              : '',
+          provider: mediaStorageProvider,
+          persistent: process.env.NODE_ENV !== 'production' || mediaStoragePersistent,
+          warning: mediaStorageWarning,
         },
       },
     });

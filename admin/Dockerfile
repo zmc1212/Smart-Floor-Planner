@@ -41,6 +41,7 @@ ENV PORT=3005
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
+RUN mkdir -p /data/ai-assets && chown -R nextjs:nodejs /data/ai-assets
 
 # Copy standalone output
 COPY --from=builder /app/public ./public

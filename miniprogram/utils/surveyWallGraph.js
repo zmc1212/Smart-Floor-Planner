@@ -1810,6 +1810,25 @@ function confirmClosure(draft) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
   const session = ensureSessionSpaceTracking(floor);
+  const hasPreviewCloseCandidate = !!(
+    session.previewPoint &&
+    session.previewLengthMm >= MIN_WALL_LENGTH_MM &&
+    (session.closeCandidateNodeId || session.closeCandidatePoint) &&
+    (session.state === 'wallPreview' || session.state === 'awaitingLength')
+  );
+
+  if (hasPreviewCloseCandidate) {
+    const committed = commitPreviewLength(
+      next,
+      session.previewLengthMm,
+      'closure-preview'
+    );
+    const committedState = getActiveFloor(committed).session.state;
+    if (committedState !== 'closing' && committedState !== 'mergeClosing') {
+      throw new Error('当前轮廓不能安全闭合，请继续补测墙体');
+    }
+    return confirmClosure(committed);
+  }
 
   if (session.state === 'mergeClosing') {
     const anchor = getNode(floor, session.anchorNodeId);

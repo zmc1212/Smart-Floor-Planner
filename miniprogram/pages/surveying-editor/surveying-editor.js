@@ -2226,7 +2226,8 @@ Page({
     const actionX = clamp(preferredActionX, safePadding, Math.max(safePadding, rect.width - safePadding));
     const actionY = clamp(preferredActionY, safePadding, Math.max(safePadding, rect.height - safePadding - bottomReserved));
 
-    const actionVisible = session.state === 'closing' || session.state === 'mergeClosing';
+    const actionVisible = session.state === 'closing' || session.state === 'mergeClosing' ||
+      ((session.state === 'wallPreview' || session.state === 'awaitingLength') && !!session.previewPoint);
     const action = { cx: actionX, cy: actionY };
     return {
       guideVisible: width > 1,
@@ -3632,7 +3633,11 @@ Page({
 
   onConfirmClose() {
     const session = surveyGraph.getActiveFloor(this.draft).session;
-    if (session.state !== 'closing' && session.state !== 'mergeClosing') return;
+    const canCloseCommittedWall = session.state === 'closing' || session.state === 'mergeClosing';
+    const canClosePreviewWall = (session.state === 'wallPreview' || session.state === 'awaitingLength') &&
+      !!session.previewPoint &&
+      !!(session.closeCandidateNodeId || session.closeCandidatePoint);
+    if (!canCloseCommittedWall && !canClosePreviewWall) return;
 
     try {
       const nextDraft = surveyGraph.confirmClosure(this.draft);

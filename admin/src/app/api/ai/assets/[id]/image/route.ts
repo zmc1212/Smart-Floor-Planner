@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { MediaAsset } from '@/models/MediaAsset';
-import { readMediaAssetBuffer } from '@/lib/ai/media-assets';
+import { resolveMediaAssetDelivery } from '@/lib/ai/media-assets';
 
 export async function GET(
   req: Request,
@@ -23,11 +23,17 @@ export async function GET(
         return NextResponse.json({ success: false, error: 'Asset not found' }, { status: 404 });
       }
 
-      const buffer = await readMediaAssetBuffer(asset);
-      return new NextResponse(new Uint8Array(buffer), {
+      const delivery = await resolveMediaAssetDelivery(asset);
+      if (delivery.kind === 'redirect') {
+        return NextResponse.redirect(delivery.url, {
+          status: 302,
+          headers: { 'Cache-Control': 'private, no-store' },
+        });
+      }
+      return new NextResponse(new Uint8Array(delivery.buffer), {
         headers: {
           'Content-Type': asset.mimeType,
-          'Content-Length': String(buffer.length),
+          'Content-Length': String(delivery.buffer.length),
           'Cache-Control': 'private, max-age=3600',
         },
       });

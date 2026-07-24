@@ -25,7 +25,8 @@ import {
   Building2,
   Ruler,
   Settings,
-  Cable
+  Cable,
+  HardDrive,
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +43,7 @@ const ALL_MENUS = [
   { key: 'dashboard', label: '概览', icon: LayoutDashboard },
   { key: 'enterprises', label: '企业管理', icon: Building2 },
   { key: 'ai-providers', label: 'AI 供应商', icon: Cable },
+  { key: 'media-storage', label: '媒体存储', icon: HardDrive },
   { key: 'roles', label: '角色权限管理', icon: Shield },
   { key: 'floorplans', label: '户型图库', icon: Map },
   { key: 'users', label: '用户审计', icon: Users },

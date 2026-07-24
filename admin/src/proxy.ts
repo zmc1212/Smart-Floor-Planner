@@ -6,6 +6,7 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/': 'dashboard',
   '/enterprises': 'enterprises',
   '/ai-providers': 'ai-providers',
+  '/media-storage': 'media-storage',
   '/ai-credit-prices': 'ai-credit-prices',
   '/roles': 'roles',
   '/floorplans': 'floorplans',
@@ -71,6 +72,10 @@ export async function proxy(request: NextRequest) {
 
     const role = payload.role as string;
     const userPermissions = (payload.permissions as string[]) || [];
+
+    if (pathname.startsWith('/media-storage') && role !== 'super_admin' && role !== 'admin') {
+      return NextResponse.redirect(new URL('/', request.url));
+    }
 
     // Super admins have all permissions
     if (role === 'super_admin' || role === 'admin') {

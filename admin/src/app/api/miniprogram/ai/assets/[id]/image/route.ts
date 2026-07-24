@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { MediaAsset } from '@/models/MediaAsset';
-import { readMediaAssetBuffer } from '@/lib/ai/media-assets';
+import { resolveMediaAssetDelivery } from '@/lib/ai/media-assets';
 import { resolveMiniAiContext } from '@/lib/ai/mini-ai-auth';
 import { verifyMiniAiAssetSignature } from '@/lib/ai/mini-ai-assets';
 
@@ -24,11 +24,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const asset = await MediaAsset.findOne({ _id: id, enterpriseId, deletedAt: { $exists: false } });
     if (!asset) return NextResponse.json({ success: false, error: '图片不存在' }, { status: 404 });
 
-    const buffer = await readMediaAssetBuffer(asset);
-    return new NextResponse(new Uint8Array(buffer), {
+    const delivery = await resolveMediaAssetDelivery(asset);
+    if (delivery.kind === 'redirect') {
+      return NextResponse.redirect(delivery.url, {
+        status: 302,
+        headers: { 'Cache-Control': 'private, no-store' },
+      });
+    }
+    return new NextResponse(new Uint8Array(delivery.buffer), {
       headers: {
         'Content-Type': asset.mimeType,
-        'Content-Length': String(buffer.length),
+        'Content-Length': String(delivery.buffer.length),
         'Cache-Control': signedAccess ? 'private, max-age=1800' : 'private, max-age=3600',
       },
     });
