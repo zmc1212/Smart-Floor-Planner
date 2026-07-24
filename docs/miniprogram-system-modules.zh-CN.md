@@ -15,7 +15,7 @@
 
 - `/pages/login/login`：通过 `/api/auth/miniprogram` 支持微信手机号快捷登录和账号密码登录，将 JWT/用户信息恢复到本地。
 - `app.js`：恢复会话，解析二维码 `enterpriseId`/`staffId` 推荐参数，同步员工专业上下文、企业品牌，并对已记忆设备尝试静默 BLE 重连。
-- `utils/api.js`：携带 Bearer token，按配置重试本地/LAN API，401 时清理会话并提示重新登录。
+- `utils/api.js`：携带 Bearer token，通过显式 `ACTIVE_API_ENVIRONMENT`（`local` 或 `production`）选择唯一 API 地址，401 时清理会话并提示重新登录。请求不会跨环境回退，也不读取持久化 `apiBaseUrl`。
 - 状态：登录与上下文恢复为 `Implemented`；具体路径仍依赖有效微信授权、账号、API 地址和企业/供应商配置。
 
 ## 页面清单

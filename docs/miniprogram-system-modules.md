@@ -25,8 +25,10 @@ utilities, and the admin APIs they call.
 - `app.js`: restores sessions, reads QR/referral `enterpriseId`/`staffId`, syncs
   staff professional context, loads enterprise branding, and attempts silent BLE
   reconnection for a remembered device.
-- `utils/api.js`: sends the bearer token, retries configured local/LAN API bases,
-  clears expired sessions, and redirects to login after a 401.
+- `utils/api.js`: sends the bearer token through the explicitly selected
+  `ACTIVE_API_ENVIRONMENT` (`local` or `production`), clears expired sessions,
+  and redirects to login after a 401. Requests never fall back across
+  environments, and persisted `apiBaseUrl` values are not consulted.
 - Status: login and context restoration are `Implemented`; a valid WeChat
   authorization, account, API base, and enterprise/provider configuration are
   required for the corresponding path.

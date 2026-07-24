@@ -1,6 +1,11 @@
-const LOCAL_BASE_URL = 'http://localhost:3005/api';
-const LAN_BASE_URL = 'http://192.168.10.19:3005/api';
-// const PROD_BASE_URL = 'https://smartfloor.zlyun168.com/api';
+const API_BASE_URLS = Object.freeze({
+  local: 'http://localhost:3005/api',
+  production: 'https://smartfloor.zlyun168.com/api',
+});
+
+// Switch this value before building or previewing the Mini Program.
+// `local` targets the development machine and is intended for WeChat Developer Tools.
+const ACTIVE_API_ENVIRONMENT = 'production';
 
 let isShowingAuthModal = false;
 
@@ -8,22 +13,16 @@ function normalizeBaseUrl(baseUrl) {
   return String(baseUrl || '').replace(/\/+$/, '');
 }
 
-function getBaseUrls() {
-  let customBaseUrl = '';
-  try {
-    customBaseUrl = wx.getStorageSync('apiBaseUrl') || '';
-  } catch (err) {
-    customBaseUrl = '';
+function getBaseUrls(environment = ACTIVE_API_ENVIRONMENT) {
+  const baseUrl = normalizeBaseUrl(API_BASE_URLS[environment]);
+
+  if (!baseUrl) {
+    throw new Error(`Unknown Mini Program API environment: ${environment}`);
   }
 
-  const candidates = customBaseUrl
-    ? [customBaseUrl]
-    : [LOCAL_BASE_URL, LAN_BASE_URL];
-
-  return candidates
-    .map(normalizeBaseUrl)
-    .filter(Boolean)
-    .filter((item, index, list) => list.indexOf(item) === index);
+  // Do not fall back to another environment. A failed local request must not
+  // accidentally read or mutate production data.
+  return [baseUrl];
 }
 
 /**
@@ -188,6 +187,8 @@ async function passwordLogin(username, password) {
 module.exports = {
   request,
   getBaseUrls,
+  ACTIVE_API_ENVIRONMENT,
+  API_BASE_URLS,
   phoneLogin,
   passwordLogin
 };
