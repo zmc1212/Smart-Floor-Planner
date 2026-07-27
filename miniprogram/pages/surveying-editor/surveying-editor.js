@@ -326,6 +326,7 @@ Page({
     angleActionAvailable: false,
     angleMeasureVisible: false,
     angleMeasureTab: 'phone',
+    angleManualInputVisible: false,
     angleMeasureStatus: '请先将手机水平放置',
     anglePhoneLevelReady: false,
     anglePhoneReferenceReady: false,
@@ -334,6 +335,10 @@ Page({
     angleTriangleA: '',
     angleTriangleB: '',
     angleTriangleD: '',
+    angleTriangleAmm: '',
+    angleTriangleBmm: '',
+    angleTriangleDmm: '',
+    angleTriangleMeasuringSide: '',
     angleTriangleResult: '',
     angleTriangleError: '',
     historySummary: {
@@ -704,6 +709,7 @@ Page({
     this.clearBleMeasureTimers();
     const target = this.bleMeasureTarget || 'numberPad';
     this.bleMeasureTarget = '';
+    if (target === 'ignore') return;
     const isAngleTriangleTarget = target.indexOf('angleTriangle') === 0;
     if (distanceInMeters && distanceInMeters > 0) {
       const floor = this.draft ? surveyGraph.getActiveFloor(this.draft) : null;
@@ -884,6 +890,7 @@ Page({
       numberUnit: '°',
       angleMeasureVisible: true,
       angleMeasureTab: 'phone',
+      angleManualInputVisible: false,
       angleMeasureStatus: '将手机水平贴合上一面墙后设为基准',
       anglePhoneLevelReady: false,
       anglePhoneReferenceReady: false,
@@ -902,6 +909,14 @@ Page({
   startPhoneAngleMeasurement() {
     this.stopPhoneAngleMeasurement();
     this.resetPhoneAngleState();
+    this.setData({
+      anglePhoneLevelReady: false,
+      anglePhoneReferenceReady: false,
+      anglePhoneDialStyle: 'transform: rotate(0deg);',
+      anglePhoneLiveValue: '0',
+      angleMeasureStatus: '将手机水平贴合上一面墙后设为基准',
+      numberInput: ''
+    });
     if (!wx.startDeviceMotionListening || !wx.onDeviceMotionChange) {
       this.setData({ angleMeasureStatus: '当前设备不支持手机姿态测角' });
       return;
@@ -942,7 +957,8 @@ Page({
     if (!levelReady) {
       this.setData({
         anglePhoneLevelReady: false,
-        angleMeasureStatus: '请保持手机水平，圆盘变蓝后再设基准'
+        angleMeasureStatus: '请保持手机水平，圆盘稳定后再设基准',
+        numberInput: ''
       });
       return;
     }
@@ -961,7 +977,7 @@ Page({
       return;
     }
 
-    const angle = Math.round(headingDifference(this.anglePhoneHeading, this.anglePhoneBaseline));
+    const angle = Math.round(headingDifference(this.anglePhoneHeading, this.anglePhoneBaseline) * 10) / 10;
     this.angleMeasurementSource = 'phone-motion';
     this.setData({
       anglePhoneLevelReady: true,
@@ -982,17 +998,53 @@ Page({
     this.anglePhoneSamples = [];
     this.setData({
       anglePhoneReferenceReady: true,
-      angleMeasureStatus: '基准已设定，请将手机转向当前斜墙'
+      anglePhoneLiveValue: '0',
+      anglePhoneDialStyle: 'transform: rotate(0deg);',
+      angleMeasureStatus: '基准已设定，请将手机转向当前斜墙',
+      numberInput: ''
     });
   },
 
   onAngleMeasureTab(e) {
     const tab = e.currentTarget.dataset.tab === 'pythagorean' ? 'pythagorean' : 'phone';
-    this.setData({ angleMeasureTab: tab });
+    if (this.data.angleTriangleMeasuringSide) {
+      this.clearBleMeasureTimers();
+      this.bleMeasureTarget = 'ignore';
+    }
+    const triangleInput = this.data.angleTriangleResult
+      ? this.data.angleTriangleResult.replace('°', '')
+      : '';
+    this.setData({
+      angleMeasureTab: tab,
+      angleManualInputVisible: false,
+      angleTriangleMeasuringSide: '',
+      numberInput: tab === 'pythagorean'
+        ? triangleInput
+        : (this.data.anglePhoneReferenceReady ? this.data.anglePhoneLiveValue : '')
+    });
     if (tab === 'phone') {
       this.startPhoneAngleMeasurement();
     } else {
       this.stopPhoneAngleMeasurement();
+    }
+  },
+
+  onAngleManualInput() {
+    this.stopPhoneAngleMeasurement();
+    this.angleMeasurementSource = 'manual';
+    this.setData({
+      angleManualInputVisible: true,
+      numberInput: ''
+    });
+  },
+
+  onAngleManualInputBack() {
+    this.setData({
+      angleManualInputVisible: false,
+      numberInput: ''
+    });
+    if (this.data.angleMeasureTab === 'phone') {
+      this.startPhoneAngleMeasurement();
     }
   },
 
@@ -1001,12 +1053,20 @@ Page({
   },
 
   onResetAngleTriangle() {
+    if (this.data.angleTriangleMeasuringSide) {
+      this.clearBleMeasureTimers();
+      this.bleMeasureTarget = 'ignore';
+    }
     this.resetAngleTriangle();
     this.angleMeasurementSource = 'manual';
     this.setData({
       angleTriangleA: '',
       angleTriangleB: '',
       angleTriangleD: '',
+      angleTriangleAmm: '',
+      angleTriangleBmm: '',
+      angleTriangleDmm: '',
+      angleTriangleMeasuringSide: '',
       angleTriangleResult: '',
       angleTriangleError: '',
       numberInput: ''
@@ -1014,6 +1074,7 @@ Page({
   },
 
   onTriangleMeasure(e) {
+    if (this.data.angleTriangleMeasuringSide) return;
     if (!app.globalData.bleConnected) {
       wx.showToast({ title: '蓝牙未连接', icon: 'none' });
       return;
@@ -1022,16 +1083,21 @@ Page({
     const targetMap = { a: 'angleTriangleA', b: 'angleTriangleB', d: 'angleTriangleD' };
     const target = targetMap[side];
     if (!target) return;
+    this.setData({ angleTriangleMeasuringSide: side });
     this.startBluetoothMeasure(target);
   },
 
   applyBleReadingToAngleTriangle(target, distanceInMeters) {
     if (!this.data.angleMeasureVisible || this.data.angleMeasureTab !== 'pythagorean') return;
     if (distanceInMeters === null || distanceInMeters <= 0) {
+      this.setData({ angleTriangleMeasuringSide: '' });
       wx.showToast({ title: '测量失败，请重试', icon: 'none' });
       return;
     }
-    if (this.shouldIgnoreDuplicateBleReading(distanceInMeters)) return;
+    if (this.shouldIgnoreDuplicateBleReading(distanceInMeters)) {
+      this.setData({ angleTriangleMeasuringSide: '' });
+      return;
+    }
 
     const side = target.replace('angleTriangle', '').toLowerCase();
     const nextTriangle = Object.assign({}, this.angleTriangle || {});
@@ -1041,6 +1107,10 @@ Page({
       angleTriangleA: nextTriangle.a ? nextTriangle.a.toFixed(3) : '',
       angleTriangleB: nextTriangle.b ? nextTriangle.b.toFixed(3) : '',
       angleTriangleD: nextTriangle.d ? nextTriangle.d.toFixed(3) : '',
+      angleTriangleAmm: nextTriangle.a ? String(Math.round(nextTriangle.a * 1000)) : '',
+      angleTriangleBmm: nextTriangle.b ? String(Math.round(nextTriangle.b * 1000)) : '',
+      angleTriangleDmm: nextTriangle.d ? String(Math.round(nextTriangle.d * 1000)) : '',
+      angleTriangleMeasuringSide: '',
       angleTriangleError: ''
     };
 
@@ -1050,7 +1120,7 @@ Page({
         patch.angleTriangleError = '三边数据无法构成有效夹角，请重测';
         patch.angleTriangleResult = '';
       } else {
-        const roundedAngle = Math.round(angle);
+        const roundedAngle = Math.round(angle * 10) / 10;
         this.angleMeasurementSource = 'pythagorean';
         patch.angleTriangleResult = `${roundedAngle}°`;
         patch.numberInput = String(roundedAngle);
@@ -4085,12 +4155,18 @@ Page({
   },
 
   onNumberConfirm() {
-    const value = parseInt(this.data.numberInput, 10);
+    const value = this.numberPadMode === 'angle'
+      ? parseFloat(this.data.numberInput)
+      : parseInt(this.data.numberInput, 10);
     const floor = surveyGraph.getActiveFloor(this.draft);
     const session = floor.session;
 
     try {
       if (this.numberPadMode === 'angle') {
+        if (!Number.isFinite(value) || value <= 0 || value >= 180) {
+          wx.showToast({ title: '请输入 1–179° 的有效角度', icon: 'none' });
+          return;
+        }
         const nextDraft = surveyGraph.applyPreviewInteriorAngle(
           this.draft,
           value,
@@ -4107,7 +4183,9 @@ Page({
           numberPadVisible: false,
           numberInput: '',
           numberUnit: 'mm',
-          angleMeasureVisible: false
+          angleMeasureVisible: false,
+          angleManualInputVisible: false,
+          angleTriangleMeasuringSide: ''
         });
         this.openLengthPad();
         return;
@@ -4190,6 +4268,10 @@ Page({
   onNumberClose() {
     if (this.numberPadMode === 'angle') {
       this.stopPhoneAngleMeasurement();
+      if (this.data.angleTriangleMeasuringSide) {
+        this.clearBleMeasureTimers();
+        this.bleMeasureTarget = 'ignore';
+      }
       this.resetPhoneAngleState();
       this.resetAngleTriangle();
       if (this.angleRemeasureOriginalDraft) {
@@ -4204,7 +4286,9 @@ Page({
       numberPadVisible: false,
       numberInput: '',
       numberUnit: 'mm',
-      angleMeasureVisible: false
+      angleMeasureVisible: false,
+      angleManualInputVisible: false,
+      angleTriangleMeasuringSide: ''
     });
   },
 

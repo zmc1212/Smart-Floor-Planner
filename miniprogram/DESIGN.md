@@ -266,6 +266,32 @@ Status chips should be:
 - A number pad, closure prompt, angle sheet, or component panel rises above this shell with the same 20px top radius, handle, shadow, horizontal inset, typography, and CTA alignment. It changes content only; it does not invent a new bottom navigation, toolbar, or top bar.
 - Across a state set, keep page background, 8px spacing rhythm, canvas grid, wall/dimension rendering, corner radii, type scale, status-dot treatment, and green/amber/coral semantics identical. State difference must be readable from selected geometry and local overlays, not from a new visual identity.
 
+### Formal Surveying Angle Sheet
+
+Review the phone-motion and Pythagorean angle states through four fixed lenses
+before implementation or visual approval:
+
+- **Page structure:** preserve the formal-surveying canvas and fixed chrome, then
+  raise one shared angle sheet with the same title, description, tabs, handle,
+  and action baseline in both modes. While the sheet is open, suspend and hide
+  the native canvas history, cursor-drop, and drag-lens controls so they cannot
+  pierce the sheet's visual or touch layer; restore them in place on close.
+- **Components:** phone mode uses a calibrated dial, live angle, horizontal-phone
+  cue, baseline action, manual fallback, and confirm action. Pythagorean mode uses
+  three numbered A/B/D BLE rows, per-row measuring/completed feedback, one result
+  band, retry, cancel, and confirm.
+- **Colour:** green is reserved for the selected tab, stable/confirmed angle,
+  completed readings, result, and primary confirmation. Amber identifies live
+  measurement and baseline/device cues. White and neutral grey remain the
+  dominant surfaces; red appears only for invalid triangle feedback.
+- **Spacing:** use an 8px rhythm, 16px sheet gutters, 44px minimum actions, equal
+  tab widths, consistent A/B/D row heights, and one shared bottom CTA baseline.
+
+The three non-negotiable visual checks are: the canvas remains recognisable
+behind the sheet; the two methods read as variants of one task rather than two
+different pages; and green/amber semantics communicate state without turning
+the whole panel green.
+
 ## 10. Illustration Style
 
 ### Style Keywords

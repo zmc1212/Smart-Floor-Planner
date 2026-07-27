@@ -225,7 +225,13 @@ utilities, and the admin APIs they call.
 - Implemented angle behavior: diagonal direction snap within the documented
   threshold, number-pad angle entry, operator-confirmed phone motion angle, and
   three BLE triangle readings validated with the cosine rule. Closing the angle
-  panel does not mutate wall geometry or leave motion listening active.
+  panel does not mutate wall geometry or leave motion listening active. Phone
+  motion and Pythagorean measurement share one fixed-shell angle sheet: phone
+  mode presents the level dial, one-decimal live value, baseline, and manual
+  fallback, while Pythagorean mode presents numbered A/B/D millimetre readings, measuring and
+  completed feedback, validation, retry, and a one-decimal calculated result.
+  The angle sheet temporarily hides the native canvas undo/redraw, cursor-drop,
+  and drag-lens controls, restoring them without changing their state on close.
 - Implemented rendering/editor behavior: CAD-like full-width door/window symbols,
   inner-edge unfinished redline, room fills that accept only a fully connected
   closed wall chain in either first-wall direction, and a compound wall-solid

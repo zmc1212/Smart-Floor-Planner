@@ -165,7 +165,7 @@
   <!-- ══════════════════════════════════════════════ -->
   <!--  底部光标控件：已放置 / 等待拖放 / 拖拽中为空      -->
   <!-- ══════════════════════════════════════════════ -->
-  <cover-view class="history-action-bar native-canvas-overlay" style="bottom: calc(42rpx + {{bottomSafeArea}}px);">
+  <cover-view wx:if="{{!numberPadVisible}}" class="history-action-bar native-canvas-overlay" style="bottom: calc(42rpx + {{bottomSafeArea}}px);">
     <cover-view class="history-action {{historySummary.undo > 0 ? '' : 'disabled'}}" bindtap="onUndoTap">
       <cover-view>撤销</cover-view>
       <cover-view wx:if="{{historySummary.undo > 0}}" class="history-action-count">{{historySummary.undo}}</cover-view>
@@ -173,7 +173,7 @@
     <cover-view class="history-action danger" bindtap="onRequestResetCanvas">重画</cover-view>
   </cover-view>
 
-  <cover-view class="bottom-fab-bar native-canvas-overlay" style="bottom: calc(36rpx + {{bottomSafeArea}}px);">
+  <cover-view wx:if="{{!numberPadVisible}}" class="bottom-fab-bar native-canvas-overlay" style="bottom: calc(36rpx + {{bottomSafeArea}}px);">
     <cover-view wx:if="{{cursorPlacementState === 'placed'}}" class="cursor-fab cursor-fab-reset" bindtap="onResetCursorTap">
       <cover-view class="cursor-fab-icon cursor-reset-icon">
         <cover-image class="cursor-reset-image" src="/images/surveying-icons/wall-toolbar/reset.png" mode="aspectFit"></cover-image>
@@ -202,7 +202,7 @@
   <!--  拖拽放置光标的纯展示层（不接收触摸，事件始终由底部按钮承接） -->
   <!-- ══════════════════════════════════════════════ -->
   <cover-view
-    wx:if="{{cursorPlacementState === 'dragging'}}"
+    wx:if="{{cursorPlacementState === 'dragging' && !numberPadVisible}}"
     class="cursor-drag-lens-layer"
   >
     <cover-view wx:if="{{cursorLensVisible}}" class="cursor-lens {{cursorLensSnapType}}">
@@ -342,64 +342,152 @@
   <!-- ══════════════════════════════════════════════ -->
   <!--  数字键盘弹层                                   -->
   <!-- ══════════════════════════════════════════════ -->
-  <cover-view wx:if="{{numberPadVisible}}" class="number-pad-mask native-canvas-overlay" bindtap="onNumberClose"></cover-view>
-  <cover-view wx:if="{{numberPadVisible}}" class="number-pad-panel native-canvas-overlay">
+  <!-- 2D canvas 与 cover-view 组合在部分开发者工具版本中不渲染复杂测角层；
+       测角工作台使用同层 view，其他数字面板继续保持原生覆盖实现。 -->
+  <view wx:if="{{numberPadVisible && angleMeasureVisible}}" class="number-pad-mask angle-sheet-mask" bindtap="onNumberClose"></view>
+  <view wx:if="{{numberPadVisible && angleMeasureVisible}}" class="number-pad-panel angle-sheet-panel">
+    <view class="angle-sheet-handle"></view>
+    <view class="number-pad-header">
+      <view class="number-pad-heading">
+        <view class="number-pad-title">{{numberPadTitle}}</view>
+        <view class="number-pad-subtitle">{{numberPadSubtitle}}</view>
+      </view>
+    </view>
+    <view wx:if="{{!angleManualInputVisible}}" class="angle-measure-tools">
+      <view class="angle-measure-tabs">
+        <view
+          class="angle-measure-tab {{angleMeasureTab === 'phone' ? 'active' : ''}}"
+          data-tab="phone"
+          bindtap="onAngleMeasureTab"
+          hover-class="angle-control-pressed"
+          aria-label="手机测量角度"
+        >
+          <view>手机测量</view>
+          <view wx:if="{{angleMeasureTab === 'phone'}}" class="angle-tab-indicator"></view>
+        </view>
+        <view
+          class="angle-measure-tab {{angleMeasureTab === 'pythagorean' ? 'active' : ''}}"
+          data-tab="pythagorean"
+          bindtap="onAngleMeasureTab"
+          hover-class="angle-control-pressed"
+          aria-label="勾股定理测量角度"
+        >
+          <view>勾股定理</view>
+          <view wx:if="{{angleMeasureTab === 'pythagorean'}}" class="angle-tab-indicator"></view>
+        </view>
+      </view>
+
+      <view wx:if="{{angleMeasureTab === 'phone'}}" class="phone-angle-tool">
+        <view class="phone-angle-dial-column">
+          <view class="phone-angle-dial {{anglePhoneLevelReady ? 'level' : ''}}">
+            <view class="phone-angle-tick tick-0"></view>
+            <view class="phone-angle-tick tick-30"></view>
+            <view class="phone-angle-tick tick-60"></view>
+            <view class="phone-angle-tick tick-90"></view>
+            <view class="phone-angle-tick tick-120"></view>
+            <view class="phone-angle-tick tick-150"></view>
+            <view class="phone-angle-needle" style="{{anglePhoneDialStyle}}"></view>
+            <view class="phone-angle-level-ring"></view>
+            <view class="phone-angle-axis horizontal"></view>
+            <view class="phone-angle-axis vertical"></view>
+            <view class="phone-angle-center {{anglePhoneLevelReady ? 'level' : ''}}"></view>
+            <view class="phone-angle-mark mark-0">0</view>
+            <view class="phone-angle-mark mark-90-left">90</view>
+            <view class="phone-angle-mark mark-90-right">90</view>
+            <view class="phone-angle-mark mark-180">180</view>
+          </view>
+        </view>
+        <view class="phone-angle-reading-card">
+          <image class="phone-level-image" src="/images/surveying-icons/angle/phone-level.png" mode="aspectFit"></image>
+          <view class="phone-angle-value">{{anglePhoneLiveValue}}°</view>
+          <view class="phone-angle-status">{{angleMeasureStatus}}</view>
+          <view
+            class="phone-angle-baseline {{anglePhoneLevelReady ? '' : 'disabled'}}"
+            bindtap="onPhoneSetAngleBaseline"
+            hover-class="angle-control-pressed"
+            aria-label="{{anglePhoneReferenceReady ? '重新设为角度基准' : '设为角度基准'}}"
+          >
+            <image class="angle-action-icon" src="/images/surveying-icons/angle/crosshair.png" mode="aspectFit"></image>
+            <view>{{anglePhoneReferenceReady ? '重新设为基准' : '设为基准'}}</view>
+          </view>
+        </view>
+      </view>
+
+      <view wx:else class="triangle-angle-tool">
+        <view class="triangle-angle-hint">从同一拐角向两面墙取点，依次测量两边和两点连线。</view>
+        <view class="triangle-side-row {{angleTriangleA ? 'complete' : ''}}">
+          <view class="triangle-side-step">1</view>
+          <view class="triangle-side-name">边 A</view>
+          <view class="triangle-side-value">{{angleTriangleA ? angleTriangleAmm : '待测'}}<text wx:if="{{angleTriangleA}}" class="triangle-side-unit">mm</text></view>
+          <view class="triangle-side-action {{angleTriangleMeasuringSide === 'a' ? 'measuring' : ''}} {{angleTriangleMeasuringSide && angleTriangleMeasuringSide !== 'a' ? 'disabled' : ''}}" data-side="a" bindtap="onTriangleMeasure" hover-class="angle-control-pressed" aria-label="测量边 A">
+            <image class="triangle-measure-icon" src="/images/surveying-icons/angle/bluetooth.png" mode="aspectFit"></image>
+            <view>{{angleTriangleMeasuringSide === 'a' ? '测量中' : '测量'}}</view>
+          </view>
+          <image wx:if="{{angleTriangleA}}" class="triangle-complete-icon" src="/images/surveying-icons/angle/circle-check.png" mode="aspectFit"></image>
+        </view>
+        <view class="triangle-side-row {{angleTriangleB ? 'complete' : ''}}">
+          <view class="triangle-side-step">2</view>
+          <view class="triangle-side-name">边 B</view>
+          <view class="triangle-side-value">{{angleTriangleB ? angleTriangleBmm : '待测'}}<text wx:if="{{angleTriangleB}}" class="triangle-side-unit">mm</text></view>
+          <view class="triangle-side-action {{angleTriangleMeasuringSide === 'b' ? 'measuring' : ''}} {{angleTriangleMeasuringSide && angleTriangleMeasuringSide !== 'b' ? 'disabled' : ''}}" data-side="b" bindtap="onTriangleMeasure" hover-class="angle-control-pressed" aria-label="测量边 B">
+            <image class="triangle-measure-icon" src="/images/surveying-icons/angle/bluetooth.png" mode="aspectFit"></image>
+            <view>{{angleTriangleMeasuringSide === 'b' ? '测量中' : '测量'}}</view>
+          </view>
+          <image wx:if="{{angleTriangleB}}" class="triangle-complete-icon" src="/images/surveying-icons/angle/circle-check.png" mode="aspectFit"></image>
+        </view>
+        <view class="triangle-side-row {{angleTriangleD ? 'complete' : ''}}">
+          <view class="triangle-side-step">3</view>
+          <view class="triangle-side-name">连线 D</view>
+          <view class="triangle-side-value">{{angleTriangleD ? angleTriangleDmm : '待测'}}<text wx:if="{{angleTriangleD}}" class="triangle-side-unit">mm</text></view>
+          <view class="triangle-side-action {{angleTriangleMeasuringSide === 'd' ? 'measuring' : ''}} {{angleTriangleMeasuringSide && angleTriangleMeasuringSide !== 'd' ? 'disabled' : ''}}" data-side="d" bindtap="onTriangleMeasure" hover-class="angle-control-pressed" aria-label="测量连线 D">
+            <image class="triangle-measure-icon" src="/images/surveying-icons/angle/bluetooth.png" mode="aspectFit"></image>
+            <view>{{angleTriangleMeasuringSide === 'd' ? '测量中' : '测量'}}</view>
+          </view>
+          <image wx:if="{{angleTriangleD}}" class="triangle-complete-icon" src="/images/surveying-icons/angle/circle-check.png" mode="aspectFit"></image>
+        </view>
+        <view class="triangle-result-row {{angleTriangleResult ? 'ready' : ''}}">
+          <view class="triangle-result-label">计算结果</view>
+          <view class="triangle-angle-result">{{angleTriangleResult || '--'}}</view>
+          <view class="triangle-reset" bindtap="onResetAngleTriangle" hover-class="angle-control-pressed" aria-label="重新测量三边">
+            <image class="angle-action-icon" src="/images/surveying-icons/angle/refresh-cw.png" mode="aspectFit"></image>
+            <view>重新测量三边</view>
+          </view>
+        </view>
+        <view wx:if="{{angleTriangleError}}" class="triangle-angle-error">{{angleTriangleError}}</view>
+      </view>
+    </view>
+    <view wx:if="{{angleManualInputVisible}}" class="number-display angle-manual-display">
+      <view class="number-display-value">{{numberInput || '0'}}</view>
+      <view class="number-display-unit">{{numberUnit}}</view>
+    </view>
+    <view wx:if="{{angleManualInputVisible}}" class="number-grid angle-manual-grid">
+      <view
+        class="number-key {{item === '清空' || item === '退格' ? 'utility' : ''}}"
+        wx:for="{{numberKeys}}"
+        wx:key="*this"
+        data-key="{{item}}"
+        bindtap="onNumberKey"
+      >
+        {{item}}
+      </view>
+    </view>
+    <view class="angle-sheet-actions">
+      <view wx:if="{{angleManualInputVisible}}" class="angle-secondary-action" bindtap="onAngleManualInputBack" hover-class="angle-control-pressed">返回测量</view>
+      <view wx:elif="{{angleMeasureTab === 'phone'}}" class="angle-secondary-action" bindtap="onAngleManualInput" hover-class="angle-control-pressed">手动输入</view>
+      <view wx:else class="angle-secondary-action" bindtap="onNumberClose" hover-class="angle-control-pressed">取消</view>
+      <view wx:if="{{numberInput}}" class="angle-primary-action" bindtap="onNumberConfirm" hover-class="angle-control-pressed">确认角度</view>
+      <view wx:else class="angle-primary-action disabled" aria-disabled="true">确认角度</view>
+    </view>
+  </view>
+
+  <cover-view wx:if="{{numberPadVisible && !angleMeasureVisible}}" class="number-pad-mask native-canvas-overlay" bindtap="onNumberClose"></cover-view>
+  <cover-view wx:if="{{numberPadVisible && !angleMeasureVisible}}" class="number-pad-panel native-canvas-overlay">
     <cover-view class="number-pad-header">
-      <cover-view>
+      <cover-view class="number-pad-heading">
         <cover-view class="number-pad-title">{{numberPadTitle}}</cover-view>
         <cover-view class="number-pad-subtitle">{{numberPadSubtitle}}</cover-view>
       </cover-view>
       <cover-view class="number-pad-close" bindtap="onNumberClose">关闭</cover-view>
-    </cover-view>
-    <cover-view wx:if="{{angleMeasureVisible}}" class="angle-measure-tools">
-      <cover-view class="angle-measure-tabs">
-        <cover-view
-          class="angle-measure-tab {{angleMeasureTab === 'phone' ? 'active' : ''}}"
-          data-tab="phone"
-          bindtap="onAngleMeasureTab"
-        >手机测量角度</cover-view>
-        <cover-view
-          class="angle-measure-tab {{angleMeasureTab === 'pythagorean' ? 'active' : ''}}"
-          data-tab="pythagorean"
-          bindtap="onAngleMeasureTab"
-        >勾股定理测量角度</cover-view>
-      </cover-view>
-
-      <cover-view wx:if="{{angleMeasureTab === 'phone'}}" class="phone-angle-tool">
-        <cover-view class="phone-angle-dial {{anglePhoneLevelReady ? 'level' : ''}}">
-          <cover-view class="phone-angle-needle" style="{{anglePhoneDialStyle}}"></cover-view>
-          <cover-view class="phone-angle-center {{anglePhoneLevelReady ? 'level' : ''}}"></cover-view>
-        </cover-view>
-        <cover-view class="phone-angle-value">{{anglePhoneLiveValue}}°</cover-view>
-        <cover-view class="phone-angle-status">{{angleMeasureStatus}}</cover-view>
-        <cover-view
-          wx:if="{{!anglePhoneReferenceReady}}"
-          class="phone-angle-baseline {{anglePhoneLevelReady ? '' : 'disabled'}}"
-          bindtap="onPhoneSetAngleBaseline"
-        >设为基准</cover-view>
-      </cover-view>
-
-      <cover-view wx:else class="triangle-angle-tool">
-        <cover-view class="triangle-angle-hint">从同一拐角向两面墙取点，依次测量两边和两点连线。</cover-view>
-        <cover-view class="triangle-side-row">
-          <cover-view class="triangle-side-name">边 A</cover-view>
-          <cover-view class="triangle-side-value">{{angleTriangleA ? angleTriangleA + ' m' : '待测'}}</cover-view>
-          <cover-view class="triangle-side-action" data-side="a" bindtap="onTriangleMeasure">测量</cover-view>
-        </cover-view>
-        <cover-view class="triangle-side-row">
-          <cover-view class="triangle-side-name">边 B</cover-view>
-          <cover-view class="triangle-side-value">{{angleTriangleB ? angleTriangleB + ' m' : '待测'}}</cover-view>
-          <cover-view class="triangle-side-action" data-side="b" bindtap="onTriangleMeasure">测量</cover-view>
-        </cover-view>
-        <cover-view class="triangle-side-row">
-          <cover-view class="triangle-side-name">连线 D</cover-view>
-          <cover-view class="triangle-side-value">{{angleTriangleD ? angleTriangleD + ' m' : '待测'}}</cover-view>
-          <cover-view class="triangle-side-action" data-side="d" bindtap="onTriangleMeasure">测量</cover-view>
-        </cover-view>
-        <cover-view wx:if="{{angleTriangleResult}}" class="triangle-angle-result">计算结果 {{angleTriangleResult}}</cover-view>
-        <cover-view wx:if="{{angleTriangleError}}" class="triangle-angle-error">{{angleTriangleError}}</cover-view>
-        <cover-view class="triangle-reset" bindtap="onResetAngleTriangle">重新测量三边</cover-view>
-      </cover-view>
     </cover-view>
     <cover-view class="number-display">
       <cover-view class="number-display-value">{{numberInput || '0'}}</cover-view>
@@ -417,8 +505,8 @@
       </cover-view>
     </cover-view>
     <cover-view class="number-actions">
-      <cover-view wx:if="{{!angleMeasureVisible}}" class="number-measure" bindtap="triggerBluetoothNumberMeasure">测距</cover-view>
-      <cover-view class="number-confirm {{angleMeasureVisible ? 'full' : ''}}" bindtap="onNumberConfirm">确认</cover-view>
+      <cover-view class="number-measure" bindtap="triggerBluetoothNumberMeasure">测距</cover-view>
+      <cover-view class="number-confirm" bindtap="onNumberConfirm">确认</cover-view>
     </cover-view>
   </cover-view>
 
