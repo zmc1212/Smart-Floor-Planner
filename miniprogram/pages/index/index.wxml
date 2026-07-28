@@ -1,223 +1,209 @@
-<view class="page-container sfp-tab-page">
-  <scroll-view class="home-scroll" scroll-y show-scrollbar="{{false}}">
-    <view class="status-spacer" style="height: {{statusBarHeight}}px;"></view>
+<view class="home-page sfp-tab-page">
+  <scroll-view class="home-scroll" scroll-y show-scrollbar="{{false}}" enhanced>
+    <view class="home-content">
+      <view class="hero-stage">
+        <view class="status-spacer" style="height: {{statusBarHeight}}px;"></view>
 
-    <view class="home-shell">
-      <view class="home-header">
-        <view class="brand-copy">
-          <text class="brand-title">智能量房大师</text>
-          <text class="brand-subtitle">专业量房·高效出图·智能设计</text>
-        </view>
-
-        <view class="header-actions" style="margin-right: {{capsulePadding}}px;">
-          <view class="city-chip" bindtap="onLocationTap">
-            <view class="city-pin">
-              <view class="city-pin-core"></view>
-            </view>
-            <text class="city-text">{{currentCity || (locationFailed ? '选择城市' : '定位中...')}}</text>
-            <view class="city-arrow"></view>
-          </view>
-
-          <view class="header-icon-button" bindtap="onQuickToolTap" data-action="help">
-            <view class="dots-icon">
-              <view class="dots-icon-dot"></view>
-              <view class="dots-icon-dot"></view>
-              <view class="dots-icon-dot"></view>
-            </view>
-          </view>
-
-          <view class="header-icon-button" bindtap="onQuickToolTap" data-action="support">
-            <view class="ring-icon">
-              <view class="ring-icon-core"></view>
-            </view>
-          </view>
-        </view>
-      </view>
-
-      <!-- Branding Banner for Staff -->
-      <view
-        class="branding-banner-compact"
-        wx:if="{{isStaff && branding}}"
-        style="border-left: 8rpx solid {{branding.branding.primaryColor}}"
-      >
-        <image class="brand-logo" src="{{branding.logo || '/images/meaure1.png'}}" mode="aspectFit" />
-        <view class="brand-info">
-          <text class="brand-name">{{branding.name}}</text>
-          <text class="brand-tagline">企业认证服务商</text>
-        </view>
-      </view>
-
-      <view class="hero-card">
-        <view class="hero-copy">
-          <text class="hero-title">{{plannedRooms.length > 0 ? '继续量房' : '开始量房'}}</text>
-          <text class="hero-desc">
-            {{plannedRooms.length > 0 ? '继续完善户型测量，进入空间编辑与 AI 设计流程' : '连接设备，绘制户型图，精准测量，3D 呈现'}}
-          </text>
-
-          <view class="hero-actions">
-            <view class="hero-button" bindtap="onPrimaryMeasureTap">
-              <text class="hero-button-text">{{plannedRooms.length > 0 ? '继续量房' : '去量房'}}</text>
-            </view>
-
-            <view class="hero-tag" wx:if="{{plannedRooms.length > 0}}">
-              <text class="hero-tag-text">{{plannedRooms.length}} 个空间待处理</text>
-            </view>
-          </view>
-        </view>
-
-        <view class="hero-visual">
-          <text class="hero-measure hero-measure-top">7200</text>
-          <text class="hero-measure hero-measure-right">4200</text>
-          <text class="hero-measure hero-measure-bottom">3600</text>
-          <text class="hero-measure hero-measure-left">3600</text>
-
-          <view class="hero-scene">
-            <view class="scene-floor"></view>
-            <view class="scene-room scene-room-a"></view>
-            <view class="scene-room scene-room-b"></view>
-            <view class="scene-room scene-room-c"></view>
-            <view class="scene-room scene-room-d"></view>
-            <view class="scene-wall scene-wall-a"></view>
-            <view class="scene-wall scene-wall-b"></view>
-            <view class="scene-wall scene-wall-c"></view>
-            <view class="scene-wall scene-wall-d"></view>
-            <view class="scene-guide scene-guide-a"></view>
-            <view class="scene-guide scene-guide-b"></view>
-            <view class="scene-guide scene-guide-c"></view>
-            <view class="scene-glow"></view>
-          </view>
-
-          <view class="hero-device">
-            <view class="hero-device-screen"></view>
-          </view>
-
-          <view class="hero-laser"></view>
-        </view>
-      </view>
-
-      <view class="quick-row">
-        <view class="quick-card" bindtap="onQuickBluetoothTap">
-          <view class="quick-card-icon quick-card-icon-green">
-            <text class="quick-card-icon-symbol">B</text>
-          </view>
-          <view class="quick-card-body">
-            <text class="quick-card-title">蓝牙连接</text>
-            <text class="quick-card-subtitle">{{bleStatusText}}</text>
-          </view>
-          <view class="quick-status-dot {{bleConnected ? 'quick-status-dot-active' : ''}}"></view>
-        </view>
-
-        <view class="quick-card" bindtap="onOpenAIDesign">
-          <view class="quick-card-icon quick-card-icon-green quick-card-icon-soft">
-            <text class="quick-card-icon-symbol">AI</text>
-          </view>
-          <view class="quick-card-body">
-            <text class="quick-card-title">AI 设计</text>
-            <text class="quick-card-subtitle">网图复刻 · 空间换风格</text>
-          </view>
-          <text class="quick-card-arrow">›</text>
-        </view>
-      </view>
-
-      <view class="section-card section-card-compact">
-        <text class="section-title">我的数据</text>
-
-        <view class="stats-grid">
-          <view class="stat-card" wx:for="{{dashboardStats}}" wx:key="key">
-            <view class="stat-icon stat-icon-{{item.tone}}">
-              <text class="stat-icon-glyph">{{item.glyph}}</text>
-            </view>
-            <view class="stat-copy">
-              <text class="stat-label">{{item.label}}</text>
-              <view class="stat-value-row">
-                <text class="stat-value">{{item.value}}</text>
-                <text class="stat-unit">{{item.unit}}</text>
-              </view>
-            </view>
-          </view>
-        </view>
-      </view>
-
-      <view class="section-card section-card-recent">
-        <view class="section-head">
-          <text class="section-title">最近方案</text>
-          <text class="section-link" bindtap="onOpenAllPlans">全部方案</text>
-        </view>
-
-        <block wx:if="{{recentPlans.length > 0}}">
+        <view class="hero-nav" style="padding-right: {{capsulePadding}}px;">
           <view
-            class="recent-plan"
-            wx:for="{{recentPlans}}"
-            wx:key="_id"
-            data-id="{{item._id}}"
-            bindtap="onTapRecentPlan"
+            class="city-control"
+            bindtap="onLocationTap"
+            hover-class="control-pressed"
+            aria-role="button"
+            aria-label="选择城市"
           >
-            <view class="recent-plan-thumb thumb-variant-{{item.thumbVariant}}">
-              <view class="thumb-shell">
-                <view class="thumb-box thumb-box-a"></view>
-                <view class="thumb-box thumb-box-b"></view>
-                <view class="thumb-box thumb-box-c"></view>
-                <view class="thumb-box thumb-box-d"></view>
-                <view class="thumb-line thumb-line-a"></view>
-                <view class="thumb-line thumb-line-b"></view>
-                <view class="thumb-line thumb-line-c"></view>
-              </view>
-            </view>
-
-            <view class="recent-plan-body">
-              <text class="recent-plan-title">{{item.name}}</text>
-              <text class="recent-plan-meta">{{item.meta}}</text>
-            </view>
-
-            <view class="recent-plan-side">
-              <view class="recent-plan-status {{item.statusClass}}">
-                <text class="recent-plan-status-text">{{item.statusLabel}}</text>
-              </view>
-              <view class="recent-plan-more">
-                <view class="recent-plan-more-dot"></view>
-                <view class="recent-plan-more-dot"></view>
-                <view class="recent-plan-more-dot"></view>
-              </view>
-            </view>
+            <image class="city-icon" src="/images/home-v5/location.png" mode="aspectFit" />
+            <text class="city-label">{{currentCity || (locationFailed ? '选择城市' : '定位中')}}</text>
+            <view class="city-chevron"></view>
           </view>
-        </block>
 
-        <view class="empty-block" wx:else>
-          <text class="empty-block-title">还没有保存的方案</text>
-          <text class="empty-block-desc">点击上方去量房，系统会自动创建你的第一个项目。</text>
-        </view>
-      </view>
-
-      <view class="section-card section-card-tools">
-        <text class="section-title">快捷工具</text>
-
-        <view class="tool-row">
           <view
-            class="tool-card"
-            wx:for="{{quickTools}}"
-            wx:key="key"
-            data-action="{{item.key}}"
+            class="notification-control"
             bindtap="onQuickToolTap"
+            data-action="help"
+            hover-class="control-pressed"
+            aria-role="button"
+            aria-label="打开消息与帮助"
           >
-            <view class="tool-icon tool-icon-{{item.tone}}">
-              <text class="tool-icon-glyph">{{item.glyph}}</text>
+            <image class="notification-icon" src="/images/home-v5/notification.png" mode="aspectFit" />
+          </view>
+        </view>
+
+        <image
+          class="hero-scene-image"
+          src="/images/home-v5/hero-scene.jpg"
+          mode="aspectFill"
+          aria-label="智能量房大师，高效精准、AI 助力、云端同步"
+        />
+
+        <view class="enterprise-chip" wx:if="{{isStaff && branding}}">
+          <image class="enterprise-logo" src="{{branding.logo || '/images/meaure1.png'}}" mode="aspectFit" />
+          <text class="enterprise-name">{{branding.name}}</text>
+          <text class="enterprise-certified">企业认证</text>
+        </view>
+      </view>
+
+      <view
+        class="measure-card"
+        bindtap="onPrimaryMeasureTap"
+        hover-class="card-pressed"
+        aria-role="button"
+        aria-label="{{plannedRooms.length > 0 ? '继续量房' : '开始量房'}}"
+      >
+        <image class="measure-orb" src="/images/home-v5/measure-orb.jpg" mode="aspectFit" />
+        <view class="measure-copy">
+          <text class="measure-title">{{plannedRooms.length > 0 ? '继续量房' : '开始量房'}}</text>
+          <text class="measure-subtitle">
+            {{plannedRooms.length > 0 ? '继续完善户型，完成正式测量' : '连接激光仪，建立户型'}}
+          </text>
+          <text class="measure-progress" wx:if="{{plannedRooms.length > 0}}">{{plannedRooms.length}} 个空间待处理</text>
+        </view>
+        <view class="measure-divider"></view>
+        <view class="measure-action">
+          <text class="measure-action-text">{{plannedRooms.length > 0 ? '继续' : '去量房'}}</text>
+          <view class="action-chevron"></view>
+        </view>
+      </view>
+
+      <view class="services-section">
+        <text class="section-title">快捷服务</text>
+
+        <view class="service-grid">
+          <view
+            class="service-card service-leads"
+            bindtap="onOpenLeads"
+            hover-class="card-pressed"
+            aria-role="button"
+            aria-label="打开客户线索"
+          >
+            <view class="service-heading">
+              <image class="service-icon service-icon-leads" src="/images/home-v5/leads-icon.jpg" mode="aspectFit" />
+              <view class="service-title-wrap">
+                <text class="service-title service-title-coral">客户线索</text>
+                <text class="service-badge service-badge-coral">{{homeLeadCount}} 条线索</text>
+              </view>
             </view>
-            <view class="tool-body">
-              <text class="tool-title">{{item.title}}</text>
-              <text class="tool-subtitle">{{item.subtitle}}</text>
+            <text class="service-description">管理客户，高效跟进</text>
+            <view class="service-footer">
+              <image class="lead-avatars" src="/images/home-v5/lead-avatars.jpg" mode="aspectFit" />
+              <view class="small-action"><view class="small-chevron"></view></view>
             </view>
-            <text class="tool-arrow">›</text>
+          </view>
+
+          <view
+            class="service-card service-ai"
+            bindtap="onOpenAIDesign"
+            hover-class="card-pressed"
+            aria-role="button"
+            aria-label="打开 AI 设计"
+          >
+            <view class="service-heading">
+              <image class="service-icon service-icon-ai" src="/images/home-v5/ai-wand.jpg" mode="aspectFit" />
+              <view class="service-title-wrap">
+                <text class="service-title service-title-amber">AI 设计</text>
+                <text class="service-badge service-badge-amber">{{homeAiCaseCount}} 个生成案例</text>
+              </view>
+            </view>
+            <text class="service-description">一键生成设计方案</text>
+            <image class="ai-preview" src="/images/home-v5/ai-preview.jpg" mode="aspectFill" />
+          </view>
+
+          <view
+            class="service-card service-device"
+            bindtap="onQuickBluetoothTap"
+            hover-class="card-pressed"
+            aria-role="button"
+            aria-label="{{bleConnected ? '蓝牙设备已配对' : '连接蓝牙设备'}}"
+          >
+            <view class="device-heading">
+              <image class="service-icon service-icon-device" src="/images/home-v5/bluetooth-mark.jpg" mode="aspectFit" />
+              <view class="service-title-wrap">
+                <text class="service-title service-title-green">设备连接</text>
+                <text class="service-badge service-badge-green">{{bleConnected ? '已配对' : '待连接'}}</text>
+              </view>
+            </view>
+            <text class="service-description">连接设备，开始量房</text>
+            <view class="device-summary">
+              <image class="laser-device" src="/images/home-v5/laser-device.jpg" mode="aspectFit" />
+              <view class="device-copy">
+                <text class="device-name">激光仪</text>
+                <text class="device-status">{{bleStatusText}}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="ongoing-section">
+        <view class="section-heading-row">
+          <view class="section-title-group">
+            <text class="section-title">继续进行</text>
+            <view class="section-pin"></view>
+          </view>
+          <view class="schedule-chip" bindtap="onOpenAllPlans" hover-class="control-pressed">
+            <view class="calendar-icon">
+              <view class="calendar-top"></view>
+            </view>
+            <text>日程</text>
+          </view>
+        </view>
+
+        <view
+          class="ongoing-card"
+          wx:if="{{recentPlans.length > 0}}"
+          data-id="{{recentPlans[0]._id}}"
+          bindtap="onTapRecentPlan"
+          hover-class="card-pressed"
+          aria-role="button"
+          aria-label="继续量房 {{recentPlans[0].name}}"
+        >
+          <image class="plan-preview" src="/images/home-v5/plan-preview.jpg" mode="aspectFill" />
+          <view class="plan-copy">
+            <text class="plan-title">{{recentPlans[0].name}}</text>
+            <view class="plan-location-row">
+              <view class="plan-location-dot"></view>
+              <text>{{currentCity || '所在城市'}} · 最近更新</text>
+            </view>
+            <view class="plan-status-row">
+              <text class="plan-status {{recentPlans[0].statusClass}}">{{recentPlans[0].statusLabel}}</text>
+              <text class="plan-time">{{recentPlans[0].meta}}</text>
+            </view>
+            <text class="plan-current">当前：正式量房</text>
+            <view class="plan-progress-track">
+              <view class="plan-progress-fill {{recentPlans[0].statusClass}}"></view>
+            </view>
+            <view class="plan-action-row">
+              <text>继续量房</text>
+              <view class="plan-action-chevron"></view>
+            </view>
+          </view>
+        </view>
+
+        <view
+          class="ongoing-card ongoing-empty"
+          wx:else
+          bindtap="onPrimaryMeasureTap"
+          hover-class="card-pressed"
+          aria-role="button"
+          aria-label="创建第一套正式量房户型"
+        >
+          <image class="plan-preview empty-plan-preview" src="/images/home-v5/plan-preview.jpg" mode="aspectFill" />
+          <view class="plan-copy empty-plan-copy">
+            <text class="plan-title">还没有进行中的量房</text>
+            <text class="empty-description">创建客户线索后，即可开始正式测量并保存户型。</text>
+            <view class="empty-action">
+              <text>开始量房</text>
+              <view class="plan-action-chevron"></view>
+            </view>
           </view>
         </view>
       </view>
     </view>
   </scroll-view>
 
-
-
-  <ble-connector 
-    show="{{showBLEConnector}}" 
-    bindclose="onCloseBLEConnector" 
+  <ble-connector
+    show="{{showBLEConnector}}"
+    bindclose="onCloseBLEConnector"
     bindsuccess="onBLESuccess"
   />
 </view>

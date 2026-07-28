@@ -1,8 +1,8 @@
 # Surveying editor icons
 
-`back-arrow.svg` and `phone-level.svg` are original project-authored vector
-assets. The phone illustration uses the same rounded-line geometry as the
-measurement UI.
+`back-arrow.svg`, `cursor-compass.svg`, `history-*.svg`, `phone-level.svg`, and `rail-*.svg` are original
+project-authored vector assets. The phone illustration and editor-rail icons use
+the same rounded-line geometry as the measurement UI.
 
 `bluetooth.svg`, `circle-check.svg`, `crosshair.svg`, and `refresh-cw.svg` are
 adapted from Lucide Icons v1.8.0. They are rendered as transparent PNG files in

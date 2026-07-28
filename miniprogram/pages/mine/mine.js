@@ -1,6 +1,11 @@
 const app = getApp();
 const api = require('../../utils/api.js');
 const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
+const {
+  decorateActions,
+  buildDashboardSlices,
+  getFloorPlanRoomCount
+} = require('./mine-model.js');
 
 const DEFAULT_AVATAR =
   'https://mmbiz.qpic.cn/mmbiz/icTdbqWNOwNRna42FI242Lcia07jQodd2FJGIYQfG0LAJGFxM4FbnQP6yfMxBgJ0F3YRqJCJ1aPAK2dQagdusBZg/0';
@@ -36,21 +41,14 @@ function formatFloorPlanDate(value) {
     .replace(/\//g, '-');
 }
 
-function getFloorPlanRoomCount(layoutData) {
-  if (!layoutData) return 0;
-  try {
-    const rooms = typeof layoutData === 'string' ? JSON.parse(layoutData) : layoutData;
-    return Array.isArray(rooms) ? rooms.length : rooms ? 1 : 0;
-  } catch (e) {
-    return 0;
-  }
-}
-
 Page({
   data: {
     isLoggedIn: false,
     isStaff: false,
     loadingMine: false,
+    mineError: '',
+    floorPlansLoading: false,
+    floorPlansError: '',
     mineData: {
       profile: FALLBACK_PROFILE,
       actions: [],
@@ -58,6 +56,10 @@ Page({
       todos: []
     },
     floorPlans: [],
+    primaryTodo: null,
+    remainingTodos: [],
+    focusCards: [],
+    overviewCards: [],
     defaultAvatarUrl: DEFAULT_AVATAR
   },
 
@@ -70,7 +72,15 @@ Page({
     if (token && userInfo) {
       app.globalData.userInfo = userInfo;
       app.globalData.openid = openid;
-      this.setData({ isLoggedIn: true, floorPlans: [] });
+      this.setData({
+        isLoggedIn: true,
+        isStaff: userInfo.role === 'staff',
+        loadingMine: false,
+        floorPlans: [],
+        mineError: '',
+        floorPlansLoading: false,
+        floorPlansError: ''
+      });
       this.fetchMineData();
       return;
     }
@@ -78,7 +88,23 @@ Page({
     if (openid && userInfo) {
       app.globalData.userInfo = userInfo;
       app.globalData.openid = openid;
-      this.setData({ isLoggedIn: true, isStaff: userInfo.role === 'staff' });
+      this.setData({
+        isLoggedIn: true,
+        isStaff: userInfo.role === 'staff',
+        loadingMine: false,
+        mineError: '',
+        floorPlansLoading: false,
+        floorPlansError: '',
+        mineData: {
+          ...this.data.mineData,
+          profile: {
+            ...FALLBACK_PROFILE,
+            name: userInfo.nickname || userInfo.name || '微信用户',
+            avatar: userInfo.avatar || userInfo.avatarUrl || '',
+            phoneMasked: userInfo.phoneMasked || ''
+          }
+        }
+      });
       if (userInfo.role === 'staff') {
         this.fetchMineData();
       } else {
@@ -90,13 +116,21 @@ Page({
     this.setData({
       isLoggedIn: false,
       isStaff: false,
+      loadingMine: false,
+      mineError: '',
+      floorPlansLoading: false,
+      floorPlansError: '',
       floorPlans: [],
       mineData: {
         profile: FALLBACK_PROFILE,
         actions: [],
         workbenchCards: [],
         todos: []
-      }
+      },
+      primaryTodo: null,
+      remainingTodos: [],
+      focusCards: [],
+      overviewCards: []
     });
   },
 
@@ -111,21 +145,24 @@ Page({
   },
 
   async fetchMineData() {
-    this.setData({ loadingMine: true });
+    this.setData({ loadingMine: true, mineError: '' });
     try {
       const res = await api.request('/miniprogram/mine', 'GET');
       const data = res.data || {};
       const profile = data.profile || FALLBACK_PROFILE;
+      const workbenchCards = data.workbenchCards || [];
+      const todos = data.todos || [];
 
       this.setData({
         loadingMine: false,
         isStaff: !!data.isStaff,
         mineData: {
           profile: { ...FALLBACK_PROFILE, ...profile },
-          actions: data.actions || [],
-          workbenchCards: data.workbenchCards || [],
-          todos: data.todos || []
-        }
+          actions: decorateActions(data.actions),
+          workbenchCards,
+          todos
+        },
+        ...buildDashboardSlices(workbenchCards, todos)
       });
 
       app.globalData.userInfo = {
@@ -144,16 +181,19 @@ Page({
         this.fetchMyFloorPlans();
       }
     } catch (err) {
-      this.setData({ loadingMine: false });
+      this.setData({
+        loadingMine: false,
+        mineError: (err && err.error) || '工作台加载失败，请检查网络后重试'
+      });
       if (err && err.statusCode === 401) {
         this.clearSession();
         return;
       }
-      wx.showToast({ title: err.error || '加载失败', icon: 'none' });
     }
   },
 
   async fetchMyFloorPlans() {
+    this.setData({ floorPlansLoading: true, floorPlansError: '' });
     try {
       const res = await api.request('/floorplans', 'GET');
       if (res.success && res.data) {
@@ -162,11 +202,28 @@ Page({
           roomCount: getFloorPlanRoomCount(item.layoutData),
           createdAt: formatFloorPlanDate(item.createdAt)
         }));
-        this.setData({ floorPlans });
+        this.setData({ floorPlans, floorPlansLoading: false });
+        return;
       }
+      this.setData({
+        floorPlansLoading: false,
+        floorPlansError: (res && res.error) || '户型加载失败，请稍后重试'
+      });
     } catch (err) {
       console.error('Failed to fetch floor plans', err);
+      this.setData({
+        floorPlansLoading: false,
+        floorPlansError: (err && err.error) || '户型加载失败，请检查网络后重试'
+      });
     }
+  },
+
+  retryMine() {
+    this.fetchMineData();
+  },
+
+  retryFloorPlans() {
+    this.fetchMyFloorPlans();
   },
 
   onTapAction(e) {
@@ -278,13 +335,21 @@ Page({
     this.setData({
       isLoggedIn: false,
       isStaff: false,
+      loadingMine: false,
+      mineError: '',
+      floorPlansLoading: false,
+      floorPlansError: '',
       floorPlans: [],
       mineData: {
         profile: FALLBACK_PROFILE,
         actions: [],
         workbenchCards: [],
         todos: []
-      }
+      },
+      primaryTodo: null,
+      remainingTodos: [],
+      focusCards: [],
+      overviewCards: []
     });
   },
 

@@ -3,6 +3,8 @@
 var _deviceId = '';
 var _writeCharacteristics = []; // 存储所有可写入的特征值以供广播
 var _onMeasureCallback = null;
+var _onSystemInfoCallback = null;
+var _lastSystemInfo = null;
 var _isConnecting = false;
 var _onConnectCallback = null;
 var _onDisconnectCallback = null;
@@ -13,6 +15,10 @@ var _isStateChangeRegistered = false;
 var _isValueChangeRegistered = false;
 var _deviceName = ''; // 存储当前连接的设备名称
 var _hasTriggeredReady = false; // 确保就绪回调仅触发一次
+var _hasNotificationChannel = false;
+var _hasRequestedSystemInfo = false;
+
+var systemInfoProtocol = require('./bleSystemInfo.js');
 
 var _heartbeatTimer = null;
 var _lastResponseTime = 0;
@@ -176,6 +182,10 @@ function startScan(silent = false) {
 function connectDevice(deviceId, name, silent = false) {
   _isConnecting = true;
   _writeCharacteristics = []; // 连接前重置写入通道
+  _hasNotificationChannel = false;
+  _hasRequestedSystemInfo = false;
+  _lastSystemInfo = null;
+  dataBuffer = [];
   wx.stopBluetoothDevicesDiscovery();
   if (!silent) wx.showLoading({ title: '连接 ' + name + '...' });
 
@@ -239,7 +249,9 @@ function getCharacteristics(deviceId, serviceId) {
             state: true,
             success: function () {
               console.log('✅ 订阅成功:', item.uuid);
+              _hasNotificationChannel = true;
               listenValueChange();
+              requestSystemInfoWhenReady();
             }
           });
         }
@@ -254,6 +266,8 @@ function getCharacteristics(deviceId, serviceId) {
           });
           
           // 当发现第一个写入通道时，才认为蓝牙真正“就绪”，可以下发指令了
+          requestSystemInfoWhenReady();
+
           if (!_hasTriggeredReady && _onConnectCallback) {
             _hasTriggeredReady = true;
             console.log('🚀 发现写入通道，设备就绪');
@@ -263,6 +277,16 @@ function getCharacteristics(deviceId, serviceId) {
       }
     }
   });
+}
+
+function requestSystemInfoWhenReady() {
+  if (_hasRequestedSystemInfo || !_hasNotificationChannel || _writeCharacteristics.length === 0) return;
+  _hasRequestedSystemInfo = true;
+
+  // Let WeChat finish enabling the notify channel before writing the query.
+  setTimeout(function () {
+    sendBLECommand('ATS001#');
+  }, 80);
 }
 
 var dataBuffer = [];
@@ -291,7 +315,25 @@ function listenValueChange() {
       var b = dataBuffer[1];
       var c = dataBuffer[2];
 
-      if (a === 0x41 && b === 0x54 && c === 0x44) { // ATD 开始
+      if (a === 0x41 && b === 0x54 && c === 0x53) { // ATS system information
+        if (dataBuffer.length < systemInfoProtocol.ATS_FRAME_LENGTH) break;
+
+        var systemInfoResult = systemInfoProtocol.parseSystemInfoFrame(
+          dataBuffer.slice(0, systemInfoProtocol.ATS_FRAME_LENGTH)
+        );
+        if (!systemInfoResult.valid) {
+          console.log('ATS system information frame rejected:', systemInfoResult.reason);
+          dataBuffer.shift();
+          continue;
+        }
+
+        _lastSystemInfo = systemInfoResult.value;
+        console.log('ATS001 system information:', _lastSystemInfo);
+        if (_onSystemInfoCallback) {
+          _onSystemInfoCallback(_lastSystemInfo);
+        }
+        dataBuffer.splice(0, systemInfoProtocol.ATS_FRAME_LENGTH);
+      } else if (a === 0x41 && b === 0x54 && c === 0x44) { // ATD 开始
         // 有可能是发出 ATD001# 后仪器的回显 (7字节): A T D 0 0 1 #
         if (dataBuffer.length >= 7 && dataBuffer[3] === 0x30 && dataBuffer[4] === 0x30 && dataBuffer[5] === 0x31 && dataBuffer[6] === 0x23) {
           console.log('收到命令反馈: ATD001#');
@@ -411,14 +453,14 @@ var _lastCmdStr = '';
 function sendBLECommand(cmd) {
   if (!_deviceId || _writeCharacteristics.length === 0) {
     console.error('蓝牙未连接或未发现写入特征值');
-    return;
+    return false;
   }
 
   // JS层面的防抖：防止短时间内某些回调导致重复发同一条指令
   var now = Date.now();
   if (cmd === _lastCmdStr && now - _lastCmdTime < 50) {
     console.log('阻止极短时间内重复发送相同的指令:', cmd);
-    return;
+    return false;
   }
   _lastCmdTime = now;
   _lastCmdStr = cmd;
@@ -461,6 +503,12 @@ function sendBLECommand(cmd) {
       }
     });
   });
+
+  return uniqueChannels.length > 0;
+}
+
+function requestSystemInfo() {
+  return sendBLECommand('ATS001#');
 }
 
 function closeBLE() {
@@ -547,6 +595,10 @@ function setCallbacks(callback, connectCallback, disconnectCallback) {
   if (disconnectCallback !== undefined) _onDisconnectCallback = disconnectCallback;
 }
 
+function setSystemInfoCallback(callback) {
+  _onSystemInfoCallback = typeof callback === 'function' ? callback : null;
+}
+
 // === 临时回调管理（供角度测量等子流程使用）===
 var _savedMeasureCallback = null;
 
@@ -576,15 +628,22 @@ function getCurrentDeviceInfo() {
   };
 }
 
+function getCurrentSystemInfo() {
+  return _lastSystemInfo;
+}
+
 module.exports = {
   initBLE: initBLE,
   closeBLE: closeBLE,
   sendBLECommand: sendBLECommand,
+  requestSystemInfo: requestSystemInfo,
   autoConnectBLE: autoConnectBLE,
   setCallbacks: setCallbacks,
+  setSystemInfoCallback: setSystemInfoCallback,
   clearBuffer: clearBuffer,
   setTemporaryMeasureCallback: setTemporaryMeasureCallback,
   restoreMeasureCallback: restoreMeasureCallback,
   getCurrentDeviceInfo: getCurrentDeviceInfo,
+  getCurrentSystemInfo: getCurrentSystemInfo,
   hasRememberedDevice: hasRememberedDevice
 };

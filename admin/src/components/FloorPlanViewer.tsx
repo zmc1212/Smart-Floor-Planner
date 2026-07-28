@@ -901,6 +901,8 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
       coordinateLength: getSurveyWallLengthMm(floor, wall),
       measurementLength: getSurveyWallLengthMm(floor, wall),
       thickness: body.thickness,
+      outerStart: { x: body.outerStart.xMm, y: body.outerStart.yMm },
+      outerEnd: { x: body.outerEnd.xMm, y: body.outerEnd.yMm },
     })),
     spaces: (floor?.spaces || []).filter((space) => space.closed),
   }), [drawingScale, floor, wallBodies]);
@@ -923,7 +925,23 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
       };
     }),
   }).items, [dimensionOffset, dimensionTextSize, drawingScale, exteriorBoundaryWalls, floor]);
-  const viewBox = `${bounds.minX} ${bounds.minY} ${bounds.width} ${bounds.height}`;
+  const viewBounds = useMemo(() => {
+    const textPadding = dimensionTextSize * 1.2;
+    const points = dimensionItems.flatMap((dimension) => [
+      dimension.start,
+      dimension.end,
+      dimension.extensionStart,
+      dimension.extensionEnd,
+    ]);
+    if (!points.length) return bounds;
+
+    const minX = Math.min(bounds.minX, ...points.map((point) => point.x - textPadding));
+    const minY = Math.min(bounds.minY, ...points.map((point) => point.y - textPadding));
+    const maxX = Math.max(bounds.minX + bounds.width, ...points.map((point) => point.x + textPadding));
+    const maxY = Math.max(bounds.minY + bounds.height, ...points.map((point) => point.y + textPadding));
+    return { minX, minY, width: maxX - minX, height: maxY - minY };
+  }, [bounds, dimensionItems, dimensionTextSize]);
+  const viewBox = `${viewBounds.minX} ${viewBounds.minY} ${viewBounds.width} ${viewBounds.height}`;
   const roomTitleSize = Math.max(72, Math.min(120, drawingScale / 42));
   const roomDetailSize = Math.max(54, Math.min(86, drawingScale / 56));
 
@@ -969,9 +987,9 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
                 <path d="M 2500 0 L 0 0 0 2500" fill="none" stroke="rgba(111,118,128,0.25)" strokeWidth="12" />
               </pattern>
             </defs>
-            <rect x={bounds.minX} y={bounds.minY} width={bounds.width} height={bounds.height} fill="#f8f8f8" />
-            <rect x={bounds.minX} y={bounds.minY} width={bounds.width} height={bounds.height} fill="url(#survey-grid-minor)" />
-            <rect x={bounds.minX} y={bounds.minY} width={bounds.width} height={bounds.height} fill="url(#survey-grid-major)" />
+            <rect x={viewBounds.minX} y={viewBounds.minY} width={viewBounds.width} height={viewBounds.height} fill="#f8f8f8" />
+            <rect x={viewBounds.minX} y={viewBounds.minY} width={viewBounds.width} height={viewBounds.height} fill="url(#survey-grid-minor)" />
+            <rect x={viewBounds.minX} y={viewBounds.minY} width={viewBounds.width} height={viewBounds.height} fill="url(#survey-grid-major)" />
 
             {spaceDetails.map(({ space, detail }) => {
               if (!detail) return null;

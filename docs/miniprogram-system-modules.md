@@ -43,10 +43,20 @@ utilities, and the admin APIs they call.
 - Implemented: dashboard summaries, location/city, role-scoped recent cloud
   plans (which remain visible while a local draft exists and open the formal
   editor directly), lead capture, BLE connection state, remembered-device
-  auto-connect, new/continue formal surveying, floor-plan room entry, AI
-  handoff for a room, and a persistent AI Design shortcut for enterprise staff.
-- Placeholder: help center and some shortcut cards only show an
-  “upcoming”/planned message.
+  auto-connect, automatic `ATS001#` system-information query after a compatible
+  BLE notify/write channel is ready, a connected-device system-information view,
+  new/continue formal surveying, floor-plan room entry, AI
+  handoff for a room, a persistent AI Design shortcut for enterprise staff,
+  and direct Home shortcuts to Leads and BLE pairing.
+- BLE system data: the 28-byte `ATS` response is CRC-validated and exposes
+  product ID, stored-record count, unit/mode, timing settings, sound, reference
+  position, stakeout values, angle-unit code, and calibration value. The vendor
+  `ATS001#` contract has no battery percentage or voltage field.
+- Visual baseline: `design-references/miniprogram-home-vibrant-green-v5.png`
+  at iPhone 13 Pro `390x844`. The shipped composition uses project-local
+  derived scene assets while city, counts, device state, enterprise branding,
+  recent plans, empty state, and all navigation remain live and role-aware.
+- Placeholder: the help center still shows an “upcoming” message.
 
 ### Leads And Customer Records
 
@@ -192,6 +202,18 @@ utilities, and the admin APIs they call.
 - Implemented: profile/role display, workbench summary, todos, floor-plan list,
   notification/account actions, logout, new measurement, an enterprise-staff
   AI Design home entry, and contextual AI entry from a plan card.
+- Visual: the Mine surface now uses the approved “field work clipboard” direction
+  at the iPhone 13 Pro `390x844` baseline: a compact profile strip, an
+  asymmetric today-progress task surface, role-aware quick tools, a split
+  workbench overview, timeline todos, and account rows. The implementation
+  preserves server-provided actions and promotes only the first todo and first
+  two workbench cards into the focus surface; it does not add new backend
+  capabilities.
+- Data and failure states: ordinary-user floor-plan counts are derived from
+  closed spaces across the formal version-4 survey graph floors. Mine and
+  floor-plan requests have separate loading/error/retry states, so network
+  failure is not rendered as an ordinary-user dashboard or an empty floor-plan
+  list.
 - Limited: workbench cards and task actions vary by professional role; some
   account/notification cards are informational rather than configuration APIs.
 
@@ -245,8 +267,15 @@ utilities, and the admin APIs they call.
   outer-edge, and free placement; a closer outer edge is not overridden by the
   nearby inner vertex.
   An engineering-style exterior DimensionPlan is used for
-  closed plans (opening detail chain, segmented chain, and one total per
-  continuous collinear exterior run). Closed-space edges are geometrically
+  closed plans: a single exterior wall has one total dimension, while a
+  continuous multi-wall run or door wall has an inner positioning chain. Each
+  exterior direction receives one outer global total across the complete plan
+  bounds, rather than repeated local totals. Windows keep CAD symbols without
+  a duplicate detail chain.
+  Its extension origins and dimension-line
+  endpoints follow the rendered exterior wall face, including mitered exterior
+  corners, then route to global exterior dimension lanes beyond the whole
+  closed-plan outline. Closed-space edges are geometrically
   split and merged before annotation, excluding differently identified/split
   shared walls and enclosed inner holes. CAD-style thin extension lines start at
   the exterior wall face; compact arrows and masked dimension text replace

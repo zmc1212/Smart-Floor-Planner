@@ -125,11 +125,15 @@ permission, or workflow changes.
   so connected nodes, L/T joins, and overlapping segments have no internal caps,
   diagonal seams, or boxed wall ends. Door/window cuts cover the complete wall
   thickness. Completed layouts use engineering-style exterior dimension plans:
-  one opening
-  detail chain, one segmented dimension chain, and at most one total dimension
-  per continuous exterior run. Closed-space edges are geometrically split and
+  a continuous multi-wall run or door wall has a positioning chain. Each
+  exterior direction has one global total across the complete plan bounds,
+  replacing repeated local totals. Windows retain CAD symbols without duplicate
+  detail chains. Closed-space edges are geometrically split and
   merged, so differently identified/split shared walls and enclosed inner holes
-  never receive annotations; extension lines start at the exterior wall face.
+  never receive annotations; extension lines start at mitered exterior wall
+  corners and route to global exterior dimension lanes beyond the whole plan;
+  the viewer expands its SVG bounds for all dimension lines, extension lines,
+  and labels.
   Measurement filtering and DXF download are implemented. Kujiale search is
   `Limited` by the upstream search/provider response and city/query availability.
 - Boundary: the backend derives room/opening render data from `surveyGraph`; it

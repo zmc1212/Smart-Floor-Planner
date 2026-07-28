@@ -757,7 +757,9 @@ function createSurveyRenderScene(input) {
       end: wall.endPoint,
       coordinateLength: wall.widthPx,
       measurementLength: wall.lengthMm,
-      thickness: wall.thicknessPx
+      thickness: wall.thicknessPx,
+      outerStart: wall.outerStart,
+      outerEnd: wall.outerEnd
     })),
     spaces: (floor.spaces || []).filter((space) => space.closed)
   });

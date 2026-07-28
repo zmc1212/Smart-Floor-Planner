@@ -76,6 +76,52 @@ function wallFrame(wall) {
   };
 }
 
+function exteriorPoint(wall, sourcePoint) {
+  const sourceVector = subtract(wall.end, wall.start);
+  const sourceLengthSquared = dot(sourceVector, sourceVector);
+  const thickness = Math.max(0, Number(wall.thickness || 0));
+  if (!sourceLengthSquared) return add(sourcePoint, scale(wall.outward, thickness));
+
+  const position = clamp(dot(subtract(sourcePoint, wall.start), sourceVector) / sourceLengthSquared, 0, 1);
+  if (wall.outerStart && wall.outerEnd) {
+    return add(wall.outerStart, scale(subtract(wall.outerEnd, wall.outerStart), position));
+  }
+  return add(sourcePoint, scale(wall.outward, thickness));
+}
+
+function dimensionLinePoint(wall, sourcePoint, normal, outerSupport, gap) {
+  const exterior = exteriorPoint(wall, sourcePoint);
+  return add(exterior, scale(normal, Math.max(0, outerSupport - dot(exterior, normal)) + gap));
+}
+
+function normalKey(normal) {
+  return `${roundKey(normal.x, 0.001)}:${roundKey(normal.y, 0.001)}`;
+}
+
+function getDoorOpeningsForWall(wall, openingsByWall) {
+  const sourceWallId = wall.sourceWallId || wall.id;
+  const openings = openingsByWall.get(sourceWallId) || [];
+  const coordinateLength = Math.max(0.0001, Number(wall.coordinateLength || magnitude(subtract(wall.end, wall.start))));
+  const sourceStart = Number.isFinite(wall.sourceStart) ? wall.sourceStart : 0;
+  const sourceEnd = Number.isFinite(wall.sourceEnd) ? wall.sourceEnd : coordinateLength;
+  const sourceMin = Math.min(sourceStart, sourceEnd);
+  const sourceMax = Math.max(sourceStart, sourceEnd);
+  const sourceSpan = sourceEnd - sourceStart;
+  if (Math.abs(sourceSpan) < 0.0001) return [];
+
+  return openings.flatMap((opening) => {
+    const clippedStart = Math.max(sourceMin, Number(opening.start || 0));
+    const clippedEnd = Math.min(sourceMax, Number(opening.end || 0));
+    if (clippedEnd - clippedStart < 0.5) return [];
+    const localStart = (clippedStart - sourceStart) / sourceSpan * coordinateLength;
+    const localEnd = (clippedEnd - sourceStart) / sourceSpan * coordinateLength;
+    return [Object.assign({}, opening, {
+      start: Math.min(localStart, localEnd),
+      end: Math.max(localStart, localEnd)
+    })];
+  }).sort((first, second) => first.start - second.start);
+}
+
 function createDimensionItem(options) {
   const opts = options || {};
   const start = opts.start;
@@ -84,12 +130,12 @@ function createDimensionItem(options) {
   const distance = Math.max(0, Number(opts.distance || 0));
   const direction = normalize(opts.direction || subtract(end, start));
   const hasLineProjection = Number.isFinite(opts.lineProjection);
-  const dimensionStart = hasLineProjection
+  const dimensionStart = opts.dimensionStart || (hasLineProjection
     ? add(scale(direction, dot(start, direction)), scale(normal, opts.lineProjection))
-    : add(start, scale(normal, distance));
-  const dimensionEnd = hasLineProjection
+    : add(start, scale(normal, distance)));
+  const dimensionEnd = opts.dimensionEnd || (hasLineProjection
     ? add(scale(direction, dot(end, direction)), scale(normal, opts.lineProjection))
-    : add(end, scale(normal, distance));
+    : add(end, scale(normal, distance)));
   return {
     id: opts.id,
     kind: opts.kind,
@@ -290,33 +336,11 @@ function createExteriorBoundarySegments(input) {
       coordinateLength: distance(atom.start, atom.end),
       measurementLength,
       thickness: Math.max(0, Number(wall.thickness || 0)),
+      outerStart: exteriorPoint(Object.assign({}, wall, wallFrame(wall)), atom.start),
+      outerEnd: exteriorPoint(Object.assign({}, wall, wallFrame(wall)), atom.end),
       outsideSign: -1
     };
   });
-}
-
-function getOpeningsForWall(wall, openingsByWall) {
-  const sourceWallId = wall.sourceWallId || wall.id;
-  const openings = openingsByWall.get(sourceWallId) || [];
-  const coordinateLength = Math.max(0.0001, Number(wall.coordinateLength || magnitude(subtract(wall.end, wall.start))));
-  const sourceStart = Number.isFinite(wall.sourceStart) ? wall.sourceStart : 0;
-  const sourceEnd = Number.isFinite(wall.sourceEnd) ? wall.sourceEnd : coordinateLength;
-  const sourceMin = Math.min(sourceStart, sourceEnd);
-  const sourceMax = Math.max(sourceStart, sourceEnd);
-  const sourceSpan = sourceEnd - sourceStart;
-  if (Math.abs(sourceSpan) < 0.0001) return [];
-
-  return openings.flatMap((opening) => {
-    const clippedStart = Math.max(sourceMin, Number(opening.start || 0));
-    const clippedEnd = Math.min(sourceMax, Number(opening.end || 0));
-    if (clippedEnd - clippedStart < 0.5) return [];
-    const localStart = (clippedStart - sourceStart) / sourceSpan * coordinateLength;
-    const localEnd = (clippedEnd - sourceStart) / sourceSpan * coordinateLength;
-    return [Object.assign({}, opening, {
-      start: Math.min(localStart, localEnd),
-      end: Math.max(localStart, localEnd)
-    })];
-  }).sort((first, second) => first.start - second.start);
 }
 
 /**
@@ -333,15 +357,13 @@ function createExteriorDimensionPlan(input) {
   const sourceWalls = (options.walls || [])
     .filter((wall) => wall && wall.closed && wall.isExteriorBoundary && wall.start && wall.end)
     .map((wall) => Object.assign({}, wall, wallFrame(wall)));
-  const openingsByWall = new Map();
-
+  const doorOpeningsByWall = new Map();
   (options.openings || []).forEach((opening) => {
     if (!opening || opening.type !== 'door' || !opening.wallId) return;
-    const list = openingsByWall.get(opening.wallId) || [];
-    list.push(opening);
-    openingsByWall.set(opening.wallId, list);
+    const entries = doorOpeningsByWall.get(opening.wallId) || [];
+    entries.push(opening);
+    doorOpeningsByWall.set(opening.wallId, entries);
   });
-
   const lineGroups = new Map();
   sourceWalls.forEach((wall) => {
     const normalSign = dot(wall.outward, wall.canonicalNormal) >= 0 ? 1 : -1;
@@ -358,109 +380,125 @@ function createExteriorDimensionPlan(input) {
 
   const items = [];
   let runIndex = 0;
+  const exteriorPoints = sourceWalls.flatMap((wall) => [
+    { wall, sourcePoint: wall.start, point: exteriorPoint(wall, wall.start) },
+    { wall, sourcePoint: wall.end, point: exteriorPoint(wall, wall.end) }
+  ]);
+  const normalGroups = new Map();
+  sourceWalls.forEach((wall) => {
+    const key = normalKey(wall.outward);
+    if (!normalGroups.has(key)) {
+      normalGroups.set(key, {
+        key,
+        normal: wall.outward,
+        direction: wall.canonicalDirection
+      });
+    }
+  });
+  const nextLaneByNormal = new Map();
   lineGroups.forEach((walls) => {
     splitContinuousRuns(walls, tolerance).forEach((run) => {
       runIndex += 1;
       const groupId = `dimension-run-${runIndex}`;
       const normal = run.entries[0].outward;
       const maxThickness = Math.max(...run.entries.map((wall) => Math.max(0, Number(wall.thickness || 0))));
-      const detailDistance = maxThickness + baseGap;
-      const totalDistance = detailDistance + laneGap;
-      let totalLength = 0;
+      const support = Math.max(...exteriorPoints.map((entry) => dot(entry.point, normal)));
+      const laneKey = normalKey(normal);
+      const detailLane = nextLaneByNormal.get(laneKey) || 0;
+      const hasDoorPositioning = run.entries.some((wall) => getDoorOpeningsForWall(wall, doorOpeningsByWall).length);
+      const hasPositioningChain = run.entries.length > 1 || hasDoorPositioning;
+      const detailGap = baseGap + laneGap * detailLane;
+      const createExteriorDimension = (config) => createDimensionItem(Object.assign({
+        groupId,
+        normal,
+        lane: config.lane,
+        distance: maxThickness + config.gap,
+        dimensionStart: dimensionLinePoint(config.startWall, config.start, normal, support, config.gap),
+        dimensionEnd: dimensionLinePoint(config.endWall, config.end, normal, support, config.gap),
+        extensionStart: exteriorPoint(config.startWall, config.start),
+        extensionEnd: exteriorPoint(config.endWall, config.end)
+      }, config));
 
-      run.entries.forEach((wall) => {
-        const coordinateLength = Math.max(0.0001, Number(wall.coordinateLength || magnitude(subtract(wall.end, wall.start))));
-        const measurementLength = Math.max(0, Number(wall.measurementLength || coordinateLength));
-        totalLength += measurementLength;
-        const wallOpenings = getOpeningsForWall(wall, openingsByWall);
-
-        if (!wallOpenings.length) {
-          items.push(createDimensionItem({
-            id: `${groupId}:${wall.id}:segment`,
-            kind: 'chain-segment',
-            groupId,
-            wallId: wall.id,
-            sourceWallId: wall.sourceWallId,
-            label: measurementLength,
-            lane: 0,
-            start: wall.start,
-            end: wall.end,
-            extensionStart: add(wall.start, scale(normal, Number(wall.thickness || 0))),
-            extensionEnd: add(wall.end, scale(normal, Number(wall.thickness || 0))),
-            normal,
-            distance: detailDistance
-          }));
-          return;
-        }
-
-        let cursor = 0;
-        wallOpenings.forEach((opening, openingIndex) => {
-          const start = clamp(Number(opening.start || 0), cursor, coordinateLength);
-          const end = clamp(Number(opening.end || 0), start, coordinateLength);
-          [[cursor, start], [start, end]].forEach(([segmentStart, segmentEnd], segmentIndex) => {
-            if (segmentEnd - segmentStart < 0.5) return;
-            items.push(createDimensionItem({
-              id: `${groupId}:${wall.id}:opening:${openingIndex}:${segmentIndex}`,
-              kind: 'opening-segment',
-              groupId,
+      if (hasPositioningChain) {
+        run.entries.forEach((wall) => {
+          const coordinateLength = Math.max(0.0001, Number(wall.coordinateLength || magnitude(subtract(wall.end, wall.start))));
+          const measurementLength = Math.max(0, Number(wall.measurementLength || coordinateLength));
+          const openings = getDoorOpeningsForWall(wall, doorOpeningsByWall);
+          const segments = [];
+          let cursor = 0;
+          if (openings.length) {
+            openings.forEach((opening) => {
+              segments.push([cursor, opening.start], [opening.start, opening.end]);
+              cursor = opening.end;
+            });
+            segments.push([cursor, coordinateLength]);
+          } else {
+            segments.push([0, coordinateLength]);
+          }
+          segments.forEach(([startOffset, endOffset], index) => {
+            const safeStart = clamp(Number(startOffset || 0), 0, coordinateLength);
+            const safeEnd = clamp(Number(endOffset || 0), safeStart, coordinateLength);
+            if (safeEnd - safeStart < 0.5) return;
+            const segmentStart = add(wall.start, scale(wall.direction, safeStart));
+            const segmentEnd = add(wall.start, scale(wall.direction, safeEnd));
+            items.push(createExteriorDimension({
+              id: `${groupId}:${wall.id}:position-${index}`,
+              kind: openings.length ? 'opening-segment' : 'chain-segment',
               wallId: wall.id,
-              sourceWallId: wall.sourceWallId,
-              label: (segmentEnd - segmentStart) / coordinateLength * measurementLength,
-              lane: 0,
-              start: add(wall.start, scale(wall.direction, segmentStart)),
-              end: add(wall.start, scale(wall.direction, segmentEnd)),
-              extensionStart: add(add(wall.start, scale(wall.direction, segmentStart)), scale(normal, Number(wall.thickness || 0))),
-              extensionEnd: add(add(wall.start, scale(wall.direction, segmentEnd)), scale(normal, Number(wall.thickness || 0))),
-              normal,
-              distance: detailDistance
+              sourceWallId: wall.sourceWallId || wall.id,
+              label: (safeEnd - safeStart) / coordinateLength * measurementLength,
+              lane: detailLane,
+              gap: detailGap,
+              startWall: wall,
+              endWall: wall,
+              start: segmentStart,
+              end: segmentEnd
             }));
           });
-          cursor = end;
         });
-        if (coordinateLength - cursor >= 0.5) {
-          items.push(createDimensionItem({
-            id: `${groupId}:${wall.id}:opening:end`,
-            kind: 'opening-segment',
-            groupId,
-            wallId: wall.id,
-            sourceWallId: wall.sourceWallId,
-            label: (coordinateLength - cursor) / coordinateLength * measurementLength,
-            lane: 0,
-            start: add(wall.start, scale(wall.direction, cursor)),
-            end: wall.end,
-            extensionStart: add(add(wall.start, scale(wall.direction, cursor)), scale(normal, Number(wall.thickness || 0))),
-            extensionEnd: add(wall.end, scale(normal, Number(wall.thickness || 0))),
-            normal,
-            distance: detailDistance
-          }));
-        }
-      });
-
-      if (run.entries.length > 1) {
-        const canonicalDirection = run.entries[0].canonicalDirection;
-        const startWall = run.entries.reduce((selected, wall) => (
-          Math.min(wall.startProjection, wall.endProjection) < Math.min(selected.startProjection, selected.endProjection) ? wall : selected
-        ));
-        const endWall = run.entries.reduce((selected, wall) => (
-          Math.max(wall.startProjection, wall.endProjection) > Math.max(selected.startProjection, selected.endProjection) ? wall : selected
-        ));
-        const start = dot(startWall.start, canonicalDirection) <= dot(startWall.end, canonicalDirection) ? startWall.start : startWall.end;
-        const end = dot(endWall.start, canonicalDirection) >= dot(endWall.end, canonicalDirection) ? endWall.start : endWall.end;
-        items.push(createDimensionItem({
-          id: `${groupId}:total`,
-          kind: 'chain-total',
-          groupId,
-          label: totalLength,
-          lane: 1,
-          start,
-          end,
-          extensionStart: add(start, scale(normal, Number(startWall.thickness || 0))),
-          extensionEnd: add(end, scale(normal, Number(endWall.thickness || 0))),
-          normal,
-          distance: totalDistance
-        }));
+        nextLaneByNormal.set(laneKey, detailLane + 1);
       }
     });
+  });
+
+  normalGroups.forEach(({ key, normal, direction }) => {
+    const entries = exteriorPoints.slice().sort((first, second) => (
+      dot(first.sourcePoint, direction) - dot(second.sourcePoint, direction)
+    ));
+    if (entries.length < 2) return;
+    const startEntry = entries[0];
+    const endEntry = entries[entries.length - 1];
+    const coordinateLength = Math.max(0, dot(endEntry.sourcePoint, direction) - dot(startEntry.sourcePoint, direction));
+    if (!coordinateLength) return;
+    const parallelWalls = sourceWalls.filter((wall) => Math.abs(Math.abs(dot(wall.direction, direction)) - 1) < 0.001);
+    const measurementScale = parallelWalls.length
+      ? parallelWalls.reduce((sum, wall) => {
+        const wallLength = Math.max(0.0001, Number(wall.coordinateLength || magnitude(subtract(wall.end, wall.start))));
+        return sum + Math.max(0, Number(wall.measurementLength || wallLength)) / wallLength;
+      }, 0) / parallelWalls.length
+      : 1;
+    const lane = nextLaneByNormal.get(key) || 0;
+    const gap = baseGap + laneGap * lane;
+    const support = Math.max(...exteriorPoints.map((entry) => dot(entry.point, normal)));
+    const thickness = Math.max(...sourceWalls.map((wall) => Math.max(0, Number(wall.thickness || 0))));
+    const dimensionPoint = (entry) => add(entry.point, scale(normal, Math.max(0, support - dot(entry.point, normal)) + gap));
+
+    items.push(createDimensionItem({
+      id: `dimension-overall:${key}`,
+      kind: 'chain-total',
+      groupId: `dimension-overall:${key}`,
+      sourceWallId: startEntry.wall.sourceWallId || startEntry.wall.id,
+      label: coordinateLength * measurementScale,
+      lane,
+      start: startEntry.point,
+      end: endEntry.point,
+      dimensionStart: dimensionPoint(startEntry),
+      dimensionEnd: dimensionPoint(endEntry),
+      extensionStart: startEntry.point,
+      extensionEnd: endEntry.point,
+      normal,
+      distance: thickness + gap
+    }));
   });
 
   return { items };

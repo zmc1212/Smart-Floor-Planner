@@ -14,7 +14,7 @@ page {
   -webkit-font-smoothing: antialiased;
 
   /* Fixed custom TabBar contract for every page declared in app.json.tabBar. */
-  --sfp-custom-tabbar-height: 126rpx;
+  --sfp-custom-tabbar-height: 104rpx;
   --sfp-custom-tabbar-safe-height: calc(var(--sfp-custom-tabbar-height) + env(safe-area-inset-bottom));
 
   /* Brand */

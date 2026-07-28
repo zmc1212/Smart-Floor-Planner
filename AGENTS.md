@@ -11,6 +11,9 @@ formal surveying, and AI-assisted design.
 - `docs/miniprogram-system-modules.md` describes the current Mini Program surface.
 - `docs/surveying-module/README.md` and `formal-surveying.md` describe the formal
   surveying contract and its operational cleanup procedure.
+- `蓝牙命令列表V1.docx` is the vendor protocol reference for the supported BLE
+  laser distance meter's commands, response frames, system information, and
+  device-status fields.
 - `PRODUCT_ROADMAP.md`, `docs/**/implementation_plan.md`, and old design notes are
   historical/planning material, not proof that a feature is implemented.
 - Feature status uses `Implemented`, `Limited`, or `Placeholder`. A label, mock
@@ -37,6 +40,20 @@ This gate applies to every feature, bug fix, refactor, and UI/API change:
 This is a completion requirement, not optional follow-up work. Documentation is
 the durable project memory used by later AI sessions; code comments, a prompt,
 or a roadmap do not replace the current module inventory.
+
+## Mandatory Design Approval Gate
+
+- Treat requests to design, redesign, restyle, explore, or propose an interface
+  as design-only work unless the user explicitly asks for implementation in the
+  same request.
+- For design-only work, produce the design proposal, wireframe, mockup, visual
+  reference, or review without modifying product code, styles, APIs, tests, or
+  runtime module documentation.
+- After presenting the design, wait for the user's explicit approval to begin
+  development. Only a clear instruction such as “开始开发”, “开始实施”, or
+  “按此方案落地” authorizes implementation.
+- Do not infer implementation approval from a request to redesign an interface,
+  even when the requested design is technically straightforward.
 
 ## Repository Map
 
@@ -117,6 +134,17 @@ staged change; split unrelated work.
   formal `floorPlanId` exists. Temporary BLE callback owners must restore the
   normal callback when they close.
 - Do not bring back the removed legacy editor components or old geometry utilities.
+
+### BLE Device Protocol
+
+- Before diagnosing or changing BLE discovery, commands, response parsing,
+  system information, battery/status display, or related Mini Program UI, read
+  the repository-root `蓝牙命令列表V1.docx` in addition to the applicable
+  Mini Program and formal-surveying documentation.
+- Treat the document's command and frame definitions as the protocol source of
+  truth. When it conflicts with a connected device's observed behavior, retain
+  the raw response bytes and resolve the discrepancy before assigning field
+  meaning or persisting/displaying a value.
 
 ## Verification
 

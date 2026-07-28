@@ -88,6 +88,9 @@ Page({
     showBLEConnector: false,
     currentCity: '',
     bleStatusText: '未连接设备',
+    bleSystemInfo: null,
+    homeLeadCount: 0,
+    homeAiCaseCount: 0,
     dashboardStats: [],
     recentPlans: [],
     quickTools: QUICK_TOOLS,
@@ -100,6 +103,12 @@ Page({
   },
 
   onLoad: function () {
+    var bluetooth = require('../../utils/bluetooth.js');
+    var that = this;
+    bluetooth.setSystemInfoCallback(function (systemInfo) {
+      that.onBLESystemInfo(systemInfo);
+    });
+
     var sysInfo = wx.getSystemInfoSync();
     var menuButtonInfo = wx.getMenuButtonBoundingClientRect();
     var navBarContentHeight = (menuButtonInfo.top - sysInfo.statusBarHeight) * 2 + menuButtonInfo.height;
@@ -114,6 +123,7 @@ Page({
       windowWidth: sysInfo.windowWidth,
       windowHeight: sysInfo.windowHeight,
       bleConnected: app.globalData.bleConnected || false,
+      bleSystemInfo: bluetooth.getCurrentSystemInfo(),
       userInfo: userInfo,
       openid: app.globalData.openid || '',
       isStaff: (userInfo && userInfo.role === 'staff'),
@@ -294,6 +304,8 @@ Page({
         bleStatusText: this.data.bleConnected
           ? (bluetooth.deviceCode ? '已连接 ' + bluetooth.deviceCode : '蓝牙已连接')
           : (bluetooth.connectedLabel || '未连接设备'),
+        homeLeadCount: stats.leadCount || 0,
+        homeAiCaseCount: stats.aiGeneratedCases || 0,
         dashboardStats: buildDashboardStats(stats),
         recentPlans: buildRecentPlans(this.data.homeDashboard.recentPlans || []),
       });
@@ -313,6 +325,8 @@ Page({
 
     this.setData({
       bleStatusText: this.data.bleConnected ? '已连接 LM-100' : '未连接设备',
+      homeLeadCount: plannedRooms.length || totalRooms,
+      homeAiCaseCount: (this.data.layoutTemplates || []).length,
       activeProjectTitle: this.data.currentProject_id ? '当前量房项目' : '新建量房项目',
       dashboardStats: [
         { key: 'plans', label: '已保存方案', value: cloudPlans.length, unit: '个', glyph: '档', tone: 'green' },
@@ -370,7 +384,7 @@ Page({
 
   onQuickBluetoothTap: function () {
     if (this.data.bleConnected) {
-      wx.showToast({ title: '蓝牙设备已连接', icon: 'none' });
+      this.showBLESystemInfo();
       return;
     }
 
@@ -405,6 +419,12 @@ Page({
     const floorPlanId = this.data.currentProject_id;
     const query = floorPlanId ? `?floorPlanId=${encodeURIComponent(floorPlanId)}` : '';
     wx.navigateTo({ url: `/pages/ai-design/ai-design${query}` });
+  },
+
+  onOpenLeads: function () {
+    wx.switchTab({
+      url: '/pages/leads-management/leads-management',
+    });
   },
 
   onQuickToolTap: function (e) {
@@ -686,7 +706,7 @@ Page({
   },
 
   onBluetoothDisconnect: function () {
-    this.setData({ bleConnected: false }, () => {
+    this.setData({ bleConnected: false, bleSystemInfo: null }, () => {
       this.syncHomeDashboard();
     });
     getApp().globalData.bleConnected = false;
@@ -715,6 +735,44 @@ Page({
       this.syncHomeDashboard();
     });
     getApp().globalData.bleConnected = true;
+  },
+
+  onBLESystemInfo: function (systemInfo) {
+    this.setData({ bleSystemInfo: systemInfo });
+  },
+
+  showBLESystemInfo: function () {
+    var bluetooth = require('../../utils/bluetooth.js');
+    var systemInfo = this.data.bleSystemInfo || bluetooth.getCurrentSystemInfo();
+
+    if (!systemInfo) {
+      var requested = bluetooth.requestSystemInfo();
+      wx.showToast({
+        title: requested ? '正在读取设备信息' : '设备信息暂不可读取',
+        icon: 'none',
+      });
+      return;
+    }
+
+    wx.showModal({
+      title: '测距仪系统信息',
+      content: [
+        '产品 ID：' + systemInfo.productIdHex,
+        '存储记录：' + systemInfo.storedRecordCount + ' 条',
+        '工作模式：' + systemInfo.machineModeLabel,
+        '单位代码：' + systemInfo.unitCode,
+        '背光/自动关机：' + systemInfo.backlightSeconds + ' 秒 / ' + systemInfo.autoPowerOffSeconds + ' 秒',
+        '激光关闭：' + systemInfo.laserOffSeconds + ' 秒',
+        '声音：' + (systemInfo.soundEnabled ? '开启' : '关闭'),
+        '基准位置：' + systemInfo.referencePositionLabel,
+        '放样 A/B：' + systemInfo.stakeoutAMeters + ' m / ' + systemInfo.stakeoutBMeters + ' m',
+        '角度单位代码：' + systemInfo.angleUnitCode,
+        '校准值：' + systemInfo.selfCalibrationValue,
+        '电量：ATS001# 协议未提供',
+      ].join('\n'),
+      showCancel: false,
+      confirmText: '知道了',
+    });
   },
 
   onShareAppMessage: function () {

@@ -8,6 +8,18 @@ It should be treated as the source of truth for UI generation, page redesign, an
 Primary visual reference:
 - `miniprogram/ChatGPT Image 2026年4月28日 16_27_02.png`
 
+Page-specific visual reference:
+- Home (`pages/index/index`): `design-references/miniprogram-home-vibrant-green-v5.png`
+  at the iPhone 13 Pro `390x844` baseline. The reference controls the home
+  composition, spacing, image treatment, and card hierarchy while live data,
+  role boundaries, navigation, and empty states remain authoritative.
+- Mine (`pages/mine/mine`):
+  `design-references/miniprogram-mine-work-clipboard-b.png` at the iPhone 13 Pro
+  `390x844` baseline. The reference controls the compact identity strip,
+  asymmetric Today Progress surface, quick-tool rhythm, and timeline treatment.
+  Server-provided actions, role boundaries, loading/error/empty states, and
+  ordinary-user floor-plan behavior remain authoritative.
+
 When image reference and implementation differ:
 - Follow this document first
 - Follow `design-tokens.json` second
@@ -257,6 +269,8 @@ Status chips should be:
 - The design set must also cover every full-screen or bottom-sheet editing branch: manual length and wall-thickness input, BLE-assisted measurement, phone-sensor and Pythagorean angle measurement, and the component editor's `spec`, `flip`, and `library` panels.
 - Preserve spatial continuity between states: the plan canvas, selected geometry, dimension label, and active anchor must remain visually identifiable when a sheet or contextual toolbar opens. Use overlay elevation and local colour emphasis rather than replacing the canvas with an unrelated screen.
 - State feedback is part of the design: show saved/draft status, connected or unavailable measurement-device state, disabled undo/redo, destructive reset confirmation, successful room closure, and recoverable validation feedback with concise, non-blocking treatments.
+- Do not use WeChat DevTools screenshots as visual evidence for `pages/surveying-editor/surveying-editor`. In that environment the native Canvas can cover `view` or `cover-view` overlays, so its screenshots do not represent the real layout. Validate this page through state-specific WXML/WXSS layering, state-branch tests, and the approved design references instead.
+- The v8 `cursorPlaced` reference state uses a low-contrast single-step grid, neutral-grey wall solids, a pale closed-space fill, and a green snapped anchor linked to a short green guide cross. It must not render the legacy blue full-canvas axes or orange square cursor; these changes are scoped to that state and preserve the measured floor-plan geometry.
 
 ### Formal Surveying Editor Fixed Chrome
 - Every formal-surveying reference and implementation state must reuse one fixed shell. Do not redesign the surrounding application chrome per state.

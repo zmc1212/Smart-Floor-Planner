@@ -80,7 +80,7 @@ test('geometric boundary merging cancels differently identified and split shared
   });
   assert.deepEqual(
     plan.items.filter((item) => item.kind === 'chain-total').map((item) => item.label).sort(),
-    ['6000', '6000']
+    ['2000', '2000', '6000', '6000']
   );
 });
 
@@ -113,7 +113,7 @@ test('geometric boundary merging excludes enclosed holes from dimensions', () =>
   }), true);
 });
 
-test('dimension extension lines start at the exterior wall face instead of the measured centerline', () => {
+test('door positioning and total dimensions start at the exterior wall face', () => {
   const wall = {
     id: 'exterior-wall',
     sourceWallId: 'exterior-wall',
@@ -140,11 +140,116 @@ test('dimension extension lines start at the exterior wall face instead of the m
     groupTolerance: 1
   });
 
-  assert.equal(plan.items.length, 3);
-  plan.items.forEach((item) => {
+  assert.equal(plan.items.length, 4);
+  assert.deepEqual(plan.items.map((item) => item.kind), [
+    'opening-segment', 'opening-segment', 'opening-segment', 'chain-total'
+  ]);
+  plan.items.slice(0, 3).forEach((item) => {
     assert.equal(item.extensionStart.y, -200);
     assert.equal(item.extensionEnd.y, -200);
     assert.equal(item.start.y, -320);
     assert.equal(item.end.y, -320);
+  });
+  assert.equal(plan.items[3].start.y, -500);
+  assert.equal(plan.items[3].end.y, -500);
+});
+
+test('continuous exterior walls use a positioning chain below one V8 total', () => {
+  const walls = [
+    [0, 3000, 'left'],
+    [3000, 7200, 'middle'],
+    [7200, 9700, 'right']
+  ].map(([startX, endX, id]) => ({
+    id,
+    sourceWallId: id,
+    closed: true,
+    isExteriorBoundary: true,
+    start: { x: startX, y: 0 },
+    end: { x: endX, y: 0 },
+    outerStart: { x: startX - 100, y: -200 },
+    outerEnd: { x: endX + 100, y: -200 },
+    coordinateLength: endX - startX,
+    measurementLength: endX - startX,
+    thickness: 200,
+    outsideSign: -1
+  }));
+  const plan = createExteriorDimensionPlan({
+    walls,
+    baseGap: 120,
+    laneGap: 180,
+    groupTolerance: 1
+  });
+
+  assert.deepEqual(plan.items.filter((item) => item.kind === 'chain-segment').map((item) => item.label), ['3000', '4200', '2500']);
+  const total = plan.items.find((item) => item.kind === 'chain-total');
+  assert.equal(total.label, '9700');
+  assert.equal(total.lane, 1);
+  assert.equal(plan.items.every((item) => item.extensionStart.y === -200 && item.extensionEnd.y === -200), true);
+});
+
+test('dimension lines preserve mitered exterior wall corners as their extension origins', () => {
+  const wall = {
+    id: 'mitered-wall',
+    sourceWallId: 'mitered-wall',
+    closed: true,
+    isExteriorBoundary: true,
+    start: { x: 0, y: 0 },
+    end: { x: 3000, y: 0 },
+    outerStart: { x: -120, y: -200 },
+    outerEnd: { x: 3120, y: -200 },
+    coordinateLength: 3000,
+    measurementLength: 3000,
+    thickness: 200,
+    outsideSign: -1
+  };
+  const plan = createExteriorDimensionPlan({
+    walls: [wall],
+    baseGap: 120,
+    laneGap: 180,
+    groupTolerance: 1
+  });
+
+  assert.equal(plan.items.length, 1);
+  assert.deepEqual(plan.items[0].extensionStart, wall.outerStart);
+  assert.deepEqual(plan.items[0].extensionEnd, wall.outerEnd);
+  assert.deepEqual(plan.items[0].start, { x: -120, y: -320 });
+  assert.deepEqual(plan.items[0].end, { x: 3120, y: -320 });
+});
+
+test('reentrant exterior edges route their dimensions beyond the whole closed plan', () => {
+  const geometry = createGeometryBuilder();
+  geometry.addSpace('notched', [
+    { x: 0, y: 0 },
+    { x: 4000, y: 0 },
+    { x: 4000, y: 1000 },
+    { x: 2000, y: 1000 },
+    { x: 2000, y: 3000 },
+    { x: 0, y: 3000 }
+  ]);
+  const boundary = createExteriorBoundarySegments({
+    walls: geometry.walls,
+    spaces: geometry.spaces,
+    tolerance: 1
+  });
+  const baseGap = 120;
+  const plan = createExteriorDimensionPlan({
+    walls: boundary,
+    baseGap,
+    laneGap: 180,
+    groupTolerance: 1
+  });
+
+  assert.deepEqual(
+    plan.items.filter((item) => item.kind === 'chain-total').map((item) => item.label).sort(),
+    ['3000', '3000', '4000', '4000']
+  );
+
+  plan.items.forEach((item) => {
+    const outerSupport = Math.max(...boundary.flatMap((wall) => [wall.outerStart, wall.outerEnd])
+      .map((point) => point.x * item.normal.x + point.y * item.normal.y));
+    assert.ok(
+      item.start.x * item.normal.x + item.start.y * item.normal.y >= outerSupport + baseGap - 0.001,
+      `${item.id} should be placed beyond the full exterior outline`
+    );
   });
 });
