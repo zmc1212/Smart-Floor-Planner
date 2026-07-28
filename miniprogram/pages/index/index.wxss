@@ -256,7 +256,7 @@
 }
 
 .service-grid {
-  height: 190rpx;
+  height: 208rpx;
   margin-top: 8rpx;
   display: grid;
   grid-template-columns: 1.1fr 1fr 0.92fr;
@@ -265,11 +265,13 @@
 
 .service-card {
   min-width: 0;
-  height: 190rpx;
+  height: 208rpx;
   padding: 14rpx 16rpx;
   border-radius: 22rpx;
   box-shadow: 0 8rpx 22rpx rgba(78, 89, 78, 0.06);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   box-sizing: border-box;
 }
 
@@ -392,7 +394,7 @@
 
 .service-footer {
   height: 48rpx;
-  margin-top: 4rpx;
+  margin-top: auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -427,19 +429,21 @@
   display: block;
   width: 100%;
   height: 80rpx;
-  margin-top: 4rpx;
+  margin-top: auto;
   border-radius: 9rpx;
+  flex-shrink: 0;
 }
 
 .device-summary {
   height: 78rpx;
-  margin-top: 3rpx;
+  margin-top: auto;
   padding: 4rpx 6rpx;
   border-radius: 11rpx;
   background: rgba(255, 255, 255, 0.82);
   display: flex;
   align-items: center;
   gap: 5rpx;
+  flex-shrink: 0;
   box-sizing: border-box;
 }
 

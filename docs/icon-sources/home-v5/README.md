@@ -10,6 +10,11 @@ for the home hero scene, measurement illustration, service imagery, plan
 preview, and the two small header icons. Text, business data, status, and touch
 targets remain native WXML/WXSS rather than being baked into a full-page image.
 
+Service micro-assets are cropped to contain only their visual subject. In
+particular, `ai-wand.jpg`, `bluetooth-mark.jpg`, and `laser-device.jpg` exclude
+the neighboring reference labels and preserve complete subject padding so
+native card text cannot expose partial baked-in glyphs.
+
 These files do not introduce an external icon library or third-party stock
 asset. Their usage and redistribution follow the ownership terms of the source
 design supplied to this project.

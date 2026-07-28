@@ -43,15 +43,14 @@ utilities, and the admin APIs they call.
 - Implemented: dashboard summaries, location/city, role-scoped recent cloud
   plans (which remain visible while a local draft exists and open the formal
   editor directly), lead capture, BLE connection state, remembered-device
-  auto-connect, automatic `ATS001#` system-information query after a compatible
-  BLE notify/write channel is ready, a connected-device system-information view,
-  new/continue formal surveying, floor-plan room entry, AI
+  auto-connect, new/continue formal surveying, floor-plan room entry, AI
   handoff for a room, a persistent AI Design shortcut for enterprise staff,
   and direct Home shortcuts to Leads and BLE pairing.
-- BLE system data: the 28-byte `ATS` response is CRC-validated and exposes
-  product ID, stored-record count, unit/mode, timing settings, sound, reference
-  position, stakeout values, angle-unit code, and calibration value. The vendor
-  `ATS001#` contract has no battery percentage or voltage field.
+- Limited: the write/notify characteristic pairing is hardware-specific. BLE
+  diagnostics log the discovered channel properties, each command write, and
+  each raw notification with full service/characteristic UUIDs; receive buffers
+  are isolated per notification channel. Private binary payloads remain raw
+  diagnostics until their protocol mapping is confirmed.
 - Visual baseline: `design-references/miniprogram-home-vibrant-green-v5.png`
   at iPhone 13 Pro `390x844`. The shipped composition uses project-local
   derived scene assets while city, counts, device state, enterprise branding,
