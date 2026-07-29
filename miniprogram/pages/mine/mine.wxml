@@ -1,146 +1,107 @@
 <!--
-THESIS: “我的”是现场工作夹，先回答今天做什么，再提供工具与账户入口；拒绝传统个人中心的头像大卡和等权宫格。
-OWN-WORLD: 纸白底、单一亮绿主动作、薄荷/蓝/暖黄辅助色、克制建筑线稿与统一圆角线性图标。
-STORY: 用户识别当前身份，处理下一项任务，扫描角色指标，进入常用工具，再查看剩余待办与账户设置。
-FIRST VIEWPORT: 紧凑身份横条置顶；今日进度以一张主任务和两项指标形成不对称构图；工具条紧随其后。
-FORM: Operate 模式的现场工作夹，结构候选 4，surface seed 80aeed95。
+THESIS: “我的”是设计与交付人员的移动工作台，优先呈现身份、业务数字、工具和下一步任务。
+OWN-WORLD: 柔白底、清透薄荷场景、绿/蓝/橙/紫四组工具色，以及来自 v6 参考稿的真实室内切图。
+STORY: 用户确认身份，扫描进度，进入角色化工具，处理待办，再继续 AI 设计或账户操作。
+FIRST VIEWPORT: 标题操作区与室内场景融合；半透明资料卡压住场景；统计、工作台、待办与 AI 横幅紧凑衔接。
+FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 的层级和构图。
 -->
 <view class="mine-page sfp-tab-page">
   <scroll-view class="mine-scroll" scroll-y enhanced show-scrollbar="{{false}}">
-  <view wx:if="{{!isLoggedIn}}" class="login-state">
-    <view class="login-visual" aria-hidden="true">
-      <image class="login-visual-image" src="/images/login-hero.png" mode="aspectFill" />
-    </view>
-    <view class="login-copy">
-      <view class="login-kicker">SMART FLOOR PLANNER</view>
-      <view class="login-title">登录你的工作台</view>
-      <view class="login-subtitle">查看今日任务、业务进度和已保存户型</view>
-      <button class="primary-button login-button" bindtap="goToLogin">立即登录</button>
-    </view>
-  </view>
-
-  <view wx:else class="mine-content">
-    <view wx:if="{{loadingMine}}" class="loading-state" aria-label="正在加载工作台">
-      <view class="skeleton skeleton-profile"></view>
-      <view class="skeleton skeleton-focus"></view>
-      <view class="skeleton skeleton-tools"></view>
+    <view wx:if="{{!isLoggedIn}}" class="login-state">
+      <view class="login-visual" aria-hidden="true">
+        <image class="login-visual-image" src="/images/login-hero.png" mode="aspectFill" />
+      </view>
+      <view class="login-copy">
+        <view class="login-kicker">SMART FLOOR PLANNER</view>
+        <view class="login-title">登录你的工作台</view>
+        <view class="login-subtitle">查看今日任务、业务进度和已保存户型</view>
+        <button class="primary-button login-button" bindtap="goToLogin">立即登录</button>
+      </view>
     </view>
 
-    <view wx:elif="{{mineError}}" class="request-error">
-      <image class="request-error-icon" src="/images/mine-icons/clipboard-pen.png" mode="aspectFit" />
-      <view class="request-error-title">工作台暂时无法加载</view>
-      <view class="request-error-message">{{mineError}}</view>
-      <button class="retry-button" bindtap="retryMine">重新加载</button>
-    </view>
-
-    <view wx:elif="{{isStaff}}" class="staff-dashboard">
-      <view class="profile-strip">
-        <image class="profile-scene" src="/images/mine-profile-card.png" mode="widthFix" aria-hidden="true" />
-        <view class="profile-content">
-          <image class="avatar" src="{{mineData.profile.avatar || defaultAvatarUrl}}" mode="aspectFill" />
-          <view class="profile-copy">
-            <view class="profile-name-row">
-              <text class="profile-name">{{mineData.profile.name}}</text>
-              <text class="role-badge">{{mineData.profile.roleLabel}}</text>
-            </view>
-            <text class="enterprise-name">{{mineData.profile.enterpriseName}}</text>
-            <text class="profile-phone">{{mineData.profile.phoneMasked || '未绑定手机号'}}</text>
-          </view>
-        </view>
-        <button
-          class="profile-settings"
-          aria-label="查看账号信息"
-          bindtap="onOpenAccountSecurity"
-        >
-          <image src="/images/mine-icons/edit.png" mode="aspectFit" />
-        </button>
+    <view wx:else class="mine-content">
+      <view wx:if="{{loadingMine}}" class="loading-state" aria-label="正在加载工作台">
+        <view class="skeleton skeleton-hero"></view>
+        <view class="skeleton skeleton-stats"></view>
+        <view class="skeleton skeleton-section"></view>
       </view>
 
-      <view class="today-section">
-        <view class="section-heading-row">
-          <view>
-            <view class="section-title">今日进度</view>
-            <view class="section-caption">{{mineData.todos.length}} 项待处理</view>
+      <view wx:elif="{{mineError}}" class="request-error">
+        <image class="request-error-icon" src="/images/mine-icons/clipboard-pen.png" mode="aspectFit" />
+        <view class="request-error-title">工作台暂时无法加载</view>
+        <view class="request-error-message">{{mineError}}</view>
+        <button class="retry-button" bindtap="retryMine">重新加载</button>
+      </view>
+
+      <view wx:elif="{{isStaff}}" class="staff-dashboard">
+        <view class="profile-hero">
+          <image class="profile-scene" src="/images/mine-v6/profile-scene.jpg" mode="aspectFill" aria-hidden="true" />
+          <view class="profile-scene-fade" aria-hidden="true"></view>
+
+          <view
+            class="mine-header"
+            style="margin-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
+          >
+            <view class="mine-title">我的</view>
+            <view class="header-actions">
+              <button class="edit-profile-button" bindtap="onOpenAccountSecurity">
+                <image src="/images/mine-icons/edit.png" mode="aspectFit" />
+                <text>编辑资料</text>
+              </button>
+              <button class="settings-button" aria-label="账号设置" bindtap="onOpenAccountSecurity">
+                <image src="/images/mine-v6/settings.png" mode="aspectFit" />
+              </button>
+            </view>
           </view>
-          <view class="date-mark">
-            <text class="date-dot"></text>
-            <text>{{mineData.todos.length ? '工作进行中' : '今日已清空'}}</text>
+
+          <view class="profile-card">
+            <image class="avatar" src="{{mineData.profile.avatar || defaultAvatarUrl}}" mode="aspectFill" />
+            <view class="profile-copy">
+              <view class="profile-name-row">
+                <text class="profile-name">{{mineData.profile.name}}</text>
+                <text class="role-badge">{{mineData.profile.roleLabel}}</text>
+              </view>
+              <view class="profile-detail-row">
+                <image src="/images/mine-icons/building.png" mode="aspectFit" />
+                <text>{{mineData.profile.enterpriseName}}</text>
+              </view>
+              <view class="profile-detail-row verified">
+                <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+                <text>{{mineData.profile.phoneMasked || '企业身份已验证'}}</text>
+              </view>
+            </view>
           </view>
         </view>
 
-        <view class="today-layout">
-          <view
-            wx:if="{{primaryTodo}}"
-            class="primary-task"
-            data-id="{{primaryTodo.recordId}}"
-            bindtap="onOpenTodoDetail"
-            aria-role="button"
-            aria-label="处理{{primaryTodo.title}}"
-          >
-            <view class="primary-task-top">
-              <view class="task-icon {{primaryTodo.statusTone}}">
-                <image src="/images/mine-icons/todo-{{primaryTodo.statusTone}}.png" mode="aspectFit" />
-              </view>
-              <view class="task-status {{primaryTodo.statusTone}}">{{primaryTodo.statusLabel}}</view>
-            </view>
-            <image class="task-visual" src="/images/mine-icons/clipboard-pen.png" mode="aspectFit" aria-hidden="true" />
-            <view class="task-kicker">下一项</view>
-            <view class="task-title">{{primaryTodo.title}}</view>
-            <view class="task-meta">{{primaryTodo.dueLabel}}</view>
-            <view class="task-location">{{primaryTodo.locationText}} · {{primaryTodo.contactName}}</view>
-            <view class="task-action">
-              <text>开始处理</text>
-              <view class="css-chevron"></view>
-            </view>
-          </view>
-
-          <view wx:else class="primary-task primary-task-empty">
-            <view class="empty-check">
-              <image src="/images/mine-icons/deal.png" mode="aspectFit" />
-            </view>
-            <view class="task-kicker">今日状态</view>
-            <view class="task-title">待办已清空</view>
-            <view class="task-meta">新的业务任务会出现在这里</view>
-            <view class="task-action" bindtap="onOpenAllTodos">
-              <text>查看业务记录</text>
-              <view class="css-chevron"></view>
-            </view>
-          </view>
-
-          <view class="focus-metrics">
+        <scroll-view class="stats-scroll" scroll-x enhanced show-scrollbar="{{false}}">
+          <view class="stats-row">
             <view
-              wx:for="{{focusCards}}"
+              wx:for="{{summaryCards}}"
               wx:key="key"
-              class="focus-metric tone-{{item.tone}}"
+              class="stat-card tone-summary-{{index}}"
               data-target="{{item.target}}"
               bindtap="onTapCard"
               aria-role="button"
               aria-label="{{item.label}}{{item.value}}{{item.unit}}"
             >
-              <view class="focus-metric-head">
-                <image src="/images/mine-icons/{{item.icon}}.png" mode="aspectFit" />
-                <view class="css-chevron muted"></view>
-              </view>
-              <view class="focus-label">{{item.label}}</view>
-              <view class="focus-value">
-                <text>{{item.value}}</text>
-                <text class="focus-unit">{{item.unit}}</text>
-              </view>
-              <view class="focus-detail">{{item.detailText || item.deltaText}}</view>
+              <view class="stat-label">{{item.label}}</view>
+              <view class="stat-value"><text>{{item.value}}</text><text>{{item.unit}}</text></view>
+              <image class="stat-illustration" src="{{item.illustration}}" mode="aspectFit" aria-hidden="true" />
             </view>
           </view>
-        </view>
-      </view>
+        </scroll-view>
 
-      <view class="tools-section">
-        <view class="section-heading-row compact">
-          <view class="section-title">常用工具</view>
-          <view class="section-caption">按角色显示</view>
-        </view>
-        <scroll-view class="tool-scroll" scroll-x enhanced show-scrollbar="{{false}}">
-          <view class="tool-row">
+        <view class="surface-section workbench-section">
+          <view class="section-heading-row">
+            <view class="section-title">我的工作台</view>
+            <view class="section-meta all-tools-label">
+              <text>全部工具</text>
+              <view class="css-chevron"></view>
+            </view>
+          </view>
+          <view class="tool-grid">
             <view
-              wx:for="{{mineData.actions}}"
+              wx:for="{{workbenchActions}}"
               wx:key="key"
               class="tool-item {{item.toneClass}}"
               data-target="{{item.target}}"
@@ -149,216 +110,164 @@ FORM: Operate 模式的现场工作夹，结构候选 4，surface seed 80aeed95�
               aria-label="{{item.label}}"
             >
               <view class="tool-icon">
-                <image src="/images/mine-icons/{{item.icon}}.png" mode="aspectFit" />
+                <image src="{{item.iconPath}}" mode="aspectFit" />
               </view>
               <view class="tool-label">{{item.label}}</view>
               <view class="tool-sublabel">{{item.sublabel}}</view>
             </view>
-            <view class="tool-item tone-yellow" bindtap="onOpenAIHome" aria-role="button" aria-label="AI 设计">
-              <view class="tool-icon">
-                <image src="/images/mine-icons/bulb.png" mode="aspectFit" />
-              </view>
-              <view class="tool-label">AI 设计</view>
-              <view class="tool-sublabel">户型智能设计</view>
-            </view>
-          </view>
-        </scroll-view>
-      </view>
-
-      <view wx:if="{{overviewCards.length}}" class="overview-section">
-        <view class="section-heading-row compact">
-          <view class="section-title">业务概览</view>
-          <view class="section-caption">实时业务数据</view>
-        </view>
-        <view class="overview-grid">
-          <view
-            wx:for="{{overviewCards}}"
-            wx:key="key"
-            class="overview-item tone-{{item.tone}}"
-            data-target="{{item.target}}"
-            bindtap="onTapCard"
-            aria-role="button"
-          >
-            <view class="overview-copy">
-              <view class="overview-label">{{item.label}}</view>
-              <view class="overview-detail">{{item.detailText || item.deltaText}}</view>
-            </view>
-            <view class="overview-value">
-              <text>{{item.value}}</text>
-              <text>{{item.unit}}</text>
-            </view>
           </view>
         </view>
-      </view>
 
-      <view class="todo-section">
-        <view class="section-heading-row compact">
-          <view>
+        <view class="surface-section todo-section">
+          <view class="section-heading-row">
             <view class="section-title">我的待办</view>
-            <view class="section-caption">按时间顺序排列</view>
-          </view>
-          <view class="section-link" bindtap="onOpenAllTodos">
-            <text>查看全部</text>
-            <view class="css-chevron muted"></view>
-          </view>
-        </view>
-
-        <view wx:if="{{remainingTodos.length}}" class="timeline-list">
-          <view
-            wx:for="{{remainingTodos}}"
-            wx:key="recordId"
-            class="timeline-item"
-            data-id="{{item.recordId}}"
-            bindtap="onOpenTodoDetail"
-            aria-role="button"
-          >
-            <view class="timeline-marker {{item.statusTone}}">
-              <image src="/images/mine-icons/todo-{{item.statusTone}}.png" mode="aspectFit" />
-            </view>
-            <view class="timeline-copy">
-              <view class="timeline-title">{{item.title}}</view>
-              <view class="timeline-desc">{{item.locationText}} · {{item.contactName}}</view>
-              <view class="timeline-time">{{item.dueLabel}}</view>
-            </view>
-            <view class="timeline-status {{item.statusTone}}">{{item.statusLabel}}</view>
-            <view class="css-chevron muted"></view>
-          </view>
-        </view>
-
-        <view wx:else class="todo-empty">
-          <view class="todo-empty-title">{{primaryTodo ? '当前仅有上方一项待办' : '暂无待办'}}</view>
-          <view class="todo-empty-caption">新的报备、量房和设计任务会出现在这里</view>
-        </view>
-      </view>
-
-      <view class="account-section">
-        <view class="account-row" bindtap="onEnableNotification" aria-role="button">
-          <view class="account-left">
-            <view class="account-icon tone-blue">
-              <image src="/images/mine-icons/bell.png" mode="aspectFit" />
-            </view>
-            <view>
-              <view class="account-title">业务通知提醒</view>
-              <view class="account-caption">接收任务状态变化</view>
+            <view class="section-link" bindtap="onOpenAllTodos" aria-role="button">
+              <text>全部待办</text>
+              <view class="css-chevron"></view>
             </view>
           </view>
-          <view class="css-chevron muted"></view>
-        </view>
-        <view class="account-separator"></view>
-        <view class="account-row" bindtap="onOpenAccountSecurity" aria-role="button">
-          <view class="account-left">
-            <view class="account-icon tone-green">
-              <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
-            </view>
-            <view>
-              <view class="account-title">账号与安全</view>
-              <view class="account-caption">查看身份与绑定信息</view>
-            </view>
-          </view>
-          <view class="css-chevron muted"></view>
-        </view>
-      </view>
 
-      <button class="logout-button" bindtap="onLogout">
-        <image src="/images/mine-icons/log-out.png" mode="aspectFit" />
-        <text>切换账号 / 退出登录</text>
-      </button>
-    </view>
-
-    <view wx:else class="user-dashboard">
-      <view class="profile-strip user-profile-strip">
-        <image class="profile-scene" src="/images/mine-profile-card.png" mode="widthFix" aria-hidden="true" />
-        <view class="profile-content">
-          <image class="avatar" src="{{mineData.profile.avatar || defaultAvatarUrl}}" mode="aspectFill" />
-          <view class="profile-copy">
-            <view class="profile-name-row">
-              <text class="profile-name">{{mineData.profile.name || '微信用户'}}</text>
-              <text class="role-badge">普通用户</text>
-            </view>
-            <text class="enterprise-name">{{mineData.profile.phoneMasked || '智能量房大师'}}</text>
-          </view>
-        </view>
-        <button class="profile-settings" aria-label="查看账号信息" bindtap="onOpenAccountSecurity">
-          <image src="/images/mine-icons/edit.png" mode="aspectFit" />
-        </button>
-      </view>
-
-      <view class="user-summary">
-        <view>
-          <view class="section-caption">我的空间档案</view>
-          <view wx:if="{{floorPlansLoading}}" class="user-summary-title">正在读取户型</view>
-          <view wx:elif="{{floorPlansError}}" class="user-summary-title">户型信息待重试</view>
-          <view wx:else class="user-summary-title">已保存 {{floorPlans.length}} 个户型</view>
-          <view class="user-summary-caption">
-            {{floorPlansError ? '请重新加载户型数据' : '继续测量，或使用 AI 生成设计灵感'}}
-          </view>
-        </view>
-        <button class="summary-action" bindtap="onCreateNew" aria-label="新建正式量房">新建量房</button>
-      </view>
-
-      <view class="user-actions">
-        <view class="user-action tone-green" bindtap="onCreateNew" aria-role="button" aria-label="开始正式量房">
-          <image src="/images/mine-icons/home.png" mode="aspectFit" />
-          <text>开始量房</text>
-        </view>
-        <view class="user-action tone-yellow" bindtap="onOpenAIHome" aria-role="button" aria-label="打开 AI 设计">
-          <image src="/images/mine-icons/bulb.png" mode="aspectFit" />
-          <text>AI 设计</text>
-        </view>
-      </view>
-
-      <view class="floorplan-section">
-        <view class="section-heading-row compact">
-          <view class="section-title">我的户型</view>
-          <view wx:if="{{floorPlansLoading}}" class="section-caption">加载中</view>
-          <view wx:elif="{{floorPlansError}}" class="section-caption">待重试</view>
-          <view wx:else class="section-caption">{{floorPlans.length}} 个</view>
-        </view>
-        <view wx:if="{{floorPlansLoading}}" class="floorplan-loading">
-          <view class="skeleton floorplan-skeleton"></view>
-          <view class="skeleton floorplan-skeleton"></view>
-        </view>
-        <view wx:elif="{{floorPlansError}}" class="floorplan-error">
-          <view class="todo-empty-title">户型暂时无法加载</view>
-          <view class="todo-empty-caption">{{floorPlansError}}</view>
-          <button class="inline-retry-button" bindtap="retryFloorPlans">重新加载</button>
-        </view>
-        <view wx:elif="{{floorPlans.length}}" class="floorplan-list">
-          <view
-            wx:for="{{floorPlans}}"
-            wx:key="_id"
-            class="floorplan-row"
-            data-id="{{item._id}}"
-            bindtap="onOpenFloorPlan"
-            aria-role="button"
-          >
-            <view class="floorplan-icon">
-              <image src="/images/mine-icons/home.png" mode="aspectFit" />
-            </view>
-            <view class="floorplan-copy">
-              <view class="floorplan-title">{{item.name}}</view>
-              <view class="floorplan-meta">{{item.createdAt}} · {{item.roomCount}} 个空间</view>
-            </view>
+          <view wx:if="{{displayTodos.length}}" class="todo-list">
             <view
-              class="floorplan-ai"
-              catchtap="onAIGen"
-              data-id="{{item._id}}"
+              wx:for="{{displayTodos}}"
+              wx:key="recordId"
+              class="todo-item"
+              data-id="{{item.recordId}}"
+              bindtap="onOpenTodoDetail"
               aria-role="button"
-              aria-label="使用{{item.name}}进行 AI 设计"
-            >AI 设计</view>
+              aria-label="处理{{item.title}}"
+            >
+              <view class="todo-time tone-{{item.statusTone}}">
+                <view class="todo-time-day">{{item.dayLabel}}</view>
+                <view class="todo-time-hour">{{item.timeLabel}}</view>
+              </view>
+              <image class="todo-thumb" src="{{item.thumbnail}}" mode="aspectFill" />
+              <view class="todo-copy">
+                <view class="todo-title">{{item.locationText || item.title}}</view>
+                <view class="todo-kind">{{item.title}}</view>
+                <view class="todo-contact">{{item.contactName || '查看任务详情'}}</view>
+              </view>
+              <view class="todo-status tone-{{item.statusTone}}">{{item.statusLabel}}</view>
+            </view>
+          </view>
+
+          <view wx:else class="todo-empty">
+            <image src="/images/mine-icons/deal.png" mode="aspectFit" />
+            <view>
+              <view class="todo-empty-title">暂无待办</view>
+              <view class="todo-empty-caption">新的量房与设计任务会出现在这里</view>
+            </view>
           </view>
         </view>
-        <view wx:else class="floorplan-empty">
-          <view class="todo-empty-title">还没有保存户型</view>
-          <view class="todo-empty-caption">从一次正式量房开始建立你的空间档案</view>
+
+        <view class="ai-banner" bindtap="onOpenAIHome" aria-role="button" aria-label="进入 AI 设计空间">
+          <image class="ai-banner-image" src="/images/mine-v6/ai-room.jpg" mode="aspectFill" />
+          <view class="ai-banner-copy">
+            <view class="ai-banner-kicker">AI 设计空间</view>
+            <view class="ai-banner-title">让户型快速生成设计灵感</view>
+            <view class="ai-banner-caption">从现有户型继续创作</view>
+            <view class="ai-banner-action">去查看</view>
+          </view>
+          <view class="ai-banner-arrow"><view class="css-chevron"></view></view>
         </view>
+
+        <view class="account-strip">
+          <view class="account-action" bindtap="onEnableNotification" aria-role="button">
+            <image src="/images/mine-icons/bell.png" mode="aspectFit" />
+            <text>通知提醒</text>
+          </view>
+          <view class="account-divider"></view>
+          <view class="account-action" bindtap="onOpenAccountSecurity" aria-role="button">
+            <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+            <text>账号与安全</text>
+          </view>
+        </view>
+
+        <button class="logout-button" bindtap="onLogout">切换账号 / 退出登录</button>
       </view>
 
-      <button class="logout-button" bindtap="onLogout">
-        <image src="/images/mine-icons/log-out.png" mode="aspectFit" />
-        <text>切换账号 / 退出登录</text>
-      </button>
+      <view wx:else class="user-dashboard">
+        <view class="profile-hero user-profile-hero">
+          <image class="profile-scene" src="/images/mine-v6/profile-scene.jpg" mode="aspectFill" aria-hidden="true" />
+          <view class="profile-scene-fade" aria-hidden="true"></view>
+          <view
+            class="mine-header"
+            style="margin-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
+          >
+            <view class="mine-title">我的</view>
+            <button class="settings-button" aria-label="账号设置" bindtap="onOpenAccountSecurity">
+              <image src="/images/mine-v6/settings.png" mode="aspectFit" />
+            </button>
+          </view>
+          <view class="profile-card compact-profile-card">
+            <image class="avatar" src="{{mineData.profile.avatar || defaultAvatarUrl}}" mode="aspectFill" />
+            <view class="profile-copy">
+              <view class="profile-name-row">
+                <text class="profile-name">{{mineData.profile.name || '微信用户'}}</text>
+                <text class="role-badge">普通用户</text>
+              </view>
+              <view class="profile-detail-row verified">
+                <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+                <text>{{mineData.profile.phoneMasked || '智能量房大师'}}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <view class="user-summary">
+          <view>
+            <view class="section-meta">我的空间档案</view>
+            <view wx:if="{{floorPlansLoading}}" class="user-summary-title">正在读取户型</view>
+            <view wx:elif="{{floorPlansError}}" class="user-summary-title">户型信息待重试</view>
+            <view wx:else class="user-summary-title">已保存 {{floorPlans.length}} 个户型</view>
+            <view class="user-summary-caption">{{floorPlansError ? '请重新加载户型数据' : '继续量房，或使用 AI 生成设计灵感'}}</view>
+          </view>
+          <button class="summary-action" bindtap="onCreateNew">新建量房</button>
+        </view>
+
+        <view class="surface-section floorplan-section">
+          <view class="section-heading-row">
+            <view class="section-title">我的户型</view>
+            <view class="section-meta">{{floorPlans.length}} 个</view>
+          </view>
+          <view wx:if="{{floorPlansLoading}}" class="floorplan-loading">
+            <view class="skeleton floorplan-skeleton"></view>
+            <view class="skeleton floorplan-skeleton"></view>
+          </view>
+          <view wx:elif="{{floorPlansError}}" class="floorplan-error">
+            <view class="todo-empty-title">户型暂时无法加载</view>
+            <view class="todo-empty-caption">{{floorPlansError}}</view>
+            <button class="inline-retry-button" bindtap="retryFloorPlans">重新加载</button>
+          </view>
+          <view wx:elif="{{floorPlans.length}}" class="floorplan-list">
+            <view wx:for="{{floorPlans}}" wx:key="_id" class="floorplan-row" data-id="{{item._id}}" bindtap="onOpenFloorPlan" aria-role="button">
+              <view class="floorplan-icon"><image src="/images/mine-icons/home.png" mode="aspectFit" /></view>
+              <view class="floorplan-copy">
+                <view class="floorplan-title">{{item.name}}</view>
+                <view class="floorplan-meta">{{item.createdAt}} · {{item.roomCount}} 个空间</view>
+              </view>
+              <view class="floorplan-ai" catchtap="onAIGen" data-id="{{item._id}}" aria-role="button">AI 设计</view>
+            </view>
+          </view>
+          <view wx:else class="todo-empty floorplan-empty">
+            <image src="/images/mine-icons/home.png" mode="aspectFit" />
+            <view>
+              <view class="todo-empty-title">还没有保存户型</view>
+              <view class="todo-empty-caption">从一次正式量房开始建立空间档案</view>
+            </view>
+          </view>
+        </view>
+
+        <view class="user-actions">
+          <view class="user-action tone-green" bindtap="onCreateNew" aria-role="button">
+            <image src="/images/mine-icons/home.png" mode="aspectFit" /><text>开始量房</text>
+          </view>
+          <view class="user-action tone-orange" bindtap="onOpenAIHome" aria-role="button">
+            <image src="/images/mine-icons/bulb.png" mode="aspectFit" /><text>AI 设计</text>
+          </view>
+        </view>
+        <button class="logout-button" bindtap="onLogout">切换账号 / 退出登录</button>
+      </view>
     </view>
-  </view>
   </scroll-view>
 </view>

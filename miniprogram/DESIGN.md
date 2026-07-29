@@ -14,11 +14,23 @@ Page-specific visual reference:
   composition, spacing, image treatment, and card hierarchy while live data,
   role boundaries, navigation, and empty states remain authoritative.
 - Mine (`pages/mine/mine`):
-  `design-references/miniprogram-mine-work-clipboard-b.png` at the iPhone 13 Pro
-  `390x844` baseline. The reference controls the compact identity strip,
-  asymmetric Today Progress surface, quick-tool rhythm, and timeline treatment.
+  `design-references/miniprogram-mine-v6.png` at the iPhone 13 Pro `390x844`
+  baseline, with production crops sourced from both that screen and
+  `design-references/miniprogram-mine-v6-icon.png`. The reference controls the
+  scene-led profile header, three-card summary viewport, role-aware workbench,
+  compact two-item todo list, and AI design banner.
+  The established floating circular Measure action remains the center TabBar
+  treatment; do not replace it with the reference's rectangular center action.
   Server-provided actions, role boundaries, loading/error/empty states, and
   ordinary-user floor-plan behavior remain authoritative.
+- Leads (`pages/leads-management/leads-management`):
+  `design-references/leads-management-v4.png` at the iPhone 13 Pro `390x844`
+  baseline. The reference controls the scene-led header, summary card,
+  search/action row, six-stage filter rhythm, customer-card anatomy, and
+  color-coded floor-plan thumbnail treatment. Thumbnail geometry must come from
+  each lead's associated formal wall graph or real external preview URL; static
+  sample plans are design references only. Live lead data, role visibility, pagination, navigation,
+  loading/error/empty states, and the shared custom tab bar remain authoritative.
 
 When image reference and implementation differ:
 - Follow this document first
@@ -72,6 +84,9 @@ When image reference and implementation differ:
 - Standard fixed-content result and action pages should show the page heading, primary content, key actions, and final CTA in one screen, including the navigation bar and bottom safe area
 - Preserve hierarchy by reducing oversized media height and redundant whitespace before reducing readable type or touch targets
 - Lists, dynamic content, accessibility text, and smaller viewports may scroll; critical actions should not require scrolling solely because of avoidable spacing
+- On Mine, narrow real-device viewports at or below `360px` must preserve the
+  role workbench's fixed four-column rhythm; tighten card gaps and horizontal
+  padding before considering a column-count change.
 
 ### Design Research Before Visual Work
 - Before creating a new high-fidelity page direction or AI-generated visual reference, research current, relevant mobile UI examples online. Use Huaban (花瓣网) as the preferred first source when it is available, then search the product category, the core interaction, and the target surface (for example: WeChat Mini Program home pages, renovation project progress, interior-design apps, or field-service tools).
@@ -142,6 +157,12 @@ When image reference and implementation differ:
 - Body text should stay readable and low-noise
 - Secondary text should be muted, never high-contrast
 - Avoid using more than 3 visible font sizes in a single module
+- At the `390x844` Mini Program baseline, primary labels, actions, body copy,
+  and business values must use at least `24rpx` (about `12px`)
+- Secondary metadata and helper text must use at least `20rpx` (about `10px`);
+  smaller text is allowed only for nonessential decorative annotation
+- Never visually shrink text below these floors with `transform: scale(...)`
+  or by baking required UI copy into an image
 
 ## 6. Radius And Shadow
 

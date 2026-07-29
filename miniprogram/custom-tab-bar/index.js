@@ -28,11 +28,11 @@ Component({
         center: true
       },
       {
-        key: 'inspiration',
-        pagePath: '/pages/inspiration/inspiration',
-        text: '灵感',
-        iconPath: '/images/mine-icons/tab-bulb.png',
-        selectedIconPath: '/images/mine-icons/tab-bulb-active.png'
+        key: 'ai-design',
+        pagePath: '/pages/ai-design/ai-design',
+        text: 'AI设计',
+        iconPath: '/images/mine-icons/tab-ai.png',
+        selectedIconPath: '/images/mine-icons/tab-ai-active.png'
       },
       {
         key: 'mine',
@@ -67,7 +67,11 @@ Component({
         return;
       }
 
-      wx.switchTab({ url: item.pagePath });
+      this.setData({ selected: index });
+      wx.switchTab({
+        url: item.pagePath,
+        fail: () => this.syncSelected(),
+      });
     },
 
     async openMostRecentlyEditedSurvey() {

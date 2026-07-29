@@ -1,10 +1,11 @@
 const api = require('../../utils/api.js');
+const { buildFloorPlanPreview, pickLeadFloorPlan } = require('./lead-list-model.js');
 
 const STATUS_LABELS = {
   new: '待跟进',
   contacted: '待跟进',
   measuring: '量房中',
-  measured: '设计中',
+  measured: '复房中',
   assigned: '设计中',
   designing: '设计中',
   quoting: '设计中',
@@ -16,12 +17,21 @@ const STATUS_TONES = {
   new: 'pending',
   contacted: 'pending',
   measuring: 'measuring',
-  measured: 'designing',
+  measured: 'remeasuring',
   assigned: 'designing',
   designing: 'designing',
   quoting: 'designing',
   converted: 'converted',
   closed: 'closed'
+};
+
+const STATUS_ICONS = {
+  pending: '/images/leads-v4/clock-blue.png',
+  measuring: '/images/leads-v4/ruler-green.png',
+  remeasuring: '/images/leads-v4/ruler-purple.png',
+  designing: '/images/leads-v4/ruler-orange.png',
+  converted: '/images/leads-v4/ruler-orange.png',
+  closed: '/images/leads-v4/ruler-orange.png'
 };
 
 Component({
@@ -42,6 +52,7 @@ Component({
       { id: 'all', query: 'all', label: '全部' },
       { id: 'new', query: 'new', label: '待跟进' },
       { id: 'measuring', query: 'measuring', label: '量房中' },
+      { id: 'remeasuring', query: 'measured', label: '复房中' },
       { id: 'designing', query: 'assigned', label: '设计中' },
       { id: 'converted', query: 'converted', label: '已成交' }
     ],
@@ -52,9 +63,12 @@ Component({
     ],
     currentTab: 'all',
     currentTabIndex: 0,
+    allLeads: [],
     leads: [],
+    searchKeyword: '',
     loading: false,
     refreshing: false,
+    errorMessage: '',
     page: 1,
     pageSize: 10,
     hasMore: true
@@ -75,7 +89,7 @@ Component({
 
       if (!openid) return;
 
-      this.setData({ loading: true });
+      this.setData({ loading: true, errorMessage: '' });
 
       try {
         const activeTab = this.data.tabs[this.data.currentTabIndex] || this.data.tabs[0];
@@ -87,10 +101,12 @@ Component({
         const res = await api.request(url, 'GET');
 
         if (res.success && res.data) {
-          const formatted = res.data.map((lead, index) => this.formatLead(lead, index));
+          const formatted = res.data.map((lead) => this.formatLead(lead));
+          const allLeads = reset ? formatted : this.data.allLeads.concat(formatted);
 
           this.setData({
-            leads: reset ? formatted : this.data.leads.concat(formatted),
+            allLeads,
+            leads: this.filterLeads(allLeads, this.data.searchKeyword),
             page: page + 1,
             hasMore: formatted.length === this.data.pageSize,
             loading: false,
@@ -98,55 +114,58 @@ Component({
           });
 
           if (reset) {
-            this.updateHeroStats(formatted, res.stats);
+            this.updateHeroStats(allLeads, res.stats);
           }
         } else {
-          this.setData({ loading: false, refreshing: false });
+          this.setData({
+            loading: false,
+            refreshing: false,
+            errorMessage: (res && res.error) || '暂时无法获取客户线索'
+          });
         }
       } catch (err) {
         console.error('Fetch leads failed', err);
-        this.setData({ loading: false, refreshing: false });
+        this.setData({
+          loading: false,
+          refreshing: false,
+          errorMessage: (err && err.error) || '网络异常，请稍后重试'
+        });
       }
     },
 
-    formatLead(lead, index) {
+    formatLead(lead) {
       const status = lead.status || 'new';
+      const statusTone = STATUS_TONES[status] || 'closed';
       const name = lead.name || '客户';
-      const area = lead.area ? `${lead.area}m²` : '';
-      const style = lead.stylePreference || this.getRoomLayoutLabel(lead);
-      const lastFollow = this.getLastFollow(lead);
+      const planPreview = buildFloorPlanPreview(lead);
+      const plan = pickLeadFloorPlan(lead);
+      const externalSource = plan && plan.externalSource;
+      const areaValue = lead.area || (externalSource && externalSource.area);
+      const area = areaValue ? `${areaValue}m²` : '';
+      const style = lead.stylePreference || planPreview.layoutLabel;
 
       return {
         ...lead,
         displayName: name,
-        avatarText: name.slice(0, 1),
-        avatarTone: index % 4 === 3 ? 'building' : '',
-        avatarUrl: lead.avatar || lead.avatarUrl || '',
+        planPreview,
         phoneMasked: this.maskPhone(lead.phone),
-        communityLabel: lead.communityName || lead.city || '待录入小区',
+        communityLabel: lead.communityName
+          || (externalSource && externalSource.communityName)
+          || lead.city
+          || '待录入小区',
         areaLabel: area,
         styleLabel: style,
         statusLabel: STATUS_LABELS[status] || status,
-        statusTone: STATUS_TONES[status] || 'closed',
-        followLabel: lastFollow || `最新跟进：${this.formatRelativeTime(lead.updatedAt || lead.createdAt)}`
+        statusTone,
+        statusIcon: STATUS_ICONS[statusTone],
+        followLabel: `最新跟进：${this.getLastFollowDate(lead)}`
       };
     },
 
-    getRoomLayoutLabel(lead) {
-      const count = lead.floorPlanIds && lead.floorPlanIds.length ? lead.floorPlanIds.length : 0;
-      if (count >= 3) return '三室两厅';
-      if (count === 2) return '两室一厅';
-      if (count === 1) return '一室一厅';
-      return '';
-    },
-
-    getLastFollow(lead) {
+    getLastFollowDate(lead) {
       const records = lead.followUpRecords || [];
-      if (!records.length) return '';
-      const latest = records[records.length - 1];
-      return latest && latest.createdAt
-        ? `最新跟进：${this.formatRelativeTime(latest.createdAt)}`
-        : '';
+      const latest = records.length ? records[records.length - 1] : null;
+      return this.formatDate((latest && latest.createdAt) || lead.updatedAt || lead.createdAt);
     },
 
     maskPhone(phone) {
@@ -155,24 +174,15 @@ Component({
       return text.replace(/^(\d{3})\d{4}(\d+)/, '$1****$2');
     },
 
-    formatRelativeTime(value) {
-      if (!value) return '暂无记录';
-
+    formatDate(value) {
+      if (!value) return '暂无';
       const date = new Date(value);
-      if (Number.isNaN(date.getTime())) return '暂无记录';
-
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-      const target = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-      const time = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
-
-      if (target === today) return `今天 ${time}`;
-      if (target === today - 86400000) return `昨天 ${time}`;
+      if (Number.isNaN(date.getTime())) return '暂无';
       return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     },
 
     onTabChange(e) {
-      const index = e.currentTarget.dataset.index;
+      const index = Number(e.currentTarget.dataset.index);
       const tab = this.data.tabs[index];
       if (!tab) return;
 
@@ -181,6 +191,28 @@ Component({
         currentTab: tab.id
       });
       this.fetchLeads(true);
+    },
+
+    onSearchInput(e) {
+      const searchKeyword = e.detail.value || '';
+      this.setData({
+        searchKeyword,
+        leads: this.filterLeads(this.data.allLeads, searchKeyword)
+      });
+    },
+
+    filterLeads(leads, keyword) {
+      const normalized = String(keyword || '').trim().toLowerCase();
+      if (!normalized) return leads;
+
+      return leads.filter((lead) => [
+        lead.displayName,
+        lead.phone,
+        lead.phoneMasked,
+        lead.communityLabel,
+        lead.areaLabel,
+        lead.styleLabel
+      ].some((value) => String(value || '').toLowerCase().includes(normalized)));
     },
 
     onRefresh() {
@@ -201,20 +233,49 @@ Component({
       });
     },
 
+    onPlanPreviewError(e) {
+      const id = String(e.currentTarget.dataset.id || '');
+      const useGraphFallback = (lead) => {
+        if (String(lead._id || '') !== id || lead.planPreview.type !== 'image') return lead;
+        return {
+          ...lead,
+          planPreview: {
+            ...lead.planPreview,
+            type: lead.planPreview.segments.length ? 'graph' : 'empty'
+          }
+        };
+      };
+      this.setData({
+        allLeads: this.data.allLeads.map(useGraphFallback),
+        leads: this.data.leads.map(useGraphFallback)
+      });
+    },
+
     onAddLead() {
       this.triggerEvent('add');
     },
 
     onSearch(e) {
-      const query = e.detail.value;
-      console.log('Searching for:', query);
+      this.onSearchInput(e);
     },
 
     onFilterTap() {
-      wx.showToast({
-        title: '筛选功能开发中',
-        icon: 'none'
+      wx.showActionSheet({
+        itemList: this.data.tabs.map((tab) => tab.label),
+        success: ({ tapIndex }) => {
+          const tab = this.data.tabs[tapIndex];
+          if (!tab) return;
+          this.setData({
+            currentTabIndex: tapIndex,
+            currentTab: tab.id
+          });
+          this.fetchLeads(true);
+        }
       });
+    },
+
+    onRetry() {
+      this.fetchLeads(true);
     },
 
     onStartMeasure(e) {

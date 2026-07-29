@@ -1,0 +1,141 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const miniRoot = path.resolve(__dirname, '..');
+const componentJs = fs.readFileSync(
+  path.join(miniRoot, 'components', 'lead-list', 'lead-list.js'),
+  'utf8'
+);
+const componentWxml = fs.readFileSync(
+  path.join(miniRoot, 'components', 'lead-list', 'lead-list.wxml'),
+  'utf8'
+);
+const componentWxss = fs.readFileSync(
+  path.join(miniRoot, 'components', 'lead-list', 'lead-list.wxss'),
+  'utf8'
+);
+const {
+  buildFloorPlanPreview,
+  createWallSegments
+} = require('../components/lead-list/lead-list-model.js');
+
+function createFormalLayout() {
+  return {
+    version: 4,
+    measurementMode: 'surveying',
+    surveyGraph: {
+      kind: 'survey-wall-graph',
+      activeFloorId: 'floor-1',
+      floors: [{
+        id: 'floor-1',
+        nodes: [
+          { id: 'a', xMm: 0, yMm: 0 },
+          { id: 'b', xMm: 4200, yMm: 0 },
+          { id: 'c', xMm: 4200, yMm: 3200 },
+          { id: 'd', xMm: 0, yMm: 3200 }
+        ],
+        walls: [
+          { id: 'w1', startNodeId: 'a', endNodeId: 'b' },
+          { id: 'w2', startNodeId: 'b', endNodeId: 'c' },
+          { id: 'w3', startNodeId: 'c', endNodeId: 'd' },
+          { id: 'w4', startNodeId: 'd', endNodeId: 'a' }
+        ],
+        spaces: [{ id: 'space-1', closed: true }]
+      }]
+    }
+  };
+}
+
+test('Leads management exposes the six approved visual stages', () => {
+  for (const label of ['全部', '待跟进', '量房中', '复房中', '设计中', '已成交']) {
+    assert.match(componentJs, new RegExp(`label: '${label}'`));
+  }
+  assert.match(componentJs, /\{ id: 'remeasuring', query: 'measured', label: '复房中' \}/);
+});
+
+test('Leads management search and filter controls are functional', () => {
+  assert.match(componentWxml, /bindinput="onSearchInput"/);
+  assert.match(componentWxml, /bindtap="onFilterTap"/);
+  assert.match(componentJs, /filterLeads\(leads, keyword\)/);
+  assert.match(componentJs, /wx\.showActionSheet/);
+  assert.doesNotMatch(componentJs, /筛选功能开发中/);
+});
+
+test('Leads visual assets exist and micro-icons stay within budget', () => {
+  const assetDir = path.join(miniRoot, 'images', 'leads-v4');
+  const icons = [
+    'search.png',
+    'filter.png',
+    'plus-white.png',
+    'phone.png',
+    'map-pin.png',
+    'chevron-right.png',
+    'clock-blue.png',
+    'ruler-green.png',
+    'ruler-purple.png',
+    'ruler-orange.png'
+  ];
+
+  for (const filename of icons) {
+    const file = path.join(assetDir, filename);
+    const bytes = fs.readFileSync(file);
+    assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.ok(bytes.length <= 10 * 1024, `${filename} exceeds the 10KB icon budget`);
+  }
+
+  for (const filename of [
+    'header-scene.png',
+    'summary-scene.png'
+  ]) {
+    assert.ok(fs.statSync(path.join(assetDir, filename)).size > 0);
+  }
+});
+
+test('Leads v4 uses purple remeasurement treatment and data-backed floor-plan previews', () => {
+  assert.match(componentJs, /remeasuring: '\/images\/leads-v4\/ruler-purple\.png'/);
+  assert.match(componentJs, /buildFloorPlanPreview\(lead\)/);
+  assert.doesNotMatch(componentJs, /SCENE_THUMBNAILS|lead-scene-/);
+  assert.match(componentWxml, /item\.planPreview\.segments/);
+  assert.match(componentWxml, /\/images\/leads-v4\/summary-scene\.png/);
+  assert.doesNotMatch(componentWxml, /ellipsis\.png|class="more"/);
+  assert.match(componentWxml, /class="card-bottom-row"/);
+  assert.match(componentWxml, /class="lead-card-layer layer-\{\{item\.statusTone\}\}"/);
+  assert.match(componentWxss, /\.lead-card-layer\s*\{[^}]*width:\s*149rpx;[^}]*height:\s*53rpx;/s);
+  assert.match(componentWxss, /\.status-ribbon\s*\{[^}]*min-width:\s*142rpx;[^}]*height:\s*47rpx;/s);
+});
+
+test('Formal wall graphs are normalized into real thumbnail wall segments', () => {
+  const segments = createWallSegments(createFormalLayout());
+  assert.equal(segments.length, 4);
+  assert.match(segments[0].style, /left:\d+\.\d+%;top:\d+\.\d+%;width:\d+\.\d+%/);
+
+  const preview = buildFloorPlanPreview({
+    primaryFloorPlanId: {
+      _id: 'plan-1',
+      layoutData: createFormalLayout()
+    }
+  });
+  assert.equal(preview.type, 'graph');
+  assert.equal(preview.planId, 'plan-1');
+  assert.equal(preview.layoutLabel, '1个空间');
+});
+
+test('External preview images win and missing floor plans stay explicit', () => {
+  const external = buildFloorPlanPreview({
+    floorPlanIds: [{
+      _id: 'plan-2',
+      externalSource: {
+        previewUrl: 'https://example.com/plan.png',
+        layoutLabel: '三室两厅'
+      }
+    }]
+  });
+  assert.equal(external.type, 'image');
+  assert.equal(external.layoutLabel, '三室两厅');
+
+  const empty = buildFloorPlanPreview({ floorPlanIds: [] });
+  assert.equal(empty.type, 'empty');
+  assert.equal(empty.segments.length, 0);
+});

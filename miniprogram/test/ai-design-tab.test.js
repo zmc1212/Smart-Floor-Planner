@@ -1,0 +1,92 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const miniRoot = path.resolve(__dirname, '..');
+const appConfig = JSON.parse(fs.readFileSync(path.join(miniRoot, 'app.json'), 'utf8'));
+const customTabSource = fs.readFileSync(
+  path.join(miniRoot, 'custom-tab-bar', 'index.js'),
+  'utf8'
+);
+const customTabWxml = fs.readFileSync(
+  path.join(miniRoot, 'custom-tab-bar', 'index.wxml'),
+  'utf8'
+);
+const customTabWxss = fs.readFileSync(
+  path.join(miniRoot, 'custom-tab-bar', 'index.wxss'),
+  'utf8'
+);
+const aiDesignWxml = fs.readFileSync(
+  path.join(miniRoot, 'pages', 'ai-design', 'ai-design.wxml'),
+  'utf8'
+);
+const aiDesignWxss = fs.readFileSync(
+  path.join(miniRoot, 'pages', 'ai-design', 'ai-design.wxss'),
+  'utf8'
+);
+const aiDesignPageSource = fs.readFileSync(
+  path.join(miniRoot, 'pages', 'ai-design', 'ai-design.js'),
+  'utf8'
+);
+const { normalizeAIDesignContext } = require('../utils/aiDesignNavigation.js');
+
+test('AI Design replaces Inspiration as the primary design tab', () => {
+  const tab = appConfig.tabBar.list.find((item) => item.pagePath === 'pages/ai-design/ai-design');
+
+  assert.ok(tab);
+  assert.equal(tab.text, 'AI设计');
+  assert.equal(tab.iconPath, 'images/mine-icons/tab-ai.png');
+  assert.equal(tab.selectedIconPath, 'images/mine-icons/tab-ai-active.png');
+  assert.equal(
+    appConfig.tabBar.list.some((item) => item.pagePath === 'pages/inspiration/inspiration'),
+    false
+  );
+
+  assert.match(customTabSource, /key: 'ai-design'/);
+  assert.match(customTabSource, /pagePath: '\/pages\/ai-design\/ai-design'/);
+  assert.match(customTabSource, /text: 'AI设计'/);
+  assert.match(customTabSource, /this\.setData\(\{ selected: index \}\)/);
+  assert.match(customTabSource, /fail: \(\) => this\.syncSelected\(\)/);
+  assert.doesNotMatch(customTabSource, /key: 'inspiration'/);
+
+  for (const filename of ['tab-ai.png', 'tab-ai-active.png']) {
+    const bytes = fs.readFileSync(path.join(miniRoot, 'images', 'mine-icons', filename));
+    assert.equal(bytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.ok(bytes.length <= 10 * 1024, `${filename} exceeds the 10KB icon budget`);
+  }
+});
+
+test('AI Design uses the shared tab-page scrolling contract', () => {
+  assert.match(aiDesignWxml, /class="ai-page sfp-tab-page"/);
+  assert.match(aiDesignWxml, /class="ai-scroll"/);
+  assert.match(aiDesignWxml, /bindrefresherrefresh="onRefresh"/);
+  assert.match(aiDesignWxss, /\.source-sheet[^}]+bottom: var\(--sfp-custom-tabbar-safe-height\)/);
+  assert.match(aiDesignPageSource, /syncTabBar\(\) \{[\s\S]*selected: 3/);
+});
+
+test('the center Measure action preserves the established floating circular tab style', () => {
+  assert.match(customTabSource, /iconPath: '\/images\/mine-icons\/tab-measure-active\.png'/);
+  assert.match(customTabSource, /selectedIconPath: '\/images\/mine-icons\/tab-measure-active\.png'/);
+  assert.match(customTabWxml, /class="tab-text" wx:if="\{\{!item\.center\}\}"/);
+  assert.match(
+    customTabWxss,
+    /\.center-icon\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*-22rpx;[\s\S]*?width:\s*112rpx;[\s\S]*?height:\s*112rpx;[\s\S]*?border-radius:\s*50%;/
+  );
+  assert.match(
+    customTabWxss,
+    /\.center-image\s*\{[\s\S]*?width:\s*96rpx;[\s\S]*?height:\s*96rpx;/
+  );
+});
+
+test('contextual AI entries preserve plan and room scope across switchTab', () => {
+  assert.deepEqual(normalizeAIDesignContext({ floorPlanId: 123 }), {
+    floorPlanId: '123',
+    targetScope: 'whole_floor_plan',
+  });
+  assert.deepEqual(normalizeAIDesignContext({ floorPlanId: 'plan-1', roomId: 'room-2' }), {
+    floorPlanId: 'plan-1',
+    roomId: 'room-2',
+    targetScope: 'single_room',
+  });
+});

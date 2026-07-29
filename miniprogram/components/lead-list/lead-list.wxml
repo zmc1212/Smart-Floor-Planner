@@ -7,20 +7,28 @@
         <text class="hero-stat-unit">个客户</text>
       </view>
     </view>
-    <image class="lead-hero-image" src="/images/mockups/leads-hero.png" mode="aspectFit" />
+    <image class="lead-hero-image" src="/images/leads-v4/summary-scene.png" mode="aspectFit" />
   </view>
 
   <view class="search-row">
     <view class="search-box">
-      <icon type="search" size="20" color="#657187" />
-      <input class="search-input" placeholder="搜索客户" placeholder-class="search-placeholder" bindconfirm="onSearch" />
+      <image class="search-icon" src="/images/leads-v4/search.png" mode="aspectFit" />
+      <input
+        class="search-input"
+        value="{{searchKeyword}}"
+        placeholder="搜索客户"
+        placeholder-class="search-placeholder"
+        confirm-type="search"
+        bindinput="onSearchInput"
+        bindconfirm="onSearch"
+      />
     </view>
     <view class="add-lead-button" bindtap="onAddLead">
-      <text class="add-lead-plus">+</text>
+      <image class="add-lead-icon" src="/images/leads-v4/plus-white.png" mode="aspectFit" />
       <text>新增客户</text>
     </view>
     <view class="filter-button" bindtap="onFilterTap">
-      <text class="filter-mark">▽</text>
+      <image class="filter-icon" src="/images/leads-v4/filter.png" mode="aspectFit" />
       <text class="filter-text">筛选</text>
     </view>
   </view>
@@ -39,13 +47,19 @@
     </view>
   </scroll-view>
 
+  <view class="error-state" wx:if="{{errorMessage && leads.length === 0}}">
+    <text class="error-title">线索加载失败</text>
+    <text class="error-copy">{{errorMessage}}</text>
+    <view class="retry-button" bindtap="onRetry">重新加载</view>
+  </view>
+
   <view class="loading-state" wx:if="{{loading && leads.length === 0}}">
     <view class="loading-spinner"></view>
     <text>加载中...</text>
   </view>
 
   <scroll-view
-    wx:else
+    wx:elif="{{!errorMessage || leads.length > 0}}"
     scroll-y
     class="list-scroller"
     refresher-enabled
@@ -55,45 +69,69 @@
   >
     <view class="leads-collection" wx:if="{{leads.length > 0}}">
       <view
-        class="lead-card"
+        class="lead-card-stack"
         wx:for="{{leads}}"
         wx:key="_id"
         bindtap="onLeadClick"
         data-id="{{item._id}}"
       >
-        <view class="avatar-wrap {{item.avatarTone}}">
-          <image wx:if="{{item.avatarUrl}}" class="avatar-image" src="{{item.avatarUrl}}" mode="aspectFill" />
-          <text wx:else class="avatar-text">{{item.avatarText}}</text>
-        </view>
+        <view class="lead-card-layer layer-{{item.statusTone}}"></view>
+        <view class="lead-card card-{{item.statusTone}}">
+          <view class="status-ribbon">
+            <image class="status-icon" src="{{item.statusIcon}}" mode="aspectFit" />
+            <text>{{item.statusLabel}}</text>
+          </view>
 
-        <view class="lead-main">
-          <view class="lead-title-row">
+          <view class="lead-plan-frame plan-{{item.statusTone}}">
+            <image
+              wx:if="{{item.planPreview.type === 'image'}}"
+              class="lead-plan-image"
+              src="{{item.planPreview.previewUrl}}"
+              mode="aspectFit"
+              data-id="{{item._id}}"
+              binderror="onPlanPreviewError"
+            />
+            <view wx:elif="{{item.planPreview.type === 'graph'}}" class="lead-plan-graph">
+              <view
+                wx:for="{{item.planPreview.segments}}"
+                wx:for-item="segment"
+                wx:key="id"
+                class="lead-plan-wall"
+                style="{{segment.style}}"
+              ></view>
+            </view>
+            <view wx:else class="lead-plan-empty">
+              <image src="{{item.statusIcon}}" mode="aspectFit" />
+              <text>{{item.planPreview.label}}</text>
+            </view>
+          </view>
+
+          <view class="lead-main">
             <text class="lead-name">{{item.displayName}}</text>
-            <view class="status-chip status-{{item.statusTone}}">{{item.statusLabel}}</view>
+
+            <view class="contact-row">
+              <view class="contact-item phone-item">
+                <image class="line-icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
+                <text>{{item.phoneMasked}}</text>
+              </view>
+              <view class="contact-item location-item">
+                <image class="line-icon" src="/images/leads-v4/map-pin.png" mode="aspectFit" />
+                <text class="line-text">{{item.communityLabel}}</text>
+              </view>
+            </view>
+
+            <view class="card-bottom-row">
+              <view class="meta-row">
+                <view class="meta-pill meta-{{item.statusTone}}" wx:if="{{item.areaLabel}}">{{item.areaLabel}}</view>
+                <view class="meta-pill meta-{{item.statusTone}}" wx:if="{{item.styleLabel}}">{{item.styleLabel}}</view>
+              </view>
+              <text class="follow-row">{{item.followLabel}}</text>
+            </view>
           </view>
 
-          <view class="info-line">
-            <text class="line-icon">☎</text>
-            <text>{{item.phoneMasked}}</text>
+          <view class="lead-actions">
+            <image class="arrow" src="/images/leads-v4/chevron-right.png" mode="aspectFit" />
           </view>
-          <view class="info-line">
-            <text class="line-icon">⌖</text>
-            <text class="line-text">{{item.communityLabel}}</text>
-          </view>
-
-          <view class="meta-row">
-            <view class="meta-pill" wx:if="{{item.areaLabel}}">{{item.areaLabel}}</view>
-            <view class="meta-pill" wx:if="{{item.styleLabel}}">{{item.styleLabel}}</view>
-          </view>
-
-          <view class="follow-row">
-            <text>{{item.followLabel}}</text>
-          </view>
-        </view>
-
-        <view class="lead-actions">
-          <text class="arrow">›</text>
-          <text class="more">•••</text>
         </view>
       </view>
 
@@ -102,8 +140,8 @@
     </view>
 
     <view class="empty-placeholder" wx:else>
-      <view class="empty-icon-box">线</view>
-      <text class="empty-msg">暂无此类客户</text>
+      <image class="empty-icon-box" src="/images/mine-icons/users.png" mode="aspectFit" />
+      <text class="empty-msg">{{searchKeyword ? '未找到匹配客户' : '暂无此类客户'}}</text>
       <view class="empty-cta" bindtap="onAddLead">新增客户</view>
     </view>
   </scroll-view>

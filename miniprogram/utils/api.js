@@ -1,5 +1,5 @@
 const API_BASE_URLS = Object.freeze({
-  local: 'http://192.168.10.19:3005/api',
+  local: 'http://192.168.10.111:3005/api',
   production: 'https://smartfloor.zlyun168.com/api',
 });
 

@@ -1,5 +1,14 @@
-<view class="ai-page sfp-scroll">
-  <view class="ai-shell">
+<view class="ai-page sfp-tab-page">
+  <scroll-view
+    scroll-y
+    enhanced
+    show-scrollbar="{{false}}"
+    refresher-enabled
+    refresher-triggered="{{refreshing}}"
+    bindrefresherrefresh="onRefresh"
+    class="ai-scroll"
+  >
+    <view class="ai-shell">
     <view class="balance-row">
       <text class="page-title">AI 设计</text>
       <view class="balance-pill">
@@ -100,7 +109,8 @@
       <view class="empty-icon">AI</view>
       <text class="empty-title">还没有设计成果</text>
     </view>
-  </view>
+    </view>
+  </scroll-view>
 
   <view wx:if="{{sourcePickerOpen}}" class="source-mask" catchtap="closeSourcePicker"></view>
   <view wx:if="{{sourcePickerOpen}}" class="source-sheet" catchtap="noop">

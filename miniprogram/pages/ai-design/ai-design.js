@@ -1,5 +1,6 @@
 const aiService = require('../../utils/aiDesignService.js');
 const { prioritizeProcessingTasks } = require('../../utils/aiDesignTaskOrdering.js');
+const { consumeAIDesignContext, normalizeAIDesignContext } = require('../../utils/aiDesignNavigation.js');
 
 const WORKFLOW_DEFINITIONS = [
   { key: 'reference_recreate', title: '参考图复刻', description: '参考灵感图，还原到真实空间', icon: '/images/ai-design-icons/reference.png', requires: 'edit' },
@@ -34,6 +35,7 @@ function buildSelectedSource(plan, targetScope, room) {
 Page({
   data: {
     loading: true,
+    refreshing: false,
     account: { availableBalance: 0, frozenBalance: 0 },
     workflows: WORKFLOW_DEFINITIONS,
     provider: { available: false, supportsEdit: false, supportsGenerate: false },
@@ -55,19 +57,25 @@ Page({
   },
 
   onLoad(options) {
-    this.setData({
-      floorPlanId: options.floorPlanId || '',
-      leadId: options.leadId || '',
-      roomId: options.roomId || '',
-      targetScope: options.targetScope || (options.roomId ? 'single_room' : options.floorPlanId ? 'whole_floor_plan' : ''),
-      workflowId: options.workflowId || '',
-    });
+    this.applyNavigationContext(options);
   },
 
   onShow() {
+    this.syncTabBar();
     this.recentPageVisible = true;
     this.stopRecentPolling();
+    const pendingContext = consumeAIDesignContext();
+    if (pendingContext) {
+      this.applyNavigationContext(pendingContext, () => this.loadData());
+      return;
+    }
     this.loadData();
+  },
+
+  syncTabBar() {
+    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
+      this.getTabBar().setData({ selected: 3 });
+    }
   },
 
   onHide() {
@@ -82,6 +90,22 @@ Page({
 
   onPullDownRefresh() {
     this.loadData().finally(() => wx.stopPullDownRefresh());
+  },
+
+  onRefresh() {
+    this.setData({ refreshing: true });
+    this.loadData().finally(() => this.setData({ refreshing: false }));
+  },
+
+  applyNavigationContext(options, callback) {
+    const context = normalizeAIDesignContext(options);
+    this.setData({
+      floorPlanId: context.floorPlanId || '',
+      leadId: context.leadId || '',
+      roomId: context.roomId || '',
+      targetScope: context.targetScope || '',
+      workflowId: context.workflowId || '',
+    }, callback);
   },
 
   async loadData() {

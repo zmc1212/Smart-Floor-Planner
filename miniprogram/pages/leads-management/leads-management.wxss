@@ -17,29 +17,70 @@ page {
 }
 
 .page-header {
+  position: relative;
   flex-shrink: 0;
-  height: 150rpx;
-  padding: 18rpx 36rpx 26rpx;
+  height: 166rpx;
+  padding: 20rpx 42rpx 28rpx;
   box-sizing: border-box;
   display: flex;
   align-items: center;
+  overflow: hidden;
+}
+
+.header-scene {
+  position: absolute;
+  z-index: 0;
+  top: -10rpx;
+  right: -10rpx;
+  width: 376rpx;
+  height: 230rpx;
+  opacity: 0.96;
 }
 
 .header-copy {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
 }
 
+.title-row {
+  display: flex;
+  align-items: center;
+}
+
 .page-title {
-  font-size: 44rpx;
+  font-size: 46rpx;
   line-height: 1.18;
   font-weight: 800;
   color: #0f1724;
 }
 
+.title-swoop {
+  position: relative;
+  width: 78rpx;
+  height: 39rpx;
+  margin: 7rpx 0 0 -4rpx;
+  border: 4rpx solid #15b957;
+  border-left-color: transparent;
+  border-radius: 50%;
+  box-sizing: border-box;
+  transform: rotate(-10deg);
+}
+
+.title-dot {
+  position: absolute;
+  left: -3rpx;
+  top: 11rpx;
+  width: 10rpx;
+  height: 10rpx;
+  border-radius: 50%;
+  background: #15b957;
+}
+
 .page-subtitle {
-  margin-top: 12rpx;
-  font-size: 26rpx;
+  margin-top: 14rpx;
+  font-size: 25rpx;
   line-height: 1.25;
   color: #657187;
 }

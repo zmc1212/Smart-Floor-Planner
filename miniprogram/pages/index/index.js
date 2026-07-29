@@ -2,6 +2,7 @@ var util = require('../../utils/util.js');
 const api = require('../../utils/api.js');
 const templateUtils = require('../../utils/templates.js');
 const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
+const { openAIDesignTab } = require('../../utils/aiDesignNavigation.js');
 
 const QUICK_TOOLS = [
   {
@@ -409,8 +410,7 @@ Page({
     }
 
     const floorPlanId = this.data.currentProject_id;
-    const query = floorPlanId ? `?floorPlanId=${encodeURIComponent(floorPlanId)}` : '';
-    wx.navigateTo({ url: `/pages/ai-design/ai-design${query}` });
+    openAIDesignTab(floorPlanId ? { floorPlanId } : {});
   },
 
   onOpenLeads: function () {
@@ -630,11 +630,10 @@ Page({
     var roomId = e.detail.id;
     var room = this.data.plannedRooms.find(function (r) { return r.id === roomId; });
     if (room) {
-      var query = [
-        this.data.currentProject_id ? 'floorPlanId=' + this.data.currentProject_id : '',
-        roomId ? 'roomId=' + roomId : ''
-      ].filter(Boolean).join('&');
-      wx.navigateTo({ url: '/pages/ai-design/ai-design' + (query ? '?' + query : '') });
+      openAIDesignTab({
+        floorPlanId: this.data.currentProject_id,
+        roomId,
+      });
     } else {
       wx.showToast({ title: '无法找到房间数据', icon: 'none' });
     }

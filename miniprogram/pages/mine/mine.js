@@ -1,14 +1,14 @@
 const app = getApp();
 const api = require('../../utils/api.js');
 const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
+const { openAIDesignTab } = require('../../utils/aiDesignNavigation.js');
 const {
-  decorateActions,
+  buildWorkbenchActions,
   buildDashboardSlices,
   getFloorPlanRoomCount
 } = require('./mine-model.js');
 
-const DEFAULT_AVATAR =
-  'https://mmbiz.qpic.cn/mmbiz/icTdbqWNOwNRna42FI242Lcia07jQodd2FJGIYQfG0LAJGFxM4FbnQP6yfMxBgJ0F3YRqJCJ1aPAK2dQagdusBZg/0';
+const DEFAULT_AVATAR = '/images/mine-v6/profile-avatar.jpg';
 
 const FALLBACK_PROFILE = {
   name: '员工账号',
@@ -23,8 +23,9 @@ const ACTION_TARGETS = {
   createPromotion: () => wx.navigateTo({ url: '/pages/promotion-record-detail/promotion-record-detail?mode=create' }),
   commissions: () => wx.navigateTo({ url: '/pages/commission-records/commission-records' }),
   leads: () => wx.switchTab({ url: '/pages/leads-management/leads-management' }),
-  inspiration: () => wx.switchTab({ url: '/pages/inspiration/inspiration' }),
-  measure: () => wx.switchTab({ url: '/pages/index/index' })
+  inspiration: () => wx.navigateTo({ url: '/pages/inspiration/inspiration' }),
+  measure: () => wx.switchTab({ url: '/pages/index/index' }),
+  aiDesign: () => openAIDesignTab()
 };
 
 function formatFloorPlanDate(value) {
@@ -55,15 +56,25 @@ Page({
       workbenchCards: [],
       todos: []
     },
+    workbenchActions: [],
     floorPlans: [],
     primaryTodo: null,
     remainingTodos: [],
-    focusCards: [],
+    summaryCards: [],
+    displayTodos: [],
     overviewCards: [],
+    navigationTop: 47,
+    navigationHeight: 32,
+    navigationRight: 14,
     defaultAvatarUrl: DEFAULT_AVATAR
   },
 
+  onLoad() {
+    this.syncNavigationMetrics();
+  },
+
   onShow() {
+    this.syncNavigationMetrics();
     this.syncTabBar();
     const userInfo = app.globalData.userInfo || wx.getStorageSync('userInfo');
     const token = wx.getStorageSync('token');
@@ -127,9 +138,11 @@ Page({
         workbenchCards: [],
         todos: []
       },
+      workbenchActions: [],
       primaryTodo: null,
       remainingTodos: [],
-      focusCards: [],
+      summaryCards: [],
+      displayTodos: [],
       overviewCards: []
     });
   },
@@ -138,6 +151,27 @@ Page({
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 4 });
     }
+  },
+
+  syncNavigationMetrics() {
+    const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+    let menuRect = null;
+    try {
+      menuRect = wx.getMenuButtonBoundingClientRect();
+    } catch (error) {
+      console.warn('Failed to read menu button metrics', error);
+    }
+
+    const statusBarHeight = windowInfo.statusBarHeight || 0;
+    const menuTop = menuRect && menuRect.top ? menuRect.top : statusBarHeight + 4;
+    const menuHeight = menuRect && menuRect.height ? menuRect.height : 32;
+    const menuLeft = menuRect && menuRect.left ? menuRect.left : windowInfo.windowWidth;
+
+    this.setData({
+      navigationTop: Math.max(statusBarHeight, menuTop),
+      navigationHeight: menuHeight,
+      navigationRight: Math.max(14, windowInfo.windowWidth - menuLeft + 8)
+    });
   },
 
   goToLogin() {
@@ -152,16 +186,18 @@ Page({
       const profile = data.profile || FALLBACK_PROFILE;
       const workbenchCards = data.workbenchCards || [];
       const todos = data.todos || [];
+      const workbenchActions = buildWorkbenchActions(data.actions);
 
       this.setData({
         loadingMine: false,
         isStaff: !!data.isStaff,
         mineData: {
           profile: { ...FALLBACK_PROFILE, ...profile },
-          actions: decorateActions(data.actions),
+          actions: data.actions || [],
           workbenchCards,
           todos
         },
+        workbenchActions,
         ...buildDashboardSlices(workbenchCards, todos)
       });
 
@@ -290,11 +326,11 @@ Page({
       wx.showToast({ title: '无法获取户型数据', icon: 'none' });
       return;
     }
-    wx.navigateTo({ url: `/pages/ai-design/ai-design?floorPlanId=${floorPlan._id}` });
+    openAIDesignTab({ floorPlanId: floorPlan._id });
   },
 
   onOpenAIHome() {
-    wx.navigateTo({ url: '/pages/ai-design/ai-design' });
+    openAIDesignTab();
   },
 
   onCreateNew() {
@@ -346,9 +382,11 @@ Page({
         workbenchCards: [],
         todos: []
       },
+      workbenchActions: [],
       primaryTodo: null,
       remainingTodos: [],
-      focusCards: [],
+      summaryCards: [],
+      displayTodos: [],
       overviewCards: []
     });
   },

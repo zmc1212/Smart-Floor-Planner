@@ -19,9 +19,9 @@ Keep the existing `/api/miniprogram/mine` and `/api/floorplans` contracts, role 
 
 ## Direction
 
-The approved direction is a field work clipboard: a compact profile strip, an asymmetric Today Progress surface with the first real todo as the dominant action and two real workbench metrics as focus cards, a role-aware horizontal tool rail, remaining overview metrics, timeline todos, and quiet account rows. The memorable moment is the first task becoming the obvious next action without hiding the rest of the workbench.
+The approved direction is the v6 scene-led workbench: an indoor profile header, three-card summary viewport, role-aware tool grid, compact two-item todo list, and AI design banner. The memorable moment is the user's real work context becoming immediately scannable without hiding role-specific actions or the existing account flows.
 
-Approved visual reference: `design-references/miniprogram-mine-work-clipboard-b.png`.
+Approved visual reference: `design-references/miniprogram-mine-v6.png`; production crops are derived from `design-references/miniprogram-mine-v6-icon.png`.
 
 ## Open Decisions
 

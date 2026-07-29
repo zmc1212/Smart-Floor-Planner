@@ -114,6 +114,12 @@ staged change; split unrelated work.
   the navigation bar and safe area. Lists, dynamic content, accessibility text,
   and smaller viewports may scroll, but critical actions must not be hidden by
   avoidable spacing.
+- At the `390x844` baseline, primary labels, actions, body copy, and business
+  values must render at `24rpx` (about `12px`) or larger. Secondary metadata and
+  helper text must render at `20rpx` (about `10px`) or larger. Text below
+  `20rpx` is reserved for nonessential decorative annotations only and must
+  never carry an action, status, business value, or required explanation. Do
+  not use `transform: scale(...)` or image-embedded text to bypass these floors.
 - Use one coherent, locally stored, license-documented icon set for primary
   actions. Do not ship emoji, mixed Unicode symbols, or multi-stroke CSS-drawn
   icons as product icons; CSS is reserved for simple geometry such as status
@@ -145,6 +151,21 @@ staged change; split unrelated work.
   truth. When it conflicts with a connected device's observed behavior, retain
   the raw response bytes and resolve the discrepancy before assigning field
   meaning or persisting/displaying a value.
+
+### WeChat DevTools Window Discipline
+
+- Reuse the user's currently open WeChat DevTools project window for Mini
+  Program compilation, automation, screenshots, and visual QA.
+- Do not run `cli open`, `cli auto`, or an equivalent command when it would open
+  a duplicate WeChat DevTools window for the same project. Connect only to the
+  automation endpoint already exposed by the current window.
+- If the current window has not enabled automation or its endpoint is
+  unavailable, report that limitation and ask the user to enable it in the
+  existing window. Do not create a temporary project copy or launch another
+  DevTools window as a workaround.
+- Never close, restart, or replace the user's current WeChat DevTools window
+  without explicit approval. A window created by Codex may be closed only after
+  its exact project path has been verified.
 
 ## Verification
 

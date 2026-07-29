@@ -14,14 +14,19 @@ utilities, and the admin APIs they call.
 - Runtime: native WeChat Mini Program, JWT bearer requests through
   `utils/api.js`, `threejs-miniprogram` for 3D previews, and optional BLE laser
   distance meter integration.
-- Main tabs: Home (`index`), Leads (`leads-management`), Inspiration
-  (`inspiration`), and Mine (`mine`). Login, detail, workflow, AI, recommendation,
-  and formal surveying pages are secondary routes.
+- Main tabs: Home (`index`), Leads (`leads-management`), AI Design
+  (`ai-design`), and Mine (`mine`), plus the custom center measurement action.
+  Login, detail, workflow, inspiration, recommendation, and formal surveying
+  pages are secondary routes.
 
 ## Shared Identity And Context
 
 - `/pages/login/login`: WeChat phone quick login and username/password login via
   `/api/auth/miniprogram`; restores a JWT/user session in app storage.
+- Access is staff-only: password login requires an active backend `AdminUser`,
+  while WeChat code/phone login must match an active `AdminUser` by bound OpenID
+  or backend phone number. Unmatched external users receive `403` and cannot
+  establish an authenticated Mini Program business session.
 - `app.js`: restores sessions, reads QR/referral `enterpriseId`/`staffId`, syncs
   staff professional context, loads enterprise branding, and attempts silent BLE
   reconnection for a remembered device.
@@ -65,9 +70,19 @@ utilities, and the admin APIs they call.
 - Implemented: customer name/phone/community/area/style capture, recent leads,
   list/detail views, formal-plan association, primary-plan name/status/closed
   space count in lead detail, continue measurement, start a new independent
-  measurement, and delete active formal plans with local pointer cleanup.
+  measurement, delete active formal plans with local pointer cleanup,
+  client-side search across loaded records, and status filtering through both
+  the stage strip and native action sheet.
+- Visual baseline: `design-references/leads-management-v4.png` at `390x844`.
+  The shipped page preserves the reference's scene-led header, three-stat summary,
+  compact search/actions, six-stage strip, color-coded floor-plan thumbnails rendered
+  from each lead's formal wall graph or real external preview URL, status-aligned
+  top-left stacked accents, status rails,
+  and shared five-item custom tab bar while rendering live customer data.
 - Limited: lead creation and plan operations require a valid Mini Program session;
-  phone and community validation are client-side plus server-side checks.
+  phone and community validation are client-side plus server-side checks. Search
+  covers the records currently loaded by pagination; choosing a status performs
+  a server-filtered reload.
 
 ### Enterprise Promotion And Staff Tasks
 
@@ -97,6 +112,8 @@ utilities, and the admin APIs they call.
 - API: `/api/inspirations?page=...&style=...&roomType=...`.
 - Implemented: paginated loading, pull-to-refresh, style and room filters,
   image preview, share-poster shell, and free-design lead entry.
+- Navigation: retained as a secondary route and no longer occupies a primary
+  tab.
 - Limited: result availability depends on published backend inspiration content.
 
 ### AI Design And Enterprise Credits
@@ -105,6 +122,11 @@ utilities, and the admin APIs they call.
   `pages/ai-design-result/ai-design-result`, and
   `pages/ai-design-history/ai-design-history`; legacy `pages/ai-gen/ai-gen` is a
   compatibility redirect only.
+- Navigation: `pages/ai-design/ai-design` is the primary `AI Design` tab; it
+  uses the shared fixed custom-tab layout and scroll/refresher contract.
+  Contextual entries transfer floor-plan, room, lead, scope, and workflow state
+  through `utils/aiDesignNavigation.js` before calling `switchTab`, because
+  WeChat tab pages cannot receive those entries through `navigateTo` queries.
 - APIs: Mini Program AI capabilities, role-scoped formal-plan/room sources,
   context-visible active workflows, media upload/signed reads,
   task create/run/status/retry, and history
@@ -201,13 +223,25 @@ utilities, and the admin APIs they call.
 - Implemented: profile/role display, workbench summary, todos, floor-plan list,
   notification/account actions, logout, new measurement, an enterprise-staff
   AI Design home entry, and contextual AI entry from a plan card.
-- Visual: the Mine surface now uses the approved “field work clipboard” direction
-  at the iPhone 13 Pro `390x844` baseline: a compact profile strip, an
-  asymmetric today-progress task surface, role-aware quick tools, a split
-  workbench overview, timeline todos, and account rows. The implementation
-  preserves server-provided actions and promotes only the first todo and first
-  two workbench cards into the focus surface; it does not add new backend
-  capabilities.
+- Visual: the Mine surface follows `design-references/miniprogram-mine-v6.png`
+  at the iPhone 13 Pro `390x844` baseline. Its left-weighted translucent profile
+  card preserves the visible home scene, while the white rounded summary tray,
+  three baseline metric illustrations, fixed four-column workbench rhythm,
+  compact two-item todo list, and AI design banner use production crops derived from
+  `design-references/miniprogram-mine-v6.png` and
+  `design-references/miniprogram-mine-v6-icon.png`. The established circular
+  floating Measure action remains the center TabBar treatment. Live profile data,
+  server-provided actions and metrics, role boundaries, and existing navigation
+  remain authoritative; the redesign does not add backend capabilities. Summary
+  cards remain horizontally reachable when a role returns more than the three
+  visible baseline cards. Role action sets with fewer than four entries keep
+  the same four-column sizing without inventing a fake business action,
+  including on real-device viewports at or below `360px`, where only gaps and
+  horizontal padding tighten. The todo surface displays the first two of the
+  API's current maximum of three records with the existing all-todos entry. At
+  the `390x844` baseline, Mine
+  primary labels/actions use at least `24rpx`, and secondary metadata/helper
+  text uses at least `20rpx`.
 - Data and failure states: ordinary-user floor-plan counts are derived from
   closed spaces across the formal version-4 survey graph floors. Mine and
   floor-plan requests have separate loading/error/retry states, so network

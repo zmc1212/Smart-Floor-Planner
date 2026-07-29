@@ -45,10 +45,10 @@
         "selectedIconPath": "images/mine1.png"
       },
       {
-        "pagePath": "pages/inspiration/inspiration",
-        "text": "\u7075\u611f\u5e93",
-        "iconPath": "images/idea0.png",
-        "selectedIconPath": "images/idea1.png"
+        "pagePath": "pages/ai-design/ai-design",
+        "text": "AI\u8bbe\u8ba1",
+        "iconPath": "images/mine-icons/tab-ai.png",
+        "selectedIconPath": "images/mine-icons/tab-ai-active.png"
       },
       {
         "pagePath": "pages/mine/mine",

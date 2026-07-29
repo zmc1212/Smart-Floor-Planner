@@ -15,6 +15,17 @@ Source: [Lucide](https://lucide.dev/)
 
 License: `LICENSE.md`
 
+## Mine v6 reference crops
+
+`miniprogram/images/mine-v6/` contains the profile scene and fallback avatar,
+three summary-card illustrations, four workbench illustrations, two todo
+thumbnails, AI banner image, settings control, and an unused rectangular
+center-tab reference crop from the user-provided
+`design-references/miniprogram-mine-v6.png` and
+`design-references/miniprogram-mine-v6-icon.png`. These are page-specific visual
+assets rather than additions to the Lucide icon set; the original references
+are the editable sources and retain their supplied asset rights.
+
 ## Mapping
 
 - `building.png`: `building`
@@ -33,6 +44,11 @@ License: `LICENSE.md`
 - `bell.png`: `bell`
 - `shield-check.png`: `shield-check`
 - `log-out.png`: `log-out`
+- `tab-ai.png`, `tab-ai-active.png`: `sparkles`, rendered at `96x96` from the
+  matching editable SVG sources for the AI Design primary tab.
 - `tab-measure-active.png`: rendered at `96x96` from
   `tab-measure-active.svg`; the circular measurement action uses the same
   rounded Lucide ruler language and keeps transparent padding on every edge.
+- `mine-v6/tab-create.png`: an unused compact green rounded-rectangle reference
+  crop. The product keeps the established circular `tab-measure-active.png`
+  treatment for the formal measurement entry.
