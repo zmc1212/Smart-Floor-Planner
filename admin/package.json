@@ -13,6 +13,8 @@
     "cleanup:media-assets": "npx tsx scripts/cleanup-media-assets.ts",
     "migrate:ai-platform": "npx tsx scripts/migrate-ai-platform.ts",
     "migrate:media-assets": "npx tsx scripts/migrate-media-assets.ts",
+    "import:roomi-prompts": "npx tsx scripts/import-roomi-prompts.ts",
+    "verify:roomi-prompts": "npx tsx scripts/verify-roomi-prompts.ts",
     "test:ai": "npx tsx --test src/lib/ai/__tests__/*.test.ts",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up -d",

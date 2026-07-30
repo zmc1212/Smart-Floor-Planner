@@ -2117,14 +2117,7 @@ Page({
   },
 
   isFirstMeasurePositionStage(floor, session) {
-    if (!floor || !session) return false;
-    const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
-      ? session.activeSpaceStartWallIndex
-      : 0;
-    return session.state === 'wallCommitted' &&
-      !session.previewPoint &&
-      startWallIndex >= 0 &&
-      floor.walls.length === startWallIndex + 1;
+    return surveyGraph.canSetInitialMeasurementSide(floor, session);
   },
 
   getCanvasControlSafeArea(rect) {

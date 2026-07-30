@@ -136,6 +136,15 @@ utilities, and the admin APIs they call.
   task create/run/status/retry, and history
   list/delete endpoints through `utils/aiDesignService.js` with bearer JWT
   authentication.
+- Target context: workflow reads for a selected plan require
+  `floorPlanId + targetScope + roomId` (with `roomId` omitted only for
+  `whole_floor_plan`) and return `targetContext` with `missing`, `processing`,
+  `ready`, `stale`, or `admin_handoff` state. A single-room result matches only
+  the same formal plan and room; whole-plan and legacy tasks with missing scope
+  metadata never fill a room automatically. The exact globally adopted result
+  wins when it belongs to the target, otherwise the newest exact successful
+  result is used. Results older than `FloorPlan.updatedAt` remain in history but
+  are not continued automatically.
 - Implemented: enterprise-shared AI-credit and action-price display; an
   immersive spatial home surface that retains the four real tasks for reference
   recreation, whole-space style transformation, formal-floor-plan concept
@@ -193,8 +202,17 @@ utilities, and the admin APIs they call.
   first base/soft-furnishing results become the workflow baseline; later results
   at that stage stay candidates. The Mini Program can continue style/soft-
   furnishing steps directly, while proposal and lighting hand off to Admin.
-  Ad-hoc tasks without customer context
-  remain supported as quick standalone generations.
+  Active-generation deduplication is scoped to workflow, stage, formal plan,
+  target scope, and room, so different rooms may run concurrently without
+  allowing duplicate credit holds for the same room. A coworker's active task
+  returns only a busy state; only the creating operator receives its task link.
+  Automatic continuation sends `sourceResultTaskId`; the server revalidates the
+  exact current target, copies internal outputs or downloads external provider
+  URLs into a new `ai_generation_input`, and records `parentGenerationId` before
+  any credit hold. Manual space uploads are mutually exclusive with this source.
+  Historical redesign reuses the original input, while legacy tasks without an
+  exact target remain explicit history only. Ad-hoc tasks without customer
+  context remain supported as quick standalone generations.
 - Visuals: locally rendered Lucide icons, hairline separators, output-ratio-aware
   result/compare stages that use the reference image for recreation comparisons,
   and the iPhone 13 Pro `390x844` baseline. The scene or real plan remains the
@@ -204,7 +222,13 @@ utilities, and the admin APIs they call.
   direction, takes the stage/next-action treatment from
   `design-references/ai-design/ai-design-immersive-b-workflow-v1.png`, and uses
   `design-references/ai-design/ai-design-immersive-a-space-tour-v1.png` for the no-plan
-  entry. At narrow real-device widths up to `360px`, the no-plan recommendation
+  entry. With a selected plan, the whole-plan/room targets use the reference's
+  raised bottom-sheet rail with a compact green selected label and underline;
+  the workflow rail distinguishes completed check nodes, the double-ring current
+  node with an explicit in-progress label, and dashed upcoming connections. The
+  workflow summary and next action remain separate visual layers while preserving
+  the same live selection and generation behavior. At narrow real-device widths
+  up to `360px`, the no-plan recommendation
   keeps its compact horizontal title/action hierarchy and reserves scene space
   between the fourth waypoint and the formal-plan selector instead of inheriting
   the stacked action layout used by other page states. The result-page reference remains
@@ -312,7 +336,9 @@ utilities, and the admin APIs they call.
   dimensions and side, cursor placement for new wall chains on existing
   vertices, inner edges, outer edges, or free canvas positions, and an inner/outer
   wall-tracking, boundary-constrained measurement-edge prompt on the first
-  committed wall of every new chain; closed room wall shells and outer joins are
+  committed wall of a free-standing chain only; a chain snapped to an existing
+  wall or vertex inherits that connected boundary and does not show the prompt;
+  closed room wall shells and outer joins are
   derived from the closed boundary rather than the selected measurement edge.
   undo/reset, completed submission, and measurement audit queue/flush.
 - Implemented angle behavior: diagonal direction snap within the documented

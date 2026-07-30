@@ -17,6 +17,7 @@ type StoreMediaInput = {
   originalUrl?: string;
   width?: number;
   height?: number;
+  storageProviderKey?: string;
 };
 
 const INTERNAL_ASSET_URL_RE = /^\/api\/ai\/assets\/([a-f0-9]{24})\/image/i;
@@ -74,7 +75,9 @@ export async function storeMediaBuffer(input: StoreMediaInput) {
     new Date().getFullYear().toString(),
     `${assetId}.${getExtension(input.mimeType)}`,
   ].join('/');
-  const provider = await getDefaultMediaStorageProvider();
+  const provider = input.storageProviderKey
+    ? await getMediaStorageProvider(input.storageProviderKey)
+    : await getDefaultMediaStorageProvider();
   const storageKey = provider.buildObjectKey?.(logicalStorageKey) || logicalStorageKey;
 
   let width = Number(input.width) || undefined;
@@ -118,6 +121,7 @@ export async function storeImageDataUri(input: {
   ownerType: MediaOwnerType;
   ownerId?: string | mongoose.Types.ObjectId;
   dataUri: string;
+  storageProviderKey?: string;
 }) {
   const parsed = parseImageDataUri(input.dataUri);
   return storeMediaBuffer({
@@ -126,6 +130,7 @@ export async function storeImageDataUri(input: {
     ownerId: input.ownerId,
     mimeType: parsed.mimeType,
     buffer: parsed.buffer,
+    storageProviderKey: input.storageProviderKey,
   });
 }
 
@@ -134,6 +139,7 @@ export async function storeImageUrl(input: {
   ownerType: MediaOwnerType;
   ownerId?: string | mongoose.Types.ObjectId;
   imageUrl: string;
+  storageProviderKey?: string;
 }) {
   const response = await fetch(input.imageUrl, { cache: 'no-store' });
   if (!response.ok) {
@@ -153,6 +159,7 @@ export async function storeImageUrl(input: {
     mimeType: contentType,
     buffer,
     originalUrl: input.imageUrl,
+    storageProviderKey: input.storageProviderKey,
   });
 }
 
@@ -161,6 +168,7 @@ export async function persistImageReference(input: {
   ownerType: MediaOwnerType;
   ownerId?: string | mongoose.Types.ObjectId;
   image?: string;
+  storageProviderKey?: string;
 }) {
   const image = input.image?.trim();
   if (!image || isInternalAssetImageUrl(image) || image.startsWith('/')) {
@@ -173,6 +181,7 @@ export async function persistImageReference(input: {
       ownerType: input.ownerType,
       ownerId: input.ownerId,
       dataUri: image,
+      storageProviderKey: input.storageProviderKey,
     });
     return imageUrl;
   }
@@ -183,6 +192,7 @@ export async function persistImageReference(input: {
       ownerType: input.ownerType,
       ownerId: input.ownerId,
       imageUrl: image,
+      storageProviderKey: input.storageProviderKey,
     });
     return imageUrl;
   }

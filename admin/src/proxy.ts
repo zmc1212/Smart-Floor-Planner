@@ -28,6 +28,7 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/api/ai/workflows': 'ai-scenarios',
   '/api/ai/workflow-leads': 'ai-scenarios',
   '/api/ai/design-capabilities': 'ai-scenarios',
+  '/api/ai/creation': 'ai-scenarios',
 };
 
 const LEGACY_AI_PERMISSIONS = ['ai-designer', 'ai-floorplan', 'ai-furnishing', 'ai-soft-furnishing'];

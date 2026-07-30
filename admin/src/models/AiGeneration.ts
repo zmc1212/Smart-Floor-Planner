@@ -10,7 +10,10 @@ export interface IAiGeneration extends Document {
   leadId?: mongoose.Types.ObjectId;
   workflowId?: mongoose.Types.ObjectId;
   parentGenerationId?: mongoose.Types.ObjectId;
-  type: 'floor_plan_style' | 'furnishing_render' | 'soft_furnishing_render' | 'advice' | 'scenario' | 'reference_recreate' | 'style_transform';
+  type: 'floor_plan_style' | 'furnishing_render' | 'soft_furnishing_render' | 'advice' | 'scenario' | 'reference_recreate' | 'style_transform' | 'free_create';
+  creationTaskId?: mongoose.Types.ObjectId;
+  creationBatchId?: mongoose.Types.ObjectId;
+  creationModelProfileId?: mongoose.Types.ObjectId;
   channel?: 'admin' | 'miniprogram';
   stageKey?: AiWorkflowStageKey;
   sourceAssetRole?: AiWorkflowSourceAssetRole;
@@ -40,6 +43,7 @@ export interface IAiGeneration extends Document {
     outputSize?: string;
     providerImages?: string[];
     providerRequest?: unknown;
+    creationParameterSnapshot?: unknown;
   };
   output: {
     imageUrl?: string;
@@ -117,9 +121,12 @@ const AiGenerationSchema: Schema<IAiGeneration> = new Schema(
       type: Schema.Types.ObjectId,
       ref: 'FloorPlan',
     },
+    creationTaskId: { type: Schema.Types.ObjectId, ref: 'AiCreationTask', index: true },
+    creationBatchId: { type: Schema.Types.ObjectId, ref: 'AiCreationBatch', index: true },
+    creationModelProfileId: { type: Schema.Types.ObjectId, ref: 'AiCreationModelProfile' },
     type: {
       type: String,
-      enum: ['floor_plan_style', 'furnishing_render', 'soft_furnishing_render', 'advice', 'scenario', 'reference_recreate', 'style_transform'],
+      enum: ['floor_plan_style', 'furnishing_render', 'soft_furnishing_render', 'advice', 'scenario', 'reference_recreate', 'style_transform', 'free_create'],
       required: true,
     },
     channel: {
@@ -178,6 +185,7 @@ const AiGenerationSchema: Schema<IAiGeneration> = new Schema(
       outputSize: { type: String },
       providerImages: { type: [String], default: undefined },
       providerRequest: { type: Schema.Types.Mixed },
+      creationParameterSnapshot: { type: Schema.Types.Mixed },
     },
     output: {
       imageUrl: { type: String },
@@ -250,8 +258,18 @@ AiGenerationSchema.index({ leadId: 1, createdAt: -1 });
 AiGenerationSchema.index({ workflowId: 1, createdAt: -1 });
 AiGenerationSchema.index({ leadId: 1, workflowId: 1, createdAt: -1 });
 AiGenerationSchema.index({ workflowId: 1, stageKey: 1, createdAt: -1 });
+AiGenerationSchema.index({
+  workflowId: 1,
+  stageKey: 1,
+  floorPlanId: 1,
+  'input.roomData.targetScope': 1,
+  'input.roomData.roomId': 1,
+  status: 1,
+  createdAt: -1,
+});
 AiGenerationSchema.index({ enterpriseId: 1, channel: 1, deletedAt: 1, createdAt: -1 });
 AiGenerationSchema.index({ status: 1, 'externalTask.nextPollAt': 1 });
+AiGenerationSchema.index({ enterpriseId: 1, creationTaskId: 1, createdAt: -1 });
 
 AiGenerationSchema.plugin(multiTenantPlugin);
 
@@ -270,6 +288,7 @@ if (
   (!existingTypeEnum.includes('soft_furnishing_render') ||
     !existingTypeEnum.includes('scenario') ||
     !existingTypeEnum.includes('reference_recreate') ||
+    !existingTypeEnum.includes('free_create') ||
     !existingOutputAspectRatioPath ||
     Boolean(existingProviderPath?.options?.enum?.length))
 ) {

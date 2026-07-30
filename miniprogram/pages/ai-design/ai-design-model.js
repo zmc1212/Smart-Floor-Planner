@@ -177,6 +177,7 @@ function modeAction(workflows, mode, overrides = {}) {
     credits: normalizeCredits(workflow.credits),
     enabled: workflow.enabled !== false,
     targetScope: overrides.targetScope || '',
+    sourceResultTaskId: overrides.sourceResultTaskId || '',
   };
 }
 
@@ -198,6 +199,75 @@ function buildPrimaryAction({ workflows, selectedSource, selectedWorkflow }) {
   }
 
   const preview = selectedSource.navigationPreview || {};
+  const targetContext = selectedWorkflow && selectedWorkflow.targetContext;
+  const targetLabel = selectedSource.targetLabel || '当前空间';
+
+  if (targetContext && targetContext.activeTask) {
+    return {
+      actionType: 'result',
+      taskId: targetContext.activeTask.id,
+      title: `${targetLabel}正在生成`,
+      description: `已完成 ${Number(targetContext.activeTask.progress || 0)}%，完成后可继续当前空间设计`,
+      buttonLabel: '查看生成进度',
+      credits: 0,
+      enabled: true,
+    };
+  }
+  if (targetContext && targetContext.busyByOther) {
+    return {
+      actionType: 'busy',
+      title: `${targetLabel}正在由其他成员生成`,
+      description: '生成完成后即可继续当前空间设计',
+      buttonLabel: '生成中',
+      credits: 0,
+      enabled: false,
+    };
+  }
+  if (targetContext && targetContext.status === 'ready' && targetContext.sourceTask
+    && targetContext.recommendedMiniMode) {
+    const mode = targetContext.recommendedMiniMode;
+    return modeAction(workflows, mode, {
+      title: mode === 'style_transform'
+        ? `为${targetLabel}试一种新风格`
+        : `继续完善${targetLabel}软装`,
+      description: mode === 'style_transform'
+        ? '使用当前房间方案基准图探索新的材质、家具与氛围'
+        : '沿用当前房间成果继续优化家具、灯具与陈设',
+      buttonLabel: '继续设计',
+      sourceResultTaskId: targetContext.sourceTask.id,
+    });
+  }
+  if (targetContext && targetContext.status === 'admin_handoff') {
+    return {
+      actionType: targetContext.sourceTask && targetContext.sourceTask.ownedByCurrentOperator ? 'result' : 'handoff',
+      taskId: targetContext.sourceTask && targetContext.sourceTask.id,
+      title: `${targetLabel}已完成当前小程序阶段`,
+      description: '后续提案与灯光深化请在后台 AI 设计工作台继续',
+      buttonLabel: targetContext.sourceTask && targetContext.sourceTask.ownedByCurrentOperator ? '查看当前成果' : '后台继续',
+      credits: 0,
+      enabled: true,
+    };
+  }
+  if (targetContext && ['missing', 'stale'].includes(targetContext.status)) {
+    return modeAction(workflows, 'floor_plan_render', {
+      title: targetContext.status === 'stale' ? `重新生成${targetLabel}概念图` : `生成${targetLabel}概念图`,
+      description: targetContext.status === 'stale'
+        ? '户型已更新，旧成果不会继续作为当前空间基准'
+        : `先根据正式量房数据建立${targetLabel}的可续接设计基准`,
+      buttonLabel: '生成概念图',
+      targetScope: selectedSource.targetScope,
+    });
+  }
+
+  if (selectedSource.targetScope === 'single_room') {
+    return modeAction(workflows, 'floor_plan_render', {
+      title: `生成${targetLabel}概念图`,
+      description: `先根据正式量房数据建立${targetLabel}的可续接设计基准`,
+      buttonLabel: '生成概念图',
+      targetScope: 'single_room',
+    });
+  }
+
   if (preview.state === 'processing' && preview.task) {
     return {
       actionType: 'result',
@@ -219,33 +289,7 @@ function buildPrimaryAction({ workflows, selectedSource, selectedWorkflow }) {
       targetScope: 'whole_floor_plan',
     });
   }
-
-  if (selectedWorkflow && selectedWorkflow.recommendedMiniMode) {
-    const mode = selectedWorkflow.recommendedMiniMode;
-    const target = selectedSource && selectedSource.targetLabel;
-    const copy = mode === 'style_transform'
-      ? {
-        title: `为${target || '当前空间'}试一种新风格`,
-        buttonLabel: '继续设计',
-      }
-      : {};
-    return modeAction(workflows, mode, copy);
-  }
-
-  if (selectedWorkflow) {
-    const task = selectedWorkflow.selectedTask || selectedWorkflow.latestTask;
-    return {
-      actionType: task ? 'result' : 'history',
-      taskId: task && task.id,
-      title: selectedWorkflow.recommendedLabel || '查看当前方案',
-      description: `${selectedWorkflow.currentStageLabel || '当前阶段'}已在方案中记录`,
-      buttonLabel: task ? '查看当前成果' : '查看方案记录',
-      credits: 0,
-      enabled: true,
-    };
-  }
-
-  if (preview.state === 'ready' && preview.task) {
+  if (preview.task) {
     return {
       actionType: 'result',
       taskId: preview.task.id,
@@ -276,7 +320,12 @@ function buildSecondaryActions(workflows, primaryAction) {
 }
 
 function buildExperienceState(data) {
-  const stageRail = buildStageRail(data.selectedWorkflow);
+  const targetStageKey = data.selectedWorkflow
+    && data.selectedWorkflow.targetContext
+    && data.selectedWorkflow.targetContext.stageKey;
+  const stageRail = buildStageRail(targetStageKey
+    ? { currentStageKey: targetStageKey }
+    : data.selectedWorkflow);
   const primaryAction = buildPrimaryAction(data);
   return {
     stageRail,

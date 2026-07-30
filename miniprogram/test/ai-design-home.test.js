@@ -135,7 +135,10 @@ test('the next action starts with inspiration and creates a real whole-plan 3D n
 
 test('AI Design home ships the approved map, journey, and scene states without the old task grid', () => {
   assert.match(pageWxml, /class="plan-navigator"/);
+  assert.match(pageWxml, /class="room-selector-handle"/);
   assert.match(pageWxml, /class="stage-rail"/);
+  assert.match(pageWxml, /class="stage-status">进行中/);
+  assert.match(pageWxml, /class="next-action-panel"/);
   assert.match(pageWxml, /class="scene-navigator/);
   assert.match(pageWxml, /bindtap="focusSceneWaypoint"/);
   assert.match(pageWxml, /sceneNavigation\.focusClass/);
@@ -158,7 +161,10 @@ test('AI Design home ships the approved map, journey, and scene states without t
   assert.match(pageWxss, /\.scene-navigator\s*\{[\s\S]*height:\s*calc\(1024rpx/);
   assert.match(pageWxss, /var\(--ai-navigation-top,\s*24px\)/);
   assert.match(pageWxss, /\.next-button\s*\{[\s\S]*font-size:\s*24rpx/);
-  assert.match(pageWxss, /\.stage-label\s*\{[\s\S]*font-size:\s*24rpx/);
+  assert.match(pageWxss, /\.stage-label\s*\{[\s\S]*font-size:\s*25rpx/);
+  assert.match(pageWxss, /\.stage-dot\s*\{[\s\S]*width:\s*42rpx/);
+  assert.match(pageWxss, /\.room-selector\s*\{[\s\S]*border-radius:\s*30rpx 30rpx 0 0/);
+  assert.match(pageWxss, /\.room-tab\.active::after/);
   assert.match(pageWxss, /\.scene-waypoint\s*\{[\s\S]*min-height:\s*54rpx/);
   assert.match(pageWxss, /\.discovery-panel\s*\{[\s\S]*margin:\s*-30rpx -36rpx 0/);
   assert.match(pageWxss, /\.secondary-action\s*\{[\s\S]*font-size:\s*24rpx/);

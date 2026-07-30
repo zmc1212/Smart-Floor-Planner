@@ -151,11 +151,13 @@ permission, or workflow changes.
 
 ### 10. AI Studio And Design Generation
 
-- Pages: `/ai-studio/scenarios` is the single AI execution workbench with
+- Pages: `/ai-studio/scenarios` is the customer-workflow AI execution workbench with
   customer workflows, quick tools, and the AI assistant. Legacy
   `/ai-studio/designer`, `/ai-studio/floor-plan`, `/ai-studio/furnishing`,
   `/ai-studio/soft-furnishing`, and scenario-detail URLs preserve relevant
-  query parameters and redirect into that workbench. `/inspirations`, `/ai-presets`,
+  query parameters and redirect into that workbench. `/ai-studio/create` is a
+  separate full-screen free-creation workspace opened from the sidebar in a new
+  tab. `/inspirations`, `/ai-presets`,
   `/ai-providers`, `/ai-credit-prices`, and AI-credit management on the enterprise AI page.
 - APIs: AI agent/chat, generation/render/advice, status/history, quota/usage,
   presets, workflow search/pagination and stages, design capabilities/action
@@ -165,10 +167,28 @@ permission, or workflow changes.
   action pricing, enterprise grants/adjustments/ledger/tasks, and failed Mini
   Program task retries. Legacy enterprise `ai-key`/`ai-sync` reads remain
   compatibility-only while writes return `410`.
+- Free-creation APIs: `GET /api/ai/creation/bootstrap`, prompt categories,
+  prompt template list/detail/preview, `POST /api/ai/creation/assets`,
+  `GET/POST /api/ai/creation/tasks`, `DELETE /api/ai/creation/tasks/[id]`,
+  `POST /api/ai/creation/tasks/[id]/batches`, prompt assistance, and generation
+  attachment to an existing customer workflow. The proxy maps the entire page
+  and API prefix to the unified `ai-scenarios` permission, while writable routes
+  also require an enterprise through `withTenantRoute`.
 - Models/helpers: `AiGeneration`, `AiWorkflow`, `AiChatSession`, `AiStylePreset`,
   `AiProviderConfig`, `AiProviderAttempt`, `MediaAsset`, `AiCreditAccount`,
   `AiCreditLedger`, `AiCreditPrice`, `Inspiration`, `src/lib/ai/*`, and
   `src/lib/media-storage/*`.
+- Free-creation and prompt-library models: `AiCreationTask`, `AiCreationBatch`,
+  `AiCreationModelProfile`, `AiPromptLibraryRevision`, `AiPromptCategory`,
+  `AiPromptTemplate`, `AiPromptParameterTemplate`, `AiPromptSourceModel`,
+  `AiPromptTemplateAsset`, and `AiPromptImportRun`.
+- Prompt-library operations: `npm run import:roomi-prompts` is dry-run by default;
+  add `-- --execute` to publish an atomically validated revision, or
+  `-- --source-file=<export.json> --execute` to resume from an export. Run
+  `npm run verify:roomi-prompts` for source counts, references, preview checksums,
+  and sampling. Import credentials and snapshots stay under the Git-ignored
+  `admin/.roomi-import/`; imported preview files stay under Git-ignored local
+  storage and are never uploaded to Qiniu.
 - Status: `Implemented`. The workbench starts customer designs with a
   customer/material/goal wizard, shows the selected result and candidates in a
   two-column workspace, and keeps one recommended next action prominent. The
@@ -176,6 +196,29 @@ permission, or workflow changes.
   output boundaries, and next actions. Legacy AI execution permission keys are
   compatibility aliases for `ai-scenarios`; role configuration exposes one
   permission without expanding the B2B channel `salesperson` boundary.
+  The free-creation workspace provides local template search and three-level
+  categories, template fill, reference images, prompt assistance, mapped local
+  model profiles, 1-4 outputs, ratio/quality/resolution controls, credit estimates,
+  history, reuse, retry, delete, download, and attachment to an existing customer
+  workflow. Template results load incrementally across the complete active revision,
+  and mobile users retain access to the same three-level category filter. The
+  full-screen surface follows the approved Roomi-style dark creation layout with a
+  68px brand bar, a 1440px minimum desktop canvas, compact creation rail, fixed-size
+  floating task panel, and a 1080px prompt/parameter composer. The title arc and
+  composer frame are bundled local static assets, Smart Floor AI branding replaces
+  the source branding, and the page continues to use only local data APIs. After a
+  task is submitted, the workspace switches to the Roomi-style execution layout:
+  task summary and parameter chips at the top, compact progress/result tiles with
+  edit/retry/delete actions, a right-side history rail, and the composer anchored to
+  the bottom edge. The server
+  intersects template parameters with the selected local
+  model profile before submission and snapshots the accepted values. Generation
+  uses the existing provider execution, polling, and hold/consume/release billing
+  path under the `image.free_create` action. Free-creation uploads and any result
+  that must be persisted are forced to the local media provider even when Qiniu
+  is the platform default. The first UI release attempts the imported audited
+  `sourceUrl` for a template preview and falls back to its imported local preview;
+  it never calls a Roomi API at runtime.
   User-facing AI credits and `AiWorkflow` records are
   shared across Admin and Mini Program. Customer/formal-plan Mini Program tasks
   for reference recreation, whole-space styling, floor-plan concepts, and soft
@@ -197,8 +240,10 @@ permission, or workflow changes.
   Style/soft-furnishing edits follow the room image, whole-plan concepts stay
   square, and single-room concepts default to landscape. The first successful base/soft-furnishing generation
   is selected and advances automatically; later successes at the same stage stay
-  as candidates until explicitly adopted. Active duplicate stage runs are
-  rejected before another hold or upstream task is created. Successful baselines
+  as candidates until explicitly adopted. Admin keeps its workflow-stage
+  semantics; Mini Program duplicate checks additionally include formal plan,
+  target scope, and room, and reject the same target before another hold or
+  upstream task is created. Successful baselines
   can continue into proposal and lighting. The Admin workflow wizard exposes
   only completed formal v4 plans with closed rooms and rejects stale, draft, or
   legacy plan IDs again on creation and execution. Floor-plan-backed direction,
@@ -250,6 +295,17 @@ permission, or workflow changes.
   driver requires a private bucket, HTTPS download domain, server-only encrypted
   credentials, and a successful full read/write/delete probe before activation.
   Qiniu upload failures are returned directly and never fall back to local storage.
+- Mini Program target continuation: `/api/miniprogram/ai/workflows` validates
+  `floorPlanId + targetScope + roomId` and derives target-local state from exact
+  generations instead of the workflow's global stage. Legacy generations with
+  missing scope metadata remain visible in history but cannot auto-match a room;
+  plan updates make older results stale. `POST /api/miniprogram/ai/tasks` accepts
+  a mutually exclusive `sourceResultTaskId`, revalidates success, workflow,
+  target, access, and freshness, materializes both internal and external result
+  images as a new `ai_generation_input`, and records `parentGenerationId` before
+  holding credits. Coworkers see only a busy flag for another operator's active
+  target task, while the owner may open progress. No room-level `AiWorkflow` or
+  change to Admin's global adopted-result semantics is introduced.
 - Migration/operations: run `npm run migrate:ai-platform` before enabling the
   new routes on an existing database. It preserves existing AI-credit balances,
   creates zero-balance accounts when absent, does not convert Pollen, maps legacy
@@ -321,7 +377,10 @@ permission, or workflow changes.
   Plan-backed reference recreation also derives a control image, isolating the
   selected room when `roomId` is present, and submits it before the visual
   reference without requiring a separate room photo. The workflow endpoint returns only context-visible
-  active schemes and executable Mini Program actions. An explicit workflow is
+  active schemes and executable Mini Program actions. With a formal target it
+  also returns `sourceFloorPlanId` and a target-local context matched by plan,
+  scope, and room; another operator's active task is represented only as busy.
+  An explicit workflow is
   continued; a unique customer/formal-plan match is reused automatically; when
   multiple schemes match, the client must choose instead of silently merging.
 

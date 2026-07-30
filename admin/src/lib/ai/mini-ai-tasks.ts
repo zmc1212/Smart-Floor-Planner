@@ -8,6 +8,7 @@ import {
   ensureMediaAssetDimensions,
   getAssetIdFromImageUrl,
   getMediaAssetImageUrl,
+  persistImageReference,
   readMediaAssetBuffer,
   resolveAiProviderImageInput,
   storeMediaBuffer,
@@ -32,6 +33,11 @@ import {
   resolveMiniAiFloorPlanTarget,
   type MiniAiTargetScope,
 } from '@/lib/ai/mini-ai-floorplan';
+import {
+  buildMiniAiTargetGenerationFilter,
+  generationMatchesMiniAiTarget,
+  isMiniAiGenerationCurrent,
+} from '@/lib/ai/mini-ai-target-context';
 
 export interface CreateMiniAiTaskInput {
   mode: MiniAiRenderMode;
@@ -44,6 +50,7 @@ export interface CreateMiniAiTaskInput {
   targetScope?: MiniAiTargetScope;
   workflowId?: string;
   createNewWorkflow?: boolean;
+  sourceResultTaskId?: string;
 }
 
 export const MINI_AI_WHOLE_PLAN_RENDER_VERSION = 'cutaway-v1';
@@ -81,20 +88,109 @@ function taskErrorCode(error: unknown) {
 
 async function findOwnedAsset(assetId: string, enterpriseId: mongoose.Types.ObjectId) {
   if (!mongoose.Types.ObjectId.isValid(assetId)) return null;
-  return MediaAsset.findOne({ _id: assetId, enterpriseId, ownerType: { $in: ['manual_upload', 'ai_generation_input', 'ai_generation_output'] } });
+  return MediaAsset.findOne({
+    _id: assetId,
+    enterpriseId,
+    ownerType: { $in: ['manual_upload', 'ai_generation_input', 'ai_generation_output'] },
+    deletedAt: { $exists: false },
+  });
 }
 
-async function cloneGenerationOutputAsInput(asset: Awaited<ReturnType<typeof findOwnedAsset>>, enterpriseId: mongoose.Types.ObjectId) {
+async function cloneGenerationOutputAsInput(
+  asset: Awaited<ReturnType<typeof findOwnedAsset>>,
+  enterpriseId: mongoose.Types.ObjectId,
+  ownerId: mongoose.Types.ObjectId
+) {
   if (!asset || asset.ownerType !== 'ai_generation_output') return asset;
   const buffer = await readMediaAssetBuffer(asset);
   const cloned = await storeMediaBuffer({
     enterpriseId,
     ownerType: 'ai_generation_input',
+    ownerId,
     mimeType: asset.mimeType,
     buffer,
     originalUrl: getMediaAssetImageUrl(String(asset._id)),
   });
   return cloned.asset;
+}
+
+async function findSourceResultTask(taskId: string | undefined, context: MiniAiContext) {
+  if (!taskId) return null;
+  if (!mongoose.Types.ObjectId.isValid(taskId)) throw new Error('来源成果不存在');
+  return AiGeneration.findOne({
+    _id: taskId,
+    enterpriseId: context.enterpriseId,
+    status: 'succeeded',
+    deletedAt: { $exists: false },
+  });
+}
+
+type MiniAiSourceMaterializationDeps = {
+  findAsset: typeof findOwnedAsset;
+  readAssetBuffer: typeof readMediaAssetBuffer;
+  storeBuffer: typeof storeMediaBuffer;
+  persistReference: typeof persistImageReference;
+};
+
+export async function materializeSourceResultAsInput(input: {
+  sourceTask: IAiGeneration;
+  enterpriseId: mongoose.Types.ObjectId;
+  ownerId: mongoose.Types.ObjectId;
+  deps?: MiniAiSourceMaterializationDeps;
+}) {
+  const deps = input.deps || {
+    findAsset: findOwnedAsset,
+    readAssetBuffer: readMediaAssetBuffer,
+    storeBuffer: storeMediaBuffer,
+    persistReference: persistImageReference,
+  };
+  const outputImage = input.sourceTask.output?.imageUrl;
+  if (!outputImage) throw new Error('来源成果没有可复用的结果图片');
+  const outputAssetId = getAssetIdFromImageUrl(outputImage);
+  if (outputAssetId) {
+    const outputAsset = await deps.findAsset(outputAssetId, input.enterpriseId);
+    if (!outputAsset) throw new Error('来源成果图片已不可用');
+    const buffer = await deps.readAssetBuffer(outputAsset);
+    const cloned = await deps.storeBuffer({
+      enterpriseId: input.enterpriseId,
+      ownerType: 'ai_generation_input',
+      ownerId: input.ownerId,
+      mimeType: outputAsset.mimeType,
+      buffer,
+      originalUrl: getMediaAssetImageUrl(String(outputAsset._id)),
+    });
+    return cloned.asset;
+  }
+  const persistedImage = await deps.persistReference({
+    enterpriseId: input.enterpriseId,
+    ownerType: 'ai_generation_input',
+    ownerId: input.ownerId,
+    image: outputImage,
+  });
+  const persistedAssetId = getAssetIdFromImageUrl(persistedImage);
+  if (!persistedAssetId) throw new Error('来源成果图片固化失败');
+  const persistedAsset = await deps.findAsset(persistedAssetId, input.enterpriseId);
+  if (!persistedAsset) throw new Error('来源成果图片固化失败');
+  return persistedAsset;
+}
+
+export function validateMiniAiSourceResultTask(input: {
+  sourceTask: IAiGeneration;
+  target: { floorPlanId?: string; targetScope?: MiniAiTargetScope; roomId?: string };
+  planUpdatedAt?: Date | string;
+  workflowId?: string;
+}) {
+  if (!generationMatchesMiniAiTarget(input.sourceTask, input.target)) {
+    return '来源成果与当前设计房间不一致';
+  }
+  if (!isMiniAiGenerationCurrent(input.sourceTask, input.planUpdatedAt)) {
+    return '来源成果早于户型最新版本，请先重新生成当前空间';
+  }
+  if (!input.sourceTask.workflowId) return '来源成果不属于可续接的客户方案';
+  if (input.workflowId && String(input.sourceTask.workflowId) !== input.workflowId) {
+    return '来源成果不属于当前客户方案';
+  }
+  return '';
 }
 
 async function deriveFloorPlanTarget(input: CreateMiniAiTaskInput, context: MiniAiContext) {
@@ -225,37 +321,66 @@ export async function createMiniAiTask(input: CreateMiniAiTaskInput, context: Mi
   if (!input.floorPlanId && (input.roomId || input.targetScope)) {
     throw new Error('设计范围必须关联正式户型');
   }
+  if (input.spaceAssetId && input.sourceResultTaskId) {
+    throw new Error('空间图片和方案成果不能同时作为输入');
+  }
+  if (input.sourceResultTaskId && !['style_transform', 'soft_furnishing'].includes(input.mode)) {
+    throw new Error('当前生成模式不能使用方案成果作为空间输入');
+  }
+  if (input.sourceResultTaskId && input.createNewWorkflow) {
+    throw new Error('续接方案成果时不能同时新建备选方案');
+  }
+  if (input.sourceResultTaskId && !input.floorPlanId) {
+    throw new Error('续接方案成果必须关联正式户型和设计范围');
+  }
   const config = MODE_CONFIG[input.mode];
-  const [rawSpaceAsset, rawReferenceAsset, price, floorPlanTarget] = await Promise.all([
+  const [rawSpaceAsset, rawReferenceAsset, price, floorPlanTarget, sourceResultTask] = await Promise.all([
     input.spaceAssetId ? findOwnedAsset(input.spaceAssetId, context.enterpriseId) : Promise.resolve(null),
     input.referenceAssetId ? findOwnedAsset(input.referenceAssetId, context.enterpriseId) : Promise.resolve(null),
     getAiCreditPrice(config.actionKey),
     deriveFloorPlanTarget(input, context),
+    findSourceResultTask(input.sourceResultTaskId, context),
   ]);
   const usesReferenceFloorPlanControl = input.mode === 'reference_recreate' && Boolean(floorPlanTarget);
-  if (input.mode !== 'floor_plan_render' && !usesReferenceFloorPlanControl && !rawSpaceAsset) {
+  if (input.sourceResultTaskId && !sourceResultTask) throw new Error('来源成果不存在或尚未生成成功');
+  if (input.mode !== 'floor_plan_render' && !usesReferenceFloorPlanControl && !rawSpaceAsset && !sourceResultTask) {
     throw new Error('空间图片不存在或无权访问');
   }
   if (input.mode === 'floor_plan_render' && !floorPlanTarget) throw new Error('请选择包含正式闭合房间的户型');
   if (input.mode === 'reference_recreate' && !rawReferenceAsset) throw new Error('请上传有效的参考图片');
   if (input.mode !== 'reference_recreate' && !input.styleKey) throw new Error('请选择目标风格');
 
-  const [spaceAsset, referenceAsset] = await Promise.all([
-    cloneGenerationOutputAsInput(rawSpaceAsset, context.enterpriseId),
-    cloneGenerationOutputAsInput(rawReferenceAsset, context.enterpriseId),
-  ]);
-  const [spaceDimensions, referenceDimensions] = await Promise.all([
-    ensureMediaAssetDimensions(spaceAsset),
-    ensureMediaAssetDimensions(referenceAsset),
-  ]);
+  const target = floorPlanTarget?.target;
+  const targetIdentity = target && input.floorPlanId ? {
+    floorPlanId: input.floorPlanId,
+    targetScope: target.targetScope,
+    roomId: target.roomId,
+  } : {};
+  if (sourceResultTask) {
+    const sourceError = validateMiniAiSourceResultTask({
+      sourceTask: sourceResultTask,
+      target: targetIdentity,
+      planUpdatedAt: floorPlanTarget?.plan.updatedAt,
+      workflowId: input.workflowId,
+    });
+    if (sourceError) throw new Error(sourceError);
+  }
 
-  const spaceImage = spaceAsset ? getMediaAssetImageUrl(String(spaceAsset._id)) : undefined;
-  const workflow = await resolveWorkflow(input, context, spaceImage);
+  const workflowSourceImage = sourceResultTask?.output?.imageUrl
+    || (rawSpaceAsset ? getMediaAssetImageUrl(String(rawSpaceAsset._id)) : undefined);
+  const workflow = await resolveWorkflow({
+    ...input,
+    ...(sourceResultTask ? { workflowId: String(sourceResultTask.workflowId) } : {}),
+  }, context, workflowSourceImage);
+  if (sourceResultTask && String(sourceResultTask.workflowId || '') !== String(workflow?._id || '')) {
+    throw new Error('来源成果不属于当前客户方案');
+  }
 
   if (workflow) {
     const existingTask = await AiGeneration.findOne({
       workflowId: workflow._id,
       stageKey: config.stageKey,
+      ...buildMiniAiTargetGenerationFilter(targetIdentity),
       status: { $in: ['created', 'pending', 'processing'] },
       deletedAt: { $exists: false },
     }).sort({ createdAt: -1 });
@@ -263,12 +388,26 @@ export async function createMiniAiTask(input: CreateMiniAiTaskInput, context: Mi
       throw Object.assign(new Error('该方案的当前阶段正在生成，请勿重复提交'), {
         status: 409,
         code: 'ACTIVE_GENERATION_EXISTS',
-        existingTaskId: String(existingTask._id),
+        ...(String(existingTask.operatorId) === String(context.operatorId)
+          ? { existingTaskId: String(existingTask._id) }
+          : {}),
       });
     }
   }
 
-  const target = floorPlanTarget?.target;
+  const generationId = new mongoose.Types.ObjectId();
+  const [spaceAsset, referenceAsset] = await Promise.all([
+    sourceResultTask
+      ? materializeSourceResultAsInput({ sourceTask: sourceResultTask, enterpriseId: context.enterpriseId, ownerId: generationId })
+      : cloneGenerationOutputAsInput(rawSpaceAsset, context.enterpriseId, generationId),
+    cloneGenerationOutputAsInput(rawReferenceAsset, context.enterpriseId, generationId),
+  ]);
+  const [spaceDimensions, referenceDimensions] = await Promise.all([
+    ensureMediaAssetDimensions(spaceAsset),
+    ensureMediaAssetDimensions(referenceAsset),
+  ]);
+  const spaceImage = spaceAsset ? getMediaAssetImageUrl(String(spaceAsset._id)) : undefined;
+
   const outputSpec = selectMiniAiOutputSpec({
     mode: input.mode,
     targetScope: target?.targetScope,
@@ -280,7 +419,6 @@ export async function createMiniAiTask(input: CreateMiniAiTaskInput, context: Mi
   const logicalModelKey: AiLogicalModelKey = usesFloorPlanControl
     ? 'image.edit.standard'
     : config.logicalModelKey;
-  const generationId = new mongoose.Types.ObjectId();
   const controlAsset = usesFloorPlanControl && floorPlanTarget
     ? await storeMediaBuffer({
         enterpriseId: context.enterpriseId,
@@ -303,6 +441,7 @@ export async function createMiniAiTask(input: CreateMiniAiTaskInput, context: Mi
     floorPlanId: input.floorPlanId || undefined,
     leadId: workflow?.leadId || input.leadId || undefined,
     workflowId: workflow?._id,
+    parentGenerationId: sourceResultTask?._id,
     type: config.type,
     channel: 'miniprogram',
     stageKey: config.stageKey,
@@ -472,10 +611,16 @@ export function serializeMiniAiTask(
     targetScope?: MiniAiTargetScope;
     targetLabel?: string;
   } | undefined;
-  const targetScope = roomData?.targetScope
-    || (roomData?.roomId || roomData?.summary ? 'single_room' : undefined);
+  const targetScope = roomData?.targetScope;
+  const hasExactTargetContext = Boolean(
+    generation.floorPlanId
+      && (targetScope === 'whole_floor_plan'
+        || (targetScope === 'single_room' && roomData?.roomId))
+  );
   const targetLabel = roomData?.targetLabel
-    || (targetScope === 'whole_floor_plan' ? '完整户型' : targetScope === 'single_room' ? '单房间（旧任务）' : undefined);
+    || (targetScope === 'whole_floor_plan'
+      ? '完整户型'
+      : targetScope === 'single_room' && roomData?.roomId ? '单房间' : roomData?.summary ? '旧任务' : undefined);
   return {
     id: String(generation._id), mode: generation.input?.mode || generation.type, status: generation.status,
     progress: generation.status === 'succeeded' || generation.status === 'failed' ? 100 : generation.status === 'processing' ? 65 : 10,
@@ -499,6 +644,7 @@ export function serializeMiniAiTask(
     roomId: roomData?.roomId,
     targetScope,
     targetLabel,
+    hasExactTargetContext,
     createdAt: generation.createdAt, updatedAt: generation.updatedAt,
   };
 }

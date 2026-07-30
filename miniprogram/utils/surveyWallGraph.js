@@ -2315,27 +2315,29 @@ function setMeasurementSide(draft, side, wallId) {
   const targetWallId = wallId || floor.session.selectedWallId;
   const wall = targetWallId ? getWall(floor, targetWallId) : null;
 
-  // The measuring edge establishes the convention for the active wall chain. It
-  // is intentionally selectable only after that chain's first wall is committed
-  // and before any later wall can inherit or resolve its side from it.
-  const startWallIndex = Number.isInteger(floor.session.activeSpaceStartWallIndex)
-    ? floor.session.activeSpaceStartWallIndex
-    : 0;
-  const firstWall = floor.walls[startWallIndex] || null;
-  const isFirstWallOfActiveChain = !!(
-    wall &&
-    firstWall &&
-    wall.id === firstWall.id &&
-    floor.walls.length === startWallIndex + 1 &&
-    floor.session.state === 'wallCommitted' &&
-    !floor.session.previewPoint
-  );
-  if (!isFirstWallOfActiveChain) return next;
+  // The measuring edge establishes the convention for a free-standing wall
+  // chain. A chain snapped to an existing boundary inherits that boundary side.
+  if (!canSetInitialMeasurementSide(floor, floor.session, wall && wall.id)) return next;
 
   floor.session.measurementSide = targetSide;
   wall.measurementSide = targetSide;
 
   return touchDraft(next);
+}
+
+function canSetInitialMeasurementSide(floor, session, wallId) {
+  if (!floor || !session || session.activeSpaceSharedWallId) return false;
+  const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+    ? session.activeSpaceStartWallIndex
+    : 0;
+  const firstWall = floor.walls[startWallIndex] || null;
+  return !!(
+    firstWall &&
+    (!wallId || wallId === firstWall.id) &&
+    floor.walls.length === startWallIndex + 1 &&
+    session.state === 'wallCommitted' &&
+    !session.previewPoint
+  );
 }
 
 function placeNewWallChainCursor(draft, point) {
@@ -2523,6 +2525,7 @@ module.exports = {
   remeasureSelectedWall,
   setFixedNode,
   setMeasurementSide,
+  canSetInitialMeasurementSide,
   setThickness,
   resetCursor,
   updateViewport

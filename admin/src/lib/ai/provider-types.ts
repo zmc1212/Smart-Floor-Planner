@@ -10,6 +10,7 @@ export const LOGICAL_MODEL_KEYS = [
 export type AiLogicalModelKey = (typeof LOGICAL_MODEL_KEYS)[number];
 
 export const AI_ACTION_KEYS = [
+  'image.free_create',
   'image.reference_recreate',
   'image.style_transform',
   'image.floor_plan_style',
@@ -127,6 +128,7 @@ export function capabilityForLogicalModel(key: AiLogicalModelKey): AiCapability 
 export function actionKeyForGenerationType(type: string): AiActionKey {
   const map: Record<string, AiActionKey> = {
     reference_recreate: 'image.reference_recreate',
+    free_create: 'image.free_create',
     style_transform: 'image.style_transform',
     floor_plan_style: 'image.floor_plan_style',
     furnishing_render: 'image.furnishing_render',

@@ -26,6 +26,9 @@ test('style transform requires style and enough enterprise credits', () => {
   const insufficient = validateTaskInput({ mode: 'style_transform', spaceAssetId: 'space', styleKey: 'modern', availableBalance: 9, price: 10 });
   assert.equal(insufficient.insufficient, true);
   assert.equal(validateTaskInput({ mode: 'style_transform', spaceAssetId: 'space', styleKey: 'modern', availableBalance: 10, price: 10 }).valid, true);
+  assert.equal(validateTaskInput({ mode: 'style_transform', sourceResultTaskId: 'result', styleKey: 'modern', availableBalance: 10, price: 10 }).error, '续接方案成果必须关联正式户型和设计范围');
+  assert.equal(validateTaskInput({ mode: 'style_transform', floorPlanId: 'plan', targetScope: 'single_room', roomId: 'kitchen', spaceAssetId: 'space', sourceResultTaskId: 'result', styleKey: 'modern', availableBalance: 10, price: 10 }).error, '空间图片和方案成果不能同时作为输入');
+  assert.equal(validateTaskInput({ mode: 'style_transform', floorPlanId: 'plan', targetScope: 'single_room', roomId: 'kitchen', sourceResultTaskId: 'result', styleKey: 'modern', availableBalance: 10, price: 10 }).valid, true);
 });
 
 test('floor-plan rendering requires a formal plan context instead of a space photo', () => {

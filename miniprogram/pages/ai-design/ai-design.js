@@ -39,6 +39,11 @@ function buildSelectedSource(plan, targetScope, room) {
   };
 }
 
+function sourceTargetKey(source) {
+  if (!source) return '';
+  return [source.floorPlanId || '', source.targetScope || '', source.roomId || ''].join(':');
+}
+
 Page({
   data: {
     loading: true,
@@ -204,16 +209,23 @@ Page({
         sourceKey: item.floorPlanId,
         selected: !!selectedSource && item.floorPlanId === selectedSource.floorPlanId,
       }));
-      const schemeOptions = await aiService.loadWorkflows({
+      const workflowQuery = {
         workflowId: this.data.workflowId,
         leadId: selectedSource ? selectedSource.leadId : this.data.leadId,
-        floorPlanId: selectedSource ? selectedSource.floorPlanId : this.data.floorPlanId,
-      });
+      };
+      if (selectedSource) {
+        workflowQuery.floorPlanId = selectedSource.floorPlanId;
+        workflowQuery.targetScope = selectedSource.targetScope;
+        workflowQuery.roomId = selectedSource.roomId;
+      }
+      const schemeOptions = await aiService.loadWorkflows(workflowQuery);
       const selectedWorkflow = schemeOptions.find((item) => item.id === this.data.workflowId)
         || (schemeOptions.length === 1 ? schemeOptions[0] : null);
       const decoratedWorkflows = workflows.map((item) => ({
         ...item,
-        recommended: !!selectedWorkflow && selectedWorkflow.recommendedMiniMode === item.key,
+        recommended: !!selectedWorkflow
+          && !!selectedWorkflow.targetContext
+          && selectedWorkflow.targetContext.recommendedMiniMode === item.key,
       }));
       const experienceState = buildExperienceState({
         workflows: decoratedWorkflows,
@@ -243,7 +255,7 @@ Page({
         historyLoadError: historyResult.error,
         ...experienceState,
       });
-      this.scheduleRecentPolling(recent, selectedSource);
+      this.scheduleRecentPolling(recent, selectedSource, selectedWorkflow);
     } catch (error) {
       const loadError = error.error || error.message || 'AI 服务加载失败';
       this.setData({ loadError });
@@ -265,28 +277,46 @@ Page({
     this.recentPollTimer = null;
   },
 
-  scheduleRecentPolling(recent, selectedSource = this.data.selectedSource) {
+  scheduleRecentPolling(
+    recent,
+    selectedSource = this.data.selectedSource,
+    selectedWorkflow = this.data.selectedWorkflow
+  ) {
     this.stopRecentPolling();
     const previewProcessing = selectedSource
       && selectedSource.navigationPreview
       && selectedSource.navigationPreview.state === 'processing';
+    const targetProcessing = selectedWorkflow
+      && selectedWorkflow.targetContext
+      && selectedWorkflow.targetContext.status === 'processing';
     if (!this.recentPageVisible
-      || (!hasActiveTasks(recent) && !previewProcessing)) return;
+      || (!hasActiveTasks(recent) && !previewProcessing && !targetProcessing)) return;
     this.recentPollTimer = setTimeout(() => this.refreshRecent(), 5000);
   },
 
   async refreshRecent() {
     if (!this.recentPageVisible) return;
     try {
+      const requestedSource = this.data.selectedSource;
+      const requestedTargetKey = sourceTargetKey(requestedSource);
       const previewTask = this.data.selectedSource
         && this.data.selectedSource.navigationPreview
         && this.data.selectedSource.navigationPreview.task;
-      const [history, refreshedPreviewTask] = await Promise.all([
+      const [history, refreshedPreviewTask, refreshedWorkflows] = await Promise.all([
         aiService.loadHistory(1, 4),
         previewTask && ['created', 'pending', 'processing'].includes(previewTask.status)
           ? aiService.getTask(previewTask.id).catch(() => null)
           : Promise.resolve(null),
+        requestedSource
+          ? aiService.loadWorkflows({
+            leadId: requestedSource.leadId,
+            floorPlanId: requestedSource.floorPlanId,
+            targetScope: requestedSource.targetScope,
+            roomId: requestedSource.roomId,
+          }).catch(() => null)
+          : Promise.resolve(null),
       ]);
+      if (requestedTargetKey !== sourceTargetKey(this.data.selectedSource)) return;
       const recent = prioritizeProcessingTasks(
         (history.data || []).map((item) => decorateRecentResult({
           ...item,
@@ -317,8 +347,32 @@ Page({
           },
         };
       }
-      this.setData({ recent, selectedSource, historyLoadError: '' }, () => this.syncExperienceState());
-      this.scheduleRecentPolling(recent, selectedSource);
+      const schemeOptions = refreshedWorkflows || this.data.schemeOptions;
+      const selectedWorkflow = refreshedWorkflows
+        ? (schemeOptions.find((item) => item.id === this.data.workflowId)
+          || (schemeOptions.length === 1 ? schemeOptions[0] : null))
+        : this.data.selectedWorkflow;
+      const recommendedMode = selectedWorkflow
+        && selectedWorkflow.targetContext
+        && selectedWorkflow.targetContext.recommendedMiniMode;
+      this.setData({
+        recent,
+        selectedSource,
+        schemeOptions,
+        selectedWorkflow,
+        workflowId: refreshedWorkflows
+          ? (selectedWorkflow ? selectedWorkflow.id : '')
+          : this.data.workflowId,
+        workflowPickerOpen: refreshedWorkflows
+          ? schemeOptions.length > 1 && !selectedWorkflow
+          : this.data.workflowPickerOpen,
+        workflows: this.data.workflows.map((item) => ({
+          ...item,
+          recommended: item.key === recommendedMode,
+        })),
+        historyLoadError: '',
+      }, () => this.syncExperienceState());
+      this.scheduleRecentPolling(recent, selectedSource, selectedWorkflow);
     } catch (error) {
       this.setData({ historyLoadError: error.error || error.message || '最近成果刷新失败' });
       this.scheduleRecentPolling(this.data.recent);
@@ -332,6 +386,7 @@ Page({
   openMode(event) {
     const mode = event.currentTarget.dataset.mode;
     const requestedScope = event.currentTarget.dataset.scope;
+    const sourceResultTaskId = event.currentTarget.dataset.sourceResultTaskId || '';
     const effectiveTargetScope = requestedScope || this.data.targetScope;
     const effectiveRoomId = effectiveTargetScope === 'whole_floor_plan' ? '' : this.data.roomId;
     if (this.data.workflowLoading) {
@@ -383,6 +438,7 @@ Page({
       effectiveTargetScope ? `targetScope=${effectiveTargetScope}` : '',
       this.data.workflowId ? `workflowId=${this.data.workflowId}` : '',
       this.data.createNewWorkflow ? 'createNewWorkflow=1' : '',
+      sourceResultTaskId ? `sourceResultTaskId=${sourceResultTaskId}` : '',
     ].filter(Boolean).join('&');
     wx.navigateTo({ url: `/pages/ai-design-create/ai-design-create?${query}` });
   },
@@ -396,6 +452,14 @@ Page({
       return;
     }
     const action = this.data.primaryAction;
+    if (action && action.actionType === 'busy') {
+      wx.showToast({ title: '其他成员正在生成当前空间', icon: 'none' });
+      return;
+    }
+    if (action && action.actionType === 'handoff') {
+      wx.showToast({ title: '请在管理后台继续深化当前方案', icon: 'none' });
+      return;
+    }
     if (!action || action.enabled === false) {
       wx.showToast({ title: '当前服务暂不可用', icon: 'none' });
       return;
@@ -413,6 +477,7 @@ Page({
         dataset: {
           mode: action.mode,
           scope: action.targetScope,
+          sourceResultTaskId: action.sourceResultTaskId,
         },
       },
     });
@@ -482,7 +547,7 @@ Page({
   async applySource(plan, targetScope, room) {
     const source = buildSelectedSource(plan, targetScope, room);
     if (!source) return;
-    const samePlan = this.data.floorPlanId === source.floorPlanId;
+    const preferredWorkflowId = this.data.workflowId;
     const sources = this.data.sources.map((item) => ({
       ...item,
       selected: item.floorPlanId === source.floorPlanId,
@@ -497,35 +562,54 @@ Page({
       sourcePickerOpen: false,
       sourcePickerStep: 'plans',
       activeSourcePlan: null,
-      selectedWorkflow: samePlan ? this.data.selectedWorkflow : null,
-      workflowId: samePlan ? this.data.workflowId : '',
-      createNewWorkflow: samePlan ? this.data.createNewWorkflow : false,
-      schemeOptions: samePlan ? this.data.schemeOptions : [],
+      selectedWorkflow: null,
+      workflowId: preferredWorkflowId,
+      createNewWorkflow: false,
+      schemeOptions: [],
+      workflows: this.data.workflows.map((item) => ({ ...item, recommended: false })),
       workflowPickerOpen: false,
-      workflowLoading: samePlan ? this.data.workflowLoading : true,
-      workflowLoadError: samePlan ? this.data.workflowLoadError : '',
+      workflowLoading: true,
+      workflowLoadError: '',
     }, () => this.syncExperienceState());
-    if (samePlan) return;
-    await this.loadSourceWorkflows(source);
+    await this.loadSourceWorkflows(source, preferredWorkflowId);
   },
 
-  async loadSourceWorkflows(source) {
+  async loadSourceWorkflows(source, preferredWorkflowId = this.data.workflowId) {
     if (!source) return;
+    const requestId = Number(this.workflowLoadRequestId || 0) + 1;
+    this.workflowLoadRequestId = requestId;
     this.setData({ workflowLoading: true, workflowLoadError: '' });
     try {
       const schemeOptions = await aiService.loadWorkflows({
         leadId: source.leadId,
         floorPlanId: source.floorPlanId,
+        targetScope: source.targetScope,
+        roomId: source.roomId,
       });
-      const selectedWorkflow = schemeOptions.length === 1 ? schemeOptions[0] : null;
+      if (requestId !== this.workflowLoadRequestId
+        || sourceTargetKey(source) !== sourceTargetKey(this.data.selectedSource)) return;
+      const selectedWorkflow = schemeOptions.find((item) => item.id === preferredWorkflowId)
+        || (schemeOptions.length === 1 ? schemeOptions[0] : null);
+      const recommendedMode = selectedWorkflow
+        && selectedWorkflow.targetContext
+        && selectedWorkflow.targetContext.recommendedMiniMode;
       this.setData({
         schemeOptions,
         selectedWorkflow,
         workflowId: selectedWorkflow ? selectedWorkflow.id : '',
-        workflowPickerOpen: schemeOptions.length > 1,
+        workflows: this.data.workflows.map((item) => ({
+          ...item,
+          recommended: item.key === recommendedMode,
+        })),
+        workflowPickerOpen: schemeOptions.length > 1 && !selectedWorkflow,
         workflowLoadError: '',
-      }, () => this.syncExperienceState());
+      }, () => {
+        this.syncExperienceState();
+        this.scheduleRecentPolling(this.data.recent, source, selectedWorkflow);
+      });
     } catch (error) {
+      if (requestId !== this.workflowLoadRequestId
+        || sourceTargetKey(source) !== sourceTargetKey(this.data.selectedSource)) return;
       this.setData({
         schemeOptions: [],
         selectedWorkflow: null,
@@ -535,7 +619,10 @@ Page({
       }, () => this.syncExperienceState());
       wx.showToast({ title: '客户方案加载失败，请重试', icon: 'none' });
     } finally {
-      this.setData({ workflowLoading: false });
+      if (requestId === this.workflowLoadRequestId
+        && sourceTargetKey(source) === sourceTargetKey(this.data.selectedSource)) {
+        this.setData({ workflowLoading: false });
+      }
     }
   },
 
@@ -557,6 +644,7 @@ Page({
   },
 
   clearSource() {
+    this.workflowLoadRequestId = Number(this.workflowLoadRequestId || 0) + 1;
     this.setData({
       sources: this.data.sources.map((item) => ({ ...item, selected: false })),
       selectedSource: null,
@@ -593,7 +681,14 @@ Page({
       workflowId: workflow.id,
       createNewWorkflow: false,
       workflowPickerOpen: false,
-    }, () => this.syncExperienceState());
+      workflows: this.data.workflows.map((item) => ({
+        ...item,
+        recommended: item.key === (workflow.targetContext && workflow.targetContext.recommendedMiniMode),
+      })),
+    }, () => {
+      this.syncExperienceState();
+      this.scheduleRecentPolling(this.data.recent, this.data.selectedSource, workflow);
+    });
   },
 
   createAlternativeWorkflow() {

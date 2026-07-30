@@ -14,6 +14,11 @@ function decorateTask(task) {
     : 1;
   return {
     ...task,
+    canContinueWorkflow: Boolean(
+      task.workflowId
+        && task.hasExactTargetContext
+        && ['soft_furnishing', 'base_render'].includes(task.nextStageKey)
+    ),
     modeTitle: MODE_TITLES[task.mode] || 'AI 设计',
     sourceCompareImageUrl: (task.mode === 'reference_recreate' ? task.referenceImageUrl : task.controlImageUrl)
       || task.spaceImageUrl
@@ -229,7 +234,16 @@ Page({
       : task.nextStageKey === 'base_render'
         ? 'style_transform'
         : task.mode;
-    wx.navigateTo({ url: `/pages/ai-design-create/ai-design-create?mode=${nextMode}&sourceTaskId=${task.id}` });
+    const query = [
+      `mode=${nextMode}`,
+      `sourceResultTaskId=${task.id}`,
+      `workflowId=${task.workflowId}`,
+      `floorPlanId=${task.floorPlanId}`,
+      `targetScope=${task.targetScope}`,
+      task.roomId ? `roomId=${task.roomId}` : '',
+      task.leadId ? `leadId=${task.leadId}` : '',
+    ].filter(Boolean).join('&');
+    wx.navigateTo({ url: `/pages/ai-design-create/ai-design-create?${query}` });
   },
 
   handlePrimaryAction() {
@@ -245,7 +259,7 @@ Page({
       });
       return;
     }
-    if (task && task.workflowId && ['soft_furnishing', 'base_render'].includes(task.nextStageKey)) {
+    if (task && task.canContinueWorkflow) {
       this.continueWorkflow();
       return;
     }

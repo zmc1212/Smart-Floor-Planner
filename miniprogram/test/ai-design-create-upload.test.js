@@ -34,10 +34,13 @@ test('AI image upload keeps the local preview on success and failure', async () 
 
   try {
     const page = createPage(loadPageDefinition());
+    page.setData({ sourceResultTaskId: 'kitchen-result', autoSourceLabel: '厨房方案基准图' });
     aiService.uploadAsset = async () => ({ id: 'asset-1', previewUrl: 'https://example.com/signed-preview' });
     await page.uploadImage('space', 'wxfile://space-photo.jpg');
 
     assert.equal(page.data.spaceAssetId, 'asset-1');
+    assert.equal(page.data.sourceResultTaskId, '');
+    assert.equal(page.data.autoSourceLabel, '');
     assert.equal(page.data.spaceImagePath, 'wxfile://space-photo.jpg');
     assert.equal(page.data.uploadErrorRole, '');
     assert.deepEqual(feedbackCalls.slice(-3), ['showLoading', 'hideLoading', 'showToast:图片已上传']);

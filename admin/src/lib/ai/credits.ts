@@ -5,6 +5,7 @@ import { AiCreditPrice, type MiniAiTaskType } from '@/models/AiCreditPrice';
 import type { AiActionKey } from '@/lib/ai/provider-types';
 
 const DEFAULT_PRICES: Array<{ actionKey: AiActionKey; mode?: MiniAiTaskType; label: string; credits: number }> = [
+  { actionKey: 'image.free_create', label: 'AI 自由创作', credits: 10 },
   { actionKey: 'image.reference_recreate', mode: 'reference_recreate', label: '复刻心动网图', credits: 10 },
   { actionKey: 'image.style_transform', mode: 'style_transform', label: '空间换风格', credits: 10 },
   { actionKey: 'image.floor_plan_style', mode: 'floor_plan_render', label: '户型概念效果图', credits: 10 },

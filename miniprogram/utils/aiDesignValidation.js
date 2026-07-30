@@ -21,7 +21,17 @@ function validateTaskInput(input) {
     }
   }
   const usesReferenceFloorPlanControl = input.mode === 'reference_recreate' && Boolean(input.floorPlanId);
-  if (input.mode !== 'floor_plan_render' && !usesReferenceFloorPlanControl && !input.spaceAssetId) {
+  if (input.spaceAssetId && input.sourceResultTaskId) {
+    return { valid: false, error: '空间图片和方案成果不能同时作为输入' };
+  }
+  if (input.sourceResultTaskId && !input.floorPlanId) {
+    return { valid: false, error: '续接方案成果必须关联正式户型和设计范围' };
+  }
+  if (input.sourceResultTaskId && !['style_transform', 'soft_furnishing'].includes(input.mode)) {
+    return { valid: false, error: '当前生成模式不能使用方案成果作为空间输入' };
+  }
+  if (input.mode !== 'floor_plan_render' && !usesReferenceFloorPlanControl
+    && !input.spaceAssetId && !input.sourceResultTaskId) {
     return { valid: false, error: input.mode === 'soft_furnishing' ? '请先上传当前空间或基准效果图' : '请先上传我的空间图' };
   }
   if (input.mode === 'reference_recreate' && !input.referenceAssetId) {

@@ -164,6 +164,41 @@ test('snapping a new cursor preserves existing closed spaces and walls', () => {
   assert.ok(floor.session.anchorNodeId);
 });
 
+test('a wall-snapped continuation does not reopen the initial measurement-side choice', () => {
+  let draft = createWallDraft();
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    { xMm: 0, yMm: 0 }
+  );
+  draft = commitWall(draft, { xMm: 0, yMm: 2000 }, 2000);
+
+  const floor = surveyGraph.getActiveFloor(draft);
+  const snappedWall = floor.walls[1];
+  const originalSide = snappedWall.measurementSide;
+
+  assert.ok(floor.session.activeSpaceSharedWallId);
+  assert.equal(surveyGraph.canSetInitialMeasurementSide(floor, floor.session, snappedWall.id), false);
+
+  const unchanged = surveyGraph.setMeasurementSide(
+    draft,
+    originalSide === 'left' ? 'right' : 'left',
+    snappedWall.id
+  );
+  assert.equal(surveyGraph.getActiveFloor(unchanged).walls[1].measurementSide, originalSide);
+});
+
+test('a free-standing wall chain still allows its initial measurement-side choice', () => {
+  let draft = createWallDraft();
+  draft = surveyGraph.placeNewWallChainCursor(draft, { xMm: 6000, yMm: 0 });
+  draft = commitWall(draft, { xMm: 9000, yMm: 0 }, 3000);
+
+  const floor = surveyGraph.getActiveFloor(draft);
+  const independentWall = floor.walls[1];
+
+  assert.equal(floor.session.activeSpaceSharedWallId, '');
+  assert.equal(surveyGraph.canSetInitialMeasurementSide(floor, floor.session, independentWall.id), true);
+});
+
 test('phone angle measurement keeps the preview length and applies the dragged turn side', () => {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });

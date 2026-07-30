@@ -236,6 +236,7 @@ async function persistSuccess(
           ownerType: 'ai_generation_output',
           ownerId: generation._id,
           image: result.image,
+          storageProviderKey: generation.type === 'free_create' ? 'local' : undefined,
         });
     if (!imageUrl) throw new Error('供应商未返回可持久化图片');
     generation.output.imageUrl = imageUrl;
@@ -317,6 +318,7 @@ export async function executeGenerationImage(
       ownerType: 'ai_generation_output',
       ownerId: generation._id,
       image: `data:image/png;base64,${buffer.toString('base64')}`,
+      storageProviderKey: generation.type === 'free_create' ? 'local' : undefined,
     });
     generation.output.imageUrl = imageUrl;
     generation.output.promptUsed = input.prompt;
@@ -331,11 +333,12 @@ export async function executeGenerationImage(
     return generation;
   }
   const persistedImages = input.images?.length
-    ? await Promise.all(input.images.map((image) => persistImageReference({
+      ? await Promise.all(input.images.map((image) => persistImageReference({
         enterpriseId: generation.enterpriseId,
         ownerType: 'ai_generation_input',
         ownerId: generation._id,
         image,
+        storageProviderKey: generation.type === 'free_create' ? 'local' : undefined,
       })))
     : undefined;
   const imageRefs = persistedImages?.filter((image): image is string => Boolean(image));

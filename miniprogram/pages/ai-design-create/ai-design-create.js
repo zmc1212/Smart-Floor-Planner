@@ -13,6 +13,7 @@ Page({
     floorPlanName: '',
     targetMeta: '',
     sourceTaskId: '',
+    requestedSourceResultTaskId: '',
     workflowId: '',
     workflowTitle: '',
     workflowLeadName: '',
@@ -26,6 +27,8 @@ Page({
     price: 10,
     spaceAssetId: '',
     referenceAssetId: '',
+    sourceResultTaskId: '',
+    autoSourceLabel: '',
     spaceImagePath: '',
     referenceImagePath: '',
     styles: [],
@@ -49,6 +52,7 @@ Page({
       roomId: options.roomId || '',
       targetScope: options.targetScope || (options.roomId ? 'single_room' : options.floorPlanId ? 'whole_floor_plan' : ''),
       sourceTaskId: options.sourceTaskId || '',
+      requestedSourceResultTaskId: options.sourceResultTaskId || '',
       workflowId: options.workflowId || '',
       createNewWorkflow: options.createNewWorkflow === '1',
     });
@@ -84,8 +88,14 @@ Page({
       }
       if (this.data.sourceTaskId) {
         const source = await aiService.getTask(this.data.sourceTaskId);
-        const useResultAsSource = this.data.mode !== source.mode && source.resultAssetId && source.resultImageUrl;
-        nextData.spaceAssetId = useResultAsSource ? source.resultAssetId : (source.spaceAssetId || '');
+        if (this.data.mode !== source.mode && !source.hasExactTargetContext) {
+          throw new Error('旧任务缺少明确房间范围，只能使用“再设计”复用原始输入');
+        }
+        const useResultAsSource = this.data.mode !== source.mode
+          && source.hasExactTargetContext
+          && source.resultImageUrl;
+        nextData.spaceAssetId = useResultAsSource ? '' : (source.spaceAssetId || '');
+        nextData.sourceResultTaskId = useResultAsSource ? source.id : '';
         nextData.referenceAssetId = source.referenceAssetId || '';
         nextData.spaceImagePath = useResultAsSource ? source.resultImageUrl : (source.spaceImageUrl || '');
         nextData.referenceImagePath = source.referenceImageUrl || '';
@@ -103,8 +113,16 @@ Page({
         nextData.targetMeta = nextData.targetMeta || (nextData.targetScope === 'whole_floor_plan'
           ? '完整户型 · 全屋俯视效果'
           : nextData.targetLabel || '单房间设计');
+        nextData.autoSourceLabel = useResultAsSource
+          ? `${nextData.targetLabel || '当前空间'}方案基准图`
+          : '';
       } else if (this.data.workflowId) {
-        const workflows = await aiService.loadWorkflows({ workflowId: this.data.workflowId });
+        const workflows = await aiService.loadWorkflows({
+          workflowId: this.data.workflowId,
+          floorPlanId: this.data.floorPlanId,
+          targetScope: this.data.targetScope,
+          roomId: this.data.roomId,
+        });
         const workflow = workflows[0];
         if (workflow) {
           nextData.workflowId = workflow.id;
@@ -119,11 +137,18 @@ Page({
             nextData.targetMeta = '完整户型 · 全屋俯视效果';
           }
           nextData.leadId = workflow.lead && workflow.lead.id ? workflow.lead.id : this.data.leadId;
-          const baselineTask = workflow.selectedTask || workflow.latestTask;
-          if (this.data.mode !== 'floor_plan_render' && baselineTask && baselineTask.resultAssetId && baselineTask.resultImageUrl) {
-            nextData.spaceAssetId = baselineTask.resultAssetId;
-            nextData.spaceImagePath = baselineTask.resultImageUrl;
-            nextData.selectedStyleKey = baselineTask.styleKey || nextData.selectedStyleKey;
+          const sourceTask = workflow.targetContext && workflow.targetContext.sourceTask;
+          if (this.data.requestedSourceResultTaskId
+            && (!sourceTask || sourceTask.id !== this.data.requestedSourceResultTaskId)) {
+            throw new Error('当前空间基准图已变化，请返回后重试');
+          }
+          if (['style_transform', 'soft_furnishing'].includes(this.data.mode)
+            && sourceTask && sourceTask.resultImageUrl) {
+            nextData.spaceAssetId = '';
+            nextData.sourceResultTaskId = sourceTask.id;
+            nextData.spaceImagePath = sourceTask.resultImageUrl;
+            nextData.selectedStyleKey = sourceTask.styleKey || nextData.selectedStyleKey;
+            nextData.autoSourceLabel = `${nextData.targetLabel || '当前空间'}方案基准图`;
           }
         }
       }
@@ -160,7 +185,13 @@ Page({
   async uploadImage(role, filePath) {
     const pathKey = role === 'reference' ? 'referenceImagePath' : 'spaceImagePath';
     const assetKey = role === 'reference' ? 'referenceAssetId' : 'spaceAssetId';
-    this.setData({ uploadingRole: role, uploadErrorRole: '', [pathKey]: filePath, [assetKey]: '' });
+    this.setData({
+      uploadingRole: role,
+      uploadErrorRole: '',
+      [pathKey]: filePath,
+      [assetKey]: '',
+      ...(role === 'space' ? { sourceResultTaskId: '', autoSourceLabel: '' } : {}),
+    });
     wx.showLoading({ title: '上传中...' });
     let feedback;
     try {
@@ -200,6 +231,7 @@ Page({
     const validation = validateTaskInput({
       mode: this.data.mode,
       spaceAssetId: this.data.spaceAssetId,
+      sourceResultTaskId: this.data.sourceResultTaskId,
       referenceAssetId: this.data.referenceAssetId,
       styleKey: this.data.selectedStyleKey,
       floorPlanId: this.data.floorPlanId,
@@ -228,6 +260,7 @@ Page({
         spaceAssetId: this.data.mode === 'reference_recreate' && this.data.floorPlanId
           ? undefined
           : this.data.spaceAssetId,
+        sourceResultTaskId: this.data.sourceResultTaskId || undefined,
         referenceAssetId: this.data.mode === 'reference_recreate' ? this.data.referenceAssetId : undefined,
         styleKey: this.data.mode === 'reference_recreate' ? undefined : this.data.selectedStyleKey,
         floorPlanId: this.data.floorPlanId || undefined,

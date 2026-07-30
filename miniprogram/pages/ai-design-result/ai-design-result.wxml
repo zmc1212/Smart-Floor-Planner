@@ -95,7 +95,7 @@
         <view class="bottom-actions">
           <button class="bottom-action" hover-class="outline-pressed" bindtap="handlePrimaryAction">
             <image class="bottom-action-icon-image" src="/images/ai-result-icons/refresh-cw.png" mode="aspectFit"></image>
-            <text>{{task.workflowId && task.nextStageKey === 'soft_furnishing' ? '继续软装' : task.workflowId && task.nextStageKey === 'base_render' ? '换风格' : task.workflowId && task.nextStageKey ? '后台继续深化' : '再次设计'}}</text>
+            <text>{{task.canContinueWorkflow && task.nextStageKey === 'soft_furnishing' ? '继续软装' : task.canContinueWorkflow && task.nextStageKey === 'base_render' ? '换风格' : task.workflowId && task.hasExactTargetContext && task.nextStageKey ? '后台继续深化' : '再次设计'}}</text>
           </button>
           <button class="bottom-action" hover-class="outline-pressed" bindtap="openHistory">
             <image class="bottom-action-icon-image" src="/images/ai-result-icons/history.png" mode="aspectFit"></image>

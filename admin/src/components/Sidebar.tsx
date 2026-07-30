@@ -26,7 +26,7 @@ import {
   HardDrive,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { buttonVariants } from '@/components/ui/button';
 import {
   Sheet,
   SheetContent,
@@ -45,15 +45,30 @@ import { useBrowserNotification } from '@/hooks/useBrowserNotification';
 // --- Types ---
 interface MenuItem {
   key: string;
+  permissionKey?: string;
   label: string;
   icon: React.ElementType;
   href: string;
+  newTab?: boolean;
   children?: MenuItem[];
 }
 
 interface MenuCategory {
   title: string;
   items: MenuItem[];
+}
+
+interface SidebarAdmin {
+  role?: string;
+  displayName?: string;
+  username?: string;
+  enterpriseId?: { name?: string };
+  effectivePermissions?: string[];
+}
+
+interface SidebarEnterprise {
+  _id: string;
+  name: string;
 }
 
 // --- Static Config (hoisted outside component) ---
@@ -101,6 +116,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
     {
       title: 'AI 辅助设计',
       items: [
+        { key: 'ai-create', permissionKey: 'ai-scenarios', label: 'AI 创作台', icon: Sparkles, href: '/ai-studio/create', newTab: true },
         { key: 'ai-scenarios', label: 'AI 设计', icon: Sparkles, href: '/ai-studio/scenarios' },
         { key: 'inspirations', label: '灵感方案', icon: Sparkles, href: '/inspirations' },
         { key: 'ai-presets', label: 'AI 预设配置', icon: Settings, href: '/ai-presets' },
@@ -133,6 +149,8 @@ const NavItem = memo(function NavItem({
   return (
     <Link
       href={item.href}
+      target={item.newTab ? '_blank' : undefined}
+      rel={item.newTab ? 'noopener noreferrer' : undefined}
       className={cn(
         "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative",
         isActive 
@@ -141,7 +159,7 @@ const NavItem = memo(function NavItem({
       )}
       title={collapsed ? item.label : undefined}
     >
-      {React.createElement(item.icon as any, { size: 18, className: cn("shrink-0 text-current opacity-80", isActive && "opacity-100") })}
+      {React.createElement(item.icon, { size: 18, className: cn("shrink-0 text-current opacity-80", isActive && "opacity-100") })}
       {!collapsed && (
         <span className="text-[14px] font-medium tracking-tight whitespace-nowrap overflow-hidden text-ellipsis">
           {item.label}
@@ -156,8 +174,8 @@ const NavItem = memo(function NavItem({
 
 interface SidebarContentProps {
   collapsed: boolean;
-  admin: any;
-  enterprises: any[];
+  admin: SidebarAdmin | null;
+  enterprises: SidebarEnterprise[];
   globalTenantId: string;
   handleTenantChange: (val: string) => void;
   handleLogout: () => void;
@@ -213,7 +231,7 @@ const SidebarContent = memo(function SidebarContent({
       <div className="flex-1 overflow-y-auto py-6 px-3 space-y-9 scrollbar-hide">
         {/* Render Platform Menus */}
         {(admin?.role === 'super_admin' || admin?.role === 'admin' || admin?.role === 'salesperson') && MENU_CONFIG.platform.map((category) => {
-          const visibleItems = category.items.filter(item => hasMenuPermission(item.key));
+          const visibleItems = category.items.filter(item => hasMenuPermission(item.permissionKey || item.key));
           if (visibleItems.length === 0) return null;
 
           return (
@@ -230,7 +248,7 @@ const SidebarContent = memo(function SidebarContent({
                     item={item} 
                     collapsed={collapsed}
                     isActive={pathname === item.href}
-                    hasPermission={hasMenuPermission(item.key)}
+                    hasPermission={hasMenuPermission(item.permissionKey || item.key)}
                   />
                 ))}
               </div>
@@ -240,7 +258,7 @@ const SidebarContent = memo(function SidebarContent({
 
         {/* Render Merchant Menus */}
         {MENU_CONFIG.merchant.map((category) => {
-          const visibleItems = category.items.filter(item => hasMenuPermission(item.key));
+          const visibleItems = category.items.filter(item => hasMenuPermission(item.permissionKey || item.key));
           if (visibleItems.length === 0) return null;
 
           return (
@@ -257,7 +275,7 @@ const SidebarContent = memo(function SidebarContent({
                     item={item} 
                     collapsed={collapsed}
                     isActive={pathname === item.href}
-                    hasPermission={hasMenuPermission(item.key)}
+                    hasPermission={hasMenuPermission(item.permissionKey || item.key)}
                   />
                 ))}
               </div>
@@ -316,7 +334,7 @@ const SidebarContent = memo(function SidebarContent({
 export default function Sidebar() {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [enterprises, setEnterprises] = useState<any[]>([]);
+  const [enterprises, setEnterprises] = useState<SidebarEnterprise[]>([]);
   const [globalTenantId, setGlobalTenantId] = useState<string>('all');
 
   const { user: admin } = useCurrentUser();
@@ -324,13 +342,13 @@ export default function Sidebar() {
 
   useEffect(() => {
     const saved = localStorage.getItem('sidebar-collapsed');
-    if (saved !== null) setIsCollapsed(saved === 'true');
-      
     const cookies = document.cookie.split('; ');
     const tenantCookie = cookies.find(row => row.startsWith('global_tenant_id='));
-    if (tenantCookie) {
-      setGlobalTenantId(tenantCookie.split('=')[1]);
-    }
+    const frame = window.requestAnimationFrame(() => {
+      if (saved !== null) setIsCollapsed(saved === 'true');
+      if (tenantCookie) setGlobalTenantId(tenantCookie.split('=')[1]);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {

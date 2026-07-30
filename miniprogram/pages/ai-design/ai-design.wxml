@@ -143,24 +143,27 @@ FORM: Approved C floor-map direction fused with B workflow path; A scene navigat
             >生成全屋</view>
           </view>
 
-          <scroll-view scroll-x class="room-tabs" enhanced show-scrollbar="{{false}}">
-            <view class="room-tabs-row">
-              <view
-                class="room-tab {{selectedSource.targetScope === 'whole_floor_plan' ? 'active' : ''}}"
-                data-scope="whole_floor_plan"
-                bindtap="selectMapTarget"
-              >全屋</view>
-              <view
-                wx:for="{{selectedSource.rooms}}"
-                wx:for-item="room"
-                wx:key="roomId"
-                class="room-tab {{selectedSource.roomId === room.roomId ? 'active' : ''}}"
-                data-scope="single_room"
-                data-index="{{index}}"
-                bindtap="selectMapTarget"
-              >{{room.roomName}}</view>
-            </view>
-          </scroll-view>
+          <view class="room-selector">
+            <view class="room-selector-handle"></view>
+            <scroll-view scroll-x class="room-tabs" enhanced show-scrollbar="{{false}}">
+              <view class="room-tabs-row">
+                <view
+                  class="room-tab {{selectedSource.targetScope === 'whole_floor_plan' ? 'active' : ''}}"
+                  data-scope="whole_floor_plan"
+                  bindtap="selectMapTarget"
+                >全屋</view>
+                <view
+                  wx:for="{{selectedSource.rooms}}"
+                  wx:for-item="room"
+                  wx:key="roomId"
+                  class="room-tab {{selectedSource.roomId === room.roomId ? 'active' : ''}}"
+                  data-scope="single_room"
+                  data-index="{{index}}"
+                  bindtap="selectMapTarget"
+                >{{room.roomName}}</view>
+              </view>
+            </scroll-view>
+          </view>
         </view>
 
         <view class="journey-panel">
@@ -180,10 +183,13 @@ FORM: Approved C floor-map direction fused with B workflow path; A scene navigat
               class="stage-item {{stage.status}}"
             >
               <view class="stage-node">
-                <view class="stage-dot"></view>
+                <view class="stage-dot">
+                  <view wx:if="{{stage.status === 'done'}}" class="stage-check"></view>
+                </view>
                 <view wx:if="{{index < stageRail.length - 1}}" class="stage-line"></view>
               </view>
               <text class="stage-label">{{stage.label}}</text>
+              <text wx:if="{{stage.status === 'current'}}" class="stage-status">进行中</text>
             </view>
           </view>
 
@@ -195,6 +201,9 @@ FORM: Approved C floor-map direction fused with B workflow path; A scene navigat
             <text wx:if="{{workflowLoadError}}" class="workflow-state-action" bindtap="retryWorkflowLoad">重试</text>
           </view>
 
+        </view>
+
+        <view class="next-action-panel">
           <view class="next-action">
             <view class="next-action-copy">
               <text class="next-kicker">下一步</text>
@@ -209,20 +218,20 @@ FORM: Approved C floor-map direction fused with B workflow path; A scene navigat
               <text wx:if="{{primaryAction.credits}}" class="next-cost">· {{primaryAction.credits}} 点</text>
             </view>
           </view>
+        </view>
 
-          <view class="secondary-nav">
-            <view
-              wx:for="{{secondaryActions}}"
-              wx:for-item="action"
-              wx:key="key"
-              class="secondary-action {{action.enabled && !workflowLoading && !workflowLoadError ? '' : 'disabled'}}"
-              data-mode="{{action.key}}"
-              data-scope="{{action.key === 'floor_plan_render' ? 'whole_floor_plan' : ''}}"
-              bindtap="openMode"
-            >
-              <image class="secondary-icon" src="{{action.icon}}" mode="aspectFit"></image>
-              <text>{{action.shortTitle}}</text>
-            </view>
+        <view class="secondary-nav">
+          <view
+            wx:for="{{secondaryActions}}"
+            wx:for-item="action"
+            wx:key="key"
+            class="secondary-action {{action.enabled && !workflowLoading && !workflowLoadError ? '' : 'disabled'}}"
+            data-mode="{{action.key}}"
+            data-scope="{{action.key === 'floor_plan_render' ? 'whole_floor_plan' : ''}}"
+            bindtap="openMode"
+          >
+            <image class="secondary-icon" src="{{action.icon}}" mode="aspectFit"></image>
+            <text>{{action.shortTitle}}</text>
           </view>
         </view>
         </block>
