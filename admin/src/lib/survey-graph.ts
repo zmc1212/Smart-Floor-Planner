@@ -33,6 +33,28 @@ export function getActiveSurveyFloor(layout: FormalSurveyLayout): SurveyFloor | 
 
 export type SurveyRenderRoom = { id: string; name: string; x: number; y: number; width: number; height: number; height3D: number; polygon: { x: number; y: number }[]; polygonClosed: boolean; openings: { id: string; type: 'DOOR' | 'WINDOW'; x: number; y: number; width: number; height: number; rotation: number }[] };
 
+export type SurveyFloorPlanNavigator = {
+  aspectRatio: number;
+  walls: {
+    id: string;
+    left: number;
+    top: number;
+    width: number;
+    angle: number;
+  }[];
+  rooms: {
+    id: string;
+    name: string;
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    centerX: number;
+    centerY: number;
+    polygon: { x: number; y: number }[];
+  }[];
+};
+
 function roomPoints(floor: SurveyFloor, space: SurveySpace, nodes: Map<string, SurveyNode>) {
   const walls = (space.wallIds || []).map((id) => (floor.walls || []).find((wall) => wall.id === id)).filter(Boolean) as SurveyWall[];
   if (!walls.length) return [] as SurveyNode[];
@@ -88,4 +110,89 @@ export function adaptSurveyGraphToRooms(layoutData: unknown): SurveyRenderRoom[]
       openings
     };
   }).filter((room): room is SurveyRenderRoom => !!room);
+}
+
+export function buildSurveyFloorPlanNavigator(layoutData: unknown): SurveyFloorPlanNavigator | null {
+  const layout = parseFormalSurveyLayout(layoutData);
+  const floor = layout ? getActiveSurveyFloor(layout) : null;
+  const nodes = floor?.nodes || [];
+  const walls = floor?.walls || [];
+  if (!floor || !nodes.length || !walls.length) return null;
+
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const drawableWalls = walls.map((wall) => {
+    const start = nodeById.get(wall.startNodeId);
+    const end = nodeById.get(wall.endNodeId);
+    return start && end ? { wall, start, end } : null;
+  }).filter((item): item is { wall: SurveyWall; start: SurveyNode; end: SurveyNode } => !!item);
+  if (!drawableWalls.length) return null;
+
+  const xs = nodes.map((node) => Number(node.xMm) || 0);
+  const ys = nodes.map((node) => Number(node.yMm) || 0);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const spanX = Math.max(1, maxX - minX);
+  const spanY = Math.max(1, maxY - minY);
+  const padding = 5;
+  const available = 100 - padding * 2;
+  const scale = available / Math.max(spanX, spanY);
+  const fittedWidth = spanX * scale;
+  const fittedHeight = spanY * scale;
+  const offsetX = padding + (available - fittedWidth) / 2;
+  const offsetY = padding + (available - fittedHeight) / 2;
+  const normalizeX = (value: number) => offsetX + (value - minX) * scale;
+  const normalizeY = (value: number) => offsetY + (value - minY) * scale;
+
+  const navigatorWalls = drawableWalls.slice(0, 160).map(({ wall, start, end }, index) => {
+    const left = normalizeX(start.xMm);
+    const top = normalizeY(start.yMm);
+    const endX = normalizeX(end.xMm);
+    const endY = normalizeY(end.yMm);
+    const dx = endX - left;
+    const dy = endY - top;
+    return {
+      id: wall.id || `wall-${index}`,
+      left,
+      top,
+      width: Math.sqrt(dx * dx + dy * dy),
+      angle: Math.atan2(dy, dx) * 180 / Math.PI,
+    };
+  });
+
+  const navigatorRooms = (floor.spaces || []).filter((space) => space.closed).map((space, index) => {
+    const points = roomPoints(floor, space, nodeById);
+    if (points.length < 3) return null;
+    const normalizedPoints = points.map((point) => ({
+      x: normalizeX(point.xMm),
+      y: normalizeY(point.yMm),
+    }));
+    const roomMinX = Math.min(...normalizedPoints.map((point) => point.x));
+    const roomMaxX = Math.max(...normalizedPoints.map((point) => point.x));
+    const roomMinY = Math.min(...normalizedPoints.map((point) => point.y));
+    const roomMaxY = Math.max(...normalizedPoints.map((point) => point.y));
+    const roomWidth = Math.max(0.5, roomMaxX - roomMinX);
+    const roomHeight = Math.max(0.5, roomMaxY - roomMinY);
+    return {
+      id: space.id || `space-${index + 1}`,
+      name: space.name || `空间 ${index + 1}`,
+      left: roomMinX,
+      top: roomMinY,
+      width: roomWidth,
+      height: roomHeight,
+      centerX: roomMinX + roomWidth / 2,
+      centerY: roomMinY + roomHeight / 2,
+      polygon: normalizedPoints.map((point) => ({
+        x: ((point.x - roomMinX) / roomWidth) * 100,
+        y: ((point.y - roomMinY) / roomHeight) * 100,
+      })),
+    };
+  }).filter((room): room is SurveyFloorPlanNavigator['rooms'][number] => !!room);
+
+  return {
+    aspectRatio: spanX / spanY,
+    walls: navigatorWalls,
+    rooms: navigatorRooms,
+  };
 }

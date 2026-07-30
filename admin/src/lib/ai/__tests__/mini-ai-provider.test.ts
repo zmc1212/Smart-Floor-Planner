@@ -106,7 +106,9 @@ test('whole-floor-plan render prompt preserves the complete measured footprint',
     targetScope: 'whole_floor_plan',
   });
 
-  assert.match(result.prompt, /top-down orthographic/i);
+  assert.match(result.prompt, /3D cutaway apartment model/i);
+  assert.match(result.prompt, /elevated isometric three-quarter camera/i);
+  assert.match(result.prompt, /roof and ceiling removed/i);
   assert.match(result.prompt, /preserve every wall, opening, room count, room adjacency/i);
   assert.match(result.prompt, /do not crop out any room/i);
 });

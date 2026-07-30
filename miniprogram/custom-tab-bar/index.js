@@ -30,7 +30,7 @@ Component({
       {
         key: 'ai-design',
         pagePath: '/pages/ai-design/ai-design',
-        text: 'AI设计',
+        text: '设计',
         iconPath: '/images/mine-icons/tab-ai.png',
         selectedIconPath: '/images/mine-icons/tab-ai-active.png'
       },

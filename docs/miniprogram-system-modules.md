@@ -14,7 +14,7 @@ utilities, and the admin APIs they call.
 - Runtime: native WeChat Mini Program, JWT bearer requests through
   `utils/api.js`, `threejs-miniprogram` for 3D previews, and optional BLE laser
   distance meter integration.
-- Main tabs: Home (`index`), Leads (`leads-management`), AI Design
+- Main tabs: Home (`index`), Leads (`leads-management`), Design
   (`ai-design`), and Mine (`mine`), plus the custom center measurement action.
   Login, detail, workflow, inspiration, recommendation, and formal surveying
   pages are secondary routes.
@@ -56,7 +56,7 @@ utilities, and the admin APIs they call.
   each raw notification with full service/characteristic UUIDs; receive buffers
   are isolated per notification channel. Private binary payloads remain raw
   diagnostics until their protocol mapping is confirmed.
-- Visual baseline: `design-references/miniprogram-home-vibrant-green-v5.png`
+- Visual baseline: `design-references/home/miniprogram-home-vibrant-green-v5.png`
   at iPhone 13 Pro `390x844`. The shipped composition uses project-local
   derived scene assets while city, counts, device state, enterprise branding,
   recent plans, empty state, and all navigation remain live and role-aware.
@@ -73,7 +73,7 @@ utilities, and the admin APIs they call.
   measurement, delete active formal plans with local pointer cleanup,
   client-side search across loaded records, and status filtering through both
   the stage strip and native action sheet.
-- Visual baseline: `design-references/leads-management-v4.png` at `390x844`.
+- Visual baseline: `design-references/leads/leads-management-v4.png` at `390x844`.
   The shipped page preserves the reference's scene-led header, three-stat summary,
   compact search/actions, six-stage strip, color-coded floor-plan thumbnails rendered
   from each lead's formal wall graph or real external preview URL, status-aligned
@@ -122,19 +122,37 @@ utilities, and the admin APIs they call.
   `pages/ai-design-result/ai-design-result`, and
   `pages/ai-design-history/ai-design-history`; legacy `pages/ai-gen/ai-gen` is a
   compatibility redirect only.
-- Navigation: `pages/ai-design/ai-design` is the primary `AI Design` tab; it
-  uses the shared fixed custom-tab layout and scroll/refresher contract.
+- Navigation: `pages/ai-design/ai-design` is the primary `Design` tab; it
+  uses `navigationStyle: custom`, measures the native capsule/safe area, and
+  integrates its title and credit balance into the spatial header instead of
+  rendering the centered default WeChat title bar. It also uses the shared
+  fixed custom-tab layout and scroll/refresher contract.
   Contextual entries transfer floor-plan, room, lead, scope, and workflow state
   through `utils/aiDesignNavigation.js` before calling `switchTab`, because
   WeChat tab pages cannot receive those entries through `navigateTo` queries.
 - APIs: Mini Program AI capabilities, role-scoped formal-plan/room sources,
-  context-visible active workflows, media upload/signed reads,
+  normalized formal wall/room navigation read models, the current whole-plan
+  navigation-preview state, context-visible active workflows, media upload/signed reads,
   task create/run/status/retry, and history
   list/delete endpoints through `utils/aiDesignService.js` with bearer JWT
   authentication.
-- Implemented: enterprise-shared AI-credit and action-price display; a four-task
-  home surface for reference recreation, whole-space style transformation,
-  formal-floor-plan concept rendering, and soft-furnishing refinement; dual-image
+- Implemented: enterprise-shared AI-credit and action-price display; an
+  immersive spatial home surface that retains the four real tasks for reference
+  recreation, whole-space style transformation, formal-floor-plan concept
+  rendering, and soft-furnishing refinement. With a formal plan selected, the
+  home surface derives its navigable rooms and walls from the version-4 survey
+  graph, supports whole-plan/room targets, shows a four-stage scheme journey,
+  and presents one context-aware next action. A current successful whole-plan
+  result is reused as the 3D navigation cover; an in-progress result exposes
+  live progress; and a missing or stale result falls back to the deterministic
+  2D formal graph with an explicit credit-charging generate/regenerate action.
+  Only tasks stamped with the current `cutaway-v1` navigation-render contract
+  qualify as covers. The page never creates a paid preview automatically, and a result is stale
+  when its task predates the formal plan's latest update. Without a selected
+  formal plan, the default entry remains an interior-scene tour. Its four
+  waypoints now maintain an active navigation state, smoothly pan/zoom the
+  scene, and update the confirmed next action before entering a task rather
+  than acting as static shortcuts. Existing generation capabilities include dual-image
   reference input, source-image plus preset styles, camera/album upload with
   byte-signature validation, stable local previews and in-place upload retry,
   server-derived output proportions that map the composition source to a
@@ -149,17 +167,22 @@ utilities, and the admin APIs they call.
   real result-image saving that waits for the album write and guides denied users
   to WeChat photo-album settings,
   history reuse, and deletion. Task-detail reads force an upstream status query
-  for processing jobs. The home page keeps processing jobs ahead of other recent
-  results, shows their numeric stage progress in green, preserves recency within
-  each group, and refreshes every five
-  seconds until visible processing jobs reach a terminal state; history reads
-  reconcile up to four visible processing jobs before serialization. The home
+  for processing jobs. The home `Recent designs` section keeps all non-terminal
+  `created`, `pending`, and `processing` jobs ahead of other recent results, shows their real numeric
+  stage progress in green without inventing a minimum, preserves recency within
+  each group, and refreshes every five seconds until visible jobs reach a
+  terminal state; history reads reconcile up to four visible processing jobs
+  before serialization. Initial loading, recoverable refresh failure, missing
+  result imagery, provider unavailability, and customer-workflow loading failure
+  have explicit states; a workflow lookup failure blocks generation so an
+  outcome cannot silently attach to the wrong scheme. The home
   page provides a two-step shared selector:
   first choose a customer formal plan, then choose the complete plan or one closed
   room. Its `leadId`, `floorPlanId`, `targetScope`, and optional `roomId` are
   inherited by all four tasks, while only formal-plan rendering makes that
-  context mandatory. Complete-plan rendering produces one furnished top-down
-  concept; single-room rendering produces one eye-level room concept. A compact current-scheme card auto-selects one active match,
+  context mandatory. Complete-plan rendering produces one furnished, elevated
+  isometric cutaway concept for the navigation cover; single-room rendering
+  produces one eye-level room concept. A compact current-scheme card auto-selects one active match,
   asks the user to choose when multiple schemes exist, and retains an explicit
   create-alternative option. Create/results/history show scheme ownership and
   synchronization state.
@@ -174,18 +197,31 @@ utilities, and the admin APIs they call.
   remain supported as quick standalone generations.
 - Visuals: locally rendered Lucide icons, hairline separators, output-ratio-aware
   result/compare stages that use the reference image for recreation comparisons,
-  and the iPhone 13 Pro `390x844` baseline. References are
-  `design-references/ai-design-home-v2.png` and
-  `design-references/ai-design-result-v2.png`; the generated home hero
-  is `miniprogram/images/ai-design-hero-v2.jpg`.
+  and the iPhone 13 Pro `390x844` baseline. The scene or real plan remains the
+  dominant first-viewport surface, with the workflow content layered beneath
+  it instead of reducing the visual to a banner. The home uses
+  `design-references/ai-design/ai-design-immersive-c-floor-map-v1.png` as its primary
+  direction, takes the stage/next-action treatment from
+  `design-references/ai-design/ai-design-immersive-b-workflow-v1.png`, and uses
+  `design-references/ai-design/ai-design-immersive-a-space-tour-v1.png` for the no-plan
+  entry. At narrow real-device widths up to `360px`, the no-plan recommendation
+  keeps its compact horizontal title/action hierarchy and reserves scene space
+  between the fourth waypoint and the formal-plan selector instead of inheriting
+  the stacked action layout used by other page states. The result-page reference remains
+  `design-references/ai-design/ai-design-result-v2.png`; the generated no-plan hero
+  is `miniprogram/images/ai-design-hero-v3.jpg`.
 - Formal-plan boundary: entries pass `floorPlanId`, explicit
   `targetScope: whole_floor_plan | single_room`, and `roomId` only for a single
   room. The backend derives dimensions, ceiling height, and opening summaries
   through the formal survey-graph read adapter and never mutates
   `FloorPlan.layoutData`. For complete-plan rendering it rasterizes a derived
   1024px wall/opening control image into a separate `MediaAsset` and uses image
-  editing; a standalone single-room render uses measured prompt context and
-  image generation. Reference recreation with a selected formal target also
+  editing to request an elevated, roofless 3D cutaway while preserving measured
+  structure; a standalone single-room render uses measured prompt context and
+  image generation. Successful navigation covers remain `AiGeneration`/
+  `MediaAsset` output and are never written back into the formal layout. The
+  source response adds only a derived navigator read model and authorized signed
+  preview data. Reference recreation with a selected formal target also
   rasterizes a control image, limited to that closed room when `roomId` is
   present, and sends it before the visual reference.
   The source selector returns only formal plans and closed rooms visible to the current
@@ -199,7 +235,9 @@ utilities, and the admin APIs they call.
   Plan-backed reference recreation sends the measured control and visual
   reference together, but a 2D wall graph has no measured camera pose and the
   provider still cannot guarantee pixel-perfect reference duplication. The
-  structural control takes precedence when constraints conflict. Floor-plan-only
+  structural control takes precedence when constraints conflict. The generated
+  3D cover may vary in furniture and unmeasured finishes, is not used once stale,
+  and remains a concept rather than a measurement source. Floor-plan-only
   generation cannot infer an exact camera or unmeasured finishes. There is no
   WeChat recharge, mask-based replacement, or homeowner account. Media URLs stay
   on the authenticated Mini Program asset endpoint: the local provider streams
@@ -223,13 +261,13 @@ utilities, and the admin APIs they call.
 - Implemented: profile/role display, workbench summary, todos, floor-plan list,
   notification/account actions, logout, new measurement, an enterprise-staff
   AI Design home entry, and contextual AI entry from a plan card.
-- Visual: the Mine surface follows `design-references/miniprogram-mine-v6.png`
+- Visual: the Mine surface follows `design-references/mine/miniprogram-mine-v6.png`
   at the iPhone 13 Pro `390x844` baseline. Its left-weighted translucent profile
   card preserves the visible home scene, while the white rounded summary tray,
   three baseline metric illustrations, fixed four-column workbench rhythm,
   compact two-item todo list, and AI design banner use production crops derived from
-  `design-references/miniprogram-mine-v6.png` and
-  `design-references/miniprogram-mine-v6-icon.png`. The established circular
+  `design-references/mine/miniprogram-mine-v6.png` and
+  `design-references/mine/miniprogram-mine-v6-icon.png`. The established circular
   floating Measure action remains the center TabBar treatment. Live profile data,
   server-provided actions and metrics, role boundaries, and existing navigation
   remain authoritative; the redesign does not add backend capabilities. Summary

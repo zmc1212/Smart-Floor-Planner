@@ -3,7 +3,7 @@
 The raster assets shipped under `miniprogram/images/home-v5/` are derived from
 the project-provided design reference:
 
-- `design-references/miniprogram-home-vibrant-green-v5.png`
+- `design-references/home/miniprogram-home-vibrant-green-v5.png`
 
 The reference is stored outside the Mini Program package. Crops are used only
 for the home hero scene, measurement illustration, service imagery, plan

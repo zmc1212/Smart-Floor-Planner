@@ -46,6 +46,8 @@ export interface CreateMiniAiTaskInput {
   createNewWorkflow?: boolean;
 }
 
+export const MINI_AI_WHOLE_PLAN_RENDER_VERSION = 'cutaway-v1';
+
 const MODE_CONFIG: Record<MiniAiRenderMode, {
   type: IAiGeneration['type'];
   actionKey: AiActionKey;
@@ -319,6 +321,9 @@ export async function createMiniAiTask(input: CreateMiniAiTaskInput, context: Mi
         targetScope: target.targetScope,
         targetLabel: target.targetLabel,
         roomCount: target.roomCount,
+        ...(input.mode === 'floor_plan_render' && target.targetScope === 'whole_floor_plan'
+          ? { navigationRenderVersion: MINI_AI_WHOLE_PLAN_RENDER_VERSION }
+          : {}),
       } : undefined,
       spaceImage,
       referenceImage: referenceAsset ? getMediaAssetImageUrl(String(referenceAsset._id)) : undefined,
@@ -360,6 +365,7 @@ export async function executeMiniAiTask(generation: IAiGeneration, context: Mini
       ? generation.input.roomData as {
           summary?: string;
           targetScope?: MiniAiTargetScope;
+          navigationRenderVersion?: string;
         }
       : undefined;
     const targetScope = roomData?.targetScope || (mode === 'floor_plan_render' ? 'single_room' : undefined);
@@ -370,6 +376,11 @@ export async function executeMiniAiTask(generation: IAiGeneration, context: Mini
     }
     if (usesWholePlanControl && !generation.input.controlImage) {
       throw new Error('完整户型任务缺少量房控制图');
+    }
+    if (usesWholePlanControl && roomData
+      && roomData.navigationRenderVersion !== MINI_AI_WHOLE_PLAN_RENDER_VERSION) {
+      roomData.navigationRenderVersion = MINI_AI_WHOLE_PLAN_RENDER_VERSION;
+      generation.markModified('input.roomData');
     }
 
     const referenceImageUrl = generation.input.referenceImage

@@ -9,14 +9,14 @@ Primary visual reference:
 - `miniprogram/ChatGPT Image 2026年4月28日 16_27_02.png`
 
 Page-specific visual reference:
-- Home (`pages/index/index`): `design-references/miniprogram-home-vibrant-green-v5.png`
+- Home (`pages/index/index`): `design-references/home/miniprogram-home-vibrant-green-v5.png`
   at the iPhone 13 Pro `390x844` baseline. The reference controls the home
   composition, spacing, image treatment, and card hierarchy while live data,
   role boundaries, navigation, and empty states remain authoritative.
 - Mine (`pages/mine/mine`):
-  `design-references/miniprogram-mine-v6.png` at the iPhone 13 Pro `390x844`
+  `design-references/mine/miniprogram-mine-v6.png` at the iPhone 13 Pro `390x844`
   baseline, with production crops sourced from both that screen and
-  `design-references/miniprogram-mine-v6-icon.png`. The reference controls the
+  `design-references/mine/miniprogram-mine-v6-icon.png`. The reference controls the
   scene-led profile header, three-card summary viewport, role-aware workbench,
   compact two-item todo list, and AI design banner.
   The established floating circular Measure action remains the center TabBar
@@ -24,13 +24,32 @@ Page-specific visual reference:
   Server-provided actions, role boundaries, loading/error/empty states, and
   ordinary-user floor-plan behavior remain authoritative.
 - Leads (`pages/leads-management/leads-management`):
-  `design-references/leads-management-v4.png` at the iPhone 13 Pro `390x844`
+  `design-references/leads/leads-management-v4.png` at the iPhone 13 Pro `390x844`
   baseline. The reference controls the scene-led header, summary card,
   search/action row, six-stage filter rhythm, customer-card anatomy, and
   color-coded floor-plan thumbnail treatment. Thumbnail geometry must come from
   each lead's associated formal wall graph or real external preview URL; static
   sample plans are design references only. Live lead data, role visibility, pagination, navigation,
   loading/error/empty states, and the shared custom tab bar remain authoritative.
+- AI Design (`pages/ai-design/ai-design`):
+  `design-references/ai-design/ai-design-immersive-c-floor-map-v1.png` is the primary
+  `390x844` reference, with
+  `design-references/ai-design/ai-design-immersive-b-workflow-v1.png` governing the
+  workflow-stage rail and next-action hierarchy. When no formal floor plan is
+  selected, `design-references/ai-design/ai-design-immersive-a-space-tour-v1.png`
+  governs the scene-led discovery state. Its waypoints are navigation states,
+  not static task buttons: selecting one must visibly refocus the scene and
+  update the confirmed next action. The plan or scene remains the dominant
+  first-viewport surface instead of collapsing into a banner. This page uses
+  `navigationStyle: custom`; never reintroduce the centered default WeChat
+  title bar. The title, credit balance, capsule safe area, and spatial visual
+  form one continuous header composition. Production must render the selected
+  plan from its formal version-4 wall graph read model. A displayed 3D cover
+  must be the current generated result controlled by that real wall graph;
+  the design-reference image must never become a static or invented customer
+  floor plan. Live role-scoped sources, workflow selection, provider
+  availability, credits, recent-task state, and the shared custom tab bar remain
+  authoritative.
 
 When image reference and implementation differ:
 - Follow this document first

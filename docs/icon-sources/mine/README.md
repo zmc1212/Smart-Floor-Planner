@@ -21,8 +21,8 @@ License: `LICENSE.md`
 three summary-card illustrations, four workbench illustrations, two todo
 thumbnails, AI banner image, settings control, and an unused rectangular
 center-tab reference crop from the user-provided
-`design-references/miniprogram-mine-v6.png` and
-`design-references/miniprogram-mine-v6-icon.png`. These are page-specific visual
+`design-references/mine/miniprogram-mine-v6.png` and
+`design-references/mine/miniprogram-mine-v6-icon.png`. These are page-specific visual
 assets rather than additions to the Lucide icon set; the original references
 are the editable sources and retain their supplied asset rights.
 

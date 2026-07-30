@@ -157,9 +157,11 @@ export async function buildMiniAiRenderPrompt(input: MiniAiPromptInput) {
     if (input.targetScope === 'whole_floor_plan') {
       prompt = [
         input.stylePrompt || `Create a ${input.styleName || 'modern'} furnished whole-floor-plan rendering.`,
-        'Transform the provided measured control drawing into one complete top-down orthographic furnished floor-plan visualization.',
+        'Transform the provided measured control drawing into one complete premium 3D cutaway apartment model for a mobile floor-plan navigator.',
+        'Use a slightly elevated isometric three-quarter camera with the roof and ceiling removed, while keeping the entire apartment centered and fully visible on a clean warm off-white studio background.',
         'Strictly preserve every wall, opening, room count, room adjacency, and the complete outer footprint. Do not crop out any room.',
-        'Use practical furniture layouts, coherent scale, clear circulation, realistic materials, clean natural lighting, no text, and no labels.',
+        'Keep exterior and interior walls clearly readable. Use practical furniture layouts, coherent scale, clear circulation, restrained pale-oak and warm-neutral materials, soft natural studio lighting, no surrounding landscape, no people, no text, and no labels.',
+        'The result should read as a refined architectural maquette rather than an eye-level interior photo, diagram, construction drawing, or flattened 2D plan.',
         'This is a concept visualization based on measured data, not a construction drawing.',
         input.roomSummary,
       ].join(' ');

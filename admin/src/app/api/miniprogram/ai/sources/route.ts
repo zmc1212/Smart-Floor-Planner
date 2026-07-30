@@ -3,7 +3,16 @@ import dbConnect from '@/lib/mongodb';
 import { resolveMiniAiContext } from '@/lib/ai/mini-ai-auth';
 import { FloorPlan } from '@/models/FloorPlan';
 import Lead from '@/models/Lead';
-import { adaptSurveyGraphToRooms, isFormalSurveyLayout } from '@/lib/survey-graph';
+import { AiGeneration } from '@/models/AiGeneration';
+import {
+  adaptSurveyGraphToRooms,
+  buildSurveyFloorPlanNavigator,
+  isFormalSurveyLayout,
+} from '@/lib/survey-graph';
+import {
+  MINI_AI_WHOLE_PLAN_RENDER_VERSION,
+  serializeMiniAiTask,
+} from '@/lib/ai/mini-ai-tasks';
 import {
   floorPlanIdsFromLead,
   listAccessibleMiniAiFloorPlanIds,
@@ -28,7 +37,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ success: true, data: [], plans: [] });
     }
 
-    const [floorPlans, planLeads] = await Promise.all([
+    const [floorPlans, planLeads, previewGenerations] = await Promise.all([
       FloorPlan.find({ _id: { $in: accessiblePlanIds }, enterpriseId })
         .select('name status layoutData updatedAt')
         .sort({ updatedAt: -1 })
@@ -42,6 +51,18 @@ export async function GET(request: Request) {
       })
         .select('name communityName floorPlanIds primaryFloorPlanId')
         .lean(),
+      AiGeneration.find({
+        enterpriseId,
+        floorPlanId: { $in: accessiblePlanIds },
+        channel: 'miniprogram',
+        'input.mode': 'floor_plan_render',
+        'input.roomData.targetScope': 'whole_floor_plan',
+        'input.roomData.navigationRenderVersion': MINI_AI_WHOLE_PLAN_RENDER_VERSION,
+        status: { $in: ['created', 'pending', 'processing', 'succeeded'] },
+        deletedAt: { $exists: false },
+      })
+        .sort({ createdAt: -1 })
+        .limit(100),
     ]);
 
     const leadByPlanId = new Map<string, { id: string; name: string; communityName: string }>();
@@ -60,6 +81,42 @@ export async function GET(request: Request) {
     const plans = floorPlans.flatMap((plan) => {
       if (!isFormalSurveyLayout(plan.layoutData)) return [];
       const lead = leadByPlanId.get(String(plan._id));
+      const planGenerations = previewGenerations.filter(
+        (generation) => String(generation.floorPlanId) === String(plan._id)
+      );
+      const planUpdatedAt = new Date(plan.updatedAt).getTime();
+      const currentGenerations = planGenerations.filter(
+        (generation) => new Date(generation.createdAt).getTime() >= planUpdatedAt
+      );
+      const activePreview = currentGenerations.find(
+        (generation) => String(generation.operatorId) === String(context.operatorId)
+          && ['created', 'pending', 'processing'].includes(generation.status)
+      );
+      const readyPreview = currentGenerations.find(
+        (generation) => generation.status === 'succeeded' && generation.output?.imageUrl
+      );
+      const stalePreview = !readyPreview && planGenerations.some(
+        (generation) => generation.status === 'succeeded' && generation.output?.imageUrl
+      );
+      const previewTask = activePreview || readyPreview;
+      const serializedPreviewTask = previewTask
+        ? serializeMiniAiTask(previewTask, request)
+        : undefined;
+      const serializedReadyPreview = readyPreview
+        ? serializeMiniAiTask(readyPreview, request)
+        : undefined;
+      const compactPreviewTask = serializedPreviewTask ? {
+        id: serializedPreviewTask.id,
+        status: serializedPreviewTask.status,
+        progress: serializedPreviewTask.progress,
+        resultImageUrl: serializedPreviewTask.resultImageUrl,
+      } : undefined;
+      const compactReadyPreviewTask = serializedReadyPreview ? {
+        id: serializedReadyPreview.id,
+        status: serializedReadyPreview.status,
+        progress: serializedReadyPreview.progress,
+        resultImageUrl: serializedReadyPreview.resultImageUrl,
+      } : undefined;
       const rooms = adaptSurveyGraphToRooms(plan.layoutData).map((room) => ({
         roomId: room.id,
         roomName: room.name,
@@ -76,6 +133,13 @@ export async function GET(request: Request) {
         floorPlanStatus: plan.status,
         closedRoomCount: rooms.length,
         rooms,
+        navigator: buildSurveyFloorPlanNavigator(plan.layoutData),
+        navigationPreview: {
+          state: activePreview ? 'processing' : readyPreview ? 'ready' : stalePreview ? 'stale' : 'missing',
+          task: compactPreviewTask,
+          readyTask: compactReadyPreviewTask,
+          imageUrl: serializedReadyPreview?.resultImageUrl,
+        },
         updatedAt: plan.updatedAt,
       }];
     });

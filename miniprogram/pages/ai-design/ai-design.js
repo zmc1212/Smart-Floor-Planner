@@ -1,6 +1,13 @@
 const aiService = require('../../utils/aiDesignService.js');
 const { prioritizeProcessingTasks } = require('../../utils/aiDesignTaskOrdering.js');
 const { consumeAIDesignContext, normalizeAIDesignContext } = require('../../utils/aiDesignNavigation.js');
+const {
+  decorateSourcePlan,
+  decorateRecentResult,
+  hasActiveTasks,
+  normalizeCredits,
+  buildExperienceState,
+} = require('./ai-design-model.js');
 
 const WORKFLOW_DEFINITIONS = [
   { key: 'reference_recreate', title: '参考图复刻', description: '参考灵感图，还原到真实空间', icon: '/images/ai-design-icons/reference.png', requires: 'edit' },
@@ -35,6 +42,9 @@ function buildSelectedSource(plan, targetScope, room) {
 Page({
   data: {
     loading: true,
+    hasLoadedOnce: false,
+    loadError: '',
+    historyLoadError: '',
     refreshing: false,
     account: { availableBalance: 0, frozenBalance: 0 },
     workflows: WORKFLOW_DEFINITIONS,
@@ -48,15 +58,26 @@ Page({
     schemeOptions: [],
     selectedWorkflow: null,
     workflowPickerOpen: false,
+    workflowLoading: false,
+    workflowLoadError: '',
     workflowId: '',
     createNewWorkflow: false,
     floorPlanId: '',
     leadId: '',
     roomId: '',
     targetScope: '',
+    stageRail: [],
+    primaryAction: null,
+    secondaryActions: [],
+    activeSceneMode: 'reference_recreate',
+    sceneNavigation: null,
+    navigationTop: 24,
+    navigationHeight: 32,
+    navigationRight: 96,
   },
 
   onLoad(options) {
+    this.syncImmersiveNavigationMetrics();
     this.applyNavigationContext(options);
   },
 
@@ -76,6 +97,32 @@ Page({
     if (typeof this.getTabBar === 'function' && this.getTabBar()) {
       this.getTabBar().setData({ selected: 3 });
     }
+  },
+
+  syncImmersiveNavigationMetrics() {
+    const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+    let menuRect = null;
+    try {
+      menuRect = wx.getMenuButtonBoundingClientRect();
+    } catch (error) {
+      console.warn('Failed to read menu button metrics', error);
+    }
+    const statusBarHeight = Number(windowInfo.statusBarHeight || 0);
+    const navigationTop = Number(menuRect && menuRect.top
+      ? menuRect.top
+      : statusBarHeight + 6);
+    const navigationHeight = Number(menuRect && menuRect.height
+      ? menuRect.height
+      : 32);
+    const menuLeft = Number(menuRect && menuRect.left
+      ? menuRect.left
+      : windowInfo.windowWidth);
+
+    this.setData({
+      navigationTop,
+      navigationHeight,
+      navigationRight: Math.max(92, Number(windowInfo.windowWidth || 390) - menuLeft + 12),
+    });
   },
 
   onHide() {
@@ -109,12 +156,17 @@ Page({
   },
 
   async loadData() {
-    this.setData({ loading: true });
+    this.setData({ loading: true, loadError: '' });
     try {
-      const [capabilities, history, sourceData] = await Promise.all([
+      const [capabilities, historyResult, sourceData] = await Promise.all([
         aiService.loadCapabilities(),
-        aiService.loadHistory(1, 4).catch(() => ({ data: [] })),
-        aiService.loadSources().catch(() => []),
+        aiService.loadHistory(1, 4)
+          .then((history) => ({ history, error: '' }))
+          .catch((error) => ({
+            history: null,
+            error: error.error || error.message || '最近成果加载失败',
+          })),
+        aiService.loadSources(),
       ]);
       const priceMap = (capabilities.modes || []).reduce((result, item) => {
         result[item.key] = item;
@@ -124,12 +176,22 @@ Page({
       const workflows = WORKFLOW_DEFINITIONS.map((item) => {
         const capability = priceMap[item.key] || {};
         const providerReady = item.requires === 'generate' ? provider.supportsGenerate : provider.supportsEdit;
-        return { ...item, credits: capability.credits || 10, enabled: capability.enabled !== false && providerReady !== false };
+        return {
+          ...item,
+          credits: normalizeCredits(capability.credits),
+          enabled: capability.enabled !== false && providerReady !== false,
+        };
       });
-      const recent = prioritizeProcessingTasks(
-        (history.data || []).map((item) => ({ ...item, modeTitle: MODE_TITLES[item.mode] || 'AI 设计' })),
-      );
-      const selectedPlan = sourceData.find((item) => item.floorPlanId === this.data.floorPlanId) || null;
+      const recent = historyResult.history
+        ? prioritizeProcessingTasks(
+          (historyResult.history.data || []).map((item) => decorateRecentResult({
+            ...item,
+            modeTitle: MODE_TITLES[item.mode] || '设计成果',
+          })),
+        )
+        : this.data.recent;
+      const sourcePlans = sourceData.map(decorateSourcePlan);
+      const selectedPlan = sourcePlans.find((item) => item.floorPlanId === this.data.floorPlanId) || null;
       const requestedScope = this.data.targetScope || (this.data.roomId ? 'single_room' : 'whole_floor_plan');
       const selectedRoom = selectedPlan && requestedScope === 'single_room'
         ? (selectedPlan.rooms || []).find((room) => room.roomId === this.data.roomId)
@@ -137,7 +199,7 @@ Page({
       const selectedSource = selectedPlan
         ? buildSelectedSource(selectedPlan, requestedScope, selectedRoom)
         : null;
-      const sources = sourceData.map((item) => ({
+      const sources = sourcePlans.map((item) => ({
         ...item,
         sourceKey: item.floorPlanId,
         selected: !!selectedSource && item.floorPlanId === selectedSource.floorPlanId,
@@ -146,15 +208,21 @@ Page({
         workflowId: this.data.workflowId,
         leadId: selectedSource ? selectedSource.leadId : this.data.leadId,
         floorPlanId: selectedSource ? selectedSource.floorPlanId : this.data.floorPlanId,
-      }).catch(() => []);
+      });
       const selectedWorkflow = schemeOptions.find((item) => item.id === this.data.workflowId)
         || (schemeOptions.length === 1 ? schemeOptions[0] : null);
+      const decoratedWorkflows = workflows.map((item) => ({
+        ...item,
+        recommended: !!selectedWorkflow && selectedWorkflow.recommendedMiniMode === item.key,
+      }));
+      const experienceState = buildExperienceState({
+        workflows: decoratedWorkflows,
+        selectedSource,
+        selectedWorkflow,
+      });
       this.setData({
-        account: capabilities.account,
-        workflows: workflows.map((item) => ({
-          ...item,
-          recommended: !!selectedWorkflow && selectedWorkflow.recommendedMiniMode === item.key,
-        })),
+        account: capabilities.account || { availableBalance: 0, frozenBalance: 0 },
+        workflows: decoratedWorkflows,
         provider,
         recent,
         sources,
@@ -167,14 +235,29 @@ Page({
         selectedWorkflow,
         workflowId: selectedWorkflow ? selectedWorkflow.id : '',
         workflowPickerOpen: schemeOptions.length > 1 && !selectedWorkflow,
+        workflowLoading: false,
+        workflowLoadError: '',
         createNewWorkflow: false,
+        hasLoadedOnce: true,
+        loadError: '',
+        historyLoadError: historyResult.error,
+        ...experienceState,
       });
-      this.scheduleRecentPolling(recent);
+      this.scheduleRecentPolling(recent, selectedSource);
     } catch (error) {
-      wx.showToast({ title: error.error || 'AI 服务加载失败', icon: 'none' });
+      const loadError = error.error || error.message || 'AI 服务加载失败';
+      this.setData({ loadError });
+      if (this.data.hasLoadedOnce) {
+        wx.showToast({ title: '刷新失败，已保留当前内容', icon: 'none' });
+      }
     } finally {
       this.setData({ loading: false });
     }
+  },
+
+  retryLoad() {
+    if (this.data.loading) return;
+    this.loadData();
   },
 
   stopRecentPolling() {
@@ -182,28 +265,83 @@ Page({
     this.recentPollTimer = null;
   },
 
-  scheduleRecentPolling(recent) {
+  scheduleRecentPolling(recent, selectedSource = this.data.selectedSource) {
     this.stopRecentPolling();
-    if (!this.recentPageVisible || !(recent || []).some((item) => item.status === 'processing')) return;
+    const previewProcessing = selectedSource
+      && selectedSource.navigationPreview
+      && selectedSource.navigationPreview.state === 'processing';
+    if (!this.recentPageVisible
+      || (!hasActiveTasks(recent) && !previewProcessing)) return;
     this.recentPollTimer = setTimeout(() => this.refreshRecent(), 5000);
   },
 
   async refreshRecent() {
     if (!this.recentPageVisible) return;
     try {
-      const history = await aiService.loadHistory(1, 4);
+      const previewTask = this.data.selectedSource
+        && this.data.selectedSource.navigationPreview
+        && this.data.selectedSource.navigationPreview.task;
+      const [history, refreshedPreviewTask] = await Promise.all([
+        aiService.loadHistory(1, 4),
+        previewTask && ['created', 'pending', 'processing'].includes(previewTask.status)
+          ? aiService.getTask(previewTask.id).catch(() => null)
+          : Promise.resolve(null),
+      ]);
       const recent = prioritizeProcessingTasks(
-        (history.data || []).map((item) => ({ ...item, modeTitle: MODE_TITLES[item.mode] || 'AI 设计' })),
+        (history.data || []).map((item) => decorateRecentResult({
+          ...item,
+          modeTitle: MODE_TITLES[item.mode] || '设计成果',
+        })),
       );
-      this.setData({ recent });
-      this.scheduleRecentPolling(recent);
+      let selectedSource = this.data.selectedSource;
+      if (selectedSource && refreshedPreviewTask) {
+        const previewState = refreshedPreviewTask.status === 'succeeded'
+          ? 'ready'
+          : refreshedPreviewTask.status === 'failed'
+            ? (selectedSource.navigationPreview.imageUrl ? 'ready' : 'missing')
+            : 'processing';
+        selectedSource = {
+          ...selectedSource,
+          navigationPreview: {
+            ...selectedSource.navigationPreview,
+            state: previewState,
+            task: previewState === 'ready' && refreshedPreviewTask.status === 'failed'
+              ? selectedSource.navigationPreview.readyTask
+              : refreshedPreviewTask,
+            readyTask: previewState === 'ready' && refreshedPreviewTask.status === 'succeeded'
+              ? refreshedPreviewTask
+              : selectedSource.navigationPreview.readyTask,
+            imageUrl: previewState === 'ready'
+              ? (refreshedPreviewTask.resultImageUrl || selectedSource.navigationPreview.imageUrl)
+              : selectedSource.navigationPreview.imageUrl,
+          },
+        };
+      }
+      this.setData({ recent, selectedSource, historyLoadError: '' }, () => this.syncExperienceState());
+      this.scheduleRecentPolling(recent, selectedSource);
     } catch (error) {
+      this.setData({ historyLoadError: error.error || error.message || '最近成果刷新失败' });
       this.scheduleRecentPolling(this.data.recent);
     }
   },
 
+  syncExperienceState() {
+    this.setData(buildExperienceState(this.data));
+  },
+
   openMode(event) {
     const mode = event.currentTarget.dataset.mode;
+    const requestedScope = event.currentTarget.dataset.scope;
+    const effectiveTargetScope = requestedScope || this.data.targetScope;
+    const effectiveRoomId = effectiveTargetScope === 'whole_floor_plan' ? '' : this.data.roomId;
+    if (this.data.workflowLoading) {
+      wx.showToast({ title: '客户方案正在加载，请稍候', icon: 'none' });
+      return;
+    }
+    if (this.data.workflowLoadError) {
+      wx.showToast({ title: '客户方案加载失败，请先重试', icon: 'none' });
+      return;
+    }
     if (this.data.schemeOptions.length > 1 && !this.data.workflowId && !this.data.createNewWorkflow) {
       this.setData({ workflowPickerOpen: true });
       wx.showToast({ title: '请先选择要续接的客户方案', icon: 'none' });
@@ -229,9 +367,9 @@ Page({
     }
     if (mode === 'floor_plan_render') {
       const support = (this.data.provider && this.data.provider.floorPlanTargetSupport) || {};
-      if (support[this.data.targetScope] === false) {
+      if (support[effectiveTargetScope] === false) {
         wx.showToast({
-          title: this.data.targetScope === 'whole_floor_plan' ? '全屋俯视生成服务暂未配置' : '单房间生成服务暂未配置',
+          title: effectiveTargetScope === 'whole_floor_plan' ? '全屋 3D 生成服务暂未配置' : '单房间生成服务暂未配置',
           icon: 'none',
         });
         return;
@@ -241,12 +379,69 @@ Page({
       `mode=${mode}`,
       this.data.floorPlanId ? `floorPlanId=${this.data.floorPlanId}` : '',
       this.data.leadId ? `leadId=${this.data.leadId}` : '',
-      this.data.roomId ? `roomId=${this.data.roomId}` : '',
-      this.data.targetScope ? `targetScope=${this.data.targetScope}` : '',
+      effectiveRoomId ? `roomId=${effectiveRoomId}` : '',
+      effectiveTargetScope ? `targetScope=${effectiveTargetScope}` : '',
       this.data.workflowId ? `workflowId=${this.data.workflowId}` : '',
       this.data.createNewWorkflow ? 'createNewWorkflow=1' : '',
     ].filter(Boolean).join('&');
     wx.navigateTo({ url: `/pages/ai-design-create/ai-design-create?${query}` });
+  },
+
+  openPrimaryAction() {
+    if (this.data.workflowLoading || this.data.workflowLoadError) {
+      wx.showToast({
+        title: this.data.workflowLoading ? '客户方案正在加载，请稍候' : '客户方案加载失败，请先重试',
+        icon: 'none',
+      });
+      return;
+    }
+    const action = this.data.primaryAction;
+    if (!action || action.enabled === false) {
+      wx.showToast({ title: '当前服务暂不可用', icon: 'none' });
+      return;
+    }
+    if (action.actionType === 'result' && action.taskId) {
+      this.openResult({ currentTarget: { dataset: { id: action.taskId } } });
+      return;
+    }
+    if (action.actionType === 'history') {
+      this.openHistory();
+      return;
+    }
+    this.openMode({
+      currentTarget: {
+        dataset: {
+          mode: action.mode,
+          scope: action.targetScope,
+        },
+      },
+    });
+  },
+
+  focusSceneWaypoint(event) {
+    const mode = event.currentTarget.dataset.mode;
+    if (!mode || mode === this.data.activeSceneMode) return;
+    this.setData({ activeSceneMode: mode }, () => this.syncExperienceState());
+  },
+
+  enterSceneMode() {
+    const navigation = this.data.sceneNavigation;
+    if (!navigation || navigation.enabled === false) {
+      wx.showToast({ title: '当前服务暂不可用', icon: 'none' });
+      return;
+    }
+    if (navigation.mode === 'floor_plan_render' && !this.data.floorPlanId) {
+      this.openSourcePicker();
+      return;
+    }
+    this.openMode({
+      currentTarget: {
+        dataset: {
+          mode: navigation.mode,
+          scope: navigation.targetScope,
+        },
+      },
+    });
   },
 
   openSourcePicker() {
@@ -305,16 +500,60 @@ Page({
       selectedWorkflow: samePlan ? this.data.selectedWorkflow : null,
       workflowId: samePlan ? this.data.workflowId : '',
       createNewWorkflow: samePlan ? this.data.createNewWorkflow : false,
-    });
+      schemeOptions: samePlan ? this.data.schemeOptions : [],
+      workflowPickerOpen: false,
+      workflowLoading: samePlan ? this.data.workflowLoading : true,
+      workflowLoadError: samePlan ? this.data.workflowLoadError : '',
+    }, () => this.syncExperienceState());
     if (samePlan) return;
-    const schemeOptions = await aiService.loadWorkflows({ leadId: source.leadId, floorPlanId: source.floorPlanId }).catch(() => []);
-    const selectedWorkflow = schemeOptions.length === 1 ? schemeOptions[0] : null;
-    this.setData({
-      schemeOptions,
-      selectedWorkflow,
-      workflowId: selectedWorkflow ? selectedWorkflow.id : '',
-      workflowPickerOpen: schemeOptions.length > 1,
-    });
+    await this.loadSourceWorkflows(source);
+  },
+
+  async loadSourceWorkflows(source) {
+    if (!source) return;
+    this.setData({ workflowLoading: true, workflowLoadError: '' });
+    try {
+      const schemeOptions = await aiService.loadWorkflows({
+        leadId: source.leadId,
+        floorPlanId: source.floorPlanId,
+      });
+      const selectedWorkflow = schemeOptions.length === 1 ? schemeOptions[0] : null;
+      this.setData({
+        schemeOptions,
+        selectedWorkflow,
+        workflowId: selectedWorkflow ? selectedWorkflow.id : '',
+        workflowPickerOpen: schemeOptions.length > 1,
+        workflowLoadError: '',
+      }, () => this.syncExperienceState());
+    } catch (error) {
+      this.setData({
+        schemeOptions: [],
+        selectedWorkflow: null,
+        workflowId: '',
+        workflowPickerOpen: false,
+        workflowLoadError: error.error || error.message || '客户方案加载失败',
+      }, () => this.syncExperienceState());
+      wx.showToast({ title: '客户方案加载失败，请重试', icon: 'none' });
+    } finally {
+      this.setData({ workflowLoading: false });
+    }
+  },
+
+  retryWorkflowLoad() {
+    if (this.data.workflowLoading) return;
+    this.loadSourceWorkflows(this.data.selectedSource);
+  },
+
+  selectMapTarget(event) {
+    const source = this.data.selectedSource;
+    if (!source) return;
+    const scope = event.currentTarget.dataset.scope;
+    if (scope === 'whole_floor_plan') {
+      this.applySource(source, 'whole_floor_plan');
+      return;
+    }
+    const room = (source.rooms || [])[Number(event.currentTarget.dataset.index)];
+    if (room) this.applySource(source, 'single_room', room);
   },
 
   clearSource() {
@@ -331,8 +570,10 @@ Page({
       selectedWorkflow: null,
       workflowId: '',
       workflowPickerOpen: false,
+      workflowLoading: false,
+      workflowLoadError: '',
       createNewWorkflow: false,
-    });
+    }, () => this.syncExperienceState());
   },
 
   openWorkflowPicker() {
@@ -352,7 +593,7 @@ Page({
       workflowId: workflow.id,
       createNewWorkflow: false,
       workflowPickerOpen: false,
-    });
+    }, () => this.syncExperienceState());
   },
 
   createAlternativeWorkflow() {
@@ -361,7 +602,7 @@ Page({
       workflowId: '',
       createNewWorkflow: true,
       workflowPickerOpen: false,
-    });
+    }, () => this.syncExperienceState());
     wx.showToast({ title: '将创建新的备选方案', icon: 'none' });
   },
 

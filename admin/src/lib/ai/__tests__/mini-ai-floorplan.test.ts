@@ -5,6 +5,7 @@ import {
   renderMiniAiFloorPlanControlPng,
   resolveMiniAiFloorPlanTarget,
 } from '@/lib/ai/mini-ai-floorplan';
+import { buildSurveyFloorPlanNavigator } from '@/lib/survey-graph';
 
 const layout = {
   version: 4 as const,
@@ -70,6 +71,33 @@ test('control image deduplicates shared walls and renders a stable PNG', async (
   const png = await renderMiniAiFloorPlanControlPng(layout);
   assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
   assert.ok(png.length > 1000);
+});
+
+test('floor-plan navigator derives normalized walls and room labels without exposing layout data', () => {
+  const navigator = buildSurveyFloorPlanNavigator(layout);
+
+  assert.ok(navigator);
+  assert.equal(navigator.walls.length, 7);
+  assert.deepEqual(navigator.rooms.map((room) => room.id), ['living', 'bedroom']);
+  assert.ok(navigator.rooms.every((room) => room.left >= 0 && room.left <= 100));
+  assert.ok(navigator.rooms.every((room) => room.centerX >= 0 && room.centerX <= 100));
+  assert.ok(navigator.rooms.every((room) => room.polygon.length >= 3));
+  assert.ok(Math.abs(navigator.aspectRatio - 8 / 3) < 0.01);
+  const wallPoints = navigator.walls.flatMap((wall) => {
+    const radians = wall.angle * Math.PI / 180;
+    return [
+      { x: wall.left, y: wall.top },
+      {
+        x: wall.left + Math.cos(radians) * wall.width,
+        y: wall.top + Math.sin(radians) * wall.width,
+      },
+    ];
+  });
+  const renderedWidth = Math.max(...wallPoints.map((point) => point.x))
+    - Math.min(...wallPoints.map((point) => point.x));
+  const renderedHeight = Math.max(...wallPoints.map((point) => point.y))
+    - Math.min(...wallPoints.map((point) => point.y));
+  assert.ok(Math.abs(renderedWidth / renderedHeight - navigator.aspectRatio) < 0.01);
 });
 
 test('single-room control image contains only the selected closed room', async () => {
