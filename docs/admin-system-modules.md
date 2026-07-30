@@ -200,7 +200,9 @@ permission, or workflow changes.
   categories, template fill, reference images, prompt assistance, mapped local
   model profiles, 1-4 outputs, ratio/quality/resolution controls, credit estimates,
   history, reuse, retry, delete, download, and attachment to an existing customer
-  workflow. Template results load incrementally across the complete active revision,
+  workflow. Completed result tiles reproduce the verified Roomi interaction surface:
+  hover actions, annotatable reference reuse, full preview controls, and exported
+  A/B comparison without introducing a Roomi runtime dependency. Template results load incrementally across the complete active revision,
   and mobile users retain access to the same three-level category filter. The
   full-screen surface follows the approved Roomi-style dark creation layout with a
   68px brand bar, a 1440px minimum desktop canvas, compact creation rail, fixed-size
@@ -210,7 +212,15 @@ permission, or workflow changes.
   task is submitted, the workspace switches to the Roomi-style execution layout:
   task summary and parameter chips at the top, compact progress/result tiles with
   edit/retry/delete actions, a right-side history rail, and the composer anchored to
-  the bottom edge. The server
+  the bottom edge. Hovering a completed result exposes download, reference reuse,
+  A/B comparison, image annotation editing, workflow attachment, and deletion.
+  Result preview supports zoom, rotation, fullscreen, and download; comparison
+  supports swap, A/B-only, a draggable split divider, synchronized, horizontal/vertical, reset, and a
+  borderless immersive fullscreen canvas that keeps the toolbar above the viewport-filling image stage,
+  and export. The annotation editor provides rectangle, circle, arrow, pen, and marker
+  tools, six colors, undo/redo, local download, and saves the accepted PNG through the
+  existing free-creation asset upload API as a reference image; it adds no route, model,
+  or permission boundary. The server
   intersects template parameters with the selected local
   model profile before submission and snapshots the accepted values. Generation
   uses the existing provider execution, polling, and hold/consume/release billing

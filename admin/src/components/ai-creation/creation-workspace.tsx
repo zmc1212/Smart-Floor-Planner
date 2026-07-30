@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element -- Authenticated media routes and imported source URLs are dynamic. */
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import Link from 'next/link';
 import {
   Bell,
@@ -10,19 +10,25 @@ import {
   ChevronRight,
   CircleUserRound,
   Coins,
+  Columns2,
+  Copy,
   Crop,
   Download,
   FileImage,
   FolderInput,
+  GripHorizontal,
+  GripVertical,
   History,
   Images,
   ListChecks,
   Loader2,
   Maximize2,
+  Minus,
   MoreHorizontal,
   PanelsTopLeft,
   Pencil,
   Plus,
+  RotateCw,
   RefreshCw,
   ScanLine,
   Search,
@@ -44,6 +50,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { notify } from '@/components/ui/operation-feedback';
 import { cn } from '@/lib/utils';
+import { ImageEditorDialog } from './image-editor-dialog';
 import { TemplateLibraryDialog } from './template-library-dialog';
 import type {
   CreationAsset,
@@ -95,6 +102,15 @@ function formatDateTime(value: string) {
   });
 }
 
+function loadCanvasImage(url: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('无法加载对比图片'));
+    image.src = url;
+  });
+}
+
 function latestBatch(task?: CreationTask) {
   return task?.batches?.[0];
 }
@@ -116,11 +132,19 @@ function GenerationTile({
   batchStatus,
   onAttach,
   onPreview,
+  onReuse,
+  onCompare,
+  onEdit,
+  onDelete,
 }: {
   generation?: CreationGeneration;
   batchStatus?: CreationBatch['status'];
   onAttach: (generation: CreationGeneration) => void;
   onPreview: (generation: CreationGeneration) => void;
+  onReuse: (generation: CreationGeneration) => void;
+  onCompare: (generation: CreationGeneration) => void;
+  onEdit: (generation: CreationGeneration) => void;
+  onDelete: () => void;
 }) {
   if (!generation) {
     if (batchStatus === 'failed') {
@@ -166,13 +190,15 @@ function GenerationTile({
       <button type="button" onClick={() => onPreview(generation)} className="h-full w-full">
         <img src={generation.imageUrl} alt="AI 生成结果" className="h-full w-full object-contain" />
       </button>
-      <div className="absolute inset-x-0 bottom-0 flex translate-y-full items-center justify-end gap-1 bg-black/70 p-2 backdrop-blur transition group-hover:translate-y-0 group-focus-within:translate-y-0">
+      <div className="absolute left-1/2 top-2 flex -translate-x-1/2 items-center gap-1 rounded-lg bg-[#202126]/95 p-1.5 text-[#e5e5ea] opacity-0 shadow-xl backdrop-blur transition group-hover:opacity-100 group-focus-within:opacity-100">
         <Button size="icon-sm" variant="secondary" asChild title="下载">
           <a href={generation.imageUrl} download={`ai-creation-${generation.id}.png`}><Download /></a>
         </Button>
-        <Button size="icon-sm" variant="secondary" onClick={() => onAttach(generation)} title="归入客户方案">
-          <FolderInput />
-        </Button>
+        <Button size="icon-sm" variant="secondary" onClick={() => onReuse(generation)} title="引用为参考图"><Copy /></Button>
+        <Button size="icon-sm" variant="secondary" onClick={() => onCompare(generation)} title="对比"><Columns2 /></Button>
+        <Button size="icon-sm" variant="secondary" onClick={() => onEdit(generation)} title="编辑"><Pencil /></Button>
+        <Button size="icon-sm" variant="secondary" onClick={() => onAttach(generation)} title="归入客户方案"><FolderInput /></Button>
+        <Button size="icon-sm" variant="secondary" className="text-[#ff8388] hover:text-[#ffaaaa]" onClick={onDelete} title="删除"><Trash2 /></Button>
       </div>
       {generation.workflowId ? (
         <span className="absolute left-2 top-2 rounded-md bg-[#7047ff] px-2 py-1 text-[11px] font-medium text-white">已归入方案</span>
@@ -203,8 +229,19 @@ export function CreationWorkspace() {
   const [attachGeneration, setAttachGeneration] = useState<CreationGeneration | null>(null);
   const [attachWorkflowId, setAttachWorkflowId] = useState('');
   const [previewGeneration, setPreviewGeneration] = useState<CreationGeneration | null>(null);
+  const [previewZoom, setPreviewZoom] = useState(1);
+  const [previewRotation, setPreviewRotation] = useState(0);
+  const [previewFullscreen, setPreviewFullscreen] = useState(false);
+  const [compareGeneration, setCompareGeneration] = useState<CreationGeneration | null>(null);
+  const [compareMode, setCompareMode] = useState<'generated' | 'reference' | 'split' | 'sync'>('split');
+  const [compareLayout, setCompareLayout] = useState<'horizontal' | 'vertical'>('horizontal');
+  const [compareSwapped, setCompareSwapped] = useState(false);
+  const [compareFullscreen, setCompareFullscreen] = useState(false);
+  const [splitPosition, setSplitPosition] = useState(50);
+  const [editorGeneration, setEditorGeneration] = useState<CreationGeneration | null>(null);
   const [promptExpanded, setPromptExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const compareViewportRef = useRef<HTMLDivElement>(null);
 
   const loadBootstrap = useCallback(async () => {
     const payload = await readJson(await fetch('/api/ai/creation/bootstrap'));
@@ -284,16 +321,16 @@ export function CreationWorkspace() {
     }
   };
 
-  const uploadFiles = async (files: FileList | null) => {
-    if (!files?.length || !model) return;
+  const uploadReferenceFiles = async (files: File[], successMessage = '已添加参考图') => {
+    if (!files.length || !model) return false;
     const slots = Math.max(0, model.maxReferenceImages - assets.length);
     if (!model.supportsReferenceImages || !slots) {
       notify.warning(`当前模型最多支持 ${model.maxReferenceImages} 张参考图`);
-      return;
+      return false;
     }
     setUploading(true);
     try {
-      const selected = Array.from(files).slice(0, slots);
+      const selected = files.slice(0, slots);
       const uploaded = await Promise.all(selected.map(async (file) => {
         const formData = new FormData();
         formData.set('file', file);
@@ -301,13 +338,84 @@ export function CreationWorkspace() {
         return payload.data as CreationAsset;
       }));
       setAssets((current) => [...current, ...uploaded]);
-      notify.success(`已上传 ${uploaded.length} 张参考图`);
+      notify.success(`${successMessage}（${uploaded.length} 张）`);
+      return true;
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '参考图上传失败');
+      return false;
     } finally {
       setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
+  };
+
+  const uploadFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    await uploadReferenceFiles(Array.from(files), '已上传参考图');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const reuseGeneration = async (generation: CreationGeneration) => {
+    if (!generation.imageUrl) return;
+    try {
+      const response = await fetch(generation.imageUrl);
+      if (!response.ok) throw new Error('无法读取生成结果');
+      const blob = await response.blob();
+      await uploadReferenceFiles([new File([blob], `ai-creation-${generation.id}.png`, { type: blob.type || 'image/png' })], '已引用生成结果');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '引用生成结果失败');
+    }
+  };
+
+  const useAnnotatedImage = async (file: File, extraPrompt: string) => {
+    const added = await uploadReferenceFiles([file], '已使用标注图片');
+    if (added && extraPrompt) {
+      setPrompt((current) => current.trim() ? `${current.trim()}\n${extraPrompt}` : extraPrompt);
+    }
+  };
+
+  const downloadComparison = async () => {
+    if (!compareGeneration?.imageUrl || !assets[0]?.previewUrl) return notify.warning('请先准备一张参考图再下载对比图');
+    try {
+      const [first, second] = await Promise.all([
+        loadCanvasImage(compareSwapped ? assets[0].previewUrl : compareGeneration.imageUrl),
+        loadCanvasImage(compareSwapped ? compareGeneration.imageUrl : assets[0].previewUrl),
+      ]);
+      const vertical = compareLayout === 'vertical';
+      const width = vertical ? Math.max(first.naturalWidth, second.naturalWidth) : first.naturalWidth + second.naturalWidth;
+      const height = vertical ? first.naturalHeight + second.naturalHeight : Math.max(first.naturalHeight, second.naturalHeight);
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('无法创建对比图');
+      if (vertical) {
+        context.drawImage(first, 0, 0);
+        context.drawImage(second, 0, first.naturalHeight);
+      } else {
+        context.drawImage(first, 0, 0);
+        context.drawImage(second, first.naturalWidth, 0);
+      }
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'ai-creation-comparison.png';
+        link.click();
+        URL.revokeObjectURL(url);
+      }, 'image/png');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '下载对比图失败');
+    }
+  };
+
+  const moveSplitDivider = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const rect = compareViewportRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const ratio = compareLayout === 'horizontal'
+      ? (event.clientX - rect.left) / rect.width
+      : (event.clientY - rect.top) / rect.height;
+    setSplitPosition(Math.min(96, Math.max(4, ratio * 100)));
   };
 
   const applyTemplate = (template: TemplateDetail) => {
@@ -535,7 +643,17 @@ export function CreationWorkspace() {
               <section aria-label="生成结果" className="absolute right-0 top-[118px] z-10 h-[264px] bg-[linear-gradient(90deg,#24252c_0%,#202138_58%,#17191f_100%)] [left:calc(50%_-_540px)]">
                 <div className="absolute left-0 top-0 flex max-w-[calc(100%-32px)] gap-3 overflow-hidden">
                   {displayGenerations.map((generation, index) => (
-                    <GenerationTile key={generation?.id || `pending-${index}`} generation={generation} batchStatus={selectedBatch?.status} onAttach={setAttachGeneration} onPreview={setPreviewGeneration} />
+                    <GenerationTile
+                      key={generation?.id || `pending-${index}`}
+                      generation={generation}
+                      batchStatus={selectedBatch?.status}
+                      onAttach={setAttachGeneration}
+                      onPreview={(item) => { setPreviewGeneration(item); setPreviewZoom(1); setPreviewRotation(0); setPreviewFullscreen(false); }}
+                      onReuse={(item) => { void reuseGeneration(item); }}
+                      onCompare={(item) => { setCompareGeneration(item); setCompareMode('split'); setCompareSwapped(false); setCompareFullscreen(false); setSplitPosition(50); }}
+                      onEdit={setEditorGeneration}
+                      onDelete={() => selectedTask && deleteTask(selectedTask)}
+                    />
                   ))}
                 </div>
                 <div className="absolute left-0 top-[226px] flex h-[30px] items-center gap-2">
@@ -622,11 +740,78 @@ export function CreationWorkspace() {
       </Dialog>
 
       <Dialog open={Boolean(previewGeneration)} onOpenChange={(open) => !open && setPreviewGeneration(null)}>
-        <DialogContent className="h-[90vh] max-w-[92vw] border-white/10 bg-[#111216] p-2 sm:rounded-xl">
+        <DialogContent className={cn('border-white/10 bg-[#111216] p-3 sm:rounded-xl', previewFullscreen ? 'h-screen w-screen max-w-none' : 'h-[90vh] max-w-[92vw]')}>
           <DialogHeader className="sr-only"><DialogTitle>生成结果预览</DialogTitle></DialogHeader>
-          {previewGeneration?.imageUrl ? <img src={previewGeneration.imageUrl} alt="生成结果大图" className="h-full w-full object-contain" /> : null}
+          <div className="relative flex h-full items-center justify-center overflow-hidden">
+            {previewGeneration?.imageUrl ? <img src={previewGeneration.imageUrl} alt="生成结果大图" className="max-h-full max-w-full object-contain transition-transform" style={{ transform: `scale(${previewZoom}) rotate(${previewRotation}deg)` }} /> : null}
+            <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-white/10 bg-black/70 p-1.5 backdrop-blur">
+              <Button size="icon-sm" variant="secondary" title="放大图片" onClick={() => setPreviewZoom((value) => Math.min(3, value + 0.2))}><Plus /></Button>
+              <Button size="icon-sm" variant="secondary" title="缩小图片" onClick={() => setPreviewZoom((value) => Math.max(0.4, value - 0.2))}><Minus /></Button>
+              <Button size="sm" variant="secondary" title="恢复原始比例" onClick={() => { setPreviewZoom(1); setPreviewRotation(0); }}>1:1</Button>
+              <Button size="icon-sm" variant="secondary" title="顺时针旋转图片" onClick={() => setPreviewRotation((value) => value + 90)}><RotateCw /></Button>
+              <Button size="icon-sm" variant="secondary" title="全屏预览" onClick={() => setPreviewFullscreen((value) => !value)}><Maximize2 /></Button>
+              {previewGeneration?.imageUrl ? <Button size="icon-sm" variant="secondary" asChild title="下载图片"><a href={previewGeneration.imageUrl} download={`ai-creation-${previewGeneration.id}.png`}><Download /></a></Button> : null}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={Boolean(compareGeneration)} onOpenChange={(open) => { if (!open) { setCompareGeneration(null); setCompareFullscreen(false); } }}>
+        <DialogContent hideCloseButton className={cn('grid-rows-[auto_auto_minmax(0,1fr)] border-white/10 bg-[#1b1c20] p-5 text-white sm:rounded-2xl', compareFullscreen ? '!inset-0 !h-[100dvh] !w-[100dvw] !max-w-none !translate-x-0 !translate-y-0 !rounded-none !border-0 !p-4 !shadow-none' : 'max-w-6xl')}>
+          <DialogHeader><DialogTitle className="text-base">方案对比</DialogTitle></DialogHeader>
+          <button type="button" aria-label="关闭方案对比" title="关闭方案对比" onClick={() => { setCompareGeneration(null); setCompareFullscreen(false); }} className="absolute right-4 top-4 z-20 flex size-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"><X className="size-5" /></button>
+          {compareGeneration?.imageUrl && assets[0]?.previewUrl ? (() => {
+            const generatedUrl = compareGeneration.imageUrl;
+            const referenceUrl = assets[0].previewUrl;
+            const imageA = compareSwapped ? generatedUrl : referenceUrl;
+            const imageB = compareSwapped ? referenceUrl : generatedUrl;
+            const vertical = compareLayout === 'vertical';
+            return <>
+              <div className="flex flex-wrap items-center gap-2 [&>button]:border [&>button]:border-white/10 [&>button]:bg-[#24252b] [&>button]:text-[#e7e7eb] [&>button:hover]:bg-[#303138]">
+                <Button size="sm" variant="secondary" onClick={() => setCompareSwapped((value) => !value)}>交换</Button>
+                <Button size="sm" variant={compareMode === 'reference' ? 'default' : 'secondary'} className={cn(compareMode === 'reference' && '!border-[#8d67ff] !bg-[#6e45ef]/20')} onClick={() => setCompareMode('reference')}>只看 A 图</Button>
+                <Button size="sm" variant={compareMode === 'generated' ? 'default' : 'secondary'} className={cn(compareMode === 'generated' && '!border-[#8d67ff] !bg-[#6e45ef]/20')} onClick={() => setCompareMode('generated')}>只看 B 图</Button>
+                <Button size="sm" variant={compareMode === 'split' ? 'default' : 'secondary'} className={cn(compareMode === 'split' && '!border-[#8d67ff] !bg-[#6e45ef]/20')} onClick={() => setCompareMode('split')}><Columns2 />分割对比</Button>
+                <Button size="sm" variant={compareMode === 'sync' ? 'default' : 'secondary'} className={cn(compareMode === 'sync' && '!border-[#8d67ff] !bg-[#6e45ef]/20')} onClick={() => setCompareMode('sync')}><Images />同步对比</Button>
+                <span className="h-6 w-px bg-white/10" />
+                <Button size="sm" variant={compareLayout === 'horizontal' ? 'default' : 'secondary'} className={cn(compareLayout === 'horizontal' && '!border-[#8d67ff] !bg-[#6e45ef]/20')} onClick={() => setCompareLayout('horizontal')}>左右</Button>
+                <Button size="sm" variant={compareLayout === 'vertical' ? 'default' : 'secondary'} className={cn(compareLayout === 'vertical' && '!border-[#8d67ff] !bg-[#6e45ef]/20')} onClick={() => setCompareLayout('vertical')}>上下</Button>
+                <Button size="sm" variant="secondary" onClick={() => { setCompareSwapped(false); setCompareMode('split'); setCompareLayout('horizontal'); setSplitPosition(50); }}>居中</Button>
+                <Button size="sm" variant="secondary" onClick={() => setCompareFullscreen((value) => !value)}><Maximize2 />全屏</Button>
+                <Button size="icon-sm" variant="secondary" title="下载对比图" onClick={() => { void downloadComparison(); }}><Download /></Button>
+              </div>
+              <div className={cn('flex min-h-0 items-center justify-center overflow-auto rounded-xl border border-white/10 bg-[#111216] p-3', compareFullscreen ? 'h-full' : 'mt-4 h-[min(62vh,620px)]')}>
+                {compareMode === 'reference' ? <img src={imageA} alt="方案 A" className="max-h-full max-w-full object-contain" /> : null}
+                {compareMode === 'generated' ? <img src={imageB} alt="方案 B" className="max-h-full max-w-full object-contain" /> : null}
+                {compareMode === 'split' ? <div ref={compareViewportRef} className="relative h-full w-full overflow-hidden">
+                  <img src={imageB} alt="方案 B" className="absolute inset-0 h-full w-full object-contain" />
+                  <img src={imageA} alt="方案 A" className="absolute inset-0 h-full w-full object-contain" style={{ clipPath: vertical ? `inset(0 0 ${100 - splitPosition}% 0)` : `inset(0 ${100 - splitPosition}% 0 0)` }} />
+                  <span className="absolute bottom-2 left-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold text-white">A</span>
+                  <span className="absolute bottom-2 right-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold text-white">B</span>
+                  <button
+                    type="button"
+                    aria-label="拖动分割线"
+                    title="拖动分割线"
+                    className={cn('absolute z-10 touch-none', vertical ? 'inset-x-0 h-8 -translate-y-1/2 cursor-row-resize' : 'inset-y-0 w-8 -translate-x-1/2 cursor-col-resize')}
+                    style={vertical ? { top: `${splitPosition}%` } : { left: `${splitPosition}%` }}
+                    onPointerDown={(event) => { event.currentTarget.setPointerCapture(event.pointerId); moveSplitDivider(event); }}
+                    onPointerMove={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) moveSplitDivider(event); }}
+                    onPointerUp={(event) => { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId); }}
+                  >
+                    <span className={cn('absolute left-1/2 top-1/2 flex items-center justify-center rounded-full border border-white/30 bg-[#2c2d32] text-white shadow-lg', vertical ? 'h-5 w-9 -translate-x-1/2 -translate-y-1/2' : 'h-9 w-5 -translate-x-1/2 -translate-y-1/2')}>
+                      {vertical ? <GripHorizontal className="size-3" /> : <GripVertical className="size-3" />}
+                    </span>
+                  </button>
+                  <span aria-hidden className={cn('pointer-events-none absolute z-[5] bg-white shadow-[0_0_6px_rgba(0,0,0,0.65)]', vertical ? 'inset-x-0 h-px -translate-y-1/2' : 'inset-y-0 w-px -translate-x-1/2')} style={vertical ? { top: `${splitPosition}%` } : { left: `${splitPosition}%` }} />
+                </div> : null}
+                {compareMode === 'sync' ? <div className={cn('flex h-full w-full gap-3', vertical ? 'flex-col' : 'flex-row')}><img src={imageA} alt="方案 A" className="min-h-0 min-w-0 flex-1 object-contain" /><img src={imageB} alt="方案 B" className="min-h-0 min-w-0 flex-1 object-contain" /></div> : null}
+              </div>
+            </>;
+          })() : <div className="flex h-64 items-center justify-center rounded-xl border border-dashed border-white/15 text-sm text-[#a3a3aa]">引用一张参考图后，即可进行方案对比。</div>}
+        </DialogContent>
+      </Dialog>
+
+      <ImageEditorDialog imageUrl={editorGeneration?.imageUrl} open={Boolean(editorGeneration)} onOpenChange={(open) => !open && setEditorGeneration(null)} onUse={useAnnotatedImage} />
     </div>
   );
 }
