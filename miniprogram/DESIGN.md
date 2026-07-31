@@ -5,6 +5,15 @@
 This document defines the visual design rules for the Smart Floor Planner mini program.
 It should be treated as the source of truth for UI generation, page redesign, and component styling.
 
+Brand-IP source of truth:
+- `docs/design/jiakelai-brand-ip-guidelines.md` defines the confirmed
+  `F1 character body + F3 spatial transformation` direction, Xiao K's product
+  roles, the approved C-style business-metaphor approach, and the rules for
+  integrating the mascot into real UI.
+- Read that document before designing or redesigning any Mini Program surface.
+  This file remains authoritative for tokens, accessibility, layout floors,
+  component behavior, and the broader Mini Program visual system.
+
 Primary visual reference:
 - `miniprogram/ChatGPT Image 2026年4月28日 16_27_02.png`
 
@@ -31,6 +40,12 @@ Page-specific visual reference:
   each lead's associated formal wall graph or real external preview URL; static
   sample plans are design references only. Live lead data, role visibility, pagination, navigation,
   loading/error/empty states, and the shared custom tab bar remain authoritative.
+  The approved brand-IP redesign north star is
+  `design-references/leads/leads-management-ip-c-dossier-v5.png`. It supersedes
+  v4 for future Leads visual design work and establishes the client-dossier
+  metaphor, dossier-index stage tabs, Xiao K's client-concierge role, and the
+  stronger asymmetric brand composition. This approval is design-only and does
+  not assert that the production page has already been implemented.
 - AI Design (`pages/ai-design/ai-design`):
   `design-references/ai-design/ai-design-immersive-c-floor-map-v1.png` is the primary
   `390x844` reference, with
@@ -57,6 +72,9 @@ When image reference and implementation differ:
 - Use the image for mood and composition reference
 
 ## 2. Brand Direction
+
+For all durable brand-character and brand-mechanism decisions, follow
+`docs/design/jiakelai-brand-ip-guidelines.md`.
 
 ### Keywords
 - clean

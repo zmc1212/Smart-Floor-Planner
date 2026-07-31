@@ -104,6 +104,18 @@ staged change; split unrelated work.
 
 - Follow `miniprogram/DESIGN.md`, `design-tokens.json`, and `app.wxss` tokens for
   new UI. Preserve the bright green, calm home-design visual language.
+- Before designing or redesigning a Mini Program surface, also read
+  `docs/design/jiakelai-brand-ip-guidelines.md`. Treat its confirmed
+  `F1 character body + F3 spatial transformation` system and the C-style
+  business-metaphor direction as the default brand-IP language unless the user
+  explicitly approves another direction.
+- Give Xiao K one clear business role on each surface and integrate that role
+  into a real information structure or interaction metaphor. Do not use the IP
+  as repeated decoration, let it obscure high-frequency work, or use it to
+  imply unavailable functionality.
+- The approved Leads C comp is a design north star, not proof of implementation.
+  Keep production status, live behavior, data, permissions, and route support
+  grounded in the current code and module inventory.
 - Store AI-generated design-reference images only in the repository-root
   `design-references/` directory. It is Git-ignored and must never be placed
   under `miniprogram/`, so reference assets cannot inflate the Mini Program
