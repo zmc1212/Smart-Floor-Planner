@@ -12,7 +12,14 @@ permission, or workflow changes.
 - `Placeholder`: the UI is present but uses a mock, a planned action, or no real
   persistence/integration.
 - Runtime: Next.js 16 App Router, React 19, Tailwind CSS 4, shadcn/ui + Radix,
-  Mongoose, MongoDB, Three.js, and SWR-style client fetching.
+  Mongoose/MongoDB for current business data, a Phase 1 PostgreSQL 17
+  `drizzle-orm` + `pg` infrastructure layer, Three.js, and SWR-style client
+  fetching. Business routes have not switched to PostgreSQL.
+- Local development: `npm run dev` runs the combined Next.js UI/API on port
+  `3005`; Docker publishes MongoDB on host port `27018` (container
+  `mongo:27017`) and PostgreSQL on host port `5432` (container
+  `postgres:5432`). The host port avoids a pre-existing Windows MongoDB
+  service; container-to-container connections continue to use service names.
 - Route groups: `(platform)` contains platform/B2B operations; `(merchant)`
   contains enterprise workbench assets; shared pages live directly under
   `(admin)`.
@@ -459,6 +466,18 @@ permission, or workflow changes.
 - Status: `Implemented` for scheduled reminder execution, browser polling,
   notification logs, health/debug checks, seed support, and Docker/release
   tooling. These endpoints require their documented role or operational context.
+- PostgreSQL migration infrastructure: `Implemented` for the PostgreSQL 17
+  Docker service, isolated `sfp_migrator`/`sfp_app`/`sfp_auditor` roles,
+  bounded `pg.Pool`, reviewable Drizzle migrations, backup/restore-drill
+  scripts, and Docker health ordering. `/api/health` continues to require
+  MongoDB and reports PostgreSQL separately; PostgreSQL becomes a health gate
+  only when `POSTGRES_HEALTHCHECK_REQUIRED=true`. `Limited`: PostgreSQL contains
+  only the migration checkpoint baseline, and all business persistence remains
+  on MongoDB until later migration phases. Docker migrations run explicitly
+  through `npm run docker:migrate`; the long-running admin service is not
+  explicitly given `DATABASE_MIGRATION_URL`. Docker build context excludes
+  runtime `.env*`, local RoomiAI/import assets, uploads, and local database
+  backups; those assets must be injected or mounted at runtime.
 
 ## Core Models
 

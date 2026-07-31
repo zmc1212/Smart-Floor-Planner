@@ -7,7 +7,8 @@
 - `Implemented`（已实现）：存在真实页面、API 和数据链路。
 - `Limited`（有限支持）：仅在特定角色、供应商、数据形态或运行条件下可用。
 - `Placeholder`（占位/未开放）：只有 UI、mock、规划动作或没有真实持久化/集成。
-- 技术栈：Next.js 16 App Router、React 19、Tailwind CSS 4、shadcn/ui + Radix、Mongoose、MongoDB、Three.js 和客户端数据请求。
+- 技术栈：Next.js 16 App Router、React 19、Tailwind CSS 4、shadcn/ui + Radix；当前业务数据仍使用 Mongoose/MongoDB，Phase 1 已建立 PostgreSQL 17 的 `drizzle-orm` + `pg` 基础层；另含 Three.js 和客户端数据请求。业务路由尚未切换到 PostgreSQL。
+- 本地开发：`npm run dev` 在 `3005` 端口运行合并的 Next.js 页面/API；Docker 将 MongoDB 发布到宿主机 `27018`（容器内仍为 `mongo:27017`），将 PostgreSQL 发布到宿主机 `5432`（容器内仍为 `postgres:5432`）。`27018` 用于避开既有 Windows MongoDB 服务；容器之间继续使用服务名连接。
 - 路由分组：`(platform)` 为平台/B2B 运营，`(merchant)` 为企业工作台资产，公共页面位于 `(admin)`。
 
 ## 共享架构
@@ -126,6 +127,7 @@
 
 - API：提醒执行、通知列表/轮询、`/api/health`、`/api/debug`、`/api/debug/tenant-context`、`/api/internal/seed`。
 - 状态：提醒、浏览器轮询、通知日志、健康/调试、种子和 Docker/发布工具为 `Implemented`；接口仍需遵守对应角色和运行环境限制。
+- PostgreSQL 迁移基础设施：PostgreSQL 17 Docker 服务、隔离的 `sfp_migrator`/`sfp_app`/`sfp_auditor` 角色、受限 `pg.Pool`、可审阅 Drizzle migration、备份/恢复演练脚本和 Docker 健康启动顺序均为 `Implemented`。`/api/health` 继续以 MongoDB 为必需依赖并单独报告 PostgreSQL；只有 `POSTGRES_HEALTHCHECK_REQUIRED=true` 时 PostgreSQL 才参与健康门禁。Docker migration 通过 `npm run docker:migrate` 显式执行，长期运行的 admin 服务不再显式注入 `DATABASE_MIGRATION_URL`。Docker 构建上下文排除运行时 `.env*`、本地 RoomiAI/导入资源、上传目录和本地数据库备份，这些资产必须在运行时注入或挂载。`Limited`：PostgreSQL 当前只有迁移检查点基线，全部业务持久化仍在 MongoDB，后续阶段才会切换。
 
 ## 核心模型
 

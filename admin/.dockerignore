@@ -1,10 +1,12 @@
 node_modules
 .next
+.postgres-backups
+.roomi-import
+uploads
 .git
 .gitignore
 *.md
-.env.local
-.env*.local
+.env*
 npm-debug.log*
 .DS_Store
 .vscode

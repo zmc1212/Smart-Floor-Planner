@@ -1,6 +1,7 @@
 services:
   admin:
     image: zmc1212/sfp-admin:latest
+    build: .
     container_name: smart-floor-planner-admin
     restart: unless-stopped
     ports:
@@ -12,21 +13,58 @@ services:
       - INTERNAL_SECRET=sfp_internal_init_secret_2024
       - MEDIA_STORAGE_PROVIDER=local
       - AI_ASSET_STORAGE_DIR=/data/ai-assets
+      - DATABASE_URL=postgresql://sfp_app:sfp_app_local_only@postgres:5432/smart_floor_planner
+      - POSTGRES_HEALTHCHECK_REQUIRED=true
     volumes:
       - ai_assets:/data/ai-assets
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  migrate:
+    image: zmc1212/sfp-admin:latest
+    profiles: ["migration"]
+    restart: "no"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_MIGRATION_URL=postgresql://sfp_migrator:sfp_migrator_local_only@postgres:5432/smart_floor_planner
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["node", "scripts/postgres-migrate.mjs"]
 
   mongo:
     image: mongo:7
     container_name: smart-floor-planner-mongo
     restart: unless-stopped
     ports:
-      - "27017:27017"
+      - "27018:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: 123456
     volumes:
       - mongo_data:/data/db
 
+  postgres:
+    image: postgres:17
+    container_name: smart-floor-planner-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: sfp_owner
+      POSTGRES_PASSWORD: sfp_owner_local_only
+      POSTGRES_DB: smart_floor_planner
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sfp_owner -d smart_floor_planner"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
 volumes:
   mongo_data:
   ai_assets:
+  postgres_data:

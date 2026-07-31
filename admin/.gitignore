@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/.postgres-backups/
 
 # next.js
 /.next/

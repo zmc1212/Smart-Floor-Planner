@@ -50,6 +50,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 # 2. 【新增】明确拷贝 scripts 目录，这样镜像里才有 seed-admin.js
 COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/drizzle ./drizzle
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/node_modules/drizzle-orm ./node_modules/drizzle-orm
 
 USER nextjs
 
