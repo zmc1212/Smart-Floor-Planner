@@ -1,0 +1,21 @@
+CREATE INDEX "ai_creation_batches_operator_idx" ON "app"."ai_creation_batches" USING btree ("operator_id");--> statement-breakpoint
+CREATE INDEX "ai_creation_tasks_last_batch_idx" ON "app"."ai_creation_tasks" USING btree ("last_batch_id");--> statement-breakpoint
+CREATE INDEX "ai_credit_ledgers_operator_idx" ON "app"."ai_credit_ledgers" USING btree ("operator_id");--> statement-breakpoint
+CREATE INDEX "ai_credit_prices_updated_by_idx" ON "app"."ai_credit_prices" USING btree ("updated_by");--> statement-breakpoint
+CREATE INDEX "ai_generations_creation_model_profile_idx" ON "app"."ai_generations" USING btree ("creation_model_profile_id");--> statement-breakpoint
+CREATE INDEX "ai_generations_current_attempt_idx" ON "app"."ai_generations" USING btree ("current_attempt_id");--> statement-breakpoint
+CREATE INDEX "ai_model_credit_prices_updated_by_idx" ON "app"."ai_model_credit_prices" USING btree ("updated_by");--> statement-breakpoint
+CREATE INDEX "ai_prompt_categories_parent_category_idx" ON "app"."ai_prompt_categories" USING btree ("parent_category_id");--> statement-breakpoint
+CREATE INDEX "ai_provider_configs_created_by_idx" ON "app"."ai_provider_configs" USING btree ("created_by");--> statement-breakpoint
+CREATE INDEX "ai_provider_configs_updated_by_idx" ON "app"."ai_provider_configs" USING btree ("updated_by");--> statement-breakpoint
+CREATE INDEX "ai_style_presets_created_by_idx" ON "app"."ai_style_presets" USING btree ("created_by");--> statement-breakpoint
+CREATE INDEX "ai_style_presets_updated_by_idx" ON "app"."ai_style_presets" USING btree ("updated_by");--> statement-breakpoint
+CREATE INDEX "ai_workflows_source_floor_plan_idx" ON "app"."ai_workflows" USING btree ("source_floor_plan_id");--> statement-breakpoint
+CREATE INDEX "ai_workflows_selected_generation_idx" ON "app"."ai_workflows" USING btree ("selected_generation_id");--> statement-breakpoint
+CREATE INDEX "ai_workflows_last_generation_idx" ON "app"."ai_workflows" USING btree ("last_generation_id");--> statement-breakpoint
+CREATE INDEX "commission_records_settled_by_idx" ON "app"."commission_records" USING btree ("settled_by");--> statement-breakpoint
+CREATE INDEX "enterprise_orders_created_by_idx" ON "app"."enterprise_orders" USING btree ("created_by");--> statement-breakpoint
+CREATE INDEX "leads_primary_floor_plan_idx" ON "app"."leads" USING btree ("primary_floor_plan_id");--> statement-breakpoint
+CREATE INDEX "media_storage_configs_created_by_idx" ON "app"."media_storage_configs" USING btree ("created_by");--> statement-breakpoint
+CREATE INDEX "media_storage_configs_updated_by_idx" ON "app"."media_storage_configs" USING btree ("updated_by");--> statement-breakpoint
+CREATE INDEX "media_storage_configs_archived_by_idx" ON "app"."media_storage_configs" USING btree ("archived_by");

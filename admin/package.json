@@ -16,7 +16,7 @@
     "import:roomi-prompts": "npx tsx scripts/import-roomi-prompts.ts",
     "verify:roomi-prompts": "npx tsx scripts/verify-roomi-prompts.ts",
     "test:ai": "npx tsx --test src/lib/ai/__tests__/*.test.ts",
-    "test:postgresql": "npx tsx --test src/lib/__tests__/postgresql.test.ts",
+    "test:postgresql": "npx tsx --test src/lib/__tests__/postgresql.test.ts src/db/__tests__/*.test.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node scripts/postgres-migrate.mjs",
     "db:check": "node scripts/postgres-check.mjs",

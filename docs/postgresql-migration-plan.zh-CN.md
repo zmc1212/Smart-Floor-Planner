@@ -6,8 +6,8 @@
 >
 > 最后核验日期：2026-07-31
 > 当前分支：`dev-jr`
-> 当前阶段：`Phase 1 - PostgreSQL 基础设施`（已完成）
-> 下一阶段：`Phase 2 - PostgreSQL 目标 schema 与 Repository`（未开始）
+> 当前阶段：`Phase 2 - PostgreSQL 目标 schema 与 Repository`（已完成）
+> 下一阶段：`Phase 3 - API/业务代码切换`（未开始）
 
 ## 1. 关键决策
 
@@ -145,7 +145,7 @@ RoomiAI 导入使用 [admin/scripts/import-roomi-prompts.ts](../admin/scripts/im
 | Phase 0.1 | RoomiAI 活动版本和 960 个预览资源核验 | 已完成 | `npm run verify:roomi-prompts` 成功 |
 | Phase 0.2 | 七牛配置、激活指针和加密字段核验 | 已完成 | 只读配置检查，未输出密钥 |
 | Phase 1 | PostgreSQL 实例、角色、连接池和 migration runner | 已完成 | Codex 自动验收与用户数据库健康/后台页面回归均通过 |
-| Phase 2 | PostgreSQL 目标 schema 和 Repository 基础层 | 未开始 | 待补充 schema、事务和 RLS 测试 |
+| Phase 2 | PostgreSQL 目标 schema 和 Repository 基础层 | 已完成 | Codex 与用户验收已于 2026-08-01 通过 |
 | Phase 3 | API/业务代码从 Mongoose 切换到 PostgreSQL | 未开始 | 待补充按域完成记录 |
 | Phase 4 | RoomiAI snapshot、预览资源和七牛配置导入 | 未开始 | 待补充导入日志、哈希和验收报告 |
 | Phase 5 | 管理端/小程序合同测试与切换演练 | 未开始 | 待补充测试报告和恢复演练 |
@@ -327,6 +327,67 @@ Phase 4 直接导入 PostgreSQL；不得为了填充 Docker Mongo 而提前复�
 - 通过 Repository 保留现有 API response DTO，避免管理端和小程序同时改协议。
 - 在事务边界内设置租户上下文，补充 RLS 和跨租户访问测试。
 
+Phase 2 自动验收记录（2026-07-31）：
+
+- `admin/src/db/schema.ts` 已定义 44 张 typed 目标表，覆盖当前平台、身份、租户、
+  提示词库、媒体、AI、量房、线索、商业、工作流和通知域。数据库中包含 Drizzle
+  元数据表在内共有 45 张 `app` 表、95 个外键和 172 个索引。
+- 新记录使用 `bigint identity`；时间使用 `timestamptz`，金额使用精确 `numeric`，
+  动态嵌套数据使用 `jsonb`。正式 `floor_plans.layout_data` 只接受 version 4
+  正式量房合同。
+- RoomiAI revision 与分类、参数模板、源模型、模板和预览资源使用普通外键；partial
+  unique index 保证每个来源最多一个活动 revision。
+- Mongo ObjectId 数组中表示实体关系的字段在 PostgreSQL 中改用连接表，包括管理员
+  推广关系、线索户型关系和带顺序的自由创作参考媒体；批次成果通过普通
+  `creation_batch_id` 外键反向派生。
+- 26 张租户或租户关系表强制启用 RLS，共 52 条策略。
+  `withTenantTransaction`/`withPlatformTransaction` 通过事务内 `set_config`
+  设置上下文，连接池不会残留租户。`sfp_app` 只有 DML、没有 DDL；
+  `sfp_auditor` 只有 SELECT、没有 DML/DDL。
+- 已建立企业、部门、平台配置和提示词库 typed Repository，作为 Phase 3 的切换
+  模式；现有 API response DTO 和路由未改变。
+- `npm run test:postgresql` 10/10 通过，覆盖跨租户读取隔离、跨租户写入拒绝、平台
+  作用域、事务回滚、连接池上下文清理、运行配置和全部外键索引审计。
+- migration 已在 PostgreSQL 17 应用，并连续两次空跑成功。运行时 `sfp_app`
+  直接执行 DDL 被 PostgreSQL `42501` 正确拒绝。独立临时数据库
+  `smart_floor_planner_phase2_drill` 已从空库重放 `0000` 到 `0004`，核对
+  45 张表、26 张 RLS 表、52 条策略和严格户型合同后自动删除。
+- `npm run db:backup` 生成 226,624 字节 custom-format 备份；
+  `npm run db:restore-drill` 在隔离数据库恢复并核对 45 张表、26 张 RLS 表和
+  52 条策略后删除演练数据库。
+- 未导入或删除 MongoDB 文档、RoomiAI 文件、七牛对象或生产业务数据；未重加密
+  或输出密钥。MongoDB 仍是唯一运行时业务数据来源。
+- Phase 2 全部文件定向 ESLint 通过，`npm run build` 成功。仓库全量
+  `npm run lint` 仍报告 Phase 2 文件之外的既有基线：263 个 error、99 个
+  warning。build 仍有既存 Windows standalone save-icons route 文件追踪复制
+  警告，但退出码为 0，且与 PostgreSQL 无关。
+
+Phase 2 验收状态：
+
+| 验收项 | 执行者 | 状态 | 日期 | 证据/问题 |
+| --- | --- | --- | --- | --- |
+| schema、migration、权限、RLS、Repository 测试、build、备份恢复 | Codex | 已通过 | 2026-07-31 | 见上述自动验收记录 |
+| Phase 2 migration 与数据库边界手测 | 用户 | 已通过 | 2026-08-01 | 用户确认 `Phase 2 手测：通过` |
+| 现有 MongoDB 后台回归 | 用户 | 不适用 | 沿用 Phase 1 | Phase 2 没有业务 route 变化；Phase 3 切换 PostgreSQL 后再回归 |
+
+Phase 2 用户手动验收清单：
+
+1. 进入 `admin/`，执行 `docker compose up -d postgres mongo`，再执行
+   `npm run docker:migrate`、`npm run db:check` 和
+   `npm run test:postgresql`。全部命令必须成功，`db:check` 必须报告
+   `sfp_app`。
+2. 执行 `npm run db:backup` 和 `npm run db:restore-drill`。恢复演练必须报告
+   `tableCount: 45`、`rlsTableCount: 26`、`policyCount: 52`。
+3. 执行 `npm run dev`，如该路由需要认证则先登录，再打开 `/api/health`，
+   确认 MongoDB 和 PostgreSQL 均为 `ok`。
+4. Phase 2 不要求页面级增删改查回归，因为没有业务 route 更换数据访问层。
+   PostgreSQL 切换到 Phase 3 后，再完整回归增删改查、权限和租户隔离流程。
+5. 如需停止服务，执行 `docker compose stop postgres mongo`；不要执行
+   `docker compose down -v`。
+
+如需补充问题，请附失败步骤、命令/页面、实际现象和相关错误。Phase 2
+双重验收已完成，下一步进入 Phase 3。
+
 ### Phase 3 - 业务代码切换
 
 建议按以下顺序切换：
@@ -403,9 +464,6 @@ Phase 4 直接导入 PostgreSQL；不得为了填充 Docker Mongo 而提前复�
 
 ## 8. 当前下一步
 
-Phase 1 双重验收已完成。下一次实施对话从 `Phase 2` 开始：
-
-- 设计平台、身份、租户、提示词、媒体配置和 AI 配置的正式目标表。
-- 建立 Repository 和事务边界，保持现有 API response DTO 不变。
-- 增加外键、租户/状态索引、RLS 和跨租户访问测试。
-- 先完成 schema 与自动化测试，不导入或删除生产业务数据。
+Phase 2 Codex 与用户验收均已通过。下一次实施对话进入 Phase 3，按域将
+application route 从 Mongoose 切换到 PostgreSQL。Phase 4 白名单导入前不导入
+生产业务数据。

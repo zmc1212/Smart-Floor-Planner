@@ -7,8 +7,9 @@
 >
 > Last verified: 2026-07-31
 > Current branch: `dev-jr`
-> Current phase: `Phase 1 - PostgreSQL infrastructure` (complete)
-> Next phase: `Phase 2 - PostgreSQL target schema and Repositories` (not started)
+> Current phase: `Phase 2 - PostgreSQL target schema and Repositories` (complete)
+> Next phase: `Phase 3 - Mongoose-to-PostgreSQL application switch`
+> (not started)
 
 ## 1. Decisions
 
@@ -93,7 +94,7 @@ and `cancelled`.
 | Phase 0.1 | Active RoomiAI revision and preview verification | complete | `npm run verify:roomi-prompts` |
 | Phase 0.2 | Qiniu configuration and encrypted-field verification | complete | Read-only inspection; no secrets logged |
 | Phase 1 | PostgreSQL instance, roles, pooling, migration runner | complete | Codex verification and user database-health/admin-page regression passed |
-| Phase 2 | PostgreSQL schema and Repository foundation | not started | Pending |
+| Phase 2 | PostgreSQL schema and Repository foundation | complete | Codex and user acceptance passed on 2026-08-01 |
 | Phase 3 | Mongoose-to-PostgreSQL application switch | not started | Pending |
 | Phase 4 | RoomiAI files/data and Qiniu configuration import | not started | Pending |
 | Phase 5 | Contract tests and cutover rehearsal | not started | Pending |
@@ -244,6 +245,81 @@ configuration, one platform configuration, and three Mini Program users. Keep
 these rows in the source database and import them directly into PostgreSQL in
 Phase 4; do not pre-copy or delete them merely to populate Docker MongoDB.
 
+### Phase 2 verification record (2026-07-31)
+
+- `admin/src/db/schema.ts` defines 44 typed target tables covering the current
+  platform, identity, tenant, prompt-library, media, AI, surveying, lead,
+  commercial, workflow, and notification domains. The database reports 45
+  `app` tables including Drizzle migration metadata, 95 foreign keys, and 172
+  indexes.
+- New rows use `bigint identity`; time values use `timestamptz`, money uses
+  exact `numeric`, and evolving nested payloads use `jsonb`. Formal
+  `floor_plans.layout_data` accepts only the version-4 surveying contract.
+- The RoomiAI graph uses normal foreign keys from revisions to categories,
+  parameter templates, source models, templates, and preview assets. One active
+  revision per source is enforced by a partial unique index.
+- Mongo ObjectId arrays that represent entity relationships use junction tables
+  in PostgreSQL, including admin promoters, lead floor plans, and ordered
+  free-creation reference assets. Batch generations are derived through their
+  ordinary `creation_batch_id` foreign key.
+- Twenty-six tenant or tenant-relationship tables force RLS with 52 policies.
+  `withTenantTransaction` and `withPlatformTransaction` set context through
+  transaction-local `set_config`, so pooled connections cannot retain a tenant.
+  `sfp_app` has DML without DDL; `sfp_auditor` has SELECT without DML/DDL.
+- Typed repositories exist for enterprises, departments, platform
+  configuration, and the prompt library. They establish the Phase 3 pattern;
+  existing API response DTOs and routes remain unchanged.
+- `npm run test:postgresql` passed 10/10 tests, including cross-tenant read
+  isolation, cross-tenant write rejection, platform scope, transaction rollback,
+  pool-context cleanup, runtime configuration, and complete foreign-key index
+  coverage.
+- The migration runner applied the schema and the follow-up FK-index migration
+  on PostgreSQL 17, then passed two consecutive no-op reruns. Direct use of the
+  runtime `sfp_app` connection for DDL failed with PostgreSQL `42501`, as
+  intended. A separate `smart_floor_planner_phase2_drill` database replayed
+  migrations `0000` through `0004` from empty state, verified 45 tables, 26 RLS
+  tables, 52 policies, and the strict floor-plan column contract, then was
+  removed.
+- `npm run db:backup` created a 226,624-byte custom-format backup.
+  `npm run db:restore-drill` restored an isolated database and verified 45
+  tables, 26 RLS tables, and 52 policies before removing the drill database.
+- No MongoDB documents, RoomiAI files, Qiniu objects, or production business
+  rows were imported or deleted. No secret was re-encrypted or logged. MongoDB
+  remains the sole runtime business-data source.
+- Targeted ESLint passed for all Phase 2 files and `npm run build` completed
+  successfully. Repository-wide `npm run lint` still reports the pre-existing
+  baseline of 263 errors and 99 warnings outside the Phase 2 files. The build
+  also retains the pre-existing Windows standalone trace-copy warning for the
+  save-icons route; its exit code is 0 and it is unrelated to PostgreSQL.
+
+Phase 2 acceptance status:
+
+| Acceptance item | Owner | Status | Date | Evidence/issues |
+| --- | --- | --- | --- | --- |
+| Schema, migration, privileges, RLS, Repository tests, build, backup/restore | Codex | passed | 2026-07-31 | See the Phase 2 verification record |
+| Phase 2 migration and database-boundary manual test | User | passed | 2026-08-01 | User confirmed `Phase 2 manual test: passed` |
+| Existing MongoDB admin regression | User | not applicable | carried from Phase 1 | No business route changed in Phase 2; repeat after the Phase 3 PostgreSQL switch |
+
+Phase 2 user checklist:
+
+1. In `admin/`, run `docker compose up -d postgres mongo`, then
+   `npm run docker:migrate`, `npm run db:check`, and
+   `npm run test:postgresql`. All commands must pass; `db:check` must report
+   `sfp_app`.
+2. Run `npm run db:backup` and `npm run db:restore-drill`. The drill must report
+   `tableCount: 45`, `rlsTableCount: 26`, and `policyCount: 52`.
+3. Run `npm run dev` and, after signing in if the route requires authentication,
+   open `/api/health`; confirm MongoDB and PostgreSQL are both `ok`.
+4. No page-level CRUD regression is required for Phase 2 because no business
+   route changed data access. Repeat the complete CRUD, permission, and tenant
+   isolation flows after the Phase 3 PostgreSQL switch.
+5. Stop with `docker compose stop postgres mongo` if desired. Do not run
+   `docker compose down -v`.
+
+Report `Phase 2 manual test: passed`, or include the failed step, command/page,
+observed result, and relevant error. Phase 3 must not start until this acceptance
+is recorded.
+
 ## 6. Rollback
 
 Before PostgreSQL accepts business writes, switching back to MongoDB is direct.
@@ -258,8 +334,7 @@ files being changed, whether destructive deletion or secret re-encryption is
 involved, and the evidence produced. Update this document after each completed
 phase. Never advance a phase based only on conversation memory.
 
-Phase 1 has passed both acceptance gates. The next task begins with Phase 2:
-design the target platform, identity, tenant, prompt, media, and AI
-configuration tables; add typed Repositories, transaction boundaries, indexes,
-RLS, and cross-tenant tests. Do not import or delete production business data
-during this schema-first work.
+Phase 2 Codex and user verification have passed. The next task begins with
+Phase 3: switch application domains from Mongoose to PostgreSQL incrementally.
+No production business data should be imported before the Phase 4 whitelist
+import.

@@ -8,6 +8,34 @@
       "when": 1785506556383,
       "tag": "0000_vengeful_bishop",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785511825831,
+      "tag": "0001_easy_bruce_banner",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785512340083,
+      "tag": "0002_stiff_susan_delgado",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785512628455,
+      "tag": "0003_gifted_mister_fear",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785513075270,
+      "tag": "0004_first_joseph",
+      "breakpoints": true
     }
   ]
 }

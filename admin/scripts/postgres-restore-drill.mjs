@@ -7,6 +7,13 @@ const sourceDatabase =
 const drillDatabase = 'smart_floor_planner_restore_drill';
 const owner = process.env.POSTGRES_BACKUP_USER || 'sfp_owner';
 const service = process.env.POSTGRES_DOCKER_SERVICE || 'postgres';
+const expectedTableCount = Number(process.env.POSTGRES_RESTORE_EXPECTED_TABLES || 45);
+const expectedRlsTableCount = Number(
+  process.env.POSTGRES_RESTORE_EXPECTED_RLS_TABLES || 26
+);
+const expectedPolicyCount = Number(
+  process.env.POSTGRES_RESTORE_EXPECTED_POLICIES || 52
+);
 
 function assertSafeIdentifier(label, value) {
   if (!/^[a-z][a-z0-9_]{2,62}$/.test(value)) {
@@ -107,23 +114,45 @@ try {
     ],
     backupPath
   );
-  const checkpointCount = await dockerCommand([
+  const verification = await dockerCommand([
     'psql',
     '-U',
     owner,
     '-d',
     drillDatabase,
     '-At',
+    '-F',
+    '|',
     '-c',
-    'select count(*) from app.migration_checkpoints;',
+    `select
+       (select count(*) from information_schema.tables where table_schema = 'app'),
+       (select count(*) from pg_tables where schemaname = 'app' and rowsecurity),
+       (select count(*) from pg_policies where schemaname = 'app'),
+       (select count(*) from app.migration_checkpoints);`,
   ]);
+  const [tableCount, rlsTableCount, policyCount, checkpointCount] = verification
+    .split('|')
+    .map(Number);
+  if (
+    tableCount !== expectedTableCount
+    || rlsTableCount !== expectedRlsTableCount
+    || policyCount !== expectedPolicyCount
+  ) {
+    throw new Error(
+      `Restored schema verification failed: tables=${tableCount}, `
+      + `rlsTables=${rlsTableCount}, policies=${policyCount}`
+    );
+  }
   console.log(
     JSON.stringify(
       {
         success: true,
         backup: path.relative(process.cwd(), backupPath),
         drillDatabase,
-        migrationCheckpointRows: Number(checkpointCount),
+        tableCount,
+        rlsTableCount,
+        policyCount,
+        migrationCheckpointRows: checkpointCount,
       },
       null,
       2
