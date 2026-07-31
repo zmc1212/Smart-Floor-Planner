@@ -26,7 +26,7 @@ export async function POST(request: Request) {
       const body = await request.json();
       const provider = await AiProviderConfig.create({
         ...validateProviderPayload(body),
-        ...encryptedKeyFields(body.apiKey),
+        ...encryptedKeyFields(body.apiKey, body.adapterType),
         createdBy: context.userId,
         updatedBy: context.userId,
       });

@@ -24,6 +24,7 @@ import {
   Search,
   Cable,
   HardDrive,
+  Image,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { buttonVariants } from '@/components/ui/button';
@@ -41,6 +42,7 @@ import {
 } from "@/components/ui/select";
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useBrowserNotification } from '@/hooks/useBrowserNotification';
+import { isAdminRouteActive } from '@/config/admin-routes';
 
 // --- Types ---
 interface MenuItem {
@@ -79,6 +81,7 @@ const MENU_CONFIG: Record<string, MenuCategory[]> = {
       items: [
         { key: 'enterprises', label: '企业管理', icon: Building2, href: '/enterprises' },
         { key: 'ai-providers', label: 'AI 供应商', icon: Cable, href: '/ai-providers' },
+        { key: 'ai-models', permissionKey: 'ai-providers', label: '生图模型', icon: Image, href: '/ai-models' },
         { key: 'media-storage', label: '媒体存储', icon: HardDrive, href: '/media-storage' },
         { key: 'ai-credit-prices', label: 'AI 点数价格', icon: Coins, href: '/ai-credit-prices' },
         { key: 'roles', label: '角色权限管理', icon: Shield, href: '/roles' },
@@ -247,7 +250,7 @@ const SidebarContent = memo(function SidebarContent({
                     key={item.key} 
                     item={item} 
                     collapsed={collapsed}
-                    isActive={pathname === item.href}
+                    isActive={isAdminRouteActive(pathname, item.href)}
                     hasPermission={hasMenuPermission(item.permissionKey || item.key)}
                   />
                 ))}
@@ -274,7 +277,7 @@ const SidebarContent = memo(function SidebarContent({
                     key={item.key} 
                     item={item} 
                     collapsed={collapsed}
-                    isActive={pathname === item.href}
+                    isActive={isAdminRouteActive(pathname, item.href)}
                     hasPermission={hasMenuPermission(item.permissionKey || item.key)}
                   />
                 ))}
@@ -432,7 +435,7 @@ export default function Sidebar() {
 
       {/* Mobile Menu Trigger */}
       <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-white border-b px-4 flex items-center justify-between z-40">
-        <h1 className="text-sm font-bold tracking-tight">QUANTUM PLANNER</h1>
+        <h1 className="text-sm font-bold tracking-tight">SMART FLOOR PLANNER</h1>
         <Sheet>
           <SheetTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon-lg" }), "h-10 w-10 md:hidden")}>
             <Menu size={20} />

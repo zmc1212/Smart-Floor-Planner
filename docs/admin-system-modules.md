@@ -31,6 +31,15 @@ permission, or workflow changes.
   `models/AdminUser.ts`; custom roles are in `models/SystemRole.ts`.
 - Shared feedback: visible mutations use `components/ui/operation-feedback`;
   normal operations do not use raw `alert()`.
+- Migrated management pages use ProComponents `PageContainer` for the common
+  title, description, back navigation, and page-level action area. `ProTable`,
+  `ProForm`, and `ProDescriptions` remain the corresponding list, form, and
+  detail primitives.
+- `PageContainer` does not provide business-block spacing; migrated pages use
+  the shared shell's `24px` content top inset below the header divider, then
+  Ant Design `Flex`/`Space` or documented `ProCard` layouts for block gaps and
+  `ProForm.submitter.render` for the separated bottom action row. The first
+  block must not add a second top margin.
 
 ## Functional Modules
 
@@ -158,7 +167,21 @@ permission, or workflow changes.
   query parameters and redirect into that workbench. `/ai-studio/create` is a
   separate full-screen free-creation workspace opened from the sidebar in a new
   tab. `/inspirations`, `/ai-presets`,
-  `/ai-providers`, `/ai-credit-prices`, and AI-credit management on the enterprise AI page.
+  `/ai-providers`, `/ai-models`, `/ai-credit-prices`, and AI-credit management on the enterprise AI page.
+- AI provider administration routes: `/ai-providers` is the provider list;
+  `/ai-providers/new` creates a provider; `/ai-providers/[id]` is the provider
+  detail/edit page; `/ai-models` is the separate platform image-model catalog.
+  The routes use the shared Ant Design ProComponents-based admin shell
+  (`ProTable`, `ProForm`, and `ProDescriptions`) and the existing `ai-providers`
+  platform permission for `super_admin` and `admin` (`Implemented`).
+- Provider integration contract: `AiProviderConfig` retains its legacy encrypted
+  API-key fields and now also persists masked/encrypted credential maps plus a
+  validated non-secret `adapterConfig`. The common editor and server validation
+  both read `src/lib/ai/provider-adapter-manifest.ts`; current GRS,
+  Pollinations, and OpenAI-compatible adapters use the shared endpoint/API-key
+  configuration. `Limited`: the platform image-model catalog currently has a
+  GRS source contract, so a new provider requires an adapter implementation and
+  catalog-profile support, not merely an additional UI option.
 - APIs: AI agent/chat, generation/render/advice, status/history, quota/usage,
   presets, workflow search/pagination and stages, design capabilities/action
   catalog, workflow source images/leads, media assets,

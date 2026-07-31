@@ -9,7 +9,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     await dbConnect();
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async (context) => {
       const { id } = await params;
-      const update = validateProviderPayload(await request.json(), true);
+      const body = await request.json();
+      const existing = await AiProviderConfig.findById(id).select('adapterType');
+      if (!existing) return NextResponse.json({ success: false, error: '供应商不存在' }, { status: 404 });
+      const update = validateProviderPayload(body, true, existing.adapterType);
       const provider = await AiProviderConfig.findByIdAndUpdate(
         id,
         { $set: { ...update, updatedBy: context.userId } },

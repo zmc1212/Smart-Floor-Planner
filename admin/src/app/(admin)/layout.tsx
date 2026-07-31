@@ -1,5 +1,6 @@
 import Sidebar from "@/components/Sidebar";
 import { FetchInterceptor } from "@/components/FetchInterceptor";
+import { AdminAntdProvider } from "@/components/admin/antd-provider";
 
 /**
  * Admin Layout — 保持为 Server Component。
@@ -19,11 +20,13 @@ export default function AdminLayout({
       <Sidebar />
       
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col min-w-0">
-        <div className="flex-1 mt-14 md:mt-0 overflow-y-auto">
-          {children}
-        </div>
-      </main>
+      <AdminAntdProvider>
+        <main className="flex-1 flex min-w-0 flex-col">
+          <div className="mt-14 flex-1 overflow-y-auto md:mt-0">
+            {children}
+          </div>
+        </main>
+      </AdminAntdProvider>
     </div>
   );
 }

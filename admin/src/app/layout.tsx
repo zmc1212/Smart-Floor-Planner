@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { AntdRegistry } from "@ant-design/nextjs-registry";
 import { OperationFeedbackToaster } from "@/components/ui/operation-feedback";
 import { ConfirmDialogProvider } from "@/components/ui/confirm-dialog";
 import "./globals.css";
@@ -30,7 +31,9 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <ConfirmDialogProvider>{children}</ConfirmDialogProvider>
+        <AntdRegistry>
+          <ConfirmDialogProvider>{children}</ConfirmDialogProvider>
+        </AntdRegistry>
         <OperationFeedbackToaster />
       </body>
     </html>

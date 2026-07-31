@@ -5,6 +5,10 @@ import { grsAdapter } from './providers/grs';
 import { openAiCompatibleAdapter } from './providers/openai-compatible';
 import { pollinationsAdapter } from './providers/pollinations';
 
+function decryptProviderApiKey(config: { credentialsEncrypted?: Record<string, string>; apiKeyEncrypted: string }) {
+  return decryptText(config.credentialsEncrypted?.apiKey || config.apiKeyEncrypted);
+}
+
 const adapters = new Map<string, AiProviderAdapter>([
   ['grs', grsAdapter],
   ['pollinations', pollinationsAdapter],
@@ -62,6 +66,8 @@ export async function ensureEnvironmentAiProviders() {
             baseUrl: item.baseUrl,
             apiKeyEncrypted: encryptText(item.apiKey || ''),
             apiKeyMasked: maskSecret(item.apiKey),
+            credentialsEncrypted: { apiKey: encryptText(item.apiKey || '') },
+            credentialsMasked: { apiKey: maskSecret(item.apiKey) },
             capabilities: item.capabilities,
             modelMappings: toStoredModelMappings(item.modelMappings),
             priority: item.priority,
@@ -82,7 +88,7 @@ export async function listProviderRuntimes(capability: AiCapability, logicalMode
     enabled: true,
     capabilities: capability,
   })
-    .select('+apiKeyEncrypted')
+    .select('+apiKeyEncrypted +credentialsEncrypted')
     .sort({ priority: 1, createdAt: 1 });
 
   return configs.map((config): AiProviderRuntimeConfig => ({
@@ -91,7 +97,8 @@ export async function listProviderRuntimes(capability: AiCapability, logicalMode
     name: config.name,
     adapterType: config.adapterType,
     baseUrl: config.baseUrl,
-    apiKey: decryptText(config.apiKeyEncrypted),
+    apiKey: decryptProviderApiKey(config),
+    adapterConfig: config.adapterConfig || {},
     capabilities: config.capabilities,
     modelMappings: normalizeModelMappings(config.modelMappings),
     timeoutMs: config.timeoutMs,
@@ -106,7 +113,7 @@ export async function listProviderRuntimesByAdapter(capability: AiCapability, ad
     capabilities: capability,
     adapterType,
   })
-    .select('+apiKeyEncrypted')
+    .select('+apiKeyEncrypted +credentialsEncrypted')
     .sort({ priority: 1, createdAt: 1 });
 
   return configs.map((config): AiProviderRuntimeConfig => ({
@@ -115,7 +122,8 @@ export async function listProviderRuntimesByAdapter(capability: AiCapability, ad
     name: config.name,
     adapterType: config.adapterType,
     baseUrl: config.baseUrl,
-    apiKey: decryptText(config.apiKeyEncrypted),
+    apiKey: decryptProviderApiKey(config),
+    adapterConfig: config.adapterConfig || {},
     capabilities: config.capabilities,
     modelMappings: normalizeModelMappings(config.modelMappings),
     timeoutMs: config.timeoutMs,
@@ -124,7 +132,7 @@ export async function listProviderRuntimesByAdapter(capability: AiCapability, ad
 }
 
 export async function getProviderRuntimeById(id: string) {
-  const config = await AiProviderConfig.findById(id).select('+apiKeyEncrypted');
+  const config = await AiProviderConfig.findById(id).select('+apiKeyEncrypted +credentialsEncrypted');
   if (!config) throw new Error('AI 供应商配置不存在');
   return {
     id: String(config._id),
@@ -132,7 +140,8 @@ export async function getProviderRuntimeById(id: string) {
     name: config.name,
     adapterType: config.adapterType,
     baseUrl: config.baseUrl,
-    apiKey: decryptText(config.apiKeyEncrypted),
+    apiKey: decryptProviderApiKey(config),
+    adapterConfig: config.adapterConfig || {},
     capabilities: config.capabilities,
     modelMappings: normalizeModelMappings(config.modelMappings),
     timeoutMs: config.timeoutMs,

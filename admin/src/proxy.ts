@@ -6,6 +6,7 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/': 'dashboard',
   '/enterprises': 'enterprises',
   '/ai-providers': 'ai-providers',
+  '/ai-models': 'ai-providers',
   '/media-storage': 'media-storage',
   '/ai-credit-prices': 'ai-credit-prices',
   '/roles': 'roles',
@@ -49,7 +50,7 @@ export async function proxy(request: NextRequest) {
         const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
         await jose.jwtVerify(token, secret);
         return NextResponse.redirect(new URL('/', request.url));
-      } catch (e) {
+      } catch {
         // Invalid token, allow access to login
         return NextResponse.next();
       }

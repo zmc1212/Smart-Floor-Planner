@@ -8,6 +8,9 @@ export interface IAiProviderConfig extends Document {
   baseUrl: string;
   apiKeyEncrypted: string;
   apiKeyMasked: string;
+  credentialsEncrypted?: Record<string, string>;
+  credentialsMasked?: Record<string, string>;
+  adapterConfig: Record<string, string | number | boolean>;
   capabilities: AiCapability[];
   modelMappings: Partial<Record<AiLogicalModelKey, string>>;
   priority: number;
@@ -43,6 +46,9 @@ const AiProviderConfigSchema = new Schema<IAiProviderConfig>(
     baseUrl: { type: String, required: true, trim: true },
     apiKeyEncrypted: { type: String, required: true, select: false },
     apiKeyMasked: { type: String, default: '' },
+    credentialsEncrypted: { type: Schema.Types.Mixed, default: {}, select: false },
+    credentialsMasked: { type: Schema.Types.Mixed, default: {} },
+    adapterConfig: { type: Schema.Types.Mixed, default: {} },
     capabilities: { type: [String], enum: ['chat', 'vision', 'image.generate', 'image.edit'], default: [] },
     modelMappings: { type: Schema.Types.Mixed, default: {} },
     priority: { type: Number, default: 100, min: 0 },

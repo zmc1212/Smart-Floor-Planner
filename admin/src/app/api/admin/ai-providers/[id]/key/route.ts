@@ -10,10 +10,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async (context) => {
       const { id } = await params;
       const body = await request.json();
+      const existing = await AiProviderConfig.findById(id).select('adapterType');
+      if (!existing) return NextResponse.json({ success: false, error: '供应商不存在' }, { status: 404 });
       const provider = await AiProviderConfig.findByIdAndUpdate(
         id,
         {
-          $set: { ...encryptedKeyFields(body.apiKey), updatedBy: context.userId },
+          $set: { ...encryptedKeyFields(body.apiKey, existing.adapterType), updatedBy: context.userId },
           $unset: {
             lastUpstreamBalance: 1,
             lastUpstreamBalanceUnit: 1,

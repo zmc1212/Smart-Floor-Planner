@@ -1,6 +1,7 @@
 import { encryptText, maskSecret } from '@/lib/crypto';
 import { AiProviderConfig, type IAiProviderConfig } from '@/models/AiProviderConfig';
 import { AI_CAPABILITIES, LOGICAL_MODEL_KEYS, normalizeModelMappings, toStoredModelMappings, type AiCapability, type AiLogicalModelKey, type AiProviderAdapterType } from './provider-types';
+import { getProviderAdapterManifest, validateProviderAdapterConfig } from './provider-adapter-manifest';
 
 export function serializeProviderConfig(provider: IAiProviderConfig | Record<string, unknown>) {
   return {
@@ -11,6 +12,8 @@ export function serializeProviderConfig(provider: IAiProviderConfig | Record<str
     baseUrl: provider.baseUrl,
     apiKeyMasked: provider.apiKeyMasked || '',
     hasApiKey: Boolean(provider.apiKeyMasked),
+    credentialsMasked: provider.credentialsMasked || (provider.apiKeyMasked ? { apiKey: provider.apiKeyMasked } : {}),
+    adapterConfig: provider.adapterConfig || {},
     capabilities: provider.capabilities || [],
     modelMappings: normalizeModelMappings(provider.modelMappings),
     priority: provider.priority,
@@ -31,8 +34,13 @@ export function serializeProviderConfig(provider: IAiProviderConfig | Record<str
   };
 }
 
-export function validateProviderPayload(body: Record<string, unknown>, partial = false) {
+export function validateProviderPayload(
+  body: Record<string, unknown>,
+  partial = false,
+  existingAdapterType?: AiProviderAdapterType
+) {
   const result: Record<string, unknown> = {};
+  const adapterType = String(body.adapterType ?? existingAdapterType ?? '') as AiProviderAdapterType;
   if (!partial || body.key !== undefined) {
     const key = String(body.key || '').trim().toLowerCase();
     if (!/^[a-z0-9][a-z0-9-]{1,49}$/.test(key)) throw new Error('供应商标识仅支持 2-50 位小写字母、数字和连字符');
@@ -47,6 +55,12 @@ export function validateProviderPayload(body: Record<string, unknown>, partial =
     const adapterType = String(body.adapterType || '') as AiProviderAdapterType;
     if (!['grs', 'pollinations', 'openai_compatible'].includes(adapterType)) throw new Error('适配器类型无效');
     result.adapterType = adapterType;
+  }
+  if (!partial || body.adapterConfig !== undefined || body.adapterType !== undefined) {
+    if (!['grs', 'pollinations', 'openai_compatible'].includes(adapterType)) {
+      throw new Error('适配器类型无效');
+    }
+    result.adapterConfig = validateProviderAdapterConfig(adapterType, body.adapterConfig);
   }
   if (!partial || body.baseUrl !== undefined) {
     const baseUrl = String(body.baseUrl || '').trim().replace(/\/$/, '');
@@ -111,14 +125,23 @@ export function validateProviderPayload(body: Record<string, unknown>, partial =
   return result;
 }
 
-export function encryptedKeyFields(apiKey: unknown) {
+export function encryptedKeyFields(apiKey: unknown, adapterType: AiProviderAdapterType = 'grs') {
+  const manifest = getProviderAdapterManifest(adapterType);
+  const apiKeyField = manifest.credentialFields.find((field) => field.key === 'apiKey');
   const value = String(apiKey || '').trim();
-  if (!value) throw new Error('API Key 不能为空');
-  return { apiKeyEncrypted: encryptText(value), apiKeyMasked: maskSecret(value) };
+  if (apiKeyField?.required && !value) throw new Error(`${apiKeyField.label} 不能为空`);
+  const encrypted = encryptText(value);
+  const masked = maskSecret(value);
+  return {
+    apiKeyEncrypted: encrypted,
+    apiKeyMasked: masked,
+    credentialsEncrypted: { apiKey: encrypted },
+    credentialsMasked: { apiKey: masked },
+  };
 }
 
 export async function findProviderWithKey(id: string) {
-  const provider = await AiProviderConfig.findById(id).select('+apiKeyEncrypted');
+  const provider = await AiProviderConfig.findById(id).select('+apiKeyEncrypted +credentialsEncrypted');
   if (!provider) throw new Error('AI 供应商配置不存在');
   return provider;
 }

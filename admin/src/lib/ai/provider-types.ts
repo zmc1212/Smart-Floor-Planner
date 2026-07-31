@@ -48,6 +48,7 @@ export type AiProviderRuntimeConfig = {
   adapterType: AiProviderAdapterType;
   baseUrl: string;
   apiKey: string;
+  adapterConfig?: Record<string, string | number | boolean>;
   capabilities: AiCapability[];
   modelMappings: Partial<Record<AiLogicalModelKey, string>>;
   timeoutMs: number;
