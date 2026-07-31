@@ -53,6 +53,8 @@ export type AiProviderRuntimeConfig = {
   timeoutMs: number;
   costRules?: Array<{
     logicalModelKey: AiLogicalModelKey;
+    remoteModel?: string;
+    resolutionTier?: string;
     currency: string;
     estimatedMicros: number;
   }>;
@@ -65,6 +67,9 @@ export type AiImageSubmitInput = {
   size?: string;
   aspectRatio?: string;
   quality?: string;
+  resolutionTier?: string;
+  width?: number;
+  height?: number;
   images?: string[];
   user?: string;
 };

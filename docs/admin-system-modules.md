@@ -164,7 +164,9 @@ permission, or workflow changes.
   catalog, workflow source images/leads, media assets,
   generation images, image proxy, soft-furnishing render, provider CRUD/key
   rotation/connectivity/model sync/upstream balance query, protected task reconciliation, platform
-  action pricing, enterprise grants/adjustments/ledger/tasks, and failed Mini
+  action pricing, `GET/PATCH /api/admin/ai-image-models`,
+  `GET/PATCH /api/admin/ai-image-model-prices`, enterprise
+  grants/adjustments/ledger/tasks, and failed Mini
   Program task retries. Legacy enterprise `ai-key`/`ai-sync` reads remain
   compatibility-only while writes return `410`.
 - Free-creation APIs: `GET /api/ai/creation/bootstrap`, prompt categories,
@@ -176,7 +178,8 @@ permission, or workflow changes.
   also require an enterprise through `withTenantRoute`.
 - Models/helpers: `AiGeneration`, `AiWorkflow`, `AiChatSession`, `AiStylePreset`,
   `AiProviderConfig`, `AiProviderAttempt`, `MediaAsset`, `AiCreditAccount`,
-  `AiCreditLedger`, `AiCreditPrice`, `Inspiration`, `src/lib/ai/*`, and
+  `AiCreditLedger`, `AiCreditPrice`, `AiModelCreditPrice`, `Inspiration`,
+  `src/lib/ai/*`, and
   `src/lib/media-storage/*`.
 - Free-creation and prompt-library models: `AiCreationTask`, `AiCreationBatch`,
   `AiCreationModelProfile`, `AiPromptLibraryRevision`, `AiPromptCategory`,
@@ -198,7 +201,7 @@ permission, or workflow changes.
   permission without expanding the B2B channel `salesperson` boundary.
   The free-creation workspace provides local template search and three-level
   categories, template fill, reference images, prompt assistance, mapped local
-  model profiles, 1-4 outputs, ratio/quality/resolution controls, credit estimates,
+  executable model profiles, 1-4 outputs, model/ratio/resolution controls, credit estimates,
   history, reuse, retry, delete, download, and attachment to an existing customer
   workflow. Completed result tiles reproduce the verified Roomi interaction surface:
   hover actions, annotatable reference reuse, full preview controls, and exported
@@ -224,7 +227,15 @@ permission, or workflow changes.
   intersects template parameters with the selected local
   model profile before submission and snapshots the accepted values. Generation
   uses the existing provider execution, polling, and hold/consume/release billing
-  path under the `image.free_create` action. Free-creation uploads and any result
+  path under the `image.free_create` action. The versioned GRSAI catalog currently
+  defines `gpt-image-2`, `gpt-image-2-vip`, and eleven Nano Banana variants from
+  the 2026-06-29 protocol. Platform administrators enable models, choose one
+  default, and cap reference images at 0-10 on `/ai-providers`; synchronized
+  models without a catalog capability definition remain read-only and cannot
+  execute. The bootstrap exposes only enabled models with at least one enabled
+  model-resolution price. GPT Image 2 has no quality control, VIP uses the
+  documented pixel preset matrix or validated `CUSTOM` dimensions, and Nano
+  requests use `aspectRatio + imageSize`. Free-creation uploads and any result
   that must be persisted are forced to the local media provider even when Qiniu
   is the platform default. The first UI release attempts the imported audited
   `sourceUrl` for a template preview and falls back to its imported local preview;
@@ -265,21 +276,28 @@ permission, or workflow changes.
   `FloorPlan.layoutData`. Credit operations use
   hold-on-create, consume-on-success, and release-on-failure semantics. Only
   platform `super_admin`/`admin` roles may configure providers, rotate credentials,
-  test/sync models, query GRS API-key credit balance, run reconciliation, grant/adjust credits, and edit action
-  prices; enterprise staff consume them. GRS connectivity testing validates both
-  host and key through its credit-balance endpoint; model sync returns configured
-  mappings when that node does not implement `/v1/models`. Business routes use logical model keys
+  test/sync models, query GRS API-key credit balance, run reconciliation, grant/adjust credits,
+  manage the image-model catalog, and edit action/model-resolution prices;
+  enterprise staff consume them. GRS connectivity testing validates both
+  host and key through its credit-balance endpoint; model sync merges discovery
+  with the complete built-in catalog and falls back to that catalog when the node
+  does not implement `/v1/models`. Business routes use logical model keys
   and `AiExecutionService`; GRS submits documented asynchronous image requests to
   `POST /v1/api/generate` with `replyType: "async"` and polls
-  `GET /v1/api/result?id=...`; standard `gpt-image-2` requests use its documented
-  aspect ratios while VIP requests retain compatible source pixel dimensions
-  and otherwise use a documented valid fallback size.
+  `GET /v1/api/result?id=...`; GRS requests never send undocumented
+  `quality`/`output_format` placeholders. Standard `gpt-image-2` accepts its
+  documented ratios or 1K pixel values, VIP presets resolve to documented pixels
+  and validate custom dimensions, and Nano models send their documented ratio
+  plus `imageSize`.
   `violation` and `failed` are refunded failures.
   Mini Program task-detail and history reads force this upstream status query
   for visible processing jobs and return a terminal database state even when a
   refunded failure exhausts configured fallback providers. The provider
-  capability and logical/remote model fields drive routing, while currency and
-  estimated cost are optional internal-only accounting metadata. GRS `http(s)`
+  capability and logical/remote model fields drive routing. A free-creation
+  model override is restricted to GRS runtimes and retains the exact selected
+  remote model across fallback attempts; it never silently changes models.
+  Provider cost rules may additionally match remote model and resolution, while
+  currency and estimated cost remain internal-only accounting metadata. GRS `http(s)`
   output URLs remain the default result reference and are not copied to platform
   storage. Platform operators can enable the Media Storage page's GRS
   output-transfer policy only when an active Qiniu configuration is the default
@@ -292,8 +310,11 @@ permission, or workflow changes.
   task ID terminates as failed without automatic fallback, releases the hold,
   and may be retried manually after operator verification instead of remaining
   in `processing` indefinitely. Retries rebuild the billing price snapshot from
-  the current action price and remain compatible with legacy tasks that have no
-  stored snapshot. Provider cost uses currency micro-units and does not change
+  the current action/model-resolution price and remain compatible with legacy
+  tasks that have no stored snapshot. Free-creation estimates and holds use
+  `AiModelCreditPrice` keyed by `image.free_create + modelProfileKey +
+  resolutionTier`; VIP custom dimensions always use `CUSTOM`. Provider cost
+  uses currency micro-units and does not change
   business prices. Provider balance and enterprise AI credits are separate
   ledgers: enterprises buy platform credits while operators replenish the shared
   provider pool against balance thresholds, not once per enterprise purchase.
@@ -322,12 +343,25 @@ permission, or workflow changes.
   generations/presets, and seeds environment-backed provider configs. Credit-price
   initialization removes the obsolete unique `mode_1` index so platform actions
   without a mode cannot collide on repeated `null`; `actionKey_1` remains the
-  unique business index. `npm run cleanup:media-assets` is dry-run by default
+  unique business index. The migration idempotently writes the complete GRSAI
+  catalog and its model-resolution prices; only `gpt-image-2/1K` is initially
+  enabled and inherits the existing `image.free_create` price. Historical
+  `roomi-*` profiles and generation snapshots remain readable but are not
+  executable choices. `npm run cleanup:media-assets` is dry-run by default
   and physically purges soft-deleted media only after the configured grace period;
   `npm run migrate:media-assets -- --from=<provider-key> --to=<provider-key>` previews a
   checksum-verified provider migration and requires `--execute` to write. A
   migration commits the target location before deleting the source object.
   Configure `AI_RECONCILIATION_SECRET` for scheduled `/api/ai/reconcile` calls.
+
+- Legacy free-creation snapshots may still display a historical `quality` value
+  when reading old batches; new GRSAI requests expose model, ratio, and
+  resolution only and never send `quality` or `output_format`.
+- Free-creation responsive behavior: viewports below `1440px` remove the fixed
+  desktop minimum width, hide the left tool rail, and wrap model, output,
+  ratio, resolution, template, and submit controls so every command remains
+  reachable. The original fixed Roomi-style canvas remains unchanged at
+  `1440px` and above.
 
 ### 11. Platform Media Storage Management
 
@@ -411,7 +445,8 @@ permission, or workflow changes.
 - Customer assets: `Lead`, `FloorPlan`, `Measurement`, `Device`, `Inspiration`.
 - AI/media: `AiGeneration`, `AiWorkflow`, `AiChatSession`, `AiStylePreset`,
   `AiProviderConfig`, `AiProviderAttempt`, `MediaStorageConfig`, `MediaAsset`, `AiCreditAccount`,
-  `AiCreditLedger`, and `AiCreditPrice`; `EnterpriseAiUsageSnapshot` is
+  `AiCreditLedger`, `AiCreditPrice`, and `AiModelCreditPrice`;
+  `EnterpriseAiUsageSnapshot` is
   legacy Pollinations history only.
 - Notifications/config: `WorkflowNotificationLog`, `PlatformConfig`.
 

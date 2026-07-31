@@ -124,23 +124,23 @@ FORM: Approved C floor-map direction fused with B workflow path; A scene navigat
               class="map-waypoint waypoint-top"
               data-mode="reference_recreate"
               bindtap="openMode"
-            >看灵感</view>
+            >参考复刻</view>
             <view
               class="map-waypoint waypoint-left"
               data-mode="style_transform"
               bindtap="openMode"
-            >试风格</view>
+            >拍照换风格</view>
             <view
               class="map-waypoint waypoint-right"
               data-mode="soft_furnishing"
               bindtap="openMode"
-            >做软装</view>
+            >软装搭配</view>
             <view
               class="map-waypoint waypoint-bottom"
               data-mode="floor_plan_render"
               data-scope="whole_floor_plan"
               bindtap="openMode"
-            >生成全屋</view>
+            >户型生成</view>
           </view>
 
           <view class="room-selector">
@@ -241,16 +241,20 @@ FORM: Approved C floor-map direction fused with B workflow path; A scene navigat
           <image class="scene-image" src="/images/ai-design-hero-v3.jpg" mode="aspectFill"></image>
           <view class="scene-shade"></view>
           <view class="scene-waypoint scene-point-one {{activeSceneMode === 'reference_recreate' ? 'active' : ''}}" data-mode="reference_recreate" bindtap="focusSceneWaypoint">
-            <text class="scene-index">01</text><text>从灵感开始</text>
+            <view class="scene-waypoint-icon"><image src="/images/ai-design-icons/reference.png" mode="aspectFit"></image></view>
+            <text>参考图复刻</text>
           </view>
           <view class="scene-waypoint scene-point-two {{activeSceneMode === 'style_transform' ? 'active' : ''}}" data-mode="style_transform" bindtap="focusSceneWaypoint">
-            <text class="scene-index">02</text><text>换一种风格</text>
+            <view class="scene-waypoint-icon"><image src="/images/ai-design-icons/palette.png" mode="aspectFit"></image></view>
+            <text>拍照换风格</text>
           </view>
           <view class="scene-waypoint scene-point-three {{activeSceneMode === 'floor_plan_render' ? 'active' : ''}}" data-mode="floor_plan_render" bindtap="focusSceneWaypoint">
-            <text class="scene-index">03</text><text>生成户型方案</text>
+            <view class="scene-waypoint-icon"><image src="/images/ai-design-icons/floor-plan.png" mode="aspectFit"></image></view>
+            <text>户型生成</text>
           </view>
           <view class="scene-waypoint scene-point-four {{activeSceneMode === 'soft_furnishing' ? 'active' : ''}}" data-mode="soft_furnishing" bindtap="focusSceneWaypoint">
-            <text class="scene-index">04</text><text>继续软装</text>
+            <view class="scene-waypoint-icon"><image src="/images/ai-design-icons/armchair.png" mode="aspectFit"></image></view>
+            <text>软装搭配</text>
           </view>
           <view class="scene-source-card" bindtap="openSourcePicker">
             <view class="scene-source-preview">
@@ -278,7 +282,7 @@ FORM: Approved C floor-map direction fused with B workflow path; A scene navigat
               <text class="next-title">{{sceneNavigation.title}}</text>
             </view>
             <view class="next-button {{sceneNavigation.enabled ? '' : 'disabled'}}" bindtap="enterSceneMode">
-              <text>{{sceneNavigation.mode === 'floor_plan_render' ? '选择户型' : '开始设计'}}</text>
+              <text>{{sceneNavigation.buttonLabel}}</text>
               <view class="next-button-chevron"></view>
             </view>
           </view>

@@ -11,6 +11,7 @@ export interface IAiProviderAttempt extends Document {
   capability: AiCapability;
   logicalModelKey: AiLogicalModelKey;
   remoteModel: string;
+  resolutionTier?: string;
   remoteTaskId?: string;
   status: AiProviderAttemptStatus;
   accepted: boolean;
@@ -37,6 +38,7 @@ const AiProviderAttemptSchema = new Schema<IAiProviderAttempt>(
     capability: { type: String, required: true },
     logicalModelKey: { type: String, required: true },
     remoteModel: { type: String, required: true },
+    resolutionTier: { type: String, enum: ['1K', '2K', '4K', 'CUSTOM'] },
     remoteTaskId: String,
     status: { type: String, enum: ['created', 'submitted', 'processing', 'succeeded', 'failed', 'unknown'], default: 'created', index: true },
     accepted: { type: Boolean, default: false },

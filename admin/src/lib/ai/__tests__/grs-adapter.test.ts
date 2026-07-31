@@ -43,7 +43,7 @@ test('GRS image submit follows the documented async generation protocol', async 
     const body = JSON.parse(String(init?.body));
     assert.equal(body.model, 'gpt-image-2');
     assert.equal(body.replyType, 'async');
-    assert.equal(body.aspectRatio, '1024x1024');
+    assert.equal(body.aspectRatio, '1:1');
     assert.deepEqual(body.images, ['data:image/png;base64,abc']);
     assert.equal('webHook' in body, false);
     return Response.json({ id: 'remote-123', status: 'running' });
@@ -185,13 +185,17 @@ test('GRS connectivity test validates the API Key through the balance endpoint',
   } finally { restore(); }
 });
 
-test('GRS model sync falls back to configured mappings when /v1/models is unsupported', async () => {
+test('GRS model sync falls back to the complete built-in catalog when /v1/models is unsupported', async () => {
   const restore = mockFetch((url) => {
     assert.equal(url, 'https://grs.example/v1/models');
     return new Response('404 page not found', { status: 404 });
   });
   try {
-    assert.deepEqual(await grsAdapter.listModels(runtime), ['gemini-3.1-pro', 'gpt-image-2']);
+    const models = await grsAdapter.listModels(runtime);
+    assert.equal(models.length, 14);
+    assert.ok(models.includes('gpt-image-2-vip'));
+    assert.ok(models.includes('nano-banana-2-4k-cl'));
+    assert.ok(models.includes('gemini-3.1-pro'));
   } finally { restore(); }
 });
 
@@ -199,7 +203,7 @@ test('explicit unaccepted HTTP error is safe to fallback', async () => {
   const restore = mockFetch(() => new Response('invalid model', { status: 400 }));
   try {
     await assert.rejects(
-      () => grsAdapter.submitImage(runtime, { model: 'bad', prompt: 'x' }),
+      () => grsAdapter.submitImage(runtime, { model: 'gpt-image-2', prompt: 'x' }),
       (error: unknown) => error instanceof AiProviderError && error.disposition === 'safe_fallback'
     );
   } finally { restore(); }

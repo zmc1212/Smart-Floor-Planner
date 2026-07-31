@@ -13,7 +13,13 @@ export interface IAiProviderConfig extends Document {
   priority: number;
   timeoutMs: number;
   enabled: boolean;
-  costRules: Array<{ logicalModelKey: AiLogicalModelKey; currency: string; estimatedMicros: number }>;
+  costRules: Array<{
+    logicalModelKey: AiLogicalModelKey;
+    remoteModel?: string;
+    resolutionTier?: string;
+    currency: string;
+    estimatedMicros: number;
+  }>;
   lastTestedAt?: Date;
   lastTestOk?: boolean;
   lastTestMessage?: string;
@@ -47,6 +53,8 @@ const AiProviderConfigSchema = new Schema<IAiProviderConfig>(
         new Schema(
           {
             logicalModelKey: { type: String, required: true },
+            remoteModel: { type: String, trim: true },
+            resolutionTier: { type: String, enum: ['1K', '2K', '4K', 'CUSTOM'] },
             currency: { type: String, required: true, uppercase: true, trim: true },
             estimatedMicros: { type: Number, required: true, min: 0 },
           },

@@ -4,7 +4,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronRight, ImageOff, Loader2, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { notify } from '@/components/ui/operation-feedback';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -200,7 +200,7 @@ export function TemplateLibraryDialog({
         style={{ top: '84px', translate: '-50% 0' }}
         className="h-[min(562px,calc(100vh-2rem))] max-w-[796px] gap-0 overflow-hidden rounded-md border-[#343741] bg-[#15161a] p-0 text-[#d8dbe3] shadow-2xl"
       >
-        <DialogHeader className="sr-only"><DialogTitle>提示词模板</DialogTitle></DialogHeader>
+        <DialogHeader className="sr-only"><DialogTitle>提示词模板</DialogTitle><DialogDescription>按分类搜索并选择一个提示词模板。</DialogDescription></DialogHeader>
         <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[156px_minmax(0,1fr)]">
           <aside className="hidden min-h-0 flex-col border-r border-[#343741] bg-[#15161a] px-[10px] pb-[10px] pt-2 md:flex">
             <div className="relative mb-3">

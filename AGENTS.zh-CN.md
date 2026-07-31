@@ -9,7 +9,7 @@
 - `docs/admin-system-modules.zh-CN.md` 记录当前后台功能。
 - `docs/miniprogram-system-modules.zh-CN.md` 记录当前小程序功能。
 - `docs/surveying-module/README.md` 与 `formal-surveying.md` 记录正式量房合同及清理运维流程。
-- `PRODUCT_ROADMAP.md`、`docs/**/implementation_plan.md` 和旧设计说明属于历史/规划材料，不能证明功能已经实现。
+- 历史路线图、实施计划和旧设计说明属于规划材料，不能证明功能已经实现。
 - 功能状态统一使用 `Implemented`（已实现）、`Limited`（有限支持）、`Placeholder`（占位/未开放）。按钮文案、mock 响应或 toast 不等于后端能力已实现。
 
 修改模块前先阅读对应清单；路由、API、权限或用户流程变化时，必须同步更新中英文配套文档。

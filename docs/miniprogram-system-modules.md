@@ -150,7 +150,8 @@ utilities, and the admin APIs they call.
   recreation, whole-space style transformation, formal-floor-plan concept
   rendering, and soft-furnishing refinement. With a formal plan selected, the
   home surface derives its navigable rooms and walls from the version-4 survey
-  graph, supports whole-plan/room targets, shows a four-stage scheme journey,
+  graph, supports whole-plan/room targets, shows the ordered `Space baseline`,
+  `Style scheme`, `Soft furnishing`, and `Proposal refinement` scheme journey,
   and presents one context-aware next action. A current successful whole-plan
   result is reused as the 3D navigation cover; an in-progress result exposes
   live progress; and a missing or stale result falls back to the deterministic
@@ -159,9 +160,14 @@ utilities, and the admin APIs they call.
   qualify as covers. The page never creates a paid preview automatically, and a result is stale
   when its task predates the formal plan's latest update. Without a selected
   formal plan, the default entry remains an interior-scene tour. Its four
-  waypoints now maintain an active navigation state, smoothly pan/zoom the
-  scene, and update the confirmed next action before entering a task rather
-  than acting as static shortcuts. Existing generation capabilities include dual-image
+  non-ordinal waypoints use the existing AI icon family and are labeled
+  `Reference recreation`, `Photo restyle`, `Floor-plan generation`, and `Soft
+  furnishing`; they represent independently available capabilities rather than
+  a mandatory 1-to-4 sequence. The waypoints maintain an active navigation
+  state, smoothly pan/zoom the scene, and update the confirmed next action with
+  an explicit input action before entering a task. The separate scheme rail is
+  the only ordered progression, while server context still selects the
+  recommended next action. Existing generation capabilities include dual-image
   reference input, source-image plus preset styles, camera/album upload with
   byte-signature validation, stable local previews and in-place upload retry,
   server-derived output proportions that map the composition source to a
@@ -256,6 +262,9 @@ utilities, and the admin APIs they call.
 - Limited: enterprise staff only; requires available platform-managed provider
   routing and enterprise AI credits. The server may route GRS, Pollinations, or
   another configured compatible provider without changing Mini Program APIs.
+  Mini Program scenarios always use the platform's configured logical-model
+  default; the client does not expose the free-creation model selector or
+  model-resolution pricing controls.
   Plan-backed reference recreation sends the measured control and visual
   reference together, but a 2D wall graph has no measured camera pose and the
   provider still cannot guarantee pixel-perfect reference duplication. The

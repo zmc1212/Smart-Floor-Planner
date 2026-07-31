@@ -81,7 +81,15 @@ export interface IAiGeneration extends Document {
     cycle?: number;
     actionKey?: AiActionKey;
     price?: number;
-    priceSnapshot?: { actionKey: string; label: string; credits: number; capturedAt: Date };
+    priceSnapshot?: {
+      actionKey: string;
+      label: string;
+      credits: number;
+      modelProfileKey?: string;
+      remoteModel?: string;
+      resolutionTier?: string;
+      capturedAt: Date;
+    };
     status?: 'unbilled' | 'held' | 'consumed' | 'released';
     holdOperationId?: string;
     consumeOperationId?: string;
@@ -234,6 +242,9 @@ const AiGenerationSchema: Schema<IAiGeneration> = new Schema(
         actionKey: String,
         label: String,
         credits: Number,
+        modelProfileKey: String,
+        remoteModel: String,
+        resolutionTier: String,
         capturedAt: Date,
       },
       status: {

@@ -50,7 +50,11 @@ export async function POST(request: Request) {
       const title = String(body.title || prompt.slice(0, 30) || '未命名创作').trim();
       if (!prompt) return NextResponse.json({ success: false, error: '请输入提示词' }, { status: 400 });
       if (!body.modelProfileId) return NextResponse.json({ success: false, error: '请选择模型' }, { status: 400 });
-      const profile = await AiCreationModelProfile.findOne({ _id: body.modelProfileId, enabled: true });
+      const profile = await AiCreationModelProfile.findOne({
+        _id: body.modelProfileId,
+        sourceType: 'grs_catalog',
+        enabled: true,
+      });
       if (!profile) return NextResponse.json({ success: false, error: '所选模型不可用' }, { status: 400 });
       const referenceAssetIds = [...new Set((body.referenceAssetIds || []).map(String))];
       const assetCount = referenceAssetIds.length

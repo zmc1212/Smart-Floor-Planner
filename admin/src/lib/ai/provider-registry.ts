@@ -99,6 +99,30 @@ export async function listProviderRuntimes(capability: AiCapability, logicalMode
   })).filter((runtime) => Boolean(runtime.modelMappings[logicalModelKey]));
 }
 
+export async function listProviderRuntimesByAdapter(capability: AiCapability, adapterType: string) {
+  await ensureEnvironmentAiProviders();
+  const configs = await AiProviderConfig.find({
+    enabled: true,
+    capabilities: capability,
+    adapterType,
+  })
+    .select('+apiKeyEncrypted')
+    .sort({ priority: 1, createdAt: 1 });
+
+  return configs.map((config): AiProviderRuntimeConfig => ({
+    id: String(config._id),
+    key: config.key,
+    name: config.name,
+    adapterType: config.adapterType,
+    baseUrl: config.baseUrl,
+    apiKey: decryptText(config.apiKeyEncrypted),
+    capabilities: config.capabilities,
+    modelMappings: normalizeModelMappings(config.modelMappings),
+    timeoutMs: config.timeoutMs,
+    costRules: config.costRules,
+  }));
+}
+
 export async function getProviderRuntimeById(id: string) {
   const config = await AiProviderConfig.findById(id).select('+apiKeyEncrypted');
   if (!config) throw new Error('AI 供应商配置不存在');

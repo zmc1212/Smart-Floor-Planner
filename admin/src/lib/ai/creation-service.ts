@@ -3,24 +3,28 @@ import { AiCreationBatch, type IAiCreationBatch } from '@/models/AiCreationBatch
 import { AiCreationModelProfile, type IAiCreationModelProfile } from '@/models/AiCreationModelProfile';
 import { AiCreationTask, type IAiCreationTask } from '@/models/AiCreationTask';
 import { AiGeneration, type IAiGeneration } from '@/models/AiGeneration';
-import { AiPromptParameterTemplate } from '@/models/AiPromptParameterTemplate';
 import { AiPromptSourceModel } from '@/models/AiPromptSourceModel';
 import { AiPromptTemplate } from '@/models/AiPromptTemplate';
 import { MediaAsset } from '@/models/MediaAsset';
-import { ensureAiCreditAccount, getAiCreditPrice, serializeAiCreditAccount } from '@/lib/ai/credits';
+import { ensureAiCreditAccount, serializeAiCreditAccount } from '@/lib/ai/credits';
 import { executeGenerationImage, reconcileAiGeneration, releaseGenerationCredits } from '@/lib/ai/execution-service';
 import { assertEnterpriseAiActionAllowed } from '@/lib/ai/enterprise-policy';
+import { getImageModelPrice, listExecutableImageModelProfiles } from '@/lib/ai/image-model-catalog';
+import {
+  getGrsAspectRatiosForTier,
+  resolveGrsImageParameters,
+  type GrsResolutionTier,
+} from '@/lib/ai/grs-image-models';
 import { getMediaAssetImageUrl } from '@/lib/ai/media-assets';
 import { getActivePromptLibraryRevision } from '@/lib/ai/prompt-library-import';
 
-const DEFAULT_RATIOS = ['1:1', '4:3', '3:4', '3:2', '2:3', '16:9', '9:16'];
-const DEFAULT_SIZES = ['1K', '2K'];
-const DEFAULT_QUALITIES = ['auto', 'high', 'medium', 'low'];
-
 type ParameterSnapshot = {
   aspectRatio: string;
-  size: string;
-  quality: string;
+  resolutionTier: GrsResolutionTier;
+  width?: number;
+  height?: number;
+  size?: string;
+  quality?: string;
   templateId?: string;
 };
 
@@ -31,6 +35,11 @@ type ModelProfileLike = Pick<
   | 'name'
   | 'description'
   | 'sourceModelSourceIds'
+  | 'sourceType'
+  | 'adapterType'
+  | 'remoteModel'
+  | 'family'
+  | 'catalogVersion'
   | 'generateLogicalModelKey'
   | 'editLogicalModelKey'
   | 'supportsReferenceImages'
@@ -38,19 +47,19 @@ type ModelProfileLike = Pick<
   | 'aspectRatios'
   | 'sizes'
   | 'qualities'
+  | 'resolutionTiers'
+  | 'supportsCustomSize'
   | 'defaultAspectRatio'
   | 'defaultSize'
   | 'defaultQuality'
+  | 'defaultResolutionTier'
+  | 'isDefault'
   | 'enabled'
   | 'weight'
 >;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-function asStringArray(value: unknown) {
-  return Array.isArray(value) ? value.map(String).map((item) => item.trim()).filter(Boolean) : [];
 }
 
 function parseParamValues(value: unknown) {
@@ -97,98 +106,68 @@ function unique(values: string[]) {
   return [...new Set(values.filter(Boolean))];
 }
 
-function inferProfileOptions(parameterSources: unknown[]) {
-  const ratios: string[] = [];
-  const sizes: string[] = [];
-  const qualities: string[] = [];
-  for (const source of parameterSources) {
-    const options = optionValues(source);
-    for (const value of options.get('aspectRatio') || []) if (value !== 'auto') ratios.push(value);
-    for (const value of options.get('size') || []) {
-      if (value === 'auto') continue;
-      sizes.push(value);
-      const ratio = ratioFromDimensions(value);
-      if (ratio) ratios.push(ratio);
-    }
-    sizes.push(...(options.get('imageSize') || []));
-    qualities.push(...(options.get('quality') || []));
-  }
-  return {
-    aspectRatios: unique(ratios).length ? unique(ratios) : DEFAULT_RATIOS,
-    sizes: unique(sizes).length ? unique(sizes) : DEFAULT_SIZES,
-    qualities: unique(qualities).length ? unique(qualities) : DEFAULT_QUALITIES,
-  };
-}
-
 export async function ensureDefaultAiCreationModelProfiles() {
   const revision = await getActivePromptLibraryRevision();
-  if (!revision) return [];
-  const [sourceModels, parameterTemplates] = await Promise.all([
-    AiPromptSourceModel.find({ importRevision: revision._id, enabled: true }).sort({ weight: -1, name: 1 }),
-    AiPromptParameterTemplate.find({ importRevision: revision._id, enabled: true }).lean(),
-  ]);
-  const parameterById = new Map(parameterTemplates.map((item) => [item.sourceId, item]));
-  const profiles: IAiCreationModelProfile[] = [];
+  const profiles = await listExecutableImageModelProfiles();
+  if (!revision) return profiles;
 
+  const sourceModels = await AiPromptSourceModel.find({ importRevision: revision._id, enabled: true });
+  const profileByRemoteModel = new Map(profiles.map((profile) => [profile.remoteModel, profile]));
+  const aliases = new Map([
+    ['gpt-image-2', 'gpt-image-2'],
+    ['nano banana 2', 'nano-banana-2'],
+    ['nano-banana-2', 'nano-banana-2'],
+    ['nano banana pro', 'nano-banana-pro'],
+    ['nano-banana-pro', 'nano-banana-pro'],
+  ]);
   for (const sourceModel of sourceModels) {
     const payload = asRecord(sourceModel.sourcePayload);
-    const modelType = String(payload.modelType || '').toLowerCase();
-    if (modelType.includes('chat') || modelType.includes('聊天')) continue;
-    const parameterIds = asStringArray(payload.modelParamTemplateIds);
-    const parameterSources = parameterIds
-      .map((id) => parameterById.get(id)?.parameters)
+    const candidates = [sourceModel.modelCode, sourceModel.name, payload.modelName]
+      .map((value) => String(value || '').trim().toLowerCase())
       .filter(Boolean);
-    const options = inferProfileOptions(parameterSources);
-    const maxReferenceImages = Math.min(10, Math.max(0, Number(payload.canUploadImageCount) || 0));
-    const profile = await AiCreationModelProfile.findOneAndUpdate(
-      { key: `roomi-${sourceModel.sourceId}` },
-      {
-        $set: {
-          name: sourceModel.name,
-          description: String(payload.modelIntro || payload.channelRemark || '').trim(),
-          sourceModelSourceIds: [sourceModel.sourceId],
-          generateLogicalModelKey: 'image.generate.standard',
-          editLogicalModelKey: maxReferenceImages > 0 ? 'image.edit.standard' : undefined,
-          supportsReferenceImages: maxReferenceImages > 0,
-          maxReferenceImages,
-          ...options,
-          defaultAspectRatio: options.aspectRatios.includes('1:1') ? '1:1' : options.aspectRatios[0],
-          defaultSize: options.sizes.includes('1K') ? '1K' : options.sizes[0],
-          defaultQuality: options.qualities.includes('auto') ? 'auto' : options.qualities[0],
-          enabled: true,
-          weight: sourceModel.weight,
-        },
-      },
-      { upsert: true, returnDocument: 'after' }
-    );
-    if (profile) {
-      profiles.push(profile);
-      if (String(sourceModel.localModelProfileId || '') !== String(profile._id)) {
-        sourceModel.localModelProfileId = profile._id;
-        await sourceModel.save();
-      }
+    const remoteModel = candidates.map((candidate) => aliases.get(candidate)).find(Boolean);
+    const profile = remoteModel ? profileByRemoteModel.get(remoteModel) : undefined;
+    if (profile && String(sourceModel.localModelProfileId || '') !== String(profile._id)) {
+      sourceModel.localModelProfileId = profile._id;
+      await sourceModel.save();
     }
   }
   return profiles;
 }
 
 export function serializeCreationModelProfile(profile: ModelProfileLike) {
+  const aspectRatiosByResolutionTier = profile.remoteModel
+    ? Object.fromEntries((profile.resolutionTiers || []).map((tier) => [
+        tier,
+        getGrsAspectRatiosForTier(profile.remoteModel || '', tier),
+      ]))
+    : {};
   return {
     id: String(profile._id),
     key: profile.key,
     name: profile.name,
     description: profile.description || '',
     sourceModelSourceIds: profile.sourceModelSourceIds || [],
+    sourceType: profile.sourceType,
+    adapterType: profile.adapterType,
+    remoteModel: profile.remoteModel,
+    family: profile.family,
+    catalogVersion: profile.catalogVersion,
     supportsReferenceImages: Boolean(profile.supportsReferenceImages),
     maxReferenceImages: Number(profile.maxReferenceImages || 0),
     aspectRatios: profile.aspectRatios || [],
+    aspectRatiosByResolutionTier,
     sizes: profile.sizes || [],
     qualities: profile.qualities || [],
+    resolutionTiers: profile.resolutionTiers || [],
+    supportsCustomSize: Boolean(profile.supportsCustomSize),
     defaults: {
       aspectRatio: profile.defaultAspectRatio,
       size: profile.defaultSize,
       quality: profile.defaultQuality,
+      resolutionTier: profile.defaultResolutionTier,
     },
+    isDefault: Boolean(profile.isDefault),
     enabled: Boolean(profile.enabled),
     weight: Number(profile.weight || 0),
   };
@@ -213,21 +192,47 @@ export function resolveCreationParameters(
   const templateSizes = unique([
     ...(templateOptions.get('size') || []).filter((value) => value !== 'auto'),
     ...(templateOptions.get('imageSize') || []),
-  ]);
-  const ratios = intersect(profile.aspectRatios || [], templateRatios);
-  const sizes = intersect(profile.sizes || [], templateSizes);
-  const qualities = intersect(profile.qualities || [], templateOptions.get('quality') || []);
-  const allowedRatios = ratios.length ? ratios : profile.aspectRatios;
-  const allowedSizes = sizes.length ? sizes : profile.sizes;
-  const allowedQualities = qualities.length ? qualities : profile.qualities;
+  ]).map((value) => value.toUpperCase());
+  const profileRatios = profile.aspectRatios || [];
+  const legacyTiers = unique([
+    ...(profile.sizes || []),
+    ...(profile.qualities || []).map((value) => value.toUpperCase()),
+  ]).filter((value) => ['1K', '2K', '4K', 'CUSTOM'].includes(value));
+  const profileResolutionTiers = profile.resolutionTiers?.length
+    ? profile.resolutionTiers
+    : legacyTiers.length
+      ? legacyTiers
+      : ['1K'];
+  const ratios = intersect(profileRatios, templateRatios);
+  const resolutionTiers = intersect(profileResolutionTiers, templateSizes);
+  const allowedRatios = ratios.length ? ratios : profileRatios;
+  const allowedResolutionTiers = resolutionTiers.length ? resolutionTiers : profileResolutionTiers;
   const pick = (value: unknown, allowed: string[], fallback: string) => {
     const candidate = String(value || '');
     return allowed.includes(candidate) ? candidate : allowed.includes(fallback) ? fallback : allowed[0];
   };
+  const aspectRatio = pick(requested.aspectRatio, allowedRatios, profile.defaultAspectRatio || '1:1');
+  const resolutionTier = pick(
+    requested.resolutionTier || requested.size || requested.quality?.toUpperCase(),
+    allowedResolutionTiers,
+    profile.defaultResolutionTier || profile.defaultSize || profile.defaultQuality?.toUpperCase() || '1K'
+  ) as GrsResolutionTier;
+  if (profile.remoteModel) {
+    resolveGrsImageParameters({
+      model: profile.remoteModel,
+      aspectRatio,
+      resolutionTier,
+      width: requested.width,
+      height: requested.height,
+      legacySize: requested.size,
+      legacyQuality: requested.quality,
+    });
+  }
   return {
-    aspectRatio: pick(requested.aspectRatio, allowedRatios, profile.defaultAspectRatio),
-    size: pick(requested.size, allowedSizes, profile.defaultSize),
-    quality: pick(requested.quality, allowedQualities, profile.defaultQuality),
+    aspectRatio,
+    resolutionTier,
+    width: resolutionTier === 'CUSTOM' ? Number(requested.width) : undefined,
+    height: resolutionTier === 'CUSTOM' ? Number(requested.height) : undefined,
     templateId: requested.templateId ? String(requested.templateId) : undefined,
   };
 }
@@ -333,8 +338,16 @@ export async function createCreationBatch(input: {
   if (!prompt) throw new Error('请输入提示词');
   if (prompt.length > 12000) throw new Error('提示词不能超过 12000 个字符');
   const count = Math.min(4, Math.max(1, Math.trunc(Number(input.count) || 1)));
-  const profile = await AiCreationModelProfile.findOne({ _id: input.modelProfileId, enabled: true });
+  const profile = await AiCreationModelProfile.findOne({
+    _id: input.modelProfileId,
+    sourceType: 'grs_catalog',
+    enabled: true,
+  });
+  if (profile && (!profile.remoteModel || !profile.adapterType)) throw new Error('所选模型缺少可执行配置');
   if (!profile) throw new Error('所选模型不可用');
+  const adapterType = profile.adapterType;
+  const remoteModel = profile.remoteModel;
+  if (!adapterType || !remoteModel) throw new Error('所选模型缺少可执行配置');
   const referenceIds = unique((input.referenceAssetIds || []).map(String));
   if (referenceIds.length > profile.maxReferenceImages || (referenceIds.length && !profile.supportsReferenceImages)) {
     throw new Error(`当前模型最多支持 ${profile.maxReferenceImages} 张参考图`);
@@ -354,7 +367,7 @@ export async function createCreationBatch(input: {
     templateId: template ? String(template._id) : undefined,
   }, templateParameters);
   await assertEnterpriseAiActionAllowed(input.enterpriseId, 'image.free_create');
-  const price = await getAiCreditPrice('image.free_create');
+  const price = await getImageModelPrice(profile.key, parameters.resolutionTier);
   const account = await ensureAiCreditAccount(input.enterpriseId);
   const requiredCredits = price.credits * count;
   const availableCredits = Number(account.balance || 0) - Number(account.frozenBalance || 0);
@@ -400,11 +413,29 @@ export async function createCreationBatch(input: {
       style: 'free_create',
       customPrompt: prompt,
       outputAspectRatio: parameters.aspectRatio,
-      outputSize: parameters.size,
-      creationParameterSnapshot: parameters,
+      outputSize: parameters.resolutionTier,
+      creationParameterSnapshot: {
+        ...parameters,
+        modelProfileKey: profile.key,
+        remoteModel: profile.remoteModel,
+      },
     },
     output: {},
-    billing: { cycle: 0, actionKey: 'image.free_create', status: 'unbilled' },
+    billing: {
+      cycle: 0,
+      actionKey: 'image.free_create',
+      price: price.credits,
+      priceSnapshot: {
+        actionKey: 'image.free_create',
+        label: price.label,
+        credits: price.credits,
+        modelProfileKey: profile.key,
+        remoteModel: profile.remoteModel,
+        resolutionTier: parameters.resolutionTier,
+        capturedAt: new Date(),
+      },
+      status: 'unbilled',
+    },
   })));
   batch.generationIds = generations.map((generation) => generation._id);
   batch.status = 'processing';
@@ -422,8 +453,14 @@ export async function createCreationBatch(input: {
         prompt,
         negativePrompt: input.negativePrompt?.trim(),
         aspectRatio: parameters.aspectRatio,
-        size: parameters.size,
-        quality: parameters.quality,
+        resolutionTier: parameters.resolutionTier,
+        width: parameters.width,
+        height: parameters.height,
+        modelOverride: {
+          adapterType,
+          remoteModel,
+          modelProfileKey: profile.key,
+        },
         images: imageUrls.length ? imageUrls : undefined,
         user: input.operatorId,
       });

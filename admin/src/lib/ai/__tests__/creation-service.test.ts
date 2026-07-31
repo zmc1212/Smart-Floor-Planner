@@ -15,11 +15,14 @@ function profile(overrides: Partial<IAiCreationModelProfile> = {}) {
     supportsReferenceImages: true,
     maxReferenceImages: 4,
     aspectRatios: ['1:1', '4:3', '16:9'],
-    sizes: ['1K', '2K', '1024x1024', '1280x960'],
-    qualities: ['auto', 'high', 'low'],
+    sizes: ['1K', '2K'],
+    qualities: [],
+    resolutionTiers: ['1K', '2K'],
+    supportsCustomSize: false,
     defaultAspectRatio: '1:1',
     defaultSize: '1K',
-    defaultQuality: 'auto',
+    defaultQuality: '',
+    defaultResolutionTier: '1K',
     enabled: true,
     weight: 1,
     ...overrides,
@@ -29,20 +32,20 @@ function profile(overrides: Partial<IAiCreationModelProfile> = {}) {
 test('template parameters are intersected with the selected local model profile', () => {
   const resolved = resolveCreationParameters(
     profile(),
-    { aspectRatio: '16:9', size: '4K', quality: 'high', templateId: 'template-1' },
+    { aspectRatio: '16:9', resolutionTier: '4K', templateId: 'template-1' },
     {
       modelParams: [
         { paramField: 'aspectRatio', isEnable: true, paramValues: JSON.stringify([{ value: '4:3' }, { value: '16:9' }]) },
         { paramField: 'imageSize', isEnable: true, paramValues: JSON.stringify([{ value: '2K' }, { value: '4K' }]) },
-        { paramField: 'quality', isEnable: true, paramValues: JSON.stringify([{ value: 'high' }]) },
       ],
     }
   );
 
   assert.deepEqual(resolved, {
     aspectRatio: '16:9',
-    size: '2K',
-    quality: 'high',
+    resolutionTier: '2K',
+    width: undefined,
+    height: undefined,
     templateId: 'template-1',
   });
 });
@@ -50,12 +53,10 @@ test('template parameters are intersected with the selected local model profile'
 test('invalid requested values fall back to profile defaults', () => {
   const resolved = resolveCreationParameters(profile(), {
     aspectRatio: '21:9',
-    size: '8K',
-    quality: 'ultra',
+    resolutionTier: '4K',
   });
   assert.equal(resolved.aspectRatio, '1:1');
-  assert.equal(resolved.size, '1K');
-  assert.equal(resolved.quality, 'auto');
+  assert.equal(resolved.resolutionTier, '1K');
 });
 
 test('batch status reports success, failure, partial and processing states', () => {

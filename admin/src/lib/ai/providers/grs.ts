@@ -1,5 +1,6 @@
 import type { AiProviderAdapter, AiImageProviderResult, AiProviderBalanceResult, AiProviderRuntimeConfig } from '@/lib/ai/provider-types';
 import { AiProviderError } from '@/lib/ai/provider-types';
+import { listGrsImageModelIds, resolveGrsImageParameters } from '@/lib/ai/grs-image-models';
 import { asObject, bearerHeaders, extractChatContent, extractImage, listOpenAiModels, parseJson, providerFetch, providerUrl, type JsonObject } from './http';
 
 function remoteId(payload: JsonObject) {
@@ -18,25 +19,6 @@ function remoteError(payload: JsonObject) {
   const data = asObject(payload.data);
   const error = asObject(payload.error);
   return String(error.message || payload.error || payload.message || data.message || 'GRS image task failed');
-}
-
-function grsAspectRatio(model: string, size?: string, aspectRatio?: string) {
-  const value = String(size || '').trim();
-  if (model === 'gpt-image-2-vip') return value || '1024x1024';
-  if (!model.startsWith('nano-banana')) return String(aspectRatio || '').trim() || value || '1024x1024';
-  const supported = new Set(['auto', '1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '5:4', '4:5', '21:9', '1:4', '4:1', '1:8', '8:1']);
-  const requestedAspectRatio = String(aspectRatio || '').trim();
-  if (supported.has(requestedAspectRatio)) return requestedAspectRatio;
-  if (supported.has(value)) return value;
-  const dimensions = value.match(/^(\d+)x(\d+)$/i);
-  if (!dimensions) return 'auto';
-  const width = Number(dimensions[1]);
-  const height = Number(dimensions[2]);
-  if (!width || !height) return 'auto';
-  const gcd = (a: number, b: number): number => b ? gcd(b, a % b) : a;
-  const divisor = gcd(width, height);
-  const ratio = `${width / divisor}:${height / divisor}`;
-  return supported.has(ratio) ? ratio : 'auto';
 }
 
 function parseDrawResult(payload: JsonObject, id?: string): AiImageProviderResult {
@@ -106,6 +88,15 @@ export const grsAdapter: AiProviderAdapter = {
     return extractChatContent(await parseJson(response, 'GRS chat'), 'GRS chat');
   },
   async submitImage(runtime, input) {
+    const parameters = resolveGrsImageParameters({
+      model: input.model,
+      aspectRatio: input.aspectRatio,
+      resolutionTier: input.resolutionTier,
+      width: input.width,
+      height: input.height,
+      legacySize: input.size,
+      legacyQuality: input.quality,
+    });
     const response = await providerFetch(
       providerUrl(runtime.baseUrl, '/v1/api/generate'),
       {
@@ -115,11 +106,9 @@ export const grsAdapter: AiProviderAdapter = {
           model: input.model,
           prompt: input.negativePrompt ? `${input.prompt}\n\nNegative prompt: ${input.negativePrompt}` : input.prompt,
           images: input.images || [],
-          aspectRatio: grsAspectRatio(input.model, input.size, input.aspectRatio),
+          aspectRatio: parameters.aspectRatio,
           replyType: 'async',
-          ...(input.model.startsWith('nano-banana') && /^(1K|2K|4K)$/i.test(input.quality || '')
-            ? { imageSize: String(input.quality).toUpperCase() }
-            : {}),
+          ...(parameters.imageSize ? { imageSize: parameters.imageSize } : {}),
         }),
       },
       runtime.timeoutMs,
@@ -161,10 +150,16 @@ export const grsAdapter: AiProviderAdapter = {
   },
   async listModels(runtime) {
     try {
-      return await listOpenAiModels(runtime, 'GRS models');
+      return [...new Set([
+        ...listGrsImageModelIds(),
+        ...await listOpenAiModels(runtime, 'GRS models'),
+      ])];
     } catch (error) {
       if (error instanceof AiProviderError && error.code === 'HTTP_404') {
-        return [...new Set(Object.values(runtime.modelMappings).filter((model): model is string => Boolean(model)))];
+        return [...new Set([
+          ...listGrsImageModelIds(),
+          ...Object.values(runtime.modelMappings).filter((model): model is string => Boolean(model)),
+        ])];
       }
       throw error;
     }

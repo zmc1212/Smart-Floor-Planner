@@ -53,8 +53,10 @@ Page-specific visual reference:
   workflow-stage rail and next-action hierarchy. When no formal floor plan is
   selected, `design-references/ai-design/ai-design-immersive-a-space-tour-v1.png`
   governs the scene-led discovery state. Its waypoints are navigation states,
-  not static task buttons: selecting one must visibly refocus the scene and
-  update the confirmed next action. The plan or scene remains the dominant
+  not static task buttons or numbered workflow steps: use capability icons and
+  plain action labels without ordinal numbers, and let the separate scheme rail
+  be the only ordered progression. Selecting a waypoint must visibly refocus
+  the scene and update the confirmed next action. The plan or scene remains the dominant
   first-viewport surface instead of collapsing into a banner. This page uses
   `navigationStyle: custom`; never reintroduce the centered default WeChat
   title bar. The title, credit balance, capsule safe area, and spatial visual

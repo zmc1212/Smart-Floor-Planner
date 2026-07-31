@@ -13,8 +13,11 @@ export interface IAiCreationBatch extends Document {
   modelProfileSnapshot: Record<string, unknown>;
   parameterSnapshot: {
     aspectRatio: string;
-    size: string;
-    quality: string;
+    resolutionTier: '1K' | '2K' | '4K' | 'CUSTOM';
+    width?: number;
+    height?: number;
+    size?: string;
+    quality?: string;
     templateId?: string;
   };
   requestedCount: number;
@@ -38,8 +41,11 @@ const AiCreationBatchSchema = new Schema<IAiCreationBatch>(
     modelProfileSnapshot: { type: Schema.Types.Mixed, required: true },
     parameterSnapshot: {
       aspectRatio: { type: String, required: true },
-      size: { type: String, required: true },
-      quality: { type: String, required: true },
+      resolutionTier: { type: String, enum: ['1K', '2K', '4K', 'CUSTOM'], required: true },
+      width: { type: Number },
+      height: { type: Number },
+      size: { type: String },
+      quality: { type: String },
       templateId: { type: String },
     },
     requestedCount: { type: Number, required: true, min: 1, max: 4 },

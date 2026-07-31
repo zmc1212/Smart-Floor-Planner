@@ -81,6 +81,10 @@ test('preview and recent-task states keep real progress and all non-terminal job
 
 test('scheme stages map server workflow state to the four approved journey stations', () => {
   assert.deepEqual(
+    buildStageRail(null).map((item) => item.label),
+    ['空间基准', '风格方案', '软装完善', '提案深化']
+  );
+  assert.deepEqual(
     buildStageRail({ currentStageKey: 'soft_furnishing' }).map((item) => item.status),
     ['done', 'done', 'current', 'upcoming']
   );
@@ -94,14 +98,15 @@ test('scene waypoints create a real focus state and a matching next action', () 
   const scene = buildSceneNavigation(workflows, 'style_transform');
   assert.equal(scene.mode, 'style_transform');
   assert.equal(scene.focusClass, 'scene-focus-style');
-  assert.equal(scene.title, '试一种新风格');
+  assert.equal(scene.title, '拍照换风格');
+  assert.equal(scene.buttonLabel, '拍照开始');
   assert.equal(scene.credits, 20);
 });
 
-test('the next action starts with inspiration and creates a real whole-plan 3D navigator on demand', () => {
+test('the next action starts with reference recreation and creates a real whole-plan 3D navigator on demand', () => {
   const standalone = buildPrimaryAction({ workflows, selectedSource: null, selectedWorkflow: null });
   assert.equal(standalone.mode, 'reference_recreate');
-  assert.equal(standalone.title, '从灵感开始');
+  assert.equal(standalone.title, '参考图复刻');
 
   const planAction = buildPrimaryAction({
     workflows,
@@ -154,6 +159,14 @@ test('AI Design home ships the approved map, journey, and scene states without t
   assert.match(pageWxss, /\.plan-stage\s*\{[\s\S]*height:\s*620rpx/);
   assert.match(pageWxml, /\/images\/ai-design-hero-v3\.jpg/);
   assert.match(pageWxml, /class="scene-source-card"/);
+  assert.match(pageWxml, />参考图复刻</);
+  assert.match(pageWxml, />拍照换风格</);
+  assert.match(pageWxml, />户型生成</);
+  assert.match(pageWxml, />软装搭配</);
+  assert.match(pageWxml, /sceneNavigation\.buttonLabel/);
+  assert.doesNotMatch(pageWxml, /class="scene-index"/);
+  assert.doesNotMatch(pageWxml, />0[1-4]</);
+  assert.match(pageWxss, /\.scene-waypoint-icon image\s*\{[\s\S]*width:\s*30rpx/);
   assert.match(pageWxml, /class="discovery-handle"/);
   assert.match(pageWxml, /\/images\/mine-icons\/tab-ai-active\.png/);
   assert.match(pageWxml, />最近方案</);

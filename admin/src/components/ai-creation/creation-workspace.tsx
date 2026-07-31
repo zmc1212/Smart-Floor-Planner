@@ -30,7 +30,6 @@ import {
   Plus,
   RotateCw,
   RefreshCw,
-  ScanLine,
   Search,
   Sparkles,
   Trash2,
@@ -38,7 +37,7 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,7 +45,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { notify } from '@/components/ui/operation-feedback';
 import { cn } from '@/lib/utils';
@@ -217,8 +216,9 @@ export function CreationWorkspace() {
   const [negativePrompt, setNegativePrompt] = useState('');
   const [modelProfileId, setModelProfileId] = useState('');
   const [aspectRatio, setAspectRatio] = useState('1:1');
-  const [size, setSize] = useState('1K');
-  const [quality, setQuality] = useState('auto');
+  const [resolutionTier, setResolutionTier] = useState<'1K' | '2K' | '4K' | 'CUSTOM'>('1K');
+  const [customWidth, setCustomWidth] = useState(1024);
+  const [customHeight, setCustomHeight] = useState(1024);
   const [count, setCount] = useState(1);
   const [assets, setAssets] = useState<CreationAsset[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateDetail | null>(null);
@@ -281,25 +281,37 @@ export function CreationWorkspace() {
     ? results
     : Array.from({ length: selectedBatch?.requestedCount || 1 }, () => undefined);
   const model = bootstrap?.models.find((item) => item.id === modelProfileId);
-  const estimatedCredits = (bootstrap?.price.credits || 0) * count;
+  const availableAspectRatios = model?.aspectRatiosByResolutionTier?.[resolutionTier] || model?.aspectRatios || [];
+  const unitPrice = model?.prices.find((price) => price.resolutionTier === resolutionTier)?.credits || 0;
+  const estimatedCredits = unitPrice * count;
+  const hasEnabledPrice = unitPrice > 0;
 
   const applyModelDefaults = (profile?: CreationModelProfile) => {
     if (!profile) return;
     setAspectRatio(profile.defaults.aspectRatio);
-    setSize(profile.defaults.size);
-    setQuality(profile.defaults.quality);
+    setResolutionTier(profile.defaults.resolutionTier);
+    setCustomWidth(1024);
+    setCustomHeight(1024);
     setAssets((current) => current.slice(0, profile.maxReferenceImages));
   };
 
   const chooseTask = (task: CreationTask) => {
     const batch = latestBatch(task);
+    const storedTier = batch?.parameterSnapshot.resolutionTier
+      || batch?.parameterSnapshot.size?.toUpperCase()
+      || '1K';
     setSelectedTaskId(task.id);
     setPrompt(batch?.prompt || task.prompt);
     setNegativePrompt(batch?.negativePrompt || '');
     setModelProfileId(batch?.modelProfileId || task.modelProfileId);
     setAspectRatio(batch?.parameterSnapshot.aspectRatio || '1:1');
-    setSize(batch?.parameterSnapshot.size || '1K');
-    setQuality(batch?.parameterSnapshot.quality || 'auto');
+    setResolutionTier(
+      ['1K', '2K', '4K', 'CUSTOM'].includes(storedTier)
+        ? storedTier as '1K' | '2K' | '4K' | 'CUSTOM'
+        : '1K'
+    );
+    setCustomWidth(batch?.parameterSnapshot.width || 1024);
+    setCustomHeight(batch?.parameterSnapshot.height || 1024);
     setCount(batch?.requestedCount || 1);
     setSelectedTemplate(batch?.parameterSnapshot.templateId ? { id: batch.parameterSnapshot.templateId } as TemplateDetail : null);
     setAssets(task.referenceAssetIds.map((id) => ({ id, previewUrl: `/api/ai/assets/${id}/image` })));
@@ -453,6 +465,7 @@ export function CreationWorkspace() {
   const submitGeneration = async () => {
     if (!prompt.trim()) return notify.warning('请输入提示词');
     if (!modelProfileId) return notify.warning('请选择模型');
+    if (!hasEnabledPrice) return notify.warning('当前模型分辨率尚未开放');
     if (!bootstrap?.provider.actionEnabled) return notify.error('当前企业未开放 AI 自由创作');
     if (!bootstrap?.provider.supportsGenerate) return notify.error('尚未配置可用的图片生成模型');
     if (assets.length && !bootstrap.provider.supportsEdit) return notify.error('尚未配置可用的图片编辑模型');
@@ -484,8 +497,9 @@ export function CreationWorkspace() {
           referenceAssetIds: assets.map((asset) => asset.id),
           modelProfileId,
           aspectRatio,
-          size,
-          quality,
+          resolutionTier,
+          width: resolutionTier === 'CUSTOM' ? customWidth : undefined,
+          height: resolutionTier === 'CUSTOM' ? customHeight : undefined,
           templateId: selectedTemplate?.id,
           count,
         }),
@@ -541,8 +555,8 @@ export function CreationWorkspace() {
   }
 
   return (
-    <div className="fixed inset-0 h-screen min-h-[720px] min-w-[1440px] overflow-hidden bg-[#16171b] font-sans text-[#f6f7fb]">
-      <header className="relative z-40 flex h-[68px] min-w-[1440px] items-center justify-between border-b border-white/[0.08] bg-[#16171b] px-3">
+    <div className="fixed inset-0 h-screen min-h-[720px] min-w-0 overflow-x-hidden overflow-y-auto bg-[#16171b] font-sans text-[#f6f7fb] min-[1440px]:min-w-[1440px] min-[1440px]:overflow-hidden">
+      <header className="relative z-40 flex h-[68px] min-w-0 items-center justify-between border-b border-white/[0.08] bg-[#16171b] px-3 min-[1440px]:min-w-[1440px]">
         <div className="flex min-w-0 items-center gap-4">
           <Link href="/ai-studio/scenarios" className="flex items-center gap-2 text-white" title="返回后台 AI 工作台">
             <span className="flex size-7 items-center justify-center rounded-md border border-[#7047ff]/70 text-[#8b6cff]"><Sparkles className="size-4" /></span>
@@ -561,14 +575,14 @@ export function CreationWorkspace() {
         </div>
       </header>
 
-      <div className="absolute inset-x-0 bottom-0 top-[68px] min-w-[1440px] bg-[#17191f]">
-        <aside className="absolute inset-y-0 left-0 z-30 flex w-16 flex-col items-center border-r border-white/[0.05] bg-[#0f1016]/70 pt-5">
+      <div className="absolute inset-x-0 bottom-0 top-[68px] min-w-0 bg-[#17191f] min-[1440px]:min-w-[1440px]">
+        <aside className="absolute inset-y-0 left-0 z-30 hidden w-16 flex-col items-center border-r border-white/[0.05] bg-[#0f1016]/70 pt-5 min-[1440px]:flex">
           <Link href="/ai-studio/scenarios" title="展开创作导航" className="mb-4 flex size-8 items-center justify-center rounded-full border border-white/15 text-[#b3b3b3] hover:text-white"><ChevronRight className="size-4" /></Link>
           <button type="button" title="AI 自由创作" className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#7047ff]/55 bg-[#6f45ff]/15 text-[#987dff]"><span className="flex size-6 items-center justify-center rounded-full bg-[#6942df] text-xs font-semibold text-white">AI</span></button>
           <Link href="/ai-studio/scenarios" title="客户方案" className="mt-3 flex h-12 w-12 items-center justify-center rounded-xl text-[#7d63ff] hover:bg-white/5"><span className="flex size-6 items-center justify-center rounded-full bg-[#6844da] text-xs font-semibold text-white">W</span></Link>
         </aside>
 
-        <div className="absolute left-[84px] top-3 z-30 flex w-[136px] flex-col gap-2">
+        <div className="absolute left-4 top-3 z-30 flex w-[136px] flex-col gap-2 sm:left-[84px]">
           <button type="button" onClick={newCreation} className="flex h-9 items-center justify-center gap-2 rounded-[18px] bg-gradient-to-r from-[#56a7ff] to-[#6030ff] px-3 text-sm text-white hover:brightness-110"><Plus className="size-4" />新建任务</button>
           <button type="button" onClick={() => setHistoryOpen((open) => !open)} className={cn('flex h-9 items-center justify-center gap-2 rounded-[18px] border px-3 text-sm text-white transition', historyOpen ? 'border-white bg-white/10' : 'border-[#6947ee] bg-[#5d45aa]/20 hover:bg-[#5d45aa]/35')}><ListChecks className="size-4" />任务列表</button>
         </div>
@@ -618,7 +632,7 @@ export function CreationWorkspace() {
           </aside>
         ) : null}
 
-        <main className={cn('absolute inset-y-0 left-16 overflow-hidden', hasTaskStage ? 'right-14' : 'right-0')}>
+        <main className={cn('absolute inset-y-0 left-0 right-0 overflow-x-hidden overflow-y-auto min-[1440px]:left-16 min-[1440px]:overflow-hidden', hasTaskStage && 'min-[1440px]:right-14')}>
 
           {hasTaskStage ? (
             <>
@@ -634,8 +648,17 @@ export function CreationWorkspace() {
                   <p className="truncate text-sm leading-5 text-[#f0f0f3]">{selectedBatch?.prompt || selectedTask?.prompt}</p>
                   <div className="mt-3 flex items-center gap-2 text-[11px] text-[#9a9aa2]">
                     <span className="rounded-full border border-white/15 px-3 py-1">模型: {selectedBatch?.modelProfileSnapshot.name || model?.name}</span>
-                    <span className="rounded-full border border-white/15 px-3 py-1">分辨率: {selectedBatch?.parameterSnapshot.size}</span>
-                    <span className="rounded-full border border-white/15 px-3 py-1">图片质量: {selectedBatch?.parameterSnapshot.quality}</span>
+                    <span className="rounded-full border border-white/15 px-3 py-1">
+                      比例: {selectedBatch?.parameterSnapshot.aspectRatio || '1:1'}
+                    </span>
+                    <span className="rounded-full border border-white/15 px-3 py-1">
+                      分辨率: {selectedBatch?.parameterSnapshot.resolutionTier || selectedBatch?.parameterSnapshot.size || selectedBatch?.parameterSnapshot.quality || '1K'}
+                    </span>
+                    {selectedBatch?.parameterSnapshot.resolutionTier === 'CUSTOM' ? (
+                      <span className="rounded-full border border-white/15 px-3 py-1">
+                        {selectedBatch.parameterSnapshot.width} x {selectedBatch.parameterSnapshot.height}px
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               </section>
@@ -665,16 +688,16 @@ export function CreationWorkspace() {
               </section>
             </>
           ) : (
-            <div className="pointer-events-none absolute left-1/2 top-[96px] z-10 h-[245px] w-[1098px] -translate-x-1/2 bg-[url('/ai-studio/creation-hero.png')] bg-[length:100%_100%] bg-center bg-no-repeat">
+            <div className="pointer-events-none absolute left-1/2 top-[96px] z-10 hidden h-[245px] w-[calc(100%-32px)] max-w-[1098px] -translate-x-1/2 bg-[url('/ai-studio/creation-hero.png')] bg-[length:100%_100%] bg-center bg-no-repeat sm:block min-[1440px]:w-[1098px]">
               <h2 className="sr-only">今天想创作什么?</h2>
               <p className="sr-only">输入想法，AI帮你实现创意</p>
             </div>
           )}
 
-          <section style={{ backgroundImage: "url('/ai-studio/creation-dialog-frame.png')" }} className={cn('absolute left-1/2 z-20 grid w-[1080px] -translate-x-1/2 gap-2 overflow-visible bg-[length:100%_100%] bg-center bg-no-repeat px-[18px] pb-4 pt-[18px]', hasTaskStage ? 'bottom-[30px] h-[212px] grid-rows-[122px_48px]' : 'top-[365px] h-[251px] grid-rows-[161px_48px]')}>
-            <button type="button" onClick={() => assets.length ? setPromptExpanded(true) : fileInputRef.current?.click()} aria-label="编辑参考图片" title={assets.length ? '编辑参考图片' : '上传参考图片'} className="absolute -left-[60px] top-0 flex size-12 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/15"><Pencil className="size-5" /></button>
+          <section style={{ backgroundImage: "url('/ai-studio/creation-dialog-frame.png')" }} className={cn('absolute left-4 right-4 z-20 grid w-auto translate-x-0 grid-rows-[minmax(140px,1fr)_auto] gap-3 overflow-visible bg-[#1b1c20]/95 bg-[length:100%_100%] bg-center bg-no-repeat px-4 pb-4 pt-5 sm:left-1/2 sm:right-auto sm:w-[calc(100%-96px)] sm:max-w-[1080px] sm:-translate-x-1/2 min-[1440px]:w-[1080px] min-[1440px]:max-w-none min-[1440px]:gap-2 min-[1440px]:px-[18px] min-[1440px]:pb-4 min-[1440px]:pt-[18px]', hasTaskStage ? 'top-[150px] min-h-[500px] sm:top-[220px] sm:min-h-[400px] min-[1440px]:bottom-[30px] min-[1440px]:top-auto min-[1440px]:h-[212px] min-[1440px]:min-h-0 min-[1440px]:grid-rows-[122px_48px]' : 'top-[180px] min-h-[440px] sm:top-[280px] sm:min-h-[350px] min-[1440px]:top-[365px] min-[1440px]:h-[251px] min-[1440px]:min-h-0 min-[1440px]:grid-rows-[161px_48px]')}>
+            <button type="button" onClick={() => assets.length ? setPromptExpanded(true) : fileInputRef.current?.click()} aria-label="编辑参考图片" title={assets.length ? '编辑参考图片' : '上传参考图片'} className="absolute -top-14 left-0 flex size-12 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/15 min-[1440px]:-left-[60px] min-[1440px]:top-0"><Pencil className="size-5" /></button>
             <div className="absolute -top-[30px] right-[30px] flex items-center gap-1.5 text-sm text-[#b3b3b3]"><span className="flex size-5 items-center justify-center rounded-full bg-[#7047ff] text-[10px] font-semibold text-white">AI</span>预计消耗 <strong className="text-[#f0d567]">{estimatedCredits}</strong> 点</div>
-            <div className="grid min-h-0 grid-cols-[84px_minmax(0,1fr)] gap-3">
+            <div className="grid min-h-0 grid-cols-[64px_minmax(0,1fr)] gap-3 sm:grid-cols-[84px_minmax(0,1fr)]">
               <div className="relative flex h-[98px] items-center justify-center">
                 {assets.length ? (
                   <div className="relative h-[86px] w-[71px]">
@@ -691,22 +714,36 @@ export function CreationWorkspace() {
               </div>
             </div>
 
-            <div aria-label="对话框操作" className="absolute -right-[60px] bottom-0 flex h-[86px] w-12 flex-col items-center justify-center gap-3">
+            <div aria-label="对话框操作" className="absolute right-3 top-3 flex h-10 w-auto items-center justify-center gap-2 min-[1440px]:-right-[60px] min-[1440px]:bottom-0 min-[1440px]:top-auto min-[1440px]:h-[86px] min-[1440px]:w-12 min-[1440px]:flex-col min-[1440px]:gap-3">
               <button type="button" disabled={assisting || !prompt.trim()} onClick={assistPrompt} title="优化提示词" className="flex size-[30px] items-center justify-center rounded-full text-[#9b9ba2] hover:bg-white/10 hover:text-white disabled:opacity-40">{assisting ? <Loader2 className="size-4 animate-spin" /> : <WandSparkles className="size-4" />}</button>
               <button type="button" onClick={() => setPromptExpanded(true)} title="全屏编辑提示词" className="flex size-[30px] items-center justify-center rounded-full text-[#9b9ba2] hover:bg-white/10 hover:text-white"><Maximize2 className="size-4" /></button>
             </div>
 
-            <div className="flex min-w-0 items-center gap-2 overflow-x-auto overflow-y-hidden">
+            <div className="grid min-w-0 grid-cols-2 items-center gap-2 overflow-visible sm:flex sm:flex-wrap min-[1440px]:flex-nowrap min-[1440px]:overflow-x-auto min-[1440px]:overflow-y-hidden">
               <Select value={modelProfileId} onValueChange={(value) => { setModelProfileId(value); applyModelDefaults(bootstrap.models.find((item) => item.id === value)); }}>
-                <SelectTrigger className="h-10 w-[186px] shrink-0 rounded-lg border-[#37373b] bg-[#222226] px-3 text-sm text-[#f5f5f5] focus:ring-[#7047ff]"><Bot className="size-4 text-[#7047ff]" /><SelectValue placeholder="选择模型" /></SelectTrigger>
-                <SelectContent className="border-white/10 bg-[#18191d] text-[#f5f5f5]">{bootstrap.models.map((item) => <SelectItem key={item.id} value={item.id} className={darkSelectItemClassName}>{item.name}</SelectItem>)}</SelectContent>
+                <SelectTrigger className="col-span-2 h-10 w-full shrink-0 rounded-lg border-[#37373b] bg-[#222226] px-3 text-sm text-[#f5f5f5] focus:ring-[#7047ff] sm:w-[186px]"><Bot className="size-4 text-[#7047ff]" /><SelectValue placeholder="选择模型" /></SelectTrigger>
+                <SelectContent className="border-white/10 bg-[#18191d] text-[#f5f5f5]"><SelectGroup>{bootstrap.models.map((item) => <SelectItem key={item.id} value={item.id} className={darkSelectItemClassName}>{item.name}</SelectItem>)}</SelectGroup></SelectContent>
               </Select>
-              <Select value={String(count)} onValueChange={(value) => setCount(Number(value))}><SelectTrigger className="h-10 w-[104px] shrink-0 rounded-lg border-[#37373b] bg-[#222226] px-3 text-sm text-[#f5f5f5]"><Images className="size-4" /><SelectValue /></SelectTrigger><SelectContent className="border-white/10 bg-[#18191d] text-white">{[1, 2, 3, 4].map((value) => <SelectItem key={value} value={String(value)} className={darkSelectItemClassName}>{value}张</SelectItem>)}</SelectContent></Select>
-              <Select value={aspectRatio} onValueChange={setAspectRatio}><SelectTrigger className="h-10 w-[128px] shrink-0 rounded-lg border-[#37373b] bg-[#222226] px-3 text-sm text-[#f5f5f5]"><Crop className="size-4" /><SelectValue /></SelectTrigger><SelectContent className="border-white/10 bg-[#18191d] text-white">{(model?.aspectRatios || []).map((item) => <SelectItem key={item} value={item} className={darkSelectItemClassName}>{item}</SelectItem>)}</SelectContent></Select>
-              <Select value={quality} onValueChange={setQuality}><SelectTrigger className="h-10 w-[114px] shrink-0 rounded-lg border-[#37373b] bg-[#222226] px-3 text-sm text-[#f5f5f5]"><ScanLine className="size-4" /><SelectValue /></SelectTrigger><SelectContent className="border-white/10 bg-[#18191d] text-white">{(model?.qualities || []).map((item) => <SelectItem key={item} value={item} className={darkSelectItemClassName}>{item === 'auto' ? '自适应' : item}</SelectItem>)}</SelectContent></Select>
-              <Select value={size} onValueChange={setSize}><SelectTrigger className="h-10 w-[104px] shrink-0 rounded-lg border-[#37373b] bg-[#222226] px-3 text-sm text-[#f5f5f5]"><Maximize2 className="size-4" /><SelectValue /></SelectTrigger><SelectContent className="border-white/10 bg-[#18191d] text-white">{(model?.sizes || []).map((item) => <SelectItem key={item} value={item} className={darkSelectItemClassName}>{item}</SelectItem>)}</SelectContent></Select>
-              <button type="button" onClick={() => setTemplateOpen(true)} className="flex h-10 w-[124px] shrink-0 items-center justify-center gap-2 rounded-lg border border-[#37373b] bg-[#222226] px-3 text-sm text-[#f5f5f5] hover:bg-[#2a2a2f]"><PanelsTopLeft className="size-4" />提示词模板</button>
-              <button type="button" disabled={generating || !prompt.trim() || !modelProfileId} onClick={submitGeneration} className="ml-auto flex h-12 w-[152px] shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#9447ff] to-[#5f2cff] px-3 text-base font-normal text-white shadow-[0_0_24px_rgba(104,49,255,0.2)] hover:brightness-110 disabled:cursor-not-allowed disabled:bg-[#6b6b6b] disabled:bg-none disabled:opacity-100">{generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}开始生图</button>
+              <Select value={String(count)} onValueChange={(value) => setCount(Number(value))}><SelectTrigger className="h-10 w-full shrink-0 rounded-lg border-[#37373b] bg-[#222226] px-3 text-sm text-[#f5f5f5] sm:w-[104px]"><Images className="size-4" /><SelectValue /></SelectTrigger><SelectContent className="border-white/10 bg-[#18191d] text-white"><SelectGroup>{[1, 2, 3, 4].map((value) => <SelectItem key={value} value={String(value)} className={darkSelectItemClassName}>{value}张</SelectItem>)}</SelectGroup></SelectContent></Select>
+              {resolutionTier !== 'CUSTOM' ? <Select value={aspectRatio} onValueChange={setAspectRatio}><SelectTrigger className="h-10 w-full shrink-0 rounded-lg border-[#37373b] bg-[#222226] px-3 text-sm text-[#f5f5f5] sm:w-[128px]"><Crop className="size-4" /><SelectValue /></SelectTrigger><SelectContent className="border-white/10 bg-[#18191d] text-white"><SelectGroup>{availableAspectRatios.map((item) => <SelectItem key={item} value={item} className={darkSelectItemClassName}>{item === 'auto' ? '自动比例' : item}</SelectItem>)}</SelectGroup></SelectContent></Select> : null}
+              <Select value={resolutionTier} onValueChange={(value) => {
+                const nextTier = value as typeof resolutionTier;
+                const nextRatios = model?.aspectRatiosByResolutionTier?.[nextTier] || model?.aspectRatios || [];
+                setResolutionTier(nextTier);
+                if (nextTier !== 'CUSTOM' && !nextRatios.includes(aspectRatio)) {
+                  setAspectRatio(nextRatios.includes(model?.defaults.aspectRatio || '') ? model?.defaults.aspectRatio || nextRatios[0] : nextRatios[0]);
+                }
+              }}><SelectTrigger className="h-10 w-full shrink-0 rounded-lg border-[#37373b] bg-[#222226] px-3 text-sm text-[#f5f5f5] sm:w-[116px]"><Maximize2 className="size-4" /><SelectValue /></SelectTrigger><SelectContent className="border-white/10 bg-[#18191d] text-white"><SelectGroup>{(model?.resolutionTiers || []).map((item) => <SelectItem key={item} value={item} className={darkSelectItemClassName}>{item === 'CUSTOM' ? '自定义' : item}</SelectItem>)}</SelectGroup></SelectContent></Select>
+              {resolutionTier === 'CUSTOM' && model?.supportsCustomSize ? (
+                <div className="col-span-2 flex h-10 w-full shrink-0 items-center justify-center gap-1 rounded-lg border border-[#37373b] bg-[#222226] px-2 sm:w-auto">
+                  <Input aria-label="自定义宽度" title="自定义宽度（16 的倍数）" type="number" min={16} max={3840} step={16} value={customWidth} onChange={(event) => setCustomWidth(Number(event.target.value))} className="h-8 w-[76px] border-0 bg-transparent px-1 text-center text-sm text-white shadow-none focus-visible:ring-0" />
+                  <span className="text-xs text-[#77777e]">x</span>
+                  <Input aria-label="自定义高度" title="自定义高度（16 的倍数）" type="number" min={16} max={3840} step={16} value={customHeight} onChange={(event) => setCustomHeight(Number(event.target.value))} className="h-8 w-[76px] border-0 bg-transparent px-1 text-center text-sm text-white shadow-none focus-visible:ring-0" />
+                  <span className="text-xs text-[#77777e]">px</span>
+                </div>
+              ) : null}
+              <button type="button" onClick={() => setTemplateOpen(true)} className="flex h-10 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-[#37373b] bg-[#222226] px-3 text-sm text-[#f5f5f5] hover:bg-[#2a2a2f] sm:w-[124px]"><PanelsTopLeft className="size-4" />提示词模板</button>
+              <button type="button" disabled={generating || !prompt.trim() || !modelProfileId || !hasEnabledPrice} onClick={submitGeneration} className="col-span-2 ml-0 flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#9447ff] to-[#5f2cff] px-3 text-base font-normal text-white shadow-[0_0_24px_rgba(104,49,255,0.2)] hover:brightness-110 disabled:cursor-not-allowed disabled:bg-[#6b6b6b] disabled:bg-none disabled:opacity-100 sm:ml-auto sm:w-[152px]">{generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}开始生图</button>
             </div>
           </section>
         </main>
@@ -716,7 +753,7 @@ export function CreationWorkspace() {
 
       <Dialog open={promptExpanded} onOpenChange={setPromptExpanded}>
         <DialogContent className="max-w-3xl border-white/15 bg-[#1b1c20] text-white sm:rounded-xl">
-          <DialogHeader><DialogTitle className="text-base">编辑提示词</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-base">编辑提示词</DialogTitle><DialogDescription className="sr-only">编辑本次生成使用的正向和负向提示词。</DialogDescription></DialogHeader>
           <Textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder="描述空间、风格、材质、光线与构图" className="min-h-64 resize-none border-white/10 bg-[#222328] leading-6 text-white placeholder:text-[#77777e]" />
           <div><label className="mb-2 block text-xs text-[#a7a7ad]">不希望出现的内容（可选）</label><Textarea value={negativePrompt} onChange={(event) => setNegativePrompt(event.target.value)} className="min-h-24 resize-none border-white/10 bg-[#222328] text-white" /></div>
           <div className="flex justify-end gap-2"><Button variant="outline" className="border-white/15 bg-transparent text-white hover:bg-white/10" onClick={() => { setPrompt(''); setNegativePrompt(''); }}>清空</Button><Button className="bg-[#7047ff] text-white hover:bg-[#6034ee]" onClick={() => setPromptExpanded(false)}>完成</Button></div>
@@ -725,7 +762,7 @@ export function CreationWorkspace() {
 
       <Dialog open={Boolean(attachGeneration)} onOpenChange={(open) => !open && setAttachGeneration(null)}>
         <DialogContent className="max-w-md border-white/15 bg-[#1b1c20] text-white sm:rounded-xl">
-          <DialogHeader><DialogTitle className="text-base">归入客户方案</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-base">归入客户方案</DialogTitle><DialogDescription className="sr-only">选择要归档生成结果的客户方案。</DialogDescription></DialogHeader>
           <Select value={attachWorkflowId} onValueChange={setAttachWorkflowId}>
             <SelectTrigger className="w-full border-white/10 bg-[#222328]"><SelectValue placeholder="选择客户方案" /></SelectTrigger>
             <SelectContent className="border-white/10 bg-[#18191d] text-white">
@@ -741,7 +778,7 @@ export function CreationWorkspace() {
 
       <Dialog open={Boolean(previewGeneration)} onOpenChange={(open) => !open && setPreviewGeneration(null)}>
         <DialogContent className={cn('border-white/10 bg-[#111216] p-3 sm:rounded-xl', previewFullscreen ? 'h-screen w-screen max-w-none' : 'h-[90vh] max-w-[92vw]')}>
-          <DialogHeader className="sr-only"><DialogTitle>生成结果预览</DialogTitle></DialogHeader>
+          <DialogHeader className="sr-only"><DialogTitle>生成结果预览</DialogTitle><DialogDescription>查看、缩放、旋转或下载生成结果。</DialogDescription></DialogHeader>
           <div className="relative flex h-full items-center justify-center overflow-hidden">
             {previewGeneration?.imageUrl ? <img src={previewGeneration.imageUrl} alt="生成结果大图" className="max-h-full max-w-full object-contain transition-transform" style={{ transform: `scale(${previewZoom}) rotate(${previewRotation}deg)` }} /> : null}
             <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-lg border border-white/10 bg-black/70 p-1.5 backdrop-blur">
@@ -758,7 +795,7 @@ export function CreationWorkspace() {
 
       <Dialog open={Boolean(compareGeneration)} onOpenChange={(open) => { if (!open) { setCompareGeneration(null); setCompareFullscreen(false); } }}>
         <DialogContent hideCloseButton className={cn('grid-rows-[auto_auto_minmax(0,1fr)] border-white/10 bg-[#1b1c20] p-5 text-white sm:rounded-2xl', compareFullscreen ? '!inset-0 !h-[100dvh] !w-[100dvw] !max-w-none !translate-x-0 !translate-y-0 !rounded-none !border-0 !p-4 !shadow-none' : 'max-w-6xl')}>
-          <DialogHeader><DialogTitle className="text-base">方案对比</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-base">方案对比</DialogTitle><DialogDescription className="sr-only">比较参考图与生成结果并调整对比方式。</DialogDescription></DialogHeader>
           <button type="button" aria-label="关闭方案对比" title="关闭方案对比" onClick={() => { setCompareGeneration(null); setCompareFullscreen(false); }} className="absolute right-4 top-4 z-20 flex size-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20"><X className="size-5" /></button>
           {compareGeneration?.imageUrl && assets[0]?.previewUrl ? (() => {
             const generatedUrl = compareGeneration.imageUrl;

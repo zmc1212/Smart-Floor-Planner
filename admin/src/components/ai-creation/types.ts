@@ -4,12 +4,33 @@ export type CreationModelProfile = {
   name: string;
   description: string;
   sourceModelSourceIds: string[];
+  sourceType: 'grs_catalog';
+  adapterType: 'grs';
+  remoteModel: string;
+  family: 'gpt-image-2' | 'gpt-image-2-vip' | 'nano-banana' | 'nano-banana-2';
+  catalogVersion: string;
   supportsReferenceImages: boolean;
   maxReferenceImages: number;
   aspectRatios: string[];
+  aspectRatiosByResolutionTier: Partial<Record<'1K' | '2K' | '4K' | 'CUSTOM', string[]>>;
   sizes: string[];
   qualities: string[];
-  defaults: { aspectRatio: string; size: string; quality: string };
+  resolutionTiers: Array<'1K' | '2K' | '4K' | 'CUSTOM'>;
+  supportsCustomSize: boolean;
+  defaults: {
+    aspectRatio: string;
+    size: string;
+    quality: string;
+    resolutionTier: '1K' | '2K' | '4K' | 'CUSTOM';
+  };
+  isDefault: boolean;
+  prices: Array<{
+    id?: string;
+    modelProfileKey: string;
+    resolutionTier: '1K' | '2K' | '4K' | 'CUSTOM';
+    credits: number;
+    enabled: boolean;
+  }>;
 };
 
 export type CreationGeneration = {
@@ -30,7 +51,15 @@ export type CreationBatch = {
   negativePrompt?: string;
   modelProfileId: string;
   modelProfileSnapshot: CreationModelProfile;
-  parameterSnapshot: { aspectRatio: string; size: string; quality: string; templateId?: string };
+  parameterSnapshot: {
+    aspectRatio: string;
+    resolutionTier?: '1K' | '2K' | '4K' | 'CUSTOM';
+    width?: number;
+    height?: number;
+    size?: string;
+    quality?: string;
+    templateId?: string;
+  };
   requestedCount: number;
   status: 'pending' | 'processing' | 'succeeded' | 'partial' | 'failed';
   creditsEstimate: number;

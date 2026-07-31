@@ -87,12 +87,25 @@ export function validateProviderPayload(body: Record<string, unknown>, partial =
     if (!Array.isArray(body.costRules)) throw new Error('成本规则格式无效');
     result.costRules = body.costRules.map((rule: Record<string, unknown>) => {
       const logicalModelKey = String(rule.logicalModelKey || '') as AiLogicalModelKey;
+      const remoteModel = String(rule.remoteModel || '').trim();
+      const resolutionTier = String(rule.resolutionTier || '').toUpperCase();
       const currency = String(rule.currency || '').trim().toUpperCase();
       const estimatedMicros = Math.trunc(Number(rule.estimatedMicros));
-      if (!LOGICAL_MODEL_KEYS.includes(logicalModelKey) || !/^[A-Z]{3,8}$/.test(currency) || estimatedMicros < 0) {
+      if (
+        !LOGICAL_MODEL_KEYS.includes(logicalModelKey)
+        || !/^[A-Z]{3,8}$/.test(currency)
+        || estimatedMicros < 0
+        || (resolutionTier && !['1K', '2K', '4K', 'CUSTOM'].includes(resolutionTier))
+      ) {
         throw new Error('成本规则无效');
       }
-      return { logicalModelKey, currency, estimatedMicros };
+      return {
+        logicalModelKey,
+        ...(remoteModel ? { remoteModel } : {}),
+        ...(resolutionTier ? { resolutionTier } : {}),
+        currency,
+        estimatedMicros,
+      };
     });
   }
   return result;

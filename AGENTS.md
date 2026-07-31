@@ -14,8 +14,8 @@ formal surveying, and AI-assisted design.
 - `蓝牙命令列表V1.docx` is the vendor protocol reference for the supported BLE
   laser distance meter's commands, response frames, system information, and
   device-status fields.
-- `PRODUCT_ROADMAP.md`, `docs/**/implementation_plan.md`, and old design notes are
-  historical/planning material, not proof that a feature is implemented.
+- Historical roadmaps, implementation plans, and old design notes are planning
+  material, not proof that a feature is implemented.
 - Feature status uses `Implemented`, `Limited`, or `Placeholder`. A label, mock
   response, or toast is not an implemented backend capability.
 

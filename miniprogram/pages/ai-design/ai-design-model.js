@@ -1,26 +1,26 @@
 const STAGE_DEFINITIONS = [
-  { key: 'concept', label: '初步构想' },
-  { key: 'space', label: '空间表达' },
-  { key: 'style', label: '风格定向' },
+  { key: 'baseline', label: '空间基准' },
+  { key: 'style', label: '风格方案' },
   { key: 'furnishing', label: '软装完善' },
+  { key: 'handoff', label: '提案深化' },
 ];
 
 const MODE_COPY = {
   reference_recreate: {
-    title: '从灵感开始',
+    title: '参考图复刻',
     description: '把喜欢的参考图带进真实空间',
   },
   style_transform: {
-    title: '试一种新风格',
-    description: '保留空间结构，探索新的材质与色彩',
+    title: '拍照换风格',
+    description: '上传当前空间照片，保留结构探索新的材质与色彩',
   },
   floor_plan_render: {
-    title: '生成 3D 户型导览图',
+    title: '户型生成',
     description: '根据正式量房墙图生成全屋 3D 剖切模型',
   },
   soft_furnishing: {
-    title: '继续软装完善',
-    description: '保留硬装，优化家具、灯具与陈设',
+    title: '软装搭配',
+    description: '上传现场图或已有成果，保留硬装并优化家具、灯具与陈设',
   },
 };
 
@@ -182,8 +182,14 @@ function modeAction(workflows, mode, overrides = {}) {
 }
 
 function buildSceneNavigation(workflows, mode = 'reference_recreate') {
+  const buttonLabels = {
+    reference_recreate: '上传参考图',
+    style_transform: '拍照开始',
+    floor_plan_render: '选择户型',
+    soft_furnishing: '上传空间图',
+  };
   const action = modeAction(workflows, mode, {
-    buttonLabel: mode === 'floor_plan_render' ? '选择真实户型' : '进入这个方向',
+    buttonLabel: buttonLabels[mode] || '开始设计',
   });
   return {
     ...action,
@@ -306,10 +312,10 @@ function buildPrimaryAction({ workflows, selectedSource, selectedWorkflow }) {
 
 function buildSecondaryActions(workflows, primaryAction) {
   const labels = {
-    reference_recreate: '看灵感',
-    style_transform: '试风格',
-    floor_plan_render: '生成全屋',
-    soft_furnishing: '做软装',
+    reference_recreate: '参考复刻',
+    style_transform: '拍照换风格',
+    floor_plan_render: '户型生成',
+    soft_furnishing: '软装搭配',
   };
   return (workflows || [])
     .filter((item) => item.key !== primaryAction.mode)

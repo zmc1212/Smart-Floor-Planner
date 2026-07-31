@@ -7,6 +7,7 @@ import { AiGeneration } from '../src/models/AiGeneration';
 import { AiStylePreset } from '../src/models/AiStylePreset';
 import { ensureDefaultAiCreditPrices } from '../src/lib/ai/credits';
 import { ensureEnvironmentAiProviders } from '../src/lib/ai/provider-registry';
+import { ensureGrsImageModelCatalog } from '../src/lib/ai/image-model-catalog';
 import { AI_ACTION_KEYS, actionKeyForGenerationType } from '../src/lib/ai/provider-types';
 
 loadEnvConfig(process.cwd());
@@ -18,6 +19,7 @@ async function main() {
   const legacyModeIndex = priceIndexes.find((index) => index.key?.mode === 1);
   if (legacyModeIndex?.name) await AiCreditPrice.collection.dropIndex(legacyModeIndex.name);
   await Promise.all([ensureDefaultAiCreditPrices(), ensureEnvironmentAiProviders()]);
+  await ensureGrsImageModelCatalog();
 
   const enterprises = await Enterprise.find().select('_id').lean();
   await Enterprise.updateMany(

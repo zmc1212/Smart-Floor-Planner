@@ -11,7 +11,13 @@ import {
 } from '@/lib/media-storage/config-service';
 import { syncSuccessfulGenerationToWorkflow } from '@/lib/ai/workflow-baseline';
 import { consumeHeldAiCredits, getAiCreditPrice, holdAiCredits, releaseHeldAiCredits } from '@/lib/ai/credits';
-import { getAiProviderAdapter, getProviderRuntimeById, listProviderRuntimes } from '@/lib/ai/provider-registry';
+import { getImageModelPrice } from '@/lib/ai/image-model-catalog';
+import {
+  getAiProviderAdapter,
+  getProviderRuntimeById,
+  listProviderRuntimes,
+  listProviderRuntimesByAdapter,
+} from '@/lib/ai/provider-registry';
 import { assertEnterpriseAiActionAllowed } from '@/lib/ai/enterprise-policy';
 import {
   AiProviderError,
@@ -33,8 +39,30 @@ function fingerprint(value: unknown) {
   return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
-function costEstimate(runtime: AiProviderRuntimeConfig, logicalModelKey: AiLogicalModelKey) {
-  const rule = runtime.costRules?.find((item) => item.logicalModelKey === logicalModelKey);
+export function resolveProviderCostEstimate(
+  runtime: AiProviderRuntimeConfig,
+  logicalModelKey: AiLogicalModelKey,
+  remoteModel?: string,
+  resolutionTier?: string
+) {
+  const rules = runtime.costRules || [];
+  const rule = rules.find((item) =>
+    item.logicalModelKey === logicalModelKey
+    && item.remoteModel === remoteModel
+    && item.resolutionTier === resolutionTier
+  ) || rules.find((item) =>
+    item.logicalModelKey === logicalModelKey
+    && item.remoteModel === remoteModel
+    && !item.resolutionTier
+  ) || rules.find((item) =>
+    item.logicalModelKey === logicalModelKey
+    && !item.remoteModel
+    && item.resolutionTier === resolutionTier
+  ) || rules.find((item) =>
+    item.logicalModelKey === logicalModelKey
+    && !item.remoteModel
+    && !item.resolutionTier
+  );
   return rule ? { currency: rule.currency, micros: rule.estimatedMicros } : undefined;
 }
 
@@ -47,9 +75,11 @@ async function createAttempt(input: {
   generationId?: mongoose.Types.ObjectId | string;
   runtime: AiProviderRuntimeConfig;
   logicalModelKey: AiLogicalModelKey;
+  remoteModel?: string;
+  resolutionTier?: string;
   payload: unknown;
 }) {
-  const remoteModel = input.runtime.modelMappings[input.logicalModelKey];
+  const remoteModel = input.remoteModel || input.runtime.modelMappings[input.logicalModelKey];
   if (!remoteModel) throw new Error(`供应商 ${input.runtime.name} 未配置逻辑模型 ${input.logicalModelKey}`);
   return AiProviderAttempt.create({
     enterpriseId: input.enterpriseId,
@@ -60,9 +90,10 @@ async function createAttempt(input: {
     capability: capabilityForLogicalModel(input.logicalModelKey),
     logicalModelKey: input.logicalModelKey,
     remoteModel,
+    resolutionTier: input.resolutionTier,
     status: 'created',
     accepted: false,
-    estimatedCost: costEstimate(input.runtime, input.logicalModelKey),
+    estimatedCost: resolveProviderCostEstimate(input.runtime, input.logicalModelKey, remoteModel, input.resolutionTier),
     requestFingerprint: fingerprint(input.payload),
   });
 }
@@ -127,7 +158,17 @@ export async function ensureGenerationCreditHold(generation: GenerationDocument,
   if (generation.billing?.status === 'held' || generation.billing?.status === 'consumed') return generation;
   const resolvedActionKey = actionKey || generation.actionKey || actionKeyForGenerationType(generation.type);
   await assertEnterpriseAiActionAllowed(generation.enterpriseId, resolvedActionKey);
-  const price = await getAiCreditPrice(resolvedActionKey);
+  const parameterSnapshot = generation.input?.creationParameterSnapshot as {
+    modelProfileKey?: string;
+    resolutionTier?: '1K' | '2K' | '4K' | 'CUSTOM';
+    remoteModel?: string;
+  } | undefined;
+  const modelPrice = resolvedActionKey === 'image.free_create'
+    && parameterSnapshot?.modelProfileKey
+    && parameterSnapshot?.resolutionTier
+    ? await getImageModelPrice(parameterSnapshot.modelProfileKey, parameterSnapshot.resolutionTier)
+    : undefined;
+  const price = modelPrice || await getAiCreditPrice(resolvedActionKey);
   const cycle = Number(generation.billing?.cycle ?? generation.retryCount ?? 0);
   const operationId = `${generation._id}:hold:${cycle}`;
   if (price.credits > 0) {
@@ -149,6 +190,9 @@ export async function ensureGenerationCreditHold(generation: GenerationDocument,
       actionKey: resolvedActionKey,
       label: price.label,
       credits: price.credits,
+      modelProfileKey: parameterSnapshot?.modelProfileKey,
+      remoteModel: parameterSnapshot?.remoteModel,
+      resolutionTier: parameterSnapshot?.resolutionTier,
       capturedAt: new Date(),
     },
     status: price.credits > 0 ? 'held' : 'consumed',
@@ -306,6 +350,11 @@ export async function executeGenerationImage(
   input: Omit<AiImageSubmitInput, 'model'> & {
     logicalModelKey?: 'image.generate.standard' | 'image.edit.standard';
     excludeProviderConfigIds?: string[];
+    modelOverride?: {
+      adapterType: 'grs';
+      remoteModel: string;
+      modelProfileKey: string;
+    };
   }
 ) {
   const logicalModelKey = input.logicalModelKey || (input.images?.length ? 'image.edit.standard' : 'image.generate.standard');
@@ -351,22 +400,35 @@ export async function executeGenerationImage(
     size: input.size,
     aspectRatio: input.aspectRatio,
     quality: input.quality,
+    resolutionTier: input.resolutionTier,
+    width: input.width,
+    height: input.height,
     user: input.user,
     images: resolvedImages,
   };
   generation.input.providerImages = imageRefs;
   generation.input.providerRequest = {
     logicalModelKey,
+    modelProfileKey: input.modelOverride?.modelProfileKey,
+    remoteModel: input.modelOverride?.remoteModel,
     prompt: input.prompt,
     negativePrompt: input.negativePrompt,
     size: input.size,
     aspectRatio: input.aspectRatio,
     quality: input.quality,
+    resolutionTier: input.resolutionTier,
+    width: input.width,
+    height: input.height,
     user: input.user,
     images: imageRefs,
   };
   await generation.save();
-  const runtimes = (await listProviderRuntimes(capabilityForLogicalModel(logicalModelKey), logicalModelKey))
+  const runtimes = (input.modelOverride
+    ? await listProviderRuntimesByAdapter(
+        capabilityForLogicalModel(logicalModelKey),
+        input.modelOverride.adapterType
+      )
+    : await listProviderRuntimes(capabilityForLogicalModel(logicalModelKey), logicalModelKey))
     .filter((runtime) => !excludedProviderIds.has(runtime.id));
   if (!runtimes.length) {
     await releaseGenerationCredits(generation, '没有已启用且支持该能力的 AI 供应商');
@@ -379,7 +441,7 @@ export async function executeGenerationImage(
 
   let lastError: unknown;
   for (const runtime of runtimes) {
-    const remoteModel = runtime.modelMappings[logicalModelKey];
+    const remoteModel = input.modelOverride?.remoteModel || runtime.modelMappings[logicalModelKey];
     if (!remoteModel) continue;
     const startedAt = Date.now();
     const attempt = await createAttempt({
@@ -387,6 +449,8 @@ export async function executeGenerationImage(
       generationId: generation._id,
       runtime,
       logicalModelKey,
+      remoteModel,
+      resolutionTier: input.resolutionTier,
       payload,
     });
     generation.provider = runtime.key;

@@ -1027,7 +1027,7 @@
   box-shadow: 0 8rpx 22rpx rgba(36, 42, 36, 0.12);
 }
 
-.scene-index {
+.scene-waypoint-icon {
   width: 58rpx;
   height: 58rpx;
   display: flex;
@@ -1046,9 +1046,13 @@
   box-sizing: border-box;
 }
 
-.scene-waypoint.active .scene-index {
+.scene-waypoint-icon image {
+  width: 30rpx;
+  height: 30rpx;
+}
+
+.scene-waypoint.active .scene-waypoint-icon {
   border-color: var(--brand-primary);
-  color: #07883a;
   box-shadow:
     0 0 0 5rpx rgba(255, 255, 255, 0.72),
     0 0 0 7rpx rgba(24, 185, 87, 0.16),

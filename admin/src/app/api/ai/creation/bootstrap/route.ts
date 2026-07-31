@@ -3,6 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { ensureAiCreditAccount, getAiCreditPrice, serializeAiCreditAccount } from '@/lib/ai/credits';
 import { ensureDefaultAiCreationModelProfiles, serializeCreationModelProfile } from '@/lib/ai/creation-service';
+import { listImageModelPrices, serializeImageModelPrice } from '@/lib/ai/image-model-catalog';
 import { listProviderRuntimes } from '@/lib/ai/provider-registry';
 import { AiWorkflow } from '@/models/AiWorkflow';
 import Lead from '@/models/Lead';
@@ -15,8 +16,11 @@ export async function GET(request: Request) {
     await dbConnect();
     return await withTenantRoute(request, { requireEnterprise: true }, async (context) => {
       const enterpriseId = String(context.enterpriseId);
-      const [profiles, account, price, generateProviders, editProviders, workflows, policy] = await Promise.all([
-        ensureDefaultAiCreationModelProfiles(),
+      const profilesPromise = ensureDefaultAiCreationModelProfiles();
+      const modelPricesPromise = profilesPromise.then(() => listImageModelPrices());
+      const [profiles, modelPrices, account, price, generateProviders, editProviders, workflows, policy] = await Promise.all([
+        profilesPromise,
+        modelPricesPromise,
         ensureAiCreditAccount(enterpriseId),
         getAiCreditPrice('image.free_create'),
         listProviderRuntimes('image.generate', 'image.generate.standard').catch(() => []),
@@ -42,7 +46,22 @@ export async function GET(request: Request) {
           models: profiles
             .filter((profile) => profile.enabled)
             .sort((a, b) => b.weight - a.weight || a.name.localeCompare(b.name))
-            .map(serializeCreationModelProfile),
+            .map((profile) => {
+              const enabledPrices = modelPrices
+                .filter((item) => item.enabled && item.modelProfileKey === profile.key);
+              const serialized = serializeCreationModelProfile(profile);
+              const defaultResolutionTier = enabledPrices.some(
+                (item) => item.resolutionTier === serialized.defaults.resolutionTier
+              )
+                ? serialized.defaults.resolutionTier
+                : enabledPrices[0]?.resolutionTier || serialized.defaults.resolutionTier;
+              return {
+                ...serialized,
+                resolutionTiers: enabledPrices.map((item) => item.resolutionTier),
+                defaults: { ...serialized.defaults, resolutionTier: defaultResolutionTier },
+                prices: enabledPrices.map(serializeImageModelPrice),
+              };
+            }),
           workflows: workflows.map((workflow) => {
             const lead = leadById.get(String(workflow.leadId));
             return {

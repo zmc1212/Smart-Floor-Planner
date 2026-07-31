@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import { Circle, Download, Highlighter, MousePointer2, Pencil, Redo2, Square, Undo2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 
@@ -211,7 +211,7 @@ export function ImageEditorDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl border-white/10 bg-[#17181d] p-6 text-white sm:rounded-2xl">
         <DialogHeader className="flex-row items-start justify-between pr-8">
-          <div><p className="text-[11px] tracking-[0.12em] text-[#9a9aa2]">IMAGE EDITOR</p><DialogTitle className="mt-1 text-xl">图片编辑</DialogTitle></div>
+          <div><p className="text-[11px] tracking-[0.12em] text-[#9a9aa2]">IMAGE EDITOR</p><DialogTitle className="mt-1 text-xl">图片编辑</DialogTitle><DialogDescription className="sr-only">使用标注工具编辑生成图片并保存为参考图。</DialogDescription></div>
         </DialogHeader>
         <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_220px] gap-4">
           <div className="min-w-0 rounded-2xl border border-white/10 bg-[#202126] p-3">

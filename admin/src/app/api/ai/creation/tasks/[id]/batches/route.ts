@@ -14,6 +14,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         referenceAssetIds?: string[];
         modelProfileId?: string;
         aspectRatio?: string;
+        resolutionTier?: '1K' | '2K' | '4K' | 'CUSTOM';
+        width?: number;
+        height?: number;
         size?: string;
         quality?: string;
         templateId?: string;
@@ -32,6 +35,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         modelProfileId: body.modelProfileId,
         parameters: {
           aspectRatio: body.aspectRatio,
+          resolutionTier: body.resolutionTier,
+          width: body.width,
+          height: body.height,
           size: body.size,
           quality: body.quality,
         },
