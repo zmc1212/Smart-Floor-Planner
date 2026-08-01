@@ -29,6 +29,7 @@
 - API：`/api/auth/login`、`/logout`、`/me`、`/miniprogram`、`/register-company`、`/register-enterprise`。
 - 模型/工具：PostgreSQL `AdminUserRepository`、`UserRepository`、`EnterpriseRepository`、会话/认证工具和 `miniprogram-jwt`。
 - 状态：后台登录/会话复核、企业自助注册、小程序员工登录/身份绑定、JWT/Cookie、账号状态复核和未授权跳转均已切换 PostgreSQL，为 `Implemented`。
+- 旧平台管理员恢复：`npm run migrate:legacy-admin-users` 会以幂等方式把 MongoDB 的平台级账号导入 PostgreSQL，保留 bcrypt 密码哈希、角色、账号状态和菜单权限，因此用户可继续使用原密码。带租户的旧账号会被刻意跳过，因为其 MongoDB ObjectId 租户引用必须先显式映射为 PostgreSQL bigint 企业 ID。
 - 用户审计页面：`/users`、`/users/[openid]`，由 `/api/users`、`/users/[openid]`、`/users/me` 支撑，已使用 PostgreSQL 查询和更新小程序身份，并返回 PostgreSQL 户型计数/导出列表。`Limited`：仍使用 MongoDB 的 AI 与商业工作流要等后续 Phase 3 域切换后才能消费 PostgreSQL bigint 身份。
 
 ### 2. 导航、角色与访问控制
@@ -132,6 +133,7 @@
 
 - API：提醒执行、通知列表/轮询、`/api/health`、`/api/debug`、`/api/debug/tenant-context`、`/api/internal/seed`。
 - 状态：提醒、浏览器轮询、通知日志、健康/调试、种子和 Docker/发布工具为 `Implemented`；内部密钥保护的 seed route 已改为幂等创建 PostgreSQL 初始平台管理员，必须显式配置至少 32 字符的 `INTERNAL_SECRET` 和至少 12 字符的 `INITIAL_ADMIN_PASSWORD`，不再保留源码默认凭据。接口仍需遵守对应角色和运行环境限制。
+- 运维恢复：PostgreSQL migration 已完成后，`npm run migrate:legacy-admin-users` 是导入旧 MongoDB 平台管理员身份的幂等运维命令。它绝不覆盖已有 PostgreSQL 账号，并会报告已存在、无效或租户级而被跳过的记录。
 - PostgreSQL 迁移基础层：PostgreSQL 17 Docker 服务、隔离的 `sfp_migrator`/`sfp_app`/`sfp_auditor` 角色、受限 `pg.Pool`、可审阅 Drizzle migration、备份/恢复演练、44 张 typed 目标表、外键与索引、租户数据强制 RLS、事务内租户/平台上下文，以及企业、部门、管理员、小程序用户、线索、正式户型、测量、设备、平台配置、提示词库、系统角色和媒体存储配置 typed Repository 均为 `Implemented`；恢复演练会核对表、RLS 表和策略数量。`/api/health` 继续以 MongoDB 为必需依赖并单独报告 PostgreSQL；只有 `POSTGRES_HEALTHCHECK_REQUIRED=true` 时 PostgreSQL 才参与健康门禁。Docker migration 通过 `npm run docker:migrate` 显式执行，长期运行的 admin 服务不注入 `DATABASE_MIGRATION_URL`。Docker 构建上下文排除运行时 `.env*`、本地 RoomiAI/导入资源、上传目录和本地数据库备份，这些资产必须在运行时注入或挂载。`Limited`：商业记录/工作流及 AI 生成/媒体仍使用 MongoDB，Phase 3 继续按域迁移。
 
 ## 核心模型

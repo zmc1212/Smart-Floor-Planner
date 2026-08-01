@@ -62,6 +62,12 @@ permission, or workflow changes.
 - Status: `Implemented` for PostgreSQL-backed admin login/session validation,
   enterprise self-registration, Mini Program staff login/identity binding,
   JWT/cookie handling, account-status revalidation, and unauthorized redirects.
+- Legacy platform-admin recovery: `npm run migrate:legacy-admin-users` imports
+  MongoDB platform accounts into PostgreSQL idempotently, preserving their
+  bcrypt password hashes, roles, account status, and menu permissions so users
+  keep their existing passwords. It deliberately skips tenant-scoped legacy
+  accounts because MongoDB ObjectId tenant references need an explicit mapping
+  to PostgreSQL bigint enterprise IDs.
 - User audit pages: `/users` and `/users/[openid]`, backed by `/api/users`,
   `/users/[openid]`, and `/users/me`, provide PostgreSQL Mini Program identity
   lookup/profile updates and PostgreSQL floor-plan counts/export lists.
@@ -539,6 +545,11 @@ permission, or workflow changes.
   32-plus-character `INTERNAL_SECRET` plus a 12-plus-character
   `INITIAL_ADMIN_PASSWORD`; no source-code credential fallback remains. These
   endpoints require their documented role or operational context.
+- Operational recovery: after PostgreSQL migrations are current,
+  `npm run migrate:legacy-admin-users` is the idempotent operator command for
+  importing legacy MongoDB platform-admin identities. It never overwrites a
+  PostgreSQL account and reports skipped existing, invalid, or tenant-scoped
+  records.
 - PostgreSQL migration foundation: `Implemented` for the PostgreSQL 17
   Docker service, isolated `sfp_migrator`/`sfp_app`/`sfp_auditor` roles,
   bounded `pg.Pool`, reviewable Drizzle migrations, backup/restore-drill

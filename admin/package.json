@@ -12,6 +12,7 @@
     "cleanup:legacy-floorplans": "npx tsx scripts/cleanup-legacy-floorplans.ts",
     "cleanup:media-assets": "npx tsx scripts/cleanup-media-assets.ts",
     "migrate:ai-platform": "npx tsx scripts/migrate-ai-platform.ts",
+    "migrate:legacy-admin-users": "npx tsx scripts/migrate-legacy-admin-users.ts",
     "migrate:media-assets": "npx tsx scripts/migrate-media-assets.ts",
     "import:roomi-prompts": "npx tsx scripts/import-roomi-prompts.ts",
     "verify:roomi-prompts": "npx tsx scripts/verify-roomi-prompts.ts",
