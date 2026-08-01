@@ -2,13 +2,14 @@ import { NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import dbConnect from '@/lib/mongodb';
-import { AdminUser, DEFAULT_PERMISSIONS } from '@/models/AdminUser';
+import { AdminUser } from '@/models/AdminUser';
 import { Enterprise } from '@/models/Enterprise';
 import { Department } from '@/models/Department';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withTenantRoute, resolveWritableEnterpriseId } from '@/lib/tenant-route';
 import { tenantStorage } from '@/lib/tenant-context';
 import { getPaginationParams, createPaginationMetadata } from '@/lib/pagination';
+import { getEffectivePermissions } from '@/lib/staff-access';
 
 interface StaffCreateBody {
   username: string;
@@ -160,12 +161,14 @@ export async function POST(request: Request) {
         }
 
         const passwordHash = await bcrypt.hash(password, 10);
+        const menuPermissions = await getEffectivePermissions(role);
         const staff = await AdminUser.create({
           username: username.trim(),
           passwordHash,
           displayName: displayName?.trim() || '',
           phone: phone?.trim() || '',
           role,
+          menuPermissions,
           enterpriseId: targetEnterpriseId,
           departmentId:
             departmentId && departmentId !== 'none' && mongoose.Types.ObjectId.isValid(departmentId)

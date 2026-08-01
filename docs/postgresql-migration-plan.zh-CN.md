@@ -4,10 +4,9 @@
 > 迁移到 PostgreSQL。任何新对话开始前，先读取本文档，再读取根目录
 > `AGENTS.md`、`admin/AGENTS.md`、`docs/admin-system-modules.md` 和其中文镜像。
 >
-> 最后核验日期：2026-07-31
+> 最后核验日期：2026-08-01
 > 当前分支：`dev-jr`
-> 当前阶段：`Phase 2 - PostgreSQL 目标 schema 与 Repository`（已完成）
-> 下一阶段：`Phase 3 - API/业务代码切换`（未开始）
+> 当前阶段：`Phase 3 - API/业务代码切换`（进行中）
 
 ## 1. 关键决策
 
@@ -146,7 +145,7 @@ RoomiAI 导入使用 [admin/scripts/import-roomi-prompts.ts](../admin/scripts/im
 | Phase 0.2 | 七牛配置、激活指针和加密字段核验 | 已完成 | 只读配置检查，未输出密钥 |
 | Phase 1 | PostgreSQL 实例、角色、连接池和 migration runner | 已完成 | Codex 自动验收与用户数据库健康/后台页面回归均通过 |
 | Phase 2 | PostgreSQL 目标 schema 和 Repository 基础层 | 已完成 | Codex 与用户验收已于 2026-08-01 通过 |
-| Phase 3 | API/业务代码从 Mongoose 切换到 PostgreSQL | 未开始 | 待补充按域完成记录 |
+| Phase 3 | API/业务代码从 Mongoose 切换到 PostgreSQL | 进行中 | 提示词库读取、系统角色、全局报备配置和媒体存储配置已切换，其余域待完成 |
 | Phase 4 | RoomiAI snapshot、预览资源和七牛配置导入 | 未开始 | 待补充导入日志、哈希和验收报告 |
 | Phase 5 | 管理端/小程序合同测试与切换演练 | 未开始 | 待补充测试报告和恢复演练 |
 | Phase 6 | 正式切换到 PostgreSQL | 未开始 | 待记录切换时间、版本和回滚窗口 |
@@ -387,6 +386,50 @@ Phase 2 用户手动验收清单：
 
 如需补充问题，请附失败步骤、命令/页面、实际现象和相关错误。Phase 2
 双重验收已完成，下一步进入 Phase 3。
+
+### Phase 3 进度记录（2026-08-01）
+
+- 提示词库只读路径已切换：分类、分页模板搜索、模板详情和预览资源查询
+  均通过平台范围 PostgreSQL 事务调用 `PromptLibraryRepository`。现有 API
+  DTO、route 路径和 `ai-scenarios` 权限边界保持不变；新建生成批次也通过
+  同一 PostgreSQL 读取路径解析所选模板和参数定义。
+- 新增 Repository 集成覆盖活动 revision、分类过滤、模板搜索/计数以及
+  参数模板、来源模型和预览资源关联查询。
+- 全局报备配置已通过 `PlatformConfigRepository` 读写
+  `platform_configs`；`super_admin`/`admin` route 角色和响应 DTO 不变。
+  Repository 集成覆盖确认更新报备 JSON 不会覆盖相邻的媒体存储 JSON。
+- 使用现有本地开发服务和五分钟有效的本地管理员 JWT，已认证
+  `GET /api/platform/promotion-config` 返回 HTTP 200 和规范化的
+  PostgreSQL/默认 DTO；未认证迁移 route 返回 HTTP 401。本次运行时检查
+  未写入配置。
+- 媒体配置 CRUD、加密凭证读取、连通测试状态、归档、默认 Provider 和 GRS
+  转存指针已切换到 `MediaStorageConfigRepository` 和
+  `PlatformConfigRepository`。七牛网络探针保持在事务外，结果通过
+  `updatedAt` 乐观条件回写。`0005_fat_joseph.sql` 将单列状态索引替换为
+  匹配列表排序的 `(status, created_at)` 复合索引。资产统计仍读取 MongoDB
+  `MediaAsset`；旧 Mongo 管理员身份替换前 bigint 审计字段保持 `NULL`。
+- 系统角色列表、幂等默认初始化、权限更新、后台/小程序登录有效权限解析和
+  管理员列表权限映射已切换到 `SystemRoleRepository`。角色 handler 内独立
+  强制平台 `super_admin`/`admin` 边界；管理员认证 GET 返回 200、7 个角色和
+  字符串 ID，无效及 `viewer` bearer token 分别返回 401、403。管理员/员工
+  账号本身在本切片仍由 MongoDB 提供。临时角色 PATCH 返回 200、更新后的
+  菜单权限和字符串 ID；随后按精确 role key 删除，复查匹配行数为 0。
+- `npm run test:postgresql` 15/15、`npm run test:ai` 106/106 通过；定向 ESLint、
+  生产 build、Docker admin 镜像构建和连续两次 `npm run docker:migrate` 通过。
+  受限 `sfp_app` 直接执行 migration 被 PostgreSQL `42501` 按预期拒绝。
+- RoomiAI 导入脚本、生成任务持久化/模型档案同步、管理员、企业、部门、
+  小程序身份和后续业务域仍需继续完成 Phase 3。
+- 本切片未导入生产 PostgreSQL 数据、未删除 MongoDB 文档或七牛对象，也未
+  重加密或输出密钥。仅在精确前缀核对后删除 1 条 `phase3-api-*` 已归档 API
+  测试记录，立即复查匹配行数为 0。
+
+Phase 3 验收状态：
+
+| 验收项 | 负责人 | 状态 | 日期 | 证据/问题 |
+| --- | --- | --- | --- | --- |
+| 提示词库/角色/配置 API、Repository 集成测试、lint/build | Codex | 通过 | 2026-08-01 | PostgreSQL 15/15、AI 106/106；定向 ESLint/build；迁移 API 认证检查 200/401/403 |
+| 提示词库主流程手测 | 用户 | 待验证 | - | 需要 Phase 4 导入活动 PostgreSQL prompt revision 后执行 |
+| 登录、授权、租户与相邻 AI 回归 | 用户 | 待验证 | - | 其余 Phase 3 切片完成后重复执行 |
 
 ### Phase 3 - 业务代码切换
 

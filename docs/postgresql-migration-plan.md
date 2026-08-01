@@ -5,11 +5,10 @@
 > read this document together with the repository `AGENTS.md`, `admin/AGENTS.md`,
 > `docs/admin-system-modules.md`, and its Chinese mirror.
 >
-> Last verified: 2026-07-31
+> Last verified: 2026-08-01
 > Current branch: `dev-jr`
-> Current phase: `Phase 2 - PostgreSQL target schema and Repositories` (complete)
-> Next phase: `Phase 3 - Mongoose-to-PostgreSQL application switch`
-> (not started)
+> Current phase: `Phase 3 - Mongoose-to-PostgreSQL application switch`
+> (in progress)
 
 ## 1. Decisions
 
@@ -95,7 +94,7 @@ and `cancelled`.
 | Phase 0.2 | Qiniu configuration and encrypted-field verification | complete | Read-only inspection; no secrets logged |
 | Phase 1 | PostgreSQL instance, roles, pooling, migration runner | complete | Codex verification and user database-health/admin-page regression passed |
 | Phase 2 | PostgreSQL schema and Repository foundation | complete | Codex and user acceptance passed on 2026-08-01 |
-| Phase 3 | Mongoose-to-PostgreSQL application switch | not started | Pending |
+| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Prompt-library reads, system roles, global promotion config, and media-storage config switched; remaining domains pending |
 | Phase 4 | RoomiAI files/data and Qiniu configuration import | not started | Pending |
 | Phase 5 | Contract tests and cutover rehearsal | not started | Pending |
 | Phase 6 | Production PostgreSQL cutover | not started | Pending |
@@ -319,6 +318,60 @@ Phase 2 user checklist:
 Report `Phase 2 manual test: passed`, or include the failed step, command/page,
 observed result, and relevant error. Phase 3 must not start until this acceptance
 is recorded.
+
+### Phase 3 progress record (2026-08-01)
+
+- The prompt-library read path now uses `PromptLibraryRepository` inside a
+  platform-scoped PostgreSQL transaction for categories, paginated template
+  search, template detail, and preview-asset lookup. The existing API DTOs,
+  route paths, and `ai-scenarios` authorization boundary are unchanged. New
+  generation batches resolve their selected prompt template and parameter
+  definition through the same PostgreSQL read path.
+- Added Repository coverage verifies active revision lookup, category filtering,
+  template search/count, and related parameter/model/preview records.
+- Global promotion configuration now reads/writes `platform_configs` through
+  `PlatformConfigRepository`; `super_admin`/`admin` route roles and response DTOs
+  are unchanged. Repository coverage verifies that updating promotion JSON does
+  not overwrite the adjacent media-storage JSON section.
+- With the existing local dev server and a five-minute locally signed admin JWT,
+  authenticated `GET /api/platform/promotion-config` returned HTTP 200 and the
+  normalized PostgreSQL/default DTO. Unauthenticated migrated routes returned
+  HTTP 401. This runtime check performed no configuration write.
+- Media-storage configuration CRUD, encrypted credential reads, connectivity-test
+  state, archival, active-provider selection, and the GRS persistence pointer now
+  use `MediaStorageConfigRepository` and `PlatformConfigRepository`. Qiniu probes
+  remain outside transactions and use an `updatedAt` optimistic write-back. The
+  `0005_fat_joseph.sql` migration replaces the single-column status index with
+  `(status, created_at)` to match list ordering. MongoDB `MediaAsset` still backs
+  asset statistics, and bigint audit fields remain `NULL` until MongoDB admin
+  identities are replaced.
+- System-role listing, idempotent default seeding, permission updates, effective
+  permission resolution for Admin/Mini Program login, and admin-list permission
+  mapping now use `SystemRoleRepository`. The role handler independently enforces
+  platform `super_admin`/`admin` access; an authenticated admin GET returned 200
+  with seven roles and string IDs, while invalid and viewer bearer tokens returned
+  401 and 403. A temporary-role PATCH returned 200 with the updated menu keys and
+  string ID; the exact test role was then deleted and a follow-up query returned
+  zero rows. MongoDB admin/staff documents remain the account source in this slice.
+- `npm run test:postgresql` passes 15/15 and `npm run test:ai` passes 106/106.
+  Targeted ESLint, the production build, Docker admin image build, and two
+  consecutive `npm run docker:migrate` runs passed. Direct migration through the
+  restricted `sfp_app` role was rejected with PostgreSQL `42501` as intended.
+- The RoomiAI import script, generation task persistence/model-profile
+  synchronization, administrators, enterprises, departments, Mini Program
+  identities, and all later business domains still require Phase 3 work.
+- No MongoDB documents, PostgreSQL production rows, Qiniu objects, or secrets
+  were imported, re-encrypted, or logged in this slice. One API-test-only archived
+  row with a `phase3-api-*` key was deleted after an exact prefix check; the
+  immediate follow-up query returned zero matching rows.
+
+Phase 3 acceptance status:
+
+| Acceptance item | Owner | Status | Date | Evidence/issues |
+| --- | --- | --- | --- | --- |
+| Prompt-library/role/config APIs, Repository integration tests, lint/build | Codex | passed | 2026-08-01 | 15/15 PostgreSQL and 106/106 AI tests; targeted ESLint/build; migrated API auth checks 200/401/403 |
+| Prompt-library primary-flow manual test | User | pending | - | Requires an active PostgreSQL prompt revision after the Phase 4 import |
+| Login, authorization, tenant, and adjacent AI regression | User | pending | - | Must be repeated after the remaining Phase 3 slices |
 
 ## 6. Rollback
 

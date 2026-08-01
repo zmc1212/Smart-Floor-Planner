@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { AdminUser } from '@/models/AdminUser';
 import bcrypt from 'bcryptjs';
+import { getEffectivePermissions } from '@/lib/staff-access';
 
 export async function POST(req: NextRequest) {
   // 安全校验：仅允许携带正确密钥的内部请求
@@ -18,6 +19,7 @@ export async function POST(req: NextRequest) {
     const exists = await AdminUser.findOne({ username: 'admin' });
     if (!exists) {
       const hash = await bcrypt.hash('admin123', 10);
+      const menuPermissions = await getEffectivePermissions('super_admin');
       
       // 注意：AdminUser 模型中定义了 pre-save hook 会自动填充 super_admin 的权限
       await AdminUser.create({
@@ -25,6 +27,7 @@ export async function POST(req: NextRequest) {
         passwordHash: hash,
         displayName: '系统管理员',
         role: 'super_admin',
+        menuPermissions,
         status: 'active',
       });
       
@@ -38,11 +41,11 @@ export async function POST(req: NextRequest) {
         message: '✔️ 账号已存在，无需初始化' 
       });
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Seed API Error]:', error);
     return NextResponse.json({ 
       success: false, 
-      error: error.message 
+      error: error instanceof Error ? error.message : 'Unknown error',
     }, { status: 500 });
   }
 }

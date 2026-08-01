@@ -1,5 +1,4 @@
 import mongoose, { Document, Model, Schema } from 'mongoose';
-import { SystemRole } from './SystemRole';
 import { multiTenantPlugin, TenantPluginOptions } from '../lib/mongoose-tenant-plugin';
 
 export type AdminRole =
@@ -182,21 +181,9 @@ const AdminUserSchema: Schema<IAdminUser> = new Schema(
 );
 
 // Pre-save hook to set default permissions if empty
-AdminUserSchema.pre('save', async function () {
+AdminUserSchema.pre('save', function () {
   if (this.isNew && (!this.menuPermissions || this.menuPermissions.length === 0)) {
-    try {
-      // Try to find custom role config in DB
-      const roleConfig = await SystemRole.findOne({ roleKey: this.role });
-      if (roleConfig) {
-        this.menuPermissions = roleConfig.menuKeys;
-      } else {
-        // Fallback to hardcoded defaults
-        this.menuPermissions = DEFAULT_PERMISSIONS[this.role] || [];
-      }
-    } catch (err) {
-      console.error('Failed to fetch default permissions for role:', this.role, err);
-      this.menuPermissions = DEFAULT_PERMISSIONS[this.role] || [];
-    }
+    this.menuPermissions = DEFAULT_PERMISSIONS[this.role] || [];
   }
 });
 

@@ -1,4 +1,5 @@
-import { PlatformConfig } from '@/models/PlatformConfig';
+import { PlatformConfigRepository } from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
 
 export const DEFAULT_PLATFORM_PROMOTION_CONFIG = {
   protectionPeriodDays: 30,
@@ -36,26 +37,27 @@ export function normalizePlatformPromotionConfig(
 }
 
 export async function getPlatformPromotionConfig(): Promise<PlatformPromotionConfig> {
-  const doc = await PlatformConfig.findOne({ key: 'default' }).lean();
-  return normalizePlatformPromotionConfig(doc?.promotionConfig as PromotionConfigInput | undefined);
+  return withPlatformTransaction(async (transaction) => {
+    const config = await new PlatformConfigRepository(transaction).findByKey(
+      'default'
+    );
+    return normalizePlatformPromotionConfig(
+      config?.promotionConfig as PromotionConfigInput | undefined
+    );
+  });
 }
 
 export async function savePlatformPromotionConfig(input?: PromotionConfigInput | null) {
   const normalized = normalizePlatformPromotionConfig(input);
-  await PlatformConfig.findOneAndUpdate(
-    { key: 'default' },
-    {
-      $set: {
-        key: 'default',
-        promotionConfig: {
-          protectionPeriodDays: normalized.protectionPeriodDays,
-          protectionExtendDays: normalized.protectionExtendDays,
-          maxProtectionExtends: normalized.maxProtectionExtends,
-          poolClaimRequiresApproval: normalized.poolClaimRequiresApproval,
-        },
+  await withPlatformTransaction((transaction) =>
+    new PlatformConfigRepository(transaction).upsert('default', {
+      promotionConfig: {
+        protectionPeriodDays: normalized.protectionPeriodDays,
+        protectionExtendDays: normalized.protectionExtendDays,
+        maxProtectionExtends: normalized.maxProtectionExtends,
+        poolClaimRequiresApproval: normalized.poolClaimRequiresApproval,
       },
-    },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
+    })
   );
   return normalized;
 }

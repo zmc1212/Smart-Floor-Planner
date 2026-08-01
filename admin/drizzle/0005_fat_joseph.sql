@@ -1,0 +1,2 @@
+DROP INDEX "app"."media_storage_configs_status_idx";--> statement-breakpoint
+CREATE INDEX "media_storage_configs_status_created_idx" ON "app"."media_storage_configs" USING btree ("status","created_at");

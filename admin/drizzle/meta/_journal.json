@@ -36,6 +36,13 @@
       "when": 1785513075270,
       "tag": "0004_first_joseph",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785517107437,
+      "tag": "0005_fat_joseph",
+      "breakpoints": true
     }
   ]
 }

@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
+import type { QueryFilter } from 'mongoose';
 export const dynamic = 'force-dynamic';
 import bcrypt from 'bcryptjs';
 import dbConnect from '@/lib/mongodb';
-import { AdminUser, DEFAULT_PERMISSIONS } from '@/models/AdminUser';
-import { SystemRole } from '@/models/SystemRole';
+import { AdminUser, DEFAULT_PERMISSIONS, type IAdminUser } from '@/models/AdminUser';
+import {
+  getEffectivePermissions,
+  getRolePermissionMap,
+} from '@/lib/staff-access';
 
 // GET /api/admin-users — List all admin users (with optional search)
 export async function GET(request: Request) {
@@ -13,7 +17,7 @@ export async function GET(request: Request) {
     const search = searchParams.get('search') || '';
 
     // Filter for System Roles + Enterprise Owners
-    let filter: any = {
+    const filter: QueryFilter<IAdminUser> = {
       role: { $in: ['super_admin', 'admin', 'viewer', 'enterprise_admin', 'salesperson'] }
     };
     
@@ -29,22 +33,20 @@ export async function GET(request: Request) {
       .select('-passwordHash') // Never expose password hash
       .sort({ createdAt: -1 });
 
-    const roles = await SystemRole.find().lean();
-    const roleMap = roles.reduce((acc: any, role) => {
-      acc[role.roleKey] = Array.from(role.menuKeys || []);
-      return acc;
-    }, {});
+    const roleMap = await getRolePermissionMap();
 
     // Attach effective permissions for each admin
     const data = admins.map((admin) => {
       const a = admin.toObject();
-      const effectivePermissions = roleMap[a.role] || DEFAULT_PERMISSIONS[a.role] || [];
+      const effectivePermissions =
+        roleMap[a.role] || DEFAULT_PERMISSIONS[a.role] || [];
       return { ...a, effectivePermissions };
     });
 
     return NextResponse.json({ success: true, data });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
 
@@ -114,6 +116,10 @@ export async function POST(request: Request) {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
+    const effectivePermissions =
+      menuPermissions && menuPermissions.length > 0
+        ? menuPermissions
+        : await getEffectivePermissions(targetRole);
 
     // Enforce salesperson enterprise restriction
     let finalEnterpriseId = enterpriseId;
@@ -128,21 +134,25 @@ export async function POST(request: Request) {
       phone: trimmedPhone,
       role: targetRole,
       enterpriseId: finalEnterpriseId,
-      menuPermissions: menuPermissions && menuPermissions.length > 0 
-        ? menuPermissions 
-        : undefined, // Let pre-save hook handle DB-driven defaults
+      menuPermissions: effectivePermissions,
     });
 
     // Return without passwordHash
-    const { passwordHash: _, ...result } = admin.toObject();
+    const result = admin.toObject() as unknown as Record<string, unknown>;
+    delete result.passwordHash;
 
     return NextResponse.json({ success: true, data: result }, { status: 201 });
-  } catch (error: any) {
-    if (error.code === 11000) {
-      const dupKey = Object.keys(error.keyPattern || {})[0];
+  } catch (error: unknown) {
+    const details =
+      error && typeof error === 'object'
+        ? (error as { code?: unknown; keyPattern?: Record<string, unknown> })
+        : {};
+    if (details.code === 11000) {
+      const dupKey = Object.keys(details.keyPattern || {})[0];
       const msg = dupKey === 'phone' ? '该手机号已被其他账号使用' : '用户名已存在';
       return NextResponse.json({ success: false, error: msg }, { status: 400 });
     }
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

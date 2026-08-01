@@ -1,5 +1,10 @@
 import crypto from 'node:crypto';
-import mongoose from 'mongoose';
+import {
+  MediaStorageConfigRepository,
+  PlatformConfigRepository,
+  type MediaStorageConfigRecord,
+} from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
 import {
   decryptMediaStorageSecret,
   encryptMediaStorageSecret,
@@ -7,8 +12,6 @@ import {
   maskSecret,
 } from '@/lib/crypto';
 import { MediaAsset } from '@/models/MediaAsset';
-import { MediaStorageConfig, type IMediaStorageConfig } from '@/models/MediaStorageConfig';
-import { PlatformConfig } from '@/models/PlatformConfig';
 import {
   getMediaStorageProvider,
   invalidateActiveMediaStorageCache,
@@ -40,6 +43,35 @@ export type MediaStorageAssetStats = {
   totalCount: number;
   totalBytes: number;
 };
+
+type MediaStorageConfigLike = Pick<
+  MediaStorageConfigRecord,
+  'bucket' | 'region' | 'domain' | 'objectPrefix'
+>;
+
+type PlatformMediaStorageState = {
+  activeProviderKey?: string;
+  activatedAt?: string | Date;
+  activatedBy?: string;
+  persistGrsAiOutputs?: boolean;
+};
+
+function parseConfigId(value: string) {
+  if (!/^[1-9]\d*$/.test(value)) {
+    throw new Error('媒体存储配置不存在');
+  }
+  return BigInt(value);
+}
+
+function parseActorId(value?: string) {
+  if (!value || !/^[1-9]\d*$/.test(value)) return null;
+  return BigInt(value);
+}
+
+function platformMediaStorageState(value: unknown): PlatformMediaStorageState {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as PlatformMediaStorageState;
+}
 
 function requiredText(value: unknown, label: string) {
   const text = String(value || '').trim();
@@ -122,7 +154,7 @@ export function validateNewMediaStorageConfigPayload(payload: MediaStorageConfig
 }
 
 export function hasCriticalMediaStorageConfigChange(
-  current: Pick<IMediaStorageConfig, 'bucket' | 'region' | 'domain' | 'objectPrefix'>,
+  current: MediaStorageConfigLike,
   payload: MediaStorageConfigPayload
 ) {
   const nextBucket = payload.bucket === undefined ? current.bucket : requiredText(payload.bucket, 'Bucket');
@@ -140,7 +172,7 @@ export function hasCriticalMediaStorageConfigChange(
 }
 
 export function assertMediaStorageConfigCanActivate(
-  config: Pick<IMediaStorageConfig, 'status' | 'lastTestOk'>
+  config: Pick<MediaStorageConfigRecord, 'status' | 'lastTestOk'>
 ) {
   if (config.status !== 'active') throw new Error('已归档配置不能设为默认');
   if (config.lastTestOk !== true) throw new Error('请先通过完整连通测试再设为默认');
@@ -160,12 +192,12 @@ export function safeMediaStorageError(error: unknown) {
     .slice(0, 500);
 }
 
-export function serializeMediaStorageConfig(config: IMediaStorageConfig | Record<string, unknown>) {
-  const value = typeof (config as IMediaStorageConfig).toObject === 'function'
-    ? (config as IMediaStorageConfig).toObject()
-    : config;
+export function serializeMediaStorageConfig(
+  config: MediaStorageConfigRecord | Record<string, unknown>
+) {
+  const value = config as unknown as Record<string, unknown>;
   return {
-    id: String(value._id || ''),
+    id: String(value.id || value._id || ''),
     key: String(value.key || ''),
     name: String(value.name || ''),
     driver: String(value.driver || ''),
@@ -190,19 +222,23 @@ export async function createMediaStorageConfig(
   actorId?: string
 ) {
   const validated = validateNewMediaStorageConfigPayload(payload);
-  const config = await MediaStorageConfig.create({
-    key: validated.key,
-    name: validated.name,
-    driver: validated.driver,
-    ...secretFields(validated.accessKey, validated.secretKey),
-    bucket: validated.bucket,
-    region: validated.region,
-    domain: validated.domain,
-    objectPrefix: validated.objectPrefix,
-    status: 'active',
-    lastTestMessage: '尚未执行连通测试',
-    createdBy: actorId,
-    updatedBy: actorId,
+  const actor = parseActorId(actorId);
+  const config = await withPlatformTransaction((transaction) => {
+    const repository = new MediaStorageConfigRepository(transaction);
+    return repository.create({
+      key: validated.key,
+      name: validated.name,
+      driver: validated.driver,
+      ...secretFields(validated.accessKey, validated.secretKey),
+      bucket: validated.bucket,
+      region: validated.region,
+      domain: validated.domain,
+      objectPrefix: validated.objectPrefix,
+      status: 'active',
+      lastTestMessage: '尚未执行连通测试',
+      createdBy: actor,
+      updatedBy: actor,
+    });
   });
   invalidateMediaStorageProviderCache(config.key);
   return config;
@@ -213,44 +249,51 @@ export async function updateMediaStorageConfig(
   payload: MediaStorageConfigPayload,
   actorId?: string
 ) {
-  const config = await MediaStorageConfig.findById(id)
-    .select('+accessKeyEncrypted +secretKeyEncrypted');
+  const configId = parseConfigId(id);
+  const config = await withPlatformTransaction(async (transaction) => {
+    const repository = new MediaStorageConfigRepository(transaction);
+    const current = await repository.findByIdForUpdate(configId);
+    if (!current) throw new Error('媒体存储配置不存在');
+    if (current.status === 'archived') throw new Error('已归档配置不能编辑');
+
+    const nextName = payload.name === undefined ? current.name : requiredText(payload.name, '名称');
+    const nextBucket = payload.bucket === undefined ? current.bucket : requiredText(payload.bucket, 'Bucket');
+    const nextRegion = payload.region === undefined ? current.region : normalizedRegion(payload.region);
+    const nextDomain = payload.domain === undefined ? current.domain : normalizedDomain(payload.domain);
+    const nextObjectPrefix = payload.objectPrefix === undefined
+      ? current.objectPrefix
+      : normalizeMediaStorageObjectPrefix(payload.objectPrefix);
+    const accessKey = String(payload.accessKey || '').trim();
+    const secretKey = String(payload.secretKey || '').trim();
+    const criticalChanged = hasCriticalMediaStorageConfigChange(current, payload);
+    const actor = parseActorId(actorId);
+
+    const values: Parameters<typeof repository.update>[1] = {
+      name: nextName,
+      bucket: nextBucket,
+      region: nextRegion,
+      domain: nextDomain,
+      objectPrefix: nextObjectPrefix,
+      updatedBy: actor ?? current.updatedBy,
+    };
+    if (accessKey) {
+      if (!isMediaStorageEncryptionReady()) throw new Error('生产环境必须配置 MEDIA_STORAGE_KEY_ENCRYPTION_SECRET');
+      values.accessKeyEncrypted = encryptMediaStorageSecret(accessKey);
+      values.accessKeyMasked = maskSecret(accessKey);
+    }
+    if (secretKey) {
+      if (!isMediaStorageEncryptionReady()) throw new Error('生产环境必须配置 MEDIA_STORAGE_KEY_ENCRYPTION_SECRET');
+      values.secretKeyEncrypted = encryptMediaStorageSecret(secretKey);
+      values.secretKeyMasked = maskSecret(secretKey);
+    }
+    if (criticalChanged) {
+      values.lastTestOk = null;
+      values.lastTestedAt = null;
+      values.lastTestMessage = TEST_CHANGED_MESSAGE;
+    }
+    return repository.update(configId, values);
+  });
   if (!config) throw new Error('媒体存储配置不存在');
-  if (config.status === 'archived') throw new Error('已归档配置不能编辑');
-
-  const nextName = payload.name === undefined ? config.name : requiredText(payload.name, '名称');
-  const nextBucket = payload.bucket === undefined ? config.bucket : requiredText(payload.bucket, 'Bucket');
-  const nextRegion = payload.region === undefined ? config.region : normalizedRegion(payload.region);
-  const nextDomain = payload.domain === undefined ? config.domain : normalizedDomain(payload.domain);
-  const nextObjectPrefix = payload.objectPrefix === undefined
-    ? config.objectPrefix
-    : normalizeMediaStorageObjectPrefix(payload.objectPrefix);
-  const accessKey = String(payload.accessKey || '').trim();
-  const secretKey = String(payload.secretKey || '').trim();
-  const criticalChanged = hasCriticalMediaStorageConfigChange(config, payload);
-
-  config.name = nextName;
-  config.bucket = nextBucket;
-  config.region = nextRegion;
-  config.domain = nextDomain;
-  config.objectPrefix = nextObjectPrefix;
-  if (accessKey) {
-    if (!isMediaStorageEncryptionReady()) throw new Error('生产环境必须配置 MEDIA_STORAGE_KEY_ENCRYPTION_SECRET');
-    config.accessKeyEncrypted = encryptMediaStorageSecret(accessKey);
-    config.accessKeyMasked = maskSecret(accessKey);
-  }
-  if (secretKey) {
-    if (!isMediaStorageEncryptionReady()) throw new Error('生产环境必须配置 MEDIA_STORAGE_KEY_ENCRYPTION_SECRET');
-    config.secretKeyEncrypted = encryptMediaStorageSecret(secretKey);
-    config.secretKeyMasked = maskSecret(secretKey);
-  }
-  config.updatedBy = actorId ? new mongoose.Types.ObjectId(actorId) : config.updatedBy;
-  if (criticalChanged) {
-    config.lastTestOk = undefined;
-    config.lastTestedAt = undefined;
-    config.lastTestMessage = TEST_CHANGED_MESSAGE;
-  }
-  await config.save();
   invalidateMediaStorageProviderCache(config.key);
   return config;
 }
@@ -272,42 +315,75 @@ export function assertGrsAiOutputPersistenceCanUseProvider(activeProviderKey: st
 }
 
 export async function getGrsAiOutputPersistenceEnabled() {
-  const config = await PlatformConfig.findOne({ key: 'default' })
-    .select('mediaStorage.persistGrsAiOutputs')
-    .lean();
-  return config?.mediaStorage?.persistGrsAiOutputs === true;
+  return withPlatformTransaction(async (transaction) => {
+    const config = await new PlatformConfigRepository(transaction).findByKey(
+      'default'
+    );
+    return platformMediaStorageState(
+      config?.mediaStorage
+    ).persistGrsAiOutputs === true;
+  });
+}
+
+export function listMediaStorageConfigs() {
+  return withPlatformTransaction((transaction) =>
+    new MediaStorageConfigRepository(transaction).list()
+  );
+}
+
+export function findMediaStorageConfigById(id: string) {
+  const configId = parseConfigId(id);
+  return withPlatformTransaction((transaction) =>
+    new MediaStorageConfigRepository(transaction).findById(configId)
+  );
+}
+
+export function getPlatformMediaStorageState() {
+  return withPlatformTransaction(async (transaction) => {
+    const config = await new PlatformConfigRepository(transaction).findByKey(
+      'default'
+    );
+    return platformMediaStorageState(config?.mediaStorage);
+  });
 }
 
 export async function updateGrsAiOutputPersistence(enabled: boolean, actorId?: string) {
-  void actorId;
-  const current = await PlatformConfig.findOne({ key: 'default' })
-    .select('mediaStorage.activeProviderKey')
-    .lean();
-  const activeProviderKey = normalizeMediaStorageProviderKey(
-    current?.mediaStorage?.activeProviderKey || process.env.MEDIA_STORAGE_PROVIDER || 'local'
-  );
+  return withPlatformTransaction(async (transaction) => {
+    const platformRepository = new PlatformConfigRepository(transaction);
+    const mediaRepository = new MediaStorageConfigRepository(transaction);
+    const current = await platformRepository.ensureForUpdate('default');
+    const mediaStorage = platformMediaStorageState(current.mediaStorage);
+    const activeProviderKey = normalizeMediaStorageProviderKey(
+      mediaStorage.activeProviderKey ||
+        process.env.MEDIA_STORAGE_PROVIDER ||
+        'local'
+    );
 
-  if (enabled) {
-    assertGrsAiOutputPersistenceCanUseProvider(activeProviderKey);
-    const config = await MediaStorageConfig.findOne({ key: activeProviderKey })
-      .select('driver status lastTestOk')
-      .lean();
-    if (!config || config.status !== 'active' || config.driver !== 'qiniu' || config.lastTestOk !== true) {
-      throw new Error('当前默认存储不是可用的七牛云配置，不能接管 GRS 结果图');
+    if (enabled) {
+      assertGrsAiOutputPersistenceCanUseProvider(activeProviderKey);
+      const config = await mediaRepository.findByKeyForUpdate(
+        activeProviderKey
+      );
+      if (
+        !config ||
+        config.status !== 'active' ||
+        config.driver !== 'qiniu' ||
+        config.lastTestOk !== true
+      ) {
+        throw new Error('当前默认存储不是可用的七牛云配置，不能接管 GRS 结果图');
+      }
     }
-  }
 
-  await PlatformConfig.findOneAndUpdate(
-    { key: 'default' },
-    {
-      $set: {
-        'mediaStorage.persistGrsAiOutputs': enabled,
+    const actor = parseActorId(actorId);
+    await platformRepository.update('default', {
+      mediaStorage: {
+        ...mediaStorage,
+        persistGrsAiOutputs: enabled,
+        ...(actor ? { activatedBy: String(actor) } : {}),
       },
-      $setOnInsert: { key: 'default' },
-    },
-    { upsert: true, returnDocument: 'after', runValidators: true }
-  );
-  return { enabled, activeProviderKey };
+    });
+    return { enabled, activeProviderKey };
+  });
 }
 
 export async function getMediaStorageAssetStats() {
@@ -397,71 +473,91 @@ export async function testMediaStorageProvider(providerKey: string) {
 }
 
 export async function testAndRecordMediaStorageConfig(id: string) {
-  const config = await MediaStorageConfig.findById(id);
+  const configId = parseConfigId(id);
+  const config = await withPlatformTransaction((transaction) =>
+    new MediaStorageConfigRepository(transaction).findById(configId)
+  );
   if (!config) throw new Error('媒体存储配置不存在');
   if (config.status === 'archived') throw new Error('已归档配置不能执行连通测试');
 
+  let result: Awaited<ReturnType<typeof testMediaStorageProvider>> | null = null;
+  let failureMessage: string | null = null;
   try {
-    const result = await testMediaStorageProvider(config.key);
-    config.lastTestedAt = new Date();
-    config.lastTestOk = true;
-    config.lastTestMessage = result.message;
-    await config.save();
-    return result;
+    result = await testMediaStorageProvider(config.key);
   } catch (error) {
-    const message = safeMediaStorageError(error);
-    config.lastTestedAt = new Date();
-    config.lastTestOk = false;
-    config.lastTestMessage = message;
-    await config.save();
-    throw new Error(message);
-  } finally {
-    invalidateMediaStorageProviderCache(config.key);
+    failureMessage = safeMediaStorageError(error);
   }
+
+  const recorded = await withPlatformTransaction((transaction) =>
+    new MediaStorageConfigRepository(transaction).recordTestResult(
+      configId,
+      config.updatedAt,
+      {
+        lastTestedAt: new Date(),
+        lastTestOk: failureMessage === null,
+        lastTestMessage: failureMessage || result?.message || '',
+      }
+    )
+  );
+  invalidateMediaStorageProviderCache(config.key);
+  if (!recorded) throw new Error(TEST_CHANGED_MESSAGE);
+  if (failureMessage) throw new Error(failureMessage);
+  return result!;
 }
 
 export async function activateMediaStorageProvider(providerKey: string, actorId?: string) {
   const key = normalizeMediaStorageProviderKey(providerKey);
-  if (key !== 'local') {
-    const config = await MediaStorageConfig.findOne({ key });
-    if (!config) throw new Error('媒体存储配置不存在');
-    assertMediaStorageConfigCanActivate(config);
-  }
-  if (key === 'local' && await getGrsAiOutputPersistenceEnabled()) {
-    throw new Error('请先关闭 GRS 结果转存，再切换默认存储到本地');
-  }
-  await PlatformConfig.findOneAndUpdate(
-    { key: 'default' },
-    {
-      $set: {
-        'mediaStorage.activeProviderKey': key,
-        'mediaStorage.activatedAt': new Date(),
-        ...(actorId ? { 'mediaStorage.activatedBy': actorId } : {}),
+  await withPlatformTransaction(async (transaction) => {
+    const platformRepository = new PlatformConfigRepository(transaction);
+    const mediaRepository = new MediaStorageConfigRepository(transaction);
+    const platformConfig = await platformRepository.ensureForUpdate('default');
+    const mediaStorage = platformMediaStorageState(platformConfig.mediaStorage);
+    if (key !== 'local') {
+      const config = await mediaRepository.findByKeyForUpdate(key);
+      if (!config) throw new Error('媒体存储配置不存在');
+      assertMediaStorageConfigCanActivate(config);
+    }
+    if (key === 'local' && mediaStorage.persistGrsAiOutputs === true) {
+      throw new Error('请先关闭 GRS 结果转存，再切换默认存储到本地');
+    }
+
+    const actor = parseActorId(actorId);
+    await platformRepository.update('default', {
+      mediaStorage: {
+        ...mediaStorage,
+        activeProviderKey: key,
+        activatedAt: new Date().toISOString(),
+        ...(actor ? { activatedBy: String(actor) } : {}),
       },
-      $setOnInsert: { key: 'default' },
-    },
-    { upsert: true, returnDocument: 'after', runValidators: true }
-  );
+    });
+  });
   invalidateActiveMediaStorageCache();
   return key;
 }
 
 export async function archiveMediaStorageConfig(id: string, actorId?: string) {
-  const config = await MediaStorageConfig.findById(id);
+  const configId = parseConfigId(id);
+  const config = await withPlatformTransaction(async (transaction) => {
+    const platformRepository = new PlatformConfigRepository(transaction);
+    const mediaRepository = new MediaStorageConfigRepository(transaction);
+    const platformConfig = await platformRepository.ensureForUpdate('default');
+    const current = await mediaRepository.findByIdForUpdate(configId);
+    if (!current) throw new Error('媒体存储配置不存在');
+    const mediaStorage = platformMediaStorageState(platformConfig.mediaStorage);
+    assertMediaStorageConfigCanArchive(
+      current.key,
+      mediaStorage.activeProviderKey || 'local'
+    );
+    if (current.status === 'archived') return current;
+    const actor = parseActorId(actorId);
+    return mediaRepository.update(configId, {
+      status: 'archived',
+      archivedAt: new Date(),
+      archivedBy: actor,
+      updatedBy: actor ?? current.updatedBy,
+    });
+  });
   if (!config) throw new Error('媒体存储配置不存在');
-  const platformConfig = await PlatformConfig.findOne({ key: 'default' })
-    .select('mediaStorage.activeProviderKey')
-    .lean();
-  assertMediaStorageConfigCanArchive(
-    config.key,
-    platformConfig?.mediaStorage?.activeProviderKey || 'local'
-  );
-  if (config.status === 'archived') return config;
-  config.status = 'archived';
-  config.archivedAt = new Date();
-  config.archivedBy = actorId ? new mongoose.Types.ObjectId(actorId) : undefined;
-  config.updatedBy = actorId ? new mongoose.Types.ObjectId(actorId) : config.updatedBy;
-  await config.save();
   invalidateMediaStorageProviderCache(config.key);
   return config;
 }
@@ -474,8 +570,10 @@ export function mediaStorageEncryptionState() {
 }
 
 export async function decryptedMediaStorageCredentials(id: string) {
-  const config = await MediaStorageConfig.findById(id)
-    .select('+accessKeyEncrypted +secretKeyEncrypted');
+  const configId = parseConfigId(id);
+  const config = await withPlatformTransaction((transaction) =>
+    new MediaStorageConfigRepository(transaction).findById(configId)
+  );
   if (!config) throw new Error('媒体存储配置不存在');
   return {
     accessKey: decryptMediaStorageSecret(config.accessKeyEncrypted),

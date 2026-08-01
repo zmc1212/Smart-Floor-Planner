@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { getActivePromptTemplate } from '@/lib/ai/prompt-library-query';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await dbConnect();
     return await withTenantRoute(req, {}, async () => {
       const { id } = await params;
       const data = await getActivePromptTemplate(id);

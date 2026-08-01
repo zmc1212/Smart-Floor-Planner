@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { MediaStorageConfig } from '@/models/MediaStorageConfig';
-import { PlatformConfig } from '@/models/PlatformConfig';
 import {
   createMediaStorageConfig,
   getMediaStorageAssetStats,
+  getPlatformMediaStorageState,
+  listMediaStorageConfigs,
   mediaStorageEncryptionState,
   safeMediaStorageError,
   serializeMediaStorageConfig,
@@ -18,20 +18,22 @@ export async function GET(request: Request) {
     await dbConnect();
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
       const [configs, platformConfig, stats] = await Promise.all([
-        MediaStorageConfig.find().sort({ status: 1, createdAt: 1 }),
-        PlatformConfig.findOne({ key: 'default' }).select('mediaStorage').lean(),
+        listMediaStorageConfigs(),
+        getPlatformMediaStorageState(),
         getMediaStorageAssetStats(),
       ]);
       const activeProviderKey = normalizeMediaStorageProviderKey(
-        platformConfig?.mediaStorage?.activeProviderKey || process.env.MEDIA_STORAGE_PROVIDER || 'local'
+        platformConfig.activeProviderKey ||
+          process.env.MEDIA_STORAGE_PROVIDER ||
+          'local'
       );
       return NextResponse.json({
         success: true,
         data: {
           activeProviderKey,
-          activatedAt: platformConfig?.mediaStorage?.activatedAt || null,
+          activatedAt: platformConfig.activatedAt || null,
           grsOutputPersistence: {
-            enabled: platformConfig?.mediaStorage?.persistGrsAiOutputs === true,
+            enabled: platformConfig.persistGrsAiOutputs === true,
           },
           encryption: mediaStorageEncryptionState(),
           local: {
@@ -59,7 +61,6 @@ export async function GET(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
-    await dbConnect();
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async (context) => {
       const body = await request.json();
       if (typeof body.persistGrsAiOutputs !== 'boolean') {
@@ -80,7 +81,6 @@ export async function PATCH(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    await dbConnect();
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async (context) => {
       const config = await createMediaStorageConfig(await request.json(), context.userId);
       return NextResponse.json(
@@ -89,7 +89,8 @@ export async function POST(request: Request) {
       );
     });
   } catch (error) {
-    const duplicate = (error as { code?: number })?.code === 11000;
+    const code = (error as { code?: number | string })?.code;
+    const duplicate = code === 11000 || code === '23505';
     console.error('[Media Storage POST]', safeMediaStorageError(error));
     return NextResponse.json(
       {

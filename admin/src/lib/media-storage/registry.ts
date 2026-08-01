@@ -1,6 +1,9 @@
+import {
+  MediaStorageConfigRepository,
+  PlatformConfigRepository,
+} from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
 import { decryptMediaStorageSecret } from '@/lib/crypto';
-import { MediaStorageConfig } from '@/models/MediaStorageConfig';
-import { PlatformConfig } from '@/models/PlatformConfig';
 import { LocalMediaStorageProvider } from './local-provider';
 import { QiniuMediaStorageProvider, type QiniuRegion } from './qiniu-provider';
 import type { MediaStorageProvider } from './types';
@@ -60,9 +63,9 @@ export async function getMediaStorageProvider(key?: string | null): Promise<Medi
   const cached = providerCache.get(normalizedKey);
   if (cached && cached.expiresAt > Date.now()) return cached.provider;
 
-  const config = await MediaStorageConfig.findOne({ key: normalizedKey })
-    .select('+accessKeyEncrypted +secretKeyEncrypted')
-    .lean();
+  const config = await withPlatformTransaction((transaction) =>
+    new MediaStorageConfigRepository(transaction).findByKey(normalizedKey)
+  );
   if (!config) {
     throw new Error(`不支持的媒体存储配置：${normalizedKey}`);
   }
@@ -90,11 +93,19 @@ async function getActiveProviderKey() {
   if (activeProviderKeyCache && activeProviderKeyCache.expiresAt > Date.now()) {
     return activeProviderKeyCache.key;
   }
-  const platformConfig = await PlatformConfig.findOne({ key: 'default' })
-    .select('mediaStorage.activeProviderKey')
-    .lean();
+  const platformConfig = await withPlatformTransaction((transaction) =>
+    new PlatformConfigRepository(transaction).findByKey('default')
+  );
+  const mediaStorage =
+    platformConfig?.mediaStorage &&
+    typeof platformConfig.mediaStorage === 'object' &&
+    !Array.isArray(platformConfig.mediaStorage)
+      ? platformConfig.mediaStorage
+      : {};
   const key = normalizeMediaStorageProviderKey(
-    platformConfig?.mediaStorage?.activeProviderKey || process.env.MEDIA_STORAGE_PROVIDER || 'local'
+    String(mediaStorage.activeProviderKey || '') ||
+      process.env.MEDIA_STORAGE_PROVIDER ||
+      'local'
   );
   activeProviderKeyCache = { key, expiresAt: Date.now() + PROVIDER_CACHE_TTL_MS };
   return key;
@@ -103,7 +114,9 @@ async function getActiveProviderKey() {
 export async function getDefaultMediaStorageProvider(): Promise<MediaStorageProvider> {
   const key = await getActiveProviderKey();
   if (key !== 'local') {
-    const config = await MediaStorageConfig.findOne({ key }).select('status').lean();
+    const config = await withPlatformTransaction((transaction) =>
+      new MediaStorageConfigRepository(transaction).findByKey(key)
+    );
     if (!config) throw new Error(`默认媒体存储配置不存在：${key}`);
     if (config.status !== 'active') throw new Error(`默认媒体存储配置已归档：${key}`);
   }

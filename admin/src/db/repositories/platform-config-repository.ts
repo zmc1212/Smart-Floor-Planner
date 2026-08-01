@@ -20,6 +20,20 @@ export class PlatformConfigRepository {
     return rows[0] ?? null;
   }
 
+  async ensureForUpdate(key: string) {
+    await this.transaction
+      .insert(platformConfigs)
+      .values({ key })
+      .onConflictDoNothing({ target: platformConfigs.key });
+    const rows = await this.transaction
+      .select()
+      .from(platformConfigs)
+      .where(eq(platformConfigs.key, key))
+      .limit(1)
+      .for('update');
+    return rows[0];
+  }
+
   async upsert(key: string, values: PlatformConfigValues) {
     const rows = await this.transaction
       .insert(platformConfigs)
@@ -30,5 +44,14 @@ export class PlatformConfigRepository {
       })
       .returning();
     return rows[0];
+  }
+
+  async update(key: string, values: PlatformConfigValues) {
+    const rows = await this.transaction
+      .update(platformConfigs)
+      .set({ ...values, updatedAt: new Date() })
+      .where(eq(platformConfigs.key, key))
+      .returning();
+    return rows[0] ?? null;
   }
 }

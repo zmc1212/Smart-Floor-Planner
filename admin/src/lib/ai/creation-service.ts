@@ -1,10 +1,8 @@
-import mongoose from 'mongoose';
 import { AiCreationBatch, type IAiCreationBatch } from '@/models/AiCreationBatch';
 import { AiCreationModelProfile, type IAiCreationModelProfile } from '@/models/AiCreationModelProfile';
 import { AiCreationTask, type IAiCreationTask } from '@/models/AiCreationTask';
 import { AiGeneration, type IAiGeneration } from '@/models/AiGeneration';
 import { AiPromptSourceModel } from '@/models/AiPromptSourceModel';
-import { AiPromptTemplate } from '@/models/AiPromptTemplate';
 import { MediaAsset } from '@/models/MediaAsset';
 import { ensureAiCreditAccount, serializeAiCreditAccount } from '@/lib/ai/credits';
 import { executeGenerationImage, reconcileAiGeneration, releaseGenerationCredits } from '@/lib/ai/execution-service';
@@ -17,6 +15,7 @@ import {
 } from '@/lib/ai/grs-image-models';
 import { getMediaAssetImageUrl } from '@/lib/ai/media-assets';
 import { getActivePromptLibraryRevision } from '@/lib/ai/prompt-library-import';
+import { getActivePromptTemplate } from '@/lib/ai/prompt-library-query';
 
 type ParameterSnapshot = {
   aspectRatio: string;
@@ -358,13 +357,15 @@ export async function createCreationBatch(input: {
     deletedAt: { $exists: false },
   }) : [];
   if (assets.length !== referenceIds.length) throw new Error('参考图不存在或无权访问');
-  const template = input.templateId && mongoose.isValidObjectId(input.templateId)
-    ? await AiPromptTemplate.findById(input.templateId).populate('parameterTemplateId', 'parameters').lean()
+  const template = input.templateId
+    ? await getActivePromptTemplate(input.templateId)
     : null;
-  const templateParameters = template && asRecord(template.parameterTemplateId).parameters;
+  const templateParameters = template?.parameterTemplate
+    ? asRecord(template.parameterTemplate.parameters)
+    : undefined;
   const parameters = resolveCreationParameters(profile, {
     ...input.parameters,
-    templateId: template ? String(template._id) : undefined,
+    templateId: template?.id,
   }, templateParameters);
   await assertEnterpriseAiActionAllowed(input.enterpriseId, 'image.free_create');
   const price = await getImageModelPrice(profile.key, parameters.resolutionTier);

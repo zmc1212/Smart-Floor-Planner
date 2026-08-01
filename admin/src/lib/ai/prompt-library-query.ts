@@ -1,54 +1,36 @@
-import mongoose from 'mongoose';
-import { AiPromptCategory } from '@/models/AiPromptCategory';
-import { AiPromptTemplate } from '@/models/AiPromptTemplate';
-import { AiPromptTemplateAsset } from '@/models/AiPromptTemplateAsset';
-import { AiPromptSourceModel } from '@/models/AiPromptSourceModel';
-import { getActivePromptLibraryRevision } from './prompt-library-import';
+import {
+  PromptLibraryRepository,
+  type PromptCategoryRecord,
+} from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
 
 export function escapeMongoRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function previewUrl(templateId: unknown) {
+function parsePostgresId(value: string) {
+  if (!/^[1-9]\d*$/.test(value)) return null;
+  return BigInt(value);
+}
+
+function previewUrl(templateId: bigint) {
   return `/api/ai/creation/prompt-templates/${String(templateId)}/preview`;
 }
 
-export async function requireActivePromptLibraryRevision() {
-  const revision = await getActivePromptLibraryRevision();
-  if (!revision) throw new Error('Prompt library has not been published');
-  return revision;
-}
-
-export async function listActivePromptCategories() {
-  const revision = await requireActivePromptLibraryRevision();
-  const categories = await AiPromptCategory.find({ importRevision: revision._id, enabled: true })
-    .sort({ level: 1, weight: -1, sourceId: 1 })
-    .select('sourceId parentSourceId level name weight')
-    .lean();
-  return {
-    revisionId: String(revision._id),
-    revisionKey: revision.revisionKey,
-    categories: categories.map((category) => ({
-      id: String(category._id),
-      sourceId: category.sourceId,
-      parentSourceId: category.parentSourceId,
-      level: category.level,
-      name: category.name,
-      weight: category.weight,
-    })),
-  };
-}
-
-async function categorySourceIdsForFilter(revisionId: mongoose.Types.ObjectId, sourceId: string) {
-  const categories = await AiPromptCategory.find({ importRevision: revisionId, enabled: true })
-    .select('sourceId parentSourceId')
-    .lean();
+function descendantCategorySourceIds(
+  categories: PromptCategoryRecord[],
+  sourceId: string
+) {
   const selected = new Set([sourceId]);
   let changed = true;
   while (changed) {
     changed = false;
     for (const category of categories) {
-      if (category.parentSourceId && selected.has(category.parentSourceId) && !selected.has(category.sourceId)) {
+      if (
+        category.parentSourceId &&
+        selected.has(category.parentSourceId) &&
+        !selected.has(category.sourceId)
+      ) {
         selected.add(category.sourceId);
         changed = true;
       }
@@ -57,123 +39,189 @@ async function categorySourceIdsForFilter(revisionId: mongoose.Types.ObjectId, s
   return [...selected];
 }
 
+export async function requireActivePromptLibraryRevision() {
+  return withPlatformTransaction(async (transaction) => {
+    const revision = await new PromptLibraryRepository(
+      transaction
+    ).findActiveRevision();
+    if (!revision) throw new Error('Prompt library has not been published');
+    return revision;
+  });
+}
+
+export async function listActivePromptCategories() {
+  return withPlatformTransaction(async (transaction) => {
+    const repository = new PromptLibraryRepository(transaction);
+    const revision = await repository.findActiveRevision();
+    if (!revision) throw new Error('Prompt library has not been published');
+    const categories = await repository.listCategories(revision.id);
+    return {
+      revisionId: String(revision.id),
+      revisionKey: revision.revisionKey,
+      categories: categories.map((category) => ({
+        id: String(category.id),
+        sourceId: category.sourceId,
+        parentSourceId: category.parentSourceId,
+        level: category.level,
+        name: category.name,
+        weight: category.weight,
+      })),
+    };
+  });
+}
+
 export async function listActivePromptTemplates(input: {
   page?: number;
   limit?: number;
   query?: string;
   categorySourceId?: string;
 }) {
-  const revision = await requireActivePromptLibraryRevision();
   const page = Math.max(1, Number(input.page) || 1);
   const limit = Math.min(100, Math.max(1, Number(input.limit) || 24));
-  const filter: Record<string, unknown> = { importRevision: revision._id, enabled: true };
-  const query = input.query?.trim();
-  if (query) {
-    const regex = new RegExp(escapeMongoRegex(query), 'i');
-    filter.$or = [{ name: regex }, { promptContent: regex }];
-  }
-  if (input.categorySourceId?.trim()) {
-    filter.categorySourceId = {
-      $in: await categorySourceIdsForFilter(revision._id, input.categorySourceId.trim()),
-    };
-  }
+  return withPlatformTransaction(async (transaction) => {
+    const repository = new PromptLibraryRepository(transaction);
+    const revision = await repository.findActiveRevision();
+    if (!revision) throw new Error('Prompt library has not been published');
 
-  const [templates, total] = await Promise.all([
-    AiPromptTemplate.find(filter)
-      .sort({ weight: -1, sourceId: 1 })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .select('name promptContent categorySourceId bestModelSourceId parameterTemplateSourceId adaptationModel previewAssetId weight')
-      .lean(),
-    AiPromptTemplate.countDocuments(filter),
-  ]);
-  const previewAssetIds = templates
-    .map((template) => template.previewAssetId)
-    .filter((id): id is mongoose.Types.ObjectId => Boolean(id));
-  const previewAssets = await AiPromptTemplateAsset.find({
-    _id: { $in: previewAssetIds },
-    importRevision: revision._id,
-  }).select('_id sourceUrl').lean();
-  const previewSourceById = new Map(previewAssets.map((asset) => [String(asset._id), asset.sourceUrl]));
-  const modelSourceIds = templates
-    .map((template) => template.bestModelSourceId)
-    .filter((id): id is string => Boolean(id));
-  const sourceModels = await AiPromptSourceModel.find({
-    sourceId: { $in: modelSourceIds },
-    importRevision: revision._id,
-  }).select('sourceId localModelProfileId').lean();
-  const profileBySourceId = new Map(sourceModels.map((model) => [model.sourceId, model.localModelProfileId]));
-  return {
-    revisionId: String(revision._id),
-    items: templates.map((template) => ({
-      id: String(template._id),
+    const categories = await repository.listCategories(revision.id);
+    const categorySourceIds = input.categorySourceId?.trim()
+      ? descendantCategorySourceIds(categories, input.categorySourceId.trim())
+      : undefined;
+    const { rows: templates, total } = await repository.listTemplates(
+      revision.id,
+      {
+        page,
+        limit,
+        query: input.query?.trim()
+          ? input.query.trim().replace(/[\\%_]/g, '\\$&')
+          : undefined,
+        categorySourceIds,
+      }
+    );
+
+    const modelSourceIds = templates
+      .map((template) => template.bestModelSourceId)
+      .filter((id): id is string => Boolean(id));
+    const sourceModels = await repository.listSourceModels(
+      revision.id,
+      modelSourceIds
+    );
+    const profileBySourceId = new Map(
+      sourceModels.map((model) => [model.sourceId, model.localModelProfileId])
+    );
+
+    const previewAssets = await repository.listTemplateAssets(
+      revision.id,
+      templates
+        .map((template) => template.previewAssetId)
+        .filter((id): id is bigint => id !== null)
+    );
+    const previewSourceById = new Map(
+      previewAssets.map((asset) => [String(asset.id), asset.sourceUrl])
+    );
+
+    return {
+      revisionId: String(revision.id),
+      items: templates.map((template) => ({
+        id: String(template.id),
+        name: template.name,
+        promptContent: template.promptContent,
+        categorySourceId: template.categorySourceId,
+        bestModelSourceId: template.bestModelSourceId,
+        recommendedModelProfileId: template.bestModelSourceId
+          ? String(profileBySourceId.get(template.bestModelSourceId) || '') ||
+            undefined
+          : undefined,
+        parameterTemplateSourceId: template.parameterTemplateSourceId,
+        adaptationModel: template.adaptationModel,
+        weight: template.weight,
+        previewUrl: template.previewAssetId
+          ? previewSourceById.get(String(template.previewAssetId)) ||
+            previewUrl(template.id)
+          : undefined,
+        localPreviewUrl: template.previewAssetId
+          ? previewUrl(template.id)
+          : undefined,
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  });
+}
+
+export async function getActivePromptTemplate(templateId: string) {
+  const parsedId = parsePostgresId(templateId);
+  if (!parsedId) return null;
+  return withPlatformTransaction(async (transaction) => {
+    const repository = new PromptLibraryRepository(transaction);
+    const revision = await repository.findActiveRevision();
+    if (!revision) throw new Error('Prompt library has not been published');
+    const template = await repository.findTemplate(revision.id, parsedId);
+    if (!template) return null;
+
+    const [previewAsset, parameterTemplate, sourceModel] = await Promise.all([
+      repository.findTemplateAsset(revision.id, template.previewAssetId),
+      repository.findParameterTemplate(
+        revision.id,
+        template.parameterTemplateId
+      ),
+      repository.findSourceModel(revision.id, template.sourceModelId),
+    ]);
+
+    return {
+      id: String(template.id),
       name: template.name,
       promptContent: template.promptContent,
       categorySourceId: template.categorySourceId,
       bestModelSourceId: template.bestModelSourceId,
-      recommendedModelProfileId: template.bestModelSourceId
-        ? String(profileBySourceId.get(template.bestModelSourceId) || '') || undefined
-        : undefined,
       parameterTemplateSourceId: template.parameterTemplateSourceId,
       adaptationModel: template.adaptationModel,
       weight: template.weight,
       previewUrl: template.previewAssetId
-        ? previewSourceById.get(String(template.previewAssetId)) || previewUrl(template._id)
+        ? previewAsset?.sourceUrl || previewUrl(template.id)
         : undefined,
-      localPreviewUrl: template.previewAssetId ? previewUrl(template._id) : undefined,
-    })),
-    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
-  };
-}
-
-export async function getActivePromptTemplate(templateId: string) {
-  if (!mongoose.isValidObjectId(templateId)) return null;
-  const revision = await requireActivePromptLibraryRevision();
-  const template = await AiPromptTemplate.findOne({
-    _id: templateId,
-    importRevision: revision._id,
-    enabled: true,
-  })
-    .populate('parameterTemplateId', 'name parameters adaptationModel')
-    .populate('sourceModelId', 'name modelCode localModelProfileId capabilities')
-    .select('name promptContent categorySourceId bestModelSourceId parameterTemplateSourceId adaptationModel previewAssetId weight parameterTemplateId sourceModelId')
-    .lean();
-  if (!template) return null;
-  const previewAsset = template.previewAssetId
-    ? await AiPromptTemplateAsset.findOne({ _id: template.previewAssetId, importRevision: revision._id })
-      .select('sourceUrl')
-      .lean()
-    : null;
-  return {
-    id: String(template._id),
-    name: template.name,
-    promptContent: template.promptContent,
-    categorySourceId: template.categorySourceId,
-    bestModelSourceId: template.bestModelSourceId,
-    parameterTemplateSourceId: template.parameterTemplateSourceId,
-    adaptationModel: template.adaptationModel,
-    weight: template.weight,
-    previewUrl: template.previewAssetId ? previewAsset?.sourceUrl || previewUrl(template._id) : undefined,
-    localPreviewUrl: template.previewAssetId ? previewUrl(template._id) : undefined,
-    parameterTemplate: template.parameterTemplateId || undefined,
-    recommendedModel: template.sourceModelId || undefined,
-    recommendedModelProfileId: template.sourceModelId && 'localModelProfileId' in template.sourceModelId
-      ? String(template.sourceModelId.localModelProfileId || '') || undefined
-      : undefined,
-  };
+      localPreviewUrl: template.previewAssetId
+        ? previewUrl(template.id)
+        : undefined,
+      parameterTemplate: parameterTemplate
+        ? {
+            _id: String(parameterTemplate.id),
+            name: parameterTemplate.name,
+            parameters: parameterTemplate.parameters,
+            adaptationModel: parameterTemplate.adaptationModel,
+          }
+        : undefined,
+      recommendedModel: sourceModel
+        ? {
+            _id: String(sourceModel.id),
+            name: sourceModel.name,
+            modelCode: sourceModel.modelCode,
+            capabilities: sourceModel.capabilities,
+            localModelProfileId: sourceModel.localModelProfileId
+              ? String(sourceModel.localModelProfileId)
+              : undefined,
+          }
+        : undefined,
+      recommendedModelProfileId: sourceModel?.localModelProfileId
+        ? String(sourceModel.localModelProfileId)
+        : undefined,
+    };
+  });
 }
 
 export async function getActivePromptTemplateAsset(templateId: string) {
-  if (!mongoose.isValidObjectId(templateId)) return null;
-  const revision = await requireActivePromptLibraryRevision();
-  const template = await AiPromptTemplate.findOne({
-    _id: templateId,
-    importRevision: revision._id,
-    enabled: true,
-  }).select('previewAssetId').lean();
-  if (!template?.previewAssetId) return null;
-  return AiPromptTemplateAsset.findOne({
-    _id: template.previewAssetId,
-    importRevision: revision._id,
+  const parsedId = parsePostgresId(templateId);
+  if (!parsedId) return null;
+  return withPlatformTransaction(async (transaction) => {
+    const repository = new PromptLibraryRepository(transaction);
+    const revision = await repository.findActiveRevision();
+    if (!revision) throw new Error('Prompt library has not been published');
+    const template = await repository.findTemplate(revision.id, parsedId);
+    if (!template) return null;
+    return repository.findTemplateAsset(revision.id, template.previewAssetId);
   });
 }

@@ -12,9 +12,11 @@ permission, or workflow changes.
 - `Placeholder`: the UI is present but uses a mock, a planned action, or no real
   persistence/integration.
 - Runtime: Next.js 16 App Router, React 19, Tailwind CSS 4, shadcn/ui + Radix,
-  Mongoose/MongoDB for current business data, a Phase 2 PostgreSQL 17
+  Mongoose/MongoDB for current business data, a Phase 3 PostgreSQL 17
   `drizzle-orm` + `pg` target-schema and Repository foundation, Three.js, and
-  SWR-style client fetching. Business routes have not switched to PostgreSQL.
+  SWR-style client fetching. Prompt-library reads, system-role configuration,
+  global promotion configuration, and media-storage configuration have switched
+  to PostgreSQL; remaining business routes still use MongoDB.
 - Local development: `npm run dev` runs the combined Next.js UI/API on port
   `3005`; Docker publishes MongoDB on host port `27018` (container
   `mongo:27017`) and PostgreSQL on host port `5432` (container
@@ -69,7 +71,11 @@ permission, or workflow changes.
 - APIs: `/api/roles`, admin-user APIs, staff APIs, and department APIs.
 - Status: `Implemented`. Menu visibility, effective permissions, role defaults,
   custom role menu keys, account status, department membership, and route-level
-  role checks are active.
+  role checks are active. `/api/roles`, login/Mini Program permission resolution,
+  and admin-list effective permissions now use PostgreSQL `SystemRoleRepository`;
+  the route enforces platform `super_admin`/`admin` access in the handler, and
+  default-role initialization uses an idempotent insert that preserves configured
+  menu keys. Admin/staff records remain on MongoDB in this Phase 3 slice.
 
 ### 3. Platform Dashboard And Enterprise Tenants
 
@@ -99,11 +105,14 @@ permission, or workflow changes.
 - APIs: promotion records, `/promotion-records/pool`, `/conflicts`, platform
   promotion config, workbench summary/todos, notification logs, and reminder run.
 - Models/helpers: `PromotionEnterpriseRecord`, `WorkflowNotificationLog`,
-  `promotion-workflow`, `promotion-timeline`, `workflow-automation`, WeChat,
-  and WeCom notification helpers.
+  PostgreSQL `PlatformConfigRepository`, `promotion-workflow`,
+  `promotion-timeline`, `workflow-automation`, WeChat, and WeCom notification
+  helpers.
 - Status: `Implemented`. Includes reporting, duplicate/conflict handling, public
   pool, claim/approval, assignment, business stages, follow-up timelines, SLA
-  reminders, notification deduplication, and audit logs.
+  reminders, notification deduplication, and audit logs. Platform administrators
+  read and update the global promotion protection/approval configuration through
+  PostgreSQL; promotion records and workflow persistence remain on MongoDB.
 
 ### 6. Packages, Orders, And Commissions
 
@@ -222,6 +231,14 @@ permission, or workflow changes.
   and sampling. Import credentials and snapshots stay under the Git-ignored
   `admin/.roomi-import/`; imported preview files stay under Git-ignored local
   storage and are never uploaded to Qiniu.
+- PostgreSQL runtime migration: the read-only prompt-library APIs
+  (`GET /api/ai/creation/prompt-categories`,
+  `GET /api/ai/creation/prompt-templates`, template detail, and preview) now
+  use the typed PostgreSQL Repository and platform-scoped transactions. Their
+  DTOs and `ai-scenarios` permission boundary are unchanged. The import script
+  and generation task persistence/model-profile synchronization still use
+  MongoDB until their Phase 3 slices are migrated; new generation batches resolve
+  a selected prompt template and parameter definition through PostgreSQL.
 - Status: `Implemented`. The workbench starts customer designs with a
   customer/material/goal wizard, shows the selected result and candidates in a
   two-column workspace, and keeps one recommended next action prominent. The
@@ -401,7 +418,8 @@ permission, or workflow changes.
   /api/admin/media-storage/[id]`, `POST /api/admin/media-storage/[id]/test`, and
   `POST /api/admin/media-storage/[id]/activate`.
 - Models/helpers: `MediaStorageConfig`, `PlatformConfig.mediaStorage`,
-  `MediaAsset`, and `src/lib/media-storage/*`.
+  PostgreSQL `MediaStorageConfigRepository`, `MediaAsset`, and
+  `src/lib/media-storage/*`.
 - Status: `Implemented`. The page shows the current default, credential/config
   state, active/pending/total asset counts and bytes, and the last connectivity
   result. It manages the built-in local provider plus multiple Qiniu Kodo
@@ -424,6 +442,14 @@ permission, or workflow changes.
   persists only subsequent remote GRS outputs, and prevents switching the default
   back to local until transfer is disabled.
   `local` remains the compatibility default until a platform choice is persisted.
+  Media-storage configuration CRUD, encrypted credential reads, connectivity-test
+  results, archival, default-provider selection, and the GRS transfer pointer are
+  persisted in PostgreSQL. Qiniu network probes run outside database transactions;
+  their results use an `updatedAt` optimistic condition so a concurrent config edit
+  cannot be overwritten. Asset counts/bytes still aggregate MongoDB `MediaAsset`
+  records until that later Phase 3 domain is migrated. MongoDB administrator IDs
+  cannot populate PostgreSQL bigint audit foreign keys, so those fields remain
+  `NULL` until the identity domain moves.
 - Limitations/operations: production cloud credentials require the dedicated
   `MEDIA_STORAGE_KEY_ENCRYPTION_SECRET`; Qiniu buckets are treated as private, download
   domains must be HTTPS and must be allowlisted in the WeChat Mini Program. The
@@ -472,12 +498,15 @@ permission, or workflow changes.
   scripts, Docker health ordering, 44 typed target tables, foreign keys and
   indexes, forced RLS on tenant data, transaction-local tenant/platform
   context, and typed repositories for enterprise, department, platform-config,
-  and prompt-library access. The restore drill verifies table/RLS/policy counts.
+  prompt-library, system-role, and media-storage configuration access. The
+  restore drill verifies table/RLS/policy counts.
   `/api/health` continues to require MongoDB and reports PostgreSQL separately;
   PostgreSQL becomes a health gate only when
   `POSTGRES_HEALTHCHECK_REQUIRED=true`. `Limited`: the PostgreSQL tables are
-  empty migration targets and no page or API reads/writes them yet; all business
-  persistence remains on MongoDB until Phase 3. Docker migrations run explicitly
+  empty migration targets except for prompt-library reads, system-role
+  configuration, global promotion configuration, and media-storage configuration;
+  remaining business persistence stays on MongoDB while Phase 3 proceeds
+  incrementally. Docker migrations run explicitly
   through `npm run docker:migrate`; the long-running admin service is not given
   `DATABASE_MIGRATION_URL`. Docker build context excludes runtime `.env*`, local
   RoomiAI/import assets, uploads, and local database backups; those assets must

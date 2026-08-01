@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { getActivePromptTemplateAsset } from '@/lib/ai/prompt-library-query';
 import { resolveMediaObjectDelivery } from '@/lib/media-storage/operations';
@@ -7,7 +6,6 @@ import { getMediaStorageProvider } from '@/lib/media-storage/registry';
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await dbConnect();
     return await withTenantRoute(req, {}, async () => {
       const { id } = await params;
       const asset = await getActivePromptTemplateAsset(id);
@@ -15,7 +13,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       const provider = await getMediaStorageProvider(asset.storageProvider);
       const delivery = await resolveMediaObjectDelivery({
         provider,
-        location: { objectKey: asset.storageKey, bucket: asset.storageBucket },
+        location: {
+          objectKey: asset.storageKey,
+          bucket: asset.storageBucket ?? undefined,
+        },
         expiresInSeconds: 3600,
       });
       if (delivery.kind === 'redirect') {

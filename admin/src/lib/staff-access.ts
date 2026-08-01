@@ -1,6 +1,6 @@
 import { DEFAULT_PERMISSIONS } from '@/models/AdminUser';
-import { SystemRole } from '@/models/SystemRole';
-import dbConnect from '@/lib/mongodb';
+import { SystemRoleRepository } from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
 
 const LEGACY_AI_EXECUTION_PERMISSIONS = [
   'ai-designer',
@@ -20,15 +20,34 @@ export function normalizeMenuPermissions(permissions: string[]) {
   return Array.from(normalized);
 }
 
-export async function getEffectivePermissions(role: string, _menuPermissions?: string[]) {
+export async function getRolePermissionMap() {
   try {
-    await dbConnect();
-    const roleConfig = await SystemRole.findOne({ roleKey: role }).lean();
-    if (roleConfig && roleConfig.menuKeys) {
-      return normalizeMenuPermissions(Array.from(roleConfig.menuKeys));
+    const roles = await withPlatformTransaction((transaction) =>
+      new SystemRoleRepository(transaction).list()
+    );
+    return Object.fromEntries(
+      roles.map((role) => [
+        role.roleKey,
+        normalizeMenuPermissions(role.menuKeys),
+      ])
+    );
+  } catch (err) {
+    console.error('Failed to fetch role permissions from PostgreSQL:', err);
+    return {};
+  }
+}
+
+export async function getEffectivePermissions(role: string, _menuPermissions?: string[]) {
+  void _menuPermissions;
+  try {
+    const roleConfig = await withPlatformTransaction((transaction) =>
+      new SystemRoleRepository(transaction).findByRoleKey(role)
+    );
+    if (roleConfig) {
+      return normalizeMenuPermissions(roleConfig.menuKeys);
     }
   } catch (err) {
-    console.error('Failed to fetch role permissions from DB:', err);
+    console.error('Failed to fetch role permissions from PostgreSQL:', err);
   }
 
   // Fallback to hardcoded defaults

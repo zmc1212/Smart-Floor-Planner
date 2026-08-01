@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
 import {
   safeMediaStorageError,
@@ -9,7 +8,6 @@ import {
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await dbConnect();
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
       const { id } = await params;
       const result = id === 'local'

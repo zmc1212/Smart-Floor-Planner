@@ -256,7 +256,10 @@ export const mediaStorageConfigs = appSchema.table(
   },
   (table) => [
     uniqueIndex('media_storage_configs_key_uidx').on(table.key),
-    index('media_storage_configs_status_idx').on(table.status),
+    index('media_storage_configs_status_created_idx').on(
+      table.status,
+      table.createdAt
+    ),
     index('media_storage_configs_created_by_idx').on(table.createdBy),
     index('media_storage_configs_updated_by_idx').on(table.updatedBy),
     index('media_storage_configs_archived_by_idx').on(table.archivedBy),

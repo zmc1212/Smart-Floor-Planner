@@ -7,7 +7,7 @@
 - `Implemented`（已实现）：存在真实页面、API 和数据链路。
 - `Limited`（有限支持）：仅在特定角色、供应商、数据形态或运行条件下可用。
 - `Placeholder`（占位/未开放）：只有 UI、mock、规划动作或没有真实持久化/集成。
-- 技术栈：Next.js 16 App Router、React 19、Tailwind CSS 4、shadcn/ui + Radix；当前业务数据仍使用 Mongoose/MongoDB，Phase 1 已建立 PostgreSQL 17 的 `drizzle-orm` + `pg` 基础层；另含 Three.js 和客户端数据请求。业务路由尚未切换到 PostgreSQL。
+- 技术栈：Next.js 16 App Router、React 19、Tailwind CSS 4、shadcn/ui + Radix；当前业务数据仍使用 Mongoose/MongoDB，Phase 3 已将提示词库读取、系统角色配置、全局报备配置和媒体存储配置切换到 PostgreSQL 17 的 `drizzle-orm` + `pg` Repository；另含 Three.js 和客户端数据请求，其余业务域继续迁移。
 - 本地开发：`npm run dev` 在 `3005` 端口运行合并的 Next.js 页面/API；Docker 将 MongoDB 发布到宿主机 `27018`（容器内仍为 `mongo:27017`），将 PostgreSQL 发布到宿主机 `5432`（容器内仍为 `postgres:5432`）。`27018` 用于避开既有 Windows MongoDB 服务；容器之间继续使用服务名连接。
 - 路由分组：`(platform)` 为平台/B2B 运营，`(merchant)` 为企业工作台资产，公共页面位于 `(admin)`。
 
@@ -35,7 +35,7 @@
 
 - 页面：`/roles`、共享 Sidebar、路由守卫。
 - API：`/api/roles`、管理员、员工和部门接口。
-- 状态：`Implemented`。支持菜单可见性、有效权限、角色默认值、自定义菜单 key、账号状态、部门归属和路由角色校验。
+- 状态：`Implemented`。支持菜单可见性、有效权限、角色默认值、自定义菜单 key、账号状态、部门归属和路由角色校验。`/api/roles`、后台登录/小程序有效权限解析和管理员列表权限映射已使用 PostgreSQL `SystemRoleRepository`；route 处理器内强制平台 `super_admin`/`admin` 边界，默认角色以幂等插入初始化且不会覆盖已配置菜单。管理员和员工记录在本次 Phase 3 切片中仍使用 MongoDB。
 
 ### 3. 平台概览与企业租户
 
@@ -55,8 +55,8 @@
 
 - 页面：`/promotion-records`、`/workflow-logs`。
 - API：报备、`/promotion-records/pool`、`/conflicts`、平台报备配置、工作台 summary/todos、通知日志和提醒执行。
-- 模型/工具：`PromotionEnterpriseRecord`、`WorkflowNotificationLog`、`promotion-workflow`、`promotion-timeline`、`workflow-automation`、微信/企微通知工具。
-- 状态：`Implemented`。支持报备、重复/冲突、公海、认领/审批、分配、业务阶段、跟进时间线、SLA 提醒、通知去重和审计。
+- 模型/工具：`PromotionEnterpriseRecord`、`WorkflowNotificationLog`、PostgreSQL `PlatformConfigRepository`、`promotion-workflow`、`promotion-timeline`、`workflow-automation`、微信/企微通知工具。
+- 状态：`Implemented`。支持报备、重复/冲突、公海、认领/审批、分配、业务阶段、跟进时间线、SLA 提醒、通知去重和审计。平台管理员通过 PostgreSQL 读取和更新全局报备保护期/审批配置；报备记录和工作流持久化仍使用 MongoDB。
 
 ### 6. 套餐、订单与提成
 
@@ -97,6 +97,7 @@
 - 模型/工具：`AiGeneration`、`AiWorkflow`、`AiChatSession`、`AiStylePreset`、`AiProviderConfig`、`AiProviderAttempt`、`MediaAsset`、`AiCreditAccount`、`AiCreditLedger`、`AiCreditPrice`、`AiModelCreditPrice`、`Inspiration`、`src/lib/ai/*`、`src/lib/media-storage/*`。
 - 自由创作与模板库模型：`AiCreationTask`、`AiCreationBatch`、`AiCreationModelProfile`、`AiPromptLibraryRevision`、`AiPromptCategory`、`AiPromptTemplate`、`AiPromptParameterTemplate`、`AiPromptSourceModel`、`AiPromptTemplateAsset`、`AiPromptImportRun`。
 - 模板库运维：`npm run import:roomi-prompts` 默认只预览；增加 `-- --execute` 才原子发布通过完整校验的新版本，或用 `-- --source-file=<export.json> --execute` 从导出恢复；`npm run verify:roomi-prompts` 校验来源数量、引用、预览图校验和与抽样一致性。临时凭据和快照位于 Git 忽略的 `admin/.roomi-import/`，导入预览图保存在 Git 忽略的本地目录，不上传七牛。
+- PostgreSQL 运行时迁移：提示词库只读 API（`GET /api/ai/creation/prompt-categories`、`GET /api/ai/creation/prompt-templates`、模板详情和预览）已切换到 typed PostgreSQL Repository 与平台事务，DTO 和 `ai-scenarios` 权限边界保持不变；新建生成批次也通过 PostgreSQL 解析所选模板和参数定义。导入脚本、生成任务持久化和模型档案同步仍待 Phase 3 后续切片，当前继续使用 MongoDB。
 - 自由创作界面规格：Roomi 风格全屏页使用 `68px` 品牌栏、`1440px` 最小桌面画布、固定尺寸悬浮任务面板及 `1080px` 提示词/参数一体输入器。标题光弧与输入器边框使用本地静态资源，品牌替换为 Smart Floor AI，页面只调用本地数据接口。任务提交后切换为 Roomi 风格执行态：顶部展示任务摘要和参数标签，中部使用紧凑进度/结果缩略块及重新编辑、再次生成、删除操作，右侧显示历史记录窄轨，输入器固定在页面底部。完成结果悬浮后提供下载、引用为参考图、A/B 对比、图片标注编辑、归入客户方案和删除；大图预览支持缩放、旋转、全屏和下载；对比支持交换、仅看 A/B、带中央拖拽手柄的分割线、同步、左右/上下、重置、无边框沉浸式全屏画布（工具栏置于占满余下视口的图片区域上方）和导出。标注编辑器提供方形、圆形、箭头、画笔、标记、六色、撤销/重做、本地下载和“使用”；使用后的 PNG 仍经既有自由创作素材上传 API 保存为参考图，不新增路由、模型或权限边界。
 - 状态：`Implemented`。客户方案工作台以“客户/素材/目标”向导发起方案，双栏工作区突出当前定稿、候选版本和唯一推荐下一步；共享动作目录统一名称、输入、计费键、支持端、结果边界和推荐动作。自由创作台支持本地模板搜索和三级分类、模板填入、参考图、提示词优化、本地模型映射、1–4 张输出、比例/质量/分辨率、点数预估、历史、复用、重试、删除、下载及归入现有客户方案；完成结果卡复刻经实际验证的 Roomi 交互面：悬浮操作、可标注引用、完整预览控制与 A/B 对比导出，不增加 Roomi 运行时依赖。模板结果可覆盖活动版本全量增量加载，移动端保留同一套三级分类选择。全屏页面采用已确认的 Roomi 风格深色创作布局：`68px` 品牌栏、紧凑创作轨道、中央画布、悬浮任务面板及底部提示词/参数一体输入器，品牌替换为 Smart Floor AI，并继续只调用本地数据接口。服务端会把模板参数与所选本地模型能力取交集，并保存最终参数快照。生成复用现有供应商执行/轮询及点数冻结、成功扣除、失败释放链路，计费动作是 `image.free_create`。自由创作上传和必须持久化的结果固定使用本地媒体 Provider，即使平台默认配置为七牛也不会上传七牛。第一版模板预览优先尝试导入时审计保存的 `sourceUrl`，失败回退已导入的本地预览；运行时不请求 Roomi API。旧 AI 执行权限键兼容解析为 `ai-scenarios`，角色配置只展示一个“AI 设计”，不会扩大 B2B 渠道 `salesperson` 的数据边界。后台与小程序共用企业 AI 点数和 `AiWorkflow`；带客户/正式户型上下文的小程序参考复刻、整体换风格、户型概念图和软装深化分别映射到后台基准、彩平转透视和软装阶段。`MediaAsset` 持久化图片宽高，旧资产首次复用时从存储文件补写；所有媒体写入、读取、删除和可选签名跳转统一经过注册的 `MediaStorageProvider`。每条资产保存自身 Provider、可移植对象键、可选 Bucket 和 SHA-256，因此本地与七牛/后续对象存储资产可并存，后台和小程序资产 URL 不变。内置 `local` Provider 把路径限制在 `AI_ASSET_STORAGE_DIR` 内，生产 Docker 使用持久化卷挂载该目录；七牛 Kodo Provider 使用私有 Bucket 和短期签名下载，上传失败直接返回错误，不会静默回退本地。小程序按图片尺寸映射供应商支持的输出规格：参考复刻跟随参考图比例；选择正式户型范围时，服务端把所选完整户型或隔离后的单房间控制图作为第一张墙体/门窗结构输入，把参考图作为第二张镜头、画幅、构图和风格输入，不再要求额外空间照片；未选户型时仍兼容“参考图第一、空间图第二”。换风格/软装跟随空间图，完整户型保持方图，单房间默认横图。基准/软装阶段首个成功版本自动采用并推进，同阶段后续成功版本只成为候选，须手动采用才推进；同方案同阶段存在活动任务时拒绝重复冻结和上游提交。成功基准可继续提案/灯光。后台向导只展示包含闭合房间的已完成 v4 正式户型，创建和执行时还会再次拒绝草稿、旧版或失效户型 ID。正式户型驱动的选风格、基准和彩平转透视阶段会派生独立 1024px 控制图 `MediaAsset`；选风格固定使用 `image.edit.standard`，并把该控制图或用户上传来源图放入供应商 `images`，提示词同时加入只读的房间、墙体拓扑、尺寸、层高、门窗约束，且不修改 `FloorPlan.layoutData`。任务创建冻结、正式结果持久化后扣费、明确失败释放；平台 `super_admin`/`admin` 可管理供应商、轮换凭证、测试/同步模型、查询 GRS API Key 上游积分余额、执行对账、发放/调整点数、配置业务动作价格及企业允许功能/`standard` 逻辑档位，企业员工只消费。GRS 连通测试使用积分余额接口同时校验 Host 与 API Key；其节点不支持 `/v1/models` 时，模型同步保留并返回后台配置的模型映射。业务层使用逻辑模型键和 `AiExecutionService`；GRS 图片按当前文档向 `POST /v1/api/generate` 提交 `replyType: "async"`，标准 `gpt-image-2` 使用文档比例，VIP 在来源像素满足约束时沿用原尺寸，否则选择文档中的合法回退尺寸，并通过 `GET /v1/api/result?id=...` 轮询，`violation`/`failed` 均按已退款失败处理。小程序任务详情与历史读取会对可见生成中任务强制执行这次上游状态查询；即使已退款失败耗尽备用供应商，也会返回数据库中的最终失败状态，而不是用 500 遮蔽。临时结果必须先保存到 `MediaAsset`。仅连接失败、明确未受理或已确认退款时切备用；已有远端任务 ID 的已受理/未知状态任务继续冻结并轮询，不会创建第二个上游任务；提交响应没有远端任务 ID 时按不可追踪失败终止，不自动切备用供应商，释放冻结点数并允许运营核实后人工重试，避免永久停留在 `processing`。重试会按当前动作价格重新生成计费快照，并兼容没有历史 `priceSnapshot` 的旧任务。上游成本和余额与企业 AI 点数分账记录：企业购买平台点数，运营方按资金池预警批量补充供应商余额，不做逐笔充值联动。上游成本按原币种微单位单独记录，不改变业务点数价格。供应商页的能力与逻辑/远程模型字段用于路由；成本币种和预计成本只用于内部核算，可为 0 且不发送给供应商。`Limited`：其他适配器的余额/模型发现取决于供应商协议，首期不接微信/自助充值和低余额自动告警；生产本地媒体必须使用持久共享目录，七牛必须使用私有 Bucket、HTTPS 下载域名、服务端加密凭证并先通过完整读写删探针。
 - GRSAI 现行模型目录：版本化目录按 2026-06-29 协议内置 `gpt-image-2`、`gpt-image-2-vip` 和 11 个 Nano Banana 模型。平台 `super_admin`/`admin` 在 `/ai-providers` 启停模型、指定唯一默认模型并设置 0–10 张参考图上限；供应商同步发现但没有参数能力定义的模型只读展示且不可执行。自由创作台只显示“模型已启用且至少一个分辨率价格已启用”的模型，提供模型/比例/分辨率联动，不再显示通用质量控件；VIP 使用官方像素预设矩阵或经过边长、16 倍数、长短边比与总像素校验的 `CUSTOM` 宽高。
@@ -113,8 +114,9 @@
 
 - 页面/权限：`/media-storage`，菜单权限 key 为 `media-storage`，仅平台 `super_admin`、`admin` 可访问和操作。
 - API：`GET/POST/PATCH /api/admin/media-storage`、`PATCH/DELETE /api/admin/media-storage/[id]`、`POST /api/admin/media-storage/[id]/test`、`POST /api/admin/media-storage/[id]/activate`。
-- 模型/工具：`MediaStorageConfig`、`PlatformConfig.mediaStorage`、`MediaAsset`、`src/lib/media-storage/*`。
+- 模型/工具：`MediaStorageConfig`、`PlatformConfig.mediaStorage`、PostgreSQL `MediaStorageConfigRepository`、`MediaAsset`、`src/lib/media-storage/*`。
 - 状态：`Implemented`。页面展示当前默认存储、凭证/配置状态、有效/待清理/累计资产数量与容量和最后测试结果；可管理内置本地存储及多套七牛 Kodo 配置，API 只返回密钥掩码，凭证仅在服务端加密保存。每套七牛配置可选填存储前缀，用于同一 Bucket 内隔离项目；前缀只接受以斜杠分段的字母、数字、`.`、`_`、`-`，拒绝路径穿越并规范为单个结尾斜杠。前缀只作用于后续新上传和健康探针，完整对象 key 会固化在 `MediaAsset.storageKey`，所以修改前缀不会影响历史资产读取。Bucket、区域、域名、前缀或凭证变更会清除原测试通过状态；完整探针依次验证上传、对象查询、私有签名下载、内容一致性和删除，只有测试通过且未归档的七牛配置可设为默认。配置稳定 key 创建后不可修改，并写入 `MediaAsset.storageProvider`。归档配置禁止新写入、测试和重新激活，但仍解析用于历史资产读取/删除；当前默认配置不能归档。GRS 结果图默认保留上游 URL；只有当前默认存储是可用七牛配置时，管理员才能启用其转存开关，开启后仅后续 GRS 结果写入七牛，并且在关闭开关前不能切回本地默认存储。切换默认值和转存开关都不会迁移旧资产；未初始化平台配置时继续兼容 `local`。
+- PostgreSQL 持久化边界：媒体配置 CRUD、加密凭证读取、连通测试结果、归档、默认 Provider 和 GRS 转存指针均已切换到 PostgreSQL。七牛网络探针在数据库事务外执行，结果使用 `updatedAt` 乐观条件回写，避免覆盖探针期间发生的配置修改。资产数量/容量统计仍聚合 MongoDB `MediaAsset`，待后续 Phase 3 媒体资产域迁移；旧 MongoDB 管理员 ID 不能写入 PostgreSQL bigint 审计外键，因此身份域迁移前审计字段暂为 `NULL`。
 - 限制/运维：生产云凭证必须配置专用 `MEDIA_STORAGE_KEY_ENCRYPTION_SECRET`；七牛 Bucket 固定按私有空间处理，下载域名必须为 HTTPS 并加入微信小程序合法域名。页面首期不发起迁移或物理清理任务，仍使用默认 dry-run 的 CLI；迁移参数使用稳定配置标识，例如 `--to=qiniu-primary`。
 
 ### 12. 小程序支撑与跨端 API
@@ -127,7 +129,7 @@
 
 - API：提醒执行、通知列表/轮询、`/api/health`、`/api/debug`、`/api/debug/tenant-context`、`/api/internal/seed`。
 - 状态：提醒、浏览器轮询、通知日志、健康/调试、种子和 Docker/发布工具为 `Implemented`；接口仍需遵守对应角色和运行环境限制。
-- PostgreSQL 迁移基础层：PostgreSQL 17 Docker 服务、隔离的 `sfp_migrator`/`sfp_app`/`sfp_auditor` 角色、受限 `pg.Pool`、可审阅 Drizzle migration、备份/恢复演练、44 张 typed 目标表、外键与索引、租户数据强制 RLS、事务内租户/平台上下文，以及企业、部门、平台配置和提示词库 typed Repository 均为 `Implemented`；恢复演练会核对表、RLS 表和策略数量。`/api/health` 继续以 MongoDB 为必需依赖并单独报告 PostgreSQL；只有 `POSTGRES_HEALTHCHECK_REQUIRED=true` 时 PostgreSQL 才参与健康门禁。Docker migration 通过 `npm run docker:migrate` 显式执行，长期运行的 admin 服务不注入 `DATABASE_MIGRATION_URL`。Docker 构建上下文排除运行时 `.env*`、本地 RoomiAI/导入资源、上传目录和本地数据库备份，这些资产必须在运行时注入或挂载。`Limited`：PostgreSQL 业务表目前是空迁移目标，尚无页面或 API 读写这些表；Phase 3 切换前全部业务持久化仍在 MongoDB。
+- PostgreSQL 迁移基础层：PostgreSQL 17 Docker 服务、隔离的 `sfp_migrator`/`sfp_app`/`sfp_auditor` 角色、受限 `pg.Pool`、可审阅 Drizzle migration、备份/恢复演练、44 张 typed 目标表、外键与索引、租户数据强制 RLS、事务内租户/平台上下文，以及企业、部门、平台配置、提示词库、系统角色和媒体存储配置 typed Repository 均为 `Implemented`；恢复演练会核对表、RLS 表和策略数量。`/api/health` 继续以 MongoDB 为必需依赖并单独报告 PostgreSQL；只有 `POSTGRES_HEALTHCHECK_REQUIRED=true` 时 PostgreSQL 才参与健康门禁。Docker migration 通过 `npm run docker:migrate` 显式执行，长期运行的 admin 服务不注入 `DATABASE_MIGRATION_URL`。Docker 构建上下文排除运行时 `.env*`、本地 RoomiAI/导入资源、上传目录和本地数据库备份，这些资产必须在运行时注入或挂载。`Limited`：除已切换的提示词库读取、系统角色、全局报备和媒体存储配置外，其余 PostgreSQL 业务表仍是空迁移目标，Phase 3 其他业务持久化继续使用 MongoDB。
 
 ## 核心模型
 
