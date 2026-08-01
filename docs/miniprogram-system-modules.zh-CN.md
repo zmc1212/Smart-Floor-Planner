@@ -26,7 +26,7 @@
 - 页面：`pages/index/index`。
 - API：`/api/miniprogram/home`、`/api/floorplans`、户型 POST/PUT、`/api/leads/[id]`、`/api/location/reverse`、`/api/users/me`。
 - 已实现：首页统计、定位/城市、按角色过滤的最近云端户型（本地草稿存在时仍显示，且可直接进入正式量房编辑器）、留资弹窗、BLE 连接状态、记忆设备自动连接、新建/继续正式量房、房间进入、企业员工常驻 AI 设计快捷入口，以及首页直达客户线索和 BLE 配对的快捷入口。
-- 数据边界：线索、正式户型、测量、已分配设备的统计和最近正式户型均来自 PostgreSQL RLS Repository。AI 生成域尚未迁移，因此 `aiGeneratedCases` 明确返回 `0`。
+- 数据边界：线索、正式户型、测量、已分配设备的统计和最近正式户型均来自 PostgreSQL RLS Repository。AI 生成域尚未迁移，因此 `aiGeneratedCases` 明确返回 `0`。最近户型项还会返回其真实关联线索可用的 `customerName` 和 `communityName`；首页优先以“客户名 · 小区名”作为项目身份信息，仅在二者缺失时回退到正式户型名称，时间戳只作为更新时间元数据展示。
 - 有限支持：写入/通知特征值的配对由硬件决定。BLE 调试日志会记录枚举到的通道属性、每一次命令写入及每一条带完整 Service/Characteristic UUID 的原始通知；接收缓冲区按通知通道隔离。厂商私有二进制回包仅保留为原始调试信息，确认协议映射前不赋予业务字段含义。
 - 视觉基准：以 `design-references/all-pages-ip-v1/01-home.png` 和 iPhone 13 Pro `390x844` 为首页基准。交付界面使用 F1/F3 空间服务向导首屏、上浮的正式量房卡、三张快捷服务卡和项目进度卡；本地派生场景素材为 `images/home-ip-v1/hero-scene-wechat-safe.jpg`，并为微信原生胶囊预留安全区，城市、统计、设备状态、最近户型、空状态和全部导航仍由真实数据及角色边界驱动。
 - 占位：帮助中心仍显示“即将上线”消息。

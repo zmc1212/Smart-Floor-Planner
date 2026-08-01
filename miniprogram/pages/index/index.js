@@ -58,15 +58,37 @@ function getRecentPlanStatus(status) {
   return { label: '编辑中', className: 'status-draft' };
 }
 
+function normalizeProjectLabel(value) {
+  return value === undefined || value === null ? '' : String(value).trim();
+}
+
 function buildRecentPlans(plans) {
   return (plans || []).slice(0, 3).map((plan, index) => {
     const statusMeta = getRecentPlanStatus(plan.status);
     const roomCount = Number(plan.roomCount);
     const area = Number(plan.area);
+    const customerName = normalizeProjectLabel(plan.customerName);
+    const communityName = normalizeProjectLabel(plan.communityName);
+    const fallbackName = normalizeProjectLabel(plan.name) || '未命名方案';
+    const displayName = [customerName, communityName].filter(Boolean).join(' · ') || fallbackName;
+    const updatedLabel = formatDateLabel(plan.updatedAt || plan.createdAt);
+    const progressLabel = Number.isFinite(area) && area > 0
+      ? `${area}㎡`
+      : Number.isFinite(roomCount) && roomCount > 0
+        ? `${roomCount} 个已闭合空间`
+        : `更新于 ${updatedLabel}`;
     return {
       _id: plan.id || plan._id,
-      name: plan.name || '未命名方案',
-      meta: formatDateLabel(plan.updatedAt || plan.createdAt),
+      name: fallbackName,
+      displayName,
+      customerName,
+      communityName,
+      meta: updatedLabel,
+      updatedLabel: `更新于 ${updatedLabel}`,
+      progressLabel,
+      measureSubtitle: statusMeta.className === 'status-completed'
+        ? '正式户型已完成，可查看与继续编辑'
+        : `${updatedLabel} 更新，数据已同步`,
       statusLabel: statusMeta.label,
       statusClass: statusMeta.className,
       roomCount: Number.isFinite(roomCount) && roomCount > 0 ? roomCount : 0,

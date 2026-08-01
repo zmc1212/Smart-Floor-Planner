@@ -159,6 +159,46 @@ measurable layout specification rather than broad visual inspiration.
 - Preserve the reference card proportions for loaded and empty states. Empty
   content may change wording and CTA, but must not expand, compress, or push a
   fixed action card under the custom TabBar.
+- For a formal-plan card, surface the real customer and community as the
+  project identity (`customer · community`) whenever the linked lead provides
+  them. A generated plan name and a date are fallbacks or secondary update
+  metadata, never the preferred primary identity.
+- A component's state must not silently alter its geometry. For the same
+  component across empty, active, completed, and loading states, preserve the
+  action's font size, line height, icon size, height, radius, alignment, and
+  visual treatment; vary only truthful copy, status semantics, and data. A
+  genuinely different treatment must be a separately named, reference-backed
+  component variant rather than an incidental state override.
+- Adapt height through the scroll container and the native safe area, not by
+  relocating a card's internal CTA based on remaining viewport whitespace.
+  Reference geometry is width-scaled in `rpx`; short and long devices reveal
+  different amounts of the scrollable page without changing component rhythm.
+- Equal-priority service cards use equal grid tracks, one shared outer inset,
+  and one shared inter-card gap. Do not make a device or utility card narrower
+  merely to enlarge a neighboring card; solve dense content with concise,
+  complete labels and local hierarchy instead.
+- Never truncate a business count or state into an ambiguous fragment such as
+  `3 个方…`. Use a concise complete label, or an intentional capped count such
+  as `99+`, before considering ellipsis.
+- Text-to-background contrast is a mandatory rule for every Mini Program
+  surface, not only Hero scenes. Verify every text treatment against its real
+  rendered background (including images, gradients, translucent overlays, and
+  state changes); do not accept a color because it works only on one region.
+  If shadow alone cannot preserve legibility, provide a local contrast surface
+  or change the text treatment rather than increasing shadow indefinitely.
+  A contrast treatment must protect the glyphs, not introduce a visible block
+  or band over an illustration; prefer a restrained text-only shadow or a
+  surface already justified by the composition. Do not use an outline unless
+  it is visibly present in the approved reference.
+- On a scenic Hero, choose display-text color from measured background contrast.
+  Where the approved reference calls for white display type, use white with a
+  restrained scene-tinted shadow and, where needed, a local contrast surface
+  for legibility across light spatial surfaces; do not substitute dark text
+  just because one background region is bright.
+- Split a compact project card's right column into a top information group and
+  a bottom information/action group, then distribute those two groups across
+  the card height. Do not vertically center an ungrouped stack. Its CTA aligns
+  to the card's existing right content inset in every state.
 - QA must include a stable real DevTools screenshot at `390x844`, shown
   side-by-side with the reference at the same scale. Complete a dedicated
   review pass for typography, painted icon size, vertical gaps, and crop

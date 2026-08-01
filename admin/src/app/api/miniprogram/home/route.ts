@@ -99,17 +99,28 @@ export async function GET(request: Request) {
               ? devices.findLatestAssignedToUser(staffId)
               : Promise.resolve(null),
           ]);
+        const recentPlansWithIdentity = await Promise.all(
+          recentPlans.map(async (plan) => {
+            const lead = await leads.findByFloorPlanId(plan.id);
+            return {
+              plan,
+              customerName: lead?.name || '',
+              communityName: lead?.communityName || '',
+            };
+          })
+        );
+
         return {
           savedPlans,
           measurementRecords,
           leadCount,
-          recentPlans,
+          recentPlans: recentPlansWithIdentity,
           device,
         };
       }
     );
 
-    const recentPlans = result.recentPlans.map((plan) => {
+    const recentPlans = result.recentPlans.map(({ plan, customerName, communityName }) => {
       const rooms = parseRooms(plan.layoutData);
       return {
         id: plan.id.toString(),
@@ -117,6 +128,8 @@ export async function GET(request: Request) {
         name: plan.name || '未命名方案',
         status: plan.status || 'draft',
         statusLabel: plan.status === 'completed' ? '已完成' : '编辑中',
+        customerName,
+        communityName,
         updatedAt: (plan.updatedAt || plan.createdAt).toISOString(),
         roomCount: rooms.length,
         area: calculateArea(rooms),

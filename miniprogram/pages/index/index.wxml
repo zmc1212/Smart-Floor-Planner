@@ -29,8 +29,8 @@
         </view>
 
         <view class="hero-reminder" wx:if="{{recentPlans.length > 0}}">
-          <text class="hero-reminder-kicker">小K · 今日提醒</text>
-          <text class="hero-reminder-text">{{recentPlans[0].statusClass === 'status-completed' ? recentPlans[0].name + '已完成，可查看户型' : recentPlans[0].name + '正在编辑，点击继续量房'}}</text>
+          <text class="hero-reminder-kicker">今日提醒</text>
+          <text class="hero-reminder-text">{{recentPlans[0].displayName}} · {{recentPlans[0].statusLabel}}</text>
         </view>
       </view>
 
@@ -41,11 +41,11 @@
         </view>
         <view class="measure-main-row">
           <view class="measure-copy">
-            <text class="measure-title">{{recentPlans.length > 0 ? recentPlans[0].name : '开始创建量房项目'}}</text>
-            <text class="measure-subtitle">{{recentPlans.length > 0 ? (recentPlans[0].statusClass === 'status-completed' ? '正式户型已完成，可查看与继续编辑' : '继续完善正式户型，数据会自动同步') : '建立客户线索后，进入正式量房工作台'}}</text>
+            <text class="measure-title">{{recentPlans.length > 0 ? recentPlans[0].displayName : '开始创建量房项目'}}</text>
+            <text class="measure-subtitle">{{recentPlans.length > 0 ? recentPlans[0].measureSubtitle : '建立客户线索后，进入正式量房工作台'}}</text>
             <view class="measure-progress-row" wx:if="{{recentPlans.length > 0}}">
               <text class="measure-status">{{recentPlans[0].statusLabel}}</text>
-              <text>{{recentPlans[0].areaLabel || (recentPlans[0].roomCount ? recentPlans[0].roomCount + ' 个已闭合空间' : recentPlans[0].meta)}}</text>
+              <text>{{recentPlans[0].progressLabel}}</text>
             </view>
           </view>
           <view class="measure-action">
@@ -81,7 +81,7 @@
               <image class="service-icon service-icon-ai" src="/images/home-v5/ai-wand.jpg" mode="aspectFit" />
               <view class="service-title-wrap">
                 <text class="service-title service-title-amber">AI 设计</text>
-                <text class="service-badge service-badge-amber">{{homeAiCaseCount}} 个方案待生成</text>
+                <text class="service-badge service-badge-amber">{{homeAiCaseCount > 99 ? '99+' : homeAiCaseCount}} 个待生成</text>
               </view>
             </view>
             <text class="service-description">一键生成设计方案</text>
@@ -96,12 +96,12 @@
                 <text class="service-badge service-badge-green">{{bleConnected ? '已配对' : '待连接'}}</text>
               </view>
             </view>
-            <text class="service-description">连接设备，开始量房</text>
+            <text class="service-description">连接设备后量房</text>
             <view class="device-summary">
               <image class="laser-device" src="/images/home-v5/laser-device.jpg" mode="aspectFit" />
               <view class="device-copy">
                 <text class="device-name">激光仪</text>
-                <text class="device-status">{{bleStatusText}}</text>
+                <text class="device-status">{{bleConnected ? '已连接' : '未连接'}}</text>
               </view>
             </view>
           </view>
@@ -113,22 +113,33 @@
           <view class="section-title-group"><text class="section-title">项目进度</text><view class="section-pin"></view></view>
           <text class="section-helper">最近项目</text>
         </view>
-        <view class="ongoing-card" wx:if="{{recentPlans.length > 0}}" data-id="{{recentPlans[0]._id}}" bindtap="onTapRecentPlan" hover-class="card-pressed" aria-role="button" aria-label="继续量房 {{recentPlans[0].name}}">
+        <view class="ongoing-card" wx:if="{{recentPlans.length > 0}}" data-id="{{recentPlans[0]._id}}" bindtap="onTapRecentPlan" hover-class="card-pressed" aria-role="button" aria-label="继续量房 {{recentPlans[0].displayName}}">
           <image class="plan-preview" src="/images/home-v5/plan-preview.jpg" mode="aspectFill" />
           <view class="plan-copy">
-            <text class="plan-title">{{recentPlans[0].name}}</text>
-            <view class="plan-location-row"><view class="plan-location-dot"></view><text>{{currentCity || '所在城市'}} · {{recentPlans[0].meta}}</text></view>
-            <text class="plan-status {{recentPlans[0].statusClass}}">{{recentPlans[0].statusLabel}}</text>
-            <text class="plan-detail">{{recentPlans[0].areaLabel || (recentPlans[0].roomCount ? recentPlans[0].roomCount + ' 个已闭合空间' : '最近更新的正式户型')}}</text>
-            <view class="plan-action-row"><text>{{recentPlans[0].statusClass === 'status-completed' ? '查看户型' : '进入项目'}}</text><view class="plan-action-chevron"></view></view>
+            <view class="plan-info-group">
+              <text class="plan-title">{{recentPlans[0].customerName || recentPlans[0].displayName}}</text>
+              <text class="plan-community" wx:if="{{recentPlans[0].customerName && recentPlans[0].communityName}}">{{recentPlans[0].communityName}}</text>
+              <view class="plan-meta-row">
+                <text class="plan-status {{recentPlans[0].statusClass}}">{{recentPlans[0].statusLabel}}</text>
+                <text class="plan-updated">{{recentPlans[0].updatedLabel}}</text>
+              </view>
+            </view>
+            <view class="plan-bottom-group">
+              <text class="plan-detail">{{recentPlans[0].progressLabel}}</text>
+              <view class="plan-action-row"><text>{{recentPlans[0].statusClass === 'status-completed' ? '查看户型' : '进入项目'}}</text><view class="plan-action-chevron"></view></view>
+            </view>
           </view>
         </view>
         <view class="ongoing-card ongoing-empty" wx:else bindtap="onPrimaryMeasureTap" hover-class="card-pressed" aria-role="button" aria-label="创建第一套正式量房户型">
           <image class="plan-preview empty-plan-preview" src="/images/home-v5/plan-preview.jpg" mode="aspectFill" />
           <view class="plan-copy empty-plan-copy">
-            <text class="plan-title">还没有进行中的量房</text>
-            <text class="empty-description">创建客户线索后，即可开始正式测量并保存户型。</text>
-            <view class="empty-action"><text>开始量房</text><view class="plan-action-chevron"></view></view>
+            <view class="plan-info-group">
+              <text class="plan-title">还没有进行中的量房</text>
+              <text class="empty-description">创建客户线索后，即可开始正式测量并保存户型。</text>
+            </view>
+            <view class="plan-bottom-group">
+              <view class="plan-action-row"><text>开始量房</text><view class="plan-action-chevron"></view></view>
+            </view>
           </view>
         </view>
       </view>

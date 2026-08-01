@@ -59,7 +59,11 @@ utilities, and the admin APIs they call.
   and direct Home shortcuts to Leads and BLE pairing.
 - Data boundary: lead, formal-plan, measurement, and assigned-device counts plus
   recent formal plans come from PostgreSQL RLS repositories. The AI-generation
-  domain is not migrated yet, so `aiGeneratedCases` is explicitly `0`.
+  domain is not migrated yet, so `aiGeneratedCases` is explicitly `0`. Each
+  recent-plan item also exposes the linked lead's optional `customerName` and
+  `communityName`; Home presents `customer · community` as the preferred project
+  identity, falls back to the formal-plan name only when that identity is absent,
+  and presents timestamps only as update metadata.
 - Limited: the write/notify characteristic pairing is hardware-specific. BLE
   diagnostics log the discovered channel properties, each command write, and
   each raw notification with full service/characteristic UUIDs; receive buffers
