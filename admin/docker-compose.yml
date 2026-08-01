@@ -10,7 +10,6 @@ services:
       - .env.production
     environment:
       - NODE_ENV=production
-      - INTERNAL_SECRET=sfp_internal_init_secret_2024
       - MEDIA_STORAGE_PROVIDER=local
       - AI_ASSET_STORAGE_DIR=/data/ai-assets
       - DATABASE_URL=postgresql://sfp_app:sfp_app_local_only@postgres:5432/smart_floor_planner

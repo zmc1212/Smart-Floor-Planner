@@ -1,57 +1,156 @@
 import { NextResponse } from 'next/server';
+import {
+  deviceToDto,
+  parseOptionalPostgresId,
+  parsePostgresId,
+} from '@/db/postgres-dto';
+import {
+  AdminUserRepository,
+  DeviceRepository,
+} from '@/db/repositories';
+import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
+import {
+  resolveWritableEnterpriseId,
+  withTenantRoute,
+} from '@/lib/tenant-route';
+
 export const dynamic = 'force-dynamic';
-import dbConnect from '@/lib/mongodb';
-import { Device } from '@/models/Device';
-import { Enterprise } from '@/models/Enterprise';
-import { AdminUser } from '@/models/AdminUser';
-import { withTenantContext } from '@/lib/auth';
+
+const READ_ROLES = [
+  'super_admin',
+  'admin',
+  'enterprise_admin',
+  'designer',
+  'salesperson',
+  'measurer',
+] as const;
+const WRITE_ROLES = ['super_admin', 'admin', 'enterprise_admin'] as const;
+const DEVICE_STATUSES = new Set([
+  'unassigned',
+  'assigned',
+  'maintenance',
+  'lost',
+]);
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
 
 export async function GET(request: Request) {
-  await dbConnect();
   try {
-    return await withTenantContext(request, async () => {
-      // 插件会自动注入租户过滤条件，无需手动处理
-      const devices = await Device.find({})
-        .populate({ path: 'enterpriseId', model: Enterprise, select: 'name' })
-        .populate({ path: 'assignedUserId', model: AdminUser, select: 'displayName username' })
-        .sort({ createdAt: -1 })
-        .lean();
-      return NextResponse.json({ success: true, data: devices });
-    });
-  } catch (error: any) {
-    if (error.message === 'Unauthorized') {
-      return NextResponse.json({ success: false, error: '未登录' }, { status: 401 });
-    }
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return await withTenantRoute(
+      request,
+      { roles: [...READ_ROLES] },
+      async (context) => {
+        const devices = await withAdminPostgresTransaction(
+          context,
+          (transaction) =>
+            new DeviceRepository(transaction).list({
+              assignedUserId:
+                context.role === 'designer' ||
+                context.role === 'salesperson' ||
+                context.role === 'measurer'
+                  ? parsePostgresId(context.userId, 'userId')
+                  : undefined,
+            })
+        );
+        return NextResponse.json({
+          success: true,
+          data: devices.map(deviceToDto),
+        });
+      }
+    );
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { success: false, error: errorMessage(error) },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(request: Request) {
-  await dbConnect();
   try {
-    return await withTenantContext(request, async () => {
-      const body = await request.json();
+    return await withTenantRoute(
+      request,
+      { roles: [...WRITE_ROLES] },
+      async (context) => {
+        const body = await request.json();
+        const code = typeof body.code === 'string' ? body.code.trim() : '';
+        if (!code) {
+          return NextResponse.json(
+            { success: false, error: '设备编码不能为空' },
+            { status: 400 }
+          );
+        }
+        const status = body.status || 'unassigned';
+        if (!DEVICE_STATUSES.has(status)) {
+          return NextResponse.json(
+            { success: false, error: '设备状态无效' },
+            { status: 400 }
+          );
+        }
 
-      // 插件会自动处理enterpriseId注入，但我们需要确保企业版管理员只能创建自己企业的设备
-      const { getCurrentUserRole, getCurrentEnterpriseId } = require('@/lib/tenant-context');
-      const role = getCurrentUserRole();
-      const enterpriseId = getCurrentEnterpriseId();
+        const explicitEnterpriseId = resolveWritableEnterpriseId(
+          context,
+          body.enterpriseId
+        );
+        const device = await withAdminPostgresTransaction(
+          context,
+          async (transaction) => {
+            const assignedUserId = parseOptionalPostgresId(
+              body.assignedUserId,
+              'assignedUserId'
+            );
+            const assignedUser = assignedUserId
+              ? await new AdminUserRepository(transaction).findById(
+                  assignedUserId
+                )
+              : null;
+            if (assignedUserId && !assignedUser) {
+              throw new Error('Assigned staff not found in this scope');
+            }
+            const enterpriseId = explicitEnterpriseId
+              ? parsePostgresId(explicitEnterpriseId, 'enterpriseId')
+              : assignedUser?.enterpriseId ?? null;
+            if (
+              assignedUser?.enterpriseId &&
+              enterpriseId !== assignedUser.enterpriseId
+            ) {
+              throw new Error('Assigned staff belongs to another enterprise');
+            }
+            return new DeviceRepository(transaction).create({
+              code,
+              description:
+                typeof body.description === 'string'
+                  ? body.description.trim() || null
+                  : null,
+              enterpriseId,
+              assignedUserId,
+              status:
+                context.role === 'enterprise_admin' && status === 'unassigned'
+                  ? 'assigned'
+                  : status,
+            });
+          }
+        );
 
-      if (role === 'enterprise_admin' && !body.enterpriseId) {
-        body.enterpriseId = enterpriseId;
-        body.status = 'assigned'; // Associated with enterprise
+        return NextResponse.json(
+          { success: true, data: device ? deviceToDto(device) : null },
+          { status: 201 }
+        );
       }
-
-      const device = await Device.create(body);
-      return NextResponse.json({ success: true, data: device });
-    });
-  } catch (error: any) {
-    if (error.message === 'Unauthorized') {
-      return NextResponse.json({ success: false, error: '未登录' }, { status: 401 });
-    }
-    if (error.code === 11000) {
-      return NextResponse.json({ success: false, error: '设备编码已存在' }, { status: 400 });
-    }
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    );
+  } catch (error: unknown) {
+    const details = error as { code?: string };
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          details.code === '23505'
+            ? '设备编码已存在'
+            : errorMessage(error),
+      },
+      { status: details.code === '23505' ? 400 : 500 }
+    );
   }
 }

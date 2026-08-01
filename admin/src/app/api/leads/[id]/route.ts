@@ -1,216 +1,235 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import Lead from '@/models/Lead';
-import { FloorPlan } from '@/models/FloorPlan';
-import { AdminUser } from '@/models/AdminUser';
-import { getTenantContext, withTenantContext } from '@/lib/auth';
+import {
+  leadToDto,
+  parseOptionalPostgresId,
+  parsePostgresId,
+} from '@/db/postgres-dto';
+import {
+  AdminUserRepository,
+  LeadRepository,
+  type LeadUpdate,
+  type LeadWithRelations,
+} from '@/db/repositories';
+import type { PostgresTransaction } from '@/db/transaction';
+import { getTenantContext, type TenantContext } from '@/lib/auth';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import {
+  withAdminPostgresTransaction,
+  withMiniProgramPostgresTransaction,
+} from '@/lib/postgres-request-scope';
 
-export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
+
+function staffCanAccess(
+  lead: LeadWithRelations,
+  role: string,
+  staffId: bigint
+) {
+  return (
+    role === 'enterprise_admin' ||
+    role === 'admin' ||
+    role === 'super_admin' ||
+    lead.promoterId === staffId ||
+    lead.assignedTo === staffId
+  );
+}
+
+async function resolveLeadContext(request: Request) {
+  const mini = await resolveMiniProgramContext(request);
+  if (mini) return { kind: 'mini' as const, mini };
+  const admin = await getTenantContext(request);
+  return admin ? { kind: 'admin' as const, admin } : null;
+}
+
+function withLeadTransaction<T>(
+  context: NonNullable<Awaited<ReturnType<typeof resolveLeadContext>>>,
+  callback: (transaction: PostgresTransaction) => Promise<T>
+) {
+  return context.kind === 'mini'
+    ? withMiniProgramPostgresTransaction(context.mini, callback)
+    : withAdminPostgresTransaction(context.admin, callback);
+}
+
+function canAccess(
+  lead: LeadWithRelations,
+  context: NonNullable<Awaited<ReturnType<typeof resolveLeadContext>>>
+) {
+  if (context.kind === 'mini') {
+    if (!context.mini.staff) return lead.phone === context.mini.user.phone;
+    return staffCanAccess(
+      lead,
+      context.mini.staff.role,
+      parsePostgresId(context.mini.staff._id, 'staff id')
+    );
+  }
+  if (context.admin.role === 'designer') {
+    return lead.assignedTo === parsePostgresId(context.admin.userId, 'userId');
+  }
+  return true;
+}
+
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    await dbConnect();
-    const { id } = await params;
-    const lead = await Lead.findById(id)
-      .populate({ path: 'floorPlanIds', select: 'name layoutData createdAt status source externalSource', strictPopulate: false })
-      .populate({ path: 'primaryFloorPlanId', select: 'name layoutData createdAt status source externalSource', strictPopulate: false })
-      .populate('assignedTo', 'displayName role');
-
-    if (!lead) {
-      return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
+    const context = await resolveLeadContext(request);
+    if (!context) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-
-    return NextResponse.json({ success: true, data: lead });
-  } catch (error: any) {
-    console.error('Fetch lead error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const { id } = await params;
+    const lead = await withLeadTransaction(context, (transaction) =>
+      new LeadRepository(transaction).findById(parsePostgresId(id, 'lead id'))
+    );
+    if (!lead || !canAccess(lead, context)) {
+      return NextResponse.json(
+        { success: false, error: 'Lead not found or access denied' },
+        { status: 404 }
+      );
+    }
+    return NextResponse.json({ success: true, data: leadToDto(lead) });
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { success: false, error: errorMessage(error) },
+      { status: 500 }
+    );
   }
 }
 
-export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    await dbConnect();
+    const context = await resolveLeadContext(request);
+    if (!context) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     const { id } = await params;
+    const leadId = parsePostgresId(id, 'lead id');
     const body = await request.json();
-    const context = await resolveMiniProgramContext(request);
+    const updated = await withLeadTransaction(
+      context,
+      async (transaction) => {
+        const repository = new LeadRepository(transaction);
+        const current = await repository.findById(leadId);
+        if (!current || !canAccess(current, context)) return null;
 
-    // Support Mini Program auth via JWT or openid
-    if (context?.staff || body.openid) {
-      let staff = context?.staff;
-      
-      // Fallback for legacy requests without JWT
-      if (!staff && body.openid) {
-        const { User } = require('@/models/User');
-        const { AdminUser } = require('@/models/AdminUser');
-        const user = await User.findOne({ openid: body.openid });
-        if (user && user.role === 'staff') {
-          staff = await AdminUser.findOne({ phone: user.phone });
+        const input: LeadUpdate = {};
+        if (body.name !== undefined) input.name = String(body.name).trim();
+        if (body.phone !== undefined) input.phone = String(body.phone).trim();
+        if (body.communityName !== undefined) {
+          input.communityName = String(body.communityName).trim() || null;
         }
-      }
-
-      if (staff) {
-        const tenantFilter = {
-          $or: [
-            { promoterId: staff._id },
-            { assignedTo: staff._id }
-          ]
-        };
-
-        // 继续原有的更新逻辑
-        // Fetch current lead to determine status transition
-        const currentLead = await Lead.findOne({ _id: id, ...tenantFilter });
-        if (!currentLead) {
-          return NextResponse.json({ success: false, error: 'Lead not found or access denied' }, { status: 404 });
+        if (body.area !== undefined) {
+          const area = Number(body.area);
+          input.area = Number.isFinite(area) && area > 0 ? String(area) : null;
         }
-
-        if (body.assignedTo) {
-          body.assignedAt = new Date();
+        if (body.stylePreference !== undefined) {
+          input.stylePreference =
+            String(body.stylePreference).trim() || null;
         }
-
-        let updateOps: any = { ...body };
-        let updateDoc: any = {};
-
-        if (updateOps.openid) delete updateOps.openid;
-
-        // --- Automation Logic Start ---
-        // 1. If assigned to a designer, move to 'assigned' status
-        if (body.assignedTo) {
-          const assignedUser = await AdminUser.findById(body.assignedTo);
-          if (assignedUser && assignedUser.role === 'designer') {
-            updateOps.status = 'assigned';
-          }
+        if (body.city !== undefined) {
+          input.city = String(body.city).trim() || null;
         }
-
-        // 2. If floorPlanId is being added, move to 'measuring' if current status is 'new'
-        if (body.floorPlanId) {
-          delete updateOps.floorPlanId;
-          updateDoc.$addToSet = { floorPlanIds: body.floorPlanId };
-          updateOps.primaryFloorPlanId = body.floorPlanId;
-          
-          if (currentLead.status === 'new') {
-            updateOps.status = 'measuring';
-          }
-        }
-        // --- Automation Logic End ---
-
-        if (Object.keys(updateOps).length > 0) {
-          updateDoc.$set = updateOps;
-        }
-
-        const lead = await Lead.findOneAndUpdate(
-          { _id: id, ...tenantFilter },
-          Object.keys(updateDoc).length > 0 ? updateDoc : body,
-          { new: true, runValidators: true }
-        );
-
-        if (!lead) {
-          return NextResponse.json({ success: false, error: 'Lead not found or access denied' }, { status: 404 });
-        }
-
-        return NextResponse.json({ success: true, data: lead });
-      } else {
-        return NextResponse.json({ success: false, error: 'Staff profile not found or Unauthorized' }, { status: 403 });
-      }
-    }
-
-    // Admin Dashboard Context - 使用新的租户上下文包装器
-    else {
-      try {
-        return await withTenantContext(request, async () => {
-          // 插件会自动注入租户过滤
-          if (body.assignedTo) {
-            body.assignedAt = new Date();
-          }
-
-          // Fetch current lead to determine status transition
-          const currentLead = await Lead.findById(id);
-          if (!currentLead) {
-            return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
-          }
-
-          let updateOps: any = { ...body };
-          let updateDoc: any = {};
-
-          // --- Automation Logic Start ---
-          // 1. If assigned to a designer, move to 'assigned' status
-          if (body.assignedTo) {
-            const assignedUser = await AdminUser.findById(body.assignedTo);
-            if (assignedUser && assignedUser.role === 'designer') {
-              updateOps.status = 'assigned';
-            }
-          }
-
-          // 2. If floorPlanId is being added, move to 'measuring' if current status is 'new'
-          if (body.floorPlanId) {
-            delete updateOps.floorPlanId;
-            updateDoc.$addToSet = { floorPlanIds: body.floorPlanId };
-            updateOps.primaryFloorPlanId = body.floorPlanId;
-            
-            if (currentLead.status === 'new') {
-              updateOps.status = 'measuring';
-            }
-          }
-          // --- Automation Logic End ---
-
-          if (Object.keys(updateOps).length > 0) {
-            updateDoc.$set = updateOps;
-          }
-
-          const lead = await Lead.findOneAndUpdate(
-            { _id: id }, // 插件自动注入租户过滤
-            Object.keys(updateDoc).length > 0 ? updateDoc : body,
-            { new: true, runValidators: true }
+        if (body.source !== undefined) input.source = String(body.source);
+        if (body.status !== undefined) input.status = String(body.status);
+        if (body.notes !== undefined) input.notes = String(body.notes) || null;
+        if (Array.isArray(body.followUpRecords)) {
+          input.followUpRecords = body.followUpRecords.filter(
+            (item: unknown) => item && typeof item === 'object'
           );
-
-          if (!lead) {
-            return NextResponse.json({ success: false, error: 'Lead not found or access denied' }, { status: 404 });
-          }
-
-          return NextResponse.json({ success: true, data: lead });
-        });
-      } catch (error: any) {
-        if (error.message === 'Unauthorized') {
-          return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
         }
-        throw error;
+
+        if (body.assignedTo !== undefined) {
+          const assignedTo = parseOptionalPostgresId(
+            body.assignedTo,
+            'assignedTo'
+          );
+          const assignedUser = assignedTo
+            ? await new AdminUserRepository(transaction).findById(assignedTo)
+            : null;
+          if (assignedTo && !assignedUser) {
+            throw new Error('Assigned staff not found in this scope');
+          }
+          input.assignedTo = assignedTo;
+          input.assignedAt = assignedTo ? new Date() : null;
+          if (assignedUser?.role === 'designer') input.status = 'assigned';
+        }
+
+        let lead = await repository.update(leadId, input);
+        const floorPlanId = parseOptionalPostgresId(
+          body.floorPlanId,
+          'floorPlanId'
+        );
+        if (lead && floorPlanId) {
+          lead = await repository.linkFloorPlan(leadId, floorPlanId);
+        }
+        return lead;
       }
+    );
+    if (!updated) {
+      return NextResponse.json(
+        { success: false, error: 'Lead not found or access denied' },
+        { status: 404 }
+      );
     }
-  } catch (error: any) {
-    console.error('Update lead error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: true, data: leadToDto(updated) });
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { success: false, error: errorMessage(error) },
+      { status: 500 }
+    );
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    await dbConnect();
-
-    try {
-      return await withTenantContext(request, async () => {
-        const { id } = await params;
-
-        // 插件会自动注入租户过滤，无需手动处理
-        const lead = await Lead.findOneAndDelete({ _id: id });
-
-        if (!lead) {
-          return NextResponse.json({ success: false, error: 'Lead not found or access denied' }, { status: 404 });
-        }
-
-        // 级联删除关联的户型图数据
-        if (lead.floorPlanIds && lead.floorPlanIds.length > 0) {
-          console.log(`[Cleanup] Deleting ${lead.floorPlanIds.length} associated floor plans for lead ${lead.name}`);
-          await FloorPlan.deleteMany({ _id: { $in: lead.floorPlanIds } });
-        }
-
-        return NextResponse.json({ success: true, data: {} });
-      });
-    } catch (error: any) {
-      if (error.message === 'Unauthorized') {
-        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-      }
-      throw error;
+    const admin = await getTenantContext(request);
+    if (!admin) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-  } catch (error: any) {
-    console.error('Delete lead error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const { id } = await params;
+    const deleted = await withAdminPostgresTransaction(
+      admin as TenantContext,
+      async (transaction) => {
+        const repository = new LeadRepository(transaction);
+        const lead = await repository.findById(parsePostgresId(id, 'lead id'));
+        if (!lead) return null;
+        if (
+          admin.role === 'designer' &&
+          lead.assignedTo !== parsePostgresId(admin.userId, 'userId')
+        ) {
+          return null;
+        }
+        return repository.deleteWithFloorPlans(lead.id);
+      }
+    );
+    if (!deleted) {
+      return NextResponse.json(
+        { success: false, error: 'Lead not found or access denied' },
+        { status: 404 }
+      );
+    }
+    return NextResponse.json({ success: true, data: {} });
+  } catch (error: unknown) {
+    return NextResponse.json(
+      { success: false, error: errorMessage(error) },
+      { status: 500 }
+    );
   }
 }

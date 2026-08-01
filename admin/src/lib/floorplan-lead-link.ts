@@ -1,39 +1,17 @@
-import mongoose from 'mongoose';
-import Lead from '@/models/Lead';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { LeadRepository } from '@/db/repositories';
+import type { PostgresTransaction } from '@/db/transaction';
 
-export async function linkFloorPlanToLead(leadId: unknown, floorPlanId: unknown) {
-  const leadObjectId = String(leadId || '');
-  const floorPlanObjectId = String(floorPlanId || '');
-
-  if (
-    !mongoose.Types.ObjectId.isValid(leadObjectId) ||
-    !mongoose.Types.ObjectId.isValid(floorPlanObjectId)
-  ) {
-    return false;
-  }
-
-  const lead = await Lead.findById(leadObjectId);
-  if (!lead) return false;
-
-  const setUpdate: {
-    primaryFloorPlanId: mongoose.Types.ObjectId;
-    status?: 'measuring';
-  } = {
-    primaryFloorPlanId: new mongoose.Types.ObjectId(floorPlanObjectId),
-  };
-
-  if (lead.status === 'new') {
-    setUpdate.status = 'measuring';
-  }
-
-  await Lead.findByIdAndUpdate(
-    leadObjectId,
-    {
-      $addToSet: { floorPlanIds: new mongoose.Types.ObjectId(floorPlanObjectId) },
-      $set: setUpdate,
-    },
-    { runValidators: true }
+export async function linkFloorPlanToLead(
+  transaction: PostgresTransaction,
+  leadId: unknown,
+  floorPlanId: unknown,
+  status?: string
+) {
+  const lead = await new LeadRepository(transaction).linkFloorPlan(
+    parsePostgresId(leadId, 'leadId'),
+    parsePostgresId(floorPlanId, 'floorPlanId'),
+    status
   );
-
-  return true;
+  return Boolean(lead);
 }

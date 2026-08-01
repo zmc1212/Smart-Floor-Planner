@@ -14,10 +14,10 @@
 ## 身份与共享上下文
 
 - `/pages/login/login`：通过 `/api/auth/miniprogram` 支持微信手机号快捷登录和账号密码登录，将 JWT/用户信息恢复到本地。
-- 访问仅限员工：账号密码登录必须匹配启用中的后台 `AdminUser`；微信 code/手机号登录必须通过已绑定 OpenID 或后台手机号匹配启用中的 `AdminUser`。未匹配的外部用户会收到 `403`，无法建立小程序已登录业务会话。
+- 访问仅限员工：账号密码登录必须匹配启用中的后台 `AdminUser`；微信 code/手机号登录必须通过已绑定 OpenID 或后台手机号匹配启用中的 `AdminUser`。未匹配的外部用户会收到 `403`，无法建立小程序已登录业务会话。账号、绑定身份、企业和权限解析已切换 PostgreSQL，并在刷新和请求上下文解析时复核启用状态。
 - `app.js`：恢复会话，解析二维码 `enterpriseId`/`staffId` 推荐参数，同步员工专业上下文、企业品牌，并对已记忆设备尝试静默 BLE 重连。
 - `utils/api.js`：携带 Bearer token，通过显式 `ACTIVE_API_ENVIRONMENT`（`local` 或 `production`）选择唯一 API 地址，401 时清理会话并提示重新登录。请求不会跨环境回退，也不读取持久化 `apiBaseUrl`。
-- 状态：登录与上下文恢复为 `Implemented`；具体路径仍依赖有效微信授权、账号、API 地址和企业/供应商配置。
+- 状态：PostgreSQL 登录与上下文恢复为 `Implemented`；具体路径仍依赖有效微信授权、账号、API 地址和企业/供应商配置。Phase 3 期间为 `Limited`：仍由 MongoDB 支撑的 AI 生成/媒体与商业工作流域要等计划内 PostgreSQL 切换后才兼容 bigint 身份；线索、正式户型、测量和设备绑定现已使用 PostgreSQL。
 
 ## 页面清单
 
@@ -26,8 +26,9 @@
 - 页面：`pages/index/index`。
 - API：`/api/miniprogram/home`、`/api/floorplans`、户型 POST/PUT、`/api/leads/[id]`、`/api/location/reverse`、`/api/users/me`。
 - 已实现：首页统计、定位/城市、按角色过滤的最近云端户型（本地草稿存在时仍显示，且可直接进入正式量房编辑器）、留资弹窗、BLE 连接状态、记忆设备自动连接、新建/继续正式量房、房间进入、企业员工常驻 AI 设计快捷入口，以及首页直达客户线索和 BLE 配对的快捷入口。
+- 数据边界：线索、正式户型、测量、已分配设备的统计和最近正式户型均来自 PostgreSQL RLS Repository。AI 生成域尚未迁移，因此 `aiGeneratedCases` 明确返回 `0`。
 - 有限支持：写入/通知特征值的配对由硬件决定。BLE 调试日志会记录枚举到的通道属性、每一次命令写入及每一条带完整 Service/Characteristic UUID 的原始通知；接收缓冲区按通知通道隔离。厂商私有二进制回包仅保留为原始调试信息，确认协议映射前不赋予业务字段含义。
-- 视觉基准：以 `design-references/home/miniprogram-home-vibrant-green-v5.png` 和 iPhone 13 Pro `390x844` 为首页基准。交付界面使用项目本地派生场景素材，城市、统计、设备状态、企业品牌、最近户型、空状态和全部导航仍由真实数据及角色边界驱动。
+- 视觉基准：以 `design-references/all-pages-ip-v1/01-home.png` 和 iPhone 13 Pro `390x844` 为首页基准。交付界面使用 F1/F3 空间服务向导首屏、上浮的正式量房卡、三张快捷服务卡和项目进度卡；本地派生场景素材为 `images/home-ip-v1/hero-scene-wechat-safe.jpg`，并为微信原生胶囊预留安全区，城市、统计、设备状态、最近户型、空状态和全部导航仍由真实数据及角色边界驱动。
 - 占位：帮助中心仍显示“即将上线”消息。
 
 ### 线索与客户记录
@@ -35,6 +36,7 @@
 - 页面：`pages/lead-form/lead-form`、`pages/leads-management/leads-management`、`pages/lead-detail/lead-detail`。
 - API：`/api/leads`、`/api/leads/[id]`、`/api/floorplans/[id]` DELETE。
 - 已实现：客户称呼/手机号/小区/面积/风格采集、最近客户、列表/详情、正式户型关联、线索详情中的主户型名称/状态/闭合空间数、继续量房、新建独立量房、删除正式户型时清理本地续测指针、对已加载记录进行客户端搜索，以及通过阶段条或原生操作菜单进行状态筛选。
+- 持久化：线索和正式户型列表/详情/新建/更新/删除均使用 PostgreSQL RLS 事务和十进制字符串 ID；线索-户型关联、主户型及删除清理为原子操作。
 - 视觉基准：以 `design-references/leads/leads-management-v4.png` 和 `390x844` 为基准。交付页面保持场景化页头、三项统计、紧凑搜索/操作区、六阶段筛选条、根据每条线索关联的正式墙图或真实外部预览地址渲染的彩色户型图缩略图、与状态背景宽高对齐的左上角叠层、状态色轨和共享五项自定义 TabBar，同时继续渲染真实客户数据。
 - 有限支持：需要有效小程序会话；手机号和小区既有客户端校验也有服务端校验。搜索范围为分页当前已经加载的记录；选择状态会触发服务端筛选并重新加载。
 
@@ -91,6 +93,7 @@
 - 数据与失败态：普通用户户型的空间数从正式 version-4 墙图各楼层的闭合空间派生；
   工作台和户型请求分别维护加载、失败与重试状态，网络失败不会再显示为普通用户工作台
   或“暂无户型”空态。
+- PostgreSQL 边界：资料、实时线索/正式户型/测量摘要和户型列表均使用 typed RLS Repository。商业工作流记录仍在 MongoDB，因此 API 在该 Phase 3 切片完成前返回 `todos: []`，不会把 bigint 身份传入 MongoDB 查询。
 - 有限支持：工作台内容和任务操作随专业角色变化；部分账号/通知卡片只是信息展示。
 
 ### 推荐方案分享页

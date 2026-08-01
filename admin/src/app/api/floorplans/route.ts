@@ -1,12 +1,21 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
-import { withTenantContext } from '@/lib/auth';
-import { FloorPlan } from '@/models/FloorPlan';
-import { User } from '@/models/User';
-import { tenantStorage } from '@/lib/tenant-context';
-import { getPaginationParams, createPaginationMetadata } from '@/lib/pagination';
+import {
+  floorPlanToDto,
+  parsePostgresId,
+} from '@/db/postgres-dto';
+import {
+  FloorPlanRepository,
+  LeadRepository,
+  UserRepository,
+} from '@/db/repositories';
+import type { PostgresTransaction } from '@/db/transaction';
+import { getTenantContext } from '@/lib/auth';
 import { linkFloorPlanToLead } from '@/lib/floorplan-lead-link';
+import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import {
+  withAdminPostgresTransaction,
+  withMiniProgramPostgresTransaction,
+} from '@/lib/postgres-request-scope';
 import { isFormalSurveyLayout } from '@/lib/survey-graph';
 
 interface FloorPlanRequestBody {
@@ -21,153 +30,191 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown error';
 }
 
-export async function POST(req: Request) {
+async function resolveCreatorId(
+  transaction: PostgresTransaction,
+  context: NonNullable<Awaited<ReturnType<typeof resolveMiniProgramContext>>>
+) {
+  const repository = new UserRepository(transaction);
+  if (/^[1-9]\d*$/.test(context.user._id)) {
+    const id = parsePostgresId(context.user._id, 'user id');
+    if (await repository.findById(id)) return id;
+  }
+  const phone = context.staff?.phone || context.user.phone;
+  const enterpriseId = context.enterpriseId
+    ? parsePostgresId(context.enterpriseId, 'enterprise id')
+    : null;
+  const existing = phone
+    ? await repository.findByPhoneInEnterprise(phone, enterpriseId)
+    : null;
+  if (existing) return existing.id;
+  if (!context.staff) throw new Error('Mini Program user not found');
+  const created = await repository.create({
+    enterpriseId,
+    role: 'staff',
+    nickname: context.staff.displayName || context.staff.username,
+    phone: phone || null,
+    openid: context.staff.openid || null,
+  });
+  return created.id;
+}
+
+export async function POST(request: Request) {
   try {
-    await dbConnect();
-    const body = await req.json() as FloorPlanRequestBody;
-    const { name, layoutData, status } = body;
-
-    const context = await resolveMiniProgramContext(req);
+    const body = (await request.json()) as FloorPlanRequestBody;
+    const context = await resolveMiniProgramContext(request);
     if (!context) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-
-    if (!layoutData) {
-      return NextResponse.json({ success: false, error: 'Missing layoutData' }, { status: 400 });
+    if (!body.layoutData) {
+      return NextResponse.json(
+        { success: false, error: 'Missing layoutData' },
+        { status: 400 }
+      );
     }
-
-    if (!isFormalSurveyLayout(layoutData)) {
-      return NextResponse.json({ success: false, error: 'layoutData must use the formal surveyGraph contract' }, { status: 400 });
+    if (!isFormalSurveyLayout(body.layoutData)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'layoutData must use the formal surveyGraph contract',
+        },
+        { status: 400 }
+      );
     }
-
-    const { user, staff, enterpriseId } = context;
-    const staffId = staff?._id;
-    const planStatus = status || 'completed';
-
-    return await tenantStorage.run(
-      {
-        enterpriseId: enterpriseId ? String(enterpriseId) : null,
-        role: staff?.role || 'user',
-        userId: staff ? String(staff._id) : String(user._id),
-      },
-      async () => {
-        // Create a single FloorPlan with all rooms
-        const newPlan = await FloorPlan.create({
-          name: name || '未命名户型',
-          creator: user._id,
+    const planStatus = body.status || 'completed';
+    const plan = await withMiniProgramPostgresTransaction(
+      context,
+      async (transaction) => {
+        const creatorId = await resolveCreatorId(transaction, context);
+        const staffId = context.staff
+          ? parsePostgresId(context.staff._id, 'staff id')
+          : null;
+        const enterpriseId = context.enterpriseId
+          ? parsePostgresId(context.enterpriseId, 'enterprise id')
+          : null;
+        const created = await new FloorPlanRepository(transaction).create({
+          name: body.name?.trim() || '未命名户型',
+          creatorId,
           staffId,
           enterpriseId,
-          layoutData,
+          layoutData: body.layoutData as Record<string, unknown>,
           source: 'manual',
           status: planStatus,
-          completedAt: planStatus === 'completed' ? new Date() : undefined,
+          completedAt: planStatus === 'completed' ? new Date() : null,
         });
+        if (!created) throw new Error('Failed to create floor plan');
 
         if (body.leadId) {
-          await linkFloorPlanToLead(body.leadId, newPlan._id);
+          const leadRepository = new LeadRepository(transaction);
+          const lead = await leadRepository.findById(
+            parsePostgresId(body.leadId, 'leadId')
+          );
+          if (!lead) throw new Error('Lead not found or access denied');
+          if (
+            context.staff &&
+            context.staff.role !== 'enterprise_admin' &&
+            lead.promoterId !== staffId &&
+            lead.assignedTo !== staffId
+          ) {
+            throw new Error('Lead access denied');
+          }
+          if (!context.staff && lead.phone !== context.user.phone) {
+            throw new Error('Lead access denied');
+          }
+          await linkFloorPlanToLead(
+            transaction,
+            lead.id,
+            created.id
+          );
         }
-
-        return NextResponse.json({ success: true, data: newPlan });
+        return created;
       }
     );
+    return NextResponse.json(
+      { success: true, data: floorPlanToDto(plan) },
+      { status: 201 }
+    );
   } catch (error: unknown) {
-    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+    const message = getErrorMessage(error);
+    const status = message.includes('access denied') ? 403 : 500;
+    return NextResponse.json(
+      { success: false, error: message },
+      { status }
+    );
   }
 }
 
-// Get all floor plans or filtered list
-export async function GET(req: Request) {
+export async function GET(request: Request) {
   try {
-    await dbConnect();
-    const { searchParams } = new URL(req.url);
-    const phone = searchParams.get('phone');
-    const search = searchParams.get('search');
-    const { page, limit, skip } = getPaginationParams(req.url);
-
-    // 💡 抽离公共的查询执行逻辑
-    const executeQuery = async (baseQuery: Record<string, unknown> = {}) => {
-      baseQuery['layoutData.version'] = 4;
-      baseQuery['layoutData.measurementMode'] = 'surveying';
-      baseQuery['layoutData.surveyGraph.kind'] = 'survey-wall-graph';
-      // 处理phone过滤
-      if (phone) {
-        const users = await User.find({ phone });
-        if (users.length > 0) {
-          baseQuery.creator = { $in: users.map(u => u._id) };
-        }
-      }
-
-      // 处理search过滤
-      if (search) {
-        baseQuery.name = { $regex: search, $options: 'i' };
-      }
-
-      // 执行查询
-      const [floorPlans, total] = await Promise.all([
-        FloorPlan.find(baseQuery)
-          .populate({ path: 'creator', model: User })
-          .sort({ updatedAt: -1, createdAt: -1 })
-          .skip(skip)
-          .limit(limit),
-        FloorPlan.countDocuments(baseQuery)
-      ]);
-
-      return { floorPlans, total };
+    const { searchParams } = new URL(request.url);
+    const page = Math.max(Number(searchParams.get('page')) || 1, 1);
+    const limit = Math.min(
+      Math.max(Number(searchParams.get('limit')) || 20, 1),
+      50
+    );
+    const baseOptions = {
+      phone: searchParams.get('phone') || undefined,
+      search: searchParams.get('search') || undefined,
+      formalOnly: true,
+      page,
+      limit,
     };
 
-    // 1. Mini-Program Context (via JWT)
-    const context = await resolveMiniProgramContext(req);
-    if (context) {
-      const { user, staff, enterpriseId } = context;
-
-      return await tenantStorage.run(
-        {
-          enterpriseId: enterpriseId ? String(enterpriseId) : null,
-          role: staff?.role || 'user',
-          userId: staff ? String(staff._id) : String(user._id),
-        },
-        async () => {
-          const query: Record<string, unknown> = {};
-          if (staff) {
-            if (staff.role === 'enterprise_admin') {
-              query.enterpriseId = staff.enterpriseId;
-            } else {
-              query.staffId = staff._id;
-            }
-          } else {
-            query.creator = user._id;
+    const miniContext = await resolveMiniProgramContext(request);
+    const result = miniContext
+      ? await withMiniProgramPostgresTransaction(
+          miniContext,
+          (transaction) => {
+            const staff = miniContext.staff;
+            return new FloorPlanRepository(transaction).list({
+              ...baseOptions,
+              staffId:
+                staff && staff.role !== 'enterprise_admin'
+                  ? parsePostgresId(staff._id, 'staff id')
+                  : undefined,
+              creatorId: !staff
+                ? parsePostgresId(miniContext.user._id, 'user id')
+                : undefined,
+            });
           }
+        )
+      : await (async () => {
+          const adminContext = await getTenantContext(request);
+          if (!adminContext) return null;
+          return withAdminPostgresTransaction(adminContext, (transaction) =>
+            new FloorPlanRepository(transaction).list({
+              ...baseOptions,
+              staffId:
+                adminContext.role === 'designer' ||
+                adminContext.role === 'salesperson'
+                  ? parsePostgresId(adminContext.userId, 'userId')
+                  : undefined,
+            })
+          );
+        })();
 
-          const { floorPlans, total } = await executeQuery(query);
-          return NextResponse.json({ 
-            success: true, 
-            data: floorPlans,
-            pagination: createPaginationMetadata(total, page, limit)
-          });
-        }
+    if (!result) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
       );
     }
-
-    // 2. Admin Dashboard Context (via Auth Token) - 使用新的租户上下文包装器
-    else {
-      try {
-        return await withTenantContext(req, async () => {
-          // 💡 这里传入空对象即可！插件会自动拦截find并加上enterpriseId
-          const { floorPlans, total } = await executeQuery({});
-          return NextResponse.json({ 
-            success: true, 
-            data: floorPlans,
-            pagination: createPaginationMetadata(total, page, limit)
-          });
-        });
-      } catch (error: unknown) {
-        if (getErrorMessage(error) === 'Unauthorized') {
-          return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-        }
-        throw error;
-      }
-    }
+    return NextResponse.json({
+      success: true,
+      data: result.rows.map(floorPlanToDto),
+      pagination: {
+        total: result.total,
+        page,
+        limit,
+        totalPages: Math.ceil(result.total / limit),
+      },
+    });
   } catch (error: unknown) {
-    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: getErrorMessage(error) },
+      { status: 500 }
+    );
   }
 }

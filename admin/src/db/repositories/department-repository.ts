@@ -4,6 +4,9 @@ import type { PostgresTransaction } from '@/db/transaction';
 
 export type NewDepartment = typeof departments.$inferInsert;
 export type DepartmentRecord = typeof departments.$inferSelect;
+export type DepartmentUpdate = Partial<
+  Pick<NewDepartment, 'name' | 'parentId' | 'order'>
+>;
 
 export class DepartmentRepository {
   constructor(private readonly transaction: PostgresTransaction) {}
@@ -18,6 +21,13 @@ export class DepartmentRepository {
           : eq(departments.parentId, parentId)
       )
       .orderBy(asc(departments.order), asc(departments.id));
+  }
+
+  async listAll() {
+    return this.transaction
+      .select()
+      .from(departments)
+      .orderBy(asc(departments.order), asc(departments.createdAt), asc(departments.id));
   }
 
   async findById(id: bigint) {
@@ -49,5 +59,30 @@ export class DepartmentRepository {
       .values(input)
       .returning();
     return rows[0];
+  }
+
+  async update(id: bigint, input: DepartmentUpdate) {
+    const rows = await this.transaction
+      .update(departments)
+      .set({ ...input, updatedAt: new Date() })
+      .where(eq(departments.id, id))
+      .returning();
+    return rows[0] ?? null;
+  }
+
+  async countChildren(id: bigint) {
+    const rows = await this.transaction
+      .select({ id: departments.id })
+      .from(departments)
+      .where(eq(departments.parentId, id));
+    return rows.length;
+  }
+
+  async delete(id: bigint) {
+    const rows = await this.transaction
+      .delete(departments)
+      .where(eq(departments.id, id))
+      .returning({ id: departments.id });
+    return rows[0] ?? null;
   }
 }

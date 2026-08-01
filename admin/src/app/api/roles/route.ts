@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { SystemRoleRepository, type SystemRoleRecord } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
 import { getTenantContext } from '@/lib/auth';
-import { DEFAULT_PERMISSIONS, ROLE_LABELS } from '@/models/AdminUser';
+import { DEFAULT_PERMISSIONS, ROLE_LABELS } from '@/lib/admin-user-roles';
 
 function toRoleDto(role: SystemRoleRecord) {
   return {

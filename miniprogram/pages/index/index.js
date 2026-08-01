@@ -46,12 +46,12 @@ function formatDateLabel(value) {
   return text.slice(0, 16);
 }
 
-function getRecentPlanStatus(status, index) {
+function getRecentPlanStatus(status) {
   if (status === 'completed') {
     return { label: '已完成', className: 'status-completed' };
   }
 
-  if (status === 'designing' || index === 2) {
+  if (status === 'designing') {
     return { label: '方案深化中', className: 'status-designing' };
   }
 
@@ -60,13 +60,17 @@ function getRecentPlanStatus(status, index) {
 
 function buildRecentPlans(plans) {
   return (plans || []).slice(0, 3).map((plan, index) => {
-    const statusMeta = getRecentPlanStatus(plan.status, index);
+    const statusMeta = getRecentPlanStatus(plan.status);
+    const roomCount = Number(plan.roomCount);
+    const area = Number(plan.area);
     return {
       _id: plan.id || plan._id,
       name: plan.name || '未命名方案',
       meta: formatDateLabel(plan.updatedAt || plan.createdAt),
       statusLabel: statusMeta.label,
       statusClass: statusMeta.className,
+      roomCount: Number.isFinite(roomCount) && roomCount > 0 ? roomCount : 0,
+      areaLabel: Number.isFinite(area) && area > 0 ? `${area}㎡` : '',
       thumbVariant: ['a', 'b', 'c'][index] || 'a',
     };
   });
@@ -363,6 +367,12 @@ Page({
   },
 
   onPrimaryMeasureTap: function () {
+    const recentPlan = (this.data.recentPlans || [])[0];
+    if (recentPlan && recentPlan._id) {
+      openSurveyingEditor({ floorPlanId: recentPlan._id });
+      return;
+    }
+
     // 已有进行中的项目 → 继续量房
     if (this.data.plannedRooms && this.data.plannedRooms.length > 0) {
       this.onContinueProjectTap();

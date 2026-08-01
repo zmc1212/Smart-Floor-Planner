@@ -1,302 +1,300 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
+import {
+  leadToDto,
+  parseOptionalPostgresId,
+  parsePostgresId,
+} from '@/db/postgres-dto';
+import {
+  AdminUserRepository,
+  LeadRepository,
+  type LeadListOptions,
+  type LeadUpdate,
+} from '@/db/repositories';
+import type { PostgresTransaction } from '@/db/transaction';
+import { getTenantContext, type TenantContext } from '@/lib/auth';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
-import { withTenantContext, getTenantContext } from '@/lib/auth';
-import Lead from '@/models/Lead';
-import { AdminUser } from '@/models/AdminUser';
-import { Enterprise } from '@/models/Enterprise';
-import '@/models/FloorPlan';
-import { WeComService } from '@/lib/wecom';
-import { tenantStorage } from '@/lib/tenant-context';
-import { notifyEnterpriseAdminOfNewLead, notifyDesignerOfAssignedLead } from '@/lib/wechat-notification';
-import { getPaginationParams, createPaginationMetadata } from '@/lib/pagination';
+import {
+  withAdminPostgresTransaction,
+  withMiniProgramPostgresTransaction,
+} from '@/lib/postgres-request-scope';
+import { resolveWritableEnterpriseId } from '@/lib/tenant-route';
+import {
+  notifyDesignerOfAssignedLead,
+  notifyEnterpriseAdminOfNewLead,
+} from '@/lib/wechat-notification';
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'Unknown error';
+}
+
+function parsePage(searchParams: URLSearchParams) {
+  const page = Math.max(Number(searchParams.get('page')) || 1, 1);
+  const limit = Math.min(
+    Math.max(Number(searchParams.get('limit')) || 20, 1),
+    50
+  );
+  return { page, limit };
+}
 
 export async function GET(request: Request) {
   try {
-    await dbConnect();
     const { searchParams } = new URL(request.url);
+    const { page, limit } = parsePage(searchParams);
+    const status = searchParams.get('status') || undefined;
+    const miniContext = await resolveMiniProgramContext(request);
 
-    // Try Mini Program JWT first
-    const mpContext = await resolveMiniProgramContext(request);
-    if (mpContext) {
-      const { user, staff, enterpriseId } = mpContext;
-
-      return await tenantStorage.run(
-        {
-          enterpriseId: enterpriseId ? String(enterpriseId) : null,
-          role: staff?.role || 'user',
-          userId: staff ? String(staff._id) : String(user._id),
-        },
-        async () => {
-          const status = searchParams.get('status');
-          const page = parseInt(searchParams.get('page') || '1');
-          const limit = parseInt(searchParams.get('limit') || '20');
-
-          if (!staff) {
-            return NextResponse.json({ success: false, error: 'Staff profile not found' }, { status: 403 });
-          }
-
-          const staffMember = staff;
-
-          // Fetch leads based on role
-          let query: any = {};
-          if (staffMember.role === 'enterprise_admin' && staffMember.enterpriseId) {
-            query.enterpriseId = staffMember.enterpriseId;
-          } else {
-            query.$or = [
-              { promoterId: staffMember._id },
-              { assignedTo: staffMember._id }
-            ];
-          }
-
-          const baseQuery = { ...query };
-          
-          if (status && status !== 'all') {
-            query.status = status;
-          }
-
-          const [leads, total, newCount, measuringCount, convertedCount] = await Promise.all([
-            Lead.find(query)
-              .populate({ path: 'floorPlanIds', select: 'name layoutData createdAt status source externalSource', strictPopulate: false })
-              .populate({ path: 'primaryFloorPlanId', select: 'name layoutData createdAt status source externalSource', strictPopulate: false })
-              .populate('assignedTo', 'displayName role')
-              .sort({ createdAt: -1 })
-              .skip((page - 1) * limit)
-              .limit(limit),
-            Lead.countDocuments(baseQuery),
-            Lead.countDocuments({ ...baseQuery, status: 'new' }),
-            Lead.countDocuments({ ...baseQuery, status: 'measuring' }),
-            Lead.countDocuments({ ...baseQuery, status: 'converted' })
+    if (miniContext) {
+      if (!miniContext.staff) {
+        return NextResponse.json(
+          { success: false, error: 'Staff profile not found' },
+          { status: 403 }
+        );
+      }
+      const staffId = parsePostgresId(miniContext.staff._id, 'staff id');
+      const baseOptions: LeadListOptions =
+        miniContext.staff.role === 'enterprise_admin'
+          ? {}
+          : {
+              staffId,
+              staffVisibility: 'promoted-or-assigned',
+            };
+      const result = await withMiniProgramPostgresTransaction(
+        miniContext,
+        async (transaction) => {
+          const repository = new LeadRepository(transaction);
+          const [list, all, stats] = await Promise.all([
+            repository.list({ ...baseOptions, status, page, limit }),
+            repository.count(baseOptions),
+            repository.countStatuses(baseOptions, [
+              'new',
+              'measuring',
+              'assigned',
+              'converted',
+            ]),
           ]);
-
-          return NextResponse.json({ 
-            success: true, 
-            data: leads,
-            stats: {
-              all: total,
-              new: newCount,
-              measuring: measuringCount,
-              converted: convertedCount
-            }
-          });
+          return { list, all, stats };
         }
       );
-    }
-
-    // Default: Admin Dashboard Auth flow - 使用新的租户上下文包装器
-    const status = searchParams.get('status');
-    const source = searchParams.get('source');
-
-    try {
-      return await withTenantContext(request, async () => {
-        const { page, limit, skip } = getPaginationParams(request.url);
-        
-        const basicQuery: any = {};
-        if (status) basicQuery.status = status;
-        if (source) basicQuery.source = source;
-
-        // 插件会自动注入租户过滤，无需手动处理
-        console.log(`Leads API Trace: Admin user accessing leads with query=${JSON.stringify(basicQuery)}`);
-
-        // 添加查询前的日志
-        const query = Lead.find(basicQuery)
-          .populate('assignedTo', 'displayName username')
-          .populate('promoterId', 'displayName username')
-          .populate({ path: 'floorPlanIds', select: 'name status createdAt source externalSource', strictPopulate: false })
-          .populate({ path: 'primaryFloorPlanId', select: 'name status createdAt source externalSource', strictPopulate: false })
-          .sort({ createdAt: -1 })
-          .skip(skip)
-          .limit(limit);
-
-        console.log(`[Leads API] 执行查询前的过滤条件:`, query.getFilter());
-
-        const [leads, total] = await Promise.all([
-          query,
-          Lead.countDocuments(basicQuery)
-        ]);
-
-        console.log(`Leads API Result: Found ${leads.length} leads (Total: ${total})`);
-
-        return NextResponse.json({ 
-          success: true, 
-          data: leads,
-          pagination: createPaginationMetadata(total, page, limit)
-        });
+      return NextResponse.json({
+        success: true,
+        data: result.list.rows.map(leadToDto),
+        stats: {
+          all: result.all,
+          ...result.stats,
+        },
       });
-    } catch (error: any) {
-      if (error.message === 'Unauthorized') {
-        console.log('Leads API: Unauthorized access attempt');
-        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-      }
-      throw error;
     }
-  } catch (error: any) {
+
+    const context = await getTenantContext(request);
+    if (!context) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    const result = await withAdminPostgresTransaction(
+      context,
+      (transaction) =>
+        new LeadRepository(transaction).list({
+          status,
+          source: searchParams.get('source') || undefined,
+          staffId:
+            context.role === 'designer'
+              ? parsePostgresId(context.userId, 'userId')
+              : undefined,
+          staffVisibility: 'assigned',
+          page,
+          limit,
+        })
+    );
+    return NextResponse.json({
+      success: true,
+      data: result.rows.map(leadToDto),
+      pagination: {
+        total: result.total,
+        page,
+        limit,
+        totalPages: Math.ceil(result.total / limit),
+      },
+    });
+  } catch (error: unknown) {
     console.error('Fetch leads error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: errorMessage(error) },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(request: Request) {
   try {
-    await dbConnect();
-    
-    // Check Mini Program JWT first
-    const mpContext = await resolveMiniProgramContext(request);
-    const adminContext = !mpContext ? await getTenantContext(request) : null;
-    
     const body = await request.json();
-
-    // validate required fields
-    if (!body.name || !body.phone) {
-      return NextResponse.json({ success: false, error: 'Name and phone are required' }, { status: 400 });
+    const name = typeof body.name === 'string' ? body.name.trim() : '';
+    const phone = typeof body.phone === 'string' ? body.phone.trim() : '';
+    if (!name || !phone) {
+      return NextResponse.json(
+        { success: false, error: 'Name and phone are required' },
+        { status: 400 }
+      );
     }
 
-    const enterpriseId = body.enterpriseId || mpContext?.enterpriseId || adminContext?.enterpriseId;
-    const role = mpContext?.staff?.role || adminContext?.role || 'user';
-    const userId = mpContext?.staff ? String(mpContext.staff._id) : (adminContext?.userId || mpContext?.user?._id);
-
-    return await tenantStorage.run(
-      {
-        enterpriseId: enterpriseId ? String(enterpriseId) : null,
-        role: role as any,
-        userId: String(userId),
-      },
-      async () => {
-        // Workflow logic: Automatic Assignment
-        let assignedTo = body.assignedTo;
-        let promoterId = body.promoterId;
-        let currentEnterpriseId = enterpriseId;
-
-        // 1. Resolve IDs from staff records if they are passed as 'assignedTo' (common in Mini Program)
-        if (assignedTo || promoterId) {
-          const staffRefId = promoterId || assignedTo;
-          const staff = await AdminUser.findById(staffRefId);
-          if (staff) {
-            if (!currentEnterpriseId) {
-              currentEnterpriseId = staff.enterpriseId;
-              console.log(`[Workflow] Resolved enterpriseId ${currentEnterpriseId} from staff ${staff.displayName}`);
-            }
-
-            // If the reference is a salesperson and we don't have a promoterId yet, set it
-            if (staff.role === 'salesperson' && !promoterId) {
-              promoterId = staff._id;
-              assignedTo = undefined; // Trigger auto-designer lookup
-            }
-          }
-        }
-
-        // 2. Handle admin dashboard submission: if logged in user is a salesperson
-        if (adminContext && adminContext.role === 'salesperson') {
-          promoterId = adminContext.userId;
-          assignedTo = undefined; // Reset to find the designer
-        } else if (mpContext && mpContext.staff?.role === 'salesperson') {
-          promoterId = String(mpContext.staff._id);
-          assignedTo = undefined;
-        }
-
-        // 3. Find designer linked to this promoter
-        if (promoterId && !assignedTo) {
-          const designer = await AdminUser.findOne({
-            role: 'designer',
-            promoterIds: promoterId
-          });
-
-          if (designer) {
-            assignedTo = designer._id;
-            console.log(`[Workflow] Auto-assigning lead ${body.name} to designer ${designer.displayName}`);
-          }
-        }
-
-        // 4. Fallback: If still no responsible person assigned, default to the creator
-        if (!assignedTo) {
-          assignedTo = userId;
-          console.log(`[Workflow] Defaulting responsible person to creator: ${userId}`);
-        }
-
-        // 5. Update status based on assignment
-        // If assigned to a designer, move to 'assigned' status
-        if (assignedTo && (!body.status || body.status === 'new')) {
-          const assignedUser = await AdminUser.findById(assignedTo);
-          if (assignedUser && assignedUser.role === 'designer') {
-            body.status = 'assigned';
-          } else {
-            body.status = 'new';
-          }
-        }
-
-        // 6. Check if lead already exists (by phone)
-        // Note: With multiTenantPlugin, this findOne is already filtered by currentEnterpriseId
-        let lead = await Lead.findOne({ phone: body.phone });
-
-        if (lead) {
-          // Merge: Update existing lead with new info and append floorPlanId
-          if (body.floorPlanId && !lead.floorPlanIds.includes(body.floorPlanId)) {
-            lead.floorPlanIds.push(body.floorPlanId);
-          }
-          if (body.floorPlanId) lead.primaryFloorPlanId = body.floorPlanId;
-          if (body.communityName) lead.communityName = body.communityName;
-          if (body.area) lead.area = body.area;
-          if (body.stylePreference) lead.stylePreference = body.stylePreference;
-
-          // Keep existing assignments unless missing
-          if (!lead.promoterId) lead.promoterId = promoterId;
-          if (!lead.assignedTo) lead.assignedTo = assignedTo;
-          if (!lead.enterpriseId) lead.enterpriseId = currentEnterpriseId;
-
-          await lead.save();
-          console.log(`[Workflow] Updated existing lead: ${lead.name} (${lead.phone})`);
-        } else {
-          // Create new lead
-          const leadData = {
-            ...body,
-            floorPlanIds: body.floorPlanId ? [body.floorPlanId] : [],
-            primaryFloorPlanId: body.floorPlanId || undefined,
-            promoterId,
-            assignedTo,
-            enterpriseId: currentEnterpriseId,
-            assignedAt: assignedTo ? new Date() : undefined
-          };
-          lead = await Lead.create(leadData);
-          console.log(`[Workflow] Created new lead: ${lead.name} under enterprise: ${currentEnterpriseId}`);
-        }
-
-    // Workflow logic: WeCom Group Creation
-    if (lead.enterpriseId && lead.promoterId && lead.assignedTo) {
-      const enterprise = await Enterprise.findById(lead.enterpriseId);
-      if (enterprise && (enterprise as any).wecomConfig) {
-        // Trigger WeCom group creation (fire and forget for this request)
-        WeComService.createLeadGroup(
-          enterprise,
-          lead.name,
-          lead.promoterId.toString(),
-          lead.assignedTo.toString()
-        ).then(groupId => {
-          if (groupId) {
-            Lead.findByIdAndUpdate(lead._id, { wecomGroupId: groupId }).exec();
-            console.log(`[Workflow] Group created for lead ${lead.name}: ${groupId}`);
-          }
-        }).catch(err => {
-          console.error('[Workflow] WeCom group creation background task failed:', err);
-        });
-      }
+    const miniContext = await resolveMiniProgramContext(request);
+    const adminContext = miniContext ? null : await getTenantContext(request);
+    if (!miniContext && !adminContext) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
+    const role = miniContext?.staff?.role || adminContext?.role || 'user';
+    const actorStaffId = miniContext?.staff
+      ? parsePostgresId(miniContext.staff._id, 'staff id')
+      : adminContext
+        ? parsePostgresId(adminContext.userId, 'userId')
+        : null;
+    const contextEnterpriseId =
+      miniContext?.enterpriseId || adminContext?.enterpriseId || null;
+    const explicitEnterpriseId = adminContext
+      ? resolveWritableEnterpriseId(
+          adminContext as TenantContext,
+          body.enterpriseId
+        )
+      : contextEnterpriseId;
 
-    // --- New: Mini Program Notifications ---
-    if (lead) {
-      // 1. Notify Enterprise Admin of new lead
-      await notifyEnterpriseAdminOfNewLead(lead);
+    const execute = async (transaction: PostgresTransaction) => {
+      const leads = new LeadRepository(transaction);
+      const admins = new AdminUserRepository(transaction);
+      let enterpriseId = explicitEnterpriseId
+        ? parsePostgresId(explicitEnterpriseId, 'enterpriseId')
+        : null;
+      let promoterId = parseOptionalPostgresId(
+        body.promoterId,
+        'promoterId'
+      );
+      let assignedTo = parseOptionalPostgresId(
+        body.assignedTo,
+        'assignedTo'
+      );
 
-      // 2. Notify Designer if assigned
-      if (lead.assignedTo) {
-        await notifyDesignerOfAssignedLead(lead, lead.assignedTo.toString());
+      const referencedStaffId = promoterId ?? assignedTo;
+      if (referencedStaffId) {
+        const referencedStaff = await admins.findById(referencedStaffId);
+        if (!referencedStaff) {
+          throw new Error('Referenced staff not found in this scope');
+        }
+        enterpriseId ??= referencedStaff.enterpriseId;
+        if (referencedStaff.role === 'salesperson' && !promoterId) {
+          promoterId = referencedStaff.id;
+          assignedTo = null;
+        }
       }
-    }
-
-    return NextResponse.json({ success: true, data: lead }, { status: 201 });
+      if (role === 'salesperson' && actorStaffId) {
+        promoterId = actorStaffId;
+        assignedTo = null;
       }
+      if (promoterId && !assignedTo) {
+        assignedTo =
+          (await admins.findDesignerForPromoter(promoterId))?.id ?? null;
+      }
+      if (!assignedTo && actorStaffId && role !== 'user') {
+        assignedTo = actorStaffId;
+      }
+
+      let status = body.status || 'new';
+      if (assignedTo && (!body.status || body.status === 'new')) {
+        status =
+          (await admins.findById(assignedTo))?.role === 'designer'
+            ? 'assigned'
+            : 'new';
+      }
+      const floorPlanId = parseOptionalPostgresId(
+        body.floorPlanId,
+        'floorPlanId'
+      );
+      const area = Number(body.area);
+      const common: LeadUpdate = {
+        enterpriseId,
+        promoterId,
+        assignedTo,
+        assignedAt: assignedTo ? new Date() : null,
+        status,
+        communityName:
+          typeof body.communityName === 'string'
+            ? body.communityName.trim() || null
+            : null,
+        area: Number.isFinite(area) && area > 0 ? String(area) : null,
+        stylePreference:
+          typeof body.stylePreference === 'string'
+            ? body.stylePreference.trim() || null
+            : null,
+        city:
+          typeof body.city === 'string' ? body.city.trim() || null : null,
+        source:
+          typeof body.source === 'string' ? body.source : 'unknown',
+        notes: typeof body.notes === 'string' ? body.notes : null,
+      };
+
+      const existing = await leads.findByPhone(phone);
+      let lead = existing
+        ? await leads.update(existing.id, {
+            ...common,
+            name: existing.name || name,
+            status: existing.status,
+            source: existing.source,
+            promoterId: existing.promoterId ?? promoterId,
+            assignedTo: existing.assignedTo ?? assignedTo,
+            enterpriseId: existing.enterpriseId ?? enterpriseId,
+            communityName: common.communityName ?? existing.communityName,
+            area: common.area ?? existing.area,
+            stylePreference:
+              common.stylePreference ?? existing.stylePreference,
+          })
+        : await (async () => {
+            const created = await leads.create({
+              ...common,
+              name,
+              phone,
+              source: common.source || 'unknown',
+              status: common.status || 'new',
+              followUpRecords: [],
+            });
+            return leads.findById(created.id);
+          })();
+      if (!lead) throw new Error('Failed to persist lead');
+      if (floorPlanId) {
+        lead = await leads.linkFloorPlan(lead.id, floorPlanId);
+        if (!lead) throw new Error('Floor plan not found in this scope');
+      }
+      return lead;
+    };
+
+    const lead = miniContext
+      ? await withMiniProgramPostgresTransaction(miniContext, execute)
+      : await withAdminPostgresTransaction(adminContext!, execute);
+
+    const notificationLead = {
+      ...lead,
+      enterpriseId: lead.enterpriseId?.toString(),
+    };
+    await Promise.allSettled([
+      notifyEnterpriseAdminOfNewLead(notificationLead),
+      lead.assignedTo
+        ? notifyDesignerOfAssignedLead(
+            notificationLead,
+            lead.assignedTo.toString()
+          )
+        : Promise.resolve(),
+    ]);
+
+    return NextResponse.json(
+      { success: true, data: leadToDto(lead) },
+      { status: 201 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Create lead error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: errorMessage(error) },
+      { status: 500 }
+    );
   }
 }

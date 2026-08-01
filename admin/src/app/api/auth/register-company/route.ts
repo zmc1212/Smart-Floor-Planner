@@ -1,39 +1,52 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import { Enterprise } from '@/models/Enterprise';
+import { EnterpriseRepository } from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
 
 export async function POST(request: Request) {
   try {
-    await dbConnect();
     const body = await request.json();
-
-    // Basic validation
-    if (!body.name || !body.contactPerson?.phone) {
-      return NextResponse.json({ success: false, error: '请填写公司名称和联系电话' }, { status: 400 });
+    if (!body.name || !body.code || !body.contactPerson?.phone) {
+      return NextResponse.json(
+        { success: false, error: '请填写公司名称、统一社会信用代码和联系电话' },
+        { status: 400 }
+      );
     }
 
-    // Check if code/name already exists
-    const existing = await Enterprise.findOne({ 
-      $or: [{ name: body.name }, { code: body.code }] 
+    const enterprise = await withPlatformTransaction(async (transaction) => {
+      const repository = new EnterpriseRepository(transaction);
+      if (
+        await repository.findByNameOrCode(
+          body.name.trim(),
+          body.code.trim()
+        )
+      ) {
+        throw Object.assign(new Error('公司名称或统一社会信用代码已注册'), {
+          code: '23505',
+        });
+      }
+      return repository.create({
+        name: body.name.trim(),
+        code: body.code.trim(),
+        contactPerson: body.contactPerson,
+        address: body.address || null,
+        industry: body.industry || null,
+        description: body.description || null,
+        status: 'pending_approval',
+        registrationMode: 'self_service',
+      });
     });
-    
-    if (existing) {
-      return NextResponse.json({ success: false, error: '公司名称或统一社会信用代码已注册' }, { status: 400 });
-    }
 
-    const enterprise = await Enterprise.create({
-      ...body,
-      status: 'pending_approval',
-      registrationMode: 'self_service',
-    });
-
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       message: '申请已提交，请等待管理员审核',
-      data: { id: enterprise._id } 
+      data: { id: enterprise.id.toString() },
     });
-  } catch (error: any) {
-    console.error('Registration error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const details = error as { code?: string };
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: details.code === '23505' ? 400 : 500 }
+    );
   }
 }

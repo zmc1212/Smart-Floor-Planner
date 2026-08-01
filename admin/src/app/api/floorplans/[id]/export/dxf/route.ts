@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import { FloorPlan } from '@/models/FloorPlan';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { FloorPlanRepository } from '@/db/repositories';
+import { getTenantContext } from '@/lib/auth';
 import { DXFGenerator } from '@/lib/dxf';
+import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
 import { adaptSurveyGraphToRooms, isFormalSurveyLayout } from '@/lib/survey-graph';
 
 export async function GET(
@@ -9,10 +11,17 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await dbConnect();
+    const context = await getTenantContext(request);
+    if (!context) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
     const { id } = await params;
 
-    const plan = await FloorPlan.findById(id);
+    const plan = await withAdminPostgresTransaction(context, (transaction) =>
+      new FloorPlanRepository(transaction).findById(
+        parsePostgresId(id, 'floor plan id')
+      )
+    );
     if (!plan) {
       return NextResponse.json({ success: false, error: 'Floor plan not found' }, { status: 404 });
     }

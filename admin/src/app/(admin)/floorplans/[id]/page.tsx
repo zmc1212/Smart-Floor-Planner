@@ -1,63 +1,70 @@
 import { notFound } from 'next/navigation';
 export const dynamic = "force-dynamic";
-import dbConnect from '@/lib/mongodb';
-import { FloorPlan } from '@/models/FloorPlan';
-import { User } from '@/models/User';
-import Lead from '@/models/Lead';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { FloorPlanRepository, LeadRepository } from '@/db/repositories';
 import FloorPlanViewerWrapper from '@/components/FloorPlanViewerWrapper';
+import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
+import { getSessionUser } from '@/lib/session';
 
 export default async function FloorPlanDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  await dbConnect();
-
   const { id } = await params;
-
+  let result;
   try {
-    const plan = await FloorPlan.findById(id).populate({
-      path: 'creator',
-      model: User,
-      select: 'nickname avatar openid communityName phone'
-    }).lean();
+    const session = await getSessionUser();
+    if (!session) return notFound();
+    result = await withAdminPostgresTransaction(
+      {
+        userId: session.id,
+        username: session.username,
+        role: session.role,
+        enterpriseId: session.enterpriseId,
+      },
+      async (transaction) => {
+        const plan = await new FloorPlanRepository(transaction).findById(
+          parsePostgresId(id, 'floor plan id')
+        );
+        if (!plan) return null;
+        const lead = await new LeadRepository(transaction).findByFloorPlanId(
+          plan.id
+        );
+        return { plan, lead };
+      }
+    );
 
-    if (!plan) {
-      return notFound();
-    }
-
-    // Find associated lead
-    const lead = await Lead.findOne({ floorPlanIds: plan._id }).lean();
-
-    // Serialize properly for the client component
-    const serializedPlan = {
-      _id: plan._id.toString(),
+  } catch (error) {
+    console.error(error);
+    return notFound();
+  }
+  if (!result) return notFound();
+  const { plan, lead } = result;
+  const serializedPlan = {
+      _id: plan.id.toString(),
       name: plan.name,
       layoutData: plan.layoutData,
       status: plan.status,
       source: plan.source,
       externalSource: plan.externalSource,
-      createdAt: plan.createdAt?.toISOString(),
+      createdAt: plan.createdAt.toISOString(),
       creator: plan.creator ? {
-        _id: (plan.creator as any)._id.toString(),
-        nickname: (plan.creator as any).nickname,
-        avatar: (plan.creator as any).avatar,
-        openid: (plan.creator as any).openid,
-        communityName: (plan.creator as any).communityName,
-        phone: (plan.creator as any).phone,
+        _id: plan.creator.id.toString(),
+        nickname: plan.creator.nickname,
+        avatar: plan.creator.avatar,
+        openid: plan.creator.openid,
+        communityName: plan.creator.communityName,
+        phone: plan.creator.phone,
       } : null,
       lead: lead ? {
-        _id: (lead as any)._id.toString(),
+        _id: lead.id.toString(),
         name: lead.name,
         status: lead.status,
         stylePreference: lead.stylePreference,
-        wecomGroupId: lead.wecomGroupId,
+        wecomGroupId: null,
       } : null
-    };
+  };
 
-    return (
-      <div className="bg-white min-h-screen">
-        <FloorPlanViewerWrapper planData={serializedPlan} />
-      </div>
-    );
-  } catch (error) {
-    console.error(error);
-    return notFound();
-  }
+  return (
+    <div className="bg-white min-h-screen">
+      <FloorPlanViewerWrapper planData={serializedPlan} />
+    </div>
+  );
 }

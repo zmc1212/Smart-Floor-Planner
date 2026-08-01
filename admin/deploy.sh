@@ -20,10 +20,9 @@ sleep 10
 
 echo "🗄️ 执行数据库自动化初始化..."
 # 通过容器内部网络调用 API 触发初始化，带上安全密钥
-docker exec -i smart-floor-planner-admin curl -s -X POST \
-  -H "Content-Type: application/json" \
-  -H "x-internal-secret: sfp_internal_init_secret_2024" \
-  http://127.0.0.1:3005/api/internal/seed | grep -E "message|error"
+docker exec -i smart-floor-planner-admin sh -c \
+  'curl -s -X POST -H "Content-Type: application/json" -H "x-internal-secret: $INTERNAL_SECRET" http://127.0.0.1:3005/api/internal/seed' \
+  | grep -E "message|error"
 
 echo "------------------------------------------------"
 echo "✅ 部署圆满完成！"

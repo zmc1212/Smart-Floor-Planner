@@ -500,26 +500,89 @@ export function convertKujialeDetailToLayoutData(detail: KujialeFloorPlanDetail)
   const rooms = detail.rooms.length
     ? detail.rooms
     : [{ id: `${detail.externalId}-room`, name: detail.layoutLabel || '酷家乐户型', width: 40, height: 40 }];
+  const nodes: Array<{ id: string; xMm: number; yMm: number }> = [];
+  const walls: Array<{
+    id: string;
+    startNodeId: string;
+    endNodeId: string;
+    lengthMm: number;
+    thicknessMm: number;
+  }> = [];
+  const spaces: Array<{
+    id: string;
+    name: string;
+    wallIds: string[];
+    closed: true;
+  }> = [];
 
-  return rooms.map((room, index) => {
-    const width = room.width || 40;
-    const height = room.height || 40;
-    return {
-      id: room.id || `kujiale-room-${index + 1}`,
+  rooms.forEach((room, index) => {
+    const roomId = room.id || `kujiale-room-${index + 1}`;
+    const offsetX = (index % 3) * 6000;
+    const offsetY = Math.floor(index / 3) * 5000;
+    const widthMm = Math.max(100, Number(room.width || 40) * 100);
+    const heightMm = Math.max(100, Number(room.height || 40) * 100);
+    const points = room.polygon?.length
+      ? room.polygon.map((point) => ({
+          xMm: Number(point.x || 0) * 100,
+          yMm: Number(point.y || 0) * 100,
+        }))
+      : [
+          { xMm: offsetX, yMm: offsetY },
+          { xMm: offsetX + widthMm, yMm: offsetY },
+          { xMm: offsetX + widthMm, yMm: offsetY + heightMm },
+          { xMm: offsetX, yMm: offsetY + heightMm },
+        ];
+    const roomNodeIds = points.map((point, pointIndex) => {
+      const id = `${roomId}-node-${pointIndex + 1}`;
+      nodes.push({ id, ...point });
+      return id;
+    });
+    const roomWallIds = roomNodeIds.map((startNodeId, pointIndex) => {
+      const endNodeId = roomNodeIds[(pointIndex + 1) % roomNodeIds.length];
+      const start = points[pointIndex];
+      const end = points[(pointIndex + 1) % points.length];
+      const id = `${roomId}-wall-${pointIndex + 1}`;
+      walls.push({
+        id,
+        startNodeId,
+        endNodeId,
+        lengthMm: Math.round(
+          Math.hypot(end.xMm - start.xMm, end.yMm - start.yMm)
+        ),
+        thicknessMm: 120,
+      });
+      return id;
+    });
+    spaces.push({
+      id: roomId,
       name: room.name || `空间${index + 1}`,
-      x: (index % 3) * 48,
-      y: Math.floor(index / 3) * 42,
-      width,
-      height,
-      defaultWidth: width,
-      defaultHeight: height,
-      polygon: room.polygon,
-      polygonClosed: !!room.polygon?.length,
-      openings: room.openings || [],
-      measured: true,
-      color: 'rgba(255, 255, 255, 0.8)',
-      source: 'kujiale',
-      externalRoomId: room.id,
-    };
+      wallIds: roomWallIds,
+      closed: true,
+    });
   });
+
+  return {
+    version: 4 as const,
+    measurementMode: 'surveying' as const,
+    surveyGraph: {
+      schemaVersion: 1,
+      kind: 'survey-wall-graph' as const,
+      status: 'completed',
+      activeFloorId: 'floor-1',
+      floors: [
+        {
+          id: 'floor-1',
+          name: '1F',
+          elevationMm: 0,
+          ceilingHeightMm: 2800,
+          nodes,
+          walls,
+          openings: [],
+          spaces,
+        },
+      ],
+      source: 'kujiale-import',
+      updatedAt: new Date().toISOString(),
+    },
+  };
 }

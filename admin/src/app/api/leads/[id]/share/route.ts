@@ -1,52 +1,46 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import Lead from '@/models/Lead';
-import { Enterprise } from '@/models/Enterprise';
-import { WeComService } from '@/lib/wecom';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { LeadRepository } from '@/db/repositories';
 import { getTenantContext } from '@/lib/auth';
+import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await dbConnect();
     const context = await getTenantContext(request);
     if (!context) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
-
-    const { id: leadId } = await params;
-    const body = await request.json();
-    const { message } = body;
-
-    const lead = await Lead.findById(leadId);
-    if (!lead) {
-      return NextResponse.json({ success: false, error: 'Lead not found' }, { status: 404 });
-    }
-
-    if (!lead.wecomGroupId) {
-      return NextResponse.json({ success: false, error: 'WeCom group not found for this lead' }, { status: 400 });
-    }
-
-    const enterprise = await Enterprise.findById(lead.enterpriseId);
-    if (!enterprise || !(enterprise as any).wecomConfig) {
-      return NextResponse.json({ success: false, error: 'Enterprise WeCom configuration missing' }, { status: 400 });
-    }
-
-    const success = await WeComService.sendMessage(
-      enterprise,
-      lead.wecomGroupId,
-      message || `设计师已为您生成了最新的户型设计方案，请点击查看：${process.env.NEXT_PUBLIC_APP_URL}/floorplans/${lead.floorPlanIds?.[0] || ''}`
+    const { id } = await params;
+    const lead = await withAdminPostgresTransaction(context, (transaction) =>
+      new LeadRepository(transaction).findById(
+        parsePostgresId(id, 'lead id')
+      )
     );
-
-    if (success) {
-      return NextResponse.json({ success: true });
-    } else {
-      return NextResponse.json({ success: false, error: 'Failed to send WeCom message' }, { status: 500 });
+    if (!lead) {
+      return NextResponse.json(
+        { success: false, error: 'Lead not found' },
+        { status: 404 }
+      );
     }
-  } catch (error: any) {
-    console.error('Share to WeCom error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          'WeCom group sharing is unavailable until enterprise WeCom configuration is migrated to PostgreSQL',
+      },
+      { status: 400 }
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    );
   }
 }

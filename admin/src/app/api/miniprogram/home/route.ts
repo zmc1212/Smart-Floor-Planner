@@ -1,168 +1,140 @@
 import { NextResponse } from 'next/server';
-import mongoose from 'mongoose';
-import dbConnect from '@/lib/mongodb';
-import { AdminUser } from '@/models/AdminUser';
-import { AiGeneration } from '@/models/AiGeneration';
-import { Device } from '@/models/Device';
-import { Enterprise } from '@/models/Enterprise';
-import { FloorPlan } from '@/models/FloorPlan';
-import Lead from '@/models/Lead';
-import { Measurement } from '@/models/Measurement';
-import { User } from '@/models/User';
+import { parsePostgresId } from '@/db/postgres-dto';
+import {
+  DeviceRepository,
+  FloorPlanRepository,
+  LeadRepository,
+  MeasurementRepository,
+} from '@/db/repositories';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
-import { adaptSurveyGraphToRooms, isFormalSurveyLayout } from '@/lib/survey-graph';
+import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
+import {
+  adaptSurveyGraphToRooms,
+  isFormalSurveyLayout,
+} from '@/lib/survey-graph';
 
 export const dynamic = 'force-dynamic';
 
-function asObjectId(value: unknown) {
-  if (!value) return undefined;
-  const id = typeof value === 'object' && value !== null && '_id' in value ? (value as any)._id : value;
-  return mongoose.Types.ObjectId.isValid(String(id)) ? new mongoose.Types.ObjectId(String(id)) : undefined;
+function parseRooms(layoutData: unknown) {
+  return isFormalSurveyLayout(layoutData)
+    ? adaptSurveyGraphToRooms(layoutData)
+    : [];
 }
 
-function parseRooms(layoutData: unknown): any[] {
-  if (!layoutData) return [];
-
-  if (isFormalSurveyLayout(layoutData)) {
-    return adaptSurveyGraphToRooms(layoutData);
-  }
-
-  let parsed = layoutData;
-  if (typeof layoutData === 'string') {
-    try {
-      parsed = JSON.parse(layoutData);
-    } catch {
-      return [];
-    }
-  }
-
-  return isFormalSurveyLayout(parsed) ? adaptSurveyGraphToRooms(parsed) : [];
-}
-
-function calculateArea(rooms: any[]) {
+function calculateArea(rooms: ReturnType<typeof parseRooms>) {
   const rawArea = rooms.reduce((sum, room) => {
-    if (Array.isArray(room?.polygon) && room.polygon.length >= 3 && room.polygonClosed !== false) {
+    if (room.polygon.length >= 3 && room.polygonClosed !== false) {
       let area = 0;
-      for (let i = 0; i < room.polygon.length; i += 1) {
-        const current = room.polygon[i];
-        const next = room.polygon[(i + 1) % room.polygon.length];
+      for (let index = 0; index < room.polygon.length; index += 1) {
+        const current = room.polygon[index];
+        const next = room.polygon[(index + 1) % room.polygon.length];
         area += current.x * next.y - next.x * current.y;
       }
       return sum + Math.abs(area) / 2;
     }
-
-    return sum + Number(room?.width || 0) * Number(room?.height || 0);
+    return sum + Number(room.width || 0) * Number(room.height || 0);
   }, 0);
-
   return rawArea > 0 ? Math.round((rawArea / 100) * 100) / 100 : undefined;
 }
 
-function deriveCity(user: any) {
-  const text = String(user?.communityName || '');
+function deriveCity(user: Record<string, unknown>) {
+  if (typeof user.city === 'string' && user.city) return user.city;
+  const text = String(user.communityName || '');
   const match = text.match(/([\u4e00-\u9fa5]+(?:市|区|县))/);
   return match?.[1] || '';
 }
 
-// Shared helper resolveMiniProgramContext is now imported from @/lib/miniprogram-auth
-
-function buildVisibilityQueries(context: Awaited<ReturnType<typeof resolveMiniProgramContext>>) {
-  if (!context) {
-    return {
-      floorPlanQuery: { _id: null },
-      leadQuery: { _id: null },
-      measurementQuery: { _id: null },
-      aiQuery: { _id: null },
-    };
-  }
-
-  const userId = asObjectId((context.user as any)._id);
-  const staffId = asObjectId((context.staff as any)?._id);
-  const enterpriseId = context.enterpriseId;
-  const staffRole = (context.staff as any)?.role;
-
-  if (context.staff && staffRole === 'enterprise_admin' && enterpriseId) {
-    return {
-      floorPlanQuery: { enterpriseId },
-      leadQuery: { enterpriseId },
-      measurementQuery: { enterpriseId },
-      aiQuery: { enterpriseId, status: 'succeeded' },
-    };
-  }
-
-  if (context.staff && staffId) {
-    return {
-      floorPlanQuery: { staffId },
-      leadQuery: { $or: [{ promoterId: staffId }, { assignedTo: staffId }] },
-      measurementQuery: { operatorId: staffId },
-      aiQuery: { operatorId: staffId, status: 'succeeded' },
-    };
-  }
-
-  return {
-    floorPlanQuery: { creator: userId },
-    leadQuery: { _id: null },
-    measurementQuery: { _id: null },
-    aiQuery: { _id: null, status: 'succeeded' },
-  };
-}
-
 export async function GET(request: Request) {
   try {
-    await dbConnect();
-    
     const context = await resolveMiniProgramContext(request);
     if (!context) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
     }
 
-    const openid = context.user.openid;
+    const result = await withMiniProgramPostgresTransaction(
+      context,
+      async (transaction) => {
+        const floorPlans = new FloorPlanRepository(transaction);
+        const leads = new LeadRepository(transaction);
+        const measurements = new MeasurementRepository(transaction);
+        const devices = new DeviceRepository(transaction);
+        const staffId = context.staff
+          ? parsePostgresId(context.staff._id, 'staff id')
+          : null;
+        const staffScoped =
+          context.staff && context.staff.role !== 'enterprise_admin';
+        const floorPlanOptions = {
+          formalOnly: true,
+          staffId: staffScoped ? staffId ?? undefined : undefined,
+          creatorId: !context.staff
+            ? parsePostgresId(context.user._id, 'user id')
+            : undefined,
+        };
+        const leadOptions = context.staff
+          ? context.staff.role === 'enterprise_admin'
+            ? {}
+            : {
+                staffId: staffId ?? undefined,
+                staffVisibility: 'promoted-or-assigned' as const,
+              }
+          : null;
+        const measurementOptions = context.staff
+          ? context.staff.role === 'enterprise_admin'
+            ? {}
+            : { operatorId: staffId ?? undefined }
+          : null;
 
-    const { floorPlanQuery, leadQuery, measurementQuery, aiQuery } = buildVisibilityQueries(context);
-    const formalFloorPlanQuery = {
-      ...floorPlanQuery,
-      'layoutData.version': 4,
-      'layoutData.measurementMode': 'surveying',
-      'layoutData.surveyGraph.kind': 'survey-wall-graph',
-    };
+        const [savedPlans, measurementRecords, leadCount, recentPlans, device] =
+          await Promise.all([
+            floorPlans.count(floorPlanOptions),
+            measurementOptions
+              ? measurements.count(measurementOptions)
+              : Promise.resolve(0),
+            leadOptions ? leads.count(leadOptions) : Promise.resolve(0),
+            floorPlans.listRecent(floorPlanOptions, 3),
+            staffId
+              ? devices.findLatestAssignedToUser(staffId)
+              : Promise.resolve(null),
+          ]);
+        return {
+          savedPlans,
+          measurementRecords,
+          leadCount,
+          recentPlans,
+          device,
+        };
+      }
+    );
 
-    const [savedPlans, aiGeneratedCases, measurementRecords, leadCount, recentPlans, assignedDevice] = await Promise.all([
-      FloorPlan.countDocuments(formalFloorPlanQuery),
-      AiGeneration.countDocuments(aiQuery),
-      Measurement.countDocuments(measurementQuery),
-      Lead.countDocuments(leadQuery),
-      FloorPlan.find(formalFloorPlanQuery).sort({ updatedAt: -1, createdAt: -1 }).limit(3).lean(),
-      context.staff
-        ? Device.findOne({ assignedUserId: (context.staff as any)._id, status: 'assigned' }).sort({ updatedAt: -1 }).lean()
-        : null,
-    ]);
-
-    const recentPlanItems = recentPlans.map((plan: any) => {
+    const recentPlans = result.recentPlans.map((plan) => {
       const rooms = parseRooms(plan.layoutData);
-      const updatedAt = plan.updatedAt || plan.createdAt;
       return {
-        id: String(plan._id),
-        _id: String(plan._id),
+        id: plan.id.toString(),
+        _id: plan.id.toString(),
         name: plan.name || '未命名方案',
         status: plan.status || 'draft',
         statusLabel: plan.status === 'completed' ? '已完成' : '编辑中',
-        updatedAt: updatedAt ? new Date(updatedAt).toISOString() : '',
+        updatedAt: (plan.updatedAt || plan.createdAt).toISOString(),
         roomCount: rooms.length,
         area: calculateArea(rooms),
       };
     });
-
-    const enterprise = context.enterprise as any;
-    const staff = context.staff as any;
-    const user = context.user as any;
-    const deviceCode = (assignedDevice as any)?.code;
+    const enterprise = context.enterprise;
+    const staff = context.staff;
+    const user = context.user;
+    const deviceCode = result.device?.code;
 
     return NextResponse.json({
       success: true,
       data: {
         user: {
-          openid,
+          openid: user.openid,
           role: user.role || 'user',
-          displayName: staff?.displayName || user.nickname || staff?.username || '',
+          displayName:
+            staff?.displayName || user.nickname || staff?.username || '',
           city: deriveCity(user),
           enterpriseName: enterprise?.name,
           branding: enterprise
@@ -174,25 +146,31 @@ export async function GET(request: Request) {
             : undefined,
         },
         bluetooth: {
-          connectedLabel: deviceCode ? `已授权 ${deviceCode}` : '请连接授权设备',
+          connectedLabel: deviceCode
+            ? `已授权 ${deviceCode}`
+            : '请连接授权设备',
           deviceCode,
-          authorized: !!deviceCode,
+          authorized: Boolean(deviceCode),
         },
         stats: {
-          savedPlans,
-          aiGeneratedCases,
-          measurementRecords,
-          leadCount,
+          savedPlans: result.savedPlans,
+          aiGeneratedCases: 0,
+          measurementRecords: result.measurementRecords,
+          leadCount: result.leadCount,
         },
-        recentPlans: recentPlanItems,
+        recentPlans,
         quickActions: {
           quoteEnabled: false,
           quoteLabel: '即将上线',
         },
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
     console.error('Mini program home error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    );
   }
 }

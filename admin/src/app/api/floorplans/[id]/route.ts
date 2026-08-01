@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import { FloorPlan } from '@/models/FloorPlan';
-import Lead from '@/models/Lead';
-import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import { floorPlanToDto, parsePostgresId } from '@/db/postgres-dto';
+import {
+  FloorPlanRepository,
+  LeadRepository,
+  type FloorPlanWithCreator,
+} from '@/db/repositories';
 import { linkFloorPlanToLead } from '@/lib/floorplan-lead-link';
+import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import { isFormalSurveyLayout } from '@/lib/survey-graph';
 
 interface FloorPlanUpdateBody {
@@ -17,88 +21,179 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown error';
 }
 
-function canAccessPlan(plan: { creator?: unknown; enterpriseId?: unknown }, context: Awaited<ReturnType<typeof resolveMiniProgramContext>>) {
-  if (!context) return false;
+function canAccessPlan(
+  plan: FloorPlanWithCreator,
+  context: NonNullable<Awaited<ReturnType<typeof resolveMiniProgramContext>>>
+) {
   if (context.staff) {
-    return String(plan.enterpriseId || '') === String(context.staff.enterpriseId || '');
+    return (
+      plan.enterpriseId?.toString() ===
+      (context.staff.enterpriseId || context.enterpriseId || '')
+    );
   }
-  return String(plan.creator || '') === String(context.user._id || '');
+  return plan.creatorId.toString() === context.user._id;
 }
 
-async function getPlanForContext(id: string, context: Awaited<ReturnType<typeof resolveMiniProgramContext>>) {
-  const plan = await FloorPlan.findById(id);
-  return plan && canAccessPlan(plan, context) ? plan : null;
-}
-
-export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    await dbConnect();
-    const context = await resolveMiniProgramContext(req);
-    if (!context) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    const context = await resolveMiniProgramContext(request);
+    if (!context) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     const { id } = await params;
-    const plan = await getPlanForContext(id, context);
-    if (!plan) return NextResponse.json({ success: false, error: 'Floor plan not found' }, { status: 404 });
-    return NextResponse.json({ success: true, data: plan });
+    const plan = await withMiniProgramPostgresTransaction(
+      context,
+      (transaction) =>
+        new FloorPlanRepository(transaction).findById(
+          parsePostgresId(id, 'floor plan id')
+        )
+    );
+    if (!plan || !canAccessPlan(plan, context)) {
+      return NextResponse.json(
+        { success: false, error: 'Floor plan not found' },
+        { status: 404 }
+      );
+    }
+    return NextResponse.json({ success: true, data: floorPlanToDto(plan) });
   } catch (error: unknown) {
-    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: getErrorMessage(error) },
+      { status: 500 }
+    );
   }
 }
 
-export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    await dbConnect();
-    const context = await resolveMiniProgramContext(req);
-    if (!context) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    const context = await resolveMiniProgramContext(request);
+    if (!context) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     const { id } = await params;
-    const body = await req.json() as FloorPlanUpdateBody;
+    const planId = parsePostgresId(id, 'floor plan id');
+    const body = (await request.json()) as FloorPlanUpdateBody;
     if (!isFormalSurveyLayout(body.layoutData)) {
-      return NextResponse.json({ success: false, error: 'layoutData must use the formal surveyGraph contract' }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'layoutData must use the formal surveyGraph contract',
+        },
+        { status: 400 }
+      );
     }
-    const plan = await getPlanForContext(id, context);
-    if (!plan) return NextResponse.json({ success: false, error: 'Floor plan not found' }, { status: 404 });
-    const previousStatus = plan.status;
-    const nextStatus = body.status || plan.status;
-    plan.name = body.name || plan.name;
-    plan.layoutData = body.layoutData;
-    plan.status = nextStatus;
-    if (previousStatus !== 'completed' && nextStatus === 'completed') {
-      plan.completedAt = new Date();
+
+    const updated = await withMiniProgramPostgresTransaction(
+      context,
+      async (transaction) => {
+        const repository = new FloorPlanRepository(transaction);
+        const current = await repository.findById(planId);
+        if (!current || !canAccessPlan(current, context)) return null;
+        const nextStatus = body.status || current.status;
+        const plan = await repository.update(planId, {
+          name: body.name?.trim() || current.name,
+          layoutData: body.layoutData as Record<string, unknown>,
+          status: nextStatus,
+          completedAt:
+            current.status !== 'completed' && nextStatus === 'completed'
+              ? new Date()
+              : current.completedAt,
+          staffId: context.staff
+            ? parsePostgresId(context.staff._id, 'staff id')
+            : current.staffId,
+          enterpriseId: context.staff?.enterpriseId
+            ? parsePostgresId(
+                context.staff.enterpriseId,
+                'staff enterprise id'
+              )
+            : current.enterpriseId,
+        });
+        if (!plan || !body.leadId) return plan;
+
+        const lead = await new LeadRepository(transaction).findById(
+          parsePostgresId(body.leadId, 'leadId')
+        );
+        if (!lead) throw new Error('Lead not found or access denied');
+        const staffId = context.staff
+          ? parsePostgresId(context.staff._id, 'staff id')
+          : null;
+        if (
+          context.staff &&
+          context.staff.role !== 'enterprise_admin' &&
+          lead.promoterId !== staffId &&
+          lead.assignedTo !== staffId
+        ) {
+          throw new Error('Lead access denied');
+        }
+        if (!context.staff && lead.phone !== context.user.phone) {
+          throw new Error('Lead access denied');
+        }
+        await linkFloorPlanToLead(transaction, lead.id, plan.id);
+        return plan;
+      }
+    );
+    if (!updated) {
+      return NextResponse.json(
+        { success: false, error: 'Floor plan not found' },
+        { status: 404 }
+      );
     }
-    if (context.staff) {
-      plan.staffId = context.staff._id;
-      plan.enterpriseId = context.staff.enterpriseId;
-    }
-    await plan.save();
-    if (body.leadId) await linkFloorPlanToLead(body.leadId, plan._id);
-    return NextResponse.json({ success: true, data: plan });
+    return NextResponse.json({ success: true, data: floorPlanToDto(updated) });
   } catch (error: unknown) {
-    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+    const message = getErrorMessage(error);
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: message.includes('access denied') ? 403 : 500 }
+    );
   }
 }
 
-export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    await dbConnect();
-    const context = await resolveMiniProgramContext(req);
-    if (!context) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    const context = await resolveMiniProgramContext(request);
+    if (!context) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
     const { id } = await params;
-    const plan = await getPlanForContext(id, context);
-    if (!plan) return NextResponse.json({ success: false, error: 'Floor plan not found' }, { status: 404 });
-
-    const tenantFilter = plan.enterpriseId ? { enterpriseId: plan.enterpriseId } : {};
-    await Promise.all([
-      Lead.updateMany(
-        { ...tenantFilter, floorPlanIds: plan._id },
-        { $pull: { floorPlanIds: plan._id } }
-      ),
-      Lead.updateMany(
-        { ...tenantFilter, primaryFloorPlanId: plan._id },
-        { $unset: { primaryFloorPlanId: 1 } }
-      )
-    ]);
-    await plan.deleteOne();
+    const deleted = await withMiniProgramPostgresTransaction(
+      context,
+      async (transaction) => {
+        const repository = new FloorPlanRepository(transaction);
+        const plan = await repository.findById(
+          parsePostgresId(id, 'floor plan id')
+        );
+        if (!plan || !canAccessPlan(plan, context)) return null;
+        return repository.delete(plan.id);
+      }
+    );
+    if (!deleted) {
+      return NextResponse.json(
+        { success: false, error: 'Floor plan not found' },
+        { status: 404 }
+      );
+    }
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
-    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: getErrorMessage(error) },
+      { status: 500 }
+    );
   }
 }

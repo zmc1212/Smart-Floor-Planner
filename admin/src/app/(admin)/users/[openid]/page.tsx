@@ -1,20 +1,42 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 export const dynamic = 'force-dynamic';
-import dbConnect from '@/lib/mongodb';
-import { User } from '@/models/User';
-import { FloorPlan } from '@/models/FloorPlan';
+import { floorPlanToDto, userToDto } from '@/db/postgres-dto';
+import { FloorPlanRepository, UserRepository } from '@/db/repositories';
 import { Map, Calendar, Home } from 'lucide-react';
 import BackButton from '@/components/BackButton';
+import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
+import { getSessionUser } from '@/lib/session';
+import { adaptSurveyGraphToRooms } from '@/lib/survey-graph';
 
 export default async function UserFloorPlansPage({ params }: { params: Promise<{ openid: string }> }) {
-  await dbConnect();
   const { openid } = await params;
-
-  const user = await User.findOne({ openid }).lean();
-  if (!user) return notFound();
-
-  const plans = await FloorPlan.find({ creator: user._id }).sort({ createdAt: -1 }).lean();
+  const session = await getSessionUser();
+  if (!session) return notFound();
+  const result = await withAdminPostgresTransaction(
+    {
+      userId: session.id,
+      username: session.username,
+      role: session.role,
+      enterpriseId: session.enterpriseId,
+    },
+    async (transaction) => {
+      const user = await new UserRepository(transaction).findByOpenid(openid);
+      if (!user) return null;
+      const plans = await new FloorPlanRepository(transaction).list({
+        creatorId: user.id,
+        formalOnly: true,
+        page: 1,
+        limit: 1000,
+      });
+      return {
+        user: userToDto(user),
+        plans: plans.rows.map(floorPlanToDto),
+      };
+    }
+  );
+  if (!result) return notFound();
+  const { user, plans } = result;
 
   return (
     <div className="min-h-screen bg-[#fafafa]">
@@ -31,7 +53,7 @@ export default async function UserFloorPlansPage({ params }: { params: Promise<{
         {/* User Profile Header */}
         <div className="bg-white rounded-xl p-8 border border-[rgba(0,0,0,0.08)] shadow-sm mb-10 flex items-center gap-8">
           {user.avatar ? (
-             <img src={user.avatar as string} className="w-24 h-24 rounded-full border-2 border-white shadow-md object-cover" />
+             <img src={user.avatar as string} alt="用户头像" className="w-24 h-24 rounded-full border-2 border-white shadow-md object-cover" />
           ) : (
             <div className="w-24 h-24 rounded-full bg-[#f5f5f5] flex items-center justify-center text-[#999]">
                <Map size={40} />
@@ -67,14 +89,9 @@ export default async function UserFloorPlansPage({ params }: { params: Promise<{
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {plans.map((plan: any) => {
+            {plans.map((plan) => {
               // Extract rooms from layoutData
-              let rooms = [];
-              if (Array.isArray(plan.layoutData)) {
-                rooms = plan.layoutData;
-              } else if (plan.layoutData?.rooms && Array.isArray(plan.layoutData.rooms)) {
-                rooms = plan.layoutData.rooms;
-              }
+              const rooms = adaptSurveyGraphToRooms(plan.layoutData);
               
               // If no rooms found, show the plan as a single item
               if (rooms.length === 0) {
@@ -93,7 +110,7 @@ export default async function UserFloorPlansPage({ params }: { params: Promise<{
                     <div className="space-y-2 mb-6 text-[13px] text-[#666]">
                       <p className="flex justify-between">
                         <span>包含数据节点</span>
-                        <span className="font-mono">{plan.layoutData?.length || 0} 个</span>
+                        <span className="font-mono">{rooms.length} 个</span>
                       </p>
                       <p className="flex justify-between">
                         <span>最后同步时间</span>
@@ -109,7 +126,7 @@ export default async function UserFloorPlansPage({ params }: { params: Promise<{
               }
               
               // Show each room as a separate item
-              return rooms.map((room: any) => (
+              return rooms.map((room) => (
                 <Link 
                   href={`/floorplans/${plan._id}?roomId=${room.id}`} 
                   key={`${plan._id}-${room.id}`}
@@ -117,8 +134,8 @@ export default async function UserFloorPlansPage({ params }: { params: Promise<{
                 >
                   <div className="flex justify-between items-start mb-4">
                     <h4 className="text-[16px] font-bold text-[#171717] group-hover:text-[#000] truncate max-w-[70%]">{room.name || '未命名房间'}</h4>
-                    <span className={`text-[11px] px-2 py-0.5 rounded-full ${room.measured ? 'bg-[#d1fae5] text-[#10b981]' : 'bg-[#fef3c7] text-[#d97706]'}`}>
-                      {room.measured ? '已测量' : '未测量'}
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full ${plan.status === 'completed' ? 'bg-[#d1fae5] text-[#10b981]' : 'bg-[#fef3c7] text-[#d97706]'}`}>
+                      {plan.status === 'completed' ? '已测量' : '未测量'}
                     </span>
                   </div>
                   <div className="space-y-2 mb-6 text-[13px] text-[#666]">

@@ -18,10 +18,13 @@ Primary visual reference:
 - `miniprogram/ChatGPT Image 2026年4月28日 16_27_02.png`
 
 Page-specific visual reference:
-- Home (`pages/index/index`): `design-references/home/miniprogram-home-vibrant-green-v5.png`
-  at the iPhone 13 Pro `390x844` baseline. The reference controls the home
-  composition, spacing, image treatment, and card hierarchy while live data,
-  role boundaries, navigation, and empty states remain authoritative.
+- Home (`pages/index/index`): `design-references/all-pages-ip-v1/01-home.png`
+  at the iPhone 13 Pro `390x844` baseline. The reference controls the F1/F3
+  spatial-guide hero, overlapping formal-surveying card, three quick-service
+  cards, and project-progress hierarchy. Production uses the derived local
+  scene asset `images/home-ip-v1/hero-scene-wechat-safe.jpg`, which reserves
+  the native WeChat capsule safe area and keeps Xiao K fully visible; live
+  data, role boundaries, navigation, and empty states remain authoritative.
 - Mine (`pages/mine/mine`):
   `design-references/mine/miniprogram-mine-v6.png` at the iPhone 13 Pro `390x844`
   baseline, with production crops sourced from both that screen and
@@ -126,6 +129,41 @@ For all durable brand-character and brand-mechanism decisions, follow
 - On Mine, narrow real-device viewports at or below `360px` must preserve the
   role workbench's fixed four-column rhythm; tighten card gaps and horizontal
   padding before considering a column-count change.
+
+### High-Fidelity Reference Implementation (Mandatory)
+
+When a supplied screen is requested as a high-fidelity reference, treat it as
+measurable layout specification rather than broad visual inspiration.
+
+- Establish the target viewport and scale before writing styles. For Mini
+  Program references, use the supplied iPhone 13 Pro `390x844` baseline and
+  translate reference bounds into `rpx`; do not choose type, icon, or spacing
+  values only by visual intuition.
+- Record and compare first-viewport anchors: status/header, brand lockup,
+  location control, title block, supporting copy, hero/card overlap, section
+  headings, card grid, project card, and TabBar. Do not make a later section
+  fit by silently shrinking earlier typography or visual assets.
+- Type is part of the composition. Match font size, weight, line height,
+  manual line breaks, and the gap below multi-line copy as separate values.
+  Never reduce readable type merely to keep content in one screen; reclaim
+  redundant media height or whitespace first.
+- Corner radius is measured geometry, not a default style. Record and compare
+  each reference card, button, icon container, and pill radius independently;
+  never assume that a button should use `height / 2` or become a full capsule
+  when the reference shows a rounded rectangle.
+- Size image assets by their visible artwork bounds, not their exported canvas.
+  Inspect every raster icon for internal whitespace, crop or prepare a
+  production derivative when necessary, and visually compare its *painted*
+  size on device. Do not reuse a semantically different generic icon where the
+  reference uses a named character or product asset.
+- Preserve the reference card proportions for loaded and empty states. Empty
+  content may change wording and CTA, but must not expand, compress, or push a
+  fixed action card under the custom TabBar.
+- QA must include a stable real DevTools screenshot at `390x844`, shown
+  side-by-side with the reference at the same scale. Complete a dedicated
+  review pass for typography, painted icon size, vertical gaps, and crop
+  position before declaring the surface restored. A visually plausible first
+  pass is not acceptance.
 
 ### Design Research Before Visual Work
 - Before creating a new high-fidelity page direction or AI-generated visual reference, research current, relevant mobile UI examples online. Use Huaban (花瓣网) as the preferred first source when it is available, then search the product category, the core interaction, and the target surface (for example: WeChat Mini Program home pages, renovation project progress, interior-design apps, or field-service tools).

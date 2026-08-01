@@ -197,6 +197,7 @@ export const users = appSchema.table(
       table.enterpriseId,
       table.createdAt
     ),
+    index('users_phone_idx').on(table.phone),
   ]
 );
 
@@ -815,11 +816,29 @@ export const leads = appSchema.table(
       table.status,
       table.createdAt
     ),
-    index('leads_enterprise_assignee_idx').on(
+    index('leads_enterprise_created_idx').on(
       table.enterpriseId,
-      table.assignedTo
+      table.createdAt,
+      table.id
     ),
-    index('leads_promoter_idx').on(table.promoterId),
+    index('leads_enterprise_source_created_idx').on(
+      table.enterpriseId,
+      table.source,
+      table.createdAt
+    ),
+    index('leads_enterprise_phone_idx').on(
+      table.enterpriseId,
+      table.phone
+    ),
+    index('leads_enterprise_assignee_created_idx').on(
+      table.enterpriseId,
+      table.assignedTo,
+      table.createdAt
+    ),
+    index('leads_promoter_created_idx').on(
+      table.promoterId,
+      table.createdAt
+    ),
     index('leads_primary_floor_plan_idx').on(table.primaryFloorPlanId),
   ]
 );
@@ -859,11 +878,35 @@ export const floorPlans = appSchema.table(
       table.status,
       table.updatedAt
     ),
+    index('floor_plans_enterprise_updated_idx').on(
+      table.enterpriseId,
+      table.updatedAt,
+      table.id
+    ),
     index('floor_plans_creator_created_idx').on(
       table.creatorId,
       table.createdAt
     ),
-    index('floor_plans_staff_idx').on(table.staffId),
+    index('floor_plans_creator_updated_idx').on(
+      table.creatorId,
+      table.updatedAt,
+      table.id
+    ),
+    index('floor_plans_staff_updated_idx').on(
+      table.staffId,
+      table.updatedAt,
+      table.id
+    ),
+    index('floor_plans_staff_status_completed_idx').on(
+      table.staffId,
+      table.status,
+      table.completedAt
+    ),
+    index('floor_plans_external_source_idx').on(
+      table.enterpriseId,
+      sql`(${table.externalSource} ->> 'provider')`,
+      sql`(${table.externalSource} ->> 'externalId')`
+    ),
   ]
 );
 
@@ -926,7 +969,14 @@ export const measurements = appSchema.table(
       table.floorPlanId,
       table.measuredAt
     ),
-    index('measurements_operator_idx').on(table.operatorId),
+    index('measurements_operator_measured_idx').on(
+      table.operatorId,
+      table.measuredAt
+    ),
+    index('measurements_device_measured_idx').on(
+      table.deviceId,
+      table.measuredAt
+    ),
   ]
 );
 
@@ -939,7 +989,7 @@ export const devices = appSchema.table(
       { onDelete: 'set null' }
     ),
     assignedUserId: bigint('assigned_user_id', { mode: 'bigint' }).references(
-      () => users.id,
+      () => adminUsers.id,
       { onDelete: 'set null' }
     ),
     code: text('code').notNull(),

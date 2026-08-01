@@ -1,5 +1,9 @@
-import { AdminUser } from '@/models/AdminUser';
-import mongoose from 'mongoose';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { AdminUserRepository } from '@/db/repositories';
+import {
+  withPlatformTransaction,
+  withTenantTransaction,
+} from '@/db/transaction';
 
 const WX_APPID = process.env.WX_APPID;
 const WX_APPSECRET = process.env.WX_APPSECRET;
@@ -84,14 +88,34 @@ export async function sendSubscriptionMessage(params: SubscriptionMessageData) {
  */
 const GLOBAL_TEMPLATE_ID = 'j6WMWNX3_-NKfuZPs7XuHYz91EymYKcnob1uDziK5f4';
 
+interface PromotionNotificationRecord {
+  promotionStaffName?: string;
+  enterpriseName?: string;
+  contactPerson?: string;
+  phone?: string;
+}
+
+interface LeadNotificationRecord {
+  enterpriseId?: bigint | string | null;
+  name: string;
+  phone: string;
+  city?: string | null;
+}
+
 /**
  * Notify Platform Admins about new enterprise reports
  */
-export async function notifyPlatformAdminOfNewReport(record: any) {
-  const admins = await AdminUser.find({
-    role: { $in: ['super_admin', 'admin'] },
-    openid: { $exists: true, $ne: null }
-  }).lean();
+export async function notifyPlatformAdminOfNewReport(record: PromotionNotificationRecord) {
+  const admins = await withPlatformTransaction(async (transaction) =>
+    (
+      await new AdminUserRepository(transaction).list({
+        roles: ['super_admin', 'admin'],
+        status: 'active',
+        page: 1,
+        limit: 1000,
+      })
+    ).rows.filter((admin) => admin.openid)
+  );
 
   if (admins.length === 0) return;
 
@@ -115,14 +139,21 @@ export async function notifyPlatformAdminOfNewReport(record: any) {
 /**
  * Notify Enterprise Admin of new lead
  */
-export async function notifyEnterpriseAdminOfNewLead(lead: any) {
+export async function notifyEnterpriseAdminOfNewLead(lead: LeadNotificationRecord) {
   if (!lead.enterpriseId) return;
 
-  const admins = await AdminUser.find({
-    enterpriseId: lead.enterpriseId,
-    role: 'enterprise_admin',
-    openid: { $exists: true, $ne: null }
-  }).lean();
+  const admins = await withTenantTransaction(
+    parsePostgresId(lead.enterpriseId, 'lead enterprise id'),
+    async (transaction) =>
+      (
+        await new AdminUserRepository(transaction).list({
+          roles: ['enterprise_admin'],
+          status: 'active',
+          page: 1,
+          limit: 1000,
+        })
+      ).rows.filter((admin) => admin.openid)
+  );
 
   if (admins.length === 0) return;
 
@@ -146,8 +177,12 @@ export async function notifyEnterpriseAdminOfNewLead(lead: any) {
 /**
  * Notify Designer of assigned lead
  */
-export async function notifyDesignerOfAssignedLead(lead: any, designerId: string) {
-  const designer = await AdminUser.findById(designerId).lean();
+export async function notifyDesignerOfAssignedLead(lead: LeadNotificationRecord, designerId: string) {
+  const designer = await withPlatformTransaction((transaction) =>
+    new AdminUserRepository(transaction).findById(
+      parsePostgresId(designerId, 'designer id')
+    )
+  );
   if (!designer || !designer.openid) return;
 
   await sendSubscriptionMessage({

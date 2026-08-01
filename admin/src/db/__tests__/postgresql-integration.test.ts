@@ -9,19 +9,30 @@ import {
   aiPromptSourceModels,
   aiPromptTemplateAssets,
   aiPromptTemplates,
+  adminUsers,
   departments,
+  devices,
   enterprises,
+  floorPlans,
+  leads,
   mediaStorageConfigs,
   platformConfigs,
   systemRoles,
+  users,
 } from '@/db/schema';
 import {
+  AdminUserRepository,
   DepartmentRepository,
+  DeviceRepository,
   EnterpriseRepository,
+  FloorPlanRepository,
+  LeadRepository,
   MediaStorageConfigRepository,
   PlatformConfigRepository,
   PromptLibraryRepository,
   SystemRoleRepository,
+  UserRepository,
+  MeasurementRepository,
 } from '@/db/repositories';
 import {
   withPlatformTransaction,
@@ -40,6 +51,8 @@ let enterpriseAId: bigint;
 let enterpriseBId: bigint;
 let promptRevisionId: bigint;
 let promptTemplateId: bigint;
+const identityAdminIds: bigint[] = [];
+const identityUserIds: bigint[] = [];
 
 before(async () => {
   loadEnvConfig(process.cwd());
@@ -181,6 +194,16 @@ after(async () => {
       await transaction
         .delete(systemRoles)
         .where(eq(systemRoles.roleKey, systemRoleKey));
+      if (identityAdminIds.length > 0) {
+        await transaction
+          .delete(adminUsers)
+          .where(inArray(adminUsers.id, identityAdminIds));
+      }
+      if (identityUserIds.length > 0) {
+        await transaction
+          .delete(users)
+          .where(inArray(users.id, identityUserIds));
+      }
       await transaction
         .delete(enterprises)
         .where(inArray(enterprises.id, [enterpriseAId, enterpriseBId]));
@@ -358,6 +381,92 @@ test('system role defaults are idempotent and preserve configured permissions', 
   });
 });
 
+test('admin user repository preserves tenant isolation and promoter relations', async () => {
+  const created = await withTenantTransaction(
+    enterpriseAId,
+    async (transaction) => {
+      const repository = new AdminUserRepository(transaction);
+      const promoter = await repository.create({
+        enterpriseId: enterpriseAId,
+        username: `${testRunKey}-promoter`,
+        passwordHash: 'test-hash',
+        displayName: 'Promoter',
+        role: 'salesperson',
+        phone: null,
+        menuPermissions: ['dashboard'],
+      });
+      const designer = await repository.create(
+        {
+          enterpriseId: enterpriseAId,
+          username: `${testRunKey}-designer`,
+          passwordHash: 'test-hash',
+          displayName: 'Designer',
+          role: 'designer',
+          phone: null,
+          menuPermissions: ['dashboard', 'ai-scenarios'],
+        },
+        [promoter.id]
+      );
+      identityAdminIds.push(promoter.id, designer.id);
+      return { promoter, designer };
+    }
+  );
+
+  const tenantAList = await withTenantTransaction(
+    enterpriseAId,
+    (transaction) =>
+      new AdminUserRepository(transaction).list({
+        search: testRunKey,
+        page: 1,
+        limit: 10,
+      })
+  );
+  const designer = tenantAList.rows.find(
+    (row) => row.id === created.designer.id
+  );
+  assert.deepEqual(designer?.promoterIds, [created.promoter.id]);
+
+  const crossTenant = await withTenantTransaction(
+    enterpriseBId,
+    (transaction) =>
+      new AdminUserRepository(transaction).findById(created.designer.id)
+  );
+  assert.equal(crossTenant, null);
+});
+
+test('user repository resolves and updates Mini Program identities', async () => {
+  const openid = `${testRunKey}-openid`;
+  const created = await withTenantTransaction(
+    enterpriseAId,
+    (transaction) =>
+      new UserRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        openid,
+        role: 'staff',
+        nickname: 'Before',
+      })
+  );
+  identityUserIds.push(created.id);
+
+  const updated = await withPlatformTransaction(async (transaction) => {
+    const repository = new UserRepository(transaction);
+    const found = await repository.findByOpenid(openid);
+    assert.equal(found?.id, created.id);
+    return repository.update(created.id, {
+      nickname: 'After',
+      phone: '13800000000',
+    });
+  });
+  assert.equal(updated?.nickname, 'After');
+  assert.equal(updated?.phone, '13800000000');
+
+  const crossTenant = await withTenantTransaction(
+    enterpriseBId,
+    (transaction) => new UserRepository(transaction).findById(created.id)
+  );
+  assert.equal(crossTenant, null);
+});
+
 test('media storage repository uses optimistic test-result updates', async () => {
   await withPlatformTransaction(async (transaction) => {
     const repository = new MediaStorageConfigRepository(transaction);
@@ -438,6 +547,137 @@ test('every tenant foreign key and RLS predicate column has an index', async () 
       )
   `);
   assert.deepEqual(missingForeignKeyIndexes.rows, []);
+});
+
+test('surveying core repositories preserve bigint relations and tenant isolation', async () => {
+  let adminUserId: bigint | null = null;
+  let userId: bigint | null = null;
+  let leadId: bigint | null = null;
+  let floorPlanId: bigint | null = null;
+  let deviceId: bigint | null = null;
+
+  try {
+    const created = await withTenantTransaction(
+      enterpriseAId,
+      async (transaction) => {
+        const admin = await new AdminUserRepository(transaction).create({
+          enterpriseId: enterpriseAId,
+          username: `${testRunKey}-surveyor`,
+          passwordHash: 'integration-test-only',
+          displayName: 'Integration Surveyor',
+          role: 'measurer',
+          phone: `139${String(Date.now()).slice(-8)}`,
+        });
+        const user = await new UserRepository(transaction).create({
+          enterpriseId: enterpriseAId,
+          role: 'user',
+          openid: `${testRunKey}-survey-user`,
+          nickname: 'Survey Customer',
+          phone: `138${String(Date.now() + 1).slice(-8)}`,
+        });
+        const plan = await new FloorPlanRepository(transaction).create({
+          enterpriseId: enterpriseAId,
+          creatorId: user.id,
+          staffId: admin.id,
+          name: 'Formal integration plan',
+          layoutData: {
+            version: 4,
+            measurementMode: 'surveying',
+            surveyGraph: {
+              kind: 'survey-wall-graph',
+              activeFloorId: 'floor-1',
+              floors: [{ id: 'floor-1', nodes: [], walls: [], spaces: [] }],
+            },
+          },
+          source: 'manual',
+          status: 'completed',
+          completedAt: new Date(),
+        });
+        assert.ok(plan);
+        const leadRepository = new LeadRepository(transaction);
+        const lead = await leadRepository.create({
+          enterpriseId: enterpriseAId,
+          assignedTo: admin.id,
+          name: 'Survey integration lead',
+          phone: `137${String(Date.now() + 2).slice(-8)}`,
+          source: 'integration-test',
+          status: 'new',
+        });
+        const linkedLead = await leadRepository.linkFloorPlan(
+          lead.id,
+          plan.id
+        );
+        assert.equal(linkedLead?.primaryFloorPlanId, plan.id);
+        assert.deepEqual(
+          linkedLead?.floorPlanRecords.map((item) => item.id),
+          [plan.id]
+        );
+        const measurement = await new MeasurementRepository(
+          transaction
+        ).create({
+          enterpriseId: enterpriseAId,
+          floorPlanId: plan.id,
+          operatorId: admin.id,
+          value: '2450',
+          unit: 'millimeters',
+          type: 'length',
+          source: 'ble',
+          measuredAt: new Date(),
+        });
+        assert.equal(measurement?.operator?.id, admin.id);
+        const device = await new DeviceRepository(transaction).create({
+          enterpriseId: enterpriseAId,
+          assignedUserId: admin.id,
+          code: `${testRunKey}-laser`,
+          status: 'assigned',
+        });
+        assert.equal(device?.assignedUser?.id, admin.id);
+        return { admin, user, lead, plan, device };
+      }
+    );
+
+    adminUserId = created.admin.id;
+    userId = created.user.id;
+    leadId = created.lead.id;
+    floorPlanId = created.plan.id;
+    deviceId = created.device!.id;
+
+    const tenantBVisibility = await withTenantTransaction(
+      enterpriseBId,
+      async (transaction) => ({
+        lead: await new LeadRepository(transaction).findById(leadId!),
+        plan: await new FloorPlanRepository(transaction).findById(floorPlanId!),
+        device: await new DeviceRepository(transaction).findById(deviceId!),
+      })
+    );
+    assert.deepEqual(tenantBVisibility, {
+      lead: null,
+      plan: null,
+      device: null,
+    });
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (deviceId) {
+        await transaction.delete(devices).where(eq(devices.id, deviceId));
+      }
+      if (leadId) {
+        await transaction.delete(leads).where(eq(leads.id, leadId));
+      }
+      if (floorPlanId) {
+        await transaction
+          .delete(floorPlans)
+          .where(eq(floorPlans.id, floorPlanId));
+      }
+      if (adminUserId) {
+        await transaction
+          .delete(adminUsers)
+          .where(eq(adminUsers.id, adminUserId));
+      }
+      if (userId) {
+        await transaction.delete(users).where(eq(users.id, userId));
+      }
+    });
+  }
 });
 
 test('formal floor plans require the version-4 surveying contract', async () => {

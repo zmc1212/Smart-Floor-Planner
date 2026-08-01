@@ -1,44 +1,45 @@
-import { NextResponse } from 'next/server';
-export const dynamic = 'force-dynamic';
 import bcrypt from 'bcryptjs';
 import * as jose from 'jose';
-import dbConnect from '@/lib/mongodb';
-import { AdminUser } from '@/models/AdminUser';
+import { NextResponse } from 'next/server';
+import { AdminUserRepository } from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
 import { getEffectivePermissions } from '@/lib/staff-access';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
-    await dbConnect();
-
     const body = await request.json();
     const { username, password } = body;
-
     if (!username || !password) {
-      return NextResponse.json({ success: false, error: '请输入用户名和密码' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: '请输入用户名和密码' },
+        { status: 400 }
+      );
     }
 
-    const searchIdentifier = username.trim();
-    const admin = await AdminUser.findOne({ 
-      $or: [
-        { username: searchIdentifier },
-        { phone: searchIdentifier }
-      ],
-      status: 'active' 
-    });
-    if (!admin) {
-      return NextResponse.json({ success: false, error: '用户名或密码错误' }, { status: 401 });
+    const admin = await withPlatformTransaction((transaction) =>
+      new AdminUserRepository(transaction).findByUsernameOrPhone(
+        username.trim(),
+        true
+      )
+    );
+    if (!admin || !(await bcrypt.compare(password, admin.passwordHash))) {
+      return NextResponse.json(
+        { success: false, error: '用户名或密码错误' },
+        { status: 401 }
+      );
     }
 
-    const isMatch = await bcrypt.compare(password, admin.passwordHash);
-    if (!isMatch) {
-      return NextResponse.json({ success: false, error: '用户名或密码错误' }, { status: 401 });
-    }
-
-    const effectivePermissions = await getEffectivePermissions(admin.role, admin.menuPermissions);
-
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
+    const effectivePermissions = await getEffectivePermissions(
+      admin.role,
+      admin.menuPermissions
+    );
+    const secret = new TextEncoder().encode(
+      process.env.JWT_SECRET || 'fallback_secret_random_123'
+    );
     const token = await new jose.SignJWT({
-      id: admin._id.toString(),
+      id: admin.id.toString(),
       username: admin.username,
       displayName: admin.displayName,
       role: admin.role,
@@ -58,7 +59,6 @@ export async function POST(request: Request) {
         role: admin.role,
       },
     });
-
     response.cookies.set({
       name: 'auth_token',
       value: token,
@@ -68,9 +68,12 @@ export async function POST(request: Request) {
       maxAge: 60 * 60 * 24,
       path: '/',
     });
-
     return response;
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: `服务器内部错误: ${error.message}` }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json(
+      { success: false, error: `服务器内部错误: ${message}` },
+      { status: 500 }
+    );
   }
 }

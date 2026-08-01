@@ -1,73 +1,92 @@
-import { NextResponse } from 'next/server';
-export const dynamic = 'force-dynamic';
 import * as jose from 'jose';
-import dbConnect from '@/lib/mongodb';
-import { AdminUser } from '@/models/AdminUser';
-import { Enterprise } from '@/models/Enterprise';
-import { getEffectivePermissions, getWorkbenchType } from '@/lib/staff-access';
+import { NextResponse } from 'next/server';
+import { adminUserToDto, parsePostgresId } from '@/db/postgres-dto';
+import {
+  AdminUserRepository,
+  EnterpriseRepository,
+} from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
+import {
+  getEffectivePermissions,
+  getWorkbenchType,
+} from '@/lib/staff-access';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-  await dbConnect();
   try {
     const cookie = request.headers.get('cookie');
     const tokenMatch = cookie?.match(/auth_token=([^;]+)/);
     let token = tokenMatch ? tokenMatch[1] : null;
-
     if (!token) {
       const authHeader = request.headers.get('authorization');
-      if (authHeader?.startsWith('Bearer ')) {
-        token = authHeader.slice(7);
-      }
+      if (authHeader?.startsWith('Bearer ')) token = authHeader.slice(7);
     }
-    const globalTenantMatch = cookie?.match(/global_tenant_id=([^;]+)/);
-    const globalTenantId = globalTenantMatch ? decodeURIComponent(globalTenantMatch[1]) : null;
-
     if (!token) {
-      return NextResponse.json({ success: false, error: '未登录' }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: '未登录' },
+        { status: 401 }
+      );
     }
 
-    const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_random_123');
+    const globalTenantMatch = cookie?.match(/global_tenant_id=([^;]+)/);
+    const globalTenantId = globalTenantMatch
+      ? decodeURIComponent(globalTenantMatch[1])
+      : null;
+    const secret = new TextEncoder().encode(
+      process.env.JWT_SECRET || 'fallback_secret_random_123'
+    );
     const { payload } = await jose.jwtVerify(token, secret);
+    const result = await withPlatformTransaction(async (transaction) => {
+      const admin = await new AdminUserRepository(transaction).findById(
+        parsePostgresId(payload.id, 'user id')
+      );
+      if (!admin || admin.status !== 'active') return null;
 
-    const admin = await AdminUser.findById(payload.id)
-      .populate({ path: 'enterpriseId', model: Enterprise, select: 'name automationConfig' })
-      .select('-passwordHash');
-    if (!admin || admin.status === 'disabled') {
-      return NextResponse.json({ success: false, error: '用户不存在或已禁用' }, { status: 401 });
-    }
-
-    const result = admin.toObject() as unknown as Record<string, unknown> & {
-      role?: string;
-      menuPermissions?: string[];
-      enterpriseId?: unknown;
-    };
-    if (
-      (result.role === 'super_admin' || result.role === 'admin') &&
-      globalTenantId &&
-      globalTenantId !== 'all'
-    ) {
-      const selectedEnterprise = await Enterprise.findById(globalTenantId).select('name automationConfig').lean();
-      if (selectedEnterprise) {
-        result.enterpriseId = {
-          _id: String(selectedEnterprise._id),
-          name: selectedEnterprise.name,
-          automationConfig: selectedEnterprise.automationConfig,
-        };
+      let enterpriseId = admin.enterpriseId;
+      if (
+        (admin.role === 'super_admin' || admin.role === 'admin') &&
+        globalTenantId &&
+        globalTenantId !== 'all'
+      ) {
+        enterpriseId = parsePostgresId(globalTenantId, 'global tenant id');
       }
+      const enterprise = enterpriseId
+        ? await new EnterpriseRepository(transaction).findById(enterpriseId)
+        : null;
+      return { admin, enterprise };
+    });
+    if (!result) {
+      return NextResponse.json(
+        { success: false, error: '用户不存在或已禁用' },
+        { status: 401 }
+      );
     }
 
-    const role = result.role || '';
-    const effectivePermissions = await getEffectivePermissions(role, result.menuPermissions);
-
+    const data = adminUserToDto(result.admin);
+    data.enterpriseId = result.enterprise
+      ? {
+          _id: result.enterprise.id.toString(),
+          name: result.enterprise.name,
+          automationConfig: result.enterprise.automationConfig,
+        }
+      : null;
+    const effectivePermissions = await getEffectivePermissions(
+      result.admin.role,
+      result.admin.menuPermissions
+    );
     return NextResponse.json({
       success: true,
       data: {
-        ...result,
+        ...data,
         effectivePermissions,
-        workbenchType: getWorkbenchType(role),
+        workbenchType: getWorkbenchType(result.admin.role),
       },
     });
   } catch {
-    return NextResponse.json({ success: false, error: '登录失效' }, { status: 401 });
+    return NextResponse.json(
+      { success: false, error: '登录失效' },
+      { status: 401 }
+    );
   }
 }

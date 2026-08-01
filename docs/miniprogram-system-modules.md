@@ -26,7 +26,9 @@ utilities, and the admin APIs they call.
 - Access is staff-only: password login requires an active backend `AdminUser`,
   while WeChat code/phone login must match an active `AdminUser` by bound OpenID
   or backend phone number. Unmatched external users receive `403` and cannot
-  establish an authenticated Mini Program business session.
+  establish an authenticated Mini Program business session. Account, bound
+  identity, enterprise, and permission resolution now use PostgreSQL and
+  revalidate active status on refresh and request-context resolution.
 - `app.js`: restores sessions, reads QR/referral `enterpriseId`/`staffId`, syncs
   staff professional context, loads enterprise branding, and attempts silent BLE
   reconnection for a remembered device.
@@ -34,9 +36,13 @@ utilities, and the admin APIs they call.
   `ACTIVE_API_ENVIRONMENT` (`local` or `production`), clears expired sessions,
   and redirects to login after a 401. Requests never fall back across
   environments, and persisted `apiBaseUrl` values are not consulted.
-- Status: login and context restoration are `Implemented`; a valid WeChat
-  authorization, account, API base, and enterprise/provider configuration are
-  required for the corresponding path.
+- Status: PostgreSQL-backed login and context restoration are `Implemented`; a
+  valid WeChat authorization, account, API base, and enterprise/provider
+  configuration are required for the corresponding path. `Limited` during
+  Phase 3: AI generation/media and commercial workflow domains still backed by
+  MongoDB are not bigint-identity compatible until their scheduled PostgreSQL
+  switch. Leads, formal plans, measurements, and device bindings now use
+  PostgreSQL.
 
 ## Page Inventory
 
@@ -51,15 +57,21 @@ utilities, and the admin APIs they call.
   auto-connect, new/continue formal surveying, floor-plan room entry, AI
   handoff for a room, a persistent AI Design shortcut for enterprise staff,
   and direct Home shortcuts to Leads and BLE pairing.
+- Data boundary: lead, formal-plan, measurement, and assigned-device counts plus
+  recent formal plans come from PostgreSQL RLS repositories. The AI-generation
+  domain is not migrated yet, so `aiGeneratedCases` is explicitly `0`.
 - Limited: the write/notify characteristic pairing is hardware-specific. BLE
   diagnostics log the discovered channel properties, each command write, and
   each raw notification with full service/characteristic UUIDs; receive buffers
   are isolated per notification channel. Private binary payloads remain raw
   diagnostics until their protocol mapping is confirmed.
-- Visual baseline: `design-references/home/miniprogram-home-vibrant-green-v5.png`
-  at iPhone 13 Pro `390x844`. The shipped composition uses project-local
-  derived scene assets while city, counts, device state, enterprise branding,
-  recent plans, empty state, and all navigation remain live and role-aware.
+- Visual baseline: `design-references/all-pages-ip-v1/01-home.png` at iPhone
+  13 Pro `390x844`. The shipped F1/F3 spatial-guide hero, overlapping formal
+  surveying card, quick-service cards, and project-progress card use the
+  project-local derived `images/home-ip-v1/hero-scene-wechat-safe.jpg` scene
+  asset, which reserves the native WeChat capsule safe area; city,
+  counts, device state, recent plans, empty state, and all navigation remain
+  live and role-aware.
 - Placeholder: the help center still shows an “upcoming” message.
 
 ### Leads And Customer Records
@@ -73,6 +85,9 @@ utilities, and the admin APIs they call.
   measurement, delete active formal plans with local pointer cleanup,
   client-side search across loaded records, and status filtering through both
   the stage strip and native action sheet.
+- Persistence: lead and formal-plan list/detail/create/update/delete operations
+  use PostgreSQL RLS transactions and decimal-string IDs; lead-plan linking and
+  primary-plan cleanup are atomic.
 - Visual baseline: `design-references/leads/leads-management-v4.png` at `390x844`.
   The shipped page preserves the reference's scene-led header, three-stat summary,
   compact search/actions, six-stage strip, color-coded floor-plan thumbnails rendered
@@ -318,6 +333,10 @@ utilities, and the admin APIs they call.
   floor-plan requests have separate loading/error/retry states, so network
   failure is not rendered as an ordinary-user dashboard or an empty floor-plan
   list.
+- PostgreSQL boundary: profile, live lead/formal-plan/measurement summaries, and
+  floor-plan lists use typed RLS repositories. Commercial workflow records are
+  still on MongoDB, so the API returns `todos: []` until that Phase 3 slice rather
+  than passing bigint identities into MongoDB queries.
 - Limited: workbench cards and task actions vary by professional role; some
   account/notification cards are informational rather than configuration APIs.
 

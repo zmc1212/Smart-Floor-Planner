@@ -17,6 +17,7 @@
 - 线索详情支持继续指定正式户型、新建一份绕过旧草稿的独立量房，以及删除正式户型；删除必须同步移除线索引用和匹配的本地续测指针。
 - `FloorPlan.layoutData` 只允许 `version: 4`、`measurementMode: 'surveying'` 和 `surveyGraph`。禁止持久化 `rooms`、`homeOutline`、`partitions`、`surveyDraft`、`prototypeOnly` 或 `surveying_prototype`。
 - 墙图坐标、墙长、墙厚、门窗和层高统一使用毫米。后台、DXF、3D 和 AI 通过读适配层派生房间、面积和开口，绝不回写旧布局镜像。
+- 酷家乐导入也必须落成相同正式合同：上游网络请求在数据库事务外完成，房间轮廓转换为毫米制闭合节点/墙/空间链，再与线索关系一起原子写入 PostgreSQL。上游响应尚无可靠的开口到墙体映射，因此当前不导入酷家乐门窗开口，不得猜测归属墙体。
 - 小程序 `pages/mine/mine` 展示户型空间数时，只统计 `surveyGraph.floors[].spaces`
   中 `closed: true` 的空间；网络失败必须保留失败态，不得把读取失败解释成空户型。
 - 小程序 AI 设计入口传递可选 `floorPlanId`、显式 `targetScope: whole_floor_plan | single_room`，仅单房间传递 `roomId`；服务端通过正式读适配层生成尺寸、层高和开口上下文。完整户型会从闭合墙体派生 1024px 控制图并保存为独立 `MediaAsset`，单房间只消费指定闭合空间；两者都不修改 `FloorPlan.layoutData`。携带客户上下文的结果可关联 `AiWorkflow`，现场照片和 AI 结果仍保存在独立媒体/生成记录中，且仅凭户型生成的图片只作为概念效果。

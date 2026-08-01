@@ -1,107 +1,168 @@
-import { NextResponse } from 'next/server';
-export const dynamic = 'force-dynamic';
 import bcrypt from 'bcryptjs';
-import dbConnect from '@/lib/mongodb';
-import { AdminUser } from '@/models/AdminUser';
+import { NextResponse } from 'next/server';
+import {
+  adminUserToDto,
+  parseOptionalPostgresId,
+  parsePostgresId,
+} from '@/db/postgres-dto';
+import { AdminUserRepository } from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
 
-// PATCH /api/admin-users/[id] — Update admin user
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  await dbConnect();
+export const dynamic = 'force-dynamic';
+
+const ADMIN_ROLES = [
+  'super_admin',
+  'admin',
+  'viewer',
+  'enterprise_admin',
+  'salesperson',
+];
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const { id } = await params;
+    const adminId = parsePostgresId(id);
     const body = await request.json();
-    const { username, displayName, phone, role, menuPermissions, status, newPassword, enterpriseId } = body;
-
-    const updateData: any = {};
+    const {
+      username,
+      displayName,
+      phone,
+      role,
+      menuPermissions,
+      status,
+      newPassword,
+      enterpriseId,
+    } = body;
+    const updateData: Record<string, unknown> = {};
 
     if (username !== undefined) updateData.username = username.trim();
     if (displayName !== undefined) updateData.displayName = displayName.trim();
     if (phone !== undefined) {
       const trimmedPhone = phone.trim();
-      if (trimmedPhone) {
-        // Validate phone format
-        if (!/^1[3-9]\d{9}$/.test(trimmedPhone)) {
-          return NextResponse.json(
-            { success: false, error: '手机号格式不正确，请输入11位有效手机号' },
-            { status: 400 }
-          );
-        }
-        // Check uniqueness (exclude self)
-        const phoneExists = await AdminUser.findOne({ phone: trimmedPhone, _id: { $ne: id } });
-        if (phoneExists) {
-          return NextResponse.json(
-            { success: false, error: '该手机号已被其他账号使用' },
-            { status: 400 }
-          );
-        }
-        updateData.phone = trimmedPhone;
-      } else {
-        updateData.phone = null;
+      if (trimmedPhone && !/^1[3-9]\d{9}$/.test(trimmedPhone)) {
+        return NextResponse.json(
+          { success: false, error: '请输入 11 位有效手机号' },
+          { status: 400 }
+        );
       }
+      updateData.phone = trimmedPhone || null;
     }
     if (role !== undefined) {
-      const allowedRoles = ['super_admin', 'admin', 'viewer', 'enterprise_admin', 'salesperson'];
-      if (!allowedRoles.includes(role)) {
-        return NextResponse.json({ success: false, error: '此接口仅允许分配管理类角色' }, { status: 400 });
+      if (!ADMIN_ROLES.includes(role)) {
+        return NextResponse.json(
+          { success: false, error: '此接口仅允许分配管理类角色' },
+          { status: 400 }
+        );
       }
       updateData.role = role;
     }
-    if (menuPermissions !== undefined) updateData.menuPermissions = menuPermissions;
+    if (menuPermissions !== undefined) {
+      updateData.menuPermissions = menuPermissions;
+    }
     if (status !== undefined) updateData.status = status;
-    
-    // Enforce salesperson enterprise restriction
     if (enterpriseId !== undefined) {
-      updateData.enterpriseId = enterpriseId;
+      updateData.enterpriseId = parseOptionalPostgresId(
+        enterpriseId,
+        'enterpriseId'
+      );
     }
-
-    // If role changed to salesperson, or it IS a salesperson update, ensure enterpriseId is null
-    const checkRole = role || (await AdminUser.findById(id).then(a => a?.role));
-    if (checkRole === 'salesperson') {
-      updateData.enterpriseId = null;
-    }
-
-    // Password reset
     if (newPassword) {
       if (newPassword.length < 6) {
         return NextResponse.json(
-          { success: false, error: '密码长度不能少于6位' },
+          { success: false, error: '密码长度不能少于 6 位' },
           { status: 400 }
         );
       }
       updateData.passwordHash = await bcrypt.hash(newPassword, 10);
     }
 
-    const admin = await AdminUser.findByIdAndUpdate(id, updateData, {
-      new: true,
-      runValidators: true,
-    }).select('-passwordHash');
+    const admin = await withPlatformTransaction(async (transaction) => {
+      const repository = new AdminUserRepository(transaction);
+      const existing = await repository.findById(adminId);
+      if (!existing) return null;
+      if (
+        username !== undefined &&
+        username.trim() !== existing.username &&
+        (await repository.existsWithUsername(username.trim(), adminId))
+      ) {
+        throw Object.assign(new Error('Username already exists'), {
+          field: 'username',
+        });
+      }
+      if (
+        phone?.trim() &&
+        phone.trim() !== existing.phone &&
+        (await repository.existsWithPhone(phone.trim(), adminId))
+      ) {
+        throw Object.assign(new Error('Phone already exists'), {
+          field: 'phone',
+        });
+      }
+      if ((role || existing.role) === 'salesperson') {
+        updateData.enterpriseId = null;
+      }
+      return repository.update(adminId, updateData);
+    });
 
     if (!admin) {
-      return NextResponse.json({ success: false, error: '管理员不存在' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: '管理员不存在' },
+        { status: 404 }
+      );
     }
-
-    return NextResponse.json({ success: true, data: admin });
-  } catch (error: any) {
-    if (error.code === 11000) {
-      const dupKey = Object.keys(error.keyPattern || {})[0];
-      const msg = dupKey === 'phone' ? '该手机号已被其他账号使用' : '用户名已存在';
-      return NextResponse.json({ success: false, error: msg }, { status: 400 });
+    return NextResponse.json({
+      success: true,
+      data: adminUserToDto(admin),
+    });
+  } catch (error: unknown) {
+    const details = error as {
+      code?: string;
+      constraint?: string;
+      field?: string;
+    };
+    if (details.code === '23505' || details.field) {
+      const isPhone =
+        details.field === 'phone' || details.constraint?.includes('phone');
+      return NextResponse.json(
+        {
+          success: false,
+          error: isPhone ? '该手机号已被其他账号使用' : '用户名已存在',
+        },
+        { status: 400 }
+      );
     }
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    );
   }
 }
 
-// DELETE /api/admin-users/[id] — Delete admin user
-export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  await dbConnect();
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
     const { id } = await params;
-    const admin = await AdminUser.findByIdAndDelete(id);
+    const admin = await withPlatformTransaction((transaction) =>
+      new AdminUserRepository(transaction).delete(parsePostgresId(id))
+    );
     if (!admin) {
-      return NextResponse.json({ success: false, error: '管理员不存在' }, { status: 404 });
+      return NextResponse.json(
+        { success: false, error: '管理员不存在' },
+        { status: 404 }
+      );
     }
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    );
   }
 }

@@ -1,208 +1,242 @@
 import { NextResponse } from 'next/server';
-import mongoose from 'mongoose';
-import dbConnect from '@/lib/mongodb';
-import { getTenantContext } from '@/lib/auth';
-import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
-import { tenantStorage } from '@/lib/tenant-context';
-import { convertKujialeDetailToLayoutData, getKujialeFloorPlanDetail } from '@/lib/kujiale';
-import Lead from '@/models/Lead';
-import { FloorPlan } from '@/models/FloorPlan';
-import { User } from '@/models/User';
+import {
+  floorPlanToDto,
+  leadToDto,
+  parsePostgresId,
+} from '@/db/postgres-dto';
+import {
+  FloorPlanRepository,
+  LeadRepository,
+  UserRepository,
+  type LeadWithRelations,
+} from '@/db/repositories';
+import type { PostgresTransaction } from '@/db/transaction';
+import { getTenantContext, type TenantContext } from '@/lib/auth';
+import {
+  convertKujialeDetailToLayoutData,
+  getKujialeFloorPlanDetail,
+  type KujialeFloorPlanDetail,
+} from '@/lib/kujiale';
+import {
+  type MiniProgramContext,
+  resolveMiniProgramContext,
+} from '@/lib/miniprogram-auth';
+import {
+  withAdminPostgresTransaction,
+  withMiniProgramPostgresTransaction,
+} from '@/lib/postgres-request-scope';
 
 export const dynamic = 'force-dynamic';
 
-type ImportContext = {
-  role: string;
-  userId: string;
-  enterpriseId?: string | null;
-  username?: string;
-  miniProgramUser?: any;
-};
+type ImportContext =
+  | { kind: 'mini'; context: MiniProgramContext }
+  | { kind: 'admin'; context: TenantContext };
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown error';
 }
 
-function normalizeObjectId(value: unknown) {
-  if (!value) return undefined;
-  const id = typeof value === 'object' && value !== null && '_id' in value ? (value as { _id?: unknown })._id : value;
-  return mongoose.Types.ObjectId.isValid(String(id)) ? new mongoose.Types.ObjectId(String(id)) : undefined;
+function actor(context: ImportContext) {
+  if (context.kind === 'mini') {
+    const staff = context.context.staff!;
+    return {
+      role: staff.role,
+      staffId: parsePostgresId(staff._id, 'staff id'),
+      enterpriseId: context.context.enterpriseId
+        ? parsePostgresId(context.context.enterpriseId, 'enterprise id')
+        : null,
+    };
+  }
+  return {
+    role: context.context.role,
+    staffId: parsePostgresId(context.context.userId, 'userId'),
+    enterpriseId: context.context.enterpriseId
+      ? parsePostgresId(context.context.enterpriseId, 'enterprise id')
+      : null,
+  };
 }
 
-function buildLeadAccessFilter(leadId: string, context: ImportContext) {
-  const filter: Record<string, unknown> = { _id: leadId };
-
-  if ((context.role === 'super_admin' || context.role === 'admin') && !context.enterpriseId) {
-    return filter;
-  }
-
-  if (context.enterpriseId) {
-    filter.enterpriseId = new mongoose.Types.ObjectId(context.enterpriseId);
-  }
-
-  if (context.role === 'enterprise_admin') {
-    return filter;
-  }
-
-  if (context.role === 'designer' || context.role === 'salesperson' || context.role === 'measurer') {
-    const staffObjectId = new mongoose.Types.ObjectId(context.userId);
-    filter.$or = [{ promoterId: staffObjectId }, { assignedTo: staffObjectId }];
-  }
-
-  return filter;
+function canAccessLead(lead: LeadWithRelations, context: ImportContext) {
+  const current = actor(context);
+  return (
+    current.role === 'super_admin' ||
+    current.role === 'admin' ||
+    current.role === 'enterprise_admin' ||
+    lead.promoterId === current.staffId ||
+    lead.assignedTo === current.staffId
+  );
 }
 
-async function resolveCreatorForLead(lead: any, context: ImportContext) {
-  const directUserId = normalizeObjectId(context.miniProgramUser?._id);
-  if (directUserId) return directUserId;
-
-  const enterpriseId = normalizeObjectId(lead.enterpriseId || context.enterpriseId);
-  const query: Record<string, unknown> = { phone: lead.phone };
-  if (enterpriseId) query.enterpriseId = enterpriseId;
-
-  let user = await User.findOne(query);
-  if (!user) {
-    user = await User.create({
-      nickname: lead.name,
-      phone: lead.phone,
-      communityName: lead.communityName,
-      city: lead.city,
-      role: 'user',
-      enterpriseId,
-    });
+async function resolveCreatorId(
+  transaction: PostgresTransaction,
+  lead: LeadWithRelations,
+  context: ImportContext
+) {
+  const users = new UserRepository(transaction);
+  if (
+    context.kind === 'mini' &&
+    /^[1-9]\d*$/.test(context.context.user._id)
+  ) {
+    const directId = parsePostgresId(context.context.user._id, 'user id');
+    if (await users.findById(directId)) return directId;
   }
-  return user._id;
+  const existing = await users.findByPhoneInEnterprise(
+    lead.phone,
+    lead.enterpriseId
+  );
+  if (existing) return existing.id;
+  const created = await users.create({
+    enterpriseId: lead.enterpriseId,
+    role: 'user',
+    nickname: lead.name,
+    phone: lead.phone,
+    communityName: lead.communityName,
+    city: lead.city,
+  });
+  return created.id;
 }
 
-async function importKujialeFloorPlan(leadId: string, externalId: string, context: ImportContext) {
-  const lead = await Lead.findOne(buildLeadAccessFilter(leadId, context));
-  if (!lead) {
-    return NextResponse.json({ success: false, error: 'Lead not found or access denied' }, { status: 404 });
+async function persistImport(
+  transaction: PostgresTransaction,
+  leadId: bigint,
+  detail: KujialeFloorPlanDetail,
+  context: ImportContext
+) {
+  const leads = new LeadRepository(transaction);
+  const floorPlans = new FloorPlanRepository(transaction);
+  const lead = await leads.findById(leadId);
+  if (!lead || !canAccessLead(lead, context)) {
+    throw new Error('Lead not found or access denied');
   }
 
-  const detail = await getKujialeFloorPlanDetail(externalId);
+  const current = actor(context);
   const layoutData = convertKujialeDetailToLayoutData(detail);
-  const creator = await resolveCreatorForLead(lead, context);
-  const enterpriseId = normalizeObjectId(lead.enterpriseId || context.enterpriseId);
-  const staffId = normalizeObjectId(context.userId);
+  const externalId = detail.externalId;
+  const creatorId = await resolveCreatorId(transaction, lead, context);
   const floorPlanName =
     detail.name ||
-    [lead.communityName || detail.communityName, detail.layoutLabel].filter(Boolean).join(' ') ||
+    [lead.communityName || detail.communityName, detail.layoutLabel]
+      .filter(Boolean)
+      .join(' ') ||
     `${lead.name} 的酷家乐户型`;
-
-  const floorPlanFilter: Record<string, unknown> = {
-    'externalSource.provider': 'kujiale',
-    'externalSource.externalId': detail.externalId || externalId,
-  };
-  if (enterpriseId) floorPlanFilter.enterpriseId = enterpriseId;
-
-  const setData: Record<string, unknown> = {
-    name: floorPlanName,
-    layoutData,
-    source: 'kujiale',
-    status: 'completed',
-    externalSource: {
-      provider: 'kujiale',
-      externalId: detail.externalId || externalId,
-      communityName: detail.communityName || lead.communityName,
-      city: detail.city || lead.city,
-      area: detail.area || lead.area,
-      layoutLabel: detail.layoutLabel,
-      previewUrl: detail.previewUrl,
-      importedAt: new Date(),
-      rawSummary: {
-        ...(detail.rawSummary || {}),
-        importedRoomCount: layoutData.length,
-      },
+  const externalSource = {
+    provider: 'kujiale',
+    externalId,
+    communityName: detail.communityName || lead.communityName,
+    city: detail.city || lead.city,
+    area: detail.area || (lead.area ? Number(lead.area) : undefined),
+    layoutLabel: detail.layoutLabel,
+    previewUrl: detail.previewUrl,
+    importedAt: new Date().toISOString(),
+    rawSummary: {
+      ...(detail.rawSummary || {}),
+      importedRoomCount: detail.rooms.length,
     },
   };
 
-  if (staffId) setData.staffId = staffId;
-  if (enterpriseId) setData.enterpriseId = enterpriseId;
-
-  const floorPlan = await FloorPlan.findOneAndUpdate(
-    floorPlanFilter,
-    {
-      $set: setData,
-      $setOnInsert: {
-        creator,
-      },
-    },
-    { new: true, upsert: true, runValidators: true }
+  const existing = await floorPlans.findByExternalSource(
+    lead.enterpriseId,
+    'kujiale',
+    externalId
   );
-
-  const updatedLead = await Lead.findOneAndUpdate(
-    { _id: lead._id },
-    {
-      $addToSet: { floorPlanIds: floorPlan._id },
-      $set: {
-        primaryFloorPlanId: floorPlan._id,
-        status: 'measured',
-      },
-    },
-    { new: true, runValidators: true }
-  )
-    .populate({ path: 'primaryFloorPlanId', select: 'name layoutData createdAt status source externalSource', strictPopulate: false })
-    .populate({ path: 'floorPlanIds', select: 'name layoutData createdAt status source externalSource', strictPopulate: false });
-
-  return NextResponse.json({
-    success: true,
-    data: {
-      lead: updatedLead,
-      floorPlan,
-    },
-  });
+  const floorPlan = existing
+    ? await floorPlans.update(existing.id, {
+        name: floorPlanName,
+        layoutData,
+        source: 'kujiale',
+        status: 'completed',
+        completedAt: new Date(),
+        externalSource,
+        staffId: current.staffId,
+        enterpriseId: lead.enterpriseId ?? current.enterpriseId,
+      })
+    : await floorPlans.create({
+        name: floorPlanName,
+        creatorId,
+        staffId: current.staffId,
+        enterpriseId: lead.enterpriseId ?? current.enterpriseId,
+        layoutData,
+        source: 'kujiale',
+        status: 'completed',
+        completedAt: new Date(),
+        externalSource,
+      });
+  if (!floorPlan) throw new Error('Failed to persist KuJiale floor plan');
+  const updatedLead = await leads.linkFloorPlan(
+    lead.id,
+    floorPlan.id,
+    'measured'
+  );
+  if (!updatedLead) throw new Error('Failed to link floor plan to lead');
+  return { lead: updatedLead, floorPlan };
 }
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    await dbConnect();
     const { id } = await params;
+    const leadId = parsePostgresId(id, 'lead id');
     const body = await request.json();
-    const externalId = typeof body.externalId === 'string' ? body.externalId.trim() : '';
-
+    const externalId =
+      typeof body.externalId === 'string' ? body.externalId.trim() : '';
     if (!externalId) {
-      return NextResponse.json({ success: false, error: 'externalId is required' }, { status: 400 });
-    }
-
-    const mpContext = await resolveMiniProgramContext(request);
-    if (mpContext) {
-      if (!mpContext.staff) {
-        return NextResponse.json({ success: false, error: 'Staff profile not found' }, { status: 403 });
-      }
-
-      const store = {
-        enterpriseId: mpContext.enterpriseId ? String(mpContext.enterpriseId) : null,
-        role: mpContext.staff.role,
-        userId: String(mpContext.staff._id),
-      };
-
-      return await tenantStorage.run(store, async () =>
-        importKujialeFloorPlan(id, externalId, {
-          role: mpContext.staff.role,
-          userId: String(mpContext.staff._id),
-          enterpriseId: mpContext.enterpriseId ? String(mpContext.enterpriseId) : null,
-          miniProgramUser: mpContext.user,
-        })
+      return NextResponse.json(
+        { success: false, error: 'externalId is required' },
+        { status: 400 }
       );
     }
 
-    const adminContext = await getTenantContext(request);
-    if (!adminContext) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    const mini = await resolveMiniProgramContext(request);
+    let context: ImportContext;
+    if (mini) {
+      if (!mini.staff) {
+        return NextResponse.json(
+          { success: false, error: 'Staff profile not found' },
+          { status: 403 }
+        );
+      }
+      context = { kind: 'mini', context: mini };
+    } else {
+      const admin = await getTenantContext(request);
+      if (!admin) {
+        return NextResponse.json(
+          { success: false, error: 'Unauthorized' },
+          { status: 401 }
+        );
+      }
+      context = { kind: 'admin', context: admin };
     }
 
-    return await tenantStorage.run(
-      {
-        enterpriseId: adminContext.enterpriseId,
-        role: adminContext.role,
-        userId: adminContext.userId,
-        username: adminContext.username,
+    // The upstream network call intentionally stays outside the database transaction.
+    const detail = await getKujialeFloorPlanDetail(externalId);
+    const result =
+      context.kind === 'mini'
+        ? await withMiniProgramPostgresTransaction(
+            context.context,
+            (transaction) =>
+              persistImport(transaction, leadId, detail, context)
+          )
+        : await withAdminPostgresTransaction(
+            context.context,
+            (transaction) =>
+              persistImport(transaction, leadId, detail, context)
+          );
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        lead: leadToDto(result.lead),
+        floorPlan: floorPlanToDto(result.floorPlan),
       },
-      async () => importKujialeFloorPlan(id, externalId, adminContext)
-    );
+    });
   } catch (error: unknown) {
+    const message = getErrorMessage(error);
     console.error('Import KuJiale floor plan error:', error);
-    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: message.includes('access denied') ? 404 : 500 }
+    );
   }
 }

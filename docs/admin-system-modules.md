@@ -12,11 +12,11 @@ permission, or workflow changes.
 - `Placeholder`: the UI is present but uses a mock, a planned action, or no real
   persistence/integration.
 - Runtime: Next.js 16 App Router, React 19, Tailwind CSS 4, shadcn/ui + Radix,
-  Mongoose/MongoDB for current business data, a Phase 3 PostgreSQL 17
-  `drizzle-orm` + `pg` target-schema and Repository foundation, Three.js, and
-  SWR-style client fetching. Prompt-library reads, system-role configuration,
-  global promotion configuration, and media-storage configuration have switched
-  to PostgreSQL; remaining business routes still use MongoDB.
+  PostgreSQL 17 through `drizzle-orm` + `pg` for the migrated Phase 3 domains,
+  Mongoose/MongoDB for the remaining domains, Three.js, and SWR-style client
+  fetching. Identity/enterprise core, leads, formal floor plans, measurements,
+  BLE devices, prompt-library reads, system roles, global promotion configuration,
+  and media-storage configuration now use PostgreSQL.
 - Local development: `npm run dev` runs the combined Next.js UI/API on port
   `3005`; Docker publishes MongoDB on host port `27018` (container
   `mongo:27017`) and PostgreSQL on host port `5432` (container
@@ -57,13 +57,16 @@ permission, or workflow changes.
 - Pages: `/login`, `/register`.
 - APIs: `/api/auth/login`, `/logout`, `/me`, `/miniprogram`,
   `/register-company`, `/register-enterprise`.
-- Models/helpers: `AdminUser`, `User`, `Enterprise`, session/auth helpers, and
-  `miniprogram-jwt`.
-- Status: `Implemented`. Supports admin sessions, enterprise registration,
-  Mini Program identity binding, JWT/cookie handling, and unauthorized redirects.
+- Models/helpers: PostgreSQL `AdminUserRepository`, `UserRepository`,
+  `EnterpriseRepository`, session/auth helpers, and `miniprogram-jwt`.
+- Status: `Implemented` for PostgreSQL-backed admin login/session validation,
+  enterprise self-registration, Mini Program staff login/identity binding,
+  JWT/cookie handling, account-status revalidation, and unauthorized redirects.
 - User audit pages: `/users` and `/users/[openid]`, backed by `/api/users`,
-  `/users/[openid]`, and `/users/me`, provide Mini Program user lookup and the
-  user's associated floor-plan export library (`Implemented`).
+  `/users/[openid]`, and `/users/me`, provide PostgreSQL Mini Program identity
+  lookup/profile updates and PostgreSQL floor-plan counts/export lists.
+  `Limited`: AI and commercial workflows that still use MongoDB cannot consume
+  PostgreSQL bigint identities until their later Phase 3 slices.
 
 ### 2. Navigation, Roles, And Access Control
 
@@ -72,10 +75,12 @@ permission, or workflow changes.
 - Status: `Implemented`. Menu visibility, effective permissions, role defaults,
   custom role menu keys, account status, department membership, and route-level
   role checks are active. `/api/roles`, login/Mini Program permission resolution,
-  and admin-list effective permissions now use PostgreSQL `SystemRoleRepository`;
-  the route enforces platform `super_admin`/`admin` access in the handler, and
-  default-role initialization uses an idempotent insert that preserves configured
-  menu keys. Admin/staff records remain on MongoDB in this Phase 3 slice.
+  admin/staff CRUD, department membership, promoter junctions, and admin-list
+  effective permissions now use PostgreSQL `SystemRoleRepository`,
+  `AdminUserRepository`, and `DepartmentRepository`. Tenant staff/departments run
+  inside RLS-scoped transactions; the role route enforces platform
+  `super_admin`/`admin` access in the handler, and default-role initialization
+  uses an idempotent insert that preserves configured menu keys.
 
 ### 3. Platform Dashboard And Enterprise Tenants
 
@@ -83,21 +88,32 @@ permission, or workflow changes.
   automation, and WeCom subpages.
 - APIs: `/api/admin/enterprises`, `/activate`, `[id]`, `[id]/ai-key`,
   `[id]/ai-sync`, `[id]/ai-usage`, and `/api/branding/[id]`.
-- Models/helpers: `Enterprise`, `EnterpriseAiUsageSnapshot`, `AdminUser`,
-  `enterprise-ai`, and `enterprise-wecom`.
+- Models/helpers: PostgreSQL `EnterpriseRepository` and `AdminUserRepository`,
+  plus the not-yet-switched `EnterpriseAiUsageSnapshot`, `enterprise-ai`, and
+  `enterprise-wecom` paths.
 - Status: `Implemented`. Covers enterprise onboarding/activation, tenant profile,
   branding, automation settings, WeCom configuration, AI provider/key runtime
   settings, usage snapshots, and platform-level overview metrics.
+- PostgreSQL boundary: enterprise list/detail/create/update/delete and both
+  self-registration routes use PostgreSQL and create enterprise-admin accounts
+  atomically. `Limited`: `/api/admin/enterprises/activate` still coordinates
+  MongoDB promotion/order records, while `ai-key`, `ai-sync`, `ai-usage`,
+  `ai-credits`, branding, WeCom, and usage-snapshot consumers remain assigned to
+  their later Phase 3 domains. Core list/detail responses therefore expose
+  `aiUsageSnapshot: null` until the AI/commercial switch.
 
 ### 4. Staff, Departments, And System Accounts
 
 - Pages: `/staff`, `/admins`.
 - APIs: `/api/staff`, `/staff/[id]`, `/departments`, `/departments/[id]`,
   `/admin-users`, and `/admin-users/[id]`.
-- Models: `AdminUser`, `Department`, and `SystemRole`.
+- Models/repositories: PostgreSQL `AdminUserRepository`,
+  `DepartmentRepository`, `SystemRoleRepository`, and the
+  `admin_user_promoters` junction.
 - Status: `Implemented`. Enterprise staff, platform admins, role assignment,
   department trees, status changes, and promoter/designer/measurer relationships
-  are supported.
+  are supported. Existing `_id` response fields remain decimal strings for
+  frontend compatibility; RLS and route role checks enforce tenant boundaries.
 
 ### 5. B2B Promotion And Collaboration Workflow
 
@@ -128,9 +144,16 @@ permission, or workflow changes.
 - Page: `/leads`.
 - APIs: `/api/leads`, `/leads/[id]`, `/leads/[id]/share`, and related floor-plan
   and staff endpoints.
-- Models/helpers: `Lead`, `FloorPlan`, `AdminUser`, WeChat, and WeCom helpers.
+- Models/helpers: PostgreSQL `LeadRepository`, `FloorPlanRepository`,
+  `AdminUserRepository`, WeChat, and WeCom helpers.
 - Status: `Implemented`. Covers lead intake/status, follow-ups, assignment,
-  formal floor-plan association, share links, and conversion context.
+  formal floor-plan association, share links, and conversion context. List,
+  detail, create, update, and delete paths run in RLS-scoped PostgreSQL
+  transactions and retain decimal-string `_id` DTOs. Lead-floor-plan junction,
+  primary-plan selection, tenant validation, and deletion cleanup are atomic.
+  `Limited`: WeCom group sharing returns `400` until enterprise WeCom
+  configuration is migrated to PostgreSQL; ordinary WeChat notification calls
+  execute after the database transaction.
 
 ### 8. Formal Floor Plans, Search, And Viewing
 
@@ -161,6 +184,13 @@ permission, or workflow changes.
   and labels.
   Measurement filtering and DXF download are implemented. Kujiale search is
   `Limited` by the upstream search/provider response and city/query availability.
+- PostgreSQL boundary: formal floor-plan CRUD, detail rendering, lead linking,
+  measurement association, and DXF export use `FloorPlanRepository` and
+  `MeasurementRepository` under RLS. External Kujiale requests run outside the
+  database transaction; an imported plan is persisted atomically as a
+  millimetre-based formal version-4 `surveyGraph`. Imported room outlines become
+  closed node/wall/space chains. Kujiale openings are currently omitted because
+  the provider response does not expose a reliable opening-to-wall mapping.
 - Boundary: the backend derives room/opening render data from `surveyGraph`; it
   does not persist legacy `rooms` or other old layout fields.
 
@@ -169,10 +199,15 @@ permission, or workflow changes.
 - Page: `/devices` and the measurement record view under `/measurements`.
 - APIs: `/api/devices`, `/devices/[id]`, `/devices/verify`,
   `/devices/verify-binding`, and `/api/measurements`.
-- Models: `Device`, `Measurement`, and `User`.
+- Models/repositories: PostgreSQL `DeviceRepository`, `MeasurementRepository`,
+  `AdminUserRepository`, `UserRepository`, and `FloorPlanRepository`.
 - Status: `Implemented`. Supports device pool, enterprise/user binding,
   verification, status management, and formal length/height/area/angle/opening
-  audit records with BLE, manual, or system source markers.
+  audit records with BLE, manual, or system source markers. Device assignment is
+  an `admin_users` foreign key; platform/enterprise admins mutate devices, while
+  staff can read their own assignment. Measurement writes validate operator,
+  enterprise, formal plan, value/type/source/date, and assigned device in one
+  RLS-scoped PostgreSQL flow.
 
 ### 10. AI Studio And Design Generation
 
@@ -239,6 +274,8 @@ permission, or workflow changes.
   and generation task persistence/model-profile synchronization still use
   MongoDB until their Phase 3 slices are migrated; new generation batches resolve
   a selected prompt template and parameter definition through PostgreSQL.
+  `Limited`: MongoDB AI workflow/media/generation routes that reference leads or
+  floor plans are not bigint-compatible yet and remain outside this slice.
 - Status: `Implemented`. The workbench starts customer designs with a
   customer/material/goal wizard, shows the selected result and candidates in a
   two-column workspace, and keeps one recommended next action prominent. The
@@ -483,6 +520,12 @@ permission, or workflow changes.
   An explicit workflow is
   continued; a unique customer/formal-plan match is reused automatically; when
   multiple schemes match, the client must choose instead of silently merging.
+- PostgreSQL workbench boundary: `/api/miniprogram/home` and `/mine` now derive
+  live lead, formal-plan, measurement, and device data through typed repositories;
+  `/api/users` also returns PostgreSQL plan counts. Home reports
+  `aiGeneratedCases: 0` until the AI generation domain moves, and Mine returns an
+  empty `todos` list until commercial workflow records move, rather than passing
+  bigint IDs into MongoDB queries.
 
 ### 13. Notifications, Automation, And Diagnostics
 
@@ -491,22 +534,29 @@ permission, or workflow changes.
   `/api/internal/seed`.
 - Status: `Implemented` for scheduled reminder execution, browser polling,
   notification logs, health/debug checks, seed support, and Docker/release
-  tooling. These endpoints require their documented role or operational context.
+  tooling. The internal-secret-protected seed route now bootstraps the initial
+  PostgreSQL platform admin idempotently and requires an explicitly configured
+  32-plus-character `INTERNAL_SECRET` plus a 12-plus-character
+  `INITIAL_ADMIN_PASSWORD`; no source-code credential fallback remains. These
+  endpoints require their documented role or operational context.
 - PostgreSQL migration foundation: `Implemented` for the PostgreSQL 17
   Docker service, isolated `sfp_migrator`/`sfp_app`/`sfp_auditor` roles,
   bounded `pg.Pool`, reviewable Drizzle migrations, backup/restore-drill
   scripts, Docker health ordering, 44 typed target tables, foreign keys and
   indexes, forced RLS on tenant data, transaction-local tenant/platform
-  context, and typed repositories for enterprise, department, platform-config,
+  context, and typed repositories for enterprise, department, admin-user,
+  Mini Program user, lead, floor-plan, measurement, device, platform-config,
   prompt-library, system-role, and media-storage configuration access. The
   restore drill verifies table/RLS/policy counts.
   `/api/health` continues to require MongoDB and reports PostgreSQL separately;
   PostgreSQL becomes a health gate only when
   `POSTGRES_HEALTHCHECK_REQUIRED=true`. `Limited`: the PostgreSQL tables are
-  empty migration targets except for prompt-library reads, system-role
-  configuration, global promotion configuration, and media-storage configuration;
-  remaining business persistence stays on MongoDB while Phase 3 proceeds
-  incrementally. Docker migrations run explicitly
+  empty migration targets except for identity/enterprise core, leads, formal
+  floor plans, measurements, devices, prompt-library reads, system-role
+  configuration, global promotion configuration, and media-storage
+  configuration. Commercial records/workflows and AI generation/media remain
+  on MongoDB while Phase 3 proceeds incrementally. Docker
+  migrations run explicitly
   through `npm run docker:migrate`; the long-running admin service is not given
   `DATABASE_MIGRATION_URL`. Docker build context excludes runtime `.env*`, local
   RoomiAI/import assets, uploads, and local database backups; those assets must

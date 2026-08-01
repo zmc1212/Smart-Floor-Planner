@@ -1,0 +1,1 @@
+CREATE INDEX "users_phone_idx" ON "app"."users" USING btree ("phone");

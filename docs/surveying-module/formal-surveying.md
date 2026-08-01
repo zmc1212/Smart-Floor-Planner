@@ -14,6 +14,8 @@
 
 不再存储或读取 `rooms`、`homeOutline`、`partitions`、`surveyDraft`、`prototypeOnly` 或 `surveying_prototype`。报告、CAD、3D、后台和 AI 使用墙图读适配层，不创建旧布局副本。
 
+酷家乐户型导入遵守同一合同：服务端把上游房间轮廓转换为毫米制的闭合节点、墙和空间链，并以顶层 `version: 4`、`measurementMode: "surveying"`、`surveyGraph.kind: "survey-wall-graph"` 持久化；上游请求不得占用数据库事务，户型写入与线索关联必须原子提交。由于当前上游响应不能可靠标识开口所属墙体，导入暂不生成门窗开口，也不得通过最近墙体等启发式规则猜测。
+
 小程序户型列表的空间数只按 `surveyGraph.floors[].spaces` 中 `closed: true` 的空间统计；这只是只读展示，不改变正式墙图合同。
 
 小程序 AI 设计可携带 `floorPlanId`、显式 `targetScope: whole_floor_plan | single_room`，仅单房间携带 `roomId`。后台只通过正式墙图读适配层派生上下文：完整户型消费全部闭合空间并把 1024px 墙体/门窗控制图保存为独立 `MediaAsset`，单房间只消费指定闭合空间的尺寸、层高和开口摘要；任何派生数据都不回写 `FloorPlan.layoutData`。生成记录可关联客户 `AiWorkflow`，现场照片、参考图和生成结果属于独立 `MediaAsset`/`AiGeneration` 数据；仅凭户型生成的图片是概念效果，不作为施工级还原。

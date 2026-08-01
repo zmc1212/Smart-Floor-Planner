@@ -94,7 +94,7 @@ and `cancelled`.
 | Phase 0.2 | Qiniu configuration and encrypted-field verification | complete | Read-only inspection; no secrets logged |
 | Phase 1 | PostgreSQL instance, roles, pooling, migration runner | complete | Codex verification and user database-health/admin-page regression passed |
 | Phase 2 | PostgreSQL schema and Repository foundation | complete | Codex and user acceptance passed on 2026-08-01 |
-| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Prompt-library reads, system roles, global promotion config, and media-storage config switched; remaining domains pending |
+| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core, leads, formal plans, measurements/devices, prompt-library reads, roles, and global promotion/media config switched; commercial and AI/media domains pending |
 | Phase 4 | RoomiAI files/data and Qiniu configuration import | not started | Pending |
 | Phase 5 | Contract tests and cutover rehearsal | not started | Pending |
 | Phase 6 | Production PostgreSQL cutover | not started | Pending |
@@ -352,14 +352,61 @@ is recorded.
   with seven roles and string IDs, while invalid and viewer bearer tokens returned
   401 and 403. A temporary-role PATCH returned 200 with the updated menu keys and
   string ID; the exact test role was then deleted and a follow-up query returned
-  zero rows. MongoDB admin/staff documents remain the account source in this slice.
-- `npm run test:postgresql` passes 15/15 and `npm run test:ai` passes 106/106.
-  Targeted ESLint, the production build, Docker admin image build, and two
-  consecutive `npm run docker:migrate` runs passed. Direct migration through the
-  restricted `sfp_app` role was rejected with PostgreSQL `42501` as intended.
+  zero rows.
+- Admin login, session/me validation, Mini Program password/WeChat/refresh
+  identity resolution, enterprise self-registration, admin/staff CRUD,
+  department CRUD, and Mini Program user profile routes now use
+  `AdminUserRepository`, `UserRepository`, `EnterpriseRepository`, and
+  `DepartmentRepository`. PostgreSQL bigint IDs are serialized through the
+  existing `_id` fields as decimal strings, and active account status is
+  revalidated during session and Mini Program context resolution. The
+  internal-secret-protected seed route now creates the initial PostgreSQL
+  platform admin idempotently and has no built-in secret/password fallback.
+- Tenant staff, department, user, and promoter-junction access runs inside
+  transaction-scoped PostgreSQL RLS. Integration coverage verifies admin
+  promoter relations, tenant visibility, Mini Program OpenID lookup/profile
+  updates, and cross-tenant denial. Enterprise creation and the automatic
+  enterprise-admin account insert are atomic.
+- Lead list/detail/create/update/delete, formal floor-plan CRUD/detail/DXF,
+  measurement list/create, and device list/verify/binding/mutations now use typed
+  `LeadRepository`, `FloorPlanRepository`, `MeasurementRepository`, and
+  `DeviceRepository` access. Decimal-string `_id` DTOs preserve the current API
+  shape while all relations use PostgreSQL bigint keys and RLS transactions.
+  Relations are batch-loaded instead of per-row queries; lead status counts use
+  one grouped query.
+- Lead-floor-plan junction updates, primary-plan selection, tenant validation,
+  delete cleanup, and Kujiale-plan persistence/linking are atomic. Kujiale network
+  calls stay outside database transactions. Imported room outlines are converted
+  to a formal millimetre version-4 wall graph; openings are omitted until the
+  upstream response supplies a reliable opening-to-wall mapping.
+- Device `assigned_user_id` now references `admin_users`, matching staff binding.
+  Measurement writes validate operator, enterprise, formal plan, value/type/source,
+  date, and assigned device. Query-aligned FK/composite indexes cover the migrated
+  tenant, relation, phone, status, and time-ordered paths.
+- `/api/miniprogram/home`, `/api/miniprogram/mine`, `/api/users`, the admin
+  floor-plan detail page, and the user detail export list now consume the migrated
+  repositories. Home returns `aiGeneratedCases: 0` until AI generation moves;
+  Mine returns `todos: []` until commercial workflow persistence moves.
+- The enterprise activation route remains coupled to MongoDB promotion/order
+  records. Enterprise AI key/sync/usage/credits, branding/WeCom configuration,
+  commercial workflows, and AI generation/workflow/media consumers remain
+  unswitched. WeCom lead sharing therefore returns an explicit `400`, core
+  enterprise responses expose `aiUsageSnapshot: null`, and MongoDB AI routes that
+  reference migrated bigint lead/plan IDs remain `Limited` until their slice.
+- Drizzle migrations `0006_exotic_wild_pack.sql` and
+  `0007_simple_mindworm.sql` were generated and applied with the host migration
+  runner.
+  `npm run test:postgresql` passes 18/18 and `npm run test:ai` passes 106/106.
+  Targeted ESLint and the production build pass. Read-only HTTP smoke checks
+  return 401 without authentication and 200 with a short-lived local admin bearer
+  token for leads, floor plans, devices, measurements, and users. The Mini Program
+  suite passes 90/91; its one pre-existing API-environment assertion expects
+  `localhost` while the configured local base is `192.168.10.111`, which is
+  unrelated to this PostgreSQL slice. The build exits 0 with the known Windows
+  standalone trace-copy warning for `save-icons`.
 - The RoomiAI import script, generation task persistence/model-profile
-  synchronization, administrators, enterprises, departments, Mini Program
-  identities, and all later business domains still require Phase 3 work.
+  synchronization, commercial records/workflows, enterprise activation/WeCom,
+  and AI workflows/generation/media still require Phase 3 work.
 - No MongoDB documents, PostgreSQL production rows, Qiniu objects, or secrets
   were imported, re-encrypted, or logged in this slice. One API-test-only archived
   row with a `phase3-api-*` key was deleted after an exact prefix check; the
@@ -370,6 +417,8 @@ Phase 3 acceptance status:
 | Acceptance item | Owner | Status | Date | Evidence/issues |
 | --- | --- | --- | --- | --- |
 | Prompt-library/role/config APIs, Repository integration tests, lint/build | Codex | passed | 2026-08-01 | 15/15 PostgreSQL and 106/106 AI tests; targeted ESLint/build; migrated API auth checks 200/401/403 |
+| Identity/enterprise core APIs, RLS Repository tests, lint/build | Codex | passed | 2026-08-01 | PostgreSQL 17/17; AI 106/106; targeted ESLint/build; live invalid login and unauthenticated identity requests returned 401; bigint `_id` DTO compatibility and remaining mixed-store boundaries documented |
+| Leads/formal plans/measurements/devices and Mini Program aggregates | Codex | passed | 2026-08-01 | PostgreSQL 18/18; AI 106/106; targeted ESLint/build; authenticated migrated list APIs 200 and unauthenticated APIs 401; tenant isolation and relation cleanup covered; Mini Program 90/91 with one unrelated API-environment expectation failure |
 | Prompt-library primary-flow manual test | User | pending | - | Requires an active PostgreSQL prompt revision after the Phase 4 import |
 | Login, authorization, tenant, and adjacent AI regression | User | pending | - | Must be repeated after the remaining Phase 3 slices |
 
@@ -387,7 +436,9 @@ files being changed, whether destructive deletion or secret re-encryption is
 involved, and the evidence produced. Update this document after each completed
 phase. Never advance a phase based only on conversation memory.
 
-Phase 2 Codex and user verification have passed. The next task begins with
-Phase 3: switch application domains from Mongoose to PostgreSQL incrementally.
+Phase 3 identity/enterprise core plus leads, formal floor plans, measurements,
+devices, and their Mini Program aggregates are switched. The next slice should
+move commercial records/workflows (including activation and WeCom configuration),
+then AI workflow/generation/media persistence and its bigint lead/plan consumers.
 No production business data should be imported before the Phase 4 whitelist
 import.

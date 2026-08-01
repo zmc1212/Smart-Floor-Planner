@@ -1,4 +1,4 @@
-import { DEFAULT_PERMISSIONS } from '@/models/AdminUser';
+import { DEFAULT_PERMISSIONS } from '@/lib/admin-user-roles';
 import { SystemRoleRepository } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
 

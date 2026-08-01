@@ -1,49 +1,66 @@
 import { NextResponse } from 'next/server';
+import { userToDto } from '@/db/postgres-dto';
+import { FloorPlanRepository, UserRepository } from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
+
 export const dynamic = 'force-dynamic';
-import dbConnect from '@/lib/mongodb';
-import { User } from '@/models/User';
 
-import { FloorPlan } from '@/models/FloorPlan';
-
-// Admin API: List all users with filtering and plan counts
 export async function GET(req: Request) {
   try {
-    await dbConnect();
     const { searchParams } = new URL(req.url);
-    const search = searchParams.get('search');
-
-    let query: any = {};
-    if (search) {
-      query.$or = [
-        { nickname: { $regex: search, $options: 'i' } },
-        { phone: { $regex: search, $options: 'i' } },
-        { openid: { $regex: search, $options: 'i' } },
-        { communityName: { $regex: search, $options: 'i' } }
-      ];
-    }
-
-    const users = await User.find(query).sort({ createdAt: -1 }).lean();
-    
-    // Efficiently get counts for each user
-    const usersWithCounts = await Promise.all(users.map(async (user: any) => {
-      const planCount = await FloorPlan.countDocuments({ creator: user._id });
-      return { ...user, planCount };
+    const result = await withPlatformTransaction(async (transaction) => {
+      const users = await new UserRepository(transaction).list(
+        searchParams.get('search') || ''
+      );
+      const planCounts = await new FloorPlanRepository(
+        transaction
+      ).countByCreatorIds(users.map((user) => user.id));
+      return { users, planCounts };
+    });
+    const data = result.users.map((user) => ({
+      ...userToDto(user),
+      planCount: result.planCounts.get(user.id) ?? 0,
     }));
-
-    return NextResponse.json({ success: true, count: usersWithCounts.length, data: usersWithCounts });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({
+      success: true,
+      count: data.length,
+      data,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    );
   }
 }
 
-// Admin API: Create a user manually
 export async function POST(req: Request) {
   try {
-    await dbConnect();
     const body = await req.json();
-    const newUser = await User.create(body);
-    return NextResponse.json({ success: true, data: newUser }, { status: 201 });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 400 });
+    const user = await withPlatformTransaction((transaction) =>
+      new UserRepository(transaction).create({
+        enterpriseId: body.enterpriseId ? BigInt(body.enterpriseId) : null,
+        username: body.username?.trim() || null,
+        passwordHash: body.passwordHash || null,
+        role: body.role || 'user',
+        openid: body.openid?.trim() || null,
+        nickname: body.nickname?.trim() || null,
+        avatar: body.avatar || null,
+        communityName: body.communityName?.trim() || null,
+        city: body.city?.trim() || null,
+        phone: body.phone?.trim() || null,
+      })
+    );
+    return NextResponse.json(
+      { success: true, data: userToDto(user) },
+      { status: 201 }
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 400 }
+    );
   }
 }

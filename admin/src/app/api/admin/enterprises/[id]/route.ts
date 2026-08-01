@@ -1,39 +1,27 @@
-import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import dbConnect from '@/lib/mongodb';
-import { Enterprise } from '@/models/Enterprise';
-import { EnterpriseAiUsageSnapshot } from '@/models/EnterpriseAiUsageSnapshot';
-import { AdminUser, DEFAULT_PERMISSIONS } from '@/models/AdminUser';
+import { NextResponse } from 'next/server';
+import { enterpriseToDto, parsePostgresId } from '@/db/postgres-dto';
+import {
+  AdminUserRepository,
+  EnterpriseRepository,
+  type EnterpriseUpdate,
+} from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { sanitizeEnterpriseAiConfig, summarizeDailyUsage } from '@/lib/ai/enterprise-ai';
+import { DEFAULT_PERMISSIONS } from '@/lib/admin-user-roles';
+
+export const dynamic = 'force-dynamic';
 
 interface EnterprisePatchBody {
   name?: string;
   code?: string;
-  contactPerson?: {
-    name: string;
-    phone: string;
-    email?: string;
-  };
+  contactPerson?: Record<string, unknown>;
   status?: string;
   logo?: string;
-  branding?: {
-    primaryColor?: string;
-    accentColor?: string;
-  };
+  branding?: Record<string, unknown>;
   groundPromotionFixedCommission?: number;
-  automationConfig?: {
-    followUpSlaHours?: number;
-    measureTaskSlaHours?: number;
-    designTaskSlaHours?: number;
-    reminderIntervalHours?: number;
-    maxReminderTimes?: number;
-    browserNotificationEnabled?: boolean;
-    miniprogramNotificationEnabled?: boolean;
-  };
+  automationConfig?: Record<string, unknown>;
 }
-
-export const dynamic = 'force-dynamic';
 
 const DEFAULT_ENTERPRISE_AUTOMATION_CONFIG = {
   followUpSlaHours: 24,
@@ -45,49 +33,58 @@ const DEFAULT_ENTERPRISE_AUTOMATION_CONFIG = {
   miniprogramNotificationEnabled: true,
 };
 
-function normalizeAutomationConfig(automationConfig?: Record<string, unknown>) {
+function normalizeAutomationConfig(
+  automationConfig?: Record<string, unknown>
+) {
   return {
-    followUpSlaHours: Number(automationConfig?.followUpSlaHours || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.followUpSlaHours),
-    measureTaskSlaHours: Number(automationConfig?.measureTaskSlaHours || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.measureTaskSlaHours),
-    designTaskSlaHours: Number(automationConfig?.designTaskSlaHours || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.designTaskSlaHours),
-    reminderIntervalHours: Number(automationConfig?.reminderIntervalHours || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.reminderIntervalHours),
-    maxReminderTimes: Number(automationConfig?.maxReminderTimes || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.maxReminderTimes),
-    browserNotificationEnabled: automationConfig?.browserNotificationEnabled !== false,
-    miniprogramNotificationEnabled: automationConfig?.miniprogramNotificationEnabled !== false,
+    followUpSlaHours: Number(
+      automationConfig?.followUpSlaHours ||
+        DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.followUpSlaHours
+    ),
+    measureTaskSlaHours: Number(
+      automationConfig?.measureTaskSlaHours ||
+        DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.measureTaskSlaHours
+    ),
+    designTaskSlaHours: Number(
+      automationConfig?.designTaskSlaHours ||
+        DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.designTaskSlaHours
+    ),
+    reminderIntervalHours: Number(
+      automationConfig?.reminderIntervalHours ||
+        DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.reminderIntervalHours
+    ),
+    maxReminderTimes: Number(
+      automationConfig?.maxReminderTimes ||
+        DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.maxReminderTimes
+    ),
+    browserNotificationEnabled:
+      automationConfig?.browserNotificationEnabled !== false,
+    miniprogramNotificationEnabled:
+      automationConfig?.miniprogramNotificationEnabled !== false,
   };
 }
 
 function sanitizeEnterpriseForResponse(
-  enterprise: Record<string, unknown>,
-  options?: {
-    aiSnapshot?: {
-      balance?: number;
-      currency?: string;
-      keyInfo?: Record<string, unknown> | null;
-      lastSyncedAt?: Date | string | null;
-      syncError?: string;
-      dailyUsage?: Array<{ date: string; model: string; requests: number; costUsd: number }>;
-    } | null;
-  }
+  enterprise: ReturnType<typeof enterpriseToDto>
 ) {
+  const aiConfig = enterprise.aiConfig;
   return {
     ...enterprise,
-    automationConfig: normalizeAutomationConfig(enterprise.automationConfig as Record<string, unknown> | undefined),
-    aiConfig: sanitizeEnterpriseAiConfig(
-      enterprise as unknown as Record<string, unknown> & {
-        aiConfig?: ReturnType<typeof sanitizeEnterpriseAiConfig>;
-      }
-    ),
-    aiUsageSnapshot: options?.aiSnapshot
-      ? {
-          balance: options.aiSnapshot.balance || 0,
-          currency: options.aiSnapshot.currency || 'USD',
-          keyInfo: options.aiSnapshot.keyInfo || null,
-          lastSyncedAt: options.aiSnapshot.lastSyncedAt || null,
-          syncError: options.aiSnapshot.syncError || '',
-          summary: summarizeDailyUsage(options.aiSnapshot.dailyUsage || []),
-        }
-      : null,
+    automationConfig: normalizeAutomationConfig(enterprise.automationConfig),
+    aiConfig:
+      Object.keys(aiConfig).length > 0
+        ? {
+            provider: aiConfig.provider,
+            keyMode: aiConfig.keyMode,
+            pollinationsKeyRef: aiConfig.pollinationsKeyRef || '',
+            pollinationsKeyName: aiConfig.pollinationsKeyName || '',
+            pollinationsMaskedKey: aiConfig.pollinationsMaskedKey || '',
+            allowedModels: aiConfig.allowedModels || [],
+            pollenBudget: aiConfig.pollenBudget ?? null,
+            lastSyncedAt: aiConfig.lastSyncedAt || null,
+          }
+        : undefined,
+    aiUsageSnapshot: null,
   };
 }
 
@@ -96,27 +93,32 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await dbConnect();
-
-    return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
-      const { id } = await params;
-      const enterprise = await Enterprise.findById(id).lean();
-      if (!enterprise) {
-        return NextResponse.json({ success: false, error: 'Enterprise not found' }, { status: 404 });
+    return await withTenantRoute(
+      request,
+      { roles: ['super_admin', 'admin'] },
+      async () => {
+        const { id } = await params;
+        const enterprise = await withPlatformTransaction((transaction) =>
+          new EnterpriseRepository(transaction).findById(parsePostgresId(id))
+        );
+        if (!enterprise) {
+          return NextResponse.json(
+            { success: false, error: 'Enterprise not found' },
+            { status: 404 }
+          );
+        }
+        return NextResponse.json({
+          success: true,
+          data: sanitizeEnterpriseForResponse(enterpriseToDto(enterprise)),
+        });
       }
-
-      const aiSnapshot = await EnterpriseAiUsageSnapshot.findOne({ enterpriseId: id }).lean();
-
-      return NextResponse.json({
-        success: true,
-        data: sanitizeEnterpriseForResponse(enterprise as unknown as Record<string, unknown>, {
-          aiSnapshot,
-        }),
-      });
-    });
+    );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    );
   }
 }
 
@@ -125,91 +127,100 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await dbConnect();
-
     return await withTenantRoute(
       request,
       { roles: ['super_admin', 'admin'] },
       async () => {
-        const { id: enterpriseId } = await params;
+        const { id } = await params;
+        const enterpriseId = parsePostgresId(id);
         const body = (await request.json()) as EnterprisePatchBody;
-        const {
-          name,
-          code,
-          contactPerson,
-          status,
-          logo,
-          branding,
-          groundPromotionFixedCommission,
-          automationConfig,
-        } = body;
+        const enterprise = await withPlatformTransaction(
+          async (transaction) => {
+            const enterprises = new EnterpriseRepository(transaction);
+            const adminUsers = new AdminUserRepository(transaction);
+            const current = await enterprises.findById(enterpriseId);
+            if (!current) return null;
 
-        const currentEnterprise = await Enterprise.findById(enterpriseId).select('contactPerson');
-        if (!currentEnterprise) {
-          return NextResponse.json({ success: false, error: 'Enterprise not found' }, { status: 404 });
-        }
+            const updateData: EnterpriseUpdate = {};
+            if (body.name !== undefined) updateData.name = body.name;
+            if (body.code !== undefined) updateData.code = body.code;
+            if (body.contactPerson !== undefined) {
+              updateData.contactPerson = body.contactPerson;
+            }
+            if (body.status !== undefined) updateData.status = body.status;
+            if (body.logo !== undefined) updateData.logo = body.logo;
+            if (body.branding !== undefined) {
+              updateData.branding = body.branding;
+            }
+            if (body.groundPromotionFixedCommission !== undefined) {
+              updateData.groundPromotionFixedCommission = String(
+                Number(body.groundPromotionFixedCommission)
+              );
+            }
+            if (body.automationConfig !== undefined) {
+              updateData.automationConfig = normalizeAutomationConfig(
+                body.automationConfig
+              );
+            }
+            const updated = await enterprises.update(
+              enterpriseId,
+              updateData
+            );
+            if (!updated) return null;
 
-        const updateData: Record<string, unknown> = {};
-
-        if (name !== undefined) updateData.name = name;
-        if (code !== undefined) updateData.code = code;
-        if (contactPerson !== undefined) updateData.contactPerson = contactPerson;
-        if (status !== undefined) updateData.status = status;
-        if (logo !== undefined) updateData.logo = logo;
-        if (branding !== undefined) updateData.branding = branding;
-        if (groundPromotionFixedCommission !== undefined) {
-          updateData.groundPromotionFixedCommission = Number(groundPromotionFixedCommission);
-        }
-        if (automationConfig !== undefined) {
-          updateData.automationConfig = normalizeAutomationConfig(automationConfig as Record<string, unknown>);
-        }
-
-        const enterprise = await Enterprise.findByIdAndUpdate(
-          enterpriseId,
-          { $set: updateData },
-          { new: true }
-        );
-        if (!enterprise) {
-          return NextResponse.json({ success: false, error: 'Enterprise not found' }, { status: 404 });
-        }
-
-        if (status === 'active' && enterprise.contactPerson?.phone) {
-          const targetPhone = enterprise.contactPerson.phone;
-          const existingUser = await AdminUser.findOne({
-            $or: [{ username: targetPhone }, { phone: targetPhone }]
-          });
-
-          if (!existingUser) {
-            const passwordHash = await bcrypt.hash('Admin123456', 10);
-            await AdminUser.create({
-              username: targetPhone,
-              passwordHash,
-              displayName: enterprise.contactPerson.name,
-              role: 'enterprise_admin',
-              enterpriseId: enterprise._id,
-              phone: targetPhone,
-              menuPermissions: DEFAULT_PERMISSIONS.enterprise_admin,
-              status: 'active',
-            });
-          } else if (existingUser.enterpriseId?.toString() !== enterprise._id.toString()) {
-            return NextResponse.json({
-              success: false,
-              error: `婵€娲诲け璐ワ細鎵嬫満鍙?${targetPhone} 宸茶鍏朵粬璐﹀彿浣跨敤锛岃鍏堜慨鏀硅仈绯荤數璇濄€?`,
-            }, { status: 400 });
+            const contact = updated.contactPerson;
+            const phone =
+              typeof contact.phone === 'string' ? contact.phone.trim() : '';
+            if (body.status === 'active' && phone) {
+              const existingUser =
+                await adminUsers.findByUsernameOrPhone(phone);
+              if (!existingUser) {
+                await adminUsers.create({
+                  username: phone,
+                  passwordHash: await bcrypt.hash('Admin123456', 10),
+                  displayName:
+                    typeof contact.name === 'string' ? contact.name : '',
+                  role: 'enterprise_admin',
+                  enterpriseId: updated.id,
+                  phone,
+                  menuPermissions: DEFAULT_PERMISSIONS.enterprise_admin,
+                  status: 'active',
+                });
+              } else if (existingUser.enterpriseId !== updated.id) {
+                throw Object.assign(
+                  new Error(`手机号 ${phone} 已被其他企业账号使用`),
+                  { code: 'ACCOUNT_CONFLICT' }
+                );
+              }
+            }
+            return updated;
           }
-        }
+        );
 
+        if (!enterprise) {
+          return NextResponse.json(
+            { success: false, error: 'Enterprise not found' },
+            { status: 404 }
+          );
+        }
         return NextResponse.json({
           success: true,
-          data: sanitizeEnterpriseForResponse(
-            enterprise.toObject() as unknown as Record<string, unknown>
-          ),
+          data: sanitizeEnterpriseForResponse(enterpriseToDto(enterprise)),
         });
       }
     );
   } catch (error: unknown) {
+    const details = error as { code?: string };
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: message },
+      {
+        status:
+          details.code === '23505' || details.code === 'ACCOUNT_CONFLICT'
+            ? 400
+            : 500,
+      }
+    );
   }
 }
 
@@ -218,19 +229,37 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await dbConnect();
-
     return await withTenantRoute(
       request,
       { roles: ['super_admin', 'admin'] },
       async () => {
         const { id } = await params;
-        await Enterprise.findByIdAndDelete(id);
-        return NextResponse.json({ success: true, message: 'Deleted successfully' });
+        const deleted = await withPlatformTransaction((transaction) =>
+          new EnterpriseRepository(transaction).delete(parsePostgresId(id))
+        );
+        if (!deleted) {
+          return NextResponse.json(
+            { success: false, error: 'Enterprise not found' },
+            { status: 404 }
+          );
+        }
+        return NextResponse.json({
+          success: true,
+          message: 'Deleted successfully',
+        });
       }
     );
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    const details = error as { code?: string };
+    const message =
+      details.code === '23503'
+        ? 'Enterprise still has related records and cannot be deleted'
+        : error instanceof Error
+          ? error.message
+          : 'Unknown error';
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: details.code === '23503' ? 409 : 500 }
+    );
   }
 }

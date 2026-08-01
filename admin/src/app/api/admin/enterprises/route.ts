@@ -1,11 +1,13 @@
-import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import dbConnect from '@/lib/mongodb';
-import { Enterprise } from '@/models/Enterprise';
-import { EnterpriseAiUsageSnapshot } from '@/models/EnterpriseAiUsageSnapshot';
-import { AdminUser, DEFAULT_PERMISSIONS } from '@/models/AdminUser';
+import { NextResponse } from 'next/server';
+import { enterpriseToDto } from '@/db/postgres-dto';
+import {
+  AdminUserRepository,
+  EnterpriseRepository,
+} from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { sanitizeEnterpriseAiConfig, summarizeDailyUsage } from '@/lib/ai/enterprise-ai';
+import { DEFAULT_PERMISSIONS } from '@/lib/admin-user-roles';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,111 +21,181 @@ const DEFAULT_ENTERPRISE_AUTOMATION_CONFIG = {
   miniprogramNotificationEnabled: true,
 };
 
-function normalizeAutomationConfig(automationConfig?: Record<string, unknown>) {
+function normalizeAutomationConfig(
+  automationConfig?: Record<string, unknown>
+) {
   return {
-    followUpSlaHours: Number(automationConfig?.followUpSlaHours || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.followUpSlaHours),
-    measureTaskSlaHours: Number(automationConfig?.measureTaskSlaHours || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.measureTaskSlaHours),
-    designTaskSlaHours: Number(automationConfig?.designTaskSlaHours || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.designTaskSlaHours),
-    reminderIntervalHours: Number(automationConfig?.reminderIntervalHours || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.reminderIntervalHours),
-    maxReminderTimes: Number(automationConfig?.maxReminderTimes || DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.maxReminderTimes),
-    browserNotificationEnabled: automationConfig?.browserNotificationEnabled !== false,
-    miniprogramNotificationEnabled: automationConfig?.miniprogramNotificationEnabled !== false,
+    followUpSlaHours: Number(
+      automationConfig?.followUpSlaHours ||
+        DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.followUpSlaHours
+    ),
+    measureTaskSlaHours: Number(
+      automationConfig?.measureTaskSlaHours ||
+        DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.measureTaskSlaHours
+    ),
+    designTaskSlaHours: Number(
+      automationConfig?.designTaskSlaHours ||
+        DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.designTaskSlaHours
+    ),
+    reminderIntervalHours: Number(
+      automationConfig?.reminderIntervalHours ||
+        DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.reminderIntervalHours
+    ),
+    maxReminderTimes: Number(
+      automationConfig?.maxReminderTimes ||
+        DEFAULT_ENTERPRISE_AUTOMATION_CONFIG.maxReminderTimes
+    ),
+    browserNotificationEnabled:
+      automationConfig?.browserNotificationEnabled !== false,
+    miniprogramNotificationEnabled:
+      automationConfig?.miniprogramNotificationEnabled !== false,
   };
 }
 
-function sanitizeEnterpriseForResponse(enterprise: object & { automationConfig?: unknown }) {
-  const enterpriseRecord = enterprise as Record<string, unknown>;
+function sanitizeEnterpriseForResponse(
+  enterprise: ReturnType<typeof enterpriseToDto>
+) {
+  const aiConfig = enterprise.aiConfig;
   return {
-    ...enterpriseRecord,
-    automationConfig: normalizeAutomationConfig(enterprise.automationConfig as Record<string, unknown> | undefined),
-    aiConfig: sanitizeEnterpriseAiConfig(enterpriseRecord),
+    ...enterprise,
+    automationConfig: normalizeAutomationConfig(enterprise.automationConfig),
+    aiConfig:
+      Object.keys(aiConfig).length > 0
+        ? {
+            provider: aiConfig.provider,
+            keyMode: aiConfig.keyMode,
+            pollinationsKeyRef: aiConfig.pollinationsKeyRef || '',
+            pollinationsKeyName: aiConfig.pollinationsKeyName || '',
+            pollinationsMaskedKey: aiConfig.pollinationsMaskedKey || '',
+            allowedModels: aiConfig.allowedModels || [],
+            pollenBudget: aiConfig.pollenBudget ?? null,
+            lastSyncedAt: aiConfig.lastSyncedAt || null,
+          }
+        : undefined,
+    aiUsageSnapshot: null,
   };
 }
 
 export async function GET(request: Request) {
   try {
-    await dbConnect();
-
     return await withTenantRoute(
       request,
       { roles: ['super_admin', 'admin'] },
       async () => {
-        const enterprises = await Enterprise.find().sort({ createdAt: -1 }).lean();
-        const enterpriseIds = enterprises.map((item) => item._id);
-        const aiSnapshots = enterpriseIds.length
-          ? await EnterpriseAiUsageSnapshot.find({ enterpriseId: { $in: enterpriseIds } }).lean()
-          : [];
-        const aiSnapshotMap = new Map(
-          aiSnapshots.map((item) => [String(item.enterpriseId), item])
+        const enterprises = await withPlatformTransaction((transaction) =>
+          new EnterpriseRepository(transaction).list()
         );
-
-        const enriched = enterprises.map((enterprise) => {
-          const aiSnapshot = aiSnapshotMap.get(String(enterprise._id));
-          return {
-            ...sanitizeEnterpriseForResponse(enterprise),
-            aiUsageSnapshot: aiSnapshot
-              ? {
-                  balance: aiSnapshot.balance || 0,
-                  currency: aiSnapshot.currency || 'USD',
-                  keyInfo: aiSnapshot.keyInfo || null,
-                  lastSyncedAt: aiSnapshot.lastSyncedAt || null,
-                  syncError: aiSnapshot.syncError || '',
-                  summary: summarizeDailyUsage(aiSnapshot.dailyUsage || []),
-                }
-              : null,
-          };
+        return NextResponse.json({
+          success: true,
+          data: enterprises.map((enterprise) =>
+            sanitizeEnterpriseForResponse(enterpriseToDto(enterprise))
+          ),
         });
-        return NextResponse.json({ success: true, data: enriched });
       }
     );
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(request: Request) {
   try {
-    await dbConnect();
-
     return await withTenantRoute(
       request,
       { roles: ['super_admin', 'admin'] },
       async () => {
         const body = (await request.json()) as Record<string, unknown>;
-        const automationConfig = (body.automationConfig || {}) as Record<string, unknown>;
-        const enterprise = await Enterprise.create({
-          ...body,
-          groundPromotionFixedCommission: Number(body.groundPromotionFixedCommission || 0),
-          automationConfig: normalizeAutomationConfig(automationConfig),
-          registrationMode: 'manual',
-        });
+        if (!body.name || !body.code) {
+          return NextResponse.json(
+            { success: false, error: 'Enterprise name and code are required' },
+            { status: 400 }
+          );
+        }
+        const contactPerson = (body.contactPerson || {}) as Record<
+          string,
+          unknown
+        >;
+        if (!contactPerson.name || !contactPerson.phone) {
+          return NextResponse.json(
+            { success: false, error: 'Enterprise contact name and phone are required' },
+            { status: 400 }
+          );
+        }
+        const result = await withPlatformTransaction(async (transaction) => {
+          const enterprises = new EnterpriseRepository(transaction);
+          const adminUsers = new AdminUserRepository(transaction);
+          if (await enterprises.findByCode(String(body.code).trim())) {
+            throw Object.assign(new Error('Enterprise code already exists'), {
+              code: '23505',
+            });
+          }
+          const enterprise = await enterprises.create({
+            name: String(body.name).trim(),
+            code: String(body.code).trim(),
+            status: String(body.status || 'pending_approval'),
+            registrationMode: 'manual',
+            contactPerson,
+            address: body.address ? String(body.address) : null,
+            industry: body.industry ? String(body.industry) : null,
+            description: body.description ? String(body.description) : null,
+            logo: body.logo ? String(body.logo) : null,
+            branding:
+              (body.branding as Record<string, unknown> | undefined) || {},
+            groundPromotionFixedCommission: String(
+              Number(body.groundPromotionFixedCommission || 0)
+            ),
+            automationConfig: normalizeAutomationConfig(
+              body.automationConfig as Record<string, unknown> | undefined
+            ),
+          });
 
-        if (enterprise.contactPerson?.phone) {
-          const passwordHash = await bcrypt.hash('Admin123456', 10);
-          const existingUser = await AdminUser.findOne({ username: enterprise.contactPerson.phone });
-          if (!existingUser) {
-            await AdminUser.create({
-              username: enterprise.contactPerson.phone,
-              passwordHash,
-              displayName: enterprise.contactPerson.name,
+          const phone = contactPerson.phone
+            ? String(contactPerson.phone).trim()
+            : '';
+          if (phone) {
+            if (await adminUsers.findByUsernameOrPhone(phone)) {
+              throw Object.assign(
+                new Error(`手机号 ${phone} 已被其他系统账号使用`),
+                { code: 'ACCOUNT_CONFLICT' }
+              );
+            }
+            await adminUsers.create({
+              username: phone,
+              passwordHash: await bcrypt.hash('Admin123456', 10),
+              displayName: contactPerson.name
+                ? String(contactPerson.name)
+                : '',
               role: 'enterprise_admin',
-              enterpriseId: enterprise._id,
-              phone: enterprise.contactPerson.phone,
+              enterpriseId: enterprise.id,
+              phone,
               menuPermissions: DEFAULT_PERMISSIONS.enterprise_admin,
               status: 'active',
             });
           }
-        }
+          return enterprise;
+        });
 
         return NextResponse.json({
           success: true,
-          data: sanitizeEnterpriseForResponse(enterprise.toObject() as unknown as Record<string, unknown>),
+          data: sanitizeEnterpriseForResponse(enterpriseToDto(result)),
         });
       }
     );
   } catch (error: unknown) {
+    const details = error as { code?: string };
     const message = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: message },
+      {
+        status:
+          details.code === '23505' || details.code === 'ACCOUNT_CONFLICT'
+            ? 400
+            : 500,
+      }
+    );
   }
 }
