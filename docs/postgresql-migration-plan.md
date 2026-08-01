@@ -95,7 +95,7 @@ and `cancelled`.
 | Phase 1 | PostgreSQL instance, roles, pooling, migration runner | complete | Codex verification and user database-health/admin-page regression passed |
 | Phase 2 | PostgreSQL schema and Repository foundation | complete | Codex and user acceptance passed on 2026-08-01 |
 | Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core, leads, formal plans, measurements/devices, prompt-library reads, roles, and global promotion/media config switched; commercial and AI/media domains pending |
-| Phase 4 | RoomiAI files/data and Qiniu configuration import | not started | Pending |
+| Phase 4 | RoomiAI files/data and Qiniu configuration import | in progress: awaiting user acceptance | PostgreSQL active Roomi revision, 960 verified local previews, imported Qiniu configuration, and successful probe on 2026-08-01 |
 | Phase 5 | Contract tests and cutover rehearsal | not started | Pending |
 | Phase 6 | Production PostgreSQL cutover | not started | Pending |
 | Phase 7 | End of MongoDB read-only retention | not started | Pending |
@@ -421,6 +421,43 @@ Phase 3 acceptance status:
 | Leads/formal plans/measurements/devices and Mini Program aggregates | Codex | passed | 2026-08-01 | PostgreSQL 18/18; AI 106/106; targeted ESLint/build; authenticated migrated list APIs 200 and unauthenticated APIs 401; tenant isolation and relation cleanup covered; Mini Program 90/91 with one unrelated API-environment expectation failure |
 | Prompt-library primary-flow manual test | User | pending | - | Requires an active PostgreSQL prompt revision after the Phase 4 import |
 | Login, authorization, tenant, and adjacent AI regression | User | pending | - | Must be repeated after the remaining Phase 3 slices |
+
+### Phase 4 progress record (2026-08-01)
+
+- Added `admin/scripts/import-phase4-retained-data.ts` and the explicit
+  `npm run migrate:phase4-retained-data` command. It imports only the retained
+  RoomiAI snapshot, its manifest-indexed previews, and the active Qiniu
+  configuration from the read-only legacy MongoDB source; it never imports or
+  deletes other business collections or Qiniu objects.
+- The active PostgreSQL Roomi revision is
+  `roomi-522ebb4f5d521fc54409b70b5650b4b10631943ee99efa48c1a632588a398df4`
+  with 84 categories, 960 templates, 6 parameter templates, 5 source models,
+  and 960 preview assets. The imported manifest/content hashes match the source
+  snapshot. All 960 staged files passed size, SHA-256, and image-dimension
+  checks before import and were read and hashed again after storage.
+- The `zly-images` Qiniu configuration and active provider pointer were
+  imported without logging plaintext credentials. The legacy administrator
+  audit reference was deliberately mapped to `NULL`. A full upload, stat,
+  private signed-download, content, and cleanup probe passed; the temporary
+  probe object was deleted. Production deployment still must supply the
+  dedicated `MEDIA_STORAGE_KEY_ENCRYPTION_SECRET` that can decrypt the imported
+  credentials.
+- The importer is idempotent: its final rerun detected the complete active
+  revision, verified all 960 local objects, and repeated the Qiniu probe. Its
+  `app.migration_checkpoints` entry is `phase4-retained-data` with
+  `status: codex_verified`.
+- `npm run test:postgresql` passed 18/18 and `npm run test:ai` passed 106/106.
+  Authenticated prompt-category and prompt-template API smoke requests both
+  returned HTTP 200. No MongoDB document, snapshot file, or Qiniu production
+  object was deleted; source data remains available for rollback/reference.
+
+Phase 4 acceptance status:
+
+| Acceptance item | Owner | Status | Date | Evidence/issues |
+| --- | --- | --- | --- | --- |
+| Import, idempotency, integrity checks, Qiniu probe, and automated tests | Codex | passed | 2026-08-01 | `phase4-retained-data` checkpoint; 84/960/6/5/960 counts; 960 verified previews; 18 PostgreSQL and 106 AI tests passed |
+| Prompt-library and preview primary flow | User | pending | - | Requires the active PostgreSQL Roomi revision in the admin UI |
+| Qiniu configuration and critical regression | User | pending | - | Confirm media-storage configuration, login, permissions, and tenant boundaries |
 
 ## 6. Rollback
 

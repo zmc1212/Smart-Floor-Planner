@@ -133,10 +133,10 @@ function median(values) {
 
 function buildCoreTools(activeTool, thicknessMm) {
   return [
-    { key: 'straight', label: '直线', helper: '正交吸附', enabled: true, active: activeTool === 'straight' },
-    { key: 'diagonal', label: '斜线', helper: '自由角度', enabled: true, active: activeTool === 'diagonal' },
-    { key: 'thickness', label: '墙厚', helper: formatMm(thicknessMm), enabled: true, active: false },
-    { key: 'input', label: '输入', helper: '手输 mm', enabled: true, active: false },
+    { key: 'straight', label: '直线', helper: '正交吸附', icon: 'align', enabled: true, active: activeTool === 'straight' },
+    { key: 'diagonal', label: '斜线', helper: '自由角度', icon: 'annotation', enabled: true, active: activeTool === 'diagonal' },
+    { key: 'thickness', label: '墙厚', helper: formatMm(thicknessMm), icon: 'layers', enabled: true, active: false },
+    { key: 'input', label: '输入', helper: '手输 mm', icon: 'display', enabled: true, active: false },
     { key: 'ble-measure', label: '测距', helper: '蓝牙读数', enabled: true, active: false },
     { key: 'reset', label: '重置', helper: '光标', enabled: true, active: false }
   ];
@@ -269,6 +269,7 @@ Page({
     bottomSafeArea: 0,
     leadId: '',
     title: '正式量房',
+    bleConnected: !!app.globalData.bleConnected,
     activeView: '2D',
     activeTool: 'straight',
     measurementSide: 'left',
@@ -297,6 +298,7 @@ Page({
     closeActionStyle: '',
     measurementTitle: '准备测墙',
     measurementValue: '从橙色光标拖出墙体方向',
+    isSurveyEmpty: true,
     modePillText: '测墙模式',
     manualActionActive: false,
     manualActionSubtitle: '输入当前墙',
@@ -683,9 +685,11 @@ Page({
       },
       (isConnected) => {
         app.globalData.bleConnected = !!isConnected;
+        this.setData({ bleConnected: !!isConnected });
       },
       () => {
         app.globalData.bleConnected = false;
+        this.setData({ bleConnected: false });
       }
     );
   },
@@ -1575,6 +1579,7 @@ Page({
       spaceSummary: this.buildSpaceSummary(),
       measurementTitle: stageMessage.title,
       measurementValue: stageMessage.value,
+      isSurveyEmpty: !floor.walls.length,
       modePillText: bottomState.modePillText,
       manualActionActive: bottomState.manualActionActive,
       manualActionSubtitle: bottomState.manualActionSubtitle,
@@ -2830,13 +2835,26 @@ Page({
     }
 
     if (tool === 'ble-measure') {
-      this.triggerBluetoothNumberMeasure();
+      this.onBottomMeasure();
       return;
     }
 
     if (tool === 'reset') {
       this.resetCursorPlacement();
     }
+  },
+
+  onBottomMeasure() {
+    if (!app.globalData.bleConnected) {
+      wx.showToast({ title: '蓝牙未连接', icon: 'none' });
+      return;
+    }
+    if (!this.data.numberPadVisible) {
+      this.openLengthPad();
+      setTimeout(() => this.triggerBluetoothNumberMeasure(), 0);
+      return;
+    }
+    this.triggerBluetoothNumberMeasure();
   },
 
   onObjectToolTap(tool) {
@@ -3730,6 +3748,14 @@ Page({
   onUndoTap() {
     if (!this.history.undo.length) return;
     this.onUndo();
+  },
+
+  onRedoTap() {
+    if (!this.history.redo.length) return;
+    this.history.undo.push(surveyGraph.cloneDraft(this.draft));
+    this.draft = this.history.redo.pop();
+    this.syncFromDraft({ numberPadVisible: false });
+    this.scheduleFormalPersist();
   },
 
   // ─── 光标三态：已放置 → 等待拖放 → 正在拖拽 ───

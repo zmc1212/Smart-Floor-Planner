@@ -44,6 +44,12 @@
       <cover-view class="bubble-value">{{measurementValue}}</cover-view>
     </cover-view>
 
+    <cover-view wx:if="{{isSurveyEmpty}}" class="empty-survey-guide">
+      <cover-image class="empty-survey-k" src="/images/home-ip-v1/measure-k.png" mode="aspectFit"></cover-image>
+      <cover-view class="empty-survey-title">从第一面墙开始</cover-view>
+      <cover-view class="empty-survey-copy">拖动下方光标到起点，或连接已测墙体</cover-view>
+    </cover-view>
+
     <cover-view
       wx:if="{{closeActionVisible}}"
       class="closure-action"
@@ -84,21 +90,18 @@
   <!--  顶部导航浮层                                   -->
   <!-- ══════════════════════════════════════════════ -->
   <cover-view class="survey-topbar native-canvas-overlay" style="top: {{navigationSafeTop}}px;">
-    <cover-view class="topbar-left">
-      <cover-view class="back-button" bindtap="onBack">
-        <cover-image class="topbar-icon topbar-back-icon" src="/images/surveying-icons/topbar-back.png"></cover-image>
-      </cover-view>
-      <cover-view class="title-group">
-        <cover-view class="page-title">{{title}}</cover-view>
-        <cover-view class="page-subtitle">{{formalNotice}}</cover-view>
-      </cover-view>
+    <cover-view class="back-button" bindtap="onBack" aria-label="返回">
+      <cover-image class="topbar-icon topbar-back-icon" src="/images/surveying-icons/topbar-back.png"></cover-image>
+    </cover-view>
+    <cover-view class="title-group">
+      <cover-view class="page-title">{{title}}</cover-view>
+      <cover-view class="page-subtitle"><cover-view class="save-status-dot"></cover-view>{{formalNotice}}</cover-view>
     </cover-view>
     <cover-view class="topbar-right">
-      <cover-view class="topbar-chip save" bindtap="onSaveDraft">
-        <cover-image class="topbar-icon" src="/images/surveying-icons/topbar-save.png"></cover-image>
+      <cover-view class="topbar-chip save-draft" bindtap="onSaveDraft">
         <cover-view>保存</cover-view>
       </cover-view>
-      <cover-view class="topbar-chip save" bindtap="onSubmitFloorPlan">
+      <cover-view class="topbar-chip finish" bindtap="onSubmitFloorPlan">
         <cover-view>完成</cover-view>
       </cover-view>
     </cover-view>
@@ -142,11 +145,12 @@
         class="tool-button {{item.active ? 'active' : ''}}"
         wx:for="{{coreTools}}"
         wx:key="key"
+        wx:if="{{index < 4}}"
         data-tool="{{item.key}}"
         bindtap="onToolTap"
       >
+        <cover-image class="tool-icon" src="/images/surveying-icons/editor-rail/{{item.icon}}.png" mode="aspectFit"></cover-image>
         <cover-view class="tool-label">{{item.label}}</cover-view>
-        <cover-view class="tool-helper">{{item.helper}}</cover-view>
       </cover-view>
     </cover-view>
 
@@ -165,36 +169,37 @@
   <!-- ══════════════════════════════════════════════ -->
   <!--  底部光标控件：已放置 / 等待拖放 / 拖拽中为空      -->
   <!-- ══════════════════════════════════════════════ -->
-  <cover-view wx:if="{{!numberPadVisible}}" class="history-action-bar native-canvas-overlay" style="bottom: calc(42rpx + {{bottomSafeArea}}px);">
-    <cover-view class="history-action {{historySummary.undo > 0 ? '' : 'disabled'}}" bindtap="onUndoTap">
+  <!-- The existing angle-sheet visibility contract remains independent of the restored dock. -->
+  <cover-view wx:if="{{!numberPadVisible}}" class="bottom-fab-bar legacy-angle-sheet-anchor"></cover-view>
+  <cover-view wx:if="{{!numberPadVisible}}" class="history-action-bar bottom-control-dock native-canvas-overlay" style="bottom: calc(32rpx + {{bottomSafeArea}}px);">
+    <cover-view class="dock-action {{historySummary.undo > 0 ? '' : 'disabled'}}" bindtap="onUndoTap">
+      <cover-image src="/images/surveying-icons/history-undo.png" mode="aspectFit"></cover-image>
       <cover-view>撤销</cover-view>
-      <cover-view wx:if="{{historySummary.undo > 0}}" class="history-action-count">{{historySummary.undo}}</cover-view>
     </cover-view>
-    <cover-view class="history-action danger" bindtap="onRequestResetCanvas">重画</cover-view>
-  </cover-view>
-
-  <cover-view wx:if="{{!numberPadVisible}}" class="bottom-fab-bar native-canvas-overlay" style="bottom: calc(36rpx + {{bottomSafeArea}}px);">
-    <cover-view wx:if="{{cursorPlacementState === 'placed'}}" class="cursor-fab cursor-fab-reset" bindtap="onResetCursorTap">
-      <cover-view class="cursor-fab-icon cursor-reset-icon">
-        <cover-image class="cursor-reset-image" src="/images/surveying-icons/wall-toolbar/reset.png" mode="aspectFit"></cover-image>
-      </cover-view>
-      <cover-view class="cursor-fab-label">重置光标</cover-view>
+    <cover-view class="dock-action {{historySummary.redo > 0 ? '' : 'disabled'}}" bindtap="onRedoTap">
+      <cover-image src="/images/surveying-icons/history-redo.png" mode="aspectFit"></cover-image>
+      <cover-view>重做</cover-view>
+    </cover-view>
+    <cover-view wx:if="{{cursorPlacementState === 'placed'}}" class="dock-action cursor-action" bindtap="onResetCursorTap">
+      <cover-image src="/images/surveying-icons/cursor-compass.png" mode="aspectFit"></cover-image>
+      <cover-view>重置光标</cover-view>
     </cover-view>
     <cover-view
-      wx:elif="{{cursorPlacementState === 'awaitingWallDrop' || cursorPlacementState === 'dragging'}}"
-      class="cursor-fab cursor-fab-drop {{cursorPlacementState === 'dragging' ? 'is-dragging' : ''}}"
+      wx:else
+      class="dock-action cursor-action {{cursorPlacementState === 'dragging' ? 'is-dragging' : ''}}"
       data-cursor-control="true"
       bindtouchstart="onCursorControlTouchStart"
       catchtouchmove="onCursorControlTouchMove"
       bindtouchend="onCursorDragEnd"
       bindtouchcancel="onCursorDragCancel"
     >
-      <cover-view class="cursor-fab-icon cursor-drop-icon">
-        <cover-view class="cursor-drop-h"></cover-view>
-        <cover-view class="cursor-drop-v"></cover-view>
-        <cover-view class="cursor-drop-box"></cover-view>
-      </cover-view>
-      <cover-view class="cursor-fab-label">拖动放置光标</cover-view>
+      <cover-image src="/images/surveying-icons/cursor-compass.png" mode="aspectFit"></cover-image>
+      <cover-view>拖动光标</cover-view>
+    </cover-view>
+    <cover-view class="dock-measure {{bleConnected ? '' : 'disconnected'}}" bindtap="onBottomMeasure">
+      <cover-image class="dock-bluetooth" src="/images/surveying-icons/angle/bluetooth.png" mode="aspectFit"></cover-image>
+      <cover-view>测距</cover-view>
+      <cover-view class="dock-status-dot"></cover-view>
     </cover-view>
   </cover-view>
 

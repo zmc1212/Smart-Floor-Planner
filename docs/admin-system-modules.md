@@ -272,13 +272,20 @@ permission, or workflow changes.
   and sampling. Import credentials and snapshots stay under the Git-ignored
   `admin/.roomi-import/`; imported preview files stay under Git-ignored local
   storage and are never uploaded to Qiniu.
+- Phase 4 retained-data migration: `npm run migrate:phase4-retained-data`
+  validates the frozen RoomiAI snapshot before idempotently importing the active
+  revision, its complete reference graph, and local preview files into PostgreSQL.
+  It also imports the active Qiniu configuration and provider pointer, runs a
+  full Qiniu probe, and records a migration checkpoint. It reads legacy MongoDB
+  only and never deletes MongoDB rows, import snapshots, or Qiniu objects.
 - PostgreSQL runtime migration: the read-only prompt-library APIs
   (`GET /api/ai/creation/prompt-categories`,
   `GET /api/ai/creation/prompt-templates`, template detail, and preview) now
   use the typed PostgreSQL Repository and platform-scoped transactions. Their
-  DTOs and `ai-scenarios` permission boundary are unchanged. The import script
-  and generation task persistence/model-profile synchronization still use
-  MongoDB until their Phase 3 slices are migrated; new generation batches resolve
+  DTOs and `ai-scenarios` permission boundary are unchanged. The Phase 4
+  retained-data importer writes the active prompt library directly to PostgreSQL;
+  generation task persistence/model-profile synchronization still use MongoDB
+  until their Phase 3 slices are migrated. New generation batches resolve
   a selected prompt template and parameter definition through PostgreSQL.
   `Limited`: MongoDB AI workflow/media/generation routes that reference leads or
   floor plans are not bigint-compatible yet and remain outside this slice.
@@ -493,6 +500,11 @@ permission, or workflow changes.
   records until that later Phase 3 domain is migrated. MongoDB administrator IDs
   cannot populate PostgreSQL bigint audit foreign keys, so those fields remain
   `NULL` until the identity domain moves.
+- Phase 4 retained-data migration imported the active `zly-images` Qiniu
+  configuration and provider pointer with no legacy administrator audit ID; its
+  complete upload/stat/private-signed-download/content/delete probe passed. The
+  deployment environment must still supply a dedicated
+  `MEDIA_STORAGE_KEY_ENCRYPTION_SECRET` before production cutover.
 - Limitations/operations: production cloud credentials require the dedicated
   `MEDIA_STORAGE_KEY_ENCRYPTION_SECRET`; Qiniu buckets are treated as private, download
   domains must be HTTPS and must be allowlisted in the WeChat Mini Program. The

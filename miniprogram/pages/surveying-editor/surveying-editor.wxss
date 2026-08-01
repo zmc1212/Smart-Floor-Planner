@@ -29,6 +29,7 @@ page {
 .canvas-overlay-layer > .right-rail,
 .canvas-overlay-layer > .history-action-bar,
 .canvas-overlay-layer > .bottom-fab-bar,
+.canvas-overlay-layer > .bottom-control-dock,
 .canvas-overlay-layer > .component-editor,
 .canvas-overlay-layer > .number-pad-mask,
 .canvas-overlay-layer > .number-pad-panel,
@@ -1974,6 +1975,298 @@ page {
   box-shadow: 0px 0px 0px 1px rgba(239, 68, 68, 0.15), 0 2px 4px rgba(225, 45, 45, 0.08);
 }
 
+/* Reference-restored surveying workspace: only visual composition changes. */
+page,
+.canvas-shell,
+.grid-canvas {
+  background: #fcfffc;
+}
+
+.survey-topbar {
+  left: 0;
+  right: 0;
+  height: 122rpx;
+  padding: 0 34rpx;
+  border: 0;
+  border-radius: 0;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 1rpx 0 rgba(24, 43, 31, 0.07);
+  backdrop-filter: none;
+  justify-content: space-between;
+}
+
+.back-button {
+  width: 64rpx;
+  height: 76rpx;
+  margin-right: 6rpx;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.topbar-back-icon {
+  width: 46rpx;
+  height: 46rpx;
+}
+
+.title-group {
+  position: absolute;
+  left: 152rpx;
+  right: 184rpx;
+  align-items: center;
+  gap: 6rpx;
+}
+
+.page-title {
+  max-width: 100%;
+  color: #141a16;
+  font-size: 32rpx;
+  font-weight: 700;
+  line-height: 42rpx;
+  text-align: center;
+}
+
+.page-subtitle {
+  display: flex;
+  align-items: center;
+  max-width: 100%;
+  color: #6b7280;
+  font-size: 20rpx;
+  line-height: 28rpx;
+}
+
+.save-status-dot {
+  width: 14rpx;
+  height: 14rpx;
+  margin-right: 10rpx;
+  border-radius: 50%;
+  background: #10c84f;
+}
+
+.topbar-right {
+  gap: 30rpx;
+}
+
+.topbar-chip,
+.topbar-chip.save,
+.topbar-chip.save-draft,
+.topbar-chip.finish {
+  min-width: auto;
+  height: 76rpx;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 30rpx;
+  font-weight: 500;
+}
+
+.topbar-chip.save-draft {
+  color: #202421;
+}
+
+.topbar-chip.finish {
+  color: #10b94a;
+}
+
+.right-rail {
+  right: 24rpx;
+  width: 86rpx;
+  height: auto;
+  padding: 10rpx 0;
+  border: 1rpx solid rgba(15, 36, 23, 0.07);
+  border-radius: 24rpx;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 8rpx 22rpx rgba(15, 35, 23, 0.09);
+  box-sizing: border-box;
+}
+
+.right-rail .tool-group {
+  gap: 2rpx;
+}
+
+.right-rail .tool-button {
+  width: 74rpx;
+  height: 100rpx;
+  margin: 0 auto;
+  padding: 10rpx 0 8rpx;
+  border-radius: 16rpx;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.right-rail .tool-button.active {
+  color: #10bd4b;
+  background: #f3fbf5;
+  box-shadow: none;
+}
+
+.right-rail .tool-icon {
+  width: 32rpx;
+  height: 32rpx;
+  margin-bottom: 8rpx;
+  opacity: 0.88;
+}
+
+.right-rail .tool-button.active .tool-icon {
+  opacity: 1;
+}
+
+.right-rail .tool-label {
+  color: #3f4942;
+  font-size: 20rpx;
+  font-weight: 500;
+  line-height: 26rpx;
+}
+
+.right-rail .tool-button.active .tool-label {
+  color: #10bd4b;
+  font-weight: 700;
+}
+
+.right-rail .tool-helper,
+.right-rail .reserved-tools {
+  display: none;
+}
+
+.top-measure-bubble {
+  left: 34rpx;
+  transform: none;
+  min-width: 198rpx;
+  padding: 14rpx 18rpx;
+  border: 1rpx solid rgba(19, 41, 27, 0.12);
+  border-radius: 16rpx;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 4rpx 16rpx rgba(15, 35, 23, 0.05);
+}
+
+.bottom-control-dock {
+  position: fixed;
+  left: 50%;
+  z-index: 24;
+  display: flex;
+  align-items: center;
+  min-width: 570rpx;
+  height: 98rpx;
+  padding: 8rpx;
+  border: 1rpx solid rgba(15, 35, 23, 0.08);
+  border-radius: 30rpx;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 12rpx 30rpx rgba(15, 35, 23, 0.12);
+  transform: translateX(-50%);
+  box-sizing: border-box;
+}
+
+.dock-action,
+.dock-measure {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 72rpx;
+  color: #1f2922;
+  font-size: 22rpx;
+  font-weight: 500;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.dock-action {
+  width: 112rpx;
+  flex-direction: column;
+  gap: 4rpx;
+  border-right: 1rpx solid rgba(15, 35, 23, 0.08);
+}
+
+.dock-action cover-image {
+  width: 32rpx;
+  height: 32rpx;
+}
+
+.dock-action.disabled {
+  color: #b9c0bc;
+  opacity: 1;
+}
+
+.dock-action.disabled cover-image {
+  opacity: 0.32;
+}
+
+.dock-action.cursor-action {
+  width: 132rpx;
+}
+
+.dock-action.cursor-action.is-dragging {
+  color: #10bd4b;
+  background: #f3fbf5;
+}
+
+.dock-measure {
+  min-width: 150rpx;
+  margin-left: 8rpx;
+  gap: 10rpx;
+  border-radius: 20rpx;
+  color: #10b94a;
+  background: #f3fbf5;
+  font-size: 28rpx;
+  font-weight: 700;
+}
+
+.dock-measure.disconnected {
+  color: #8b958e;
+  background: #f5f7f5;
+}
+
+.dock-bluetooth {
+  width: 28rpx;
+  height: 36rpx;
+}
+
+.dock-status-dot {
+  width: 12rpx;
+  height: 12rpx;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* The legacy floating controls are replaced by the single reference dock. */
+.history-action-bar,
+.bottom-fab-bar {
+  display: none;
+}
+
+.measurement-bubble {
+  display: none;
+}
+
+.empty-survey-guide {
+  position: absolute;
+  top: 47%;
+  left: 50%;
+  width: 420rpx;
+  transform: translate(-50%, -50%);
+  text-align: center;
+}
+
+.empty-survey-k {
+  width: 160rpx;
+  height: 160rpx;
+  margin: 0 auto 22rpx;
+}
+
+.empty-survey-title {
+  color: #1c2320;
+  font-size: 42rpx;
+  font-weight: 700;
+  line-height: 54rpx;
+}
+
+.empty-survey-copy {
+  margin-top: 14rpx;
+  color: #7d8580;
+  font-size: 24rpx;
+  line-height: 34rpx;
+}
+
 /* ════════════════════════════════════════
    顶部右侧按钮组
 ════════════════════════════════════════ */
@@ -2292,6 +2585,33 @@ page {
   border-radius: 20rpx;
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 10rpx 26rpx rgba(15, 23, 42, 0.14);
+  box-sizing: border-box;
+}
+
+/* Keep legacy angle-sheet state anchors out of the restored workspace. */
+.legacy-angle-sheet-anchor {
+  display: none !important;
+}
+
+.right-rail {
+  bottom: auto !important;
+}
+
+.history-action-bar.bottom-control-dock {
+  position: fixed;
+  left: 50%;
+  z-index: 24;
+  display: flex;
+  gap: 0;
+  align-items: center;
+  min-width: 570rpx;
+  height: 98rpx;
+  padding: 8rpx;
+  border: 1rpx solid rgba(15, 35, 23, 0.08);
+  border-radius: 30rpx;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 12rpx 30rpx rgba(15, 35, 23, 0.12);
+  transform: translateX(-50%);
   box-sizing: border-box;
 }
 

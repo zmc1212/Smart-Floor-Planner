@@ -360,6 +360,16 @@ utilities, and the admin APIs they call.
   `utils/surveyNavigation.js` with `leadId` and/or `floorPlanId`.
 - Data contract: `FloorPlan.layoutData` is only `{ version: 4,
   measurementMode: 'surveying', surveyGraph }`; graph units are millimetres.
+- Visual baseline: `design-references/all-pages-ip-v1/03-surveying-editor-idle.png`,
+  `18-surveying-editor-active.png`, and `19-surveying-state-board.png` at the
+  iPhone 13 Pro `390x844` baseline. The delivered editor uses the reference's
+  full-width workspace, centred truthful save state, four-item right tool rail,
+  and one bottom dock for undo/redo, cursor placement, and BLE ranging. Before
+  the first wall, locally shipped Xiao K appears only as the measurement guide;
+  it leaves the canvas as soon as measured content exists. The dock's ranging
+  action opens the existing length input and requests a live device reading;
+  its connected treatment reflects the actual BLE callback. This visual work
+  changes no API, role boundary, graph contract, audit queue, or export scope.
 - Implemented editor behavior: startup restore, local draft and cloud draft
   persistence, straight and diagonal wall preview/commit, live BLE/manual length,
   remeasure, shared-wall closure, advisory close candidate, and direct closure

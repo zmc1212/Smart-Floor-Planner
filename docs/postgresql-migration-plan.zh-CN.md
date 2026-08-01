@@ -146,7 +146,7 @@ RoomiAI 导入使用 [admin/scripts/import-roomi-prompts.ts](../admin/scripts/im
 | Phase 1 | PostgreSQL 实例、角色、连接池和 migration runner | 已完成 | Codex 自动验收与用户数据库健康/后台页面回归均通过 |
 | Phase 2 | PostgreSQL 目标 schema 和 Repository 基础层 | 已完成 | Codex 与用户验收已于 2026-08-01 通过 |
 | Phase 3 | API/业务代码从 Mongoose 切换到 PostgreSQL | 进行中 | 身份/企业核心、线索、正式户型、测量/设备、提示词库读取、角色和全局报备/媒体配置已切换；商业与 AI/媒体域待完成 |
-| Phase 4 | RoomiAI snapshot、预览资源和七牛配置导入 | 未开始 | 待补充导入日志、哈希和验收报告 |
+| Phase 4 | RoomiAI snapshot、预览资源和七牛配置导入 | 进行中：待用户手动验收 | 2026-08-01 已写入 PostgreSQL 活动 Roomi 版本、960 个已校验本地预览、七牛配置并完成探测 |
 | Phase 5 | 管理端/小程序合同测试与切换演练 | 未开始 | 待补充测试报告和恢复演练 |
 | Phase 6 | 正式切换到 PostgreSQL | 未开始 | 待记录切换时间、版本和回滚窗口 |
 | Phase 7 | MongoDB 只读保留期结束 | 未开始 | 待明确归档/销毁批准和备份位置 |
@@ -464,6 +464,36 @@ Phase 3 验收状态：
 | 线索/正式户型/测量/设备及小程序聚合 | Codex | 通过 | 2026-08-01 | PostgreSQL 18/18；AI 106/106；定向 ESLint/build；迁移列表 API 认证后 200、未认证 401；覆盖租户隔离与关系清理；小程序 90/91，1 项为无关 API 环境期望失败 |
 | 提示词库主流程手测 | 用户 | 待验证 | - | 需要 Phase 4 导入活动 PostgreSQL prompt revision 后执行 |
 | 登录、授权、租户与相邻 AI 回归 | 用户 | 待验证 | - | 其余 Phase 3 切片完成后重复执行 |
+
+### Phase 4 进度记录（2026-08-01）
+
+- 新增 `admin/scripts/import-phase4-retained-data.ts` 及显式执行命令
+  `npm run migrate:phase4-retained-data`。脚本只从只读旧 MongoDB 来源导入保留的
+  RoomiAI snapshot、manifest 索引的预览资源和当前七牛配置；不会导入其他业务集合，
+  也不会删除 MongoDB 或七牛对象。
+- PostgreSQL 当前活动 Roomi revision 为
+  `roomi-522ebb4f5d521fc54409b70b5650b4b10631943ee99efa48c1a632588a398df4`，
+  包含 84 个分类、960 个模板、6 个参数模板、5 个源模型和 960 个预览资源。导入的
+  manifest/content hash 与源 snapshot 一致；960 个暂存文件均在导入前通过大小、
+  SHA-256 和图片尺寸校验，写入存储后又逐一读取并复核哈希。
+- 已导入 `zly-images` 七牛配置及默认 Provider 指针，过程未输出明文凭据。旧管理员
+  审计引用按合同映射为 `NULL`。完整上传、对象查询、私有签名下载、内容一致性和清理
+  探测均已通过，临时探测对象已删除。生产部署仍必须注入可解密本次导入凭据的专用
+  `MEDIA_STORAGE_KEY_ENCRYPTION_SECRET`。
+- 导入器可幂等重复执行：最终复跑识别到完整活动版本、复核 960 个本地对象并再次完成
+  七牛探测。`app.migration_checkpoints` 已记录 `phase4-retained-data`，状态为
+  `codex_verified`。
+- `npm run test:postgresql` 18/18、`npm run test:ai` 106/106 通过；带认证的提示词
+  分类与模板 API 冒烟请求均返回 HTTP 200。未删除任何 MongoDB 文档、snapshot 文件或
+  七牛生产对象，来源数据仍保留以便回滚/核对。
+
+Phase 4 验收状态：
+
+| 验收项 | 负责人 | 状态 | 日期 | 证据/问题 |
+| --- | --- | --- | --- | --- |
+| 导入、幂等、完整性、七牛探测和自动化测试 | Codex | 通过 | 2026-08-01 | `phase4-retained-data` 检查点；84/960/6/5/960 计数；960 个预览通过复核；PostgreSQL 18 项与 AI 106 项测试通过 |
+| 提示词库和预览主流程 | 用户 | 待验证 | - | 在后台 UI 验证活动 PostgreSQL Roomi 版本 |
+| 七牛配置和关键回归 | 用户 | 待验证 | - | 确认媒体存储配置、登录、权限与租户边界 |
 
 ### Phase 3 - 业务代码切换
 
