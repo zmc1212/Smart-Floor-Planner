@@ -92,22 +92,22 @@ permission, or workflow changes.
 
 ### 3. Platform Dashboard And Enterprise Tenants
 
-- Pages: `/`, `/enterprises`, `/enterprises/[id]`, and enterprise AI,
-  automation, and WeCom subpages.
+- Pages: `/`, `/enterprises`, `/enterprises/[id]`, and enterprise AI and
+  automation subpages.
 - APIs: `/api/admin/enterprises`, `/activate`, `[id]`, `[id]/ai-key`,
   `[id]/ai-sync`, `[id]/ai-usage`, and `/api/branding/[id]`.
 - Models/helpers: PostgreSQL `EnterpriseRepository` and `AdminUserRepository`,
-  plus the not-yet-switched `EnterpriseAiUsageSnapshot`, `enterprise-ai`, and
-  `enterprise-wecom` paths.
+  plus the not-yet-switched `EnterpriseAiUsageSnapshot` and `enterprise-ai`
+  paths.
 - Status: `Implemented`. Covers enterprise onboarding/activation, tenant profile,
-  branding, automation settings, WeCom configuration, AI provider/key runtime
-  settings, usage snapshots, and platform-level overview metrics.
+  branding, automation settings, AI provider/key runtime settings, usage
+  snapshots, and platform-level overview metrics.
 - PostgreSQL boundary: enterprise list/detail/create/update/delete and both
   self-registration routes use PostgreSQL and create enterprise-admin accounts
   atomically. `Limited`: `/api/admin/enterprises/activate` still coordinates
   MongoDB promotion/order records, while `ai-key`, `ai-sync`, `ai-usage`,
-  `ai-credits`, branding, WeCom, and usage-snapshot consumers remain assigned to
-  their later Phase 3 domains. Core list/detail responses therefore expose
+  `ai-credits`, branding, and usage-snapshot consumers remain assigned to their
+  later Phase 3 domains. Core list/detail responses therefore expose
   `aiUsageSnapshot: null` until the AI/commercial switch.
 
 ### 4. Staff, Departments, And System Accounts
@@ -130,8 +130,8 @@ permission, or workflow changes.
   promotion config, workbench summary/todos, notification logs, and reminder run.
 - Models/helpers: PostgreSQL `PlatformConfigRepository`,
   `PromotionRecordRepository`, `WorkflowNotificationRepository`,
-  `postgres-promotion-workflow`, `postgres-workflow-automation`, WeChat, and
-  WeCom notification helpers. The legacy `PromotionEnterpriseRecord`/
+  `postgres-promotion-workflow`, `postgres-workflow-automation`, and WeChat
+  notification helpers. The legacy `PromotionEnterpriseRecord`/
   `WorkflowNotificationLog` models remain only for the still-MongoDB order,
   commission, enterprise-activation, and legacy helper compatibility paths.
 - Status: `Implemented`. Includes reporting, duplicate/conflict handling, public
@@ -147,7 +147,7 @@ permission, or workflow changes.
   repositories inside tenant/platform RLS transactions. Mutations use short
   conditional updates; notification dispatch occurs after commit, and the
   existing DTOs, role boundaries, and Mini Program API paths remain unchanged.
-  `Limited`: orders, commissions, enterprise activation, and AI/media consumers
+  `Limited`: enterprise activation and AI/media consumers
   that still reference legacy MongoDB ObjectIds remain on MongoDB until their
   dependent slices are migrated.
 
@@ -156,31 +156,35 @@ permission, or workflow changes.
 - Pages: `/packages`, `/enterprise-orders`, `/commissions`.
 - APIs: `/api/admin/packages`, `/enterprise-orders`, `/commissions`, settlement,
   and commission-record endpoints.
-- Models: PostgreSQL `PackageRepository`; `EnterpriseOrder` and
-  `CommissionRecord` remain on MongoDB for this Phase 3 boundary.
+- Models: PostgreSQL `PackageRepository` and `CommercialRepository`; legacy
+  `EnterpriseOrder` and `CommissionRecord` models are no longer runtime sources.
 - Status: `Implemented`. Supports package catalog, enterprise order lifecycle,
   paid-order commission creation, commission listing, settlement, and voiding.
   Package list/create/update/delete now runs in platform-scoped PostgreSQL
   transactions, returns decimal-string bigint IDs through the existing `_id`
-  field, and keeps money values as exact `numeric(14,2)` data. `Limited`: orders
-  and commissions remain on MongoDB because their legacy ObjectId relations have
-  not yet been converted to PostgreSQL bigint relations.
+  field, and keeps money values as exact `numeric(14,2)` data. Orders,
+  commissions, settlement, voiding, and workbench commission totals now use
+  PostgreSQL bigint relations in short tenant/platform RLS transactions. Paid
+  orders atomically update the promotion record and upsert the fixed commission;
+  cancelled orders void the existing commission. `Limited`: enterprise activation
+  remains a MongoDB workflow until its dependent write path is migrated.
 
 ### 7. Leads And Conversion Assets
 
 - Page: `/leads`.
-- APIs: `/api/leads`, `/leads/[id]`, `/leads/[id]/share`, and related floor-plan
-  and staff endpoints.
+- APIs: `/api/leads`, `/leads/[id]`, and related floor-plan and staff endpoints.
 - Models/helpers: PostgreSQL `LeadRepository`, `FloorPlanRepository`,
-  `AdminUserRepository`, WeChat, and WeCom helpers.
+  `AdminUserRepository`, and WeChat helpers.
 - Status: `Implemented`. Covers lead intake/status, follow-ups, assignment,
-  formal floor-plan association, share links, and conversion context. List,
+  formal floor-plan association, and conversion context. List,
   detail, create, update, and delete paths run in RLS-scoped PostgreSQL
   transactions and retain decimal-string `_id` DTOs. Lead-floor-plan junction,
   primary-plan selection, tenant validation, and deletion cleanup are atomic.
-  `Limited`: WeCom group sharing returns `400` until enterprise WeCom
-  configuration is migrated to PostgreSQL; ordinary WeChat notification calls
-  execute after the database transaction.
+  Ordinary WeChat notification calls execute after the database transaction.
+  WeCom configuration, group sharing, and employee WeCom identifiers are
+  deprecated and intentionally removed from runtime APIs and UI. Historical
+  MongoDB fields and the PostgreSQL `admin_users.wecom_user_id` column are
+  retained without migration or deletion.
 
 ### 8. Formal Floor Plans, Search, And Viewing
 
@@ -591,7 +595,7 @@ permission, or workflow changes.
   context, and typed repositories for enterprise, department, admin-user,
   Mini Program user, lead, floor-plan, measurement, device, platform-config,
   prompt-library, system-role, media-storage configuration, promotion records,
-  workflow notifications, and reminder automation. The
+   workflow notifications, reminder automation, orders, and commissions. The
   restore drill verifies table/RLS/policy counts.
   `/api/health` continues to require MongoDB and reports PostgreSQL separately;
   PostgreSQL becomes a health gate only when
@@ -599,9 +603,9 @@ permission, or workflow changes.
   still migration targets for domains not yet switched. Identity/enterprise
   core, leads, formal floor plans, measurements, devices, prompt-library reads,
   system-role configuration, global promotion configuration, media-storage
-  configuration, promotion records, workflow notifications, and reminder
-  automation are PostgreSQL-backed. Orders/commissions, enterprise activation,
-  and AI generation/media remain on MongoDB while Phase 3 proceeds incrementally.
+   configuration, promotion records, workflow notifications, reminder automation,
+   orders, and commissions are PostgreSQL-backed. Enterprise activation and AI
+   generation/media remain on MongoDB while Phase 3 proceeds incrementally.
   Docker
   migrations run explicitly
   through `npm run docker:migrate`; the long-running admin service is not given

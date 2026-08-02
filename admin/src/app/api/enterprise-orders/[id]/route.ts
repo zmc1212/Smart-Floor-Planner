@@ -1,24 +1,26 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import { getTenantContext, withPlatformB2BTenantContext } from '@/lib/auth';
-import { EnterpriseOrder } from '@/models/EnterpriseOrder';
-import { syncCommissionForOrder } from '@/lib/promotion-workflow';
+import { enterpriseOrderToDto, parsePostgresId } from '@/db/postgres-dto';
+import { CommercialRepository } from '@/db/repositories';
+import { getPlatformB2BTenantContext, getTenantContext } from '@/lib/auth';
+import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
+import { syncCommissionForPostgresOrder } from '@/lib/postgres-commercial-workflow';
 
 export const dynamic = 'force-dynamic';
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await dbConnect();
     const context = await getTenantContext(request);
     if (!context || !['enterprise_admin', 'admin', 'super_admin'].includes(context.role)) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
-    return await withPlatformB2BTenantContext(request, async () => {
+    const b2b = getPlatformB2BTenantContext(context);
+    return await withAdminPostgresTransaction(b2b, async (transaction) => {
       const body = await request.json();
       const { id } = await params;
 
-      const currentOrder = await EnterpriseOrder.findById(id);
+      const repository = new CommercialRepository(transaction);
+      const currentOrder = await repository.findOrderById(parsePostgresId(id, 'order id'));
       if (!currentOrder) {
         return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
       }
@@ -37,15 +39,15 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         updateData.paidAt = body.status === 'paid' ? new Date() : undefined;
       }
 
-      const order = await EnterpriseOrder.findByIdAndUpdate(id, { $set: updateData }, { new: true });
+      const order = await repository.updateOrder(parsePostgresId(id, 'order id'), updateData);
       if (!order) {
         return NextResponse.json({ success: false, error: 'Order not found' }, { status: 404 });
       }
 
-      await syncCommissionForOrder(order, context.userId);
-      return NextResponse.json({ success: true, data: order });
+      await syncCommissionForPostgresOrder(transaction, order, parsePostgresId(context.userId, 'userId'));
+      return NextResponse.json({ success: true, data: enterpriseOrderToDto(order) });
     });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }

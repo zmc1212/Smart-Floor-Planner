@@ -27,7 +27,6 @@ interface StaffCreateBody {
   enterpriseId?: string;
   departmentId?: string;
   promoterIds?: string[];
-  wecomUserId?: string;
 }
 
 const BUSINESS_ROLES = [
@@ -154,7 +153,6 @@ export async function POST(request: Request) {
           role,
           phone,
           promoterIds,
-          wecomUserId,
           departmentId,
         } = body;
 
@@ -242,7 +240,6 @@ export async function POST(request: Request) {
                 menuPermissions,
                 enterpriseId: BigInt(targetEnterpriseId),
                 departmentId: targetDepartmentId,
-                wecomUserId: wecomUserId?.trim() || null,
                 status: 'active',
               },
               targetPromoterIds

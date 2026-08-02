@@ -1,9 +1,11 @@
 import type {
   AdminUserRecord,
+  CommissionWithRelations,
   AdminUserWithRelations,
   DepartmentRecord,
   DeviceWithRelations,
   EnterpriseRecord,
+  EnterpriseOrderWithRelations,
   FloorPlanRecord,
   FloorPlanWithCreator,
   LeadWithRelations,
@@ -13,6 +15,29 @@ import type {
   UserRecord,
   WorkflowNotificationWithRelations,
 } from '@/db/repositories';
+
+export function enterpriseOrderToDto(record: EnterpriseOrderWithRelations) {
+  return {
+    _id: record.id.toString(), enterpriseId: record.enterpriseId?.toString() ?? null,
+    recordId: record.record ? { _id: record.record.id.toString(), enterpriseName: record.record.enterpriseName, businessStage: record.record.businessStage, promoterId: record.record.promoterId?.toString() ?? null } : record.recordId.toString(),
+    enterpriseNameSnapshot: record.enterpriseNameSnapshot, packageName: record.packageName,
+    amount: Number(record.amount), currency: record.currency, status: record.status, paidAt: record.paidAt,
+    createdBy: record.createdByUser ? { _id: record.createdByUser.id.toString(), displayName: record.createdByUser.displayName, username: record.createdByUser.username, role: record.createdByUser.role } : record.createdBy?.toString() ?? null,
+    remark: record.remark, createdAt: record.createdAt, updatedAt: record.updatedAt,
+  };
+}
+
+export function commissionToDto(record: CommissionWithRelations) {
+  return {
+    _id: record.id.toString(), recordId: record.record ? { _id: record.record.id.toString(), enterpriseName: record.record.enterpriseName, contactPerson: record.record.contactPerson } : record.recordId.toString(),
+    orderId: record.order ? { _id: record.order.id.toString(), packageName: record.order.packageName, amount: Number(record.order.amount), status: record.order.status } : record.orderId.toString(),
+    promoterId: record.promoter ? { _id: record.promoter.id.toString(), displayName: record.promoter.displayName, username: record.promoter.username, role: record.promoter.role } : record.promoterId.toString(),
+    enterpriseId: record.enterpriseId?.toString() ?? null, commissionType: record.commissionType,
+    commissionAmount: Number(record.commissionAmount), status: record.status, generatedAt: record.generatedAt,
+    settledAt: record.settledAt, settledBy: record.settledBy?.toString() ?? null,
+    createdAt: record.createdAt, updatedAt: record.updatedAt,
+  };
+}
 
 export function enterpriseToDto(record: EnterpriseRecord) {
   return {
@@ -77,7 +102,6 @@ export function adminUserToDto(
     username: record.username,
     displayName: record.displayName,
     role: record.role,
-    wecomUserId: record.wecomUserId,
     openid: record.openid,
     phone: record.phone,
     menuPermissions: record.menuPermissions,

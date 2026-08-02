@@ -6,7 +6,7 @@ import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, CheckCircle, Clock, User, MessageSquare, Plus, X, Check, Share2 } from "lucide-react";
+import { Loader2, CheckCircle, Clock, User, MessageSquare, Plus, X } from "lucide-react";
 import { Tabs } from "@/components/ui/tabs";
 import { 
   Table, 
@@ -130,39 +130,6 @@ export default function LeadsPage() {
       'closed': '已关闭'
     };
     return statusMap[status] || status;
-  };
-
-  const [isSyncing, setIsSyncing] = useState<string | null>(null);
-  const [syncSuccess, setSyncSuccess] = useState<string | null>(null);
-
-  const handleSyncToWeCom = async (lead: any) => {
-    if (!lead.wecomGroupId) {
-      notify.fromAlert('该线索尚未关联企微群，请确保地推环节已正确录入并拉群。');
-      return;
-    }
-
-    setIsSyncing(lead._id);
-    try {
-      const res = await fetch(`/api/leads/${lead._id}/share`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: `【线索同步】系统为您推送了最新的客户需求：${lead.name}（${lead.communityName || '未知小区'}），请及时跟进。`
-        })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSyncSuccess(lead._id);
-        setTimeout(() => setSyncSuccess(null), 3000);
-      } else {
-        notify.fromAlert('同步失败: ' + (data.error || '接口异常'));
-      }
-    } catch (err) {
-      console.error(err);
-      notify.fromAlert('网络异常，无法同步至企微');
-    } finally {
-      setIsSyncing(null);
-    }
   };
 
   const fetchLeads = async (page = pagination.page) => {
@@ -455,20 +422,6 @@ export default function LeadsPage() {
                         <Button 
                           size="icon"
                           variant="ghost"
-                          disabled={isSyncing === lead._id || !lead.wecomGroupId}
-                          onClick={() => handleSyncToWeCom(lead)}
-                          className={cn(
-                            "h-8 w-8 rounded-lg transition-all duration-200",
-                            syncSuccess === lead._id 
-                              ? "bg-green-500 text-white hover:bg-green-600 shadow-lg shadow-green-500/20" 
-                              : "text-neutral-400 hover:text-blue-600 hover:bg-blue-50/50"
-                          )}
-                        >
-                          {isSyncing === lead._id ? <Loader2 size={14} className="animate-spin" /> : (syncSuccess === lead._id ? <Check size={14} /> : <Share2 size={14} />)}
-                        </Button>
-                        <Button 
-                          size="icon"
-                          variant="ghost"
                           onClick={() => deleteLead(lead._id)}
                           className="h-8 w-8 text-neutral-400 hover:text-red-600 hover:bg-red-50/50 rounded-lg transition-all"
                         >
@@ -600,15 +553,6 @@ export default function LeadsPage() {
                       <span className="font-semibold text-neutral-900 flex items-center gap-1.5">
                         <span className="opacity-40"><User size={12} /></span>
                         {getStaffName(selectedLead.promoterId) || '系统'}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-[13px]">
-                      <span className="text-neutral-400 font-medium">企微群聊</span>
-                      <span className={cn(
-                        "text-[10px] px-2 py-0.5 rounded-md font-bold shadow-[0_0_0_1px_rgba(0,0,0,0.06)]",
-                        selectedLead.wecomGroupId ? "bg-green-50 text-green-600 shadow-green-100" : "bg-white text-neutral-400"
-                      )}>
-                        {selectedLead.wecomGroupId ? '已关联群聊' : '未关联群聊'}
                       </span>
                     </div>
                     <div className="h-px bg-neutral-200/50 my-2"></div>

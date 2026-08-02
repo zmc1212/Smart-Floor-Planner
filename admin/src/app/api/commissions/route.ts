@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import { withPlatformB2BTenantContext } from '@/lib/auth';
-import { CommissionRecord } from '@/models/CommissionRecord';
+import { commissionToDto, parsePostgresId } from '@/db/postgres-dto';
+import { CommercialRepository } from '@/db/repositories';
+import { getPlatformB2BTenantContext, getTenantContext } from '@/lib/auth';
+import { withAdminPostgresTransaction, withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
-    await dbConnect();
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const promoterId = searchParams.get('promoterId');
@@ -17,70 +17,33 @@ export async function GET(request: Request) {
     const mpContext = await resolveMiniProgramContext(request);
     if (mpContext && mpContext.staff) {
       const { staff } = mpContext;
-      const query: any = {};
       if (staff.role === 'salesperson') {
-        query.promoterId = staff._id;
       } else if (staff.role === 'admin' || staff.role === 'super_admin') {
-        // Platform admins see everything
       } else {
         return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
       }
 
-      if (status) query.status = status;
-
-      const commissions = await CommissionRecord.find(query)
-        .populate('promoterId', 'displayName username role')
-        .populate('recordId', 'enterpriseName contactPerson')
-        .populate('orderId', 'packageName amount')
-        .sort({ createdAt: -1 })
-        .lean();
-
-      return NextResponse.json({ success: true, data: commissions });
+      const commissions = await withMiniProgramPostgresTransaction(mpContext, (transaction) =>
+        new CommercialRepository(transaction).listCommissions({ status: status || undefined, promoterId: staff.role === 'salesperson' ? parsePostgresId(staff._id, 'staff id') : undefined })
+      );
+      return NextResponse.json({ success: true, data: commissions.map(commissionToDto) });
     }
-
-    return await withPlatformB2BTenantContext(request, async (context) => {
-      const query: any = {};
-      if (context.role === 'salesperson') {
-        query.promoterId = context.userId;
-      }
-      
-      if (status) query.status = status;
-      if (promoterId && ['admin', 'super_admin'].includes(context.role)) {
-        query.promoterId = promoterId;
-      }
-
-      const [commissions, stats] = await Promise.all([
-        CommissionRecord.find(query)
-          .populate('promoterId', 'displayName username role')
-          .populate('recordId', 'enterpriseName contactPerson')
-          .populate('orderId', 'packageName amount')
-          .sort({ createdAt: -1 })
-          .lean(),
-        CommissionRecord.aggregate([
-          { $match: query },
-          {
-            $group: {
-              _id: '$status',
-              totalAmount: { $sum: '$commissionAmount' },
-              count: { $sum: 1 },
-            },
-          },
-        ]),
-      ]);
-
-      return NextResponse.json({ 
-        success: true, 
-        data: commissions,
-        summary: stats.reduce((acc: any, curr: any) => {
-          acc[curr._id] = { amount: curr.totalAmount, count: curr.count };
-          return acc;
-        }, {})
-      });
+    const context = await getTenantContext(request);
+    if (!context) throw new Error('Unauthorized');
+    const b2b = getPlatformB2BTenantContext(context);
+    const filterPromoterId = b2b.role === 'salesperson'
+      ? parsePostgresId(b2b.userId, 'userId')
+      : promoterId && ['admin', 'super_admin'].includes(b2b.role) ? parsePostgresId(promoterId, 'promoterId') : undefined;
+    const result = await withAdminPostgresTransaction(b2b, async (transaction) => {
+      const repository = new CommercialRepository(transaction);
+      return Promise.all([repository.listCommissions({ status: status || undefined, promoterId: filterPromoterId }), repository.commissionSummary({ status: status || undefined, promoterId: filterPromoterId })]);
     });
-  } catch (error: any) {
-    if (error.message === 'Unauthorized') {
+    return NextResponse.json({ success: true, data: result[0].map(commissionToDto), summary: result[1] });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    if (message === 'Unauthorized') {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

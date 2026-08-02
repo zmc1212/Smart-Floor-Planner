@@ -1,4 +1,5 @@
 export * from './admin-user-repository';
+export * from './commercial-repository';
 export * from './department-repository';
 export * from './device-repository';
 export * from './enterprise-repository';

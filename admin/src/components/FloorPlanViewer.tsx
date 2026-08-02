@@ -6,7 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { Canvas } from '@react-three/fiber';
 import { MapControls, PerspectiveCamera, OrthographicCamera, Text, Center, Bounds, ContactShadows, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { Activity, Download, Loader2, Wand2, Share2, Check, Sparkles } from 'lucide-react';
+import { Activity, Download, Loader2, Wand2, Sparkles } from 'lucide-react';
 import BackButton from '@/components/BackButton';
 import { Button } from '@/components/ui/button';
 import {
@@ -100,7 +100,6 @@ interface FloorPlanViewerData {
   lead?: {
     _id?: string;
     name?: string;
-    wecomGroupId?: string;
   };
 }
 
@@ -1127,8 +1126,6 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
   
   const [isExporting, setIsExporting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isSharing, setIsSharing] = useState(false);
-  const [shareSuccess, setShareSuccess] = useState(false);
   const [showAIDialog, setShowAIDialog] = useState(false);
   const [aiPreset, setAiPreset] = useState({
     style: 'modern',
@@ -1178,41 +1175,6 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
       notify.fromAlert('AI 生成失败，请检查网络后重试');
     } finally {
       setIsGenerating(false);
-    }
-  };
-
-  const handleShareToGroup = async () => {
-    if (!lead?._id || !lead?.wecomGroupId) {
-      notify.fromAlert('该线索尚未关联企微群，请先在地推环节完成拉群。');
-      return;
-    }
-    
-    setIsSharing(true);
-    try {
-      const styleLabel = STYLE_OPTIONS.find(s => s.id === aiPreset.style)?.label || '现代简约';
-      const roomLabel = ROOM_TYPE_OPTIONS.find(r => r.id === aiPreset.roomType)?.label || '空间';
-      
-      const res = await fetch(`/api/leads/${lead._id}/share`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: `【AI设计方案】设计师已为您生成了最新的“${styleLabel}”风格的${roomLabel}效果预览，请进入小程序查看详情。`
-        })
-      });
-      
-      const data = await res.json();
-      if (data.success) {
-        setShareSuccess(true);
-        notify.success('已同步至企微群');
-        setTimeout(() => setShareSuccess(false), 3000);
-      } else {
-        notify.fromAlert('同步失败: ' + (data.error || '接口调用异常'));
-      }
-    } catch (err) {
-      console.error(err);
-      notify.fromAlert('网络异常，同步企微失败');
-    } finally {
-      setIsSharing(false);
     }
   };
 
@@ -1377,18 +1339,6 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
                 </DialogContent>
               </Dialog>
 
-              <Button 
-                variant="ghost" 
-                onClick={handleShareToGroup}
-                disabled={isSharing || !lead.wecomGroupId}
-                className={cn(
-                  "rounded-xl flex items-center gap-2 h-10 px-4 transition-all font-bold text-xs",
-                  shareSuccess ? "bg-green-500 text-white" : "bg-blue-50 text-blue-700 hover:bg-blue-100"
-                )}
-              >
-                {isSharing ? <Loader2 size={16} className="animate-spin" /> : (shareSuccess ? <Check size={16} /> : <Share2 size={16} />)}
-                {shareSuccess ? '已发送至群' : '同步至企微群'}
-              </Button>
             </div>
           )}
 

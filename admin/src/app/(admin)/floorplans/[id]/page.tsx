@@ -58,7 +58,6 @@ export default async function FloorPlanDetailPage({ params }: { params: Promise<
         name: lead.name,
         status: lead.status,
         stylePreference: lead.stylePreference,
-        wecomGroupId: null,
       } : null
   };
 

@@ -30,7 +30,6 @@ interface MiniProgramStaff {
   enterpriseId?: string;
   departmentId?: string | Record<string, unknown> | null;
   promoterIds?: string[];
-  wecomUserId?: string;
   openid?: string;
   phone?: string;
   menuPermissions?: string[];

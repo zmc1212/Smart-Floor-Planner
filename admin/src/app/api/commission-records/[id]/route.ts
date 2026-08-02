@@ -1,19 +1,20 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import { getTenantContext, withTenantContext } from '@/lib/auth';
-import { CommissionRecord } from '@/models/CommissionRecord';
+import { commissionToDto, parsePostgresId } from '@/db/postgres-dto';
+import { CommercialRepository } from '@/db/repositories';
+import { getPlatformB2BTenantContext, getTenantContext } from '@/lib/auth';
+import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
 
 export const dynamic = 'force-dynamic';
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await dbConnect();
     const context = await getTenantContext(request);
     if (!context || !['enterprise_admin', 'admin', 'super_admin'].includes(context.role)) {
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
-    return await withTenantContext(request, async () => {
+    const b2b = getPlatformB2BTenantContext(context);
+    return await withAdminPostgresTransaction(b2b, async (transaction) => {
       const body = await request.json();
       const { id } = await params;
       const status = body.status;
@@ -22,20 +23,20 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         return NextResponse.json({ success: false, error: 'Invalid status' }, { status: 400 });
       }
 
-      const updateData: Record<string, unknown> = { status };
+      const updateData: { status: string; settledAt?: Date; settledBy?: bigint } = { status };
       if (status === 'paid' || status === 'voided') {
         updateData.settledAt = new Date();
-        updateData.settledBy = context.userId;
+        updateData.settledBy = parsePostgresId(context.userId, 'userId');
       }
 
-      const record = await CommissionRecord.findByIdAndUpdate(id, { $set: updateData }, { new: true });
+      const record = await new CommercialRepository(transaction).updateCommission(parsePostgresId(id, 'commission id'), updateData);
       if (!record) {
         return NextResponse.json({ success: false, error: 'Commission not found' }, { status: 404 });
       }
 
-      return NextResponse.json({ success: true, data: record });
+      return NextResponse.json({ success: true, data: commissionToDto(record) });
     });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }

@@ -94,7 +94,7 @@ and `cancelled`.
 | Phase 0.2 | Qiniu configuration and encrypted-field verification | complete | Read-only inspection; no secrets logged |
 | Phase 1 | PostgreSQL instance, roles, pooling, migration runner | complete | Codex verification and user database-health/admin-page regression passed |
 | Phase 2 | PostgreSQL schema and Repository foundation | complete | Codex and user acceptance passed on 2026-08-01 |
-| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, workflow notifications, workbench, and reminder runtime switched; orders/commissions, enterprise activation/WeCom, and AI/media domains pending |
+| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, workflow notifications, workbench, and reminder runtime switched; enterprise activation and AI/media domains pending |
 | Phase 4 | RoomiAI files/data and Qiniu configuration import | in progress: awaiting user acceptance | PostgreSQL active Roomi revision, 960 verified local previews, imported Qiniu configuration, and successful probe on 2026-08-01 |
 | Phase 5 | Contract tests and cutover rehearsal | not started | Pending |
 | Phase 6 | Production PostgreSQL cutover | not started | Pending |
@@ -413,11 +413,10 @@ is recorded.
   subscription dispatch runs after commit. Existing response DTOs and role
   boundaries remain unchanged, and no dual write was introduced.
 - The enterprise activation route remains coupled to MongoDB promotion/order
-  records. Enterprise AI key/sync/usage/credits, branding/WeCom configuration,
-  and AI generation/workflow/media consumers remain unswitched. WeCom lead
-  sharing therefore returns an explicit `400`, core
-  enterprise responses expose `aiUsageSnapshot: null`, and MongoDB AI routes that
-  reference migrated bigint lead/plan IDs remain `Limited` until their slice.
+  records. Enterprise AI key/sync/usage/credits, branding, and AI
+  generation/workflow/media consumers remain unswitched. Core enterprise
+  responses expose `aiUsageSnapshot: null`, and MongoDB AI routes that reference
+  migrated bigint lead/plan IDs remain `Limited` until their slice.
 - Drizzle migrations `0006_exotic_wild_pack.sql` through
   `0010_eminent_wildside.sql` were generated and
   applied with the dedicated migration container/role. Direct DDL through the
@@ -432,7 +431,7 @@ is recorded.
   `localhost` while the configured local base is `192.168.10.111`, which is
   unrelated to this PostgreSQL slice. The build exits 0 with the known Windows
   standalone trace-copy warning for `save-icons`.
-- Order/commission records, enterprise activation/WeCom, generation task
+- Order/commission records, enterprise activation, generation task
   persistence/model-profile synchronization, and AI workflows/generation/media
   still require Phase 3 work. Their legacy MongoDB ObjectId boundaries remain
   `Limited` until their dependent slices are migrated.
@@ -440,6 +439,11 @@ is recorded.
   were imported, re-encrypted, or logged in this slice. One API-test-only archived
   row with a `phase3-api-*` key was deleted after an exact prefix check; the
   immediate follow-up query returned zero matching rows.
+- On 2026-08-02, the unused WeCom configuration, group-sharing API/UI, and
+  employee WeCom identifiers were deprecated rather than migrated. The feature
+  was removed from runtime code and documentation; legacy MongoDB fields and
+  the PostgreSQL `admin_users.wecom_user_id` column remain intact without a data
+  migration or destructive cleanup.
 
 Phase 3 acceptance status:
 
@@ -449,7 +453,8 @@ Phase 3 acceptance status:
 | Identity/enterprise core APIs, RLS Repository tests, lint/build | Codex | passed | 2026-08-01 | PostgreSQL 17/17; AI 106/106; targeted ESLint/build; live invalid login and unauthenticated identity requests returned 401; bigint `_id` DTO compatibility and remaining mixed-store boundaries documented |
 | Leads/formal plans/measurements/devices and Mini Program aggregates | Codex | passed | 2026-08-01 | PostgreSQL 18/18; AI 106/106; targeted ESLint/build; authenticated migrated list APIs 200 and unauthenticated APIs 401; tenant isolation and relation cleanup covered; Mini Program 90/91 with one unrelated API-environment expectation failure |
 | Package catalog API and Repository | Codex | passed | 2026-08-01 | PostgreSQL 20/20; targeted ESLint/build; authenticated GET 200 and unauthenticated GET 401; `0008` applied by migration container and unique index verified; runtime role DDL denied with `42501`; both source/target package tables had 0 rows, so no business import was required |
-| Promotion records/workflow runtime and notification automation | Codex | passed | 2026-08-02 | `0009`/`0010` applied by the dedicated migrator; PostgreSQL 23/23; targeted ESLint and production build passed; tenant RLS, role visibility, FK index coverage, conditional state transitions (including optimistic approval/rejection/release), relation DTOs, channel-scoped notification dedupe, route cutover, workbench todos, and reminder automation verified; orders/commissions remain MongoDB `Limited` |
+| Promotion records/workflow runtime and notification automation | Codex | passed | 2026-08-02 | `0009`/`0010` applied by the dedicated migrator; PostgreSQL 23/23; targeted ESLint and production build passed; tenant RLS, role visibility, FK index coverage, conditional state transitions (including optimistic approval/rejection/release), relation DTOs, channel-scoped notification dedupe, route cutover, workbench todos, and reminder automation verified |
+| Orders, commissions, and workbench totals | Codex | partial verification | 2026-08-02 | `CommercialRepository` and the existing RLS-protected target tables now back the order, commission, settlement, voiding, commission-record, and workbench routes; targeted lint and PostgreSQL integration suite (23/23) passed. Dedicated commercial route and transition coverage remains pending |
 | Prompt-library primary-flow manual test | User | pending | - | Requires an active PostgreSQL prompt revision after the Phase 4 import |
 | Login, authorization, tenant, and adjacent AI regression | User | pending | - | Must be repeated after the remaining Phase 3 slices |
 
@@ -506,8 +511,8 @@ phase. Never advance a phase based only on conversation memory.
 
 Phase 3 identity/enterprise core plus leads, formal floor plans, measurements,
 devices, their Mini Program aggregates, the package catalog, and the promotion
-workflow runtime are switched. The next slice should migrate dependent
-orders/commissions plus activation and WeCom configuration, followed by AI
-workflow/generation/media persistence and its bigint lead/plan consumers. Beyond
+workflow runtime, orders, and commissions are switched. The next slice should
+migrate enterprise activation, followed by AI workflow/generation/media
+persistence and its bigint lead/plan consumers. Beyond
 the completed Phase 4 whitelist import, do not import production business data
 without an explicit migration slice and acceptance record.

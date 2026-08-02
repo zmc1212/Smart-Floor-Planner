@@ -21,7 +21,6 @@ interface StaffUpdateBody {
   phone?: string;
   status?: string;
   promoterIds?: string[];
-  wecomUserId?: string;
   departmentId?: string | null;
 }
 
@@ -111,9 +110,6 @@ export async function PUT(
               updateData.phone = phone || null;
             }
             if (body.status !== undefined) updateData.status = body.status;
-            if (body.wecomUserId !== undefined) {
-              updateData.wecomUserId = body.wecomUserId.trim() || null;
-            }
             if (body.departmentId !== undefined) {
               const departmentId = parseOptionalPostgresId(
                 body.departmentId,

@@ -303,7 +303,7 @@ export default function StaffPage() {
     <form onSubmit={handleSubmit}>
       <DialogHeader className="border-b bg-muted/20 p-8 pb-6">
         <DialogTitle className="text-2xl font-bold">{isEditMode ? '编辑员工信息' : '录入新员工'}</DialogTitle>
-        <DialogDescription>配置员工登录账号、角色与企业微信提醒接收信息。</DialogDescription>
+        <DialogDescription>配置员工登录账号与角色。</DialogDescription>
       </DialogHeader>
 
       <div className="max-h-[60vh] space-y-5 overflow-y-auto p-8">
@@ -408,7 +408,7 @@ export default function StaffPage() {
                 </Badge>
               )}
             </h2>
-            <p className="text-sm text-muted-foreground">管理地推员、测量员、设计师与企业负责人，并补齐企业微信催办接收信息。</p>
+            <p className="text-sm text-muted-foreground">管理地推员、测量员、设计师与企业负责人。</p>
           </div>
 
           <div className="flex items-center gap-4">

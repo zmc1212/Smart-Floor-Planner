@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import { getTenantContext, withPlatformB2BTenantContext } from '@/lib/auth';
-import { CommissionRecord } from '@/models/CommissionRecord';
+import { commissionToDto, parsePostgresId } from '@/db/postgres-dto';
+import { CommercialRepository } from '@/db/repositories';
+import { getPlatformB2BTenantContext, getTenantContext } from '@/lib/auth';
+import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,6 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await dbConnect();
     const context = await getTenantContext(request);
     
     // 只有平台管理员或超级管理员可以操作结算
@@ -19,10 +19,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
     }
 
-    return await withPlatformB2BTenantContext(request, async () => {
+    const b2b = getPlatformB2BTenantContext(context);
+    return await withAdminPostgresTransaction(b2b, async (transaction) => {
       const { id } = await params;
 
-      const commission = await CommissionRecord.findById(id);
+      const repository = new CommercialRepository(transaction);
+      const commission = await repository.findCommissionById(parsePostgresId(id, 'commission id'));
       if (!commission) {
         return NextResponse.json({ success: false, error: 'Commission record not found' }, { status: 404 });
       }
@@ -31,14 +33,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         return NextResponse.json({ success: false, error: 'Commission already settled or voided' }, { status: 400 });
       }
 
-      commission.status = 'paid';
-      commission.settledAt = new Date();
-      commission.settledBy = context.userId as any;
-      await commission.save();
-
-      return NextResponse.json({ success: true, data: commission });
+      const settled = await repository.updateCommission(commission.id, { status: 'paid', settledAt: new Date(), settledBy: parsePostgresId(context.userId, 'userId') });
+      return NextResponse.json({ success: true, data: settled ? commissionToDto(settled) : null });
     });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Unknown error' }, { status: 500 });
   }
 }

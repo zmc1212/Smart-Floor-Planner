@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { parsePostgresId, promotionRecordToDto } from '@/db/postgres-dto';
-import { PromotionRecordRepository } from '@/db/repositories';
+import { commissionToDto, parsePostgresId, promotionRecordToDto } from '@/db/postgres-dto';
+import { CommercialRepository, PromotionRecordRepository } from '@/db/repositories';
 import type { PostgresTransaction } from '@/db/transaction';
 import { getPlatformB2BTenantContext, getTenantContext } from '@/lib/auth';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
@@ -12,8 +12,6 @@ import {
   listWorkbenchTodos,
   type WorkbenchTodoItem,
 } from '@/lib/postgres-workflow-automation';
-import dbConnect from '@/lib/mongodb';
-import { CommissionRecord } from '@/models/CommissionRecord';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,24 +54,6 @@ async function getScope(request: Request): Promise<WorkbenchScope | null> {
   };
 }
 
-function isLegacyObjectId(value: string | null | undefined) {
-  return !!value && /^[a-f\d]{24}$/i.test(value);
-}
-
-async function listLegacyCommissions(identity: WorkbenchIdentity) {
-  if (!isLegacyObjectId(identity.userId) && !isLegacyObjectId(identity.enterpriseId)) {
-    return [];
-  }
-  await dbConnect();
-  if (identity.role === 'salesperson' && isLegacyObjectId(identity.userId)) {
-    return CommissionRecord.find({ promoterId: identity.userId }).sort({ createdAt: -1 }).lean();
-  }
-  if (identity.enterpriseId && isLegacyObjectId(identity.enterpriseId)) {
-    return CommissionRecord.find({ enterpriseId: identity.enterpriseId }).sort({ createdAt: -1 }).lean();
-  }
-  return [];
-}
-
 export async function GET(request: Request) {
   try {
     const scope = await getScope(request);
@@ -88,7 +68,13 @@ export async function GET(request: Request) {
       new PromotionRecordRepository(transaction).list({ actor, limit: 200 })
     );
     const [commissions, todos, overdueTodos] = await Promise.all([
-      listLegacyCommissions(identity),
+      scope.execute((transaction) =>
+        new CommercialRepository(transaction).listCommissions({
+          promoterId: identity.role === 'salesperson'
+            ? parsePostgresId(identity.userId, 'userId')
+            : undefined,
+        })
+      ),
       listWorkbenchTodos({
         role: identity.role,
         userId: identity.userId,
@@ -154,7 +140,7 @@ export async function GET(request: Request) {
         staffRole: identity.role,
         cards,
         latestRecords: records.rows.slice(0, 5).map(promotionRecordToDto),
-        latestCommissions: commissions.slice(0, 5),
+        latestCommissions: commissions.slice(0, 5).map(commissionToDto),
         latestTodos: (todos as WorkbenchTodoItem[]).slice(0, 5),
       },
     });
