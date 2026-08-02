@@ -29,6 +29,11 @@ function toObjectId(value?: string | mongoose.Types.ObjectId) {
   return typeof value === 'string' ? new mongoose.Types.ObjectId(value) : value;
 }
 
+function asEnterpriseId(value?: string | mongoose.Types.ObjectId) {
+  if (!value) return undefined;
+  return value;
+}
+
 function getExtension(mimeType: string) {
   if (mimeType === 'image/jpeg') return 'jpg';
   if (mimeType === 'image/png') return 'png';
@@ -65,7 +70,7 @@ export function parseImageDataUri(dataUri: string) {
 
 export async function storeMediaBuffer(input: StoreMediaInput) {
   const assetId = new mongoose.Types.ObjectId();
-  const enterpriseId = toObjectId(input.enterpriseId);
+  const enterpriseId = asEnterpriseId(input.enterpriseId);
   if (!enterpriseId) {
     throw new Error('Missing enterpriseId');
   }
@@ -253,7 +258,7 @@ export async function readInternalAssetAsDataUri(imageUrl: string, enterpriseId:
 
   const asset = await MediaAsset.findOne({
     _id: assetId,
-    enterpriseId: toObjectId(enterpriseId),
+    enterpriseId: asEnterpriseId(enterpriseId),
     deletedAt: { $exists: false },
   });
   if (!asset) return undefined;
@@ -268,7 +273,7 @@ export async function resolveAiProviderImageInput(
 ): Promise<string> {
   const generationId = image.match(INTERNAL_GENERATION_URL_RE)?.[1];
   if (generationId) {
-    const generation = await AiGeneration.findOne({ _id: generationId, enterpriseId: toObjectId(enterpriseId) })
+    const generation = await AiGeneration.findOne({ _id: generationId, enterpriseId: asEnterpriseId(enterpriseId) })
       .select('output.imageUrl')
       .lean();
     if (!generation?.output?.imageUrl) throw new Error('Generation image asset not found or inaccessible');
@@ -277,7 +282,7 @@ export async function resolveAiProviderImageInput(
 
   const workflowId = image.match(INTERNAL_WORKFLOW_SOURCE_URL_RE)?.[1];
   if (workflowId) {
-    const workflow = await AiWorkflow.findOne({ _id: workflowId, enterpriseId: toObjectId(enterpriseId) })
+    const workflow = await AiWorkflow.findOne({ _id: workflowId, enterpriseId: asEnterpriseId(enterpriseId) })
       .select('sourceImage')
       .lean();
     if (!workflow?.sourceImage) throw new Error('Workflow source image not found or inaccessible');

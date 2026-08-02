@@ -3,7 +3,7 @@ import { multiTenantPlugin } from '@/lib/mongoose-tenant-plugin';
 import type { AiCapability, AiLogicalModelKey, AiProviderAttemptStatus } from '@/lib/ai/provider-types';
 
 export interface IAiProviderAttempt extends Document {
-  enterpriseId: mongoose.Types.ObjectId;
+  enterpriseId: mongoose.Types.ObjectId | string;
   generationId?: mongoose.Types.ObjectId;
   providerConfigId: mongoose.Types.ObjectId;
   providerKey: string;
@@ -30,7 +30,7 @@ export interface IAiProviderAttempt extends Document {
 const MoneySchema = new Schema({ currency: String, micros: Number }, { _id: false });
 const AiProviderAttemptSchema = new Schema<IAiProviderAttempt>(
   {
-    enterpriseId: { type: Schema.Types.ObjectId, ref: 'Enterprise', required: true, index: true },
+    enterpriseId: { type: Schema.Types.Mixed, required: true, index: true },
     generationId: { type: Schema.Types.ObjectId, ref: 'AiGeneration', index: true },
     providerConfigId: { type: Schema.Types.ObjectId, ref: 'AiProviderConfig', required: true },
     providerKey: { type: String, required: true },
@@ -57,6 +57,11 @@ const AiProviderAttemptSchema = new Schema<IAiProviderAttempt>(
 AiProviderAttemptSchema.index({ generationId: 1, createdAt: -1 });
 AiProviderAttemptSchema.index({ status: 1, updatedAt: 1 });
 AiProviderAttemptSchema.plugin(multiTenantPlugin);
+
+const existingAiProviderAttempt = mongoose.models.AiProviderAttempt as Model<IAiProviderAttempt> | undefined;
+if (existingAiProviderAttempt && existingAiProviderAttempt.schema.path('enterpriseId')?.instance !== 'Mixed') {
+  mongoose.deleteModel('AiProviderAttempt');
+}
 
 export const AiProviderAttempt: Model<IAiProviderAttempt> =
   (mongoose.models.AiProviderAttempt as Model<IAiProviderAttempt> | undefined) ||

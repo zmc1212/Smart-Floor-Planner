@@ -4,8 +4,8 @@ import type { AiWorkflowSourceAssetRole, AiWorkflowStageKey } from '@/lib/ai/wor
 import type { AiActionKey, AiCapability, AiLogicalModelKey, AiProviderAttemptStatus } from '@/lib/ai/provider-types';
 
 export interface IAiGeneration extends Document {
-  enterpriseId: mongoose.Types.ObjectId;
-  operatorId: mongoose.Types.ObjectId;
+  enterpriseId: mongoose.Types.ObjectId | string;
+  operatorId: mongoose.Types.ObjectId | string;
   floorPlanId?: mongoose.Types.ObjectId;
   leadId?: mongoose.Types.ObjectId;
   workflowId?: mongoose.Types.ObjectId;
@@ -104,13 +104,11 @@ export interface IAiGeneration extends Document {
 const AiGenerationSchema: Schema<IAiGeneration> = new Schema(
   {
     enterpriseId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Enterprise',
+      type: Schema.Types.Mixed,
       required: true,
     },
     operatorId: {
-      type: Schema.Types.ObjectId,
-      ref: 'AdminUser',
+      type: Schema.Types.Mixed,
       required: true,
     },
     leadId: {
@@ -301,7 +299,8 @@ if (
     !existingTypeEnum.includes('reference_recreate') ||
     !existingTypeEnum.includes('free_create') ||
     !existingOutputAspectRatioPath ||
-    Boolean(existingProviderPath?.options?.enum?.length))
+    Boolean(existingProviderPath?.options?.enum?.length) ||
+    existingAiGenerationModel.schema.path('enterpriseId')?.instance !== 'Mixed')
 ) {
   mongoose.deleteModel('AiGeneration');
 }

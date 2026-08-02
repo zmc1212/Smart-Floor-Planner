@@ -48,7 +48,11 @@ export class InsufficientAiCreditsError extends Error {
   }
 }
 
-function asObjectId(value: string | mongoose.Types.ObjectId) {
+function asTenantId(value: string | mongoose.Types.ObjectId) {
+  return value;
+}
+
+function asGenerationId(value: string | mongoose.Types.ObjectId) {
   return typeof value === 'string' ? new mongoose.Types.ObjectId(value) : value;
 }
 
@@ -107,7 +111,7 @@ export async function getAiCreditPrice(actionKeyOrMode: AiActionKey | MiniAiTask
 
 export async function ensureAiCreditAccount(enterpriseId: string | mongoose.Types.ObjectId) {
   return AiCreditAccount.findOneAndUpdate(
-    { enterpriseId: asObjectId(enterpriseId) },
+    { enterpriseId: asTenantId(enterpriseId) },
     { $setOnInsert: { balance: 0, frozenBalance: 0, version: 0, appliedOperationIds: [] } },
     { upsert: true, returnDocument: 'after' }
   );
@@ -140,9 +144,9 @@ async function claimOperation(input: {
 }) {
   try {
     return await AiCreditLedger.create({
-      enterpriseId: asObjectId(input.enterpriseId),
-      generationId: input.generationId ? asObjectId(input.generationId) : undefined,
-      operatorId: input.operatorId ? asObjectId(input.operatorId) : undefined,
+      enterpriseId: asTenantId(input.enterpriseId),
+      generationId: input.generationId ? asGenerationId(input.generationId) : undefined,
+      operatorId: input.operatorId ? asTenantId(input.operatorId) : undefined,
       operationId: input.operationId,
       type: input.type,
       amount: input.amount,
@@ -189,7 +193,7 @@ async function recoverAppliedOperation(
   operationId: string
 ) {
   const account = await AiCreditAccount.findOne({
-    enterpriseId: asObjectId(enterpriseId),
+    enterpriseId: asTenantId(enterpriseId),
     appliedOperationIds: operationId,
   }).select('+appliedOperationIds');
   return account ? completeOperation(ledger, account) : null;
@@ -211,7 +215,7 @@ export async function grantAiCredits(input: {
   if (ledger.status !== 'pending') throw new Error('该充值操作已失败，请使用新的操作编号');
 
   const account = await AiCreditAccount.findOneAndUpdate(
-    { enterpriseId: asObjectId(input.enterpriseId), appliedOperationIds: { $ne: input.operationId } },
+    { enterpriseId: asTenantId(input.enterpriseId), appliedOperationIds: { $ne: input.operationId } },
     operationUpdate(input.operationId, { balance: amount }),
     { returnDocument: 'after' }
   );
@@ -240,7 +244,7 @@ export async function adjustAiCredits(input: {
   }
 
   const filter: Record<string, unknown> = {
-    enterpriseId: asObjectId(input.enterpriseId),
+    enterpriseId: asTenantId(input.enterpriseId),
     appliedOperationIds: { $ne: input.operationId },
   };
   if (amount < 0) {
@@ -276,7 +280,7 @@ export async function holdAiCredits(input: {
 
   const account = await AiCreditAccount.findOneAndUpdate(
     {
-      enterpriseId: asObjectId(input.enterpriseId),
+      enterpriseId: asTenantId(input.enterpriseId),
       appliedOperationIds: { $ne: input.operationId },
       $expr: { $gte: [{ $subtract: ['$balance', '$frozenBalance'] }, amount] },
     },
@@ -306,7 +310,7 @@ export async function consumeHeldAiCredits(input: {
   }
   const account = await AiCreditAccount.findOneAndUpdate(
     {
-      enterpriseId: asObjectId(input.enterpriseId),
+      enterpriseId: asTenantId(input.enterpriseId),
       appliedOperationIds: { $ne: input.operationId },
       balance: { $gte: amount },
       frozenBalance: { $gte: amount },
@@ -338,7 +342,7 @@ export async function releaseHeldAiCredits(input: {
   }
   const account = await AiCreditAccount.findOneAndUpdate(
     {
-      enterpriseId: asObjectId(input.enterpriseId),
+      enterpriseId: asTenantId(input.enterpriseId),
       appliedOperationIds: { $ne: input.operationId },
       frozenBalance: { $gte: amount },
     },

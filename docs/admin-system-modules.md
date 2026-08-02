@@ -290,6 +290,16 @@ permission, or workflow changes.
   attachment to an existing customer workflow. The proxy maps the entire page
   and API prefix to the unified `ai-scenarios` permission, while writable routes
   also require an enterprise through `withTenantRoute`.
+- PostgreSQL identity compatibility: free-creation task, batch, generation,
+  media, provider-attempt, and credit records preserve legacy MongoDB
+  `ObjectId` values while accepting the current PostgreSQL enterprise/operator
+  ID strings for new records. Tenant filters always compare the stored raw
+  identity value, and media ownership lookup does the same, so a PostgreSQL
+  tenant cannot read legacy records without an explicit mapping. Free-creation
+  policy lookup reads PostgreSQL `enterprises.ai_policy` for bigint identities
+  and retains the MongoDB policy path for legacy ObjectIds. The platform retry endpoint for historical Mini Program
+  generations remains ObjectId-only and returns `409` for a PostgreSQL identity
+  until that workflow is migrated.
 - Models/helpers: `AiGeneration`, `AiWorkflow`, `AiChatSession`, `AiStylePreset`,
   `AiProviderConfig`, `AiProviderAttempt`, `MediaAsset`, `AiCreditAccount`,
   `AiCreditLedger`, `AiCreditPrice`, `AiModelCreditPrice`, `Inspiration`,
@@ -318,8 +328,10 @@ permission, or workflow changes.
   use the typed PostgreSQL Repository and platform-scoped transactions. Their
   DTOs and `ai-scenarios` permission boundary are unchanged. The Phase 4
   retained-data importer writes the active prompt library directly to PostgreSQL;
-  generation task persistence/model-profile synchronization still use MongoDB
-  until their Phase 3 slices are migrated. New generation batches resolve
+  AI style-preset default seeding, reads, and platform-admin updates now use the
+  typed `AiStylePresetRepository` and platform transactions while preserving the
+  string `_id` API DTO. Generation task persistence/model-profile synchronization
+  still use MongoDB until their Phase 3 slices are migrated. New generation batches resolve
   a selected prompt template and parameter definition through PostgreSQL.
   `Limited`: MongoDB AI workflow/media/generation routes that reference leads or
   floor plans are not bigint-compatible yet and remain outside this slice.
@@ -613,8 +625,9 @@ permission, or workflow changes.
   core, leads, formal floor plans, measurements, devices, prompt-library reads,
   system-role configuration, global promotion configuration, media-storage
    configuration, promotion records, workflow notifications, reminder automation,
-   orders, commissions, and enterprise activation are PostgreSQL-backed. AI
-   generation/media remain on MongoDB while Phase 3 proceeds incrementally.
+   orders, commissions, enterprise activation, and AI style presets are
+   PostgreSQL-backed. AI workflow, generation, and media-asset persistence
+   remain on MongoDB while Phase 3 proceeds incrementally.
   Docker
   migrations run explicitly
   through `npm run docker:migrate`; the long-running admin service is not given

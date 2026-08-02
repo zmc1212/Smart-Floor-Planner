@@ -2,8 +2,8 @@ import mongoose, { Document, Model, Schema } from 'mongoose';
 import { multiTenantPlugin } from '@/lib/mongoose-tenant-plugin';
 
 export interface IAiCreationBatch extends Document {
-  enterpriseId: mongoose.Types.ObjectId;
-  operatorId: mongoose.Types.ObjectId;
+  enterpriseId: mongoose.Types.ObjectId | string;
+  operatorId: mongoose.Types.ObjectId | string;
   taskId: mongoose.Types.ObjectId;
   sequence: number;
   prompt: string;
@@ -30,8 +30,8 @@ export interface IAiCreationBatch extends Document {
 
 const AiCreationBatchSchema = new Schema<IAiCreationBatch>(
   {
-    enterpriseId: { type: Schema.Types.ObjectId, ref: 'Enterprise', required: true, index: true },
-    operatorId: { type: Schema.Types.ObjectId, ref: 'AdminUser', required: true, index: true },
+    enterpriseId: { type: Schema.Types.Mixed, required: true, index: true },
+    operatorId: { type: Schema.Types.Mixed, required: true, index: true },
     taskId: { type: Schema.Types.ObjectId, ref: 'AiCreationTask', required: true, index: true },
     sequence: { type: Number, required: true, min: 1 },
     prompt: { type: String, required: true, maxlength: 12000 },
@@ -64,6 +64,11 @@ const AiCreationBatchSchema = new Schema<IAiCreationBatch>(
 AiCreationBatchSchema.index({ taskId: 1, sequence: 1 }, { unique: true });
 AiCreationBatchSchema.index({ enterpriseId: 1, createdAt: -1 });
 AiCreationBatchSchema.plugin(multiTenantPlugin);
+
+const existingAiCreationBatch = mongoose.models.AiCreationBatch as Model<IAiCreationBatch> | undefined;
+if (existingAiCreationBatch && existingAiCreationBatch.schema.path('enterpriseId')?.instance !== 'Mixed') {
+  mongoose.deleteModel('AiCreationBatch');
+}
 
 export const AiCreationBatch: Model<IAiCreationBatch> =
   (mongoose.models.AiCreationBatch as Model<IAiCreationBatch> | undefined) ||

@@ -1,20 +1,22 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { AiStylePreset } from '@/models/AiStylePreset';
 import { ensureDefaultAiStylePresets, serializeAiStylePreset } from '@/lib/ai/presets';
+import {
+  AiStylePresetRepository,
+  type AiStylePresetUpdate,
+} from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
+import { parsePostgresId } from '@/db/postgres-dto';
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await dbConnect();
-
     return await withTenantRoute(req, { roles: ['super_admin', 'admin'] }, async (context) => {
       await ensureDefaultAiStylePresets(context.userId);
 
       const { id } = await params;
       const body = await req.json();
       const update: Record<string, unknown> = {
-        updatedBy: context.userId,
+        updatedBy: parsePostgresId(context.userId, 'userId'),
       };
 
       const fields = [
@@ -36,19 +38,34 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         }
       }
 
-      if (body.image && typeof body.image === 'object') {
-        const imageFields = ['model', 'logicalModelKey', 'size', 'quality', 'mode'] as const;
-        for (const field of imageFields) {
-          if (body.image[field] !== undefined) {
-            update[`image.${field}`] = body.image[field];
-          }
-        }
+      let presetId: bigint;
+      try {
+        presetId = parsePostgresId(id, 'id');
+      } catch {
+        return NextResponse.json({ success: false, error: 'Preset not found' }, { status: 404 });
       }
 
-      const preset = await AiStylePreset.findByIdAndUpdate(
-        id,
-        { $set: update },
-        { returnDocument: 'after' }
+      if (body.image && typeof body.image === 'object') {
+        const existing = await withPlatformTransaction((transaction) =>
+          new AiStylePresetRepository(transaction).findById(presetId)
+        );
+        if (!existing) {
+          return NextResponse.json({ success: false, error: 'Preset not found' }, { status: 404 });
+        }
+        const imageFields = ['model', 'logicalModelKey', 'size', 'quality', 'mode'] as const;
+        const image = { ...(existing.image || {}) } as Record<string, unknown>;
+        for (const field of imageFields) {
+          if (body.image[field] !== undefined) {
+            image[field] = body.image[field];
+          }
+        }
+        update.image = image;
+      }
+      const preset = await withPlatformTransaction((transaction) =>
+        new AiStylePresetRepository(transaction).update(
+          presetId,
+          update as AiStylePresetUpdate
+        )
       );
       if (!preset) {
         return NextResponse.json({ success: false, error: 'Preset not found' }, { status: 404 });

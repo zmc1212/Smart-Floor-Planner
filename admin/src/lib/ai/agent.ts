@@ -1,12 +1,15 @@
 import LeadModel from '@/models/Lead';
 import { FloorPlan } from '@/models/FloorPlan';
-import { AiStylePreset } from '@/models/AiStylePreset';
 import { AdminUser } from '@/models/AdminUser';
 import { AiWorkflow } from '@/models/AiWorkflow';
 import { AiGeneration } from '@/models/AiGeneration';
 import dbConnect from '@/lib/mongodb';
 import type { TenantContext } from '@/lib/auth';
 import { serializeAiWorkflow } from '@/lib/ai/workflow-utils';
+import {
+  ensureDefaultAiStylePresets,
+  listAiStylePresets,
+} from '@/lib/ai/presets';
 import type { ChatAction, ChatFloorPlanOption, ChatUiPayload, ChatWorkflowDetail } from '@/lib/ai/chat-ui';
 import { mergeChatUiPayload } from '@/lib/ai/chat-ui';
 import {
@@ -1097,14 +1100,9 @@ async function executeSearchFloorPlans(args: ToolArgs, context: AgentContext) {
 }
 
 async function executeGetAiStyles(args: ToolArgs) {
-  const filter: Record<string, unknown> = { enabled: true };
+  await ensureDefaultAiStylePresets();
   const type = optionalString(args.type);
-
-  if (type) {
-    filter.type = type;
-  }
-
-  const styles = await AiStylePreset.find(filter).sort({ sortOrder: 1 }).limit(10);
+  const styles = (await listAiStylePresets(type as import('@/lib/ai/preset-definitions').AiPresetType | undefined)).slice(0, 10);
   return styles.map((style) => ({
     key: style.key,
     name: style.name,

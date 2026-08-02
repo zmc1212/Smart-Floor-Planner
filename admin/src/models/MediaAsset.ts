@@ -4,7 +4,7 @@ import { multiTenantPlugin } from '../lib/mongoose-tenant-plugin';
 export type MediaAssetStorageProvider = string;
 
 export interface IMediaAsset extends Document {
-  enterpriseId: mongoose.Types.ObjectId;
+  enterpriseId: mongoose.Types.ObjectId | string;
   ownerType: 'ai_workflow_source' | 'ai_generation_output' | 'ai_generation_input' | 'manual_upload';
   ownerId?: mongoose.Types.ObjectId;
   mimeType: string;
@@ -26,8 +26,7 @@ export interface IMediaAsset extends Document {
 const MediaAssetSchema: Schema<IMediaAsset> = new Schema(
   {
     enterpriseId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Enterprise',
+      type: Schema.Types.Mixed,
       required: true,
       index: true,
     },
@@ -85,7 +84,8 @@ if (
     || !existingMediaAssetModel.schema.path('height')
     || !existingMediaAssetModel.schema.path('storageBucket')
     || !existingMediaAssetModel.schema.path('checksumSha256')
-    || !existingMediaAssetModel.schema.path('purgedAt'))
+    || !existingMediaAssetModel.schema.path('purgedAt')
+    || existingMediaAssetModel.schema.path('enterpriseId')?.instance !== 'Mixed')
 ) {
   mongoose.deleteModel('MediaAsset');
 }

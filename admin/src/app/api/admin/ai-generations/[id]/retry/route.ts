@@ -12,6 +12,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const { id } = await params;
       const generation = await AiGeneration.findOne({ _id: id, channel: 'miniprogram' });
       if (!generation) return NextResponse.json({ success: false, error: '任务不存在' }, { status: 404 });
+      if (!(generation.enterpriseId instanceof mongoose.Types.ObjectId)) {
+        return NextResponse.json({ success: false, error: '该历史任务不支持通过小程序重试' }, { status: 409 });
+      }
       await retryMiniAiTask(generation, {
         enterpriseId: generation.enterpriseId,
         operatorId: new mongoose.Types.ObjectId(context.userId),

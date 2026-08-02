@@ -2,8 +2,8 @@ import mongoose, { Document, Model, Schema } from 'mongoose';
 import { multiTenantPlugin } from '@/lib/mongoose-tenant-plugin';
 
 export interface IAiCreationTask extends Document {
-  enterpriseId: mongoose.Types.ObjectId;
-  operatorId: mongoose.Types.ObjectId;
+  enterpriseId: mongoose.Types.ObjectId | string;
+  operatorId: mongoose.Types.ObjectId | string;
   title: string;
   prompt: string;
   referenceAssetIds: mongoose.Types.ObjectId[];
@@ -17,8 +17,10 @@ export interface IAiCreationTask extends Document {
 
 const AiCreationTaskSchema = new Schema<IAiCreationTask>(
   {
-    enterpriseId: { type: Schema.Types.ObjectId, ref: 'Enterprise', required: true, index: true },
-    operatorId: { type: Schema.Types.ObjectId, ref: 'AdminUser', required: true, index: true },
+    // AI tasks predate the PostgreSQL identity migration, so this keeps legacy
+    // ObjectId values readable while new tasks use PostgreSQL string IDs.
+    enterpriseId: { type: Schema.Types.Mixed, required: true, index: true },
+    operatorId: { type: Schema.Types.Mixed, required: true, index: true },
     title: { type: String, required: true, trim: true, maxlength: 120 },
     prompt: { type: String, required: true, maxlength: 12000 },
     referenceAssetIds: [{ type: Schema.Types.ObjectId, ref: 'MediaAsset' }],
@@ -32,6 +34,11 @@ const AiCreationTaskSchema = new Schema<IAiCreationTask>(
 
 AiCreationTaskSchema.index({ enterpriseId: 1, deletedAt: 1, updatedAt: -1 });
 AiCreationTaskSchema.plugin(multiTenantPlugin);
+
+const existingAiCreationTask = mongoose.models.AiCreationTask as Model<IAiCreationTask> | undefined;
+if (existingAiCreationTask && existingAiCreationTask.schema.path('enterpriseId')?.instance !== 'Mixed') {
+  mongoose.deleteModel('AiCreationTask');
+}
 
 export const AiCreationTask: Model<IAiCreationTask> =
   (mongoose.models.AiCreationTask as Model<IAiCreationTask> | undefined) ||

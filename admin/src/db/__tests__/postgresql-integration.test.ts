@@ -9,6 +9,7 @@ import {
   aiPromptSourceModels,
   aiPromptTemplateAssets,
   aiPromptTemplates,
+  aiStylePresets,
   adminUsers,
   departments,
   devices,
@@ -26,6 +27,7 @@ import {
 } from '@/db/schema';
 import {
   AdminUserRepository,
+  AiStylePresetRepository,
   CommercialRepository,
   DepartmentRepository,
   DeviceRepository,
@@ -53,6 +55,7 @@ import {
   updatePromotionRecord,
 } from '@/lib/postgres-promotion-workflow';
 import { listWorkbenchTodos } from '@/lib/postgres-workflow-automation';
+import { getEnterpriseAiPolicy } from '@/lib/ai/enterprise-policy';
 import {
   closePostgresPool,
   getPostgresPool,
@@ -75,6 +78,7 @@ let promotionPromoterA2Id: bigint;
 let promotionMeasurerAId: bigint;
 let promotionDesignerAId: bigint;
 let promotionPromoterBId: bigint;
+let aiStylePresetId: bigint;
 
 before(async () => {
   loadEnvConfig(process.cwd());
@@ -251,9 +255,77 @@ before(async () => {
   });
 });
 
+test('AI style presets use idempotent PostgreSQL defaults and preserve JSON image fields on update', async () => {
+  const key = `${testRunKey}-preset`;
+  await withPlatformTransaction(async (transaction) => {
+    const repository = new AiStylePresetRepository(transaction);
+    await repository.ensureDefaults([
+      {
+        key,
+        type: 'scenario',
+        name: 'PostgreSQL preset',
+        promptTemplate: 'A test prompt',
+        negativePrompt: 'No test artifacts',
+        image: {
+          model: 'test-model',
+          size: '1024x1024',
+          quality: 'medium',
+          mode: 'edit',
+        },
+        enabled: true,
+        sortOrder: 11,
+      },
+    ]);
+    await repository.ensureDefaults([
+      {
+        key,
+        type: 'scenario',
+        name: 'Duplicate must not replace',
+        promptTemplate: 'Changed prompt',
+      },
+    ]);
+    const created = await repository.findEnabledByTypeAndKey('scenario', key);
+    assert.ok(created);
+    assert.equal(created.name, 'PostgreSQL preset');
+    aiStylePresetId = created.id;
+
+    const updated = await repository.update(created.id, {
+      name: 'Updated PostgreSQL preset',
+      image: {
+        ...created.image,
+        quality: 'high',
+      },
+    });
+    assert.equal(updated?.name, 'Updated PostgreSQL preset');
+    assert.equal(updated?.image?.model, 'test-model');
+    assert.equal(updated?.image?.quality, 'high');
+  });
+
+  const listed = await withPlatformTransaction((transaction) =>
+    new AiStylePresetRepository(transaction).list({ type: 'scenario' })
+  );
+  assert.equal(listed.some((preset) => preset.id === aiStylePresetId), true);
+});
+
+test('AI creation policy reads a PostgreSQL enterprise identity without ObjectId casting', async () => {
+  await withTenantTransaction(enterpriseAId, async (transaction) => {
+    await new EnterpriseRepository(transaction).update(enterpriseAId, {
+      aiPolicy: { enabledActionKeys: ['image.free_create'] },
+    });
+  });
+
+  const policy = await getEnterpriseAiPolicy(enterpriseAId.toString());
+  assert.deepEqual(policy.enabledActionKeys, ['image.free_create']);
+});
+
 after(async () => {
   if (enterpriseAId && enterpriseBId) {
     await withPlatformTransaction(async (transaction) => {
+      if (aiStylePresetId) {
+        await transaction
+          .delete(aiStylePresets)
+          .where(eq(aiStylePresets.id, aiStylePresetId));
+      }
       if (promptRevisionId) {
         await transaction
           .delete(aiPromptLibraryRevisions)

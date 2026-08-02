@@ -1,4 +1,10 @@
-import { AiStylePreset, IAiStylePreset } from '@/models/AiStylePreset';
+import {
+  AiStylePresetRepository,
+  type AiStylePresetRecord,
+  type NewAiStylePreset,
+} from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
+import { parseOptionalPostgresId } from '@/db/postgres-dto';
 import {
   AiPresetType,
   DEFAULT_AI_STYLE_PRESETS,
@@ -36,65 +42,10 @@ export interface SerializedAiStylePreset {
 }
 
 export async function ensureDefaultAiStylePresets(userId?: string) {
-  await Promise.all(
-    DEFAULT_AI_STYLE_PRESETS.map((preset) =>
-      AiStylePreset.updateOne(
-        { type: preset.type, key: preset.key },
-        {
-          $setOnInsert: {
-            name: preset.name,
-            description: preset.description,
-            icon: preset.icon,
-            previewClassName: preset.previewClassName,
-            promptTemplate: preset.promptTemplate,
-            promptTemplateSecondStage: preset.promptTemplateSecondStage || '',
-            negativePrompt: preset.negativePrompt,
-            image: preset.image,
-            workflowCategory: preset.workflowCategory,
-            workflowStage: preset.workflowStage,
-            sourceAssetRole: preset.sourceAssetRole,
-            nextRecommendedStage: preset.nextRecommendedStage,
-            sortOrder: preset.sortOrder,
-            createdBy: userId,
-            enabled: preset.enabled,
-          },
-        },
-        { upsert: true }
-      )
-    )
-  );
-}
-
-export function serializeAiStylePreset(
-  preset: Pick<
-    IAiStylePreset,
-    | '_id'
-    | 'key'
-    | 'type'
-    | 'name'
-    | 'description'
-    | 'icon'
-    | 'previewClassName'
-    | 'mockImageUrl'
-    | 'promptTemplate'
-    | 'promptTemplateSecondStage'
-    | 'negativePrompt'
-    | 'provider'
-    | 'image'
-    | 'workflowCategory'
-    | 'workflowStage'
-    | 'sourceAssetRole'
-    | 'nextRecommendedStage'
-    | 'enabled'
-    | 'sortOrder'
-    | 'createdAt'
-    | 'updatedAt'
-  >
-): SerializedAiStylePreset {
-  return {
-    _id: String(preset._id),
+  const createdBy = parseOptionalPostgresId(userId, 'userId');
+  const defaults: NewAiStylePreset[] = DEFAULT_AI_STYLE_PRESETS.map((preset) => ({
     key: preset.key,
-    type: preset.type,
+    type: preset.type as AiPresetType,
     name: preset.name,
     description: preset.description,
     icon: preset.icon,
@@ -104,11 +55,41 @@ export function serializeAiStylePreset(
     promptTemplateSecondStage: preset.promptTemplateSecondStage,
     negativePrompt: preset.negativePrompt,
     provider: preset.provider,
-    image: preset.image,
+    image: preset.image as unknown as Record<string, unknown>,
     workflowCategory: preset.workflowCategory,
     workflowStage: preset.workflowStage,
     sourceAssetRole: preset.sourceAssetRole,
     nextRecommendedStage: preset.nextRecommendedStage,
+    enabled: preset.enabled,
+    sortOrder: preset.sortOrder,
+    createdBy,
+  }));
+  await withPlatformTransaction((transaction) =>
+    new AiStylePresetRepository(transaction).ensureDefaults(defaults)
+  );
+}
+
+export function serializeAiStylePreset(
+  preset: AiStylePresetRecord
+): SerializedAiStylePreset {
+  return {
+    _id: String(preset.id),
+    key: preset.key,
+    type: preset.type as AiPresetType,
+    name: preset.name,
+    description: preset.description,
+    icon: preset.icon,
+    previewClassName: preset.previewClassName,
+    mockImageUrl: preset.mockImageUrl ?? undefined,
+    promptTemplate: preset.promptTemplate,
+    promptTemplateSecondStage: preset.promptTemplateSecondStage ?? undefined,
+    negativePrompt: preset.negativePrompt,
+    provider: preset.provider ?? undefined,
+    image: preset.image as unknown as PollinationsImageConfig,
+    workflowCategory: preset.workflowCategory as AiWorkflowCategory | undefined,
+    workflowStage: preset.workflowStage as AiWorkflowStageKey | undefined,
+    sourceAssetRole: preset.sourceAssetRole as AiWorkflowSourceAssetRole | undefined,
+    nextRecommendedStage: preset.nextRecommendedStage as AiWorkflowStageKey | undefined,
     enabled: preset.enabled,
     sortOrder: preset.sortOrder,
     createdAt: preset.createdAt?.toISOString(),
@@ -117,16 +98,17 @@ export function serializeAiStylePreset(
 }
 
 export async function listAiStylePresets(type?: AiPresetType, includeDisabled = false) {
-  const query: Record<string, unknown> = {};
-  if (type) query.type = type;
-  if (!includeDisabled) query.enabled = true;
-
-  const presets = await AiStylePreset.find(query).sort({ sortOrder: 1, createdAt: 1 });
+  const presets = await withPlatformTransaction((transaction) =>
+    new AiStylePresetRepository(transaction).list({ type, includeDisabled })
+  );
   return presets.map(serializeAiStylePreset);
 }
 
 export async function getAiStylePresetByKey(type: AiPresetType, key: string) {
-  return AiStylePreset.findOne({ type, key, enabled: true });
+  const preset = await withPlatformTransaction((transaction) =>
+    new AiStylePresetRepository(transaction).findEnabledByTypeAndKey(type, key)
+  );
+  return preset ? serializeAiStylePreset(preset) : null;
 }
 
 export function getDefaultAiStylePresetByKey(type: AiPresetType, key: string): DefaultAiStylePreset | undefined {

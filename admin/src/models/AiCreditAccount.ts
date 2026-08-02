@@ -2,7 +2,7 @@ import mongoose, { Document, Model, Schema } from 'mongoose';
 import { multiTenantPlugin } from '@/lib/mongoose-tenant-plugin';
 
 export interface IAiCreditAccount extends Document {
-  enterpriseId: mongoose.Types.ObjectId;
+  enterpriseId: mongoose.Types.ObjectId | string;
   balance: number;
   frozenBalance: number;
   version: number;
@@ -14,8 +14,7 @@ export interface IAiCreditAccount extends Document {
 const AiCreditAccountSchema = new Schema<IAiCreditAccount>(
   {
     enterpriseId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Enterprise',
+      type: Schema.Types.Mixed,
       required: true,
       unique: true,
       index: true,
@@ -31,7 +30,11 @@ const AiCreditAccountSchema = new Schema<IAiCreditAccount>(
 AiCreditAccountSchema.plugin(multiTenantPlugin);
 
 const existingAiCreditAccount = mongoose.models.AiCreditAccount as Model<IAiCreditAccount> | undefined;
-if (existingAiCreditAccount && !existingAiCreditAccount.schema.path('appliedOperationIds')) {
+if (
+  existingAiCreditAccount
+  && (!existingAiCreditAccount.schema.path('appliedOperationIds')
+    || existingAiCreditAccount.schema.path('enterpriseId')?.instance !== 'Mixed')
+) {
   mongoose.deleteModel('AiCreditAccount');
 }
 

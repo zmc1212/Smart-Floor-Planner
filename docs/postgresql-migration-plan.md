@@ -94,7 +94,7 @@ and `cancelled`.
 | Phase 0.2 | Qiniu configuration and encrypted-field verification | complete | Read-only inspection; no secrets logged |
 | Phase 1 | PostgreSQL instance, roles, pooling, migration runner | complete | Codex verification and user database-health/admin-page regression passed |
 | Phase 2 | PostgreSQL schema and Repository foundation | complete | Codex and user acceptance passed on 2026-08-01 |
-| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, and reminder runtime switched; AI/media domains pending |
+| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, and AI style presets switched; AI workflow/generation/media-asset domains pending |
 | Phase 4 | RoomiAI files/data and Qiniu configuration import | in progress: awaiting user acceptance | PostgreSQL active Roomi revision, 960 verified local previews, imported Qiniu configuration, and successful probe on 2026-08-01 |
 | Phase 5 | Contract tests and cutover rehearsal | not started | Pending |
 | Phase 6 | Production PostgreSQL cutover | not started | Pending |
@@ -436,7 +436,15 @@ is recorded.
   `localhost` while the configured local base is `192.168.10.111`, which is
   unrelated to this PostgreSQL slice. The build exits 0 with the known Windows
   standalone trace-copy warning for `save-icons`.
-- Generation task persistence/model-profile synchronization and AI
+- AI style-preset default seeding, reads, and platform-admin updates now use
+  `AiStylePresetRepository` in platform-scoped PostgreSQL transactions. The
+  public preset DTO continues to expose the PostgreSQL bigint as a string `_id`.
+  Targeted ESLint and the PostgreSQL integration suite pass (26/26). The
+  production build compiles, then remains blocked in the unmodified MongoDB
+  retry route `src/app/api/admin/ai-generations/[id]/retry/route.ts` because its
+  `generation.enterpriseId` is typed `string | ObjectId` where an `ObjectId` is
+  required; that pre-existing AI-generation boundary is outside this slice.
+  Generation task persistence/model-profile synchronization and AI
   workflows/generation/media still require Phase 3 work. Their legacy MongoDB
   ObjectId boundaries remain `Limited` until their dependent slices are migrated.
 - No MongoDB documents, PostgreSQL production rows, Qiniu objects, or secrets
@@ -458,6 +466,7 @@ Phase 3 acceptance status:
 | Leads/formal plans/measurements/devices and Mini Program aggregates | Codex | passed | 2026-08-01 | PostgreSQL 18/18; AI 106/106; targeted ESLint/build; authenticated migrated list APIs 200 and unauthenticated APIs 401; tenant isolation and relation cleanup covered; Mini Program 90/91 with one unrelated API-environment expectation failure |
 | Package catalog API and Repository | Codex | passed | 2026-08-01 | PostgreSQL 20/20; targeted ESLint/build; authenticated GET 200 and unauthenticated GET 401; `0008` applied by migration container and unique index verified; runtime role DDL denied with `42501`; both source/target package tables had 0 rows, so no business import was required |
 | Promotion records/workflow runtime and notification automation | Codex | passed | 2026-08-02 | `0009`/`0010` applied by the dedicated migrator; PostgreSQL 23/23; targeted ESLint and production build passed; tenant RLS, role visibility, FK index coverage, conditional state transitions (including optimistic approval/rejection/release), relation DTOs, channel-scoped notification dedupe, route cutover, workbench todos, and reminder automation verified |
+| AI style-preset runtime | Codex | passed | 2026-08-02 | Default seeding, reads, and administrator updates use `AiStylePresetRepository` and platform transactions; JSON image-field updates preserve adjacent fields; PostgreSQL integration suite 26/26 and targeted ESLint passed. No business data was imported or deleted. |
 | Orders, commissions, and workbench totals | Codex | partial verification | 2026-08-02 | `CommercialRepository` and the existing RLS-protected target tables now back the order, commission, settlement, voiding, commission-record, and workbench routes; targeted lint and PostgreSQL integration suite (23/23) passed. Dedicated commercial route and transition coverage remains pending |
 | Prompt-library primary-flow manual test | User | pending | - | Requires an active PostgreSQL prompt revision after the Phase 4 import |
 | Login, authorization, tenant, and adjacent AI regression | User | pending | - | Must be repeated after the remaining Phase 3 slices |
@@ -515,8 +524,8 @@ phase. Never advance a phase based only on conversation memory.
 
 Phase 3 identity/enterprise core plus leads, formal floor plans, measurements,
 devices, their Mini Program aggregates, the package catalog, promotion workflow
-runtime, orders, commissions, and enterprise activation are switched. The next
-slice should migrate AI workflow/generation/media persistence and its bigint
+runtime, orders, commissions, enterprise activation, and AI style presets are
+switched. The next slice should migrate AI workflow/generation/media persistence and its bigint
 lead/plan consumers. Beyond
 the completed Phase 4 whitelist import, do not import production business data
 without an explicit migration slice and acceptance record.

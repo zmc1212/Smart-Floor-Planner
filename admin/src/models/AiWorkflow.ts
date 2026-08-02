@@ -3,9 +3,9 @@ import { multiTenantPlugin } from '@/lib/mongoose-tenant-plugin';
 import type { AiWorkflowSourceAssetRole, AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
 
 export interface IAiWorkflow extends Document {
-  enterpriseId: mongoose.Types.ObjectId;
+  enterpriseId: mongoose.Types.ObjectId | string;
   leadId: mongoose.Types.ObjectId;
-  operatorId: mongoose.Types.ObjectId;
+  operatorId: mongoose.Types.ObjectId | string;
   title: string;
   workflowLabel?: string;
   isPrimary: boolean;
@@ -23,8 +23,7 @@ export interface IAiWorkflow extends Document {
 const AiWorkflowSchema = new Schema<IAiWorkflow>(
   {
     enterpriseId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Enterprise',
+      type: Schema.Types.Mixed,
       required: true,
     },
     leadId: {
@@ -33,8 +32,7 @@ const AiWorkflowSchema = new Schema<IAiWorkflow>(
       required: true,
     },
     operatorId: {
-      type: Schema.Types.ObjectId,
-      ref: 'AdminUser',
+      type: Schema.Types.Mixed,
       required: true,
     },
     title: {
@@ -99,6 +97,11 @@ AiWorkflowSchema.index({ operatorId: 1, updatedAt: -1 });
 AiWorkflowSchema.index({ leadId: 1, updatedAt: -1 });
 
 AiWorkflowSchema.plugin(multiTenantPlugin);
+
+const existingAiWorkflow = mongoose.models.AiWorkflow as Model<IAiWorkflow> | undefined;
+if (existingAiWorkflow && existingAiWorkflow.schema.path('enterpriseId')?.instance !== 'Mixed') {
+  mongoose.deleteModel('AiWorkflow');
+}
 
 export const AiWorkflow: Model<IAiWorkflow> =
   (mongoose.models.AiWorkflow as Model<IAiWorkflow> | undefined) ||

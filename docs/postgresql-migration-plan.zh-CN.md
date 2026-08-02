@@ -145,7 +145,7 @@ RoomiAI 导入使用 [admin/scripts/import-roomi-prompts.ts](../admin/scripts/im
 | Phase 0.2 | 七牛配置、激活指针和加密字段核验 | 已完成 | 只读配置检查，未输出密钥 |
 | Phase 1 | PostgreSQL 实例、角色、连接池和 migration runner | 已完成 | Codex 自动验收与用户数据库健康/后台页面回归均通过 |
 | Phase 2 | PostgreSQL 目标 schema 和 Repository 基础层 | 已完成 | Codex 与用户验收已于 2026-08-01 通过 |
-| Phase 3 | API/业务代码从 Mongoose 切换到 PostgreSQL | 进行中 | 身份/企业核心、线索、正式户型、测量/设备、提示词库读取、角色、全局报备/媒体配置、套餐目录、报备记录、工作流通知、工作台、提醒运行时、订单/提成及企业激活已切换；AI/媒体域待完成 |
+| Phase 3 | API/业务代码从 Mongoose 切换到 PostgreSQL | 进行中 | 身份/企业核心、线索、正式户型、测量/设备、提示词库读取、角色、全局报备/媒体配置、套餐目录、报备记录、工作流通知、工作台、提醒运行时、订单/提成、企业激活及 AI 风格预设已切换；AI 工作流/生成/媒体资产域待完成 |
 | Phase 4 | RoomiAI snapshot、预览资源和七牛配置导入 | 进行中：待用户手动验收 | 2026-08-01 已写入 PostgreSQL 活动 Roomi 版本、960 个已校验本地预览、七牛配置并完成探测 |
 | Phase 5 | 管理端/小程序合同测试与切换演练 | 未开始 | 待补充测试报告和恢复演练 |
 | Phase 6 | 正式切换到 PostgreSQL | 未开始 | 待记录切换时间、版本和回滚窗口 |
@@ -471,7 +471,13 @@ Phase 2 用户手动验收清单：
   小程序测试 90/91；唯一失败是既有 API 环境断言期望 `localhost`、实际本地配置为
   `192.168.10.111`，与本 PostgreSQL 切片无关。生产 build 退出码为 0，并保留已知
   Windows `save-icons` standalone trace-copy 警告。
-- 生成任务持久化/模型档案同步以及 AI 工作流/生成/媒体仍需继续完成 Phase 3；其旧
+- AI 风格预设的默认初始化、读取和平台管理员更新现已在平台范围 PostgreSQL 事务中通过
+  `AiStylePresetRepository` 执行；公开预设 DTO 仍把 PostgreSQL bigint 以字符串 `_id` 返回。
+  定向 ESLint 与 PostgreSQL 集成测试均通过（26/26）。生产 build 已完成编译，但在未修改的
+  MongoDB 重试路由 `src/app/api/admin/ai-generations/[id]/retry/route.ts` 的类型检查处仍被阻断：
+  `generation.enterpriseId` 是 `string | ObjectId`，而调用方要求 `ObjectId`；该既有 AI 生成边界
+  不属于本切片。
+  生成任务持久化/模型档案同步以及 AI 工作流/生成/媒体仍需继续完成 Phase 3；其旧
   MongoDB ObjectId 边界在依赖切片完成前标记为 `Limited`。
 - 本切片未导入生产 PostgreSQL 数据、未删除 MongoDB 文档或七牛对象，也未
   重加密或输出密钥。仅在精确前缀核对后删除 1 条 `phase3-api-*` 已归档 API
@@ -489,6 +495,7 @@ Phase 3 验收状态：
 | 线索/正式户型/测量/设备及小程序聚合 | Codex | 通过 | 2026-08-01 | PostgreSQL 18/18；AI 106/106；定向 ESLint/build；迁移列表 API 认证后 200、未认证 401；覆盖租户隔离与关系清理；小程序 90/91，1 项为无关 API 环境期望失败 |
 | 套餐目录 API 与 Repository | Codex | 通过 | 2026-08-01 | PostgreSQL 20/20；定向 ESLint/build；认证 GET 200、未认证 GET 401；migration 容器已应用 `0008` 并确认唯一索引存在；运行时角色 DDL 以 `42501` 被拒绝；来源/目标套餐表均为 0 行，无需导入业务数据 |
 | 报备记录/工作流运行时与通知自动化 | Codex | 通过 | 2026-08-02 | 专用 migrator 已应用 `0009`/`0010`；PostgreSQL 23/23、定向 ESLint 和生产 build 通过；已验证租户 RLS、角色可见性、外键索引覆盖、含乐观版本条件的审批/驳回/释放、关系 DTO、按渠道通知去重、路由切换、工作台待办和提醒自动化；订单/提成仍为 MongoDB `Limited` |
+| AI 风格预设运行时 | Codex | 通过 | 2026-08-02 | 默认初始化、读取和管理员更新均使用 `AiStylePresetRepository` 与平台事务；图片 JSON 字段更新保留相邻字段；PostgreSQL 集成测试 26/26 与定向 ESLint 通过。未导入或删除业务数据。 |
 | 提示词库主流程手测 | 用户 | 待验证 | - | 需要 Phase 4 导入活动 PostgreSQL prompt revision 后执行 |
 | 登录、授权、租户与相邻 AI 回归 | 用户 | 待验证 | - | 其余 Phase 3 切片完成后重复执行 |
 
@@ -601,6 +608,6 @@ Phase 4 验收状态：
 > 2026-08-02 更新：订单、提成、工作台提成汇总及企业激活均已切换 PostgreSQL；下一批处理 AI 工作流、生成和媒体持久化。
 
 Phase 3 身份/企业核心、线索、正式户型、测量、设备、小程序聚合、套餐目录、报备
-工作流运行时、订单/提成及企业激活已切换。下一批迁移 AI 工作流、生成、媒体
+工作流运行时、订单/提成、企业激活及 AI 风格预设已切换。下一批迁移 AI 工作流、生成、媒体
 持久化及其 bigint 线索/户型消费者。除已完成的
 Phase 4 白名单导入外，没有显式迁移切片与验收记录时不得导入生产业务数据。

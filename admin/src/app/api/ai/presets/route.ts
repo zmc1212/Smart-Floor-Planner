@@ -1,13 +1,10 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { ensureDefaultAiStylePresets, listAiStylePresets } from '@/lib/ai/presets';
 import type { AiPresetType } from '@/lib/ai/preset-definitions';
 
 export async function GET(req: Request) {
   try {
-    await dbConnect();
-
     return await withTenantRoute(req, {}, async (context) => {
       await ensureDefaultAiStylePresets(context.userId);
 
