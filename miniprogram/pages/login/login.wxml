@@ -1,41 +1,39 @@
+<!--
+  THESIS: 登录像小 K 亲手打开家门，拒绝通用插画加表单的拼贴感。
+  OWN-WORLD: 暖白家居、亮绿空间门框、柔和白色面板与克制的细线图标。
+  STORY: 员工识别企业工作台，选择登录方式，授权后进入真实业务流程。
+  FIRST VIEWPORT: 上半屏是完整开门场景；登录面板在场景下缘上浮，能力摘要和返回入口同屏收束。
+  FORM: Operate 模式，按 design-references/all-pages-ip-v1/06-login.png 直接高保真还原。
+-->
 <view class="login-page">
-  <view class="hero-wrap">
-    <image class="hero-image" src="/images/login-hero.png" mode="widthFix"></image>
+  <view class="hero-wrap" aria-label="家客来企业客户工作台，欢迎回来，家客来伙伴">
+    <image class="hero-image" src="/images/login-v1/hero-scene.jpg" mode="aspectFill" />
   </view>
 
   <view class="login-card">
-    <view class="tabs">
-      <view class="tab {{loginType === 'phone' ? 'active' : ''}}" bindtap="switchTab" data-type="phone">
+    <view class="tabs" role="tablist">
+      <view class="tab {{loginType === 'phone' ? 'active' : ''}}" bindtap="switchTab" data-type="phone" role="tab" aria-selected="{{loginType === 'phone'}}">
         <text>快捷登录</text>
         <view class="tab-line"></view>
       </view>
-      <view class="tab {{loginType === 'password' ? 'active' : ''}}" bindtap="switchTab" data-type="password">
+      <view class="tab {{loginType === 'password' ? 'active' : ''}}" bindtap="switchTab" data-type="password" role="tab" aria-selected="{{loginType === 'password'}}">
         <text>账号登录</text>
         <view class="tab-line"></view>
       </view>
     </view>
 
-    <view wx:if="{{loginType === 'phone'}}" class="login-body">
-      <view class="wechat-icon">
-        <view class="bubble bubble-large">
-          <view class="eye eye-left"></view>
-          <view class="eye eye-right"></view>
-        </view>
-        <view class="bubble bubble-small">
-          <view class="eye eye-left"></view>
-          <view class="eye eye-right"></view>
-        </view>
-      </view>
-
+    <view wx:if="{{loginType === 'phone'}}" class="login-body quick-body">
+      <image class="wechat-icon" src="/images/login-v1/wechat.png" mode="aspectFit" />
       <view class="login-title">微信授权登录</view>
       <view class="login-desc">授权后即可使用完整功能</view>
 
       <button class="primary-btn" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber" loading="{{loading}}" disabled="{{loading}}">
-        手机号快捷登录
+        <image class="button-icon" src="/images/login-v1/smartphone.png" mode="aspectFit" />
+        <text>手机号快捷登录</text>
       </button>
 
       <view class="agreement">
-        <text class="check">✓</text>
+        <view class="agreement-check"></view>
         <text>我已阅读并同意</text>
         <text class="link">《用户协议》</text>
         <text>和</text>
@@ -54,53 +52,45 @@
         <input class="input" password placeholder="请输入登录密码" placeholder-class="placeholder" bindinput="onInputPassword" value="{{password}}" />
       </view>
 
-      <button class="primary-btn {{(!username || !password || loading) ? 'disabled' : ''}}" bindtap="onPasswordLogin" loading="{{loading}}" disabled="{{!username || !password || loading}}">
-        立即登录
+      <button class="primary-btn password-btn {{(!username || !password || loading) ? 'disabled' : ''}}" bindtap="onPasswordLogin" loading="{{loading}}" disabled="{{!username || !password || loading}}">
+        <text>立即登录</text>
       </button>
 
       <view class="staff-tip">
         <text class="tip-badge">i</text>
-        <text class="tip-text">账号登录主要面向设计师、地推员等企业内部员工。</text>
+        <text class="tip-text">账号登录面向设计师、地推员等企业内部员工。</text>
       </view>
     </view>
   </view>
 
   <view class="feature-row">
-    <view class="feature-card">
-      <view class="feature-icon target-icon">
-        <view class="target-dot"></view>
-      </view>
+    <view class="feature-item">
+      <image class="feature-icon" src="/images/login-v1/measure.png" mode="aspectFit" />
       <view class="feature-copy">
         <view class="feature-title">精准量房</view>
-        <view class="feature-desc">毫米级精度</view>
+        <view class="feature-desc">快速获取数据</view>
       </view>
     </view>
-    <view class="feature-card">
-      <view class="feature-icon ai-icon">AI</view>
+    <view class="feature-divider"></view>
+    <view class="feature-item">
+      <image class="feature-icon" src="/images/login-v1/ai.png" mode="aspectFit" />
       <view class="feature-copy">
         <view class="feature-title">AI设计</view>
-        <view class="feature-desc">智能设计方案</view>
+        <view class="feature-desc">高效方案生成</view>
       </view>
     </view>
-    <view class="feature-card">
-      <view class="feature-icon image-icon">
-        <view class="image-sun"></view>
-        <view class="image-mountain"></view>
-      </view>
+    <view class="feature-divider"></view>
+    <view class="feature-item">
+      <image class="feature-icon" src="/images/login-v1/images.png" mode="aspectFit" />
       <view class="feature-copy">
         <view class="feature-title">灵感图库</view>
-        <view class="feature-desc">海量实景案例</view>
+        <view class="feature-desc">海量案例参考</view>
       </view>
     </view>
   </view>
 
-  <view class="back-row" bindtap="onBack">
-    <view class="back-line"></view>
-    <view class="home-icon">
-      <view class="home-roof"></view>
-      <view class="home-body"></view>
-    </view>
+  <view class="back-row" bindtap="onBack" role="button" aria-label="返回首页">
     <text>返回首页</text>
-    <view class="back-line"></view>
+    <image class="back-chevron" src="/images/login-v1/chevron-right.png" mode="aspectFit" />
   </view>
 </view>

@@ -1,437 +1,178 @@
 'use client';
 
-import { notify } from '@/components/ui/operation-feedback';
-
-import React, { useEffect, useMemo, useState } from 'react';
-import { Loader2, Save, Settings2, Sparkles } from 'lucide-react';
+import Link from 'next/link';
+import { useRef } from 'react';
+import { PageContainer, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
+import { Avatar, Button, Result, Skeleton, Space, Tag, Typography } from 'antd';
+import { Pencil } from 'lucide-react';
+import {
+  AI_PRESET_TYPE_LABELS,
+  type AiPreset,
+  resolveLogicalModel,
+} from '@/components/ai-presets/types';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { useFetch } from '@/hooks/useFetch';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { cn } from '@/lib/utils';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 
-type AiPresetType = 'floor_plan_style' | 'furnishing_style' | 'scenario';
-type ImageQuality = 'standard' | 'hd' | 'low' | 'medium' | 'high';
-type ImageMode = 'generation' | 'edit';
+const TYPE_VALUE_ENUM = {
+  floor_plan_style: { text: 'AI 室内平面' },
+  furnishing_style: { text: 'AI 风格设计' },
+  scenario: { text: 'AI 设计工作流' },
+};
 
-interface AiPreset {
-  _id: string;
-  key: string;
-  type: AiPresetType;
-  name: string;
-  description: string;
-  icon: string;
-  previewClassName: string;
-  mockImageUrl?: string;
-  promptTemplate: string;
-  promptTemplateSecondStage?: string;
-  negativePrompt: string;
-  enabled: boolean;
-  sortOrder: number;
-  image: {
-    model: string;
-    logicalModelKey?: 'image.generate.standard' | 'image.edit.standard';
-    size: string;
-    quality: ImageQuality;
-    mode: ImageMode;
-  };
-}
-
-const PRESET_TABS: Array<{ type: AiPresetType; label: string; hint: string }> = [
-  { type: 'floor_plan_style', label: 'AI 室内平面', hint: '3D / 彩平 / CAD / 手绘' },
-  { type: 'furnishing_style', label: 'AI 风格设计', hint: '现代 / 北欧 / 奶油 / 轻奢 / 新中式' },
-  { type: 'scenario', label: 'AI 设计工作流', hint: '选风格 / 出基准方案 / 深化软装 / 生成提案' },
-];
-
-const QUALITY_OPTIONS: ImageQuality[] = ['low', 'medium', 'high', 'standard', 'hd'];
-const MODE_OPTIONS: ImageMode[] = ['edit', 'generation'];
-
-function toNumber(value: string, fallback = 0) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
-}
+const STATUS_VALUE_ENUM = {
+  true: { text: '已启用', status: 'Success' },
+  false: { text: '已停用', status: 'Default' },
+};
 
 export default function AiPresetsPage() {
+  const actionRef = useRef<ActionType>(null);
   const { user, isLoading: loadingUser } = useCurrentUser();
   const canManage = user?.role === 'super_admin' || user?.role === 'admin';
-  const [activeType, setActiveType] = useState<AiPresetType>('floor_plan_style');
-  const { data, isLoading, mutate } = useFetch<AiPreset[]>(
-    `/api/ai/presets?type=${activeType}&includeDisabled=true`
-  );
-  const presets = useMemo(() => data || [], [data]);
 
-  const [editingPreset, setEditingPreset] = useState<AiPreset | null>(null);
-  const [form, setForm] = useState<AiPreset | null>(null);
-  const [saving, setSaving] = useState(false);
+  const columns: ProColumns<AiPreset>[] = [
+    {
+      title: '预设名称',
+      dataIndex: 'name',
+      render: (_, preset) => (
+        <Space size={12} align="start">
+          <Avatar shape="square" className="!bg-primary !text-primary-foreground">
+            {preset.icon || 'AI'}
+          </Avatar>
+          <Space direction="vertical" size={0}>
+            <Link className="font-medium text-foreground hover:text-primary" href={`/ai-presets/${preset._id}`}>
+              {preset.name}
+            </Link>
+            <Typography.Text type="secondary" ellipsis={{ tooltip: preset.description }} className="max-w-80 text-xs">
+              {preset.description || '暂无描述'}
+            </Typography.Text>
+          </Space>
+        </Space>
+      ),
+    },
+    {
+      title: '标识',
+      dataIndex: 'key',
+      width: 180,
+      copyable: true,
+      render: (value) => <Typography.Text className="font-mono text-xs">{value}</Typography.Text>,
+    },
+    {
+      title: '类型',
+      dataIndex: 'type',
+      width: 160,
+      valueType: 'select',
+      valueEnum: TYPE_VALUE_ENUM,
+      render: (_, preset) => <Tag color={preset.type === 'scenario' ? 'blue' : 'green'}>{AI_PRESET_TYPE_LABELS[preset.type]}</Tag>,
+    },
+    {
+      title: '生图配置',
+      key: 'image',
+      width: 250,
+      hideInSearch: true,
+      render: (_, preset) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text className="font-mono text-xs">{resolveLogicalModel(preset)}</Typography.Text>
+          <Typography.Text type="secondary" className="text-xs">
+            {preset.image.size} · {preset.image.quality} · {preset.image.mode}
+          </Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: '状态',
+      dataIndex: 'enabled',
+      width: 110,
+      valueType: 'select',
+      valueEnum: STATUS_VALUE_ENUM,
+      render: (_, preset) => preset.enabled ? <Tag color="success">已启用</Tag> : <Tag>已停用</Tag>,
+    },
+    {
+      title: '排序',
+      dataIndex: 'sortOrder',
+      width: 90,
+      hideInSearch: true,
+    },
+    {
+      title: '更新时间',
+      dataIndex: 'updatedAt',
+      width: 180,
+      valueType: 'dateTime',
+      hideInSearch: true,
+      render: (_, preset) => preset.updatedAt ? new Date(preset.updatedAt).toLocaleString() : '—',
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      valueType: 'option',
+      fixed: 'right',
+      width: 100,
+      render: (_, preset) => [
+        <Button key="edit" type="link" icon={<Pencil size={15} />} href={`/ai-presets/${preset._id}`}>
+          编辑
+        </Button>,
+      ],
+    },
+  ];
 
-  useEffect(() => {
-    setForm(editingPreset ? JSON.parse(JSON.stringify(editingPreset)) as AiPreset : null);
-  }, [editingPreset]);
-
-  const sortedPresets = useMemo(
-    () => [...presets].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)),
-    [presets]
-  );
-
-  const updateField = (field: keyof AiPreset, value: string | boolean | number) => {
-    setForm((prev) => (prev ? { ...prev, [field]: value } : prev));
-  };
-
-  const updateImageField = (field: keyof AiPreset['image'], value: string) => {
-    setForm((prev) => (prev ? { ...prev, image: { ...prev.image, [field]: value } } : prev));
-  };
-
-  const handleSave = async () => {
-    if (!form) return;
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/ai/presets/${form._id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: form.name,
-          description: form.description,
-          icon: form.icon,
-          previewClassName: form.previewClassName,
-          mockImageUrl: form.mockImageUrl,
-          promptTemplate: form.promptTemplate,
-          promptTemplateSecondStage: form.promptTemplateSecondStage,
-          negativePrompt: form.negativePrompt,
-          enabled: form.enabled,
-          sortOrder: form.sortOrder,
-          image: form.image,
-        }),
-      });
-      const result = await res.json();
-      if (!result.success) {
-        notify.fromAlert(result.error || '保存失败');
-        return;
-      }
-
-      await mutate();
-      setEditingPreset(null);
-      notify.success('AI 预设已保存');
-    } catch (error) {
-      console.error(error);
-      notify.fromAlert('保存失败');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (loadingUser || (isLoading && presets.length === 0)) {
+  if (loadingUser) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="animate-spin" size={24} />
+      <div className="admin-page-frame">
+        <Skeleton active paragraph={{ rows: 8 }} />
       </div>
     );
   }
 
   if (!canManage) {
     return (
-      <div className="mx-auto max-w-3xl px-6 py-16">
-        <div className="rounded-2xl border bg-white p-10 shadow-sm">
-          <h1 className="mb-2 text-2xl font-bold">AI 预设配置</h1>
-          <p className="text-sm text-muted-foreground">只有 admin / super_admin 可以配置 AI 风格预设。</p>
-        </div>
+      <div className="admin-page-frame">
+        <PageContainer breadcrumbRender={false} className="admin-page-container" title="AI 预设配置">
+          <Result status="403" title="无权访问" subTitle="仅平台 admin / super_admin 可以管理 AI 预设。" />
+        </PageContainer>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white text-[#171717]">
-      <main className="mx-auto max-w-6xl px-6 py-8">
-        <div className="mb-8">
-          <div className="mb-2 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white">
-              <Settings2 size={20} />
-            </div>
-            <h1 className="text-[28px] font-bold tracking-tight">AI 预设配置</h1>
-            <Badge variant="secondary" className="border-none bg-violet-50 text-violet-700">
-              Admin Only
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            统一维护 Pollinations 风格预设，包括 prompt 模板、负向提示词和图片生成配置。
-          </p>
-        </div>
+    <div className="admin-page-frame">
+      <PageContainer
+        breadcrumbRender={false}
+        className="admin-page-container"
+        title="AI 预设配置"
+        content="统一维护室内平面、风格设计与 AI 设计工作流的提示词和生图参数。"
+      >
+        <ProTable<AiPreset>
+          actionRef={actionRef}
+          rowKey="_id"
+          columns={columns}
+          options={{ reload: true, density: true, setting: true }}
+          pagination={{ defaultPageSize: 10, showSizeChanger: true }}
+          search={{ labelWidth: 'auto', defaultCollapsed: false }}
+          scroll={{ x: 1220 }}
+          request={async (params) => {
+            const response = await fetch('/api/ai/presets?includeDisabled=true');
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.error || '读取 AI 预设失败');
 
-        <div className="mb-6 grid grid-cols-1 gap-3 md:grid-cols-2">
-          {PRESET_TABS.map((tab) => (
-            <button
-              key={tab.type}
-              type="button"
-              onClick={() => setActiveType(tab.type)}
-              className={cn(
-                'rounded-2xl border p-4 text-left transition-all',
-                activeType === tab.type ? 'border-violet-500 bg-violet-50 shadow-sm' : 'hover:border-zinc-300'
-              )}
-            >
-              <div className="font-bold">{tab.label}</div>
-              <div className="mt-1 text-sm text-muted-foreground">{tab.hint}</div>
-            </button>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {sortedPresets.map((preset) => (
-            <div key={preset._id} className="rounded-2xl border bg-white p-6 shadow-sm">
-              <div className="mb-4 flex items-start justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <div
-                    className={`flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br ${preset.previewClassName} text-sm font-bold text-white`}
-                  >
-                    {preset.icon || 'AI'}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-lg font-bold">{preset.name}</h2>
-                      {!preset.enabled && <Badge variant="outline">已停用</Badge>}
-                    </div>
-                    <p className="text-sm text-muted-foreground">{preset.description}</p>
-                  </div>
-                </div>
-                <Button size="sm" variant="outline" className="rounded-xl" onClick={() => setEditingPreset(preset)}>
-                  编辑
-                </Button>
-              </div>
-
-              <div className="space-y-2 text-sm text-muted-foreground">
-                <div>
-                  Key: <span className="font-mono text-foreground">{preset.key}</span>
-                </div>
-                <div>
-                  Type: <span className="font-mono text-foreground">{preset.type}</span>
-                </div>
-                <div>
-                  逻辑模型: <span className="font-mono text-foreground">{preset.image.logicalModelKey || (preset.image.mode === 'generation' ? 'image.generate.standard' : 'image.edit.standard')}</span>
-                </div>
-                <div>
-                  Output: <span className="font-mono text-foreground">{preset.image.size} / {preset.image.quality}</span>
-                </div>
-                <div>
-                  Mode: <span className="font-mono text-foreground">{preset.image.mode}</span>
-                </div>
-                <div>
-                  Mock 图: <span className="font-mono text-foreground">{preset.mockImageUrl || '未配置'}</span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <Dialog open={!!editingPreset} onOpenChange={(open) => !open && setEditingPreset(null)}>
-          <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto rounded-3xl border-none p-0 shadow-2xl">
-            <DialogHeader className="border-b bg-muted/20 p-8 pb-4">
-              <DialogTitle className="flex items-center gap-2 text-2xl font-bold">
-                <Sparkles size={20} />
-                编辑 AI 预设
-              </DialogTitle>
-              <DialogDescription>修改后会影响对应菜单的 Pollinations 参数和 MOCK 模式图片。</DialogDescription>
-            </DialogHeader>
-
-            {form && (
-              <div className="grid grid-cols-1 gap-8 p-8 lg:grid-cols-2">
-                <div className="space-y-5">
-                  <div className="space-y-2">
-                    <Label>名称</Label>
-                    <Input 
-                      placeholder="例如：彩色风格" 
-                      value={form.name} 
-                      onChange={(e) => updateField('name', e.target.value)} 
-                    />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label>描述</Label>
-                    <Input 
-                      placeholder="简单描述预设用途" 
-                      value={form.description} 
-                      onChange={(e) => updateField('description', e.target.value)} 
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>图标简称</Label>
-                      <Input 
-                        placeholder="2-3个大写字母" 
-                        value={form.icon} 
-                        onChange={(e) => updateField('icon', e.target.value)} 
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>排序权重</Label>
-                      <Input 
-                        type="number" 
-                        value={form.sortOrder} 
-                        onChange={(e) => updateField('sortOrder', toNumber(e.target.value, 0))} 
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>预览渐变 Class (Tailwind)</Label>
-                    <Input 
-                      className="font-mono text-xs" 
-                      value={form.previewClassName} 
-                      onChange={(e) => updateField('previewClassName', e.target.value)} 
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Mock 预览图地址</Label>
-                    <Input
-                      className="font-mono text-xs"
-                      placeholder="/static/previews/modern.png"
-                      value={form.mockImageUrl || ''}
-                      onChange={(e) => updateField('mockImageUrl', e.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Prompt 提示词模板</Label>
-                    <Textarea 
-                      className="min-h-40 text-sm leading-relaxed" 
-                      value={form.promptTemplate} 
-                      onChange={(e) => updateField('promptTemplate', e.target.value)} 
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Prompt 提示词模板 (第二阶段/级联生成 - 可选)</Label>
-                    <Textarea 
-                      className="min-h-32 text-sm leading-relaxed" 
-                      placeholder="仅用于需要两阶段级联生成的场景（如增强签单中脑力分析后的展板绘制）"
-                      value={form.promptTemplateSecondStage || ''} 
-                      onChange={(e) => updateField('promptTemplateSecondStage', e.target.value)} 
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>负向提示词 (Negative Prompt)</Label>
-                    <Textarea 
-                      className="min-h-24 text-sm" 
-                      value={form.negativePrompt} 
-                      onChange={(e) => updateField('negativePrompt', e.target.value)} 
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-5">
-                  <div className="rounded-2xl border bg-muted/20 p-6 space-y-5">
-                    <h3 className="text-sm font-bold flex items-center gap-2 mb-2">
-                      <Settings2 size={16} />
-                      图片能力配置
-                    </h3>
-                    
-                    <div className="space-y-2">
-                      <Label>逻辑模型</Label>
-                      <Select value={form.image.logicalModelKey || (form.image.mode === 'generation' ? 'image.generate.standard' : 'image.edit.standard')} onValueChange={(value) => updateImageField('logicalModelKey', value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="image.generate.standard">image.generate.standard</SelectItem><SelectItem value="image.edit.standard">image.edit.standard</SelectItem></SelectContent></Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Size (分辨率)</Label>
-                      <Input 
-                        className="font-mono text-xs" 
-                        value={form.image.size} 
-                        onChange={(e) => updateImageField('size', e.target.value)} 
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Quality (画质)</Label>
-                        <Select 
-                          value={form.image.quality} 
-                          onValueChange={(val) => updateImageField('quality', val)}
-                        >
-                          <SelectTrigger className="w-full h-10 rounded-xl">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {QUALITY_OPTIONS.map((quality) => (
-                              <SelectItem key={quality} value={quality}>
-                                {quality.toUpperCase()}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Mode (工作模式)</Label>
-                        <Select 
-                          value={form.image.mode} 
-                          onValueChange={(val) => updateImageField('mode', val)}
-                        >
-                          <SelectTrigger className="w-full h-10 rounded-xl">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {MODE_OPTIONS.map((mode) => (
-                              <SelectItem key={mode} value={mode}>
-                                {mode === 'edit' ? '图生图 (Edit)' : '文生图 (Gen)'}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between rounded-2xl border p-4 bg-white shadow-sm">
-                    <div className="space-y-0.5">
-                      <Label className="text-base">启用此预设</Label>
-                      <p className="text-xs text-muted-foreground">停用后该风格将从用户侧隐藏</p>
-                    </div>
-                    <input 
-                      type="checkbox" 
-                      className="h-5 w-5 rounded border-gray-300 text-violet-600 focus:ring-violet-600"
-                      checked={form.enabled} 
-                      onChange={(e) => updateField('enabled', e.target.checked)} 
-                    />
-                  </div>
-
-                  <div className="rounded-2xl border border-amber-100 bg-amber-50/50 p-4">
-                    <p className="text-xs text-amber-800 leading-relaxed">
-                      <strong>注意：</strong> 修改提示词模板时，请确保保留空间结构相关的描述，以免 AI 生成的方案偏离原始户型。工作流型 Prompt 通常需要更明确地说明“继承上一阶段产物”和“不要改变空间骨架”。
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <DialogFooter className="border-t bg-muted/10 p-8 pt-4">
-              <Button variant="ghost" onClick={() => setEditingPreset(null)}>
-                取消
-              </Button>
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? <Loader2 className="mr-2 animate-spin" size={16} /> : <Save className="mr-2" size={16} />}
-                保存预设
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </main>
+            const query = String(params.name || '').trim().toLocaleLowerCase();
+            const type = params.type ? String(params.type) : '';
+            const enabled = params.enabled === undefined ? '' : String(params.enabled);
+            const filtered = (result.data as AiPreset[]).filter((preset) => {
+              const matchesQuery = !query || [preset.name, preset.key, preset.description]
+                .some((value) => value.toLocaleLowerCase().includes(query));
+              const matchesType = !type || preset.type === type;
+              const matchesEnabled = !enabled || String(preset.enabled) === enabled;
+              return matchesQuery && matchesType && matchesEnabled;
+            });
+            const current = Number(params.current || 1);
+            const pageSize = Number(params.pageSize || 10);
+            const start = (current - 1) * pageSize;
+            return {
+              data: filtered.slice(start, start + pageSize),
+              total: filtered.length,
+              success: true,
+            };
+          }}
+        />
+      </PageContainer>
     </div>
   );
 }

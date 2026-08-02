@@ -91,19 +91,28 @@ test('Leads visual assets exist and micro-icons stay within budget', () => {
   ]) {
     assert.ok(fs.statSync(path.join(assetDir, filename)).size > 0);
   }
+
+  assert.ok(fs.statSync(
+    path.join(miniRoot, 'images', 'leads-ip-v1', 'client-concierge-scene.jpg')
+  ).size > 0);
 });
 
-test('Leads v4 uses purple remeasurement treatment and data-backed floor-plan previews', () => {
+test('Leads IP v1 uses the dossier composition and data-backed floor-plan previews', () => {
   assert.match(componentJs, /remeasuring: '\/images\/leads-v4\/ruler-purple\.png'/);
   assert.match(componentJs, /buildFloorPlanPreview\(lead\)/);
   assert.doesNotMatch(componentJs, /SCENE_THUMBNAILS|lead-scene-/);
   assert.match(componentWxml, /item\.planPreview\.segments/);
-  assert.match(componentWxml, /\/images\/leads-v4\/summary-scene\.png/);
+  assert.match(componentWxml, /class="lead-hero-summary"/);
+  assert.match(componentWxml, /class="lead-card-back"/);
+  assert.match(componentWxml, /class="tab-active-indicator"/);
   assert.doesNotMatch(componentWxml, /ellipsis\.png|class="more"/);
   assert.match(componentWxml, /class="card-bottom-row"/);
   assert.match(componentWxml, /class="lead-card-layer layer-\{\{item\.statusTone\}\}"/);
-  assert.match(componentWxss, /\.lead-card-layer\s*\{[^}]*width:\s*149rpx;[^}]*height:\s*53rpx;/s);
-  assert.match(componentWxss, /\.status-ribbon\s*\{[^}]*min-width:\s*142rpx;[^}]*height:\s*47rpx;/s);
+  assert.match(componentWxss, /\.lead-hero-card\s*\{[^}]*width:\s*326rpx;[^}]*height:\s*264rpx;/s);
+  assert.match(componentWxss, /\.lead-card-layer\s*\{[^}]*width:\s*132rpx;[^}]*height:\s*51rpx;/s);
+  assert.match(componentWxss, /\.lead-card\s*\{[^}]*height:\s*204rpx;/s);
+  assert.match(componentWxss, /\.status-ribbon\s*\{[^}]*min-width:\s*128rpx;[^}]*height:\s*48rpx;/s);
+  assert.match(componentWxss, /\.lead-plan-frame\s*\{[^}]*width:\s*220rpx;[^}]*height:\s*154rpx;/s);
 });
 
 test('Formal wall graphs are normalized into real thumbnail wall segments', () => {

@@ -56,11 +56,11 @@ Component({
       { id: 'designing', query: 'assigned', label: '设计中' },
       { id: 'converted', query: 'converted', label: '已成交' }
     ],
-    heroStats: [
-      { key: 'new', label: '今日新增', count: 0 },
-      { key: 'following', label: '跟进中', count: 0 },
-      { key: 'converted', label: '已成交', count: 0 }
-    ],
+    heroSummary: {
+      todayNew: 0,
+      following: 0,
+      converted: 0
+    },
     currentTab: 'all',
     currentTabIndex: 0,
     allLeads: [],
@@ -301,11 +301,11 @@ Component({
         : (stats.new || 0) + (stats.measuring || 0) + (stats.assigned || 0) + (stats.designing || 0);
 
       this.setData({
-        heroStats: [
-          { key: 'new', label: '今日新增', count: todayNew },
-          { key: 'following', label: '跟进中', count: following },
-          { key: 'converted', label: '已成交', count: stats.converted || leads.filter((lead) => lead.status === 'converted').length }
-        ]
+        heroSummary: {
+          todayNew,
+          following,
+          converted: stats.converted || leads.filter((lead) => lead.status === 'converted').length
+        }
       });
     }
   }

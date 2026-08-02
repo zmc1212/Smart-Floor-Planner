@@ -1,7 +1,7 @@
 const surveyLayout = require('../../utils/surveyLayout.js');
 
-const PREVIEW_WIDTH = 164;
-const PREVIEW_HEIGHT = 128;
+const PREVIEW_WIDTH = 220;
+const PREVIEW_HEIGHT = 154;
 const PREVIEW_PADDING = 12;
 
 function asPlan(value) {

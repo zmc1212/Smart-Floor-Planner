@@ -1,94 +1,274 @@
+<!--
+  THESIS: 把报备详情做成一张正在流转的客户服务单，而不是通用信息卡堆叠。
+  OWN-WORLD: 暖白纸面、薄荷阴影、绿色完成态与橙色当前态；小 K 是报备盖章员。
+  STORY: 先确认客户与所处阶段，再记录跟进，最后查看轨迹并分配后续任务。
+  FIRST VIEWPORT: 概览、四段进度、跟进表单、双条时间线和管理员任务分配依次紧凑展开。
+  FORM: Operate 模式；结构与构图锁定于已批准 10-promotion-record-detail.png，无概念随机种子。
+-->
 <wxs src="../../utils/mapping.wxs" module="map" />
-<view class="page">
-  <view wx:if="{{mode === 'create'}}" class="card create-card">
-    <view class="title">新建企业报备</view>
-    <view class="meta">录入合作企业与联系人信息，便于后续量房和设计任务流转。</view>
-    <input class="input" placeholder="企业名称*" placeholder-class="placeholder-cls" data-field="enterpriseName" bindinput="onInput" value="{{form.enterpriseName}}" />
-    <input class="input" placeholder="统一信用代码" placeholder-class="placeholder-cls" data-field="creditCode" bindinput="onInput" value="{{form.creditCode}}" />
-    <input class="input" placeholder="联系人" placeholder-class="placeholder-cls" data-field="contactPerson" bindinput="onInput" value="{{form.contactPerson}}" />
-    <input class="input" placeholder="联系电话*" placeholder-class="placeholder-cls" data-field="phone" bindinput="onInput" value="{{form.phone}}" />
-    <input class="input" placeholder="城市" placeholder-class="placeholder-cls" data-field="city" bindinput="onInput" value="{{form.city}}" />
-    <input class="input" placeholder="地址" placeholder-class="placeholder-cls" data-field="address" bindinput="onInput" value="{{form.address}}" />
-    <input class="input" placeholder="行业" placeholder-class="placeholder-cls" data-field="industry" bindinput="onInput" value="{{form.industry}}" />
-    <textarea class="textarea" placeholder="备注" placeholder-class="placeholder-cls" data-field="notes" bindinput="onInput" value="{{form.notes}}" />
-    <button class="secondary-btn" bindtap="onChooseLocation">选择定位 {{locationLabel}}</button>
-    <button class="primary-btn" bindtap="onCreateRecord">提交报备</button>
+<view class="page {{mode === 'create' ? 'create-page' : ''}}">
+  <view wx:if="{{mode === 'create'}}" class="create-shell">
+    <view class="create-hero">
+      <image class="create-hero-scene" src="/images/promotion-create/hero-scene.jpg" mode="aspectFill"></image>
+      <view class="create-hero-copy">
+        <view class="create-hero-title">录入合作企业与联系人信息，</view>
+        <view class="create-hero-subtitle">便于后续量房和设计任务流转。</view>
+      </view>
+      <view class="create-privacy-note">
+        <image class="create-privacy-icon" src="/images/promotion-create/shield-check.png" mode="aspectFit"></image>
+        <text>我们将严格保护您的数据安全</text>
+      </view>
+    </view>
+
+    <view class="create-form-card">
+      <view class="create-section-title">
+        <view class="create-section-marker"></view>
+        <text>企业信息</text>
+      </view>
+
+      <view class="create-form-row">
+        <image class="create-field-icon" src="/images/promotion-create/building-2.png" mode="aspectFit"></image>
+        <view class="create-field-label">企业名称 <text class="required-mark">*</text></view>
+        <view class="create-control">
+          <input class="create-input" placeholder="请输入企业全称" placeholder-class="create-placeholder" data-field="enterpriseName" bindinput="onInput" value="{{form.enterpriseName}}" maxlength="80" confirm-type="next" />
+        </view>
+      </view>
+
+      <view class="create-form-row">
+        <image class="create-field-icon" src="/images/promotion-create/badge-check.png" mode="aspectFit"></image>
+        <view class="create-field-label">统一信用代码</view>
+        <view class="create-control">
+          <input class="create-input" placeholder="请输入18位统一信用代码" placeholder-class="create-placeholder" data-field="creditCode" bindinput="onInput" value="{{form.creditCode}}" maxlength="18" confirm-type="next" />
+        </view>
+      </view>
+
+      <view class="create-form-row">
+        <image class="create-field-icon" src="/images/promotion-create/layers-3.png" mode="aspectFit"></image>
+        <view class="create-field-label">行业</view>
+        <picker class="create-picker" mode="selector" range="{{industryOptions}}" value="{{industryIndex}}" bindchange="onIndustryChange">
+          <view class="create-control create-picker-control">
+            <text class="{{form.industry ? 'create-control-value' : 'create-control-placeholder'}}">{{form.industry || '请选择行业'}}</text>
+            <image class="create-chevron" src="/images/promotion-create/chevron-right.png" mode="aspectFit"></image>
+          </view>
+        </picker>
+      </view>
+
+      <view class="create-form-row">
+        <image class="create-field-icon" src="/images/promotion-create/map-pin.png" mode="aspectFit"></image>
+        <view class="create-field-label">城市</view>
+        <picker class="create-picker" mode="region" value="{{selectedRegion}}" custom-item="其他" bindchange="onRegionChange">
+          <view class="create-control create-picker-control">
+            <text class="{{form.city ? 'create-control-value' : 'create-control-placeholder'}}">{{form.city || '请选择城市'}}</text>
+            <image class="create-chevron" src="/images/promotion-create/chevron-right.png" mode="aspectFit"></image>
+          </view>
+        </picker>
+      </view>
+
+      <view class="create-form-row">
+        <image class="create-field-icon" src="/images/promotion-create/map.png" mode="aspectFit"></image>
+        <view class="create-field-label">地址</view>
+        <view class="create-control">
+          <input class="create-input" placeholder="请输入详细地址" placeholder-class="create-placeholder" data-field="address" bindinput="onInput" value="{{form.address}}" maxlength="120" confirm-type="next" />
+        </view>
+      </view>
+    </view>
+
+    <view class="create-form-card create-contact-card">
+      <view class="create-section-title">
+        <view class="create-section-marker"></view>
+        <text>联系人</text>
+      </view>
+
+      <view class="create-form-row">
+        <image class="create-field-icon" src="/images/promotion-create/user-round.png" mode="aspectFit"></image>
+        <view class="create-field-label">联系人 <text class="required-mark">*</text></view>
+        <view class="create-control">
+          <input class="create-input" placeholder="请输入联系人姓名" placeholder-class="create-placeholder" data-field="contactPerson" bindinput="onInput" value="{{form.contactPerson}}" maxlength="40" confirm-type="next" />
+        </view>
+      </view>
+
+      <view class="create-form-row">
+        <image class="create-field-icon" src="/images/promotion-create/smartphone.png" mode="aspectFit"></image>
+        <view class="create-field-label">联系电话 <text class="required-mark">*</text></view>
+        <view class="create-control">
+          <input class="create-input" type="number" placeholder="请输入联系电话" placeholder-class="create-placeholder" data-field="phone" bindinput="onInput" value="{{form.phone}}" maxlength="20" confirm-type="next" />
+        </view>
+      </view>
+
+      <view class="create-form-row">
+        <image class="create-field-icon" src="/images/promotion-create/notebook-text.png" mode="aspectFit"></image>
+        <view class="create-field-label">备注</view>
+        <view class="create-control">
+          <input class="create-input" placeholder="可填写补充说明（选填）" placeholder-class="create-placeholder" data-field="notes" bindinput="onInput" value="{{form.notes}}" maxlength="200" confirm-type="done" />
+        </view>
+      </view>
+    </view>
+
+    <button class="create-location-button" bindtap="onChooseLocation" aria-label="选择企业定位">
+      <image class="create-location-icon" src="/images/promotion-create/location-pin.png" mode="aspectFit"></image>
+      <text class="create-location-label">{{locationLabel || '选择定位'}}</text>
+      <image class="create-location-chevron" src="/images/promotion-create/chevron-right.png" mode="aspectFit"></image>
+    </button>
+    <view class="create-location-help">点击选择企业所在位置，便于后续任务派发与现场对接。</view>
+
+    <button class="create-submit-button" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onCreateRecord">{{submitting ? '提交中' : '提交报备'}}</button>
   </view>
 
   <view wx:elif="{{record}}" class="detail">
-    <view class="card detail-hero">
+    <view class="paper-card hero-card">
       <view class="hero-copy">
-        <view class="eyebrow">报备详情</view>
-        <view class="title">{{record.enterpriseName}}</view>
-        <view class="meta">{{record.contactPerson}} · {{record.phone}}</view>
-        <view class="meta">业务进度：{{map.stage(record.businessStage)}}</view>
-        <view class="meta">归属状态：{{map.ownership(record.ownershipStatus)}}</view>
-        <view class="meta" wx:if="{{claimStatusText}}">认领状态：{{claimStatusText}}</view>
+        <view class="enterprise-name">{{record.enterpriseName}}</view>
+        <view class="contact-line">{{record.contactPerson}} · {{maskedPhone}}</view>
+        <view class="hero-tags">
+          <text class="status-tag next-stage">{{nextStageLabel}}</text>
+          <text class="status-tag current-stage">{{map.stage(record.businessStage)}}</text>
+        </view>
+        <view class="reported-at">报备时间：{{reportedAtText || '—'}}</view>
       </view>
-      <view class="hero-chip">{{followUpStatusText}}</view>
-    </view>
-
-    <view class="card" wx:if="{{userInfo.staffRole === 'salesperson' && record.poolStatus === 'in_pool'}}">
-      <view class="section-title">客户认领</view>
-      <view class="meta">该客户当前可认领，认领后将进入你的跟进列表。</view>
-      <button class="primary-btn" bindtap="onClaimRecord">立即认领</button>
-    </view>
-
-    <view class="card" wx:if="{{record.poolStatus === 'claimed' && record.claimRequest && record.claimRequest.status === 'pending'}}">
-      <view class="section-title">认领申请</view>
-      <view class="meta">该报备已提交认领申请，等待管理员审批。</view>
-      <view class="meta" wx:if="{{claimRequestedAtText}}">申请时间：{{claimRequestedAtText}}</view>
-    </view>
-
-    <view class="card stage-card">
-      <view class="section-title">跟进状态</view>
-      <view class="stage-row">
-        <view class="stage-node active">已报备</view>
-        <view class="stage-node active">已联系</view>
-        <view class="stage-node">待量房</view>
-        <view class="stage-node">设计中</view>
+      <view class="hero-visual" aria-hidden="true">
+        <image class="hero-scene" src="../../images/promotion-detail/hero-scene.png" mode="aspectFill" />
+        <view class="hero-stamp">{{map.stage(record.businessStage)}}</view>
       </view>
     </view>
 
-    <view class="card">
-      <view class="section-title">跟进记录</view>
-      <textarea class="textarea" placeholder="记录本次跟进内容" placeholder-class="placeholder-cls" bindinput="onFollowUpInput" value="{{followUpNote}}" />
-      <picker mode="date" value="{{followUpDate}}" bindchange="onFollowUpDateChange">
-        <view class="picker">下次跟进日期：{{followUpDate || '请选择日期'}}</view>
-      </picker>
-      <picker mode="time" value="{{followUpTime}}" bindchange="onFollowUpTimeChange">
-        <view class="picker">下次跟进时间：{{followUpTime || '09:00'}}</view>
-      </picker>
-      <button class="secondary-btn" bindtap="onSaveFollowUp">保存跟进</button>
-      <button class="primary-btn" bindtap="onCompleteFollowUp">标记已跟进</button>
-      <view class="log" wx:for="{{timelineRecords}}" wx:key="createdAt">
-        <view class="log-title">{{map.timelineType(item.type)}} · {{item.operator}}</view>
-        <view class="meta" wx:if="{{item.displayTime}}">{{item.displayTime}}</view>
-        <view class="log-content">{{item.content}}</view>
-        <view class="meta" wx:if="{{item.type === 'pool_claim_rejected' && item.metadata && item.metadata.rejectReason}}">驳回原因：{{item.metadata.rejectReason}}</view>
+    <view class="paper-card notice-card" wx:if="{{userInfo.staffRole === 'salesperson' && record.poolStatus === 'in_pool'}}">
+      <view class="notice-copy">
+        <view class="notice-title">客户可认领</view>
+        <view class="notice-text">认领后将进入你的跟进列表。</view>
+      </view>
+      <button class="notice-action" bindtap="onClaimRecord">立即认领</button>
+    </view>
+
+    <view class="paper-card notice-card" wx:if="{{record.poolStatus === 'claimed' && record.claimRequest && record.claimRequest.status === 'pending'}}">
+      <view class="notice-copy">
+        <view class="notice-title">认领申请待审批</view>
+        <view class="notice-text" wx:if="{{claimRequestedAtText}}">申请时间：{{claimRequestedAtText}}</view>
+      </view>
+      <view class="notice-state">等待中</view>
+    </view>
+
+    <view class="paper-card progress-card">
+      <view class="progress-rail">
+        <view class="progress-step" wx:for="{{stageSteps}}" wx:key="key">
+          <view class="progress-connector {{item.connectorComplete ? 'connector-complete' : ''}}" wx:if="{{index < stageSteps.length - 1}}"></view>
+          <view class="stage-dot stage-dot-{{item.state}}">
+            <icon wx:if="{{item.state === 'complete'}}" type="success_no_circle" size="14" color="#ffffff" />
+          </view>
+          <view class="stage-label {{item.state === 'current' ? 'stage-label-current' : ''}}">{{item.label}}</view>
+          <view class="stage-time">{{item.timeText || '—'}}</view>
+        </view>
       </view>
     </view>
 
-    <view class="card" wx:if="{{userInfo.staffRole === 'enterprise_admin'}}">
-      <view class="section-title">任务分配</view>
-      <picker mode="selector" range="{{measurers}}" range-key="displayName" bindchange="onMeasurerChange">
-        <view class="picker">测量员：{{selectedMeasurerName}}</view>
-      </picker>
-      <button class="secondary-btn" bindtap="onAssignMeasurer">分配测量员</button>
+    <view class="paper-card follow-card">
+      <view class="section-heading">
+        <view class="section-mark"></view>
+        <view class="section-title">跟进记录</view>
+      </view>
 
-      <picker mode="selector" range="{{designers}}" range-key="displayName" bindchange="onDesignerChange">
-        <view class="picker">设计师：{{selectedDesignerName}}</view>
-      </picker>
-      <button class="secondary-btn" bindtap="onAssignDesigner">分配设计师</button>
+      <view class="note-field">
+        <textarea
+          class="note-input"
+          maxlength="300"
+          placeholder="记录本次跟进内容"
+          placeholder-class="placeholder-cls"
+          bindinput="onFollowUpInput"
+          value="{{followUpNote}}"
+        />
+        <text class="note-count">{{followUpNoteLength}}/300</text>
+      </view>
 
-      <view wx:if="{{record.ownershipStatus === 'conflict_pending'}}">
-        <picker mode="selector" range="{{salespeople}}" range-key="displayName" bindchange="onPromoterChange">
-          <view class="picker">冲突归属：{{selectedPromoterName}}</view>
+      <view class="schedule-group">
+        <picker mode="date" value="{{followUpDate}}" bindchange="onFollowUpDateChange">
+          <view class="schedule-row">
+            <image class="schedule-icon" src="../../images/promotion-detail/calendar.png" mode="aspectFit" />
+            <text class="schedule-label">下次跟进日期</text>
+            <text class="schedule-value">{{followUpDate || '请选择'}}</text>
+            <view class="chevron"></view>
+          </view>
         </picker>
-        <button class="primary-btn" bindtap="onResolveConflict">确认归属</button>
+        <view class="schedule-divider"></view>
+        <picker mode="time" value="{{followUpTime}}" bindchange="onFollowUpTimeChange">
+          <view class="schedule-row">
+            <image class="schedule-icon" src="../../images/promotion-detail/clock.png" mode="aspectFit" />
+            <text class="schedule-label">下次跟进时间</text>
+            <text class="schedule-value">{{followUpTime || '请选择'}}</text>
+            <view class="chevron"></view>
+          </view>
+        </picker>
       </view>
+
+      <view class="follow-actions">
+        <button class="follow-btn follow-btn-secondary" bindtap="onSaveFollowUp">保存跟进</button>
+        <button class="follow-btn follow-btn-primary" bindtap="onCompleteFollowUp">标记已跟进</button>
+      </view>
+    </view>
+
+    <view class="paper-card timeline-card">
+      <view wx:if="{{timelineRecords.length > 0}}" class="timeline-list">
+        <view class="timeline-item" wx:for="{{timelineRecords}}" wx:key="key">
+          <view class="timeline-axis">
+            <view class="timeline-dot"></view>
+            <view class="timeline-line" wx:if="{{index < timelineRecords.length - 1}}"></view>
+          </view>
+          <view class="timeline-copy">
+            <view class="timeline-heading">
+              <text class="timeline-title">{{map.timelineType(item.type)}}</text>
+              <text class="self-badge" wx:if="{{item.isSelf}}">本人</text>
+              <text class="operator-badge" wx:else>{{item.operator}}</text>
+            </view>
+            <view class="timeline-content">{{item.content}}</view>
+            <view class="timeline-time" wx:if="{{item.displayTime}}">{{item.displayTime}}</view>
+            <view class="timeline-reason" wx:if="{{item.type === 'pool_claim_rejected' && item.metadata && item.metadata.rejectReason}}">驳回原因：{{item.metadata.rejectReason}}</view>
+          </view>
+        </view>
+      </view>
+      <view wx:else class="timeline-empty">暂无跟进记录</view>
+    </view>
+
+    <view class="paper-card assignment-card" wx:if="{{userInfo.staffRole === 'enterprise_admin'}}">
+      <view class="assignment-header">
+        <view class="section-heading assignment-title-wrap">
+          <view class="section-mark"></view>
+          <view class="section-title">任务分配</view>
+        </view>
+        <view class="assignment-hint">选择人员后分配</view>
+      </view>
+
+      <view class="assignment-list">
+        <view class="assignment-row">
+          <picker class="assignment-picker" mode="selector" range="{{measurers}}" range-key="displayName" bindchange="onMeasurerChange">
+            <view class="assignment-person">
+              <image class="assignment-icon" src="../../images/promotion-detail/measurer.png" mode="aspectFit" />
+              <text class="assignment-role">测量员</text>
+            </view>
+          </picker>
+          <text class="assignment-value">{{measurerAssignmentLabel}}</text>
+          <button class="assignment-btn" bindtap="onAssignMeasurer">分配</button>
+        </view>
+        <view class="assignment-divider"></view>
+        <view class="assignment-row">
+          <picker class="assignment-picker" mode="selector" range="{{designers}}" range-key="displayName" bindchange="onDesignerChange">
+            <view class="assignment-person">
+              <image class="assignment-icon" src="../../images/promotion-detail/designer.png" mode="aspectFit" />
+              <text class="assignment-role">设计师</text>
+            </view>
+          </picker>
+          <text class="assignment-value">{{designerAssignmentLabel}}</text>
+          <button class="assignment-btn" bindtap="onAssignDesigner">分配</button>
+        </view>
+      </view>
+
+      <view wx:if="{{record.ownershipStatus === 'conflict_pending'}}" class="conflict-row">
+        <picker class="conflict-picker" mode="selector" range="{{salespeople}}" range-key="displayName" bindchange="onPromoterChange">
+          <view>冲突归属：{{selectedPromoterName}}</view>
+        </picker>
+        <button class="assignment-btn conflict-btn" bindtap="onResolveConflict">确认</button>
+      </view>
+      <view class="assignment-note">* 分配后，相关人员可在工作台查看</view>
     </view>
   </view>
 
-  <view wx:else class="empty">加载中...</view>
+  <view wx:elif="{{loading}}" class="state-card">加载中...</view>
+  <view wx:else class="state-card">暂无可查看的报备详情</view>
 </view>

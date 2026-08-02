@@ -23,6 +23,13 @@ utilities, and the admin APIs they call.
 
 - `/pages/login/login`: WeChat phone quick login and username/password login via
   `/api/auth/miniprogram`; restores a JWT/user session in app storage.
+- Login visuals: `Implemented` against
+  `design-references/all-pages-ip-v1/06-login.png` at the iPhone 13 Pro
+  `390x844` baseline. The page uses the derived local Xiao K/F3 entry scene,
+  its approved brand/welcome lockup, an overlapping two-mode login panel,
+  locally rendered licensed icons, a compact capability summary, and a same-screen
+  return action. Authentication behavior, loading/error feedback, notification
+  opt-in, and route return semantics are unchanged.
 - Access is staff-only: password login requires an active backend `AdminUser`,
   while WeChat code/phone login must match an active `AdminUser` by bound OpenID
   or backend phone number. Unmatched external users receive `403` and cannot
@@ -39,9 +46,9 @@ utilities, and the admin APIs they call.
 - Status: PostgreSQL-backed login and context restoration are `Implemented`; a
   valid WeChat authorization, account, API base, and enterprise/provider
   configuration are required for the corresponding path. `Limited` during
-  Phase 3: AI generation/media and commercial workflow domains still backed by
-  MongoDB are not bigint-identity compatible until their scheduled PostgreSQL
-  switch. Leads, formal plans, measurements, and device bindings now use
+  Phase 3: AI generation/media and order/commission workflow domains still
+  backed by MongoDB are not bigint-identity compatible until their scheduled
+  PostgreSQL switch. Leads, formal plans, measurements, and device bindings now use
   PostgreSQL.
 
 ## Page Inventory
@@ -92,12 +99,16 @@ utilities, and the admin APIs they call.
 - Persistence: lead and formal-plan list/detail/create/update/delete operations
   use PostgreSQL RLS transactions and decimal-string IDs; lead-plan linking and
   primary-plan cleanup are atomic.
-- Visual baseline: `design-references/leads/leads-management-v4.png` at `390x844`.
-  The shipped page preserves the reference's scene-led header, three-stat summary,
-  compact search/actions, six-stage strip, color-coded floor-plan thumbnails rendered
-  from each lead's formal wall graph or real external preview URL, status-aligned
-  top-left stacked accents, status rails,
-  and shared five-item custom tab bar while rendering live customer data.
+- Visual baseline: `design-references/all-pages-ip-v1/02-leads-management.png`
+  at `390x844`. The shipped page follows its Xiao K client-concierge scene,
+  green dossier summary, search/filter/create action order, six dossier-index
+  stage tabs, stacked customer-record cards, and right-aligned color-coded
+  floor-plan thumbnails. Thumbnail geometry still renders from each lead's
+  formal wall graph or a real external preview URL, and live data, pagination,
+  errors, empty states, navigation, and the shared five-item custom tab bar remain
+  authoritative. The packaged scene derivative is
+  `images/leads-ip-v1/client-concierge-scene.jpg`; it contains no customer counts
+  or interactive controls.
 - Limited: lead creation and plan operations require a valid Mini Program session;
   phone and community validation are client-side plus server-side checks. Search
   covers the records currently loaded by pagination; choosing a status performs
@@ -113,15 +124,51 @@ utilities, and the admin APIs they call.
   `measure`, `design`, `admin`, `overdue`, `pool`), search/filter, public-pool
   claim or approval request, conflict ownership resolution, follow-up notes and
   due dates, measurer/designer/promoter assignment, and business-stage actions.
+  Create mode includes native industry and region selection, WeChat location
+  capture, required-field validation, duplicate-submit protection, and the
+  existing success redirect into the newly created report detail.
+- Visual baseline: the list page follows
+  `design-references/all-pages-ip-v1/09-promotion-records.png` at `390x844`. It
+  uses the derived local `images/promotion-records/hero-scene.jpg` asset for Xiao
+  K's enterprise-filing role, keeps the five `my`/`measure`/`design`/`overdue`/`pool`
+  views directly accessible, searches the loaded view by enterprise, contact,
+  phone, or location, and renders live workflow status, follow-up, timestamp,
+  claim, loading, and empty-state data. Because this route is not a top-level
+  TabBar page, its reference-matched dock delegates to the existing Home, Leads,
+  formal-surveying, AI Design, and Mine navigation flows.
+- Create visual baseline: `mode=create` follows
+  `design-references/all-pages-ip-v1/11-promotion-record-create.png` at
+  `390x844`. The page uses the derived local
+  `images/promotion-create/hero-scene.jpg` asset for Xiao K's enterprise-intake
+  role, separates enterprise and contact information into work-order sections,
+  uses one licensed local Lucide icon family, and keeps all labels and controls
+  as live WXML rather than image text. The real required fields remain company,
+  contact, and phone; city, industry, address, notes, location, submission
+  feedback, API payload, and redirect behavior remain authoritative.
+- Visual baseline: `design-references/all-pages-ip-v1/10-promotion-record-detail.png`
+  at `390x844`. The detail page now uses its compact Xiao K report-stamp scene,
+  server-driven four-stage rail, follow-up form, activity timeline, and
+  administrator assignment panel. Contact phone numbers are masked in this
+  detail view; the underlying record, stages, timestamps, staff options, role
+  checks, and mutations remain live.
+- PostgreSQL boundary: report creation, list/detail mutations, pool/conflict
+  actions, workbench todos, notification polling, and reminder state now use
+  the typed PostgreSQL repositories with tenant RLS. Existing response DTOs,
+  staff-role checks, and `leadId`/record navigation remain unchanged. Orders
+  and commissions remain MongoDB-backed and are exposed as a separate `Limited`
+  read/settlement domain.
 - Limited: available actions and list views depend on the logged-in staff role
-  and the server-side promotion workflow state.
+  and the server-side promotion workflow state; order/commission data still
+  depends on the legacy MongoDB commercial workflow.
 
 ### Commission Records
 
 - Page: `pages/commission-records/commission-records`.
 - API: `/api/commission-records`.
-- Implemented: summary cards and lists for pending, paid, and voided commission
-  records, with order/settlement explanation.
+- Implemented: a high-fidelity income-center summary, interactive filters, and
+  truthful order, amount, date, and status presentation for pending, paid, and
+  voided commission records. Loading, empty, failure/retry, and settlement
+  explanation states are included.
 - Limited: records are generated and settled by the enterprise order workflow;
   the Mini Program is a read view, not the settlement authority.
 
@@ -337,10 +384,11 @@ utilities, and the admin APIs they call.
   floor-plan requests have separate loading/error/retry states, so network
   failure is not rendered as an ordinary-user dashboard or an empty floor-plan
   list.
-- PostgreSQL boundary: profile, live lead/formal-plan/measurement summaries, and
-  floor-plan lists use typed RLS repositories. Commercial workflow records are
-  still on MongoDB, so the API returns `todos: []` until that Phase 3 slice rather
-  than passing bigint identities into MongoDB queries.
+- PostgreSQL boundary: profile, live lead/formal-plan/measurement summaries,
+  floor-plan lists, promotion records, and workbench todos use typed RLS
+  repositories. Home still reports `aiGeneratedCases: 0` until AI generation
+  moves; orders and commissions remain MongoDB-backed and are not queried with
+  PostgreSQL bigint identities.
 - Limited: workbench cards and task actions vary by professional role; some
   account/notification cards are informational rather than configuration APIs.
 

@@ -16,7 +16,8 @@ permission, or workflow changes.
   Mongoose/MongoDB for the remaining domains, Three.js, and SWR-style client
   fetching. Identity/enterprise core, leads, formal floor plans, measurements,
   BLE devices, prompt-library reads, system roles, global promotion configuration,
-  and media-storage configuration now use PostgreSQL.
+  media-storage configuration, package catalog, and promotion/workflow-notification
+  runtime paths now use PostgreSQL.
 - Local development: `npm run dev` runs the combined Next.js UI/API on port
   `3005`; Docker publishes MongoDB on host port `27018` (container
   `mongo:27017`) and PostgreSQL on host port `5432` (container
@@ -71,8 +72,9 @@ permission, or workflow changes.
 - User audit pages: `/users` and `/users/[openid]`, backed by `/api/users`,
   `/users/[openid]`, and `/users/me`, provide PostgreSQL Mini Program identity
   lookup/profile updates and PostgreSQL floor-plan counts/export lists.
-  `Limited`: AI and commercial workflows that still use MongoDB cannot consume
-  PostgreSQL bigint identities until their later Phase 3 slices.
+  `Limited`: AI generation/media and order/commission workflows that still use
+  MongoDB cannot consume PostgreSQL bigint identities until their later Phase 3
+  slices.
 
 ### 2. Navigation, Roles, And Access Control
 
@@ -126,24 +128,43 @@ permission, or workflow changes.
 - Pages: `/promotion-records`, `/workflow-logs`.
 - APIs: promotion records, `/promotion-records/pool`, `/conflicts`, platform
   promotion config, workbench summary/todos, notification logs, and reminder run.
-- Models/helpers: `PromotionEnterpriseRecord`, `WorkflowNotificationLog`,
-  PostgreSQL `PlatformConfigRepository`, `promotion-workflow`,
-  `promotion-timeline`, `workflow-automation`, WeChat, and WeCom notification
-  helpers.
+- Models/helpers: PostgreSQL `PlatformConfigRepository`,
+  `PromotionRecordRepository`, `WorkflowNotificationRepository`,
+  `postgres-promotion-workflow`, `postgres-workflow-automation`, WeChat, and
+  WeCom notification helpers. The legacy `PromotionEnterpriseRecord`/
+  `WorkflowNotificationLog` models remain only for the still-MongoDB order,
+  commission, enterprise-activation, and legacy helper compatibility paths.
 - Status: `Implemented`. Includes reporting, duplicate/conflict handling, public
   pool, claim/approval, assignment, business stages, follow-up timelines, SLA
   reminders, notification deduplication, and audit logs. Platform administrators
   read and update the global promotion protection/approval configuration through
-  PostgreSQL; promotion records and workflow persistence remain on MongoDB.
+  PostgreSQL. The PostgreSQL promotion/notification foundation now has explicit
+  bigint foreign keys for claim review, measurement/design assignment, and
+  conflict review; indexed role visibility; atomic conditional state updates;
+  relation DTOs; and channel-scoped notification deduplication. Promotion routes,
+  pool/conflict operations, workbench summary/todos,
+  notification logs/polling, and reminder automation now use typed PostgreSQL
+  repositories inside tenant/platform RLS transactions. Mutations use short
+  conditional updates; notification dispatch occurs after commit, and the
+  existing DTOs, role boundaries, and Mini Program API paths remain unchanged.
+  `Limited`: orders, commissions, enterprise activation, and AI/media consumers
+  that still reference legacy MongoDB ObjectIds remain on MongoDB until their
+  dependent slices are migrated.
 
 ### 6. Packages, Orders, And Commissions
 
 - Pages: `/packages`, `/enterprise-orders`, `/commissions`.
 - APIs: `/api/admin/packages`, `/enterprise-orders`, `/commissions`, settlement,
   and commission-record endpoints.
-- Models: `Package`, `EnterpriseOrder`, `CommissionRecord`.
+- Models: PostgreSQL `PackageRepository`; `EnterpriseOrder` and
+  `CommissionRecord` remain on MongoDB for this Phase 3 boundary.
 - Status: `Implemented`. Supports package catalog, enterprise order lifecycle,
   paid-order commission creation, commission listing, settlement, and voiding.
+  Package list/create/update/delete now runs in platform-scoped PostgreSQL
+  transactions, returns decimal-string bigint IDs through the existing `_id`
+  field, and keeps money values as exact `numeric(14,2)` data. `Limited`: orders
+  and commissions remain on MongoDB because their legacy ObjectId relations have
+  not yet been converted to PostgreSQL bigint relations.
 
 ### 7. Leads And Conversion Assets
 
@@ -539,11 +560,11 @@ permission, or workflow changes.
   continued; a unique customer/formal-plan match is reused automatically; when
   multiple schemes match, the client must choose instead of silently merging.
 - PostgreSQL workbench boundary: `/api/miniprogram/home` and `/mine` now derive
-  live lead, formal-plan, measurement, and device data through typed repositories;
-  `/api/users` also returns PostgreSQL plan counts. Home reports
-  `aiGeneratedCases: 0` until the AI generation domain moves, and Mine returns an
-  empty `todos` list until commercial workflow records move, rather than passing
-  bigint IDs into MongoDB queries.
+  live lead, formal-plan, measurement, device, promotion, and todo data through
+  typed RLS repositories; `/api/users` also returns PostgreSQL plan counts. Home
+  reports `aiGeneratedCases: 0` until the AI generation domain moves. Orders and
+  commissions remain MongoDB-backed and are not queried with PostgreSQL bigint
+  IDs.
 
 ### 13. Notifications, Automation, And Diagnostics
 
@@ -569,16 +590,19 @@ permission, or workflow changes.
   indexes, forced RLS on tenant data, transaction-local tenant/platform
   context, and typed repositories for enterprise, department, admin-user,
   Mini Program user, lead, floor-plan, measurement, device, platform-config,
-  prompt-library, system-role, and media-storage configuration access. The
+  prompt-library, system-role, media-storage configuration, promotion records,
+  workflow notifications, and reminder automation. The
   restore drill verifies table/RLS/policy counts.
   `/api/health` continues to require MongoDB and reports PostgreSQL separately;
   PostgreSQL becomes a health gate only when
   `POSTGRES_HEALTHCHECK_REQUIRED=true`. `Limited`: the PostgreSQL tables are
-  empty migration targets except for identity/enterprise core, leads, formal
-  floor plans, measurements, devices, prompt-library reads, system-role
-  configuration, global promotion configuration, and media-storage
-  configuration. Commercial records/workflows and AI generation/media remain
-  on MongoDB while Phase 3 proceeds incrementally. Docker
+  still migration targets for domains not yet switched. Identity/enterprise
+  core, leads, formal floor plans, measurements, devices, prompt-library reads,
+  system-role configuration, global promotion configuration, media-storage
+  configuration, promotion records, workflow notifications, and reminder
+  automation are PostgreSQL-backed. Orders/commissions, enterprise activation,
+  and AI generation/media remain on MongoDB while Phase 3 proceeds incrementally.
+  Docker
   migrations run explicitly
   through `npm run docker:migrate`; the long-running admin service is not given
   `DATABASE_MIGRATION_URL`. Docker build context excludes runtime `.env*`, local

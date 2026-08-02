@@ -1,43 +1,48 @@
 const app = getApp();
 const api = require('../../utils/api.js');
+const {
+  FILTERS,
+  buildPageData,
+  filterRecords
+} = require('./commission-records-model.js');
 
-function formatDate(value) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  });
-}
+function resolveNavigationMetrics() {
+  const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
+  const statusBarHeight = Number(windowInfo.statusBarHeight || 0);
+  let menuButton = null;
 
-function buildSummary(records) {
-  const month = new Date();
-  const monthStart = new Date(month.getFullYear(), month.getMonth(), 1).getTime();
-  return records.reduce(
-    (summary, item) => {
-      const amount = Number(item.commissionAmount || 0);
-      const generatedAt = item.generatedAt ? new Date(item.generatedAt).getTime() : 0;
-      if (item.status === 'pending_settlement') {
-        summary.pendingCount += 1;
-        summary.pendingAmount += amount;
-      }
-      if (item.status === 'paid') summary.paidCount += 1;
-      if (generatedAt >= monthStart) summary.monthCount += 1;
-      return summary;
-    },
-    { pendingCount: 0, pendingAmount: 0, paidCount: 0, monthCount: 0 }
-  );
+  try {
+    menuButton = wx.getMenuButtonBoundingClientRect();
+  } catch (error) {
+    menuButton = null;
+  }
+
+  const navContentHeight = menuButton && menuButton.height
+    ? Math.max(44, (menuButton.top - statusBarHeight) * 2 + menuButton.height)
+    : 44;
+
+  return {
+    statusBarHeight,
+    navBarHeightTotal: statusBarHeight + navContentHeight
+  };
 }
 
 Page({
   data: {
+    ...resolveNavigationMetrics(),
+    filters: FILTERS,
+    loadingRows: [1, 2, 3],
+    activeStatus: 'all',
     records: [],
+    filteredRecords: [],
     loading: true,
+    errorMessage: '',
     summary: {
       pendingCount: 0,
       pendingAmount: 0,
+      pendingAmountText: '0.00',
+      pendingAmountInteger: '0',
+      pendingAmountDecimal: '00',
       paidCount: 0,
       monthCount: 0
     }
@@ -47,26 +52,59 @@ Page({
     this.fetchData();
   },
 
+  onBack() {
+    wx.navigateBack({
+      delta: 1,
+      fail: () => {
+        wx.switchTab({ url: '/pages/mine/mine' });
+      }
+    });
+  },
+
+  onFilterTap(event) {
+    const status = event.currentTarget.dataset.status;
+    if (!FILTERS.some((item) => item.value === status) || status === this.data.activeStatus) {
+      return;
+    }
+
+    this.setData({
+      activeStatus: status,
+      filteredRecords: filterRecords(this.data.records, status)
+    });
+  },
+
+  onRetry() {
+    this.fetchData();
+  },
+
   async fetchData() {
     const openid = app.globalData.openid || wx.getStorageSync('openid');
     const token = wx.getStorageSync('token');
-    if (!openid && !token) return;
 
-    this.setData({ loading: true });
-    try {
-      const res = await api.request('/commission-records', 'GET');
-      const records = (res.data || []).map((item) => ({
-        ...item,
-        generatedAtText: formatDate(item.generatedAt)
-      }));
+    if (!openid && !token) {
       this.setData({
-        records,
-        summary: buildSummary(records),
-        loading: false
+        loading: false,
+        errorMessage: '登录状态已失效，请返回后重新进入'
       });
-    } catch (err) {
-      this.setData({ loading: false });
-      wx.showToast({ title: err.error || '加载失败', icon: 'none' });
+      return;
+    }
+
+    this.setData({ loading: true, errorMessage: '' });
+
+    try {
+      const response = await api.request('/commission-records', 'GET');
+      const rawRecords = response && Array.isArray(response.data) ? response.data : [];
+      const pageData = buildPageData(rawRecords, this.data.activeStatus);
+
+      this.setData({
+        ...pageData,
+        loading: false,
+        errorMessage: ''
+      });
+    } catch (error) {
+      const errorMessage = error && error.error ? error.error : '提成记录加载失败，请重试';
+      this.setData({ loading: false, errorMessage });
+      wx.showToast({ title: errorMessage, icon: 'none' });
     }
   }
 });

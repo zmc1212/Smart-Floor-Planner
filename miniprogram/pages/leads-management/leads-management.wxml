@@ -1,8 +1,15 @@
+<!--
+  THESIS: 客户档案簿让线索阶段成为可扫读的工作索引，而不是通用卡片仪表盘。
+  OWN-WORLD: 暖白纸张、品牌绿档案夹、状态色索引签与克制的纸张叠层。
+  STORY: 先看跟进摘要，再搜索或新增客户，最后进入真实客户及户型记录。
+  FIRST VIEWPORT: 左侧标题和绿色摘要与右侧客户管家场景咬合，操作区及阶段索引紧随其后。
+  FORM: 用户指定 all-pages-ip-v1 参考图；精确还原任务不适用概念随机种子。
+-->
 <view class="page-container sfp-tab-page">
   <view class="top-safe" style="height: {{statusBarHeight}}px;"></view>
 
   <view class="page-header" style="padding-right: {{capsuleRightInset}}px;">
-    <image class="header-scene" src="/images/leads-v4/header-scene.png" mode="aspectFit" />
+    <image class="header-scene" src="/images/leads-ip-v1/client-concierge-scene.jpg" mode="aspectFit" />
     <view class="header-copy">
       <view class="title-row">
         <text class="page-title">客户线索</text>

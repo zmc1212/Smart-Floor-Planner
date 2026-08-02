@@ -1,62 +1,86 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
+import { promotionRecordToDto } from '@/db/postgres-dto';
+import { PromotionRecordRepository } from '@/db/repositories';
+import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
+import { getPlatformB2BTenantContext } from '@/lib/auth';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { PromotionEnterpriseRecord } from '@/models/PromotionEnterpriseRecord';
+import { promotionActorFromContext, updatePromotionRecord } from '@/lib/postgres-promotion-workflow';
+import { dispatchWorkflowNotifications } from '@/lib/postgres-workflow-automation';
 
 export const dynamic = 'force-dynamic';
 
+function errorResponse(error: unknown) {
+  const message = error instanceof Error ? error.message : 'Unknown error';
+  return NextResponse.json({ success: false, error: message }, { status: 400 });
+}
+
 export async function GET(request: Request) {
   try {
-    await dbConnect();
     return await withTenantRoute(
       request,
       { roles: ['enterprise_admin', 'admin', 'super_admin'], requireEnterprise: true },
-      async () => {
-        const records = await PromotionEnterpriseRecord.find({ ownershipStatus: 'conflict_pending' })
-          .populate('promoterId', 'displayName username role')
-          .sort({ createdAt: -1 })
-          .lean();
-
-        return NextResponse.json({ success: true, data: records });
+      async (context) => {
+        const b2bContext = getPlatformB2BTenantContext(context);
+        const result = await withAdminPostgresTransaction(b2bContext, (transaction) =>
+          new PromotionRecordRepository(transaction).list({
+            ownershipStatus: 'conflict_pending',
+            limit: 200,
+          })
+        );
+        return NextResponse.json({
+          success: true,
+          data: result.rows.map(promotionRecordToDto),
+          pagination: { total: result.total },
+        });
       }
     );
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error) {
+    return errorResponse(error);
   }
 }
 
 export async function POST(request: Request) {
   try {
-    await dbConnect();
     return await withTenantRoute(
       request,
       { roles: ['enterprise_admin', 'admin', 'super_admin'], requireEnterprise: true },
       async (context) => {
-        const body = await request.json();
+        const body = (await request.json()) as Record<string, unknown>;
         if (!body.recordId || !body.promoterId) {
-          return NextResponse.json({ success: false, error: 'recordId and promoterId are required' }, { status: 400 });
+          return NextResponse.json(
+            { success: false, error: 'recordId and promoterId are required' },
+            { status: 400 }
+          );
         }
-
-        const updated = await PromotionEnterpriseRecord.findByIdAndUpdate(
-          body.recordId,
-          {
-            $set: {
-              promoterId: body.promoterId,
-              ownershipStatus: 'manually_locked',
-              'conflictInfo.reviewedBy': context.userId,
-              'conflictInfo.reviewedAt': new Date(),
-              'conflictInfo.resolution': body.resolution || 'manual_override',
-            },
-          },
-          { new: true }
-        )
-          .populate('promoterId', 'displayName username role')
-          .lean();
-
-        return NextResponse.json({ success: true, data: updated });
+        const b2bContext = getPlatformB2BTenantContext(context);
+        const actor = promotionActorFromContext({
+          id: b2bContext.userId,
+          role: b2bContext.role,
+          name: b2bContext.username,
+          enterpriseId: b2bContext.enterpriseId,
+        });
+        const result = await withAdminPostgresTransaction(b2bContext, (transaction) =>
+          updatePromotionRecord(transaction, body.recordId, {
+            ...body,
+            ownershipStatus: 'manually_locked',
+          }, actor)
+        );
+        if (!result) {
+          return NextResponse.json({ success: false, error: 'Record not found' }, { status: 404 });
+        }
+        for (const job of result.notificationJobs) {
+          await dispatchWorkflowNotifications({
+            record: result.record,
+            notificationType: job.notificationType,
+            recipientRoles: job.recipientRoles,
+            message: job.message,
+            dedupeSuffix: job.dedupeSuffix,
+          });
+        }
+        return NextResponse.json({ success: true, data: promotionRecordToDto(result.record) });
       }
     );
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error) {
+    return errorResponse(error);
   }
 }

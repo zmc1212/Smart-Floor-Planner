@@ -9,6 +9,112 @@ function formatPickerTime(date) {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }
 
+const STAGE_INDEX = {
+  reported: 0,
+  contacted: 1,
+  measuring: 2,
+  designing: 3,
+  quoted: 4,
+  paid: 4,
+};
+
+function formatDateTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function formatStageTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+function maskPhone(value) {
+  const phone = String(value || '').trim();
+  if (/^1\d{10}$/.test(phone)) return `${phone.slice(0, 3)}****${phone.slice(-4)}`;
+  if (phone.length > 7) return `${phone.slice(0, 3)}****${phone.slice(-4)}`;
+  return phone;
+}
+
+function getStaffName(value, fallback) {
+  if (!value) return fallback;
+  if (typeof value === 'string') return fallback;
+  return value.displayName || value.username || fallback;
+}
+
+function getOperatorId(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return String(value._id || value.id || '');
+}
+
+function buildNextStageLabel(stage) {
+  const labels = {
+    reported: '待联系',
+    contacted: '待量房',
+    measuring: '量房中',
+    designing: '设计中',
+    quoted: '待成交',
+    paid: '已成交',
+    closed_lost: '已失效',
+  };
+  return labels[stage] || '待跟进';
+}
+
+function buildStageSteps(record) {
+  const stage = record.businessStage || 'reported';
+  const stageIndex = STAGE_INDEX[stage] ?? 0;
+  const followUps = Array.isArray(record.followUpRecords) ? record.followUpRecords : [];
+  const firstContact = followUps
+    .filter((item) => item.type === 'follow_up')
+    .sort((a, b) => new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime())[0];
+  const terminalComplete = stage === 'quoted' || stage === 'paid';
+  const isClosedLost = stage === 'closed_lost';
+  const currentIndex = terminalComplete || isClosedLost
+    ? -1
+    : stage === 'reported'
+      ? 1
+      : stage === 'contacted'
+        ? 2
+        : Math.min(stageIndex, 3);
+  const completedThrough = terminalComplete
+    ? 3
+    : isClosedLost
+      ? 0
+      : stage === 'reported'
+        ? 0
+        : stage === 'contacted'
+          ? 1
+          : Math.max(1, currentIndex - 1);
+  const labels = [
+    '已报备',
+    stage === 'reported' ? '待联系' : '已联系',
+    stage === 'measuring' ? '量房中' : '待量房',
+    terminalComplete ? '设计完成' : '设计中',
+  ];
+  const dates = [
+    record.createdAt,
+    firstContact && firstContact.createdAt,
+    record.measureTask && (record.measureTask.acceptedAt || record.measureTask.assignedAt),
+    record.designTask && (record.designTask.completedAt || record.designTask.assignedAt),
+  ];
+
+  return labels.map((label, index) => {
+    const state = index <= completedThrough ? 'complete' : index === currentIndex ? 'current' : 'pending';
+    const nextState = index + 1 <= completedThrough ? 'complete' : index + 1 === currentIndex ? 'current' : 'pending';
+    return {
+      key: `stage-${index}`,
+      label,
+      state,
+      timeText: state === 'complete' ? formatStageTime(dates[index]) : '',
+      connectorComplete: index < labels.length - 1 && nextState !== 'pending',
+    };
+  });
+}
+
 Page({
   data: {
     mode: 'detail',
@@ -28,9 +134,14 @@ Page({
     },
     location: null,
     locationLabel: '',
+    submitting: false,
+    industryOptions: ['装修公司', '设计公司', '建材企业', '施工企业', '房地产/物业', '其他'],
+    industryIndex: -1,
+    selectedRegion: [],
     followUpNote: '',
     followUpDate: '',
-    followUpTime: '09:00',
+    followUpTime: '',
+    followUpNoteLength: 0,
     followUpStatusText: '',
     claimStatusText: '',
     claimRequestedAtText: '',
@@ -47,17 +158,23 @@ Page({
     promoterIndex: -1,
     selectedMeasurerName: '选择测量员',
     selectedDesignerName: '选择设计师',
-    selectedPromoterName: '选择地推员'
+    selectedPromoterName: '选择地推员',
+    measurerAssignmentLabel: '未分配',
+    designerAssignmentLabel: '未分配',
+    maskedPhone: '',
+    nextStageLabel: '待跟进',
+    reportedAtText: '',
+    stageSteps: []
   },
 
   onLoad(options) {
     this.setData({
       mode: options.mode || 'detail',
       recordId: options.id || '',
-      userInfo: app.globalData.userInfo || {}
+      userInfo: app.globalData.userInfo || wx.getStorageSync('userInfo') || {}
     });
     wx.setNavigationBarTitle({
-      title: options.mode === 'create' ? '新建报备' : '报备详情'
+      title: options.mode === 'create' ? '新建企业报备' : '报备详情'
     });
   },
 
@@ -68,7 +185,8 @@ Page({
 
   async fetchDetail() {
     const openid = app.globalData.openid;
-    if (!openid || !this.data.recordId) return;
+    const token = wx.getStorageSync('token');
+    if ((!openid && !token) || !this.data.recordId) return;
 
     this.setData({ loading: true });
     try {
@@ -76,29 +194,46 @@ Page({
       if (res.success) {
         const record = res.data;
         const nextFollowUpAt = record.nextFollowUpAt ? new Date(record.nextFollowUpAt) : null;
+        const currentUser = this.data.userInfo || {};
+        const currentUserId = String(currentUser._id || currentUser.id || '');
+        const currentUserName = currentUser.displayName || currentUser.username || '';
+        const timelineRecords = (record.followUpRecords || [])
+          .slice()
+          .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+          .map((item, index) => ({
+            ...item,
+            key: `${item.createdAt || 'timeline'}-${index}`,
+            displayTime: formatDateTime(item.createdAt),
+            isSelf: Boolean(
+              (currentUserId && getOperatorId(item.operatorId) === currentUserId) ||
+              (currentUserName && item.operator === currentUserName)
+            ),
+          }));
 
         this.setData({
           record,
           followUpDate: nextFollowUpAt ? formatPickerDate(nextFollowUpAt) : '',
-          followUpTime: nextFollowUpAt ? formatPickerTime(nextFollowUpAt) : '09:00',
+          followUpTime: nextFollowUpAt ? formatPickerTime(nextFollowUpAt) : '',
           followUpStatusText: this.buildDueStatusText(record.nextFollowUpAt, '跟进'),
           claimStatusText: this.buildClaimStatusText(record),
           claimRequestedAtText: record.claimRequest && record.claimRequest.requestedAt ? this.formatTimelineDate(record.claimRequest.requestedAt) : '',
           measureDueText: this.buildDueStatusText(record.measureTask && record.measureTask.dueAt, '测量'),
           designDueText: this.buildDueStatusText(record.designTask && record.designTask.dueAt, '设计'),
-          timelineRecords: (record.followUpRecords || [])
-            .slice()
-            .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
-            .map((item) => ({
-              ...item,
-              displayTime: this.formatTimelineDate(item.createdAt),
-            })),
+          timelineRecords,
+          maskedPhone: maskPhone(record.phone),
+          nextStageLabel: buildNextStageLabel(record.businessStage),
+          reportedAtText: formatDateTime(record.createdAt),
+          stageSteps: buildStageSteps(record),
+          measurerAssignmentLabel: getStaffName(record.measureTask && record.measureTask.assignedTo, '未分配'),
+          designerAssignmentLabel: getStaffName(record.designTask && record.designTask.assignedTo, '未分配'),
           loading: false
         });
 
-        if ((app.globalData.userInfo || {}).staffRole === 'enterprise_admin') {
+        if ((this.data.userInfo || {}).staffRole === 'enterprise_admin') {
           this.fetchStaffOptions(record);
         }
+      } else {
+        this.setData({ loading: false });
       }
     } catch (err) {
       this.setData({ loading: false });
@@ -123,11 +258,13 @@ Page({
         measurers,
         designers,
         salespeople,
-        measurerIndex: measurers.findIndex(item => item._id === record.measureTask.assignedTo?._id),
-        designerIndex: designers.findIndex(item => item._id === record.designTask.assignedTo?._id),
+        measurerIndex: measurers.findIndex(item => item._id === (record.measureTask && record.measureTask.assignedTo?._id)),
+        designerIndex: designers.findIndex(item => item._id === (record.designTask && record.designTask.assignedTo?._id)),
         promoterIndex: salespeople.findIndex(item => item._id === ((record.promoterId && record.promoterId._id) || record.promoterId)),
-        selectedMeasurerName: record.measureTask.assignedTo?.displayName || record.measureTask.assignedTo?.username || '选择测量员',
-        selectedDesignerName: record.designTask.assignedTo?.displayName || record.designTask.assignedTo?.username || '选择设计师',
+        selectedMeasurerName: getStaffName(record.measureTask && record.measureTask.assignedTo, '选择测量员'),
+        selectedDesignerName: getStaffName(record.designTask && record.designTask.assignedTo, '选择设计师'),
+        measurerAssignmentLabel: getStaffName(record.measureTask && record.measureTask.assignedTo, '未分配'),
+        designerAssignmentLabel: getStaffName(record.designTask && record.designTask.assignedTo, '未分配'),
         selectedPromoterName: (record.promoterId && (record.promoterId.displayName || record.promoterId.username)) || '选择地推员'
       });
     } catch (err) {
@@ -157,8 +294,29 @@ Page({
     });
   },
 
+  onIndustryChange(e) {
+    const industryIndex = Number(e.detail.value);
+    const industry = this.data.industryOptions[industryIndex] || '';
+    this.setData({
+      industryIndex,
+      'form.industry': industry
+    });
+  },
+
+  onRegionChange(e) {
+    const selectedRegion = e.detail.value || [];
+    this.setData({
+      selectedRegion,
+      'form.city': selectedRegion.filter(Boolean).join(' ')
+    });
+  },
+
   onFollowUpInput(e) {
-    this.setData({ followUpNote: e.detail.value });
+    const followUpNote = e.detail.value || '';
+    this.setData({
+      followUpNote,
+      followUpNoteLength: followUpNote.length
+    });
   },
 
   onFollowUpDateChange(e) {
@@ -178,6 +336,7 @@ Page({
   },
 
   async onCreateRecord() {
+    if (this.data.submitting) return;
     const openid = app.globalData.openid;
     const { form } = this.data;
     if (!form.enterpriseName || !form.contactPerson || !form.phone) {
@@ -185,6 +344,7 @@ Page({
       return;
     }
 
+    this.setData({ submitting: true });
     wx.showLoading({ title: '提交中' });
     try {
       const res = await api.request('/promotion-records', 'POST', {
@@ -193,15 +353,20 @@ Page({
       });
       wx.hideLoading();
       if (res.success) {
+        this.setData({ submitting: false });
         wx.showToast({ title: '报备成功', icon: 'success' });
         setTimeout(() => {
           wx.redirectTo({
             url: `/pages/promotion-record-detail/promotion-record-detail?id=${res.data._id}`
           });
         }, 600);
+      } else {
+        this.setData({ submitting: false });
+        wx.showToast({ title: res.error || '提交失败', icon: 'none' });
       }
     } catch (err) {
       wx.hideLoading();
+      this.setData({ submitting: false });
       wx.showToast({ title: err.error || '提交失败', icon: 'none' });
     }
   },
@@ -237,6 +402,7 @@ Page({
         wx.showToast({ title: '操作成功', icon: 'success' });
         this.setData({
           followUpNote: '',
+          followUpNoteLength: 0,
           measureResultSummary: '',
           designNote: ''
         });
@@ -292,7 +458,8 @@ Page({
     const item = this.data.measurers[measurerIndex];
     this.setData({
       measurerIndex,
-      selectedMeasurerName: item ? (item.displayName || item.username) : '选择测量员'
+      selectedMeasurerName: item ? (item.displayName || item.username) : '选择测量员',
+      measurerAssignmentLabel: item ? (item.displayName || item.username) : '未分配'
     });
   },
 
@@ -301,7 +468,8 @@ Page({
     const item = this.data.designers[designerIndex];
     this.setData({
       designerIndex,
-      selectedDesignerName: item ? (item.displayName || item.username) : '选择设计师'
+      selectedDesignerName: item ? (item.displayName || item.username) : '选择设计师',
+      designerAssignmentLabel: item ? (item.displayName || item.username) : '未分配'
     });
   },
 
@@ -367,9 +535,6 @@ Page({
   },
 
   formatTimelineDate(value) {
-    if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    return `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    return formatDateTime(value);
   }
 });

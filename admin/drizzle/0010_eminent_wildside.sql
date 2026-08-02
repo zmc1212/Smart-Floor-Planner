@@ -1,0 +1,2 @@
+CREATE INDEX "promotion_records_claim_reviewer_idx" ON "app"."promotion_enterprise_records" USING btree ("claim_reviewed_by");--> statement-breakpoint
+CREATE INDEX "promotion_records_conflict_reviewer_idx" ON "app"."promotion_enterprise_records" USING btree ("conflict_reviewed_by");

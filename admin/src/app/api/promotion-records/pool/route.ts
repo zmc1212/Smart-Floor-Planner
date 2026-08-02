@@ -1,155 +1,151 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import { getTenantContext } from '@/lib/auth';
+import { promotionRecordToDto } from '@/db/postgres-dto';
+import { getPlatformB2BTenantContext, getTenantContext } from '@/lib/auth';
+import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import {
+  withAdminPostgresTransaction,
+  withMiniProgramPostgresTransaction,
+} from '@/lib/postgres-request-scope';
 import {
   approveClaimFromPool,
   assignPoolRecordToPromoter,
   claimFromPool,
-  getPopulateQuery,
+  listPoolRecords,
+  promotionActorFromContext,
   rejectClaimFromPool,
   releaseToPool,
-} from '@/lib/promotion-workflow';
-import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+  type PromotionRouteActor,
+} from '@/lib/postgres-promotion-workflow';
+import { getPlatformPromotionConfig } from '@/lib/platform-promotion-config';
+import type { PostgresTransaction } from '@/db/transaction';
 
 export const dynamic = 'force-dynamic';
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Unknown error';
+interface PromotionScope {
+  actor: PromotionRouteActor;
+  execute<T>(callback: (transaction: PostgresTransaction) => Promise<T>): Promise<T>;
 }
 
-/**
- * GET /api/promotion-records/pool
- * 获取公海池中可认领的报备记录
- */
+async function getScope(request: Request): Promise<PromotionScope | null> {
+  const mini = await resolveMiniProgramContext(request);
+  if (mini) {
+    if (!mini.staff) return null;
+    const actor = promotionActorFromContext({
+      id: mini.staff._id,
+      role: mini.staff.role,
+      name: mini.staff.displayName || mini.staff.username,
+      enterpriseId: mini.staff.enterpriseId ?? mini.enterpriseId,
+    });
+    return {
+      actor,
+      execute: <T>(callback: (transaction: PostgresTransaction) => Promise<T>) =>
+        withMiniProgramPostgresTransaction(mini, callback),
+    };
+  }
+  const context = await getTenantContext(request);
+  if (!context) return null;
+  const b2bContext = getPlatformB2BTenantContext(context);
+  const actor = promotionActorFromContext({
+    id: b2bContext.userId,
+    role: b2bContext.role,
+    name: b2bContext.username,
+    enterpriseId: b2bContext.enterpriseId,
+  });
+  return {
+    actor,
+    execute: <T>(callback: (transaction: PostgresTransaction) => Promise<T>) =>
+      withAdminPostgresTransaction(b2bContext, callback),
+  };
+}
+
+function errorResponse(error: unknown) {
+  const message = error instanceof Error ? error.message : 'Unknown error';
+  return NextResponse.json({ success: false, error: message }, { status: 400 });
+}
+
 export async function GET(request: Request) {
   try {
-    await dbConnect();
-    const { searchParams } = new URL(request.url);
-    
-    // Try Mini Program JWT first
-    const mpContext = await resolveMiniProgramContext(request);
-    let context;
-
-    if (mpContext && mpContext.staff) {
-      context = {
-        role: mpContext.staff.role,
-        userId: mpContext.staff._id.toString(),
-        enterpriseId: mpContext.staff.enterpriseId?.toString(),
-      };
-    } else {
-      context = await getTenantContext(request);
-    }
-
-    if (!context || !['salesperson', 'enterprise_admin', 'admin', 'super_admin'].includes(context.role)) {
+    const scope = await getScope(request);
+    if (!scope || !['salesperson', 'enterprise_admin', 'admin', 'super_admin'].includes(scope.actor.role)) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
-
-    const search = searchParams.get('search');
-    const requestedPoolStatus = searchParams.get('poolStatus');
-    const isManager = !!context && ['enterprise_admin', 'admin', 'super_admin'].includes(context.role);
-    const query: Record<string, unknown> = {
-      poolStatus:
-        requestedPoolStatus === 'claimed' && isManager
-          ? 'claimed'
-          : requestedPoolStatus === 'all' && isManager
-            ? { $in: ['in_pool', 'claimed'] }
-            : 'in_pool',
-    };
-    if (search?.trim()) {
-      const regex = new RegExp(search.trim(), 'i');
-      query.$or = [
-        { enterpriseName: regex },
-        { contactPerson: regex },
-        { phone: regex },
-        { creditCode: regex },
-      ];
-    }
-
-    const records = await getPopulateQuery(query).sort({ lastActivityAt: -1 }).lean();
-
-    return NextResponse.json({ success: true, data: records });
-  } catch (error: unknown) {
-    return NextResponse.json({ success: false, error: getErrorMessage(error) }, { status: 500 });
+    const { searchParams } = new URL(request.url);
+    const manager = ['enterprise_admin', 'admin', 'super_admin'].includes(scope.actor.role);
+    const result = await scope.execute((transaction) =>
+      listPoolRecords(
+        transaction,
+        searchParams.get('search'),
+        searchParams.get('poolStatus'),
+        manager
+      )
+    );
+    return NextResponse.json({
+      success: true,
+      data: result.rows.map(promotionRecordToDto),
+      pagination: { total: result.total },
+    });
+  } catch (error) {
+    return errorResponse(error);
   }
 }
 
-/**
- * POST /api/promotion-records/pool
- * 从公海池认领一条报备记录
- * Body: { recordId: string }
- */
 export async function POST(request: Request) {
   try {
-    await dbConnect();
-    const body = await request.json();
-    
-    // Check Mini Program JWT first
-    const mpContext = await resolveMiniProgramContext(request);
-    let context;
-
-    if (mpContext && mpContext.staff) {
-      context = {
-        role: mpContext.staff.role,
-        userId: mpContext.staff._id.toString(),
-      };
-    } else {
-      context = await getTenantContext(request);
+    const scope = await getScope(request);
+    if (!scope) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
-
+    const body = (await request.json()) as Record<string, unknown>;
     if (!body.recordId) {
       return NextResponse.json({ success: false, error: 'Missing recordId' }, { status: 400 });
     }
-
-    const action = body.action || 'claim';
-    let result = null;
-
-    if (action === 'assign') {
-      if (!context || !['admin', 'super_admin'].includes(context.role)) {
-        return NextResponse.json({ success: false, error: 'Only managers can assign pool records' }, { status: 403 });
+    const action = String(body.action || 'claim');
+    const config = await getPlatformPromotionConfig();
+    const result = await scope.execute((transaction) => {
+      if (action === 'assign') {
+        if (!['admin', 'super_admin'].includes(scope.actor.role)) {
+          throw new Error('Only managers can assign pool records');
+        }
+        if (!body.promoterId) throw new Error('Missing promoterId');
+        return assignPoolRecordToPromoter(
+          transaction,
+          body.recordId,
+          body.promoterId,
+          scope.actor,
+          config
+        );
       }
-      if (!body.promoterId) {
-        return NextResponse.json({ success: false, error: 'Missing promoterId' }, { status: 400 });
+      if (action === 'approve_claim') {
+        if (!['admin', 'super_admin'].includes(scope.actor.role)) {
+          throw new Error('Only managers can approve claim requests');
+        }
+        return approveClaimFromPool(transaction, body.recordId, scope.actor, config);
       }
-      result = await assignPoolRecordToPromoter(body.recordId, body.promoterId, context.userId);
-    } else if (action === 'approve_claim') {
-      if (!context || !['admin', 'super_admin'].includes(context.role)) {
-        return NextResponse.json({ success: false, error: 'Only managers can approve claim requests' }, { status: 403 });
+      if (action === 'reject_claim') {
+        if (!['admin', 'super_admin'].includes(scope.actor.role)) {
+          throw new Error('Only managers can reject claim requests');
+        }
+        return rejectClaimFromPool(transaction, body.recordId, scope.actor, body.reason);
       }
-      result = await approveClaimFromPool(body.recordId, context.userId);
-    } else if (action === 'reject_claim') {
-      if (!context || !['admin', 'super_admin'].includes(context.role)) {
-        return NextResponse.json({ success: false, error: 'Only managers can reject claim requests' }, { status: 403 });
+      if (action === 'release') {
+        if (!['admin', 'super_admin'].includes(scope.actor.role)) {
+          throw new Error('Only managers can release records to pool');
+        }
+        return releaseToPool(transaction, body.recordId, scope.actor);
       }
-      result = await rejectClaimFromPool(body.recordId, context.userId, body.reason);
-    } else if (action === 'release') {
-      if (!context || !['admin', 'super_admin'].includes(context.role)) {
-        return NextResponse.json({ success: false, error: 'Only managers can release records to pool' }, { status: 403 });
+      if (scope.actor.role !== 'salesperson') {
+        throw new Error('Only salesperson can claim from pool');
       }
-      result = await releaseToPool(body.recordId, {
-        id: context.userId,
-        name: context.username,
-        role: context.role,
-      });
-    } else {
-      if (!context || context.role !== 'salesperson') {
-        return NextResponse.json({ success: false, error: 'Only salesperson can claim from pool' }, { status: 403 });
-      }
-      result = await claimFromPool(body.recordId, context.userId);
-    }
-
+      return claimFromPool(transaction, body.recordId, scope.actor.id, config);
+    });
     if (!result) {
       return NextResponse.json(
         { success: false, error: 'Record not available in claimable pool' },
         { status: 404 }
       );
     }
-
-    return NextResponse.json({ success: true, data: result });
-  } catch (error: unknown) {
-    const message = getErrorMessage(error);
-    if (message === 'Target salesperson not found') {
-      return NextResponse.json({ success: false, error: 'Target salesperson not found' }, { status: 400 });
-    }
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return NextResponse.json({ success: true, data: promotionRecordToDto(result) });
+  } catch (error) {
+    return errorResponse(error);
   }
 }

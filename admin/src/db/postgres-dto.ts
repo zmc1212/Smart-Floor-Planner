@@ -8,7 +8,10 @@ import type {
   FloorPlanWithCreator,
   LeadWithRelations,
   MeasurementWithRelations,
+  PackageRecord,
+  PromotionRecordWithRelations,
   UserRecord,
+  WorkflowNotificationWithRelations,
 } from '@/db/repositories';
 
 export function enterpriseToDto(record: EnterpriseRecord) {
@@ -230,6 +233,160 @@ export function measurementToDto(record: MeasurementWithRelations) {
     metadata: record.metadata,
     source: record.source,
     measuredAt: record.measuredAt,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+export function packageToDto(record: PackageRecord) {
+  return {
+    _id: record.id.toString(),
+    name: record.name,
+    price: Number(record.price),
+    description: record.description,
+    features: record.features,
+    promotionCommission: Number(record.promotionCommission),
+    status: record.status,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+function promotionStaffToDto(
+  record: PromotionRecordWithRelations['promoter']
+) {
+  return record
+    ? {
+        _id: record.id.toString(),
+        displayName: record.displayName,
+        username: record.username,
+        role: record.role,
+      }
+    : null;
+}
+
+export function promotionRecordToDto(record: PromotionRecordWithRelations) {
+  return {
+    _id: record.id.toString(),
+    enterpriseId: record.enterprise
+      ? { _id: record.enterprise.id.toString(), name: record.enterprise.name }
+      : record.enterpriseId?.toString() ?? null,
+    promoterId:
+      promotionStaffToDto(record.promoter) ?? record.promoterId?.toString() ?? null,
+    enterpriseName: record.enterpriseName,
+    creditCode: record.creditCode,
+    contactPerson: record.contactPerson,
+    phone: record.phone,
+    city: record.city,
+    address: record.address,
+    industry: record.industry,
+    sourceChannel: record.sourceChannel,
+    ownershipStatus: record.ownershipStatus,
+    businessStage: record.businessStage,
+    pendingActionRole: record.pendingActionRole,
+    poolStatus: record.poolStatus,
+    protectionExpiresAt: record.protectionExpiresAt,
+    protectionExtendedCount: record.protectionExtendedCount,
+    notes: record.notes,
+    nextFollowUpAt: record.nextFollowUpAt,
+    lastActivityAt: record.lastActivityAt,
+    followUpRecords: record.followUpRecords,
+    claimRequest: record.claimStatus
+      ? {
+          status: record.claimStatus,
+          requestedBy:
+            promotionStaffToDto(record.claimRequester) ??
+            record.claimRequestedBy?.toString() ??
+            null,
+          requestedAt: record.claimRequestedAt,
+          reviewedBy:
+            promotionStaffToDto(record.claimReviewer) ??
+            record.claimReviewedBy?.toString() ??
+            null,
+          reviewedAt: record.claimReviewedAt,
+          rejectReason: record.claimRejectReason,
+        }
+      : undefined,
+    measureTask: {
+      status: record.measureTaskStatus,
+      assignedTo:
+        promotionStaffToDto(record.measureAssignee) ??
+        record.measureAssignedTo?.toString() ??
+        null,
+      assignedAt: record.measureAssignedAt,
+      acceptedAt: record.measureAcceptedAt,
+      submittedAt: record.measureSubmittedAt,
+      dueAt: record.measureDueAt,
+      lastReminderAt: record.measureLastReminderAt,
+      resultSummary: record.measureResultSummary,
+    },
+    designTask: {
+      status: record.designTaskStatus,
+      assignedTo:
+        promotionStaffToDto(record.designAssignee) ??
+        record.designAssignedTo?.toString() ??
+        null,
+      assignedAt: record.designAssignedAt,
+      completedAt: record.designCompletedAt,
+      dueAt: record.designDueAt,
+      lastReminderAt: record.designLastReminderAt,
+      latestNote: record.designLatestNote,
+    },
+    conflictInfo:
+      record.conflictReason || record.conflictingRecordIds.length > 0
+        ? {
+            conflictReason: record.conflictReason,
+            conflictingRecordIds: record.conflictingRecordIds.map((id) =>
+              id.toString()
+            ),
+            reviewedBy:
+              promotionStaffToDto(record.conflictReviewer) ??
+              record.conflictReviewedBy?.toString() ??
+              null,
+            reviewedAt: record.conflictReviewedAt,
+            resolution: record.conflictResolution,
+          }
+        : undefined,
+    attachments: record.attachments,
+    location: record.location,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+export function workflowNotificationToDto(
+  record: WorkflowNotificationWithRelations
+) {
+  return {
+    _id: record.id.toString(),
+    enterpriseId: record.enterpriseId?.toString() ?? null,
+    recordId: record.record
+      ? {
+          _id: record.record.id.toString(),
+          enterpriseName: record.record.enterpriseName,
+          contactPerson: record.record.contactPerson,
+          businessStage: record.record.businessStage,
+          ownershipStatus: record.record.ownershipStatus,
+        }
+      : record.recordId.toString(),
+    recipientStaffId: record.recipientStaff
+      ? {
+          _id: record.recipientStaff.id.toString(),
+          displayName: record.recipientStaff.displayName,
+          role: record.recipientStaff.role,
+        }
+      : record.recipientStaffId?.toString() ?? null,
+    recipientRole: record.recipientRole,
+    channel: record.channel,
+    notificationType: record.notificationType,
+    status: record.status,
+    dedupeKey: record.dedupeKey,
+    message: record.message,
+    errorMessage: record.errorMessage,
+    metadata: record.metadata,
+    isRead: record.isRead,
+    isAlerted: record.isAlerted,
+    sentAt: record.sentAt,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };

@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { getTenantContext } from '@/lib/auth';
-import { runWorkflowReminderScan } from '@/lib/workflow-automation';
+import { runWorkflowReminderScan } from '@/lib/postgres-workflow-automation';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,8 +17,6 @@ async function authorize(request: Request) {
 }
 
 async function handleRun(request: Request) {
-  await dbConnect();
-
   const allowed = await authorize(request);
   if (!allowed) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
@@ -32,15 +29,17 @@ async function handleRun(request: Request) {
 export async function GET(request: Request) {
   try {
     return await handleRun(request);
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   try {
     return await handleRun(request);
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

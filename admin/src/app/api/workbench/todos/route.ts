@@ -1,65 +1,50 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { getTenantContext } from '@/lib/auth';
-import { tenantStorage } from '@/lib/tenant-context';
-import { listWorkbenchTodos, WorkbenchTodoView } from '@/lib/workflow-automation';
+import {
+  listWorkbenchTodos,
+  type WorkbenchTodoView,
+} from '@/lib/postgres-workflow-automation';
 
 export const dynamic = 'force-dynamic';
 
+const TODO_VIEWS = new Set<WorkbenchTodoView>(['mine', 'overdue', 'today']);
+
 export async function GET(request: Request) {
   try {
-    await dbConnect();
     const { searchParams } = new URL(request.url);
-    const view = (searchParams.get('view') || 'mine') as WorkbenchTodoView;
+    const requestedView = (searchParams.get('view') || 'mine') as WorkbenchTodoView;
+    if (!TODO_VIEWS.has(requestedView)) {
+      return NextResponse.json({ success: false, error: 'Invalid view' }, { status: 400 });
+    }
 
-    // Try Mini Program JWT first
-    const mpContext = await resolveMiniProgramContext(request);
-    if (mpContext && mpContext.staff) {
-      const { staff } = mpContext;
-
-      return await tenantStorage.run(
-        {
-          enterpriseId: staff.enterpriseId ? String(staff.enterpriseId) : null,
-          role: staff.role,
-          userId: String(staff._id),
-        },
-        async () => {
-          const todos = await listWorkbenchTodos({
-            role: staff.role,
-            userId: String(staff._id),
-            enterpriseId: staff.enterpriseId ? String(staff.enterpriseId) : null,
-            view,
-          });
-
-          return NextResponse.json({ success: true, data: todos });
-        }
-      );
+    const mini = await resolveMiniProgramContext(request);
+    if (mini) {
+      if (!mini.staff) {
+        return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 403 });
+      }
+      const todos = await listWorkbenchTodos({
+        role: mini.staff.role,
+        userId: mini.staff._id,
+        enterpriseId: mini.staff.enterpriseId ?? mini.enterpriseId ?? null,
+        view: requestedView,
+      });
+      return NextResponse.json({ success: true, data: todos });
     }
 
     const context = await getTenantContext(request);
     if (!context) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
-
-    return await tenantStorage.run(
-      {
-        enterpriseId: context.enterpriseId,
-        role: context.role,
-        userId: context.userId,
-      },
-      async () => {
-        const todos = await listWorkbenchTodos({
-          role: context.role,
-          userId: context.userId,
-          enterpriseId: context.enterpriseId,
-          view,
-        });
-
-        return NextResponse.json({ success: true, data: todos });
-      }
-    );
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const todos = await listWorkbenchTodos({
+      role: context.role,
+      userId: context.userId,
+      enterpriseId: context.enterpriseId,
+      view: requestedView,
+    });
+    return NextResponse.json({ success: true, data: todos });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 400 });
   }
 }

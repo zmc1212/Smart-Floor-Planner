@@ -7,7 +7,7 @@
 - `Implemented`（已实现）：存在真实页面、API 和数据链路。
 - `Limited`（有限支持）：仅在特定角色、供应商、数据形态或运行条件下可用。
 - `Placeholder`（占位/未开放）：只有 UI、mock、规划动作或没有真实持久化/集成。
-- 技术栈：Next.js 16 App Router、React 19、Tailwind CSS 4、shadcn/ui + Radix；Phase 3 已迁移域通过 `drizzle-orm` + `pg` 使用 PostgreSQL 17，剩余域继续使用 Mongoose/MongoDB；身份/企业核心、线索、正式户型、测量、蓝牙设备、提示词库读取、系统角色、全局报备配置和媒体存储配置现已使用 PostgreSQL；另含 Three.js 和客户端数据请求。
+- 技术栈：Next.js 16 App Router、React 19、Tailwind CSS 4、shadcn/ui + Radix；Phase 3 已迁移域通过 `drizzle-orm` + `pg` 使用 PostgreSQL 17，剩余域继续使用 Mongoose/MongoDB；身份/企业核心、线索、正式户型、测量、蓝牙设备、提示词库读取、系统角色、全局报备配置、媒体存储配置、套餐目录以及报备/工作流通知运行时现已使用 PostgreSQL；另含 Three.js 和客户端数据请求。
 - 本地开发：`npm run dev` 在 `3005` 端口运行合并的 Next.js 页面/API；Docker 将 MongoDB 发布到宿主机 `27018`（容器内仍为 `mongo:27017`），将 PostgreSQL 发布到宿主机 `5432`（容器内仍为 `postgres:5432`）。`27018` 用于避开既有 Windows MongoDB 服务；容器之间继续使用服务名连接。
 - 路由分组：`(platform)` 为平台/B2B 运营，`(merchant)` 为企业工作台资产，公共页面位于 `(admin)`。
 
@@ -30,7 +30,7 @@
 - 模型/工具：PostgreSQL `AdminUserRepository`、`UserRepository`、`EnterpriseRepository`、会话/认证工具和 `miniprogram-jwt`。
 - 状态：后台登录/会话复核、企业自助注册、小程序员工登录/身份绑定、JWT/Cookie、账号状态复核和未授权跳转均已切换 PostgreSQL，为 `Implemented`。
 - 旧平台管理员恢复：`npm run migrate:legacy-admin-users` 会以幂等方式把 MongoDB 的平台级账号导入 PostgreSQL，保留 bcrypt 密码哈希、角色、账号状态和菜单权限，因此用户可继续使用原密码。带租户的旧账号会被刻意跳过，因为其 MongoDB ObjectId 租户引用必须先显式映射为 PostgreSQL bigint 企业 ID。
-- 用户审计页面：`/users`、`/users/[openid]`，由 `/api/users`、`/users/[openid]`、`/users/me` 支撑，已使用 PostgreSQL 查询和更新小程序身份，并返回 PostgreSQL 户型计数/导出列表。`Limited`：仍使用 MongoDB 的 AI 与商业工作流要等后续 Phase 3 域切换后才能消费 PostgreSQL bigint 身份。
+- 用户审计页面：`/users`、`/users/[openid]`，由 `/api/users`、`/users/[openid]`、`/users/me` 支撑，已使用 PostgreSQL 查询和更新小程序身份，并返回 PostgreSQL 户型计数/导出列表。`Limited`：仍使用 MongoDB 的 AI 生成/媒体与订单/提成工作流要等后续 Phase 3 域切换后才能消费 PostgreSQL bigint 身份。
 
 ### 2. 导航、角色与访问控制
 
@@ -57,15 +57,15 @@
 
 - 页面：`/promotion-records`、`/workflow-logs`。
 - API：报备、`/promotion-records/pool`、`/conflicts`、平台报备配置、工作台 summary/todos、通知日志和提醒执行。
-- 模型/工具：`PromotionEnterpriseRecord`、`WorkflowNotificationLog`、PostgreSQL `PlatformConfigRepository`、`promotion-workflow`、`promotion-timeline`、`workflow-automation`、微信/企微通知工具。
-- 状态：`Implemented`。支持报备、重复/冲突、公海、认领/审批、分配、业务阶段、跟进时间线、SLA 提醒、通知去重和审计。平台管理员通过 PostgreSQL 读取和更新全局报备保护期/审批配置；报备记录和工作流持久化仍使用 MongoDB。
+- 模型/工具：PostgreSQL `PlatformConfigRepository`、`PromotionRecordRepository`、`WorkflowNotificationRepository`、`postgres-promotion-workflow`、`postgres-workflow-automation`、微信/企微通知工具。旧 `PromotionEnterpriseRecord`/`WorkflowNotificationLog` 模型仅保留给仍使用 MongoDB 的订单、提成、企业激活和旧辅助兼容路径。
+- 状态：`Implemented`。支持报备、重复/冲突、公海、认领/审批、分配、业务阶段、跟进时间线、SLA 提醒、通知去重和审计。平台管理员通过 PostgreSQL 读取和更新全局报备保护期/审批配置。报备路由、公海/冲突、工作台 summary/todos、通知日志/轮询和提醒自动化均已在租户/平台 RLS 事务内使用 typed PostgreSQL Repository；状态变更使用短事务条件更新，通知在事务提交后发送，既有 DTO、角色边界和小程序 API 路径保持不变。`Limited`：订单、提成、企业激活以及仍引用 MongoDB ObjectId 的 AI/媒体消费者要等依赖切片迁移后再切换。
 
 ### 6. 套餐、订单与提成
 
 - 页面：`/packages`、`/enterprise-orders`、`/commissions`。
 - API：`/api/admin/packages`、`/enterprise-orders`、`/commissions`、结算和提成记录接口。
-- 模型：`Package`、`EnterpriseOrder`、`CommissionRecord`。
-- 状态：`Implemented`。支持套餐目录、企业订单生命周期、付费订单提成生成、提成列表、结算和作废。
+- 模型：PostgreSQL `PackageRepository`；`EnterpriseOrder` 和 `CommissionRecord` 在当前 Phase 3 边界仍使用 MongoDB。
+- 状态：`Implemented`。支持套餐目录、企业订单生命周期、付费订单提成生成、提成列表、结算和作废。套餐列表/新建/更新/删除现已在平台范围 PostgreSQL 事务内执行，通过现有 `_id` 字段返回 bigint 十进制字符串，并以精确 `numeric(14,2)` 保存金额。`Limited`：订单和提成因旧 ObjectId 关系尚未转换为 PostgreSQL bigint 关系，仍使用 MongoDB。
 
 ### 7. 线索与转化资产
 
@@ -129,14 +129,14 @@
 - API：`/api/auth/miniprogram`、`/api/miniprogram/home`、`/mine`、小程序 AI 能力/来源/方案/媒体/任务/历史接口，以及共享线索、户型、测量、提成、订单、报备接口。
 - 状态：`Implemented`。负责小程序身份、员工上下文、首页/我的工作台、定位、品牌、共享业务资产和企业员工 AI 设计；AI API 强制 Bearer JWT、企业和操作员归属校验。媒体上传按文件实际字节识别 JPG/PNG 及宽高，不依赖微信 multipart 请求声明 MIME；`/api/miniprogram/ai/sources` 保留旧版扁平房间数组并新增按正式户型分组的数据，只暴露当前角色可访问的正式户型和闭合房间。任务创建复用相同角色边界并保存显式 `whole_floor_plan`/`single_room` 范围；完整户型生成派生独立 1024px 控制图 `MediaAsset` 并调用图片编辑，单房间户型生成使用量房摘要调用图片生成。关联正式户型的参考复刻也会派生控制图，存在 `roomId` 时只绘制该闭合房间及其门窗，并把控制图置于参考图之前提交，均不修改正式墙图。显式方案直接续接；同客户/户型只有一个活动方案时自动复用，存在多个方案时必须由客户端选择，不会静默合并，并可明确新建备选方案。
 - 方案目标响应：正式目标的方案接口同时返回 `sourceFloorPlanId` 和按户型、范围、房间精确匹配的 `targetContext`；旧任务不会自动填图，其他员工的活动任务仅返回忙碌状态。任务续接与目标级防重继续复用上述角色边界。
-- PostgreSQL 工作台边界：`/api/miniprogram/home` 和 `/mine` 已通过 typed Repository 派生实时线索、正式户型、测量和设备数据，`/api/users` 也返回 PostgreSQL 户型计数。AI 生成域迁移前，首页 `aiGeneratedCases` 返回 `0`；商业工作流记录迁移前，“我的”返回空 `todos`，避免把 bigint ID 传入 MongoDB 查询。
+- PostgreSQL 工作台边界：`/api/miniprogram/home` 和 `/mine` 已通过 typed RLS Repository 派生实时线索、正式户型、测量、设备、报备和待办数据，`/api/users` 也返回 PostgreSQL 户型计数。AI 生成域迁移前，首页 `aiGeneratedCases` 返回 `0`；订单和提成仍由 MongoDB 支撑，不会把 PostgreSQL bigint ID 传入旧 MongoDB 查询。
 
 ### 13. 通知、自动化与诊断
 
 - API：提醒执行、通知列表/轮询、`/api/health`、`/api/debug`、`/api/debug/tenant-context`、`/api/internal/seed`。
 - 状态：提醒、浏览器轮询、通知日志、健康/调试、种子和 Docker/发布工具为 `Implemented`；内部密钥保护的 seed route 已改为幂等创建 PostgreSQL 初始平台管理员，必须显式配置至少 32 字符的 `INTERNAL_SECRET` 和至少 12 字符的 `INITIAL_ADMIN_PASSWORD`，不再保留源码默认凭据。接口仍需遵守对应角色和运行环境限制。
 - 运维恢复：PostgreSQL migration 已完成后，`npm run migrate:legacy-admin-users` 是导入旧 MongoDB 平台管理员身份的幂等运维命令。它绝不覆盖已有 PostgreSQL 账号，并会报告已存在、无效或租户级而被跳过的记录。
-- PostgreSQL 迁移基础层：PostgreSQL 17 Docker 服务、隔离的 `sfp_migrator`/`sfp_app`/`sfp_auditor` 角色、受限 `pg.Pool`、可审阅 Drizzle migration、备份/恢复演练、44 张 typed 目标表、外键与索引、租户数据强制 RLS、事务内租户/平台上下文，以及企业、部门、管理员、小程序用户、线索、正式户型、测量、设备、平台配置、提示词库、系统角色和媒体存储配置 typed Repository 均为 `Implemented`；恢复演练会核对表、RLS 表和策略数量。`/api/health` 继续以 MongoDB 为必需依赖并单独报告 PostgreSQL；只有 `POSTGRES_HEALTHCHECK_REQUIRED=true` 时 PostgreSQL 才参与健康门禁。Docker migration 通过 `npm run docker:migrate` 显式执行，长期运行的 admin 服务不注入 `DATABASE_MIGRATION_URL`。Docker 构建上下文排除运行时 `.env*`、本地 RoomiAI/导入资源、上传目录和本地数据库备份，这些资产必须在运行时注入或挂载。`Limited`：商业记录/工作流及 AI 生成/媒体仍使用 MongoDB，Phase 3 继续按域迁移。
+- PostgreSQL 迁移基础层：PostgreSQL 17 Docker 服务、隔离的 `sfp_migrator`/`sfp_app`/`sfp_auditor` 角色、受限 `pg.Pool`、可审阅 Drizzle migration、备份/恢复演练、44 张 typed 目标表、外键与索引、租户数据强制 RLS、事务内租户/平台上下文，以及企业、部门、管理员、小程序用户、线索、正式户型、测量、设备、平台配置、提示词库、系统角色、媒体存储配置、报备记录、工作流通知和提醒自动化 typed Repository 均为 `Implemented`；恢复演练会核对表、RLS 表和策略数量。`/api/health` 继续以 MongoDB 为必需依赖并单独报告 PostgreSQL；只有 `POSTGRES_HEALTHCHECK_REQUIRED=true` 时 PostgreSQL 才参与健康门禁。Docker migration 通过 `npm run docker:migrate` 显式执行，长期运行的 admin 服务不注入 `DATABASE_MIGRATION_URL`。Docker 构建上下文排除运行时 `.env*`、本地 RoomiAI/导入资源、上传目录和本地数据库备份，这些资产必须在运行时注入或挂载。`Limited`：订单/提成、企业激活以及 AI 生成/媒体仍使用 MongoDB，Phase 3 继续按域迁移。
 
 ## 核心模型
 

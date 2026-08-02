@@ -16,9 +16,12 @@ import {
   floorPlans,
   leads,
   mediaStorageConfigs,
+  packages,
   platformConfigs,
+  promotionEnterpriseRecords,
   systemRoles,
   users,
+  workflowNotificationLogs,
 } from '@/db/schema';
 import {
   AdminUserRepository,
@@ -33,11 +36,20 @@ import {
   SystemRoleRepository,
   UserRepository,
   MeasurementRepository,
+  PackageRepository,
+  PromotionRecordRepository,
+  WorkflowNotificationRepository,
 } from '@/db/repositories';
 import {
   withPlatformTransaction,
   withTenantTransaction,
 } from '@/db/transaction';
+import {
+  createPromotionRecord,
+  promotionActorFromContext,
+  updatePromotionRecord,
+} from '@/lib/postgres-promotion-workflow';
+import { listWorkbenchTodos } from '@/lib/postgres-workflow-automation';
 import {
   closePostgresPool,
   getPostgresPool,
@@ -53,6 +65,13 @@ let promptRevisionId: bigint;
 let promptTemplateId: bigint;
 const identityAdminIds: bigint[] = [];
 const identityUserIds: bigint[] = [];
+const packageIds: bigint[] = [];
+const promotionRecordIds: bigint[] = [];
+let promotionPromoterAId: bigint;
+let promotionPromoterA2Id: bigint;
+let promotionMeasurerAId: bigint;
+let promotionDesignerAId: bigint;
+let promotionPromoterBId: bigint;
 
 before(async () => {
   loadEnvConfig(process.cwd());
@@ -74,6 +93,58 @@ before(async () => {
     });
     enterpriseAId = enterpriseA.id;
     enterpriseBId = enterpriseB.id;
+
+    const adminRepository = new AdminUserRepository(transaction);
+    const promotionStaff = await Promise.all([
+      adminRepository.create({
+        enterpriseId: enterpriseAId,
+        username: `${testRunKey}-promotion-a-1`,
+        passwordHash: 'test-hash',
+        displayName: 'Promotion A 1',
+        role: 'salesperson',
+        menuPermissions: ['dashboard'],
+      }),
+      adminRepository.create({
+        enterpriseId: enterpriseAId,
+        username: `${testRunKey}-promotion-a-2`,
+        passwordHash: 'test-hash',
+        displayName: 'Promotion A 2',
+        role: 'salesperson',
+        menuPermissions: ['dashboard'],
+      }),
+      adminRepository.create({
+        enterpriseId: enterpriseAId,
+        username: `${testRunKey}-promotion-measurer`,
+        passwordHash: 'test-hash',
+        displayName: 'Promotion Measurer',
+        role: 'measurer',
+        menuPermissions: ['dashboard'],
+      }),
+      adminRepository.create({
+        enterpriseId: enterpriseAId,
+        username: `${testRunKey}-promotion-designer`,
+        passwordHash: 'test-hash',
+        displayName: 'Promotion Designer',
+        role: 'designer',
+        menuPermissions: ['dashboard'],
+      }),
+      adminRepository.create({
+        enterpriseId: enterpriseBId,
+        username: `${testRunKey}-promotion-b`,
+        passwordHash: 'test-hash',
+        displayName: 'Promotion B',
+        role: 'salesperson',
+        menuPermissions: ['dashboard'],
+      }),
+    ]);
+    [
+      promotionPromoterAId,
+      promotionPromoterA2Id,
+      promotionMeasurerAId,
+      promotionDesignerAId,
+      promotionPromoterBId,
+    ] = promotionStaff.map((staff) => staff.id);
+    identityAdminIds.push(...promotionStaff.map((staff) => staff.id));
 
     const departmentsRepository = new DepartmentRepository(transaction);
     await departmentsRepository.create({
@@ -194,6 +265,14 @@ after(async () => {
       await transaction
         .delete(systemRoles)
         .where(eq(systemRoles.roleKey, systemRoleKey));
+      if (packageIds.length > 0) {
+        await transaction.delete(packages).where(inArray(packages.id, packageIds));
+      }
+      if (promotionRecordIds.length > 0) {
+        await transaction
+          .delete(promotionEnterpriseRecords)
+          .where(inArray(promotionEnterpriseRecords.id, promotionRecordIds));
+      }
       if (identityAdminIds.length > 0) {
         await transaction
           .delete(adminUsers)
@@ -379,6 +458,290 @@ test('system role defaults are idempotent and preserve configured permissions', 
     assert.equal(preserved?.label, 'Test role');
     assert.deepEqual(preserved?.menuKeys, ['dashboard', 'roles']);
   });
+});
+
+test('package repository preserves exact money values and global catalog filters', async () => {
+  await withPlatformTransaction(async (transaction) => {
+    const repository = new PackageRepository(transaction);
+    const active = await repository.create({
+      name: `${testRunKey} Active Package`,
+      price: '1999.90',
+      promotionCommission: '88.80',
+      description: 'PostgreSQL package integration test',
+      features: ['surveying', 'design'],
+      status: 'active',
+    });
+    const disabled = await repository.create({
+      name: `${testRunKey} Disabled Package`,
+      price: '2999.00',
+      promotionCommission: '0.00',
+      status: 'disabled',
+    });
+    packageIds.push(active.id, disabled.id);
+
+    const activeRows = await repository.list('active');
+    const created = activeRows.find((row) => row.id === active.id);
+    assert.equal(created?.price, '1999.90');
+    assert.equal(created?.promotionCommission, '88.80');
+    assert.deepEqual(created?.features, ['surveying', 'design']);
+    assert.equal(activeRows.some((row) => row.id === disabled.id), false);
+
+    const updated = await repository.update(active.id, {
+      status: 'disabled',
+      price: '1888.00',
+    });
+    assert.equal(updated?.status, 'disabled');
+    assert.equal(updated?.price, '1888.00');
+  });
+});
+
+test('package names have a database uniqueness contract', async () => {
+  const result = await getPostgresPool().query<{ definition: string }>(`
+    select indexdef as definition
+    from pg_indexes
+    where schemaname = 'app'
+      and indexname = 'packages_name_uidx'
+  `);
+  assert.equal(result.rows.length, 1);
+  assert.match(result.rows[0].definition, /unique index/i);
+  assert.match(result.rows[0].definition, /\(name\)/i);
+});
+
+test('promotion repository enforces tenant and role visibility with typed relations', async () => {
+  const tenantARecords = await withTenantTransaction(
+    enterpriseAId,
+    async (transaction) => {
+      const repository = new PromotionRecordRepository(transaction);
+      const own = await repository.create({
+        enterpriseId: enterpriseAId,
+        promoterId: promotionPromoterAId,
+        enterpriseName: `${testRunKey} Promotion A Own`,
+        creditCode: `${testRunKey}-CREDIT-A`,
+        contactPerson: 'Contact A',
+        phone: '13800001001',
+        ownershipStatus: 'auto_locked',
+        businessStage: 'measuring',
+        pendingActionRole: 'measurer',
+        poolStatus: 'protected',
+        measureTaskStatus: 'assigned',
+        measureAssignedTo: promotionMeasurerAId,
+        designTaskStatus: 'assigned',
+        designAssignedTo: promotionDesignerAId,
+      });
+      const other = await repository.create({
+        enterpriseId: enterpriseAId,
+        promoterId: promotionPromoterA2Id,
+        enterpriseName: `${testRunKey} Promotion A Other`,
+        contactPerson: 'Contact B',
+        phone: '13800001002',
+        ownershipStatus: 'auto_locked',
+        businessStage: 'reported',
+        pendingActionRole: 'salesperson',
+        poolStatus: 'in_pool',
+      });
+      promotionRecordIds.push(own.id, other.id);
+      return { own, other };
+    }
+  );
+
+  const tenantBRecord = await withTenantTransaction(
+    enterpriseBId,
+    async (transaction) => {
+      const created = await new PromotionRecordRepository(transaction).create({
+        enterpriseId: enterpriseBId,
+        promoterId: promotionPromoterBId,
+        enterpriseName: `${testRunKey} Promotion B`,
+        contactPerson: 'Contact C',
+        phone: '13800001003',
+        ownershipStatus: 'auto_locked',
+        businessStage: 'reported',
+        pendingActionRole: 'salesperson',
+        poolStatus: 'protected',
+      });
+      promotionRecordIds.push(created.id);
+      return created;
+    }
+  );
+
+  const salespersonRows = await withTenantTransaction(
+    enterpriseAId,
+    (transaction) =>
+      new PromotionRecordRepository(transaction).list({
+        actor: { id: promotionPromoterAId, role: 'salesperson' },
+      })
+  );
+  assert.deepEqual(
+    salespersonRows.rows.map((row) => row.id),
+    [tenantARecords.own.id]
+  );
+  assert.equal(
+    salespersonRows.rows[0].measureAssignee?.id,
+    promotionMeasurerAId
+  );
+  assert.equal(
+    salespersonRows.rows[0].designAssignee?.id,
+    promotionDesignerAId
+  );
+  assert.equal(salespersonRows.rows[0].enterprise?.id, enterpriseAId);
+
+  const measurerRows = await withTenantTransaction(
+    enterpriseAId,
+    (transaction) =>
+      new PromotionRecordRepository(transaction).list({
+        actor: { id: promotionMeasurerAId, role: 'measurer' },
+      })
+  );
+  assert.deepEqual(
+    measurerRows.rows.map((row) => row.id),
+    [tenantARecords.own.id]
+  );
+
+  const crossTenant = await withTenantTransaction(
+    enterpriseBId,
+    (transaction) =>
+      new PromotionRecordRepository(transaction).findById(tenantARecords.own.id)
+  );
+  assert.equal(crossTenant, null);
+
+  const platformRows = await withPlatformTransaction((transaction) =>
+    new PromotionRecordRepository(transaction).list({ search: testRunKey })
+  );
+  assert.equal(platformRows.total, 3);
+  assert.ok(platformRows.rows.some((row) => row.id === tenantBRecord.id));
+
+  const duplicates = await withTenantTransaction(
+    enterpriseAId,
+    (transaction) =>
+      new PromotionRecordRepository(transaction).findDuplicates({
+        creditCode: `${testRunKey}-credit-a`,
+        enterpriseName: 'No name match needed',
+        phone: '000',
+      })
+  );
+  assert.deepEqual(duplicates.map((row) => row.id), [tenantARecords.own.id]);
+});
+
+test('promotion state transition and notification dedupe are atomic', async () => {
+  await withTenantTransaction(enterpriseAId, async (transaction) => {
+    const records = new PromotionRecordRepository(transaction);
+    const poolRows = await records.list({
+      promoterId: promotionPromoterA2Id,
+      poolStatuses: ['in_pool'],
+    });
+    const poolRecord = poolRows.rows[0];
+    assert.ok(poolRecord);
+
+    const claimedAt = new Date();
+    const claimed = await records.updateWhere(
+      poolRecord.id,
+      [eq(promotionEnterpriseRecords.poolStatus, 'in_pool')],
+      {
+        promoterId: promotionPromoterAId,
+        poolStatus: 'claimed',
+        claimStatus: 'pending',
+        claimRequestedBy: promotionPromoterAId,
+        claimRequestedAt: claimedAt,
+        lastActivityAt: claimedAt,
+      },
+      [
+        {
+          type: 'pool_claim_requested',
+          content: 'Claim requested',
+          operator: 'Promotion A 1',
+          createdAt: claimedAt,
+        },
+      ]
+    );
+    assert.equal(claimed?.claimStatus, 'pending');
+    assert.equal(claimed?.followUpRecords.length, 1);
+
+    const staleClaim = await records.updateWhere(
+      poolRecord.id,
+      [eq(promotionEnterpriseRecords.poolStatus, 'in_pool')],
+      { poolStatus: 'claimed' }
+    );
+    assert.equal(staleClaim, null);
+
+    const notifications = new WorkflowNotificationRepository(transaction);
+    const common = {
+      enterpriseId: enterpriseAId,
+      recordId: poolRecord.id,
+      recipientStaffId: promotionPromoterAId,
+      recipientRole: 'salesperson',
+      notificationType: 'follow_up_created',
+      status: 'sent',
+      dedupeKey: `${testRunKey}-notification`,
+      message: 'Follow up required',
+    } as const;
+    const station = await notifications.create({ ...common, channel: 'station' });
+    const miniProgram = await notifications.create({
+      ...common,
+      channel: 'miniprogram_sub',
+    });
+    const duplicate = await notifications.create({ ...common, channel: 'station' });
+    assert.ok(station);
+    assert.ok(miniProgram);
+    assert.equal(duplicate, null);
+
+    const listed = await notifications.list({
+      recipientStaffId: promotionPromoterAId,
+      status: 'sent',
+    });
+    assert.equal(listed.total, 2);
+    assert.equal(listed.statusCounts.sent, 2);
+    assert.equal(listed.rows[0].record?.id, poolRecord.id);
+    assert.equal(listed.rows[0].recipientStaff?.id, promotionPromoterAId);
+
+    const marked = await notifications.markAlerted(
+      [station.id, miniProgram.id],
+      promotionPromoterAId
+    );
+    assert.equal(marked, 2);
+    const alertedRows = await transaction
+      .select()
+      .from(workflowNotificationLogs)
+      .where(inArray(workflowNotificationLogs.id, [station.id, miniProgram.id]));
+    assert.equal(alertedRows.every((row) => row.isAlerted), true);
+  });
+});
+
+test('postgres promotion workflow creates follow-up state and workbench todos', async () => {
+  const actor = promotionActorFromContext({
+    id: promotionPromoterAId,
+    role: 'salesperson',
+    name: 'Promotion A 1',
+    enterpriseId: enterpriseAId,
+  });
+  const created = await withTenantTransaction(enterpriseAId, (transaction) =>
+    createPromotionRecord(transaction, {
+      enterpriseName: `${testRunKey} Workflow Service`,
+      contactPerson: 'Workflow Contact',
+      phone: '13800001009',
+      notes: 'Created by the PostgreSQL workflow service',
+    }, actor)
+  );
+  assert.ok(created.record);
+  assert.equal(created.created, true);
+  promotionRecordIds.push(created.record.id);
+  assert.equal(created.record.businessStage, 'reported');
+  assert.equal(created.record.pendingActionRole, 'salesperson');
+
+  const updated = await withTenantTransaction(enterpriseAId, (transaction) =>
+    updatePromotionRecord(transaction, created.record!.id, {
+      followUpNote: 'First customer contact completed',
+    }, actor)
+  );
+  assert.ok(updated?.record);
+  assert.equal(updated.record.businessStage, 'contacted');
+  assert.equal(updated.record.followUpRecords.length, 3);
+
+  const todos = await listWorkbenchTodos({
+    role: 'salesperson',
+    userId: promotionPromoterAId.toString(),
+    enterpriseId: enterpriseAId.toString(),
+    view: 'mine',
+  });
+  assert.ok(todos.some((todo) => todo.recordId === created.record!.id.toString()));
 });
 
 test('admin user repository preserves tenant isolation and promoter relations', async () => {

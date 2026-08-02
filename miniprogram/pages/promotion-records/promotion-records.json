@@ -1,3 +1,4 @@
 {
-  "navigationBarTitleText": "企业报备"
+  "navigationBarTitleText": "企业报备",
+  "navigationStyle": "custom"
 }

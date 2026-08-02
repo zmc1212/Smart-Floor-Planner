@@ -1,79 +1,153 @@
 const app = getApp();
 const api = require('../../utils/api.js');
+const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
 
-const TITLE_MAP = {
-  my: '我的报备',
-  measure: '量房任务',
-  design: '设计任务',
-  admin: '报备管理',
-  overdue: '超时任务',
-  pool: '可认领客户',
-};
-
-const FILTER_TABS = [
-  { key: 'all', label: '全部' },
-  { key: 'todo', label: '待处理' },
-  { key: 'measuring', label: '量房中', businessStage: 'measuring' },
-  { key: 'designing', label: '设计中', businessStage: 'designing' },
-  { key: 'paid', label: '已成交', businessStage: 'paid' },
+const VIEW_TABS = [
+  { key: 'my', label: '我的报备' },
+  { key: 'measure', label: '待量房' },
+  { key: 'design', label: '待设计' },
+  { key: 'overdue', label: '已超时' },
+  { key: 'pool', label: '公海' },
 ];
 
-function getInitialFilter(options, view) {
-  if (options.filter) return options.filter;
-  return view === 'overdue' ? 'todo' : 'all';
+const DOCK_ITEMS = [
+  { key: 'home', text: '首页', iconPath: '/images/mine-icons/tab-home.png' },
+  { key: 'leads', text: '线索', iconPath: '/images/mine-icons/tab-leads.png' },
+  { key: 'measure', text: '量房', iconPath: '/images/mine-icons/tab-measure-active.png', center: true },
+  { key: 'design', text: '设计', iconPath: '/images/mine-icons/tab-ai.png' },
+  { key: 'mine', text: '我的', iconPath: '/images/mine-icons/tab-mine.png' },
+];
+
+const STAGE_SUMMARY = {
+  reported: '已完成企业报备，等待首次联系',
+  contacted: '已联系客户，持续确认服务需求',
+  measuring: '量房任务正在推进',
+  designing: '量房完成，设计方案制作中',
+  quoted: '方案已报价，等待客户确认',
+  paid: '客户已成交',
+  closed_lost: '该报备已结束',
+};
+
+function buildListPath(view) {
+  if (view === 'overdue') return '/workbench/todos?view=overdue';
+  if (view === 'pool') return '/promotion-records?poolStatus=in_pool';
+  if (view === 'measure') return '/promotion-records?view=measure&businessStage=measuring';
+  if (view === 'design') return '/promotion-records?view=design&businessStage=designing';
+  return `/promotion-records?view=${encodeURIComponent(view || 'my')}`;
 }
 
-function buildPromotionPath(view, filter) {
-  const params = [];
-  const tab = FILTER_TABS.find((item) => item.key === filter);
+function formatDateTime(value) {
+  if (!value) return '暂无';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '暂无';
+  const pad = (number) => String(number).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
-  if (view === 'pool') {
-    params.push('poolStatus=in_pool');
-  } else {
-    params.push(`view=${encodeURIComponent(view || 'my')}`);
+function maskPhone(phone) {
+  const value = String(phone || '暂无电话');
+  if (value.includes('*') || value.length < 7) return value;
+  return `${value.slice(0, 3)}****${value.slice(-4)}`;
+}
+
+function getStatus(record, view, useTodoApi) {
+  if (useTodoApi && record.overdue) return { key: 'overdue', text: '已超时' };
+  if (view === 'pool' || record.poolStatus === 'in_pool') return { key: 'pool', text: '公海' };
+  if (record.poolStatus === 'claimed' && record.claimRequest && record.claimRequest.status === 'pending') {
+    return { key: 'pool', text: '待审批' };
   }
 
-  if (tab && tab.businessStage) {
-    params.push(`businessStage=${encodeURIComponent(tab.businessStage)}`);
+  const stage = record.businessStage;
+  if (stage === 'measuring' || (useTodoApi && record.type === 'measure_task')) {
+    return { key: 'measuring', text: '待量房' };
   }
-
-  return `/promotion-records?${params.join('&')}`;
+  if (['designing', 'quoted'].includes(stage) || (useTodoApi && record.type === 'design_task')) {
+    return { key: 'designing', text: '待设计' };
+  }
+  if (stage === 'paid') return { key: 'paid', text: '已成交' };
+  if (stage === 'closed_lost') return { key: 'pool', text: '已结束' };
+  return { key: 'followup', text: '待跟进' };
 }
 
-function buildListPath(view, filter) {
-  if (view === 'overdue' && filter === 'todo') return '/workbench/todos?view=overdue';
-  if (filter === 'todo') return '/workbench/todos?view=mine';
-  return buildPromotionPath(view, filter);
+function getIconPath(statusKey) {
+  if (statusKey === 'designing') return '/images/mine-icons/bulb.png';
+  if (statusKey === 'overdue') return '/images/mine-icons/clipboard-pen.png';
+  if (statusKey === 'pool') return '/images/mine-icons/users.png';
+  if (statusKey === 'paid') return '/images/mine-icons/deal.png';
+  if (statusKey === 'measuring') return '/images/mine-icons/buildingCog.png';
+  return '/images/mine-icons/building.png';
 }
 
-function usesTodoApi(filter) {
-  return filter === 'todo';
+function normalizeRecord(record, view, useTodoApi, userInfo) {
+  const status = getStatus(record, view, useTodoApi);
+  const followUpRecords = Array.isArray(record.followUpRecords) ? record.followUpRecords : [];
+  const latestFollowUp = followUpRecords.length ? followUpRecords[followUpRecords.length - 1] : null;
+  const locationText =
+    (record.location && record.location.name) ||
+    [record.city, record.address].filter(Boolean).join(' · ') ||
+    '暂无地址';
+  const dueValue = record.dueAt || (useTodoApi && record.dueLabel);
+
+  return {
+    ...record,
+    key: record.key || record._id || record.recordId,
+    recordId: record.recordId || record._id,
+    enterpriseName: record.enterpriseName || record.title || '未命名企业',
+    contactPerson: record.contactPerson || '联系人未填写',
+    phoneText: maskPhone(record.phone),
+    locationText,
+    statusKey: status.key,
+    statusText: status.text,
+    iconPath: getIconPath(status.key),
+    followUpText:
+      record.summary ||
+      (latestFollowUp && latestFollowUp.content) ||
+      record.notes ||
+      STAGE_SUMMARY[record.businessStage] ||
+      '等待更新跟进记录',
+    timeLabel: dueValue ? '截止时间' : '报备时间',
+    timeText: record.dueLabel || formatDateTime(dueValue || record.createdAt),
+    canClaim:
+      view === 'pool' &&
+      userInfo.staffRole === 'salesperson' &&
+      record.poolStatus === 'in_pool',
+  };
+}
+
+function filterRecords(records, searchText) {
+  const keyword = String(searchText || '').trim().toLowerCase();
+  if (!keyword) return records;
+  return records.filter((record) =>
+    [record.enterpriseName, record.contactPerson, record.phone, record.locationText]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(keyword))
+  );
 }
 
 Page({
   data: {
     view: 'my',
-    title: '报备管理',
-    filterTabs: FILTER_TABS,
-    activeFilter: 'all',
+    viewTabs: VIEW_TABS,
+    dockItems: DOCK_ITEMS,
+    skeletonItems: [1, 2, 3],
     records: [],
+    displayedRecords: [],
+    searchText: '',
     loading: true,
     useTodoApi: false,
     userInfo: {},
+    statusBarHeight: 0,
   },
 
   onLoad(options) {
-    const view = options.view || 'my';
-    const title = TITLE_MAP[view] || '报备管理';
-    const activeFilter = getInitialFilter(options, view);
+    const systemInfo = wx.getSystemInfoSync();
+    const requestedView = VIEW_TABS.some((item) => item.key === options.view) ? options.view : 'my';
     this.setData({
-      view,
-      title,
-      activeFilter,
-      useTodoApi: usesTodoApi(activeFilter),
+      view: requestedView,
+      useTodoApi: requestedView === 'overdue',
       userInfo: app.globalData.userInfo || wx.getStorageSync('userInfo') || {},
+      statusBarHeight: systemInfo.statusBarHeight || 0,
     });
-    wx.setNavigationBarTitle({ title });
   },
 
   onShow() {
@@ -86,33 +160,46 @@ Page({
   async fetchRecords() {
     const openid = app.globalData.openid || wx.getStorageSync('openid');
     const token = wx.getStorageSync('token');
-    if (!openid && !token) return;
+    if (!openid && !token) {
+      this.setData({ loading: false, records: [], displayedRecords: [] });
+      return;
+    }
 
     this.setData({ loading: true });
     try {
-      const { view, activeFilter } = this.data;
-      const useTodoApi = usesTodoApi(activeFilter);
-      const res = await api.request(buildListPath(view, activeFilter), 'GET');
+      const { view, searchText, userInfo } = this.data;
+      const useTodoApi = view === 'overdue';
+      const res = await api.request(buildListPath(view), 'GET');
+      const records = (res.data || []).map((item) => normalizeRecord(item, view, useTodoApi, userInfo));
       this.setData({
-        records: (res.data || []).map((item) => ({
-          ...item,
-          key: item.key || item._id || item.recordId,
-        })),
+        records,
+        displayedRecords: filterRecords(records, searchText),
         useTodoApi,
         loading: false,
       });
     } catch (err) {
-      this.setData({ loading: false });
+      this.setData({ loading: false, records: [], displayedRecords: [] });
       wx.showToast({ title: err.error || '加载失败', icon: 'none' });
     }
   },
 
-  onFilterTap(e) {
-    const filter = e.currentTarget.dataset.filter;
-    if (!filter || filter === this.data.activeFilter) return;
+  onSearchInput(e) {
+    const searchText = e.detail.value || '';
     this.setData({
-      activeFilter: filter,
-      useTodoApi: usesTodoApi(filter),
+      searchText,
+      displayedRecords: filterRecords(this.data.records, searchText),
+    });
+  },
+
+  onViewTap(e) {
+    const view = e.currentTarget.dataset.view;
+    if (!view || view === this.data.view) return;
+    this.setData({
+      view,
+      searchText: '',
+      records: [],
+      displayedRecords: [],
+      useTodoApi: view === 'overdue',
     });
     this.fetchRecords();
   },
@@ -132,7 +219,11 @@ Page({
       const res = await api.request('/promotion-records/pool', 'POST', { recordId: id });
       wx.hideLoading();
       if (res.success) {
-        const isPendingApproval = res.data && res.data.poolStatus === 'claimed' && res.data.claimRequest && res.data.claimRequest.status === 'pending';
+        const isPendingApproval =
+          res.data &&
+          res.data.poolStatus === 'claimed' &&
+          res.data.claimRequest &&
+          res.data.claimRequest.status === 'pending';
         wx.showToast({ title: isPendingApproval ? '已提交认领申请' : '认领成功', icon: 'success' });
         this.fetchRecords();
       }
@@ -144,5 +235,39 @@ Page({
 
   onCreateRecord() {
     wx.navigateTo({ url: '/pages/promotion-record-detail/promotion-record-detail?mode=create' });
+  },
+
+  async onDockTap(e) {
+    const key = e.currentTarget.dataset.key;
+    const pageMap = {
+      home: '/pages/index/index',
+      leads: '/pages/leads-management/leads-management',
+      design: '/pages/ai-design/ai-design',
+      mine: '/pages/mine/mine',
+    };
+
+    if (key !== 'measure') {
+      const url = pageMap[key];
+      if (url) wx.switchTab({ url });
+      return;
+    }
+
+    if (this.isOpeningSurvey) return;
+    this.isOpeningSurvey = true;
+    wx.showLoading({ title: '加载量房记录' });
+    try {
+      const res = await api.request('/floorplans?page=1&limit=1', 'GET');
+      const latestPlan = Array.isArray(res && res.data) ? res.data[0] : null;
+      if (latestPlan && latestPlan._id) {
+        openSurveyingEditor({ floorPlanId: latestPlan._id });
+      } else {
+        openSurveyingEditor({ startNewSurvey: true });
+      }
+    } catch (err) {
+      wx.showToast({ title: (err && err.error) || '加载最近量房失败', icon: 'none' });
+    } finally {
+      wx.hideLoading();
+      this.isOpeningSurvey = false;
+    }
   },
 });

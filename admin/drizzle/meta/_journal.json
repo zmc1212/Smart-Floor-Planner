@@ -57,6 +57,27 @@
       "when": 1785584538004,
       "tag": "0007_simple_mindworm",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785599981569,
+      "tag": "0008_whole_gravity",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785600654432,
+      "tag": "0009_neat_rafael_vega",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785600778599,
+      "tag": "0010_eminent_wildside",
+      "breakpoints": true
     }
   ]
 }

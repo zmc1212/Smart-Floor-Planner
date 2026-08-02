@@ -7,6 +7,7 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/enterprises': 'enterprises',
   '/ai-providers': 'ai-providers',
   '/ai-models': 'ai-providers',
+  '/ai-presets': 'ai-presets',
   '/media-storage': 'media-storage',
   '/ai-credit-prices': 'ai-credit-prices',
   '/roles': 'roles',

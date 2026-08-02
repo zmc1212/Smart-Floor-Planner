@@ -417,7 +417,10 @@ export const packages = appSchema.table(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (table) => [index('packages_status_created_idx').on(table.status, table.createdAt)]
+  (table) => [
+    uniqueIndex('packages_name_uidx').on(table.name),
+    index('packages_status_created_idx').on(table.status, table.createdAt),
+  ]
 );
 
 export const aiPromptLibraryRevisions = appSchema.table(
@@ -748,6 +751,89 @@ export const promotionEnterpriseRecords = appSchema.table(
       withTimezone: true,
       mode: 'date',
     }),
+    claimStatus: text('claim_status'),
+    claimRequestedBy: bigint('claim_requested_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    claimRequestedAt: timestamp('claim_requested_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    claimReviewedBy: bigint('claim_reviewed_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    claimReviewedAt: timestamp('claim_reviewed_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    claimRejectReason: text('claim_reject_reason'),
+    measureTaskStatus: text('measure_task_status')
+      .notNull()
+      .default('unassigned'),
+    measureAssignedTo: bigint('measure_assigned_to', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    measureAssignedAt: timestamp('measure_assigned_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    measureAcceptedAt: timestamp('measure_accepted_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    measureSubmittedAt: timestamp('measure_submitted_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    measureDueAt: timestamp('measure_due_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    measureLastReminderAt: timestamp('measure_last_reminder_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    measureResultSummary: text('measure_result_summary'),
+    designTaskStatus: text('design_task_status')
+      .notNull()
+      .default('unassigned'),
+    designAssignedTo: bigint('design_assigned_to', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    designAssignedAt: timestamp('design_assigned_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    designCompletedAt: timestamp('design_completed_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    designDueAt: timestamp('design_due_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    designLastReminderAt: timestamp('design_last_reminder_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    designLatestNote: text('design_latest_note'),
+    conflictReason: text('conflict_reason'),
+    conflictingRecordIds: bigint('conflicting_record_ids', { mode: 'bigint' })
+      .array()
+      .notNull()
+      .default(sql`'{}'::bigint[]`),
+    conflictReviewedBy: bigint('conflict_reviewed_by', {
+      mode: 'bigint',
+    }).references(() => adminUsers.id, { onDelete: 'set null' }),
+    conflictReviewedAt: timestamp('conflict_reviewed_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    conflictResolution: text('conflict_resolution'),
     workflowState: jsonObject<Record<string, unknown>>('workflow_state'),
     followUpRecords: jsonb('follow_up_records')
       .$type<Record<string, unknown>[]>()
@@ -766,6 +852,34 @@ export const promotionEnterpriseRecords = appSchema.table(
     index('promotion_records_promoter_updated_idx').on(
       table.promoterId,
       table.updatedAt
+    ),
+    index('promotion_records_measure_assignee_created_idx').on(
+      table.measureAssignedTo,
+      table.createdAt
+    ),
+    index('promotion_records_design_assignee_created_idx').on(
+      table.designAssignedTo,
+      table.createdAt
+    ),
+    index('promotion_records_claim_request_idx')
+      .on(table.claimRequestedBy, table.claimRequestedAt)
+      .where(sql`${table.claimStatus} = 'pending'`),
+    index('promotion_records_claim_reviewer_idx').on(table.claimReviewedBy),
+    index('promotion_records_conflict_reviewer_idx').on(
+      table.conflictReviewedBy
+    ),
+    index('promotion_records_ownership_stage_idx').on(
+      table.ownershipStatus,
+      table.businessStage
+    ),
+    index('promotion_records_pending_followup_idx').on(
+      table.pendingActionRole,
+      table.nextFollowUpAt
+    ),
+    index('promotion_records_credit_code_idx').on(table.creditCode),
+    index('promotion_records_name_phone_idx').on(
+      table.enterpriseName,
+      table.phone
     ),
     index('promotion_records_pool_followup_idx')
       .on(table.poolStatus, table.nextFollowUpAt)
@@ -1124,7 +1238,7 @@ export const workflowNotificationLogs = appSchema.table(
   },
   (table) => [
     uniqueIndex('workflow_notification_logs_dedupe_uidx')
-      .on(table.dedupeKey)
+      .on(table.dedupeKey, table.channel)
       .where(sql`${table.dedupeKey} is not null`),
     index('workflow_notification_logs_enterprise_status_created_idx').on(
       table.enterpriseId,

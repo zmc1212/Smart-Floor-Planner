@@ -25,6 +25,15 @@ Page-specific visual reference:
   scene asset `images/home-ip-v1/hero-scene-wechat-safe.jpg`, which reserves
   the native WeChat capsule safe area and keeps Xiao K fully visible; live
   data, role boundaries, navigation, and empty states remain authoritative.
+- Login (`pages/login/login`):
+  `design-references/all-pages-ip-v1/06-login.png` at the iPhone 13 Pro
+  `390x844` baseline. The reference controls the Xiao K opening-the-door hero,
+  approved brand lockup, overlapping two-mode login panel, three-part capability
+  summary, and compact return action. Production uses the derived local scene
+  asset `images/login-v1/hero-scene.jpg`; the approved lockup remains in the
+  derivative while all authentication text and controls stay live. WeChat
+  quick login, staff password login, loading/error behavior,
+  notification opt-in, and route return semantics remain authoritative.
 - Mine (`pages/mine/mine`):
   `design-references/mine/miniprogram-mine-v6.png` at the iPhone 13 Pro `390x844`
   baseline, with production crops sourced from both that screen and
@@ -36,19 +45,52 @@ Page-specific visual reference:
   Server-provided actions, role boundaries, loading/error/empty states, and
   ordinary-user floor-plan behavior remain authoritative.
 - Leads (`pages/leads-management/leads-management`):
-  `design-references/leads/leads-management-v4.png` at the iPhone 13 Pro `390x844`
-  baseline. The reference controls the scene-led header, summary card,
-  search/action row, six-stage filter rhythm, customer-card anatomy, and
-  color-coded floor-plan thumbnail treatment. Thumbnail geometry must come from
-  each lead's associated formal wall graph or real external preview URL; static
-  sample plans are design references only. Live lead data, role visibility, pagination, navigation,
-  loading/error/empty states, and the shared custom tab bar remain authoritative.
-  The approved brand-IP redesign north star is
-  `design-references/leads/leads-management-ip-c-dossier-v5.png`. It supersedes
-  v4 for future Leads visual design work and establishes the client-dossier
-  metaphor, dossier-index stage tabs, Xiao K's client-concierge role, and the
-  stronger asymmetric brand composition. This approval is design-only and does
-  not assert that the production page has already been implemented.
+  `design-references/all-pages-ip-v1/02-leads-management.png` at the iPhone 13 Pro
+  `390x844` baseline. The reference controls the Xiao K client-concierge scene,
+  asymmetric green dossier summary, search/filter/create action order, six
+  dossier-index stage tabs, stacked customer-record cards, and right-aligned
+  status-coloured floor-plan thumbnail treatment. Production uses the derived
+  local scene asset `images/leads-ip-v1/client-concierge-scene.jpg`; customer
+  counts and controls remain live UI rather than image text. Thumbnail geometry
+  must come from each lead's associated formal wall graph or real external preview
+  URL; static sample plans are design references only. Live lead data, role
+  visibility, pagination, navigation, loading/error/empty states, and the shared
+  custom tab bar remain authoritative. The approved C-style client-dossier
+  metaphor and Xiao K client-concierge role remain the durable Leads brand model.
+- Commission Records (`pages/commission-records/commission-records`):
+  `design-references/all-pages-ip-v1/12-commission-records.png` at the iPhone 13
+  Pro `390x844` baseline. The reference controls the custom navigation, the
+  single Xiao K income-assistant scene, the green pending-settlement summary,
+  the four status filters, grouped record rows, and the settlement explanation.
+  Production uses the derived local scene asset
+  `images/commission-records-ip-v1/hero-scene.jpg`; live tenant-scoped records,
+  real commission types, amounts, dates, statuses, and read-only settlement
+  authority remain authoritative.
+- Promotion records (`pages/promotion-records/promotion-records`):
+  `design-references/all-pages-ip-v1/09-promotion-records.png` at the iPhone 13 Pro
+  `390x844` baseline. The reference controls the enterprise-filing Xiao K hero,
+  rounded search surface, five role-view tabs, compact record-card anatomy, and
+  floating five-entry dock. Production uses the local derived scene asset
+  `images/promotion-records/hero-scene.jpg`; enterprise data, role-scoped views,
+  public-pool claim approval, loading/search/empty states, and all navigation
+  remain driven by current routes and APIs.
+- Promotion record detail (`pages/promotion-record-detail/promotion-record-detail`):
+  `design-references/all-pages-ip-v1/10-promotion-record-detail.png` at the
+  iPhone 13 Pro `390x844` baseline. The reference controls the compact report
+  overview, four-stage service rail, follow-up editor, vertical activity trail,
+  and administrator assignment panel. Xiao K acts as the report-stamp clerk;
+  production uses the project-local derivative
+  `images/promotion-detail/hero-scene.png`, while the company, masked phone,
+  stage labels, dates, activity records, assignees, role visibility, and all
+  actions remain live and server-authoritative.
+- Promotion record create (`pages/promotion-record-detail/promotion-record-detail?mode=create`):
+  `design-references/all-pages-ip-v1/11-promotion-record-create.png` at the
+  iPhone 13 Pro `390x844` baseline. The reference controls the native title,
+  Xiao K enterprise-intake hero, enterprise/contact work-order sections,
+  location action, helper copy, and final submission geometry. Production uses
+  `images/promotion-create/hero-scene.jpg` plus the licensed local Lucide raster
+  set; all labels, values, validation, pickers, location feedback, loading state,
+  and submission remain native, live UI.
 - AI Design (`pages/ai-design/ai-design`):
   `design-references/ai-design/ai-design-immersive-c-floor-map-v1.png` is the primary
   `390x844` reference, with

@@ -393,7 +393,7 @@ export default function Sidebar() {
   const hasMenuPermission = (key: string) => {
     if (!admin) return true;
     if (key === 'media-storage') return admin.role === 'super_admin' || admin.role === 'admin';
-    if (['ai-credit-prices', 'ai-providers'].includes(key) && (admin.role === 'super_admin' || admin.role === 'admin')) return true;
+    if (['ai-credit-prices', 'ai-presets', 'ai-providers'].includes(key) && (admin.role === 'super_admin' || admin.role === 'admin')) return true;
     if (admin.effectivePermissions?.includes(key)) return true;
     if (key === 'kujiale-floorplans' && admin.effectivePermissions?.includes('floorplans')) return true;
     if (

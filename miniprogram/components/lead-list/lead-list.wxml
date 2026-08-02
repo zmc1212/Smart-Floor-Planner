@@ -1,13 +1,18 @@
 <view class="lead-list-container">
   <view class="lead-hero-card">
-    <view class="lead-hero-stats">
-      <view class="hero-stat" wx:for="{{heroStats}}" wx:key="key">
-        <text class="hero-stat-label">{{item.label}}</text>
-        <text class="hero-stat-value">{{item.count}}</text>
-        <text class="hero-stat-unit">个客户</text>
+    <view class="folder-top-plane"></view>
+    <view class="folder-fold"></view>
+    <view class="lead-hero-summary">
+      <text class="hero-summary-label">跟进中的客户</text>
+      <text class="hero-summary-value">{{heroSummary.following}}</text>
+      <view class="hero-summary-meta">
+        <text>今日新增</text>
+        <text class="hero-summary-number">{{heroSummary.todayNew}}</text>
+        <text class="hero-summary-dot">·</text>
+        <text>已成交</text>
+        <text class="hero-summary-number">{{heroSummary.converted}}</text>
       </view>
     </view>
-    <image class="lead-hero-image" src="/images/leads-v4/summary-scene.png" mode="aspectFit" />
   </view>
 
   <view class="search-row">
@@ -23,13 +28,13 @@
         bindconfirm="onSearch"
       />
     </view>
-    <view class="add-lead-button" bindtap="onAddLead">
-      <image class="add-lead-icon" src="/images/leads-v4/plus-white.png" mode="aspectFit" />
-      <text>新增客户</text>
-    </view>
     <view class="filter-button" bindtap="onFilterTap">
       <image class="filter-icon" src="/images/leads-v4/filter.png" mode="aspectFit" />
       <text class="filter-text">筛选</text>
+    </view>
+    <view class="add-lead-button" bindtap="onAddLead">
+      <image class="add-lead-icon" src="/images/leads-v4/plus-white.png" mode="aspectFit" />
+      <text>新增客户</text>
     </view>
   </view>
 
@@ -38,11 +43,14 @@
       <view
         wx:for="{{tabs}}"
         wx:key="id"
-        class="tab-pill {{currentTab === item.id ? 'active' : ''}}"
+        class="tab-slot"
         bindtap="onTabChange"
         data-index="{{index}}"
       >
-        {{item.label}}
+        <view class="tab-pill {{currentTab === item.id ? 'active' : ''}}">
+          <text>{{item.label}}</text>
+        </view>
+        <view wx:if="{{currentTab === item.id}}" class="tab-active-indicator"></view>
       </view>
     </view>
   </scroll-view>
@@ -75,11 +83,34 @@
         bindtap="onLeadClick"
         data-id="{{item._id}}"
       >
+        <view class="lead-card-back"></view>
         <view class="lead-card-layer layer-{{item.statusTone}}"></view>
         <view class="lead-card card-{{item.statusTone}}">
           <view class="status-ribbon">
-            <image class="status-icon" src="{{item.statusIcon}}" mode="aspectFit" />
             <text>{{item.statusLabel}}</text>
+          </view>
+
+          <view class="lead-main">
+            <text class="lead-name">{{item.displayName}}</text>
+
+            <view class="contact-row">
+              <view class="contact-item phone-item">
+                <image class="line-icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
+                <text>{{item.phoneMasked}}</text>
+              </view>
+              <view class="contact-item location-item">
+                <image class="line-icon" src="/images/leads-v4/map-pin.png" mode="aspectFit" />
+                <text class="line-text">{{item.communityLabel}}</text>
+              </view>
+            </view>
+
+            <view class="card-bottom-row">
+              <view class="meta-row">
+                <view class="meta-pill meta-{{item.statusTone}}" wx:if="{{item.areaLabel}}">{{item.areaLabel}}</view>
+                <view class="meta-pill meta-{{item.statusTone}}" wx:if="{{item.styleLabel}}">{{item.styleLabel}}</view>
+              </view>
+              <text class="follow-row">{{item.followLabel}}</text>
+            </view>
           </view>
 
           <view class="lead-plan-frame plan-{{item.statusTone}}">
@@ -103,29 +134,6 @@
             <view wx:else class="lead-plan-empty">
               <image src="{{item.statusIcon}}" mode="aspectFit" />
               <text>{{item.planPreview.label}}</text>
-            </view>
-          </view>
-
-          <view class="lead-main">
-            <text class="lead-name">{{item.displayName}}</text>
-
-            <view class="contact-row">
-              <view class="contact-item phone-item">
-                <image class="line-icon" src="/images/leads-v4/phone.png" mode="aspectFit" />
-                <text>{{item.phoneMasked}}</text>
-              </view>
-              <view class="contact-item location-item">
-                <image class="line-icon" src="/images/leads-v4/map-pin.png" mode="aspectFit" />
-                <text class="line-text">{{item.communityLabel}}</text>
-              </view>
-            </view>
-
-            <view class="card-bottom-row">
-              <view class="meta-row">
-                <view class="meta-pill meta-{{item.statusTone}}" wx:if="{{item.areaLabel}}">{{item.areaLabel}}</view>
-                <view class="meta-pill meta-{{item.statusTone}}" wx:if="{{item.styleLabel}}">{{item.styleLabel}}</view>
-              </view>
-              <text class="follow-row">{{item.followLabel}}</text>
             </view>
           </view>
 

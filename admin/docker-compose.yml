@@ -24,6 +24,8 @@ services:
     image: zmc1212/sfp-admin:latest
     profiles: ["migration"]
     restart: "no"
+    volumes:
+      - ./drizzle:/app/drizzle:ro
     environment:
       - NODE_ENV=production
       - DATABASE_MIGRATION_URL=postgresql://sfp_migrator:sfp_migrator_local_only@postgres:5432/smart_floor_planner

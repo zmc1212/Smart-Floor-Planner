@@ -19,22 +19,19 @@ page {
 .page-header {
   position: relative;
   flex-shrink: 0;
-  height: 166rpx;
-  padding: 20rpx 42rpx 28rpx;
+  height: 400rpx;
+  padding: 4rpx 42rpx 0;
   box-sizing: border-box;
-  display: flex;
-  align-items: center;
   overflow: hidden;
 }
 
 .header-scene {
   position: absolute;
   z-index: 0;
-  top: -10rpx;
-  right: -10rpx;
-  width: 376rpx;
-  height: 230rpx;
-  opacity: 0.96;
+  top: -34rpx;
+  right: -4rpx;
+  width: 398rpx;
+  height: 378rpx;
 }
 
 .header-copy {
@@ -50,7 +47,7 @@ page {
 }
 
 .page-title {
-  font-size: 46rpx;
+  font-size: 48rpx;
   line-height: 1.18;
   font-weight: 800;
   color: #0f1724;
@@ -61,7 +58,7 @@ page {
   width: 78rpx;
   height: 39rpx;
   margin: 7rpx 0 0 -4rpx;
-  border: 4rpx solid #15b957;
+  border: 3rpx solid #81c900;
   border-left-color: transparent;
   border-radius: 50%;
   box-sizing: border-box;
@@ -75,11 +72,11 @@ page {
   width: 10rpx;
   height: 10rpx;
   border-radius: 50%;
-  background: #15b957;
+  background: #81c900;
 }
 
 .page-subtitle {
-  margin-top: 14rpx;
+  margin-top: 13rpx;
   font-size: 25rpx;
   line-height: 1.25;
   color: #657187;
@@ -88,4 +85,7 @@ page {
 .main-content {
   flex: 1;
   min-height: 0;
+  position: relative;
+  z-index: 2;
+  overflow: visible;
 }

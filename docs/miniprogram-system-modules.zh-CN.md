@@ -14,10 +14,14 @@
 ## 身份与共享上下文
 
 - `/pages/login/login`：通过 `/api/auth/miniprogram` 支持微信手机号快捷登录和账号密码登录，将 JWT/用户信息恢复到本地。
+- 登录页视觉：已按 iPhone 13 Pro `390x844` 基准实现
+  `design-references/all-pages-ip-v1/06-login.png`。页面使用从参考图派生的本地小 K/F3 入户场景，
+  保留已确认的品牌与欢迎锁定画面，并叠加双模式登录面板、本地授权图标、紧凑能力摘要和同屏返回入口；登录行为、
+  加载/失败反馈、通知授权与页面返回语义保持不变。
 - 访问仅限员工：账号密码登录必须匹配启用中的后台 `AdminUser`；微信 code/手机号登录必须通过已绑定 OpenID 或后台手机号匹配启用中的 `AdminUser`。未匹配的外部用户会收到 `403`，无法建立小程序已登录业务会话。账号、绑定身份、企业和权限解析已切换 PostgreSQL，并在刷新和请求上下文解析时复核启用状态。
 - `app.js`：恢复会话，解析二维码 `enterpriseId`/`staffId` 推荐参数，同步员工专业上下文、企业品牌，并对已记忆设备尝试静默 BLE 重连。
 - `utils/api.js`：携带 Bearer token，通过显式 `ACTIVE_API_ENVIRONMENT`（`local` 或 `production`）选择唯一 API 地址，401 时清理会话并提示重新登录。请求不会跨环境回退，也不读取持久化 `apiBaseUrl`。
-- 状态：PostgreSQL 登录与上下文恢复为 `Implemented`；具体路径仍依赖有效微信授权、账号、API 地址和企业/供应商配置。Phase 3 期间为 `Limited`：仍由 MongoDB 支撑的 AI 生成/媒体与商业工作流域要等计划内 PostgreSQL 切换后才兼容 bigint 身份；线索、正式户型、测量和设备绑定现已使用 PostgreSQL。
+- 状态：PostgreSQL 登录与上下文恢复为 `Implemented`；具体路径仍依赖有效微信授权、账号、API 地址和企业/供应商配置。Phase 3 期间为 `Limited`：仍由 MongoDB 支撑的 AI 生成/媒体与订单/提成工作流域要等计划内 PostgreSQL 切换后才兼容 bigint 身份；线索、正式户型、测量和设备绑定现已使用 PostgreSQL。
 
 ## 页面清单
 
@@ -37,21 +41,43 @@
 - API：`/api/leads`、`/api/leads/[id]`、`/api/floorplans/[id]` DELETE。
 - 已实现：客户称呼/手机号/小区/面积/风格采集、最近客户、列表/详情、正式户型关联、线索详情中的主户型名称/状态/闭合空间数、继续量房、新建独立量房、删除正式户型时清理本地续测指针、对已加载记录进行客户端搜索，以及通过阶段条或原生操作菜单进行状态筛选。
 - 持久化：线索和正式户型列表/详情/新建/更新/删除均使用 PostgreSQL RLS 事务和十进制字符串 ID；线索-户型关联、主户型及删除清理为原子操作。
-- 视觉基准：以 `design-references/leads/leads-management-v4.png` 和 `390x844` 为基准。交付页面保持场景化页头、三项统计、紧凑搜索/操作区、六阶段筛选条、根据每条线索关联的正式墙图或真实外部预览地址渲染的彩色户型图缩略图、与状态背景宽高对齐的左上角叠层、状态色轨和共享五项自定义 TabBar，同时继续渲染真实客户数据。
+- 视觉基准：以 `design-references/all-pages-ip-v1/02-leads-management.png` 和 `390x844` 为基准。交付页面还原小 K 客户管家场景、绿色档案摘要、搜索/筛选/新增操作顺序、六阶段档案索引、叠放式客户档案卡和右侧状态彩色户型缩略图。缩略图仍根据每条线索关联的正式墙图或真实外部预览地址渲染，实时数据、分页、错误/空状态、导航和共享五项自定义 TabBar 仍为准。打包场景派生素材为 `images/leads-ip-v1/client-concierge-scene.jpg`，其中不包含客户统计或交互控件。
 - 有限支持：需要有效小程序会话；手机号和小区既有客户端校验也有服务端校验。搜索范围为分页当前已经加载的记录；选择状态会触发服务端筛选并重新加载。
 
 ### 企业报备与员工任务
 
 - 页面：`pages/promotion-records/promotion-records`、`pages/promotion-record-detail/promotion-record-detail`。
 - API：`/api/promotion-records`、`/promotion-records/[id]`、`/promotion-records/pool`、员工角色列表、工作台 summary/todos 和更新接口。
-- 已实现：新建企业报备、`my`/`measure`/`design`/`admin`/`overdue`/`pool` 角色视图、搜索筛选、公海认领/审批申请、冲突归属、跟进内容和截止时间、测量员/设计师/地推分配、业务阶段操作。
+- 已实现：新建企业报备、`my`/`measure`/`design`/`admin`/`overdue`/`pool` 角色视图、搜索筛选、公海认领/审批申请、冲突归属、跟进内容和截止时间、测量员/设计师/地推分配、业务阶段操作。创建态支持原生行业和地区选择、微信定位、必填校验、防重复提交，并在成功后继续跳转到新建报备详情。
+- 视觉基准：报备列表以 `design-references/all-pages-ip-v1/09-promotion-records.png`
+  和 `390x844` 为基准，使用派生的本地
+  `images/promotion-records/hero-scene.jpg` 场景表达小 K 的企业档案整理角色，
+  直接呈现 `my`、`measure`、`design`、`overdue`、`pool` 五个视图，并按企业、
+  联系人、电话或地址搜索当前已加载视图；卡片继续渲染真实工作流状态、跟进内容、
+  时间、认领操作、加载态和空状态。由于该路由不是顶层 TabBar 页面，参考稿式底栏
+  仍委托给现有首页、线索、正式量房、AI 设计和我的导航流程。
+- 创建态视觉基准：`mode=create` 以
+  `design-references/all-pages-ip-v1/11-promotion-record-create.png` 和
+  `390x844` 为基准，使用派生的本地
+  `images/promotion-create/hero-scene.jpg` 场景表达小 K 的企业资料接待员角色，
+  将企业资料和联系人拆分为两组合作工单，并统一使用一套有授权记录的本地 Lucide
+  图标；标签和控件全部由真实 WXML 渲染，不使用图片文字。真实必填项仍为企业名称、
+  联系人和联系电话，城市、行业、地址、备注、定位、提交反馈、API 参数及成功跳转
+  仍以当前业务实现为准。
+- 视觉基准：报备详情以 `design-references/all-pages-ip-v1/10-promotion-record-detail.png`
+  和 `390x844` 为基准，采用紧凑的小 K 报备盖章场景、服务端状态驱动的四段进度、
+  跟进表单、活动时间线和管理员任务分配面板。详情页会遮罩联系人手机号；底层记录、
+  阶段、时间、员工选项、角色检查和变更操作仍使用真实数据。
+- PostgreSQL 边界：报备新建、列表/详情变更、公海/冲突操作、工作台待办、通知轮询和提醒状态均使用带租户 RLS 的 typed PostgreSQL Repository。既有响应 DTO、员工角色检查以及 `leadId`/报备跳转保持不变。订单与提成仍由 MongoDB 支撑，作为独立的 `Limited` 读取/结算域。
 - 有限支持：可见操作由员工角色和服务端工作流状态决定。
 
 ### 提成记录
 
 - 页面：`pages/commission-records/commission-records`。
 - API：`/api/commission-records`。
-- 已实现：待结算、已结算、已作废统计和记录列表，以及订单/结算说明。
+- 已实现：高保真收益中心汇总、交互式状态筛选，以及待结算、已结算、已作废
+  提成记录的真实订单、金额、日期和状态展示；包含加载、空数据、失败重试和
+  结算说明状态。
 - 有限支持：记录由企业订单工作流生成和结算，小程序只读，不是结算权威端。
 
 ### 灵感库
@@ -93,7 +119,7 @@
 - 数据与失败态：普通用户户型的空间数从正式 version-4 墙图各楼层的闭合空间派生；
   工作台和户型请求分别维护加载、失败与重试状态，网络失败不会再显示为普通用户工作台
   或“暂无户型”空态。
-- PostgreSQL 边界：资料、实时线索/正式户型/测量摘要和户型列表均使用 typed RLS Repository。商业工作流记录仍在 MongoDB，因此 API 在该 Phase 3 切片完成前返回 `todos: []`，不会把 bigint 身份传入 MongoDB 查询。
+- PostgreSQL 边界：资料、实时线索/正式户型/测量摘要、户型列表、报备记录和工作台待办均使用 typed RLS Repository。AI 生成域迁移前首页 `aiGeneratedCases` 仍返回 `0`；订单和提成仍由 MongoDB 支撑，不会把 PostgreSQL bigint 身份传入旧 MongoDB 查询。
 - 有限支持：工作台内容和任务操作随专业角色变化；部分账号/通知卡片只是信息展示。
 
 ### 推荐方案分享页

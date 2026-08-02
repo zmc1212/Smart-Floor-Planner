@@ -1,150 +1,165 @@
 import { NextResponse } from 'next/server';
+import { parsePostgresId, promotionRecordToDto } from '@/db/postgres-dto';
+import { PromotionRecordRepository } from '@/db/repositories';
+import type { PostgresTransaction } from '@/db/transaction';
+import { getPlatformB2BTenantContext, getTenantContext } from '@/lib/auth';
+import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import {
+  withAdminPostgresTransaction,
+  withMiniProgramPostgresTransaction,
+} from '@/lib/postgres-request-scope';
+import {
+  listWorkbenchTodos,
+  type WorkbenchTodoItem,
+} from '@/lib/postgres-workflow-automation';
 import dbConnect from '@/lib/mongodb';
 import { CommissionRecord } from '@/models/CommissionRecord';
-import { PromotionEnterpriseRecord } from '@/models/PromotionEnterpriseRecord';
-import { getTenantContext } from '@/lib/auth';
-import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
-import { buildPromotionAccessFilter } from '@/lib/promotion-workflow';
-import { listWorkbenchTodos } from '@/lib/workflow-automation';
-import { tenantStorage } from '@/lib/tenant-context';
 
 export const dynamic = 'force-dynamic';
 
+interface WorkbenchIdentity {
+  role: string;
+  userId: string;
+  enterpriseId: string | null;
+}
+
+interface WorkbenchScope {
+  identity: WorkbenchIdentity;
+  execute<T>(callback: (transaction: PostgresTransaction) => Promise<T>): Promise<T>;
+}
+
+async function getScope(request: Request): Promise<WorkbenchScope | null> {
+  const mini = await resolveMiniProgramContext(request);
+  if (mini) {
+    if (!mini.staff) return null;
+    return {
+      identity: {
+        role: mini.staff.role,
+        userId: mini.staff._id,
+        enterpriseId: mini.staff.enterpriseId ?? mini.enterpriseId ?? null,
+      },
+      execute: <T>(callback: (transaction: PostgresTransaction) => Promise<T>) =>
+        withMiniProgramPostgresTransaction(mini, callback),
+    };
+  }
+  const context = await getTenantContext(request);
+  if (!context) return null;
+  const b2bContext = getPlatformB2BTenantContext(context);
+  return {
+    identity: {
+      role: b2bContext.role,
+      userId: b2bContext.userId,
+      enterpriseId: b2bContext.enterpriseId,
+    },
+    execute: <T>(callback: (transaction: PostgresTransaction) => Promise<T>) =>
+      withAdminPostgresTransaction(b2bContext, callback),
+  };
+}
+
+function isLegacyObjectId(value: string | null | undefined) {
+  return !!value && /^[a-f\d]{24}$/i.test(value);
+}
+
+async function listLegacyCommissions(identity: WorkbenchIdentity) {
+  if (!isLegacyObjectId(identity.userId) && !isLegacyObjectId(identity.enterpriseId)) {
+    return [];
+  }
+  await dbConnect();
+  if (identity.role === 'salesperson' && isLegacyObjectId(identity.userId)) {
+    return CommissionRecord.find({ promoterId: identity.userId }).sort({ createdAt: -1 }).lean();
+  }
+  if (identity.enterpriseId && isLegacyObjectId(identity.enterpriseId)) {
+    return CommissionRecord.find({ enterpriseId: identity.enterpriseId }).sort({ createdAt: -1 }).lean();
+  }
+  return [];
+}
+
 export async function GET(request: Request) {
   try {
-    await dbConnect();
-    
-    // Try Mini Program JWT first
-    const mpContext = await resolveMiniProgramContext(request);
-    let identity: any = null;
-
-    if (mpContext && mpContext.staff) {
-      const { staff } = mpContext;
-      identity = {
-        role: staff.role,
-        userId: String(staff._id),
-        enterpriseId: staff.enterpriseId ? String(staff.enterpriseId) : null,
-        isMiniProgram: true,
-      };
-    } else {
-      // Fallback to Admin Dashboard session
-      const adminContext = await getTenantContext(request);
-      if (adminContext) {
-        identity = {
-          role: adminContext.role,
-          userId: adminContext.userId,
-          enterpriseId: adminContext.enterpriseId,
-          isMiniProgram: false,
-        };
-      }
-    }
-
-    if (!identity) {
+    const scope = await getScope(request);
+    if (!scope) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
-
-    // Use tenantStorage.run to ensure multi-tenant plugin works
-    return await tenantStorage.run(
-      {
-        enterpriseId: identity.enterpriseId,
+    const { identity } = scope;
+    const actor = ['salesperson', 'measurer', 'designer'].includes(identity.role)
+      ? { id: parsePostgresId(identity.userId, 'userId'), role: identity.role }
+      : undefined;
+    const records = await scope.execute((transaction) =>
+      new PromotionRecordRepository(transaction).list({ actor, limit: 200 })
+    );
+    const [commissions, todos, overdueTodos] = await Promise.all([
+      listLegacyCommissions(identity),
+      listWorkbenchTodos({
         role: identity.role,
         userId: identity.userId,
+        enterpriseId: identity.enterpriseId,
+        view: 'mine',
+      }),
+      listWorkbenchTodos({
+        role: identity.role,
+        userId: identity.userId,
+        enterpriseId: identity.enterpriseId,
+        view: 'overdue',
+      }),
+    ]);
+
+    const pendingAssignments = records.rows.filter(
+      (item) =>
+        item.ownershipStatus === 'conflict_pending' ||
+        (item.businessStage === 'measuring' && item.measureTaskStatus === 'unassigned') ||
+        (item.measureTaskStatus === 'submitted' && item.designTaskStatus === 'unassigned')
+    ).length;
+    const pendingCommission = commissions
+      .filter((item: { status?: string }) => item.status === 'pending_settlement')
+      .reduce(
+        (sum: number, item: { commissionAmount?: number | string }) =>
+          sum + Number(item.commissionAmount || 0),
+        0
+      );
+
+    let cards: Array<{ key: string; label: string; value: number }>;
+    if (identity.role === 'salesperson') {
+      cards = [
+        { key: 'reported', label: 'My reports', value: records.rows.length },
+        { key: 'pendingTodo', label: 'Pending follow-up', value: todos.length },
+        { key: 'overdueFollowUps', label: 'Overdue follow-up', value: overdueTodos.length },
+        { key: 'pendingCommission', label: 'Pending commission', value: pendingCommission },
+      ];
+    } else if (identity.role === 'measurer') {
+      cards = [
+        { key: 'mine', label: 'My tasks', value: todos.length },
+        { key: 'assigned', label: 'Awaiting acceptance', value: records.rows.filter((item) => item.measureTaskStatus === 'assigned').length },
+        { key: 'accepted', label: 'In progress', value: records.rows.filter((item) => item.measureTaskStatus === 'accepted').length },
+        { key: 'overdueMeasures', label: 'Overdue measurement', value: overdueTodos.length },
+      ];
+    } else if (identity.role === 'designer') {
+      cards = [
+        { key: 'mine', label: 'My tasks', value: todos.length },
+        { key: 'assigned', label: 'Awaiting design', value: records.rows.filter((item) => item.designTaskStatus === 'assigned').length },
+        { key: 'progress', label: 'Design in progress', value: records.rows.filter((item) => item.designTaskStatus === 'in_progress').length },
+        { key: 'overdueDesigns', label: 'Overdue design', value: overdueTodos.length },
+      ];
+    } else {
+      cards = [
+        { key: 'records', label: 'Enterprise reports', value: records.rows.length },
+        { key: 'pendingAssignments', label: 'Pending assignment', value: pendingAssignments },
+        { key: 'overdue', label: 'Overdue tasks', value: overdueTodos.length },
+        { key: 'pendingCommission', label: 'Pending commission', value: pendingCommission },
+      ];
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        staffRole: identity.role,
+        cards,
+        latestRecords: records.rows.slice(0, 5).map(promotionRecordToDto),
+        latestCommissions: commissions.slice(0, 5),
+        latestTodos: (todos as WorkbenchTodoItem[]).slice(0, 5),
       },
-      async () => {
-        const recordQuery: Record<string, unknown> = identity.isMiniProgram
-          ? buildPromotionAccessFilter({
-              role: identity.role,
-              _id: identity.userId,
-              enterpriseId: identity.enterpriseId || undefined,
-            })
-          : {};
-
-        const [records, commissions, todos, overdueTodos] = await Promise.all([
-          PromotionEnterpriseRecord.find(recordQuery).sort({ createdAt: -1 }).lean(),
-          identity.role === 'salesperson'
-            ? CommissionRecord.find({ promoterId: identity.userId }).sort({ createdAt: -1 }).lean()
-            : identity.enterpriseId
-              ? CommissionRecord.find({ enterpriseId: identity.enterpriseId }).sort({ createdAt: -1 }).lean()
-              : Promise.resolve([]),
-          listWorkbenchTodos({
-            role: identity.role,
-            userId: identity.userId,
-            enterpriseId: identity.enterpriseId,
-            view: 'mine',
-          }),
-          listWorkbenchTodos({
-            role: identity.role,
-            userId: identity.userId,
-            enterpriseId: identity.enterpriseId,
-            view: 'overdue',
-          }),
-        ]);
-
-        const pendingAssignments = records.filter(
-          (item: any) =>
-            item.ownershipStatus === 'conflict_pending' ||
-            (item.businessStage === 'measuring' && item.measureTask?.status === 'unassigned') ||
-            (item.measureTask?.status === 'submitted' && item.designTask?.status === 'unassigned')
-        ).length;
-
-        let cards: Array<{ key: string; label: string; value: number }> = [];
-
-        if (identity.role === 'salesperson') {
-          cards = [
-            { key: 'reported', label: '我的报备', value: records.length },
-            { key: 'pendingTodo', label: '待跟进', value: todos.length },
-            { key: 'overdueFollowUps', label: '已超时跟进', value: overdueTodos.length },
-            {
-              key: 'pendingCommission',
-              label: '待结算提成',
-              value: commissions
-                .filter((item: any) => item.status === 'pending_settlement')
-                .reduce((sum: number, item: any) => sum + Number(item.commissionAmount || 0), 0),
-            },
-          ];
-        } else if (identity.role === 'measurer') {
-          cards = [
-            { key: 'mine', label: '我的待办', value: todos.length },
-            { key: 'assigned', label: '待接收', value: records.filter((item: any) => item.measureTask?.status === 'assigned').length },
-            { key: 'accepted', label: '进行中', value: records.filter((item: any) => item.measureTask?.status === 'accepted').length },
-            { key: 'overdueMeasures', label: '已超时测量', value: overdueTodos.length },
-          ];
-        } else if (identity.role === 'designer') {
-          cards = [
-            { key: 'mine', label: '我的待办', value: todos.length },
-            { key: 'assigned', label: '待设计', value: records.filter((item: any) => item.designTask?.status === 'assigned').length },
-            { key: 'progress', label: '设计中', value: records.filter((item: any) => item.designTask?.status === 'in_progress').length },
-            { key: 'overdueDesigns', label: '已超时设计', value: overdueTodos.length },
-          ];
-        } else {
-          cards = [
-            { key: 'records', label: '企业报备', value: records.length },
-            { key: 'pendingAssignments', label: '待分配事项', value: pendingAssignments },
-            { key: 'overdue', label: '已超时事项', value: overdueTodos.length },
-            {
-              key: 'pendingCommission',
-              label: '待结算提成',
-              value: commissions
-                .filter((item: any) => item.status === 'pending_settlement')
-                .reduce((sum: number, item: any) => sum + Number(item.commissionAmount || 0), 0),
-            },
-          ];
-        }
-
-        return NextResponse.json({
-          success: true,
-          data: {
-            staffRole: identity.role,
-            cards,
-            latestRecords: records.slice(0, 5),
-            latestCommissions: commissions.slice(0, 5),
-            latestTodos: todos.slice(0, 5),
-          },
-        });
-      }
-    );
-  } catch (error: any) {
-    console.error('[WorkbenchSummary] Error:', error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: message }, { status: 400 });
   }
 }

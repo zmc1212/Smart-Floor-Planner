@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "packages_name_uidx" ON "app"."packages" USING btree ("name");
