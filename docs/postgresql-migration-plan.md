@@ -94,7 +94,7 @@ and `cancelled`.
 | Phase 0.2 | Qiniu configuration and encrypted-field verification | complete | Read-only inspection; no secrets logged |
 | Phase 1 | PostgreSQL instance, roles, pooling, migration runner | complete | Codex verification and user database-health/admin-page regression passed |
 | Phase 2 | PostgreSQL schema and Repository foundation | complete | Codex and user acceptance passed on 2026-08-01 |
-| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, and AI style presets switched; AI workflow/generation/media-asset domains pending |
+| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, AI style presets, AI provider configuration/runtime, and AI chat sessions switched; AI workflow/generation/media-asset domains pending |
 | Phase 4 | RoomiAI files/data and Qiniu configuration import | in progress: awaiting user acceptance | PostgreSQL active Roomi revision, 960 verified local previews, imported Qiniu configuration, and successful probe on 2026-08-01 |
 | Phase 5 | Contract tests and cutover rehearsal | not started | Pending |
 | Phase 6 | Production PostgreSQL cutover | not started | Pending |
@@ -451,6 +451,15 @@ is recorded.
   were imported, re-encrypted, or logged in this slice. One API-test-only archived
   row with a `phase3-api-*` key was deleted after an exact prefix check; the
   immediate follow-up query returned zero matching rows.
+- On 2026-08-02, AI provider configuration/runtime was switched to
+  `AiProviderConfigRepository` in platform PostgreSQL transactions. Provider
+  CRUD, key rotation, connection testing, model discovery, upstream balance,
+  environment-default seeding, and runtime selection preserve their routes,
+  DTOs, and `super_admin`/`admin` `ai-providers` permission boundary. Encrypted
+  values are not logged; asynchronous provider calls complete before only
+  non-secret operational state is persisted. Targeted ESLint and
+  `npm run test:postgresql` passed 28/28. The full TypeScript check still has
+  the pre-existing test-only errors recorded above, none in this provider slice.
 - On 2026-08-02, the unused WeCom configuration, group-sharing API/UI, and
   employee WeCom identifiers were deprecated rather than migrated. The feature
   was removed from runtime code and documentation; legacy MongoDB fields and
@@ -524,7 +533,8 @@ phase. Never advance a phase based only on conversation memory.
 
 Phase 3 identity/enterprise core plus leads, formal floor plans, measurements,
 devices, their Mini Program aggregates, the package catalog, promotion workflow
-runtime, orders, commissions, enterprise activation, and AI style presets are
+runtime, orders, commissions, enterprise activation, AI style presets, and AI
+provider configuration/runtime are
 switched. The next slice should migrate AI workflow/generation/media persistence and its bigint
 lead/plan consumers. Beyond
 the completed Phase 4 whitelist import, do not import production business data

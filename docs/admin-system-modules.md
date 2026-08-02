@@ -273,6 +273,13 @@ permission, or workflow changes.
   configuration. `Limited`: the platform image-model catalog currently has a
   GRS source contract, so a new provider requires an adapter implementation and
   catalog-profile support, not merely an additional UI option.
+- PostgreSQL boundary: platform-provider list/create/update/disable, credential
+  rotation, connection tests, model discovery, upstream-balance checks, and the
+  runtime provider registry now use `AiProviderConfigRepository` in
+  platform-scoped PostgreSQL transactions. Encrypted credentials remain opaque
+  at rest; asynchronous checks persist only their non-secret operational state
+  after the network call. Environment-backed GRS/Pollinations defaults are
+  idempotently seeded into PostgreSQL when their API keys are configured.
 - APIs: AI agent/chat, generation/render/advice, status/history, quota/usage,
   presets, workflow search/pagination and stages, design capabilities/action
   catalog, workflow source images/leads, media assets,
@@ -333,6 +340,13 @@ permission, or workflow changes.
   string `_id` API DTO. Generation task persistence/model-profile synchronization
   still use MongoDB until their Phase 3 slices are migrated. New generation batches resolve
   a selected prompt template and parameter definition through PostgreSQL.
+  AI provider configuration and runtime selection now use the typed
+  `AiProviderConfigRepository` with the existing platform `ai-providers`
+  permission and unchanged API DTOs.
+  AI conversation list/create/detail/delete plus the agent and agent-action
+  message history now use `AiChatSessionRepository` in RLS-scoped PostgreSQL
+  transactions, keeping the existing per-enterprise/per-administrator boundary
+  and string conversation IDs. Historical MongoDB conversations are not imported.
   `Limited`: MongoDB AI workflow/media/generation routes that reference leads or
   floor plans are not bigint-compatible yet and remain outside this slice.
 - Status: `Implemented`. The workbench starts customer designs with a
@@ -625,7 +639,8 @@ permission, or workflow changes.
   core, leads, formal floor plans, measurements, devices, prompt-library reads,
   system-role configuration, global promotion configuration, media-storage
    configuration, promotion records, workflow notifications, reminder automation,
-   orders, commissions, enterprise activation, and AI style presets are
+   orders, commissions, enterprise activation, AI style presets, and AI provider
+   configuration/runtime are
    PostgreSQL-backed. AI workflow, generation, and media-asset persistence
    remain on MongoDB while Phase 3 proceeds incrementally.
   Docker

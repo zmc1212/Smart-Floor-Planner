@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { Types } from 'mongoose';
-import dbConnect from '@/lib/mongodb';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { AiChatSessionRepository } from '@/db/repositories';
+import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
 import { getTenantContext, type TenantContext } from '@/lib/auth';
-import { AiChatSession } from '@/models/AiChatSession';
 import {
   createAiWorkflow,
   getAiWorkflowContext,
@@ -77,8 +77,6 @@ function buildActionContent(actionName: AgentActionName, workflowTitle?: string,
 }
 
 export async function POST(req: NextRequest) {
-  await dbConnect();
-
   try {
     const context = await getTenantContext(req);
     if (!context) {
@@ -96,10 +94,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Missing actionName' }, { status: 400 });
     }
 
-    const session = await AiChatSession.findOne({
-      _id: conversationId,
-      adminId: context.userId as unknown as Types.ObjectId,
-    });
+    const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
+    const adminId = parsePostgresId(context.userId, 'userId');
+    const sessionId = parsePostgresId(conversationId, 'conversation id');
+    const session = await withAdminPostgresTransaction(context, (transaction) =>
+      new AiChatSessionRepository(transaction).findById(sessionId, enterpriseId, adminId)
+    );
 
     if (!session) {
       return NextResponse.json({ success: false, error: 'Conversation not found' }, { status: 404 });
@@ -165,18 +165,22 @@ export async function POST(req: NextRequest) {
       role: 'assistant' as const,
       content,
       uiPayload: buildWorkflowDetailUiPayload(workflowContext),
-      conversationId: session._id,
+      conversationId: session.id.toString(),
     };
 
-    session.messages.push({
-      role: 'assistant',
-      content: truncateContent(content),
-      uiPayload: assistantMessage.uiPayload,
-      createdAt: new Date(),
-    });
-    session.markModified('messages');
-    session.lastMessageAt = new Date();
-    await session.save();
+    await withAdminPostgresTransaction(context, (transaction) =>
+      new AiChatSessionRepository(transaction).appendMessage(
+        session.id,
+        enterpriseId,
+        adminId,
+        {
+          role: 'assistant',
+          content: truncateContent(content),
+          uiPayload: assistantMessage.uiPayload,
+          createdAt: new Date(),
+        }
+      )
+    );
 
     return NextResponse.json({
       success: true,

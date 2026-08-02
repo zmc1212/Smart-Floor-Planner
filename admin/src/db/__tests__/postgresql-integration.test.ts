@@ -10,6 +10,7 @@ import {
   aiPromptTemplateAssets,
   aiPromptTemplates,
   aiStylePresets,
+  aiProviderConfigs,
   adminUsers,
   departments,
   devices,
@@ -28,6 +29,7 @@ import {
 import {
   AdminUserRepository,
   AiStylePresetRepository,
+  AiProviderConfigRepository,
   CommercialRepository,
   DepartmentRepository,
   DeviceRepository,
@@ -79,6 +81,7 @@ let promotionMeasurerAId: bigint;
 let promotionDesignerAId: bigint;
 let promotionPromoterBId: bigint;
 let aiStylePresetId: bigint;
+let aiProviderConfigId: bigint;
 
 before(async () => {
   loadEnvConfig(process.cwd());
@@ -307,6 +310,46 @@ test('AI style presets use idempotent PostgreSQL defaults and preserve JSON imag
   assert.equal(listed.some((preset) => preset.id === aiStylePresetId), true);
 });
 
+test('AI provider configuration keeps encrypted credentials and operational state in PostgreSQL', async () => {
+  await withPlatformTransaction(async (transaction) => {
+    const repository = new AiProviderConfigRepository(transaction);
+    const created = await repository.create({
+      key: `${testRunKey}-provider`,
+      name: 'PostgreSQL test provider',
+      adapterType: 'grs',
+      baseUrl: 'https://provider.example.test',
+      apiKeyEncrypted: 'encrypted-test-key',
+      apiKeyMasked: 'test***key',
+      credentialsEncrypted: { apiKey: 'encrypted-test-key' },
+      credentialsMasked: { apiKey: 'test***key' },
+      adapterConfig: { retry: 1 },
+      capabilities: ['image.generate'],
+      modelMappings: { 'image.generate.standard': 'test-model' },
+      priority: 7,
+      timeoutMs: 30_000,
+      enabled: true,
+      costRules: [],
+    });
+    aiProviderConfigId = created.id;
+
+    const enabled = await repository.listEnabled({
+      capability: 'image.generate',
+      adapterType: 'grs',
+    });
+    assert.equal(enabled.some((record) => record.id === created.id), true);
+
+    const updated = await repository.update(created.id, {
+      priority: 5,
+      operationalState: { lastTestOk: true, discoveredModels: ['test-model'] },
+    });
+    assert.equal(updated?.priority, 5);
+    assert.deepEqual(updated?.operationalState, {
+      lastTestOk: true,
+      discoveredModels: ['test-model'],
+    });
+  });
+});
+
 test('AI creation policy reads a PostgreSQL enterprise identity without ObjectId casting', async () => {
   await withTenantTransaction(enterpriseAId, async (transaction) => {
     await new EnterpriseRepository(transaction).update(enterpriseAId, {
@@ -325,6 +368,11 @@ after(async () => {
         await transaction
           .delete(aiStylePresets)
           .where(eq(aiStylePresets.id, aiStylePresetId));
+      }
+      if (aiProviderConfigId) {
+        await transaction
+          .delete(aiProviderConfigs)
+          .where(eq(aiProviderConfigs.id, aiProviderConfigId));
       }
       if (promptRevisionId) {
         await transaction

@@ -1,12 +1,43 @@
 import { decryptText, encryptText, maskSecret } from '@/lib/crypto';
-import { AiProviderConfig } from '@/models/AiProviderConfig';
-import { normalizeModelMappings, toStoredModelMappings, type AiCapability, type AiLogicalModelKey, type AiProviderAdapter, type AiProviderRuntimeConfig } from './provider-types';
+import {
+  AiProviderConfigRepository,
+  type AiProviderConfigRecord,
+} from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
+import {
+  normalizeModelMappings,
+  toStoredModelMappings,
+  type AiCapability,
+  type AiLogicalModelKey,
+  type AiProviderAdapter,
+  type AiProviderAdapterType,
+  type AiProviderRuntimeConfig,
+} from './provider-types';
 import { grsAdapter } from './providers/grs';
 import { openAiCompatibleAdapter } from './providers/openai-compatible';
 import { pollinationsAdapter } from './providers/pollinations';
 
-function decryptProviderApiKey(config: { credentialsEncrypted?: Record<string, string>; apiKeyEncrypted: string }) {
-  return decryptText(config.credentialsEncrypted?.apiKey || config.apiKeyEncrypted);
+function decryptProviderApiKey(
+  config: Pick<AiProviderConfigRecord, 'credentialsEncrypted' | 'apiKeyEncrypted'>
+) {
+  const apiKey = config.credentialsEncrypted?.apiKey;
+  return decryptText(typeof apiKey === 'string' ? apiKey : config.apiKeyEncrypted);
+}
+
+function toProviderRuntime(config: AiProviderConfigRecord): AiProviderRuntimeConfig {
+  return {
+    id: String(config.id),
+    key: config.key,
+    name: config.name,
+    adapterType: config.adapterType as AiProviderAdapterType,
+    baseUrl: config.baseUrl,
+    apiKey: decryptProviderApiKey(config),
+    adapterConfig: config.adapterConfig as AiProviderRuntimeConfig['adapterConfig'],
+    capabilities: config.capabilities as AiCapability[],
+    modelMappings: normalizeModelMappings(config.modelMappings),
+    timeoutMs: config.timeoutMs,
+    costRules: config.costRules as AiProviderRuntimeConfig['costRules'],
+  };
 }
 
 const adapters = new Map<string, AiProviderAdapter>([
@@ -57,10 +88,9 @@ export async function ensureEnvironmentAiProviders() {
 
   await Promise.all(
     defaults.filter((item) => item.apiKey).map((item) =>
-      AiProviderConfig.updateOne(
-        { key: item.key },
-        {
-          $setOnInsert: {
+      withPlatformTransaction((transaction) =>
+        new AiProviderConfigRepository(transaction).createIfMissing({
+          key: item.key,
             name: item.name,
             adapterType: item.adapterType,
             baseUrl: item.baseUrl,
@@ -68,15 +98,13 @@ export async function ensureEnvironmentAiProviders() {
             apiKeyMasked: maskSecret(item.apiKey),
             credentialsEncrypted: { apiKey: encryptText(item.apiKey || '') },
             credentialsMasked: { apiKey: maskSecret(item.apiKey) },
-            capabilities: item.capabilities,
+            capabilities: [...item.capabilities],
             modelMappings: toStoredModelMappings(item.modelMappings),
             priority: item.priority,
             timeoutMs: 90000,
             enabled: true,
             costRules: [],
-          },
-        },
-        { upsert: true }
+          })
       )
     )
   );
@@ -84,67 +112,31 @@ export async function ensureEnvironmentAiProviders() {
 
 export async function listProviderRuntimes(capability: AiCapability, logicalModelKey: AiLogicalModelKey) {
   await ensureEnvironmentAiProviders();
-  const configs = await AiProviderConfig.find({
-    enabled: true,
-    capabilities: capability,
-  })
-    .select('+apiKeyEncrypted +credentialsEncrypted')
-    .sort({ priority: 1, createdAt: 1 });
+  const configs = await withPlatformTransaction((transaction) =>
+    new AiProviderConfigRepository(transaction).listEnabled({ capability })
+  );
 
-  return configs.map((config): AiProviderRuntimeConfig => ({
-    id: String(config._id),
-    key: config.key,
-    name: config.name,
-    adapterType: config.adapterType,
-    baseUrl: config.baseUrl,
-    apiKey: decryptProviderApiKey(config),
-    adapterConfig: config.adapterConfig || {},
-    capabilities: config.capabilities,
-    modelMappings: normalizeModelMappings(config.modelMappings),
-    timeoutMs: config.timeoutMs,
-    costRules: config.costRules,
-  })).filter((runtime) => Boolean(runtime.modelMappings[logicalModelKey]));
+  return configs
+    .map(toProviderRuntime)
+    .filter((runtime) => Boolean(runtime.modelMappings[logicalModelKey]));
 }
 
 export async function listProviderRuntimesByAdapter(capability: AiCapability, adapterType: string) {
   await ensureEnvironmentAiProviders();
-  const configs = await AiProviderConfig.find({
-    enabled: true,
-    capabilities: capability,
-    adapterType,
-  })
-    .select('+apiKeyEncrypted +credentialsEncrypted')
-    .sort({ priority: 1, createdAt: 1 });
+  const configs = await withPlatformTransaction((transaction) =>
+    new AiProviderConfigRepository(transaction).listEnabled({
+      capability,
+      adapterType,
+    })
+  );
 
-  return configs.map((config): AiProviderRuntimeConfig => ({
-    id: String(config._id),
-    key: config.key,
-    name: config.name,
-    adapterType: config.adapterType,
-    baseUrl: config.baseUrl,
-    apiKey: decryptProviderApiKey(config),
-    adapterConfig: config.adapterConfig || {},
-    capabilities: config.capabilities,
-    modelMappings: normalizeModelMappings(config.modelMappings),
-    timeoutMs: config.timeoutMs,
-    costRules: config.costRules,
-  }));
+  return configs.map(toProviderRuntime);
 }
 
 export async function getProviderRuntimeById(id: string) {
-  const config = await AiProviderConfig.findById(id).select('+apiKeyEncrypted +credentialsEncrypted');
+  const config = await withPlatformTransaction((transaction) =>
+    new AiProviderConfigRepository(transaction).findById(BigInt(id))
+  );
   if (!config) throw new Error('AI 供应商配置不存在');
-  return {
-    id: String(config._id),
-    key: config.key,
-    name: config.name,
-    adapterType: config.adapterType,
-    baseUrl: config.baseUrl,
-    apiKey: decryptProviderApiKey(config),
-    adapterConfig: config.adapterConfig || {},
-    capabilities: config.capabilities,
-    modelMappings: normalizeModelMappings(config.modelMappings),
-    timeoutMs: config.timeoutMs,
-    costRules: config.costRules,
-  } satisfies AiProviderRuntimeConfig;
+  return toProviderRuntime(config);
 }

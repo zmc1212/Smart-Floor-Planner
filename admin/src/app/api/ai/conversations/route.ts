@@ -1,53 +1,43 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { AiChatSessionRepository } from '@/db/repositories';
+import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
 import { getTenantContext } from '@/lib/auth';
-import { AiChatSession } from '@/models/AiChatSession';
 
-// List conversations
 export async function GET(request: Request) {
-  await dbConnect();
   const context = await getTenantContext(request);
-  if (!context) {
-    return NextResponse.json({ success: false, error: '未授权' }, { status: 401 });
-  }
-
+  if (!context) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  if (!context.enterpriseId) return NextResponse.json({ success: false, error: 'Enterprise context required' }, { status: 400 });
   try {
-    const sessions = await AiChatSession.find({
-      enterpriseId: context.enterpriseId as any,
-      adminId: context.userId as any,
-    })
-      .sort({ lastMessageAt: -1 })
-      .select('title lastMessageAt createdAt')
-      .limit(50);
-
-    return NextResponse.json({ success: true, data: sessions });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
+    const adminId = parsePostgresId(context.userId, 'userId');
+    const sessions = await withAdminPostgresTransaction(context, (transaction) =>
+      new AiChatSessionRepository(transaction).list(enterpriseId, adminId)
+    );
+    return NextResponse.json({ success: true, data: sessions.map((session) => ({
+      _id: session.id.toString(), title: session.title, lastMessageAt: session.lastMessageAt,
+      createdAt: session.createdAt,
+    })) });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Failed to load conversations' }, { status: 500 });
   }
 }
 
-// Create a new conversation
 export async function POST(request: Request) {
-  await dbConnect();
   const context = await getTenantContext(request);
-  if (!context) {
-    return NextResponse.json({ success: false, error: '未授权' }, { status: 401 });
-  }
-
+  if (!context) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+  if (!context.enterpriseId) return NextResponse.json({ success: false, error: 'Enterprise context required' }, { status: 400 });
   try {
-    if (!context.enterpriseId) {
-      return NextResponse.json({ success: false, error: '需要企业上下文' }, { status: 400 });
-    }
-
-    const session = await AiChatSession.create({
-      enterpriseId: context.enterpriseId as any,
-      adminId: context.userId as any,
-      title: '新对话',
-      messages: [],
-    });
-
-    return NextResponse.json({ success: true, data: session });
-  } catch (error: any) {
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const session = await withAdminPostgresTransaction(context, (transaction) =>
+      new AiChatSessionRepository(transaction).create({
+        enterpriseId: parsePostgresId(context.enterpriseId, 'enterpriseId'),
+        adminId: parsePostgresId(context.userId, 'userId'),
+        title: 'New conversation',
+        messages: [],
+      })
+    );
+    return NextResponse.json({ success: true, data: { ...session, _id: session.id.toString() } });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Failed to create conversation' }, { status: 500 });
   }
 }

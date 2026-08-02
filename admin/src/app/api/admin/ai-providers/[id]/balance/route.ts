@@ -1,51 +1,65 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { AiProviderConfigRepository } from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { AiProviderConfig } from '@/models/AiProviderConfig';
 import { getAiProviderAdapter, getProviderRuntimeById } from '@/lib/ai/provider-registry';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await dbConnect();
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
       const { id } = await params;
+      const providerId = parsePostgresId(id);
       const runtime = await getProviderRuntimeById(id);
       const adapter = getAiProviderAdapter(runtime.adapterType);
       if (!adapter.getBalance) {
         return NextResponse.json(
-          { success: false, error: `${runtime.name} 适配器不支持余额查询` },
+          { success: false, error: `${runtime.name} adapter does not support balance checks` },
           { status: 422 }
         );
       }
 
+      const checkedAt = new Date();
       try {
         const result = await adapter.getBalance(runtime);
-        const checkedAt = new Date();
-        await AiProviderConfig.updateOne(
-          { _id: id },
-          {
-            $set: {
-              lastUpstreamBalance: result.balance,
-              lastUpstreamBalanceUnit: result.unit,
-              lastUpstreamBalanceAt: checkedAt,
-              lastUpstreamBalanceMessage: '',
-            },
+        await withPlatformTransaction(async (transaction) => {
+          const repository = new AiProviderConfigRepository(transaction);
+          const current = await repository.findById(providerId);
+          if (current) {
+            await repository.update(providerId, {
+              operationalState: {
+                ...(current.operationalState ?? {}),
+                lastUpstreamBalance: result.balance,
+                lastUpstreamBalanceUnit: result.unit,
+                lastUpstreamBalanceAt: checkedAt,
+                lastUpstreamBalanceMessage: '',
+              },
+            });
           }
-        );
+        });
         return NextResponse.json({ success: true, data: { ...result, checkedAt } });
       } catch (error) {
-        const message = error instanceof Error ? error.message : '上游余额查询失败';
-        await AiProviderConfig.updateOne(
-          { _id: id },
-          { $set: { lastUpstreamBalanceAt: new Date(), lastUpstreamBalanceMessage: message } }
-        );
+        const message = error instanceof Error ? error.message : 'Upstream balance check failed';
+        await withPlatformTransaction(async (transaction) => {
+          const repository = new AiProviderConfigRepository(transaction);
+          const current = await repository.findById(providerId);
+          if (current) {
+            await repository.update(providerId, {
+              operationalState: {
+                ...(current.operationalState ?? {}),
+                lastUpstreamBalanceAt: checkedAt,
+                lastUpstreamBalanceMessage: message,
+              },
+            });
+          }
+        });
         return NextResponse.json({ success: false, error: message }, { status: 502 });
       }
     });
   } catch (error) {
     console.error('[AI Provider Balance]', error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : '上游余额查询失败' },
+      { success: false, error: error instanceof Error ? error.message : 'Upstream balance check failed' },
       { status: 500 }
     );
   }

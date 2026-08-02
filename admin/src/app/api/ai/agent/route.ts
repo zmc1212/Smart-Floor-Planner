@@ -1,152 +1,102 @@
 import { NextRequest, NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
+import { parsePostgresId } from '@/db/postgres-dto';
+import {
+  AiChatSessionRepository,
+  type AiChatMessage,
+  type AiChatSessionRecord,
+} from '@/db/repositories';
+import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
 import { getTenantContext } from '@/lib/auth';
-import { runAgent, Message } from '@/lib/ai/agent';
-import { AiChatSession } from '@/models/AiChatSession';
-import type { Types } from 'mongoose';
+import { runAgent, type Message } from '@/lib/ai/agent';
 
 const MAX_AGENT_HISTORY_MESSAGES = 12;
 const MAX_AGENT_HISTORY_CHARS = 24000;
 const MAX_STORED_MESSAGE_CHARS = 8000;
 
 function cleanAgentContent(content: string) {
-  return content
-    .replace(/<longcat_tool_call>[\s\S]*?<\/longcat_tool_call>/g, '')
-    .trim();
+  return content.replace(/<longcat_tool_call>[\s\S]*?<\/longcat_tool_call>/g, '').trim();
 }
 
 function truncateContent(content: string, maxLength = MAX_STORED_MESSAGE_CHARS) {
-  return content.length > maxLength
-    ? `${content.slice(0, maxLength)}\n\n[内容过长，已截断]`
-    : content;
+  return content.length > maxLength ? `${content.slice(0, maxLength)}\n\n[Content truncated]` : content;
 }
 
-function buildBoundedHistory(messages: Array<{ role: string; content: string }>): Message[] {
+function buildBoundedHistory(messages: Array<Record<string, unknown>>): Message[] {
   const recentMessages = messages
     .filter((message) => message.role === 'user' || message.role === 'assistant')
     .slice(-MAX_AGENT_HISTORY_MESSAGES)
-    .map((message) => ({
-      role: message.role as Message['role'],
-      content: truncateContent(cleanAgentContent(message.content), 4000),
-    }))
+    .map((message) => ({ role: message.role as Message['role'], content: truncateContent(cleanAgentContent(String(message.content || '')), 4000) }))
     .filter((message) => message.content);
-
   let totalChars = 0;
   const bounded: Message[] = [];
-
   for (let index = recentMessages.length - 1; index >= 0; index -= 1) {
     const message = recentMessages[index];
     totalChars += message.content.length;
-    if (totalChars > MAX_AGENT_HISTORY_CHARS) {
-      break;
-    }
+    if (totalChars > MAX_AGENT_HISTORY_CHARS) break;
     bounded.unshift(message);
   }
-
   return bounded;
 }
 
 export async function POST(req: NextRequest) {
-  await dbConnect();
   try {
     const context = await getTenantContext(req);
-    if (!context) {
-      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const body = await req.json();
-    const { messages, conversationId, contextHint, hiddenInstruction } = body as {
-      messages: Message[];
-      conversationId?: string;
-      contextHint?: string;
-      hiddenInstruction?: string;
-    };
-
-    if (!messages || !Array.isArray(messages)) {
+    if (!context) return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    if (!context.enterpriseId) return NextResponse.json({ success: false, error: 'Enterprise context required' }, { status: 400 });
+    const body = await req.json() as { messages: Message[]; conversationId?: string; contextHint?: string; hiddenInstruction?: string };
+    if (!Array.isArray(body.messages) || body.messages.length === 0) {
       return NextResponse.json({ success: false, error: 'Invalid messages' }, { status: 400 });
     }
-
-    // 1. 获取或创建会话
-    let session;
-    if (conversationId) {
-      session = await AiChatSession.findOne({
-        _id: conversationId,
-        adminId: context.userId
-      });
-    }
-
-    if (!session) {
-      if (!context.enterpriseId) {
-        return NextResponse.json({ success: false, error: 'Enterprise context required' }, { status: 400 });
+    const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
+    const adminId = parsePostgresId(context.userId, 'userId');
+    const lastUserMsg = body.messages[body.messages.length - 1];
+    let session: AiChatSessionRecord | null = await withAdminPostgresTransaction(context, async (transaction) => {
+      const repository = new AiChatSessionRepository(transaction);
+      if (body.conversationId) {
+        const existing = await repository.findById(parsePostgresId(body.conversationId, 'conversation id'), enterpriseId, adminId);
+        if (existing) return existing;
       }
-
-      session = await AiChatSession.create({
-        enterpriseId: context.enterpriseId as unknown as Types.ObjectId,
-        adminId: context.userId as unknown as Types.ObjectId,
-        title: messages[messages.length - 1].content.slice(0, 30),
-        messages: []
+      return repository.create({
+        enterpriseId, adminId, title: String(lastUserMsg.content || '').slice(0, 30) || 'New conversation', messages: [],
       });
-    }
-
-    // 2. 将最新的用户消息存入数据库
-    const lastUserMsg = messages[messages.length - 1];
-    const lastUserContent = truncateContent(cleanAgentContent(lastUserMsg.content || ''));
-    session.messages.push({
-      role: lastUserMsg.role as 'user' | 'assistant' | 'system',
-      content: lastUserContent,
-      createdAt: new Date()
     });
-
-    // 3. 使用有限历史记录运行 Agent，避免工具结果或旧长文本撑爆 LongCat 上下文
-    const history = buildBoundedHistory(session.messages.map(m => ({
-      role: m.role,
-      content: m.content
-    })));
-    const hiddenContext = [contextHint, hiddenInstruction].filter(Boolean).join('\n');
-    if (hiddenContext && history.length > 0) {
-      const lastHistoryMessage = history[history.length - 1];
-      if (lastHistoryMessage.role === 'user') {
-        lastHistoryMessage.content = `${lastHistoryMessage.content}\n\n${truncateContent(hiddenContext, 1000)}`;
-      }
+    if (!session) throw new Error('Conversation not found');
+    const userMessage: AiChatMessage = {
+      role: lastUserMsg.role === 'assistant' || lastUserMsg.role === 'system' ? lastUserMsg.role : 'user',
+      content: truncateContent(cleanAgentContent(String(lastUserMsg.content || ''))),
+      createdAt: new Date(),
+    };
+    const sessionId = session.id;
+    session = await withAdminPostgresTransaction(context, (transaction) =>
+      new AiChatSessionRepository(transaction).appendMessage(sessionId, enterpriseId, adminId, userMessage)
+    );
+    if (!session) throw new Error('Conversation not found');
+    const history = buildBoundedHistory(session.messages);
+    const hiddenContext = [body.contextHint, body.hiddenInstruction].filter(Boolean).join('\n');
+    if (hiddenContext && history.at(-1)?.role === 'user') {
+      history[history.length - 1].content = `${history[history.length - 1].content}\n\n${truncateContent(hiddenContext, 1000)}`;
     }
-
     const agentResponse = await runAgent(history, {
-      userId: context.userId,
-      enterpriseId: context.enterpriseId || '',
-      role: context.role,
-      userName: context.username
+      userId: context.userId, enterpriseId: context.enterpriseId, role: context.role, userName: context.username,
     });
-
-    // 4. 将助手回复存入数据库
-    session.messages.push({
-      role: 'assistant',
-      content: truncateContent(cleanAgentContent(agentResponse.content || '')),
-      uiPayload: agentResponse.uiPayload,
-      createdAt: new Date()
-    });
-    session.markModified('messages');
-    session.lastMessageAt = new Date();
-
-    // 如果是第一条对话，尝试生成一个更有意义的标题
+    const currentSessionId = session.id;
+    session = await withAdminPostgresTransaction(context, (transaction) =>
+      new AiChatSessionRepository(transaction).appendMessage(currentSessionId, enterpriseId, adminId, {
+        role: 'assistant', content: truncateContent(cleanAgentContent(agentResponse.content || '')),
+        uiPayload: agentResponse.uiPayload, createdAt: new Date(),
+      })
+    );
+    if (!session) throw new Error('Conversation not found');
     if (session.messages.length === 2) {
-      session.title = lastUserMsg.content.slice(0, 30);
+      await withAdminPostgresTransaction(context, (transaction) =>
+        new AiChatSessionRepository(transaction).updateTitle(
+          session.id, enterpriseId, adminId, String(lastUserMsg.content || '').slice(0, 30)
+        )
+      );
     }
-
-    await session.save();
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        ...agentResponse,
-        conversationId: session._id
-      }
-    });
-
-  } catch (error: unknown) {
+    return NextResponse.json({ success: true, data: { ...agentResponse, conversationId: session.id.toString() } });
+  } catch (error) {
     console.error('[Agent API Error]', error);
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Internal Server Error'
-    }, { status: 500 });
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Internal Server Error' }, { status: 500 });
   }
 }

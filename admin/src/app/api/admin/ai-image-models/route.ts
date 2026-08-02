@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
+import { AiProviderConfigRepository } from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
 import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { ensureGrsImageModelCatalog, serializeCatalogProfile } from '@/lib/ai/image-model-catalog';
 import { listGrsImageModelIds } from '@/lib/ai/grs-image-models';
 import { AiCreationModelProfile } from '@/models/AiCreationModelProfile';
-import { AiProviderConfig } from '@/models/AiProviderConfig';
 
 export async function GET(request: Request) {
   try {
@@ -13,12 +14,21 @@ export async function GET(request: Request) {
       await ensureGrsImageModelCatalog();
       const profiles = await AiCreationModelProfile.find({ sourceType: 'grs_catalog' })
         .sort({ isDefault: -1, weight: -1, name: 1 });
-      const providers = await AiProviderConfig.find({ adapterType: 'grs' })
-        .select('discoveredModels')
-        .lean();
+      const providers = await withPlatformTransaction((transaction) =>
+        new AiProviderConfigRepository(transaction).listEnabled({
+          adapterType: 'grs',
+        })
+      );
       const knownModels = new Set(listGrsImageModelIds());
       const unknownModels = [...new Set(
-        providers.flatMap((provider) => provider.discoveredModels || [])
+        providers.flatMap((provider) => {
+          const state = provider.operationalState ?? {};
+          return Array.isArray(state.discoveredModels)
+            ? state.discoveredModels.filter(
+                (model): model is string => typeof model === 'string'
+              )
+            : [];
+        })
       )]
         .filter((model) => !knownModels.has(model))
         .sort()

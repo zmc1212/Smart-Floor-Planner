@@ -1,11 +1,17 @@
 import { encryptText, maskSecret } from '@/lib/crypto';
-import { AiProviderConfig, type IAiProviderConfig } from '@/models/AiProviderConfig';
+import type { AiProviderConfigRecord } from '@/db/repositories';
+import type { IAiProviderConfig } from '@/models/AiProviderConfig';
 import { AI_CAPABILITIES, LOGICAL_MODEL_KEYS, normalizeModelMappings, toStoredModelMappings, type AiCapability, type AiLogicalModelKey, type AiProviderAdapterType } from './provider-types';
 import { getProviderAdapterManifest, validateProviderAdapterConfig } from './provider-adapter-manifest';
 
-export function serializeProviderConfig(provider: IAiProviderConfig | Record<string, unknown>) {
+export function serializeProviderConfig(
+  provider: AiProviderConfigRecord | IAiProviderConfig | Record<string, unknown>
+) {
+  const values = provider as Record<string, unknown>;
+  const operationalState =
+    (values.operationalState as Record<string, unknown> | undefined) ?? {};
   return {
-    id: String(provider._id),
+    id: String(values.id ?? values._id),
     key: provider.key,
     name: provider.name,
     adapterType: provider.adapterType,
@@ -20,15 +26,17 @@ export function serializeProviderConfig(provider: IAiProviderConfig | Record<str
     timeoutMs: provider.timeoutMs,
     enabled: provider.enabled,
     costRules: provider.costRules || [],
-    discoveredModels: provider.discoveredModels || [],
-    lastTestedAt: provider.lastTestedAt || null,
-    lastTestOk: provider.lastTestOk,
-    lastTestMessage: provider.lastTestMessage || '',
-    lastModelSyncAt: provider.lastModelSyncAt || null,
-    lastUpstreamBalance: typeof provider.lastUpstreamBalance === 'number' ? provider.lastUpstreamBalance : null,
-    lastUpstreamBalanceUnit: provider.lastUpstreamBalanceUnit || '',
-    lastUpstreamBalanceAt: provider.lastUpstreamBalanceAt || null,
-    lastUpstreamBalanceMessage: provider.lastUpstreamBalanceMessage || '',
+    discoveredModels: operationalState.discoveredModels ?? values.discoveredModels ?? [],
+    lastTestedAt: operationalState.lastTestedAt ?? values.lastTestedAt ?? null,
+    lastTestOk: operationalState.lastTestOk ?? values.lastTestOk,
+    lastTestMessage: operationalState.lastTestMessage ?? values.lastTestMessage ?? '',
+    lastModelSyncAt: operationalState.lastModelSyncAt ?? values.lastModelSyncAt ?? null,
+    lastUpstreamBalance: typeof operationalState.lastUpstreamBalance === 'number'
+      ? operationalState.lastUpstreamBalance
+      : typeof values.lastUpstreamBalance === 'number' ? values.lastUpstreamBalance : null,
+    lastUpstreamBalanceUnit: operationalState.lastUpstreamBalanceUnit ?? values.lastUpstreamBalanceUnit ?? '',
+    lastUpstreamBalanceAt: operationalState.lastUpstreamBalanceAt ?? values.lastUpstreamBalanceAt ?? null,
+    lastUpstreamBalanceMessage: operationalState.lastUpstreamBalanceMessage ?? values.lastUpstreamBalanceMessage ?? '',
     createdAt: provider.createdAt,
     updatedAt: provider.updatedAt,
   };
@@ -140,8 +148,9 @@ export function encryptedKeyFields(apiKey: unknown, adapterType: AiProviderAdapt
   };
 }
 
-export async function findProviderWithKey(id: string) {
-  const provider = await AiProviderConfig.findById(id).select('+apiKeyEncrypted +credentialsEncrypted');
+export async function findProviderWithKey(_id: string) {
+  void _id;
+  const provider = null;
   if (!provider) throw new Error('AI 供应商配置不存在');
   return provider;
 }
