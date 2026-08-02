@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { promotionRecordToDto } from '@/db/postgres-dto';
 import { PromotionRecordRepository } from '@/db/repositories';
-import { withAdminPostgresTransaction, withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
+import { withMiniProgramPostgresTransaction, withPromotionPostgresTransaction } from '@/lib/postgres-request-scope';
 import { getPlatformB2BTenantContext, getTenantContext } from '@/lib/auth';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { dispatchWorkflowNotifications } from '@/lib/postgres-workflow-automation';
@@ -56,7 +56,7 @@ export async function GET(request: Request) {
       name: b2bContext.username,
       enterpriseId: b2bContext.enterpriseId,
     });
-    const result = await withAdminPostgresTransaction(b2bContext, (transaction) =>
+    const result = await withPromotionPostgresTransaction(b2bContext, (transaction) =>
       new PromotionRecordRepository(transaction).list(
         buildPromotionListOptions(searchParams, { id: actor.id, role: actor.role })
       )
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
       if (!['salesperson', 'enterprise_admin', 'admin', 'super_admin'].includes(actor.role)) {
         return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
       }
-      result = await withAdminPostgresTransaction(b2bContext, (transaction) =>
+      result = await withPromotionPostgresTransaction(b2bContext, (transaction) =>
         createPromotionRecord(transaction, body, actor)
       );
     }

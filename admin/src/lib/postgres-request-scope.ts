@@ -27,6 +27,23 @@ export function withAdminPostgresTransaction<T>(
   throw new Error('Enterprise context is required');
 }
 
+/**
+ * B2B promotion staff are platform employees until a prospect becomes an
+ * enterprise customer. Callers must still apply actor-scoped repository filters.
+ */
+export function withPromotionPostgresTransaction<T>(
+  context: TenantContext,
+  callback: TransactionCallback<T>
+) {
+  if (context.enterpriseId) {
+    return withTenantTransaction(context.enterpriseId, callback);
+  }
+  if (isPlatformRole(context.role) || context.role === 'salesperson') {
+    return withPlatformTransaction(callback);
+  }
+  throw new Error('Enterprise context is required');
+}
+
 export function withMiniProgramPostgresTransaction<T>(
   context: MiniProgramContext,
   callback: TransactionCallback<T>

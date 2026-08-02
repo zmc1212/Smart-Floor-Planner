@@ -166,6 +166,10 @@ async function resolveEnterpriseId(
 ) {
   const requested = asOptionalId(body.enterpriseId, 'enterpriseId');
   if (isPlatformRole(actor.role)) return requested ?? actor.enterpriseId;
+  if (!actor.enterpriseId && actor.role === 'salesperson') {
+    // Platform salespeople report prospects before they belong to a customer tenant.
+    return null;
+  }
   if (!actor.enterpriseId) throw new Error('Enterprise context is required');
   if (requested && requested !== actor.enterpriseId) {
     throw new Error('Enterprise context does not match the request');

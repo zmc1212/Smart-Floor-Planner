@@ -4,8 +4,8 @@ import { WorkflowNotificationRepository } from '@/db/repositories';
 import { getPlatformB2BTenantContext, getTenantContext } from '@/lib/auth';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import {
-  withAdminPostgresTransaction,
   withMiniProgramPostgresTransaction,
+  withPromotionPostgresTransaction,
 } from '@/lib/postgres-request-scope';
 import type { PostgresTransaction } from '@/db/transaction';
 import { promotionActorFromContext, type PromotionRouteActor } from '@/lib/postgres-promotion-workflow';
@@ -45,7 +45,7 @@ async function getScope(request: Request): Promise<NotificationScope | null> {
   return {
     actor,
     execute: <T>(callback: (transaction: PostgresTransaction) => Promise<T>) =>
-      withAdminPostgresTransaction(b2bContext, callback),
+      withPromotionPostgresTransaction(b2bContext, callback),
   };
 }
 

@@ -12,6 +12,7 @@ import {
   adminUsers,
   departments,
   devices,
+  enterpriseOrders,
   enterprises,
   floorPlans,
   leads,
@@ -25,6 +26,7 @@ import {
 } from '@/db/schema';
 import {
   AdminUserRepository,
+  CommercialRepository,
   DepartmentRepository,
   DeviceRepository,
   EnterpriseRepository,
@@ -44,6 +46,7 @@ import {
   withPlatformTransaction,
   withTenantTransaction,
 } from '@/db/transaction';
+import { withPromotionPostgresTransaction } from '@/lib/postgres-request-scope';
 import {
   createPromotionRecord,
   promotionActorFromContext,
@@ -621,6 +624,24 @@ test('promotion repository enforces tenant and role visibility with typed relati
   assert.deepEqual(duplicates.map((row) => row.id), [tenantARecords.own.id]);
 });
 
+test('an unbound platform salesperson uses an actor-scoped promotion transaction', async () => {
+  const result = await withPromotionPostgresTransaction(
+    {
+      userId: promotionPromoterAId.toString(),
+      username: 'platform-salesperson',
+      role: 'salesperson',
+      enterpriseId: null,
+    },
+    (transaction) =>
+      new PromotionRecordRepository(transaction).list({
+        actor: { id: promotionPromoterAId, role: 'salesperson' },
+      })
+  );
+
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0].promoterId, promotionPromoterAId);
+});
+
 test('promotion state transition and notification dedupe are atomic', async () => {
   await withTenantTransaction(enterpriseAId, async (transaction) => {
     const records = new PromotionRecordRepository(transaction);
@@ -1038,6 +1059,92 @@ test('surveying core repositories preserve bigint relations and tenant isolation
       }
       if (userId) {
         await transaction.delete(users).where(eq(users.id, userId));
+      }
+    });
+  }
+});
+
+test('commercial activation atomically binds the selected order to its promotion record', async () => {
+  let recordId: bigint | null = null;
+  let selectedOrderId: bigint | null = null;
+  let unselectedOrderId: bigint | null = null;
+  let enterpriseId: bigint | null = null;
+
+  try {
+    const activated = await withPlatformTransaction(async (transaction) => {
+      const records = new PromotionRecordRepository(transaction);
+      const commercial = new CommercialRepository(transaction);
+      const record = await records.create({
+        enterpriseName: `${testRunKey} Activation`,
+        creditCode: `${testRunKey}-activation`,
+        contactPerson: 'Activation Contact',
+        phone: `136${String(Date.now()).slice(-8)}`,
+        sourceChannel: 'integration-test',
+        ownershipStatus: 'unassigned',
+        businessStage: 'reported',
+        pendingActionRole: 'salesperson',
+        poolStatus: 'in_pool',
+      });
+      const selectedOrder = await commercial.createOrder({
+        recordId: record.id,
+        enterpriseId: null,
+        enterpriseNameSnapshot: record.enterpriseName,
+        packageName: 'Activation selected order',
+        amount: '100',
+        status: 'draft',
+      });
+      const unselectedOrder = await commercial.createOrder({
+        recordId: record.id,
+        enterpriseId: null,
+        enterpriseNameSnapshot: record.enterpriseName,
+        packageName: 'Activation unselected order',
+        amount: '200',
+        status: 'draft',
+      });
+      const enterprise = await new EnterpriseRepository(transaction).create({
+        name: `${testRunKey} Activation Enterprise`,
+        code: `${testRunKey}-activation-enterprise`,
+        status: 'active',
+        registrationMode: 'manual',
+        contactPerson: { name: record.contactPerson, phone: record.phone },
+      });
+
+      assert.equal(
+        await commercial.activateRecord(record.id, enterprise.id, selectedOrder.id),
+        true
+      );
+      return { record, selectedOrder, unselectedOrder, enterprise };
+    });
+    recordId = activated.record.id;
+    selectedOrderId = activated.selectedOrder.id;
+    unselectedOrderId = activated.unselectedOrder.id;
+    enterpriseId = activated.enterprise.id;
+
+    const persisted = await withPlatformTransaction(async (transaction) => ({
+      record: await new PromotionRecordRepository(transaction).findById(recordId!),
+      selectedOrder: await new CommercialRepository(transaction).findOrderById(selectedOrderId!),
+      unselectedOrder: await new CommercialRepository(transaction).findOrderById(unselectedOrderId!),
+    }));
+    assert.equal(persisted.record?.enterpriseId, enterpriseId);
+    assert.equal(persisted.record?.businessStage, 'paid');
+    assert.equal(persisted.record?.pendingActionRole, 'none');
+    assert.equal(persisted.selectedOrder?.enterpriseId, enterpriseId);
+    assert.equal(persisted.unselectedOrder?.enterpriseId, null);
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (selectedOrderId) {
+        await transaction.delete(enterpriseOrders).where(eq(enterpriseOrders.id, selectedOrderId));
+      }
+      if (unselectedOrderId) {
+        await transaction.delete(enterpriseOrders).where(eq(enterpriseOrders.id, unselectedOrderId));
+      }
+      if (recordId) {
+        await transaction
+          .delete(promotionEnterpriseRecords)
+          .where(eq(promotionEnterpriseRecords.id, recordId));
+      }
+      if (enterpriseId) {
+        await transaction.delete(enterprises).where(eq(enterprises.id, enterpriseId));
       }
     });
   }

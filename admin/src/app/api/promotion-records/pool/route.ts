@@ -3,8 +3,8 @@ import { promotionRecordToDto } from '@/db/postgres-dto';
 import { getPlatformB2BTenantContext, getTenantContext } from '@/lib/auth';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import {
-  withAdminPostgresTransaction,
   withMiniProgramPostgresTransaction,
+  withPromotionPostgresTransaction,
 } from '@/lib/postgres-request-scope';
 import {
   approveClaimFromPool,
@@ -54,7 +54,7 @@ async function getScope(request: Request): Promise<PromotionScope | null> {
   return {
     actor,
     execute: <T>(callback: (transaction: PostgresTransaction) => Promise<T>) =>
-      withAdminPostgresTransaction(b2bContext, callback),
+      withPromotionPostgresTransaction(b2bContext, callback),
   };
 }
 

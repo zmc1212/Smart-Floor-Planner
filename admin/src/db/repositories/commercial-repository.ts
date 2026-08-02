@@ -172,13 +172,16 @@ export class CommercialRepository {
   }
 
   async activateRecord(recordId: bigint, enterpriseId: bigint, orderId?: bigint) {
-    await this.transaction.update(promotionEnterpriseRecords)
+    const activated = await this.transaction.update(promotionEnterpriseRecords)
       .set({ enterpriseId, businessStage: 'paid', pendingActionRole: 'none', nextFollowUpAt: null, lastActivityAt: new Date(), updatedAt: new Date() })
-      .where(eq(promotionEnterpriseRecords.id, recordId));
+      .where(and(eq(promotionEnterpriseRecords.id, recordId), isNull(promotionEnterpriseRecords.enterpriseId)))
+      .returning({ id: promotionEnterpriseRecords.id });
+    if (!activated[0]) return false;
     const orderFilter = orderId
       ? and(eq(enterpriseOrders.id, orderId), eq(enterpriseOrders.recordId, recordId))
       : and(eq(enterpriseOrders.recordId, recordId), isNull(enterpriseOrders.enterpriseId));
     await this.transaction.update(enterpriseOrders).set({ enterpriseId, updatedAt: new Date() }).where(orderFilter);
+    return true;
   }
 
   async commissionCalculationContext(recordId: bigint) {

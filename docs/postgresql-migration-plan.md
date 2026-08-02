@@ -94,7 +94,7 @@ and `cancelled`.
 | Phase 0.2 | Qiniu configuration and encrypted-field verification | complete | Read-only inspection; no secrets logged |
 | Phase 1 | PostgreSQL instance, roles, pooling, migration runner | complete | Codex verification and user database-health/admin-page regression passed |
 | Phase 2 | PostgreSQL schema and Repository foundation | complete | Codex and user acceptance passed on 2026-08-01 |
-| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, workflow notifications, workbench, and reminder runtime switched; enterprise activation and AI/media domains pending |
+| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, and reminder runtime switched; AI/media domains pending |
 | Phase 4 | RoomiAI files/data and Qiniu configuration import | in progress: awaiting user acceptance | PostgreSQL active Roomi revision, 960 verified local previews, imported Qiniu configuration, and successful probe on 2026-08-01 |
 | Phase 5 | Contract tests and cutover rehearsal | not started | Pending |
 | Phase 6 | Production PostgreSQL cutover | not started | Pending |
@@ -412,16 +412,21 @@ is recorded.
   mutations use short RLS transactions with conditional state updates; WeChat
   subscription dispatch runs after commit. Existing response DTOs and role
   boundaries remain unchanged, and no dual write was introduced.
-- The enterprise activation route remains coupled to MongoDB promotion/order
-  records. Enterprise AI key/sync/usage/credits, branding, and AI
-  generation/workflow/media consumers remain unswitched. Core enterprise
-  responses expose `aiUsageSnapshot: null`, and MongoDB AI routes that reference
-  migrated bigint lead/plan IDs remain `Limited` until their slice.
+- `/api/admin/enterprises/activate` now runs entirely in a PostgreSQL platform
+  transaction. It validates the promotion record and optional order relation,
+  checks account identity conflicts, creates the enterprise/admin account, and
+  then binds the applicable PostgreSQL order rows while advancing the promotion
+  record to `paid`. No MongoDB reads or writes, data import, deletion, or secret
+  re-encryption occur in this slice. Enterprise AI key/sync/usage/credits,
+  branding, and AI generation/workflow/media consumers remain unswitched. Core
+  enterprise responses expose `aiUsageSnapshot: null`, and MongoDB AI routes
+  that reference migrated bigint lead/plan IDs remain `Limited` until their
+  slice.
 - Drizzle migrations `0006_exotic_wild_pack.sql` through
   `0010_eminent_wildside.sql` were generated and
   applied with the dedicated migration container/role. Direct DDL through the
   runtime `sfp_app` role was rejected with PostgreSQL `42501`, preserving the
-  intended privilege boundary. `npm run test:postgresql` passes 23/23 and
+  intended privilege boundary. `npm run test:postgresql` passes 25/25 and
   `npm run test:ai` passes 106/106.
   Targeted ESLint and the production build pass. Read-only HTTP smoke checks
   return 401 without authentication and 200 with a short-lived local admin bearer
@@ -431,10 +436,9 @@ is recorded.
   `localhost` while the configured local base is `192.168.10.111`, which is
   unrelated to this PostgreSQL slice. The build exits 0 with the known Windows
   standalone trace-copy warning for `save-icons`.
-- Order/commission records, enterprise activation, generation task
-  persistence/model-profile synchronization, and AI workflows/generation/media
-  still require Phase 3 work. Their legacy MongoDB ObjectId boundaries remain
-  `Limited` until their dependent slices are migrated.
+- Generation task persistence/model-profile synchronization and AI
+  workflows/generation/media still require Phase 3 work. Their legacy MongoDB
+  ObjectId boundaries remain `Limited` until their dependent slices are migrated.
 - No MongoDB documents, PostgreSQL production rows, Qiniu objects, or secrets
   were imported, re-encrypted, or logged in this slice. One API-test-only archived
   row with a `phase3-api-*` key was deleted after an exact prefix check; the
@@ -510,9 +514,9 @@ involved, and the evidence produced. Update this document after each completed
 phase. Never advance a phase based only on conversation memory.
 
 Phase 3 identity/enterprise core plus leads, formal floor plans, measurements,
-devices, their Mini Program aggregates, the package catalog, and the promotion
-workflow runtime, orders, and commissions are switched. The next slice should
-migrate enterprise activation, followed by AI workflow/generation/media
-persistence and its bigint lead/plan consumers. Beyond
+devices, their Mini Program aggregates, the package catalog, promotion workflow
+runtime, orders, commissions, and enterprise activation are switched. The next
+slice should migrate AI workflow/generation/media persistence and its bigint
+lead/plan consumers. Beyond
 the completed Phase 4 whitelist import, do not import production business data
 without an explicit migration slice and acceptance record.

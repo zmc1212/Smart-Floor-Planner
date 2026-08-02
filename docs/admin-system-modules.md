@@ -96,19 +96,22 @@ permission, or workflow changes.
   automation subpages.
 - APIs: `/api/admin/enterprises`, `/activate`, `[id]`, `[id]/ai-key`,
   `[id]/ai-sync`, `[id]/ai-usage`, and `/api/branding/[id]`.
-- Models/helpers: PostgreSQL `EnterpriseRepository` and `AdminUserRepository`,
-  plus the not-yet-switched `EnterpriseAiUsageSnapshot` and `enterprise-ai`
-  paths.
+- Models/helpers: PostgreSQL `EnterpriseRepository`, `AdminUserRepository`,
+  `PromotionRecordRepository`, and `CommercialRepository`, plus the
+  not-yet-switched `EnterpriseAiUsageSnapshot` and `enterprise-ai` paths.
 - Status: `Implemented`. Covers enterprise onboarding/activation, tenant profile,
   branding, automation settings, AI provider/key runtime settings, usage
   snapshots, and platform-level overview metrics.
-- PostgreSQL boundary: enterprise list/detail/create/update/delete and both
-  self-registration routes use PostgreSQL and create enterprise-admin accounts
-  atomically. `Limited`: `/api/admin/enterprises/activate` still coordinates
-  MongoDB promotion/order records, while `ai-key`, `ai-sync`, `ai-usage`,
-  `ai-credits`, branding, and usage-snapshot consumers remain assigned to their
-  later Phase 3 domains. Core list/detail responses therefore expose
-  `aiUsageSnapshot: null` until the AI/commercial switch.
+- PostgreSQL boundary: enterprise list/detail/create/update/delete, both
+  self-registration routes, and `/api/admin/enterprises/activate` use
+  PostgreSQL. Activation runs in one platform transaction: it creates the
+  enterprise and enterprise-admin account, validates the requested order belongs
+  to the unactivated promotion record, then binds the selected order or all
+  unbound orders to the new enterprise and advances the record to `paid`.
+  `Limited`: `ai-key`, `ai-sync`, `ai-usage`, `ai-credits`, branding, and
+  usage-snapshot consumers remain assigned to later Phase 3 domains. Core
+  list/detail responses therefore expose `aiUsageSnapshot: null` until the AI
+  switch.
 
 ### 4. Staff, Departments, And System Accounts
 
@@ -132,8 +135,8 @@ permission, or workflow changes.
   `PromotionRecordRepository`, `WorkflowNotificationRepository`,
   `postgres-promotion-workflow`, `postgres-workflow-automation`, and WeChat
   notification helpers. The legacy `PromotionEnterpriseRecord`/
-  `WorkflowNotificationLog` models remain only for the still-MongoDB order,
-  commission, enterprise-activation, and legacy helper compatibility paths.
+  `WorkflowNotificationLog` models remain only for legacy helper compatibility
+  paths.
 - Status: `Implemented`. Includes reporting, duplicate/conflict handling, public
   pool, claim/approval, assignment, business stages, follow-up timelines, SLA
   reminders, notification deduplication, and audit logs. Platform administrators
@@ -147,9 +150,15 @@ permission, or workflow changes.
   repositories inside tenant/platform RLS transactions. Mutations use short
   conditional updates; notification dispatch occurs after commit, and the
   existing DTOs, role boundaries, and Mini Program API paths remain unchanged.
-  `Limited`: enterprise activation and AI/media consumers
-  that still reference legacy MongoDB ObjectIds remain on MongoDB until their
-  dependent slices are migrated.
+  Platform-owned `salesperson` accounts may have no enterprise because they
+  acquire prospective customers for the platform. Promotion record/detail,
+  pool-claim, workbench, and notification polling routes use an explicit
+  platform B2B scope for that case, while repository actor filters and mutation
+  role checks restrict access to the salesperson's own records or claimable
+  pool records. Such accounts cannot assign a new report to an arbitrary
+  enterprise.
+  `Limited`: AI/media consumers that still reference legacy MongoDB ObjectIds
+  remain on MongoDB until their dependent slices are migrated.
 
 ### 6. Packages, Orders, And Commissions
 
@@ -166,8 +175,8 @@ permission, or workflow changes.
   commissions, settlement, voiding, and workbench commission totals now use
   PostgreSQL bigint relations in short tenant/platform RLS transactions. Paid
   orders atomically update the promotion record and upsert the fixed commission;
-  cancelled orders void the existing commission. `Limited`: enterprise activation
-  remains a MongoDB workflow until its dependent write path is migrated.
+  cancelled orders void the existing commission. Enterprise activation uses the
+  same PostgreSQL promotion/order relations and does not introduce a dual write.
 
 ### 7. Leads And Conversion Assets
 
@@ -604,7 +613,7 @@ permission, or workflow changes.
   core, leads, formal floor plans, measurements, devices, prompt-library reads,
   system-role configuration, global promotion configuration, media-storage
    configuration, promotion records, workflow notifications, reminder automation,
-   orders, and commissions are PostgreSQL-backed. Enterprise activation and AI
+   orders, commissions, and enterprise activation are PostgreSQL-backed. AI
    generation/media remain on MongoDB while Phase 3 proceeds incrementally.
   Docker
   migrations run explicitly
