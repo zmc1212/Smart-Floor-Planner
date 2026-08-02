@@ -1,7 +1,9 @@
 import mongoose from 'mongoose';
+import { AiCreditPriceRepository } from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
 import { AiCreditAccount } from '@/models/AiCreditAccount';
 import { AiCreditLedger, type AiCreditLedgerType } from '@/models/AiCreditLedger';
-import { AiCreditPrice, type MiniAiTaskType } from '@/models/AiCreditPrice';
+import type { MiniAiTaskType } from '@/models/AiCreditPrice';
 import type { AiActionKey } from '@/lib/ai/provider-types';
 
 const DEFAULT_PRICES: Array<{ actionKey: AiActionKey; mode?: MiniAiTaskType; label: string; credits: number }> = [
@@ -21,24 +23,6 @@ const LEGACY_MODE_TO_ACTION: Record<MiniAiTaskType, AiActionKey> = {
   floor_plan_render: 'image.floor_plan_style',
   soft_furnishing: 'image.soft_furnishing_render',
 };
-
-let aiCreditPriceIndexesReady: Promise<void> | null = null;
-
-async function ensureAiCreditPriceIndexes() {
-  if (!aiCreditPriceIndexesReady) {
-    aiCreditPriceIndexesReady = (async () => {
-      const indexes = await AiCreditPrice.collection.indexes();
-      const legacyModeIndex = indexes.find((index) => index.name === 'mode_1' && index.unique);
-      if (legacyModeIndex) {
-        await AiCreditPrice.collection.dropIndex('mode_1');
-      }
-    })().catch((error) => {
-      aiCreditPriceIndexesReady = null;
-      throw error;
-    });
-  }
-  return aiCreditPriceIndexesReady;
-}
 
 export class InsufficientAiCreditsError extends Error {
   status = 402;
@@ -65,36 +49,38 @@ function normalizeCredits(value: number) {
 }
 
 export async function ensureDefaultAiCreditPrices() {
-  await ensureAiCreditPriceIndexes();
-  await Promise.all(
-    Object.entries(LEGACY_MODE_TO_ACTION).map(([mode, actionKey]) =>
-      AiCreditPrice.updateMany(
-        { mode, $or: [{ actionKey: { $exists: false } }, { actionKey: '' }] },
-        { $set: { actionKey } }
-      )
-    )
-  );
-  await Promise.all(
-    DEFAULT_PRICES.map((item) =>
-      AiCreditPrice.updateOne(
-        { actionKey: item.actionKey },
-        {
-          $setOnInsert: {
-            actionKey: item.actionKey,
-            label: item.label,
-            credits: item.credits,
-          },
-          ...(item.mode ? { $set: { mode: item.mode } } : {}),
-        },
-        { upsert: true }
-      )
-    )
-  );
+  await withPlatformTransaction(async (transaction) => {
+    await new AiCreditPriceRepository(transaction).ensureDefaults(
+      DEFAULT_PRICES.map((item) => ({
+        actionKey: item.actionKey,
+        mode: item.mode,
+        label: item.label,
+        credits: BigInt(item.credits),
+        enabled: true,
+      }))
+    );
+  });
+}
+
+function normalizeAiCreditPrice(price: {
+  id: bigint;
+  actionKey: string;
+  mode: string | null;
+  label: string;
+  credits: bigint;
+  enabled: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  const { id, ...rest } = price;
+  return { ...rest, _id: id.toString(), credits: Number(price.credits) };
 }
 
 export async function listAiCreditPrices() {
   await ensureDefaultAiCreditPrices();
-  return AiCreditPrice.find().sort({ actionKey: 1 }).lean();
+  return withPlatformTransaction(async (transaction) =>
+    (await new AiCreditPriceRepository(transaction).list()).map(normalizeAiCreditPrice)
+  );
 }
 
 export async function getAiCreditPrice(actionKeyOrMode: AiActionKey | MiniAiTaskType) {
@@ -102,11 +88,13 @@ export async function getAiCreditPrice(actionKeyOrMode: AiActionKey | MiniAiTask
   const actionKey = actionKeyOrMode in LEGACY_MODE_TO_ACTION
     ? LEGACY_MODE_TO_ACTION[actionKeyOrMode as MiniAiTaskType]
     : actionKeyOrMode;
-  const price = await AiCreditPrice.findOne({ actionKey, enabled: true }).lean();
+  const price = await withPlatformTransaction((transaction) =>
+    new AiCreditPriceRepository(transaction).findEnabledByActionKey(actionKey)
+  );
   if (!price) {
     throw new Error('当前 AI 功能未开放');
   }
-  return price;
+  return normalizeAiCreditPrice(price);
 }
 
 export async function ensureAiCreditAccount(enterpriseId: string | mongoose.Types.ObjectId) {

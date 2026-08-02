@@ -94,7 +94,7 @@ and `cancelled`.
 | Phase 0.2 | Qiniu configuration and encrypted-field verification | complete | Read-only inspection; no secrets logged |
 | Phase 1 | PostgreSQL instance, roles, pooling, migration runner | complete | Codex verification and user database-health/admin-page regression passed |
 | Phase 2 | PostgreSQL schema and Repository foundation | complete | Codex and user acceptance passed on 2026-08-01 |
-| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, AI style presets, AI provider configuration/runtime, and AI chat sessions switched; AI workflow/generation/media-asset domains pending |
+| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, AI style presets, AI provider configuration/runtime, AI action/model pricing, and AI chat sessions switched; AI workflow/generation/media-asset domains pending |
 | Phase 4 | RoomiAI files/data and Qiniu configuration import | in progress: awaiting user acceptance | PostgreSQL active Roomi revision, 960 verified local previews, imported Qiniu configuration, and successful probe on 2026-08-01 |
 | Phase 5 | Contract tests and cutover rehearsal | not started | Pending |
 | Phase 6 | Production PostgreSQL cutover | not started | Pending |
@@ -460,6 +460,17 @@ is recorded.
   non-secret operational state is persisted. Targeted ESLint and
   `npm run test:postgresql` passed 28/28. The full TypeScript check still has
   the pre-existing test-only errors recorded above, none in this provider slice.
+- On 2026-08-02, platform action prices and free-creation model/resolution
+  prices were switched to `AiCreditPriceRepository` and
+  `AiModelCreditPriceRepository` in platform PostgreSQL transactions. The
+  existing `/api/admin/ai-credit-prices` and
+  `/api/admin/ai-image-model-prices` routes retain their `super_admin`/`admin`
+  boundary and DTOs; price values use PostgreSQL `bigint` internally and return
+  API numbers. `AiCreditAccount`, `AiCreditLedger`, and
+  `AiCreationModelProfile` remain MongoDB-backed: the profile has legacy
+  ObjectId references from tasks, batches, and generations. No MongoDB data was
+  imported or deleted. Targeted ESLint and `npm run test:postgresql` passed
+  29/29.
 - On 2026-08-02, the unused WeCom configuration, group-sharing API/UI, and
   employee WeCom identifiers were deprecated rather than migrated. The feature
   was removed from runtime code and documentation; legacy MongoDB fields and
@@ -476,6 +487,7 @@ Phase 3 acceptance status:
 | Package catalog API and Repository | Codex | passed | 2026-08-01 | PostgreSQL 20/20; targeted ESLint/build; authenticated GET 200 and unauthenticated GET 401; `0008` applied by migration container and unique index verified; runtime role DDL denied with `42501`; both source/target package tables had 0 rows, so no business import was required |
 | Promotion records/workflow runtime and notification automation | Codex | passed | 2026-08-02 | `0009`/`0010` applied by the dedicated migrator; PostgreSQL 23/23; targeted ESLint and production build passed; tenant RLS, role visibility, FK index coverage, conditional state transitions (including optimistic approval/rejection/release), relation DTOs, channel-scoped notification dedupe, route cutover, workbench todos, and reminder automation verified |
 | AI style-preset runtime | Codex | passed | 2026-08-02 | Default seeding, reads, and administrator updates use `AiStylePresetRepository` and platform transactions; JSON image-field updates preserve adjacent fields; PostgreSQL integration suite 26/26 and targeted ESLint passed. No business data was imported or deleted. |
+| AI action and model pricing | Codex | passed | 2026-08-02 | Default action pricing plus free-creation model/resolution pricing use `AiCreditPriceRepository` and `AiModelCreditPriceRepository` in platform transactions; APIs and administrator boundary are unchanged; PostgreSQL `bigint` credits serialize as numbers. Targeted ESLint and PostgreSQL integration suite 29/29 passed. Model profiles, account balances, and ledgers remain MongoDB-backed pending their ObjectId-dependent slices. |
 | Orders, commissions, and workbench totals | Codex | partial verification | 2026-08-02 | `CommercialRepository` and the existing RLS-protected target tables now back the order, commission, settlement, voiding, commission-record, and workbench routes; targeted lint and PostgreSQL integration suite (23/23) passed. Dedicated commercial route and transition coverage remains pending |
 | Prompt-library primary-flow manual test | User | pending | - | Requires an active PostgreSQL prompt revision after the Phase 4 import |
 | Login, authorization, tenant, and adjacent AI regression | User | pending | - | Must be repeated after the remaining Phase 3 slices |
@@ -533,8 +545,8 @@ phase. Never advance a phase based only on conversation memory.
 
 Phase 3 identity/enterprise core plus leads, formal floor plans, measurements,
 devices, their Mini Program aggregates, the package catalog, promotion workflow
-runtime, orders, commissions, enterprise activation, AI style presets, and AI
-provider configuration/runtime are
+runtime, orders, commissions, enterprise activation, AI style presets, AI
+provider configuration/runtime, and AI action/model pricing are
 switched. The next slice should migrate AI workflow/generation/media persistence and its bigint
 lead/plan consumers. Beyond
 the completed Phase 4 whitelist import, do not import production business data

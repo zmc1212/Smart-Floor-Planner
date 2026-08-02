@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
+import { AiModelCreditPriceRepository } from '@/db/repositories';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
 import {
   ensureGrsImageModelCatalog,
@@ -7,7 +10,6 @@ import {
   serializeImageModelPrice,
 } from '@/lib/ai/image-model-catalog';
 import { AiCreationModelProfile } from '@/models/AiCreationModelProfile';
-import { AiModelCreditPrice } from '@/models/AiModelCreditPrice';
 import type { GrsResolutionTier } from '@/lib/ai/grs-image-models';
 
 export async function GET(request: Request) {
@@ -58,17 +60,16 @@ export async function PATCH(request: Request) {
       }
       await Promise.all(body.items.map((item) => {
         const credits = Math.trunc(Number(item.credits));
-        return AiModelCreditPrice.updateOne(
-          {
-            actionKey: 'image.free_create',
-            modelProfileKey: item.modelProfileKey,
-            resolutionTier: item.resolutionTier,
-          },
-          { $set: {
-            credits,
-            enabled: Boolean(item.enabled),
-            updatedBy: context.userId,
-          } }
+        return withPlatformTransaction((transaction) =>
+          new AiModelCreditPriceRepository(transaction).update(
+            item.modelProfileKey,
+            item.resolutionTier,
+            {
+              credits: BigInt(credits),
+              enabled: Boolean(item.enabled),
+              updatedBy: parsePostgresId(context.userId, 'userId'),
+            }
+          )
         );
       }));
       const prices = await listImageModelPrices();

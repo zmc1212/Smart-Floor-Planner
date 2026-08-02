@@ -343,6 +343,14 @@ permission, or workflow changes.
   AI provider configuration and runtime selection now use the typed
   `AiProviderConfigRepository` with the existing platform `ai-providers`
   permission and unchanged API DTOs.
+  Platform action prices and free-creation model/resolution prices now use
+  `AiCreditPriceRepository` and `AiModelCreditPriceRepository` in platform
+  PostgreSQL transactions. The existing `AiCreditAccount` and
+  `AiCreditLedger` balance/ledger records remain MongoDB-backed. The
+  `AiCreationModelProfile` catalog also remains in MongoDB because
+  `AiCreationTask`, `AiCreationBatch`, and `AiGeneration` still reference its
+  legacy ObjectId; PostgreSQL stores only the executable price rows in this
+  slice.
   AI conversation list/create/detail/delete plus the agent and agent-action
   message history now use `AiChatSessionRepository` in RLS-scoped PostgreSQL
   transactions, keeping the existing per-enterprise/per-administrator boundary
@@ -639,8 +647,8 @@ permission, or workflow changes.
   core, leads, formal floor plans, measurements, devices, prompt-library reads,
   system-role configuration, global promotion configuration, media-storage
    configuration, promotion records, workflow notifications, reminder automation,
-   orders, commissions, enterprise activation, AI style presets, and AI provider
-   configuration/runtime are
+   orders, commissions, enterprise activation, AI style presets, AI provider
+   configuration/runtime, and AI action/model pricing are
    PostgreSQL-backed. AI workflow, generation, and media-asset persistence
    remain on MongoDB while Phase 3 proceeds incrementally.
   Docker

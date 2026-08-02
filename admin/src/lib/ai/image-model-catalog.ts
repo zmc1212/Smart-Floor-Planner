@@ -1,6 +1,7 @@
 import { AiCreationModelProfile, type IAiCreationModelProfile } from '@/models/AiCreationModelProfile';
-import { AiCreditPrice } from '@/models/AiCreditPrice';
-import { AiModelCreditPrice } from '@/models/AiModelCreditPrice';
+import { AiModelCreditPriceRepository } from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
+import { getAiCreditPrice } from '@/lib/ai/credits';
 import {
   GRS_IMAGE_CATALOG_VERSION,
   GRS_IMAGE_MODEL_CATALOG,
@@ -11,8 +12,9 @@ import {
 const DEFAULT_MODEL = 'gpt-image-2';
 
 export async function ensureGrsImageModelCatalog() {
-  const basePrice = await AiCreditPrice.findOne({ actionKey: 'image.free_create' }).lean();
-  const defaultCredits = Math.max(1, Number(basePrice?.credits || 10));
+  const basePrice = await getAiCreditPrice('image.free_create');
+  const defaultCredits = Math.max(1, Number(basePrice.credits || 10));
+  const priceDefaults: Array<Parameters<AiModelCreditPriceRepository['ensureDefault']>[0]> = [];
 
   await AiCreationModelProfile.updateMany(
     { sourceType: { $exists: false } },
@@ -57,23 +59,21 @@ export async function ensureGrsImageModelCatalog() {
     );
 
     for (const tier of definition.resolutionTiers) {
-      await AiModelCreditPrice.updateOne(
-        {
-          actionKey: 'image.free_create',
-          modelProfileKey: key,
-          resolutionTier: tier,
-        },
-        {
-          $setOnInsert: {
-            label: `${definition.name} ${tier}`,
-            credits: defaultCredits,
-            enabled: definition.model === DEFAULT_MODEL && tier === '1K',
-          },
-        },
-        { upsert: true }
-      );
+      priceDefaults.push({
+        actionKey: 'image.free_create',
+        modelProfileKey: key,
+        resolutionTier: tier,
+        label: `${definition.name} ${tier}`,
+        credits: BigInt(defaultCredits),
+        enabled: definition.model === DEFAULT_MODEL && tier === '1K',
+      });
     }
   }
+
+  await withPlatformTransaction(async (transaction) => {
+    const prices = new AiModelCreditPriceRepository(transaction);
+    for (const price of priceDefaults) await prices.ensureDefault(price);
+  });
 
   const activeDefault = await AiCreationModelProfile.exists({
     sourceType: 'grs_catalog',
@@ -90,32 +90,28 @@ export async function ensureGrsImageModelCatalog() {
       { key: defaultKey, sourceType: 'grs_catalog' },
       { $set: { enabled: true, isDefault: true } }
     );
-    await AiModelCreditPrice.updateOne(
-      {
-        actionKey: 'image.free_create',
-        modelProfileKey: defaultKey,
-        resolutionTier: '1K',
-      },
-      { $set: { enabled: true } }
+    await withPlatformTransaction((transaction) =>
+      new AiModelCreditPriceRepository(transaction).update(defaultKey, '1K', {
+        credits: BigInt(defaultCredits),
+        enabled: true,
+        updatedBy: null,
+      })
     );
   }
 }
 
 export async function listImageModelPrices() {
   await ensureGrsImageModelCatalog();
-  return AiModelCreditPrice.find({ actionKey: 'image.free_create' })
-    .sort({ modelProfileKey: 1, resolutionTier: 1 })
-    .lean();
+  return withPlatformTransaction((transaction) =>
+    new AiModelCreditPriceRepository(transaction).list({ actionKey: 'image.free_create' })
+  );
 }
 
 export async function getImageModelPrice(modelProfileKey: string, resolutionTier: GrsResolutionTier) {
   await ensureGrsImageModelCatalog();
-  const price = await AiModelCreditPrice.findOne({
-    actionKey: 'image.free_create',
-    modelProfileKey,
-    resolutionTier,
-    enabled: true,
-  }).lean();
+  const price = await withPlatformTransaction((transaction) =>
+    new AiModelCreditPriceRepository(transaction).findEnabled(modelProfileKey, resolutionTier)
+  );
   if (!price) throw new Error('所选模型分辨率尚未开放或未配置点数');
   return price;
 }
@@ -125,23 +121,29 @@ export async function listExecutableImageModelProfiles() {
   const [profiles, prices] = await Promise.all([
     AiCreationModelProfile.find({ sourceType: 'grs_catalog', enabled: true })
       .sort({ isDefault: -1, weight: -1, name: 1 }),
-    AiModelCreditPrice.find({ actionKey: 'image.free_create', enabled: true }).lean(),
+    withPlatformTransaction((transaction) =>
+      new AiModelCreditPriceRepository(transaction).list({
+        actionKey: 'image.free_create',
+        enabledOnly: true,
+      })
+    ),
   ]);
   const pricedKeys = new Set(prices.map((price) => price.modelProfileKey));
   return profiles.filter((profile) => pricedKeys.has(profile.key));
 }
 
 export function serializeImageModelPrice(price: {
+  id?: bigint | string;
   _id?: unknown;
   actionKey: string;
   modelProfileKey: string;
-  resolutionTier: GrsResolutionTier;
+  resolutionTier: string;
   label: string;
-  credits: number;
+  credits: number | bigint;
   enabled: boolean;
 }) {
   return {
-    id: price._id ? String(price._id) : undefined,
+    id: price.id !== undefined ? String(price.id) : price._id ? String(price._id) : undefined,
     actionKey: price.actionKey,
     modelProfileKey: price.modelProfileKey,
     resolutionTier: price.resolutionTier,

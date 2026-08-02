@@ -11,6 +11,8 @@ import {
   aiPromptTemplates,
   aiStylePresets,
   aiProviderConfigs,
+  aiCreditPrices,
+  aiModelCreditPrices,
   adminUsers,
   departments,
   devices,
@@ -30,6 +32,8 @@ import {
   AdminUserRepository,
   AiStylePresetRepository,
   AiProviderConfigRepository,
+  AiCreditPriceRepository,
+  AiModelCreditPriceRepository,
   CommercialRepository,
   DepartmentRepository,
   DeviceRepository,
@@ -82,6 +86,8 @@ let promotionDesignerAId: bigint;
 let promotionPromoterBId: bigint;
 let aiStylePresetId: bigint;
 let aiProviderConfigId: bigint;
+let aiCreditPriceId: bigint;
+let aiModelCreditPriceId: bigint;
 
 before(async () => {
   loadEnvConfig(process.cwd());
@@ -350,6 +356,66 @@ test('AI provider configuration keeps encrypted credentials and operational stat
   });
 });
 
+test('AI credit prices use idempotent PostgreSQL defaults and bigint-safe updates', async () => {
+  await withPlatformTransaction(async (transaction) => {
+    const prices = new AiCreditPriceRepository(transaction);
+    await prices.ensureDefaults([
+      {
+        actionKey: `${testRunKey}.price`,
+        mode: null,
+        label: 'PostgreSQL test action',
+        credits: BigInt(12),
+        enabled: true,
+      },
+    ]);
+    await prices.ensureDefaults([
+      {
+        actionKey: `${testRunKey}.price`,
+        mode: null,
+        label: 'Must not overwrite',
+        credits: BigInt(99),
+        enabled: false,
+      },
+    ]);
+    const listed = await prices.list();
+    const created = listed.find((price) => price.actionKey === `${testRunKey}.price`);
+    assert.ok(created);
+    aiCreditPriceId = created.id;
+    assert.equal(created.credits, BigInt(12));
+    assert.equal((await prices.findEnabledByActionKey(created.actionKey))?.id, created.id);
+    const updated = await prices.updateByActionKey(created.actionKey, {
+      credits: BigInt(18),
+      enabled: true,
+      updatedBy: null,
+    });
+    assert.equal(updated?.credits, BigInt(18));
+  });
+
+  await withPlatformTransaction(async (transaction) => {
+    const prices = new AiModelCreditPriceRepository(transaction);
+    await prices.ensureDefault({
+      actionKey: 'image.free_create',
+      modelProfileKey: `${testRunKey}.model`,
+      resolutionTier: '1K',
+      label: 'PostgreSQL test model',
+      credits: BigInt(20),
+      enabled: true,
+      updatedBy: null,
+    });
+    const created = await prices.findEnabled(`${testRunKey}.model`, '1K');
+    assert.ok(created);
+    aiModelCreditPriceId = created.id;
+    assert.equal(created.credits, BigInt(20));
+    const updated = await prices.update(`${testRunKey}.model`, '1K', {
+      credits: BigInt(25),
+      enabled: false,
+      updatedBy: null,
+    });
+    assert.equal(updated?.credits, BigInt(25));
+    assert.equal((await prices.findEnabled(`${testRunKey}.model`, '1K')), null);
+  });
+});
+
 test('AI creation policy reads a PostgreSQL enterprise identity without ObjectId casting', async () => {
   await withTenantTransaction(enterpriseAId, async (transaction) => {
     await new EnterpriseRepository(transaction).update(enterpriseAId, {
@@ -373,6 +439,16 @@ after(async () => {
         await transaction
           .delete(aiProviderConfigs)
           .where(eq(aiProviderConfigs.id, aiProviderConfigId));
+      }
+      if (aiCreditPriceId) {
+        await transaction
+          .delete(aiCreditPrices)
+          .where(eq(aiCreditPrices.id, aiCreditPriceId));
+      }
+      if (aiModelCreditPriceId) {
+        await transaction
+          .delete(aiModelCreditPrices)
+          .where(eq(aiModelCreditPrices.id, aiModelCreditPriceId));
       }
       if (promptRevisionId) {
         await transaction
