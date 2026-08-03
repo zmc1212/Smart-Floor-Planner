@@ -43,6 +43,14 @@ function normalizeCredits(value: number) {
   return amount;
 }
 
+export function toSafeCreditAmount(value: bigint | number) {
+  const amount = Number(value);
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    throw new Error('AI 点数价格超出当前创作任务的安全范围');
+  }
+  return amount;
+}
+
 export async function ensureDefaultAiCreditPrices() {
   await withPlatformTransaction(async (transaction) => {
     await new AiCreditPriceRepository(transaction).ensureDefaults(

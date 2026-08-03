@@ -1,27 +1,26 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, RefreshCw, Save } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ModalForm,
+  PageContainer,
+  ProDescriptions,
+  ProForm,
+  ProFormDateTimePicker,
+  ProFormDigit,
+  ProFormSelect,
+  ProFormSwitch,
+  ProFormTextArea,
+  ProTable,
+  type ActionType,
+  type ProColumns,
+  type ProFormInstance,
+} from '@ant-design/pro-components';
+import { Alert, Button, Card, Drawer, Flex, Input, Modal, Space, Tag, Typography } from 'antd';
+import { RefreshCw } from 'lucide-react';
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const stageLabels: Record<string, string> = {
   reported: '已报备',
@@ -46,26 +45,21 @@ const roleLabels: Record<string, string> = {
   measurer: '量房员',
   designer: '设计师',
   enterprise_admin: '企业负责人',
-  admin: '平台负责人',
+  admin: '平台管理员',
   super_admin: '平台负责人',
 };
 
 const viewOptions = [
-  { key: 'all', label: '全部' },
-  { key: 'followup', label: '待跟进' },
-  { key: 'assignMeasure', label: '待分配量房' },
-  { key: 'assignDesign', label: '待分配设计' },
-  { key: 'overdue', label: '已超时' },
-  { key: 'pool', label: '线索池' },
-  { key: 'pendingClaims', label: '待审批认领' },
+  { label: '全部报备', value: 'all' },
+  { label: '待跟进', value: 'followup' },
+  { label: '待分配量房', value: 'assignMeasure' },
+  { label: '待分配设计', value: 'assignDesign' },
+  { label: '已超时', value: 'overdue' },
+  { label: '线索池', value: 'pool' },
+  { label: '待审批认领', value: 'pendingClaims' },
 ];
 
-type AdminUserOption = {
-  _id: string;
-  role?: string;
-  displayName?: string;
-  username?: string;
-};
+type AdminUserOption = { _id: string; role?: string; displayName?: string; username?: string };
 
 type PromotionRecord = {
   _id: string;
@@ -80,54 +74,24 @@ type PromotionRecord = {
   nextFollowUpAt?: string;
   protectionExpiresAt?: string;
   lastActivityAt?: string;
-  promoterId?: {
-    _id?: string;
-    displayName?: string;
-    username?: string;
-    role?: string;
-  } | string;
+  promoterId?: { _id?: string; displayName?: string; username?: string; role?: string } | string;
   claimRequest?: {
     status?: string;
     requestedAt?: string;
     reviewedAt?: string;
     rejectReason?: string;
-    requestedBy?: {
-      _id?: string;
-      displayName?: string;
-      username?: string;
-      role?: string;
-    } | string;
-    reviewedBy?: {
-      _id?: string;
-      displayName?: string;
-      username?: string;
-      role?: string;
-    } | string;
+    requestedBy?: { _id?: string; displayName?: string; username?: string; role?: string } | string;
+    reviewedBy?: { _id?: string; displayName?: string; username?: string; role?: string } | string;
   };
   followUpRecords?: Array<{
     content?: string;
     type?: string;
     operator?: string;
-    operatorRole?: string;
     createdAt?: string;
     metadata?: Record<string, unknown>;
-    operatorId?: {
-      _id?: string;
-      displayName?: string;
-      username?: string;
-      role?: string;
-    } | string;
   }>;
-  measureTask?: {
-    status?: string;
-    dueAt?: string;
-    assignedTo?: { _id?: string; displayName?: string; username?: string };
-  };
-  designTask?: {
-    status?: string;
-    dueAt?: string;
-    assignedTo?: { _id?: string; displayName?: string; username?: string };
-  };
+  measureTask?: { status?: string; dueAt?: string; assignedTo?: { _id?: string; displayName?: string; username?: string } };
+  designTask?: { status?: string; dueAt?: string; assignedTo?: { _id?: string; displayName?: string; username?: string } };
 };
 
 type PromotionConfig = {
@@ -137,21 +101,9 @@ type PromotionConfig = {
   poolClaimRequiresApproval: boolean;
 };
 
-type PromotionConfigForm = {
-  protectionPeriodDays: string;
-  protectionExtendDays: string;
-  maxProtectionExtends: string;
-  poolClaimRequiresApproval: boolean;
-};
-
-function buildConfigForm(config: PromotionConfig): PromotionConfigForm {
-  return {
-    protectionPeriodDays: String(config.protectionPeriodDays),
-    protectionExtendDays: String(config.protectionExtendDays),
-    maxProtectionExtends: String(config.maxProtectionExtends),
-    poolClaimRequiresApproval: config.poolClaimRequiresApproval,
-  };
-}
+type ConfigForm = PromotionConfig;
+type FollowUpForm = { followUpNote?: string; nextFollowUpAt?: string };
+type AssignmentForm = { promoterId: string };
 
 function parseDate(value?: string | null) {
   if (!value) return null;
@@ -161,54 +113,30 @@ function parseDate(value?: string | null) {
 
 function formatDate(value?: string | null) {
   const date = parseDate(value);
-  if (!date) return '-';
-  return date.toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return date ? date.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';
 }
 
 function getPrimaryDueAt(record: PromotionRecord) {
   return record.nextFollowUpAt || record.measureTask?.dueAt || record.designTask?.dueAt || null;
 }
 
-function getDisplayName(
-  value?:
-    | string
-    | {
-        _id?: string;
-        displayName?: string;
-        username?: string;
-      }
-    | null
-) {
+function getDisplayName(value?: string | { displayName?: string; username?: string } | null) {
   if (!value) return '';
-  if (typeof value === 'string') return value;
-  return value.displayName || value.username || '';
+  return typeof value === 'string' ? value : value.displayName || value.username || '';
 }
 
 function getTimelineTypeLabel(type?: string) {
   const labels: Record<string, string> = {
-    report_created: '创建报备',
-    note: '备注',
-    follow_up: '跟进记录',
-    ownership_assigned: '指派地推',
-    pool_released: '释放公海',
-    pool_auto_released: '系统释放',
-    pool_claimed: '认领成功',
-    pool_claim_requested: '申请认领',
-    pool_claim_approved: '认领通过',
-    pool_claim_rejected: '认领驳回',
-    pool_assigned: '公海分配',
+    report_created: '创建报备', note: '备注', follow_up: '跟进记录', ownership_assigned: '指派地推',
+    pool_released: '释放公海', pool_auto_released: '系统释放', pool_claimed: '认领成功',
+    pool_claim_requested: '申请认领', pool_claim_approved: '认领通过', pool_claim_rejected: '认领驳回', pool_assigned: '公海分配',
   };
   return type ? labels[type] || type : '操作记录';
 }
 
 function isOverdue(record: PromotionRecord) {
   const dueAt = parseDate(getPrimaryDueAt(record));
-  return !!dueAt && dueAt.getTime() < Date.now();
+  return Boolean(dueAt && dueAt.getTime() < Date.now());
 }
 
 function matchesView(record: PromotionRecord, view: string) {
@@ -222,877 +150,349 @@ function matchesView(record: PromotionRecord, view: string) {
   return true;
 }
 
+function emptyMessage(view: string) {
+  if (view === 'pool') return '线索池暂无可分配或认领的线索。';
+  if (view === 'pendingClaims') return '当前没有待审批的认领申请。';
+  return '暂无匹配的企业报备。';
+}
+
 export default function PromotionRecordsPage() {
+  const actionRef = useRef<ActionType>(null);
+  const configFormRef = useRef<ProFormInstance<ConfigForm>>(null);
+  const followUpFormRef = useRef<ProFormInstance<FollowUpForm>>(null);
   const confirmAction = useConfirmDialog();
   const { user } = useCurrentUser();
-  const [records, setRecords] = useState<PromotionRecord[]>([]);
   const [staff, setStaff] = useState<AdminUserOption[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [stageFilter, setStageFilter] = useState('all');
-  const [viewFilter, setViewFilter] = useState('all');
   const [selected, setSelected] = useState<PromotionRecord | null>(null);
-  const [followUpNote, setFollowUpNote] = useState('');
-  const [nextFollowUpAt, setNextFollowUpAt] = useState('');
-  const [selectedPromoter, setSelectedPromoter] = useState('');
   const [assigningPoolRecord, setAssigningPoolRecord] = useState<PromotionRecord | null>(null);
-  const [poolPromoterId, setPoolPromoterId] = useState('');
+  const [rejectingRecord, setRejectingRecord] = useState<PromotionRecord | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
   const [promotionConfig, setPromotionConfig] = useState<PromotionConfig | null>(null);
-  const [configForm, setConfigForm] = useState<PromotionConfigForm>({
-    protectionPeriodDays: '30',
-    protectionExtendDays: '15',
-    maxProtectionExtends: '3',
-    poolClaimRequiresApproval: false,
-  });
   const [configSaving, setConfigSaving] = useState(false);
+  const [workingAction, setWorkingAction] = useState('');
 
-  const canManage = !!user && ['enterprise_admin', 'admin', 'super_admin'].includes(user.role);
-  const canAssignPromoter = !!user && ['admin', 'super_admin'].includes(user.role);
-  const canAssignPool = canAssignPromoter;
-  const canReleasePool = canAssignPromoter;
+  const canManage = Boolean(user && ['enterprise_admin', 'admin', 'super_admin'].includes(user.role));
+  const canAssignPromoter = Boolean(user && ['admin', 'super_admin'].includes(user.role));
   const canClaimPool = user?.role === 'salesperson';
+  const salespeople = useMemo(() => staff.filter((item) => item.role === 'salesperson'), [staff]);
+  const salespersonOptions = useMemo(() => salespeople.map((item) => ({ label: item.displayName || item.username || item._id, value: item._id })), [salespeople]);
+
+  const reloadRecords = useCallback(async () => {
+    await actionRef.current?.reload();
+  }, []);
 
   const fetchPromotionConfig = useCallback(async () => {
     if (!canAssignPromoter) return;
     try {
-      const res = await fetch('/api/platform/promotion-config');
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setPromotionConfig(data.data);
-        setConfigForm(buildConfigForm(data.data));
-      }
+      const response = await fetch('/api/platform/promotion-config');
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '读取保护期规则失败');
+      setPromotionConfig(result.data);
+      configFormRef.current?.setFieldsValue(result.data);
     } catch (error) {
-      console.error('Failed to fetch promotion config', error);
+      notify.error(error instanceof Error ? error.message : '读取保护期规则失败');
     }
   }, [canAssignPromoter]);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    try {
-      const isPool = viewFilter === 'pool' || viewFilter === 'pendingClaims';
-      const endpoint = isPool
-        ? `/api/promotion-records/pool?poolStatus=${viewFilter === 'pendingClaims' ? 'claimed' : 'in_pool'}`
-        : '/api/promotion-records';
-      const stageQuery = stageFilter !== 'all' && !isPool ? `?businessStage=${stageFilter}` : '';
+  useEffect(() => { void fetchPromotionConfig(); }, [fetchPromotionConfig]);
 
-      const [recordsRes, staffRes, adminUsersRes] = await Promise.all([
-        fetch(`${endpoint}${stageQuery}`),
-        fetch('/api/staff'),
-        fetch('/api/admin-users'),
-      ]);
-
-      if (recordsRes.ok) {
-        const recordsData = await recordsRes.json();
-        if (recordsData.success) setRecords(recordsData.data || []);
+  const requestRecords = useCallback(async (params: Record<string, unknown>) => {
+    const view = String(params.view || 'all');
+    const businessStage = String(params.businessStage || '');
+    const isPool = view === 'pool' || view === 'pendingClaims';
+    const endpoint = isPool
+      ? `/api/promotion-records/pool?poolStatus=${view === 'pendingClaims' ? 'claimed' : 'in_pool'}`
+      : `/api/promotion-records${businessStage ? `?businessStage=${encodeURIComponent(businessStage)}` : ''}`;
+    const [recordsResponse, staffResponse, adminsResponse] = await Promise.all([
+      fetch(endpoint), fetch('/api/staff'), fetch('/api/admin-users'),
+    ]);
+    const recordsResult = await recordsResponse.json();
+    if (!recordsResponse.ok || !recordsResult.success) throw new Error(recordsResult.error || '读取企业报备失败');
+    const mergedStaff = new Map<string, AdminUserOption>();
+    for (const response of [staffResponse, adminsResponse]) {
+      if (!response.ok) continue;
+      const result = await response.json() as { success?: boolean; data?: AdminUserOption[] };
+      if (!result.success) continue;
+      for (const item of result.data || []) {
+        if (response === staffResponse || item.role === 'salesperson') mergedStaff.set(String(item._id), item);
       }
-
-      const mergedStaff = new Map<string, AdminUserOption>();
-
-      if (staffRes.ok) {
-        const staffData = await staffRes.json();
-        if (staffData.success) {
-          (staffData.data || []).forEach((item: AdminUserOption) => {
-            mergedStaff.set(String(item._id), item);
-          });
-        }
-      }
-
-      if (adminUsersRes.ok) {
-        const adminUsersData = (await adminUsersRes.json()) as { success?: boolean; data?: AdminUserOption[] };
-        if (adminUsersData.success) {
-          (adminUsersData.data || []).forEach((item) => {
-            if (item.role === 'salesperson') mergedStaff.set(String(item._id), item);
-          });
-        }
-      }
-
-      setStaff(Array.from(mergedStaff.values()));
-    } catch (error) {
-      console.error('Failed to fetch promotion records page data', error);
-    } finally {
-      setLoading(false);
     }
-  }, [stageFilter, viewFilter]);
+    setStaff(Array.from(mergedStaff.values()));
+    const records = (recordsResult.data || []) as PromotionRecord[];
+    return { data: records.filter((record) => matchesView(record, view)), total: records.filter((record) => matchesView(record, view)).length, success: true };
+  }, []);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  useEffect(() => {
-    fetchPromotionConfig();
-  }, [fetchPromotionConfig]);
-
-  const filteredRecords = useMemo(() => records.filter((record) => matchesView(record, viewFilter)), [records, viewFilter]);
-  const emptyMessage =
-    viewFilter === 'pool'
-      ? '线索池暂无可分配或认领线索，只有已入池线索会显示在这里。'
-      : viewFilter === 'pendingClaims'
-        ? '当前没有待审批的认领申请。'
-      : '暂无匹配的企业报备';
-
-  const staffOptions = useMemo(
-    () => ({
-      salespeople: staff.filter((item) => item.role === 'salesperson'),
-    }),
-    [staff]
-  );
+  const requestPoolAction = useCallback(async (payload: Record<string, unknown>, successMessage: string, selectedId?: string) => {
+    setWorkingAction(String(payload.recordId));
+    try {
+      const response = await fetch('/api/promotion-records/pool', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '操作失败');
+      if (selectedId && selectedId === result.data?._id) setSelected(result.data);
+      notify.success(successMessage);
+      await reloadRecords();
+      return result.data as PromotionRecord;
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '操作失败');
+      return null;
+    } finally {
+      setWorkingAction('');
+    }
+  }, [reloadRecords]);
 
   const handleClaim = async (recordId: string) => {
-    const protectionDays = promotionConfig?.protectionPeriodDays ?? 30;
-    const claimPrompt = promotionConfig?.poolClaimRequiresApproval
-      ? '确定提交这条客户线索的认领申请吗？审批通过后将进入你的保护期。'
-      : `确定要认领这条客户线索吗？认领后您将拥有 ${protectionDays} 天保护期。`;
-    const claimConfirmed = await confirmAction({
-      title: promotionConfig?.poolClaimRequiresApproval ? '提交认领申请' : '认领客户线索',
-      description: claimPrompt,
-      confirmText: promotionConfig?.poolClaimRequiresApproval ? '提交申请' : '认领',
+    const approvalRequired = promotionConfig?.poolClaimRequiresApproval;
+    const confirmed = await confirmAction({
+      title: approvalRequired ? '提交认领申请' : '认领客户线索',
+      description: approvalRequired ? '审批通过后会进入你的保护期。' : `认领后将获得 ${promotionConfig?.protectionPeriodDays ?? 30} 天保护期。`,
+      confirmText: approvalRequired ? '提交申请' : '认领',
     });
-    if (!claimConfirmed) return;
-    try {
-      const res = await fetch('/api/promotion-records/pool', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recordId }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        const isPendingApproval = data.data?.poolStatus === 'claimed' && data.data?.claimRequest?.status === 'pending';
-        notify.success(isPendingApproval ? '已提交认领申请' : '认领成功');
-        setViewFilter('all');
-        await fetchData();
-      } else {
-        notify.fromAlert(data.error || '认领失败');
-      }
-    } catch {
-      notify.fromAlert('认领请求失败');
-    }
-  };
-
-  const handleAssignPoolRecord = async () => {
-    if (!assigningPoolRecord || !poolPromoterId) return;
-    try {
-      const res = await fetch('/api/promotion-records/pool', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'assign',
-          recordId: assigningPoolRecord._id,
-          promoterId: poolPromoterId,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        notify.success('分配成功');
-        setAssigningPoolRecord(null);
-        setPoolPromoterId('');
-        await fetchData();
-      } else {
-        notify.fromAlert(data.error || '分配失败');
-      }
-    } catch {
-      notify.fromAlert('分配请求失败');
-    }
+    if (!confirmed) return;
+    await requestPoolAction({ recordId }, approvalRequired ? '已提交认领申请' : '认领成功');
   };
 
   const handleReleaseToPool = async (recordId: string) => {
-    const confirmed = await confirmAction({
-      title: '释放到公海池',
-      description: '确定将这条客户线索释放到公海池吗？释放后渠道地推可重新认领。',
-      confirmText: '释放',
-      destructive: true,
-    });
-    if (!confirmed) return;
-    try {
-      const res = await fetch('/api/promotion-records/pool', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'release',
-          recordId,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        notify.success('已释放到公海池');
-        if (selected?._id === recordId) setSelected(data.data);
-        await fetchData();
-      } else {
-        notify.fromAlert(data.error || '释放失败');
-      }
-    } catch {
-      notify.fromAlert('释放请求失败');
-    }
+    const confirmed = await confirmAction({ title: '释放到公海池', description: '释放后渠道地推可以重新认领该线索。', confirmText: '释放', destructive: true });
+    if (confirmed) await requestPoolAction({ action: 'release', recordId }, '已释放到公海池', selected?._id);
   };
 
   const handleApproveClaim = async (recordId: string) => {
-    try {
-      const res = await fetch('/api/promotion-records/pool', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'approve_claim',
-          recordId,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        notify.success('认领审批已通过');
-        setSelected(data.data);
-        await fetchData();
-      } else {
-        notify.fromAlert(data.error || '审批失败');
-      }
-    } catch {
-      notify.fromAlert('审批请求失败');
-    }
+    await requestPoolAction({ action: 'approve_claim', recordId }, '认领审批已通过', selected?._id);
   };
 
-  const handleRejectClaim = async (recordId: string) => {
-    const reason = window.prompt('请输入驳回原因（可选）', '') || '';
+  const updateRecord = async (payload: Record<string, unknown>, options?: { closeOnSuccess?: boolean; successMessage?: string }) => {
+    if (!selected) return false;
+    setWorkingAction(selected._id);
     try {
-      const res = await fetch('/api/promotion-records/pool', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'reject_claim',
-          recordId,
-          reason,
-        }),
+      const response = await fetch(`/api/promotion-records/${selected._id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (data.success) {
-        notify.success('认领申请已驳回');
-        setSelected(data.data);
-        await fetchData();
-      } else {
-        notify.fromAlert(data.error || '驳回失败');
-      }
-    } catch {
-      notify.fromAlert('驳回请求失败');
-    }
-  };
-
-  const handleSavePromotionConfig = async () => {
-    setConfigSaving(true);
-    try {
-      const res = await fetch('/api/platform/promotion-config', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          protectionPeriodDays: Number(configForm.protectionPeriodDays),
-          protectionExtendDays: Number(configForm.protectionExtendDays),
-          maxProtectionExtends: Number(configForm.maxProtectionExtends),
-          poolClaimRequiresApproval: configForm.poolClaimRequiresApproval,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        notify.fromAlert(data.error || '保护期规则保存失败');
-        return;
-      }
-      setPromotionConfig(data.data);
-      setConfigForm(buildConfigForm(data.data));
-      notify.success('保护期规则已保存');
-    } catch {
-      notify.fromAlert('保护期规则保存失败');
-    } finally {
-      setConfigSaving(false);
-    }
-  };
-
-  const updateRecord = async (
-    payload: Record<string, unknown>,
-    options?: { closeOnSuccess?: boolean; successMessage?: string }
-  ) => {
-    if (!selected) return;
-    const res = await fetch(`/api/promotion-records/${selected._id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    if (data.success) {
-      if (options?.closeOnSuccess) {
-        setSelected(null);
-      } else {
-        setSelected(data.data);
-      }
-      setFollowUpNote('');
-      setNextFollowUpAt(data.data.nextFollowUpAt ? String(data.data.nextFollowUpAt).slice(0, 16) : '');
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '更新失败');
+      setSelected(options?.closeOnSuccess ? null : result.data);
+      followUpFormRef.current?.resetFields();
       notify.success(options?.successMessage || '操作成功');
-      await fetchData();
-    } else {
-      notify.fromAlert(data.error || '更新失败');
+      await reloadRecords();
+      return true;
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '更新失败');
+      return false;
+    } finally {
+      setWorkingAction('');
     }
   };
 
   const openDetail = async (record: PromotionRecord) => {
     setSelected(record);
-    setSelectedPromoter(
-      typeof record.promoterId === 'string' ? record.promoterId : record.promoterId?._id || ''
-    );
-    setNextFollowUpAt(record.nextFollowUpAt ? String(record.nextFollowUpAt).slice(0, 16) : '');
+    followUpFormRef.current?.setFieldsValue({ nextFollowUpAt: record.nextFollowUpAt });
     try {
-      const res = await fetch(`/api/promotion-records/${record._id}`);
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setSelected(data.data);
-        setSelectedPromoter(
-          typeof data.data.promoterId === 'string' ? data.data.promoterId : data.data.promoterId?._id || ''
-        );
-        setNextFollowUpAt(data.data.nextFollowUpAt ? String(data.data.nextFollowUpAt).slice(0, 16) : '');
+      const response = await fetch(`/api/promotion-records/${record._id}`);
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setSelected(result.data);
+        followUpFormRef.current?.setFieldsValue({ nextFollowUpAt: result.data.nextFollowUpAt });
       }
-    } catch (error) {
-      console.error('Failed to fetch promotion record detail', error);
+    } catch {
+      notify.error('读取报备详情失败');
     }
   };
 
+  const columns = useMemo<ProColumns<PromotionRecord>[]>(() => [
+    {
+      title: '视图', dataIndex: 'view', valueType: 'select', hideInTable: true,
+      fieldProps: { options: viewOptions.filter((item) => item.value !== 'pendingClaims' || canAssignPromoter) },
+      initialValue: 'all',
+    },
+    { title: '业务阶段', dataIndex: 'businessStage', valueType: 'select', hideInTable: true, fieldProps: { options: Object.entries(stageLabels).map(([value, label]) => ({ label, value })) } },
+    {
+      title: '企业', dataIndex: 'enterpriseName', width: 230, hideInSearch: true,
+      render: (_, record) => <Flex vertical gap={2}><Typography.Text strong>{record.enterpriseName || '-'}</Typography.Text><Typography.Text type="secondary" className="text-xs">{record.creditCode || '未填信用代码'}</Typography.Text></Flex>,
+    },
+    {
+      title: '联系人', key: 'contact', width: 180, hideInSearch: true,
+      render: (_, record) => <Flex vertical gap={2}><Typography.Text>{record.contactPerson || '-'}</Typography.Text><Typography.Text type="secondary" className="text-xs">{record.phone || '-'}</Typography.Text></Flex>,
+    },
+    {
+      title: '归属地推', key: 'promoter', width: 210, hideInSearch: true,
+      render: (_, record) => <Flex vertical gap={4}><Typography.Text>{record.poolStatus === 'claimed' && record.claimRequest?.status === 'pending' ? `待审批：${getDisplayName(record.claimRequest.requestedBy) || '未识别申请人'}` : getDisplayName(record.promoterId) || '当前无归属'}</Typography.Text><Space size={4}><Tag>{ownershipLabels[record.ownershipStatus || ''] || record.ownershipStatus || '无'}</Tag>{record.poolStatus === 'claimed' ? <Tag color="warning">待审批认领</Tag> : null}</Space></Flex>,
+    },
+    {
+      title: '当前进度', key: 'progress', width: 165, hideInSearch: true,
+      render: (_, record) => <Flex vertical gap={4}><Tag color="processing">{stageLabels[record.businessStage || ''] || record.businessStage || '-'}</Tag><Typography.Text type="secondary" className="text-xs">待办：{roleLabels[record.pendingActionRole || ''] || record.pendingActionRole || '无'}</Typography.Text></Flex>,
+    },
+    {
+      title: '最近时点', key: 'dueAt', width: 160, hideInSearch: true,
+      render: (_, record) => <Flex vertical gap={4}><Typography.Text>{formatDate(getPrimaryDueAt(record))}</Typography.Text>{isOverdue(record) ? <Tag color="error">待处理</Tag> : null}</Flex>,
+    },
+    {
+      title: '操作', key: 'actions', valueType: 'option', fixed: 'right', width: 210, hideInSearch: true,
+      render: (_, record) => {
+        const loading = workingAction === record._id;
+        if (record.poolStatus === 'in_pool') {
+          return canAssignPromoter
+            ? [<Button key="assign" type="link" loading={loading} onClick={() => setAssigningPoolRecord(record)}>分配地推</Button>, <Button key="detail" type="link" onClick={() => openDetail(record)}>详情</Button>]
+            : canClaimPool ? [<Button key="claim" type="link" loading={loading} onClick={() => handleClaim(record._id)}>认领</Button>, <Button key="detail" type="link" onClick={() => openDetail(record)}>详情</Button>]
+              : [<Button key="detail" type="link" onClick={() => openDetail(record)}>详情</Button>];
+        }
+        if (record.poolStatus === 'claimed') return [
+          <Button key="detail" type="link" onClick={() => openDetail(record)}>详情</Button>,
+          canAssignPromoter ? <Button key="approve" type="link" loading={loading} onClick={() => handleApproveClaim(record._id)}>通过认领</Button> : null,
+          canAssignPromoter ? <Button key="reject" type="link" danger loading={loading} onClick={() => { setRejectingRecord(record); setRejectReason(''); }}>驳回</Button> : null,
+        ];
+        return [
+          <Button key="detail" type="link" onClick={() => openDetail(record)}>管理</Button>,
+          canAssignPromoter && !['paid', 'closed_lost'].includes(record.businessStage || '') ? <Button key="release" type="link" danger loading={loading} onClick={() => handleReleaseToPool(record._id)}>释放公海</Button> : null,
+        ];
+      },
+    },
+  ], [canAssignPromoter, canClaimPool, workingAction]);
+
   return (
-    <div className="min-h-screen bg-white text-[#171717] font-sans">
-      <main className="mx-auto max-w-7xl space-y-8 px-6 py-12">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-[32px] font-semibold tracking-tight">企业报备管理</h2>
-            <p className="mt-2 text-sm text-muted-foreground">统一查看地推报备、协作待办、超时任务和线索池分配。</p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <select
-              className="h-10 rounded-xl border border-zinc-200 px-3 text-sm"
-              value={stageFilter}
-              onChange={(e) => setStageFilter(e.target.value)}
-            >
-              <option value="all">全部阶段</option>
-              {Object.entries(stageLabels).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-            <select
-              className="h-10 rounded-xl border border-zinc-200 px-3 text-sm"
-              value={viewFilter}
-              onChange={(e) => setViewFilter(e.target.value)}
-            >
-              {viewOptions
-                .filter((item) => item.key !== 'pendingClaims' || canAssignPromoter)
-                .map((item) => (
-                  <option key={item.key} value={item.key}>
-                    {item.label}
-                  </option>
-                ))}
-            </select>
-            <Button variant="outline" className="rounded-xl" onClick={fetchData}>
-              <RefreshCw size={16} className="mr-2" />
-              刷新
-            </Button>
-          </div>
-        </div>
-
-        {canAssignPromoter && (
-          <section className="rounded-3xl border border-zinc-200 bg-zinc-50/70 p-6">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-zinc-900">渠道地推保护期规则</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  当前规则会影响新报备、地推认领、公海池重新分配以及跟进后的保护期顺延。
-                </p>
-                {promotionConfig && (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    当前生效: 保护期 {promotionConfig.protectionPeriodDays} 天，单次延长 {promotionConfig.protectionExtendDays} 天，最多延长 {promotionConfig.maxProtectionExtends} 次。
-                  </p>
-                )}
-              </div>
-              <Button onClick={handleSavePromotionConfig} disabled={configSaving} className="min-w-36 rounded-xl">
-                {configSaving ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-                保存规则
-              </Button>
-            </div>
-
-            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <label className="space-y-2">
-                <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">保护期天数</span>
-                <input
-                  type="number"
-                  min="1"
-                  className="h-11 w-full rounded-xl border border-zinc-200 bg-white px-4 text-sm outline-none transition focus:ring-2 focus:ring-primary/20"
-                  value={configForm.protectionPeriodDays}
-                  onChange={(e) => setConfigForm((prev) => ({ ...prev, protectionPeriodDays: e.target.value }))}
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">单次延长天数</span>
-                <input
-                  type="number"
-                  min="1"
-                  className="h-11 w-full rounded-xl border border-zinc-200 bg-white px-4 text-sm outline-none transition focus:ring-2 focus:ring-primary/20"
-                  value={configForm.protectionExtendDays}
-                  onChange={(e) => setConfigForm((prev) => ({ ...prev, protectionExtendDays: e.target.value }))}
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">最大延长次数</span>
-                <input
-                  type="number"
-                  min="0"
-                  className="h-11 w-full rounded-xl border border-zinc-200 bg-white px-4 text-sm outline-none transition focus:ring-2 focus:ring-primary/20"
-                  value={configForm.maxProtectionExtends}
-                  onChange={(e) => setConfigForm((prev) => ({ ...prev, maxProtectionExtends: e.target.value }))}
-                />
-              </label>
-              <label className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-white px-4 py-3">
-                <div>
-                  <div className="text-sm font-medium text-zinc-900">认领后需管理员审批</div>
-                  <div className="text-xs text-muted-foreground">开启后，地推认领会先进入待审批状态。</div>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={configForm.poolClaimRequiresApproval}
-                  onChange={(e) => setConfigForm((prev) => ({ ...prev, poolClaimRequiresApproval: e.target.checked }))}
-                  className="h-5 w-5 accent-primary"
-                />
-              </label>
-            </div>
-          </section>
-        )}
-
-        {loading ? (
-          <div className="flex items-center justify-center py-24">
-            <Loader2 className="animate-spin" />
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-3xl border bg-white shadow-sm">
-            <Table>
-              <TableHeader className="bg-zinc-50">
-                <TableRow>
-                  <TableHead>企业</TableHead>
-                  <TableHead>联系人</TableHead>
-                  <TableHead>归属地推</TableHead>
-                  <TableHead>当前进度</TableHead>
-                  <TableHead>最近时点</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredRecords.map((record) => (
-                  <TableRow key={record._id}>
-                    <TableCell>
-                      <div className="font-semibold">{record.enterpriseName}</div>
-                      <div className="text-xs text-muted-foreground">{record.creditCode || '未填信用代码'}</div>
-                    </TableCell>
-                    <TableCell>
-                      <div>{record.contactPerson}</div>
-                      <div className="text-xs text-muted-foreground">{record.phone}</div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        {record.poolStatus === 'claimed' && record.claimRequest?.status === 'pending'
-                          ? `待审批：${getDisplayName(record.claimRequest.requestedBy) || '未识别申请人'}`
-                          : getDisplayName(record.promoterId) || '当前无归属'}
-                      </div>
-                      <Badge variant="secondary" className="mt-1">
-                        {ownershipLabels[record.ownershipStatus || ''] || record.ownershipStatus || '无'}
-                      </Badge>
-                      {record.poolStatus === 'claimed' && (
-                        <Badge variant="outline" className="mt-1 border-amber-200 bg-amber-50 text-amber-700">
-                          待审批认领
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
-                        {stageLabels[record.businessStage || ''] || record.businessStage || '-'}
-                      </Badge>
-                      <div className="mt-1 text-[10px] text-muted-foreground">
-                        待办角色: {roleLabels[record.pendingActionRole || ''] || record.pendingActionRole || '无'}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">{formatDate(getPrimaryDueAt(record))}</div>
-                      {isOverdue(record) && (
-                        <Badge variant="destructive" className="mt-1">
-                          待处理
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {record.poolStatus === 'in_pool' ? (
-                        canAssignPool ? (
-                          <Button
-                            size="sm"
-                            variant="default"
-                            className="bg-primary text-white"
-                            onClick={() => {
-                              setAssigningPoolRecord(record);
-                              setPoolPromoterId('');
-                            }}
-                          >
-                            分配地推
-                          </Button>
-                        ) : canClaimPool ? (
-                          <Button size="sm" variant="default" className="bg-primary text-white" onClick={() => handleClaim(record._id)}>
-                            认领
-                          </Button>
-                        ) : (
-                          <Button size="sm" variant="ghost" onClick={() => openDetail(record)}>
-                            查看
-                          </Button>
-                        )
-                      ) : record.poolStatus === 'claimed' ? (
-                        <div className="flex justify-end gap-2">
-                          <Button size="sm" variant="ghost" onClick={() => openDetail(record)}>
-                            查看详情
-                          </Button>
-                          {canAssignPromoter && (
-                            <>
-                              <Button size="sm" variant="default" className="bg-primary text-white" onClick={() => handleApproveClaim(record._id)}>
-                                通过认领
-                              </Button>
-                              <Button size="sm" variant="outline" className="border-zinc-200" onClick={() => handleRejectClaim(record._id)}>
-                                驳回
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex justify-end gap-2">
-                          <Button size="sm" variant="ghost" onClick={() => openDetail(record)}>
-                            管理
-                          </Button>
-                          {canReleasePool && !['paid', 'closed_lost'].includes(record.businessStage || '') && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-zinc-200"
-                              onClick={() => handleReleaseToPool(record._id)}
-                            >
-                              释放公海
-                            </Button>
-                          )}
-                          {canAssignPromoter && (
-                            <Button size="sm" variant="outline" className="border-zinc-200" onClick={() => openDetail(record)}>
-                              指派地推
-                            </Button>
-                          )}
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {filteredRecords.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                      {emptyMessage}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-
-        <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
-          <DialogContent className="max-h-[90vh] max-w-3xl overflow-hidden p-0">
-            {selected && (
-              <div className="flex max-h-[90vh] flex-col">
-                <DialogHeader className="border-b p-6">
-                  <DialogTitle>{selected.enterpriseName}</DialogTitle>
-                  <DialogDescription>
-                    当前阶段：{stageLabels[selected.businessStage || ''] || selected.businessStage} / 归属状态：
-                    {ownershipLabels[selected.ownershipStatus || ''] || selected.ownershipStatus}
-                  </DialogDescription>
-                </DialogHeader>
-
-                <div className="space-y-6 overflow-y-auto p-6">
-                  <section className="grid gap-6 md:grid-cols-2">
-                    <div className="space-y-4">
-                      <h3 className="flex items-center gap-2 font-semibold text-zinc-900">
-                        <div className="h-4 w-1 rounded-full bg-primary" />
-                        企业基础资料
-                      </h3>
-                      <div className="space-y-3 rounded-2xl border border-zinc-100 bg-zinc-50 p-5 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">联系人</span>
-                          <span className="font-medium">{selected.contactPerson || '-'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">电话</span>
-                          <span className="font-medium">{selected.phone || '-'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">信用代码</span>
-                          <span className="font-medium">{selected.creditCode || '-'}</span>
-                        </div>
-                        <div className="flex justify-between border-t pt-3">
-                          <span className="text-muted-foreground">归属地推</span>
-                          <span className="font-medium text-primary">
-                            {getDisplayName(selected.promoterId) || '当前无归属'}
-                          </span>
-                        </div>
-                        {selected.claimRequest?.status === 'pending' && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">待审批申请人</span>
-                            <span className="font-medium text-amber-700">
-                              {getDisplayName(selected.claimRequest.requestedBy) || '未识别申请人'}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="space-y-4">
-                      <h3 className="flex items-center gap-2 font-semibold text-zinc-900">
-                        <div className="h-4 w-1 rounded-full bg-primary" />
-                        当前业务进度
-                      </h3>
-                      <div className="space-y-3 rounded-2xl border border-zinc-100 bg-zinc-50 p-5 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">业务阶段</span>
-                          <Badge variant="outline" className="border-primary/20 bg-primary/10 text-primary">
-                            {stageLabels[selected.businessStage || ''] || selected.businessStage || '-'}
-                          </Badge>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">待办角色</span>
-                          <span className="font-medium">{roleLabels[selected.pendingActionRole || ''] || selected.pendingActionRole || '无'}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">公海状态</span>
-                          <span className="font-medium">
-                            {selected.poolStatus === 'protected'
-                              ? '保护中'
-                              : selected.poolStatus === 'in_pool'
-                                ? '公海中'
-                                : selected.poolStatus === 'claimed'
-                                  ? '待审批认领'
-                                  : '-'}
-                          </span>
-                        </div>
-                        <div className="flex justify-between border-t pt-3">
-                          <span className="text-muted-foreground">下次跟进</span>
-                          <span className="font-medium text-amber-600">{formatDate(selected.nextFollowUpAt)}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </section>
-
-                  {selected.poolStatus === 'claimed' && selected.claimRequest?.status === 'pending' && canAssignPromoter && (
-                    <section className="space-y-3 rounded-2xl border border-amber-100 bg-amber-50 p-4">
-                      <h4 className="text-sm font-semibold text-amber-900">待审批认领申请</h4>
-                      <div className="text-sm text-amber-900">
-                        申请人：{getDisplayName(selected.claimRequest.requestedBy) || '未识别申请人'}
-                      </div>
-                      <div className="text-xs text-amber-700">
-                        申请时间：{formatDate(selected.claimRequest.requestedAt)}
-                      </div>
-                      <div className="flex gap-3">
-                        <Button className="rounded-xl" onClick={() => handleApproveClaim(selected._id)}>
-                          通过认领
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="rounded-xl border-amber-300 bg-white text-amber-800"
-                          onClick={() => handleRejectClaim(selected._id)}
-                        >
-                          驳回申请
-                        </Button>
-                      </div>
-                    </section>
-                  )}
-
-                  <section className="space-y-4 border-t pt-6">
-                    <h3 className="font-semibold text-zinc-900">推进业务进度</h3>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-3">
-                        <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">跟进记录</label>
-                        <textarea
-                          className="min-h-24 w-full rounded-2xl border border-zinc-200 p-4 text-sm outline-none transition focus:ring-2 focus:ring-primary/20"
-                          value={followUpNote}
-                          onChange={(e) => setFollowUpNote(e.target.value)}
-                          placeholder="记录本次沟通进展、企业意向等信息..."
-                        />
-                      </div>
-                      <div className="space-y-3">
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">计划下次跟进</label>
-                          <input
-                            type="datetime-local"
-                            className="h-12 w-full rounded-xl border border-zinc-200 px-4 text-sm outline-none transition focus:ring-2 focus:ring-primary/20"
-                            value={nextFollowUpAt}
-                            onChange={(e) => setNextFollowUpAt(e.target.value)}
-                          />
-                        </div>
-                        <div className="flex flex-col gap-2 pt-1">
-                          <Button
-                            className="h-12 rounded-xl bg-[#171717] shadow-sm transition-all hover:bg-zinc-800"
-                            onClick={() => updateRecord({ followUpNote, nextFollowUpAt })}
-                            disabled={!followUpNote.trim() && !nextFollowUpAt}
-                          >
-                            保存并录入日志
-                          </Button>
-                          <Button
-                            variant="outline"
-                            className="h-12 rounded-xl border-zinc-200"
-                            onClick={() => updateRecord({ followUpCompleted: true, nextFollowUpAt })}
-                          >
-                            标记为已完成跟进
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </section>
-
-                  <section className="space-y-4 border-t pt-6">
-                    <h3 className="font-semibold text-zinc-900">操作时间线</h3>
-                    <div className="space-y-3">
-                      {(selected.followUpRecords || [])
-                        .slice()
-                        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
-                        .map((item, index) => (
-                          <div key={`${item.createdAt || 'timeline'}-${index}`} className="rounded-2xl border border-zinc-100 bg-zinc-50 p-4">
-                            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="border-zinc-200 bg-white text-zinc-700">
-                                  {getTimelineTypeLabel(item.type)}
-                                </Badge>
-                                <span className="text-sm font-medium text-zinc-900">{item.operator || 'System'}</span>
-                              </div>
-                              <div className="text-xs text-muted-foreground">{formatDate(item.createdAt)}</div>
-                            </div>
-                            <div className="mt-2 text-sm text-zinc-700">{item.content || '-'}</div>
-                            {item.type === 'pool_claim_rejected' && typeof item.metadata?.rejectReason === 'string' && item.metadata.rejectReason ? (
-                              <div className="mt-2 text-xs text-amber-700">驳回原因：{item.metadata.rejectReason}</div>
-                            ) : null}
-                          </div>
-                        ))}
-                      {!selected.followUpRecords?.length && (
-                        <div className="rounded-2xl border border-dashed border-zinc-200 p-6 text-sm text-muted-foreground">
-                          当前还没有操作记录。
-                        </div>
-                      )}
-                    </div>
-                  </section>
-
-                  {selected.ownershipStatus !== 'conflict_pending' && canAssignPromoter && (
-                    <section className="space-y-3 border-t pt-6">
-                      <h3 className="font-semibold text-zinc-900">指派 / 调整渠道地推</h3>
-                      <div className="flex gap-3">
-                        <Select value={selectedPromoter || undefined} onValueChange={setSelectedPromoter}>
-                          <SelectTrigger className="h-10 flex-1 rounded-xl border-zinc-200">
-                            <SelectValue placeholder="选择渠道地推" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {staffOptions.salespeople.map((item) => (
-                              <SelectItem key={item._id} value={item._id}>
-                                {item.displayName || item.username}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          className="rounded-xl px-6"
-                          onClick={() =>
-                            updateRecord(
-                              { ownershipStatus: 'manually_locked', promoterId: selectedPromoter, resolution: 'manual_assign' },
-                              { closeOnSuccess: true, successMessage: '地推指派成功' }
-                            )
-                          }
-                          disabled={!selectedPromoter}
-                        >
-                          确认指派
-                        </Button>
-                        {!['paid', 'closed_lost'].includes(selected.businessStage || '') && (
-                          <Button
-                            variant="outline"
-                            className="rounded-xl border-zinc-200 px-6"
-                            onClick={() => handleReleaseToPool(selected._id)}
-                          >
-                            释放到公海池
-                          </Button>
-                        )}
-                      </div>
-                    </section>
-                  )}
-
-                  {selected.ownershipStatus === 'conflict_pending' && canManage && (
-                    <section className="space-y-3 rounded-2xl border border-amber-100 bg-amber-50 p-4">
-                      <h4 className="text-sm font-semibold text-amber-900">冲突单归属处理</h4>
-                      <div className="flex gap-3">
-                        <Select value={selectedPromoter || undefined} onValueChange={setSelectedPromoter}>
-                          <SelectTrigger className="h-10 flex-1 rounded-xl border-amber-200 bg-white">
-                            <SelectValue placeholder="选择最终归属地推员" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {staffOptions.salespeople.map((item) => (
-                              <SelectItem key={item._id} value={item._id}>
-                                {item.displayName || item.username}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          className="rounded-xl border-none bg-amber-600 px-6 hover:bg-amber-700"
-                          onClick={() => updateRecord({ ownershipStatus: 'manually_locked', promoterId: selectedPromoter })}
-                          disabled={!selectedPromoter}
-                        >
-                          确认归属
-                        </Button>
-                      </div>
-                    </section>
-                  )}
-                </div>
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
-
-        <Dialog
-          open={!!assigningPoolRecord}
-          onOpenChange={(open) => {
-            if (!open) {
-              setAssigningPoolRecord(null);
-              setPoolPromoterId('');
-            }
-          }}
-        >
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>分配渠道地推</DialogTitle>
-              <DialogDescription>
-                将 {assigningPoolRecord?.enterpriseName || '该客户'} 从线索池分配给指定地推，分配后会重新进入 {promotionConfig?.protectionPeriodDays ?? 30} 天保护期。
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <Select value={poolPromoterId || undefined} onValueChange={setPoolPromoterId}>
-                <SelectTrigger className="h-11 w-full rounded-xl border-zinc-200">
-                  <SelectValue placeholder="选择渠道地推" />
-                </SelectTrigger>
-                <SelectContent>
-                  {staffOptions.salespeople.map((item) => (
-                    <SelectItem key={item._id} value={item._id}>
-                      {item.displayName || item.username}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="flex justify-end gap-3">
-                <Button
-                  variant="outline"
-                  className="rounded-xl"
-                  onClick={() => {
-                    setAssigningPoolRecord(null);
-                    setPoolPromoterId('');
+    <div className="admin-page-frame">
+      <PageContainer
+        breadcrumbRender={false}
+        className="admin-page-container"
+        title="企业报备管理"
+        content="统一处理渠道报备、协作待办、超时任务与公海池分配。"
+        extra={[<Button key="refresh" icon={<RefreshCw size={16} />} onClick={() => reloadRecords()}>刷新</Button>]}
+      >
+        <Flex vertical gap={24} className="admin-config-stack">
+          {canAssignPromoter ? (
+            <Card title="渠道地推保护期规则" className="admin-panel-card">
+              <Flex vertical gap={16}>
+                <Typography.Paragraph type="secondary" className="!mb-0">
+                  规则影响新报备、地推认领、公海池重新分配，以及跟进后的保护期顺延。
+                </Typography.Paragraph>
+                {promotionConfig ? <Alert type="info" showIcon message={`当前生效：保护期 ${promotionConfig.protectionPeriodDays} 天，单次延长 ${promotionConfig.protectionExtendDays} 天，最多延长 ${promotionConfig.maxProtectionExtends} 次。`} /> : null}
+                <ProForm<ConfigForm>
+                  formRef={configFormRef}
+                  layout="vertical"
+                  initialValues={promotionConfig || undefined}
+                  onFinish={async (values) => {
+                    setConfigSaving(true);
+                    try {
+                      const response = await fetch('/api/platform/promotion-config', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) });
+                      const result = await response.json();
+                      if (!response.ok || !result.success) throw new Error(result.error || '保护期规则保存失败');
+                      setPromotionConfig(result.data);
+                      configFormRef.current?.setFieldsValue(result.data);
+                      notify.success('保护期规则已保存');
+                      return true;
+                    } catch (error) {
+                      notify.error(error instanceof Error ? error.message : '保护期规则保存失败');
+                      return false;
+                    } finally { setConfigSaving(false); }
                   }}
+                  submitter={{ searchConfig: { submitText: '保存规则' }, submitButtonProps: { loading: configSaving }, render: (_, dom) => <Flex justify="end" gap={12} style={{ marginTop: 24 }}>{dom}</Flex> }}
                 >
-                  取消
-                </Button>
-                <Button className="rounded-xl" onClick={handleAssignPoolRecord} disabled={!poolPromoterId}>
-                  确认分配
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </main>
+                  <Flex gap={16} wrap="wrap">
+                    <ProFormDigit name="protectionPeriodDays" label="保护期天数" min={1} rules={[{ required: true }]} fieldProps={{ className: 'w-full' }} width="md" />
+                    <ProFormDigit name="protectionExtendDays" label="单次延长天数" min={1} rules={[{ required: true }]} fieldProps={{ className: 'w-full' }} width="md" />
+                    <ProFormDigit name="maxProtectionExtends" label="最大延长次数" min={0} rules={[{ required: true }]} fieldProps={{ className: 'w-full' }} width="md" />
+                    <ProFormSwitch name="poolClaimRequiresApproval" label="认领后需管理员审批" extra="开启后，地推认领会先进入待审批状态。" />
+                  </Flex>
+                </ProForm>
+              </Flex>
+            </Card>
+          ) : null}
+
+          <ProTable<PromotionRecord>
+            actionRef={actionRef}
+            rowKey="_id"
+            columns={columns}
+            request={requestRecords}
+            search={{ labelWidth: 'auto', defaultCollapsed: false }}
+            options={{ reload: true, density: true, setting: true }}
+            pagination={{ defaultPageSize: 10, showSizeChanger: true }}
+            scroll={{ x: 1180 }}
+            locale={{ emptyText: emptyMessage('all') }}
+          />
+        </Flex>
+      </PageContainer>
+
+      <Drawer open={Boolean(selected)} onClose={() => setSelected(null)} width={720} title={selected?.enterpriseName || '报备详情'} destroyOnHidden>
+        {selected ? (
+          <Flex vertical gap={24}>
+            <ProDescriptions<PromotionRecord>
+              column={2}
+              dataSource={selected}
+              columns={[
+                { title: '联系人', dataIndex: 'contactPerson' }, { title: '电话', dataIndex: 'phone' },
+                { title: '信用代码', dataIndex: 'creditCode' }, { title: '归属地推', render: () => getDisplayName(selected.promoterId) || '当前无归属' },
+                { title: '业务阶段', render: () => <Tag color="processing">{stageLabels[selected.businessStage || ''] || selected.businessStage || '-'}</Tag> },
+                { title: '待办角色', render: () => roleLabels[selected.pendingActionRole || ''] || selected.pendingActionRole || '无' },
+                { title: '公海状态', render: () => ({ protected: '保护中', in_pool: '公海中', claimed: '待审批认领' }[selected.poolStatus || ''] || '-') },
+                { title: '下次跟进', render: () => formatDate(selected.nextFollowUpAt) },
+              ]}
+            />
+
+            {selected.poolStatus === 'claimed' && selected.claimRequest?.status === 'pending' && canAssignPromoter ? (
+              <Alert type="warning" showIcon message="待审批认领申请" description={<Flex justify="space-between" align="center" wrap="wrap" gap={12}><span>申请人：{getDisplayName(selected.claimRequest.requestedBy) || '未识别申请人'}，申请时间：{formatDate(selected.claimRequest.requestedAt)}</span><Space><Button type="primary" loading={workingAction === selected._id} onClick={() => handleApproveClaim(selected._id)}>通过认领</Button><Button danger loading={workingAction === selected._id} onClick={() => { setRejectingRecord(selected); setRejectReason(''); }}>驳回申请</Button></Space></Flex>} />
+            ) : null}
+
+            <Card title="推进业务进度" className="admin-panel-card">
+              <ProForm<FollowUpForm>
+                formRef={followUpFormRef}
+                layout="vertical"
+                onFinish={async (values) => updateRecord(values)}
+                submitter={{ searchConfig: { submitText: '保存并录入日志' }, submitButtonProps: { disabled: workingAction === selected._id, loading: workingAction === selected._id }, render: (_, dom) => <Flex justify="end" gap={12} style={{ marginTop: 24 }}><Button onClick={() => { const values = followUpFormRef.current?.getFieldsValue(); void updateRecord({ ...values, followUpCompleted: true }); }}>标记为已完成跟进</Button>{dom}</Flex> }}
+              >
+                <ProFormTextArea name="followUpNote" label="跟进记录" fieldProps={{ rows: 4, placeholder: '记录本次沟通进展、企业意向等信息...' }} />
+                <ProFormDateTimePicker name="nextFollowUpAt" label="计划下次跟进" fieldProps={{ className: 'w-full' }} />
+              </ProForm>
+            </Card>
+
+            <Card title="操作时间线" className="admin-panel-card">
+              <Flex vertical gap={12}>
+                {(selected.followUpRecords || []).slice().sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()).map((item, index) => (
+                  <Card key={`${item.createdAt || 'timeline'}-${index}`} size="small"><Flex vertical gap={8}><Flex justify="space-between" wrap="wrap"><Space><Tag>{getTimelineTypeLabel(item.type)}</Tag><Typography.Text strong>{item.operator || 'System'}</Typography.Text></Space><Typography.Text type="secondary">{formatDate(item.createdAt)}</Typography.Text></Flex><Typography.Text>{item.content || '-'}</Typography.Text>{item.type === 'pool_claim_rejected' && typeof item.metadata?.rejectReason === 'string' && item.metadata.rejectReason ? <Typography.Text type="warning">驳回原因：{item.metadata.rejectReason}</Typography.Text> : null}</Flex></Card>
+                ))}
+                {!selected.followUpRecords?.length ? <Typography.Text type="secondary">当前还没有操作记录。</Typography.Text> : null}
+              </Flex>
+            </Card>
+
+            {selected.ownershipStatus !== 'conflict_pending' && canAssignPromoter ? (
+              <Card title="指派或调整渠道地推" className="admin-panel-card">
+                <ProForm<AssignmentForm>
+                  initialValues={{ promoterId: typeof selected.promoterId === 'string' ? selected.promoterId : selected.promoterId?._id }}
+                  onFinish={async (values) => updateRecord({ ownershipStatus: 'manually_locked', promoterId: values.promoterId, resolution: 'manual_assign' }, { closeOnSuccess: true, successMessage: '地推指派成功' })}
+                  submitter={{ searchConfig: { submitText: '确认指派' }, render: (_, dom) => <Flex justify="end" gap={12} style={{ marginTop: 24 }}>{!['paid', 'closed_lost'].includes(selected.businessStage || '') ? <Button danger onClick={() => handleReleaseToPool(selected._id)}>释放到公海池</Button> : null}{dom}</Flex> }}
+                ><ProFormSelect name="promoterId" label="渠道地推" options={salespersonOptions} rules={[{ required: true, message: '请选择渠道地推' }]} /></ProForm>
+              </Card>
+            ) : null}
+
+            {selected.ownershipStatus === 'conflict_pending' && canManage ? (
+              <Card title="冲突单归属处理" className="admin-panel-card">
+                <ProForm<AssignmentForm onFinish={async (values) => updateRecord({ ownershipStatus: 'manually_locked', promoterId: values.promoterId }, { successMessage: '归属已确认' })} submitter={{ searchConfig: { submitText: '确认归属' }, render: (_, dom) => <Flex justify="end" gap={12} style={{ marginTop: 24 }}>{dom}</Flex> }}><ProFormSelect name="promoterId" label="最终归属地推员" options={salespersonOptions} rules={[{ required: true, message: '请选择最终归属地推员' }]} /></ProForm>
+              </Card>
+            ) : null}
+          </Flex>
+        ) : null}
+      </Drawer>
+
+      <ModalForm<AssignmentForm>
+        title="分配渠道地推"
+        open={Boolean(assigningPoolRecord)}
+        modalProps={{ destroyOnHidden: true, onCancel: () => setAssigningPoolRecord(null) }}
+        onOpenChange={(open) => !open && setAssigningPoolRecord(null)}
+        onFinish={async (values) => {
+          if (!assigningPoolRecord) return false;
+          const result = await requestPoolAction({ action: 'assign', recordId: assigningPoolRecord._id, promoterId: values.promoterId }, '分配成功');
+          if (result) setAssigningPoolRecord(null);
+          return Boolean(result);
+        }}
+        submitter={{ searchConfig: { submitText: '确认分配' }, render: (_, dom) => <Flex justify="end" gap={12} style={{ marginTop: 24 }}>{dom}</Flex> }}
+      >
+        <Typography.Paragraph type="secondary">将 {assigningPoolRecord?.enterpriseName || '该客户'} 从线索池分配给渠道地推，分配后会重新进入 {promotionConfig?.protectionPeriodDays ?? 30} 天保护期。</Typography.Paragraph>
+        <ProFormSelect name="promoterId" label="渠道地推" options={salespersonOptions} rules={[{ required: true, message: '请选择渠道地推' }]} />
+      </ModalForm>
+
+      <Modal title="驳回认领申请" open={Boolean(rejectingRecord)} okText="确认驳回" okButtonProps={{ danger: true, loading: workingAction === rejectingRecord?._id }} onCancel={() => setRejectingRecord(null)} onOk={async () => { if (!rejectingRecord) return; const result = await requestPoolAction({ action: 'reject_claim', recordId: rejectingRecord._id, reason: rejectReason }, '认领申请已驳回', selected?._id); if (result) setRejectingRecord(null); }}>
+        <Typography.Paragraph type="secondary">可选填写驳回原因，系统会写入该报备的操作时间线。</Typography.Paragraph>
+        <Input.TextArea aria-label="驳回原因" rows={4} value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} placeholder="请输入驳回原因（可选）" />
+      </Modal>
     </div>
   );
 }

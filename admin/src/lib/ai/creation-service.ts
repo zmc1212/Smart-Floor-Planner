@@ -4,7 +4,7 @@ import { AiCreationTask, type IAiCreationTask } from '@/models/AiCreationTask';
 import { AiGeneration, type IAiGeneration } from '@/models/AiGeneration';
 import { AiPromptSourceModel } from '@/models/AiPromptSourceModel';
 import { MediaAsset } from '@/models/MediaAsset';
-import { ensureAiCreditAccount, serializeAiCreditAccount } from '@/lib/ai/credits';
+import { ensureAiCreditAccount, serializeAiCreditAccount, toSafeCreditAmount } from '@/lib/ai/credits';
 import { executeGenerationImage, reconcileAiGeneration, releaseGenerationCredits } from '@/lib/ai/execution-service';
 import { assertEnterpriseAiActionAllowed } from '@/lib/ai/enterprise-policy';
 import { getImageModelPrice, listExecutableImageModelProfiles } from '@/lib/ai/image-model-catalog';
@@ -370,7 +370,9 @@ export async function createCreationBatch(input: {
   await assertEnterpriseAiActionAllowed(input.enterpriseId, 'image.free_create');
   const price = await getImageModelPrice(profile.key, parameters.resolutionTier);
   const account = await ensureAiCreditAccount(input.enterpriseId);
-  const requiredCredits = price.credits * count;
+  // MongoDB batch and generation billing fields remain numeric until this slice moves.
+  const unitCredits = toSafeCreditAmount(price.credits);
+  const requiredCredits = unitCredits * count;
   const availableCredits = Number(account.balance || 0) - Number(account.frozenBalance || 0);
   if (availableCredits < requiredCredits) throw new Error(`AI 点数不足，本次需要 ${requiredCredits} 点`);
   const sequence = await AiCreationBatch.countDocuments({ taskId: task._id }) + 1;
@@ -425,11 +427,11 @@ export async function createCreationBatch(input: {
     billing: {
       cycle: 0,
       actionKey: 'image.free_create',
-      price: price.credits,
+      price: unitCredits,
       priceSnapshot: {
         actionKey: 'image.free_create',
         label: price.label,
-        credits: price.credits,
+        credits: unitCredits,
         modelProfileKey: profile.key,
         remoteModel: profile.remoteModel,
         resolutionTier: parameters.resolutionTier,

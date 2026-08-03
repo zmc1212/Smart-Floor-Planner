@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import { Enterprise } from '@/models/Enterprise';
+import { EnterpriseRepository } from '@/db/repositories';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { withPlatformTransaction } from '@/db/transaction';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,9 +11,12 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    await dbConnect();
-
-    const enterprise = await Enterprise.findById(id).select('name logo branding status');
+    if (!/^[1-9]\d*$/.test(id)) {
+      return NextResponse.json({ success: false, error: 'Enterprise not found' }, { status: 404 });
+    }
+    const enterprise = await withPlatformTransaction((transaction) =>
+      new EnterpriseRepository(transaction).findById(parsePostgresId(id, 'enterpriseId'))
+    );
 
     if (!enterprise) {
       return NextResponse.json({ success: false, error: 'Enterprise not found' }, { status: 404 });
@@ -27,14 +31,17 @@ export async function GET(
       data: {
         name: enterprise.name,
         logo: enterprise.logo,
-        branding: enterprise.branding || {
+        branding: Object.keys(enterprise.branding || {}).length ? enterprise.branding : {
           primaryColor: '#171717',
           accentColor: '#0070f3'
         }
       }
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error(`[API] Branding GET error:`, error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : 'Internal server error' },
+      { status: 500 }
+    );
   }
 }

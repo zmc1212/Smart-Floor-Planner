@@ -39,7 +39,8 @@ utilities, and the admin APIs they call.
   identity, enterprise, and permission resolution now use PostgreSQL and
   revalidate active status on refresh and request-context resolution.
 - `app.js`: restores sessions, reads QR/referral `enterpriseId`/`staffId`, syncs
-  staff professional context, loads enterprise branding, and attempts silent BLE
+  staff professional context, loads enterprise branding from PostgreSQL through
+  `/api/branding/[id]`, and attempts silent BLE
   reconnection for a remembered device.
 - `utils/api.js`: sends the bearer token through the explicitly selected
   `ACTIVE_API_ENVIRONMENT` (`local` or `production`), clears expired sessions,

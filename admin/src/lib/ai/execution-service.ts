@@ -10,7 +10,13 @@ import {
   shouldKeepGrsAiOutputUrl,
 } from '@/lib/media-storage/config-service';
 import { syncSuccessfulGenerationToWorkflow } from '@/lib/ai/workflow-baseline';
-import { consumeHeldAiCredits, getAiCreditPrice, holdAiCredits, releaseHeldAiCredits } from '@/lib/ai/credits';
+import {
+  consumeHeldAiCredits,
+  getAiCreditPrice,
+  holdAiCredits,
+  releaseHeldAiCredits,
+  toSafeCreditAmount,
+} from '@/lib/ai/credits';
 import { getImageModelPrice } from '@/lib/ai/image-model-catalog';
 import {
   getAiProviderAdapter,
@@ -169,14 +175,15 @@ export async function ensureGenerationCreditHold(generation: GenerationDocument,
     ? await getImageModelPrice(parameterSnapshot.modelProfileKey, parameterSnapshot.resolutionTier)
     : undefined;
   const price = modelPrice || await getAiCreditPrice(resolvedActionKey);
+  const priceCredits = toSafeCreditAmount(price.credits);
   const cycle = Number(generation.billing?.cycle ?? generation.retryCount ?? 0);
   const operationId = `${generation._id}:hold:${cycle}`;
-  if (price.credits > 0) {
+  if (priceCredits > 0) {
     await holdAiCredits({
       enterpriseId: generation.enterpriseId,
       generationId: generation._id,
       operatorId: generation.operatorId,
-      amount: price.credits,
+      amount: priceCredits,
       operationId,
     });
   }
@@ -185,18 +192,18 @@ export async function ensureGenerationCreditHold(generation: GenerationDocument,
     ...generation.billing,
     cycle,
     actionKey: resolvedActionKey,
-    price: price.credits,
+    price: priceCredits,
     priceSnapshot: {
       actionKey: resolvedActionKey,
       label: price.label,
-      credits: price.credits,
+      credits: priceCredits,
       modelProfileKey: parameterSnapshot?.modelProfileKey,
       remoteModel: parameterSnapshot?.remoteModel,
       resolutionTier: parameterSnapshot?.resolutionTier,
       capturedAt: new Date(),
     },
-    status: price.credits > 0 ? 'held' : 'consumed',
-    holdOperationId: price.credits > 0 ? operationId : undefined,
+    status: priceCredits > 0 ? 'held' : 'consumed',
+    holdOperationId: priceCredits > 0 ? operationId : undefined,
   };
   await generation.save();
   return generation;

@@ -1,5 +1,10 @@
 # PostgreSQL Migration Plan And Progress
 
+> 2026-08-03 migration update: public enterprise branding reads through
+> `GET /api/branding/[id]` now use `EnterpriseRepository` in a platform
+> PostgreSQL transaction rather than MongoDB. AI workflow, generation, and
+> media assets remain one subsequent bigint runtime slice.
+
 > Purpose: continue the Smart Floor Planner migration from MongoDB/Mongoose to
 > PostgreSQL across multiple Codex conversations. Before starting a new task,
 > read this document together with the repository `AGENTS.md`, `admin/AGENTS.md`,
@@ -94,7 +99,7 @@ and `cancelled`.
 | Phase 0.2 | Qiniu configuration and encrypted-field verification | complete | Read-only inspection; no secrets logged |
 | Phase 1 | PostgreSQL instance, roles, pooling, migration runner | complete | Codex verification and user database-health/admin-page regression passed |
 | Phase 2 | PostgreSQL schema and Repository foundation | complete | Codex and user acceptance passed on 2026-08-01 |
-| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, AI style presets, AI provider configuration/runtime, AI action/model pricing, AI credit accounts/ledgers, and AI chat sessions switched; AI workflow/generation/media-asset domains pending |
+| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core and public branding reads, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, AI style presets, AI provider configuration/runtime, AI action/model pricing, AI credit accounts/ledgers, and AI chat sessions switched; AI workflow/generation/media-asset domains pending |
 | Phase 4 | RoomiAI files/data and Qiniu configuration import | in progress: awaiting user acceptance | PostgreSQL active Roomi revision, 960 verified local previews, imported Qiniu configuration, and successful probe on 2026-08-01 |
 | Phase 5 | Contract tests and cutover rehearsal | not started | Pending |
 | Phase 6 | Production PostgreSQL cutover | not started | Pending |
@@ -469,7 +474,9 @@ is recorded.
   API numbers. `AiCreationModelProfile` remains MongoDB-backed because tasks,
   batches, and generations retain its legacy ObjectId references. No MongoDB
   data was imported or deleted. Targeted ESLint and `npm run test:postgresql`
-  passed 29/29.
+  passed 29/29. Until the creation runtime slice moves, its MongoDB numeric
+  batch and billing snapshots reject PostgreSQL prices outside the positive
+  JavaScript-safe-integer range rather than silently rounding them.
 - On 2026-08-02, AI credit accounts and ledgers were switched to
   `AiCreditRepository` in tenant PostgreSQL transactions. The unique
   `operationId` ledger constraint now makes grant, adjustment, hold, consume,

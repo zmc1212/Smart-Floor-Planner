@@ -1,5 +1,7 @@
 # PostgreSQL 迁移计划与进度
 
+> 2026-08-03 迁移更新：公开企业品牌读取 `GET /api/branding/[id]` 已切换为平台 PostgreSQL 事务中的 `EnterpriseRepository` 查询，不再读取 MongoDB；AI 工作流、生成和媒体资产仍保持后续同一 bigint 运行时切片。
+
 > 2026-08-03 迁移记录：新增 `AiWorkflowRepository`，提供 RLS 范围的工作流创建、列表、查询、更新以及成功自由创作结果归入方案的基础操作。归入事务会锁定方案和生成记录，仅将首个归入结果设为基准，后续成功结果保留为候选并更新 `lastGenerationId`。集成测试覆盖 bigint 关系和跨租户不可见性。未切换公开路由，未导入、删除或重新加密 MongoDB 业务数据；定向 ESLint 和 `npm run test:postgresql`（33/33）通过。
 > 2026-08-03 迁移记录：新增 `AiCreationRepository`，为租户范围的媒体资产、自由创作任务、批次、按顺序引用资产、生成记录和供应商尝试提供 PostgreSQL 持久化契约。集成测试覆盖 bigint 关系、RLS 隔离、任务视图加载、当前尝试回填，以及“归档任务只软删除关联生成记录、不销毁历史行”的既定语义。由于工作流创建/归入、媒体交付和供应商执行服务仍依赖 MongoDB `ObjectId`，本步骤未切换公开路由，未导入、删除或重新加密 MongoDB 数据；定向 ESLint 和 `npm run test:postgresql`（32/32）通过。
 
@@ -499,7 +501,8 @@ Phase 2 用户手动验收清单：
   `/api/admin/ai-credit-prices`、`/api/admin/ai-image-model-prices` 路由、
   `super_admin`/`admin` 权限边界和 DTO 保持不变；价格内部使用 PostgreSQL `bigint`，
   API 仍返回数字。`AiCreationModelProfile` 仍使用 MongoDB，其中模型档案继续被任务、批次和生成记录的旧 `ObjectId` 引用。
-  未导入或删除 MongoDB 数据；定向 ESLint 与 `npm run test:postgresql` 通过（29/29）。
+  未导入或删除 MongoDB 数据；定向 ESLint 与 `npm run test:postgresql` 通过（29/29）。在自由创作运行时切换前，
+  MongoDB 数字批次和计费快照会拒绝超出正 JavaScript 安全整数范围的 PostgreSQL 价格，避免静默舍入。
 - 2026-08-02：AI 点数账户和流水已切换到租户 PostgreSQL 事务中的 `AiCreditRepository`。唯一 `operationId` 流水约束使发放、调整、冻结、扣除和释放与余额更新保持原子幂等；PostgreSQL bigint 在 API 中仍返回数字。平台企业点数接口现从 PostgreSQL 读取企业、账户、策略和流水，任务列表在生成记录持久化迁移前仍从 MongoDB 读取。旧 MongoDB 生成记录的 ObjectId 明确写为流水 `generationId: NULL`；未导入或删除 MongoDB 数据。定向 ESLint、`npm run test:postgresql`（30/30）和 `npm run test:ai`（106/106）均通过。
 - 2026-08-02 已将未使用的企微配置、群分享 API/UI 和员工企微标识标记为弃用，不再迁移。
   该功能已从运行时代码与文档移除；历史 MongoDB 字段及 PostgreSQL

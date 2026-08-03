@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { deriveCreationBatchStatus, resolveCreationParameters } from '@/lib/ai/creation-service';
+import { toSafeCreditAmount } from '@/lib/ai/credits';
 import type { IAiCreationModelProfile } from '@/models/AiCreationModelProfile';
 
 function profile(overrides: Partial<IAiCreationModelProfile> = {}) {
@@ -65,4 +66,10 @@ test('batch status reports success, failure, partial and processing states', () 
   assert.equal(deriveCreationBatchStatus(['failed', 'cancelled']), 'failed');
   assert.equal(deriveCreationBatchStatus(['succeeded', 'failed']), 'partial');
   assert.equal(deriveCreationBatchStatus(['succeeded', 'processing']), 'processing');
+});
+
+test('PostgreSQL credit prices must fit the legacy numeric billing boundary', () => {
+  assert.equal(toSafeCreditAmount(BigInt(25)), 25);
+  assert.throws(() => toSafeCreditAmount(BigInt(Number.MAX_SAFE_INTEGER) + BigInt(1)));
+  assert.throws(() => toSafeCreditAmount(0));
 });

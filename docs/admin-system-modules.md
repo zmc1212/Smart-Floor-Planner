@@ -1,5 +1,11 @@
 # Admin System: Current Module Inventory
 
+> 2026-08-03 PostgreSQL migration update: public `GET /api/branding/[id]`
+> now reads an active enterprise's name, logo, and branding through
+> `EnterpriseRepository` in a platform PostgreSQL transaction. Its route,
+> activation boundary, and default-color response are unchanged; it no longer
+> connects to MongoDB.
+
 > 2026-08-03 PostgreSQL migration update: `AiCreationRepository` now provides
 > typed, RLS-scoped PostgreSQL persistence primitives for media assets,
 > free-creation tasks, batches, ordered reference assets, generations, and
@@ -130,7 +136,10 @@ permission, or workflow changes.
   enterprise and enterprise-admin account, validates the requested order belongs
   to the unactivated promotion record, then binds the selected order or all
   unbound orders to the new enterprise and advances the record to `paid`.
-  `Limited`: `ai-key`, `ai-sync`, `ai-usage`, `ai-credits`, branding, and
+  `/api/branding/[id]` reads the active enterprise name, logo, and branding
+  through `EnterpriseRepository` in a platform PostgreSQL transaction, preserving
+  its public contract and default-color response. `Limited`: `ai-key`,
+  `ai-sync`, `ai-usage`, `ai-credits`, and
   usage-snapshot consumers remain assigned to later Phase 3 domains. Core
   list/detail responses therefore expose `aiUsageSnapshot: null` until the AI
   switch.
@@ -369,7 +378,10 @@ permission, or workflow changes.
   permission and unchanged API DTOs.
   Platform action prices and free-creation model/resolution prices now use
   `AiCreditPriceRepository` and `AiModelCreditPriceRepository` in platform
-  PostgreSQL transactions. AI credit accounts and ledgers now use
+  PostgreSQL transactions. While creation batches and generation billing remain
+  MongoDB numeric records, the execution boundary accepts only a positive safe
+  integer PostgreSQL price before persisting its estimate and snapshot. AI credit
+  accounts and ledgers now use
   `AiCreditRepository` in tenant PostgreSQL transactions; the unique
   `operationId` ledger row makes grants, adjustments, holds, consumption, and
   releases idempotent with the corresponding balance update. Account and
