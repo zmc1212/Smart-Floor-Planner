@@ -1,325 +1,401 @@
 'use client';
 
+import { useCallback, useRef, useState, type ReactNode } from 'react';
+import {
+  ModalForm,
+  PageContainer,
+  ProFormDigit,
+  ProFormSelect,
+  ProFormTextArea,
+  ProTable,
+  type ActionType,
+  type ProColumns,
+  type ProFormInstance,
+} from '@ant-design/pro-components';
+import { Button, Dropdown, Flex, Space, Tag, Tooltip, Typography, type MenuProps } from 'antd';
+import { CheckCircle2, Ellipsis, Plus } from 'lucide-react';
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 
-import { useEffect, useState } from 'react';
-import { Loader2, Plus, CheckCircle2 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+type OrderStatus = 'draft' | 'signed' | 'paid' | 'cancelled';
+
+type EnterpriseOrder = {
+  _id: string;
+  enterpriseId?: string | null;
+  enterpriseNameSnapshot: string;
+  packageName: string;
+  amount: number;
+  currency?: string;
+  status: OrderStatus;
+  createdAt?: string;
+  remark?: string | null;
+  recordId?: { _id: string; enterpriseName?: string } | string;
+};
+
+type PromotionRecord = {
+  _id: string;
+  enterpriseName: string;
+};
+
+type PackageItem = {
+  _id: string;
+  name: string;
+  price: number;
+};
+
+type OrderForm = {
+  recordId: string;
+  packageId: string;
+  amount: number;
+  status: Exclude<OrderStatus, 'cancelled'>;
+  remark?: string;
+};
+
+const ORDER_STATUS_OPTIONS: Array<{ label: string; value: OrderStatus }> = [
+  { label: '草稿', value: 'draft' },
+  { label: '已签约', value: 'signed' },
+  { label: '已支付', value: 'paid' },
+  { label: '已取消', value: 'cancelled' },
+];
+
+const ORDER_STATUS_CONFIG: Record<OrderStatus, { label: string; color?: string }> = {
+  draft: { label: '草稿' },
+  signed: { label: '已签约', color: 'blue' },
+  paid: { label: '已支付', color: 'green' },
+  cancelled: { label: '已取消', color: 'default' },
+};
+
+function formatAmount(amount: number, currency = 'CNY') {
+  return new Intl.NumberFormat('zh-CN', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+  }).format(Number(amount || 0));
+}
+
+function formatDate(value?: string) {
+  return value ? new Date(value).toLocaleString('zh-CN') : '-';
+}
+
+function recordIdOf(order: EnterpriseOrder) {
+  return typeof order.recordId === 'string' ? order.recordId : order.recordId?._id;
+}
 
 export default function EnterpriseOrdersPage() {
+  const actionRef = useRef<ActionType>(null);
+  const formRef = useRef<ProFormInstance<OrderForm>>(null);
   const confirmAction = useConfirmDialog();
-  const [orders, setOrders] = useState<any[]>([]);
-  const [records, setRecords] = useState<any[]>([]);
-  const [packages, setPackages] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ 
-    recordId: '', 
-    packageId: '', 
-    packageName: '', 
-    amount: '', 
-    status: 'draft', 
-    remark: '' 
-  });
+  const { user: currentUser } = useCurrentUser();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [records, setRecords] = useState<PromotionRecord[]>([]);
+  const [packages, setPackages] = useState<PackageItem[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(false);
+  const [activatingOrderId, setActivatingOrderId] = useState<string | null>(null);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const canManageOrders = Boolean(currentUser && ['enterprise_admin', 'admin', 'super_admin'].includes(currentUser.role));
+  const canActivateEnterprise = Boolean(currentUser && ['admin', 'super_admin'].includes(currentUser.role));
+
+  const loadCreateOptions = useCallback(async () => {
+    setLoadingOptions(true);
     try {
-      const [ordersRes, recordsRes, packagesRes] = await Promise.all([
-        fetch('/api/enterprise-orders'),
+      const [recordsResponse, packagesResponse] = await Promise.all([
         fetch('/api/promotion-records'),
-        fetch('/api/admin/packages?status=active')
+        fetch('/api/admin/packages?status=active'),
       ]);
-      const ordersData = await ordersRes.json();
-      const recordsData = await recordsRes.json();
-      const packagesData = await packagesRes.json();
-      if (ordersData.success) setOrders(ordersData.data || []);
-      if (recordsData.success) setRecords(recordsData.data || []);
-      if (packagesData.success) setPackages(packagesData.data || []);
+      const [recordsResult, packagesResult] = await Promise.all([
+        recordsResponse.json(),
+        packagesResponse.json(),
+      ]);
+      if (!recordsResponse.ok || !recordsResult.success) {
+        throw new Error(recordsResult.error || '读取企业报备失败');
+      }
+      if (!packagesResponse.ok || !packagesResult.success) {
+        throw new Error(packagesResult.error || '读取套餐失败');
+      }
+      setRecords(recordsResult.data || []);
+      setPackages(packagesResult.data || []);
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '读取订单创建资料失败');
     } finally {
-      setLoading(false);
+      setLoadingOptions(false);
     }
-  };
-
-  useEffect(() => {
-    fetchData();
   }, []);
 
-  const createOrder = async () => {
-    const res = await fetch('/api/enterprise-orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...form,
-        amount: Number(form.amount),
-      }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setOpen(false);
-      setForm({ recordId: '', packageId: '', packageName: '', amount: '', status: 'draft', remark: '' });
+  const openCreateForm = () => {
+    setCreateOpen(true);
+    void loadCreateOptions();
+  };
+
+  const createOrder = async (values: OrderForm) => {
+    const selectedPackage = packages.find((item) => item._id === values.packageId);
+    if (!selectedPackage) {
+      notify.error('请选择有效的成交套餐');
+      return false;
+    }
+
+    try {
+      const response = await fetch('/api/enterprise-orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recordId: values.recordId,
+          packageId: values.packageId,
+          packageName: selectedPackage.name,
+          amount: values.amount,
+          status: values.status,
+          remark: values.remark || '',
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '创建订单失败');
       notify.success('订单创建成功');
-      fetchData();
-    } else {
-      notify.fromAlert(data.error || '创建失败');
+      setCreateOpen(false);
+      await actionRef.current?.reload();
+      return true;
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '创建订单失败');
+      return false;
     }
   };
 
-  const updateStatus = async (id: string, status: string) => {
-    const res = await fetch(`/api/enterprise-orders/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    });
-    const data = await res.json();
-    if (data.success) {
+  const updateStatus = async (order: EnterpriseOrder, status: OrderStatus) => {
+    try {
+      const response = await fetch(`/api/enterprise-orders/${order._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '更新订单状态失败');
       notify.success('订单状态已更新');
-      fetchData();
-    } else {
-      notify.fromAlert(data.error || '更新失败');
+      await actionRef.current?.reload();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '更新订单状态失败');
     }
   };
 
-  const activateEnterprise = async (order: any) => {
+  const activateEnterprise = async (order: EnterpriseOrder) => {
+    const recordId = recordIdOf(order);
+    if (!recordId) {
+      notify.error('订单缺少对应的企业报备，无法开通账号');
+      return;
+    }
     const confirmed = await confirmAction({
       title: '开通正式账号',
-      description: `确定要为 ${order.enterpriseNameSnapshot} 开通正式账号吗？\n系统将自动创建企业并分配管理员账号。`,
+      description: `确定要为“${order.enterpriseNameSnapshot}”开通正式账号吗？系统将自动创建企业并分配管理员账号。`,
       confirmText: '开通',
     });
     if (!confirmed) return;
 
+    setActivatingOrderId(order._id);
     try {
-      const res = await fetch('/api/admin/enterprises/activate', {
+      const response = await fetch('/api/admin/enterprises/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          recordId: order.recordId?._id || order.recordId,
-          orderId: order._id 
-        }),
+        body: JSON.stringify({ recordId, orderId: order._id }),
       });
-      const data = await res.json();
-      if (data.success) {
-        notify.fromAlert(`开通成功！\n企业：${data.data.enterpriseName}\n管理员账号：${data.data.adminUsername}\n初始密码：${data.data.tempPassword}\n请通知客户尽快登录并修改密码。`);
-        fetchData();
-      } else {
-        notify.fromAlert(data.error || '开通失败');
-      }
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '开通失败');
+      notify.success(`开通成功：${result.data.enterpriseName}，管理员账号为 ${result.data.adminUsername}`);
+      await actionRef.current?.reload();
     } catch (error) {
-      notify.fromAlert('网络请求失败');
+      notify.error(error instanceof Error ? error.message : '开通失败');
+    } finally {
+      setActivatingOrderId(null);
     }
   };
 
+  const columns: ProColumns<EnterpriseOrder>[] = [
+    {
+      title: '关键词',
+      dataIndex: 'keyword',
+      hideInTable: true,
+      fieldProps: { placeholder: '企业名称或套餐名称' },
+    },
+    {
+      title: '订单状态',
+      dataIndex: 'status',
+      valueType: 'select',
+      valueEnum: Object.fromEntries(ORDER_STATUS_OPTIONS.map((item) => [item.value, item.label])),
+      width: 120,
+      render: (_, order) => {
+        const config = ORDER_STATUS_CONFIG[order.status];
+        return <Tag color={config.color}>{config.label}</Tag>;
+      },
+    },
+    {
+      title: '企业',
+      dataIndex: 'enterpriseNameSnapshot',
+      hideInSearch: true,
+      width: 260,
+      render: (_, order) => (
+        <Flex vertical gap={4}>
+          <Typography.Text strong>{order.enterpriseNameSnapshot}</Typography.Text>
+          {order.enterpriseId ? (
+            <Space size={4}>
+              <CheckCircle2 size={14} className="text-primary" />
+              <Typography.Text type="secondary" className="text-xs">已开通企业账号</Typography.Text>
+            </Space>
+          ) : (
+            <Typography.Text type="secondary" className="text-xs">待企业账号开通</Typography.Text>
+          )}
+        </Flex>
+      ),
+    },
+    {
+      title: '成交套餐',
+      dataIndex: 'packageName',
+      hideInSearch: true,
+      width: 180,
+      render: (value) => value || '-',
+    },
+    {
+      title: '成交金额',
+      dataIndex: 'amount',
+      hideInSearch: true,
+      width: 150,
+      render: (_, order) => <Typography.Text strong>{formatAmount(order.amount, order.currency)}</Typography.Text>,
+    },
+    {
+      title: '备注',
+      dataIndex: 'remark',
+      hideInSearch: true,
+      ellipsis: true,
+      render: (value) => value || <Typography.Text type="secondary">-</Typography.Text>,
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'createdAt',
+      valueType: 'dateTime',
+      hideInSearch: true,
+      width: 190,
+      render: (_, order) => formatDate(order.createdAt),
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      valueType: 'option',
+      fixed: 'right',
+      width: 170,
+      hideInSearch: true,
+      render: (_, order) => {
+        const actions: ReactNode[] = [];
+        if (!order.enterpriseId && order.status === 'paid' && canActivateEnterprise) {
+          actions.push(
+            <Button key="activate" type="primary" loading={activatingOrderId === order._id} onClick={() => void activateEnterprise(order)}>
+              开通账号
+            </Button>,
+          );
+        }
+        if (canManageOrders && order.status !== 'paid') {
+          const items: MenuProps['items'] = ORDER_STATUS_OPTIONS
+            .filter((option) => option.value !== order.status)
+            .map((option) => ({
+              key: option.value,
+              label: `标记为${option.label}`,
+              onClick: () => void updateStatus(order, option.value),
+            }));
+          actions.push(
+            <Dropdown key="status" menu={{ items }} trigger={['click']}>
+              <Tooltip title="更新订单状态">
+                <Button aria-label={`${order.enterpriseNameSnapshot} 更多操作`} icon={<Ellipsis size={18} />} />
+              </Tooltip>
+            </Dropdown>,
+          );
+        }
+        return actions.length ? <Space size={8}>{actions}</Space> : '-';
+      },
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-white text-[#171717] font-sans">
-      <main className="max-w-7xl mx-auto px-6 py-12 space-y-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-[32px] font-semibold tracking-tight">成交订单管理</h2>
-            <p className="mt-2 text-sm text-muted-foreground">后台手工登记企业成交，付款后自动生成提成记录。</p>
-          </div>
-          <Button className="rounded-full bg-black hover:bg-zinc-800 h-11 px-6" onClick={() => setOpen(true)}>
-            <Plus size={16} className="mr-2" />
-            新建订单
-          </Button>
-        </div>
+    <div className="admin-page-frame">
+      <PageContainer
+        breadcrumbRender={false}
+        className="admin-page-container"
+        title="成交订单"
+        content="登记企业成交并跟踪订单状态；订单支付后将自动生成对应的渠道提成记录。"
+        extra={canManageOrders ? [
+          <Button key="create" type="primary" icon={<Plus size={16} />} onClick={openCreateForm}>新建订单</Button>,
+        ] : undefined}
+      >
+        <ProTable<EnterpriseOrder>
+          actionRef={actionRef}
+          rowKey="_id"
+          columns={columns}
+          search={{ labelWidth: 'auto', defaultCollapsed: false, span: 12 }}
+          options={{ reload: true, density: true, setting: true }}
+          pagination={{ defaultPageSize: 20, showSizeChanger: true }}
+          scroll={{ x: 1120 }}
+          request={async (params) => {
+            const response = await fetch('/api/enterprise-orders');
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.error || '读取订单失败');
+            const keyword = String(params.keyword || '').trim().toLowerCase();
+            const filtered = (result.data || []).filter((order: EnterpriseOrder) => {
+              const matchesKeyword = !keyword || [order.enterpriseNameSnapshot, order.packageName]
+                .filter(Boolean)
+                .some((value) => value.toLowerCase().includes(keyword));
+              const matchesStatus = !params.status || order.status === params.status;
+              return matchesKeyword && matchesStatus;
+            });
+            const pageSize = Number(params.pageSize || 20);
+            const current = Number(params.current || 1);
+            return {
+              data: filtered.slice((current - 1) * pageSize, current * pageSize),
+              total: filtered.length,
+              success: true,
+            };
+          }}
+        />
+      </PageContainer>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-24">
-            <Loader2 className="animate-spin text-zinc-300" size={32} />
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-3xl border bg-white shadow-sm">
-            <Table>
-              <TableHeader className="bg-zinc-50">
-                <TableRow>
-                  <TableHead>企业</TableHead>
-                  <TableHead>套餐</TableHead>
-                  <TableHead>金额</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>创建时间</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {orders.map((order) => (
-                  <TableRow key={order._id}>
-                    <TableCell>
-                      <div className="font-medium">{order.enterpriseNameSnapshot}</div>
-                      {order.enterpriseId && (
-                        <div className="text-[10px] text-green-600 font-mono flex items-center gap-1">
-                          <CheckCircle2 size={10} />
-                          已开通 (ID: {String(order.enterpriseId).slice(-6)})
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell>{order.packageName}</TableCell>
-                    <TableCell className="font-mono">¥{Number(order.amount || 0).toFixed(2)}</TableCell>
-                    <TableCell>
-                      <Badge variant={order.status === 'paid' ? 'default' : 'secondary'} className="rounded-full px-3">
-                        {order.status === 'paid' ? '已支付' : 
-                         order.status === 'signed' ? '已签约' :
-                         order.status === 'draft' ? '草稿' : order.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-zinc-500 text-sm">{new Date(order.createdAt).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-3">
-                        {!order.enterpriseId && order.status === 'paid' && (
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
-                            className="h-8 rounded-full border-zinc-200"
-                            onClick={() => activateEnterprise(order)}
-                          >
-                            开通账号
-                          </Button>
-                        )}
-                        <Select
-                          value={order.status}
-                          onValueChange={(val) => updateStatus(order._id, val)}
-                          disabled={order.status === 'paid'}
-                        >
-                          <SelectTrigger className="h-8 w-[100px] text-xs rounded-full bg-zinc-50 border-none shadow-none disabled:opacity-70">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="draft">草稿</SelectItem>
-                            <SelectItem value="signed">已签约</SelectItem>
-                            <SelectItem value="paid">已支付</SelectItem>
-                            <SelectItem value="cancelled">已取消</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {orders.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-48 text-center text-muted-foreground">
-                      暂无订单记录
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent className="sm:max-w-[425px] rounded-3xl border shadow-2xl">
-            <DialogHeader>
-              <DialogTitle>新建成交订单</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-6 py-4">
-              <div className="space-y-2">
-                <Label>企业报备</Label>
-                <Select
-                  value={form.recordId}
-                  onValueChange={(val) => setForm((prev) => ({ ...prev, recordId: val }))}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="选择企业报备" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {records.map((record) => (
-                      <SelectItem key={record._id} value={record._id}>
-                        {record.enterpriseName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>成交套餐</Label>
-                <Select
-                  value={form.packageId}
-                  onValueChange={(val) => {
-                    const pkg = packages.find(p => p._id === val);
-                    setForm((prev) => ({ 
-                      ...prev, 
-                      packageId: val,
-                      packageName: pkg?.name || '',
-                      amount: pkg ? String(pkg.price) : prev.amount
-                    }));
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="选择成交套餐" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {packages.map((pkg) => (
-                      <SelectItem key={pkg._id} value={pkg._id}>
-                        {pkg.name} (¥{pkg.price})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>成交金额 (元)</Label>
-                <Input
-                  value={form.amount}
-                  onChange={(e) => setForm((prev) => ({ ...prev, amount: e.target.value }))}
-                  placeholder="成交金额"
-                  type="number"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>订单状态</Label>
-                <Select
-                  value={form.status}
-                  onValueChange={(val) => setForm((prev) => ({ ...prev, status: val }))}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="draft">草稿</SelectItem>
-                    <SelectItem value="signed">已签约</SelectItem>
-                    <SelectItem value="paid">已支付</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>备注</Label>
-                <Textarea
-                  value={form.remark}
-                  onChange={(e) => setForm((prev) => ({ ...prev, remark: e.target.value }))}
-                  placeholder="备注信息..."
-                  rows={3}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button 
-                className="w-full rounded-xl bg-black hover:bg-zinc-800 h-11" 
-                onClick={createOrder} 
-                disabled={!form.recordId || !form.packageName || !form.amount}
-              >
-                保存订单
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </main>
+      <ModalForm<OrderForm>
+        formRef={formRef}
+        title="新建成交订单"
+        open={createOpen}
+        initialValues={{ status: 'draft' }}
+        modalProps={{ destroyOnHidden: true, maskClosable: false }}
+        onOpenChange={(open) => setCreateOpen(open)}
+        onFinish={createOrder}
+        submitter={{
+          searchConfig: { submitText: '保存订单' },
+          render: (_, dom) => <Flex justify="end" gap={12} style={{ marginTop: 24 }}>{dom}</Flex>,
+        }}
+      >
+        <ProFormSelect
+          name="recordId"
+          label="企业报备"
+          options={records.map((record) => ({ label: record.enterpriseName, value: record._id }))}
+          rules={[{ required: true, message: '请选择企业报备' }]}
+          fieldProps={{ loading: loadingOptions, showSearch: true, optionFilterProp: 'label', placeholder: '选择企业报备' }}
+        />
+        <ProFormSelect
+          name="packageId"
+          label="成交套餐"
+          options={packages.map((item) => ({ label: `${item.name} (${formatAmount(item.price)})`, value: item._id }))}
+          rules={[{ required: true, message: '请选择成交套餐' }]}
+          fieldProps={{
+            loading: loadingOptions,
+            showSearch: true,
+            optionFilterProp: 'label',
+            placeholder: '选择成交套餐',
+            onChange: (packageId) => {
+              const selected = packages.find((item) => item._id === packageId);
+              if (selected) formRef.current?.setFieldValue('amount', selected.price);
+            },
+          }}
+        />
+        <ProFormDigit name="amount" label="成交金额（元）" min={0} fieldProps={{ precision: 2, className: 'w-full', placeholder: '请输入成交金额' }} rules={[{ required: true, message: '请输入成交金额' }]} />
+        <ProFormSelect
+          name="status"
+          label="订单状态"
+          options={ORDER_STATUS_OPTIONS.filter((option) => option.value !== 'cancelled')}
+          rules={[{ required: true, message: '请选择订单状态' }]}
+        />
+        <ProFormTextArea name="remark" label="备注" fieldProps={{ rows: 4, placeholder: '记录成交、合同或款项说明...' }} />
+      </ModalForm>
     </div>
   );
 }

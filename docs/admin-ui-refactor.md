@@ -101,6 +101,21 @@ desktop/mobile visual checks, and browser verification pass.
   pagination, status review, and operational actions. Its existing editor dialog,
   detail page, APIs, and `super_admin`/`admin` platform boundary remain intact;
   the detail and editor presentation migrations are separate follow-up work.
+- `/promotion-records` now uses `PageContainer`, `ProTable`, `ProForm`, and
+  `ProDescriptions` for the report list, platform protection-rule configuration,
+  report detail, follow-up, assignment, pool, and claim-review interactions.
+  Its existing PostgreSQL-backed APIs, `salesperson` self-claim boundary, and
+  `admin`/`super_admin` configuration and pool-management boundary are unchanged.
+- `/staff` now uses `PageContainer`, `ProTable`, `ModalForm`, and Ant Design
+  `Tree` for server-paginated staff search, department filtering, and staff or
+  department maintenance. The existing tenant-scoped staff/department APIs and
+  `enterprise_admin`/`admin`/`super_admin` mutation boundary are unchanged.
+- `/enterprise-orders` now uses `PageContainer`, `ProTable`, and `ModalForm`
+  for order search, status review, status transitions, enterprise activation,
+  and order creation. Its existing PostgreSQL-backed order, package, promotion,
+  commission, and activation APIs, plus the `enterprise_admin`/`admin`/
+  `super_admin` order-mutation and `admin`/`super_admin` activation boundaries,
+  are unchanged.
 - Other platform configuration pages remain in the third migration step and
   require their interaction contracts to be audited before implementation.
 

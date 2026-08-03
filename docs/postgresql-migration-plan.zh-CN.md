@@ -1,6 +1,12 @@
 # PostgreSQL 迁移计划与进度
 
-> 2026-08-03 迁移更新：公开企业品牌读取 `GET /api/branding/[id]` 已切换为平台 PostgreSQL 事务中的 `EnterpriseRepository` 查询，不再读取 MongoDB；AI 工作流、生成和媒体资产仍保持后续同一 bigint 运行时切片。
+> 2026-08-03 迁移记录：`GET /api/ai/creation/bootstrap` 现通过 PostgreSQL 模型档案和价格 Repository 初始化并读取 GRS 模型目录，并在一个租户 RLS 事务中读取活动工作流及其线索；既有 DTO、点数、供应商和 `ai-scenarios` 边界保持不变。旧 MongoDB 目录维护仅保留给尚未迁移的任务/批次/生成执行链。未导入或删除 MongoDB 业务数据，未重新加密密钥；定向 ESLint 和 `npm run test:postgresql`（35/35）通过。
+
+> 2026-08-03 迁移记录：`GET /api/ai/workflow-leads` 已通过 PostgreSQL RLS 事务读取当前企业的线索/户型关系和活动工作流摘要，保留原有搜索、正式户型可用性筛选、DTO 与 `ai-scenarios` 企业边界。工作流创建、阶段执行、生成持久化和媒体写入仍属于关联的 bigint 运行时切片。未导入或删除 MongoDB 业务数据，未重新加密密钥；定向 ESLint 和 `npm run test:postgresql`（34/34）通过。
+
+> 2026-08-03 迁移记录：租户范围 PostgreSQL 媒体资产现可通过既有后台和小程序素材图片路由交付。资产元数据查询运行在 RLS 事务内；本地对象继续直接输出字节，私有对象存储继续使用签名跳转。旧 MongoDB ObjectId URL 保留为只读兼容路径。本次仅切换部分运行时边界，自由创作上传、任务、批次、生成、供应商执行和工作流路由尚未切换。未导入或删除 MongoDB 业务数据，未重新加密密钥；定向 ESLint 和 `npm run test:postgresql`（34/34）通过。
+
+> 2026-08-03 迁移更新：公开企业品牌读取 `GET /api/branding/[id]` 已切换为平台 PostgreSQL 事务中的 `EnterpriseRepository` 查询，不再读取 MongoDB；AI 工作流、生成以及媒体资产写入/执行仍保持后续同一 bigint 运行时切片。
 
 > 2026-08-03 迁移记录：新增 `AiWorkflowRepository`，提供 RLS 范围的工作流创建、列表、查询、更新以及成功自由创作结果归入方案的基础操作。归入事务会锁定方案和生成记录，仅将首个归入结果设为基准，后续成功结果保留为候选并更新 `lastGenerationId`。集成测试覆盖 bigint 关系和跨租户不可见性。未切换公开路由，未导入、删除或重新加密 MongoDB 业务数据；定向 ESLint 和 `npm run test:postgresql`（33/33）通过。
 > 2026-08-03 迁移记录：新增 `AiCreationRepository`，为租户范围的媒体资产、自由创作任务、批次、按顺序引用资产、生成记录和供应商尝试提供 PostgreSQL 持久化契约。集成测试覆盖 bigint 关系、RLS 隔离、任务视图加载、当前尝试回填，以及“归档任务只软删除关联生成记录、不销毁历史行”的既定语义。由于工作流创建/归入、媒体交付和供应商执行服务仍依赖 MongoDB `ObjectId`，本步骤未切换公开路由，未导入、删除或重新加密 MongoDB 数据；定向 ESLint 和 `npm run test:postgresql`（32/32）通过。
@@ -152,7 +158,7 @@ RoomiAI 导入使用 [admin/scripts/import-roomi-prompts.ts](../admin/scripts/im
 | Phase 0.2 | 七牛配置、激活指针和加密字段核验 | 已完成 | 只读配置检查，未输出密钥 |
 | Phase 1 | PostgreSQL 实例、角色、连接池和 migration runner | 已完成 | Codex 自动验收与用户数据库健康/后台页面回归均通过 |
 | Phase 2 | PostgreSQL 目标 schema 和 Repository 基础层 | 已完成 | Codex 与用户验收已于 2026-08-01 通过 |
-| Phase 3 | API/业务代码从 Mongoose 切换到 PostgreSQL | 进行中 | 身份/企业核心、线索、正式户型、测量/设备、提示词库读取、角色、全局报备/媒体配置、套餐目录、报备记录、工作流通知、工作台、提醒运行时、订单/提成、企业激活、AI 风格预设、AI 供应商配置/运行时、AI 动作/模型价格、AI 点数账户/流水及 AI 对话会话已切换；AI 工作流/生成/媒体资产域待完成 |
+| Phase 3 | API/业务代码从 Mongoose 切换到 PostgreSQL | 进行中 | 身份/企业核心、线索、正式户型、测量/设备、提示词库读取、角色、全局报备/媒体配置、套餐目录、报备记录、工作流通知、工作台、提醒运行时、订单/提成、企业激活、AI 风格预设、AI 供应商配置/运行时、AI 动作/模型价格、AI 点数账户/流水、AI 对话会话、PostgreSQL 媒体资产交付、工作流线索选择器及自由创作启动读取已切换；AI 工作流/生成/媒体写入和执行待完成 |
 | Phase 4 | RoomiAI snapshot、预览资源和七牛配置导入 | 进行中：待用户手动验收 | 2026-08-01 已写入 PostgreSQL 活动 Roomi 版本、960 个已校验本地预览、七牛配置并完成探测 |
 | Phase 5 | 管理端/小程序合同测试与切换演练 | 未开始 | 待补充测试报告和恢复演练 |
 | Phase 6 | 正式切换到 PostgreSQL | 未开始 | 待记录切换时间、版本和回滚窗口 |
@@ -522,6 +528,9 @@ Phase 3 验收状态：
 | AI 点数账户和流水 | Codex | 通过 | 2026-08-02 | `AiCreditRepository` 在带 RLS 的 PostgreSQL 租户事务中原子执行幂等的发放、调整、冻结、扣除和释放；账户/流水 bigint 在 API 中序列化为数字。企业点数接口现从 PostgreSQL 读取账户、策略和流水。生成记录切片完成前，旧 MongoDB 生成 ID 在流水外键中保持 `NULL`。PostgreSQL 30/30、AI 106/106 通过。 |
 | AI 自由创作持久化 Repository 基础层 | Codex | 基础层已验证 | 2026-08-03 | `AiCreationRepository` 覆盖 RLS 范围的媒体、任务、批次、引用资产关联、生成和供应商尝试；归档任务时保留生成历史。PostgreSQL 32/32 和定向 ESLint 通过。由于工作流/媒体/供应商执行消费者必须统一切换，本步骤没有路由切换或数据导入。 |
 | AI 工作流 Repository 基础层 | Codex | 基础层已验证 | 2026-08-03 | `AiWorkflowRepository` 提供 RLS 范围的工作流 CRUD 基础操作，并在归入已成功自由创作结果时锁定工作流和生成记录。首个归入结果成为选中基准，后续结果保留为候选。PostgreSQL 33/33 和定向 ESLint 通过；未发生路由切换或数据导入。 |
+| PostgreSQL 媒体资产交付边界 | Codex | 部分验证 | 2026-08-03 | `/api/ai/assets/[id]/image` 和 `/api/miniprogram/ai/assets/[id]/image` 在租户 RLS 范围内解析十进制 bigint ID，并保持本地字节输出/私有对象存储签名跳转。旧 ObjectId URL 仍为只读 MongoDB 兼容路径。PostgreSQL 34/34 与定向 ESLint 通过；上传、任务、批次、生成、执行和工作流路由仍在同一 bigint 切片中待迁移。 |
+| AI 工作流线索选择器 | Codex | 部分验证 | 2026-08-03 | `GET /api/ai/workflow-leads` 现通过一个租户 RLS 事务调用 `LeadRepository` 搜索/更新时间排序和 `AiWorkflowRepository` 活动摘要。既有 DTO、正式户型可用性筛选和 `ai-scenarios` 边界不变。PostgreSQL 34/34 与定向 ESLint 通过；工作流写入和生成执行仍待迁移。 |
+| AI 自由创作启动读取 | Codex | 部分验证 | 2026-08-03 | `GET /api/ai/creation/bootstrap` 现通过 PostgreSQL 初始化并读取 GRS bigint 模型档案/价格，并在租户 RLS 事务中读取活动工作流及其线索。既有 DTO、点数、供应商和 `ai-scenarios` 边界不变。旧 MongoDB 模型档案维护仅保留给未切换的任务/批次/生成执行链。PostgreSQL 35/35 与定向 ESLint 通过。 |
 | 提示词库主流程手测 | 用户 | 待验证 | - | 需要 Phase 4 导入活动 PostgreSQL prompt revision 后执行 |
 | 登录、授权、租户与相邻 AI 回归 | 用户 | 待验证 | - | 其余 Phase 3 切片完成后重复执行 |
 

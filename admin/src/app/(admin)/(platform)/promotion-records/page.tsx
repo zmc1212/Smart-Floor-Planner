@@ -299,7 +299,7 @@ export default function PromotionRecordsPage() {
     }
   };
 
-  const columns = useMemo<ProColumns<PromotionRecord>[]>(() => [
+  const columns: ProColumns<PromotionRecord>[] = [
     {
       title: '视图', dataIndex: 'view', valueType: 'select', hideInTable: true,
       fieldProps: { options: viewOptions.filter((item) => item.value !== 'pendingClaims' || canAssignPromoter) },
@@ -347,7 +347,7 @@ export default function PromotionRecordsPage() {
         ];
       },
     },
-  ], [canAssignPromoter, canClaimPool, workingAction]);
+  ];
 
   return (
     <div className="admin-page-frame">
@@ -369,7 +369,6 @@ export default function PromotionRecordsPage() {
                 <ProForm<ConfigForm>
                   formRef={configFormRef}
                   layout="vertical"
-                  initialValues={promotionConfig || undefined}
                   onFinish={async (values) => {
                     setConfigSaving(true);
                     try {
@@ -387,10 +386,10 @@ export default function PromotionRecordsPage() {
                   }}
                   submitter={{ searchConfig: { submitText: '保存规则' }, submitButtonProps: { loading: configSaving }, render: (_, dom) => <Flex justify="end" gap={12} style={{ marginTop: 24 }}>{dom}</Flex> }}
                 >
-                  <Flex gap={16} wrap="wrap">
-                    <ProFormDigit name="protectionPeriodDays" label="保护期天数" min={1} rules={[{ required: true }]} fieldProps={{ className: 'w-full' }} width="md" />
-                    <ProFormDigit name="protectionExtendDays" label="单次延长天数" min={1} rules={[{ required: true }]} fieldProps={{ className: 'w-full' }} width="md" />
-                    <ProFormDigit name="maxProtectionExtends" label="最大延长次数" min={0} rules={[{ required: true }]} fieldProps={{ className: 'w-full' }} width="md" />
+                  <Flex vertical gap={16}>
+                    <ProFormDigit name="protectionPeriodDays" label="保护期天数" min={1} rules={[{ required: true }]} formItemProps={{ style: { width: '100%' } }} fieldProps={{ className: 'w-full' }} />
+                    <ProFormDigit name="protectionExtendDays" label="单次延长天数" min={1} rules={[{ required: true }]} formItemProps={{ style: { width: '100%' } }} fieldProps={{ className: 'w-full' }} />
+                    <ProFormDigit name="maxProtectionExtends" label="最大延长次数" min={0} rules={[{ required: true }]} formItemProps={{ style: { width: '100%' } }} fieldProps={{ className: 'w-full' }} />
                     <ProFormSwitch name="poolClaimRequiresApproval" label="认领后需管理员审批" extra="开启后，地推认领会先进入待审批状态。" />
                   </Flex>
                 </ProForm>
@@ -403,7 +402,7 @@ export default function PromotionRecordsPage() {
             rowKey="_id"
             columns={columns}
             request={requestRecords}
-            search={{ labelWidth: 'auto', defaultCollapsed: false }}
+            search={{ labelWidth: 'auto', defaultCollapsed: false, span: 12 }}
             options={{ reload: true, density: true, setting: true }}
             pagination={{ defaultPageSize: 10, showSizeChanger: true }}
             scroll={{ x: 1180 }}
@@ -465,7 +464,12 @@ export default function PromotionRecordsPage() {
 
             {selected.ownershipStatus === 'conflict_pending' && canManage ? (
               <Card title="冲突单归属处理" className="admin-panel-card">
-                <ProForm<AssignmentForm onFinish={async (values) => updateRecord({ ownershipStatus: 'manually_locked', promoterId: values.promoterId }, { successMessage: '归属已确认' })} submitter={{ searchConfig: { submitText: '确认归属' }, render: (_, dom) => <Flex justify="end" gap={12} style={{ marginTop: 24 }}>{dom}</Flex> }}><ProFormSelect name="promoterId" label="最终归属地推员" options={salespersonOptions} rules={[{ required: true, message: '请选择最终归属地推员' }]} /></ProForm>
+                <ProForm<AssignmentForm>
+                  onFinish={async (values) => updateRecord({ ownershipStatus: 'manually_locked', promoterId: values.promoterId }, { successMessage: '归属已确认' })}
+                  submitter={{ searchConfig: { submitText: '确认归属' }, render: (_, dom) => <Flex justify="end" gap={12} style={{ marginTop: 24 }}>{dom}</Flex> }}
+                >
+                  <ProFormSelect name="promoterId" label="最终归属地推员" options={salespersonOptions} rules={[{ required: true, message: '请选择最终归属地推员' }]} />
+                </ProForm>
               </Card>
             ) : null}
           </Flex>

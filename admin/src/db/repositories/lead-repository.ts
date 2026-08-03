@@ -4,6 +4,7 @@ import {
   desc,
   eq,
   gte,
+  ilike,
   inArray,
   or,
   type SQL,
@@ -41,11 +42,13 @@ export interface LeadListOptions {
   status?: string;
   source?: string;
   phone?: string;
+  query?: string;
   staffId?: bigint;
   staffVisibility?: 'assigned' | 'promoted-or-assigned';
   page?: number;
   limit?: number;
   createdSince?: Date;
+  orderBy?: 'createdAt' | 'updatedAt';
 }
 
 export class LeadRepository {
@@ -58,6 +61,14 @@ export class LeadRepository {
     }
     if (options.source) filters.push(eq(leads.source, options.source));
     if (options.phone) filters.push(eq(leads.phone, options.phone));
+    if (options.query?.trim()) {
+      const query = options.query.trim().replace(/[%_]/g, '\\$&');
+      filters.push(or(
+        ilike(leads.name, `%${query}%`),
+        ilike(leads.phone, `%${query}%`),
+        ilike(leads.communityName, `%${query}%`)
+      )!);
+    }
     if (options.createdSince) {
       filters.push(gte(leads.createdAt, options.createdSince));
     }
@@ -154,12 +165,13 @@ export class LeadRepository {
     const where = this.buildFilters(options);
     const page = Math.max(1, options.page ?? 1);
     const limit = Math.min(Math.max(1, options.limit ?? 20), 100);
+    const orderColumn = options.orderBy === 'updatedAt' ? leads.updatedAt : leads.createdAt;
     const [rows, totals] = await Promise.all([
       this.transaction
         .select()
         .from(leads)
         .where(where)
-        .orderBy(desc(leads.createdAt), desc(leads.id))
+        .orderBy(desc(orderColumn), desc(leads.id))
         .offset((page - 1) * limit)
         .limit(limit),
       this.transaction.select({ value: count() }).from(leads).where(where),
@@ -203,6 +215,15 @@ export class LeadRepository {
       .limit(1);
     if (!rows[0]) return null;
     return (await this.attachRelations(rows))[0] ?? null;
+  }
+
+  async findByIds(ids: bigint[]) {
+    if (!ids.length) return [];
+    const rows = await this.transaction
+      .select()
+      .from(leads)
+      .where(inArray(leads.id, ids));
+    return this.attachRelations(rows);
   }
 
   async findByPhone(phone: string) {

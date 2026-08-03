@@ -1,9 +1,37 @@
 # PostgreSQL Migration Plan And Progress
 
+> 2026-08-03 migration record: `GET /api/ai/creation/bootstrap` now seeds and
+> reads the GRS model catalog through the PostgreSQL model-profile and price
+> repositories, reads active workflows plus their leads in one tenant RLS
+> transaction, and keeps its existing DTO, credit, provider, and
+> `ai-scenarios` boundary. Legacy MongoDB catalog maintenance remains only for
+> the not-yet-migrated task/batch/generation execution chain. No MongoDB
+> business data was imported or deleted, and no secret was re-encrypted.
+> Targeted ESLint and `npm run test:postgresql` passed 35/35.
+
+> 2026-08-03 migration record: `GET /api/ai/workflow-leads` now reads the
+> tenant's lead/floor-plan relations and active-workflow summaries through
+> PostgreSQL RLS transactions. It preserves the existing search, formal-plan
+> eligibility filter, DTO, and `ai-scenarios` enterprise boundary. Workflow
+> creation, stage execution, generation persistence, and media writes remain in
+> the connected bigint runtime slice. No MongoDB business data was imported or
+> deleted, and no secret was re-encrypted. Targeted ESLint and
+> `npm run test:postgresql` passed 34/34.
+
+> 2026-08-03 migration record: tenant-scoped PostgreSQL media assets can now
+> be delivered through the existing admin and Mini Program asset-image routes.
+> The asset metadata lookup runs in an RLS transaction, while local objects are
+> streamed and private object-store assets retain their signed redirect behavior.
+> Legacy MongoDB ObjectId URLs remain a read-only compatibility path. The
+> free-creation upload, task, batch, generation, provider-execution, and workflow
+> routes have not switched in this partial runtime boundary. No MongoDB business
+> data was imported or deleted, and no secret was re-encrypted. Targeted ESLint
+> and `npm run test:postgresql` passed 34/34.
+
 > 2026-08-03 migration update: public enterprise branding reads through
 > `GET /api/branding/[id]` now use `EnterpriseRepository` in a platform
 > PostgreSQL transaction rather than MongoDB. AI workflow, generation, and
-> media assets remain one subsequent bigint runtime slice.
+> media-asset writes and execution remain one subsequent bigint runtime slice.
 
 > Purpose: continue the Smart Floor Planner migration from MongoDB/Mongoose to
 > PostgreSQL across multiple Codex conversations. Before starting a new task,
@@ -99,7 +127,7 @@ and `cancelled`.
 | Phase 0.2 | Qiniu configuration and encrypted-field verification | complete | Read-only inspection; no secrets logged |
 | Phase 1 | PostgreSQL instance, roles, pooling, migration runner | complete | Codex verification and user database-health/admin-page regression passed |
 | Phase 2 | PostgreSQL schema and Repository foundation | complete | Codex and user acceptance passed on 2026-08-01 |
-| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core and public branding reads, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, AI style presets, AI provider configuration/runtime, AI action/model pricing, AI credit accounts/ledgers, and AI chat sessions switched; AI workflow/generation/media-asset domains pending |
+| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core and public branding reads, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, AI style presets, AI provider configuration/runtime, AI action/model pricing, AI credit accounts/ledgers, AI chat sessions, PostgreSQL media-asset delivery, the workflow-lead selector, and the free-creation bootstrap read switched; AI workflow/generation/media writes and execution remain pending |
 | Phase 4 | RoomiAI files/data and Qiniu configuration import | in progress: awaiting user acceptance | PostgreSQL active Roomi revision, 960 verified local previews, imported Qiniu configuration, and successful probe on 2026-08-01 |
 | Phase 5 | Contract tests and cutover rehearsal | not started | Pending |
 | Phase 6 | Production PostgreSQL cutover | not started | Pending |
@@ -535,6 +563,9 @@ Phase 3 acceptance status:
 | AI creation model-profile Repository foundation | Codex | foundation verified | 2026-08-02 | `AiCreationModelProfileRepository` upserts global GRS catalog records and preserves explicit runtime enabled/default settings; PostgreSQL 31/31 and targeted ESLint passed. No route cutover or data import occurred because dependent task/batch/generation/media/workflow foreign keys must switch together. |
 | AI creation persistence Repository foundation | Codex | foundation verified | 2026-08-03 | `AiCreationRepository` now covers RLS-scoped media, tasks, batches, reference-asset links, generations, and provider attempts; it preserves generation history when a task is archived. PostgreSQL 32/32 and targeted ESLint passed. No route cutover or data import occurred because workflow/media/provider execution consumers still require one bigint runtime slice. |
 | AI workflow Repository foundation | Codex | foundation verified | 2026-08-03 | `AiWorkflowRepository` provides RLS-scoped workflow CRUD primitives and locks a workflow plus succeeded free-creation generation during attachment. The first attached generation becomes the selected baseline and later attachments remain candidates. PostgreSQL 33/33 and targeted ESLint passed; no route cutover or data import occurred. |
+| PostgreSQL media-asset delivery boundary | Codex | partial verification | 2026-08-03 | `/api/ai/assets/[id]/image` and `/api/miniprogram/ai/assets/[id]/image` resolve decimal bigint IDs in tenant RLS scope and preserve existing local-buffer/private signed-redirect delivery. Legacy ObjectId URLs remain read-only MongoDB compatibility. PostgreSQL 34/34 and targeted ESLint passed; upload, task, batch, generation, execution, and workflow routes remain pending in the connected bigint slice. |
+| AI workflow-lead selector | Codex | partial verification | 2026-08-03 | `GET /api/ai/workflow-leads` now uses `LeadRepository` search/updated-time ordering and `AiWorkflowRepository` active summaries in one tenant RLS transaction. Existing DTO, formal-plan eligibility filter, and `ai-scenarios` boundary are unchanged. PostgreSQL 34/34 and targeted ESLint passed; workflow writes and generation execution remain pending. |
+| AI free-creation bootstrap read | Codex | partial verification | 2026-08-03 | `GET /api/ai/creation/bootstrap` initializes and reads GRS bigint model profiles/prices through PostgreSQL, and reads active workflows with their leads in a tenant RLS transaction. Its DTO, credit, provider, and `ai-scenarios` boundary are unchanged. Legacy MongoDB model-profile maintenance remains only for the unswitched task/batch/generation execution chain. PostgreSQL 35/35 and targeted ESLint passed. |
 | Orders, commissions, and workbench totals | Codex | partial verification | 2026-08-02 | `CommercialRepository` and the existing RLS-protected target tables now back the order, commission, settlement, voiding, commission-record, and workbench routes; targeted lint and PostgreSQL integration suite (23/23) passed. Dedicated commercial route and transition coverage remains pending |
 | Prompt-library primary-flow manual test | User | pending | - | Requires an active PostgreSQL prompt revision after the Phase 4 import |
 | Login, authorization, tenant, and adjacent AI regression | User | pending | - | Must be repeated after the remaining Phase 3 slices |

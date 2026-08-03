@@ -46,6 +46,9 @@ utilities, and the admin APIs they call.
   `ACTIVE_API_ENVIRONMENT` (`local` or `production`), clears expired sessions,
   and redirects to login after a 401. Requests never fall back across
   environments, and persisted `apiBaseUrl` values are not consulted.
+- Mini Program AI asset delivery: `/api/miniprogram/ai/assets/[id]/image`
+  reads new decimal PostgreSQL asset IDs in tenant RLS scope. Legacy MongoDB
+  ObjectId URLs remain readable only as retained historical AI records.
 - Status: PostgreSQL-backed login and context restoration are `Implemented`; a
   valid WeChat authorization, account, API base, and enterprise/provider
   configuration are required for the corresponding path. `Limited` during

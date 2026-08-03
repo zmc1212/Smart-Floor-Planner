@@ -1,18 +1,45 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { AiCreationRepository } from '@/db/repositories';
+import { withTenantTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { MediaAsset } from '@/models/MediaAsset';
 import { resolveMediaAssetDelivery } from '@/lib/ai/media-assets';
+import { resolvePostgresMediaAssetDelivery } from '@/lib/ai/postgres-media-assets';
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await dbConnect();
-
     return await withTenantRoute(req, { requireEnterprise: true }, async (context) => {
       const { id } = await params;
+      if (/^[1-9]\d*$/.test(id)) {
+        const asset = await withTenantTransaction(
+          parsePostgresId(context.enterpriseId!, 'enterpriseId'),
+          (transaction) => new AiCreationRepository(transaction).findMediaAsset(parsePostgresId(id, 'assetId'))
+        );
+        if (!asset) {
+          return NextResponse.json({ success: false, error: 'Asset not found' }, { status: 404 });
+        }
+        const delivery = await resolvePostgresMediaAssetDelivery(asset);
+        if (delivery.kind === 'redirect') {
+          return NextResponse.redirect(delivery.url, {
+            status: 302,
+            headers: { 'Cache-Control': 'private, no-store' },
+          });
+        }
+        return new NextResponse(new Uint8Array(delivery.buffer), {
+          headers: {
+            'Content-Type': asset.mimeType,
+            'Content-Length': String(delivery.buffer.length),
+            'Cache-Control': 'private, max-age=3600',
+          },
+        });
+      }
+
+      await dbConnect();
       const asset = await MediaAsset.findOne({
         _id: id,
         enterpriseId: context.enterpriseId,

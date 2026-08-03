@@ -1,4 +1,4 @@
-import { and, count, desc, eq, isNull, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, type SQL } from 'drizzle-orm';
 import { aiGenerations, aiWorkflows } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
 
@@ -7,6 +7,14 @@ export type NewAiWorkflow = typeof aiWorkflows.$inferInsert;
 export type AiWorkflowUpdate = Partial<
   Omit<NewAiWorkflow, 'id' | 'enterpriseId' | 'leadId' | 'operatorId' | 'createdAt' | 'updatedAt'>
 >;
+
+export type AiWorkflowLeadSummary = {
+  leadId: bigint;
+  count: number;
+  latestWorkflowId: bigint;
+  latestWorkflowTitle: string;
+  latestUpdatedAt: Date;
+};
 
 export class AiWorkflowRepository {
   constructor(private readonly transaction: PostgresTransaction) {}
@@ -45,6 +53,35 @@ export class AiWorkflowRepository {
       .where(eq(aiWorkflows.id, id))
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  /**
+   * Workflows are ordered once, so the first row for each lead is its latest
+   * active workflow while the same scan preserves the aggregate count.
+   */
+  async summarizeActiveByLeadIds(leadIds: bigint[]): Promise<AiWorkflowLeadSummary[]> {
+    if (!leadIds.length) return [];
+    const rows = await this.transaction
+      .select()
+      .from(aiWorkflows)
+      .where(and(inArray(aiWorkflows.leadId, leadIds), eq(aiWorkflows.status, 'active')))
+      .orderBy(desc(aiWorkflows.updatedAt), desc(aiWorkflows.id));
+    const summaries = new Map<bigint, AiWorkflowLeadSummary>();
+    for (const workflow of rows) {
+      const current = summaries.get(workflow.leadId);
+      if (current) {
+        current.count += 1;
+        continue;
+      }
+      summaries.set(workflow.leadId, {
+        leadId: workflow.leadId,
+        count: 1,
+        latestWorkflowId: workflow.id,
+        latestWorkflowTitle: workflow.title,
+        latestUpdatedAt: workflow.updatedAt,
+      });
+    }
+    return [...summaries.values()];
   }
 
   async create(input: NewAiWorkflow) {

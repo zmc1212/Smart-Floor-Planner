@@ -1,132 +1,57 @@
 import { NextResponse } from 'next/server';
-import mongoose from 'mongoose';
-import dbConnect from '@/lib/mongodb';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { AiWorkflowRepository, LeadRepository } from '@/db/repositories';
+import { withTenantTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
-import Lead from '@/models/Lead';
-import { FloorPlan } from '@/models/FloorPlan';
-import { AiWorkflow } from '@/models/AiWorkflow';
-import { getTenantFilter } from '@/lib/auth';
 import { isEligibleWorkflowFloorPlan } from '@/lib/ai/workflow-floorplan';
-
-type LeanFloorPlan = {
-  _id: unknown;
-  name?: string;
-  layoutData?: unknown;
-  createdAt?: Date | string;
-  status?: string;
-};
-
-// Force Mongoose model registration and prevent ESM tree-shaking
-void FloorPlan.modelName;
-
-type LeanLead = {
-  _id: unknown;
-  name: string;
-  phone: string;
-  status: string;
-  stylePreference?: string;
-  communityName?: string;
-  floorPlanIds?: LeanFloorPlan[];
-  followUpRecords?: unknown[];
-};
 
 export async function GET(req: Request) {
   try {
-    await dbConnect();
-
     return await withTenantRoute(req, { requireEnterprise: true }, async (context) => {
       const url = new URL(req.url);
       const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 100);
       const search = url.searchParams.get('search')?.trim();
-
-      const tenantFilter = getTenantFilter(context);
-      let query: Record<string, unknown> = { ...tenantFilter };
-
-      if (search) {
-        query = {
-          $and: [
-            tenantFilter,
-            {
-              $or: [
-                { name: { $regex: search, $options: 'i' } },
-                { phone: { $regex: search, $options: 'i' } },
-                { communityName: { $regex: search, $options: 'i' } },
-              ]
-            }
-          ]
-        };
-      }
-
-      const leads = await Lead.find(query)
-        .populate({ path: 'floorPlanIds', select: 'name layoutData createdAt status', strictPopulate: false })
-        .sort({ updatedAt: -1 })
-        .limit(limit)
-        .lean();
-
-      const leadIds = leads.map((lead) => lead._id);
-      const workflowEnterpriseId = context.enterpriseId
-        ? new mongoose.Types.ObjectId(String(context.enterpriseId))
-        : context.enterpriseId;
-      const workflowCounts =
-        leadIds.length > 0
-          ? await AiWorkflow.aggregate([
-              {
-                $match: {
-                  enterpriseId: workflowEnterpriseId,
-                  leadId: { $in: leadIds },
-                  status: 'active',
-                },
-              },
-              { $sort: { updatedAt: -1 } },
-              {
-                $group: {
-                  _id: '$leadId',
-                  count: { $sum: 1 },
-                  latestWorkflowId: { $first: '$_id' },
-                  latestWorkflowTitle: { $first: '$title' },
-                  latestUpdatedAt: { $first: '$updatedAt' },
-                },
-              },
-            ])
-          : [];
-
+      const enterpriseId = parsePostgresId(context.enterpriseId!, 'enterpriseId');
+      const { rows: leads, summaries } = await withTenantTransaction(enterpriseId, async (transaction) => {
+        const leadRepository = new LeadRepository(transaction);
+        const result = await leadRepository.list({
+          query: search,
+          limit,
+          orderBy: 'updatedAt',
+        });
+        const summaries = await new AiWorkflowRepository(transaction)
+          .summarizeActiveByLeadIds(result.rows.map((lead) => lead.id));
+        return { rows: result.rows, summaries };
+      });
       const workflowMap = new Map(
-        workflowCounts.map((item) => [
-          String(item._id),
-          {
-            count: item.count as number,
-            latestWorkflowId: item.latestWorkflowId ? String(item.latestWorkflowId) : undefined,
-            latestWorkflowTitle: item.latestWorkflowTitle as string | undefined,
-            latestUpdatedAt: item.latestUpdatedAt,
-          },
-        ])
+        summaries.map((summary) => [summary.leadId, summary])
       );
 
       return NextResponse.json({
         success: true,
-        data: (leads as LeanLead[]).map((lead) => {
-          const workflowMeta = workflowMap.get(String(lead._id));
+        data: leads.map((lead) => {
+          const workflowMeta = workflowMap.get(lead.id);
           return {
-            id: String(lead._id),
+            id: lead.id.toString(),
             name: lead.name,
             phone: lead.phone,
             status: lead.status,
             stylePreference: lead.stylePreference,
             communityName: lead.communityName,
-            floorPlans: Array.isArray(lead.floorPlanIds)
-              ? lead.floorPlanIds.filter(isEligibleWorkflowFloorPlan).map((plan) => ({
-                  id: String(plan._id),
-                  name: plan.name,
-                  layoutData: plan.layoutData,
-                  createdAt: plan.createdAt,
-                  status: plan.status,
-                }))
-              : [],
+            floorPlans: lead.floorPlanRecords
+              .filter(isEligibleWorkflowFloorPlan)
+              .map((plan) => ({
+                id: plan.id.toString(),
+                name: plan.name,
+                layoutData: plan.layoutData,
+                createdAt: plan.createdAt,
+                status: plan.status,
+              })),
             workflowCount: workflowMeta?.count || 0,
-            latestWorkflowId: workflowMeta?.latestWorkflowId,
+            latestWorkflowId: workflowMeta?.latestWorkflowId.toString(),
             latestWorkflowTitle: workflowMeta?.latestWorkflowTitle,
             latestWorkflowUpdatedAt: workflowMeta?.latestUpdatedAt,
-            followUpCount: Array.isArray(lead.followUpRecords) ? lead.followUpRecords.length : 0,
+            followUpCount: lead.followUpRecords.length,
           };
         }),
       });

@@ -73,6 +73,8 @@ import {
 } from '@/lib/postgres-promotion-workflow';
 import { listWorkbenchTodos } from '@/lib/postgres-workflow-automation';
 import { getEnterpriseAiPolicy } from '@/lib/ai/enterprise-policy';
+import { storePostgresMediaBuffer } from '@/lib/ai/postgres-media-assets';
+import { listPostgresExecutableImageModelProfiles } from '@/lib/ai/image-model-catalog';
 import {
   adjustAiCredits,
   consumeHeldAiCredits,
@@ -1329,6 +1331,15 @@ test('creation model profiles use PostgreSQL catalog records and preserve explic
   }
 });
 
+test('PostgreSQL GRS catalog initialization exposes an executable default model', async () => {
+  const profiles = await listPostgresExecutableImageModelProfiles();
+  const defaultProfile = profiles.find((profile) => profile.key === 'grs-gpt-image-2');
+  assert.ok(defaultProfile);
+  assert.equal(defaultProfile?.enabled, true);
+  assert.equal(defaultProfile?.isDefault, true);
+  assert.equal(defaultProfile?.remoteModel, 'gpt-image-2');
+});
+
 test('AI creation repository preserves tenant-scoped media, task, batch, generation, and attempt relations', async () => {
   let profileId: bigint | null = null;
   let assetId: bigint | null = null;
@@ -1459,6 +1470,51 @@ test('AI creation repository preserves tenant-scoped media, task, batch, generat
   }
 });
 
+test('PostgreSQL media storage commits asset metadata only after object upload under tenant RLS', async () => {
+  const objects = new Map<string, Buffer>();
+  const provider = {
+    key: 'integration-memory',
+    async putObject(input: { objectKey: string; buffer: Buffer }) {
+      objects.set(input.objectKey, Buffer.from(input.buffer));
+      return {};
+    },
+    async getObject(input: { objectKey: string }) {
+      const value = objects.get(input.objectKey);
+      if (!value) throw new Error('Object not found');
+      return Buffer.from(value);
+    },
+    async deleteObject(input: { objectKey: string }) {
+      objects.delete(input.objectKey);
+    },
+  };
+  let assetId: bigint | null = null;
+
+  try {
+    const stored = await storePostgresMediaBuffer({
+      enterpriseId: enterpriseAId,
+      ownerType: 'manual_upload',
+      mimeType: 'application/octet-stream',
+      buffer: Buffer.from('postgres-media-integration'),
+      provider,
+    });
+    assetId = stored.asset.id;
+    assert.equal(stored.asset.enterpriseId, enterpriseAId);
+    assert.equal(stored.asset.size, BigInt('postgres-media-integration'.length));
+    assert.ok(objects.has(stored.asset.storageKey));
+
+    const crossTenant = await withTenantTransaction(enterpriseBId, (transaction) =>
+      new AiCreationRepository(transaction).findMediaAsset(assetId!)
+    );
+    assert.equal(crossTenant, null);
+  } finally {
+    if (assetId) {
+      await withPlatformTransaction((transaction) =>
+        transaction.delete(mediaAssets).where(eq(mediaAssets.id, assetId!))
+      );
+    }
+  }
+});
+
 test('AI workflow repository atomically attaches succeeded free creations under tenant RLS', async () => {
   let leadId: bigint | null = null;
   let workflowId: bigint | null = null;
@@ -1529,6 +1585,19 @@ test('AI workflow repository atomically attaches succeeded free creations under 
 
       const listed = await workflows.list({ leadId: lead.id, status: 'active' });
       assert.equal(listed.total, 1);
+      const summaries = await workflows.summarizeActiveByLeadIds([lead.id]);
+      assert.equal(summaries.length, 1);
+      assert.equal(summaries[0]?.leadId, lead.id);
+      assert.equal(summaries[0]?.count, 1);
+      assert.equal(summaries[0]?.latestWorkflowId, workflow.id);
+      assert.equal(summaries[0]?.latestWorkflowTitle, workflow.title);
+      assert.ok(summaries[0]?.latestUpdatedAt.getTime() >= workflow.updatedAt.getTime());
+      const matchingLeads = await new LeadRepository(transaction).list({
+        query: 'workflow attachment',
+        orderBy: 'updatedAt',
+      });
+      assert.equal(matchingLeads.total, 1);
+      assert.equal(matchingLeads.rows[0]?.id, lead.id);
       return { workflow, firstGeneration, secondGeneration };
     });
 

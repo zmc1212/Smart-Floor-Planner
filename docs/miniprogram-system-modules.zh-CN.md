@@ -23,6 +23,7 @@
 - 访问仅限员工：账号密码登录必须匹配启用中的后台 `AdminUser`；微信 code/手机号登录必须通过已绑定 OpenID 或后台手机号匹配启用中的 `AdminUser`。未匹配的外部用户会收到 `403`，无法建立小程序已登录业务会话。账号、绑定身份、企业和权限解析已切换 PostgreSQL，并在刷新和请求上下文解析时复核启用状态。
 - `app.js`：恢复会话，解析二维码 `enterpriseId`/`staffId` 推荐参数，同步员工专业上下文、企业品牌，并对已记忆设备尝试静默 BLE 重连。
 - `utils/api.js`：携带 Bearer token，通过显式 `ACTIVE_API_ENVIRONMENT`（`local` 或 `production`）选择唯一 API 地址，401 时清理会话并提示重新登录。请求不会跨环境回退，也不读取持久化 `apiBaseUrl`。
+- 小程序 AI 素材交付：`/api/miniprogram/ai/assets/[id]/image` 对新的十进制 PostgreSQL 素材 ID 在租户 RLS 范围内读取；旧 MongoDB ObjectId URL 仅保留给历史 AI 记录只读访问。
 - 状态：PostgreSQL 登录与上下文恢复为 `Implemented`；具体路径仍依赖有效微信授权、账号、API 地址和企业/供应商配置。Phase 3 期间为 `Limited`：仍由 MongoDB 支撑的 AI 生成/媒体与订单/提成工作流域要等计划内 PostgreSQL 切换后才兼容 bigint 身份；线索、正式户型、测量和设备绑定现已使用 PostgreSQL。
 
 ## 页面清单

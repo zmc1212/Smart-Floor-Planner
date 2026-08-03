@@ -152,7 +152,11 @@ permission, or workflow changes.
 - Models/repositories: PostgreSQL `AdminUserRepository`,
   `DepartmentRepository`, `SystemRoleRepository`, and the
   `admin_user_promoters` junction.
-- Status: `Implemented`. Enterprise staff, platform admins, role assignment,
+- Status: `Implemented`. `/staff` uses the shared Ant Design ProComponents
+  pattern (`PageContainer`, `ProTable`, `ModalForm`, and `Tree`) for server-side
+  staff search/pagination, department filtering, and staff or department
+  maintenance; this presentation migration does not change its APIs, tenant
+  scope, or role boundaries. Enterprise staff, platform admins, role assignment,
   department trees, status changes, and promoter/designer/measurer relationships
   are supported. Existing `_id` response fields remain decimal strings for
   frontend compatibility; RLS and route role checks enforce tenant boundaries.
@@ -172,7 +176,12 @@ permission, or workflow changes.
   pool, claim/approval, assignment, business stages, follow-up timelines, SLA
   reminders, notification deduplication, and audit logs. Platform administrators
   read and update the global promotion protection/approval configuration through
-  PostgreSQL. The PostgreSQL promotion/notification foundation now has explicit
+  PostgreSQL. `/promotion-records` uses the shared Ant Design ProComponents
+  presentation pattern (`PageContainer`, `ProTable`, `ProForm`, and
+  `ProDescriptions`) for the list, global-rule form, record detail, follow-up,
+  assignment, pool, and claim-review interactions; this presentation migration
+  does not change its APIs, data contract, or role boundaries. The PostgreSQL
+  promotion/notification foundation now has explicit
   bigint foreign keys for claim review, measurement/design assignment, and
   conflict review; indexed role visibility; atomic conditional state updates;
   relation DTOs; and channel-scoped notification deduplication. Promotion routes,
@@ -208,6 +217,12 @@ permission, or workflow changes.
   orders atomically update the promotion record and upsert the fixed commission;
   cancelled orders void the existing commission. Enterprise activation uses the
   same PostgreSQL promotion/order relations and does not introduce a dual write.
+  `/enterprise-orders` now uses the shared Ant Design ProComponents presentation
+  pattern (`PageContainer`, `ProTable`, and `ModalForm`) for list filtering,
+  status transitions, creation, and paid-order activation; this display-only
+  migration preserves its existing APIs, PostgreSQL data contract, and
+  `enterprise_admin`/`admin`/`super_admin` write plus `admin`/`super_admin`
+  activation boundaries.
 
 ### 7. Leads And Conversion Assets
 
@@ -395,6 +410,19 @@ permission, or workflow changes.
   `AiCreationTask`, `AiCreationBatch`, and `AiGeneration` still reference its
   legacy ObjectId; PostgreSQL stores executable price rows plus enterprise
   credit account and ledger rows in this slice.
+  New PostgreSQL bigint media assets are delivered through
+  `/api/ai/assets/[id]/image` in a tenant RLS transaction; legacy ObjectId
+  asset URLs remain a read-only MongoDB compatibility path during AI cutover.
+  `GET /api/ai/workflow-leads` now uses PostgreSQL lead/floor-plan relations
+  and an RLS-scoped `AiWorkflowRepository` summary, preserving its existing
+  search, eligible formal-floor-plan filter, response DTO, and `ai-scenarios`
+  enterprise boundary.
+  `GET /api/ai/creation/bootstrap` now initializes and reads the GRS model
+  catalog through PostgreSQL model-profile/price repositories and reads active
+  workflows with their related leads through tenant RLS. Its DTO, credit,
+  provider, and `ai-scenarios` boundary are unchanged; legacy MongoDB catalog
+  maintenance remains only for the not-yet-switched task/batch/generation
+  execution chain.
   The PostgreSQL `AiCreationModelProfileRepository` is now available as the
   tested persistence foundation for that cutover: it upserts catalog metadata,
   preserves explicit enabled/default settings, and exposes bigint-safe catalog
@@ -406,8 +434,11 @@ permission, or workflow changes.
   message history now use `AiChatSessionRepository` in RLS-scoped PostgreSQL
   transactions, keeping the existing per-enterprise/per-administrator boundary
   and string conversation IDs. Historical MongoDB conversations are not imported.
-  `Limited`: MongoDB AI workflow/media/generation routes that reference leads or
-  floor plans are not bigint-compatible yet and remain outside this slice.
+  `Limited`: workflow creation, stage execution, task/batch/generation
+  persistence, and remaining media writes still use the MongoDB execution chain
+  and are not yet bigint-compatible; the workflow-lead selector,
+  free-creation bootstrap read, and PostgreSQL asset delivery have switched in
+  this domain.
 - Status: `Implemented`. The workbench starts customer designs with a
   customer/material/goal wizard, shows the selected result and candidates in a
   two-column workspace, and keeps one recommended next action prominent. The
