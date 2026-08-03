@@ -163,6 +163,18 @@
   .admin-page-frame .ant-table-wrapper .ant-table-thead > tr > th {
     @apply text-xs font-semibold text-muted-foreground;
   }
+
+  @media (max-width: 640px) {
+    .admin-mobile-filter-stack .ant-pro-query-filter-row > .ant-col {
+      flex: 0 0 100%;
+      max-width: 100%;
+    }
+
+    .admin-mobile-filter-stack .ant-pro-query-filter-row > .ant-col-offset-12 {
+      margin-left: 0 !important;
+      text-align: start !important;
+    }
+  }
 }
 
 @layer utilities {

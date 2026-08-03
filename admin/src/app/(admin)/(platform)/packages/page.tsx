@@ -1,302 +1,282 @@
 'use client';
 
+import { useRef, useState } from 'react';
+import {
+  ModalForm,
+  PageContainer,
+  ProFormDigit,
+  ProFormSelect,
+  ProFormText,
+  ProFormTextArea,
+  ProTable,
+  type ActionType,
+  type ProColumns,
+} from '@ant-design/pro-components';
+import { Button, Dropdown, Flex, Tag, Tooltip, Typography, type MenuProps } from 'antd';
+import { Ellipsis, Pencil, Plus, Trash2 } from 'lucide-react';
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 
-import { useEffect, useState } from 'react';
-import { Loader2, Plus, Edit, Trash2, CheckCircle, XCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+type PackageStatus = 'active' | 'disabled';
+
+type PackageItem = {
+  _id: string;
+  name: string;
+  price: number;
+  promotionCommission: number;
+  description?: string | null;
+  status: PackageStatus;
+  createdAt?: string;
+};
+
+type PackageForm = {
+  name: string;
+  price: number;
+  promotionCommission: number;
+  description?: string;
+  status: PackageStatus;
+};
+
+const STATUS_OPTIONS: Array<{ label: string; value: PackageStatus }> = [
+  { label: '已启用', value: 'active' },
+  { label: '已禁用', value: 'disabled' },
+];
+
+function formatAmount(amount: number) {
+  return new Intl.NumberFormat('zh-CN', {
+    style: 'currency',
+    currency: 'CNY',
+    minimumFractionDigits: 2,
+  }).format(Number(amount || 0));
+}
+
+function formatDate(value?: string) {
+  return value ? new Date(value).toLocaleString('zh-CN') : '-';
+}
 
 export default function PackagesPage() {
+  const actionRef = useRef<ActionType>(null);
   const confirmAction = useConfirmDialog();
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [open, setOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<any>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    price: '',
-    promotionCommission: '',
-    description: '',
-    status: 'active'
-  });
+  const { user: currentUser } = useCurrentUser();
+  const [editingItem, setEditingItem] = useState<PackageItem | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const canManagePackages = Boolean(currentUser && ['admin', 'super_admin'].includes(currentUser.role));
+
+  const savePackage = async (values: PackageForm) => {
+    const isEdit = Boolean(editingItem);
     try {
-      const res = await fetch('/api/admin/packages');
-      const data = await res.json();
-      if (data.success) setItems(data.data || []);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const method = editingItem ? 'PUT' : 'POST';
-    const url = editingItem ? `/api/admin/packages/${editingItem._id}` : '/api/admin/packages';
-
-    try {
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          price: Number(formData.price),
-          promotionCommission: Number(formData.promotionCommission || 0)
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setOpen(false);
-        setEditingItem(null);
-        setFormData({ name: '', price: '', promotionCommission: '', description: '', status: 'active' });
-        notify.success(editingItem ? '套餐已更新' : '套餐已创建');
-        fetchData();
-      } else {
-        notify.fromAlert(data.error || '保存失败');
-      }
+      const response = await fetch(
+        isEdit ? `/api/admin/packages/${editingItem?._id}` : '/api/admin/packages',
+        {
+          method: isEdit ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(values),
+        },
+      );
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '保存套餐失败');
+      notify.success(isEdit ? '套餐已更新' : '套餐已创建');
+      setFormOpen(false);
+      setEditingItem(null);
+      await actionRef.current?.reload();
+      return true;
     } catch (error) {
-      notify.fromAlert('网络错误');
+      notify.error(error instanceof Error ? error.message : '保存套餐失败');
+      return false;
     }
   };
 
-  const handleEdit = (item: any) => {
-    setEditingItem(item);
-    setFormData({
-      name: item.name,
-      price: String(item.price),
-      promotionCommission: String(item.promotionCommission || '0'),
-      description: item.description || '',
-      status: item.status
-    });
-    setOpen(true);
-  };
-
-  const handleDelete = async (id: string) => {
+  const deletePackage = async (item: PackageItem) => {
+    if (deletingId) return;
     const confirmed = await confirmAction({
       title: '删除套餐',
-      description: '确认删除该套餐吗？',
+      description: `确定删除“${item.name}”吗？此操作不可撤销。`,
       confirmText: '删除',
       destructive: true,
     });
     if (!confirmed) return;
+    setDeletingId(item._id);
     try {
-      const res = await fetch(`/api/admin/packages/${id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
-        notify.success('套餐已删除');
-        fetchData();
-      } else {
-        notify.fromAlert(data.error || '删除失败');
-      }
+      const response = await fetch(`/api/admin/packages/${item._id}`, { method: 'DELETE' });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '删除套餐失败');
+      notify.success('套餐已删除');
+      await actionRef.current?.reload();
     } catch (error) {
-      notify.fromAlert('删除失败');
+      notify.error(error instanceof Error ? error.message : '删除套餐失败');
+    } finally {
+      setDeletingId(null);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-white text-[#171717] font-sans">
-      <main className="max-w-7xl mx-auto px-6 py-16 space-y-12">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-          <div>
-            <h2 className="text-[32px] font-semibold tracking-tight leading-none mb-4">套餐管理</h2>
-            <p className="text-muted-foreground">定义和维护企业入驻套餐，供成交订单时选择。</p>
-          </div>
-          
-          <Dialog open={open} onOpenChange={(val) => {
-            setOpen(val);
-            if (!val) {
-              setEditingItem(null);
-              setFormData({ name: '', price: '', promotionCommission: '', description: '', status: 'active' });
-            }
-          }}>
-            <DialogTrigger asChild>
-              <Button className="rounded-full bg-black hover:bg-zinc-800 h-12 px-6">
-                <Plus className="mr-2" size={18} />
-                新增套餐
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px] rounded-3xl border shadow-2xl">
-              <DialogHeader>
-                <DialogTitle>{editingItem ? '编辑套餐' : '新增套餐'}</DialogTitle>
-              </DialogHeader>
-              <form onSubmit={handleSubmit} className="space-y-6 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">套餐名称</Label>
-                  <Input 
-                    id="name" 
-                    value={formData.name} 
-                    onChange={(e) => setFormData({...formData, name: e.target.value})} 
-                    placeholder="例如：基础版、专业版"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="price">套餐金额 (元)</Label>
-                  <Input 
-                    id="price" 
-                    type="number"
-                    value={formData.price} 
-                    onChange={(e) => setFormData({...formData, price: e.target.value})} 
-                    placeholder="0.00"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="promotionCommission">地推提成金额 (元)</Label>
-                  <Input 
-                    id="promotionCommission" 
-                    type="number"
-                    value={formData.promotionCommission} 
-                    onChange={(e) => setFormData({...formData, promotionCommission: e.target.value})} 
-                    placeholder="0.00"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="description">描述信息</Label>
-                  <Textarea 
-                    id="description" 
-                    value={formData.description} 
-                    onChange={(e) => setFormData({...formData, description: e.target.value})} 
-                    placeholder="关于套餐的简单说明..."
-                    rows={3}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>状态</Label>
-                  <Select 
-                    value={formData.status} 
-                    onValueChange={(val) => setFormData({...formData, status: val})}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="选择状态" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">启用</SelectItem>
-                      <SelectItem value="disabled">禁用</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <DialogFooter>
-                  <Button type="submit" className="w-full rounded-xl bg-black hover:bg-zinc-800 h-11">
-                    保存套餐
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
+  const columns: ProColumns<PackageItem>[] = [
+    {
+      title: '关键词',
+      dataIndex: 'keyword',
+      hideInTable: true,
+      fieldProps: { placeholder: '套餐名称或描述' },
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      valueType: 'select',
+      valueEnum: Object.fromEntries(STATUS_OPTIONS.map((item) => [item.value, item.label])),
+      width: 120,
+      render: (_, item) => <Tag color={item.status === 'active' ? 'green' : 'default'}>{item.status === 'active' ? '已启用' : '已禁用'}</Tag>,
+    },
+    {
+      title: '套餐',
+      dataIndex: 'name',
+      hideInSearch: true,
+      width: 300,
+      render: (_, item) => (
+        <Flex vertical gap={4}>
+          <Typography.Text strong>{item.name}</Typography.Text>
+          <Typography.Text type="secondary" ellipsis={{ tooltip: item.description || '暂无描述' }} className="text-xs">
+            {item.description || '暂无描述'}
+          </Typography.Text>
+        </Flex>
+      ),
+    },
+    {
+      title: '套餐金额',
+      dataIndex: 'price',
+      hideInSearch: true,
+      width: 160,
+      render: (value) => <Typography.Text strong>{formatAmount(Number(value))}</Typography.Text>,
+    },
+    {
+      title: '渠道提成',
+      dataIndex: 'promotionCommission',
+      hideInSearch: true,
+      width: 160,
+      render: (value) => <Typography.Text>{formatAmount(Number(value))}</Typography.Text>,
+    },
+    {
+      title: '创建时间',
+      dataIndex: 'createdAt',
+      valueType: 'dateTime',
+      hideInSearch: true,
+      width: 190,
+      render: (_, item) => formatDate(item.createdAt),
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      valueType: 'option',
+      fixed: 'right',
+      width: 100,
+      hideInSearch: true,
+      render: (_, item) => {
+        if (!canManagePackages) return '-';
+        const isDeleting = deletingId === item._id;
+        const items: MenuProps['items'] = [
+          {
+            key: 'edit',
+            label: '编辑套餐',
+            icon: <Pencil size={15} />,
+            disabled: isDeleting,
+            onClick: () => {
+              setEditingItem(item);
+              setFormOpen(true);
+            },
+          },
+          {
+            key: 'delete',
+            label: '删除套餐',
+            icon: <Trash2 size={15} />,
+            danger: true,
+            disabled: isDeleting,
+            onClick: () => void deletePackage(item),
+          },
+        ];
+        return (
+          <Dropdown menu={{ items }} trigger={['click']}>
+            <Tooltip title="更多操作">
+              <Button aria-label={`${item.name} 更多操作`} icon={<Ellipsis size={18} />} loading={isDeleting} />
+            </Tooltip>
+          </Dropdown>
+        );
+      },
+    },
+  ];
 
-        {loading ? (
-          <div className="flex items-center justify-center py-32">
-            <Loader2 className="animate-spin text-zinc-300" size={32} />
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-3xl border shadow-sm bg-white">
-            <Table>
-              <TableHeader className="bg-zinc-50">
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="w-[300px]">套餐名称</TableHead>
-                  <TableHead>套餐金额</TableHead>
-                  <TableHead>地推提成</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>创建时间</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item) => (
-                  <TableRow key={item._id} className="group transition-colors">
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-base">{item.name}</span>
-                        <span className="text-xs text-zinc-400 line-clamp-1">{item.description || '暂无描述'}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-mono font-medium text-lg text-zinc-900">
-                      ¥{Number(item.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                    </TableCell>
-                    <TableCell className="font-mono font-medium text-lg text-pink-600">
-                      ¥{Number(item.promotionCommission || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                    </TableCell>
-                    <TableCell>
-                      {item.status === 'active' ? (
-                        <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-none px-3 py-1 rounded-full">
-                          <CheckCircle size={12} className="mr-1" />
-                          已启用
-                        </Badge>
-                      ) : (
-                        <Badge className="bg-zinc-100 text-zinc-500 hover:bg-zinc-100 border-none px-3 py-1 rounded-full">
-                          <XCircle size={12} className="mr-1" />
-                          已禁用
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-zinc-500 text-sm">
-                      {new Date(item.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-9 w-9 rounded-full hover:bg-zinc-100"
-                          onClick={() => handleEdit(item)}
-                        >
-                          <Edit size={16} />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-9 w-9 rounded-full hover:bg-zinc-100 text-red-500 hover:text-red-600"
-                          onClick={() => handleDelete(item._id)}
-                        >
-                          <Trash2 size={16} />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {items.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} className="h-48 text-center text-muted-foreground">
-                      暂无套餐配置，请点击右上方按钮新增。
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </main>
+  return (
+    <div className="admin-page-frame">
+      <PageContainer
+        breadcrumbRender={false}
+        className="admin-page-container"
+        title="套餐管理"
+        content="维护企业入驻套餐及渠道提成金额，供成交订单登记时选择。"
+        extra={canManagePackages ? [
+          <Button key="create" type="primary" icon={<Plus size={16} />} onClick={() => { setEditingItem(null); setFormOpen(true); }}>新增套餐</Button>,
+        ] : undefined}
+      >
+        <ProTable<PackageItem>
+          className="admin-mobile-filter-stack"
+          actionRef={actionRef}
+          rowKey="_id"
+          columns={columns}
+          search={{ labelWidth: 'auto', defaultCollapsed: false, span: 12 }}
+          options={{ reload: true, density: true, setting: true }}
+          pagination={{ defaultPageSize: 20, showSizeChanger: true }}
+          scroll={{ x: 940 }}
+          request={async (params) => {
+            const query = new URLSearchParams();
+            if (params.status) query.set('status', String(params.status));
+            const response = await fetch(`/api/admin/packages${query.size ? `?${query}` : ''}`);
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.error || '读取套餐失败');
+            const keyword = String(params.keyword || '').trim().toLowerCase();
+            const filtered = (result.data || []).filter((item: PackageItem) => !keyword || [item.name, item.description]
+              .filter(Boolean)
+              .some((value) => value?.toLowerCase().includes(keyword)));
+            const pageSize = Number(params.pageSize || 20);
+            const current = Number(params.current || 1);
+            return {
+              data: filtered.slice((current - 1) * pageSize, current * pageSize),
+              total: filtered.length,
+              success: true,
+            };
+          }}
+          onRequestError={(error) => notify.error(error instanceof Error ? error.message : '读取套餐失败')}
+        />
+      </PageContainer>
+
+      <ModalForm<PackageForm>
+        key={editingItem?._id || 'create-package'}
+        title={editingItem ? '编辑套餐' : '新增套餐'}
+        open={formOpen}
+        initialValues={editingItem ? {
+          name: editingItem.name,
+          price: editingItem.price,
+          promotionCommission: editingItem.promotionCommission,
+          description: editingItem.description || '',
+          status: editingItem.status,
+        } : {
+          promotionCommission: 0,
+          status: 'active',
+        }}
+        modalProps={{ destroyOnHidden: true, maskClosable: false }}
+        onOpenChange={(open) => {
+          setFormOpen(open);
+          if (!open) setEditingItem(null);
+        }}
+        onFinish={savePackage}
+        submitter={{
+          searchConfig: { submitText: editingItem ? '保存套餐' : '创建套餐' },
+          render: (_, dom) => <Flex justify="end" gap={12} style={{ marginTop: 24 }}>{dom}</Flex>,
+        }}
+      >
+        <ProFormText name="name" label="套餐名称" rules={[{ required: true, message: '请输入套餐名称' }]} fieldProps={{ placeholder: '例如：基础版、专业版' }} />
+        <ProFormDigit name="price" label="套餐金额（元）" min={0} fieldProps={{ precision: 2, className: 'w-full', placeholder: '0.00' }} rules={[{ required: true, message: '请输入套餐金额' }]} />
+        <ProFormDigit name="promotionCommission" label="渠道提成金额（元）" min={0} fieldProps={{ precision: 2, className: 'w-full', placeholder: '0.00' }} rules={[{ required: true, message: '请输入渠道提成金额' }]} />
+        <ProFormTextArea name="description" label="套餐说明" fieldProps={{ rows: 4, placeholder: '简要说明套餐的适用范围或服务内容...' }} />
+        <ProFormSelect name="status" label="状态" options={STATUS_OPTIONS} rules={[{ required: true, message: '请选择套餐状态' }]} />
+      </ModalForm>
     </div>
   );
 }

@@ -1,213 +1,236 @@
 'use client';
 
+import { useRef, useState } from 'react';
+import { PageContainer, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
+import { Button, Card, Flex, Space, Statistic, Tag, Typography } from 'antd';
+import { CheckCircle2, CircleDollarSign } from 'lucide-react';
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 
-import { useEffect, useState } from 'react';
-import { Loader2, CheckCircle2, AlertCircle, Banknote, Filter } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { cn } from '@/lib/utils';
+type CommissionStatus = 'pending_settlement' | 'paid' | 'voided';
+
+type CommissionRecord = {
+  _id: string;
+  recordId?: { _id: string; enterpriseName?: string; contactPerson?: string } | string;
+  orderId?: { _id: string; packageName?: string; amount?: number; status?: string } | string;
+  promoterId?: { _id: string; displayName?: string; username?: string; role?: string } | string;
+  commissionAmount: number;
+  commissionType?: string;
+  status: CommissionStatus;
+  generatedAt?: string;
+  settledAt?: string | null;
+};
+
+type SummaryItem = { count?: number; amount?: number };
+type CommissionSummary = Record<string, SummaryItem | undefined>;
+
+const STATUS_OPTIONS: Array<{ label: string; value: CommissionStatus }> = [
+  { label: '待结算', value: 'pending_settlement' },
+  { label: '已发放', value: 'paid' },
+  { label: '已作废', value: 'voided' },
+];
+
+const STATUS_CONFIG: Record<CommissionStatus, { label: string; color?: string }> = {
+  pending_settlement: { label: '待结算', color: 'processing' },
+  paid: { label: '已发放', color: 'success' },
+  voided: { label: '已作废', color: 'default' },
+};
+
+function formatAmount(amount: number) {
+  return new Intl.NumberFormat('zh-CN', {
+    style: 'currency',
+    currency: 'CNY',
+    minimumFractionDigits: 2,
+  }).format(Number(amount || 0));
+}
+
+function formatDate(value?: string | null) {
+  return value ? new Date(value).toLocaleString('zh-CN') : '-';
+}
+
+function displayPromoter(record: CommissionRecord) {
+  if (!record.promoterId || typeof record.promoterId === 'string') return '未识别渠道人员';
+  return record.promoterId.displayName || record.promoterId.username || '未命名渠道人员';
+}
+
+function displayEnterprise(record: CommissionRecord) {
+  return record.recordId && typeof record.recordId !== 'string' ? record.recordId.enterpriseName || '未知企业' : '未知企业';
+}
+
+function displayPackage(record: CommissionRecord) {
+  return record.orderId && typeof record.orderId !== 'string' ? record.orderId.packageName || '标准套餐' : '标准套餐';
+}
 
 export default function CommissionsPage() {
+  const actionRef = useRef<ActionType>(null);
   const confirmAction = useConfirmDialog();
-  const [items, setItems] = useState<any[]>([]);
-  const [summary, setSummary] = useState<any>({});
-  const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState('');
+  const { user: currentUser } = useCurrentUser();
+  const [summary, setSummary] = useState<CommissionSummary>({});
+  const [settlingId, setSettlingId] = useState<string | null>(null);
 
-  const fetchData = async () => {
-    setLoading(true);
-    try {
-      const url = `/api/commissions${statusFilter ? `?status=${statusFilter}` : ''}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.success) {
-        setItems(data.data || []);
-        setSummary(data.summary || {});
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  const canSettle = Boolean(currentUser && ['admin', 'super_admin'].includes(currentUser.role));
+  const pendingSummary = summary.pending_settlement || {};
+  const paidSummary = summary.paid || {};
 
-  useEffect(() => {
-    fetchData();
-  }, [statusFilter]);
-
-  const settleCommission = async (id: string) => {
+  const settleCommission = async (record: CommissionRecord) => {
     const confirmed = await confirmAction({
       title: '确认结算',
-      description: '确认已完成线下打款并标记为已结算吗？',
+      description: `确认已向“${displayPromoter(record)}”完成线下打款，并将这笔提成标记为已发放吗？`,
       confirmText: '标记已结算',
     });
     if (!confirmed) return;
-    
+
+    setSettlingId(record._id);
     try {
-      const res = await fetch(`/api/commissions/${id}/settle`, {
-        method: 'POST',
-      });
-      const data = await res.json();
-      if (data.success) {
-        notify.success('提成已标记为已发放');
-        fetchData();
-      } else {
-        notify.fromAlert(data.error || '操作失败');
-      }
+      const response = await fetch(`/api/commissions/${record._id}/settle`, { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '结算提成失败');
+      notify.success('提成已标记为已发放');
+      await actionRef.current?.reload();
     } catch (error) {
-      notify.fromAlert('网络错误');
+      notify.error(error instanceof Error ? error.message : '结算提成失败');
+    } finally {
+      setSettlingId(null);
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'paid':
-        return <Badge className="bg-green-100 text-green-700 hover:bg-green-100 border-none">已发放</Badge>;
-      case 'pending_settlement':
-        return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 border-none">待结算</Badge>;
-      case 'voided':
-        return <Badge className="bg-zinc-100 text-zinc-500 hover:bg-zinc-100 border-none">已作废</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
-  };
+  const columns: ProColumns<CommissionRecord>[] = [
+    {
+      title: '关键词',
+      dataIndex: 'keyword',
+      hideInTable: true,
+      fieldProps: { placeholder: '渠道人员、企业或套餐名称' },
+    },
+    {
+      title: '状态',
+      dataIndex: 'status',
+      valueType: 'select',
+      valueEnum: Object.fromEntries(STATUS_OPTIONS.map((item) => [item.value, item.label])),
+      width: 130,
+      render: (_, record) => {
+        const config = STATUS_CONFIG[record.status];
+        return <Tag color={config.color}>{config.label}</Tag>;
+      },
+    },
+    {
+      title: '渠道人员',
+      dataIndex: 'promoterId',
+      hideInSearch: true,
+      width: 220,
+      render: (_, record) => (
+        <Flex vertical gap={2}>
+          <Typography.Text strong>{displayPromoter(record)}</Typography.Text>
+          {record.promoterId && typeof record.promoterId !== 'string' ? (
+            <Typography.Text type="secondary" className="text-xs">@{record.promoterId.username || record.promoterId._id}</Typography.Text>
+          ) : null}
+        </Flex>
+      ),
+    },
+    {
+      title: '关联企业 / 订单',
+      key: 'business',
+      hideInSearch: true,
+      width: 260,
+      render: (_, record) => (
+        <Flex vertical gap={2}>
+          <Typography.Text>{displayEnterprise(record)}</Typography.Text>
+          <Typography.Text type="secondary" className="text-xs">{displayPackage(record)}</Typography.Text>
+        </Flex>
+      ),
+    },
+    {
+      title: '提成金额',
+      dataIndex: 'commissionAmount',
+      hideInSearch: true,
+      width: 160,
+      render: (value) => <Typography.Text strong>{formatAmount(Number(value))}</Typography.Text>,
+    },
+    {
+      title: '生成时间',
+      dataIndex: 'generatedAt',
+      valueType: 'dateTime',
+      hideInSearch: true,
+      width: 190,
+      render: (_, record) => formatDate(record.generatedAt),
+    },
+    {
+      title: '结算状态',
+      key: 'settlement',
+      valueType: 'option',
+      fixed: 'right',
+      width: 170,
+      hideInSearch: true,
+      render: (_, record) => {
+        if (record.status === 'pending_settlement' && canSettle) {
+          return <Button type="primary" loading={settlingId === record._id} onClick={() => void settleCommission(record)}>确认发放</Button>;
+        }
+        if (record.status === 'paid') {
+          return <Space size={4}><CheckCircle2 size={15} className="text-primary" /><Typography.Text type="secondary" className="text-xs">{formatDate(record.settledAt)}</Typography.Text></Space>;
+        }
+        return <Typography.Text type="secondary">不可操作</Typography.Text>;
+      },
+    },
+  ];
 
   return (
-    <div className="min-h-screen bg-white text-[#171717] font-sans">
-      <main className="max-w-7xl mx-auto px-6 py-16 space-y-12">
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
-          <div>
-            <h2 className="text-[32px] font-semibold tracking-tight leading-none mb-4">提成结算中心</h2>
-            <p className="text-muted-foreground">管理地推人员的佣金发放，基于成交订单自动核算。</p>
-          </div>
-          
-          <div className="flex items-center gap-2 bg-zinc-50 p-1 rounded-xl border">
-            {[
-              { label: '全部', value: '' },
-              { label: '待结算', value: 'pending_settlement' },
-              { label: '已发放', value: 'paid' }
-            ].map((tab) => (
-              <button
-                key={tab.value}
-                onClick={() => setStatusFilter(tab.value)}
-                className={cn(
-                  "px-4 py-2 text-sm font-medium rounded-lg transition-all",
-                  statusFilter === tab.value 
-                    ? "bg-white shadow-sm text-black" 
-                    : "text-zinc-500 hover:text-black"
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
+    <div className="admin-page-frame">
+      <PageContainer
+        breadcrumbRender={false}
+        className="admin-page-container"
+        title="提成结算中心"
+        content="查看渠道提成核算与发放状态。付费订单会自动生成相应的提成记录。"
+      >
+        <Flex vertical gap={24}>
+          <Flex gap={16} wrap="wrap">
+            <Card className="admin-panel-card min-w-56 flex-1" size="small">
+              <Statistic title="待结算总额" value={Number(pendingSummary.amount || 0)} precision={2} prefix="¥" />
+              <Typography.Text type="secondary">{pendingSummary.count || 0} 笔待处理</Typography.Text>
+            </Card>
+            <Card className="admin-panel-card min-w-56 flex-1" size="small">
+              <Statistic title="已发放总额" value={Number(paidSummary.amount || 0)} precision={2} prefix="¥" />
+              <Typography.Text type="secondary">{paidSummary.count || 0} 笔已入账</Typography.Text>
+            </Card>
+            <Card className="admin-panel-card min-w-56 flex-1" size="small">
+              <Flex justify="space-between" align="start"><Statistic title="累计核算" value={Number(pendingSummary.amount || 0) + Number(paidSummary.amount || 0)} precision={2} prefix="¥" /><CircleDollarSign size={20} className="text-primary" /></Flex>
+              <Typography.Text type="secondary">成交转化产生的提成总额</Typography.Text>
+            </Card>
+          </Flex>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="p-6 rounded-3xl border bg-zinc-50/50 space-y-2">
-            <div className="flex items-center gap-2 text-zinc-500 text-sm font-medium">
-              <AlertCircle size={16} />
-              待结算总额
-            </div>
-            <div className="text-3xl font-bold">
-              ¥{Number(summary.pending_settlement?.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-            </div>
-            <div className="text-xs text-zinc-400">{summary.pending_settlement?.count || 0} 笔待处理</div>
-          </div>
-          <div className="p-6 rounded-3xl border bg-zinc-50/50 space-y-2">
-            <div className="flex items-center gap-2 text-zinc-500 text-sm font-medium">
-              <CheckCircle2 size={16} className="text-green-600" />
-              已发放总额
-            </div>
-            <div className="text-3xl font-bold">
-              ¥{Number(summary.paid?.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-            </div>
-            <div className="text-xs text-zinc-400">{summary.paid?.count || 0} 笔已入账</div>
-          </div>
-          <div className="p-6 rounded-3xl border bg-black text-white space-y-2">
-            <div className="flex items-center gap-2 text-zinc-400 text-sm font-medium">
-              <Banknote size={16} />
-              累计核算
-            </div>
-            <div className="text-3xl font-bold">
-              ¥{Number((summary.pending_settlement?.amount || 0) + (summary.paid?.amount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-            </div>
-            <div className="text-xs text-zinc-500">成交转化产生的提成总计</div>
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="flex items-center justify-center py-32">
-            <Loader2 className="animate-spin text-zinc-300" size={32} />
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-3xl border shadow-sm">
-            <Table>
-              <TableHeader className="bg-zinc-50">
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>地推人员</TableHead>
-                  <TableHead>关联企业 / 订单</TableHead>
-                  <TableHead>提成金额</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>生成日期</TableHead>
-                  <TableHead className="text-right">结算操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item) => (
-                  <TableRow key={item._id} className="group">
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-semibold">{item.promoterId?.displayName || item.promoterId?.username}</span>
-                        <span className="text-[11px] text-zinc-400">ID: {String(item.promoterId?._id).slice(-6)}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="text-sm">{item.recordId?.enterpriseName || '未知企业'}</span>
-                        <span className="text-[11px] text-zinc-400">{item.orderId?.packageName || '标准套餐'}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="font-mono font-medium">¥{Number(item.commissionAmount || 0).toFixed(2)}</TableCell>
-                    <TableCell>{getStatusBadge(item.status)}</TableCell>
-                    <TableCell className="text-zinc-500 text-sm">{new Date(item.generatedAt).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-right">
-                      {item.status === 'pending_settlement' ? (
-                        <Button 
-                          size="sm" 
-                          className="rounded-full bg-black hover:bg-zinc-800 h-8 px-4 text-[13px]"
-                          onClick={() => settleCommission(item._id)}
-                        >
-                          确认发放
-                        </Button>
-                      ) : item.status === 'paid' ? (
-                        <div className="text-[12px] text-zinc-400 flex items-center justify-end gap-1">
-                          <CheckCircle2 size={12} />
-                          {new Date(item.settledAt).toLocaleDateString()} 已结
-                        </div>
-                      ) : (
-                        <span className="text-[12px] text-zinc-300">不可操作</span>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {items.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-48 text-center text-muted-foreground">
-                      <div className="flex flex-col items-center justify-center gap-2">
-                        <Filter className="text-zinc-200" size={32} />
-                        <p>没有找到符合条件的提成记录</p>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </main>
+          <ProTable<CommissionRecord>
+            className="admin-mobile-filter-stack"
+            actionRef={actionRef}
+            rowKey="_id"
+            columns={columns}
+            search={{ labelWidth: 'auto', defaultCollapsed: false, span: 12 }}
+            options={{ reload: true, density: true, setting: true }}
+            pagination={{ defaultPageSize: 20, showSizeChanger: true }}
+            scroll={{ x: 1080 }}
+          request={async (params) => {
+              const query = new URLSearchParams();
+              if (params.status) query.set('status', String(params.status));
+              const response = await fetch(`/api/commissions${query.size ? `?${query}` : ''}`);
+              const result = await response.json();
+              if (!response.ok || !result.success) throw new Error(result.error || '读取提成记录失败');
+              setSummary(result.summary || {});
+              const keyword = String(params.keyword || '').trim().toLowerCase();
+              const filtered = (result.data || []).filter((record: CommissionRecord) => !keyword || [
+                displayPromoter(record),
+                displayEnterprise(record),
+                displayPackage(record),
+              ].some((value) => value.toLowerCase().includes(keyword)));
+              const pageSize = Number(params.pageSize || 20);
+              const current = Number(params.current || 1);
+              return {
+                data: filtered.slice((current - 1) * pageSize, current * pageSize),
+                total: filtered.length,
+              success: true,
+            };
+          }}
+          onRequestError={(error) => notify.error(error instanceof Error ? error.message : '读取提成记录失败')}
+        />
+        </Flex>
+      </PageContainer>
     </div>
   );
 }

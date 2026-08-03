@@ -1,5 +1,32 @@
 # PostgreSQL 迁移计划与进度
 
+> 2026-08-03 迁移记录：PostgreSQL 自由创作执行链现新增内部幂等点数释放边界：它会在一个
+> 租户 RLS 事务中释放已冻结 bigint 生成记录的精确价格快照、记录释放流水，并以给定错误标记
+> 生成失败；重复释放复用已完成结果，不再改变冻结余额。公开路由尚未切换：供应商提交/轮询、
+> 结果媒体写入、成功后的点数扣除和工作流归入仍属于关联的 MongoDB 执行链。未导入或删除
+> MongoDB 业务数据，未重新加密密钥；定向 ESLint 和 `npm run test:postgresql`（36/36）通过。
+
+> 2026-08-03 迁移记录：PostgreSQL 自由创作执行链现新增内部供应商尝试认领边界：在 bigint
+> 生成记录完成点数冻结后，它会记录选定的供应商配置、固定远端模型、请求指纹和提交请求，再将
+> 生成记录推进为 `processing`；重试复用活动尝试，不创建重复上游任务。该步骤不执行供应商网络
+> 调用。公开路由尚未切换：提交/轮询、结果媒体写入、点数扣除/释放和工作流归入仍属于关联的
+> MongoDB 执行链。未导入或删除 MongoDB 业务数据，未重新加密密钥；定向 ESLint 和
+> `npm run test:postgresql`（36/36）通过。
+
+> 2026-08-03 迁移记录：PostgreSQL 自由创作执行链现新增内部租户 RLS 点数冻结边界：
+> 它会原子认领 bigint 生成记录的冻结流水、校验可用点数、冻结精确的价格快照，并将生成记录
+> 推进至可提交状态；重复调用会复用已完成流水，不会重复冻结点数。公开路由尚未切换：供应商
+> 尝试、提交/轮询、结果媒体写入、点数扣除/释放以及工作流归入仍属于关联的 MongoDB 执行链。
+> 未导入或删除 MongoDB 业务数据，未重新加密密钥；定向 ESLint 和
+> `npm run test:postgresql`（36/36）通过。
+
+> 2026-08-03 迁移记录：PostgreSQL 自由创作批次准备层现会在相应的平台或租户 RLS
+> 事务中校验 bigint 任务、媒体资产、模型档案、提示词参数、企业策略及精确的模型/分辨率
+> 点数价格，并持久化待执行批次和按顺序待执行的生成记录，保存模型、参数和价格快照。尚未
+> 切换公开路由：供应商提交/轮询、结果媒体写入、点数扣除/释放和工作流归入仍属于关联的
+> MongoDB 执行链。未导入或删除 MongoDB 业务数据，未重新加密密钥；定向 ESLint 和
+> `npm run test:postgresql`（36/36）通过。
+
 > 2026-08-03 迁移记录：`GET /api/ai/creation/bootstrap` 现通过 PostgreSQL 模型档案和价格 Repository 初始化并读取 GRS 模型目录，并在一个租户 RLS 事务中读取活动工作流及其线索；既有 DTO、点数、供应商和 `ai-scenarios` 边界保持不变。旧 MongoDB 目录维护仅保留给尚未迁移的任务/批次/生成执行链。未导入或删除 MongoDB 业务数据，未重新加密密钥；定向 ESLint 和 `npm run test:postgresql`（35/35）通过。
 
 > 2026-08-03 迁移记录：`GET /api/ai/workflow-leads` 已通过 PostgreSQL RLS 事务读取当前企业的线索/户型关系和活动工作流摘要，保留原有搜索、正式户型可用性筛选、DTO 与 `ai-scenarios` 企业边界。工作流创建、阶段执行、生成持久化和媒体写入仍属于关联的 bigint 运行时切片。未导入或删除 MongoDB 业务数据，未重新加密密钥；定向 ESLint 和 `npm run test:postgresql`（34/34）通过。
@@ -158,7 +185,7 @@ RoomiAI 导入使用 [admin/scripts/import-roomi-prompts.ts](../admin/scripts/im
 | Phase 0.2 | 七牛配置、激活指针和加密字段核验 | 已完成 | 只读配置检查，未输出密钥 |
 | Phase 1 | PostgreSQL 实例、角色、连接池和 migration runner | 已完成 | Codex 自动验收与用户数据库健康/后台页面回归均通过 |
 | Phase 2 | PostgreSQL 目标 schema 和 Repository 基础层 | 已完成 | Codex 与用户验收已于 2026-08-01 通过 |
-| Phase 3 | API/业务代码从 Mongoose 切换到 PostgreSQL | 进行中 | 身份/企业核心、线索、正式户型、测量/设备、提示词库读取、角色、全局报备/媒体配置、套餐目录、报备记录、工作流通知、工作台、提醒运行时、订单/提成、企业激活、AI 风格预设、AI 供应商配置/运行时、AI 动作/模型价格、AI 点数账户/流水、AI 对话会话、PostgreSQL 媒体资产交付、工作流线索选择器及自由创作启动读取已切换；AI 工作流/生成/媒体写入和执行待完成 |
+| Phase 3 | API/业务代码从 Mongoose 切换到 PostgreSQL | 进行中 | 身份/企业核心、线索、正式户型、测量/设备、提示词库读取、角色、全局报备/媒体配置、套餐目录、报备记录、工作流通知、工作台、提醒运行时、订单/提成、企业激活、AI 风格预设、AI 供应商配置/运行时、AI 动作/模型价格、AI 点数账户/流水、AI 对话会话、PostgreSQL 媒体资产交付、工作流线索选择器及自由创作启动读取已切换；bigint 自由创作批次准备和点数冻结已完成内部验证，公开 AI 工作流/生成/媒体写入和执行待完成 |
 | Phase 4 | RoomiAI snapshot、预览资源和七牛配置导入 | 进行中：待用户手动验收 | 2026-08-01 已写入 PostgreSQL 活动 Roomi 版本、960 个已校验本地预览、七牛配置并完成探测 |
 | Phase 5 | 管理端/小程序合同测试与切换演练 | 未开始 | 待补充测试报告和恢复演练 |
 | Phase 6 | 正式切换到 PostgreSQL | 未开始 | 待记录切换时间、版本和回滚窗口 |
@@ -531,6 +558,10 @@ Phase 3 验收状态：
 | PostgreSQL 媒体资产交付边界 | Codex | 部分验证 | 2026-08-03 | `/api/ai/assets/[id]/image` 和 `/api/miniprogram/ai/assets/[id]/image` 在租户 RLS 范围内解析十进制 bigint ID，并保持本地字节输出/私有对象存储签名跳转。旧 ObjectId URL 仍为只读 MongoDB 兼容路径。PostgreSQL 34/34 与定向 ESLint 通过；上传、任务、批次、生成、执行和工作流路由仍在同一 bigint 切片中待迁移。 |
 | AI 工作流线索选择器 | Codex | 部分验证 | 2026-08-03 | `GET /api/ai/workflow-leads` 现通过一个租户 RLS 事务调用 `LeadRepository` 搜索/更新时间排序和 `AiWorkflowRepository` 活动摘要。既有 DTO、正式户型可用性筛选和 `ai-scenarios` 边界不变。PostgreSQL 34/34 与定向 ESLint 通过；工作流写入和生成执行仍待迁移。 |
 | AI 自由创作启动读取 | Codex | 部分验证 | 2026-08-03 | `GET /api/ai/creation/bootstrap` 现通过 PostgreSQL 初始化并读取 GRS bigint 模型档案/价格，并在租户 RLS 事务中读取活动工作流及其线索。既有 DTO、点数、供应商和 `ai-scenarios` 边界不变。旧 MongoDB 模型档案维护仅保留给未切换的任务/批次/生成执行链。PostgreSQL 35/35 与定向 ESLint 通过。 |
+| AI 自由创作批次准备基础层 | Codex | 基础层已验证 | 2026-08-03 | `postgres-creation-service` 会在平台/租户 RLS 下校验 bigint 任务、资产、目录档案、提示词参数、策略和模型价格，再创建保存模型/参数/价格快照的待执行批次和生成记录。未切换路由或导入数据；供应商执行、轮询、媒体写入、扣除/释放和工作流归入仍待完成。PostgreSQL 36/36 和定向 ESLint 通过。 |
+| AI 自由创作点数冻结基础层 | Codex | 基础层已验证 | 2026-08-03 | `postgres-creation-service` 会在租户 RLS 事务中原子认领 bigint 生成记录冻结流水、校验可用点数、冻结不可变生成价格并推进为可提交状态；重复调用复用已完成流水。未切换路由或导入数据；供应商执行、轮询、媒体写入、扣除/释放和工作流归入仍待完成。PostgreSQL 36/36 和定向 ESLint 通过。 |
+| AI 自由创作供应商尝试基础层 | Codex | 基础层已验证 | 2026-08-03 | `postgres-creation-service` 会为已冻结的 bigint 生成记录原子记录选定供应商配置、固定模型、请求指纹和请求快照，并推进为 `processing`；重复调用复用活动尝试。未执行网络调用、切换路由或导入数据；提交/轮询、媒体写入、扣除/释放和工作流归入仍待完成。PostgreSQL 36/36 和定向 ESLint 通过。 |
+| AI 自由创作点数释放基础层 | Codex | 基础层已验证 | 2026-08-03 | `postgres-creation-service` 会原子释放已冻结 bigint 生成记录的价格快照、完成幂等释放流水并标记生成失败；重复释放保持冻结余额不变。未切换路由或导入数据；供应商提交/轮询、媒体写入、成功扣除和工作流归入仍待完成。PostgreSQL 36/36 和定向 ESLint 通过。 |
 | 提示词库主流程手测 | 用户 | 待验证 | - | 需要 Phase 4 导入活动 PostgreSQL prompt revision 后执行 |
 | 登录、授权、租户与相邻 AI 回归 | 用户 | 待验证 | - | 其余 Phase 3 切片完成后重复执行 |
 

@@ -93,6 +93,11 @@ desktop/mobile visual checks, and browser verification pass.
 
 - The AI provider, image-model catalog, AI preset, and AI credit-price surfaces
   use the shared Ant Design ProComponents page patterns.
+- `/roles` now uses `PageContainer`, Ant Design configuration panels, and a
+  controlled `Checkbox.Group` for default-role menu maintenance. It preserves
+  the existing `/api/roles` default seeding and PATCH behavior, platform
+  `admin`/`super_admin` boundary, role menu-key contract, and existing-account
+  permission semantics.
 - `/media-storage` now uses `PageContainer`, Ant Design configuration panels,
   `ProTable`, and `ModalForm`. The existing storage APIs, `media-storage`
   permission boundary, encrypted credentials, test-before-activation rule, and
@@ -116,6 +121,18 @@ desktop/mobile visual checks, and browser verification pass.
   commission, and activation APIs, plus the `enterprise_admin`/`admin`/
   `super_admin` order-mutation and `admin`/`super_admin` activation boundaries,
   are unchanged.
+- `/packages` now uses `PageContainer`, `ProTable`, and `ModalForm` for
+  package search, status review, creation, editing, and deletion. Its existing
+  PostgreSQL-backed package API and `admin`/`super_admin` platform boundary are
+  unchanged. Per-row deletion is guarded while the request is in flight,
+  table-load failures use the shared operation feedback UI, and the filter row
+  stacks on narrow screens.
+- `/commissions` now uses `PageContainer`, Ant Design summary cards, and
+  `ProTable` for status review, search, and settlement actions. Its existing
+  PostgreSQL-backed commission APIs, salesperson read scope, and
+  `admin`/`super_admin` settlement boundary are unchanged. Table-load failures
+  use the shared operation feedback UI; settlement remains guarded per record,
+  and the filter row stacks on narrow screens.
 - Other platform configuration pages remain in the third migration step and
   require their interaction contracts to be audited before implementation.
 

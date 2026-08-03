@@ -178,6 +178,21 @@ export async function getImageModelPrice(modelProfileKey: string, resolutionTier
   return price;
 }
 
+export async function getPostgresImageModelPrice(
+  modelProfileKey: string,
+  resolutionTier: GrsResolutionTier
+) {
+  await ensurePostgresGrsImageModelCatalog();
+  const price = await withPlatformTransaction((transaction) =>
+    new AiModelCreditPriceRepository(transaction).findEnabled(
+      modelProfileKey,
+      resolutionTier
+    )
+  );
+  if (!price) throw new Error('所选模型分辨率尚未开放或未配置点数');
+  return price;
+}
+
 export async function listExecutableImageModelProfiles() {
   await ensureGrsImageModelCatalog();
   const [profiles, prices] = await Promise.all([

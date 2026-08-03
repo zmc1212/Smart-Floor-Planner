@@ -111,7 +111,11 @@ permission, or workflow changes.
   `AdminUserRepository`, and `DepartmentRepository`. Tenant staff/departments run
   inside RLS-scoped transactions; the role route enforces platform
   `super_admin`/`admin` access in the handler, and default-role initialization
-  uses an idempotent insert that preserves configured menu keys.
+  uses an idempotent insert that preserves configured menu keys. `/roles` now
+  uses the shared Ant Design presentation pattern (`PageContainer`, configuration
+  panels, and a controlled `Checkbox.Group`) for default-role menu maintenance;
+  this display-only migration preserves its API, menu-key data contract,
+  platform role boundary, and existing-account permission semantics.
 
 ### 3. Platform Dashboard And Enterprise Tenants
 
@@ -222,7 +226,19 @@ permission, or workflow changes.
   status transitions, creation, and paid-order activation; this display-only
   migration preserves its existing APIs, PostgreSQL data contract, and
   `enterprise_admin`/`admin`/`super_admin` write plus `admin`/`super_admin`
-  activation boundaries.
+  activation boundaries. `/packages` now uses the same shared Ant Design
+  ProComponents presentation pattern (`PageContainer`, `ProTable`, and
+  `ModalForm`) for package filtering and maintenance; this display-only
+  migration preserves its PostgreSQL package API and `admin`/`super_admin`
+  platform boundary. `/packages` guards an in-flight deletion at the affected
+  row, reports table-load failures through the shared operation feedback UI,
+  and stacks the filter row on narrow screens.
+  `/commissions` now uses `PageContainer`, Ant Design summary cards, and
+  `ProTable` for filtering, status review, and settlement; this display-only
+  migration preserves its PostgreSQL commission APIs, salesperson read scope,
+  and `admin`/`super_admin` settlement boundary. Table-load failures use the
+  same feedback UI, while settlement remains guarded per record and the filter
+  row stacks on narrow screens.
 
 ### 7. Leads And Conversion Assets
 
@@ -423,22 +439,42 @@ permission, or workflow changes.
   provider, and `ai-scenarios` boundary are unchanged; legacy MongoDB catalog
   maintenance remains only for the not-yet-switched task/batch/generation
   execution chain.
+  `postgres-creation-service` now provides the internal PostgreSQL
+  batch-preparation boundary: it validates tenant-owned bigint tasks and media,
+  the enabled catalog profile, prompt constraints, enterprise policy, and exact
+  model-resolution price before persisting a pending batch plus pending
+  generations with model, parameter, and price snapshots. It is not wired to a
+  public route until provider submission/polling, result-media writes, credit
+  consumption/release, and workflow attachment can switch as one execution chain.
+  Its next internal execution boundary atomically freezes each prepared
+  generation's snapshotted credit price through a bigint generation ledger and
+  marks it submission-ready; retries reuse the completed ledger rather than
+  double-freezing credit. Provider I/O and public routes intentionally remain
+  outside this transaction.
+  The next internal boundary atomically records a held generation's provider
+  configuration, snapshotted model, request fingerprint, and request snapshot
+  before moving it to `processing`; an active attempt is reused on retry. It
+  does not yet call the provider.
+  A held generation can also be released atomically with an idempotent release
+  ledger and a failed status, so failed submission paths do not retain frozen
+  credit. Successful consumption remains pending with provider result handling.
   The PostgreSQL `AiCreationModelProfileRepository` is now available as the
   tested persistence foundation for that cutover: it upserts catalog metadata,
   preserves explicit enabled/default settings, and exposes bigint-safe catalog
-  lookups. No public route reads it yet, so model profiles, creation tasks,
-  batches, generations, provider attempts, workflows, and media assets remain
-  MongoDB-backed until the complete foreign-key execution chain is switched.
+  lookups. Bootstrap and batch preparation read it through PostgreSQL; public
+  creation task, batch, generation, provider-attempt, workflow, and media-write
+  routes remain MongoDB-backed until the complete foreign-key execution chain is
+  switched.
   This foundation did not import, delete, or re-encrypt business data.
   AI conversation list/create/detail/delete plus the agent and agent-action
   message history now use `AiChatSessionRepository` in RLS-scoped PostgreSQL
   transactions, keeping the existing per-enterprise/per-administrator boundary
   and string conversation IDs. Historical MongoDB conversations are not imported.
-  `Limited`: workflow creation, stage execution, task/batch/generation
+  `Limited`: workflow creation, stage execution, public task/batch/generation
   persistence, and remaining media writes still use the MongoDB execution chain
-  and are not yet bigint-compatible; the workflow-lead selector,
-  free-creation bootstrap read, and PostgreSQL asset delivery have switched in
-  this domain.
+  and are not yet bigint-compatible. The workflow-lead selector,
+  free-creation bootstrap read, PostgreSQL asset delivery, and internal
+  PostgreSQL batch preparation have switched in this domain.
 - Status: `Implemented`. The workbench starts customer designs with a
   customer/material/goal wizard, shows the selected result and candidates in a
   two-column workspace, and keeps one recommended next action prominent. The

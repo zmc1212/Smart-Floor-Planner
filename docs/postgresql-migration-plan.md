@@ -1,5 +1,48 @@
 # PostgreSQL Migration Plan And Progress
 
+> 2026-08-03 migration record: PostgreSQL free-creation execution now has an
+> internal, idempotent credit-release boundary. It releases a held bigint
+> generation's exact snapshotted price in one tenant RLS transaction, records a
+> release ledger, and marks the generation failed with the supplied error. A
+> repeated release reuses the completed result without changing the frozen balance.
+> No public route has switched: provider submission/polling, result media writes,
+> successful credit consumption, and workflow attachment remain the connected
+> MongoDB execution chain. No MongoDB business data was imported or deleted, and
+> no secret was re-encrypted. Targeted ESLint and `npm run test:postgresql`
+> passed 36/36.
+
+> 2026-08-03 migration record: PostgreSQL free-creation execution now has an
+> internal provider-attempt claim boundary. After a bigint generation's credit
+> hold, it records the selected provider configuration, snapshotted remote model,
+> request fingerprint, and submission request before marking the generation
+> `processing`; retries reuse the active attempt rather than creating a duplicate
+> upstream task. It performs no provider network I/O. No public route has
+> switched: submission/polling, result media writes, credit consumption/release,
+> and workflow attachment remain the connected MongoDB execution chain. No MongoDB
+> business data was imported or deleted, and no secret was re-encrypted. Targeted
+> ESLint and `npm run test:postgresql` passed 36/36.
+
+> 2026-08-03 migration record: PostgreSQL free-creation execution now has an
+> internal, tenant-RLS-scoped credit-hold boundary. It atomically claims the
+> bigint generation hold ledger, verifies available credit, freezes the exact
+> snapshotted price, and advances the generation to submission-ready state;
+> repeated calls reuse the completed ledger without double-freezing credit.
+> No public route has switched: submission/polling, result
+> media writes, credit consumption/release, and workflow attachment remain the
+> connected MongoDB execution chain. No MongoDB business data was imported or
+> deleted, and no secret was re-encrypted. Targeted ESLint and
+> `npm run test:postgresql` passed 36/36.
+
+> 2026-08-03 migration record: PostgreSQL free-creation batch preparation now
+> validates bigint tasks, media assets, model profiles, prompt parameters,
+> enterprise policy, and exact model-resolution pricing under the appropriate
+> platform or tenant RLS transaction. It persists a pending batch and ordered
+> pending generations with immutable model, parameter, and price snapshots.
+> No public route has switched: provider submission/polling, result media writes,
+> credit consumption/release, and workflow attachment remain the connected MongoDB
+> execution chain. No MongoDB business data was imported or deleted, and no secret was
+> re-encrypted. Targeted ESLint and `npm run test:postgresql` passed 36/36.
+
 > 2026-08-03 migration record: `GET /api/ai/creation/bootstrap` now seeds and
 > reads the GRS model catalog through the PostgreSQL model-profile and price
 > repositories, reads active workflows plus their leads in one tenant RLS
@@ -127,7 +170,7 @@ and `cancelled`.
 | Phase 0.2 | Qiniu configuration and encrypted-field verification | complete | Read-only inspection; no secrets logged |
 | Phase 1 | PostgreSQL instance, roles, pooling, migration runner | complete | Codex verification and user database-health/admin-page regression passed |
 | Phase 2 | PostgreSQL schema and Repository foundation | complete | Codex and user acceptance passed on 2026-08-01 |
-| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core and public branding reads, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, AI style presets, AI provider configuration/runtime, AI action/model pricing, AI credit accounts/ledgers, AI chat sessions, PostgreSQL media-asset delivery, the workflow-lead selector, and the free-creation bootstrap read switched; AI workflow/generation/media writes and execution remain pending |
+| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core and public branding reads, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, AI style presets, AI provider configuration/runtime, AI action/model pricing, AI credit accounts/ledgers, AI chat sessions, PostgreSQL media-asset delivery, the workflow-lead selector, and the free-creation bootstrap read switched; bigint free-creation batch preparation and credit holds are verified internally, while public AI workflow/generation/media writes and execution remain pending |
 | Phase 4 | RoomiAI files/data and Qiniu configuration import | in progress: awaiting user acceptance | PostgreSQL active Roomi revision, 960 verified local previews, imported Qiniu configuration, and successful probe on 2026-08-01 |
 | Phase 5 | Contract tests and cutover rehearsal | not started | Pending |
 | Phase 6 | Production PostgreSQL cutover | not started | Pending |
@@ -542,6 +585,15 @@ is recorded.
   coverage verifies bigint relations and cross-tenant invisibility. No public
   route has switched, and no MongoDB business data was imported, deleted, or
   re-encrypted. Targeted ESLint and `npm run test:postgresql` passed 33/33.
+- On 2026-08-03, `postgres-creation-service` added a PostgreSQL-only
+  free-creation batch-preparation primitive. It verifies the tenant-owned task
+  and reference assets, enabled global model profile, active prompt-template
+  constraints, enterprise policy, and exact bigint model-resolution price before
+  creating a pending batch and pending generations with model, parameter, and
+  price snapshots. No route has switched because the credit-hold, provider
+  attempt, polling, media-write, and workflow-attachment paths must move with
+  this persistence step. No MongoDB business data was imported, deleted, or
+  re-encrypted. Targeted ESLint and `npm run test:postgresql` passed 36/36.
 - On 2026-08-02, the unused WeCom configuration, group-sharing API/UI, and
   employee WeCom identifiers were deprecated rather than migrated. The feature
   was removed from runtime code and documentation; legacy MongoDB fields and
@@ -566,6 +618,10 @@ Phase 3 acceptance status:
 | PostgreSQL media-asset delivery boundary | Codex | partial verification | 2026-08-03 | `/api/ai/assets/[id]/image` and `/api/miniprogram/ai/assets/[id]/image` resolve decimal bigint IDs in tenant RLS scope and preserve existing local-buffer/private signed-redirect delivery. Legacy ObjectId URLs remain read-only MongoDB compatibility. PostgreSQL 34/34 and targeted ESLint passed; upload, task, batch, generation, execution, and workflow routes remain pending in the connected bigint slice. |
 | AI workflow-lead selector | Codex | partial verification | 2026-08-03 | `GET /api/ai/workflow-leads` now uses `LeadRepository` search/updated-time ordering and `AiWorkflowRepository` active summaries in one tenant RLS transaction. Existing DTO, formal-plan eligibility filter, and `ai-scenarios` boundary are unchanged. PostgreSQL 34/34 and targeted ESLint passed; workflow writes and generation execution remain pending. |
 | AI free-creation bootstrap read | Codex | partial verification | 2026-08-03 | `GET /api/ai/creation/bootstrap` initializes and reads GRS bigint model profiles/prices through PostgreSQL, and reads active workflows with their leads in a tenant RLS transaction. Its DTO, credit, provider, and `ai-scenarios` boundary are unchanged. Legacy MongoDB model-profile maintenance remains only for the unswitched task/batch/generation execution chain. PostgreSQL 35/35 and targeted ESLint passed. |
+| AI free-creation batch preparation foundation | Codex | foundation verified | 2026-08-03 | `postgres-creation-service` validates bigint task, asset, catalog profile, prompt parameter, policy, and model-price relations under platform/tenant RLS before creating a pending batch and generations with model/parameter/price snapshots. No route cutover or data import occurred; provider execution, polling, media writes, consumption/release, and workflow attachment remain pending. PostgreSQL 36/36 and targeted ESLint passed. |
+| AI free-creation credit-hold foundation | Codex | foundation verified | 2026-08-03 | `postgres-creation-service` atomically claims a bigint generation hold ledger, verifies available credit, freezes the immutable generation price, and marks it submission-ready in a tenant RLS transaction. Repeated calls reuse the completed ledger. No route cutover or data import occurred; provider execution, polling, media writes, consumption/release, and workflow attachment remain pending. PostgreSQL 36/36 and targeted ESLint passed. |
+| AI free-creation provider-attempt foundation | Codex | foundation verified | 2026-08-03 | `postgres-creation-service` atomically records the selected provider configuration, snapshotted model, request fingerprint, and request snapshot for a held bigint generation, then marks it `processing`. Repeated calls reuse the active attempt. No network I/O, route cutover, or data import occurred; submission/polling, media writes, consumption/release, and workflow attachment remain pending. PostgreSQL 36/36 and targeted ESLint passed. |
+| AI free-creation credit-release foundation | Codex | foundation verified | 2026-08-03 | `postgres-creation-service` atomically releases a held bigint generation's snapshotted price, completes an idempotent release ledger, and marks the generation failed. Repeated releases preserve the frozen balance. No route cutover or data import occurred; provider submission/polling, media writes, successful consumption, and workflow attachment remain pending. PostgreSQL 36/36 and targeted ESLint passed. |
 | Orders, commissions, and workbench totals | Codex | partial verification | 2026-08-02 | `CommercialRepository` and the existing RLS-protected target tables now back the order, commission, settlement, voiding, commission-record, and workbench routes; targeted lint and PostgreSQL integration suite (23/23) passed. Dedicated commercial route and transition coverage remains pending |
 | Prompt-library primary-flow manual test | User | pending | - | Requires an active PostgreSQL prompt revision after the Phase 4 import |
 | Login, authorization, tenant, and adjacent AI regression | User | pending | - | Must be repeated after the remaining Phase 3 slices |

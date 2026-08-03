@@ -76,6 +76,14 @@ import { getEnterpriseAiPolicy } from '@/lib/ai/enterprise-policy';
 import { storePostgresMediaBuffer } from '@/lib/ai/postgres-media-assets';
 import { listPostgresExecutableImageModelProfiles } from '@/lib/ai/image-model-catalog';
 import {
+  createPostgresCreationTask,
+  beginPostgresCreationProviderAttempt,
+  consumePostgresCreationGenerationCredits,
+  holdPostgresCreationGenerationCredits,
+  preparePostgresCreationBatch,
+  releasePostgresCreationGenerationCredits,
+} from '@/lib/ai/postgres-creation-service';
+import {
   adjustAiCredits,
   consumeHeldAiCredits,
   grantAiCredits,
@@ -1338,6 +1346,167 @@ test('PostgreSQL GRS catalog initialization exposes an executable default model'
   assert.equal(defaultProfile?.enabled, true);
   assert.equal(defaultProfile?.isDefault, true);
   assert.equal(defaultProfile?.remoteModel, 'gpt-image-2');
+});
+
+test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and generations', async () => {
+  let assetId: bigint | null = null;
+  let taskId: bigint | null = null;
+  try {
+    const profiles = await listPostgresExecutableImageModelProfiles();
+    const profile = profiles.find((item) => item.key === 'grs-gpt-image-2');
+    assert.ok(profile);
+    await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const asset = await new AiCreationRepository(transaction).createMediaAsset({
+        enterpriseId: enterpriseAId,
+        ownerType: 'manual_upload',
+        mimeType: 'image/png',
+        size: BigInt(4),
+        width: 1,
+        height: 1,
+        storageProvider: 'local',
+        storageKey: `${testRunKey}/postgres-creation-preparation.png`,
+      });
+      assetId = asset.id;
+    });
+    const task = await createPostgresCreationTask({
+      enterpriseId: enterpriseAId.toString(),
+      operatorId: promotionDesignerAId.toString(),
+      modelProfileId: profile!.id.toString(),
+      title: 'PostgreSQL creation preparation',
+      prompt: 'Prepare a PostgreSQL creation task',
+      referenceAssetIds: [assetId!.toString()],
+    });
+    taskId = task.id;
+    const prepared = await preparePostgresCreationBatch({
+      enterpriseId: enterpriseAId.toString(),
+      operatorId: promotionDesignerAId.toString(),
+      taskId: task.id.toString(),
+      modelProfileId: profile!.id.toString(),
+      prompt: 'Prepare a PostgreSQL creation batch',
+      referenceAssetIds: [assetId!.toString()],
+      parameters: { aspectRatio: '1:1', resolutionTier: '1K' },
+      count: 2,
+    });
+    assert.equal(prepared.batch.requestedCount, 2);
+    assert.equal(prepared.batch.creditsEstimate > BigInt(0), true);
+    assert.equal(prepared.generations.length, 2);
+
+    const view = await withTenantTransaction(enterpriseAId, (transaction) =>
+      new AiCreationRepository(transaction).loadTaskView(task.id)
+    );
+    assert.equal(view?.batches.length, 1);
+    assert.equal(view?.batches[0]?.generations.length, 2);
+    assert.equal(view?.batches[0]?.referenceAssetIds[0], assetId);
+
+    const crossTenant = await withTenantTransaction(enterpriseBId, (transaction) =>
+      new AiCreationRepository(transaction).findTask(task.id)
+    );
+    assert.equal(crossTenant, null);
+
+    const creditGrant = await grantAiCredits({
+      enterpriseId: enterpriseAId.toString(),
+      operatorId: promotionDesignerAId.toString(),
+      amount: Number(prepared.batch.creditsEstimate),
+      operationId: `${testRunKey}:postgres-creation-hold-grant`,
+    });
+    aiCreditLedgerIds.push(creditGrant.ledger.id);
+    const firstHeld = await holdPostgresCreationGenerationCredits({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[0]!.id.toString(),
+    });
+    assert.ok(firstHeld.ledger);
+    aiCreditLedgerIds.push(firstHeld.ledger.id);
+    assert.equal(firstHeld.generation.status, 'created');
+    assert.equal((firstHeld.generation.billing as { status?: string }).status, 'held');
+    assert.equal(firstHeld.account.frozenBalance, BigInt(String(prepared.generations[0]!.billing?.price)));
+
+    const providerAttempt = await beginPostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[0]!.id.toString(),
+      providerConfigId: aiProviderConfigId.toString(),
+      providerKey: 'integration-provider',
+      adapterType: 'grs',
+      remoteModel: 'gpt-image-2',
+      requestSnapshot: { prompt: 'Prepare a PostgreSQL creation batch', aspectRatio: '1:1' },
+    });
+    assert.equal(providerAttempt.reused, false);
+    assert.equal(providerAttempt.generation.status, 'processing');
+    assert.equal(providerAttempt.attempt.generationId, prepared.generations[0]!.id);
+    assert.equal(providerAttempt.attempt.status, 'created');
+
+    const repeatedProviderAttempt = await beginPostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[0]!.id.toString(),
+      providerConfigId: aiProviderConfigId.toString(),
+      providerKey: 'integration-provider',
+      adapterType: 'grs',
+      remoteModel: 'gpt-image-2',
+      requestSnapshot: { prompt: 'ignored on retry' },
+    });
+    assert.equal(repeatedProviderAttempt.reused, true);
+    assert.equal(repeatedProviderAttempt.attempt.id, providerAttempt.attempt.id);
+
+    const secondHeld = await holdPostgresCreationGenerationCredits({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[1]!.id.toString(),
+    });
+    assert.ok(secondHeld.ledger);
+    aiCreditLedgerIds.push(secondHeld.ledger.id);
+    const released = await releasePostgresCreationGenerationCredits({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[1]!.id.toString(),
+      errorCode: 'TEST_CANCELLED',
+      errorMessage: 'Release the second test generation',
+    });
+    assert.ok(released.ledger);
+    aiCreditLedgerIds.push(released.ledger.id);
+    assert.equal(released.generation.status, 'failed');
+    assert.equal((released.generation.billing as { status?: string }).status, 'released');
+    assert.equal(released.account.frozenBalance, firstHeld.account.frozenBalance);
+
+    const repeatedRelease = await releasePostgresCreationGenerationCredits({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[1]!.id.toString(),
+      errorMessage: 'ignored on retry',
+    });
+    assert.equal(repeatedRelease.account.frozenBalance, released.account.frozenBalance);
+
+    const repeatedHold = await holdPostgresCreationGenerationCredits({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[0]!.id.toString(),
+    });
+    assert.equal(repeatedHold.account.frozenBalance, firstHeld.account.frozenBalance);
+    assert.equal(firstHeld.account.balance, creditGrant.account.balance);
+
+    await withTenantTransaction(enterpriseAId, (transaction) =>
+      new AiCreationRepository(transaction).updateGeneration(prepared.generations[0]!.id, {
+        status: 'succeeded',
+      })
+    );
+    const consumed = await consumePostgresCreationGenerationCredits({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[0]!.id.toString(),
+    });
+    assert.ok(consumed.ledger);
+    aiCreditLedgerIds.push(consumed.ledger.id);
+    assert.equal((consumed.generation.billing as { status?: string }).status, 'consumed');
+    assert.equal(consumed.account.frozenBalance, 0n);
+    assert.equal(consumed.account.balance, creditGrant.account.balance - firstHeld.account.frozenBalance);
+
+    const repeatedConsume = await consumePostgresCreationGenerationCredits({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[0]!.id.toString(),
+    });
+    assert.equal(repeatedConsume.account.balance, consumed.account.balance);
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (taskId) {
+        await transaction.delete(aiGenerations).where(eq(aiGenerations.creationTaskId, taskId));
+        await transaction.delete(aiCreationTasks).where(eq(aiCreationTasks.id, taskId));
+      }
+      if (assetId) await transaction.delete(mediaAssets).where(eq(mediaAssets.id, assetId));
+    });
+  }
 });
 
 test('AI creation repository preserves tenant-scoped media, task, batch, generation, and attempt relations', async () => {

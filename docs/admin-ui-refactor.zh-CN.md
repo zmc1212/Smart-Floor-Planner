@@ -57,11 +57,14 @@ Design ProComponents，形成统一的后台应用层。
 ## 迁移进度
 
 - AI 供应商、绘图模型目录、AI 预设和 AI 点数价格页面均已使用共享的 Ant Design ProComponents 页面模式。
+- `/roles` 已使用 `PageContainer`、Ant Design 配置面板与受控 `Checkbox.Group` 承载默认角色菜单维护。既有 `/api/roles` 默认初始化和 PATCH 行为、平台 `admin`/`super_admin` 边界、角色菜单 key 契约以及已有账号的有效权限语义均未改变。
 - `/media-storage` 已使用 `PageContainer`、Ant Design 配置面板、`ProTable` 和 `ModalForm`。既有存储 API、`media-storage` 权限边界、凭证加密、测试后才能激活及归档行为均未改变。
 - `/enterprises` 已使用 `PageContainer` 和 `ProTable` 完成企业搜索、分页、状态审核和操作入口迁移。既有资料编辑弹窗、详情页、API 及平台 `super_admin`/`admin` 边界保持不变；详情和编辑展示层将作为后续独立工作继续迁移。
 - `/promotion-records` 已使用 `PageContainer`、`ProTable`、`ProForm` 与 `ProDescriptions` 承载报备列表、平台保护期规则、报备详情、跟进、指派、公海和认领审批交互。既有 PostgreSQL API、`salesperson` 自助认领边界，以及 `admin`/`super_admin` 配置和公海管理边界均未改变。
 - `/staff` 已使用 `PageContainer`、`ProTable`、`ModalForm` 和 Ant Design `Tree` 承载服务端分页员工搜索、部门筛选以及员工和部门维护。既有租户范围内的 staff/department API 与 `enterprise_admin`/`admin`/`super_admin` 变更边界均未改变。
 - `/enterprise-orders` 已使用 `PageContainer`、`ProTable` 和 `ModalForm` 承载订单搜索、状态查看与流转、企业开通和订单创建。既有 PostgreSQL 订单、套餐、报备、提成和企业开通 API，以及 `enterprise_admin`/`admin`/`super_admin` 的订单写入边界与 `admin`/`super_admin` 的企业开通边界均未改变。
+- `/packages` 已使用 `PageContainer`、`ProTable` 和 `ModalForm` 承载套餐搜索、状态查看、新建、编辑和删除。既有 PostgreSQL 套餐 API 与 `admin`/`super_admin` 平台边界均未改变；删除操作会在对应请求进行中锁定该行，表格加载失败使用共享操作反馈，窄屏下筛选行会纵向排列。
+- `/commissions` 已使用 `PageContainer`、Ant Design 汇总卡片和 `ProTable` 承载状态查看、搜索与结算操作。既有 PostgreSQL 提成 API、`salesperson` 读取范围及 `admin`/`super_admin` 结算边界均未改变；表格加载失败使用共享操作反馈，结算操作继续按记录单独防重，窄屏下筛选行会纵向排列。
 - 其余平台配置页面仍属于第三阶段，实施前需先完成相应交互契约审查。
 
 ## 第一阶段验收标准

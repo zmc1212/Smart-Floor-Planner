@@ -1,0 +1,593 @@
+import crypto from 'node:crypto';
+import {
+  AiCreditRepository,
+  AiCreationModelProfileRepository,
+  AiCreationRepository,
+  type AiCreationModelProfileRecord,
+} from '@/db/repositories';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
+import { assertEnterpriseAiActionAllowed } from '@/lib/ai/enterprise-policy';
+import { getPostgresImageModelPrice, serializePostgresCatalogProfile } from '@/lib/ai/image-model-catalog';
+import { getActivePromptTemplate } from '@/lib/ai/prompt-library-query';
+import { resolveGrsImageParameters, type GrsResolutionTier } from '@/lib/ai/grs-image-models';
+import { capabilityForLogicalModel, type AiLogicalModelKey } from '@/lib/ai/provider-types';
+
+type CreationParameters = {
+  aspectRatio: string;
+  resolutionTier: GrsResolutionTier;
+  width?: number;
+  height?: number;
+  templateId?: string;
+};
+
+type ParameterRequest = Partial<CreationParameters> & {
+  size?: string;
+  quality?: string;
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function optionValues(parameterSource: unknown) {
+  const params = Array.isArray(asRecord(parameterSource).modelParams)
+    ? asRecord(parameterSource).modelParams as unknown[]
+    : [];
+  const result = new Map<string, string[]>();
+  for (const raw of params) {
+    const parameter = asRecord(raw);
+    if (parameter.isEnable === false) continue;
+    const field = String(parameter.paramField || '').trim();
+    if (!field) continue;
+    let values: unknown[] = [];
+    try {
+      const parsed = JSON.parse(String(parameter.paramValues || '[]'));
+      values = Array.isArray(parsed) ? parsed : [];
+    } catch {
+      // Invalid legacy template options simply impose no additional constraint.
+    }
+    result.set(field, values.map((value) => String(asRecord(value).value || '').trim()).filter(Boolean));
+  }
+  return result;
+}
+
+function ratioFromDimensions(value: string) {
+  const match = value.match(/^(\d+)x(\d+)$/i);
+  if (!match) return undefined;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  const gcd = (a: number, b: number): number => b ? gcd(b, a % b) : a;
+  const divisor = gcd(width, height);
+  return `${width / divisor}:${height / divisor}`;
+}
+
+function intersect(preferred: string[], constraint: string[]) {
+  if (!constraint.length) return preferred;
+  const permitted = new Set(constraint);
+  return preferred.filter((value) => permitted.has(value));
+}
+
+function choose(value: unknown, allowed: string[], fallback: string) {
+  const candidate = String(value || '');
+  return allowed.includes(candidate) ? candidate : allowed.includes(fallback) ? fallback : allowed[0];
+}
+
+function resolveParameters(
+  profile: AiCreationModelProfileRecord,
+  request: ParameterRequest,
+  templateParameters?: unknown
+): CreationParameters {
+  const capabilities = profile.capabilities || {};
+  const defaults = profile.defaults || {};
+  const templateOptions = optionValues(templateParameters);
+  const templateRatios = [
+    ...(templateOptions.get('aspectRatio') || []).filter((value) => value !== 'auto'),
+    ...(templateOptions.get('size') || []).map(ratioFromDimensions).filter((value): value is string => Boolean(value)),
+  ];
+  const templateTiers = [
+    ...(templateOptions.get('size') || []).filter((value) => value !== 'auto'),
+    ...(templateOptions.get('imageSize') || []),
+  ].map((value) => value.toUpperCase());
+  const profileRatios = (capabilities.aspectRatios || []) as string[];
+  const profileTiers = (capabilities.resolutionTiers || []) as string[];
+  const ratios = intersect(profileRatios, [...new Set(templateRatios)]);
+  const tiers = intersect(profileTiers, [...new Set(templateTiers)]);
+  const allowedRatios = ratios.length ? ratios : profileRatios;
+  const allowedTiers = tiers.length ? tiers : profileTiers;
+  const aspectRatio = choose(request.aspectRatio, allowedRatios, String(defaults.aspectRatio || '1:1'));
+  const resolutionTier = choose(
+    request.resolutionTier || request.size || request.quality?.toUpperCase(),
+    allowedTiers,
+    String(defaults.resolutionTier || defaults.size || '1K')
+  ) as GrsResolutionTier;
+  if (!profile.remoteModel) throw new Error('所选模型缺少可执行配置');
+  resolveGrsImageParameters({
+    model: profile.remoteModel,
+    aspectRatio,
+    resolutionTier,
+    width: request.width,
+    height: request.height,
+    legacySize: request.size,
+    legacyQuality: request.quality,
+  });
+  return {
+    aspectRatio,
+    resolutionTier,
+    width: resolutionTier === 'CUSTOM' ? Number(request.width) : undefined,
+    height: resolutionTier === 'CUSTOM' ? Number(request.height) : undefined,
+    templateId: request.templateId,
+  };
+}
+
+async function getEnabledCatalogProfile(id: bigint) {
+  const profile = await withPlatformTransaction((transaction) =>
+    new AiCreationModelProfileRepository(transaction).findEnabledCatalogProfile(id)
+  );
+  if (!profile || !profile.remoteModel || !profile.adapterType) {
+    throw new Error('所选模型不可用或缺少可执行配置');
+  }
+  return profile;
+}
+
+export async function createPostgresCreationTask(input: {
+  enterpriseId: string;
+  operatorId: string;
+  modelProfileId: string;
+  title: string;
+  prompt: string;
+  referenceAssetIds?: string[];
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const operatorId = parsePostgresId(input.operatorId, 'operatorId');
+  const modelProfileId = parsePostgresId(input.modelProfileId, 'modelProfileId');
+  const prompt = input.prompt.trim();
+  if (!prompt) throw new Error('请输入提示词');
+  if (prompt.length > 12000) throw new Error('提示词不能超过 12000 个字符');
+  await getEnabledCatalogProfile(modelProfileId);
+  const referenceAssetIds = [...new Set((input.referenceAssetIds || []).map((id) => parsePostgresId(id, 'referenceAssetId')))];
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const repository = new AiCreationRepository(transaction);
+    if (await repository.countMediaAssets(referenceAssetIds) !== referenceAssetIds.length) {
+      throw new Error('参考图不存在或无权访问');
+    }
+    return repository.createTask({
+      enterpriseId,
+      operatorId,
+      modelProfileId,
+      title: input.title.trim() || prompt.slice(0, 30) || '未命名创作',
+      prompt,
+      referenceAssetIds,
+    });
+  });
+}
+
+export async function preparePostgresCreationBatch(input: {
+  enterpriseId: string;
+  operatorId: string;
+  taskId: string;
+  prompt: string;
+  negativePrompt?: string;
+  referenceAssetIds?: string[];
+  modelProfileId: string;
+  parameters?: ParameterRequest;
+  templateId?: string;
+  count?: number;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const operatorId = parsePostgresId(input.operatorId, 'operatorId');
+  const taskId = parsePostgresId(input.taskId, 'taskId');
+  const modelProfileId = parsePostgresId(input.modelProfileId, 'modelProfileId');
+  const prompt = input.prompt.trim();
+  if (!prompt) throw new Error('请输入提示词');
+  if (prompt.length > 12000) throw new Error('提示词不能超过 12000 个字符');
+  const count = Math.min(4, Math.max(1, Math.trunc(Number(input.count) || 1)));
+  const [profile, template] = await Promise.all([
+    getEnabledCatalogProfile(modelProfileId),
+    input.templateId ? getActivePromptTemplate(input.templateId) : Promise.resolve(null),
+  ]);
+  const referenceAssetIds = [...new Set((input.referenceAssetIds || []).map((id) => parsePostgresId(id, 'referenceAssetId')))];
+  const capabilities = profile.capabilities || {};
+  const maxReferenceImages = Number(capabilities.maxReferenceImages || 0);
+  if (referenceAssetIds.length > maxReferenceImages || (referenceAssetIds.length && !capabilities.supportsReferenceImages)) {
+    throw new Error(`当前模型最多支持 ${maxReferenceImages} 张参考图`);
+  }
+  const parameters = resolveParameters(profile, {
+    ...input.parameters,
+    templateId: template?.id,
+  }, template?.parameterTemplate?.parameters);
+  await assertEnterpriseAiActionAllowed(enterpriseId.toString(), 'image.free_create');
+  const price = await getPostgresImageModelPrice(profile.key, parameters.resolutionTier);
+  const logicalModelKey = (referenceAssetIds.length
+    ? profile.editLogicalModelKey
+    : profile.generateLogicalModelKey) as 'image.generate.standard' | 'image.edit.standard' | null;
+  if (!logicalModelKey) throw new Error('当前模型不支持参考图编辑');
+
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const repository = new AiCreationRepository(transaction);
+    const task = await repository.findTask(taskId);
+    if (!task) throw new Error('创作任务不存在');
+    if (await repository.countMediaAssets(referenceAssetIds) !== referenceAssetIds.length) {
+      throw new Error('参考图不存在或无权访问');
+    }
+    const sequence = await repository.nextBatchSequence(taskId);
+    const profileSnapshot = serializePostgresCatalogProfile(profile);
+    const batch = await repository.createBatch({
+      enterpriseId,
+      operatorId,
+      taskId,
+      modelProfileId,
+      sequence,
+      prompt,
+      negativePrompt: input.negativePrompt?.trim() || null,
+      modelProfileSnapshot: profileSnapshot,
+      parameterSnapshot: parameters,
+      requestedCount: count,
+      status: 'pending',
+      creditsEstimate: price.credits * BigInt(count),
+    }, referenceAssetIds);
+    const billing = {
+      cycle: 0,
+      actionKey: 'image.free_create',
+      price: price.credits.toString(),
+      priceSnapshot: {
+        actionKey: 'image.free_create',
+        label: price.label,
+        credits: price.credits.toString(),
+        modelProfileKey: profile.key,
+        remoteModel: profile.remoteModel,
+        resolutionTier: parameters.resolutionTier,
+        capturedAt: new Date().toISOString(),
+      },
+      status: 'unbilled',
+    };
+    const generations = await Promise.all(Array.from({ length: count }, () => repository.createGeneration({
+      enterpriseId,
+      operatorId,
+      type: 'free_create',
+      creationTaskId: taskId,
+      creationBatchId: batch.id,
+      creationModelProfileId: modelProfileId,
+      actionKey: 'image.free_create',
+      capability: referenceAssetIds.length ? 'image.edit' : 'image.generate',
+      logicalModelKey,
+      status: 'pending',
+      input: {
+        style: 'free_create',
+        customPrompt: prompt,
+        outputAspectRatio: parameters.aspectRatio,
+        outputSize: parameters.resolutionTier,
+        creationParameterSnapshot: {
+          ...parameters,
+          modelProfileKey: profile.key,
+          remoteModel: profile.remoteModel,
+        },
+      },
+      output: {},
+      billing,
+    })));
+    await repository.updateTask(taskId, {
+      prompt,
+      modelProfileId,
+      lastBatchId: batch.id,
+      status: 'active',
+    });
+    return { taskId, batch, generations };
+  });
+}
+
+function readPositiveBigInt(value: unknown, field: string) {
+  try {
+    const parsed = BigInt(String(value));
+    if (parsed > BigInt(0)) return parsed;
+  } catch {
+    // Fall through to the domain error below.
+  }
+  throw new Error(`${field}必须是正整数`);
+}
+
+/**
+ * Holds a prepared generation's snapshotted price and advances it to the
+ * submission-ready state in one tenant transaction. Provider I/O deliberately
+ * remains outside this boundary for the later execution cutover.
+ */
+export async function holdPostgresCreationGenerationCredits(input: {
+  enterpriseId: string;
+  generationId: string;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const generationId = parsePostgresId(input.generationId, 'generationId');
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const creation = new AiCreationRepository(transaction);
+    const credits = new AiCreditRepository(transaction);
+    const generation = await creation.findGeneration(generationId);
+    if (!generation || generation.deletedAt || generation.type !== 'free_create') {
+      throw new Error('创作生成任务不存在');
+    }
+
+    const billing = asRecord(generation.billing);
+    const billingStatus = String(billing.status || '');
+    const account = await credits.ensureAccount(enterpriseId);
+    if (billingStatus === 'held' || billingStatus === 'consumed') {
+      return { generation, account, ledger: null };
+    }
+    if (billingStatus && billingStatus !== 'unbilled') {
+      throw new Error('创作生成任务的点数状态无法冻结');
+    }
+
+    const amount = readPositiveBigInt(billing.price, '创作生成任务点数价格');
+    const cycle = Math.max(0, Math.trunc(Number(billing.cycle ?? generation.retryCount ?? 0)) || 0);
+    const operationId = `${generation.id}:hold:${cycle}`;
+    const claim = await credits.claimLedger({
+      enterpriseId,
+      generationId,
+      operatorId: generation.operatorId,
+      operationId,
+      type: 'hold',
+      amount,
+      note: 'AI free-creation generation hold',
+      metadata: { creationBatchId: generation.creationBatchId?.toString() },
+    });
+
+    let nextAccount = account;
+    if (claim.claimed) {
+      const updatedAccount = await credits.applyBalance({
+        enterpriseId,
+        balanceDelta: BigInt(0),
+        frozenDelta: amount,
+        requireAvailableAtLeast: amount,
+      });
+      if (!updatedAccount) {
+        await credits.failLedger(claim.ledger.id);
+        const error = new Error('当前企业 AI 点数不足，请联系平台管理员调整。');
+        Object.assign(error, { status: 402 });
+        throw error;
+      }
+      const completedLedger = await credits.completeLedger(claim.ledger.id, updatedAccount);
+      if (!completedLedger) throw new Error('AI 点数流水无法完成');
+      nextAccount = updatedAccount;
+    } else {
+      if (claim.ledger.enterpriseId !== enterpriseId || claim.ledger.status !== 'completed') {
+        throw new Error('创作生成任务的点数冻结未完成');
+      }
+      const currentAccount = await credits.findAccount(enterpriseId);
+      if (!currentAccount) throw new Error('AI 点数账户不存在');
+      nextAccount = currentAccount;
+    }
+
+    const updatedGeneration = await creation.updateGeneration(generationId, {
+      status: 'created',
+      billing: {
+        ...billing,
+        cycle,
+        status: 'held',
+        holdOperationId: operationId,
+      },
+    });
+    if (!updatedGeneration) throw new Error('创作生成任务不存在');
+    return { generation: updatedGeneration, account: nextAccount, ledger: claim.ledger };
+  });
+}
+
+export async function releasePostgresCreationGenerationCredits(input: {
+  enterpriseId: string;
+  generationId: string;
+  errorCode?: string;
+  errorMessage: string;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const generationId = parsePostgresId(input.generationId, 'generationId');
+  const errorMessage = input.errorMessage.trim() || '创作生成任务已取消';
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const creation = new AiCreationRepository(transaction);
+    const credits = new AiCreditRepository(transaction);
+    const generation = await creation.findGeneration(generationId);
+    if (!generation || generation.deletedAt || generation.type !== 'free_create') {
+      throw new Error('创作生成任务不存在');
+    }
+    const billing = asRecord(generation.billing);
+    const billingStatus = String(billing.status || '');
+    const account = await credits.ensureAccount(enterpriseId);
+    if (billingStatus === 'released') {
+      return { generation, account, ledger: null };
+    }
+    if (billingStatus !== 'held') throw new Error('创作生成任务没有可释放的冻结点数');
+
+    const amount = readPositiveBigInt(billing.price, '创作生成任务点数价格');
+    const cycle = Math.max(0, Math.trunc(Number(billing.cycle ?? generation.retryCount ?? 0)) || 0);
+    const operationId = `${generation.id}:release:${cycle}`;
+    const claim = await credits.claimLedger({
+      enterpriseId,
+      generationId,
+      operatorId: generation.operatorId,
+      operationId,
+      type: 'release',
+      amount,
+      note: errorMessage,
+      metadata: { creationBatchId: generation.creationBatchId?.toString() },
+    });
+    let nextAccount = account;
+    if (claim.claimed) {
+      const updatedAccount = await credits.applyBalance({
+        enterpriseId,
+        balanceDelta: BigInt(0),
+        frozenDelta: -amount,
+        requireFrozenAtLeast: amount,
+      });
+      if (!updatedAccount) {
+        await credits.failLedger(claim.ledger.id);
+        throw new Error('创作生成任务的冻结点数记录不一致');
+      }
+      const completedLedger = await credits.completeLedger(claim.ledger.id, updatedAccount);
+      if (!completedLedger) throw new Error('AI 点数流水无法完成');
+      nextAccount = updatedAccount;
+    } else {
+      if (claim.ledger.enterpriseId !== enterpriseId || claim.ledger.status !== 'completed') {
+        throw new Error('创作生成任务的点数释放未完成');
+      }
+      const currentAccount = await credits.findAccount(enterpriseId);
+      if (!currentAccount) throw new Error('AI 点数账户不存在');
+      nextAccount = currentAccount;
+    }
+    const updatedGeneration = await creation.updateGeneration(generationId, {
+      status: 'failed',
+      errorCode: input.errorCode?.trim() || 'GENERATION_CANCELLED',
+      errorMessage,
+      billing: { ...billing, cycle, status: 'released', releaseOperationId: operationId },
+    });
+    if (!updatedGeneration) throw new Error('创作生成任务不存在');
+    return { generation: updatedGeneration, account: nextAccount, ledger: claim.ledger };
+  });
+}
+
+export async function consumePostgresCreationGenerationCredits(input: {
+  enterpriseId: string;
+  generationId: string;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const generationId = parsePostgresId(input.generationId, 'generationId');
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const creation = new AiCreationRepository(transaction);
+    const credits = new AiCreditRepository(transaction);
+    const generation = await creation.findGeneration(generationId);
+    if (!generation || generation.deletedAt || generation.type !== 'free_create') {
+      throw new Error('创作生成任务不存在');
+    }
+    const billing = asRecord(generation.billing);
+    const billingStatus = String(billing.status || '');
+    const account = await credits.ensureAccount(enterpriseId);
+    if (billingStatus === 'consumed') {
+      return { generation, account, ledger: null };
+    }
+    if (generation.status !== 'succeeded' || billingStatus !== 'held') {
+      throw new Error('创作生成任务尚未成功，无法扣除冻结点数');
+    }
+
+    const amount = readPositiveBigInt(billing.price, '创作生成任务点数价格');
+    const cycle = Math.max(0, Math.trunc(Number(billing.cycle ?? generation.retryCount ?? 0)) || 0);
+    const operationId = `${generation.id}:consume:${cycle}`;
+    const claim = await credits.claimLedger({
+      enterpriseId,
+      generationId,
+      operatorId: generation.operatorId,
+      operationId,
+      type: 'consume',
+      amount: -amount,
+      note: 'AI free-creation generation consumed',
+      metadata: { creationBatchId: generation.creationBatchId?.toString() },
+    });
+    let nextAccount = account;
+    if (claim.claimed) {
+      const updatedAccount = await credits.applyBalance({
+        enterpriseId,
+        balanceDelta: -amount,
+        frozenDelta: -amount,
+        requireBalanceAtLeast: amount,
+        requireFrozenAtLeast: amount,
+      });
+      if (!updatedAccount) {
+        await credits.failLedger(claim.ledger.id);
+        throw new Error('创作生成任务的冻结点数记录不一致');
+      }
+      const completedLedger = await credits.completeLedger(claim.ledger.id, updatedAccount);
+      if (!completedLedger) throw new Error('AI 点数流水无法完成');
+      nextAccount = updatedAccount;
+    } else {
+      if (claim.ledger.enterpriseId !== enterpriseId || claim.ledger.status !== 'completed') {
+        throw new Error('创作生成任务的点数扣除未完成');
+      }
+      const currentAccount = await credits.findAccount(enterpriseId);
+      if (!currentAccount) throw new Error('AI 点数账户不存在');
+      nextAccount = currentAccount;
+    }
+    const updatedGeneration = await creation.updateGeneration(generationId, {
+      billing: { ...billing, cycle, status: 'consumed', consumeOperationId: operationId },
+    });
+    if (!updatedGeneration) throw new Error('创作生成任务不存在');
+    return { generation: updatedGeneration, account: nextAccount, ledger: claim.ledger };
+  });
+}
+
+function isImageLogicalModelKey(value: unknown): value is 'image.generate.standard' | 'image.edit.standard' {
+  return value === 'image.generate.standard' || value === 'image.edit.standard';
+}
+
+/**
+ * Claims an already-funded PostgreSQL generation for a provider submission.
+ * The caller performs provider network I/O after this short transaction, using
+ * the persisted request snapshot and attempt ID for later reconciliation.
+ */
+export async function beginPostgresCreationProviderAttempt(input: {
+  enterpriseId: string;
+  generationId: string;
+  providerConfigId: string;
+  providerKey: string;
+  adapterType: string;
+  remoteModel: string;
+  requestSnapshot: Record<string, unknown>;
+  estimatedCost?: Record<string, unknown>;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const generationId = parsePostgresId(input.generationId, 'generationId');
+  const providerConfigId = parsePostgresId(input.providerConfigId, 'providerConfigId');
+  const providerKey = input.providerKey.trim();
+  const adapterType = input.adapterType.trim();
+  const remoteModel = input.remoteModel.trim();
+  if (!providerKey || !adapterType || !remoteModel) throw new Error('供应商尝试缺少执行配置');
+
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const creation = new AiCreationRepository(transaction);
+    const generation = await creation.findGeneration(generationId);
+    if (!generation || generation.deletedAt || generation.type !== 'free_create') {
+      throw new Error('创作生成任务不存在');
+    }
+    if (generation.status === 'processing' && generation.currentAttemptId) {
+      const currentAttempt = await creation.findProviderAttempt(generation.currentAttemptId);
+      if (currentAttempt && ['created', 'submitted', 'processing', 'unknown'].includes(currentAttempt.status)) {
+        return { generation, attempt: currentAttempt, reused: true };
+      }
+    }
+    if (generation.status !== 'created' || String(asRecord(generation.billing).status) !== 'held') {
+      throw new Error('创作生成任务尚未完成点数冻结');
+    }
+
+    const logicalModelKey = generation.logicalModelKey;
+    if (!isImageLogicalModelKey(logicalModelKey)) throw new Error('创作生成任务缺少图片模型能力');
+    const parameterSnapshot = asRecord(asRecord(generation.input).creationParameterSnapshot);
+    if (String(parameterSnapshot.remoteModel || '') !== remoteModel) {
+      throw new Error('供应商模型与创作价格快照不一致');
+    }
+    const resolutionTier = String(parameterSnapshot.resolutionTier || '').trim() || null;
+    const attempt = await creation.createProviderAttempt({
+      enterpriseId,
+      generationId,
+      providerConfigId,
+      providerKey,
+      adapterType,
+      capability: capabilityForLogicalModel(logicalModelKey as AiLogicalModelKey),
+      logicalModelKey,
+      remoteModel,
+      resolutionTier,
+      status: 'created',
+      accepted: false,
+      estimatedCost: input.estimatedCost,
+      requestFingerprint: crypto.createHash('sha256').update(JSON.stringify(input.requestSnapshot)).digest('hex'),
+      metadata: { modelProfileKey: parameterSnapshot.modelProfileKey },
+    });
+    const updatedGeneration = await creation.updateGeneration(generationId, {
+      status: 'processing',
+      provider: providerKey,
+      capability: capabilityForLogicalModel(logicalModelKey as AiLogicalModelKey),
+      logicalModelKey,
+      currentAttemptId: attempt.id,
+      input: {
+        ...asRecord(generation.input),
+        providerRequest: input.requestSnapshot,
+      },
+    });
+    if (!updatedGeneration) throw new Error('创作生成任务不存在');
+    return { generation: updatedGeneration, attempt, reused: false };
+  });
+}
