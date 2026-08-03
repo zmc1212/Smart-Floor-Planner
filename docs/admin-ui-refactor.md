@@ -152,6 +152,13 @@ desktop/mobile visual checks, and browser verification pass.
   `admin`/`super_admin` settlement boundary are unchanged. Table-load failures
   use the shared operation feedback UI; settlement remains guarded per record,
   and the filter row stacks on narrow screens.
+- The shared `/` dashboard now uses `PageContainer` and Ant Design summary/list
+  components. Its workbench contract has been audited: platform users only see
+  implemented user, formal-floor-plan, and enterprise totals; all non-platform
+  roles see their existing PostgreSQL/RLS-scoped workbench cards and todos; and
+  only `enterprise_admin` additionally sees tenant-scoped asset totals. Mock
+  operational-health claims and the unsupported AI-generation entry were
+  removed. Existing routes, APIs, and permissions are unchanged.
 - Other platform configuration pages remain in the third migration step and
   require their interaction contracts to be audited before implementation.
 

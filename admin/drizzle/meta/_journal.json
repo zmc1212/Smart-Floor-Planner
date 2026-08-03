@@ -78,6 +78,13 @@
       "when": 1785600778599,
       "tag": "0010_eminent_wildside",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1785747405479,
+      "tag": "0011_ai-generation-provider-poll-queue",
+      "breakpoints": true
     }
   ]
 }

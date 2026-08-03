@@ -203,6 +203,34 @@ export class AiCreationRepository {
     return batch;
   }
 
+  async findBatchForUpdate(id: bigint) {
+    const rows = await this.transaction
+      .select()
+      .from(aiCreationBatches)
+      .where(eq(aiCreationBatches.id, id))
+      .for('update')
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
+  async listBatchGenerationsForUpdate(batchId: bigint) {
+    return this.transaction
+      .select()
+      .from(aiGenerations)
+      .where(eq(aiGenerations.creationBatchId, batchId))
+      .orderBy(asc(aiGenerations.id))
+      .for('update');
+  }
+
+  async updateBatch(id: bigint, values: Partial<typeof aiCreationBatches.$inferInsert>) {
+    const rows = await this.transaction
+      .update(aiCreationBatches)
+      .set({ ...values, updatedAt: new Date() })
+      .where(eq(aiCreationBatches.id, id))
+      .returning();
+    return rows[0] ?? null;
+  }
+
   async updateTask(id: bigint, values: Partial<typeof aiCreationTasks.$inferInsert>) {
     const rows = await this.transaction.update(aiCreationTasks)
       .set({ ...values, updatedAt: new Date() })
@@ -236,6 +264,47 @@ export class AiCreationRepository {
       .for('update')
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  /**
+   * Claims due asynchronous provider polls without blocking parallel workers.
+   * Callers must complete provider I/O after the surrounding transaction ends.
+   */
+  async claimDueProviderPollGenerations(input: {
+    now: Date;
+    limit: number;
+    enterpriseId?: bigint;
+  }) {
+    const filters: SQL[] = [
+      eq(aiGenerations.type, 'free_create'),
+      eq(aiGenerations.status, 'processing'),
+      sql`${aiGenerations.deletedAt} is null`,
+      sql`exists (
+        select 1
+        from ${aiProviderAttempts}
+        where ${aiProviderAttempts.id} = ${aiGenerations.currentAttemptId}
+          and ${aiProviderAttempts.enterpriseId} = ${aiGenerations.enterpriseId}
+          and ${aiProviderAttempts.accepted} = true
+          and ${aiProviderAttempts.status} in ('submitted', 'processing', 'unknown')
+          and ${aiProviderAttempts.remoteTaskId} is not null
+      )`,
+      or(
+        sql`${aiGenerations.externalTask} ->> 'nextPollAt' is null`,
+        sql`(${aiGenerations.externalTask} ->> 'nextPollAt') <= ${input.now.toISOString()}`
+      )!,
+    ];
+    if (input.enterpriseId) filters.push(eq(aiGenerations.enterpriseId, input.enterpriseId));
+
+    return this.transaction
+      .select()
+      .from(aiGenerations)
+      .where(and(...filters))
+      .orderBy(
+        sql`coalesce(${aiGenerations.externalTask} ->> 'nextPollAt', ${aiGenerations.updatedAt}::text)`,
+        asc(aiGenerations.id)
+      )
+      .limit(input.limit)
+      .for('update', { skipLocked: true });
   }
 
   async listGenerationsByIds(ids: bigint[]) {

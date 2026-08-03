@@ -1,0 +1,1 @@
+CREATE INDEX "ai_generations_due_provider_poll_idx" ON "app"."ai_generations" USING btree (("external_task" ->> 'nextPollAt'),"id") WHERE "app"."ai_generations"."status" = 'processing' and "app"."ai_generations"."current_attempt_id" is not null and "app"."ai_generations"."deleted_at" is null;

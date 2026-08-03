@@ -1549,6 +1549,11 @@ export const aiGenerations = appSchema.table(
     index('ai_generations_pending_poll_idx')
       .on(table.updatedAt)
       .where(sql`${table.status} in ('created', 'pending', 'processing')`),
+    index('ai_generations_due_provider_poll_idx')
+      .on(sql`(${table.externalTask} ->> 'nextPollAt')`, table.id)
+      .where(
+        sql`${table.status} = 'processing' and ${table.currentAttemptId} is not null and ${table.deletedAt} is null`
+      ),
   ]
 );
 

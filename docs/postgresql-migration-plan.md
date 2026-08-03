@@ -1,6 +1,41 @@
 # PostgreSQL Migration Plan And Progress
 
 > 2026-08-03 migration record: PostgreSQL free-creation execution now has an
+> internal provider-poll claim boundary for background workers. A short platform
+> transaction selects due accepted bigint generations with `FOR UPDATE SKIP
+> LOCKED`, writes an opaque poll lease and its next-poll timestamp, then returns
+> only the provider routing metadata needed for I/O after commit. Guarded poll,
+> success, and failure updates reject an expired or superseded lease and remove
+> it when they persist state. Migration `0011_ai-generation-provider-poll-queue`
+> adds the matching partial due-poll index. This is platform-internal only: no
+> public route or user permission boundary has switched, and provider network
+> I/O remains outside the transaction and in the connected MongoDB runtime chain.
+> No MongoDB business data was imported or deleted, and no secret was
+> re-encrypted. `npm run db:migrate`, `npm run db:check`, targeted ESLint, and
+> `npm run test:postgresql` passed 37/37.
+
+> 2026-08-03 migration record: PostgreSQL free-creation execution now has an
+> internal batch-status reconciliation boundary. It locks a tenant-scoped bigint
+> batch before its ordered generation rows, verifies the expected generation
+> count, and derives the batch's existing `processing`, `succeeded`, `partial`,
+> or `failed` status from their current states. Replays avoid a redundant write.
+> No public route has switched: provider I/O, workflow attachment, and task/
+> batch runtime execution remain the connected MongoDB chain. No MongoDB business
+> data was imported or deleted, and no secret was re-encrypted. Targeted ESLint
+> and `npm run test:postgresql` passed 36/36.
+
+> 2026-08-03 migration record: PostgreSQL free-creation execution now has an
+> internal provider-result settlement boundary. After external storage has
+> persisted an output asset, it locks the accepted bigint generation and its
+> asset, verifies the immutable remote task ID, atomically binds the asset URL,
+> and completes the exact idempotent credit-consumption ledger. Replays retain
+> both the first asset and the consumed balance. No public route has switched:
+> provider network/storage I/O and workflow attachment remain the connected
+> MongoDB execution chain. No MongoDB business data was imported or deleted, and
+> no secret was re-encrypted. Targeted ESLint and `npm run test:postgresql`
+> passed 36/36.
+
+> 2026-08-03 migration record: PostgreSQL free-creation execution now has an
 > internal provider-failure settlement boundary. It locks the current accepted
 > bigint attempt and generation, validates their immutable remote task ID, and
 > atomically records provider failure, generation failure metadata, and the
@@ -689,6 +724,8 @@ Phase 3 acceptance status:
 | AI free-creation provider-attempt foundation | Codex | foundation verified | 2026-08-03 | `postgres-creation-service` atomically records the selected provider configuration, snapshotted model, request fingerprint, and request snapshot for a held bigint generation, then marks it `processing`. Repeated calls reuse the active attempt. No network I/O, route cutover, or data import occurred; submission/polling, media writes, consumption/release, and workflow attachment remain pending. PostgreSQL 36/36 and targeted ESLint passed. |
 | AI free-creation provider-submission acknowledgement foundation | Codex | foundation verified | 2026-08-03 | `postgres-creation-service` locks the current bigint generation and persists an accepted attempt's remote task ID, provider status, and polling metadata. Repeated acknowledgements preserve the first task ID; stale or conflicting responses are rejected. No network I/O, route cutover, or data import occurred; provider polling, media writes, completion, and workflow attachment remain pending. PostgreSQL 36/36 and targeted ESLint passed. |
 | AI free-creation provider-poll-state foundation | Codex | foundation verified | 2026-08-03 | `postgres-creation-service` locks an accepted attempt's current bigint generation before persisting its non-terminal `processing` or `unknown` provider state, diagnostics, and bounded next-poll metadata. The recorded remote task ID cannot change, and a later processing state clears transient unknown diagnostics. No network I/O, route cutover, or data import occurred; terminal handling, media writes, completion, and workflow attachment remain pending. PostgreSQL 36/36 and targeted ESLint passed. |
+| AI free-creation batch-status reconciliation foundation | Codex | foundation verified | 2026-08-03 | `postgres-creation-service` locks a tenant-scoped bigint batch before its ordered generation rows, verifies the requested-count contract, and reconciles `processing`, `succeeded`, `partial`, or `failed` from current generation states without a redundant replay write. Provider I/O, workflow attachment, public route cutover, and data import remain pending. PostgreSQL 36/36 and targeted ESLint passed. |
+| AI free-creation provider-result settlement foundation | Codex | foundation verified | 2026-08-03 | `postgres-creation-service` locks a succeeded accepted bigint generation and its tenant-scoped output asset, rechecks the immutable remote task ID, then binds the PostgreSQL asset URL and completes the exact idempotent consumption ledger in one short RLS transaction. Replays retain the first asset and account balance. Provider network/storage I/O, workflow attachment, public route cutover, and data import remain pending. PostgreSQL 36/36 and targeted ESLint passed. |
 | AI free-creation provider-success foundation | Codex | foundation verified | 2026-08-03 | `postgres-creation-service` locks the current bigint generation, verifies the accepted attempt's immutable remote task ID, persists terminal provider-result/actual-cost snapshots, and transitions both rows to `succeeded`. Replayed successes retain the original result and make the still-held generation eligible for the existing idempotent consumption boundary. No network I/O, route cutover, or data import occurred; result-media writes, consumption invocation, and workflow attachment remain pending. PostgreSQL 36/36 and targeted ESLint passed. |
 | AI free-creation result-media attachment foundation | Codex | foundation verified | 2026-08-03 | `postgres-creation-service` locks a terminal bigint generation plus its tenant-scoped result asset, validates the accepted attempt and immutable remote task ID, and atomically writes the PostgreSQL asset URL while binding the unclaimed result asset to that generation. Replays preserve the original image and another generation cannot claim the asset. No provider download/storage I/O, route cutover, or data import occurred; consumption invocation and workflow attachment remain pending. PostgreSQL 36/36 and targeted ESLint passed. |
 | AI free-creation provider-failure settlement foundation | Codex | foundation verified | 2026-08-03 | `postgres-creation-service` locks the current accepted bigint attempt and generation, verifies the immutable remote task ID, records terminal provider/generation failure metadata, and completes the idempotent release ledger in the same tenant RLS transaction. Replayed failures preserve the released balance. No provider I/O, route cutover, or data import occurred; result storage, successful consumption invocation, and workflow attachment remain pending. PostgreSQL 36/36 and targeted ESLint passed. |

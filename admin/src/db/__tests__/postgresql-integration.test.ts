@@ -77,6 +77,7 @@ import { storePostgresMediaBuffer } from '@/lib/ai/postgres-media-assets';
 import { listPostgresExecutableImageModelProfiles } from '@/lib/ai/image-model-catalog';
 import {
   createPostgresCreationTask,
+  claimPostgresCreationProviderPolls,
   acknowledgePostgresCreationProviderAttempt,
   attachPostgresCreationProviderResultAsset,
   beginPostgresCreationProviderAttempt,
@@ -86,6 +87,8 @@ import {
   holdPostgresCreationGenerationCredits,
   preparePostgresCreationBatch,
   recordPostgresCreationProviderPollState,
+  refreshPostgresCreationBatchStatus,
+  settlePostgresCreationProviderResult,
 } from '@/lib/ai/postgres-creation-service';
 import {
   adjustAiCredits,
@@ -1407,6 +1410,13 @@ test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and g
       new AiCreationRepository(transaction).findTask(task.id)
     );
     assert.equal(crossTenant, null);
+    await assert.rejects(
+      refreshPostgresCreationBatchStatus({
+        enterpriseId: enterpriseBId.toString(),
+        batchId: prepared.batch.id.toString(),
+      }),
+      /创作批次不存在/
+    );
 
     const creditGrant = await grantAiCredits({
       enterpriseId: enterpriseAId.toString(),
@@ -1492,6 +1502,63 @@ test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and g
     assert.equal(processingPoll.attempt.errorCode, null);
     assert.equal((processingPoll.generation.externalTask as { remoteStatus?: string }).remoteStatus, 'running');
 
+    await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const creation = new AiCreationRepository(transaction);
+      const generation = await creation.findGeneration(prepared.generations[0]!.id);
+      assert.ok(generation);
+      const scheduled = await creation.updateGeneration(generation.id, {
+        externalTask: {
+          ...(generation.externalTask as Record<string, unknown>),
+          nextPollAt: new Date(Date.now() - 1_000).toISOString(),
+        },
+      });
+      assert.ok(scheduled);
+    });
+
+    const [pollClaim] = await claimPostgresCreationProviderPolls({
+      enterpriseId: enterpriseAId.toString(),
+      limit: 1,
+      leaseMs: 30_000,
+    });
+    assert.ok(pollClaim);
+    assert.equal(pollClaim.generationId, prepared.generations[0]!.id.toString());
+    assert.equal(pollClaim.attemptId, providerAttempt.attempt.id.toString());
+    assert.equal(pollClaim.remoteTaskId, `${testRunKey}-remote-task`);
+    assert.ok(pollClaim.pollLeaseId);
+    assert.ok(Date.parse(pollClaim.leaseExpiresAt) > Date.now());
+    assert.deepEqual(
+      await claimPostgresCreationProviderPolls({
+        enterpriseId: enterpriseAId.toString(),
+        limit: 1,
+        leaseMs: 30_000,
+      }),
+      []
+    );
+    await assert.rejects(
+      recordPostgresCreationProviderPollState({
+        enterpriseId: enterpriseAId.toString(),
+        generationId: prepared.generations[0]!.id.toString(),
+        attemptId: providerAttempt.attempt.id.toString(),
+        remoteTaskId: `${testRunKey}-remote-task`,
+        status: 'processing',
+        pollLeaseId: 'stale-poll-lease',
+      }),
+      /供应商轮询租约已失效/
+    );
+    const leasedProcessingPoll = await recordPostgresCreationProviderPollState({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[0]!.id.toString(),
+      attemptId: providerAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-remote-task`,
+      status: 'processing',
+      remoteStatus: 'running-after-lease',
+      pollLeaseId: pollClaim.pollLeaseId,
+    });
+    assert.equal(
+      (leasedProcessingPoll.generation.externalTask as { pollLeaseId?: string }).pollLeaseId,
+      undefined
+    );
+
     const repeatedProviderAttempt = await beginPostgresCreationProviderAttempt({
       enterpriseId: enterpriseAId.toString(),
       generationId: prepared.generations[0]!.id.toString(),
@@ -1546,19 +1613,53 @@ test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and g
       });
       resultAssetId = resultAsset.id;
     });
-    const attachedResult = await attachPostgresCreationProviderResultAsset({
+    const settledResult = await settlePostgresCreationProviderResult({
       enterpriseId: enterpriseAId.toString(),
       generationId: prepared.generations[0]!.id.toString(),
       attemptId: providerAttempt.attempt.id.toString(),
       remoteTaskId: `${testRunKey}-remote-task`,
       assetId: resultAssetId!.toString(),
     });
-    assert.equal(attachedResult.reused, false);
-    assert.equal(attachedResult.asset.ownerId, prepared.generations[0]!.id);
+    assert.equal(settledResult.reused, false);
+    assert.ok(settledResult.ledger);
+    aiCreditLedgerIds.push(settledResult.ledger!.id);
+    assert.equal(settledResult.asset.ownerId, prepared.generations[0]!.id);
     assert.equal(
-      (attachedResult.generation.output as { imageUrl?: string }).imageUrl,
+      (settledResult.generation.output as { imageUrl?: string }).imageUrl,
       `/api/ai/assets/${resultAssetId!.toString()}/image`
     );
+    assert.equal((settledResult.generation.billing as { status?: string }).status, 'consumed');
+    assert.equal(settledResult.account.frozenBalance, 0n);
+    assert.equal(
+      settledResult.account.balance,
+      creditGrant.account.balance - firstHeld.account.frozenBalance
+    );
+    const processingBatch = await refreshPostgresCreationBatchStatus({
+      enterpriseId: enterpriseAId.toString(),
+      batchId: prepared.batch.id.toString(),
+    });
+    assert.equal(processingBatch.reused, false);
+    assert.equal(processingBatch.batch.status, 'processing');
+    const repeatedSettlement = await settlePostgresCreationProviderResult({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[0]!.id.toString(),
+      attemptId: providerAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-remote-task`,
+      assetId: resultAssetId!.toString(),
+    });
+    assert.equal(repeatedSettlement.reused, true);
+    assert.equal(repeatedSettlement.account.balance, settledResult.account.balance);
+    await assert.rejects(
+      settlePostgresCreationProviderResult({
+        enterpriseId: enterpriseAId.toString(),
+        generationId: prepared.generations[0]!.id.toString(),
+        attemptId: providerAttempt.attempt.id.toString(),
+        remoteTaskId: `${testRunKey}-different-remote-task`,
+        assetId: resultAssetId!.toString(),
+      }),
+      /远端任务 ID 与当前尝试不一致/
+    );
+
     const repeatedAttachment = await attachPostgresCreationProviderResultAsset({
       enterpriseId: enterpriseAId.toString(),
       generationId: prepared.generations[0]!.id.toString(),
@@ -1616,7 +1717,20 @@ test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and g
     assert.equal((released.generation.billing as { status?: string }).status, 'released');
     assert.equal(released.attempt.status, 'failed');
     assert.equal((released.generation.externalTask as { remoteTaskId?: string }).remoteTaskId, `${testRunKey}-failed-remote-task`);
-    assert.equal(released.account.frozenBalance, firstHeld.account.frozenBalance);
+    assert.equal(released.account.frozenBalance, 0n);
+
+    const partialBatch = await refreshPostgresCreationBatchStatus({
+      enterpriseId: enterpriseAId.toString(),
+      batchId: prepared.batch.id.toString(),
+    });
+    assert.equal(partialBatch.reused, false);
+    assert.equal(partialBatch.batch.status, 'partial');
+    const repeatedBatchRefresh = await refreshPostgresCreationBatchStatus({
+      enterpriseId: enterpriseAId.toString(),
+      batchId: prepared.batch.id.toString(),
+    });
+    assert.equal(repeatedBatchRefresh.reused, true);
+    assert.equal(repeatedBatchRefresh.batch.status, 'partial');
 
     const repeatedRelease = await failPostgresCreationProviderAttempt({
       enterpriseId: enterpriseAId.toString(),
@@ -1632,18 +1746,17 @@ test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and g
       enterpriseId: enterpriseAId.toString(),
       generationId: prepared.generations[0]!.id.toString(),
     });
-    assert.equal(repeatedHold.account.frozenBalance, firstHeld.account.frozenBalance);
+    assert.equal(repeatedHold.account.frozenBalance, 0n);
     assert.equal(firstHeld.account.balance, creditGrant.account.balance);
 
     const consumed = await consumePostgresCreationGenerationCredits({
       enterpriseId: enterpriseAId.toString(),
       generationId: prepared.generations[0]!.id.toString(),
     });
-    assert.ok(consumed.ledger);
-    aiCreditLedgerIds.push(consumed.ledger.id);
+    assert.equal(consumed.ledger, null);
     assert.equal((consumed.generation.billing as { status?: string }).status, 'consumed');
     assert.equal(consumed.account.frozenBalance, 0n);
-    assert.equal(consumed.account.balance, creditGrant.account.balance - firstHeld.account.frozenBalance);
+    assert.equal(consumed.account.balance, settledResult.account.balance);
 
     const repeatedConsume = await consumePostgresCreationGenerationCredits({
       enterpriseId: enterpriseAId.toString(),
@@ -1954,6 +2067,20 @@ test('media storage list ordering has a matching composite index', async () => {
   `);
   assert.equal(result.rows.length, 1);
   assert.match(result.rows[0].definition, /\(status, created_at\)/);
+});
+
+test('AI provider due-poll claims have a matching partial index', async () => {
+  const result = await getPostgresPool().query<{ definition: string }>(`
+    select indexdef as definition
+    from pg_indexes
+    where schemaname = 'app'
+      and indexname = 'ai_generations_due_provider_poll_idx'
+  `);
+  assert.equal(result.rows.length, 1);
+  assert.match(result.rows[0].definition, /external_task/);
+  assert.match(result.rows[0].definition, /nextPollAt/);
+  assert.match(result.rows[0].definition, /status.*processing/);
+  assert.match(result.rows[0].definition, /current_attempt_id.*IS NOT NULL/);
 });
 
 test('every tenant foreign key and RLS predicate column has an index', async () => {

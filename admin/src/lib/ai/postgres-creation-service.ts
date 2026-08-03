@@ -38,6 +38,28 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function withoutPostgresProviderPollLease(value: unknown): Record<string, unknown> {
+  const task = { ...asRecord(value) };
+  delete task.pollLeaseId;
+  delete task.pollLeaseExpiresAt;
+  delete task.pollClaimedAt;
+  return task;
+}
+
+function assertPostgresProviderPollLease(generation: AiGenerationRecord, pollLeaseId?: string) {
+  const requestedLeaseId = pollLeaseId?.trim();
+  if (!requestedLeaseId) return;
+  const externalTask = asRecord(generation.externalTask);
+  const expiresAt = new Date(String(externalTask.pollLeaseExpiresAt || ''));
+  if (
+    externalTask.pollLeaseId !== requestedLeaseId
+    || Number.isNaN(expiresAt.getTime())
+    || expiresAt.getTime() <= Date.now()
+  ) {
+    throw new Error('供应商轮询租约已失效');
+  }
+}
+
 function optionValues(parameterSource: unknown) {
   const params = Array.isArray(asRecord(parameterSource).modelParams)
     ? asRecord(parameterSource).modelParams as unknown[]
@@ -292,6 +314,43 @@ function readPositiveBigInt(value: unknown, field: string) {
     // Fall through to the domain error below.
   }
   throw new Error(`${field}必须是正整数`);
+}
+
+function derivePostgresCreationBatchStatus(statuses: string[]) {
+  if (!statuses.length) return 'pending';
+  const succeeded = statuses.filter((status) => status === 'succeeded').length;
+  const failed = statuses.filter((status) => status === 'failed' || status === 'cancelled').length;
+  if (succeeded === statuses.length) return 'succeeded';
+  if (failed === statuses.length) return 'failed';
+  if (succeeded + failed === statuses.length) return 'partial';
+  return 'processing';
+}
+
+/**
+ * Reconciles a PostgreSQL free-creation batch from its generation rows. The
+ * transaction locks the batch before its ordered generations so terminal
+ * settlements cannot leave a stale aggregate status behind.
+ */
+export async function refreshPostgresCreationBatchStatus(input: {
+  enterpriseId: string;
+  batchId: string;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const batchId = parsePostgresId(input.batchId, 'batchId');
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const creation = new AiCreationRepository(transaction);
+    const batch = await creation.findBatchForUpdate(batchId);
+    if (!batch) throw new Error('创作批次不存在');
+    const generations = await creation.listBatchGenerationsForUpdate(batchId);
+    if (generations.length !== batch.requestedCount) {
+      throw new Error('创作批次生成记录不完整');
+    }
+    const status = derivePostgresCreationBatchStatus(generations.map((generation) => generation.status));
+    if (batch.status === status) return { batch, generations, reused: true };
+    const updatedBatch = await creation.updateBatch(batchId, { status });
+    if (!updatedBatch) throw new Error('创作批次不存在');
+    return { batch: updatedBatch, generations, reused: false };
+  });
 }
 
 /**
@@ -706,6 +765,79 @@ export async function acknowledgePostgresCreationProviderAttempt(input: {
 }
 
 /**
+ * Claims due provider polls in a short transaction, leaving network I/O to the
+ * caller after commit. The lease prevents another worker from polling the same
+ * accepted task until it expires or a guarded state update releases it.
+ */
+export async function claimPostgresCreationProviderPolls(input: {
+  enterpriseId?: string;
+  limit?: number;
+  leaseMs?: number;
+} = {}) {
+  const enterpriseId = input.enterpriseId
+    ? parsePostgresId(input.enterpriseId, 'enterpriseId')
+    : undefined;
+  const limit = Math.min(100, Math.max(1, Math.trunc(Number(input.limit) || 20)));
+  const leaseMs = Math.min(
+    300_000,
+    Math.max(30_000, Math.trunc(Number(input.leaseMs) || 60_000))
+  );
+  const claimedAt = new Date();
+  const leaseExpiresAt = new Date(claimedAt.getTime() + leaseMs);
+
+  return withPlatformTransaction(async (transaction) => {
+    const creation = new AiCreationRepository(transaction);
+    const due = await creation.claimDueProviderPollGenerations({
+      now: claimedAt,
+      limit,
+      enterpriseId,
+    });
+    const claims = [];
+    for (const generation of due) {
+      if (!generation.currentAttemptId) {
+        throw new Error('供应商轮询任务缺少当前尝试');
+      }
+      const attempt = await creation.findProviderAttempt(generation.currentAttemptId);
+      if (
+        !attempt
+        || attempt.generationId !== generation.id
+        || attempt.enterpriseId !== generation.enterpriseId
+        || !attempt.accepted
+        || !attempt.remoteTaskId
+        || !['submitted', 'processing', 'unknown'].includes(attempt.status)
+      ) {
+        throw new Error('供应商轮询任务的当前尝试无效');
+      }
+      const pollLeaseId = crypto.randomUUID();
+      const updatedGeneration = await creation.updateGeneration(generation.id, {
+        externalTask: {
+          ...withoutPostgresProviderPollLease(generation.externalTask),
+          pollLeaseId,
+          pollLeaseExpiresAt: leaseExpiresAt.toISOString(),
+          pollClaimedAt: claimedAt.toISOString(),
+          nextPollAt: leaseExpiresAt.toISOString(),
+        },
+      });
+      if (!updatedGeneration) {
+        throw new Error('供应商轮询任务认领未能持久化');
+      }
+      claims.push({
+        enterpriseId: updatedGeneration.enterpriseId.toString(),
+        generationId: updatedGeneration.id.toString(),
+        attemptId: attempt.id.toString(),
+        remoteTaskId: attempt.remoteTaskId,
+        providerKey: attempt.providerKey,
+        adapterType: attempt.adapterType,
+        remoteModel: attempt.remoteModel,
+        pollLeaseId,
+        leaseExpiresAt: leaseExpiresAt.toISOString(),
+      });
+    }
+    return claims;
+  });
+}
+
+/**
  * Records a non-terminal poll response for an already accepted asynchronous
  * task. Media persistence and terminal success/failure settlement remain in a
  * later execution boundary.
@@ -719,6 +851,7 @@ export async function recordPostgresCreationProviderPollState(input: {
   remoteStatus?: string;
   errorMessage?: string;
   nextPollAfterMs?: number;
+  pollLeaseId?: string;
 }) {
   const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
   const generationId = parsePostgresId(input.generationId, 'generationId');
@@ -740,6 +873,7 @@ export async function recordPostgresCreationProviderPollState(input: {
     if (generation.currentAttemptId !== attemptId || generation.status !== 'processing') {
       throw new Error('供应商轮询响应不属于当前创作生成任务');
     }
+    assertPostgresProviderPollLease(generation, input.pollLeaseId);
     const attempt = await creation.findProviderAttempt(attemptId);
     if (!attempt || attempt.generationId !== generationId || attempt.remoteTaskId !== remoteTaskId) {
       throw new Error('供应商轮询响应的远端任务 ID 与当前尝试不一致');
@@ -790,6 +924,7 @@ export async function completePostgresCreationProviderAttempt(input: {
   remoteStatus?: string;
   output?: Record<string, unknown>;
   actualCost?: Record<string, unknown>;
+  pollLeaseId?: string;
 }) {
   const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
   const generationId = parsePostgresId(input.generationId, 'generationId');
@@ -814,6 +949,7 @@ export async function completePostgresCreationProviderAttempt(input: {
     if (generation.status === 'succeeded' && attempt.status === 'succeeded') {
       return { generation, attempt, reused: true };
     }
+    assertPostgresProviderPollLease(generation, input.pollLeaseId);
     if (generation.status !== 'processing' || !attempt.accepted || !['submitted', 'processing', 'unknown'].includes(attempt.status)) {
       throw new Error('供应商尝试尚未受理或已结束，无法记录成功响应');
     }
@@ -836,7 +972,7 @@ export async function completePostgresCreationProviderAttempt(input: {
         providerResult: input.output ?? {},
       },
       externalTask: {
-        ...asRecord(generation.externalTask),
+        ...withoutPostgresProviderPollLease(generation.externalTask),
         status: 'succeeded',
         remoteTaskId,
         remoteStatus,
@@ -917,6 +1053,89 @@ export async function attachPostgresCreationProviderResultAsset(input: {
 }
 
 /**
+ * Finalizes a persisted provider result after its storage I/O has completed.
+ * It binds the tenant-owned output asset and consumes the held price in one
+ * short RLS transaction, so a visible PostgreSQL result cannot be left with an
+ * unclaimed successful charge. Workflow attachment stays explicit user action.
+ */
+export async function settlePostgresCreationProviderResult(input: {
+  enterpriseId: string;
+  generationId: string;
+  attemptId: string;
+  remoteTaskId: string;
+  assetId: string;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const generationId = parsePostgresId(input.generationId, 'generationId');
+  const attemptId = parsePostgresId(input.attemptId, 'attemptId');
+  const assetId = parsePostgresId(input.assetId, 'assetId');
+  const remoteTaskId = input.remoteTaskId.trim();
+  if (!remoteTaskId) throw new Error('供应商结果结算缺少远端任务 ID');
+
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const creation = new AiCreationRepository(transaction);
+    const generation = await creation.findGenerationForUpdate(generationId);
+    if (!generation || generation.deletedAt || generation.type !== 'free_create') {
+      throw new Error('创作生成任务不存在');
+    }
+    if (generation.currentAttemptId !== attemptId || generation.status !== 'succeeded') {
+      throw new Error('供应商结果结算不属于已成功的当前创作生成任务');
+    }
+    const attempt = await creation.findProviderAttempt(attemptId);
+    if (
+      !attempt
+      || attempt.generationId !== generationId
+      || attempt.remoteTaskId !== remoteTaskId
+      || attempt.status !== 'succeeded'
+      || !attempt.accepted
+    ) {
+      throw new Error('供应商结果结算的远端任务 ID 与当前尝试不一致');
+    }
+    const asset = await creation.findMediaAssetForUpdate(assetId);
+    if (!asset || asset.ownerType !== 'ai_generation_output') {
+      throw new Error('供应商结果媒体不存在或不可关联');
+    }
+    if (asset.ownerId && asset.ownerId !== generationId) {
+      throw new Error('供应商结果媒体已属于另一生成任务');
+    }
+
+    const imageUrl = getPostgresMediaAssetImageUrl(asset.id);
+    const output = asRecord(generation.output);
+    const hasAttachedResult = typeof output.imageUrl === 'string' && output.imageUrl.length > 0;
+    if (hasAttachedResult && output.imageUrl !== imageUrl) {
+      throw new Error('创作生成任务已关联另一结果媒体');
+    }
+    if (hasAttachedResult && asset.ownerId !== generationId) {
+      throw new Error('创作生成任务的结果媒体归属不一致');
+    }
+
+    const updatedAsset = asset.ownerId
+      ? asset
+      : await creation.updateMediaAsset(assetId, { ownerId: generationId });
+    const attachedGeneration = hasAttachedResult
+      ? generation
+      : await creation.updateGeneration(generationId, {
+        output: { ...output, imageUrl },
+      });
+    if (!updatedAsset || !attachedGeneration) {
+      throw new Error('供应商结果媒体无法持久化关联');
+    }
+
+    const billingStatus = String(asRecord(attachedGeneration.billing).status || '');
+    const consumed = await consumePostgresCreationGenerationCreditsInTransaction({
+      transaction,
+      enterpriseId,
+      generation: attachedGeneration,
+    });
+    return {
+      ...consumed,
+      asset: updatedAsset,
+      reused: hasAttachedResult && billingStatus === 'consumed',
+    };
+  });
+}
+
+/**
  * Settles a terminal provider failure and releases the held generation credit
  * in one tenant transaction. Network polling remains outside this boundary.
  */
@@ -929,6 +1148,7 @@ export async function failPostgresCreationProviderAttempt(input: {
   errorCode?: string;
   errorMessage?: string;
   actualCost?: Record<string, unknown>;
+  pollLeaseId?: string;
 }) {
   const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
   const generationId = parsePostgresId(input.generationId, 'generationId');
@@ -964,6 +1184,7 @@ export async function failPostgresCreationProviderAttempt(input: {
       });
       return { ...released, attempt, reused: true };
     }
+    assertPostgresProviderPollLease(generation, input.pollLeaseId);
     if (
       generation.status !== 'processing'
       || !attempt.accepted

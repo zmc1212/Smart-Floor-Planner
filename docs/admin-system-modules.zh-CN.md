@@ -1,5 +1,21 @@
 # 后台系统当前功能清单
 
+> 2026-08-03 PostgreSQL 迁移更新：`postgres-creation-service` 现为后台 worker 提供平台内部的供应商轮询任务认领。
+> 短事务会对到期且已受理的 bigint 生成记录使用 `FOR UPDATE SKIP LOCKED`，在 `externalTask` 中持久化不透明租约，
+> 并在提交后才返回供应商路由元数据。轮询、成功和失败写入可要求该租约，并拒绝过期 worker。迁移
+> `0011_ai-generation-provider-poll-queue` 新增匹配的部分索引。此项仍仅是基础层：供应商 I/O、公开路由、用户权限和
+> 工作流归入边界尚未切换；未导入、删除或重新加密 MongoDB 业务数据。
+
+> 2026-08-03 PostgreSQL 迁移更新：`postgres-creation-service` 现可在租户 RLS 范围汇总自由创作批次状态。
+> 它会先锁定 bigint 批次，再锁定其有序生成记录，校验预期数量，并且仅在状态变化时写入既有的 `processing`、
+> `succeeded`、`partial` 或 `failed`。此项仍仅是基础层：供应商 I/O、公开路由和工作流归入边界尚未切换；
+> 未导入、删除或重新加密 MongoDB 业务数据。
+
+> 2026-08-03 PostgreSQL 迁移更新：`postgres-creation-service` 现提供带 RLS 范围的供应商结果结算边界。
+> 结果存储完成后，它会锁定成功 bigint 生成记录及其输出资产、再次校验已受理尝试不可变的远端任务 ID，再原子
+> 关联 PostgreSQL 资产 URL 并扣除已冻结价格。重复结算保留首次资产和账户余额。此项仍仅是基础层：供应商 I/O、
+> 公开路由和工作流归入边界尚未切换；未导入、删除或重新加密 MongoDB 业务数据。
+
 > 2026-08-03 PostgreSQL 迁移更新：`postgres-creation-service` 已为自由创作提供
 > PostgreSQL 批次准备基础层：在平台/租户 RLS 范围校验 bigint 任务、素材、目录档案、提示词
 > 约束、企业策略和模型价格后，创建保存模型/参数/价格快照的待执行批次和生成记录。该服务尚未
@@ -75,6 +91,8 @@
 - 模型/工具：PostgreSQL `PlatformConfigRepository`、`PromotionRecordRepository`、`WorkflowNotificationRepository`、`postgres-promotion-workflow`、`postgres-workflow-automation`、微信通知工具。旧 `PromotionEnterpriseRecord`/`WorkflowNotificationLog` 模型仅保留给旧辅助兼容路径。
 - 状态：`Implemented`。支持报备、重复/冲突、公海、认领/审批、分配、业务阶段、跟进时间线、SLA 提醒、通知去重和审计。平台管理员通过 PostgreSQL 读取和更新全局报备保护期/审批配置。`/promotion-records` 已使用共享 Ant Design ProComponents 展示模式（`PageContainer`、`ProTable`、`ProForm` 与 `ProDescriptions`）承载列表、全局规则表单、报备详情、跟进、指派、公海和认领审批；此次仅迁移展示层，不改变 API、数据契约或角色边界。`/workflow-logs` 使用 `PageContainer`、汇总卡片和 `ProTable` 承载服务端分页的通知日志查看与状态筛选，保留通知日志 API、企业负责人读取范围及平台 `admin`/`super_admin` 的提醒扫描边界，表格加载和扫描失败使用共享操作反馈。报备路由、公海/冲突、工作台 summary/todos、通知日志/轮询和提醒自动化均已在租户/平台 RLS 事务内使用 typed PostgreSQL Repository；状态变更使用短事务条件更新，通知在事务提交后发送，既有 DTO、角色边界和小程序 API 路径保持不变。平台归属的 `salesperson` 可以没有企业，因为其职责是为平台拓展潜在客户；此时报告列表/详情、公海认领、工作台和通知轮询进入显式平台 B2B scope，但 Repository 的 actor 过滤和写操作角色检查仍只允许访问本人记录或可认领公海记录，且不能把新报备指定到任意企业。`Limited`：仍引用 MongoDB ObjectId 的 AI/媒体消费者要等依赖切片迁移后再切换。
 
+- 工作台展示：共享 `/` 工作台已使用 `PageContainer` 和 Ant Design 汇总/列表组件。平台角色只查看既有 API 返回的用户、正式户型和企业总量，不再展示节点、趋势、延迟或健康度等占位数据；所有非平台角色只读取 PostgreSQL/RLS 按角色裁剪的工作台卡片和待办，只有 `enterprise_admin` 额外读取既有租户范围内的线索、正式户型和员工总量。本次仅迁移展示层，不改变路由、API、权限或数据契约。
+
 ### 6. 套餐、订单与提成
 
 - 页面：`/packages`、`/enterprise-orders`、`/commissions`。
@@ -129,6 +147,8 @@
 - 同一当前生成记录锁内现也可回写非终态轮询状态：`processing` 与 `unknown` 均保持首次记录的远端任务 ID，保存上游诊断和受限的下次轮询元数据；后续 `processing` 响应会清除临时未知状态错误。网络轮询、终态结果结算、结果媒体写入和公开路由仍未切换。
 - 同一锁内现也可记录已受理尝试的成功终态：校验不可变的远端任务 ID 后保存供应商结果和实际成本快照，并将尝试和生成记录同步推进为 `succeeded`；重复成功响应保留首次结果。仍冻结的生成记录可进入独立的幂等点数扣除边界，但该步骤不写结果媒体、不调用扣除、不执行供应商网络调用，也不切换公开路由。
 - 成功终态还可原子关联一条已持久化且属于租户范围的 `ai_generation_output` 资产：锁定生成记录和资产后再次校验尝试及不可变远端任务 ID，再写入 PostgreSQL 资产 URL，并将未归属结果资产认领给该生成任务。重复关联保留首次图片，另一生成任务无法认领同一资产；该边界不执行供应商下载/存储 I/O，也不切换公开路由。
+- 外部存储完成后，供应商结果结算边界会锁定同一条成功生成记录及结果资产、再次校验已受理尝试不可变的远端任务 ID，并在同一短 RLS 事务内关联资产 URL 和完成已冻结点数的扣除流水。重复结算保留首次资产和账户余额。工作流归入仍是独立的显式用户操作；供应商 I/O 和公开路由尚未切换。
+- PostgreSQL 还可在任一生成记录终态更新后汇总创作批次：先锁定批次再锁定其有序生成记录，校验请求数量契约，并在状态变化时推导既有的 `processing`、`succeeded`、`partial` 或 `failed`。该边界不执行供应商 I/O，也不切换任务、批次或公开路由执行链。
 - 已受理尝试的失败终态现可与当前生成记录原子结算：再次校验不可变远端任务 ID 后，在同一租户 RLS 事务中记录供应商和生成失败元数据，并完成幂等释放流水以清除冻结点数。重复失败响应保留已释放余额；供应商 I/O 和公开路由仍不属于该边界。
 - 已冻结生成记录也可在内部 PostgreSQL 边界原子释放：完成幂等释放流水、标记生成失败且不再占用冻结点数；已成功且仍冻结的生成记录现可通过幂等流水原子扣除余额和冻结余额中的同一价格快照。供应商结果处理仍须先确立成功状态再调用扣除。
 - AI 对话列表、新建、详情、删除以及 Agent/动作确认的消息历史现使用 RLS PostgreSQL 事务内的 `AiChatSessionRepository`，保持原有企业/管理员隔离和字符串会话 ID；不导入历史 MongoDB 会话。

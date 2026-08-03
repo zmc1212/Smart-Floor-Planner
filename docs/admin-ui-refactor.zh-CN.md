@@ -68,6 +68,7 @@ Design ProComponents，形成统一的后台应用层。
 - `/enterprise-orders` 已使用 `PageContainer`、`ProTable` 和 `ModalForm` 承载订单搜索、状态查看与流转、企业开通和订单创建。既有 PostgreSQL 订单、套餐、报备、提成和企业开通 API，以及 `enterprise_admin`/`admin`/`super_admin` 的订单写入边界与 `admin`/`super_admin` 的企业开通边界均未改变。
 - `/packages` 已使用 `PageContainer`、`ProTable` 和 `ModalForm` 承载套餐搜索、状态查看、新建、编辑和删除。既有 PostgreSQL 套餐 API 与 `admin`/`super_admin` 平台边界均未改变；删除操作会在对应请求进行中锁定该行，表格加载失败使用共享操作反馈，窄屏下筛选行会纵向排列。
 - `/commissions` 已使用 `PageContainer`、Ant Design 汇总卡片和 `ProTable` 承载状态查看、搜索与结算操作。既有 PostgreSQL 提成 API、`salesperson` 读取范围及 `admin`/`super_admin` 结算边界均未改变；表格加载失败使用共享操作反馈，结算操作继续按记录单独防重，窄屏下筛选行会纵向排列。
+- 共享 `/` 工作台已使用 `PageContainer` 和 Ant Design 汇总/列表组件。其交互契约已审计：平台角色只查看已实现的用户、正式户型和企业总量；所有非平台角色只查看既有 PostgreSQL/RLS 按角色裁剪的工作台卡片和待办；只有 `enterprise_admin` 额外查看租户范围的资产总量。已移除占位运维健康度声明和无对应执行链路的 AI 生成入口，既有路由、API 与权限保持不变。
 - 其余平台配置页面仍属于第三阶段，实施前需先完成相应交互契约审查。
 
 ## 第一阶段验收标准

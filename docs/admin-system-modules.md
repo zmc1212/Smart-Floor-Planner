@@ -1,5 +1,33 @@
 # Admin System: Current Module Inventory
 
+> 2026-08-03 PostgreSQL migration update: `postgres-creation-service` now
+> provides a platform-internal provider-poll claim for background workers. A
+> short transaction uses `FOR UPDATE SKIP LOCKED` on due accepted bigint
+> generations, persists an opaque lease in `externalTask`, and returns provider
+> routing metadata only after commit. Poll, success, and failure writes can
+> require that lease and reject stale workers. Migration
+> `0011_ai-generation-provider-poll-queue` adds the matching partial index.
+> This is a foundation only: no provider I/O, public route, user permission, or
+> workflow-attachment boundary has switched; no MongoDB business data was
+> imported, deleted, or re-encrypted.
+
+> 2026-08-03 PostgreSQL migration update: `postgres-creation-service` now
+> reconciles a free-creation batch's aggregate status under tenant RLS. It locks
+> the bigint batch before its ordered generation rows, validates the expected
+> count, and writes the existing `processing`, `succeeded`, `partial`, or
+> `failed` status only when it changes. This is a foundation only: no provider
+> I/O, public route, or workflow-attachment boundary has switched; no MongoDB
+> business data was imported, deleted, or re-encrypted.
+
+> 2026-08-03 PostgreSQL migration update: `postgres-creation-service` now
+> provides an RLS-scoped provider-result settlement boundary. After result
+> storage has completed, it locks the succeeded bigint generation and its
+> output asset, rechecks the accepted attempt's immutable remote task ID, then
+> atomically attaches the PostgreSQL asset URL and consumes the held price.
+> Replays retain the first asset and account balance. This is a foundation only:
+> no provider I/O, public route, or workflow-attachment boundary has switched;
+> no MongoDB business data was imported, deleted, or re-encrypted.
+
 > 2026-08-03 PostgreSQL migration update: public `GET /api/branding/[id]`
 > now reads an active enterprise's name, logo, and branding through
 > `EnterpriseRepository` in a platform PostgreSQL transaction. Its route,
@@ -201,7 +229,14 @@ permission, or workflow changes.
   server-paginated notification-log review and status filtering; it preserves
   the notification-log API, enterprise-admin read scope, and platform
   `admin`/`super_admin` reminder-scan boundary. Load and scan failures use the
-  shared operation feedback UI.
+  shared operation feedback UI. The shared `/` dashboard now uses
+  `PageContainer` and Ant Design summary/list components. Platform admins see
+  only the implemented user, formal-floor-plan, and enterprise totals from the
+  existing APIs; it does not present mock node, trend, latency, or health
+  values. Every non-platform role receives the PostgreSQL/RLS-scoped workbench
+  cards and todos; only `enterprise_admin` additionally reads the existing
+  tenant-scoped lead, formal-floor-plan, and staff totals. This presentation
+  migration does not change routes, APIs, permissions, or data contracts.
   The PostgreSQL
   promotion/notification foundation now has explicit
   bigint foreign keys for claim review, measurement/design assignment, and
@@ -498,6 +533,17 @@ permission, or workflow changes.
   replay retains the first image and a second generation cannot claim it. This
   boundary performs neither provider download/storage I/O nor a public-route
   cutover.
+  Once that external storage step has finished, the provider-result settlement
+  boundary locks the same succeeded generation and result asset, rechecks the
+  accepted attempt's immutable remote task ID, then atomically binds the asset
+  URL and completes the held-credit consumption ledger. Replays retain the
+  first asset and account balance. Workflow attachment remains a separate,
+  explicit user action; provider I/O and public routes have not switched.
+  PostgreSQL can also reconcile a creation batch after any terminal generation
+  update: it locks the batch before its ordered generation rows, verifies the
+  requested-count contract, and derives its existing `processing`, `succeeded`,
+  `partial`, or `failed` status without a redundant replay write. This does not
+  perform provider I/O or switch task, batch, or public-route execution.
   An accepted attempt's terminal failure can now be settled atomically with its
   current generation: the immutable remote task ID is rechecked, provider and
   generation failure metadata are recorded, and the idempotent release ledger
