@@ -319,7 +319,7 @@ export async function createPromotionRecord(
     followUpRecords: [
       timelineEntry({
         type: 'report_created',
-        content: 'Promotion report created',
+        content: '已创建企业报备',
         actor,
         createdAt: now,
       }),

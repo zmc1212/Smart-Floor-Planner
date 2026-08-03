@@ -71,8 +71,9 @@ Page-specific visual reference:
 - Promotion records (`pages/promotion-records/promotion-records`):
   `design-references/all-pages-ip-v1/09-promotion-records.png` at the iPhone 13 Pro
   `390x844` baseline. The reference controls the enterprise-filing Xiao K hero,
-  rounded search surface, five role-view tabs, compact record-card anatomy, and
-  floating five-entry dock. Production uses the local derived scene asset
+  rounded search surface, five role-view tabs, and compact record-card anatomy.
+  It is a tertiary workflow page and must not render a page-local TabBar or dock.
+  Production uses the local derived scene asset
   `images/promotion-records/hero-scene.jpg`; enterprise data, role-scoped views,
   public-pool claim approval, loading/search/empty states, and all navigation
   remain driven by current routes and APIs.
@@ -119,6 +120,18 @@ When image reference and implementation differ:
 - Follow this document first
 - Follow `design-tokens.json` second
 - Use the image for mood and composition reference
+
+### TabBar Scope
+
+- The shared custom TabBar is rendered only by the four top-level routes declared
+  in `app.json.tabBar`: `pages/index/index`,
+  `pages/leads-management/leads-management`, `pages/ai-design/ai-design`, and
+  `pages/mine/mine`. Its raised Measure control is part of that shared TabBar,
+  not a fifth page route.
+- Every detail, create, workflow, search-result, editor, login, and other
+  secondary or tertiary page must not recreate, mount, or visually imitate a
+  TabBar. These routes stay in the native page stack and preserve their existing
+  page-level actions and navigation behavior.
 
 ## 2. Brand Direction
 

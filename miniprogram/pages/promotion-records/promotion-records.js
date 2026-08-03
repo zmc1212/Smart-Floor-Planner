@@ -1,6 +1,5 @@
 const app = getApp();
 const api = require('../../utils/api.js');
-const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
 
 const VIEW_TABS = [
   { key: 'my', label: '我的报备' },
@@ -8,14 +7,6 @@ const VIEW_TABS = [
   { key: 'design', label: '待设计' },
   { key: 'overdue', label: '已超时' },
   { key: 'pool', label: '公海' },
-];
-
-const DOCK_ITEMS = [
-  { key: 'home', text: '首页', iconPath: '/images/mine-icons/tab-home.png' },
-  { key: 'leads', text: '线索', iconPath: '/images/mine-icons/tab-leads.png' },
-  { key: 'measure', text: '量房', iconPath: '/images/mine-icons/tab-measure-active.png', center: true },
-  { key: 'design', text: '设计', iconPath: '/images/mine-icons/tab-ai.png' },
-  { key: 'mine', text: '我的', iconPath: '/images/mine-icons/tab-mine.png' },
 ];
 
 const STAGE_SUMMARY = {
@@ -27,6 +18,20 @@ const STAGE_SUMMARY = {
   paid: '客户已成交',
   closed_lost: '该报备已结束',
 };
+
+const TIMELINE_COPY = {
+  report_created: '已创建企业报备',
+};
+
+const LEGACY_TIMELINE_COPY = {
+  'Promotion report created': '已创建企业报备',
+};
+
+function localizeTimelineCopy(value, type) {
+  if (type && TIMELINE_COPY[type]) return TIMELINE_COPY[type];
+  const text = String(value || '').trim();
+  return LEGACY_TIMELINE_COPY[text] || text;
+}
 
 function buildListPath(view) {
   if (view === 'overdue') return '/workbench/todos?view=overdue';
@@ -87,6 +92,10 @@ function normalizeRecord(record, view, useTodoApi, userInfo) {
     [record.city, record.address].filter(Boolean).join(' · ') ||
     '暂无地址';
   const dueValue = record.dueAt || (useTodoApi && record.dueLabel);
+  const summary = localizeTimelineCopy(record.summary, record.summaryType);
+  const latestFollowUpText = latestFollowUp
+    ? localizeTimelineCopy(latestFollowUp.content, latestFollowUp.type)
+    : '';
 
   return {
     ...record,
@@ -100,8 +109,8 @@ function normalizeRecord(record, view, useTodoApi, userInfo) {
     statusText: status.text,
     iconPath: getIconPath(status.key),
     followUpText:
-      record.summary ||
-      (latestFollowUp && latestFollowUp.content) ||
+      summary ||
+      latestFollowUpText ||
       record.notes ||
       STAGE_SUMMARY[record.businessStage] ||
       '等待更新跟进记录',
@@ -128,7 +137,6 @@ Page({
   data: {
     view: 'my',
     viewTabs: VIEW_TABS,
-    dockItems: DOCK_ITEMS,
     skeletonItems: [1, 2, 3],
     records: [],
     displayedRecords: [],
@@ -235,39 +243,5 @@ Page({
 
   onCreateRecord() {
     wx.navigateTo({ url: '/pages/promotion-record-detail/promotion-record-detail?mode=create' });
-  },
-
-  async onDockTap(e) {
-    const key = e.currentTarget.dataset.key;
-    const pageMap = {
-      home: '/pages/index/index',
-      leads: '/pages/leads-management/leads-management',
-      design: '/pages/ai-design/ai-design',
-      mine: '/pages/mine/mine',
-    };
-
-    if (key !== 'measure') {
-      const url = pageMap[key];
-      if (url) wx.switchTab({ url });
-      return;
-    }
-
-    if (this.isOpeningSurvey) return;
-    this.isOpeningSurvey = true;
-    wx.showLoading({ title: '加载量房记录' });
-    try {
-      const res = await api.request('/floorplans?page=1&limit=1', 'GET');
-      const latestPlan = Array.isArray(res && res.data) ? res.data[0] : null;
-      if (latestPlan && latestPlan._id) {
-        openSurveyingEditor({ floorPlanId: latestPlan._id });
-      } else {
-        openSurveyingEditor({ startNewSurvey: true });
-      }
-    } catch (err) {
-      wx.showToast({ title: (err && err.error) || '加载最近量房失败', icon: 'none' });
-    } finally {
-      wx.hideLoading();
-      this.isOpeningSurvey = false;
-    }
   },
 });

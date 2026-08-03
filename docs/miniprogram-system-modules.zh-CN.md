@@ -9,7 +9,7 @@
 - `Limited`（有限支持）：依赖登录、企业角色、蓝牙硬件、供应商或特定正式墙图形态。
 - `Placeholder`（占位/未开放）：只有 mock/本地行为、规划 toast 或没有真实服务端操作。
 - 运行环境：原生微信小程序；`utils/api.js` 通过 JWT Bearer 请求；`threejs-miniprogram` 用于 3D 预览；可选蓝牙激光测距仪。
-- 主 Tab：首页 `index`、客户线索 `leads-management`、设计 `ai-design`、我的 `mine`，另有自定义中置量房操作。登录、详情、工作流、灵感库、推荐和正式量房为次级页面。
+- 主 Tab：首页 `index`、客户线索 `leads-management`、设计 `ai-design`、我的 `mine`，另有自定义中置量房操作。只有这四个 `app.json.tabBar` 路由挂载共享自定义 TabBar；登录、详情、工作流、灵感库、推荐、正式量房及其他二三级页面不得渲染本地或重复 TabBar。
 
 ## 身份与共享上下文
 
@@ -54,8 +54,8 @@
   `images/promotion-records/hero-scene.jpg` 场景表达小 K 的企业档案整理角色，
   直接呈现 `my`、`measure`、`design`、`overdue`、`pool` 五个视图，并按企业、
   联系人、电话或地址搜索当前已加载视图；卡片继续渲染真实工作流状态、跟进内容、
-  时间、认领操作、加载态和空状态。由于该路由不是顶层 TabBar 页面，参考稿式底栏
-  仍委托给现有首页、线索、正式量房、AI 设计和我的导航流程。
+  时间、认领操作、加载态和空状态。该页面是三级工作流页面，明确不渲染独立 TabBar
+  或重复的顶级导航。
 - 创建态视觉基准：`mode=create` 以
   `design-references/all-pages-ip-v1/11-promotion-record-create.png` 和
   `390x844` 为基准，使用派生的本地

@@ -16,8 +16,10 @@ utilities, and the admin APIs they call.
   distance meter integration.
 - Main tabs: Home (`index`), Leads (`leads-management`), Design
   (`ai-design`), and Mine (`mine`), plus the custom center measurement action.
-  Login, detail, workflow, inspiration, recommendation, and formal surveying
-  pages are secondary routes.
+  Only those four `app.json.tabBar` routes mount the shared custom TabBar;
+  Login, detail, workflow, inspiration, recommendation, formal surveying, and
+  every other secondary or tertiary route must not render a local or duplicated
+  TabBar.
 
 ## Shared Identity And Context
 
@@ -139,9 +141,8 @@ utilities, and the admin APIs they call.
   K's enterprise-filing role, keeps the five `my`/`measure`/`design`/`overdue`/`pool`
   views directly accessible, searches the loaded view by enterprise, contact,
   phone, or location, and renders live workflow status, follow-up, timestamp,
-  claim, loading, and empty-state data. Because this route is not a top-level
-  TabBar page, its reference-matched dock delegates to the existing Home, Leads,
-  formal-surveying, AI Design, and Mine navigation flows.
+  claim, loading, and empty-state data. This is a tertiary workflow route and
+  deliberately has no standalone TabBar or duplicated top-level navigation.
 - Create visual baseline: `mode=create` follows
   `design-references/all-pages-ip-v1/11-promotion-record-create.png` at
   `390x844`. The page uses the derived local

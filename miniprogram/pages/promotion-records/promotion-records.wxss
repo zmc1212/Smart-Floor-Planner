@@ -18,24 +18,15 @@ page {
 
 .top-safe {
   flex-shrink: 0;
+  background: #fdfcf8;
 }
 
 .hero {
   position: relative;
   flex-shrink: 0;
-  height: 286rpx;
+  height: 280rpx;
   overflow: hidden;
-}
-
-.hero::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 70rpx;
-  background: linear-gradient(180deg, rgba(246, 250, 246, 0), #f6faf6 90%);
-  pointer-events: none;
+  background: #fdfcf8;
 }
 
 .hero-scene {
@@ -101,8 +92,15 @@ page {
 }
 
 .create-btn {
+  align-self: flex-start;
+  flex: none;
+  width: 252rpx;
+  min-width: 0;
   height: 72rpx;
-  margin: auto 0 0;
+  margin-top: auto;
+  margin-right: 0;
+  margin-bottom: 0;
+  margin-left: 0;
   padding: 0 28rpx 0 22rpx;
   display: flex;
   align-items: center;
@@ -116,7 +114,6 @@ page {
   box-shadow: 0 14rpx 30rpx rgba(25, 173, 76, 0.22);
 }
 
-.create-btn::after,
 .card-action::after,
 .empty-action::after {
   border: none;
@@ -134,8 +131,8 @@ page {
 }
 
 .create-plus-icon {
-  width: 26rpx;
-  height: 26rpx;
+  width: 24rpx;
+  height: 24rpx;
 }
 
 .content-sheet {
@@ -190,13 +187,14 @@ page {
 .view-tabs {
   flex-shrink: 0;
   width: 100%;
+  height: 76rpx;
   margin-top: 20rpx;
   white-space: nowrap;
 }
 
 .view-tabs-inner {
   min-width: 100%;
-  height: 64rpx;
+  height: 76rpx;
   display: flex;
   align-items: flex-start;
   gap: 14rpx;
@@ -205,32 +203,42 @@ page {
 .view-tab {
   position: relative;
   min-width: 112rpx;
-  height: 52rpx;
-  padding: 0 20rpx;
+  height: 76rpx;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  border-radius: 13rpx;
-  background: #f2f3f3;
+  justify-content: flex-start;
   color: #596275;
   font-size: 25rpx;
   line-height: 1;
   box-sizing: border-box;
 }
 
-.view-tab.active {
+.view-tab-pill {
+  width: 100%;
+  height: 52rpx;
+  padding: 0 20rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 13rpx;
+  background: #f2f3f3;
+  color: #596275;
+  box-sizing: border-box;
+}
+
+.view-tab.active .view-tab-pill {
   background: linear-gradient(135deg, #2bc561 0%, #12a949 100%);
   color: #fff;
   font-weight: 600;
   box-shadow: 0 8rpx 18rpx rgba(27, 175, 76, 0.18);
 }
 
-.view-tab:nth-child(4) {
+.view-tab:nth-child(4) .view-tab-pill {
   color: #f27422;
   background: #fff1e7;
 }
 
-.view-tab:nth-child(4).active {
+.view-tab:nth-child(4).active .view-tab-pill {
   color: #fff;
   background: linear-gradient(135deg, #ff9d4f 0%, #f17322 100%);
 }
@@ -238,11 +246,11 @@ page {
 .tab-indicator {
   position: absolute;
   left: 50%;
-  bottom: -16rpx;
+  bottom: 0;
   width: 28rpx;
   height: 6rpx;
   border-radius: 3rpx;
-  background: currentColor;
+  background: #18ad50;
   transform: translateX(-50%);
 }
 
@@ -255,15 +263,15 @@ page {
 
 .record-list,
 .skeleton-list {
-  padding: 8rpx 4rpx 0;
+  padding: 24rpx 4rpx 0;
   box-sizing: border-box;
 }
 
 .record-card {
   position: relative;
-  min-height: 238rpx;
+  min-height: 244rpx;
   margin-bottom: 18rpx;
-  padding: 54rpx 28rpx 20rpx;
+  padding: 64rpx 28rpx 20rpx;
   overflow: hidden;
   border-radius: 22rpx;
   background: #fff;
@@ -278,7 +286,7 @@ page {
 
 .status-badge {
   position: absolute;
-  top: 0;
+  top: 14rpx;
   left: 14rpx;
   min-width: 92rpx;
   height: 42rpx;
@@ -379,7 +387,7 @@ page {
 
 .record-icon-tile {
   position: absolute;
-  top: 45rpx;
+  top: 54rpx;
   right: 24rpx;
   width: 88rpx;
   height: 88rpx;
@@ -486,7 +494,7 @@ page {
 }
 
 .skeleton-card {
-  min-height: 218rpx;
+  min-height: 230rpx;
 }
 
 .skeleton {
@@ -498,7 +506,7 @@ page {
 
 .skeleton-badge {
   position: absolute;
-  top: 0;
+  top: 14rpx;
   left: 14rpx;
   width: 92rpx;
   height: 42rpx;
@@ -583,80 +591,7 @@ page {
 }
 
 .scroll-spacer {
-  height: calc(132rpx + env(safe-area-inset-bottom));
-}
-
-.page-dock {
-  position: fixed;
-  z-index: 10;
-  left: 18rpx;
-  right: 18rpx;
-  bottom: calc(8rpx + env(safe-area-inset-bottom));
-  height: 116rpx;
-  padding: 0 12rpx;
-  display: flex;
-  align-items: stretch;
-  border-radius: 28rpx;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 -2rpx 28rpx rgba(52, 68, 57, 0.09), 0 8rpx 30rpx rgba(52, 68, 57, 0.08);
-  box-sizing: border-box;
-}
-
-.dock-item {
-  position: relative;
-  flex: 1;
-  min-width: 0;
-  height: 116rpx;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: #6e7788;
-}
-
-.dock-item:active {
-  opacity: 0.72;
-}
-
-.dock-icon-wrap {
-  width: 48rpx;
-  height: 48rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.dock-icon {
-  width: 44rpx;
-  height: 44rpx;
-}
-
-.center-icon-wrap {
-  position: absolute;
-  top: -27rpx;
-  left: 50%;
-  width: 106rpx;
-  height: 106rpx;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 8rpx 22rpx rgba(35, 67, 46, 0.14);
-  transform: translateX(-50%);
-}
-
-.center-icon {
-  width: 88rpx;
-  height: 88rpx;
-}
-
-.dock-label {
-  margin-top: 4rpx;
-  font-size: 22rpx;
-  line-height: 1;
-  white-space: nowrap;
-}
-
-.dock-item.center .dock-label {
-  margin-top: 60rpx;
+  height: calc(36rpx + env(safe-area-inset-bottom));
 }
 
 @media (max-width: 360px) {

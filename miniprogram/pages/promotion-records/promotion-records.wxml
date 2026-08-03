@@ -9,12 +9,12 @@
         <view class="title-swoop"><view class="title-dot"></view></view>
       </view>
       <text class="page-subtitle">持续跟进客户与合作企业</text>
-      <button wx:if="{{view === 'my'}}" class="create-btn" bindtap="onCreateRecord">
+      <view wx:if="{{view === 'my'}}" class="create-btn" role="button" bindtap="onCreateRecord">
         <view class="create-plus">
-          <image class="create-plus-icon" src="/images/leads-v4/plus-white.png" mode="aspectFit" />
+          <image class="create-plus-icon" src="/images/leads-ip-v1/plus-white.png" mode="aspectFit" />
         </view>
         <text>新建报备</text>
-      </button>
+      </view>
     </view>
   </view>
 
@@ -40,7 +40,7 @@
           data-view="{{item.key}}"
           bindtap="onViewTap"
         >
-          <text>{{item.label}}</text>
+          <view class="view-tab-pill"><text>{{item.label}}</text></view>
           <view wx:if="{{view === item.key}}" class="tab-indicator"></view>
         </view>
       </view>
@@ -120,18 +120,4 @@
     </scroll-view>
   </view>
 
-  <view class="page-dock">
-    <view
-      wx:for="{{dockItems}}"
-      wx:key="key"
-      class="dock-item {{item.center ? 'center' : ''}}"
-      data-key="{{item.key}}"
-      bindtap="onDockTap"
-    >
-      <view class="dock-icon-wrap {{item.center ? 'center-icon-wrap' : ''}}">
-        <image class="dock-icon {{item.center ? 'center-icon' : ''}}" src="{{item.iconPath}}" mode="aspectFit" />
-      </view>
-      <text class="dock-label">{{item.text}}</text>
-    </view>
-  </view>
 </view>
