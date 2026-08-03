@@ -298,7 +298,13 @@ Component({
 
       const following = stats.following !== undefined
         ? stats.following
-        : (stats.new || 0) + (stats.measuring || 0) + (stats.assigned || 0) + (stats.designing || 0);
+        : (stats.new || 0)
+          + (stats.contacted || 0)
+          + (stats.measuring || 0)
+          + (stats.measured || 0)
+          + (stats.assigned || 0)
+          + (stats.designing || 0)
+          + (stats.quoting || 0);
 
       this.setData({
         heroSummary: {

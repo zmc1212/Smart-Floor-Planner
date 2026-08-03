@@ -1,5 +1,22 @@
 # Admin System: Current Module Inventory
 
+> 2026-08-03 PostgreSQL migration update: `AiCreationRepository` now provides
+> typed, RLS-scoped PostgreSQL persistence primitives for media assets,
+> free-creation tasks, batches, ordered reference assets, generations, and
+> provider attempts. This is a foundation only: no public API, permission
+> boundary, workflow, media-delivery, or provider-execution route has switched;
+> those consumers remain MongoDB-backed until they can migrate together without
+> mixing bigint and ObjectId references. No business data was imported, deleted,
+> or re-encrypted.
+>
+> 2026-08-03 PostgreSQL migration update: `AiWorkflowRepository` now provides
+> RLS-scoped workflow persistence and atomically attaches a succeeded
+> free-creation generation. It locks both rows, makes the first attached result
+> the selected baseline, and leaves later attachments as candidates while
+> updating the latest result. This is still a foundation only: no workflow or
+> creation public route has switched, and no MongoDB business data was imported,
+> deleted, or re-encrypted.
+
 This is the current implementation inventory for `admin/`. Verify code first;
 update this file and `admin-system-modules.zh-CN.md` when a route, API, model,
 permission, or workflow changes.
@@ -102,6 +119,11 @@ permission, or workflow changes.
 - Status: `Implemented`. Covers enterprise onboarding/activation, tenant profile,
   branding, automation settings, AI provider/key runtime settings, usage
   snapshots, and platform-level overview metrics.
+- Admin UI: `/enterprises` uses the shared Ant Design ProComponents list pattern
+  with `PageContainer`, `ProTable`, client-side search/pagination over the
+  authoritative list API, status tags, and a final action menu. The existing
+  editor dialog and enterprise detail/AI/automation pages retain their current
+  presentation while their APIs and platform role boundary remain unchanged.
 - PostgreSQL boundary: enterprise list/detail/create/update/delete, both
   self-registration routes, and `/api/admin/enterprises/activate` use
   PostgreSQL. Activation runs in one platform transaction: it creates the
@@ -200,7 +222,9 @@ permission, or workflow changes.
 - Pages: `/floorplans`, `/floorplans/[id]`, `/floorplans/kujiale`, `/measurements`.
 - APIs: `/api/floorplans`, `/floorplans/[id]`, `/floorplans/[id]/export/dxf`,
   `/measurements`, `/kujiale/cities`, `/kujiale/floorplans/search`, and lead
-  Kuaile floor-plan association.
+  Kuaile floor-plan association. Mini Program `GET /api/floorplans/[id]` also
+  includes the linked lead's minimal identity and community summary, so direct
+  formal-survey entry can render the correct project title.
 - Components/helpers: `FloorPlanViewer`, `FloorPlanViewerWrapper`, `survey-graph`,
   `surveyDimensionPlan`, `surveyWallSolidPlan`, and `dxf`. The dependency-free
   dimension and wall-solid planners are authored under `miniprogram/utils` and
@@ -345,12 +369,27 @@ permission, or workflow changes.
   permission and unchanged API DTOs.
   Platform action prices and free-creation model/resolution prices now use
   `AiCreditPriceRepository` and `AiModelCreditPriceRepository` in platform
-  PostgreSQL transactions. The existing `AiCreditAccount` and
-  `AiCreditLedger` balance/ledger records remain MongoDB-backed. The
+  PostgreSQL transactions. AI credit accounts and ledgers now use
+  `AiCreditRepository` in tenant PostgreSQL transactions; the unique
+  `operationId` ledger row makes grants, adjustments, holds, consumption, and
+  releases idempotent with the corresponding balance update. Account and
+  ledger bigint values serialize as API numbers, and the enterprise AI-credit
+  administration route reads PostgreSQL account, policy, and ledger data while
+  keeping its existing platform role boundary. Until `AiGeneration` is
+  migrated, a legacy MongoDB ObjectId generation reference is deliberately
+  stored as `NULL` in the PostgreSQL ledger rather than cast into its bigint FK.
+  The
   `AiCreationModelProfile` catalog also remains in MongoDB because
   `AiCreationTask`, `AiCreationBatch`, and `AiGeneration` still reference its
-  legacy ObjectId; PostgreSQL stores only the executable price rows in this
-  slice.
+  legacy ObjectId; PostgreSQL stores executable price rows plus enterprise
+  credit account and ledger rows in this slice.
+  The PostgreSQL `AiCreationModelProfileRepository` is now available as the
+  tested persistence foundation for that cutover: it upserts catalog metadata,
+  preserves explicit enabled/default settings, and exposes bigint-safe catalog
+  lookups. No public route reads it yet, so model profiles, creation tasks,
+  batches, generations, provider attempts, workflows, and media assets remain
+  MongoDB-backed until the complete foreign-key execution chain is switched.
+  This foundation did not import, delete, or re-encrypt business data.
   AI conversation list/create/detail/delete plus the agent and agent-action
   message history now use `AiChatSessionRepository` in RLS-scoped PostgreSQL
   transactions, keeping the existing per-enterprise/per-administrator boundary
@@ -532,6 +571,12 @@ permission, or workflow changes.
 
 - Page/permission: `/media-storage` with the `media-storage` menu permission;
   only platform `super_admin` and `admin` roles may access it.
+- Admin UI: the management view uses the shared Ant Design ProComponents
+  application pattern: `PageContainer` for page context, configuration panels
+  for default storage and GRS-output policy, `ProTable` for provider state and
+  operational actions, and `ModalForm` for Qiniu configuration edits. This is
+  a presentation migration only; routes, APIs, role boundaries, and storage
+  behavior are unchanged.
 - APIs: `GET/POST/PATCH /api/admin/media-storage`, `PATCH/DELETE
   /api/admin/media-storage/[id]`, `POST /api/admin/media-storage/[id]/test`, and
   `POST /api/admin/media-storage/[id]/activate`.
@@ -647,8 +692,9 @@ permission, or workflow changes.
   core, leads, formal floor plans, measurements, devices, prompt-library reads,
   system-role configuration, global promotion configuration, media-storage
    configuration, promotion records, workflow notifications, reminder automation,
-   orders, commissions, enterprise activation, AI style presets, AI provider
-   configuration/runtime, and AI action/model pricing are
+    orders, commissions, enterprise activation, AI style presets, AI provider
+   configuration/runtime, AI action/model pricing, and AI credit accounts and
+   ledgers are
    PostgreSQL-backed. AI workflow, generation, and media-asset persistence
    remain on MongoDB while Phase 3 proceeds incrementally.
   Docker

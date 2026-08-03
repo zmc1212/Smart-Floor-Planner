@@ -4,6 +4,11 @@
 小程序完整功能索引见 [小程序当前功能清单](../miniprogram-system-modules.zh-CN.md)，
 正式数据合同和旧数据清理命令见 [formal-surveying.md](./formal-surveying.md)。
 
+## 编辑器标题与首次引导
+
+- 编辑器顶部显示关联线索的小区名称；入口已知时由 `utils/surveyNavigation.js` 传递，直接按 `floorPlanId` 打开时由 `GET /api/floorplans/[id]` 返回关联线索摘要。
+- 空白量房仅在本地客户端首次进入时显示三步新手引导。该引导不遮罩画布，使用本地打包的参考派生测距小 K 裁图，只保存本地显示状态，不写入墙图、草稿或测量审计。
+
 ## 能力状态
 
 - `Implemented`（已实现）：正式墙图编辑、草稿和完成保存、BLE/手动测量、测量审计、门窗编辑及门窗构件 3D 预览。

@@ -11,6 +11,7 @@ function openSurveyingEditor(options) {
   app.globalData.surveyingEditorContext = {
     leadId: opts.leadId || '',
     leadName: opts.leadName || '',
+    communityName: opts.communityName || '',
     floorPlanId: opts.floorPlanId || '',
     startNewSurvey,
     newSurveyKey

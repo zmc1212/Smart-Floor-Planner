@@ -16,6 +16,10 @@ const componentWxss = fs.readFileSync(
   path.join(miniRoot, 'components', 'lead-list', 'lead-list.wxss'),
   'utf8'
 );
+const leadsRoute = fs.readFileSync(
+  path.join(miniRoot, '..', 'admin', 'src', 'app', 'api', 'leads', 'route.ts'),
+  'utf8'
+);
 const {
   buildFloorPlanPreview,
   createWallSegments
@@ -93,8 +97,17 @@ test('Leads visual assets exist and micro-icons stay within budget', () => {
   }
 
   assert.ok(fs.statSync(
-    path.join(miniRoot, 'images', 'leads-ip-v1', 'client-concierge-scene.jpg')
+    path.join(miniRoot, 'images', 'leads-ip-v1', 'client-concierge-scene.png')
   ).size > 0);
+  const transparentMeasure = fs.statSync(
+    path.join(miniRoot, 'images', 'mine-icons', 'tab-measure-k.png')
+  );
+  assert.ok(transparentMeasure.size <= 10 * 1024, 'tab-measure-k.png exceeds the 10KB icon budget');
+  const transparentPlus = fs.readFileSync(
+    path.join(miniRoot, 'images', 'leads-ip-v1', 'plus-white.png')
+  );
+  assert.equal(transparentPlus.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+  assert.match(componentWxml, /\/images\/leads-ip-v1\/plus-white\.png/);
 });
 
 test('Leads IP v1 uses the dossier composition and data-backed floor-plan previews', () => {
@@ -103,16 +116,28 @@ test('Leads IP v1 uses the dossier composition and data-backed floor-plan previe
   assert.doesNotMatch(componentJs, /SCENE_THUMBNAILS|lead-scene-/);
   assert.match(componentWxml, /item\.planPreview\.segments/);
   assert.match(componentWxml, /class="lead-hero-summary"/);
+  assert.match(componentWxml, /class="lead-workspace"/);
   assert.match(componentWxml, /class="lead-card-back"/);
   assert.match(componentWxml, /class="tab-active-indicator"/);
   assert.doesNotMatch(componentWxml, /ellipsis\.png|class="more"/);
   assert.match(componentWxml, /class="card-bottom-row"/);
   assert.match(componentWxml, /class="lead-card-layer layer-\{\{item\.statusTone\}\}"/);
-  assert.match(componentWxss, /\.lead-hero-card\s*\{[^}]*width:\s*326rpx;[^}]*height:\s*264rpx;/s);
+  assert.match(componentWxss, /\.lead-hero-card\s*\{[^}]*width:\s*310rpx;[^}]*height:\s*256rpx;/s);
+  assert.match(componentWxss, /\.lead-workspace\s*\{[^}]*border-radius:\s*0 76rpx 0 0;/s);
   assert.match(componentWxss, /\.lead-card-layer\s*\{[^}]*width:\s*132rpx;[^}]*height:\s*51rpx;/s);
   assert.match(componentWxss, /\.lead-card\s*\{[^}]*height:\s*204rpx;/s);
-  assert.match(componentWxss, /\.status-ribbon\s*\{[^}]*min-width:\s*128rpx;[^}]*height:\s*48rpx;/s);
+  assert.match(componentWxss, /\.status-ribbon\s*\{[^}]*min-width:\s*104rpx;[^}]*height:\s*48rpx;/s);
   assert.match(componentWxss, /\.lead-plan-frame\s*\{[^}]*width:\s*220rpx;[^}]*height:\s*154rpx;/s);
+});
+
+test('Leads summary uses tenant-scoped server aggregates for every active stage', () => {
+  for (const status of ['contacted', 'measured', 'designing', 'quoting']) {
+    assert.match(leadsRoute, new RegExp(`'${status}'`));
+    assert.match(componentJs, new RegExp(`stats\\.${status}`));
+  }
+  assert.match(leadsRoute, /todayNew: result\.todayNew/);
+  assert.match(leadsRoute, /following,/);
+  assert.match(leadsRoute, /createdSince: startOfChinaBusinessDay\(\)/);
 });
 
 test('Formal wall graphs are normalized into real thumbnail wall segments', () => {

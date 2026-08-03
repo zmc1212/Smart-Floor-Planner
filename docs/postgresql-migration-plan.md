@@ -5,7 +5,7 @@
 > read this document together with the repository `AGENTS.md`, `admin/AGENTS.md`,
 > `docs/admin-system-modules.md`, and its Chinese mirror.
 >
-> Last verified: 2026-08-02
+> Last verified: 2026-08-03
 > Current branch: `dev-jr`
 > Current phase: `Phase 3 - Mongoose-to-PostgreSQL application switch`
 > (in progress)
@@ -94,7 +94,7 @@ and `cancelled`.
 | Phase 0.2 | Qiniu configuration and encrypted-field verification | complete | Read-only inspection; no secrets logged |
 | Phase 1 | PostgreSQL instance, roles, pooling, migration runner | complete | Codex verification and user database-health/admin-page regression passed |
 | Phase 2 | PostgreSQL schema and Repository foundation | complete | Codex and user acceptance passed on 2026-08-01 |
-| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, AI style presets, AI provider configuration/runtime, AI action/model pricing, and AI chat sessions switched; AI workflow/generation/media-asset domains pending |
+| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, AI style presets, AI provider configuration/runtime, AI action/model pricing, AI credit accounts/ledgers, and AI chat sessions switched; AI workflow/generation/media-asset domains pending |
 | Phase 4 | RoomiAI files/data and Qiniu configuration import | in progress: awaiting user acceptance | PostgreSQL active Roomi revision, 960 verified local previews, imported Qiniu configuration, and successful probe on 2026-08-01 |
 | Phase 5 | Contract tests and cutover rehearsal | not started | Pending |
 | Phase 6 | Production PostgreSQL cutover | not started | Pending |
@@ -466,11 +466,47 @@ is recorded.
   existing `/api/admin/ai-credit-prices` and
   `/api/admin/ai-image-model-prices` routes retain their `super_admin`/`admin`
   boundary and DTOs; price values use PostgreSQL `bigint` internally and return
-  API numbers. `AiCreditAccount`, `AiCreditLedger`, and
-  `AiCreationModelProfile` remain MongoDB-backed: the profile has legacy
-  ObjectId references from tasks, batches, and generations. No MongoDB data was
-  imported or deleted. Targeted ESLint and `npm run test:postgresql` passed
-  29/29.
+  API numbers. `AiCreationModelProfile` remains MongoDB-backed because tasks,
+  batches, and generations retain its legacy ObjectId references. No MongoDB
+  data was imported or deleted. Targeted ESLint and `npm run test:postgresql`
+  passed 29/29.
+- On 2026-08-02, AI credit accounts and ledgers were switched to
+  `AiCreditRepository` in tenant PostgreSQL transactions. The unique
+  `operationId` ledger constraint now makes grant, adjustment, hold, consume,
+  and release requests idempotent with each balance change; PostgreSQL bigint
+  values remain API numbers. The platform enterprise-credit route now reads
+  PostgreSQL enterprises, account, policy, and ledger rows, while its task list
+  remains MongoDB-backed until generation persistence moves. Legacy generation
+  ObjectIds are intentionally stored as `NULL` ledger generation references;
+  no MongoDB data was imported or deleted. Targeted ESLint,
+  `npm run test:postgresql` (30/30), and `npm run test:ai` (106/106) passed.
+- On 2026-08-02, `AiCreationModelProfileRepository` was added as the
+  PostgreSQL foundation for the free-creation execution chain. It upserts the
+  global GRS catalog, retains explicit enabled/default settings, and provides
+  bigint-safe catalog lookups. No public route is switched in this foundation
+  step because creation tasks, batches, generations, provider attempts, media
+  assets, and workflows must move together to avoid a MongoDB ObjectId to
+  PostgreSQL bigint foreign-key split. No MongoDB data was imported or deleted,
+  and no secret was re-encrypted. Targeted ESLint and `npm run test:postgresql`
+  passed 31/31.
+- On 2026-08-03, `AiCreationRepository` added the PostgreSQL persistence
+  contract for tenant-scoped media assets, creation tasks, batches and ordered
+  reference assets, generations, and provider attempts. Its integration test
+  verifies bigint relations, RLS isolation, task-view loading, current-attempt
+  updates, and the intentional archival rule that soft-deleting a task marks
+  its generations deleted without destroying their historical rows. No public
+  route is switched: workflow creation/attachment and the existing media and
+  provider execution services still use MongoDB ObjectIds and must migrate in
+  the same runtime slice. No MongoDB data was imported, deleted, or re-encrypted.
+  Targeted ESLint and `npm run test:postgresql` passed 32/32.
+- On 2026-08-03, `AiWorkflowRepository` added RLS-scoped workflow create,
+  list, lookup, update, and succeeded free-creation attachment primitives. The
+  attachment transaction locks the workflow and generation rows, selects only
+  the first attached result as the baseline, and preserves later successful
+  attachments as candidates while advancing `lastGenerationId`. Integration
+  coverage verifies bigint relations and cross-tenant invisibility. No public
+  route has switched, and no MongoDB business data was imported, deleted, or
+  re-encrypted. Targeted ESLint and `npm run test:postgresql` passed 33/33.
 - On 2026-08-02, the unused WeCom configuration, group-sharing API/UI, and
   employee WeCom identifiers were deprecated rather than migrated. The feature
   was removed from runtime code and documentation; legacy MongoDB fields and
@@ -487,7 +523,11 @@ Phase 3 acceptance status:
 | Package catalog API and Repository | Codex | passed | 2026-08-01 | PostgreSQL 20/20; targeted ESLint/build; authenticated GET 200 and unauthenticated GET 401; `0008` applied by migration container and unique index verified; runtime role DDL denied with `42501`; both source/target package tables had 0 rows, so no business import was required |
 | Promotion records/workflow runtime and notification automation | Codex | passed | 2026-08-02 | `0009`/`0010` applied by the dedicated migrator; PostgreSQL 23/23; targeted ESLint and production build passed; tenant RLS, role visibility, FK index coverage, conditional state transitions (including optimistic approval/rejection/release), relation DTOs, channel-scoped notification dedupe, route cutover, workbench todos, and reminder automation verified |
 | AI style-preset runtime | Codex | passed | 2026-08-02 | Default seeding, reads, and administrator updates use `AiStylePresetRepository` and platform transactions; JSON image-field updates preserve adjacent fields; PostgreSQL integration suite 26/26 and targeted ESLint passed. No business data was imported or deleted. |
-| AI action and model pricing | Codex | passed | 2026-08-02 | Default action pricing plus free-creation model/resolution pricing use `AiCreditPriceRepository` and `AiModelCreditPriceRepository` in platform transactions; APIs and administrator boundary are unchanged; PostgreSQL `bigint` credits serialize as numbers. Targeted ESLint and PostgreSQL integration suite 29/29 passed. Model profiles, account balances, and ledgers remain MongoDB-backed pending their ObjectId-dependent slices. |
+| AI action and model pricing | Codex | passed | 2026-08-02 | Default action pricing plus free-creation model/resolution pricing use `AiCreditPriceRepository` and `AiModelCreditPriceRepository` in platform transactions; APIs and administrator boundary are unchanged; PostgreSQL `bigint` credits serialize as numbers. Targeted ESLint and PostgreSQL integration suite 29/29 passed. Model profiles remain MongoDB-backed pending their ObjectId-dependent slice. |
+| AI credit accounts and ledgers | Codex | passed | 2026-08-02 | `AiCreditRepository` applies idempotent grant, adjustment, hold, consume, and release operations with RLS-scoped PostgreSQL transactions; bigint account/ledger values serialize as API numbers. The enterprise-credit route now reads PostgreSQL account, policy, and ledger data. Legacy MongoDB generation IDs remain `NULL` ledger references until the generation slice. PostgreSQL 30/30 and AI 106/106 passed. |
+| AI creation model-profile Repository foundation | Codex | foundation verified | 2026-08-02 | `AiCreationModelProfileRepository` upserts global GRS catalog records and preserves explicit runtime enabled/default settings; PostgreSQL 31/31 and targeted ESLint passed. No route cutover or data import occurred because dependent task/batch/generation/media/workflow foreign keys must switch together. |
+| AI creation persistence Repository foundation | Codex | foundation verified | 2026-08-03 | `AiCreationRepository` now covers RLS-scoped media, tasks, batches, reference-asset links, generations, and provider attempts; it preserves generation history when a task is archived. PostgreSQL 32/32 and targeted ESLint passed. No route cutover or data import occurred because workflow/media/provider execution consumers still require one bigint runtime slice. |
+| AI workflow Repository foundation | Codex | foundation verified | 2026-08-03 | `AiWorkflowRepository` provides RLS-scoped workflow CRUD primitives and locks a workflow plus succeeded free-creation generation during attachment. The first attached generation becomes the selected baseline and later attachments remain candidates. PostgreSQL 33/33 and targeted ESLint passed; no route cutover or data import occurred. |
 | Orders, commissions, and workbench totals | Codex | partial verification | 2026-08-02 | `CommercialRepository` and the existing RLS-protected target tables now back the order, commission, settlement, voiding, commission-record, and workbench routes; targeted lint and PostgreSQL integration suite (23/23) passed. Dedicated commercial route and transition coverage remains pending |
 | Prompt-library primary-flow manual test | User | pending | - | Requires an active PostgreSQL prompt revision after the Phase 4 import |
 | Login, authorization, tenant, and adjacent AI regression | User | pending | - | Must be repeated after the remaining Phase 3 slices |
@@ -546,8 +586,9 @@ phase. Never advance a phase based only on conversation memory.
 Phase 3 identity/enterprise core plus leads, formal floor plans, measurements,
 devices, their Mini Program aggregates, the package catalog, promotion workflow
 runtime, orders, commissions, enterprise activation, AI style presets, AI
-provider configuration/runtime, and AI action/model pricing are
-switched. The next slice should migrate AI workflow/generation/media persistence and its bigint
-lead/plan consumers. Beyond
+provider configuration/runtime, AI action/model pricing, AI credit accounts/ledgers, and the
+AI creation model-profile, persistence, and workflow Repository foundations are switched. The
+next runtime slice should migrate the connected AI workflow/generation/media persistence and its
+bigint lead/plan consumers together. Beyond
 the completed Phase 4 whitelist import, do not import production business data
 without an explicit migration slice and acceptance record.

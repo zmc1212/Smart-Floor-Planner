@@ -2,6 +2,8 @@
 
 `miniprogram/pages/surveying-editor/surveying-editor` 是唯一正式量房页面。
 
+编辑器顶部仅显示关联线索的小区名称；`utils/surveyNavigation.js` 在入口已知时携带该名称，按 `floorPlanId` 直接进入时由 `GET /api/floorplans/[id]` 返回关联线索摘要。空白量房的三步新手引导只在本地客户端首次显示，使用本地参考派生的测距小 K 裁图，且不写入 `FloorPlan.layoutData`、本地草稿或测量审计。
+
 正式 `FloorPlan.layoutData` 必须使用：
 
 ```json

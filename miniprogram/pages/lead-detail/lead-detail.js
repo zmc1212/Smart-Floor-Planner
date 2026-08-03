@@ -86,6 +86,7 @@ Page({
     openSurveyingEditor({
       leadId: this.data.leadId,
       leadName: this.data.lead && this.data.lead.name,
+      communityName: this.data.lead && this.data.lead.communityName,
       floorPlanId: plan && plan._id
     });
   },
@@ -94,6 +95,7 @@ Page({
     openSurveyingEditor({
       leadId: this.data.leadId,
       leadName: this.data.lead && this.data.lead.name,
+      communityName: this.data.lead && this.data.lead.communityName,
       startNewSurvey: true
     });
   },
@@ -105,6 +107,7 @@ Page({
     openSurveyingEditor({
       leadId: this.data.leadId,
       leadName: this.data.lead && this.data.lead.name,
+      communityName: this.data.lead && this.data.lead.communityName,
       floorPlanId: plan._id
     });
   },

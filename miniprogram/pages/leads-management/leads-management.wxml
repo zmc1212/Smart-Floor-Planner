@@ -9,7 +9,7 @@
   <view class="top-safe" style="height: {{statusBarHeight}}px;"></view>
 
   <view class="page-header" style="padding-right: {{capsuleRightInset}}px;">
-    <image class="header-scene" src="/images/leads-ip-v1/client-concierge-scene.jpg" mode="aspectFit" />
+    <image class="header-scene" src="/images/leads-ip-v1/client-concierge-scene.png" mode="aspectFit" />
     <view class="header-copy">
       <view class="title-row">
         <text class="page-title">客户线索</text>

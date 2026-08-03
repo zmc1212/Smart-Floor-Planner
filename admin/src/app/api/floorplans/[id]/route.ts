@@ -60,7 +60,25 @@ export async function GET(
         { status: 404 }
       );
     }
-    return NextResponse.json({ success: true, data: floorPlanToDto(plan) });
+    const lead = await withMiniProgramPostgresTransaction(
+      context,
+      (transaction) =>
+        new LeadRepository(transaction).findByFloorPlanId(plan.id)
+    );
+    return NextResponse.json({
+      success: true,
+      data: {
+        ...floorPlanToDto(plan),
+        communityName: lead?.communityName || null,
+        lead: lead
+          ? {
+              _id: lead.id.toString(),
+              name: lead.name,
+              communityName: lead.communityName,
+            }
+          : null,
+      },
+    });
   } catch (error: unknown) {
     return NextResponse.json(
       { success: false, error: getErrorMessage(error) },

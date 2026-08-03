@@ -89,6 +89,21 @@ Each step must preserve route permissions, tenant boundaries, APIs, models, and
 documented limitations. A page is considered migrated only after lint, build,
 desktop/mobile visual checks, and browser verification pass.
 
+## Migration Progress
+
+- The AI provider, image-model catalog, AI preset, and AI credit-price surfaces
+  use the shared Ant Design ProComponents page patterns.
+- `/media-storage` now uses `PageContainer`, Ant Design configuration panels,
+  `ProTable`, and `ModalForm`. The existing storage APIs, `media-storage`
+  permission boundary, encrypted credentials, test-before-activation rule, and
+  archive behavior are unchanged.
+- `/enterprises` now uses `PageContainer` and `ProTable` for enterprise search,
+  pagination, status review, and operational actions. Its existing editor dialog,
+  detail page, APIs, and `super_admin`/`admin` platform boundary remain intact;
+  the detail and editor presentation migrations are separate follow-up work.
+- Other platform configuration pages remain in the third migration step and
+  require their interaction contracts to be audited before implementation.
+
 ## Acceptance Criteria For Milestone One
 
 - `/ai-providers/new`, `/ai-providers/[id]`, and `/ai-models` are directly reachable and

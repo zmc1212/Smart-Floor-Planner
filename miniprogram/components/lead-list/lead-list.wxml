@@ -15,67 +15,68 @@
     </view>
   </view>
 
-  <view class="search-row">
-    <view class="search-box">
-      <image class="search-icon" src="/images/leads-v4/search.png" mode="aspectFit" />
-      <input
-        class="search-input"
-        value="{{searchKeyword}}"
-        placeholder="搜索客户"
-        placeholder-class="search-placeholder"
-        confirm-type="search"
-        bindinput="onSearchInput"
-        bindconfirm="onSearch"
-      />
-    </view>
-    <view class="filter-button" bindtap="onFilterTap">
-      <image class="filter-icon" src="/images/leads-v4/filter.png" mode="aspectFit" />
-      <text class="filter-text">筛选</text>
-    </view>
-    <view class="add-lead-button" bindtap="onAddLead">
-      <image class="add-lead-icon" src="/images/leads-v4/plus-white.png" mode="aspectFit" />
-      <text>新增客户</text>
-    </view>
-  </view>
-
-  <scroll-view scroll-x class="tabs-scroll" show-scrollbar="{{false}}">
-    <view class="tabs-row">
-      <view
-        wx:for="{{tabs}}"
-        wx:key="id"
-        class="tab-slot"
-        bindtap="onTabChange"
-        data-index="{{index}}"
-      >
-        <view class="tab-pill {{currentTab === item.id ? 'active' : ''}}">
-          <text>{{item.label}}</text>
-        </view>
-        <view wx:if="{{currentTab === item.id}}" class="tab-active-indicator"></view>
+  <view class="lead-workspace">
+    <view class="search-row">
+      <view class="search-box">
+        <image class="search-icon" src="/images/leads-v4/search.png" mode="aspectFit" />
+        <input
+          class="search-input"
+          value="{{searchKeyword}}"
+          placeholder="搜索客户"
+          placeholder-class="search-placeholder"
+          confirm-type="search"
+          bindinput="onSearchInput"
+          bindconfirm="onSearch"
+        />
+      </view>
+      <view class="filter-button" bindtap="onFilterTap">
+        <image class="filter-icon" src="/images/leads-v4/filter.png" mode="aspectFit" />
+        <text class="filter-text">筛选</text>
+      </view>
+      <view class="add-lead-button" bindtap="onAddLead">
+        <image class="add-lead-icon" src="/images/leads-ip-v1/plus-white.png" mode="aspectFit" />
+        <text>新增客户</text>
       </view>
     </view>
-  </scroll-view>
 
-  <view class="error-state" wx:if="{{errorMessage && leads.length === 0}}">
-    <text class="error-title">线索加载失败</text>
-    <text class="error-copy">{{errorMessage}}</text>
-    <view class="retry-button" bindtap="onRetry">重新加载</view>
-  </view>
+    <scroll-view scroll-x class="tabs-scroll" show-scrollbar="{{false}}">
+      <view class="tabs-row">
+        <view
+          wx:for="{{tabs}}"
+          wx:key="id"
+          class="tab-slot"
+          bindtap="onTabChange"
+          data-index="{{index}}"
+        >
+          <view class="tab-pill {{currentTab === item.id ? 'active' : ''}}">
+            <text>{{item.label}}</text>
+          </view>
+          <view wx:if="{{currentTab === item.id}}" class="tab-active-indicator"></view>
+        </view>
+      </view>
+    </scroll-view>
 
-  <view class="loading-state" wx:if="{{loading && leads.length === 0}}">
-    <view class="loading-spinner"></view>
-    <text>加载中...</text>
-  </view>
+    <view class="error-state" wx:if="{{errorMessage && leads.length === 0}}">
+      <text class="error-title">线索加载失败</text>
+      <text class="error-copy">{{errorMessage}}</text>
+      <view class="retry-button" bindtap="onRetry">重新加载</view>
+    </view>
 
-  <scroll-view
-    wx:elif="{{!errorMessage || leads.length > 0}}"
-    scroll-y
-    class="list-scroller"
-    refresher-enabled
-    refresher-triggered="{{refreshing}}"
-    bindrefresherrefresh="onRefresh"
-    bindscrolltolower="onLoadMore"
-  >
-    <view class="leads-collection" wx:if="{{leads.length > 0}}">
+    <view class="loading-state" wx:if="{{loading && leads.length === 0}}">
+      <view class="loading-spinner"></view>
+      <text>加载中...</text>
+    </view>
+
+    <scroll-view
+      wx:elif="{{!errorMessage || leads.length > 0}}"
+      scroll-y
+      class="list-scroller"
+      refresher-enabled
+      refresher-triggered="{{refreshing}}"
+      bindrefresherrefresh="onRefresh"
+      bindscrolltolower="onLoadMore"
+    >
+      <view class="leads-collection" wx:if="{{leads.length > 0}}">
       <view
         class="lead-card-stack"
         wx:for="{{leads}}"
@@ -145,13 +146,14 @@
 
       <view class="footer-tip" wx:if="{{loading}}">正在加载...</view>
       <view class="footer-tip" wx:elif="{{!hasMore}}">已经到底了</view>
-    </view>
+      </view>
 
-    <view class="empty-placeholder" wx:else>
-      <image class="empty-icon-box" src="/images/mine-icons/users.png" mode="aspectFit" />
-      <text class="empty-msg">{{searchKeyword ? '未找到匹配客户' : '暂无此类客户'}}</text>
-      <view class="empty-cta" bindtap="onAddLead">新增客户</view>
-    </view>
-  </scroll-view>
+      <view class="empty-placeholder" wx:else>
+        <image class="empty-icon-box" src="/images/mine-icons/users.png" mode="aspectFit" />
+        <text class="empty-msg">{{searchKeyword ? '未找到匹配客户' : '暂无此类客户'}}</text>
+        <view class="empty-cta" bindtap="onAddLead">新增客户</view>
+      </view>
+    </scroll-view>
+  </view>
 
 </view>

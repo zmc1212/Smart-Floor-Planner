@@ -1,9 +1,10 @@
 import crypto from 'crypto';
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
+import { AiCreditRepository, EnterpriseRepository } from '@/db/repositories';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { Enterprise } from '@/models/Enterprise';
-import { AiCreditLedger } from '@/models/AiCreditLedger';
 import { AiGeneration } from '@/models/AiGeneration';
 import { adjustAiCredits, ensureAiCreditAccount, grantAiCredits, serializeAiCreditAccount } from '@/lib/ai/credits';
 import { getEnterpriseAiPolicy } from '@/lib/ai/enterprise-policy';
@@ -16,11 +17,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     await dbConnect();
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
       const { id } = await params;
-      const enterprise = await Enterprise.findById(id).select('name').lean();
+      const enterpriseId = parsePostgresId(id, 'enterprise id');
+      const enterprise = await withPlatformTransaction((transaction) =>
+        new EnterpriseRepository(transaction).findById(enterpriseId)
+      );
       if (!enterprise) return NextResponse.json({ success: false, error: 'Enterprise not found' }, { status: 404 });
       const account = await ensureAiCreditAccount(id);
       const [ledger, tasks, policy] = await Promise.all([
-        AiCreditLedger.find({ enterpriseId: id }).sort({ createdAt: -1 }).limit(30).populate('operatorId', 'displayName username').lean(),
+        withPlatformTransaction((transaction) =>
+          new AiCreditRepository(transaction).listWithOperators(enterpriseId)
+        ),
         AiGeneration.find({ enterpriseId: id })
           .sort({ createdAt: -1 })
           .limit(30)
@@ -35,13 +41,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
           account: serializeAiCreditAccount(account),
           policy,
           ledger: ledger.map((item) => {
-            const operator = item.operatorId as unknown as PopulatedOperator | undefined;
+            const record = item.ledger;
             return {
-              id: String(item._id), operationId: item.operationId, type: item.type,
-              amount: item.amount, balanceAfter: item.balanceAfter, frozenAfter: item.frozenAfter,
-              status: item.status, note: item.note,
-              generationId: item.generationId ? String(item.generationId) : undefined,
-              operator: operator?.displayName || operator?.username || 'System', createdAt: item.createdAt,
+              id: String(record.id), operationId: record.operationId, type: record.type,
+              amount: Number(record.amount), balanceAfter: record.balanceAfter === null ? null : Number(record.balanceAfter),
+              frozenAfter: record.frozenAfter === null ? null : Number(record.frozenAfter),
+              status: record.status, note: record.note,
+              generationId: record.generationId ? String(record.generationId) : undefined,
+              operator: item.operatorDisplayName || item.operatorUsername || 'System', createdAt: record.createdAt,
             };
           }),
           tasks: tasks.map((task) => {
@@ -70,14 +77,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     await dbConnect();
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
       const { id } = await params;
+      const enterpriseId = parsePostgresId(id, 'enterprise id');
       const body = (await request.json()) as { enabledActionKeys?: AiActionKey[]; logicalModelTier?: 'standard' };
       if (!Array.isArray(body.enabledActionKeys) || body.enabledActionKeys.some((key) => !AI_ACTION_KEYS.includes(key))) {
         return NextResponse.json({ success: false, error: '企业 AI 功能策略无效' }, { status: 400 });
       }
-      const enterprise = await Enterprise.findByIdAndUpdate(
-        id,
-        { $set: { 'aiPolicy.enabledActionKeys': [...new Set(body.enabledActionKeys)], 'aiPolicy.logicalModelTier': 'standard' } },
-        { returnDocument: 'after' }
+      const enterprise = await withPlatformTransaction((transaction) =>
+        new EnterpriseRepository(transaction).update(enterpriseId, {
+          aiPolicy: { enabledActionKeys: [...new Set(body.enabledActionKeys)], logicalModelTier: 'standard' },
+        })
       );
       if (!enterprise) return NextResponse.json({ success: false, error: 'Enterprise not found' }, { status: 404 });
       return NextResponse.json({ success: true, data: await getEnterpriseAiPolicy(id) });
@@ -93,7 +101,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     await dbConnect();
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async (context) => {
       const { id } = await params;
-      const enterprise = await Enterprise.findById(id).select('_id').lean();
+      const enterpriseId = parsePostgresId(id, 'enterprise id');
+      const enterprise = await withPlatformTransaction((transaction) =>
+        new EnterpriseRepository(transaction).findById(enterpriseId)
+      );
       if (!enterprise) return NextResponse.json({ success: false, error: 'Enterprise not found' }, { status: 404 });
       const body = (await request.json()) as { action?: 'grant' | 'adjust'; amount?: number; note?: string };
       if (!body.note?.trim()) {

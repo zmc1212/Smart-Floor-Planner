@@ -1,10 +1,15 @@
 # PostgreSQL 迁移计划与进度
 
+> 2026-08-03 迁移记录：新增 `AiWorkflowRepository`，提供 RLS 范围的工作流创建、列表、查询、更新以及成功自由创作结果归入方案的基础操作。归入事务会锁定方案和生成记录，仅将首个归入结果设为基准，后续成功结果保留为候选并更新 `lastGenerationId`。集成测试覆盖 bigint 关系和跨租户不可见性。未切换公开路由，未导入、删除或重新加密 MongoDB 业务数据；定向 ESLint 和 `npm run test:postgresql`（33/33）通过。
+> 2026-08-03 迁移记录：新增 `AiCreationRepository`，为租户范围的媒体资产、自由创作任务、批次、按顺序引用资产、生成记录和供应商尝试提供 PostgreSQL 持久化契约。集成测试覆盖 bigint 关系、RLS 隔离、任务视图加载、当前尝试回填，以及“归档任务只软删除关联生成记录、不销毁历史行”的既定语义。由于工作流创建/归入、媒体交付和供应商执行服务仍依赖 MongoDB `ObjectId`，本步骤未切换公开路由，未导入、删除或重新加密 MongoDB 数据；定向 ESLint 和 `npm run test:postgresql`（32/32）通过。
+
+> 2026-08-02 迁移记录：新增 `AiCreationModelProfileRepository` 作为自由创作执行链的 PostgreSQL 基础层；它同步全局 GRS 目录并保留显式启用/默认配置。由于任务、批次、生成、供应商尝试、媒体资产和工作流必须共同切换，本步骤未改动公开路由，未导入或删除 MongoDB 数据，也未重新加密密钥；定向 ESLint 和 `npm run test:postgresql`（31/31）通过。
+
 > 文档用途：跨 Codex 对话持续推进 Smart Floor Planner 从 MongoDB/Mongoose
 > 迁移到 PostgreSQL。任何新对话开始前，先读取本文档，再读取根目录
 > `AGENTS.md`、`admin/AGENTS.md`、`docs/admin-system-modules.md` 和其中文镜像。
 >
-> 最后核验日期：2026-08-02
+> 最后核验日期：2026-08-03
 > 当前分支：`dev-jr`
 > 当前阶段：`Phase 3 - API/业务代码切换`（进行中）
 
@@ -145,7 +150,7 @@ RoomiAI 导入使用 [admin/scripts/import-roomi-prompts.ts](../admin/scripts/im
 | Phase 0.2 | 七牛配置、激活指针和加密字段核验 | 已完成 | 只读配置检查，未输出密钥 |
 | Phase 1 | PostgreSQL 实例、角色、连接池和 migration runner | 已完成 | Codex 自动验收与用户数据库健康/后台页面回归均通过 |
 | Phase 2 | PostgreSQL 目标 schema 和 Repository 基础层 | 已完成 | Codex 与用户验收已于 2026-08-01 通过 |
-| Phase 3 | API/业务代码从 Mongoose 切换到 PostgreSQL | 进行中 | 身份/企业核心、线索、正式户型、测量/设备、提示词库读取、角色、全局报备/媒体配置、套餐目录、报备记录、工作流通知、工作台、提醒运行时、订单/提成、企业激活、AI 风格预设、AI 供应商配置/运行时、AI 动作/模型价格及 AI 对话会话已切换；AI 工作流/生成/媒体资产域待完成 |
+| Phase 3 | API/业务代码从 Mongoose 切换到 PostgreSQL | 进行中 | 身份/企业核心、线索、正式户型、测量/设备、提示词库读取、角色、全局报备/媒体配置、套餐目录、报备记录、工作流通知、工作台、提醒运行时、订单/提成、企业激活、AI 风格预设、AI 供应商配置/运行时、AI 动作/模型价格、AI 点数账户/流水及 AI 对话会话已切换；AI 工作流/生成/媒体资产域待完成 |
 | Phase 4 | RoomiAI snapshot、预览资源和七牛配置导入 | 进行中：待用户手动验收 | 2026-08-01 已写入 PostgreSQL 活动 Roomi 版本、960 个已校验本地预览、七牛配置并完成探测 |
 | Phase 5 | 管理端/小程序合同测试与切换演练 | 未开始 | 待补充测试报告和恢复演练 |
 | Phase 6 | 正式切换到 PostgreSQL | 未开始 | 待记录切换时间、版本和回滚窗口 |
@@ -493,9 +498,9 @@ Phase 2 用户手动验收清单：
   事务中的 `AiCreditPriceRepository` 与 `AiModelCreditPriceRepository`。既有
   `/api/admin/ai-credit-prices`、`/api/admin/ai-image-model-prices` 路由、
   `super_admin`/`admin` 权限边界和 DTO 保持不变；价格内部使用 PostgreSQL `bigint`，
-  API 仍返回数字。`AiCreditAccount`、`AiCreditLedger` 及 `AiCreationModelProfile`
-  仍使用 MongoDB，其中模型档案继续被任务、批次和生成记录的旧 `ObjectId` 引用。
+  API 仍返回数字。`AiCreationModelProfile` 仍使用 MongoDB，其中模型档案继续被任务、批次和生成记录的旧 `ObjectId` 引用。
   未导入或删除 MongoDB 数据；定向 ESLint 与 `npm run test:postgresql` 通过（29/29）。
+- 2026-08-02：AI 点数账户和流水已切换到租户 PostgreSQL 事务中的 `AiCreditRepository`。唯一 `operationId` 流水约束使发放、调整、冻结、扣除和释放与余额更新保持原子幂等；PostgreSQL bigint 在 API 中仍返回数字。平台企业点数接口现从 PostgreSQL 读取企业、账户、策略和流水，任务列表在生成记录持久化迁移前仍从 MongoDB 读取。旧 MongoDB 生成记录的 ObjectId 明确写为流水 `generationId: NULL`；未导入或删除 MongoDB 数据。定向 ESLint、`npm run test:postgresql`（30/30）和 `npm run test:ai`（106/106）均通过。
 - 2026-08-02 已将未使用的企微配置、群分享 API/UI 和员工企微标识标记为弃用，不再迁移。
   该功能已从运行时代码与文档移除；历史 MongoDB 字段及 PostgreSQL
   `admin_users.wecom_user_id` 列保持原样，不执行数据迁移或破坏性清理。
@@ -510,7 +515,10 @@ Phase 3 验收状态：
 | 套餐目录 API 与 Repository | Codex | 通过 | 2026-08-01 | PostgreSQL 20/20；定向 ESLint/build；认证 GET 200、未认证 GET 401；migration 容器已应用 `0008` 并确认唯一索引存在；运行时角色 DDL 以 `42501` 被拒绝；来源/目标套餐表均为 0 行，无需导入业务数据 |
 | 报备记录/工作流运行时与通知自动化 | Codex | 通过 | 2026-08-02 | 专用 migrator 已应用 `0009`/`0010`；PostgreSQL 23/23、定向 ESLint 和生产 build 通过；已验证租户 RLS、角色可见性、外键索引覆盖、含乐观版本条件的审批/驳回/释放、关系 DTO、按渠道通知去重、路由切换、工作台待办和提醒自动化；订单/提成仍为 MongoDB `Limited` |
 | AI 风格预设运行时 | Codex | 通过 | 2026-08-02 | 默认初始化、读取和管理员更新均使用 `AiStylePresetRepository` 与平台事务；图片 JSON 字段更新保留相邻字段；PostgreSQL 集成测试 26/26 与定向 ESLint 通过。未导入或删除业务数据。 |
-| AI 动作和模型价格 | Codex | 通过 | 2026-08-02 | 默认动作价格及自由创作模型/分辨率价格通过 `AiCreditPriceRepository`、`AiModelCreditPriceRepository` 在平台事务中读写；API 和管理员权限边界不变；PostgreSQL `bigint` 点数序列化为数字。定向 ESLint 与 PostgreSQL 集成测试 29/29 通过。模型档案、账户余额和流水仍在 MongoDB，等待依赖其 ObjectId 的切片。 |
+| AI 动作和模型价格 | Codex | 通过 | 2026-08-02 | 默认动作价格及自由创作模型/分辨率价格通过 `AiCreditPriceRepository`、`AiModelCreditPriceRepository` 在平台事务中读写；API 和管理员权限边界不变；PostgreSQL `bigint` 点数序列化为数字。定向 ESLint 与 PostgreSQL 集成测试 29/29 通过。模型档案仍在 MongoDB，等待依赖其 ObjectId 的切片。 |
+| AI 点数账户和流水 | Codex | 通过 | 2026-08-02 | `AiCreditRepository` 在带 RLS 的 PostgreSQL 租户事务中原子执行幂等的发放、调整、冻结、扣除和释放；账户/流水 bigint 在 API 中序列化为数字。企业点数接口现从 PostgreSQL 读取账户、策略和流水。生成记录切片完成前，旧 MongoDB 生成 ID 在流水外键中保持 `NULL`。PostgreSQL 30/30、AI 106/106 通过。 |
+| AI 自由创作持久化 Repository 基础层 | Codex | 基础层已验证 | 2026-08-03 | `AiCreationRepository` 覆盖 RLS 范围的媒体、任务、批次、引用资产关联、生成和供应商尝试；归档任务时保留生成历史。PostgreSQL 32/32 和定向 ESLint 通过。由于工作流/媒体/供应商执行消费者必须统一切换，本步骤没有路由切换或数据导入。 |
+| AI 工作流 Repository 基础层 | Codex | 基础层已验证 | 2026-08-03 | `AiWorkflowRepository` 提供 RLS 范围的工作流 CRUD 基础操作，并在归入已成功自由创作结果时锁定工作流和生成记录。首个归入结果成为选中基准，后续结果保留为候选。PostgreSQL 33/33 和定向 ESLint 通过；未发生路由切换或数据导入。 |
 | 提示词库主流程手测 | 用户 | 待验证 | - | 需要 Phase 4 导入活动 PostgreSQL prompt revision 后执行 |
 | 登录、授权、租户与相邻 AI 回归 | 用户 | 待验证 | - | 其余 Phase 3 切片完成后重复执行 |
 
@@ -620,9 +628,9 @@ Phase 4 验收状态：
 
 ## 8. 当前下一步
 
-> 2026-08-02 更新：订单、提成、工作台提成汇总、企业激活、AI 供应商配置/运行时及 AI 动作/模型价格均已切换 PostgreSQL；下一批处理 AI 工作流、生成和媒体持久化。
+> 2026-08-03 更新：订单、提成、工作台提成汇总、企业激活、AI 供应商配置/运行时、AI 动作/模型价格及 AI 点数账户/流水均已切换 PostgreSQL；自由创作模型档案和持久化 Repository 基础层已就绪，下一批处理 AI 工作流、生成和媒体的统一运行时切换。
 
 Phase 3 身份/企业核心、线索、正式户型、测量、设备、小程序聚合、套餐目录、报备
-工作流运行时、订单/提成、企业激活、AI 风格预设、AI 供应商配置/运行时及 AI 动作/模型价格已切换。下一批迁移 AI 工作流、生成、媒体
+工作流运行时、订单/提成、企业激活、AI 风格预设、AI 供应商配置/运行时、AI 动作/模型价格及 AI 点数账户/流水，以及自由创作模型档案和持久化 Repository 基础层已完成。下一批迁移 AI 工作流、生成、媒体
 持久化及其 bigint 线索/户型消费者。除已完成的
 Phase 4 白名单导入外，没有显式迁移切片与验收记录时不得导入生产业务数据。

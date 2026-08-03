@@ -3,7 +3,7 @@ import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { ensureAiCreditAccount, serializeAiCreditAccount } from '@/lib/ai/credits';
 
-function quotaResponse(account: { balance?: number; frozenBalance?: number; version?: number }) {
+function quotaResponse(account: { balance?: number | bigint; frozenBalance?: number | bigint; version?: number }) {
   const credits = serializeAiCreditAccount(account);
   return {
     credits,

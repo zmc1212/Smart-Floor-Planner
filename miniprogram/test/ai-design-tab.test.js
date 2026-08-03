@@ -80,17 +80,18 @@ test('AI Design uses the shared tab-page scrolling contract', () => {
 });
 
 test('the center Measure action preserves the established floating circular tab style', () => {
-  assert.match(customTabSource, /iconPath: '\/images\/mine-icons\/tab-measure-active\.png'/);
-  assert.match(customTabSource, /selectedIconPath: '\/images\/mine-icons\/tab-measure-active\.png'/);
-  assert.match(customTabWxml, /class="tab-text" wx:if="\{\{!item\.center\}\}"/);
+  assert.doesNotMatch(customTabSource, /iconPath: '\/images\/mine-icons\/tab-measure-active\.png'/);
+  assert.match(customTabWxml, /\/images\/mine-icons\/tab-measure-k\.png/);
+  assert.match(customTabWxml, /<text class="tab-text">\{\{item\.text\}\}<\/text>/);
   assert.match(
     customTabWxss,
     /\.center-icon\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*-22rpx;[\s\S]*?width:\s*112rpx;[\s\S]*?height:\s*112rpx;[\s\S]*?border-radius:\s*50%;/
   );
   assert.match(
     customTabWxss,
-    /\.center-image\s*\{[\s\S]*?width:\s*96rpx;[\s\S]*?height:\s*96rpx;/
+    /\.center-image\s*\{[\s\S]*?width:\s*104rpx;[\s\S]*?height:\s*104rpx;/
   );
+  assert.match(customTabWxss, /\.tab-item\.center \.tab-text\s*\{[\s\S]*?top:\s*96rpx;/);
 });
 
 test('contextual AI entries preserve plan and room scope across switchTab', () => {

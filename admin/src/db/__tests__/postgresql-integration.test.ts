@@ -9,9 +9,16 @@ import {
   aiPromptSourceModels,
   aiPromptTemplateAssets,
   aiPromptTemplates,
+  aiCreationModelProfiles,
+  aiCreationTasks,
+  aiGenerations,
+  aiWorkflows,
+  mediaAssets,
   aiStylePresets,
   aiProviderConfigs,
   aiCreditPrices,
+  aiCreditAccounts,
+  aiCreditLedgers,
   aiModelCreditPrices,
   adminUsers,
   departments,
@@ -31,8 +38,12 @@ import {
 import {
   AdminUserRepository,
   AiStylePresetRepository,
+  AiCreationModelProfileRepository,
+  AiCreationRepository,
+  AiWorkflowRepository,
   AiProviderConfigRepository,
   AiCreditPriceRepository,
+  AiCreditRepository,
   AiModelCreditPriceRepository,
   CommercialRepository,
   DepartmentRepository,
@@ -63,6 +74,13 @@ import {
 import { listWorkbenchTodos } from '@/lib/postgres-workflow-automation';
 import { getEnterpriseAiPolicy } from '@/lib/ai/enterprise-policy';
 import {
+  adjustAiCredits,
+  consumeHeldAiCredits,
+  grantAiCredits,
+  holdAiCredits,
+  releaseHeldAiCredits,
+} from '@/lib/ai/credits';
+import {
   closePostgresPool,
   getPostgresPool,
   resolvePostgresRuntimeConfig,
@@ -88,6 +106,9 @@ let aiStylePresetId: bigint;
 let aiProviderConfigId: bigint;
 let aiCreditPriceId: bigint;
 let aiModelCreditPriceId: bigint;
+let aiCreditAccountId: bigint;
+const aiCreditLedgerIds: bigint[] = [];
+const aiCreationModelProfileIds: bigint[] = [];
 
 before(async () => {
   loadEnvConfig(process.cwd());
@@ -416,6 +437,108 @@ test('AI credit prices use idempotent PostgreSQL defaults and bigint-safe update
   });
 });
 
+test('AI credit accounts and ledgers apply idempotent balance operations in PostgreSQL', async () => {
+  const enterpriseId = enterpriseAId.toString();
+  const operatorId = promotionPromoterAId.toString();
+  const operationPrefix = `${testRunKey}.credits`;
+
+  const granted = await grantAiCredits({
+    enterpriseId,
+    operatorId,
+    amount: 100,
+    operationId: `${operationPrefix}.grant`,
+    note: 'PostgreSQL integration test grant',
+  });
+  aiCreditAccountId = granted.account.id;
+  aiCreditLedgerIds.push(granted.ledger.id);
+  assert.equal(granted.account.balance, BigInt(100));
+  assert.equal(granted.account.frozenBalance, BigInt(0));
+
+  const duplicateGrant = await grantAiCredits({
+    enterpriseId,
+    operatorId,
+    amount: 100,
+    operationId: `${operationPrefix}.grant`,
+    note: 'Must not apply twice',
+  });
+  assert.equal(duplicateGrant.ledger.id, granted.ledger.id);
+  assert.equal(duplicateGrant.account.balance, BigInt(100));
+
+  await assert.rejects(
+    () => grantAiCredits({
+      enterpriseId: enterpriseBId.toString(),
+      operatorId,
+      amount: 100,
+      operationId: `${operationPrefix}.grant`,
+      note: 'Cross-tenant operation replay',
+    }),
+    { message: 'AI credit operation could not be claimed' }
+  );
+
+  const held = await holdAiCredits({
+    enterpriseId,
+    operatorId,
+    generationId: 'legacy-generation-id',
+    amount: 30,
+    operationId: `${operationPrefix}.hold`,
+  });
+  aiCreditLedgerIds.push(held.ledger.id);
+  assert.equal(held.account.frozenBalance, BigInt(30));
+  assert.equal(held.ledger.generationId, null);
+
+  const consumed = await consumeHeldAiCredits({
+    enterpriseId,
+    operatorId,
+    generationId: 'legacy-generation-id',
+    amount: 20,
+    operationId: `${operationPrefix}.consume`,
+  });
+  aiCreditLedgerIds.push(consumed.ledger.id);
+  assert.equal(consumed.account.balance, BigInt(80));
+  assert.equal(consumed.account.frozenBalance, BigInt(10));
+
+  const released = await releaseHeldAiCredits({
+    enterpriseId,
+    operatorId,
+    generationId: 'legacy-generation-id',
+    amount: 10,
+    operationId: `${operationPrefix}.release`,
+  });
+  aiCreditLedgerIds.push(released.ledger.id);
+  assert.equal(released.account.frozenBalance, BigInt(0));
+
+  const adjusted = await adjustAiCredits({
+    enterpriseId,
+    operatorId,
+    amount: -30,
+    operationId: `${operationPrefix}.adjust`,
+    note: 'PostgreSQL integration test adjustment',
+  });
+  aiCreditLedgerIds.push(adjusted.ledger.id);
+  assert.equal(adjusted.account.balance, BigInt(50));
+
+  await assert.rejects(
+    () => holdAiCredits({
+      enterpriseId,
+      operatorId,
+      generationId: 'legacy-generation-id',
+      amount: 51,
+      operationId: `${operationPrefix}.insufficient`,
+    }),
+    { name: 'Error' }
+  );
+
+  await withTenantTransaction(enterpriseAId, async (transaction) => {
+    const ledger = await new AiCreditRepository(transaction).listWithOperators(enterpriseAId);
+    assert.equal(ledger.some((item) => item.ledger.operationId === `${operationPrefix}.grant`), true);
+    aiCreditLedgerIds.push(
+      ...ledger
+        .filter((item) => item.ledger.operationId.startsWith(operationPrefix))
+        .map((item) => item.ledger.id)
+    );
+  });
+});
+
 test('AI creation policy reads a PostgreSQL enterprise identity without ObjectId casting', async () => {
   await withTenantTransaction(enterpriseAId, async (transaction) => {
     await new EnterpriseRepository(transaction).update(enterpriseAId, {
@@ -449,6 +572,16 @@ after(async () => {
         await transaction
           .delete(aiModelCreditPrices)
           .where(eq(aiModelCreditPrices.id, aiModelCreditPriceId));
+      }
+      if (aiCreditLedgerIds.length) {
+        await transaction
+          .delete(aiCreditLedgers)
+          .where(inArray(aiCreditLedgers.id, aiCreditLedgerIds));
+      }
+      if (aiCreditAccountId) {
+        await transaction
+          .delete(aiCreditAccounts)
+          .where(eq(aiCreditAccounts.id, aiCreditAccountId));
       }
       if (promptRevisionId) {
         await transaction
@@ -1091,6 +1224,334 @@ test('media storage repository uses optimistic test-result updates', async () =>
     assert.equal(currentResult?.lastTestOk, true);
     assert.equal(currentResult?.lastTestMessage, 'current success');
   });
+});
+
+test('creation model profiles use PostgreSQL catalog records and preserve explicit runtime settings', async () => {
+  const key = `${testRunKey}-creation-model`;
+  let profileId: bigint | null = null;
+  try {
+    await withPlatformTransaction(async (transaction) => {
+      const repository = new AiCreationModelProfileRepository(transaction);
+      await repository.ensureCatalogProfiles([
+        {
+          key,
+          name: 'Integration catalog model',
+          description: 'Initial catalog definition',
+          sourceModelSourceIds: ['source-a'],
+          sourceType: 'grs_catalog',
+          adapterType: 'grs',
+          remoteModel: 'integration-model',
+          family: 'gpt-image-2',
+          catalogVersion: 'integration-v1',
+          generateLogicalModelKey: 'image.generate.standard',
+          editLogicalModelKey: 'image.edit.standard',
+          capabilities: {
+            supportsReferenceImages: true,
+            maxReferenceImages: 4,
+            aspectRatios: ['1:1'],
+            resolutionTiers: ['1K'],
+            supportsCustomSize: false,
+          },
+          defaults: {
+            aspectRatio: '1:1',
+            size: '1K',
+            quality: '',
+            resolutionTier: '1K',
+          },
+          enabled: true,
+          isDefault: false,
+          weight: 1,
+        },
+      ]);
+      const created = await repository.findByKey(key);
+      assert.ok(created);
+      profileId = created.id;
+      aiCreationModelProfileIds.push(created.id);
+      assert.equal(created.capabilities.maxReferenceImages, 4);
+
+      await repository.update(created.id, { enabled: false });
+      await repository.ensureCatalogProfiles([
+        {
+          key,
+          name: 'Integration catalog model v2',
+          description: 'Updated catalog definition',
+          sourceModelSourceIds: ['source-a', 'source-b'],
+          sourceType: 'grs_catalog',
+          adapterType: 'grs',
+          remoteModel: 'integration-model',
+          family: 'gpt-image-2',
+          catalogVersion: 'integration-v2',
+          generateLogicalModelKey: 'image.generate.standard',
+          editLogicalModelKey: 'image.edit.standard',
+          capabilities: {
+            supportsReferenceImages: true,
+            maxReferenceImages: 6,
+            aspectRatios: ['1:1', '16:9'],
+            resolutionTiers: ['1K', '2K'],
+            supportsCustomSize: false,
+          },
+          defaults: {
+            aspectRatio: '1:1',
+            size: '1K',
+            quality: '',
+            resolutionTier: '1K',
+          },
+          enabled: true,
+          isDefault: false,
+          weight: 2,
+        },
+      ]);
+      const updated = await repository.findById(created.id);
+      assert.equal(updated?.name, 'Integration catalog model v2');
+      assert.equal(updated?.catalogVersion, 'integration-v2');
+      assert.equal(updated?.enabled, false);
+      assert.deepEqual(updated?.capabilities.resolutionTiers, ['1K', '2K']);
+      assert.equal(await repository.findEnabledCatalogProfile(created.id), null);
+    });
+
+    const outsideCatalog = await withPlatformTransaction((transaction) =>
+      new AiCreationModelProfileRepository(transaction).list({
+        sourceType: 'grs_catalog',
+        enabledOnly: true,
+      })
+    );
+    assert.equal(outsideCatalog.some((profile) => profile.id === profileId), false);
+  } finally {
+    if (profileId) {
+      await withPlatformTransaction((transaction) =>
+        transaction
+          .delete(aiCreationModelProfiles)
+          .where(eq(aiCreationModelProfiles.id, profileId!))
+      );
+      const index = aiCreationModelProfileIds.indexOf(profileId);
+      if (index >= 0) aiCreationModelProfileIds.splice(index, 1);
+    }
+  }
+});
+
+test('AI creation repository preserves tenant-scoped media, task, batch, generation, and attempt relations', async () => {
+  let profileId: bigint | null = null;
+  let assetId: bigint | null = null;
+  let taskId: bigint | null = null;
+  try {
+    const created = await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const profiles = new AiCreationModelProfileRepository(transaction);
+      await profiles.ensureCatalogProfiles([{
+        key: `${testRunKey}-creation-runtime`,
+        name: 'Creation runtime profile',
+        sourceModelSourceIds: [],
+        sourceType: 'grs_catalog',
+        adapterType: 'grs',
+        remoteModel: 'integration-model',
+        family: 'integration',
+        catalogVersion: 'integration-v1',
+        generateLogicalModelKey: 'image.generate.standard',
+        editLogicalModelKey: 'image.edit.standard',
+        capabilities: { supportsReferenceImages: true, maxReferenceImages: 1 },
+        defaults: { aspectRatio: '1:1', resolutionTier: '1K' },
+        enabled: true,
+        isDefault: false,
+        weight: 1,
+      }]);
+      const profile = await profiles.findByKey(`${testRunKey}-creation-runtime`);
+      assert.ok(profile);
+      profileId = profile.id;
+
+      const repository = new AiCreationRepository(transaction);
+      const asset = await repository.createMediaAsset({
+        enterpriseId: enterpriseAId,
+        ownerType: 'manual_upload',
+        mimeType: 'image/png',
+        size: 4n,
+        width: 1,
+        height: 1,
+        storageProvider: 'local',
+        storageKey: `${testRunKey}/creation-reference.png`,
+      });
+      assetId = asset.id;
+      const task = await repository.createTask({
+        enterpriseId: enterpriseAId,
+        operatorId: promotionDesignerAId,
+        modelProfileId: profile.id,
+        title: 'Creation integration task',
+        prompt: 'Create an integration image',
+        referenceAssetIds: [asset.id],
+      });
+      taskId = task.id;
+      const batch = await repository.createBatch({
+        enterpriseId: enterpriseAId,
+        operatorId: promotionDesignerAId,
+        taskId: task.id,
+        modelProfileId: profile.id,
+        sequence: await repository.nextBatchSequence(task.id),
+        prompt: task.prompt,
+        modelProfileSnapshot: { key: profile.key },
+        parameterSnapshot: { aspectRatio: '1:1', resolutionTier: '1K' },
+        requestedCount: 1,
+        status: 'processing',
+        creditsEstimate: 10n,
+      }, [asset.id]);
+      const generation = await repository.createGeneration({
+        enterpriseId: enterpriseAId,
+        operatorId: promotionDesignerAId,
+        creationTaskId: task.id,
+        creationBatchId: batch.id,
+        creationModelProfileId: profile.id,
+        type: 'free_create',
+        channel: 'admin',
+        input: { style: 'free_create', customPrompt: task.prompt },
+        output: {},
+        status: 'processing',
+        actionKey: 'image.free_create',
+        billing: { status: 'held', price: 10 },
+      });
+      const attempt = await repository.createProviderAttempt({
+        enterpriseId: enterpriseAId,
+        generationId: generation.id,
+        providerConfigId: aiProviderConfigId,
+        providerKey: 'integration-provider',
+        adapterType: 'grs',
+        capability: 'image.generate',
+        logicalModelKey: 'image.generate.standard',
+        remoteModel: 'integration-model',
+        resolutionTier: '1K',
+        status: 'processing',
+        accepted: true,
+        estimatedCost: { currency: 'USD', micros: 10 },
+      });
+      await repository.updateGeneration(generation.id, { currentAttemptId: attempt.id });
+      await repository.updateTask(task.id, { lastBatchId: batch.id, prompt: 'Updated integration prompt' });
+      const view = await repository.loadTaskView(task.id);
+      assert.ok(view);
+      assert.equal(view.referenceAssetIds[0], asset.id);
+      assert.equal(view.batches.length, 1);
+      assert.equal(view.batches[0].referenceAssetIds[0], asset.id);
+      assert.equal(view.batches[0].generations[0].currentAttemptId, attempt.id);
+      return { task, batch, generation };
+    });
+
+    const crossTenant = await withTenantTransaction(enterpriseBId, async (transaction) => {
+      const repository = new AiCreationRepository(transaction);
+      return {
+        task: await repository.findTask(created.task.id),
+        asset: await repository.findMediaAsset(assetId!),
+        generation: await repository.findGeneration(created.generation.id),
+      };
+    });
+    assert.deepEqual(crossTenant, { task: null, asset: null, generation: null });
+
+    await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const archived = await new AiCreationRepository(transaction).archiveTask(taskId!);
+      assert.ok(archived);
+      assert.equal(await new AiCreationRepository(transaction).findTask(taskId!), null);
+    });
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (taskId) {
+        await transaction
+          .delete(aiGenerations)
+          .where(eq(aiGenerations.creationTaskId, taskId));
+      }
+      if (taskId) await transaction.delete(aiCreationTasks).where(eq(aiCreationTasks.id, taskId));
+      if (assetId) await transaction.delete(mediaAssets).where(eq(mediaAssets.id, assetId));
+      if (profileId) await transaction.delete(aiCreationModelProfiles).where(eq(aiCreationModelProfiles.id, profileId));
+    });
+  }
+});
+
+test('AI workflow repository atomically attaches succeeded free creations under tenant RLS', async () => {
+  let leadId: bigint | null = null;
+  let workflowId: bigint | null = null;
+  const generationIds: bigint[] = [];
+  try {
+    const created = await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const lead = await new LeadRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        assignedTo: promotionDesignerAId,
+        name: 'Workflow attachment integration lead',
+        phone: `136${String(Date.now()).slice(-8)}`,
+        source: 'integration-test',
+        status: 'new',
+      });
+      leadId = lead.id;
+      const workflows = new AiWorkflowRepository(transaction);
+      const workflow = await workflows.create({
+        enterpriseId: enterpriseAId,
+        leadId: lead.id,
+        operatorId: promotionDesignerAId,
+        title: 'Workflow attachment integration',
+        sourceAssetRole: 'floor_plan',
+        currentStageKey: 'direction',
+      });
+      workflowId = workflow.id;
+      const [firstGeneration, secondGeneration] = await transaction
+        .insert(aiGenerations)
+        .values([
+          {
+            enterpriseId: enterpriseAId,
+            operatorId: promotionDesignerAId,
+            type: 'free_create',
+            status: 'succeeded',
+            input: { style: 'free_create' },
+            output: { imageUrl: 'https://example.test/first.png' },
+          },
+          {
+            enterpriseId: enterpriseAId,
+            operatorId: promotionDesignerAId,
+            type: 'free_create',
+            status: 'succeeded',
+            input: { style: 'free_create' },
+            output: { imageUrl: 'https://example.test/second.png' },
+          },
+        ])
+        .returning();
+      generationIds.push(firstGeneration.id, secondGeneration.id);
+
+      const firstAttachment = await workflows.attachSucceededFreeCreationGeneration(
+        workflow.id,
+        firstGeneration.id
+      );
+      assert.ok(firstAttachment);
+      assert.equal(firstAttachment.workflow.selectedGenerationId, firstGeneration.id);
+      assert.equal(firstAttachment.workflow.lastGenerationId, firstGeneration.id);
+      assert.equal(firstAttachment.workflow.currentStageKey, 'soft_furnishing');
+      assert.equal(firstAttachment.generation.leadId, lead.id);
+      assert.equal(firstAttachment.generation.isSelectedBaseline, true);
+
+      const secondAttachment = await workflows.attachSucceededFreeCreationGeneration(
+        workflow.id,
+        secondGeneration.id
+      );
+      assert.ok(secondAttachment);
+      assert.equal(secondAttachment.workflow.selectedGenerationId, firstGeneration.id);
+      assert.equal(secondAttachment.workflow.lastGenerationId, secondGeneration.id);
+      assert.equal(secondAttachment.generation.isSelectedBaseline, false);
+
+      const listed = await workflows.list({ leadId: lead.id, status: 'active' });
+      assert.equal(listed.total, 1);
+      return { workflow, firstGeneration, secondGeneration };
+    });
+
+    const crossTenant = await withTenantTransaction(enterpriseBId, async (transaction) => ({
+      workflow: await new AiWorkflowRepository(transaction).findById(created.workflow.id),
+      firstGeneration: await new AiCreationRepository(transaction).findGeneration(created.firstGeneration.id),
+    }));
+    assert.deepEqual(crossTenant, { workflow: null, firstGeneration: null });
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (workflowId) {
+        await transaction
+          .update(aiWorkflows)
+          .set({ selectedGenerationId: null, lastGenerationId: null, updatedAt: new Date() })
+          .where(eq(aiWorkflows.id, workflowId));
+        await transaction.delete(aiWorkflows).where(eq(aiWorkflows.id, workflowId));
+      }
+      if (generationIds.length) {
+        await transaction.delete(aiGenerations).where(inArray(aiGenerations.id, generationIds));
+      }
+      if (leadId) await transaction.delete(leads).where(eq(leads.id, leadId));
+    });
+  }
 });
 
 test('media storage list ordering has a matching composite index', async () => {

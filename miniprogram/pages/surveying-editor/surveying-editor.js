@@ -27,6 +27,7 @@ const NUMBER_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '清空', '0',
 const FORMAL_DRAFT_KEY = 'surveying_draft_v1';
 const FORMAL_DRAFT_BACKUP_KEY = 'surveying_last_draft_backup';
 const FORMAL_SERVER_DRAFT_ID_KEY = 'surveying_floorplan_id';
+const SURVEYING_ONBOARDING_SEEN_KEY = 'surveying_editor_onboarding_v1_seen';
 const COMPONENT_SPEC_TABS = [
   { key: 'length', label: '长度' },
   { key: 'depth', label: '宽度' },
@@ -268,7 +269,8 @@ Page({
     rightRailBottom: 0,
     bottomSafeArea: 0,
     leadId: '',
-    title: '正式量房',
+    communityName: '',
+    title: '未填写小区',
     bleConnected: !!app.globalData.bleConnected,
     activeView: '2D',
     activeTool: 'straight',
@@ -299,6 +301,13 @@ Page({
     measurementTitle: '准备测墙',
     measurementValue: '从橙色光标拖出墙体方向',
     isSurveyEmpty: true,
+    showOnboarding: false,
+    onboardingStep: 0,
+    onboardingTarget: 'cursor',
+    onboardingTitle: '先放置起点',
+    onboardingCopy: '拖动底部光标到墙角，确定第一面墙的起点',
+    onboardingProgress: '1 / 3',
+    onboardingActionLabel: '下一步',
     modePillText: '测墙模式',
     manualActionActive: false,
     manualActionSubtitle: '输入当前墙',
@@ -452,11 +461,13 @@ Page({
       rightRailBottom: safeAreaBottom + 154,
       bottomSafeArea: safeAreaBottom,
       leadId,
+      communityName: context.communityName || '',
       serverDraftId: this.serverDraftId || '',
-      title: context.leadName ? `${context.leadName} · 正式量房` : '正式量房',
+      title: context.communityName || '未填写小区',
       formalNotice: restoredDraft ? '已恢复本地草稿' : '新建正式量房'
     });
     this.syncFromDraft();
+    if (!this.serverDraftId) this.maybeShowOnboarding();
     if (this.serverDraftId) this.loadFormalFloorPlan(this.serverDraftId);
   },
 
@@ -595,11 +606,77 @@ Page({
       this.serverDraftId = res.data._id;
       this.draft = restored;
       this.persistServerDraftId(this.data.leadId || '', res.data._id);
-      this.setData({ title: res.data.name || this.data.title, formalNotice: res.data.status === 'completed' ? '已完成量房' : '已恢复正式草稿' });
+      const communityName = (res.data.lead && res.data.lead.communityName)
+        || res.data.communityName
+        || (res.data.externalSource && res.data.externalSource.communityName)
+        || (res.data.creator && res.data.creator.communityName)
+        || this.data.communityName
+        || '';
+      this.setData({
+        communityName,
+        title: communityName || '未填写小区',
+        formalNotice: res.data.status === 'completed' ? '已完成量房' : '已恢复正式草稿'
+      });
       this.syncFromDraft();
+      this.maybeShowOnboarding();
     } catch (err) {
       wx.showToast({ title: (err && err.error) || err.message || '户型加载失败', icon: 'none' });
+      this.maybeShowOnboarding();
     }
+  },
+
+  maybeShowOnboarding() {
+    if (this.onboardingResolved) return;
+    this.onboardingResolved = true;
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    if (!floor || (floor.walls && floor.walls.length)) return;
+    let seen = false;
+    try {
+      seen = !!wx.getStorageSync(SURVEYING_ONBOARDING_SEEN_KEY);
+    } catch (err) {
+      seen = false;
+    }
+    if (seen) return;
+    try {
+      wx.setStorageSync(SURVEYING_ONBOARDING_SEEN_KEY, true);
+    } catch (err) {
+      // The guide remains usable when storage is unavailable.
+    }
+    this.setData({
+      showOnboarding: true,
+      onboardingStep: 0,
+      onboardingTarget: 'cursor',
+      onboardingTitle: '先放置起点',
+      onboardingCopy: '拖动底部光标到墙角，确定第一面墙的起点',
+      onboardingProgress: '1 / 3',
+      onboardingActionLabel: '下一步'
+    });
+  },
+
+  onOnboardingNext() {
+    const step = Number(this.data.onboardingStep || 0);
+    if (step >= 2) {
+      this.setData({ showOnboarding: false });
+      return;
+    }
+    const next = step + 1;
+    const content = [
+      ['cursor', '先放置起点', '拖动底部光标到墙角，确定第一面墙的起点'],
+      ['straight', '选择墙体工具', '右侧选择直线或斜线，再沿墙体方向拖动'],
+      ['measure', '输入真实尺寸', '可手动输入毫米，也可点击测距读取蓝牙设备']
+    ][next];
+    this.setData({
+      onboardingStep: next,
+      onboardingTarget: content[0],
+      onboardingTitle: content[1],
+      onboardingCopy: content[2],
+      onboardingProgress: `${next + 1} / 3`,
+      onboardingActionLabel: next === 2 ? '开始量房' : '下一步'
+    });
+  },
+
+  onOnboardingSkip() {
+    this.setData({ showOnboarding: false });
   },
 
   async saveFormalFloorPlan(status) {
@@ -1580,6 +1657,7 @@ Page({
       measurementTitle: stageMessage.title,
       measurementValue: stageMessage.value,
       isSurveyEmpty: !floor.walls.length,
+      showOnboarding: this.data.showOnboarding && !floor.walls.length,
       modePillText: bottomState.modePillText,
       manualActionActive: bottomState.manualActionActive,
       manualActionSubtitle: bottomState.manualActionSubtitle,

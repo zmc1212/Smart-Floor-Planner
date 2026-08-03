@@ -69,13 +69,16 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
   transform: translateX(-50%);
 }
 
 .center-image {
   display: block;
-  width: 96rpx;
-  height: 96rpx;
+  width: 104rpx;
+  height: 104rpx;
+  max-width: none;
+  flex-shrink: 0;
 }
 
 .tab-text,
@@ -94,5 +97,14 @@
 }
 
 .tab-item.active .tab-text {
+  font-weight: 600;
+}
+
+.tab-item.center .tab-text {
+  position: absolute;
+  top: 96rpx;
+  z-index: 2;
+  margin-top: 0;
+  color: #079b45;
   font-weight: 600;
 }

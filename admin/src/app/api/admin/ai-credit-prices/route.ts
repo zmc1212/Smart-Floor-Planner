@@ -22,23 +22,25 @@ export async function PATCH(request: Request) {
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async (context) => {
       const body = (await request.json()) as { items?: Array<{ actionKey: AiActionKey; credits: number; enabled: boolean }> };
       if (!Array.isArray(body.items) || !body.items.length) return NextResponse.json({ success: false, error: '缺少价格配置' }, { status: 400 });
-      for (const item of body.items) {
+      const items = body.items;
+      for (const item of items) {
         const credits = Math.trunc(Number(item.credits));
         if (!AI_ACTION_KEYS.includes(item.actionKey) || credits < 1 || credits > 100000) {
           return NextResponse.json({ success: false, error: '价格配置无效' }, { status: 400 });
         }
       }
       await ensureDefaultAiCreditPrices();
-      for (const item of body.items) {
-        const credits = Math.trunc(Number(item.credits));
-        await withPlatformTransaction((transaction) =>
-          new AiCreditPriceRepository(transaction).updateByActionKey(item.actionKey, {
+      await withPlatformTransaction(async (transaction) => {
+        const prices = new AiCreditPriceRepository(transaction);
+        for (const item of items) {
+          const credits = Math.trunc(Number(item.credits));
+          await prices.updateByActionKey(item.actionKey, {
             credits: BigInt(credits),
             enabled: Boolean(item.enabled),
             updatedBy: parsePostgresId(context.userId, 'userId'),
-          })
-        );
-      }
+          });
+        }
+      });
       return NextResponse.json({ success: true, data: await listAiCreditPrices() });
     });
   } catch (error) {

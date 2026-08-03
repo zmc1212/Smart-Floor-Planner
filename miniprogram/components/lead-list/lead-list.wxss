@@ -13,9 +13,10 @@
   position: relative;
   z-index: 3;
   flex-shrink: 0;
-  width: 326rpx;
-  height: 264rpx;
-  margin-left: 36rpx;
+  width: 310rpx;
+  height: 256rpx;
+  margin-top: 8rpx;
+  margin-left: 38rpx;
   overflow: hidden;
   border-radius: 22rpx 18rpx 20rpx 20rpx;
   background: linear-gradient(145deg, #2ebc6c 0%, #19aa58 58%, #0b9247 100%);
@@ -29,7 +30,7 @@
   position: absolute;
   top: -50rpx;
   left: -12rpx;
-  width: 362rpx;
+  width: 350rpx;
   height: 126rpx;
   background: linear-gradient(155deg, #2fc176 0%, #21ae62 62%, #129850 100%);
   clip-path: polygon(0 53%, 42% 0, 100% 52%, 100% 100%, 0 100%);
@@ -40,8 +41,8 @@
   z-index: 2;
   top: 7rpx;
   right: -2rpx;
-  width: 84rpx;
-  height: 84rpx;
+  width: 80rpx;
+  height: 80rpx;
   border-radius: 0 17rpx 0 20rpx;
   background: linear-gradient(140deg, rgba(250, 251, 246, 0.98) 0%, #edf2e7 62%, #cfdbc9 100%);
   clip-path: polygon(12% 0, 100% 0, 100% 88%);
@@ -53,7 +54,7 @@
   z-index: 3;
   display: flex;
   height: 100%;
-  padding: 47rpx 38rpx 27rpx;
+  padding: 45rpx 36rpx 25rpx;
   flex-direction: column;
   box-sizing: border-box;
 }
@@ -92,12 +93,25 @@
   opacity: 0.82;
 }
 
+.lead-workspace {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  border-radius: 0 76rpx 0 0;
+  background: #ffffff;
+  box-shadow: 0 -12rpx 34rpx rgba(45, 69, 52, 0.12);
+  overflow: hidden;
+}
+
 .search-row {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 14rpx;
-  padding: 26rpx 36rpx 24rpx;
+  gap: 16rpx;
+  padding: 26rpx 40rpx 24rpx 38rpx;
   box-sizing: border-box;
 }
 
@@ -162,7 +176,7 @@
 
 .add-lead-button {
   display: flex;
-  width: 172rpx;
+  width: 170rpx;
   height: 64rpx;
   flex-shrink: 0;
   align-items: center;
@@ -193,9 +207,9 @@
 
 .tabs-scroll::after {
   position: absolute;
-  right: 34rpx;
+  right: 38rpx;
   bottom: 14rpx;
-  left: 34rpx;
+  left: 38rpx;
   height: 1px;
   background: #d9dfe2;
   content: "";
@@ -207,7 +221,7 @@
   display: flex;
   width: 750rpx;
   height: 66rpx;
-  padding: 0 34rpx;
+  padding: 0 38rpx;
   align-items: flex-end;
   gap: 5rpx;
   box-sizing: border-box;
@@ -262,12 +276,12 @@
 .list-scroller {
   flex: 1;
   min-height: 0;
-  padding-top: 22rpx;
+  padding-top: 32rpx;
   box-sizing: border-box;
 }
 
 .leads-collection {
-  padding: 0 34rpx 48rpx;
+  padding: 0 38rpx 48rpx;
   box-sizing: border-box;
 }
 
@@ -303,7 +317,7 @@
 
 .lead-card {
   position: absolute;
-  top: 24rpx;
+  top: 8rpx;
   right: 0;
   left: 7rpx;
   z-index: 1;
@@ -329,12 +343,12 @@
 .status-ribbon {
   position: absolute;
   z-index: 3;
-  top: -24rpx;
+  top: -8rpx;
   left: 0;
   display: flex;
-  min-width: 128rpx;
+  min-width: 104rpx;
   height: 48rpx;
-  padding: 0 18rpx;
+  padding: 0 6rpx;
   align-items: center;
   justify-content: center;
   border-radius: 12rpx 12rpx 9rpx 0;
@@ -509,7 +523,7 @@
   position: relative;
   width: 220rpx;
   height: 154rpx;
-  margin-top: -30rpx;
+  margin-top: -20rpx;
   flex-shrink: 0;
   overflow: hidden;
   border: 7rpx solid rgba(255, 255, 255, 0.96);

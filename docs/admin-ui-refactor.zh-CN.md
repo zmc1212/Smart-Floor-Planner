@@ -54,6 +54,13 @@ Design ProComponents，形成统一的后台应用层。
 
 每一步必须保持路由权限、租户边界、API、模型和已记录限制不变。页面只有通过 lint、build、桌面/移动视觉检查及浏览器验证，才视为迁移完成。
 
+## 迁移进度
+
+- AI 供应商、绘图模型目录、AI 预设和 AI 点数价格页面均已使用共享的 Ant Design ProComponents 页面模式。
+- `/media-storage` 已使用 `PageContainer`、Ant Design 配置面板、`ProTable` 和 `ModalForm`。既有存储 API、`media-storage` 权限边界、凭证加密、测试后才能激活及归档行为均未改变。
+- `/enterprises` 已使用 `PageContainer` 和 `ProTable` 完成企业搜索、分页、状态审核和操作入口迁移。既有资料编辑弹窗、详情页、API 及平台 `super_admin`/`admin` 边界保持不变；详情和编辑展示层将作为后续独立工作继续迁移。
+- 其余平台配置页面仍属于第三阶段，实施前需先完成相应交互契约审查。
+
 ## 第一阶段验收标准
 
 - `/ai-providers/new`、`/ai-providers/[id]` 与 `/ai-models` 可直接访问，浏览器前进、后退可用。

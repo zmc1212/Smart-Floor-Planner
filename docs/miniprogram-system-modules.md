@@ -89,7 +89,7 @@ utilities, and the admin APIs they call.
 
 - Pages: `pages/lead-form/lead-form`, `pages/leads-management/leads-management`,
   `pages/lead-detail/lead-detail`.
-- APIs: `/api/leads`, `/api/leads/[id]`, `/api/floorplans/[id]` DELETE.
+- APIs: `/api/leads`, `/api/leads/[id]`, `/api/floorplans/[id]` GET/DELETE.
 - Implemented: customer name/phone/community/area/style capture, recent leads,
   list/detail views, formal-plan association, primary-plan name/status/closed
   space count in lead detail, continue measurement, start a new independent
@@ -107,8 +107,14 @@ utilities, and the admin APIs they call.
   formal wall graph or a real external preview URL, and live data, pagination,
   errors, empty states, navigation, and the shared five-item custom tab bar remain
   authoritative. The packaged scene derivative is
-  `images/leads-ip-v1/client-concierge-scene.jpg`; it contains no customer counts
-  or interactive controls.
+  `images/leads-ip-v1/client-concierge-scene.png`; it contains no customer counts
+  or interactive controls. The shared circular Measure entry uses the transparent
+  `images/mine-icons/tab-measure-k.png` character with a separate live label.
+  Both assets were exported from a generated fixed-cell asset board rather than
+  cropped directly from the flattened page reference. The summary's new-today,
+  active-follow-up, and converted
+  counts are tenant/staff-scoped server aggregates rather than values inferred from
+  the currently loaded page.
 - Limited: lead creation and plan operations require a valid Mini Program session;
   phone and community validation are client-side plus server-side checks. Search
   covers the records currently loaded by pagination; choosing a status performs
@@ -367,7 +373,8 @@ utilities, and the admin APIs they call.
   compact two-item todo list, and AI design banner use production crops derived from
   `design-references/mine/miniprogram-mine-v6.png` and
   `design-references/mine/miniprogram-mine-v6-icon.png`. The established circular
-  floating Measure action remains the center TabBar treatment. Live profile data,
+  floating Measure action remains the center TabBar treatment and uses the shared
+  generated transparent Xiao K asset with a separate live label. Live profile data,
   server-provided actions and metrics, role boundaries, and existing navigation
   remain authoritative; the redesign does not add backend capabilities. Summary
   cards remain horizontally reachable when a role returns more than the three
@@ -405,19 +412,25 @@ utilities, and the admin APIs they call.
 ## Formal Surveying
 
 - Page: `pages/surveying-editor/surveying-editor`; all entries use
-  `utils/surveyNavigation.js` with `leadId` and/or `floorPlanId`.
+  `utils/surveyNavigation.js` with `leadId` and/or `floorPlanId`. The entry
+  context carries the lead community when available; `GET /api/floorplans/[id]`
+  also returns its linked lead summary for direct plan entry.
 - Data contract: `FloorPlan.layoutData` is only `{ version: 4,
   measurementMode: 'surveying', surveyGraph }`; graph units are millimetres.
 - Visual baseline: `design-references/all-pages-ip-v1/03-surveying-editor-idle.png`,
   `18-surveying-editor-active.png`, and `19-surveying-state-board.png` at the
   iPhone 13 Pro `390x844` baseline. The delivered editor uses the reference's
   full-width workspace, centred truthful save state, four-item right tool rail,
-  and one bottom dock for undo/redo, cursor placement, and BLE ranging. Before
-  the first wall, locally shipped Xiao K appears only as the measurement guide;
-  it leaves the canvas as soon as measured content exists. The dock's ranging
-  action opens the existing length input and requests a live device reading;
-  its connected treatment reflects the actual BLE callback. This visual work
-  changes no API, role boundary, graph contract, audit queue, or export scope.
+  and one bottom dock for undo/redo, cursor placement, and BLE ranging. The
+  header title is the linked community name, with `未填写小区` only as a missing-data
+  fallback. On the first empty surveying session per local client, a compact
+  three-step guide highlights cursor placement, wall tools, and manual/BLE
+  measurement without masking the canvas; it uses the bundled, reference-derived
+  measuring Xiao K crop and never reappears after that first display. The dock's
+  ranging action opens the existing length input and requests a live device
+  reading; its connected treatment reflects the actual BLE callback. This change
+  adds only the linked lead summary to the existing plan-detail read response;
+  it does not change role boundaries, graph contract, audit queue, or export scope.
 - Implemented editor behavior: startup restore, local draft and cloud draft
   persistence, straight and diagonal wall preview/commit, live BLE/manual length,
   remeasure, shared-wall closure, advisory close candidate, and direct closure

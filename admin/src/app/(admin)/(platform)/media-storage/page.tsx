@@ -5,8 +5,8 @@ import {
   Archive,
   CheckCircle2,
   Cloud,
-  Database,
   HardDrive,
+  MoreHorizontal,
   Pencil,
   Plus,
   RefreshCw,
@@ -14,38 +14,18 @@ import {
   TestTube2,
   XCircle,
 } from 'lucide-react';
-import { useFetch } from '@/hooks/useFetch';
+import {
+  ModalForm,
+  PageContainer,
+  ProFormSelect,
+  ProFormText,
+  ProTable,
+  type ProColumns,
+} from '@ant-design/pro-components';
+import { Alert, Button, Card, Dropdown, Flex, Modal, Result, Skeleton, Space, Tag, Typography } from 'antd';
+import type { MenuProps } from 'antd';
 import { notify } from '@/components/ui/operation-feedback';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { useFetch } from '@/hooks/useFetch';
 
 type StorageStats = {
   activeCount: number;
@@ -75,61 +55,66 @@ type QiniuConfig = {
   stats: StorageStats | null;
 };
 
+type LocalConfig = {
+  id: 'local';
+  key: 'local';
+  name: string;
+  driver: 'local';
+  status: 'active';
+  persistent: boolean;
+  storageDirectoryConfigured: boolean;
+  stats: StorageStats | null;
+};
+
 type MediaStorageData = {
   activeProviderKey: string;
   activatedAt: string | null;
   grsOutputPersistence: { enabled: boolean };
   encryption: { ready: boolean; dedicated: boolean };
-  local: {
-    id: 'local';
-    key: 'local';
-    name: string;
-    driver: 'local';
-    status: 'active';
-    persistent: boolean;
-    storageDirectoryConfigured: boolean;
-    stats: StorageStats | null;
-  };
+  local: LocalConfig;
   configs: QiniuConfig[];
 };
 
+type StorageRow = LocalConfig | QiniuConfig;
+
 type StorageForm = {
-  id?: string;
   key: string;
   name: string;
-  accessKey: string;
-  secretKey: string;
+  accessKey?: string;
+  secretKey?: string;
   bucket: string;
   region: string;
   domain: string;
-  objectPrefix: string;
+  objectPrefix?: string;
+};
+
+type ConfirmAction = {
+  type: 'activate' | 'archive';
+  row: StorageRow;
 };
 
 const REGION_OPTIONS = [
-  ['z0', '华东-浙江'],
-  ['cn-east-2', '华东-浙江 2'],
-  ['z1', '华北-河北'],
-  ['z2', '华南-广东'],
-  ['na0', '北美-洛杉矶'],
-  ['as0', '亚太-新加坡'],
-] as const;
+  { value: 'z0', label: '华东-浙江' },
+  { value: 'cn-east-2', label: '华东-浙江 2' },
+  { value: 'z1', label: '华北-河北' },
+  { value: 'z2', label: '华南-广东' },
+  { value: 'na0', label: '北美-洛杉矶' },
+  { value: 'as0', label: '亚太-新加坡' },
+];
 
-function emptyForm(): StorageForm {
-  return {
-    key: '',
-    name: '',
-    accessKey: '',
-    secretKey: '',
-    bucket: '',
-    region: 'z0',
-    domain: 'https://',
-    objectPrefix: '',
-  };
-}
+const EMPTY_FORM: StorageForm = {
+  key: '',
+  name: '',
+  accessKey: '',
+  secretKey: '',
+  bucket: '',
+  region: 'z0',
+  domain: 'https://',
+  objectPrefix: '',
+};
 
-function editForm(config: QiniuConfig): StorageForm {
+function toEditForm(config: QiniuConfig): StorageForm {
   return {
-    id: config.id,
     key: config.key,
     name: config.name,
     accessKey: '',
@@ -154,46 +139,47 @@ function formatBytes(value?: number) {
   return `${amount.toFixed(amount >= 10 ? 1 : 2)} ${units[index]}`;
 }
 
-function StatsSummary({ stats }: { stats: StorageStats | null }) {
+function AssetStats({ stats }: { stats: StorageStats | null }) {
   return (
-    <div className="grid grid-cols-3 gap-3 rounded-lg bg-muted/40 p-3 text-sm">
-      <div><div className="text-muted-foreground">有效资产</div><div className="mt-1 font-medium">{stats?.activeCount || 0} / {formatBytes(stats?.activeBytes)}</div></div>
-      <div><div className="text-muted-foreground">待清理</div><div className="mt-1 font-medium">{stats?.pendingPurgeCount || 0} / {formatBytes(stats?.pendingPurgeBytes)}</div></div>
-      <div><div className="text-muted-foreground">累计</div><div className="mt-1 font-medium">{stats?.totalCount || 0} / {formatBytes(stats?.totalBytes)}</div></div>
-    </div>
+    <Flex vertical gap={2}>
+      <Typography.Text>{stats?.activeCount || 0} 个 / {formatBytes(stats?.activeBytes)}</Typography.Text>
+      <Typography.Text type="secondary" className="text-xs">
+        待清理 {stats?.pendingPurgeCount || 0} 个 / {formatBytes(stats?.pendingPurgeBytes)}
+      </Typography.Text>
+      <Typography.Text type="secondary" className="text-xs">
+        累计 {stats?.totalCount || 0} 个 / {formatBytes(stats?.totalBytes)}
+      </Typography.Text>
+    </Flex>
   );
 }
 
-function TestStatus({ config }: { config: QiniuConfig }) {
-  if (config.lastTestOk === true) {
-    return <Badge variant="secondary"><CheckCircle2 className="mr-1 size-3" />测试通过</Badge>;
-  }
-  if (config.lastTestOk === false) {
-    return <Badge variant="destructive"><XCircle className="mr-1 size-3" />测试失败</Badge>;
-  }
-  return <Badge variant="outline">待测试</Badge>;
+function ConnectionStatus({ row }: { row: StorageRow }) {
+  if (row.driver === 'local') return <Tag color="processing">内置</Tag>;
+  if (row.status === 'archived') return <Tag>已归档</Tag>;
+  if (row.lastTestOk === true) return <Tag color="success" icon={<CheckCircle2 size={13} />}>测试通过</Tag>;
+  if (row.lastTestOk === false) return <Tag color="error" icon={<XCircle size={13} />}>测试失败</Tag>;
+  return <Tag>待测试</Tag>;
 }
 
 export default function MediaStoragePage() {
   const { data, isLoading, error, mutate } = useFetch<MediaStorageData>('/api/admin/media-storage');
-  const [form, setForm] = useState<StorageForm | null>(null);
+  const [editingConfig, setEditingConfig] = useState<QiniuConfig | null | undefined>(undefined);
   const [saving, setSaving] = useState(false);
   const [workingKey, setWorkingKey] = useState('');
-  const [confirmAction, setConfirmAction] = useState<{
-    type: 'activate' | 'archive';
-    id: string;
-    key: string;
-    name: string;
-  } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
 
-  const canSave = useMemo(() => Boolean(
-    form?.key.trim()
-    && form?.name.trim()
-    && form?.bucket.trim()
-    && form?.region
-    && form?.domain.trim()
-    && (form.id || (form.accessKey.trim() && form.secretKey.trim()))
-  ), [form]);
+  const rows = useMemo<StorageRow[]>(
+    () => data ? [data.local, ...data.configs] : [],
+    [data],
+  );
+  const activeConfig = data?.activeProviderKey === 'local'
+    ? data.local
+    : data?.configs.find((config) => config.key === data?.activeProviderKey);
+  const activeQiniuConfig = data?.configs.find((config) => config.key === data?.activeProviderKey);
+  const canEnableGrsOutputPersistence = activeQiniuConfig?.lastTestOk === true;
+  const isCreateModalOpen = editingConfig === null;
+  const isEditModalOpen = Boolean(editingConfig);
+  const isFormOpen = isCreateModalOpen || isEditModalOpen;
 
   async function requestAction(url: string, init?: RequestInit) {
     const response = await fetch(url, init);
@@ -202,34 +188,36 @@ export default function MediaStoragePage() {
     return result.data;
   }
 
-  const save = async () => {
-    if (!form || !canSave) return;
+  const save = async (values: StorageForm) => {
     setSaving(true);
     try {
-      await requestAction(form.id ? `/api/admin/media-storage/${form.id}` : '/api/admin/media-storage', {
-        method: form.id ? 'PATCH' : 'POST',
+      const editing = editingConfig && editingConfig.id;
+      await requestAction(editing ? `/api/admin/media-storage/${editing}` : '/api/admin/media-storage', {
+        method: editing ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, driver: 'qiniu' }),
+        body: JSON.stringify({ ...values, key: values.key.trim().toLowerCase(), driver: 'qiniu' }),
       });
       await mutate();
-      setForm(null);
-      notify.success(form.id ? '媒体存储配置已更新' : '媒体存储配置已创建，请先执行连通测试');
+      setEditingConfig(undefined);
+      notify.success(editing ? '媒体存储配置已更新' : '媒体存储配置已创建，请先执行连通性测试');
+      return true;
     } catch (saveError) {
       notify.error(saveError instanceof Error ? saveError.message : '保存失败');
+      return false;
     } finally {
       setSaving(false);
     }
   };
 
-  const testConnection = async (id: string, key: string) => {
-    setWorkingKey(`${key}:test`);
+  const testConnection = async (row: StorageRow) => {
+    setWorkingKey(`${row.key}:test`);
     try {
-      await requestAction(`/api/admin/media-storage/${id}/test`, { method: 'POST' });
+      await requestAction(`/api/admin/media-storage/${row.id}/test`, { method: 'POST' });
       await mutate();
-      notify.success(key === 'local' ? '本地存储读写删除测试通过' : '七牛云完整连通测试通过');
+      notify.success(row.driver === 'local' ? '本地存储读写删除测试通过' : '七牛云完整连通性测试通过');
     } catch (testError) {
       await mutate();
-      notify.error(testError instanceof Error ? testError.message : '连通测试失败');
+      notify.error(testError instanceof Error ? testError.message : '连通性测试失败');
     } finally {
       setWorkingKey('');
     }
@@ -254,16 +242,16 @@ export default function MediaStoragePage() {
 
   const runConfirmedAction = async () => {
     if (!confirmAction) return;
-    const current = confirmAction;
-    setConfirmAction(null);
-    setWorkingKey(`${current.key}:${current.type}`);
+    const { row, type } = confirmAction;
+    setWorkingKey(`${row.key}:${type}`);
     try {
       await requestAction(
-        `/api/admin/media-storage/${current.id}${current.type === 'activate' ? '/activate' : ''}`,
-        { method: current.type === 'activate' ? 'POST' : 'DELETE' }
+        `/api/admin/media-storage/${row.id}${type === 'activate' ? '/activate' : ''}`,
+        { method: type === 'activate' ? 'POST' : 'DELETE' },
       );
       await mutate();
-      notify.success(current.type === 'activate' ? `${current.name} 已设为新上传默认存储` : `${current.name} 已归档`);
+      notify.success(type === 'activate' ? `${row.name} 已设为默认存储` : `${row.name} 已归档`);
+      setConfirmAction(null);
     } catch (actionError) {
       notify.error(actionError instanceof Error ? actionError.message : '操作失败');
     } finally {
@@ -271,193 +259,300 @@ export default function MediaStoragePage() {
     }
   };
 
+  const columns: ProColumns<StorageRow>[] = [
+    {
+      title: '存储配置',
+      dataIndex: 'name',
+      width: 230,
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          <Space size={8}>
+            {row.driver === 'local' ? <HardDrive size={16} /> : <Cloud size={16} />}
+            <Typography.Text strong>{row.name}</Typography.Text>
+          </Space>
+          <Typography.Text type="secondary" className="font-mono text-xs">{row.key}</Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: '位置与凭证',
+      key: 'location',
+      width: 310,
+      render: (_, row) => row.driver === 'local' ? (
+        <Space direction="vertical" size={0}>
+          <Typography.Text>服务器本地持久化目录</Typography.Text>
+          <Typography.Text type={row.persistent ? 'success' : 'warning'} className="text-xs">
+            {row.persistent ? '已配置持久化目录' : '未显式配置持久化目录'}
+          </Typography.Text>
+        </Space>
+      ) : (
+        <Space direction="vertical" size={0}>
+          <Typography.Text>{row.bucket} · {row.region}</Typography.Text>
+          <Typography.Text type="secondary" ellipsis={{ tooltip: row.domain }} className="max-w-72 text-xs">
+            {row.domain}
+          </Typography.Text>
+          <Typography.Text type="secondary" className="font-mono text-xs">
+            {row.accessKeyMasked} · {row.secretKeyMasked}
+          </Typography.Text>
+        </Space>
+      ),
+    },
+    {
+      title: '资产',
+      key: 'assets',
+      width: 210,
+      render: (_, row) => <AssetStats stats={row.stats} />,
+    },
+    {
+      title: '状态',
+      key: 'status',
+      width: 170,
+      render: (_, row) => (
+        <Space direction="vertical" size={4}>
+          {data?.activeProviderKey === row.key ? <Tag color="green">当前默认</Tag> : null}
+          <ConnectionStatus row={row} />
+        </Space>
+      ),
+    },
+    {
+      title: '最近测试',
+      key: 'lastTest',
+      width: 240,
+      render: (_, row) => row.driver === 'local' ? <Typography.Text type="secondary">本地探针按需执行</Typography.Text> : (
+        <Space direction="vertical" size={0}>
+          <Typography.Text ellipsis={{ tooltip: row.lastTestMessage || undefined }} className="max-w-52 text-xs">
+            {row.lastTestMessage || '尚未执行连通性测试'}
+          </Typography.Text>
+          {row.lastTestedAt ? <Typography.Text type="secondary" className="text-xs">{new Date(row.lastTestedAt).toLocaleString()}</Typography.Text> : null}
+        </Space>
+      ),
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      valueType: 'option',
+      fixed: 'right',
+      width: 112,
+      render: (_, row) => {
+        const archived = row.driver === 'qiniu' && row.status === 'archived';
+        const canActivate = row.driver === 'local' || row.lastTestOk === true;
+        const items: MenuProps['items'] = [
+          row.driver === 'qiniu' && !archived ? {
+            key: 'edit',
+            icon: <Pencil size={16} />,
+            label: '编辑 / 轮换密钥',
+            disabled: Boolean(workingKey),
+            onClick: () => setEditingConfig(row),
+          } : null,
+          !archived ? {
+            key: 'test',
+            icon: <TestTube2 size={16} />,
+            label: '连通性测试',
+            disabled: Boolean(workingKey),
+            onClick: () => testConnection(row),
+          } : null,
+          data?.activeProviderKey !== row.key && !archived ? {
+            key: 'activate',
+            icon: <ShieldCheck size={16} />,
+            label: '设为默认',
+            disabled: Boolean(workingKey) || !canActivate,
+            onClick: () => setConfirmAction({ type: 'activate', row }),
+          } : null,
+          row.driver === 'qiniu' && data?.activeProviderKey !== row.key && !archived ? { type: 'divider' } : null,
+          row.driver === 'qiniu' && data?.activeProviderKey !== row.key && !archived ? {
+            key: 'archive',
+            icon: <Archive size={16} />,
+            danger: true,
+            label: '归档配置',
+            disabled: Boolean(workingKey),
+            onClick: () => setConfirmAction({ type: 'archive', row }),
+          } : null,
+        ];
+        return (
+          <Dropdown menu={{ items }} trigger={['click']}>
+            <Button aria-label={`${row.name} 更多操作`} icon={workingKey.startsWith(`${row.key}:`) ? <RefreshCw className="animate-spin" size={17} /> : <MoreHorizontal size={18} />} />
+          </Dropdown>
+        );
+      },
+    },
+  ];
+
   if (isLoading) {
-    return <main className="mx-auto max-w-7xl px-6 py-10 text-sm text-muted-foreground">正在读取媒体存储配置…</main>;
+    return <div className="admin-page-frame"><Skeleton active paragraph={{ rows: 10 }} /></div>;
   }
 
   if (!data || error) {
-    return <main className="mx-auto max-w-7xl px-6 py-10 text-sm text-destructive">媒体存储配置加载失败，请刷新重试。</main>;
+    return (
+      <div className="admin-page-frame">
+        <PageContainer breadcrumbRender={false} className="admin-page-container" title="媒体存储">
+          <Result status="error" title="媒体存储配置加载失败" subTitle="请刷新后重试。" />
+        </PageContainer>
+      </div>
+    );
   }
 
-  const activeConfig = data.activeProviderKey === 'local'
-    ? data.local
-    : data.configs.find((config) => config.key === data.activeProviderKey);
-  const activeQiniuConfig = data.configs.find((config) => config.key === data.activeProviderKey);
-  const canEnableGrsOutputPersistence = Boolean(activeQiniuConfig?.lastTestOk === true);
-
   return (
-    <main className="mx-auto max-w-7xl space-y-7 px-6 py-10">
-      <header className="flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="flex items-center gap-2"><Database size={22} /><h1 className="text-2xl font-semibold">媒体存储配置</h1></div>
-          <p className="mt-2 text-sm text-muted-foreground">统一管理服务器本地存储和多套七牛云私有空间配置。配置切换只影响新上传资产。</p>
-        </div>
-        <Button onClick={() => setForm(emptyForm())} disabled={!data.encryption.ready}><Plus size={16} />新增七牛配置</Button>
-      </header>
-
-      {!data.encryption.ready ? (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-          当前生产环境缺少媒体存储加密主密钥，禁止保存云存储凭证。请配置 <code>MEDIA_STORAGE_KEY_ENCRYPTION_SECRET</code>。
-        </div>
-      ) : !data.encryption.dedicated ? (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-          当前使用兼容加密密钥。正式部署建议单独配置 <code>MEDIA_STORAGE_KEY_ENCRYPTION_SECRET</code>，便于凭证独立轮换。
-        </div>
-      ) : null}
-
-      <Card>
-        <CardHeader className="flex-row items-center justify-between space-y-0">
-          <div>
-            <CardTitle className="flex items-center gap-2"><ShieldCheck className="size-5 text-primary" />当前默认存储</CardTitle>
-            <CardDescription className="mt-2">新资产写入失败会直接返回失败，不会静默回退到本地。</CardDescription>
-          </div>
-          <Badge>{data.activeProviderKey}</Badge>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <div className="font-medium">{activeConfig?.name || data.activeProviderKey}</div>
-            <div className="mt-1 text-sm text-muted-foreground">{data.activatedAt ? `最后切换：${new Date(data.activatedAt).toLocaleString()}` : '尚未通过后台切换，使用兼容默认值'}</div>
-          </div>
-          <div className="text-sm text-muted-foreground">历史资产始终按自身 <code>storageProvider</code> 读取</div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>GRS AI 结果图存储</CardTitle>
-          <CardDescription className="mt-2">
-            默认直接使用 GRS 返回的图片 URL，不额外占用平台存储。启用后，后续 GRS 结果图会下载并写入当前默认七牛云配置；历史结果不会迁移。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap items-center justify-between gap-4">
-          <div className="text-sm">
-            <div className="font-medium">
-              {data.grsOutputPersistence.enabled ? `已启用：转存至 ${activeConfig?.name || data.activeProviderKey}` : '未启用：直接使用 GRS 图片 URL'}
-            </div>
-            {!data.grsOutputPersistence.enabled && !canEnableGrsOutputPersistence ? (
-              <div className="mt-1 text-amber-700">请先将已测试通过的七牛云配置设为默认，才能启用转存。</div>
-            ) : null}
-          </div>
-          <Button
-            variant={data.grsOutputPersistence.enabled ? 'outline' : 'default'}
-            disabled={Boolean(workingKey) || (!data.grsOutputPersistence.enabled && !canEnableGrsOutputPersistence)}
-            onClick={() => setGrsOutputPersistence(!data.grsOutputPersistence.enabled)}
-          >
-            {workingKey === 'grs-output-persistence' ? <RefreshCw className="size-4 animate-spin" /> : null}
-            {data.grsOutputPersistence.enabled ? '关闭转存' : '启用七牛转存'}
-          </Button>
-        </CardContent>
-      </Card>
-
-      <section className="grid gap-5 lg:grid-cols-2">
-        <Card className={data.activeProviderKey === 'local' ? 'border-primary/50' : ''}>
-          <CardHeader>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <CardTitle className="flex items-center gap-2"><HardDrive className="size-5" />服务器本地存储</CardTitle>
-                <CardDescription className="mt-2">内置配置 <code>local</code>，文件由 <code>AI_ASSET_STORAGE_DIR</code> 指向的持久化目录保存。</CardDescription>
-              </div>
-              {data.activeProviderKey === 'local' ? <Badge>当前默认</Badge> : <Badge variant="outline">可用</Badge>}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <StatsSummary stats={data.local.stats} />
-            <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-              <span className={data.local.persistent ? 'text-emerald-700' : 'text-amber-700'}>{data.local.persistent ? '已配置持久化目录' : '未显式配置持久化目录'}</span>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" disabled={Boolean(workingKey)} onClick={() => testConnection('local', 'local')}><TestTube2 size={15} />测试</Button>
-                {data.activeProviderKey !== 'local' ? <Button size="sm" disabled={Boolean(workingKey)} onClick={() => setConfirmAction({ type: 'activate', id: 'local', key: 'local', name: data.local.name })}>设为默认</Button> : null}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {data.configs.map((config) => {
-          const isActive = data.activeProviderKey === config.key;
-          const archived = config.status === 'archived';
-          return (
-            <Card key={config.id} className={isActive ? 'border-primary/50' : archived ? 'opacity-75' : ''}>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <CardTitle className="flex items-center gap-2"><Cloud className="size-5" />{config.name}</CardTitle>
-                    <CardDescription className="mt-2"><code>{config.key}</code> · {config.bucket} · {config.region}</CardDescription>
-                  </div>
-                  <div className="flex flex-wrap justify-end gap-1">
-                    {isActive ? <Badge>当前默认</Badge> : null}
-                    {archived ? <Badge variant="outline">已归档</Badge> : <TestStatus config={config} />}
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-2 text-sm sm:grid-cols-2">
-                  <div><span className="text-muted-foreground">AccessKey：</span><code>{config.accessKeyMasked}</code></div>
-                  <div><span className="text-muted-foreground">SecretKey：</span><code>{config.secretKeyMasked}</code></div>
-                  <div className="sm:col-span-2 break-all"><span className="text-muted-foreground">下载域名：</span>{config.domain}</div>
-                  <div className="sm:col-span-2"><span className="text-muted-foreground">存储前缀：</span><code>{config.objectPrefix || '（Bucket 根目录）'}</code></div>
-                </div>
-                <StatsSummary stats={config.stats} />
-                <div className="rounded-lg border px-3 py-2 text-xs text-muted-foreground">
-                  <div>{config.lastTestMessage || '尚未执行连通测试'}</div>
-                  {config.lastTestedAt ? <div className="mt-1">最后测试：{new Date(config.lastTestedAt).toLocaleString()}</div> : null}
-                </div>
-                <div className="flex flex-wrap justify-end gap-2">
-                  <Button variant="outline" size="sm" disabled={archived || Boolean(workingKey)} onClick={() => setForm(editForm(config))}><Pencil size={15} />编辑/轮换密钥</Button>
-                  <Button variant="outline" size="sm" disabled={archived || Boolean(workingKey)} onClick={() => testConnection(config.id, config.key)}>{workingKey === `${config.key}:test` ? <RefreshCw className="size-4 animate-spin" /> : <TestTube2 size={15} />}测试</Button>
-                  {!isActive && !archived ? <Button size="sm" disabled={config.lastTestOk !== true || Boolean(workingKey)} onClick={() => setConfirmAction({ type: 'activate', id: config.id, key: config.key, name: config.name })}>设为默认</Button> : null}
-                  {!isActive && !archived ? <Button variant="ghost" size="sm" disabled={Boolean(workingKey)} onClick={() => setConfirmAction({ type: 'archive', id: config.id, key: config.key, name: config.name })}><Archive size={15} />归档</Button> : null}
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </section>
-
-      {!data.configs.length ? (
-        <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">尚未配置七牛云。新增配置并通过完整连通测试后即可设为默认。</div>
-      ) : null}
-
-      <Dialog open={Boolean(form)} onOpenChange={(open) => !open && setForm(null)}>
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{form?.id ? '编辑七牛云配置' : '新增七牛云配置'}</DialogTitle>
-            <DialogDescription>Bucket 必须为私有空间。密钥仅在服务端加密保存，页面不会返回明文或密文。</DialogDescription>
-          </DialogHeader>
-          {form ? (
-            <div className="grid gap-4 py-2 sm:grid-cols-2">
-              <div className="space-y-2"><Label>配置标识</Label><Input value={form.key} disabled={Boolean(form.id)} onChange={(event) => setForm({ ...form, key: event.target.value.toLowerCase() })} placeholder="qiniu-primary" /><p className="text-xs text-muted-foreground">创建后不可修改，资产会保存此稳定标识。</p></div>
-              <div className="space-y-2"><Label>名称</Label><Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="七牛主存储" /></div>
-              <div className="space-y-2"><Label>{form.id ? 'AccessKey（留空保留）' : 'AccessKey'}</Label><Input type="password" autoComplete="new-password" value={form.accessKey} onChange={(event) => setForm({ ...form, accessKey: event.target.value })} /></div>
-              <div className="space-y-2"><Label>{form.id ? 'SecretKey（留空保留）' : 'SecretKey'}</Label><Input type="password" autoComplete="new-password" value={form.secretKey} onChange={(event) => setForm({ ...form, secretKey: event.target.value })} /></div>
-              <div className="space-y-2"><Label>Bucket</Label><Input value={form.bucket} onChange={(event) => setForm({ ...form, bucket: event.target.value })} placeholder="private-media" /></div>
-              <div className="space-y-2"><Label>区域</Label><Select value={form.region} onValueChange={(region) => setForm({ ...form, region })}><SelectTrigger className="h-10 w-full"><SelectValue /></SelectTrigger><SelectContent>{REGION_OPTIONS.map(([value, label]) => <SelectItem key={value} value={value}>{label}（{value}）</SelectItem>)}</SelectContent></Select></div>
-              <div className="space-y-2 sm:col-span-2"><Label>存储前缀（可选）</Label><Input value={form.objectPrefix} onChange={(event) => setForm({ ...form, objectPrefix: event.target.value })} placeholder="smart-floor/ai-assets/" /><p className="text-xs text-muted-foreground">相当于 Bucket 内的上传文件夹。保存后只影响新上传文件；历史资产位置不会改变。仅支持字母、数字、点、下划线、连字符和斜杠。</p></div>
-              <div className="space-y-2 sm:col-span-2"><Label>HTTPS 下载域名</Label><Input value={form.domain} onChange={(event) => setForm({ ...form, domain: event.target.value })} placeholder="https://media.example.com" /><p className="text-xs text-muted-foreground">只能填写域名根地址，并需加入微信小程序下载合法域名。</p></div>
-            </div>
+    <div className="admin-page-frame">
+      <PageContainer
+        breadcrumbRender={false}
+        className="admin-page-container"
+        title="媒体存储"
+        content="统一管理服务器本地存储和七牛云私有空间。切换默认配置只影响后续上传资产。"
+        extra={[
+          <Button key="create" type="primary" icon={<Plus size={16} />} disabled={!data.encryption.ready} onClick={() => setEditingConfig(null)}>
+            新增七牛配置
+          </Button>,
+        ]}
+      >
+        <Flex vertical gap={24} className="admin-config-stack">
+          {!data.encryption.ready ? (
+            <Alert
+              type="error"
+              showIcon
+              message="云存储凭证不可保存"
+              description={<>当前环境缺少 <Typography.Text code>MEDIA_STORAGE_KEY_ENCRYPTION_SECRET</Typography.Text>，请配置后再保存云存储凭证。</>}
+            />
+          ) : !data.encryption.dedicated ? (
+            <Alert
+              type="warning"
+              showIcon
+              message="正在使用兼容加密密钥"
+              description={<>正式部署建议单独配置 <Typography.Text code>MEDIA_STORAGE_KEY_ENCRYPTION_SECRET</Typography.Text>，以便独立轮换凭证。</>}
+            />
           ) : null}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setForm(null)}>取消</Button>
-            <Button onClick={save} disabled={!canSave || saving}>{saving ? <RefreshCw className="size-4 animate-spin" /> : null}{saving ? '保存中…' : '保存配置'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
-      <AlertDialog open={Boolean(confirmAction)} onOpenChange={(open) => !open && setConfirmAction(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{confirmAction?.type === 'activate' ? '确认切换默认媒体存储？' : '确认归档媒体存储配置？'}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmAction?.type === 'activate'
-                ? `切换后仅新上传资产写入“${confirmAction?.name}”，历史资产位置不会变化。`
-                : `归档后“${confirmAction?.name}”不能再写入、测试或重新激活，但仍会继续读取和删除历史资产。`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={runConfirmedAction}>{confirmAction?.type === 'activate' ? '确认切换' : '确认归档'}</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </main>
+          <Card title="当前默认存储" className="admin-panel-card">
+            <Flex justify="space-between" gap={24} wrap="wrap" align="center">
+              <Flex vertical gap={4}>
+                <Space size={8}>
+                  <ShieldCheck className="text-primary" size={18} />
+                  <Typography.Text strong>{activeConfig?.name || data.activeProviderKey}</Typography.Text>
+                  <Tag>{data.activeProviderKey}</Tag>
+                </Space>
+                <Typography.Text type="secondary">
+                  {data.activatedAt ? `最后切换：${new Date(data.activatedAt).toLocaleString()}` : '尚未通过后台切换，使用兼容默认值'}
+                </Typography.Text>
+              </Flex>
+              <Typography.Text type="secondary">历史资产始终按自身的 storageProvider 读取</Typography.Text>
+            </Flex>
+          </Card>
+
+          <Card title="GRS AI 结果图存储" className="admin-panel-card">
+            <Flex justify="space-between" gap={24} wrap="wrap" align="center">
+              <Flex vertical gap={4}>
+                <Typography.Text strong>
+                  {data.grsOutputPersistence.enabled
+                    ? `已启用：转存至 ${activeConfig?.name || data.activeProviderKey}`
+                    : '未启用：直接使用 GRS 图片 URL'}
+                </Typography.Text>
+                <Typography.Text type="secondary">
+                  默认不额外占用平台存储；转存只影响后续 GRS 结果，历史结果不会迁移。
+                </Typography.Text>
+                {!data.grsOutputPersistence.enabled && !canEnableGrsOutputPersistence ? (
+                  <Typography.Text type="warning">请先将测试通过的七牛配置设为默认，才能启用转存。</Typography.Text>
+                ) : null}
+              </Flex>
+              <Button
+                type={data.grsOutputPersistence.enabled ? 'default' : 'primary'}
+                loading={workingKey === 'grs-output-persistence'}
+                disabled={Boolean(workingKey) || (!data.grsOutputPersistence.enabled && !canEnableGrsOutputPersistence)}
+                onClick={() => setGrsOutputPersistence(!data.grsOutputPersistence.enabled)}
+              >
+                {data.grsOutputPersistence.enabled ? '关闭转存' : '启用七牛转存'}
+              </Button>
+            </Flex>
+          </Card>
+
+          <ProTable<StorageRow>
+            rowKey="key"
+            columns={columns}
+            dataSource={rows}
+            search={false}
+            options={{ reload: () => mutate(), density: true, setting: true }}
+            pagination={false}
+            scroll={{ x: 1270 }}
+          />
+        </Flex>
+      </PageContainer>
+
+      <ModalForm<StorageForm>
+        key={editingConfig?.id || 'new'}
+        title={isEditModalOpen ? '编辑七牛云配置' : '新增七牛云配置'}
+        open={isFormOpen}
+        initialValues={editingConfig ? toEditForm(editingConfig) : EMPTY_FORM}
+        modalProps={{
+          destroyOnHidden: true,
+          maskClosable: false,
+          onCancel: () => setEditingConfig(undefined),
+        }}
+        onOpenChange={(open) => !open && setEditingConfig(undefined)}
+        onFinish={save}
+        submitter={{
+          searchConfig: { submitText: saving ? '保存中…' : '保存配置' },
+          submitButtonProps: { loading: saving },
+          render: (_, dom) => <Flex justify="end" gap={12} style={{ marginTop: 24 }}>{dom}</Flex>,
+        }}
+      >
+        <Alert
+          type="info"
+          showIcon
+          message="凭证仅在服务端加密保存"
+          description="Bucket 必须是私有空间。编辑时留空 AccessKey 和 SecretKey 可保留原凭证。"
+          style={{ marginBottom: 16 }}
+        />
+        <ProFormText
+          name="key"
+          label="配置标识"
+          disabled={isEditModalOpen}
+          rules={[{ required: true, message: '请输入配置标识' }]}
+          fieldProps={{ placeholder: 'qiniu-primary', autoComplete: 'off' }}
+          extra="创建后不可修改，资产会保存此稳定标识。"
+        />
+        <ProFormText name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]} fieldProps={{ placeholder: '七牛主存储' }} />
+        <ProFormText.Password
+          name="accessKey"
+          label={isEditModalOpen ? 'AccessKey（留空保留）' : 'AccessKey'}
+          rules={isEditModalOpen ? [] : [{ required: true, message: '请输入 AccessKey' }]}
+          fieldProps={{ autoComplete: 'new-password' }}
+        />
+        <ProFormText.Password
+          name="secretKey"
+          label={isEditModalOpen ? 'SecretKey（留空保留）' : 'SecretKey'}
+          rules={isEditModalOpen ? [] : [{ required: true, message: '请输入 SecretKey' }]}
+          fieldProps={{ autoComplete: 'new-password' }}
+        />
+        <ProFormText name="bucket" label="Bucket" rules={[{ required: true, message: '请输入 Bucket' }]} fieldProps={{ placeholder: 'private-media' }} />
+        <ProFormSelect name="region" label="区域" options={REGION_OPTIONS} rules={[{ required: true, message: '请选择区域' }]} />
+        <ProFormText
+          name="objectPrefix"
+          label="存储前缀（可选）"
+          fieldProps={{ placeholder: 'smart-floor/ai-assets/' }}
+          extra="只影响后续上传与健康探针；历史资产位置不会改变。"
+        />
+        <ProFormText
+          name="domain"
+          label="HTTPS 下载域名"
+          rules={[{ required: true, message: '请输入 HTTPS 下载域名' }]}
+          fieldProps={{ placeholder: 'https://media.example.com' }}
+          extra="仅填写域名根地址，并加入微信小程序下载合法域名。"
+        />
+      </ModalForm>
+
+      <Modal
+        open={Boolean(confirmAction)}
+        title={confirmAction?.type === 'activate' ? '确认切换默认媒体存储' : '确认归档媒体存储配置'}
+        okText={confirmAction?.type === 'activate' ? '确认切换' : '确认归档'}
+        cancelText="取消"
+        okButtonProps={{ danger: confirmAction?.type === 'archive', loading: Boolean(confirmAction && workingKey.endsWith(`:${confirmAction.type}`)) }}
+        onCancel={() => setConfirmAction(null)}
+        onOk={runConfirmedAction}
+      >
+        <Typography.Paragraph className="!mb-0">
+          {confirmAction?.type === 'activate'
+            ? `切换后仅新上传资产写入“${confirmAction.row.name}”，历史资产位置不会变化。`
+            : `归档后“${confirmAction?.row.name}”不能再写入、测试或重新激活，但仍会继续读取和删除历史资产。`}
+        </Typography.Paragraph>
+      </Modal>
+    </div>
   );
 }

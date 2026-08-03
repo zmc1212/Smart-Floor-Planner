@@ -44,12 +44,6 @@
       <cover-view class="bubble-value">{{measurementValue}}</cover-view>
     </cover-view>
 
-    <cover-view wx:if="{{isSurveyEmpty}}" class="empty-survey-guide">
-      <cover-image class="empty-survey-k" src="/images/home-ip-v1/measure-k.png" mode="aspectFit"></cover-image>
-      <cover-view class="empty-survey-title">从第一面墙开始</cover-view>
-      <cover-view class="empty-survey-copy">拖动下方光标到起点，或连接已测墙体</cover-view>
-    </cover-view>
-
     <cover-view
       wx:if="{{closeActionVisible}}"
       class="closure-action"
@@ -200,6 +194,27 @@
       <cover-image class="dock-bluetooth" src="/images/surveying-icons/angle/bluetooth.png" mode="aspectFit"></cover-image>
       <cover-view>测距</cover-view>
       <cover-view class="dock-status-dot"></cover-view>
+    </cover-view>
+  </cover-view>
+
+  <cover-view wx:if="{{showOnboarding && !numberPadVisible}}" class="survey-onboarding {{onboardingTarget}}" style="bottom: calc(152rpx + {{bottomSafeArea}}px);">
+    <cover-view class="onboarding-focus"></cover-view>
+    <cover-view class="onboarding-card">
+      <cover-view class="onboarding-head">
+        <cover-view class="onboarding-kicker">新手引导</cover-view>
+        <cover-view class="onboarding-progress">{{onboardingProgress}}</cover-view>
+      </cover-view>
+      <cover-view class="onboarding-main">
+        <cover-image wx:if="{{onboardingStep === 0}}" class="onboarding-k" src="/images/surveying-onboarding-k.png" mode="aspectFit"></cover-image>
+        <cover-view class="onboarding-copy-group">
+          <cover-view class="onboarding-title">{{onboardingTitle}}</cover-view>
+          <cover-view class="onboarding-copy">{{onboardingCopy}}</cover-view>
+        </cover-view>
+      </cover-view>
+      <cover-view class="onboarding-actions">
+        <cover-view class="onboarding-skip" bindtap="onOnboardingSkip">跳过</cover-view>
+        <cover-view class="onboarding-next" bindtap="onOnboardingNext">{{onboardingActionLabel}}</cover-view>
+      </cover-view>
     </cover-view>
   </cover-view>
 

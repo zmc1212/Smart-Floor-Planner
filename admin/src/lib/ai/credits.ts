@@ -1,8 +1,11 @@
-import mongoose from 'mongoose';
-import { AiCreditPriceRepository } from '@/db/repositories';
-import { withPlatformTransaction } from '@/db/transaction';
-import { AiCreditAccount } from '@/models/AiCreditAccount';
-import { AiCreditLedger, type AiCreditLedgerType } from '@/models/AiCreditLedger';
+import type mongoose from 'mongoose';
+import {
+  AiCreditPriceRepository,
+  AiCreditRepository,
+  type AiCreditLedgerType,
+} from '@/db/repositories';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import type { MiniAiTaskType } from '@/models/AiCreditPrice';
 import type { AiActionKey } from '@/lib/ai/provider-types';
 
@@ -30,14 +33,6 @@ export class InsufficientAiCreditsError extends Error {
   constructor() {
     super('当前企业 AI 点数不足，请联系平台管理员调整。');
   }
-}
-
-function asTenantId(value: string | mongoose.Types.ObjectId) {
-  return value;
-}
-
-function asGenerationId(value: string | mongoose.Types.ObjectId) {
-  return typeof value === 'string' ? new mongoose.Types.ObjectId(value) : value;
 }
 
 function normalizeCredits(value: number) {
@@ -91,23 +86,20 @@ export async function getAiCreditPrice(actionKeyOrMode: AiActionKey | MiniAiTask
   const price = await withPlatformTransaction((transaction) =>
     new AiCreditPriceRepository(transaction).findEnabledByActionKey(actionKey)
   );
-  if (!price) {
-    throw new Error('当前 AI 功能未开放');
-  }
+  if (!price) throw new Error('当前 AI 功能未开放');
   return normalizeAiCreditPrice(price);
 }
 
 export async function ensureAiCreditAccount(enterpriseId: string | mongoose.Types.ObjectId) {
-  return AiCreditAccount.findOneAndUpdate(
-    { enterpriseId: asTenantId(enterpriseId) },
-    { $setOnInsert: { balance: 0, frozenBalance: 0, version: 0, appliedOperationIds: [] } },
-    { upsert: true, returnDocument: 'after' }
+  const parsedEnterpriseId = parsePostgresId(enterpriseId, 'enterpriseId');
+  return withTenantTransaction(parsedEnterpriseId, (transaction) =>
+    new AiCreditRepository(transaction).ensureAccount(parsedEnterpriseId)
   );
 }
 
 export function serializeAiCreditAccount(account: {
-  balance?: number;
-  frozenBalance?: number;
+  balance?: number | bigint;
+  frozenBalance?: number | bigint;
   version?: number;
 }) {
   const balance = Number(account.balance || 0);
@@ -120,7 +112,12 @@ export function serializeAiCreditAccount(account: {
   };
 }
 
-async function claimOperation(input: {
+function optionalPostgresId(value: string | mongoose.Types.ObjectId | undefined) {
+  const normalized = value === undefined ? '' : String(value);
+  return /^[1-9]\d*$/.test(normalized) ? BigInt(normalized) : null;
+}
+
+type AiCreditOperationInput = {
   enterpriseId: string | mongoose.Types.ObjectId;
   generationId?: string | mongoose.Types.ObjectId;
   operatorId?: string | mongoose.Types.ObjectId;
@@ -129,62 +126,57 @@ async function claimOperation(input: {
   amount: number;
   note?: string;
   metadata?: Record<string, unknown>;
-}) {
-  try {
-    return await AiCreditLedger.create({
-      enterpriseId: asTenantId(input.enterpriseId),
-      generationId: input.generationId ? asGenerationId(input.generationId) : undefined,
-      operatorId: input.operatorId ? asTenantId(input.operatorId) : undefined,
+};
+
+type AiCreditBalanceChange = {
+  balanceDelta: bigint;
+  frozenDelta: bigint;
+  requireAvailableAtLeast?: bigint;
+  requireBalanceAtLeast?: bigint;
+  requireFrozenAtLeast?: bigint;
+  failureMessage: string;
+  insufficient?: boolean;
+};
+
+async function applyAiCreditOperation(input: AiCreditOperationInput, change: AiCreditBalanceChange) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const result = await withTenantTransaction(enterpriseId, async (transaction) => {
+    const credits = new AiCreditRepository(transaction);
+    await credits.ensureAccount(enterpriseId);
+    const claim = await credits.claimLedger({
+      enterpriseId,
+      generationId: optionalPostgresId(input.generationId),
+      operatorId: optionalPostgresId(input.operatorId),
       operationId: input.operationId,
       type: input.type,
-      amount: input.amount,
-      status: 'pending',
+      amount: BigInt(input.amount),
       note: input.note,
       metadata: input.metadata,
     });
-  } catch (error) {
-    if ((error as { code?: number })?.code !== 11000) throw error;
-    const existing = await AiCreditLedger.findOne({ operationId: input.operationId });
-    if (!existing) throw error;
-    return existing;
+    if (!claim.claimed) {
+      if (claim.ledger.enterpriseId !== enterpriseId) {
+        throw new Error('AI credit operation belongs to another enterprise');
+      }
+      const account = await credits.findAccount(enterpriseId);
+      if (!account) throw new Error('AI credit account is missing');
+      if (claim.ledger.status === 'completed') return { ledger: claim.ledger, account };
+      return { failure: '该点数操作已失败，请使用新的操作编号', insufficient: false };
+    }
+
+    const account = await credits.applyBalance({ enterpriseId, ...change });
+    if (!account) {
+      await credits.failLedger(claim.ledger.id);
+      return { failure: change.failureMessage, insufficient: Boolean(change.insufficient) };
+    }
+    const ledger = await credits.completeLedger(claim.ledger.id, account);
+    if (!ledger) throw new Error('AI credit ledger could not be completed');
+    return { ledger, account };
+  });
+  if ('failure' in result) {
+    if (result.insufficient) throw new InsufficientAiCreditsError();
+    throw new Error(result.failure);
   }
-}
-
-async function completeOperation(
-  ledger: Awaited<ReturnType<typeof claimOperation>>,
-  account: { balance: number; frozenBalance: number }
-) {
-  ledger.status = 'completed';
-  ledger.balanceAfter = Number(account.balance || 0);
-  ledger.frozenAfter = Number(account.frozenBalance || 0);
-  await ledger.save();
-  return { ledger, account };
-}
-
-async function failOperation(ledger: Awaited<ReturnType<typeof claimOperation>>) {
-  if (ledger.status === 'pending') {
-    ledger.status = 'failed';
-    await ledger.save();
-  }
-}
-
-function operationUpdate(operationId: string, increments: Record<string, number>) {
-  return {
-    $inc: { ...increments, version: 1 },
-    $push: { appliedOperationIds: { $each: [operationId], $slice: -5000 } },
-  };
-}
-
-async function recoverAppliedOperation(
-  ledger: Awaited<ReturnType<typeof claimOperation>>,
-  enterpriseId: string | mongoose.Types.ObjectId,
-  operationId: string
-) {
-  const account = await AiCreditAccount.findOne({
-    enterpriseId: asTenantId(enterpriseId),
-    appliedOperationIds: operationId,
-  }).select('+appliedOperationIds');
-  return account ? completeOperation(ledger, account) : null;
+  return result;
 }
 
 export async function grantAiCredits(input: {
@@ -195,25 +187,10 @@ export async function grantAiCredits(input: {
   note?: string;
 }) {
   const amount = normalizeCredits(input.amount);
-  await ensureAiCreditAccount(input.enterpriseId);
-  const ledger = await claimOperation({ ...input, amount, type: 'grant' });
-  if (ledger.status === 'completed') {
-    return { ledger, account: await ensureAiCreditAccount(input.enterpriseId) };
-  }
-  if (ledger.status !== 'pending') throw new Error('该充值操作已失败，请使用新的操作编号');
-
-  const account = await AiCreditAccount.findOneAndUpdate(
-    { enterpriseId: asTenantId(input.enterpriseId), appliedOperationIds: { $ne: input.operationId } },
-    operationUpdate(input.operationId, { balance: amount }),
-    { returnDocument: 'after' }
+  return applyAiCreditOperation(
+    { ...input, amount, type: 'grant' },
+    { balanceDelta: BigInt(amount), frozenDelta: BigInt(0), failureMessage: 'AI 点数账户不存在' }
   );
-  if (!account) {
-    const recovered = await recoverAppliedOperation(ledger, input.enterpriseId, input.operationId);
-    if (recovered) return recovered;
-    await failOperation(ledger);
-    throw new Error('AI 点数账户不存在');
-  }
-  return completeOperation(ledger, account);
 }
 
 export async function adjustAiCredits(input: {
@@ -225,31 +202,16 @@ export async function adjustAiCredits(input: {
 }) {
   const amount = Math.trunc(Number(input.amount));
   if (!Number.isFinite(amount) || amount === 0) throw new Error('调整数量不能为 0');
-  await ensureAiCreditAccount(input.enterpriseId);
-  const ledger = await claimOperation({ ...input, amount, type: 'adjust' });
-  if (ledger.status === 'completed') {
-    return { ledger, account: await ensureAiCreditAccount(input.enterpriseId) };
-  }
-
-  const filter: Record<string, unknown> = {
-    enterpriseId: asTenantId(input.enterpriseId),
-    appliedOperationIds: { $ne: input.operationId },
-  };
-  if (amount < 0) {
-    filter.$expr = { $gte: [{ $subtract: ['$balance', '$frozenBalance'] }, Math.abs(amount)] };
-  }
-  const account = await AiCreditAccount.findOneAndUpdate(
-    filter,
-    operationUpdate(input.operationId, { balance: amount }),
-    { returnDocument: 'after' }
+  return applyAiCreditOperation(
+    { ...input, amount, type: 'adjust' },
+    {
+      balanceDelta: BigInt(amount),
+      frozenDelta: BigInt(0),
+      ...(amount < 0 ? { requireAvailableAtLeast: BigInt(Math.abs(amount)) } : {}),
+      failureMessage: '当前企业 AI 点数不足，请联系平台管理员调整。',
+      insufficient: amount < 0,
+    }
   );
-  if (!account) {
-    const recovered = await recoverAppliedOperation(ledger, input.enterpriseId, input.operationId);
-    if (recovered) return recovered;
-    await failOperation(ledger);
-    throw new InsufficientAiCreditsError();
-  }
-  return completeOperation(ledger, account);
 }
 
 export async function holdAiCredits(input: {
@@ -260,28 +222,16 @@ export async function holdAiCredits(input: {
   operationId: string;
 }) {
   const amount = normalizeCredits(input.amount);
-  await ensureAiCreditAccount(input.enterpriseId);
-  const ledger = await claimOperation({ ...input, amount, type: 'hold' });
-  if (ledger.status === 'completed') {
-    return { ledger, account: await ensureAiCreditAccount(input.enterpriseId) };
-  }
-
-  const account = await AiCreditAccount.findOneAndUpdate(
+  return applyAiCreditOperation(
+    { ...input, amount, type: 'hold' },
     {
-      enterpriseId: asTenantId(input.enterpriseId),
-      appliedOperationIds: { $ne: input.operationId },
-      $expr: { $gte: [{ $subtract: ['$balance', '$frozenBalance'] }, amount] },
-    },
-    operationUpdate(input.operationId, { frozenBalance: amount }),
-    { returnDocument: 'after' }
+      balanceDelta: BigInt(0),
+      frozenDelta: BigInt(amount),
+      requireAvailableAtLeast: BigInt(amount),
+      failureMessage: '当前企业 AI 点数不足，请联系平台管理员调整。',
+      insufficient: true,
+    }
   );
-  if (!account) {
-    const recovered = await recoverAppliedOperation(ledger, input.enterpriseId, input.operationId);
-    if (recovered) return recovered;
-    await failOperation(ledger);
-    throw new InsufficientAiCreditsError();
-  }
-  return completeOperation(ledger, account);
 }
 
 export async function consumeHeldAiCredits(input: {
@@ -292,27 +242,16 @@ export async function consumeHeldAiCredits(input: {
   operationId: string;
 }) {
   const amount = normalizeCredits(input.amount);
-  const ledger = await claimOperation({ ...input, amount: -amount, type: 'consume' });
-  if (ledger.status === 'completed') {
-    return { ledger, account: await ensureAiCreditAccount(input.enterpriseId) };
-  }
-  const account = await AiCreditAccount.findOneAndUpdate(
+  return applyAiCreditOperation(
+    { ...input, amount: -amount, type: 'consume' },
     {
-      enterpriseId: asTenantId(input.enterpriseId),
-      appliedOperationIds: { $ne: input.operationId },
-      balance: { $gte: amount },
-      frozenBalance: { $gte: amount },
-    },
-    operationUpdate(input.operationId, { balance: -amount, frozenBalance: -amount }),
-    { returnDocument: 'after' }
+      balanceDelta: BigInt(-amount),
+      frozenDelta: BigInt(-amount),
+      requireBalanceAtLeast: BigInt(amount),
+      requireFrozenAtLeast: BigInt(amount),
+      failureMessage: 'AI 点数冻结记录不一致，无法完成扣费',
+    }
   );
-  if (!account) {
-    const recovered = await recoverAppliedOperation(ledger, input.enterpriseId, input.operationId);
-    if (recovered) return recovered;
-    await failOperation(ledger);
-    throw new Error('AI 点数冻结记录不一致，无法完成扣费');
-  }
-  return completeOperation(ledger, account);
 }
 
 export async function releaseHeldAiCredits(input: {
@@ -324,24 +263,13 @@ export async function releaseHeldAiCredits(input: {
   note?: string;
 }) {
   const amount = normalizeCredits(input.amount);
-  const ledger = await claimOperation({ ...input, amount, type: 'release' });
-  if (ledger.status === 'completed') {
-    return { ledger, account: await ensureAiCreditAccount(input.enterpriseId) };
-  }
-  const account = await AiCreditAccount.findOneAndUpdate(
+  return applyAiCreditOperation(
+    { ...input, amount, type: 'release' },
     {
-      enterpriseId: asTenantId(input.enterpriseId),
-      appliedOperationIds: { $ne: input.operationId },
-      frozenBalance: { $gte: amount },
-    },
-    operationUpdate(input.operationId, { frozenBalance: -amount }),
-    { returnDocument: 'after' }
+      balanceDelta: BigInt(0),
+      frozenDelta: BigInt(-amount),
+      requireFrozenAtLeast: BigInt(amount),
+      failureMessage: 'AI 点数冻结记录不存在或已释放',
+    }
   );
-  if (!account) {
-    const recovered = await recoverAppliedOperation(ledger, input.enterpriseId, input.operationId);
-    if (recovered) return recovered;
-    await failOperation(ledger);
-    throw new Error('AI 点数冻结记录不存在或已释放');
-  }
-  return completeOperation(ledger, account);
 }

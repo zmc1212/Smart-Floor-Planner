@@ -50,12 +50,14 @@ Page-specific visual reference:
   asymmetric green dossier summary, search/filter/create action order, six
   dossier-index stage tabs, stacked customer-record cards, and right-aligned
   status-coloured floor-plan thumbnail treatment. Production uses the derived
-  local scene asset `images/leads-ip-v1/client-concierge-scene.jpg`; customer
+  local transparent scene asset `images/leads-ip-v1/client-concierge-scene.png`; customer
   counts and controls remain live UI rather than image text. Thumbnail geometry
   must come from each lead's associated formal wall graph or real external preview
   URL; static sample plans are design references only. Live lead data, role
   visibility, pagination, navigation, loading/error/empty states, and the shared
-  custom tab bar remain authoritative. The approved C-style client-dossier
+  custom tab bar remain authoritative. Its circular Measure entry uses the
+  generated transparent Xiao K asset `images/mine-icons/tab-measure-k.png`
+  with a separate live label. The approved C-style client-dossier
   metaphor and Xiao K client-concierge role remain the durable Leads brand model.
 - Commission Records (`pages/commission-records/commission-records`):
   `design-references/all-pages-ip-v1/12-commission-records.png` at the iPhone 13
@@ -246,6 +248,62 @@ measurable layout specification rather than broad visual inspiration.
   review pass for typography, painted icon size, vertical gaps, and crop
   position before declaring the surface restored. A visually plausible first
   pass is not acceptance.
+
+### Reference Asset Board Workflow (Mandatory)
+
+High-fidelity implementation must not use low-resolution crops taken directly
+from a flattened full-page screenshot as production artwork. Prepare and
+validate a source asset board before generating or exporting raster assets.
+
+- Inventory the reference before implementation. Keep live copy, counts,
+  customer data, statuses, controls, and formal floor-plan geometry in WXML,
+  CSS, or canvas code. Only brand characters, scenic objects, decorative
+  illustrations, textures, and other genuine raster artwork belong on the
+  generated asset board.
+- Functional search, filter, add, navigation, and toolbar icons must come from
+  one coherent, locally stored, license-documented icon set. They may appear on
+  a review board for size and colour comparison, but they must not be
+  regenerated as AI illustrations.
+- Build a transparent PNG source board with fixed, documented cells before
+  generation. Use one logical asset per cell, stable cell coordinates, at
+  least `64px` transparent gutters, no labels inside crop regions, no overlap,
+  and enough resolution for a maximum `2x` production export. Include the
+  approved full-screen reference and canonical brand-IP images as separate
+  generation references.
+- Keep large Hero or full-bleed background scenes on their own target-ratio
+  canvas when their crop, safe area, or lighting depends on the viewport. Do
+  not shrink a page background into a small sprite cell merely to place every
+  raster in one file.
+- Select the image-generation route from the active authentication mode. When
+  Codex is using an account login with the built-in image capability, use the
+  built-in `imagegen` skill. When Codex is using a relay/API-key provider, use
+  the `sub2api-image` skill. Confirm the route without printing credentials,
+  do not mix credentials and endpoints, and never silently fall back from one
+  route to the other after an error.
+- The generation prompt must name the exact board dimensions and cell order,
+  require transparent alpha when the selected model supports it, forbid text,
+  fake business data, cell dividers, ambient backgrounds, and cross-cell
+  shadows, and anchor Xiao K to the approved F1/F3 references. When the selected
+  model cannot emit alpha, require one uniform removable background and record
+  that compatibility step explicitly.
+- Store source boards, prompts, failed generations, cutting scripts, and QA
+  boards only under the repository-root `design-references/` directory. They
+  are reference artifacts and must remain outside the Mini Program package.
+- Inspect the returned board before cutting: verify dimensions, alpha or
+  removable-background uniformity, one asset per cell, character anatomy,
+  absence of text, cross-cell contamination, and safe painted bounds. A board
+  that fails any check must not be exported to production.
+- Cut approved boards deterministically by cell coordinates, remove only the
+  edge-connected background, then fit each visible artwork bound onto its own
+  transparent production canvas. Never hand-crop an approximate rectangle
+  from the generated result or the original page screenshot.
+- Export only assets referenced by production code into
+  `miniprogram/images/<surface>/`. Preserve alpha, keep small UI assets at no
+  more than `2x` their displayed size and within the package-size limits below,
+  and leave unused variants in `design-references/`.
+- Complete real-device or current-window WeChat DevTools QA at `390x844` after
+  integration. Compare painted size, crop position, alpha halos, compression,
+  loading, and overlap against the reference before accepting the restoration.
 
 ### Design Research Before Visual Work
 - Before creating a new high-fidelity page direction or AI-generated visual reference, research current, relevant mobile UI examples online. Use Huaban (花瓣网) as the preferred first source when it is available, then search the product category, the core interaction, and the target surface (for example: WeChat Mini Program home pages, renovation project progress, interior-design apps, or field-service tools).

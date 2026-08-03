@@ -41,12 +41,13 @@ export async function PATCH(request: Request) {
       if (!Array.isArray(body.items) || !body.items.length) {
         return NextResponse.json({ success: false, error: '缺少模型价格配置' }, { status: 400 });
       }
+      const items = body.items;
       const profiles = await AiCreationModelProfile.find({
-        key: { $in: body.items.map((item) => item.modelProfileKey) },
+        key: { $in: items.map((item) => item.modelProfileKey) },
         sourceType: 'grs_catalog',
       }).lean();
       const profileByKey = new Map(profiles.map((profile) => [profile.key, profile]));
-      for (const item of body.items) {
+      for (const item of items) {
         const profile = profileByKey.get(item.modelProfileKey);
         const credits = Math.trunc(Number(item.credits));
         if (
@@ -58,10 +59,11 @@ export async function PATCH(request: Request) {
           return NextResponse.json({ success: false, error: '模型价格配置无效' }, { status: 400 });
         }
       }
-      await Promise.all(body.items.map((item) => {
-        const credits = Math.trunc(Number(item.credits));
-        return withPlatformTransaction((transaction) =>
-          new AiModelCreditPriceRepository(transaction).update(
+      await withPlatformTransaction(async (transaction) => {
+        const prices = new AiModelCreditPriceRepository(transaction);
+        for (const item of items) {
+          const credits = Math.trunc(Number(item.credits));
+          await prices.update(
             item.modelProfileKey,
             item.resolutionTier,
             {
@@ -69,9 +71,9 @@ export async function PATCH(request: Request) {
               enabled: Boolean(item.enabled),
               updatedBy: parsePostgresId(context.userId, 'userId'),
             }
-          )
-        );
-      }));
+          );
+        }
+      });
       const prices = await listImageModelPrices();
       return NextResponse.json({ success: true, data: prices.map(serializeImageModelPrice) });
     });

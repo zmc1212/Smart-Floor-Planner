@@ -23,8 +23,6 @@ Component({
         key: 'measure',
         pagePath: '/pages/surveying-editor/surveying-editor',
         text: '量房',
-        iconPath: '/images/mine-icons/tab-measure-active.png',
-        selectedIconPath: '/images/mine-icons/tab-measure-active.png',
         center: true
       },
       {

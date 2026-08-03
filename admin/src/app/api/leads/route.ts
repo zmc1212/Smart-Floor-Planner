@@ -36,6 +36,18 @@ function parsePage(searchParams: URLSearchParams) {
   return { page, limit };
 }
 
+function startOfChinaBusinessDay(now = new Date()) {
+  const chinaOffsetMs = 8 * 60 * 60 * 1000;
+  const chinaNow = new Date(now.getTime() + chinaOffsetMs);
+  return new Date(
+    Date.UTC(
+      chinaNow.getUTCFullYear(),
+      chinaNow.getUTCMonth(),
+      chinaNow.getUTCDate()
+    ) - chinaOffsetMs
+  );
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -62,25 +74,44 @@ export async function GET(request: Request) {
         miniContext,
         async (transaction) => {
           const repository = new LeadRepository(transaction);
-          const [list, all, stats] = await Promise.all([
+          const [list, all, stats, todayNew] = await Promise.all([
             repository.list({ ...baseOptions, status, page, limit }),
             repository.count(baseOptions),
             repository.countStatuses(baseOptions, [
               'new',
+              'contacted',
               'measuring',
+              'measured',
               'assigned',
+              'designing',
+              'quoting',
               'converted',
             ]),
+            repository.count({
+              ...baseOptions,
+              createdSince: startOfChinaBusinessDay(),
+            }),
           ]);
-          return { list, all, stats };
+          return { list, all, stats, todayNew };
         }
       );
+      const following = [
+        'new',
+        'contacted',
+        'measuring',
+        'measured',
+        'assigned',
+        'designing',
+        'quoting',
+      ].reduce((total, key) => total + (result.stats[key] ?? 0), 0);
       return NextResponse.json({
         success: true,
         data: result.list.rows.map(leadToDto),
         stats: {
           all: result.all,
           ...result.stats,
+          todayNew: result.todayNew,
+          following,
         },
       });
     }

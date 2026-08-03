@@ -3,6 +3,7 @@ import {
   count,
   desc,
   eq,
+  gte,
   inArray,
   or,
   type SQL,
@@ -44,6 +45,7 @@ export interface LeadListOptions {
   staffVisibility?: 'assigned' | 'promoted-or-assigned';
   page?: number;
   limit?: number;
+  createdSince?: Date;
 }
 
 export class LeadRepository {
@@ -56,6 +58,9 @@ export class LeadRepository {
     }
     if (options.source) filters.push(eq(leads.source, options.source));
     if (options.phone) filters.push(eq(leads.phone, options.phone));
+    if (options.createdSince) {
+      filters.push(gte(leads.createdAt, options.createdSince));
+    }
     if (options.staffId) {
       filters.push(
         options.staffVisibility === 'promoted-or-assigned'

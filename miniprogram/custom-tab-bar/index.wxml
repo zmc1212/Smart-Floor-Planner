@@ -8,9 +8,10 @@
       bindtap="switchTab"
     >
       <view class="tab-icon {{item.center ? 'center-icon' : ''}}">
-        <image class="tab-image {{item.center ? 'center-image' : ''}}" src="{{selected === index ? item.selectedIconPath : item.iconPath}}" mode="aspectFit" />
+        <image wx:if="{{item.center}}" class="tab-image center-image" src="/images/mine-icons/tab-measure-k.png" mode="aspectFit" />
+        <image wx:else class="tab-image" src="{{selected === index ? item.selectedIconPath : item.iconPath}}" mode="aspectFit" />
       </view>
-      <text class="tab-text" wx:if="{{!item.center}}">{{item.text}}</text>
+      <text class="tab-text">{{item.text}}</text>
     </view>
   </view>
 </view>

@@ -98,6 +98,7 @@ export async function ensureGrsImageModelCatalog() {
       })
     );
   }
+
 }
 
 export async function listImageModelPrices() {
