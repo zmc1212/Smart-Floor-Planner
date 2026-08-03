@@ -591,3 +591,153 @@ export async function beginPostgresCreationProviderAttempt(input: {
     return { generation: updatedGeneration, attempt, reused: false };
   });
 }
+
+/**
+ * Persists the accepted asynchronous provider submission before polling starts.
+ * A response may be delivered more than once, but it must always identify the
+ * same remote task as the attempt that originally claimed the generation.
+ */
+export async function acknowledgePostgresCreationProviderAttempt(input: {
+  enterpriseId: string;
+  generationId: string;
+  attemptId: string;
+  remoteTaskId: string;
+  remoteStatus?: string;
+  status?: 'processing' | 'unknown';
+  errorMessage?: string;
+  nextPollAfterMs?: number;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const generationId = parsePostgresId(input.generationId, 'generationId');
+  const attemptId = parsePostgresId(input.attemptId, 'attemptId');
+  const remoteTaskId = input.remoteTaskId.trim();
+  if (!remoteTaskId) throw new Error('供应商提交响应缺少远端任务 ID');
+  const status = input.status || 'processing';
+  const remoteStatus = input.remoteStatus?.trim() || status;
+  const pollDelay = Math.min(
+    300_000,
+    Math.max(1_000, Math.trunc(Number(input.nextPollAfterMs) || (status === 'unknown' ? 30_000 : 2_500)))
+  );
+
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const creation = new AiCreationRepository(transaction);
+    const generation = await creation.findGenerationForUpdate(generationId);
+    if (!generation || generation.deletedAt || generation.type !== 'free_create') {
+      throw new Error('创作生成任务不存在');
+    }
+    if (generation.currentAttemptId !== attemptId || generation.status !== 'processing') {
+      throw new Error('供应商提交响应不属于当前创作生成任务');
+    }
+    const attempt = await creation.findProviderAttempt(attemptId);
+    if (!attempt || attempt.generationId !== generationId) {
+      throw new Error('供应商尝试不存在或不属于当前创作生成任务');
+    }
+    if (attempt.remoteTaskId) {
+      if (attempt.remoteTaskId !== remoteTaskId) {
+        throw new Error('供应商提交响应的远端任务 ID 与已记录任务不一致');
+      }
+      return { generation, attempt, reused: true };
+    }
+    if (!['created', 'submitted', 'processing', 'unknown'].includes(attempt.status)) {
+      throw new Error('供应商尝试已结束，无法记录提交响应');
+    }
+
+    const nextPollAt = new Date(Date.now() + pollDelay).toISOString();
+    const errorMessage = status === 'unknown'
+      ? input.errorMessage?.trim() || '供应商提交状态暂时未知'
+      : null;
+    const updatedAttempt = await creation.updateProviderAttempt(attemptId, {
+      status,
+      accepted: true,
+      remoteTaskId,
+      remoteStatus,
+      errorCode: status === 'unknown' ? 'PROVIDER_STATUS_UNKNOWN' : null,
+      errorMessage,
+    });
+    const updatedGeneration = await creation.updateGeneration(generationId, {
+      externalTask: {
+        status,
+        remoteTaskId,
+        remoteStatus,
+        nextPollAt,
+        lastPolledAt: new Date().toISOString(),
+      },
+      errorCode: status === 'unknown' ? 'PROVIDER_STATUS_UNKNOWN' : null,
+      errorMessage,
+    });
+    if (!updatedAttempt || !updatedGeneration) throw new Error('供应商提交响应无法持久化');
+    return { generation: updatedGeneration, attempt: updatedAttempt, reused: false };
+  });
+}
+
+/**
+ * Records a non-terminal poll response for an already accepted asynchronous
+ * task. Media persistence and terminal success/failure settlement remain in a
+ * later execution boundary.
+ */
+export async function recordPostgresCreationProviderPollState(input: {
+  enterpriseId: string;
+  generationId: string;
+  attemptId: string;
+  remoteTaskId: string;
+  status: 'processing' | 'unknown';
+  remoteStatus?: string;
+  errorMessage?: string;
+  nextPollAfterMs?: number;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const generationId = parsePostgresId(input.generationId, 'generationId');
+  const attemptId = parsePostgresId(input.attemptId, 'attemptId');
+  const remoteTaskId = input.remoteTaskId.trim();
+  if (!remoteTaskId) throw new Error('供应商轮询响应缺少远端任务 ID');
+  const remoteStatus = input.remoteStatus?.trim() || input.status;
+  const pollDelay = Math.min(
+    300_000,
+    Math.max(1_000, Math.trunc(Number(input.nextPollAfterMs) || (input.status === 'unknown' ? 30_000 : 2_500)))
+  );
+
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const creation = new AiCreationRepository(transaction);
+    const generation = await creation.findGenerationForUpdate(generationId);
+    if (!generation || generation.deletedAt || generation.type !== 'free_create') {
+      throw new Error('创作生成任务不存在');
+    }
+    if (generation.currentAttemptId !== attemptId || generation.status !== 'processing') {
+      throw new Error('供应商轮询响应不属于当前创作生成任务');
+    }
+    const attempt = await creation.findProviderAttempt(attemptId);
+    if (!attempt || attempt.generationId !== generationId || attempt.remoteTaskId !== remoteTaskId) {
+      throw new Error('供应商轮询响应的远端任务 ID 与当前尝试不一致');
+    }
+    if (!['submitted', 'processing', 'unknown'].includes(attempt.status) || !attempt.accepted) {
+      throw new Error('供应商尝试尚未受理或已结束，无法记录轮询响应');
+    }
+
+    const nextPollAt = new Date(Date.now() + pollDelay).toISOString();
+    const errorMessage = input.status === 'unknown'
+      ? input.errorMessage?.trim() || '供应商轮询状态暂时未知'
+      : null;
+    const durationMs = Math.max(0, Date.now() - attempt.createdAt.getTime());
+    const updatedAttempt = await creation.updateProviderAttempt(attemptId, {
+      status: input.status,
+      accepted: true,
+      remoteStatus,
+      durationMs,
+      errorCode: input.status === 'unknown' ? 'PROVIDER_STATUS_UNKNOWN' : null,
+      errorMessage,
+    });
+    const updatedGeneration = await creation.updateGeneration(generationId, {
+      externalTask: {
+        status: input.status,
+        remoteTaskId,
+        remoteStatus,
+        nextPollAt,
+        lastPolledAt: new Date().toISOString(),
+      },
+      errorCode: input.status === 'unknown' ? 'PROVIDER_STATUS_UNKNOWN' : null,
+      errorMessage,
+    });
+    if (!updatedAttempt || !updatedGeneration) throw new Error('供应商轮询响应无法持久化');
+    return { generation: updatedGeneration, attempt: updatedAttempt };
+  });
+}

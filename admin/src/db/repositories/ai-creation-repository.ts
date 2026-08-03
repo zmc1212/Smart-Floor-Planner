@@ -228,6 +228,16 @@ export class AiCreationRepository {
     return rows[0] ?? null;
   }
 
+  async findGenerationForUpdate(id: bigint) {
+    const rows = await this.transaction
+      .select()
+      .from(aiGenerations)
+      .where(eq(aiGenerations.id, id))
+      .for('update')
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
   async listGenerationsByIds(ids: bigint[]) {
     if (!ids.length) return [];
     return this.transaction.select().from(aiGenerations).where(inArray(aiGenerations.id, nonEmptyIds(ids)));

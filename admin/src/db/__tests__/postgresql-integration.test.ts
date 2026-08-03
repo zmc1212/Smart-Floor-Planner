@@ -77,10 +77,12 @@ import { storePostgresMediaBuffer } from '@/lib/ai/postgres-media-assets';
 import { listPostgresExecutableImageModelProfiles } from '@/lib/ai/image-model-catalog';
 import {
   createPostgresCreationTask,
+  acknowledgePostgresCreationProviderAttempt,
   beginPostgresCreationProviderAttempt,
   consumePostgresCreationGenerationCredits,
   holdPostgresCreationGenerationCredits,
   preparePostgresCreationBatch,
+  recordPostgresCreationProviderPollState,
   releasePostgresCreationGenerationCredits,
 } from '@/lib/ai/postgres-creation-service';
 import {
@@ -1433,6 +1435,69 @@ test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and g
     assert.equal(providerAttempt.generation.status, 'processing');
     assert.equal(providerAttempt.attempt.generationId, prepared.generations[0]!.id);
     assert.equal(providerAttempt.attempt.status, 'created');
+
+    const acknowledgedAttempt = await acknowledgePostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[0]!.id.toString(),
+      attemptId: providerAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-remote-task`,
+      remoteStatus: 'queued',
+      nextPollAfterMs: 2_500,
+    });
+    assert.equal(acknowledgedAttempt.reused, false);
+    assert.equal(acknowledgedAttempt.attempt.accepted, true);
+    assert.equal(acknowledgedAttempt.attempt.remoteTaskId, `${testRunKey}-remote-task`);
+    assert.equal(acknowledgedAttempt.attempt.status, 'processing');
+    assert.equal(
+      (acknowledgedAttempt.generation.externalTask as { remoteTaskId?: string }).remoteTaskId,
+      `${testRunKey}-remote-task`
+    );
+
+    const repeatedAcknowledgement = await acknowledgePostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[0]!.id.toString(),
+      attemptId: providerAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-remote-task`,
+      remoteStatus: 'ignored-on-retry',
+    });
+    assert.equal(repeatedAcknowledgement.reused, true);
+    assert.equal(repeatedAcknowledgement.attempt.remoteStatus, 'queued');
+
+    const unknownPoll = await recordPostgresCreationProviderPollState({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[0]!.id.toString(),
+      attemptId: providerAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-remote-task`,
+      status: 'unknown',
+      remoteStatus: 'upstream-timeout',
+      errorMessage: 'Provider did not return a status yet',
+    });
+    assert.equal(unknownPoll.attempt.status, 'unknown');
+    assert.equal(unknownPoll.attempt.errorCode, 'PROVIDER_STATUS_UNKNOWN');
+    assert.equal(unknownPoll.generation.status, 'processing');
+    assert.equal((unknownPoll.generation.externalTask as { status?: string }).status, 'unknown');
+
+    const processingPoll = await recordPostgresCreationProviderPollState({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[0]!.id.toString(),
+      attemptId: providerAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-remote-task`,
+      status: 'processing',
+      remoteStatus: 'running',
+    });
+    assert.equal(processingPoll.attempt.status, 'processing');
+    assert.equal(processingPoll.attempt.errorCode, null);
+    assert.equal((processingPoll.generation.externalTask as { remoteStatus?: string }).remoteStatus, 'running');
+
+    await assert.rejects(
+      acknowledgePostgresCreationProviderAttempt({
+        enterpriseId: enterpriseAId.toString(),
+        generationId: prepared.generations[0]!.id.toString(),
+        attemptId: providerAttempt.attempt.id.toString(),
+        remoteTaskId: `${testRunKey}-different-remote-task`,
+      }),
+      /远端任务 ID 与已记录任务不一致/
+    );
 
     const repeatedProviderAttempt = await beginPostgresCreationProviderAttempt({
       enterpriseId: enterpriseAId.toString(),

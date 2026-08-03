@@ -111,10 +111,21 @@ desktop/mobile visual checks, and browser verification pass.
   report detail, follow-up, assignment, pool, and claim-review interactions.
   Its existing PostgreSQL-backed APIs, `salesperson` self-claim boundary, and
   `admin`/`super_admin` configuration and pool-management boundary are unchanged.
+- `/workflow-logs` now uses `PageContainer`, Ant Design summary cards, and
+  `ProTable` for server-paginated notification-log review and status filtering.
+  Its existing PostgreSQL notification-log API, enterprise-admin read scope,
+  and `admin`/`super_admin` reminder-scan boundary are unchanged; table-load and
+  scan failures use the shared operation feedback UI.
 - `/staff` now uses `PageContainer`, `ProTable`, `ModalForm`, and Ant Design
   `Tree` for server-paginated staff search, department filtering, and staff or
   department maintenance. The existing tenant-scoped staff/department APIs and
   `enterprise_admin`/`admin`/`super_admin` mutation boundary are unchanged.
+- `/admins` now uses `PageContainer`, `ProTable`, and `ModalForm` for account
+  search, scope and role filtering, creation, editing, password resets, status
+  changes, and deletion. The existing PostgreSQL-backed `admin-users` APIs,
+  `admins` menu-permission route guard, decimal-string `_id` DTO contract, and
+  rule that salesperson accounts have no enterprise binding are unchanged; the
+  form exposes only the five roles accepted by those APIs.
 - `/enterprise-orders` now uses `PageContainer`, `ProTable`, and `ModalForm`
   for order search, status review, status transitions, enterprise activation,
   and order creation. Its existing PostgreSQL-backed order, package, promotion,

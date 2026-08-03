@@ -160,10 +160,16 @@ permission, or workflow changes.
   pattern (`PageContainer`, `ProTable`, `ModalForm`, and `Tree`) for server-side
   staff search/pagination, department filtering, and staff or department
   maintenance; this presentation migration does not change its APIs, tenant
-  scope, or role boundaries. Enterprise staff, platform admins, role assignment,
-  department trees, status changes, and promoter/designer/measurer relationships
-  are supported. Existing `_id` response fields remain decimal strings for
-  frontend compatibility; RLS and route role checks enforce tenant boundaries.
+  scope, or role boundaries. `/admins` uses the same `PageContainer`,
+  `ProTable`, and `ModalForm` pattern for platform account search, scope and
+  role filtering, creation, editing, password resets, status changes, and
+  deletion. It retains the `admins` menu-permission guard, PostgreSQL
+  `admin-users` API contract, and salesperson-without-enterprise rule; its form
+  exposes only the five API-supported management roles. Enterprise staff,
+  platform admins, role assignment, department trees, status changes, and
+  promoter/designer/measurer relationships are supported. Existing `_id`
+  response fields remain decimal strings for frontend compatibility; RLS and
+  route role checks enforce tenant boundaries.
 
 ### 5. B2B Promotion And Collaboration Workflow
 
@@ -185,6 +191,12 @@ permission, or workflow changes.
   `ProDescriptions`) for the list, global-rule form, record detail, follow-up,
   assignment, pool, and claim-review interactions; this presentation migration
   does not change its APIs, data contract, or role boundaries. The PostgreSQL
+  `/workflow-logs` page uses `PageContainer`, summary cards, and `ProTable` for
+  server-paginated notification-log review and status filtering; it preserves
+  the notification-log API, enterprise-admin read scope, and platform
+  `admin`/`super_admin` reminder-scan boundary. Load and scan failures use the
+  shared operation feedback UI.
+  The PostgreSQL
   promotion/notification foundation now has explicit
   bigint foreign keys for claim review, measurement/design assignment, and
   conflict review; indexed role visibility; atomic conditional state updates;
@@ -454,10 +466,23 @@ permission, or workflow changes.
   The next internal boundary atomically records a held generation's provider
   configuration, snapshotted model, request fingerprint, and request snapshot
   before moving it to `processing`; an active attempt is reused on retry. It
-  does not yet call the provider.
+  does not yet call the provider. After that call eventually returns, its
+  accepted asynchronous response can be persisted internally under the current
+  generation lock with its remote task ID, provider status, and polling
+  metadata. Replayed acknowledgements keep the original task ID, while stale or
+  conflicting responses are rejected. Provider I/O, polling, result media
+  writes, and public routes remain outside this boundary.
+  Non-terminal polling state can now also be written under that same current
+  generation lock: `processing` and `unknown` retain the original remote task
+  ID, persist provider diagnostics plus bounded next-poll metadata, and a later
+  processing response clears a transient unknown-state error. Network polling,
+  terminal-result settlement, result media writes, and public routes still have
+  not switched.
   A held generation can also be released atomically with an idempotent release
   ledger and a failed status, so failed submission paths do not retain frozen
-  credit. Successful consumption remains pending with provider result handling.
+  credit. A succeeded, held generation can now atomically consume that same
+  snapshotted price from both balance fields through an idempotent ledger.
+  Provider result handling still has to establish success before it can call it.
   The PostgreSQL `AiCreationModelProfileRepository` is now available as the
   tested persistence foundation for that cutover: it upserts catalog metadata,
   preserves explicit enabled/default settings, and exposes bigint-safe catalog

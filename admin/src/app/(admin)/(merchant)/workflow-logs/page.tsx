@@ -1,28 +1,60 @@
 'use client';
 
-import { notify } from '@/components/ui/operation-feedback';
-
-import React, { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2, Loader2, PlayCircle, RefreshCw, ShieldAlert } from 'lucide-react';
-import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Pagination } from '@/components/ui/pagination';
+import { useRef, useState } from 'react';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+  PageContainer,
+  ProTable,
+  type ActionType,
+  type ProColumns,
+} from '@ant-design/pro-components';
+import { Button, Card, Flex, Statistic, Tag, Typography } from 'antd';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  CircleOff,
+  PlayCircle,
+  ShieldAlert,
+} from 'lucide-react';
+import { notify } from '@/components/ui/operation-feedback';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 type LogStatus = 'sent' | 'failed' | 'skipped';
 
-const STATUS_META: Record<LogStatus, { label: string; className: string }> = {
-  sent: { label: '已发送', className: 'bg-green-100 text-green-700 hover:bg-green-100' },
-  failed: { label: '发送失败', className: 'bg-red-100 text-red-700 hover:bg-red-100' },
-  skipped: { label: '已跳过', className: 'bg-amber-100 text-amber-700 hover:bg-amber-100' },
+type WorkflowLog = {
+  _id: string;
+  recordId?: {
+    _id: string;
+    enterpriseName?: string | null;
+    contactPerson?: string | null;
+  } | string;
+  recipientStaffId?: {
+    _id: string;
+    displayName?: string | null;
+    role?: string | null;
+  } | string | null;
+  recipientRole?: string | null;
+  channel?: string | null;
+  notificationType: string;
+  status: LogStatus;
+  message?: string | null;
+  errorMessage?: string | null;
+  metadata?: Record<string, unknown> | null;
+  sentAt?: string | null;
+  createdAt?: string;
+};
+
+type NotificationStats = Record<LogStatus, number>;
+
+const STATUS_OPTIONS: Array<{ label: string; value: LogStatus }> = [
+  { label: '已发送', value: 'sent' },
+  { label: '发送失败', value: 'failed' },
+  { label: '已跳过', value: 'skipped' },
+];
+
+const STATUS_META: Record<LogStatus, { label: string; color: string }> = {
+  sent: { label: '已发送', color: 'green' },
+  failed: { label: '发送失败', color: 'red' },
+  skipped: { label: '已跳过', color: 'gold' },
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -38,203 +70,217 @@ const TYPE_LABELS: Record<string, string> = {
   record_closed: '流程关闭',
 };
 
+function formatDate(value?: string | null) {
+  return value ? new Date(value).toLocaleString('zh-CN') : '-';
+}
+
+function enterpriseName(log: WorkflowLog) {
+  return log.recordId && typeof log.recordId !== 'string'
+    ? log.recordId.enterpriseName || '未关联企业'
+    : '未关联企业';
+}
+
+function contactPerson(log: WorkflowLog) {
+  return log.recordId && typeof log.recordId !== 'string'
+    ? log.recordId.contactPerson || '无联系人'
+    : '无联系人';
+}
+
+function recipientName(log: WorkflowLog) {
+  return log.recipientStaffId && typeof log.recipientStaffId !== 'string'
+    ? log.recipientStaffId.displayName || log.recipientRole || '系统角色待办'
+    : log.recipientRole || '系统角色待办';
+}
+
+function logMessage(log: WorkflowLog) {
+  const reason = log.metadata?.reason;
+  return log.errorMessage || log.message || (typeof reason === 'string' ? reason : '') || '-';
+}
+
 export default function WorkflowLogsPage() {
-  const { user } = useCurrentUser();
-  const [logs, setLogs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [statusFilter, setStatusFilter] = useState<'all' | LogStatus>('all');
-  const [scanRunning, setScanRunning] = useState(false);
-  const [stats, setStats] = useState({ sent: 0, failed: 0, skipped: 0 });
-  const [pagination, setPagination] = useState({
-    total: 0,
-    page: 1,
-    limit: 20,
-    totalPages: 0,
+  const actionRef = useRef<ActionType>(null);
+  const { user: currentUser } = useCurrentUser();
+  const [stats, setStats] = useState<NotificationStats>({
+    sent: 0,
+    failed: 0,
+    skipped: 0,
   });
+  const [scanRunning, setScanRunning] = useState(false);
 
-  const canRunScan = user?.role === 'super_admin' || user?.role === 'admin';
+  const canRunScan = Boolean(
+    currentUser && ['super_admin', 'admin'].includes(currentUser.role),
+  );
 
-  const fetchLogs = async (status = statusFilter, page = pagination.page) => {
-    setLoading(true);
-    try {
-      let url = `/api/workflow-notification-logs?page=${page}&limit=${pagination.limit}`;
-      if (status !== 'all') {
-        url += `&status=${status}`;
-      }
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.success) {
-        setLogs(data.data || []);
-        if (data.pagination) {
-          setPagination(data.pagination);
-        }
-        if (data.stats) {
-          setStats(data.stats);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to fetch workflow logs:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchLogs(statusFilter, 1);
-  }, [statusFilter]);
-
-  const handleRunScan = async () => {
+  const runReminderScan = async () => {
     setScanRunning(true);
     try {
-      const res = await fetch('/api/automation/reminders/run', { method: 'POST' });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        notify.fromAlert(data.error || '提醒扫描执行失败');
-        return;
+      const response = await fetch('/api/automation/reminders/run', {
+        method: 'POST',
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '提醒扫描执行失败');
       }
-      notify.fromAlert(`提醒扫描已执行，处理 ${data.data?.processed || 0} 条记录`);
-      await fetchLogs(statusFilter, 1);
+      notify.success(`提醒扫描已执行，处理 ${result.data?.processed || 0} 条记录`);
+      await actionRef.current?.reload();
     } catch (error) {
-      console.error('Failed to run reminder scan:', error);
-      notify.fromAlert('提醒扫描执行失败');
+      notify.error(error instanceof Error ? error.message : '提醒扫描执行失败');
     } finally {
       setScanRunning(false);
     }
   };
 
-  const getStatusBadge = (status: LogStatus) => {
-    const meta = STATUS_META[status];
-    return (
-      <Badge variant="secondary" className={meta.className}>
-        {meta.label}
-      </Badge>
-    );
-  };
+  const columns: ProColumns<WorkflowLog>[] = [
+    {
+      title: '发送状态',
+      dataIndex: 'status',
+      valueType: 'select',
+      valueEnum: Object.fromEntries(
+        STATUS_OPTIONS.map((option) => [option.value, option.label]),
+      ),
+      width: 130,
+      render: (_, log) => {
+        const status = STATUS_META[log.status];
+        return <Tag color={status.color}>{status.label}</Tag>;
+      },
+    },
+    {
+      title: '通知类型',
+      dataIndex: 'notificationType',
+      width: 170,
+      hideInSearch: true,
+      render: (_, log) => TYPE_LABELS[log.notificationType] || log.notificationType,
+    },
+    {
+      title: '企业 / 报备',
+      key: 'business',
+      width: 220,
+      hideInSearch: true,
+      render: (_, log) => (
+        <Flex vertical gap={2}>
+          <Typography.Text strong ellipsis>{enterpriseName(log)}</Typography.Text>
+          <Typography.Text type="secondary" className="text-xs" ellipsis>{contactPerson(log)}</Typography.Text>
+        </Flex>
+      ),
+    },
+    {
+      title: '接收对象',
+      key: 'recipient',
+      width: 190,
+      hideInSearch: true,
+      render: (_, log) => (
+        <Flex vertical gap={2}>
+          <Typography.Text>{recipientName(log)}</Typography.Text>
+          <Typography.Text type="secondary" className="text-xs">{log.recipientRole || '未指定角色'}</Typography.Text>
+        </Flex>
+      ),
+    },
+    {
+      title: '通知内容',
+      key: 'message',
+      width: 360,
+      hideInSearch: true,
+      render: (_, log) => (
+        <Typography.Text type={log.status === 'failed' ? 'danger' : 'secondary'} ellipsis={{ tooltip: logMessage(log) }}>
+          {logMessage(log)}
+        </Typography.Text>
+      ),
+    },
+    {
+      title: '发送时间',
+      dataIndex: 'createdAt',
+      width: 185,
+      hideInSearch: true,
+      render: (_, log) => formatDate(log.sentAt || log.createdAt),
+    },
+  ];
 
   return (
-    <div className="min-h-screen bg-white font-sans text-[#171717]">
-      <main className="mx-auto max-w-7xl space-y-8 px-6 py-16">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-2">
-            <h2 className="text-[32px] font-semibold leading-tight tracking-[-1.5px]">通知记录</h2>
-            <p className="text-sm text-muted-foreground">
-              查看系统自动发送的站内提醒与小程序订阅消息结果。
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" variant={statusFilter === 'all' ? 'default' : 'outline'} onClick={() => setStatusFilter('all')}>
-              全部
-            </Button>
-            <Button type="button" variant={statusFilter === 'sent' ? 'default' : 'outline'} onClick={() => setStatusFilter('sent')}>
-              已发送
-            </Button>
-            <Button type="button" variant={statusFilter === 'skipped' ? 'default' : 'outline'} onClick={() => setStatusFilter('skipped')}>
-              已跳过
-            </Button>
-            <Button type="button" variant={statusFilter === 'failed' ? 'default' : 'outline'} onClick={() => setStatusFilter('failed')}>
-              发送失败
-            </Button>
-            <Button type="button" variant="outline" onClick={() => fetchLogs(statusFilter, 1)} disabled={loading}>
-              <RefreshCw size={16} className="mr-2" />
-              刷新
-            </Button>
-            {canRunScan && (
-              <Button type="button" onClick={handleRunScan} disabled={scanRunning}>
-                {scanRunning ? <Loader2 size={16} className="mr-2 animate-spin" /> : <PlayCircle size={16} className="mr-2" />}
-                立即执行一次提醒扫描
-              </Button>
-            )}
-          </div>
-        </div>
+    <div className="admin-page-frame">
+      <PageContainer
+        breadcrumbRender={false}
+        className="admin-page-container"
+        title="通知记录"
+        content="查看系统自动发送的站内提醒和小程序订阅消息结果。"
+        extra={canRunScan ? [
+          <Button
+            key="scan"
+            type="primary"
+            icon={<PlayCircle size={16} />}
+            loading={scanRunning}
+            onClick={() => void runReminderScan()}
+          >
+            执行提醒扫描
+          </Button>,
+        ] : undefined}
+      >
+        <Flex vertical gap={24}>
+          <Flex gap={16} wrap="wrap">
+            <Card className="admin-panel-card min-w-52 flex-1" size="small">
+              <Flex justify="space-between" align="start">
+                <Statistic title="已发送" value={stats.sent} />
+                <CheckCircle2 size={20} className="text-primary" />
+              </Flex>
+              <Typography.Text type="secondary">本次查询范围内成功送达的提醒</Typography.Text>
+            </Card>
+            <Card className="admin-panel-card min-w-52 flex-1" size="small">
+              <Flex justify="space-between" align="start">
+                <Statistic title="已跳过" value={stats.skipped} />
+                <CircleOff size={20} className="text-amber-500" />
+              </Flex>
+              <Typography.Text type="secondary">被去重或规则过滤的提醒</Typography.Text>
+            </Card>
+            <Card className="admin-panel-card min-w-52 flex-1" size="small">
+              <Flex justify="space-between" align="start">
+                <Statistic title="发送失败" value={stats.failed} valueStyle={{ color: '#cf1322' }} />
+                <AlertTriangle size={20} className="text-destructive" />
+              </Flex>
+              <Typography.Text type="secondary">请结合失败原因检查配置或接收对象</Typography.Text>
+            </Card>
+            <Card className="admin-panel-card min-w-52 flex-1" size="small">
+              <Flex justify="space-between" align="start">
+                <Statistic title="日志总数" value={stats.sent + stats.skipped + stats.failed} />
+                <ShieldAlert size={20} className="text-muted-foreground" />
+              </Flex>
+              <Typography.Text type="secondary">当前状态统计的合计</Typography.Text>
+            </Card>
+          </Flex>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div className="rounded-3xl border bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-3 text-green-700">
-              <CheckCircle2 size={18} />
-              <span className="text-sm font-semibold">已发送</span>
-            </div>
-            <div className="mt-3 text-3xl font-black">{stats.sent}</div>
-          </div>
-          <div className="rounded-3xl border bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-3 text-amber-700">
-              <AlertTriangle size={18} />
-              <span className="text-sm font-semibold">已跳过</span>
-            </div>
-            <div className="mt-3 text-3xl font-black">{stats.skipped}</div>
-          </div>
-          <div className="rounded-3xl border bg-white p-5 shadow-sm">
-            <div className="flex items-center gap-3 text-red-700">
-              <ShieldAlert size={18} />
-              <span className="text-sm font-semibold">发送失败</span>
-            </div>
-            <div className="mt-3 text-3xl font-black">{stats.failed}</div>
-          </div>
-        </div>
-
-        <div className="overflow-hidden rounded-3xl border bg-white shadow-sm">
-          <Table>
-            <TableHeader className="bg-muted/40">
-              <TableRow>
-                <TableHead>通知时间</TableHead>
-                <TableHead>类型</TableHead>
-                <TableHead>企业 / 报备</TableHead>
-                <TableHead>接收者</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead className="w-[300px]">消息内容</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
-                    <Loader2 size={18} className="mx-auto mb-3 animate-spin" />
-                    正在加载提醒日志...
-                  </TableCell>
-                </TableRow>
-              ) : logs.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
-                    当前没有提醒日志
-                  </TableCell>
-                </TableRow>
-              ) : (
-                logs.map((log) => (
-                  <TableRow key={log._id}>
-                    <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
-                      {new Date(log.createdAt).toLocaleString()}
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      {TYPE_LABELS[log.notificationType] || log.notificationType}
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm font-medium">{log.recordId?.enterpriseName || '未关联企业'}</div>
-                      <div className="text-xs text-muted-foreground">{log.recordId?.contactPerson || '无联系人'}</div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm font-medium">{log.recipientRole}</div>
-                      <div className="text-xs text-muted-foreground">{log.recipientStaffId?.displayName || '系统角色待办'}</div>
-                    </TableCell>
-                    <TableCell>{getStatusBadge(log.status)}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {log.errorMessage || log.message || log.metadata?.reason || '-'}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-
-        {!loading && logs.length > 0 && (
-          <Pagination
-            total={pagination.total}
-            page={pagination.page}
-            limit={pagination.limit}
-            totalPages={pagination.totalPages}
-            onChange={(newPage) => fetchLogs(statusFilter, newPage)}
+          <ProTable<WorkflowLog>
+            className="admin-mobile-filter-stack"
+            actionRef={actionRef}
+            rowKey="_id"
+            columns={columns}
+            search={{ labelWidth: 'auto', defaultCollapsed: false, span: 12 }}
+            options={{ reload: true, density: true, setting: true }}
+            pagination={{ defaultPageSize: 20, showSizeChanger: true }}
+            scroll={{ x: 1120 }}
+            request={async (params) => {
+              const query = new URLSearchParams({
+                page: String(params.current || 1),
+                limit: String(params.pageSize || 20),
+              });
+              if (params.status) query.set('status', String(params.status));
+              const response = await fetch(`/api/workflow-notification-logs?${query}`);
+              const result = await response.json();
+              if (!response.ok || !result.success) {
+                throw new Error(result.error || '读取通知记录失败');
+              }
+              setStats({
+                sent: Number(result.stats?.sent || 0),
+                failed: Number(result.stats?.failed || 0),
+                skipped: Number(result.stats?.skipped || 0),
+              });
+              return {
+                data: result.data || [],
+                total: result.pagination?.total || 0,
+                success: true,
+              };
+            }}
+            onRequestError={(error) => notify.error(error instanceof Error ? error.message : '读取通知记录失败')}
           />
-        )}
-      </main>
+        </Flex>
+      </PageContainer>
     </div>
   );
 }
