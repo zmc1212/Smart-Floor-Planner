@@ -1,21 +1,14 @@
 'use client';
 
-import { notify } from '@/components/ui/operation-feedback';
-
-import React, { useEffect, useRef, useState } from 'react';
-import { Image as ImageIcon, Loader2, Upload } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { useEffect, useState } from 'react';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { cn } from '@/lib/utils';
+  ModalForm,
+  ProFormDigit,
+  ProFormText,
+} from '@ant-design/pro-components';
+import { Button, Flex, Form, Image, Row, Col, Typography, Upload } from 'antd';
+import { Image as ImageIcon, Upload as UploadIcon } from 'lucide-react';
+import { notify } from '@/components/ui/operation-feedback';
 import {
   DEFAULT_ENTERPRISE_FORM,
   EnterpriseFormState,
@@ -44,299 +37,142 @@ export default function EnterpriseEditorDialog({
   enterprise,
   onSaved,
 }: EnterpriseEditorDialogProps) {
-  const [formData, setFormData] = useState<EnterpriseFormState>(DEFAULT_ENTERPRISE_FORM);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [logo, setLogo] = useState(enterprise?.logo || '');
 
   useEffect(() => {
-    if (!enterprise) {
-      setFormData(DEFAULT_ENTERPRISE_FORM);
-      return;
-    }
-
-    setFormData({
-      name: enterprise.name || '',
-      code: enterprise.code || '',
-      contactPerson: {
-        name: enterprise.contactPerson?.name || '',
-        phone: enterprise.contactPerson?.phone || '',
-        email: enterprise.contactPerson?.email || '',
-      },
-      logo: enterprise.logo || '',
-      branding: {
-        primaryColor: enterprise.branding?.primaryColor || '#171717',
-        accentColor: enterprise.branding?.accentColor || '#0070f3',
-      },
-      groundPromotionFixedCommission: String(enterprise.groundPromotionFixedCommission ?? 0),
-    });
+    if (open) setLogo(enterprise?.logo || '');
   }, [enterprise, open]);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const initialValues: EnterpriseFormState = enterprise
+    ? {
+        name: enterprise.name || '',
+        code: enterprise.code || '',
+        contactPerson: {
+          name: enterprise.contactPerson?.name || '',
+          phone: enterprise.contactPerson?.phone || '',
+          email: enterprise.contactPerson?.email || '',
+        },
+        logo: enterprise.logo || '',
+        branding: {
+          primaryColor: enterprise.branding?.primaryColor || '#171717',
+          accentColor: enterprise.branding?.accentColor || '#0070f3',
+        },
+        groundPromotionFixedCommission: String(enterprise.groundPromotionFixedCommission ?? 0),
+      }
+    : DEFAULT_ENTERPRISE_FORM;
+
+  const handleLogoChange = async (file: File) => {
     if (file.size > 1024 * 1024) {
-      notify.fromAlert('图片大小不能超过 1MB');
+      notify.error('图片大小不能超过 1MB');
       return;
     }
 
     try {
-      const base64 = await toBase64(file);
-      setFormData((prev) => ({ ...prev, logo: base64 }));
+      setLogo(await toBase64(file));
     } catch (error) {
       console.error('Failed to convert image to base64:', error);
-      notify.fromAlert('图片上传失败');
+      notify.error('图片上传失败');
     }
   };
 
-  const removeLogo = () => {
-    setFormData((prev) => ({ ...prev, logo: '' }));
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
+  const save = async (values: EnterpriseFormState) => {
     try {
       const url = enterprise ? `/api/admin/enterprises/${enterprise._id}` : '/api/admin/enterprises';
       const method = enterprise ? 'PATCH' : 'POST';
-      const payload = {
-        name: formData.name,
-        code: formData.code,
-        contactPerson: formData.contactPerson,
-        logo: formData.logo,
-        branding: formData.branding,
-        groundPromotionFixedCommission: formData.groundPromotionFixedCommission,
-      };
-      const res = await fetch(url, {
+      const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...values,
+          logo,
+          groundPromotionFixedCommission: String(values.groundPromotionFixedCommission ?? 0),
+        }),
       });
-      const data = await res.json();
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '保存失败');
 
-      if (!res.ok || !data.success) {
-        notify.fromAlert(data.error || '保存失败');
-        return;
-      }
-
-      notify.fromAlert(enterprise ? '企业更新成功' : '企业创建成功');
+      notify.success(enterprise ? '企业更新成功' : '企业创建成功');
       onOpenChange(false);
       await onSaved?.();
+      return true;
     } catch (error) {
-      console.error('Failed to save enterprise:', error);
-      notify.fromAlert('保存失败');
-    } finally {
-      setIsSubmitting(false);
+      notify.error(error instanceof Error ? error.message : '保存失败');
+      return false;
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl overflow-hidden rounded-3xl p-0 shadow-2xl">
-        <form onSubmit={handleSave}>
-          <DialogHeader className="border-b p-8 pb-6">
-            <DialogTitle className="text-2xl font-bold">
-              {enterprise ? '编辑企业基础信息' : '手动添加企业'}
-            </DialogTitle>
-            <DialogDescription>
-              这里仅维护基础资料、品牌信息与联系人；自动化配置请在独立页签中维护。
-            </DialogDescription>
-          </DialogHeader>
+    <ModalForm<EnterpriseFormState>
+      key={enterprise?._id || 'new'}
+      title={enterprise ? '编辑企业基础信息' : '手动添加企业'}
+      open={open}
+      initialValues={initialValues}
+      modalProps={{
+        destroyOnHidden: true,
+        maskClosable: false,
+        onCancel: () => onOpenChange(false),
+      }}
+      onOpenChange={onOpenChange}
+      onFinish={save}
+      submitter={{
+        searchConfig: { submitText: '保存企业', resetText: '取消' },
+        render: (_, dom) => <Flex justify="end" gap={12} style={{ marginTop: 24 }}>{dom}</Flex>,
+      }}
+    >
+      <Typography.Paragraph type="secondary">
+        这里仅维护基础资料、品牌信息与联系人；自动化配置请在独立页面维护。
+      </Typography.Paragraph>
 
-          <div className="max-h-[72vh] space-y-6 overflow-y-auto p-8">
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="ent-name">企业名称</Label>
-                <Input
-                  id="ent-name"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="例如：向总智能测绘科技有限公司"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ent-code">统一社会信用代码</Label>
-                <Input
-                  id="ent-code"
-                  required
-                  value={formData.code}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, code: e.target.value }))}
-                  placeholder="18 位统一社会信用代码"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="ent-commission">地推固定提成（元/单）</Label>
-                <Input
-                  id="ent-commission"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={formData.groundPromotionFixedCommission}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, groundPromotionFixedCommission: e.target.value }))
-                  }
-                />
-              </div>
-            </div>
+      <Row gutter={[20, 4]}>
+        <Col span={24}>
+          <ProFormText name="name" label="企业名称" rules={[{ required: true, message: '请输入企业名称' }]} fieldProps={{ placeholder: '例如：向总智能测绘科技有限公司' }} />
+        </Col>
+        <Col xs={24} md={12}>
+          <ProFormText name="code" label="统一社会信用代码" rules={[{ required: true, message: '请输入统一社会信用代码' }]} fieldProps={{ placeholder: '18 位统一社会信用代码' }} />
+        </Col>
+        <Col xs={24} md={12}>
+          <ProFormDigit name="groundPromotionFixedCommission" label="地推固定提成（元/单）" min={0} fieldProps={{ precision: 2, className: 'w-full' }} />
+        </Col>
+      </Row>
 
-            <div className="space-y-4 border-t pt-4">
-              <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                品牌定制
-              </h4>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="ent-logo">企业 Logo</Label>
-                  <div className="flex items-start gap-4">
-                    <div
-                      onClick={() => fileInputRef.current?.click()}
-                      className={cn(
-                        'flex h-24 w-24 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed bg-muted/20 transition-colors',
-                        formData.logo ? 'border-primary/20' : 'hover:border-primary/50 hover:bg-muted/30'
-                      )}
-                    >
-                      {formData.logo ? (
-                        <div className="group relative h-full w-full">
-                          <img src={formData.logo} alt="Logo Preview" className="h-full w-full object-contain" />
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-                            <Upload size={20} className="text-white" />
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <ImageIcon size={24} className="mb-1 text-muted-foreground" />
-                          <span className="text-[10px] text-muted-foreground">点击上传</span>
-                        </>
-                      )}
-                    </div>
-                    <div className="flex-1 space-y-2">
-                      <p className="text-[11px] text-muted-foreground">
-                        支持 PNG、JPG。建议正方形 Logo，图片会以 Base64 存储，大小限制 1MB。
-                      </p>
-                      <div className="flex gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-                          选择图片
-                        </Button>
-                        {formData.logo && (
-                          <Button type="button" variant="ghost" size="sm" onClick={removeLogo} className="text-destructive">
-                            移除
-                          </Button>
-                        )}
-                      </div>
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleFileChange}
-                        accept="image/*"
-                        className="hidden"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="primary-color">主色</Label>
-                    <div className="flex gap-2">
-                      <div className="h-10 w-10 shrink-0 rounded-lg border" style={{ backgroundColor: formData.branding.primaryColor }} />
-                      <Input
-                        id="primary-color"
-                        value={formData.branding.primaryColor}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            branding: { ...prev.branding, primaryColor: e.target.value },
-                          }))
-                        }
-                        placeholder="#171717"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="accent-color">强调色</Label>
-                    <div className="flex gap-2">
-                      <div className="h-10 w-10 shrink-0 rounded-lg border" style={{ backgroundColor: formData.branding.accentColor }} />
-                      <Input
-                        id="accent-color"
-                        value={formData.branding.accentColor}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            branding: { ...prev.branding, accentColor: e.target.value },
-                          }))
-                        }
-                        placeholder="#0070f3"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4 border-t pt-4">
-              <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                联系人资料
-              </h4>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="contact-name">姓名</Label>
-                  <Input
-                    id="contact-name"
-                    required
-                    value={formData.contactPerson.name}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        contactPerson: { ...prev.contactPerson, name: e.target.value },
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="contact-phone">电话</Label>
-                  <Input
-                    id="contact-phone"
-                    required
-                    value={formData.contactPerson.phone}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        contactPerson: { ...prev.contactPerson, phone: e.target.value },
-                      }))
-                    }
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="contact-email">邮箱（可选）</Label>
-                <Input
-                  id="contact-email"
-                  type="email"
-                  value={formData.contactPerson.email}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      contactPerson: { ...prev.contactPerson, email: e.target.value },
-                    }))
-                  }
-                />
-              </div>
-            </div>
+      <Form.Item label="企业 Logo" extra="支持 PNG、JPG。建议正方形 Logo，图片会以 Base64 存储，大小限制 1MB。">
+        <Flex align="center" gap={16} wrap>
+          <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-lg border bg-muted">
+            {logo ? (
+              <Image preview={false} src={logo} alt="企业 Logo 预览" className="h-full w-full object-contain" />
+            ) : (
+              <ImageIcon size={24} className="text-muted-foreground" />
+            )}
           </div>
+          <Flex gap={8}>
+            <Upload accept="image/*" showUploadList={false} beforeUpload={(file) => { void handleLogoChange(file); return false; }}>
+              <Button icon={<UploadIcon size={16} />}>选择图片</Button>
+            </Upload>
+            {logo ? <Button danger type="text" onClick={() => setLogo('')}>移除</Button> : null}
+          </Flex>
+        </Flex>
+      </Form.Item>
 
-          <DialogFooter className="bg-muted/30 p-8 pt-4">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
-              取消
-            </Button>
-            <Button type="submit" disabled={isSubmitting} className="flex-1">
-              {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : '确认保存'}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+      <Row gutter={[20, 4]}>
+        <Col xs={24} md={12}>
+          <ProFormText name={['branding', 'primaryColor']} label="主色" fieldProps={{ placeholder: '#171717', prefix: <span className="h-4 w-4 rounded border bg-foreground" /> }} />
+        </Col>
+        <Col xs={24} md={12}>
+          <ProFormText name={['branding', 'accentColor']} label="强调色" fieldProps={{ placeholder: '#0070f3', prefix: <span className="h-4 w-4 rounded border bg-primary" /> }} />
+        </Col>
+      </Row>
+
+      <Row gutter={[20, 4]}>
+        <Col xs={24} md={12}>
+          <ProFormText name={['contactPerson', 'name']} label="联系人姓名" rules={[{ required: true, message: '请输入联系人姓名' }]} />
+        </Col>
+        <Col xs={24} md={12}>
+          <ProFormText name={['contactPerson', 'phone']} label="联系电话" rules={[{ required: true, message: '请输入联系电话' }]} fieldProps={{ inputMode: 'tel' }} />
+        </Col>
+        <Col span={24}>
+          <ProFormText name={['contactPerson', 'email']} label="联系邮箱（可选）" fieldProps={{ type: 'email' }} />
+        </Col>
+      </Row>
+    </ModalForm>
   );
 }

@@ -78,12 +78,14 @@ import { listPostgresExecutableImageModelProfiles } from '@/lib/ai/image-model-c
 import {
   createPostgresCreationTask,
   acknowledgePostgresCreationProviderAttempt,
+  attachPostgresCreationProviderResultAsset,
   beginPostgresCreationProviderAttempt,
+  completePostgresCreationProviderAttempt,
   consumePostgresCreationGenerationCredits,
+  failPostgresCreationProviderAttempt,
   holdPostgresCreationGenerationCredits,
   preparePostgresCreationBatch,
   recordPostgresCreationProviderPollState,
-  releasePostgresCreationGenerationCredits,
 } from '@/lib/ai/postgres-creation-service';
 import {
   adjustAiCredits,
@@ -1352,6 +1354,7 @@ test('PostgreSQL GRS catalog initialization exposes an executable default model'
 
 test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and generations', async () => {
   let assetId: bigint | null = null;
+  let resultAssetId: bigint | null = null;
   let taskId: bigint | null = null;
   try {
     const profiles = await listPostgresExecutableImageModelProfiles();
@@ -1489,16 +1492,6 @@ test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and g
     assert.equal(processingPoll.attempt.errorCode, null);
     assert.equal((processingPoll.generation.externalTask as { remoteStatus?: string }).remoteStatus, 'running');
 
-    await assert.rejects(
-      acknowledgePostgresCreationProviderAttempt({
-        enterpriseId: enterpriseAId.toString(),
-        generationId: prepared.generations[0]!.id.toString(),
-        attemptId: providerAttempt.attempt.id.toString(),
-        remoteTaskId: `${testRunKey}-different-remote-task`,
-      }),
-      /远端任务 ID 与已记录任务不一致/
-    );
-
     const repeatedProviderAttempt = await beginPostgresCreationProviderAttempt({
       enterpriseId: enterpriseAId.toString(),
       generationId: prepared.generations[0]!.id.toString(),
@@ -1511,29 +1504,128 @@ test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and g
     assert.equal(repeatedProviderAttempt.reused, true);
     assert.equal(repeatedProviderAttempt.attempt.id, providerAttempt.attempt.id);
 
+    const completedAttempt = await completePostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[0]!.id.toString(),
+      attemptId: providerAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-remote-task`,
+      remoteStatus: 'completed',
+      output: { imageUrl: 'https://provider.example/result.png' },
+      actualCost: { currency: 'USD', amountMicros: 1200 },
+    });
+    assert.equal(completedAttempt.reused, false);
+    assert.equal(completedAttempt.generation.status, 'succeeded');
+    assert.equal(completedAttempt.attempt.status, 'succeeded');
+    assert.equal(
+      (completedAttempt.generation.output as { providerResult?: { imageUrl?: string } }).providerResult?.imageUrl,
+      'https://provider.example/result.png'
+    );
+
+    const repeatedCompletion = await completePostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[0]!.id.toString(),
+      attemptId: providerAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-remote-task`,
+      remoteStatus: 'ignored-on-retry',
+    });
+    assert.equal(repeatedCompletion.reused, true);
+    assert.equal(repeatedCompletion.attempt.remoteStatus, 'completed');
+
+    await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const resultAsset = await new AiCreationRepository(transaction).createMediaAsset({
+        enterpriseId: enterpriseAId,
+        ownerType: 'ai_generation_output',
+        ownerId: null,
+        mimeType: 'image/png',
+        size: BigInt(4),
+        width: 1,
+        height: 1,
+        storageProvider: 'local',
+        storageKey: `${testRunKey}/postgres-creation-result.png`,
+        originalUrl: 'https://provider.example/result.png',
+      });
+      resultAssetId = resultAsset.id;
+    });
+    const attachedResult = await attachPostgresCreationProviderResultAsset({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[0]!.id.toString(),
+      attemptId: providerAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-remote-task`,
+      assetId: resultAssetId!.toString(),
+    });
+    assert.equal(attachedResult.reused, false);
+    assert.equal(attachedResult.asset.ownerId, prepared.generations[0]!.id);
+    assert.equal(
+      (attachedResult.generation.output as { imageUrl?: string }).imageUrl,
+      `/api/ai/assets/${resultAssetId!.toString()}/image`
+    );
+    const repeatedAttachment = await attachPostgresCreationProviderResultAsset({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[0]!.id.toString(),
+      attemptId: providerAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-remote-task`,
+      assetId: resultAssetId!.toString(),
+    });
+    assert.equal(repeatedAttachment.reused, true);
+
+    await assert.rejects(
+      completePostgresCreationProviderAttempt({
+        enterpriseId: enterpriseAId.toString(),
+        generationId: prepared.generations[0]!.id.toString(),
+        attemptId: providerAttempt.attempt.id.toString(),
+        remoteTaskId: `${testRunKey}-different-remote-task`,
+      }),
+      /远端任务 ID 与当前尝试不一致/
+    );
+
     const secondHeld = await holdPostgresCreationGenerationCredits({
       enterpriseId: enterpriseAId.toString(),
       generationId: prepared.generations[1]!.id.toString(),
     });
     assert.ok(secondHeld.ledger);
     aiCreditLedgerIds.push(secondHeld.ledger.id);
-    const released = await releasePostgresCreationGenerationCredits({
+    const secondAttempt = await beginPostgresCreationProviderAttempt({
       enterpriseId: enterpriseAId.toString(),
       generationId: prepared.generations[1]!.id.toString(),
-      errorCode: 'TEST_CANCELLED',
-      errorMessage: 'Release the second test generation',
+      providerConfigId: aiProviderConfigId.toString(),
+      providerKey: 'integration-provider',
+      adapterType: 'grs',
+      remoteModel: 'gpt-image-2',
+      requestSnapshot: { prompt: 'Fail the second test generation' },
     });
+    const acknowledgedSecondAttempt = await acknowledgePostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[1]!.id.toString(),
+      attemptId: secondAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-failed-remote-task`,
+      remoteStatus: 'running',
+    });
+    const released = await failPostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[1]!.id.toString(),
+      attemptId: secondAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-failed-remote-task`,
+      remoteStatus: 'failed',
+      errorCode: 'TEST_PROVIDER_FAILED',
+      errorMessage: 'Fail the second test generation',
+    });
+    assert.equal(acknowledgedSecondAttempt.attempt.status, 'processing');
     assert.ok(released.ledger);
     aiCreditLedgerIds.push(released.ledger.id);
     assert.equal(released.generation.status, 'failed');
     assert.equal((released.generation.billing as { status?: string }).status, 'released');
+    assert.equal(released.attempt.status, 'failed');
+    assert.equal((released.generation.externalTask as { remoteTaskId?: string }).remoteTaskId, `${testRunKey}-failed-remote-task`);
     assert.equal(released.account.frozenBalance, firstHeld.account.frozenBalance);
 
-    const repeatedRelease = await releasePostgresCreationGenerationCredits({
+    const repeatedRelease = await failPostgresCreationProviderAttempt({
       enterpriseId: enterpriseAId.toString(),
       generationId: prepared.generations[1]!.id.toString(),
+      attemptId: secondAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-failed-remote-task`,
       errorMessage: 'ignored on retry',
     });
+    assert.equal(repeatedRelease.reused, true);
     assert.equal(repeatedRelease.account.frozenBalance, released.account.frozenBalance);
 
     const repeatedHold = await holdPostgresCreationGenerationCredits({
@@ -1543,11 +1635,6 @@ test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and g
     assert.equal(repeatedHold.account.frozenBalance, firstHeld.account.frozenBalance);
     assert.equal(firstHeld.account.balance, creditGrant.account.balance);
 
-    await withTenantTransaction(enterpriseAId, (transaction) =>
-      new AiCreationRepository(transaction).updateGeneration(prepared.generations[0]!.id, {
-        status: 'succeeded',
-      })
-    );
     const consumed = await consumePostgresCreationGenerationCredits({
       enterpriseId: enterpriseAId.toString(),
       generationId: prepared.generations[0]!.id.toString(),
@@ -1569,6 +1656,7 @@ test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and g
         await transaction.delete(aiGenerations).where(eq(aiGenerations.creationTaskId, taskId));
         await transaction.delete(aiCreationTasks).where(eq(aiCreationTasks.id, taskId));
       }
+      if (resultAssetId) await transaction.delete(mediaAssets).where(eq(mediaAssets.id, resultAssetId));
       if (assetId) await transaction.delete(mediaAssets).where(eq(mediaAssets.id, assetId));
     });
   }

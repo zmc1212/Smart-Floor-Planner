@@ -1,127 +1,123 @@
 'use client';
 
-import Link from 'next/link';
-import { useParams, usePathname } from 'next/navigation';
+import { useParams, usePathname, useRouter } from 'next/navigation';
+import { PageContainer, ProDescriptions } from '@ant-design/pro-components';
+import { Button, Card, Col, Flex, Row, Skeleton, Space, Tag, Typography } from 'antd';
 import { Settings2, Sparkles } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { useState } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import EnterpriseEditorDialog from '@/components/enterprise/EnterpriseEditorDialog';
 import EnterpriseOverviewCards from '@/components/enterprise/EnterpriseOverviewCards';
-import EnterprisePageHeader from '@/components/enterprise/EnterprisePageHeader';
 import { EnterpriseListItem } from '@/components/enterprise/types';
-import { useState } from 'react';
+
+const ENTERPRISE_TABS = [
+  { suffix: '', label: '企业概览' },
+  { suffix: '/ai', label: 'AI 管理' },
+  { suffix: '/automation', label: '自动化配置' },
+];
+
+function EnterpriseStatus({ status }: { status: EnterpriseListItem['status'] }) {
+  if (status === 'active') return <Tag color="success">正常</Tag>;
+  if (status === 'pending_approval') return <Tag color="warning">待审核</Tag>;
+  return <Tag>已停用</Tag>;
+}
 
 export default function EnterpriseDetailPage() {
   const params = useParams<{ id: string }>();
   const pathname = usePathname();
+  const router = useRouter();
   const enterpriseId = Array.isArray(params?.id) ? params.id[0] : params?.id;
   const { data: enterprise, isLoading, mutate } = useFetch<EnterpriseListItem>(
-    enterpriseId ? `/api/admin/enterprises/${enterpriseId}` : null
+    enterpriseId ? `/api/admin/enterprises/${enterpriseId}` : null,
   );
   const [showEditor, setShowEditor] = useState(false);
 
   if (isLoading || !enterprise) {
     return (
-      <div className="min-h-screen bg-[#f7f7f5] px-6 py-12">
-        <div className="mx-auto max-w-7xl rounded-3xl border bg-white p-10 text-sm text-muted-foreground shadow-sm">
-          正在加载企业概览...
-        </div>
+      <div className="admin-page-frame">
+        <PageContainer breadcrumbRender={false} className="admin-page-container" title="企业概览">
+          <Card className="admin-panel-card"><Skeleton active paragraph={{ rows: 5 }} /></Card>
+        </PageContainer>
       </div>
     );
   }
 
+  const tabs = ENTERPRISE_TABS.map((item) => ({
+    key: `/enterprises/${enterprise._id}${item.suffix}`,
+    tab: item.label,
+  }));
+
   return (
-    <div className="min-h-screen bg-[#f7f7f5] px-6 py-10">
-      <div className="mx-auto max-w-7xl space-y-8">
-        <EnterprisePageHeader enterprise={enterprise} currentPath={pathname} />
+    <div className="admin-page-frame">
+      <PageContainer
+        breadcrumbRender={false}
+        className="admin-page-container"
+        title={enterprise.name}
+        content={(
+          <Space size={12} wrap>
+            <EnterpriseStatus status={enterprise.status} />
+            <Typography.Text type="secondary">企业编码：{enterprise.code}</Typography.Text>
+            <Typography.Text type="secondary">联系人：{enterprise.contactPerson?.name || '-'}</Typography.Text>
+            <Typography.Text type="secondary">创建时间：{enterprise.createdAt ? new Date(enterprise.createdAt).toLocaleString() : '-'}</Typography.Text>
+          </Space>
+        )}
+        onBack={() => router.push('/enterprises')}
+        tabList={tabs}
+        tabActiveKey={pathname}
+        onTabChange={(key) => router.push(key)}
+        extra={[
+          <Button key="edit" onClick={() => setShowEditor(true)}>编辑基础信息</Button>,
+          <Button key="ai" type="primary" icon={<Sparkles size={16} />} onClick={() => router.push(`/enterprises/${enterprise._id}/ai`)}>AI 管理</Button>,
+        ]}
+      >
+        <Flex vertical gap={24}>
+          <EnterpriseOverviewCards enterprise={enterprise} />
 
-        <EnterpriseOverviewCards enterprise={enterprise} />
+          <Row gutter={[24, 24]}>
+            <Col xs={24} lg={14}>
+              <Card title="基础信息" className="admin-panel-card">
+                <ProDescriptions<EnterpriseListItem>
+                  column={{ xs: 1, sm: 2 }}
+                  dataSource={enterprise}
+                  columns={[
+                    { title: '企业名称', dataIndex: 'name' },
+                    { title: '企业编码', dataIndex: 'code', copyable: true },
+                    { title: '联系人', dataIndex: ['contactPerson', 'name'], render: (_, item) => item.contactPerson?.name || '-' },
+                    { title: '联系电话', dataIndex: ['contactPerson', 'phone'], render: (_, item) => item.contactPerson?.phone || '-' },
+                    { title: '联系邮箱', dataIndex: ['contactPerson', 'email'], render: (_, item) => item.contactPerson?.email || '-' },
+                    { title: '地推固定提成', dataIndex: 'groundPromotionFixedCommission', render: (value) => `${Number(value || 0).toFixed(2)} 元/单` },
+                    {
+                      title: '主色',
+                      dataIndex: ['branding', 'primaryColor'],
+                      render: (_, item) => <Space size={8}><span className="h-5 w-5 rounded border" style={{ backgroundColor: item.branding?.primaryColor || '#171717' }} />{item.branding?.primaryColor || '#171717'}</Space>,
+                    },
+                    {
+                      title: '强调色',
+                      dataIndex: ['branding', 'accentColor'],
+                      render: (_, item) => <Space size={8}><span className="h-5 w-5 rounded border" style={{ backgroundColor: item.branding?.accentColor || '#0070f3' }} />{item.branding?.accentColor || '#0070f3'}</Space>,
+                    },
+                  ]}
+                />
+              </Card>
+            </Col>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.3fr_0.9fr]">
-          <Card className="rounded-3xl border-muted shadow-sm">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 p-6 pb-2">
-              <CardTitle>基础信息</CardTitle>
-              <Button variant="outline" size="sm" onClick={() => setShowEditor(true)}>
-                编辑基础信息
-              </Button>
-            </CardHeader>
-            <CardContent className="grid gap-4 p-6 pt-2 text-sm text-muted-foreground md:grid-cols-2">
-              <div className="rounded-2xl bg-muted/20 p-4">
-                <div className="text-[11px] uppercase tracking-[0.12em]">企业名称</div>
-                <div className="mt-2 text-base font-semibold text-foreground">{enterprise.name}</div>
-              </div>
-              <div className="rounded-2xl bg-muted/20 p-4">
-                <div className="text-[11px] uppercase tracking-[0.12em]">企业编码</div>
-                <div className="mt-2 text-base font-semibold text-foreground">{enterprise.code}</div>
-              </div>
-              <div className="rounded-2xl bg-muted/20 p-4">
-                <div className="text-[11px] uppercase tracking-[0.12em]">联系人</div>
-                <div className="mt-2 text-base font-semibold text-foreground">{enterprise.contactPerson?.name || '-'}</div>
-                <div className="mt-1">{enterprise.contactPerson?.phone || '-'}</div>
-                <div>{enterprise.contactPerson?.email || '未填写邮箱'}</div>
-              </div>
-              <div className="rounded-2xl bg-muted/20 p-4">
-                <div className="text-[11px] uppercase tracking-[0.12em]">品牌信息</div>
-                <div className="mt-2 flex items-center gap-3">
-                  <div
-                    className="h-8 w-8 rounded-lg border"
-                    style={{ backgroundColor: enterprise.branding?.primaryColor || '#171717' }}
-                  />
-                  <span className="font-medium text-foreground">
-                    主色 {enterprise.branding?.primaryColor || '#171717'}
-                  </span>
-                </div>
-                <div className="mt-2 flex items-center gap-3">
-                  <div
-                    className="h-8 w-8 rounded-lg border"
-                    style={{ backgroundColor: enterprise.branding?.accentColor || '#0070f3' }}
-                  />
-                  <span className="font-medium text-foreground">
-                    强调色 {enterprise.branding?.accentColor || '#0070f3'}
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-3xl border-muted shadow-sm">
-            <CardHeader className="p-6 pb-2">
-              <CardTitle>专项管理入口</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 p-6 pt-2">
-              <Link
-                href={`/enterprises/${enterprise._id}/ai`}
-                className="flex items-center justify-between rounded-2xl border bg-white px-4 py-4 transition-colors hover:bg-muted/30"
-              >
-                <div>
-                  <div className="font-semibold text-foreground">AI 管理</div>
-                  <div className="text-sm text-muted-foreground">查看企业 Key、余额、用量和模型权限。</div>
-                </div>
-                <Sparkles className="text-emerald-600" size={18} />
-              </Link>
-              <Link
-                href={`/enterprises/${enterprise._id}/automation`}
-                className="flex items-center justify-between rounded-2xl border bg-white px-4 py-4 transition-colors hover:bg-muted/30"
-              >
-                <div>
-                  <div className="font-semibold text-foreground">自动化配置</div>
-                  <div className="text-sm text-muted-foreground">配置 SLA、催办频率、浏览器通知和小程序通知。</div>
-                </div>
-                <Settings2 className="text-amber-600" size={18} />
-              </Link>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+            <Col xs={24} lg={10}>
+              <Card title="专项管理入口" className="admin-panel-card">
+                <Flex vertical gap={16}>
+                  <Button block size="large" icon={<Sparkles size={16} />} onClick={() => router.push(`/enterprises/${enterprise._id}/ai`)}>AI 管理</Button>
+                  <Button block size="large" icon={<Settings2 size={16} />} onClick={() => router.push(`/enterprises/${enterprise._id}/automation`)}>自动化配置</Button>
+                </Flex>
+              </Card>
+            </Col>
+          </Row>
+        </Flex>
+      </PageContainer>
 
       <EnterpriseEditorDialog
         open={showEditor}
         onOpenChange={setShowEditor}
         enterprise={enterprise}
-        onSaved={async () => {
-          await mutate();
-        }}
+        onSaved={async () => { await mutate(); }}
       />
     </div>
   );

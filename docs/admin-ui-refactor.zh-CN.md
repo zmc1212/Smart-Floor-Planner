@@ -59,7 +59,8 @@ Design ProComponents，形成统一的后台应用层。
 - AI 供应商、绘图模型目录、AI 预设和 AI 点数价格页面均已使用共享的 Ant Design ProComponents 页面模式。
 - `/roles` 已使用 `PageContainer`、Ant Design 配置面板与受控 `Checkbox.Group` 承载默认角色菜单维护。既有 `/api/roles` 默认初始化和 PATCH 行为、平台 `admin`/`super_admin` 边界、角色菜单 key 契约以及已有账号的有效权限语义均未改变。
 - `/media-storage` 已使用 `PageContainer`、Ant Design 配置面板、`ProTable` 和 `ModalForm`。既有存储 API、`media-storage` 权限边界、凭证加密、测试后才能激活及归档行为均未改变。
-- `/enterprises` 已使用 `PageContainer` 和 `ProTable` 完成企业搜索、分页、状态审核和操作入口迁移。既有资料编辑弹窗、详情页、API 及平台 `super_admin`/`admin` 边界保持不变；详情和编辑展示层将作为后续独立工作继续迁移。
+- `/enterprises` 已使用 `PageContainer` 和 `ProTable` 完成企业搜索、分页、状态审核和操作入口迁移。既有 API 及平台 `super_admin`/`admin` 边界保持不变。
+- `/enterprises/[id]` 及共享企业编辑弹窗现使用 `PageContainer`、Ant Design 卡片、`ProDescriptions` 与 `ModalForm`/`ProForm` 承载企业概览、资料、AI/自动化入口和手动新增/编辑表单。企业 AI 和自动化子页也已使用同一 `PageContainer` tab 模式；既有 AI 点数 API 和企业 PATCH 请求体均未改变，策略、调整、流水/任务查看、通知与 SLA 控件改用 Ant Design `Checkbox.Group`、`Select`、`ProForm` 与 `ProTable`。Base64 Logo 大小限制、操作反馈及平台 `super_admin`/`admin` 边界均未改变。
 - `/promotion-records` 已使用 `PageContainer`、`ProTable`、`ProForm` 与 `ProDescriptions` 承载报备列表、平台保护期规则、报备详情、跟进、指派、公海和认领审批交互。既有 PostgreSQL API、`salesperson` 自助认领边界，以及 `admin`/`super_admin` 配置和公海管理边界均未改变。
 - `/workflow-logs` 已使用 `PageContainer`、Ant Design 汇总卡片和 `ProTable` 承载服务端分页的通知日志查看与状态筛选。既有 PostgreSQL 通知日志 API、企业负责人读取范围以及 `admin`/`super_admin` 执行提醒扫描边界均未改变；表格加载和扫描失败均使用共享操作反馈。
 - `/staff` 已使用 `PageContainer`、`ProTable`、`ModalForm` 和 Ant Design `Tree` 承载服务端分页员工搜索、部门筛选以及员工和部门维护。既有租户范围内的 staff/department API 与 `enterprise_admin`/`admin`/`super_admin` 变更边界均未改变。

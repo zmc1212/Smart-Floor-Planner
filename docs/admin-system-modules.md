@@ -131,9 +131,15 @@ permission, or workflow changes.
   snapshots, and platform-level overview metrics.
 - Admin UI: `/enterprises` uses the shared Ant Design ProComponents list pattern
   with `PageContainer`, `ProTable`, client-side search/pagination over the
-  authoritative list API, status tags, and a final action menu. The existing
-  editor dialog and enterprise detail/AI/automation pages retain their current
-  presentation while their APIs and platform role boundary remain unchanged.
+  authoritative list API, status tags, and a final action menu. `/enterprises/[id]`
+  and the shared enterprise editor use `PageContainer`, Ant Design cards,
+  `ProDescriptions`, and `ModalForm`/`ProForm` for profile review, AI/automation
+  navigation, and manual/edit form submission. The Base64 logo size limit and
+  shared operation feedback remain unchanged. Enterprise AI and automation
+  subpages use the same `PageContainer` tab pattern; their policy, adjustment,
+  ledger/task review, notification, and SLA controls use Ant Design
+  `Checkbox.Group`, `Select`, `ProForm`, and `ProTable`. Their APIs and platform
+  role boundary remain unchanged.
 - PostgreSQL boundary: enterprise list/detail/create/update/delete, both
   self-registration routes, and `/api/admin/enterprises/activate` use
   PostgreSQL. Activation runs in one platform transaction: it creates the
@@ -478,6 +484,26 @@ permission, or workflow changes.
   processing response clears a transient unknown-state error. Network polling,
   terminal-result settlement, result media writes, and public routes still have
   not switched.
+  An accepted attempt's terminal success can now be recorded under the same
+  lock after its immutable remote task ID is verified. The provider-result and
+  actual-cost snapshots are retained while both rows transition to `succeeded`;
+  replayed successes keep the first result. This makes the still-held generation
+  eligible for the separate idempotent credit-consumption boundary, but does not
+  write result media, invoke consumption, perform provider I/O, or switch a
+  public route.
+  A terminal success can also atomically attach one already-persisted,
+  tenant-scoped `ai_generation_output` asset after locking both records and
+  rechecking the attempt and immutable remote task ID. The attachment writes the
+  PostgreSQL asset URL and claims an unowned result asset for that generation;
+  replay retains the first image and a second generation cannot claim it. This
+  boundary performs neither provider download/storage I/O nor a public-route
+  cutover.
+  An accepted attempt's terminal failure can now be settled atomically with its
+  current generation: the immutable remote task ID is rechecked, provider and
+  generation failure metadata are recorded, and the idempotent release ledger
+  clears held credit in the same tenant RLS transaction. Replayed failures keep
+  the released balance; provider I/O and public routes remain outside this
+  boundary.
   A held generation can also be released atomically with an idempotent release
   ledger and a failed status, so failed submission paths do not retain frozen
   credit. A succeeded, held generation can now atomically consume that same

@@ -103,9 +103,17 @@ desktop/mobile visual checks, and browser verification pass.
   permission boundary, encrypted credentials, test-before-activation rule, and
   archive behavior are unchanged.
 - `/enterprises` now uses `PageContainer` and `ProTable` for enterprise search,
-  pagination, status review, and operational actions. Its existing editor dialog,
-  detail page, APIs, and `super_admin`/`admin` platform boundary remain intact;
-  the detail and editor presentation migrations are separate follow-up work.
+  pagination, status review, and operational actions. Its existing APIs and
+  `super_admin`/`admin` platform boundary remain intact.
+- `/enterprises/[id]` and the shared enterprise editor now use `PageContainer`,
+  Ant Design cards, `ProDescriptions`, and `ModalForm`/`ProForm` for the tenant
+  overview, enterprise profile, AI/automation navigation, and manual/edit form.
+  Existing enterprise APIs, Base64 logo size limit, operation feedback, and the
+  platform `super_admin`/`admin` boundary remain unchanged. The enterprise AI
+  and automation subpages now use the same `PageContainer` tab pattern. Their
+  existing AI credit API and enterprise PATCH payloads are unchanged; policy,
+  adjustment, ledger/task review, notification, and SLA controls now use Ant
+  Design `Checkbox.Group`, `Select`, `ProForm`, and `ProTable` controls.
 - `/promotion-records` now uses `PageContainer`, `ProTable`, `ProForm`, and
   `ProDescriptions` for the report list, platform protection-rule configuration,
   report detail, follow-up, assignment, pool, and claim-review interactions.

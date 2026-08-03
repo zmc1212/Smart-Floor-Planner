@@ -276,6 +276,16 @@ export class AiCreationRepository {
     return rows[0] ?? null;
   }
 
+  async findMediaAssetForUpdate(id: bigint) {
+    const rows = await this.transaction
+      .select()
+      .from(mediaAssets)
+      .where(and(eq(mediaAssets.id, id), sql`${mediaAssets.deletedAt} is null`))
+      .for('update')
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
   async findMediaAssets(ids: bigint[]) {
     if (!ids.length) return [];
     return this.transaction.select().from(mediaAssets).where(and(inArray(mediaAssets.id, nonEmptyIds(ids)), sql`${mediaAssets.deletedAt} is null`));

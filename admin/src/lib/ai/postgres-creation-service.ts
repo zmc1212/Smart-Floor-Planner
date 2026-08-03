@@ -4,11 +4,17 @@ import {
   AiCreationModelProfileRepository,
   AiCreationRepository,
   type AiCreationModelProfileRecord,
+  type AiGenerationRecord,
 } from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
-import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
+import {
+  type PostgresTransaction,
+  withPlatformTransaction,
+  withTenantTransaction,
+} from '@/db/transaction';
 import { assertEnterpriseAiActionAllowed } from '@/lib/ai/enterprise-policy';
 import { getPostgresImageModelPrice, serializePostgresCatalogProfile } from '@/lib/ai/image-model-catalog';
+import { getPostgresMediaAssetImageUrl } from '@/lib/ai/postgres-media-assets';
 import { getActivePromptTemplate } from '@/lib/ai/prompt-library-query';
 import { resolveGrsImageParameters, type GrsResolutionTier } from '@/lib/ai/grs-image-models';
 import { capabilityForLogicalModel, type AiLogicalModelKey } from '@/lib/ai/provider-types';
@@ -371,36 +377,31 @@ export async function holdPostgresCreationGenerationCredits(input: {
   });
 }
 
-export async function releasePostgresCreationGenerationCredits(input: {
-  enterpriseId: string;
-  generationId: string;
-  errorCode?: string;
+async function releasePostgresCreationGenerationCreditsInTransaction(input: {
+  transaction: PostgresTransaction;
+  enterpriseId: bigint;
+  generation: AiGenerationRecord;
+  errorCode: string;
   errorMessage: string;
+  externalTask?: Record<string, unknown>;
 }) {
-  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
-  const generationId = parsePostgresId(input.generationId, 'generationId');
-  const errorMessage = input.errorMessage.trim() || '创作生成任务已取消';
-  return withTenantTransaction(enterpriseId, async (transaction) => {
-    const creation = new AiCreationRepository(transaction);
-    const credits = new AiCreditRepository(transaction);
-    const generation = await creation.findGeneration(generationId);
-    if (!generation || generation.deletedAt || generation.type !== 'free_create') {
-      throw new Error('创作生成任务不存在');
-    }
-    const billing = asRecord(generation.billing);
-    const billingStatus = String(billing.status || '');
-    const account = await credits.ensureAccount(enterpriseId);
-    if (billingStatus === 'released') {
-      return { generation, account, ledger: null };
-    }
-    if (billingStatus !== 'held') throw new Error('创作生成任务没有可释放的冻结点数');
+  const creation = new AiCreationRepository(input.transaction);
+  const credits = new AiCreditRepository(input.transaction);
+  const { enterpriseId, generation, errorCode, errorMessage } = input;
+  const billing = asRecord(generation.billing);
+  const billingStatus = String(billing.status || '');
+  const account = await credits.ensureAccount(enterpriseId);
+  if (billingStatus === 'released') {
+    return { generation, account, ledger: null };
+  }
+  if (billingStatus !== 'held') throw new Error('创作生成任务没有可释放的冻结点数');
 
     const amount = readPositiveBigInt(billing.price, '创作生成任务点数价格');
     const cycle = Math.max(0, Math.trunc(Number(billing.cycle ?? generation.retryCount ?? 0)) || 0);
     const operationId = `${generation.id}:release:${cycle}`;
     const claim = await credits.claimLedger({
       enterpriseId,
-      generationId,
+      generationId: generation.id,
       operatorId: generation.operatorId,
       operationId,
       type: 'release',
@@ -431,15 +432,102 @@ export async function releasePostgresCreationGenerationCredits(input: {
       if (!currentAccount) throw new Error('AI 点数账户不存在');
       nextAccount = currentAccount;
     }
-    const updatedGeneration = await creation.updateGeneration(generationId, {
+    const updatedGeneration = await creation.updateGeneration(generation.id, {
       status: 'failed',
-      errorCode: input.errorCode?.trim() || 'GENERATION_CANCELLED',
+      errorCode,
       errorMessage,
       billing: { ...billing, cycle, status: 'released', releaseOperationId: operationId },
+      ...(input.externalTask ? { externalTask: input.externalTask } : {}),
     });
     if (!updatedGeneration) throw new Error('创作生成任务不存在');
     return { generation: updatedGeneration, account: nextAccount, ledger: claim.ledger };
+}
+
+export async function releasePostgresCreationGenerationCredits(input: {
+  enterpriseId: string;
+  generationId: string;
+  errorCode?: string;
+  errorMessage: string;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const generationId = parsePostgresId(input.generationId, 'generationId');
+  const errorMessage = input.errorMessage.trim() || '创作生成任务已取消';
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const creation = new AiCreationRepository(transaction);
+    const generation = await creation.findGenerationForUpdate(generationId);
+    if (!generation || generation.deletedAt || generation.type !== 'free_create') {
+      throw new Error('创作生成任务不存在');
+    }
+    return releasePostgresCreationGenerationCreditsInTransaction({
+      transaction,
+      enterpriseId,
+      generation,
+      errorCode: input.errorCode?.trim() || 'GENERATION_CANCELLED',
+      errorMessage,
+    });
   });
+}
+
+async function consumePostgresCreationGenerationCreditsInTransaction(input: {
+  transaction: PostgresTransaction;
+  enterpriseId: bigint;
+  generation: AiGenerationRecord;
+}) {
+  const creation = new AiCreationRepository(input.transaction);
+  const credits = new AiCreditRepository(input.transaction);
+  const { enterpriseId, generation } = input;
+  const billing = asRecord(generation.billing);
+  const billingStatus = String(billing.status || '');
+  const account = await credits.ensureAccount(enterpriseId);
+  if (billingStatus === 'consumed') {
+    return { generation, account, ledger: null };
+  }
+  if (generation.status !== 'succeeded' || billingStatus !== 'held') {
+    throw new Error('创作生成任务尚未成功，无法扣除冻结点数');
+  }
+
+  const amount = readPositiveBigInt(billing.price, '创作生成任务点数价格');
+  const cycle = Math.max(0, Math.trunc(Number(billing.cycle ?? generation.retryCount ?? 0)) || 0);
+  const operationId = `${generation.id}:consume:${cycle}`;
+  const claim = await credits.claimLedger({
+    enterpriseId,
+    generationId: generation.id,
+    operatorId: generation.operatorId,
+    operationId,
+    type: 'consume',
+    amount: -amount,
+    note: 'AI free-creation generation consumed',
+    metadata: { creationBatchId: generation.creationBatchId?.toString() },
+  });
+  let nextAccount = account;
+  if (claim.claimed) {
+    const updatedAccount = await credits.applyBalance({
+      enterpriseId,
+      balanceDelta: -amount,
+      frozenDelta: -amount,
+      requireBalanceAtLeast: amount,
+      requireFrozenAtLeast: amount,
+    });
+    if (!updatedAccount) {
+      await credits.failLedger(claim.ledger.id);
+      throw new Error('创作生成任务的冻结点数记录不一致');
+    }
+    const completedLedger = await credits.completeLedger(claim.ledger.id, updatedAccount);
+    if (!completedLedger) throw new Error('AI 点数流水无法完成');
+    nextAccount = updatedAccount;
+  } else {
+    if (claim.ledger.enterpriseId !== enterpriseId || claim.ledger.status !== 'completed') {
+      throw new Error('创作生成任务的点数扣除未完成');
+    }
+    const currentAccount = await credits.findAccount(enterpriseId);
+    if (!currentAccount) throw new Error('AI 点数账户不存在');
+    nextAccount = currentAccount;
+  }
+  const updatedGeneration = await creation.updateGeneration(generation.id, {
+    billing: { ...billing, cycle, status: 'consumed', consumeOperationId: operationId },
+  });
+  if (!updatedGeneration) throw new Error('创作生成任务不存在');
+  return { generation: updatedGeneration, account: nextAccount, ledger: claim.ledger };
 }
 
 export async function consumePostgresCreationGenerationCredits(input: {
@@ -449,64 +537,11 @@ export async function consumePostgresCreationGenerationCredits(input: {
   const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
   const generationId = parsePostgresId(input.generationId, 'generationId');
   return withTenantTransaction(enterpriseId, async (transaction) => {
-    const creation = new AiCreationRepository(transaction);
-    const credits = new AiCreditRepository(transaction);
-    const generation = await creation.findGeneration(generationId);
+    const generation = await new AiCreationRepository(transaction).findGenerationForUpdate(generationId);
     if (!generation || generation.deletedAt || generation.type !== 'free_create') {
       throw new Error('创作生成任务不存在');
     }
-    const billing = asRecord(generation.billing);
-    const billingStatus = String(billing.status || '');
-    const account = await credits.ensureAccount(enterpriseId);
-    if (billingStatus === 'consumed') {
-      return { generation, account, ledger: null };
-    }
-    if (generation.status !== 'succeeded' || billingStatus !== 'held') {
-      throw new Error('创作生成任务尚未成功，无法扣除冻结点数');
-    }
-
-    const amount = readPositiveBigInt(billing.price, '创作生成任务点数价格');
-    const cycle = Math.max(0, Math.trunc(Number(billing.cycle ?? generation.retryCount ?? 0)) || 0);
-    const operationId = `${generation.id}:consume:${cycle}`;
-    const claim = await credits.claimLedger({
-      enterpriseId,
-      generationId,
-      operatorId: generation.operatorId,
-      operationId,
-      type: 'consume',
-      amount: -amount,
-      note: 'AI free-creation generation consumed',
-      metadata: { creationBatchId: generation.creationBatchId?.toString() },
-    });
-    let nextAccount = account;
-    if (claim.claimed) {
-      const updatedAccount = await credits.applyBalance({
-        enterpriseId,
-        balanceDelta: -amount,
-        frozenDelta: -amount,
-        requireBalanceAtLeast: amount,
-        requireFrozenAtLeast: amount,
-      });
-      if (!updatedAccount) {
-        await credits.failLedger(claim.ledger.id);
-        throw new Error('创作生成任务的冻结点数记录不一致');
-      }
-      const completedLedger = await credits.completeLedger(claim.ledger.id, updatedAccount);
-      if (!completedLedger) throw new Error('AI 点数流水无法完成');
-      nextAccount = updatedAccount;
-    } else {
-      if (claim.ledger.enterpriseId !== enterpriseId || claim.ledger.status !== 'completed') {
-        throw new Error('创作生成任务的点数扣除未完成');
-      }
-      const currentAccount = await credits.findAccount(enterpriseId);
-      if (!currentAccount) throw new Error('AI 点数账户不存在');
-      nextAccount = currentAccount;
-    }
-    const updatedGeneration = await creation.updateGeneration(generationId, {
-      billing: { ...billing, cycle, status: 'consumed', consumeOperationId: operationId },
-    });
-    if (!updatedGeneration) throw new Error('创作生成任务不存在');
-    return { generation: updatedGeneration, account: nextAccount, ledger: claim.ledger };
+    return consumePostgresCreationGenerationCreditsInTransaction({ transaction, enterpriseId, generation });
   });
 }
 
@@ -739,5 +774,230 @@ export async function recordPostgresCreationProviderPollState(input: {
     });
     if (!updatedAttempt || !updatedGeneration) throw new Error('供应商轮询响应无法持久化');
     return { generation: updatedGeneration, attempt: updatedAttempt };
+  });
+}
+
+/**
+ * Records a terminal provider success before result-media persistence. The
+ * persisted output snapshot makes the held generation eligible for the
+ * separate, idempotent credit-consumption boundary.
+ */
+export async function completePostgresCreationProviderAttempt(input: {
+  enterpriseId: string;
+  generationId: string;
+  attemptId: string;
+  remoteTaskId: string;
+  remoteStatus?: string;
+  output?: Record<string, unknown>;
+  actualCost?: Record<string, unknown>;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const generationId = parsePostgresId(input.generationId, 'generationId');
+  const attemptId = parsePostgresId(input.attemptId, 'attemptId');
+  const remoteTaskId = input.remoteTaskId.trim();
+  if (!remoteTaskId) throw new Error('供应商成功响应缺少远端任务 ID');
+  const remoteStatus = input.remoteStatus?.trim() || 'succeeded';
+
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const creation = new AiCreationRepository(transaction);
+    const generation = await creation.findGenerationForUpdate(generationId);
+    if (!generation || generation.deletedAt || generation.type !== 'free_create') {
+      throw new Error('创作生成任务不存在');
+    }
+    if (generation.currentAttemptId !== attemptId) {
+      throw new Error('供应商成功响应不属于当前创作生成任务');
+    }
+    const attempt = await creation.findProviderAttempt(attemptId);
+    if (!attempt || attempt.generationId !== generationId || attempt.remoteTaskId !== remoteTaskId) {
+      throw new Error('供应商成功响应的远端任务 ID 与当前尝试不一致');
+    }
+    if (generation.status === 'succeeded' && attempt.status === 'succeeded') {
+      return { generation, attempt, reused: true };
+    }
+    if (generation.status !== 'processing' || !attempt.accepted || !['submitted', 'processing', 'unknown'].includes(attempt.status)) {
+      throw new Error('供应商尝试尚未受理或已结束，无法记录成功响应');
+    }
+
+    const completedAt = new Date();
+    const durationMs = Math.max(0, completedAt.getTime() - attempt.createdAt.getTime());
+    const updatedAttempt = await creation.updateProviderAttempt(attemptId, {
+      status: 'succeeded',
+      accepted: true,
+      remoteStatus,
+      actualCost: input.actualCost ?? attempt.actualCost,
+      durationMs,
+      errorCode: null,
+      errorMessage: null,
+    });
+    const updatedGeneration = await creation.updateGeneration(generationId, {
+      status: 'succeeded',
+      output: {
+        ...asRecord(generation.output),
+        providerResult: input.output ?? {},
+      },
+      externalTask: {
+        ...asRecord(generation.externalTask),
+        status: 'succeeded',
+        remoteTaskId,
+        remoteStatus,
+        lastPolledAt: completedAt.toISOString(),
+        completedAt: completedAt.toISOString(),
+      },
+      errorCode: null,
+      errorMessage: null,
+      durationMs,
+    });
+    if (!updatedAttempt || !updatedGeneration) throw new Error('供应商成功响应无法持久化');
+    return { generation: updatedGeneration, attempt: updatedAttempt, reused: false };
+  });
+}
+
+/**
+ * Attaches an already-persisted provider result asset to a terminal success.
+ * Storage I/O stays outside the transaction; this boundary only validates and
+ * atomically binds tenant-scoped PostgreSQL metadata.
+ */
+export async function attachPostgresCreationProviderResultAsset(input: {
+  enterpriseId: string;
+  generationId: string;
+  attemptId: string;
+  remoteTaskId: string;
+  assetId: string;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const generationId = parsePostgresId(input.generationId, 'generationId');
+  const attemptId = parsePostgresId(input.attemptId, 'attemptId');
+  const assetId = parsePostgresId(input.assetId, 'assetId');
+  const remoteTaskId = input.remoteTaskId.trim();
+  if (!remoteTaskId) throw new Error('供应商结果媒体缺少远端任务 ID');
+
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const creation = new AiCreationRepository(transaction);
+    const generation = await creation.findGenerationForUpdate(generationId);
+    if (!generation || generation.deletedAt || generation.type !== 'free_create') {
+      throw new Error('创作生成任务不存在');
+    }
+    if (generation.currentAttemptId !== attemptId || generation.status !== 'succeeded') {
+      throw new Error('供应商结果媒体不属于已成功的当前创作生成任务');
+    }
+    const attempt = await creation.findProviderAttempt(attemptId);
+    if (
+      !attempt
+      || attempt.generationId !== generationId
+      || attempt.remoteTaskId !== remoteTaskId
+      || attempt.status !== 'succeeded'
+      || !attempt.accepted
+    ) {
+      throw new Error('供应商结果媒体的远端任务 ID 与当前尝试不一致');
+    }
+    const asset = await creation.findMediaAssetForUpdate(assetId);
+    if (!asset || asset.ownerType !== 'ai_generation_output') {
+      throw new Error('供应商结果媒体不存在或不可关联');
+    }
+    if (asset.ownerId && asset.ownerId !== generationId) {
+      throw new Error('供应商结果媒体已属于另一生成任务');
+    }
+
+    const imageUrl = getPostgresMediaAssetImageUrl(asset.id);
+    const output = asRecord(generation.output);
+    if (typeof output.imageUrl === 'string' && output.imageUrl) {
+      if (output.imageUrl === imageUrl) return { generation, asset, reused: true };
+      throw new Error('创作生成任务已关联另一结果媒体');
+    }
+
+    const updatedAsset = asset.ownerId
+      ? asset
+      : await creation.updateMediaAsset(assetId, { ownerId: generationId });
+    const updatedGeneration = await creation.updateGeneration(generationId, {
+      output: { ...output, imageUrl },
+    });
+    if (!updatedAsset || !updatedGeneration) throw new Error('供应商结果媒体无法持久化关联');
+    return { generation: updatedGeneration, asset: updatedAsset, reused: false };
+  });
+}
+
+/**
+ * Settles a terminal provider failure and releases the held generation credit
+ * in one tenant transaction. Network polling remains outside this boundary.
+ */
+export async function failPostgresCreationProviderAttempt(input: {
+  enterpriseId: string;
+  generationId: string;
+  attemptId: string;
+  remoteTaskId: string;
+  remoteStatus?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  actualCost?: Record<string, unknown>;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const generationId = parsePostgresId(input.generationId, 'generationId');
+  const attemptId = parsePostgresId(input.attemptId, 'attemptId');
+  const remoteTaskId = input.remoteTaskId.trim();
+  if (!remoteTaskId) throw new Error('供应商失败响应缺少远端任务 ID');
+  const remoteStatus = input.remoteStatus?.trim() || 'failed';
+  const errorCode = input.errorCode?.trim() || 'PROVIDER_TASK_FAILED';
+  const errorMessage = input.errorMessage?.trim() || '供应商任务执行失败';
+
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const creation = new AiCreationRepository(transaction);
+    const generation = await creation.findGenerationForUpdate(generationId);
+    if (!generation || generation.deletedAt || generation.type !== 'free_create') {
+      throw new Error('创作生成任务不存在');
+    }
+    if (generation.currentAttemptId !== attemptId) {
+      throw new Error('供应商失败响应不属于当前创作生成任务');
+    }
+    const attempt = await creation.findProviderAttempt(attemptId);
+    if (!attempt || attempt.generationId !== generationId || attempt.remoteTaskId !== remoteTaskId) {
+      throw new Error('供应商失败响应的远端任务 ID 与当前尝试不一致');
+    }
+
+    const billingStatus = String(asRecord(generation.billing).status || '');
+    if (generation.status === 'failed' && attempt.status === 'failed' && billingStatus === 'released') {
+      const released = await releasePostgresCreationGenerationCreditsInTransaction({
+        transaction,
+        enterpriseId,
+        generation,
+        errorCode,
+        errorMessage,
+      });
+      return { ...released, attempt, reused: true };
+    }
+    if (
+      generation.status !== 'processing'
+      || !attempt.accepted
+      || !['submitted', 'processing', 'unknown'].includes(attempt.status)
+    ) {
+      throw new Error('供应商尝试尚未受理或已结束，无法记录失败响应');
+    }
+
+    const completedAt = new Date();
+    const durationMs = Math.max(0, completedAt.getTime() - attempt.createdAt.getTime());
+    const updatedAttempt = await creation.updateProviderAttempt(attemptId, {
+      status: 'failed',
+      accepted: true,
+      remoteStatus,
+      actualCost: input.actualCost ?? attempt.actualCost,
+      durationMs,
+      errorCode,
+      errorMessage,
+    });
+    if (!updatedAttempt) throw new Error('供应商失败响应无法持久化');
+    const released = await releasePostgresCreationGenerationCreditsInTransaction({
+      transaction,
+      enterpriseId,
+      generation,
+      errorCode,
+      errorMessage,
+      externalTask: {
+        status: 'failed',
+        remoteTaskId,
+        remoteStatus,
+        lastPolledAt: completedAt.toISOString(),
+        completedAt: completedAt.toISOString(),
+      },
+    });
+    return { ...released, attempt: updatedAttempt, reused: false };
   });
 }
