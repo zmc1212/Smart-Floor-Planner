@@ -194,8 +194,10 @@
 
 ### 9. 测量审计与蓝牙设备资产
 
+- 独立设备指派：平台 `super_admin`/`admin` 可将未归属企业的设备指派给同样未归属企业且激活的 `salesperson`（渠道地推）；企业设备仍仅能指派给同一企业员工，企业管理员不能查询或指派独立渠道地推。
+- 绑定状态：为闲置设备保存持有人会自动切换为 `assigned`，这是 `/api/devices/verify-binding` 授权所必需的状态；没有持有人的独立设备不能保持 `assigned`，但企业归属设备可在未指定持有人时作为企业共享设备使用。`maintenance`、`lost` 状态始终不能被小程序授权。
 - 页面：`/devices`、`/measurements`。
-- API：设备 CRUD、`/devices/verify`、`/devices/verify-binding`、`/measurements`。
+- API：设备 CRUD、`/devices/verify`、`/devices/verify-binding`、`/measurements`，以及仅平台可用的独立渠道地推查询 `/api/staff?scope=unassigned-promoters`。
 - 模型/Repository：PostgreSQL `DeviceRepository`、`MeasurementRepository`、`AdminUserRepository`、`UserRepository`、`FloorPlanRepository`。
 - 状态：`Implemented`。支持设备池、企业/用户绑定、校验、状态管理，以及来源为 BLE、手动或系统的长度/高度/面积/角度/门窗审计记录。设备分配外键指向 `admin_users`；平台/企业管理员可变更设备，员工只能读取自己的绑定。测量写入会在同一 RLS PostgreSQL 流程中校验操作员、企业、正式户型、数值/类型/来源/时间和已分配设备。`/measurements` 后台视图使用共享 shadcn 筛选/表格模式，提供响应式筛选、明确的加载/失败状态和来源标识；其 API 参数、角色范围及最多展示 100 条记录的限制不变。`/devices` 使用同一紧凑筛选/表格模式和录入、编辑弹窗；平台角色可选择企业、兼容员工和既有状态枚举，服务端仍负责现有租户和跨企业绑定校验。设备行内“编辑”和“删除”与其他管理列表统一使用带图标和文字的 Ant Design 操作按钮。
 

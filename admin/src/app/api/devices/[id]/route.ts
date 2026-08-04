@@ -9,7 +9,11 @@ import {
   DeviceRepository,
   type DeviceUpdate,
 } from '@/db/repositories';
-import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
+import { normalizeDeviceBindingStatus } from '@/lib/device-binding-status';
+import {
+  withAdminPostgresTransaction,
+  withDevicePostgresTransaction,
+} from '@/lib/postgres-request-scope';
 import { withTenantRoute } from '@/lib/tenant-route';
 
 export const dynamic = 'force-dynamic';
@@ -45,7 +49,7 @@ export async function PATCH(
           );
         }
 
-        const device = await withAdminPostgresTransaction(
+        const device = await withDevicePostgresTransaction(
           context,
           async (transaction) => {
             const repository = new DeviceRepository(transaction);
@@ -61,7 +65,7 @@ export async function PATCH(
             if (body.description !== undefined) {
               input.description = String(body.description).trim() || null;
             }
-            if (body.status !== undefined) input.status = body.status;
+            const requestedStatus = body.status ?? current.status;
 
             const assignedUserId =
               body.assignedUserId !== undefined
@@ -94,12 +98,18 @@ export async function PATCH(
             if (!enterpriseId && assignedUser?.enterpriseId) {
               enterpriseId = assignedUser.enterpriseId;
             }
-            if (
-              assignedUser?.enterpriseId &&
-              enterpriseId !== assignedUser.enterpriseId
-            ) {
-              throw new Error('Assigned staff belongs to another enterprise');
+            if (assignedUser && enterpriseId !== assignedUser.enterpriseId) {
+              throw new Error(
+                enterpriseId
+                  ? 'Assigned staff belongs to another enterprise'
+                  : 'An unassigned device can only be assigned to staff without an enterprise'
+              );
             }
+            input.status = normalizeDeviceBindingStatus(
+              requestedStatus,
+              Boolean(assignedUserId),
+              Boolean(enterpriseId)
+            );
             input.enterpriseId = enterpriseId;
             input.assignedUserId = assignedUserId;
 

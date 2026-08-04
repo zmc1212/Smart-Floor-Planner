@@ -496,9 +496,21 @@ permission, or workflow changes.
 
 ### 9. Measurement Audit And BLE Device Assets
 
+- Standalone-device assignment: platform `super_admin`/`admin` may assign an
+  enterprise-null device to an active, enterprise-null `salesperson` (channel
+  promoter). Enterprise devices remain assignable only to staff in that same
+  enterprise; enterprise administrators cannot query or assign standalone
+  promoters.
+- Binding state: saving a holder on an idle device changes it to `assigned`,
+  which is required by `/api/devices/verify-binding`. A holderless standalone
+  device cannot remain `assigned`; enterprise-owned devices may be assigned
+  without a named holder for shared enterprise use. `maintenance` and `lost`
+  remain unavailable for Mini Program authorization.
 - Page: `/devices` and the measurement record view under `/measurements`.
 - APIs: `/api/devices`, `/devices/[id]`, `/devices/verify`,
-  `/devices/verify-binding`, and `/api/measurements`.
+  `/devices/verify-binding`, `/api/measurements`, and
+  `/api/staff?scope=unassigned-promoters` (platform-only standalone channel
+  promoters).
 - Models/repositories: PostgreSQL `DeviceRepository`, `MeasurementRepository`,
   `AdminUserRepository`, `UserRepository`, and `FloorPlanRepository`.
 - Status: `Implemented`. Supports device pool, enterprise/user binding,

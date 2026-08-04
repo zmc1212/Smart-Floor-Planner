@@ -8,7 +8,11 @@ import {
   AdminUserRepository,
   DeviceRepository,
 } from '@/db/repositories';
-import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
+import { normalizeDeviceBindingStatus } from '@/lib/device-binding-status';
+import {
+  withAdminPostgresTransaction,
+  withDevicePostgresTransaction,
+} from '@/lib/postgres-request-scope';
 import {
   resolveWritableEnterpriseId,
   withTenantRoute,
@@ -94,7 +98,7 @@ export async function POST(request: Request) {
           context,
           body.enterpriseId
         );
-        const device = await withAdminPostgresTransaction(
+        const device = await withDevicePostgresTransaction(
           context,
           async (transaction) => {
             const assignedUserId = parseOptionalPostgresId(
@@ -112,11 +116,12 @@ export async function POST(request: Request) {
             const enterpriseId = explicitEnterpriseId
               ? parsePostgresId(explicitEnterpriseId, 'enterpriseId')
               : assignedUser?.enterpriseId ?? null;
-            if (
-              assignedUser?.enterpriseId &&
-              enterpriseId !== assignedUser.enterpriseId
-            ) {
-              throw new Error('Assigned staff belongs to another enterprise');
+            if (assignedUser && enterpriseId !== assignedUser.enterpriseId) {
+              throw new Error(
+                enterpriseId
+                  ? 'Assigned staff belongs to another enterprise'
+                  : 'An unassigned device can only be assigned to staff without an enterprise'
+              );
             }
             return new DeviceRepository(transaction).create({
               code,
@@ -126,10 +131,13 @@ export async function POST(request: Request) {
                   : null,
               enterpriseId,
               assignedUserId,
-              status:
+              status: normalizeDeviceBindingStatus(
                 context.role === 'enterprise_admin' && status === 'unassigned'
                   ? 'assigned'
                   : status,
+                Boolean(assignedUserId),
+                Boolean(enterpriseId)
+              ),
             });
           }
         );

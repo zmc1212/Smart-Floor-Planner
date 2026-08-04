@@ -9,7 +9,7 @@ import {
   AdminUserRepository,
   DepartmentRepository,
 } from '@/db/repositories';
-import { withTenantTransaction } from '@/db/transaction';
+import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { createPaginationMetadata, getPaginationParams } from '@/lib/pagination';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { getEffectivePermissions } from '@/lib/staff-access';
@@ -54,12 +54,36 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const { page, limit } = getPaginationParams(request.url);
+    const scope = searchParams.get('scope');
     const roles =
       searchParams
         .get('roles')
         ?.split(',')
         .map((item) => item.trim())
         .filter(Boolean) || [];
+
+    if (scope === 'unassigned-promoters') {
+      return await withTenantRoute(
+        request,
+        { roles: ['super_admin', 'admin'] },
+        async () => {
+          const result = await withPlatformTransaction((transaction) =>
+            new AdminUserRepository(transaction).list({
+              roles: ['salesperson'],
+              status: 'active',
+              withoutEnterprise: true,
+              page,
+              limit,
+            })
+          );
+          return NextResponse.json({
+            success: true,
+            data: result.rows.map((row) => adminUserToDto(row)),
+            pagination: createPaginationMetadata(result.total, page, limit),
+          });
+        }
+      );
+    }
 
     const mpContext = await resolveMiniProgramContext(request);
     if (mpContext?.staff) {

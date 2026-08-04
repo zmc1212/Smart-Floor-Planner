@@ -830,10 +830,10 @@ Page({
         type: isAngleTriangleTarget ? 'angle_triangle_side' :
           (target === 'componentSpec' ? (opening ? 'opening_width' : 'length') : 'length'),
         direction: session.selectedWallId || (opening && opening.wallId) ||
-          (isAngleTriangleTarget ? session.anchorNodeId || '' : ''),
+          ((isAngleTriangleTarget || target === 'pendingWall') ? session.anchorNodeId || '' : ''),
         metadata: {
           target,
-          wallId: session.selectedWallId || '',
+          wallId: session.selectedWallId || (target === 'pendingWall' ? session.pendingWallId || '' : ''),
           openingId: opening ? opening.id : '',
           angleSide: isAngleTriangleTarget ? target.replace('angleTriangle', '').toLowerCase() : ''
         }
@@ -845,6 +845,14 @@ Page({
     }
     if (target === 'componentSpec') {
       this.applyBleReadingToComponentSpec(distanceInMeters);
+      return;
+    }
+    if (target === 'selectedWall') {
+      this.applyBleReadingToSelectedWall(distanceInMeters);
+      return;
+    }
+    if (target === 'pendingWall') {
+      this.applyBleReadingToPendingWall(distanceInMeters);
       return;
     }
     this.applyBleReadingToNumberPad(distanceInMeters);
@@ -928,6 +936,52 @@ Page({
     this.setData({ numberInput: inputValue }, () => {
       wx.showToast({ title: '已填入测距结果', icon: 'none' });
     });
+  },
+
+  applyBleReadingToSelectedWall(distanceInMeters) {
+    const historyDraft = this.bleMeasureHistoryDraft;
+    this.bleMeasureHistoryDraft = null;
+
+    if (distanceInMeters === null || distanceInMeters <= 0) {
+      wx.showToast({ title: '测量失败，请重试', icon: 'none' });
+      return;
+    }
+
+    if (this.shouldIgnoreDuplicateBleReading(distanceInMeters)) {
+      return;
+    }
+
+    const valueMm = Math.round(distanceInMeters * 1000);
+    try {
+      const nextDraft = surveyGraph.remeasureSelectedWall(this.draft, valueMm, 'ble');
+      this.applyDraft(nextDraft, {
+        recordHistory: true,
+        historyDraft
+      });
+      wx.showToast({ title: '已更新当前墙体', icon: 'success' });
+    } catch (err) {
+      wx.showToast({ title: err.message || '更新墙体失败', icon: 'none' });
+    }
+  },
+
+  applyBleReadingToPendingWall(distanceInMeters) {
+    if (distanceInMeters === null || distanceInMeters <= 0) {
+      wx.showToast({ title: '测量失败，请重试', icon: 'none' });
+      return;
+    }
+
+    if (this.shouldIgnoreDuplicateBleReading(distanceInMeters)) {
+      return;
+    }
+
+    const valueMm = Math.round(distanceInMeters * 1000);
+    try {
+      const nextDraft = surveyGraph.commitPreviewLength(this.draft, valueMm, 'ble');
+      this.applyDraft(nextDraft, { recordHistory: true });
+      wx.showToast({ title: '已更新当前墙体', icon: 'success' });
+    } catch (err) {
+      wx.showToast({ title: err.message || '更新墙体失败', icon: 'none' });
+    }
   },
 
   applyBleReadingToComponentSpec(distanceInMeters) {
@@ -2956,6 +3010,38 @@ Page({
       this.requestBluetoothConnection();
       return;
     }
+
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const session = floor && floor.session;
+    if (session && (session.state === 'wallPreview' || session.state === 'awaitingLength')) {
+      this.startBluetoothMeasure('pendingWall');
+      return;
+    }
+
+    const currentWall = floor && floor.walls && floor.walls.length
+      ? floor.walls[floor.walls.length - 1]
+      : null;
+    const selectedWallId = session && (session.selectedWallId || (
+      session.state === 'cursorPlaced'
+        ? session.activeSpaceSharedWallId
+        : ((session.state === 'wallCommitted' || session.state === 'closing' || session.state === 'mergeClosing') && currentWall
+          ? currentWall.id
+          : '')
+    ));
+    const selectedWall = selectedWallId
+      ? surveyGraph.getWall(floor, selectedWallId)
+      : null;
+    if (selectedWall && !session.selectedOpeningId) {
+      this.bleMeasureHistoryDraft = surveyGraph.cloneDraft(this.draft);
+      const selectedWallDraft = session.selectedWallId
+        ? this.draft
+        : surveyGraph.selectWall(this.draft, selectedWall.id);
+      this.draft = surveyGraph.startRemeasure(selectedWallDraft);
+      this.syncFromDraft({ numberPadVisible: false });
+      this.startBluetoothMeasure('selectedWall');
+      return;
+    }
+
     if (!this.data.numberPadVisible) {
       this.openLengthPad();
       setTimeout(() => this.triggerBluetoothNumberMeasure(), 0);

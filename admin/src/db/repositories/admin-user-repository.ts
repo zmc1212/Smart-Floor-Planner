@@ -34,6 +34,7 @@ interface ListAdminUsersOptions {
   roles?: string[];
   search?: string;
   status?: string;
+  withoutEnterprise?: boolean;
   departmentId?: bigint | null;
   withoutDepartment?: boolean;
   page?: number;
@@ -75,6 +76,9 @@ export class AdminUserRepository {
     }
     if (options.status) {
       filters.push(eq(adminUsers.status, options.status));
+    }
+    if (options.withoutEnterprise) {
+      filters.push(isNull(adminUsers.enterpriseId));
     }
     if (options.withoutDepartment) {
       filters.push(isNull(adminUsers.departmentId));

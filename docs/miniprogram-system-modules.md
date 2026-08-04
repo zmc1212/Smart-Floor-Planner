@@ -87,6 +87,11 @@ utilities, and the admin APIs they call.
   each raw notification with full service/characteristic UUIDs; receive buffers
   are isolated per notification channel. Private binary payloads remain raw
   diagnostics until their protocol mapping is confirmed.
+- Device authorization: `/api/devices/verify-binding` uses a platform-scoped
+  lookup, then requires the discovered device to be `assigned` and to match the
+  current staff member or enterprise. Assigning a holder in `/devices`
+  automatically changes an idle device to `assigned`; `maintenance` and `lost`
+  devices remain unavailable.
 - Visual baseline: `design-references/all-pages-ip-v1/01-home.png` at iPhone
   13 Pro `390x844`. The shipped F1/F3 spatial-guide hero, overlapping formal
   surveying card, quick-service cards, and project-progress card use the
@@ -440,9 +445,13 @@ utilities, and the admin APIs they call.
   fallback. On the first empty surveying session per local client, a compact
   three-step guide highlights cursor placement, wall tools, and manual/BLE
   measurement without masking the canvas; it uses the bundled, reference-derived
-  measuring Xiao K crop and never reappears after that first display. The dock's
-  ranging action opens the existing length input and requests a live device
-  reading; its connected treatment reflects the actual BLE callback. This change
+  measuring Xiao K crop and never reappears after that first display. When a wall
+  body is selected, the cursor is snapped to one, the current wall is committed,
+  a closure candidate is present, or a wall preview is awaiting a length, the
+  dock's ranging action directly requests a live device reading and applies it to
+  the relevant wall as a BLE measurement; without a wall target it retains the
+  existing length-input flow. Its connected treatment
+  reflects the actual BLE callback. This change
   adds only the linked lead summary to the existing plan-detail read response;
   it does not change role boundaries, graph contract, audit queue, or export scope.
 - Implemented editor behavior: startup restore, local draft and cloud draft

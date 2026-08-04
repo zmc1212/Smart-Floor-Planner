@@ -97,7 +97,7 @@ function getReferenceName(value?: string | Reference | null) {
 function getRoleLabel(role?: string) {
   const labels: Record<string, string> = {
     designer: '设计师',
-    salesperson: '销售',
+    salesperson: '渠道地推',
     measurer: '量房师',
     enterprise_admin: '企业管理员',
   };
@@ -160,9 +160,22 @@ export default function DevicesPage() {
 
   const fetchStaff = useCallback(async () => {
     try {
-      const response = await fetch('/api/staff');
-      const result = await response.json();
-      if (response.ok && result.success) setStaff(result.data || []);
+      const [staffResponse, promoterResponse] = await Promise.all([
+        fetch('/api/staff?limit=50'),
+        fetch('/api/staff?scope=unassigned-promoters&limit=50'),
+      ]);
+      const [staffResult, promoterResult] = await Promise.all([
+        staffResponse.json(),
+        promoterResponse.json(),
+      ]);
+      const staffById = new Map(
+        [
+          ...(staffResponse.ok && staffResult.success ? staffResult.data || [] : []),
+          ...(promoterResponse.ok && promoterResult.success ? promoterResult.data || [] : []),
+        ]
+          .map((member: Reference) => [member._id, member])
+      );
+      setStaff(Array.from(staffById.values()));
     } catch {
       // The device list remains usable when the optional staff filter cannot load.
     }
@@ -432,7 +445,16 @@ export default function DevicesPage() {
                 {canChangeEnterprise ? (
                   <div className="space-y-2">
                     <Label>归属企业</Label>
-                    <Select value={editDraft.enterpriseId || 'unassigned'} onValueChange={(value) => setEditDraft((current) => current ? { ...current, enterpriseId: value === 'unassigned' ? '' : value, assignedUserId: '' } : current)}>
+                    <Select value={editDraft.enterpriseId || 'unassigned'} onValueChange={(value) => setEditDraft((current) => {
+                      if (!current) return current;
+                      const enterpriseId = value === 'unassigned' ? '' : value;
+                      return {
+                        ...current,
+                        enterpriseId,
+                        assignedUserId: '',
+                        status: !enterpriseId && current.status === 'assigned' ? 'unassigned' : current.status,
+                      };
+                    })}>
                       <SelectTrigger><SelectValue placeholder="未分配企业" /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="unassigned">未分配企业</SelectItem>
@@ -443,7 +465,15 @@ export default function DevicesPage() {
                 ) : null}
                 <div className="space-y-2">
                   <Label>持有人</Label>
-                  <Select value={editDraft.assignedUserId || 'unassigned'} onValueChange={(value) => setEditDraft((current) => current ? { ...current, assignedUserId: value === 'unassigned' ? '' : value } : current)}>
+                  <Select value={editDraft.assignedUserId || 'unassigned'} onValueChange={(value) => setEditDraft((current) => {
+                    if (!current) return current;
+                    const assignedUserId = value === 'unassigned' ? '' : value;
+                    return {
+                      ...current,
+                      assignedUserId,
+                      status: assignedUserId && current.status === 'unassigned' ? 'assigned' : current.status,
+                    };
+                  })}>
                     <SelectTrigger><SelectValue placeholder="未指派人员" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="unassigned">未指派人员</SelectItem>
