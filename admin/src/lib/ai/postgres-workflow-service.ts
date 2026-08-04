@@ -210,6 +210,27 @@ export async function getPostgresAiWorkflowContext(input: {
 }
 
 /**
+ * Returns only the persisted data-URI source image for a bigint workflow.
+ * Route handlers stream it after the RLS-scoped database read; provider and
+ * object-storage I/O remain outside the transaction.
+ */
+export async function getPostgresAiWorkflowSourceImage(input: {
+  enterpriseId: string | bigint;
+  workflowId: string | bigint;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const workflowId = parsePostgresId(input.workflowId, 'workflowId');
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const workflow = await new AiWorkflowRepository(transaction).findById(workflowId);
+    if (!workflow) throw notFound('Workflow not found or access denied');
+    if (!workflow.sourceImage?.startsWith('data:image')) {
+      throw notFound('Workflow source image not found');
+    }
+    return workflow.sourceImage;
+  });
+}
+
+/**
  * Keeps the user-directed workflow state mutations on bigint records before
  * provider-stage execution is moved from the legacy runtime.
  */

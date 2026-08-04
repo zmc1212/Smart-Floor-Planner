@@ -276,7 +276,7 @@ export class AiCreationRepository {
     enterpriseId?: bigint;
   }) {
     const filters: SQL[] = [
-      eq(aiGenerations.type, 'free_create'),
+      inArray(aiGenerations.type, ['free_create', 'scenario']),
       eq(aiGenerations.status, 'processing'),
       sql`${aiGenerations.deletedAt} is null`,
       sql`exists (

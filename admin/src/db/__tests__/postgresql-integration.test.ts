@@ -77,6 +77,7 @@ import { storePostgresMediaBuffer } from '@/lib/ai/postgres-media-assets';
 import {
   createPostgresAiWorkflow,
   getPostgresAiWorkflowContext,
+  getPostgresAiWorkflowSourceImage,
   preparePostgresAiWorkflowStage,
   updatePostgresAiWorkflowState,
 } from '@/lib/ai/postgres-workflow-service';
@@ -2115,6 +2116,10 @@ test('PostgreSQL workflow service creates and reads tenant-scoped workflow conte
     assert.equal(context.lead.id, String(lead.id));
     assert.equal(context.lead.name, lead.name);
     assert.deepEqual(context.generations, []);
+    assert.equal(
+      await getPostgresAiWorkflowSourceImage({ enterpriseId: enterpriseAId, workflowId: workflow.id }),
+      'data:image/png;base64,AA=='
+    );
 
     await withTenantTransaction(enterpriseAId, (transaction) =>
       new EnterpriseRepository(transaction).update(enterpriseAId, {
@@ -2199,10 +2204,217 @@ test('PostgreSQL workflow service creates and reads tenant-scoped workflow conte
       () => getPostgresAiWorkflowContext({ enterpriseId: enterpriseBId, workflowId: workflow.id }),
       /方案会话不存在或无权访问/
     );
+    await assert.rejects(
+      () => getPostgresAiWorkflowSourceImage({ enterpriseId: enterpriseBId, workflowId: workflow.id }),
+      /Workflow not found or access denied/
+    );
   } finally {
     await withPlatformTransaction(async (transaction) => {
       if (generationId) {
         await transaction.delete(aiGenerations).where(eq(aiGenerations.id, generationId));
+      }
+      if (workflowId) {
+        await transaction.delete(aiWorkflows).where(eq(aiWorkflows.id, workflowId));
+      }
+      if (leadId) await transaction.delete(leads).where(eq(leads.id, leadId));
+    });
+  }
+});
+
+test('PostgreSQL workflow scenario executions use the provider lifecycle under tenant RLS', async () => {
+  let leadId: bigint | null = null;
+  let workflowId: bigint | null = null;
+  let resultAssetId: bigint | null = null;
+  const generationIds: bigint[] = [];
+  try {
+    const lead = await withTenantTransaction(enterpriseAId, (transaction) =>
+      new LeadRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        assignedTo: promotionDesignerAId,
+        name: 'Scenario provider lifecycle lead',
+        phone: `139${String(Date.now()).slice(-8)}`,
+        source: 'integration-test',
+        status: 'new',
+      })
+    );
+    leadId = lead.id;
+    const workflow = await createPostgresAiWorkflow({
+      enterpriseId: enterpriseAId,
+      operatorId: promotionDesignerAId,
+      leadId: lead.id,
+      sourceImage: 'data:image/png;base64,AA==',
+    });
+    workflowId = workflow.id;
+    await withTenantTransaction(enterpriseAId, (transaction) =>
+      new EnterpriseRepository(transaction).update(enterpriseAId, {
+        aiPolicy: { enabledActionKeys: ['image.free_create', 'image.scenario'] },
+      })
+    );
+
+    const prepareScenario = () => preparePostgresAiWorkflowStage({
+      enterpriseId: enterpriseAId,
+      operatorId: promotionDesignerAId,
+      workflowId: workflow.id,
+      stageKey: 'direction',
+    });
+    const fundAndHold = async (generationId: bigint, operationSuffix: string) => {
+      const generation = await withTenantTransaction(enterpriseAId, (transaction) =>
+        new AiCreationRepository(transaction).findGeneration(generationId)
+      );
+      assert.ok(generation);
+      const grant = await grantAiCredits({
+        enterpriseId: enterpriseAId.toString(),
+        operatorId: promotionDesignerAId.toString(),
+        amount: Number((generation!.billing as { price?: number }).price),
+        operationId: `${testRunKey}:scenario-${operationSuffix}-grant`,
+      });
+      aiCreditLedgerIds.push(grant.ledger.id);
+      const held = await holdPostgresCreationGenerationCredits({
+        enterpriseId: enterpriseAId.toString(),
+        generationId: generationId.toString(),
+      });
+      assert.equal(held.generation.status, 'created');
+      assert.equal((held.generation.billing as { status?: string }).status, 'held');
+      if (held.ledger) aiCreditLedgerIds.push(held.ledger.id);
+      return held;
+    };
+
+    const succeededScenario = await prepareScenario();
+    generationIds.push(succeededScenario.id);
+    await fundAndHold(succeededScenario.id, 'success');
+    const succeededAttempt = await beginPostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: succeededScenario.id.toString(),
+      providerConfigId: aiProviderConfigId.toString(),
+      providerKey: 'scenario-integration-provider',
+      adapterType: 'grs',
+      remoteModel: 'scenario-integration-model',
+      requestSnapshot: { prompt: 'Scenario execution integration test' },
+    });
+    assert.equal(succeededAttempt.reused, false);
+    assert.equal(succeededAttempt.attempt.resolutionTier, null);
+    assert.equal((succeededAttempt.attempt.metadata as { stageKey?: string }).stageKey, 'direction');
+
+    await acknowledgePostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: succeededScenario.id.toString(),
+      attemptId: succeededAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-scenario-success`,
+      remoteStatus: 'queued',
+    });
+    await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const creation = new AiCreationRepository(transaction);
+      const generation = await creation.findGeneration(succeededScenario.id);
+      assert.ok(generation);
+      const updated = await creation.updateGeneration(succeededScenario.id, {
+        externalTask: {
+          ...(generation!.externalTask as Record<string, unknown>),
+          nextPollAt: new Date(Date.now() - 1_000).toISOString(),
+        },
+      });
+      assert.ok(updated);
+    });
+    const scenarioClaims = await claimPostgresCreationProviderPolls({
+      enterpriseId: enterpriseAId.toString(),
+      limit: 10,
+      leaseMs: 30_000,
+    });
+    const scenarioClaim = scenarioClaims.find(
+      (claim) => claim.generationId === succeededScenario.id.toString()
+    );
+    assert.ok(scenarioClaim);
+    const polled = await recordPostgresCreationProviderPollState({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: succeededScenario.id.toString(),
+      attemptId: succeededAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-scenario-success`,
+      status: 'processing',
+      remoteStatus: 'running',
+      pollLeaseId: scenarioClaim!.pollLeaseId,
+    });
+    assert.equal((polled.generation.externalTask as { pollLeaseId?: string }).pollLeaseId, undefined);
+
+    const completed = await completePostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: succeededScenario.id.toString(),
+      attemptId: succeededAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-scenario-success`,
+      output: { imageUrl: 'https://provider.example/scenario-success.png' },
+    });
+    assert.equal(completed.generation.status, 'succeeded');
+    await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const asset = await new AiCreationRepository(transaction).createMediaAsset({
+        enterpriseId: enterpriseAId,
+        ownerType: 'ai_generation_output',
+        ownerId: null,
+        mimeType: 'image/png',
+        size: 4n,
+        width: 1,
+        height: 1,
+        storageProvider: 'local',
+        storageKey: `${testRunKey}/scenario-success.png`,
+        originalUrl: 'https://provider.example/scenario-success.png',
+      });
+      resultAssetId = asset.id;
+    });
+    const settled = await settlePostgresCreationProviderResult({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: succeededScenario.id.toString(),
+      attemptId: succeededAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-scenario-success`,
+      assetId: resultAssetId!.toString(),
+    });
+    assert.equal((settled.generation.billing as { status?: string }).status, 'consumed');
+    assert.equal(settled.asset.ownerId, succeededScenario.id);
+    if (settled.ledger) aiCreditLedgerIds.push(settled.ledger.id);
+
+    const failedScenario = await prepareScenario();
+    generationIds.push(failedScenario.id);
+    await fundAndHold(failedScenario.id, 'failure');
+    const failedAttempt = await beginPostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: failedScenario.id.toString(),
+      providerConfigId: aiProviderConfigId.toString(),
+      providerKey: 'scenario-integration-provider',
+      adapterType: 'grs',
+      remoteModel: 'scenario-integration-model',
+      requestSnapshot: { prompt: 'Scenario failure integration test' },
+    });
+    await acknowledgePostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: failedScenario.id.toString(),
+      attemptId: failedAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-scenario-failure`,
+    });
+    const failed = await failPostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: failedScenario.id.toString(),
+      attemptId: failedAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-scenario-failure`,
+      errorMessage: 'Scenario provider failure integration test',
+    });
+    assert.equal(failed.generation.status, 'failed');
+    assert.equal((failed.generation.billing as { status?: string }).status, 'released');
+    if (failed.ledger) aiCreditLedgerIds.push(failed.ledger.id);
+
+    const cancelledScenario = await prepareScenario();
+    generationIds.push(cancelledScenario.id);
+    await fundAndHold(cancelledScenario.id, 'cancelled');
+    const cancelled = await releasePostgresCreationGenerationCredits({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: cancelledScenario.id.toString(),
+      errorMessage: 'Scenario submission was intentionally skipped',
+    });
+    assert.equal(cancelled.generation.status, 'failed');
+    assert.equal((cancelled.generation.billing as { status?: string }).status, 'released');
+    if (cancelled.ledger) aiCreditLedgerIds.push(cancelled.ledger.id);
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (generationIds.length) {
+        await transaction.delete(aiGenerations).where(inArray(aiGenerations.id, generationIds));
+      }
+      if (resultAssetId) {
+        await transaction.delete(mediaAssets).where(eq(mediaAssets.id, resultAssetId));
       }
       if (workflowId) {
         await transaction.delete(aiWorkflows).where(eq(aiWorkflows.id, workflowId));

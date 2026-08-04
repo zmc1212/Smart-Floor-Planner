@@ -1,5 +1,25 @@
 # Admin System: Current Module Inventory
 
+> 2026-08-04 migration record: GET /api/ai/workflows/[id]/source-image now
+> recognizes bigint workflow IDs and streams their persisted data-URI source image
+> after an RLS-scoped PostgreSQL lookup. The route retains its existing enterprise
+> authentication boundary and defers the MongoDB connection to the legacy
+> ObjectId/media-asset branch, so historical workflow assets remain readable.
+> This is Limited: only PostgreSQL data-URI sources are delivered; public workflow
+> creation, stage execution, external/provider media storage, and MongoDB data
+> migration are unchanged. Targeted ESLint and npm run test:postgresql passed 39/39.
+
+> 2026-08-04 PostgreSQL migration update: prepared tenant-RLS bigint
+> `scenario` workflow generations now run through the existing internal provider
+> lifecycle. The provider attempt snapshots workflow/stage/preset metadata; due
+> accepted scenario jobs use the same short `FOR UPDATE SKIP LOCKED` poll lease,
+> and success/media settlement/credit consumption plus failure/release remain
+> idempotent tenant-RLS transitions. This is still `Limited`: provider and
+> object-storage I/O remain outside transactions and public workflow-stage
+> routes and permissions remain MongoDB-backed. No MongoDB business data was
+> imported, deleted, or re-encrypted. Targeted ESLint and
+> `npm run test:postgresql` passed 39/39.
+
 > 2026-08-03 PostgreSQL migration update: `postgres-workflow-service` now
 > provides a tenant-RLS workflow creation and read-context foundation. It
 > validates that the bigint lead belongs to the tenant and that a selected
@@ -452,6 +472,11 @@ permission, or workflow changes.
   The routes use the shared Ant Design ProComponents-based admin shell
   (`ProTable`, `ProForm`, and `ProDescriptions`) and the existing `ai-providers`
   platform permission for `super_admin` and `admin` (`Implemented`).
+- Inspiration administration: `/inspirations` uses the same `PageContainer`,
+  `ProTable`, and `ModalForm` presentation pattern for case filtering, image
+  preview, publishing, recommendation state, and deletion. It preserves the
+  existing MongoDB `Inspiration` model, `/api/inspirations` request contract,
+  tenant behavior, and current menu permission (`Implemented`).
 - Provider integration contract: `AiProviderConfig` retains its legacy encrypted
   API-key fields and now also persists masked/encrypted credential maps plus a
   validated non-secret `adapterConfig`. The common editor and server validation

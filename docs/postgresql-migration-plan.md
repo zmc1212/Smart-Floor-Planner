@@ -1,5 +1,25 @@
 # PostgreSQL Migration Plan And Progress
 
+> 2026-08-04 migration record: GET /api/ai/workflows/[id]/source-image now
+> recognizes bigint workflow IDs and streams their persisted data-URI source image
+> after an RLS-scoped PostgreSQL lookup. The route retains its existing enterprise
+> authentication boundary and defers the MongoDB connection to the legacy
+> ObjectId/media-asset branch, so historical workflow assets remain readable.
+> This is Limited: only PostgreSQL data-URI sources are delivered; public workflow
+> creation, stage execution, external/provider media storage, and MongoDB data
+> migration are unchanged. Targeted ESLint and npm run test:postgresql passed 39/39.
+
+> 2026-08-04 migration record: prepared bigint workflow `scenario` generations
+> now use the PostgreSQL provider-attempt lifecycle under tenant RLS. Attempts
+> snapshot the workflow/stage/preset context; accepted scenario jobs can be
+> claimed with the existing short `FOR UPDATE SKIP LOCKED` polling lease, then
+> record polling, terminal success with media settlement and credit consumption,
+> or terminal failure/release idempotently. This remains internal only: provider
+> and storage I/O stay outside transactions, no public workflow-stage route or
+> permission boundary has switched, and no MongoDB business data was imported,
+> deleted, or re-encrypted. Targeted ESLint and `npm run test:postgresql` passed
+> 39/39.
+
 > 2026-08-03 migration record: `postgres-workflow-service` now provides a
 > tenant-RLS foundation for bigint workflow creation and read context. It
 > verifies the tenant-scoped lead, lead-to-floor-plan relation, and completed

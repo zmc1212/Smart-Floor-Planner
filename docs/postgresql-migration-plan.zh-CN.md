@@ -1,5 +1,18 @@
 # PostgreSQL 迁移计划与进度
 
+> 2026-08-04 迁移记录：GET /api/ai/workflows/[id]/source-image 现识别 bigint
+> 工作流 ID，并在租户 RLS 范围内从 PostgreSQL 读取后交付已持久化的 data URI 来源图。该路由保留
+> 原有企业认证边界，MongoDB 连接仅在旧 ObjectId/媒体资产兼容分支建立，因此历史工作流资产仍可读取。
+> 本项为 Limited：仅交付 PostgreSQL data URI 来源图；公开工作流创建、阶段执行、外部/供应商媒体存储
+> 及 MongoDB 数据迁移均未改变。定向 ESLint 与 npm run test:postgresql 均通过（39/39）。
+
+> 2026-08-04 迁移记录：已准备的 bigint 工作流 `scenario` 生成记录现可在租户 RLS
+> 范围使用 PostgreSQL 供应商尝试完整生命周期。尝试会快照工作流/阶段/预设上下文；已受理
+> 的场景任务可通过既有短 `FOR UPDATE SKIP LOCKED` 轮询租约认领，随后幂等地记录轮询、
+> 带媒体结算和点数扣除的成功终态，或失败/释放终态。本项仍仅供内部使用：供应商和存储 I/O
+> 保持在事务外，未切换公开工作流阶段路由或权限边界，未导入、删除或重新加密 MongoDB
+> 业务数据。定向 ESLint 与 `npm run test:postgresql` 均通过（39/39）。
+
 > 2026-08-03 迁移记录：`postgres-workflow-service` 现提供 bigint 工作流创建与
 > 读取上下文的租户 RLS 基础层。它会在持久化前校验租户范围线索、线索与户型的关联、以及
 > 已完成 v4 正式量房资格，再从 PostgreSQL 记录派生既有工作流/线索/生成记录/阶段状态

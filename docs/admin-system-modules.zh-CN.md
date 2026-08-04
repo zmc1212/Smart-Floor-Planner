@@ -1,5 +1,18 @@
 # 后台系统当前功能清单
 
+> 2026-08-04 迁移记录：GET /api/ai/workflows/[id]/source-image 现识别 bigint
+> 工作流 ID，并在租户 RLS 范围内从 PostgreSQL 读取后交付已持久化的 data URI 来源图。该路由保留
+> 原有企业认证边界，MongoDB 连接仅在旧 ObjectId/媒体资产兼容分支建立，因此历史工作流资产仍可读取。
+> 本项为 Limited：仅交付 PostgreSQL data URI 来源图；公开工作流创建、阶段执行、外部/供应商媒体存储
+> 及 MongoDB 数据迁移均未改变。定向 ESLint 与 npm run test:postgresql 均通过（39/39）。
+
+> 2026-08-04 PostgreSQL 迁移更新：已准备的租户 RLS bigint 工作流 `scenario`
+> 生成记录现可进入既有内部供应商生命周期。供应商尝试会快照工作流/阶段/预设元数据；到期且已
+> 受理的场景任务使用同一短 `FOR UPDATE SKIP LOCKED` 轮询租约，成功/媒体结算/点数扣除和
+> 失败/释放均保持为幂等的租户 RLS 状态变更。本项仍为 `Limited`：供应商和对象存储 I/O
+> 保持在事务外，公开工作流阶段路由和权限仍由 MongoDB 支持。未导入、删除或重新加密 MongoDB
+> 业务数据。定向 ESLint 与 `npm run test:postgresql` 均通过（39/39）。
+
 > 2026-08-03 PostgreSQL 迁移更新：`postgres-workflow-service` 现提供租户 RLS
 > 范围的工作流创建与读取上下文基础层。它会校验 bigint 线索属于当前租户，且所选户型
 > 属于该线索并为可用的已完成 v4 正式量房户型；再使用 PostgreSQL 记录返回既有工作流、
@@ -166,6 +179,7 @@
 
 - 页面：`/ai-studio/scenarios` 是客户方案 AI 执行工作台，包含“客户方案、快速工具、AI 助手”；旧 `/ai-studio/designer`、`/ai-studio/floor-plan`、`/ai-studio/furnishing`、`/ai-studio/soft-furnishing` 和方案详情 URL 保留相关查询参数后跳入统一工作台。`/ai-studio/create` 是独立全屏自由创作台，后台侧栏以新标签页打开。资源/配置入口继续为 `/inspirations`、`/ai-presets`、`/ai-providers`、`/ai-models`、`/ai-credit-prices`，企业 AI 页继续管理统一点数。
 - AI 供应商后台路由：`/ai-providers` 是供应商列表；`/ai-providers/new` 用于新增供应商；`/ai-providers/[id]` 用于查看和编辑供应商；`/ai-models` 是独立的平台生图模型目录。页面使用基于 Ant Design ProComponents 的共享后台壳层（`ProTable`、`ProForm`、`ProDescriptions`），`/ai-models` 复用 `ai-providers` 平台权限，仅平台 `super_admin`、`admin` 可操作（`Implemented`）。
+- 灵感方案后台：`/inspirations` 使用同一套 `PageContainer`、`ProTable`、`ModalForm` 展示模式，支持案例筛选、图片预览、发布、推荐状态和删除。该展示层迁移保持既有 MongoDB `Inspiration` 模型、`/api/inspirations` 请求契约、租户行为和当前菜单权限不变（`Implemented`）。
 - 供应商接入契约：`AiProviderConfig` 保留旧版加密 API Key 字段，同时持久化加密/掩码凭证映射和经校验的非敏感 `adapterConfig`。统一编辑页与服务端校验共同读取 `src/lib/ai/provider-adapter-manifest.ts`；当前 GRS、Pollinations、OpenAI Compatible 使用公共的地址/API Key 配置。`Limited`：平台生图模型目录当前仍是 GRS 来源契约，新增供应商必须实现 Adapter 与目录档案支持，不能只新增前端选项。
 - PostgreSQL 边界：平台供应商列表、新增、更新、停用、密钥轮换、连通测试、模型同步、上游余额查询及运行时供应商选择现统一经由平台范围 PostgreSQL 事务中的 `AiProviderConfigRepository`。加密凭据保持不透明存储；异步网络调用结束后仅回写非敏感运行状态。配置了 API Key 时，环境变量中的 GRS/Pollinations 默认供应商会幂等写入 PostgreSQL。
 - API：AI 对话/Agent、生成/渲染/建议、状态/历史、预设、工作流搜索分页及阶段、设计能力/共享动作目录、媒体资源、供应商 CRUD/密钥轮换/连通测试/模型同步/上游余额查询、受保护任务对账、平台业务动作价格、`GET/PATCH /api/admin/ai-image-models`、`GET/PATCH /api/admin/ai-image-model-prices`、企业点数发放/调整/流水/任务和失败任务重试接口。旧企业 `ai-key`/`ai-sync` 仅保留只读兼容，写接口返回 `410`。

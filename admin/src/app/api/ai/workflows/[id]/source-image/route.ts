@@ -4,16 +4,46 @@ import { withTenantRoute } from '@/lib/tenant-route';
 import { AiWorkflow } from '@/models/AiWorkflow';
 import { getAssetIdFromImageUrl, parseImageDataUri, readMediaAssetBuffer } from '@/lib/ai/media-assets';
 import { MediaAsset } from '@/models/MediaAsset';
+import { getPostgresAiWorkflowSourceImage } from '@/lib/ai/postgres-workflow-service';
+
+function isPostgresWorkflowId(value: string) {
+  return /^[1-9]\d{0,18}$/.test(value) && BigInt(value) <= 9223372036854775807n;
+}
 
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await dbConnect();
-
     return await withTenantRoute(req, { requireEnterprise: true }, async (context) => {
       const { id } = await params;
+      if (isPostgresWorkflowId(id)) {
+        try {
+          const sourceImage = await getPostgresAiWorkflowSourceImage({
+            enterpriseId: context.enterpriseId!,
+            workflowId: id,
+          });
+          const parsed = parseImageDataUri(sourceImage);
+          return new NextResponse(new Uint8Array(parsed.buffer), {
+            headers: {
+              'Content-Type': parsed.mimeType,
+              'Content-Length': String(parsed.buffer.length),
+              'Cache-Control': 'private, max-age=3600',
+            },
+          });
+        } catch (error) {
+          const status = (error as Error & { status?: number }).status;
+          if (status && status >= 400) {
+            return NextResponse.json(
+              { success: false, error: error instanceof Error ? error.message : 'Workflow source image not found' },
+              { status }
+            );
+          }
+          throw error;
+        }
+      }
+      await dbConnect();
+
       const workflow = await AiWorkflow.findOne({
         _id: id,
         enterpriseId: context.enterpriseId,
