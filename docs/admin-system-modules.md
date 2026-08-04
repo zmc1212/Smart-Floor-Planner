@@ -1,5 +1,46 @@
 # Admin System: Current Module Inventory
 
+> 2026-08-04 PostgreSQL migration update: the Admin-hosted Mini Program AI
+> APIs now persist bigint task, media, provider-attempt, and credit lifecycle
+> records through tenant-RLS PostgreSQL repositories; legacy ObjectId media
+> delivery remains a read-only compatibility branch.
+
+> 2026-08-04 PostgreSQL migration update: the Admin AI Designer Agent now
+> uses tenant-RLS PostgreSQL repositories for lead, formal-floor-plan, and
+> staff search, and bigint workflow services for workflow list/detail/create,
+> recommendations, confirmed stage execution, and baseline selection. Tool DTOs
+> and confirmation behavior remain unchanged, while bigint identifiers are
+> redacted from assistant-facing text. Mini Program AI task execution now uses
+> the PostgreSQL bigint task, media, provider-attempt, and credit lifecycle;
+> ObjectId media delivery remains a read-only compatibility branch. No MongoDB business data was
+> imported, deleted, or re-encrypted. Targeted ESLint and
+> `npm run test:postgresql` passed 39/39.
+
+> 2026-08-04 PostgreSQL migration update: bigint
+> `POST /api/ai/workflows/[id]/run-stage` now preserves confirmation, prepares
+> and submits a tenant-RLS `scenario` generation, and returns the PostgreSQL
+> workflow context. Direction, base-render, and perspective stages persist a
+> formal v4 control image as a PostgreSQL input asset; submission failures release
+> frozen credits, and settled results advance the workflow/first baseline with
+> the established rules. The `lighting` stage now records its vision analysis and
+> prompt-compilation calls as PostgreSQL provider attempts before using the same
+> scenario image lifecycle. The legacy ObjectId route remains MongoDB-compatible.
+> `mock-generation` remains MongoDB-only. No MongoDB business data was imported,
+> deleted, or re-encrypted. Targeted ESLint and `npm run test:postgresql` passed 39/39.
+
+> 2026-08-04 PostgreSQL migration update: `GET/POST /api/ai/workflows` and
+> bigint `GET/PATCH /api/ai/workflows/[id]` now use PostgreSQL workflow, lead,
+> and generation data in tenant-RLS transactions. The existing list/search and
+> detail DTOs plus the `ai-scenarios` enterprise boundary are preserved;
+> PostgreSQL workflows support creation, rename, stage-pointer, and succeeded
+> baseline selection. Historical ObjectId detail/mutation requests retain their
+> MongoDB compatibility branch, while the collection endpoint intentionally
+> lists bigint records only and rejects MongoDB-only `mock-generation` for a
+> bigint workflow. This was `Limited` before the 2026-08-04 stage-execution
+> migration recorded above; that newer entry supersedes this limitation. No
+> MongoDB business data was imported, deleted, or re-encrypted. Targeted ESLint
+> and `npm run test:postgresql` passed 39/39.
+
 > 2026-08-04 migration record: GET /api/ai/workflows/[id]/source-image now
 > recognizes bigint workflow IDs and streams their persisted data-URI source image
 > after an RLS-scoped PostgreSQL lookup. The route retains its existing enterprise
@@ -180,6 +221,11 @@ permission, or workflow changes.
   Ant Design `Flex`/`Space` or documented `ProCard` layouts for block gaps and
   `ProForm.submitter.render` for the separated bottom action row. The first
   block must not add a second top margin.
+- Migrated list row actions use compact Ant Design icon-and-label buttons for
+  direct detail, edit, delete, and state actions. Pages with several
+  lower-frequency operations retain an accessible small icon-only dropdown
+  trigger; no custom row-action wrapper is used. This presentation convention
+  does not change routes, APIs, permissions, or data contracts.
 
 ## Functional Modules
 
@@ -392,7 +438,13 @@ permission, or workflow changes.
   WeCom configuration, group sharing, and employee WeCom identifiers are
   deprecated and intentionally removed from runtime APIs and UI. Historical
   MongoDB fields and the PostgreSQL `admin_users.wecom_user_id` column are
-  retained without migration or deletion.
+  retained without migration or deletion. The `/leads` administration view uses
+  the shared shadcn page frame, status tabs, responsive table, and recoverable
+  loading/error states. List refreshes and detail reads cancel superseded
+  requests, so a stale response cannot overwrite a newer filter or selection;
+  its API contract, tenant scope, and role boundaries are unchanged. Its row
+  actions now use the shared Ant Design icon-and-label controls for details,
+  AI-plan entry, and destructive deletion.
 
 ### 8. Formal Floor Plans, Search, And Viewing
 
@@ -430,7 +482,8 @@ permission, or workflow changes.
   only closed spaces, walls, and openings from the version-4 `surveyGraph`, and
   never reads or writes legacy layout fields. `GET /api/floorplans` accepts an
   optional `status` filter; the `floorplans` permission and all existing viewer
-  and DXF behavior are unchanged.
+  and DXF behavior are unchanged. The formal-plan list uses the same Ant Design
+  small icon-and-label detail button as other management lists.
 - PostgreSQL boundary: formal floor-plan CRUD, detail rendering, lead linking,
   measurement association, and DXF export use `FloorPlanRepository` and
   `MeasurementRepository` under RLS. External Kujiale requests run outside the
@@ -454,7 +507,15 @@ permission, or workflow changes.
   an `admin_users` foreign key; platform/enterprise admins mutate devices, while
   staff can read their own assignment. Measurement writes validate operator,
   enterprise, formal plan, value/type/source/date, and assigned device in one
-  RLS-scoped PostgreSQL flow.
+  RLS-scoped PostgreSQL flow. The `/measurements` administration view uses the
+  shared shadcn filter/table pattern with responsive filters, explicit loading
+  and error states, and source markers; its API parameters, role scope, and
+  100-record display limit are unchanged. The `/devices` view uses the same
+  compact filter/table pattern with create/edit dialogs; its platform role can
+  select enterprise, compatible staff, and the existing status enum, while the
+  server retains the current tenant and cross-enterprise binding validation.
+  Device row edits and deletions use the same Ant Design icon-and-label action
+  controls as other management lists.
 
 ### 10. AI Studio And Design Generation
 
@@ -662,11 +723,15 @@ permission, or workflow changes.
   message history now use `AiChatSessionRepository` in RLS-scoped PostgreSQL
   transactions, keeping the existing per-enterprise/per-administrator boundary
   and string conversation IDs. Historical MongoDB conversations are not imported.
-  `Limited`: workflow creation, stage execution, public task/batch/generation
-  persistence, and remaining media writes still use the MongoDB execution chain
-  and are not yet bigint-compatible. The workflow-lead selector,
-  free-creation bootstrap read, PostgreSQL asset delivery, and internal
-  PostgreSQL batch preparation have switched in this domain.
+  `Limited`: PostgreSQL workflow list/create/detail, state mutations, scenario
+  execution, formal-plan control-image rendering, provider-input media
+  materialization, and `lighting` analysis/prompt compilation are bigint-compatible.
+  The PostgreSQL equivalent of the MongoDB-only `mock-generation` action remains
+  unavailable.
+  Historical ObjectId workflow detail/mutation remains read-compatible; the
+  collection endpoint intentionally lists only PostgreSQL workflows. The
+  workflow-lead selector, free-creation bootstrap read, PostgreSQL asset
+  delivery, and connected PostgreSQL free-creation runtime have switched.
 - Status: `Implemented`. The workbench starts customer designs with a
   customer/material/goal wizard, shows the selected result and candidates in a
   two-column workspace, and keeps one recommended next action prominent. The

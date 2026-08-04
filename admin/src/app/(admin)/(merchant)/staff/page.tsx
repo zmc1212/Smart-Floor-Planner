@@ -10,8 +10,8 @@ import {
   type ActionType,
   type ProColumns,
 } from '@ant-design/pro-components';
-import { Alert, Avatar, Button, Card, Dropdown, Flex, Space, Tag, Tooltip, Tree, Typography, type MenuProps, type TreeDataNode } from 'antd';
-import { Ellipsis, FolderPlus, Pencil, Plus, Trash2, Users } from 'lucide-react';
+import { Alert, Avatar, Button, Card, Flex, Space, Tag, Tooltip, Tree, Typography, type TreeDataNode } from 'antd';
+import { FolderPlus, Pencil, Plus, Trash2, Users } from 'lucide-react';
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -236,14 +236,13 @@ export default function StaffPage() {
     { title: '所属部门', key: 'department', width: 180, hideInSearch: true, render: (_, member) => <Typography.Text>{departmentNameOf(member, departments)}</Typography.Text> },
     { title: '创建时间', dataIndex: 'createdAt', valueType: 'dateTime', width: 180, hideInSearch: true, render: (_, member) => member.createdAt ? new Date(member.createdAt).toLocaleString() : '-' },
     {
-      title: '操作', key: 'actions', valueType: 'option', fixed: 'right', width: 120, hideInSearch: true,
+      title: '操作', key: 'actions', valueType: 'option', fixed: 'right', width: 180, hideInSearch: true,
       render: (_, member) => {
         if (!canManage) return [];
-        const items: MenuProps['items'] = [
-          { key: 'edit', label: '编辑员工', icon: <Pencil size={15} />, onClick: () => { setEditingStaff(member); setStaffFormOpen(true); } },
-          { key: 'delete', label: '删除员工', icon: <Trash2 size={15} />, danger: true, onClick: () => { void deleteStaff(member); } },
-        ];
-        return <Dropdown menu={{ items }} trigger={['click']}><Button aria-label={`${member.displayName || member.username} 更多操作`} icon={<Ellipsis size={18} />} /></Dropdown>;
+        return <Space size={8}>
+          <Button size="small" icon={<Pencil size={14} />} onClick={() => { setEditingStaff(member); setStaffFormOpen(true); }}>编辑</Button>
+          <Button size="small" danger icon={<Trash2 size={14} />} onClick={() => { void deleteStaff(member); }}>删除</Button>
+        </Space>;
       },
     },
   ];

@@ -1,11 +1,11 @@
-import LeadModel from '@/models/Lead';
-import { FloorPlan } from '@/models/FloorPlan';
-import { AdminUser } from '@/models/AdminUser';
-import { AiWorkflow } from '@/models/AiWorkflow';
-import { AiGeneration } from '@/models/AiGeneration';
-import dbConnect from '@/lib/mongodb';
-import type { TenantContext } from '@/lib/auth';
 import { serializeAiWorkflow } from '@/lib/ai/workflow-utils';
+import {
+  AdminUserRepository,
+  FloorPlanRepository,
+  LeadRepository,
+} from '@/db/repositories';
+import { withTenantTransaction } from '@/db/transaction';
+import { parsePostgresId } from '@/db/postgres-dto';
 import {
   ensureDefaultAiStylePresets,
   listAiStylePresets,
@@ -13,14 +13,18 @@ import {
 import type { ChatAction, ChatFloorPlanOption, ChatUiPayload, ChatWorkflowDetail } from '@/lib/ai/chat-ui';
 import { mergeChatUiPayload } from '@/lib/ai/chat-ui';
 import {
-  createAiWorkflow,
-  getAiWorkflowContext,
-  recommendNextWorkflowAction,
-  runAiWorkflowStage,
-  selectAiGenerationBaseline,
-} from '@/lib/ai/workflow-service';
-import { getWorkflowStageDefinition } from '@/lib/ai/workflow-stages';
-import type { AiWorkflowSourceAssetRole, AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
+  createPostgresAiWorkflow,
+  getPostgresAiWorkflowContext,
+  listPostgresAiWorkflows,
+  preparePostgresAiWorkflowStage,
+  updatePostgresAiWorkflowState,
+} from '@/lib/ai/postgres-workflow-service';
+import { submitPostgresCreationGeneration } from '@/lib/ai/postgres-creation-runtime';
+import {
+  getWorkflowStageDefinition,
+  type AiWorkflowSourceAssetRole,
+  type AiWorkflowStageKey,
+} from '@/lib/ai/workflow-stages';
 
 /**
  * AI Designer Agent Service
@@ -261,8 +265,6 @@ export async function runAgent(
     };
   }
 
-  await dbConnect();
-
   const apiKey = process.env.LONGCAT_API_KEY;
   if (!apiKey) {
     throw new Error('LongCat API key is not configured. Set LONGCAT_API_KEY.');
@@ -486,11 +488,11 @@ function maskBusinessIds(content: string, payload?: ChatUiPayload) {
 
     card.actions.forEach((action) => {
       if (action.kind !== 'navigate') return;
-      const workflowMatch = action.value.match(/\/ai-studio\/scenarios\/([a-f0-9]{24})/i);
+      const workflowMatch = action.value.match(/\/ai-studio\/scenarios\/([a-f0-9]{24}|[1-9]\d{0,18})/i);
       if (workflowMatch?.[1] && card.type === 'workflow') {
         idLabels.set(workflowMatch[1], card.title);
       }
-      const leadMatch = action.value.match(/[?&]leadId=([a-f0-9]{24})/i);
+      const leadMatch = action.value.match(/[?&]leadId=([a-f0-9]{24}|[1-9]\d{0,18})/i);
       if (leadMatch?.[1]) {
         idLabels.set(leadMatch[1], card.type === 'lead' || card.type === 'workflow_empty' ? card.title : '该客户');
       }
@@ -502,18 +504,10 @@ function maskBusinessIds(content: string, payload?: ChatUiPayload) {
   });
 
   return result
+    .replace(/\b(?:leadId|workflowId|generationId)\s*[:=]\s*["']?[1-9]\d{0,18}["']?/gi, 'internal object')
     .replace(/\b(?:leadId|workflowId|generationId)\s*[:=：]?\s*["']?[a-f0-9]{24}["']?/gi, '该对象')
     .replace(/\b(?:leadId|workflowId|generationId)\b/gi, '该对象')
     .replace(/\b[a-f0-9]{24}\b/gi, '该对象');
-}
-
-function toTenantContext(context: AgentContext): TenantContext {
-  return {
-    userId: context.userId,
-    enterpriseId: context.enterpriseId,
-    role: context.role as TenantContext['role'],
-    username: context.userName,
-  };
 }
 
 function optionalString(value: unknown) {
@@ -1059,23 +1053,14 @@ function buildUiPayloadForTool(functionName: string, output: unknown): ChatUiPay
 }
 
 async function executeSearchLeads(args: ToolArgs, context: AgentContext) {
-  const filter: Record<string, unknown> = { enterpriseId: context.enterpriseId };
   const query = optionalString(args.query);
   const status = optionalString(args.status);
-
-  if (query) {
-    filter.$or = [
-      { name: new RegExp(query, 'i') },
-      { communityName: new RegExp(query, 'i') },
-    ];
-  }
-  if (status) {
-    filter.status = status;
-  }
-
-  const leads = await LeadModel.find(filter).sort({ createdAt: -1 }).limit(5);
-  return leads.map((lead) => ({
-    id: lead._id,
+  const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
+  const result = await withTenantTransaction(enterpriseId, (transaction) =>
+    new LeadRepository(transaction).list({ query, status, limit: 5 })
+  );
+  return result.rows.map((lead) => ({
+    id: lead.id.toString(),
     name: lead.name,
     status: lead.status,
     community: lead.communityName,
@@ -1084,16 +1069,13 @@ async function executeSearchLeads(args: ToolArgs, context: AgentContext) {
 }
 
 async function executeSearchFloorPlans(args: ToolArgs, context: AgentContext) {
-  const filter: Record<string, unknown> = { enterpriseId: context.enterpriseId };
   const name = optionalString(args.name);
-
-  if (name) {
-    filter.name = new RegExp(name, 'i');
-  }
-
-  const plans = await FloorPlan.find(filter).sort({ createdAt: -1 }).limit(5);
-  return plans.map((plan) => ({
-    id: plan._id,
+  const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
+  const result = await withTenantTransaction(enterpriseId, (transaction) =>
+    new FloorPlanRepository(transaction).list({ search: name, limit: 5 })
+  );
+  return result.rows.map((plan) => ({
+    id: plan.id.toString(),
     name: plan.name,
     createdAt: plan.createdAt,
   }));
@@ -1112,20 +1094,18 @@ async function executeGetAiStyles(args: ToolArgs) {
 }
 
 async function executeSearchStaff(args: ToolArgs, context: AgentContext) {
-  const filter: Record<string, unknown> = { enterpriseId: context.enterpriseId };
   const name = optionalString(args.name);
   const role = optionalString(args.role);
-
-  if (name) {
-    filter.displayName = new RegExp(name, 'i');
-  }
-  if (role) {
-    filter.role = role;
-  }
-
-  const staff = await AdminUser.find(filter).select('displayName role status phone createdAt').limit(10);
-  return staff.map((item) => ({
-    id: item._id,
+  const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
+  const result = await withTenantTransaction(enterpriseId, (transaction) =>
+    new AdminUserRepository(transaction).list({
+      search: name,
+      roles: role ? [role] : undefined,
+      limit: 10,
+    })
+  );
+  return result.rows.map((item) => ({
+    id: item.id.toString(),
     name: item.displayName,
     role: item.role,
     status: item.status,
@@ -1140,77 +1120,44 @@ async function executeListAiWorkflowsV2(args: ToolArgs, context: AgentContext) {
     return { error: '缺少客户线索信息' };
   }
 
-  const lead = await LeadModel.findOne({
-    _id: leadId,
-    enterpriseId: context.enterpriseId,
-  })
-    .populate({ path: 'floorPlanIds', select: 'name createdAt status', strictPopulate: false })
-    .lean();
+  const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
+  const [lead, workflows] = await Promise.all([
+    withTenantTransaction(enterpriseId, (transaction) =>
+      new LeadRepository(transaction).findById(parsePostgresId(leadId, 'leadId'))
+    ),
+    listPostgresAiWorkflows({ enterpriseId, leadId, status: 'active', limit: 10 }),
+  ]);
 
   if (!lead) {
     return { error: '客户线索不存在或无权访问' };
   }
 
-  const workflows = await AiWorkflow.find({
-    enterpriseId: context.enterpriseId,
-    leadId,
-    status: 'active',
-  })
-    .sort({ updatedAt: -1 })
-    .limit(10);
-
-  const workflowIds = workflows.map((workflow) => workflow._id);
-  const countByWorkflow = new Map<string, number>();
-
-  if (workflowIds.length > 0) {
-    const generations = await AiGeneration.find({
-      enterpriseId: context.enterpriseId,
-      workflowId: { $in: workflowIds },
-    })
-      .select('workflowId')
-      .lean();
-
-    generations.forEach((generation) => {
-      const workflowId = String(generation.workflowId || '');
-      if (workflowId) {
-        countByWorkflow.set(workflowId, (countByWorkflow.get(workflowId) || 0) + 1);
-      }
-    });
-  }
-
-  const workflowSummaries = workflows.map((workflow) => {
-    const serialized = serializeAiWorkflow(workflow);
-    return {
-      id: serialized.id,
-      leadId: serialized.leadId,
-      title: serialized.title,
-      workflowLabel: serialized.workflowLabel,
-      isPrimary: serialized.isPrimary,
-      status: serialized.status,
-      currentStageKey: serialized.currentStageKey,
-      currentStageLabel: serialized.currentStageLabel,
-      generationCount: countByWorkflow.get(serialized.id) || 0,
-      createdAt: serialized.createdAt,
-      updatedAt: serialized.updatedAt,
-    };
-  });
-
   return {
     lead: {
-      id: String(lead._id),
+      id: lead.id.toString(),
       name: lead.name,
       status: lead.status,
       communityName: lead.communityName,
-      floorPlans: Array.isArray(lead.floorPlanIds)
-        ? (lead.floorPlanIds as Array<{ _id: unknown; name?: string; createdAt?: Date; status?: string }>).map((plan) => ({
-            id: String(plan._id),
-            name: plan.name,
-            createdAt: plan.createdAt,
-            status: plan.status,
-          }))
-        : [],
+      floorPlans: lead.floorPlanRecords.map((plan) => ({
+        id: plan.id.toString(),
+        name: plan.name,
+        createdAt: plan.createdAt,
+        status: plan.status,
+      })),
     },
-    workflows: workflowSummaries,
+    workflows: workflows.data.map((workflow) => ({
+      id: workflow.id,
+      leadId: workflow.leadId,
+      title: workflow.title,
+      workflowLabel: workflow.workflowLabel,
+      isPrimary: workflow.isPrimary,
+      status: workflow.status,
+      currentStageKey: workflow.currentStageKey,
+      currentStageLabel: workflow.currentStageLabel,
+      generationCount: workflow.generationCount,
+      createdAt: workflow.createdAt,
+      updatedAt: workflow.updatedAt,
+    })),
   };
 }
 
@@ -1221,49 +1168,13 @@ async function executeListAiWorkflows(args: ToolArgs, context: AgentContext) {
     return { error: '缺少 leadId' };
   }
 
-  const workflows = await AiWorkflow.find({
+  const workflows = await listPostgresAiWorkflows({
     enterpriseId: context.enterpriseId,
     leadId,
     status: 'active',
-  })
-    .sort({ updatedAt: -1 })
-    .limit(10);
-
-  const workflowIds = workflows.map((workflow) => workflow._id);
-  const countByWorkflow = new Map<string, number>();
-
-  if (workflowIds.length > 0) {
-    const generations = await AiGeneration.find({
-      enterpriseId: context.enterpriseId,
-      workflowId: { $in: workflowIds },
-    })
-      .select('workflowId')
-      .lean();
-
-    generations.forEach((generation) => {
-      const workflowId = String(generation.workflowId || '');
-      if (workflowId) {
-        countByWorkflow.set(workflowId, (countByWorkflow.get(workflowId) || 0) + 1);
-      }
-    });
-  }
-
-  return workflows.map((workflow) => {
-    const serialized = serializeAiWorkflow(workflow);
-    return {
-      id: serialized.id,
-      leadId: serialized.leadId,
-      title: serialized.title,
-      workflowLabel: serialized.workflowLabel,
-      isPrimary: serialized.isPrimary,
-      status: serialized.status,
-      currentStageKey: serialized.currentStageKey,
-      currentStageLabel: serialized.currentStageLabel,
-      generationCount: countByWorkflow.get(serialized.id) || 0,
-      createdAt: serialized.createdAt,
-      updatedAt: serialized.updatedAt,
-    };
+    limit: 10,
   });
+  return workflows.data;
 }
 
 async function executeGetAiWorkflowDetail(args: ToolArgs, context: AgentContext) {
@@ -1272,7 +1183,7 @@ async function executeGetAiWorkflowDetail(args: ToolArgs, context: AgentContext)
   const leadId = optionalString(args.leadId);
 
   if (!workflowId && query) {
-    const workflows = await findWorkflowsByTitleQuery(query, context, leadId);
+    const workflows = await findPostgresWorkflowsByTitleQuery(query, context, leadId);
     if (workflows.length === 0) {
       return { error: `没有找到标题匹配“${query}”的方案会话` };
     }
@@ -1281,7 +1192,7 @@ async function executeGetAiWorkflowDetail(args: ToolArgs, context: AgentContext)
       return {
         error: `找到 ${workflows.length} 个匹配的方案会话，请指定其中一个 ID`,
         matches: workflows.map((workflow) => ({
-          id: String(workflow._id),
+          id: workflow.id,
           title: workflow.title,
           currentStageKey: workflow.currentStageKey,
           updatedAt: workflow.updatedAt,
@@ -1289,31 +1200,30 @@ async function executeGetAiWorkflowDetail(args: ToolArgs, context: AgentContext)
       };
     }
 
-    workflowId = String(workflows[0]._id);
+    workflowId = workflows[0].id;
   }
 
   if (!workflowId) {
     return { error: '缺少 workflowId 或 query' };
   }
 
-  return getAiWorkflowContext(workflowId, toTenantContext(context));
+  return getPostgresAiWorkflowContext({ enterpriseId: context.enterpriseId, workflowId });
 }
 
 function normalizeWorkflowTitle(value: string) {
   return value.replace(/[\s·・.。_-]/g, '').toLowerCase();
 }
 
-async function findWorkflowsByTitleQuery(query: string, context: AgentContext, leadId?: string) {
+async function findPostgresWorkflowsByTitleQuery(query: string, context: AgentContext, leadId?: string) {
   const normalizedQuery = normalizeWorkflowTitle(query);
-  const workflows = await AiWorkflow.find({
+  const workflows = await listPostgresAiWorkflows({
     enterpriseId: context.enterpriseId,
-    ...(leadId ? { leadId } : {}),
+    leadId,
     status: 'active',
-  })
-    .sort({ updatedAt: -1 })
-    .limit(50);
+    limit: 50,
+  });
 
-  return workflows.filter((workflow) => {
+  return workflows.data.filter((workflow) => {
     const title = normalizeWorkflowTitle(workflow.title || '');
     const label = normalizeWorkflowTitle(workflow.workflowLabel || '');
     return title.includes(normalizedQuery) || label.includes(normalizedQuery);
@@ -1321,18 +1231,17 @@ async function findWorkflowsByTitleQuery(query: string, context: AgentContext, l
 }
 
 async function executeCreateAiWorkflow(args: ToolArgs, context: AgentContext) {
-  const workflow = await createAiWorkflow(
-    {
-      leadId: optionalString(args.leadId) || '',
-      workflowLabel: optionalString(args.workflowLabel),
-      sourceImage: optionalString(args.sourceImage),
-      sourceFloorPlanId: optionalString(args.sourceFloorPlanId),
-      sourceAssetRole: optionalString(args.sourceAssetRole) as AiWorkflowSourceAssetRole | undefined,
-    },
-    toTenantContext(context)
-  );
+  const workflow = await createPostgresAiWorkflow({
+    enterpriseId: context.enterpriseId,
+    operatorId: context.userId,
+    leadId: optionalString(args.leadId) || '',
+    workflowLabel: optionalString(args.workflowLabel),
+    sourceImage: optionalString(args.sourceImage),
+    sourceFloorPlanId: optionalString(args.sourceFloorPlanId),
+    sourceAssetRole: optionalString(args.sourceAssetRole) as AiWorkflowSourceAssetRole | undefined,
+  });
 
-  return serializeAiWorkflow(workflow);
+  return serializeAiWorkflow({ ...workflow, _id: workflow.id });
 }
 
 async function executeRecommendNextWorkflowStep(args: ToolArgs, context: AgentContext) {
@@ -1341,28 +1250,61 @@ async function executeRecommendNextWorkflowStep(args: ToolArgs, context: AgentCo
     return { error: '缺少 workflowId' };
   }
 
-  return recommendNextWorkflowAction(workflowId, toTenantContext(context));
+  const workflowContext = await getPostgresAiWorkflowContext({
+    enterpriseId: context.enterpriseId,
+    workflowId,
+  });
+  return workflowContext.workflow.stageState.recommendedNextAction || {
+    reason: 'No workflow stage is available until its source or baseline is selected.',
+  };
 }
 
 async function executeRunAiWorkflowStage(args: ToolArgs, context: AgentContext) {
-  return runAiWorkflowStage(
-    {
-      workflowId: optionalString(args.workflowId) || '',
-      stageKey: optionalString(args.stageKey) as AiWorkflowStageKey,
-      presetKey: optionalString(args.presetKey),
-      confirmed: Boolean(args.confirmed),
-    },
-    toTenantContext(context)
-  );
+  const workflowId = optionalString(args.workflowId) || '';
+  const stageKey = optionalString(args.stageKey) as AiWorkflowStageKey;
+  if (!args.confirmed) {
+    const stage = getWorkflowStageDefinition(stageKey);
+    return {
+      requiresConfirmation: true,
+      message: `Running ${stage?.name || stageKey} consumes enterprise AI credits and creates a new result.`,
+    };
+  }
+  const generation = await preparePostgresAiWorkflowStage({
+    enterpriseId: context.enterpriseId,
+    operatorId: context.userId,
+    workflowId,
+    stageKey,
+    presetKey: optionalString(args.presetKey),
+  });
+  await submitPostgresCreationGeneration({
+    enterpriseId: context.enterpriseId,
+    generationId: generation.id.toString(),
+  });
+  return getPostgresAiWorkflowContext({ enterpriseId: context.enterpriseId, workflowId });
 }
 
 async function executeSelectAiGenerationBaseline(args: ToolArgs, context: AgentContext) {
-  return selectAiGenerationBaseline(
-    {
-      workflowId: optionalString(args.workflowId) || '',
-      generationId: optionalString(args.generationId) || '',
-      confirmed: Boolean(args.confirmed),
+  if (!args.confirmed) {
+    return {
+      requiresConfirmation: true,
+      message: 'Selecting a baseline changes the source of later workflow stages.',
+    };
+  }
+  const selected = await updatePostgresAiWorkflowState({
+    enterpriseId: context.enterpriseId,
+    workflowId: optionalString(args.workflowId) || '',
+    generationId: optionalString(args.generationId) || '',
+    action: 'select-generation',
+  });
+  if (!('generation' in selected)) {
+    throw new Error('Baseline selection did not return a generation.');
+  }
+  return {
+    workflow: serializeAiWorkflow({ ...selected.workflow, _id: selected.workflow.id }),
+    generation: {
+      id: selected.generation.id.toString(),
+      status: selected.generation.status,
+      isSelectedBaseline: selected.generation.isSelectedBaseline,
     },
-    toTenantContext(context)
-  );
+  };
 }

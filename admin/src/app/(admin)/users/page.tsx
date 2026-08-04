@@ -7,7 +7,7 @@ import {
   type ActionType,
   type ProColumns,
 } from '@ant-design/pro-components';
-import { Avatar, Button, Flex, Tag, Tooltip, Typography } from 'antd';
+import { Avatar, Button, Flex, Tag, Typography } from 'antd';
 import { ExternalLink, UserRound } from 'lucide-react';
 import { notify } from '@/components/ui/operation-feedback';
 import { getAdminRoute } from '@/config/admin-routes';
@@ -94,7 +94,7 @@ export default function UsersPage() {
       title: '正式户型',
       dataIndex: 'planCount',
       hideInSearch: true,
-      width: 120,
+      width: 132,
       render: (value) => <Tag color="green">{Number(value || 0)} 个</Tag>,
     },
     {
@@ -112,11 +112,14 @@ export default function UsersPage() {
       width: 120,
       hideInSearch: true,
       render: (_, item) => item.openid ? (
-        <Tooltip title="查看该用户的正式户型">
-          <Button type="link" icon={<ExternalLink size={16} />} href={`/users/${encodeURIComponent(item.openid)}`}>
-            查看户型
-          </Button>
-        </Tooltip>
+        <Button
+          aria-label={`查看用户 ${item.nickname || item.openid} 的户型`}
+          icon={<ExternalLink size={14} />}
+          size="small"
+          href={`/users/${encodeURIComponent(item.openid)}`}
+        >
+          查看详情
+        </Button>
       ) : '-',
     },
   ];

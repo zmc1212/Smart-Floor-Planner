@@ -12,6 +12,7 @@ import {
   assertEligibleWorkflowFloorPlan,
   buildWorkflowFloorPlanContext,
   isEligibleWorkflowFloorPlan,
+  resolveWorkflowImageMode,
 } from '@/lib/ai/workflow-floorplan';
 import {
   canRunStageFromState,
@@ -26,6 +27,9 @@ import {
 } from '@/lib/ai/presets';
 import { assertEnterpriseAiActionAllowed } from '@/lib/ai/enterprise-policy';
 import { getAiCreditPrice } from '@/lib/ai/credits';
+import { resolvePostgresScenarioProviderImage } from '@/lib/ai/postgres-creation-runtime';
+import { executePostgresWorkflowChat } from '@/lib/ai/postgres-workflow-chat';
+import type { AiChatMessage } from '@/lib/ai/provider-types';
 
 export type CreatePostgresWorkflowInput = {
   enterpriseId: string | bigint;
@@ -54,6 +58,16 @@ export type PreparePostgresWorkflowStageInput = {
   stageKey: AiWorkflowStageKey;
   presetKey?: string;
   styleReferenceImage?: string;
+};
+
+export type ListPostgresWorkflowsInput = {
+  enterpriseId: string | bigint;
+  operatorId?: string | bigint;
+  leadId?: string | bigint;
+  query?: string;
+  status?: 'active' | 'archived';
+  page?: number;
+  limit?: number;
 };
 
 function notFound(message: string) {
@@ -100,6 +114,30 @@ function buildPresetSnapshot(preset: NonNullable<Awaited<ReturnType<typeof getAi
     workflowStage: preset.workflowStage,
     sourceAssetRole: preset.sourceAssetRole,
     nextRecommendedStage: preset.nextRecommendedStage,
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function parseLightingPrompt(value: string, fallbackNegativePrompt?: string) {
+  const jsonMatch = value.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]) as { prompt?: string; negative_prompt?: string };
+      if (parsed.prompt?.trim()) {
+        return { prompt: parsed.prompt.trim(), negativePrompt: parsed.negative_prompt?.trim() || fallbackNegativePrompt };
+      }
+    } catch {
+      // The deterministic fallback maintains the legacy behavior for non-JSON model replies.
+    }
+  }
+  return {
+    prompt: 'A professional interior design presentation board showing a night scene rendering of a high-end interior, lighting concept, color temperature analysis, and a structured lighting equipment list. High-end architectural portfolio layout, photorealistic, 8k.',
+    negativePrompt: fallbackNegativePrompt || 'ugly, blurry, low quality',
   };
 }
 
@@ -210,6 +248,101 @@ export async function getPostgresAiWorkflowContext(input: {
 }
 
 /**
+ * Produces the legacy workbench list DTO entirely from tenant-scoped bigint
+ * records. Historical ObjectId workflows intentionally remain on their
+ * compatibility routes and are not mixed into this result.
+ */
+export async function listPostgresAiWorkflows(input: ListPostgresWorkflowsInput) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const requestedLeadId = input.leadId
+    ? parsePostgresId(input.leadId, 'leadId')
+    : undefined;
+  const operatorId = input.operatorId
+    ? parsePostgresId(input.operatorId, 'operatorId')
+    : undefined;
+  const page = Math.max(1, input.page ?? 1);
+  const limit = Math.min(50, Math.max(1, input.limit ?? 20));
+
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const leads = new LeadRepository(transaction);
+    let leadIds: bigint[] | undefined;
+    if (requestedLeadId) {
+      const lead = await leads.findById(requestedLeadId);
+      if (!lead) throw notFound('客户线索不存在或无权访问');
+      leadIds = [lead.id];
+    } else if (input.query?.trim()) {
+      const matched = await leads.list({ query: input.query, limit: 100 });
+      leadIds = matched.rows.map((lead) => lead.id);
+    }
+
+    const workflows = await new AiWorkflowRepository(transaction).list({
+      leadIds,
+      operatorId,
+      status: input.status === 'archived' ? 'archived' : 'active',
+      page,
+      limit,
+    });
+    const workflowIds = workflows.rows.map((workflow) => workflow.id);
+    const [workflowLeads, generations] = await Promise.all([
+      leads.findByIds(Array.from(new Set(workflows.rows.map((workflow) => workflow.leadId)))),
+      new AiCreationRepository(transaction).listGenerationsByWorkflowIds(workflowIds),
+    ]);
+    const leadById = new Map(workflowLeads.map((lead) => [lead.id, lead]));
+    const generationsByWorkflow = new Map<bigint, typeof generations>();
+    for (const generation of generations) {
+      if (!generation.workflowId) continue;
+      generationsByWorkflow.set(generation.workflowId, [
+        ...(generationsByWorkflow.get(generation.workflowId) ?? []),
+        generation,
+      ]);
+    }
+
+    return {
+      data: workflows.rows.map((workflow) => {
+        const workflowGenerations = generationsByWorkflow.get(workflow.id) ?? [];
+        const selectedGeneration = workflow.selectedGenerationId
+          ? workflowGenerations.find((generation) => generation.id === workflow.selectedGenerationId)
+          : workflowGenerations.find((generation) => generation.isSelectedBaseline);
+        const lead = leadById.get(workflow.leadId);
+        return {
+          ...serializePostgresWorkflow(workflow),
+          generationCount: workflowGenerations.length,
+          latestGeneration: workflowGenerations[0]
+            ? serializeAiGeneration({ ...workflowGenerations[0], _id: workflowGenerations[0].id })
+            : undefined,
+          selectedGeneration: selectedGeneration
+            ? serializeAiGeneration({ ...selectedGeneration, _id: selectedGeneration.id })
+            : undefined,
+          lead: lead
+            ? {
+                id: lead.id.toString(),
+                name: lead.name,
+                phone: lead.phone,
+                communityName: lead.communityName,
+                status: lead.status,
+              }
+            : undefined,
+          stageState: getAiWorkflowStageAvailabilityFromDocs(
+            workflow,
+            workflowGenerations.map((generation) => ({
+              _id: generation.id,
+              stageKey: generation.stageKey as AiWorkflowStageKey | undefined,
+              isSelectedBaseline: generation.isSelectedBaseline,
+            }))
+          ),
+        };
+      }),
+      pagination: {
+        page: workflows.page,
+        limit: workflows.limit,
+        total: workflows.total,
+        totalPages: Math.ceil(workflows.total / workflows.limit),
+      },
+    };
+  });
+}
+
+/**
  * Returns only the persisted data-URI source image for a bigint workflow.
  * Route handlers stream it after the RLS-scoped database read; provider and
  * object-storage I/O remain outside the transaction.
@@ -265,11 +398,7 @@ export async function updatePostgresAiWorkflowState(input: UpdatePostgresWorkflo
   });
 }
 
-/**
- * Creates a workflow-stage generation with immutable style and price snapshots.
- * Provider submission, media materialization, and asynchronous reconciliation
- * deliberately remain outside this database-only foundation.
- */
+/** Creates a workflow-stage generation with immutable style, price, and lighting-analysis snapshots. */
 export async function preparePostgresAiWorkflowStage(input: PreparePostgresWorkflowStageInput) {
   const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
   const operatorId = parsePostgresId(input.operatorId, 'operatorId');
@@ -284,7 +413,7 @@ export async function preparePostgresAiWorkflowStage(input: PreparePostgresWorkf
   if (!preset) throw Object.assign(new Error('当前阶段没有可用的 AI 预设'), { status: 400 });
   const price = await getAiCreditPrice('image.scenario');
 
-  return withTenantTransaction(enterpriseId, async (transaction) => {
+  const prepared = await withTenantTransaction(enterpriseId, async (transaction) => {
     const workflows = new AiWorkflowRepository(transaction);
     const workflow = await workflows.findById(workflowId);
     if (!workflow || workflow.status !== 'active') throw notFound('方案会话不存在或无权访问');
@@ -328,7 +457,7 @@ export async function preparePostgresAiWorkflowStage(input: PreparePostgresWorkf
     }
     if (floorPlan) assertEligibleWorkflowFloorPlan(floorPlan);
 
-    const imageMode = preset.image.mode === 'edit' ? 'edit' : 'generation';
+    const imageMode = resolveWorkflowImageMode(input.stageKey, preset.image.mode);
     const prompt = [
       buildPromptFromPreset(preset.promptTemplate, {}),
       floorPlan ? buildWorkflowFloorPlanContext(floorPlan.layoutData) : '',
@@ -336,11 +465,30 @@ export async function preparePostgresAiWorkflowStage(input: PreparePostgresWorkf
     const parentGenerationId = availability.parentGenerationId
       ? parsePostgresId(availability.parentGenerationId, 'parentGenerationId')
       : null;
+    const parentGeneration = parentGenerationId
+      ? generations.find((generation) => generation.id === parentGenerationId) || null
+      : null;
+    const lightingSource = input.stageKey === 'lighting'
+      ? [
+          input.styleReferenceImage?.trim(),
+          typeof asRecord(parentGeneration?.output).imageUrl === 'string'
+            ? String(asRecord(parentGeneration?.output).imageUrl)
+            : undefined,
+          typeof asRecord(parentGeneration?.input).styleReferenceImage === 'string'
+            ? String(asRecord(parentGeneration?.input).styleReferenceImage)
+            : undefined,
+        ].find((value): value is string => Boolean(value))
+      : undefined;
+    if (input.stageKey === 'lighting' && !lightingSource) {
+      throw Object.assign(new Error('“增强签单”阶段必须提供白天参考效果图以供分析与重绘。'), { status: 400 });
+    }
     const nextRecommendedStage = preset.nextRecommendedStage || getNextWorkflowStage(input.stageKey);
-    const presetSnapshot = buildPresetSnapshot(preset);
+    const presetSnapshot = buildPresetSnapshot(
+      preset as NonNullable<Awaited<ReturnType<typeof getAiStylePresetByKey>>>
+    );
     presetSnapshot.image = { ...presetSnapshot.image, mode: imageMode };
 
-    return creations.createGeneration({
+    const generation = await creations.createGeneration({
       enterpriseId,
       operatorId,
       leadId: workflow.leadId,
@@ -376,5 +524,101 @@ export async function preparePostgresAiWorkflowStage(input: PreparePostgresWorkf
         status: 'unbilled',
       },
     });
+    return {
+      generation,
+      lighting: input.stageKey === 'lighting'
+        ? {
+            sourceImage: lightingSource!,
+            floorPlanContext: floorPlan ? buildWorkflowFloorPlanContext(floorPlan.layoutData) : '',
+            promptTemplate: preset.promptTemplate,
+            promptTemplateSecondStage: preset.promptTemplateSecondStage,
+            negativePrompt: preset.negativePrompt,
+          }
+        : null,
+    };
   });
+
+  if (!prepared.lighting) return prepared.generation;
+
+  try {
+    const providerImage = await resolvePostgresScenarioProviderImage(
+      enterpriseId,
+      prepared.lighting.sourceImage
+    );
+    if (!providerImage) throw new Error('“增强签单”阶段必须提供白天参考效果图以供分析与重绘。');
+    const analysisMessages: AiChatMessage[] = [{
+      role: 'user',
+      content: [
+        { type: 'text', text: buildPromptFromPreset(prepared.lighting.promptTemplate || '', {}) },
+        { type: 'image_url', image_url: { url: providerImage } },
+      ],
+    }];
+    const sceneAnalysis = await executePostgresWorkflowChat({
+      enterpriseId,
+      generationId: prepared.generation.id,
+      logicalModelKey: 'vision.reference_analysis',
+      messages: analysisMessages,
+      temperature: 0.7,
+      metadata: { workflowStage: 'lighting', step: 'reference_analysis' },
+    });
+    const compileResult = await executePostgresWorkflowChat({
+      enterpriseId,
+      generationId: prepared.generation.id,
+      logicalModelKey: 'chat.general',
+      messages: [
+        { role: 'system', content: 'You are an expert compiler of visual design boards and interior design prompts.' },
+        {
+          role: 'user',
+          content: `
+Task: Compile a highly detailed, professional English image generation prompt for Stable Diffusion/Flux.
+
+Inputs:
+1. Space Design & Analysis:
+${sceneAnalysis.content}
+
+2. Generation Goal:
+${prepared.lighting.promptTemplateSecondStage || '直接生成展板图片，把灯光设计分析，灯光清单，跟夜景效果图，罗列出来'}
+
+Output MUST be a JSON object with keys "prompt" and "negative_prompt".
+          `.trim(),
+        },
+      ],
+      temperature: 0.7,
+      metadata: { workflowStage: 'lighting', step: 'prompt_compilation' },
+    });
+    const compiled = parseLightingPrompt(compileResult.content, prepared.lighting.negativePrompt);
+    const prompt = [compiled.prompt, prepared.lighting.floorPlanContext].filter(Boolean).join(' ');
+
+    return withTenantTransaction(enterpriseId, async (transaction) => {
+      const creations = new AiCreationRepository(transaction);
+      const generation = await creations.findGenerationForUpdate(prepared.generation.id);
+      if (!generation || generation.status !== 'pending') {
+        throw new Error('场景生成任务已变更，无法写入灯光提示词。');
+      }
+      const updated = await creations.updateGeneration(generation.id, {
+        input: {
+          ...asRecord(generation.input),
+          customPrompt: prompt,
+          negativePrompt: compiled.negativePrompt,
+          styleReferenceImage: prepared.lighting!.sourceImage,
+          sceneAnalysis: sceneAnalysis.content,
+        },
+        output: { ...asRecord(generation.output), promptUsed: prompt },
+      });
+      if (!updated) throw new Error('场景生成任务不存在。');
+      return updated;
+    });
+  } catch (error) {
+    await withTenantTransaction(enterpriseId, async (transaction) => {
+      const creations = new AiCreationRepository(transaction);
+      const generation = await creations.findGenerationForUpdate(prepared.generation.id);
+      if (generation?.status === 'pending') {
+        await creations.updateGeneration(generation.id, {
+          status: 'failed',
+          errorMessage: error instanceof Error ? error.message : '灯光阶段的视觉分析或提示词编译失败',
+        });
+      }
+    });
+    throw error;
+  }
 }

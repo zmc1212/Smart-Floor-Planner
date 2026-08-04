@@ -238,6 +238,32 @@
     @apply text-xs font-semibold text-muted-foreground;
   }
 
+  .admin-permission-grid {
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 1rem;
+  }
+
+  .admin-permission-grid .admin-permission-option {
+    display: flex !important;
+    min-height: 4rem;
+    margin: 0 !important;
+    padding: 0.75rem 1rem !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 0.5rem;
+    align-items: center;
+    transition: background-color 150ms ease, border-color 150ms ease;
+  }
+
+  .admin-permission-grid .admin-permission-option:hover {
+    background-color: var(--muted);
+  }
+
+  .admin-permission-grid .admin-permission-option .ant-checkbox {
+    margin-inline-end: 0.625rem;
+  }
+
   @media (max-width: 640px) {
     .admin-mobile-filter-stack .ant-pro-query-filter-row > .ant-col {
       flex: 0 0 100%;

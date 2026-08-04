@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRef, useState } from 'react';
-import { Ellipsis, Images, Plus, RefreshCw, TestTube2, WalletCards } from 'lucide-react';
+import { Ellipsis, Images, Pencil, Plus, RefreshCw, TestTube2, WalletCards } from 'lucide-react';
 import { PageContainer, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import { Button, Dropdown, Popconfirm, Space, Tag, Typography } from 'antd';
 import type { MenuProps } from 'antd';
@@ -106,10 +106,10 @@ export default function AiProvidersPage() {
             label: <Popconfirm title="停用供应商" description="停用后不会再接收新的路由请求。" onConfirm={() => runAction(provider, 'disable')} okText="停用" cancelText="取消"><span>停用供应商</span></Popconfirm>,
           } : null,
         ];
-        return [
-          <Button key="edit" type="link" href={`/ai-providers/${provider.id}`}>编辑</Button>,
-          <Dropdown key="more" menu={{ items }} trigger={['click']}><Button aria-label={`${provider.name} 更多操作`} icon={<Ellipsis size={18} />} /></Dropdown>,
-        ];
+        return <Space size={8}>
+          <Button key="edit" size="small" icon={<Pencil size={14} />} href={`/ai-providers/${provider.id}`}>编辑</Button>
+          <Dropdown key="more" menu={{ items }} trigger={['click']}><Button size="small" aria-label={`${provider.name} 更多操作`} icon={<Ellipsis size={16} />} /></Dropdown>
+        </Space>;
       },
     },
   ];

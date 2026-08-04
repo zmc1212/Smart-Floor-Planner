@@ -1,24 +1,15 @@
 'use client';
 
-import { notify } from '@/components/ui/operation-feedback';
-import { useConfirmDialog } from '@/components/ui/confirm-dialog';
-
 export const dynamic = 'force-dynamic';
 
-import React, { useState, useEffect } from 'react';
-import { Trash2, Plus, RefreshCw, Cpu, Search, Edit2, Check, X, Building2, User } from 'lucide-react';
-import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Button as AntButton, Space } from 'antd';
+import { Building2, Cpu, Pencil, Plus, RefreshCw, Search, Trash2, UserRound, X } from 'lucide-react';
+import { notify } from '@/components/ui/operation-feedback';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -26,444 +17,456 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 
-interface Device {
+type Reference = {
+  _id: string;
+  name?: string;
+  displayName?: string;
+  username?: string;
+  role?: string;
+  enterpriseId?: string | Reference;
+};
+
+type DeviceStatus = 'unassigned' | 'assigned' | 'maintenance' | 'lost';
+
+type Device = {
   _id: string;
   code: string;
+  description?: string | null;
+  status: DeviceStatus;
+  enterpriseId?: string | Reference | null;
+  assignedUserId?: string | Reference | null;
+  createdAt?: string;
+};
+
+type DeviceDraft = {
+  code: string;
   description: string;
-  status: string;
-  enterpriseId?: any;
-  assignedUserId?: any;
-  createdAt: string;
+  enterpriseId: string;
+  assignedUserId: string;
+  status: DeviceStatus;
+};
+
+type CurrentUser = {
+  role?: string;
+  enterpriseId?: string | Reference | null;
+};
+
+const STATUS_OPTIONS: Array<{ value: DeviceStatus; label: string }> = [
+  { value: 'unassigned', label: '闲置' },
+  { value: 'assigned', label: '已绑定' },
+  { value: 'maintenance', label: '维护中' },
+  { value: 'lost', label: '遗失' },
+];
+
+const STATUS_STYLES: Record<DeviceStatus, string> = {
+  unassigned: 'bg-muted text-muted-foreground',
+  assigned: 'bg-primary/10 text-primary',
+  maintenance: 'bg-amber-100 text-amber-800',
+  lost: 'bg-destructive/10 text-destructive',
+};
+
+function getReferenceId(value?: string | Reference | null) {
+  if (!value) return '';
+  return typeof value === 'string' ? value : value._id;
+}
+
+function getReferenceName(value?: string | Reference | null) {
+  if (!value || typeof value === 'string') return '';
+  return value.displayName || value.username || value.name || '';
+}
+
+function getRoleLabel(role?: string) {
+  const labels: Record<string, string> = {
+    designer: '设计师',
+    salesperson: '销售',
+    measurer: '量房师',
+    enterprise_admin: '企业管理员',
+  };
+  return labels[role || ''] || role || '员工';
+}
+
+function getStatusLabel(status: DeviceStatus) {
+  return STATUS_OPTIONS.find((item) => item.value === status)?.label || status;
+}
+
+function formatCreatedAt(value?: string) {
+  return value ? new Date(value).toLocaleDateString('zh-CN') : '-';
+}
+
+function toDeviceDraft(device: Device): DeviceDraft {
+  return {
+    code: device.code,
+    description: device.description || '',
+    enterpriseId: getReferenceId(device.enterpriseId),
+    assignedUserId: getReferenceId(device.assignedUserId),
+    status: device.status,
+  };
 }
 
 export default function DevicesPage() {
   const confirmAction = useConfirmDialog();
+  const { user: rawCurrentUser } = useCurrentUser();
+  const currentUser = rawCurrentUser as CurrentUser | null;
   const [devices, setDevices] = useState<Device[]>([]);
-  const [staff, setStaff] = useState<any[]>([]);
+  const [staff, setStaff] = useState<Reference[]>([]);
+  const [enterprises, setEnterprises] = useState<Reference[]>([]);
   const [loading, setLoading] = useState(true);
-  const { user: currentUser } = useCurrentUser();
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [newCode, setNewCode] = useState('');
-  const [newDesc, setNewDesc] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
-
-  // Enterprise state (for super_admin to map IDs to names)
-  const [allEnterprises, setAllEnterprises] = useState<any[]>([]);
-  // Edit State
-  const [editCode, setEditCode] = useState('');
-  const [editDesc, setEditDesc] = useState('');
-  const [editEnterprise, setEditEnterprise] = useState('');
-  const [editStaff, setEditStaff] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [createDraft, setCreateDraft] = useState({ code: '', description: '' });
+  const [editingDevice, setEditingDevice] = useState<Device | null>(null);
+  const [editDraft, setEditDraft] = useState<DeviceDraft | null>(null);
 
-  const fetchEnterprises = async () => {
-    try {
-      const res = await fetch('/api/admin/enterprises');
-      const data = await res.json();
-      if (data.success) {
-        setAllEnterprises(data.data);
-      }
-    } catch (err) { console.error(err); }
-  };
+  const canManage = currentUser?.role === 'super_admin' || currentUser?.role === 'admin' || currentUser?.role === 'enterprise_admin';
+  const canChangeEnterprise = currentUser?.role === 'super_admin' || currentUser?.role === 'admin';
 
-  const fetchStaff = async () => {
-    try {
-      const res = await fetch(`/api/staff`);
-      const data = await res.json();
-      if (data.success) setStaff(data.data);
-    } catch (err) { console.error(err); }
-  };
-
-  const fetchDevices = async () => {
+  const fetchDevices = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
-      let url = '/api/devices';
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.success) setDevices(data.data);
-    } catch (err) {
-      console.error(err);
+      const response = await fetch('/api/devices');
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '设备列表加载失败');
+      setDevices(result.data || []);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : '设备列表加载失败');
     } finally {
       setLoading(false);
     }
-  };
-
-  // @see react-best-practices: async-parallel — 并行化初始请求
-  useEffect(() => {
-    Promise.all([fetchDevices(), fetchStaff()]);
   }, []);
 
-  // Fetch enterprises only when admin is a super_admin
-  useEffect(() => {
-    if (currentUser && (currentUser.role === 'super_admin' || currentUser.role === 'admin')) {
-      fetchEnterprises();
-    }
-  }, [currentUser]);
-
-  const handleAdd = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCode.trim()) return;
-    
-    setIsSubmitting(true);
+  const fetchStaff = useCallback(async () => {
     try {
-      const res = await fetch('/api/devices', {
+      const response = await fetch('/api/staff');
+      const result = await response.json();
+      if (response.ok && result.success) setStaff(result.data || []);
+    } catch {
+      // The device list remains usable when the optional staff filter cannot load.
+    }
+  }, []);
+
+  const fetchEnterprises = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/enterprises');
+      const result = await response.json();
+      if (response.ok && result.success) setEnterprises(result.data || []);
+    } catch {
+      // Enterprise choices are only available to platform administrators.
+    }
+  }, []);
+
+  useEffect(() => {
+    void Promise.all([fetchDevices(), fetchStaff()]);
+  }, [fetchDevices, fetchStaff]);
+
+  useEffect(() => {
+    if (canChangeEnterprise) void fetchEnterprises();
+  }, [canChangeEnterprise, fetchEnterprises]);
+
+  const visibleStaff = useMemo(() => {
+    if (!editDraft?.enterpriseId) return staff;
+    return staff.filter((member) => {
+      const memberId = member._id;
+      if (memberId === editDraft.assignedUserId) return true;
+      return getReferenceId(member.enterpriseId) === editDraft.enterpriseId;
+    });
+  }, [editDraft?.assignedUserId, editDraft?.enterpriseId, staff]);
+
+  const filteredDevices = useMemo(() => {
+    const keyword = searchTerm.trim().toLocaleLowerCase();
+    if (!keyword) return devices;
+    return devices.filter((device) => [device.code, device.description]
+      .filter(Boolean)
+      .join(' ')
+      .toLocaleLowerCase()
+      .includes(keyword));
+  }, [devices, searchTerm]);
+
+  const openEditDialog = (device: Device) => {
+    setEditingDevice(device);
+    setEditDraft(toDeviceDraft(device));
+    setEditOpen(true);
+  };
+
+  const closeEditDialog = (open: boolean) => {
+    setEditOpen(open);
+    if (!open) {
+      setEditingDevice(null);
+      setEditDraft(null);
+    }
+  };
+
+  const createDevice = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!createDraft.code.trim()) return;
+    setCreating(true);
+    try {
+      const response = await fetch('/api/devices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          code: newCode.trim(), 
-          description: newDesc.trim(),
-          enterpriseId: currentUser?.role === 'enterprise_admin' ? (currentUser.enterpriseId?._id || currentUser.enterpriseId) : undefined,
-          status: currentUser?.role === 'enterprise_admin' ? 'assigned' : 'unassigned'
-        })
+        body: JSON.stringify({
+          code: createDraft.code.trim(),
+          description: createDraft.description.trim(),
+          enterpriseId: currentUser?.role === 'enterprise_admin' ? getReferenceId(currentUser.enterpriseId) : undefined,
+          status: currentUser?.role === 'enterprise_admin' ? 'assigned' : 'unassigned',
+        }),
       });
-      const data = await res.json();
-      if (data.success) {
-        setNewCode('');
-        setNewDesc('');
-        setIsAddModalOpen(false);
-        await fetchDevices();
-        notify.success('设备已添加');
-      } else {
-        notify.fromAlert(data.error);
-      }
-    } catch (err) {
-      console.error(err);
-      notify.error('设备添加失败');
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '设备录入失败');
+      setCreateDraft({ code: '', description: '' });
+      setCreateOpen(false);
+      await fetchDevices();
+      notify.success('设备已录入');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '设备录入失败');
     } finally {
-      setIsSubmitting(false);
+      setCreating(false);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    const confirmed = await confirmAction({
-      title: '删除设备',
-      description: '确定删除该设备吗？',
-      confirmText: '删除',
-      destructive: true,
-    });
-    if (!confirmed) return;
-    try {
-      const res = await fetch(`/api/devices/${id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
-        setDevices(devices.filter(d => d._id !== id));
-        notify.success('设备已删除');
-      } else {
-        notify.fromAlert(data.error || '删除失败');
-      }
-    } catch (err) {
-      console.error(err);
-      notify.error('设备删除失败');
-    }
-  };
-
-  const handleUpdate = async (id: string) => {
-    if (!editCode.trim()) return;
+  const updateDevice = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editingDevice || !editDraft?.code.trim()) return;
     setUpdating(true);
     try {
-      const payload: any = { 
-        code: editCode.trim(), 
-        description: editDesc.trim(),
-        enterpriseId: editEnterprise || null,
-        assignedUserId: editStaff || null,
-        status: editStaff ? 'assigned' : (editEnterprise ? 'assigned' : 'unassigned')
-      };
-
-      const res = await fetch(`/api/devices/${id}`, {
+      const response = await fetch(`/api/devices/${editingDevice._id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          code: editDraft.code.trim(),
+          description: editDraft.description.trim(),
+          enterpriseId: canChangeEnterprise ? editDraft.enterpriseId || null : undefined,
+          assignedUserId: editDraft.assignedUserId || null,
+          status: editDraft.status,
+        }),
       });
-      const data = await res.json();
-      if (data.success) {
-        setDevices(devices.map(d => d._id === id ? data.data : d));
-        setEditingId(null);
-        notify.success('设备已更新');
-      } else {
-        notify.fromAlert(data.error || '更新失败');
-      }
-    } catch (err) {
-      console.error(err);
-      notify.fromAlert('网络错误');
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '设备更新失败');
+      setDevices((current) => current.map((device) => device._id === editingDevice._id ? result.data : device));
+      closeEditDialog(false);
+      notify.success('设备已更新');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '设备更新失败');
     } finally {
       setUpdating(false);
     }
   };
 
-  const startEdit = (device: Device) => {
-    setEditingId(device._id);
-    setEditCode(device.code);
-    setEditDesc(device.description || '');
-    // Ensure we handle both populated and unpopulated cases correctly by coercing to string
-    const entId = typeof device.enterpriseId === 'object' ? device.enterpriseId?._id : device.enterpriseId;
-    const staffId = typeof device.assignedUserId === 'object' ? device.assignedUserId?._id : device.assignedUserId;
-    
-    setEditEnterprise(entId ? String(entId) : '');
-    setEditStaff(staffId ? String(staffId) : '');
+  const deleteDevice = async (device: Device) => {
+    const confirmed = await confirmAction({
+      title: '删除设备',
+      description: `确定删除设备 ${device.code} 吗？删除后无法恢复。`,
+      confirmText: '删除',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    try {
+      const response = await fetch(`/api/devices/${device._id}`, { method: 'DELETE' });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '删除失败');
+      setDevices((current) => current.filter((item) => item._id !== device._id));
+      notify.success('设备已删除');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '删除失败');
+    }
   };
-
-  const getEnterpriseName = (idOrObj: any) => {
-      if (!idOrObj) return null;
-      if (typeof idOrObj === 'object' && idOrObj.name) return idOrObj.name;
-      
-      const id = String(idOrObj);
-      const ent = allEnterprises.find(e => String(e._id) === id);
-      return ent ? ent.name : null;
-  };
-
-  const getStaffName = (idOrObj: any) => {
-      if (!idOrObj) return null;
-      if (typeof idOrObj === 'object') {
-        const name = idOrObj.displayName || idOrObj.username;
-        if (name) return name;
-      }
-      
-      const id = String(idOrObj);
-      const s = staff.find(x => String(x._id) === id);
-      return s ? (s.displayName || s.username) : null;
-  };
-
-  const filteredDevices = devices.filter(d => 
-    d.code.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    (d.description && d.description.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
 
   return (
-    <div className="min-h-screen bg-white">
-      <div className="p-6 max-w-7xl mx-auto">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
-            <div className="flex items-center gap-4">
-                <div className="p-4 bg-primary/10 text-primary rounded-[24px] shadow-inner">
-                    <Cpu size={32} strokeWidth={2.5} />
-                </div>
-                <div>
-                   <h1 className="text-[32px] font-bold tracking-tight mb-1">测距仪设备池</h1>
-                   <div className="flex flex-col gap-3">
-                      <p className="text-muted-foreground text-sm">管理全渠道测距仪资产，进行企业与设计师强绑定</p>
-                      
-                      {/* Enterprise Selector removed, now handled globally in Sidebar */}
-                   </div>
-                </div>
-            </div>
-            
-            <div className="flex gap-3">
-                <Button 
-                   variant="outline" 
-                   size="icon" 
-                   onClick={() => fetchDevices()} 
-                   className="rounded-full h-12 w-12 border-muted"
-                >
-                    <RefreshCw size={20} className={cn("text-muted-foreground", loading && "animate-spin")} />
-                </Button>
+    <div className="admin-page-frame">
+      <header className="flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-foreground">
+            <Cpu className="text-primary" size={20} />
+            <h1 className="text-2xl font-semibold">测距仪设备池</h1>
+          </div>
+          <p className="text-sm text-muted-foreground">维护设备资产、企业归属、员工绑定与运行状态。</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button aria-label="刷新设备列表" disabled={loading} size="icon" title="刷新设备列表" variant="outline" onClick={() => void fetchDevices()}>
+            <RefreshCw className={loading ? 'animate-spin' : ''} size={16} />
+          </Button>
+          {canManage ? <Button onClick={() => setCreateOpen(true)}><Plus size={16} />录入设备</Button> : null}
+        </div>
+      </header>
 
-                {(currentUser?.role === 'super_admin' || currentUser?.role === 'admin' || currentUser?.role === 'enterprise_admin') && (
-                    <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
-                        <DialogTrigger asChild>
-                            <Button className="rounded-full px-8 h-12 text-base font-semibold shadow-lg shadow-primary/20 flex items-center gap-2">
-                                <Plus size={20} /> 录入新库存
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent className="max-w-md p-0 overflow-hidden rounded-[32px] shadow-2xl border-none">
-                            <form onSubmit={handleAdd}>
-                                <DialogHeader className="p-8 pb-6 border-b bg-muted/20">
-                                    <DialogTitle className="text-2xl font-bold">录入新设备</DialogTitle>
-                                    <DialogDescription>将新的激光测距仪 MAC 地址录入系统库存</DialogDescription>
-                                </DialogHeader>
-                                
-                                <div className="p-8 space-y-5">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="device-code" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">设备编码 / MAC (必填)</Label>
-                                        <Input 
-                                            id="device-code"
-                                            required
-                                            value={newCode}
-                                            onChange={e => setNewCode(e.target.value)}
-                                            placeholder="例如: SN-123456"
-                                            className="h-12 rounded-2xl bg-muted/30 border-none font-mono text-lg focus-visible:ring-primary"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label htmlFor="device-desc" className="text-xs font-bold uppercase tracking-widest text-muted-foreground">备注名称</Label>
-                                        <Input 
-                                            id="device-desc"
-                                            value={newDesc}
-                                            onChange={e => setNewDesc(e.target.value)}
-                                            placeholder="例如: 杭州分公司备机"
-                                            className="h-12 rounded-2xl bg-muted/30 border-none focus-visible:ring-primary"
-                                        />
-                                    </div>
-                                </div>
-
-                                <DialogFooter className="p-8 pt-4 bg-muted/30 border-t">
-                                    <Button type="button" variant="ghost" className="h-12 rounded-2xl px-6 bg-background" onClick={() => setIsAddModalOpen(false)}>取消</Button>
-                                    <Button type="submit" disabled={isSubmitting} className="h-12 rounded-2xl px-10 font-bold shadow-lg shadow-primary/10">
-                                        {isSubmitting ? "正在录入..." : "确认录入"}
-                                    </Button>
-                                </DialogFooter>
-                            </form>
-                        </DialogContent>
-                    </Dialog>
-                )}
-            </div>
+      <section aria-label="设备资产列表" className="overflow-hidden rounded-lg border border-border bg-card">
+        <div className="flex flex-col gap-3 border-b border-border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+            <Input aria-label="搜索设备" className="pr-9 pl-9" placeholder="搜索设备编码或备注" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} />
+            {searchTerm ? (
+              <Button aria-label="清除设备搜索" className="absolute right-1 top-1/2 -translate-y-1/2" size="icon-sm" title="清除搜索" variant="ghost" onClick={() => setSearchTerm('')}>
+                <X size={14} />
+              </Button>
+            ) : null}
+          </div>
+          <Badge variant="secondary">{filteredDevices.length} 台设备</Badge>
         </div>
 
-        {/* Filters */}
-        <div className="mb-10 flex gap-4 bg-muted/30 p-2 rounded-[24px] border border-muted/50">
-            <div className="relative flex-1">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground" size={18} />
-                <Input 
-                    className="w-full pl-12 h-12 bg-background border-none shadow-none rounded-[20px] focus-visible:ring-2 focus-visible:ring-primary/20 text-base"
-                    placeholder="根据编码或备注检索资产..."
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                />
+        {loadError ? (
+          <div className="flex min-h-56 flex-col items-center justify-center gap-3 px-6 text-center">
+            <Cpu className="text-destructive" size={28} />
+            <div>
+              <p className="font-medium">无法加载设备资产</p>
+              <p className="mt-1 text-sm text-muted-foreground">{loadError}</p>
             </div>
-        </div>
-
-
-        <div className="border rounded-[32px] overflow-hidden shadow-sm bg-white">
+            <Button variant="outline" onClick={() => void fetchDevices()}>重试</Button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
             <Table>
-                <TableHeader className="bg-muted/30">
-                    <TableRow className="border-muted/50 hover:bg-transparent">
-                        <TableHead className="px-8 py-5 h-auto text-[13px] font-bold text-foreground">设备编码</TableHead>
-                        <TableHead className="px-8 py-5 h-auto text-[13px] font-bold text-foreground">归属企业</TableHead>
-                        <TableHead className="px-8 py-5 h-auto text-[13px] font-bold text-foreground">持有人 (强绑定)</TableHead>
-                        <TableHead className="px-8 py-5 h-auto text-[13px] font-bold text-foreground">状态</TableHead>
-                        <TableHead className="px-8 py-5 h-auto text-[13px] font-bold text-right text-foreground">操作</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {filteredDevices.map(device => (
-                        <TableRow key={device._id} className="border-muted/50 hover:bg-muted/10 transition-colors">
-                            <TableCell className="px-8 py-6">
-                                {editingId === device._id ? (
-                                    <Input value={editCode} onChange={e => setEditCode(e.target.value)} className="h-9 font-mono border-primary shadow-none" />
-                                ) : (
-                                    <div className="space-y-1">
-                                        <div className="text-[15px] font-mono font-bold leading-none">{device.code}</div>
-                                        <div className="text-xs text-muted-foreground">{device.description || '无备注'}</div>
-                                    </div>
-                                )}
-                            </TableCell>
-                            <TableCell className="px-8 py-6">
-                                {editingId === device._id && (currentUser?.role === 'super_admin' || currentUser?.role === 'admin') ? (
-                                    <Select value={editEnterprise || "unassigned"} onValueChange={(val) => setEditEnterprise(val === "unassigned" ? "" : val)}>
-                                        <SelectTrigger className="h-9 border-primary shadow-none min-w-[200px]">
-                                            <SelectValue placeholder="未分配企业">
-                                                {(editEnterprise && editEnterprise !== "unassigned") ? (
-                                                    getEnterpriseName(editEnterprise) || <span className="font-mono text-xs text-red-500">{editEnterprise}</span>
-                                                ) : "未分配企业"}
-                                            </SelectValue>
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="unassigned">未分配企业</SelectItem>
-                                            {allEnterprises.map(e => <SelectItem key={e._id} value={String(e._id)}>{e.name}</SelectItem>)}
-                                        </SelectContent>
-                                    </Select>
-                                ) : (
-                                    <div className="flex items-center gap-2 text-sm text-foreground/80">
-                                        <Building2 size={14} className="text-muted-foreground" />
-                                        {getEnterpriseName(device.enterpriseId) || <span className="text-muted-foreground italic text-xs">未分配企业</span>}
-                                    </div>
-                                )}
-                            </TableCell>
-                            <TableCell className="px-8 py-6">
-                                {editingId === device._id ? (
-                                    <Select value={editStaff || "unassigned"} onValueChange={(val) => setEditStaff(val === "unassigned" ? "" : val)}>
-                                        <SelectTrigger className="h-9 border-primary shadow-none min-w-[200px]">
-                                            <SelectValue placeholder="未指派个人">
-                                                {(editStaff && editStaff !== "unassigned") ? (
-                                                    getStaffName(editStaff) || <span className="font-mono text-xs text-red-500">{editStaff}</span>
-                                                ) : "未指派个人"}
-                                            </SelectValue>
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="unassigned">未指派个人</SelectItem>
-                                            {staff
-                                                .filter(s => {
-                                                    const sId = String(s._id);
-                                                    const currentId = String(editStaff);
-                                                    
-                                                    // ALWAYS include the currently selected staff member to prevent ID display
-                                                    // This ensures that even if they belong to a different enterprise, their name shows up
-                                                    if (currentId && sId === currentId) return true;
-                                                    
-                                                    const sEntId = typeof s.enterpriseId === 'object' ? s.enterpriseId?._id : s.enterpriseId;
-                                                    return !editEnterprise || String(sEntId) === String(editEnterprise);
-                                                })
-                                                .map(s => (
-                                                    <SelectItem key={s._id} value={String(s._id)}>
-                                                        {s.displayName || s.username} ({getRoleLabelShort(s.role)})
-                                                    </SelectItem>
-                                                ))
-                                            }
-                                        </SelectContent>
-                                    </Select>
-                                ) : (
-                                    <div className="flex items-center gap-2 text-sm text-foreground/80">
-                                        <User size={14} className="text-muted-foreground" />
-                                        {getStaffName(device.assignedUserId) || <span className="text-muted-foreground italic text-xs">未指派人员</span>}
-                                    </div>
-                                )}
-                            </TableCell>
-                            <TableCell className="px-8 py-6">
-                                {device.status === 'assigned' ? (
-                                    <Badge variant="secondary" className="bg-green-100 text-green-700 hover:bg-green-100 border-none px-3 font-bold h-6">已绑定</Badge>
-                                ) : (
-                                    <Badge variant="secondary" className="bg-muted text-muted-foreground hover:bg-muted border-none px-3 font-bold h-6">闲置中</Badge>
-                                )}
-                            </TableCell>
-                            <TableCell className="px-8 py-6 text-right">
-                                {editingId === device._id ? (
-                                    <div className="flex justify-end gap-1">
-                                        <Button size="icon" variant="ghost" onClick={() => handleUpdate(device._id)} className="text-green-600 hover:text-green-700 hover:bg-green-50"><Check size={20} /></Button>
-                                        <Button size="icon" variant="ghost" onClick={() => setEditingId(null)} className="text-muted-foreground"><X size={20} /></Button>
-                                    </div>
-                                ) : (
-                                    <div className="flex justify-end gap-1">
-                                        <Button size="icon" variant="ghost" onClick={() => startEdit(device)} className="text-muted-foreground hover:text-foreground"><Edit2 size={16} /></Button>
-                                        <Button size="icon" variant="ghost" onClick={() => handleDelete(device._id)} className="text-muted-foreground hover:text-destructive"><Trash2 size={16} /></Button>
-                                    </div>
-                                )}
-                            </TableCell>
-                        </TableRow>
-                    ))}
-                    {filteredDevices.length === 0 && (
-                        <TableRow>
-                            <TableCell colSpan={5} className="h-48 text-center text-muted-foreground">
-                                <div className="flex flex-col items-center justify-center space-y-2">
-                                    <Cpu size={32} className="opacity-20" />
-                                    <p>未发现符合条件的设备资产</p>
-                                </div>
-                            </TableCell>
-                        </TableRow>
-                    )}
-                </TableBody>
+              <TableHeader className="bg-muted/20">
+                <TableRow>
+                  <TableHead>设备编码</TableHead>
+                  <TableHead>归属企业</TableHead>
+                  <TableHead>持有人</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>录入时间</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredDevices.map((device) => (
+                  <TableRow key={device._id}>
+                    <TableCell>
+                      <div className="font-mono font-medium">{device.code}</div>
+                      <div className="mt-0.5 max-w-56 truncate text-xs text-muted-foreground">{device.description || '无备注'}</div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex min-w-36 items-center gap-2">
+                        <Building2 className="text-muted-foreground" size={15} />
+                        <span>{getReferenceName(device.enterpriseId) || '未分配企业'}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex min-w-36 items-center gap-2">
+                        <UserRound className="text-muted-foreground" size={15} />
+                        <span>{getReferenceName(device.assignedUserId) || '未指派人员'}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell><Badge className={STATUS_STYLES[device.status]} variant="secondary">{getStatusLabel(device.status)}</Badge></TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">{formatCreatedAt(device.createdAt)}</TableCell>
+                    <TableCell className="text-right">
+                      {canManage ? (
+                        <Space size={8}>
+                          <AntButton aria-label={`编辑设备 ${device.code}`} icon={<Pencil size={14} />} size="small" onClick={() => openEditDialog(device)}>编辑</AntButton>
+                          <AntButton aria-label={`删除设备 ${device.code}`} danger icon={<Trash2 size={14} />} size="small" onClick={() => void deleteDevice(device)}>删除</AntButton>
+                        </Space>
+                      ) : '-'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {loading && filteredDevices.length === 0 ? <TableRow><TableCell className="h-56 text-center text-muted-foreground" colSpan={6}>正在加载设备资产...</TableCell></TableRow> : null}
+                {!loading && filteredDevices.length === 0 ? <TableRow><TableCell className="h-56 text-center text-muted-foreground" colSpan={6}>未发现符合条件的设备资产</TableCell></TableRow> : null}
+              </TableBody>
             </Table>
-        </div>
-      </div>
+          </div>
+        )}
+      </section>
+
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <form onSubmit={createDevice}>
+            <DialogHeader>
+              <DialogTitle>录入设备</DialogTitle>
+              <DialogDescription>录入新的激光测距仪资产。企业管理员录入的设备会归属当前企业。</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-5">
+              <div className="space-y-2">
+                <Label htmlFor="new-device-code">设备编码 / MAC</Label>
+                <Input id="new-device-code" required className="font-mono" placeholder="例如：SN-123456" value={createDraft.code} onChange={(event) => setCreateDraft((current) => ({ ...current, code: event.target.value }))} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-device-description">备注</Label>
+                <Input id="new-device-description" placeholder="例如：杭州分公司备机" value={createDraft.description} onChange={(event) => setCreateDraft((current) => ({ ...current, description: event.target.value }))} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
+              <Button disabled={creating} type="submit">{creating ? '正在录入...' : '确认录入'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editOpen} onOpenChange={closeEditDialog}>
+        <DialogContent>
+          <form onSubmit={updateDevice}>
+            <DialogHeader>
+              <DialogTitle>编辑设备</DialogTitle>
+              <DialogDescription>设备绑定会在保存时校验企业与员工的归属关系。</DialogDescription>
+            </DialogHeader>
+            {editDraft ? (
+              <div className="space-y-4 py-5">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-device-code">设备编码 / MAC</Label>
+                  <Input id="edit-device-code" required className="font-mono" value={editDraft.code} onChange={(event) => setEditDraft((current) => current ? { ...current, code: event.target.value } : current)} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-device-description">备注</Label>
+                  <Input id="edit-device-description" value={editDraft.description} onChange={(event) => setEditDraft((current) => current ? { ...current, description: event.target.value } : current)} />
+                </div>
+                {canChangeEnterprise ? (
+                  <div className="space-y-2">
+                    <Label>归属企业</Label>
+                    <Select value={editDraft.enterpriseId || 'unassigned'} onValueChange={(value) => setEditDraft((current) => current ? { ...current, enterpriseId: value === 'unassigned' ? '' : value, assignedUserId: '' } : current)}>
+                      <SelectTrigger><SelectValue placeholder="未分配企业" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unassigned">未分配企业</SelectItem>
+                        {enterprises.map((enterprise) => <SelectItem key={enterprise._id} value={enterprise._id}>{enterprise.name || enterprise._id}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ) : null}
+                <div className="space-y-2">
+                  <Label>持有人</Label>
+                  <Select value={editDraft.assignedUserId || 'unassigned'} onValueChange={(value) => setEditDraft((current) => current ? { ...current, assignedUserId: value === 'unassigned' ? '' : value } : current)}>
+                    <SelectTrigger><SelectValue placeholder="未指派人员" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unassigned">未指派人员</SelectItem>
+                      {visibleStaff.map((member) => <SelectItem key={member._id} value={member._id}>{getReferenceName(member)}（{getRoleLabel(member.role)}）</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>状态</Label>
+                  <Select value={editDraft.status} onValueChange={(value) => setEditDraft((current) => current ? { ...current, status: value as DeviceStatus } : current)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>{STATUS_OPTIONS.map((status) => <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ) : null}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => closeEditDialog(false)}>取消</Button>
+              <Button disabled={updating} type="submit">{updating ? '正在保存...' : '保存更改'}</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
-}
-
-function getRoleLabelShort(role: string) {
-    if (role === 'designer') return '设';
-    if (role === 'salesperson') return '销';
-    if (role === 'enterprise_admin') return '管';
-    return '';
 }

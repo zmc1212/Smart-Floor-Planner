@@ -214,72 +214,87 @@ export default function WorkflowLogsPage() {
           </Button>,
         ] : undefined}
       >
-        <Flex vertical gap={24}>
-          <Flex gap={16} wrap="wrap">
-            <Card className="admin-panel-card min-w-52 flex-1" size="small">
-              <Flex justify="space-between" align="start">
-                <Statistic title="已发送" value={stats.sent} />
-                <CheckCircle2 size={20} className="text-primary" />
-              </Flex>
-              <Typography.Text type="secondary">本次查询范围内成功送达的提醒</Typography.Text>
-            </Card>
-            <Card className="admin-panel-card min-w-52 flex-1" size="small">
-              <Flex justify="space-between" align="start">
-                <Statistic title="已跳过" value={stats.skipped} />
-                <CircleOff size={20} className="text-amber-500" />
-              </Flex>
-              <Typography.Text type="secondary">被去重或规则过滤的提醒</Typography.Text>
-            </Card>
-            <Card className="admin-panel-card min-w-52 flex-1" size="small">
-              <Flex justify="space-between" align="start">
-                <Statistic title="发送失败" value={stats.failed} valueStyle={{ color: '#cf1322' }} />
-                <AlertTriangle size={20} className="text-destructive" />
-              </Flex>
-              <Typography.Text type="secondary">请结合失败原因检查配置或接收对象</Typography.Text>
-            </Card>
-            <Card className="admin-panel-card min-w-52 flex-1" size="small">
-              <Flex justify="space-between" align="start">
-                <Statistic title="日志总数" value={stats.sent + stats.skipped + stats.failed} />
-                <ShieldAlert size={20} className="text-muted-foreground" />
-              </Flex>
-              <Typography.Text type="secondary">当前状态统计的合计</Typography.Text>
-            </Card>
-          </Flex>
+        <div className="space-y-8">
+          <section aria-label="通知送达概览" className="space-y-4">
+            <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
+              <div>
+                <Typography.Title level={4} className="!mb-1">送达概览</Typography.Title>
+                <Typography.Text type="secondary">统计会随当前筛选和分页请求同步更新。</Typography.Text>
+              </div>
+              <Tag color={stats.failed ? 'error' : 'success'}>{stats.failed ? `${stats.failed} 条待处理失败` : '当前无发送失败'}</Tag>
+            </div>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <Card className="admin-panel-card admin-overview-stat">
+                <Flex justify="space-between" align="start" gap={16}>
+                  <Statistic title="已发送" value={stats.sent} />
+                  <span className="admin-overview-stat-icon"><CheckCircle2 size={19} /></span>
+                </Flex>
+                <Typography.Text type="secondary">本次查询范围内成功送达的提醒</Typography.Text>
+              </Card>
+              <Card className="admin-panel-card admin-overview-stat">
+                <Flex justify="space-between" align="start" gap={16}>
+                  <Statistic title="已跳过" value={stats.skipped} />
+                  <span className="admin-overview-stat-icon !bg-amber-500/10 !text-amber-700"><CircleOff size={19} /></span>
+                </Flex>
+                <Typography.Text type="secondary">被去重或规则过滤的提醒</Typography.Text>
+              </Card>
+              <Card className="admin-panel-card admin-overview-stat">
+                <Flex justify="space-between" align="start" gap={16}>
+                  <Statistic title="发送失败" value={stats.failed} valueStyle={{ color: '#cf1322' }} />
+                  <span className="admin-overview-stat-icon !bg-destructive/10 !text-destructive"><AlertTriangle size={19} /></span>
+                </Flex>
+                <Typography.Text type="secondary">请结合失败原因检查配置或接收对象</Typography.Text>
+              </Card>
+              <Card className="admin-panel-card admin-overview-stat">
+                <Flex justify="space-between" align="start" gap={16}>
+                  <Statistic title="日志总数" value={stats.sent + stats.skipped + stats.failed} />
+                  <span className="admin-overview-stat-icon !bg-muted !text-muted-foreground"><ShieldAlert size={19} /></span>
+                </Flex>
+                <Typography.Text type="secondary">当前状态统计的合计</Typography.Text>
+              </Card>
+            </div>
+          </section>
 
-          <ProTable<WorkflowLog>
-            className="admin-mobile-filter-stack"
-            actionRef={actionRef}
-            rowKey="_id"
-            columns={columns}
-            search={{ labelWidth: 'auto', defaultCollapsed: false, span: 12 }}
-            options={{ reload: true, density: true, setting: true }}
-            pagination={{ defaultPageSize: 20, showSizeChanger: true }}
-            scroll={{ x: 1120 }}
-            request={async (params) => {
-              const query = new URLSearchParams({
-                page: String(params.current || 1),
-                limit: String(params.pageSize || 20),
-              });
-              if (params.status) query.set('status', String(params.status));
-              const response = await fetch(`/api/workflow-notification-logs?${query}`);
-              const result = await response.json();
-              if (!response.ok || !result.success) {
-                throw new Error(result.error || '读取通知记录失败');
-              }
-              setStats({
-                sent: Number(result.stats?.sent || 0),
-                failed: Number(result.stats?.failed || 0),
-                skipped: Number(result.stats?.skipped || 0),
-              });
-              return {
-                data: result.data || [],
-                total: result.pagination?.total || 0,
-                success: true,
-              };
-            }}
-            onRequestError={(error) => notify.error(error instanceof Error ? error.message : '读取通知记录失败')}
-          />
-        </Flex>
+          <section className="space-y-4" aria-labelledby="workflow-log-table-title">
+            <div>
+              <Typography.Title id="workflow-log-table-title" level={4} className="!mb-1">通知明细</Typography.Title>
+              <Typography.Text type="secondary">按发送状态筛选日志，并通过失败内容追踪待处理问题。</Typography.Text>
+            </div>
+            <ProTable<WorkflowLog>
+              className="admin-mobile-filter-stack"
+              actionRef={actionRef}
+              rowKey="_id"
+              columns={columns}
+              search={{ labelWidth: 'auto', defaultCollapsed: false, span: 12 }}
+              options={{ reload: true, density: true, setting: true }}
+              pagination={{ defaultPageSize: 20, showSizeChanger: true }}
+              scroll={{ x: 1120 }}
+              request={async (params) => {
+                const query = new URLSearchParams({
+                  page: String(params.current || 1),
+                  limit: String(params.pageSize || 20),
+                });
+                if (params.status) query.set('status', String(params.status));
+                const response = await fetch(`/api/workflow-notification-logs?${query}`);
+                const result = await response.json();
+                if (!response.ok || !result.success) {
+                  throw new Error(result.error || '读取通知记录失败');
+                }
+                setStats({
+                  sent: Number(result.stats?.sent || 0),
+                  failed: Number(result.stats?.failed || 0),
+                  skipped: Number(result.stats?.skipped || 0),
+                });
+                return {
+                  data: result.data || [],
+                  total: result.pagination?.total || 0,
+                  success: true,
+                };
+              }}
+              onRequestError={(error) => notify.error(error instanceof Error ? error.message : '读取通知记录失败')}
+            />
+          </section>
+        </div>
       </PageContainer>
     </div>
   );

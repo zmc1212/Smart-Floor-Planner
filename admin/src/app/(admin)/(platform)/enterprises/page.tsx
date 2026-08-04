@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRef, useState } from 'react';
-import { Building2, Check, Copy, Ellipsis, Plus } from 'lucide-react';
+import { Building2, Check, Copy, Ellipsis, Eye, Plus } from 'lucide-react';
 import { PageContainer, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import { Avatar, Button, Dropdown, Space, Tag, Typography } from 'antd';
 import type { MenuProps } from 'antd';
@@ -154,12 +154,12 @@ export default function EnterprisesPage() {
             onClick: () => updateStatus(enterprise, 'active'),
           } : null,
         ];
-        return [
-          <Button key="overview" type="link" href={`/enterprises/${enterprise._id}`}>概览</Button>,
+        return <Space size={8}>
+          <Button key="overview" size="small" icon={<Eye size={14} />} href={`/enterprises/${enterprise._id}`}>详情</Button>
           <Dropdown key="more" menu={{ items }} trigger={['click']}>
-            <Button aria-label={`${enterprise.name} 更多操作`} loading={workingId.startsWith(`${enterprise._id}:`)} icon={<Ellipsis size={18} />} />
-          </Dropdown>,
-        ];
+            <Button size="small" aria-label={`${enterprise.name} 更多操作`} loading={workingId.startsWith(`${enterprise._id}:`)} icon={<Ellipsis size={16} />} />
+          </Dropdown>
+        </Space>;
       },
     },
   ];

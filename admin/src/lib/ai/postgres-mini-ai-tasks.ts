@@ -1,0 +1,235 @@
+import { AiCreationRepository, AiWorkflowRepository, FloorPlanRepository, LeadRepository } from '@/db/repositories';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { withTenantTransaction } from '@/db/transaction';
+import { getAiCreditPrice } from '@/lib/ai/credits';
+import {
+  getPostgresMediaAssetImageUrl,
+  getPostgresAssetIdFromImageUrl,
+  readPostgresMediaAssetBuffer,
+  storePostgresMediaBuffer,
+} from '@/lib/ai/postgres-media-assets';
+import { submitPostgresCreationGeneration } from '@/lib/ai/postgres-creation-runtime';
+import {
+  holdPostgresCreationGenerationCredits,
+  releasePostgresCreationGenerationCredits,
+} from '@/lib/ai/postgres-creation-service';
+import { createPostgresAiWorkflow } from '@/lib/ai/postgres-workflow-service';
+import { resolveMiniAiFloorPlanTarget, renderMiniAiFloorPlanControlPng, type MiniAiTargetScope } from '@/lib/ai/mini-ai-floorplan';
+import type { MiniAiContext } from '@/lib/ai/mini-ai-auth';
+import type { MiniAiRenderMode } from '@/lib/ai/mini-ai-provider';
+
+export type CreateMiniAiTaskInput = {
+  mode: MiniAiRenderMode;
+  spaceAssetId?: string;
+  referenceAssetId?: string;
+  styleKey?: string;
+  floorPlanId?: string;
+  leadId?: string;
+  roomId?: string;
+  targetScope?: MiniAiTargetScope;
+  workflowId?: string;
+  createNewWorkflow?: boolean;
+  sourceResultTaskId?: string;
+};
+
+export const MINI_AI_WHOLE_PLAN_RENDER_VERSION = 'cutaway-v1';
+
+const MODE_CONFIG: Record<MiniAiRenderMode, { type: string; actionKey: string; logicalModelKey: 'image.generate.standard' | 'image.edit.standard'; stageKey: string; nextStageKey: string }> = {
+  reference_recreate: { type: 'reference_recreate', actionKey: 'image.reference_recreate', logicalModelKey: 'image.edit.standard', stageKey: 'base_render', nextStageKey: 'soft_furnishing' },
+  style_transform: { type: 'style_transform', actionKey: 'image.style_transform', logicalModelKey: 'image.edit.standard', stageKey: 'base_render', nextStageKey: 'soft_furnishing' },
+  floor_plan_render: { type: 'floor_plan_style', actionKey: 'image.floor_plan_style', logicalModelKey: 'image.generate.standard', stageKey: 'perspective_upgrade', nextStageKey: 'base_render' },
+  soft_furnishing: { type: 'soft_furnishing_render', actionKey: 'image.soft_furnishing_render', logicalModelKey: 'image.edit.standard', stageKey: 'soft_furnishing', nextStageKey: 'proposal_pack' },
+};
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function errorCode(error: unknown) {
+  return (error as { status?: number })?.status === 402 ? 'INSUFFICIENT_CREDITS' : 'PROVIDER_ERROR';
+}
+
+async function findAsset(enterpriseId: bigint, id?: string) {
+  if (!id || !/^[1-9]\d*$/.test(id)) return null;
+  return withTenantTransaction(enterpriseId, (transaction) => new AiCreationRepository(transaction).findMediaAsset(BigInt(id)));
+}
+
+async function cloneAsset(enterpriseId: bigint, asset: Awaited<ReturnType<typeof findAsset>>) {
+  if (!asset) return null;
+  if (asset.ownerType !== 'ai_generation_output') return asset;
+  const buffer = await readPostgresMediaAssetBuffer(asset);
+  return (await storePostgresMediaBuffer({
+    enterpriseId,
+    ownerType: 'ai_generation_input',
+    mimeType: asset.mimeType,
+    buffer,
+    originalUrl: getPostgresMediaAssetImageUrl(asset.id),
+    storageProviderKey: 'local',
+  })).asset;
+}
+
+async function accessibleFloorPlan(enterpriseId: bigint, context: MiniAiContext, id: string) {
+  if (!/^[1-9]\d*$/.test(id)) return null;
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const plan = await new FloorPlanRepository(transaction).findById(BigInt(id));
+    if (!plan) return null;
+    if (['enterprise_admin', 'admin', 'super_admin'].includes(context.role)) return plan;
+    if ((context.role === 'designer' || context.role === 'measurer') && plan.staffId === BigInt(context.operatorId)) return plan;
+    const lead = await new LeadRepository(transaction).findByFloorPlanId(plan.id);
+    if (!lead) return null;
+    if (context.role === 'salesperson' && lead.promoterId !== BigInt(context.operatorId)) return null;
+    if (context.role === 'designer' && lead.assignedTo !== BigInt(context.operatorId)) return null;
+    return plan;
+  });
+}
+
+async function accessibleLead(enterpriseId: bigint, context: MiniAiContext, id?: string) {
+  if (!id || !/^[1-9]\d*$/.test(id)) return null;
+  const operatorId = BigInt(context.operatorId);
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const lead = await new LeadRepository(transaction).findById(BigInt(id));
+    if (!lead) return null;
+    if (['enterprise_admin', 'admin', 'super_admin'].includes(context.role)) return lead;
+    if (context.role === 'salesperson') return lead.promoterId === operatorId ? lead : null;
+    if (context.role === 'designer') {
+      return lead.assignedTo === operatorId || lead.floorPlanRecords.some((plan) => plan.staffId === operatorId)
+        ? lead
+        : null;
+    }
+    if (context.role === 'measurer') return lead.floorPlanRecords.some((plan) => plan.staffId === operatorId) ? lead : null;
+    return null;
+  });
+}
+
+function buildPrompt(input: { mode: MiniAiRenderMode; style?: string; summary?: string }) {
+  const style = input.style || 'modern';
+  const base = input.mode === 'soft_furnishing'
+    ? `Refine this room with ${style} soft furnishings while preserving all architecture and camera composition.`
+    : input.mode === 'reference_recreate'
+      ? `Recreate the reference interior in a ${style} visual language while preserving geometry, camera, crop, and openings.`
+      : input.mode === 'floor_plan_render'
+        ? `Create a premium ${style} interior visualization from the measured floor plan. Preserve every wall, opening, room, and adjacency.`
+        : `Apply ${style} interior design to the supplied room image while preserving all structural boundaries.`;
+  return `${base} Photorealistic, coherent scale, natural lighting, high material fidelity, no text or labels. ${input.summary || ''}`.trim();
+}
+
+export async function createPostgresMiniAiTask(input: CreateMiniAiTaskInput, context: MiniAiContext) {
+  const config = MODE_CONFIG[input.mode];
+  if (!config) throw new Error('不支持的 AI 生成模式');
+  const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
+  const operatorId = parsePostgresId(context.operatorId, 'operatorId');
+  if (!input.floorPlanId && (input.roomId || input.targetScope)) throw new Error('设计范围必须关联正式户型');
+  if (input.mode === 'floor_plan_render' && !input.floorPlanId) throw new Error('户型生成必须选择正式户型');
+  const [space, reference, price, plan, sourceTask] = await Promise.all([
+    findAsset(enterpriseId, input.spaceAssetId),
+    findAsset(enterpriseId, input.referenceAssetId),
+    getAiCreditPrice(config.actionKey as never),
+    input.floorPlanId ? accessibleFloorPlan(enterpriseId, context, input.floorPlanId) : Promise.resolve(null),
+    input.sourceResultTaskId ? getPostgresMiniAiTask(input.sourceResultTaskId, context) : Promise.resolve(null),
+  ]);
+  if (input.spaceAssetId && !space) throw new Error('空间图片不存在或无权访问');
+  if (input.referenceAssetId && !reference) throw new Error('参考图片不存在或无权访问');
+  if (input.mode === 'reference_recreate' && !reference) throw new Error('请上传有效的参考图片');
+  if (input.sourceResultTaskId && (!sourceTask || sourceTask.status !== 'succeeded')) throw new Error('来源成果不存在或尚未生成成功');
+  if (input.mode !== 'floor_plan_render' && !space && !sourceTask) throw new Error('空间图片不存在或无权访问');
+  if (input.floorPlanId && !plan) throw Object.assign(new Error('当前角色无权使用所选正式户型'), { status: 403 });
+  const target = plan ? resolveMiniAiFloorPlanTarget(plan.layoutData, input.targetScope, input.roomId) : null;
+  if (input.floorPlanId && !target) throw new Error('正式户型缺少可用房间数据');
+  const requestedLead = await accessibleLead(enterpriseId, context, input.leadId);
+  if (input.leadId && !requestedLead) throw Object.assign(new Error('当前角色无权使用所选客户'), { status: 403 });
+  const planLead = plan
+    ? await withTenantTransaction(enterpriseId, (transaction) => new LeadRepository(transaction).findByFloorPlanId(plan.id))
+    : null;
+  const leadId = requestedLead?.id || planLead?.id;
+  let workflowId: bigint | undefined;
+  if (input.workflowId && /^[1-9]\d*$/.test(input.workflowId)) {
+    const workflow = await withTenantTransaction(enterpriseId, (transaction) => new AiWorkflowRepository(transaction).findById(BigInt(input.workflowId)));
+    if (!workflow || workflow.operatorId !== operatorId || workflow.status !== 'active') {
+      throw Object.assign(new Error('当前角色无权续接该客户方案'), { status: 403 });
+    }
+    workflowId = workflow.id;
+  }
+  else if (sourceTask?.workflowId) workflowId = sourceTask.workflowId;
+  else if (leadId) {
+    const workflow = await createPostgresAiWorkflow({ enterpriseId, operatorId, leadId, sourceFloorPlanId: plan?.id, sourceAssetRole: input.mode === 'floor_plan_render' ? 'floor_plan' : 'rough_sketch' });
+    workflowId = workflow.id;
+  }
+  const sourceImageUrl = sourceTask && typeof asRecord(sourceTask.output).imageUrl === 'string'
+    ? String(asRecord(sourceTask.output).imageUrl)
+    : undefined;
+  const sourceAsset = await findAsset(enterpriseId, getPostgresAssetIdFromImageUrl(sourceImageUrl)?.toString());
+  if (sourceTask && !sourceAsset) throw new Error('来源成果图片不可用');
+  const spaceAsset = await cloneAsset(enterpriseId, sourceAsset || space);
+  const referenceAsset = await cloneAsset(enterpriseId, reference);
+  const controlAsset = plan ? (await storePostgresMediaBuffer({ enterpriseId, ownerType: 'ai_generation_input', mimeType: 'image/png', buffer: await renderMiniAiFloorPlanControlPng(plan.layoutData, 1024, target?.targetScope === 'single_room' ? target.roomId : undefined), storageProviderKey: 'local' })).asset : null;
+  const roomData = target ? { summary: target.summary, roomId: target.roomId, targetScope: target.targetScope, targetLabel: target.targetLabel, roomCount: target.roomCount, ...(target.targetScope === 'whole_floor_plan' ? { navigationRenderVersion: MINI_AI_WHOLE_PLAN_RENDER_VERSION } : {}) } : undefined;
+  const generation = await withTenantTransaction(enterpriseId, async (transaction) => new AiCreationRepository(transaction).createGeneration({
+    enterpriseId, operatorId, floorPlanId: plan?.id, leadId: leadId ?? null, workflowId: workflowId ?? null, parentGenerationId: sourceTask?.id ?? null, type: 'miniprogram', channel: 'miniprogram', stageKey: config.stageKey, sourceAssetRole: plan ? 'floor_plan' : 'rough_sketch', nextRecommendedStage: config.nextStageKey, status: 'pending', actionKey: config.actionKey, capability: config.logicalModelKey === 'image.edit.standard' ? 'image.edit' : 'image.generate', logicalModelKey: plan && input.mode === 'floor_plan_render' ? 'image.edit.standard' : config.logicalModelKey, input: { mode: input.mode, style: input.styleKey || 'modern', customPrompt: buildPrompt({ mode: input.mode, style: input.styleKey, summary: roomData?.summary }), roomData, spaceImage: spaceAsset ? getPostgresMediaAssetImageUrl(spaceAsset.id) : undefined, referenceImage: referenceAsset ? getPostgresMediaAssetImageUrl(referenceAsset.id) : undefined, controlImage: controlAsset ? getPostgresMediaAssetImageUrl(controlAsset.id) : undefined, outputAspectRatio: input.mode === 'floor_plan_render' ? '1:1' : '16:9', outputSize: input.mode === 'floor_plan_render' ? '1024x1024' : '1280x720' }, output: {}, billing: { cycle: 0, actionKey: config.actionKey, price: price.credits, status: 'unbilled' } }));
+  await withTenantTransaction(enterpriseId, async (transaction) => {
+    const repo = new AiCreationRepository(transaction);
+    await Promise.all([spaceAsset, referenceAsset, controlAsset].filter(Boolean).map((asset) => repo.updateMediaAsset(asset!.id, { ownerId: generation.id })));
+  });
+  try {
+    await holdPostgresCreationGenerationCredits({ enterpriseId: enterpriseId.toString(), generationId: generation.id.toString() });
+  } catch (error) {
+    await withTenantTransaction(enterpriseId, (transaction) => new AiCreationRepository(transaction).updateGeneration(generation.id, { status: 'failed', errorCode: errorCode(error), errorMessage: error instanceof Error ? error.message : String(error) }));
+    throw error;
+  }
+  return getPostgresMiniAiTask(generation.id.toString(), context);
+}
+
+export async function getPostgresMiniAiTask(id: string, context: MiniAiContext) {
+  const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
+  const generationId = parsePostgresId(id, 'generationId');
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const generation = await new AiCreationRepository(transaction).findGeneration(generationId);
+    if (!generation || generation.deletedAt || generation.operatorId !== BigInt(context.operatorId) || generation.channel !== 'miniprogram') return null;
+    return generation;
+  });
+}
+
+export async function executePostgresMiniAiTask(id: string, context: MiniAiContext) {
+  const generation = await getPostgresMiniAiTask(id, context);
+  if (!generation) throw Object.assign(new Error('任务不存在'), { status: 404 });
+  if (generation.status === 'pending' || generation.status === 'created') await submitPostgresCreationGeneration({ enterpriseId: context.enterpriseId, generationId: generation.id.toString() });
+  return getPostgresMiniAiTask(id, context);
+}
+
+export async function retryPostgresMiniAiTask(id: string, context: MiniAiContext) {
+  const generation = await getPostgresMiniAiTask(id, context);
+  if (!generation || generation.status !== 'failed') throw Object.assign(new Error('只有失败的小程序 AI 任务可以重试'), { status: 400 });
+  const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
+  if (String(asRecord(generation.billing).status) === 'held') await releasePostgresCreationGenerationCredits({ enterpriseId: context.enterpriseId, generationId: id, errorMessage: '重试前释放冻结积分' });
+  await withTenantTransaction(enterpriseId, (transaction) => new AiCreationRepository(transaction).updateGeneration(generation.id, { status: 'pending', errorCode: null, errorMessage: null, currentAttemptId: null, externalTask: {}, retryCount: generation.retryCount + 1, billing: { ...asRecord(generation.billing), cycle: generation.retryCount + 1, status: 'unbilled' } }));
+  return executePostgresMiniAiTask(id, context);
+}
+
+export function serializePostgresMiniAiTask(generation: NonNullable<Awaited<ReturnType<typeof getPostgresMiniAiTask>>>, request: Request) {
+  const input = asRecord(generation.input);
+  const roomData = asRecord(input.roomData);
+  const imageUrl = (key: string) => {
+    const value = typeof input[key] === 'string' ? input[key] as string : undefined;
+    const assetId = getPostgresAssetIdFromImageUrl(value);
+    if (!assetId) return undefined;
+    const url = new URL(`/api/miniprogram/ai/assets/${assetId}/image`, request.url);
+    return url.toString();
+  };
+  const output = asRecord(generation.output);
+  const resultAssetId = getPostgresAssetIdFromImageUrl(typeof output.imageUrl === 'string' ? output.imageUrl : undefined);
+  return { id: generation.id.toString(), mode: input.mode || generation.type, status: generation.status, progress: generation.status === 'succeeded' || generation.status === 'failed' ? 100 : generation.status === 'processing' ? 65 : 10, styleKey: input.style, spaceAssetId: getPostgresAssetIdFromImageUrl(typeof input.spaceImage === 'string' ? input.spaceImage : undefined)?.toString(), referenceAssetId: getPostgresAssetIdFromImageUrl(typeof input.referenceImage === 'string' ? input.referenceImage : undefined)?.toString(), spaceImageUrl: imageUrl('spaceImage'), referenceImageUrl: imageUrl('referenceImage'), controlImageUrl: imageUrl('controlImage'), resultImageUrl: resultAssetId ? new URL(`/api/miniprogram/ai/assets/${resultAssetId}/image`, request.url).toString() : undefined, resultAssetId: resultAssetId?.toString(), errorCode: generation.errorCode, error: generation.errorMessage, retryCount: generation.retryCount, credits: Number(asRecord(generation.billing).price || 0), billingStatus: asRecord(generation.billing).status, provider: generation.provider, model: undefined, workflowId: generation.workflowId?.toString(), floorPlanId: generation.floorPlanId?.toString(), leadId: generation.leadId?.toString(), roomId: typeof roomData.roomId === 'string' ? roomData.roomId : undefined, targetScope: roomData.targetScope, targetLabel: roomData.targetLabel, outputAspectRatio: input.outputAspectRatio, outputSize: input.outputSize, syncedToWorkflow: Boolean(generation.workflowId), isSelectedBaseline: generation.isSelectedBaseline, stageKey: generation.stageKey, nextStageKey: generation.nextRecommendedStage, createdAt: generation.createdAt, updatedAt: generation.updatedAt };
+}
+
+export async function listPostgresMiniAiTasks(context: MiniAiContext, page = 1, limit = 12) {
+  const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
+  const operatorId = parsePostgresId(context.operatorId, 'operatorId');
+  return withTenantTransaction(enterpriseId, (transaction) => new AiCreationRepository(transaction).listMiniProgramGenerations({ operatorId, page, limit }));
+}
+
+export async function deletePostgresMiniAiTask(id: string, context: MiniAiContext) {
+  const generation = await getPostgresMiniAiTask(id, context);
+  if (!generation) return false;
+  if (generation.status === 'processing' || String(asRecord(generation.billing).status) === 'held') throw Object.assign(new Error('生成中的任务不能删除'), { status: 409 });
+  const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
+  await withTenantTransaction(enterpriseId, (transaction) => new AiCreationRepository(transaction).updateGeneration(generation.id, { deletedAt: new Date() }));
+  return true;
+}

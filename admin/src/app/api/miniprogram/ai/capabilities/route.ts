@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { resolveMiniAiContext } from '@/lib/ai/mini-ai-auth';
 import { ensureAiCreditAccount, listAiCreditPrices, serializeAiCreditAccount } from '@/lib/ai/credits';
 import { ensureDefaultAiStylePresets, listAiStylePresets } from '@/lib/ai/presets';
@@ -12,7 +11,6 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
-    await dbConnect();
     const context = await resolveMiniAiContext(request);
     if (!context) {
       return NextResponse.json({ success: false, error: '仅企业员工可以使用 AI 设计' }, { status: 403 });

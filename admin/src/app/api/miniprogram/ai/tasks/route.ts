@@ -1,20 +1,19 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { resolveMiniAiContext } from '@/lib/ai/mini-ai-auth';
-import { createMiniAiTask, serializeMiniAiTask, type CreateMiniAiTaskInput } from '@/lib/ai/mini-ai-tasks';
+import { createPostgresMiniAiTask, serializePostgresMiniAiTask, type CreateMiniAiTaskInput } from '@/lib/ai/postgres-mini-ai-tasks';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
   try {
-    await dbConnect();
     const context = await resolveMiniAiContext(request);
     if (!context) {
       return NextResponse.json({ success: false, error: '仅企业员工可以创建 AI 任务' }, { status: 403 });
     }
     const body = (await request.json()) as CreateMiniAiTaskInput;
-    const generation = await createMiniAiTask(body, context);
-    return NextResponse.json({ success: true, data: serializeMiniAiTask(generation, request) });
+    const generation = await createPostgresMiniAiTask(body, context);
+    if (!generation) throw new Error('AI 任务创建失败');
+    return NextResponse.json({ success: true, data: serializePostgresMiniAiTask(generation, request) });
   } catch (error) {
     console.error('[Mini AI Task Create]', error);
     const status = (error as { status?: number })?.status || 400;

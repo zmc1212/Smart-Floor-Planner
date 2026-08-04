@@ -4,9 +4,10 @@
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Button as AntButton, Space } from 'antd';
 import { useRouter } from 'next/navigation';
-import { Loader2, CheckCircle, Clock, User, MessageSquare, Plus, X } from "lucide-react";
+import { AlertTriangle, Eye, FilePenLine, Loader2, CheckCircle, Clock, RefreshCw, Trash2, User, MessageSquare, Plus } from "lucide-react";
 import { Tabs } from "@/components/ui/tabs";
 import { 
   Table, 
@@ -85,6 +86,7 @@ export default function LeadsPage() {
   const router = useRouter();
   const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [selectedLeadLoading, setSelectedLeadLoading] = useState(false);
   const [newNote, setNewNote] = useState('');
@@ -97,6 +99,8 @@ export default function LeadsPage() {
     limit: 20,
     totalPages: 0
   });
+  const leadListRequestRef = useRef<AbortController | null>(null);
+  const leadDetailRequestRef = useRef<AbortController | null>(null);
 
   // Helper to get staff display name from ID or Object
   const getStaffName = (idOrObj: any) => {
@@ -132,63 +136,81 @@ export default function LeadsPage() {
     return statusMap[status] || status;
   };
 
-  const fetchLeads = async (page = pagination.page) => {
+  const fetchLeads = useCallback(async (page: number) => {
+    leadListRequestRef.current?.abort();
+    const controller = new AbortController();
+    leadListRequestRef.current = controller;
     setLoading(true);
+    setLoadError('');
     try {
       let url = `/api/leads?page=${page}&limit=${pagination.limit}`;
       if (activeStatus && activeStatus !== 'all') {
         url += `&status=${activeStatus}`;
       }
-      const res = await fetch(url);
+      const res = await fetch(url, { signal: controller.signal });
       const data = await res.json();
-      if (data.success) {
-        setLeads(data.data);
-        if (data.pagination) {
-          setPagination(data.pagination);
-        }
-        if (selectedLead) {
-          const updated = data.data.find((l: any) => l._id === selectedLead._id);
-          if (updated) {
-            setSelectedLead((current: any) => current ? {
-              ...current,
-              ...updated,
-              floorPlanIds: current.floorPlanIds || updated.floorPlanIds,
-              primaryFloorPlanId: current.primaryFloorPlanId || updated.primaryFloorPlanId,
-            } : updated);
-          }
-        }
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || '线索列表加载失败');
       }
+      if (controller.signal.aborted) return;
+      setLeads(data.data || []);
+      if (data.pagination) {
+        setPagination(data.pagination);
+      }
+      setSelectedLead((current: any) => {
+        if (!current) return current;
+        const updated = (data.data || []).find((lead: any) => lead._id === current._id);
+        return updated ? {
+            ...current,
+            ...updated,
+            floorPlanIds: current.floorPlanIds || updated.floorPlanIds,
+            primaryFloorPlanId: current.primaryFloorPlanId || updated.primaryFloorPlanId,
+          } : current;
+      });
     } catch (err) {
-      console.error('Failed to fetch leads:', err);
+      if (!controller.signal.aborted) {
+        setLoadError(err instanceof Error ? err.message : '线索列表加载失败');
+      }
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
-  };
+  }, [activeStatus, pagination.limit]);
 
   const handlePageChange = (newPage: number) => {
     fetchLeads(newPage);
   };
 
   const openLeadDetail = async (lead: any) => {
+    leadDetailRequestRef.current?.abort();
+    const controller = new AbortController();
+    leadDetailRequestRef.current = controller;
     setSelectedLead(lead);
     setSelectedLeadLoading(true);
     try {
-      const res = await fetch(`/api/leads/${lead._id}`);
+      const res = await fetch(`/api/leads/${lead._id}`, { signal: controller.signal });
       const data = await res.json();
-      if (data.success) {
+      if (controller.signal.aborted) return;
+      if (res.ok && data.success) {
         setSelectedLead(data.data);
       } else {
         notify.error('线索详情加载失败', { description: data.error || '请稍后重试' });
       }
-    } catch (err) {
-      console.error('Failed to fetch lead detail:', err);
-      notify.error('线索详情加载失败', { description: '请检查网络或刷新重试' });
+    } catch {
+      if (!controller.signal.aborted) {
+        notify.error('线索详情加载失败', { description: '请检查网络或刷新重试' });
+      }
     } finally {
-      setSelectedLeadLoading(false);
+      if (!controller.signal.aborted) setSelectedLeadLoading(false);
     }
   };
 
-  const fetchStaff = async () => {
+  const closeLeadDetail = () => {
+    leadDetailRequestRef.current?.abort();
+    setSelectedLeadLoading(false);
+    setSelectedLead(null);
+  };
+
+  const fetchStaff = useCallback(async () => {
     try {
       // Only fetch staff with roles that can be assigned to leads
       const res = await fetch(`/api/staff?roles=designer,measurer,enterprise_admin`);
@@ -196,26 +218,23 @@ export default function LeadsPage() {
       if (data.success) {
         setStaffMembers(data.data);
       }
-    } catch (err) {
-      console.error('Failed to fetch staff:', err);
+    } catch {
+      // Lead records stay readable when the optional assignment choices cannot load.
     }
-  };
-
-  // @see react-best-practices: async-parallel — 并行化初始请求
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      void fetchStaff();
-    }, 0);
-    return () => clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      void fetchLeads(1); // Reset to page 1 when status changes
-    }, 0);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeStatus]);
+    void fetchStaff();
+  }, [fetchStaff]);
+
+  useEffect(() => {
+    void fetchLeads(1);
+  }, [fetchLeads]);
+
+  useEffect(() => () => {
+    leadListRequestRef.current?.abort();
+    leadDetailRequestRef.current?.abort();
+  }, []);
 
   const updateLead = async (id: string, updates: any) => {
     try {
@@ -238,7 +257,7 @@ export default function LeadsPage() {
             setTimeout(() => setSelectedLead(null), 800);
           }
         }
-        fetchLeads();
+        void fetchLeads(pagination.page);
       } else {
         notify.error("操作失败", { description: data.error });
       }
@@ -264,7 +283,7 @@ export default function LeadsPage() {
       const data = await res.json();
       if (data.success) {
         notify.success("线索已删除");
-        fetchLeads();
+        void fetchLeads(pagination.page);
       } else {
         notify.error("删除失败", { description: data.error });
       }
@@ -292,7 +311,7 @@ export default function LeadsPage() {
       const data = await res.json();
       if (data.success) {
         setNewNote('');
-        fetchLeads();
+        void fetchLeads(pagination.page);
       }
     } catch (err) {
       console.error('Failed to add follow-up:', err);
@@ -323,29 +342,21 @@ export default function LeadsPage() {
   return (
     <div className="admin-page-frame">
       <main className="w-full">
-        <div className="mb-8 flex flex-col justify-between gap-5 border-b border-border pb-6 md:flex-row md:items-center">
-          <div className="flex items-center gap-4">
-            <h2 className="text-2xl font-semibold leading-tight text-foreground">
-              客资线索管理 CRM
-            </h2>
-            {!loading && (
-              <span className="rounded-md bg-muted px-2.5 py-1 text-sm font-medium text-muted-foreground">
-                {pagination.total}
-              </span>
-            )}
+        <header className="flex flex-col justify-between gap-4 border-b border-border pb-5 sm:flex-row sm:items-end">
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold leading-tight text-foreground">客资线索管理</h1>
+            <p className="text-sm text-muted-foreground">跟进客户状态、指派协作人员，并衔接正式量房与方案设计。</p>
           </div>
-
-          {/* Enterprise Selector removed, now handled globally in Sidebar */}
-
-          {leads.length === 0 && !loading && activeStatus === 'all' && (
-            <div className="rounded-xl bg-primary/5 p-4 text-sm text-muted-foreground">
-              提示：如果您是设计师或业务员，您只能看到正式指派给您的线索。只有企业负责人（Admin/Owner）可以看到全部新线索。
-            </div>
-          )}
-        </div>
+          <div className="flex items-center gap-2">
+            {!loading ? <Badge variant="secondary">{pagination.total} 条</Badge> : null}
+            <Button aria-label="刷新线索列表" disabled={loading} size="icon" title="刷新线索列表" variant="outline" onClick={() => void fetchLeads(pagination.page)}>
+              <RefreshCw className={loading ? 'animate-spin' : ''} size={16} />
+            </Button>
+          </div>
+        </header>
 
         {/* Status Tabs */}
-        <div className="mb-6 overflow-x-auto pb-1">
+        <div className="mt-6 mb-4 overflow-x-auto border-b border-border pb-1">
           <Tabs
             activeTab={activeStatus}
             onChange={setActiveStatus}
@@ -369,8 +380,19 @@ export default function LeadsPage() {
           </div>
         )}
 
-        {!loading && (
-          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+        {loadError ? (
+          <section className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-lg border border-border bg-card px-6 text-center" aria-label="线索列表加载失败">
+            <AlertTriangle className="text-destructive" size={28} />
+            <div>
+              <p className="font-medium">无法加载线索列表</p>
+              <p className="mt-1 text-sm text-muted-foreground">{loadError}</p>
+            </div>
+            <Button variant="outline" onClick={() => void fetchLeads(1)}>重试</Button>
+          </section>
+        ) : null}
+
+        {!loading && !loadError && (
+          <div className="overflow-x-auto rounded-lg border border-border bg-card">
             <Table className="min-w-[840px]">
               <TableHeader className="bg-muted/60">
                 <TableRow className="border-border hover:bg-transparent">
@@ -412,34 +434,13 @@ export default function LeadsPage() {
                       {new Date(lead.createdAt).toLocaleDateString()}
                     </TableCell>
                     <TableCell className="px-5 py-4 text-right">
-                      <div className="flex items-center justify-end gap-3">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => router.push(`/ai-studio/scenarios?leadId=${lead._id}`)}
-                          className="h-8 rounded-lg px-3 text-xs font-medium text-amber-700 hover:bg-amber-50 hover:text-amber-900"
-                        >
+                      <Space size={8}>
+                        <AntButton icon={<Eye size={14} />} size="small" onClick={() => openLeadDetail(lead)}>详情</AntButton>
+                        <AntButton icon={<FilePenLine size={14} />} size="small" onClick={() => router.push(`/ai-studio/scenarios?leadId=${lead._id}`)}>
                           {lead.floorPlanIds?.length || lead.followUpRecords?.length ? '查看方案' : '开始方案'}
-                        </Button>
-                        <Button 
-                          size="icon"
-                          variant="ghost"
-                          aria-label={`删除线索 ${lead.name}`}
-                          title="删除线索"
-                          onClick={() => deleteLead(lead._id)}
-                          className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                        >
-                          <X size={14} />
-                        </Button>
-                        <Button 
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => openLeadDetail(lead)}
-                          className="h-8 rounded-lg border border-border px-3 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-                        >
-                          管理
-                        </Button>
-                      </div>
+                        </AntButton>
+                        <AntButton aria-label={`删除线索 ${lead.name}`} danger icon={<Trash2 size={14} />} size="small" onClick={() => void deleteLead(lead._id)}>删除</AntButton>
+                      </Space>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -460,7 +461,7 @@ export default function LeadsPage() {
           </div>
         )}
 
-        {!loading && leads.length > 0 && (
+        {!loading && !loadError && leads.length > 0 && (
           <Pagination
             total={pagination.total}
             page={pagination.page}
@@ -471,7 +472,7 @@ export default function LeadsPage() {
         )}
 
         {/* Lead Detail Sheet */}
-        <Sheet open={!!selectedLead} onOpenChange={(open) => !open && setSelectedLead(null)}>
+        <Sheet open={!!selectedLead} onOpenChange={(open) => !open && closeLeadDetail()}>
           <SheetContent className="sm:max-w-md p-0 overflow-hidden border-none shadow-2xl flex flex-col">
             {selectedLead && (
               <div className="flex flex-col h-full bg-white animate-in slide-in-from-right duration-500">

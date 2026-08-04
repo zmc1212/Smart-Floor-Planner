@@ -8,6 +8,10 @@ import Lead from '@/models/Lead';
 import type { AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
 import { serializeAiGeneration, serializeAiWorkflow } from '@/lib/ai/workflow-utils';
 import { persistImageReference, updateMediaAssetOwner } from '@/lib/ai/media-assets';
+import {
+  getPostgresAiWorkflowContext,
+  updatePostgresAiWorkflowState,
+} from '@/lib/ai/postgres-workflow-service';
 
 type LeanFloorPlan = {
   _id: unknown;
@@ -29,6 +33,10 @@ interface WorkflowPatchBody {
   parentGenerationId?: string;
   sourceAssetRole?: string;
   styleReferenceImage?: string;
+}
+
+function isPostgresWorkflowId(value: string) {
+  return /^[1-9]\d{0,18}$/.test(value) && BigInt(value) <= 9223372036854775807n;
 }
 
 async function getWorkflowWithLead(workflowId: string) {
@@ -54,10 +62,17 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await dbConnect();
-
-    return await withTenantRoute(req, { requireEnterprise: true }, async () => {
+    return await withTenantRoute(req, { requireEnterprise: true }, async (context) => {
       const { id } = await params;
+      if (isPostgresWorkflowId(id)) {
+        const workflowContext = await getPostgresAiWorkflowContext({
+          enterpriseId: context.enterpriseId!,
+          workflowId: id,
+        });
+        return NextResponse.json({ success: true, data: workflowContext });
+      }
+
+      await dbConnect();
       const { workflow, lead } = await getWorkflowWithLead(id);
 
       if (!workflow || !lead) {
@@ -99,7 +114,11 @@ export async function GET(
     });
   } catch (error) {
     console.error('[AI Workflow GET]', error);
-    return NextResponse.json({ success: false, error: 'Failed to load workflow detail' }, { status: 500 });
+    const status = (error as Error & { status?: number }).status;
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : 'Failed to load workflow detail' },
+      { status: status && status >= 400 ? status : 500 }
+    );
   }
 }
 
@@ -108,11 +127,33 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await dbConnect();
-
     return await withTenantRoute(req, { requireEnterprise: true }, async (context) => {
       const { id } = await params;
       const body = (await req.json()) as WorkflowPatchBody;
+      if (isPostgresWorkflowId(id)) {
+        if (body.action !== 'rename' && body.action !== 'set-stage' && body.action !== 'select-generation') {
+          return NextResponse.json(
+            { success: false, error: 'Unsupported action for PostgreSQL workflow' },
+            { status: 400 }
+          );
+        }
+
+        await updatePostgresAiWorkflowState({
+          enterpriseId: context.enterpriseId!,
+          workflowId: id,
+          action: body.action,
+          title: body.title,
+          stageKey: body.stageKey,
+          generationId: body.generationId,
+        });
+        const workflowContext = await getPostgresAiWorkflowContext({
+          enterpriseId: context.enterpriseId!,
+          workflowId: id,
+        });
+        return NextResponse.json({ success: true, data: workflowContext });
+      }
+
+      await dbConnect();
       const { workflow, lead } = await getWorkflowWithLead(id);
 
       if (!workflow || !lead) {
@@ -236,6 +277,10 @@ export async function PATCH(
     });
   } catch (error) {
     console.error('[AI Workflow PATCH]', error);
-    return NextResponse.json({ success: false, error: 'Failed to update workflow' }, { status: 500 });
+    const status = (error as Error & { status?: number }).status;
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : 'Failed to update workflow' },
+      { status: status && status >= 400 ? status : 500 }
+    );
   }
 }

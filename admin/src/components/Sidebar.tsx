@@ -155,6 +155,7 @@ const NavItem = memo(function NavItem({
       href={item.href}
       target={item.newTab ? '_blank' : undefined}
       rel={item.newTab ? 'noopener noreferrer' : undefined}
+      aria-current={isActive ? 'page' : undefined}
       className={cn(
         "flex items-center gap-3 rounded-lg px-3 py-2 transition-colors duration-200 group relative",
         isActive 
@@ -203,7 +204,7 @@ const SidebarContent = memo(function SidebarContent({
       <div className={cn("h-16 flex items-center border-b border-border px-6 shrink-0", collapsed && "justify-center px-0")}>
         {!collapsed ? (
           <div className="flex flex-col w-full">
-            <h1 className="text-[13px] font-bold">
+            <h1 className="text-sm font-semibold">
               Smart Floor <span className="text-primary">Planner</span>
             </h1>
             {(admin?.role === 'super_admin' || admin?.role === 'admin') && (
@@ -232,7 +233,7 @@ const SidebarContent = memo(function SidebarContent({
       </div>
 
       {/* Navigation */}
-      <div className="flex-1 overflow-y-auto py-6 px-3 space-y-9 scrollbar-hide">
+      <nav className="flex-1 space-y-9 overflow-y-auto px-3 py-6 scrollbar-hide" aria-label="主导航">
         {/* Render Platform Menus */}
         {(admin?.role === 'super_admin' || admin?.role === 'admin' || admin?.role === 'salesperson') && MENU_CONFIG.platform.map((category) => {
           const visibleItems = category.items.filter(item => hasMenuPermission(item.permissionKey || item.key));
@@ -286,12 +287,12 @@ const SidebarContent = memo(function SidebarContent({
             </div>
           );
         })}
-      </div>
+      </nav>
 
       {/* Footer Profile */}
       <div className="mt-auto space-y-2 border-t border-border bg-card p-3">
         <div className={cn(
-          "flex items-center gap-3 rounded-xl border border-border bg-muted p-2",
+          "flex items-center gap-3 rounded-lg border border-border bg-muted p-2",
           collapsed && "justify-center border-none bg-transparent p-1.5"
         )}>
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
@@ -430,7 +431,7 @@ export default function Sidebar() {
           onClick={toggleCollapse}
           aria-label={isCollapsed ? '展开导航' : '收起导航'}
           title={isCollapsed ? '展开导航' : '收起导航'}
-          className="absolute -right-3 top-20 z-50 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground"
+          className="absolute -right-3 top-20 z-50 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>

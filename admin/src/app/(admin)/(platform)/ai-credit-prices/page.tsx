@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
-import { Alert, Button, Card, Flex, InputNumber, Switch, Tag, Typography } from 'antd';
+import { Alert, Button, Flex, InputNumber, Switch, Tag, Typography } from 'antd';
 import { Save } from 'lucide-react';
 import { notify } from '@/components/ui/operation-feedback';
 import { useFetch } from '@/hooks/useFetch';
@@ -224,7 +224,7 @@ export default function AiCreditPricesPage() {
           </Button>,
         ]}
       >
-        <Flex vertical gap={24} className="admin-config-stack">
+        <Flex vertical gap={28} className="admin-config-stack">
           <Alert
             type="info"
             showIcon
@@ -232,41 +232,55 @@ export default function AiCreditPricesPage() {
             description="AI 任务创建时冻结点数，成功后按此处快照扣除，失败时释放。价格变更只影响后续新任务。"
           />
 
-          <Card title="场景动作价格" className="admin-panel-card">
-            <Flex vertical gap={16}>
-              <Typography.Paragraph type="secondary" className="!mb-0">
-                客户方案工作流和小程序按业务动作扣点，并继续使用平台场景默认模型。
-              </Typography.Paragraph>
-              <ProTable<PriceItem>
-                rowKey="actionKey"
-                columns={actionColumns}
-                dataSource={items}
-                loading={isLoading}
-                search={false}
-                options={false}
-                pagination={false}
-                scroll={{ x: 720 }}
-              />
-            </Flex>
-          </Card>
+          <section className="space-y-4" aria-labelledby="action-price-title">
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+              <div className="space-y-1">
+                <Typography.Title id="action-price-title" level={4} className="!mb-0">场景动作价格</Typography.Title>
+                <Typography.Text type="secondary">
+                  客户方案工作流和小程序按业务动作扣点，并继续使用平台场景默认模型。
+                </Typography.Text>
+              </div>
+              <Tag color="green">{items.filter((item) => item.enabled).length} 项已启用</Tag>
+            </div>
+            <Typography.Text type="secondary">
+              每次成功执行均使用创建任务时的价格快照，不会受之后的价格调整影响。
+            </Typography.Text>
+            <ProTable<PriceItem>
+              rowKey="actionKey"
+              columns={actionColumns}
+              dataSource={items}
+              loading={isLoading}
+              search={false}
+              options={false}
+              pagination={false}
+              scroll={{ x: 720 }}
+            />
+          </section>
 
-          <Card title="自由创作模型价格" className="admin-panel-card">
-            <Flex vertical gap={16}>
-              <Typography.Paragraph type="secondary" className="!mb-0">
-                只有模型已启用且至少一个分辨率价格已启用时，模型才会显示在自由创作台；VIP 自定义尺寸统一使用 CUSTOM 价格。
-              </Typography.Paragraph>
-              <ProTable<ModelPriceItem>
-                rowKey={(item) => `${item.modelProfileKey}:${item.resolutionTier}`}
-                columns={modelColumns}
-                dataSource={modelPrices}
-                loading={modelPricesLoading}
-                search={false}
-                options={false}
-                pagination={false}
-                scroll={{ x: 1000 }}
-              />
-            </Flex>
-          </Card>
+          <section className="space-y-4" aria-labelledby="model-price-title">
+            <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+              <div className="space-y-1">
+                <Typography.Title id="model-price-title" level={4} className="!mb-0">自由创作模型价格</Typography.Title>
+                <Typography.Text type="secondary">
+                  只有启用模型且至少一个分辨率价格已启用时，才会在自由创作台中显示。
+                </Typography.Text>
+              </div>
+              <Tag color="green">{modelPrices.filter((item) => item.enabled).length} 档可用</Tag>
+            </div>
+            <Typography.Text type="secondary">
+              VIP 自定义尺寸统一使用 CUSTOM 价格；供应商内部成本不在本页展示或结算。
+            </Typography.Text>
+            <ProTable<ModelPriceItem>
+              rowKey={(item) => `${item.modelProfileKey}:${item.resolutionTier}`}
+              columns={modelColumns}
+              dataSource={modelPrices}
+              loading={modelPricesLoading}
+              search={false}
+              options={false}
+              pagination={false}
+              scroll={{ x: 1000 }}
+            />
+          </section>
         </Flex>
       </PageContainer>
     </div>

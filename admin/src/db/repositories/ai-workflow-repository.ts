@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray, isNull, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, lt, type SQL } from 'drizzle-orm';
 import { aiGenerations, aiWorkflows } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
 
@@ -21,6 +21,7 @@ export class AiWorkflowRepository {
 
   async list(options: {
     leadId?: bigint;
+    leadIds?: bigint[];
     operatorId?: bigint;
     status?: string;
     page?: number;
@@ -30,6 +31,10 @@ export class AiWorkflowRepository {
     const limit = Math.min(50, Math.max(1, options.limit ?? 20));
     const filters: SQL[] = [];
     if (options.leadId) filters.push(eq(aiWorkflows.leadId, options.leadId));
+    if (options.leadIds) {
+      if (options.leadIds.length === 0) return { rows: [], total: 0, page, limit };
+      filters.push(inArray(aiWorkflows.leadId, options.leadIds));
+    }
     if (options.operatorId) filters.push(eq(aiWorkflows.operatorId, options.operatorId));
     if (options.status) filters.push(eq(aiWorkflows.status, options.status));
     const where = filters.length ? and(...filters) : undefined;
@@ -167,6 +172,88 @@ export class AiWorkflowRepository {
     const updated = updatedRows[0];
     if (!updated) throw new Error('AI workflow disappeared during baseline selection');
     return { workflow: updated, generation: selected };
+  }
+
+  /** Applies the existing automatic stage progression after a scenario result settles. */
+  async applySucceededScenarioGeneration(generationId: bigint) {
+    const generationRows = await this.transaction
+      .select()
+      .from(aiGenerations)
+      .where(and(
+        eq(aiGenerations.id, generationId),
+        eq(aiGenerations.type, 'scenario'),
+        eq(aiGenerations.status, 'succeeded'),
+        isNull(aiGenerations.deletedAt)
+      ))
+      .for('update')
+      .limit(1);
+    const generation = generationRows[0];
+    if (!generation?.workflowId) return null;
+
+    const workflowRows = await this.transaction
+      .select()
+      .from(aiWorkflows)
+      .where(and(eq(aiWorkflows.id, generation.workflowId), eq(aiWorkflows.status, 'active')))
+      .for('update')
+      .limit(1);
+    const workflow = workflowRows[0];
+    if (!workflow) return null;
+
+    if (workflow.lastGenerationId) {
+      const lastRows = await this.transaction
+        .select({ createdAt: aiGenerations.createdAt })
+        .from(aiGenerations)
+        .where(eq(aiGenerations.id, workflow.lastGenerationId))
+        .limit(1);
+      if (lastRows[0]?.createdAt && lastRows[0].createdAt >= generation.createdAt) {
+        return { workflow, generation, selected: generation.isSelectedBaseline, advanced: false };
+      }
+    }
+
+    const stageKey = generation.stageKey;
+    const nextStage = generation.nextRecommendedStage || workflow.currentStageKey;
+    if (stageKey !== 'base_render' && stageKey !== 'soft_furnishing') {
+      const updated = await this.update(workflow.id, {
+        lastGenerationId: generation.id,
+        currentStageKey: nextStage,
+      });
+      return { workflow: updated!, generation, selected: false, advanced: true };
+    }
+
+    const earlier = await this.transaction
+      .select({ id: aiGenerations.id })
+      .from(aiGenerations)
+      .where(and(
+        eq(aiGenerations.workflowId, workflow.id),
+        eq(aiGenerations.stageKey, stageKey),
+        eq(aiGenerations.status, 'succeeded'),
+        isNull(aiGenerations.deletedAt),
+        lt(aiGenerations.createdAt, generation.createdAt)
+      ))
+      .limit(1);
+    if (earlier[0]) {
+      const updated = await this.update(workflow.id, { lastGenerationId: generation.id });
+      return { workflow: updated!, generation, selected: false, advanced: false };
+    }
+
+    await this.transaction
+      .update(aiGenerations)
+      .set({ isSelectedBaseline: false, updatedAt: new Date() })
+      .where(eq(aiGenerations.workflowId, workflow.id));
+    const selectedRows = await this.transaction
+      .update(aiGenerations)
+      .set({ isSelectedBaseline: true, updatedAt: new Date() })
+      .where(eq(aiGenerations.id, generation.id))
+      .returning();
+    const selected = selectedRows[0];
+    if (!selected) throw new Error('AI generation disappeared during workflow synchronization');
+    const updated = await this.update(workflow.id, {
+      lastGenerationId: selected.id,
+      selectedGenerationId: selected.id,
+      currentStageKey: nextStage,
+    });
+    if (!updated) throw new Error('AI workflow disappeared during workflow synchronization');
+    return { workflow: updated, generation: selected, selected: true, advanced: true };
   }
 
   /**

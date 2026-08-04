@@ -163,7 +163,7 @@ export default function CommissionsPage() {
       hideInSearch: true,
       render: (_, record) => {
         if (record.status === 'pending_settlement' && canSettle) {
-          return <Button type="primary" loading={settlingId === record._id} onClick={() => void settleCommission(record)}>确认发放</Button>;
+          return <Button size="small" type="primary" icon={<CheckCircle2 size={14} />} loading={settlingId === record._id} onClick={() => void settleCommission(record)}>确认发放</Button>;
         }
         if (record.status === 'paid') {
           return <Space size={4}><CheckCircle2 size={15} className="text-primary" /><Typography.Text type="secondary" className="text-xs">{formatDate(record.settledAt)}</Typography.Text></Space>;

@@ -407,7 +407,7 @@ export default function AdminsPage() {
         return (
           <Dropdown menu={{ items }} trigger={['click']}>
             <Tooltip title="更多操作">
-              <Button aria-label={`${account.displayName || account.username} 更多操作`} icon={<Ellipsis size={18} />} loading={isBusy} />
+              <Button size="small" aria-label={`${account.displayName || account.username} 更多操作`} icon={<Ellipsis size={16} />} loading={isBusy} />
             </Tooltip>
           </Dropdown>
         );

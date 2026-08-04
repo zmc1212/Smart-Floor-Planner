@@ -12,8 +12,8 @@ import {
   type ActionType,
   type ProColumns,
 } from '@ant-design/pro-components';
-import { Button, Dropdown, Flex, Tag, Tooltip, Typography, type MenuProps } from 'antd';
-import { Ellipsis, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Button, Flex, Space, Tag, Typography } from 'antd';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -168,38 +168,15 @@ export default function PackagesPage() {
       key: 'actions',
       valueType: 'option',
       fixed: 'right',
-      width: 100,
+      width: 180,
       hideInSearch: true,
       render: (_, item) => {
         if (!canManagePackages) return '-';
         const isDeleting = deletingId === item._id;
-        const items: MenuProps['items'] = [
-          {
-            key: 'edit',
-            label: '编辑套餐',
-            icon: <Pencil size={15} />,
-            disabled: isDeleting,
-            onClick: () => {
-              setEditingItem(item);
-              setFormOpen(true);
-            },
-          },
-          {
-            key: 'delete',
-            label: '删除套餐',
-            icon: <Trash2 size={15} />,
-            danger: true,
-            disabled: isDeleting,
-            onClick: () => void deletePackage(item),
-          },
-        ];
-        return (
-          <Dropdown menu={{ items }} trigger={['click']}>
-            <Tooltip title="更多操作">
-              <Button aria-label={`${item.name} 更多操作`} icon={<Ellipsis size={18} />} loading={isDeleting} />
-            </Tooltip>
-          </Dropdown>
-        );
+        return <Space size={8}>
+          <Button size="small" disabled={isDeleting} icon={<Pencil size={14} />} onClick={() => { setEditingItem(item); setFormOpen(true); }}>编辑</Button>
+          <Button size="small" danger loading={isDeleting} icon={<Trash2 size={14} />} onClick={() => void deletePackage(item)}>删除</Button>
+        </Space>;
       },
     },
   ];

@@ -13,7 +13,7 @@ export function AdminAntdProvider({ children }: { children: React.ReactNode }) {
           colorBgLayout: '#f6f8f6',
           colorBgContainer: '#ffffff',
           colorBorderSecondary: '#e5e9e5',
-          borderRadius: 8,
+          borderRadius: 6,
           fontFamily: 'var(--font-geist-sans), "PingFang SC", "Microsoft YaHei", sans-serif',
         },
         components: {

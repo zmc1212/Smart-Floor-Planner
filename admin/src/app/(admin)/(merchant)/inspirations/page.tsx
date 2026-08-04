@@ -13,7 +13,7 @@ import {
   type ActionType,
   type ProColumns,
 } from '@ant-design/pro-components';
-import { Button, Image, Popconfirm, Space, Tag, Tooltip, Typography, Upload as AntUpload } from 'antd';
+import { Button, Image, Popconfirm, Space, Tag, Typography, Upload as AntUpload } from 'antd';
 import type { UploadProps } from 'antd';
 import { notify } from '@/components/ui/operation-feedback';
 
@@ -199,13 +199,11 @@ export default function InspirationsPage() {
       key: 'actions',
       valueType: 'option',
       fixed: 'right',
-      width: 112,
-      render: (_, inspiration) => [
-        <Tooltip key="preview" title="查看方案">
-          <Button aria-label={`查看${inspiration.title}`} icon={<Eye size={16} />} onClick={() => setPreviewing(inspiration)} />
-        </Tooltip>,
+      width: 160,
+      render: (_, inspiration) => (
+        <Space size={8}>
+          <Button aria-label={`查看 ${inspiration.title}`} icon={<Eye size={14} />} size="small" onClick={() => setPreviewing(inspiration)}>详情</Button>
         <Popconfirm
-          key="delete"
           cancelText="取消"
           description="删除后无法恢复，且不再向小程序展示。"
           okButtonProps={{ danger: true }}
@@ -214,11 +212,10 @@ export default function InspirationsPage() {
           title="删除灵感方案？"
           onConfirm={() => deleteInspiration(inspiration)}
         >
-          <Tooltip title="删除方案">
-            <Button aria-label={`删除${inspiration.title}`} danger icon={<Trash2 size={16} />} />
-          </Tooltip>
-        </Popconfirm>,
-      ],
+          <Button aria-label={`删除 ${inspiration.title}`} danger icon={<Trash2 size={14} />} size="small">删除</Button>
+        </Popconfirm>
+        </Space>
+      ),
     },
   ];
 

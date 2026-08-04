@@ -104,9 +104,9 @@ export default function AiPresetsPage() {
       key: 'actions',
       valueType: 'option',
       fixed: 'right',
-      width: 100,
+      width: 108,
       render: (_, preset) => [
-        <Button key="edit" type="link" icon={<Pencil size={15} />} href={`/ai-presets/${preset._id}`}>
+        <Button key="edit" aria-label={`编辑 AI 预设 ${preset.name}`} icon={<Pencil size={14} />} size="small" href={`/ai-presets/${preset._id}`}>
           编辑
         </Button>,
       ],

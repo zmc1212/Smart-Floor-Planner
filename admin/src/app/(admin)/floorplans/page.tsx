@@ -7,7 +7,7 @@ import {
   type ActionType,
   type ProColumns,
 } from '@ant-design/pro-components';
-import { Button, Flex, Tag, Tooltip, Typography } from 'antd';
+import { Button, Flex, Tag, Typography } from 'antd';
 import { Eye, Search } from 'lucide-react';
 import { notify } from '@/components/ui/operation-feedback';
 import { getAdminRoute } from '@/config/admin-routes';
@@ -147,7 +147,7 @@ export default function FloorPlansPage() {
         completed: { text: '已完成' },
         draft: { text: '草稿' },
       },
-      width: 120,
+      width: 132,
       render: (_, item) => item.status === 'completed'
         ? <Tag color="green">已完成</Tag>
         : <Tag>草稿</Tag>,
@@ -191,11 +191,13 @@ export default function FloorPlansPage() {
       width: 120,
       hideInSearch: true,
       render: (_, item) => (
-        <Tooltip title="打开正式户型查看器">
-          <Button type="link" icon={<Eye size={16} />} href={`/floorplans/${item._id}`}>
-            查看图纸
-          </Button>
-        </Tooltip>
+        <Button
+          aria-label={`查看户型 ${item.name || item._id}`}
+          icon={<Eye size={16} />}
+          href={`/floorplans/${item._id}`}
+        >
+          查看详情
+        </Button>
       ),
     },
   ];

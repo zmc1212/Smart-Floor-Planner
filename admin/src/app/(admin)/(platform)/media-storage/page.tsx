@@ -370,7 +370,7 @@ export default function MediaStoragePage() {
         ];
         return (
           <Dropdown menu={{ items }} trigger={['click']}>
-            <Button aria-label={`${row.name} 更多操作`} icon={workingKey.startsWith(`${row.key}:`) ? <RefreshCw className="animate-spin" size={17} /> : <MoreHorizontal size={18} />} />
+            <Button size="small" aria-label={`${row.name} 更多操作`} icon={workingKey.startsWith(`${row.key}:`) ? <RefreshCw className="animate-spin" size={16} /> : <MoreHorizontal size={16} />} />
           </Dropdown>
         );
       },

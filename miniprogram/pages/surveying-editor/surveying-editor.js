@@ -771,6 +771,35 @@ Page({
     );
   },
 
+  requestBluetoothConnection() {
+    wx.showModal({
+      title: '未连接测距仪',
+      content: '连接设备后可读取实时距离，是否前往连接？',
+      cancelText: '暂不连接',
+      confirmText: '去连接',
+      success: (result) => {
+        if (!result.confirm) return;
+        this.connectBluetoothForMeasurement();
+      }
+    });
+  },
+
+  connectBluetoothForMeasurement() {
+    bluetooth.initBLE(
+      (distanceInMeters) => {
+        this.onBluetoothMeasure(distanceInMeters);
+      },
+      (isConnected) => {
+        app.globalData.bleConnected = !!isConnected;
+        this.setData({ bleConnected: !!isConnected });
+      },
+      () => {
+        app.globalData.bleConnected = false;
+        this.setData({ bleConnected: false });
+      }
+    );
+  },
+
   clearBleMeasureTimers() {
     if (this.blePrimeTimer) {
       clearTimeout(this.blePrimeTimer);
@@ -828,7 +857,7 @@ Page({
     }
 
     if (!app.globalData.bleConnected) {
-      wx.showToast({ title: '蓝牙未连接', icon: 'none' });
+      this.requestBluetoothConnection();
       return;
     }
 
@@ -844,7 +873,7 @@ Page({
     }
 
     if (!app.globalData.bleConnected) {
-      wx.showToast({ title: '蓝牙未连接', icon: 'none' });
+      this.requestBluetoothConnection();
       return;
     }
 
@@ -1157,7 +1186,7 @@ Page({
   onTriangleMeasure(e) {
     if (this.data.angleTriangleMeasuringSide) return;
     if (!app.globalData.bleConnected) {
-      wx.showToast({ title: '蓝牙未连接', icon: 'none' });
+      this.requestBluetoothConnection();
       return;
     }
     const side = e.currentTarget.dataset.side || 'a';
@@ -2924,7 +2953,7 @@ Page({
 
   onBottomMeasure() {
     if (!app.globalData.bleConnected) {
-      wx.showToast({ title: '蓝牙未连接', icon: 'none' });
+      this.requestBluetoothConnection();
       return;
     }
     if (!this.data.numberPadVisible) {

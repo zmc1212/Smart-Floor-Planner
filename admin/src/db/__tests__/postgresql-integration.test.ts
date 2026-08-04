@@ -78,6 +78,7 @@ import {
   createPostgresAiWorkflow,
   getPostgresAiWorkflowContext,
   getPostgresAiWorkflowSourceImage,
+  listPostgresAiWorkflows,
   preparePostgresAiWorkflowStage,
   updatePostgresAiWorkflowState,
 } from '@/lib/ai/postgres-workflow-service';
@@ -2120,6 +2121,19 @@ test('PostgreSQL workflow service creates and reads tenant-scoped workflow conte
       await getPostgresAiWorkflowSourceImage({ enterpriseId: enterpriseAId, workflowId: workflow.id }),
       'data:image/png;base64,AA=='
     );
+    const listed = await listPostgresAiWorkflows({
+      enterpriseId: enterpriseAId,
+      query: 'PostgreSQL workflow service lead',
+    });
+    assert.equal(listed.pagination.total, 1);
+    assert.equal(listed.data[0]?.id, workflow.id.toString());
+    assert.equal(listed.data[0]?.generationCount, 0);
+    assert.equal(listed.data[0]?.lead?.id, lead.id.toString());
+    const crossTenantListed = await listPostgresAiWorkflows({
+      enterpriseId: enterpriseBId,
+      query: 'PostgreSQL workflow service lead',
+    });
+    assert.deepEqual(crossTenantListed.data, []);
 
     await withTenantTransaction(enterpriseAId, (transaction) =>
       new EnterpriseRepository(transaction).update(enterpriseAId, {
@@ -2366,6 +2380,8 @@ test('PostgreSQL workflow scenario executions use the provider lifecycle under t
     });
     assert.equal((settled.generation.billing as { status?: string }).status, 'consumed');
     assert.equal(settled.asset.ownerId, succeededScenario.id);
+    assert.equal(settled.workflow?.lastGenerationId, succeededScenario.id);
+    assert.equal(settled.workflow?.currentStageKey, 'base_render');
     if (settled.ledger) aiCreditLedgerIds.push(settled.ledger.id);
 
     const failedScenario = await prepareScenario();

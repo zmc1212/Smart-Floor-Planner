@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Save } from 'lucide-react';
 import { PageContainer, ProTable, type ProColumns } from '@ant-design/pro-components';
 import { Button, Empty, InputNumber, Radio, Space, Switch, Tag, Typography } from 'antd';
@@ -9,6 +9,7 @@ import type { ImageModel } from './types';
 
 export default function ImageModelCatalog() {
   const [models, setModels] = useState<ImageModel[]>([]);
+  const [savedModels, setSavedModels] = useState<ImageModel[]>([]);
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -16,7 +17,9 @@ export default function ImageModelCatalog() {
     const response = await fetch('/api/admin/ai-image-models');
     const result = await response.json();
     if (!response.ok || !result.success) throw new Error(result.error || '读取生图模型目录失败');
-    setModels(result.data || []);
+    const nextModels = result.data || [];
+    setModels(nextModels);
+    setSavedModels(nextModels);
     setModelsLoaded(true);
   }, []);
 
@@ -126,6 +129,11 @@ export default function ImageModelCatalog() {
     },
   ];
 
+  const hasChanges = useMemo(
+    () => JSON.stringify(models) !== JSON.stringify(savedModels),
+    [models, savedModels],
+  );
+
   return (
     <div className="admin-page-frame">
       <PageContainer
@@ -134,20 +142,38 @@ export default function ImageModelCatalog() {
         title="生图模型"
         content="管理平台对业务开放的生图模型、默认模型和参考图上限。当前目录来源为 GRS，后续供应商通过 Adapter 接入同一目录。"
         extra={[
-          <Button key="save" type="primary" icon={<Save size={16} />} disabled={!modelsLoaded || !models.length} loading={saving} onClick={saveModels}>保存模型目录</Button>,
+          hasChanges ? <Tag key="dirty" color="warning">有未保存更改</Tag> : null,
+          <Button
+            key="save"
+            type="primary"
+            icon={<Save size={16} />}
+            disabled={!modelsLoaded || !models.length || !hasChanges}
+            loading={saving}
+            onClick={() => void saveModels()}
+          >
+            保存模型目录
+          </Button>,
         ]}
       >
-        <ProTable<ImageModel>
-          rowKey="id"
-          columns={columns}
-          dataSource={models}
-          loading={!modelsLoaded}
-          search={false}
-          options={false}
-          pagination={false}
-          scroll={{ x: 1080 }}
-          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无生图模型目录" /> }}
-        />
+        <section className="space-y-4" aria-label="生图模型目录">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+            <Typography.Text type="secondary">
+              仅已启用且配置完整的模型会进入自由创作台；平台默认模型用于未显式选型的业务场景。
+            </Typography.Text>
+            <Tag color="green">{models.filter((model) => model.enabled && model.executable).length} 个可用模型</Tag>
+          </div>
+          <ProTable<ImageModel>
+            rowKey="id"
+            columns={columns}
+            dataSource={models}
+            loading={!modelsLoaded}
+            search={false}
+            options={false}
+            pagination={false}
+            scroll={{ x: 1080 }}
+            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无生图模型目录" /> }}
+          />
+        </section>
       </PageContainer>
     </div>
   );

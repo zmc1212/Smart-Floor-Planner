@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import { getTenantContext, type TenantContext } from '@/lib/auth';
 import { getAiWorkflowContext, runAiWorkflowStage } from '@/lib/ai/workflow-service';
-import type { AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
+import { getWorkflowStageDefinition, type AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
+import {
+  getPostgresAiWorkflowContext,
+  preparePostgresAiWorkflowStage,
+} from '@/lib/ai/postgres-workflow-service';
+import { submitPostgresCreationGeneration } from '@/lib/ai/postgres-creation-runtime';
 
 type RunStageBody = {
   stageKey?: AiWorkflowStageKey;
@@ -19,12 +24,14 @@ function toTenantContext(context: NonNullable<Awaited<ReturnType<typeof getTenan
   };
 }
 
+function isPostgresWorkflowId(value: string) {
+  return /^[1-9]\d{0,18}$/.test(value) && BigInt(value) <= 9223372036854775807n;
+}
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  await dbConnect();
-
   try {
     const context = await getTenantContext(req);
     if (!context) {
@@ -41,6 +48,37 @@ export async function POST(
     if (!body.stageKey) {
       return NextResponse.json({ success: false, error: 'Missing stageKey' }, { status: 400 });
     }
+
+    if (isPostgresWorkflowId(id)) {
+      if (body.confirmed === false) {
+        const stage = getWorkflowStageDefinition(body.stageKey);
+        return NextResponse.json({
+          success: true,
+          data: {
+            requiresConfirmation: true,
+            message: `执行“${stage?.name || body.stageKey}”会消耗企业 AI 额度并生成新产物，请确认后再执行。`,
+          },
+        });
+      }
+      const generation = await preparePostgresAiWorkflowStage({
+        enterpriseId: context.enterpriseId,
+        operatorId: context.userId,
+        workflowId: id,
+        stageKey: body.stageKey,
+        styleReferenceImage: body.styleReferenceImage,
+      });
+      await submitPostgresCreationGeneration({
+        enterpriseId: context.enterpriseId,
+        generationId: generation.id.toString(),
+      });
+      const workflowContext = await getPostgresAiWorkflowContext({
+        enterpriseId: context.enterpriseId,
+        workflowId: id,
+      });
+      return NextResponse.json({ success: true, data: workflowContext });
+    }
+
+    await dbConnect();
 
     await runAiWorkflowStage(
       {

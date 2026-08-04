@@ -283,7 +283,7 @@ export default function EnterpriseOrdersPage() {
         const actions: ReactNode[] = [];
         if (!order.enterpriseId && order.status === 'paid' && canActivateEnterprise) {
           actions.push(
-            <Button key="activate" type="primary" loading={activatingOrderId === order._id} onClick={() => void activateEnterprise(order)}>
+            <Button key="activate" size="small" type="primary" icon={<CheckCircle2 size={14} />} loading={activatingOrderId === order._id} onClick={() => void activateEnterprise(order)}>
               开通账号
             </Button>,
           );
@@ -299,7 +299,7 @@ export default function EnterpriseOrdersPage() {
           actions.push(
             <Dropdown key="status" menu={{ items }} trigger={['click']}>
               <Tooltip title="更新订单状态">
-                <Button aria-label={`${order.enterpriseNameSnapshot} 更多操作`} icon={<Ellipsis size={18} />} />
+                <Button size="small" aria-label={`${order.enterpriseNameSnapshot} 更多操作`} icon={<Ellipsis size={16} />} />
               </Tooltip>
             </Dropdown>,
           );

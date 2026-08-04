@@ -2,6 +2,8 @@ import {
   AiCreationRepository,
   type AiCreationTaskView,
   type AiGenerationRecord,
+  AiWorkflowRepository,
+  LeadRepository,
 } from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { withTenantTransaction } from '@/db/transaction';
@@ -19,6 +21,7 @@ import {
 } from '@/lib/ai/postgres-creation-service';
 import {
   readPostgresMediaAssetBuffer,
+  getPostgresAssetIdFromImageUrl,
   storePostgresMediaBuffer,
 } from '@/lib/ai/postgres-media-assets';
 import {
@@ -30,14 +33,16 @@ import {
 import {
   getAiProviderAdapter,
   getProviderRuntimeById,
+  listProviderRuntimes,
   listProviderRuntimesByAdapter,
 } from '@/lib/ai/provider-registry';
 import { parseImageDataUri } from '@/lib/ai/media-assets';
 import { resolveProviderCostEstimate } from '@/lib/ai/execution-service';
+import { renderMiniAiFloorPlanControlPng } from '@/lib/ai/mini-ai-floorplan';
 
 type ProviderRequest = Omit<AiImageSubmitInput, 'model'> & {
   logicalModelKey: 'image.generate.standard' | 'image.edit.standard';
-  modelProfileKey: string;
+  modelProfileKey?: string;
   remoteModel: string;
 };
 
@@ -98,8 +103,44 @@ async function loadGenerationInput(enterpriseId: bigint, generationId: bigint) {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const repository = new AiCreationRepository(transaction);
     const generation = await repository.findGeneration(generationId);
-    if (!generation || generation.deletedAt || generation.type !== 'free_create') {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
+    }
+    if (generation.type === 'scenario') {
+      if (!generation.workflowId) throw new Error('场景生成任务缺少方案会话');
+      const workflows = new AiWorkflowRepository(transaction);
+      const workflow = await workflows.findById(generation.workflowId);
+      if (!workflow) throw new Error('方案会话不存在或无权访问');
+      const lead = await new LeadRepository(transaction).findById(workflow.leadId);
+      if (!lead) throw new Error('客户线索不存在或无权访问');
+      const [parentGeneration, selectedGeneration] = await Promise.all([
+        generation.parentGenerationId ? repository.findGeneration(generation.parentGenerationId) : null,
+        workflow.selectedGenerationId ? repository.findGeneration(workflow.selectedGenerationId) : null,
+      ]);
+      return {
+        generation,
+        batch: null,
+        assets: [],
+        workflow,
+        floorPlan: workflow.sourceFloorPlanId
+          ? lead.floorPlanRecords.find((plan) => plan.id === workflow.sourceFloorPlanId) ?? null
+          : null,
+        parentGeneration,
+        selectedGeneration,
+      };
+    }
+    if (generation.type === 'miniprogram') {
+      const input = asRecord(generation.input);
+      const imageUrls = [input.controlImage, input.referenceImage, input.spaceImage]
+        .filter((value): value is string => typeof value === 'string' && value.length > 0);
+      const assets = await Promise.all(imageUrls.map(async (imageUrl) => {
+        const assetId = getPostgresAssetIdFromImageUrl(imageUrl);
+        if (!assetId) throw new Error('小程序 AI 任务图片来源无效');
+        const asset = await repository.findMediaAsset(assetId);
+        if (!asset) throw new Error('小程序 AI 任务图片不存在或无权访问');
+        return asset;
+      }));
+      return { generation, batch: null, assets, workflow: null, floorPlan: null, parentGeneration: null, selectedGeneration: null };
     }
     const view = generation.creationTaskId
       ? await repository.loadTaskView(generation.creationTaskId)
@@ -110,7 +151,7 @@ async function loadGenerationInput(enterpriseId: bigint, generationId: bigint) {
     if (assets.length !== batch.referenceAssetIds.length) {
       throw new Error('参考图不存在或无权访问');
     }
-    return { generation, batch, assets };
+    return { generation, batch, assets, workflow: null, floorPlan: null, parentGeneration: null, selectedGeneration: null };
   });
 }
 
@@ -128,13 +169,94 @@ async function toProviderDataUris(
   ));
 }
 
+export async function resolvePostgresScenarioProviderImage(enterpriseId: bigint, image?: string | null) {
+  const value = image?.trim();
+  if (!value) return undefined;
+  if (value.startsWith('data:image') || /^https?:\/\//i.test(value)) return value;
+  const assetId = getPostgresAssetIdFromImageUrl(value);
+  if (!assetId) throw new Error('场景生成任务包含无法读取的图片来源');
+  const asset = await withTenantTransaction(enterpriseId, (transaction) =>
+    new AiCreationRepository(transaction).findMediaAsset(assetId)
+  );
+  if (!asset) throw new Error('场景生成任务的图片来源不存在或无权访问');
+  return `data:${asset.mimeType};base64,${(await readPostgresMediaAssetBuffer(asset)).toString('base64')}`;
+}
+
+async function loadScenarioProviderImages(
+  enterpriseId: bigint,
+  loaded: Awaited<ReturnType<typeof loadGenerationInput>>
+) {
+  const { generation, workflow, floorPlan, parentGeneration, selectedGeneration } = loaded;
+  if (generation.type !== 'scenario' || !workflow) return [];
+  const input = asRecord(generation.input);
+  const usesFloorPlanControl = Boolean(floorPlan)
+    && ['direction', 'base_render', 'perspective_upgrade'].includes(String(generation.stageKey));
+  if (usesFloorPlanControl && floorPlan) {
+    const existing = await resolvePostgresScenarioProviderImage(
+      enterpriseId,
+      typeof input.controlImage === 'string' ? input.controlImage : undefined
+    );
+    if (existing) return [existing];
+
+    const controlBuffer = await renderMiniAiFloorPlanControlPng(floorPlan.layoutData);
+    const control = await storePostgresMediaBuffer({
+      enterpriseId,
+      ownerType: 'ai_generation_input',
+      ownerId: generation.id,
+      mimeType: 'image/png',
+      buffer: controlBuffer,
+      storageProviderKey: 'local',
+    });
+    await withTenantTransaction(enterpriseId, async (transaction) => {
+      const repository = new AiCreationRepository(transaction);
+      const current = await repository.findGenerationForUpdate(generation.id);
+      if (!current || current.status !== 'created') {
+        throw new Error('场景生成任务已变更，无法附加正式户型控制图');
+      }
+      await repository.updateGeneration(generation.id, {
+        input: { ...asRecord(current.input), controlImage: control.imageUrl },
+      });
+    });
+    return [`data:image/png;base64,${controlBuffer.toString('base64')}`];
+  }
+
+  const source = [
+    typeof input.styleReferenceImage === 'string' ? input.styleReferenceImage : undefined,
+    typeof asRecord(parentGeneration?.output).imageUrl === 'string' ? String(asRecord(parentGeneration?.output).imageUrl) : undefined,
+    typeof asRecord(selectedGeneration?.output).imageUrl === 'string' ? String(asRecord(selectedGeneration?.output).imageUrl) : undefined,
+    workflow.sourceImage,
+  ].find((value): value is string => Boolean(value));
+  const resolved = await resolvePostgresScenarioProviderImage(enterpriseId, source);
+  return resolved ? [resolved] : [];
+}
+
 function providerRequest(generation: AiGenerationRecord, images: string[]): ProviderRequest {
   const input = asRecord(generation.input);
-  const parameters = asRecord(input.creationParameterSnapshot);
   const logicalModelKey = generation.logicalModelKey;
   if (logicalModelKey !== 'image.generate.standard' && logicalModelKey !== 'image.edit.standard') {
     throw new Error('创作生成任务缺少图片模型能力');
   }
+  if (generation.type === 'scenario' || generation.type === 'miniprogram') {
+    const preset = asRecord(input.presetSnapshot);
+    const image = asRecord(preset.image);
+    return {
+      logicalModelKey,
+      modelProfileKey: undefined,
+      remoteModel: '',
+      prompt: String(input.customPrompt || '').trim(),
+      negativePrompt: typeof input.negativePrompt === 'string'
+        ? input.negativePrompt
+        : typeof preset.negativePrompt === 'string' ? preset.negativePrompt : undefined,
+      size: typeof input.outputSize === 'string'
+        ? input.outputSize
+        : typeof image.size === 'string' ? image.size : '1024x1024',
+      quality: typeof image.quality === 'string' ? image.quality : 'medium',
+      aspectRatio: typeof input.outputAspectRatio === 'string' ? input.outputAspectRatio : '1:1',
+      user: generation.operatorId.toString(),
+      images: images.length ? images : undefined,
+    };
+  }
+  const parameters = asRecord(input.creationParameterSnapshot);
   const remoteModel = String(parameters.remoteModel || '').trim();
   const modelProfileKey = String(parameters.modelProfileKey || '').trim();
   if (!remoteModel || !modelProfileKey) throw new Error('创作生成任务缺少模型快照');
@@ -239,36 +361,46 @@ export async function submitPostgresCreationGeneration(input: { enterpriseId: st
   const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
   const generationId = parsePostgresId(input.generationId, 'generationId');
   const held = await holdPostgresCreationGenerationCredits({ enterpriseId: enterpriseId.toString(), generationId: generationId.toString() });
-  const loaded = await loadGenerationInput(enterpriseId, generationId);
-  const request = providerRequest(loaded.generation, await toProviderDataUris(loaded.assets));
-  const profile = asRecord(loaded.batch.modelProfileSnapshot);
-  const adapterType = String(profile.adapterType || '').trim();
-  const runtimes = await listProviderRuntimesByAdapter(
-    capabilityForLogicalModel(request.logicalModelKey as AiLogicalModelKey), adapterType
-  );
-  const runtime = runtimes.find((item) => item.modelMappings[request.logicalModelKey] === request.remoteModel);
-  if (!runtime) {
-    await releasePostgresCreationGenerationCredits({ enterpriseId: enterpriseId.toString(), generationId: generationId.toString(), errorMessage: '没有与创作模型快照匹配的可用 AI 供应商' });
-    throw new Error('没有与创作模型快照匹配的可用 AI 供应商');
-  }
-  const begun = await beginPostgresCreationProviderAttempt({
-    enterpriseId: enterpriseId.toString(), generationId: generationId.toString(), providerConfigId: runtime.id,
-    providerKey: runtime.key, adapterType: runtime.adapterType, remoteModel: request.remoteModel,
-    requestSnapshot: request,
-    estimatedCost: resolveProviderCostEstimate(
-      runtime, request.logicalModelKey, request.remoteModel, String(request.resolutionTier || '')
-    ),
-  });
-  if (begun.reused && begun.attempt.remoteTaskId) return begun.generation;
+  let loaded: Awaited<ReturnType<typeof loadGenerationInput>> | null = null;
   try {
-    const result = await getAiProviderAdapter(runtime.adapterType).submitImage(runtime, { ...request, model: request.remoteModel });
+    loaded = await loadGenerationInput(enterpriseId, generationId);
+    const images = loaded.generation.type === 'scenario'
+      ? await loadScenarioProviderImages(enterpriseId, loaded)
+      : await toProviderDataUris(loaded.assets);
+    const request = providerRequest(loaded.generation, images);
+    const runtimes = ['scenario', 'miniprogram'].includes(loaded.generation.type)
+      ? await listProviderRuntimes(
+          capabilityForLogicalModel(request.logicalModelKey as AiLogicalModelKey),
+          request.logicalModelKey
+        )
+      : await listProviderRuntimesByAdapter(
+          capabilityForLogicalModel(request.logicalModelKey as AiLogicalModelKey),
+          String(asRecord(loaded.batch?.modelProfileSnapshot).adapterType || '').trim()
+        );
+    const runtime = ['scenario', 'miniprogram'].includes(loaded.generation.type)
+      ? runtimes[0]
+      : runtimes.find((item) => item.modelMappings[request.logicalModelKey] === request.remoteModel);
+    if (!runtime) throw new Error('没有与创作模型快照匹配的可用 AI 供应商');
+    const remoteModel = runtime.modelMappings[request.logicalModelKey];
+    if (!remoteModel) throw new Error('供应商未配置所需的图片模型能力');
+    request.remoteModel = remoteModel;
+    const begun = await beginPostgresCreationProviderAttempt({
+      enterpriseId: enterpriseId.toString(), generationId: generationId.toString(), providerConfigId: runtime.id,
+      providerKey: runtime.key, adapterType: runtime.adapterType, remoteModel,
+      requestSnapshot: request,
+      estimatedCost: resolveProviderCostEstimate(
+        runtime, request.logicalModelKey, remoteModel, String(request.resolutionTier || '')
+      ),
+    });
+    if (begun.reused && begun.attempt.remoteTaskId) return begun.generation;
+    const result = await getAiProviderAdapter(runtime.adapterType).submitImage(runtime, { ...request, model: remoteModel });
     await handleProviderResult({ enterpriseId, generationId, attemptId: begun.attempt.id, result });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await releasePostgresCreationGenerationCredits({ enterpriseId: enterpriseId.toString(), generationId: generationId.toString(), errorMessage: message });
     throw error;
   } finally {
-    if (loaded.generation.creationBatchId) {
+    if (loaded?.generation.creationBatchId) {
       await refreshPostgresCreationBatchStatus({ enterpriseId: enterpriseId.toString(), batchId: loaded.generation.creationBatchId.toString() });
     }
   }

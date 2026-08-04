@@ -17,7 +17,7 @@ import {
   type ProFormInstance,
 } from '@ant-design/pro-components';
 import { Alert, Button, Card, Drawer, Flex, Input, Modal, Space, Tag, Typography } from 'antd';
-import { RefreshCw } from 'lucide-react';
+import { Check, Eye, RefreshCw, Undo2, UserPlus, Users, X } from 'lucide-react';
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -327,24 +327,26 @@ export default function PromotionRecordsPage() {
       render: (_, record) => <Flex vertical gap={4}><Typography.Text>{formatDate(getPrimaryDueAt(record))}</Typography.Text>{isOverdue(record) ? <Tag color="error">待处理</Tag> : null}</Flex>,
     },
     {
-      title: '操作', key: 'actions', valueType: 'option', fixed: 'right', width: 210, hideInSearch: true,
+      title: '操作', key: 'actions', valueType: 'option', fixed: 'right', width: 260, hideInSearch: true,
       render: (_, record) => {
         const loading = workingAction === record._id;
+        const detailAction = <Button key="detail" size="small" icon={<Eye size={14} />} onClick={() => openDetail(record)}>详情</Button>;
         if (record.poolStatus === 'in_pool') {
-          return canAssignPromoter
-            ? [<Button key="assign" type="link" loading={loading} onClick={() => setAssigningPoolRecord(record)}>分配地推</Button>, <Button key="detail" type="link" onClick={() => openDetail(record)}>详情</Button>]
-            : canClaimPool ? [<Button key="claim" type="link" loading={loading} onClick={() => handleClaim(record._id)}>认领</Button>, <Button key="detail" type="link" onClick={() => openDetail(record)}>详情</Button>]
-              : [<Button key="detail" type="link" onClick={() => openDetail(record)}>详情</Button>];
+          return <Space size={8}>
+            {canAssignPromoter ? <Button key="assign" size="small" icon={<UserPlus size={14} />} loading={loading} onClick={() => setAssigningPoolRecord(record)}>分配地推</Button> : null}
+            {!canAssignPromoter && canClaimPool ? <Button key="claim" size="small" icon={<Users size={14} />} loading={loading} onClick={() => handleClaim(record._id)}>认领</Button> : null}
+            {detailAction}
+          </Space>;
         }
-        if (record.poolStatus === 'claimed') return [
-          <Button key="detail" type="link" onClick={() => openDetail(record)}>详情</Button>,
-          canAssignPromoter ? <Button key="approve" type="link" loading={loading} onClick={() => handleApproveClaim(record._id)}>通过认领</Button> : null,
-          canAssignPromoter ? <Button key="reject" type="link" danger loading={loading} onClick={() => { setRejectingRecord(record); setRejectReason(''); }}>驳回</Button> : null,
-        ];
-        return [
-          <Button key="detail" type="link" onClick={() => openDetail(record)}>管理</Button>,
-          canAssignPromoter && !['paid', 'closed_lost'].includes(record.businessStage || '') ? <Button key="release" type="link" danger loading={loading} onClick={() => handleReleaseToPool(record._id)}>释放公海</Button> : null,
-        ];
+        if (record.poolStatus === 'claimed') return <Space size={8}>
+          {detailAction}
+          {canAssignPromoter ? <Button key="approve" size="small" icon={<Check size={14} />} loading={loading} onClick={() => handleApproveClaim(record._id)}>通过认领</Button> : null}
+          {canAssignPromoter ? <Button key="reject" size="small" danger icon={<X size={14} />} loading={loading} onClick={() => { setRejectingRecord(record); setRejectReason(''); }}>驳回</Button> : null}
+        </Space>;
+        return <Space size={8}>
+          {detailAction}
+          {canAssignPromoter && !['paid', 'closed_lost'].includes(record.businessStage || '') ? <Button key="release" size="small" danger icon={<Undo2 size={14} />} loading={loading} onClick={() => handleReleaseToPool(record._id)}>释放公海</Button> : null}
+        </Space>;
       },
     },
   ];

@@ -3,6 +3,7 @@ import {
   AiCreditRepository,
   AiCreationModelProfileRepository,
   AiCreationRepository,
+  AiWorkflowRepository,
   type AiCreationModelProfileRecord,
   type AiGenerationRecord,
 } from '@/db/repositories';
@@ -368,7 +369,7 @@ export async function holdPostgresCreationGenerationCredits(input: {
     const creation = new AiCreationRepository(transaction);
     const credits = new AiCreditRepository(transaction);
     const generation = await creation.findGeneration(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
 
@@ -514,7 +515,7 @@ export async function releasePostgresCreationGenerationCredits(input: {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const creation = new AiCreationRepository(transaction);
     const generation = await creation.findGenerationForUpdate(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     return releasePostgresCreationGenerationCreditsInTransaction({
@@ -597,7 +598,7 @@ export async function consumePostgresCreationGenerationCredits(input: {
   const generationId = parsePostgresId(input.generationId, 'generationId');
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const generation = await new AiCreationRepository(transaction).findGenerationForUpdate(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     return consumePostgresCreationGenerationCreditsInTransaction({ transaction, enterpriseId, generation });
@@ -634,7 +635,7 @@ export async function beginPostgresCreationProviderAttempt(input: {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const creation = new AiCreationRepository(transaction);
     const generation = await creation.findGeneration(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     if (generation.status === 'processing' && generation.currentAttemptId) {
@@ -726,7 +727,7 @@ export async function acknowledgePostgresCreationProviderAttempt(input: {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const creation = new AiCreationRepository(transaction);
     const generation = await creation.findGenerationForUpdate(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     if (generation.currentAttemptId !== attemptId || generation.status !== 'processing') {
@@ -877,7 +878,7 @@ export async function recordPostgresCreationProviderPollState(input: {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const creation = new AiCreationRepository(transaction);
     const generation = await creation.findGenerationForUpdate(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     if (generation.currentAttemptId !== attemptId || generation.status !== 'processing') {
@@ -946,7 +947,7 @@ export async function completePostgresCreationProviderAttempt(input: {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const creation = new AiCreationRepository(transaction);
     const generation = await creation.findGenerationForUpdate(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     if (generation.currentAttemptId !== attemptId) {
@@ -1020,7 +1021,7 @@ export async function attachPostgresCreationProviderResultAsset(input: {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const creation = new AiCreationRepository(transaction);
     const generation = await creation.findGenerationForUpdate(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     if (generation.currentAttemptId !== attemptId || generation.status !== 'succeeded') {
@@ -1066,7 +1067,8 @@ export async function attachPostgresCreationProviderResultAsset(input: {
  * Finalizes a persisted provider result after its storage I/O has completed.
  * It binds the tenant-owned output asset and consumes the held price in one
  * short RLS transaction, so a visible PostgreSQL result cannot be left with an
- * unclaimed successful charge. Workflow attachment stays explicit user action.
+ * unclaimed successful charge. Scenario results also advance their workflow
+ * using the same baseline rules as the legacy runtime.
  */
 export async function settlePostgresCreationProviderResult(input: {
   enterpriseId: string;
@@ -1085,7 +1087,7 @@ export async function settlePostgresCreationProviderResult(input: {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const creation = new AiCreationRepository(transaction);
     const generation = await creation.findGenerationForUpdate(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     if (generation.currentAttemptId !== attemptId || generation.status !== 'succeeded') {
@@ -1137,9 +1139,14 @@ export async function settlePostgresCreationProviderResult(input: {
       enterpriseId,
       generation: attachedGeneration,
     });
+    const workflow = attachedGeneration.type === 'scenario'
+      ? await new AiWorkflowRepository(transaction).applySucceededScenarioGeneration(attachedGeneration.id)
+      : null;
     return {
       ...consumed,
+      generation: workflow?.generation ?? consumed.generation,
       asset: updatedAsset,
+      workflow: workflow?.workflow,
       reused: hasAttachedResult && billingStatus === 'consumed',
     };
   });
@@ -1172,7 +1179,7 @@ export async function failPostgresCreationProviderAttempt(input: {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const creation = new AiCreationRepository(transaction);
     const generation = await creation.findGenerationForUpdate(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     if (generation.currentAttemptId !== attemptId) {

@@ -1,5 +1,10 @@
 # Mini Program: Current Module Inventory
 
+> 2026-08-04 PostgreSQL migration update: Mini Program AI upload, task and
+> source routes now operate on tenant-scoped bigint PostgreSQL assets and
+> generations. Historical ObjectId asset URLs remain readable only for legacy
+> records through the compatibility delivery branch.
+
 This inventory describes the native WeChat Mini Program under `miniprogram/`.
 The implementation baseline is the current `app.json`, page handlers, shared
 utilities, and the admin APIs they call.
@@ -416,6 +421,10 @@ utilities, and the admin APIs they call.
 
 ## Formal Surveying
 
+- BLE connection UX: each live BLE ranging entry in the editor offers to search
+  for an authorized distance meter in the current editor when no device is
+  connected. This changes no API, role boundary, wall-graph contract, or audit
+  queue behavior.
 - Page: `pages/surveying-editor/surveying-editor`; all entries use
   `utils/surveyNavigation.js` with `leadId` and/or `floorPlanId`. The entry
   context carries the lead community when available; `GET /api/floorplans/[id]`

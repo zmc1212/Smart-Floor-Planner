@@ -5,6 +5,8 @@
 本文档记录 `miniprogram/` 原生微信小程序的当前实现。事实基线是当前
 `app.json`、页面处理器、共享工具和实际调用的后台 API。
 
+> 2026-08-04 PostgreSQL migration update: Mini Program AI upload, formal-plan source, task lifecycle, and workflow-list routes now use tenant-RLS PostgreSQL bigint assets and generations; historical ObjectId asset URLs remain read-only through the compatibility delivery branch.
+
 ## 状态与运行环境
 
 - `Implemented`（已实现）：页面及其真实数据/操作链路可用。
@@ -133,6 +135,7 @@
 
 ## 正式量房
 
+- BLE 连接体验：编辑器中的每个实时 BLE 测距入口在设备未连接时，都会提示用户是否在当前编辑器中搜索已授权测距仪；不改变 API、角色边界、墙图合同或审计队列行为。
 - 页面：`pages/surveying-editor/surveying-editor`；所有入口由 `utils/surveyNavigation.js` 传递 `leadId` 和/或 `floorPlanId`；入口有线索上下文时同时传递小区名，直接按户型进入时由 `GET /api/floorplans/[id]` 返回关联线索摘要。
 - 数据合同：`FloorPlan.layoutData` 只能是 `{ version: 4, measurementMode: 'surveying', surveyGraph }`，墙图单位为毫米。
 - 视觉基准：以 `design-references/all-pages-ip-v1/03-surveying-editor-idle.png`、`18-surveying-editor-active.png` 和 `19-surveying-state-board.png` 的 iPhone 13 Pro `390x844` 画面为准。交付编辑器采用参考稿的全宽工作区、居中的真实保存状态、四项右侧工具栏，以及聚合撤销/重做、光标放置和 BLE 测距的单一底部控制坞。顶部标题显示关联线索的小区名，缺失时才回退为“未填写小区”。每台本地客户端首次进入空白量房时，显示不会遮罩画布的紧凑三步新手引导，依次定位光标、墙体工具和手输/BLE 测距，并使用从参考稿派生的本地测距小 K 裁图；首次显示后不再重复出现。控制坞的测距会打开既有长度输入并请求真实设备读数，连接样式由 BLE 回调的实时状态驱动。本次仅在已有户型详情读接口增加关联线索摘要，不改变角色边界、墙图合同、审计队列或导出范围。

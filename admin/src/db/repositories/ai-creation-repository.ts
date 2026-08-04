@@ -276,7 +276,7 @@ export class AiCreationRepository {
     enterpriseId?: bigint;
   }) {
     const filters: SQL[] = [
-      inArray(aiGenerations.type, ['free_create', 'scenario']),
+      inArray(aiGenerations.type, ['free_create', 'scenario', 'miniprogram']),
       eq(aiGenerations.status, 'processing'),
       sql`${aiGenerations.deletedAt} is null`,
       sql`exists (
@@ -318,6 +318,44 @@ export class AiCreationRepository {
       .from(aiGenerations)
       .where(and(eq(aiGenerations.workflowId, workflowId), sql`${aiGenerations.deletedAt} is null`))
       .orderBy(desc(aiGenerations.createdAt), desc(aiGenerations.id));
+  }
+
+  async listGenerationsByWorkflowIds(workflowIds: bigint[]) {
+    if (!workflowIds.length) return [];
+    return this.transaction
+      .select()
+      .from(aiGenerations)
+      .where(and(
+        inArray(aiGenerations.workflowId, workflowIds),
+        sql`${aiGenerations.deletedAt} is null`
+      ))
+      .orderBy(desc(aiGenerations.createdAt), desc(aiGenerations.id));
+  }
+
+  async listMiniProgramGenerations(input: { operatorId: bigint; page?: number; limit?: number }) {
+    const page = Math.max(1, input.page ?? 1);
+    const limit = Math.min(50, Math.max(1, input.limit ?? 20));
+    const where = and(
+      eq(aiGenerations.operatorId, input.operatorId),
+      eq(aiGenerations.channel, 'miniprogram'),
+      sql`${aiGenerations.deletedAt} is null`
+    );
+    const [rows, totals] = await Promise.all([
+      this.transaction.select().from(aiGenerations).where(where)
+        .orderBy(desc(aiGenerations.createdAt), desc(aiGenerations.id))
+        .offset((page - 1) * limit).limit(limit),
+      this.transaction.select({ value: count() }).from(aiGenerations).where(where),
+    ]);
+    return { rows, total: Number(totals[0]?.value ?? 0), page, limit };
+  }
+
+  async listMiniProgramGenerationsByFloorPlanIds(floorPlanIds: bigint[]) {
+    if (!floorPlanIds.length) return [];
+    return this.transaction.select().from(aiGenerations).where(and(
+      inArray(aiGenerations.floorPlanId, floorPlanIds),
+      eq(aiGenerations.channel, 'miniprogram'),
+      sql`${aiGenerations.deletedAt} is null`
+    )).orderBy(desc(aiGenerations.createdAt), desc(aiGenerations.id));
   }
 
   createProviderAttempt(input: typeof aiProviderAttempts.$inferInsert) {

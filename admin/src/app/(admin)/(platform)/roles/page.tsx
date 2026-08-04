@@ -70,6 +70,9 @@ export default function RolesPage() {
   }, [canManageRoles, loadRoles]);
 
   const selectRole = (role: RoleConfig) => {
+    if (hasUnsavedChanges && role._id !== selectedRoleId && !window.confirm('当前角色存在未保存的菜单变更。切换角色将放弃这些修改，是否继续？')) {
+      return;
+    }
     selectedRoleIdRef.current = role._id;
     setSelectedRoleId(role._id);
     setMenuKeys(role.menuKeys);
@@ -140,7 +143,12 @@ export default function RolesPage() {
         ]}
       >
         <Flex gap={24} align="start" wrap="wrap">
-          <Card title="系统角色" className="admin-panel-card w-full xl:w-80" styles={{ body: { padding: 12 } }}>
+          <Card
+            title="系统角色"
+            extra={loading ? null : <Tag color="green">{roles.length} 个</Tag>}
+            className="admin-panel-card w-full xl:w-80"
+            styles={{ body: { padding: 12 } }}
+          >
             {loading ? <Skeleton active paragraph={{ rows: 5 }} /> : roles.length ? (
               <Flex vertical gap={4}>
                 {roles.map((role) => {
@@ -186,14 +194,20 @@ export default function RolesPage() {
                   onChange={(values) => setMenuKeys([...new Set([...legacyMenuKeys, ...(values as string[])])])}
                   className="w-full"
                 >
-                  <Flex wrap="wrap" gap={12}>
+                  <div className="admin-permission-grid">
                     {ALL_MENUS.map((menu) => (
-                      <Checkbox key={menu.key} value={menu.key} className="!mx-0 rounded-md border border-border px-3 py-2 hover:bg-muted">
-                        <span className="font-medium">{menu.label}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">{menu.key}</span>
+                      <Checkbox
+                        key={menu.key}
+                        value={menu.key}
+                        className="admin-permission-option"
+                      >
+                        <span className="flex min-w-0 flex-col gap-0.5">
+                          <span className="font-medium">{menu.label}</span>
+                          <span className="truncate text-xs text-muted-foreground">{menu.key}</span>
+                        </span>
                       </Checkbox>
                     ))}
-                  </Flex>
+                  </div>
                 </Checkbox.Group>
 
                 <Flex justify="space-between" align="center" wrap="wrap" gap={12}>

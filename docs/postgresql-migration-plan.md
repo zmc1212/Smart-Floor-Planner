@@ -1,5 +1,49 @@
 # PostgreSQL Migration Plan And Progress
 
+> 2026-08-04 migration record: Mini Program AI asset upload, formal-plan source
+> discovery, task creation/run/retry/detail/history/delete, and the lightweight
+> workflow list now use tenant-RLS PostgreSQL bigint records. `miniprogram`
+> generations reuse the PostgreSQL provider-attempt, media, credit-hold,
+> settlement, and poll-lease lifecycle. Public paths and task DTO fields remain
+> stable. Historical ObjectId assets remain readable only through the existing
+> asset-delivery compatibility branch; no MongoDB business data was imported,
+> deleted, or re-encrypted.
+
+> 2026-08-04 migration record: the Admin AI Designer Agent now reads leads,
+> formal floor plans, and staff through tenant-RLS PostgreSQL repositories, and
+> uses the bigint workflow context for list/detail/create/recommend, confirmed
+> stage submission, and baseline selection. Its tool DTOs and explicit
+> confirmation behavior are preserved; bigint identifiers are also redacted
+> from assistant-facing text. No
+> MongoDB business data was imported, deleted, or re-encrypted. Targeted ESLint
+> and `npm run test:postgresql` passed 39/39.
+
+> 2026-08-04 migration record: bigint `POST /api/ai/workflows/[id]/run-stage`
+> now prepares and submits PostgreSQL `scenario` generations through the
+> existing provider-attempt lifecycle. It preserves the confirmation response,
+> uses a formal v4 floor-plan control image for direction/base-render/perspective
+> stages, stores that image as a tenant-owned PostgreSQL media asset, and releases
+> held credits if input or provider execution fails. Successful scenario
+> settlement advances the workflow and automatically selects the first base or
+> soft-furnishing result, matching the existing workflow rules. `lighting` now
+> records its vision-analysis and prompt-compilation calls in PostgreSQL provider
+> attempts before reusing that lifecycle. The historical ObjectId route remains
+> MongoDB-compatible.
+> No MongoDB business data was imported, deleted, or re-encrypted. Targeted
+> ESLint and `npm run test:postgresql` passed 39/39.
+
+> 2026-08-04 migration record: `GET/POST /api/ai/workflows` and bigint
+> `GET/PATCH /api/ai/workflows/[id]` now use PostgreSQL workflow, lead, and
+> generation records in tenant-RLS transactions. The list preserves its
+> pagination, active/archive, lead, and search DTO semantics; creation and the
+> rename/stage-pointer/baseline mutations preserve the existing `ai-scenarios`
+> enterprise boundary. Historical ObjectId workflow detail and mutation requests
+> retain their MongoDB compatibility branch, but the collection endpoint returns
+> only bigint records and PostgreSQL workflows reject the MongoDB-only
+> `mock-generation` action. This pre-stage-execution limitation is superseded
+> by the 2026-08-04 execution-slice record above. No MongoDB business data was imported, deleted, or
+> re-encrypted. Targeted ESLint and `npm run test:postgresql` passed 39/39.
+
 > 2026-08-04 migration record: GET /api/ai/workflows/[id]/source-image now
 > recognizes bigint workflow IDs and streams their persisted data-URI source image
 > after an RLS-scoped PostgreSQL lookup. The route retains its existing enterprise
@@ -342,7 +386,7 @@ and `cancelled`.
 | Phase 0.2 | Qiniu configuration and encrypted-field verification | complete | Read-only inspection; no secrets logged |
 | Phase 1 | PostgreSQL instance, roles, pooling, migration runner | complete | Codex verification and user database-health/admin-page regression passed |
 | Phase 2 | PostgreSQL schema and Repository foundation | complete | Codex and user acceptance passed on 2026-08-01 |
-| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core and public branding reads, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, AI style presets, AI provider configuration/runtime, AI action/model pricing, AI credit accounts/ledgers, AI chat sessions, PostgreSQL media-asset delivery, the workflow-lead selector, and the free-creation bootstrap read switched; bigint free-creation batch preparation and credit holds are verified internally, while public AI workflow/generation/media writes and execution remain pending |
+| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core and public branding reads, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, AI style presets, AI provider configuration/runtime, AI action/model pricing, AI credit accounts/ledgers, AI chat sessions, PostgreSQL media-asset delivery, free-creation execution, public bigint workflow list/detail/create/state/stage execution, and the Admin AI Designer Agent’s bigint lead/floor-plan/workflow consumers are switched. Mini Program AI task execution remains on its separate MongoDB ObjectId chain. |
 | Phase 4 | RoomiAI files/data and Qiniu configuration import | in progress: awaiting user acceptance | PostgreSQL active Roomi revision, 960 verified local previews, imported Qiniu configuration, and successful probe on 2026-08-01 |
 | Phase 5 | Contract tests and cutover rehearsal | not started | Pending |
 | Phase 6 | Production PostgreSQL cutover | not started | Pending |
@@ -860,11 +904,14 @@ phase. Never advance a phase based only on conversation memory.
 Phase 3 identity/enterprise core plus leads, formal floor plans, measurements,
 devices, their Mini Program aggregates, the package catalog, promotion workflow
 runtime, orders, commissions, enterprise activation, AI style presets, AI
-provider configuration/runtime, AI action/model pricing, AI credit accounts/ledgers, and the
-AI creation model-profile, persistence, and workflow Repository foundations are switched.
-The connected bigint free-creation task, batch, generation, media,
-provider-attempt, and explicit workflow-attachment runtime is now switched as
-well. The next runtime slice should migrate workflow creation and stage execution
-with their bigint lead/plan consumers. Beyond
-the completed Phase 4 whitelist import, do not import production business data
-without an explicit migration slice and acceptance record.
+provider configuration/runtime, AI action/model pricing, AI credit accounts/ledgers,
+AI creation foundations, and public bigint workflow list/create/detail/state
+mutations are switched. The connected bigint free-creation task, batch,
+generation, media, provider-attempt, and explicit workflow-attachment runtime
+is also switched. PostgreSQL workflow-stage execution now covers every scenario
+stage, including `lighting` vision analysis and prompt compilation, plus formal-plan
+control-image/provider-input materialization. The Admin AI Designer Agent is now
+also a bigint lead/plan consumer. The next slice is the Mini Program AI task
+execution chain, which still stores MongoDB ObjectId task identities. Beyond the completed Phase 4
+whitelist import, do not import production business data without an explicit
+migration slice and acceptance record.

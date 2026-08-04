@@ -2,8 +2,8 @@
 
 export const dynamic = 'force-dynamic';
 
-import React, { useEffect, useMemo, useState } from 'react';
-import { Activity, Filter, RefreshCw, Ruler } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, ClipboardList, RefreshCw, Ruler, Search, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,7 +37,6 @@ interface MeasurementItem {
   type: string;
   direction?: string;
   source?: string;
-  metadata?: Record<string, unknown>;
 }
 
 interface NamedOption {
@@ -45,8 +44,6 @@ interface NamedOption {
   displayName?: string;
   username?: string;
   name?: string;
-  role?: string;
-  status?: string;
   code?: string;
 }
 
@@ -70,6 +67,12 @@ const DIRECTION_LABELS: Record<string, string> = {
   right: '右墙',
   bottom: '下墙',
   left: '左墙',
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  ble: '蓝牙测距',
+  manual: '手动录入',
+  system: '系统写入',
 };
 
 function getName(value: NamedOption | string | null | undefined, fallback = '-') {
@@ -106,26 +109,32 @@ export default function MeasurementsPage() {
   const [floorPlans, setFloorPlans] = useState<NamedOption[]>([]);
   const [devices, setDevices] = useState<NamedOption[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [type, setType] = useState('all');
   const [operatorId, setOperatorId] = useState('all');
   const [floorPlanId, setFloorPlanId] = useState('all');
   const [deviceId, setDeviceId] = useState('all');
   const [search, setSearch] = useState('');
+  const measurementRequestRef = useRef<AbortController | null>(null);
 
-  const fetchFilters = async () => {
-    const [staffRes, planRes, deviceRes] = await Promise.allSettled([
-      fetch('/api/staff').then((res) => res.json()),
-      fetch('/api/floorplans').then((res) => res.json()),
-      fetch('/api/devices').then((res) => res.json()),
+  const fetchFilters = useCallback(async () => {
+    const [staffResult, planResult, deviceResult] = await Promise.allSettled([
+      fetch('/api/staff').then((response) => response.json()),
+      fetch('/api/floorplans').then((response) => response.json()),
+      fetch('/api/devices').then((response) => response.json()),
     ]);
 
-    if (staffRes.status === 'fulfilled' && staffRes.value.success) setStaff(staffRes.value.data || []);
-    if (planRes.status === 'fulfilled' && planRes.value.success) setFloorPlans(planRes.value.data || []);
-    if (deviceRes.status === 'fulfilled' && deviceRes.value.success) setDevices(deviceRes.value.data || []);
-  };
+    if (staffResult.status === 'fulfilled' && staffResult.value.success) setStaff(staffResult.value.data || []);
+    if (planResult.status === 'fulfilled' && planResult.value.success) setFloorPlans(planResult.value.data || []);
+    if (deviceResult.status === 'fulfilled' && deviceResult.value.success) setDevices(deviceResult.value.data || []);
+  }, []);
 
-  const fetchMeasurements = async () => {
+  const fetchMeasurements = useCallback(async () => {
+    measurementRequestRef.current?.abort();
+    const controller = new AbortController();
+    measurementRequestRef.current = controller;
     setLoading(true);
+    setLoadError('');
     try {
       const params = new URLSearchParams({ limit: '100' });
       if (type !== 'all') params.set('type', type);
@@ -133,79 +142,83 @@ export default function MeasurementsPage() {
       if (floorPlanId !== 'all') params.set('floorPlanId', floorPlanId);
       if (deviceId !== 'all') params.set('deviceId', deviceId);
 
-      const res = await fetch(`/api/measurements?${params.toString()}`);
-      const data = await res.json();
-      if (data.success) setItems(data.data || []);
+      const response = await fetch(`/api/measurements?${params.toString()}`, { signal: controller.signal });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '量房记录加载失败');
+      if (!controller.signal.aborted) setItems(result.data || []);
     } catch (error) {
-      console.error('Fetch measurements failed:', error);
+      if (!controller.signal.aborted) {
+        setLoadError(error instanceof Error ? error.message : '量房记录加载失败');
+      }
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
-  };
+  }, [deviceId, floorPlanId, operatorId, type]);
 
   useEffect(() => {
-    fetchFilters();
-  }, []);
+    void fetchFilters();
+  }, [fetchFilters]);
 
   useEffect(() => {
-    fetchMeasurements();
-  }, [type, operatorId, floorPlanId, deviceId]);
+    void fetchMeasurements();
+  }, [fetchMeasurements]);
+
+  useEffect(() => () => measurementRequestRef.current?.abort(), []);
 
   const filteredItems = useMemo(() => {
-    const keyword = search.trim().toLowerCase();
+    const keyword = search.trim().toLocaleLowerCase();
     if (!keyword) return items;
 
-    return items.filter((item) => {
-      const haystack = [
-        getName(item.operatorId),
-        getName(item.enterpriseId),
-        getName(item.floorPlanId),
-        item.roomName,
-        item.roomId,
-        item.deviceId,
-        item.type,
-        item.direction,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(keyword);
-    });
+    return items.filter((item) => [
+      getName(item.operatorId),
+      getName(item.enterpriseId),
+      getName(item.floorPlanId),
+      item.roomName,
+      item.roomId,
+      item.deviceId,
+      item.type,
+      item.direction,
+      item.source,
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLocaleLowerCase()
+      .includes(keyword));
   }, [items, search]);
 
-  return (
-    <div className="min-h-screen bg-white">
-      <div className="mx-auto max-w-7xl p-6">
-        <div className="mb-8 flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
-              <Ruler size={28} />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">量房记录</h1>
-              <p className="mt-1 text-sm text-muted-foreground">查看激光测距仪写入的独立测量事件</p>
-            </div>
-          </div>
-          <Button variant="outline" className="h-11 gap-2 rounded-xl" onClick={fetchMeasurements}>
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-            刷新
-          </Button>
-        </div>
+  const hasActiveFilters = Boolean(search) || type !== 'all' || operatorId !== 'all' || floorPlanId !== 'all' || deviceId !== 'all';
 
-        <div className="mb-6 grid gap-3 rounded-2xl border bg-muted/20 p-3 md:grid-cols-5">
-          <div className="relative md:col-span-1">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="搜索记录"
-              className="h-10 rounded-xl border-none bg-white pl-9"
-            />
+  const clearFilters = () => {
+    setSearch('');
+    setType('all');
+    setOperatorId('all');
+    setFloorPlanId('all');
+    setDeviceId('all');
+  };
+
+  return (
+    <div className="admin-page-frame">
+      <header className="flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-foreground">
+            <Ruler className="text-primary" size={20} />
+            <h1 className="text-2xl font-semibold">量房记录</h1>
+          </div>
+          <p className="text-sm text-muted-foreground">查看正式户型的独立测量审计事件，支持按类型、人员、户型和设备筛选。</p>
+        </div>
+        <Button aria-label="刷新量房记录" disabled={loading} size="icon" title="刷新量房记录" variant="outline" onClick={() => void fetchMeasurements()}>
+          <RefreshCw className={loading ? 'animate-spin' : ''} size={16} />
+        </Button>
+      </header>
+
+      <section className="overflow-hidden rounded-lg border border-border bg-card" aria-label="量房记录筛选与列表">
+        <div className="grid gap-3 border-b border-border bg-muted/30 p-4 md:grid-cols-2 xl:grid-cols-[minmax(220px,1.4fr)_repeat(4,minmax(150px,1fr))]">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+            <Input aria-label="搜索量房记录" className="pl-9" placeholder="搜索人员、户型、房间或设备" value={search} onChange={(event) => setSearch(event.target.value)} />
           </div>
           <Select value={type} onValueChange={setType}>
-            <SelectTrigger className="h-10 rounded-xl border-none bg-white">
-              <SelectValue placeholder="测量类型" />
-            </SelectTrigger>
+            <SelectTrigger aria-label="测量类型"><SelectValue placeholder="测量类型" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部类型</SelectItem>
               <SelectItem value="length">边长</SelectItem>
@@ -216,95 +229,102 @@ export default function MeasurementsPage() {
             </SelectContent>
           </Select>
           <Select value={operatorId} onValueChange={setOperatorId}>
-            <SelectTrigger className="h-10 rounded-xl border-none bg-white">
-              <SelectValue placeholder="员工" />
-            </SelectTrigger>
+            <SelectTrigger aria-label="操作员工"><SelectValue placeholder="操作员工" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部员工</SelectItem>
-              {staff.map((member) => (
-                <SelectItem key={member._id} value={String(member._id)}>
-                  {member.displayName || member.username}
-                </SelectItem>
-              ))}
+              {staff.map((member) => <SelectItem key={member._id} value={String(member._id)}>{member.displayName || member.username}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={floorPlanId} onValueChange={setFloorPlanId}>
-            <SelectTrigger className="h-10 rounded-xl border-none bg-white">
-              <SelectValue placeholder="户型" />
-            </SelectTrigger>
+            <SelectTrigger aria-label="正式户型"><SelectValue placeholder="正式户型" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部户型</SelectItem>
-              {floorPlans.map((plan) => (
-                <SelectItem key={plan._id} value={String(plan._id)}>
-                  {plan.name || '未命名户型'}
-                </SelectItem>
-              ))}
+              {floorPlans.map((plan) => <SelectItem key={plan._id} value={String(plan._id)}>{plan.name || '未命名户型'}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={deviceId} onValueChange={setDeviceId}>
-            <SelectTrigger className="h-10 rounded-xl border-none bg-white">
-              <SelectValue placeholder="设备" />
-            </SelectTrigger>
+            <SelectTrigger aria-label="测距设备"><SelectValue placeholder="测距设备" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部设备</SelectItem>
-              {devices.map((device) => (
-                <SelectItem key={device._id} value={device.code || device._id}>
-                  {device.code || device.name || device._id}
-                </SelectItem>
-              ))}
+              {devices.map((device) => <SelectItem key={device._id} value={device.code || device._id}>{device.code || device.name || device._id}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
 
-        <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-          <Table>
-            <TableHeader className="bg-muted/30">
-              <TableRow>
-                <TableHead className="px-5 py-4">时间</TableHead>
-                <TableHead className="px-5 py-4">操作人</TableHead>
-                <TableHead className="px-5 py-4">企业</TableHead>
-                <TableHead className="px-5 py-4">设备</TableHead>
-                <TableHead className="px-5 py-4">户型</TableHead>
-                <TableHead className="px-5 py-4">房间</TableHead>
-                <TableHead className="px-5 py-4">类型</TableHead>
-                <TableHead className="px-5 py-4">方向</TableHead>
-                <TableHead className="px-5 py-4 text-right">数值</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredItems.map((item) => (
-                <TableRow key={item._id} className="hover:bg-muted/10">
-                  <TableCell className="px-5 py-4 text-sm text-muted-foreground">{formatTime(item.measuredAt)}</TableCell>
-                  <TableCell className="px-5 py-4 font-medium">{getName(item.operatorId)}</TableCell>
-                  <TableCell className="px-5 py-4 text-sm">{getName(item.enterpriseId)}</TableCell>
-                  <TableCell className="px-5 py-4 font-mono text-xs">{item.deviceId || '-'}</TableCell>
-                  <TableCell className="px-5 py-4 text-sm">{getName(item.floorPlanId)}</TableCell>
-                  <TableCell className="px-5 py-4 text-sm">{item.roomName || item.roomId || '-'}</TableCell>
-                  <TableCell className="px-5 py-4">
-                    <Badge className="border-none bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
-                      {TYPE_LABELS[item.type] || item.type}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-sm text-muted-foreground">
-                    {formatDirection(item.direction)}
-                  </TableCell>
-                  <TableCell className="px-5 py-4 text-right font-mono font-semibold">{formatValue(item)}</TableCell>
-                </TableRow>
-              ))}
-              {filteredItems.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={9} className="h-52 text-center text-muted-foreground">
-                    <div className="flex flex-col items-center gap-2">
-                      <Activity size={30} className="opacity-30" />
-                      <p>{loading ? '正在加载量房记录...' : '暂无量房记录'}</p>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+        <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+          <span className="text-muted-foreground">最多显示符合条件的 100 条审计记录</span>
+          <div className="flex items-center gap-2">
+            {hasActiveFilters ? (
+              <Button aria-label="清除量房记录筛选" size="icon" title="清除筛选" variant="ghost" onClick={clearFilters}>
+                <X size={16} />
+              </Button>
+            ) : null}
+            <Badge variant="secondary">{filteredItems.length} 条</Badge>
+          </div>
         </div>
-      </div>
+
+        {loadError ? (
+          <div className="flex min-h-56 flex-col items-center justify-center gap-3 border-t border-border px-6 text-center">
+            <AlertTriangle className="text-destructive" size={24} />
+            <div>
+              <p className="font-medium">无法加载量房记录</p>
+              <p className="mt-1 text-sm text-muted-foreground">{loadError}</p>
+            </div>
+            <Button variant="outline" onClick={() => void fetchMeasurements()}>重试</Button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto border-t border-border">
+            <Table>
+              <TableHeader className="bg-muted/20">
+                <TableRow>
+                  <TableHead>时间</TableHead>
+                  <TableHead>操作人</TableHead>
+                  <TableHead>企业</TableHead>
+                  <TableHead>设备</TableHead>
+                  <TableHead>户型 / 房间</TableHead>
+                  <TableHead>测量类型</TableHead>
+                  <TableHead>来源</TableHead>
+                  <TableHead>方向</TableHead>
+                  <TableHead className="text-right">数值</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredItems.map((item) => (
+                  <TableRow key={item._id}>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">{formatTime(item.measuredAt)}</TableCell>
+                    <TableCell className="font-medium">{getName(item.operatorId)}</TableCell>
+                    <TableCell>{getName(item.enterpriseId)}</TableCell>
+                    <TableCell className="font-mono text-xs">{item.deviceId || '-'}</TableCell>
+                    <TableCell>
+                      <div className="min-w-36 font-medium">{getName(item.floorPlanId)}</div>
+                      <div className="mt-0.5 text-xs text-muted-foreground">{item.roomName || item.roomId || '未归属房间'}</div>
+                    </TableCell>
+                    <TableCell><Badge variant="outline">{TYPE_LABELS[item.type] || item.type}</Badge></TableCell>
+                    <TableCell><Badge variant={item.source === 'ble' ? 'secondary' : 'outline'}>{SOURCE_LABELS[item.source || ''] || item.source || '-'}</Badge></TableCell>
+                    <TableCell className="text-muted-foreground">{formatDirection(item.direction)}</TableCell>
+                    <TableCell className="text-right font-mono font-semibold">{formatValue(item)}</TableCell>
+                  </TableRow>
+                ))}
+                {!loading && filteredItems.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="h-56 text-center">
+                      <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                        <ClipboardList size={28} />
+                        <p>暂无符合条件的量房记录</p>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+                {loading && filteredItems.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={9} className="h-56 text-center text-muted-foreground">正在加载量房记录...</TableCell>
+                  </TableRow>
+                ) : null}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
