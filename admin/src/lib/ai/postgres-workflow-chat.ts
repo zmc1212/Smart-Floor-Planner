@@ -27,6 +27,7 @@ export async function executePostgresWorkflowChat(input: {
   logicalModelKey: WorkflowChatModelKey;
   messages: AiChatMessage[];
   temperature?: number;
+  maxTokens?: number;
   metadata?: Record<string, unknown>;
 }) {
   const capability = capabilityForLogicalModel(input.logicalModelKey);
@@ -61,6 +62,7 @@ export async function executePostgresWorkflowChat(input: {
         model: remoteModel,
         messages: input.messages,
         temperature: input.temperature,
+        maxTokens: input.maxTokens,
       });
       await withTenantTransaction(input.enterpriseId, (transaction) =>
         new AiCreationRepository(transaction).updateProviderAttempt(attempt.id, {

@@ -1,0 +1,2 @@
+CREATE INDEX "ai_generations_enterprise_created_idx" ON "app"."ai_generations" USING btree ("enterprise_id","created_at","id");--> statement-breakpoint
+CREATE INDEX "ai_generations_enterprise_type_created_idx" ON "app"."ai_generations" USING btree ("enterprise_id","type","created_at","id");

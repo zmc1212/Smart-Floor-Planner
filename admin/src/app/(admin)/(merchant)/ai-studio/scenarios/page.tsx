@@ -10,8 +10,11 @@ import {
   Clock3,
   Image as ImageIcon,
   Loader2,
+  Map,
+  Palette,
   Plus,
   Search,
+  Sofa,
   Sparkles,
   Upload,
   Users,
@@ -19,24 +22,10 @@ import {
 } from 'lucide-react';
 import { PhotoProvider, PhotoView } from 'react-photo-view';
 import 'react-photo-view/dist/react-photo-view.css';
+import { Drawer, Flex, Modal, Steps, Typography } from 'antd';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { notify } from '@/components/ui/operation-feedback';
 import { useFetch } from '@/hooks/useFetch';
@@ -56,6 +45,7 @@ import { AiDesignerLegacyPage } from '../designer/page';
 import { AiFloorPlanLegacyPage } from '../floor-plan/page';
 import { AiFurnishingLegacyPage } from '../furnishing/page';
 import { AiSoftFurnishingLegacyPage } from '../soft-furnishing/page';
+import { AiToolFrame } from '@/components/ai-studio/ai-tool-frame';
 
 type WorkbenchView = 'workflows' | 'quick' | 'assistant';
 type WorkflowFilter = 'all' | 'not_started' | 'review' | 'processing' | 'failed' | 'ready';
@@ -140,9 +130,9 @@ const FILTERS: Array<{ key: WorkflowFilter; label: string }> = [
 ];
 
 const QUICK_TOOLS = [
-  { key: 'floor_plan_style', label: '户型表现', description: '彩平、CAD、3D 与手绘户型表现。' },
-  { key: 'furnishing_render', label: '快速风格设计', description: '从正式户型快速生成装修风格图。' },
-  { key: 'soft_furnishing_render', label: '快速软装改造', description: '上传现场图，快速优化软装表达。' },
+  { key: 'floor_plan_style', label: '户型表现', description: '彩平、CAD、3D 与手绘户型表现。', icon: Map },
+  { key: 'furnishing_render', label: '快速风格设计', description: '从正式户型快速生成装修风格图。', icon: Palette },
+  { key: 'soft_furnishing_render', label: '快速软装改造', description: '上传现场图，快速优化软装表达。', icon: Sofa },
 ] as const;
 
 function formatTime(value?: string) {
@@ -435,23 +425,25 @@ function AiScenariosPageContent() {
       );
     }
     return (
-      <main className="mx-auto max-w-[1480px] space-y-8 px-6 py-8">
-        <WorkbenchTabs view={view} onChange={setWorkbenchView} />
-        <div>
-          <h1 className="text-3xl font-black tracking-tight">AI 快速工具</h1>
-          <p className="mt-2 text-sm text-muted-foreground">不需要客户方案时，可以直接生成一次性沟通图。</p>
+      <AiToolFrame title="AI 快速工具" description="针对单次沟通任务直接生成图像，不会创建或修改客户方案。" icon={WandSparkles}>
+        <div className="mb-7"><WorkbenchTabs view={view} onChange={setWorkbenchView} /></div>
+        <div className="grid divide-y divide-border rounded-lg border bg-card md:grid-cols-3 md:divide-x md:divide-y-0">
+          {QUICK_TOOLS.map((item, index) => {
+            const Icon = item.icon;
+            return (
+              <button key={item.key} type="button" onClick={() => setQuickAction(item.key)} className="group flex min-h-56 flex-col p-5 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
+                <div className="flex items-center justify-between">
+                  <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary"><Icon size={18} /></div>
+                  <span className="text-xs font-medium tabular-nums text-muted-foreground">0{index + 1}</span>
+                </div>
+                <div className="mt-8 text-lg font-semibold">{item.label}</div>
+                <div className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</div>
+                <div className="mt-auto flex items-center gap-1 pt-6 text-sm font-medium text-primary">打开工具 <ArrowRight size={15} /></div>
+              </button>
+            );
+          })}
         </div>
-        <div className="grid gap-5 md:grid-cols-3">
-          {QUICK_TOOLS.map((item) => (
-            <button key={item.key} type="button" onClick={() => setQuickAction(item.key)} className="rounded-3xl border bg-card p-6 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700"><WandSparkles size={20} /></div>
-              <div className="mt-5 text-lg font-black">{item.label}</div>
-              <div className="mt-2 text-sm leading-6 text-muted-foreground">{item.description}</div>
-              <div className="mt-5 flex items-center text-sm font-bold text-emerald-700">打开工具 <ArrowRight size={15} className="ml-2" /></div>
-            </button>
-          ))}
-        </div>
-      </main>
+      </AiToolFrame>
     );
   }
 
@@ -651,15 +643,24 @@ function AiScenariosPageContent() {
           </div>
         )}
 
-        <Dialog open={wizardOpen} onOpenChange={setWizardOpen}>
-          <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto rounded-3xl">
-            <DialogHeader>
-              <DialogTitle>开始新设计</DialogTitle>
-              <DialogDescription>第 {wizardStep} / 3 步 · {wizardStep === 1 ? '选择客户' : wizardStep === 2 ? '准备素材' : '选择想要的成果'}</DialogDescription>
-            </DialogHeader>
-            <div className="grid grid-cols-3 gap-2">
-              {[1, 2, 3].map((step) => <div key={step} className={cn('h-1.5 rounded-full', step <= wizardStep ? 'bg-emerald-500' : 'bg-muted')} />)}
+        <Modal
+          open={wizardOpen}
+          title="开始新设计"
+          width={760}
+          destroyOnHidden
+          footer={null}
+          onCancel={() => setWizardOpen(false)}
+        >
+          <div className="max-h-[72vh] overflow-y-auto pr-1">
+            <div className="mb-5">
+              <Typography.Text type="secondary">第 {wizardStep} / 3 步 · {wizardStep === 1 ? '选择客户' : wizardStep === 2 ? '准备素材' : '选择想要的成果'}</Typography.Text>
             </div>
+            <Steps
+              className="mb-6"
+              current={wizardStep - 1}
+              size="small"
+              items={[{ title: '选择客户' }, { title: '准备素材' }, { title: '选择成果' }]}
+            />
 
             {wizardStep === 1 ? (
               <div className="space-y-3">
@@ -709,21 +710,27 @@ function AiScenariosPageContent() {
               </div>
             ) : null}
 
-            <DialogFooter className="gap-2 sm:space-x-0">
+            <Flex justify={wizardStep > 1 ? 'space-between' : 'flex-end'} align="center" gap={8} wrap="wrap" className="mt-6">
               {wizardStep > 1 ? <Button variant="outline" className="rounded-2xl" onClick={() => setWizardStep((step) => step - 1)}>上一步</Button> : null}
               {wizardStep < 3 ? <Button className="rounded-2xl" disabled={wizardStep === 1 ? !wizardLeadId : sourceMode === 'floor_plan' ? !sourceFloorPlanId : !sourceImage} onClick={() => setWizardStep((step) => step + 1)}>下一步</Button> : <Button className="rounded-2xl bg-zinc-950 text-white" disabled={creating || scenarioPrice > (capabilities?.account.availableBalance || 0)} onClick={createAndRun}>{creating ? <Loader2 size={16} className="mr-2 animate-spin" /> : <Sparkles size={16} className="mr-2" />}创建并开始 · {scenarioPrice} 点</Button>}
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            </Flex>
+          </div>
+        </Modal>
 
-        <Sheet open={timelineOpen} onOpenChange={setTimelineOpen}>
-          <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
-            <SheetHeader><SheetTitle>方案时间线</SheetTitle><SheetDescription>查看后台和小程序产生的全部版本、失败原因和当前定稿。</SheetDescription></SheetHeader>
+        <Drawer
+          open={timelineOpen}
+          title="方案时间线"
+          width={520}
+          destroyOnHidden
+          onClose={() => setTimelineOpen(false)}
+        >
+          <Typography.Paragraph type="secondary" className="!mt-0">
+            查看后台和小程序产生的全部版本、失败原因和当前定稿。
+          </Typography.Paragraph>
             <div className="mt-6 space-y-4">
               {generations.map((generation) => <div key={generation.id} className="rounded-2xl border p-4"><div className="flex items-start justify-between gap-3"><div><div className="font-bold">{generation.stageLabel || getWorkflowStageDefinition(generation.stageKey)?.name || '未命名步骤'}</div><div className="mt-1 text-xs text-muted-foreground">{formatTime(generation.createdAt)} · {generation.channel === 'miniprogram' ? '小程序' : '后台'}</div></div><StateBadge state={generation.status === 'failed' ? 'failed' : ['created', 'pending', 'processing'].includes(generation.status) ? 'processing' : generation.isSelectedBaseline ? 'ready' : 'review'} /></div>{generation.output?.imageUrl ? <PhotoView src={generation.output.imageUrl}><img src={generation.output.imageUrl} alt="版本成果" className="mt-4 h-52 w-full cursor-zoom-in rounded-2xl object-cover" /></PhotoView> : <div className="mt-4 rounded-2xl bg-muted p-5 text-sm text-muted-foreground">{generation.errorMessage || '正在等待生成结果'}</div>}</div>)}
             </div>
-          </SheetContent>
-        </Sheet>
+        </Drawer>
         {workflowRunner.cropDialog}
       </main>
     </PhotoProvider>

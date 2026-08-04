@@ -1,5 +1,25 @@
 # PostgreSQL 迁移计划与进度
 
+> 2026-08-04 迁移记录：两步式后台 `POST /api/ai/generate` 与 `POST /api/ai/render`
+> 现使用租户 RLS bigint `floor_plan_style`、`furnishing_render` 及旧版
+> `soft_furnishing_render` 记录，并保留既有提示词优先 DTO。渲染输入会保存为 PostgreSQL
+> 媒体资产，供应商提交、轮询、结果媒体、幂等积分结算和重试计费均复用 PostgreSQL 运行时。
+> 供应商及存储 I/O 保持在事务外。未导入、删除或重新加密 MongoDB 业务数据。定向 ESLint
+> 与 `npm run test:postgresql` 均通过（42/42）。
+
+> 2026-08-04 迁移记录：`POST /api/ai/soft-furnishing/render` 现会持久化租户所属的
+> PostgreSQL 输入媒体资产和 bigint `soft_furnishing_render` 生成记录。它复用
+> PostgreSQL 供应商尝试、轮询、结果媒体和幂等积分生命周期，并保留既有 DTO 与
+> `ai-scenarios` 企业权限边界。供应商和存储 I/O 保持在事务外。未导入、删除或重新加密
+> MongoDB 业务数据。定向 ESLint 与 `npm run test:postgresql` 均通过（41/41）。
+
+> 2026-08-04 迁移记录：`POST /api/ai/advice` 与
+> `POST /api/ai/creation/prompt-assist` 现会创建租户 RLS 范围的 PostgreSQL bigint
+> `advice` 生成记录。既有响应 DTO 与 `ai-scenarios` 企业权限边界保持不变。聊天 I/O
+> 位于短数据库事务外，PostgreSQL 供应商尝试记录和幂等的积分冻结、扣除、释放记录完整审计
+> 其生命周期。未导入、删除或重新加密 MongoDB 业务数据。定向 ESLint 与
+> `npm run test:postgresql` 均通过（40/40）。
+
 > 2026-08-04 迁移记录：后台 AI 设计助手现通过租户 RLS PostgreSQL Repository 读取线索、
 > 正式户型和员工，并使用 bigint 工作流上下文完成方案列表、详情、创建、下一步推荐、经确认的
 > 阶段提交和定稿选择。工具 DTO 与显式确认行为保持不变，且会从面向助手的文本中脱敏 bigint
@@ -314,7 +334,7 @@ RoomiAI 导入使用 [admin/scripts/import-roomi-prompts.ts](../admin/scripts/im
 | Phase 0.2 | 七牛配置、激活指针和加密字段核验 | 已完成 | 只读配置检查，未输出密钥 |
 | Phase 1 | PostgreSQL 实例、角色、连接池和 migration runner | 已完成 | Codex 自动验收与用户数据库健康/后台页面回归均通过 |
 | Phase 2 | PostgreSQL 目标 schema 和 Repository 基础层 | 已完成 | Codex 与用户验收已于 2026-08-01 通过 |
-| Phase 3 | API/业务代码从 Mongoose 切换到 PostgreSQL | 进行中 | 身份/企业核心、线索、正式户型、测量/设备、提示词库读取、角色、全局报备/媒体配置、套餐目录、报备记录、工作流通知、工作台、提醒运行时、订单/提成、企业激活、AI 风格预设、AI 供应商配置/运行时、AI 动作/模型价格、AI 点数账户/流水、AI 对话会话、PostgreSQL 媒体资产交付、自由创作执行、公开 bigint 工作流列表/详情/创建/状态/阶段执行，以及后台 AI 设计助手的 bigint 线索/户型/工作流消费者均已切换。小程序 AI 任务执行仍在独立 MongoDB ObjectId 链上。 |
+| Phase 3 | API/业务代码从 Mongoose 切换到 PostgreSQL | 进行中 | 身份/企业核心、线索、正式户型、测量/设备、提示词库读取、角色、全局报备/媒体配置、套餐目录、报备记录、工作流通知、工作台、提醒运行时、订单/提成、企业激活、AI 风格预设、AI 供应商配置/运行时、AI 动作/模型价格、AI 点数账户/流水、AI 对话会话、PostgreSQL 媒体资产交付、自由创作执行、小程序 AI 任务执行、公开 bigint 工作流列表/详情/创建/状态/阶段执行、同步建议/提示词优化生成、直连软装渲染、两步式后台 `generate`/`render`，以及后台 AI 设计助手的 bigint 线索/户型/工作流消费者均已切换。MongoDB 专用 `mock-generation` 等价实现仍是下一项 AI 执行兼容缺口。 |
 | Phase 4 | RoomiAI snapshot、预览资源和七牛配置导入 | 进行中：待用户手动验收 | 2026-08-01 已写入 PostgreSQL 活动 Roomi 版本、960 个已校验本地预览、七牛配置并完成探测 |
 | Phase 5 | 管理端/小程序合同测试与切换演练 | 未开始 | 待补充测试报告和恢复演练 |
 | Phase 6 | 正式切换到 PostgreSQL | 未开始 | 待记录切换时间、版本和回滚窗口 |
@@ -808,8 +828,8 @@ Phase 4 验收状态：
 
 ## 8. 当前下一步
 
-> 2026-08-04 更新：公开 bigint 工作流列表、创建、详情、状态变更及全部场景阶段执行（含 `lighting` 视觉分析/提示词编译）以及后台 AI 设计助手的 bigint 线索/户型消费者均已切换 PostgreSQL；下一批处理仍保存 MongoDB ObjectId 任务标识的小程序 AI 任务执行链。
+> 2026-08-04 更新：公开 bigint 工作流列表、创建、详情、状态变更及全部场景阶段执行（含 `lighting` 视觉分析/提示词编译）、后台 AI 设计助手的 bigint 线索/户型消费者、小程序 AI 任务执行链、同步建议/提示词优化生成、直连软装渲染以及两步式后台 `generate`/`render` 均已切换 PostgreSQL；下一项 AI 执行兼容缺口为 MongoDB 专用 `mock-generation` 等价实现。
 
 Phase 3 身份/企业核心、线索、正式户型、测量、设备、小程序聚合、套餐目录、报备
-工作流运行时、订单/提成、企业激活、AI 风格预设、AI 供应商配置/运行时、AI 动作/模型价格及 AI 点数账户/流水、自由创作模型档案，以及公开 bigint 工作流列表/创建/详情/状态变更和全部场景阶段执行均已完成。关联的 bigint 自由创作任务、批次、生成、媒体、供应商尝试和显式工作流归入运行时也已切换；后台 AI 设计助手也已成为 bigint 线索/户型消费者。下一批处理仍保存 MongoDB ObjectId 任务标识的小程序 AI 任务执行链。除已完成的
+工作流运行时、订单/提成、企业激活、AI 风格预设、AI 供应商配置/运行时、AI 动作/模型价格及 AI 点数账户/流水、自由创作模型档案，以及公开 bigint 工作流列表/创建/详情/状态变更和全部场景阶段执行均已完成。关联的 bigint 自由创作任务、批次、生成、媒体、供应商尝试和显式工作流归入运行时也已切换；后台 AI 设计助手已成为 bigint 线索/户型消费者，小程序 AI 任务执行、同步建议/提示词优化生成、直连软装渲染及两步式后台 `generate`/`render` 也已切换。下一项 AI 执行兼容缺口为 MongoDB 专用 `mock-generation` 等价实现。除已完成的
 Phase 4 白名单导入外，没有显式迁移切片与验收记录时不得导入生产业务数据。

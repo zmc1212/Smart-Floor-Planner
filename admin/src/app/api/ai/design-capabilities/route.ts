@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { ensureAiCreditAccount, listAiCreditPrices, serializeAiCreditAccount } from '@/lib/ai/credits';
 import { listProviderRuntimes } from '@/lib/ai/provider-registry';
@@ -10,7 +9,6 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
-    await dbConnect();
     return await withTenantRoute(request, { requireEnterprise: true }, async (context) => {
       const enterpriseId = context.enterpriseId || '';
       const [account, prices, editRuntimes, generateRuntimes, policy] = await Promise.all([

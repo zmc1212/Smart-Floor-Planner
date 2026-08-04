@@ -214,15 +214,15 @@ export function AiFurnishingLegacyPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white text-[#171717] font-sans">
-      <main className="mx-auto max-w-7xl px-6 py-8">
+    <div className="min-h-full bg-background text-foreground">
+      <main className="mx-auto max-w-[1480px] px-5 py-6 sm:px-7 sm:py-8">
         <div className="mb-8">
           <div className="mb-2 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-orange-400 to-pink-500 text-white">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Palette size={20} />
             </div>
-            <h1 className="text-[28px] font-bold tracking-tight">AI 风格设计</h1>
-            <Badge variant="secondary" className="border-none bg-orange-50 text-orange-700">
+            <h1 className="text-2xl font-semibold tracking-tight">AI 风格设计</h1>
+            <Badge variant="outline" className="text-muted-foreground">
               Beta
             </Badge>
           </div>
@@ -265,14 +265,14 @@ export function AiFurnishingLegacyPage() {
               </SelectContent>
             </Select>
 
-            <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-[28px] border-2 border-dashed border-muted bg-muted/10">
+            <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg border border-dashed bg-muted/30">
               {isGenerating ? (
                 <div className="flex flex-col items-center gap-4">
                   <div className="relative">
-                    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-orange-100">
-                      <Palette className="animate-spin text-orange-500" size={32} />
+                    <div className="flex size-20 items-center justify-center rounded-full bg-primary/10">
+                      <Palette className="animate-spin text-primary" size={32} />
                     </div>
-                    <div className="absolute inset-0 animate-ping rounded-full border-2 border-orange-300" />
+                    <div className="absolute inset-0 animate-ping rounded-full border-2 border-primary/30" />
                   </div>
                   <div className="text-center">
                     <p className="text-lg font-bold">{LOADING_STAGES[loadingStage]}</p>
@@ -318,7 +318,7 @@ export function AiFurnishingLegacyPage() {
                       className={cn(
                         'relative rounded-2xl border-2 p-4 text-left transition-all',
                         selectedStyle === preset.key
-                          ? 'border-orange-500 bg-orange-50/60 shadow-lg shadow-orange-100'
+                          ? 'border-primary bg-primary/5 shadow-sm'
                           : 'border-muted hover:border-muted-foreground/30 hover:shadow-sm'
                       )}
                     >
@@ -330,12 +330,12 @@ export function AiFurnishingLegacyPage() {
                       >
                         {preset.icon || 'AI'}
                       </div>
-                      <div className={cn('text-sm font-bold', selectedStyle === preset.key ? 'text-orange-700' : 'text-foreground')}>
+                      <div className={cn('text-sm font-bold', selectedStyle === preset.key ? 'text-primary' : 'text-foreground')}>
                         {preset.name}
                       </div>
                       <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{preset.description}</div>
                       {selectedStyle === preset.key && (
-                        <div className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-orange-500">
+                        <div className="absolute -right-1.5 -top-1.5 flex size-5 items-center justify-center rounded-full bg-primary">
                           <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                           </svg>
@@ -348,7 +348,7 @@ export function AiFurnishingLegacyPage() {
             </div>
 
             <Button
-              className="h-14 w-full rounded-2xl bg-gradient-to-r from-orange-500 to-pink-500 text-base font-bold text-white shadow-xl shadow-orange-200 transition-all hover:from-orange-600 hover:to-pink-600 disabled:opacity-50"
+              className="h-12 w-full rounded-lg text-base font-semibold shadow-sm disabled:opacity-50"
               disabled={isGenerating || !selectedPlanId || presets.length === 0}
               onClick={handleGenerate}
             >

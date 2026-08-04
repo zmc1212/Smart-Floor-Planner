@@ -1,5 +1,54 @@
 # Admin System: Current Module Inventory
 
+> 2026-08-04 PostgreSQL migration update: the two-step direct Admin routes
+> `POST /api/ai/generate` and `POST /api/ai/render` now retain their existing
+> prompt-first DTO while using tenant-RLS bigint `floor_plan_style`,
+> `furnishing_render`, and legacy `soft_furnishing_render` generation records.
+> Rendering materializes the explicit or inherited source as a PostgreSQL media
+> asset, then reuses provider attempts, polling, result-media delivery, and
+> idempotent credit settlement. A retry opens a new billed lifecycle. The
+> `ai-scenarios` enterprise boundary and provider/storage I/O outside short
+> transactions are unchanged; no MongoDB business data was imported, deleted,
+> or re-encrypted. Targeted ESLint and `npm run test:postgresql` passed 42/42.
+
+> 2026-08-04 PostgreSQL migration update: `POST /api/ai/soft-furnishing/render`
+> now stores its source image as a tenant-owned PostgreSQL media asset and runs
+> a bigint `soft_furnishing_render` generation through the existing provider
+> attempt, poll, result-media, and idempotent credit-settlement lifecycle. Its
+> `{ id, status, imageUrl }` DTO and `ai-scenarios` enterprise boundary are
+> unchanged; provider and storage I/O remain outside database transactions. No
+> MongoDB business data was imported, deleted, or re-encrypted. Targeted ESLint
+> and `npm run test:postgresql` passed 41/41.
+
+> 2026-08-04 PostgreSQL migration update: `POST /api/ai/advice` and
+> `POST /api/ai/creation/prompt-assist` now create tenant-RLS PostgreSQL bigint
+> `advice` generations. They retain their existing response DTOs and the
+> `ai-scenarios` enterprise boundary while using the PostgreSQL provider-attempt
+> audit plus idempotent credit hold, consume, and release lifecycle. Provider
+> chat I/O remains outside short database transactions; legacy MongoDB ObjectId
+> advice history was neither imported, deleted, nor re-encrypted. Targeted ESLint
+> and `npm run test:postgresql` passed 40/40.
+
+> 2026-08-04 PostgreSQL migration update: `GET /api/ai/quota` and
+> `GET /api/ai/design-capabilities` now run without a MongoDB connection. They
+> derive the unchanged credit, price, policy, provider-readiness, and action DTOs
+> from PostgreSQL repositories and provider registry data under the existing
+> tenant/`ai-scenarios` boundary. Neither route has a MongoDB/ObjectId fallback.
+
+> 2026-08-04 PostgreSQL migration update: `GET /api/ai/history` now reads
+> only PostgreSQL bigint generations through `AiCreationRepository` and a
+> tenant-RLS transaction. Its pagination DTO remains compatible, and legacy
+> display type filters map to PostgreSQL scenario stages. Migration `0012`
+> adds tenant/time and tenant/type/time indexes for those reads. This route has
+> no MongoDB or ObjectId fallback; historical MongoDB generations are not read.
+
+> 2026-08-04 PostgreSQL migration update: bigint `GET /api/ai/status/[id]`
+> now refreshes due provider polls and reads the generation state through a
+> tenant-RLS PostgreSQL transaction, preserving the established status DTO and
+> PostgreSQL generation-image delivery URL. Historical ObjectId status requests
+> retain the MongoDB compatibility branch, which is connected only after the
+> bigint check. No MongoDB business data was imported, deleted, or re-encrypted.
+
 > 2026-08-04 PostgreSQL migration update: the Admin-hosted Mini Program AI
 > APIs now persist bigint task, media, provider-attempt, and credit lifecycle
 > records through tenant-RLS PostgreSQL repositories; legacy ObjectId media
@@ -438,13 +487,16 @@ permission, or workflow changes.
   WeCom configuration, group sharing, and employee WeCom identifiers are
   deprecated and intentionally removed from runtime APIs and UI. Historical
   MongoDB fields and the PostgreSQL `admin_users.wecom_user_id` column are
-  retained without migration or deletion. The `/leads` administration view uses
-  the shared shadcn page frame, status tabs, responsive table, and recoverable
-  loading/error states. List refreshes and detail reads cancel superseded
-  requests, so a stale response cannot overwrite a newer filter or selection;
-  its API contract, tenant scope, and role boundaries are unchanged. Its row
-  actions now use the shared Ant Design icon-and-label controls for details,
-  AI-plan entry, and destructive deletion.
+  retained without migration or deletion. The `/leads` administration view now
+  uses the shared Ant Design ProComponents pattern (`PageContainer` and
+  `ProTable`) for server-side status filtering and pagination, plus an Ant
+  Design detail drawer for responsible-staff assignment, formal-floor-plan
+  review, and follow-up records. List and detail reads still cancel superseded
+  requests, so stale responses cannot overwrite newer filtering or selected
+  lead state. Its API contract, tenant scope, role boundaries, and row actions
+  for detail, AI-plan entry, and destructive deletion are unchanged; visible
+  mutations continue to use shared operation feedback. This is a
+  presentation-layer migration only.
 
 ### 8. Formal Floor Plans, Search, And Viewing
 
@@ -519,15 +571,18 @@ permission, or workflow changes.
   an `admin_users` foreign key; platform/enterprise admins mutate devices, while
   staff can read their own assignment. Measurement writes validate operator,
   enterprise, formal plan, value/type/source/date, and assigned device in one
-  RLS-scoped PostgreSQL flow. The `/measurements` administration view uses the
-  shared shadcn filter/table pattern with responsive filters, explicit loading
-  and error states, and source markers; its API parameters, role scope, and
-  100-record display limit are unchanged. The `/devices` view uses the same
-  compact filter/table pattern with create/edit dialogs; its platform role can
-  select enterprise, compatible staff, and the existing status enum, while the
-  server retains the current tenant and cross-enterprise binding validation.
-  Device row edits and deletions use the same Ant Design icon-and-label action
-  controls as other management lists.
+  RLS-scoped PostgreSQL flow. The `/measurements` administration view now uses
+  the shared Ant Design ProComponents list pattern (`PageContainer` and
+  `ProTable`) for responsive search/filtering, loading/error feedback, and
+  source markers; its API parameters, role scope, and 100-record display limit
+  are unchanged. The `/devices` view uses `PageContainer`, `ProTable`, and
+  `ModalForm` for search, status filtering, and create/edit dialogs; platform
+  roles can select an enterprise, compatible staff, and the existing status
+  enum, while the server retains current tenant and cross-enterprise binding
+  validation. Device row edits and deletions retain the shared Ant Design
+  icon-and-label action controls, and all visible mutations use shared
+  operation feedback. This is a presentation-layer migration only: routes,
+  APIs, permission boundaries, and PostgreSQL data contracts are unchanged.
 
 ### 10. AI Studio And Design Generation
 
@@ -539,6 +594,10 @@ permission, or workflow changes.
   separate full-screen free-creation workspace opened from the sidebar in a new
   tab. `/inspirations`, `/ai-presets`,
   `/ai-providers`, `/ai-models`, `/ai-credit-prices`, and AI-credit management on the enterprise AI page.
+  The scenario creation wizard now uses an Ant Design `Modal` with a native
+  step indicator, and its version history uses an Ant Design `Drawer`; their
+  inputs, confirmations, uploads, generation polling, and route/query behavior
+  are unchanged.
 - AI provider administration routes: `/ai-providers` is the provider list;
   `/ai-providers/new` creates a provider; `/ai-providers/[id]` is the provider
   detail/edit page; `/ai-models` is the separate platform image-model catalog.
@@ -565,6 +624,26 @@ permission, or workflow changes.
   at rest; asynchronous checks persist only their non-secret operational state
   after the network call. Environment-backed GRS/Pollinations defaults are
   idempotently seeded into PostgreSQL when their API keys are configured.
+- Synchronous text generation: `POST /api/ai/advice` and
+  `POST /api/ai/creation/prompt-assist` create PostgreSQL bigint `advice`
+  generation records under tenant RLS, preserve their existing response DTOs,
+  and use the same provider-attempt audit and idempotent credit hold/consume/
+  release lifecycle as other PostgreSQL AI generation paths. Provider chat I/O
+  is outside the short transaction; legacy MongoDB advice records remain
+  read-only historical data.
+- Direct soft-furnishing rendering: `POST /api/ai/soft-furnishing/render`
+  persists its input as a PostgreSQL tenant media asset and creates a bigint
+  `soft_furnishing_render` generation. Its image provider submission, poll,
+  output-media delivery, and idempotent credit lifecycle reuse the PostgreSQL
+  execution runtime; the existing DTO and `ai-scenarios` enterprise boundary
+  are unchanged.
+- Two-step direct rendering: `POST /api/ai/generate` persists a tenant-RLS
+  bigint prompt-first generation and freezes its snapshotted credit; `POST
+  /api/ai/render` materializes the explicit, parent, selected-workflow, or
+  style-reference image as a PostgreSQL media asset before provider submission.
+  Floor-plan, furnishing, and legacy two-step soft-furnishing types share the
+  PostgreSQL provider-attempt, poll, result-media, settlement, and retry-cycle
+  lifecycle while preserving their existing DTO and `ai-scenarios` boundary.
 - APIs: AI agent/chat, generation/render/advice, status/history, quota/usage,
   presets, workflow search/pagination and stages, design capabilities/action
   catalog, workflow source images/leads, media assets,
@@ -582,16 +661,14 @@ permission, or workflow changes.
   attachment to an existing customer workflow. The proxy maps the entire page
   and API prefix to the unified `ai-scenarios` permission, while writable routes
   also require an enterprise through `withTenantRoute`.
-- PostgreSQL identity compatibility: free-creation task, batch, generation,
-  media, provider-attempt, and credit records preserve legacy MongoDB
-  `ObjectId` values while accepting the current PostgreSQL enterprise/operator
-  ID strings for new records. Tenant filters always compare the stored raw
-  identity value, and media ownership lookup does the same, so a PostgreSQL
-  tenant cannot read legacy records without an explicit mapping. Free-creation
-  policy lookup reads PostgreSQL `enterprises.ai_policy` for bigint identities
-  and retains the MongoDB policy path for legacy ObjectIds. The platform retry endpoint for historical Mini Program
-  generations remains ObjectId-only and returns `409` for a PostgreSQL identity
-  until that workflow is migrated.
+- PostgreSQL identity boundary: new free-creation, Mini Program, scenario, and
+  `advice` task/generation/media/provider-attempt/credit records use PostgreSQL
+  bigint identities consistently under tenant RLS. Historical MongoDB ObjectId
+  media remains available only through the explicit read-only delivery branch;
+  there is no cross-store identity fallback for new records. The platform retry
+  endpoint for historical Mini Program generations remains ObjectId-only and
+  returns `409` for a PostgreSQL identity; the Mini Program's own retry route
+  uses the PostgreSQL bigint task path.
 - Models/helpers: `AiGeneration`, `AiWorkflow`, `AiChatSession`, `AiStylePreset`,
   `AiProviderConfig`, `AiProviderAttempt`, `MediaAsset`, `AiCreditAccount`,
   `AiCreditLedger`, `AiCreditPrice`, `AiModelCreditPrice`, `Inspiration`,
@@ -743,7 +820,9 @@ permission, or workflow changes.
   Historical ObjectId workflow detail/mutation remains read-compatible; the
   collection endpoint intentionally lists only PostgreSQL workflows. The
   workflow-lead selector, free-creation bootstrap read, PostgreSQL asset
-  delivery, and connected PostgreSQL free-creation runtime have switched.
+  delivery, connected PostgreSQL free-creation runtime, and bigint generation
+  status polling plus history reads have switched. `GET /api/ai/history` has
+  no MongoDB/ObjectId compatibility branch.
 - Status: `Implemented`. The workbench starts customer designs with a
   customer/material/goal wizard, shows the selected result and candidates in a
   two-column workspace, and keeps one recommended next action prominent. The

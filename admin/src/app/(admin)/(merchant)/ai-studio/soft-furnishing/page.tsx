@@ -284,16 +284,16 @@ export function AiSoftFurnishingLegacyPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f4f6f8] text-[#17202a]">
-      <main className="mx-auto max-w-[1520px] px-6 py-8">
+    <div className="min-h-full bg-background text-foreground">
+      <main className="mx-auto max-w-[1480px] px-5 py-6 sm:px-7 sm:py-8">
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
             <div className="mb-2 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-white">
+              <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Sofa size={20} />
               </div>
-              <h1 className="text-[28px] font-bold tracking-tight">AI 软装设计</h1>
-              <Badge variant="secondary" className="border-none bg-white text-slate-700">
+              <h1 className="text-2xl font-semibold tracking-tight">AI 软装设计</h1>
+              <Badge variant="outline" className="text-muted-foreground">
                 Prompt First
               </Badge>
             </div>
@@ -307,7 +307,7 @@ export function AiSoftFurnishingLegacyPage() {
         </div>
 
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_390px]">
-          <section className="rounded-2xl bg-white p-6 shadow-sm">
+          <section className="rounded-lg border bg-card p-6 shadow-sm">
             <div className="mb-5 text-center">
               <h2 className="text-xl font-bold">现场图生成</h2>
               <p className="mt-2 text-sm text-muted-foreground">
@@ -366,7 +366,7 @@ export function AiSoftFurnishingLegacyPage() {
             )}
           </section>
 
-          <aside className="rounded-2xl bg-white p-5 shadow-sm">
+          <aside className="rounded-lg border bg-card p-5 shadow-sm">
             <div className="mb-4">
               <div className="mb-3 text-xs font-bold text-muted-foreground">已选家具，最多可选 8 件</div>
               <div className="min-h-20 rounded-xl bg-slate-50 p-3">

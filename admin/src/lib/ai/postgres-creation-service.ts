@@ -369,7 +369,7 @@ export async function holdPostgresCreationGenerationCredits(input: {
     const creation = new AiCreationRepository(transaction);
     const credits = new AiCreditRepository(transaction);
     const generation = await creation.findGeneration(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram', 'advice', 'soft_furnishing_render', 'floor_plan_style', 'furnishing_render'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
 
@@ -515,7 +515,7 @@ export async function releasePostgresCreationGenerationCredits(input: {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const creation = new AiCreationRepository(transaction);
     const generation = await creation.findGenerationForUpdate(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram', 'advice', 'soft_furnishing_render', 'floor_plan_style', 'furnishing_render'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     return releasePostgresCreationGenerationCreditsInTransaction({
@@ -598,7 +598,7 @@ export async function consumePostgresCreationGenerationCredits(input: {
   const generationId = parsePostgresId(input.generationId, 'generationId');
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const generation = await new AiCreationRepository(transaction).findGenerationForUpdate(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram', 'advice', 'soft_furnishing_render', 'floor_plan_style', 'furnishing_render'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     return consumePostgresCreationGenerationCreditsInTransaction({ transaction, enterpriseId, generation });
@@ -635,7 +635,7 @@ export async function beginPostgresCreationProviderAttempt(input: {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const creation = new AiCreationRepository(transaction);
     const generation = await creation.findGeneration(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram', 'soft_furnishing_render', 'floor_plan_style', 'furnishing_render'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     if (generation.status === 'processing' && generation.currentAttemptId) {
@@ -727,7 +727,7 @@ export async function acknowledgePostgresCreationProviderAttempt(input: {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const creation = new AiCreationRepository(transaction);
     const generation = await creation.findGenerationForUpdate(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram', 'soft_furnishing_render', 'floor_plan_style', 'furnishing_render'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     if (generation.currentAttemptId !== attemptId || generation.status !== 'processing') {
@@ -878,7 +878,7 @@ export async function recordPostgresCreationProviderPollState(input: {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const creation = new AiCreationRepository(transaction);
     const generation = await creation.findGenerationForUpdate(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram', 'soft_furnishing_render', 'floor_plan_style', 'furnishing_render'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     if (generation.currentAttemptId !== attemptId || generation.status !== 'processing') {
@@ -947,7 +947,7 @@ export async function completePostgresCreationProviderAttempt(input: {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const creation = new AiCreationRepository(transaction);
     const generation = await creation.findGenerationForUpdate(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram', 'soft_furnishing_render', 'floor_plan_style', 'furnishing_render'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     if (generation.currentAttemptId !== attemptId) {
@@ -1021,7 +1021,7 @@ export async function attachPostgresCreationProviderResultAsset(input: {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const creation = new AiCreationRepository(transaction);
     const generation = await creation.findGenerationForUpdate(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram', 'soft_furnishing_render', 'floor_plan_style', 'furnishing_render'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     if (generation.currentAttemptId !== attemptId || generation.status !== 'succeeded') {
@@ -1087,7 +1087,7 @@ export async function settlePostgresCreationProviderResult(input: {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const creation = new AiCreationRepository(transaction);
     const generation = await creation.findGenerationForUpdate(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram', 'soft_furnishing_render', 'floor_plan_style', 'furnishing_render'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     if (generation.currentAttemptId !== attemptId || generation.status !== 'succeeded') {
@@ -1179,7 +1179,7 @@ export async function failPostgresCreationProviderAttempt(input: {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const creation = new AiCreationRepository(transaction);
     const generation = await creation.findGenerationForUpdate(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram', 'soft_furnishing_render', 'floor_plan_style', 'furnishing_render'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     if (generation.currentAttemptId !== attemptId) {

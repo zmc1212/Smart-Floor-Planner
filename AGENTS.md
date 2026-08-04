@@ -93,6 +93,11 @@ staged change; split unrelated work.
 - Use shadcn/ui and Radix primitives. Reusable controls belong in
   `admin/src/components/ui/*`; business pages should use shared components and
   semantic Tailwind tokens.
+- For Admin visual QA, use `http://localhost:3005` rather than `127.0.0.1` or
+  another loopback alias. For authenticated flows, control the user's existing
+  Chrome session with the Chrome plugin; the in-app Browser uses an isolated
+  session and is suitable only for unauthenticated views unless separately
+  logged in.
 - Every visible admin-triggered mutation must use the shared operation feedback
   UI for success and failure. Do not use raw `alert()` as normal feedback.
 - Dangerous confirmations may be native, but the resulting operation still needs

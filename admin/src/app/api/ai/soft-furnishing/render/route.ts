@@ -1,14 +1,11 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { AiGeneration } from '@/models/AiGeneration';
 import {
   buildDirectSoftFurnishingPrompt,
   FurnitureSelection,
   SOFT_FURNISHING_NEGATIVE,
 } from '@/lib/ai/soft-furnishing';
-import { persistImageReference, updateMediaAssetOwner } from '@/lib/ai/media-assets';
-import { executeGenerationImage } from '@/lib/ai/execution-service';
+import { createPostgresSoftFurnishingRender } from '@/lib/ai/postgres-soft-furnishing-service';
 
 interface SoftFurnishingBody {
   image?: string;
@@ -23,8 +20,6 @@ function parseUpstreamStatus(error: unknown) {
 
 export async function POST(req: Request) {
   try {
-    await dbConnect();
-
     return await withTenantRoute(req, { requireEnterprise: true }, async (context) => {
       let body: SoftFurnishingBody;
       try {
@@ -51,52 +46,32 @@ export async function POST(req: Request) {
       const prompt = buildDirectSoftFurnishingPrompt(furnitureItems, resolution);
       const roomType = furnitureItems.some((item) => item.placementRole === 'sleeping') ? 'bedroom' : 'living_room';
 
-      const persistedSourceImage = await persistImageReference({
-        enterpriseId: String(context.enterpriseId),
-        ownerType: 'ai_generation_input',
-        image,
-      });
-
-      const generation = await AiGeneration.create({
-        enterpriseId: context.enterpriseId!,
-        operatorId: context.userId,
-        type: 'soft_furnishing_render',
-        actionKey: 'image.soft_furnishing_render',
-        capability: 'image.edit',
-        logicalModelKey: 'image.edit.standard',
-        input: {
-          style: 'soft_furnishing',
-          roomType,
-          roomName: roomType === 'bedroom' ? '卧室软装' : '客厅软装',
-          mode: 'photo_furniture_staging_v2',
-          sourceImage: persistedSourceImage,
-          furnitureItems,
-          customPrompt: prompt,
-        },
-        output: {
-          promptUsed: prompt,
-        },
-        status: 'processing',
-      });
-      await updateMediaAssetOwner(persistedSourceImage, generation._id);
-
       try {
-        const completed = await executeGenerationImage(generation, {
-          logicalModelKey: 'image.edit.standard',
+        const generation = await createPostgresSoftFurnishingRender({
+          enterpriseId: String(context.enterpriseId),
+          operatorId: String(context.userId),
+          image,
+          furnitureItems,
           prompt,
           negativePrompt: SOFT_FURNISHING_NEGATIVE,
-          images: [persistedSourceImage || image],
-          size: resolution === '2k' ? '1536x1024' : '1024x1024',
-          quality: resolution === '2k' ? 'high' : 'medium',
-          user: String(context.userId),
+          roomType,
+          resolution,
         });
-        return NextResponse.json({ success: true, data: { id: completed._id, status: completed.status, imageUrl: completed.output.imageUrl } });
+        if (!generation) throw new Error('软装渲染任务不存在');
+        const output = generation.output && typeof generation.output === 'object'
+          ? generation.output as Record<string, unknown>
+          : {};
+        return NextResponse.json({
+          success: true,
+          data: {
+            id: generation.id.toString(),
+            status: generation.status,
+            imageUrl: typeof output.imageUrl === 'string'
+              ? `/api/ai/generations/${generation.id.toString()}/image`
+              : undefined,
+          },
+        });
       } catch (error) {
-        if (generation.status !== 'processing') generation.status = 'failed';
-        generation.errorMessage =
-          error instanceof Error ? error.message : 'Soft furnishing render failed';
-        await generation.save();
-
         const status = parseUpstreamStatus(error);
         const readableMessage = status === 402
           ? '当前企业 AI 点数不足，请联系平台管理员调整。'

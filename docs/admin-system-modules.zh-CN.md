@@ -1,5 +1,40 @@
 # 后台系统当前功能清单
 
+> 2026-08-04 PostgreSQL 迁移更新：两步式后台 `POST /api/ai/generate` 与
+> `POST /api/ai/render` 现保留既有提示词优先 DTO，但使用租户 RLS bigint
+> `floor_plan_style`、`furnishing_render` 及旧版 `soft_furnishing_render` 生成记录。
+> 渲染会将显式或继承的来源图片物化为 PostgreSQL 媒体资产，再复用供应商尝试、轮询、
+> 结果媒体交付和幂等积分结算；重试会开启新的计费生命周期。`ai-scenarios` 企业权限边界
+> 及事务外的供应商/存储 I/O 保持不变；未导入、删除或重新加密 MongoDB 业务数据。定向
+> ESLint 与 `npm run test:postgresql` 均通过（42/42）。
+
+> 2026-08-04 PostgreSQL 迁移更新：`POST /api/ai/soft-furnishing/render` 现会将
+> 来源图片存为租户所属的 PostgreSQL 媒体资产，并通过既有供应商尝试、轮询、结果媒体及
+> 幂等积分结算生命周期执行 bigint `soft_furnishing_render` 生成。其
+> `{ id, status, imageUrl }` DTO 和 `ai-scenarios` 企业权限边界保持不变；供应商与
+> 存储 I/O 保持在数据库事务外。未导入、删除或重新加密 MongoDB 业务数据。定向 ESLint 与
+> `npm run test:postgresql` 均通过（41/41）。
+
+> 2026-08-04 PostgreSQL 迁移更新：`POST /api/ai/advice` 与
+> `POST /api/ai/creation/prompt-assist` 现会创建租户 RLS 范围的 PostgreSQL bigint
+> `advice` 生成记录。它们保留既有响应 DTO 与 `ai-scenarios` 企业权限边界，并复用
+> PostgreSQL 供应商尝试审计及幂等的积分冻结、扣除和释放生命周期。供应商聊天 I/O
+> 保持在短数据库事务外；未导入、删除或重新加密历史 MongoDB ObjectId 建议记录。
+> 定向 ESLint 与 `npm run test:postgresql` 均通过（40/40）。
+
+> 2026-08-04 PostgreSQL 迁移更新：`GET /api/ai/quota` 和
+> `GET /api/ai/design-capabilities` 已不再连接 MongoDB；它们在既有租户和
+> `ai-scenarios` 边界内，从 PostgreSQL Repository 和供应商注册表派生不变的点数、
+> 价格、策略、供应商就绪状态和动作 DTO。两个路由均没有 MongoDB/ObjectId 回退分支。
+
+> 2026-08-04 PostgreSQL 迁移更新：`GET /api/ai/history` 现只通过
+> `AiCreationRepository` 和租户 RLS PostgreSQL 事务读取 bigint 生成记录；分页
+> DTO 保持兼容，旧展示类型筛选会映射到 PostgreSQL 场景阶段。迁移 `0012` 为该读取
+> 增加租户/时间及租户/类型/时间索引。该路由没有 MongoDB 或 ObjectId 回退分支，且不再
+> 读取历史 MongoDB 生成记录。
+
+> 2026-08-04 PostgreSQL 迁移更新：bigint `GET /api/ai/status/[id]` 现在会先刷新到期供应商轮询，再通过租户 RLS PostgreSQL 事务读取生成状态；保留既有状态 DTO 与 PostgreSQL 生成图片交付 URL。历史 ObjectId 状态请求继续使用 MongoDB 兼容分支，且仅在 bigint 判断之后才连接 MongoDB。未导入、删除或重新加密 MongoDB 业务数据。
+
 > 2026-08-04 PostgreSQL 迁移更新：后台 AI 设计助手现通过租户 RLS PostgreSQL Repository
 > 查询线索、正式户型和员工，并通过 bigint 工作流服务完成方案列表、详情、创建、推荐、经确认的
 > 阶段执行和定稿选择。工具 DTO 与确认行为保持不变，且 bigint 标识符会在面向助手的文本中脱敏。
@@ -181,7 +216,7 @@
 - 页面：`/leads`。
 - API：`/api/leads`、`/leads/[id]` 及户型、员工关联接口。
 - 模型/工具：PostgreSQL `LeadRepository`、`FloorPlanRepository`、`AdminUserRepository`、微信工具。
-- 状态：`Implemented`。支持线索录入/状态、跟进、分配、正式户型关联和转化上下文；列表、详情、新建、更新和删除均在 RLS PostgreSQL 事务内执行，并保留十进制字符串 `_id` DTO。线索-户型连接表、主户型选择、租户校验和删除清理为原子操作；普通微信通知在数据库事务提交后调用。企微配置、群分享和员工企微标识已弃用，已从运行时 API 与 UI 移除；历史 MongoDB 字段及 PostgreSQL `admin_users.wecom_user_id` 列保留，不迁移也不删除。`/leads` 后台视图使用共享 shadcn 页面框架、状态页签、响应式表格和可恢复的加载/失败状态；列表刷新与详情读取会取消已过期请求，避免旧响应覆盖新的筛选或选中线索，其 API 契约、租户范围和角色边界保持不变。行内“详情”“方案”和“删除”统一使用带图标和文字的 Ant Design 操作按钮。
+- 状态：`Implemented`。支持线索录入/状态、跟进、分配、正式户型关联和转化上下文；列表、详情、新建、更新和删除均在 RLS PostgreSQL 事务内执行，并保留十进制字符串 `_id` DTO。线索-户型连接表、主户型选择、租户校验和删除清理为原子操作；普通微信通知在数据库事务提交后调用。企微配置、群分享和员工企微标识已弃用，已从运行时 API 与 UI 移除；历史 MongoDB 字段及 PostgreSQL `admin_users.wecom_user_id` 列保留，不迁移也不删除。`/leads` 后台视图现使用共享 Ant Design ProComponents 模式（`PageContainer`、`ProTable`）承载服务端状态筛选和分页，并使用 Ant Design 详情抽屉完成负责人指派、正式户型查看和跟进记录；列表和详情读取仍会取消已过期请求，避免旧响应覆盖新的筛选或选中线索。其 API 契约、租户范围、角色边界及“详情”“方案”“删除”行内操作均未改变，所有可见变更继续使用共享操作反馈。本次仅迁移展示层。
 
 ### 8. 正式户型、搜索与查看
 
@@ -199,18 +234,32 @@
 - 页面：`/devices`、`/measurements`。
 - API：设备 CRUD、`/devices/verify`、`/devices/verify-binding`、`/measurements`，以及仅平台可用的独立渠道地推查询 `/api/staff?scope=unassigned-promoters`。
 - 模型/Repository：PostgreSQL `DeviceRepository`、`MeasurementRepository`、`AdminUserRepository`、`UserRepository`、`FloorPlanRepository`。
-- 状态：`Implemented`。支持设备池、企业/用户绑定、校验、状态管理，以及来源为 BLE、手动或系统的长度/高度/面积/角度/门窗审计记录。设备分配外键指向 `admin_users`；平台/企业管理员可变更设备，员工只能读取自己的绑定。测量写入会在同一 RLS PostgreSQL 流程中校验操作员、企业、正式户型、数值/类型/来源/时间和已分配设备。`/measurements` 后台视图使用共享 shadcn 筛选/表格模式，提供响应式筛选、明确的加载/失败状态和来源标识；其 API 参数、角色范围及最多展示 100 条记录的限制不变。`/devices` 使用同一紧凑筛选/表格模式和录入、编辑弹窗；平台角色可选择企业、兼容员工和既有状态枚举，服务端仍负责现有租户和跨企业绑定校验。设备行内“编辑”和“删除”与其他管理列表统一使用带图标和文字的 Ant Design 操作按钮。
+- 状态：`Implemented`。支持设备池、企业/用户绑定、校验、状态管理，以及来源为 BLE、手动或系统的长度/高度/面积/角度/门窗审计记录。设备分配外键指向 `admin_users`；平台/企业管理员可变更设备，员工只能读取自己的绑定。测量写入会在同一 RLS PostgreSQL 流程中校验操作员、企业、正式户型、数值/类型/来源/时间和已分配设备。`/measurements` 后台视图现使用共享 Ant Design ProComponents 列表模式（`PageContainer`、`ProTable`）承载响应式搜索/筛选、加载/失败反馈和来源标识；其 API 参数、角色范围及最多展示 100 条记录的限制不变。`/devices` 使用 `PageContainer`、`ProTable` 与 `ModalForm` 承载搜索、状态筛选和录入/编辑弹窗；平台角色可选择企业、兼容员工和既有状态枚举，服务端仍负责现有租户和跨企业绑定校验。设备行内“编辑”和“删除”保留与其他管理列表一致的带图标文字 Ant Design 操作按钮，所有可见变更继续使用共享操作反馈。本次仅迁移展示层，路由、API、权限边界和 PostgreSQL 数据契约均未改变。
 
 ### 10. AI 工作室与设计生成
 
-- 页面：`/ai-studio/scenarios` 是客户方案 AI 执行工作台，包含“客户方案、快速工具、AI 助手”；旧 `/ai-studio/designer`、`/ai-studio/floor-plan`、`/ai-studio/furnishing`、`/ai-studio/soft-furnishing` 和方案详情 URL 保留相关查询参数后跳入统一工作台。`/ai-studio/create` 是独立全屏自由创作台，后台侧栏以新标签页打开。资源/配置入口继续为 `/inspirations`、`/ai-presets`、`/ai-providers`、`/ai-models`、`/ai-credit-prices`，企业 AI 页继续管理统一点数。
+- 页面：`/ai-studio/scenarios` 是客户方案 AI 执行工作台，包含“客户方案、快速工具、AI 助手”；旧 `/ai-studio/designer`、`/ai-studio/floor-plan`、`/ai-studio/furnishing`、`/ai-studio/soft-furnishing` 和方案详情 URL 保留相关查询参数后跳入统一工作台。`/ai-studio/create` 是独立全屏自由创作台，后台侧栏以新标签页打开。资源/配置入口继续为 `/inspirations`、`/ai-presets`、`/ai-providers`、`/ai-models`、`/ai-credit-prices`，企业 AI 页继续管理统一点数。场景新建设计向导现使用带原生步骤指示的 Ant Design `Modal`，版本历史现使用 Ant Design `Drawer`；输入、确认、上传、生成轮询及路由/查询参数行为均不变。
 - AI 供应商后台路由：`/ai-providers` 是供应商列表；`/ai-providers/new` 用于新增供应商；`/ai-providers/[id]` 用于查看和编辑供应商；`/ai-models` 是独立的平台生图模型目录。页面使用基于 Ant Design ProComponents 的共享后台壳层（`ProTable`、`ProForm`、`ProDescriptions`），`/ai-models` 复用 `ai-providers` 平台权限，仅平台 `super_admin`、`admin` 可操作（`Implemented`）。
 - 灵感方案后台：`/inspirations` 使用同一套 `PageContainer`、`ProTable`、`ModalForm` 展示模式，支持案例筛选、图片预览、发布、推荐状态和删除。该展示层迁移保持既有 MongoDB `Inspiration` 模型、`/api/inspirations` 请求契约、租户行为和当前菜单权限不变（`Implemented`）。
 - 供应商接入契约：`AiProviderConfig` 保留旧版加密 API Key 字段，同时持久化加密/掩码凭证映射和经校验的非敏感 `adapterConfig`。统一编辑页与服务端校验共同读取 `src/lib/ai/provider-adapter-manifest.ts`；当前 GRS、Pollinations、OpenAI Compatible 使用公共的地址/API Key 配置。`Limited`：平台生图模型目录当前仍是 GRS 来源契约，新增供应商必须实现 Adapter 与目录档案支持，不能只新增前端选项。
 - PostgreSQL 边界：平台供应商列表、新增、更新、停用、密钥轮换、连通测试、模型同步、上游余额查询及运行时供应商选择现统一经由平台范围 PostgreSQL 事务中的 `AiProviderConfigRepository`。加密凭据保持不透明存储；异步网络调用结束后仅回写非敏感运行状态。配置了 API Key 时，环境变量中的 GRS/Pollinations 默认供应商会幂等写入 PostgreSQL。
+- 同步文本生成：`POST /api/ai/advice` 与
+  `POST /api/ai/creation/prompt-assist` 会在租户 RLS 范围内创建 PostgreSQL bigint
+  `advice` 生成记录，保留既有响应 DTO，并使用与其他 PostgreSQL AI 生成路径相同的
+  供应商尝试审计以及幂等积分冻结/扣除/释放生命周期。供应商聊天 I/O 保持在短事务外；
+  历史 MongoDB 建议记录仍为只读历史数据。
+- 直连软装渲染：`POST /api/ai/soft-furnishing/render` 会将输入保存为 PostgreSQL
+  租户媒体资产，并创建 bigint `soft_furnishing_render` 生成记录。其图片供应商提交、
+  轮询、结果媒体交付和幂等积分生命周期复用 PostgreSQL 执行运行时；既有 DTO 与
+  `ai-scenarios` 企业权限边界保持不变。
+- 两步式直连渲染：`POST /api/ai/generate` 会持久化租户 RLS bigint 的提示词优先生成记录并
+  冻结其价格快照点数；`POST /api/ai/render` 会在供应商提交前，将显式、父生成、已选工作流或
+  风格参考来源图片物化为 PostgreSQL 媒体资产。户型、软装及旧版两步式直连软装类型共用
+  PostgreSQL 供应商尝试、轮询、结果媒体、结算和重试计费生命周期，并保持既有 DTO 与
+  `ai-scenarios` 权限边界。
 - API：AI 对话/Agent、生成/渲染/建议、状态/历史、预设、工作流搜索分页及阶段、设计能力/共享动作目录、媒体资源、供应商 CRUD/密钥轮换/连通测试/模型同步/上游余额查询、受保护任务对账、平台业务动作价格、`GET/PATCH /api/admin/ai-image-models`、`GET/PATCH /api/admin/ai-image-model-prices`、企业点数发放/调整/流水/任务和失败任务重试接口。旧企业 `ai-key`/`ai-sync` 仅保留只读兼容，写接口返回 `410`。
 - 自由创作 API：`GET /api/ai/creation/bootstrap`、提示词分类/列表/详情/预览、`POST /api/ai/creation/assets`、`GET/POST /api/ai/creation/tasks`、`DELETE /api/ai/creation/tasks/[id]`、`POST /api/ai/creation/tasks/[id]/batches`、提示词优化及生成结果归入现有客户方案。页面和整个 API 前缀由代理统一映射到 `ai-scenarios` 权限，写接口还通过 `withTenantRoute` 强制企业上下文。
-- PostgreSQL 身份兼容：自由创作任务、批次、生成、媒体、供应商尝试和点数记录会保留旧 MongoDB `ObjectId`，同时允许新记录使用当前 PostgreSQL 企业/操作人 ID 字符串。租户过滤和媒体归属读取始终按已存储的原始身份值精确匹配，因此 PostgreSQL 企业不会在没有显式映射时读取旧记录。自由创作对 bigint 身份从 PostgreSQL `enterprises.ai_policy` 读取策略，旧 `ObjectId` 仍走 MongoDB 策略读取。平台对历史小程序生成任务的重试接口仍只接受 `ObjectId` 租户，传入 PostgreSQL 身份会返回 `409`，直至该工作流完成迁移。
+- PostgreSQL 身份边界：新的自由创作、小程序、场景和 `advice` 任务/生成/媒体/供应商尝试/点数记录均在租户 RLS 范围内一致使用 PostgreSQL bigint 标识符。历史 MongoDB `ObjectId` 媒体仅通过显式只读交付分支可读；新记录不存在跨存储身份回退。平台针对历史小程序生成任务的重试接口仍只接受 `ObjectId`，传入 PostgreSQL 身份会返回 `409`；小程序自身的重试路由使用 PostgreSQL bigint 任务路径。
 - 模型/工具：`AiGeneration`、`AiWorkflow`、`AiChatSession`、`AiStylePreset`、`AiProviderConfig`、`AiProviderAttempt`、`MediaAsset`、`AiCreditAccount`、`AiCreditLedger`、`AiCreditPrice`、`AiModelCreditPrice`、`Inspiration`、`src/lib/ai/*`、`src/lib/media-storage/*`。
 - 自由创作与模板库模型：`AiCreationTask`、`AiCreationBatch`、`AiCreationModelProfile`、`AiPromptLibraryRevision`、`AiPromptCategory`、`AiPromptTemplate`、`AiPromptParameterTemplate`、`AiPromptSourceModel`、`AiPromptTemplateAsset`、`AiPromptImportRun`。
 - 模板库运维：`npm run import:roomi-prompts` 默认只预览；增加 `-- --execute` 才原子发布通过完整校验的新版本，或用 `-- --source-file=<export.json> --execute` 从导出恢复；`npm run verify:roomi-prompts` 校验来源数量、引用、预览图校验和与抽样一致性。临时凭据和快照位于 Git 忽略的 `admin/.roomi-import/`，导入预览图保存在 Git 忽略的本地目录，不上传七牛。

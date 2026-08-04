@@ -1529,6 +1529,17 @@ export const aiGenerations = appSchema.table(
       table.status,
       table.createdAt
     ),
+    index('ai_generations_enterprise_created_idx').on(
+      table.enterpriseId,
+      table.createdAt,
+      table.id
+    ),
+    index('ai_generations_enterprise_type_created_idx').on(
+      table.enterpriseId,
+      table.type,
+      table.createdAt,
+      table.id
+    ),
     index('ai_generations_workflow_created_idx').on(
       table.workflowId,
       table.createdAt

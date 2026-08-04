@@ -103,7 +103,14 @@ async function loadGenerationInput(enterpriseId: bigint, generationId: bigint) {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const repository = new AiCreationRepository(transaction);
     const generation = await repository.findGeneration(generationId);
-    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram'].includes(generation.type)) {
+    if (!generation || generation.deletedAt || ![
+      'free_create',
+      'scenario',
+      'miniprogram',
+      'soft_furnishing_render',
+      'floor_plan_style',
+      'furnishing_render',
+    ].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     if (generation.type === 'scenario') {
@@ -129,11 +136,13 @@ async function loadGenerationInput(enterpriseId: bigint, generationId: bigint) {
         selectedGeneration,
       };
     }
-    if (generation.type === 'miniprogram') {
+    if (['miniprogram', 'soft_furnishing_render', 'floor_plan_style', 'furnishing_render'].includes(generation.type)) {
       const input = asRecord(generation.input);
-      const imageUrls = [input.controlImage, input.referenceImage, input.spaceImage]
-        .filter((value): value is string => typeof value === 'string' && value.length > 0);
-      const assets = await Promise.all(imageUrls.map(async (imageUrl) => {
+      const imageUrls = generation.type === 'miniprogram'
+        ? [input.controlImage, input.referenceImage, input.spaceImage]
+        : [input.sourceImage];
+      const validImageUrls = imageUrls.filter((value): value is string => typeof value === 'string' && value.length > 0);
+      const assets = await Promise.all(validImageUrls.map(async (imageUrl) => {
         const assetId = getPostgresAssetIdFromImageUrl(imageUrl);
         if (!assetId) throw new Error('小程序 AI 任务图片来源无效');
         const asset = await repository.findMediaAsset(assetId);
@@ -236,9 +245,10 @@ function providerRequest(generation: AiGenerationRecord, images: string[]): Prov
   if (logicalModelKey !== 'image.generate.standard' && logicalModelKey !== 'image.edit.standard') {
     throw new Error('创作生成任务缺少图片模型能力');
   }
-  if (generation.type === 'scenario' || generation.type === 'miniprogram') {
+  if (['scenario', 'miniprogram', 'soft_furnishing_render', 'floor_plan_style', 'furnishing_render'].includes(generation.type)) {
     const preset = asRecord(input.presetSnapshot);
     const image = asRecord(preset.image);
+    const requiresReferenceImage = image.mode !== 'generation';
     return {
       logicalModelKey,
       modelProfileKey: undefined,
@@ -250,10 +260,12 @@ function providerRequest(generation: AiGenerationRecord, images: string[]): Prov
       size: typeof input.outputSize === 'string'
         ? input.outputSize
         : typeof image.size === 'string' ? image.size : '1024x1024',
-      quality: typeof image.quality === 'string' ? image.quality : 'medium',
+      quality: typeof input.outputQuality === 'string'
+        ? input.outputQuality
+        : typeof image.quality === 'string' ? image.quality : 'medium',
       aspectRatio: typeof input.outputAspectRatio === 'string' ? input.outputAspectRatio : '1:1',
       user: generation.operatorId.toString(),
-      images: images.length ? images : undefined,
+      images: requiresReferenceImage && images.length ? images : undefined,
     };
   }
   const parameters = asRecord(input.creationParameterSnapshot);
@@ -368,7 +380,8 @@ export async function submitPostgresCreationGeneration(input: { enterpriseId: st
       ? await loadScenarioProviderImages(enterpriseId, loaded)
       : await toProviderDataUris(loaded.assets);
     const request = providerRequest(loaded.generation, images);
-    const runtimes = ['scenario', 'miniprogram'].includes(loaded.generation.type)
+    const useDefaultImageRuntime = ['scenario', 'miniprogram', 'soft_furnishing_render', 'floor_plan_style', 'furnishing_render'].includes(loaded.generation.type);
+    const runtimes = useDefaultImageRuntime
       ? await listProviderRuntimes(
           capabilityForLogicalModel(request.logicalModelKey as AiLogicalModelKey),
           request.logicalModelKey
@@ -377,7 +390,7 @@ export async function submitPostgresCreationGeneration(input: { enterpriseId: st
           capabilityForLogicalModel(request.logicalModelKey as AiLogicalModelKey),
           String(asRecord(loaded.batch?.modelProfileSnapshot).adapterType || '').trim()
         );
-    const runtime = ['scenario', 'miniprogram'].includes(loaded.generation.type)
+    const runtime = useDefaultImageRuntime
       ? runtimes[0]
       : runtimes.find((item) => item.modelMappings[request.logicalModelKey] === request.remoteModel);
     if (!runtime) throw new Error('没有与创作模型快照匹配的可用 AI 供应商');

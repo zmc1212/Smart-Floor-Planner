@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { ensureAiCreditAccount, serializeAiCreditAccount } from '@/lib/ai/credits';
 
@@ -30,7 +29,6 @@ function quotaResponse(account: { balance?: number | bigint; frozenBalance?: num
 
 export async function GET(request: Request) {
   try {
-    await dbConnect();
     return await withTenantRoute(request, { requireEnterprise: true }, async (context) => {
       const account = await ensureAiCreditAccount(String(context.enterpriseId));
       return NextResponse.json({ success: true, data: quotaResponse(account) });

@@ -1,203 +1,255 @@
 'use client';
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
-import { notify } from '@/components/ui/operation-feedback';
-import { useConfirmDialog } from '@/components/ui/confirm-dialog';
-
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button as AntButton, Space } from 'antd';
-import { useRouter } from 'next/navigation';
-import { AlertTriangle, Eye, FilePenLine, Loader2, CheckCircle, Clock, RefreshCw, Trash2, User, MessageSquare, Plus } from "lucide-react";
-import { Tabs } from "@/components/ui/tabs";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
-import { Pagination } from "@/components/ui/pagination";
 
 export const dynamic = 'force-dynamic';
 
-function getFloorPlanSourceLabel(source?: string) {
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  PageContainer,
+  ProTable,
+  type ActionType,
+  type ProColumns,
+} from '@ant-design/pro-components';
+import {
+  Button,
+  Descriptions,
+  Drawer,
+  Empty,
+  Flex,
+  Input,
+  Select,
+  Space,
+  Steps,
+  Tag,
+  Timeline,
+  Typography,
+} from 'antd';
+import { useRouter } from 'next/navigation';
+import { Eye, FilePenLine, MessageSquare, Plus, Trash2 } from 'lucide-react';
+import { notify } from '@/components/ui/operation-feedback';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+
+type StaffReference = {
+  _id: string;
+  displayName?: string;
+  username?: string;
+  role?: string;
+};
+
+type FollowUpRecord = {
+  content?: string;
+  operator?: string;
+  createdAt?: string | Date;
+};
+
+type FloorPlan = {
+  _id: string;
+  name?: string | null;
+  source?: string | null;
+  createdAt?: string;
+  layoutData?: unknown;
+  externalSource?: {
+    layoutLabel?: string | null;
+  } | null;
+};
+
+type Lead = {
+  _id: string;
+  name: string;
+  phone?: string | null;
+  communityName?: string | null;
+  area?: number | null;
+  stylePreference?: string | null;
+  source?: string | null;
+  status: string;
+  promoterId?: StaffReference | string | null;
+  assignedTo?: StaffReference | string | null;
+  floorPlanIds?: FloorPlan[];
+  primaryFloorPlanId?: FloorPlan | string | null;
+  followUpRecords?: FollowUpRecord[];
+  createdAt?: string;
+};
+
+type LeadListResponse = {
+  success: boolean;
+  error?: string;
+  data?: Lead[];
+  pagination?: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+};
+
+const STATUS_OPTIONS = [
+  { label: '新线索', value: 'new' },
+  { label: '量房中', value: 'measuring' },
+  { label: '量房完成', value: 'measured' },
+  { label: '已指派设计师', value: 'assigned' },
+  { label: '已转化（签单）', value: 'converted' },
+  { label: '已关闭', value: 'closed' },
+];
+
+const STATUS_LABELS = Object.fromEntries(
+  STATUS_OPTIONS.map((item) => [item.value, item.label])
+);
+
+function getFloorPlanSourceLabel(source?: string | null) {
   if (source === 'kujiale') return '酷家乐';
   if (source === 'template') return '模板';
   return '手动';
 }
 
-function parseLayoutData(layoutData: any) {
+function getStatusColor(status: string) {
+  if (status === 'measuring' || status === 'measured') return 'green';
+  if (status === 'assigned') return 'blue';
+  if (status === 'converted') return 'orange';
+  if (status === 'closed') return 'default';
+  return 'cyan';
+}
+
+function getStaffName(
+  value: StaffReference | string | null | undefined,
+  staffMembers: StaffReference[]
+) {
+  if (!value) return '';
+  if (typeof value === 'object') return value.displayName || value.username || '';
+  const member = staffMembers.find((item) => item._id === value);
+  return member?.displayName || member?.username || '';
+}
+
+function getReferenceId(value: StaffReference | string | null | undefined) {
+  if (!value) return '';
+  return typeof value === 'string' ? value : value._id;
+}
+
+function formatDate(value?: string | Date) {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? '-' : parsed.toLocaleString('zh-CN');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function parseLayoutData(layoutData: unknown): Record<string, unknown> | null {
   if (!layoutData) return null;
   if (typeof layoutData === 'string') {
     try {
-      return JSON.parse(layoutData);
+      const parsed: unknown = JSON.parse(layoutData);
+      return isRecord(parsed) ? parsed : null;
     } catch {
       return null;
     }
   }
-  return layoutData;
+  return isRecord(layoutData) ? layoutData : null;
 }
 
-function isFormalSurveyPlan(plan: any) {
-  const layoutData = parseLayoutData(plan?.layoutData);
+function isFormalSurveyPlan(plan: FloorPlan) {
+  const layoutData = parseLayoutData(plan.layoutData);
+  const surveyGraph = layoutData?.surveyGraph;
   return Boolean(
-    layoutData &&
-    typeof layoutData === 'object' &&
-    !Array.isArray(layoutData) &&
-    layoutData.version === 4 &&
+    layoutData?.version === 4 &&
     layoutData.measurementMode === 'surveying' &&
-    layoutData.surveyGraph?.kind === 'survey-wall-graph'
+    isRecord(surveyGraph) &&
+    surveyGraph.kind === 'survey-wall-graph'
   );
 }
 
-function getSurveyGraphStats(layoutData: any) {
-  const parsed = parseLayoutData(layoutData);
-  const draft = parsed?.surveyGraph;
-  const floors = Array.isArray(draft?.floors) ? draft.floors : [];
-  const activeFloor = floors.find((floor: any) => floor?.id === draft?.activeFloorId) || floors[0] || {};
+function getSurveyGraphStats(layoutData: unknown) {
+  const graph = parseLayoutData(layoutData)?.surveyGraph;
+  if (!isRecord(graph)) return { wallCount: 0, spaceCount: 0, openingCount: 0 };
+  const floors = Array.isArray(graph.floors) ? graph.floors : [];
+  const activeFloor = floors.find((floor) => isRecord(floor) && floor.id === graph.activeFloorId) || floors[0];
+  if (!isRecord(activeFloor)) return { wallCount: 0, spaceCount: 0, openingCount: 0 };
+  const walls = Array.isArray(activeFloor.walls) ? activeFloor.walls : [];
+  const spaces = Array.isArray(activeFloor.spaces) ? activeFloor.spaces : [];
+  const openings = Array.isArray(activeFloor.openings) ? activeFloor.openings : [];
   return {
-    wallCount: Array.isArray(activeFloor.walls) ? activeFloor.walls.length : 0,
-    spaceCount: Array.isArray(activeFloor.spaces) ? activeFloor.spaces.filter((space: any) => space?.closed).length : 0,
-    openingCount: Array.isArray(activeFloor.openings) ? activeFloor.openings.length : 0,
+    wallCount: walls.length,
+    spaceCount: spaces.filter((space) => isRecord(space) && space.closed === true).length,
+    openingCount: openings.length,
   };
 }
 
 export default function LeadsPage() {
+  const actionRef = useRef<ActionType>(null);
+  const leadListRequestRef = useRef<AbortController | null>(null);
+  const leadDetailRequestRef = useRef<AbortController | null>(null);
   const confirmAction = useConfirmDialog();
   const router = useRouter();
-  const [leads, setLeads] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState('');
-  const [selectedLead, setSelectedLead] = useState<any>(null);
+  const [staffMembers, setStaffMembers] = useState<StaffReference[]>([]);
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [selectedLeadLoading, setSelectedLeadLoading] = useState(false);
   const [newNote, setNewNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [staffMembers, setStaffMembers] = useState<any[]>([]);
-  const [activeStatus, setActiveStatus] = useState('all');
-  const [pagination, setPagination] = useState<any>({
-    total: 0,
-    page: 1,
-    limit: 20,
-    totalPages: 0
-  });
-  const leadListRequestRef = useRef<AbortController | null>(null);
-  const leadDetailRequestRef = useRef<AbortController | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Helper to get staff display name from ID or Object
-  const getStaffName = (idOrObj: any) => {
-    if (!idOrObj) return null;
-    
-    // If it's already a populated object with the name, return it immediately
-    if (typeof idOrObj === 'object') {
-      const name = idOrObj.displayName || idOrObj.username;
-      if (name) return name;
+  useEffect(() => {
+    let cancelled = false;
+    async function loadStaff() {
+      try {
+        const response = await fetch('/api/staff?roles=designer,measurer,enterprise_admin');
+        const result = await response.json();
+        if (!cancelled && response.ok && result.success) setStaffMembers(result.data || []);
+      } catch {
+        // Lead records remain readable when optional assignment choices are unavailable.
+      }
     }
-
-    const targetId = String(typeof idOrObj === 'object' ? idOrObj._id : idOrObj);
-    const s = staffMembers.find(member => String(member._id) === targetId);
-    
-    if (s) return s.displayName || s.username;
-    
-    // Diagnostic log if ID exists but not found in list
-    if (targetId && staffMembers.length > 0 && targetId !== "unassigned") {
-      console.warn(`[Leads] Staff ID not found in staffMembers list: ${targetId}`);
-    }
-    return null;
-  };
-
-  const getStatusLabel = (status: string) => {
-    const statusMap: Record<string, string> = {
-      'new': '新线索',
-      'measuring': '量房中',
-      'measured': '量房完成',
-      'assigned': '已指派设计师',
-      'converted': '已转化 (签单)',
-      'closed': '已关闭'
+    void loadStaff();
+    return () => {
+      cancelled = true;
     };
-    return statusMap[status] || status;
-  };
+  }, []);
 
-  const fetchLeads = useCallback(async (page: number) => {
+  useEffect(() => () => {
     leadListRequestRef.current?.abort();
-    const controller = new AbortController();
-    leadListRequestRef.current = controller;
-    setLoading(true);
-    setLoadError('');
-    try {
-      let url = `/api/leads?page=${page}&limit=${pagination.limit}`;
-      if (activeStatus && activeStatus !== 'all') {
-        url += `&status=${activeStatus}`;
-      }
-      const res = await fetch(url, { signal: controller.signal });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || '线索列表加载失败');
-      }
-      if (controller.signal.aborted) return;
-      setLeads(data.data || []);
-      if (data.pagination) {
-        setPagination(data.pagination);
-      }
-      setSelectedLead((current: any) => {
-        if (!current) return current;
-        const updated = (data.data || []).find((lead: any) => lead._id === current._id);
-        return updated ? {
-            ...current,
-            ...updated,
-            floorPlanIds: current.floorPlanIds || updated.floorPlanIds,
-            primaryFloorPlanId: current.primaryFloorPlanId || updated.primaryFloorPlanId,
-          } : current;
-      });
-    } catch (err) {
-      if (!controller.signal.aborted) {
-        setLoadError(err instanceof Error ? err.message : '线索列表加载失败');
-      }
-    } finally {
-      if (!controller.signal.aborted) setLoading(false);
-    }
-  }, [activeStatus, pagination.limit]);
+    leadDetailRequestRef.current?.abort();
+  }, []);
 
-  const handlePageChange = (newPage: number) => {
-    fetchLeads(newPage);
-  };
+  const staffOptions = useMemo(() => {
+    const currentAssigneeId = getReferenceId(selectedLead?.assignedTo);
+    const currentAssigneeOption = currentAssigneeId && !staffMembers.some(
+      (member) => member._id === currentAssigneeId
+    )
+      ? [{
+          label: getStaffName(selectedLead?.assignedTo, staffMembers) || currentAssigneeId,
+          value: currentAssigneeId,
+        }]
+      : [];
 
-  const openLeadDetail = async (lead: any) => {
+    return [
+      { label: '待指派', value: '__unassigned__' },
+      ...currentAssigneeOption,
+      ...staffMembers.map((member) => ({
+        label: member.displayName || member.username || member._id,
+        value: member._id,
+      })),
+    ];
+  }, [selectedLead?.assignedTo, staffMembers]);
+
+  const refreshLeads = useCallback(async () => {
+    await actionRef.current?.reload();
+  }, []);
+
+  const openLeadDetail = async (lead: Lead) => {
     leadDetailRequestRef.current?.abort();
     const controller = new AbortController();
     leadDetailRequestRef.current = controller;
     setSelectedLead(lead);
     setSelectedLeadLoading(true);
     try {
-      const res = await fetch(`/api/leads/${lead._id}`, { signal: controller.signal });
-      const data = await res.json();
-      if (controller.signal.aborted) return;
-      if (res.ok && data.success) {
-        setSelectedLead(data.data);
-      } else {
-        notify.error('线索详情加载失败', { description: data.error || '请稍后重试' });
+      const response = await fetch(`/api/leads/${lead._id}`, { signal: controller.signal });
+      const result = await response.json();
+      if (!controller.signal.aborted && response.ok && result.success) {
+        setSelectedLead(result.data);
+      } else if (!controller.signal.aborted) {
+        notify.error(result.error || '线索详情加载失败');
       }
-    } catch {
+    } catch (error) {
       if (!controller.signal.aborted) {
-        notify.error('线索详情加载失败', { description: '请检查网络或刷新重试' });
+        notify.error(error instanceof Error ? error.message : '线索详情加载失败');
       }
     } finally {
       if (!controller.signal.aborted) setSelectedLeadLoading(false);
@@ -208,579 +260,335 @@ export default function LeadsPage() {
     leadDetailRequestRef.current?.abort();
     setSelectedLeadLoading(false);
     setSelectedLead(null);
+    setNewNote('');
   };
 
-  const fetchStaff = useCallback(async () => {
+  const updateLead = async (
+    leadId: string,
+    updates: Record<string, unknown>,
+    closeAfterSuccess = false
+  ) => {
     try {
-      // Only fetch staff with roles that can be assigned to leads
-      const res = await fetch(`/api/staff?roles=designer,measurer,enterprise_admin`);
-      const data = await res.json();
-      if (data.success) {
-        setStaffMembers(data.data);
-      }
-    } catch {
-      // Lead records stay readable when the optional assignment choices cannot load.
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchStaff();
-  }, [fetchStaff]);
-
-  useEffect(() => {
-    void fetchLeads(1);
-  }, [fetchLeads]);
-
-  useEffect(() => () => {
-    leadListRequestRef.current?.abort();
-    leadDetailRequestRef.current?.abort();
-  }, []);
-
-  const updateLead = async (id: string, updates: any) => {
-    try {
-      const res = await fetch(`/api/leads/${id}`, {
+      const response = await fetch(`/api/leads/${leadId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates)
+        body: JSON.stringify(updates),
       });
-      const data = await res.json();
-      if (data.success) {
-        notify.success("操作成功", {
-          description: updates.assignedTo ? "已成功指派负责人" : "线索信息已同步",
-        });
-        
-        // Update the selected lead with the server-calculated fields (like status)
-        if (selectedLead && id === selectedLead._id) {
-          setSelectedLead(data.data);
-          // If it was an assignment, close the sheet after a short delay
-          if (updates.assignedTo) {
-            setTimeout(() => setSelectedLead(null), 800);
-          }
-        }
-        void fetchLeads(pagination.page);
-      } else {
-        notify.error("操作失败", { description: data.error });
-      }
-    } catch (err) {
-      console.error('Failed to update lead:', err);
-      notify.error("系统错误", { description: "请检查网络或刷新重试" });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '线索更新失败');
+      setSelectedLead(result.data);
+      notify.success(updates.assignedTo !== undefined ? '负责人已更新' : '线索信息已更新');
+      await refreshLeads();
+      if (closeAfterSuccess) closeLeadDetail();
+      return true;
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '线索更新失败');
+      return false;
     }
   };
 
-  const deleteLead = async (id: string) => {
+  const deleteLead = async (lead: Lead) => {
+    if (deletingId) return;
     const confirmed = await confirmAction({
       title: '删除线索',
-      description: '确定要删除该线索吗？此操作不可撤销。',
+      description: `确定删除线索“${lead.name}”吗？此操作不可撤销。`,
       confirmText: '删除',
       destructive: true,
     });
     if (!confirmed) return;
-    
+    setDeletingId(lead._id);
     try {
-      const res = await fetch(`/api/leads/${id}`, {
-        method: 'DELETE',
-      });
-      const data = await res.json();
-      if (data.success) {
-        notify.success("线索已删除");
-        void fetchLeads(pagination.page);
-      } else {
-        notify.error("删除失败", { description: data.error });
-      }
-    } catch (err) {
-      console.error('Failed to delete lead:', err);
-      notify.error("系统错误");
+      const response = await fetch(`/api/leads/${lead._id}`, { method: 'DELETE' });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '删除线索失败');
+      if (selectedLead?._id === lead._id) closeLeadDetail();
+      notify.success('线索已删除');
+      await refreshLeads();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '删除线索失败');
+    } finally {
+      setDeletingId(null);
     }
   };
 
   const addFollowUp = async () => {
     if (!newNote.trim() || !selectedLead) return;
     setIsSubmitting(true);
-    try {
-      const records = [...(selectedLead.followUpRecords || []), {
-        content: newNote,
-        operator: '管理员',
-        createdAt: new Date()
-      }];
-      
-      const res = await fetch(`/api/leads/${selectedLead._id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ followUpRecords: records })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setNewNote('');
-        void fetchLeads(pagination.page);
-      }
-    } catch (err) {
-      console.error('Failed to add follow-up:', err);
-    } finally {
-      setIsSubmitting(false);
-    }
+    const records = [
+      ...(selectedLead.followUpRecords || []),
+      { content: newNote.trim(), operator: '管理员', createdAt: new Date().toISOString() },
+    ];
+    const succeeded = await updateLead(selectedLead._id, { followUpRecords: records });
+    if (succeeded) setNewNote('');
+    setIsSubmitting(false);
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'new':
-        return <Badge variant="secondary" className="border-0 bg-sky-50 px-2 py-0.5 font-medium text-sky-700 hover:bg-sky-100">新线索</Badge>;
-      case 'measuring':
-        return <Badge variant="secondary" className="border-0 bg-primary/10 px-2 py-0.5 font-medium text-primary hover:bg-primary/15">量房中</Badge>;
-      case 'measured':
-        return <Badge variant="secondary" className="border-0 bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700 hover:bg-emerald-100">量房完成</Badge>;
-      case 'assigned':
-        return <Badge variant="secondary" className="border-0 bg-blue-50 px-2 py-0.5 font-medium text-blue-700 hover:bg-blue-100">已指派设计师</Badge>;
-      case 'converted':
-        return <Badge variant="secondary" className="border-0 bg-amber-50 px-2 py-0.5 font-medium text-amber-700 hover:bg-amber-100">已转化</Badge>;
-      case 'closed':
-        return <Badge variant="secondary" className="border-0 bg-muted px-2 py-0.5 font-medium text-muted-foreground">已关闭</Badge>;
-      default:
-        return <Badge variant="outline" className="border-border text-muted-foreground">{status}</Badge>;
-    }
-  };
+  const columns: ProColumns<Lead>[] = [
+    {
+      title: '业务状态',
+      dataIndex: 'status',
+      valueType: 'select',
+      valueEnum: STATUS_LABELS,
+      width: 150,
+      render: (_, lead) => <Tag color={getStatusColor(lead.status)}>{STATUS_LABELS[lead.status] || lead.status}</Tag>,
+    },
+    {
+      title: '客户 / 小区',
+      dataIndex: 'name',
+      hideInSearch: true,
+      width: 250,
+      render: (_, lead) => (
+        <Flex vertical gap={2}>
+          <Typography.Text strong>{lead.name}</Typography.Text>
+          <Typography.Text type="secondary" className="text-xs" ellipsis={{ tooltip: lead.communityName || '未记录小区' }}>
+            {lead.communityName || '未记录小区'}
+          </Typography.Text>
+        </Flex>
+      ),
+    },
+    {
+      title: '联系电话',
+      dataIndex: 'phone',
+      hideInSearch: true,
+      width: 165,
+      render: (phone) => <Typography.Text code>{phone || '-'}</Typography.Text>,
+    },
+    {
+      title: '渠道人员',
+      key: 'promoter',
+      hideInSearch: true,
+      width: 170,
+      render: (_, lead) => getStaffName(lead.promoterId, staffMembers) || '系统录入',
+    },
+    {
+      title: '当前负责人',
+      key: 'assignee',
+      hideInSearch: true,
+      width: 180,
+      render: (_, lead) => getStaffName(lead.assignedTo, staffMembers) || '待指派',
+    },
+    {
+      title: '提交日期',
+      dataIndex: 'createdAt',
+      valueType: 'dateTime',
+      hideInSearch: true,
+      width: 190,
+      render: (_, lead) => formatDate(lead.createdAt),
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      valueType: 'option',
+      fixed: 'right',
+      width: 285,
+      hideInSearch: true,
+      render: (_, lead) => (
+        <Space size={8}>
+          <Button size="small" icon={<Eye size={14} />} onClick={() => void openLeadDetail(lead)}>
+            详情
+          </Button>
+          <Button size="small" icon={<FilePenLine size={14} />} onClick={() => router.push(`/ai-studio/scenarios?leadId=${lead._id}`)}>
+            {lead.floorPlanIds?.length || lead.followUpRecords?.length ? '查看方案' : '开始方案'}
+          </Button>
+          <Button size="small" danger disabled={deletingId === lead._id} loading={deletingId === lead._id} icon={<Trash2 size={14} />} onClick={() => void deleteLead(lead)}>
+            删除
+          </Button>
+        </Space>
+      ),
+    },
+  ];
 
   return (
     <div className="admin-page-frame">
-      <main className="w-full">
-        <header className="flex flex-col justify-between gap-4 border-b border-border pb-5 sm:flex-row sm:items-end">
-          <div className="space-y-1">
-            <h1 className="text-2xl font-semibold leading-tight text-foreground">客资线索管理</h1>
-            <p className="text-sm text-muted-foreground">跟进客户状态、指派协作人员，并衔接正式量房与方案设计。</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {!loading ? <Badge variant="secondary">{pagination.total} 条</Badge> : null}
-            <Button aria-label="刷新线索列表" disabled={loading} size="icon" title="刷新线索列表" variant="outline" onClick={() => void fetchLeads(pagination.page)}>
-              <RefreshCw className={loading ? 'animate-spin' : ''} size={16} />
-            </Button>
-          </div>
-        </header>
-
-        {/* Status Tabs */}
-        <div className="mt-6 mb-4 overflow-x-auto border-b border-border pb-1">
-          <Tabs
-            activeTab={activeStatus}
-            onChange={setActiveStatus}
-            className="w-max"
-            tabs={[
-              { id: 'all', label: '全部' },
-              { id: 'new', label: '新线索' },
-              { id: 'measuring', label: '量房中' },
-              { id: 'measured', label: '量房完成' },
-              { id: 'assigned', label: '已指派' },
-              { id: 'converted', label: '已转化' },
-              { id: 'closed', label: '已关闭' }
-            ]}
-          />
-        </div>
-
-        {loading && (
-          <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
-            <Loader2 className="animate-spin mb-4" size={32} />
-            <p className="text-sm">正在获取线索数据...</p>
-          </div>
-        )}
-
-        {loadError ? (
-          <section className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-lg border border-border bg-card px-6 text-center" aria-label="线索列表加载失败">
-            <AlertTriangle className="text-destructive" size={28} />
-            <div>
-              <p className="font-medium">无法加载线索列表</p>
-              <p className="mt-1 text-sm text-muted-foreground">{loadError}</p>
-            </div>
-            <Button variant="outline" onClick={() => void fetchLeads(1)}>重试</Button>
-          </section>
-        ) : null}
-
-        {!loading && !loadError && (
-          <div className="overflow-x-auto rounded-lg border border-border bg-card">
-            <Table className="min-w-[840px]">
-              <TableHeader className="bg-muted/60">
-                <TableRow className="border-border hover:bg-transparent">
-                  <TableHead className="w-[200px] px-5 py-4 text-xs font-semibold text-muted-foreground">客户姓名/小区</TableHead>
-                  <TableHead className="py-4 text-xs font-semibold text-muted-foreground">联系电话</TableHead>
-                  <TableHead className="hidden py-4 text-xs font-semibold text-muted-foreground lg:table-cell">渠道人员</TableHead>
-                  <TableHead className="py-4 text-xs font-semibold text-muted-foreground">当前负责人</TableHead>
-                  <TableHead className="py-4 text-xs font-semibold text-muted-foreground">业务状态</TableHead>
-                  <TableHead className="hidden py-4 text-xs font-semibold text-muted-foreground xl:table-cell">提交日期</TableHead>
-                  <TableHead className="px-5 py-4 text-right text-xs font-semibold text-muted-foreground">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {leads.map((lead: any) => (
-                  <TableRow key={lead._id} className="group border-border transition-colors hover:bg-primary/5">
-                    <TableCell className="px-5 py-4">
-                      <div className="text-sm font-semibold leading-tight text-foreground">{lead.name}</div>
-                      <div className="mt-1 text-xs font-medium text-muted-foreground">{lead.communityName || '未记录小区'}</div>
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">{lead.phone}</TableCell>
-                    <TableCell className="hidden lg:table-cell">
-                       <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                         <span className="opacity-50"><User size={12} /></span>
-                         {getStaffName(lead.promoterId) || "系统录入"}
-                       </div>
-                    </TableCell>
-                    <TableCell>
-                       {lead.assignedTo ? (
-                         <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-                           <div className="h-1.5 w-1.5 rounded-full bg-primary" />
-                           {getStaffName(lead.assignedTo) || "未知人员"}
-                         </div>
-                       ) : (
-                         <span className="text-xs text-muted-foreground">待指派</span>
-                       )}
-                    </TableCell>
-                    <TableCell className="py-4">{getStatusBadge(lead.status)}</TableCell>
-                    <TableCell className="hidden text-xs font-medium text-muted-foreground xl:table-cell">
-                      {new Date(lead.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell className="px-5 py-4 text-right">
-                      <Space size={8}>
-                        <AntButton icon={<Eye size={14} />} size="small" onClick={() => openLeadDetail(lead)}>详情</AntButton>
-                        <AntButton icon={<FilePenLine size={14} />} size="small" onClick={() => router.push(`/ai-studio/scenarios?leadId=${lead._id}`)}>
-                          {lead.floorPlanIds?.length || lead.followUpRecords?.length ? '查看方案' : '开始方案'}
-                        </AntButton>
-                        <AntButton aria-label={`删除线索 ${lead.name}`} danger icon={<Trash2 size={14} />} size="small" onClick={() => void deleteLead(lead._id)}>删除</AntButton>
-                      </Space>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {leads.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} className="h-48 text-center text-sm text-muted-foreground">
-                      <div className="flex flex-col items-center gap-2">
-                        <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                          <Clock size={16} />
-                        </div>
-                        暂无客资线索
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-
-        {!loading && !loadError && leads.length > 0 && (
-          <Pagination
-            total={pagination.total}
-            page={pagination.page}
-            limit={pagination.limit}
-            totalPages={pagination.totalPages}
-            onChange={handlePageChange}
-          />
-        )}
-
-        {/* Lead Detail Sheet */}
-        <Sheet open={!!selectedLead} onOpenChange={(open) => !open && closeLeadDetail()}>
-          <SheetContent className="sm:max-w-md p-0 overflow-hidden border-none shadow-2xl flex flex-col">
-            {selectedLead && (
-              <div className="flex flex-col h-full bg-white animate-in slide-in-from-right duration-500">
-                <SheetHeader className="p-8 pb-6 bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.04)]">
-                  <div className="flex items-center gap-5">
-                    <div className="w-14 h-14 bg-neutral-900 text-white rounded-2xl flex items-center justify-center text-xl font-bold shadow-xl shadow-neutral-200">
-                      {selectedLead.name[0]}
-                    </div>
-                    <div className="text-left">
-                      <SheetTitle className="text-2xl font-bold tracking-tight text-neutral-900">{selectedLead.name}</SheetTitle>
-                      <SheetDescription className="font-mono text-[13px] text-neutral-400 mt-0.5">
-                        {selectedLead.phone}
-                      </SheetDescription>
-                    </div>
-                  </div>
-                  <div className="mt-5 flex gap-3">
-                    <Button
-                      className="rounded-xl bg-neutral-900 text-white hover:bg-neutral-800"
-                      onClick={() => {
-                        setSelectedLead(null);
-                        router.push(`/ai-studio/scenarios?leadId=${selectedLead._id}`);
-                      }}
-                    >
-                      {selectedLead.floorPlanIds?.length || selectedLead.followUpRecords?.length ? '查看方案' : '开始方案'}
-                    </Button>
-                  </div>
-                </SheetHeader>
-
-                <div className="flex-1 overflow-y-auto p-8 space-y-10 scrollbar-hide">
-                  {/* Workflow Progress */}
-                  <WorkflowProgress status={selectedLead.status} />
-
-                  {/* Status & Assignment */}
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-2.5">
-                      <label className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider ml-1">业务状态</label>
-                      <Select 
-                        value={selectedLead.status}
-                        disabled
-                      >
-                        <SelectTrigger className="w-full h-11 rounded-xl bg-neutral-50/50 shadow-[0_0_0_1px_rgba(0,0,0,0.06)] border-none px-4 opacity-100 cursor-default">
-                          <SelectValue>
-                            <span className="text-[14px] font-medium">{getStatusLabel(selectedLead.status)}</span>
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent className="rounded-xl shadow-2xl border-none p-1">
-                          <SelectItem value={selectedLead.status} className="rounded-lg">{getStatusLabel(selectedLead.status)}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <p className="text-[10px] text-neutral-400 mt-1 px-1 italic">* 状态由业务流程自动更新</p>
-                    </div>
-                    <div className="space-y-2.5">
-                      <label className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider ml-1">当前负责人</label>
-                      <Select 
-                        value={selectedLead.assignedTo?._id || selectedLead.assignedTo || "unassigned"}
-                        onValueChange={(val) => updateLead(selectedLead._id, { assignedTo: val === "unassigned" ? null : val })}
-                      >
-                        <SelectTrigger className="w-full h-11 rounded-xl bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.08)] border-none hover:shadow-[0_0_0_1px_rgba(0,0,0,0.12)] transition-shadow px-4">
-                          <SelectValue placeholder="待指派">
-                            <span className="text-[14px] font-medium">{getStaffName(selectedLead.assignedTo) || "待指派"}</span>
-                          </SelectValue>
-                        </SelectTrigger>
-                        <SelectContent className="rounded-xl shadow-2xl border-none p-1">
-                          <SelectItem value="unassigned" className="rounded-lg">待指派</SelectItem>
-                          {staffMembers.map(s => (
-                            <SelectItem key={s._id} value={s._id} className="rounded-lg">
-                              {s.displayName || s.username}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  {/* Details */}
-                  <div className="bg-neutral-50 rounded-2xl p-6 shadow-[0_0_0_1px_rgba(0,0,0,0.06)] space-y-4">
-                    <div className="flex justify-between items-center text-[13px]">
-                      <span className="text-neutral-400 font-medium">小区名称</span>
-                      <span className="font-semibold text-neutral-900">{selectedLead.communityName || '-'}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-[13px]">
-                      <span className="text-neutral-400 font-medium">录入人员</span>
-                      <span className="font-semibold text-neutral-900 flex items-center gap-1.5">
-                        <span className="opacity-40"><User size={12} /></span>
-                        {getStaffName(selectedLead.promoterId) || '系统'}
-                      </span>
-                    </div>
-                    <div className="h-px bg-neutral-200/50 my-2"></div>
-                    <div className="flex justify-between items-center text-[13px]">
-                      <span className="text-neutral-400 font-medium">意向面积</span>
-                      <span className="font-semibold text-neutral-900">{selectedLead.area || '-'} ㎡</span>
-                    </div>
-                    <div className="flex justify-between items-center text-[13px]">
-                      <span className="text-neutral-400 font-medium">偏好风格</span>
-                      <span className="font-semibold text-neutral-900">{selectedLead.stylePreference || '-'}</span>
-                    </div>
-                    <div className="flex justify-between items-center text-[13px]">
-                      <span className="text-neutral-400 font-medium">来源渠道</span>
-                      <span className="font-medium text-[11px] bg-white px-2 py-0.5 rounded-md shadow-[0_0_0_1px_rgba(0,0,0,0.08)] text-neutral-600">{selectedLead.source}</span>
-                    </div>
-                  </div>
-
-                  {selectedLeadLoading && (
-                    <div className="flex items-center gap-2 rounded-2xl bg-neutral-50 px-4 py-3 text-[12px] font-medium text-neutral-500 shadow-[0_0_0_1px_rgba(0,0,0,0.04)]">
-                      <Loader2 size={14} className="animate-spin" />
-                      正在加载小程序测绘数据...
-                    </div>
-                  )}
-
-                  {/* Related Floor Plans */}
-                  <RelatedFloorPlans
-                    floorPlans={selectedLead.floorPlanIds || []}
-                    primaryFloorPlanId={selectedLead.primaryFloorPlanId?._id || selectedLead.primaryFloorPlanId}
-                  />
-
-                  {/* Follow up records */}
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2 text-[14px] font-bold tracking-tight text-neutral-900">
-                        <MessageSquare size={16} className="text-neutral-400" /> 
-                        跟进日志 
-                      </div>
-                      <span className="text-[11px] font-medium text-neutral-400 bg-neutral-50 px-2 py-0.5 rounded-md shadow-[0_0_0_1px_rgba(0,0,0,0.06)]">
-                        {selectedLead.followUpRecords?.length || 0} 条记录
-                      </span>
-                    </div>
-                    
-                    <div className="space-y-6">
-                      <div className="flex gap-2">
-                        <Input 
-                          placeholder="记录新的跟进动态..."
-                          value={newNote}
-                          onChange={(e) => setNewNote(e.target.value)}
-                          className="h-11 rounded-xl bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.08)] border-none focus-visible:ring-2 focus-visible:ring-neutral-100 placeholder:text-neutral-300 text-[14px]"
-                        />
-                        <Button 
-                          size="icon"
-                          onClick={addFollowUp}
-                          disabled={isSubmitting || !newNote.trim()}
-                          className="h-11 w-11 shrink-0 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white shadow-lg shadow-neutral-200 transition-all active:scale-95"
-                        >
-                          <Plus size={18} />
-                        </Button>
-                      </div>
- 
-                      <div className="space-y-6 mt-8 relative before:absolute before:left-[7px] before:top-2 before:bottom-2 before:w-px before:bg-neutral-100">
-                        {selectedLead.followUpRecords?.slice().reverse().map((record: any, idx: number) => (
-                          <div key={idx} className="flex gap-5 relative">
-                            <div className="mt-1.5 w-[15px] h-[15px] rounded-full bg-white shadow-[0_0_0_2px_#fff,0_0_0_3.5px_#f5f5f5] shrink-0 relative z-10 flex items-center justify-center">
-                              <div className="w-1.5 h-1.5 rounded-full bg-neutral-400" />
-                            </div>
-                            <div className="flex-1 -mt-1 bg-neutral-50/50 p-4 rounded-2xl shadow-[0_0_0_1px_rgba(0,0,0,0.04)]">
-                              <div className="text-[14px] text-neutral-800 leading-relaxed font-medium">{record.content}</div>
-                              <div className="text-[11px] text-neutral-400 mt-3 flex items-center justify-between">
-                                <div className="flex items-center gap-1.5 font-medium">
-                                  <span className="opacity-40"><User size={10} /></span> 
-                                  {record.operator} 
-                                </div>
-                                <div className="font-mono opacity-60">
-                                  {new Date(record.createdAt).toLocaleString()}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                        {!selectedLead.followUpRecords?.length && (
-                          <div className="text-center py-12 text-neutral-300 text-[12px] italic border border-dashed rounded-2xl border-neutral-100">暂无跟进记录</div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </SheetContent>
-        </Sheet>
-      </main>
-    </div>
-  );
-}
-
-function WorkflowProgress({ status }: { status: string }) {
-  const steps = [
-    { key: 'new', label: '新线索' },
-    { key: 'measuring', label: '量房中' },
-    { key: 'measured', label: '量房完成' },
-    { key: 'assigned', label: '方案设计' }, // "已指派设计师" context
-    { key: 'converted', label: '已转化' }
-  ];
-
-  const currentIdx = steps.findIndex(s => s.key === status);
-  const isClosed = status === 'closed';
-
-  if (isClosed) {
-    return (
-      <div className="bg-neutral-50 rounded-2xl p-6 border border-dashed border-neutral-200 text-center">
-        <span className="text-[13px] font-medium text-neutral-400">线索已关闭</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between px-1">
-        <label className="text-[11px] font-bold text-neutral-400 uppercase tracking-wider">业务流程进度</label>
-        <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
-          {currentIdx + 1} / {steps.length}
-        </span>
-      </div>
-      
-      <div className="relative flex justify-between">
-        {/* Connection Line */}
-        <div className="absolute top-[15px] left-0 right-0 h-[2px] bg-neutral-100 z-0 mx-6" />
-        <div 
-          className="absolute top-[15px] left-0 h-[2px] bg-blue-500 z-0 mx-6 transition-all duration-1000 ease-in-out" 
-          style={{ width: `${Math.max(0, (currentIdx / (steps.length - 1)) * 100)}%`, marginLeft: '24px', marginRight: '24px' }}
+      <PageContainer
+        breadcrumbRender={false}
+        className="admin-page-container"
+        title="客资线索管理"
+        content="跟进客户状态、指派协作人员，并衔接正式量房与方案设计。"
+      >
+        <ProTable<Lead>
+          className="admin-mobile-filter-stack"
+          actionRef={actionRef}
+          rowKey="_id"
+          columns={columns}
+          search={{ labelWidth: 'auto', defaultCollapsed: false, span: 12 }}
+          options={{ reload: true, density: true, setting: true }}
+          pagination={{ defaultPageSize: 20, showSizeChanger: true }}
+          scroll={{ x: 1240 }}
+          request={async (params) => {
+            leadListRequestRef.current?.abort();
+            const controller = new AbortController();
+            leadListRequestRef.current = controller;
+            const query = new URLSearchParams({
+              page: String(params.current || 1),
+              limit: String(params.pageSize || 20),
+            });
+            if (params.status) query.set('status', String(params.status));
+            try {
+              const response = await fetch(`/api/leads?${query.toString()}`, { signal: controller.signal });
+              const result = await response.json() as LeadListResponse;
+              if (!response.ok || !result.success) throw new Error(result.error || '线索列表加载失败');
+              if (selectedLead) {
+                const refreshed = result.data?.find((lead) => lead._id === selectedLead._id);
+                if (refreshed) setSelectedLead((current) => current ? { ...current, ...refreshed } : current);
+              }
+              return {
+                data: result.data || [],
+                total: result.pagination?.total || 0,
+                success: true,
+              };
+            } catch (error) {
+              if (controller.signal.aborted) return { data: [], total: 0, success: false };
+              throw error;
+            }
+          }}
+          onRequestError={(error) => notify.error(error instanceof Error ? error.message : '线索列表加载失败')}
         />
+      </PageContainer>
 
-        {steps.map((step, idx) => {
-          const isCompleted = idx < currentIdx;
-          const isCurrent = idx === currentIdx;
-          return (
-            <div key={step.key} className="relative z-10 flex flex-col items-center gap-2 group">
-              <div className={cn(
-                "w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300",
-                isCompleted ? "bg-blue-500 text-white shadow-lg shadow-blue-100" :
-                isCurrent ? "bg-white border-2 border-blue-500 text-blue-600 shadow-xl shadow-blue-50" :
-                "bg-white border-2 border-neutral-100 text-neutral-300"
-              )}>
-                {isCompleted ? <CheckCircle size={16} /> : <span className="text-[12px] font-bold">{idx + 1}</span>}
-              </div>
-              <span className={cn(
-                "text-[11px] font-bold transition-colors",
-                isCurrent ? "text-neutral-900" : "text-neutral-400"
-              )}>
-                {step.label}
-              </span>
-              
-              {isCurrent && (
-                <div className="absolute -top-1 w-1 h-1 bg-blue-500 rounded-full animate-ping" />
-              )}
-            </div>
-          );
-        })}
-      </div>
+      <Drawer
+        open={Boolean(selectedLead)}
+        width={640}
+        destroyOnHidden
+        title={selectedLead ? `${selectedLead.name}的线索详情` : '线索详情'}
+        onClose={closeLeadDetail}
+        extra={selectedLead ? (
+          <Button icon={<FilePenLine size={16} />} onClick={() => router.push(`/ai-studio/scenarios?leadId=${selectedLead._id}`)}>
+            {selectedLead.floorPlanIds?.length || selectedLead.followUpRecords?.length ? '查看方案' : '开始方案'}
+          </Button>
+        ) : null}
+      >
+        {selectedLead ? (
+          <Flex vertical gap={24}>
+            <Flex align="center" justify="space-between" gap={16} wrap>
+              <Flex vertical gap={4}>
+                <Typography.Text type="secondary">{selectedLead.phone || '-'}</Typography.Text>
+                <Tag color={getStatusColor(selectedLead.status)}>{STATUS_LABELS[selectedLead.status] || selectedLead.status}</Tag>
+              </Flex>
+              <Select
+                className="min-w-44"
+                value={getReferenceId(selectedLead.assignedTo) || '__unassigned__'}
+                options={staffOptions}
+                loading={selectedLeadLoading}
+                onChange={(value) => void updateLead(selectedLead._id, { assignedTo: value === '__unassigned__' ? null : value }, true)}
+              />
+            </Flex>
+
+            <Steps
+              size="small"
+              current={getWorkflowStep(selectedLead.status)}
+              items={[
+                { title: '新线索' },
+                { title: '量房中' },
+                { title: '量房完成' },
+                { title: '方案设计' },
+                { title: '已转化' },
+              ]}
+            />
+
+            <Descriptions
+              bordered
+              size="small"
+              column={1}
+              items={[
+                { key: 'community', label: '小区名称', children: selectedLead.communityName || '-' },
+                { key: 'promoter', label: '录入人员', children: getStaffName(selectedLead.promoterId, staffMembers) || '系统' },
+                { key: 'area', label: '意向面积', children: selectedLead.area ? `${selectedLead.area} m2` : '-' },
+                { key: 'style', label: '偏好风格', children: selectedLead.stylePreference || '-' },
+                { key: 'source', label: '来源渠道', children: selectedLead.source || '-' },
+              ]}
+            />
+
+            <RelatedFloorPlans
+              floorPlans={selectedLead.floorPlanIds || []}
+              primaryFloorPlanId={typeof selectedLead.primaryFloorPlanId === 'object' ? selectedLead.primaryFloorPlanId?._id : selectedLead.primaryFloorPlanId || undefined}
+            />
+
+            <Flex vertical gap={12}>
+              <Flex align="center" gap={8}>
+                <MessageSquare size={16} />
+                <Typography.Text strong>跟进日志</Typography.Text>
+                <Tag>{selectedLead.followUpRecords?.length || 0}</Tag>
+              </Flex>
+              <Flex gap={8} align="start">
+                <Input.TextArea
+                  autoSize={{ minRows: 2, maxRows: 4 }}
+                  placeholder="记录新的跟进动态"
+                  value={newNote}
+                  onChange={(event) => setNewNote(event.target.value)}
+                />
+                <Button type="primary" icon={<Plus size={16} />} loading={isSubmitting} disabled={!newNote.trim()} onClick={() => void addFollowUp()}>
+                  添加
+                </Button>
+              </Flex>
+              {selectedLead.followUpRecords?.length ? (
+                <Timeline
+                  items={[...(selectedLead.followUpRecords || [])].reverse().map((record) => ({
+                    children: (
+                      <Flex vertical gap={4}>
+                        <Typography.Text>{record.content || '-'}</Typography.Text>
+                        <Typography.Text type="secondary" className="text-xs">
+                          {record.operator || '管理员'} · {formatDate(record.createdAt)}
+                        </Typography.Text>
+                      </Flex>
+                    ),
+                  }))}
+                />
+              ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无跟进记录" />}
+            </Flex>
+          </Flex>
+        ) : null}
+      </Drawer>
     </div>
   );
 }
 
-function RelatedFloorPlans({ floorPlans, primaryFloorPlanId }: { floorPlans: any[]; primaryFloorPlanId?: string }) {
-  const sortedFloorPlans = [...floorPlans].sort((a, b) => {
-    if (primaryFloorPlanId && String(a._id) === String(primaryFloorPlanId)) return -1;
-    if (primaryFloorPlanId && String(b._id) === String(primaryFloorPlanId)) return 1;
+function getWorkflowStep(status: string) {
+  if (status === 'measuring') return 1;
+  if (status === 'measured') return 2;
+  if (status === 'assigned' || status === 'designing' || status === 'quoting') return 3;
+  if (status === 'converted') return 4;
+  return 0;
+}
+
+function RelatedFloorPlans({
+  floorPlans,
+  primaryFloorPlanId,
+}: {
+  floorPlans: FloorPlan[];
+  primaryFloorPlanId?: string;
+}) {
+  const sortedFloorPlans = [...floorPlans].sort((left, right) => {
+    if (primaryFloorPlanId && left._id === primaryFloorPlanId) return -1;
+    if (primaryFloorPlanId && right._id === primaryFloorPlanId) return 1;
     return 0;
   });
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-2 text-[14px] font-bold tracking-tight text-neutral-900">
-        <Clock size={16} className="text-neutral-400" /> 
-        实测户型档案 
-        <span className="text-[11px] font-medium text-neutral-400 bg-neutral-50 px-2 py-0.5 rounded-md shadow-[0_0_0_1px_rgba(0,0,0,0.06)] ml-1">
-          {floorPlans.length}
-        </span>
-      </div>
-      
-      <div className="grid grid-cols-1 gap-3">
-        {sortedFloorPlans.length > 0 ? (
-          sortedFloorPlans.map((plan) => {
-            const isSurveying = isFormalSurveyPlan(plan);
-            const stats = getSurveyGraphStats(plan.layoutData);
-            return (
-            <div key={plan._id} className="flex items-center justify-between p-4 bg-white shadow-[0_0_0_1px_rgba(0,0,0,0.08)] rounded-xl hover:shadow-[0_4px_12px_rgba(0,0,0,0.05)] transition-all cursor-pointer group"
-                 onClick={() => window.location.href = `/floorplans/${plan._id}`}>
-              <div className="flex flex-col gap-1">
-                <span className="text-[14px] font-semibold text-neutral-900 group-hover:text-blue-600 transition-colors flex items-center gap-2">
-                  {plan.name}
-                  {primaryFloorPlanId && String(plan._id) === String(primaryFloorPlanId) && (
-                    <Badge variant="secondary" className="bg-green-50 text-green-700 border-none">主户型</Badge>
-                  )}
-                  {isSurveying && (
-                    <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-none">正式量房</Badge>
-                  )}
-                </span>
-                <span className="text-[11px] text-neutral-400 font-medium flex items-center gap-1">
-                  <Clock size={10} /> 测量于 {new Date(plan.createdAt).toLocaleDateString()}
-                </span>
-                <span className="text-[11px] text-blue-600 font-bold">
-                  {isSurveying ? '正式量房' : getFloorPlanSourceLabel(plan.source)}
-                  {plan.externalSource?.layoutLabel ? ` · ${plan.externalSource.layoutLabel}` : ''}
-                </span>
-                {isSurveying && (
-                  <span className="text-[11px] font-medium text-neutral-500">
-                    {stats.wallCount} 面墙 · {stats.spaceCount} 个空间 · {stats.openingCount} 个门窗
-                  </span>
-                )}
-              </div>
-              <Button size="sm" variant="ghost" className="h-8 text-[12px] rounded-lg bg-neutral-50 group-hover:bg-neutral-900 group-hover:text-white transition-all font-medium">查看详情</Button>
-            </div>
-            );
-          })
-        ) : (
-          <div className="text-center py-8 text-neutral-300 text-[12px] border border-dashed rounded-2xl border-neutral-100 font-medium">
-            暂无关联的实测记录
-          </div>
-        )}
-      </div>
-    </div>
+    <Flex vertical gap={12}>
+      <Flex align="center" justify="space-between">
+        <Typography.Text strong>实测户型档案</Typography.Text>
+        <Tag>{floorPlans.length}</Tag>
+      </Flex>
+      {sortedFloorPlans.length ? sortedFloorPlans.map((plan) => {
+        const isSurveying = isFormalSurveyPlan(plan);
+        const stats = getSurveyGraphStats(plan.layoutData);
+        return (
+          <Flex key={plan._id} align="center" justify="space-between" gap={16} className="rounded-lg border border-border bg-card p-3">
+            <Flex vertical gap={4} className="min-w-0">
+              <Space size={6} wrap>
+                <Typography.Text strong ellipsis={{ tooltip: plan.name || '未命名户型' }}>{plan.name || '未命名户型'}</Typography.Text>
+                {primaryFloorPlanId === plan._id ? <Tag color="green">主户型</Tag> : null}
+                {isSurveying ? <Tag color="blue">正式量房</Tag> : null}
+              </Space>
+              <Typography.Text type="secondary" className="text-xs">
+                {isSurveying ? `${stats.wallCount} 面墙 · ${stats.spaceCount} 个空间 · ${stats.openingCount} 个门窗` : getFloorPlanSourceLabel(plan.source)}
+              </Typography.Text>
+            </Flex>
+            <Button size="small" href={`/floorplans/${plan._id}`}>查看</Button>
+          </Flex>
+        );
+      }) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无关联的实测记录" />}
+    </Flex>
   );
 }
-

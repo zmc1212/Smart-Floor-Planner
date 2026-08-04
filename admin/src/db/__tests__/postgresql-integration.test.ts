@@ -1882,6 +1882,12 @@ test('AI creation repository preserves tenant-scoped media, task, batch, generat
       assert.equal(view.batches.length, 1);
       assert.equal(view.batches[0].referenceAssetIds[0], asset.id);
       assert.equal(view.batches[0].generations[0].currentAttemptId, attempt.id);
+      const history = await repository.listHistory({
+        page: 1,
+        limit: 10,
+        types: ['free_create'],
+      });
+      assert.ok(history.rows.some((row) => row.id === generation.id));
       return { task, batch, generation };
     });
 
@@ -1891,9 +1897,17 @@ test('AI creation repository preserves tenant-scoped media, task, batch, generat
         task: await repository.findTask(created.task.id),
         asset: await repository.findMediaAsset(assetId!),
         generation: await repository.findGeneration(created.generation.id),
+        history: await repository.listHistory({
+          page: 1,
+          limit: 10,
+          types: ['free_create'],
+        }),
       };
     });
-    assert.deepEqual(crossTenant, { task: null, asset: null, generation: null });
+    assert.equal(crossTenant.task, null);
+    assert.equal(crossTenant.asset, null);
+    assert.equal(crossTenant.generation, null);
+    assert.ok(!crossTenant.history.rows.some((row) => row.id === created.generation.id));
 
     await withTenantTransaction(enterpriseAId, async (transaction) => {
       const archived = await new AiCreationRepository(transaction).archiveTask(taskId!);
@@ -1956,6 +1970,307 @@ test('PostgreSQL media storage commits asset metadata only after object upload u
         transaction.delete(mediaAssets).where(eq(mediaAssets.id, assetId!))
       );
     }
+  }
+});
+
+test('PostgreSQL advice generations use the tenant-scoped credit lifecycle', async () => {
+  let generationId: bigint | null = null;
+  const ledgerIds: bigint[] = [];
+  try {
+    const generation = await withTenantTransaction(enterpriseAId, (transaction) =>
+      new AiCreationRepository(transaction).createGeneration({
+        enterpriseId: enterpriseAId,
+        operatorId: promotionDesignerAId,
+        type: 'advice',
+        channel: 'admin',
+        actionKey: 'text.design_advice',
+        capability: 'chat',
+        logicalModelKey: 'chat.general',
+        status: 'pending',
+        input: { style: 'test-advice' },
+        output: {},
+        billing: { cycle: 0, actionKey: 'text.design_advice', price: 1, status: 'unbilled' },
+      })
+    );
+    generationId = generation.id;
+
+    const grant = await grantAiCredits({
+      enterpriseId: enterpriseAId.toString(),
+      operatorId: promotionDesignerAId.toString(),
+      amount: 1,
+      operationId: `${testRunKey}:advice-grant`,
+    });
+    ledgerIds.push(grant.ledger.id);
+    const held = await holdPostgresCreationGenerationCredits({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: generation.id.toString(),
+    });
+    assert.equal(held.generation.status, 'created');
+    assert.equal((held.generation.billing as { status?: string }).status, 'held');
+    if (held.ledger) ledgerIds.push(held.ledger.id);
+
+    await withTenantTransaction(enterpriseAId, (transaction) =>
+      new AiCreationRepository(transaction).updateGeneration(generation.id, {
+        status: 'succeeded',
+        output: { adviceText: 'Use warm indirect lighting.' },
+      })
+    );
+    const consumed = await consumePostgresCreationGenerationCredits({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: generation.id.toString(),
+    });
+    assert.equal((consumed.generation.billing as { status?: string }).status, 'consumed');
+    if (consumed.ledger) ledgerIds.push(consumed.ledger.id);
+
+    const crossTenant = await withTenantTransaction(enterpriseBId, (transaction) =>
+      new AiCreationRepository(transaction).findGeneration(generation.id)
+    );
+    assert.equal(crossTenant, null);
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (ledgerIds.length) {
+        await transaction.delete(aiCreditLedgers).where(inArray(aiCreditLedgers.id, ledgerIds));
+      }
+      if (generationId) {
+        await transaction.delete(aiGenerations).where(eq(aiGenerations.id, generationId));
+      }
+    });
+  }
+});
+
+test('PostgreSQL soft-furnishing generations use the image execution lifecycle', async () => {
+  let generationId: bigint | null = null;
+  let sourceAssetId: bigint | null = null;
+  const ledgerIds: bigint[] = [];
+  try {
+    const created = await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const repository = new AiCreationRepository(transaction);
+      const asset = await repository.createMediaAsset({
+        enterpriseId: enterpriseAId,
+        ownerType: 'ai_generation_input',
+        mimeType: 'image/png',
+        size: BigInt(4),
+        width: 1,
+        height: 1,
+        storageProvider: 'local',
+        storageKey: `${testRunKey}/soft-furnishing-source.png`,
+      });
+      const generation = await repository.createGeneration({
+        enterpriseId: enterpriseAId,
+        operatorId: promotionDesignerAId,
+        type: 'soft_furnishing_render',
+        channel: 'admin',
+        actionKey: 'image.soft_furnishing_render',
+        capability: 'image.edit',
+        logicalModelKey: 'image.edit.standard',
+        status: 'pending',
+        input: {
+          sourceImage: `/api/ai/assets/${asset.id.toString()}/image`,
+          customPrompt: 'Add soft furnishings while preserving the room.',
+          negativePrompt: 'changed room structure',
+          outputAspectRatio: '3:2',
+          outputSize: '1024x1024',
+        },
+        output: {},
+        billing: { cycle: 0, actionKey: 'image.soft_furnishing_render', price: 1, status: 'unbilled' },
+      });
+      return { asset, generation };
+    });
+    generationId = created.generation.id;
+    sourceAssetId = created.asset.id;
+
+    const grant = await grantAiCredits({
+      enterpriseId: enterpriseAId.toString(),
+      operatorId: promotionDesignerAId.toString(),
+      amount: 1,
+      operationId: `${testRunKey}:soft-furnishing-grant`,
+    });
+    ledgerIds.push(grant.ledger.id);
+    const held = await holdPostgresCreationGenerationCredits({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: created.generation.id.toString(),
+    });
+    if (held.ledger) ledgerIds.push(held.ledger.id);
+    assert.equal(held.generation.status, 'created');
+
+    const begun = await beginPostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: created.generation.id.toString(),
+      providerConfigId: aiProviderConfigId.toString(),
+      providerKey: 'integration-provider',
+      adapterType: 'grs',
+      remoteModel: 'gpt-image-2',
+      requestSnapshot: { prompt: 'Add soft furnishings while preserving the room.' },
+    });
+    const acknowledged = await acknowledgePostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: created.generation.id.toString(),
+      attemptId: begun.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-soft-furnishing-remote-task`,
+      remoteStatus: 'queued',
+      nextPollAfterMs: 0,
+    });
+    await withTenantTransaction(enterpriseAId, (transaction) =>
+      new AiCreationRepository(transaction).updateGeneration(created.generation.id, {
+        externalTask: {
+          ...(acknowledged.generation.externalTask as Record<string, unknown>),
+          nextPollAt: new Date(Date.now() - 1_000).toISOString(),
+        },
+      })
+    );
+    const claims = await claimPostgresCreationProviderPolls({
+      enterpriseId: enterpriseAId.toString(),
+      limit: 20,
+    });
+    assert.ok(claims.some((claim) => claim.generationId === created.generation.id.toString()));
+    assert.equal(acknowledged.generation.status, 'processing');
+
+    const released = await releasePostgresCreationGenerationCredits({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: created.generation.id.toString(),
+      errorMessage: 'Integration test cleanup',
+    });
+    if (released.ledger) ledgerIds.push(released.ledger.id);
+    assert.equal((released.generation.billing as { status?: string }).status, 'released');
+
+    await withTenantTransaction(enterpriseAId, (transaction) =>
+      new AiCreationRepository(transaction).updateGeneration(created.generation.id, {
+        status: 'pending',
+        retryCount: 1,
+        billing: {
+          ...(released.generation.billing as Record<string, unknown>),
+          cycle: 1,
+          status: 'unbilled',
+        },
+      })
+    );
+    const retried = await holdPostgresCreationGenerationCredits({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: created.generation.id.toString(),
+    });
+    if (retried.ledger) ledgerIds.push(retried.ledger.id);
+    assert.equal((retried.generation.billing as { cycle?: number; status?: string }).cycle, 1);
+    assert.equal((retried.generation.billing as { status?: string }).status, 'held');
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (ledgerIds.length) {
+        await transaction.delete(aiCreditLedgers).where(inArray(aiCreditLedgers.id, ledgerIds));
+      }
+      if (generationId) {
+        await transaction.delete(aiGenerations).where(eq(aiGenerations.id, generationId));
+      }
+      if (sourceAssetId) {
+        await transaction.delete(mediaAssets).where(eq(mediaAssets.id, sourceAssetId));
+      }
+    });
+  }
+});
+
+test('PostgreSQL two-step direct generations use the image execution lifecycle', async () => {
+  let generationId: bigint | null = null;
+  let sourceAssetId: bigint | null = null;
+  const ledgerIds: bigint[] = [];
+  try {
+    const created = await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const repository = new AiCreationRepository(transaction);
+      const asset = await repository.createMediaAsset({
+        enterpriseId: enterpriseAId,
+        ownerType: 'ai_generation_input',
+        mimeType: 'image/png',
+        size: BigInt(4),
+        width: 1,
+        height: 1,
+        storageProvider: 'local',
+        storageKey: `${testRunKey}/two-step-direct-source.png`,
+      });
+      const generation = await repository.createGeneration({
+        enterpriseId: enterpriseAId,
+        operatorId: promotionDesignerAId,
+        type: 'furnishing_render',
+        channel: 'admin',
+        actionKey: 'image.furnishing_render',
+        capability: 'image.edit',
+        logicalModelKey: 'image.edit.standard',
+        status: 'pending',
+        input: {
+          style: 'modern',
+          sourceImage: `/api/ai/assets/${asset.id.toString()}/image`,
+          customPrompt: 'Render the supplied floor plan as a modern furnished home.',
+          presetSnapshot: { image: { mode: 'edit', size: '1024x1024', quality: 'medium' } },
+        },
+        output: {},
+        billing: { cycle: 0, actionKey: 'image.furnishing_render', price: 1, status: 'unbilled' },
+      });
+      return { asset, generation };
+    });
+    generationId = created.generation.id;
+    sourceAssetId = created.asset.id;
+
+    const grant = await grantAiCredits({
+      enterpriseId: enterpriseAId.toString(),
+      operatorId: promotionDesignerAId.toString(),
+      amount: 1,
+      operationId: `${testRunKey}:two-step-direct-grant`,
+    });
+    ledgerIds.push(grant.ledger.id);
+    const held = await holdPostgresCreationGenerationCredits({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: created.generation.id.toString(),
+    });
+    if (held.ledger) ledgerIds.push(held.ledger.id);
+    assert.equal(held.generation.status, 'created');
+
+    const begun = await beginPostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: created.generation.id.toString(),
+      providerConfigId: aiProviderConfigId.toString(),
+      providerKey: 'integration-provider',
+      adapterType: 'grs',
+      remoteModel: 'gpt-image-2',
+      requestSnapshot: { prompt: 'Render the supplied floor plan as a modern furnished home.' },
+    });
+    const acknowledged = await acknowledgePostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: created.generation.id.toString(),
+      attemptId: begun.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-two-step-direct-remote-task`,
+      remoteStatus: 'queued',
+      nextPollAfterMs: 0,
+    });
+    await withTenantTransaction(enterpriseAId, (transaction) =>
+      new AiCreationRepository(transaction).updateGeneration(created.generation.id, {
+        externalTask: {
+          ...(acknowledged.generation.externalTask as Record<string, unknown>),
+          nextPollAt: new Date(Date.now() - 1_000).toISOString(),
+        },
+      })
+    );
+    const claims = await claimPostgresCreationProviderPolls({
+      enterpriseId: enterpriseAId.toString(),
+      limit: 20,
+    });
+    assert.ok(claims.some((claim) => claim.generationId === created.generation.id.toString()));
+    assert.equal(acknowledged.generation.status, 'processing');
+
+    const released = await releasePostgresCreationGenerationCredits({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: created.generation.id.toString(),
+      errorMessage: 'Integration test cleanup',
+    });
+    if (released.ledger) ledgerIds.push(released.ledger.id);
+    assert.equal((released.generation.billing as { status?: string }).status, 'released');
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (ledgerIds.length) {
+        await transaction.delete(aiCreditLedgers).where(inArray(aiCreditLedgers.id, ledgerIds));
+      }
+      if (generationId) {
+        await transaction.delete(aiGenerations).where(eq(aiGenerations.id, generationId));
+      }
+      if (sourceAssetId) {
+        await transaction.delete(mediaAssets).where(eq(mediaAssets.id, sourceAssetId));
+      }
+    });
   }
 });
 

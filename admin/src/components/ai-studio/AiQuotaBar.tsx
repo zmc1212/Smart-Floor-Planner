@@ -1,6 +1,7 @@
 'use client';
 
 import { Info, Wallet } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface AiQuotaBarProps {
   quota: { remaining?: number; balance?: number; frozenBalance?: number; availableBalance?: number; credits?: { balance?: number; frozenBalance?: number; availableBalance?: number } } | null;
@@ -9,10 +10,25 @@ interface AiQuotaBarProps {
 }
 
 export default function AiQuotaBar({ quota, loading, onRecharge }: AiQuotaBarProps) {
-  if (loading) return <div className="animate-pulse border bg-muted/20 p-4"><div className="h-5 w-32 bg-muted" /><div className="mt-3 h-8 bg-muted" /></div>;
+  if (loading) {
+    return <div className="animate-pulse rounded-lg border bg-card p-4"><div className="h-4 w-32 rounded bg-muted" /><div className="mt-3 h-7 rounded bg-muted" /></div>;
+  }
   if (!quota) return null;
+
   const balance = Number(quota.credits?.balance ?? quota.balance ?? 0);
   const frozen = Number(quota.credits?.frozenBalance ?? quota.frozenBalance ?? 0);
   const available = Number(quota.credits?.availableBalance ?? quota.availableBalance ?? quota.remaining ?? Math.max(0, balance - frozen));
-  return <div className="border bg-muted/20 p-4"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center bg-emerald-100 text-emerald-700"><Wallet size={18} /></div><div><div className="text-sm font-bold">企业 AI 点数</div><div className="mt-1 flex flex-wrap gap-4 text-sm text-muted-foreground"><span>可用 {available}</span><span>账户 {balance}</span><span>冻结 {frozen}</span></div></div></div>{onRecharge ? <button onClick={onRecharge} className="inline-flex items-center justify-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground"><Info size={14} />点数说明</button> : null}</div></div>;
+
+  return (
+    <section className="flex flex-col gap-4 rounded-lg border bg-card px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary"><Wallet size={17} /></div>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold">企业 AI 点数</div>
+          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground"><span>可用 {available}</span><span>账户 {balance}</span><span>冻结 {frozen}</span></div>
+        </div>
+      </div>
+      {onRecharge ? <Button variant="ghost" size="sm" className="self-start text-muted-foreground sm:self-auto" onClick={onRecharge}><Info data-icon="inline-start" />点数说明</Button> : null}
+    </section>
+  );
 }

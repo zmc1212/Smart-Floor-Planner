@@ -276,7 +276,14 @@ export class AiCreationRepository {
     enterpriseId?: bigint;
   }) {
     const filters: SQL[] = [
-      inArray(aiGenerations.type, ['free_create', 'scenario', 'miniprogram']),
+      inArray(aiGenerations.type, [
+        'free_create',
+        'scenario',
+        'miniprogram',
+        'soft_furnishing_render',
+        'floor_plan_style',
+        'furnishing_render',
+      ]),
       eq(aiGenerations.status, 'processing'),
       sql`${aiGenerations.deletedAt} is null`,
       sql`exists (
@@ -330,6 +337,35 @@ export class AiCreationRepository {
         sql`${aiGenerations.deletedAt} is null`
       ))
       .orderBy(desc(aiGenerations.createdAt), desc(aiGenerations.id));
+  }
+
+  async listHistory(input: {
+    page?: number;
+    limit?: number;
+    types?: string[];
+    stageKeys?: string[];
+    workflowId?: bigint;
+    leadId?: bigint;
+  } = {}) {
+    const page = Math.max(1, input.page ?? 1);
+    const limit = Math.min(50, Math.max(1, input.limit ?? 20));
+    const filters: SQL[] = [sql`${aiGenerations.deletedAt} is null`];
+    if (input.types?.length) filters.push(inArray(aiGenerations.type, input.types));
+    if (input.stageKeys?.length) filters.push(inArray(aiGenerations.stageKey, input.stageKeys));
+    if (input.workflowId) filters.push(eq(aiGenerations.workflowId, input.workflowId));
+    if (input.leadId) filters.push(eq(aiGenerations.leadId, input.leadId));
+    const where = and(...filters);
+    const [rows, totals] = await Promise.all([
+      this.transaction
+        .select()
+        .from(aiGenerations)
+        .where(where)
+        .orderBy(desc(aiGenerations.createdAt), desc(aiGenerations.id))
+        .offset((page - 1) * limit)
+        .limit(limit),
+      this.transaction.select({ value: count() }).from(aiGenerations).where(where),
+    ]);
+    return { rows, total: Number(totals[0]?.value ?? 0), page, limit };
   }
 
   async listMiniProgramGenerations(input: { operatorId: bigint; page?: number; limit?: number }) {

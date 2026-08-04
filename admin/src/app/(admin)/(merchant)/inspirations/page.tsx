@@ -230,7 +230,7 @@ export default function InspirationsPage() {
           <ModalForm<InspirationFormValues>
             key="create"
             layout="vertical"
-            modalProps={{ destroyOnClose: true }}
+            modalProps={{ destroyOnHidden: true }}
             title="发布灵感方案"
             trigger={<Button icon={<Plus size={16} />} type="primary">发布方案</Button>}
             initialValues={{ isRecommended: false, roomType: '客厅', style: '现代简约' }}
@@ -302,8 +302,8 @@ export default function InspirationsPage() {
       <Image
         alt={previewing?.title || '灵感方案预览'}
         preview={{
-          open: Boolean(previewing),
-          onOpenChange: (open) => !open && setPreviewing(null),
+          visible: Boolean(previewing),
+          onVisibleChange: (visible) => !visible && setPreviewing(null),
         }}
         src={previewing?.renderingImage || previewing?.coverImage}
         style={{ display: 'none' }}
