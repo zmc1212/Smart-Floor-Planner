@@ -556,6 +556,51 @@ function findMergeClosureCandidate(floor, session, endPoint) {
   const includesPreview = !!session.previewPoint;
   const requiredWallCount = activeWalls.length + (includesPreview ? 1 : 0);
 
+  // A reset cursor can begin a new wall chain from an existing boundary. In
+  // that case, one measured wall plus a new closing edge can form a room by
+  // following the existing boundary back to the snapped start point.
+  if (session.activeSpaceSharedWallId && activeStartNode && anchor && requiredWallCount >= 1) {
+    const closureStart = includesPreview ? endPoint : anchor;
+    const activeWallIds = {};
+    activeWalls.forEach((wall) => { activeWallIds[wall.id] = true; });
+    const segments = (floor.walls || []).map((wall) => ({
+      start: getNode(floor, wall.startNodeId),
+      end: getNode(floor, wall.endNodeId)
+    }));
+    if (includesPreview) {
+      segments.push({ start: anchor, end: endPoint });
+    }
+
+    for (let index = 0; index < floor.nodes.length; index += 1) {
+      const candidate = floor.nodes[index];
+      if (!candidate || candidate.id === activeStartNode.id || candidate.id === anchor.id) continue;
+      if (distanceMm(closureStart, candidate) < MIN_WALL_LENGTH_MM) continue;
+
+      const candidateConnections = (floor.walls || []).filter((wall) => (
+        !activeWallIds[wall.id] && (wall.startNodeId === candidate.id || wall.endNodeId === candidate.id)
+      ));
+      if (candidateConnections.length !== 1) continue;
+
+      const boundaryPath = findWallPathBetweenNodes(
+        floor,
+        candidate.id,
+        activeStartNode.id,
+        activeWallIds
+      );
+      if (boundaryPath.length < 2) continue;
+
+      const crossesExistingWall = segments.some((segment) => (
+        segment.start && segment.end && hasClosureInteriorIntersection(
+          closureStart,
+          candidate,
+          segment.start,
+          segment.end
+        )
+      ));
+      if (!crossesExistingWall) return candidate;
+    }
+  }
+
   if (!activeStartNode || !anchor || requiredWallCount < 3 || distanceMm(endPoint, activeStartNode) < MIN_WALL_LENGTH_MM) {
     return null;
   }
@@ -1564,8 +1609,8 @@ function startPreview(draft, rawPoint) {
 
   const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
   const activeWallCount = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
-  if (activeStartNode && activeWallCount >= 2) {
-    const sharedProjection = findSharedWallClosureProjection(floor, session, previewPoint);
+  if (activeStartNode && (activeWallCount >= 2 || !!session.activeSpaceSharedWallId)) {
+    const sharedProjection = findAnySharedWallClosureProjection(floor, session, previewPoint);
     if (sharedProjection) {
       session.closeCandidatePoint = sharedProjection.point;
       session.closeCandidateType = 'shared-wall';
@@ -1725,7 +1770,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
   const activeWallCountBeforeCommit = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
   const canCloseWithSharedBoundary = activeWallCountBeforeCommit >= 2 ||
-    (activeWallCountBeforeCommit >= 1 && !!session.activeSpaceSharedWallId);
+    !!session.activeSpaceSharedWallId;
   const sharedProjection = canCloseWithSharedBoundary
     ? findAnySharedWallClosureProjection(floor, session, endPoint)
     : null;
@@ -1779,7 +1824,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   session.alignmentSnapGuide = null;
 
   const activeWallCount = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
-  if (sharedProjection && activeWallCount >= 2) {
+  if (sharedProjection && activeWallCount >= 1) {
     session.state = 'closing';
     if (!session.activeSpaceSharedWallId) {
       session.activeSpaceSharedWallId = sharedProjection.wall.id;
@@ -1860,9 +1905,9 @@ function confirmClosure(draft) {
 
   const startWallIndex = session.activeSpaceStartWallIndex || 0;
   const activeWallCount = Math.max(0, floor.walls.length - startWallIndex);
-  const closeCandidateSharedWallId = session.closeCandidateSharedWallId || session.activeSpaceSharedWallId;
+  const closeCandidateSharedWallId = session.closeCandidateSharedWallId;
   const hasSharedBoundary = !!(session.activeSpaceSharedWallId || closeCandidateSharedWallId);
-  const minimumActiveWallCount = hasSharedBoundary ? 2 : 3;
+  const minimumActiveWallCount = session.activeSpaceSharedWallId ? 1 : (hasSharedBoundary ? 2 : 3);
 
   if (session.state !== 'closing' || (!session.closeCandidateNodeId && !session.closeCandidatePoint) || activeWallCount < minimumActiveWallCount) {
     return next;
@@ -1917,10 +1962,15 @@ function confirmClosure(draft) {
 
   if (sharedBoundaryWallIds.length && session.activeSpaceStartNodeId) {
     sharedBoundaryWallIds.forEach((wallId) => {
-      splitWallAtNodes(floor, wallId, [
-        sharedStartNodeId,
-        sharedCloseNodeId
-      ]);
+      const sharedWall = getWall(floor, wallId);
+      const sharedStart = sharedWall ? getNode(floor, sharedWall.startNodeId) : null;
+      const sharedEnd = sharedWall ? getNode(floor, sharedWall.endNodeId) : null;
+      const splitNodeIds = [sharedStartNodeId, sharedCloseNodeId].filter((nodeId) => {
+        const node = getNode(floor, nodeId);
+        const projection = projectPointToWallSegment(node, sharedStart, sharedEnd);
+        return projection && projection.distanceMm <= CLOSE_TOLERANCE_MM;
+      });
+      splitWallAtNodes(floor, wallId, splitNodeIds);
     });
   }
 

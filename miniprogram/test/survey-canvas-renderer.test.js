@@ -28,6 +28,22 @@ function createClosedRectangleDraft() {
   return surveyGraph.confirmClosure(draft);
 }
 
+function createResetCursorMergeClosureDraft() {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 3000, yMm: 0 });
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 3000);
+  draft = commitWall(draft, { xMm: 0, yMm: 2000 }, 2000);
+
+  const floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 0, yMm: 2000 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  return commitWall(draft, { xMm: 3000, yMm: 2000 }, 3000);
+}
+
 function createTwoClosedRoomsWithSharedDoorDraft() {
   const draft = surveyGraph.createSurveyDraft();
   const floor = surveyGraph.getActiveFloor(draft);
@@ -426,6 +442,28 @@ test('closed door wall renders a V8 positioning chain plus its total dimension',
   assert.equal(scene.closedSpaceLabels[0].ceilingHeightMm, 2800);
 });
 
+test('reset-cursor merge closure renders its inferred edge and a complete room shell', () => {
+  const pendingDraft = createResetCursorMergeClosureDraft();
+  const pendingFloor = surveyGraph.getActiveFloor(pendingDraft);
+  const pendingScene = createScene(pendingDraft);
+
+  assert.equal(pendingFloor.session.state, 'mergeClosing');
+  assert.ok(pendingScene.closureGuide);
+
+  const closedDraft = surveyGraph.confirmClosure(pendingDraft);
+  const closedFloor = surveyGraph.getActiveFloor(closedDraft);
+  const closedScene = createScene(closedDraft);
+  const closedSpace = closedFloor.spaces.find((space) => space.closed);
+  const boundary = surveyGraph.buildSpaceBoundaryPoints(closedFloor, closedSpace.wallIds);
+
+  assert.equal(closedSpace.wallIds.length, 4);
+  assert.equal(boundary.length, 4);
+  assert.equal(closedScene.closedSpaceFills.length, 1);
+  assert.equal(closedScene.closedSpaceFills[0].points.length, 4);
+  assert.equal(closedScene.walls.every((wall) => !wall.startOpen && !wall.endOpen), true);
+  assert.equal(closedFloor.walls.at(-1).inputSource, 'closure-merge');
+});
+
 test('window walls retain global exterior totals without a duplicate positioning chain', () => {
   let draft = createClosedRectangleDraft();
   const firstWallId = surveyGraph.getActiveFloor(draft).walls[0].id;
@@ -461,7 +499,7 @@ test('dimension arrows and guidance lines use the compact drawing treatment', ()
   assert.ok(recorder.widths.includes(1));
   assert.ok(recorder.widths.includes(2));
   assert.ok(recorder.widths.includes(1.5));
-  assert.deepEqual(recorder.dashes.filter((dash) => dash.length), [[14, 10], [5, 5], [7, 6]]);
+  assert.deepEqual(recorder.dashes.filter((dash) => dash.length), [[14, 10], [5, 5], [7, 6], [18, 12]]);
   assert.equal(recorder.strokes.some((path) => (
     path.length === 2 &&
     path[0][0] === 'moveTo' &&

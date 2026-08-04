@@ -437,12 +437,15 @@ utilities, and the admin APIs they call.
 - Data contract: `FloorPlan.layoutData` is only `{ version: 4,
   measurementMode: 'surveying', surveyGraph }`; graph units are millimetres.
 - Visual baseline: `design-references/all-pages-ip-v1/03-surveying-editor-idle.png`,
-  `18-surveying-editor-active.png`, and `19-surveying-state-board.png` at the
+  `18-surveying-editor-active.png`, `19-surveying-state-board.png`, and
+  `design-references/surveying-editor-v2/sub2api-20260804-095739-1.png` at the
   iPhone 13 Pro `390x844` baseline. The delivered editor uses the reference's
-  full-width workspace, centred truthful save state, four-item right tool rail,
-  and one bottom dock for undo/redo, cursor placement, and BLE ranging. The
-  header title is the linked community name, with `未填写小区` only as a missing-data
-  fallback. On the first empty surveying session per local client, a compact
+  full-width workspace, four-item right tool rail, and one bottom dock for
+  undo/redo, cursor placement, and BLE ranging. Its custom header reserves the
+  native WeChat top-right capsule: the linked community name and truthful save
+  state occupy the left information block, while save/complete actions sit on a
+  separate row beneath the capsule. `未填写小区` remains the missing-data fallback.
+  On the first empty surveying session per local client, a compact
   three-step guide highlights cursor placement, wall tools, and manual/BLE
   measurement without masking the canvas; it uses the bundled, reference-derived
   measuring Xiao K crop and never reappears after that first display. When a wall
@@ -456,7 +459,11 @@ utilities, and the admin APIs they call.
   it does not change role boundaries, graph contract, audit queue, or export scope.
 - Implemented editor behavior: startup restore, local draft and cloud draft
   persistence, straight and diagonal wall preview/commit, live BLE/manual length,
-  remeasure, shared-wall closure, advisory close candidate, and direct closure
+  remeasure, shared-wall closure including reset-cursor connections to existing
+  boundaries and their inferred missing closing edge, advisory close candidate
+  with a compact green `可闭合` action and geometry-anchored guide, and direct closure.
+  Shared-boundary splits apply only to nodes that lie on that boundary, preserving
+  every existing edge needed for the merged room shell.
   from a pending diagonal preview (the close action commits its current preview
   length before closing), openings, opening
   dimensions and side, cursor placement for new wall chains on existing
@@ -467,6 +474,11 @@ utilities, and the admin APIs they call.
   closed room wall shells and outer joins are
   derived from the closed boundary rather than the selected measurement edge.
   undo/reset, completed submission, and measurement audit queue/flush.
+- Visual interaction treatment: at the `390x844` baseline the custom header
+  preserves the native WeChat capsule safe area, the first-wall prompt is a
+  compact `沿预览线拖动` canvas label, and a closure candidate uses a green
+  geometry-anchored guide plus its `可闭合` action. These presentation changes
+  do not alter entry context, role boundary, wall-graph contract, or audit flow.
 - Implemented angle behavior: diagonal direction snap within the documented
   threshold, number-pad angle entry, operator-confirmed phone motion angle, and
   three BLE triangle readings validated with the cosine rule. Closing the angle

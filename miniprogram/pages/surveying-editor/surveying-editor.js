@@ -1626,7 +1626,7 @@ Page({
     if (controls.closeAction) {
       const close = controls.closeAction;
       ctx.beginPath();
-      ctx.fillStyle = '#f07a21';
+      ctx.fillStyle = '#16a34a';
       ctx.arc(close.cx, close.cy, close.radius, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = '#ffffff';
@@ -1916,7 +1916,7 @@ Page({
 
     return {
       cursorVisible,
-      guideVisible: false,
+      guideVisible,
       cursorStyle,
       cursorHorizontalGuideStyle,
       cursorVerticalGuideStyle,
@@ -2298,13 +2298,15 @@ Page({
     };
   },
 
-  buildAnchoredCallout(text, target, tipCenter, safeArea, pointerLength) {
+  buildAnchoredCallout(text, target, tipCenter, safeArea, pointerLength, compact) {
+    const tipWidth = compact ? 132 : 202;
+    const tipHeight = compact ? 32 : 38;
     const tip = {
-      width: 202,
-      height: 38,
+      width: tipWidth,
+      height: tipHeight,
       text,
-      x: clamp(tipCenter.x - 101, safeArea.left, Math.max(safeArea.left, safeArea.right - 202)),
-      y: clamp(tipCenter.y - 19, safeArea.top, Math.max(safeArea.top, safeArea.bottom - 38))
+      x: clamp(tipCenter.x - tipWidth / 2, safeArea.left, Math.max(safeArea.left, safeArea.right - tipWidth)),
+      y: clamp(tipCenter.y - tipHeight / 2, safeArea.top, Math.max(safeArea.top, safeArea.bottom - tipHeight))
     };
     if (!Number.isFinite(pointerLength)) return { tip, pointer: target };
 
@@ -2403,10 +2405,12 @@ Page({
     const cursor = this.mmToCanvasPoint(anchor);
     const rect = this.canvasRect || { width: 0, height: 0 };
     return this.buildAnchoredCallout(
-      '拖动光标，拉出第一条墙边',
+      '沿预览线拖动',
       cursor,
       { x: cursor.x, y: cursor.y - 74 },
-      this.getCanvasControlSafeArea(rect)
+      this.getCanvasControlSafeArea(rect),
+      undefined,
+      true
     );
   },
 
@@ -2420,7 +2424,7 @@ Page({
       : 0;
     const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
     const hasSharedBoundary = !!(session.activeSpaceSharedWallId || session.closeCandidateSharedWallId);
-    const minimumActiveWallCount = hasSharedBoundary ? 2 : 3;
+    const minimumActiveWallCount = session.activeSpaceSharedWallId ? 1 : (hasSharedBoundary ? 2 : 3);
     if (activeWallCount + (session.previewPoint ? 1 : 0) < minimumActiveWallCount) {
       return { guideVisible: false, guideStyle: '', actionVisible: false, actionStyle: '' };
     }
@@ -2462,7 +2466,7 @@ Page({
       guideVisible: width > 1,
       guideStyle: `left:${roundPx(startPoint.x)}px; top:${roundPx(startPoint.y)}px; width:${roundPx(width)}px; transform:rotate(${roundPx(angleDeg)}deg);`,
       actionVisible,
-      actionStyle: `left:${roundPx(actionX - actionRadius)}px; top:${roundPx(actionY - actionRadius)}px;`,
+      actionStyle: `left:${roundPx(actionX - 24)}px; top:${roundPx(actionY - 12)}px;`,
       action,
       hint: actionVisible ? this.buildClosureHint(action, startPoint, endPoint) : null
     };
@@ -2521,7 +2525,7 @@ Page({
     const tipCenter = candidateCenters.reduce((best, candidate) => (
       scoreCandidate(candidate) < scoreCandidate(best) ? candidate : best
     ), candidateCenters[0]);
-    return this.buildAnchoredCallout('点击“合”即可闭合', action, tipCenter, safeArea, 8);
+    return this.buildAnchoredCallout('可闭合', action, tipCenter, safeArea, 8, true);
   },
 
   formatWallLabel(wall) {

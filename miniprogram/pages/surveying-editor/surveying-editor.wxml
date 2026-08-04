@@ -50,7 +50,7 @@
       style="{{closeActionStyle}}"
       catchtap="onConfirmClose"
     >
-      <cover-view class="closure-action-label">合</cover-view>
+      <cover-view class="closure-action-label">可闭合</cover-view>
     </cover-view>
 
     <!-- 选中墙体时的浮动工具栏（图标行） -->
@@ -83,7 +83,7 @@
   <!-- ══════════════════════════════════════════════ -->
   <!--  顶部导航浮层                                   -->
   <!-- ══════════════════════════════════════════════ -->
-  <cover-view class="survey-topbar native-canvas-overlay" style="top: {{navigationSafeTop}}px;">
+  <cover-view class="survey-topbar native-canvas-overlay" style="top: {{statusBarHeight}}px;">
     <cover-view class="back-button" bindtap="onBack" aria-label="返回">
       <cover-image class="topbar-icon topbar-back-icon" src="/images/surveying-icons/topbar-back.png"></cover-image>
     </cover-view>

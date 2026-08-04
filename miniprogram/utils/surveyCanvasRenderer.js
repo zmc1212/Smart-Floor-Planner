@@ -457,7 +457,9 @@ function buildClosureGuide(floor, session, project) {
     : 0;
   const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
   const previewCountsAsWall = !!session.previewPoint;
-  if (activeWallCount + (previewCountsAsWall ? 1 : 0) < 3) {
+  const hasSharedBoundary = !!(session.activeSpaceSharedWallId || session.closeCandidateSharedWallId);
+  const minimumActiveWallCount = session.activeSpaceSharedWallId ? 1 : (hasSharedBoundary ? 2 : 3);
+  if (activeWallCount + (previewCountsAsWall ? 1 : 0) < minimumActiveWallCount) {
     return null;
   }
 
@@ -1275,7 +1277,7 @@ function drawClosureGuide(ctx, scene) {
   const guide = scene.closureGuide;
   if (!guide) return;
   ctx.save();
-  ctx.strokeStyle = '#f07a21';
+  ctx.strokeStyle = '#16a34a';
   ctx.lineWidth = 1.5;
   if (ctx.setLineDash) ctx.setLineDash([7, 6]);
   ctx.beginPath();
@@ -1326,6 +1328,17 @@ function drawCursor(ctx, scene) {
   const core = 20;
 
   ctx.save();
+  ctx.strokeStyle = 'rgba(22, 119, 255, 0.92)';
+  ctx.lineWidth = 1.5;
+  if (ctx.setLineDash) ctx.setLineDash([18, 12]);
+  ctx.beginPath();
+  ctx.moveTo(0, point.y);
+  ctx.lineTo(scene.rect.width, point.y);
+  ctx.moveTo(point.x, 0);
+  ctx.lineTo(point.x, scene.rect.height);
+  ctx.stroke();
+  if (ctx.setLineDash) ctx.setLineDash([]);
+
   ctx.strokeStyle = '#f07a21';
   ctx.fillStyle = 'rgba(240, 122, 33, 0.16)';
   ctx.lineWidth = 1.5;

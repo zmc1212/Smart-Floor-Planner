@@ -120,7 +120,20 @@ staged change; split unrelated work.
   `design-references/` directory. It is Git-ignored and must never be placed
   under `miniprogram/`, so reference assets cannot inflate the Mini Program
   package.
+- Use Codex's built-in image generation for design references when it is
+  available. If it is unavailable or cannot complete the requested image,
+  automatically fall back to the `sub2api-image` skill and its configured
+  OpenAI-compatible provider. Keep the same prompt, reference-image order, and
+  output constraints across the fallback; report which path produced the final
+  image without exposing credentials.
 - Use the iPhone 13 Pro `390x844` viewport as the primary visual QA baseline.
+  Every Mini Program screen design, generated design reference, and visual QA
+  capture must include the native WeChat top-right capsule safe area. Reserve
+  that region before positioning title, project identity, save/complete
+  actions, or decorative content; do not center a title through the capsule or
+  let any interactive element overlap it. For custom navigation, compose the
+  title and actions explicitly to the left of the capsule and validate the
+  result at the `390x844` baseline.
   Standard fixed-content result/action pages should keep the page heading,
   primary content, key actions, and final CTA visible in one screen including
   the navigation bar and safe area. Lists, dynamic content, accessibility text,

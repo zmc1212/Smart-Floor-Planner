@@ -1985,20 +1985,21 @@ page,
 .survey-topbar {
   left: 0;
   right: 0;
-  height: 122rpx;
+  height: 176rpx;
   padding: 0 34rpx;
   border: 0;
   border-radius: 0;
   background: rgba(255, 255, 255, 0.97);
   box-shadow: 0 1rpx 0 rgba(24, 43, 31, 0.07);
   backdrop-filter: none;
-  justify-content: space-between;
+  align-items: flex-start;
+  justify-content: flex-start;
 }
 
 .back-button {
   width: 64rpx;
   height: 76rpx;
-  margin-right: 6rpx;
+  margin: 10rpx 6rpx 0 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
@@ -2011,20 +2012,21 @@ page,
 
 .title-group {
   position: absolute;
-  left: 152rpx;
-  right: 184rpx;
-  align-items: center;
-  gap: 6rpx;
+  top: 16rpx;
+  left: 112rpx;
+  right: 254rpx;
+  align-items: flex-start;
+  gap: 4rpx;
 }
 
 .page-title {
   max-width: 100%;
   overflow: hidden;
   color: #141a16;
-  font-size: 32rpx;
+  font-size: 34rpx;
   font-weight: 700;
   line-height: 42rpx;
-  text-align: center;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2033,8 +2035,8 @@ page,
   display: flex;
   align-items: center;
   max-width: 100%;
-  color: #6b7280;
-  font-size: 20rpx;
+  color: #637068;
+  font-size: 22rpx;
   line-height: 28rpx;
 }
 
@@ -2047,7 +2049,10 @@ page,
 }
 
 .topbar-right {
-  gap: 30rpx;
+  position: absolute;
+  top: 94rpx;
+  right: 32rpx;
+  gap: 28rpx;
 }
 
 .topbar-chip,
@@ -2055,12 +2060,12 @@ page,
 .topbar-chip.save-draft,
 .topbar-chip.finish {
   min-width: auto;
-  height: 76rpx;
+  height: 52rpx;
   padding: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  font-size: 30rpx;
+  font-size: 26rpx;
   font-weight: 500;
 }
 
@@ -2141,6 +2146,21 @@ page,
   border-radius: 16rpx;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 4rpx 16rpx rgba(15, 35, 23, 0.05);
+}
+
+.closure-action {
+  width: 96rpx;
+  height: 48rpx;
+  border: 1rpx solid rgba(16, 185, 74, 0.56);
+  border-radius: 14rpx;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 6rpx 16rpx rgba(15, 95, 46, 0.14);
+}
+
+.closure-action-label {
+  color: #149447;
+  font-size: 24rpx;
+  font-weight: 700;
 }
 
 .bottom-control-dock {

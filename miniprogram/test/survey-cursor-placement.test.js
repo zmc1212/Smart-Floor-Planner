@@ -187,6 +187,57 @@ test('a wall-snapped continuation does not reopen the initial measurement-side c
   assert.equal(surveyGraph.getActiveFloor(unchanged).walls[1].measurementSide, originalSide);
 });
 
+test('a reset cursor can close a room with one wall between existing shared boundaries', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 3000, yMm: 0 }, 3000);
+  draft = commitWall(draft, { xMm: 3000, yMm: 2000 }, 2000);
+  draft = commitWall(draft, { xMm: 0, yMm: 2000 }, 3000);
+
+  const beforeReset = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    beforeReset,
+    { xMm: 1500, yMm: 0 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = commitWall(draft, { xMm: 1500, yMm: 2000 }, 2000);
+
+  const pendingClosure = surveyGraph.getActiveFloor(draft);
+  assert.equal(pendingClosure.session.state, 'closing');
+  assert.equal(pendingClosure.session.closeCandidateType, 'shared-wall');
+
+  const closed = surveyGraph.confirmClosure(draft);
+  const closedFloor = surveyGraph.getActiveFloor(closed);
+  assert.equal(closedFloor.session.state, 'spaceClosed');
+  assert.equal(closedFloor.spaces.filter((space) => space.closed).length, 1);
+});
+
+test('a reset cursor offers the missing closing edge after two measured walls', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 3000, yMm: 0 });
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 3000);
+  draft = commitWall(draft, { xMm: 0, yMm: 2000 }, 2000);
+
+  const beforeReset = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    beforeReset,
+    { xMm: 0, yMm: 2000 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = commitWall(draft, { xMm: 3000, yMm: 2000 }, 3000);
+
+  const pendingClosure = surveyGraph.getActiveFloor(draft);
+  assert.equal(pendingClosure.session.state, 'mergeClosing');
+  assert.equal(pendingClosure.session.closeCandidateType, 'merge');
+
+  const closed = surveyGraph.confirmClosure(draft);
+  const closedFloor = surveyGraph.getActiveFloor(closed);
+  assert.equal(closedFloor.session.state, 'spaceClosed');
+  assert.equal(closedFloor.spaces.filter((space) => space.closed).length, 1);
+});
+
 test('a free-standing wall chain still allows its initial measurement-side choice', () => {
   let draft = createWallDraft();
   draft = surveyGraph.placeNewWallChainCursor(draft, { xMm: 6000, yMm: 0 });
