@@ -368,7 +368,7 @@ export async function holdPostgresCreationGenerationCredits(input: {
     const creation = new AiCreationRepository(transaction);
     const credits = new AiCreditRepository(transaction);
     const generation = await creation.findGeneration(generationId);
-    if (!generation || generation.deletedAt || generation.type !== 'free_create') {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
 
@@ -514,7 +514,7 @@ export async function releasePostgresCreationGenerationCredits(input: {
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const creation = new AiCreationRepository(transaction);
     const generation = await creation.findGenerationForUpdate(generationId);
-    if (!generation || generation.deletedAt || generation.type !== 'free_create') {
+    if (!generation || generation.deletedAt || !['free_create', 'scenario'].includes(generation.type)) {
       throw new Error('创作生成任务不存在');
     }
     return releasePostgresCreationGenerationCreditsInTransaction({

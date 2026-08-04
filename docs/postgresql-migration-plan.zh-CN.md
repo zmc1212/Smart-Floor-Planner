@@ -14,6 +14,18 @@
 > 一起切换后再迁移。未导入或删除 MongoDB 业务数据，未重新加密密钥。定向 ESLint 与
 > `npm run test:postgresql` 均通过（38/38）。
 
+> 2026-08-04 迁移记录：PostgreSQL 冻结/释放边界现也接受已准备的 bigint `scenario`
+> 生成记录。它会通过与自由创作相同的幂等租户 RLS 流水，冻结并释放阶段快照中的精确
+> `image.scenario` 价格；刻意跳过提交后不会遗留冻结余额。供应商尝试创建、媒体物化、终态
+> 结算、轮询和公开路由均保持不变。未导入或删除 MongoDB 业务数据，未重新加密密钥。定向
+> ESLint 与 `npm run test:postgresql` 均通过（38/38）。
+
+> 2026-08-04 迁移记录：PostgreSQL 工作流阶段准备现会在持久化一条 bigint `scenario`
+> 生成记录前，校验租户 RLS 工作流、线索、正式户型资格、阶段依赖、企业策略及活跃生成冲突。
+> 记录会保存不可变的风格/提示词和 `image.scenario` 价格快照，但尚不提交供应商任务、物化媒体、
+> 冻结点数或切换公开路由。未导入或删除 MongoDB 业务数据，未重新加密密钥。定向 ESLint 与
+> `npm run test:postgresql` 均通过（38/38）。
+
 > 2026-08-03 迁移记录：关联的自由创作 bigint 运行时切片现已切换。资产上传、任务
 > 列表/新建/归档、批次准备/提交、生成图片交付和显式工作流归入均使用 typed
 > PostgreSQL Repository 与租户 RLS，同时保留既有 API、DTO 和 `ai-scenarios`

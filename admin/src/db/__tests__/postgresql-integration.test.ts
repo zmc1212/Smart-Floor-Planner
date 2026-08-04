@@ -77,6 +77,7 @@ import { storePostgresMediaBuffer } from '@/lib/ai/postgres-media-assets';
 import {
   createPostgresAiWorkflow,
   getPostgresAiWorkflowContext,
+  preparePostgresAiWorkflowStage,
   updatePostgresAiWorkflowState,
 } from '@/lib/ai/postgres-workflow-service';
 import { listPostgresExecutableImageModelProfiles } from '@/lib/ai/image-model-catalog';
@@ -92,6 +93,7 @@ import {
   holdPostgresCreationGenerationCredits,
   preparePostgresCreationBatch,
   recordPostgresCreationProviderPollState,
+  releasePostgresCreationGenerationCredits,
   refreshPostgresCreationBatchStatus,
   settlePostgresCreationProviderResult,
 } from '@/lib/ai/postgres-creation-service';
@@ -2079,6 +2081,7 @@ test('AI workflow repository atomically attaches succeeded free creations under 
 test('PostgreSQL workflow service creates and reads tenant-scoped workflow context', async () => {
   let leadId: bigint | null = null;
   let workflowId: bigint | null = null;
+  let generationId: bigint | null = null;
   try {
     const lead = await withTenantTransaction(enterpriseAId, (transaction) =>
       new LeadRepository(transaction).create({
@@ -2113,6 +2116,60 @@ test('PostgreSQL workflow service creates and reads tenant-scoped workflow conte
     assert.equal(context.lead.name, lead.name);
     assert.deepEqual(context.generations, []);
 
+    await withTenantTransaction(enterpriseAId, (transaction) =>
+      new EnterpriseRepository(transaction).update(enterpriseAId, {
+        aiPolicy: { enabledActionKeys: ['image.free_create', 'image.scenario'] },
+      })
+    );
+
+    const prepared = await preparePostgresAiWorkflowStage({
+      enterpriseId: enterpriseAId,
+      operatorId: promotionDesignerAId,
+      workflowId: workflow.id,
+      stageKey: 'direction',
+    });
+    generationId = prepared.id;
+    assert.equal(prepared.type, 'scenario');
+    assert.equal(prepared.status, 'pending');
+    assert.equal(prepared.workflowId, workflow.id);
+    assert.equal(prepared.actionKey, 'image.scenario');
+    assert.equal((prepared.billing as { status?: string }).status, 'unbilled');
+
+    await assert.rejects(
+      () => preparePostgresAiWorkflowStage({
+        enterpriseId: enterpriseAId,
+        operatorId: promotionDesignerAId,
+        workflowId: workflow.id,
+        stageKey: 'direction',
+      }),
+      /该步骤已在生成中/
+    );
+
+    const scenarioGrant = await grantAiCredits({
+      enterpriseId: enterpriseAId.toString(),
+      operatorId: promotionDesignerAId.toString(),
+      amount: Number((prepared.billing as { price?: number }).price),
+      operationId: `${testRunKey}:workflow-scenario-grant`,
+    });
+    aiCreditLedgerIds.push(scenarioGrant.ledger.id);
+    const scenarioHold = await holdPostgresCreationGenerationCredits({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.id.toString(),
+    });
+    assert.equal(scenarioHold.generation.status, 'created');
+    assert.equal((scenarioHold.generation.billing as { status?: string }).status, 'held');
+    assert.equal(scenarioHold.account.frozenBalance >= BigInt(1), true);
+    if (scenarioHold.ledger) aiCreditLedgerIds.push(scenarioHold.ledger.id);
+
+    const scenarioRelease = await releasePostgresCreationGenerationCredits({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.id.toString(),
+      errorMessage: 'Workflow-stage submission was intentionally skipped',
+    });
+    assert.equal(scenarioRelease.generation.status, 'failed');
+    assert.equal((scenarioRelease.generation.billing as { status?: string }).status, 'released');
+    if (scenarioRelease.ledger) aiCreditLedgerIds.push(scenarioRelease.ledger.id);
+
     const renamed = await updatePostgresAiWorkflowState({
       enterpriseId: enterpriseAId,
       workflowId: workflow.id,
@@ -2144,6 +2201,9 @@ test('PostgreSQL workflow service creates and reads tenant-scoped workflow conte
     );
   } finally {
     await withPlatformTransaction(async (transaction) => {
+      if (generationId) {
+        await transaction.delete(aiGenerations).where(eq(aiGenerations.id, generationId));
+      }
       if (workflowId) {
         await transaction.delete(aiWorkflows).where(eq(aiWorkflows.id, workflowId));
       }

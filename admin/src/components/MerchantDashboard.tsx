@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { AlertTriangle, ArrowRight, ClipboardList, Map, Users } from 'lucide-react';
 import { Badge, Button, Card, Col, Empty, Flex, List, Row, Skeleton, Statistic, Tag, Typography } from 'antd';
 import { notify } from '@/components/ui/operation-feedback';
+import OverviewStatCard from '@/components/dashboard/OverviewStatCard';
 
 interface MerchantAdmin { displayName: string; username: string; role: string; enterpriseName: string | null; }
 type ApiResponse<T> = { success?: boolean; data?: T; pagination?: { total?: number }; error?: string };
@@ -59,22 +60,22 @@ export default function MerchantDashboard({ admin }: { admin: MerchantAdmin }) {
   if (loading) return <Skeleton active paragraph={{ rows: 6 }} />;
 
   return (
-    <Flex vertical gap={24}>
+    <Flex vertical gap={24} className="dashboard-stack">
       {canViewEnterpriseAssets ? <Row gutter={[16, 16]}>
-        <OverviewCard title="跟进线索" value={stats.leadCount} icon={<ClipboardList size={18} />} />
-        <OverviewCard title="正式户型" value={stats.planCount} icon={<Map size={18} />} />
-        <OverviewCard title="团队成员" value={stats.staffCount} icon={<Users size={18} />} />
+        <OverviewStatCard title="跟进线索" value={stats.leadCount} icon={<ClipboardList size={18} />} />
+        <OverviewStatCard title="正式户型" value={stats.planCount} icon={<Map size={18} />} />
+        <OverviewStatCard title="团队成员" value={stats.staffCount} icon={<Users size={18} />} />
       </Row> : null}
       <Row gutter={[24, 24]}>
         <Col xs={24} xl={15}><Flex vertical gap={16}>
-          <Card className="admin-panel-card" size="small" title="协作待办" extra={<DashboardLink href="/promotion-records" label="前往处理" />}>
-            <Row gutter={[12, 12]}>{stats.automationCards.map((card) => <Col key={card.key} xs={12} sm={6}><Statistic title={card.label} value={card.value} /></Col>)}</Row>
+          <Card className="admin-panel-card dashboard-workbench-card" size="small" title="协作待办" extra={<DashboardLink href="/promotion-records" label="前往处理" />}>
+            <Row gutter={[12, 12]}>{stats.automationCards.map((card) => <Col key={card.key} xs={12} sm={6}><div className="dashboard-mini-stat"><Statistic title={card.label} value={card.value} /></div></Col>)}</Row>
           </Card>
-          <Card className="admin-panel-card" size="small" title="最近待办" extra={<Badge count={stats.latestTodos.length} showZero />}><TodoList todos={stats.latestTodos} /></Card>
+          <Card className="admin-panel-card dashboard-workbench-card" size="small" title="最近待办" extra={<Badge count={stats.latestTodos.length} showZero />}><TodoList todos={stats.latestTodos} /></Card>
         </Flex></Col>
-        <Col xs={24} xl={9}><Card className="admin-panel-card" size="small" title={<Flex align="center" gap={8}><AlertTriangle size={18} className="text-amber-500" />超时提醒</Flex>} extra={<Badge count={stats.overdueTodos.length} showZero />}><TodoList todos={stats.overdueTodos.slice(0, 4)} overdue /></Card></Col>
+        <Col xs={24} xl={9}><Card className="admin-panel-card dashboard-workbench-card dashboard-alert-panel h-full" size="small" title={<Flex align="center" gap={8}><AlertTriangle size={18} className="text-amber-500" />超时提醒</Flex>} extra={<Badge count={stats.overdueTodos.length} showZero />}><TodoList todos={stats.overdueTodos.slice(0, 4)} overdue /></Card></Col>
       </Row>
-      {canViewEnterpriseAssets ? <Card className="admin-panel-card" size="small" title="最近线索流转" extra={<DashboardLink href="/leads" label="查看全部" />}>
+      {canViewEnterpriseAssets ? <Card className="admin-panel-card dashboard-workbench-card" size="small" title="最近线索流转" extra={<DashboardLink href="/leads" label="查看全部" />}>
         {stats.latestLeads.length > 0 ? <List dataSource={stats.latestLeads} renderItem={(lead) => <List.Item><Flex justify="space-between" align="center" gap={16} className="w-full"><Flex vertical gap={2}><Typography.Text strong>{lead.name || '未命名客户'}</Typography.Text><Typography.Text type="secondary">{lead.phone || '-'}</Typography.Text></Flex><Flex align="center" gap={12}><Typography.Text type="secondary" className="hidden sm:block">{lead.stylePreference || '未设置风格偏好'}</Typography.Text><Tag>{formatDate(lead.createdAt)}</Tag></Flex></Flex></List.Item>} /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无最新线索" />}
       </Card> : null}
     </Flex>
@@ -87,5 +88,4 @@ function TodoList({ todos, overdue = false }: { todos: Todo[]; overdue?: boolean
 }
 
 function DashboardLink({ href, label }: { href: string; label: string }) { return <Link href={href}><Button type="link" size="small" icon={<ArrowRight size={15} />}>{label}</Button></Link>; }
-function OverviewCard({ title, value, icon }: { title: string; value: number; icon: React.ReactNode }) { return <Col xs={24} sm={8}><Card className="admin-panel-card" size="small"><Statistic title={title} value={value} prefix={icon} /></Card></Col>; }
 function formatDate(value?: string) { if (!value) return '-'; const date = new Date(value); return Number.isNaN(date.getTime()) ? '-' : date.toLocaleDateString('zh-CN'); }

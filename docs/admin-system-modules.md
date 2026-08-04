@@ -20,6 +20,23 @@
 > imported, deleted, or re-encrypted. Targeted ESLint and
 > `npm run test:postgresql` passed 38/38.
 
+> 2026-08-04 PostgreSQL migration update: workflow-stage preparation now writes
+> a tenant-RLS bigint `scenario` generation only after validating its workflow,
+> lead, formal-plan relation, stage dependencies, policy, and active-stage
+> conflict. It snapshots style, prompt, and `image.scenario` price data. This
+> is still `Limited`: provider submission/polling, media materialization, credit
+> settlement, and public workflow-stage routes remain on the current MongoDB
+> execution chain; no MongoDB business data was imported, deleted, or
+> re-encrypted. Targeted ESLint and `npm run test:postgresql` passed 38/38.
+
+> 2026-08-04 PostgreSQL migration update: the internal credit-hold/release
+> boundary now covers prepared bigint `scenario` generations, freezing and
+> releasing their exact `image.scenario` price snapshot with the established
+> idempotent tenant-RLS ledger. This remains `Limited`: no provider attempt,
+> media materialization, terminal settlement, polling, or public stage route
+> has switched; no MongoDB business data was imported, deleted, or re-encrypted.
+> Targeted ESLint and `npm run test:postgresql` passed 38/38.
+
 > 2026-08-03 PostgreSQL migration update: the connected bigint free-creation
 > runtime slice is now active. `POST /api/ai/creation/assets`,
 > `GET/POST /api/ai/creation/tasks`, `DELETE /api/ai/creation/tasks/[id]`,

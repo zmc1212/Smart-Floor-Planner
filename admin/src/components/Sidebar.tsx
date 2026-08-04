@@ -31,6 +31,7 @@ import { buttonVariants } from '@/components/ui/button';
 import {
   Sheet,
   SheetContent,
+  SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
 import {
@@ -155,21 +156,21 @@ const NavItem = memo(function NavItem({
       target={item.newTab ? '_blank' : undefined}
       rel={item.newTab ? 'noopener noreferrer' : undefined}
       className={cn(
-        "flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-200 group relative",
+        "flex items-center gap-3 rounded-lg px-3 py-2 transition-colors duration-200 group relative",
         isActive 
-          ? "bg-white/10 text-white shadow-sm" 
-          : "text-zinc-400 hover:text-zinc-100 hover:bg-white/5"
+          ? "bg-primary/10 text-primary"
+          : "text-muted-foreground hover:text-foreground hover:bg-muted"
       )}
       title={collapsed ? item.label : undefined}
     >
       {React.createElement(item.icon, { size: 18, className: cn("shrink-0 text-current opacity-80", isActive && "opacity-100") })}
       {!collapsed && (
-        <span className="text-[14px] font-medium tracking-tight whitespace-nowrap overflow-hidden text-ellipsis">
+        <span className="text-[14px] font-medium whitespace-nowrap overflow-hidden text-ellipsis">
           {item.label}
         </span>
       )}
       {isActive && !collapsed && (
-        <div className="absolute right-2 w-1 h-1 rounded-full bg-white animate-pulse" />
+        <div className="absolute right-2 h-1.5 w-1.5 rounded-full bg-primary" />
       )}
     </Link>
   );
@@ -197,21 +198,21 @@ const SidebarContent = memo(function SidebarContent({
   hasMenuPermission 
 }: SidebarContentProps) {
   return (
-    <div className="flex flex-col h-full bg-zinc-950 text-zinc-100 border-r border-zinc-800">
+    <div className="flex h-full flex-col border-r border-border bg-card text-foreground">
       {/* Header */}
-      <div className={cn("h-16 flex items-center px-6 border-b border-zinc-800 shrink-0", collapsed && "px-0 justify-center")}>
+      <div className={cn("h-16 flex items-center border-b border-border px-6 shrink-0", collapsed && "justify-center px-0")}>
         {!collapsed ? (
           <div className="flex flex-col w-full">
-            <h1 className="text-[13px] font-bold tracking-[0.5px] uppercase">
+            <h1 className="text-[13px] font-bold">
               Smart Floor <span className="text-primary">Planner</span>
             </h1>
             {(admin?.role === 'super_admin' || admin?.role === 'admin') && (
               <div className="mt-2" onClick={(e) => e.stopPropagation()}>
                 <Select value={globalTenantId} onValueChange={handleTenantChange}>
-                  <SelectTrigger className="h-7 w-full bg-zinc-900 border-zinc-800 text-[11px] font-medium focus:ring-0 shadow-none text-zinc-400 hover:text-zinc-200 transition-colors">
+                  <SelectTrigger className="h-7 w-full border-input bg-muted text-[11px] font-medium text-muted-foreground shadow-none transition-colors hover:text-foreground focus:ring-0">
                     <SelectValue placeholder="全局企业视图" />
                   </SelectTrigger>
-                  <SelectContent className="rounded-xl border-zinc-800 bg-zinc-950 text-zinc-300 shadow-2xl">
+                  <SelectContent className="rounded-xl border-border bg-popover text-popover-foreground shadow-lg">
                     <SelectItem value="all" className="rounded-lg text-xs font-bold text-primary">-- 所有企业 --</SelectItem>
                     {enterprises.map(ent => (
                       <SelectItem key={ent._id} value={ent._id} className="rounded-lg text-xs">
@@ -224,7 +225,7 @@ const SidebarContent = memo(function SidebarContent({
             )}
           </div>
         ) : (
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center text-zinc-950 font-black text-sm">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-black text-primary-foreground">
             S
           </div>
         )}
@@ -240,7 +241,7 @@ const SidebarContent = memo(function SidebarContent({
           return (
             <div key={category.title} className="space-y-3">
               {!collapsed && (
-                <h2 className="px-3 text-[11px] font-bold text-zinc-600 uppercase tracking-[0.12em]">
+                <h2 className="px-3 text-[11px] font-bold text-muted-foreground">
                   {category.title}
                 </h2>
               )}
@@ -267,7 +268,7 @@ const SidebarContent = memo(function SidebarContent({
           return (
             <div key={category.title} className="space-y-3">
               {!collapsed && (
-                <h2 className="px-3 text-[11px] font-bold text-zinc-600 uppercase tracking-[0.12em]">
+                <h2 className="px-3 text-[11px] font-bold text-muted-foreground">
                   {category.title}
                 </h2>
               )}
@@ -288,12 +289,12 @@ const SidebarContent = memo(function SidebarContent({
       </div>
 
       {/* Footer Profile */}
-      <div className="mt-auto border-t border-zinc-800 p-3 space-y-2 bg-zinc-950/80 backdrop-blur-md">
+      <div className="mt-auto space-y-2 border-t border-border bg-card p-3">
         <div className={cn(
-          "flex items-center gap-3 p-2 rounded-xl bg-zinc-900/50 border border-zinc-800/50",
-          collapsed && "justify-center p-1.5 border-none bg-transparent"
+          "flex items-center gap-3 rounded-xl border border-border bg-muted p-2",
+          collapsed && "justify-center border-none bg-transparent p-1.5"
         )}>
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-zinc-950 font-bold shrink-0 text-xs">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
             {admin?.displayName ? admin.displayName[0] : (admin?.username ? admin.username[0].toUpperCase() : '?')}
           </div>
           {!collapsed && (
@@ -302,7 +303,7 @@ const SidebarContent = memo(function SidebarContent({
                 {admin?.displayName || admin?.username || 'Loading...'}
               </p>
               <div className="flex flex-col gap-0.5">
-                <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-bold">
+                <p className="text-[10px] font-bold text-muted-foreground">
                   {admin?.role === 'super_admin' ? '系统管理员' : 
                    admin?.role === 'enterprise_admin' ? '企业负责人' : 
                    admin?.role === 'salesperson' ? '渠道地推' :
@@ -322,7 +323,7 @@ const SidebarContent = memo(function SidebarContent({
         <button 
           onClick={handleLogout}
           className={cn(
-            "w-full flex items-center gap-3 px-3 py-2 text-zinc-500 hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-colors group",
+            "group flex w-full items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive",
             collapsed && "justify-center px-0"
           )}
         >
@@ -427,20 +428,23 @@ export default function Sidebar() {
         {/* Collapse Toggle Button */}
         <button
           onClick={toggleCollapse}
-          className="absolute -right-3 top-20 w-6 h-6 bg-zinc-800 border border-zinc-700 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700 transition-all z-50 shadow-lg"
+          aria-label={isCollapsed ? '展开导航' : '收起导航'}
+          title={isCollapsed ? '展开导航' : '收起导航'}
+          className="absolute -right-3 top-20 z-50 flex h-6 w-6 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground"
         >
           {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
         </button>
       </aside>
 
       {/* Mobile Menu Trigger */}
-      <div className="md:hidden fixed top-0 left-0 right-0 h-14 bg-white border-b px-4 flex items-center justify-between z-40">
-        <h1 className="text-sm font-bold tracking-tight">SMART FLOOR PLANNER</h1>
+      <div className="fixed top-0 left-0 right-0 z-40 flex h-14 items-center justify-between border-b border-border bg-card px-4 md:hidden">
+        <h1 className="text-sm font-bold">SMART FLOOR PLANNER</h1>
         <Sheet>
-          <SheetTrigger className={cn(buttonVariants({ variant: "ghost", size: "icon-lg" }), "h-10 w-10 md:hidden")}>
+          <SheetTrigger aria-label="打开导航菜单" className={cn(buttonVariants({ variant: "ghost", size: "icon-lg" }), "h-10 w-10 md:hidden")}>
             <Menu size={20} />
           </SheetTrigger>
           <SheetContent side="left" className="p-0 w-72 border-none">
+            <SheetTitle className="sr-only">管理导航</SheetTitle>
             <SidebarContent 
               collapsed={false} 
               admin={admin}

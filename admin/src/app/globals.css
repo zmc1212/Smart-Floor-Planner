@@ -141,6 +141,78 @@
     @apply border-border shadow-none;
   }
 
+  .dashboard-stack {
+    @apply w-full;
+  }
+
+  .admin-overview-stat {
+    @apply overflow-hidden transition-shadow duration-200 hover:shadow-sm;
+  }
+
+  .admin-overview-stat .ant-card-body {
+    @apply p-5;
+  }
+
+  .admin-overview-stat-icon {
+    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary;
+  }
+
+  .admin-overview-stat .ant-statistic-title {
+    @apply mb-1 text-sm font-medium text-muted-foreground;
+  }
+
+  .admin-overview-stat .ant-statistic-content {
+    @apply text-3xl font-semibold leading-none text-foreground;
+  }
+
+  .dashboard-workbench-card .ant-card-head {
+    @apply min-h-14 border-b border-border px-5;
+  }
+
+  .dashboard-workbench-card .ant-card-head-title {
+    @apply py-4 text-base font-semibold text-foreground;
+  }
+
+  .dashboard-workbench-card .ant-card-extra {
+    @apply py-3;
+  }
+
+  .dashboard-workbench-card .ant-card-body {
+    @apply p-5;
+  }
+
+  .dashboard-mini-stat {
+    @apply rounded-xl bg-muted px-4 py-3;
+  }
+
+  .dashboard-mini-stat .ant-statistic-title {
+    @apply mb-1 text-xs font-medium text-muted-foreground;
+  }
+
+  .dashboard-mini-stat .ant-statistic-content {
+    @apply text-2xl font-semibold leading-none text-foreground;
+  }
+
+  .dashboard-workbench-card .ant-list-item {
+    @apply border-border py-3;
+  }
+
+  .dashboard-quick-links {
+    @apply grid grid-cols-1 gap-3 sm:grid-cols-2;
+  }
+
+  .dashboard-quick-link {
+    @apply flex min-h-20 items-center gap-3 rounded-xl bg-muted px-4 py-3 transition-colors hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
+  }
+
+  .dashboard-quick-link-icon {
+    @apply flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-card text-primary;
+  }
+
+  .dashboard-alert-panel .ant-card-head-title {
+    @apply text-amber-700;
+  }
+
   .admin-config-stack > .ant-card {
     margin: 0;
   }

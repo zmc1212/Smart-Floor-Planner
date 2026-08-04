@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Card, Col, Row, Skeleton, Statistic } from 'antd';
-import { Building2, Map, Users } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import Link from 'next/link';
+import { Card, Row, Skeleton } from 'antd';
+import { ArrowUpRight, Building2, Cable, Coins, Map, Users } from 'lucide-react';
 import { notify } from '@/components/ui/operation-feedback';
+import OverviewStatCard from '@/components/dashboard/OverviewStatCard';
 
 type PlatformStats = {
   userCount: number;
@@ -57,15 +59,30 @@ export default function PlatformDashboard() {
 
   if (loading) return <Skeleton active paragraph={{ rows: 3 }} />;
 
-  return (
+  return <div className="dashboard-stack space-y-6">
     <Row gutter={[16, 16]}>
-      <OverviewCard title="注册用户" value={stats?.userCount || 0} icon={<Users size={18} />} />
-      <OverviewCard title="正式户型" value={stats?.planCount || 0} icon={<Map size={18} />} />
-      <OverviewCard title="入驻企业" value={stats?.enterpriseCount || 0} icon={<Building2 size={18} />} />
+      <OverviewStatCard title="注册用户" value={stats?.userCount || 0} icon={<Users size={18} />} />
+      <OverviewStatCard title="正式户型" value={stats?.planCount || 0} icon={<Map size={18} />} />
+      <OverviewStatCard title="入驻企业" value={stats?.enterpriseCount || 0} icon={<Building2 size={18} />} />
     </Row>
-  );
+    <Card className="admin-panel-card dashboard-workbench-card" size="small" title="管理入口">
+      <div className="dashboard-quick-links">
+        <DashboardQuickLink href="/enterprises" label="企业管理" description="维护企业资料与服务状态" icon={<Building2 size={18} />} />
+        <DashboardQuickLink href="/promotion-records" label="企业报备" description="查看渠道线索与跟进进展" icon={<Users size={18} />} />
+        <DashboardQuickLink href="/ai-providers" label="AI 供应商" description="配置模型服务与运行状态" icon={<Cable size={18} />} />
+        <DashboardQuickLink href="/ai-credit-prices" label="AI 点数价格" description="管理平台动作的点数规则" icon={<Coins size={18} />} />
+      </div>
+    </Card>
+  </div>;
 }
 
-function OverviewCard({ title, value, icon }: { title: string; value: number; icon: React.ReactNode }) {
-  return <Col xs={24} sm={12} xl={8}><Card className="admin-panel-card" size="small"><Statistic title={title} value={value} prefix={icon} /></Card></Col>;
+function DashboardQuickLink({ href, label, description, icon }: { href: string; label: string; description: string; icon: ReactNode }) {
+  return <Link href={href} className="dashboard-quick-link">
+    <span className="dashboard-quick-link-icon" aria-hidden="true">{icon}</span>
+    <span className="min-w-0 flex-1">
+      <span className="block text-sm font-semibold text-foreground">{label}</span>
+      <span className="mt-1 block text-xs text-muted-foreground">{description}</span>
+    </span>
+    <ArrowUpRight size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+  </Link>;
 }

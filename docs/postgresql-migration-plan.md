@@ -20,6 +20,24 @@
 > MongoDB business data was imported or deleted, and no secret was re-encrypted.
 > Targeted ESLint and `npm run test:postgresql` passed 38/38.
 
+> 2026-08-04 migration record: the PostgreSQL hold/release boundary now also
+> accepts a prepared bigint `scenario` generation. It freezes and releases the
+> stage's exact snapshotted `image.scenario` price through the same idempotent
+> tenant-RLS ledger as free creation, leaving no frozen balance after an
+> intentionally skipped submission. Provider attempt creation, media
+> materialization, terminal settlement, polling, and public routes remain
+> unchanged. No MongoDB business data was imported or deleted, and no secret
+> was re-encrypted. Targeted ESLint and `npm run test:postgresql` passed 38/38.
+
+> 2026-08-04 migration record: PostgreSQL workflow-stage preparation now
+> validates the tenant-RLS workflow, lead, formal floor-plan eligibility, stage
+> dependency, policy, and active-generation conflict before it persists one
+> bigint `scenario` generation. The record carries immutable style/prompt and
+> `image.scenario` price snapshots, but it does not yet submit a provider job,
+> materialize media, freeze credit, or change a public route. No MongoDB
+> business data was imported or deleted, and no secret was re-encrypted.
+> Targeted ESLint and `npm run test:postgresql` passed 38/38.
+
 > 2026-08-03 migration record: the connected free-creation bigint runtime
 > slice is now switched. Asset upload, task list/create/archive, batch
 > preparation/submission, generation image delivery, and explicit workflow

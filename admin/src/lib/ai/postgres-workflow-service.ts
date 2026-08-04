@@ -3,10 +3,29 @@ import { AiCreationRepository } from '@/db/repositories/ai-creation-repository';
 import { AiWorkflowRepository, type AiWorkflowRecord } from '@/db/repositories/ai-workflow-repository';
 import { LeadRepository } from '@/db/repositories/lead-repository';
 import { withTenantTransaction } from '@/db/transaction';
-import type { AiWorkflowSourceAssetRole, AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
-import { assertEligibleWorkflowFloorPlan, isEligibleWorkflowFloorPlan } from '@/lib/ai/workflow-floorplan';
-import { getAiWorkflowStageAvailabilityFromDocs } from '@/lib/ai/workflow-stage-availability';
+import {
+  getNextWorkflowStage,
+  type AiWorkflowSourceAssetRole,
+  type AiWorkflowStageKey,
+} from '@/lib/ai/workflow-stages';
+import {
+  assertEligibleWorkflowFloorPlan,
+  buildWorkflowFloorPlanContext,
+  isEligibleWorkflowFloorPlan,
+} from '@/lib/ai/workflow-floorplan';
+import {
+  canRunStageFromState,
+  getAiWorkflowStageAvailabilityFromDocs,
+} from '@/lib/ai/workflow-stage-availability';
 import { serializeAiGeneration, serializeAiWorkflow } from '@/lib/ai/workflow-utils';
+import {
+  buildPromptFromPreset,
+  ensureDefaultAiStylePresets,
+  getAiStylePresetByKey,
+  getDefaultAiStylePresetByKey,
+} from '@/lib/ai/presets';
+import { assertEnterpriseAiActionAllowed } from '@/lib/ai/enterprise-policy';
+import { getAiCreditPrice } from '@/lib/ai/credits';
 
 export type CreatePostgresWorkflowInput = {
   enterpriseId: string | bigint;
@@ -28,6 +47,15 @@ export type UpdatePostgresWorkflowStateInput = {
   generationId?: string | bigint;
 };
 
+export type PreparePostgresWorkflowStageInput = {
+  enterpriseId: string | bigint;
+  operatorId: string | bigint;
+  workflowId: string | bigint;
+  stageKey: AiWorkflowStageKey;
+  presetKey?: string;
+  styleReferenceImage?: string;
+};
+
 function notFound(message: string) {
   return Object.assign(new Error(message), { status: 404 });
 }
@@ -39,6 +67,40 @@ function buildDefaultWorkflowTitle(leadName: string, workflowCount: number, work
 
 function serializePostgresWorkflow(workflow: AiWorkflowRecord) {
   return serializeAiWorkflow({ ...workflow, _id: workflow.id });
+}
+
+function stagePresetNumber(stageKey: AiWorkflowStageKey) {
+  const map: Record<AiWorkflowStageKey, string> = {
+    direction: '1',
+    base_render: '6',
+    soft_furnishing: '2',
+    proposal_pack: '4',
+    lighting: '10',
+    tour_board: '3_image',
+    premium_board: '5',
+    perspective_upgrade: '7',
+    cad_detail: '9',
+  };
+  return map[stageKey];
+}
+
+function buildPresetSnapshot(preset: NonNullable<Awaited<ReturnType<typeof getAiStylePresetByKey>>>) {
+  return {
+    key: preset.key,
+    type: preset.type,
+    name: preset.name,
+    promptTemplate: preset.promptTemplate,
+    negativePrompt: preset.negativePrompt,
+    provider: preset.provider,
+    image: preset.image,
+    icon: preset.icon,
+    previewClassName: preset.previewClassName,
+    mockImageUrl: preset.mockImageUrl,
+    workflowCategory: preset.workflowCategory,
+    workflowStage: preset.workflowStage,
+    sourceAssetRole: preset.sourceAssetRole,
+    nextRecommendedStage: preset.nextRecommendedStage,
+  };
 }
 
 /**
@@ -179,5 +241,119 @@ export async function updatePostgresAiWorkflowState(input: UpdatePostgresWorkflo
     const workflow = await workflows.updateActive(workflowId, values);
     if (!workflow) throw notFound('方案会话不存在或无权访问');
     return { workflow };
+  });
+}
+
+/**
+ * Creates a workflow-stage generation with immutable style and price snapshots.
+ * Provider submission, media materialization, and asynchronous reconciliation
+ * deliberately remain outside this database-only foundation.
+ */
+export async function preparePostgresAiWorkflowStage(input: PreparePostgresWorkflowStageInput) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const operatorId = parsePostgresId(input.operatorId, 'operatorId');
+  const workflowId = parsePostgresId(input.workflowId, 'workflowId');
+  await Promise.all([
+    ensureDefaultAiStylePresets(operatorId.toString()),
+    assertEnterpriseAiActionAllowed(enterpriseId.toString(), 'image.scenario'),
+  ]);
+  const requestedPresetKey = input.presetKey?.trim() || `scenario_${stagePresetNumber(input.stageKey)}`;
+  const preset = await getAiStylePresetByKey('scenario', requestedPresetKey)
+    || getDefaultAiStylePresetByKey('scenario', requestedPresetKey);
+  if (!preset) throw Object.assign(new Error('当前阶段没有可用的 AI 预设'), { status: 400 });
+  const price = await getAiCreditPrice('image.scenario');
+
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const workflows = new AiWorkflowRepository(transaction);
+    const workflow = await workflows.findById(workflowId);
+    if (!workflow || workflow.status !== 'active') throw notFound('方案会话不存在或无权访问');
+
+    const lead = await new LeadRepository(transaction).findById(workflow.leadId);
+    if (!lead) throw notFound('客户线索不存在或无权访问');
+
+    const creations = new AiCreationRepository(transaction);
+    const generations = await creations.listGenerationsByWorkflowId(workflow.id);
+    const activeGeneration = generations.find(
+      (generation) => generation.stageKey === input.stageKey
+        && ['created', 'pending', 'processing'].includes(generation.status)
+    );
+    if (activeGeneration) {
+      throw Object.assign(new Error('该步骤已在生成中，请稍候查看结果'), {
+        status: 409,
+        code: 'ACTIVE_GENERATION_EXISTS',
+        generationId: activeGeneration.id.toString(),
+      });
+    }
+
+    const availability = canRunStageFromState({
+      stageKey: input.stageKey,
+      sourceAssetRole: preset.sourceAssetRole,
+      workflow,
+      generations: generations.map((generation) => ({
+        _id: generation.id,
+        stageKey: generation.stageKey as AiWorkflowStageKey | undefined,
+        isSelectedBaseline: generation.isSelectedBaseline,
+      })),
+    });
+    if (!availability.available) {
+      throw Object.assign(new Error(availability.reason || '当前阶段暂不可执行'), { status: 400 });
+    }
+
+    const floorPlan = workflow.sourceFloorPlanId
+      ? lead.floorPlanRecords.find((plan) => plan.id === workflow.sourceFloorPlanId) || null
+      : null;
+    if (workflow.sourceFloorPlanId && !floorPlan) {
+      throw Object.assign(new Error('方案关联的正式户型不存在或无权访问'), { status: 400 });
+    }
+    if (floorPlan) assertEligibleWorkflowFloorPlan(floorPlan);
+
+    const imageMode = preset.image.mode === 'edit' ? 'edit' : 'generation';
+    const prompt = [
+      buildPromptFromPreset(preset.promptTemplate, {}),
+      floorPlan ? buildWorkflowFloorPlanContext(floorPlan.layoutData) : '',
+    ].filter(Boolean).join(' ');
+    const parentGenerationId = availability.parentGenerationId
+      ? parsePostgresId(availability.parentGenerationId, 'parentGenerationId')
+      : null;
+    const nextRecommendedStage = preset.nextRecommendedStage || getNextWorkflowStage(input.stageKey);
+    const presetSnapshot = buildPresetSnapshot(preset);
+    presetSnapshot.image = { ...presetSnapshot.image, mode: imageMode };
+
+    return creations.createGeneration({
+      enterpriseId,
+      operatorId,
+      leadId: workflow.leadId,
+      workflowId: workflow.id,
+      floorPlanId: workflow.sourceFloorPlanId,
+      parentGenerationId,
+      type: 'scenario',
+      channel: 'admin',
+      actionKey: 'image.scenario',
+      capability: imageMode === 'edit' ? 'image.edit' : 'image.generate',
+      logicalModelKey: imageMode === 'edit' ? 'image.edit.standard' : 'image.generate.standard',
+      stageKey: input.stageKey,
+      sourceAssetRole: preset.sourceAssetRole || workflow.sourceAssetRole,
+      nextRecommendedStage,
+      input: {
+        style: preset.key,
+        presetSnapshot,
+        customPrompt: prompt,
+        styleReferenceImage: input.styleReferenceImage?.trim() || undefined,
+      },
+      output: { promptUsed: prompt },
+      status: 'pending',
+      billing: {
+        cycle: 0,
+        actionKey: 'image.scenario',
+        price: price.credits,
+        priceSnapshot: {
+          actionKey: 'image.scenario',
+          label: price.label,
+          credits: price.credits,
+          capturedAt: new Date().toISOString(),
+        },
+        status: 'unbilled',
+      },
+    });
   });
 }

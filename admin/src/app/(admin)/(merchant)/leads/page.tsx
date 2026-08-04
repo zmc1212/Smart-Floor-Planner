@@ -304,32 +304,32 @@ export default function LeadsPage() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'new':
-        return <Badge variant="secondary" className="bg-white text-blue-600 shadow-[0_0_0_1px_rgba(59,130,246,0.1)] hover:bg-blue-50/50 border-none font-medium px-2 py-0.5">新线索</Badge>;
+        return <Badge variant="secondary" className="border-0 bg-sky-50 px-2 py-0.5 font-medium text-sky-700 hover:bg-sky-100">新线索</Badge>;
       case 'measuring':
-        return <Badge variant="secondary" className="bg-white text-purple-600 shadow-[0_0_0_1px_rgba(147,51,234,0.1)] hover:bg-purple-50/50 border-none font-medium px-2 py-0.5">量房中</Badge>;
+        return <Badge variant="secondary" className="border-0 bg-primary/10 px-2 py-0.5 font-medium text-primary hover:bg-primary/15">量房中</Badge>;
       case 'measured':
-        return <Badge variant="secondary" className="bg-white text-emerald-600 shadow-[0_0_0_1px_rgba(16,185,129,0.1)] hover:bg-emerald-50/50 border-none font-medium px-2 py-0.5">量房完成</Badge>;
+        return <Badge variant="secondary" className="border-0 bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700 hover:bg-emerald-100">量房完成</Badge>;
       case 'assigned':
-        return <Badge variant="secondary" className="bg-white text-indigo-600 shadow-[0_0_0_1px_rgba(79,70,229,0.1)] hover:bg-indigo-50/50 border-none font-medium px-2 py-0.5">已指派设计师</Badge>;
+        return <Badge variant="secondary" className="border-0 bg-blue-50 px-2 py-0.5 font-medium text-blue-700 hover:bg-blue-100">已指派设计师</Badge>;
       case 'converted':
-        return <Badge variant="secondary" className="bg-[#171717] text-white hover:bg-[#171717]/90 border-none font-medium px-2 py-0.5">已转化</Badge>;
+        return <Badge variant="secondary" className="border-0 bg-amber-50 px-2 py-0.5 font-medium text-amber-700 hover:bg-amber-100">已转化</Badge>;
       case 'closed':
-        return <Badge variant="outline" className="text-neutral-400 shadow-[0_0_0_1px_rgba(0,0,0,0.06)] border-none px-2 py-0.5 font-medium">已关闭</Badge>;
+        return <Badge variant="secondary" className="border-0 bg-muted px-2 py-0.5 font-medium text-muted-foreground">已关闭</Badge>;
       default:
-        return <Badge variant="outline" className="shadow-[0_0_0_1px_rgba(0,0,0,0.08)] border-none">{status}</Badge>;
+        return <Badge variant="outline" className="border-border text-muted-foreground">{status}</Badge>;
     }
   };
 
   return (
-    <div className="min-h-screen bg-white text-[#171717] font-sans">
-      <main className="max-w-7xl mx-auto px-6 py-16">
-        <div className="mb-12 flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <div className="admin-page-frame">
+      <main className="w-full">
+        <div className="mb-8 flex flex-col justify-between gap-5 border-b border-border pb-6 md:flex-row md:items-center">
           <div className="flex items-center gap-4">
-            <h2 className="text-[32px] font-semibold tracking-[-1.5px] leading-tight">
+            <h2 className="text-2xl font-semibold leading-tight text-foreground">
               客资线索管理 CRM
             </h2>
             {!loading && (
-              <span className="bg-[#fafafa] text-[#666] px-2.5 py-0.5 rounded-md text-[13px] font-medium shadow-[0_0_0_1px_rgba(0,0,0,0.08)]">
+              <span className="rounded-md bg-muted px-2.5 py-1 text-sm font-medium text-muted-foreground">
                 {pagination.total}
               </span>
             )}
@@ -338,92 +338,96 @@ export default function LeadsPage() {
           {/* Enterprise Selector removed, now handled globally in Sidebar */}
 
           {leads.length === 0 && !loading && activeStatus === 'all' && (
-            <div className="bg-neutral-50 shadow-[0_0_0_1px_rgba(0,0,0,0.06)] p-4 rounded-xl text-sm text-neutral-600">
+            <div className="rounded-xl bg-primary/5 p-4 text-sm text-muted-foreground">
               提示：如果您是设计师或业务员，您只能看到正式指派给您的线索。只有企业负责人（Admin/Owner）可以看到全部新线索。
             </div>
           )}
         </div>
 
         {/* Status Tabs */}
-        <Tabs 
-          activeTab={activeStatus}
-          onChange={setActiveStatus}
-          className="mb-8"
-          tabs={[
-            { id: 'all', label: '全部' },
-            { id: 'new', label: '新线索' },
-            { id: 'measuring', label: '量房中' },
-            { id: 'measured', label: '量房完成' },
-            { id: 'assigned', label: '已指派' },
-            { id: 'converted', label: '已转化' },
-            { id: 'closed', label: '已关闭' }
-          ]}
-        />
+        <div className="mb-6 overflow-x-auto pb-1">
+          <Tabs
+            activeTab={activeStatus}
+            onChange={setActiveStatus}
+            className="w-max"
+            tabs={[
+              { id: 'all', label: '全部' },
+              { id: 'new', label: '新线索' },
+              { id: 'measuring', label: '量房中' },
+              { id: 'measured', label: '量房完成' },
+              { id: 'assigned', label: '已指派' },
+              { id: 'converted', label: '已转化' },
+              { id: 'closed', label: '已关闭' }
+            ]}
+          />
+        </div>
 
         {loading && (
-          <div className="flex flex-col items-center justify-center py-24 text-[#808080]">
+          <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
             <Loader2 className="animate-spin mb-4" size={32} />
-            <p className="text-[14px]">正在获取线索数据...</p>
+            <p className="text-sm">正在获取线索数据...</p>
           </div>
         )}
 
         {!loading && (
-          <div className="rounded-2xl overflow-hidden shadow-[0_0_0_1px_rgba(0,0,0,0.08),0_2px_4px_rgba(0,0,0,0.02)]">
-            <Table>
-              <TableHeader className="bg-[#fafafa]">
-                <TableRow className="hover:bg-transparent border-b shadow-[0_1px_0_0_rgba(0,0,0,0.04)]">
-                  <TableHead className="w-[200px] text-[12px] font-medium text-neutral-500 py-4 px-6">客户姓名/小区</TableHead>
-                  <TableHead className="text-[12px] font-medium text-neutral-500 py-4">联系电话</TableHead>
-                  <TableHead className="text-[12px] font-medium text-neutral-500 py-4">渠道人员</TableHead>
-                  <TableHead className="text-[12px] font-medium text-neutral-500 py-4">当前负责人</TableHead>
-                  <TableHead className="text-[12px] font-medium text-neutral-500 py-4">业务状态</TableHead>
-                  <TableHead className="text-[12px] font-medium text-neutral-500 py-4">提交日期</TableHead>
-                  <TableHead className="text-right text-[12px] font-medium text-neutral-500 py-4 px-6">操作</TableHead>
+          <div className="overflow-x-auto rounded-xl border border-border bg-card">
+            <Table className="min-w-[840px]">
+              <TableHeader className="bg-muted/60">
+                <TableRow className="border-border hover:bg-transparent">
+                  <TableHead className="w-[200px] px-5 py-4 text-xs font-semibold text-muted-foreground">客户姓名/小区</TableHead>
+                  <TableHead className="py-4 text-xs font-semibold text-muted-foreground">联系电话</TableHead>
+                  <TableHead className="hidden py-4 text-xs font-semibold text-muted-foreground lg:table-cell">渠道人员</TableHead>
+                  <TableHead className="py-4 text-xs font-semibold text-muted-foreground">当前负责人</TableHead>
+                  <TableHead className="py-4 text-xs font-semibold text-muted-foreground">业务状态</TableHead>
+                  <TableHead className="hidden py-4 text-xs font-semibold text-muted-foreground xl:table-cell">提交日期</TableHead>
+                  <TableHead className="px-5 py-4 text-right text-xs font-semibold text-muted-foreground">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {leads.map((lead: any) => (
-                  <TableRow key={lead._id} className="group hover:bg-neutral-50/50 transition-colors border-none shadow-[0_1px_0_0_rgba(0,0,0,0.04)]">
-                    <TableCell className="py-5 px-6">
-                      <div className="font-semibold text-[14px] text-neutral-900 leading-tight">{lead.name}</div>
-                      <div className="text-[11px] font-medium text-neutral-400 mt-1 uppercase tracking-tight">{lead.communityName || '未记录小区'}</div>
+                  <TableRow key={lead._id} className="group border-border transition-colors hover:bg-primary/5">
+                    <TableCell className="px-5 py-4">
+                      <div className="text-sm font-semibold leading-tight text-foreground">{lead.name}</div>
+                      <div className="mt-1 text-xs font-medium text-muted-foreground">{lead.communityName || '未记录小区'}</div>
                     </TableCell>
-                    <TableCell className="font-mono text-[13px] text-neutral-600">{lead.phone}</TableCell>
-                    <TableCell>
-                       <div className="flex items-center gap-1.5 text-[13px] text-neutral-600">
-                         <span className="opacity-40"><User size={12} /></span>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{lead.phone}</TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                       <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                         <span className="opacity-50"><User size={12} /></span>
                          {getStaffName(lead.promoterId) || "系统录入"}
                        </div>
                     </TableCell>
                     <TableCell>
                        {lead.assignedTo ? (
-                         <div className="flex items-center gap-1.5 text-[13px] text-neutral-900 font-medium">
-                           <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                         <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+                           <div className="h-1.5 w-1.5 rounded-full bg-primary" />
                            {getStaffName(lead.assignedTo) || "未知人员"}
                          </div>
                        ) : (
-                         <span className="text-[12px] text-neutral-400 italic">待指派</span>
+                         <span className="text-xs text-muted-foreground">待指派</span>
                        )}
                     </TableCell>
-                    <TableCell className="py-5">{getStatusBadge(lead.status)}</TableCell>
-                    <TableCell className="text-[12px] text-neutral-400 font-medium">
+                    <TableCell className="py-4">{getStatusBadge(lead.status)}</TableCell>
+                    <TableCell className="hidden text-xs font-medium text-muted-foreground xl:table-cell">
                       {new Date(lead.createdAt).toLocaleDateString()}
                     </TableCell>
-                    <TableCell className="text-right py-5 px-6">
+                    <TableCell className="px-5 py-4 text-right">
                       <div className="flex items-center justify-end gap-3">
                         <Button
                           size="sm"
                           variant="ghost"
                           onClick={() => router.push(`/ai-studio/scenarios?leadId=${lead._id}`)}
-                          className="h-8 text-[12px] rounded-lg font-medium text-amber-700 hover:text-amber-900 hover:bg-amber-50 px-3"
+                          className="h-8 rounded-lg px-3 text-xs font-medium text-amber-700 hover:bg-amber-50 hover:text-amber-900"
                         >
                           {lead.floorPlanIds?.length || lead.followUpRecords?.length ? '查看方案' : '开始方案'}
                         </Button>
                         <Button 
                           size="icon"
                           variant="ghost"
+                          aria-label={`删除线索 ${lead.name}`}
+                          title="删除线索"
                           onClick={() => deleteLead(lead._id)}
-                          className="h-8 w-8 text-neutral-400 hover:text-red-600 hover:bg-red-50/50 rounded-lg transition-all"
+                          className="h-8 w-8 rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                         >
                           <X size={14} />
                         </Button>
@@ -431,7 +435,7 @@ export default function LeadsPage() {
                           size="sm"
                           variant="ghost"
                           onClick={() => openLeadDetail(lead)}
-                          className="h-8 text-[12px] rounded-lg font-medium text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100/80 shadow-[0_0_0_1px_rgba(0,0,0,0.06)] hover:shadow-[0_0_0_1px_rgba(0,0,0,0.1)] px-3"
+                          className="h-8 rounded-lg border border-border px-3 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
                         >
                           管理
                         </Button>
@@ -441,10 +445,10 @@ export default function LeadsPage() {
                 ))}
                 {leads.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-48 text-center text-neutral-400 text-[13px]">
+                    <TableCell colSpan={7} className="h-48 text-center text-sm text-muted-foreground">
                       <div className="flex flex-col items-center gap-2">
-                        <div className="w-10 h-10 rounded-full bg-neutral-50 flex items-center justify-center mb-2 shadow-[0_0_0_1px_rgba(0,0,0,0.06)]">
-                          <Clock size={16} className="opacity-20" />
+                        <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <Clock size={16} />
                         </div>
                         暂无客资线索
                       </div>

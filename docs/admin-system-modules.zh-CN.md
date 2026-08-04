@@ -13,6 +13,17 @@
 > bigint 执行切片就绪后再迁移；未导入、删除或重新加密 MongoDB 业务数据。定向 ESLint 与
 > `npm run test:postgresql` 均通过（38/38）。
 
+> 2026-08-04 PostgreSQL 迁移更新：工作流阶段准备现会在验证租户 RLS 工作流、线索、
+> 正式户型关联、阶段依赖、企业策略及活跃阶段冲突后，才写入一条 bigint `scenario` 生成记录，
+> 并快照风格、提示词和 `image.scenario` 价格数据。本项仍为 `Limited`：供应商提交/轮询、
+> 媒体物化、点数结算和公开工作流阶段路由仍在当前 MongoDB 执行链；未导入、删除或重新加密
+> MongoDB 业务数据。定向 ESLint 与 `npm run test:postgresql` 均通过（38/38）。
+
+> 2026-08-04 PostgreSQL 迁移更新：内部点数冻结/释放边界现覆盖已准备的 bigint `scenario`
+> 生成记录，会通过既有幂等租户 RLS 流水冻结并释放其精确的 `image.scenario` 价格快照。本项
+> 仍为 `Limited`：供应商尝试、媒体物化、终态结算、轮询和公开阶段路由均未切换；未导入、删除
+> 或重新加密 MongoDB 业务数据。定向 ESLint 与 `npm run test:postgresql` 均通过（38/38）。
+
 > 2026-08-03 PostgreSQL 迁移更新：关联的 bigint 自由创作运行时切片现已启用。
 > `POST /api/ai/creation/assets`、`GET/POST /api/ai/creation/tasks`、
 > `DELETE /api/ai/creation/tasks/[id]`、
