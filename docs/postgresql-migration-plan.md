@@ -1,5 +1,38 @@
 # PostgreSQL Migration Plan And Progress
 
+> 2026-08-03 migration record: `postgres-workflow-service` now provides a
+> tenant-RLS foundation for bigint workflow creation and read context. It
+> verifies the tenant-scoped lead, lead-to-floor-plan relation, and completed
+> formal v4 survey eligibility before persistence, then derives the existing
+> workflow/lead/generation/stage-state DTO shape from PostgreSQL records.
+> `/api/ai/workflows`, source-image media persistence/delivery, provider stage
+> execution, and their permissions remain on the current MongoDB runtime until
+> the complete bigint execution slice can switch together. No MongoDB business
+> data was imported or deleted, and no secret was re-encrypted.
+
+> 2026-08-03 migration record: PostgreSQL workflow state now has a tenant-RLS
+> mutation foundation for renaming, setting a stage pointer, and selecting a
+> succeeded bigint generation as the baseline. Baseline selection locks the
+> active workflow and its generation, clears prior selections, and advances the
+> workflow only from the selected record's saved next-stage value. Public
+> workflow mutation and provider-stage routes remain on the current MongoDB
+> runtime until their complete bigint execution slice can switch together. No
+> MongoDB business data was imported or deleted, and no secret was re-encrypted.
+> Targeted ESLint and `npm run test:postgresql` passed 38/38.
+
+> 2026-08-03 migration record: the connected free-creation bigint runtime
+> slice is now switched. Asset upload, task list/create/archive, batch
+> preparation/submission, generation image delivery, and explicit workflow
+> attachment use typed PostgreSQL repositories and tenant RLS while retaining
+> the existing APIs, DTOs, and `ai-scenarios` authorization boundary. Provider
+> and object-storage I/O stay outside transactions; the runtime persists the
+> provider attempt, output asset, and idempotent credit settlement in the
+> established PostgreSQL boundaries. Task-history reads can claim tenant polls,
+> and the existing protected reconciliation endpoints now claim due PostgreSQL
+> work platform-wide. No MongoDB business data was
+> imported or deleted, and no secret was re-encrypted. Targeted ESLint and
+> `npm run test:postgresql` passed 38/38.
+
 > 2026-08-03 migration record: PostgreSQL free-creation execution now has an
 > internal provider-poll claim boundary for background workers. A short platform
 > transaction selects due accepted bigint generations with `FOR UPDATE SKIP
@@ -790,8 +823,10 @@ Phase 3 identity/enterprise core plus leads, formal floor plans, measurements,
 devices, their Mini Program aggregates, the package catalog, promotion workflow
 runtime, orders, commissions, enterprise activation, AI style presets, AI
 provider configuration/runtime, AI action/model pricing, AI credit accounts/ledgers, and the
-AI creation model-profile, persistence, and workflow Repository foundations are switched. The
-next runtime slice should migrate the connected AI workflow/generation/media persistence and its
-bigint lead/plan consumers together. Beyond
+AI creation model-profile, persistence, and workflow Repository foundations are switched.
+The connected bigint free-creation task, batch, generation, media,
+provider-attempt, and explicit workflow-attachment runtime is now switched as
+well. The next runtime slice should migrate workflow creation and stage execution
+with their bigint lead/plan consumers. Beyond
 the completed Phase 4 whitelist import, do not import production business data
 without an explicit migration slice and acceptance record.

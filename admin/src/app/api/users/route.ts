@@ -8,16 +8,25 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
+    const page = Math.max(Number(searchParams.get('page')) || 1, 1);
+    const limit = Math.min(
+      Math.max(Number(searchParams.get('limit')) || 20, 1),
+      100
+    );
     const result = await withPlatformTransaction(async (transaction) => {
       const users = await new UserRepository(transaction).list(
-        searchParams.get('search') || ''
+        {
+          search: searchParams.get('search') || undefined,
+          page,
+          limit,
+        }
       );
       const planCounts = await new FloorPlanRepository(
         transaction
-      ).countByCreatorIds(users.map((user) => user.id));
+      ).countByCreatorIds(users.rows.map((user) => user.id));
       return { users, planCounts };
     });
-    const data = result.users.map((user) => ({
+    const data = result.users.rows.map((user) => ({
       ...userToDto(user),
       planCount: result.planCounts.get(user.id) ?? 0,
     }));
@@ -25,6 +34,12 @@ export async function GET(req: Request) {
       success: true,
       count: data.length,
       data,
+      pagination: {
+        total: result.users.total,
+        page,
+        limit,
+        totalPages: Math.ceil(result.users.total / limit),
+      },
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';

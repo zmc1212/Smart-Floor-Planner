@@ -1,5 +1,32 @@
 # 后台系统当前功能清单
 
+> 2026-08-03 PostgreSQL 迁移更新：`postgres-workflow-service` 现提供租户 RLS
+> 范围的工作流创建与读取上下文基础层。它会校验 bigint 线索属于当前租户，且所选户型
+> 属于该线索并为可用的已完成 v4 正式量房户型；再使用 PostgreSQL 记录返回既有工作流、
+> 线索、生成记录与阶段状态 DTO 形状。本项不切换 `/api/ai/workflows`、阶段执行、来源图
+> 媒体持久化/交付或任何权限边界：这些公开 MongoDB 路径仍是当前运行时，待完整 bigint
+> 执行切片就绪后再迁移。未导入、删除或重新加密 MongoDB 业务数据。
+
+> 2026-08-03 PostgreSQL 迁移更新：工作流基础层现也可在租户 RLS 范围内变更 bigint
+> 工作流状态。重命名、阶段指针调整及已成功生成记录的定稿选择都会锁定相应 PostgreSQL
+> 记录，并始终保留唯一的选中定稿。公开工作流变更和阶段执行路由仍由 MongoDB 支持，待完整
+> bigint 执行切片就绪后再迁移；未导入、删除或重新加密 MongoDB 业务数据。定向 ESLint 与
+> `npm run test:postgresql` 均通过（38/38）。
+
+> 2026-08-03 PostgreSQL 迁移更新：关联的 bigint 自由创作运行时切片现已启用。
+> `POST /api/ai/creation/assets`、`GET/POST /api/ai/creation/tasks`、
+> `DELETE /api/ai/creation/tasks/[id]`、
+> `POST /api/ai/creation/tasks/[id]/batches` 和
+> `POST /api/ai/creation/generations/[id]/attach-workflow` 现均在租户 RLS
+> 事务内使用 PostgreSQL 媒体、任务、批次、生成、供应商尝试、点数与工作流记录。
+> 既有任务 DTO 和 `ai-scenarios` 权限边界不变；十进制生成图片请求会转入
+> PostgreSQL 资产交付路由。供应商和存储 I/O 仍在事务外，结果资产会先持久化，
+> 再进行幂等点数结算。未导入、删除或重新加密 MongoDB `ObjectId` 创作历史。
+> 创作历史刷新仍可为单个租户轮询；既有受保护的 `/api/ai/reconcile` 与
+> `/api/admin/ai-reconciliation` 调度边界现会在平台范围认领到期 PostgreSQL 任务，
+> 并在旧 MongoDB 结果之外返回 `postgresqlClaimed`。
+> 定向 ESLint 与 `npm run test:postgresql` 均通过（38/38）。
+
 > 2026-08-03 PostgreSQL 迁移更新：`postgres-creation-service` 现为后台 worker 提供平台内部的供应商轮询任务认领。
 > 短事务会对到期且已受理的 bigint 生成记录使用 `FOR UPDATE SKIP LOCKED`，在 `externalTask` 中持久化不透明租约，
 > 并在提交后才返回供应商路由元数据。轮询、成功和失败写入可要求该租约，并拒绝过期 worker。迁移
@@ -49,6 +76,7 @@
 - 角色：`super_admin`、`admin`、`enterprise_admin`、`designer`、`salesperson`、`measurer`、`viewer`。菜单和默认权限在 `models/AdminUser.ts`，自定义角色在 `models/SystemRole.ts`。
 - 共享反馈：可见变更使用 `components/ui/operation-feedback`，常规操作不得使用原生 `alert()`。
 - 已迁移管理页使用 ProComponents `PageContainer` 统一页面标题、说明、返回导航和页面级操作区；列表、表单、详情分别使用 `ProTable`、`ProForm`、`ProDescriptions`。
+- 共享后台页面框架会填满侧栏右侧的可用工作区，保留固定响应式内边距（紧凑屏 `20px`、`sm` 起 `28px`），但不再设置居中的最大宽度，保证运营表格能使用完整宽度。
 - `PageContainer` 不负责业务区块间距；共享后台壳层会在标题分割线下为内容容器提供 `24px` 顶部内边距，首个区块不得重复添加顶部 margin。迁移页面使用 Ant Design `Flex`/`Space` 或文档明确的 `ProCard` 布局处理区块间距，并使用 `ProForm.submitter.render` 分离底部操作区。
 
 ## 功能模块
@@ -60,7 +88,7 @@
 - 模型/工具：PostgreSQL `AdminUserRepository`、`UserRepository`、`EnterpriseRepository`、会话/认证工具和 `miniprogram-jwt`。
 - 状态：后台登录/会话复核、企业自助注册、小程序员工登录/身份绑定、JWT/Cookie、账号状态复核和未授权跳转均已切换 PostgreSQL，为 `Implemented`。
 - 旧平台管理员恢复：`npm run migrate:legacy-admin-users` 会以幂等方式把 MongoDB 的平台级账号导入 PostgreSQL，保留 bcrypt 密码哈希、角色、账号状态和菜单权限，因此用户可继续使用原密码。带租户的旧账号会被刻意跳过，因为其 MongoDB ObjectId 租户引用必须先显式映射为 PostgreSQL bigint 企业 ID。
-- 用户审计页面：`/users`、`/users/[openid]`，由 `/api/users`、`/users/[openid]`、`/users/me` 支撑，已使用 PostgreSQL 查询和更新小程序身份，并返回 PostgreSQL 户型计数/导出列表。`Limited`：仍使用 MongoDB 的 AI 生成/媒体与订单/提成工作流要等后续 Phase 3 域切换后才能消费 PostgreSQL bigint 身份。
+- 用户审计页面：`/users`、`/users/[openid]`，由 `/api/users`、`/users/[openid]`、`/users/me` 支撑，已使用 PostgreSQL 查询和更新小程序身份，并返回 PostgreSQL 户型计数/导出列表。后台列表和详情现使用 `PageContainer`、`ProTable` 与 `ProDescriptions`，`users` 菜单权限路由守卫仍为只读；`GET /api/users` 支持可选 `page`、`limit` 参数进行服务端分页，并保留既有 `data`、`count` 字段。`Limited`：仍使用 MongoDB 的 AI 生成/媒体与订单/提成工作流要等后续 Phase 3 域切换后才能消费 PostgreSQL bigint 身份。
 
 ### 2. 导航、角色与访问控制
 
@@ -112,7 +140,7 @@
 - 页面：`/floorplans`、`/floorplans/[id]`、`/floorplans/kujiale`、`/measurements`。
 - API：户型 CRUD、`/floorplans/[id]/export/dxf`、测量、酷家乐城市/搜索和线索关联接口；小程序 `GET /api/floorplans/[id]` 还会返回关联线索的最小身份和小区摘要，供直接进入正式量房时显示项目标题。
 - 组件/工具：`FloorPlanViewer`、`FloorPlanViewerWrapper`、`survey-graph`、`surveyDimensionPlan`、`surveyWallSolidPlan`、`dxf`；无渲染依赖的尺寸和墙体实体规划器以 `miniprogram/utils` 为源，在后台开发和生产构建前同步到 `admin/src/lib`。
-- 状态：正式 v4 墙图解析、后台 2D/3D 查看、房间填充仅接受首墙正向或反向能够完整闭合的墙链、单侧墙体与连接节点补面先做全局实体合并再统一填充和描边（连接节点、L/T 型接入及重合分段不再出现内部端帽、斜缝或独立方框；门窗切口覆盖完整墙厚）、闭合户型使用工程图式外轮廓尺寸方案（空间边界先按几何拆分合并，不同 ID/不同分段的重合共享墙及封闭内部孔洞均不标注；连续多墙或含门洞的外边界使用靠墙的定位分段链；上、下、左、右等每个外侧方向仅有一条跨整套户型外包范围的全局总尺寸，不再为局部 run 重复生成总尺寸；窗户保留 CAD 图形但不生成重复细分尺寸；延伸线从斜接后的外墙转角起笔，再引至整套户型外轮廓之外的全局尺寸带；查看器会为尺寸线、延伸线和文字自动扩展 SVG 视区，避免最外层标注被裁切）、测量筛选和 DXF 下载为 `Implemented`；酷家乐搜索受上游数据和查询条件影响，为 `Limited`。
+- 状态：正式 v4 墙图解析、后台 2D/3D 查看、房间填充仅接受首墙正向或反向能够完整闭合的墙链、单侧墙体与连接节点补面先做全局实体合并再统一填充和描边（连接节点、L/T 型接入及重合分段不再出现内部端帽、斜缝或独立方框；门窗切口覆盖完整墙厚）、闭合户型使用工程图式外轮廓尺寸方案（空间边界先按几何拆分合并，不同 ID/不同分段的重合共享墙及封闭内部孔洞均不标注；连续多墙或含门洞的外边界使用靠墙的定位分段链；上、下、左、右等每个外侧方向仅有一条跨整套户型外包范围的全局总尺寸，不再为局部 run 重复生成总尺寸；窗户保留 CAD 图形但不生成重复细分尺寸；延伸线从斜接后的外墙转角起笔，再引至整套户型外轮廓之外的全局尺寸带；查看器会为尺寸线、延伸线和文字自动扩展 SVG 视区，避免最外层标注被裁切）、测量筛选和 DXF 下载为 `Implemented`；`/floorplans` 已使用 `PageContainer`、`ProTable` 承载正式户型的搜索、状态筛选、分页和查看器入口，列表只从 version-4 `surveyGraph` 派生已闭合空间、墙体和开口统计，不读取或写入旧布局字段；`GET /api/floorplans` 支持可选 `status` 筛选，`floorplans` 权限、查看器和 DXF 行为均未改变；酷家乐搜索受上游数据和查询条件影响，为 `Limited`。
 - PostgreSQL 边界：正式户型 CRUD、详情渲染、线索关联、测量关联和 DXF 导出均通过 `FloorPlanRepository`、`MeasurementRepository` 在 RLS 中访问。酷家乐上游请求在数据库事务外执行，导入结果以毫米制正式 version-4 `surveyGraph` 原子持久化；房间轮廓转换为闭合节点/墙/空间链。由于上游响应尚无可靠的开口到墙体映射，当前不导入酷家乐门窗开口。
 - 边界：后台从 `surveyGraph` 派生房间/开口渲染数据，不持久化旧 `rooms` 或其他旧布局字段。
 

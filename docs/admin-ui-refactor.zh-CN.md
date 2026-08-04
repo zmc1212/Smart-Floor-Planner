@@ -29,7 +29,7 @@ Design ProComponents，形成统一的后台应用层。
 
 ## 共享 UI 约定
 
-- 使用稳定侧栏和受限内容宽度的浅色后台壳层。
+- 使用稳定侧栏和填满右侧工作区的浅色后台壳层。管理页只保留共享响应式水平内边距（紧凑屏 `20px`、`sm` 起 `28px`），不得再引入居中的最大宽度页面框架。
 - 路由元数据集中在 `admin/src/config/admin-routes.ts`，供导航、面包屑和页面标题复用。
 - 已迁移管理页的页面级标题区统一使用 ProComponents `PageContainer`。页面标题、说明、返回导航和页面操作分别使用其 `title`、`content`、`onBack`、`extra` 属性；不得新建页面专用标题组件，也不得手写拼装该模式。
 - `PageContainer` 只负责页面标题和内容边界，不会自动处理业务区块间距。共享后台壳层会在标题分割线下为内容容器提供 `24px` 顶部内边距；首个区块不得再额外添加顶部 margin。页面包含多个区块时，必须使用 `Flex vertical gap={24}` 包裹（或使用文档明确的 ProComponents `ProCard`/Ant Design `Space` 布局）。
@@ -65,6 +65,8 @@ Design ProComponents，形成统一的后台应用层。
 - `/workflow-logs` 已使用 `PageContainer`、Ant Design 汇总卡片和 `ProTable` 承载服务端分页的通知日志查看与状态筛选。既有 PostgreSQL 通知日志 API、企业负责人读取范围以及 `admin`/`super_admin` 执行提醒扫描边界均未改变；表格加载和扫描失败均使用共享操作反馈。
 - `/staff` 已使用 `PageContainer`、`ProTable`、`ModalForm` 和 Ant Design `Tree` 承载服务端分页员工搜索、部门筛选以及员工和部门维护。既有租户范围内的 staff/department API 与 `enterprise_admin`/`admin`/`super_admin` 变更边界均未改变。
 - `/admins` 已使用 `PageContainer`、`ProTable` 和 `ModalForm` 承载账号搜索、范围与角色筛选、新建、编辑、密码重置、状态变更和删除。既有 PostgreSQL `admin-users` API、`admins` 菜单权限路由守卫、十进制字符串 `_id` DTO 契约，以及渠道地推账号不绑定企业的规则均未改变；表单仅展示这些 API 接受的五种角色。
+- `/users` 和 `/users/[openid]` 已使用 `PageContainer`、`ProTable` 与 `ProDescriptions` 承载小程序用户的分页审计、身份资料和正式户型查看。`/api/users` 为该服务端分页新增可选 `page`、`limit` 查询参数，同时保留既有 `data`、`count` 响应字段；PostgreSQL 用户/户型数据源、`users` 菜单权限路由守卫和只读后台流程均未改变。
+- `/floorplans` 已使用 `PageContainer` 和 `ProTable` 承载正式户型的服务端分页搜索、状态筛选和查看器入口。几何摘要只读取正式 v4 `surveyGraph` 中已闭合空间、墙体和开口，不读取或写入旧布局字段；`GET /api/floorplans` 新增可选 `status` 筛选，既有租户范围、`floorplans` 权限、查看器和 DXF 行为均未改变。
 - `/enterprise-orders` 已使用 `PageContainer`、`ProTable` 和 `ModalForm` 承载订单搜索、状态查看与流转、企业开通和订单创建。既有 PostgreSQL 订单、套餐、报备、提成和企业开通 API，以及 `enterprise_admin`/`admin`/`super_admin` 的订单写入边界与 `admin`/`super_admin` 的企业开通边界均未改变。
 - `/packages` 已使用 `PageContainer`、`ProTable` 和 `ModalForm` 承载套餐搜索、状态查看、新建、编辑和删除。既有 PostgreSQL 套餐 API 与 `admin`/`super_admin` 平台边界均未改变；删除操作会在对应请求进行中锁定该行，表格加载失败使用共享操作反馈，窄屏下筛选行会纵向排列。
 - `/commissions` 已使用 `PageContainer`、Ant Design 汇总卡片和 `ProTable` 承载状态查看、搜索与结算操作。既有 PostgreSQL 提成 API、`salesperson` 读取范围及 `admin`/`super_admin` 结算边界均未改变；表格加载失败使用共享操作反馈，结算操作继续按记录单独防重，窄屏下筛选行会纵向排列。

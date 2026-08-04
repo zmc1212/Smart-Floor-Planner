@@ -1,11 +1,17 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { AiCreationRepository } from '@/db/repositories';
+import { withTenantTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { createCreationBatch, serializeCreationTask } from '@/lib/ai/creation-service';
+import { ensureAiCreditAccount, serializeAiCreditAccount } from '@/lib/ai/credits';
+import { preparePostgresCreationBatch } from '@/lib/ai/postgres-creation-service';
+import {
+  serializePostgresCreationTask,
+  submitPostgresCreationGeneration,
+} from '@/lib/ai/postgres-creation-runtime';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await dbConnect();
     return await withTenantRoute(request, { requireEnterprise: true }, async (context) => {
       const { id } = await params;
       const body = await request.json() as {
@@ -25,8 +31,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (!body.modelProfileId) {
         return NextResponse.json({ success: false, error: '请选择模型' }, { status: 400 });
       }
-      const result = await createCreationBatch({
-        enterpriseId: String(context.enterpriseId),
+      const enterpriseId = parsePostgresId(context.enterpriseId!, 'enterpriseId');
+      const result = await preparePostgresCreationBatch({
+        enterpriseId: enterpriseId.toString(),
         operatorId: context.userId,
         taskId: id,
         prompt: String(body.prompt || ''),
@@ -44,11 +51,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         templateId: body.templateId,
         count: body.count,
       });
+      await Promise.allSettled(result.generations.map((generation) =>
+        submitPostgresCreationGeneration({
+          enterpriseId: enterpriseId.toString(),
+          generationId: generation.id.toString(),
+        })
+      ));
+      const view = await withTenantTransaction(enterpriseId, (transaction) =>
+        new AiCreationRepository(transaction).loadTaskView(result.taskId)
+      );
+      if (!view) throw new Error('创作任务提交后无法读取');
       return NextResponse.json({
         success: true,
         data: {
-          task: await serializeCreationTask(result.task),
-          account: result.account,
+          task: serializePostgresCreationTask(view),
+          account: serializeAiCreditAccount(await ensureAiCreditAccount(enterpriseId.toString())),
         },
       });
     });

@@ -1,50 +1,31 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { AiWorkflowRepository } from '@/db/repositories';
+import { withTenantTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { AiGeneration } from '@/models/AiGeneration';
-import { AiWorkflow } from '@/models/AiWorkflow';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await dbConnect();
     return await withTenantRoute(request, { requireEnterprise: true }, async (context) => {
       const { id } = await params;
       const body = await request.json() as { workflowId?: string };
       if (!body.workflowId) {
         return NextResponse.json({ success: false, error: '请选择客户方案' }, { status: 400 });
       }
-      const [generation, workflow] = await Promise.all([
-        AiGeneration.findOne({
-          _id: id,
-          enterpriseId: context.enterpriseId,
-          type: 'free_create',
-          status: 'succeeded',
-          deletedAt: { $exists: false },
-        }),
-        AiWorkflow.findOne({
-          _id: body.workflowId,
-          enterpriseId: context.enterpriseId,
-          status: 'active',
-        }),
-      ]);
-      if (!generation) return NextResponse.json({ success: false, error: '生成结果不存在' }, { status: 404 });
-      if (!workflow) return NextResponse.json({ success: false, error: '客户方案不存在' }, { status: 404 });
-
-      generation.workflowId = workflow._id;
-      generation.leadId = workflow.leadId;
-      generation.stageKey = 'base_render';
-      generation.sourceAssetRole = 'base_render';
-      generation.nextRecommendedStage = 'soft_furnishing';
-      workflow.lastGenerationId = generation._id;
-      if (!workflow.selectedGenerationId) {
-        generation.isSelectedBaseline = true;
-        workflow.selectedGenerationId = generation._id;
-        workflow.currentStageKey = 'soft_furnishing';
-      }
-      await Promise.all([generation.save(), workflow.save()]);
+      const attached = await withTenantTransaction(
+        parsePostgresId(context.enterpriseId!, 'enterpriseId'),
+        (transaction) => new AiWorkflowRepository(transaction).attachSucceededFreeCreationGeneration(
+          parsePostgresId(body.workflowId, 'workflowId'),
+          parsePostgresId(id, 'generationId')
+        )
+      );
+      if (!attached) return NextResponse.json({ success: false, error: '生成结果或客户方案不存在' }, { status: 404 });
       return NextResponse.json({
         success: true,
-        data: { generationId: String(generation._id), workflowId: String(workflow._id) },
+        data: {
+          generationId: attached.generation.id.toString(),
+          workflowId: attached.workflow.id.toString(),
+        },
       });
     });
   } catch (error) {

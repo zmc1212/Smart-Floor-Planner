@@ -36,7 +36,10 @@ remain in a row action menu and use the shared operation feedback UI.
 
 ## Shared UI Contract
 
-- One light admin shell with a stable sidebar and a constrained content region.
+- One light admin shell with a stable sidebar and a full-width workspace region.
+  Management pages fill the area beside the sidebar and retain only the shared
+  responsive horizontal gutters (`20px` on compact screens and `28px` from
+  `sm`); do not introduce a centered maximum-width page frame.
 - Route metadata lives in `admin/src/config/admin-routes.ts` and is reused by
   navigation, breadcrumbs, and page headers.
 - Migrated management pages use ProComponents `PageContainer` for the page-level
@@ -134,6 +137,20 @@ desktop/mobile visual checks, and browser verification pass.
   `admins` menu-permission route guard, decimal-string `_id` DTO contract, and
   rule that salesperson accounts have no enterprise binding are unchanged; the
   form exposes only the five roles accepted by those APIs.
+- `/users` and `/users/[openid]` now use `PageContainer`, `ProTable`, and
+  `ProDescriptions` for paginated Mini Program user audit, identity metadata,
+  and formal floor-plan review. `/api/users` accepts optional `page` and
+  `limit` query parameters for this server pagination while retaining its
+  existing `data` and `count` response fields. The PostgreSQL user/floor-plan
+  data source, `users` menu-permission route guard, and read-only admin flow
+  remain unchanged.
+- `/floorplans` now uses `PageContainer` and `ProTable` for server-paginated
+  formal-plan search, status filtering, and viewer navigation. Its geometry
+  summary reads only closed spaces, walls, and openings from the formal v4
+  `surveyGraph`; it does not read or write legacy layout fields. `GET
+  /api/floorplans` now accepts optional `status` filtering, while its existing
+  tenant scope, `floorplans` permission, viewer, and DXF behavior remain
+  unchanged.
 - `/enterprise-orders` now uses `PageContainer`, `ProTable`, and `ModalForm`
   for order search, status review, status transitions, enterprise activation,
   and order creation. Its existing PostgreSQL-backed order, package, promotion,

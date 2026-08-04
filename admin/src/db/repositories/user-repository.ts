@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, ilike, isNull, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, isNull, or } from 'drizzle-orm';
 import { users } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
 
@@ -8,28 +8,44 @@ export type UserUpdate = Partial<
   Omit<NewUser, 'id' | 'createdAt' | 'updatedAt'>
 >;
 
+export interface UserListOptions {
+  search?: string;
+  page?: number;
+  limit?: number;
+}
+
 export class UserRepository {
   constructor(private readonly transaction: PostgresTransaction) {}
 
-  async list(search?: string) {
-    const normalized = search?.trim();
+  async list(options: UserListOptions = {}) {
+    const normalized = options.search?.trim();
     const pattern = normalized
       ? `%${normalized.replace(/[%_]/g, '\\$&')}%`
       : null;
-    return this.transaction
-      .select()
-      .from(users)
-      .where(
-        pattern
-          ? or(
-              ilike(users.nickname, pattern),
-              ilike(users.phone, pattern),
-              ilike(users.openid, pattern),
-              ilike(users.communityName, pattern)
-            )
-          : undefined
-      )
-      .orderBy(desc(users.createdAt), desc(users.id));
+    const where = pattern
+      ? or(
+          ilike(users.nickname, pattern),
+          ilike(users.phone, pattern),
+          ilike(users.openid, pattern),
+          ilike(users.communityName, pattern)
+        )
+      : undefined;
+    const page = Math.max(1, options.page ?? 1);
+    const limit = Math.min(Math.max(1, options.limit ?? 20), 100);
+    const [rows, totals] = await Promise.all([
+      this.transaction
+        .select()
+        .from(users)
+        .where(where)
+        .orderBy(desc(users.createdAt), desc(users.id))
+        .offset((page - 1) * limit)
+        .limit(limit),
+      this.transaction.select({ value: count() }).from(users).where(where),
+    ]);
+    return {
+      rows,
+      total: Number(totals[0]?.value ?? 0),
+    };
   }
 
   async findById(id: bigint) {

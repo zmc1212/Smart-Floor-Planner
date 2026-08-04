@@ -1,5 +1,43 @@
 # Admin System: Current Module Inventory
 
+> 2026-08-03 PostgreSQL migration update: `postgres-workflow-service` now
+> provides a tenant-RLS workflow creation and read-context foundation. It
+> validates that the bigint lead belongs to the tenant and that a selected
+> floor plan belongs to that lead and is an eligible completed formal v4 survey;
+> it returns the existing workflow, lead, generation, and stage-state DTO shape
+> using PostgreSQL records. This does not switch `/api/ai/workflows`, stage
+> execution, source-image media persistence/delivery, or any permission
+> boundary: those public MongoDB-backed paths remain the active runtime until
+> their complete bigint execution slice is ready. No MongoDB business data was
+> imported, deleted, or re-encrypted.
+
+> 2026-08-03 PostgreSQL migration update: the workflow foundation now also
+> mutates bigint workflow state under tenant RLS. Renaming, stage-pointer
+> changes, and succeeded-generation baseline selection lock the relevant
+> PostgreSQL records and preserve a single selected baseline. Public workflow
+> mutation and stage-execution routes are still MongoDB-backed until the
+> complete bigint execution slice is ready; no MongoDB business data was
+> imported, deleted, or re-encrypted. Targeted ESLint and
+> `npm run test:postgresql` passed 38/38.
+
+> 2026-08-03 PostgreSQL migration update: the connected bigint free-creation
+> runtime slice is now active. `POST /api/ai/creation/assets`,
+> `GET/POST /api/ai/creation/tasks`, `DELETE /api/ai/creation/tasks/[id]`,
+> `POST /api/ai/creation/tasks/[id]/batches`, and
+> `POST /api/ai/creation/generations/[id]/attach-workflow` now use PostgreSQL
+> media, task, batch, generation, provider-attempt, credit, and workflow
+> records in tenant RLS transactions. The existing task DTO and `ai-scenarios`
+> boundary are unchanged; decimal generation-image requests resolve through the
+> PostgreSQL asset delivery route. Provider and storage I/O remain outside
+> transactions, and result assets are persisted before idempotent credit
+> settlement. Legacy MongoDB `ObjectId` creation history is not imported,
+> deleted, or re-encrypted. `Limited`: due-provider polling runs while the
+> task-history refreshes can still reconcile a tenant's tasks, and the existing
+> protected `/api/ai/reconcile` plus `/api/admin/ai-reconciliation` scheduler
+> boundaries now claim due PostgreSQL tasks platform-wide and return
+> `postgresqlClaimed` alongside their legacy MongoDB results.
+> Targeted ESLint and `npm run test:postgresql` passed 38/38.
+
 > 2026-08-03 PostgreSQL migration update: `postgres-creation-service` now
 > provides a platform-internal provider-poll claim for background workers. A
 > short transaction uses `FOR UPDATE SKIP LOCKED` on due accepted bigint
@@ -96,6 +134,10 @@ permission, or workflow changes.
   title, description, back navigation, and page-level action area. `ProTable`,
   `ProForm`, and `ProDescriptions` remain the corresponding list, form, and
   detail primitives.
+- The shared admin page frame fills the available area beside the sidebar. It
+  keeps fixed responsive inner padding (`20px` on compact screens and `28px`
+  from `sm`) but has no centered maximum width, so operational tables can use
+  the full workspace width.
 - `PageContainer` does not provide business-block spacing; migrated pages use
   the shared shell's `24px` content top inset below the header divider, then
   Ant Design `Flex`/`Space` or documented `ProCard` layouts for block gaps and
@@ -122,7 +164,12 @@ permission, or workflow changes.
   to PostgreSQL bigint enterprise IDs.
 - User audit pages: `/users` and `/users/[openid]`, backed by `/api/users`,
   `/users/[openid]`, and `/users/me`, provide PostgreSQL Mini Program identity
-  lookup/profile updates and PostgreSQL floor-plan counts/export lists.
+  lookup/profile updates and PostgreSQL floor-plan counts/export lists. The
+  admin list and detail now use `PageContainer`, `ProTable`, and
+  `ProDescriptions`; its `users` menu-permission route guard remains read-only.
+  `GET /api/users` supports optional `page` and `limit` parameters for
+  server-side pagination while retaining the existing `data` and `count`
+  fields.
   `Limited`: AI generation/media and order/commission workflows that still use
   MongoDB cannot consume PostgreSQL bigint identities until their later Phase 3
   slices.
@@ -341,6 +388,12 @@ permission, or workflow changes.
   and labels.
   Measurement filtering and DXF download are implemented. Kujiale search is
   `Limited` by the upstream search/provider response and city/query availability.
+  `/floorplans` now uses `PageContainer` and `ProTable` for formal-plan search,
+  status filtering, pagination, and viewer navigation. Its list summary derives
+  only closed spaces, walls, and openings from the version-4 `surveyGraph`, and
+  never reads or writes legacy layout fields. `GET /api/floorplans` accepts an
+  optional `status` filter; the `floorplans` permission and all existing viewer
+  and DXF behavior are unchanged.
 - PostgreSQL boundary: formal floor-plan CRUD, detail rendering, lead linking,
   measurement association, and DXF export use `FloorPlanRepository` and
   `MeasurementRepository` under RLS. External Kujiale requests run outside the

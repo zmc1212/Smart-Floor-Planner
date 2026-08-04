@@ -98,6 +98,77 @@ export class AiWorkflowRepository {
     return rows[0] ?? null;
   }
 
+  async updateActive(id: bigint, values: AiWorkflowUpdate) {
+    const workflowRows = await this.transaction
+      .select()
+      .from(aiWorkflows)
+      .where(and(eq(aiWorkflows.id, id), eq(aiWorkflows.status, 'active')))
+      .for('update')
+      .limit(1);
+    if (!workflowRows[0]) return null;
+    return this.update(id, values);
+  }
+
+  /**
+   * Replaces the selected baseline only after both the active workflow and its
+   * succeeded generation are locked in the same tenant transaction.
+   */
+  async selectSucceededGenerationBaseline(workflowId: bigint, generationId: bigint) {
+    const workflowRows = await this.transaction
+      .select()
+      .from(aiWorkflows)
+      .where(and(eq(aiWorkflows.id, workflowId), eq(aiWorkflows.status, 'active')))
+      .for('update')
+      .limit(1);
+    const workflow = workflowRows[0];
+    if (!workflow) return null;
+
+    const generationRows = await this.transaction
+      .select()
+      .from(aiGenerations)
+      .where(
+        and(
+          eq(aiGenerations.id, generationId),
+          eq(aiGenerations.workflowId, workflow.id),
+          eq(aiGenerations.status, 'succeeded'),
+          isNull(aiGenerations.deletedAt)
+        )
+      )
+      .for('update')
+      .limit(1);
+    const generation = generationRows[0];
+    if (!generation) return null;
+
+    await this.transaction
+      .update(aiGenerations)
+      .set({ isSelectedBaseline: false, updatedAt: new Date() })
+      .where(eq(aiGenerations.workflowId, workflow.id));
+
+    const selectedRows = await this.transaction
+      .update(aiGenerations)
+      .set({ isSelectedBaseline: true, updatedAt: new Date() })
+      .where(eq(aiGenerations.id, generation.id))
+      .returning();
+    const selected = selectedRows[0];
+    if (!selected) throw new Error('AI generation disappeared during baseline selection');
+
+    const updatedRows = await this.transaction
+      .update(aiWorkflows)
+      .set({
+        selectedGenerationId: selected.id,
+        lastGenerationId: selected.id,
+        ...(selected.nextRecommendedStage
+          ? { currentStageKey: selected.nextRecommendedStage }
+          : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(aiWorkflows.id, workflow.id))
+      .returning();
+    const updated = updatedRows[0];
+    if (!updated) throw new Error('AI workflow disappeared during baseline selection');
+    return { workflow: updated, generation: selected };
+  }
+
   /**
    * The workflow and free-creation result are locked together so competing
    * attachment requests cannot select two different baseline generations.

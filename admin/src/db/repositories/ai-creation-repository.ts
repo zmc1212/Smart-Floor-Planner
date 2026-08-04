@@ -312,6 +312,14 @@ export class AiCreationRepository {
     return this.transaction.select().from(aiGenerations).where(inArray(aiGenerations.id, nonEmptyIds(ids)));
   }
 
+  async listGenerationsByWorkflowId(workflowId: bigint) {
+    return this.transaction
+      .select()
+      .from(aiGenerations)
+      .where(and(eq(aiGenerations.workflowId, workflowId), sql`${aiGenerations.deletedAt} is null`))
+      .orderBy(desc(aiGenerations.createdAt), desc(aiGenerations.id));
+  }
+
   createProviderAttempt(input: typeof aiProviderAttempts.$inferInsert) {
     return this.transaction.insert(aiProviderAttempts).values(input).returning().then((rows) => rows[0]);
   }

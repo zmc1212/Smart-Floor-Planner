@@ -1,33 +1,40 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { AiCreationRepository } from '@/db/repositories';
+import { withTenantTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { AiCreationModelProfile } from '@/models/AiCreationModelProfile';
-import { AiCreationTask } from '@/models/AiCreationTask';
-import { MediaAsset } from '@/models/MediaAsset';
-import { reconcileCreationTasks, serializeCreationTask } from '@/lib/ai/creation-service';
+import { createPostgresCreationTask } from '@/lib/ai/postgres-creation-service';
+import {
+  reconcilePostgresCreationTasks,
+  serializePostgresCreationTask,
+} from '@/lib/ai/postgres-creation-runtime';
 
 export async function GET(request: Request) {
   try {
-    await dbConnect();
-    return await withTenantRoute(request, { requireEnterprise: true }, async () => {
+    return await withTenantRoute(request, { requireEnterprise: true }, async (context) => {
+      const enterpriseId = parsePostgresId(context.enterpriseId!, 'enterpriseId');
       const url = new URL(request.url);
       const page = Math.max(1, Number(url.searchParams.get('page')) || 1);
       const limit = Math.min(30, Math.max(1, Number(url.searchParams.get('limit')) || 12));
       const query = url.searchParams.get('q')?.trim();
-      const filter: Record<string, unknown> = { deletedAt: { $exists: false } };
-      if (query) filter.$or = [
-        { title: { $regex: query, $options: 'i' } },
-        { prompt: { $regex: query, $options: 'i' } },
-      ];
-      const [tasks, total] = await Promise.all([
-        AiCreationTask.find(filter).sort({ updatedAt: -1 }).skip((page - 1) * limit).limit(limit),
-        AiCreationTask.countDocuments(filter),
-      ]);
-      await reconcileCreationTasks(tasks);
+      await reconcilePostgresCreationTasks(enterpriseId.toString()).catch((error) =>
+        console.error('[AI Creation PostgreSQL Reconcile]', error)
+      );
+      const listed = await withTenantTransaction(enterpriseId, async (transaction) => {
+        const repository = new AiCreationRepository(transaction);
+        const result = await repository.listTasks({ page, limit, query });
+        const views = await Promise.all(result.tasks.map((task) => repository.loadTaskView(task.id)));
+        return { ...result, views: views.filter((view): view is NonNullable<typeof view> => Boolean(view)) };
+      });
       return NextResponse.json({
         success: true,
-        data: await Promise.all(tasks.map(serializeCreationTask)),
-        pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+        data: listed.views.map(serializePostgresCreationTask),
+        pagination: {
+          page: listed.page,
+          limit: listed.limit,
+          total: listed.total,
+          totalPages: Math.ceil(listed.total / listed.limit),
+        },
       });
     });
   } catch (error) {
@@ -38,7 +45,6 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    await dbConnect();
     return await withTenantRoute(request, { requireEnterprise: true }, async (context) => {
       const body = await request.json() as {
         title?: string;
@@ -50,33 +56,20 @@ export async function POST(request: Request) {
       const title = String(body.title || prompt.slice(0, 30) || '未命名创作').trim();
       if (!prompt) return NextResponse.json({ success: false, error: '请输入提示词' }, { status: 400 });
       if (!body.modelProfileId) return NextResponse.json({ success: false, error: '请选择模型' }, { status: 400 });
-      const profile = await AiCreationModelProfile.findOne({
-        _id: body.modelProfileId,
-        sourceType: 'grs_catalog',
-        enabled: true,
-      });
-      if (!profile) return NextResponse.json({ success: false, error: '所选模型不可用' }, { status: 400 });
-      const referenceAssetIds = [...new Set((body.referenceAssetIds || []).map(String))];
-      const assetCount = referenceAssetIds.length
-        ? await MediaAsset.countDocuments({
-            _id: { $in: referenceAssetIds },
-            enterpriseId: context.enterpriseId,
-            deletedAt: { $exists: false },
-          })
-        : 0;
-      if (assetCount !== referenceAssetIds.length) {
-        return NextResponse.json({ success: false, error: '参考图不存在或无权访问' }, { status: 400 });
-      }
-      const task = await AiCreationTask.create({
-        enterpriseId: String(context.enterpriseId),
+      const enterpriseId = parsePostgresId(context.enterpriseId!, 'enterpriseId');
+      const task = await createPostgresCreationTask({
+        enterpriseId: enterpriseId.toString(),
         operatorId: context.userId,
         title,
         prompt,
-        referenceAssetIds,
-        modelProfileId: profile._id,
-        status: 'active',
+        modelProfileId: body.modelProfileId,
+        referenceAssetIds: body.referenceAssetIds,
       });
-      return NextResponse.json({ success: true, data: await serializeCreationTask(task) });
+      const view = await withTenantTransaction(enterpriseId, (transaction) =>
+        new AiCreationRepository(transaction).loadTaskView(task.id)
+      );
+      if (!view) throw new Error('创作任务创建后无法读取');
+      return NextResponse.json({ success: true, data: serializePostgresCreationTask(view) });
     });
   } catch (error) {
     console.error('[AI Creation Tasks POST]', error);

@@ -157,6 +157,7 @@ export async function GET(request: Request) {
     const baseOptions = {
       phone: searchParams.get('phone') || undefined,
       search: searchParams.get('search') || undefined,
+      status: searchParams.get('status') || undefined,
       formalOnly: true,
       page,
       limit,

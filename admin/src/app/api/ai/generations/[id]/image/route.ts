@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { AiCreationRepository } from '@/db/repositories';
+import { withTenantTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { AiGeneration } from '@/models/AiGeneration';
 import { getAssetIdFromImageUrl, parseImageDataUri, readMediaAssetBuffer } from '@/lib/ai/media-assets';
@@ -10,10 +13,22 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await dbConnect();
-
     return await withTenantRoute(req, { requireEnterprise: true }, async (context) => {
       const { id } = await params;
+      if (/^[1-9]\d*$/.test(id)) {
+        const enterpriseId = parsePostgresId(context.enterpriseId!, 'enterpriseId');
+        const generation = await withTenantTransaction(enterpriseId, (transaction) =>
+          new AiCreationRepository(transaction).findGeneration(parsePostgresId(id, 'generationId'))
+        );
+        const assetId = generation?.output && typeof generation.output === 'object'
+          ? String((generation.output as Record<string, unknown>).imageUrl || '').match(/^\/api\/ai\/assets\/([1-9]\d*)\/image/i)?.[1]
+          : undefined;
+        if (!assetId) {
+          return NextResponse.json({ success: false, error: 'Generation image not found' }, { status: 404 });
+        }
+        return NextResponse.redirect(new URL(`/api/ai/assets/${assetId}/image`, req.url));
+      }
+      await dbConnect();
       const generation = await AiGeneration.findOne({
         _id: id,
         enterpriseId: context.enterpriseId,

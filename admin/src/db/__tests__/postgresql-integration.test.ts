@@ -74,6 +74,11 @@ import {
 import { listWorkbenchTodos } from '@/lib/postgres-workflow-automation';
 import { getEnterpriseAiPolicy } from '@/lib/ai/enterprise-policy';
 import { storePostgresMediaBuffer } from '@/lib/ai/postgres-media-assets';
+import {
+  createPostgresAiWorkflow,
+  getPostgresAiWorkflowContext,
+  updatePostgresAiWorkflowState,
+} from '@/lib/ai/postgres-workflow-service';
 import { listPostgresExecutableImageModelProfiles } from '@/lib/ai/image-model-catalog';
 import {
   createPostgresCreationTask,
@@ -2018,6 +2023,19 @@ test('AI workflow repository atomically attaches succeeded free creations under 
       assert.equal(secondAttachment.workflow.lastGenerationId, secondGeneration.id);
       assert.equal(secondAttachment.generation.isSelectedBaseline, false);
 
+      const selectedSecond = await workflows.selectSucceededGenerationBaseline(
+        workflow.id,
+        secondGeneration.id
+      );
+      assert.ok(selectedSecond);
+      assert.equal(selectedSecond.workflow.selectedGenerationId, secondGeneration.id);
+      assert.equal(selectedSecond.workflow.lastGenerationId, secondGeneration.id);
+      assert.equal(selectedSecond.generation.isSelectedBaseline, true);
+      assert.equal(
+        (await new AiCreationRepository(transaction).findGeneration(firstGeneration.id))?.isSelectedBaseline,
+        false
+      );
+
       const listed = await workflows.list({ leadId: lead.id, status: 'active' });
       assert.equal(listed.total, 1);
       const summaries = await workflows.summarizeActiveByLeadIds([lead.id]);
@@ -2052,6 +2070,82 @@ test('AI workflow repository atomically attaches succeeded free creations under 
       }
       if (generationIds.length) {
         await transaction.delete(aiGenerations).where(inArray(aiGenerations.id, generationIds));
+      }
+      if (leadId) await transaction.delete(leads).where(eq(leads.id, leadId));
+    });
+  }
+});
+
+test('PostgreSQL workflow service creates and reads tenant-scoped workflow context', async () => {
+  let leadId: bigint | null = null;
+  let workflowId: bigint | null = null;
+  try {
+    const lead = await withTenantTransaction(enterpriseAId, (transaction) =>
+      new LeadRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        assignedTo: promotionDesignerAId,
+        name: 'PostgreSQL workflow service lead',
+        phone: `137${String(Date.now()).slice(-8)}`,
+        source: 'integration-test',
+        status: 'new',
+      })
+    );
+    leadId = lead.id;
+
+    const workflow = await createPostgresAiWorkflow({
+      enterpriseId: enterpriseAId,
+      operatorId: promotionDesignerAId,
+      leadId: lead.id,
+      sourceImage: 'data:image/png;base64,AA==',
+    });
+    workflowId = workflow.id;
+    assert.equal(workflow.isPrimary, true);
+    assert.equal(workflow.sourceAssetRole, 'rough_sketch');
+
+    const context = await getPostgresAiWorkflowContext({
+      enterpriseId: enterpriseAId,
+      workflowId: workflow.id,
+    });
+    assert.equal(context.workflow.id, String(workflow.id));
+    assert.equal(context.workflow.generationCount, 0);
+    assert.equal(context.workflow.sourceImage, `/api/ai/workflows/${workflow.id}/source-image`);
+    assert.equal(context.lead.id, String(lead.id));
+    assert.equal(context.lead.name, lead.name);
+    assert.deepEqual(context.generations, []);
+
+    const renamed = await updatePostgresAiWorkflowState({
+      enterpriseId: enterpriseAId,
+      workflowId: workflow.id,
+      action: 'rename',
+      title: 'Renamed PostgreSQL workflow',
+    });
+    assert.equal(renamed.workflow.title, 'Renamed PostgreSQL workflow');
+    const staged = await updatePostgresAiWorkflowState({
+      enterpriseId: enterpriseAId,
+      workflowId: workflow.id,
+      action: 'set-stage',
+      stageKey: 'base_render',
+    });
+    assert.equal(staged.workflow.currentStageKey, 'base_render');
+
+    await assert.rejects(
+      () => updatePostgresAiWorkflowState({
+        enterpriseId: enterpriseBId,
+        workflowId: workflow.id,
+        action: 'rename',
+        title: 'Cross-tenant mutation',
+      }),
+      /方案会话不存在或无权访问/
+    );
+
+    await assert.rejects(
+      () => getPostgresAiWorkflowContext({ enterpriseId: enterpriseBId, workflowId: workflow.id }),
+      /方案会话不存在或无权访问/
+    );
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (workflowId) {
+        await transaction.delete(aiWorkflows).where(eq(aiWorkflows.id, workflowId));
       }
       if (leadId) await transaction.delete(leads).where(eq(leads.id, leadId));
     });
