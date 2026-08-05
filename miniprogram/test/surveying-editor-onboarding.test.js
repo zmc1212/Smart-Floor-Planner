@@ -37,15 +37,22 @@ test('formal surveying uses a persistent state-following guide mode instead of a
   assert.doesNotMatch(editorWxml, /class="survey-guide-layer/);
   assert.doesNotMatch(editorWxml, /surveyGuideFocusVisible|survey-guide-focus/);
   assert.match(editorWxml, /wx:for="\{\{surveyGuideBodyLines\}\}"/);
-  assert.match(editorWxss, /\.survey-guide-card\s*\{[\s\S]*pointer-events:\s*none;/);
+  assert.match(editorScript, /onGuideDismiss\(\)/);
+  assert.match(editorWxml, /catchtap="onGuideDismiss"/);
+  assert.match(editorWxss, /\.survey-guide-overlay\s*\{[\s\S]*pointer-events:\s*none;/);
   assert.match(editorWxss, /\.survey-guide-body\s*\{[\s\S]*font-size:\s*24rpx;/);
 });
 
-test('the first-wall guide uses a dedicated transparent-ready measuring Xiao K asset', () => {
-  const asset = fs.readFileSync(path.join(miniRoot, 'images', 'surveying-guide-k.png'));
-  assert.equal(asset.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
-  assert.ok(asset.length > 1024);
-  assert.match(editorWxml, /\/images\/surveying-guide-k\.png/);
+test('contextual guide uses three transparent Xiao K pointing poses', () => {
+  ['left', 'right', 'down'].forEach((pose) => {
+    const asset = fs.readFileSync(path.join(miniRoot, 'images', `surveying-guide-k-${pose}.png`));
+    assert.equal(asset.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.ok(asset.length > 1024);
+    assert.match(editorScript, new RegExp(`/images/surveying-guide-k-${pose}\\.png`));
+  });
+  assert.match(editorWxml, /surveyGuideCharacterSrc/);
+  assert.match(editorWxml, /survey-guide-path/);
+  assert.match(editorWxml, /survey-guide-target-halo/);
   assert.doesNotMatch(editorWxml, /\/images\/surveying-onboarding-k\.png/);
 });
 

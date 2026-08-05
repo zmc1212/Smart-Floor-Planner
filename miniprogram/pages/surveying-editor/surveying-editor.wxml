@@ -207,25 +207,37 @@
 
   <cover-view
     wx:if="{{surveyGuideVisible}}"
-    class="survey-guide-card target-{{surveyGuideTarget}} state-{{surveyGuideKey}}"
-    style="{{surveyGuideCardStyle}}"
+    class="survey-guide-overlay"
   >
     <cover-view
-      class="survey-guide-pointer {{surveyGuidePointerDirection}}"
-      style="{{surveyGuidePointerStyle}}"
+      class="survey-guide-target-halo"
+      style="{{surveyGuideTargetHaloStyle}}"
     ></cover-view>
     <cover-image
-      wx:if="{{surveyGuideShowCharacter}}"
-      class="survey-guide-k"
-      src="/images/surveying-guide-k.png"
+      class="survey-guide-k survey-guide-k-{{surveyGuideCharacterPose}}"
+      src="{{surveyGuideCharacterSrc}}"
+      style="{{surveyGuideCharacterStyle}}"
       mode="aspectFit"
     ></cover-image>
-    <cover-view class="survey-guide-copy-group {{surveyGuideShowCharacter ? 'with-character' : ''}}">
-      <cover-view class="survey-guide-kicker">量房引导</cover-view>
-      <cover-view class="survey-guide-title">{{surveyGuideTitle}}</cover-view>
+    <cover-view class="survey-guide-path" style="{{surveyGuidePathStyle}}">
+      <cover-view class="survey-guide-path-line"></cover-view>
+      <cover-view class="survey-guide-path-arrow"></cover-view>
+    </cover-view>
+    <cover-view
+      class="survey-guide-card target-{{surveyGuideTarget}} state-{{surveyGuideKey}}"
+      style="{{surveyGuideCardStyle}}"
+    >
+      <cover-view class="survey-guide-tail"></cover-view>
+      <cover-view class="survey-guide-kicker">小K提示</cover-view>
+      <cover-image
+        class="survey-guide-dismiss"
+        src="/images/surveying-icons/wall-toolbar/close.png"
+        mode="aspectFit"
+        catchtap="onGuideDismiss"
+        aria-label="关闭量房引导"
+      ></cover-image>
       <cover-view wx:if="{{surveyGuideDynamicCursorLabel}}" class="survey-guide-body">
-        <cover-view class="survey-guide-body-line">{{cursorLensSnapLabel}}</cover-view>
-        <cover-view class="survey-guide-body-line">松手确定下一空间起点。</cover-view>
+        <cover-view class="survey-guide-body-line">{{cursorLensSnapLabel}}，松手确定起点。</cover-view>
       </cover-view>
       <cover-view wx:else class="survey-guide-body">
         <cover-view

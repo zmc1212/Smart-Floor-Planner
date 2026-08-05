@@ -4,7 +4,7 @@ function createGuide(key, title, body, target, extra) {
     title,
     body,
     target,
-    showCharacter: false,
+    showCharacter: true,
     dynamicCursorLabel: false
   }, extra || {});
 }
@@ -32,7 +32,7 @@ function resolveSurveyGuide(input) {
     return createGuide(
       'completed',
       '量房已完成',
-      '户型已保存，可返回项目继续后续工作。',
+      '点击“完成”提交本次正式量房。',
       'finish'
     );
   }
@@ -55,7 +55,7 @@ function resolveSurveyGuide(input) {
     return createGuide(
       'close-space',
       '闭合当前空间',
-      '确认闭合线正确后点“可闭合”；系统不会自动闭合。',
+      '确认闭合线正确后，点击“可闭合”。',
       'close'
     );
   }
@@ -65,16 +65,16 @@ function resolveSurveyGuide(input) {
       'confirm-direction',
       '确认墙体方向',
       session.mode === 'diagonal'
-        ? '沿斜墙实际方向继续拖动，松手生成待测墙。'
-        : '沿实际墙体方向继续拖动，松手生成待测墙。',
+        ? '沿斜墙实际方向继续拖动，松手确认。'
+        : '沿实际墙体方向继续拖动，松手确认。',
       'preview'
     );
   }
 
   if (state === 'awaitingLength' || state === 'remeasureAwaitingInput') {
     const body = opts.bleConnected
-      ? '点“测距”读取设备；也可点右侧“输入”录入毫米。'
-      : '点“测距”连接设备；也可点右侧“输入”录入毫米。';
+      ? '点击“测距”读取设备，或在右侧输入。'
+      : '点击“测距”连接设备，或在右侧输入。';
     return createGuide(
       state === 'remeasureAwaitingInput' ? 'remeasure-length' : 'confirm-length',
       state === 'remeasureAwaitingInput' ? '录入复尺长度' : '录入这面墙的实测长度',
@@ -87,7 +87,7 @@ function resolveSurveyGuide(input) {
     return createGuide(
       'confirm-measure-side',
       '确认测量位置',
-      '红线应与测距仪实际沿着的墙面一致；不一致时点箭头切换内外侧。',
+      '红线要与测距仪所在墙面一致，点箭头切换。',
       'measure-side'
     );
   }
@@ -110,7 +110,7 @@ function resolveSurveyGuide(input) {
     return createGuide(
       'edit-opening',
       '完善门窗信息',
-      '核对宽、高、距地和开向；完成后收起并继续量房。',
+      '核对门窗规格后收起，继续量房。',
       'object'
     );
   }
@@ -119,7 +119,7 @@ function resolveSurveyGuide(input) {
     return createGuide(
       'edit-wall',
       '补充墙体信息',
-      '可添门、添窗、复尺或调整墙厚；完成后收起并继续量房。',
+      '可添门、添窗、复尺或调整墙厚。',
       'object'
     );
   }
@@ -128,7 +128,7 @@ function resolveSurveyGuide(input) {
     return createGuide(
       'room-closed',
       '检查并继续量房',
-      '需要门窗可点墙体添加；继续量房请拖动底部光标；全部量完后点右上角“完成”。',
+      '拖动底部光标，开始下一空间量房。',
       'dock-cursor'
     );
   }
@@ -137,9 +137,8 @@ function resolveSurveyGuide(input) {
     return createGuide(
       'first-wall',
       '拉出第一面墙',
-      '从画布光标沿第一面墙方向拖动，松手后测量长度。',
-      'cursor',
-      { showCharacter: true }
+      '从画布光标沿第一面墙方向拖动。',
+      'cursor'
     );
   }
 
@@ -147,7 +146,7 @@ function resolveSurveyGuide(input) {
     return createGuide(
       'next-wall',
       '继续下一面墙',
-      '从当前端点沿下一面墙方向拖动；遇到斜墙时先选右侧“斜线”。',
+      '从当前端点沿下一面墙方向继续拖动。',
       'cursor'
     );
   }
@@ -230,8 +229,66 @@ function chooseGuidePlacement(input) {
   };
 }
 
+function chooseGuideCharacter(input) {
+  const opts = input || {};
+  const card = opts.card;
+  const target = opts.target;
+  const safeArea = opts.safeArea;
+  const characterSize = Number(opts.characterSize) || 0;
+  if (!card || !target || !safeArea || !characterSize) return null;
+
+  const clampValue = (value, min, max) => Math.max(min, Math.min(max, value));
+  const cardCenterX = card.left + card.width / 2;
+  const maxLeft = Math.max(safeArea.left, safeArea.right - characterSize);
+  const maxTop = Math.max(safeArea.top, safeArea.bottom - characterSize);
+  const sideTop = clampValue(card.top + card.height - characterSize * 0.42, safeArea.top, maxTop);
+  const downTop = card.top + card.height + 6;
+  const canSitBelow = downTop + characterSize <= safeArea.bottom;
+  const targetBelowCard = target.y > card.top + card.height + 12;
+
+  let pose = 'down';
+  let left = clampValue(target.x - characterSize * 0.54, safeArea.left, maxLeft);
+  let top = clampValue(downTop, safeArea.top, maxTop);
+
+  if (!targetBelowCard || !canSitBelow) {
+    pose = target.x < cardCenterX ? 'left' : 'right';
+    left = pose === 'left'
+      ? clampValue(card.left - characterSize * 0.58, safeArea.left, maxLeft)
+      : clampValue(card.left + card.width - characterSize * 0.42, safeArea.left, maxLeft);
+    top = sideTop;
+  }
+
+  const handOffsets = {
+    left: { x: 0.10, y: 0.47 },
+    right: { x: 0.90, y: 0.47 },
+    down: { x: 0.66, y: 0.87 }
+  };
+  const hand = handOffsets[pose];
+  const startX = left + characterSize * hand.x;
+  const startY = top + characterSize * hand.y;
+  const dx = target.x - startX;
+  const dy = target.y - startY;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  const targetInset = Math.min(12, Math.max(4, distance * 0.1));
+  const pathLength = Math.max(0, distance - targetInset);
+
+  return {
+    pose,
+    left,
+    top,
+    size: characterSize,
+    pathLeft: startX,
+    pathTop: startY,
+    pathLength,
+    pathAngle: Math.atan2(dy, dx) * 180 / Math.PI,
+    haloLeft: target.x - 24,
+    haloTop: target.y - 24
+  };
+}
+
 module.exports = {
   resolveSurveyGuide,
   chooseGuidePlacement,
+  chooseGuideCharacter,
   wrapGuideBody
 };

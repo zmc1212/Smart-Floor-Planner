@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { resolveSurveyGuide, chooseGuidePlacement, wrapGuideBody } = require('../utils/surveyGuide');
+const { resolveSurveyGuide, chooseGuidePlacement, chooseGuideCharacter, wrapGuideBody } = require('../utils/surveyGuide');
 
 function resolve(state, overrides) {
   const floor = {
@@ -82,6 +82,18 @@ test('selected objects and closed rooms receive contextual next actions', () => 
   assert.equal(resolve('spaceClosed').key, 'room-closed');
 });
 
+test('every contextual operation guide uses the Xiao K companion', () => {
+  const guides = [
+    resolve('wallPreview'),
+    resolve('awaitingLength'),
+    resolve('wallCommitted', { canSetInitialMeasurementSide: true }),
+    resolve('wallSelected', { session: { state: 'wallSelected', selectedWallId: 'wall-1' } }),
+    resolve('spaceClosed'),
+    resolve('cursorPlaced', { completed: true })
+  ];
+  assert.ok(guides.every((guide) => guide.showCharacter));
+});
+
 test('panels suppress the main guide and completion owns the final state', () => {
   assert.equal(resolve('awaitingLength', { numberPadVisible: true }), null);
   assert.equal(resolve('wallSelected', { componentEditorVisible: true }), null);
@@ -101,6 +113,30 @@ test('guide placement stays inside safe chrome and avoids the active wall when p
   assert.equal(placement.pointerDirection, 'up');
   assert.ok(placement.left >= 12);
   assert.ok(placement.left + 260 <= 282);
+});
+
+test('Xiao K pose and dotted path resolve from the real card and target geometry', () => {
+  const safeArea = { left: 12, top: 120, right: 282, bottom: 716 };
+  const card = { left: 56, top: 320, width: 168, height: 76 };
+  const down = chooseGuideCharacter({
+    card,
+    target: { x: 140, y: 540 },
+    safeArea,
+    characterSize: 64
+  });
+  assert.equal(down.pose, 'down');
+  assert.ok(down.top + down.size <= safeArea.bottom);
+  assert.ok(down.pathLength > 12);
+
+  const left = chooseGuideCharacter({
+    card,
+    target: { x: 20, y: 248 },
+    safeArea,
+    characterSize: 64
+  });
+  assert.equal(left.pose, 'left');
+  assert.ok(left.left >= safeArea.left);
+  assert.ok(left.top >= safeArea.top);
 });
 
 test('guide copy is split into native-cover-view-safe lines', () => {

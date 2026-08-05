@@ -19,6 +19,10 @@ utilities, and the admin APIs they call.
 - Runtime: native WeChat Mini Program, JWT bearer requests through
   `utils/api.js`, `threejs-miniprogram` for 3D previews, and optional BLE laser
   distance meter integration.
+- Source-package guard: `project.config.json` excludes test fixtures, local
+  development logs, and design-tool metadata from preview/upload packages. All
+  runtime pages, assets, utilities, and `miniprogram_npm` dependencies remain
+  included to stay below WeChat's 4 MB source limit.
 - Main tabs: Home (`index`), Leads (`leads-management`), Design
   (`ai-design`), and Mine (`mine`), plus the custom center measurement action.
   Only those four `app.json.tabBar` routes mount the shared custom TabBar;
@@ -448,16 +452,21 @@ utilities, and the admin APIs they call.
   A state-following guide is enabled by default per local client. The persistent
   `引导` header action exposes its enabled state with a green dot and toggles the
   local preference; enabling it again resolves the current real survey state
-  rather than replaying a paged tour. One unmasked, green, geometry-anchored
-  bubble follows first-wall direction, pending length, a free-standing chain's
-  measurement side, the next wall, closure, post-closure continuation, cursor
-  snap placement, or selected-object editing. The first-wall state may show the
-  bundled transparent measuring Xiao K asset (`images/surveying-guide-k.png`);
-  walls, measurement edges, close paths, directions, and snap feedback remain
+  rather than replaying a paged tour. Every actionable guide state uses the
+  Xiao K measuring-companion presentation: a compact white `Xiao K hint`
+  speech bubble with one action sentence, a local left/right/down transparent
+  pointing pose (`images/surveying-guide-k-left.png`, `-right.png`, `-down.png`),
+  and a green dashed path plus pulse halo that end at the real canvas or control
+  target. The card, pose, path, and halo avoid the header safe area, right rail,
+  dock, and active wall; the card close action disables only the persistent local
+  guide preference. The states cover first-wall direction, pending length, a
+  free-standing chain's measurement side, the next wall, closure, post-closure
+  continuation, cursor snap placement, selected-object editing, and completion.
+  Walls, measurement edges, close paths, directions, and snap feedback remain
   dynamic canvas or control rendering. Disabling the guide hides only its
-  teaching bubble and highlight: close, measurement-side, snap, BLE, error, and
-  completion feedback stay operational. It does not write to the wall graph,
-  draft, or measurement audit. When a wall
+  teaching presentation and highlight: close, measurement-side, snap, BLE,
+  error, and completion feedback stay operational. It does not write to the wall
+  graph, draft, or measurement audit. When a wall
   body is selected, the cursor is snapped to one, the current wall is committed,
   a closure candidate is present, or a wall preview is awaiting a length, the
   dock's ranging action directly requests a live device reading and applies it to

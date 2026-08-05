@@ -1,7 +1,20 @@
 {
   "description": "智能量房大师 - Smart Floor Planner Pro",
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      {
+        "type": "folder",
+        "value": "test"
+      },
+      {
+        "type": "folder",
+        "value": "dev-log"
+      },
+      {
+        "type": "folder",
+        "value": ".impeccable"
+      }
+    ],
     "include": []
   },
   "setting": {

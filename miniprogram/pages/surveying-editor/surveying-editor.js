@@ -6,7 +6,7 @@ const bluetooth = require('../../utils/bluetooth.js');
 const api = require('../../utils/api.js');
 const util = require('../../utils/util.js');
 const surveyLayout = require('../../utils/surveyLayout.js');
-const { resolveSurveyGuide, chooseGuidePlacement, wrapGuideBody } = require('../../utils/surveyGuide.js');
+const { resolveSurveyGuide, chooseGuidePlacement, chooseGuideCharacter, wrapGuideBody } = require('../../utils/surveyGuide.js');
 
 const RESERVED_TOOLS = [
   { key: 'settings', label: '设置' },
@@ -314,6 +314,11 @@ Page({
     surveyGuidePointerDirection: 'down',
     surveyGuideShowCharacter: false,
     surveyGuideDynamicCursorLabel: false,
+    surveyGuideCharacterPose: 'down',
+    surveyGuideCharacterSrc: '/images/surveying-guide-k-down.png',
+    surveyGuideCharacterStyle: '',
+    surveyGuidePathStyle: '',
+    surveyGuideTargetHaloStyle: '',
     modePillText: '测墙模式',
     manualActionActive: false,
     manualActionSubtitle: '输入当前墙',
@@ -535,6 +540,14 @@ Page({
       title: this.guideEnabled ? '引导已开启' : '引导已关闭',
       icon: 'none'
     });
+  },
+
+  onGuideDismiss() {
+    if (!this.guideEnabled) return;
+    this.guideEnabled = false;
+    this.persistGuideEnabled(false);
+    this.setData({ guideEnabled: false }, () => this.syncFromDraft());
+    wx.showToast({ title: '引导已关闭', icon: 'none' });
   },
 
   normalizeRestoredFormalDraft(draft) {
@@ -1792,7 +1805,7 @@ Page({
       };
     }
 
-    const bodyLines = wrapGuideBody(guide.body, guide.showCharacter ? 14 : 18);
+    const bodyLines = wrapGuideBody(guide.body, 14);
     const rect = this.canvasRect || { width: 0, height: 0 };
     const target = this.getSurveyGuideTargetPoint(guide.target, floor, session);
     if (!target || !rect.width || !rect.height) {
@@ -1806,14 +1819,19 @@ Page({
         surveyGuideCardStyle: `left:24rpx; right:120rpx; bottom:calc(154rpx + ${Number(this.data.bottomSafeArea || 0)}px);`,
         surveyGuidePointerStyle: '',
         surveyGuidePointerDirection: 'down',
-        surveyGuideShowCharacter: !!guide.showCharacter,
-        surveyGuideDynamicCursorLabel: !!guide.dynamicCursorLabel
+        surveyGuideShowCharacter: true,
+        surveyGuideDynamicCursorLabel: !!guide.dynamicCursorLabel,
+        surveyGuideCharacterPose: 'down',
+        surveyGuideCharacterSrc: '/images/surveying-guide-k-down.png',
+        surveyGuideCharacterStyle: 'left:24rpx; bottom:48rpx;',
+        surveyGuidePathStyle: 'display:none;',
+        surveyGuideTargetHaloStyle: 'display:none;'
       };
     }
 
     const safeArea = this.getCanvasControlSafeArea(rect);
-    const cardWidth = Math.max(220, Math.min(280, safeArea.right - safeArea.left));
-    const cardHeight = Math.max(guide.showCharacter ? 78 : 72, 58 + bodyLines.length * 18);
+    const cardWidth = Math.max(150, Math.min(176, safeArea.right - safeArea.left));
+    const cardHeight = Math.max(62, 40 + bodyLines.length * 18);
     const gap = 24;
     const placement = chooseGuidePlacement({
       target,
@@ -1823,6 +1841,23 @@ Page({
       gap,
       obstacles: this.getSurveyGuideWallObstacles(floor, session)
     });
+    const card = {
+      left: placement.left,
+      top: placement.top,
+      width: cardWidth,
+      height: cardHeight
+    };
+    const character = chooseGuideCharacter({
+      card,
+      target,
+      safeArea,
+      characterSize: 64
+    });
+    const characterSources = {
+      left: '/images/surveying-guide-k-left.png',
+      right: '/images/surveying-guide-k-right.png',
+      down: '/images/surveying-guide-k-down.png'
+    };
     return {
       surveyGuideVisible: true,
       surveyGuideKey: guide.key,
@@ -1833,8 +1868,15 @@ Page({
       surveyGuideCardStyle: `left:${roundPx(placement.left)}px; top:${roundPx(placement.top)}px; width:${roundPx(cardWidth)}px;`,
       surveyGuidePointerStyle: `left:${roundPx(placement.pointerLeft)}px;`,
       surveyGuidePointerDirection: placement.pointerDirection,
-      surveyGuideShowCharacter: !!guide.showCharacter,
-      surveyGuideDynamicCursorLabel: !!guide.dynamicCursorLabel
+      surveyGuideShowCharacter: true,
+      surveyGuideDynamicCursorLabel: !!guide.dynamicCursorLabel,
+      surveyGuideCharacterPose: character.pose,
+      surveyGuideCharacterSrc: characterSources[character.pose],
+      surveyGuideCharacterStyle: `left:${roundPx(character.left)}px; top:${roundPx(character.top)}px;`,
+      surveyGuidePathStyle: character.pathLength > 12
+        ? `left:${roundPx(character.pathLeft)}px; top:${roundPx(character.pathTop)}px; width:${roundPx(character.pathLength)}px; transform:rotate(${character.pathAngle.toFixed(2)}deg);`
+        : 'display:none;',
+      surveyGuideTargetHaloStyle: `left:${roundPx(character.haloLeft)}px; top:${roundPx(character.haloTop)}px;`
     };
   },
 
