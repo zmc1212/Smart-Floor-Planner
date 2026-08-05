@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { AiCreationRepository } from '@/db/repositories';
 import { withTenantTransaction } from '@/db/transaction';
-import { MediaAsset } from '@/models/MediaAsset';
 import { resolveMediaAssetDelivery } from '@/lib/ai/media-assets';
 import { resolvePostgresMediaAssetDelivery } from '@/lib/ai/postgres-media-assets';
 import { resolveMiniAiContext } from '@/lib/ai/mini-ai-auth';
@@ -46,6 +44,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       });
     }
 
+    const [{ default: dbConnect }, { MediaAsset }] = await Promise.all([
+      import('@/lib/mongodb'),
+      import('@/models/MediaAsset'),
+    ]);
     await dbConnect();
     const asset = await MediaAsset.findOne({ _id: id, enterpriseId, deletedAt: { $exists: false } });
     if (!asset) return NextResponse.json({ success: false, error: '图片不存在' }, { status: 404 });

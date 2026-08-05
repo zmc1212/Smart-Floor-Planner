@@ -1,5 +1,43 @@
 # PostgreSQL Migration Plan And Progress
 
+> 2026-08-05 migration record: `GET /api/kujiale/cities` and `GET
+> /api/kujiale/floorplans/search` no longer connect to MongoDB before their
+> authenticated upstream requests. The established Admin/Mini Program
+> authentication, query and response DTOs, and the external-provider limitation
+> are unchanged. Decimal PostgreSQL bigint requests to `GET
+> /api/ai/assets/[id]/image`, `/api/ai/generations/[id]/image`,
+> `/api/miniprogram/ai/assets/[id]/image`, `/api/ai/status/[id]`, and `POST
+> /api/admin/ai-generations/[id]/retry` now defer MongoDB/Mongoose loading until
+> an explicit historical ObjectId compatibility branch is needed. No MongoDB
+> business data was imported, deleted, or re-encrypted. Targeted ESLint and
+> `npm run test:postgresql` passed 49/49.
+
+> 2026-08-05 migration record: tenant `GET/POST/DELETE /api/inspirations`
+> now uses PostgreSQL bigint `inspirations` through `InspirationRepository` in
+> tenant-RLS transactions. The existing filters, response `_id` string and
+> numeric `viewCount` fields, current menu access, and case publishing,
+> recommendation, and deletion flows are retained. The route now requires an
+> authenticated enterprise context before it reads or mutates cases. No MongoDB
+> business data was imported, deleted, or re-encrypted. Targeted ESLint and
+> `npm run test:postgresql` passed 49/49.
+
+> 2026-08-05 migration record: `GET
+> /api/admin/enterprises/[id]/ai-credits` now reads its recent task list from
+> PostgreSQL bigint `ai_generations` joined with operators and current provider
+> model data. Its existing `super_admin`/`admin` boundary plus account, ledger,
+> policy, and task DTO fields are unchanged; historical MongoDB ObjectId tasks
+> are intentionally not combined into this list. No MongoDB business data was
+> imported, deleted, or re-encrypted. Targeted ESLint and
+> `npm run test:postgresql` passed 48/48.
+
+> 2026-08-05 migration record: `GET /api/admin/media-storage` now reads active,
+> pending-purge, and total media-asset counts/bytes from platform-scoped
+> PostgreSQL `media_assets` through `MediaAssetRepository`. The route no longer
+> connects to MongoDB; media-storage configuration, provider activation,
+> permissions, DTO fields, and provider I/O behavior remain unchanged. No
+> MongoDB business data was imported, deleted, or re-encrypted. Targeted ESLint
+> and `npm run test:postgresql` passed 47/47.
+
 > 2026-08-05 migration record: platform `GET/PATCH
 > /api/admin/ai-image-models` now initializes, reads, validates, and updates
 > GRS catalog profiles through `AiCreationModelProfileRepository` in PostgreSQL
@@ -452,7 +490,7 @@ and `cancelled`.
 | Phase 0.2 | Qiniu configuration and encrypted-field verification | complete | Read-only inspection; no secrets logged |
 | Phase 1 | PostgreSQL instance, roles, pooling, migration runner | complete | Codex verification and user database-health/admin-page regression passed |
 | Phase 2 | PostgreSQL schema and Repository foundation | complete | Codex and user acceptance passed on 2026-08-01 |
-| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core and public branding reads, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, AI style presets, AI provider configuration/runtime, GRS image-model catalog and model pricing, AI action/model pricing, AI credit accounts/ledgers, AI chat sessions, enterprise AI usage snapshot reads, PostgreSQL media-asset delivery, free-creation execution, Mini Program AI task execution and administrator retry, public bigint workflow list/detail/create/state/stage execution, manual `mock-generation` result persistence, synchronous advice/prompt-assist generation, direct soft-furnishing rendering, two-step direct `generate`/`render`, and the Admin AI Designer Agent’s bigint lead/floor-plan/workflow consumers are switched. |
+| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core and public branding reads, leads, formal plans, measurements/devices, inspirations, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, AI style presets, AI provider configuration/runtime, GRS image-model catalog and model pricing, AI action/model pricing, AI credit accounts/ledgers, AI chat sessions, enterprise AI usage snapshot and recent credit-task reads, PostgreSQL media-asset delivery, free-creation execution, Mini Program AI task execution and administrator retry, public bigint workflow list/detail/create/state/stage execution, manual `mock-generation` result persistence, synchronous advice/prompt-assist generation, direct soft-furnishing rendering, two-step direct `generate`/`render`, and the Admin AI Designer Agent’s bigint lead/floor-plan/workflow consumers are switched. |
 | Phase 4 | RoomiAI files/data and Qiniu configuration import | in progress: awaiting user acceptance | PostgreSQL active Roomi revision, 960 verified local previews, imported Qiniu configuration, and successful probe on 2026-08-01 |
 | Phase 5 | Contract tests and cutover rehearsal | not started | Pending |
 | Phase 6 | Production PostgreSQL cutover | not started | Pending |
@@ -834,8 +872,9 @@ is recorded.
   `operationId` ledger constraint now makes grant, adjustment, hold, consume,
   and release requests idempotent with each balance change; PostgreSQL bigint
   values remain API numbers. The platform enterprise-credit route now reads
-  PostgreSQL enterprises, account, policy, and ledger rows, while its task list
-  remains MongoDB-backed until generation persistence moves. Legacy generation
+  PostgreSQL enterprises, account, policy, ledger rows, and recent bigint task
+  list. The later task-list migration intentionally excludes historical MongoDB
+  ObjectId generations rather than combining identity domains. Legacy generation
   ObjectIds are intentionally stored as `NULL` ledger generation references;
   no MongoDB data was imported or deleted. Targeted ESLint,
   `npm run test:postgresql` (30/30), and `npm run test:ai` (106/106) passed.

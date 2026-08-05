@@ -26,6 +26,7 @@ import {
   enterpriseOrders,
   enterprises,
   floorPlans,
+  inspirations,
   leads,
   mediaStorageConfigs,
   packages,
@@ -51,7 +52,9 @@ import {
   EnterpriseRepository,
   EnterpriseAiUsageSnapshotRepository,
   FloorPlanRepository,
+  InspirationRepository,
   LeadRepository,
+  MediaAssetRepository,
   MediaStorageConfigRepository,
   PlatformConfigRepository,
   PromptLibraryRepository,
@@ -1255,6 +1258,62 @@ test('media storage repository uses optimistic test-result updates', async () =>
   });
 });
 
+test('media asset storage stats use PostgreSQL soft-delete and purge state', async () => {
+  const providerKey = `stats-${process.pid}-${Date.now()}`;
+  const storageKeys = ['active', 'pending', 'purged'].map(
+    (suffix) => `${testRunKey}/${providerKey}/${suffix}.bin`
+  );
+  try {
+    await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const repository = new AiCreationRepository(transaction);
+      await repository.createMediaAsset({
+        enterpriseId: enterpriseAId,
+        ownerType: 'stats-test',
+        mimeType: 'application/octet-stream',
+        size: 10n,
+        storageProvider: providerKey,
+        storageKey: storageKeys[0],
+      });
+      await repository.createMediaAsset({
+        enterpriseId: enterpriseAId,
+        ownerType: 'stats-test',
+        mimeType: 'application/octet-stream',
+        size: 20n,
+        storageProvider: providerKey,
+        storageKey: storageKeys[1],
+        deletedAt: new Date(),
+      });
+      await repository.createMediaAsset({
+        enterpriseId: enterpriseAId,
+        ownerType: 'stats-test',
+        mimeType: 'application/octet-stream',
+        size: 30n,
+        storageProvider: providerKey,
+        storageKey: storageKeys[2],
+        deletedAt: new Date(),
+        purgedAt: new Date(),
+      });
+    });
+    const stats = await withPlatformTransaction((transaction) =>
+      new MediaAssetRepository(transaction).listStorageStats()
+    );
+    const providerStats = stats.find((item) => item.storageProvider === providerKey);
+    assert.deepEqual(providerStats, {
+      storageProvider: providerKey,
+      activeCount: '1',
+      activeBytes: '10',
+      pendingPurgeCount: '1',
+      pendingPurgeBytes: '20',
+      totalCount: '3',
+      totalBytes: '60',
+    });
+  } finally {
+    await withPlatformTransaction((transaction) =>
+      transaction.delete(mediaAssets).where(inArray(mediaAssets.storageKey, storageKeys))
+    );
+  }
+});
+
 test('creation model profiles use PostgreSQL catalog records and preserve explicit runtime settings', async () => {
   const key = `${testRunKey}-creation-model`;
   let profileId: bigint | null = null;
@@ -2064,6 +2123,113 @@ test('enterprise AI usage snapshots preserve PostgreSQL tenant isolation', async
     new EnterpriseAiUsageSnapshotRepository(transaction).findByEnterpriseId(enterpriseAId)
   );
   assert.equal(otherTenantSnapshot, null);
+});
+
+test('inspiration repository uses tenant-scoped PostgreSQL case records', async () => {
+  const style = `${testRunKey}-inspiration-style`;
+  let ownId: bigint | null = null;
+  let otherId: bigint | null = null;
+  try {
+    ownId = await withTenantTransaction(enterpriseAId, (transaction) =>
+      new InspirationRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        title: `${testRunKey} Tenant A inspiration`,
+        coverImage: 'data:image/png;base64,AA==',
+        renderingImage: 'data:image/png;base64,BB==',
+        style,
+        roomType: 'living-room',
+        layoutData: { source: 'integration' },
+        isRecommended: true,
+        viewCount: BigInt(7),
+      })
+    ).then((record) => record.id);
+    otherId = await withTenantTransaction(enterpriseBId, (transaction) =>
+      new InspirationRepository(transaction).create({
+        enterpriseId: enterpriseBId,
+        title: `${testRunKey} Tenant B inspiration`,
+        coverImage: 'data:image/png;base64,CC==',
+        renderingImage: 'data:image/png;base64,DD==',
+        style,
+        roomType: 'living-room',
+        layoutData: { source: 'integration' },
+      })
+    ).then((record) => record.id);
+
+    const ownRows = await withTenantTransaction(enterpriseAId, (transaction) =>
+      new InspirationRepository(transaction).list({ style, isRecommended: true })
+    );
+    assert.equal(ownRows.length, 1);
+    assert.equal(ownRows[0]?.id, ownId);
+    assert.equal(ownRows[0]?.viewCount, BigInt(7));
+
+    const otherTenantRows = await withTenantTransaction(enterpriseBId, (transaction) =>
+      new InspirationRepository(transaction).list({ style, isRecommended: true })
+    );
+    assert.equal(otherTenantRows.length, 0);
+
+    await withTenantTransaction(enterpriseAId, (transaction) =>
+      new InspirationRepository(transaction).delete(ownId!)
+    );
+    const afterDelete = await withTenantTransaction(enterpriseAId, (transaction) =>
+      new InspirationRepository(transaction).list({ style })
+    );
+    assert.equal(afterDelete.length, 0);
+    ownId = null;
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (ownId) await transaction.delete(inspirations).where(eq(inspirations.id, ownId));
+      if (otherId) await transaction.delete(inspirations).where(eq(inspirations.id, otherId));
+    });
+  }
+});
+
+test('enterprise AI credit task reads use PostgreSQL generations and operator names', async () => {
+  let ownGenerationId: bigint | null = null;
+  let otherGenerationId: bigint | null = null;
+  try {
+    ownGenerationId = await withTenantTransaction(enterpriseAId, (transaction) =>
+      new AiCreationRepository(transaction).createGeneration({
+        enterpriseId: enterpriseAId,
+        operatorId: promotionDesignerAId,
+        type: 'miniprogram',
+        channel: 'miniprogram',
+        actionKey: 'image.scenario',
+        status: 'processing',
+        provider: 'integration-provider',
+        logicalModelKey: 'image.generate.standard',
+        externalTask: { status: 'queued' },
+        billing: { status: 'held', price: 12 },
+      })
+    ).then((generation) => generation.id);
+    otherGenerationId = await withTenantTransaction(enterpriseBId, (transaction) =>
+      new AiCreationRepository(transaction).createGeneration({
+        enterpriseId: enterpriseBId,
+        operatorId: promotionPromoterBId,
+        type: 'scenario',
+        status: 'succeeded',
+        billing: { status: 'consumed', price: 8 },
+      })
+    ).then((generation) => generation.id);
+
+    const rows = await withPlatformTransaction((transaction) =>
+      new AiCreationRepository(transaction).listEnterpriseGenerationsWithOperators(enterpriseAId)
+    );
+    const own = rows.find((item) => item.generation.id === ownGenerationId);
+    assert.equal(own?.generation.enterpriseId, enterpriseAId);
+    assert.equal(own?.generation.actionKey, 'image.scenario');
+    assert.equal(own?.generation.externalTask?.status, 'queued');
+    assert.ok(own?.operatorDisplayName || own?.operatorUsername);
+    assert.ok(!rows.some((item) => item.generation.id === otherGenerationId));
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (ownGenerationId) {
+        await transaction.delete(aiGenerations).where(eq(aiGenerations.id, ownGenerationId));
+      }
+      if (otherGenerationId) {
+        await transaction.delete(aiGenerations).where(eq(aiGenerations.id, otherGenerationId));
+      }
+    });
+  }
 });
 
 test('PostgreSQL advice generations use the tenant-scoped credit lifecycle', async () => {

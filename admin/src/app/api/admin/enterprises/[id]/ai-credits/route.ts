@@ -1,20 +1,19 @@
 import crypto from 'crypto';
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import { AiCreditRepository, EnterpriseRepository } from '@/db/repositories';
+import {
+  AiCreationRepository,
+  AiCreditRepository,
+  EnterpriseRepository,
+} from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { AiGeneration } from '@/models/AiGeneration';
 import { adjustAiCredits, ensureAiCreditAccount, grantAiCredits, serializeAiCreditAccount } from '@/lib/ai/credits';
 import { getEnterpriseAiPolicy } from '@/lib/ai/enterprise-policy';
 import { AI_ACTION_KEYS, type AiActionKey } from '@/lib/ai/provider-types';
 
-type PopulatedOperator = { displayName?: string; username?: string };
-
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await dbConnect();
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
       const { id } = await params;
       const enterpriseId = parsePostgresId(id, 'enterprise id');
@@ -27,11 +26,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         withPlatformTransaction((transaction) =>
           new AiCreditRepository(transaction).listWithOperators(enterpriseId)
         ),
-        AiGeneration.find({ enterpriseId: id })
-          .sort({ createdAt: -1 })
-          .limit(30)
-          .populate('operatorId', 'displayName username')
-          .lean(),
+        withPlatformTransaction((transaction) =>
+          new AiCreationRepository(transaction).listEnterpriseGenerationsWithOperators(enterpriseId)
+        ),
         getEnterpriseAiPolicy(id),
       ]);
       return NextResponse.json({
@@ -52,15 +49,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
             };
           }),
           tasks: tasks.map((task) => {
-            const operator = task.operatorId as unknown as PopulatedOperator | undefined;
+            const generation = task.generation;
+            const billing = generation.billing || {};
+            const externalTask = generation.externalTask || {};
             return {
-              id: String(task._id), mode: task.type, actionKey: task.actionKey,
-              channel: task.channel, status: task.status,
-              billingStatus: task.billing?.status, credits: task.billing?.price || 0,
-              provider: task.provider, model: task.remoteModel, durationMs: task.durationMs,
-              externalStatus: task.externalTask?.status,
-              error: task.errorMessage,
-              operator: operator?.displayName || operator?.username || 'Unknown', createdAt: task.createdAt,
+              id: String(generation.id), mode: generation.type, actionKey: generation.actionKey,
+              channel: generation.channel, status: generation.status,
+              billingStatus: billing.status, credits: Number(billing.price || 0),
+              provider: generation.provider, model: task.attemptRemoteModel || generation.logicalModelKey,
+              durationMs: generation.durationMs, externalStatus: externalTask.status,
+              error: generation.errorMessage,
+              operator: task.operatorDisplayName || task.operatorUsername || 'Unknown',
+              createdAt: generation.createdAt,
             };
           }),
         },
@@ -74,7 +74,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await dbConnect();
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
       const { id } = await params;
       const enterpriseId = parsePostgresId(id, 'enterprise id');
@@ -98,7 +97,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await dbConnect();
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async (context) => {
       const { id } = await params;
       const enterpriseId = parsePostgresId(id, 'enterprise id');

@@ -31,3 +31,10 @@ test('wall-snapped cursor drops clear a late transient frame after the formal ca
     /this\.drawSurveyCanvas\(\);\s*\/\/ A cursor-drag frame[\s\S]*?this\.clearCursorDragCanvas\(\{ force: true \}\);/
   );
 });
+
+test('viewport gestures render on the primary canvas instead of the cursor overlay', () => {
+  assert.match(
+    editorScript,
+    /drawViewportInteractionFrame\(viewport\)[\s\S]*?this\.surveyCtx,[\s\S]*?dpr: this\.surveyCanvasDpr \|\| 1/
+  );
+});

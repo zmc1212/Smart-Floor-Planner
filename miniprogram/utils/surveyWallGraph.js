@@ -858,6 +858,60 @@ function pointFromLength(anchor, previewPoint, lengthMm) {
   };
 }
 
+function maybeSnapResetChainForRectangleClosure(floor, session, anchor, previewPoint) {
+  if (!floor || !session || session.mode !== 'straight' || !anchor || !previewPoint) {
+    return { point: previewPoint, guide: null };
+  }
+
+  const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+    ? session.activeSpaceStartWallIndex
+    : 0;
+  const activeWallCount = Math.max(0, floor.walls.length - startWallIndex);
+  if (activeWallCount !== 0 || !session.activeSpaceSharedWallId) {
+    return { point: previewPoint, guide: null };
+  }
+
+  const previewSession = Object.assign({}, session, { previewPoint });
+  const closureNode = findMergeClosureCandidate(floor, previewSession, previewPoint);
+  if (!closureNode) {
+    return { point: previewPoint, guide: null };
+  }
+
+  const previewIsHorizontal = isHorizontalSegment(anchor, previewPoint);
+  const alignedPoint = previewIsHorizontal
+    ? { xMm: closureNode.xMm, yMm: previewPoint.yMm }
+    : { xMm: previewPoint.xMm, yMm: closureNode.yMm };
+  const offset = previewIsHorizontal
+    ? Math.abs(previewPoint.xMm - closureNode.xMm)
+    : Math.abs(previewPoint.yMm - closureNode.yMm);
+  const alignedClosureNode = offset <= RECTANGLE_ALIGNMENT_TOLERANCE_MM
+    ? findMergeClosureCandidate(
+      floor,
+      Object.assign({}, session, { previewPoint: alignedPoint }),
+      alignedPoint
+    )
+    : null;
+
+  if (
+    !alignedClosureNode ||
+    alignedClosureNode.id !== closureNode.id ||
+    distanceMm(anchor, alignedPoint) < MIN_WALL_LENGTH_MM ||
+    distanceMm(alignedPoint, closureNode) < MIN_WALL_LENGTH_MM
+  ) {
+    return { point: previewPoint, guide: null };
+  }
+
+  return {
+    point: alignedPoint,
+    guide: {
+      type: 'rectangle-third-wall',
+      direction: previewIsHorizontal ? 'vertical' : 'horizontal',
+      referencePoint: { xMm: closureNode.xMm, yMm: closureNode.yMm },
+      snappedPoint: { xMm: alignedPoint.xMm, yMm: alignedPoint.yMm }
+    }
+  };
+}
+
 function maybeSnapToPreviousDiagonalDirection(floor, session, anchor, previewPoint) {
   if (!floor || !session || session.mode !== 'diagonal' || !anchor || !previewPoint) {
     return { point: previewPoint, guide: null };
@@ -1587,7 +1641,13 @@ function startPreview(draft, rawPoint) {
   const orthogonalPoint = snapPreviewPoint(anchor, rawPoint, session.mode);
   const directionSnap = maybeSnapToPreviousDiagonalDirection(floor, session, anchor, orthogonalPoint);
   const rectangleSnap = maybeSnapThirdWallForRectangle(floor, session, anchor, directionSnap.point);
-  const previewPoint = rectangleSnap.point;
+  const resetClosureSnap = maybeSnapResetChainForRectangleClosure(
+    floor,
+    session,
+    anchor,
+    rectangleSnap.point
+  );
+  const previewPoint = resetClosureSnap.point;
   const previewLengthMm = distanceMm(anchor, previewPoint);
   const previewMeasurementSide = resolveBoundaryAlignedMeasurementSide(floor, session, anchor, previewPoint);
 
@@ -1605,7 +1665,7 @@ function startPreview(draft, rawPoint) {
   session.closeCandidatePoint = null;
   session.closeCandidateType = '';
   session.closeCandidateSharedWallId = '';
-  session.alignmentSnapGuide = rectangleSnap.guide || directionSnap.guide;
+  session.alignmentSnapGuide = resetClosureSnap.guide || rectangleSnap.guide || directionSnap.guide;
 
   const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
   const activeWallCount = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
@@ -2260,7 +2320,19 @@ function snapCursorToWall(draft, point, target) {
   const floor = getActiveFloor(next);
   const session = ensureSessionSpaceTracking(floor);
   const projection = findTargetWallProjection(floor, point, target) || findWallSnapProjection(floor, point);
-  const node = getOrCreateSnapNode(floor, projection);
+  // Outer-edge hit testing is a presentation/measurement-side choice. The
+  // graph itself is centerline-topological, so keep the snapped node on the
+  // source wall centerline; otherwise preview closure points use the centerline
+  // while the anchor remains one wall thickness away and the chain disconnects.
+  const topologyProjection = projection && projection.snapLine === 'outer'
+    ? Object.assign({}, projectPointToWallSegment(projection.point, projection.start, projection.end), {
+      wall: projection.wall,
+      start: projection.start,
+      end: projection.end,
+      snapLine: 'inner'
+    })
+    : projection;
+  const node = getOrCreateSnapNode(floor, topologyProjection);
 
   if (!node) return next;
 

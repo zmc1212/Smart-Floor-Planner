@@ -1472,12 +1472,15 @@ Page({
 
   drawViewportInteractionFrame(viewport) {
     const interaction = this.viewportInteraction;
-    if (!interaction || this.transientCanvasMode !== 'viewport' || !viewport || !this.cursorDragCtx) return;
+    if (!interaction || this.transientCanvasMode !== 'viewport' || !viewport || !this.surveyCtx) return;
     surveyCanvasRenderer.drawSurveyInteractionScene(
-      this.cursorDragCtx,
+      // Render the gesture frame on the primary canvas. Reusing the cursor
+      // overlay here can make native Canvas composite a shared-wall room frame
+      // with the previous formal frame after a cursor snap.
+      this.surveyCtx,
       interaction.baseScene,
       {
-        dpr: this.cursorDragCanvasDpr || 1,
+        dpr: this.surveyCanvasDpr || 1,
         baseViewport: interaction.baseViewport,
         viewport
       }

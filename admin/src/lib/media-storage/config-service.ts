@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import {
+  MediaAssetRepository,
   MediaStorageConfigRepository,
   PlatformConfigRepository,
   type MediaStorageConfigRecord,
@@ -11,7 +12,6 @@ import {
   isMediaStorageEncryptionReady,
   maskSecret,
 } from '@/lib/crypto';
-import { MediaAsset } from '@/models/MediaAsset';
 import {
   getMediaStorageProvider,
   invalidateActiveMediaStorageCache,
@@ -387,50 +387,16 @@ export async function updateGrsAiOutputPersistence(enabled: boolean, actorId?: s
 }
 
 export async function getMediaStorageAssetStats() {
-  const rows = await MediaAsset.collection.aggregate<{
-    _id: string;
-    activeCount: number;
-    activeBytes: number;
-    pendingPurgeCount: number;
-    pendingPurgeBytes: number;
-    totalCount: number;
-    totalBytes: number;
-  }>([
-    {
-      $group: {
-        _id: { $ifNull: ['$storageProvider', 'local'] },
-        activeCount: { $sum: { $cond: [{ $eq: [{ $type: '$deletedAt' }, 'missing'] }, 1, 0] } },
-        activeBytes: { $sum: { $cond: [{ $eq: [{ $type: '$deletedAt' }, 'missing'] }, '$size', 0] } },
-        pendingPurgeCount: {
-          $sum: {
-            $cond: [
-              { $and: [{ $ne: [{ $type: '$deletedAt' }, 'missing'] }, { $eq: [{ $type: '$purgedAt' }, 'missing'] }] },
-              1,
-              0,
-            ],
-          },
-        },
-        pendingPurgeBytes: {
-          $sum: {
-            $cond: [
-              { $and: [{ $ne: [{ $type: '$deletedAt' }, 'missing'] }, { $eq: [{ $type: '$purgedAt' }, 'missing'] }] },
-              '$size',
-              0,
-            ],
-          },
-        },
-        totalCount: { $sum: 1 },
-        totalBytes: { $sum: '$size' },
-      },
-    },
-  ]).toArray();
-  return Object.fromEntries(rows.map((row) => [normalizeMediaStorageProviderKey(row._id), {
-    activeCount: row.activeCount,
-    activeBytes: row.activeBytes,
-    pendingPurgeCount: row.pendingPurgeCount,
-    pendingPurgeBytes: row.pendingPurgeBytes,
-    totalCount: row.totalCount,
-    totalBytes: row.totalBytes,
+  const rows = await withPlatformTransaction((transaction) =>
+    new MediaAssetRepository(transaction).listStorageStats()
+  );
+  return Object.fromEntries(rows.map((row) => [normalizeMediaStorageProviderKey(row.storageProvider), {
+    activeCount: Number(row.activeCount),
+    activeBytes: Number(row.activeBytes),
+    pendingPurgeCount: Number(row.pendingPurgeCount),
+    pendingPurgeBytes: Number(row.pendingPurgeBytes),
+    totalCount: Number(row.totalCount),
+    totalBytes: Number(row.totalBytes),
   } satisfies MediaStorageAssetStats]));
 }
 

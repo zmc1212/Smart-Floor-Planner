@@ -44,6 +44,24 @@ function createResetCursorMergeClosureDraft() {
   return commitWall(draft, { xMm: 3000, yMm: 2000 }, 3000);
 }
 
+function createWallSnappedClosureDraft() {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 3000, yMm: 0 }, 3000);
+  draft = commitWall(draft, { xMm: 3000, yMm: 2000 }, 2000);
+  draft = commitWall(draft, { xMm: 0, yMm: 2000 }, 3000);
+
+  const floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 1500, yMm: 0 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = commitWall(draft, { xMm: 1500, yMm: 2000 }, 2000);
+  return surveyGraph.confirmClosure(draft);
+}
+
 function createTwoClosedRoomsWithSharedDoorDraft() {
   const draft = surveyGraph.createSurveyDraft();
   const floor = surveyGraph.getActiveFloor(draft);
@@ -640,6 +658,17 @@ test('snapping a new cursor onto a closed wall preserves the completed room rend
   assert.deepEqual(after.closedSpaceFills, before.closedSpaceFills);
   assert.deepEqual(after.wallSolidPlan.rings, before.wallSolidPlan.rings);
   assert.deepEqual(after.wallSolidPlans.closed.rings, before.wallSolidPlans.closed.rings);
+});
+
+test('a room closed from a wall-snapped cursor keeps fills and shared-wall solids in the same gesture frame', () => {
+  const scene = createScene(createWallSnappedClosureDraft());
+  const viewport = Object.assign({}, scene.viewport, { offsetX: scene.viewport.offsetX + 64 });
+  const interactionScene = surveyCanvasRenderer.createViewportInteractionScene(scene, viewport);
+
+  assert.equal(scene.closedSpaceFills.length, 1);
+  assert.ok(scene.wallSolidPlans.closed.rings.length > 0);
+  assert.equal(interactionScene.closedSpaceFills.length, scene.closedSpaceFills.length);
+  assert.equal(interactionScene.wallSolidPlans.closed.rings.length, scene.wallSolidPlans.closed.rings.length);
 });
 
 test('viewport interaction keeps structural drawing and skips dimensions, labels, and guides', () => {

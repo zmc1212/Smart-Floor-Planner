@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { AiCreationRepository } from '@/db/repositories';
 import { withTenantTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { MediaAsset } from '@/models/MediaAsset';
 import { resolveMediaAssetDelivery } from '@/lib/ai/media-assets';
 import { resolvePostgresMediaAssetDelivery } from '@/lib/ai/postgres-media-assets';
 
@@ -39,6 +37,10 @@ export async function GET(
         });
       }
 
+      const [{ default: dbConnect }, { MediaAsset }] = await Promise.all([
+        import('@/lib/mongodb'),
+        import('@/models/MediaAsset'),
+      ]);
       await dbConnect();
       const asset = await MediaAsset.findOne({
         _id: id,

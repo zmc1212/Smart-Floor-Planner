@@ -73,7 +73,7 @@ test('cursor placement can snap to the outer wall edge', () => {
   assert.deepEqual(target.pointMm, outerMidpoint);
 });
 
-test('a closer outer edge wins over the nearby inner vertex and remains outer after placement', () => {
+test('a closer outer edge keeps its measurement side while the graph anchor stays on the centerline', () => {
   const draft = createWallDraft();
   const floor = surveyGraph.getActiveFloor(draft);
   const wall = floor.walls[0];
@@ -94,11 +94,35 @@ test('a closer outer edge wins over the nearby inner vertex and remains outer af
   );
   const nextFloor = surveyGraph.getActiveFloor(next);
   const anchor = surveyGraph.getNode(nextFloor, nextFloor.session.anchorNodeId);
+  const sourceStart = surveyGraph.getNode(nextFloor, wall.startNodeId);
   assert.equal(nextFloor.session.activeSpaceSharedSnapLine, 'outer');
-  assert.deepEqual(
-    { xMm: anchor.xMm, yMm: anchor.yMm },
-    target.pointMm
-  );
+  assert.deepEqual({ xMm: anchor.xMm, yMm: anchor.yMm }, {
+    xMm: sourceStart.xMm,
+    yMm: sourceStart.yMm
+  });
+});
+
+test('outer wall snap keeps rectangle guide and shared closure on one graph coordinate', () => {
+  let draft = createClosedDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const wall = floor.walls[0];
+  const geometry = surveyGraph.buildWallSnapGeometry(floor, wall);
+  const outerPoint = {
+    xMm: Math.round((geometry.outerStart.xMm + geometry.outerEnd.xMm) / 2),
+    yMm: Math.round((geometry.outerStart.yMm + geometry.outerEnd.yMm) / 2)
+  };
+  const target = surveyGraph.getCursorPlacementTarget(floor, outerPoint, surveyGraph.CLOSE_TOLERANCE_MM);
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = commitWall(draft, { xMm: outerPoint.xMm, yMm: outerPoint.yMm - 2000 }, 2000);
+  draft = commitWall(draft, { xMm: outerPoint.xMm + 1200, yMm: outerPoint.yMm - 2000 }, 1200);
+  draft = surveyGraph.startPreview(draft, { xMm: outerPoint.xMm + 1200, yMm: outerPoint.yMm + 100 });
+  floor = surveyGraph.getActiveFloor(draft);
+
+  assert.deepEqual(floor.session.previewPoint, floor.session.closeCandidatePoint);
+  assert.equal(floor.session.alignmentSnapGuide.type, 'rectangle-third-wall');
+  draft = surveyGraph.confirmClosure(draft);
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.ok(floor.spaces.filter((space) => space.closed).length >= 2);
 });
 
 test('cursor placement away from walls returns a free target without mutating the wall graph', () => {
@@ -236,6 +260,34 @@ test('a reset cursor offers the missing closing edge after two measured walls', 
   const closedFloor = surveyGraph.getActiveFloor(closed);
   assert.equal(closedFloor.session.state, 'spaceClosed');
   assert.equal(closedFloor.spaces.filter((space) => space.closed).length, 1);
+});
+
+test('a reset cursor restores right-angle snapping when its first wall nearly completes a rectangle', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 3000, yMm: 0 });
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 3000);
+  draft = commitWall(draft, { xMm: 0, yMm: 2000 }, 2000);
+
+  const beforeReset = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    beforeReset,
+    { xMm: 0, yMm: 2000 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = surveyGraph.startPreview(draft, { xMm: 2920, yMm: 2000 });
+
+  let floor = surveyGraph.getActiveFloor(draft);
+  const closureNode = surveyGraph.getNode(floor, floor.session.closeCandidateNodeId);
+  assert.deepEqual(floor.session.previewPoint, { xMm: 3000, yMm: 2000 });
+  assert.deepEqual({ xMm: closureNode.xMm, yMm: closureNode.yMm }, { xMm: 3000, yMm: 0 });
+  assert.equal(floor.session.closeCandidateType, 'merge');
+  assert.equal(floor.session.alignmentSnapGuide.type, 'rectangle-third-wall');
+
+  draft = surveyGraph.confirmClosure(draft);
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.session.state, 'spaceClosed');
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 1);
 });
 
 test('a free-standing wall chain still allows its initial measurement-side choice', () => {

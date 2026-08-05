@@ -1,12 +1,9 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { AiCreationRepository } from '@/db/repositories';
 import { withTenantTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { AiGeneration } from '@/models/AiGeneration';
 import { getAssetIdFromImageUrl, parseImageDataUri, readMediaAssetBuffer } from '@/lib/ai/media-assets';
-import { MediaAsset } from '@/models/MediaAsset';
 
 export async function GET(
   req: Request,
@@ -28,6 +25,11 @@ export async function GET(
         }
         return NextResponse.redirect(new URL(`/api/ai/assets/${assetId}/image`, req.url));
       }
+      const [{ default: dbConnect }, { AiGeneration }, { MediaAsset }] = await Promise.all([
+        import('@/lib/mongodb'),
+        import('@/models/AiGeneration'),
+        import('@/models/MediaAsset'),
+      ]);
       await dbConnect();
       const generation = await AiGeneration.findOne({
         _id: id,

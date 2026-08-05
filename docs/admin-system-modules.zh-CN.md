@@ -1,5 +1,22 @@
 # 后台系统当前功能清单
 
+> 2026-08-05 PostgreSQL 迁移更新：已认证的 Kujiale 城市和户型检索代理不再连接 MongoDB。PostgreSQL bigint 的 AI 资产、生成图、状态、小程序资产交付和管理员重试请求，现仅在显式历史 ObjectId 兼容分支中才加载 MongoDB/Mongoose。既有认证、权限、DTO、上游行为和历史兼容保持不变。未导入、删除或重新加密 MongoDB 业务数据。定向 ESLint 与 `npm run test:postgresql` 均通过（49/49）。
+
+> 2026-08-05 PostgreSQL 迁移更新：租户 `GET/POST/DELETE
+> /api/inspirations` 现通过 `InspirationRepository` 和租户 RLS PostgreSQL bigint
+> `inspirations` 表运行。既有筛选、响应中的 `_id` 字符串和数字 `viewCount`、当前菜单权限及案例发布、推荐和删除流程保持不变；读取和变更现要求已认证的企业上下文。历史 MongoDB 案例既未导入，也不会混入新列表。定向 ESLint 与 `npm run test:postgresql` 均通过（49/49）。
+
+> 2026-08-05 PostgreSQL 迁移更新：`GET /api/admin/enterprises/[id]/ai-credits`
+> 的企业最近任务列表现从 PostgreSQL bigint `ai_generations` 读取，并关联操作员和当前供应商
+> 模型。既有 `super_admin`/`admin` 边界、账户、流水、策略和任务 DTO 字段保持不变；历史
+> MongoDB ObjectId 任务不会混入该 PostgreSQL 列表。未导入、删除或重新加密 MongoDB 业务数据。
+> 定向 ESLint 与 `npm run test:postgresql` 均通过（48/48）。
+
+> 2026-08-05 PostgreSQL 迁移更新：`GET /api/admin/media-storage` 不再连接 MongoDB。
+> 有效、待清理和累计媒体资产数量/容量现通过平台范围 PostgreSQL `media_assets` 与
+> `MediaAssetRepository` 聚合；媒体配置、Provider 激活、权限和响应字段保持不变。未导入、
+> 删除或重新加密 MongoDB 业务数据。定向 ESLint 与 `npm run test:postgresql` 均通过（47/47）。
+
 > 2026-08-05 PostgreSQL 迁移更新：平台 `GET/PATCH /api/admin/ai-image-models` 现通过
 > PostgreSQL 平台事务中的 `AiCreationModelProfileRepository` 初始化、读取、校验和更新
 > GRS 模型目录；`GET/PATCH /api/admin/ai-image-model-prices` 通过同一目录校验分辨率能力并
@@ -253,7 +270,7 @@
 - API：户型 CRUD、`/floorplans/[id]/export/dxf`、测量、酷家乐城市/搜索和线索关联接口；小程序 `GET /api/floorplans/[id]` 还会返回关联线索的最小身份和小区摘要，供直接进入正式量房时显示项目标题。
 - 组件/工具：`FloorPlanViewer`、`FloorPlanViewerWrapper`、`survey-graph`、`surveyDimensionPlan`、`surveyWallSolidPlan`、`dxf`；无渲染依赖的尺寸和墙体实体规划器以 `miniprogram/utils` 为源，在后台开发和生产构建前同步到 `admin/src/lib`。
 - 状态：正式 v4 墙图解析、后台 2D/3D 查看、房间填充仅接受首墙正向或反向能够完整闭合的墙链、单侧墙体与连接节点补面先做全局实体合并再统一填充和描边（连接节点、L/T 型接入及重合分段不再出现内部端帽、斜缝或独立方框；门窗切口覆盖完整墙厚）、闭合户型使用工程图式外轮廓尺寸方案（空间边界先按几何拆分合并，不同 ID/不同分段的重合共享墙及封闭内部孔洞均不标注；连续多墙或含门洞的外边界使用靠墙的定位分段链；上、下、左、右等每个外侧方向仅有一条跨整套户型外包范围的全局总尺寸，不再为局部 run 重复生成总尺寸；窗户保留 CAD 图形但不生成重复细分尺寸；延伸线从斜接后的外墙转角起笔，再引至整套户型外轮廓之外的全局尺寸带；查看器会为尺寸线、延伸线和文字自动扩展 SVG 视区，避免最外层标注被裁切）、测量筛选和 DXF 下载为 `Implemented`；`/floorplans` 已使用 `PageContainer`、`ProTable` 承载正式户型的搜索、状态筛选、分页和查看器入口，列表只从 version-4 `surveyGraph` 派生已闭合空间、墙体和开口统计，不读取或写入旧布局字段；`GET /api/floorplans` 支持可选 `status` 筛选，`floorplans` 权限、查看器和 DXF 行为均未改变；正式户型列表的查看入口与其他管理列表统一使用 Ant Design 小尺寸带图标文字按钮；酷家乐搜索受上游数据和查询条件影响，为 `Limited`。
-- PostgreSQL 边界：正式户型 CRUD、详情渲染、线索关联、测量关联和 DXF 导出均通过 `FloorPlanRepository`、`MeasurementRepository` 在 RLS 中访问。酷家乐上游请求在数据库事务外执行，导入结果以毫米制正式 version-4 `surveyGraph` 原子持久化；房间轮廓转换为闭合节点/墙/空间链。由于上游响应尚无可靠的开口到墙体映射，当前不导入酷家乐门窗开口。
+- PostgreSQL 边界：正式户型 CRUD、详情渲染、线索关联、测量关联和 DXF 导出均通过 `FloorPlanRepository`、`MeasurementRepository` 在 RLS 中访问。已认证的酷家乐上游请求不再连接 MongoDB，且在数据库事务外执行；导入结果以毫米制正式 version-4 `surveyGraph` 原子持久化；房间轮廓转换为闭合节点/墙/空间链。由于上游响应尚无可靠的开口到墙体映射，当前不导入酷家乐门窗开口。
 - 边界：后台从 `surveyGraph` 派生房间/开口渲染数据，不持久化旧 `rooms` 或其他旧布局字段。
 
 ### 9. 测量审计与蓝牙设备资产
@@ -269,7 +286,7 @@
 
 - 页面：`/ai-studio/scenarios` 是客户方案 AI 执行工作台，包含“客户方案、快速工具、AI 助手”；旧 `/ai-studio/designer`、`/ai-studio/floor-plan`、`/ai-studio/furnishing`、`/ai-studio/soft-furnishing` 和方案详情 URL 保留相关查询参数后跳入统一工作台。`/ai-studio/create` 是独立全屏自由创作台，后台侧栏以新标签页打开。资源/配置入口继续为 `/inspirations`、`/ai-presets`、`/ai-providers`、`/ai-models`、`/ai-credit-prices`，企业 AI 页继续管理统一点数。场景新建设计向导现使用带原生步骤指示的 Ant Design `Modal`，版本历史现使用 Ant Design `Drawer`；输入、确认、上传、生成轮询及路由/查询参数行为均不变。
 - AI 供应商后台路由：`/ai-providers` 是供应商列表；`/ai-providers/new` 用于新增供应商；`/ai-providers/[id]` 用于查看和编辑供应商；`/ai-models` 是独立的平台生图模型目录。页面使用基于 Ant Design ProComponents 的共享后台壳层（`ProTable`、`ProForm`、`ProDescriptions`），`/ai-models` 复用 `ai-providers` 平台权限，仅平台 `super_admin`、`admin` 可操作（`Implemented`）。
-- 灵感方案后台：`/inspirations` 使用同一套 `PageContainer`、`ProTable`、`ModalForm` 展示模式，支持案例筛选、图片预览、发布、推荐状态和删除。该展示层迁移保持既有 MongoDB `Inspiration` 模型、`/api/inspirations` 请求契约、租户行为和当前菜单权限不变（`Implemented`）。
+- 灵感方案后台：`/inspirations` 使用同一套 `PageContainer`、`ProTable`、`ModalForm` 展示模式，支持案例筛选、图片预览、发布、推荐状态和删除。`GET/POST/DELETE /api/inspirations` 现通过 `InspirationRepository` 在租户 RLS PostgreSQL `inspirations` 表中运行；既有筛选、十进制字符串 `_id`、数字 `viewCount`、当前菜单权限与案例工作流保持不变。路由要求已认证的企业上下文，状态为 `Implemented`；历史 MongoDB 灵感方案既未导入，也不会混入新的 bigint 列表。
 - 供应商接入契约：`AiProviderConfig` 保留旧版加密 API Key 字段，同时持久化加密/掩码凭证映射和经校验的非敏感 `adapterConfig`。统一编辑页与服务端校验共同读取 `src/lib/ai/provider-adapter-manifest.ts`；当前 GRS、Pollinations、OpenAI Compatible 使用公共的地址/API Key 配置。`Limited`：平台生图模型目录当前仍是 GRS 来源契约，新增供应商必须实现 Adapter 与目录档案支持，不能只新增前端选项。
 - PostgreSQL 边界：平台供应商列表、新增、更新、停用、密钥轮换、连通测试、模型同步、上游余额查询及运行时供应商选择现统一经由平台范围 PostgreSQL 事务中的 `AiProviderConfigRepository`。加密凭据保持不透明存储；异步网络调用结束后仅回写非敏感运行状态。配置了 API Key 时，环境变量中的 GRS/Pollinations 默认供应商会幂等写入 PostgreSQL。
 - PostgreSQL 目录边界：`GET/PATCH /api/admin/ai-image-models` 通过
@@ -293,8 +310,9 @@
   `ai-scenarios` 权限边界。
 - API：AI 对话/Agent、生成/渲染/建议、状态/历史、预设、工作流搜索分页及阶段、设计能力/共享动作目录、媒体资源、供应商 CRUD/密钥轮换/连通测试/模型同步/上游余额查询、受保护任务对账、平台业务动作价格、`GET/PATCH /api/admin/ai-image-models`、`GET/PATCH /api/admin/ai-image-model-prices`、企业点数发放/调整/流水/任务和失败任务重试接口。旧企业 `ai-key`/`ai-sync` 和用量读取仅保留原有 DTO 的只读兼容，现由 PostgreSQL 用量快照提供数据；已退役写接口返回 `410`。
 - 自由创作 API：`GET /api/ai/creation/bootstrap`、提示词分类/列表/详情/预览、`POST /api/ai/creation/assets`、`GET/POST /api/ai/creation/tasks`、`DELETE /api/ai/creation/tasks/[id]`、`POST /api/ai/creation/tasks/[id]/batches`、提示词优化及生成结果归入现有客户方案。页面和整个 API 前缀由代理统一映射到 `ai-scenarios` 权限，写接口还通过 `withTenantRoute` 强制企业上下文。
-- PostgreSQL 身份边界：新的自由创作、小程序、场景和 `advice` 任务/生成/媒体/供应商尝试/点数记录均在租户 RLS 范围内一致使用 PostgreSQL bigint 标识符。历史 MongoDB `ObjectId` 媒体仅通过显式只读交付分支可读；新记录不存在跨存储身份回退。具有企业上下文的 `admin` 或 `super_admin` 可通过平台重试接口，将失败的 PostgreSQL bigint 小程序生成任务交由租户 RLS 生命周期重试；历史 `ObjectId` 生成任务继续使用 MongoDB 兼容分支。小程序自身的重试路由仍仅限原操作人的 PostgreSQL 任务。
-- 模型/工具：`AiGeneration`、`AiWorkflow`、`AiChatSession`、`AiStylePreset`、`AiProviderConfig`、`AiProviderAttempt`、`MediaAsset`、`AiCreditAccount`、`AiCreditLedger`、`AiCreditPrice`、`AiModelCreditPrice`、`Inspiration`、`src/lib/ai/*`、`src/lib/media-storage/*`。
+- PostgreSQL 身份边界：新的自由创作、小程序、场景和 `advice` 任务/生成/媒体/供应商尝试/点数记录均在租户 RLS 范围内一致使用 PostgreSQL bigint 标识符。历史 MongoDB `ObjectId` 媒体仅通过显式只读交付分支可读，该分支会在请求被识别为历史记录后才加载 MongoDB/Mongoose；新记录不存在跨存储身份回退。具有企业上下文的 `admin` 或 `super_admin` 可通过平台重试接口，将失败的 PostgreSQL bigint 小程序生成任务交由租户 RLS 生命周期重试；历史 `ObjectId` 生成任务继续使用 MongoDB 兼容分支。小程序自身的重试路由仍仅限原操作人的 PostgreSQL 任务。
+- 企业点数任务边界：平台企业点数读取现从 PostgreSQL bigint 生成记录中列出最近任务，并关联操作员和当前供应商模型。账户/流水/策略/任务 DTO 与 `super_admin`/`admin` 边界保持不变；历史 MongoDB ObjectId 任务有意不与该列表混合。
+- 模型/工具：`AiGeneration`、`AiWorkflow`、`AiChatSession`、`AiStylePreset`、`AiProviderConfig`、`AiProviderAttempt`、`MediaAsset`、`AiCreditAccount`、`AiCreditLedger`、`AiCreditPrice`、`AiModelCreditPrice`、PostgreSQL `InspirationRepository`、`src/lib/ai/*`、`src/lib/media-storage/*`。
 - 自由创作与模板库模型：`AiCreationTask`、`AiCreationBatch`、`AiCreationModelProfile`、`AiPromptLibraryRevision`、`AiPromptCategory`、`AiPromptTemplate`、`AiPromptParameterTemplate`、`AiPromptSourceModel`、`AiPromptTemplateAsset`、`AiPromptImportRun`。
 - 模板库运维：`npm run import:roomi-prompts` 默认只预览；增加 `-- --execute` 才原子发布通过完整校验的新版本，或用 `-- --source-file=<export.json> --execute` 从导出恢复；`npm run verify:roomi-prompts` 校验来源数量、引用、预览图校验和与抽样一致性。临时凭据和快照位于 Git 忽略的 `admin/.roomi-import/`，导入预览图保存在 Git 忽略的本地目录，不上传七牛。
 - Phase 4 保留数据迁移：`npm run migrate:phase4-retained-data` 先校验冻结的 RoomiAI 快照，再幂等导入活动版本、完整引用图和本地预览文件至 PostgreSQL；同时导入活动七牛配置和 Provider 指针，执行完整七牛探针并写入迁移检查点。脚本仅只读旧 MongoDB，绝不删除 MongoDB 记录、导入快照或七牛对象。
@@ -333,9 +351,9 @@
 - 页面/权限：`/media-storage`，菜单权限 key 为 `media-storage`，仅平台 `super_admin`、`admin` 可访问和操作。
 - 后台 UI：管理页采用共享 Ant Design ProComponents 应用模式：使用 `PageContainer` 提供页面上下文，使用配置面板承载默认存储和 GRS 结果图策略，使用 `ProTable` 展示存储状态和操作，使用 `ModalForm` 编辑七牛配置。本次仅迁移展示层，路由、API、角色边界和存储行为均未改变。
 - API：`GET/POST/PATCH /api/admin/media-storage`、`PATCH/DELETE /api/admin/media-storage/[id]`、`POST /api/admin/media-storage/[id]/test`、`POST /api/admin/media-storage/[id]/activate`。
-- 模型/工具：`MediaStorageConfig`、`PlatformConfig.mediaStorage`、PostgreSQL `MediaStorageConfigRepository`、`MediaAsset`、`src/lib/media-storage/*`。
+- 模型/工具：`MediaStorageConfig`、`PlatformConfig.mediaStorage`、PostgreSQL `MediaStorageConfigRepository` 与 `MediaAssetRepository`、`MediaAsset`、`src/lib/media-storage/*`。
 - 状态：`Implemented`。页面展示当前默认存储、凭证/配置状态、有效/待清理/累计资产数量与容量和最后测试结果；可管理内置本地存储及多套七牛 Kodo 配置，API 只返回密钥掩码，凭证仅在服务端加密保存。每套七牛配置可选填存储前缀，用于同一 Bucket 内隔离项目；前缀只接受以斜杠分段的字母、数字、`.`、`_`、`-`，拒绝路径穿越并规范为单个结尾斜杠。前缀只作用于后续新上传和健康探针，完整对象 key 会固化在 `MediaAsset.storageKey`，所以修改前缀不会影响历史资产读取。Bucket、区域、域名、前缀或凭证变更会清除原测试通过状态；完整探针依次验证上传、对象查询、私有签名下载、内容一致性和删除，只有测试通过且未归档的七牛配置可设为默认。配置稳定 key 创建后不可修改，并写入 `MediaAsset.storageProvider`。归档配置禁止新写入、测试和重新激活，但仍解析用于历史资产读取/删除；当前默认配置不能归档。GRS 结果图默认保留上游 URL；只有当前默认存储是可用七牛配置时，管理员才能启用其转存开关，开启后仅后续 GRS 结果写入七牛，并且在关闭开关前不能切回本地默认存储。切换默认值和转存开关都不会迁移旧资产；未初始化平台配置时继续兼容 `local`。
-- PostgreSQL 持久化边界：媒体配置 CRUD、加密凭证读取、连通测试结果、归档、默认 Provider 和 GRS 转存指针均已切换到 PostgreSQL。七牛网络探针在数据库事务外执行，结果使用 `updatedAt` 乐观条件回写，避免覆盖探针期间发生的配置修改。资产数量/容量统计仍聚合 MongoDB `MediaAsset`，待后续 Phase 3 媒体资产域迁移；旧 MongoDB 管理员 ID 不能写入 PostgreSQL bigint 审计外键，因此身份域迁移前审计字段暂为 `NULL`。
+- PostgreSQL 持久化边界：媒体配置 CRUD、加密凭证读取、连通测试结果、归档、默认 Provider、GRS 转存指针以及资产数量/容量统计均已切换到 PostgreSQL。统计通过平台范围 `MediaAssetRepository` 聚合 `media_assets` 的有效、待清理和累计状态；七牛网络探针在数据库事务外执行，结果使用 `updatedAt` 乐观条件回写，避免覆盖探针期间发生的配置修改。旧 MongoDB 管理员 ID 不能写入 PostgreSQL bigint 审计外键，因此身份域迁移前审计字段暂为 `NULL`。
 - Phase 4 保留数据迁移已导入活动 `zly-images` 七牛配置和 Provider 指针，未写入旧管理员审计 ID；完整上传、对象查询、私有签名下载、内容一致性与删除探针已通过。生产切换前仍必须在部署环境提供独立的 `MEDIA_STORAGE_KEY_ENCRYPTION_SECRET`。
 - 限制/运维：生产云凭证必须配置专用 `MEDIA_STORAGE_KEY_ENCRYPTION_SECRET`；七牛 Bucket 固定按私有空间处理，下载域名必须为 HTTPS 并加入微信小程序合法域名。页面首期不发起迁移或物理清理任务，仍使用默认 dry-run 的 CLI；迁移参数使用稳定配置标识，例如 `--to=qiniu-primary`。
 
@@ -362,7 +380,7 @@
 
 - 身份：`AdminUser`、`SystemRole`、`User`、`Department`。
 - 租户/商业：`Enterprise`、`Package`、`EnterpriseOrder`、`CommissionRecord`、`PromotionEnterpriseRecord`。
-- 客户资产：`Lead`、`FloorPlan`、`Measurement`、`Device`、`Inspiration`。
+- 客户资产：`Lead`、`FloorPlan`、`Measurement`、`Device`、PostgreSQL `inspirations`。
 - AI/媒体：`AiGeneration`、`AiWorkflow`、`AiChatSession`、`AiStylePreset`、`AiProviderConfig`、`AiProviderAttempt`、`MediaStorageConfig`、`MediaAsset`、`AiCreditAccount`、`AiCreditLedger`、`AiCreditPrice`、`AiModelCreditPrice`；`EnterpriseAiUsageSnapshot` 仅保留为 Pollinations 历史数据。
 - 通知/配置：`WorkflowNotificationLog`、`PlatformConfig`。
 

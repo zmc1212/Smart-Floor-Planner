@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { AiCreationRepository } from '@/db/repositories';
 import { withTenantTransaction } from '@/db/transaction';
-import { AiGeneration } from '@/models/AiGeneration';
 import { getTenantContext } from '@/lib/auth';
 import { getWorkflowStageDefinition } from '@/lib/ai/workflow-stages';
 import { reconcileAiGeneration } from '@/lib/ai/execution-service';
@@ -86,6 +84,10 @@ export async function GET(
       });
     }
 
+    const [{ default: dbConnect }, { AiGeneration }] = await Promise.all([
+      import('@/lib/mongodb'),
+      import('@/models/AiGeneration'),
+    ]);
     await dbConnect();
     const generation = await AiGeneration.findById(id);
 

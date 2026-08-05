@@ -480,6 +480,12 @@ utilities, and the admin APIs they call.
   wall-tracking, boundary-constrained measurement-edge prompt on the first
   committed wall of a free-standing chain only; a chain snapped to an existing
   wall or vertex inherits that connected boundary and does not show the prompt;
+  an outer-edge hit retains its measurement-side intent while its persisted
+  shared-boundary node is projected to the source wall centerline, so rectangle
+  alignment, closure candidates, and closed-room wall chains use one coordinate;
+  after resetting and snapping the cursor to an existing boundary, the first
+  straight wall of the restarted chain regains rectangle-completion snapping
+  when its inferred closing edge is near a right angle;
   closed room wall shells and outer joins are
   derived from the closed boundary rather than the selected measurement edge.
   undo/reset, completed submission, and measurement audit queue/flush.
@@ -537,8 +543,10 @@ utilities, and the admin APIs they call.
   room fills and compound wall solids do not diverge on native Canvas. Gesture
   frames do not update page data
   or recompute wall solids and dimension plans.
-  A cursor-drop handoff clears its transient frame again after the formal redraw
-  so a late native Canvas frame cannot cover a closed room after wall snapping.
+  Gesture frames render directly on the primary canvas, rather than the cursor
+  overlay, so native Canvas does not composite a shared-wall room with an older
+  formal frame after wall snapping. A cursor-drop handoff also clears its
+  transient frame again after the formal redraw.
 - `miniprogram/utils/surveyDimensionPlan.js` and
   `miniprogram/utils/surveyWallSolidPlan.js` are the dependency-free sources for
   both renderers; admin development and production builds synchronize local

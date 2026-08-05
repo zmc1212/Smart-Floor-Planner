@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { getTenantContext } from '@/lib/auth';
 import { getKujialeCities } from '@/lib/kujiale';
 
@@ -11,8 +10,6 @@ function getErrorMessage(error: unknown) {
 
 export async function GET(request: Request) {
   try {
-    await dbConnect();
-
     const adminContext = await getTenantContext(request);
     if (!adminContext) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });

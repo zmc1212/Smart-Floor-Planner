@@ -12,6 +12,7 @@ import {
   type SQL,
 } from 'drizzle-orm';
 import {
+  adminUsers,
   aiCreationBatchReferenceAssets,
   aiCreationBatches,
   aiCreationModelProfiles,
@@ -337,6 +338,23 @@ export class AiCreationRepository {
         sql`${aiGenerations.deletedAt} is null`
       ))
       .orderBy(desc(aiGenerations.createdAt), desc(aiGenerations.id));
+  }
+
+  listEnterpriseGenerationsWithOperators(enterpriseId: bigint, limit = 30) {
+    const boundedLimit = Math.min(30, Math.max(1, limit));
+    return this.transaction
+      .select({
+        generation: aiGenerations,
+        operatorDisplayName: adminUsers.displayName,
+        operatorUsername: adminUsers.username,
+        attemptRemoteModel: aiProviderAttempts.remoteModel,
+      })
+      .from(aiGenerations)
+      .leftJoin(adminUsers, eq(aiGenerations.operatorId, adminUsers.id))
+      .leftJoin(aiProviderAttempts, eq(aiGenerations.currentAttemptId, aiProviderAttempts.id))
+      .where(eq(aiGenerations.enterpriseId, enterpriseId))
+      .orderBy(desc(aiGenerations.createdAt), desc(aiGenerations.id))
+      .limit(boundedLimit);
   }
 
   async listHistory(input: {

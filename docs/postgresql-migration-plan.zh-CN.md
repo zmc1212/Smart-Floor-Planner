@@ -1,5 +1,27 @@
 # PostgreSQL 迁移计划与进度
 
+> 2026-08-05 迁移记录：`GET /api/kujiale/cities` 和 `GET
+> /api/kujiale/floorplans/search` 在发起已认证的上游请求前不再连接 MongoDB；既有后台/小程序认证、查询及响应 DTO 和外部供应商限制保持不变。十进制 PostgreSQL bigint 请求 `GET
+> /api/ai/assets/[id]/image`、`/api/ai/generations/[id]/image`、
+> `/api/miniprogram/ai/assets/[id]/image`、`/api/ai/status/[id]` 以及 `POST
+> /api/admin/ai-generations/[id]/retry` 现仅在需要显式历史 ObjectId 兼容分支时才加载 MongoDB/Mongoose。未导入、删除或重新加密 MongoDB 业务数据。定向 ESLint 与 `npm run test:postgresql` 均通过（49/49）。
+
+> 2026-08-05 迁移记录：租户 `GET/POST/DELETE /api/inspirations` 现通过
+> `InspirationRepository` 在租户 RLS PostgreSQL bigint `inspirations` 表中运行。
+> 既有筛选、响应中的 `_id` 字符串和数字 `viewCount` 字段、当前菜单访问权限及案例发布、推荐和删除流程均保持不变。路由现要求已认证的企业上下文后才能读取或变更案例。未导入、删除或重新加密 MongoDB 业务数据。
+> 定向 ESLint 与 `npm run test:postgresql` 均通过（49/49）。
+
+> 2026-08-05 迁移记录：`GET /api/admin/enterprises/[id]/ai-credits` 现从
+> PostgreSQL bigint `ai_generations` 读取企业最近任务列表，并关联操作员和当前供应商模型。
+> 既有 `super_admin`/`admin` 边界及账户、流水、策略和任务 DTO 字段保持不变；历史 MongoDB
+> ObjectId 任务有意不与该列表混合。未导入、删除或重新加密 MongoDB 业务数据。定向 ESLint
+> 与 `npm run test:postgresql` 均通过（48/48）。
+
+> 2026-08-05 迁移记录：`GET /api/admin/media-storage` 现通过平台范围 PostgreSQL
+> `media_assets` 和 `MediaAssetRepository` 读取有效、待清理及累计媒体资产数量/容量，路由
+> 不再连接 MongoDB。媒体存储配置、Provider 激活、权限、DTO 字段和供应商 I/O 行为保持不变。
+> 未导入、删除或重新加密 MongoDB 业务数据。定向 ESLint 与 `npm run test:postgresql` 均通过（47/47）。
+
 > 2026-08-05 迁移记录：平台 `GET/PATCH /api/admin/ai-image-models` 现通过
 > PostgreSQL 平台事务中的 `AiCreationModelProfileRepository` 初始化、读取、校验和更新
 > GRS 模型目录。配套的 `GET/PATCH /api/admin/ai-image-model-prices` 使用 PostgreSQL
@@ -363,7 +385,7 @@ RoomiAI 导入使用 [admin/scripts/import-roomi-prompts.ts](../admin/scripts/im
 > `ai-key` 返回 `aiConfig: null`，避免暴露已退役的企业级 Key 模型。未导入、删除或重新
 > 加密 MongoDB 业务数据。`npm run test:postgresql` 通过（45/45）。
 
-| Phase 3 | API/业务代码从 Mongoose 切换到 PostgreSQL | 进行中 | 身份/企业核心、线索、正式户型、测量/设备、提示词库读取、角色、全局报备/媒体配置、套餐目录、报备记录、工作流通知、工作台、提醒运行时、订单/提成、企业激活、AI 风格预设、AI 供应商配置/运行时、GRS 生图模型目录及模型价格、AI 动作/模型价格、AI 点数账户/流水、AI 对话会话、企业 AI 用量快照读取、PostgreSQL 媒体资产交付、自由创作执行、小程序 AI 任务执行及管理员重试、公开 bigint 工作流列表/详情/创建/状态/阶段执行、手动 `mock-generation` 结果持久化、同步建议/提示词优化生成、直连软装渲染、两步式后台 `generate`/`render`，以及后台 AI 设计助手的 bigint 线索/户型/工作流消费者均已切换。 |
+| Phase 3 | API/业务代码从 Mongoose 切换到 PostgreSQL | 进行中 | 身份/企业核心、线索、正式户型、测量/设备、灵感方案、提示词库读取、角色、全局报备/媒体配置、套餐目录、报备记录、工作流通知、工作台、提醒运行时、订单/提成、企业激活、AI 风格预设、AI 供应商配置/运行时、GRS 生图模型目录及模型价格、AI 动作/模型价格、AI 点数账户/流水、AI 对话会话、企业 AI 用量快照及最近点数任务读取、PostgreSQL 媒体资产交付、自由创作执行、小程序 AI 任务执行及管理员重试、公开 bigint 工作流列表/详情/创建/状态/阶段执行、手动 `mock-generation` 结果持久化、同步建议/提示词优化生成、直连软装渲染、两步式后台 `generate`/`render`，以及后台 AI 设计助手的 bigint 线索/户型/工作流消费者均已切换。 |
 | Phase 4 | RoomiAI snapshot、预览资源和七牛配置导入 | 进行中：待用户手动验收 | 2026-08-01 已写入 PostgreSQL 活动 Roomi 版本、960 个已校验本地预览、七牛配置并完成探测 |
 | Phase 5 | 管理端/小程序合同测试与切换演练 | 未开始 | 待补充测试报告和恢复演练 |
 | Phase 6 | 正式切换到 PostgreSQL | 未开始 | 待记录切换时间、版本和回滚窗口 |
@@ -712,7 +734,7 @@ Phase 2 用户手动验收清单：
   API 仍返回数字。`AiCreationModelProfile` 仍使用 MongoDB，其中模型档案继续被任务、批次和生成记录的旧 `ObjectId` 引用。
   未导入或删除 MongoDB 数据；定向 ESLint 与 `npm run test:postgresql` 通过（29/29）。在自由创作运行时切换前，
   MongoDB 数字批次和计费快照会拒绝超出正 JavaScript 安全整数范围的 PostgreSQL 价格，避免静默舍入。
-- 2026-08-02：AI 点数账户和流水已切换到租户 PostgreSQL 事务中的 `AiCreditRepository`。唯一 `operationId` 流水约束使发放、调整、冻结、扣除和释放与余额更新保持原子幂等；PostgreSQL bigint 在 API 中仍返回数字。平台企业点数接口现从 PostgreSQL 读取企业、账户、策略和流水，任务列表在生成记录持久化迁移前仍从 MongoDB 读取。旧 MongoDB 生成记录的 ObjectId 明确写为流水 `generationId: NULL`；未导入或删除 MongoDB 数据。定向 ESLint、`npm run test:postgresql`（30/30）和 `npm run test:ai`（106/106）均通过。
+- 2026-08-02：AI 点数账户和流水已切换到租户 PostgreSQL 事务中的 `AiCreditRepository`。唯一 `operationId` 流水约束使发放、调整、冻结、扣除和释放与余额更新保持原子幂等；PostgreSQL bigint 在 API 中仍返回数字。平台企业点数接口现从 PostgreSQL 读取企业、账户、策略、流水及最近 bigint 任务列表；后续任务列表迁移有意不混合历史 MongoDB ObjectId 生成记录。旧 MongoDB 生成记录的 ObjectId 明确写为流水 `generationId: NULL`；未导入或删除 MongoDB 数据。定向 ESLint、`npm run test:postgresql`（30/30）和 `npm run test:ai`（106/106）均通过。
 - 2026-08-02 已将未使用的企微配置、群分享 API/UI 和员工企微标识标记为弃用，不再迁移。
   该功能已从运行时代码与文档移除；历史 MongoDB 字段及 PostgreSQL
   `admin_users.wecom_user_id` 列保持原样，不执行数据迁移或破坏性清理。

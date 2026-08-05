@@ -1,5 +1,39 @@
 # Admin System: Current Module Inventory
 
+> 2026-08-05 PostgreSQL migration update: authenticated Kujiale city and
+> floor-plan search proxies no longer connect to MongoDB. PostgreSQL bigint AI
+> asset, generation-image, status, Mini Program asset-delivery, and administrator
+> retry requests now load MongoDB/Mongoose only in their explicit historical
+> ObjectId compatibility branches. Existing authentication, permissions, DTOs,
+> upstream behavior, and legacy compatibility remain unchanged. No MongoDB
+> business data was imported, deleted, or re-encrypted. Targeted ESLint and
+> `npm run test:postgresql` passed 49/49.
+
+> 2026-08-05 PostgreSQL migration update: tenant `GET/POST/DELETE
+> /api/inspirations` now uses `InspirationRepository` and the tenant-RLS
+> PostgreSQL bigint `inspirations` table. Existing filters, response `_id`
+> strings and numeric `viewCount`, current menu access, and case publishing,
+> recommendation, and deletion flows remain intact; an authenticated enterprise
+> context is now required for reads and mutations. Historical MongoDB cases are
+> neither imported nor included. Targeted ESLint and `npm run test:postgresql`
+> passed 49/49.
+
+> 2026-08-05 PostgreSQL migration update: `GET
+> /api/admin/enterprises/[id]/ai-credits` now reads its recent enterprise task
+> list from PostgreSQL bigint `ai_generations` with its operator and current
+> provider model. The established `super_admin`/`admin` boundary, account,
+> ledger, policy, and task DTO fields remain unchanged; historical MongoDB
+> ObjectId tasks are not combined into this PostgreSQL list. No MongoDB business
+> data was imported, deleted, or re-encrypted. Targeted ESLint and
+> `npm run test:postgresql` passed 48/48.
+
+> 2026-08-05 PostgreSQL migration update: `GET /api/admin/media-storage` no
+> longer connects to MongoDB. Its active, pending-purge, and total asset counts
+> and byte totals now come from platform-scoped PostgreSQL `media_assets` through
+> `MediaAssetRepository`; configuration, provider activation, permissions, and
+> response fields are unchanged. No MongoDB business data was imported, deleted,
+> or re-encrypted. Targeted ESLint and `npm run test:postgresql` passed 47/47.
+
 > 2026-08-05 PostgreSQL migration update: platform `GET/PATCH
 > /api/admin/ai-image-models` now initializes, lists, validates, and updates
 > the GRS catalog through `AiCreationModelProfileRepository` in PostgreSQL
@@ -581,8 +615,9 @@ permission, or workflow changes.
   small icon-and-label detail button as other management lists.
 - PostgreSQL boundary: formal floor-plan CRUD, detail rendering, lead linking,
   measurement association, and DXF export use `FloorPlanRepository` and
-  `MeasurementRepository` under RLS. External Kujiale requests run outside the
-  database transaction; an imported plan is persisted atomically as a
+  `MeasurementRepository` under RLS. Authenticated external Kujiale requests
+  run without a MongoDB connection and outside the database transaction; an
+  imported plan is persisted atomically as a
   millimetre-based formal version-4 `surveyGraph`. Imported room outlines become
   closed node/wall/space chains. Kujiale openings are currently omitted because
   the provider response does not expose a reliable opening-to-wall mapping.
@@ -649,9 +684,13 @@ permission, or workflow changes.
   platform permission for `super_admin` and `admin` (`Implemented`).
 - Inspiration administration: `/inspirations` uses the same `PageContainer`,
   `ProTable`, and `ModalForm` presentation pattern for case filtering, image
-  preview, publishing, recommendation state, and deletion. It preserves the
-  existing MongoDB `Inspiration` model, `/api/inspirations` request contract,
-  tenant behavior, and current menu permission (`Implemented`).
+  preview, publishing, recommendation state, and deletion. `GET/POST/DELETE
+  /api/inspirations` now use tenant-RLS PostgreSQL `inspirations` through
+  `InspirationRepository`; the existing filters, decimal-string `_id`, numeric
+  `viewCount`, current menu access, and case workflows are retained. The route
+  requires an authenticated enterprise context and is `Implemented`. Historical
+  MongoDB inspiration records are neither imported nor included in the new
+  bigint list.
 - Provider integration contract: `AiProviderConfig` retains its legacy encrypted
   API-key fields and now also persists masked/encrypted credential maps plus a
   validated non-secret `adapterConfig`. The common editor and server validation
@@ -714,16 +753,23 @@ permission, or workflow changes.
 - PostgreSQL identity boundary: new free-creation, Mini Program, scenario, and
   `advice` task/generation/media/provider-attempt/credit records use PostgreSQL
   bigint identities consistently under tenant RLS. Historical MongoDB ObjectId
-  media remains available only through the explicit read-only delivery branch;
+  media remains available only through the explicit read-only delivery branch,
+  which loads MongoDB/Mongoose only after the request is identified as legacy;
   there is no cross-store identity fallback for new records. The platform retry
   endpoint accepts a PostgreSQL bigint failed Mini Program generation when an
   `admin` or `super_admin` has an enterprise context, then retries it through
   the tenant-RLS PostgreSQL lifecycle; historical ObjectId generations retain
   the MongoDB compatibility branch. The Mini Program's own retry route remains
   limited to its original operator's PostgreSQL task.
+- Enterprise credit task boundary: the platform enterprise-credit read now lists
+  its recent PostgreSQL bigint generations with operator and current provider
+  model data. It preserves the account/ledger/policy/task DTO and
+  `super_admin`/`admin` boundary, but intentionally does not combine historical
+  MongoDB ObjectId tasks into that list.
 - Models/helpers: `AiGeneration`, `AiWorkflow`, `AiChatSession`, `AiStylePreset`,
   `AiProviderConfig`, `AiProviderAttempt`, `MediaAsset`, `AiCreditAccount`,
-  `AiCreditLedger`, `AiCreditPrice`, `AiModelCreditPrice`, `Inspiration`,
+  `AiCreditLedger`, `AiCreditPrice`, `AiModelCreditPrice`, PostgreSQL
+  `InspirationRepository`,
   `src/lib/ai/*`, and
   `src/lib/media-storage/*`.
 - Free-creation and prompt-library models: `AiCreationTask`, `AiCreationBatch`,
@@ -1059,7 +1105,7 @@ permission, or workflow changes.
   /api/admin/media-storage/[id]`, `POST /api/admin/media-storage/[id]/test`, and
   `POST /api/admin/media-storage/[id]/activate`.
 - Models/helpers: `MediaStorageConfig`, `PlatformConfig.mediaStorage`,
-  PostgreSQL `MediaStorageConfigRepository`, `MediaAsset`, and
+  PostgreSQL `MediaStorageConfigRepository` and `MediaAssetRepository`, `MediaAsset`, and
   `src/lib/media-storage/*`.
 - Status: `Implemented`. The page shows the current default, credential/config
   state, active/pending/total asset counts and bytes, and the last connectivity
@@ -1087,8 +1133,9 @@ permission, or workflow changes.
   results, archival, default-provider selection, and the GRS transfer pointer are
   persisted in PostgreSQL. Qiniu network probes run outside database transactions;
   their results use an `updatedAt` optimistic condition so a concurrent config edit
-  cannot be overwritten. Asset counts/bytes still aggregate MongoDB `MediaAsset`
-  records until that later Phase 3 domain is migrated. MongoDB administrator IDs
+  cannot be overwritten. Asset counts/bytes aggregate PostgreSQL `media_assets`
+  through the platform-scoped `MediaAssetRepository`; legacy MongoDB media
+  records remain a compatibility concern. MongoDB administrator IDs
   cannot populate PostgreSQL bigint audit foreign keys, so those fields remain
   `NULL` until the identity domain moves.
 - Phase 4 retained-data migration imported the active `zly-images` Qiniu
@@ -1187,7 +1234,8 @@ permission, or workflow changes.
 - Identity: `AdminUser`, `SystemRole`, `User`, `Department`.
 - Tenant/commercial: `Enterprise`, `Package`, `EnterpriseOrder`,
   `CommissionRecord`, `PromotionEnterpriseRecord`.
-- Customer assets: `Lead`, `FloorPlan`, `Measurement`, `Device`, `Inspiration`.
+- Customer assets: `Lead`, `FloorPlan`, `Measurement`, `Device`, PostgreSQL
+  `inspirations`.
 - AI/media: `AiGeneration`, `AiWorkflow`, `AiChatSession`, `AiStylePreset`,
   `AiProviderConfig`, `AiProviderAttempt`, `MediaStorageConfig`, `MediaAsset`, `AiCreditAccount`,
   `AiCreditLedger`, `AiCreditPrice`, and `AiModelCreditPrice`;

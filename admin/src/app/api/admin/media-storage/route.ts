@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
 import {
   createMediaStorageConfig,
@@ -15,7 +14,6 @@ import { normalizeMediaStorageProviderKey } from '@/lib/media-storage/registry';
 
 export async function GET(request: Request) {
   try {
-    await dbConnect();
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
       const [configs, platformConfig, stats] = await Promise.all([
         listMediaStorageConfigs(),

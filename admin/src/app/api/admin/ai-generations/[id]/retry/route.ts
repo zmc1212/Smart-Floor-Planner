@@ -1,8 +1,5 @@
 import { NextResponse } from 'next/server';
-import mongoose from 'mongoose';
-import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { AiGeneration } from '@/models/AiGeneration';
 import { retryMiniAiTask } from '@/lib/ai/mini-ai-tasks';
 import { retryPostgresMiniAiTaskForAdmin } from '@/lib/ai/postgres-mini-ai-tasks';
 
@@ -25,6 +22,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         return NextResponse.json({ success: true });
       }
 
+      const [{ default: dbConnect }, { default: mongoose }, { AiGeneration }] = await Promise.all([
+        import('@/lib/mongodb'),
+        import('mongoose'),
+        import('@/models/AiGeneration'),
+      ]);
       await dbConnect();
       const generation = await AiGeneration.findOne({ _id: id, channel: 'miniprogram' });
       if (!generation) return NextResponse.json({ success: false, error: '任务不存在' }, { status: 404 });

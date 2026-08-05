@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { getTenantContext } from '@/lib/auth';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { searchKujialeFloorPlans } from '@/lib/kujiale';
@@ -12,8 +11,6 @@ function getErrorMessage(error: unknown) {
 
 export async function GET(request: Request) {
   try {
-    await dbConnect();
-
     const mpContext = await resolveMiniProgramContext(request);
     const adminContext = mpContext ? null : await getTenantContext(request);
 
