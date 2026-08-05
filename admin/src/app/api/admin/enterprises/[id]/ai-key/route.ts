@@ -1,20 +1,28 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
+import { parsePostgresId } from '@/db/postgres-dto';
+import {
+  EnterpriseAiUsageSnapshotRepository,
+  EnterpriseRepository,
+} from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { Enterprise } from '@/models/Enterprise';
-import { EnterpriseAiUsageSnapshot } from '@/models/EnterpriseAiUsageSnapshot';
+import { serializeEnterpriseAiUsageSnapshot } from '@/lib/ai/enterprise-ai-usage';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await dbConnect();
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
       const { id } = await params;
-      const [enterprise, snapshot] = await Promise.all([
-        Enterprise.findById(id).select('aiConfig.provider aiConfig.keyMode aiConfig.pollinationsKeyRef aiConfig.pollinationsKeyName aiConfig.pollinationsMaskedKey aiConfig.allowedCapabilities aiConfig.allowedModels aiConfig.pollenBudget aiConfig.lastSyncedAt').lean(),
-        EnterpriseAiUsageSnapshot.findOne({ enterpriseId: id }).lean(),
-      ]);
+      const enterpriseId = parsePostgresId(id, 'enterpriseId');
+      const { enterprise, snapshot } = await withPlatformTransaction(async (transaction) => ({
+        enterprise: await new EnterpriseRepository(transaction).findById(enterpriseId),
+        snapshot: await new EnterpriseAiUsageSnapshotRepository(transaction).findByEnterpriseId(enterpriseId),
+      }));
       if (!enterprise) return NextResponse.json({ success: false, error: 'Enterprise not found' }, { status: 404 });
-      return NextResponse.json({ success: true, deprecated: true, data: { aiConfig: enterprise.aiConfig || null, snapshot } });
+      return NextResponse.json({
+        success: true,
+        deprecated: true,
+        data: { aiConfig: null, snapshot: serializeEnterpriseAiUsageSnapshot(snapshot) },
+      });
     });
   } catch (error) {
     console.error('[Legacy Enterprise AI Key GET]', error);

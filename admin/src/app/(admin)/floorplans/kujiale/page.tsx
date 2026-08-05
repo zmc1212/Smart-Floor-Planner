@@ -230,10 +230,10 @@ export default function KujialeFloorPlanSearchPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-white text-[#171717]">
-      <main className="mx-auto flex max-w-7xl flex-col gap-8 px-6 py-10">
+    <div className="min-h-full bg-background text-foreground">
+      <main className="mx-auto flex max-w-[1480px] flex-col gap-7 px-5 py-6 sm:px-7 sm:py-8">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Link
               href="/floorplans"
               className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), '-ml-2 text-muted-foreground')}
@@ -242,18 +242,18 @@ export default function KujialeFloorPlanSearchPage() {
               返回本地户型图库
             </Link>
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">酷家乐户型搜索</h1>
+              <h1 className="text-2xl font-semibold tracking-tight">酷家乐户型搜索</h1>
               <p className="mt-2 text-sm text-muted-foreground">
                 按城市和小区查询酷家乐已开放户型图，当前仅展示结果，不导入本地户型库。
               </p>
             </div>
           </div>
-          <Badge variant="outline" className="w-fit border-blue-200 bg-blue-50 px-3 py-1 text-blue-700">
+          <Badge variant="outline" className="w-fit px-3 py-1 text-muted-foreground">
             sandbox-openapi
           </Badge>
         </div>
 
-        <section className="rounded-lg border bg-muted/20 p-4">
+        <section className="rounded-lg border bg-card p-4">
           <div className="grid gap-3 lg:grid-cols-[280px_1fr_170px_170px_auto]">
             <Cascader
               options={cascaderOptions}
@@ -272,12 +272,12 @@ export default function KujialeFloorPlanSearchPage() {
                   if (event.key === 'Enter') searchFloorPlans(1);
                 }}
                 placeholder="输入小区名称，如 左邻右舍"
-                className="h-10 bg-white pl-10"
+                className="h-10 bg-background pl-10"
               />
             </div>
 
             <Select value={specType} onValueChange={setSpecType}>
-              <SelectTrigger className="h-10 bg-white">
+              <SelectTrigger className="h-10 bg-background">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -290,7 +290,7 @@ export default function KujialeFloorPlanSearchPage() {
             </Select>
 
             <Select value={areaType} onValueChange={setAreaType}>
-              <SelectTrigger className="h-10 bg-white">
+              <SelectTrigger className="h-10 bg-background">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -326,14 +326,14 @@ export default function KujialeFloorPlanSearchPage() {
         </div>
 
         {loading ? (
-          <div className="flex min-h-[320px] flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 text-muted-foreground">
+          <div className="flex min-h-[320px] flex-col items-center justify-center rounded-lg border border-dashed bg-muted/30 text-muted-foreground">
             <Loader2 className="mb-4 animate-spin" size={36} />
             <p className="text-sm font-medium">正在查询酷家乐户型图...</p>
           </div>
         ) : results.length > 0 ? (
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
             {results.map((plan) => (
-              <article key={plan.externalId} className="overflow-hidden rounded-lg border bg-white shadow-sm transition hover:border-primary/40">
+            <article key={plan.externalId} className="overflow-hidden rounded-lg border bg-card shadow-sm transition-colors hover:border-primary/40">
                 <button
                   type="button"
                   onClick={() => handleOpenPreview(plan.previewUrl)}
@@ -348,12 +348,12 @@ export default function KujialeFloorPlanSearchPage() {
                   ) : (
                     <ImageIcon className="text-muted-foreground/40" size={42} />
                   )}
-                  <span className="absolute right-3 top-3 rounded-md bg-white/90 px-2 py-1 text-xs font-medium text-zinc-700 shadow-sm">
+                  <span className="absolute right-3 top-3 rounded-md bg-background/90 px-2 py-1 text-xs font-medium text-foreground shadow-sm">
                     {plan.sourceLabel || '酷家乐'}
                   </span>
                 </button>
 
-                <div className="space-y-4 p-4">
+                <div className="flex flex-col gap-4 p-4">
                   <div>
                     <h2 className="line-clamp-2 text-base font-semibold">{buildPlanTitle(plan)}</h2>
                     <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
@@ -363,19 +363,19 @@ export default function KujialeFloorPlanSearchPage() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div className="rounded-md bg-muted/30 p-3">
+                    <div className="rounded-md bg-muted/40 p-3">
                       <p className="text-xs text-muted-foreground">建筑面积</p>
                       <p className="mt-1 font-semibold">{formatArea(plan)}</p>
                     </div>
-                    <div className="rounded-md bg-muted/30 p-3">
+                    <div className="rounded-md bg-muted/40 p-3">
                       <p className="text-xs text-muted-foreground">套内面积</p>
                       <p className="mt-1 font-semibold">{plan.rawSummary?.srcArea || '-'}</p>
                     </div>
-                    <div className="rounded-md bg-muted/30 p-3">
+                    <div className="rounded-md bg-muted/40 p-3">
                       <p className="text-xs text-muted-foreground">户室</p>
                       <p className="mt-1 font-semibold">{plan.layoutLabel || '-'}</p>
                     </div>
-                    <div className="rounded-md bg-muted/30 p-3">
+                    <div className="rounded-md bg-muted/40 p-3">
                       <p className="text-xs text-muted-foreground">公开类型</p>
                       <p className="mt-1 font-semibold">{plan.rawSummary?.publicType || '-'}</p>
                     </div>
@@ -412,7 +412,7 @@ export default function KujialeFloorPlanSearchPage() {
             ))}
           </div>
         ) : (
-          <div className="flex min-h-[320px] flex-col items-center justify-center rounded-lg border border-dashed bg-muted/20 px-6 text-center">
+          <div className="flex min-h-[320px] flex-col items-center justify-center rounded-lg border border-dashed bg-muted/30 px-6 text-center">
             <div className="mb-4 rounded-full bg-muted p-4">
               <Search className="text-muted-foreground/50" size={32} />
             </div>

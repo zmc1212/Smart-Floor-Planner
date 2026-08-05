@@ -1,5 +1,26 @@
 # 后台系统当前功能清单
 
+> 2026-08-05 PostgreSQL 迁移更新：平台 `GET/PATCH /api/admin/ai-image-models` 现通过
+> PostgreSQL 平台事务中的 `AiCreationModelProfileRepository` 初始化、读取、校验和更新
+> GRS 模型目录；`GET/PATCH /api/admin/ai-image-model-prices` 通过同一目录校验分辨率能力并
+> 读写 PostgreSQL 价格记录。既有 `super_admin`/`admin` 权限、响应 DTO、唯一启用默认模型
+> 规则及供应商发现模型的只读展示保持不变。未导入、删除或重新加密 MongoDB 业务数据。
+> 定向 ESLint 与 `npm run test:postgresql` 均通过（46/46）。
+
+> 2026-08-04 PostgreSQL 迁移更新：`POST /api/admin/ai-generations/[id]/retry`
+> 现可在当前企业上下文中处理 bigint 的失败小程序 AI 生成任务。既有
+> `super_admin`/`admin` 边界不变；租户 RLS 查询允许管理员重试员工创建的任务，重置其
+> 供应商/计费状态后通过 PostgreSQL 运行时提交。历史 ObjectId 重试仍保留 MongoDB
+> 兼容分支；未导入、删除或重新加密 MongoDB 业务数据。定向 ESLint 与
+> `npm run test:postgresql` 均通过（44/44）。
+
+> 2026-08-04 PostgreSQL 迁移更新：bigint `PATCH /api/ai/workflows/[id]` 已支持
+> 既有 `mock-generation` 手动结果动作。PostgreSQL 资产 URL、图片 data URI 和 HTTP(S)
+> 图片会解析或持久化为租户归属的 `ai_generation_output` 媒体；该路由随后在短租户 RLS
+> 事务中创建零点数、已成功的 bigint `scenario` 生成记录，并可更新阶段指针。该动作有意
+> 跳过供应商执行和点数计费。历史 ObjectId 变更请求仍保持 MongoDB 兼容；未导入、删除或
+> 重新加密 MongoDB 业务数据。定向 ESLint 与 `npm run test:postgresql` 均通过（43/43）。
+
 > 2026-08-04 PostgreSQL 迁移更新：两步式后台 `POST /api/ai/generate` 与
 > `POST /api/ai/render` 现保留既有提示词优先 DTO，但使用租户 RLS bigint
 > `floor_plan_style`、`furnishing_render` 及旧版 `soft_furnishing_render` 生成记录。
@@ -46,15 +67,15 @@
 > 上下文。选风格、基准方案和彩平转透视阶段会把正式 v4 控制图保存为 PostgreSQL 输入资产；提交失败
 > 会释放冻结点数，结算结果按既有规则推进工作流/首个定稿。`lighting` 的视觉分析与提示词编译也会先
 > 写入 PostgreSQL 供应商尝试审计，再复用同一场景图片生命周期。旧 ObjectId 路由仍保持 MongoDB 兼容；
-> `mock-generation` 仍仅限 MongoDB。未导入、删除或重新加密 MongoDB 业务数据。定向 ESLint 与
-> `npm run test:postgresql` 均通过（39/39）。
+> `mock-generation` 已由上方较新的迁移记录切换为 bigint 兼容。未导入、删除或重新加密 MongoDB
+> 业务数据。
 
 > 2026-08-04 PostgreSQL 迁移更新：`GET/POST /api/ai/workflows` 及 bigint
 > `GET/PATCH /api/ai/workflows/[id]` 现通过租户 RLS 事务使用 PostgreSQL 工作流、线索和
 > 生成数据。既有列表/搜索和详情 DTO 及 `ai-scenarios` 企业权限边界保持不变；PostgreSQL
 > 工作流支持创建、重命名、阶段指针和已成功产物的定稿选择。历史 ObjectId 详情/变更请求仍保留
-> MongoDB 兼容分支，而集合路由有意仅列出 bigint 记录，并拒绝在 bigint 工作流执行仅限
-> MongoDB 的 `mock-generation`。这项限制已由上方 2026-08-04 阶段执行迁移记录更新：常规
+> MongoDB 兼容分支，而集合路由有意仅列出 bigint 记录。上方较新的迁移记录已启用 bigint
+> 工作流的 `mock-generation`。这项限制已由上方 2026-08-04 阶段执行迁移记录更新：常规
 > 阶段执行、正式户型控制图和供应商输入媒体物化已切换。未导入、删除或重新加密 MongoDB 业务数据。定向 ESLint 与
 > `npm run test:postgresql` 均通过（39/39）。
 
@@ -183,10 +204,18 @@
 
 - 页面：`/`、`/enterprises`、`/enterprises/[id]`，以及企业 AI、自动化子页面。
 - API：`/api/admin/enterprises`、`/activate`、`[id]`、`[id]/ai-key`、`[id]/ai-sync`、`[id]/ai-usage`、`/api/branding/[id]`。
-- 模型/工具：PostgreSQL `EnterpriseRepository`、`AdminUserRepository`、`PromotionRecordRepository`、`CommercialRepository`，以及尚未切换的 `EnterpriseAiUsageSnapshot`、`enterprise-ai` 路径。
+> 2026-08-05 PostgreSQL 迁移更新：`GET /api/ai/usage` 以及平台兼容企业读取
+> `GET /api/admin/enterprises/[id]/ai-key`、`/ai-sync`、`/ai-usage` 现通过
+> 租户或平台 RLS 范围内的 typed PostgreSQL Repository 读取
+> `enterprise_ai_usage_snapshots`。既有 `super_admin`/`admin` 边界、租户用量
+> DTO 和返回 `410` 的已废弃写入接口均不变。由于企业级 Pollinations 凭证已停用，
+> `ai-key` 现明确返回 `aiConfig: null`；供应商凭证继续由平台统一管理。未导入、删除
+> 或重新加密 MongoDB 业务数据。定向 PostgreSQL 集成测试通过（45/45）。
+
+- 模型/工具：PostgreSQL `EnterpriseRepository`、`AdminUserRepository`、`PromotionRecordRepository`、`CommercialRepository`、`EnterpriseAiUsageSnapshotRepository`。旧 `enterprise-ai` Pollinations 同步实现仅保留给已退役兼容代码；已迁移读取不连接 MongoDB。
 - 状态：`Implemented`。覆盖企业入驻/激活、资料、品牌、自动化、AI 配置/用量和平台概览。
 - 后台 UI：`/enterprises` 使用共享 Ant Design ProComponents 列表模式，采用 `PageContainer`、`ProTable`、基于权威列表 API 的客户端搜索/分页、状态标签和末列操作菜单。`/enterprises/[id]` 及共享企业编辑弹窗使用 `PageContainer`、Ant Design 卡片、`ProDescriptions` 与 `ModalForm`/`ProForm` 承载资料查看、AI/自动化入口和手动新增/编辑提交；企业 AI 与自动化子页使用同一 `PageContainer` tab 模式，策略、调整、流水/任务查看、通知与 SLA 控件使用 Ant Design `Checkbox.Group`、`Select`、`ProForm` 与 `ProTable`。Base64 Logo 大小限制及共享操作反馈均未改变；API 与平台角色边界均未改变。
-- PostgreSQL 边界：企业列表、详情、新建、更新、删除、两个自助注册接口及 `/api/admin/enterprises/activate` 均已切换。激活在单个平台事务中创建企业和企业管理员，校验指定订单属于尚未激活的报备记录，再将指定订单或全部未绑定订单回填至新企业，并把报备推进到 `paid`。`Limited`：`ai-key`、`ai-sync`、`ai-usage`、`ai-credits`、品牌和用量快照调用点归入后续 Phase 3 域。AI 域切换前，企业核心列表/详情返回 `aiUsageSnapshot: null`。
+- PostgreSQL 边界：企业列表、详情、新建、更新、删除、两个自助注册接口及 `/api/admin/enterprises/activate` 均已切换。激活在单个平台事务中创建企业和企业管理员，校验指定订单属于尚未激活的报备记录，再将指定订单或全部未绑定订单回填至新企业，并把报备推进到 `paid`。租户 `GET /api/ai/usage` 及平台兼容 `[id]/ai-key`、`[id]/ai-sync`、`[id]/ai-usage` 现以既有角色边界读取 PostgreSQL 用量快照；已退役的企业级 Key 写入仍返回 `410`，`ai-key` 返回 `aiConfig: null`。企业核心列表/详情有意继续返回 `aiUsageSnapshot: null`，不在这些 DTO 中加入快照关联。
 
 ### 4. 员工、部门与系统账号
 
@@ -243,6 +272,11 @@
 - 灵感方案后台：`/inspirations` 使用同一套 `PageContainer`、`ProTable`、`ModalForm` 展示模式，支持案例筛选、图片预览、发布、推荐状态和删除。该展示层迁移保持既有 MongoDB `Inspiration` 模型、`/api/inspirations` 请求契约、租户行为和当前菜单权限不变（`Implemented`）。
 - 供应商接入契约：`AiProviderConfig` 保留旧版加密 API Key 字段，同时持久化加密/掩码凭证映射和经校验的非敏感 `adapterConfig`。统一编辑页与服务端校验共同读取 `src/lib/ai/provider-adapter-manifest.ts`；当前 GRS、Pollinations、OpenAI Compatible 使用公共的地址/API Key 配置。`Limited`：平台生图模型目录当前仍是 GRS 来源契约，新增供应商必须实现 Adapter 与目录档案支持，不能只新增前端选项。
 - PostgreSQL 边界：平台供应商列表、新增、更新、停用、密钥轮换、连通测试、模型同步、上游余额查询及运行时供应商选择现统一经由平台范围 PostgreSQL 事务中的 `AiProviderConfigRepository`。加密凭据保持不透明存储；异步网络调用结束后仅回写非敏感运行状态。配置了 API Key 时，环境变量中的 GRS/Pollinations 默认供应商会幂等写入 PostgreSQL。
+- PostgreSQL 目录边界：`GET/PATCH /api/admin/ai-image-models` 通过
+  `AiCreationModelProfileRepository` 读取和更新平台 GRS 目录；
+  `GET/PATCH /api/admin/ai-image-model-prices` 使用同一目录校验并通过
+  `AiModelCreditPriceRepository` 读写价格记录。路由保留 `super_admin`/`admin`
+  边界、目录 DTO、唯一启用默认模型约束，以及未包含目录元数据的供应商发现模型只读展示。
 - 同步文本生成：`POST /api/ai/advice` 与
   `POST /api/ai/creation/prompt-assist` 会在租户 RLS 范围内创建 PostgreSQL bigint
   `advice` 生成记录，保留既有响应 DTO，并使用与其他 PostgreSQL AI 生成路径相同的
@@ -257,9 +291,9 @@
   风格参考来源图片物化为 PostgreSQL 媒体资产。户型、软装及旧版两步式直连软装类型共用
   PostgreSQL 供应商尝试、轮询、结果媒体、结算和重试计费生命周期，并保持既有 DTO 与
   `ai-scenarios` 权限边界。
-- API：AI 对话/Agent、生成/渲染/建议、状态/历史、预设、工作流搜索分页及阶段、设计能力/共享动作目录、媒体资源、供应商 CRUD/密钥轮换/连通测试/模型同步/上游余额查询、受保护任务对账、平台业务动作价格、`GET/PATCH /api/admin/ai-image-models`、`GET/PATCH /api/admin/ai-image-model-prices`、企业点数发放/调整/流水/任务和失败任务重试接口。旧企业 `ai-key`/`ai-sync` 仅保留只读兼容，写接口返回 `410`。
+- API：AI 对话/Agent、生成/渲染/建议、状态/历史、预设、工作流搜索分页及阶段、设计能力/共享动作目录、媒体资源、供应商 CRUD/密钥轮换/连通测试/模型同步/上游余额查询、受保护任务对账、平台业务动作价格、`GET/PATCH /api/admin/ai-image-models`、`GET/PATCH /api/admin/ai-image-model-prices`、企业点数发放/调整/流水/任务和失败任务重试接口。旧企业 `ai-key`/`ai-sync` 和用量读取仅保留原有 DTO 的只读兼容，现由 PostgreSQL 用量快照提供数据；已退役写接口返回 `410`。
 - 自由创作 API：`GET /api/ai/creation/bootstrap`、提示词分类/列表/详情/预览、`POST /api/ai/creation/assets`、`GET/POST /api/ai/creation/tasks`、`DELETE /api/ai/creation/tasks/[id]`、`POST /api/ai/creation/tasks/[id]/batches`、提示词优化及生成结果归入现有客户方案。页面和整个 API 前缀由代理统一映射到 `ai-scenarios` 权限，写接口还通过 `withTenantRoute` 强制企业上下文。
-- PostgreSQL 身份边界：新的自由创作、小程序、场景和 `advice` 任务/生成/媒体/供应商尝试/点数记录均在租户 RLS 范围内一致使用 PostgreSQL bigint 标识符。历史 MongoDB `ObjectId` 媒体仅通过显式只读交付分支可读；新记录不存在跨存储身份回退。平台针对历史小程序生成任务的重试接口仍只接受 `ObjectId`，传入 PostgreSQL 身份会返回 `409`；小程序自身的重试路由使用 PostgreSQL bigint 任务路径。
+- PostgreSQL 身份边界：新的自由创作、小程序、场景和 `advice` 任务/生成/媒体/供应商尝试/点数记录均在租户 RLS 范围内一致使用 PostgreSQL bigint 标识符。历史 MongoDB `ObjectId` 媒体仅通过显式只读交付分支可读；新记录不存在跨存储身份回退。具有企业上下文的 `admin` 或 `super_admin` 可通过平台重试接口，将失败的 PostgreSQL bigint 小程序生成任务交由租户 RLS 生命周期重试；历史 `ObjectId` 生成任务继续使用 MongoDB 兼容分支。小程序自身的重试路由仍仅限原操作人的 PostgreSQL 任务。
 - 模型/工具：`AiGeneration`、`AiWorkflow`、`AiChatSession`、`AiStylePreset`、`AiProviderConfig`、`AiProviderAttempt`、`MediaAsset`、`AiCreditAccount`、`AiCreditLedger`、`AiCreditPrice`、`AiModelCreditPrice`、`Inspiration`、`src/lib/ai/*`、`src/lib/media-storage/*`。
 - 自由创作与模板库模型：`AiCreationTask`、`AiCreationBatch`、`AiCreationModelProfile`、`AiPromptLibraryRevision`、`AiPromptCategory`、`AiPromptTemplate`、`AiPromptParameterTemplate`、`AiPromptSourceModel`、`AiPromptTemplateAsset`、`AiPromptImportRun`。
 - 模板库运维：`npm run import:roomi-prompts` 默认只预览；增加 `-- --execute` 才原子发布通过完整校验的新版本，或用 `-- --source-file=<export.json> --execute` 从导出恢复；`npm run verify:roomi-prompts` 校验来源数量、引用、预览图校验和与抽样一致性。临时凭据和快照位于 Git 忽略的 `admin/.roomi-import/`，导入预览图保存在 Git 忽略的本地目录，不上传七牛。
@@ -281,9 +315,9 @@
 - 已冻结生成记录也可在内部 PostgreSQL 边界原子释放：完成幂等释放流水、标记生成失败且不再占用冻结点数；已成功且仍冻结的生成记录现可通过幂等流水原子扣除余额和冻结余额中的同一价格快照。供应商结果处理仍须先确立成功状态再调用扣除。
 - AI 对话列表、新建、详情、删除以及 Agent/动作确认的消息历史现使用 RLS PostgreSQL 事务内的 `AiChatSessionRepository`，保持原有企业/管理员隔离和字符串会话 ID；不导入历史 MongoDB 会话。
 - 自由创作界面规格：Roomi 风格全屏页使用 `68px` 品牌栏、`1440px` 最小桌面画布、固定尺寸悬浮任务面板及 `1080px` 提示词/参数一体输入器。标题光弧与输入器边框使用本地静态资源，品牌替换为 Smart Floor AI，页面只调用本地数据接口。任务提交后切换为 Roomi 风格执行态：顶部展示任务摘要和参数标签，中部使用紧凑进度/结果缩略块及重新编辑、再次生成、删除操作，右侧显示历史记录窄轨，输入器固定在页面底部。完成结果悬浮后提供下载、引用为参考图、A/B 对比、图片标注编辑、归入客户方案和删除；大图预览支持缩放、旋转、全屏和下载；对比支持交换、仅看 A/B、带中央拖拽手柄的分割线、同步、左右/上下、重置、无边框沉浸式全屏画布（工具栏置于占满余下视口的图片区域上方）和导出。标注编辑器提供方形、圆形、箭头、画笔、标记、六色、撤销/重做、本地下载和“使用”；使用后的 PNG 仍经既有自由创作素材上传 API 保存为参考图，不新增路由、模型或权限边界。
-- PostgreSQL 迁移边界：`GET/POST /api/ai/workflows`、bigint `GET/PATCH /api/ai/workflows/[id]` 及 `POST /api/ai/workflows/[id]/run-stage` 已在租户 RLS 事务中切换到工作流、线索和生成记录；保留既有列表/搜索/详情 DTO 及 `ai-scenarios` 企业权限边界。场景阶段执行、正式户型控制图渲染、供应商输入媒体物化以及 `lighting` 的视觉分析/提示词编译均已迁移，聊天调用也写入 PostgreSQL 供应商尝试。历史 ObjectId 详情和变更仍通过只读 MongoDB 兼容分支，集合路由只列出 bigint 工作流，且 bigint 工作流拒绝 MongoDB 专用 `mock-generation`。`Limited`：仅 `mock-generation` 的 PostgreSQL 等价实现仍待迁移。
+- PostgreSQL 迁移边界：`GET/POST /api/ai/workflows`、bigint `GET/PATCH /api/ai/workflows/[id]` 及 `POST /api/ai/workflows/[id]/run-stage` 已在租户 RLS 事务中切换到工作流、线索和生成记录；保留既有列表/搜索/详情 DTO 及 `ai-scenarios` 企业权限边界。场景阶段执行、手动 `mock-generation` 结果持久化、正式户型控制图渲染、供应商输入媒体物化以及 `lighting` 的视觉分析/提示词编译均已迁移，聊天调用也写入 PostgreSQL 供应商尝试。历史 ObjectId 详情和变更仍通过只读 MongoDB 兼容分支，集合路由只列出 bigint 工作流。
 - 状态：`Implemented`。客户方案工作台以“客户/素材/目标”向导发起方案，双栏工作区突出当前定稿、候选版本和唯一推荐下一步；共享动作目录统一名称、输入、计费键、支持端、结果边界和推荐动作。自由创作台支持本地模板搜索和三级分类、模板填入、参考图、提示词优化、本地模型映射、1–4 张输出、比例/质量/分辨率、点数预估、历史、复用、重试、删除、下载及归入现有客户方案；完成结果卡复刻经实际验证的 Roomi 交互面：悬浮操作、可标注引用、完整预览控制与 A/B 对比导出，不增加 Roomi 运行时依赖。模板结果可覆盖活动版本全量增量加载，移动端保留同一套三级分类选择。全屏页面采用已确认的 Roomi 风格深色创作布局：`68px` 品牌栏、紧凑创作轨道、中央画布、悬浮任务面板及底部提示词/参数一体输入器，品牌替换为 Smart Floor AI，并继续只调用本地数据接口。服务端会把模板参数与所选本地模型能力取交集，并保存最终参数快照。生成复用现有供应商执行/轮询及点数冻结、成功扣除、失败释放链路，计费动作是 `image.free_create`。自由创作上传和必须持久化的结果固定使用本地媒体 Provider，即使平台默认配置为七牛也不会上传七牛。第一版模板预览优先尝试导入时审计保存的 `sourceUrl`，失败回退已导入的本地预览；运行时不请求 Roomi API。旧 AI 执行权限键兼容解析为 `ai-scenarios`，角色配置只展示一个“AI 设计”，不会扩大 B2B 渠道 `salesperson` 的数据边界。后台与小程序共用企业 AI 点数和 `AiWorkflow`；`/api/ai/workflow-leads` 已从 PostgreSQL 读取线索、正式户型和活动方案摘要，工作流创建、阶段执行、生成持久化及其媒体写入仍待统一 bigint 切换。带客户/正式户型上下文的小程序参考复刻、整体换风格、户型概念图和软装深化分别映射到后台基准、彩平转透视和软装阶段。`MediaAsset` 持久化图片宽高，旧资产首次复用时从存储文件补写；所有媒体写入、读取、删除和可选签名跳转统一经过注册的 `MediaStorageProvider`。每条资产保存自身 Provider、可移植对象键、可选 Bucket 和 SHA-256，因此本地与七牛/后续对象存储资产可并存，后台和小程序资产 URL 不变。内置 `local` Provider 把路径限制在 `AI_ASSET_STORAGE_DIR` 内，生产 Docker 使用持久化卷挂载该目录；七牛 Kodo Provider 使用私有 Bucket 和短期签名下载，上传失败直接返回错误，不会静默回退本地。小程序按图片尺寸映射供应商支持的输出规格：参考复刻跟随参考图比例；选择正式户型范围时，服务端把所选完整户型或隔离后的单房间控制图作为第一张墙体/门窗结构输入，把参考图作为第二张镜头、画幅、构图和风格输入，不再要求额外空间照片；未选户型时仍兼容“参考图第一、空间图第二”。换风格/软装跟随空间图，完整户型保持方图，单房间默认横图。基准/软装阶段首个成功版本自动采用并推进，同阶段后续成功版本只成为候选，须手动采用才推进；同方案同阶段存在活动任务时拒绝重复冻结和上游提交。成功基准可继续提案/灯光。后台向导只展示包含闭合房间的已完成 v4 正式户型，创建和执行时还会再次拒绝草稿、旧版或失效户型 ID。正式户型驱动的选风格、基准和彩平转透视阶段会派生独立 1024px 控制图 `MediaAsset`；选风格固定使用 `image.edit.standard`，并把该控制图或用户上传来源图放入供应商 `images`，提示词同时加入只读的房间、墙体拓扑、尺寸、层高、门窗约束，且不修改 `FloorPlan.layoutData`。任务创建冻结、正式结果持久化后扣费、明确失败释放；平台 `super_admin`/`admin` 可管理供应商、轮换凭证、测试/同步模型、查询 GRS API Key 上游积分余额、执行对账、发放/调整点数、配置业务动作价格及企业允许功能/`standard` 逻辑档位，企业员工只消费。GRS 连通测试使用积分余额接口同时校验 Host 与 API Key；其节点不支持 `/v1/models` 时，模型同步保留并返回后台配置的模型映射。业务层使用逻辑模型键和 `AiExecutionService`；GRS 图片按当前文档向 `POST /v1/api/generate` 提交 `replyType: "async"`，标准 `gpt-image-2` 使用文档比例，VIP 在来源像素满足约束时沿用原尺寸，否则选择文档中的合法回退尺寸，并通过 `GET /v1/api/result?id=...` 轮询，`violation`/`failed` 均按已退款失败处理。小程序任务详情与历史读取会对可见生成中任务强制执行这次上游状态查询；即使已退款失败耗尽备用供应商，也会返回数据库中的最终失败状态，而不是用 500 遮蔽。临时结果必须先保存到 `MediaAsset`。仅连接失败、明确未受理或已确认退款时切备用；已有远端任务 ID 的已受理/未知状态任务继续冻结并轮询，不会创建第二个上游任务；提交响应没有远端任务 ID 时按不可追踪失败终止，不自动切备用供应商，释放冻结点数并允许运营核实后人工重试，避免永久停留在 `processing`。重试会按当前动作价格重新生成计费快照，并兼容没有历史 `priceSnapshot` 的旧任务。上游成本和余额与企业 AI 点数分账记录：企业购买平台点数，运营方按资金池预警批量补充供应商余额，不做逐笔充值联动。上游成本按原币种微单位单独记录，不改变业务点数价格。供应商页的能力与逻辑/远程模型字段用于路由；成本币种和预计成本只用于内部核算，可为 0 且不发送给供应商。`Limited`：其他适配器的余额/模型发现取决于供应商协议，首期不接微信/自助充值和低余额自动告警；生产本地媒体必须使用持久共享目录，七牛必须使用私有 Bucket、HTTPS 下载域名、服务端加密凭证并先通过完整读写删探针。
-- 当前迁移覆盖声明：上述“工作流创建待统一 bigint 切换”的历史说明已失效；公开 PostgreSQL bigint 工作流列表、创建、详情、状态变更、全部场景阶段执行、正式户型控制图、供应商输入媒体物化及 `lighting` 视觉分析/提示词编译均已启用。仅 `mock-generation` 等价实现仍待迁移。
+- 当前迁移覆盖声明：上述“工作流创建待统一 bigint 切换”的历史说明已失效；公开 PostgreSQL bigint 工作流列表、创建、详情、状态变更、全部场景阶段执行、手动 `mock-generation` 结果持久化、正式户型控制图、供应商输入媒体物化及 `lighting` 视觉分析/提示词编译均已启用。
 - GRSAI 现行模型目录：版本化目录按 2026-06-29 协议内置 `gpt-image-2`、`gpt-image-2-vip` 和 11 个 Nano Banana 模型。平台 `super_admin`/`admin` 在 `/ai-providers` 启停模型、指定唯一默认模型并设置 0–10 张参考图上限；供应商同步发现但没有参数能力定义的模型只读展示且不可执行。自由创作台只显示“模型已启用且至少一个分辨率价格已启用”的模型，提供模型/比例/分辨率联动，不再显示通用质量控件；VIP 使用官方像素预设矩阵或经过边长、16 倍数、长短边比与总像素校验的 `CUSTOM` 宽高。
 - GRSAI 现行协议与路由：同步结果与完整内置目录合并，`/v1/models` 不可用时仍返回完整目录。请求固定 `replyType: "async"`，不发送文档未定义的 `quality`、`output_format`；Nano 使用 `aspectRatio + imageSize`。自由创作显式模型只在 GRS 配置之间故障转移，并始终保持同一远程模型，不会静默换模型。供应商内部成本可按远程模型和分辨率匹配并写入 `AiProviderAttempt`。
 - 自由创作模型点数：`AiModelCreditPrice` 按 `image.free_create + modelProfileKey + resolutionTier` 唯一定价，VIP 自定义尺寸统一使用 `CUSTOM`。批次估算、冻结、成功扣除、失败释放和重试快照保存模型、远程模型及分辨率；客户工作流与小程序继续使用平台场景默认逻辑模型和原业务动作点数。

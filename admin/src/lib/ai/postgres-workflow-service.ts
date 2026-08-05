@@ -30,6 +30,12 @@ import { getAiCreditPrice } from '@/lib/ai/credits';
 import { resolvePostgresScenarioProviderImage } from '@/lib/ai/postgres-creation-runtime';
 import { executePostgresWorkflowChat } from '@/lib/ai/postgres-workflow-chat';
 import type { AiChatMessage } from '@/lib/ai/provider-types';
+import { parseImageDataUri } from '@/lib/ai/media-assets';
+import {
+  getPostgresAssetIdFromImageUrl,
+  getPostgresMediaAssetImageUrl,
+  storePostgresMediaBuffer,
+} from '@/lib/ai/postgres-media-assets';
 
 export type CreatePostgresWorkflowInput = {
   enterpriseId: string | bigint;
@@ -58,6 +64,18 @@ export type PreparePostgresWorkflowStageInput = {
   stageKey: AiWorkflowStageKey;
   presetKey?: string;
   styleReferenceImage?: string;
+};
+
+export type CreatePostgresWorkflowManualGenerationInput = {
+  enterpriseId: string | bigint;
+  operatorId: string | bigint;
+  workflowId: string | bigint;
+  stageKey: AiWorkflowStageKey;
+  imageUrl: string;
+  parentGenerationId?: string | bigint;
+  sourceAssetRole?: string;
+  styleReferenceImage?: string;
+  nextStageKey?: AiWorkflowStageKey;
 };
 
 export type ListPostgresWorkflowsInput = {
@@ -139,6 +157,49 @@ function parseLightingPrompt(value: string, fallbackNegativePrompt?: string) {
     prompt: 'A professional interior design presentation board showing a night scene rendering of a high-end interior, lighting concept, color temperature analysis, and a structured lighting equipment list. High-end architectural portfolio layout, photorealistic, 8k.',
     negativePrompt: fallbackNegativePrompt || 'ugly, blurry, low quality',
   };
+}
+
+async function persistPostgresManualGenerationImage(input: {
+  enterpriseId: bigint;
+  imageUrl: string;
+}) {
+  const imageUrl = input.imageUrl.trim();
+  const assetId = getPostgresAssetIdFromImageUrl(imageUrl);
+  if (assetId) return getPostgresMediaAssetImageUrl(assetId);
+
+  if (imageUrl.startsWith('data:image')) {
+    const parsed = parseImageDataUri(imageUrl);
+    return (await storePostgresMediaBuffer({
+      enterpriseId: input.enterpriseId,
+      ownerType: 'ai_generation_output',
+      mimeType: parsed.mimeType,
+      buffer: parsed.buffer,
+      storageProviderKey: 'local',
+    })).imageUrl;
+  }
+
+  if (!/^https?:\/\//i.test(imageUrl)) {
+    throw Object.assign(new Error('Manual generation image must be a PostgreSQL asset URL, image data URI, or HTTP(S) URL'), {
+      status: 400,
+    });
+  }
+
+  const response = await fetch(imageUrl, { cache: 'no-store' });
+  if (!response.ok) {
+    throw Object.assign(new Error(`Failed to persist manual generation image (${response.status})`), { status: 400 });
+  }
+  const mimeType = response.headers.get('content-type')?.split(';')[0] || 'image/png';
+  if (!mimeType.startsWith('image/')) {
+    throw Object.assign(new Error('Manual generation URL did not return an image'), { status: 400 });
+  }
+  return (await storePostgresMediaBuffer({
+    enterpriseId: input.enterpriseId,
+    ownerType: 'ai_generation_output',
+    mimeType,
+    buffer: Buffer.from(await response.arrayBuffer()),
+    originalUrl: imageUrl,
+    storageProviderKey: 'local',
+  })).imageUrl;
 }
 
 /**
@@ -395,6 +456,81 @@ export async function updatePostgresAiWorkflowState(input: UpdatePostgresWorkflo
     const workflow = await workflows.updateActive(workflowId, values);
     if (!workflow) throw notFound('方案会话不存在或无权访问');
     return { workflow };
+  });
+}
+
+/**
+ * Persists the existing manual/mock workflow result as a bigint scenario
+ * generation. It intentionally bypasses provider submission and credit billing.
+ */
+export async function createPostgresAiWorkflowManualGeneration(
+  input: CreatePostgresWorkflowManualGenerationInput
+) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const operatorId = parsePostgresId(input.operatorId, 'operatorId');
+  const workflowId = parsePostgresId(input.workflowId, 'workflowId');
+  const parentGenerationId = input.parentGenerationId
+    ? parsePostgresId(input.parentGenerationId, 'parentGenerationId')
+    : null;
+  const outputImageUrl = await persistPostgresManualGenerationImage({
+    enterpriseId,
+    imageUrl: input.imageUrl,
+  });
+  const assetId = getPostgresAssetIdFromImageUrl(outputImageUrl);
+  if (!assetId) throw new Error('Manual generation output asset was not persisted');
+
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const workflows = new AiWorkflowRepository(transaction);
+    const workflow = await workflows.findById(workflowId);
+    if (!workflow) throw notFound('方案会话不存在或无权访问');
+    const lead = await new LeadRepository(transaction).findById(workflow.leadId);
+    if (!lead) throw notFound('客户线索不存在或无权访问');
+
+    const creations = new AiCreationRepository(transaction);
+    const asset = await creations.findMediaAssetForUpdate(assetId);
+    if (!asset) throw notFound('手动上传图片不存在或无权访问');
+    if (asset.ownerId) {
+      throw Object.assign(new Error('Manual generation image is already owned by another record'), { status: 409 });
+    }
+    if (parentGenerationId) {
+      const parent = await creations.findGeneration(parentGenerationId);
+      if (!parent || parent.workflowId !== workflow.id) {
+        throw notFound('上一步产物不存在或不属于当前方案会话');
+      }
+    }
+
+    const generation = await creations.createGeneration({
+      enterpriseId,
+      operatorId,
+      leadId: lead.id,
+      workflowId: workflow.id,
+      floorPlanId: workflow.sourceFloorPlanId,
+      parentGenerationId,
+      type: 'scenario',
+      channel: 'admin',
+      stageKey: input.stageKey,
+      sourceAssetRole: input.sourceAssetRole || workflow.sourceAssetRole,
+      status: 'succeeded',
+      input: {
+        style: 'mock',
+        customPrompt: 'Manual uploaded image (AI generation skipped)',
+        styleReferenceImage: input.styleReferenceImage?.trim() || undefined,
+      },
+      output: {
+        imageUrl: outputImageUrl,
+        promptUsed: 'Manual uploaded test image',
+      },
+      provider: 'manual_upload',
+      billing: { price: 0, status: 'consumed' },
+    });
+    await creations.updateMediaAsset(asset.id, {
+      ownerType: 'ai_generation_output',
+      ownerId: generation.id,
+    });
+    if (input.nextStageKey) {
+      await workflows.update(workflow.id, { currentStageKey: input.nextStageKey });
+    }
+    return generation;
   });
 }
 

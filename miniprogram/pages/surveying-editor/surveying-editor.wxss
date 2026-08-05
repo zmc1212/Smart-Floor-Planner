@@ -2073,6 +2073,31 @@ page,
   color: #202421;
 }
 
+.topbar-chip.guide-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  color: #657168;
+}
+
+.topbar-chip.guide-trigger.active {
+  color: #10a945;
+  font-weight: 700;
+}
+
+.guide-mode-dot {
+  width: 10rpx;
+  height: 10rpx;
+  border: 2rpx solid currentColor;
+  border-radius: 50%;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.topbar-chip.guide-trigger.active .guide-mode-dot {
+  background: currentColor;
+}
+
 .topbar-chip.finish {
   color: #10b94a;
 }
@@ -2261,141 +2286,99 @@ page,
   display: none;
 }
 
-.survey-onboarding {
+.survey-guide-card {
   position: fixed;
-  left: 50%;
   z-index: 28;
-  width: 608rpx;
-  transform: translateX(-50%);
-  pointer-events: auto;
-}
-
-.onboarding-card {
-  position: relative;
-  z-index: 1;
-  overflow: hidden;
-  padding: 22rpx 24rpx 18rpx;
-  border: 1rpx solid rgba(16, 185, 74, 0.18);
-  border-radius: 20rpx;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 14rpx 34rpx rgba(15, 35, 23, 0.14);
-  box-sizing: border-box;
-}
-
-.onboarding-head,
-.onboarding-main,
-.onboarding-actions {
   display: flex;
   align-items: center;
+  min-height: 92rpx;
+  padding: 18rpx 20rpx;
+  border-radius: 16rpx;
+  background: #159447;
+  box-shadow: 0 12rpx 28rpx rgba(10, 89, 42, 0.24);
+  box-sizing: border-box;
+  pointer-events: none;
 }
 
-.onboarding-head {
-  justify-content: space-between;
+.survey-guide-pointer {
+  position: absolute;
+  width: 0;
+  height: 0;
+  margin-left: -12rpx;
+  border-left: 12rpx solid transparent;
+  border-right: 12rpx solid transparent;
 }
 
-.onboarding-kicker,
-.onboarding-progress {
-  font-size: 20rpx;
-  line-height: 28rpx;
+.survey-guide-pointer.down {
+  bottom: -14rpx;
+  border-top: 16rpx solid #159447;
 }
 
-.onboarding-kicker {
-  color: #10a945;
-  font-weight: 700;
+.survey-guide-pointer.up {
+  top: -14rpx;
+  border-bottom: 16rpx solid #159447;
 }
 
-.onboarding-progress {
-  color: #7d8580;
-}
-
-.onboarding-main {
-  min-height: 94rpx;
-  margin-top: 12rpx;
-}
-
-.onboarding-k {
-  width: 118rpx;
-  height: 94rpx;
+.survey-guide-k {
+  width: 100rpx;
+  height: 100rpx;
   margin-right: 14rpx;
   flex-shrink: 0;
 }
 
-.onboarding-copy-group {
+.survey-guide-copy-group {
   min-width: 0;
   flex: 1;
 }
 
-.onboarding-title {
-  color: #1c2320;
+.survey-guide-kicker {
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 20rpx;
+  font-weight: 600;
+  line-height: 26rpx;
+}
+
+.survey-guide-title {
+  margin-top: 2rpx;
+  color: #ffffff;
   font-size: 28rpx;
   font-weight: 700;
-  line-height: 38rpx;
+  line-height: 36rpx;
 }
 
-.onboarding-copy {
+.survey-guide-body {
   margin-top: 4rpx;
-  color: #69716c;
-  font-size: 22rpx;
-  line-height: 32rpx;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 24rpx;
+  line-height: 34rpx;
+  white-space: normal;
 }
 
-.onboarding-actions {
-  justify-content: flex-end;
-  gap: 24rpx;
-  margin-top: 14rpx;
+.survey-guide-body-line {
+  display: block;
+  width: 100%;
+  min-height: 34rpx;
+  white-space: nowrap;
 }
 
-.onboarding-skip,
-.onboarding-next {
-  height: 52rpx;
-  padding: 0 22rpx;
-  font-size: 22rpx;
-  font-weight: 600;
-  line-height: 52rpx;
-  text-align: center;
-  box-sizing: border-box;
+.guide-target-control {
+  box-shadow: 0 10rpx 24rpx rgba(10, 89, 42, 0.28);
+  animation: surveying-guide-control 1.6s ease-in-out infinite;
 }
 
-.onboarding-skip {
-  color: #7d8580;
+@keyframes surveying-guide-control {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.76;
+  }
 }
 
-.onboarding-next {
-  min-width: 136rpx;
-  border-radius: 12rpx;
-  color: #ffffff;
-  background: #10b94a;
-}
-
-.onboarding-focus {
-  position: fixed;
-  z-index: 0;
-  border: 3rpx solid rgba(16, 185, 74, 0.78);
-  border-radius: 20rpx;
-  box-shadow: 0 0 0 8rpx rgba(16, 185, 74, 0.1);
-  pointer-events: none;
-  box-sizing: border-box;
-}
-
-.survey-onboarding.cursor .onboarding-focus {
-  left: calc(50% - 56rpx);
-  bottom: calc(28rpx + env(safe-area-inset-bottom));
-  width: 112rpx;
-  height: 78rpx;
-}
-
-.survey-onboarding.straight .onboarding-focus {
-  right: 18rpx;
-  top: 176rpx;
-  width: 98rpx;
-  height: 108rpx;
-}
-
-.survey-onboarding.measure .onboarding-focus {
-  left: calc(50% + 76rpx);
-  bottom: calc(28rpx + env(safe-area-inset-bottom));
-  width: 178rpx;
-  height: 78rpx;
+@media (prefers-reduced-motion: reduce) {
+  .guide-target-control {
+    animation: none;
+  }
 }
 
 /* ════════════════════════════════════════

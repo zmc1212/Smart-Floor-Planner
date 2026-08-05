@@ -1,21 +1,28 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { EnterpriseAiUsageSnapshotRepository } from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { EnterpriseAiUsageSnapshot } from '@/models/EnterpriseAiUsageSnapshot';
-import { summarizeDailyUsage } from '@/lib/ai/enterprise-ai';
+import {
+  serializeEnterpriseAiUsageSnapshot,
+  summarizeEnterpriseAiDailyUsage,
+} from '@/lib/ai/enterprise-ai-usage';
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await dbConnect();
-
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
       const { searchParams } = new URL(request.url);
       const days = Math.max(1, Math.min(Number(searchParams.get('days') || '30'), 90));
       const { id } = await params;
-      const snapshot = await EnterpriseAiUsageSnapshot.findOne({ enterpriseId: id }).lean();
+      const enterpriseId = parsePostgresId(id, 'enterpriseId');
+      const snapshot = serializeEnterpriseAiUsageSnapshot(
+        await withPlatformTransaction((transaction) =>
+          new EnterpriseAiUsageSnapshotRepository(transaction).findByEnterpriseId(enterpriseId)
+        )
+      );
 
       return NextResponse.json({
         success: true,
@@ -28,7 +35,7 @@ export async function GET(
           dailyUsage: (snapshot?.dailyUsage || [])
             .sort((a, b) => b.date.localeCompare(a.date))
             .slice(0, days * 8),
-          summary: summarizeDailyUsage(snapshot?.dailyUsage || []),
+          summary: summarizeEnterpriseAiDailyUsage(snapshot?.dailyUsage || []),
         },
       });
     });

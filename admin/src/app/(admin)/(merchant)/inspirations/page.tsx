@@ -268,6 +268,7 @@ export default function InspirationsPage() {
         ]}
       >
         <ProTable<Inspiration>
+          className="admin-data-table admin-mobile-filter-stack"
           actionRef={actionRef}
           columns={columns}
           pagination={{ defaultPageSize: 10, showSizeChanger: true }}

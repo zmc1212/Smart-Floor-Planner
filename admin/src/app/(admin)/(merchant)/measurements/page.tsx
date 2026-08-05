@@ -229,7 +229,7 @@ export default function MeasurementsPage() {
         content="查看正式户型的独立测量审计事件，最多展示符合条件的 100 条记录。"
       >
         <ProTable<MeasurementItem>
-          className="admin-mobile-filter-stack"
+          className="admin-data-table admin-mobile-filter-stack"
           actionRef={actionRef}
           rowKey="_id"
           columns={columns}

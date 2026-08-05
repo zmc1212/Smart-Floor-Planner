@@ -9,6 +9,7 @@ import type { AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
 import { serializeAiGeneration, serializeAiWorkflow } from '@/lib/ai/workflow-utils';
 import { persistImageReference, updateMediaAssetOwner } from '@/lib/ai/media-assets';
 import {
+  createPostgresAiWorkflowManualGeneration,
   getPostgresAiWorkflowContext,
   updatePostgresAiWorkflowState,
 } from '@/lib/ai/postgres-workflow-service';
@@ -35,8 +36,10 @@ interface WorkflowPatchBody {
   styleReferenceImage?: string;
 }
 
+const POSTGRES_BIGINT_MAX = BigInt('9223372036854775807');
+
 function isPostgresWorkflowId(value: string) {
-  return /^[1-9]\d{0,18}$/.test(value) && BigInt(value) <= 9223372036854775807n;
+  return /^[1-9]\d{0,18}$/.test(value) && BigInt(value) <= POSTGRES_BIGINT_MAX;
 }
 
 async function getWorkflowWithLead(workflowId: string) {
@@ -131,21 +134,36 @@ export async function PATCH(
       const { id } = await params;
       const body = (await req.json()) as WorkflowPatchBody;
       if (isPostgresWorkflowId(id)) {
-        if (body.action !== 'rename' && body.action !== 'set-stage' && body.action !== 'select-generation') {
+        if (body.action === 'mock-generation') {
+          if (!body.stageKey || !body.imageUrl) {
+            return NextResponse.json({ success: false, error: 'Missing stageKey or imageUrl' }, { status: 400 });
+          }
+          await createPostgresAiWorkflowManualGeneration({
+            enterpriseId: context.enterpriseId!,
+            operatorId: context.userId,
+            workflowId: id,
+            stageKey: body.stageKey,
+            imageUrl: body.imageUrl,
+            parentGenerationId: body.parentGenerationId,
+            sourceAssetRole: body.sourceAssetRole,
+            styleReferenceImage: body.styleReferenceImage,
+            nextStageKey: body.nextStageKey,
+          });
+        } else if (body.action === 'rename' || body.action === 'set-stage' || body.action === 'select-generation') {
+          await updatePostgresAiWorkflowState({
+            enterpriseId: context.enterpriseId!,
+            workflowId: id,
+            action: body.action,
+            title: body.title,
+            stageKey: body.stageKey,
+            generationId: body.generationId,
+          });
+        } else {
           return NextResponse.json(
             { success: false, error: 'Unsupported action for PostgreSQL workflow' },
             { status: 400 }
           );
         }
-
-        await updatePostgresAiWorkflowState({
-          enterpriseId: context.enterpriseId!,
-          workflowId: id,
-          action: body.action,
-          title: body.title,
-          stageKey: body.stageKey,
-          generationId: body.generationId,
-        });
         const workflowContext = await getPostgresAiWorkflowContext({
           enterpriseId: context.enterpriseId!,
           workflowId: id,

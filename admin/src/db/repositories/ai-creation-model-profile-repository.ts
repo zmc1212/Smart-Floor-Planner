@@ -1,4 +1,4 @@
-import { and, asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { aiCreationModelProfiles } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
 
@@ -54,6 +54,19 @@ export class AiCreationModelProfileRepository {
       .where(eq(aiCreationModelProfiles.key, key))
       .limit(1);
     return rows[0] ?? null;
+  }
+
+  async findCatalogProfilesByIds(ids: bigint[]) {
+    if (!ids.length) return [];
+    return this.transaction
+      .select()
+      .from(aiCreationModelProfiles)
+      .where(
+        and(
+          eq(aiCreationModelProfiles.sourceType, 'grs_catalog'),
+          inArray(aiCreationModelProfiles.id, ids)
+        )
+      );
   }
 
   async findEnabledCatalogProfile(id: bigint) {
@@ -136,5 +149,44 @@ export class AiCreationModelProfileRepository {
       .where(eq(aiCreationModelProfiles.id, id))
       .returning();
     return rows[0] ?? null;
+  }
+
+  async updateCatalogSettings(input: {
+    id: bigint;
+    enabled: boolean;
+    isDefault: boolean;
+    maxReferenceImages: number;
+  }) {
+    const profile = await this.findById(input.id);
+    if (!profile || profile.sourceType !== 'grs_catalog') return null;
+
+    const capabilities = {
+      ...(profile.capabilities || {}),
+      supportsReferenceImages: input.maxReferenceImages > 0,
+      maxReferenceImages: input.maxReferenceImages,
+    };
+    const rows = await this.transaction
+      .update(aiCreationModelProfiles)
+      .set({
+        enabled: input.enabled,
+        isDefault: input.isDefault,
+        capabilities,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(aiCreationModelProfiles.id, input.id),
+          eq(aiCreationModelProfiles.sourceType, 'grs_catalog')
+        )
+      )
+      .returning();
+    return rows[0] ?? null;
+  }
+
+  async clearCatalogDefaults() {
+    await this.transaction
+      .update(aiCreationModelProfiles)
+      .set({ isDefault: false, updatedAt: new Date() })
+      .where(eq(aiCreationModelProfiles.sourceType, 'grs_catalog'));
   }
 }

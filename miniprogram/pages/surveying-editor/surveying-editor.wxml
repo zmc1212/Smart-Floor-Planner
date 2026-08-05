@@ -46,7 +46,7 @@
 
     <cover-view
       wx:if="{{closeActionVisible}}"
-      class="closure-action"
+      class="closure-action {{surveyGuideTarget === 'close' ? 'guide-target-control' : ''}}"
       style="{{closeActionStyle}}"
       catchtap="onConfirmClose"
     >
@@ -54,7 +54,7 @@
     </cover-view>
 
     <!-- 选中墙体时的浮动工具栏（图标行） -->
-    <cover-view wx:if="{{selectedWall && !selectedOpening}}" class="wall-object-toolbar" style="{{selectedWall.actionStyle}}">
+    <cover-view wx:if="{{selectedWall && !selectedOpening}}" class="wall-object-toolbar {{surveyGuideTarget === 'object' ? 'guide-target-control' : ''}}" style="{{selectedWall.actionStyle}}">
       <cover-view class="wall-object-action primary" data-action="door" aria-label="添加门" bindtap="onWallContextAction">
         <cover-image class="wall-action-image" src="/images/surveying-icons/wall-toolbar/door.png" mode="aspectFit"></cover-image>
         <cover-view class="wall-action-label">添门</cover-view>
@@ -92,6 +92,14 @@
       <cover-view class="page-subtitle"><cover-view class="save-status-dot"></cover-view>{{formalNotice}}</cover-view>
     </cover-view>
     <cover-view class="topbar-right">
+      <cover-view
+        class="topbar-chip guide-trigger {{guideEnabled ? 'active' : ''}}"
+        bindtap="onGuideToggle"
+        aria-label="{{guideEnabled ? '关闭引导模式' : '开启引导模式'}}"
+      >
+        <cover-view class="guide-mode-dot"></cover-view>
+        <cover-view>引导</cover-view>
+      </cover-view>
       <cover-view class="topbar-chip save-draft" bindtap="onSaveDraft">
         <cover-view>保存</cover-view>
       </cover-view>
@@ -174,13 +182,13 @@
       <cover-image src="/images/surveying-icons/history-redo.png" mode="aspectFit"></cover-image>
       <cover-view>重做</cover-view>
     </cover-view>
-    <cover-view wx:if="{{cursorPlacementState === 'placed'}}" class="dock-action cursor-action" bindtap="onResetCursorTap">
+    <cover-view wx:if="{{cursorPlacementState === 'placed'}}" class="dock-action cursor-action {{surveyGuideTarget === 'dock-cursor' ? 'guide-target-control' : ''}}" bindtap="onResetCursorTap">
       <cover-image src="/images/surveying-icons/cursor-compass.png" mode="aspectFit"></cover-image>
       <cover-view>重置光标</cover-view>
     </cover-view>
     <cover-view
       wx:else
-      class="dock-action cursor-action {{cursorPlacementState === 'dragging' ? 'is-dragging' : ''}}"
+      class="dock-action cursor-action {{cursorPlacementState === 'dragging' ? 'is-dragging' : ''}} {{surveyGuideTarget === 'dock-cursor' ? 'guide-target-control' : ''}}"
       data-cursor-control="true"
       bindtouchstart="onCursorControlTouchStart"
       catchtouchmove="onCursorControlTouchMove"
@@ -190,30 +198,41 @@
       <cover-image src="/images/surveying-icons/cursor-compass.png" mode="aspectFit"></cover-image>
       <cover-view>拖动光标</cover-view>
     </cover-view>
-    <cover-view class="dock-measure {{bleConnected ? '' : 'disconnected'}}" bindtap="onBottomMeasure">
+    <cover-view class="dock-measure {{bleConnected ? '' : 'disconnected'}} {{surveyGuideTarget === 'measure' ? 'guide-target-control' : ''}}" bindtap="onBottomMeasure">
       <cover-image class="dock-bluetooth" src="/images/surveying-icons/angle/bluetooth.png" mode="aspectFit"></cover-image>
       <cover-view>测距</cover-view>
       <cover-view class="dock-status-dot"></cover-view>
     </cover-view>
   </cover-view>
 
-  <cover-view wx:if="{{showOnboarding && !numberPadVisible}}" class="survey-onboarding {{onboardingTarget}}" style="bottom: calc(152rpx + {{bottomSafeArea}}px);">
-    <cover-view class="onboarding-focus"></cover-view>
-    <cover-view class="onboarding-card">
-      <cover-view class="onboarding-head">
-        <cover-view class="onboarding-kicker">新手引导</cover-view>
-        <cover-view class="onboarding-progress">{{onboardingProgress}}</cover-view>
+  <cover-view
+    wx:if="{{surveyGuideVisible}}"
+    class="survey-guide-card target-{{surveyGuideTarget}} state-{{surveyGuideKey}}"
+    style="{{surveyGuideCardStyle}}"
+  >
+    <cover-view
+      class="survey-guide-pointer {{surveyGuidePointerDirection}}"
+      style="{{surveyGuidePointerStyle}}"
+    ></cover-view>
+    <cover-image
+      wx:if="{{surveyGuideShowCharacter}}"
+      class="survey-guide-k"
+      src="/images/surveying-guide-k.png"
+      mode="aspectFit"
+    ></cover-image>
+    <cover-view class="survey-guide-copy-group {{surveyGuideShowCharacter ? 'with-character' : ''}}">
+      <cover-view class="survey-guide-kicker">量房引导</cover-view>
+      <cover-view class="survey-guide-title">{{surveyGuideTitle}}</cover-view>
+      <cover-view wx:if="{{surveyGuideDynamicCursorLabel}}" class="survey-guide-body">
+        <cover-view class="survey-guide-body-line">{{cursorLensSnapLabel}}</cover-view>
+        <cover-view class="survey-guide-body-line">松手确定下一空间起点。</cover-view>
       </cover-view>
-      <cover-view class="onboarding-main">
-        <cover-image wx:if="{{onboardingStep === 0}}" class="onboarding-k" src="/images/surveying-onboarding-k.png" mode="aspectFit"></cover-image>
-        <cover-view class="onboarding-copy-group">
-          <cover-view class="onboarding-title">{{onboardingTitle}}</cover-view>
-          <cover-view class="onboarding-copy">{{onboardingCopy}}</cover-view>
-        </cover-view>
-      </cover-view>
-      <cover-view class="onboarding-actions">
-        <cover-view class="onboarding-skip" bindtap="onOnboardingSkip">跳过</cover-view>
-        <cover-view class="onboarding-next" bindtap="onOnboardingNext">{{onboardingActionLabel}}</cover-view>
+      <cover-view wx:else class="survey-guide-body">
+        <cover-view
+          class="survey-guide-body-line"
+          wx:for="{{surveyGuideBodyLines}}"
+          wx:key="*this"
+        >{{item}}</cover-view>
       </cover-view>
     </cover-view>
   </cover-view>

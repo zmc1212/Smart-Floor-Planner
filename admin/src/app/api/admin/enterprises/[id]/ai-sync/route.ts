@@ -1,14 +1,20 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { EnterpriseAiUsageSnapshotRepository } from '@/db/repositories';
+import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { EnterpriseAiUsageSnapshot } from '@/models/EnterpriseAiUsageSnapshot';
+import { serializeEnterpriseAiUsageSnapshot } from '@/lib/ai/enterprise-ai-usage';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await dbConnect();
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
       const { id } = await params;
-      const snapshot = await EnterpriseAiUsageSnapshot.findOne({ enterpriseId: id }).lean();
+      const enterpriseId = parsePostgresId(id, 'enterpriseId');
+      const snapshot = serializeEnterpriseAiUsageSnapshot(
+        await withPlatformTransaction((transaction) =>
+          new EnterpriseAiUsageSnapshotRepository(transaction).findByEnterpriseId(enterpriseId)
+        )
+      );
       return NextResponse.json({ success: true, deprecated: true, data: snapshot });
     });
   } catch (error) {

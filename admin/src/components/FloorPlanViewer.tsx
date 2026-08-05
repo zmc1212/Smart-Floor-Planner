@@ -945,16 +945,16 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
   const roomDetailSize = Math.max(54, Math.min(86, drawingScale / 56));
 
   return (
-    <div className="flex h-screen flex-col bg-[#f8f8f8] text-neutral-950">
-      <div className="z-20 flex items-center justify-between border-b border-neutral-200 bg-white px-6 py-4">
+    <div className="flex h-screen flex-col bg-background text-foreground">
+      <div className="z-20 flex items-center justify-between border-b bg-card px-5 py-3 sm:px-6">
         <div className="flex items-center gap-4">
           <BackButton fallbackPath={planData?.creator?.openid ? `/users/${planData.creator.openid}` : "/leads"} />
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-bold tracking-tight">{planData?.name || '测量户型图'}</h2>
-              <span className="rounded-md bg-orange-50 px-2 py-1 text-[11px] font-bold text-orange-700">正式测量</span>
+              <span className="rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary">正式测量</span>
             </div>
-            <p className="mt-1 text-xs text-neutral-500">
+            <p className="mt-1 text-xs text-muted-foreground">
               {planData.lead?.name ? `客户: ${planData.lead.name} · ` : ''}
               与小程序测量画布一致的只读平面展示
             </p>
@@ -967,16 +967,16 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
             ['门窗', stats.openings],
             ['节点', stats.nodes],
           ].map(([label, value]) => (
-            <div key={label} className="min-w-16 rounded-lg bg-neutral-100 px-3 py-2">
-              <div className="text-base font-black">{value}</div>
-              <div className="text-[10px] font-bold text-neutral-500">{label}</div>
+            <div key={label} className="min-w-16 rounded-md bg-muted px-3 py-2">
+              <div className="text-base font-semibold">{value}</div>
+              <div className="text-xs font-medium text-muted-foreground">{label}</div>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="relative flex-1 overflow-hidden p-6">
-        <div className="h-full overflow-hidden rounded-2xl bg-[#f8f8f8] shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_24px_60px_rgba(15,23,42,0.08)]">
+      <div className="relative flex-1 overflow-hidden p-4 sm:p-6">
+        <div className="h-full overflow-hidden rounded-lg border bg-card shadow-sm">
           <svg className="h-full w-full" viewBox={viewBox} role="img" aria-label="测量户型图">
             <defs>
               <pattern id="survey-grid-minor" width="500" height="500" patternUnits="userSpaceOnUse">
@@ -1215,15 +1215,15 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
   }
 
   return (
-    <div className="flex flex-col h-screen bg-[#f1f1f1]">
+    <div className="flex h-screen flex-col bg-background">
       {/* Header */}
-      <div className="bg-white/90 backdrop-blur-md px-6 py-4 border-b border-gray-200 flex justify-between items-center z-50">
+      <div className="z-50 flex items-center justify-between border-b bg-card px-5 py-3 sm:px-6">
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-4">
             <BackButton fallbackPath={planData?.creator?.openid ? `/users/${planData.creator.openid}` : "/"} />
             <div>
               <h2 className="text-lg font-bold tracking-tight">{planData?.name || '户型详情'}</h2>
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-muted-foreground">
                  {lead?.name ? `客户: ${lead.name} · ` : ''}
                  {planData?.externalSource?.communityName || planData?.creator?.communityName || '私有户型'}
                  {' · '}
@@ -1233,15 +1233,15 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
           </div>
           
           {allRooms.length > 1 && (
-            <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-lg">
+            <div className="flex items-center gap-1 rounded-md bg-muted p-1">
               {allRooms.map((room) => (
                 <button
                   key={room.id}
                   onClick={() => setSelectedRoomId(room.id)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  className={`rounded-sm px-3 py-1.5 text-xs font-medium transition-colors ${
                     activeRoomId === room.id 
-                      ? 'bg-white text-gray-900 shadow-sm' 
-                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200'
+                      ? 'bg-card text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:bg-background hover:text-foreground'
                   }`}
                 >
                   {room.name || '未命名房间'}
@@ -1259,16 +1259,16 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
                   <Button 
                     variant="ghost" 
                     disabled={isGenerating}
-                    className="rounded-xl flex items-center gap-2 h-10 px-4 bg-purple-50 text-purple-700 hover:bg-purple-100 transition-all font-bold text-xs"
+                    className="flex h-9 items-center gap-2 px-3 text-xs font-medium"
                   >
                     {isGenerating ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />}
                     {isGenerating ? 'AI 设计中...' : 'AI 风格生成'}
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="max-w-md rounded-[32px] p-0 overflow-hidden border-none shadow-2xl">
-                  <DialogHeader className="p-8 pb-6 bg-muted/20 border-b">
-                    <DialogTitle className="text-xl font-bold flex items-center gap-2">
-                      <Sparkles className="text-purple-500" size={20} />
+                <DialogContent className="max-w-md overflow-hidden rounded-lg p-0">
+                  <DialogHeader className="border-b bg-muted/30 p-6 pb-5">
+                    <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
+                      <Sparkles className="text-primary" size={20} />
                       AI 智能风格预览
                     </DialogTitle>
                     <DialogDescription>
@@ -1276,7 +1276,7 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
                     </DialogDescription>
                   </DialogHeader>
                   
-                  <div className="p-8 space-y-6">
+                  <div className="space-y-5 p-6">
                     <div className="space-y-3">
                       <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">目标设计风格</Label>
                       <div className="grid grid-cols-2 gap-3">
@@ -1285,16 +1285,16 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
                             key={style.id}
                             onClick={() => setAiPreset({...aiPreset, style: style.id})}
                             className={cn(
-                              "flex items-center gap-3 p-4 rounded-2xl cursor-pointer transition-all border-2",
+                              "flex cursor-pointer items-center gap-3 rounded-md border p-3 transition-colors",
                               aiPreset.style === style.id 
-                                ? "bg-purple-50 border-purple-500 shadow-sm" 
-                                : "bg-white border-gray-100 hover:border-gray-200"
+                                ? "border-primary bg-primary/5 shadow-sm"
+                                : "bg-card hover:bg-muted/50"
                             )}
                           >
                             <span className="text-xl">{style.icon}</span>
                             <span className={cn(
                               "text-sm font-bold",
-                              aiPreset.style === style.id ? "text-purple-700" : "text-gray-600"
+                              aiPreset.style === style.id ? "text-primary" : "text-muted-foreground"
                             )}>{style.label}</span>
                           </div>
                         ))}
@@ -1307,12 +1307,12 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
                         value={aiPreset.roomType} 
                         onValueChange={(val) => setAiPreset({...aiPreset, roomType: val})}
                       >
-                        <SelectTrigger className="h-12 rounded-2xl bg-muted/30 border-none focus:ring-purple-500 font-bold">
+                        <SelectTrigger className="h-10 rounded-md bg-muted/50 font-medium">
                           <SelectValue placeholder="选择空间" />
                         </SelectTrigger>
-                        <SelectContent className="rounded-2xl border-none shadow-xl">
+                        <SelectContent className="rounded-md">
                           {ROOM_TYPE_OPTIONS.map(room => (
-                            <SelectItem key={room.id} value={room.id} className="rounded-xl font-medium">
+                            <SelectItem key={room.id} value={room.id} className="rounded-sm font-medium">
                               {room.label}
                             </SelectItem>
                           ))}
@@ -1321,17 +1321,17 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
                     </div>
                   </div>
 
-                  <DialogFooter className="p-8 pt-4 bg-muted/10 border-t">
+                  <DialogFooter className="border-t bg-muted/20 p-6 pt-4">
                     <Button 
                       variant="ghost" 
                       onClick={() => setShowAIDialog(false)}
-                      className="rounded-2xl h-12 px-6"
+                      className="h-10 px-4"
                     >
                       取消
                     </Button>
                     <Button 
                       onClick={handleAIGenerate}
-                      className="rounded-2xl h-12 px-10 bg-purple-600 hover:bg-purple-700 text-white font-bold shadow-lg shadow-purple-200"
+                      className="h-10 px-5"
                     >
                       开始生成方案
                     </Button>
@@ -1346,22 +1346,22 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
             variant="outline" 
             onClick={handleExportDXF}
             disabled={isExporting}
-            className="rounded-xl flex items-center gap-2 h-10 px-4 border-gray-200 hover:bg-gray-50 transition-all font-bold text-xs"
+            className="flex h-9 items-center gap-2 px-3 text-xs font-medium"
           >
             {isExporting ? <Loader2 size={16} className="animate-spin text-primary" /> : <Download size={16} className="text-primary" />}
             {isExporting ? '生成中...' : '导出 CAD (.dxf)'}
           </Button>
 
-          <div className="flex items-center gap-2 bg-gray-100 p-1 rounded-xl">
+          <div className="flex items-center gap-1 rounded-md bg-muted p-1">
              <button 
                onClick={() => setIs3D(false)}
-               className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${!is3D ? 'bg-white shadow-md text-black' : 'text-gray-400'}`}
+               className={`rounded-sm px-4 py-1.5 text-sm font-medium transition-colors ${!is3D ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}
              >
                2D 平面
              </button>
              <button 
                onClick={() => setIs3D(true)}
-               className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${is3D ? 'bg-white shadow-md text-black' : 'text-gray-400'}`}
+               className={`rounded-sm px-4 py-1.5 text-sm font-medium transition-colors ${is3D ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'}`}
              >
                3D 视角
              </button>
@@ -1383,15 +1383,15 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
 
         {/* Debug Panel (Mobile/Small) */}
         <div className="absolute top-4 right-4 z-40 pointer-events-none">
-           <div className="bg-black/90 text-white p-4 rounded-2xl shadow-2xl font-mono text-[10px] space-y-2 border border-white/10 opacity-80 hover:opacity-100 transition-opacity">
-              <div className="flex items-center gap-2 text-green-400 border-b border-white/10 pb-2">
+           <div className="space-y-2 rounded-md border bg-foreground p-3 font-mono text-[10px] text-background shadow-lg opacity-85 transition-opacity hover:opacity-100">
+              <div className="flex items-center gap-2 border-b border-background/20 pb-2 text-emerald-300">
                  <Activity size={14} />
                  <span className="font-bold underline">ENGINE STATUS</span>
               </div>
-              <p><span className="text-blue-400">Rooms:</span> {roomsToRender.length} / {allRooms.length}</p>
-              <p><span className="text-blue-400">View:</span> {is3D ? 'PERSPECTIVE' : 'ORTHO'}</p>
-              <p><span className="text-blue-400">Data Check:</span> {planData?.layoutData ? 'FOUND' : 'MISSING'}</p>
-              <div className="pt-2 text-[9px] text-gray-400 truncate max-w-[200px]">
+              <p><span className="text-primary-foreground">Rooms:</span> {roomsToRender.length} / {allRooms.length}</p>
+              <p><span className="text-primary-foreground">View:</span> {is3D ? 'PERSPECTIVE' : 'ORTHO'}</p>
+              <p><span className="text-primary-foreground">Data Check:</span> {planData?.layoutData ? 'FOUND' : 'MISSING'}</p>
+              <div className="max-w-[200px] truncate pt-2 text-[9px] text-background/65">
                  ID: {planData?._id}
               </div>
            </div>
@@ -1399,15 +1399,15 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
 
         {/* Stats Overlay */}
         <div className="absolute bottom-8 left-8 pointer-events-none">
-          <div className="bg-white/80 backdrop-blur shadow-2xl rounded-2xl p-6 border border-white/20 flex items-center gap-4">
+          <div className="flex items-center gap-4 rounded-lg border bg-card/95 p-4 shadow-lg backdrop-blur">
              <div className="flex -space-x-2">
                 {[1,2,3].map(i => (
-                  <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-gray-200" />
+                  <div key={i} className="h-8 w-8 rounded-full border-2 border-card bg-muted" />
                 ))}
              </div>
              <div>
-               <p className="text-[20px] font-black text-gray-900 leading-none mb-1">{allRooms.length} 个空间节点</p>
-               <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">智能测绘数据已同步</p>
+               <p className="mb-1 text-xl font-semibold leading-none">{allRooms.length} 个空间节点</p>
+               <p className="text-xs font-medium text-muted-foreground">智能测绘数据已同步</p>
              </div>
           </div>
         </div>

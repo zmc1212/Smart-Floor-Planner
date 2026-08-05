@@ -1,6 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import type { ComponentProps } from 'react';
 import { Loader2 } from 'lucide-react';
 
 // @see react-best-practices: bundle-dynamic-imports
@@ -11,7 +12,7 @@ const FloorPlanViewer = dynamic(
   { 
     ssr: false, 
     loading: () => (
-      <div className="flex flex-col items-center justify-center h-screen bg-white gap-4">
+      <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
         <Loader2 className="animate-spin text-primary" size={48} />
         <p className="text-sm font-medium text-muted-foreground">正在加载 3D 引擎...</p>
       </div>
@@ -19,10 +20,12 @@ const FloorPlanViewer = dynamic(
   }
 );
 
+type FloorPlanViewerProps = ComponentProps<typeof FloorPlanViewer>;
+
 /**
  * 客户端包装器，负责 dynamic import + ssr:false。
  * 父级 Server Component 负责数据获取和序列化。
  */
 export default function FloorPlanViewerWrapper({ planData }: { planData: Record<string, unknown> }) {
-  return <FloorPlanViewer planData={planData as any} />;
+  return <FloorPlanViewer planData={planData as FloorPlanViewerProps['planData']} />;
 }

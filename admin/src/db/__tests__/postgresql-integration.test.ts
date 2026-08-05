@@ -49,6 +49,7 @@ import {
   DepartmentRepository,
   DeviceRepository,
   EnterpriseRepository,
+  EnterpriseAiUsageSnapshotRepository,
   FloorPlanRepository,
   LeadRepository,
   MediaStorageConfigRepository,
@@ -75,6 +76,7 @@ import { listWorkbenchTodos } from '@/lib/postgres-workflow-automation';
 import { getEnterpriseAiPolicy } from '@/lib/ai/enterprise-policy';
 import { storePostgresMediaBuffer } from '@/lib/ai/postgres-media-assets';
 import {
+  createPostgresAiWorkflowManualGeneration,
   createPostgresAiWorkflow,
   getPostgresAiWorkflowContext,
   getPostgresAiWorkflowSourceImage,
@@ -82,6 +84,7 @@ import {
   preparePostgresAiWorkflowStage,
   updatePostgresAiWorkflowState,
 } from '@/lib/ai/postgres-workflow-service';
+import { preparePostgresMiniAiTaskRetry } from '@/lib/ai/postgres-mini-ai-tasks';
 import { listPostgresExecutableImageModelProfiles } from '@/lib/ai/image-model-catalog';
 import {
   createPostgresCreationTask,
@@ -1364,6 +1367,61 @@ test('PostgreSQL GRS catalog initialization exposes an executable default model'
   assert.equal(defaultProfile?.remoteModel, 'gpt-image-2');
 });
 
+test('PostgreSQL GRS catalog settings preserve one default and reference-image limits', async () => {
+  const originalProfiles = await withPlatformTransaction((transaction) =>
+    new AiCreationModelProfileRepository(transaction).list({ sourceType: 'grs_catalog' })
+  );
+  assert.ok(originalProfiles.length >= 2);
+  const first = originalProfiles[0];
+  const second = originalProfiles[1];
+
+  try {
+    await withPlatformTransaction(async (transaction) => {
+      const profiles = new AiCreationModelProfileRepository(transaction);
+      await profiles.clearCatalogDefaults();
+      await profiles.updateCatalogSettings({
+        id: first.id,
+        enabled: false,
+        isDefault: false,
+        maxReferenceImages: 0,
+      });
+      await profiles.updateCatalogSettings({
+        id: second.id,
+        enabled: true,
+        isDefault: true,
+        maxReferenceImages: 4,
+      });
+    });
+
+    const updated = await withPlatformTransaction((transaction) =>
+      new AiCreationModelProfileRepository(transaction).list({ sourceType: 'grs_catalog' })
+    );
+    const updatedFirst = updated.find((profile) => profile.id === first.id);
+    const updatedSecond = updated.find((profile) => profile.id === second.id);
+    assert.equal(updatedFirst?.enabled, false);
+    assert.equal(updatedFirst?.isDefault, false);
+    assert.equal(updatedFirst?.capabilities?.maxReferenceImages, 0);
+    assert.equal(updatedFirst?.capabilities?.supportsReferenceImages, false);
+    assert.equal(updatedSecond?.enabled, true);
+    assert.equal(updatedSecond?.isDefault, true);
+    assert.equal(updatedSecond?.capabilities?.maxReferenceImages, 4);
+    assert.equal(updatedSecond?.capabilities?.supportsReferenceImages, true);
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      const profiles = new AiCreationModelProfileRepository(transaction);
+      await profiles.clearCatalogDefaults();
+      for (const profile of originalProfiles) {
+        await profiles.updateCatalogSettings({
+          id: profile.id,
+          enabled: profile.enabled,
+          isDefault: profile.isDefault,
+          maxReferenceImages: Number(profile.capabilities?.maxReferenceImages || 0),
+        });
+      }
+    });
+  }
+});
+
 test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and generations', async () => {
   let assetId: bigint | null = null;
   let resultAssetId: bigint | null = null;
@@ -1973,6 +2031,41 @@ test('PostgreSQL media storage commits asset metadata only after object upload u
   }
 });
 
+test('enterprise AI usage snapshots preserve PostgreSQL tenant isolation', async () => {
+  const syncedAt = new Date();
+  const snapshot = await withTenantTransaction(enterpriseAId, (transaction) =>
+    new EnterpriseAiUsageSnapshotRepository(transaction).upsert({
+      enterpriseId: enterpriseAId,
+      balance: '42.5',
+      currency: 'USD',
+      dailyUsage: [
+        {
+          date: syncedAt.toISOString().slice(0, 10),
+          model: 'usage-integration-model',
+          requests: 3,
+          costUsd: 1.25,
+          meterSource: 'integration-test',
+        },
+      ],
+      keyInfo: { valid: true, allowedModels: ['usage-integration-model'] },
+      lastSyncedAt: syncedAt,
+      syncError: '',
+    })
+  );
+  assert.equal(snapshot.enterpriseId, enterpriseAId);
+  assert.equal(snapshot.balance, '42.500000');
+
+  const ownSnapshot = await withTenantTransaction(enterpriseAId, (transaction) =>
+    new EnterpriseAiUsageSnapshotRepository(transaction).findByEnterpriseId(enterpriseAId)
+  );
+  assert.equal(ownSnapshot?.id, snapshot.id);
+
+  const otherTenantSnapshot = await withTenantTransaction(enterpriseBId, (transaction) =>
+    new EnterpriseAiUsageSnapshotRepository(transaction).findByEnterpriseId(enterpriseAId)
+  );
+  assert.equal(otherTenantSnapshot, null);
+});
+
 test('PostgreSQL advice generations use the tenant-scoped credit lifecycle', async () => {
   let generationId: bigint | null = null;
   const ledgerIds: bigint[] = [];
@@ -2546,6 +2639,141 @@ test('PostgreSQL workflow service creates and reads tenant-scoped workflow conte
         await transaction.delete(aiWorkflows).where(eq(aiWorkflows.id, workflowId));
       }
       if (leadId) await transaction.delete(leads).where(eq(leads.id, leadId));
+    });
+  }
+});
+
+test('PostgreSQL workflow manual generation stores a tenant-owned scenario result', async () => {
+  let leadId: bigint | null = null;
+  let workflowId: bigint | null = null;
+  let generationId: bigint | null = null;
+  let assetId: bigint | null = null;
+  try {
+    const created = await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const lead = await new LeadRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        assignedTo: promotionDesignerAId,
+        name: 'Manual workflow generation lead',
+        phone: `138${String(Date.now()).slice(-8)}`,
+        source: 'integration-test',
+        status: 'new',
+      });
+      const workflow = await new AiWorkflowRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        leadId: lead.id,
+        operatorId: promotionDesignerAId,
+        title: 'Manual workflow generation',
+        sourceAssetRole: 'rough_sketch',
+        currentStageKey: 'direction',
+      });
+      const asset = await new AiCreationRepository(transaction).createMediaAsset({
+        enterpriseId: enterpriseAId,
+        ownerType: 'manual_upload',
+        mimeType: 'image/png',
+        size: BigInt(1),
+        storageProvider: 'local',
+        storageKey: `${testRunKey}/manual-workflow-output.png`,
+      });
+      return { lead, workflow, asset };
+    });
+    leadId = created.lead.id;
+    workflowId = created.workflow.id;
+    assetId = created.asset.id;
+
+    const generation = await createPostgresAiWorkflowManualGeneration({
+      enterpriseId: enterpriseAId,
+      operatorId: promotionDesignerAId,
+      workflowId: created.workflow.id,
+      stageKey: 'direction',
+      imageUrl: `/api/ai/assets/${created.asset.id}/image`,
+      sourceAssetRole: 'rough_sketch',
+      nextStageKey: 'base_render',
+    });
+    generationId = generation.id;
+    assert.equal(generation.type, 'scenario');
+    assert.equal(generation.status, 'succeeded');
+    assert.equal(generation.provider, 'manual_upload');
+    assert.equal((generation.billing as { price?: number }).price, 0);
+
+    const persisted = await withTenantTransaction(enterpriseAId, async (transaction) => ({
+      workflow: await new AiWorkflowRepository(transaction).findById(created.workflow.id),
+      generation: await new AiCreationRepository(transaction).findGeneration(generation.id),
+      asset: await new AiCreationRepository(transaction).findMediaAsset(created.asset.id),
+    }));
+    assert.equal(persisted.workflow?.currentStageKey, 'base_render');
+    assert.equal(persisted.generation?.workflowId, created.workflow.id);
+    assert.equal((persisted.generation?.output as { imageUrl?: string }).imageUrl, `/api/ai/assets/${created.asset.id}/image`);
+    assert.equal(persisted.asset?.ownerType, 'ai_generation_output');
+    assert.equal(persisted.asset?.ownerId, generation.id);
+
+    await assert.rejects(
+      () => createPostgresAiWorkflowManualGeneration({
+        enterpriseId: enterpriseBId,
+        operatorId: promotionDesignerAId,
+        workflowId: created.workflow.id,
+        stageKey: 'direction',
+        imageUrl: `/api/ai/assets/${created.asset.id}/image`,
+      }),
+      /方案会话不存在或无权访问/
+    );
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (workflowId) {
+        await transaction.update(aiWorkflows)
+          .set({ selectedGenerationId: null, lastGenerationId: null, updatedAt: new Date() })
+          .where(eq(aiWorkflows.id, workflowId));
+      }
+      if (generationId) await transaction.delete(aiGenerations).where(eq(aiGenerations.id, generationId));
+      if (workflowId) await transaction.delete(aiWorkflows).where(eq(aiWorkflows.id, workflowId));
+      if (assetId) await transaction.delete(mediaAssets).where(eq(mediaAssets.id, assetId));
+      if (leadId) await transaction.delete(leads).where(eq(leads.id, leadId));
+    });
+  }
+});
+
+test('PostgreSQL administrator retry preparation reaches a failed staff-owned Mini Program task', async () => {
+  let generationId: bigint | null = null;
+  try {
+    const generation = await withTenantTransaction(enterpriseAId, (transaction) =>
+      new AiCreationRepository(transaction).createGeneration({
+        enterpriseId: enterpriseAId,
+        operatorId: promotionDesignerAId,
+        type: 'miniprogram',
+        channel: 'miniprogram',
+        status: 'failed',
+        retryCount: 2,
+        externalTask: { status: 'failed', taskId: `${testRunKey}-mini-retry` },
+        billing: { price: 8, cycle: 2, status: 'released' },
+        errorCode: 'PROVIDER_FAILED',
+        errorMessage: 'Provider task failed',
+      })
+    );
+    generationId = generation.id;
+
+    const prepared = await preparePostgresMiniAiTaskRetry(
+      generation.id.toString(),
+      enterpriseAId.toString()
+    );
+    assert.equal(prepared.id, generation.id);
+
+    const persisted = await withTenantTransaction(enterpriseAId, (transaction) =>
+      new AiCreationRepository(transaction).findGeneration(generation.id)
+    );
+    assert.equal(persisted?.status, 'pending');
+    assert.equal(persisted?.retryCount, 3);
+    assert.equal(persisted?.errorCode, null);
+    assert.equal(persisted?.errorMessage, null);
+    assert.deepEqual(persisted?.externalTask, {});
+    assert.equal((persisted?.billing as { cycle?: number; status?: string }).cycle, 3);
+    assert.equal((persisted?.billing as { cycle?: number; status?: string }).status, 'unbilled');
+
+    await assert.rejects(
+      () => preparePostgresMiniAiTaskRetry(generation.id.toString(), enterpriseBId.toString()),
+      /Only failed Mini Program AI tasks/
+    );
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (generationId) await transaction.delete(aiGenerations).where(eq(aiGenerations.id, generationId));
     });
   }
 });

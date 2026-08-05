@@ -330,7 +330,7 @@ export default function DevicesPage() {
         ] : undefined}
       >
         <ProTable<Device>
-          className="admin-mobile-filter-stack"
+          className="admin-data-table admin-mobile-filter-stack"
           actionRef={actionRef}
           rowKey="_id"
           columns={columns}

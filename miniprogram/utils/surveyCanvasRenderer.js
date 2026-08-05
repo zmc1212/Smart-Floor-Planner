@@ -1373,6 +1373,99 @@ function resolveViewportInteractionTransform(baseViewport, viewport, rect) {
   };
 }
 
+function projectInteractionPoint(point, transform) {
+  if (!point) return point;
+  return {
+    x: point.x * transform.scale + transform.translateX,
+    y: point.y * transform.scale + transform.translateY
+  };
+}
+
+function projectInteractionPoints(points, transform) {
+  return (points || []).map((point) => projectInteractionPoint(point, transform));
+}
+
+function projectInteractionWall(wall, transform) {
+  if (!wall) return wall;
+  const projected = Object.assign({}, wall);
+  [
+    'startPoint',
+    'endPoint',
+    'outerStart',
+    'outerEnd',
+    'rawOuterStart',
+    'rawOuterEnd'
+  ].forEach((key) => {
+    projected[key] = projectInteractionPoint(wall[key], transform);
+  });
+  ['bodyPolygon', 'selectionPolygon'].forEach((key) => {
+    projected[key] = projectInteractionPoints(wall[key], transform);
+  });
+  [
+    'widthPx',
+    'thicknessPx',
+    'centerLineYPx',
+    'outerStartAlongPx',
+    'outerEndPx'
+  ].forEach((key) => {
+    if (typeof wall[key] === 'number') {
+      projected[key] = wall[key] * transform.scale;
+    }
+  });
+  return projected;
+}
+
+function projectInteractionSolidPlan(plan, transform) {
+  if (!plan) return plan;
+  return Object.assign({}, plan, {
+    rings: (plan.rings || []).map((ring) => projectInteractionPoints(ring, transform))
+  });
+}
+
+// Some Mini Program Canvas versions render transformed compound fills
+// differently from a formal redraw. Project only the already-built paths for
+// gesture frames so fills, solids, and outlines share the target coordinates.
+function createViewportInteractionScene(scene, viewport) {
+  const transform = resolveViewportInteractionTransform(scene.viewport, viewport, scene.rect);
+  const projectedWallsById = {};
+  const walls = (scene.walls || []).map((wall) => {
+    const projected = projectInteractionWall(wall, transform);
+    projectedWallsById[projected.id] = projected;
+    return projected;
+  });
+  const previewWall = projectInteractionWall(scene.previewWall, transform);
+  if (previewWall) {
+    projectedWallsById[previewWall.id] = previewWall;
+  }
+
+  return Object.assign({}, scene, {
+    viewport: resolveViewport(viewport),
+    walls,
+    previewWall,
+    closedSpaceFills: (scene.closedSpaceFills || []).map((space) => Object.assign({}, space, {
+      points: projectInteractionPoints(space.points, transform)
+    })),
+    wallSolidPlan: projectInteractionSolidPlan(scene.wallSolidPlan, transform),
+    wallSolidPlans: Object.keys(scene.wallSolidPlans || {}).reduce((plans, key) => {
+      plans[key] = projectInteractionSolidPlan(scene.wallSolidPlans[key], transform);
+      return plans;
+    }, {}),
+    openings: (scene.openings || []).map((opening) => {
+      const projected = Object.assign({}, opening, {
+        wall: opening.wall && projectedWallsById[opening.wall.id],
+        center: projectInteractionPoint(opening.center, transform),
+        hitPolygon: projectInteractionPoints(opening.hitPolygon, transform)
+      });
+      ['startPx', 'endPx', 'centerPx', 'centerYPx', 'widthPx'].forEach((key) => {
+        if (typeof opening[key] === 'number') {
+          projected[key] = opening[key] * transform.scale;
+        }
+      });
+      return projected;
+    })
+  });
+}
+
 function createSurveyLensScene(input) {
   const opts = input || {};
   const centerPoint = opts.centerPoint || { xMm: 0, yMm: 0 };
@@ -1402,22 +1495,19 @@ function drawSurveyInteractionScene(ctx, scene, options) {
   const opts = options || {};
   const dpr = opts.dpr || 1;
   const viewport = resolveViewport(opts.viewport || scene.viewport);
-  const baseViewport = resolveViewport(opts.baseViewport || scene.viewport);
-  const transform = resolveViewportInteractionTransform(baseViewport, viewport, scene.rect);
+  const baseScene = opts.baseViewport && opts.baseViewport !== scene.viewport
+    ? Object.assign({}, scene, { viewport: resolveViewport(opts.baseViewport) })
+    : scene;
+  const interactionScene = createViewportInteractionScene(baseScene, viewport);
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, scene.rect.width, scene.rect.height);
-  drawGrid(ctx, Object.assign({}, scene, { viewport }));
-
-  ctx.save();
-  ctx.translate(transform.translateX, transform.translateY);
-  ctx.scale(transform.scale, transform.scale);
-  drawClosedSpaceFills(ctx, scene);
-  drawWallBodies(ctx, scene);
-  drawWallOutlines(ctx, scene);
-  drawRedlines(ctx, scene);
-  drawOpenings(ctx, scene);
-  ctx.restore();
+  drawGrid(ctx, interactionScene);
+  drawClosedSpaceFills(ctx, interactionScene);
+  drawWallBodies(ctx, interactionScene);
+  drawWallOutlines(ctx, interactionScene);
+  drawRedlines(ctx, interactionScene);
+  drawOpenings(ctx, interactionScene);
 }
 
 function clearDraggingCursor(ctx, rect, options) {
@@ -1754,6 +1844,7 @@ module.exports = {
   drawDraggingCursor,
   clearDraggingCursor,
   resolveViewportInteractionTransform,
+  createViewportInteractionScene,
   hitTestSurveyWall,
   hitTestSurveyOpening
 };

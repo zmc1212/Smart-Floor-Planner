@@ -62,7 +62,7 @@ export default async function FloorPlanDetailPage({ params }: { params: Promise<
   };
 
   return (
-    <div className="bg-white min-h-screen">
+    <div className="min-h-screen bg-background">
       <FloorPlanViewerWrapper planData={serializedPlan} />
     </div>
   );

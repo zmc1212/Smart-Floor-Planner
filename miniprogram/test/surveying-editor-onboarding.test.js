@@ -23,20 +23,35 @@ test('formal surveying titles resolve to the linked community instead of a forma
   assert.match(editorWxss, /\.page-title\s*\{[\s\S]*text-overflow:\s*ellipsis;/);
 });
 
-test('empty surveying sessions use a one-time compact onboarding package', () => {
-  assert.match(editorScript, /SURVEYING_ONBOARDING_SEEN_KEY/);
-  assert.match(editorScript, /wx\.getStorageSync\(SURVEYING_ONBOARDING_SEEN_KEY\)/);
-  assert.match(editorScript, /wx\.setStorageSync\(SURVEYING_ONBOARDING_SEEN_KEY, true\)/);
-  assert.match(editorScript, /onOnboardingNext\(\)/);
-  assert.match(editorWxml, /class="survey-onboarding \{\{onboardingTarget\}\}"/);
-  assert.match(editorWxml, /onboardingProgress/);
-  assert.doesNotMatch(editorWxml, /empty-survey-guide/);
-  assert.match(editorWxss, /\.survey-onboarding\s*\{[\s\S]*pointer-events:\s*auto;/);
+test('formal surveying uses a persistent state-following guide mode instead of a paged tour', () => {
+  assert.match(editorScript, /SURVEYING_GUIDE_ENABLED_KEY/);
+  assert.match(editorScript, /loadGuideEnabled\(\)/);
+  assert.match(editorScript, /persistGuideEnabled\(enabled\)/);
+  assert.match(editorScript, /onGuideToggle\(\)/);
+  assert.match(editorScript, /resolveSurveyGuide\(\{/);
+  assert.match(editorWxml, /class="topbar-chip guide-trigger \{\{guideEnabled \? 'active' : ''\}\}"/);
+  assert.match(editorWxml, /bindtap="onGuideToggle"/);
+  assert.match(editorWxml, /wx:if="\{\{surveyGuideVisible\}\}"/);
+  assert.doesNotMatch(editorScript, /SURVEYING_ONBOARDING_STEPS|onOnboardingNext|onOnboardingSkip/);
+  assert.doesNotMatch(editorWxml, /onboardingProgress|onboarding-next|survey-onboarding/);
+  assert.doesNotMatch(editorWxml, /class="survey-guide-layer/);
+  assert.doesNotMatch(editorWxml, /surveyGuideFocusVisible|survey-guide-focus/);
+  assert.match(editorWxml, /wx:for="\{\{surveyGuideBodyLines\}\}"/);
+  assert.match(editorWxss, /\.survey-guide-card\s*\{[\s\S]*pointer-events:\s*none;/);
+  assert.match(editorWxss, /\.survey-guide-body\s*\{[\s\S]*font-size:\s*24rpx;/);
 });
 
-test('first onboarding step uses the reference-derived measuring Xiao K crop', () => {
-  const asset = fs.readFileSync(path.join(miniRoot, 'images', 'surveying-onboarding-k.png'));
+test('the first-wall guide uses a dedicated transparent-ready measuring Xiao K asset', () => {
+  const asset = fs.readFileSync(path.join(miniRoot, 'images', 'surveying-guide-k.png'));
   assert.equal(asset.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
   assert.ok(asset.length > 1024);
-  assert.match(editorWxml, /\/images\/surveying-onboarding-k\.png/);
+  assert.match(editorWxml, /\/images\/surveying-guide-k\.png/);
+  assert.doesNotMatch(editorWxml, /\/images\/surveying-onboarding-k\.png/);
+});
+
+test('turning off guide copy preserves closure and measurement-side controls', () => {
+  assert.match(editorScript, /closeAction:\s*closure && closure\.action/);
+  assert.match(editorScript, /if \(measureControl && !showGuide\) \{[\s\S]*measureControl\.tip = null;[\s\S]*measureControl\.pointer = null;/);
+  assert.match(editorScript, /closeHint:\s*showGuide && closure && closure\.hint/);
+  assert.match(editorWxml, /wx:if="\{\{closeActionVisible\}\}"[\s\S]*catchtap="onConfirmClose"/);
 });

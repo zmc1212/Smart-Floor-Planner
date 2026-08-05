@@ -445,10 +445,19 @@ utilities, and the admin APIs they call.
   native WeChat top-right capsule: the linked community name and truthful save
   state occupy the left information block, while save/complete actions sit on a
   separate row beneath the capsule. `未填写小区` remains the missing-data fallback.
-  On the first empty surveying session per local client, a compact
-  three-step guide highlights cursor placement, wall tools, and manual/BLE
-  measurement without masking the canvas; it uses the bundled, reference-derived
-  measuring Xiao K crop and never reappears after that first display. When a wall
+  A state-following guide is enabled by default per local client. The persistent
+  `引导` header action exposes its enabled state with a green dot and toggles the
+  local preference; enabling it again resolves the current real survey state
+  rather than replaying a paged tour. One unmasked, green, geometry-anchored
+  bubble follows first-wall direction, pending length, a free-standing chain's
+  measurement side, the next wall, closure, post-closure continuation, cursor
+  snap placement, or selected-object editing. The first-wall state may show the
+  bundled transparent measuring Xiao K asset (`images/surveying-guide-k.png`);
+  walls, measurement edges, close paths, directions, and snap feedback remain
+  dynamic canvas or control rendering. Disabling the guide hides only its
+  teaching bubble and highlight: close, measurement-side, snap, BLE, error, and
+  completion feedback stay operational. It does not write to the wall graph,
+  draft, or measurement audit. When a wall
   body is selected, the cursor is snapped to one, the current wall is committed,
   a closure candidate is present, or a wall preview is awaiting a length, the
   dock's ranging action directly requests a live device reading and applies it to
@@ -523,8 +532,13 @@ utilities, and the admin APIs they call.
   Canvas pan and pinch gestures use an animation-frame-coalesced transient
   render layer: walls, room fills, outlines, and openings remain visible while
   dimensions, room labels, guides, and callouts return after one final formal
-  scene rebuild when the gesture ends. Gesture frames do not update page data
+  scene rebuild when the gesture ends. The transient layer projects the
+  already-built structural paths directly into the target viewport so closed
+  room fills and compound wall solids do not diverge on native Canvas. Gesture
+  frames do not update page data
   or recompute wall solids and dimension plans.
+  A cursor-drop handoff clears its transient frame again after the formal redraw
+  so a late native Canvas frame cannot cover a closed room after wall snapping.
 - `miniprogram/utils/surveyDimensionPlan.js` and
   `miniprogram/utils/surveyWallSolidPlan.js` are the dependency-free sources for
   both renderers; admin development and production builds synchronize local

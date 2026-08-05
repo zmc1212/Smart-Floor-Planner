@@ -24,8 +24,10 @@ function toTenantContext(context: NonNullable<Awaited<ReturnType<typeof getTenan
   };
 }
 
+const POSTGRES_BIGINT_MAX = BigInt('9223372036854775807');
+
 function isPostgresWorkflowId(value: string) {
-  return /^[1-9]\d{0,18}$/.test(value) && BigInt(value) <= 9223372036854775807n;
+  return /^[1-9]\d{0,18}$/.test(value) && BigInt(value) <= POSTGRES_BIGINT_MAX;
 }
 
 export async function POST(

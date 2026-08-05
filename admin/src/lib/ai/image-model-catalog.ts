@@ -312,8 +312,11 @@ export function serializePostgresCatalogProfile(profile: AiCreationModelProfileR
       quality: String(defaults.quality || ''),
       resolutionTier: String(defaults.resolutionTier || defaults.size || '1K'),
     },
+    defaultAspectRatio: String(defaults.aspectRatio || '1:1'),
+    defaultResolutionTier: String(defaults.resolutionTier || defaults.size || '1K'),
     enabled: profile.enabled,
     isDefault: profile.isDefault,
     weight: profile.weight,
+    executable: true,
   };
 }

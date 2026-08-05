@@ -24,3 +24,10 @@ test('a one-wall shared-boundary closure renders its close action', () => {
 test('a placed cursor keeps its guide visibility when the canvas render data is returned', () => {
   assert.match(editorScript, /return \{\s*cursorVisible,\s*guideVisible,/);
 });
+
+test('wall-snapped cursor drops clear a late transient frame after the formal canvas redraw', () => {
+  assert.match(
+    editorScript,
+    /this\.drawSurveyCanvas\(\);\s*\/\/ A cursor-drag frame[\s\S]*?this\.clearCursorDragCanvas\(\{ force: true \}\);/
+  );
+});

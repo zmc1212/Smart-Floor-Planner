@@ -65,8 +65,7 @@ export async function POST(req: Request) {
             sourceImage: body.sourceImage,
             sourceFloorPlanId: body.sourceFloorPlanId,
             sourceAssetRole: body.sourceAssetRole,
-          },
-          context
+          }
         );
       } catch (error) {
         return NextResponse.json(

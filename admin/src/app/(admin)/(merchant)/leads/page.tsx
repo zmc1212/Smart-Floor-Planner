@@ -407,7 +407,7 @@ export default function LeadsPage() {
         content="跟进客户状态、指派协作人员，并衔接正式量房与方案设计。"
       >
         <ProTable<Lead>
-          className="admin-mobile-filter-stack"
+          className="admin-data-table admin-mobile-filter-stack"
           actionRef={actionRef}
           rowKey="_id"
           columns={columns}

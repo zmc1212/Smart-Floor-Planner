@@ -6,6 +6,7 @@ const bluetooth = require('../../utils/bluetooth.js');
 const api = require('../../utils/api.js');
 const util = require('../../utils/util.js');
 const surveyLayout = require('../../utils/surveyLayout.js');
+const { resolveSurveyGuide, chooseGuidePlacement, wrapGuideBody } = require('../../utils/surveyGuide.js');
 
 const RESERVED_TOOLS = [
   { key: 'settings', label: '设置' },
@@ -27,7 +28,7 @@ const NUMBER_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '清空', '0',
 const FORMAL_DRAFT_KEY = 'surveying_draft_v1';
 const FORMAL_DRAFT_BACKUP_KEY = 'surveying_last_draft_backup';
 const FORMAL_SERVER_DRAFT_ID_KEY = 'surveying_floorplan_id';
-const SURVEYING_ONBOARDING_SEEN_KEY = 'surveying_editor_onboarding_v1_seen';
+const SURVEYING_GUIDE_ENABLED_KEY = 'surveying_editor_guide_enabled_v1';
 const COMPONENT_SPEC_TABS = [
   { key: 'length', label: '长度' },
   { key: 'depth', label: '宽度' },
@@ -301,13 +302,18 @@ Page({
     measurementTitle: '准备测墙',
     measurementValue: '从橙色光标拖出墙体方向',
     isSurveyEmpty: true,
-    showOnboarding: false,
-    onboardingStep: 0,
-    onboardingTarget: 'cursor',
-    onboardingTitle: '先放置起点',
-    onboardingCopy: '拖动底部光标到墙角，确定第一面墙的起点',
-    onboardingProgress: '1 / 3',
-    onboardingActionLabel: '下一步',
+    guideEnabled: true,
+    surveyGuideVisible: false,
+    surveyGuideKey: '',
+    surveyGuideTarget: '',
+    surveyGuideTitle: '',
+    surveyGuideBody: '',
+    surveyGuideBodyLines: [],
+    surveyGuideCardStyle: '',
+    surveyGuidePointerStyle: '',
+    surveyGuidePointerDirection: 'down',
+    surveyGuideShowCharacter: false,
+    surveyGuideDynamicCursorLabel: false,
     modePillText: '测墙模式',
     manualActionActive: false,
     manualActionSubtitle: '输入当前墙',
@@ -420,6 +426,7 @@ Page({
     this.cursorLensLastUpdateAt = 0;
     this.cursorLensScene = null;
     const rpxScale = (sysInfo.windowWidth || 375) / 750;
+    this.rpxScale = rpxScale;
     this.cursorLensRect = {
       left: 24 * rpxScale + 8,
       top: 176 * rpxScale + 8,
@@ -451,6 +458,8 @@ Page({
     this.deviceMotionHandler = this.onDeviceMotionChange.bind(this);
     this.angleRemeasureOriginalDraft = null;
     this.angleRemeasureHistoryDraft = null;
+    this.guideEnabled = this.loadGuideEnabled();
+    this.guideSessionCompleted = false;
     this._bindBluetoothCallbacks();
 
     this.setData({
@@ -464,10 +473,10 @@ Page({
       communityName: context.communityName || '',
       serverDraftId: this.serverDraftId || '',
       title: context.communityName || '未填写小区',
-      formalNotice: restoredDraft ? '已恢复本地草稿' : '新建正式量房'
+      formalNotice: restoredDraft ? '已恢复本地草稿' : '新建正式量房',
+      guideEnabled: this.guideEnabled
     });
     this.syncFromDraft();
-    if (!this.serverDraftId) this.maybeShowOnboarding();
     if (this.serverDraftId) this.loadFormalFloorPlan(this.serverDraftId);
   },
 
@@ -499,6 +508,33 @@ Page({
 
   getFormalDraftKey(leadId, scope) {
     return `${FORMAL_DRAFT_KEY}_${leadId || 'standalone'}${scope ? `_${scope}` : ''}`;
+  },
+
+  loadGuideEnabled() {
+    try {
+      const stored = wx.getStorageSync(SURVEYING_GUIDE_ENABLED_KEY);
+      return stored === '' || typeof stored === 'undefined' ? true : stored !== false;
+    } catch (err) {
+      return true;
+    }
+  },
+
+  persistGuideEnabled(enabled) {
+    try {
+      wx.setStorageSync(SURVEYING_GUIDE_ENABLED_KEY, !!enabled);
+    } catch (err) {
+      // Guide preferences never block formal surveying.
+    }
+  },
+
+  onGuideToggle() {
+    this.guideEnabled = !this.guideEnabled;
+    this.persistGuideEnabled(this.guideEnabled);
+    this.setData({ guideEnabled: this.guideEnabled }, () => this.syncFromDraft());
+    wx.showToast({
+      title: this.guideEnabled ? '引导已开启' : '引导已关闭',
+      icon: 'none'
+    });
   },
 
   normalizeRestoredFormalDraft(draft) {
@@ -618,65 +654,9 @@ Page({
         formalNotice: res.data.status === 'completed' ? '已完成量房' : '已恢复正式草稿'
       });
       this.syncFromDraft();
-      this.maybeShowOnboarding();
     } catch (err) {
       wx.showToast({ title: (err && err.error) || err.message || '户型加载失败', icon: 'none' });
-      this.maybeShowOnboarding();
     }
-  },
-
-  maybeShowOnboarding() {
-    if (this.onboardingResolved) return;
-    this.onboardingResolved = true;
-    const floor = surveyGraph.getActiveFloor(this.draft);
-    if (!floor || (floor.walls && floor.walls.length)) return;
-    let seen = false;
-    try {
-      seen = !!wx.getStorageSync(SURVEYING_ONBOARDING_SEEN_KEY);
-    } catch (err) {
-      seen = false;
-    }
-    if (seen) return;
-    try {
-      wx.setStorageSync(SURVEYING_ONBOARDING_SEEN_KEY, true);
-    } catch (err) {
-      // The guide remains usable when storage is unavailable.
-    }
-    this.setData({
-      showOnboarding: true,
-      onboardingStep: 0,
-      onboardingTarget: 'cursor',
-      onboardingTitle: '先放置起点',
-      onboardingCopy: '拖动底部光标到墙角，确定第一面墙的起点',
-      onboardingProgress: '1 / 3',
-      onboardingActionLabel: '下一步'
-    });
-  },
-
-  onOnboardingNext() {
-    const step = Number(this.data.onboardingStep || 0);
-    if (step >= 2) {
-      this.setData({ showOnboarding: false });
-      return;
-    }
-    const next = step + 1;
-    const content = [
-      ['cursor', '先放置起点', '拖动底部光标到墙角，确定第一面墙的起点'],
-      ['straight', '选择墙体工具', '右侧选择直线或斜线，再沿墙体方向拖动'],
-      ['measure', '输入真实尺寸', '可手动输入毫米，也可点击测距读取蓝牙设备']
-    ][next];
-    this.setData({
-      onboardingStep: next,
-      onboardingTarget: content[0],
-      onboardingTitle: content[1],
-      onboardingCopy: content[2],
-      onboardingProgress: `${next + 1} / 3`,
-      onboardingActionLabel: next === 2 ? '开始量房' : '下一步'
-    });
-  },
-
-  onOnboardingSkip() {
-    this.setData({ showOnboarding: false });
   },
 
   async saveFormalFloorPlan(status) {
@@ -761,14 +741,20 @@ Page({
         this.onBluetoothMeasure(distanceInMeters);
       },
       (isConnected) => {
-        app.globalData.bleConnected = !!isConnected;
-        this.setData({ bleConnected: !!isConnected });
+        this.updateBleConnected(isConnected);
       },
       () => {
-        app.globalData.bleConnected = false;
-        this.setData({ bleConnected: false });
+        this.updateBleConnected(false);
       }
     );
+  },
+
+  updateBleConnected(isConnected) {
+    const connected = !!isConnected;
+    app.globalData.bleConnected = connected;
+    this.setData({ bleConnected: connected }, () => {
+      if (this.draft) this.syncFromDraft();
+    });
   },
 
   requestBluetoothConnection() {
@@ -790,12 +776,10 @@ Page({
         this.onBluetoothMeasure(distanceInMeters);
       },
       (isConnected) => {
-        app.globalData.bleConnected = !!isConnected;
-        this.setData({ bleConnected: !!isConnected });
+        this.updateBleConnected(isConnected);
       },
       () => {
-        app.globalData.bleConnected = false;
-        this.setData({ bleConnected: false });
+        this.updateBleConnected(false);
       }
     );
   },
@@ -1676,11 +1660,179 @@ Page({
       ctx.fillText(measure.label, measure.button.cx, measure.button.cy + 11);
     }
 
-    if (controls.initialGuide) {
-      this.drawCanvasCallout(ctx, controls.initialGuide);
+    ctx.restore();
+  },
+
+  getSurveyGuideTargetPoint(target, floor, session) {
+    const rect = this.canvasRect || { width: 0, height: 0 };
+    const rpx = this.rpxScale || ((rect.width || 375) / 750);
+    const safeBottom = Number(this.data.bottomSafeArea || 0);
+    if (!rect.width || !rect.height) return null;
+
+    if (target === 'measure') {
+      return {
+        x: rect.width / 2 + 154 * rpx,
+        y: rect.height - safeBottom - 81 * rpx,
+        width: 92 * rpx,
+        height: 58 * rpx
+      };
+    }
+    if (target === 'dock-cursor') {
+      return {
+        x: rect.width / 2 + 20 * rpx,
+        y: rect.height - safeBottom - 81 * rpx,
+        width: 76 * rpx,
+        height: 58 * rpx
+      };
+    }
+    if (target === 'finish') {
+      return {
+        x: rect.width - 54 * rpx,
+        y: Number(this.data.statusBarHeight || 0) + 121 * rpx,
+        width: 72 * rpx,
+        height: 44 * rpx
+      };
+    }
+    if (target === 'close' && this.canvasControls && this.canvasControls.closeAction) {
+      const action = this.canvasControls.closeAction;
+      return { x: action.cx, y: action.cy, width: 58, height: 42 };
+    }
+    if (target === 'measure-side' && this.canvasControls && this.canvasControls.measurePosition) {
+      const button = this.canvasControls.measurePosition.button;
+      return {
+        x: button.cx,
+        y: button.cy,
+        width: button.radius * 2 + 16,
+        height: button.radius * 2 + 16
+      };
     }
 
-    ctx.restore();
+    if (target === 'object') {
+      const opening = session.selectedOpeningId
+        ? surveyGraph.getOpening(floor, session.selectedOpeningId)
+        : null;
+      const wallId = session.selectedWallId || (opening && opening.wallId) || '';
+      const wall = wallId ? surveyGraph.getWall(floor, wallId) : null;
+      const start = wall && surveyGraph.getNode(floor, wall.startNodeId);
+      const end = wall && surveyGraph.getNode(floor, wall.endNodeId);
+      if (start && end) {
+        const point = this.mmToCanvasPoint({
+          xMm: (start.xMm + end.xMm) / 2,
+          yMm: (start.yMm + end.yMm) / 2
+        });
+        return { x: point.x, y: point.y, width: 54, height: 54 };
+      }
+    }
+
+    const guidePoint = target === 'preview' && session.previewPoint
+      ? session.previewPoint
+      : (session.anchorNodeId ? surveyGraph.getNode(floor, session.anchorNodeId) : null);
+    if (!guidePoint) return null;
+    const point = this.mmToCanvasPoint(guidePoint);
+    return { x: point.x, y: point.y, width: 48, height: 48 };
+  },
+
+  getSurveyGuideWallObstacles(floor, session) {
+    const segments = [];
+    const appendWall = (wall) => {
+      if (!wall) return;
+      const start = surveyGraph.getNode(floor, wall.startNodeId);
+      const end = surveyGraph.getNode(floor, wall.endNodeId);
+      if (start && end) segments.push({ start, end, thicknessMm: wall.thicknessMm });
+    };
+
+    if (session.previewPoint && session.anchorNodeId) {
+      const start = surveyGraph.getNode(floor, session.anchorNodeId);
+      if (start) segments.push({ start, end: session.previewPoint, thicknessMm: this.data.thicknessMm });
+    } else if (session.selectedWallId) {
+      appendWall(surveyGraph.getWall(floor, session.selectedWallId));
+    } else if (floor.walls && floor.walls.length) {
+      appendWall(floor.walls[floor.walls.length - 1]);
+    }
+
+    return segments.map((segment) => {
+      const start = this.mmToCanvasPoint(segment.start);
+      const end = this.mmToCanvasPoint(segment.end);
+      const halfThickness = Math.max(12, (Number(segment.thicknessMm) || 200) * this.getViewport().scale / 2 + 10);
+      return {
+        left: Math.min(start.x, end.x) - halfThickness,
+        right: Math.max(start.x, end.x) + halfThickness,
+        top: Math.min(start.y, end.y) - halfThickness,
+        bottom: Math.max(start.y, end.y) + halfThickness
+      };
+    });
+  },
+
+  buildSurveyGuideData(floor, session, cursorPlacementState, presentationState) {
+    const state = presentationState || this.data;
+    const guide = resolveSurveyGuide({
+      guideEnabled: !!this.guideEnabled,
+      completed: !!this.guideSessionCompleted,
+      floor,
+      session,
+      cursorPlacementState,
+      cursorSnapLabel: state.cursorLensSnapLabel,
+      bleConnected: !!state.bleConnected,
+      canSetInitialMeasurementSide: this.isFirstMeasurePositionStage(floor, session),
+      numberPadVisible: !!state.numberPadVisible,
+      angleMeasureVisible: !!state.angleMeasureVisible,
+      componentEditorVisible: !!state.componentEditorVisible
+    });
+
+    if (!guide) {
+      return {
+        surveyGuideVisible: false,
+        surveyGuideKey: '',
+        surveyGuideTarget: '',
+        surveyGuideBodyLines: [],
+        surveyGuideDynamicCursorLabel: false
+      };
+    }
+
+    const bodyLines = wrapGuideBody(guide.body, guide.showCharacter ? 14 : 18);
+    const rect = this.canvasRect || { width: 0, height: 0 };
+    const target = this.getSurveyGuideTargetPoint(guide.target, floor, session);
+    if (!target || !rect.width || !rect.height) {
+      return {
+        surveyGuideVisible: true,
+        surveyGuideKey: guide.key,
+        surveyGuideTarget: guide.target,
+        surveyGuideTitle: guide.title,
+        surveyGuideBody: guide.body,
+        surveyGuideBodyLines: bodyLines,
+        surveyGuideCardStyle: `left:24rpx; right:120rpx; bottom:calc(154rpx + ${Number(this.data.bottomSafeArea || 0)}px);`,
+        surveyGuidePointerStyle: '',
+        surveyGuidePointerDirection: 'down',
+        surveyGuideShowCharacter: !!guide.showCharacter,
+        surveyGuideDynamicCursorLabel: !!guide.dynamicCursorLabel
+      };
+    }
+
+    const safeArea = this.getCanvasControlSafeArea(rect);
+    const cardWidth = Math.max(220, Math.min(280, safeArea.right - safeArea.left));
+    const cardHeight = Math.max(guide.showCharacter ? 78 : 72, 58 + bodyLines.length * 18);
+    const gap = 24;
+    const placement = chooseGuidePlacement({
+      target,
+      safeArea,
+      cardWidth,
+      cardHeight,
+      gap,
+      obstacles: this.getSurveyGuideWallObstacles(floor, session)
+    });
+    return {
+      surveyGuideVisible: true,
+      surveyGuideKey: guide.key,
+      surveyGuideTarget: guide.target,
+      surveyGuideTitle: guide.title,
+      surveyGuideBody: guide.body,
+      surveyGuideBodyLines: bodyLines,
+      surveyGuideCardStyle: `left:${roundPx(placement.left)}px; top:${roundPx(placement.top)}px; width:${roundPx(cardWidth)}px;`,
+      surveyGuidePointerStyle: `left:${roundPx(placement.pointerLeft)}px;`,
+      surveyGuidePointerDirection: placement.pointerDirection,
+      surveyGuideShowCharacter: !!guide.showCharacter,
+      surveyGuideDynamicCursorLabel: !!guide.dynamicCursorLabel
+    };
   },
 
   syncFromDraft(extraData) {
@@ -1698,6 +1850,13 @@ Page({
     const renderData = this.buildCanvasRenderData(floor, session);
     const selectedOpening = this.buildSelectedOpening(floor, session.selectedOpeningId);
     const componentState = this.buildComponentEditorState(floor, selectedOpening);
+    const presentationState = Object.assign({}, this.data, extraData || {});
+    const surveyGuideData = this.buildSurveyGuideData(
+      floor,
+      session,
+      cursorPlacementState,
+      presentationState
+    );
 
     this.setData(Object.assign({
       activeTool: session.mode,
@@ -1740,7 +1899,7 @@ Page({
       measurementTitle: stageMessage.title,
       measurementValue: stageMessage.value,
       isSurveyEmpty: !floor.walls.length,
-      showOnboarding: this.data.showOnboarding && !floor.walls.length,
+      guideEnabled: !!this.guideEnabled,
       modePillText: bottomState.modePillText,
       manualActionActive: bottomState.manualActionActive,
       manualActionSubtitle: bottomState.manualActionSubtitle,
@@ -1750,8 +1909,14 @@ Page({
         undo: this.history.undo.length,
         redo: this.history.redo.length
       }
-    }, extraData || {}), () => {
+    }, surveyGuideData, extraData || {}), () => {
       this.drawSurveyCanvas();
+      // A cursor-drag frame can finish after its drop event on native Canvas.
+      // Clear the transient layer after the formal redraw so it cannot cover a
+      // closed room with an obsolete frame after snapping to a wall.
+      if (this.data.cursorPlacementState !== 'dragging') {
+        this.clearCursorDragCanvas({ force: true });
+      }
       if (this.data.cursorPlacementState === 'awaitingWallDrop') {
         this.refreshCursorControlRect();
       } else if (this.data.cursorPlacementState !== 'dragging') {
@@ -1910,9 +2075,13 @@ Page({
     }
     const measurePosition = this.buildMeasurePosition(activeSegment, floor, session);
     const closure = this.buildClosureRender(floor, session);
-    const initialGuide = this.buildInitialMeasurementGuide(floor, session);
     const activeAngle = this.buildActiveAngleControl(scene, angleActionAvailable);
-    this.canvasControls = this.buildCanvasControls(measurePosition, closure, initialGuide, activeAngle);
+    this.canvasControls = this.buildCanvasControls(
+      measurePosition,
+      closure,
+      activeAngle,
+      !!this.guideEnabled
+    );
 
     return {
       cursorVisible,
@@ -1935,14 +2104,20 @@ Page({
     };
   },
 
-  buildCanvasControls(measurePosition, closure, initialGuide, activeAngle) {
+  buildCanvasControls(measurePosition, closure, activeAngle, showGuide) {
+    const measureControl = measurePosition && measurePosition.control
+      ? Object.assign({}, measurePosition.control)
+      : null;
+    if (measureControl && !showGuide) {
+      measureControl.tip = null;
+      measureControl.pointer = null;
+    }
     return {
       closeAction: closure && closure.action
         ? Object.assign({ key: 'close', radius: 14 }, closure.action)
         : null,
-      closeHint: closure && closure.hint ? closure.hint : null,
-      measurePosition: measurePosition && measurePosition.control ? measurePosition.control : null,
-      initialGuide: initialGuide || null,
+      closeHint: showGuide && closure && closure.hint ? closure.hint : null,
+      measurePosition: measureControl,
       activeAngle: activeAngle || null
     };
   },
@@ -2393,25 +2568,6 @@ Page({
       buttonLabel: '↕',
       control
     };
-  },
-
-  buildInitialMeasurementGuide(floor, session) {
-    if (!floor || !session || floor.walls.length || session.state !== 'cursorPlaced' || !session.anchorNodeId) {
-      return null;
-    }
-    const anchor = surveyGraph.getNode(floor, session.anchorNodeId);
-    if (!anchor) return null;
-
-    const cursor = this.mmToCanvasPoint(anchor);
-    const rect = this.canvasRect || { width: 0, height: 0 };
-    return this.buildAnchoredCallout(
-      '沿预览线拖动',
-      cursor,
-      { x: cursor.x, y: cursor.y - 74 },
-      this.getCanvasControlSafeArea(rect),
-      undefined,
-      true
-    );
   },
 
   buildClosureRender(floor, session) {
@@ -3314,7 +3470,8 @@ Page({
     try {
       await this.saveFormalFloorPlan('completed');
       wx.hideLoading();
-      this.setData({ formalNotice: '量房已完成' });
+      this.guideSessionCompleted = true;
+      this.syncFromDraft({ formalNotice: '量房已完成' });
       wx.showToast({ title: '量房已完成', icon: 'success' });
     } catch (err) {
       wx.hideLoading();

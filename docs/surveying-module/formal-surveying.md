@@ -2,7 +2,7 @@
 
 `miniprogram/pages/surveying-editor/surveying-editor` 是唯一正式量房页面。
 
-编辑器顶部仅显示关联线索的小区名称；`utils/surveyNavigation.js` 在入口已知时携带该名称，按 `floorPlanId` 直接进入时由 `GET /api/floorplans/[id]` 返回关联线索摘要。空白量房的三步新手引导只在本地客户端首次显示，使用本地参考派生的测距小 K 裁图，且不写入 `FloorPlan.layoutData`、本地草稿或测量审计。
+编辑器顶部仅显示关联线索的小区名称；`utils/surveyNavigation.js` 在入口已知时携带该名称，按 `floorPlanId` 直接进入时由 `GET /api/floorplans/[id]` 返回关联线索摘要。状态跟随式引导在本地默认开启，顶部固定的“引导”操作可持久化开关；重新开启时根据当前墙图和编辑状态继续，而非从固定步骤重播。引导依次覆盖拉首墙、确认方向/长度/测量边、续墙、闭合、下一空间光标吸附和构件编辑，并且只以真实 Canvas 几何和控件作为目标；首次拉墙可显示本地透明测距小 K（`images/surveying-guide-k.png`）。关闭引导不影响闭合、测量边、吸附、BLE 或提交反馈，且引导不写入 `FloorPlan.layoutData`、本地草稿或测量审计。
 
 正式 `FloorPlan.layoutData` 必须使用：
 

@@ -590,6 +590,58 @@ test('viewport interaction transform matches a full scene rebuilt at the target 
   assert.ok(Math.abs(transformedPoint.y - targetPoint.y) < 0.0001);
 });
 
+test('viewport interaction projects closed fills, wall solids, and openings into one target coordinate space', () => {
+  const scene = createScene(createTwoClosedRoomsWithSharedDoorDraft());
+  const viewport = Object.assign({}, scene.viewport, {
+    scale: scene.viewport.scale * 1.2,
+    offsetX: scene.viewport.offsetX + 48,
+    offsetY: scene.viewport.offsetY - 32
+  });
+  const interactionScene = surveyCanvasRenderer.createViewportInteractionScene(scene, viewport);
+  const transform = surveyCanvasRenderer.resolveViewportInteractionTransform(scene.viewport, viewport, scene.rect);
+  const sourceFillPoint = scene.closedSpaceFills[0].points[0];
+  const projectedFillPoint = interactionScene.closedSpaceFills[0].points[0];
+  const sourceSolidPoint = scene.wallSolidPlans.closed.rings[0][0];
+  const projectedSolidPoint = interactionScene.wallSolidPlans.closed.rings[0][0];
+  const sourceOpening = scene.openings[0];
+  const projectedOpening = interactionScene.openings[0];
+
+  assert.deepEqual(projectedFillPoint, {
+    x: sourceFillPoint.x * transform.scale + transform.translateX,
+    y: sourceFillPoint.y * transform.scale + transform.translateY
+  });
+  assert.deepEqual(projectedSolidPoint, {
+    x: sourceSolidPoint.x * transform.scale + transform.translateX,
+    y: sourceSolidPoint.y * transform.scale + transform.translateY
+  });
+  assert.deepEqual(projectedOpening.center, {
+    x: sourceOpening.center.x * transform.scale + transform.translateX,
+    y: sourceOpening.center.y * transform.scale + transform.translateY
+  });
+  assert.equal(projectedOpening.wall, interactionScene.walls.find((wall) => wall.id === sourceOpening.wall.id));
+});
+
+test('snapping a new cursor onto a closed wall preserves the completed room render geometry', () => {
+  const closedDraft = createClosedRectangleDraft();
+  const closedFloor = surveyGraph.getActiveFloor(closedDraft);
+  const before = createScene(closedDraft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    closedFloor,
+    { xMm: 1500, yMm: 0 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  const snappedDraft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(closedDraft),
+    target.pointMm,
+    target
+  );
+  const after = createScene(snappedDraft);
+
+  assert.deepEqual(after.closedSpaceFills, before.closedSpaceFills);
+  assert.deepEqual(after.wallSolidPlan.rings, before.wallSolidPlan.rings);
+  assert.deepEqual(after.wallSolidPlans.closed.rings, before.wallSolidPlans.closed.rings);
+});
+
 test('viewport interaction keeps structural drawing and skips dimensions, labels, and guides', () => {
   const draft = createTwoClosedRoomsWithSharedDoorDraft();
   const scene = createScene(draft);

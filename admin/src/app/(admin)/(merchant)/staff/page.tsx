@@ -266,8 +266,8 @@ export default function StaffPage() {
         ) : !currentUser ? (
           <Alert showIcon type="info" message="正在加载员工权限" />
         ) : (
-        <Flex gap={24} align="start" wrap="wrap">
-          <Card title="部门结构" className="admin-panel-card w-full lg:!w-72">
+        <div className="admin-staff-layout">
+          <Card title="部门结构" className="admin-department-panel admin-panel-card w-full">
             <Flex vertical gap={16}>
               <Flex justify="space-between" align="center">
                 <Button type={selectedDepartmentId === null ? 'primary' : 'default'} onClick={() => setSelectedDepartmentId(null)}>全部员工</Button>
@@ -285,6 +285,7 @@ export default function StaffPage() {
 
           <div className="min-w-0 flex-1">
             <ProTable<StaffMember>
+              className="admin-data-table admin-mobile-filter-stack"
               actionRef={actionRef}
               rowKey="_id"
               columns={columns}
@@ -304,7 +305,7 @@ export default function StaffPage() {
               }}
             />
           </div>
-        </Flex>
+        </div>
         )}
       </PageContainer>
 

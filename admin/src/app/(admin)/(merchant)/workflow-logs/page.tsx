@@ -214,8 +214,8 @@ export default function WorkflowLogsPage() {
           </Button>,
         ] : undefined}
       >
-        <div className="space-y-8">
-          <section aria-label="通知送达概览" className="space-y-4">
+        <div className="flex flex-col gap-8">
+          <section aria-label="通知送达概览" className="flex flex-col gap-4">
             <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
               <div>
                 <Typography.Title level={4} className="!mb-1">送达概览</Typography.Title>
@@ -234,13 +234,13 @@ export default function WorkflowLogsPage() {
               <Card className="admin-panel-card admin-overview-stat">
                 <Flex justify="space-between" align="start" gap={16}>
                   <Statistic title="已跳过" value={stats.skipped} />
-                  <span className="admin-overview-stat-icon !bg-amber-500/10 !text-amber-700"><CircleOff size={19} /></span>
+                  <span className="admin-overview-stat-icon !bg-muted !text-muted-foreground"><CircleOff size={19} /></span>
                 </Flex>
                 <Typography.Text type="secondary">被去重或规则过滤的提醒</Typography.Text>
               </Card>
               <Card className="admin-panel-card admin-overview-stat">
                 <Flex justify="space-between" align="start" gap={16}>
-                  <Statistic title="发送失败" value={stats.failed} valueStyle={{ color: '#cf1322' }} />
+                  <Statistic title="发送失败" value={stats.failed} />
                   <span className="admin-overview-stat-icon !bg-destructive/10 !text-destructive"><AlertTriangle size={19} /></span>
                 </Flex>
                 <Typography.Text type="secondary">请结合失败原因检查配置或接收对象</Typography.Text>
@@ -255,13 +255,13 @@ export default function WorkflowLogsPage() {
             </div>
           </section>
 
-          <section className="space-y-4" aria-labelledby="workflow-log-table-title">
+          <section className="flex flex-col gap-4" aria-labelledby="workflow-log-table-title">
             <div>
               <Typography.Title id="workflow-log-table-title" level={4} className="!mb-1">通知明细</Typography.Title>
               <Typography.Text type="secondary">按发送状态筛选日志，并通过失败内容追踪待处理问题。</Typography.Text>
             </div>
             <ProTable<WorkflowLog>
-              className="admin-mobile-filter-stack"
+              className="admin-data-table admin-mobile-filter-stack"
               actionRef={actionRef}
               rowKey="_id"
               columns={columns}

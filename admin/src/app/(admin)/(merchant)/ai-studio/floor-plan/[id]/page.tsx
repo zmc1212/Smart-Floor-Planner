@@ -19,7 +19,6 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
 import {
   buildLabelRenderData,
   escapeSvgText,
@@ -28,16 +27,16 @@ import {
   scalePoint,
 } from '@/lib/ai/floorplan-labels';
 
-const FALLBACK_STYLES: Record<string, { label: string; icon: string; gradient: string }> = {
-  colorful: { label: '彩色风格', icon: 'CP', gradient: 'from-pink-400 to-blue-400' },
-  cad: { label: 'CAD 风格', icon: 'CAD', gradient: 'from-zinc-700 to-zinc-400' },
-  '3d': { label: '3D 风格', icon: '3D', gradient: 'from-cyan-400 to-indigo-500' },
-  handdrawn: { label: '手绘风格', icon: 'SK', gradient: 'from-amber-300 to-rose-300' },
-  modern: { label: '现代简约', icon: 'MD', gradient: 'from-slate-400 to-neutral-500' },
-  nordic: { label: '北欧风', icon: 'NO', gradient: 'from-sky-200 to-emerald-300' },
-  cream: { label: '奶油风', icon: 'CR', gradient: 'from-amber-100 to-stone-200' },
-  luxury: { label: '轻奢风', icon: 'LX', gradient: 'from-zinc-500 to-amber-300' },
-  new_chinese: { label: '新中式', icon: 'CN', gradient: 'from-red-500 to-stone-500' },
+const FALLBACK_STYLES: Record<string, { label: string; icon: string }> = {
+  colorful: { label: '彩色风格', icon: 'CP' },
+  cad: { label: 'CAD 风格', icon: 'CAD' },
+  '3d': { label: '3D 风格', icon: '3D' },
+  handdrawn: { label: '手绘风格', icon: 'SK' },
+  modern: { label: '现代简约', icon: 'MD' },
+  nordic: { label: '北欧风', icon: 'NO' },
+  cream: { label: '奶油风', icon: 'CR' },
+  luxury: { label: '轻奢风', icon: 'LX' },
+  new_chinese: { label: '新中式', icon: 'CN' },
 };
 
 const VIEWPORT_WIDTH = 1200;
@@ -130,20 +129,11 @@ export default function GenerationDetailPage() {
   const fallbackStyle = FALLBACK_STYLES[styleKey] || {
     label: data?.input?.style || '未知风格',
     icon: 'AI',
-    gradient: 'from-zinc-500 to-zinc-400',
   };
   const styleInfo = {
     label: presetSnapshot?.name || fallbackStyle.label,
     icon: presetSnapshot?.icon || fallbackStyle.icon,
-    gradient: presetSnapshot?.previewClassName || fallbackStyle.gradient,
   };
-  const softGuideImage = data?.type === 'soft_furnishing_render' ? data.input?.placementGuideImage : null;
-  const softSourceImage = data?.type === 'soft_furnishing_render' ? data.input?.sourceImage : null;
-  const softPlacementCount =
-    data?.type === 'soft_furnishing_render' && Array.isArray(data.input?.placementPlan?.items)
-      ? data.input?.placementPlan?.items.length
-      : 0;
-
   const rooms = useMemo(() => normalizeRooms(data?.input?.roomData), [data?.input?.roomData]);
   const layoutMetrics = useMemo(() => getLayoutMetrics(rooms), [rooms]);
   const labelData = useMemo(() => buildLabelRenderData(rooms), [rooms]);
@@ -222,8 +212,8 @@ export default function GenerationDetailPage() {
 
   if (loading && !data) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
-        <Loader2 className="animate-spin text-purple-500" size={40} />
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 bg-background">
+        <Loader2 className="animate-spin text-primary" size={40} />
         <p className="font-medium text-muted-foreground">加载方案详情...</p>
       </div>
     );
@@ -231,8 +221,8 @@ export default function GenerationDetailPage() {
 
   if (error) {
     return (
-      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
-        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-50 text-red-500">
+      <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 bg-background">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10 text-destructive">
           <Info size={32} />
         </div>
         <p className="text-lg font-bold">{error}</p>
@@ -250,27 +240,27 @@ export default function GenerationDetailPage() {
   const imageUrl = data.imageUrl || '';
 
   return (
-    <div className="min-h-screen bg-white font-sans text-[#171717]">
-      <main className="mx-auto max-w-6xl px-6 py-8">
-        <div className="mb-8 flex items-center justify-between gap-4">
+    <div className="min-h-full bg-background text-foreground">
+      <main className="mx-auto max-w-[1480px] px-5 py-6 sm:px-8">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b pb-6">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => router.back()} className="rounded-xl hover:bg-muted">
+            <Button variant="ghost" size="icon" onClick={() => router.back()}>
               <ChevronLeft size={24} />
             </Button>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight">方案详情</h1>
+              <h1 className="text-2xl font-semibold">方案详情</h1>
               <div className="mt-1 flex items-center gap-2">
                 <Badge variant="outline" className="rounded-md font-medium">
                   ID: {id.slice(-6).toUpperCase()}
                 </Badge>
                 {data.status === 'succeeded' && (
-                  <Badge className="border-none bg-green-100 text-[10px] font-bold uppercase text-green-700">已完成</Badge>
+                  <Badge className="border-none bg-emerald-100 text-xs font-medium text-emerald-800">已完成</Badge>
                 )}
                 {data.status === 'failed' && (
-                  <Badge className="border-none bg-red-100 text-[10px] font-bold uppercase text-red-700">生成失败</Badge>
+                  <Badge className="border-none bg-destructive/10 text-xs font-medium text-destructive">生成失败</Badge>
                 )}
                 {(data.status === 'processing' || data.status === 'pending') && (
-                  <Badge className="animate-pulse border-none bg-blue-100 text-[10px] font-bold uppercase text-blue-700">
+                  <Badge className="animate-pulse border-none bg-primary/10 text-xs font-medium text-primary">
                     渲染中 {data.progress}%
                   </Badge>
                 )}
@@ -279,13 +269,13 @@ export default function GenerationDetailPage() {
           </div>
 
           {data.status === 'succeeded' && (
-            <div className="flex items-center gap-3">
-              <Button variant="outline" className="gap-2 rounded-xl font-bold" onClick={() => window.open(imageUrl, '_blank')}>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" className="gap-2" onClick={() => window.open(imageUrl, '_blank')}>
                 <ExternalLink size={16} /> 查看原图
               </Button>
               <Button
                 variant="outline"
-                className="gap-2 rounded-xl font-bold"
+                className="gap-2"
                 onClick={handleDownloadLabeled}
                 disabled={downloadingLabel || !overlaySvg}
               >
@@ -293,7 +283,7 @@ export default function GenerationDetailPage() {
                 下载标注版
               </Button>
               <Button
-                className="gap-2 rounded-xl bg-black font-bold text-white hover:bg-zinc-800"
+                className="gap-2"
                 onClick={() => {
                   const a = document.createElement('a');
                   a.href = imageUrl;
@@ -307,9 +297,9 @@ export default function GenerationDetailPage() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-[28px] border border-muted bg-muted/10 shadow-sm lg:aspect-[4/3]">
+            <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-lg border bg-card shadow-sm lg:aspect-[4/3]">
               {data.status === 'succeeded' ? (
                 <div className="relative h-full w-full">
                   <img src={imageUrl} alt="Generated Floor Plan" className="h-full w-full object-contain" />
@@ -319,22 +309,22 @@ export default function GenerationDetailPage() {
                 </div>
               ) : data.status === 'failed' ? (
                 <div className="p-12 text-center">
-                  <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-3xl bg-red-50 text-red-500">
+                  <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
                     <Info size={40} />
                   </div>
                   <h2 className="mb-2 text-xl font-bold">生成失败</h2>
                   <p className="mb-6 max-w-md text-muted-foreground">{data.error || 'AI 服务响应异常，请尝试重新生成'}</p>
-                  <Button variant="outline" className="rounded-xl font-bold" onClick={() => router.push(getBackPath(data.type))}>
+                  <Button variant="outline" onClick={() => router.push(getBackPath(data.type))}>
                     返回重新生成
                   </Button>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-6">
                   <div className="relative">
-                    <div className="flex h-24 w-24 items-center justify-center rounded-full bg-purple-50">
-                      <RefreshCw className="animate-spin text-purple-500" size={40} />
+                    <div className="flex h-24 w-24 items-center justify-center rounded-full bg-primary/10">
+                      <RefreshCw className="animate-spin text-primary" size={40} />
                     </div>
-                    <div className="absolute inset-0 animate-ping rounded-full border-2 border-purple-200 opacity-30" />
+                    <div className="absolute inset-0 animate-ping rounded-full border-2 border-primary/30 opacity-30" />
                   </div>
                   <div className="space-y-2 text-center">
                     <p className="text-xl font-bold">AI 正在渲染中...</p>
@@ -345,7 +335,7 @@ export default function GenerationDetailPage() {
                       </div>
                       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
                         <div
-                          className="h-full bg-purple-500 transition-all duration-1000 ease-out"
+                          className="h-full bg-primary transition-all duration-1000 ease-out"
                           style={{ width: `${Math.max(data.progress || 5, 5)}%` }}
                         />
                       </div>
@@ -357,19 +347,19 @@ export default function GenerationDetailPage() {
             </div>
           </div>
 
-          <div className="space-y-6">
-            <section className="overflow-hidden rounded-2xl border bg-muted/20">
-              <div className={cn('h-2 bg-gradient-to-r', styleInfo.gradient)} />
-              <div className="p-6">
-                <h3 className="mb-4 flex items-center gap-2 text-xs font-black uppercase tracking-[0.15em] text-muted-foreground">
-                  <Sparkles size={12} className="text-purple-500" /> 风格配置
+          <div className="space-y-5">
+            <section className="overflow-hidden rounded-lg border bg-card">
+              <div className="h-1 bg-primary" />
+              <div className="p-5">
+                <h3 className="mb-4 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                  <Sparkles size={14} className="text-primary" /> 风格配置
                 </h3>
                 <div className="flex items-center gap-3">
-                  <div className={cn('flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br text-sm font-black text-white', styleInfo.gradient)}>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-md bg-primary/10 text-sm font-bold text-primary">
                     {styleInfo.icon}
                   </div>
                   <div>
-                    <p className="text-lg font-bold">{styleInfo.label}</p>
+                    <p className="text-lg font-semibold">{styleInfo.label}</p>
                     <p className="text-xs text-muted-foreground">
                       {data.type === 'soft_furnishing_render'
                         ? 'AI 软装设计'
@@ -383,31 +373,31 @@ export default function GenerationDetailPage() {
             </section>
 
             <section className="space-y-3">
-              <h3 className="px-1 text-xs font-black uppercase tracking-[0.15em] text-muted-foreground">任务元数据</h3>
+              <h3 className="px-1 text-xs font-semibold text-muted-foreground">任务元数据</h3>
               {[
                 { icon: Map, label: '关联户型', value: data.input?.roomName || '未命名户型' },
                 { icon: Calendar, label: '生成时间', value: new Date(data.createdAt).toLocaleString('zh-CN') },
                 { icon: Cpu, label: '计算引擎', value: data.provider || 'AI Cluster' },
                 { icon: Type, label: '标注状态', value: overlaySvg ? `已叠加 ${labelData.length} 个房间标注` : '无房间标注数据' },
               ].map((item) => (
-                <div key={item.label} className="flex items-center gap-3 rounded-2xl border border-muted/20 bg-muted/10 p-4">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-muted-foreground shadow-sm">
+                <div key={item.label} className="flex items-center gap-3 rounded-md border bg-card p-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-md bg-muted text-muted-foreground">
                     <item.icon size={18} />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">{item.label}</p>
-                    <p className="truncate text-sm font-bold">{item.value}</p>
+                    <p className="text-xs font-medium text-muted-foreground">{item.label}</p>
+                    <p className="truncate text-sm font-medium">{item.value}</p>
                   </div>
                 </div>
               ))}
             </section>
 
             {data.input?.customPrompt && (
-              <section className="space-y-4 pt-2">
-                <h3 className="flex items-center gap-2 px-1 text-xs font-black uppercase tracking-[0.15em] text-muted-foreground">
-                  <Type size={12} /> AI 提示词
+              <section className="space-y-3 pt-1">
+                <h3 className="flex items-center gap-2 px-1 text-xs font-semibold text-muted-foreground">
+                  <Type size={14} /> AI 提示词
                 </h3>
-                <div className="break-words rounded-2xl bg-zinc-900 p-4 font-mono text-xs leading-relaxed text-zinc-400">
+                <div className="break-words rounded-md border bg-muted p-4 font-mono text-xs leading-relaxed text-muted-foreground">
                   {data.input.customPrompt}
                 </div>
               </section>

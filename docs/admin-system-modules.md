@@ -1,5 +1,46 @@
 # Admin System: Current Module Inventory
 
+> 2026-08-05 PostgreSQL migration update: platform `GET/PATCH
+> /api/admin/ai-image-models` now initializes, lists, validates, and updates
+> the GRS catalog through `AiCreationModelProfileRepository` in PostgreSQL
+> platform transactions. `GET/PATCH /api/admin/ai-image-model-prices` now uses
+> that same catalog for resolution validation and reads/writes PostgreSQL price
+> rows. Existing `super_admin`/`admin` access, response DTOs, one-enabled-default
+> rule, and provider-discovered read-only entries are preserved. No MongoDB
+> business data was imported, deleted, or re-encrypted. Targeted ESLint and
+> `npm run test:postgresql` passed 46/46.
+
+> 2026-08-05 PostgreSQL migration update: `GET /api/ai/usage` and the
+> platform-compatible enterprise reads `GET /api/admin/enterprises/[id]/ai-key`,
+> `/ai-sync`, and `/ai-usage` now read `enterprise_ai_usage_snapshots` through
+> typed PostgreSQL repositories under tenant or platform RLS. The established
+> `super_admin`/`admin` boundary, the tenant usage DTO, and deprecated write
+> endpoints returning `410` are unchanged. `ai-key` now explicitly returns
+> `aiConfig: null`, because per-enterprise Pollinations credentials are retired;
+> provider credentials remain platform-managed. No MongoDB business data was
+> imported, deleted, or re-encrypted. `npm run test:postgresql` passed 45/45.
+
+> 2026-08-04 PostgreSQL migration update:
+> `POST /api/admin/ai-generations/[id]/retry` now handles bigint failed Mini
+> Program generations in the active enterprise context. The established
+> `super_admin`/`admin` boundary remains; tenant-RLS lookup permits an
+> administrator to retry a staff-owned task, resets its provider/billing state,
+> and submits it through the PostgreSQL runtime. Historical ObjectId retries
+> retain the MongoDB compatibility branch. No MongoDB business data was
+> imported, deleted, or re-encrypted. Targeted ESLint and
+> `npm run test:postgresql` passed 44/44.
+
+> 2026-08-04 PostgreSQL migration update: bigint
+> `PATCH /api/ai/workflows/[id]` now supports the existing
+> `mock-generation` manual-result action. PostgreSQL asset URLs, image data
+> URIs, and HTTP(S) images resolve to tenant-owned `ai_generation_output`
+> media; the route then creates a zero-credit succeeded bigint `scenario`
+> generation and optionally advances the stage pointer in a short tenant-RLS
+> transaction. Provider execution and credit billing are intentionally skipped.
+> Historical ObjectId mutations remain MongoDB-compatible. No MongoDB business
+> data was imported, deleted, or re-encrypted. Targeted ESLint and
+> `npm run test:postgresql` passed 43/43.
+
 > 2026-08-04 PostgreSQL migration update: the two-step direct Admin routes
 > `POST /api/ai/generate` and `POST /api/ai/render` now retain their existing
 > prompt-first DTO while using tenant-RLS bigint `floor_plan_style`,
@@ -74,8 +115,8 @@
 > the established rules. The `lighting` stage now records its vision analysis and
 > prompt-compilation calls as PostgreSQL provider attempts before using the same
 > scenario image lifecycle. The legacy ObjectId route remains MongoDB-compatible.
-> `mock-generation` remains MongoDB-only. No MongoDB business data was imported,
-> deleted, or re-encrypted. Targeted ESLint and `npm run test:postgresql` passed 39/39.
+> `mock-generation` is now bigint-compatible through the newer migration record
+> above. No MongoDB business data was imported, deleted, or re-encrypted.
 
 > 2026-08-04 PostgreSQL migration update: `GET/POST /api/ai/workflows` and
 > bigint `GET/PATCH /api/ai/workflows/[id]` now use PostgreSQL workflow, lead,
@@ -84,9 +125,8 @@
 > PostgreSQL workflows support creation, rename, stage-pointer, and succeeded
 > baseline selection. Historical ObjectId detail/mutation requests retain their
 > MongoDB compatibility branch, while the collection endpoint intentionally
-> lists bigint records only and rejects MongoDB-only `mock-generation` for a
-> bigint workflow. This was `Limited` before the 2026-08-04 stage-execution
-> migration recorded above; that newer entry supersedes this limitation. No
+> lists bigint records only. The newer migration record above also enables
+> `mock-generation` for bigint workflows. No
 > MongoDB business data was imported, deleted, or re-encrypted. Targeted ESLint
 > and `npm run test:postgresql` passed 39/39.
 
@@ -331,8 +371,10 @@ permission, or workflow changes.
 - APIs: `/api/admin/enterprises`, `/activate`, `[id]`, `[id]/ai-key`,
   `[id]/ai-sync`, `[id]/ai-usage`, and `/api/branding/[id]`.
 - Models/helpers: PostgreSQL `EnterpriseRepository`, `AdminUserRepository`,
-  `PromotionRecordRepository`, and `CommercialRepository`, plus the
-  not-yet-switched `EnterpriseAiUsageSnapshot` and `enterprise-ai` paths.
+  `PromotionRecordRepository`, `CommercialRepository`, and
+  `EnterpriseAiUsageSnapshotRepository`. The legacy `enterprise-ai` Pollinations
+  sync implementation remains only for retired compatibility code; migrated
+  reads do not connect to MongoDB.
 - Status: `Implemented`. Covers enterprise onboarding/activation, tenant profile,
   branding, automation settings, AI provider/key runtime settings, usage
   snapshots, and platform-level overview metrics.
@@ -355,11 +397,12 @@ permission, or workflow changes.
   unbound orders to the new enterprise and advances the record to `paid`.
   `/api/branding/[id]` reads the active enterprise name, logo, and branding
   through `EnterpriseRepository` in a platform PostgreSQL transaction, preserving
-  its public contract and default-color response. `Limited`: `ai-key`,
-  `ai-sync`, `ai-usage`, `ai-credits`, and
-  usage-snapshot consumers remain assigned to later Phase 3 domains. Core
-  list/detail responses therefore expose `aiUsageSnapshot: null` until the AI
-  switch.
+  its public contract and default-color response. Tenant `GET /api/ai/usage` and
+  platform-compatible `[id]/ai-key`, `[id]/ai-sync`, and `[id]/ai-usage` now read
+  the PostgreSQL usage snapshot with the existing role boundary; retired
+  per-enterprise key writes still return `410`, and `ai-key` returns
+  `aiConfig: null`. Core enterprise list/detail responses intentionally retain
+  `aiUsageSnapshot: null` rather than adding snapshot joins to those DTOs.
 
 ### 4. Staff, Departments, And System Accounts
 
@@ -624,6 +667,12 @@ permission, or workflow changes.
   at rest; asynchronous checks persist only their non-secret operational state
   after the network call. Environment-backed GRS/Pollinations defaults are
   idempotently seeded into PostgreSQL when their API keys are configured.
+- PostgreSQL catalog boundary: `GET/PATCH /api/admin/ai-image-models` reads and
+  updates the platform GRS catalog through `AiCreationModelProfileRepository`;
+  `GET/PATCH /api/admin/ai-image-model-prices` validates the same catalog and
+  reads/writes `AiModelCreditPriceRepository` rows. The routes retain their
+  `super_admin`/`admin` boundary, catalog DTOs, one-enabled-default constraint,
+  and read-only display of provider-discovered models without catalog metadata.
 - Synchronous text generation: `POST /api/ai/advice` and
   `POST /api/ai/creation/prompt-assist` create PostgreSQL bigint `advice`
   generation records under tenant RLS, preserve their existing response DTOs,
@@ -652,8 +701,9 @@ permission, or workflow changes.
   action pricing, `GET/PATCH /api/admin/ai-image-models`,
   `GET/PATCH /api/admin/ai-image-model-prices`, enterprise
   grants/adjustments/ledger/tasks, and failed Mini
-  Program task retries. Legacy enterprise `ai-key`/`ai-sync` reads remain
-  compatibility-only while writes return `410`.
+  Program task retries. Legacy enterprise `ai-key`/`ai-sync` and usage reads
+  remain compatibility-only on their existing DTOs, now backed by PostgreSQL
+  usage snapshots; their retired writes return `410`.
 - Free-creation APIs: `GET /api/ai/creation/bootstrap`, prompt categories,
   prompt template list/detail/preview, `POST /api/ai/creation/assets`,
   `GET/POST /api/ai/creation/tasks`, `DELETE /api/ai/creation/tasks/[id]`,
@@ -666,9 +716,11 @@ permission, or workflow changes.
   bigint identities consistently under tenant RLS. Historical MongoDB ObjectId
   media remains available only through the explicit read-only delivery branch;
   there is no cross-store identity fallback for new records. The platform retry
-  endpoint for historical Mini Program generations remains ObjectId-only and
-  returns `409` for a PostgreSQL identity; the Mini Program's own retry route
-  uses the PostgreSQL bigint task path.
+  endpoint accepts a PostgreSQL bigint failed Mini Program generation when an
+  `admin` or `super_admin` has an enterprise context, then retries it through
+  the tenant-RLS PostgreSQL lifecycle; historical ObjectId generations retain
+  the MongoDB compatibility branch. The Mini Program's own retry route remains
+  limited to its original operator's PostgreSQL task.
 - Models/helpers: `AiGeneration`, `AiWorkflow`, `AiChatSession`, `AiStylePreset`,
   `AiProviderConfig`, `AiProviderAttempt`, `MediaAsset`, `AiCreditAccount`,
   `AiCreditLedger`, `AiCreditPrice`, `AiModelCreditPrice`, `Inspiration`,
@@ -812,11 +864,10 @@ permission, or workflow changes.
   message history now use `AiChatSessionRepository` in RLS-scoped PostgreSQL
   transactions, keeping the existing per-enterprise/per-administrator boundary
   and string conversation IDs. Historical MongoDB conversations are not imported.
-  `Limited`: PostgreSQL workflow list/create/detail, state mutations, scenario
-  execution, formal-plan control-image rendering, provider-input media
-  materialization, and `lighting` analysis/prompt compilation are bigint-compatible.
-  The PostgreSQL equivalent of the MongoDB-only `mock-generation` action remains
-  unavailable.
+  PostgreSQL workflow list/create/detail, state mutations, scenario execution,
+  manual `mock-generation` result persistence, formal-plan control-image
+  rendering, provider-input media materialization, and `lighting` analysis/prompt
+  compilation are bigint-compatible.
   Historical ObjectId workflow detail/mutation remains read-compatible; the
   collection endpoint intentionally lists only PostgreSQL workflows. The
   workflow-lead selector, free-creation bootstrap read, PostgreSQL asset

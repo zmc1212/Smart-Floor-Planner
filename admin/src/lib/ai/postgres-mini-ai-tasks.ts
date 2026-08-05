@@ -179,11 +179,23 @@ export async function createPostgresMiniAiTask(input: CreateMiniAiTaskInput, con
 }
 
 export async function getPostgresMiniAiTask(id: string, context: MiniAiContext) {
-  const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
-  const generationId = parsePostgresId(id, 'generationId');
+  return findPostgresMiniAiTask(id, {
+    enterpriseId: context.enterpriseId,
+    operatorId: context.operatorId,
+  });
+}
+
+async function findPostgresMiniAiTask(inputId: string, input: {
+  enterpriseId: string;
+  operatorId?: string;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const generationId = parsePostgresId(inputId, 'generationId');
+  const operatorId = input.operatorId ? parsePostgresId(input.operatorId, 'operatorId') : undefined;
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const generation = await new AiCreationRepository(transaction).findGeneration(generationId);
-    if (!generation || generation.deletedAt || generation.operatorId !== BigInt(context.operatorId) || generation.channel !== 'miniprogram') return null;
+    if (!generation || generation.deletedAt || generation.channel !== 'miniprogram') return null;
+    if (operatorId && generation.operatorId !== operatorId) return null;
     return generation;
   });
 }
@@ -202,6 +214,47 @@ export async function retryPostgresMiniAiTask(id: string, context: MiniAiContext
   if (String(asRecord(generation.billing).status) === 'held') await releasePostgresCreationGenerationCredits({ enterpriseId: context.enterpriseId, generationId: id, errorMessage: '重试前释放冻结积分' });
   await withTenantTransaction(enterpriseId, (transaction) => new AiCreationRepository(transaction).updateGeneration(generation.id, { status: 'pending', errorCode: null, errorMessage: null, currentAttemptId: null, externalTask: {}, retryCount: generation.retryCount + 1, billing: { ...asRecord(generation.billing), cycle: generation.retryCount + 1, status: 'unbilled' } }));
   return executePostgresMiniAiTask(id, context);
+}
+
+/** Prepares a failed tenant task for an administrator-triggered retry. */
+export async function preparePostgresMiniAiTaskRetry(id: string, enterpriseId: string) {
+  const generation = await findPostgresMiniAiTask(id, { enterpriseId });
+  if (!generation || generation.status !== 'failed') {
+    throw Object.assign(new Error('Only failed Mini Program AI tasks can be retried'), { status: 400 });
+  }
+  const parsedEnterpriseId = parsePostgresId(enterpriseId, 'enterpriseId');
+  if (String(asRecord(generation.billing).status) === 'held') {
+    await releasePostgresCreationGenerationCredits({
+      enterpriseId,
+      generationId: id,
+      errorMessage: 'Release frozen credits before administrator retry',
+    });
+  }
+  await withTenantTransaction(parsedEnterpriseId, (transaction) =>
+    new AiCreationRepository(transaction).updateGeneration(generation.id, {
+      status: 'pending',
+      errorCode: null,
+      errorMessage: null,
+      currentAttemptId: null,
+      externalTask: {},
+      retryCount: generation.retryCount + 1,
+      billing: {
+        ...asRecord(generation.billing),
+        cycle: generation.retryCount + 1,
+        status: 'unbilled',
+      },
+    })
+  );
+  return generation;
+}
+
+/** Allows a platform administrator in the tenant context to retry a staff-owned task. */
+export async function retryPostgresMiniAiTaskForAdmin(id: string, enterpriseId: string) {
+  const generation = await preparePostgresMiniAiTaskRetry(id, enterpriseId);
+  await submitPostgresCreationGeneration({ enterpriseId, generationId: generation.id.toString() });
+  return withTenantTransaction(parsePostgresId(enterpriseId, 'enterpriseId'), (transaction) =>
+    new AiCreationRepository(transaction).findGeneration(generation.id)
+  );
 }
 
 export function serializePostgresMiniAiTask(generation: NonNullable<Awaited<ReturnType<typeof getPostgresMiniAiTask>>>, request: Request) {

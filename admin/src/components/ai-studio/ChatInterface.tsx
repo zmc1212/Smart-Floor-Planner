@@ -1054,41 +1054,41 @@ export default function ChatInterface({
   };
 
   return (
-    <div className="flex h-[calc(100vh-180px)] min-h-[640px] bg-white rounded-[32px] shadow-2xl shadow-zinc-200/50 border border-zinc-100 overflow-hidden">
+    <div className="flex h-[calc(100vh-190px)] min-h-[620px] overflow-hidden rounded-lg border bg-card shadow-sm">
       {/* Sidebar - History */}
       <div className={cn(
-        "bg-zinc-50/50 border-r border-zinc-100 flex flex-col transition-all duration-300 ease-in-out shrink-0",
+        "flex shrink-0 flex-col border-r border-border bg-muted/30 transition-all duration-300 ease-in-out",
         isSidebarOpen ? "w-64" : "w-0 overflow-hidden border-none"
       )}>
         <div className="p-4 shrink-0">
-          <Button 
+          <Button
             onClick={onNewChat}
-            className="w-full justify-start gap-2 bg-white hover:bg-zinc-100 text-zinc-900 border border-zinc-200 rounded-xl shadow-sm"
             variant="outline"
+            className="w-full justify-start"
           >
-            <PlusCircle size={18} />
-            <span className="font-bold text-sm">新对话</span>
+            <PlusCircle data-icon="inline-start" />
+            <span className="font-semibold">新对话</span>
           </Button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-2 space-y-1 py-2">
+        <div className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-2">
           {conversations.map((chat) => (
             <div 
               key={chat._id}
               className={cn(
-                "group relative flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-all",
+                "group relative flex cursor-pointer items-center gap-3 rounded-md px-3 py-3 transition-colors",
                 activeConversationId === chat._id 
-                  ? "bg-white text-zinc-900 shadow-sm border border-zinc-100" 
-                  : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
+                  ? "border border-border bg-background text-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
               )}
               onClick={() => onSelectConversation(chat._id)}
             >
               <MessageSquare size={16} className={cn(
-                activeConversationId === chat._id ? "text-indigo-500" : "text-zinc-400"
+                activeConversationId === chat._id ? "text-primary" : "text-muted-foreground"
               )} />
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-bold truncate">{chat.title || '新对话'}</p>
-                <p className="text-[10px] text-zinc-400 font-medium">
+                <p className="text-[10px] font-medium text-muted-foreground">
                   {new Date(chat.lastMessageAt || chat.createdAt).toLocaleDateString()}
                 </p>
               </div>
@@ -1097,7 +1097,7 @@ export default function ChatInterface({
                   e.stopPropagation();
                   onDeleteConversation(chat._id);
                 }}
-                className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-50 hover:text-red-500 rounded-lg transition-all text-zinc-400"
+                className="rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
               >
                 <Trash2 size={14} />
               </button>
@@ -1105,20 +1105,20 @@ export default function ChatInterface({
           ))}
         </div>
 
-        <div className="p-4 border-t border-zinc-100 bg-zinc-50/80">
-          <p className="text-[10px] text-zinc-400 font-black uppercase tracking-widest text-center">
+        <div className="border-t border-border p-4">
+          <p className="text-center text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
             对话记录自动保存
           </p>
         </div>
       </div>
 
       {/* Main Chat Content */}
-      <div className="flex-1 flex flex-col min-w-0 relative">
+      <div className="relative flex min-w-0 flex-1 flex-col">
         {/* Toggle Sidebar Button (Floating) */}
         <button 
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           className={cn(
-            "absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-12 bg-white border border-zinc-100 shadow-md rounded-full flex items-center justify-center text-zinc-400 hover:text-zinc-900 z-10 transition-all",
+            "absolute -left-3 top-1/2 flex h-12 w-6 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-sm transition-colors hover:text-foreground",
             !isSidebarOpen && "left-0"
           )}
         >
@@ -1126,21 +1126,21 @@ export default function ChatInterface({
         </button>
 
         {/* Header */}
-        <div className="px-8 py-6 border-b border-zinc-50 bg-white/80 backdrop-blur-md flex items-center justify-between shrink-0">
+        <div className="flex shrink-0 items-center justify-between border-b border-border bg-card px-5 py-4 sm:px-6">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-indigo-100">
+            <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <Sparkles size={24} />
             </div>
             <div>
-              <h2 className="text-lg font-bold tracking-tight text-zinc-900">
+              <h2 className="text-base font-semibold tracking-tight text-foreground">
                 {activeConversationId ? conversations.find(c => c._id === activeConversationId)?.title || 'AI 设计师' : 'AI 设计师'}
               </h2>
               <div className="flex items-center gap-2">
                 <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-50"></span>
+                  <span className="relative inline-flex size-2 rounded-full bg-primary"></span>
                 </span>
-                <p className="text-xs text-zinc-500 font-medium">在线 · 随时为您服务</p>
+                <p className="text-xs font-medium text-muted-foreground">在线 · 随时为您服务</p>
               </div>
             </div>
           </div>
@@ -1151,13 +1151,13 @@ export default function ChatInterface({
                 variant="outline"
                 size="sm"
                 onClick={() => setIsWorkflowSheetOpen(true)}
-                className="h-9 rounded-xl border-emerald-100 bg-emerald-50 px-3 text-xs font-black text-emerald-700 hover:bg-emerald-100 xl:hidden"
+                className="xl:hidden"
               >
                 <PanelRightOpen size={14} className="mr-1.5" />
                 方案工作区
               </Button>
             )}
-            <Badge variant="secondary" className="bg-zinc-100 text-zinc-600 border-none px-3 py-1 text-[10px] font-black uppercase tracking-widest">
+            <Badge variant="secondary" className="text-[10px] font-semibold uppercase tracking-widest">
               LongCat Flash
             </Badge>
           </div>

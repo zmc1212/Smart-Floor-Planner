@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import ChatInterface from '@/components/ai-studio/ChatInterface';
-import { Badge } from '@/components/ui/badge';
-import { Sparkles, Info } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+import { AiToolFrame } from '@/components/ai-studio/ai-tool-frame';
 import type { ChatAction, ChatUiPayload } from '@/lib/ai/chat-ui';
 import { useRouter } from 'next/navigation';
 
@@ -181,56 +181,23 @@ export function AiDesignerLegacyPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#fafafa] text-[#171717] font-sans">
-      <main className="mx-auto max-w-[1680px] px-6 py-8">
-        {/* Header Section */}
-        <div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div className="space-y-2">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-900 text-white shadow-xl shadow-zinc-200">
-                <Sparkles size={20} />
-              </div>
-              <h1 className="text-[32px] font-bold tracking-tight text-zinc-900">AI 工作台</h1>
-              <Badge variant="secondary" className="border-none bg-indigo-50 text-indigo-700 px-3 py-1 font-bold">
-                Alpha
-              </Badge>
-            </div>
-            <p className="text-sm text-zinc-500 font-medium">
-              您的数字化助手，协助您处理客资转化、方案比对和技术支持。
-            </p>
-          </div>
-
-          <div className="flex items-center gap-4 bg-white px-5 py-3 rounded-2xl border border-zinc-100 shadow-sm">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600">
-              <Info size={20} />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-zinc-900">Agent 权限已开启</p>
-              <p className="text-[10px] text-zinc-500 font-medium uppercase tracking-tight">已连接生产数据库 · 只读模式</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Chat Interface Container */}
-        <div className="relative">
-          {/* Subtle background decoration */}
-          <div className="absolute -top-20 -right-20 w-64 h-64 bg-indigo-400/5 blur-[100px] rounded-full"></div>
-          <div className="absolute -bottom-20 -left-20 w-64 h-64 bg-pink-400/5 blur-[100px] rounded-full"></div>
-          
-          <ChatInterface 
-            messages={messages} 
-            onSendMessage={handleSendMessage} 
-            isLoading={isLoading}
-            conversations={conversations}
-            activeConversationId={activeConversationId}
-            onSelectConversation={handleSelectConversation}
-            onNewChat={handleNewChat}
-            onDeleteConversation={handleDeleteConversation}
-            onRunAction={handleRunAction}
-          />
-        </div>
-      </main>
-    </div>
+    <AiToolFrame
+      title="AI 助手"
+      description="围绕客户、方案和户型上下文完成查询、建议与经确认的工作流操作。"
+      icon={Sparkles}
+    >
+      <ChatInterface
+        messages={messages}
+        onSendMessage={handleSendMessage}
+        isLoading={isLoading}
+        conversations={conversations}
+        activeConversationId={activeConversationId}
+        onSelectConversation={handleSelectConversation}
+        onNewChat={handleNewChat}
+        onDeleteConversation={handleDeleteConversation}
+        onRunAction={handleRunAction}
+      />
+    </AiToolFrame>
   );
 }
 

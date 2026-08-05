@@ -1,5 +1,45 @@
 # PostgreSQL Migration Plan And Progress
 
+> 2026-08-05 migration record: platform `GET/PATCH
+> /api/admin/ai-image-models` now initializes, reads, validates, and updates
+> GRS catalog profiles through `AiCreationModelProfileRepository` in PostgreSQL
+> platform transactions. The coupled `GET/PATCH
+> /api/admin/ai-image-model-prices` route validates PostgreSQL catalog
+> capabilities and reads/writes PostgreSQL price rows. Existing
+> `super_admin`/`admin` access, DTOs, one-enabled-default rule, and read-only
+> provider-discovered entries are unchanged. No MongoDB business data was
+> imported, deleted, or re-encrypted. Targeted ESLint and
+> `npm run test:postgresql` passed 46/46.
+
+> 2026-08-05 migration record: tenant `GET /api/ai/usage` and the deprecated
+> platform enterprise reads `GET /api/admin/enterprises/[id]/ai-key`, `/ai-sync`,
+> and `/ai-usage` now read the tenant-scoped PostgreSQL
+> `enterprise_ai_usage_snapshots` table. Their existing read DTOs and
+> `super_admin`/`admin` boundary are preserved; retired enterprise Pollinations
+> credential writes remain `410`, and `ai-key` reports `aiConfig: null` to avoid
+> exposing a retired per-enterprise key model. No MongoDB business data was
+> imported, deleted, or re-encrypted. `npm run test:postgresql` passed 45/45.
+
+> 2026-08-04 migration record: `POST /api/admin/ai-generations/[id]/retry`
+> now recognizes bigint failed Mini Program generations. A platform
+> `super_admin` or `admin` must have an enterprise context; the tenant-RLS
+> runtime can then retry a staff-owned task without requiring the administrator
+> to be its original operator. It clears the failed provider state, advances
+> the billing cycle, and resubmits through the existing PostgreSQL lifecycle.
+> Historical ObjectId retries remain MongoDB-compatible. No MongoDB business
+> data was imported, deleted, or re-encrypted. Targeted ESLint and
+> `npm run test:postgresql` passed 44/44.
+
+> 2026-08-04 migration record: bigint `PATCH /api/ai/workflows/[id]` now
+> supports the existing `mock-generation` manual-result action through
+> PostgreSQL. A PostgreSQL asset URL, image data URI, or HTTP(S) image is stored
+> or resolved as a tenant-owned `ai_generation_output` asset, then a zero-credit
+> succeeded bigint `scenario` generation and its optional stage-pointer update
+> are committed in one tenant-RLS transaction. Provider I/O and credit billing
+> are intentionally skipped; historical ObjectId requests retain their MongoDB
+> compatibility branch. No MongoDB business data was imported, deleted, or
+> re-encrypted. Targeted ESLint and `npm run test:postgresql` passed 43/43.
+
 > 2026-08-04 migration record: the two-step direct Admin `POST
 > /api/ai/generate` and `POST /api/ai/render` routes now use tenant-RLS bigint
 > `floor_plan_style`, `furnishing_render`, and legacy `soft_furnishing_render`
@@ -66,9 +106,8 @@
 > rename/stage-pointer/baseline mutations preserve the existing `ai-scenarios`
 > enterprise boundary. Historical ObjectId workflow detail and mutation requests
 > retain their MongoDB compatibility branch, but the collection endpoint returns
-> only bigint records and PostgreSQL workflows reject the MongoDB-only
-> `mock-generation` action. This pre-stage-execution limitation is superseded
-> by the 2026-08-04 execution-slice record above. No MongoDB business data was imported, deleted, or
+> only bigint records. The later manual-result migration record supersedes its
+> earlier PostgreSQL `mock-generation` limitation. No MongoDB business data was imported, deleted, or
 > re-encrypted. Targeted ESLint and `npm run test:postgresql` passed 39/39.
 
 > 2026-08-04 migration record: GET /api/ai/workflows/[id]/source-image now
@@ -413,7 +452,7 @@ and `cancelled`.
 | Phase 0.2 | Qiniu configuration and encrypted-field verification | complete | Read-only inspection; no secrets logged |
 | Phase 1 | PostgreSQL instance, roles, pooling, migration runner | complete | Codex verification and user database-health/admin-page regression passed |
 | Phase 2 | PostgreSQL schema and Repository foundation | complete | Codex and user acceptance passed on 2026-08-01 |
-| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core and public branding reads, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, AI style presets, AI provider configuration/runtime, AI action/model pricing, AI credit accounts/ledgers, AI chat sessions, PostgreSQL media-asset delivery, free-creation execution, Mini Program AI task execution, public bigint workflow list/detail/create/state/stage execution, synchronous advice/prompt-assist generation, direct soft-furnishing rendering, two-step direct `generate`/`render`, and the Admin AI Designer Agent’s bigint lead/floor-plan/workflow consumers are switched. The MongoDB-only `mock-generation` equivalent remains the next AI execution compatibility gap. |
+| Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core and public branding reads, leads, formal plans, measurements/devices, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, AI style presets, AI provider configuration/runtime, GRS image-model catalog and model pricing, AI action/model pricing, AI credit accounts/ledgers, AI chat sessions, enterprise AI usage snapshot reads, PostgreSQL media-asset delivery, free-creation execution, Mini Program AI task execution and administrator retry, public bigint workflow list/detail/create/state/stage execution, manual `mock-generation` result persistence, synchronous advice/prompt-assist generation, direct soft-furnishing rendering, two-step direct `generate`/`render`, and the Admin AI Designer Agent’s bigint lead/floor-plan/workflow consumers are switched. |
 | Phase 4 | RoomiAI files/data and Qiniu configuration import | in progress: awaiting user acceptance | PostgreSQL active Roomi revision, 960 verified local previews, imported Qiniu configuration, and successful probe on 2026-08-01 |
 | Phase 5 | Contract tests and cutover rehearsal | not started | Pending |
 | Phase 6 | Production PostgreSQL cutover | not started | Pending |
@@ -759,10 +798,9 @@ is recorded.
   `AiStylePresetRepository` in platform-scoped PostgreSQL transactions. The
   public preset DTO continues to expose the PostgreSQL bigint as a string `_id`.
   Targeted ESLint and the PostgreSQL integration suite pass (26/26). The
-  production build compiles, then remains blocked in the unmodified MongoDB
-  retry route `src/app/api/admin/ai-generations/[id]/retry/route.ts` because its
-  `generation.enterpriseId` is typed `string | ObjectId` where an `ObjectId` is
-  required; that pre-existing AI-generation boundary is outside this slice.
+  subsequent Mini Program retry migration also corrected the legacy retry
+  route's `enterpriseId` boundary to pass the string identifiers required by
+  the AI task context.
   Generation task persistence/model-profile synchronization and AI
   workflows/generation/media still require Phase 3 work. Their legacy MongoDB
   ObjectId boundaries remain `Limited` until their dependent slices are migrated.
@@ -940,8 +978,8 @@ stage, including `lighting` vision analysis and prompt compilation, plus formal-
 control-image/provider-input materialization. The Admin AI Designer Agent is now
 also a bigint lead/plan consumer. Mini Program AI task execution, synchronous
 advice, prompt assistance, direct soft-furnishing rendering, and two-step direct
-Admin `generate`/`render` now use PostgreSQL bigint records. The remaining AI
-execution compatibility gap is the MongoDB-only `mock-generation` equivalent.
+Admin `generate`/`render`, the manual `mock-generation` compatibility action,
+and the administrator Mini Program task retry now use PostgreSQL bigint records.
 Beyond the completed Phase 4
 whitelist import, do not import production business data without an explicit
 migration slice and acceptance record.

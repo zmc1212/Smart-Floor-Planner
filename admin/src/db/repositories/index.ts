@@ -12,6 +12,7 @@ export * from './commercial-repository';
 export * from './department-repository';
 export * from './device-repository';
 export * from './enterprise-repository';
+export * from './enterprise-ai-usage-snapshot-repository';
 export * from './floor-plan-repository';
 export * from './lead-repository';
 export * from './media-storage-config-repository';

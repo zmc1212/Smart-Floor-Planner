@@ -1,17 +1,24 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
+import { parsePostgresId } from '@/db/postgres-dto';
+import { EnterpriseAiUsageSnapshotRepository } from '@/db/repositories';
+import { withTenantTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { EnterpriseAiUsageSnapshot } from '@/models/EnterpriseAiUsageSnapshot';
-import { summarizeDailyUsage } from '@/lib/ai/enterprise-ai';
+import {
+  serializeEnterpriseAiUsageSnapshot,
+  summarizeEnterpriseAiDailyUsage,
+} from '@/lib/ai/enterprise-ai-usage';
 
 export async function GET(req: Request) {
   try {
-    await dbConnect();
-
     return await withTenantRoute(req, { requireEnterprise: true }, async (context) => {
       const { searchParams } = new URL(req.url);
       const days = Math.max(1, Math.min(Number(searchParams.get('days') || '30'), 90));
-      const snapshot = await EnterpriseAiUsageSnapshot.findOne({ enterpriseId: context.enterpriseId }).lean();
+      const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
+      const snapshot = serializeEnterpriseAiUsageSnapshot(
+        await withTenantTransaction(enterpriseId, (transaction) =>
+          new EnterpriseAiUsageSnapshotRepository(transaction).findByEnterpriseId(enterpriseId)
+        )
+      );
 
       const items = (snapshot?.dailyUsage || [])
         .sort((a, b) => b.date.localeCompare(a.date))
@@ -25,7 +32,7 @@ export async function GET(req: Request) {
           keyInfo: snapshot?.keyInfo || null,
           lastSyncedAt: snapshot?.lastSyncedAt || null,
           dailyUsage: items,
-          summary: summarizeDailyUsage(snapshot?.dailyUsage || []),
+          summary: summarizeEnterpriseAiDailyUsage(snapshot?.dailyUsage || []),
         },
       });
     });
