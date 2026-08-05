@@ -47,7 +47,7 @@ test('formal surveying uses a persistent state-following guide mode instead of a
   assert.doesNotMatch(editorWxml, /surveyGuideFocusVisible|survey-guide-focus/);
   assert.match(editorScript, /wrapSurveyGuideCanvasBody\(/);
   assert.match(editorScript, /ctx\.measureText\(nextLine\)\.width > maxWidth/);
-  assert.match(editorWxml, /wx:if="\{\{topMetricVisible && topMetricLength\}\}"/);
+  assert.match(editorWxml, /wx:if="\{\{topMetricVisible && topMetricLength && cursorPlacementState === 'placed'\}\}"/);
   assert.doesNotMatch(editorWxml, /class="measurement-bubble"/);
   assert.doesNotMatch(editorWxml, /survey-guide-(?:card|path|target-halo)/);
   assert.doesNotMatch(editorWxss, /\.survey-guide-overlay\s*\{/);
@@ -127,9 +127,37 @@ test('formal surveying fixed chrome follows the compact high-fidelity reference 
   assert.doesNotMatch(editorWxml, /surveyGuidePhaseLabel|survey-guide-phase/);
 });
 
-test('turning off guide copy preserves closure and measurement-side controls', () => {
+test('Xiao K is the only explanatory callout while closure and measurement-side controls remain', () => {
   assert.match(editorScript, /closeAction:\s*closure && closure\.action/);
-  assert.match(editorScript, /if \(measureControl && !showGuide\) \{[\s\S]*measureControl\.tip = null;[\s\S]*measureControl\.pointer = null;/);
-  assert.match(editorScript, /closeHint:\s*showGuide && closure && closure\.hint/);
+  assert.match(editorScript, /measurePosition:\s*measureControl/);
+  assert.doesNotMatch(editorScript, /drawCanvasCallout|buildAnchoredCallout|buildClosureHint/);
+  assert.doesNotMatch(editorScript, /切换内外墙方向，红线为测量位置/);
+  assert.doesNotMatch(editorScript, /closeHint:/);
   assert.match(editorWxml, /wx:if="\{\{closeActionVisible\}\}"[\s\S]*catchtap="onConfirmClose"/);
+});
+
+test('bottom-dock guide targets hand off from canvas to the native control layer', () => {
+  assert.match(editorScript, /const BOTTOM_DOCK_GUIDE_GEOMETRY_RPX = Object\.freeze\(\{[\s\S]*bottom:\s*64,[\s\S]*height:\s*108,[\s\S]*actionHeight:\s*82/);
+  assert.match(editorScript, /cursorCenterOffsetX:\s*0\.5,[\s\S]*cursorWidth:\s*128/);
+  assert.match(editorScript, /measureCenterOffsetX:\s*168\.5,[\s\S]*measureWidth:\s*192/);
+  assert.match(editorScript, /BOTTOM_DOCK_GUIDE_GEOMETRY_RPX\.bottom \+ BOTTOM_DOCK_GUIDE_GEOMETRY_RPX\.height \/ 2/);
+  assert.match(editorScript, /nativeOverlay:\s*true/);
+  assert.match(editorScript, /if \(!target\.nativeOverlay\)/);
+  assert.match(editorScript, /preferCharacterBelowCard:\s*!!target\.nativeOverlay/);
+  assert.match(editorScript, /buildDirectGuideConnector\([\s\S]*target\.y - target\.height \/ 2 - 5 \* designScale/);
+  assert.match(editorScript, /const connectorTarget = connector && connector\.target \? connector\.target : target/);
+  assert.match(editorWxml, /surveyGuideTarget === 'dock-cursor' \? 'guide-target-control' : ''/);
+  assert.match(editorWxml, /surveyGuideTarget === 'measure' \? 'guide-target-control' : ''/);
+  assert.equal((editorWxml.match(/class="dock-guide-native-marker"/g) || []).length, 3);
+  assert.match(editorWxml, /class="dock-guide-native-pointer"/);
+  assert.match(editorWxss, /\.bottom-control-dock \.guide-target-control\s*\{[\s\S]*z-index:\s*26;[\s\S]*overflow:\s*visible;/);
+  assert.match(editorWxss, /\.dock-guide-native-marker\s*\{[\s\S]*border:\s*3rpx solid #00b94d;[\s\S]*pointer-events:\s*none;/);
+  assert.doesNotMatch(editorWxml, /class="dock-guide-overlay"/);
+});
+
+test('cursor placement removes the stale top measurement shell', () => {
+  assert.match(editorScript, /const topMetricSuppressed = cursorPlacementState !== 'placed'/);
+  assert.match(editorScript, /topMetricVisible:\s*!topMetricSuppressed && renderData\.topMetricVisible/);
+  assert.match(editorScript, /cursorPlacementState:\s*'dragging',[\s\S]*topMetricVisible:\s*false,[\s\S]*topMetricLength:\s*''/);
+  assert.match(editorWxml, /topMetricVisible && topMetricLength && cursorPlacementState === 'placed'/);
 });

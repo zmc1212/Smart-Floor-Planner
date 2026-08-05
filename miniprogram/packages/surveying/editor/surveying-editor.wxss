@@ -2520,6 +2520,54 @@ page,
   animation: surveying-guide-control 1.6s ease-in-out infinite;
 }
 
+/* Bottom actions are native cover-view controls above the guide canvas. Their
+   nested marker is in the same event tree as the real button, so it renders
+   above the native background while touch events still bubble to the action. */
+.bottom-control-dock .guide-target-control {
+  position: relative;
+  z-index: 26;
+  overflow: visible;
+  border-radius: 20rpx;
+  box-shadow: none;
+  animation: none;
+}
+
+.dock-guide-native-marker {
+  position: absolute;
+  left: 3rpx;
+  right: 3rpx;
+  top: 3rpx;
+  bottom: 3rpx;
+  z-index: 4;
+  border: 3rpx solid #00b94d;
+  border-radius: 18rpx;
+  background: rgba(16, 185, 74, 0.07);
+  box-sizing: border-box;
+  pointer-events: none;
+  animation: surveying-guide-native-marker 1.6s ease-in-out infinite;
+}
+
+.dock-guide-native-pointer {
+  position: absolute;
+  left: 50%;
+  top: -9rpx;
+  width: 14rpx;
+  height: 14rpx;
+  margin-left: -7rpx;
+  border-radius: 3rpx;
+  background: #00b94d;
+  transform: rotate(45deg);
+}
+
+@keyframes surveying-guide-native-marker {
+  0%, 100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 @keyframes surveying-guide-control {
   0%, 100% {
     opacity: 1;
@@ -2542,6 +2590,8 @@ page,
 
 @media (prefers-reduced-motion: reduce) {
   .guide-target-control,
+  .bottom-control-dock .guide-target-control,
+  .dock-guide-native-marker,
   .survey-guide-target-halo {
     animation: none;
   }

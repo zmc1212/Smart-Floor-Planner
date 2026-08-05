@@ -1,7 +1,14 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { resolveSurveyGuide, chooseGuidePlacement, chooseGuideCharacter, wrapGuideBody } = require('../packages/surveying/utils/surveyGuide');
+const {
+  resolveSurveyGuide,
+  chooseGuidePlacement,
+  chooseGuideCharacter,
+  solveGuideLayout,
+  buildDirectGuideConnector,
+  wrapGuideBody
+} = require('../packages/surveying/utils/surveyGuide');
 
 function resolve(state, overrides) {
   const floor = {
@@ -178,6 +185,149 @@ test('cursor guidance uses the right-pointing Xiao K pose and a curved path dire
   assert.ok(character.pathHeight > 12);
   assert.ok(character.top >= 308, 'cursor pose stays below the speech bubble instead of being covered by it');
   assert.ok(character.handX <= 196, 'right-pointing hand faces the actual cursor target');
+});
+
+test('compound guide layout never lets the card cover Xiao K near a constrained edge', () => {
+  const safeArea = { left: 12, top: 120, right: 282, bottom: 716 };
+  const layout = solveGuideLayout({
+    target: { x: 260, y: 430, width: 52, height: 52 },
+    safeArea,
+    cardWidth: 180,
+    cardHeight: 112,
+    characterSize: 70,
+    gap: 124,
+    obstacles: [
+      {
+        left: 165,
+        right: 245,
+        top: 350,
+        bottom: 376,
+        hard: true,
+        pathHard: true,
+        pathWeight: 2400
+      }
+    ]
+  });
+
+  assert.ok(layout);
+  const card = {
+    left: layout.card.left,
+    right: layout.card.left + layout.card.width,
+    top: layout.card.top,
+    bottom: layout.card.top + layout.card.height
+  };
+  const character = {
+    left: layout.character.left,
+    right: layout.character.left + layout.character.size,
+    top: layout.character.top,
+    bottom: layout.character.top + layout.character.size
+  };
+  const overlaps = !(
+    card.right + 7 <= character.left ||
+    card.left - 7 >= character.right ||
+    card.bottom + 7 <= character.top ||
+    card.top - 7 >= character.bottom
+  );
+  assert.equal(overlaps, false);
+  assert.ok(character.left >= safeArea.left && character.right <= safeArea.right);
+  assert.ok(character.top >= safeArea.top && character.bottom <= safeArea.bottom);
+});
+
+test('bottom-control guide keeps Xiao K below the card and uses a straight connector', () => {
+  const layout = solveGuideLayout({
+    target: { x: 195, y: 716, width: 66, height: 42 },
+    safeArea: { left: 12, top: 120, right: 378, bottom: 780 },
+    cardWidth: 180,
+    cardHeight: 142,
+    characterSize: 70,
+    gap: 124,
+    obstacles: [],
+    preferCharacterBelowCard: true
+  });
+
+  assert.ok(layout);
+  assert.ok(
+    layout.character.top >= layout.card.top + layout.card.height,
+    'Xiao K should sit below the card so the button path does not loop around it'
+  );
+
+  const target = { x: 195, y: 688 };
+  const connector = buildDirectGuideConnector(
+    { x: layout.character.handX, y: layout.character.handY },
+    target
+  );
+  assert.ok(connector);
+  assert.deepEqual(connector.target, target);
+  const controlOneCross =
+    (connector.controlOne.x - connector.start.x) * (connector.target.y - connector.start.y) -
+    (connector.controlOne.y - connector.start.y) * (connector.target.x - connector.start.x);
+  const controlTwoCross =
+    (connector.controlTwo.x - connector.start.x) * (connector.target.y - connector.start.y) -
+    (connector.controlTwo.y - connector.start.y) * (connector.target.x - connector.start.x);
+  assert.ok(Math.abs(controlOneCross) < 1e-9);
+  assert.ok(Math.abs(controlTwoCross) < 1e-9);
+});
+
+test('connector routing detours around hard measurement labels', () => {
+  const label = {
+    left: 70,
+    right: 282,
+    top: 178,
+    bottom: 202,
+    hard: true,
+    pathHard: true,
+    pathPadding: 6,
+    pathWeight: 2400,
+    kind: 'dimension-label'
+  };
+  const layout = solveGuideLayout({
+    target: { x: 250, y: 146, width: 48, height: 48 },
+    safeArea: { left: 12, top: 120, right: 282, bottom: 716 },
+    cardWidth: 180,
+    cardHeight: 112,
+    characterSize: 70,
+    gap: 124,
+    obstacles: [label]
+  });
+
+  assert.ok(layout);
+  assert.equal(layout.connector.hardHits, 0);
+  assert.equal(layout.connector.type, 'polyline');
+  layout.connector.pathSamples.slice(1, -1).forEach((point) => {
+    assert.equal(
+      point.x >= label.left - 6 && point.x <= label.right + 6 &&
+      point.y >= label.top - 6 && point.y <= label.bottom + 6,
+      false
+    );
+  });
+});
+
+test('connector is omitted instead of crossing an unavoidable hard label', () => {
+  const layout = solveGuideLayout({
+    target: { x: 195, y: 420, width: 48, height: 48 },
+    safeArea: { left: 12, top: 80, right: 378, bottom: 700 },
+    cardWidth: 180,
+    cardHeight: 110,
+    characterSize: 70,
+    gap: 80,
+    obstacles: [
+      {
+        left: 130,
+        right: 260,
+        top: 365,
+        bottom: 475,
+        hard: true,
+        pathHard: true,
+        padding: 5,
+        pathPadding: 5,
+        pathWeight: 2400,
+        kind: 'dimension-label'
+      }
+    ]
+  });
+
+  assert.ok(layout, 'the card and Xiao K can still use a safe placement');
+  assert.equal(layout.connector, null, 'an unsafe connector must not be painted through the label');
 });
 
 test('guide copy is split into native-cover-view-safe lines', () => {

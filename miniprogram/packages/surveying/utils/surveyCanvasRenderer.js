@@ -467,13 +467,14 @@ function buildClosureGuide(floor, session, project) {
     return null;
   }
 
-  const targetNode = session.closeCandidatePoint || surveyGraph.getNode(floor, session.closeCandidateNodeId);
-  const currentNode = session.previewPoint || surveyGraph.getNode(floor, session.anchorNodeId);
-  if (!targetNode || !currentNode) return null;
+  const closurePath = surveyGraph.getClosurePath(floor, session);
+  if (closurePath.length < 2) return null;
+  const points = closurePath.map(project);
 
   return {
-    startPoint: project(currentNode),
-    endPoint: project(targetNode),
+    points,
+    startPoint: points[0],
+    endPoint: points[points.length - 1],
     active: session.state === 'closing' || session.state === 'mergeClosing'
   };
 }
@@ -574,6 +575,17 @@ function buildCursor(floor, session, project) {
   return {
     point: project(session.previewPoint || anchor)
   };
+}
+
+function buildActiveSegment(walls, previewWall, session) {
+  if (!session || session.state === 'spaceClosed') return null;
+  if (previewWall) return previewWall;
+
+  const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+    ? Math.max(0, session.activeSpaceStartWallIndex)
+    : 0;
+  const activeWalls = (walls || []).slice(startWallIndex);
+  return activeWalls[activeWalls.length - 1] || null;
 }
 
 function calculatePolygonCentroid(points) {
@@ -792,7 +804,7 @@ function createSurveyRenderScene(input) {
     cursor: buildCursor(floor, session, project),
     closedSpaceFills: buildClosedSpaceFills(floor, project),
     closedSpaceLabels: buildClosedSpaceLabels(floor, project, viewport),
-    activeSegment: session.state === 'spaceClosed' ? null : (previewWall || walls[walls.length - 1] || null),
+    activeSegment: buildActiveSegment(walls, previewWall, session),
     closed: shouldCloseWholeWallPath(floor, previewWall),
     session
   };
@@ -1285,8 +1297,11 @@ function drawClosureGuide(ctx, scene) {
   ctx.lineWidth = 1.5;
   if (ctx.setLineDash) ctx.setLineDash([7, 6]);
   ctx.beginPath();
-  ctx.moveTo(guide.startPoint.x, guide.startPoint.y);
-  ctx.lineTo(guide.endPoint.x, guide.endPoint.y);
+  const points = guide.points && guide.points.length >= 2
+    ? guide.points
+    : [guide.startPoint, guide.endPoint];
+  ctx.moveTo(points[0].x, points[0].y);
+  points.slice(1).forEach((point) => ctx.lineTo(point.x, point.y));
   ctx.stroke();
   if (ctx.setLineDash) ctx.setLineDash([]);
   ctx.restore();

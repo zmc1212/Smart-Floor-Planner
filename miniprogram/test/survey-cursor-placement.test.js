@@ -27,6 +27,41 @@ function createClosedDraft() {
   return surveyGraph.confirmClosure(draft);
 }
 
+test('repeated forward drags extend one collinear wall instead of creating segments', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 1011, yMm: 0 }, 1011);
+  const wallId = surveyGraph.getActiveFloor(draft).walls[0].id;
+  draft = commitWall(draft, { xMm: 2344, yMm: 0 }, 1333);
+  draft = commitWall(draft, { xMm: 3927, yMm: 0 }, 1583);
+
+  const floor = surveyGraph.getActiveFloor(draft);
+  const wall = floor.walls[0];
+  const start = surveyGraph.getNode(floor, wall.startNodeId);
+  const end = surveyGraph.getNode(floor, wall.endNodeId);
+
+  assert.equal(floor.walls.length, 1);
+  assert.equal(floor.nodes.length, 2);
+  assert.equal(wall.id, wallId);
+  assert.equal(wall.lengthMm, 3927);
+  assert.deepEqual({ xMm: start.xMm, yMm: start.yMm }, { xMm: 0, yMm: 0 });
+  assert.deepEqual({ xMm: end.xMm, yMm: end.yMm }, { xMm: 3927, yMm: 0 });
+  assert.equal(floor.session.anchorNodeId, wall.endNodeId);
+});
+
+test('a direction change after extending a wall still creates a new wall', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 1000, yMm: 0 }, 1000);
+  draft = commitWall(draft, { xMm: 2200, yMm: 0 }, 1200);
+  draft = commitWall(draft, { xMm: 2200, yMm: 900 }, 900);
+
+  const floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.walls.length, 2);
+  assert.equal(floor.walls[0].lengthMm, 2200);
+  assert.equal(floor.walls[1].lengthMm, 900);
+});
+
 test('cursor placement prefers an existing vertex over a nearby wall segment', () => {
   const floor = surveyGraph.getActiveFloor(createWallDraft());
   const target = surveyGraph.getCursorPlacementTarget(
@@ -260,6 +295,36 @@ test('a reset cursor offers the missing closing edge after two measured walls', 
   const closedFloor = surveyGraph.getActiveFloor(closed);
   assert.equal(closedFloor.session.state, 'spaceClosed');
   assert.equal(closedFloor.spaces.filter((space) => space.closed).length, 1);
+});
+
+test('a stepped straight-wall chain closes with two orthogonal edges instead of a diagonal', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 2748, yMm: 0 }, 2748);
+  draft = commitWall(draft, { xMm: 2748, yMm: 2036 }, 2036);
+  draft = commitWall(draft, { xMm: 5837, yMm: 2036 }, 3089);
+  draft = commitWall(draft, { xMm: 5837, yMm: 5219 }, 3183);
+  draft = commitWall(draft, { xMm: 3419, yMm: 5219 }, 2418);
+
+  const pendingFloor = surveyGraph.getActiveFloor(draft);
+  assert.equal(pendingFloor.session.state, 'mergeClosing');
+  assert.deepEqual(
+    surveyGraph.getClosurePath(pendingFloor, pendingFloor.session).map(({ xMm, yMm }) => ({ xMm, yMm })),
+    [
+      { xMm: 3419, yMm: 5219 },
+      { xMm: 0, yMm: 5219 },
+      { xMm: 0, yMm: 0 }
+    ]
+  );
+
+  const closedFloor = surveyGraph.getActiveFloor(surveyGraph.confirmClosure(draft));
+  const closingWalls = closedFloor.walls.slice(-2);
+  assert.equal(closedFloor.session.state, 'spaceClosed');
+  assert.equal(closedFloor.walls.length, 7);
+  assert.deepEqual(closingWalls.map((wall) => wall.lengthMm), [3419, 5219]);
+  assert.deepEqual(closingWalls.map((wall) => wall.angleDeg), [180, -90]);
+  assert.equal(closingWalls.every((wall) => wall.mode === 'straight'), true);
+  assert.equal(closingWalls.every((wall) => wall.inputSource === 'closure-merge'), true);
 });
 
 test('a reset cursor restores right-angle snapping when its first wall nearly completes a rectangle', () => {

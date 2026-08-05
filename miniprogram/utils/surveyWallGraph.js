@@ -6,6 +6,7 @@ const DIAGONAL_DIRECTION_SNAP_TOLERANCE_DEG = 8;
 const MIN_WALL_LENGTH_MM = 100;
 const MIN_THICKNESS_MM = 50;
 const WALL_OVERLAP_TOLERANCE_MM = 30;
+const WALL_EXTENSION_DIRECTION_TOLERANCE_DEG = 0.2;
 const MIN_CLOSED_SPACE_AREA_MM2 = MIN_WALL_LENGTH_MM * MIN_WALL_LENGTH_MM;
 const DEFAULT_DOOR_WIDTH_MM = 900;
 const DEFAULT_DOOR_HEIGHT_MM = 2100;
@@ -544,7 +545,47 @@ function calculatePolygonAreaMm2(points) {
   return Math.abs(twiceArea) / 2;
 }
 
-function findMergeClosureCandidate(floor, session, endPoint) {
+function buildOrthogonalClosurePoints(startPoint, endPoint, incomingStart) {
+  const horizontalFirst = [
+    endPoint,
+    { xMm: startPoint.xMm, yMm: endPoint.yMm },
+    startPoint
+  ];
+  const verticalFirst = [
+    endPoint,
+    { xMm: endPoint.xMm, yMm: startPoint.yMm },
+    startPoint
+  ];
+  const incomingIsHorizontal = incomingStart
+    ? isHorizontalSegment(incomingStart, endPoint)
+    : true;
+  return incomingIsHorizontal
+    ? [horizontalFirst, verticalFirst]
+    : [verticalFirst, horizontalFirst];
+}
+
+function normalizeClosurePoints(points) {
+  return points.filter((point, index) => (
+    index === 0 || distanceMm(point, points[index - 1]) > 0.001
+  ));
+}
+
+function isSafeClosurePath(points, occupiedSegments) {
+  if (!Array.isArray(points) || points.length < 2) return false;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    if (distanceMm(start, end) < MIN_WALL_LENGTH_MM) return false;
+    const intersects = occupiedSegments.some((segment) => (
+      segment.start && segment.end &&
+      hasClosureInteriorIntersection(start, end, segment.start, segment.end)
+    ));
+    if (intersects) return false;
+  }
+  return true;
+}
+
+function findMergeClosurePlan(floor, session, endPoint) {
   if (!floor || !session || !endPoint) return null;
 
   const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
@@ -597,7 +638,12 @@ function findMergeClosureCandidate(floor, session, endPoint) {
           segment.end
         )
       ));
-      if (!crossesExistingWall) return candidate;
+      if (!crossesExistingWall) {
+        return {
+          targetNode: candidate,
+          points: [closureStart, candidate]
+        };
+      }
     }
   }
 
@@ -618,8 +664,6 @@ function findMergeClosureCandidate(floor, session, endPoint) {
 
   if (previousNodeId !== anchor.id) return null;
   if (includesPreview) outlinePoints.push(endPoint);
-  if (calculatePolygonAreaMm2(outlinePoints) < MIN_CLOSED_SPACE_AREA_MM2) return null;
-
   const segments = (floor.walls || []).map((wall) => ({
     start: getNode(floor, wall.startNodeId),
     end: getNode(floor, wall.endNodeId)
@@ -628,10 +672,43 @@ function findMergeClosureCandidate(floor, session, endPoint) {
     segments.push({ start: anchor, end: endPoint });
   }
 
-  const intersectsExistingWall = segments.some((segment) => (
-    segment.start && segment.end && hasClosureInteriorIntersection(endPoint, activeStartNode, segment.start, segment.end)
-  ));
-  return intersectsExistingWall ? null : activeStartNode;
+  const lastWall = activeWalls[activeWalls.length - 1] || null;
+  const incomingStart = includesPreview
+    ? anchor
+    : (lastWall ? getNode(floor, lastWall.startNodeId) : null);
+  const pathCandidates = session.mode === 'straight'
+    ? buildOrthogonalClosurePoints(activeStartNode, endPoint, incomingStart)
+    : [[endPoint, activeStartNode]];
+
+  for (let index = 0; index < pathCandidates.length; index += 1) {
+    const points = normalizeClosurePoints(pathCandidates[index]);
+    const polygonPoints = outlinePoints.concat(points.slice(1, -1));
+    if (calculatePolygonAreaMm2(polygonPoints) < MIN_CLOSED_SPACE_AREA_MM2) continue;
+    if (!isSafeClosurePath(points, segments)) continue;
+    return {
+      targetNode: activeStartNode,
+      points
+    };
+  }
+
+  return null;
+}
+
+function findMergeClosureCandidate(floor, session, endPoint) {
+  const plan = findMergeClosurePlan(floor, session, endPoint);
+  return plan ? plan.targetNode : null;
+}
+
+function getClosurePath(floor, session) {
+  if (!floor || !session) return [];
+  const currentNode = session.previewPoint || getNode(floor, session.anchorNodeId);
+  const targetNode = session.closeCandidatePoint || getNode(floor, session.closeCandidateNodeId);
+  if (!currentNode || !targetNode) return [];
+  if (session.closeCandidateType !== 'merge') return [currentNode, targetNode];
+
+  const plan = findMergeClosurePlan(floor, session, currentNode);
+  if (!plan || !plan.targetNode || plan.targetNode.id !== session.closeCandidateNodeId) return [];
+  return plan.points;
 }
 
 function isUsableJoinPoint(segment, point) {
@@ -1157,6 +1234,37 @@ function findNearestSharedEndpointProjection(floor, point) {
 
 function findWallSnapProjection(floor, point) {
   return findNearestSharedEndpointProjection(floor, point) || findNearestWallProjection(floor, point);
+}
+
+function canExtendLastWall(floor, session, anchor, endPoint, measurementSide, isClosingCurrentSpace) {
+  if (isClosingCurrentSpace || !anchor || !endPoint) return false;
+
+  const lastWallIndex = floor.walls.length - 1;
+  const lastWall = floor.walls[lastWallIndex];
+  if (!lastWall || lastWallIndex < session.activeSpaceStartWallIndex || lastWall.endNodeId !== anchor.id) {
+    return false;
+  }
+  if (lastWall.status !== 'confirmed' || lastWall.mode !== session.mode ||
+      Number(lastWall.thicknessMm) !== Number(session.thicknessMm) ||
+      lastWall.measurementSide !== measurementSide) {
+    return false;
+  }
+  if (floor.spaces.some((space) => (
+    space && space.closed && Array.isArray(space.wallIds) && space.wallIds.indexOf(lastWall.id) !== -1
+  ))) {
+    return false;
+  }
+
+  const anchorReferenceCount = floor.walls.reduce((count, wall) => (
+    count + (wall.startNodeId === anchor.id ? 1 : 0) + (wall.endNodeId === anchor.id ? 1 : 0)
+  ), 0);
+  if (anchorReferenceCount !== 1) return false;
+
+  const lastStart = getNode(floor, lastWall.startNodeId);
+  if (!lastStart) return false;
+  const previousAngle = angleDeg(lastStart, anchor);
+  const extensionAngle = angleDeg(anchor, endPoint);
+  return Math.abs(normalizeSignedAngle(extensionAngle - previousAngle)) <= WALL_EXTENSION_DIRECTION_TOLERANCE_DEG;
 }
 
 function findTargetWallProjection(floor, point, target) {
@@ -1847,26 +1955,46 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     throw new Error('当前墙与已测墙重叠，请从光标转角继续测量');
   }
 
-  const endNode = sharedProjection ? getOrCreateSnapNode(floor, sharedProjection) : addNode(floor, endPoint);
   const measurementSide = session.previewMeasurementSide ||
-    resolveBoundaryAlignedMeasurementSide(floor, session, anchor, endNode);
-  const wall = {
-    id: nextId('wall'),
-    startNodeId: anchor.id,
-    endNodeId: endNode.id,
-    mode: session.mode,
-    lengthMm: distanceMm(anchor, endNode),
-    angleDeg: angleDeg(anchor, endNode),
-    thicknessMm: session.thicknessMm,
+    resolveBoundaryAlignedMeasurementSide(floor, session, anchor, endPoint);
+  const extendLastWall = canExtendLastWall(
+    floor,
+    session,
+    anchor,
+    endPoint,
     measurementSide,
-    inputSource: inputSource || 'manual',
-    angleSource: session.previewAngleSource || '',
-    angleInteriorDeg: session.previewInteriorAngleDeg,
-    status: 'confirmed',
-    measuredAt: nowIso()
-  };
-
-  floor.walls.push(wall);
+    isClosingCurrentSpace
+  );
+  let endNode;
+  let wall;
+  if (extendLastWall) {
+    wall = getLastWall(floor);
+    anchor.xMm = Math.round(endPoint.xMm);
+    anchor.yMm = Math.round(endPoint.yMm);
+    endNode = anchor;
+    wall.lengthMm = distanceMm(getNode(floor, wall.startNodeId), endNode);
+    wall.angleDeg = angleDeg(getNode(floor, wall.startNodeId), endNode);
+    wall.inputSource = inputSource || 'manual';
+    wall.measuredAt = nowIso();
+  } else {
+    endNode = sharedProjection ? getOrCreateSnapNode(floor, sharedProjection) : addNode(floor, endPoint);
+    wall = {
+      id: nextId('wall'),
+      startNodeId: anchor.id,
+      endNodeId: endNode.id,
+      mode: session.mode,
+      lengthMm: distanceMm(anchor, endNode),
+      angleDeg: angleDeg(anchor, endNode),
+      thicknessMm: session.thicknessMm,
+      measurementSide,
+      inputSource: inputSource || 'manual',
+      angleSource: session.previewAngleSource || '',
+      angleInteriorDeg: session.previewInteriorAngleDeg,
+      status: 'confirmed',
+      measuredAt: nowIso()
+    };
+    floor.walls.push(wall);
+  }
   session.anchorNodeId = endNode.id;
   session.pendingWallId = '';
   session.selectedWallId = '';
@@ -1937,23 +2065,36 @@ function confirmClosure(draft) {
 
   if (session.state === 'mergeClosing') {
     const anchor = getNode(floor, session.anchorNodeId);
-    const closeTargetNode = findMergeClosureCandidate(floor, session, anchor);
-    if (!anchor || !closeTargetNode) {
+    const closurePlan = findMergeClosurePlan(floor, session, anchor);
+    const closeTargetNode = closurePlan && closurePlan.targetNode;
+    if (!anchor || !closeTargetNode || closurePlan.points.length < 2) {
       throw new Error('当前轮廓不能安全闭合，请继续补测墙体');
     }
 
-    floor.walls.push({
-      id: nextId('wall'),
-      startNodeId: anchor.id,
-      endNodeId: closeTargetNode.id,
-      mode: session.mode,
-      lengthMm: distanceMm(anchor, closeTargetNode),
-      angleDeg: angleDeg(anchor, closeTargetNode),
-      thicknessMm: session.thicknessMm,
-      measurementSide: resolveBoundaryAlignedMeasurementSide(floor, session, anchor, closeTargetNode),
-      inputSource: 'closure-merge',
-      status: 'confirmed',
-      measuredAt: nowIso()
+    let closureStartNode = anchor;
+    closurePlan.points.slice(1).forEach((point, index, points) => {
+      const closureEndNode = index === points.length - 1
+        ? closeTargetNode
+        : addNode(floor, point);
+      floor.walls.push({
+        id: nextId('wall'),
+        startNodeId: closureStartNode.id,
+        endNodeId: closureEndNode.id,
+        mode: session.mode,
+        lengthMm: distanceMm(closureStartNode, closureEndNode),
+        angleDeg: angleDeg(closureStartNode, closureEndNode),
+        thicknessMm: session.thicknessMm,
+        measurementSide: resolveBoundaryAlignedMeasurementSide(
+          floor,
+          session,
+          closureStartNode,
+          closureEndNode
+        ),
+        inputSource: 'closure-merge',
+        status: 'confirmed',
+        measuredAt: nowIso()
+      });
+      closureStartNode = closureEndNode;
     });
     session.anchorNodeId = closeTargetNode.id;
     session.state = 'closing';
@@ -2624,6 +2765,7 @@ module.exports = {
   buildWallRenderGeometry,
   buildWallJoinRenderGeometries,
   buildSpaceBoundaryPoints,
+  getClosurePath,
   calculateSpaceAreaMm2,
   setMode,
   placeCursor,

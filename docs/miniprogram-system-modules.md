@@ -496,8 +496,23 @@ utilities, and the admin APIs they call.
   over the target.
   The character also connects with a green dashed path and pulse halo that end
   at the real canvas or control
-  target. The card, pose, path, and halo avoid the header safe area, right rail,
-  dock, and active wall; the card close action disables only the persistent local
+  target. A compound layout solver places the card and the complete Xiao K pose
+  together, rejects card/character overlap, and scores all current wall bodies,
+  openings, dimension labels and lines, room labels, the top measurement card,
+  object toolbar, target controls, header safe area, right rail, and dock. The
+  connector first selects a collision-free dashed Bezier candidate; when every
+  curve crosses a protected label, a rounded grid route detours around it; if no
+  collision-free route exists, the connector is omitted for that frame. The
+  previous valid layout receives a stability preference so small viewport changes
+  do not make the guide jump. Bottom-dock guide targets use the dock's actual
+  `575rpx × 108rpx` geometry and `64rpx` bottom offset; because the dock is a native
+  `cover-view` above Canvas, the card is raised, Xiao K is preferred below the card,
+  and a dedicated straight dashed connector ends immediately above the real button
+  instead of taking the general obstacle-routing detour. The connector hands off
+  at the real button while that
+  existing interactive control contains a bordered native marker above its
+  background. The marker remains inside the button's event tree, so no independent
+  overlay intercepts cursor dragging or ranging taps. The card close action disables only the persistent local
   guide preference. The guide condition is rendered as a non-native `block`; only the visible
   speech bubble and its close control participate in touch hit testing, so the
   canvas and other editor controls remain interactive while guidance is shown.
@@ -531,9 +546,17 @@ utilities, and the admin APIs they call.
   it does not change role boundaries, graph contract, audit queue, or export scope.
 - Implemented editor behavior: startup restore, local draft and cloud draft
   persistence, straight and diagonal wall preview/commit, live BLE/manual length,
+  repeated forward drags on the same collinear unfinished chain extend the last
+  compatible wall instead of persisting artificial wall segments, while a real
+  direction, drawing-mode, thickness, measurement-side, chain, or closure boundary still
+  creates a separate wall,
   remeasure, shared-wall closure including reset-cursor connections to existing
   boundaries and their inferred missing closing edge, advisory close candidate
-  with a compact green `可闭合` action and geometry-anchored guide, and direct closure.
+  with a compact `可闭合` action and geometry-anchored Xiao K guide, and direct closure.
+  A free-standing stepped chain in straight-wall mode previews and persists a
+  two-edge orthogonal route back to its start, preferring continuation of the
+  last wall direction; both inferred edges must pass the existing intersection
+  and overlap checks, so closure never inserts a diagonal shortcut across the room.
   Shared-boundary splits apply only to nodes that lie on that boundary, preserving
   every existing edge needed for the merged room shell.
   from a pending diagonal preview (the close action commits its current preview
@@ -553,9 +576,10 @@ utilities, and the admin APIs they call.
   derived from the closed boundary rather than the selected measurement edge.
   undo/reset, completed submission, and measurement audit queue/flush.
 - Visual interaction treatment: at the `390x844` baseline the custom header
-  preserves the native WeChat capsule safe area, the first-wall prompt is a
-  compact `沿预览线拖动` canvas label, and a closure candidate uses a green
-  geometry-anchored guide plus its `可闭合` action. These presentation changes
+  preserves the native WeChat capsule safe area. The white Xiao K speech bubble
+  is the only explanatory callout for first-wall, measurement-side, and closure
+  states; the old solid-green text callouts are removed while their measurement-side
+  and `可闭合` actions remain operational. These presentation changes
   do not alter entry context, role boundary, wall-graph contract, or audit flow.
 - Implemented angle behavior: diagonal direction snap within the documented
   threshold, number-pad angle entry, operator-confirmed phone motion angle, and
@@ -599,9 +623,10 @@ utilities, and the admin APIs they call.
   the exterior wall face; compact arrows and masked dimension text replace
   duplicate whole-wall pairs; thin,
   consistent crosshair/square cursor treatment remains in the canvas,
-  drag layer, and bottom drop control, plus a canvas-anchored closure callout
-  that selects a clear position away from walls and fixed controls. All
-  action-guidance callouts use the same green surface; opening component specifications, BLE component measurement,
+  drag layer, and bottom drop control. Closure, measurement-side, and other
+  operation instructions use the single white Xiao K guide with compound
+  obstacle-aware placement; their real native actions remain available without
+  an additional solid-green explanatory callout. Opening component specifications, BLE component measurement,
   flip/model panels, and a Three.js preview for the selected door/window.
   Canvas pan and pinch gestures use an animation-frame-coalesced transient
   render layer: walls, room fills, outlines, and openings remain visible while
@@ -651,13 +676,35 @@ v4 wall-graph data, draft, or measurement-audit contract.
 Guide body copy is wrapped using `CanvasRenderingContext2D.measureText()` and
 the actual card inner width, so Chinese copy cannot be painted past the bubble
 edge. The obsolete alternate WXML measurement bubble has no fallback branch;
-an empty white card must never appear when no top metric is available.
+an empty white card must never appear when no top metric is available. Cursor
+placement states also clear and suppress that native measurement shell so closing
+a room and dragging the cursor cannot leave an empty rectangle at the upper left.
+After the next wall-chain cursor is placed, the active measurement segment is
+resolved only from walls created at or after `activeSpaceStartWallIndex`; the
+last wall of the closed room cannot emit a second blue crosshair or restore its
+top measurement card before the next wall is drawn.
 The bubble tail is a continuous Canvas outline (filled into the card edge and
 stroked only on its two exposed sides), scaled with the card rather than a
 stitched triangle. Xiao K left/right pose is resolved from the target's real
 horizontal geometry for every guide state, including measurement-side states.
 Card height reserves an explicit bottom padding after the final measured body
 line.
+The guide treats its card, Xiao K pose, and connector as one layout problem.
+Dimension and room text plus fixed controls are protected obstacles; walls,
+openings, measurement lines, and the active red edge are weighted obstacles.
+Candidate card and character pairs must remain separated and inside the safe
+workspace. Dashed Bezier candidates are sampled against those obstacles, with a
+rounded A* grid route as the fallback when a protected annotation blocks every
+curve; the connector is omitted if no safe route exists. The last valid layout is preferred to prevent jitter after small viewport
+moves. Solid-green explanatory callouts are no longer painted; the white Xiao K
+bubble is the single teaching voice, while measurement-side and closure actions
+remain available.
+For bottom-dock targets, the guide derives the exact button centre and size from
+the current dock geometry, raises the card, prefers Xiao K below it, and uses a
+dedicated straight connector that ends just above the highlighted button. The
+Canvas connector remains below the native dock and the real `cover-view` button
+contains the visible top-layer marker. Its events
+bubble through the original button tree, preserving tap or drag ownership.
 
 ## Maintenance Rules
 

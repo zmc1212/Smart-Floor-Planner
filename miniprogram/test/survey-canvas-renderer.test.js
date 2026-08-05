@@ -18,6 +18,16 @@ function createOpenDraft() {
   return commitWall(draft, { xMm: 3000, yMm: 2000 }, 2000);
 }
 
+function createSteppedClosureDraft() {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 2748, yMm: 0 }, 2748);
+  draft = commitWall(draft, { xMm: 2748, yMm: 2036 }, 2036);
+  draft = commitWall(draft, { xMm: 5837, yMm: 2036 }, 3089);
+  draft = commitWall(draft, { xMm: 5837, yMm: 5219 }, 3183);
+  return commitWall(draft, { xMm: 3419, yMm: 5219 }, 2418);
+}
+
 function createClosedRectangleDraft() {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
@@ -280,6 +290,16 @@ test('closed space reverses its first wall when that is the only complete bounda
   assert.equal(scene.walls.every((wall) => !wall.startOpen && !wall.endOpen), true);
 });
 
+test('placing a new chain cursor after closure does not reuse the previous room wall as active', () => {
+  const closedDraft = createClosedRectangleDraft();
+  const nextDraft = surveyGraph.placeNewWallChainCursor(closedDraft, { xMm: -1800, yMm: -1200 });
+  const scene = createScene(nextDraft);
+
+  assert.equal(scene.activeSegment, null);
+  assert.ok(scene.cursor);
+  assert.deepEqual(scene.cursor.point, { x: 110, y: 140 });
+});
+
 test('a T join suppresses the branch end cap even when it lands inside another wall', () => {
   const scene = createScene(createTJoinDraft());
   const mainWall = scene.walls.find((wall) => wall.id === 'main-wall');
@@ -500,6 +520,18 @@ test('reset-cursor merge closure renders its inferred edge and a complete room s
   assert.equal(closedFloor.walls.at(-1).inputSource, 'closure-merge');
 });
 
+test('stepped straight-wall closure guide renders the inferred right-angle path', () => {
+  const draft = createSteppedClosureDraft();
+  const scene = createScene(draft);
+
+  assert.ok(scene.closureGuide);
+  assert.equal(scene.closureGuide.points.length, 3);
+  assert.equal(scene.closureGuide.points[0].y, scene.closureGuide.points[1].y);
+  assert.equal(scene.closureGuide.points[1].x, scene.closureGuide.points[2].x);
+  assert.notEqual(scene.closureGuide.points[0].x, scene.closureGuide.points[2].x);
+  assert.notEqual(scene.closureGuide.points[0].y, scene.closureGuide.points[2].y);
+});
+
 test('window walls retain global exterior totals without a duplicate positioning chain', () => {
   let draft = createClosedRectangleDraft();
   const firstWallId = surveyGraph.getActiveFloor(draft).walls[0].id;
@@ -673,6 +705,8 @@ test('snapping a new cursor onto a closed wall preserves the completed room rend
   );
   const after = createScene(snappedDraft);
 
+  assert.equal(after.activeSegment, null);
+  assert.ok(after.cursor);
   assert.deepEqual(after.closedSpaceFills, before.closedSpaceFills);
   assert.deepEqual(after.wallSolidPlan.rings, before.wallSolidPlan.rings);
   assert.deepEqual(after.wallSolidPlans.closed.rings, before.wallSolidPlans.closed.rings);

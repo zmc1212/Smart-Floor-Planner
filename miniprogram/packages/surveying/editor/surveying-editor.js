@@ -6,7 +6,12 @@ const bluetooth = require('../../../utils/bluetooth.js');
 const api = require('../../../utils/api.js');
 const util = require('../../../utils/util.js');
 const surveyLayout = require('../../../utils/surveyLayout.js');
-const { resolveSurveyGuide, chooseGuidePlacement, chooseGuideCharacter, wrapGuideBody } = require('../utils/surveyGuide.js');
+const {
+  resolveSurveyGuide,
+  solveGuideLayout,
+  wrapGuideBody,
+  buildDirectGuideConnector
+} = require('../utils/surveyGuide.js');
 
 const RESERVED_TOOLS = [
   { key: 'settings', label: '设置' },
@@ -101,6 +106,15 @@ const DIMENSION_OUTER_GAP_PX = 12;
 const REDLINE_JOIN_TRIM_PX = 0;
 const REDLINE_THICKNESS_PX = 3;
 const REDLINE_OVERLAP_TOLERANCE_PX = 6;
+const BOTTOM_DOCK_GUIDE_GEOMETRY_RPX = Object.freeze({
+  bottom: 64,
+  height: 108,
+  actionHeight: 82,
+  cursorCenterOffsetX: 0.5,
+  cursorWidth: 128,
+  measureCenterOffsetX: 168.5,
+  measureWidth: 192
+});
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -248,6 +262,25 @@ function getMidPoint(first, second) {
   };
 }
 
+function getPolylineMidpoint(points) {
+  if (!Array.isArray(points) || points.length < 2) return null;
+  const lengths = points.slice(1).map((point, index) => distancePx(points[index], point));
+  const halfLength = lengths.reduce((total, length) => total + length, 0) / 2;
+  let traversed = 0;
+  for (let index = 0; index < lengths.length; index += 1) {
+    const segmentLength = lengths[index];
+    if (traversed + segmentLength >= halfLength) {
+      const ratio = segmentLength > 0 ? (halfLength - traversed) / segmentLength : 0;
+      return {
+        x: points[index].x + (points[index + 1].x - points[index].x) * ratio,
+        y: points[index].y + (points[index + 1].y - points[index].y) * ratio
+      };
+    }
+    traversed += segmentLength;
+  }
+  return points[points.length - 1];
+}
+
 function canStartWallDrag(state) {
   // Closing is a suggestion, not a modal state: users may keep measuring from this endpoint.
   return state === 'cursorPlaced' || state === 'wallCommitted' || state === 'awaitingLength' ||
@@ -317,9 +350,6 @@ Page({
     cursorLensYLabel: 'Y 0',
     cursorLensSnapLabel: '网格吸附',
     cursorLensSnapType: 'none',
-    closeHintVisible: false,
-    closeHintText: '',
-    closeHintActionVisible: false,
     selectedWall: null,
     selectedOpening: null,
     objectToolsVisible: false,
@@ -1557,43 +1587,6 @@ Page({
     ctx.closePath();
   },
 
-  drawCanvasCallout(ctx, callout) {
-    if (!callout || !callout.tip || !callout.pointer) return;
-    const { tip, pointer } = callout;
-    const centerX = tip.x + tip.width / 2;
-    const centerY = tip.y + tip.height / 2;
-    const dx = pointer.x - centerX;
-    const dy = pointer.y - centerY;
-
-    ctx.shadowColor = 'rgba(23, 161, 76, 0.28)';
-    ctx.shadowBlur = 10;
-    ctx.shadowOffsetY = 3;
-    ctx.fillStyle = '#17a14c';
-    this.drawRoundRect(ctx, tip.x, tip.y, tip.width, tip.height, 18);
-    ctx.fill();
-
-    ctx.beginPath();
-    if (Math.abs(dx) > Math.abs(dy)) {
-      const baseX = dx >= 0 ? tip.x + tip.width - 1 : tip.x + 1;
-      ctx.moveTo(baseX, centerY - 9);
-      ctx.lineTo(baseX, centerY + 9);
-    } else {
-      const baseY = dy >= 0 ? tip.y + tip.height - 1 : tip.y + 1;
-      ctx.moveTo(centerX - 9, baseY);
-      ctx.lineTo(centerX + 9, baseY);
-    }
-    ctx.lineTo(pointer.x, pointer.y);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.shadowColor = 'transparent';
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '600 11px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(tip.text, centerX, centerY);
-  },
-
   drawCanvasControls() {
     const ctx = this.surveyCtx;
     const rect = this.canvasRect;
@@ -1603,10 +1596,6 @@ Page({
     const controls = this.canvasControls || {};
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-    if (controls.closeHint) {
-      this.drawCanvasCallout(ctx, controls.closeHint);
-    }
 
     if (controls.closeAction) {
       const close = controls.closeAction;
@@ -1647,8 +1636,6 @@ Page({
 
     if (controls.measurePosition) {
       const measure = controls.measurePosition;
-      this.drawCanvasCallout(ctx, measure);
-
       ctx.beginPath();
       ctx.fillStyle = 'rgba(65, 65, 69, 0.92)';
       ctx.arc(measure.button.cx, measure.button.cy, measure.button.radius, 0, Math.PI * 2);
@@ -1716,49 +1703,65 @@ Page({
     if (!ctx || !model || !model.card || !model.target || !model.character) return;
 
     const dpr = this.surveyCanvasDpr || 1;
-    const { card, target, character, placement, bodyLines, title, characterSrc, bodyFontSize, bodyLineHeight, scale } = model;
-    const startX = character.left + character.size * (character.pose === 'right' ? 0.97 : character.pose === 'left' ? 0.03 : 0.12);
-    const startY = character.top + character.size * (character.pose === 'down' ? 0.62 : 0.47);
-    const distanceX = target.x - startX;
-    const distanceY = target.y - startY;
-    const horizontalDirection = distanceX === 0 ? (character.pose === 'right' ? 1 : -1) : Math.sign(distanceX);
-    const verticalDirection = distanceY === 0 ? 1 : Math.sign(distanceY);
-    const curveDistance = Math.max(30, Math.min(56, Math.hypot(distanceX, distanceY) * 0.45));
-    const controlOne = { x: startX + horizontalDirection * curveDistance, y: startY - 8 };
-    const controlTwo = { x: target.x - horizontalDirection * 10, y: target.y - verticalDirection * curveDistance * 0.72 };
+    const { card, target, character, placement, connector, bodyLines, title, characterSrc, bodyFontSize, bodyLineHeight, scale } = model;
+    const connectorTarget = connector && connector.target ? connector.target : target;
 
     ctx.save();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    ctx.beginPath();
-    ctx.arc(target.x, target.y, Math.max(21, target.width * 0.48), 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(234, 248, 236, 0.32)';
-    ctx.fill();
-    ctx.lineWidth = 1.25;
-    ctx.strokeStyle = 'rgba(34, 197, 94, 0.52)';
-    ctx.stroke();
+    if (!target.nativeOverlay) {
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, Math.max(21, target.width * 0.48), 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(234, 248, 236, 0.32)';
+      ctx.fill();
+      ctx.lineWidth = 1.25;
+      ctx.strokeStyle = 'rgba(34, 197, 94, 0.52)';
+      ctx.stroke();
+    }
 
-    ctx.beginPath();
-    ctx.moveTo(startX, startY);
-    ctx.bezierCurveTo(controlOne.x, controlOne.y, controlTwo.x, controlTwo.y, target.x, target.y);
-    ctx.lineWidth = 1.75;
-    ctx.lineCap = 'round';
-    ctx.strokeStyle = '#00b94d';
-    ctx.setLineDash([5, 4]);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    if (connector) {
+      ctx.beginPath();
+      ctx.moveTo(connector.start.x, connector.start.y);
+      if (connector.type === 'polyline' && connector.points) {
+        if (connector.points.length > 2) {
+          for (let index = 1; index < connector.points.length - 1; index += 1) {
+            const point = connector.points[index];
+            const next = connector.points[index + 1];
+            const midpoint = { x: (point.x + next.x) / 2, y: (point.y + next.y) / 2 };
+            ctx.quadraticCurveTo(point.x, point.y, midpoint.x, midpoint.y);
+          }
+        }
+        ctx.lineTo(connectorTarget.x, connectorTarget.y);
+      } else {
+        ctx.bezierCurveTo(
+          connector.controlOne.x,
+          connector.controlOne.y,
+          connector.controlTwo.x,
+          connector.controlTwo.y,
+          connectorTarget.x,
+          connectorTarget.y
+        );
+      }
+      ctx.lineWidth = 1.75;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#00b94d';
+      ctx.setLineDash([5, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
 
-    const tangentX = target.x - controlTwo.x;
-    const tangentY = target.y - controlTwo.y;
-    const arrowAngle = Math.atan2(tangentY, tangentX);
-    const arrowSize = 8;
-    ctx.beginPath();
-    ctx.moveTo(target.x, target.y);
-    ctx.lineTo(target.x - arrowSize * Math.cos(arrowAngle - Math.PI / 5), target.y - arrowSize * Math.sin(arrowAngle - Math.PI / 5));
-    ctx.lineTo(target.x - arrowSize * Math.cos(arrowAngle + Math.PI / 5), target.y - arrowSize * Math.sin(arrowAngle + Math.PI / 5));
-    ctx.closePath();
-    ctx.fillStyle = '#00b94d';
-    ctx.fill();
+      const arrowFrom = connector.arrowFrom || connector.controlTwo;
+      const tangentX = connectorTarget.x - arrowFrom.x;
+      const tangentY = connectorTarget.y - arrowFrom.y;
+      const arrowAngle = Math.atan2(tangentY, tangentX);
+      const arrowSize = 8;
+      ctx.beginPath();
+      ctx.moveTo(connectorTarget.x, connectorTarget.y);
+      ctx.lineTo(connectorTarget.x - arrowSize * Math.cos(arrowAngle - Math.PI / 5), connectorTarget.y - arrowSize * Math.sin(arrowAngle - Math.PI / 5));
+      ctx.lineTo(connectorTarget.x - arrowSize * Math.cos(arrowAngle + Math.PI / 5), connectorTarget.y - arrowSize * Math.sin(arrowAngle + Math.PI / 5));
+      ctx.closePath();
+      ctx.fillStyle = '#00b94d';
+      ctx.fill();
+    }
 
     const mascot = this.getSurveyGuideCanvasImage(characterSrc);
     if (mascot) {
@@ -1847,20 +1850,25 @@ Page({
     const safeBottom = Number(this.data.bottomSafeArea || 0);
     if (!rect.width || !rect.height) return null;
 
+    const dockCenterY = rect.height - safeBottom -
+      (BOTTOM_DOCK_GUIDE_GEOMETRY_RPX.bottom + BOTTOM_DOCK_GUIDE_GEOMETRY_RPX.height / 2) * rpx;
+
     if (target === 'measure') {
       return {
-        x: rect.width / 2 + 154 * rpx,
-        y: rect.height - safeBottom - 81 * rpx,
-        width: 92 * rpx,
-        height: 58 * rpx
+        x: rect.width / 2 + BOTTOM_DOCK_GUIDE_GEOMETRY_RPX.measureCenterOffsetX * rpx,
+        y: dockCenterY,
+        width: BOTTOM_DOCK_GUIDE_GEOMETRY_RPX.measureWidth * rpx,
+        height: BOTTOM_DOCK_GUIDE_GEOMETRY_RPX.actionHeight * rpx,
+        nativeOverlay: true
       };
     }
     if (target === 'dock-cursor') {
       return {
-        x: rect.width / 2 + 20 * rpx,
-        y: rect.height - safeBottom - 81 * rpx,
-        width: 76 * rpx,
-        height: 58 * rpx
+        x: rect.width / 2 + BOTTOM_DOCK_GUIDE_GEOMETRY_RPX.cursorCenterOffsetX * rpx,
+        y: dockCenterY,
+        width: BOTTOM_DOCK_GUIDE_GEOMETRY_RPX.cursorWidth * rpx,
+        height: BOTTOM_DOCK_GUIDE_GEOMETRY_RPX.actionHeight * rpx,
+        nativeOverlay: true
       };
     }
     if (target === 'finish') {
@@ -1919,35 +1927,223 @@ Page({
     return { x: point.x, y: point.y, width: 48, height: 48 };
   },
 
-  getSurveyGuideWallObstacles(floor, session) {
-    const segments = [];
-    const appendWall = (wall) => {
-      if (!wall) return;
-      const start = surveyGraph.getNode(floor, wall.startNodeId);
-      const end = surveyGraph.getNode(floor, wall.endNodeId);
-      if (start && end) segments.push({ start, end, thicknessMm: wall.thicknessMm });
+  getSurveyGuideObstacles() {
+    const scene = this.surveyRenderScene || {};
+    const controls = this.canvasControls || {};
+    const obstacles = [];
+    const append = (rect, config) => {
+      if (!rect || ![rect.left, rect.right, rect.top, rect.bottom].every(Number.isFinite)) return;
+      obstacles.push(Object.assign({}, rect, config || {}));
+    };
+    const boundsFromPoints = (points, padding) => {
+      const valid = (points || []).filter((point) => point && Number.isFinite(point.x) && Number.isFinite(point.y));
+      if (!valid.length) return null;
+      const gap = Number(padding) || 0;
+      return {
+        left: Math.min.apply(null, valid.map((point) => point.x)) - gap,
+        right: Math.max.apply(null, valid.map((point) => point.x)) + gap,
+        top: Math.min.apply(null, valid.map((point) => point.y)) - gap,
+        bottom: Math.max.apply(null, valid.map((point) => point.y)) + gap
+      };
+    };
+    const segmentBounds = (start, end, padding) => boundsFromPoints([start, end], padding);
+    const measureWidth = (text, font) => {
+      const ctx = this.surveyCtx;
+      if (!ctx || typeof ctx.measureText !== 'function') return String(text || '').length * 8;
+      ctx.save();
+      ctx.font = font;
+      const width = ctx.measureText(String(text || '')).width;
+      ctx.restore();
+      return width;
+    };
+    const rotatedLabelBounds = (center, width, height, angle) => {
+      const cos = Math.cos(angle || 0);
+      const sin = Math.sin(angle || 0);
+      const corners = [
+        { x: -width / 2, y: -height / 2 },
+        { x: width / 2, y: -height / 2 },
+        { x: width / 2, y: height / 2 },
+        { x: -width / 2, y: height / 2 }
+      ].map((point) => ({
+        x: center.x + point.x * cos - point.y * sin,
+        y: center.y + point.x * sin + point.y * cos
+      }));
+      return boundsFromPoints(corners, 2);
     };
 
-    if (session.previewPoint && session.anchorNodeId) {
-      const start = surveyGraph.getNode(floor, session.anchorNodeId);
-      if (start) segments.push({ start, end: session.previewPoint, thicknessMm: this.data.thicknessMm });
-    } else if (session.selectedWallId) {
-      appendWall(surveyGraph.getWall(floor, session.selectedWallId));
-    } else if (floor.walls && floor.walls.length) {
-      appendWall(floor.walls[floor.walls.length - 1]);
+    ((scene.walls || []).concat(scene.previewWall ? [scene.previewWall] : [])).forEach((wall) => {
+      const rect = boundsFromPoints(wall.bodyPolygon || [wall.startPoint, wall.endPoint], 6);
+      append(rect, {
+        kind: wall.preview ? 'preview-wall' : 'wall',
+        hard: false,
+        weight: wall.isActiveMeasurement || wall.preview ? 950 : 360,
+        pathHard: false,
+        pathWeight: wall.isActiveMeasurement || wall.preview ? 520 : 90,
+        pathPadding: 3
+      });
+    });
+
+    (scene.openings || []).forEach((opening) => {
+      append(boundsFromPoints(opening.hitPolygon, 5), {
+        kind: 'opening',
+        hard: false,
+        weight: 720,
+        pathHard: false,
+        pathWeight: 420,
+        pathPadding: 4
+      });
+    });
+
+    (scene.dimensions || []).forEach((dimension) => {
+      let labelRect = dimension.labelBox || null;
+      let lineStart = null;
+      let lineEnd = null;
+      if (dimension.startPoint && dimension.endPoint) {
+        lineStart = dimension.startPoint;
+        lineEnd = dimension.endPoint;
+        if (!labelRect) {
+          const center = {
+            x: (lineStart.x + lineEnd.x) / 2,
+            y: (lineStart.y + lineEnd.y) / 2
+          };
+          labelRect = rotatedLabelBounds(
+            center,
+            measureWidth(dimension.label, '600 11px sans-serif') + 8,
+            16,
+            Math.atan2(lineEnd.y - lineStart.y, lineEnd.x - lineStart.x)
+          );
+        }
+      } else if (dimension.wall) {
+        const wall = dimension.wall;
+        const startX = Number.isFinite(dimension.startX) ? dimension.startX : 0;
+        const endX = Number.isFinite(dimension.endX) ? dimension.endX : wall.widthPx;
+        const y = Number(dimension.offset) || 0;
+        const toCanvas = (x, localY) => ({
+          x: wall.startPoint.x + wall.direction.x * x + wall.localY.x * localY,
+          y: wall.startPoint.y + wall.direction.y * x + wall.localY.y * localY
+        });
+        lineStart = toCanvas(startX, y);
+        lineEnd = toCanvas(endX, y);
+      }
+      append(labelRect, {
+        kind: 'dimension-label',
+        hard: true,
+        padding: 5,
+        pathHard: true,
+        pathWeight: 2400,
+        pathPadding: 6
+      });
+      append(segmentBounds(lineStart, lineEnd, 3), {
+        kind: 'dimension-line',
+        hard: false,
+        weight: 260,
+        pathHard: false,
+        pathWeight: 760,
+        pathPadding: 4
+      });
+    });
+
+    (scene.closedSpaceLabels || []).forEach((label) => {
+      if (!label || !label.centroid) return;
+      const scale = label.detailScale || 1;
+      const titleWidth = measureWidth(label.roomName, `bold ${12 * scale}px sans-serif`);
+      const metricWidth = Math.max(
+        measureWidth(`H=${label.ceilingHeightMm}mm`, `${9 * scale}px sans-serif`),
+        measureWidth(`S≈${label.areaM2}m²`, `${9 * scale}px sans-serif`)
+      );
+      const rawWidth = Math.ceil(Math.max(titleWidth, metricWidth) + 24 * scale);
+      const rawHeight = 52 * scale;
+      const fitScale = Math.min(
+        1,
+        label.detailMaxWidthPx ? label.detailMaxWidthPx / rawWidth : 1,
+        label.detailMaxHeightPx ? label.detailMaxHeightPx / rawHeight : 1
+      );
+      const width = rawWidth * fitScale;
+      const height = rawHeight * fitScale;
+      append({
+        left: label.centroid.x - width / 2,
+        right: label.centroid.x + width / 2,
+        top: label.centroid.y - height / 2,
+        bottom: label.centroid.y + height / 2
+      }, {
+        kind: 'room-label',
+        hard: true,
+        padding: 6,
+        pathHard: true,
+        pathWeight: 2200,
+        pathPadding: 6
+      });
+    });
+
+    if (scene.activeSegment && scene.activeSegment.lengthMm) {
+      const rpx = this.rpxScale || ((this.canvasRect && this.canvasRect.width) || 390) / 750;
+      const top = Number(this.data.overlayContentTop || 0);
+      append({ left: 16 * rpx, right: 300 * rpx, top, bottom: top + 96 * rpx }, {
+        kind: 'top-measurement',
+        hard: true,
+        padding: 5,
+        pathHard: true,
+        pathWeight: 1800,
+        pathPadding: 5
+      });
     }
 
-    return segments.map((segment) => {
-      const start = this.mmToCanvasPoint(segment.start);
-      const end = this.mmToCanvasPoint(segment.end);
-      const halfThickness = Math.max(12, (Number(segment.thicknessMm) || 200) * this.getViewport().scale / 2 + 10);
-      return {
-        left: Math.min(start.x, end.x) - halfThickness,
-        right: Math.max(start.x, end.x) + halfThickness,
-        top: Math.min(start.y, end.y) - halfThickness,
-        bottom: Math.max(start.y, end.y) + halfThickness
-      };
-    });
+    if (this.selectedWallToolbarRect) {
+      append(this.selectedWallToolbarRect, {
+        kind: 'wall-toolbar',
+        hard: true,
+        padding: 6,
+        pathHard: true,
+        pathWeight: 1800,
+        pathPadding: 6
+      });
+    }
+    if (controls.activeAngle) {
+      append({
+        left: controls.activeAngle.left,
+        right: controls.activeAngle.left + controls.activeAngle.width,
+        top: controls.activeAngle.top,
+        bottom: controls.activeAngle.top + controls.activeAngle.height
+      }, {
+        kind: 'angle-control',
+        hard: true,
+        padding: 5,
+        pathHard: true,
+        pathWeight: 1600,
+        pathPadding: 5
+      });
+    }
+    if (controls.closeAction) {
+      append({
+        left: controls.closeAction.cx - 28,
+        right: controls.closeAction.cx + 28,
+        top: controls.closeAction.cy - 24,
+        bottom: controls.closeAction.cy + 24
+      }, {
+        kind: 'close-action',
+        hard: true,
+        padding: 5,
+        pathHard: false,
+        pathWeight: 0
+      });
+    }
+    if (controls.measurePosition && controls.measurePosition.button) {
+      const button = controls.measurePosition.button;
+      append({
+        left: button.cx - button.radius,
+        right: button.cx + button.radius,
+        top: button.cy - button.radius,
+        bottom: button.cy + button.radius
+      }, {
+        kind: 'measure-position-action',
+        hard: true,
+        padding: 7,
+        pathHard: false,
+        pathWeight: 0
+      });
+    }
+
+    return obstacles;
   },
 
   buildSurveyGuideData(floor, session, cursorPlacementState, presentationState) {
@@ -1968,6 +2164,7 @@ Page({
 
     if (!guide) {
       this.surveyGuideCanvasModel = null;
+      this.surveyGuideLayoutCache = null;
       return {
         surveyGuideVisible: false,
         surveyGuideTarget: ''
@@ -2003,31 +2200,45 @@ Page({
       112 * designScale,
       bodyFirstBaseline + Math.max(0, bodyLines.length - 1) * bodyLineHeight + bodyBottomPadding
     );
-    const spatialTargets = ['cursor', 'preview', 'close', 'measure-side', 'object'];
+    const spatialTargets = ['cursor', 'preview', 'close', 'measure-side', 'object', 'dock-cursor', 'measure'];
     const gap = (spatialTargets.indexOf(guide.target) >= 0 ? 124 : 24) * designScale;
-    const placement = chooseGuidePlacement({
+    const previousLayout = this.surveyGuideLayoutCache && this.surveyGuideLayoutCache.key === guide.key
+      ? this.surveyGuideLayoutCache
+      : null;
+    const layoutInput = {
       target,
       safeArea,
       cardWidth,
       cardHeight,
       gap,
-      obstacles: this.getSurveyGuideWallObstacles(floor, session)
-    });
-    const card = {
-      left: placement.left,
-      top: placement.top,
-      width: cardWidth,
-      height: cardHeight
-    };
-    const character = chooseGuideCharacter({
-      card,
-      target,
-      safeArea,
       characterSize: 70 * designScale,
-      preferredPose: (guide.target === 'cursor' || guide.target === 'preview')
-        ? (target.x >= card.left ? 'right' : 'left')
-        : ''
-    });
+      obstacles: this.getSurveyGuideObstacles(),
+      previousLayout,
+      preferCharacterBelowCard: !!target.nativeOverlay
+    };
+    const layout = solveGuideLayout(layoutInput);
+    if (!layout) {
+      this.surveyGuideCanvasModel = null;
+      return {
+        surveyGuideVisible: false,
+        surveyGuideTarget: guide.target
+      };
+    }
+    const { card, placement, character } = layout;
+    const connector = target.nativeOverlay
+      ? buildDirectGuideConnector(
+        { x: character.handX, y: character.handY },
+        {
+          x: target.x,
+          y: target.y - target.height / 2 - 5 * designScale
+        }
+      )
+      : layout.connector;
+    this.surveyGuideLayoutCache = {
+      key: guide.key,
+      card,
+      character
+    };
     const characterSources = {
       left: '/packages/surveying/assets/surveying-guide-k-left-v3.png',
       right: '/packages/surveying/assets/surveying-guide-k-right-v3.png',
@@ -2038,6 +2249,7 @@ Page({
       target,
       placement,
       character,
+      connector,
       bodyLines,
       title: '小K提示',
       characterSrc: characterSources[character.pose],
@@ -2064,6 +2276,7 @@ Page({
       this.cursorPlacementState = cursorPlacementState;
     }
     const renderData = this.buildCanvasRenderData(floor, session);
+    const topMetricSuppressed = cursorPlacementState !== 'placed';
     const selectedOpening = this.buildSelectedOpening(floor, session.selectedOpeningId);
     const componentState = this.buildComponentEditorState(floor, selectedOpening);
     const presentationState = Object.assign({}, this.data, extraData || {});
@@ -2084,9 +2297,9 @@ Page({
       cursorVerticalGuideStyle: renderData.cursorVerticalGuideStyle,
       cursorVisible: renderData.cursorVisible,
       guideVisible: renderData.guideVisible,
-      topMetricVisible: renderData.topMetricVisible,
-      topMetricLength: renderData.topMetricLength,
-      topMetricAngle: renderData.topMetricAngle,
+      topMetricVisible: !topMetricSuppressed && renderData.topMetricVisible,
+      topMetricLength: topMetricSuppressed ? '' : renderData.topMetricLength,
+      topMetricAngle: topMetricSuppressed ? '' : renderData.topMetricAngle,
       angleActionAvailable: (session.mode === 'diagonal' && !!session.previewPoint &&
         (session.state === 'wallPreview' || session.state === 'awaitingLength') && floor.walls.length > 0) ||
         this.canRemeasureLastDiagonalAngle(floor, session),
@@ -2098,9 +2311,6 @@ Page({
       closureGuideStyle: renderData.closureGuideStyle,
       closeActionVisible: renderData.closeActionVisible,
       closeActionStyle: renderData.closeActionStyle,
-      closeHintVisible: renderData.closeHintVisible,
-      closeHintText: renderData.closeHintText,
-      closeHintActionVisible: session.state === 'closing' || session.state === 'mergeClosing',
       selectedWall,
       selectedOpening,
       objectToolsVisible: !!(selectedWall || selectedOpening),
@@ -2229,26 +2439,6 @@ Page({
     let cursorStyle = '';
     let cursorHorizontalGuideStyle = '';
     let cursorVerticalGuideStyle = '';
-    let closeHintVisible = false;
-    let closeHintText = '';
-
-    if (session.previewPoint) {
-      closeHintVisible = !!(session.closeCandidateNodeId || session.closeCandidatePoint);
-      closeHintText = closeHintVisible
-        ? (session.closeCandidateType === 'merge' ? '已检测到可合并闭合边，松开后可直接闭合' : '预览端点已接近起点，确认长度后可闭合')
-        : '';
-    }
-
-    if (session.state === 'closing') {
-      closeHintVisible = true;
-      closeHintText = '当前端点已接近起点，可闭合单空间';
-    }
-
-    if (session.state === 'mergeClosing') {
-      closeHintVisible = true;
-      closeHintText = '已检测到可合并闭合边，点击“合”即可闭合';
-    }
-
     if (
       this.resolveCursorPlacementState(floor, session) === 'placed' &&
       session.anchorNodeId &&
@@ -2295,8 +2485,7 @@ Page({
     this.canvasControls = this.buildCanvasControls(
       measurePosition,
       closure,
-      activeAngle,
-      !!this.guideEnabled
+      activeAngle
     );
 
     return {
@@ -2314,25 +2503,18 @@ Page({
       closureGuideVisible: false,
       closureGuideStyle: '',
       closeActionVisible: closure.actionVisible,
-      closeActionStyle: closure.actionStyle,
-      closeHintVisible,
-      closeHintText
+      closeActionStyle: closure.actionStyle
     };
   },
 
-  buildCanvasControls(measurePosition, closure, activeAngle, showGuide) {
+  buildCanvasControls(measurePosition, closure, activeAngle) {
     const measureControl = measurePosition && measurePosition.control
       ? Object.assign({}, measurePosition.control)
       : null;
-    if (measureControl && !showGuide) {
-      measureControl.tip = null;
-      measureControl.pointer = null;
-    }
     return {
       closeAction: closure && closure.action
         ? Object.assign({ key: 'close', radius: 14 }, closure.action)
         : null,
-      closeHint: showGuide && closure && closure.hint ? closure.hint : null,
       measurePosition: measureControl,
       activeAngle: activeAngle || null
     };
@@ -2691,37 +2873,6 @@ Page({
     };
   },
 
-  buildAnchoredCallout(text, target, tipCenter, safeArea, pointerLength, compact) {
-    const tipWidth = compact ? 132 : 202;
-    const tipHeight = compact ? 32 : 38;
-    const tip = {
-      width: tipWidth,
-      height: tipHeight,
-      text,
-      x: clamp(tipCenter.x - tipWidth / 2, safeArea.left, Math.max(safeArea.left, safeArea.right - tipWidth)),
-      y: clamp(tipCenter.y - tipHeight / 2, safeArea.top, Math.max(safeArea.top, safeArea.bottom - tipHeight))
-    };
-    if (!Number.isFinite(pointerLength)) return { tip, pointer: target };
-
-    const centerX = tip.x + tip.width / 2;
-    const centerY = tip.y + tip.height / 2;
-    const dx = target.x - centerX;
-    const dy = target.y - centerY;
-    const distance = Math.sqrt(dx * dx + dy * dy) || 1;
-    const direction = { x: dx / distance, y: dy / distance };
-    const horizontal = Math.abs(direction.x) > Math.abs(direction.y);
-    const base = horizontal
-      ? { x: direction.x >= 0 ? tip.x + tip.width - 1 : tip.x + 1, y: centerY }
-      : { x: centerX, y: direction.y >= 0 ? tip.y + tip.height - 1 : tip.y + 1 };
-    return {
-      tip,
-      pointer: {
-        x: base.x + direction.x * pointerLength,
-        y: base.y + direction.y * pointerLength
-      }
-    };
-  },
-
   constrainCanvasCircle(circle, safeArea) {
     return Object.assign({}, circle, {
       cx: clamp(circle.cx, safeArea.left + circle.radius, safeArea.right - circle.radius),
@@ -2767,18 +2918,11 @@ Page({
       cy: target.y + sideNormal.y * 94,
       radius
     }, safeArea);
-    const callout = this.buildAnchoredCallout(
-      '切换内外墙方向，红线为测量位置',
-      target,
-      { x: target.x - sideNormal.x * 66, y: target.y - sideNormal.y * 66 },
-      safeArea,
-      18
-    );
-    const control = Object.assign({
+    const control = {
       key: 'measure-position',
       label: '↕',
       button
-    }, callout);
+    };
 
     return {
       visible: true,
@@ -2803,27 +2947,25 @@ Page({
       return { guideVisible: false, guideStyle: '', actionVisible: false, actionStyle: '' };
     }
 
-    const targetNode = session.closeCandidatePoint || surveyGraph.getNode(floor, session.closeCandidateNodeId);
-    let currentNode = null;
-    if (session.previewPoint) {
-      currentNode = session.previewPoint;
-    } else if (session.anchorNodeId) {
-      currentNode = surveyGraph.getNode(floor, session.anchorNodeId);
-    }
-    if (!targetNode || !currentNode) {
+    const closurePath = surveyGraph.getClosurePath(floor, session);
+    if (closurePath.length < 2) {
       return { guideVisible: false, guideStyle: '', actionVisible: false, actionStyle: '' };
     }
 
-    const startPoint = this.mmToCanvasPoint(currentNode);
-    const endPoint = this.mmToCanvasPoint(targetNode);
-    const rawWidth = distancePx(startPoint, endPoint);
+    const canvasPath = closurePath.map((point) => this.mmToCanvasPoint(point));
+    const startPoint = canvasPath[0];
+    const endPoint = canvasPath[canvasPath.length - 1];
+    const rawWidth = canvasPath.slice(1).reduce((total, point, index) => (
+      total + distancePx(canvasPath[index], point)
+    ), 0);
     const lastWall = floor.walls[floor.walls.length - 1] || null;
     const width = session.state === 'closing' ? Math.max(rawWidth, 72) : rawWidth;
     const angleDeg = rawWidth > 1
       ? Math.atan2(endPoint.y - startPoint.y, endPoint.x - startPoint.x) * 180 / Math.PI
       : (lastWall ? lastWall.angleDeg : 0);
-    const midX = (startPoint.x + endPoint.x) / 2;
-    const midY = (startPoint.y + endPoint.y) / 2;
+    const pathMidpoint = getPolylineMidpoint(canvasPath) || getMidPoint(startPoint, endPoint);
+    const midX = pathMidpoint.x;
+    const midY = pathMidpoint.y;
     const rect = this.canvasRect || { width: 0, height: 0 };
     const actionRadius = 14;
     const safePadding = actionRadius + 8;
@@ -2841,65 +2983,8 @@ Page({
       guideStyle: `left:${roundPx(startPoint.x)}px; top:${roundPx(startPoint.y)}px; width:${roundPx(width)}px; transform:rotate(${roundPx(angleDeg)}deg);`,
       actionVisible,
       actionStyle: `left:${roundPx(actionX - 24)}px; top:${roundPx(actionY - 12)}px;`,
-      action,
-      hint: actionVisible ? this.buildClosureHint(action, startPoint, endPoint) : null
+      action
     };
-  },
-
-  buildClosureHint(action, startPoint, endPoint) {
-    const rect = this.canvasRect || { width: 0, height: 0 };
-    const safeArea = this.getCanvasControlSafeArea(rect);
-    const tipWidth = 202;
-    const tipHeight = 38;
-    const scene = this.surveyRenderScene || {};
-    const wallObstacles = ((scene.walls || []).concat(scene.previewWall ? [scene.previewWall] : []))
-      .filter((wall) => wall && wall.startPoint && wall.endPoint)
-      .map((wall) => ({
-        left: Math.min(wall.startPoint.x, wall.endPoint.x) - (wall.thicknessPx || 0) / 2 - 8,
-        right: Math.max(wall.startPoint.x, wall.endPoint.x) + (wall.thicknessPx || 0) / 2 + 8,
-        top: Math.min(wall.startPoint.y, wall.endPoint.y) - (wall.thicknessPx || 0) / 2 - 8,
-        bottom: Math.max(wall.startPoint.y, wall.endPoint.y) + (wall.thicknessPx || 0) / 2 + 8,
-        weight: 1
-      }));
-    const segmentObstacle = {
-      left: Math.min(startPoint.x, endPoint.x) - 12,
-      right: Math.max(startPoint.x, endPoint.x) + 12,
-      top: Math.min(startPoint.y, endPoint.y) - 12,
-      bottom: Math.max(startPoint.y, endPoint.y) + 12,
-      weight: 8
-    };
-    const actionObstacle = {
-      left: action.cx - 26,
-      right: action.cx + 26,
-      top: action.cy - 26,
-      bottom: action.cy + 26,
-      weight: 100
-    };
-    const obstacles = wallObstacles.concat([segmentObstacle, actionObstacle]);
-    const candidateCenters = [
-      { x: action.cx - tipWidth / 2 - 28, y: action.cy },
-      { x: action.cx + tipWidth / 2 + 28, y: action.cy },
-      { x: action.cx, y: action.cy - tipHeight / 2 - 34 },
-      { x: action.cx, y: action.cy + tipHeight / 2 + 34 }
-    ].map((center) => ({
-      x: clamp(center.x, safeArea.left + tipWidth / 2, Math.max(safeArea.left + tipWidth / 2, safeArea.right - tipWidth / 2)),
-      y: clamp(center.y, safeArea.top + tipHeight / 2, Math.max(safeArea.top + tipHeight / 2, safeArea.bottom - tipHeight / 2))
-    }));
-    const scoreCandidate = (center) => {
-      const tipBox = {
-        left: center.x - tipWidth / 2,
-        right: center.x + tipWidth / 2,
-        top: center.y - tipHeight / 2,
-        bottom: center.y + tipHeight / 2
-      };
-      return obstacles.reduce((score, obstacle) => (
-        boxesOverlap(tipBox, obstacle, 6) ? score + obstacle.weight : score
-      ), 0);
-    };
-    const tipCenter = candidateCenters.reduce((best, candidate) => (
-      scoreCandidate(candidate) < scoreCandidate(best) ? candidate : best
-    ), candidateCenters[0]);
-    return this.buildAnchoredCallout('可闭合', action, tipCenter, safeArea, 8, true);
   },
 
   formatWallLabel(wall) {
@@ -2911,6 +2996,7 @@ Page({
   },
 
   buildSelectedWall(floor, wallId) {
+    this.selectedWallToolbarRect = null;
     if (!wallId) return null;
     const wall = surveyGraph.getWall(floor, wallId);
     if (!wall) return null;
@@ -2945,6 +3031,12 @@ Page({
         left: clamp(midX - toolbarWidth / 2, 12, Math.max(12, rect.width - toolbarWidth - 12)),
         top: clamp(midY - 80, 18, Math.max(18, rect.height - toolbarHeight - 18)),
         offset: -80
+      };
+      this.selectedWallToolbarRect = {
+        left: toolbarPoint.left,
+        right: toolbarPoint.left + toolbarWidth,
+        top: toolbarPoint.top,
+        bottom: toolbarPoint.top + toolbarHeight
       };
       actionStyle = `left:${roundPx(toolbarPoint.left)}px; top:${roundPx(toolbarPoint.top)}px;`;
     }
@@ -4443,7 +4535,10 @@ Page({
     if (shouldUpdateLens) {
       this.cursorLensLastUpdateAt = now;
       this.setData(Object.assign({
-        cursorPlacementState: 'dragging'
+        cursorPlacementState: 'dragging',
+        topMetricVisible: false,
+        topMetricLength: '',
+        topMetricAngle: ''
       }, dragData));
     }
   },
