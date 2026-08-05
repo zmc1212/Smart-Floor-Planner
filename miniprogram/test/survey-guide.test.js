@@ -52,6 +52,7 @@ test('closure candidates outrank direction and length guidance', () => {
   assert.equal(previewClose.key, 'close-space');
   assert.equal(lengthClose.key, 'close-space');
   assert.equal(resolve('closing').key, 'close-space');
+  assert.match(previewClose.body, /「可闭合」即可闭合当前空间/);
 });
 
 test('the initial measurement side outranks continuation guidance', () => {
@@ -115,19 +116,40 @@ test('guide placement stays inside safe chrome and avoids the active wall when p
   assert.ok(placement.left + 260 <= 282);
 });
 
+test('a 360px device normalizes guide geometry back to the 390px reference anchors', () => {
+  const scale = 360 / 390;
+  const safeArea = {
+    left: 12 * scale,
+    top: 130 * scale,
+    right: 360 - (105 + 12) * scale,
+    bottom: 800 - 128 * scale
+  };
+  const placement = chooseGuidePlacement({
+    target: { x: 219 * scale, y: 444 * scale },
+    safeArea,
+    cardWidth: 180 * scale,
+    cardHeight: 130 * scale,
+    gap: 124 * scale,
+    obstacles: []
+  });
+  assert.ok(Math.abs(placement.left / scale - 93) < 0.5);
+  assert.ok(Math.abs(placement.top / scale - 190) < 0.5);
+});
+
 test('Xiao K pose and dotted path resolve from the real card and target geometry', () => {
   const safeArea = { left: 12, top: 120, right: 282, bottom: 716 };
   const card = { left: 56, top: 320, width: 168, height: 76 };
-  const down = chooseGuideCharacter({
+  const right = chooseGuideCharacter({
     card,
     target: { x: 140, y: 540 },
     safeArea,
     characterSize: 64
   });
-  assert.equal(down.pose, 'down');
-  assert.ok(down.top + down.size <= safeArea.bottom);
-  assert.ok(down.pathLength > 12);
-  assert.ok(down.left + down.size < 140, 'down pose keeps the target clear of the character');
+  assert.equal(right.pose, 'right');
+  assert.ok(right.top + right.size <= safeArea.bottom);
+  assert.ok(right.pathLength > 12);
+  assert.ok(right.handX <= 140, 'right-pointing hand stays on the target’s left side');
+  assert.equal(right.top, card.top + card.height + 16 * (64 / 70));
 
   const left = chooseGuideCharacter({
     card,
@@ -138,6 +160,24 @@ test('Xiao K pose and dotted path resolve from the real card and target geometry
   assert.equal(left.pose, 'left');
   assert.ok(left.left >= safeArea.left);
   assert.ok(left.top >= safeArea.top);
+  assert.ok(left.handX >= 20, 'left-pointing hand stays on the target’s right side');
+});
+
+test('cursor guidance uses the right-pointing Xiao K pose and a curved path direction', () => {
+  const character = chooseGuideCharacter({
+    card: { left: 92, top: 180, width: 180, height: 112 },
+    target: { x: 196, y: 432 },
+    safeArea: { left: 12, top: 120, right: 282, bottom: 716 },
+    characterSize: 70,
+    preferredPose: 'right'
+  });
+
+  assert.equal(character.pose, 'right');
+  assert.equal(character.pathDirection, 'down-right');
+  assert.ok(character.pathWidth > 12);
+  assert.ok(character.pathHeight > 12);
+  assert.ok(character.top >= 308, 'cursor pose stays below the speech bubble instead of being covered by it');
+  assert.ok(character.handX <= 196, 'right-pointing hand faces the actual cursor target');
 });
 
 test('guide copy is split into native-cover-view-safe lines', () => {

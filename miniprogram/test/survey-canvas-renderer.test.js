@@ -233,6 +233,24 @@ function createRecordingContext() {
   return { context, strokes, fills, dashes, widths, texts };
 }
 
+test('default surveying canvas uses the fine low-contrast reference grid', () => {
+  const recorder = createRecordingContext();
+  const scene = surveyCanvasRenderer.createSurveyRenderScene({
+    floor: surveyGraph.getActiveFloor(surveyGraph.createSurveyDraft()),
+    rect: { width: 390, height: 700 },
+    viewport: { scale: surveyGraph.DEFAULT_SCALE, offsetX: 0, offsetY: 0 }
+  });
+
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+
+  const minorGridX = recorder.strokes[0]
+    .filter((command) => command[0] === 'moveTo' && command[2] === 0)
+    .map((command) => command[1]);
+  const minorGaps = minorGridX.slice(1).map((x, index) => x - minorGridX[index]);
+
+  assert.ok(minorGaps.every((gap) => gap >= 12 && gap <= 13));
+});
+
 test('open wall chain renders only inner dimensions and keeps its full chain red', () => {
   const draft = createOpenDraft();
   const floor = surveyGraph.getActiveFloor(draft);

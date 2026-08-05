@@ -2,7 +2,10 @@
 
 `back-arrow.svg`, `cursor-compass.svg`, `history-*.svg`, `phone-level.svg`, and `rail-*.svg` are original
 project-authored vector assets. The phone illustration and editor-rail icons use
-the same rounded-line geometry as the measurement UI.
+the same rounded-line geometry as the measurement UI. The `rail-*-active.svg`
+variants preserve that geometry and use the formal-surveying active green;
+their 48px PNG derivatives ship with the editor instead of relying on
+device-dependent `cover-image` CSS filters.
 
 `bluetooth.svg`, `circle-check.svg`, `crosshair.svg`, `refresh-cw.svg`,
 `guide-help.svg`, and `save-draft.svg` are adapted from Lucide Icons v1.8.0.

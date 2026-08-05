@@ -135,10 +135,10 @@ function median(values) {
 
 function buildCoreTools(activeTool, thicknessMm) {
   return [
-    { key: 'straight', label: '直线', helper: '正交吸附', icon: activeTool === 'straight' ? 'straight-active' : 'straight', enabled: true, active: activeTool === 'straight' },
-    { key: 'diagonal', label: '斜线', helper: '自由角度', icon: activeTool === 'diagonal' ? 'diagonal-active' : 'diagonal', enabled: true, active: activeTool === 'diagonal' },
-    { key: 'thickness', label: '墙厚', helper: formatMm(thicknessMm), icon: 'thickness', enabled: true, active: false },
-    { key: 'input', label: '输入', helper: '手输 mm', icon: 'input', enabled: true, active: false },
+    { key: 'straight', label: '直线', helper: '正交吸附', icon: activeTool === 'straight' ? 'align-active' : 'align', enabled: true, active: activeTool === 'straight' },
+    { key: 'diagonal', label: '斜线', helper: '自由角度', icon: activeTool === 'diagonal' ? 'annotation-active' : 'annotation', enabled: true, active: activeTool === 'diagonal' },
+    { key: 'thickness', label: '墙厚', helper: formatMm(thicknessMm), icon: 'layers', enabled: true, active: false },
+    { key: 'input', label: '输入', helper: '手输 mm', icon: 'display', enabled: true, active: false },
     { key: 'ble-measure', label: '测距', helper: '蓝牙读数', enabled: true, active: false },
     { key: 'reset', label: '重置', helper: '光标', enabled: true, active: false }
   ];
@@ -304,21 +304,7 @@ Page({
     isSurveyEmpty: true,
     guideEnabled: true,
     surveyGuideVisible: false,
-    surveyGuideKey: '',
     surveyGuideTarget: '',
-    surveyGuideTitle: '',
-    surveyGuideBody: '',
-    surveyGuideBodyLines: [],
-    surveyGuideCardStyle: '',
-    surveyGuidePointerStyle: '',
-    surveyGuidePointerDirection: 'down',
-    surveyGuideShowCharacter: false,
-    surveyGuideDynamicCursorLabel: false,
-    surveyGuideCharacterPose: 'down',
-    surveyGuideCharacterSrc: '/packages/surveying/assets/surveying-guide-k-down-v3.png',
-    surveyGuideCharacterStyle: '',
-    surveyGuidePathStyle: '',
-    surveyGuideTargetHaloStyle: '',
     modePillText: '测墙模式',
     manualActionActive: false,
     manualActionSubtitle: '输入当前墙',
@@ -392,8 +378,11 @@ Page({
       : 0;
     const capsuleBottom = menuButtonInfo.bottom || (sysInfo.statusBarHeight || 0);
     const navigationSafeTop = capsuleBottom + 6;
-    // Keep every floating control below the custom header and above the bottom dock.
-    const overlayContentTop = navigationSafeTop + 50;
+    const rpxScale = (sysInfo.windowWidth || 375) / 750;
+    const headerBottom = (sysInfo.statusBarHeight || 0) + 160 * rpxScale;
+    // The reference shell is 80px tall at 390px. Canvas controls start below
+    // that fixed shell instead of inheriting device-specific capsule height.
+    const overlayContentTop = Math.max(navigationSafeTop + 12, headerBottom + 8 * rpxScale);
 
     const leadId = options.leadId || context.leadId || '';
     const contextFloorPlanId = options.floorPlanId || context.floorPlanId || '';
@@ -431,7 +420,6 @@ Page({
     this.viewportInteractionAwaitingHandoff = false;
     this.cursorLensLastUpdateAt = 0;
     this.cursorLensScene = null;
-    const rpxScale = (sysInfo.windowWidth || 375) / 750;
     this.rpxScale = rpxScale;
     this.cursorLensRect = {
       left: 24 * rpxScale + 8,
@@ -452,6 +440,8 @@ Page({
     this.cursorDragTouchId = null;
     this.cursorControlRect = null;
     this.canvasControls = {};
+    this.surveyGuideCanvasModel = null;
+    this.surveyGuideImageCache = {};
     this._lastBleNumberDist = null;
     this._lastBleNumberTime = 0;
     this.bleMeasureTimer = null;
@@ -472,7 +462,7 @@ Page({
       statusBarHeight: sysInfo.statusBarHeight || 0,
       navigationSafeTop,
       overlayContentTop,
-      rightRailTop: overlayContentTop + 10,
+      rightRailTop: headerBottom + 48 * rpxScale,
       rightRailBottom: safeAreaBottom + 154,
       bottomSafeArea: safeAreaBottom,
       leadId,
@@ -542,14 +532,6 @@ Page({
       title: this.guideEnabled ? '引导已开启' : '引导已关闭',
       icon: 'none'
     });
-  },
-
-  onGuideDismiss() {
-    if (!this.guideEnabled) return;
-    this.guideEnabled = false;
-    this.persistGuideEnabled(false);
-    this.setData({ guideEnabled: false }, () => this.syncFromDraft());
-    wx.showToast({ title: '引导已关闭', icon: 'none' });
   },
 
   normalizeRestoredFormalDraft(draft) {
@@ -1553,6 +1535,7 @@ Page({
       dpr: this.surveyCanvasDpr || 1
     });
     this.drawCanvasControls();
+    this.drawSurveyGuideCanvas();
     if (this.viewportInteractionAwaitingHandoff) {
       this.viewportInteractionAwaitingHandoff = false;
       this.clearViewportInteractionCanvas();
@@ -1678,6 +1661,183 @@ Page({
       ctx.fillText(measure.label, measure.button.cx, measure.button.cy + 11);
     }
 
+    ctx.restore();
+  },
+
+  getSurveyGuideCanvasImage(src) {
+    if (!src || !this.surveyCanvas || !this.surveyCanvas.createImage) return null;
+    const cached = this.surveyGuideImageCache && this.surveyGuideImageCache[src];
+    if (cached) return cached.loaded ? cached.image : null;
+
+    const image = this.surveyCanvas.createImage();
+    const entry = { image, loaded: false };
+    this.surveyGuideImageCache[src] = entry;
+    image.onload = () => {
+      entry.loaded = true;
+      this.drawSurveyCanvas();
+    };
+    image.onerror = () => {
+      entry.failed = true;
+    };
+    image.src = src;
+    return null;
+  },
+
+  wrapSurveyGuideCanvasBody(text, maxWidth, fontSize) {
+    const content = String(text || '').trim();
+    if (!content) return [''];
+    const ctx = this.surveyCtx;
+    const fallbackLimit = Math.max(8, Math.floor(maxWidth / Math.max(1, fontSize || 15)));
+    if (!ctx || typeof ctx.measureText !== 'function') {
+      return wrapGuideBody(content, fallbackLimit);
+    }
+
+    ctx.save();
+    ctx.font = `500 ${fontSize}px sans-serif`;
+    const lines = [];
+    let line = '';
+    Array.from(content).forEach((char) => {
+      const nextLine = line + char;
+      if (line && ctx.measureText(nextLine).width > maxWidth) {
+        lines.push(line);
+        line = char;
+      } else {
+        line = nextLine;
+      }
+    });
+    if (line) lines.push(line);
+    ctx.restore();
+    return lines;
+  },
+
+  drawSurveyGuideCanvas() {
+    const ctx = this.surveyCtx;
+    const model = this.surveyGuideCanvasModel;
+    if (!ctx || !model || !model.card || !model.target || !model.character) return;
+
+    const dpr = this.surveyCanvasDpr || 1;
+    const { card, target, character, placement, bodyLines, title, characterSrc, bodyFontSize, bodyLineHeight, scale } = model;
+    const startX = character.left + character.size * (character.pose === 'right' ? 0.97 : character.pose === 'left' ? 0.03 : 0.12);
+    const startY = character.top + character.size * (character.pose === 'down' ? 0.62 : 0.47);
+    const distanceX = target.x - startX;
+    const distanceY = target.y - startY;
+    const horizontalDirection = distanceX === 0 ? (character.pose === 'right' ? 1 : -1) : Math.sign(distanceX);
+    const verticalDirection = distanceY === 0 ? 1 : Math.sign(distanceY);
+    const curveDistance = Math.max(30, Math.min(56, Math.hypot(distanceX, distanceY) * 0.45));
+    const controlOne = { x: startX + horizontalDirection * curveDistance, y: startY - 8 };
+    const controlTwo = { x: target.x - horizontalDirection * 10, y: target.y - verticalDirection * curveDistance * 0.72 };
+
+    ctx.save();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    ctx.beginPath();
+    ctx.arc(target.x, target.y, Math.max(21, target.width * 0.48), 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(234, 248, 236, 0.32)';
+    ctx.fill();
+    ctx.lineWidth = 1.25;
+    ctx.strokeStyle = 'rgba(34, 197, 94, 0.52)';
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.bezierCurveTo(controlOne.x, controlOne.y, controlTwo.x, controlTwo.y, target.x, target.y);
+    ctx.lineWidth = 1.75;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#00b94d';
+    ctx.setLineDash([5, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const tangentX = target.x - controlTwo.x;
+    const tangentY = target.y - controlTwo.y;
+    const arrowAngle = Math.atan2(tangentY, tangentX);
+    const arrowSize = 8;
+    ctx.beginPath();
+    ctx.moveTo(target.x, target.y);
+    ctx.lineTo(target.x - arrowSize * Math.cos(arrowAngle - Math.PI / 5), target.y - arrowSize * Math.sin(arrowAngle - Math.PI / 5));
+    ctx.lineTo(target.x - arrowSize * Math.cos(arrowAngle + Math.PI / 5), target.y - arrowSize * Math.sin(arrowAngle + Math.PI / 5));
+    ctx.closePath();
+    ctx.fillStyle = '#00b94d';
+    ctx.fill();
+
+    const mascot = this.getSurveyGuideCanvasImage(characterSrc);
+    if (mascot) {
+      ctx.drawImage(mascot, character.left, character.top, character.size, character.size);
+    }
+
+    ctx.shadowColor = 'rgba(24, 74, 45, 0.07)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 5;
+    this.drawRoundRect(ctx, card.left, card.top, card.width, card.height, 18 * scale);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+    ctx.strokeStyle = '#b5efcb';
+    ctx.lineWidth = 1.25 * scale;
+    ctx.stroke();
+
+    // Draw the tail after the card, overlapping its edge by one physical pixel
+    // and stroking only the two sides. This yields one speech-bubble outline
+    // instead of a triangle visibly stitched to a horizontal card border.
+    const tailX = card.left + placement.pointerLeft;
+    const tailHalfWidth = 8 * scale;
+    const tailHeight = 8 * scale;
+    const tailDown = placement.pointerDirection !== 'up';
+    const edgeY = tailDown ? card.top + card.height : card.top;
+    const baseY = edgeY + (tailDown ? -1 : 1);
+    const tipY = edgeY + (tailDown ? tailHeight : -tailHeight);
+    ctx.beginPath();
+    ctx.moveTo(tailX - tailHalfWidth, baseY);
+    ctx.lineTo(tailX + tailHalfWidth, baseY);
+    ctx.lineTo(tailX, tipY);
+    ctx.closePath();
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(tailX - tailHalfWidth, baseY);
+    ctx.lineTo(tailX, tipY);
+    ctx.lineTo(tailX + tailHalfWidth, baseY);
+    ctx.strokeStyle = '#b5efcb';
+    ctx.lineWidth = 1.25 * scale;
+    ctx.stroke();
+
+    const labelWidth = 76 * scale;
+    const labelHeight = 28 * scale;
+    const labelX = card.left + 16 * scale;
+    const labelY = card.top + 16 * scale;
+    this.drawRoundRect(ctx, labelX, labelY, labelWidth, labelHeight, labelHeight / 2);
+    ctx.fillStyle = '#c9f7d9';
+    ctx.fill();
+    ctx.fillStyle = '#00b94d';
+    ctx.font = `600 ${14 * scale}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(title || '小K提示', labelX + labelWidth / 2, labelY + labelHeight / 2 + 0.5);
+
+    const sparkleX = labelX + labelWidth + 16 * scale;
+    const sparkleY = labelY + labelHeight / 2;
+    ctx.beginPath();
+    ctx.moveTo(sparkleX, sparkleY - 8 * scale);
+    ctx.lineTo(sparkleX + 2.5 * scale, sparkleY - 2.5 * scale);
+    ctx.lineTo(sparkleX + 8 * scale, sparkleY);
+    ctx.lineTo(sparkleX + 2.5 * scale, sparkleY + 2.5 * scale);
+    ctx.lineTo(sparkleX, sparkleY + 8 * scale);
+    ctx.lineTo(sparkleX - 2.5 * scale, sparkleY + 2.5 * scale);
+    ctx.lineTo(sparkleX - 8 * scale, sparkleY);
+    ctx.lineTo(sparkleX - 2.5 * scale, sparkleY - 2.5 * scale);
+    ctx.closePath();
+    ctx.fillStyle = '#00b94d';
+    ctx.fill();
+
+    ctx.fillStyle = '#1f2937';
+    ctx.font = `500 ${bodyFontSize}px sans-serif`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    const lineHeight = bodyLineHeight;
+    const bodyTop = labelY + labelHeight + 26 * scale;
+    (bodyLines || []).forEach((line, index) => {
+      ctx.fillText(line, card.left + 16 * scale, bodyTop + index * lineHeight);
+    });
     ctx.restore();
   },
 
@@ -1807,43 +1967,44 @@ Page({
     });
 
     if (!guide) {
+      this.surveyGuideCanvasModel = null;
       return {
         surveyGuideVisible: false,
-        surveyGuideKey: '',
-        surveyGuideTarget: '',
-        surveyGuideBodyLines: [],
-        surveyGuideDynamicCursorLabel: false
+        surveyGuideTarget: ''
       };
     }
 
-    const bodyLines = wrapGuideBody(guide.body, 12);
+    const guideBody = guide.dynamicCursorLabel && state.cursorLensSnapLabel
+      ? `${state.cursorLensSnapLabel}，松手确定起点。`
+      : guide.body;
     const rect = this.canvasRect || { width: 0, height: 0 };
     const target = this.getSurveyGuideTargetPoint(guide.target, floor, session);
     if (!target || !rect.width || !rect.height) {
+      this.surveyGuideCanvasModel = null;
       return {
         surveyGuideVisible: true,
-        surveyGuideKey: guide.key,
-        surveyGuideTarget: guide.target,
-        surveyGuideTitle: guide.title,
-        surveyGuideBody: guide.body,
-        surveyGuideBodyLines: bodyLines,
-        surveyGuideCardStyle: `left:24rpx; right:120rpx; bottom:calc(154rpx + ${Number(this.data.bottomSafeArea || 0)}px);`,
-        surveyGuidePointerStyle: '',
-        surveyGuidePointerDirection: 'down',
-        surveyGuideShowCharacter: true,
-        surveyGuideDynamicCursorLabel: !!guide.dynamicCursorLabel,
-        surveyGuideCharacterPose: 'down',
-        surveyGuideCharacterSrc: '/packages/surveying/assets/surveying-guide-k-down-v3.png',
-        surveyGuideCharacterStyle: 'left:24rpx; bottom:48rpx;',
-        surveyGuidePathStyle: 'display:none;',
-        surveyGuideTargetHaloStyle: 'display:none;'
+        surveyGuideTarget: guide.target
       };
     }
 
+    const designScale = Math.max(0.82, Math.min(1.08, rect.width / 390));
     const safeArea = this.getCanvasControlSafeArea(rect);
-    const cardWidth = Math.max(160, Math.min(176, safeArea.right - safeArea.left));
-    const cardHeight = Math.max(94, 54 + bodyLines.length * 20);
-    const gap = 24;
+    const cardWidth = Math.max(168 * designScale, Math.min(180 * designScale, safeArea.right - safeArea.left));
+    const bodyFontSize = 15 * designScale;
+    const bodyLineHeight = 20 * designScale;
+    const bodyLines = this.wrapSurveyGuideCanvasBody(
+      guideBody,
+      cardWidth - 32 * designScale,
+      bodyFontSize
+    );
+    const bodyFirstBaseline = (16 + 28 + 26) * designScale;
+    const bodyBottomPadding = 22 * designScale;
+    const cardHeight = Math.max(
+      112 * designScale,
+      bodyFirstBaseline + Math.max(0, bodyLines.length - 1) * bodyLineHeight + bodyBottomPadding
+    );
+    const spatialTargets = ['cursor', 'preview', 'close', 'measure-side', 'object'];
+    const gap = (spatialTargets.indexOf(guide.target) >= 0 ? 124 : 24) * designScale;
     const placement = chooseGuidePlacement({
       target,
       safeArea,
@@ -1862,32 +2023,31 @@ Page({
       card,
       target,
       safeArea,
-      characterSize: 66
+      characterSize: 70 * designScale,
+      preferredPose: (guide.target === 'cursor' || guide.target === 'preview')
+        ? (target.x >= card.left ? 'right' : 'left')
+        : ''
     });
     const characterSources = {
       left: '/packages/surveying/assets/surveying-guide-k-left-v3.png',
       right: '/packages/surveying/assets/surveying-guide-k-right-v3.png',
       down: '/packages/surveying/assets/surveying-guide-k-down-v3.png'
     };
+    this.surveyGuideCanvasModel = {
+      card,
+      target,
+      placement,
+      character,
+      bodyLines,
+      title: '小K提示',
+      characterSrc: characterSources[character.pose],
+      bodyFontSize,
+      bodyLineHeight,
+      scale: designScale
+    };
     return {
       surveyGuideVisible: true,
-      surveyGuideKey: guide.key,
-      surveyGuideTarget: guide.target,
-      surveyGuideTitle: guide.title,
-      surveyGuideBody: guide.body,
-      surveyGuideBodyLines: bodyLines,
-      surveyGuideCardStyle: `left:${roundPx(placement.left)}px; top:${roundPx(placement.top)}px; width:${roundPx(cardWidth)}px;`,
-      surveyGuidePointerStyle: `left:${roundPx(placement.pointerLeft)}px;`,
-      surveyGuidePointerDirection: placement.pointerDirection,
-      surveyGuideShowCharacter: true,
-      surveyGuideDynamicCursorLabel: !!guide.dynamicCursorLabel,
-      surveyGuideCharacterPose: character.pose,
-      surveyGuideCharacterSrc: characterSources[character.pose],
-      surveyGuideCharacterStyle: `left:${roundPx(character.left)}px; top:${roundPx(character.top)}px;`,
-      surveyGuidePathStyle: character.pathLength > 12
-        ? `left:${roundPx(character.pathLeft)}px; top:${roundPx(character.pathTop)}px; width:${roundPx(character.pathLength)}px; transform:rotate(${character.pathAngle.toFixed(2)}deg);`
-        : 'display:none;',
-      surveyGuideTargetHaloStyle: `left:${roundPx(character.haloLeft)}px; top:${roundPx(character.haloTop)}px;`
+      surveyGuideTarget: guide.target
     };
   },
 
@@ -2518,13 +2678,15 @@ Page({
   },
 
   getCanvasControlSafeArea(rect) {
-    const rightRailReserve = 96;
-    const bottomDockReserve = 128;
-    const topInset = Math.max(12, (this.data.overlayContentTop || 0) + 12);
+    const designScale = Math.max(0.82, Math.min(1.08, rect.width / 390));
+    const edgeInset = 12 * designScale;
+    const rightRailReserve = 105 * designScale;
+    const bottomDockReserve = 128 * designScale;
+    const topInset = Math.max(edgeInset, (this.data.overlayContentTop || 0) + edgeInset);
     return {
-      left: 12,
+      left: edgeInset,
       top: topInset,
-      right: Math.max(12, rect.width - rightRailReserve - 12),
+      right: Math.max(edgeInset, rect.width - rightRailReserve - edgeInset),
       bottom: Math.max(topInset, rect.height - bottomDockReserve)
     };
   },

@@ -1,6 +1,7 @@
 const api = require('../utils/api.js');
 const { openSurveyingEditor } = require('../utils/surveyNavigation.js');
 const { canAccessAIDesign } = require('../utils/aiDesignAccess.js');
+const { ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG } = require('../utils/debugConfig.js');
 
 Component({
   data: {
@@ -96,6 +97,11 @@ Component({
 
         openSurveyingEditor({ startNewSurvey: true });
       } catch (err) {
+        if (ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG) {
+          openSurveyingEditor({ startNewSurvey: true });
+          return;
+        }
+
         wx.showToast({
           title: (err && err.error) || '加载最近量房失败',
           icon: 'none'

@@ -2,8 +2,12 @@ const surveyGraph = require('../../../utils/surveyWallGraph.js');
 const dimensionLayout = require('./surveyDimensionPlan.js');
 const wallSolidLayout = require('./surveyWallSolidPlan.js');
 
-const GRID_MINOR_MM = 500;
-const GRID_MAJOR_MM = 2500;
+// The editor reference uses a fine, quiet drafting grid: one small square is
+// 250mm at the default 0.05px/mm viewport (12.5px on a 390px canvas). Keeping
+// this separate from the wall graph scale means the grid remains a visual aid,
+// not a second measurement system.
+const GRID_MINOR_MM = 250;
+const GRID_MAJOR_MM = 1250;
 const WALL_VISUAL_SCALE = 0.56;
 const MIN_WALL_THICKNESS_PX = 10;
 const MAX_WALL_THICKNESS_PX = 22;
@@ -811,7 +815,7 @@ function drawGrid(ctx, scene) {
   const viewport = scene.viewport;
   const originX = rect.width / 2 + viewport.offsetX;
   const originY = rect.height / 2 + viewport.offsetY;
-  const minorStep = Math.max(16, GRID_MINOR_MM * viewport.scale);
+  const minorStep = Math.max(10, GRID_MINOR_MM * viewport.scale);
   const majorStep = Math.max(minorStep * 4, GRID_MAJOR_MM * viewport.scale);
 
   ctx.fillStyle = '#fcfffc';
@@ -839,8 +843,8 @@ function drawGrid(ctx, scene) {
     ctx.stroke();
   }
 
-  drawLines(minorStep, 'rgba(186, 202, 190, 0.16)', 1);
-  drawLines(majorStep, 'rgba(161, 177, 166, 0.18)', 1);
+  drawLines(minorStep, 'rgba(186, 202, 190, 0.12)', 1);
+  drawLines(majorStep, 'rgba(161, 177, 166, 0.14)', 1);
 }
 
 function drawAxes(ctx, scene) {

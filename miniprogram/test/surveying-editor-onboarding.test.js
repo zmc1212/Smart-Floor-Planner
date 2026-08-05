@@ -31,8 +31,8 @@ test('formal surveying uses a persistent state-following guide mode instead of a
   assert.match(editorScript, /resolveSurveyGuide\(\{/);
   assert.match(editorWxml, /class="topbar-chip guide-trigger \{\{guideEnabled \? 'active' : ''\}\}"/);
   assert.match(editorWxml, /bindtap="onGuideToggle"/);
-  assert.match(editorWxml, /wx:if="\{\{surveyGuideVisible\}\}"/);
-  assert.match(editorWxml, /<block wx:if="\{\{surveyGuideVisible\}\}">/);
+  assert.match(editorScript, /this\.surveyGuideCanvasModel = \{/);
+  assert.match(editorScript, /drawSurveyGuideCanvas\(\)/);
   assert.doesNotMatch(editorWxml, /<cover-view[\s\S]*class="survey-guide-overlay"/);
   assert.match(editorWxml, /<block wx:if="\{\{cursorPlacementState === 'dragging' && !numberPadVisible\}\}">/);
   assert.doesNotMatch(editorWxml, /<cover-view[\s\S]*class="cursor-drag-lens-layer"/);
@@ -45,12 +45,14 @@ test('formal surveying uses a persistent state-following guide mode instead of a
   assert.doesNotMatch(editorWxml, /onboardingProgress|onboarding-next|survey-onboarding/);
   assert.doesNotMatch(editorWxml, /class="survey-guide-layer/);
   assert.doesNotMatch(editorWxml, /surveyGuideFocusVisible|survey-guide-focus/);
-  assert.match(editorWxml, /wx:for="\{\{surveyGuideBodyLines\}\}"/);
-  assert.match(editorScript, /onGuideDismiss\(\)/);
-  assert.match(editorWxml, /catchtap="onGuideDismiss"/);
+  assert.match(editorScript, /wrapSurveyGuideCanvasBody\(/);
+  assert.match(editorScript, /ctx\.measureText\(nextLine\)\.width > maxWidth/);
+  assert.match(editorWxml, /wx:if="\{\{topMetricVisible && topMetricLength\}\}"/);
+  assert.doesNotMatch(editorWxml, /class="measurement-bubble"/);
+  assert.doesNotMatch(editorWxml, /survey-guide-(?:card|path|target-halo)/);
   assert.doesNotMatch(editorWxss, /\.survey-guide-overlay\s*\{/);
   assert.doesNotMatch(editorWxss, /\.cursor-drag-lens-layer\s*\{/);
-  assert.match(editorWxss, /\.survey-guide-body\s*\{[\s\S]*font-size:\s*24rpx;/);
+  assert.match(editorScript, /ctx\.fillText\(line, card\.left \+ 16/);
 });
 
 test('contextual guide uses three transparent Xiao K pointing poses', () => {
@@ -68,12 +70,12 @@ test('contextual guide uses three transparent Xiao K pointing poses', () => {
     assert.ok(asset.length > 1024);
     assert.match(editorScript, new RegExp(`/packages/surveying/assets/surveying-guide-k-${pose}-v3\\.png`));
   });
-  assert.match(editorWxml, /surveyGuideCharacterSrc/);
-  assert.match(editorWxml, /survey-guide-path/);
-  assert.match(editorWxml, /survey-guide-target-halo/);
-  assert.match(editorWxml, /survey-guide-kicker-icon/);
+  assert.match(editorScript, /drawSurveyGuideCanvas\(\)/);
+  assert.match(editorScript, /getSurveyGuideCanvasImage/);
+  assert.match(editorScript, /bezierCurveTo/);
+  assert.match(editorScript, /setLineDash\(\[5, 4\]\)/);
   assert.match(editorWxml, /guide-help\.png/);
-  assert.match(editorWxml, /tail-\{\{surveyGuidePointerDirection\}\}/);
+  assert.doesNotMatch(editorWxml, /survey-guide-(?:card|path|target-halo)/);
   assert.doesNotMatch(editorWxml, /\/packages\/surveying\/assets\/surveying-onboarding-k\.png/);
 });
 
@@ -83,12 +85,12 @@ test('surveying toolbar uses the approved rail cuts and stateful BLE icons', () 
     'icons/save-draft.png',
     'icons/ble-green.png',
     'icons/ble-muted.png',
-    'icons/editor-rail/straight.png',
-    'icons/editor-rail/straight-active.png',
-    'icons/editor-rail/diagonal.png',
-    'icons/editor-rail/diagonal-active.png',
-    'icons/editor-rail/thickness.png',
-    'icons/editor-rail/input.png'
+    'icons/editor-rail/align.png',
+    'icons/editor-rail/align-active.png',
+    'icons/editor-rail/annotation.png',
+    'icons/editor-rail/annotation-active.png',
+    'icons/editor-rail/layers.png',
+    'icons/editor-rail/display.png'
   ];
   iconPaths.forEach((relativePath) => {
     const asset = fs.readFileSync(path.join(miniRoot, 'packages', 'surveying', 'assets', relativePath));
@@ -97,12 +99,32 @@ test('surveying toolbar uses the approved rail cuts and stateful BLE icons', () 
     assert.equal(asset.readUInt32BE(20), 48);
     assert.ok([3, 6].includes(asset[25]));
   });
-  assert.match(editorScript, /icon: activeTool === 'straight' \? 'straight-active' : 'straight'/);
-  assert.match(editorScript, /icon: activeTool === 'diagonal' \? 'diagonal-active' : 'diagonal'/);
+  assert.match(editorScript, /key: 'straight'[\s\S]*\? 'align-active' : 'align'/);
+  assert.match(editorScript, /key: 'diagonal'[\s\S]*\? 'annotation-active' : 'annotation'/);
+  assert.match(editorScript, /key: 'thickness'[\s\S]*icon: 'layers'/);
+  assert.match(editorScript, /key: 'input'[\s\S]*icon: 'display'/);
   assert.match(editorWxml, /guide-help\.png/);
   assert.match(editorWxml, /save-draft\.png/);
   assert.match(editorWxml, /ble-\{\{bleConnected \? 'green' : 'muted'\}\}\.png/);
-  assert.doesNotMatch(editorScript, /icon: 'align'|icon: 'annotation'|icon: 'layers'|icon: 'display'/);
+  assert.match(editorWxml, /editor-rail\/align\.png/);
+});
+
+test('formal surveying fixed chrome follows the compact high-fidelity reference geometry', () => {
+  assert.match(editorWxss, /\.survey-topbar\s*\{[\s\S]*height:\s*160rpx;/);
+  assert.match(editorWxss, /\.topbar-right\s*\{[\s\S]*top:\s*94rpx;[\s\S]*right:\s*28rpx;/);
+  assert.match(editorWxss, /\.right-rail\s*\{[\s\S]*right:\s*34rpx;[\s\S]*width:\s*88rpx;/);
+  assert.match(editorWxss, /\.history-action-bar\.bottom-control-dock\s*\{[\s\S]*width:\s*575rpx;[\s\S]*height:\s*108rpx;/);
+  assert.match(editorWxml, /测距\{\{bleConnected \? ' · 已连接' : ''\}\}/);
+  assert.match(editorScript, /rect\.width \/ 390/);
+  assert.match(editorWxml, /class="page-subtitle-text"/);
+  assert.match(editorWxss, /\.topbar-right \.topbar-chip \+ \.topbar-chip\s*\{[\s\S]*margin-left:\s*20rpx;/);
+  assert.match(editorScript, /title:\s*'小K提示'/);
+  assert.match(editorScript, /tailHalfWidth = 8 \* scale/);
+  assert.match(editorScript, /stroking only the two sides/);
+  assert.match(editorScript, /bodyBottomPadding = 22 \* designScale/);
+  assert.match(editorScript, /const sparkleX = labelX \+ labelWidth \+ 16/);
+  assert.match(editorScript, /ctx\.textAlign = 'center'/);
+  assert.doesNotMatch(editorWxml, /surveyGuidePhaseLabel|survey-guide-phase/);
 });
 
 test('turning off guide copy preserves closure and measurement-side controls', () => {

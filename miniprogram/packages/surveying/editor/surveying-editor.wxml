@@ -31,17 +31,13 @@
   <view class="canvas-overlay-layer">
 
     <!-- 顶部量测气泡 -->
-    <cover-view wx:if="{{topMetricVisible}}" class="top-measure-bubble" style="top: {{overlayContentTop}}px;">
+    <cover-view wx:if="{{topMetricVisible && topMetricLength}}" class="top-measure-bubble" style="top: {{overlayContentTop}}px;">
       <cover-view>{{topMetricLength}}</cover-view>
       <cover-view
         wx:if="{{topMetricAngle}}"
         class="top-measure-angle {{angleActionAvailable ? 'actionable' : ''}}"
         bindtap="onTopMetricAngleTap"
       >{{topMetricAngle}}</cover-view>
-    </cover-view>
-    <cover-view wx:else class="measurement-bubble" style="top: {{overlayContentTop}}px;">
-      <cover-view class="bubble-title">{{measurementTitle}}</cover-view>
-      <cover-view class="bubble-value">{{measurementValue}}</cover-view>
     </cover-view>
 
     <cover-view
@@ -89,7 +85,10 @@
     </cover-view>
     <cover-view class="title-group">
       <cover-view class="page-title">{{title}}</cover-view>
-      <cover-view class="page-subtitle"><cover-view class="save-status-dot"></cover-view>{{formalNotice}}</cover-view>
+      <cover-view class="page-subtitle">
+        <cover-view class="save-status-dot"></cover-view>
+        <cover-view class="page-subtitle-text">{{formalNotice}}</cover-view>
+      </cover-view>
     </cover-view>
     <cover-view class="topbar-right">
       <cover-view
@@ -185,7 +184,7 @@
       <cover-view>重做</cover-view>
     </cover-view>
     <cover-view wx:if="{{cursorPlacementState === 'placed'}}" class="dock-action cursor-action {{surveyGuideTarget === 'dock-cursor' ? 'guide-target-control' : ''}}" bindtap="onResetCursorTap">
-      <cover-image src="/packages/surveying/assets/icons/cursor-compass.png" mode="aspectFit"></cover-image>
+      <cover-image class="dock-cursor-icon" src="/packages/surveying/assets/icons/editor-rail/align.png" mode="aspectFit"></cover-image>
       <cover-view>重置光标</cover-view>
     </cover-view>
     <cover-view
@@ -198,63 +197,15 @@
       bindtouchend="onCursorDragEnd"
       bindtouchcancel="onCursorDragCancel"
     >
-      <cover-image src="/packages/surveying/assets/icons/cursor-compass.png" mode="aspectFit"></cover-image>
+      <cover-image class="dock-cursor-icon" src="/packages/surveying/assets/icons/editor-rail/align.png" mode="aspectFit"></cover-image>
       <cover-view>拖动光标</cover-view>
     </cover-view>
     <cover-view class="dock-measure {{bleConnected ? '' : 'disconnected'}} {{surveyGuideTarget === 'measure' ? 'guide-target-control' : ''}}" bindtap="onBottomMeasure">
       <cover-image class="dock-bluetooth" src="/packages/surveying/assets/icons/ble-{{bleConnected ? 'green' : 'muted'}}.png" mode="aspectFit"></cover-image>
-      <cover-view>测距</cover-view>
+      <cover-view>测距{{bleConnected ? ' · 已连接' : ''}}</cover-view>
       <cover-view class="dock-status-dot"></cover-view>
     </cover-view>
   </cover-view>
-
-  <block wx:if="{{surveyGuideVisible}}">
-    <cover-view
-      class="survey-guide-target-halo"
-      style="{{surveyGuideTargetHaloStyle}}"
-    ></cover-view>
-    <cover-image
-      class="survey-guide-k survey-guide-k-{{surveyGuideCharacterPose}}"
-      src="{{surveyGuideCharacterSrc}}"
-      style="{{surveyGuideCharacterStyle}}"
-      mode="aspectFit"
-    ></cover-image>
-    <cover-view class="survey-guide-path" style="{{surveyGuidePathStyle}}">
-      <cover-view class="survey-guide-path-line"></cover-view>
-      <cover-view class="survey-guide-path-arrow"></cover-view>
-    </cover-view>
-    <cover-view
-      class="survey-guide-card target-{{surveyGuideTarget}} state-{{surveyGuideKey}}"
-      style="{{surveyGuideCardStyle}}"
-    >
-      <cover-view class="survey-guide-tail tail-{{surveyGuidePointerDirection}}"></cover-view>
-      <cover-view class="survey-guide-heading">
-        <cover-view class="survey-guide-kicker">小K提示</cover-view>
-        <cover-image
-          class="survey-guide-kicker-icon"
-          src="/packages/surveying/assets/icons/guide-help.png"
-          mode="aspectFit"
-        ></cover-image>
-      </cover-view>
-      <cover-image
-        class="survey-guide-dismiss"
-        src="/packages/surveying/assets/icons/wall-toolbar/close.png"
-        mode="aspectFit"
-        catchtap="onGuideDismiss"
-        aria-label="关闭量房引导"
-      ></cover-image>
-      <cover-view wx:if="{{surveyGuideDynamicCursorLabel}}" class="survey-guide-body">
-        <cover-view class="survey-guide-body-line">{{cursorLensSnapLabel}}，松手确定起点。</cover-view>
-      </cover-view>
-      <cover-view wx:else class="survey-guide-body">
-        <cover-view
-          class="survey-guide-body-line"
-          wx:for="{{surveyGuideBodyLines}}"
-          wx:key="*this"
-        >{{item}}</cover-view>
-      </cover-view>
-    </cover-view>
-  </block>
 
   <!-- ══════════════════════════════════════════════ -->
   <!--  拖拽放置光标的纯展示层（不接收触摸，事件始终由底部按钮承接） -->

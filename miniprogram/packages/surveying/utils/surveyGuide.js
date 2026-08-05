@@ -55,7 +55,7 @@ function resolveSurveyGuide(input) {
     return createGuide(
       'close-space',
       '闭合当前空间',
-      '确认闭合线正确后，点击“可闭合”。',
+      '确认闭合线正确后，点击「可闭合」即可闭合当前空间，完成绘制。',
       'close'
     );
   }
@@ -242,32 +242,43 @@ function chooseGuideCharacter(input) {
   const maxLeft = Math.max(safeArea.left, safeArea.right - characterSize);
   const maxTop = Math.max(safeArea.top, safeArea.bottom - characterSize);
   const sideTop = clampValue(card.top + card.height - characterSize * 0.42, safeArea.top, maxTop);
-  const downTop = card.top + card.height + 6;
+  const designScale = characterSize / 70;
+  const downTop = card.top + card.height + 16 * designScale;
   const canSitBelow = downTop + characterSize <= safeArea.bottom;
-  const targetBelowCard = target.y > card.top + card.height + 12;
-
-  let pose = 'down';
-  let left = clampValue(target.x - characterSize * 1.25, safeArea.left, maxLeft);
-  let top = clampValue(downTop, safeArea.top, maxTop);
-
-  if (left + characterSize + 12 > target.x) {
-    left = clampValue(target.x + characterSize * 0.28, safeArea.left, maxLeft);
-  }
-
-  if (!targetBelowCard || !canSitBelow) {
-    pose = target.x < cardCenterX ? 'left' : 'right';
-    left = pose === 'left'
-      ? clampValue(card.left - characterSize * 0.58, safeArea.left, maxLeft)
-      : clampValue(card.left + card.width - characterSize * 0.42, safeArea.left, maxLeft);
-    top = sideTop;
-  }
+  // A pointing pose must always be selected from the real target geometry.
+  // Never reuse a state-specific pose: a guide can move above/below its card
+  // between states, while the hand still has to face the target horizontally.
+  let pose = target.x >= cardCenterX ? 'right' : 'left';
+  let left = pose === 'right'
+    ? clampValue(target.x - characterSize * 1.8, safeArea.left, maxLeft)
+    : clampValue(target.x + characterSize * 0.35, safeArea.left, maxLeft);
+  let top = clampValue(canSitBelow ? downTop : sideTop, safeArea.top, maxTop);
 
   const handOffsets = {
     left: { x: 0.03, y: 0.47 },
     right: { x: 0.97, y: 0.47 },
     down: { x: 0.12, y: 0.62 }
   };
-  const hand = handOffsets[pose];
+  let hand = handOffsets[pose];
+  let handX = left + characterSize * hand.x;
+  // Safe-area clamping can move the character past the target. Swap to the
+  // other pointing asset when it is the only pose whose hand still faces it.
+  if ((pose === 'right' && handX > target.x) || (pose === 'left' && handX < target.x)) {
+    const alternatePose = pose === 'right' ? 'left' : 'right';
+    const alternateLeft = alternatePose === 'right'
+      ? clampValue(target.x - characterSize * 1.8, safeArea.left, maxLeft)
+      : clampValue(target.x + characterSize * 0.35, safeArea.left, maxLeft);
+    const alternateHandX = alternateLeft + characterSize * handOffsets[alternatePose].x;
+    const alternateFacesTarget = alternatePose === 'right'
+      ? alternateHandX <= target.x
+      : alternateHandX >= target.x;
+    if (alternateFacesTarget) {
+      pose = alternatePose;
+      left = alternateLeft;
+      hand = handOffsets[pose];
+      handX = alternateHandX;
+    }
+  }
   const startX = left + characterSize * hand.x;
   const startY = top + characterSize * hand.y;
   const dx = target.x - startX;
@@ -275,6 +286,8 @@ function chooseGuideCharacter(input) {
   const distance = Math.sqrt(dx * dx + dy * dy);
   const targetInset = Math.min(12, Math.max(4, distance * 0.1));
   const pathLength = Math.max(0, distance - targetInset);
+  const pathDx = target.x - startX;
+  const pathDy = target.y - startY;
 
   return {
     pose,
@@ -284,7 +297,10 @@ function chooseGuideCharacter(input) {
     pathLeft: startX,
     pathTop: startY,
     pathLength,
-    pathAngle: Math.atan2(dy, dx) * 180 / Math.PI,
+    pathWidth: Math.max(1, Math.abs(pathDx)),
+    pathHeight: Math.max(1, Math.abs(pathDy)),
+    pathDirection: `${pathDy >= 0 ? 'down' : 'up'}-${pathDx >= 0 ? 'right' : 'left'}`,
+    handX,
     haloLeft: target.x - 24,
     haloTop: target.y - 24
   };

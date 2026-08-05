@@ -94,6 +94,13 @@ utilities, and the admin APIs they call.
   auto-connect, new/continue formal surveying, floor-plan room entry, AI
   handoff for a room, a persistent AI Design shortcut for enterprise staff,
   and direct Home shortcuts to Leads and BLE pairing.
+- Limited/debug-only: the custom center Measure action first requests the
+  latest `/api/floorplans` record before opening the formal editor. When
+  `miniprogram/utils/debugConfig.js` sets
+  `ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG` to `true`, a failed request opens a new
+  local surveying session with `startNewSurvey: true` so the editor UI and
+  interactions can be debugged without a reachable API. The switch defaults to
+  `false`; saving still requires the normal authenticated API path.
 - Data boundary: lead, formal-plan, measurement, and assigned-device counts plus
   recent formal plans come from PostgreSQL RLS repositories. The AI-generation
   domain is not migrated yet, so `aiGeneratedCases` is explicitly `0`. Each
@@ -464,7 +471,8 @@ utilities, and the admin APIs they call.
 - Data contract: `FloorPlan.layoutData` is only `{ version: 4,
   measurementMode: 'surveying', surveyGraph }`; graph units are millimetres.
 - Visual baseline: `design-references/all-pages-ip-v1/03-surveying-editor-idle.png`,
-  `18-surveying-editor-active.png`, `19-surveying-state-board.png`, and
+  `18-surveying-editor-active.png`, `19-surveying-state-board.png`,
+  `design-references/all-pages-ip-v1/ChatGPT Image 2026年8月5日 15_44_17.png`, and
   `design-references/surveying-editor-v2/sub2api-20260804-095739-1.png` at the
   iPhone 13 Pro `390x844` baseline. The delivered editor uses the reference's
   full-width workspace, four-item right tool rail, and one bottom dock for
@@ -481,8 +489,8 @@ utilities, and the admin APIs they call.
   pointing pose (`packages/surveying/assets/surveying-guide-k-left-v3.png`,
   `-right-v3.png`, `-down-v3.png`) cut from the single generated artboard at
   `design-references/surveying-editor-v3/sub2api-20260805-075309-1.png`,
-  and a complete title row: the green `小K提示` chip, the local assistant mark
-  (`packages/surveying/assets/icons/guide-help.png`), and a tappable close
+  and a complete title row: the green `小K提示` chip, the local green sparkle
+  mark (`images/mine-icons/tab-ai-active.png`), and a tappable close
   icon. The card wraps the action copy into readable lines, uses a small tail
   toward the target side, and keeps the character beside the card rather than
   over the target.
@@ -500,7 +508,19 @@ utilities, and the admin APIs they call.
   dynamic canvas or control rendering. Disabling the guide hides only its
   teaching presentation and highlight: close, measurement-side, snap, BLE,
   error, and completion feedback stay operational. It does not write to the wall
-  graph, draft, or measurement audit. When a wall
+  graph, draft, or measurement audit. Guide card geometry now scales all
+  pixel-based placement from the `390px` reference width, reserves the Xiao K
+  pose and connector between the card and its real spatial target, without
+  inventing numbered phases or a paged tutorial. The card has a visible
+  pale-green outlined speech tail aimed at the target; Xiao K faces the target,
+  and a green dashed curved arrow runs from that facing hand to the target. The workspace grid uses a low-contrast 250mm minor step with a
+  restrained 1250mm guide line, preserving the wall graph's millimetre units
+  without making the empty canvas visually heavier than the reference. The title,
+  truthful saved/draft notice, and its green status dot are separate header
+  elements so they remain centred and never overlap; `guide`, `save`, and
+  `finish` use an explicit 20rpx sibling gap that does not depend on native
+  `cover-view` flex-gap support. The rail uses local green active PNG variants because native
+  `cover-image` filtering is not consistent across devices. When a wall
   body is selected, the cursor is snapped to one, the current wall is committed,
   a closure candidate is present, or a wall preview is awaiting a length, the
   dock's ranging action directly requests a live device reading and applies it to
@@ -618,6 +638,26 @@ utilities, and the admin APIs they call.
   `aiDesignService.js` and `aiDesignValidation.js`.
 - UI: nav bar, custom tab bar, lead list/modal, share poster, room library, and
   survey compass components.
+
+## Survey-guide Canvas implementation note (2026-08-05)
+
+The formal surveying guide is an `Implemented` local presentation only. Its
+white speech bubble, pale-green tail, centred `小K提示` label, Xiao K image,
+target halo, green dashed Bezier curve, and arrow are rendered by the main
+`survey-canvas`, not by WXML `cover-view` nodes. This prevents the guide from
+intercepting Canvas drag/pan/pinch gestures. The persistent header `引导` toggle
+remains the guide's control; this visual layer does not change any API, role,
+v4 wall-graph data, draft, or measurement-audit contract.
+Guide body copy is wrapped using `CanvasRenderingContext2D.measureText()` and
+the actual card inner width, so Chinese copy cannot be painted past the bubble
+edge. The obsolete alternate WXML measurement bubble has no fallback branch;
+an empty white card must never appear when no top metric is available.
+The bubble tail is a continuous Canvas outline (filled into the card edge and
+stroked only on its two exposed sides), scaled with the card rather than a
+stitched triangle. Xiao K left/right pose is resolved from the target's real
+horizontal geometry for every guide state, including measurement-side states.
+Card height reserves an explicit bottom padding after the final measured body
+line.
 
 ## Maintenance Rules
 
