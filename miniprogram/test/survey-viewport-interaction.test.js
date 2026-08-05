@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createLatestFrameQueue } = require('../utils/surveyViewportInteraction.js');
+const { createLatestFrameQueue } = require('../packages/surveying/utils/surveyViewportInteraction.js');
 
 test('latest frame queue coalesces repeated viewport updates into one frame', () => {
   const callbacks = [];

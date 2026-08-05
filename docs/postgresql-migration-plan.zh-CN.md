@@ -1,5 +1,9 @@
 # PostgreSQL 迁移计划与进度
 
+### PostgreSQL-only 切换决定（2026-08-05）
+
+本次切换不再保留 MongoDB ObjectId 兼容 API，也不导入历史业务文档，运行时不再依赖 MongoDB。仅保留 Phase 4 白名单数据：七牛云 `zly-images` 存储配置，以及 AI 工作台当前 Roomi 提示词库版本（分类、提示词模板、参数模板、来源模型和预览资源）。运行时代码、Docker Compose、环境示例、依赖清单和维护脚本均为 PostgreSQL-only。现有 MongoDB 数据和正在运行的 MongoDB 容器未做破坏性删除，待用户验收后再手工归档或删除；部署应用不再使用它们。
+
 > 2026-08-05 迁移记录：`GET /api/kujiale/cities` 和 `GET
 > /api/kujiale/floorplans/search` 在发起已认证的上游请求前不再连接 MongoDB；既有后台/小程序认证、查询及响应 DTO 和外部供应商限制保持不变。十进制 PostgreSQL bigint 请求 `GET
 > /api/ai/assets/[id]/image`、`/api/ai/generations/[id]/image`、
@@ -387,7 +391,7 @@ RoomiAI 导入使用 [admin/scripts/import-roomi-prompts.ts](../admin/scripts/im
 
 | Phase 3 | API/业务代码从 Mongoose 切换到 PostgreSQL | 进行中 | 身份/企业核心、线索、正式户型、测量/设备、灵感方案、提示词库读取、角色、全局报备/媒体配置、套餐目录、报备记录、工作流通知、工作台、提醒运行时、订单/提成、企业激活、AI 风格预设、AI 供应商配置/运行时、GRS 生图模型目录及模型价格、AI 动作/模型价格、AI 点数账户/流水、AI 对话会话、企业 AI 用量快照及最近点数任务读取、PostgreSQL 媒体资产交付、自由创作执行、小程序 AI 任务执行及管理员重试、公开 bigint 工作流列表/详情/创建/状态/阶段执行、手动 `mock-generation` 结果持久化、同步建议/提示词优化生成、直连软装渲染、两步式后台 `generate`/`render`，以及后台 AI 设计助手的 bigint 线索/户型/工作流消费者均已切换。 |
 | Phase 4 | RoomiAI snapshot、预览资源和七牛配置导入 | 进行中：待用户手动验收 | 2026-08-01 已写入 PostgreSQL 活动 Roomi 版本、960 个已校验本地预览、七牛配置并完成探测 |
-| Phase 5 | 管理端/小程序合同测试与切换演练 | 未开始 | 待补充测试报告和恢复演练 |
+| Phase 5 | 管理端/小程序合同测试与切换演练 | 进行中：Codex 自动验证已通过 | 专用迁移器已幂等完成；PostgreSQL 合同/RLS 测试和本地备份恢复演练已于 2026-08-05 通过。管理端和小程序用户验收仍待完成。 |
 | Phase 6 | 正式切换到 PostgreSQL | 未开始 | 待记录切换时间、版本和回滚窗口 |
 | Phase 7 | MongoDB 只读保留期结束 | 未开始 | 待明确归档/销毁批准和备份位置 |
 
@@ -800,6 +804,29 @@ Phase 4 验收状态：
 | 导入、幂等、完整性、七牛探测和自动化测试 | Codex | 通过 | 2026-08-01 | `phase4-retained-data` 检查点；84/960/6/5/960 计数；960 个预览通过复核；PostgreSQL 18 项与 AI 106 项测试通过 |
 | 提示词库和预览主流程 | 用户 | 待验证 | - | 在后台 UI 验证活动 PostgreSQL Roomi 版本 |
 | 七牛配置和关键回归 | 用户 | 待验证 | - | 确认媒体存储配置、登录、权限与租户边界 |
+
+### Phase 5 进度记录（2026-08-05）
+
+- PostgreSQL 容器处于健康状态。专用 `sfp_migrator` 角色已成功执行
+  `npm run docker:migrate`；本地运行时 `sfp_app` 角色按最小权限设计不具备 DDL 权限。
+- `npm run db:check` 确认 `sfp_app` 运行时连接可使用 `app` schema，并报告既有的
+  `phase4-retained-data` 检查点。
+- `npm run test:postgresql` 49/49 通过，覆盖租户 RLS、外键索引、正式量房、商业激活、AI
+  生命周期和 PostgreSQL 运行时配置。测试输出一条关于并发 `client.query()` 的 `pg` 未来弃用
+  警告；它未导致测试失败，作为后续技术债记录。
+- `npm run db:backup` 写入一个 798,009 字节的本地 custom-format 备份。`npm run
+  db:restore-drill` 仅将其恢复到 `smart_floor_planner_restore_drill`，验证 45 张 `app`
+  表、26 张 RLS 表、52 条策略和 1 条 migration checkpoint，随后移除了该演练数据库。
+- 全仓库 lint 仍被 66 项既有且与本迁移无关的错误阻塞。本次 Phase 5 自动验证未导入、删除、
+  记录日志或重新加密任何 MongoDB 业务文档、PostgreSQL 业务数据、七牛对象或密钥。
+
+Phase 5 验收状态：
+
+| 验收项 | 负责人 | 状态 | 日期 | 证据/问题 |
+| --- | --- | --- | --- | --- |
+| 迁移器、运行时数据库检查、PostgreSQL 合同/RLS 套件、备份与恢复演练 | Codex | 通过 | 2026-08-05 | `docker:migrate`、`db:check`、PostgreSQL 49/49、798,009 字节备份和 45/26/52 恢复验证通过 |
+| 管理端和小程序模板浏览/预览合同流程 | 用户 | 待验证 | - | 需要 PostgreSQL 活动 Roomi revision 以及已认证的管理端/小程序会话 |
+| 完整切换回归和租户隔离验收 | 用户 | 待验证 | - | Phase 6 前必须覆盖登录、角色、租户隔离、媒体存储和相邻 AI 流程 |
 
 ### Phase 3 - 业务代码切换
 

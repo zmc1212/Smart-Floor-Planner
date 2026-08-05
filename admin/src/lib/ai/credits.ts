@@ -1,4 +1,3 @@
-import type mongoose from 'mongoose';
 import {
   AiCreditPriceRepository,
   AiCreditRepository,
@@ -6,8 +5,13 @@ import {
 } from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
-import type { MiniAiTaskType } from '@/models/AiCreditPrice';
 import type { AiActionKey } from '@/lib/ai/provider-types';
+
+type MiniAiTaskType =
+  | 'reference_recreate'
+  | 'style_transform'
+  | 'floor_plan_render'
+  | 'soft_furnishing';
 
 const DEFAULT_PRICES: Array<{ actionKey: AiActionKey; mode?: MiniAiTaskType; label: string; credits: number }> = [
   { actionKey: 'image.free_create', label: 'AI 自由创作', credits: 10 },
@@ -98,7 +102,7 @@ export async function getAiCreditPrice(actionKeyOrMode: AiActionKey | MiniAiTask
   return normalizeAiCreditPrice(price);
 }
 
-export async function ensureAiCreditAccount(enterpriseId: string | mongoose.Types.ObjectId) {
+export async function ensureAiCreditAccount(enterpriseId: string | bigint) {
   const parsedEnterpriseId = parsePostgresId(enterpriseId, 'enterpriseId');
   return withTenantTransaction(parsedEnterpriseId, (transaction) =>
     new AiCreditRepository(transaction).ensureAccount(parsedEnterpriseId)
@@ -120,15 +124,15 @@ export function serializeAiCreditAccount(account: {
   };
 }
 
-function optionalPostgresId(value: string | mongoose.Types.ObjectId | undefined) {
+function optionalPostgresId(value: string | bigint | undefined) {
   const normalized = value === undefined ? '' : String(value);
   return /^[1-9]\d*$/.test(normalized) ? BigInt(normalized) : null;
 }
 
 type AiCreditOperationInput = {
-  enterpriseId: string | mongoose.Types.ObjectId;
-  generationId?: string | mongoose.Types.ObjectId;
-  operatorId?: string | mongoose.Types.ObjectId;
+  enterpriseId: string | bigint;
+  generationId?: string | bigint;
+  operatorId?: string | bigint;
   operationId: string;
   type: AiCreditLedgerType;
   amount: number;
@@ -188,8 +192,8 @@ async function applyAiCreditOperation(input: AiCreditOperationInput, change: AiC
 }
 
 export async function grantAiCredits(input: {
-  enterpriseId: string | mongoose.Types.ObjectId;
-  operatorId: string | mongoose.Types.ObjectId;
+  enterpriseId: string | bigint;
+  operatorId: string | bigint;
   amount: number;
   operationId: string;
   note?: string;
@@ -202,8 +206,8 @@ export async function grantAiCredits(input: {
 }
 
 export async function adjustAiCredits(input: {
-  enterpriseId: string | mongoose.Types.ObjectId;
-  operatorId: string | mongoose.Types.ObjectId;
+  enterpriseId: string | bigint;
+  operatorId: string | bigint;
   amount: number;
   operationId: string;
   note?: string;
@@ -223,9 +227,9 @@ export async function adjustAiCredits(input: {
 }
 
 export async function holdAiCredits(input: {
-  enterpriseId: string | mongoose.Types.ObjectId;
-  generationId: string | mongoose.Types.ObjectId;
-  operatorId: string | mongoose.Types.ObjectId;
+  enterpriseId: string | bigint;
+  generationId: string | bigint;
+  operatorId: string | bigint;
   amount: number;
   operationId: string;
 }) {
@@ -243,9 +247,9 @@ export async function holdAiCredits(input: {
 }
 
 export async function consumeHeldAiCredits(input: {
-  enterpriseId: string | mongoose.Types.ObjectId;
-  generationId: string | mongoose.Types.ObjectId;
-  operatorId: string | mongoose.Types.ObjectId;
+  enterpriseId: string | bigint;
+  generationId: string | bigint;
+  operatorId: string | bigint;
   amount: number;
   operationId: string;
 }) {
@@ -263,9 +267,9 @@ export async function consumeHeldAiCredits(input: {
 }
 
 export async function releaseHeldAiCredits(input: {
-  enterpriseId: string | mongoose.Types.ObjectId;
-  generationId: string | mongoose.Types.ObjectId;
-  operatorId: string | mongoose.Types.ObjectId;
+  enterpriseId: string | bigint;
+  generationId: string | bigint;
+  operatorId: string | bigint;
   amount: number;
   operationId: string;
   note?: string;

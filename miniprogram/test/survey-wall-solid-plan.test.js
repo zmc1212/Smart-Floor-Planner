@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createWallSolidPlan, signedArea } = require('../utils/surveyWallSolidPlan.js');
+const { createWallSolidPlan, signedArea } = require('../packages/surveying/utils/surveyWallSolidPlan.js');
 
 function rectangle(x, y, width, height) {
   return [

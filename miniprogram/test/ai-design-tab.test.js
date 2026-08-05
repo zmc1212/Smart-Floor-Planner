@@ -29,11 +29,16 @@ const aiDesignPageSource = fs.readFileSync(
   path.join(miniRoot, 'pages', 'ai-design', 'ai-design.js'),
   'utf8'
 );
+const aiWorkflowPageSources = ['create', 'history', 'result'].map((page) => fs.readFileSync(
+  path.join(miniRoot, 'packages', 'ai-workflow', page, `ai-design-${page}.js`),
+  'utf8'
+));
 const aiDesignPageConfig = JSON.parse(fs.readFileSync(
   path.join(miniRoot, 'pages', 'ai-design', 'ai-design.json'),
   'utf8'
 ));
 const { normalizeAIDesignContext } = require('../utils/aiDesignNavigation.js');
+const { canAccessAIDesign } = require('../utils/aiDesignAccess.js');
 
 test('Design replaces Inspiration as the primary immersive design tab', () => {
   const tab = appConfig.tabBar.list.find((item) => item.pagePath === 'pages/ai-design/ai-design');
@@ -104,4 +109,15 @@ test('contextual AI entries preserve plan and room scope across switchTab', () =
     roomId: 'room-2',
     targetScope: 'single_room',
   });
+});
+
+test('standalone channel promoters cannot open or preload enterprise AI design', () => {
+  assert.equal(canAccessAIDesign({ role: 'staff', staffRole: 'salesperson', enterpriseId: '' }), false);
+  assert.equal(canAccessAIDesign({ role: 'staff', staffRole: 'salesperson', enterpriseId: '42' }), true);
+  assert.equal(canAccessAIDesign({ role: 'user', enterpriseId: '42' }), false);
+  assert.match(customTabSource, /requiresEnterprise: true/);
+  assert.match(customTabSource, /visible: !item\.requiresEnterprise \|\| canUseAIDesign/);
+  assert.match(customTabWxml, /wx:if="\{\{item\.visible !== false\}\}"/);
+  assert.match(aiDesignPageSource, /if \(!canAccessAIDesign\(\)\)/);
+  aiWorkflowPageSources.forEach((source) => assert.match(source, /if \(!canAccessAIDesign\(\)\)/));
 });

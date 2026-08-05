@@ -1,30 +1,13 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { AiWorkflow } from '@/models/AiWorkflow';
-import { AiGeneration } from '@/models/AiGeneration';
-import { FloorPlan } from '@/models/FloorPlan';
-import Lead from '@/models/Lead';
 import type { AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
-import { serializeAiGeneration, serializeAiWorkflow } from '@/lib/ai/workflow-utils';
-import { persistImageReference, updateMediaAssetOwner } from '@/lib/ai/media-assets';
 import {
   createPostgresAiWorkflowManualGeneration,
   getPostgresAiWorkflowContext,
   updatePostgresAiWorkflowState,
 } from '@/lib/ai/postgres-workflow-service';
 
-type LeanFloorPlan = {
-  _id: unknown;
-  name?: string;
-  createdAt?: Date | string;
-  status?: string;
-};
-
-// Force Mongoose model registration and prevent ESM tree-shaking
-void FloorPlan.modelName;
-
-interface WorkflowPatchBody {
+type WorkflowPatchBody = {
   action?: 'select-generation' | 'set-stage' | 'rename' | 'mock-generation';
   generationId?: string;
   nextStageKey?: AiWorkflowStageKey;
@@ -34,7 +17,7 @@ interface WorkflowPatchBody {
   parentGenerationId?: string;
   sourceAssetRole?: string;
   styleReferenceImage?: string;
-}
+};
 
 const POSTGRES_BIGINT_MAX = BigInt('9223372036854775807');
 
@@ -42,78 +25,18 @@ function isPostgresWorkflowId(value: string) {
   return /^[1-9]\d{0,18}$/.test(value) && BigInt(value) <= POSTGRES_BIGINT_MAX;
 }
 
-async function getWorkflowWithLead(workflowId: string) {
-  const workflow = await AiWorkflow.findById(workflowId);
-
-  if (!workflow) {
-    return { workflow: null, lead: null };
-  }
-
-  const lead = await Lead.findById(workflow.leadId)
-    .populate({ path: 'floorPlanIds', select: 'name layoutData createdAt status', strictPopulate: false })
-    .lean();
-
-  if (!lead) {
-    return { workflow: null, lead: null };
-  }
-
-  return { workflow, lead };
-}
-
-export async function GET(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     return await withTenantRoute(req, { requireEnterprise: true }, async (context) => {
       const { id } = await params;
-      if (isPostgresWorkflowId(id)) {
-        const workflowContext = await getPostgresAiWorkflowContext({
-          enterpriseId: context.enterpriseId!,
-          workflowId: id,
-        });
-        return NextResponse.json({ success: true, data: workflowContext });
-      }
-
-      await dbConnect();
-      const { workflow, lead } = await getWorkflowWithLead(id);
-
-      if (!workflow || !lead) {
+      if (!isPostgresWorkflowId(id)) {
         return NextResponse.json({ success: false, error: 'Workflow not found' }, { status: 404 });
       }
-
-      const generations = await AiGeneration.find({ workflowId: workflow._id })
-        .sort({ createdAt: -1 })
-        .lean();
-
-      return NextResponse.json({
-        success: true,
-        data: {
-          workflow: {
-            ...serializeAiWorkflow(workflow),
-            generationCount: generations.length,
-            latestGeneration: generations.length > 0 ? serializeAiGeneration(generations[0]) : undefined,
-          },
-          lead: {
-            id: String(lead._id),
-            name: lead.name,
-            phone: lead.phone,
-            status: lead.status,
-            stylePreference: lead.stylePreference,
-            communityName: lead.communityName,
-            floorPlans: Array.isArray(lead.floorPlanIds)
-              ? (lead.floorPlanIds as LeanFloorPlan[]).map((plan) => ({
-                  id: String(plan._id),
-                  name: plan.name,
-                  createdAt: plan.createdAt,
-                  status: plan.status,
-                }))
-              : [],
-            followUpCount: Array.isArray(lead.followUpRecords) ? lead.followUpRecords.length : 0,
-          },
-          generations: generations.map(serializeAiGeneration),
-        },
+      const workflowContext = await getPostgresAiWorkflowContext({
+        enterpriseId: context.enterpriseId!,
+        workflowId: id,
       });
+      return NextResponse.json({ success: true, data: workflowContext });
     });
   } catch (error) {
     console.error('[AI Workflow GET]', error);
@@ -125,173 +48,46 @@ export async function GET(
   }
 }
 
-export async function PATCH(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     return await withTenantRoute(req, { requireEnterprise: true }, async (context) => {
       const { id } = await params;
-      const body = (await req.json()) as WorkflowPatchBody;
-      if (isPostgresWorkflowId(id)) {
-        if (body.action === 'mock-generation') {
-          if (!body.stageKey || !body.imageUrl) {
-            return NextResponse.json({ success: false, error: 'Missing stageKey or imageUrl' }, { status: 400 });
-          }
-          await createPostgresAiWorkflowManualGeneration({
-            enterpriseId: context.enterpriseId!,
-            operatorId: context.userId,
-            workflowId: id,
-            stageKey: body.stageKey,
-            imageUrl: body.imageUrl,
-            parentGenerationId: body.parentGenerationId,
-            sourceAssetRole: body.sourceAssetRole,
-            styleReferenceImage: body.styleReferenceImage,
-            nextStageKey: body.nextStageKey,
-          });
-        } else if (body.action === 'rename' || body.action === 'set-stage' || body.action === 'select-generation') {
-          await updatePostgresAiWorkflowState({
-            enterpriseId: context.enterpriseId!,
-            workflowId: id,
-            action: body.action,
-            title: body.title,
-            stageKey: body.stageKey,
-            generationId: body.generationId,
-          });
-        } else {
-          return NextResponse.json(
-            { success: false, error: 'Unsupported action for PostgreSQL workflow' },
-            { status: 400 }
-          );
-        }
-        const workflowContext = await getPostgresAiWorkflowContext({
-          enterpriseId: context.enterpriseId!,
-          workflowId: id,
-        });
-        return NextResponse.json({ success: true, data: workflowContext });
-      }
-
-      await dbConnect();
-      const { workflow, lead } = await getWorkflowWithLead(id);
-
-      if (!workflow || !lead) {
+      if (!isPostgresWorkflowId(id)) {
         return NextResponse.json({ success: false, error: 'Workflow not found' }, { status: 404 });
       }
-
-      if (body.action === 'rename') {
-        workflow.title = body.title?.trim() || workflow.title;
-        await workflow.save();
-      } else if (body.action === 'set-stage') {
-        if (!body.stageKey) {
-          return NextResponse.json({ success: false, error: 'Missing stageKey' }, { status: 400 });
-        }
-
-        workflow.currentStageKey = body.stageKey;
-        await workflow.save();
-      } else if (body.action === 'select-generation') {
-        if (!body.generationId) {
-          return NextResponse.json({ success: false, error: 'Missing generationId' }, { status: 400 });
-        }
-
-        const generation = await AiGeneration.findOne({
-          _id: body.generationId,
-          workflowId: workflow._id,
-        });
-
-        if (!generation) {
-          return NextResponse.json({ success: false, error: 'Generation not found in workflow' }, { status: 404 });
-        }
-
-        await AiGeneration.updateMany(
-          { workflowId: workflow._id, isSelectedBaseline: true },
-          { $set: { isSelectedBaseline: false } }
-        );
-
-        generation.isSelectedBaseline = true;
-        await generation.save();
-
-        workflow.selectedGenerationId = generation._id;
-        workflow.lastGenerationId = generation._id;
-        if (body.nextStageKey) {
-          workflow.currentStageKey = body.nextStageKey;
-        }
-        await workflow.save();
-      } else if (body.action === 'mock-generation') {
+      const body = (await req.json()) as WorkflowPatchBody;
+      if (body.action === 'mock-generation') {
         if (!body.stageKey || !body.imageUrl) {
           return NextResponse.json({ success: false, error: 'Missing stageKey or imageUrl' }, { status: 400 });
         }
-
-        const persistedImageUrl = await persistImageReference({
-          enterpriseId: String(workflow.enterpriseId),
-          ownerType: 'ai_generation_output',
-          image: body.imageUrl,
-        });
-
-        const generation = await AiGeneration.create({
-          enterpriseId: workflow.enterpriseId,
-          leadId: workflow.leadId,
-          workflowId: workflow._id,
+        await createPostgresAiWorkflowManualGeneration({
+          enterpriseId: context.enterpriseId!,
           operatorId: context.userId,
-          parentGenerationId: body.parentGenerationId,
-          type: 'scenario',
+          workflowId: id,
           stageKey: body.stageKey,
-          sourceAssetRole: body.sourceAssetRole || workflow.sourceAssetRole,
-          status: 'succeeded',
-          input: {
-            style: 'mock',
-            customPrompt: '手动上传的本地图片（跳过 AI 生成）',
-            styleReferenceImage: body.styleReferenceImage,
-          },
-          output: {
-            imageUrl: persistedImageUrl,
-            promptUsed: '手动上传测试图',
-          },
-          provider: 'manual_upload',
-          billing: { price: 0, status: 'consumed' },
+          imageUrl: body.imageUrl,
+          parentGenerationId: body.parentGenerationId,
+          sourceAssetRole: body.sourceAssetRole,
+          styleReferenceImage: body.styleReferenceImage,
+          nextStageKey: body.nextStageKey,
         });
-        await updateMediaAssetOwner(persistedImageUrl, generation._id);
-
-        if (body.nextStageKey) {
-          workflow.currentStageKey = body.nextStageKey;
-          await workflow.save();
-        }
+      } else if (body.action === 'rename' || body.action === 'set-stage' || body.action === 'select-generation') {
+        await updatePostgresAiWorkflowState({
+          enterpriseId: context.enterpriseId!,
+          workflowId: id,
+          action: body.action,
+          title: body.title,
+          stageKey: body.stageKey,
+          generationId: body.generationId,
+        });
       } else {
         return NextResponse.json({ success: false, error: 'Unsupported action' }, { status: 400 });
       }
-
-      const refreshedWorkflow = await AiWorkflow.findById(workflow._id).lean();
-      const generations = await AiGeneration.find({ workflowId: workflow._id })
-        .sort({ createdAt: -1 })
-        .lean();
-
-      return NextResponse.json({
-        success: true,
-        data: {
-          workflow: {
-            ...(refreshedWorkflow ? serializeAiWorkflow(refreshedWorkflow) : serializeAiWorkflow(workflow)),
-            generationCount: generations.length,
-            latestGeneration: generations.length > 0 ? serializeAiGeneration(generations[0]) : undefined,
-          },
-          lead: {
-            id: String(lead._id),
-            name: lead.name,
-            phone: lead.phone,
-            status: lead.status,
-            stylePreference: lead.stylePreference,
-            communityName: lead.communityName,
-            floorPlans: Array.isArray(lead.floorPlanIds)
-              ? (lead.floorPlanIds as LeanFloorPlan[]).map((plan) => ({
-                  id: String(plan._id),
-                  name: plan.name,
-                  createdAt: plan.createdAt,
-                  status: plan.status,
-                }))
-              : [],
-            followUpCount: Array.isArray(lead.followUpRecords) ? lead.followUpRecords.length : 0,
-          },
-          generations: generations.map(serializeAiGeneration),
-        },
+      const workflowContext = await getPostgresAiWorkflowContext({
+        enterpriseId: context.enterpriseId!,
+        workflowId: id,
       });
+      return NextResponse.json({ success: true, data: workflowContext });
     });
   } catch (error) {
     console.error('[AI Workflow PATCH]', error);

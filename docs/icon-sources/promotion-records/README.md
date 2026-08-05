@@ -1,7 +1,7 @@
 # Promotion records visual sources
 
 The production hero scene at
-`miniprogram/images/promotion-records/hero-scene.jpg` was generated with the
+`miniprogram/packages/business/assets/promotion-records/hero-scene.jpg` was generated with the
 built-in OpenAI image generation tool from the user-supplied visual reference
 `design-references/all-pages-ip-v1/09-promotion-records.png`. It contains no
 third-party stock artwork and is used only as the page's decorative brand scene.

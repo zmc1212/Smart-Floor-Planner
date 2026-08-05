@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const pageDir = path.join(__dirname, '..', 'pages', 'surveying-editor');
+const pageDir = path.join(__dirname, '..', 'packages', 'surveying', 'editor');
 const wxml = fs.readFileSync(path.join(pageDir, 'surveying-editor.wxml'), 'utf8');
 const pageScript = fs.readFileSync(path.join(pageDir, 'surveying-editor.js'), 'utf8');
 
@@ -32,7 +32,7 @@ test('angle measurement keeps real sensor and BLE lifecycle handlers', () => {
 });
 
 test('angle sheet raster icons are valid PNG files within the product budget', () => {
-  const iconDir = path.join(__dirname, '..', 'images', 'surveying-icons', 'angle');
+  const iconDir = path.join(__dirname, '..', 'packages', 'surveying', 'assets', 'icons', 'angle');
   const iconNames = ['bluetooth.png', 'circle-check.png', 'crosshair.png', 'phone-level.png', 'refresh-cw.png'];
   const pngSignature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 

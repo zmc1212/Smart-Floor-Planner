@@ -5,21 +5,21 @@ const test = require('node:test');
 
 const miniRoot = path.resolve(__dirname, '..');
 const pageJs = fs.readFileSync(
-  path.join(miniRoot, 'pages', 'promotion-records', 'promotion-records.js'),
+  path.join(miniRoot, 'packages', 'business', 'promotion-records', 'promotion-records.js'),
   'utf8'
 );
 const pageWxml = fs.readFileSync(
-  path.join(miniRoot, 'pages', 'promotion-records', 'promotion-records.wxml'),
+  path.join(miniRoot, 'packages', 'business', 'promotion-records', 'promotion-records.wxml'),
   'utf8'
 );
 const pageWxss = fs.readFileSync(
-  path.join(miniRoot, 'pages', 'promotion-records', 'promotion-records.wxss'),
+  path.join(miniRoot, 'packages', 'business', 'promotion-records', 'promotion-records.wxss'),
   'utf8'
 );
 const appConfig = JSON.parse(fs.readFileSync(path.join(miniRoot, 'app.json'), 'utf8'));
 
 test('Promotion records ships the approved filing composition with live controls', () => {
-  assert.match(pageWxml, /\/images\/promotion-records\/hero-scene\.jpg/);
+  assert.match(pageWxml, /\/packages\/business\/assets\/promotion-records\/hero-scene\.jpg/);
   assert.match(pageWxml, /\/images\/leads-ip-v1\/plus-white\.png/);
   assert.match(pageWxml, /<view wx:if="\{\{view === 'my'\}\}" class="create-btn" role="button"/);
   assert.match(pageWxml, /class="view-tab-pill"/);
@@ -82,7 +82,7 @@ test('Only the four primary routes own the shared custom TabBar', () => {
 });
 
 test('Promotion records hero asset is local and package-sized', () => {
-  const heroPath = path.join(miniRoot, 'images', 'promotion-records', 'hero-scene.jpg');
+  const heroPath = path.join(miniRoot, 'packages', 'business', 'assets', 'promotion-records', 'hero-scene.jpg');
   const bytes = fs.readFileSync(heroPath);
   assert.equal(bytes[0], 0xff);
   assert.equal(bytes[1], 0xd8);

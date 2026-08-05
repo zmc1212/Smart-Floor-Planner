@@ -1,8 +1,8 @@
 # 正式量房数据合同
 
-`miniprogram/pages/surveying-editor/surveying-editor` 是唯一正式量房页面。
+`miniprogram/packages/surveying/editor/surveying-editor` 是唯一正式量房页面。
 
-编辑器顶部仅显示关联线索的小区名称；`utils/surveyNavigation.js` 在入口已知时携带该名称，按 `floorPlanId` 直接进入时由 `GET /api/floorplans/[id]` 返回关联线索摘要。状态跟随式引导在本地默认开启，顶部固定的“引导”操作与对话框关闭按钮均可持久化关闭；重新开启时根据当前墙图和编辑状态继续，而非从固定步骤重播。每个有操作目标的引导均以白底浅绿边框的小K对话框、一句行动提示和本地透明左指、右指、下指小K（`images/surveying-guide-k-left.png`、`-right.png`、`-down.png`）呈现；角色手势经绿色虚线、箭头和目标波纹连接到真实 Canvas 几何或控件，并避开安全区、工具栏、控制坞和当前墙体。引导覆盖拉首墙、确认方向/长度/测量边、续墙、闭合、下一空间光标吸附、构件编辑和完成提交；数字键盘、构件编辑器或测角面板开启时仍由面板自身说明接管。关闭引导不影响闭合、测量边、吸附、BLE 或提交反馈，且引导不写入 `FloorPlan.layoutData`、本地草稿或测量审计。
+编辑器顶部仅显示关联线索的小区名称；`utils/surveyNavigation.js` 在入口已知时携带该名称，按 `floorPlanId` 直接进入时由 `GET /api/floorplans/[id]` 返回关联线索摘要。状态跟随式引导在本地默认开启，顶部固定的“引导”操作与对话框关闭按钮均可持久化关闭；重新开启时根据当前墙图和编辑状态继续，而非从固定步骤重播。每个有操作目标的引导均以完整白底浅绿边框的小K对话框呈现：标题行包含“小K提示”标签、助手图标（`packages/surveying/assets/icons/guide-help.png`）和关闭按钮，正文为可换行的一句行动提示；本地透明左指、右指、下指小K（`packages/surveying/assets/surveying-guide-k-left-v3.png`、`-right-v3.png`、`-down-v3.png`）位于卡片侧下方，统一从 `design-references/surveying-editor-v3/sub2api-20260805-075309-1.png` 单张画板裁切。角色手势经绿色虚线、箭头和目标波纹连接到真实 Canvas 几何或控件，卡片尖角按目标上下位置切换，并避开安全区、工具栏、控制坞和当前墙体。引导覆盖拉首墙、确认方向/长度/测量边、续墙、闭合、下一空间光标吸附、构件编辑和完成提交；数字键盘、构件编辑器或测角面板开启时仍由面板自身说明接管。关闭引导不影响闭合、测量边、吸附、BLE 或提交反馈，且引导不写入 `FloorPlan.layoutData`、本地草稿或测量审计。
 
 正式 `FloorPlan.layoutData` 必须使用：
 

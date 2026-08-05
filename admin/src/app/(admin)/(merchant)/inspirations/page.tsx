@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Eye, ImagePlus, Plus, Star, Trash2, Upload } from 'lucide-react';
+import { Eye, ImagePlus, Images, Plus, Star, Trash2, TrendingUp, Upload } from 'lucide-react';
 import {
   ModalForm,
   PageContainer,
@@ -13,7 +13,7 @@ import {
   type ActionType,
   type ProColumns,
 } from '@ant-design/pro-components';
-import { Button, Image, Popconfirm, Space, Tag, Typography, Upload as AntUpload } from 'antd';
+import { Button, Card, Empty, Flex, Image, Popconfirm, Space, Statistic, Tag, Typography, Upload as AntUpload } from 'antd';
 import type { UploadProps } from 'antd';
 import { notify } from '@/components/ui/operation-feedback';
 
@@ -111,6 +111,7 @@ function ImageUploadField({ label, help, value, onChange }: ImageUploadFieldProp
 export default function InspirationsPage() {
   const actionRef = useRef<ActionType>(null);
   const [previewing, setPreviewing] = useState<Inspiration | null>(null);
+  const [overview, setOverview] = useState({ total: 0, recommended: 0, views: 0 });
 
   const deleteInspiration = async (inspiration: Inspiration) => {
     try {
@@ -267,7 +268,35 @@ export default function InspirationsPage() {
           </ModalForm>,
         ]}
       >
-        <ProTable<Inspiration>
+        <Flex vertical gap={24}>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Card size="small">
+              <Flex align="center" gap={12}>
+                <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Images size={19} />
+                </div>
+                <Statistic title="当前方案" value={overview.total} />
+              </Flex>
+            </Card>
+            <Card size="small">
+              <Flex align="center" gap={12}>
+                <div className="flex size-10 items-center justify-center rounded-lg bg-amber-50 text-amber-700">
+                  <Star size={19} />
+                </div>
+                <Statistic title="首页推荐" value={overview.recommended} />
+              </Flex>
+            </Card>
+            <Card size="small">
+              <Flex align="center" gap={12}>
+                <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+                  <TrendingUp size={19} />
+                </div>
+                <Statistic title="累计浏览" value={overview.views} />
+              </Flex>
+            </Card>
+          </div>
+
+          <ProTable<Inspiration>
           className="admin-data-table admin-mobile-filter-stack"
           actionRef={actionRef}
           columns={columns}
@@ -276,28 +305,43 @@ export default function InspirationsPage() {
           scroll={{ x: 1080 }}
           options={{ density: true, reload: true, setting: true }}
           search={{ defaultCollapsed: false, labelWidth: 'auto' }}
-          request={async (params) => {
-            const searchParams = new URLSearchParams();
-            if (params.roomType) searchParams.set('roomType', String(params.roomType));
-            if (params.style) searchParams.set('style', String(params.style));
-
-            const response = await fetch(`/api/inspirations?${searchParams.toString()}`);
-            const result = await response.json();
-            if (!response.ok || !result.success) throw new Error(result.error || '读取灵感方案失败');
-
-            const keyword = String(params.title || '').trim().toLocaleLowerCase();
-            const hasRecommendationFilter = params.isRecommended !== undefined && params.isRecommended !== '';
-            const recommended = String(params.isRecommended) === 'true';
-            const filtered = (result.data as Inspiration[]).filter((item) => {
-              const matchesKeyword = !keyword || [item.title, item.style, item.roomType]
-                .some((value) => value.toLocaleLowerCase().includes(keyword));
-              const matchesRecommendation = !hasRecommendationFilter || item.isRecommended === recommended;
-              return matchesKeyword && matchesRecommendation;
-            });
-
-            return { data: filtered, success: true, total: filtered.length };
+          locale={{
+            emptyText: <Empty description="暂无符合条件的灵感方案" image={Empty.PRESENTED_IMAGE_SIMPLE} />,
           }}
-        />
+          request={async (params) => {
+            try {
+              const searchParams = new URLSearchParams();
+              if (params.roomType) searchParams.set('roomType', String(params.roomType));
+              if (params.style) searchParams.set('style', String(params.style));
+
+              const response = await fetch(`/api/inspirations?${searchParams.toString()}`);
+              const result = await response.json();
+              if (!response.ok || !result.success) throw new Error(result.error || '读取灵感方案失败');
+
+              const keyword = String(params.title || '').trim().toLocaleLowerCase();
+              const hasRecommendationFilter = params.isRecommended !== undefined && params.isRecommended !== '';
+              const recommended = String(params.isRecommended) === 'true';
+              const filtered = (result.data as Inspiration[]).filter((item) => {
+                const matchesKeyword = !keyword || [item.title, item.style, item.roomType]
+                  .some((value) => value.toLocaleLowerCase().includes(keyword));
+                const matchesRecommendation = !hasRecommendationFilter || item.isRecommended === recommended;
+                return matchesKeyword && matchesRecommendation;
+              });
+
+              setOverview({
+                total: filtered.length,
+                recommended: filtered.filter((item) => item.isRecommended).length,
+                views: filtered.reduce((total, item) => total + Number(item.viewCount || 0), 0),
+              });
+              return { data: filtered, success: true, total: filtered.length };
+            } catch (error) {
+              setOverview({ total: 0, recommended: 0, views: 0 });
+              notify.error(error instanceof Error ? error.message : '读取灵感方案失败');
+              return { data: [], success: false, total: 0 };
+            }
+          }}
+          />
+        </Flex>
       </PageContainer>
 
       <Image

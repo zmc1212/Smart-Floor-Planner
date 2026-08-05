@@ -1,5 +1,6 @@
 const api = require('../utils/api.js');
 const { openSurveyingEditor } = require('../utils/surveyNavigation.js');
+const { canAccessAIDesign } = require('../utils/aiDesignAccess.js');
 
 Component({
   data: {
@@ -21,7 +22,7 @@ Component({
       },
       {
         key: 'measure',
-        pagePath: '/pages/surveying-editor/surveying-editor',
+        pagePath: '/packages/surveying/editor/surveying-editor',
         text: '量房',
         center: true
       },
@@ -29,6 +30,8 @@ Component({
         key: 'ai-design',
         pagePath: '/pages/ai-design/ai-design',
         text: '设计',
+        requiresEnterprise: true,
+        visible: false,
         iconPath: '/images/mine-icons/tab-ai.png',
         selectedIconPath: '/images/mine-icons/tab-ai-active.png'
       },
@@ -59,6 +62,11 @@ Component({
       const index = e.currentTarget.dataset.index;
       const item = this.data.list[index];
       if (!item) return;
+
+      if (!item.visible) {
+        this.syncSelected();
+        return;
+      }
 
       if (item.center) {
         await this.openMostRecentlyEditedSurvey();
@@ -99,10 +107,18 @@ Component({
     },
 
     syncSelected() {
+      const canUseAIDesign = canAccessAIDesign();
+      const list = this.data.list.map((item) => ({
+        ...item,
+        visible: !item.requiresEnterprise || canUseAIDesign,
+      }));
       const pages = getCurrentPages();
       const current = pages && pages.length ? `/${pages[pages.length - 1].route}` : '';
-      const index = this.data.list.findIndex((item) => item.pagePath === current && !item.center);
-      this.setData({ selected: index >= 0 ? index : this.data.selected });
+      const index = list.findIndex((item) => item.pagePath === current && !item.center);
+      this.setData({
+        list,
+        selected: index >= 0 && list[index].visible ? index : this.data.selected,
+      });
     }
   }
 });

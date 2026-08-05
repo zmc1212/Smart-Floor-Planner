@@ -1,0 +1,149 @@
+<view class="commission-page">
+  <view class="custom-nav" style="height: {{navBarHeightTotal}}px;">
+    <view class="nav-content" style="margin-top: {{statusBarHeight}}px; height: {{navBarHeightTotal - statusBarHeight}}px;">
+      <view class="back-action" bindtap="onBack" hover-class="back-action-pressed" aria-role="button" aria-label="返回">
+        <image class="back-icon" src="/images/back-arrow.png" mode="aspectFit"></image>
+      </view>
+      <text class="nav-title">我的提成</text>
+    </view>
+  </view>
+
+  <scroll-view
+    class="content-scroll"
+    scroll-y
+    enhanced
+    show-scrollbar="{{false}}"
+    style="padding-top: {{navBarHeightTotal}}px;"
+  >
+    <view class="content-shell">
+      <view class="income-hero">
+        <view class="hero-brand">
+          <view class="brand-logo-shell">
+            <image class="brand-logo" src="/images/home-ip-v1/brand-logo.png" mode="aspectFit"></image>
+          </view>
+          <view class="brand-copy">
+            <view class="brand-title-row">
+              <text class="brand-title">收益中心</text>
+              <view class="journey-mark"><view class="journey-dot"></view></view>
+            </view>
+            <text class="brand-subtitle">我的提成</text>
+          </view>
+        </view>
+        <image class="hero-scene" src="/packages/business/assets/commission-records/hero-scene.jpg" mode="aspectFill"></image>
+        <text wx:if="{{loading}}" class="record-count">提成记录加载中</text>
+        <text wx:else class="record-count">共 {{records.length}} 条提成记录</text>
+      </view>
+
+      <view class="summary-card">
+        <view class="summary-decoration">¥</view>
+        <view class="summary-label-row">
+          <view class="summary-wallet">
+            <image src="/packages/business/assets/commission-records/wallet-white.png" mode="aspectFit"></image>
+          </view>
+          <text class="summary-label">待结算提成</text>
+          <image class="summary-info" src="/packages/business/assets/commission-records/info-white.png" mode="aspectFit"></image>
+        </view>
+
+        <view wx:if="{{loading}}" class="summary-amount summary-amount-loading">--</view>
+        <view wx:else class="summary-amount">
+          <text class="summary-currency">¥</text>
+          <text class="summary-integer">{{summary.pendingAmountInteger}}</text>
+          <text class="summary-decimal">.{{summary.pendingAmountDecimal}}</text>
+        </view>
+
+        <view class="summary-divider"></view>
+
+        <view class="summary-stats">
+          <view class="summary-stat">
+            <text class="stat-label">待结算</text>
+            <text class="stat-value">{{summary.pendingCount}}</text>
+          </view>
+          <view class="stat-divider"></view>
+          <view class="summary-stat">
+            <text class="stat-label">已结算</text>
+            <text class="stat-value">{{summary.paidCount}}</text>
+          </view>
+          <view class="stat-divider"></view>
+          <view class="summary-stat">
+            <text class="stat-label">本月生成</text>
+            <text class="stat-value">{{summary.monthCount}}</text>
+          </view>
+        </view>
+      </view>
+
+      <view class="filter-row" aria-label="提成状态筛选">
+        <view
+          wx:for="{{filters}}"
+          wx:key="value"
+          class="filter-action"
+          data-status="{{item.value}}"
+          bindtap="onFilterTap"
+          hover-class="filter-action-pressed"
+          aria-role="button"
+          aria-label="筛选{{item.label}}提成"
+        >
+          <view class="filter-chip {{activeStatus === item.value ? 'active' : ''}}">{{item.label}}</view>
+        </view>
+      </view>
+
+      <view wx:if="{{loading}}" class="state-card loading-card" aria-label="提成记录加载中">
+        <view class="loading-row" wx:for="{{loadingRows}}" wx:key="*this">
+          <view class="loading-icon"></view>
+          <view class="loading-copy">
+            <view class="loading-line loading-line-title"></view>
+            <view class="loading-line loading-line-meta"></view>
+          </view>
+          <view class="loading-amount"></view>
+        </view>
+      </view>
+
+      <view wx:elif="{{errorMessage}}" class="state-card error-card">
+        <image class="state-icon" src="/packages/business/assets/commission-records/info-green.png" mode="aspectFit"></image>
+        <text class="state-title">暂时无法查看提成记录</text>
+        <text class="state-copy">{{errorMessage}}</text>
+        <button class="retry-button" bindtap="onRetry" hover-class="retry-button-pressed">重新加载</button>
+      </view>
+
+      <view wx:elif="{{filteredRecords.length > 0}}" class="records-card">
+        <view
+          wx:for="{{filteredRecords}}"
+          wx:key="key"
+          class="record-row"
+        >
+          <view class="record-icon-shell {{item.statusTone}}">
+            <image class="record-icon" src="{{item.iconPath}}" mode="aspectFit"></image>
+          </view>
+
+          <view class="record-main">
+            <text class="record-name">{{item.typeLabel}}</text>
+            <text class="record-package">订单包：{{item.packageName}}</text>
+          </view>
+
+          <view class="record-side">
+            <text class="record-amount">¥ {{item.amountText}}</text>
+            <view class="record-meta-row">
+              <text class="record-date">{{item.generatedAtText}}</text>
+              <text class="status-chip {{item.statusTone}}">{{item.statusLabel}}</text>
+            </view>
+          </view>
+
+          <view wx:if="{{item.showDivider}}" class="record-divider"></view>
+        </view>
+      </view>
+
+      <view wx:else class="state-card empty-card">
+        <image class="state-icon" src="/packages/business/assets/commission-records/receipt-green.png" mode="aspectFit"></image>
+        <text class="state-title">暂无{{activeStatus === 'all' ? '' : '此状态的'}}提成记录</text>
+        <text class="state-copy">企业订单完成并生成提成后，会在这里展示。</text>
+      </view>
+
+      <view class="rule-card">
+        <view class="rule-title-row">
+          <image class="rule-icon" src="/packages/business/assets/commission-records/info-green.png" mode="aspectFit"></image>
+          <text class="rule-title">结算说明</text>
+        </view>
+        <text class="rule-copy">提成会在企业订单完成后进入结算流程，最终状态以企业财务确认结果为准。</text>
+      </view>
+    </view>
+  </scroll-view>
+</view>

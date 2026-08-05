@@ -24,7 +24,8 @@ import {
   Typography,
 } from 'antd';
 import { useRouter } from 'next/navigation';
-import { Eye, FilePenLine, MessageSquare, Plus, Trash2 } from 'lucide-react';
+import { ClipboardCheck, Eye, FilePenLine, LayoutTemplate, MessageSquare, Plus, Trash2, Users } from 'lucide-react';
+import ModuleOverview from '@/components/admin/ModuleOverview';
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
@@ -185,6 +186,7 @@ export default function LeadsPage() {
   const [newNote, setNewNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [overview, setOverview] = useState({ total: 0, measuring: 0, assigned: 0, converted: 0 });
 
   useEffect(() => {
     let cancelled = false;
@@ -406,6 +408,15 @@ export default function LeadsPage() {
         title="客资线索管理"
         content="跟进客户状态、指派协作人员，并衔接正式量房与方案设计。"
       >
+        <ModuleOverview
+          ariaLabel="线索概览"
+          items={[
+            { label: '本页线索', value: overview.total, icon: <Users size={18} /> },
+            { label: '本页量房推进中', value: overview.measuring, icon: <ClipboardCheck size={18} />, tone: 'warning' },
+            { label: '本页待设计协作', value: overview.assigned, icon: <LayoutTemplate size={18} />, tone: 'success' },
+            { label: '本页已完成转化', value: overview.converted, icon: <ClipboardCheck size={18} />, tone: 'success' },
+          ]}
+        />
         <ProTable<Lead>
           className="admin-data-table admin-mobile-filter-stack"
           actionRef={actionRef}
@@ -432,6 +443,20 @@ export default function LeadsPage() {
                 const refreshed = result.data?.find((lead) => lead._id === selectedLead._id);
                 if (refreshed) setSelectedLead((current) => current ? { ...current, ...refreshed } : current);
               }
+              const nextOverview = {
+                total: result.data?.length || 0,
+                measuring: (result.data || []).filter((lead) => lead.status === 'measuring' || lead.status === 'measured').length,
+                assigned: (result.data || []).filter((lead) => lead.status === 'assigned' || lead.status === 'designing' || lead.status === 'quoting').length,
+                converted: (result.data || []).filter((lead) => lead.status === 'converted').length,
+              };
+              setOverview((current) => (
+                current.total === nextOverview.total &&
+                current.measuring === nextOverview.measuring &&
+                current.assigned === nextOverview.assigned &&
+                current.converted === nextOverview.converted
+                  ? current
+                  : nextOverview
+              ));
               return {
                 data: result.data || [],
                 total: result.pagination?.total || 0,

@@ -36,6 +36,15 @@ model or data behavior, permission boundary, status, and limitations. Treat a
 missing documentation update as incomplete work; if the change has no functional
 impact, record that explicitly in the handoff.
 
+For any Admin UI refactor, also read `../docs/admin-ui-refactor.md` and
+`../docs/admin-ui-refactor.zh-CN.md` before selecting a route. Their route ledger
+is authoritative for refactor recency and reopen conditions: a generic request to
+continue refactoring may select only an unrecorded or explicitly queued route.
+Update the route's latest record in both files before handoff, including scope,
+verification, remaining visual QA, and the concrete trigger required to revisit
+the route. Do not reselect a `Hold` route merely because it shares a convenient
+`ProTable` pattern with another page.
+
 ## Verification And Documentation
 
 - Run `npm run lint` for UI/API changes and `npm run build` when route or schema

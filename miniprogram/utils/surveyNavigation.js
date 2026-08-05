@@ -24,7 +24,7 @@ function openSurveyingEditor(options) {
     query.push(`newSurveyKey=${encodeURIComponent(newSurveyKey)}`);
   }
   wx.navigateTo({
-    url: `/pages/surveying-editor/surveying-editor${query.length ? `?${query.join('&')}` : ''}`
+    url: `/packages/surveying/editor/surveying-editor${query.length ? `?${query.join('&')}` : ''}`
   });
 }
 

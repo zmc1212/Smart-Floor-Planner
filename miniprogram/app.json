@@ -1,22 +1,37 @@
 {
   "pages": [
     "pages/index/index",
-    "pages/lead-detail/lead-detail",
-    "pages/promotion-records/promotion-records",
-    "pages/promotion-record-detail/promotion-record-detail",
-    "pages/commission-records/commission-records",
-    "pages/surveying-editor/surveying-editor",
-    "pages/inspiration/inspiration",
-    "pages/ai-gen/ai-gen",
     "pages/ai-design/ai-design",
-    "pages/ai-design-create/ai-design-create",
-    "pages/ai-design-result/ai-design-result",
-    "pages/ai-design-history/ai-design-history",
     "pages/mine/mine",
-    "pages/login/login",
-    "pages/leads-management/leads-management",
-    "pages/lead-form/lead-form",
-    "pages/recommendations/index"
+    "pages/leads-management/leads-management"
+  ],
+  "subPackages": [
+    {
+      "root": "packages/surveying",
+      "pages": ["editor/surveying-editor"]
+    },
+    {
+      "root": "packages/ai-workflow",
+      "pages": [
+        "legacy/ai-gen",
+        "create/ai-design-create",
+        "result/ai-design-result",
+        "history/ai-design-history"
+      ]
+    },
+    {
+      "root": "packages/business",
+      "pages": [
+        "login/login",
+        "lead-form/lead-form",
+        "lead-detail/lead-detail",
+        "promotion-records/promotion-records",
+        "promotion-record-detail/promotion-record-detail",
+        "commission-records/commission-records",
+        "inspiration/inspiration",
+        "recommendations/index"
+      ]
+    }
   ],
   "window": {
     "navigationBarTitleText": "\u667a\u80fd\u91cf\u623f\u5927\u5e08",

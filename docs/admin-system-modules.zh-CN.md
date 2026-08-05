@@ -1,5 +1,9 @@
 # 后台系统当前功能清单
 
+### PostgreSQL-only AI 运行时（2026-08-05）
+
+AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史 ObjectId 请求直接返回不存在，管理端不再包含 Mongoose 模型、MongoDB 连接工具或 Mongo 维护脚本。保留数据仅限七牛云存储配置和当前 Roomi 提示词库版本。
+
 > 2026-08-05 PostgreSQL 迁移更新：已认证的 Kujiale 城市和户型检索代理不再连接 MongoDB。PostgreSQL bigint 的 AI 资产、生成图、状态、小程序资产交付和管理员重试请求，现仅在显式历史 ObjectId 兼容分支中才加载 MongoDB/Mongoose。既有认证、权限、DTO、上游行为和历史兼容保持不变。未导入、删除或重新加密 MongoDB 业务数据。定向 ESLint 与 `npm run test:postgresql` 均通过（49/49）。
 
 > 2026-08-05 PostgreSQL 迁移更新：租户 `GET/POST/DELETE
@@ -239,7 +243,7 @@
 - 页面：`/staff`、`/admins`。
 - API：`/api/staff`、`/staff/[id]`、`/departments`、`/departments/[id]`、`/admin-users`、`/admin-users/[id]`。
 - 模型/Repository：PostgreSQL `AdminUserRepository`、`DepartmentRepository`、`SystemRoleRepository` 和 `admin_user_promoters` 连接表。
-- 状态：`Implemented`。`/staff` 已使用共享 Ant Design ProComponents 模式（`PageContainer`、`ProTable`、`ModalForm` 与 `Tree`）承载服务端员工搜索/分页、部门筛选以及员工和部门维护；此次仅迁移展示层，不改变 API、租户范围或角色边界。`/admins` 使用同一套 `PageContainer`、`ProTable` 与 `ModalForm` 模式承载平台账号搜索、范围与角色筛选、新建、编辑、密码重置、状态变更和删除，保留 `admins` 菜单权限守卫、PostgreSQL `admin-users` API 契约及渠道地推不绑定企业规则，表单只展示 API 支持的五种管理角色。支持企业员工、平台管理员、角色、部门树、状态和地推/设计师/测量员关系管理；为兼容前端，现有 `_id` 响应字段继续使用十进制字符串，RLS 与 route 角色检查共同执行租户边界。
+- 状态：`Implemented`。`/staff` 已使用共享 Ant Design ProComponents 模式（`PageContainer`、`ProTable`、`ModalForm` 与 `Tree`）承载服务端员工搜索/分页、部门筛选以及员工和部门维护；此次仅迁移展示层，不改变 API、租户范围或角色边界。其共享 `ModuleOverview` 直接从现有列表响应派生当前页岗位数量，并显示已加载的实时部门数，不新增 API 请求。`/admins` 使用同一套 `PageContainer`、`ProTable` 与 `ModalForm` 模式承载平台账号搜索、范围与角色筛选、新建、编辑、密码重置、状态变更和删除，保留 `admins` 菜单权限守卫、PostgreSQL `admin-users` API 契约及渠道地推不绑定企业规则，表单只展示 API 支持的五种管理角色。支持企业员工、平台管理员、角色、部门树、状态和地推/设计师/测量员关系管理；为兼容前端，现有 `_id` 响应字段继续使用十进制字符串，RLS 与 route 角色检查共同执行租户边界。
 
 ### 5. B2B 企业报备与协作工作流
 
@@ -262,7 +266,7 @@
 - 页面：`/leads`。
 - API：`/api/leads`、`/leads/[id]` 及户型、员工关联接口。
 - 模型/工具：PostgreSQL `LeadRepository`、`FloorPlanRepository`、`AdminUserRepository`、微信工具。
-- 状态：`Implemented`。支持线索录入/状态、跟进、分配、正式户型关联和转化上下文；列表、详情、新建、更新和删除均在 RLS PostgreSQL 事务内执行，并保留十进制字符串 `_id` DTO。线索-户型连接表、主户型选择、租户校验和删除清理为原子操作；普通微信通知在数据库事务提交后调用。企微配置、群分享和员工企微标识已弃用，已从运行时 API 与 UI 移除；历史 MongoDB 字段及 PostgreSQL `admin_users.wecom_user_id` 列保留，不迁移也不删除。`/leads` 后台视图现使用共享 Ant Design ProComponents 模式（`PageContainer`、`ProTable`）承载服务端状态筛选和分页，并使用 Ant Design 详情抽屉完成负责人指派、正式户型查看和跟进记录；列表和详情读取仍会取消已过期请求，避免旧响应覆盖新的筛选或选中线索。其 API 契约、租户范围、角色边界及“详情”“方案”“删除”行内操作均未改变，所有可见变更继续使用共享操作反馈。本次仅迁移展示层。
+- 状态：`Implemented`。支持线索录入/状态、跟进、分配、正式户型关联和转化上下文；列表、详情、新建、更新和删除均在 RLS PostgreSQL 事务内执行，并保留十进制字符串 `_id` DTO。线索-户型连接表、主户型选择、租户校验和删除清理为原子操作；普通微信通知在数据库事务提交后调用。企微配置、群分享和员工企微标识已弃用，已从运行时 API 与 UI 移除；历史 MongoDB 字段及 PostgreSQL `admin_users.wecom_user_id` 列保留，不迁移也不删除。`/leads` 后台视图现使用共享 Ant Design ProComponents 模式（`PageContainer`、`ProTable`）承载服务端状态筛选和分页，并使用 Ant Design 详情抽屉完成负责人指派、正式户型查看和跟进记录；共享 `ModuleOverview` 从同一分页列表响应派生当前页漏斗统计；列表和详情读取仍会取消已过期请求，避免旧响应覆盖新的筛选或选中线索。其 API 契约、租户范围、角色边界及“详情”“方案”“删除”行内操作均未改变，所有可见变更继续使用共享操作反馈。本次仅迁移展示层。
 
 ### 8. 正式户型、搜索与查看
 
@@ -280,13 +284,15 @@
 - 页面：`/devices`、`/measurements`。
 - API：设备 CRUD、`/devices/verify`、`/devices/verify-binding`、`/measurements`，以及仅平台可用的独立渠道地推查询 `/api/staff?scope=unassigned-promoters`。
 - 模型/Repository：PostgreSQL `DeviceRepository`、`MeasurementRepository`、`AdminUserRepository`、`UserRepository`、`FloorPlanRepository`。
-- 状态：`Implemented`。支持设备池、企业/用户绑定、校验、状态管理，以及来源为 BLE、手动或系统的长度/高度/面积/角度/门窗审计记录。设备分配外键指向 `admin_users`；平台/企业管理员可变更设备，员工只能读取自己的绑定。测量写入会在同一 RLS PostgreSQL 流程中校验操作员、企业、正式户型、数值/类型/来源/时间和已分配设备。`/measurements` 后台视图现使用共享 Ant Design ProComponents 列表模式（`PageContainer`、`ProTable`）承载响应式搜索/筛选、加载/失败反馈和来源标识；其 API 参数、角色范围及最多展示 100 条记录的限制不变。`/devices` 使用 `PageContainer`、`ProTable` 与 `ModalForm` 承载搜索、状态筛选和录入/编辑弹窗；平台角色可选择企业、兼容员工和既有状态枚举，服务端仍负责现有租户和跨企业绑定校验。设备行内“编辑”和“删除”保留与其他管理列表一致的带图标文字 Ant Design 操作按钮，所有可见变更继续使用共享操作反馈。本次仅迁移展示层，路由、API、权限边界和 PostgreSQL 数据契约均未改变。
+- 状态：`Implemented`。支持设备池、企业/用户绑定、校验、状态管理，以及来源为 BLE、手动或系统的长度/高度/面积/角度/门窗审计记录。设备分配外键指向 `admin_users`；平台/企业管理员可变更设备，员工只能读取自己的绑定。测量写入会在同一 RLS PostgreSQL 流程中校验操作员、企业、正式户型、数值/类型/来源/时间和已分配设备。`/measurements` 后台视图现使用共享 Ant Design ProComponents 列表模式（`PageContainer`、`ProTable`）承载响应式搜索/筛选、加载/失败反馈和来源标识；共享 `ModuleOverview` 从同一最多 100 条的筛选结果派生 BLE、手动和关联户型数量；其 API 参数、角色范围及记录上限不变。`/devices` 使用 `PageContainer`、`ProTable` 与 `ModalForm` 承载搜索、状态筛选和录入/编辑弹窗；平台角色可选择企业、兼容员工和既有状态枚举，服务端仍负责现有租户和跨企业绑定校验。其共享 `ModuleOverview` 从现有设备列表响应派生当前筛选的状态数量。设备行内“编辑”和“删除”保留与其他管理列表一致的带图标文字 Ant Design 操作按钮，所有可见变更继续使用共享操作反馈。本次仅迁移展示层，路由、API、权限边界和 PostgreSQL 数据契约均未改变。
 
 ### 10. AI 工作室与设计生成
 
 - 页面：`/ai-studio/scenarios` 是客户方案 AI 执行工作台，包含“客户方案、快速工具、AI 助手”；旧 `/ai-studio/designer`、`/ai-studio/floor-plan`、`/ai-studio/furnishing`、`/ai-studio/soft-furnishing` 和方案详情 URL 保留相关查询参数后跳入统一工作台。`/ai-studio/create` 是独立全屏自由创作台，后台侧栏以新标签页打开。资源/配置入口继续为 `/inspirations`、`/ai-presets`、`/ai-providers`、`/ai-models`、`/ai-credit-prices`，企业 AI 页继续管理统一点数。场景新建设计向导现使用带原生步骤指示的 Ant Design `Modal`，版本历史现使用 Ant Design `Drawer`；输入、确认、上传、生成轮询及路由/查询参数行为均不变。
+- 三个工作台入口现在共享全宽响应式工作区边距：客户方案、户型/风格/软装三个快速工具和 AI 助手保留既有工作流、API、点数处理及 `ai-scenarios` 企业权限边界。
 - AI 供应商后台路由：`/ai-providers` 是供应商列表；`/ai-providers/new` 用于新增供应商；`/ai-providers/[id]` 用于查看和编辑供应商；`/ai-models` 是独立的平台生图模型目录。页面使用基于 Ant Design ProComponents 的共享后台壳层（`ProTable`、`ProForm`、`ProDescriptions`），`/ai-models` 复用 `ai-providers` 平台权限，仅平台 `super_admin`、`admin` 可操作（`Implemented`）。
 - 灵感方案后台：`/inspirations` 使用同一套 `PageContainer`、`ProTable`、`ModalForm` 展示模式，支持案例筛选、图片预览、发布、推荐状态和删除。`GET/POST/DELETE /api/inspirations` 现通过 `InspirationRepository` 在租户 RLS PostgreSQL `inspirations` 表中运行；既有筛选、十进制字符串 `_id`、数字 `viewCount`、当前菜单权限与案例工作流保持不变。路由要求已认证的企业上下文，状态为 `Implemented`；历史 MongoDB 灵感方案既未导入，也不会混入新的 bigint 列表。
+- 灵感方案页的概览从现有列表响应派生当前筛选的方案、推荐和浏览总数，列表失败继续使用共享操作反馈，不新增 API 请求；租户 RLS、企业上下文、菜单权限与案例工作流保持不变。
 - 供应商接入契约：`AiProviderConfig` 保留旧版加密 API Key 字段，同时持久化加密/掩码凭证映射和经校验的非敏感 `adapterConfig`。统一编辑页与服务端校验共同读取 `src/lib/ai/provider-adapter-manifest.ts`；当前 GRS、Pollinations、OpenAI Compatible 使用公共的地址/API Key 配置。`Limited`：平台生图模型目录当前仍是 GRS 来源契约，新增供应商必须实现 Adapter 与目录档案支持，不能只新增前端选项。
 - PostgreSQL 边界：平台供应商列表、新增、更新、停用、密钥轮换、连通测试、模型同步、上游余额查询及运行时供应商选择现统一经由平台范围 PostgreSQL 事务中的 `AiProviderConfigRepository`。加密凭据保持不透明存储；异步网络调用结束后仅回写非敏感运行状态。配置了 API Key 时，环境变量中的 GRS/Pollinations 默认供应商会幂等写入 PostgreSQL。
 - PostgreSQL 目录边界：`GET/PATCH /api/admin/ai-image-models` 通过

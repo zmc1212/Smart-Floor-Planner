@@ -413,7 +413,7 @@ function AiScenariosPageContent() {
     if (tool) {
       return (
         <div>
-          <div className="mx-auto max-w-[1480px] px-6 pt-6">
+          <div className="px-5 pt-6 sm:px-7">
             <Button variant="ghost" onClick={() => setQuickAction('')} className="rounded-xl">
               <ArrowLeft size={16} className="mr-2" />返回快速工具
             </Button>
@@ -449,7 +449,7 @@ function AiScenariosPageContent() {
 
   return (
     <PhotoProvider>
-      <main className="mx-auto max-w-[1480px] space-y-6 px-6 py-8">
+      <main className="space-y-6 px-5 py-6 sm:px-7 sm:py-8">
         <WorkbenchTabs view={view} onChange={setWorkbenchView} />
 
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
@@ -738,7 +738,22 @@ function AiScenariosPageContent() {
 }
 
 function WorkbenchTabs({ view, onChange }: { view: WorkbenchView; onChange: (view: WorkbenchView) => void }) {
-  return <div className="inline-flex rounded-2xl border bg-muted/40 p-1">{([{ key: 'workflows', label: '客户方案' }, { key: 'quick', label: '快速工具' }, { key: 'assistant', label: 'AI 助手' }] as Array<{ key: WorkbenchView; label: string }>).map((item) => <button key={item.key} type="button" onClick={() => onChange(item.key)} className={cn('rounded-xl px-4 py-2 text-sm font-bold transition', view === item.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>{item.label}</button>)}</div>;
+  return (
+    <div aria-label="AI 设计工作区" className="inline-flex rounded-lg border bg-muted/40 p-1" role="group">
+      {([{ key: 'workflows', label: '客户方案' }, { key: 'quick', label: '快速工具' }, { key: 'assistant', label: 'AI 助手' }] as Array<{ key: WorkbenchView; label: string }>).map((item) => (
+        <button
+          aria-pressed={view === item.key}
+          className={cn('rounded-md px-4 py-2 text-sm font-semibold transition', view === item.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}
+          id={`ai-workbench-tab-${item.key}`}
+          key={item.key}
+          onClick={() => onChange(item.key)}
+          type="button"
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function StateBadge({ state }: { state: WorkflowFilter }) {

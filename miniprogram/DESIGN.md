@@ -22,15 +22,15 @@ Page-specific visual reference:
   at the iPhone 13 Pro `390x844` baseline. The reference controls the F1/F3
   spatial-guide hero, overlapping formal-surveying card, three quick-service
   cards, and project-progress hierarchy. Production uses the derived local
-  scene asset `images/home-ip-v1/hero-scene-wechat-safe.jpg`, which reserves
+  scene asset `images/home-ip-v1/hero-scene-wechat-safe.png`, which reserves
   the native WeChat capsule safe area and keeps Xiao K fully visible; live
   data, role boundaries, navigation, and empty states remain authoritative.
-- Login (`pages/login/login`):
+- Login (`packages/business/login/login`):
   `design-references/all-pages-ip-v1/06-login.png` at the iPhone 13 Pro
   `390x844` baseline. The reference controls the Xiao K opening-the-door hero,
   approved brand lockup, overlapping two-mode login panel, three-part capability
   summary, and compact return action. Production uses the derived local scene
-  asset `images/login-v1/hero-scene.jpg`; the approved lockup remains in the
+  asset `packages/business/assets/login-v1/hero-scene.jpg`; the approved lockup remains in the
   derivative while all authentication text and controls stay live. WeChat
   quick login, staff password login, loading/error behavior,
   notification opt-in, and route return semantics remain authoritative.
@@ -59,39 +59,39 @@ Page-specific visual reference:
   generated transparent Xiao K asset `images/mine-icons/tab-measure-k.png`
   with a separate live label. The approved C-style client-dossier
   metaphor and Xiao K client-concierge role remain the durable Leads brand model.
-- Commission Records (`pages/commission-records/commission-records`):
+- Commission Records (`packages/business/commission-records/commission-records`):
   `design-references/all-pages-ip-v1/12-commission-records.png` at the iPhone 13
   Pro `390x844` baseline. The reference controls the custom navigation, the
   single Xiao K income-assistant scene, the green pending-settlement summary,
   the four status filters, grouped record rows, and the settlement explanation.
   Production uses the derived local scene asset
-  `images/commission-records-ip-v1/hero-scene.jpg`; live tenant-scoped records,
+  `packages/business/assets/commission-records/hero-scene.jpg`; live tenant-scoped records,
   real commission types, amounts, dates, statuses, and read-only settlement
   authority remain authoritative.
-- Promotion records (`pages/promotion-records/promotion-records`):
+- Promotion records (`packages/business/promotion-records/promotion-records`):
   `design-references/all-pages-ip-v1/09-promotion-records.png` at the iPhone 13 Pro
   `390x844` baseline. The reference controls the enterprise-filing Xiao K hero,
   rounded search surface, five role-view tabs, and compact record-card anatomy.
   It is a tertiary workflow page and must not render a page-local TabBar or dock.
   Production uses the local derived scene asset
-  `images/promotion-records/hero-scene.jpg`; enterprise data, role-scoped views,
+  `packages/business/assets/promotion-records/hero-scene.jpg`; enterprise data, role-scoped views,
   public-pool claim approval, loading/search/empty states, and all navigation
   remain driven by current routes and APIs.
-- Promotion record detail (`pages/promotion-record-detail/promotion-record-detail`):
+- Promotion record detail (`packages/business/promotion-record-detail/promotion-record-detail`):
   `design-references/all-pages-ip-v1/10-promotion-record-detail.png` at the
   iPhone 13 Pro `390x844` baseline. The reference controls the compact report
   overview, four-stage service rail, follow-up editor, vertical activity trail,
   and administrator assignment panel. Xiao K acts as the report-stamp clerk;
   production uses the project-local derivative
-  `images/promotion-detail/hero-scene.png`, while the company, masked phone,
+  `packages/business/assets/promotion-detail/hero-scene.png`, while the company, masked phone,
   stage labels, dates, activity records, assignees, role visibility, and all
   actions remain live and server-authoritative.
-- Promotion record create (`pages/promotion-record-detail/promotion-record-detail?mode=create`):
+- Promotion record create (`packages/business/promotion-record-detail/promotion-record-detail?mode=create`):
   `design-references/all-pages-ip-v1/11-promotion-record-create.png` at the
   iPhone 13 Pro `390x844` baseline. The reference controls the native title,
   Xiao K enterprise-intake hero, enterprise/contact work-order sections,
   location action, helper copy, and final submission geometry. Production uses
-  `images/promotion-create/hero-scene.jpg` plus the licensed local Lucide raster
+  `packages/business/assets/promotion-create/hero-scene.jpg` plus the licensed local Lucide raster
   set; all labels, values, validation, pickers, location feedback, loading state,
   and submission remain native, live UI.
 - AI Design (`pages/ai-design/ai-design`):
@@ -520,7 +520,7 @@ Status chips should be:
 - The design set must also cover every full-screen or bottom-sheet editing branch: manual length and wall-thickness input, BLE-assisted measurement, phone-sensor and Pythagorean angle measurement, and the component editor's `spec`, `flip`, and `library` panels.
 - Preserve spatial continuity between states: the plan canvas, selected geometry, dimension label, and active anchor must remain visually identifiable when a sheet or contextual toolbar opens. Use overlay elevation and local colour emphasis rather than replacing the canvas with an unrelated screen.
 - State feedback is part of the design: show saved/draft status, connected or unavailable measurement-device state, disabled undo/redo, destructive reset confirmation, successful room closure, and recoverable validation feedback with concise, non-blocking treatments.
-- Do not use WeChat DevTools screenshots as visual evidence for `pages/surveying-editor/surveying-editor`. In that environment the native Canvas can cover `view` or `cover-view` overlays, so its screenshots do not represent the real layout. Validate this page through state-specific WXML/WXSS layering, state-branch tests, and the approved design references instead.
+- Do not use WeChat DevTools screenshots as visual evidence for `packages/surveying/editor/surveying-editor`. In that environment the native Canvas can cover `view` or `cover-view` overlays, so its screenshots do not represent the real layout. Validate this page through state-specific WXML/WXSS layering, state-branch tests, and the approved design references instead.
 - The v8 `cursorPlaced` reference state uses a low-contrast single-step grid, neutral-grey wall solids, a pale closed-space fill, and a green snapped anchor linked to a short green guide cross. It must not render the legacy blue full-canvas axes or orange square cursor; these changes are scoped to that state and preserve the measured floor-plan geometry.
 
 ### Formal Surveying Editor Fixed Chrome

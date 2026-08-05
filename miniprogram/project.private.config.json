@@ -5,8 +5,8 @@
     "miniprogram": {
       "list": [
         {
-          "name": "pages/surveying-editor/surveying-editor",
-          "pathName": "pages/surveying-editor/surveying-editor",
+          "name": "packages/surveying/editor/surveying-editor",
+          "pathName": "packages/surveying/editor/surveying-editor",
           "query": "",
           "scene": null,
           "launchMode": "default"

@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const surveyGraph = require('../utils/surveyWallGraph.js');
-const surveyCanvasRenderer = require('../utils/surveyCanvasRenderer.js');
+const surveyCanvasRenderer = require('../packages/surveying/utils/surveyCanvasRenderer.js');
 
 function commitWall(draft, point, length) {
   return surveyGraph.commitPreviewLength(

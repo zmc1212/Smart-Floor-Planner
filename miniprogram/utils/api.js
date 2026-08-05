@@ -68,7 +68,7 @@ function request(url, method = 'GET', data = {}, options = {}) {
           
           const pages = getCurrentPages();
           const currentPage = pages[pages.length - 1];
-          const isLoginPage = currentPage && currentPage.route === 'pages/login/login';
+          const isLoginPage = currentPage && currentPage.route === 'packages/business/login/login';
 
           if (!isLoginPage && !isShowingAuthModal) {
             isShowingAuthModal = true;
@@ -80,7 +80,7 @@ function request(url, method = 'GET', data = {}, options = {}) {
               cancelText: '取消',
               success: (modalRes) => {
                 if (modalRes.confirm) {
-                  wx.reLaunch({ url: '/pages/login/login' });
+                  wx.reLaunch({ url: '/packages/business/login/login' });
                 }
               },
               complete: () => {

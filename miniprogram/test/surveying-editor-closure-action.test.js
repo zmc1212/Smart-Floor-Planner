@@ -4,11 +4,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const editorScript = fs.readFileSync(
-  path.join(__dirname, '..', 'pages', 'surveying-editor', 'surveying-editor.js'),
+  path.join(__dirname, '..', 'packages', 'surveying', 'editor', 'surveying-editor.js'),
   'utf8'
 );
 const editorWxml = fs.readFileSync(
-  path.join(__dirname, '..', 'pages', 'surveying-editor', 'surveying-editor.wxml'),
+  path.join(__dirname, '..', 'packages', 'surveying', 'editor', 'surveying-editor.wxml'),
   'utf8'
 );
 

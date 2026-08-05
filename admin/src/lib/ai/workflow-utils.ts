@@ -14,9 +14,9 @@ type GenerationLike = {
   status: string;
   input?: unknown;
   output?: unknown;
-  errorMessage?: string;
-  provider?: string;
-  durationMs?: number;
+  errorMessage?: string | null;
+  provider?: string | null;
+  durationMs?: number | null;
   createdAt: Date | string;
   updatedAt: Date | string;
 };

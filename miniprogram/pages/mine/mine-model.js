@@ -38,7 +38,7 @@ function decorateActions(actions) {
   });
 }
 
-function buildWorkbenchActions(actions) {
+function buildWorkbenchActions(actions, includeAIDesign = true) {
   const decorated = decorateActions(actions);
   const aiAction = {
     key: 'ai-design',
@@ -50,7 +50,9 @@ function buildWorkbenchActions(actions) {
     toneClass: 'tone-orange'
   };
 
-  return [...decorated.slice(0, 2), aiAction, ...decorated.slice(2)];
+  return includeAIDesign
+    ? [...decorated.slice(0, 2), aiAction, ...decorated.slice(2)]
+    : decorated;
 }
 
 function decorateSummaryCards(cards) {

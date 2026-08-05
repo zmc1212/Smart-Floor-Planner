@@ -89,13 +89,6 @@ test('Leads visual assets exist and micro-icons stay within budget', () => {
     assert.ok(bytes.length <= 10 * 1024, `${filename} exceeds the 10KB icon budget`);
   }
 
-  for (const filename of [
-    'header-scene.png',
-    'summary-scene.png'
-  ]) {
-    assert.ok(fs.statSync(path.join(assetDir, filename)).size > 0);
-  }
-
   assert.ok(fs.statSync(
     path.join(miniRoot, 'images', 'leads-ip-v1', 'client-concierge-scene.png')
   ).size > 0);

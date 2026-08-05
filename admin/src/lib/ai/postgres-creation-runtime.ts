@@ -36,8 +36,8 @@ import {
   listProviderRuntimes,
   listProviderRuntimesByAdapter,
 } from '@/lib/ai/provider-registry';
-import { parseImageDataUri } from '@/lib/ai/media-assets';
-import { resolveProviderCostEstimate } from '@/lib/ai/execution-service';
+import { parseImageDataUri } from '@/lib/ai/postgres-media-assets';
+import { resolveProviderCostEstimate } from '@/lib/ai/provider-cost';
 import { renderMiniAiFloorPlanControlPng } from '@/lib/ai/mini-ai-floorplan';
 
 type ProviderRequest = Omit<AiImageSubmitInput, 'model'> & {

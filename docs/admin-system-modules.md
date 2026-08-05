@@ -1,5 +1,13 @@
 # Admin System: Current Module Inventory
 
+### PostgreSQL-only AI runtime (2026-08-05)
+
+AI workbench configuration and prompt-library APIs use PostgreSQL records only.
+Historical ObjectId requests return not-found responses; the admin runtime no
+longer ships Mongoose models, MongoDB connection helpers, or Mongo maintenance
+scripts. Retained data is limited to the imported Qiniu storage configuration
+and active Roomi prompt-library revision.
+
 > 2026-08-05 PostgreSQL migration update: authenticated Kujiale city and
 > floor-plan search proxies no longer connect to MongoDB. PostgreSQL bigint AI
 > asset, generation-image, status, Mini Program asset-delivery, and administrator
@@ -450,7 +458,9 @@ permission, or workflow changes.
   pattern (`PageContainer`, `ProTable`, `ModalForm`, and `Tree`) for server-side
   staff search/pagination, department filtering, and staff or department
   maintenance; this presentation migration does not change its APIs, tenant
-  scope, or role boundaries. `/admins` uses the same `PageContainer`,
+  scope, or role boundaries. Its shared `ModuleOverview` derives visible-page
+  staff-role counts from the existing list response and shows the live loaded
+  department count without adding an API request. `/admins` uses the same `PageContainer`,
   `ProTable`, and `ModalForm` pattern for platform account search, scope and
   role filtering, creation, editing, password resets, status changes, and
   deletion. It retains the `admins` menu-permission guard, PostgreSQL
@@ -568,7 +578,8 @@ permission, or workflow changes.
   uses the shared Ant Design ProComponents pattern (`PageContainer` and
   `ProTable`) for server-side status filtering and pagination, plus an Ant
   Design detail drawer for responsible-staff assignment, formal-floor-plan
-  review, and follow-up records. List and detail reads still cancel superseded
+  review, and follow-up records. A shared `ModuleOverview` derives visible-page
+  funnel counts from that same paginated list response. List and detail reads still cancel superseded
   requests, so stale responses cannot overwrite newer filtering or selected
   lead state. Its API contract, tenant scope, role boundaries, and row actions
   for detail, AI-plan entry, and destructive deletion are unchanged; visible
@@ -652,14 +663,16 @@ permission, or workflow changes.
   RLS-scoped PostgreSQL flow. The `/measurements` administration view now uses
   the shared Ant Design ProComponents list pattern (`PageContainer` and
   `ProTable`) for responsive search/filtering, loading/error feedback, and
-  source markers; its API parameters, role scope, and 100-record display limit
+  source markers. A shared `ModuleOverview` derives the current filtered BLE,
+  manual, and distinct-floor-plan counts from the same 100-record response; its API parameters, role scope, and 100-record display limit
   are unchanged. The `/devices` view uses `PageContainer`, `ProTable`, and
   `ModalForm` for search, status filtering, and create/edit dialogs; platform
   roles can select an enterprise, compatible staff, and the existing status
   enum, while the server retains current tenant and cross-enterprise binding
   validation. Device row edits and deletions retain the shared Ant Design
   icon-and-label action controls, and all visible mutations use shared
-  operation feedback. This is a presentation-layer migration only: routes,
+  operation feedback. Its shared `ModuleOverview` derives current filtered
+  status counts from the existing device list response. This is a presentation-layer migration only: routes,
   APIs, permission boundaries, and PostgreSQL data contracts are unchanged.
 
 ### 10. AI Studio And Design Generation
@@ -675,7 +688,11 @@ permission, or workflow changes.
   The scenario creation wizard now uses an Ant Design `Modal` with a native
   step indicator, and its version history uses an Ant Design `Drawer`; their
   inputs, confirmations, uploads, generation polling, and route/query behavior
-  are unchanged.
+  are unchanged. The three workbench entries now share full-width responsive
+  workspace gutters: customer workflows, the three direct quick tools
+  (floor-plan, furnishing, and soft-furnishing), and the AI assistant retain
+  their existing workflows, APIs, credit handling, and `ai-scenarios` enterprise
+  permission boundary.
 - AI provider administration routes: `/ai-providers` is the provider list;
   `/ai-providers/new` creates a provider; `/ai-providers/[id]` is the provider
   detail/edit page; `/ai-models` is the separate platform image-model catalog.
@@ -688,7 +705,10 @@ permission, or workflow changes.
   /api/inspirations` now use tenant-RLS PostgreSQL `inspirations` through
   `InspirationRepository`; the existing filters, decimal-string `_id`, numeric
   `viewCount`, current menu access, and case workflows are retained. The route
-  requires an authenticated enterprise context and is `Implemented`. Historical
+  requires an authenticated enterprise context and is `Implemented`. Its
+  overview derives the current filtered case, recommendation, and view totals
+  from the existing list response, and list failures use shared operation
+  feedback without adding an API request. Historical
   MongoDB inspiration records are neither imported nor included in the new
   bigint list.
 - Provider integration contract: `AiProviderConfig` retains its legacy encrypted

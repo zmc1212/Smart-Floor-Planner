@@ -179,6 +179,41 @@ desktop/mobile visual checks, and browser verification pass.
 - Other platform configuration pages remain in the third migration step and
   require their interaction contracts to be audited before implementation.
 
+## Refactor Selection And Route Ledger
+
+This section is the operational record for recurring Admin UI work. It is not a
+historical roadmap. Before choosing a route for a generic “continue refactoring”
+request, read the latest row here and its Chinese mirror.
+
+- `Hold` means the current route is excluded from generic refactor selection.
+  It may be reopened only for the recorded trigger.
+- `Queued` means an unambiguous next candidate after its workflow and current UI
+  have been audited.
+- `Unrecorded` routes may be considered only after comparing them with this
+  ledger and the Admin module inventory.
+- Each completed UI change replaces the route's latest row with its new date,
+  scope, unchanged boundaries, verification, remaining QA, and reopen trigger;
+  do not append duplicate history rows for the same route.
+
+| Route or surface | Latest UI scope | State | Verification / remaining QA | Reopen only when |
+| --- | --- | --- | --- | --- |
+| `/leads` | 2026-08-05: shared overview strip above the existing paginated ProTable and detail drawer. It derives visible-page funnel counts from the existing response only. | Hold | Targeted ESLint and compiled-CSS check passed. Authenticated desktop screenshot after the CSS-grid correction is still required. | The outstanding screenshot QA finds a defect, the user names `/leads`, or its workflow contract changes. |
+| `/staff` | 2026-08-05: shared overview strip beside the department tree; visible-page role counts and loaded department count retain existing API behavior. | Hold | Targeted ESLint passed. Authenticated desktop/mobile screenshot QA is still required. | The outstanding screenshot QA finds a defect, the user names `/staff`, or its workflow contract changes. |
+| `/devices` | 2026-08-05: shared filtered-status overview strip above the existing device list and dialogs. | Hold | Targeted ESLint passed. Authenticated desktop/mobile screenshot QA is still required. | The outstanding screenshot QA finds a defect, the user names `/devices`, or its device workflow contract changes. |
+| `/measurements` | 2026-08-05: shared filtered audit overview strip for BLE/manual/floor-plan counts above the existing 100-record list. | Hold | Targeted ESLint passed. Authenticated desktop/mobile screenshot QA is still required. | The outstanding screenshot QA finds a defect, the user names `/measurements`, or its audit workflow contract changes. |
+| `/ai-providers`, `/ai-models`, `/ai-presets`, `/ai-credit-prices` | Shared provider and catalog application patterns documented above. | Hold | Existing migration acceptance evidence applies. | A provider/catalog workflow, permission, or accepted design changes. |
+| `/media-storage`, `/enterprises`, `/promotion-records`, `/workflow-logs`, `/enterprise-orders`, `/packages`, `/commissions`, `/roles`, `/users`, `/floorplans`, `/admins`, `/` | Presentation migrations documented above. | Hold | Existing migration acceptance evidence applies; verify against a supplied defect before reopening. | The user names the route, a reproducible visual defect exists, or its workflow contract changes. |
+| `/inspirations` | 2026-08-05: added a responsive current-filter overview for cases, recommendations, and views above the existing `ProTable`, plus an explicit empty state and shared list-load failure feedback. The counts derive only from the existing list response. | Hold | Targeted ESLint and browser QA are pending. | The outstanding QA finds a defect, the user names `/inspirations`, or its workflow contract changes. |
+| `/ai-studio/scenarios` and embedded quick tools | 2026-08-05: audited customer-workflow, quick-tool, and assistant entry contracts; aligned their shared workspace to full-width responsive gutters and made the view switch a semantic pressed segmented control. | Hold | Targeted ESLint and authenticated desktop/mobile screenshot QA are pending. | The outstanding QA finds a defect, the user names `/ai-studio/scenarios`, or its workflow contract changes. |
+| Remaining Admin routes not represented above | No current ledger record. | Unrecorded | Audit their live workflow, current page, module inventory, permissions, and mobile/desktop state before proposing work. | The audit establishes it as the next candidate. |
+
+## Current Queue
+
+No route is implicitly queued merely because it has a simple table layout. The
+next generic Admin UI refactor must first audit the unrecorded routes and present
+a short, evidence-backed candidate list. It must not revisit the four 2026-08-05
+merchant list routes just to make another visual pass.
+
 ## Acceptance Criteria For Milestone One
 
 - `/ai-providers/new`, `/ai-providers/[id]`, and `/ai-models` are directly reachable and

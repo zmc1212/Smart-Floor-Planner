@@ -11,7 +11,8 @@ import {
   type ProColumns,
 } from '@ant-design/pro-components';
 import { Alert, Avatar, Button, Card, Flex, Space, Tag, Tooltip, Tree, Typography, type TreeDataNode } from 'antd';
-import { FolderPlus, Pencil, Plus, Trash2, Users } from 'lucide-react';
+import { FolderPlus, Pencil, Plus, Trash2, UserCheck, Users, Wrench } from 'lucide-react';
+import ModuleOverview from '@/components/admin/ModuleOverview';
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -120,6 +121,7 @@ export default function StaffPage() {
   const [departmentParentId, setDepartmentParentId] = useState<string | null>(null);
   const [departmentFormOpen, setDepartmentFormOpen] = useState(false);
   const [globalTenantId, setGlobalTenantId] = useState('all');
+  const [overview, setOverview] = useState({ total: 0, designers: 0, measurers: 0 });
 
   const canManage = Boolean(currentUser && ['super_admin', 'admin', 'enterprise_admin'].includes(currentUser.role));
   const requiresTenantSelection = Boolean(currentUser && ['super_admin', 'admin'].includes(currentUser.role) && globalTenantId === 'all');
@@ -284,6 +286,15 @@ export default function StaffPage() {
           </Card>
 
           <div className="min-w-0 flex-1">
+            <ModuleOverview
+              ariaLabel="团队概览"
+              items={[
+                { label: '本页团队成员', value: overview.total, icon: <Users size={18} /> },
+                { label: '本页设计师', value: overview.designers, icon: <UserCheck size={18} />, tone: 'success' },
+                { label: '本页测量员', value: overview.measurers, icon: <Wrench size={18} />, tone: 'warning' },
+                { label: '部门结构', value: departments.length, icon: <FolderPlus size={18} /> },
+              ]}
+            />
             <ProTable<StaffMember>
               className="admin-data-table admin-mobile-filter-stack"
               actionRef={actionRef}
@@ -301,6 +312,19 @@ export default function StaffPage() {
                 const response = await fetch(`/api/staff?${query}`);
                 const result = await response.json();
                 if (!response.ok || !result.success) throw new Error(result.error || '读取员工失败');
+                const rows = result.data || [];
+                const nextOverview = {
+                  total: rows.length,
+                  designers: rows.filter((member: StaffMember) => member.role === 'designer').length,
+                  measurers: rows.filter((member: StaffMember) => member.role === 'measurer').length,
+                };
+                setOverview((current) => (
+                  current.total === nextOverview.total &&
+                  current.designers === nextOverview.designers &&
+                  current.measurers === nextOverview.measurers
+                    ? current
+                    : nextOverview
+                ));
                 return { data: result.data || [], total: result.pagination?.total || 0, success: true };
               }}
             />

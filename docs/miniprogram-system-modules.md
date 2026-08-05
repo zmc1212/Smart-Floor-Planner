@@ -1,5 +1,12 @@
 # Mini Program: Current Module Inventory
 
+### PostgreSQL-only AI APIs (2026-08-05)
+
+Mini Program AI asset, task, workflow, and capability endpoints accept
+PostgreSQL bigint identifiers only. The client does not depend on MongoDB or
+ObjectId compatibility; prompt-library and Qiniu-backed media data are served
+from PostgreSQL-backed repositories and storage adapters.
+
 > 2026-08-04 PostgreSQL migration update: Mini Program AI upload, task and
 > source routes now operate on tenant-scoped bigint PostgreSQL assets and
 > generations. Historical ObjectId asset URLs remain readable only for legacy
@@ -17,12 +24,20 @@ utilities, and the admin APIs they call.
 - `Placeholder`: the page or control is visible, but uses mock/local behavior,
   a planned toast, or no real server operation.
 - Runtime: native WeChat Mini Program, JWT bearer requests through
-  `utils/api.js`, `threejs-miniprogram` for 3D previews, and optional BLE laser
-  distance meter integration.
+  `utils/api.js`, a local `threejs-miniprogram` vendor adapter in the surveying
+  package for opening 3D previews, and optional BLE laser distance meter
+  integration.
+- Package layout: the main package contains only the four Tab pages and their
+  shared runtime. `packages/surveying` owns the formal editor, its renderer,
+  guide assets, and the 3D adapter; `packages/ai-workflow` owns AI create/result/
+  history plus the legacy redirect; `packages/business` owns login and secondary
+  business workflows. These are ordinary subpackages that may depend on the main
+  package but never on one another. No subpackage is preloaded at startup.
 - Source-package guard: `project.config.json` excludes test fixtures, local
-  development logs, and design-tool metadata from preview/upload packages. All
-  runtime pages, assets, utilities, and `miniprogram_npm` dependencies remain
-  included to stay below WeChat's 4 MB source limit.
+  development logs, and design-tool metadata from preview/upload packages.
+  Production assets are local and image-compressed; the release budget is
+  `<= 1.5 MB` for the main package and `< 2 MB` for every subpackage, verified
+  with WeChat DevTools code dependency analysis.
 - Main tabs: Home (`index`), Leads (`leads-management`), Design
   (`ai-design`), and Mine (`mine`), plus the custom center measurement action.
   Only those four `app.json.tabBar` routes mount the shared custom TabBar;
@@ -32,7 +47,7 @@ utilities, and the admin APIs they call.
 
 ## Shared Identity And Context
 
-- `/pages/login/login`: WeChat phone quick login and username/password login via
+- `/packages/business/login/login`: WeChat phone quick login and username/password login via
   `/api/auth/miniprogram`; restores a JWT/user session in app storage.
 - Login visuals: `Implemented` against
   `design-references/all-pages-ip-v1/06-login.png` at the iPhone 13 Pro
@@ -99,7 +114,7 @@ utilities, and the admin APIs they call.
 - Visual baseline: `design-references/all-pages-ip-v1/01-home.png` at iPhone
   13 Pro `390x844`. The shipped F1/F3 spatial-guide hero, overlapping formal
   surveying card, quick-service cards, and project-progress card use the
-  project-local derived `images/home-ip-v1/hero-scene-wechat-safe.jpg` scene
+  project-local derived `images/home-ip-v1/hero-scene-wechat-safe.png` scene
   asset, which reserves the native WeChat capsule safe area; city,
   counts, device state, recent plans, empty state, and all navigation remain
   live and role-aware.
@@ -107,8 +122,9 @@ utilities, and the admin APIs they call.
 
 ### Leads And Customer Records
 
-- Pages: `pages/lead-form/lead-form`, `pages/leads-management/leads-management`,
-  `pages/lead-detail/lead-detail`.
+- Pages: `packages/business/lead-form/lead-form`,
+  `pages/leads-management/leads-management`, and
+  `packages/business/lead-detail/lead-detail`.
 - APIs: `/api/leads`, `/api/leads/[id]`, `/api/floorplans/[id]` GET/DELETE.
 - Implemented: customer name/phone/community/area/style capture, recent leads,
   list/detail views, formal-plan association, primary-plan name/status/closed
@@ -142,8 +158,8 @@ utilities, and the admin APIs they call.
 
 ### Enterprise Promotion And Staff Tasks
 
-- Pages: `pages/promotion-records/promotion-records` and
-  `pages/promotion-record-detail/promotion-record-detail`.
+- Pages: `packages/business/promotion-records/promotion-records` and
+  `packages/business/promotion-record-detail/promotion-record-detail`.
 - APIs: `/api/promotion-records`, `/promotion-records/[id]`, `/promotion-records/pool`,
   `/staff?roles=...`, workbench summary/todos, and related update endpoints.
 - Implemented: create enterprise reports, list role-specific views (`my`,
@@ -155,7 +171,7 @@ utilities, and the admin APIs they call.
   existing success redirect into the newly created report detail.
 - Visual baseline: the list page follows
   `design-references/all-pages-ip-v1/09-promotion-records.png` at `390x844`. It
-  uses the derived local `images/promotion-records/hero-scene.jpg` asset for Xiao
+  uses the derived local `packages/business/assets/promotion-records/hero-scene.jpg` asset for Xiao
   K's enterprise-filing role, keeps the five `my`/`measure`/`design`/`overdue`/`pool`
   views directly accessible, searches the loaded view by enterprise, contact,
   phone, or location, and renders live workflow status, follow-up, timestamp,
@@ -164,7 +180,7 @@ utilities, and the admin APIs they call.
 - Create visual baseline: `mode=create` follows
   `design-references/all-pages-ip-v1/11-promotion-record-create.png` at
   `390x844`. The page uses the derived local
-  `images/promotion-create/hero-scene.jpg` asset for Xiao K's enterprise-intake
+  `packages/business/assets/promotion-create/hero-scene.jpg` asset for Xiao K's enterprise-intake
   role, separates enterprise and contact information into work-order sections,
   uses one licensed local Lucide icon family, and keeps all labels and controls
   as live WXML rather than image text. The real required fields remain company,
@@ -188,7 +204,7 @@ utilities, and the admin APIs they call.
 
 ### Commission Records
 
-- Page: `pages/commission-records/commission-records`.
+- Page: `packages/business/commission-records/commission-records`.
 - API: `/api/commission-records`.
 - Implemented: a high-fidelity income-center summary, interactive filters, and
   truthful order, amount, date, and status presentation for pending, paid, and
@@ -199,7 +215,7 @@ utilities, and the admin APIs they call.
 
 ### Inspiration Library
 
-- Page: `pages/inspiration/inspiration`.
+- Page: `packages/business/inspiration/inspiration`.
 - API: `/api/inspirations?page=...&style=...&roomType=...`.
 - Implemented: paginated loading, pull-to-refresh, style and room filters,
   image preview, share-poster shell, and free-design lead entry.
@@ -209,10 +225,11 @@ utilities, and the admin APIs they call.
 
 ### AI Design And Enterprise Credits
 
-- Pages: `pages/ai-design/ai-design`, `pages/ai-design-create/ai-design-create`,
-  `pages/ai-design-result/ai-design-result`, and
-  `pages/ai-design-history/ai-design-history`; legacy `pages/ai-gen/ai-gen` is a
-  compatibility redirect only.
+- Pages: `pages/ai-design/ai-design`,
+  `packages/ai-workflow/create/ai-design-create`,
+  `packages/ai-workflow/result/ai-design-result`, and
+  `packages/ai-workflow/history/ai-design-history`; legacy
+  `packages/ai-workflow/legacy/ai-gen` is a compatibility redirect only.
 - Navigation: `pages/ai-design/ai-design` is the primary `Design` tab; it
   uses `navigationStyle: custom`, measures the native capsule/safe area, and
   integrates its title and credit balance into the spatial header instead of
@@ -221,6 +238,9 @@ utilities, and the admin APIs they call.
   Contextual entries transfer floor-plan, room, lead, scope, and workflow state
   through `utils/aiDesignNavigation.js` before calling `switchTab`, because
   WeChat tab pages cannot receive those entries through `navigateTo` queries.
+  The tab and all AI entry points are hidden for staff sessions without an
+  `enterpriseId`; the shared navigation and page guard return any legacy/direct
+  route to Home before an AI API is requested.
 - APIs: Mini Program AI capabilities, role-scoped formal-plan/room sources,
   normalized formal wall/room navigation read models, the current whole-plan
   navigation-preview state, context-visible active workflows, media upload/signed reads,
@@ -330,7 +350,7 @@ utilities, and the admin APIs they call.
   between the fourth waypoint and the formal-plan selector instead of inheriting
   the stacked action layout used by other page states. The result-page reference remains
   `design-references/ai-design/ai-design-result-v2.png`; the generated no-plan hero
-  is `miniprogram/images/ai-design-hero-v3.jpg`.
+  is `miniprogram/images/ai-design-hero-v3.png`.
 - Formal-plan boundary: entries pass `floorPlanId`, explicit
   `targetScope: whole_floor_plan | single_room`, and `roomId` only for a single
   room. The backend derives dimensions, ceiling height, and opening summaries
@@ -350,7 +370,10 @@ utilities, and the admin APIs they call.
   and enterprise-scoped plans for enterprise administrators).
   Floor-plan-only output is a concept visualization, not construction-grade or
   pixel-exact reconstruction.
-- Limited: enterprise staff only; requires available platform-managed provider
+- Limited: only enterprise staff with an `enterpriseId` can use AI design.
+  Standalone channel promoters have no enterprise by design, so the client
+  hides all AI entry points and does not request AI APIs for their sessions.
+  Enterprise AI design requires an available platform-managed provider
   routing and enterprise AI credits. The server may route GRS, Pollinations, or
   another configured compatible provider without changing Mini Program APIs.
   Mini Program scenarios always use the platform's configured logical-model
@@ -420,7 +443,7 @@ utilities, and the admin APIs they call.
 
 ### Recommendations Share Page
 
-- Page: `pages/recommendations/index`.
+- Page: `packages/business/recommendations/index`.
 - Limited: the registered page displays local styles/progress and defines a
   WeChat `onShareAppMessage` payload.
 - Placeholder: recommendations are hard-coded mock data; “PDF download” is a
@@ -434,7 +457,7 @@ utilities, and the admin APIs they call.
   for an authorized distance meter in the current editor when no device is
   connected. This changes no API, role boundary, wall-graph contract, or audit
   queue behavior.
-- Page: `pages/surveying-editor/surveying-editor`; all entries use
+- Page: `packages/surveying/editor/surveying-editor`; all entries use
   `utils/surveyNavigation.js` with `leadId` and/or `floorPlanId`. The entry
   context carries the lead community when available; `GET /api/floorplans/[id]`
   also returns its linked lead summary for direct plan entry.
@@ -450,16 +473,27 @@ utilities, and the admin APIs they call.
   state occupy the left information block, while save/complete actions sit on a
   separate row beneath the capsule. `未填写小区` remains the missing-data fallback.
   A state-following guide is enabled by default per local client. The persistent
-  `引导` header action exposes its enabled state with a green dot and toggles the
+  `引导` header action uses a green local assistant icon when enabled and toggles the
   local preference; enabling it again resolves the current real survey state
   rather than replaying a paged tour. Every actionable guide state uses the
   Xiao K measuring-companion presentation: a compact white `Xiao K hint`
   speech bubble with one action sentence, a local left/right/down transparent
-  pointing pose (`images/surveying-guide-k-left.png`, `-right.png`, `-down.png`),
-  and a green dashed path plus pulse halo that end at the real canvas or control
+  pointing pose (`packages/surveying/assets/surveying-guide-k-left-v3.png`,
+  `-right-v3.png`, `-down-v3.png`) cut from the single generated artboard at
+  `design-references/surveying-editor-v3/sub2api-20260805-075309-1.png`,
+  and a complete title row: the green `小K提示` chip, the local assistant mark
+  (`packages/surveying/assets/icons/guide-help.png`), and a tappable close
+  icon. The card wraps the action copy into readable lines, uses a small tail
+  toward the target side, and keeps the character beside the card rather than
+  over the target.
+  The character also connects with a green dashed path and pulse halo that end
+  at the real canvas or control
   target. The card, pose, path, and halo avoid the header safe area, right rail,
   dock, and active wall; the card close action disables only the persistent local
-  guide preference. The states cover first-wall direction, pending length, a
+  guide preference. The guide condition is rendered as a non-native `block`; only the visible
+  speech bubble and its close control participate in touch hit testing, so the
+  canvas and other editor controls remain interactive while guidance is shown.
+  The states cover first-wall direction, pending length, a
   free-standing chain's measurement side, the next wall, closure, post-closure
   continuation, cursor snap placement, selected-object editing, and completion.
   Walls, measurement edges, close paths, directions, and snap feedback remain
@@ -522,9 +556,14 @@ utilities, and the admin APIs they call.
   the complete wall thickness. The cursor-drag magnifier rebuilds its local view
   through the same formal Canvas scene renderer, so wall solids, joins, selected
   states, and door/window symbols match the main canvas instead of using a
-  separate line approximation. Its status distinguishes vertex, inner-edge,
+  separate line approximation. Its conditional display uses a non-native `block`,
+  leaving the bottom cursor control as the touch-move owner. Its status distinguishes vertex, inner-edge,
   outer-edge, and free placement; a closer outer edge is not overridden by the
   nearby inner vertex.
+- Cursor drag input uses the live bounding rectangle of the bottom cursor
+  control to convert native `cover-view` local touch coordinates when a device
+  reports missing or zeroed `pageX`/`clientX`; a meaningful start-to-end movement also
+  completes a drop when a device omits intermediate `touchmove` events.
   An engineering-style exterior DimensionPlan is used for
   closed plans: a single exterior wall has one total dimension, while a
   continuous multi-wall run or door wall has an inner positioning chain. Each
@@ -556,10 +595,11 @@ utilities, and the admin APIs they call.
   overlay, so native Canvas does not composite a shared-wall room with an older
   formal frame after wall snapping. A cursor-drop handoff also clears its
   transient frame again after the formal redraw.
-- `miniprogram/utils/surveyDimensionPlan.js` and
-  `miniprogram/utils/surveyWallSolidPlan.js` are the dependency-free sources for
-  both renderers; admin development and production builds synchronize local
-  mirrors instead of expanding the Turbopack watch root across the repository.
+- `miniprogram/packages/surveying/utils/surveyDimensionPlan.js` and
+  `miniprogram/packages/surveying/utils/surveyWallSolidPlan.js` are the
+  dependency-free sources for both editor renderers; admin development and
+  production builds synchronize local mirrors instead of expanding the
+  Turbopack watch root across the repository.
 - Limited: BLE actions require a compatible connected device; some reserved
   bottom/object tools intentionally display a planned/unavailable message.
 - Boundary: the Mini Program editor does not expose a current report exporter or
@@ -573,9 +613,9 @@ utilities, and the admin APIs they call.
 - BLE: `components/ble-connector`, `components/ble-gate`, and `utils/bluetooth.js`.
 - Navigation: `utils/surveyNavigation.js` owns formal editor entry and local
   resume-pointer cleanup.
-- Graph/rendering: `surveyWallGraph.js`, `surveyCanvasRenderer.js`, and
-  `surveyLayout.js`; AI design uses `aiDesignService.js` and
-  `aiDesignValidation.js`.
+- Graph/rendering: main-package `surveyWallGraph.js` and `surveyLayout.js`, plus
+  the surveying-package `surveyCanvasRenderer.js`; AI design uses
+  `aiDesignService.js` and `aiDesignValidation.js`.
 - UI: nav bar, custom tab bar, lead list/modal, share poster, room library, and
   survey compass components.
 

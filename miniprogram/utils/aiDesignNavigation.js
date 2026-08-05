@@ -1,5 +1,6 @@
 const AI_DESIGN_TAB_URL = '/pages/ai-design/ai-design';
 const CONTEXT_KEYS = ['floorPlanId', 'leadId', 'roomId', 'targetScope', 'workflowId'];
+const { ensureAIDesignAccess } = require('./aiDesignAccess.js');
 
 function normalizeAIDesignContext(options = {}) {
   const context = CONTEXT_KEYS.reduce((result, key) => {
@@ -19,6 +20,8 @@ function normalizeAIDesignContext(options = {}) {
 }
 
 function openAIDesignTab(options = {}) {
+  if (!ensureAIDesignAccess()) return false;
+
   const app = getApp();
   const context = normalizeAIDesignContext(options);
   const hasContext = CONTEXT_KEYS.some((key) => context[key]);
@@ -37,6 +40,8 @@ function openAIDesignTab(options = {}) {
       wx.showToast({ title: '打开 AI 设计失败', icon: 'none' });
     },
   });
+
+  return true;
 }
 
 function consumeAIDesignContext() {

@@ -30,7 +30,7 @@ import { getAiCreditPrice } from '@/lib/ai/credits';
 import { resolvePostgresScenarioProviderImage } from '@/lib/ai/postgres-creation-runtime';
 import { executePostgresWorkflowChat } from '@/lib/ai/postgres-workflow-chat';
 import type { AiChatMessage } from '@/lib/ai/provider-types';
-import { parseImageDataUri } from '@/lib/ai/media-assets';
+import { parseImageDataUri } from '@/lib/ai/postgres-media-assets';
 import {
   getPostgresAssetIdFromImageUrl,
   getPostgresMediaAssetImageUrl,

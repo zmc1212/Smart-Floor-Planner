@@ -238,7 +238,7 @@ FORM: Approved C floor-map direction fused with B workflow path; A scene navigat
 
         <block wx:else>
         <view class="scene-navigator {{sceneNavigation.focusClass}}">
-          <image class="scene-image" src="/images/ai-design-hero-v3.jpg" mode="aspectFill"></image>
+          <image class="scene-image" src="/images/ai-design-hero-v3.png" mode="aspectFill"></image>
           <view class="scene-shade"></view>
           <view class="scene-waypoint scene-point-one {{activeSceneMode === 'reference_recreate' ? 'active' : ''}}" data-mode="reference_recreate" bindtap="focusSceneWaypoint">
             <view class="scene-waypoint-icon"><image src="/images/ai-design-icons/reference.png" mode="aspectFit"></image></view>

@@ -160,7 +160,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
           </view>
         </view>
 
-        <view class="ai-banner" bindtap="onOpenAIHome" aria-role="button" aria-label="进入 AI 设计空间">
+        <view wx:if="{{canUseAIDesign}}" class="ai-banner" bindtap="onOpenAIHome" aria-role="button" aria-label="进入 AI 设计空间">
           <image class="ai-banner-image" src="/images/mine-v6/ai-room.jpg" mode="aspectFill" />
           <view class="ai-banner-copy">
             <view class="ai-banner-kicker">AI 设计空间</view>
@@ -220,7 +220,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
             <view wx:if="{{floorPlansLoading}}" class="user-summary-title">正在读取户型</view>
             <view wx:elif="{{floorPlansError}}" class="user-summary-title">户型信息待重试</view>
             <view wx:else class="user-summary-title">已保存 {{floorPlans.length}} 个户型</view>
-            <view class="user-summary-caption">{{floorPlansError ? '请重新加载户型数据' : '继续量房，或使用 AI 生成设计灵感'}}</view>
+            <view class="user-summary-caption">{{floorPlansError ? '请重新加载户型数据' : (canUseAIDesign ? '继续量房，或使用 AI 生成设计灵感' : '继续量房，维护空间档案')}}</view>
           </view>
           <button class="summary-action" bindtap="onCreateNew">新建量房</button>
         </view>
@@ -246,7 +246,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
                 <view class="floorplan-title">{{item.name}}</view>
                 <view class="floorplan-meta">{{item.createdAt}} · {{item.roomCount}} 个空间</view>
               </view>
-              <view class="floorplan-ai" catchtap="onAIGen" data-id="{{item._id}}" aria-role="button">AI 设计</view>
+              <view wx:if="{{canUseAIDesign}}" class="floorplan-ai" catchtap="onAIGen" data-id="{{item._id}}" aria-role="button">AI 设计</view>
             </view>
           </view>
           <view wx:else class="todo-empty floorplan-empty">
@@ -262,7 +262,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
           <view class="user-action tone-green" bindtap="onCreateNew" aria-role="button">
             <image src="/images/mine-icons/home.png" mode="aspectFit" /><text>开始量房</text>
           </view>
-          <view class="user-action tone-orange" bindtap="onOpenAIHome" aria-role="button">
+          <view wx:if="{{canUseAIDesign}}" class="user-action tone-orange" bindtap="onOpenAIHome" aria-role="button">
             <image src="/images/mine-icons/bulb.png" mode="aspectFit" /><text>AI 设计</text>
           </view>
         </view>

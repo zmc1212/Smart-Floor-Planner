@@ -229,7 +229,7 @@ Component({
     onLeadClick(e) {
       const id = e.currentTarget.dataset.id;
       wx.navigateTo({
-        url: `/pages/lead-detail/lead-detail?id=${id}`
+        url: `/packages/business/lead-detail/lead-detail?id=${id}`
       });
     },
 
@@ -281,7 +281,7 @@ Component({
     onStartMeasure(e) {
       const id = e.currentTarget.dataset.id;
       wx.navigateTo({
-        url: `/pages/lead-detail/lead-detail?id=${id}&action=measure`
+        url: `/packages/business/lead-detail/lead-detail?id=${id}&action=measure`
       });
     },
 

@@ -2,7 +2,7 @@
   <scroll-view class="home-scroll" scroll-y show-scrollbar="{{false}}" enhanced>
     <view class="home-content">
       <view class="hero-stage">
-        <image class="hero-scene-image" src="/images/home-ip-v1/hero-scene-wechat-safe.jpg" mode="aspectFill" />
+        <image class="hero-scene-image" src="/images/home-ip-v1/hero-scene-wechat-safe.png" mode="aspectFill" />
         <view class="status-spacer" style="height: {{statusBarHeight}}px;"></view>
 
         <view class="hero-nav" style="padding-right: {{capsulePadding}}px;">
@@ -76,7 +76,7 @@
             </view>
           </view>
 
-          <view class="service-card service-ai" bindtap="onOpenAIDesign" hover-class="card-pressed" aria-role="button" aria-label="打开 AI 设计">
+          <view wx:if="{{canUseAIDesign}}" class="service-card service-ai" bindtap="onOpenAIDesign" hover-class="card-pressed" aria-role="button" aria-label="打开 AI 设计">
             <view class="service-heading">
               <image class="service-icon service-icon-ai" src="/images/home-v5/ai-wand.jpg" mode="aspectFit" />
               <view class="service-title-wrap">

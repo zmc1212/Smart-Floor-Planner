@@ -1,7 +1,0 @@
-{
-  "navigationStyle": "custom",
-  "disableScroll": true,
-  "usingComponents": {
-    "survey-canvas-compass": "/components/survey-canvas-compass/survey-canvas-compass"
-  }
-}

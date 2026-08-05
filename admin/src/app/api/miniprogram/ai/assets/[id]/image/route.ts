@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { AiCreationRepository } from '@/db/repositories';
 import { withTenantTransaction } from '@/db/transaction';
-import { resolveMediaAssetDelivery } from '@/lib/ai/media-assets';
 import { resolvePostgresMediaAssetDelivery } from '@/lib/ai/postgres-media-assets';
 import { resolveMiniAiContext } from '@/lib/ai/mini-ai-auth';
 import { verifyMiniAiAssetSignature } from '@/lib/ai/mini-ai-assets';
@@ -22,37 +21,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     const enterpriseId = signedAccess ? tenant : String(context!.enterpriseId);
-    if (/^[1-9]\d*$/.test(id) && /^[1-9]\d*$/.test(enterpriseId)) {
-      const asset = await withTenantTransaction(
-        parsePostgresId(enterpriseId, 'enterpriseId'),
-        (transaction) => new AiCreationRepository(transaction).findMediaAsset(parsePostgresId(id, 'assetId'))
-      );
-      if (!asset) return NextResponse.json({ success: false, error: '图片不存在' }, { status: 404 });
-      const delivery = await resolvePostgresMediaAssetDelivery(asset);
-      if (delivery.kind === 'redirect') {
-        return NextResponse.redirect(delivery.url, {
-          status: 302,
-          headers: { 'Cache-Control': 'private, no-store' },
-        });
-      }
-      return new NextResponse(new Uint8Array(delivery.buffer), {
-        headers: {
-          'Content-Type': asset.mimeType,
-          'Content-Length': String(delivery.buffer.length),
-          'Cache-Control': signedAccess ? 'private, max-age=1800' : 'private, max-age=3600',
-        },
-      });
+    if (!/^[1-9]\d*$/.test(id) || !/^[1-9]\d*$/.test(enterpriseId)) {
+      return NextResponse.json({ success: false, error: '图片不存在' }, { status: 404 });
     }
-
-    const [{ default: dbConnect }, { MediaAsset }] = await Promise.all([
-      import('@/lib/mongodb'),
-      import('@/models/MediaAsset'),
-    ]);
-    await dbConnect();
-    const asset = await MediaAsset.findOne({ _id: id, enterpriseId, deletedAt: { $exists: false } });
+    const asset = await withTenantTransaction(
+      parsePostgresId(enterpriseId, 'enterpriseId'),
+      (transaction) => new AiCreationRepository(transaction).findMediaAsset(parsePostgresId(id, 'assetId'))
+    );
     if (!asset) return NextResponse.json({ success: false, error: '图片不存在' }, { status: 404 });
-
-    const delivery = await resolveMediaAssetDelivery(asset);
+    const delivery = await resolvePostgresMediaAssetDelivery(asset);
     if (delivery.kind === 'redirect') {
       return NextResponse.redirect(delivery.url, {
         status: 302,

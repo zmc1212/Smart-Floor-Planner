@@ -7,7 +7,7 @@ const {
   formatDate,
   formatMoney,
   normalizeRecords
-} = require('../pages/commission-records/commission-records-model.js');
+} = require('../packages/business/commission-records/commission-records-model.js');
 
 test('Commission records format money and dates deterministically', () => {
   assert.equal(formatMoney(12680), '12,680.00');

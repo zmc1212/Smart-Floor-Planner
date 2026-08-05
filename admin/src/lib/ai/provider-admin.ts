@@ -1,12 +1,9 @@
 import { encryptText, maskSecret } from '@/lib/crypto';
 import type { AiProviderConfigRecord } from '@/db/repositories';
-import type { IAiProviderConfig } from '@/models/AiProviderConfig';
 import { AI_CAPABILITIES, LOGICAL_MODEL_KEYS, normalizeModelMappings, toStoredModelMappings, type AiCapability, type AiLogicalModelKey, type AiProviderAdapterType } from './provider-types';
 import { getProviderAdapterManifest, validateProviderAdapterConfig } from './provider-adapter-manifest';
 
-export function serializeProviderConfig(
-  provider: AiProviderConfigRecord | IAiProviderConfig | Record<string, unknown>
-) {
+export function serializeProviderConfig(provider: AiProviderConfigRecord | Record<string, unknown>) {
   const values = provider as Record<string, unknown>;
   const operationalState =
     (values.operationalState as Record<string, unknown> | undefined) ?? {};

@@ -8,9 +8,5 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
-  "dependencies": {
-    "three": "^0.183.2",
-    "threejs-miniprogram": "^0.0.8"
-  }
+  "description": ""
 }

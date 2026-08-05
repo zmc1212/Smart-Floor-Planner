@@ -5,7 +5,7 @@ const aiService = require('../utils/aiDesignService.js');
 function loadPageDefinition() {
   let definition = null;
   global.Page = (config) => { definition = config; };
-  const pagePath = require.resolve('../pages/ai-design-result/ai-design-result.js');
+  const pagePath = require.resolve('../packages/ai-workflow/result/ai-design-result.js');
   delete require.cache[pagePath];
   require(pagePath);
   delete global.Page;

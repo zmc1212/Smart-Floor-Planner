@@ -9,13 +9,13 @@
 - Upstream project: <https://lucide.dev>.
 - Exported glyphs: `WalletCards`, `BadgePercent`, and `Info`.
 - Production derivatives: the PNG files under
-  `miniprogram/images/commission-records-ip-v1/` with `wallet-`, `receipt-`,
+  `miniprogram/packages/business/assets/commission-records/` with `wallet-`, `receipt-`,
   and `info-` prefixes. Colour variants preserve one glyph geometry and stroke
   family for status semantics.
 
 ## Xiao K Scene
 
-- `miniprogram/images/commission-records-ip-v1/hero-scene.jpg` is a cropped,
+- `miniprogram/packages/business/assets/commission-records/hero-scene.jpg` is a cropped,
   compressed production derivative of the user-supplied project reference
   `design-references/all-pages-ip-v1/12-commission-records.png`.
 - The crop contains only the Xiao K income-assistant scene. Sample record text,

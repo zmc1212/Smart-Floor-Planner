@@ -270,6 +270,72 @@
     @apply text-xs font-semibold text-muted-foreground;
   }
 
+  .admin-module-overview {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+    width: 100%;
+    margin-bottom: 1.25rem;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    background: var(--border);
+  }
+
+  .admin-module-overview-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 5.5rem;
+    padding: 0.75rem 1.25rem;
+    background: var(--card);
+  }
+
+  .admin-module-overview-icon {
+    display: flex;
+    width: 2.25rem;
+    height: 2.25rem;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+  }
+
+  .admin-module-overview-icon-default {
+    color: var(--primary);
+    background: color-mix(in oklab, var(--primary) 12%, transparent);
+  }
+
+  .admin-module-overview-icon-success {
+    color: #059669;
+    background: rgb(16 185 129 / 12%);
+  }
+
+  .admin-module-overview-icon-warning {
+    color: #b45309;
+    background: rgb(245 158 11 / 12%);
+  }
+
+  .admin-module-overview-icon-danger {
+    color: #e11d48;
+    background: rgb(244 63 94 / 12%);
+  }
+
+  .admin-module-overview-label {
+    margin: 0;
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+
+  .admin-module-overview-value {
+    margin: 0;
+    color: var(--foreground);
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 2rem;
+  }
+
   .admin-staff-layout {
     @apply grid min-w-0 gap-5 xl:grid-cols-[18rem_minmax(0,1fr)];
   }
@@ -304,7 +370,22 @@
     margin-inline-end: 0.625rem;
   }
 
+  @media (min-width: 641px) and (max-width: 1279px) {
+    .admin-module-overview {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
   @media (max-width: 640px) {
+    .admin-module-overview {
+      grid-template-columns: 1fr;
+    }
+
+    .admin-module-overview-item {
+      min-height: 4.75rem;
+      padding-inline: 1rem;
+    }
+
     .admin-page-frame .admin-page-container .ant-pro-page-container-detail {
       @apply flex-col items-start gap-3;
     }

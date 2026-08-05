@@ -33,6 +33,12 @@ type StorePostgresMediaInput = {
 
 const POSTGRES_ASSET_IMAGE_RE = /^\/api\/ai\/assets\/([1-9]\d*)\/image/i;
 
+export function parseImageDataUri(value: string) {
+  const match = value.match(/^data:([^;,]+);base64,([A-Za-z0-9+/=]+)$/i);
+  if (!match) throw new Error('Unsupported image data URI');
+  return { mimeType: match[1], buffer: Buffer.from(match[2], 'base64') };
+}
+
 function getExtension(mimeType: string) {
   if (mimeType === 'image/jpeg') return 'jpg';
   if (mimeType === 'image/png') return 'png';

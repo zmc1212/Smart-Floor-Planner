@@ -23,7 +23,7 @@ export function AiToolFrame({
 }: AiToolFrameProps) {
   return (
     <div className="min-h-full bg-background text-foreground">
-      <main className="mx-auto max-w-[1480px] px-5 py-6 sm:px-7 sm:py-8">
+      <main className="px-5 py-6 sm:px-7 sm:py-8">
         <header className="mb-7 flex flex-col gap-5 border-b border-border pb-6 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
             {onBack ? (

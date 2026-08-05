@@ -39,7 +39,7 @@ Page({
 
   onOpenLeadModal() {
     wx.navigateTo({
-      url: '/pages/lead-form/lead-form',
+      url: '/packages/business/lead-form/lead-form',
     });
   },
 

@@ -2,6 +2,7 @@ const app = getApp();
 const api = require('../../utils/api.js');
 const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
 const { openAIDesignTab } = require('../../utils/aiDesignNavigation.js');
+const { canAccessAIDesign } = require('../../utils/aiDesignAccess.js');
 const {
   buildWorkbenchActions,
   buildDashboardSlices,
@@ -20,10 +21,10 @@ const FALLBACK_PROFILE = {
 };
 
 const ACTION_TARGETS = {
-  createPromotion: () => wx.navigateTo({ url: '/pages/promotion-record-detail/promotion-record-detail?mode=create' }),
-  commissions: () => wx.navigateTo({ url: '/pages/commission-records/commission-records' }),
+  createPromotion: () => wx.navigateTo({ url: '/packages/business/promotion-record-detail/promotion-record-detail?mode=create' }),
+  commissions: () => wx.navigateTo({ url: '/packages/business/commission-records/commission-records' }),
   leads: () => wx.switchTab({ url: '/pages/leads-management/leads-management' }),
-  inspiration: () => wx.navigateTo({ url: '/pages/inspiration/inspiration' }),
+  inspiration: () => wx.navigateTo({ url: '/packages/business/inspiration/inspiration' }),
   measure: () => wx.switchTab({ url: '/pages/index/index' }),
   aiDesign: () => openAIDesignTab()
 };
@@ -46,6 +47,7 @@ Page({
   data: {
     isLoggedIn: false,
     isStaff: false,
+    canUseAIDesign: false,
     loadingMine: false,
     mineError: '',
     floorPlansLoading: false,
@@ -86,6 +88,7 @@ Page({
       this.setData({
         isLoggedIn: true,
         isStaff: userInfo.role === 'staff',
+        canUseAIDesign: canAccessAIDesign(userInfo),
         loadingMine: false,
         floorPlans: [],
         mineError: '',
@@ -102,6 +105,7 @@ Page({
       this.setData({
         isLoggedIn: true,
         isStaff: userInfo.role === 'staff',
+        canUseAIDesign: canAccessAIDesign(userInfo),
         loadingMine: false,
         mineError: '',
         floorPlansLoading: false,
@@ -127,6 +131,7 @@ Page({
     this.setData({
       isLoggedIn: false,
       isStaff: false,
+      canUseAIDesign: false,
       loadingMine: false,
       mineError: '',
       floorPlansLoading: false,
@@ -175,7 +180,7 @@ Page({
   },
 
   goToLogin() {
-    wx.navigateTo({ url: '/pages/login/login' });
+    wx.navigateTo({ url: '/packages/business/login/login' });
   },
 
   async fetchMineData() {
@@ -186,11 +191,16 @@ Page({
       const profile = data.profile || FALLBACK_PROFILE;
       const workbenchCards = data.workbenchCards || [];
       const todos = data.todos || [];
-      const workbenchActions = buildWorkbenchActions(data.actions);
+      const canUseAIDesign = canAccessAIDesign({
+        role: data.isStaff ? 'staff' : 'user',
+        enterpriseId: profile.enterpriseId,
+      });
+      const workbenchActions = buildWorkbenchActions(data.actions, canUseAIDesign);
 
       this.setData({
         loadingMine: false,
         isStaff: !!data.isStaff,
+        canUseAIDesign,
         mineData: {
           profile: { ...FALLBACK_PROFILE, ...profile },
           actions: data.actions || [],
@@ -280,7 +290,7 @@ Page({
       const parts = payload.split('?');
       const view = parts[0] || 'my';
       const extraQuery = parts[1] ? `&${parts[1]}` : '';
-      wx.navigateTo({ url: `/pages/promotion-records/promotion-records?view=${view}${extraQuery}` });
+      wx.navigateTo({ url: `/packages/business/promotion-records/promotion-records?view=${view}${extraQuery}` });
       return;
     }
 
@@ -303,13 +313,13 @@ Page({
       designer: 'design',
       measurer: 'measure'
     };
-    wx.navigateTo({ url: `/pages/promotion-records/promotion-records?view=${viewMap[role] || 'my'}` });
+    wx.navigateTo({ url: `/packages/business/promotion-records/promotion-records?view=${viewMap[role] || 'my'}` });
   },
 
   onOpenTodoDetail(e) {
     const id = e.currentTarget.dataset.id;
     if (!id) return;
-    wx.navigateTo({ url: `/pages/promotion-record-detail/promotion-record-detail?id=${id}` });
+    wx.navigateTo({ url: `/packages/business/promotion-record-detail/promotion-record-detail?id=${id}` });
   },
 
   onOpenFloorPlan(e) {

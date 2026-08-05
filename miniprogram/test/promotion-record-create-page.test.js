@@ -4,13 +4,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const miniRoot = path.resolve(__dirname, '..');
-const pageDir = path.join(miniRoot, 'pages', 'promotion-record-detail');
+const pageDir = path.join(miniRoot, 'packages', 'business', 'promotion-record-detail');
 const pageJs = fs.readFileSync(path.join(pageDir, 'promotion-record-detail.js'), 'utf8');
 const pageWxml = fs.readFileSync(path.join(pageDir, 'promotion-record-detail.wxml'), 'utf8');
 const pageWxss = fs.readFileSync(path.join(pageDir, 'promotion-record-detail.wxss'), 'utf8');
 
 test('Enterprise report create mode matches the approved work-order structure', () => {
-  assert.match(pageWxml, /images\/promotion-create\/hero-scene\.jpg/);
+  assert.match(pageWxml, /packages\/business\/assets\/promotion-create\/hero-scene\.jpg/);
   assert.match(pageWxml, /class="create-form-card"/);
   assert.match(pageWxml, />企业信息</);
   assert.match(pageWxml, />联系人</);
@@ -39,7 +39,7 @@ test('Enterprise report create visual anchors preserve the 390x844 composition',
 });
 
 test('Enterprise report create assets are local and compact', () => {
-  const assetDir = path.join(miniRoot, 'images', 'promotion-create');
+  const assetDir = path.join(miniRoot, 'packages', 'business', 'assets', 'promotion-create');
   const icons = [
     'building-2.png',
     'badge-check.png',

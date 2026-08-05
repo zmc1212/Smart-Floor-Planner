@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { withTenantRoute } from '@/lib/tenant-route';
-import { retryMiniAiTask } from '@/lib/ai/mini-ai-tasks';
 import { retryPostgresMiniAiTaskForAdmin } from '@/lib/ai/postgres-mini-ai-tasks';
 
 const POSTGRES_BIGINT_MAX = BigInt('9223372036854775807');
@@ -13,33 +12,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async (context) => {
       const { id } = await params;
-      if (isPostgresId(id)) {
-        if (!context.enterpriseId) {
-          return NextResponse.json({ success: false, error: 'Enterprise context required' }, { status: 400 });
-        }
-        const generation = await retryPostgresMiniAiTaskForAdmin(id, context.enterpriseId);
-        if (!generation) return NextResponse.json({ success: false, error: 'Task not found' }, { status: 404 });
-        return NextResponse.json({ success: true });
+      if (!isPostgresId(id)) {
+        return NextResponse.json({ success: false, error: 'Task not found' }, { status: 404 });
       }
-
-      const [{ default: dbConnect }, { default: mongoose }, { AiGeneration }] = await Promise.all([
-        import('@/lib/mongodb'),
-        import('mongoose'),
-        import('@/models/AiGeneration'),
-      ]);
-      await dbConnect();
-      const generation = await AiGeneration.findOne({ _id: id, channel: 'miniprogram' });
-      if (!generation) return NextResponse.json({ success: false, error: '任务不存在' }, { status: 404 });
-      const legacyEnterpriseId = generation.enterpriseId;
-      if (!(legacyEnterpriseId instanceof mongoose.Types.ObjectId)) {
-        return NextResponse.json({ success: false, error: '该历史任务不支持通过小程序重试' }, { status: 409 });
+      if (!context.enterpriseId) {
+        return NextResponse.json({ success: false, error: 'Enterprise context required' }, { status: 400 });
       }
-      await retryMiniAiTask(generation, {
-        enterpriseId: legacyEnterpriseId.toString(),
-        operatorId: context.userId,
-        username: context.username,
-        role: context.role,
-      });
+      const generation = await retryPostgresMiniAiTaskForAdmin(id, context.enterpriseId);
+      if (!generation) return NextResponse.json({ success: false, error: 'Task not found' }, { status: 404 });
       return NextResponse.json({ success: true });
     });
   } catch (error) {

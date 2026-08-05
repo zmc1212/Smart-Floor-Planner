@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { AiCreationRepository } from '@/db/repositories/ai-creation-repository';
 import { withTenantTransaction } from '@/db/transaction';
-import { resolveProviderCostEstimate } from '@/lib/ai/execution-service';
+import { resolveProviderCostEstimate } from '@/lib/ai/provider-cost';
 import { getAiProviderAdapter, listProviderRuntimes } from '@/lib/ai/provider-registry';
 import {
   capabilityForLogicalModel,

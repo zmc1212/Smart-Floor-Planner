@@ -492,7 +492,7 @@ and `cancelled`.
 | Phase 2 | PostgreSQL schema and Repository foundation | complete | Codex and user acceptance passed on 2026-08-01 |
 | Phase 3 | Mongoose-to-PostgreSQL application switch | in progress | Identity/enterprise core and public branding reads, leads, formal plans, measurements/devices, inspirations, prompt-library reads, roles, global promotion/media config, package catalog, promotion records, orders/commissions, enterprise activation, workflow notifications, workbench, reminder runtime, AI style presets, AI provider configuration/runtime, GRS image-model catalog and model pricing, AI action/model pricing, AI credit accounts/ledgers, AI chat sessions, enterprise AI usage snapshot and recent credit-task reads, PostgreSQL media-asset delivery, free-creation execution, Mini Program AI task execution and administrator retry, public bigint workflow list/detail/create/state/stage execution, manual `mock-generation` result persistence, synchronous advice/prompt-assist generation, direct soft-furnishing rendering, two-step direct `generate`/`render`, and the Admin AI Designer Agent’s bigint lead/floor-plan/workflow consumers are switched. |
 | Phase 4 | RoomiAI files/data and Qiniu configuration import | in progress: awaiting user acceptance | PostgreSQL active Roomi revision, 960 verified local previews, imported Qiniu configuration, and successful probe on 2026-08-01 |
-| Phase 5 | Contract tests and cutover rehearsal | not started | Pending |
+| Phase 5 | Contract tests and cutover rehearsal | in progress: Codex verification passed | The dedicated migrator completed idempotently; PostgreSQL contract/RLS tests and a local backup/restore drill passed on 2026-08-05. Admin and Mini Program user acceptance remains pending. |
 | Phase 6 | Production PostgreSQL cutover | not started | Pending |
 | Phase 7 | End of MongoDB read-only retention | not started | Pending |
 
@@ -991,6 +991,35 @@ Phase 4 acceptance status:
 | Prompt-library and preview primary flow | User | pending | - | Requires the active PostgreSQL Roomi revision in the admin UI |
 | Qiniu configuration and critical regression | User | pending | - | Confirm media-storage configuration, login, permissions, and tenant boundaries |
 
+### Phase 5 progress record (2026-08-05)
+
+- The PostgreSQL container was healthy. The dedicated `sfp_migrator` role ran
+  `npm run docker:migrate` successfully; the local runtime `sfp_app` role was
+  intentionally not granted DDL privileges.
+- `npm run db:check` confirmed the `sfp_app` runtime connection can use the
+  `app` schema and reported the existing `phase4-retained-data` checkpoint.
+- `npm run test:postgresql` passed 49/49, including tenant RLS, foreign-key
+  index coverage, formal surveying, commercial activation, AI lifecycle, and
+  PostgreSQL runtime-configuration coverage. The run emitted one `pg` future
+  deprecation warning about concurrent `client.query()` use; it did not fail
+  the suite and remains follow-up technical debt.
+- `npm run db:backup` wrote a local 798,009-byte custom-format backup. `npm run
+  db:restore-drill` restored it only into
+  `smart_floor_planner_restore_drill`, verified 45 `app` tables, 26 RLS tables,
+  52 policies, and one migration checkpoint, then removed that drill database.
+- The full repository lint remains blocked by 66 pre-existing, unrelated
+  errors. No MongoDB business documents, PostgreSQL business data, Qiniu
+  objects, or secrets were imported, deleted, logged, or re-encrypted in this
+  Phase 5 verification slice.
+
+Phase 5 acceptance status:
+
+| Acceptance item | Owner | Status | Date | Evidence/issues |
+| --- | --- | --- | --- | --- |
+| Migrator, runtime database check, PostgreSQL contract/RLS suite, backup, and restore drill | Codex | passed | 2026-08-05 | `docker:migrate`, `db:check`, PostgreSQL 49/49, 798,009-byte backup, and 45/26/52 restore verification passed |
+| Admin and Mini Program template browser/preview contract flows | User | pending | - | Requires the active PostgreSQL Roomi revision and authenticated admin/Mini Program sessions |
+| Full cutover regression and tenant-isolation acceptance | User | pending | - | Must cover login, roles, tenant isolation, media storage, and adjacent AI flows before Phase 6 |
+
 ## 6. Rollback
 
 Before PostgreSQL accepts business writes, switching back to MongoDB is direct.
@@ -1022,3 +1051,13 @@ and the administrator Mini Program task retry now use PostgreSQL bigint records.
 Beyond the completed Phase 4
 whitelist import, do not import production business data without an explicit
 migration slice and acceptance record.
+
+### PostgreSQL-only cutover decision (2026-08-05)
+
+No ObjectId compatibility API or historical business-document import is part of
+the cutover. Only the Phase 4 whitelist is retained: Qiniu `zly-images` storage
+configuration and the active Roomi prompt-library revision with its templates,
+parameters, source models, and preview assets. Runtime code, Docker Compose,
+environment examples, package manifests, and maintenance scripts are now
+PostgreSQL-only. Existing MongoDB data and containers are untouched and are
+outside the deployed application.

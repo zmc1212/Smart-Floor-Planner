@@ -21,7 +21,7 @@ COPY . .
 
 # Build-time environment variables (required for Next.js static optimization)
 # These will be baked into the client bundle at build time.
-# Runtime env vars (MONGODB_URI, JWT_SECRET) are injected via docker-compose.
+# Runtime environment variables (DATABASE_URL, JWT_SECRET) are injected via docker-compose.
 ARG NEXT_PUBLIC_APP_NAME="量房大师管理后台"
 
 RUN npm run build

@@ -16,7 +16,7 @@ import {
 import { createPostgresAiWorkflow } from '@/lib/ai/postgres-workflow-service';
 import { resolveMiniAiFloorPlanTarget, renderMiniAiFloorPlanControlPng, type MiniAiTargetScope } from '@/lib/ai/mini-ai-floorplan';
 import type { MiniAiContext } from '@/lib/ai/mini-ai-auth';
-import type { MiniAiRenderMode } from '@/lib/ai/mini-ai-provider';
+import type { MiniAiRenderMode } from '@/lib/ai/mini-ai-types';
 
 export type CreateMiniAiTaskInput = {
   mode: MiniAiRenderMode;
@@ -143,7 +143,7 @@ export async function createPostgresMiniAiTask(input: CreateMiniAiTaskInput, con
   const leadId = requestedLead?.id || planLead?.id;
   let workflowId: bigint | undefined;
   if (input.workflowId && /^[1-9]\d*$/.test(input.workflowId)) {
-    const workflow = await withTenantTransaction(enterpriseId, (transaction) => new AiWorkflowRepository(transaction).findById(BigInt(input.workflowId)));
+    const workflow = await withTenantTransaction(enterpriseId, (transaction) => new AiWorkflowRepository(transaction).findById(BigInt(String(input.workflowId))));
     if (!workflow || workflow.operatorId !== operatorId || workflow.status !== 'active') {
       throw Object.assign(new Error('当前角色无权续接该客户方案'), { status: 403 });
     }

@@ -1,6 +1,6 @@
 import type { AiActionKey, AiCapability, AiLogicalModelKey } from '@/lib/ai/provider-types';
 import type { AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
-import type { MiniAiRenderMode } from '@/lib/ai/mini-ai-provider';
+import type { MiniAiRenderMode } from '@/lib/ai/mini-ai-types';
 
 export type AiDesignSurface = 'admin_workflow' | 'admin_quick' | 'miniprogram';
 

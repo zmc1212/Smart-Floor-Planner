@@ -1,6 +1,7 @@
 <view class="tabbar-shell">
   <view class="tabbar">
     <view
+      wx:if="{{item.visible !== false}}"
       wx:for="{{list}}"
       wx:key="key"
       class="tab-item {{item.center ? 'center' : ''}} {{selected === index ? 'active' : ''}}"

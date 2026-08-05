@@ -1,10 +1,8 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
 import {
   checkPostgresConnection,
   isPostgresConfigured,
 } from '@/lib/postgresql';
-import { User } from '@/models/User';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,24 +18,6 @@ type DatabaseHealth =
   | {
       status: 'not_configured';
     };
-
-async function checkMongoDatabase() {
-  const startedAt = Date.now();
-  try {
-    await dbConnect();
-    const usersCount = await User.countDocuments();
-    return {
-      status: 'ok' as const,
-      latencyMs: Date.now() - startedAt,
-      usersCount,
-    };
-  } catch {
-    return {
-      status: 'error' as const,
-      latencyMs: Date.now() - startedAt,
-    };
-  }
-}
 
 async function checkPostgresDatabase(): Promise<DatabaseHealth> {
   if (!isPostgresConfigured()) return { status: 'not_configured' };
@@ -57,29 +37,16 @@ async function checkPostgresDatabase(): Promise<DatabaseHealth> {
 }
 
 export async function GET() {
-  const postgresRequired =
-    process.env.POSTGRES_HEALTHCHECK_REQUIRED?.trim().toLowerCase() === 'true';
-  const [mongodb, postgresql] = await Promise.all([
-    checkMongoDatabase(),
-    checkPostgresDatabase(),
-  ]);
-
-  const postgresGatePassed = postgresRequired
-    ? postgresql.status === 'ok'
-    : true;
-  const healthy = mongodb.status === 'ok' && postgresGatePassed;
-  const degraded =
-    healthy && postgresql.status === 'error' && !postgresRequired;
-  const status = healthy ? (degraded ? 'degraded' : 'ok') : 'error';
+  const postgresql = await checkPostgresDatabase();
+  const healthy = postgresql.status === 'ok';
 
   return NextResponse.json(
     {
-      status,
+      status: healthy ? 'ok' : 'error',
       databases: {
-        mongodb,
         postgresql: {
           ...postgresql,
-          required: postgresRequired,
+          required: true,
         },
       },
     },

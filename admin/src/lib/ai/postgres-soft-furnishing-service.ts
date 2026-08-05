@@ -3,7 +3,7 @@ import { parsePostgresId } from '@/db/postgres-dto';
 import { withTenantTransaction } from '@/db/transaction';
 import { getAiCreditPrice } from '@/lib/ai/credits';
 import { assertEnterpriseAiActionAllowed } from '@/lib/ai/enterprise-policy';
-import { parseImageDataUri } from '@/lib/ai/media-assets';
+import { parseImageDataUri } from '@/lib/ai/postgres-media-assets';
 import { getPostgresMediaAssetImageUrl, storePostgresMediaBuffer } from '@/lib/ai/postgres-media-assets';
 import { submitPostgresCreationGeneration } from '@/lib/ai/postgres-creation-runtime';
 import type { FurnitureSelection } from '@/lib/ai/soft-furnishing';

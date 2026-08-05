@@ -157,7 +157,7 @@ test('AI Design home ships the approved map, journey, and scene states without t
   assert.doesNotMatch(pageWxml, /class="workflow-grid"/);
   assert.doesNotMatch(pageWxml, />AI 设计</);
   assert.match(pageWxss, /\.plan-stage\s*\{[\s\S]*height:\s*620rpx/);
-  assert.match(pageWxml, /\/images\/ai-design-hero-v3\.jpg/);
+  assert.match(pageWxml, /\/images\/ai-design-hero-v3\.png/);
   assert.match(pageWxml, /class="scene-source-card"/);
   assert.match(pageWxml, />参考图复刻</);
   assert.match(pageWxml, />拍照换风格</);

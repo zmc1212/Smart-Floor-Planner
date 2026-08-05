@@ -98,6 +98,18 @@ staged change; split unrelated work.
   Chrome session with the Chrome plugin; the in-app Browser uses an isolated
   session and is suitable only for unauthenticated views unless separately
   logged in.
+- Before proposing or editing an Admin UI refactor, read
+  `docs/admin-ui-refactor.md` and `docs/admin-ui-refactor.zh-CN.md`. Treat the
+  route ledger as the selection gate: do not select a route marked `Hold` for a
+  generic “continue refactoring” request. Reopen it only when the user names the
+  route, a screenshot or reproducible visual defect identifies it, its workflow
+  contract changes, or the user explicitly approves a new design direction.
+  Prefer an unrecorded or explicitly queued route after auditing the remaining
+  Admin surface; do not repeatedly choose familiar low-risk table pages.
+- Every Admin UI refactor must update the latest ledger record in both language
+  files with its date, exact visual scope, unchanged route/API/permission
+  boundaries, verification evidence, outstanding visual-QA state, and the next
+  permitted reopen trigger. A refactor without this record is incomplete.
 - Every visible admin-triggered mutation must use the shared operation feedback
   UI for success and failure. Do not use raw `alert()` as normal feedback.
 - Dangerous confirmations may be native, but the resulting operation still needs

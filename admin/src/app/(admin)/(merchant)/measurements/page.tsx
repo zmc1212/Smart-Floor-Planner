@@ -10,6 +10,8 @@ import {
   type ProColumns,
 } from '@ant-design/pro-components';
 import { Tag, Typography } from 'antd';
+import { Bluetooth, ChartNoAxesCombined, Ruler, ScanLine } from 'lucide-react';
+import ModuleOverview from '@/components/admin/ModuleOverview';
 import { notify } from '@/components/ui/operation-feedback';
 
 interface MeasurementItem {
@@ -96,6 +98,7 @@ export default function MeasurementsPage() {
   const [staff, setStaff] = useState<NamedOption[]>([]);
   const [floorPlans, setFloorPlans] = useState<NamedOption[]>([]);
   const [devices, setDevices] = useState<NamedOption[]>([]);
+  const [overview, setOverview] = useState({ total: 0, ble: 0, manual: 0, floorPlans: 0 });
 
   useEffect(() => {
     let cancelled = false;
@@ -228,6 +231,15 @@ export default function MeasurementsPage() {
         title="量房记录"
         content="查看正式户型的独立测量审计事件，最多展示符合条件的 100 条记录。"
       >
+        <ModuleOverview
+          ariaLabel="量房审计概览"
+          items={[
+            { label: '当前筛选记录', value: overview.total, icon: <ChartNoAxesCombined size={18} /> },
+            { label: '蓝牙测距', value: overview.ble, icon: <Bluetooth size={18} />, tone: 'success' },
+            { label: '手动录入', value: overview.manual, icon: <Ruler size={18} />, tone: 'warning' },
+            { label: '关联户型', value: overview.floorPlans, icon: <ScanLine size={18} /> },
+          ]}
+        />
         <ProTable<MeasurementItem>
           className="admin-data-table admin-mobile-filter-stack"
           actionRef={actionRef}
@@ -261,6 +273,20 @@ export default function MeasurementsPage() {
               ].filter(Boolean).join(' ').toLocaleLowerCase().includes(keyword);
               return matchesKeyword && (!params.source || item.source === params.source);
             });
+            const nextOverview = {
+              total: rows.length,
+              ble: rows.filter((item: MeasurementItem) => item.source === 'ble').length,
+              manual: rows.filter((item: MeasurementItem) => item.source === 'manual').length,
+              floorPlans: new Set(rows.map((item: MeasurementItem) => item.floorPlanId?._id).filter(Boolean)).size,
+            };
+            setOverview((current) => (
+              current.total === nextOverview.total &&
+              current.ble === nextOverview.ble &&
+              current.manual === nextOverview.manual &&
+              current.floorPlans === nextOverview.floorPlans
+                ? current
+                : nextOverview
+            ));
             return { data: rows, total: rows.length, success: true };
           }}
           onRequestError={(error) => notify.error(error instanceof Error ? error.message : '量房记录加载失败')}

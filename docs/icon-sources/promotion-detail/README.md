@@ -4,11 +4,11 @@
 - Ownership/license: project-owned approved product design reference; derivatives
   are licensed for use inside Smart Floor Planner.
 - Production derivatives:
-  - `miniprogram/images/promotion-detail/hero-scene.png`
-  - `miniprogram/images/promotion-detail/calendar.png`
-  - `miniprogram/images/promotion-detail/clock.png`
-  - `miniprogram/images/promotion-detail/measurer.png`
-  - `miniprogram/images/promotion-detail/designer.png`
+  - `miniprogram/packages/business/assets/promotion-detail/hero-scene.png`
+  - `miniprogram/packages/business/assets/promotion-detail/calendar.png`
+  - `miniprogram/packages/business/assets/promotion-detail/clock.png`
+  - `miniprogram/packages/business/assets/promotion-detail/measurer.png`
+  - `miniprogram/packages/business/assets/promotion-detail/designer.png`
 - The four UI icons are direct raster crops from the same coherent rounded-line
   family used by the approved screen. Each is displayed at no more than half its
   exported pixel dimensions and remains below the 10 KB micro-icon budget.

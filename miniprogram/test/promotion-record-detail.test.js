@@ -4,13 +4,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
-const pageRoot = path.join(root, 'pages', 'promotion-record-detail');
+const pageRoot = path.join(root, 'packages', 'business', 'promotion-record-detail');
 
 test('promotion detail ships the approved live-data composition', () => {
   const wxml = fs.readFileSync(path.join(pageRoot, 'promotion-record-detail.wxml'), 'utf8');
   const script = fs.readFileSync(path.join(pageRoot, 'promotion-record-detail.js'), 'utf8');
 
-  assert.match(wxml, /images\/promotion-detail\/hero-scene\.png/);
+  assert.match(wxml, /packages\/business\/assets\/promotion-detail\/hero-scene\.png/);
   assert.match(wxml, /record\.enterpriseName/);
   assert.match(wxml, /maskedPhone/);
   assert.match(wxml, /wx:for="\{\{stageSteps\}\}"/);
@@ -23,7 +23,7 @@ test('promotion detail ships the approved live-data composition', () => {
 });
 
 test('promotion detail reference icons are local PNGs within the micro-icon budget', () => {
-  const imageRoot = path.join(root, 'images', 'promotion-detail');
+  const imageRoot = path.join(root, 'packages', 'business', 'assets', 'promotion-detail');
   for (const file of ['calendar.png', 'clock.png', 'measurer.png', 'designer.png']) {
     const data = fs.readFileSync(path.join(imageRoot, file));
     assert.deepEqual([...data.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);

@@ -1,6 +1,5 @@
-import mongoose from 'mongoose';
-import { Enterprise } from '@/models/Enterprise';
 import { EnterpriseRepository } from '@/db/repositories';
+import { parsePostgresId } from '@/db/postgres-dto';
 import { withTenantTransaction } from '@/db/transaction';
 import { AI_ACTION_KEYS, type AiActionKey } from '@/lib/ai/provider-types';
 
@@ -14,31 +13,29 @@ function serializeAiPolicy(aiPolicy?: AiPolicy | null) {
   const enabledActionKeys = Array.isArray(configured) && configured.length
     ? configured.filter((key): key is AiActionKey => AI_ACTION_KEYS.includes(key as AiActionKey))
     : [...AI_ACTION_KEYS];
-  return {
-    enabledActionKeys,
-    logicalModelTier: 'standard' as const,
-  };
+  return { enabledActionKeys, logicalModelTier: 'standard' as const };
 }
 
-export async function getEnterpriseAiPolicy(enterpriseId: string | mongoose.Types.ObjectId) {
-  if (typeof enterpriseId === 'string' && /^[1-9]\d*$/.test(enterpriseId)) {
-    const enterprise = await withTenantTransaction(
-      enterpriseId,
-      (transaction) => new EnterpriseRepository(transaction).findById(BigInt(enterpriseId))
-    );
-    if (!enterprise) throw new Error('企业不存在');
-    return serializeAiPolicy(enterprise.aiPolicy);
-  }
-
-  const enterprise = await Enterprise.findById(enterpriseId).select('aiPolicy').lean();
-  if (!enterprise) throw new Error('企业不存在');
+export async function getEnterpriseAiPolicy(enterpriseId: string | bigint) {
+  const id = parsePostgresId(enterpriseId, 'enterpriseId');
+  const enterprise = await withTenantTransaction(
+    id,
+    (transaction) => new EnterpriseRepository(transaction).findById(id)
+  );
+  if (!enterprise) throw new Error('Enterprise not found');
   return serializeAiPolicy(enterprise.aiPolicy);
 }
 
-export async function assertEnterpriseAiActionAllowed(enterpriseId: string | mongoose.Types.ObjectId, actionKey: AiActionKey) {
+export async function assertEnterpriseAiActionAllowed(
+  enterpriseId: string | bigint,
+  actionKey: AiActionKey
+) {
   const policy = await getEnterpriseAiPolicy(enterpriseId);
   if (!policy.enabledActionKeys.includes(actionKey)) {
-    const error = new Error('当前企业未开放该 AI 功能') as Error & { status?: number; code?: string };
+    const error = new Error('This AI action is disabled for the enterprise') as Error & {
+      status?: number;
+      code?: string;
+    };
     error.status = 403;
     error.code = 'AI_ACTION_DISABLED';
     throw error;

@@ -4,9 +4,11 @@
 project-authored vector assets. The phone illustration and editor-rail icons use
 the same rounded-line geometry as the measurement UI.
 
-`bluetooth.svg`, `circle-check.svg`, `crosshair.svg`, and `refresh-cw.svg` are
-adapted from Lucide Icons v1.8.0. They are rendered as transparent PNG files in
-`miniprogram/images/surveying-icons/angle/` for the native Mini Program.
+`bluetooth.svg`, `circle-check.svg`, `crosshair.svg`, `refresh-cw.svg`,
+`guide-help.svg`, and `save-draft.svg` are adapted from Lucide Icons v1.8.0.
+They are rendered as transparent PNG files in
+`miniprogram/packages/surveying/assets/icons/` and its `angle/` subdirectory
+for the native Mini Program.
 
 Copyright (c) 2026 Lucide Icons and Contributors
 

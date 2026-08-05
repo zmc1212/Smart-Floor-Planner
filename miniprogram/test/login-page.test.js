@@ -6,10 +6,10 @@ const test = require('node:test');
 const projectRoot = path.resolve(__dirname, '..');
 
 test('Login page ships the approved Xiao K entry composition with live controls', () => {
-  const wxml = fs.readFileSync(path.join(projectRoot, 'pages/login/login.wxml'), 'utf8');
-  const wxss = fs.readFileSync(path.join(projectRoot, 'pages/login/login.wxss'), 'utf8');
+  const wxml = fs.readFileSync(path.join(projectRoot, 'packages/business/login/login.wxml'), 'utf8');
+  const wxss = fs.readFileSync(path.join(projectRoot, 'packages/business/login/login.wxss'), 'utf8');
 
-  assert.match(wxml, /\/images\/login-v1\/hero-scene\.jpg/);
+  assert.match(wxml, /\/packages\/business\/assets\/login-v1\/hero-scene\.jpg/);
   assert.match(wxml, /家客来/);
   assert.match(wxml, /企业客户工作台/);
   assert.match(wxml, /open-type="getPhoneNumber"/);
@@ -26,7 +26,7 @@ test('Login page ships the approved Xiao K entry composition with live controls'
 });
 
 test('Login visual assets are local, valid, and stay within the Mini Program budget', () => {
-  const assetDir = path.join(projectRoot, 'images/login-v1');
+  const assetDir = path.join(projectRoot, 'packages/business/assets/login-v1');
   const pngNames = ['smartphone', 'measure', 'ai', 'images', 'chevron-right', 'wechat'];
 
   for (const name of pngNames) {

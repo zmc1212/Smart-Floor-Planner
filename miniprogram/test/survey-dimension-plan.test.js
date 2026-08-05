@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const {
   createExteriorBoundarySegments,
   createExteriorDimensionPlan
-} = require('../utils/surveyDimensionPlan.js');
+} = require('../packages/surveying/utils/surveyDimensionPlan.js');
 
 function createGeometryBuilder() {
   const walls = [];

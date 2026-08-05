@@ -3,6 +3,7 @@ const api = require('../../utils/api.js');
 const templateUtils = require('../../utils/templates.js');
 const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
 const { openAIDesignTab } = require('../../utils/aiDesignNavigation.js');
+const { canAccessAIDesign } = require('../../utils/aiDesignAccess.js');
 
 const QUICK_TOOLS = [
   {
@@ -112,6 +113,7 @@ Page({
     windowHeight: 600,
     branding: null,
     isStaff: false,
+    canUseAIDesign: false,
     showBLEConnector: false,
     currentCity: '',
     bleStatusText: '未连接设备',
@@ -146,6 +148,7 @@ Page({
       userInfo: userInfo,
       openid: app.globalData.openid || '',
       isStaff: (userInfo && userInfo.role === 'staff'),
+      canUseAIDesign: canAccessAIDesign(userInfo),
       currentCity: this.data.hasPreciseLocation ? this.data.currentCity : this.deriveCurrentCity(userInfo),
       homeTemplates: (this.data.layoutTemplates || []).slice(0, 4),
       quickTools: QUICK_TOOLS,
@@ -169,7 +172,7 @@ Page({
     if (app.globalData.requireLeadFirst) {
       app.globalData.requireLeadFirst = false;
       wx.navigateTo({
-        url: '/pages/lead-form/lead-form',
+        url: '/packages/business/lead-form/lead-form',
       });
     } else if (!this.data.currentProject_id) {
       await this.fetchCloudPlans();
@@ -180,6 +183,7 @@ Page({
       bleConnected: app.globalData.bleConnected || false,
       branding: app.globalData.branding || null,
       isStaff: (userInfo && userInfo.role === 'staff'),
+      canUseAIDesign: canAccessAIDesign(userInfo),
       userInfo: userInfo,
       openid: app.globalData.openid || '',
       currentCity: this.data.hasPreciseLocation ? this.data.currentCity : this.deriveCurrentCity(userInfo),
@@ -381,7 +385,7 @@ Page({
     const leadId = e.detail ? e.detail._id : null;
     if (leadId) {
       wx.navigateTo({
-        url: `/pages/lead-detail/lead-detail?id=${leadId}`,
+        url: `/packages/business/lead-detail/lead-detail?id=${leadId}`,
       });
     } else {
       wx.showToast({ title: '线索创建成功', icon: 'success' });
@@ -403,7 +407,7 @@ Page({
 
     // 没有项目 → 先收集客户线索，量房数据自动绑定线索
     wx.navigateTo({
-      url: '/pages/lead-form/lead-form',
+      url: '/packages/business/lead-form/lead-form',
     });
   },
 
@@ -416,7 +420,7 @@ Page({
     const app = getApp();
     if (!this.isLoggedIn()) {
       app.globalData.pendingBluetoothAutoConnect = true;
-      wx.navigateTo({ url: '/pages/login/login' });
+      wx.navigateTo({ url: '/packages/business/login/login' });
       return;
     }
 
@@ -430,14 +434,7 @@ Page({
 
   onOpenAIDesign: function () {
     if (!this.isLoggedIn()) {
-      wx.navigateTo({ url: '/pages/login/login' });
-      return;
-    }
-
-    const app = getApp();
-    const userInfo = app.globalData.userInfo || wx.getStorageSync('userInfo') || {};
-    if (userInfo.role !== 'staff') {
-      wx.showToast({ title: '仅企业员工可使用 AI 设计', icon: 'none' });
+      wx.navigateTo({ url: '/packages/business/login/login' });
       return;
     }
 
@@ -674,7 +671,7 @@ Page({
   onAutoConnectBLE: function () {
     if (!this.isLoggedIn()) {
       getApp().globalData.pendingBluetoothAutoConnect = true;
-      wx.navigateTo({ url: '/pages/login/login' });
+      wx.navigateTo({ url: '/packages/business/login/login' });
       return;
     }
 
@@ -711,7 +708,7 @@ Page({
   onConnectBLE: function () {
     if (!this.isLoggedIn()) {
       getApp().globalData.pendingBluetoothAutoConnect = true;
-      wx.navigateTo({ url: '/pages/login/login' });
+      wx.navigateTo({ url: '/packages/business/login/login' });
       return;
     }
 
@@ -741,7 +738,7 @@ Page({
       return;
     }
     wx.navigateTo({
-      url: '/pages/lead-form/lead-form',
+      url: '/packages/business/lead-form/lead-form',
     });
   },
 

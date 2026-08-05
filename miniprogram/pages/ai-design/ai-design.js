@@ -1,6 +1,7 @@
 const aiService = require('../../utils/aiDesignService.js');
 const { prioritizeProcessingTasks } = require('../../utils/aiDesignTaskOrdering.js');
 const { consumeAIDesignContext, normalizeAIDesignContext } = require('../../utils/aiDesignNavigation.js');
+const { canAccessAIDesign, showAIDesignAccessDenied } = require('../../utils/aiDesignAccess.js');
 const {
   decorateSourcePlan,
   decorateRecentResult,
@@ -87,6 +88,14 @@ Page({
   },
 
   onShow() {
+    if (!canAccessAIDesign()) {
+      this.recentPageVisible = false;
+      this.stopRecentPolling();
+      showAIDesignAccessDenied();
+      wx.switchTab({ url: '/pages/index/index' });
+      return;
+    }
+
     this.syncTabBar();
     this.recentPageVisible = true;
     this.stopRecentPolling();
@@ -440,7 +449,7 @@ Page({
       this.data.createNewWorkflow ? 'createNewWorkflow=1' : '',
       sourceResultTaskId ? `sourceResultTaskId=${sourceResultTaskId}` : '',
     ].filter(Boolean).join('&');
-    wx.navigateTo({ url: `/pages/ai-design-create/ai-design-create?${query}` });
+    wx.navigateTo({ url: `/packages/ai-workflow/create/ai-design-create?${query}` });
   },
 
   openPrimaryAction() {
@@ -702,10 +711,10 @@ Page({
   },
 
   openHistory() {
-    wx.navigateTo({ url: '/pages/ai-design-history/ai-design-history' });
+    wx.navigateTo({ url: '/packages/ai-workflow/history/ai-design-history' });
   },
 
   openResult(event) {
-    wx.navigateTo({ url: `/pages/ai-design-result/ai-design-result?id=${event.currentTarget.dataset.id}` });
+    wx.navigateTo({ url: `/packages/ai-workflow/result/ai-design-result?id=${event.currentTarget.dataset.id}` });
   },
 });

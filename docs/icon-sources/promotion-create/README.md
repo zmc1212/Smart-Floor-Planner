@@ -1,6 +1,6 @@
 # Enterprise report create icons
 
-The raster icons under `miniprogram/images/promotion-create/` are rendered from
+The raster icons under `miniprogram/packages/business/assets/promotion-create/` are rendered from
 the Lucide icon family bundled with `admin/node_modules/lucide-react`.
 
 Icons used:
@@ -18,4 +18,3 @@ Icons used:
 
 They are rendered as transparent PNG files with one consistent stroke weight
 and neutral/brand colour treatment for the Mini Program create-report form.
-

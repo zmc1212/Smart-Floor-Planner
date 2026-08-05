@@ -16,7 +16,8 @@ import {
   type ProFormInstance,
 } from '@ant-design/pro-components';
 import { Button, Flex, Space, Tag, Typography } from 'antd';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { CircleCheck, PackageOpen, Pencil, Plus, Trash2, Wrench } from 'lucide-react';
+import ModuleOverview from '@/components/admin/ModuleOverview';
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -110,6 +111,7 @@ export default function DevicesPage() {
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [overview, setOverview] = useState({ total: 0, assigned: 0, maintenance: 0, unassigned: 0 });
 
   const canManage = ['super_admin', 'admin', 'enterprise_admin'].includes(currentUser?.role || '');
   const canChangeEnterprise = ['super_admin', 'admin'].includes(currentUser?.role || '');
@@ -329,6 +331,15 @@ export default function DevicesPage() {
           </Button>,
         ] : undefined}
       >
+        <ModuleOverview
+          ariaLabel="设备池概览"
+          items={[
+            { label: '当前筛选设备', value: overview.total, icon: <PackageOpen size={18} /> },
+            { label: '已绑定人员', value: overview.assigned, icon: <CircleCheck size={18} />, tone: 'success' },
+            { label: '维护处理中', value: overview.maintenance, icon: <Wrench size={18} />, tone: 'warning' },
+            { label: '待分配设备', value: overview.unassigned, icon: <PackageOpen size={18} /> },
+          ]}
+        />
         <ProTable<Device>
           className="admin-data-table admin-mobile-filter-stack"
           actionRef={actionRef}
@@ -349,6 +360,20 @@ export default function DevicesPage() {
                 .some((value) => value?.toLocaleLowerCase().includes(keyword));
               return matchesKeyword && (!params.status || item.status === params.status);
             });
+            const nextOverview = {
+              total: rows.length,
+              assigned: rows.filter((item: Device) => item.status === 'assigned').length,
+              maintenance: rows.filter((item: Device) => item.status === 'maintenance').length,
+              unassigned: rows.filter((item: Device) => item.status === 'unassigned').length,
+            };
+            setOverview((current) => (
+              current.total === nextOverview.total &&
+              current.assigned === nextOverview.assigned &&
+              current.maintenance === nextOverview.maintenance &&
+              current.unassigned === nextOverview.unassigned
+                ? current
+                : nextOverview
+            ));
             const pageSize = Number(params.pageSize || 20);
             const current = Number(params.current || 1);
             return {

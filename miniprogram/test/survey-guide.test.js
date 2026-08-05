@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { resolveSurveyGuide, chooseGuidePlacement, chooseGuideCharacter, wrapGuideBody } = require('../utils/surveyGuide');
+const { resolveSurveyGuide, chooseGuidePlacement, chooseGuideCharacter, wrapGuideBody } = require('../packages/surveying/utils/surveyGuide');
 
 function resolve(state, overrides) {
   const floor = {
@@ -127,6 +127,7 @@ test('Xiao K pose and dotted path resolve from the real card and target geometry
   assert.equal(down.pose, 'down');
   assert.ok(down.top + down.size <= safeArea.bottom);
   assert.ok(down.pathLength > 12);
+  assert.ok(down.left + down.size < 140, 'down pose keeps the target clear of the character');
 
   const left = chooseGuideCharacter({
     card,
