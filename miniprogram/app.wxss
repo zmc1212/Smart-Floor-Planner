@@ -14,7 +14,13 @@ page {
   -webkit-font-smoothing: antialiased;
 
   /* Fixed custom TabBar contract for every page declared in app.json.tabBar. */
-  --sfp-custom-tabbar-height: 104rpx;
+  /*
+   * Keep the centre Measure label inside the visible content lane. The
+   * `constant()` declaration supports older iOS WebViews; modern clients use
+   * the following `env()` declaration.
+   */
+  --sfp-custom-tabbar-height: 128rpx;
+  --sfp-custom-tabbar-safe-height: calc(var(--sfp-custom-tabbar-height) + constant(safe-area-inset-bottom));
   --sfp-custom-tabbar-safe-height: calc(var(--sfp-custom-tabbar-height) + env(safe-area-inset-bottom));
 
   /* Brand */

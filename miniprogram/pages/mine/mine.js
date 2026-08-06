@@ -153,8 +153,9 @@ Page({
   },
 
   syncTabBar() {
-    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
-      this.getTabBar().setData({ selected: 4 });
+    const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
+    if (tabBar) {
+      tabBar.syncSelected();
     }
   },
 
@@ -222,6 +223,7 @@ Page({
         avatar: profile.avatar
       };
       wx.setStorageSync('userInfo', app.globalData.userInfo);
+      this.syncTabBar();
 
       if (!data.isStaff) {
         this.fetchMyFloorPlans();
@@ -399,6 +401,7 @@ Page({
       displayTodos: [],
       overviewCards: []
     });
+    this.syncTabBar();
   },
 
   onLogout() {

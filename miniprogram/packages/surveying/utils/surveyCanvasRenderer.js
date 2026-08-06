@@ -11,11 +11,22 @@ const GRID_MAJOR_MM = 1250;
 const WALL_VISUAL_SCALE = 0.56;
 const MIN_WALL_THICKNESS_PX = 10;
 const MAX_WALL_THICKNESS_PX = 22;
-const WALL_STROKE_PX = 2;
-const REDLINE_STROKE_PX = 3;
-const DIMENSION_GAP_PX = 24;
-const DIMENSION_OUTER_GAP_PX = 14;
-const DIMENSION_LABEL_HEIGHT_PX = 20;
+const WALL_STROKE_PX = 1.5;
+const REDLINE_STROKE_PX = 2;
+const GUIDE_STROKE_PX = 1.25;
+// Blue coordinate, cursor, and snap guides need a denser cadence than the
+// green closure cue so they remain easy to track across the full workspace.
+const BLUE_GUIDE_DASH_PX = [8, 6];
+const CLOSURE_GUIDE_DASH_PX = [12, 10];
+const DIMENSION_LABEL_BACKGROUND = 'rgba(210, 210, 210, 0.96)';
+const DIMENSION_LABEL_COLOR = '#0077d7';
+const DIMENSION_LABEL_PADDING_X = 4;
+const DIMENSION_LABEL_HEIGHT_PX = 18;
+const DIMENSION_ENDPOINT_TICK_PX = 8;
+// Keep dimension lines clear of the measured wall, with extension lines
+// bridging the deliberate drafting gap from each wall end.
+const DIMENSION_GAP_PX = 32;
+const DIMENSION_OUTER_GAP_PX = 28;
 const DIMENSION_COLLISION_GAP_PX = 6;
 
 function clamp(value, min, max) {
@@ -866,8 +877,8 @@ function drawAxes(ctx, scene) {
 
   ctx.save();
   ctx.strokeStyle = 'rgba(0, 126, 220, 0.92)';
-  ctx.lineWidth = 2;
-  if (ctx.setLineDash) ctx.setLineDash([14, 10]);
+  ctx.lineWidth = GUIDE_STROKE_PX;
+  if (ctx.setLineDash) ctx.setLineDash(BLUE_GUIDE_DASH_PX);
   ctx.beginPath();
   ctx.moveTo(0, point.y);
   ctx.lineTo(scene.rect.width, point.y);
@@ -1172,27 +1183,7 @@ function drawPlannedDimension(ctx, dimension) {
   const dy = end.y - start.y;
   const length = Math.hypot(dx, dy);
   if (!length) return;
-  const direction = { x: dx / length, y: dy / length };
-  const localY = { x: -direction.y, y: direction.x };
-  const toLocal = (value) => ({
-    x: (value.x - start.x) * direction.x + (value.y - start.y) * direction.y,
-    y: (value.x - start.x) * localY.x + (value.y - start.y) * localY.y
-  });
-  const extensionStart = toLocal(dimension.extensionStart || start);
-  const extensionEnd = toLocal(dimension.extensionEnd || end);
   const flipLabel = Math.atan2(dy, dx) > Math.PI / 2 || Math.atan2(dy, dx) <= -Math.PI / 2;
-  const extensionLine = (source, targetX) => {
-    const vector = { x: targetX - source.x, y: -source.y };
-    const vectorLength = Math.hypot(vector.x, vector.y);
-    if (!vectorLength) return null;
-    const unit = { x: vector.x / vectorLength, y: vector.y / vectorLength };
-    return {
-      start: { x: source.x + unit.x * 3, y: source.y + unit.y * 3 },
-      end: { x: targetX + unit.x * 3, y: unit.y * 3 }
-    };
-  };
-  const startGuide = extensionLine(extensionStart, 0);
-  const endGuide = extensionLine(extensionEnd, length);
 
   ctx.save();
   ctx.translate(start.x, start.y);
@@ -1201,28 +1192,29 @@ function drawPlannedDimension(ctx, dimension) {
   ctx.fillStyle = '#374151';
   ctx.lineWidth = 0.8;
   ctx.beginPath();
-  if (startGuide) {
-    ctx.moveTo(startGuide.start.x, startGuide.start.y);
-    ctx.lineTo(startGuide.end.x, startGuide.end.y);
-  }
-  if (endGuide) {
-    ctx.moveTo(endGuide.start.x, endGuide.start.y);
-    ctx.lineTo(endGuide.end.x, endGuide.end.y);
-  }
+  ctx.moveTo(0, -DIMENSION_ENDPOINT_TICK_PX);
+  ctx.lineTo(0, DIMENSION_ENDPOINT_TICK_PX);
+  ctx.moveTo(length, -DIMENSION_ENDPOINT_TICK_PX);
+  ctx.lineTo(length, DIMENSION_ENDPOINT_TICK_PX);
   ctx.moveTo(0, 0);
   ctx.lineTo(length, 0);
   ctx.stroke();
-  drawArrow(ctx, 0, 0, 1, 4.5);
-  drawArrow(ctx, length, 0, -1, 4.5);
+  drawArrow(ctx, 4.5, 0, -1, 4.5);
+  drawArrow(ctx, length - 4.5, 0, 1, 4.5);
   ctx.save();
   ctx.translate(length / 2, 0);
   if (flipLabel) ctx.rotate(Math.PI);
-  const fontWeight = dimension.kind === 'chain-total' ? '600' : '500';
-  ctx.font = `${fontWeight} 11px sans-serif`;
+  const fontWeight = dimension.kind === 'chain-total' ? '700' : '600';
+  ctx.font = `${fontWeight} 14px sans-serif`;
   const labelWidth = ctx.measureText(dimension.label).width;
-  ctx.fillStyle = 'rgba(248, 248, 248, 0.96)';
-  ctx.fillRect(-labelWidth / 2 - 3, -7, labelWidth + 6, 14);
-  ctx.fillStyle = '#111111';
+  ctx.fillStyle = DIMENSION_LABEL_BACKGROUND;
+  ctx.fillRect(
+    -labelWidth / 2 - DIMENSION_LABEL_PADDING_X,
+    -DIMENSION_LABEL_HEIGHT_PX / 2,
+    labelWidth + DIMENSION_LABEL_PADDING_X * 2,
+    DIMENSION_LABEL_HEIGHT_PX
+  );
+  ctx.fillStyle = DIMENSION_LABEL_COLOR;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(dimension.label, 0, 0);
@@ -1252,12 +1244,13 @@ function drawDimension(ctx, dimension) {
   ctx.fillStyle = '#333333';
   ctx.lineWidth = 1;
 
-  // Draw extension lines
+  // Floating endpoint ticks keep the dimension clear of the wall instead of
+  // connecting the annotation back to the wall face.
   ctx.beginPath();
-  ctx.moveTo(startX, startY);
-  ctx.lineTo(startX, y);
-  ctx.moveTo(endX, endY);
-  ctx.lineTo(endX, y);
+  ctx.moveTo(startX, y - DIMENSION_ENDPOINT_TICK_PX);
+  ctx.lineTo(startX, y + DIMENSION_ENDPOINT_TICK_PX);
+  ctx.moveTo(endX, y - DIMENSION_ENDPOINT_TICK_PX);
+  ctx.lineTo(endX, y + DIMENSION_ENDPOINT_TICK_PX);
   ctx.stroke();
 
   // Dimension endpoints meet the extension lines; only arrowheads extend into
@@ -1267,19 +1260,28 @@ function drawDimension(ctx, dimension) {
   ctx.lineTo(endX, y);
   ctx.stroke();
 
-  // Use inward-facing arrows at both endpoints instead of architectural slashes.
-  drawArrow(ctx, startX, y, 1, 6);
-  drawArrow(ctx, endX, y, -1, 6);
+  // The outward-facing tips align with the dimension endpoints; their bodies
+  // sit inside the line rather than extending beyond it.
+  drawArrow(ctx, startX + 6, y, -1, 6);
+  drawArrow(ctx, endX - 6, y, 1, 6);
 
   // Draw value label
   ctx.save();
   ctx.translate((startX + endX) / 2, y);
   if (flipLabel) ctx.rotate(Math.PI);
-  ctx.fillStyle = '#111111';
-  ctx.font = '600 12px sans-serif';
+  ctx.font = '600 14px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(dimension.label, 0, 0.5);
+  const labelWidth = ctx.measureText(dimension.label).width;
+  ctx.fillStyle = DIMENSION_LABEL_BACKGROUND;
+  ctx.fillRect(
+    -labelWidth / 2 - DIMENSION_LABEL_PADDING_X,
+    -DIMENSION_LABEL_HEIGHT_PX / 2,
+    labelWidth + DIMENSION_LABEL_PADDING_X * 2,
+    DIMENSION_LABEL_HEIGHT_PX
+  );
+  ctx.fillStyle = DIMENSION_LABEL_COLOR;
+  ctx.fillText(dimension.label, 0, 0);
   ctx.restore();
 
   ctx.restore();
@@ -1294,8 +1296,8 @@ function drawClosureGuide(ctx, scene) {
   if (!guide) return;
   ctx.save();
   ctx.strokeStyle = '#16a34a';
-  ctx.lineWidth = 1.5;
-  if (ctx.setLineDash) ctx.setLineDash([7, 6]);
+  ctx.lineWidth = GUIDE_STROKE_PX;
+  if (ctx.setLineDash) ctx.setLineDash(CLOSURE_GUIDE_DASH_PX);
   ctx.beginPath();
   const points = guide.points && guide.points.length >= 2
     ? guide.points
@@ -1330,8 +1332,8 @@ function drawAlignmentSnapGuide(ctx, scene) {
 
   ctx.save();
   ctx.strokeStyle = '#2875b4';
-  ctx.lineWidth = 1.5;
-  if (ctx.setLineDash) ctx.setLineDash([5, 5]);
+  ctx.lineWidth = GUIDE_STROKE_PX;
+  if (ctx.setLineDash) ctx.setLineDash(BLUE_GUIDE_DASH_PX);
   ctx.beginPath();
   ctx.moveTo(startPoint.x, startPoint.y);
   ctx.lineTo(endPoint.x, endPoint.y);
@@ -1348,8 +1350,8 @@ function drawCursor(ctx, scene) {
 
   ctx.save();
   ctx.strokeStyle = 'rgba(22, 119, 255, 0.92)';
-  ctx.lineWidth = 1.5;
-  if (ctx.setLineDash) ctx.setLineDash([18, 12]);
+  ctx.lineWidth = GUIDE_STROKE_PX;
+  if (ctx.setLineDash) ctx.setLineDash(BLUE_GUIDE_DASH_PX);
   ctx.beginPath();
   ctx.moveTo(0, point.y);
   ctx.lineTo(scene.rect.width, point.y);
@@ -1610,8 +1612,8 @@ function drawDraggingCursor(ctx, rect, point, options) {
   ctx.globalAlpha = 1;
 
   ctx.strokeStyle = 'rgba(22, 119, 255, 0.92)';
-  ctx.lineWidth = 1.5;
-  if (ctx.setLineDash) ctx.setLineDash([18, 12]);
+  ctx.lineWidth = GUIDE_STROKE_PX;
+  if (ctx.setLineDash) ctx.setLineDash(BLUE_GUIDE_DASH_PX);
   ctx.beginPath();
   ctx.moveTo(0, point.y);
   ctx.lineTo(rect.width, point.y);
@@ -1785,7 +1787,6 @@ function drawSurveyScene(ctx, scene, options) {
   drawClosedSpaceFills(ctx, scene);
   drawWallBodies(ctx, scene);
   drawWallOutlines(ctx, scene);
-  drawRedlines(ctx, scene);
   drawSelectedWallHighlight(ctx, scene);
   drawOpenings(ctx, scene);
   drawDimensions(ctx, scene);
@@ -1794,6 +1795,8 @@ function drawSurveyScene(ctx, scene, options) {
   drawAlignmentSnapGuide(ctx, scene);
   drawClosureGuide(ctx, scene);
   drawCursor(ctx, scene);
+  // The active measuring edge must remain visible above every dashed guide.
+  drawRedlines(ctx, scene);
 }
 
 function pointLineDistance(point, start, end) {

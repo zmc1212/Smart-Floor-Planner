@@ -2,42 +2,43 @@
   <scroll-view class="home-scroll" scroll-y show-scrollbar="{{false}}" enhanced>
     <view class="home-content">
       <view class="hero-stage">
-        <image class="hero-scene-image" src="/images/home-ip-v1/hero-scene-wechat-safe.png" mode="aspectFill" />
+        <image class="hero-scene-image" src="/images/home-ip-v1/hero-scene-wechat-safe-overscan.png" mode="scaleToFill" />
         <view class="status-spacer" style="height: {{statusBarHeight}}px;"></view>
 
         <view class="hero-nav" style="padding-right: {{capsulePadding}}px;">
           <view class="brand-lockup">
-            <view class="brand-mark"><image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" /></view>
-            <text class="brand-name">家客来</text>
+            <view class="brand-identity">
+              <view class="brand-mark"><image src="/images/home-ip-v1/brand-logo.png" mode="aspectFit" /></view>
+              <text class="brand-name">家客来</text>
+            </view>
+            <view class="city-control city-control--nav" bindtap="onLocationTap" hover-class="control-pressed" aria-role="button" aria-label="选择城市">
+              <image class="city-icon" src="/images/home-v5/location.png" mode="aspectFit" />
+              <text class="city-label">{{currentCity || (locationFailed ? '选择城市' : '定位中')}}</text>
+            </view>
           </view>
         </view>
 
         <view class="hero-copy">
-          <view class="city-control" bindtap="onLocationTap" hover-class="control-pressed" aria-role="button" aria-label="选择城市">
-            <image class="city-icon" src="/images/home-v5/location.png" mode="aspectFit" />
-            <text class="city-label">{{currentCity || (locationFailed ? '选择城市' : '定位中')}}</text>
-          </view>
           <view class="hero-title" aria-label="让小K陪你，把空间一步步变成家">
             <text>让小K陪你</text>
-            <text>把空间一步步变</text>
-            <text>成家</text>
+            <text>把空间一步步</text>
+            <text>变成家</text>
           </view>
           <view class="hero-subtitle">
             <text>从客户线索、正式量房到 AI 设计，</text>
             <text>一套形象贯穿每个关键节点</text>
           </view>
         </view>
-
-        <view class="hero-reminder" wx:if="{{recentPlans.length > 0}}">
-          <text class="hero-reminder-kicker">今日提醒</text>
-          <text class="hero-reminder-text">{{recentPlans[0].displayName}} · {{recentPlans[0].statusLabel}}</text>
-        </view>
       </view>
 
       <view class="measure-card" bindtap="onPrimaryMeasureTap" hover-class="card-pressed" aria-role="button" aria-label="{{recentPlans.length > 0 ? (recentPlans[0].statusClass === 'status-completed' ? '查看户型' : '继续量房') : (plannedRooms.length > 0 ? '继续量房' : '开始量房')}}">
         <view class="measure-label-row">
           <image class="measure-mini-orb" src="/images/home-ip-v1/measure-k.png" mode="aspectFit" />
-          <text>{{recentPlans.length > 0 && recentPlans[0].statusClass === 'status-completed' ? '小K已完成本次量房' : '小K正在协助量房'}}</text>
+          <view class="measure-reminder-badge" wx:if="{{recentPlans.length > 0}}">
+            <image class="measure-reminder-bell" src="/images/mine-icons/bell.png" mode="aspectFit" />
+            <text>今日提醒</text>
+          </view>
+          <text class="measure-label-text">{{recentPlans.length > 0 && recentPlans[0].statusClass === 'status-completed' ? '小K已完成本次量房' : '小K正在协助量房'}}</text>
         </view>
         <view class="measure-main-row">
           <view class="measure-copy">
@@ -117,8 +118,7 @@
           <image class="plan-preview" src="/images/home-v5/plan-preview.jpg" mode="aspectFill" />
           <view class="plan-copy">
             <view class="plan-info-group">
-              <text class="plan-title">{{recentPlans[0].customerName || recentPlans[0].displayName}}</text>
-              <text class="plan-community" wx:if="{{recentPlans[0].customerName && recentPlans[0].communityName}}">{{recentPlans[0].communityName}}</text>
+              <text class="plan-title">{{recentPlans[0].displayName}}</text>
               <view class="plan-meta-row">
                 <text class="plan-status {{recentPlans[0].statusClass}}">{{recentPlans[0].statusLabel}}</text>
                 <text class="plan-updated">{{recentPlans[0].updatedLabel}}</text>

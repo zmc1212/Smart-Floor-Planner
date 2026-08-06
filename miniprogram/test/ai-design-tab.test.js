@@ -80,7 +80,7 @@ test('AI Design uses the shared tab-page scrolling contract', () => {
     aiDesignWxss,
     /\.without-plan \.scene-navigator\s*\{[\s\S]*margin:\s*calc\(-214rpx - var\(--ai-navigation-top/
   );
-  assert.match(aiDesignPageSource, /syncTabBar\(\) \{[\s\S]*selected: 3/);
+  assert.match(aiDesignPageSource, /syncTabBar\(\) \{[\s\S]*tabBar\.syncSelected\(\)/);
   assert.match(aiDesignPageSource, /syncImmersiveNavigationMetrics\(\)/);
 });
 

@@ -206,15 +206,21 @@ function createRecordingContext() {
   const fills = [];
   const dashes = [];
   const widths = [];
+  const strokeDetails = [];
+  const fillRectDetails = [];
   const texts = [];
   let path = [];
+  let lineWidth;
+  let strokeStyle;
+  let fillStyle;
+  let font;
 
   const context = {
     save() {},
     restore() {},
     setTransform() {},
     clearRect() {},
-    fillRect() {},
+    fillRect(x, y, width, height) { fillRectDetails.push({ x, y, width, height, fillStyle }); },
     strokeRect() {},
     translate() {},
     scale() {},
@@ -226,21 +232,37 @@ function createRecordingContext() {
     moveTo(x, y) { path.push(['moveTo', x, y]); },
     lineTo(x, y) { path.push(['lineTo', x, y]); },
     closePath() { path.push(['closePath']); },
-    stroke() { strokes.push(path.slice()); },
+    stroke() {
+      const recordedPath = path.slice();
+      strokes.push(recordedPath);
+      strokeDetails.push({ path: recordedPath, strokeStyle, lineWidth });
+    },
     fill() { fills.push(path.slice()); },
     setLineDash(value) { dashes.push(value.slice()); },
     measureText(text) { return { width: String(text).length * 7 }; },
-    fillText(text, x, y) { texts.push({ text, x, y }); }
+    fillText(text, x, y) { texts.push({ text, x, y, fillStyle, font }); }
   };
 
   Object.defineProperty(context, 'lineWidth', {
-    set(value) { widths.push(value); },
-    get() { return widths[widths.length - 1]; }
+    set(value) { lineWidth = value; widths.push(value); },
+    get() { return lineWidth; }
   });
-  ['fillStyle', 'strokeStyle', 'lineCap', 'lineJoin', 'font', 'textAlign', 'textBaseline', 'shadowColor', 'shadowBlur', 'shadowOffsetY', 'miterLimit']
+  Object.defineProperty(context, 'strokeStyle', {
+    set(value) { strokeStyle = value; },
+    get() { return strokeStyle; }
+  });
+  Object.defineProperty(context, 'fillStyle', {
+    set(value) { fillStyle = value; },
+    get() { return fillStyle; }
+  });
+  Object.defineProperty(context, 'font', {
+    set(value) { font = value; },
+    get() { return font; }
+  });
+  ['lineCap', 'lineJoin', 'textAlign', 'textBaseline', 'shadowColor', 'shadowBlur', 'shadowOffsetY', 'miterLimit']
     .forEach((property) => Object.defineProperty(context, property, { set() {}, get() { return undefined; } }));
 
-  return { context, strokes, fills, dashes, widths, texts };
+  return { context, strokes, fills, dashes, widths, strokeDetails, fillRectDetails, texts };
 }
 
 test('default surveying canvas uses the fine low-contrast reference grid', () => {
@@ -269,6 +291,7 @@ test('open wall chain renders only inner dimensions and keeps its full chain red
   assert.equal(scene.dimensions.length, floor.walls.length);
   assert.deepEqual(scene.dimensions.map((dimension) => dimension.kind), ['inner', 'inner']);
   assert.equal(scene.dimensions.every((dimension) => dimension.placement === 'inside'), true);
+  assert.equal(scene.dimensions.every((dimension) => Math.abs(dimension.offset) === 32), true);
   assert.deepEqual(scene.activeMeasurementWallIds, floor.walls.map((wall) => wall.id));
 
   const previewDraft = surveyGraph.startPreview(draft, { xMm: 0, yMm: 2000 });
@@ -367,6 +390,12 @@ test('closed space creates one exterior dimension chain while a new wall chain r
   assert.equal(closedScene.dimensions.every((dimension) => dimension.kind === 'chain-total'), true);
   assert.equal(closedScene.dimensions.every((dimension) => dimension.placement === 'outside'), true);
   assert.equal(closedScene.dimensions.every((dimension) => dimension.startPoint && dimension.endPoint), true);
+  assert.equal(closedScene.dimensions.every((dimension) => (
+    Math.hypot(
+      dimension.startPoint.x - dimension.extensionStart.x,
+      dimension.startPoint.y - dimension.extensionStart.y
+    ) >= 28
+  )), true);
   assert.deepEqual(closedScene.activeMeasurementWallIds, []);
   assert.equal(closedScene.closedSpaceLabels[0].detailScale, 1);
 
@@ -564,10 +593,23 @@ test('dimension arrows and guidance lines use the compact drawing treatment', ()
     path[3][0] === 'closePath'
   ));
   assert.equal(arrowFills.length, scene.dimensions.length * 2);
+  const firstArrow = arrowFills[0];
+  const secondArrow = arrowFills[1];
+  assert.ok(firstArrow[0][1] < firstArrow[1][1]);
+  assert.ok(secondArrow[0][1] > secondArrow[1][1]);
+  assert.equal(firstArrow[0][1], 0);
+  assert.equal(secondArrow[0][1], scene.dimensions[0].wall.widthPx);
   assert.ok(recorder.widths.includes(1));
-  assert.ok(recorder.widths.includes(2));
+  assert.ok(recorder.widths.includes(1.25));
   assert.ok(recorder.widths.includes(1.5));
-  assert.deepEqual(recorder.dashes.filter((dash) => dash.length), [[14, 10], [5, 5], [7, 6], [18, 12]]);
+  assert.deepEqual(recorder.dashes.filter((dash) => dash.length), [[8, 6], [8, 6], [12, 10], [8, 6]]);
+  const lastGuideStroke = recorder.strokeDetails.findLastIndex((detail) => (
+    detail.strokeStyle === 'rgba(22, 119, 255, 0.92)'
+  ));
+  const lastRedlineStroke = recorder.strokeDetails.findLastIndex((detail) => (
+    detail.strokeStyle === '#d71920'
+  ));
+  assert.ok(lastRedlineStroke > lastGuideStroke);
   assert.equal(recorder.strokes.some((path) => (
     path.length === 2 &&
     path[0][0] === 'moveTo' &&
@@ -575,6 +617,38 @@ test('dimension arrows and guidance lines use the compact drawing treatment', ()
     Math.abs(path[1][1] - path[0][1]) === 8 &&
     Math.abs(path[1][2] - path[0][2]) === 8
   )), false);
+});
+
+test('wall dimensions use blue values on a neutral backing plate', () => {
+  const scene = createScene(createOpenDraft());
+  const recorder = createRecordingContext();
+
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+
+  const dimensionTexts = recorder.texts.filter((detail) => detail.text === '3000' || detail.text === '2000');
+  assert.equal(dimensionTexts.length, scene.dimensions.length);
+  assert.ok(dimensionTexts.every((detail) => (
+    detail.fillStyle === '#0077d7' && detail.font === '600 14px sans-serif'
+  )));
+  assert.ok(recorder.fillRectDetails.some((detail) => (
+    detail.fillStyle === 'rgba(210, 210, 210, 0.96)' && detail.height === 18
+  )));
+});
+
+test('dimension endpoint ticks float clear of the measured wall', () => {
+  const scene = createScene(createOpenDraft());
+  const recorder = createRecordingContext();
+
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+
+  const dimensionStrokes = recorder.strokeDetails.filter((detail) => detail.strokeStyle === '#333333');
+  assert.ok(dimensionStrokes.length > 0);
+  assert.equal(dimensionStrokes.some((detail) => detail.path.some((command) => (
+    command[0] === 'moveTo' && command[2] === 0
+  ))), false);
+  assert.equal(dimensionStrokes.some((detail) => detail.path.some((command) => (
+    command[0] === 'moveTo' && Math.abs(command[2] - 32) === 8
+  ))), true);
 });
 
 test('drag-only canvas renders one dashed cross guide and one square cursor', () => {
@@ -586,8 +660,8 @@ test('drag-only canvas renders one dashed cross guide and one square cursor', ()
     { dpr: 1 }
   );
 
-  assert.deepEqual(recorder.dashes.filter((dash) => dash.length), [[18, 12]]);
-  assert.ok(recorder.widths.includes(1.5));
+  assert.deepEqual(recorder.dashes.filter((dash) => dash.length), [[8, 6]]);
+  assert.ok(recorder.widths.includes(1.25));
   assert.equal(recorder.widths.includes(3), false);
   assert.ok(recorder.strokes.some((path) => (
     path.some((command) => command[0] === 'moveTo' && command[1] === 0 && command[2] === 220) &&
@@ -741,7 +815,7 @@ test('viewport interaction keeps structural drawing and skips dimensions, labels
   assert.ok(interactionRecorder.fills.length > 0);
   assert.ok(interactionRecorder.strokes.length > 0);
   assert.equal(
-    interactionRecorder.dashes.some((dash) => dash.length && dash[0] === 14 && dash[1] === 10),
+    interactionRecorder.dashes.some((dash) => dash.length && dash[0] === 12 && dash[1] === 10),
     false
   );
 });

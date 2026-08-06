@@ -38,9 +38,11 @@ const LEGACY_AI_PERMISSIONS = ['ai-designer', 'ai-floorplan', 'ai-furnishing', '
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // 1. Allow login page, auth APIs, and Mini Program specific APIs
+  // 1. Allow unauthenticated entry points and routes with their own verification.
   if (
     pathname === '/login' || 
+    pathname === '/api/health' ||
+    pathname === '/api/internal/seed' ||
     pathname.startsWith('/api/auth/') || 
     pathname.startsWith('/api/miniprogram/') ||
     request.headers.get('Authorization')?.startsWith('Bearer ')

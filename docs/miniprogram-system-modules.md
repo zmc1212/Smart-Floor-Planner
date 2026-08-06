@@ -43,12 +43,22 @@ utilities, and the admin APIs they call.
   Only those four `app.json.tabBar` routes mount the shared custom TabBar;
   Login, detail, workflow, inspiration, recommendation, formal surveying, and
   every other secondary or tertiary route must not render a local or duplicated
-  TabBar.
+  TabBar. Its shared `128rpx` content lane keeps the centered `Measure` label
+  entirely above the bottom inset; `constant(safe-area-inset-bottom)` remains
+  as an iOS WebView fallback before the modern `env()` declaration.
 
 ## Shared Identity And Context
 
 - `/packages/business/login/login`: WeChat phone quick login and username/password login via
   `/api/auth/miniprogram`; restores a JWT/user session in app storage.
+- Session changes: every primary Tab page asks the shared custom TabBar to
+  recompute its selected item and enterprise-only visibility on show; Mine also
+  repeats that refresh after its workbench response completes the current user
+  context. Switching from a standalone promoter to an enterprise designer
+  therefore reveals the `Design` tab without restarting the Mini Program;
+  logout immediately reapplies the same visibility rule. This is client-side
+  presentation only and does not change authentication, routes, APIs, or the
+  `enterpriseId` permission boundary.
 - Login visuals: `Implemented` against
   `design-references/all-pages-ip-v1/06-login.png` at the iPhone 13 Pro
   `390x844` baseline. The page uses the derived local Xiao K/F3 entry scene,
@@ -105,9 +115,14 @@ utilities, and the admin APIs they call.
   recent formal plans come from PostgreSQL RLS repositories. The AI-generation
   domain is not migrated yet, so `aiGeneratedCases` is explicitly `0`. Each
   recent-plan item also exposes the linked lead's optional `customerName` and
-  `communityName`; Home presents `customer · community` as the preferred project
-  identity, falls back to the formal-plan name only when that identity is absent,
-  and presents timestamps only as update metadata.
+  `communityName`; the Home reminder, active-measurement card, and project-progress
+  card present `customer · community` as the preferred project identity, fall back
+  to the formal-plan name only when that identity is absent, and present timestamps
+  only as update metadata.
+- Permission boundary: a direct Home entry to a recent plan uses the same
+  staff-owner scope as the recent-plan list. Enterprise administrators retain the
+  enterprise boundary; standalone promoter accounts with no enterprise use their
+  own staff ID, and neither path broadens a regular staff member's access.
 - Limited: the write/notify characteristic pairing is hardware-specific. BLE
   diagnostics log the discovered channel properties, each command write, and
   each raw notification with full service/characteristic UUIDs; receive buffers
@@ -118,13 +133,18 @@ utilities, and the admin APIs they call.
   current staff member or enterprise. Assigning a holder in `/devices`
   automatically changes an idle device to `assigned`; `maintenance` and `lost`
   devices remain unavailable.
-- Visual baseline: `design-references/all-pages-ip-v1/01-home.png` at iPhone
+- Visual baseline: `design-references/all-pages-ip-v1/01-home-v2.png` at iPhone
   13 Pro `390x844`. The shipped F1/F3 spatial-guide hero, overlapping formal
   surveying card, quick-service cards, and project-progress card use the
-  project-local derived `images/home-ip-v1/hero-scene-wechat-safe.png` scene
-  asset, which reserves the native WeChat capsule safe area; city,
-  counts, device state, recent plans, empty state, and all navigation remain
-  live and role-aware.
+  project-local derived `images/home-ip-v1/hero-scene-wechat-safe-overscan.png`
+  scene asset, which reserves the native WeChat capsule safe area. The live city
+  control sits beside the brand lockup and the headline is a three-line
+  composition. The Hero remains at its single `516rpx` anchor: it has no
+  top-right reminder bubble or capsule-dependent reminder positioning. When a
+  live recent plan exists, its measurement card alone presents the current-plan
+  reminder as a green rounded bell badge immediately before the Xiao K completion
+  or in-progress label. City, counts, device state, recent plans, empty state,
+  and all navigation remain live and role-aware.
 - Placeholder: the help center still shows an “upcoming” message.
 
 ### Leads And Customer Records
@@ -423,7 +443,9 @@ utilities, and the admin APIs they call.
   `design-references/mine/miniprogram-mine-v6.png` and
   `design-references/mine/miniprogram-mine-v6-icon.png`. The established circular
   floating Measure action remains the center TabBar treatment and uses the shared
-  generated transparent Xiao K asset with a separate live label. Live profile data,
+  generated transparent Xiao K asset with a separate live label. The expanded
+  shared content lane keeps that native `Measure` label visible above the iOS
+  Home Indicator safe area. Live profile data,
   server-provided actions and metrics, role boundaries, and existing navigation
   remain authoritative; the redesign does not add backend capabilities. Summary
   cards remain horizontally reachable when a role returns more than the three
@@ -470,6 +492,20 @@ utilities, and the admin APIs they call.
   also returns its linked lead summary for direct plan entry.
 - Data contract: `FloorPlan.layoutData` is only `{ version: 4,
   measurementMode: 'surveying', surveyGraph }`; graph units are millimetres.
+- Canvas drawing refinement (2026-08-06): formal wall outlines, active red
+  measurement edges, cursor crosshairs, and closure/alignment guides use thinner
+  drafting strokes. Blue coordinate, cursor, and alignment guides use the denser
+  `[8, 6]` dash rhythm; the green closure cue retains `[12, 10]`. The Xiao K
+  connector retains its independent `[5, 4]` rhythm and 1.75px stroke. Wall dimensions use
+  blue values on neutral-grey backing plates; their dimension lines sit 32px from
+  an unfinished measured edge and at least 28px from a closed exterior wall.
+  Short 8px endpoint ticks cross the floating dimension line but deliberately do
+  not connect back to a wall; the endpoint arrows face outward, with their tips
+  aligned to rather than beyond the dimension-line endpoints. The active red
+  measurement edge is redrawn after guides and the cursor, so it remains the
+  topmost wall indication at an intersection. This is presentation-only: the page
+  route, APIs, roles, v4 wall-graph contract, BLE audit, and editor interactions
+  are unchanged.
 - Visual baseline: `design-references/all-pages-ip-v1/03-surveying-editor-idle.png`,
   `18-surveying-editor-active.png`, `19-surveying-state-board.png`,
   `design-references/all-pages-ip-v1/ChatGPT Image 2026年8月5日 15_44_17.png`, and
@@ -575,6 +611,16 @@ utilities, and the admin APIs they call.
   closed room wall shells and outer joins are
   derived from the closed boundary rather than the selected measurement edge.
   undo/reset, completed submission, and measurement audit queue/flush.
+- A reverse drag on that unfinished chain may shorten only its terminal wall,
+  preserving the wall and endpoint IDs. This convenience edit is unavailable
+  for closed-space, shared-endpoint, branching, or door/window walls; it does
+  not change routes, APIs, roles, the v4 wall-graph contract, or audit behavior.
+- Rectangle-completion alignment remains active while that third terminal wall
+  is extended or shortened, so its endpoint continues to snap to the first
+  wall's orthogonal axis after an intermediate partial drag.
+- Deleting that unfinished terminal third wall preserves the remaining chain's
+  start and its rectangle-alignment reference; deleting closed-space or other
+  non-terminal walls keeps the existing reset behavior.
 - Visual interaction treatment: at the `390x844` baseline the custom header
   preserves the native WeChat capsule safe area. The white Xiao K speech bubble
   is the only explanatory callout for first-wall, measurement-side, and closure

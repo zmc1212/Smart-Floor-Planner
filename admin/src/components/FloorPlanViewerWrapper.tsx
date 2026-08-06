@@ -27,5 +27,5 @@ type FloorPlanViewerProps = ComponentProps<typeof FloorPlanViewer>;
  * 父级 Server Component 负责数据获取和序列化。
  */
 export default function FloorPlanViewerWrapper({ planData }: { planData: Record<string, unknown> }) {
-  return <FloorPlanViewer planData={planData as FloorPlanViewerProps['planData']} />;
+  return <FloorPlanViewer planData={planData as unknown as FloorPlanViewerProps['planData']} />;
 }

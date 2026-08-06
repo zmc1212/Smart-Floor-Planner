@@ -1714,7 +1714,7 @@ Page({
       ctx.arc(target.x, target.y, Math.max(21, target.width * 0.48), 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(234, 248, 236, 0.32)';
       ctx.fill();
-      ctx.lineWidth = 1.25;
+      ctx.lineWidth = 1.75;
       ctx.strokeStyle = 'rgba(34, 197, 94, 0.52)';
       ctx.stroke();
     }
@@ -1742,7 +1742,7 @@ Page({
           connectorTarget.y
         );
       }
-      ctx.lineWidth = 1.75;
+      ctx.lineWidth = 1.25;
       ctx.lineCap = 'round';
       ctx.strokeStyle = '#00b94d';
       ctx.setLineDash([5, 4]);

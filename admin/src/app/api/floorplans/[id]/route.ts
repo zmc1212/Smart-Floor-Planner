@@ -3,8 +3,8 @@ import { floorPlanToDto, parsePostgresId } from '@/db/postgres-dto';
 import {
   FloorPlanRepository,
   LeadRepository,
-  type FloorPlanWithCreator,
 } from '@/db/repositories';
+import { canAccessMiniProgramFloorPlan } from '@/lib/floor-plan-access';
 import { linkFloorPlanToLead } from '@/lib/floorplan-lead-link';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
@@ -19,19 +19,6 @@ interface FloorPlanUpdateBody {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown error';
-}
-
-function canAccessPlan(
-  plan: FloorPlanWithCreator,
-  context: NonNullable<Awaited<ReturnType<typeof resolveMiniProgramContext>>>
-) {
-  if (context.staff) {
-    return (
-      plan.enterpriseId?.toString() ===
-      (context.staff.enterpriseId || context.enterpriseId || '')
-    );
-  }
-  return plan.creatorId.toString() === context.user._id;
 }
 
 export async function GET(
@@ -54,7 +41,7 @@ export async function GET(
           parsePostgresId(id, 'floor plan id')
         )
     );
-    if (!plan || !canAccessPlan(plan, context)) {
+    if (!plan || !canAccessMiniProgramFloorPlan(plan, context)) {
       return NextResponse.json(
         { success: false, error: 'Floor plan not found' },
         { status: 404 }
@@ -117,7 +104,7 @@ export async function PUT(
       async (transaction) => {
         const repository = new FloorPlanRepository(transaction);
         const current = await repository.findById(planId);
-        if (!current || !canAccessPlan(current, context)) return null;
+        if (!current || !canAccessMiniProgramFloorPlan(current, context)) return null;
         const nextStatus = body.status || current.status;
         const plan = await repository.update(planId, {
           name: body.name?.trim() || current.name,
@@ -197,7 +184,7 @@ export async function DELETE(
         const plan = await repository.findById(
           parsePostgresId(id, 'floor plan id')
         );
-        if (!plan || !canAccessPlan(plan, context)) return null;
+        if (!plan || !canAccessMiniProgramFloorPlan(plan, context)) return null;
         return repository.delete(plan.id);
       }
     );

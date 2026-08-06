@@ -881,7 +881,10 @@ function maybeSnapThirdWallForRectangle(floor, session, anchor, previewPoint) {
     ? session.activeSpaceStartWallIndex
     : 0;
   const activeWallCount = Math.max(0, floor.walls.length - startWallIndex);
-  if (activeWallCount !== 2) {
+  // Keep the rectangle reference while the third wall is being corrected.
+  // Once it has been committed, forward extension and reverse shortening both
+  // still need to snap its terminal endpoint to the first wall's orthogonal axis.
+  if (activeWallCount !== 2 && activeWallCount !== 3) {
     return { point: previewPoint, guide: null };
   }
 
@@ -1265,6 +1268,53 @@ function canExtendLastWall(floor, session, anchor, endPoint, measurementSide, is
   const previousAngle = angleDeg(lastStart, anchor);
   const extensionAngle = angleDeg(anchor, endPoint);
   return Math.abs(normalizeSignedAngle(extensionAngle - previousAngle)) <= WALL_EXTENSION_DIRECTION_TOLERANCE_DEG;
+}
+
+function canShortenLastWall(floor, session, anchor, endPoint, isClosingCurrentSpace) {
+  if (isClosingCurrentSpace || !anchor || !endPoint) return false;
+
+  const lastWallIndex = floor.walls.length - 1;
+  const lastWall = floor.walls[lastWallIndex];
+  if (!lastWall || lastWallIndex < session.activeSpaceStartWallIndex || lastWall.endNodeId !== anchor.id) {
+    return false;
+  }
+  if (lastWall.status !== 'confirmed' || lastWall.mode !== session.mode ||
+      Number(lastWall.thicknessMm) !== Number(session.thicknessMm) ||
+      floor.openings.some((opening) => opening.wallId === lastWall.id)) {
+    return false;
+  }
+  if (floor.spaces.some((space) => (
+    space && space.closed && Array.isArray(space.wallIds) && space.wallIds.indexOf(lastWall.id) !== -1
+  ))) {
+    return false;
+  }
+
+  const anchorReferenceCount = floor.walls.reduce((count, wall) => (
+    count + (wall.startNodeId === anchor.id ? 1 : 0) + (wall.endNodeId === anchor.id ? 1 : 0)
+  ), 0);
+  if (anchorReferenceCount !== 1) return false;
+
+  const lastStart = getNode(floor, lastWall.startNodeId);
+  const currentLength = lastStart ? distanceMm(lastStart, anchor) : 0;
+  if (!lastStart || currentLength < MIN_WALL_LENGTH_MM) return false;
+
+  const direction = {
+    x: (anchor.xMm - lastStart.xMm) / currentLength,
+    y: (anchor.yMm - lastStart.yMm) / currentLength
+  };
+  const shortenedLength = dot({
+    x: endPoint.xMm - lastStart.xMm,
+    y: endPoint.yMm - lastStart.yMm
+  }, direction);
+  if (shortenedLength < MIN_WALL_LENGTH_MM || shortenedLength >= currentLength - 1 ||
+      pointLineDistanceMm(endPoint, lastStart, direction) > WALL_OVERLAP_TOLERANCE_MM) {
+    return false;
+  }
+
+  const previousAngle = angleDeg(lastStart, anchor);
+  const reverseAngle = angleDeg(anchor, endPoint);
+  return Math.abs(Math.abs(normalizeSignedAngle(reverseAngle - previousAngle)) - 180) <=
+    WALL_EXTENSION_DIRECTION_TOLERANCE_DEG;
 }
 
 function findTargetWallProjection(floor, point, target) {
@@ -1948,10 +1998,17 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   if (sharedProjection) {
     endPoint = sharedProjection.point;
   }
+  const shortenLastWall = canShortenLastWall(
+    floor,
+    session,
+    anchor,
+    endPoint,
+    isClosingCurrentSpace
+  );
   const ignoredWallIds = isClosingCurrentSpace
     ? floor.walls.slice(0, session.activeSpaceStartWallIndex).map((wall) => wall.id)
     : [];
-  if (findOverlappingWall(floor, anchor, endPoint, { ignoredWallIds })) {
+  if (!shortenLastWall && findOverlappingWall(floor, anchor, endPoint, { ignoredWallIds })) {
     throw new Error('当前墙与已测墙重叠，请从光标转角继续测量');
   }
 
@@ -1967,7 +2024,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   );
   let endNode;
   let wall;
-  if (extendLastWall) {
+  if (extendLastWall || shortenLastWall) {
     wall = getLastWall(floor);
     anchor.xMm = Math.round(endPoint.xMm);
     anchor.yMm = Math.round(endPoint.yMm);
@@ -2380,11 +2437,22 @@ function deleteOpening(draft, openingId) {
 function deleteWall(draft, wallId) {
   const next = cloneDraft(draft);
   const floor = getActiveFloor(next);
-  const session = floor.session;
+  const session = ensureSessionSpaceTracking(floor);
   const targetId = wallId || session.selectedWallId;
   const wall = getWall(floor, targetId);
   if (!wall) return next;
 
+  const wallIndex = floor.walls.findIndex((item) => item.id === targetId);
+  const activeStartWallIndex = session.activeSpaceStartWallIndex;
+  const deletesClosedSpaceWall = (floor.spaces || []).some((space) => (
+    space && space.closed && Array.isArray(space.wallIds) && space.wallIds.indexOf(targetId) !== -1
+  ));
+  // Removing only the current chain's tail leaves a valid in-progress path.
+  // Preserve its start so the preceding wall can still use rectangle alignment.
+  const preserveActiveChain = !deletesClosedSpaceWall &&
+    wallIndex === floor.walls.length - 1 &&
+    wallIndex >= activeStartWallIndex &&
+    wallIndex > activeStartWallIndex;
   const deletedStartNode = getNode(floor, wall.startNodeId);
   floor.walls = floor.walls.filter((item) => item.id !== targetId);
   floor.openings = ensureOpenings(floor).filter((opening) => opening.wallId !== targetId);
@@ -2407,11 +2475,13 @@ function deleteWall(draft, wallId) {
   session.closedFromNodeId = '';
   session.selectedWallId = '';
   session.selectedOpeningId = '';
-  session.activeSpaceStartNodeId = '';
-  session.activeSpaceStartWallIndex = floor.walls.length;
-  session.activeSpaceSharedWallId = '';
-  session.activeSpaceSharedStartT = null;
-  session.activeSpaceSharedSnapLine = '';
+  if (!preserveActiveChain) {
+    session.activeSpaceStartNodeId = '';
+    session.activeSpaceStartWallIndex = floor.walls.length;
+    session.activeSpaceSharedWallId = '';
+    session.activeSpaceSharedStartT = null;
+    session.activeSpaceSharedSnapLine = '';
+  }
 
   if (floor.walls.length) {
     const lastEnd = getLastEndNode(floor);

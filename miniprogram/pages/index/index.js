@@ -160,10 +160,9 @@ Page({
   },
 
   onShow: async function () {
-    if (typeof this.getTabBar === 'function' && this.getTabBar()) {
-      this.getTabBar().setData({
-        selected: 0
-      });
+    const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
+    if (tabBar) {
+      tabBar.syncSelected();
     }
 
     const app = getApp();

@@ -49,6 +49,73 @@ test('repeated forward drags extend one collinear wall instead of creating segme
   assert.equal(floor.session.anchorNodeId, wall.endNodeId);
 });
 
+test('a reverse drag shortens the editable terminal wall instead of reporting overlap', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 3900, yMm: 0 }, 3900);
+  const initialWall = surveyGraph.getActiveFloor(draft).walls[0];
+  const wallId = initialWall.id;
+  const endNodeId = initialWall.endNodeId;
+
+  draft = commitWall(draft, { xMm: 2400, yMm: 0 }, 1500);
+
+  const floor = surveyGraph.getActiveFloor(draft);
+  const wall = floor.walls[0];
+  const end = surveyGraph.getNode(floor, wall.endNodeId);
+
+  assert.equal(floor.walls.length, 1);
+  assert.equal(wall.id, wallId);
+  assert.equal(wall.endNodeId, endNodeId);
+  assert.equal(wall.lengthMm, 2400);
+  assert.deepEqual({ xMm: end.xMm, yMm: end.yMm }, { xMm: 2400, yMm: 0 });
+  assert.equal(floor.session.anchorNodeId, wall.endNodeId);
+});
+
+test('terminal third-wall edits retain rectangle alignment for forward and reverse drags', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 3000, yMm: 0 }, 3000);
+  draft = commitWall(draft, { xMm: 3000, yMm: 2000 }, 2000);
+  draft = commitWall(draft, { xMm: 1200, yMm: 2000 }, 1800);
+
+  draft = surveyGraph.startPreview(draft, { xMm: 20, yMm: 2000 });
+  let floor = surveyGraph.getActiveFloor(draft);
+  assert.deepEqual(floor.session.previewPoint, { xMm: 0, yMm: 2000 });
+  assert.equal(floor.session.alignmentSnapGuide.type, 'rectangle-third-wall');
+
+  draft = surveyGraph.cancelPending(draft);
+  draft = commitWall(draft, { xMm: -1000, yMm: 2000 }, 2200);
+  draft = surveyGraph.startPreview(draft, { xMm: 20, yMm: 2000 });
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.deepEqual(floor.session.previewPoint, { xMm: 0, yMm: 2000 });
+  assert.equal(floor.session.alignmentSnapGuide.type, 'rectangle-third-wall');
+
+  draft = surveyGraph.commitPreviewLength(draft, floor.session.previewLengthMm, 'manual');
+  const terminalWall = surveyGraph.getActiveFloor(draft).walls[2];
+  const terminalEnd = surveyGraph.getNode(surveyGraph.getActiveFloor(draft), terminalWall.endNodeId);
+  assert.equal(terminalWall.lengthMm, 3000);
+  assert.deepEqual({ xMm: terminalEnd.xMm, yMm: terminalEnd.yMm }, { xMm: 0, yMm: 2000 });
+});
+
+test('deleting the current third wall retains rectangle alignment from the preceding wall', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 3000, yMm: 0 }, 3000);
+  draft = commitWall(draft, { xMm: 3000, yMm: 2000 }, 2000);
+  draft = commitWall(draft, { xMm: 1200, yMm: 2000 }, 1800);
+  const thirdWallId = surveyGraph.getActiveFloor(draft).walls[2].id;
+
+  draft = surveyGraph.deleteWall(surveyGraph.selectWall(draft, thirdWallId));
+  let floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.walls.length, 2);
+  assert.equal(floor.session.activeSpaceStartWallIndex, 0);
+
+  draft = surveyGraph.startPreview(draft, { xMm: 20, yMm: 2000 });
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.deepEqual(floor.session.previewPoint, { xMm: 0, yMm: 2000 });
+  assert.equal(floor.session.alignmentSnapGuide.type, 'rectangle-third-wall');
+});
+
 test('a direction change after extending a wall still creates a new wall', () => {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });

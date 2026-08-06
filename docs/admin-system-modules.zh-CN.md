@@ -2,6 +2,8 @@
 
 ### PostgreSQL-only AI 运行时（2026-08-05）
 
+> 2026-08-06 部署更新：Docker Compose 只定义 PostgreSQL、应用和一次性迁移服务，不会启动或配置 MongoDB。`admin/deploy.sh` 会等待 PostgreSQL 就绪，使用独立迁移角色执行 Drizzle migration，再启动应用并验证 `/api/health`，最后调用受保护且幂等的 seed 接口。长期运行的应用只接收 `DATABASE_URL`，绝不接收迁移凭证。既有 MongoDB 容器和卷不属于此部署流程，也不会被自动删除。`GET /api/health` 有意保持公开，只报告必需 PostgreSQL 连接，不暴露租户、用户或数据库细节。`POST /api/internal/seed` 只为让部署到达其自身的 `INTERNAL_SECRET` 校验而绕过 Cookie 认证；没有该密钥仍不可访问，且不会暴露凭证。
+
 AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史 ObjectId 请求直接返回不存在，管理端不再包含 Mongoose 模型、MongoDB 连接工具或 Mongo 维护脚本。保留数据仅限七牛云存储配置和当前 Roomi 提示词库版本。
 
 > 2026-08-05 PostgreSQL 迁移更新：已认证的 Kujiale 城市和户型检索代理不再连接 MongoDB。PostgreSQL bigint 的 AI 资产、生成图、状态、小程序资产交付和管理员重试请求，现仅在显式历史 ObjectId 兼容分支中才加载 MongoDB/Mongoose。既有认证、权限、DTO、上游行为和历史兼容保持不变。未导入、删除或重新加密 MongoDB 业务数据。定向 ESLint 与 `npm run test:postgresql` 均通过（49/49）。

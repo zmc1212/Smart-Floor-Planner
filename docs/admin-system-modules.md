@@ -8,6 +8,20 @@ longer ships Mongoose models, MongoDB connection helpers, or Mongo maintenance
 scripts. Retained data is limited to the imported Qiniu storage configuration
 and active Roomi prompt-library revision.
 
+> 2026-08-06 deployment update: Docker Compose defines only PostgreSQL, the
+> application, and its one-shot migrator; MongoDB is neither started nor
+> configured. `admin/deploy.sh` waits for PostgreSQL, applies the Drizzle
+> migrations with the separate migrator role, starts the application, verifies
+> `/api/health`, and then invokes the idempotent protected seed endpoint. The
+> long-running application receives only `DATABASE_URL`, never the migration
+> credential. Existing legacy MongoDB containers and volumes are outside this
+> deployment and are not removed automatically.
+> `GET /api/health` is intentionally public and reports only the required
+> PostgreSQL connection; it exposes no tenant, user, or database details.
+> `POST /api/internal/seed` bypasses cookie authentication only so deployment
+> can reach its own `INTERNAL_SECRET` check; it remains inaccessible without
+> that secret and never exposes credentials.
+
 > 2026-08-05 PostgreSQL migration update: authenticated Kujiale city and
 > floor-plan search proxies no longer connect to MongoDB. PostgreSQL bigint AI
 > asset, generation-image, status, Mini Program asset-delivery, and administrator
