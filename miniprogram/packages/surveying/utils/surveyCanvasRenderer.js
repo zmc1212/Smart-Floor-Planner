@@ -410,6 +410,10 @@ function buildWallScene(floor, wall, options) {
     interiorAngleDeg,
     measurementSide: wall.measurementSide,
     thicknessPx,
+    // The measured wall path is the inside face (local y = 0).  Keep the
+    // signed offset to its outside face so components can sit on the real
+    // wall thickness instead of being drawn around an arbitrary centre line.
+    outerOffsetPx,
     centerLineYPx: outerOffsetPx / 2,
     startOpen: geometry.startOpen,
     endOpen: geometry.endOpen,
@@ -1012,92 +1016,222 @@ function drawOpeningSegment(ctx, startX, startY, endX, endY) {
   ctx.stroke();
 }
 
-function getDoorSwingSide(opening) {
-  const wall = opening.wall;
-  const openDirection = opening.opening && opening.opening.openDirection === 'outside' ? 'outside' : 'inside';
-  if (openDirection === 'outside') {
-    return wall.measurementSide === 'left' ? 'right' : 'left';
-  }
-  return wall.measurementSide === 'left' ? 'left' : 'right';
+function getOpeningWallFaces(opening) {
+  const wall = opening.wall || {};
+  const outerY = Number.isFinite(wall.outerOffsetPx)
+    ? wall.outerOffsetPx
+    : (wall.measurementSide === 'left' ? -wall.thicknessPx : wall.thicknessPx);
+  const innerY = 0;
+  return {
+    innerY,
+    outerY,
+    minY: Math.min(innerY, outerY),
+    maxY: Math.max(innerY, outerY)
+  };
 }
 
-// Draw a CAD door leaf and the quarter-circle traced by its outside corner.
-// `endOnRight` selects which edge of the clear opening the arc reaches.
-function drawDoorLeaf(ctx, hingeX, baseY, radius, sideSign, endOnRight) {
-  const leafAngle = sideSign < 0 ? -Math.PI / 2 : Math.PI / 2;
-  const endAngle = endOnRight ? 0 : Math.PI;
-  const anticlockwise = (sideSign > 0 && endOnRight) || (sideSign < 0 && !endOnRight);
+function getDoorSwingSign(opening, faces) {
+  const opensOutside = opening.opening && opening.opening.openDirection === 'outside';
+  const outsideSign = faces.outerY < 0 ? -1 : 1;
+  return opensOutside ? outsideSign : -outsideSign;
+}
 
-  drawOpeningSegment(ctx, hingeX, baseY, hingeX, baseY + sideSign * radius);
+function getDoorFrameDepth(opening) {
+  return Math.min(
+    // Scene coordinates are logical Canvas pixels and are multiplied by DPR
+    // during painting. A 4px logical stop is already about 12px on the phone,
+    // which is the reference glyph's visible double-line gap. Wider spacing
+    // turns the casing into the oversized stepped break seen on-device.
+    Math.max(3.5, opening.wall.thicknessPx * 0.2),
+    Math.max(3.5, opening.widthPx * 0.1)
+  );
+}
+
+function getDoorLeafFrameFace(opening, faces) {
+  const opensOutside = opening.opening && opening.opening.openDirection === 'outside';
+  return opensOutside ? faces.outerY : faces.innerY;
+}
+
+function getDoorLeafSeat(opening, faces) {
+  const faceY = getDoorLeafFrameFace(opening, faces);
+  const towardOtherFace = faces.outerY === faceY
+    ? Math.sign(faces.innerY - faces.outerY)
+    : Math.sign(faces.outerY - faces.innerY);
+  const wallWidth = Math.abs(faces.outerY - faces.innerY);
+  // The reference's visible jamb is a narrow, independent post inside the
+  // wall thickness—not the wall outline itself.  This offset prevents the
+  // post from being visually swallowed by the room-fill/wall boundary.
+  const inset = Math.min(
+    Math.max(1.5, wallWidth * 0.12),
+    Math.max(1.5, wallWidth / 2 - 1)
+  );
+  return faceY + towardOtherFace * inset;
+}
+
+function drawOpeningJamb(ctx, x, faces) {
+  drawOpeningSegment(ctx, x, faces.outerY, x, faces.innerY);
+}
+
+// A hinged-door casing is a small rectangular sleeve at each end of the
+// opening. Drawing only its two cross-wall stop lines leaves the faces open,
+// so it reads as a broken wall rather than the paired door-frame rectangles
+// in a construction plan. Keep all four edges explicit.
+function drawDoorCasing(ctx, outerX, innerX, faces) {
+  // One closed mitered path keeps the four corners square. Four independent
+  // strokes leave anti-aliased end caps that look rounded on the native
+  // high-DPR Canvas.
   ctx.beginPath();
-  ctx.arc(hingeX, baseY, radius, leafAngle, endAngle, anticlockwise);
+  ctx.moveTo(outerX, faces.outerY);
+  ctx.lineTo(innerX, faces.outerY);
+  ctx.lineTo(innerX, faces.innerY);
+  ctx.lineTo(outerX, faces.innerY);
+  ctx.closePath();
   ctx.stroke();
 }
 
-function drawSlidingDoorOpening(ctx, opening, centerY) {
-  const panelOffset = Math.max(3, opening.wall.thicknessPx * 0.28);
+// Draw a CAD door leaf from the actual inside wall face and the quarter-circle
+// traced by its outside corner. `endOnRight` selects which jamb the arc meets.
+function drawDoorLeaf(ctx, hingeX, innerY, radius, swingSign, endOnRight) {
+  const leafAngle = swingSign < 0 ? -Math.PI / 2 : Math.PI / 2;
+  const endAngle = endOnRight ? 0 : Math.PI;
+  const anticlockwise = (swingSign > 0 && endOnRight) || (swingSign < 0 && !endOnRight);
+
+  drawOpeningSegment(ctx, hingeX, innerY, hingeX, innerY + swingSign * radius);
+  ctx.beginPath();
+  ctx.arc(hingeX, innerY, radius, leafAngle, endAngle, anticlockwise);
+  ctx.stroke();
+}
+
+// The inner jamb is a final, global-coordinate overlay. Native Canvas can
+// retain a transformed opening path together with the wall-mask fill on some
+// devices; drawing this one construction line after the local opening restore
+// makes its layer and direction unambiguous.
+function drawDoorInnerJambPost(ctx, opening) {
+  const category = opening.opening && opening.opening.modelCategory;
+  if (category === 'sliding-door') return;
+  const faces = getOpeningWallFaces(opening);
+  const frameDepth = getDoorFrameDepth(opening);
+  const hingeX = opening.startPx + frameDepth;
+  const oppositeJambX = opening.endPx - frameDepth;
+  const leafSeatY = getDoorLeafSeat(opening, faces);
+  const wall = opening.wall;
+  const start = localPointToCanvas(wall, hingeX, leafSeatY);
+  const end = localPointToCanvas(wall, oppositeJambX, leafSeatY);
+
+  ctx.save();
+  ctx.strokeStyle = opening.selected ? '#f07a21' : '#111827';
+  ctx.lineWidth = opening.selected ? 2.5 : WALL_STROKE_PX;
+  ctx.lineCap = 'butt';
+  ctx.beginPath();
+  ctx.moveTo(start.x, start.y);
+  ctx.lineTo(end.x, end.y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawSlidingDoorOpening(ctx, opening, faces) {
+  const panelInset = Math.min(
+    Math.max(1.25, opening.wall.thicknessPx * 0.18),
+    Math.max(1.25, Math.abs(faces.outerY - faces.innerY) / 2 - 1)
+  );
+  const firstRailY = faces.outerY < faces.innerY
+    ? faces.outerY + panelInset
+    : faces.outerY - panelInset;
+  const secondRailY = faces.innerY < faces.outerY
+    ? faces.innerY + panelInset
+    : faces.innerY - panelInset;
   const centerX = (opening.startPx + opening.endPx) / 2;
 
-  // Two staggered panels are the conventional plan-view symbol for a sliding door.
-  drawOpeningSegment(ctx, opening.startPx, centerY - panelOffset, centerX, centerY - panelOffset);
-  drawOpeningSegment(ctx, centerX, centerY + panelOffset, opening.endPx, centerY + panelOffset);
-  drawOpeningSegment(ctx, opening.startPx, centerY - panelOffset, opening.startPx, centerY + panelOffset);
-  drawOpeningSegment(ctx, centerX, centerY - panelOffset, centerX, centerY + panelOffset);
-  drawOpeningSegment(ctx, opening.endPx, centerY - panelOffset, opening.endPx, centerY + panelOffset);
+  // Two panels use the physical wall faces as their rails, so the symbol stays
+  // aligned when wall thickness or viewport scale changes.
+  drawOpeningSegment(ctx, opening.startPx, firstRailY, centerX, firstRailY);
+  drawOpeningSegment(ctx, centerX, secondRailY, opening.endPx, secondRailY);
+  drawOpeningJamb(ctx, opening.startPx, faces);
+  drawOpeningSegment(ctx, centerX, firstRailY, centerX, secondRailY);
+  drawOpeningJamb(ctx, opening.endPx, faces);
 }
 
 function drawDoorOpening(ctx, opening) {
-  const centerY = opening.centerYPx || 0;
   const category = opening.opening && opening.opening.modelCategory;
-  const sideSign = getDoorSwingSide(opening) === 'left' ? -1 : 1;
+  const faces = getOpeningWallFaces(opening);
+  const swingSign = getDoorSwingSign(opening, faces);
+  const frameDepth = getDoorFrameDepth(opening);
+  const hingeX = opening.startPx + frameDepth;
+  const oppositeJambX = opening.endPx - frameDepth;
+  const leafSeatY = getDoorLeafSeat(opening, faces);
+  const leafFrameFaceY = getDoorLeafFrameFace(opening, faces);
   const color = opening.selected ? '#f07a21' : '#111827';
 
   ctx.strokeStyle = color;
-  ctx.lineWidth = opening.selected ? 3 : 2;
+  // Match the wall-outline weight so the squared casing does not visually
+  // bulge at its corners.
+  ctx.lineWidth = opening.selected ? 2.5 : WALL_STROKE_PX;
   ctx.lineCap = 'butt';
   ctx.lineJoin = 'miter';
 
   if (category === 'sliding-door') {
-    drawSlidingDoorOpening(ctx, opening, centerY);
+    drawSlidingDoorOpening(ctx, opening, faces);
     return;
   }
 
-  // Do not cap this value: a door leaf must use the measured clear opening
-  // width, otherwise the arc no longer meets the opposite jamb.
+  const drawFrameCasings = () => {
+    // The upper and lower (or left and right) sleeves close the four visible
+    // edges of the two door jambs. Their inner corners are the actual hinge
+    // and arc-stop positions used below.
+    drawDoorCasing(ctx, opening.startPx, hingeX, faces);
+    drawDoorCasing(ctx, oppositeJambX, opening.endPx, faces);
+    // Connect the visible frame face to its final, global-coordinate jamb
+    // overlay. The overlay itself is painted after this local transform ends.
+    drawOpeningSegment(ctx, hingeX, leafFrameFaceY, hingeX, leafSeatY);
+    drawOpeningSegment(ctx, oppositeJambX, leafFrameFaceY, oppositeJambX, leafSeatY);
+  };
+
+  // The leaf uses the measured clear opening between the two door-stop lines,
+  // so the arc meets the opposing frame instead of the raw wall opening.
   if (category === 'double-door') {
-    const leafWidth = opening.widthPx / 2;
-    drawDoorLeaf(ctx, opening.startPx, centerY, leafWidth, sideSign, true);
-    drawDoorLeaf(ctx, opening.endPx, centerY, leafWidth, sideSign, false);
-    return;
+    const leafWidth = (oppositeJambX - hingeX) / 2;
+    drawDoorLeaf(ctx, hingeX, leafSeatY, leafWidth, swingSign, true);
+    drawDoorLeaf(ctx, oppositeJambX, leafSeatY, leafWidth, swingSign, false);
+  } else {
+    drawDoorLeaf(ctx, hingeX, leafSeatY, oppositeJambX - hingeX, swingSign, true);
   }
-  drawDoorLeaf(ctx, opening.startPx, centerY, opening.widthPx, sideSign, true);
+  // Keep the complete rectangular casings above the leaf. This final pass
+  // preserves both stop lines and their face connectors where the leaf meets
+  // the frame.
+  drawFrameCasings();
 }
 
 function drawWindowOpening(ctx, opening) {
-  const centerY = opening.centerYPx || 0;
-  const railOffset = Math.max(3, opening.wall.thicknessPx * 0.24);
+  const faces = getOpeningWallFaces(opening);
+  // The outside and inside window rails reuse the wall's already-rendered
+  // faces verbatim. Do not derive an inset from opening depth or a visual
+  // percentage: either produces a different line after wall zoom/thickness
+  // normalization and inevitably leaves a visible alignment error.
+  const outerRailY = faces.outerY;
+  const innerRailY = faces.innerY;
+  const middleRailY = (outerRailY + innerRailY) / 2;
   const centerX = (opening.startPx + opening.endPx) / 2;
   const color = opening.selected ? '#f07a21' : '#2f2f2f';
 
-  // CAD windows are a framed break in the wall: two parallel rails, jambs,
-  // and mullions instead of a single coloured line along the wall centre.
+  // CAD windows are a framed break in the wall. The rails sit across its true
+  // thickness, with a third centre rail and mullions for the denser symbol.
   ctx.strokeStyle = color;
   ctx.lineWidth = opening.selected ? 3 : 1.5;
   ctx.lineCap = 'butt';
   ctx.lineJoin = 'miter';
-  drawOpeningSegment(ctx, opening.startPx, centerY - railOffset, opening.endPx, centerY - railOffset);
-  drawOpeningSegment(ctx, opening.startPx, centerY, opening.endPx, centerY);
-  drawOpeningSegment(ctx, opening.startPx, centerY + railOffset, opening.endPx, centerY + railOffset);
-  drawOpeningSegment(ctx, opening.startPx, centerY - railOffset, opening.startPx, centerY + railOffset);
-  drawOpeningSegment(ctx, opening.endPx, centerY - railOffset, opening.endPx, centerY + railOffset);
+  drawOpeningSegment(ctx, opening.startPx, outerRailY, opening.endPx, outerRailY);
+  drawOpeningSegment(ctx, opening.startPx, middleRailY, opening.endPx, middleRailY);
+  drawOpeningSegment(ctx, opening.startPx, innerRailY, opening.endPx, innerRailY);
+  drawOpeningJamb(ctx, opening.startPx, faces);
+  drawOpeningJamb(ctx, opening.endPx, faces);
 
   if (opening.widthPx >= 36) {
-    drawOpeningSegment(ctx, centerX, centerY - railOffset, centerX, centerY + railOffset);
+    drawOpeningSegment(ctx, centerX, outerRailY, centerX, innerRailY);
   }
   if (opening.opening && opening.opening.modelCategory === 'sliding-window' && opening.widthPx >= 72) {
     const quarterWidth = opening.widthPx / 4;
-    drawOpeningSegment(ctx, centerX - quarterWidth, centerY - railOffset, centerX - quarterWidth, centerY + railOffset);
-    drawOpeningSegment(ctx, centerX + quarterWidth, centerY - railOffset, centerX + quarterWidth, centerY + railOffset);
+    drawOpeningSegment(ctx, centerX - quarterWidth, outerRailY, centerX - quarterWidth, innerRailY);
+    drawOpeningSegment(ctx, centerX + quarterWidth, outerRailY, centerX + quarterWidth, innerRailY);
   }
 }
 
@@ -1108,13 +1242,21 @@ function drawOpenings(ctx, scene) {
     ctx.translate(wall.startPoint.x, wall.startPoint.y);
     ctx.rotate(wall.angleRad);
 
-    ctx.strokeStyle = '#f8f8f8';
-    ctx.lineWidth = Math.max(8, wall.thicknessPx + WALL_STROKE_PX * 3);
-    ctx.lineCap = 'butt';
+    const faces = getOpeningWallFaces(opening);
+    const maskInsetY = WALL_STROKE_PX + 1;
+    // Do not widen the clear opening along the wall. The casing must meet the
+    // wall segments exactly, otherwise the narrow white seams seen at either
+    // side of a window make it read as a floating overlay.
+    const maskInsetX = 0.5;
+    ctx.fillStyle = '#f8f8f8';
     ctx.beginPath();
-    ctx.moveTo(opening.startPx, opening.centerYPx);
-    ctx.lineTo(opening.endPx, opening.centerYPx);
-    ctx.stroke();
+    ctx.rect(
+      opening.startPx - maskInsetX,
+      faces.minY - maskInsetY,
+      opening.widthPx + maskInsetX * 2,
+      faces.maxY - faces.minY + maskInsetY * 2
+    );
+    ctx.fill();
 
     if (opening.selected) {
       ctx.strokeStyle = 'rgba(240, 122, 33, 0.18)';
@@ -1140,6 +1282,10 @@ function drawOpenings(ctx, scene) {
       ctx.fill();
     }
     ctx.restore();
+
+    if (opening.type === 'door') {
+      drawDoorInnerJambPost(ctx, opening);
+    }
   });
 }
 
@@ -1425,6 +1571,7 @@ function projectInteractionWall(wall, transform) {
   [
     'widthPx',
     'thicknessPx',
+    'outerOffsetPx',
     'centerLineYPx',
     'outerStartAlongPx',
     'outerEndPx'

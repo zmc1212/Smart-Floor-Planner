@@ -226,11 +226,14 @@ function createRecordingContext() {
     scale() {},
     rotate() {},
     clip() {},
-    arc() { path.push(['arc']); },
+    arc(x, y, radius, startAngle, endAngle, anticlockwise) {
+      path.push(['arc', x, y, radius, startAngle, endAngle, anticlockwise]);
+    },
     quadraticCurveTo() { path.push(['quadraticCurveTo']); },
     beginPath() { path = []; },
     moveTo(x, y) { path.push(['moveTo', x, y]); },
     lineTo(x, y) { path.push(['lineTo', x, y]); },
+    rect(x, y, width, height) { path.push(['rect', x, y, width, height]); },
     closePath() { path.push(['closePath']); },
     stroke() {
       const recordedPath = path.slice();
@@ -569,6 +572,86 @@ test('window walls retain global exterior totals without a duplicate positioning
 
   assert.equal(scene.dimensions.filter((dimension) => dimension.kind === 'chain-total').length, 4);
   assert.equal(scene.dimensions.some((dimension) => dimension.kind === 'opening-segment'), false);
+});
+
+test('door leaf sits in a double-line frame and its jambs span the wall thickness', () => {
+  let draft = createClosedRectangleDraft();
+  const wallId = surveyGraph.getActiveFloor(draft).walls[0].id;
+  draft = surveyGraph.addOpeningToWall(draft, wallId, 'door');
+  const scene = createScene(draft);
+  const opening = scene.openings[0];
+  const recorder = createRecordingContext();
+
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+
+  const doorStrokes = recorder.strokeDetails.filter((detail) => detail.strokeStyle === '#f07a21');
+  const frameDepth = Math.min(
+    Math.max(3.5, opening.wall.thicknessPx * 0.2),
+    Math.max(3.5, opening.widthPx * 0.1)
+  );
+  const expectedHingeX = opening.startPx + frameDepth;
+  const expectedLeafSeatInset = Math.min(
+    Math.max(1.5, Math.abs(opening.wall.outerOffsetPx) * 0.12),
+    Math.max(1.5, Math.abs(opening.wall.outerOffsetPx) / 2 - 1)
+  );
+  const expectedLeafSeatY = Math.sign(opening.wall.outerOffsetPx) * expectedLeafSeatInset;
+  const leaf = doorStrokes.find((detail) => detail.path.some((command) => (
+    command[0] === 'moveTo' && command[1] === expectedHingeX && command[2] === expectedLeafSeatY
+  )) && detail.path.some((command) => (
+    command[0] === 'lineTo' && command[1] === expectedHingeX && command[2] > 0
+  )));
+  const casingRectangles = [
+    [opening.startPx, expectedHingeX],
+    [opening.endPx - frameDepth, opening.endPx]
+  ].filter(([outerX, innerX]) => doorStrokes.some((detail) => (
+    detail.path.some((command) => command[0] === 'moveTo' && command[1] === outerX && command[2] === opening.wall.outerOffsetPx) &&
+    detail.path.some((command) => command[0] === 'lineTo' && command[1] === innerX && command[2] === opening.wall.outerOffsetPx) &&
+    detail.path.some((command) => command[0] === 'lineTo' && command[1] === innerX && command[2] === 0) &&
+    detail.path.some((command) => command[0] === 'lineTo' && command[1] === outerX && command[2] === 0) &&
+    detail.path.some((command) => command[0] === 'closePath')
+  )));
+  const innerJambPost = doorStrokes.find((detail) => detail.path.some((command) => (
+    command[0] === 'moveTo' &&
+    command[1] === opening.wall.startPoint.x + opening.wall.direction.x * expectedHingeX + opening.wall.localY.x * expectedLeafSeatY &&
+    command[2] === opening.wall.startPoint.y + opening.wall.direction.y * expectedHingeX + opening.wall.localY.y * expectedLeafSeatY
+  )) && detail.path.some((command) => (
+    command[0] === 'lineTo' &&
+    command[1] === opening.wall.startPoint.x + opening.wall.direction.x * (opening.endPx - frameDepth) + opening.wall.localY.x * expectedLeafSeatY &&
+    command[2] === opening.wall.startPoint.y + opening.wall.direction.y * (opening.endPx - frameDepth) + opening.wall.localY.y * expectedLeafSeatY
+  )));
+
+  assert.ok(leaf, 'door leaf should pivot from the inner door-stop line');
+  assert.equal(casingRectangles.length, 2, 'each door jamb should be a closed mitered casing rectangle');
+  assert.ok(innerJambPost, 'the inner jamb post should connect the two casing rectangles');
+});
+
+test('window rails and mullions span the physical wall thickness', () => {
+  let draft = createClosedRectangleDraft();
+  const wallId = surveyGraph.getActiveFloor(draft).walls[0].id;
+  draft = surveyGraph.addOpeningToWall(draft, wallId, 'window');
+  const scene = createScene(draft);
+  const opening = scene.openings[0];
+  const recorder = createRecordingContext();
+
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+
+  const windowStrokes = recorder.strokeDetails.filter((detail) => detail.strokeStyle === '#f07a21');
+  const jamb = windowStrokes.find((detail) => detail.path.some((command) => (
+    command[0] === 'moveTo' && command[1] === opening.startPx && command[2] === opening.wall.outerOffsetPx
+  )) && detail.path.some((command) => (
+    command[0] === 'lineTo' && command[1] === opening.startPx && command[2] === 0
+  )));
+  const rails = windowStrokes.filter((detail) => detail.path.some((command) => (
+    command[0] === 'moveTo' && command[1] === opening.startPx
+  )) && detail.path.some((command) => (
+    command[0] === 'lineTo' && command[1] === opening.endPx
+  )));
+  const railYs = rails.map((detail) => detail.path.find((command) => command[0] === 'moveTo')[2]);
+
+  assert.ok(jamb, 'window frame should bridge the inside and outside wall faces');
+  assert.equal(rails.length, 3, 'window should retain its detailed three-rail CAD symbol');
+  assert.ok(railYs.includes(opening.wall.outerOffsetPx), 'outer window rail must equal the rendered outer wall face');
+  assert.ok(railYs.includes(0), 'inner window rail must equal the rendered inner wall face');
 });
 
 test('dimension arrows and guidance lines use the compact drawing treatment', () => {
