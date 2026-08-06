@@ -34,19 +34,23 @@ const FORMAL_DRAFT_KEY = 'surveying_draft_v1';
 const FORMAL_DRAFT_BACKUP_KEY = 'surveying_last_draft_backup';
 const FORMAL_SERVER_DRAFT_ID_KEY = 'surveying_floorplan_id';
 const SURVEYING_GUIDE_ENABLED_KEY = 'surveying_editor_guide_enabled_v1';
-const COMPONENT_SPEC_TABS = [
-  { key: 'length', label: '长度' },
-  { key: 'depth', label: '宽度' },
-  { key: 'height', label: '高度' },
-  { key: 'sill', label: '距地' },
-  { key: 'edge1', label: '边距1' },
-  { key: 'edge2', label: '边距2' }
-];
-const COMPONENT_PANEL_TABS = [
-  { key: 'spec', label: '规格' },
-  { key: 'flip', label: '翻转' },
-  { key: 'library', label: '模型' }
-];
+const COMPONENT_SPEC_OPTIONS = {
+  door: [
+    { key: 'length', label: '门宽' },
+    { key: 'height', label: '门高' },
+    { key: 'depth', label: '墙厚' },
+    { key: 'edge1', label: '距左' },
+    { key: 'edge2', label: '距右' }
+  ],
+  window: [
+    { key: 'length', label: '窗宽' },
+    { key: 'height', label: '窗高' },
+    { key: 'sill', label: '窗台高' },
+    { key: 'depth', label: '墙厚' },
+    { key: 'edge1', label: '距左' },
+    { key: 'edge2', label: '距右' }
+  ]
+};
 const COMPONENT_CATEGORY_OPTIONS = {
   door: [
     { key: 'single-door', label: '单开门' },
@@ -388,15 +392,13 @@ Page({
       redo: 0
     },
     componentEditorVisible: false,
-    componentEditorMode: '',
     componentPanelMode: 'spec',
     componentSpecMode: 'length',
     componentSyncWallThickness: false,
-    componentPanelTabs: COMPONENT_PANEL_TABS,
-    componentSpecTabs: COMPONENT_SPEC_TABS,
-    componentCategories: [],
-    componentLibraryItems: [],
-    componentEditorTitle: '构件编辑',
+    componentSpecOptions: [],
+    componentSpecLabel: '门宽',
+    componentTypeLabel: '门',
+    componentEditorTitle: '编辑门窗',
     componentSpecValue: '0',
     componentSpecInput: '0',
     componentSelectedOpening: null
@@ -2282,7 +2284,8 @@ Page({
     const renderData = this.buildCanvasRenderData(floor, session);
     const topMetricSuppressed = cursorPlacementState !== 'placed';
     const selectedOpening = this.buildSelectedOpening(floor, session.selectedOpeningId);
-    const componentState = this.buildComponentEditorState(floor, selectedOpening);
+    const requestedComponentSpecMode = (extraData && extraData.componentSpecMode) || this.data.componentSpecMode;
+    const componentState = this.buildComponentEditorState(floor, selectedOpening, requestedComponentSpecMode);
     const presentationState = Object.assign({}, this.data, extraData || {});
     const surveyGuideData = this.buildSurveyGuideData(
       floor,
@@ -2319,10 +2322,11 @@ Page({
       selectedOpening,
       objectToolsVisible: !!(selectedWall || selectedOpening),
       canResumeWallDrawing: !!selectedOpening && floor.walls.length > 0 && !floor.spaces.some((space) => space.closed),
-      componentEditorMode: componentState.mode,
       componentEditorTitle: componentState.title,
-      componentCategories: componentState.categories,
-      componentLibraryItems: componentState.libraryItems,
+      componentTypeLabel: componentState.typeLabel,
+      componentSpecMode: componentState.specMode,
+      componentSpecOptions: componentState.specOptions,
+      componentSpecLabel: componentState.specLabel,
       componentSelectedOpening: componentState.opening,
       componentSpecValue: componentState.specValue,
       spaceSummary: this.buildSpaceSummary(),
@@ -2389,25 +2393,26 @@ Page({
     });
   },
 
-  buildComponentEditorState(floor, selectedOpening) {
+  buildComponentEditorState(floor, selectedOpening, requestedSpecMode) {
     const mode = selectedOpening && selectedOpening.type === 'window' ? 'window' : 'door';
-    const categories = (COMPONENT_CATEGORY_OPTIONS[mode] || []).map((item) => Object.assign({}, item, {
-      active: selectedOpening ? item.key === selectedOpening.modelCategory : false
+    const specOptions = (COMPONENT_SPEC_OPTIONS[mode] || COMPONENT_SPEC_OPTIONS.door).map((item) => Object.assign({}, item, {
+      value: selectedOpening ? this.getComponentSpecRawValue(floor, selectedOpening.id, item.key) : '0'
     }));
-    const activeCategory = selectedOpening ? selectedOpening.modelCategory : '';
-    const libraryItems = (COMPONENT_LIBRARY[mode] || [])
-      .filter((item) => !activeCategory || item.category === activeCategory)
-      .map((item) => Object.assign({}, item, {
-      active: selectedOpening ? item.id === selectedOpening.modelId : false
-    }));
+    const specMode = specOptions.some((item) => item.key === requestedSpecMode)
+      ? requestedSpecMode
+      : 'length';
+    const activeSpec = specOptions.find((item) => item.key === specMode) || specOptions[0];
+    const typeLabel = mode === 'window' ? '窗' : '门';
 
     return {
       mode,
-      title: selectedOpening ? `${selectedOpening.typeLabel}构件编辑` : '构件编辑',
-      categories,
-      libraryItems,
+      title: selectedOpening ? `编辑${typeLabel}` : '编辑门窗',
+      typeLabel,
+      specMode,
+      specOptions,
+      specLabel: activeSpec ? activeSpec.label : '尺寸',
       opening: selectedOpening,
-      specValue: selectedOpening ? this.getComponentSpecRawValue(floor, selectedOpening.id, this.data.componentSpecMode) : '0'
+      specValue: selectedOpening ? this.getComponentSpecRawValue(floor, selectedOpening.id, specMode) : '0'
     };
   },
 
@@ -3480,6 +3485,11 @@ Page({
   },
 
   onBottomMeasure() {
+    if (this.data.componentEditorVisible) {
+      this.triggerComponentSpecBluetoothMeasure();
+      return;
+    }
+
     if (!app.globalData.bleConnected) {
       this.requestBluetoothConnection();
       return;
@@ -5037,8 +5047,10 @@ Page({
     const mode = e.currentTarget.dataset.mode || 'length';
     const floor = surveyGraph.getActiveFloor(this.draft);
     const rawVal = this.getComponentSpecRawValue(floor, floor.session.selectedOpeningId, mode);
+    const activeSpec = (this.data.componentSpecOptions || []).find((item) => item.key === mode);
     this.setData({
       componentSpecMode: mode,
+      componentSpecLabel: activeSpec ? activeSpec.label : '尺寸',
       componentSpecValue: rawVal,
       componentSpecInput: rawVal
     }, () => {

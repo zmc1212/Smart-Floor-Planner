@@ -18,7 +18,7 @@ test('a one-wall shared-boundary closure renders its close action', () => {
     /const minimumActiveWallCount = session\.activeSpaceSharedWallId \? 1 : \(hasSharedBoundary \? 2 : 3\)/
   );
   assert.match(editorScript, /const actionVisible = session\.state === 'closing' \|\| session\.state === 'mergeClosing'/);
-  assert.match(editorWxml, /wx:if="\{\{closeActionVisible\}\}"[\s\S]*catchtap="onConfirmClose"/);
+  assert.match(editorWxml, /wx:if="\{\{!componentEditorVisible && closeActionVisible\}\}"[\s\S]*catchtap="onConfirmClose"/);
 });
 
 test('a placed cursor keeps its guide visibility when the canvas render data is returned', () => {

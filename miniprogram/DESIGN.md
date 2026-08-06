@@ -122,6 +122,74 @@ first.
   a visible pressed state, and sufficient separation from adjacent controls.
 - Required UI copy, controls, and values must remain native text/components;
   never bake them into an image.
+- For every single-line button, segmented option, status cell, or compact action
+  built with native `cover-view`, do not rely on a bare text node plus the
+  parent's Flex alignment. Wrap the label in its own `cover-view`, give that
+  label the full available width and an explicit height/line-height, and apply
+  `text-align: center`; define equal-width tracks on the parent when options are
+  peers. Verify the optical centre with real Chinese labels in WeChat DevTools
+  and on a device, because native `cover-view` text layout can diverge from
+  ordinary Flex layout.
+- When a critical native `cover-view` control has its own unique class, put its
+  final surface, spacing, color, and label/icon geometry on that simple class
+  and its directly named child classes. Do not depend on a later ancestor,
+  compound, or child-combinator selector to reverse an earlier base style;
+  native rendering can retain the base surface even when ordinary WXSS cascade
+  inspection suggests the override should win. If a real contextual variant is
+  required, attach an explicit modifier class in WXML and verify it on device.
+
+### Native `cover-view` Compatibility Checklist
+
+This checklist is a mandatory implementation and review gate whenever a Mini
+Program surface adds or changes `cover-view` / `cover-image`. It is based on the
+official WeChat [`cover-view`](https://developers.weixin.qq.com/miniprogram/dev/component/cover-view.html),
+[native-component](https://developers.weixin.qq.com/miniprogram/dev/component/native-component.html),
+and [WXSS](https://developers.weixin.qq.com/miniprogram/dev/framework/view/wxss.html)
+documentation, last reviewed on 2026-08-07.
+
+- Prefer ordinary `view` under supported same-layer rendering when it can meet
+  the real layering and touch contract. Keep `cover-view` for overlays that must
+  reliably sit above Canvas/native components, and keep that native subtree as
+  small and stable as possible.
+- Use only documented WXSS selector primitives for critical native surfaces:
+  `.class`, `#id`, element, comma-separated element groups, `::before`, and
+  `::after`. Do not depend on descendant, child (`>`), compound, attribute, or
+  pseudo-class selectors for a button's final background, border, spacing,
+  visibility, icon, or text. Put the final style on one simple class; express a
+  real variant by attaching an explicit modifier class in WXML.
+- Wrap every visible text run in its own `cover-view`. Explicitly set the
+  required `display`, `white-space`, `height`, `line-height`, width/flex role,
+  and `text-align` because the native defaults include `display: block`,
+  `white-space: nowrap`, and `line-height: 1.2`. Never rely on a bare text node
+  or parent Flex alone for optical centring.
+- Restrict styling to basic positioning, layout, and text properties. Do not
+  rely on single-side borders, `background-image`, shadows, or
+  `overflow: visible` on `cover-view`; use a full border, a local `cover-image`,
+  or supported wrapper geometry instead. Keep children inside the parent bounds.
+- Treat scrolling, fixed positioning, and animation as versioned capabilities,
+  not general CSS. `overflow: scroll` cannot be updated dynamically; fixed
+  positioning applies only to the outermost supported `cover-view`; transitions
+  are limited to the documented transform/opacity subset. Provide a static
+  usable state when an effect is unsupported.
+- Keep the native node tree stable. Avoid conditionally hiding a custom
+  component slot or its parent around nested `cover-view`; official docs record
+  a case where this makes the cover node disappear. Prefer conditionals on a
+  stable native node or explicit visible-state classes where practical.
+- Native-component events do not bubble into the underlying native component.
+  Bind the action on the actual `cover-view`, preserve the existing Canvas touch
+  owner, and give actionable cover nodes `aria-role="button"` plus an accurate
+  `aria-label`. Add a visible pressed state where the platform supports it.
+- Do not trust DevTools-only rendering. The official native-component guidance
+  states that DevTools uses Web-component simulation and may not reproduce
+  device behavior. Every changed native overlay must be checked on the existing
+  WeChat DevTools project and on a real device at the `390x844` baseline; verify
+  background, border, icon, text, spacing, z-order, touch ownership, and the
+  state after `wx:if` changes. Screenshot evidence overrides browser-like cascade
+  assumptions.
+
+Completion requirement: a `cover-view` UI change is not finished until its
+targeted test asserts the simple-class contract, the layout detector has no
+unexplained findings, and device evidence shows the intended visible state.
 
 ## 5. Design-System Implementation
 

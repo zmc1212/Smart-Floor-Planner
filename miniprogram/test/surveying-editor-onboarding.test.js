@@ -47,7 +47,7 @@ test('formal surveying uses a persistent state-following guide mode instead of a
   assert.doesNotMatch(editorWxml, /surveyGuideFocusVisible|survey-guide-focus/);
   assert.match(editorScript, /wrapSurveyGuideCanvasBody\(/);
   assert.match(editorScript, /ctx\.measureText\(nextLine\)\.width > maxWidth/);
-  assert.match(editorWxml, /wx:if="\{\{topMetricVisible && topMetricLength && cursorPlacementState === 'placed'\}\}"/);
+  assert.match(editorWxml, /wx:if="\{\{!componentEditorVisible && topMetricVisible && topMetricLength && cursorPlacementState === 'placed'\}\}"/);
   assert.doesNotMatch(editorWxml, /class="measurement-bubble"/);
   assert.doesNotMatch(editorWxml, /survey-guide-(?:card|path|target-halo)/);
   assert.doesNotMatch(editorWxss, /\.survey-guide-overlay\s*\{/);
@@ -128,7 +128,7 @@ test('formal surveying fixed chrome follows the compact high-fidelity reference 
 });
 
 test('selected doors and windows use the unified delete-only inspector', () => {
-  const objectRailAssets = ['opening', 'edit', 'delete-danger'];
+  const objectRailAssets = ['opening', 'edit', 'delete-danger', 'continue-wall'];
   objectRailAssets.forEach((name) => {
     const asset = fs.readFileSync(path.join(miniRoot, 'packages', 'surveying', 'assets', 'icons', 'object-rail', `${name}.png`));
     assert.equal(asset.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
@@ -140,11 +140,15 @@ test('selected doors and windows use the unified delete-only inspector', () => {
   assert.match(editorWxml, /class="opening-title"[\s\S]*门 · 窗/);
   assert.match(editorWxml, /class="opening-field-label">宽/);
   assert.match(editorWxml, /class="opening-field-label">高/);
-  assert.match(editorWxml, /class="opening-direction-options"/);
+  assert.match(editorWxml, /wx:if="\{\{selectedOpening\.type === 'door'\}\}" class="opening-direction"/);
+  assert.match(editorWxml, /opening-direction-title">开启方式[\s\S]*class="opening-direction-options"/);
   assert.match(editorWxml, /data-direction="inside"[\s\S]*data-direction="outside"/);
+  assert.match(editorWxml, /opening-direction-label">内开[\s\S]*opening-direction-label">外开/);
+  assert.doesNotMatch(editorWxml, /opening-direction-title">窗位|opening-fixed-option|opening-direction-label">固定/);
   assert.match(editorWxml, /class="opening-context[\s\S]*class="opening-primary-action"[\s\S]*opening-action-label">编辑[\s\S]*class="opening-delete-divider"[\s\S]*class="opening-delete-action"[\s\S]*删除门窗/);
   assert.match(editorWxml, /class="opening-delete-action" data-tool="object-delete"/);
   assert.match(editorWxml, /object-rail\/delete-danger\.png/);
+  assert.match(editorWxml, /class="opening-resume-action" bindtap="onResumeWallDrawing" aria-role="button" aria-label="继续测墙"[\s\S]*class="opening-resume-content"[\s\S]*object-rail\/continue-wall\.png[\s\S]*opening-resume-label">继续测墙/);
   assert.doesNotMatch(editorWxml, /openingSecondaryTools|opening-secondary-tools|opening-secondary-action/);
   assert.doesNotMatch(editorScript, /OPENING_SECONDARY_TOOLS|openingSecondaryTools/);
   assert.match(editorScript, /onOpeningDirectionTap\(e\)[\s\S]*selectedOpening\.openDirection === direction/);
@@ -152,6 +156,13 @@ test('selected doors and windows use the unified delete-only inspector', () => {
   assert.match(editorScript, /height:\s*formatCompactMm\(opening\.heightMm\)/);
   assert.match(editorWxss, /\.right-rail\.with-opening\s*\{[\s\S]*right:\s*24rpx;[\s\S]*width:\s*194rpx;/);
   assert.match(editorWxss, /\.opening-primary-action\s*\{[\s\S]*width:\s*100%;[\s\S]*height:\s*58rpx;/);
+  assert.doesNotMatch(editorWxss, /\.opening-fixed-option/);
+  assert.match(editorWxss, /\.opening-direction-label\s*\{[\s\S]*width:\s*100%;[\s\S]*line-height:\s*52rpx;[\s\S]*text-align:\s*center;/);
+  assert.match(editorWxss, /\.opening-resume-action\s*\{[\s\S]*width:\s*100%;[\s\S]*height:\s*60rpx;[\s\S]*margin:\s*28rpx 0 0;[\s\S]*border:\s*1rpx solid rgba\(8, 160, 61, 0\.42\);[\s\S]*background:\s*rgba\(255, 255, 255, 0\.98\);/);
+  assert.match(editorWxss, /\.opening-resume-content\s*\{[\s\S]*justify-content:\s*center;[\s\S]*width:\s*100%;/);
+  assert.match(editorWxss, /\.opening-resume-icon\s*\{[\s\S]*width:\s*28rpx;[\s\S]*margin-right:\s*10rpx;/);
+  assert.match(editorWxss, /\.opening-resume-label\s*\{[\s\S]*color:\s*#087f38;[\s\S]*font-size:\s*24rpx;[\s\S]*text-align:\s*center;/);
+  assert.doesNotMatch(editorWxss, /\.right-rail\.with-opening > \.opening-resume-action/);
   assert.match(editorWxss, /\.opening-delete-divider\s*\{[\s\S]*height:\s*1px;[\s\S]*scaleY\(0\.5\)/);
   assert.match(editorWxss, /\.opening-delete-action\s*\{[\s\S]*height:\s*60rpx;[\s\S]*color:\s*#df2c24;/);
   assert.doesNotMatch(editorWxss, /\.opening-secondary-tools|\.opening-secondary-action/);
@@ -163,7 +174,7 @@ test('Xiao K is the only explanatory callout while closure and measurement-side 
   assert.doesNotMatch(editorScript, /drawCanvasCallout|buildAnchoredCallout|buildClosureHint/);
   assert.doesNotMatch(editorScript, /切换内外墙方向，红线为测量位置/);
   assert.doesNotMatch(editorScript, /closeHint:/);
-  assert.match(editorWxml, /wx:if="\{\{closeActionVisible\}\}"[\s\S]*catchtap="onConfirmClose"/);
+  assert.match(editorWxml, /wx:if="\{\{!componentEditorVisible && closeActionVisible\}\}"[\s\S]*catchtap="onConfirmClose"/);
 });
 
 test('bottom-dock guide targets hand off from canvas to the native control layer', () => {
@@ -190,4 +201,7 @@ test('cursor placement removes the stale top measurement shell', () => {
   assert.match(editorScript, /topMetricVisible:\s*!topMetricSuppressed && renderData\.topMetricVisible/);
   assert.match(editorScript, /cursorPlacementState:\s*'dragging',[\s\S]*topMetricVisible:\s*false,[\s\S]*topMetricLength:\s*''/);
   assert.match(editorWxml, /topMetricVisible && topMetricLength && cursorPlacementState === 'placed'/);
+  assert.match(editorWxss, /background:\s*rgba\(255, 255, 255, 0\.96\);\s*color:\s*#17345e;/);
+  assert.match(editorWxss, /\.top-measure-bubble \.top-measure-angle\s*\{[\s\S]*?border-left-color:\s*rgba\(23, 52, 94, 0\.16\);[\s\S]*?color:\s*#17345e;/);
+  assert.match(editorWxss, /\.top-measure-bubble \.top-measure-angle\.actionable\s*\{[\s\S]*?color:\s*#c4550f;/);
 });

@@ -506,12 +506,58 @@ utilities, and the admin APIs they call.
   topmost wall indication at an intersection. This is presentation-only: the page
   route, APIs, roles, v4 wall-graph contract, BLE audit, and editor interactions
   are unchanged.
+- Top measurement card contrast correction (2026-08-07): the compact white
+  measurement card now explicitly renders live lengths in dark navy, uses a
+  matching low-contrast divider, and uses a darker orange for actionable
+  angles. Its existing visibility gate still requires a real length and the
+  placed-cursor state, so the correction does not introduce an empty shell.
+  This is presentation-only and does not change routes, APIs, permissions, or
+  the version-4 surveying graph contract.
+- CAD hinged-door geometry correction (2026-08-07): the open door leaf and the
+  closed-position strip between the two short casing rectangles now each use a
+  complete narrow outlined rectangle instead of a single construction line.
+  The between-casing strip sits on the wall face opposite the swing area, so
+  inside/outside doors retain the same CAD relationship after horizontal or
+  vertical rotation. The 90-degree swing arc, opening cut, hit target,
+  millimetre fields, persistence, routes, APIs, and roles are unchanged. The
+  renderer regression test asserts both four-sided paths and both wall
+  orientations. The existing WeChat DevTools project loaded the route at the
+  `390x844` baseline, but its automation screenshot omitted the native Canvas
+  layer; real-device visual QA therefore remains required.
+- Opening state-control alignment correction (2026-08-07): the inside/outside
+  door options now use equal-width tracks with an explicit centred label line;
+  the window state omits the non-actionable position/fixed row entirely. The
+  continue-surveying action is separated from the inspector by a 28rpx gap and
+  uses a licensed local green continue-wall icon inside its full-width outlined
+  secondary surface, following
+  `design-references/surveying-editor-v5/surveying-window-inspector-continue-wall-v1.png`.
+  Its final surface and icon/label geometry live on the simple native
+  `opening-resume-*` classes rather than a late ancestor/child override, so the
+  real-device `cover-view` cannot fall back to the former solid-green surface.
+  This is presentation-only and does not change opening
+  behavior, routes, APIs, roles, persistence, or the version-4 graph contract.
+- Opening dimension editor V1 (2026-08-07): the approved
+  `design-references/surveying-editor-v6/surveying-opening-editor-v1-dimensions-only.png`
+  direction reduces the full-screen editor to real door/window dimensions,
+  current values, the numeric keypad, and the measured preview. Doors expose
+  width, height, wall depth, left offset, and right offset; windows additionally
+  expose sill height. Wall-thickness synchronization appears only while wall
+  depth is selected. The duplicate in-panel BLE action, entry-door auxiliary
+  action, `翻转 / 模型` tabs, and model library are no longer rendered. The
+  persistent bottom dock is the only ranging action and writes its reading to
+  the selected opening parameter. Existing direction/model fields and the
+  Three.js measured preview remain in the formal graph and internal
+  implementation, but V1 exposes no flip or model-selection entry. While the
+  editor is open, the parent surveying header, right rail, and opening inspector
+  are suppressed so native overlays cannot compete with the dimension workflow. Routes,
+  APIs, roles, millimetre fields, version-4 persistence, and measurement-audit
+  boundaries are unchanged.
 - Door/window unified inspector refinement (2026-08-06): when an opening is
   selected, the editor follows
   `design-references/surveying-editor-v4/surveying-opening-inspector-delete-only-v1.png`
   at the iPhone 13 Pro `390x844` baseline. Width, height, the explicit
-  inside/outside door control (or truthful fixed-window state), the green edit
-  action, and one subordinate red `删除门窗` action now share one opaque pale
+  inside/outside door control when the selected opening is a door, the green
+  edit action, and one subordinate red `删除门窗` action now share one opaque pale
   grey-green inspector, with a short hairline separating the destructive
   action. Split, add, and arrange are no longer rendered in the selected-opening
   inspector; opening creation remains available from the existing wall context,
@@ -686,8 +732,10 @@ utilities, and the admin APIs they call.
   drag layer, and bottom drop control. Closure, measurement-side, and other
   operation instructions use the single white Xiao K guide with compound
   obstacle-aware placement; their real native actions remain available without
-  an additional solid-green explanatory callout. Opening component specifications, BLE component measurement,
-  flip/model panels, and a Three.js preview for the selected door/window.
+  an additional solid-green explanatory callout. Opening component
+  specifications, BLE parameter measurement through the single persistent
+  bottom-dock action, and a Three.js measured preview remain available; flip
+  and model selection are intentionally absent from the V1 editor UI.
   Canvas pan and pinch gestures use an animation-frame-coalesced transient
   render layer: walls, room fills, outlines, and openings remain visible while
   dimensions, room labels, guides, and callouts return after one final formal

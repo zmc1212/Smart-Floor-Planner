@@ -574,55 +574,88 @@ test('window walls retain global exterior totals without a duplicate positioning
   assert.equal(scene.dimensions.some((dimension) => dimension.kind === 'opening-segment'), false);
 });
 
-test('door leaf sits in a double-line frame and its jambs span the wall thickness', () => {
-  let draft = createClosedRectangleDraft();
-  const wallId = surveyGraph.getActiveFloor(draft).walls[0].id;
-  draft = surveyGraph.addOpeningToWall(draft, wallId, 'door');
-  const scene = createScene(draft);
-  const opening = scene.openings[0];
-  const recorder = createRecordingContext();
+test('door leaf and opposite-side frame strip remain closed rectangles on horizontal and vertical walls', () => {
+  [0, 1].forEach((wallIndex) => {
+    ['inside', 'outside'].forEach((openDirection) => {
+      let draft = createClosedRectangleDraft();
+      const wallId = surveyGraph.getActiveFloor(draft).walls[wallIndex].id;
+      draft = surveyGraph.addOpeningToWall(draft, wallId, 'door');
+      const openingId = surveyGraph.getActiveFloor(draft).openings[0].id;
+      draft = surveyGraph.updateOpening(draft, openingId, { openDirection });
+      const scene = createScene(draft);
+      const opening = scene.openings[0];
+      const recorder = createRecordingContext();
 
-  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+      surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
 
-  const doorStrokes = recorder.strokeDetails.filter((detail) => detail.strokeStyle === '#f07a21');
-  const frameDepth = Math.min(
-    Math.max(3.5, opening.wall.thicknessPx * 0.2),
-    Math.max(3.5, opening.widthPx * 0.1)
-  );
-  const expectedHingeX = opening.startPx + frameDepth;
-  const expectedLeafSeatInset = Math.min(
-    Math.max(1.5, Math.abs(opening.wall.outerOffsetPx) * 0.12),
-    Math.max(1.5, Math.abs(opening.wall.outerOffsetPx) / 2 - 1)
-  );
-  const expectedLeafSeatY = Math.sign(opening.wall.outerOffsetPx) * expectedLeafSeatInset;
-  const leaf = doorStrokes.find((detail) => detail.path.some((command) => (
-    command[0] === 'moveTo' && command[1] === expectedHingeX && command[2] === expectedLeafSeatY
-  )) && detail.path.some((command) => (
-    command[0] === 'lineTo' && command[1] === expectedHingeX && command[2] > 0
-  )));
-  const casingRectangles = [
-    [opening.startPx, expectedHingeX],
-    [opening.endPx - frameDepth, opening.endPx]
-  ].filter(([outerX, innerX]) => doorStrokes.some((detail) => (
-    detail.path.some((command) => command[0] === 'moveTo' && command[1] === outerX && command[2] === opening.wall.outerOffsetPx) &&
-    detail.path.some((command) => command[0] === 'lineTo' && command[1] === innerX && command[2] === opening.wall.outerOffsetPx) &&
-    detail.path.some((command) => command[0] === 'lineTo' && command[1] === innerX && command[2] === 0) &&
-    detail.path.some((command) => command[0] === 'lineTo' && command[1] === outerX && command[2] === 0) &&
-    detail.path.some((command) => command[0] === 'closePath')
-  )));
-  const innerJambPost = doorStrokes.find((detail) => detail.path.some((command) => (
-    command[0] === 'moveTo' &&
-    command[1] === opening.wall.startPoint.x + opening.wall.direction.x * expectedHingeX + opening.wall.localY.x * expectedLeafSeatY &&
-    command[2] === opening.wall.startPoint.y + opening.wall.direction.y * expectedHingeX + opening.wall.localY.y * expectedLeafSeatY
-  )) && detail.path.some((command) => (
-    command[0] === 'lineTo' &&
-    command[1] === opening.wall.startPoint.x + opening.wall.direction.x * (opening.endPx - frameDepth) + opening.wall.localY.x * expectedLeafSeatY &&
-    command[2] === opening.wall.startPoint.y + opening.wall.direction.y * (opening.endPx - frameDepth) + opening.wall.localY.y * expectedLeafSeatY
-  )));
+      const doorStrokes = recorder.strokeDetails.filter((detail) => detail.strokeStyle === '#f07a21');
+      const frameDepth = Math.min(
+        Math.max(3.5, opening.wall.thicknessPx * 0.2),
+        Math.max(3.5, opening.widthPx * 0.1)
+      );
+      const hingeX = opening.startPx + frameDepth;
+      const oppositeJambX = opening.endPx - frameDepth;
+      const outsideSign = opening.wall.outerOffsetPx < 0 ? -1 : 1;
+      const opensOutside = openDirection === 'outside';
+      const swingSign = opensOutside ? outsideSign : -outsideSign;
+      const frameFaceY = opensOutside ? 0 : opening.wall.outerOffsetPx;
+      const frameInset = Math.min(
+        Math.max(1.5, Math.abs(opening.wall.outerOffsetPx) * 0.12),
+        Math.max(1.5, Math.abs(opening.wall.outerOffsetPx) / 2 - 1)
+      );
+      const towardOtherFace = frameFaceY === opening.wall.outerOffsetPx ? -outsideSign : outsideSign;
+      const leafSeatY = frameFaceY + towardOtherFace * frameInset;
+      const leafThickness = Math.abs(frameFaceY - leafSeatY);
+      const leafTipY = leafSeatY + swingSign * (oppositeJambX - hingeX);
+      const expectedLeafPath = [
+        ['moveTo', hingeX, leafSeatY],
+        ['lineTo', hingeX, leafTipY],
+        ['lineTo', hingeX + leafThickness, leafTipY],
+        ['lineTo', hingeX + leafThickness, leafSeatY],
+        ['closePath']
+      ];
+      const leaf = doorStrokes.find((detail) => (
+        JSON.stringify(detail.path) === JSON.stringify(expectedLeafPath)
+      ));
+      const casingRectangles = [
+        [opening.startPx, hingeX],
+        [oppositeJambX, opening.endPx]
+      ].filter(([outerX, innerX]) => doorStrokes.some((detail) => (
+        detail.path.some((command) => command[0] === 'moveTo' && command[1] === outerX && command[2] === opening.wall.outerOffsetPx) &&
+        detail.path.some((command) => command[0] === 'lineTo' && command[1] === innerX && command[2] === opening.wall.outerOffsetPx) &&
+        detail.path.some((command) => command[0] === 'lineTo' && command[1] === innerX && command[2] === 0) &&
+        detail.path.some((command) => command[0] === 'lineTo' && command[1] === outerX && command[2] === 0) &&
+        detail.path.some((command) => command[0] === 'closePath')
+      )));
+      const toCanvas = (x, y) => ({
+        x: opening.wall.startPoint.x + opening.wall.direction.x * x + opening.wall.localY.x * y,
+        y: opening.wall.startPoint.y + opening.wall.direction.y * x + opening.wall.localY.y * y
+      });
+      const faceStart = toCanvas(hingeX, frameFaceY);
+      const faceEnd = toCanvas(oppositeJambX, frameFaceY);
+      const seatEnd = toCanvas(oppositeJambX, leafSeatY);
+      const seatStart = toCanvas(hingeX, leafSeatY);
+      const expectedFrameStripPath = [
+        ['moveTo', faceStart.x, faceStart.y],
+        ['lineTo', faceEnd.x, faceEnd.y],
+        ['lineTo', seatEnd.x, seatEnd.y],
+        ['lineTo', seatStart.x, seatStart.y],
+        ['closePath']
+      ];
+      const innerFrameStrip = doorStrokes.find((detail) => (
+        JSON.stringify(detail.path) === JSON.stringify(expectedFrameStripPath)
+      ));
 
-  assert.ok(leaf, 'door leaf should pivot from the inner door-stop line');
-  assert.equal(casingRectangles.length, 2, 'each door jamb should be a closed mitered casing rectangle');
-  assert.ok(innerJambPost, 'the inner jamb post should connect the two casing rectangles');
+      assert.ok(leaf, 'the open door leaf should be a two-edge closed rectangle');
+      assert.equal(casingRectangles.length, 2, 'each door jamb should be a closed mitered casing rectangle');
+      assert.ok(innerFrameStrip, 'the outlined frame strip should connect the two casing rectangles');
+      assert.equal(
+        frameFaceY,
+        opensOutside ? 0 : opening.wall.outerOffsetPx,
+        'the frame strip should sit on the wall face opposite the door swing'
+      );
+    });
+  });
 });
 
 test('window rails and mullions span the physical wall thickness', () => {

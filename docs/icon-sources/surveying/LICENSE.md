@@ -8,8 +8,9 @@ their 48px PNG derivatives ship with the editor instead of relying on
 device-dependent `cover-image` CSS filters.
 
 `object-*.svg` are original project-authored vectors for the restored door/window
-context rail. Their orange, white, and danger-red 48px PNG derivatives preserve
-the approved selected-opening hierarchy without runtime filters.
+context rail and its continue-wall workflow action. Their orange, white, green,
+and danger-red 48px PNG derivatives preserve the approved selected-opening
+hierarchy without runtime filters.
 
 `bluetooth.svg`, `circle-check.svg`, `crosshair.svg`, `refresh-cw.svg`,
 `guide-help.svg`, and `save-draft.svg` are adapted from Lucide Icons v1.8.0.

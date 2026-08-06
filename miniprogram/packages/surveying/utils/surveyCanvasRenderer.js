@@ -1047,13 +1047,16 @@ function getDoorFrameDepth(opening) {
   );
 }
 
-function getDoorLeafFrameFace(opening, faces) {
+function getDoorFrameStripFace(opening, faces) {
   const opensOutside = opening.opening && opening.opening.openDirection === 'outside';
-  return opensOutside ? faces.outerY : faces.innerY;
+  // The closed-position frame strip belongs on the wall face opposite the
+  // swing area. Keeping it on the swing face mirrors the CAD symbol even when
+  // the inside/outside direction itself is correct.
+  return opensOutside ? faces.innerY : faces.outerY;
 }
 
 function getDoorLeafSeat(opening, faces) {
-  const faceY = getDoorLeafFrameFace(opening, faces);
+  const faceY = getDoorFrameStripFace(opening, faces);
   const towardOtherFace = faces.outerY === faceY
     ? Math.sign(faces.innerY - faces.outerY)
     : Math.sign(faces.outerY - faces.innerY);
@@ -1089,42 +1092,60 @@ function drawDoorCasing(ctx, outerX, innerX, faces) {
   ctx.stroke();
 }
 
-// Draw a CAD door leaf from the actual inside wall face and the quarter-circle
-// traced by its outside corner. `endOnRight` selects which jamb the arc meets.
-function drawDoorLeaf(ctx, hingeX, innerY, radius, swingSign, endOnRight) {
+// Draw the open door leaf as a narrow outlined slab rather than one construction
+// line. `endOnRight` selects both the opposing jamb and the side on which the
+// slab gains its thickness, so paired leaves grow toward the clear opening.
+function drawDoorLeaf(ctx, hingeX, seatY, radius, thickness, swingSign, endOnRight) {
   const leafAngle = swingSign < 0 ? -Math.PI / 2 : Math.PI / 2;
   const endAngle = endOnRight ? 0 : Math.PI;
   const anticlockwise = (swingSign > 0 && endOnRight) || (swingSign < 0 && !endOnRight);
+  const leafTipY = seatY + swingSign * radius;
+  const secondLeafX = hingeX + (endOnRight ? thickness : -thickness);
 
-  drawOpeningSegment(ctx, hingeX, innerY, hingeX, innerY + swingSign * radius);
   ctx.beginPath();
-  ctx.arc(hingeX, innerY, radius, leafAngle, endAngle, anticlockwise);
+  ctx.moveTo(hingeX, seatY);
+  ctx.lineTo(hingeX, leafTipY);
+  ctx.lineTo(secondLeafX, leafTipY);
+  ctx.lineTo(secondLeafX, seatY);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(hingeX, seatY, radius, leafAngle, endAngle, anticlockwise);
   ctx.stroke();
 }
 
-// The inner jamb is a final, global-coordinate overlay. Native Canvas can
-// retain a transformed opening path together with the wall-mask fill on some
-// devices; drawing this one construction line after the local opening restore
-// makes its layer and direction unambiguous.
-function drawDoorInnerJambPost(ctx, opening) {
+// The inner door-frame strip is a final, global-coordinate overlay. Native
+// Canvas can retain a transformed opening path together with the wall-mask fill
+// on some devices; drawing the complete outlined strip after the local opening
+// restore keeps both long edges visible and closes them into the two casing
+// rectangles. A single construction line here loses the narrow rectangular
+// layer used by the CAD reference.
+function drawDoorInnerFrameStrip(ctx, opening) {
   const category = opening.opening && opening.opening.modelCategory;
   if (category === 'sliding-door') return;
   const faces = getOpeningWallFaces(opening);
   const frameDepth = getDoorFrameDepth(opening);
   const hingeX = opening.startPx + frameDepth;
   const oppositeJambX = opening.endPx - frameDepth;
+  const leafFrameFaceY = getDoorFrameStripFace(opening, faces);
   const leafSeatY = getDoorLeafSeat(opening, faces);
   const wall = opening.wall;
-  const start = localPointToCanvas(wall, hingeX, leafSeatY);
-  const end = localPointToCanvas(wall, oppositeJambX, leafSeatY);
+  const faceStart = localPointToCanvas(wall, hingeX, leafFrameFaceY);
+  const faceEnd = localPointToCanvas(wall, oppositeJambX, leafFrameFaceY);
+  const seatEnd = localPointToCanvas(wall, oppositeJambX, leafSeatY);
+  const seatStart = localPointToCanvas(wall, hingeX, leafSeatY);
 
   ctx.save();
   ctx.strokeStyle = opening.selected ? '#f07a21' : '#111827';
   ctx.lineWidth = opening.selected ? 2.5 : WALL_STROKE_PX;
   ctx.lineCap = 'butt';
+  ctx.lineJoin = 'miter';
   ctx.beginPath();
-  ctx.moveTo(start.x, start.y);
-  ctx.lineTo(end.x, end.y);
+  ctx.moveTo(faceStart.x, faceStart.y);
+  ctx.lineTo(faceEnd.x, faceEnd.y);
+  ctx.lineTo(seatEnd.x, seatEnd.y);
+  ctx.lineTo(seatStart.x, seatStart.y);
+  ctx.closePath();
   ctx.stroke();
   ctx.restore();
 }
@@ -1159,7 +1180,7 @@ function drawDoorOpening(ctx, opening) {
   const hingeX = opening.startPx + frameDepth;
   const oppositeJambX = opening.endPx - frameDepth;
   const leafSeatY = getDoorLeafSeat(opening, faces);
-  const leafFrameFaceY = getDoorLeafFrameFace(opening, faces);
+  const leafThickness = Math.abs(getDoorFrameStripFace(opening, faces) - leafSeatY);
   const color = opening.selected ? '#f07a21' : '#111827';
 
   ctx.strokeStyle = color;
@@ -1180,20 +1201,24 @@ function drawDoorOpening(ctx, opening) {
     // and arc-stop positions used below.
     drawDoorCasing(ctx, opening.startPx, hingeX, faces);
     drawDoorCasing(ctx, oppositeJambX, opening.endPx, faces);
-    // Connect the visible frame face to its final, global-coordinate jamb
-    // overlay. The overlay itself is painted after this local transform ends.
-    drawOpeningSegment(ctx, hingeX, leafFrameFaceY, hingeX, leafSeatY);
-    drawOpeningSegment(ctx, oppositeJambX, leafFrameFaceY, oppositeJambX, leafSeatY);
   };
 
   // The leaf uses the measured clear opening between the two door-stop lines,
   // so the arc meets the opposing frame instead of the raw wall opening.
   if (category === 'double-door') {
     const leafWidth = (oppositeJambX - hingeX) / 2;
-    drawDoorLeaf(ctx, hingeX, leafSeatY, leafWidth, swingSign, true);
-    drawDoorLeaf(ctx, oppositeJambX, leafSeatY, leafWidth, swingSign, false);
+    drawDoorLeaf(ctx, hingeX, leafSeatY, leafWidth, leafThickness, swingSign, true);
+    drawDoorLeaf(ctx, oppositeJambX, leafSeatY, leafWidth, leafThickness, swingSign, false);
   } else {
-    drawDoorLeaf(ctx, hingeX, leafSeatY, oppositeJambX - hingeX, swingSign, true);
+    drawDoorLeaf(
+      ctx,
+      hingeX,
+      leafSeatY,
+      oppositeJambX - hingeX,
+      leafThickness,
+      swingSign,
+      true
+    );
   }
   // Keep the complete rectangular casings above the leaf. This final pass
   // preserves both stop lines and their face connectors where the leaf meets
@@ -1284,7 +1309,7 @@ function drawOpenings(ctx, scene) {
     ctx.restore();
 
     if (opening.type === 'door') {
-      drawDoorInnerJambPost(ctx, opening);
+      drawDoorInnerFrameStrip(ctx, opening);
     }
   });
 }
