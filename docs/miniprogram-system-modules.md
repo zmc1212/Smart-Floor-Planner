@@ -506,6 +506,20 @@ utilities, and the admin APIs they call.
   topmost wall indication at an intersection. This is presentation-only: the page
   route, APIs, roles, v4 wall-graph contract, BLE audit, and editor interactions
   are unchanged.
+- Door/window unified inspector refinement (2026-08-06): when an opening is
+  selected, the editor follows
+  `design-references/surveying-editor-v4/surveying-opening-inspector-delete-only-v1.png`
+  at the iPhone 13 Pro `390x844` baseline. Width, height, the explicit
+  inside/outside door control (or truthful fixed-window state), the green edit
+  action, and one subordinate red `删除门窗` action now share one opaque pale
+  grey-green inspector, with a short hairline separating the destructive
+  action. Split, add, and arrange are no longer rendered in the selected-opening
+  inspector; opening creation remains available from the existing wall context,
+  while planned tools keep their existing limitations elsewhere. An unfinished
+  wall chain still exposes its existing continue-surveying action below the
+  inspector. This is a presentation and selected-opening control-surface
+  refinement only: the route, API, role boundary, v4 graph, measurement audit,
+  opening fields, component editor, and persistence behavior are unchanged.
 - Visual baseline: `design-references/all-pages-ip-v1/03-surveying-editor-idle.png`,
   `18-surveying-editor-active.png`, `19-surveying-state-board.png`,
   `design-references/all-pages-ip-v1/ChatGPT Image 2026年8月5日 15_44_17.png`, and

@@ -113,24 +113,56 @@
   <!-- ══════════════════════════════════════════════ -->
   <!--  右侧工具栏（浮层）                              -->
   <!-- ══════════════════════════════════════════════ -->
-  <cover-view class="right-rail native-canvas-overlay" style="top: {{rightRailTop}}px; bottom: {{rightRailBottom}}px;">
+  <cover-view class="right-rail native-canvas-overlay {{selectedOpening ? 'with-opening' : ''}}" style="top: {{rightRailTop}}px; bottom: {{rightRailBottom}}px;">
     <cover-view wx:if="{{selectedOpening}}" class="opening-context {{selectedOpening.type}}">
-      <cover-view class="opening-title">{{selectedOpening.typeLabel}} · 正式量房</cover-view>
+      <cover-view class="opening-title">
+        <cover-image class="opening-title-icon" src="/packages/surveying/assets/icons/object-rail/opening.png" mode="aspectFit"></cover-image>
+        <cover-view>门 · 窗</cover-view>
+      </cover-view>
       <cover-view class="opening-fields">
-        <cover-view class="opening-field" data-field="width" bindtap="onOpeningEditField">宽 {{selectedOpening.width}}</cover-view>
-        <cover-view class="opening-field" data-field="height" bindtap="onOpeningEditField">高 {{selectedOpening.height}}</cover-view>
-        <cover-view class="opening-field" data-field="sill" bindtap="onOpeningEditField">距地 {{selectedOpening.sill}}</cover-view>
+        <cover-view class="opening-field" data-field="width" bindtap="onOpeningEditField">
+          <cover-view class="opening-field-label">宽</cover-view>
+          <cover-view class="opening-field-value">{{selectedOpening.width}}</cover-view>
+        </cover-view>
+        <cover-view class="opening-field" data-field="height" bindtap="onOpeningEditField">
+          <cover-view class="opening-field-label">高</cover-view>
+          <cover-view class="opening-field-value">{{selectedOpening.height}}</cover-view>
+        </cover-view>
       </cover-view>
-      <cover-view wx:if="{{canResumeWallDrawing}}" class="opening-resume-action" bindtap="onResumeWallDrawing">
-        <cover-view class="opening-resume-label">继续测墙</cover-view>
+      <cover-view class="opening-direction">
+        <cover-view class="opening-direction-title">{{selectedOpening.type === 'door' ? '开启方式' : '窗位'}}</cover-view>
+        <cover-view wx:if="{{selectedOpening.type === 'door'}}" class="opening-direction-options">
+          <cover-view
+            class="opening-direction-option {{selectedOpening.openDirection === 'inside' ? 'active' : ''}}"
+            data-direction="inside"
+            bindtap="onOpeningDirectionTap"
+          >内开</cover-view>
+          <cover-view
+            class="opening-direction-option {{selectedOpening.openDirection === 'outside' ? 'active' : ''}}"
+            data-direction="outside"
+            bindtap="onOpeningDirectionTap"
+          >外开</cover-view>
+        </cover-view>
+        <cover-view wx:else class="opening-fixed-option">固定</cover-view>
       </cover-view>
-      <cover-view class="opening-side-switch" bindtap="onToggleSide">
-        <cover-view class="side-label">{{selectedOpening.type === 'door' ? '开向' : '窗位'}}</cover-view>
-        <cover-view class="side-value">{{selectedOpening.type === 'door' ? selectedOpening.openDirectionLabel : '固定'}}</cover-view>
+
+      <cover-view class="opening-primary-action" data-tool="object-edit" bindtap="onToolTap" aria-label="编辑门窗">
+        <cover-image class="opening-action-icon" src="/packages/surveying/assets/icons/object-rail/edit.png" mode="aspectFit"></cover-image>
+        <cover-view class="opening-action-label">编辑</cover-view>
+      </cover-view>
+
+      <cover-view class="opening-delete-divider"></cover-view>
+      <cover-view class="opening-delete-action" data-tool="object-delete" bindtap="onToolTap" aria-label="删除门窗">
+        <cover-image class="opening-delete-icon" src="/packages/surveying/assets/icons/object-rail/delete-danger.png" mode="aspectFit"></cover-image>
+        <cover-view class="opening-delete-label">删除门窗</cover-view>
       </cover-view>
     </cover-view>
 
-    <cover-view wx:if="{{objectToolsVisible}}" class="tool-group primary-tools object-tools">
+    <cover-view wx:if="{{selectedOpening && canResumeWallDrawing}}" class="opening-resume-action" bindtap="onResumeWallDrawing">
+      <cover-view class="opening-resume-label">继续测墙</cover-view>
+    </cover-view>
+
+    <cover-view wx:if="{{objectToolsVisible && !selectedOpening}}" class="tool-group primary-tools object-tools">
       <cover-view
         class="tool-button"
         wx:for="{{objectTools}}"
@@ -143,7 +175,7 @@
       </cover-view>
     </cover-view>
 
-    <cover-view wx:else class="tool-group primary-tools">
+    <cover-view wx:if="{{!objectToolsVisible && !selectedOpening}}" class="tool-group primary-tools">
       <cover-view
         class="tool-button {{item.active ? 'active' : ''}}"
         wx:for="{{coreTools}}"

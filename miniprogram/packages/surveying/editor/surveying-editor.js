@@ -128,6 +128,10 @@ function formatMm(value) {
   return `${Math.round(value || 0)} mm`;
 }
 
+function formatCompactMm(value) {
+  return `${Math.round(value || 0)}mm`;
+}
+
 function normalizeAngleDiff(currentAngle, previousAngle) {
   const diff = Math.abs(((currentAngle - previousAngle + 540) % 360) - 180);
   return Math.round(diff);
@@ -3067,9 +3071,9 @@ Page({
       wallId: opening.wallId,
       type: opening.type,
       typeLabel: opening.type === 'window' ? '窗' : '门',
-      width: formatMm(opening.widthMm),
+      width: formatCompactMm(opening.widthMm),
       depth: formatMm(opening.depthMm || (wall && wall.thicknessMm) || 0),
-      height: formatMm(opening.heightMm),
+      height: formatCompactMm(opening.heightMm),
       sill: formatMm(opening.sillHeightMm || 0),
       offset: formatMm(opening.centerOffsetMm || 0),
       edge1: formatMm(edge1),
@@ -3685,6 +3689,25 @@ Page({
     if (field === 'sill') {
       this.openNumberPad('openingSill');
     }
+  },
+
+  onOpeningDirectionTap(e) {
+    const direction = e.currentTarget.dataset.direction;
+    if (direction !== 'inside' && direction !== 'outside') return;
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    const session = floor.session;
+    const selectedOpening = session.selectedOpeningId
+      ? surveyGraph.getOpening(floor, session.selectedOpeningId)
+      : null;
+    if (!selectedOpening || selectedOpening.type !== 'door' || selectedOpening.openDirection === direction) {
+      return;
+    }
+    const nextDraft = surveyGraph.updateOpening(this.draft, selectedOpening.id, { openDirection: direction });
+    this.applyDraft(nextDraft, {
+      recordHistory: true,
+      extraData: { numberPadVisible: this.data.numberPadVisible }
+    });
+    wx.showToast({ title: direction === 'outside' ? '门开向已设为外开' : '门开向已设为内开', icon: 'none' });
   },
 
   onToggleSide(e) {

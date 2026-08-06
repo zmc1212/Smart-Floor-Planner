@@ -16,6 +16,7 @@ import {
 import { grsAdapter } from './providers/grs';
 import { openAiCompatibleAdapter } from './providers/openai-compatible';
 import { pollinationsAdapter } from './providers/pollinations';
+import { httpError } from '@/lib/http-error';
 
 function decryptProviderApiKey(
   config: Pick<AiProviderConfigRecord, 'credentialsEncrypted' | 'apiKeyEncrypted'>
@@ -137,6 +138,6 @@ export async function getProviderRuntimeById(id: string) {
   const config = await withPlatformTransaction((transaction) =>
     new AiProviderConfigRepository(transaction).findById(BigInt(id))
   );
-  if (!config) throw new Error('AI 供应商配置不存在');
+  if (!config) throw httpError('AI 供应商配置不存在', 404);
   return toProviderRuntime(config);
 }

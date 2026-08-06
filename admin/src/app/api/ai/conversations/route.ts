@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
-import { parsePostgresId } from '@/db/postgres-dto';
+import {
+  aiChatSessionSummaryToDto,
+  aiChatSessionToDto,
+  parsePostgresId,
+} from '@/db/postgres-dto';
 import { AiChatSessionRepository } from '@/db/repositories';
 import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
 import { getTenantContext } from '@/lib/auth';
@@ -14,10 +18,7 @@ export async function GET(request: Request) {
     const sessions = await withAdminPostgresTransaction(context, (transaction) =>
       new AiChatSessionRepository(transaction).list(enterpriseId, adminId)
     );
-    return NextResponse.json({ success: true, data: sessions.map((session) => ({
-      _id: session.id.toString(), title: session.title, lastMessageAt: session.lastMessageAt,
-      createdAt: session.createdAt,
-    })) });
+    return NextResponse.json({ success: true, data: sessions.map(aiChatSessionSummaryToDto) });
   } catch (error) {
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Failed to load conversations' }, { status: 500 });
   }
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
         messages: [],
       })
     );
-    return NextResponse.json({ success: true, data: { ...session, _id: session.id.toString() } });
+    return NextResponse.json({ success: true, data: aiChatSessionToDto(session) });
   } catch (error) {
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Failed to create conversation' }, { status: 500 });
   }

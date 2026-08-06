@@ -12,6 +12,7 @@ import {
 import { submitPostgresCreationGeneration } from '@/lib/ai/postgres-creation-runtime';
 import type { AiWorkflowSourceAssetRole, AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
 import { buildWorkflowDetailUiPayload } from '@/lib/ai/agent';
+import { httpError, httpErrorStatus } from '@/lib/http-error';
 
 type AgentActionName =
   | 'run_workflow_stage'
@@ -37,7 +38,7 @@ type AgentActionBody = {
 const MAX_STORED_MESSAGE_CHARS = 8000;
 
 function requireString(value: string | undefined, label: string) {
-  if (!value) throw new Error(`Missing ${label}`);
+  if (!value) throw httpError(`Missing ${label}`, 400);
   return value;
 }
 
@@ -148,7 +149,7 @@ export async function POST(req: NextRequest) {
     console.error('[Agent Action API Error]', error);
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : 'Internal Server Error' },
-      { status: 500 }
+      { status: httpErrorStatus(error, 500) }
     );
   }
 }

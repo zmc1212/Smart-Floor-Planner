@@ -1,6 +1,40 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {
+  aiChatSessionSummaryToDto,
+  aiChatSessionToDto,
+} from '@/db/postgres-dto';
 import { resolvePostgresRuntimeConfig } from '@/lib/postgresql';
+import { httpError, httpErrorStatus } from '@/lib/http-error';
+
+test('AI conversation DTOs serialize PostgreSQL bigint identifiers as strings', () => {
+  const now = new Date('2026-08-06T00:00:00.000Z');
+  const record = {
+    id: 31n,
+    enterpriseId: 41n,
+    adminId: 51n,
+    title: 'New conversation',
+    messages: [{ role: 'assistant', content: 'Ready', createdAt: now }],
+    lastMessageAt: now,
+    createdAt: now,
+    updatedAt: now,
+  } as const;
+
+  const summary = aiChatSessionSummaryToDto(record);
+  const detail = aiChatSessionToDto(record);
+
+  assert.equal(summary._id, '31');
+  assert.equal(detail.id, '31');
+  assert.equal(detail.enterpriseId, '41');
+  assert.equal(detail.adminId, '51');
+  assert.doesNotThrow(() => JSON.stringify({ success: true, data: detail }));
+});
+
+test('HTTP errors preserve intentional client status codes', () => {
+  assert.equal(httpErrorStatus(httpError('Missing conversationId', 400), 500), 400);
+  assert.equal(httpErrorStatus(httpError('Provider not found', 404), 502), 404);
+  assert.equal(httpErrorStatus(new Error('upstream failure'), 502), 502);
+});
 
 const managedKeys = [
   'DATABASE_URL',

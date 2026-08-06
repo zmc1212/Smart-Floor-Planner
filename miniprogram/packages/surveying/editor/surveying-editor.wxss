@@ -2929,6 +2929,228 @@ page,
   bottom: auto !important;
 }
 
+/* Door/window selected state: unified inspector at the approved 390 × 844 baseline. */
+.right-rail.with-opening {
+  right: 24rpx;
+  width: 194rpx;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+  gap: 0;
+  transform: translateY(-28rpx);
+}
+
+.right-rail.with-opening .opening-context {
+  width: 194rpx;
+  padding: 22rpx 20rpx 18rpx;
+  border: 1rpx solid rgba(142, 166, 153, 0.28);
+  border-radius: 24rpx;
+  background: rgba(247, 251, 248, 0.98);
+  box-shadow: 0 8rpx 24rpx rgba(22, 34, 28, 0.1);
+  color: #17345e;
+  gap: 0;
+  box-sizing: border-box;
+}
+
+.right-rail.with-opening .opening-title {
+  display: flex;
+  align-items: center;
+  color: #f36b0b;
+  font-size: 24rpx;
+  font-weight: 700;
+  line-height: 32rpx;
+  white-space: nowrap;
+}
+
+.right-rail.with-opening .opening-title-icon {
+  width: 34rpx;
+  height: 34rpx;
+  margin-right: 10rpx;
+  flex: 0 0 auto;
+}
+
+.right-rail.with-opening .opening-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 22rpx;
+}
+
+.right-rail.with-opening .opening-field + .opening-field {
+  margin-top: 12rpx;
+}
+
+.right-rail.with-opening .opening-field {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 32rpx;
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #17345e;
+  overflow: visible;
+}
+
+.right-rail.with-opening .opening-context.door .opening-field,
+.right-rail.with-opening .opening-context.window .opening-field {
+  background: transparent;
+  color: #17345e;
+}
+
+.opening-field-label {
+  color: #17345e;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 32rpx;
+}
+
+.opening-field-value {
+  margin-left: 14rpx;
+  color: #17345e;
+  font-size: 24rpx;
+  font-weight: 500;
+  line-height: 32rpx;
+  white-space: nowrap;
+}
+
+.opening-direction {
+  margin-top: 18rpx;
+}
+
+.opening-direction-title {
+  color: #17345e;
+  font-size: 24rpx;
+  font-weight: 700;
+  line-height: 28rpx;
+  white-space: nowrap;
+}
+
+.opening-direction-options {
+  display: flex;
+  gap: 0;
+  margin-top: 10rpx;
+}
+
+.opening-direction-option + .opening-direction-option {
+  margin-left: 8rpx;
+}
+
+.opening-direction-option,
+.opening-fixed-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-width: 0;
+  height: 54rpx;
+  padding: 0 6rpx;
+  border: 1rpx solid #dce4ee;
+  border-radius: 12rpx;
+  background: #ffffff;
+  color: #17345e;
+  font-size: 24rpx;
+  font-weight: 500;
+  line-height: 30rpx;
+  text-align: center;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.opening-direction-option.active,
+.opening-fixed-option {
+  border-color: #08ba48;
+  background: #08ba48;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 8rpx 16rpx rgba(8, 186, 72, 0.16);
+}
+
+.opening-fixed-option {
+  width: 100%;
+  margin-top: 10rpx;
+}
+
+.opening-primary-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 58rpx;
+  margin-top: 24rpx;
+  border-radius: 14rpx;
+  background: #08ba48;
+  color: #ffffff;
+  box-shadow: 0 7rpx 16rpx rgba(8, 186, 72, 0.16);
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+
+.opening-action-icon {
+  width: 28rpx;
+  height: 28rpx;
+  margin-right: 10rpx;
+}
+
+.opening-action-label {
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 32rpx;
+}
+
+.opening-delete-divider {
+  width: calc(100% - 20rpx);
+  height: 1px;
+  margin: 20rpx 10rpx 4rpx;
+  background: #dbe5df;
+  transform: scaleY(0.5);
+  transform-origin: center;
+}
+
+.opening-delete-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 60rpx;
+  color: #df2c24;
+  pointer-events: auto;
+}
+
+.opening-delete-icon {
+  width: 28rpx;
+  height: 28rpx;
+  margin-right: 10rpx;
+  flex: 0 0 auto;
+}
+
+.opening-delete-label {
+  color: #df2c24;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 32rpx;
+  white-space: nowrap;
+}
+
+.right-rail.with-opening > .opening-resume-action {
+  width: 160rpx;
+  height: 64rpx;
+  min-height: 64rpx;
+  margin: 14rpx 0 0;
+  border-radius: 16rpx;
+  background: #17345e;
+  pointer-events: auto;
+}
+
+.right-rail.with-opening > .opening-resume-action .opening-resume-label {
+  font-size: 22rpx;
+  line-height: 64rpx;
+}
+
 .history-action-bar.bottom-control-dock {
   position: fixed;
   left: 50%;

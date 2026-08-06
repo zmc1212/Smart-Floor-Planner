@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { parsePostgresId } from '@/db/postgres-dto';
+import { aiChatSessionToDto, parsePostgresId } from '@/db/postgres-dto';
 import { AiChatSessionRepository } from '@/db/repositories';
 import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
 import { getTenantContext } from '@/lib/auth';
@@ -26,13 +26,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       )
     );
     if (!session) return NextResponse.json({ success: false, error: 'Conversation not found' }, { status: 404 });
-    return NextResponse.json({ success: true, data: {
-      ...session, _id: session.id.toString(),
-      messages: session.messages.map((message) => ({
-        role: message.role, content: message.content, uiPayload: message.uiPayload,
-        createdAt: message.createdAt,
-      })),
-    } });
+    return NextResponse.json({ success: true, data: aiChatSessionToDto(session) });
   } catch (error) {
     return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Failed to load conversation' }, { status: 500 });
   }

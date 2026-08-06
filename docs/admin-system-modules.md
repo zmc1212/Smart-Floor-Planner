@@ -2,6 +2,17 @@
 
 ### PostgreSQL-only AI runtime (2026-08-05)
 
+> 2026-08-06 API migration-test remediation: AI conversation create/detail
+> responses now use explicit DTOs, serializing PostgreSQL `id`, `enterpriseId`,
+> and `adminId` bigint values as decimal strings before JSON encoding. Missing
+> AI provider or media-storage configuration IDs now return `404` without
+> contacting an upstream service, and missing required AI Agent action fields
+> return `400`; authentication and the existing platform/tenant role boundaries
+> are unchanged. The unauthenticated `/api/miniprogram/save-icons` source-writing
+> developer utility was removed and is not a production API. These routes remain
+> `Implemented`; real provider connectivity still depends on separately configured
+> external credentials and is outside this local regression contract.
+
 AI workbench configuration and prompt-library APIs use PostgreSQL records only.
 Historical ObjectId requests return not-found responses; the admin runtime no
 longer ships Mongoose models, MongoDB connection helpers, or Mongo maintenance

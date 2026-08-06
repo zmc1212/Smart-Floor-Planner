@@ -2,6 +2,14 @@
 
 ### PostgreSQL-only AI 运行时（2026-08-05）
 
+> 2026-08-06 API 迁移测试修复：AI 会话创建/详情响应现统一使用显式 DTO，
+> 在 JSON 编码前把 PostgreSQL `id`、`enterpriseId`、`adminId` bigint 转为
+> 十进制字符串。不存在的 AI 供应商或媒体存储配置 ID 会在调用上游服务前返回
+> `404`，AI Agent 动作缺少必填字段时返回 `400`；认证及既有平台/租户角色边界
+> 不变。未认证的源码写入型开发工具 `/api/miniprogram/save-icons` 已删除，不再
+> 作为生产 API。上述路由状态仍为 `Implemented`；真实供应商连通成功仍依赖另行
+> 配置的外部凭据，不属于本地回归契约。
+
 > 2026-08-06 部署更新：Docker Compose 只定义 PostgreSQL、应用和一次性迁移服务，不会启动或配置 MongoDB。`admin/deploy.sh` 会等待 PostgreSQL 就绪，使用独立迁移角色执行 Drizzle migration，再启动应用并验证 `/api/health`，最后调用受保护且幂等的 seed 接口。长期运行的应用只接收 `DATABASE_URL`，绝不接收迁移凭证。既有 MongoDB 容器和卷不属于此部署流程，也不会被自动删除。`GET /api/health` 有意保持公开，只报告必需 PostgreSQL 连接，不暴露租户、用户或数据库细节。`POST /api/internal/seed` 只为让部署到达其自身的 `INTERNAL_SECRET` 校验而绕过 Cookie 认证；没有该密钥仍不可访问，且不会暴露凭证。
 
 AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史 ObjectId 请求直接返回不存在，管理端不再包含 Mongoose 模型、MongoDB 连接工具或 Mongo 维护脚本。保留数据仅限七牛云存储配置和当前 Roomi 提示词库版本。

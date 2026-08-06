@@ -1,5 +1,6 @@
 import type {
   AdminUserRecord,
+  AiChatSessionRecord,
   CommissionWithRelations,
   AdminUserWithRelations,
   DepartmentRecord,
@@ -15,6 +16,31 @@ import type {
   UserRecord,
   WorkflowNotificationWithRelations,
 } from '@/db/repositories';
+
+export function aiChatSessionSummaryToDto(record: AiChatSessionRecord) {
+  return {
+    _id: record.id.toString(),
+    title: record.title,
+    lastMessageAt: record.lastMessageAt,
+    createdAt: record.createdAt,
+  };
+}
+
+export function aiChatSessionToDto(record: AiChatSessionRecord) {
+  return {
+    ...aiChatSessionSummaryToDto(record),
+    id: record.id.toString(),
+    enterpriseId: record.enterpriseId.toString(),
+    adminId: record.adminId.toString(),
+    messages: record.messages.map((message) => ({
+      role: message.role,
+      content: message.content,
+      ...(message.uiPayload === undefined ? {} : { uiPayload: message.uiPayload }),
+      createdAt: message.createdAt,
+    })),
+    updatedAt: record.updatedAt,
+  };
+}
 
 export function enterpriseOrderToDto(record: EnterpriseOrderWithRelations) {
   return {

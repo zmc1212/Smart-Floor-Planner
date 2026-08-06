@@ -19,6 +19,7 @@ import {
   normalizeMediaStorageProviderKey,
 } from './registry';
 import { QINIU_REGIONS, type QiniuRegion } from './qiniu-provider';
+import { httpError } from '@/lib/http-error';
 
 const PROVIDER_KEY_RE = /^[a-z0-9][a-z0-9-]{0,48}[a-z0-9]$/;
 const TEST_CHANGED_MESSAGE = '配置已变更，请重新测试';
@@ -58,9 +59,13 @@ type PlatformMediaStorageState = {
 
 function parseConfigId(value: string) {
   if (!/^[1-9]\d*$/.test(value)) {
-    throw new Error('媒体存储配置不存在');
+    throw httpError('媒体存储配置不存在', 404);
   }
   return BigInt(value);
+}
+
+function mediaStorageConfigNotFound() {
+  return httpError('媒体存储配置不存在', 404);
 }
 
 function parseActorId(value?: string) {
@@ -253,7 +258,7 @@ export async function updateMediaStorageConfig(
   const config = await withPlatformTransaction(async (transaction) => {
     const repository = new MediaStorageConfigRepository(transaction);
     const current = await repository.findByIdForUpdate(configId);
-    if (!current) throw new Error('媒体存储配置不存在');
+    if (!current) throw mediaStorageConfigNotFound();
     if (current.status === 'archived') throw new Error('已归档配置不能编辑');
 
     const nextName = payload.name === undefined ? current.name : requiredText(payload.name, '名称');
@@ -293,7 +298,7 @@ export async function updateMediaStorageConfig(
     }
     return repository.update(configId, values);
   });
-  if (!config) throw new Error('媒体存储配置不存在');
+  if (!config) throw mediaStorageConfigNotFound();
   invalidateMediaStorageProviderCache(config.key);
   return config;
 }
@@ -443,7 +448,7 @@ export async function testAndRecordMediaStorageConfig(id: string) {
   const config = await withPlatformTransaction((transaction) =>
     new MediaStorageConfigRepository(transaction).findById(configId)
   );
-  if (!config) throw new Error('媒体存储配置不存在');
+  if (!config) throw mediaStorageConfigNotFound();
   if (config.status === 'archived') throw new Error('已归档配置不能执行连通测试');
 
   let result: Awaited<ReturnType<typeof testMediaStorageProvider>> | null = null;
@@ -480,7 +485,7 @@ export async function activateMediaStorageProvider(providerKey: string, actorId?
     const mediaStorage = platformMediaStorageState(platformConfig.mediaStorage);
     if (key !== 'local') {
       const config = await mediaRepository.findByKeyForUpdate(key);
-      if (!config) throw new Error('媒体存储配置不存在');
+      if (!config) throw mediaStorageConfigNotFound();
       assertMediaStorageConfigCanActivate(config);
     }
     if (key === 'local' && mediaStorage.persistGrsAiOutputs === true) {
@@ -508,7 +513,7 @@ export async function archiveMediaStorageConfig(id: string, actorId?: string) {
     const mediaRepository = new MediaStorageConfigRepository(transaction);
     const platformConfig = await platformRepository.ensureForUpdate('default');
     const current = await mediaRepository.findByIdForUpdate(configId);
-    if (!current) throw new Error('媒体存储配置不存在');
+    if (!current) throw mediaStorageConfigNotFound();
     const mediaStorage = platformMediaStorageState(platformConfig.mediaStorage);
     assertMediaStorageConfigCanArchive(
       current.key,
@@ -523,7 +528,7 @@ export async function archiveMediaStorageConfig(id: string, actorId?: string) {
       updatedBy: actor ?? current.updatedBy,
     });
   });
-  if (!config) throw new Error('媒体存储配置不存在');
+  if (!config) throw mediaStorageConfigNotFound();
   invalidateMediaStorageProviderCache(config.key);
   return config;
 }
@@ -540,7 +545,7 @@ export async function decryptedMediaStorageCredentials(id: string) {
   const config = await withPlatformTransaction((transaction) =>
     new MediaStorageConfigRepository(transaction).findById(configId)
   );
-  if (!config) throw new Error('媒体存储配置不存在');
+  if (!config) throw mediaStorageConfigNotFound();
   return {
     accessKey: decryptMediaStorageSecret(config.accessKeyEncrypted),
     secretKey: decryptMediaStorageSecret(config.secretKeyEncrypted),

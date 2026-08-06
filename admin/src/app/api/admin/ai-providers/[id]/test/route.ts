@@ -4,6 +4,7 @@ import { AiProviderConfigRepository } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
 import { getAiProviderAdapter, getProviderRuntimeById } from '@/lib/ai/provider-registry';
+import { httpErrorStatus } from '@/lib/http-error';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -30,6 +31,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     });
   } catch (error) {
     console.error('[AI Provider Test]', error);
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Connection test failed' }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : 'Connection test failed' },
+      { status: httpErrorStatus(error, 502) }
+    );
   }
 }

@@ -5,6 +5,7 @@ import {
   testAndRecordMediaStorageConfig,
   testMediaStorageProvider,
 } from '@/lib/media-storage/config-service';
+import { httpErrorStatus } from '@/lib/http-error';
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -18,6 +19,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   } catch (error) {
     const message = safeMediaStorageError(error);
     console.error('[Media Storage Test]', message);
-    return NextResponse.json({ success: false, error: message }, { status: 502 });
+    return NextResponse.json(
+      { success: false, error: message },
+      { status: httpErrorStatus(error, 502) }
+    );
   }
 }

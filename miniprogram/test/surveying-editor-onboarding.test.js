@@ -127,6 +127,36 @@ test('formal surveying fixed chrome follows the compact high-fidelity reference 
   assert.doesNotMatch(editorWxml, /surveyGuidePhaseLabel|survey-guide-phase/);
 });
 
+test('selected doors and windows use the unified delete-only inspector', () => {
+  const objectRailAssets = ['opening', 'edit', 'delete-danger'];
+  objectRailAssets.forEach((name) => {
+    const asset = fs.readFileSync(path.join(miniRoot, 'packages', 'surveying', 'assets', 'icons', 'object-rail', `${name}.png`));
+    assert.equal(asset.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.equal(asset.readUInt32BE(16), 48);
+    assert.equal(asset.readUInt32BE(20), 48);
+    assert.ok([3, 6].includes(asset[25]));
+  });
+  assert.match(editorWxml, /right-rail native-canvas-overlay \{\{selectedOpening \? 'with-opening' : ''\}\}/);
+  assert.match(editorWxml, /class="opening-title"[\s\S]*门 · 窗/);
+  assert.match(editorWxml, /class="opening-field-label">宽/);
+  assert.match(editorWxml, /class="opening-field-label">高/);
+  assert.match(editorWxml, /class="opening-direction-options"/);
+  assert.match(editorWxml, /data-direction="inside"[\s\S]*data-direction="outside"/);
+  assert.match(editorWxml, /class="opening-context[\s\S]*class="opening-primary-action"[\s\S]*opening-action-label">编辑[\s\S]*class="opening-delete-divider"[\s\S]*class="opening-delete-action"[\s\S]*删除门窗/);
+  assert.match(editorWxml, /class="opening-delete-action" data-tool="object-delete"/);
+  assert.match(editorWxml, /object-rail\/delete-danger\.png/);
+  assert.doesNotMatch(editorWxml, /openingSecondaryTools|opening-secondary-tools|opening-secondary-action/);
+  assert.doesNotMatch(editorScript, /OPENING_SECONDARY_TOOLS|openingSecondaryTools/);
+  assert.match(editorScript, /onOpeningDirectionTap\(e\)[\s\S]*selectedOpening\.openDirection === direction/);
+  assert.match(editorScript, /width:\s*formatCompactMm\(opening\.widthMm\)/);
+  assert.match(editorScript, /height:\s*formatCompactMm\(opening\.heightMm\)/);
+  assert.match(editorWxss, /\.right-rail\.with-opening\s*\{[\s\S]*right:\s*24rpx;[\s\S]*width:\s*194rpx;/);
+  assert.match(editorWxss, /\.opening-primary-action\s*\{[\s\S]*width:\s*100%;[\s\S]*height:\s*58rpx;/);
+  assert.match(editorWxss, /\.opening-delete-divider\s*\{[\s\S]*height:\s*1px;[\s\S]*scaleY\(0\.5\)/);
+  assert.match(editorWxss, /\.opening-delete-action\s*\{[\s\S]*height:\s*60rpx;[\s\S]*color:\s*#df2c24;/);
+  assert.doesNotMatch(editorWxss, /\.opening-secondary-tools|\.opening-secondary-action/);
+});
+
 test('Xiao K is the only explanatory callout while closure and measurement-side controls remain', () => {
   assert.match(editorScript, /closeAction:\s*closure && closure\.action/);
   assert.match(editorScript, /measurePosition:\s*measureControl/);
