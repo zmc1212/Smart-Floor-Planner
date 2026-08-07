@@ -649,6 +649,12 @@ permission, or workflow changes.
   optional `status` filter; the `floorplans` permission and all existing viewer
   and DXF behavior are unchanged. The formal-plan list uses the same Ant Design
   small icon-and-label detail button as other management lists.
+- 2026-08-07 viewing parity: the read-only `/floorplans/[id]` SVG now uses the
+  Mini Program's real-wall-thickness opening treatment: full-depth cutouts,
+  rectangular hinged-door casings and leaves with swing arcs, plus three-rail
+  window frames and the existing sliding/double-opening categories. This is a
+  presentation-only update; the v4 `surveyGraph`, APIs, DXF, tenant scope, and
+  `floorplans` permission boundary are unchanged.
 - PostgreSQL boundary: formal floor-plan CRUD, detail rendering, lead linking,
   measurement association, and DXF export use `FloorPlanRepository` and
   `MeasurementRepository` under RLS. Authenticated external Kujiale requests

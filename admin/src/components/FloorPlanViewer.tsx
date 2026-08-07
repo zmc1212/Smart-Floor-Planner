@@ -313,29 +313,6 @@ function buildSurveySpacePoints(floor: SurveyFloor | null, space: SurveySpace, n
   return buildSurveySpaceWallChain(floor, space, nodeMap).map((entry) => entry.start);
 }
 
-function getSurveyOpeningSegment(floor: SurveyFloor | null, opening: SurveyOpening, nodeMap: ReturnType<typeof getSurveyNodeMap>) {
-  const wall = (floor?.walls || []).find((item) => item.id === opening.wallId);
-  if (!wall) return null;
-  const endpoints = getSurveyWallEndpoints(floor, wall, nodeMap);
-  if (!endpoints) return null;
-  const dx = endpoints.end.xMm - endpoints.start.xMm;
-  const dy = endpoints.end.yMm - endpoints.start.yMm;
-  const length = Math.sqrt(dx * dx + dy * dy);
-  if (!length) return null;
-  const ux = dx / length;
-  const uy = dy / length;
-  const centerOffset = clampNumber(Number(opening.centerOffsetMm || length / 2), 0, length);
-  const halfWidth = clampNumber(Number(opening.widthMm || 0) / 2, 40, length / 2);
-  const centerX = endpoints.start.xMm + ux * centerOffset;
-  const centerY = endpoints.start.yMm + uy * centerOffset;
-  return {
-    x1: centerX - ux * halfWidth,
-    y1: centerY - uy * halfWidth,
-    x2: centerX + ux * halfWidth,
-    y2: centerY + uy * halfWidth,
-  };
-}
-
 type SurveyPoint = { xMm: number; yMm: number };
 
 function getSurveySpaceCentroid(points: SurveyPoint[]) {
@@ -1014,45 +991,113 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
             )}
 
             {(floor?.openings || []).map((opening) => {
-              const segment = getSurveyOpeningSegment(floor, opening, nodeMap);
               const wall = (floor?.walls || []).find((item) => item.id === opening.wallId);
               const body = wall ? getSurveyWallBody(floor, wall, nodeMap) : null;
-              if (!segment || !body) return null;
+              if (!body) return null;
               const isDoor = opening.type === 'door';
               const angle = Math.atan2(body.direction.y, body.direction.x) * 180 / Math.PI;
-              const width = Math.max(1, Number(opening.widthMm || 0));
-              const centerOffset = Number(opening.centerOffsetMm || getSurveyWallLengthMm(floor, wall!) / 2);
-              const hingeAtEnd = opening.openDirection === 'outside';
-              const hingeX = hingeAtEnd ? centerOffset + width / 2 : centerOffset - width / 2;
-              const swingSign = (wall?.measurementSide === 'left' ? -1 : 1) * (opening.openDirection === 'outside' ? -1 : 1);
+              const wallLength = getSurveyWallLengthMm(floor, wall!);
+              const width = Math.min(wallLength, Math.max(80, Number(opening.widthMm || 0)));
+              const centerOffset = clampNumber(Number(opening.centerOffsetMm || wallLength / 2), width / 2, wallLength - width / 2);
+              const startX = centerOffset - width / 2;
+              const endX = centerOffset + width / 2;
               const localY = { x: -body.direction.y, y: body.direction.x };
               const wallBodySign = body.normal.x * localY.x + body.normal.y * localY.y >= 0 ? 1 : -1;
-              const railOffset = Math.max(36, body.thickness * 0.24);
-              const windowCenterY = wallBodySign * body.thickness / 2;
+              // Keep the SVG symbol geometry in lockstep with the native
+              // survey canvas: the measured wall path is the inner face (0),
+              // and the signed outer face carries the real wall thickness.
+              const outerY = wallBodySign * body.thickness;
+              const minY = Math.min(0, outerY);
+              const maxY = Math.max(0, outerY);
+              const frameDepth = Math.min(
+                Math.max(35, body.thickness * 0.2),
+                Math.max(35, width * 0.1),
+              );
+              const hingeX = startX + frameDepth;
+              const oppositeJambX = endX - frameDepth;
+              const opensOutside = opening.openDirection === 'outside';
+              const frameFaceY = opensOutside ? 0 : outerY;
+              const directionToOtherFace = outerY === frameFaceY ? Math.sign(-outerY) : Math.sign(outerY);
+              const leafSeatY = frameFaceY + directionToOtherFace * Math.min(
+                Math.max(15, Math.abs(outerY) * 0.12),
+                Math.max(15, Math.abs(outerY) / 2 - 10),
+              );
+              const swingSign = opensOutside ? Math.sign(outerY) : -Math.sign(outerY);
+              const leafThickness = Math.abs(frameFaceY - leafSeatY);
+              const windowCenterY = (outerY + 0) / 2;
+              const slidingPanelInset = Math.min(
+                Math.max(15, body.thickness * 0.18),
+                Math.max(15, Math.abs(outerY) / 2 - 10),
+              );
+              const slidingOuterRailY = outerY < 0 ? outerY + slidingPanelInset : outerY - slidingPanelInset;
+              const slidingInnerRailY = outerY < 0 ? slidingPanelInset : -slidingPanelInset;
+              const openingMaskPadding = 24;
+              const renderLeaf = (leafHingeX: number, radius: number, endOnRight: boolean) => {
+                const leafTipY = leafSeatY + swingSign * radius;
+                const secondLeafX = leafHingeX + (endOnRight ? leafThickness : -leafThickness);
+                const arcEndX = leafHingeX + (endOnRight ? radius : -radius);
+                return (
+                  <g fill="none" stroke="#111827" strokeWidth="20" strokeLinecap="butt" strokeLinejoin="miter">
+                    <path d={`M ${leafHingeX} ${leafSeatY} L ${leafHingeX} ${leafTipY} L ${secondLeafX} ${leafTipY} L ${secondLeafX} ${leafSeatY} Z`} />
+                    <path d={`M ${leafHingeX} ${leafTipY} A ${radius} ${radius} 0 0 ${swingSign > 0 ? 0 : 1} ${arcEndX} ${leafSeatY}`} />
+                  </g>
+                );
+              };
+              const renderDoorCasing = (outerX: number, innerX: number) => (
+                <path
+                  d={`M ${outerX} ${outerY} L ${innerX} ${outerY} L ${innerX} 0 L ${outerX} 0 Z`}
+                  fill="none"
+                  stroke="#111827"
+                  strokeWidth="20"
+                  strokeLinecap="butt"
+                  strokeLinejoin="miter"
+                />
+              );
               return (
                 <g key={opening.id} transform={`translate(${body.start.xMm} ${body.start.yMm}) rotate(${angle})`}>
-                  <line
-                    x1={centerOffset - width / 2}
-                    y1={wallBodySign * body.thickness * 0.55}
-                    x2={centerOffset + width / 2}
-                    y2={wallBodySign * body.thickness * 0.55}
-                    stroke="#f8f8f8"
-                    strokeWidth={body.thickness + 46}
-                    strokeLinecap="butt"
+                  <rect
+                    x={startX - 5}
+                    y={minY - openingMaskPadding}
+                    width={width + 10}
+                    height={maxY - minY + openingMaskPadding * 2}
+                    fill="#f8f8f8"
                   />
-                  {isDoor ? (
-                    <g fill="none" stroke="#111827" strokeWidth="18" strokeLinecap="butt">
-                      <line x1={hingeX} y1="0" x2={hingeX} y2={swingSign * width} />
-                      <path d={`M ${hingeX} ${swingSign * width} A ${width} ${width} 0 0 ${swingSign > 0 ? 0 : 1} ${hingeAtEnd ? centerOffset - width / 2 : centerOffset + width / 2} 0`} />
+                  {isDoor ? (opening.modelCategory === 'sliding-door' ? (
+                    <g fill="none" stroke="#111827" strokeWidth="20" strokeLinecap="butt" strokeLinejoin="miter">
+                      <line x1={startX} y1={slidingOuterRailY} x2={centerOffset} y2={slidingOuterRailY} />
+                      <line x1={centerOffset} y1={slidingInnerRailY} x2={endX} y2={slidingInnerRailY} />
+                      <line x1={startX} y1={outerY} x2={startX} y2="0" />
+                      <line x1={centerOffset} y1={slidingOuterRailY} x2={centerOffset} y2={slidingInnerRailY} />
+                      <line x1={endX} y1={outerY} x2={endX} y2="0" />
                     </g>
                   ) : (
-                    <g fill="none" stroke="#2f2f2f" strokeWidth="14" strokeLinecap="butt">
-                      <line x1={centerOffset - width / 2} y1={windowCenterY - railOffset} x2={centerOffset + width / 2} y2={windowCenterY - railOffset} />
-                      <line x1={centerOffset - width / 2} y1={windowCenterY} x2={centerOffset + width / 2} y2={windowCenterY} />
-                      <line x1={centerOffset - width / 2} y1={windowCenterY + railOffset} x2={centerOffset + width / 2} y2={windowCenterY + railOffset} />
-                      <line x1={centerOffset - width / 2} y1={windowCenterY - railOffset} x2={centerOffset - width / 2} y2={windowCenterY + railOffset} />
-                      <line x1={centerOffset + width / 2} y1={windowCenterY - railOffset} x2={centerOffset + width / 2} y2={windowCenterY + railOffset} />
-                      {width >= 900 && <line x1={centerOffset} y1={windowCenterY - railOffset} x2={centerOffset} y2={windowCenterY + railOffset} />}
+                    <>
+                      {opening.modelCategory === 'double-door'
+                        ? <>{renderLeaf(hingeX, (oppositeJambX - hingeX) / 2, true)}{renderLeaf(oppositeJambX, (oppositeJambX - hingeX) / 2, false)}</>
+                        : renderLeaf(hingeX, oppositeJambX - hingeX, true)}
+                      {renderDoorCasing(startX, hingeX)}
+                      {renderDoorCasing(oppositeJambX, endX)}
+                      <path
+                        d={`M ${hingeX} ${frameFaceY} L ${oppositeJambX} ${frameFaceY} L ${oppositeJambX} ${leafSeatY} L ${hingeX} ${leafSeatY} Z`}
+                        fill="none"
+                        stroke="#111827"
+                        strokeWidth="20"
+                        strokeLinecap="butt"
+                        strokeLinejoin="miter"
+                      />
+                    </>
+                  )) : (
+                    <g fill="none" stroke="#2f2f2f" strokeWidth="14" strokeLinecap="butt" strokeLinejoin="miter">
+                      <line x1={startX} y1={outerY} x2={endX} y2={outerY} />
+                      <line x1={startX} y1={windowCenterY} x2={endX} y2={windowCenterY} />
+                      <line x1={startX} y1="0" x2={endX} y2="0" />
+                      <line x1={startX} y1={outerY} x2={startX} y2="0" />
+                      <line x1={endX} y1={outerY} x2={endX} y2="0" />
+                      {width >= 900 && <line x1={centerOffset} y1={outerY} x2={centerOffset} y2="0" />}
+                      {opening.modelCategory === 'sliding-window' && width >= 1800 && <>
+                        <line x1={centerOffset - width / 4} y1={outerY} x2={centerOffset - width / 4} y2="0" />
+                        <line x1={centerOffset + width / 4} y1={outerY} x2={centerOffset + width / 4} y2="0" />
+                      </>}
                     </g>
                   )}
                 </g>

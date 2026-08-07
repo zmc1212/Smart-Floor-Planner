@@ -14,7 +14,7 @@ const WORKFLOW_DEFINITIONS = [
   { key: 'reference_recreate', title: '参考图复刻', description: '参考灵感图，还原到真实空间', icon: '/images/ai-design-icons/reference.png', requires: 'edit' },
   { key: 'style_transform', title: '空间换风格', description: '保留结构，一键切换设计风格', icon: '/images/ai-design-icons/palette.png', requires: 'edit' },
   { key: 'floor_plan_render', title: '户型生成', description: '按正式量房数据生成概念效果', icon: '/images/ai-design-icons/floor-plan.png', requires: 'generate' },
-  { key: 'soft_furnishing', title: '软装深化', description: '保留硬装，重点优化软装细节', icon: '/images/ai-design-icons/armchair.png', requires: 'edit' },
+  { key: 'soft_furnishing', title: '软装搭配', description: '保留硬装，重点优化软装细节', icon: '/images/ai-design-icons/armchair.png', requires: 'edit' },
 ];
 
 const MODE_TITLES = WORKFLOW_DEFINITIONS.reduce((result, item) => {

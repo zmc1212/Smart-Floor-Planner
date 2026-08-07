@@ -56,11 +56,15 @@ test('custom TabBar refreshes Design visibility after the active account changes
 
     definition.methods.syncSelected.call(component);
     assert.equal(component.data.list.find((item) => item.key === 'ai-design').visible, false);
+    assert.equal(component.data.list.filter((item) => item.visible).length, 4);
+    assert.equal(component.data.compactMeasureTab, true);
 
     globalData.userInfo = { role: 'staff', enterpriseId: 'enterprise-1' };
     definition.methods.syncSelected.call(component);
 
     assert.equal(component.data.list.find((item) => item.key === 'ai-design').visible, true);
+    assert.equal(component.data.list.filter((item) => item.visible).length, 5);
+    assert.equal(component.data.compactMeasureTab, false);
     assert.equal(component.data.selected, 4);
   } finally {
     restore();
@@ -76,5 +80,5 @@ test('custom TabBar keeps the Measure label above iOS bottom safe areas', () => 
   assert.match(appStyles, /env\(safe-area-inset-bottom\)/);
   assert.match(tabBarStyles, /padding-bottom:\s*constant\(safe-area-inset-bottom\)/);
   assert.match(tabBarStyles, /padding-bottom:\s*env\(safe-area-inset-bottom\)/);
-  assert.match(tabBarStyles, /\.tab-item\.center \.tab-text\s*\{[\s\S]*?top:\s*88rpx[\s\S]*?line-height:\s*28rpx/);
+  assert.match(tabBarStyles, /\.tab-item\.center \.tab-text\s*\{[\s\S]*?top:\s*96rpx[\s\S]*?line-height:\s*28rpx/);
 });

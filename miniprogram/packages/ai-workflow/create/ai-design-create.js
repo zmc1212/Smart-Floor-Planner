@@ -2,6 +2,73 @@ const aiService = require('../../../utils/aiDesignService.js');
 const { validateTaskInput } = require('../../../utils/aiDesignValidation.js');
 const { canAccessAIDesign, showAIDesignAccessDenied } = require('../../../utils/aiDesignAccess.js');
 
+const STYLE_PREVIEW_IMAGES = {
+  modern: '/images/page-ip-v3/ai-create-style-modern.jpg',
+  cream: '/images/page-ip-v3/ai-create-style-cream.jpg',
+  new_chinese: '/images/page-ip-v3/ai-create-style-chinese.jpg',
+};
+
+function withStylePreviews(styles) {
+  return (styles || []).map((style) => ({
+    ...style,
+    previewImage: STYLE_PREVIEW_IMAGES[style.key] || '',
+  }));
+}
+
+function getRequiredInputReason(data) {
+  const hasSpaceSource = Boolean(data.spaceAssetId || data.sourceResultTaskId);
+
+  if (data.mode === 'reference_recreate') {
+    if (data.floorPlanId) {
+      return data.referenceAssetId ? '' : '请上传参考图';
+    }
+    if (!data.spaceAssetId) return '请上传空间图';
+    return data.referenceAssetId ? '' : '请上传参考图';
+  }
+
+  if (data.mode === 'floor_plan_render') {
+    if (!data.floorPlanId) return '请先选择正式户型';
+    if (data.targetScope === 'single_room' && !data.roomId) return '请先选择具体房间';
+    return '';
+  }
+
+  if (!hasSpaceSource) {
+    return data.mode === 'soft_furnishing'
+      ? '请上传空间或基准图'
+      : '请上传空间图';
+  }
+  return '';
+}
+
+function deriveSubmitState(data) {
+  if (!data.modeAvailable) {
+    return {
+      canSubmit: false,
+      submitBlockedReason: data.modeUnavailableReason || 'AI 设计服务暂不可用',
+    };
+  }
+
+  const needsStyle = data.mode !== 'reference_recreate';
+  if (needsStyle && !(data.styles || []).length) {
+    return { canSubmit: false, submitBlockedReason: '暂无可用风格' };
+  }
+
+  const inputReason = getRequiredInputReason(data);
+  if (inputReason) {
+    return { canSubmit: false, submitBlockedReason: inputReason };
+  }
+
+  if (needsStyle && !data.selectedStyleKey) {
+    return { canSubmit: false, submitBlockedReason: '请选择目标风格' };
+  }
+
+  if (!data.hasEnoughCredits) {
+    return { canSubmit: false, submitBlockedReason: 'AI 点数不足' };
+  }
+
+  return { canSubmit: true, submitBlockedReason: '' };
+}
+
 Page({
   data: {
     mode: 'reference_recreate',
@@ -21,11 +88,19 @@ Page({
     workflowStageLabel: '',
     createNewWorkflow: false,
     loading: true,
+    loadError: '',
     submitting: false,
     uploadingRole: '',
     uploadErrorRole: '',
     capabilities: null,
     price: 10,
+    availableBalance: 0,
+    hasEnoughCredits: false,
+    creditStatusText: '正在读取企业 AI 点数',
+    modeAvailable: false,
+    modeUnavailableReason: '正在读取 AI 能力',
+    canSubmit: false,
+    submitBlockedReason: '正在读取 AI 能力',
     spaceAssetId: '',
     referenceAssetId: '',
     sourceResultTaskId: '',
@@ -67,16 +142,37 @@ Page({
   },
 
   async loadInitialData() {
+    this.setData({ loading: true, loadError: '' });
     try {
       const [capabilities, sourcePlans] = await Promise.all([
         aiService.loadCapabilities(),
         this.data.floorPlanId ? aiService.loadSources().catch(() => []) : Promise.resolve([]),
       ]);
       const priceItem = (capabilities.modes || []).find((item) => item.key === this.data.mode);
-      const styles = capabilities.styles || [];
+      const price = priceItem ? priceItem.credits : 10;
+      const availableBalance = Number(capabilities.account && capabilities.account.availableBalance || 0);
+      const styles = withStylePreviews(capabilities.styles || []);
+      const provider = capabilities.provider || {};
+      const targetSupport = provider.floorPlanTargetSupport || {};
+      const resolvedScope = this.data.targetScope || (this.data.roomId ? 'single_room' : 'whole_floor_plan');
+      const targetSupported = this.data.mode !== 'floor_plan_render' || targetSupport[resolvedScope] !== false;
+      const modeAvailable = Boolean(priceItem && priceItem.enabled) && targetSupported;
+      let modeUnavailableReason = '';
+      if (!modeAvailable) {
+        modeUnavailableReason = this.data.mode === 'floor_plan_render' && !targetSupported
+          ? (resolvedScope === 'single_room' ? '单房间生成服务暂不可用' : '全屋生成服务暂不可用')
+          : 'AI 设计服务暂不可用';
+      }
       const nextData = {
         capabilities,
-        price: priceItem ? priceItem.credits : 10,
+        price,
+        availableBalance,
+        hasEnoughCredits: availableBalance >= price,
+        creditStatusText: availableBalance >= price
+          ? `剩余 ${availableBalance} 点，可放心生成`
+          : `剩余 ${availableBalance} 点 · 请联系企业管理员补充`,
+        modeAvailable,
+        modeUnavailableReason,
         styles,
         selectedStyleKey: styles[0] ? styles[0].key : '',
       };
@@ -159,12 +255,33 @@ Page({
           }
         }
       }
+      Object.assign(nextData, deriveSubmitState({ ...this.data, ...nextData }));
       this.setData(nextData);
     } catch (error) {
-      wx.showToast({ title: error.error || '加载 AI 配置失败', icon: 'none' });
+      const loadError = error.error || '加载 AI 配置失败，请检查网络后重试';
+      this.setData({
+        loadError,
+        canSubmit: false,
+        submitBlockedReason: 'AI 配置加载失败',
+      });
+      wx.showToast({ title: loadError, icon: 'none' });
     } finally {
       this.setData({ loading: false });
     }
+  },
+
+  retryLoad() {
+    if (this.data.loading) return;
+    return this.loadInitialData();
+  },
+
+  deriveSubmitState(data) {
+    return deriveSubmitState(data || this.data);
+  },
+
+  refreshSubmitState(update = {}) {
+    const nextData = { ...this.data, ...update };
+    this.setData({ ...update, ...deriveSubmitState(nextData) });
   },
 
   selectImage(event) {
@@ -210,17 +327,30 @@ Page({
       feedback = { title: error.error || '图片上传失败', icon: 'none' };
     } finally {
       wx.hideLoading();
-      this.setData({ uploadingRole: '' });
+      this.refreshSubmitState({ uploadingRole: '' });
     }
     wx.showToast(feedback);
   },
 
   selectStyle(event) {
-    this.setData({ selectedStyleKey: event.currentTarget.dataset.key });
+    if (this.data.submitting || this.data.uploadingRole) return;
+    this.refreshSubmitState({ selectedStyleKey: event.currentTarget.dataset.key });
   },
 
   async submit() {
     if (this.data.submitting || this.data.uploadingRole) return;
+    if (!this.data.canSubmit) {
+      if (this.data.submitBlockedReason === 'AI 点数不足') {
+        wx.showModal({
+          title: 'AI 点数不足',
+          content: `本次需要 ${this.data.price} 点，请联系企业管理员补充 AI 点数后重试。`,
+          showCancel: false,
+        });
+        return;
+      }
+      wx.showToast({ title: this.data.submitBlockedReason || '当前暂不可生成', icon: 'none' });
+      return;
+    }
     const available = this.data.capabilities && this.data.capabilities.account
       ? this.data.capabilities.account.availableBalance
       : 0;

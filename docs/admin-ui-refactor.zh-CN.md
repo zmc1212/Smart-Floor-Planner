@@ -89,7 +89,8 @@ Design ProComponents，形成统一的后台应用层。
 | `/devices` | 2026-08-05：在既有设备列表和弹窗上方增加共享的当前筛选状态概览条。 | Hold | 定向 ESLint 已通过；认证桌面/移动截图 QA 仍待完成。 | 剩余截图 QA 发现缺陷、用户明确指定 `/devices`，或其设备工作流契约变化。 |
 | `/measurements` | 2026-08-05：在既有 100 条审计列表上方增加 BLE、手动与关联户型数量的共享筛选概览条。 | Hold | 定向 ESLint 已通过；认证桌面/移动截图 QA 仍待完成。 | 剩余截图 QA 发现缺陷、用户明确指定 `/measurements`，或其审计工作流契约变化。 |
 | `/ai-providers`、`/ai-models`、`/ai-presets`、`/ai-credit-prices` | 已使用上文记录的供应商与目录应用模式。 | Hold | 适用既有迁移验收记录。 | 供应商/目录工作流、权限或已确认设计变化。 |
-| `/media-storage`、`/enterprises`、`/promotion-records`、`/workflow-logs`、`/enterprise-orders`、`/packages`、`/commissions`、`/roles`、`/users`、`/floorplans`、`/admins`、`/` | 已在上文记录展示层迁移。 | Hold | 适用既有迁移验收记录；重开前须有已提供的可复现视觉问题。 | 用户明确指定路由、存在可复现视觉缺陷，或其工作流契约变化。 |
+| `/floorplans` | 2026-08-07：将只读 v4 详情 SVG 的真实墙厚门窗切口和 CAD 门窗符号与小程序画布同步，覆盖平开门、双开门、推拉门和推拉窗；列表、筛选、路由、API、v4 数据契约、DXF、租户范围与 `floorplans` 权限均未改变。 | Hold | 定向 ESLint 与 `diff --check` 已通过；已在认证桌面端 `/floorplans/150` 对平开门和三轨窗完成截图验收，控制台无错误。 | 提供可复现的视觉不一致、工作流/数据契约变化，或用户明确指定 `/floorplans`。 |
+| `/media-storage`、`/enterprises`、`/promotion-records`、`/workflow-logs`、`/enterprise-orders`、`/packages`、`/commissions`、`/roles`、`/users`、`/admins`、`/` | 已在上文记录展示层迁移。 | Hold | 适用既有迁移验收记录；重开前须有已提供的可复现视觉问题。 | 用户明确指定路由、存在可复现视觉缺陷，或其工作流契约变化。 |
 | `/inspirations` | 2026-08-05：在既有 `ProTable` 上方增加当前筛选方案、推荐和浏览数的响应式概览，并补齐明确的空状态及共享列表加载失败反馈；统计只从既有列表响应派生。 | Hold | 定向 ESLint 和浏览器 QA 待完成。 | 剩余 QA 发现缺陷、用户明确指定 `/inspirations`，或其工作流契约变化。 |
 | `/ai-studio/scenarios` 及嵌入快速工具 | 2026-08-05：已审计客户方案、快速工具和 AI 助手入口契约；统一为全宽响应式工作区边距，并将视图切换改为具按压状态语义的分段控件。 | Hold | 定向 ESLint 和认证桌面/移动截图 QA 待完成。 | 剩余 QA 发现缺陷、用户明确指定 `/ai-studio/scenarios`，或其工作流契约变化。 |
 | 上述范围外的后台路由 | 尚无当前台账记录。 | Unrecorded | 提议改造前必须审计其真实工作流、当前页面、模块清单、权限与桌面/移动状态。 | 审计确认其为下一候选。 |

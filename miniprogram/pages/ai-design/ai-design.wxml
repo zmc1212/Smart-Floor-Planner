@@ -1,9 +1,9 @@
 <!--
 THESIS: Turn a real measured home into the navigation surface; refuse the generic AI tool grid.
-OWN-WORLD: Warm residential imagery, formal wall geometry, pale oak, white, and one focused green action.
-STORY: Choose a home or room, understand the scheme stage, then continue one honest next action.
-FIRST VIEWPORT: Project context above a real 3D preview or wall graph; room rail and next action follow immediately.
-FORM: Approved C floor-map direction fused with B workflow path; A scene navigator is the no-plan state.
+OWN-WORLD: Warm residential space, formal wall geometry, crisp white controls, quiet oak, and one committed green action.
+STORY: Choose a real home or room, see its live scheme stage, enter one of four implemented tasks, then continue one honest next action.
+FIRST VIEWPORT: Project identity and credits sit above the dominant live plan; a truthful room-scope rail crosses its upper edge, while one raised workbench joins the stage rail, four task entries, and the final CTA before the shared TabBar.
+FORM: The pinned 04-ai-design-home-v3 composition governs selected plans; the established spatial-tour composition remains the truthful no-plan state.
 -->
 <view class="ai-page sfp-tab-page">
   <scroll-view
@@ -21,11 +21,19 @@ FORM: Approved C floor-map direction fused with B workflow path; A scene navigat
     >
       <view
         class="page-head immersive-page-head"
-        style="padding-right: {{navigationRight}}px; min-height: {{navigationHeight}}px;"
+        style="--ai-navigation-right: {{navigationRight}}px; padding-right: {{navigationRight}}px; min-height: {{navigationHeight}}px;"
       >
         <view class="page-heading">
           <text class="page-title">{{selectedSource ? '探索这个家' : '设计空间'}}</text>
-          <text class="page-subtitle">{{selectedSource ? (selectedSource.leadName + ' · ' + (selectedSource.communityName || selectedSource.floorPlanName)) : '为客户探索下一种生活方式'}}</text>
+          <view
+            class="page-subtitle-line"
+            bindtap="openSourcePicker"
+            aria-role="button"
+            aria-label="{{selectedSource ? '更换当前客户户型' : '选择客户户型'}}"
+          >
+            <text class="page-subtitle">{{selectedSource ? (selectedSource.leadName + ' · ' + (selectedSource.communityName || selectedSource.floorPlanName)) : '为客户探索下一种生活方式'}}</text>
+            <view wx:if="{{selectedSource}}" class="project-chevron"></view>
+          </view>
         </view>
         <view class="balance-pill {{hasLoadedOnce ? '' : 'loading-balance'}}">
           <view class="credit-dot"></view>
@@ -65,26 +73,8 @@ FORM: Approved C floor-map direction fused with B workflow path; A scene navigat
         </view>
 
         <block wx:if="{{selectedSource}}">
-        <view class="project-context">
-          <view class="project-context-main" bindtap="openSourcePicker">
-            <text class="project-context-title">正式户型 · {{selectedSource.floorPlanName}} · {{selectedSource.targetLabel}}</text>
-            <text class="project-context-meta">{{selectedSource.roomSize}} · {{selectedSource.openingCount}} 个开口</text>
-          </view>
-          <view class="project-context-actions">
-            <text class="context-action" bindtap="openSourcePicker">更换</text>
-            <text class="context-action muted" catchtap="clearSource">清除</text>
-          </view>
-        </view>
-
-        <view class="plan-navigator">
-          <view class="plan-stage {{selectedSource.targetScope === 'single_room' ? 'room-focused' : 'whole-focused'}}">
-            <image
-              wx:if="{{!selectedSource.navigationPreview.imageUrl}}"
-              class="plan-guide-scene"
-              src="/images/page-ip-v3/ai-home.png"
-              mode="aspectFit"
-              aria-hidden="true"
-            ></image>
+        <view class="plan-navigator reference-plan-navigator">
+          <view class="plan-stage reference-plan-stage {{selectedSource.targetScope === 'single_room' ? 'room-focused' : 'whole-focused'}}">
             <image
               wx:if="{{selectedSource.navigationPreview.imageUrl}}"
               class="plan-ai-image"
@@ -119,6 +109,35 @@ FORM: Approved C floor-map direction fused with B workflow path; A scene navigat
               </view>
             </view>
 
+            <scroll-view scroll-x class="hero-room-rail" enhanced show-scrollbar="{{false}}">
+              <view class="hero-room-row">
+                <view
+                  class="hero-room-chip {{selectedSource.targetScope === 'whole_floor_plan' ? 'active' : ''}}"
+                  data-scope="whole_floor_plan"
+                  bindtap="selectMapTarget"
+                  aria-role="button"
+                  aria-label="选择完整户型"
+                  aria-checked="{{selectedSource.targetScope === 'whole_floor_plan'}}"
+                >
+                  <view class="hero-room-chip-label"><text>全屋</text></view>
+                </view>
+                <view
+                  wx:for="{{selectedSource.rooms}}"
+                  wx:for-item="room"
+                  wx:key="roomId"
+                  class="hero-room-chip {{selectedSource.roomId === room.roomId ? 'active' : ''}}"
+                  data-scope="single_room"
+                  data-index="{{index}}"
+                  bindtap="selectMapTarget"
+                  aria-role="button"
+                  aria-label="选择{{room.roomName}}"
+                  aria-checked="{{selectedSource.roomId === room.roomId}}"
+                >
+                  <view class="hero-room-chip-label"><text>{{room.roomName}}</text></view>
+                </view>
+              </view>
+            </scroll-view>
+
             <view wx:if="{{selectedSource.navigationPreview.state === 'processing'}}" class="preview-progress">
               <text class="preview-progress-label">3D 户型生成中</text>
               <text class="preview-progress-value">{{selectedSource.navigationPreview.task.progress}}%</text>
@@ -126,63 +145,22 @@ FORM: Approved C floor-map direction fused with B workflow path; A scene navigat
                 <view class="preview-progress-bar" style="width: {{selectedSource.navigationPreview.task.progress}}%"></view>
               </view>
             </view>
-
-            <view
-              class="map-waypoint waypoint-top"
-              data-mode="reference_recreate"
-              bindtap="openMode"
-            >参考复刻</view>
-            <view
-              class="map-waypoint waypoint-left"
-              data-mode="style_transform"
-              bindtap="openMode"
-            >拍照换风格</view>
-            <view
-              class="map-waypoint waypoint-right"
-              data-mode="soft_furnishing"
-              bindtap="openMode"
-            >软装搭配</view>
-            <view
-              class="map-waypoint waypoint-bottom"
-              data-mode="floor_plan_render"
-              data-scope="whole_floor_plan"
-              bindtap="openMode"
-            >户型生成</view>
-          </view>
-
-          <view class="room-selector">
-            <view class="room-selector-handle"></view>
-            <scroll-view scroll-x class="room-tabs" enhanced show-scrollbar="{{false}}">
-              <view class="room-tabs-row">
-                <view
-                  class="room-tab {{selectedSource.targetScope === 'whole_floor_plan' ? 'active' : ''}}"
-                  data-scope="whole_floor_plan"
-                  bindtap="selectMapTarget"
-                >全屋</view>
-                <view
-                  wx:for="{{selectedSource.rooms}}"
-                  wx:for-item="room"
-                  wx:key="roomId"
-                  class="room-tab {{selectedSource.roomId === room.roomId ? 'active' : ''}}"
-                  data-scope="single_room"
-                  data-index="{{index}}"
-                  bindtap="selectMapTarget"
-                >{{room.roomName}}</view>
-              </view>
-            </scroll-view>
+            <image
+              class="plan-guide-scene plan-guide-stage"
+              src="/images/mine-icons/tab-measure-k.png"
+              mode="aspectFit"
+              aria-hidden="true"
+            ></image>
           </view>
         </view>
 
-        <view class="journey-panel">
-          <view class="journey-head">
-            <view class="journey-copy" bindtap="openWorkflowPicker">
-              <text class="journey-kicker">{{selectedWorkflow ? '当前客户方案' : (createNewWorkflow ? '新建备选方案' : '设计路径')}}</text>
-              <text class="journey-title">{{selectedWorkflow ? selectedWorkflow.title : (createNewWorkflow ? selectedSource.leadName + ' · 备选方案' : '从户型到完整方案')}}</text>
-            </view>
-            <text wx:if="{{schemeOptions.length}}" class="journey-change" bindtap="openWorkflowPicker">更换</text>
-          </view>
-
-          <view class="stage-rail">
+        <view class="journey-panel design-workbench">
+          <view
+            class="stage-rail reference-stage-rail"
+            bindtap="openWorkflowPicker"
+            aria-role="button"
+            aria-label="{{schemeOptions.length ? '查看或更换当前客户方案' : '当前客户方案阶段'}}"
+          >
             <view
               wx:for="{{stageRail}}"
               wx:for-item="stage"
@@ -200,6 +178,27 @@ FORM: Approved C floor-map direction fused with B workflow path; A scene navigat
             </view>
           </view>
 
+          <view class="workflow-cards">
+            <view
+              wx:for="{{workflows}}"
+              wx:for-item="workflow"
+              wx:key="key"
+              class="workflow-card {{primaryAction.mode === workflow.key ? 'recommended' : ''}} {{workflow.enabled && !workflowLoading && !workflowLoadError ? '' : 'disabled'}}"
+              data-mode="{{workflow.key}}"
+              data-scope="{{workflow.key === 'floor_plan_render' ? 'whole_floor_plan' : ''}}"
+              bindtap="openMode"
+              aria-role="button"
+              aria-label="{{workflow.title + '，' + workflow.credits + '点'}}"
+              aria-disabled="{{workflow.enabled && !workflowLoading && !workflowLoadError ? false : true}}"
+            >
+              <text class="workflow-card-title">{{workflow.title}}</text>
+              <view class="workflow-art">
+                <image src="{{workflow.icon}}" mode="aspectFit"></image>
+                <view wx:if="{{primaryAction.mode === workflow.key}}" class="workflow-art-corner"></view>
+              </view>
+            </view>
+          </view>
+
           <view wx:if="{{workflowLoading || workflowLoadError}}" class="workflow-state {{workflowLoadError ? 'error' : ''}}">
             <view class="workflow-state-copy">
               <text class="workflow-state-title">{{workflowLoading ? '正在加载客户方案' : '客户方案加载失败'}}</text>
@@ -208,37 +207,25 @@ FORM: Approved C floor-map direction fused with B workflow path; A scene navigat
             <text wx:if="{{workflowLoadError}}" class="workflow-state-action" bindtap="retryWorkflowLoad">重试</text>
           </view>
 
-        </view>
-
-        <view class="next-action-panel">
-          <view class="next-action">
-            <view class="next-action-copy">
-              <text class="next-kicker">下一步</text>
-              <text class="next-title">{{primaryAction.title}}</text>
-              <text class="next-description">{{primaryAction.description}}</text>
-            </view>
-            <view
-              class="next-button {{primaryAction.enabled && !workflowLoading && !workflowLoadError ? '' : 'disabled'}}"
-              bindtap="openPrimaryAction"
-            >
-              <text>{{primaryAction.buttonLabel}}</text>
-              <text wx:if="{{primaryAction.credits}}" class="next-cost">· {{primaryAction.credits}} 点</text>
-            </view>
-          </view>
-        </view>
-
-        <view class="secondary-nav">
           <view
-            wx:for="{{secondaryActions}}"
-            wx:for-item="action"
-            wx:key="key"
-            class="secondary-action {{action.enabled && !workflowLoading && !workflowLoadError ? '' : 'disabled'}}"
-            data-mode="{{action.key}}"
-            data-scope="{{action.key === 'floor_plan_render' ? 'whole_floor_plan' : ''}}"
-            bindtap="openMode"
+            class="next-action-panel reference-next-action {{primaryAction.enabled && !workflowLoading && !workflowLoadError ? '' : 'disabled'}}"
+            bindtap="openPrimaryAction"
+            aria-role="button"
+            aria-label="{{primaryAction.title + '，' + primaryAction.buttonLabel + (primaryAction.credits ? '，' + primaryAction.credits + '点' : '')}}"
           >
-            <image class="secondary-icon" src="{{action.icon}}" mode="aspectFit"></image>
-            <text>{{action.shortTitle}}</text>
+            <image class="next-action-k" src="/images/page-ip-v3/ai-create.png" mode="aspectFit"></image>
+            <view class="next-action">
+              <view class="next-action-copy">
+                <view class="next-kicker-row">
+                  <text class="next-kicker">下一步</text>
+                  <text class="next-action-meta">{{primaryAction.buttonLabel}}{{primaryAction.credits ? ' · ' + primaryAction.credits + ' 点' : ''}}</text>
+                </view>
+                <text class="next-title">{{primaryAction.title}}</text>
+              </view>
+              <view class="next-button">
+                <view class="next-button-chevron"></view>
+              </view>
+            </view>
           </view>
         </view>
         </block>
@@ -349,7 +336,10 @@ FORM: Approved C floor-map direction fused with B workflow path; A scene navigat
         <text class="sheet-title">{{sourcePickerStep === 'plans' ? '选择客户户型' : '选择设计范围'}}</text>
         <text class="sheet-subtitle">{{sourcePickerStep === 'plans' ? '选择一份正式量房户型' : (activeSourcePlan ? activeSourcePlan.leadName + ' · ' + activeSourcePlan.floorPlanName : '')}}</text>
       </view>
-      <text class="sheet-close" bindtap="closeSourcePicker">关闭</text>
+      <view class="sheet-actions">
+        <text wx:if="{{selectedSource}}" class="sheet-clear" bindtap="clearSource" aria-role="button" aria-label="清除当前户型">清除</text>
+        <text class="sheet-close" bindtap="closeSourcePicker" aria-role="button" aria-label="关闭户型选择">关闭</text>
+      </view>
     </view>
     <scroll-view scroll-y class="source-list" enhanced show-scrollbar="{{false}}">
       <block wx:if="{{sourcePickerStep === 'plans'}}">

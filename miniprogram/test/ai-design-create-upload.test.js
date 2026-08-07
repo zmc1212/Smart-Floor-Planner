@@ -64,3 +64,87 @@ test('AI image upload keeps the local preview on success and failure', async () 
     global.wx = originalWx;
   }
 });
+
+test('AI create readiness follows the active mode, required inputs, styles, and credits', () => {
+  const page = createPage(loadPageDefinition());
+  const base = {
+    ...page.data,
+    loading: false,
+    modeAvailable: true,
+    modeUnavailableReason: '',
+    hasEnoughCredits: true,
+    styles: [{ key: 'modern', name: '现代简约' }],
+    selectedStyleKey: 'modern',
+  };
+
+  assert.deepEqual(
+    page.deriveSubmitState({ ...base, mode: 'reference_recreate' }),
+    { canSubmit: false, submitBlockedReason: '请上传空间图' }
+  );
+  assert.deepEqual(
+    page.deriveSubmitState({
+      ...base,
+      mode: 'reference_recreate',
+      spaceAssetId: 'space',
+    }),
+    { canSubmit: false, submitBlockedReason: '请上传参考图' }
+  );
+  assert.deepEqual(
+    page.deriveSubmitState({
+      ...base,
+      mode: 'reference_recreate',
+      spaceAssetId: 'space',
+      referenceAssetId: 'reference',
+    }),
+    { canSubmit: true, submitBlockedReason: '' }
+  );
+  assert.deepEqual(
+    page.deriveSubmitState({
+      ...base,
+      mode: 'reference_recreate',
+      floorPlanId: 'plan',
+      referenceAssetId: 'reference',
+    }),
+    { canSubmit: true, submitBlockedReason: '' }
+  );
+  assert.deepEqual(
+    page.deriveSubmitState({
+      ...base,
+      mode: 'style_transform',
+      spaceAssetId: '',
+    }),
+    { canSubmit: false, submitBlockedReason: '请上传空间图' }
+  );
+  assert.deepEqual(
+    page.deriveSubmitState({
+      ...base,
+      mode: 'style_transform',
+      spaceAssetId: 'space',
+      hasEnoughCredits: false,
+    }),
+    { canSubmit: false, submitBlockedReason: 'AI 点数不足' }
+  );
+});
+
+test('AI create explains the real recovery path when enterprise credits are insufficient', async () => {
+  const page = createPage(loadPageDefinition());
+  const originalWx = global.wx;
+  let modal = null;
+  global.wx = {
+    showModal(options) { modal = options; },
+  };
+
+  try {
+    page.setData({
+      canSubmit: false,
+      submitBlockedReason: 'AI 点数不足',
+      price: 10,
+    });
+    await page.submit();
+    assert.equal(modal.title, 'AI 点数不足');
+    assert.match(modal.content, /联系企业管理员补充 AI 点数/);
+    assert.equal(modal.showCancel, false);
+  } finally {
+    global.wx = originalWx;
+  }
+});

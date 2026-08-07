@@ -1,101 +1,210 @@
 <scroll-view scroll-y class="create-page">
   <view class="create-shell">
-    <view class="create-visual-hero">
-      <view class="create-visual-copy">
-        <text class="create-visual-kicker">空间材料工作台</text>
-        <text class="create-visual-title">准备素材</text>
-        <text class="create-visual-subtitle">小 K 帮你整理户型、空间图与目标风格</text>
-      </view>
-      <image class="create-visual-scene" src="/images/page-ip-v3/ai-create.png" mode="aspectFit"></image>
-    </view>
-    <view class="create-head">
-      <view>
-        <text class="create-title">{{modeTitle}}</text>
-        <text class="create-step">准备素材</text>
-      </view>
-      <view class="cost-pill"><view class="diamond"></view>{{price}} 点</view>
+    <view wx:if="{{loading}}" class="create-state-card">
+      <view class="state-pulse"></view>
+      <text class="state-title">正在准备 AI 设计工作台</text>
+      <text class="state-copy">正在读取风格、点数与已关联户型</text>
     </view>
 
-    <view wx:if="{{workflowId || leadId || createNewWorkflow}}" class="workflow-context">
-      <view class="workflow-dot"></view>
-      <view class="workflow-copy">
-        <text class="workflow-title">{{createNewWorkflow ? '新建备选方案' : (workflowTitle || '已关联客户 AI 方案')}}</text>
-        <text class="workflow-meta" wx:if="{{!createNewWorkflow && (workflowLeadName || workflowStageLabel)}}">{{workflowLeadName}}{{workflowLeadName && workflowStageLabel ? ' · ' : ''}}{{workflowStageLabel}}</text>
-        <text class="workflow-meta">{{createNewWorkflow ? '本次会创建新的客户方案，不覆盖已有方案' : '本次成果会同步到该方案，可在后台继续深化'}}</text>
-      </view>
+    <view wx:elif="{{loadError}}" class="create-state-card error-state">
+      <text class="state-title">暂时无法加载 AI 配置</text>
+      <text class="state-copy">{{loadError}}</text>
+      <button class="state-retry" bindtap="retryLoad">重新加载</button>
     </view>
 
-    <view wx:if="{{mode === 'floor_plan_render'}}" class="plan-source {{floorPlanId ? 'ready' : ''}}">
-      <view class="plan-mark">户型</view>
-      <view class="plan-copy">
-        <text class="plan-title">{{floorPlanId ? floorPlanName + ' · ' + targetLabel : '尚未选择正式户型'}}</text>
-        <text class="plan-meta">{{floorPlanId ? targetMeta : '请从 AI 设计首页选择客户户型和设计范围'}}</text>
+    <view wx:else class="create-content {{mode === 'reference_recreate' ? 'compact-mode' : 'style-mode'}}">
+      <view class="create-step-track" aria-label="当前步骤：准备素材，下一步：AI 生成">
+        <view class="create-step active">
+          <text class="step-index">1</text>
+          <text class="step-label">准备素材</text>
+        </view>
+        <view class="step-divider"></view>
+        <view class="create-step">
+          <text class="step-index">2</text>
+          <text class="step-label">AI 生成</text>
+        </view>
       </view>
-    </view>
 
-    <view wx:if="{{mode !== 'floor_plan_render' && floorPlanId}}" class="plan-source ready">
-      <view class="plan-mark">户型</view>
-      <view class="plan-copy">
-        <text class="plan-title">已关联 {{floorPlanName}} · {{targetLabel}}</text>
-        <text class="plan-meta">{{mode === 'reference_recreate' ? (targetScope === 'single_room' ? '该房间墙体与门窗将作为生成结构基准' : '完整墙图将作为生成结构基准') : (targetScope === 'single_room' ? '生成时会参考该房间的尺寸、层高与门窗开口' : '用于关联客户户型与方案，不会把整户几何强加给单张现场图')}}</text>
+      <view class="create-scene" aria-hidden="true">
+        <image class="create-scene-image" src="/images/page-ip-v3/ai-create.png" mode="aspectFit"></image>
       </view>
-    </view>
 
-    <view wx:if="{{mode === 'reference_recreate'}}" class="upload-block" data-role="reference" bindtap="selectImage">
-      <image wx:if="{{referenceImagePath}}" class="upload-preview" src="{{referenceImagePath}}" mode="aspectFill"></image>
-      <view wx:else class="upload-empty">
-        <view class="upload-add">+</view>
-        <text class="upload-title">参考图</text>
-        <text class="upload-meta">{{uploadingRole === 'reference' ? '上传中...' : '相册或拍摄'}}</text>
+      <view class="context-card">
+        <view class="context-icon-wrap">
+          <image class="context-icon" src="/images/ai-design-icons/floor-plan.png" mode="aspectFit"></image>
+        </view>
+        <view class="context-copy">
+          <text class="context-title">{{modeTitle}}</text>
+          <text class="context-meta" wx:if="{{floorPlanId}}">{{floorPlanName || '正式户型'}} · {{targetLabel || '完整户型'}}</text>
+          <text class="context-meta" wx:elif="{{createNewWorkflow}}">新建备选方案 · 不覆盖已有方案</text>
+          <text class="context-meta" wx:elif="{{workflowId || leadId}}">{{workflowLeadName || workflowTitle || '客户方案'}}{{workflowStageLabel ? ' · ' + workflowStageLabel : ''}}</text>
+          <text class="context-meta" wx:else>独立任务 · 本次结果单独保存</text>
+        </view>
+        <text wx:if="{{floorPlanId}}" class="context-status ready">已关联</text>
+        <text wx:elif="{{workflowId || leadId || createNewWorkflow}}" class="context-status synced">已同步</text>
+        <text wx:else class="context-status standalone">独立任务</text>
       </view>
-      <view wx:if="{{uploadingRole === 'reference'}}" class="upload-status">上传中...</view>
-      <view wx:elif="{{uploadErrorRole === 'reference'}}" class="upload-status error" data-role="reference" catchtap="retryImage">上传失败，点击重试</view>
-      <view wx:if="{{referenceImagePath}}" class="replace-chip">更换</view>
-    </view>
 
-    <view wx:if="{{mode === 'reference_recreate' && !floorPlanId}}" class="flow-arrow">↓</view>
+      <view wx:if="{{mode !== 'floor_plan_render'}}" class="section-card upload-section">
+        <view class="section-head">
+          <view class="section-title-row">
+            <text class="section-title">{{mode === 'reference_recreate' ? (floorPlanId ? '上传参考图' : '上传空间图与参考图') : '上传空间图'}}</text>
+            <text class="required-chip">必需</text>
+          </view>
+          <view
+            wx:if="{{mode !== 'reference_recreate' || floorPlanId}}"
+            class="section-action"
+            data-role="{{mode === 'reference_recreate' ? 'reference' : 'space'}}"
+            bindtap="selectImage"
+            aria-role="button"
+            aria-label="从相册选择或拍摄图片"
+          ><text class="section-action-label">相册或拍摄</text></view>
+        </view>
 
-    <view wx:if="{{mode !== 'floor_plan_render' && !(mode === 'reference_recreate' && floorPlanId)}}" class="upload-block" data-role="space" bindtap="selectImage">
-      <image wx:if="{{spaceImagePath}}" class="upload-preview" src="{{spaceImagePath}}" mode="aspectFill"></image>
-      <view wx:else class="upload-empty">
-        <view class="upload-add">+</view>
-        <text class="upload-title">{{mode === 'soft_furnishing' ? '当前空间 / 基准效果图' : '我的空间图'}}</text>
-        <text class="upload-meta">{{uploadingRole === 'space' ? '上传中...' : '相册或拍摄'}}</text>
-      </view>
-      <view wx:if="{{uploadingRole === 'space'}}" class="upload-status">上传中...</view>
-      <view wx:elif="{{uploadErrorRole === 'space'}}" class="upload-status error" data-role="space" catchtap="retryImage">上传失败，点击重试</view>
-      <view wx:if="{{spaceImagePath && autoSourceLabel}}" class="source-chip">{{autoSourceLabel}}</view>
-      <view wx:if="{{spaceImagePath}}" class="replace-chip">更换</view>
-    </view>
+        <text class="upload-guidance" wx:if="{{mode === 'reference_recreate' && floorPlanId}}">正式户型已提供墙体与门窗结构，只需补充参考图。</text>
+        <text class="upload-guidance" wx:elif="{{mode === 'reference_recreate'}}">空间图提供现场结构，参考图提供镜头、构图与风格。</text>
+        <text class="upload-guidance" wx:else>上传清晰、无遮挡的空间照片，建议使用 1:1 或 4:3 画幅。</text>
 
-    <view wx:if="{{mode !== 'reference_recreate'}}" class="style-section">
-      <text class="style-heading">目标风格</text>
-      <scroll-view scroll-x class="style-scroll" enhanced show-scrollbar="{{false}}">
-        <view class="style-row">
-          <view wx:for="{{styles}}" wx:key="key" class="style-chip {{selectedStyleKey === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="selectStyle">
-            <view class="style-initial">{{item.name[0]}}</view>
-            <text>{{item.name}}</text>
+        <view wx:if="{{mode === 'reference_recreate' && !floorPlanId}}" class="dual-upload-grid">
+          <view class="mini-upload" data-role="space" bindtap="selectImage" aria-role="button" aria-label="上传我的空间图">
+            <image wx:if="{{spaceImagePath}}" class="mini-upload-image" src="{{spaceImagePath}}" mode="aspectFill"></image>
+            <view wx:else class="mini-upload-empty">
+              <image class="upload-symbol" src="/images/ai-design-icons/reference.png" mode="aspectFit"></image>
+              <text class="upload-title">我的空间图</text>
+              <text class="upload-meta">{{uploadingRole === 'space' ? '上传中...' : '相册或拍摄'}}</text>
+            </view>
+            <view wx:if="{{uploadingRole === 'space'}}" class="upload-status">上传中...</view>
+            <view wx:elif="{{uploadErrorRole === 'space'}}" class="upload-status error" data-role="space" catchtap="retryImage" aria-role="button" aria-label="空间图上传失败，点此重试">上传失败，点此重试</view>
+            <text wx:if="{{spaceImagePath}}" class="image-role-chip">空间图</text>
+          </view>
+          <view class="mini-upload" data-role="reference" bindtap="selectImage" aria-role="button" aria-label="上传参考图">
+            <image wx:if="{{referenceImagePath}}" class="mini-upload-image" src="{{referenceImagePath}}" mode="aspectFill"></image>
+            <view wx:else class="mini-upload-empty">
+              <image class="upload-symbol" src="/images/ai-design-icons/reference.png" mode="aspectFit"></image>
+              <text class="upload-title">参考图</text>
+              <text class="upload-meta">{{uploadingRole === 'reference' ? '上传中...' : '相册或拍摄'}}</text>
+            </view>
+            <view wx:if="{{uploadingRole === 'reference'}}" class="upload-status">上传中...</view>
+            <view wx:elif="{{uploadErrorRole === 'reference'}}" class="upload-status error" data-role="reference" catchtap="retryImage" aria-role="button" aria-label="参考图上传失败，点此重试">上传失败，点此重试</view>
+            <text wx:if="{{referenceImagePath}}" class="image-role-chip">参考图</text>
           </view>
         </view>
-      </scroll-view>
-    </view>
 
-    <view class="mode-note">
-      <text wx:if="{{mode === 'reference_recreate' && floorPlanId}}">所选户型决定墙体与门窗结构；参考图决定输出比例、镜头、构图与风格。约束冲突时以户型结构为准。</text>
-      <text wx:elif="{{mode === 'reference_recreate'}}">参考图决定输出比例、镜头与构图；我的空间图仅提供可兼容的现场细节。</text>
-      <text wx:elif="{{mode === 'style_transform'}}">更换整体材质、家具与氛围，同时尽量保持门窗和视角不变。</text>
-      <text wx:elif="{{mode === 'floor_plan_render'}}">{{targetScope === 'whole_floor_plan' ? '基于完整量房墙图生成全屋俯视概念效果。' : '基于指定房间量房数据生成室内视角概念效果。'}}不等同于施工图或像素级空间还原。</text>
-      <text wx:else>仅调整家具、窗帘、地毯、挂画、绿植和装饰灯，保留硬装与固定柜体。</text>
-    </view>
+        <view
+          wx:else
+          class="upload-composer {{(mode === 'reference_recreate' ? referenceImagePath : spaceImagePath) ? 'has-image' : ''}}"
+          data-role="{{mode === 'reference_recreate' ? 'reference' : 'space'}}"
+          bindtap="selectImage"
+          aria-role="button"
+          aria-label="{{mode === 'reference_recreate' ? '上传或更换参考图' : '上传或更换空间图'}}"
+        >
+          <image
+            wx:if="{{mode === 'reference_recreate' ? referenceImagePath : spaceImagePath}}"
+            class="upload-main-image"
+            src="{{mode === 'reference_recreate' ? referenceImagePath : spaceImagePath}}"
+            mode="aspectFill"
+          ></image>
+          <view class="upload-action-panel">
+            <view class="upload-symbol-frame">
+              <image class="upload-symbol" src="/images/ai-design-icons/reference.png" mode="aspectFit"></image>
+            </view>
+            <text class="upload-action-title">{{(mode === 'reference_recreate' ? referenceImagePath : spaceImagePath) ? '更换图片' : (mode === 'reference_recreate' ? '添加参考图' : '添加空间图')}}</text>
+            <text class="upload-action-meta">从相册选择或直接拍摄</text>
+          </view>
+          <view wx:if="{{uploadingRole === (mode === 'reference_recreate' ? 'reference' : 'space')}}" class="upload-status">上传中...</view>
+          <view
+            wx:elif="{{uploadErrorRole === (mode === 'reference_recreate' ? 'reference' : 'space')}}"
+            class="upload-status error"
+            data-role="{{mode === 'reference_recreate' ? 'reference' : 'space'}}"
+            catchtap="retryImage"
+            aria-role="button"
+            aria-label="图片上传失败，点此重试"
+          >上传失败，点此重试</view>
+          <text wx:if="{{spaceImagePath && autoSourceLabel && mode !== 'reference_recreate'}}" class="source-chip">{{autoSourceLabel}}</text>
+        </view>
 
-    <view class="privacy-row">
-      <text class="privacy-dot"></text>
-      <text>图片仅用于本企业 AI 设计任务，可在历史记录中删除。</text>
-    </view>
+        <text class="upload-privacy">图片仅用于本企业 AI 设计任务，可在历史记录中删除</text>
+      </view>
 
-    <button class="generate-button" disabled="{{submitting || uploadingRole}}" bindtap="submit">
-      <text>{{submitting ? '正在创建任务...' : '开始 AI 生成'}}</text>
-      <text class="button-cost">{{price}} 点</text>
-    </button>
+      <view wx:if="{{mode !== 'reference_recreate'}}" class="section-card style-section">
+        <view class="section-head">
+          <text class="section-title">目标风格</text>
+          <text class="section-hint">左右滑动查看更多</text>
+        </view>
+        <scroll-view wx:if="{{styles.length}}" scroll-x class="style-scroll" enhanced show-scrollbar="{{false}}">
+          <view class="style-row">
+            <view
+              wx:for="{{styles}}"
+              wx:key="key"
+              class="style-card {{selectedStyleKey === item.key ? 'active' : ''}} {{submitting || uploadingRole ? 'disabled' : ''}}"
+              data-key="{{item.key}}"
+              bindtap="selectStyle"
+              aria-role="button"
+              aria-label="选择{{item.name}}风格"
+              aria-checked="{{selectedStyleKey === item.key}}"
+              aria-disabled="{{submitting || uploadingRole ? true : false}}"
+            >
+              <image wx:if="{{item.previewImage}}" class="style-image" src="{{item.previewImage}}" mode="aspectFill"></image>
+              <view wx:else class="style-placeholder">
+                <text class="style-placeholder-code">{{item.icon || item.name}}</text>
+                <text class="style-placeholder-copy">{{item.description || '服务端风格预设'}}</text>
+              </view>
+              <text class="style-name">{{item.name}}</text>
+              <text wx:if="{{selectedStyleKey === item.key}}" class="style-selected">已选</text>
+            </view>
+          </view>
+        </scroll-view>
+        <view wx:else class="style-empty">暂无可用风格，请稍后重新加载</view>
+      </view>
+
+      <view class="section-card scope-section">
+        <view class="section-head">
+          <text class="section-title">设计范围</text>
+          <text class="section-hint">{{floorPlanId ? '由 AI 设计首页继承' : '本次上传范围'}}</text>
+        </view>
+        <view class="scope-summary">
+          <view class="scope-summary-icon">
+            <image class="scope-summary-image" src="/images/ai-design-icons/floor-plan.png" mode="aspectFit"></image>
+          </view>
+          <view class="scope-copy">
+            <text class="scope-title" wx:if="{{floorPlanId && targetScope === 'single_room'}}">局部设计 · {{targetLabel || '所选房间'}}</text>
+            <text class="scope-title" wx:elif="{{floorPlanId}}">全屋设计</text>
+            <text class="scope-title" wx:else>当前图片</text>
+            <text class="scope-meta" wx:if="{{floorPlanId}}">{{targetMeta || (targetScope === 'single_room' ? '仅处理所选房间' : '对完整户型进行设计')}}</text>
+            <text class="scope-meta" wx:else>仅处理本次上传的空间图</text>
+          </view>
+          <text class="scope-state">{{floorPlanId ? '已继承' : '本次'}}</text>
+        </view>
+
+        <text class="scope-note" wx:if="{{mode === 'reference_recreate' && floorPlanId}}">所选户型决定墙体与门窗结构；参考图决定镜头、构图与风格，冲突时以户型结构为准。</text>
+        <text class="scope-note" wx:elif="{{mode === 'reference_recreate'}}">参考图决定镜头与构图；空间图仅提供可兼容的现场细节。</text>
+        <text class="scope-note" wx:elif="{{mode === 'floor_plan_render'}}">生成结果是概念效果，不等同于施工图或像素级空间还原。</text>
+      </view>
+
+      <view class="create-action-zone">
+        <view class="credit-strip {{hasEnoughCredits ? '' : 'insufficient'}}">
+          <view class="credit-info-icon">i</view>
+          <view class="credit-copy">
+            <text class="credit-title">本次消耗 {{price}} 点</text>
+            <text class="credit-meta">{{creditStatusText}}</text>
+          </view>
+          <view class="credit-price-pill">
+            <view class="credit-diamond"></view>
+            <text>{{price}} 点</text>
+          </view>
+        </view>
+
+        <view
+          class="generate-button {{!canSubmit ? 'blocked' : ''}}"
+          bindtap="submit"
+          hover-class="{{canSubmit && !submitting && !uploadingRole ? 'generate-button-pressed' : 'none'}}"
+          aria-role="button"
+          aria-disabled="{{submitting || uploadingRole || !canSubmit ? true : false}}"
+          aria-label="{{submitting ? '正在创建 AI 设计任务' : (uploadingRole ? '图片上传中' : (!canSubmit ? submitBlockedReason : '开始生成 AI 设计'))}}"
+        >
+          <text>{{submitting ? '正在创建任务...' : (uploadingRole ? '图片上传中...' : (!canSubmit ? submitBlockedReason : '开始生成'))}}</text>
+        </view>
+      </view>
+    </view>
   </view>
 </scroll-view>

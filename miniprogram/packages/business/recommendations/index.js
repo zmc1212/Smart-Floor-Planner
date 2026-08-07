@@ -97,48 +97,7 @@ Page({
         title: '已选择该风格',
         icon: 'success'
       });
-      this.trackUserInteraction('style_select', styleId, { position: 0 });
     }
-  },
-
-  onDownloadPdf(e) {
-    const styleId = e.currentTarget.dataset.styleId;
-
-    wx.showLoading({ title: '正在生成PDF...' });
-
-    setTimeout(() => {
-      wx.hideLoading();
-      wx.showToast({
-        title: 'PDF下载成功',
-        icon: 'success'
-      });
-      this.trackUserInteraction('pdf_download', styleId, { downloadTime: Date.now() });
-    }, 2000);
-  },
-
-  onShare(e) {
-    const styleId = e.currentTarget.dataset.styleId || this.data.selectedStyle;
-
-    if (!styleId) return;
-
-    this.trackUserInteraction('share', styleId, { platform: 'wechat' });
-
-    wx.showActionSheet({
-      itemList: ['分享给朋友', '保存方案海报'],
-      success: () => {}
-    });
-  },
-
-  trackUserInteraction(type, targetId, metadata = {}) {
-    console.log('用户交互:', type, targetId, metadata);
-  },
-
-  onReachBottom() {
-    this.loadMoreRecommendations();
-  },
-
-  loadMoreRecommendations() {
-    console.log('加载更多推荐...');
   },
 
   onShareAppMessage() {

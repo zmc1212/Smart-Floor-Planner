@@ -1734,3 +1734,537 @@
     margin-left: 14rpx;
   }
 }
+
+/* Approved 04-ai-design-home-v3 restoration.
+ * Real floor-plan geometry and workflow state remain native, live content.
+ */
+.with-plan {
+  padding-right: 36rpx;
+  padding-bottom: 40rpx;
+  padding-left: 36rpx;
+  background:
+    radial-gradient(circle at 52% 35%, rgba(248, 239, 229, 0.92) 0%, rgba(251, 249, 246, 0) 48%),
+    #fbf9f6;
+}
+
+.with-plan .immersive-page-head {
+  position: relative;
+  z-index: 12;
+  align-items: flex-start;
+  margin-bottom: 0;
+  padding-left: 8rpx;
+}
+
+.with-plan .page-heading {
+  padding-top: 12rpx;
+}
+
+.with-plan .page-title {
+  color: #232426;
+  font-size: 58rpx;
+  line-height: 1.08;
+  letter-spacing: -2rpx;
+}
+
+.page-subtitle-line {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  margin-top: 14rpx;
+}
+
+.page-subtitle-line .page-subtitle {
+  max-width: 420rpx;
+  margin-top: 0;
+  color: #717477;
+  font-size: 26rpx;
+  line-height: 1.25;
+}
+
+.project-chevron {
+  flex: 0 0 auto;
+  width: 14rpx;
+  height: 14rpx;
+  margin-left: 13rpx;
+  border-top: 4rpx solid #62666a;
+  border-right: 4rpx solid #62666a;
+  transform: rotate(45deg);
+  box-sizing: border-box;
+}
+
+.with-plan .balance-pill {
+  position: absolute;
+  right: calc(var(--ai-navigation-right) - 36rpx);
+  top: 22rpx;
+  height: 58rpx;
+  margin-top: 0;
+  padding: 0 18rpx;
+  background: rgba(255, 252, 247, 0.96);
+  border: 1rpx solid #d8c3a2;
+  color: #6f431a;
+  box-shadow: 0 5rpx 16rpx rgba(95, 69, 38, 0.06);
+}
+
+.with-plan .credit-dot {
+  width: 30rpx;
+  height: 30rpx;
+  margin-right: 12rpx;
+  background: linear-gradient(135deg, #ffc52f 0%, #f5a700 100%);
+  border: 2rpx solid #fff2be;
+  border-radius: 8rpx;
+  box-shadow: 0 3rpx 7rpx rgba(205, 132, 0, 0.2);
+}
+
+.with-plan .credit-dot::after {
+  width: 11rpx;
+  height: 11rpx;
+  background: rgba(255, 255, 255, 0.76);
+  border-radius: 2rpx;
+}
+
+.with-plan .balance-value {
+  font-size: 25rpx;
+  line-height: 1;
+}
+
+.reference-plan-navigator {
+  position: relative;
+  z-index: 2;
+  overflow: visible;
+  margin: -8rpx -36rpx 0;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.reference-plan-stage {
+  height: 804rpx;
+  overflow: visible;
+  background:
+    radial-gradient(ellipse at 50% 52%, rgba(226, 210, 191, 0.26) 0%, rgba(250, 247, 242, 0) 62%);
+}
+
+.reference-plan-stage .plan-ai-image,
+.reference-plan-stage .plan-graph {
+  left: 50%;
+  top: 20rpx;
+  width: 684rpx;
+  height: 724rpx;
+}
+
+.reference-plan-stage .plan-ai-image {
+  border-radius: 0;
+  filter: drop-shadow(0 22rpx 24rpx rgba(72, 58, 40, 0.13));
+}
+
+.reference-plan-stage .plan-graph {
+  top: 66rpx;
+  width: 620rpx;
+  height: 620rpx;
+  padding: 46rpx;
+  background: rgba(255, 254, 250, 0.86);
+  border-radius: 34rpx;
+  box-shadow: 0 24rpx 48rpx rgba(68, 57, 44, 0.08);
+  transform: translateX(-50%) perspective(800rpx) rotateX(8deg);
+  box-sizing: border-box;
+}
+
+.reference-plan-stage.room-focused .plan-ai-image {
+  transform: translateX(-50%) scale(1.035);
+}
+
+.reference-plan-stage.room-focused .plan-graph {
+  transform: translateX(-50%) perspective(800rpx) rotateX(8deg) scale(1.035);
+}
+
+.plan-guide-stage {
+  right: 2rpx;
+  bottom: -12rpx;
+  z-index: 11;
+  width: 128rpx;
+  height: 128rpx;
+  opacity: 1;
+  filter: drop-shadow(0 12rpx 16rpx rgba(31, 43, 34, 0.12));
+}
+
+.hero-room-rail {
+  position: absolute;
+  left: 28rpx;
+  right: 28rpx;
+  top: 0;
+  z-index: 10;
+  height: 84rpx;
+  white-space: nowrap;
+}
+
+.hero-room-row {
+  display: inline-flex;
+  min-width: 100%;
+  padding-right: 24rpx;
+  box-sizing: border-box;
+}
+
+.hero-room-chip {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 120rpx;
+  min-height: 84rpx;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  margin-right: 12rpx;
+  padding: 0;
+  color: #282a2c;
+  font-size: 24rpx;
+  line-height: 1;
+  font-weight: 600;
+  box-sizing: border-box;
+}
+
+.hero-room-chip-label {
+  min-width: 104rpx;
+  min-height: 54rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 22rpx;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1rpx solid rgba(179, 151, 114, 0.48);
+  border-radius: var(--radius-full);
+  box-shadow: 0 6rpx 16rpx rgba(57, 48, 38, 0.08);
+  box-sizing: border-box;
+}
+
+.hero-room-chip.active .hero-room-chip-label {
+  border-color: rgba(38, 176, 81, 0.5);
+  color: #10a948;
+}
+
+.reference-plan-stage .preview-progress {
+  top: 46%;
+}
+
+.design-workbench {
+  position: relative;
+  z-index: 20;
+  margin: -76rpx 0 0;
+  padding: 25rpx 22rpx 0;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.985);
+  border-radius: 34rpx;
+  box-shadow: 0 18rpx 44rpx rgba(72, 62, 50, 0.11);
+}
+
+.reference-stage-rail {
+  margin-top: 0;
+}
+
+.reference-stage-rail .stage-item {
+  min-height: 98rpx;
+}
+
+.reference-stage-rail .stage-dot {
+  width: 34rpx;
+  height: 34rpx;
+  border-width: 2rpx;
+}
+
+.reference-stage-rail .stage-line {
+  left: calc(50% + 17rpx);
+  top: 16rpx;
+  width: calc(100% - 34rpx);
+  border-top-color: #c9ccc9;
+}
+
+.reference-stage-rail .stage-item.current .stage-dot {
+  box-shadow:
+    inset 0 0 0 4rpx #fff,
+    0 0 0 2rpx var(--brand-primary);
+}
+
+.reference-stage-rail .stage-label {
+  margin-top: 12rpx;
+  color: #797e7b;
+  font-size: 24rpx;
+}
+
+.reference-stage-rail .stage-item.done .stage-label,
+.reference-stage-rail .stage-item.current .stage-label {
+  color: #0fa848;
+  font-weight: 600;
+}
+
+.reference-stage-rail .stage-status {
+  display: none;
+}
+
+.workflow-cards {
+  display: flex;
+  margin-top: 8rpx;
+}
+
+.workflow-card {
+  min-width: 0;
+  flex: 1;
+  margin-right: 12rpx;
+}
+
+.workflow-card:last-child {
+  margin-right: 0;
+}
+
+.workflow-card-title {
+  display: block;
+  overflow: hidden;
+  color: #202327;
+  font-size: 24rpx;
+  line-height: 1.2;
+  font-weight: 600;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-art {
+  position: relative;
+  height: 100rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 12rpx;
+  overflow: hidden;
+  background:
+    linear-gradient(145deg, rgba(248, 249, 247, 0.98), rgba(239, 244, 239, 0.98));
+  border-radius: 16rpx;
+  box-shadow: inset 0 0 0 1rpx rgba(220, 226, 220, 0.75);
+}
+
+.workflow-card:nth-child(2) .workflow-art {
+  background: linear-gradient(145deg, #e8f5ea, #cbe8d0);
+}
+
+.workflow-card:nth-child(3) .workflow-art {
+  background: linear-gradient(145deg, #f6f6f2, #e6ebe5);
+}
+
+.workflow-card:nth-child(4) .workflow-art {
+  background: linear-gradient(145deg, #edf6ed, #d9ead8);
+}
+
+.workflow-art image {
+  width: 62rpx;
+  height: 62rpx;
+}
+
+.workflow-card.recommended .workflow-art {
+  box-shadow: inset 0 0 0 2rpx rgba(34, 197, 94, 0.42);
+}
+
+.workflow-art-corner {
+  position: absolute;
+  right: 8rpx;
+  bottom: 8rpx;
+  width: 9rpx;
+  height: 9rpx;
+  background: var(--brand-primary);
+  border-radius: var(--radius-full);
+}
+
+.workflow-card.disabled {
+  opacity: 0.46;
+}
+
+.design-workbench .workflow-state {
+  margin-right: 0;
+  margin-left: 0;
+}
+
+.reference-next-action {
+  position: relative;
+  min-height: 114rpx;
+  display: flex;
+  align-items: stretch;
+  margin: 16rpx -22rpx 0;
+  padding: 0 28rpx 0 148rpx;
+  overflow: hidden;
+  background: linear-gradient(112deg, #09ad4b 0%, #16c75b 48%, #08a844 100%);
+  border-radius: 30rpx;
+  color: #fff;
+  box-shadow: 0 12rpx 26rpx rgba(14, 169, 72, 0.2);
+  box-sizing: border-box;
+}
+
+.reference-next-action.disabled {
+  filter: grayscale(0.25);
+  opacity: 0.58;
+}
+
+.next-action-k {
+  position: absolute;
+  left: 22rpx;
+  bottom: -8rpx;
+  z-index: 2;
+  width: 120rpx;
+  height: 120rpx;
+}
+
+.reference-next-action .next-action {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.reference-next-action .next-action-copy {
+  justify-content: center;
+}
+
+.next-kicker-row {
+  display: flex;
+  align-items: center;
+}
+
+.reference-next-action .next-kicker {
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 28rpx;
+  line-height: 1.1;
+  font-weight: 700;
+}
+
+.next-action-meta {
+  margin-left: 14rpx;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 24rpx;
+  line-height: 1.1;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.reference-next-action .next-title {
+  max-width: 390rpx;
+  margin-top: 10rpx;
+  overflow: hidden;
+  color: #fff;
+  font-size: 32rpx;
+  line-height: 1.16;
+  font-weight: 700;
+  letter-spacing: -1rpx;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reference-next-action .next-button {
+  width: 72rpx;
+  min-width: 72rpx;
+  height: 72rpx;
+  min-height: 72rpx;
+  margin-left: 12rpx;
+  padding: 0;
+  background: rgba(0, 122, 48, 0.28);
+  border: 5rpx solid rgba(255, 255, 255, 0.22);
+  border-radius: var(--radius-full);
+  box-shadow: none;
+}
+
+.reference-next-action .next-button-chevron {
+  width: 24rpx;
+  height: 24rpx;
+  margin-left: -7rpx;
+  border-top-width: 7rpx;
+  border-right-width: 7rpx;
+  color: #fff;
+}
+
+.sheet-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+.sheet-clear,
+.sheet-close {
+  min-height: 84rpx;
+  display: flex;
+  align-items: center;
+  padding-left: 22rpx;
+  font-size: 24rpx;
+}
+
+.sheet-clear {
+  color: #8b4d40;
+}
+
+@media (max-width: 360px) {
+  .with-plan {
+    padding-right: 24rpx;
+    padding-left: 24rpx;
+  }
+
+  .with-plan .immersive-page-head {
+    padding-left: 4rpx;
+  }
+
+  .with-plan .page-title {
+    font-size: 52rpx;
+  }
+
+  .with-plan .balance-pill {
+    padding-right: 14rpx;
+    padding-left: 14rpx;
+  }
+
+  .reference-plan-navigator {
+    margin-right: -24rpx;
+    margin-left: -24rpx;
+  }
+
+  .reference-plan-stage {
+    height: 760rpx;
+  }
+
+  .reference-plan-stage .plan-ai-image,
+  .reference-plan-stage .plan-graph {
+    width: 626rpx;
+    height: 674rpx;
+  }
+
+  .plan-guide-stage {
+    width: 120rpx;
+    height: 120rpx;
+  }
+
+  .design-workbench {
+    margin-top: -70rpx;
+    padding-right: 18rpx;
+    padding-left: 18rpx;
+  }
+
+  .workflow-card {
+    margin-right: 8rpx;
+  }
+
+  .workflow-card-title {
+    font-size: 24rpx;
+  }
+
+  .workflow-art {
+    height: 92rpx;
+  }
+
+  .reference-next-action {
+    margin-right: -18rpx;
+    margin-left: -18rpx;
+    padding-left: 132rpx;
+  }
+
+  .next-action-k {
+    left: 14rpx;
+    width: 112rpx;
+    height: 112rpx;
+  }
+
+  .reference-next-action .next-title {
+    max-width: 326rpx;
+    font-size: 29rpx;
+  }
+}

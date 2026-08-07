@@ -84,19 +84,27 @@ test('AI Design uses the shared tab-page scrolling contract', () => {
   assert.match(aiDesignPageSource, /syncImmersiveNavigationMetrics\(\)/);
 });
 
-test('the center Measure action preserves the established floating circular tab style', () => {
+test('the center Measure action uses the approved background-free Xiao K rangefinder', () => {
   assert.doesNotMatch(customTabSource, /iconPath: '\/images\/mine-icons\/tab-measure-active\.png'/);
   assert.match(customTabWxml, /\/images\/mine-icons\/tab-measure-k\.png/);
   assert.match(customTabWxml, /<text class="tab-text">\{\{item\.text\}\}<\/text>/);
   assert.match(
     customTabWxss,
-    /\.center-icon\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*-22rpx;[\s\S]*?width:\s*112rpx;[\s\S]*?height:\s*112rpx;[\s\S]*?border-radius:\s*50%;/
+    /\.center-icon\s*\{[\s\S]*?position:\s*absolute;[\s\S]*?top:\s*-30rpx;[\s\S]*?width:\s*128rpx;[\s\S]*?height:\s*128rpx;[\s\S]*?border-radius:\s*0;[\s\S]*?background:\s*transparent;[\s\S]*?box-shadow:\s*none;[\s\S]*?overflow:\s*visible;/
   );
   assert.match(
     customTabWxss,
-    /\.center-image\s*\{[\s\S]*?width:\s*104rpx;[\s\S]*?height:\s*104rpx;/
+    /\.center-image\s*\{[\s\S]*?width:\s*128rpx;[\s\S]*?height:\s*128rpx;/
   );
   assert.match(customTabWxss, /\.tab-item\.center \.tab-text\s*\{[\s\S]*?top:\s*96rpx;/);
+
+  const measureAsset = fs.readFileSync(
+    path.join(miniRoot, 'images', 'mine-icons', 'tab-measure-k.png')
+  );
+  assert.equal(measureAsset.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+  assert.equal(measureAsset.readUInt32BE(16), 128);
+  assert.equal(measureAsset.readUInt32BE(20), 128);
+  assert.ok(measureAsset.length <= 10 * 1024, 'tab-measure-k.png exceeds the 10KB icon budget');
 });
 
 test('contextual AI entries preserve plan and room scope across switchTab', () => {
@@ -117,7 +125,15 @@ test('standalone channel promoters cannot open or preload enterprise AI design',
   assert.equal(canAccessAIDesign({ role: 'user', enterpriseId: '42' }), false);
   assert.match(customTabSource, /requiresEnterprise: true/);
   assert.match(customTabSource, /visible: !item\.requiresEnterprise \|\| canUseAIDesign/);
+  assert.match(customTabSource, /compactMeasureTab: !canUseAIDesign/);
   assert.match(customTabWxml, /wx:if="\{\{item\.visible !== false\}\}"/);
+  assert.match(customTabWxml, /center-icon-compact/);
+  assert.match(customTabWxml, /center-image-compact/);
+  assert.match(
+    customTabWxss,
+    /\.center-icon-compact\s*\{[\s\S]*?top:\s*-24rpx;[\s\S]*?width:\s*112rpx;[\s\S]*?height:\s*112rpx;/
+  );
+  assert.match(customTabWxss, /\.center-image-compact\s*\{[\s\S]*?width:\s*112rpx;[\s\S]*?height:\s*112rpx;/);
   assert.match(aiDesignPageSource, /if \(!canAccessAIDesign\(\)\)/);
   aiWorkflowPageSources.forEach((source) => assert.match(source, /if \(!canAccessAIDesign\(\)\)/));
 });

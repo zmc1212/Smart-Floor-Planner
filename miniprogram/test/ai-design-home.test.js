@@ -138,12 +138,20 @@ test('the next action starts with reference recreation and creates a real whole-
   assert.equal(readyAction.taskId, 'task-1');
 });
 
-test('AI Design home ships the approved map, journey, and scene states without the old task grid', () => {
-  assert.match(pageWxml, /class="plan-navigator"/);
-  assert.match(pageWxml, /class="room-selector-handle"/);
-  assert.match(pageWxml, /class="stage-rail"/);
+test('AI Design home restores the v3 spatial workbench while keeping live map and scene states', () => {
+  assert.match(pageWxml, /class="plan-navigator reference-plan-navigator"/);
+  assert.match(pageWxml, /class="hero-room-rail"/);
+  assert.match(pageWxml, /class="hero-room-row"/);
+  assert.doesNotMatch(pageWxml, /hero-room-pin|hero-room-all|hero-room-[0-9]/);
+  assert.match(pageWxml, /class="stage-rail reference-stage-rail"/);
   assert.match(pageWxml, /class="stage-status">进行中/);
-  assert.match(pageWxml, /class="next-action-panel"/);
+  assert.match(pageWxml, /class="workflow-cards"/);
+  assert.match(pageWxml, /class="next-action-panel reference-next-action/);
+  assert.match(pageWxml, /class="next-action-k"/);
+  assert.match(pageWxml, /primaryAction\.buttonLabel/);
+  assert.match(pageWxml, /primaryAction\.credits/);
+  assert.match(pageWxml, /\/images\/mine-icons\/tab-measure-k\.png/);
+  assert.doesNotMatch(pageWxml, /\/images\/page-ip-v3\/ai-home\.png/);
   assert.match(pageWxml, /class="scene-navigator/);
   assert.match(pageWxml, /bindtap="focusSceneWaypoint"/);
   assert.match(pageWxml, /sceneNavigation\.focusClass/);
@@ -156,7 +164,7 @@ test('AI Design home ships the approved map, journey, and scene states without t
   assert.match(pageModelSource, /生成 3D 户型导览图/);
   assert.doesNotMatch(pageWxml, /class="workflow-grid"/);
   assert.doesNotMatch(pageWxml, />AI 设计</);
-  assert.match(pageWxss, /\.plan-stage\s*\{[\s\S]*height:\s*620rpx/);
+  assert.match(pageWxss, /\.reference-plan-stage\s*\{[\s\S]*height:\s*804rpx/);
   assert.match(pageWxml, /\/images\/ai-design-hero-v3\.png/);
   assert.match(pageWxml, /class="scene-source-card"/);
   assert.match(pageWxml, />参考图复刻</);
@@ -176,8 +184,11 @@ test('AI Design home ships the approved map, journey, and scene states without t
   assert.match(pageWxss, /\.next-button\s*\{[\s\S]*font-size:\s*24rpx/);
   assert.match(pageWxss, /\.stage-label\s*\{[\s\S]*font-size:\s*25rpx/);
   assert.match(pageWxss, /\.stage-dot\s*\{[\s\S]*width:\s*42rpx/);
-  assert.match(pageWxss, /\.room-selector\s*\{[\s\S]*border-radius:\s*30rpx 30rpx 0 0/);
-  assert.match(pageWxss, /\.room-tab\.active::after/);
+  assert.match(pageWxss, /\.hero-room-chip\s*\{[\s\S]*min-height:\s*84rpx/);
+  assert.match(pageWxss, /\.hero-room-chip-label\s*\{[\s\S]*min-height:\s*54rpx/);
+  assert.match(pageWxss, /\.hero-room-chip\.active \.hero-room-chip-label\s*\{[\s\S]*color:\s*#10a948/);
+  assert.match(pageWxss, /\.design-workbench\s*\{[\s\S]*margin:\s*-76rpx 0 0/);
+  assert.match(pageWxss, /\.reference-next-action\s*\{[\s\S]*min-height:\s*114rpx/);
   assert.match(pageWxss, /\.scene-waypoint\s*\{[\s\S]*min-height:\s*54rpx/);
   assert.match(pageWxss, /\.discovery-panel\s*\{[\s\S]*margin:\s*-30rpx -36rpx 0/);
   assert.match(pageWxss, /\.secondary-action\s*\{[\s\S]*font-size:\s*24rpx/);

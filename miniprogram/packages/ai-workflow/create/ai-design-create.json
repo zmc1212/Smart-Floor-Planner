@@ -1,3 +1,6 @@
 {
-  "navigationBarTitleText": "创建 AI 设计"
+  "navigationBarTitleText": "创建 AI 设计",
+  "navigationBarBackgroundColor": "#FFFDFC",
+  "navigationBarTextStyle": "black",
+  "backgroundColor": "#F8F8F5"
 }

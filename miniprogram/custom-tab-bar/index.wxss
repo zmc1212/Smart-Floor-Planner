@@ -60,27 +60,38 @@
 
 .center-icon {
   position: absolute;
-  top: -22rpx;
+  top: -30rpx;
   left: 50%;
-  width: 112rpx;
-  height: 112rpx;
+  width: 128rpx;
+  height: 128rpx;
   margin: 0;
-  border-radius: 50%;
-  background: #ffffff;
-  box-shadow: 0 8rpx 18rpx rgba(8, 169, 67, 0.18);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  overflow: visible;
   transform: translateX(-50%);
 }
 
 .center-image {
   display: block;
-  width: 104rpx;
-  height: 104rpx;
+  width: 128rpx;
+  height: 128rpx;
   max-width: none;
   flex-shrink: 0;
+}
+
+.center-icon-compact {
+  top: -24rpx;
+  width: 112rpx;
+  height: 112rpx;
+}
+
+.center-image-compact {
+  width: 112rpx;
+  height: 112rpx;
 }
 
 .tab-text,
@@ -105,7 +116,7 @@
 .tab-item.center .tab-text {
   position: absolute;
   /* The label sits in the content lane instead of the iOS safe-area gutter. */
-  top: 88rpx;
+  top: 96rpx;
   z-index: 2;
   margin-top: 0;
   line-height: 28rpx;

@@ -46,6 +46,22 @@ utilities, and the admin APIs they call.
   TabBar. Its shared `128rpx` content lane keeps the centered `Measure` label
   entirely above the bottom inset; `constant(safe-area-inset-bottom)` remains
   as an iOS WebView fallback before the modern `env()` declaration.
+- Shared TabBar V3 restoration (2026-08-07): the approved center action now
+  renders the complete transparent Xiao K character holding a laser distance
+  meter with no circular background, border, or circular shadow. Enterprise
+  staff use the five-item layout with the `128rpx` Xiao K raised by `30rpx`;
+  standalone promoters without AI Design use four equal live items and a compact
+  `112rpx` Xiao K raised by `24rpx`, with no empty or disabled `Design` slot.
+  The separate native `Measure` label remains at the existing `96rpx` safe
+  baseline. Routes, the latest-plan lookup, formal-surveying entry, APIs,
+  authentication, and permission boundaries are unchanged. Targeted TabBar,
+  asset-budget, access-visibility, and offline-debug tests passed, and the full
+  Mini Program suite passed `181/181`; the user's
+  existing WeChat DevTools window verified the four-item promoter Home state at
+  `390x844` in
+  `design-references/qa/v3-tabbar-promoter-four-item-home-390x844.png`;
+  the prior five-item Home, Leads, and Mine evidence remains in
+  `design-references/qa/v3-tabbar-no-circle-390x844-contact-sheet.png`.
 
 ## Shared Identity And Context
 
@@ -56,7 +72,10 @@ utilities, and the admin APIs they call.
   repeats that refresh after its workbench response completes the current user
   context. Switching from a standalone promoter to an enterprise designer
   therefore reveals the `Design` tab without restarting the Mini Program;
-  logout immediately reapplies the same visibility rule. This is client-side
+  logout immediately reapplies the same visibility rule. When `Design` is not
+  available, the TabBar renders four equal real actions (`Home`, `Leads`,
+  `Measure`, and `Mine`) and applies the compact Measure treatment instead of
+  leaving an empty slot or exposing a disabled AI entry. This is client-side
   presentation only and does not change authentication, routes, APIs, or the
   `enterpriseId` permission boundary.
 - Login visuals: `Implemented` against
@@ -171,10 +190,12 @@ utilities, and the admin APIs they call.
   errors, empty states, navigation, and the shared five-item custom tab bar remain
   authoritative. The packaged scene derivative is
   `images/leads-ip-v1/client-concierge-scene.png`; it contains no customer counts
-  or interactive controls. The shared circular Measure entry uses the transparent
-  `images/mine-icons/tab-measure-k.png` character with a separate live label.
-  Both assets were exported from a generated fixed-cell asset board rather than
-  cropped directly from the flattened page reference. The summary's new-today,
+  or interactive controls. The shared raised Measure entry uses the transparent
+  full-body `images/mine-icons/tab-measure-k.png` Xiao K character holding a
+  laser distance meter, with no circular background, border, or circular shadow;
+  its live `Measure` label remains a separate native text node. Both assets were
+  exported from generated sources rather than cropped directly from a flattened
+  page reference. The summary's new-today,
   active-follow-up, and converted
   counts are tenant/staff-scoped server aggregates rather than values inferred from
   the currently loaded page.
@@ -359,25 +380,72 @@ utilities, and the admin APIs they call.
   context remain supported as quick standalone generations.
 - Visuals: locally rendered Lucide icons, hairline separators, output-ratio-aware
   result/compare stages that use the reference image for recreation comparisons,
-  and the iPhone 13 Pro `390x844` baseline. The scene or real plan remains the
-  dominant first-viewport surface, with the workflow content layered beneath
-  it instead of reducing the visual to a banner. The home uses
-  `design-references/ai-design/ai-design-immersive-c-floor-map-v1.png` as its primary
-  direction, takes the stage/next-action treatment from
-  `design-references/ai-design/ai-design-immersive-b-workflow-v1.png`, and uses
-  `design-references/ai-design/ai-design-immersive-a-space-tour-v1.png` for the no-plan
-  entry. With a selected plan, the whole-plan/room targets use the reference's
-  raised bottom-sheet rail with a compact green selected label and underline;
-  the workflow rail distinguishes completed check nodes, the double-ring current
-  node with an explicit in-progress label, and dashed upcoming connections. The
-  workflow summary and next action remain separate visual layers while preserving
-  the same live selection and generation behavior. At narrow real-device widths
-  up to `360px`, the no-plan recommendation
-  keeps its compact horizontal title/action hierarchy and reserves scene space
-  between the fourth waypoint and the formal-plan selector instead of inheriting
-  the stacked action layout used by other page states. The result-page reference remains
-  `design-references/ai-design/ai-design-result-v2.png`; the generated no-plan hero
-  is `miniprogram/images/ai-design-hero-v3.png`.
+  and the iPhone 13 Pro `390x844` baseline. The selected-plan home uses
+  `design-references/all-pages-ip-v3/04-ai-design-home-v3.png` as its restoration
+  target: the live 3D navigation cover or deterministic formal wall graph owns
+  the first viewport, a horizontal whole-plan/room scope rail changes the real
+  target without claiming unmeasured spatial coordinates, and the character-only
+  Xiao K asset acts once as the spatial guide. A single raised white workbench
+  joins the four-stage server-derived rail, the four implemented task entries,
+  and one full-width green contextual next action that visibly discloses its live
+  operation label and point cost. The customer/project subtitle still opens the source
+  picker, source clearing remains available inside that picker, multiple active
+  schemes still require explicit selection, and recent live results remain below
+  the first-viewport workbench. The custom navigation reserves the measured WeChat
+  capsule lane even where the supplied reference does not show that capsule. The
+  no-plan spatial-tour state remains backed by
+  `design-references/ai-design/ai-design-immersive-a-space-tour-v1.png` and
+  `miniprogram/images/ai-design-hero-v3.png`; at widths up to `360px`, its
+  recommendation stays compact and keeps safe spacing between the fourth waypoint
+  and formal-plan selector. The selected-plan, real-wall-graph fixture was
+  inspected in the user's existing WeChat DevTools at `390x844`; the retained QA
+  capture is `output/ai-design-v3-qa-390x844.png`. The automation capture does not
+  include the native WeChat capsule, so it verifies the page composition while
+  the measured `navigationRight` clearance remains code/test evidence; a native-
+  chrome or device capture is still outstanding. Intentional deviations from the
+  comp are the truthful horizontal scope rail, visible cost metadata, the capsule
+  safety lane, the shared custom TabBar, and existing coherent task iconography
+  instead of static sample-plan imagery. The 2026-08-07 restoration changes visual
+  composition only; routes, APIs, permissions, point charging, workflow selection,
+  and formal wall-graph contracts are unchanged. The create page now follows
+  `design-references/all-pages-ip-v3/14-ai-design-create-v3.png`: its native step
+  rail, Xiao K material-board scene, formal-plan/workflow context, truthful image
+  upload states, server-provided style presets, inherited read-only design scope,
+  real enterprise credit balance, and primary generation action remain visible in
+  one compact flow. It does not make the reference's range cards editable when the
+  current workflow has no room picker on this page, and it never shows a sample
+  room image as if the user had uploaded it. Capability-loading failure now has an
+  in-page retry state. The current mode title now leads the context card, upload
+  guidance explains the actual input contract for that mode, and the inherited
+  scope is rendered as a passive summary instead of a radio-like control.
+  Submission readiness is derived from provider availability, required source
+  images, the selected server style, and the enterprise balance. The fixed-width
+  action area stays visible at the bottom of the `390x844` composition; its label
+  exposes the first blocking requirement, and an insufficient balance opens the
+  truthful recovery path to contact the enterprise administrator. Style selection
+  is locked while an upload or submission is active. Only verified local
+  derivatives are mapped to known server style keys, while an unknown style
+  receives a native descriptive placeholder instead of an unrelated sample image.
+  The design derivatives contain artwork and style thumbnails only; business copy,
+  controls, selection state, credits, and uploads stay native. The user's existing
+  WeChat DevTools window verified the standalone insufficient-credit state, the
+  style-transform insufficient-credit state, and the formal-plan whole-scope state
+  with native status/capsule chrome at `390x844`; retained captures are
+  `output/ai-design-create-v3-qa-390x844.png`,
+  `output/ai-design-create-v3-style-transform-qa-390x844.png`, and
+  `output/ai-design-create-v3-formal-plan-qa-390x844.png`. The Mini Program suite
+  passed `185/185` and `git diff --check` passed.
+  Routes, APIs, permissions, credit charging, task validation, workflow ownership,
+  and formal wall-graph contracts are unchanged. The result page now follows
+  `design-references/all-pages-ip-v3/15-ai-design-result-v3.png`: the native
+  `设计成果` bar, one Xiao K delivery cue, and a status bubble lead into the
+  ratio-aware before/after stage; its five visible controls map only to live
+  preview, album save, WeChat share, continue optimization, and history paths.
+  The customer-scheme, target, mode, and credit rows remain server-derived, and
+  the bottom primary/secondary pair reuses the existing continuation and history
+  handlers. This is a visual-only restoration: routes, APIs, permissions, credit
+  charging, task/workflow selection, and the formal wall-graph contract remain
+  unchanged.
 - Formal-plan boundary: entries pass `floorPlanId`, explicit
   `targetScope: whole_floor_plan | single_room`, and `roomId` only for a single
   room. The backend derives dimensions, ceiling height, and opening summaries
@@ -441,9 +509,10 @@ utilities, and the admin APIs they call.
   three baseline metric illustrations, fixed four-column workbench rhythm,
   compact two-item todo list, and AI design banner use production crops derived from
   `design-references/mine/miniprogram-mine-v6.png` and
-  `design-references/mine/miniprogram-mine-v6-icon.png`. The established circular
-  floating Measure action remains the center TabBar treatment and uses the shared
-  generated transparent Xiao K asset with a separate live label. The expanded
+  `design-references/mine/miniprogram-mine-v6-icon.png`. The raised Measure action
+  uses the shared generated transparent full-body Xiao K asset holding a laser
+  distance meter, with no circular background, border, or circular shadow; its
+  live label remains a separate native text node. The expanded
   shared content lane keeps that native `Measure` label visible above the iOS
   Home Indicator safe area. Live profile data,
   server-provided actions and metrics, role boundaries, and existing navigation
@@ -473,12 +542,12 @@ utilities, and the admin APIs they call.
 ### Recommendations Share Page
 
 - Page: `packages/business/recommendations/index`.
-- Limited: the registered page displays local styles/progress and defines a
-  WeChat `onShareAppMessage` payload.
-- Placeholder: recommendations are hard-coded mock data; “PDF download” is a
-  timed success toast and does not generate or download a real PDF; the custom
-  share ActionSheet has no follow-up operation; interaction tracking is local
-  logging only.
+- Limited: the registered page displays local styles/progress, lets the user
+  select one style, reveals the native WeChat share control, and defines its
+  `onShareAppMessage` payload.
+- Placeholder: recommendations are hard-coded mock data. The page deliberately
+  exposes no PDF download, poster-save ActionSheet, local interaction-log
+  placeholder, or other operation without a real backend path.
 
 ## Formal Surveying
 

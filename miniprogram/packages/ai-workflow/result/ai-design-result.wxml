@@ -27,11 +27,13 @@
 
       <block wx:elif="{{task.status === 'succeeded'}}">
         <view class="result-heading">
-          <view class="heading-copy">
-            <text class="result-title">设计成果</text>
-            <text class="result-subtitle">{{task.sourceCompareImageUrl ? (task.controlImageUrl ? '拖动对比原始户型与全屋效果' : '拖动查看设计前后变化') : '基于正式户型数据生成的概念效果'}}</text>
+          <view class="complete-chip">
+            <view class="complete-check"></view>
+            <text>{{task.workflowId ? '已同步方案' : '设计已完成'}}</text>
           </view>
-          <view class="complete-chip">{{task.workflowId ? '已同步方案' : '已完成'}}</view>
+          <view class="delivery-bubble">
+            <text>方案已生成，看看效果如何吧！</text>
+          </view>
           <image class="result-delivery-scene" src="/images/page-ip-v3/ai-result.png" mode="aspectFit"></image>
         </view>
 
@@ -67,11 +69,19 @@
             <image class="action-icon-image" src="/packages/ai-workflow/assets/result-icons/share-white.png" mode="aspectFit"></image>
             <text>分享</text>
           </button>
-          <view class="action-hairline"></view>
+          <button class="result-action" hover-class="action-pressed" bindtap="handlePrimaryAction">
+            <image class="action-icon-image" src="/packages/ai-workflow/assets/result-icons/refresh-cw.png" mode="aspectFit"></image>
+            <text>继续优化</text>
+          </button>
+          <button class="result-action" hover-class="action-pressed" bindtap="openHistory">
+            <image class="action-icon-image" src="/packages/ai-workflow/assets/result-icons/history.png" mode="aspectFit"></image>
+            <text>查看历史</text>
+          </button>
         </view>
 
         <view class="task-summary">
           <view wx:if="{{task.workflowId}}" class="workflow-summary">
+            <image class="summary-icon" src="/images/mine-icons/users.png" mode="aspectFit"></image>
             <view class="workflow-summary-copy">
               <text class="workflow-summary-label">所属客户方案</text>
               <text class="workflow-summary-title">{{task.workflowTitle || '客户 AI 方案'}}</text>
@@ -80,14 +90,17 @@
             <text class="workflow-summary-status">{{task.isSelectedBaseline ? '当前定稿' : '候选版本'}}</text>
           </view>
           <view class="summary-item">
+            <image class="summary-icon" src="/images/ai-design-icons/palette.png" mode="aspectFit"></image>
             <text class="summary-label">生成模式</text>
             <text class="summary-value">{{task.modeTitle}}</text>
           </view>
           <view wx:if="{{task.targetLabel}}" class="summary-item">
+            <image class="summary-icon" src="/images/ai-design-icons/floor-plan.png" mode="aspectFit"></image>
             <text class="summary-label">设计范围</text>
             <text class="summary-value">{{task.targetLabel}}</text>
           </view>
           <view class="summary-item">
+            <image class="summary-icon summary-icon-credit" src="/images/mine-icons/wallet.png" mode="aspectFit"></image>
             <text class="summary-label">消耗点数</text>
             <text class="summary-value summary-points">{{task.credits}} 点</text>
           </view>
@@ -95,11 +108,9 @@
 
         <view class="bottom-actions">
           <button class="bottom-action" hover-class="outline-pressed" bindtap="handlePrimaryAction">
-            <image class="bottom-action-icon-image" src="/packages/ai-workflow/assets/result-icons/refresh-cw.png" mode="aspectFit"></image>
-            <text>{{task.canContinueWorkflow && task.nextStageKey === 'soft_furnishing' ? '继续软装' : task.canContinueWorkflow && task.nextStageKey === 'base_render' ? '换风格' : task.workflowId && task.hasExactTargetContext && task.nextStageKey ? '后台继续深化' : '再次设计'}}</text>
+            <text>{{task.canContinueWorkflow && task.nextStageKey === 'soft_furnishing' ? '继续软装' : task.canContinueWorkflow && task.nextStageKey === 'base_render' ? '换风格' : task.workflowId && task.hasExactTargetContext && task.nextStageKey ? '后台继续深化' : '继续优化'}}</text>
           </button>
           <button class="bottom-action" hover-class="outline-pressed" bindtap="openHistory">
-            <image class="bottom-action-icon-image" src="/packages/ai-workflow/assets/result-icons/history.png" mode="aspectFit"></image>
             <text>查看历史</text>
           </button>
         </view>

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "predev": "node scripts/sync-survey-dimension-plan.mjs",
-    "dev": "next dev -H 0.0.0.0 -p 3005",
+    "dev": "next dev -H 0.0.0.0 -p 3006",
     "prebuild": "node scripts/sync-survey-dimension-plan.mjs",
     "build": "next build",
     "start": "next start",

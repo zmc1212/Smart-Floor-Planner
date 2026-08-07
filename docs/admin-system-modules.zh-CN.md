@@ -284,6 +284,7 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
 - API：户型 CRUD、`/floorplans/[id]/export/dxf`、测量、酷家乐城市/搜索和线索关联接口；小程序 `GET /api/floorplans/[id]` 还会返回关联线索的最小身份和小区摘要，供直接进入正式量房时显示项目标题。
 - 组件/工具：`FloorPlanViewer`、`FloorPlanViewerWrapper`、`survey-graph`、`surveyDimensionPlan`、`surveyWallSolidPlan`、`dxf`；无渲染依赖的尺寸和墙体实体规划器以 `miniprogram/utils` 为源，在后台开发和生产构建前同步到 `admin/src/lib`。
 - 状态：正式 v4 墙图解析、后台 2D/3D 查看、房间填充仅接受首墙正向或反向能够完整闭合的墙链、单侧墙体与连接节点补面先做全局实体合并再统一填充和描边（连接节点、L/T 型接入及重合分段不再出现内部端帽、斜缝或独立方框；门窗切口覆盖完整墙厚）、闭合户型使用工程图式外轮廓尺寸方案（空间边界先按几何拆分合并，不同 ID/不同分段的重合共享墙及封闭内部孔洞均不标注；连续多墙或含门洞的外边界使用靠墙的定位分段链；上、下、左、右等每个外侧方向仅有一条跨整套户型外包范围的全局总尺寸，不再为局部 run 重复生成总尺寸；窗户保留 CAD 图形但不生成重复细分尺寸；延伸线从斜接后的外墙转角起笔，再引至整套户型外轮廓之外的全局尺寸带；查看器会为尺寸线、延伸线和文字自动扩展 SVG 视区，避免最外层标注被裁切）、测量筛选和 DXF 下载为 `Implemented`；`/floorplans` 已使用 `PageContainer`、`ProTable` 承载正式户型的搜索、状态筛选、分页和查看器入口，列表只从 version-4 `surveyGraph` 派生已闭合空间、墙体和开口统计，不读取或写入旧布局字段；`GET /api/floorplans` 支持可选 `status` 筛选，`floorplans` 权限、查看器和 DXF 行为均未改变；正式户型列表的查看入口与其他管理列表统一使用 Ant Design 小尺寸带图标文字按钮；酷家乐搜索受上游数据和查询条件影响，为 `Limited`。
+- 2026-08-07 查看器同步：只读 `/floorplans/[id]` SVG 已按小程序真实墙厚的门窗规则绘制完整墙厚切口、平开门矩形门套/门扇/开合弧线，以及三轨窗框，并保持既有推拉和双开分类。这只是展示层更新；v4 `surveyGraph`、API、DXF、租户范围与 `floorplans` 权限边界均未改变。
 - PostgreSQL 边界：正式户型 CRUD、详情渲染、线索关联、测量关联和 DXF 导出均通过 `FloorPlanRepository`、`MeasurementRepository` 在 RLS 中访问。已认证的酷家乐上游请求不再连接 MongoDB，且在数据库事务外执行；导入结果以毫米制正式 version-4 `surveyGraph` 原子持久化；房间轮廓转换为闭合节点/墙/空间链。由于上游响应尚无可靠的开口到墙体映射，当前不导入酷家乐门窗开口。
 - 边界：后台从 `surveyGraph` 派生房间/开口渲染数据，不持久化旧 `rooms` 或其他旧布局字段。
 

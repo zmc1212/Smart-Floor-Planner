@@ -6,6 +6,7 @@ const { ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG } = require('../utils/debugConfig.js')
 Component({
   data: {
     selected: 0,
+    compactMeasureTab: true,
     list: [
       {
         key: 'home',
@@ -123,6 +124,7 @@ Component({
       const index = list.findIndex((item) => item.pagePath === current && !item.center);
       this.setData({
         list,
+        compactMeasureTab: !canUseAIDesign,
         selected: index >= 0 && list[index].visible ? index : this.data.selected,
       });
     }
