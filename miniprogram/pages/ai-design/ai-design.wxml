@@ -79,6 +79,13 @@ FORM: Approved C floor-map direction fused with B workflow path; A scene navigat
         <view class="plan-navigator">
           <view class="plan-stage {{selectedSource.targetScope === 'single_room' ? 'room-focused' : 'whole-focused'}}">
             <image
+              wx:if="{{!selectedSource.navigationPreview.imageUrl}}"
+              class="plan-guide-scene"
+              src="/images/page-ip-v3/ai-home.png"
+              mode="aspectFit"
+              aria-hidden="true"
+            ></image>
+            <image
               wx:if="{{selectedSource.navigationPreview.imageUrl}}"
               class="plan-ai-image"
               src="{{selectedSource.navigationPreview.imageUrl}}"

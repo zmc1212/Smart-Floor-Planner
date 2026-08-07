@@ -33,6 +33,59 @@
   overflow: hidden;
 }
 
+/* all-pages-ip-v3 / 08-lead-detail */
+.detail-hero {
+  min-height: 286rpx;
+  padding: 42rpx 28rpx 30rpx;
+  background: linear-gradient(128deg, #0f9f4e 0%, #1fba61 48%, #eef7ed 48%, #f8fbf7 100%);
+}
+
+.detail-hero .eyebrow,
+.detail-hero .title,
+.detail-hero .info {
+  color: #fff;
+}
+
+.detail-hero .hero-copy {
+  width: 48%;
+  position: relative;
+  z-index: 2;
+}
+
+.lead-detail-scene {
+  position: absolute;
+  right: -4rpx;
+  bottom: -6rpx;
+  width: 390rpx;
+  height: 278rpx;
+}
+
+.whole-home-card {
+  position: relative;
+  padding-top: 76rpx;
+  overflow: visible;
+}
+
+.whole-home-tab {
+  position: absolute;
+  top: -1rpx;
+  left: -1rpx;
+  height: 58rpx;
+  padding: 0 28rpx;
+  border-radius: 22rpx 0 22rpx 0;
+  background: var(--primary-600);
+  color: #fff;
+  font-size: 24rpx;
+  line-height: 58rpx;
+  font-weight: 700;
+}
+
+.whole-home-action text {
+  float: right;
+  font-size: 34rpx;
+  line-height: 1;
+}
+
 .hero-copy {
   min-width: 0;
   display: flex;

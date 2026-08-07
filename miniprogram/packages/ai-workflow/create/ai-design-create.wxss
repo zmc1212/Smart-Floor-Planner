@@ -38,3 +38,14 @@
 .generate-button::after { border: none; }
 .generate-button[disabled] { opacity: .58; }
 .button-cost { font-size: 23rpx; color: rgba(255,255,255,.82); }
+
+/* all-pages-ip-v3 / 14-ai-design-create */
+.create-visual-hero { position: relative; min-height: 250rpx; margin: -34rpx -28rpx 26rpx; padding: 56rpx 34rpx 26rpx; overflow: hidden; background: linear-gradient(118deg, #fbfdf9 0%, #edf7ee 56%, #f4eadc 100%); box-sizing: border-box; }
+.create-visual-copy { position: relative; z-index: 2; width: 48%; padding-top: 20rpx; }
+.create-visual-kicker { display: block; color: #168647; font-size: 20rpx; line-height: 1.4; }
+.create-visual-title { display: block; margin-top: 8rpx; color: #142219; font-size: 44rpx; line-height: 1.15; font-weight: 800; }
+.create-visual-subtitle { display: block; margin-top: 14rpx; color: #687469; font-size: 21rpx; line-height: 1.5; }
+.create-visual-scene { position: absolute; right: -8rpx; bottom: -26rpx; width: 400rpx; height: 290rpx; }
+.create-head { margin-bottom: 20rpx; }
+.upload-block { height: 360rpx; border-radius: 28rpx; }
+.generate-button { position: sticky; bottom: calc(18rpx + env(safe-area-inset-bottom)); z-index: 8; }

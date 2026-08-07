@@ -8,7 +8,13 @@
 
   <scroll-view class="main-content" scroll-y style="padding-top: {{navBarHeightTotal}}px; height: 100vh; box-sizing: border-box;">
     <view class="content-shell">
-      <image class="hero-image" src="/images/login-hero.png" mode="widthFix"></image>
+      <view class="lead-intake-hero">
+        <view class="lead-intake-copy">
+          <view class="lead-intake-title">让<text>家</text>更懂你</view>
+          <view class="lead-intake-subtitle">完善资料，获得更精准的服务与方案</view>
+        </view>
+        <image class="lead-intake-scene" src="/images/page-ip-v3/lead-form.png" mode="aspectFit"></image>
+      </view>
 
       <view class="recent-head">
         <text class="recent-title">最近客户</text>

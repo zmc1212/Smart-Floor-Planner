@@ -32,6 +32,7 @@
             <text class="result-subtitle">{{task.sourceCompareImageUrl ? (task.controlImageUrl ? '拖动对比原始户型与全屋效果' : '拖动查看设计前后变化') : '基于正式户型数据生成的概念效果'}}</text>
           </view>
           <view class="complete-chip">{{task.workflowId ? '已同步方案' : '已完成'}}</view>
+          <image class="result-delivery-scene" src="/images/page-ip-v3/ai-result.png" mode="aspectFit"></image>
         </view>
 
         <view wx:if="{{task.sourceCompareImageUrl}}" class="compare-stage {{task.floorPlanCompare ? 'floor-plan-compare' : ''}}" style="height: {{task.resultStageHeight}}rpx;" bindtouchstart="handleCompareTouch" catchtouchmove="handleCompareTouch">

@@ -1,15 +1,11 @@
 <view class="container">
   <view class="header">
     <view class="header-copy">
-      <text class="eyebrow">装修推荐</text>
+      <view class="recommendation-kicker"><text class="eyebrow">装修方案推荐</text><text class="example-chip">示例</text></view>
       <text class="title">为家精选合适方案</text>
       <text class="subtitle">根据户型与偏好生成适合你的装修方向</text>
     </view>
-    <view class="hero-moodboard">
-      <view class="mood-card mood-a"></view>
-      <view class="mood-card mood-b"></view>
-      <view class="mood-chip"></view>
-    </view>
+    <image class="recommendation-scene" src="/images/page-ip-v3/recommendations.png" mode="aspectFit"></image>
   </view>
 
   <view class="progress-section">
@@ -51,13 +47,6 @@
               >
                 {{selectedStyle === item.id ? '已选择' : '查看详情'}}
               </button>
-              <button
-                class="action-btn secondary"
-                bindtap="onDownloadPdf"
-                data-style-id="{{item.id}}"
-              >
-                下载 PDF
-              </button>
             </view>
           </view>
         </view>
@@ -68,7 +57,7 @@
   <view class="share-section" wx:if="{{selectedStyle}}">
     <view class="share-tips">
       <text class="tips-text">选择喜欢的风格，分享给家人一起确认。</text>
-      <button class="share-btn" bindtap="onShare">分享方案</button>
+      <button class="share-btn" open-type="share">分享方案</button>
     </view>
   </view>
 </view>

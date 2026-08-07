@@ -49,6 +49,38 @@
   color: #6f7782;
 }
 
+/* all-pages-ip-v3 / 13-inspiration */
+.inspiration-hero {
+  min-height: 252rpx;
+  padding: 34rpx 28rpx;
+  background: linear-gradient(118deg, #fbfdf9 0%, #eef7ee 58%, #f4eadc 100%);
+}
+
+.inspiration-hero .hero-copy {
+  max-width: 48%;
+  justify-content: center;
+}
+
+.inspiration-scene {
+  position: absolute;
+  right: -6rpx;
+  bottom: -22rpx;
+  width: 390rpx;
+  height: 284rpx;
+}
+
+.filter-bar {
+  margin-left: 20rpx;
+  margin-right: 20rpx;
+  border-radius: 22rpx;
+  background: #fff;
+}
+
+.case-card {
+  border-radius: 24rpx;
+  overflow: hidden;
+}
+
 .hero-visual {
   position: relative;
   flex: 1;

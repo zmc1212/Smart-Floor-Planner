@@ -432,3 +432,66 @@
     margin-top: 34rpx;
   }
 }
+
+/* all-pages-ip-v3 / 07-lead-form */
+.lead-intake-hero {
+  position: relative;
+  min-height: 250rpx;
+  margin: 0 -38rpx 30rpx;
+  padding: 54rpx 36rpx 30rpx;
+  overflow: hidden;
+  background: linear-gradient(116deg, #f9fcf8 0%, #eef8ef 58%, #f7f2e9 100%);
+  box-sizing: border-box;
+}
+
+.lead-intake-copy {
+  position: relative;
+  z-index: 2;
+  width: 48%;
+  padding-top: 24rpx;
+}
+
+.lead-intake-title {
+  color: #13251b;
+  font-size: 46rpx;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -1rpx;
+}
+
+.lead-intake-title text {
+  color: var(--primary-500);
+}
+
+.lead-intake-subtitle {
+  margin-top: 18rpx;
+  color: #647268;
+  font-size: 22rpx;
+  line-height: 1.55;
+}
+
+.lead-intake-scene {
+  position: absolute;
+  right: 8rpx;
+  bottom: -12rpx;
+  width: 352rpx;
+  height: 270rpx;
+}
+
+.recent-head {
+  margin-top: 0;
+}
+
+.recent-list {
+  padding: 20rpx;
+  border-radius: 24rpx;
+  background: #fff;
+  box-shadow: 0 12rpx 32rpx rgba(38, 78, 48, 0.08);
+}
+
+.form-panel {
+  padding: 28rpx 24rpx 4rpx;
+  border-radius: 28rpx;
+  background: #fff;
+  box-shadow: 0 14rpx 36rpx rgba(38, 78, 48, 0.07);
+}

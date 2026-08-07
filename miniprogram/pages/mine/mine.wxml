@@ -37,6 +37,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
         <view class="profile-hero">
           <image class="profile-scene" src="/images/mine-v6/profile-scene.jpg" mode="aspectFill" aria-hidden="true" />
           <view class="profile-scene-fade" aria-hidden="true"></view>
+          <image class="mine-role-scene" src="/images/page-ip-v3/mine.png" mode="aspectFit" aria-hidden="true" />
 
           <view
             class="mine-header"
@@ -190,6 +191,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
         <view class="profile-hero user-profile-hero">
           <image class="profile-scene" src="/images/mine-v6/profile-scene.jpg" mode="aspectFill" aria-hidden="true" />
           <view class="profile-scene-fade" aria-hidden="true"></view>
+          <image class="mine-role-scene" src="/images/page-ip-v3/mine.png" mode="aspectFit" aria-hidden="true" />
           <view
             class="mine-header"
             style="margin-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"

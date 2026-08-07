@@ -139,6 +139,14 @@ button::after {
   margin: 0 2rpx 18rpx;
 }
 
+/* all-pages-ip-v3 / 15-ai-design-result */
+.result-heading { position: relative; min-height: 150rpx; padding-right: 190rpx; }
+.result-delivery-scene { position: absolute; right: -18rpx; bottom: -28rpx; width: 220rpx; height: 190rpx; }
+.compare-stage { border-radius: 30rpx; box-shadow: 0 16rpx 38rpx rgba(41, 58, 45, 0.12); }
+.result-actions { border-radius: 0 0 28rpx 28rpx; }
+.task-summary { border-radius: 28rpx; }
+.bottom-actions { position: sticky; bottom: calc(18rpx + env(safe-area-inset-bottom)); z-index: 9; padding: 12rpx; border-radius: 28rpx; background: rgba(250, 251, 248, 0.96); }
+
 .heading-copy {
   min-width: 0;
 }

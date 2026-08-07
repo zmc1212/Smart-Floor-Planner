@@ -6,15 +6,17 @@
       <text class="info">手机：{{lead.phone}}</text>
       <text class="info">小区：{{lead.communityName || '未填写'}}</text>
     </view>
+    <image class="lead-detail-scene" src="/images/page-ip-v3/lead-detail.png" mode="aspectFit"></image>
   </view>
   <view class="whole-home-card">
+    <view class="whole-home-tab">正式量房</view>
     <view class="whole-home-copy">
       <view class="whole-home-title">正式量房</view>
       <view class="whole-home-plan-name" wx:if="{{activeFloorPlan}}">{{activeFloorPlan.displayName}}</view>
       <view class="whole-home-subtitle">{{activeFloorPlan ? activeFloorPlan.displayMeta : '从墙图开始创建客户户型'}}</view>
     </view>
     <view class="whole-home-actions">
-      <view class="whole-home-action" bindtap="onStartMeasure">{{activeFloorPlan ? '继续量房' : '开始量房'}}</view>
+      <view class="whole-home-action" bindtap="onStartMeasure">{{activeFloorPlan ? '继续量房' : '开始量房'}} <text>›</text></view>
       <view class="whole-home-secondary-actions" wx:if="{{activeFloorPlan}}">
         <view class="whole-home-action secondary" bindtap="onStartNewMeasure">新增量房</view>
         <view class="whole-home-action danger" bindtap="onDeleteMeasure">{{deleting ? '删除中' : '删除'}}</view>

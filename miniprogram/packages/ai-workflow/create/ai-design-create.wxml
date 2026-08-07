@@ -1,5 +1,13 @@
 <scroll-view scroll-y class="create-page">
   <view class="create-shell">
+    <view class="create-visual-hero">
+      <view class="create-visual-copy">
+        <text class="create-visual-kicker">空间材料工作台</text>
+        <text class="create-visual-title">准备素材</text>
+        <text class="create-visual-subtitle">小 K 帮你整理户型、空间图与目标风格</text>
+      </view>
+      <image class="create-visual-scene" src="/images/page-ip-v3/ai-create.png" mode="aspectFit"></image>
+    </view>
     <view class="create-head">
       <view>
         <text class="create-title">{{modeTitle}}</text>

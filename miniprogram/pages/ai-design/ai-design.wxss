@@ -365,6 +365,17 @@
     #f7f4ec;
 }
 
+.plan-guide-scene {
+  position: absolute;
+  right: -26rpx;
+  bottom: -42rpx;
+  z-index: 4;
+  width: 198rpx;
+  height: 198rpx;
+  opacity: 0.96;
+  pointer-events: none;
+}
+
 .plan-ai-image,
 .plan-graph {
   position: absolute;

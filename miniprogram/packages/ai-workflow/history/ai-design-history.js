@@ -11,6 +11,14 @@ const MODE_TITLES = {
 Page({
   data: {
     items: [],
+    filteredItems: [],
+    activeFilter: 'all',
+    historyFilters: [
+      { value: 'all', label: '全部' },
+      { value: 'processing', label: '生成中' },
+      { value: 'succeeded', label: '已完成' },
+      { value: 'failed', label: '失败' },
+    ],
     page: 1,
     totalPages: 1,
     loading: false,
@@ -41,8 +49,10 @@ Page({
     try {
       const result = await aiService.loadHistory(page, 12);
       const pageItems = (result.data || []).map((item) => ({ ...item, modeTitle: MODE_TITLES[item.mode] || 'AI 设计' }));
+      const items = reset ? pageItems : this.data.items.concat(pageItems);
       this.setData({
-        items: reset ? pageItems : this.data.items.concat(pageItems),
+        items,
+        filteredItems: this.filterHistoryItems(items, this.data.activeFilter),
         page: page + 1,
         totalPages: (result.pagination && result.pagination.totalPages) || 1,
       });
@@ -55,6 +65,22 @@ Page({
 
   loadMore() {
     this.loadPage(false);
+  },
+
+  filterHistoryItems(items, filter) {
+    if (filter === 'all') return items;
+    if (filter === 'processing') {
+      return items.filter((item) => ['created', 'pending', 'processing'].includes(item.status));
+    }
+    return items.filter((item) => item.status === filter);
+  },
+
+  selectHistoryFilter(event) {
+    const activeFilter = event.currentTarget.dataset.value || 'all';
+    this.setData({
+      activeFilter,
+      filteredItems: this.filterHistoryItems(this.data.items, activeFilter),
+    });
   },
 
   openResult(event) {
@@ -78,7 +104,11 @@ Page({
         if (!result.confirm) return;
         try {
           await aiService.deleteHistory(id);
-          this.setData({ items: this.data.items.filter((item) => item.id !== id) });
+          const items = this.data.items.filter((item) => item.id !== id);
+          this.setData({
+            items,
+            filteredItems: this.filterHistoryItems(items, this.data.activeFilter),
+          });
           wx.showToast({ title: '已删除', icon: 'success' });
         } catch (error) {
           wx.showToast({ title: error.error || '删除失败', icon: 'none' });

@@ -1,12 +1,19 @@
 <scroll-view scroll-y class="history-page" lower-threshold="120" bindscrolltolower="loadMore" refresher-enabled refresher-triggered="{{refreshing}}" bindrefresherrefresh="reload">
   <view class="history-shell">
-    <view class="history-head">
+    <view class="history-hero">
+      <view class="history-head">
       <text class="history-title">设计成果</text>
       <text class="history-count">{{items.length}} 条</text>
+      </view>
+      <image class="history-archive-scene" src="/images/page-ip-v3/ai-history.png" mode="aspectFit"></image>
     </view>
 
-    <view wx:if="{{items.length}}" class="history-list">
-      <view wx:for="{{items}}" wx:key="id" class="history-item">
+    <view class="history-filters">
+      <view wx:for="{{historyFilters}}" wx:key="value" class="history-filter {{activeFilter === item.value ? 'active' : ''}}" data-value="{{item.value}}" bindtap="selectHistoryFilter">{{item.label}}</view>
+    </view>
+
+    <view wx:if="{{filteredItems.length}}" class="history-list">
+      <view wx:for="{{filteredItems}}" wx:key="id" class="history-item">
         <image class="history-image" src="{{item.resultImageUrl || item.spaceImageUrl}}" mode="aspectFill" data-id="{{item.id}}" bindtap="openResult"></image>
         <view class="history-body">
           <view class="history-info" data-id="{{item.id}}" bindtap="openResult">
