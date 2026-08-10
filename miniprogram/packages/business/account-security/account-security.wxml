@@ -1,0 +1,62 @@
+<view class="account-page account-security-page">
+  <view class="account-hero">
+    <view class="account-hero-green"></view>
+    <view class="account-hero-copy">
+      <view class="account-hero-title">安全守门员 · 小K</view>
+      <view class="account-hero-copy-text">验证当前密码，守护工作账号</view>
+    </view>
+    <image class="account-hero-art" src="../assets/account-v1/security-guardian-scene-v3.png" mode="aspectFit" aria-hidden="true" />
+  </view>
+
+  <view wx:if="{{loading}}" class="state-message">正在核对账号信息…</view>
+  <view wx:elif="{{loadError}}" class="state-message">
+    <view>{{loadError}}</view>
+    <view class="state-retry" bindtap="loadProfile" aria-role="button">重新加载</view>
+  </view>
+  <block wx:else>
+    <view class="account-section-title">登录身份</view>
+    <view class="account-surface">
+      <view class="account-row">
+        <image class="account-row-icon" src="/images/mine-icons/user.png" mode="aspectFit" />
+        <view class="account-row-label">登录账号</view>
+        <view class="account-row-value">{{profile.username || '微信授权用户'}}</view>
+      </view>
+      <view class="account-row">
+        <image class="account-row-icon" src="/images/mine-icons/users.png" mode="aspectFit" />
+        <view class="account-row-label">账号角色</view>
+        <view class="account-row-value">{{profile.roleLabel || '成员'}}</view>
+      </view>
+      <view class="account-row">
+        <image class="account-row-icon" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+        <view class="account-row-label">绑定手机</view>
+        <view class="account-row-value">{{profile.phoneMasked || '未绑定'}}</view>
+      </view>
+    </view>
+
+    <block wx:if="{{profile.canChangePassword}}">
+      <view class="account-section-title">修改登录密码</view>
+      <view class="account-surface password-form">
+        <view class="field-group">
+          <image class="field-icon" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+          <text class="field-label">当前密码</text>
+          <input class="field-input" password value="{{currentPassword}}" placeholder="请输入当前密码" placeholder-class="field-placeholder" data-field="currentPassword" bindinput="onPasswordInput" />
+        </view>
+        <view class="field-group">
+          <image class="field-icon" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+          <text class="field-label">新密码</text>
+          <input class="field-input" password value="{{newPassword}}" placeholder="至少 6 位" placeholder-class="field-placeholder" data-field="newPassword" bindinput="onPasswordInput" />
+        </view>
+        <view class="field-group">
+          <image class="field-icon" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+          <text class="field-label">确认新密码</text>
+          <input class="field-input" password value="{{confirmPassword}}" placeholder="请再次输入新密码" placeholder-class="field-placeholder" data-field="confirmPassword" bindinput="onPasswordInput" />
+        </view>
+      </view>
+      <view class="security-note">密码修改成功后，需要使用新密码重新登录</view>
+      <button class="primary-action" loading="{{submitting}}" disabled="{{submitting}}" bindtap="onChangePassword">确认修改密码</button>
+    </block>
+    <view wx:else class="security-note">当前账号通过微信手机号授权登录，无需设置独立密码。如需更换手机号，请联系所属企业管理员。</view>
+
+    <button class="danger-action" bindtap="onLogout">退出当前账号</button>
+  </block>
+</view>

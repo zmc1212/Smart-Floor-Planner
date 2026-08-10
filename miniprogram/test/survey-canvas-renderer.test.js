@@ -1090,6 +1090,13 @@ test('cursor lens reuses the formal wall scene around the drag target', () => {
   );
   assert.ok(recorder.fills.length > 0);
   assert.ok(recorder.strokes.length > 0);
+  assert.ok(recorder.strokeDetails.some((detail) => (
+    detail.strokeStyle === 'rgba(22, 119, 255, 0.92)' &&
+    detail.path.some((command) => command[0] === 'moveTo' && command[1] === 0 && command[2] === 90) &&
+    detail.path.some((command) => command[0] === 'lineTo' && command[1] === 180 && command[2] === 90) &&
+    detail.path.some((command) => command[0] === 'moveTo' && command[1] === 90 && command[2] === 0) &&
+    detail.path.some((command) => command[0] === 'lineTo' && command[1] === 90 && command[2] === 180)
+  )));
 });
 
 test('viewport interaction transform matches a full scene rebuilt at the target viewport', () => {
@@ -1155,58 +1162,6 @@ test('stationary canvas cursor uses the same green placement marker', () => {
   assert.ok(scene.cursor);
   assert.ok(recorder.strokeDetails.some((detail) => detail.strokeStyle === '#22c55e'));
   assert.ok(recorder.fillRectDetails.some((detail) => detail.fillStyle === 'rgba(34, 197, 94, 0.16)'));
-});
-
-test('viewport constraint keeps a fitting closed wall shell below opaque editor controls', () => {
-  const draft = createClosedRectangleDraft();
-  const floor = surveyGraph.getActiveFloor(draft);
-  const scene = surveyCanvasRenderer.createSurveyRenderScene({
-    floor,
-    session: floor.session,
-    viewport: { scale: 0.05, offsetX: -75, offsetY: -50 },
-    rect: { width: 390, height: 844 }
-  });
-  const safeArea = { left: 12, top: 128, right: 315, bottom: 743 };
-  const requestedViewport = Object.assign({}, scene.viewport, {
-    offsetY: scene.viewport.offsetY - 500
-  });
-  const constrainedViewport = surveyCanvasRenderer.constrainViewportToSafeArea(
-    scene,
-    requestedViewport,
-    safeArea
-  );
-  const interactionScene = surveyCanvasRenderer.createViewportInteractionScene(scene, constrainedViewport);
-  const bounds = surveyCanvasRenderer.resolveInteractionStructuralBounds(interactionScene);
-
-  assert.ok(Math.abs(bounds.top - safeArea.top) < 0.0001);
-  assert.ok(bounds.bottom <= safeArea.bottom);
-  assert.ok(bounds.left >= safeArea.left);
-  assert.ok(bounds.right <= safeArea.right);
-});
-
-test('viewport constraint lets an oversized plan pan while preventing blank workspace gaps', () => {
-  const draft = createClosedRectangleDraft();
-  const floor = surveyGraph.getActiveFloor(draft);
-  const scene = surveyCanvasRenderer.createSurveyRenderScene({
-    floor,
-    session: floor.session,
-    viewport: { scale: 0.2, offsetX: -300, offsetY: -200 },
-    rect: { width: 390, height: 844 }
-  });
-  const safeArea = { left: 12, top: 128, right: 315, bottom: 743 };
-  const requestedViewport = Object.assign({}, scene.viewport, {
-    offsetX: scene.viewport.offsetX + 900
-  });
-  const constrainedViewport = surveyCanvasRenderer.constrainViewportToSafeArea(
-    scene,
-    requestedViewport,
-    safeArea
-  );
-  const interactionScene = surveyCanvasRenderer.createViewportInteractionScene(scene, constrainedViewport);
-  const bounds = surveyCanvasRenderer.resolveInteractionStructuralBounds(interactionScene);
-
-  assert.ok(Math.abs(bounds.left - safeArea.left) < 0.0001);
-  assert.ok(bounds.right >= safeArea.right);
 });
 
 test('snapping a new cursor onto a closed wall preserves the completed room render geometry', () => {

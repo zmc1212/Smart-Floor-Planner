@@ -171,6 +171,42 @@ test('two confirmed perpendicular straight walls immediately offer a rectangular
   assert.equal(closedFloor.walls.length, 4);
 });
 
+test('dragging the fourth straight wall onto the start vertex snaps and closes directly', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 3000, yMm: 0 }, 3000);
+  draft = commitWall(draft, { xMm: 3000, yMm: 2000 }, 2000);
+  draft = commitWall(draft, { xMm: 0, yMm: 2000 }, 3000);
+  draft = surveyGraph.startPreview(draft, { xMm: 140, yMm: 80 });
+
+  const previewFloor = surveyGraph.getActiveFloor(draft);
+  assert.deepEqual(previewFloor.session.previewPoint, { xMm: 0, yMm: 0 });
+  assert.equal(previewFloor.session.closeCandidateType, 'start');
+  assert.equal(previewFloor.session.alignmentSnapGuide.type, 'start-vertex-closure');
+
+  const closedFloor = surveyGraph.getActiveFloor(surveyGraph.confirmClosure(draft));
+  assert.equal(closedFloor.session.state, 'spaceClosed');
+  assert.equal(closedFloor.walls.length, 4);
+  assert.equal(closedFloor.spaces.filter((space) => space.closed).length, 1);
+});
+
+test('a projected close candidate does not become a direct start-vertex snap', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 3000, yMm: 0 }, 3000);
+  draft = commitWall(draft, { xMm: 3000, yMm: 2000 }, 2000);
+  draft = commitWall(draft, { xMm: 0, yMm: 2000 }, 3000);
+  draft = surveyGraph.startPreview(draft, { xMm: 400, yMm: 100 });
+
+  const floor = surveyGraph.getActiveFloor(draft);
+  assert.deepEqual(floor.session.previewPoint, { xMm: 0, yMm: 100 });
+  assert.equal(floor.session.closeCandidateType, 'start');
+  assert.notEqual(
+    floor.session.alignmentSnapGuide && floor.session.alignmentSnapGuide.type,
+    'start-vertex-closure'
+  );
+});
+
 test('cursor placement prefers an existing vertex over a nearby wall segment', () => {
   const floor = surveyGraph.getActiveFloor(createWallDraft());
   const target = surveyGraph.getCursorPlacementTarget(
@@ -217,7 +253,37 @@ test('cursor placement can snap to the outer wall edge', () => {
   assert.deepEqual(target.pointMm, outerMidpoint);
 });
 
-test('a closer outer edge keeps its measurement side while the graph anchor stays on the centerline', () => {
+test('cursor placement snaps a visible mitered outer corner to its topology node', () => {
+  const draft = createClosedDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const wall = floor.walls[0];
+  const geometry = surveyGraph.buildWallRenderGeometry(floor, wall);
+  const nodeCount = floor.nodes.length;
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    geometry.outerStart,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+
+  assert.equal(target.type, 'vertex');
+  assert.equal(target.snapLine, 'outer');
+  assert.equal(target.wallId, wall.id);
+  assert.equal(target.nodeId, wall.startNodeId);
+  assert.deepEqual(target.pointMm, geometry.outerStart);
+
+  const next = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  const nextFloor = surveyGraph.getActiveFloor(next);
+  assert.equal(nextFloor.nodes.length, nodeCount);
+  assert.equal(nextFloor.session.anchorNodeId, wall.startNodeId);
+  assert.equal(nextFloor.session.activeSpaceSharedSnapLine, 'outer');
+  assert.equal(nextFloor.session.activeSpaceSharedStartT, 0);
+});
+
+test('an outer endpoint keeps its measurement side while the graph anchor stays on the topology node', () => {
   const draft = createWallDraft();
   const floor = surveyGraph.getActiveFloor(draft);
   const wall = floor.walls[0];
@@ -228,7 +294,7 @@ test('a closer outer edge keeps its measurement side while the graph anchor stay
     surveyGraph.CLOSE_TOLERANCE_MM
   );
 
-  assert.equal(target.type, 'wall');
+  assert.equal(target.type, 'vertex');
   assert.equal(target.snapLine, 'outer');
 
   const next = surveyGraph.snapCursorToWall(

@@ -3194,6 +3194,7 @@ page,
 
 .cursor-lens-cross {
   position: absolute;
+  z-index: 1;
   left: 50%;
   top: 50%;
   background: #22c55e;

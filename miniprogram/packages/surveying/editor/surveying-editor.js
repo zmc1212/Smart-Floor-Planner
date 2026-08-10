@@ -77,8 +77,12 @@ const COMPONENT_LIBRARY = {
 };
 const TOUCH_SLOP_PX = 8;
 const WALL_HIT_HALF_PX = 40;
-const MIN_SCALE = 0.05;
-const MAX_SCALE = 0.36;
+// Keep a very broad numeric safety range without turning it into a workspace
+// boundary. Operators must be able to zoom far enough out to position an
+// existing room anywhere on the infinite drafting plane, then zoom back in for
+// millimetre-level work.
+const MIN_SCALE = 0.002;
+const MAX_SCALE = 4;
 const MAX_HISTORY = 40;
 const MEASURE_LINE_TOP_PX = 40;
 const MIN_WALL_THICKNESS_PX = 1.5;
@@ -2892,33 +2896,6 @@ Page({
     };
   },
 
-  getViewportContentSafeArea(rect) {
-    const designScale = Math.max(0.82, Math.min(1.08, rect.width / 390));
-    const edgeInset = 12 * designScale;
-    const rpxScale = rect.width / 750;
-    const rightRailInset = (34 + 88) * rpxScale;
-    const bottomDockInset = (64 + 108) * rpxScale + Number(this.data.bottomSafeArea || 0);
-    const top = Math.max(edgeInset, Number(this.data.overlayContentTop || 0) + edgeInset);
-    return {
-      left: edgeInset,
-      top,
-      right: Math.max(edgeInset, rect.width - rightRailInset - edgeInset),
-      bottom: Math.max(top, rect.height - bottomDockInset - edgeInset)
-    };
-  },
-
-  constrainViewportToWorkspace(viewport) {
-    if (!viewport || !this.canvasRect) return viewport;
-    const interactionScene = this.viewportInteraction && this.viewportInteraction.baseScene;
-    const scene = interactionScene || this.surveyRenderScene;
-    if (!scene) return viewport;
-    return surveyCanvasRenderer.constrainViewportToSafeArea(
-      scene,
-      viewport,
-      this.getViewportContentSafeArea(this.canvasRect)
-    );
-  },
-
   constrainCanvasCircle(circle, safeArea) {
     return Object.assign({}, circle, {
       cx: clamp(circle.cx, safeArea.left + circle.radius, safeArea.right - circle.radius),
@@ -3352,6 +3329,7 @@ Page({
     return {
       type: target.type,
       pointMm: target.pointMm,
+      nodeId: target.nodeId || '',
       wallId: target.wallId || '',
       snapLine: target.snapLine || ''
     };
@@ -3375,7 +3353,7 @@ Page({
       cursorLensXLabel: `X ${Math.round(point.xMm)}`,
       cursorLensYLabel: `Y ${Math.round(point.yMm)}`,
       cursorLensSnapLabel: targetType === 'vertex'
-        ? '顶点吸附'
+        ? (snapLine === 'outer' ? '外边顶点吸附' : '顶点吸附')
         : (targetType === 'wall'
           ? (snapLine === 'outer' ? '外边吸附' : '内边吸附')
           : '自由放置'),
@@ -4133,11 +4111,11 @@ Page({
       const rect = this.canvasRect;
       const offsetX = center.x - rect.left - rect.width / 2 - anchorMm.xMm * scale;
       const offsetY = center.y - rect.top - rect.height / 2 - anchorMm.yMm * scale;
-      const nextViewport = this.constrainViewportToWorkspace({
+      const nextViewport = {
         scale,
         offsetX,
         offsetY
-      });
+      };
       if (!this.updateViewportInteraction(nextViewport)) {
         this.draft = surveyGraph.updateViewport(this.draft, nextViewport);
         this.syncFromDraft();
@@ -4219,11 +4197,11 @@ Page({
 
     if (this.touchState.mode === 'pan') {
       const startViewport = this.touchState.startViewport;
-      const nextViewport = this.constrainViewportToWorkspace({
+      const nextViewport = {
         scale: startViewport.scale,
         offsetX: startViewport.offsetX + dx,
         offsetY: startViewport.offsetY + dy
-      });
+      };
       if (!this.updateViewportInteraction(nextViewport)) {
         this.draft = surveyGraph.updateViewport(this.draft, nextViewport);
         this.syncFromDraft();
@@ -4348,6 +4326,23 @@ Page({
 
     if (movedWall) {
       if (session.previewLengthMm >= surveyGraph.MIN_WALL_LENGTH_MM) {
+        const directStartClosure = session.mode === 'straight' &&
+          session.closeCandidateType === 'start' &&
+          session.alignmentSnapGuide &&
+          session.alignmentSnapGuide.type === 'start-vertex-closure';
+        if (directStartClosure) {
+          try {
+            const nextDraft = surveyGraph.confirmClosure(this.draft);
+            this.applyDraft(nextDraft, {
+              recordHistory: true,
+              historyDraft
+            });
+            wx.showToast({ title: '已吸附起点并闭合', icon: 'success' });
+          } catch (err) {
+            wx.showToast({ title: err.message || '闭合失败，请重新测量', icon: 'none' });
+          }
+          return;
+        }
         if (session.mode === 'diagonal') {
           const nextDraft = surveyGraph.holdPreviewForInput(this.draft);
           this.applyDraft(nextDraft, { persist: false });
@@ -4661,7 +4656,7 @@ Page({
       }
     });
     const placedMessage = candidate.type === 'vertex'
-      ? '光标已吸附到顶点'
+      ? `光标已吸附到${candidate.snapLine === 'outer' ? '外边顶点' : '顶点'}`
       : (candidate.type === 'wall'
         ? `光标已吸附到${candidate.snapLine === 'outer' ? '外边' : '内边'}`
         : '光标已放置');

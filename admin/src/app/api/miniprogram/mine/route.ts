@@ -8,6 +8,7 @@ import {
   MeasurementRepository,
 } from '@/db/repositories';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
+import { resolveProfileAvatarUrl } from '@/lib/miniprogram-profile';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 
 export const dynamic = 'force-dynamic';
@@ -125,6 +126,11 @@ export async function GET(request: Request) {
       );
     }
     const { user, staff, enterprise } = context;
+    const avatar = resolveProfileAvatarUrl({
+      request,
+      userId: String(user._id || ''),
+      avatar: typeof user.avatar === 'string' ? user.avatar : '',
+    });
     if (!staff) {
       return NextResponse.json({
         success: true,
@@ -132,11 +138,13 @@ export async function GET(request: Request) {
           isStaff: false,
           profile: {
             name: user.nickname || user.username || '微信用户',
-            avatar: user.avatar || '',
+            avatar,
+            username: user.username || '',
             enterpriseName: user.communityName || '',
             phoneMasked: maskPhone(user.phone),
             roleLabel: '普通用户',
             role: 'user',
+            canChangePassword: false,
           },
           actions: [],
           workbenchCards: [],
@@ -226,11 +234,13 @@ export async function GET(request: Request) {
         isStaff: true,
         profile: {
           name: staff.displayName || staff.username || user.nickname || '员工账号',
-          avatar: user.avatar || '',
+          avatar,
+          username: staff.username || '',
           enterpriseName: enterprise?.name || '智能量房助手',
           phoneMasked: maskPhone(staff.phone || user.phone),
           roleLabel: ROLE_LABELS[role] || '员工账号',
           role,
+          canChangePassword: true,
           staffId: staff._id,
           enterpriseId: staff.enterpriseId || context.enterpriseId || null,
         },

@@ -127,6 +127,13 @@
       "when": 1786350000000,
       "tag": "0017_acquisition_workbench",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1786370400000,
+      "tag": "0018_floor_plan_display_sequence",
+      "breakpoints": true
     }
   ]
 }

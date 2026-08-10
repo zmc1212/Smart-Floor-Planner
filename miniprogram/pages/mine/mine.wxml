@@ -45,11 +45,11 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
           >
             <view class="mine-title">我的</view>
             <view class="header-actions">
-              <button class="edit-profile-button" bindtap="onOpenAccountSecurity">
+              <button class="edit-profile-button" bindtap="onEditProfile">
                 <image src="/images/mine-icons/edit.png" mode="aspectFit" />
                 <text>编辑资料</text>
               </button>
-              <button class="settings-button" aria-label="账号设置" bindtap="onOpenAccountSecurity">
+              <button class="settings-button" aria-label="账号设置" bindtap="onOpenSettings">
                 <image src="/images/mine-v6/settings.png" mode="aspectFit" />
               </button>
             </view>
@@ -199,7 +199,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
             style="margin-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
           >
             <view class="mine-title">我的</view>
-            <button class="settings-button" aria-label="账号设置" bindtap="onOpenAccountSecurity">
+            <button class="settings-button" aria-label="账号设置" bindtap="onOpenSettings">
               <image src="/images/mine-v6/settings.png" mode="aspectFit" />
             </button>
           </view>
@@ -247,8 +247,8 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
             <view wx:for="{{floorPlans}}" wx:key="_id" class="floorplan-row" data-id="{{item._id}}" bindtap="onOpenFloorPlan" aria-role="button">
               <view class="floorplan-icon"><image src="/images/mine-icons/home.png" mode="aspectFit" /></view>
               <view class="floorplan-copy">
-                <view class="floorplan-title">{{item.name}}</view>
-                <view class="floorplan-meta">{{item.createdAt}} · {{item.roomCount}} 个空间</view>
+                <view class="floorplan-title">{{item.projectTitle}}</view>
+                <view class="floorplan-meta">{{item.projectMeta}}</view>
               </view>
               <view wx:if="{{canUseAIDesign}}" class="floorplan-ai" catchtap="onAIGen" data-id="{{item._id}}" aria-role="button">AI 设计</view>
             </view>

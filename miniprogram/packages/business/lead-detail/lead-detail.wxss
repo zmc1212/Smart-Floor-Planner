@@ -35,6 +35,7 @@
 
 /* all-pages-ip-v3 / 08-lead-detail */
 .detail-hero {
+  position: relative;
   min-height: 286rpx;
   padding: 42rpx 28rpx 30rpx;
   background: linear-gradient(128deg, #0f9f4e 0%, #1fba61 48%, #eef7ed 48%, #f8fbf7 100%);

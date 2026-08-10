@@ -13,6 +13,19 @@ type WorkflowFloorPlanCandidate = {
   layoutData?: unknown;
 };
 
+export type WorkflowFloorPlanEligibilityReasonCode =
+  | 'survey_incomplete'
+  | 'invalid_formal_graph'
+  | 'no_closed_space'
+  | 'missing_usable_wall';
+
+export type WorkflowFloorPlanEligibility = {
+  eligible: boolean;
+  reasonCode?: WorkflowFloorPlanEligibilityReasonCode;
+  reasonLabel?: string;
+  errorMessage?: string;
+};
+
 function closedWallIds(floor: SurveyFloor) {
   return new Set(
     (floor.spaces || [])
@@ -21,25 +34,53 @@ function closedWallIds(floor: SurveyFloor) {
   );
 }
 
-export function getWorkflowFloorPlanEligibilityError(plan: WorkflowFloorPlanCandidate) {
+export function getWorkflowFloorPlanEligibility(
+  plan: WorkflowFloorPlanCandidate
+): WorkflowFloorPlanEligibility {
   if (plan.status !== 'completed') {
-    return '只能选择已完成的正式户型';
+    return {
+      eligible: false,
+      reasonCode: 'survey_incomplete',
+      reasonLabel: '量房未完成',
+      errorMessage: '只能选择已完成的正式户型',
+    };
   }
 
   const layout = parseFormalSurveyLayout(plan.layoutData);
   if (!layout) {
-    return '所选户型不是 version 4 正式量房墙图';
+    return {
+      eligible: false,
+      reasonCode: 'invalid_formal_graph',
+      reasonLabel: '正式墙图无效',
+      errorMessage: '所选户型不是 version 4 正式量房墙图',
+    };
   }
 
   const floor = getActiveSurveyFloor(layout);
   const rooms = adaptSurveyGraphToRooms(layout);
   const wallIds = floor ? closedWallIds(floor) : new Set<string>();
   if (!floor || !rooms.length || !wallIds.size) {
-    return '所选正式户型没有可用于 AI 设计的闭合空间';
+    return {
+      eligible: false,
+      reasonCode: 'no_closed_space',
+      reasonLabel: '还没有闭合空间',
+      errorMessage: '所选正式户型没有可用于 AI 设计的闭合空间',
+    };
   }
 
   const hasClosedWall = (floor.walls || []).some((wall) => wallIds.has(wall.id));
-  return hasClosedWall ? undefined : '所选正式户型缺少可用墙体';
+  return hasClosedWall
+    ? { eligible: true }
+    : {
+        eligible: false,
+        reasonCode: 'missing_usable_wall',
+        reasonLabel: '缺少可用墙体',
+        errorMessage: '所选正式户型缺少可用墙体',
+      };
+}
+
+export function getWorkflowFloorPlanEligibilityError(plan: WorkflowFloorPlanCandidate) {
+  return getWorkflowFloorPlanEligibility(plan).errorMessage;
 }
 
 export function isEligibleWorkflowFloorPlan(plan: WorkflowFloorPlanCandidate) {

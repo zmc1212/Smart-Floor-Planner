@@ -30,6 +30,29 @@ Use the legacy app only to validate behaviour in the formal version-4 implementa
 
 Formal `FloorPlan.layoutData` remains version 4 surveying data only. Do not reintroduce legacy layout copies such as `rooms`, `homeOutline`, or `partitions`. Coordinates, wall lengths/thicknesses, openings, and heights remain millimetres.
 
+## Isolated reconstruction engine (2026-08-10)
+
+`research/legacy-zhouse-2d/` is the isolated APK 2D reconstruction laboratory.
+It is outside the Mini Program package, registers no page, is imported by
+neither `miniprogram/` nor `admin/`, and connects to no BLE, API, session,
+tenant data, or database. Its research model uses the independent
+`legacy-zhouse-2d-reconstruction/v1` marker and cannot be persisted as formal
+`FloorPlan.layoutData`.
+
+The first phase implements the isolated package boundary, method-provenance
+ledger, deterministic millimetre point/segment/polygon primitives, symmetric
+wall-centerline offsets, a platform-independent render-command buffer, and
+isolation tests. Ten initial `House2DAlgorithm` methods now have recorded types,
+signatures, and RVAs. Every one remains `located`; none is labelled as restored
+from method-name similarity or current Mini Program behaviour. The execution
+container rejects any method that has not reached `reconstructed`.
+
+Each method must retain native pseudocode, ARM64 static review, isolated APK
+runtime traces, and differential regressions before progressing through
+`decompiled`, `reconstructed`, `verified-static`, `verified-runtime`, and
+`matched`. This research track changes no formal entry, version-4 wall graph,
+API, role boundary, or BLE/manual measurement audit.
+
 ## Topic index
 
 | ID | Topic | Status | Evidence |

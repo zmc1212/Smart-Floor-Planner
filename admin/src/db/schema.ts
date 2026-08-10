@@ -1155,6 +1155,7 @@ export const leadFloorPlans = appSchema.table(
     floorPlanId: bigint('floor_plan_id', { mode: 'bigint' })
       .notNull()
       .references(() => floorPlans.id, { onDelete: 'cascade' }),
+    measurementSequence: integer('measurement_sequence').notNull(),
   },
   (table) => [
     primaryKey({
@@ -1162,6 +1163,10 @@ export const leadFloorPlans = appSchema.table(
       columns: [table.leadId, table.floorPlanId],
     }),
     index('lead_floor_plans_floor_plan_idx').on(table.floorPlanId),
+    uniqueIndex('lead_floor_plans_lead_measurement_sequence_key').on(
+      table.leadId,
+      table.measurementSequence
+    ),
   ]
 );
 

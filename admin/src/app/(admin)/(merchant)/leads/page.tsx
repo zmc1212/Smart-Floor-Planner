@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   PageContainer,
   ProTable,
@@ -16,7 +16,6 @@ import {
   Empty,
   Flex,
   Input,
-  Select,
   Space,
   Steps,
   Tag,
@@ -46,6 +45,10 @@ type FollowUpRecord = {
 type FloorPlan = {
   _id: string;
   name?: string | null;
+  display?: {
+    projectTitle?: string | null;
+    projectSubtitle?: string | null;
+  } | null;
   source?: string | null;
   createdAt?: string;
   layoutData?: unknown;
@@ -113,18 +116,11 @@ function getStatusColor(status: string) {
 }
 
 function getStaffName(
-  value: StaffReference | string | null | undefined,
-  staffMembers: StaffReference[]
+  value: StaffReference | string | null | undefined
 ) {
   if (!value) return '';
   if (typeof value === 'object') return value.displayName || value.username || '';
-  const member = staffMembers.find((item) => item._id === value);
-  return member?.displayName || member?.username || '';
-}
-
-function getReferenceId(value: StaffReference | string | null | undefined) {
-  if (!value) return '';
-  return typeof value === 'string' ? value : value._id;
+  return value;
 }
 
 function formatDate(value?: string | Date) {
@@ -183,56 +179,16 @@ export default function LeadsPage() {
   const leadDetailRequestRef = useRef<AbortController | null>(null);
   const confirmAction = useConfirmDialog();
   const router = useRouter();
-  const [staffMembers, setStaffMembers] = useState<StaffReference[]>([]);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-  const [selectedLeadLoading, setSelectedLeadLoading] = useState(false);
   const [newNote, setNewNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [overview, setOverview] = useState({ total: 0, measuring: 0, assigned: 0, converted: 0 });
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadStaff() {
-      try {
-        const response = await fetch('/api/staff?roles=designer,measurer,enterprise_admin');
-        const result = await response.json();
-        if (!cancelled && response.ok && result.success) setStaffMembers(result.data || []);
-      } catch {
-        // Lead records remain readable when optional assignment choices are unavailable.
-      }
-    }
-    void loadStaff();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   useEffect(() => () => {
     leadListRequestRef.current?.abort();
     leadDetailRequestRef.current?.abort();
   }, []);
-
-  const staffOptions = useMemo(() => {
-    const currentAssigneeId = getReferenceId(selectedLead?.assignedTo);
-    const currentAssigneeOption = currentAssigneeId && !staffMembers.some(
-      (member) => member._id === currentAssigneeId
-    )
-      ? [{
-          label: getStaffName(selectedLead?.assignedTo, staffMembers) || currentAssigneeId,
-          value: currentAssigneeId,
-        }]
-      : [];
-
-    return [
-      { label: '待指派', value: '__unassigned__' },
-      ...currentAssigneeOption,
-      ...staffMembers.map((member) => ({
-        label: member.displayName || member.username || member._id,
-        value: member._id,
-      })),
-    ];
-  }, [selectedLead?.assignedTo, staffMembers]);
 
   const refreshLeads = useCallback(async () => {
     await actionRef.current?.reload();
@@ -243,7 +199,6 @@ export default function LeadsPage() {
     const controller = new AbortController();
     leadDetailRequestRef.current = controller;
     setSelectedLead(lead);
-    setSelectedLeadLoading(true);
     try {
       const response = await fetch(`/api/leads/${lead._id}`, { signal: controller.signal });
       const result = await response.json();
@@ -256,14 +211,11 @@ export default function LeadsPage() {
       if (!controller.signal.aborted) {
         notify.error(error instanceof Error ? error.message : '线索详情加载失败');
       }
-    } finally {
-      if (!controller.signal.aborted) setSelectedLeadLoading(false);
     }
   };
 
   const closeLeadDetail = () => {
     leadDetailRequestRef.current?.abort();
-    setSelectedLeadLoading(false);
     setSelectedLead(null);
     setNewNote('');
   };
@@ -282,7 +234,7 @@ export default function LeadsPage() {
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || '线索更新失败');
       setSelectedLead(result.data);
-      notify.success(updates.assignedTo !== undefined ? '负责人已更新' : '线索信息已更新');
+      notify.success('线索信息已更新');
       await refreshLeads();
       if (closeAfterSuccess) closeLeadDetail();
       return true;
@@ -378,14 +330,14 @@ export default function LeadsPage() {
       key: 'promoter',
       hideInSearch: true,
       width: 170,
-      render: (_, lead) => getStaffName(lead.promoterId, staffMembers) || '系统录入',
+      render: (_, lead) => getStaffName(lead.promoterId) || '系统录入',
     },
     {
-      title: '当前负责人',
+      title: '绑定设计师',
       key: 'assignee',
       hideInSearch: true,
       width: 180,
-      render: (_, lead) => getStaffName(lead.assignedTo, staffMembers) || '待指派',
+      render: (_, lead) => getStaffName(lead.assignedTo) || '未绑定设计师',
     },
     {
       title: '提交日期',
@@ -424,7 +376,7 @@ export default function LeadsPage() {
         breadcrumbRender={false}
         className="admin-page-container"
         title="客资线索管理"
-        content="跟进客户状态、指派协作人员，并衔接正式量房与方案设计。"
+        content="跟进客户状态、查看协作归属，并衔接正式量房与方案设计。"
       >
         <ModuleOverview
           ariaLabel="线索概览"
@@ -509,13 +461,12 @@ export default function LeadsPage() {
                 <Typography.Text type="secondary">{selectedLead.phone || '-'}</Typography.Text>
                 <Tag color={getStatusColor(selectedLead.status)}>{getLeadStatusLabel(selectedLead.status)}</Tag>
               </Flex>
-              <Select
-                className="min-w-44"
-                value={getReferenceId(selectedLead.assignedTo) || '__unassigned__'}
-                options={staffOptions}
-                loading={selectedLeadLoading}
-                onChange={(value) => void updateLead(selectedLead._id, { assignedTo: value === '__unassigned__' ? null : value }, true)}
-              />
+              <Flex vertical gap={2} className="min-w-44" align="end">
+                <Typography.Text type="secondary">创建时绑定设计师</Typography.Text>
+                <Typography.Text strong>
+                  {getStaffName(selectedLead.assignedTo) || '未绑定设计师'}
+                </Typography.Text>
+              </Flex>
             </Flex>
 
               <Steps
@@ -534,7 +485,7 @@ export default function LeadsPage() {
               column={1}
               items={[
                 { key: 'community', label: '小区名称', children: selectedLead.communityName || '-' },
-                { key: 'promoter', label: '录入人员', children: getStaffName(selectedLead.promoterId, staffMembers) || '系统' },
+                { key: 'promoter', label: '录入人员', children: getStaffName(selectedLead.promoterId) || '系统' },
                 { key: 'area', label: '意向面积', children: selectedLead.area ? `${selectedLead.area} m2` : '-' },
                 { key: 'style', label: '偏好风格', children: selectedLead.stylePreference || '-' },
                 { key: 'source', label: '来源渠道', children: selectedLead.source || '-' },
@@ -639,12 +590,12 @@ function RelatedFloorPlans({
           <Flex key={plan._id} align="center" justify="space-between" gap={16} className="rounded-lg border border-border bg-card p-3">
             <Flex vertical gap={4} className="min-w-0">
               <Space size={6} wrap>
-                <Typography.Text strong ellipsis={{ tooltip: plan.name || '未命名户型' }}>{plan.name || '未命名户型'}</Typography.Text>
+                <Typography.Text strong ellipsis={{ tooltip: plan.display?.projectTitle || plan.name || '未命名户型' }}>{plan.display?.projectTitle || plan.name || '未命名户型'}</Typography.Text>
                 {primaryFloorPlanId === plan._id ? <Tag color="green">主户型</Tag> : null}
                 {isSurveying ? <Tag color="blue">正式量房</Tag> : null}
               </Space>
               <Typography.Text type="secondary" className="text-xs">
-                {isSurveying ? `${stats.wallCount} 面墙 · ${stats.spaceCount} 个空间 · ${stats.openingCount} 个门窗` : getFloorPlanSourceLabel(plan.source)}
+                {isSurveying ? `${plan.display?.projectSubtitle ? `${plan.display.projectSubtitle} · ` : ''}${stats.wallCount} 面墙 · ${stats.spaceCount} 个空间 · ${stats.openingCount} 个门窗` : getFloorPlanSourceLabel(plan.source)}
               </Typography.Text>
             </Flex>
             <Button size="small" href={`/floorplans/${plan._id}`}>查看</Button>

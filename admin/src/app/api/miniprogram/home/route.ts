@@ -6,6 +6,7 @@ import {
   LeadRepository,
   MeasurementRepository,
 } from '@/db/repositories';
+import { getFloorPlanDisplay } from '@/lib/floor-plan-display';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import {
@@ -106,6 +107,12 @@ export async function GET(request: Request) {
               plan,
               customerName: lead?.name || '',
               communityName: lead?.communityName || '',
+              display: getFloorPlanDisplay(plan, {
+                lead,
+                measurementSequence: lead?.floorPlanRecords.find(
+                  (record) => record.id === plan.id
+                )?.measurementSequence,
+              }),
             };
           })
         );
@@ -120,12 +127,13 @@ export async function GET(request: Request) {
       }
     );
 
-    const recentPlans = result.recentPlans.map(({ plan, customerName, communityName }) => {
+    const recentPlans = result.recentPlans.map(({ plan, customerName, communityName, display }) => {
       const rooms = parseRooms(plan.layoutData);
       return {
         id: plan.id.toString(),
         _id: plan.id.toString(),
         name: plan.name || '未命名方案',
+        display,
         status: plan.status || 'draft',
         statusLabel: plan.status === 'completed' ? '已完成' : '编辑中',
         customerName,

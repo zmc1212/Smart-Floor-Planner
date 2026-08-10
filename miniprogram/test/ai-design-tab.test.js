@@ -75,7 +75,8 @@ test('AI Design uses the shared tab-page scrolling contract', () => {
   assert.match(aiDesignWxml, /--ai-navigation-top: \{\{navigationTop\}\}px/);
   assert.match(aiDesignWxml, /padding-right: \{\{navigationRight\}\}px/);
   assert.match(aiDesignWxml, /bindrefresherrefresh="onRefresh"/);
-  assert.match(aiDesignWxss, /\.source-sheet[^}]+bottom: var\(--sfp-custom-tabbar-safe-height\)/);
+  assert.match(aiDesignWxss, /\.source-sheet[^}]+bottom: 0/);
+  assert.match(aiDesignWxss, /safe-area-inset-bottom/);
   assert.match(
     aiDesignWxss,
     /\.without-plan \.scene-navigator\s*\{[\s\S]*margin:\s*calc\(-214rpx - var\(--ai-navigation-top/

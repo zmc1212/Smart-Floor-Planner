@@ -1,0 +1,60 @@
+<view class="account-page profile-edit-page">
+  <view class="account-hero">
+    <view class="account-hero-green"></view>
+    <view class="account-hero-copy">
+      <view class="account-hero-title">资料管家 · 小K</view>
+      <view class="account-hero-copy-text">帮您整理专业信息，生成空间服务名片</view>
+    </view>
+    <image class="account-hero-art" src="../assets/account-v1/profile-dossier-scene-v3.png" mode="aspectFit" aria-hidden="true" />
+  </view>
+
+  <view wx:if="{{loading}}" class="state-message">正在读取个人资料…</view>
+  <view wx:elif="{{loadError}}" class="state-message">
+    <view>{{loadError}}</view>
+    <view class="state-retry" bindtap="loadProfile" aria-role="button">重新加载</view>
+  </view>
+  <block wx:else>
+    <view class="account-profile-card">
+      <view class="account-avatar-shell">
+        <image class="account-profile-avatar" src="{{pendingAvatarPath || profile.avatar || defaultAvatar}}" mode="aspectFill" />
+        <button class="account-avatar-picker" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar" aria-label="更换头像">
+          <view class="account-avatar-camera">更换头像</view>
+        </button>
+      </view>
+      <view class="account-profile-copy">
+        <view class="account-profile-name">{{nickname || '未设置昵称'}}</view>
+        <view class="account-profile-role">{{profile.roleLabel || '成员'}}</view>
+        <view class="account-profile-change" aria-hidden="true">更新工作名片 <view class="account-profile-change-arrow"></view></view>
+      </view>
+    </view>
+
+    <view class="account-surface profile-name-surface">
+      <view class="field-group">
+        <text class="field-label">昵称</text>
+        <input class="field-input" value="{{nickname}}" maxlength="30" placeholder="请输入昵称" placeholder-class="field-placeholder" bindinput="onNicknameInput" />
+        <view class="field-counter">{{nickname.length}} / 30</view>
+      </view>
+    </view>
+
+    <view class="account-section-title">身份信息</view>
+    <view class="account-surface">
+      <view class="account-row">
+        <image class="account-row-icon" src="/images/mine-icons/building.png" mode="aspectFit" />
+        <view class="account-row-label">所属企业</view>
+        <view class="account-row-value">{{profile.enterpriseName || '暂无企业归属'}}</view>
+      </view>
+      <view class="account-row">
+        <image class="account-row-icon" src="/images/mine-icons/user.png" mode="aspectFit" />
+        <view class="account-row-label">当前角色</view>
+        <view class="account-row-value">{{profile.roleLabel || '成员'}}</view>
+      </view>
+      <view class="account-row">
+        <image class="account-row-icon" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+        <view class="account-row-label">绑定手机</view>
+        <view class="account-row-value">{{profile.phoneMasked || '未绑定'}}</view>
+      </view>
+    </view>
+
+    <button class="primary-action" loading="{{saving}}" disabled="{{saving || !nickname}}" bindtap="onSave">保存资料</button>
+  </block>
+</view>

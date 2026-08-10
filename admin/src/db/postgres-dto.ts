@@ -18,6 +18,7 @@ import type {
   WorkflowNotificationWithRelations,
   StaffNotificationWithLead,
 } from '@/db/repositories';
+import { getFloorPlanDisplay, type FloorPlanDisplayLead } from '@/lib/floor-plan-display';
 
 export function aiChatSessionSummaryToDto(record: AiChatSessionRecord) {
   return {
@@ -212,9 +213,14 @@ export function userToDto(record: UserRecord) {
 }
 
 export function floorPlanToDto(
-  record: FloorPlanRecord | FloorPlanWithCreator
+  record: FloorPlanRecord | FloorPlanWithCreator,
+  options: {
+    lead?: FloorPlanDisplayLead | null;
+    measurementSequence?: number | null;
+  } | number = {}
 ) {
   const withCreator = record as Partial<FloorPlanWithCreator>;
+  const displayOptions = typeof options === 'number' ? {} : options;
   return {
     _id: record.id.toString(),
     enterpriseId: record.enterpriseId?.toString() ?? null,
@@ -230,6 +236,7 @@ export function floorPlanToDto(
       : record.creatorId.toString(),
     staffId: record.staffId?.toString() ?? null,
     name: record.name,
+    display: getFloorPlanDisplay(record, displayOptions),
     layoutData: record.layoutData,
     source: record.source,
     externalSource: record.externalSource,
@@ -285,9 +292,15 @@ export function leadToDto(record: LeadWithRelations, options: { designerWechatQr
       : null,
     notes: record.notes,
     assignedAt: record.assignedAt,
-    floorPlanIds: record.floorPlanRecords.map(floorPlanToDto),
+    floorPlanIds: record.floorPlanRecords.map((floorPlan) => floorPlanToDto(floorPlan, {
+      lead: record,
+      measurementSequence: floorPlan.measurementSequence,
+    })),
     primaryFloorPlanId: record.primaryFloorPlanRecord
-      ? floorPlanToDto(record.primaryFloorPlanRecord)
+      ? floorPlanToDto(record.primaryFloorPlanRecord, {
+          lead: record,
+          measurementSequence: record.primaryFloorPlanRecord.measurementSequence,
+        })
       : record.primaryFloorPlanId?.toString() ?? null,
     followUpRecords: record.followUpRecords,
     createdAt: record.createdAt,

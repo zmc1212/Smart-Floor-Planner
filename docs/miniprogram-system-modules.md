@@ -135,9 +135,11 @@ utilities, and the admin APIs they call.
   domain is not migrated yet, so `aiGeneratedCases` is explicitly `0`. Each
   recent-plan item also exposes the linked lead's optional `customerName` and
   `communityName`; the Home reminder, active-measurement card, and project-progress
-  card present `customer · community` as the preferred project identity, fall back
-  to the formal-plan name only when that identity is absent, and present timestamps
-  only as update metadata.
+  card consume the shared formal-plan `display` read model: the community is the
+  primary project title and `customer · 第 N 次量房` is the secondary identity.
+  The persisted formal-plan name is only a compatibility fallback, while status,
+  closed-space count, and timestamps remain metadata. The role-filtered AI-source
+  endpoint returns the same display model.
 - Permission boundary: a direct Home entry to a recent plan uses the same
   staff-owner scope as the recent-plan list. Enterprise administrators retain the
   enterprise boundary; standalone promoter accounts with no enterprise use their
@@ -307,10 +309,24 @@ utilities, and the admin APIs they call.
   task create/run/status/retry, and history
   list/delete endpoints through `utils/aiDesignService.js` with bearer JWT
   authentication.
-- Target context: workflow reads for a selected plan require
-  `floorPlanId + targetScope + roomId` (with `roomId` omitted only for
-  `whole_floor_plan`) and return `targetContext` with `missing`, `processing`,
-  `ready`, `stale`, or `admin_handoff` state. A single-room result matches only
+- Project index (2026-08-10): the role-scoped source response is now also the
+  AI-workbench project read model. It keeps persisted `FloorPlan`, active
+  `AiWorkflow`, and Mini Program `AiGeneration` states unchanged, then derives
+  `generating | continue | retry | stale | ready | needs_survey`. The UI groups
+  those states as `In progress` (an exact active workflow exists for the current
+  operator and floor plan), `Ready` (the formal plan passes the shared workflow
+  eligibility check and has no active workflow), or `Survey needs work`
+  (eligibility failed). Eligibility exposes stable reasons for an incomplete
+  survey, invalid formal graph, missing closed space, or missing usable wall.
+  The source response now retains those ineligible version-4 survey records for
+  recovery instead of dropping every plan without a closed room; the legacy
+  flat room list remains eligible-only. Workflow lookup additionally honors the
+  requested `floorPlanId`, while the project index supplies the latest accessible
+  task and current stage without changing tenant/operator boundaries.
+- Target context: workflow reads for a selected plan filter the current
+  operator's active workflows by `leadId` and exact `floorPlanId`; generation
+  requests carry `floorPlanId + targetScope + roomId` (with `roomId` omitted only
+  for `whole_floor_plan`). A single-room result matches only
   the same formal plan and room; whole-plan and legacy tasks with missing scope
   metadata never fill a room automatically. The exact globally adopted result
   wins when it belongs to the target, otherwise the newest exact successful
@@ -362,9 +378,13 @@ utilities, and the admin APIs they call.
   result imagery, provider unavailability, and customer-workflow loading failure
   have explicit states; a workflow lookup failure blocks generation so an
   outcome cannot silently attach to the wrong scheme. The home
-  page provides a two-step shared selector:
-  first choose a customer formal plan, then choose the complete plan or one closed
-  room. Its `leadId`, `floorPlanId`, `targetScope`, and optional `roomId` are
+  page provides a project-switching bottom sheet with customer/community search,
+  server-derived state groups, real task progress and failure/stale recovery.
+  Eligible project selection defaults to the complete plan; the existing
+  horizontal scope rail then switches to a closed room without opening a second
+  selector step. Ineligible records expose the exact reason and reuse
+  `utils/surveyNavigation.js` to continue the sole formal surveying flow. Its
+  `leadId`, `floorPlanId`, `targetScope`, and optional `roomId` are
   inherited by all four tasks, while only formal-plan rendering makes that
   context mandatory. Complete-plan rendering produces one furnished, elevated
   isometric cutaway concept for the navigation cover; single-room rendering
@@ -410,8 +430,9 @@ utilities, and the admin APIs they call.
   Xiao K asset acts once as the spatial guide. A single raised white workbench
   joins the four-stage server-derived rail, the four implemented task entries,
   and one full-width green contextual next action that visibly discloses its live
-  operation label and point cost. The customer/project subtitle still opens the source
-  picker, source clearing remains available inside that picker, multiple active
+  operation label and point cost. The selected hero now keeps a persistent
+  `Switch project` action plus a tappable customer/project identity; source
+  clearing remains available inside that picker, multiple active
   schemes still require explicit selection, and recent live results remain below
   the first-viewport workbench. The custom navigation reserves the measured WeChat
   capsule lane even where the supplied reference does not show that capsule. The
@@ -430,12 +451,10 @@ utilities, and the admin APIs they call.
   safety lane, the shared custom TabBar, and existing coherent task iconography
   instead of static sample-plan imagery. The 2026-08-07 restoration changes visual
   composition and adds the narrowly scoped carousel-history query. The default
-  image and generated carousel both extend behind the selected-plan header using
-  the same compensated stage geometry, so choosing a plan cannot expose a white
-  band above the image or push the workbench below its original first-viewport
-  anchor. The selected customer/community subtitle and its source-picker chevron
-  render in white with a restrained dark shadow so they remain readable over
-  both the bright default hero and generated carousel imagery;
+  image and generated carousel share the same compact rounded emerald project
+  stage below the capsule-safe header. Native project identity, state, formal
+  survey metadata, and switching controls stay above the artwork; the bottom
+  sheet covers the custom TabBar and includes bottom-safe-area padding.
   routes,
   permissions, point charging, workflow selection, and formal wall-graph
   contracts are unchanged. The create page now follows
@@ -538,11 +557,18 @@ utilities, and the admin APIs they call.
 
 ### Mine And Workbench
 
-- Page: `pages/mine/mine`.
-- APIs: `/api/miniprogram/mine`, `/api/floorplans`, and navigation to leads,
-  promotion records, commissions, surveying, and the new AI design home.
+- Pages: `pages/mine/mine`, plus
+  `packages/business/profile-edit/profile-edit`,
+  `packages/business/settings/settings`, and
+  `packages/business/account-security/account-security`.
+- APIs: `/api/miniprogram/mine`, `/api/miniprogram/profile`,
+  `/api/miniprogram/profile/avatar`, the signed profile-avatar read route,
+  `/api/miniprogram/account/password`, `/api/floorplans`, and navigation to
+  leads, promotion records, commissions, surveying, and the AI design home.
 - Implemented: profile/role display, workbench summary, todos, floor-plan list,
-  notification/account actions, logout, new measurement, an enterprise-staff
+  notification/account actions, persistent nickname/avatar editing, WeChat
+  subscription and permission settings, authenticated staff password changes,
+  logout, new measurement, an enterprise-staff
   AI Design home entry, contextual AI entry from a plan card, and a role-shaped
   Acquisition Collaboration action with a live pending badge for designers and
   measurers.
@@ -569,6 +595,23 @@ utilities, and the admin APIs they call.
   the `390x844` baseline, Mine
   primary labels/actions use at least `24rpx`, and secondary metadata/helper
   text uses at least `20rpx`.
+- Account surfaces (2026-08-10): the three formerly shared account entry points
+  now have separate real routes. Profile editing stores a normalized `512x512`
+  WebP through the configured local/Qiniu media provider and keeps a versioned
+  managed reference in `users.avatar`; signed reads hide storage details while
+  historical external avatar URLs remain readable. Staff display-name edits
+  update both `admin_users.displayName` and the linked user profile. Settings
+  exposes only real WeChat subscription/permission actions. Password changes
+  require the current password, update only the authenticated staff record,
+  and clear the local Mini Program session for re-login.
+- Account visual restoration (2026-08-10): `profile-edit`, `settings`, and
+  `account-security` follow the iPhone 13 Pro `390x844` references in
+  `design-references/account/`. Each route has a green diagonal service-scene
+  header and native white content cards; the local, text-free Xiao K scene
+  derivatives in `packages/business/assets/account-v1/` provide only decoration. Profile,
+  permission status, account facts, validation, loading/error/retry states,
+  password mutation, logout, routes, APIs, and role boundaries remain driven by
+  their existing live contracts.
 - Data and failure states: ordinary-user floor-plan counts are derived from
   closed spaces across the formal version-4 survey graph floors. Mine and
   floor-plan requests have separate loading/error/retry states, so network
@@ -579,8 +622,10 @@ utilities, and the admin APIs they call.
   repositories. Home still reports `aiGeneratedCases: 0` until AI generation
   moves; orders and commissions remain MongoDB-backed and are not queried with
   PostgreSQL bigint identities.
-- Limited: workbench cards and task actions vary by professional role; some
-  account/notification cards are informational rather than configuration APIs.
+- Limited: workbench cards and task actions vary by professional role. Phone
+  changes are intentionally unavailable because phone identity also affects
+  staff matching and ordinary-user floor-plan ownership; ordinary WeChat users
+  do not have a password-change action.
 
 ### Recommendations Share Page
 
@@ -594,6 +639,15 @@ utilities, and the admin APIs they call.
 
 ## Formal Surveying
 
+- Isolated APK reconstruction research (2026-08-10):
+  `research/legacy-zhouse-2d/` now exists outside the Mini Program package with
+  a method-RVA/evidence ledger, independent millimetre geometry primitives,
+  platform-neutral render commands, and isolation tests. The initial methods
+  remain `located` and are not claimed as restored APK algorithms. Production
+  `miniprogram/` and `admin/` code must not import the module. It registers no
+  second surveying page, connects to no BLE/API/database, and cannot write
+  `FloorPlan.layoutData`; the formal page, routes, roles, version-4 graph, and
+  measurement audits are unchanged.
 - BLE connection UX: each live BLE ranging entry in the editor offers to search
   for an authorized distance meter in the current editor when no device is
   connected. This changes no API, role boundary, wall-graph contract, or audit
@@ -803,6 +857,15 @@ utilities, and the admin APIs they call.
   after explicit confirmation; diagonal chains and shared-boundary rules keep
   their existing thresholds. Routes, APIs, permissions, the version-4 graph
   contract, and measurement-audit behavior are unchanged.
+- Direct start-vertex closure snap (2026-08-10): after three walls of an
+  independent straight-wall chain are confirmed, dragging the fourth wall's
+  pointer into the start vertex tolerance snaps the preview endpoint exactly to
+  that orthogonally aligned vertex; releasing commits the wall and closes the
+  space immediately. A close candidate produced only by the orthogonal
+  projection remains advisory and still requires the `合` action, preventing an
+  accidental close when the pointer did not actually reach the start vertex.
+  Routes, APIs, roles, version-4 persistence, and BLE/manual measurement audits
+  are unchanged.
 - Corner restart alignment and closure correction (2026-08-07): when a new
   straight-wall chain starts from a vertex of an already closed room, the
   adjacent room may use the existing boundary path between the two corner
@@ -967,14 +1030,13 @@ utilities, and the admin APIs they call.
   room fills and compound wall solids do not diverge on native Canvas. Gesture
   frames do not update page data
   or recompute wall solids and dimension plans.
-- Closed-plan pan safe-area correction (2026-08-10): the viewport now constrains
-  structural wall bounds to the visible workspace between the opaque header,
-  right tool rail, and bottom dock. When the complete wall shell fits that
-  workspace, pan and pinch gestures can no longer hide a closure edge behind
-  opaque controls and make a closed room appear open. Plans larger than the
-  workspace remain pannable, while the constraint prevents meaningless blank
-  space from appearing beyond both opposing structural edges on the same axis.
-  This changes viewport offsets only; routes, APIs, roles, version-4 graph data,
+- Infinite drafting viewport correction (2026-08-10): pan no longer constrains
+  the structural shell to the visible workspace, so an operator can move a
+  closed room fully aside and use the exposed blank canvas to start an adjacent
+  room on any side. Pinch zoom uses a broad numeric safety range of
+  `0.002–4 px/mm` instead of the former `0.05–0.36 px/mm` editing range; the
+  gesture remains focal-point anchored and can be repeated continuously. This
+  changes viewport interaction only; routes, APIs, roles, version-4 graph data,
   millimetre geometry, persistence, and BLE/manual measurement audits are
   unchanged.
   Gesture frames render directly on the primary canvas, rather than the cursor

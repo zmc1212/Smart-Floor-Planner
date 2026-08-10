@@ -24,7 +24,7 @@ function createPage(definition, data = {}) {
   };
 }
 
-test('Home keeps customer and community together for every recent-plan title', () => {
+test('Home uses the shared community-first identity for every recent-plan title', () => {
   const page = createPage(loadHomePageDefinition(), {
     homeDashboard: {
       bluetooth: {},
@@ -34,6 +34,10 @@ test('Home keeps customer and community together for every recent-plan title', (
         name: '正式量房-20260805',
         customerName: '王女士',
         communityName: '江南壹号',
+        display: {
+          projectTitle: '江南壹号',
+          projectSubtitle: '王女士 · 第 1 次量房',
+        },
         status: 'draft',
         updatedAt: '2026-08-05T07:41:00.000Z',
       }],
@@ -42,7 +46,8 @@ test('Home keeps customer and community together for every recent-plan title', (
 
   page.syncHomeDashboard();
 
-  assert.equal(page.data.recentPlans[0].displayName, '王女士 · 江南壹号');
+  assert.equal(page.data.recentPlans[0].displayName, '江南壹号');
+  assert.equal(page.data.recentPlans[0].measureSubtitle, '王女士 · 第 1 次量房');
 
   const homeWxml = fs.readFileSync(
     path.join(__dirname, '..', 'pages', 'index', 'index.wxml'),

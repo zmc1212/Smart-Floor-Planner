@@ -1238,6 +1238,55 @@ function maybeSnapThirdWallForRectangle(floor, session, anchor, previewPoint) {
   };
 }
 
+function maybeSnapStraightClosureToStart(floor, session, anchor, rawPoint, previewPoint) {
+  if (
+    !floor ||
+    !session ||
+    session.mode !== 'straight' ||
+    session.activeSpaceSharedWallId ||
+    !anchor ||
+    !rawPoint ||
+    !previewPoint
+  ) {
+    return { point: previewPoint, guide: null };
+  }
+
+  const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+    ? session.activeSpaceStartWallIndex
+    : 0;
+  const activeWallCount = Math.max(0, floor.walls.length - startWallIndex);
+  const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
+  if (
+    activeWallCount < 3 ||
+    !activeStartNode ||
+    activeStartNode.id === anchor.id ||
+    distanceMm(rawPoint, activeStartNode) > CLOSE_TOLERANCE_MM ||
+    distanceMm(anchor, activeStartNode) < MIN_WALL_LENGTH_MM
+  ) {
+    return { point: previewPoint, guide: null };
+  }
+
+  const sharesVerticalAxis = Math.abs(anchor.xMm - activeStartNode.xMm) <= 1;
+  const sharesHorizontalAxis = Math.abs(anchor.yMm - activeStartNode.yMm) <= 1;
+  if (!sharesVerticalAxis && !sharesHorizontalAxis) {
+    return { point: previewPoint, guide: null };
+  }
+
+  const snappedPoint = {
+    xMm: activeStartNode.xMm,
+    yMm: activeStartNode.yMm
+  };
+  return {
+    point: snappedPoint,
+    guide: {
+      type: 'start-vertex-closure',
+      direction: sharesVerticalAxis ? 'horizontal' : 'vertical',
+      referencePoint: snappedPoint,
+      snappedPoint
+    }
+  };
+}
+
 function pointFromLength(anchor, previewPoint, lengthMm, startInsetMm, endInsetMm) {
   const dx = previewPoint.xMm - anchor.xMm;
   const dy = previewPoint.yMm - anchor.yMm;
@@ -1584,6 +1633,43 @@ function findNearestWallProjection(floor, point) {
   return best;
 }
 
+function findNearestOuterVertex(floor, point, maxDistanceMm) {
+  if (!floor || !point) return null;
+  const limit = typeof maxDistanceMm === 'number' ? maxDistanceMm : CLOSE_TOLERANCE_MM;
+  let best = null;
+
+  (floor.walls || []).forEach((wall) => {
+    const geometry = buildWallRenderGeometry(floor, wall);
+    if (!geometry) return;
+
+    [
+      { pointMm: geometry.outerStart, nodeId: wall.startNodeId, t: 0 },
+      { pointMm: geometry.outerEnd, nodeId: wall.endNodeId, t: 1 }
+    ].forEach((candidate) => {
+      const node = getNode(floor, candidate.nodeId);
+      if (!candidate.pointMm || !node) return;
+      const candidateDistance = distanceMm(point, candidate.pointMm);
+      if (candidateDistance > limit) return;
+      if (!best || candidateDistance < best.distanceMm) {
+        best = {
+          type: 'vertex',
+          pointMm: {
+            xMm: Math.round(candidate.pointMm.xMm),
+            yMm: Math.round(candidate.pointMm.yMm)
+          },
+          nodeId: node.id,
+          wallId: wall.id,
+          snapLine: 'outer',
+          t: candidate.t,
+          distanceMm: candidateDistance
+        };
+      }
+    });
+  });
+
+  return best;
+}
+
 function getNodeWallUseCount(floor, nodeId) {
   if (!floor || !nodeId) return 0;
   return (floor.walls || []).filter((wall) => wall.startNodeId === nodeId || wall.endNodeId === nodeId).length;
@@ -1712,6 +1798,29 @@ function findTargetWallProjection(floor, point, target) {
   const end = getNode(floor, wall.endNodeId);
   if (!start || !end) return null;
 
+  if (
+    target.snapLine === 'outer' &&
+    target.nodeId &&
+    (target.nodeId === wall.startNodeId || target.nodeId === wall.endNodeId)
+  ) {
+    const node = getNode(floor, target.nodeId);
+    const geometry = buildWallRenderGeometry(floor, wall);
+    const outerVertex = geometry && target.nodeId === wall.startNodeId
+      ? geometry.outerStart
+      : (geometry && geometry.outerEnd);
+    if (!node || !outerVertex) return null;
+    return {
+      wall,
+      start,
+      end,
+      point: { xMm: Math.round(outerVertex.xMm), yMm: Math.round(outerVertex.yMm) },
+      node,
+      t: target.nodeId === wall.startNodeId ? 0 : 1,
+      distanceMm: distanceMm(point, outerVertex),
+      snapLine: 'outer'
+    };
+  }
+
   if (target.snapLine === 'outer') {
     const segment = buildResolvedSegment(floor, wall);
     if (!segment || !segment.outerStart || !segment.outerEnd) return null;
@@ -1782,6 +1891,14 @@ function getCursorPlacementTarget(floor, point, maxDistanceMm) {
       };
     }
   });
+
+  const nearestOuterVertex = findNearestOuterVertex(floor, point, limit);
+  if (
+    nearestOuterVertex &&
+    (!nearestVertex || nearestOuterVertex.distanceMm < nearestVertex.distanceMm)
+  ) {
+    nearestVertex = nearestOuterVertex;
+  }
 
   const projection = findNearestWallProjection(floor, point);
   const outerProjectionWins = nearestVertex && projection &&
@@ -2245,7 +2362,14 @@ function startPreview(draft, rawPoint) {
     anchor,
     rectangleSnap.point
   );
-  let previewPoint = resetClosureSnap.point;
+  const directStartClosureSnap = maybeSnapStraightClosureToStart(
+    floor,
+    session,
+    anchor,
+    rawPoint,
+    resetClosureSnap.point
+  );
+  let previewPoint = directStartClosureSnap.point;
   let previewMeasurementStartInsetMm = resolvePreviewMeasurementStartInsetMm(
     floor,
     session,
@@ -2281,7 +2405,7 @@ function startPreview(draft, rawPoint) {
   session.closeCandidatePoint = null;
   session.closeCandidateType = '';
   session.closeCandidateSharedWallId = '';
-  session.alignmentSnapGuide = resetClosureSnap.guide || rectangleSnap.guide || directionSnap.guide;
+  session.alignmentSnapGuide = directStartClosureSnap.guide || resetClosureSnap.guide || rectangleSnap.guide || directionSnap.guide;
 
   const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
   const minimumClosureWallCount = getMinimumClosureSuggestionWallCount(floor, session);
@@ -3174,7 +3298,7 @@ function snapCursorToWall(draft, point, target) {
   // graph itself is centerline-topological, so keep the snapped node on the
   // source wall centerline; otherwise preview closure points use the centerline
   // while the anchor remains one wall thickness away and the chain disconnects.
-  const topologyProjection = projection && projection.snapLine === 'outer'
+  const topologyProjection = projection && projection.snapLine === 'outer' && !projection.node
     ? Object.assign({}, projectPointToWallSegment(projection.point, projection.start, projection.end), {
       wall: projection.wall,
       start: projection.start,

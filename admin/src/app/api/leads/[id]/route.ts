@@ -5,7 +5,6 @@ import {
   parsePostgresId,
 } from '@/db/postgres-dto';
 import {
-  AdminUserRepository,
   LeadRepository,
   type LeadUpdate,
   type LeadWithRelations,
@@ -135,6 +134,15 @@ export async function PUT(
         { status: 400 }
       );
     }
+    if (body.assignedTo !== undefined) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: '线索创建时绑定的设计师不可在线索详情中修改；请在员工管理中调整测量员绑定，换绑仅影响后续新线索',
+        },
+        { status: 400 }
+      );
+    }
     const updated = await withLeadTransaction(
       context,
       async (transaction) => {
@@ -168,24 +176,6 @@ export async function PUT(
           input.followUpRecords = body.followUpRecords.filter(
             (item: unknown) => item && typeof item === 'object'
           );
-        }
-
-        if (body.assignedTo !== undefined) {
-          const assignedTo = parseOptionalPostgresId(
-            body.assignedTo,
-            'assignedTo'
-          );
-          const assignedUser = assignedTo
-            ? await new AdminUserRepository(transaction).findById(assignedTo)
-            : null;
-          if (assignedTo && !assignedUser) {
-            throw new Error('Assigned staff not found in this scope');
-          }
-          input.assignedTo = assignedTo;
-          input.assignedAt = assignedTo ? new Date() : null;
-          if (assignedUser?.role === 'designer' && normalizeLeadStatus(current.status) === 'new') {
-            input.status = 'new';
-          }
         }
 
         let lead = await repository.update(leadId, input);

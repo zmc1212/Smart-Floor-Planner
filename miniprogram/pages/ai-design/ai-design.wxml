@@ -1,9 +1,9 @@
 <!--
-THESIS: Turn a real measured home into the navigation surface; refuse the generic AI tool grid.
-OWN-WORLD: Warm residential space, formal wall geometry, crisp white controls, quiet oak, and one committed green action.
-STORY: Choose a real home or room, see its live scheme stage, enter one of four implemented tasks, then continue one honest next action.
-FIRST VIEWPORT: Project identity and credits sit above the warm spatial hero; only real, successful user floor-plan generations replace it as a tappable carousel, while one raised workbench joins the stage rail, four task entries, and the final CTA before the shared TabBar.
-FORM: The retained ai-design-hero-v3 scene is the honest empty/default hero; verified user-generated floor-plan results become its carousel content.
+THESIS: Make the real customer project the AI navigation surface; refuse both a generic tool grid and a CRM lead list.
+OWN-WORLD: One emerald spatial project folio, warm white controls, formal wall geometry, restrained status color, and native business text.
+STORY: Find a server-qualified project, understand whether work is running, resumable, failed, stale, ready, or blocked by surveying, then take its one truthful next action.
+FIRST VIEWPORT: Capsule-safe title and credits lead into a compact emerald project stage with persistent switching; a raised workbench keeps scope, stage, four implemented tasks, and the costed next action.
+FORM: The project-switching bottom sheet groups a server-derived read model; result imagery and formal navigator geometry provide the project thumbnails without inventing data.
 -->
 <view class="ai-page sfp-tab-page">
   <scroll-view
@@ -24,15 +24,9 @@ FORM: The retained ai-design-hero-v3 scene is the honest empty/default hero; ver
         style="--ai-navigation-right: {{navigationRight}}px; padding-right: {{navigationRight}}px; min-height: {{navigationHeight}}px;"
       >
         <view class="page-heading">
-          <text class="page-title">{{selectedSource ? '探索这个家' : '设计空间'}}</text>
-          <view
-            class="page-subtitle-line"
-            bindtap="openSourcePicker"
-            aria-role="button"
-            aria-label="{{selectedSource ? '更换当前客户户型' : '选择客户户型'}}"
-          >
-            <text class="page-subtitle">{{selectedSource ? (selectedSource.leadName + ' · ' + (selectedSource.communityName || selectedSource.floorPlanName)) : '为客户探索下一种生活方式'}}</text>
-            <view wx:if="{{selectedSource}}" class="project-chevron"></view>
+          <text class="page-title">AI设计工作台</text>
+          <view class="page-subtitle-line">
+            <text class="page-subtitle">让量房数据长成空间方案</text>
           </view>
         </view>
         <view class="balance-pill {{hasLoadedOnce ? '' : 'loading-balance'}}">
@@ -75,6 +69,33 @@ FORM: The retained ai-design-hero-v3 scene is the honest empty/default hero; ver
         <block wx:if="{{selectedSource}}">
         <view class="plan-navigator reference-plan-navigator">
           <view class="plan-stage reference-plan-stage {{selectedSource.targetScope === 'single_room' ? 'room-focused' : 'whole-focused'}} {{heroSlides.length ? 'has-generated-hero' : 'has-default-hero'}}">
+            <view class="project-hero-context">
+              <view class="project-hero-topline">
+                <text class="project-state-chip {{selectedSource.statusClass}}">{{selectedSource.statusLabel}}</text>
+                <view
+                  class="project-switch-action"
+                  bindtap="openSourcePicker"
+                  aria-role="button"
+                  aria-label="切换客户设计项目"
+                >
+                  <text>切换项目</text>
+                  <view class="project-switch-arrows"></view>
+                </view>
+              </view>
+              <view
+                class="project-hero-identity"
+                bindtap="openSourcePicker"
+                aria-role="button"
+                aria-label="当前客户项目，点击切换"
+              >
+                <text class="project-hero-label">当前客户</text>
+                <view class="project-hero-title-row">
+                  <text class="project-hero-title">{{selectedSource.projectTitle}}</text>
+                  <view class="project-hero-chevron"></view>
+                </view>
+                <text class="project-hero-meta">正式量房 · {{selectedSource.projectSubtitle}} · {{selectedSource.closedRoomCount}} 个闭合空间</text>
+              </view>
+            </view>
             <swiper
               wx:if="{{heroSlides.length}}"
               class="plan-hero-swiper"
@@ -335,44 +356,88 @@ FORM: The retained ai-design-hero-v3 scene is the honest empty/default hero; ver
     <view class="sheet-handle"></view>
     <view class="sheet-head">
       <view>
-        <text class="sheet-title">{{sourcePickerStep === 'plans' ? '选择客户户型' : '选择设计范围'}}</text>
-        <text class="sheet-subtitle">{{sourcePickerStep === 'plans' ? '选择一份正式量房户型' : (activeSourcePlan ? activeSourcePlan.leadName + ' · ' + activeSourcePlan.floorPlanName : '')}}</text>
+        <text class="sheet-title">选择客户设计项目</text>
+        <text class="sheet-subtitle">按客户找到对应的量房与 AI 方案</text>
       </view>
       <view class="sheet-actions">
         <text wx:if="{{selectedSource}}" class="sheet-clear" bindtap="clearSource" aria-role="button" aria-label="清除当前户型">清除</text>
         <text class="sheet-close" bindtap="closeSourcePicker" aria-role="button" aria-label="关闭户型选择">关闭</text>
       </view>
     </view>
+    <view class="project-search-field">
+      <image class="project-search-icon" src="/images/mine-icons/search.png" mode="aspectFit"></image>
+      <input
+        class="project-search-input"
+        value="{{projectSearch}}"
+        placeholder="搜索客户姓名或小区"
+        placeholder-class="project-search-placeholder"
+        bindinput="onProjectSearch"
+        confirm-type="search"
+      />
+    </view>
+    <view class="project-group-tabs" aria-role="tablist" aria-label="项目状态分组">
+      <view
+        wx:for="{{projectGroups}}"
+        wx:key="key"
+        class="project-group-tab {{item.active ? 'active' : ''}}"
+        data-group="{{item.key}}"
+        bindtap="selectProjectGroup"
+        aria-role="tab"
+        aria-selected="{{item.active}}"
+      >
+        <text>{{item.label}}</text>
+        <text class="project-group-count">{{item.count}}</text>
+      </view>
+    </view>
     <scroll-view scroll-y class="source-list" enhanced show-scrollbar="{{false}}">
-      <block wx:if="{{sourcePickerStep === 'plans'}}">
-        <view wx:for="{{sources}}" wx:key="sourceKey" class="source-item {{item.selected ? 'active' : ''}}" data-index="{{index}}" bindtap="selectSourcePlan">
-          <view class="source-item-main">
-            <text class="source-item-title">{{item.leadName}} · {{item.floorPlanName}}</text>
-            <text class="source-item-meta">{{item.communityName || '未填写小区'}} · {{item.closedRoomCount}} 个闭合房间</text>
-            <text class="source-item-detail">选择后可设计完整户型或其中一个房间</text>
+      <view
+        wx:for="{{filteredProjects}}"
+        wx:key="sourceKey"
+        class="source-item project-source-item {{selectedSource && item.floorPlanId === selectedSource.floorPlanId ? 'active' : ''}} {{item.statusClass}}"
+        data-index="{{index}}"
+        bindtap="selectProjectCard"
+        aria-role="button"
+        aria-label="{{item.projectTitle}}，{{item.statusLabel}}，{{item.actionLabel}}"
+      >
+        <view class="project-source-preview">
+          <image
+            wx:if="{{item.latestGeneration.resultImageUrl || item.navigationPreview.imageUrl}}"
+            class="project-source-image"
+            src="{{item.latestGeneration.resultImageUrl || item.navigationPreview.imageUrl}}"
+            mode="aspectFill"
+          ></image>
+          <view wx:else class="project-mini-plan">
+            <view
+              wx:for="{{item.navigatorView.rooms}}"
+              wx:for-item="room"
+              wx:key="id"
+              class="project-mini-room"
+              style="{{room.fillStyle}}"
+            ></view>
+            <view
+              wx:for="{{item.navigatorView.walls}}"
+              wx:for-item="wall"
+              wx:key="id"
+              class="project-mini-wall"
+              style="{{wall.style}}"
+            ></view>
+            <text wx:if="{{!item.navigatorView.walls.length}}" class="project-mini-empty">待完善</text>
           </view>
-          <text class="source-check">下一步</text>
         </view>
-      </block>
-      <block wx:else>
-        <view class="source-back" bindtap="backSourcePlans">返回户型列表</view>
-        <view class="source-item target-item {{selectedSource && selectedSource.floorPlanId === activeSourcePlan.floorPlanId && selectedSource.targetScope === 'whole_floor_plan' ? 'active' : ''}}" bindtap="selectWholeSource">
           <view class="source-item-main">
-            <text class="source-item-title">完整户型</text>
-            <text class="source-item-meta">{{activeSourcePlan.closedRoomCount}} 个闭合房间 · 全屋 3D 剖切效果</text>
-            <text class="source-item-detail">生成一张来自正式墙图的 3D 户型导览图</text>
+            <text class="source-item-title">{{item.projectTitle}}</text>
+            <text class="source-item-meta">{{item.projectSubtitle}} · {{item.closedRoomCount}} 个闭合房间</text>
+            <text class="source-item-detail {{item.statusClass}}">{{item.statusLabel}}</text>
           </view>
-          <text class="source-check">选择</text>
-        </view>
-        <view wx:for="{{activeSourcePlan.rooms}}" wx:key="roomId" class="source-item target-item {{selectedSource && selectedSource.roomId === item.roomId ? 'active' : ''}}" data-index="{{index}}" bindtap="selectRoomSource">
-          <view class="source-item-main">
-            <text class="source-item-title">{{item.roomName}}</text>
-            <text class="source-item-meta">{{item.roomSize}} · {{item.openingCount}} 个门窗开口</text>
-            <text class="source-item-detail">生成该房间的室内视角概念图</text>
+          <view class="project-source-action {{item.statusClass}}">
+            <text>{{selectedSource && item.floorPlanId === selectedSource.floorPlanId ? '当前项目' : item.actionLabel}}</text>
+            <view wx:if="{{selectedSource && item.floorPlanId === selectedSource.floorPlanId}}" class="project-selected-check"></view>
           </view>
-          <text class="source-check">选择</text>
-        </view>
-      </block>
+      </view>
+      <view wx:if="{{!filteredProjects.length}}" class="project-picker-empty">
+        <text class="project-picker-empty-title">{{projectEmptyCopy}}</text>
+        <text class="project-picker-empty-copy">切换分组或修改搜索条件后再试</text>
+      </view>
     </scroll-view>
   </view>
 

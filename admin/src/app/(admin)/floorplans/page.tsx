@@ -34,6 +34,12 @@ type FormalSurveyLayout = {
 type FloorPlanItem = {
   _id: string;
   name?: string | null;
+  display?: {
+    projectTitle?: string | null;
+    projectSubtitle?: string | null;
+    recordTitle?: string | null;
+    legacyName?: string | null;
+  } | null;
   status?: 'draft' | 'completed' | null;
   source?: 'manual' | 'template' | 'kujiale' | null;
   layoutData?: FormalSurveyLayout | string | null;
@@ -117,17 +123,17 @@ export default function FloorPlansPage() {
       },
     },
     {
-      title: '户型',
+      title: '量房项目',
       dataIndex: 'name',
       hideInSearch: true,
       width: 300,
       render: (_, item) => (
         <Flex vertical gap={2}>
-          <Typography.Text strong ellipsis={{ tooltip: item.name || '未命名户型' }}>
-            {item.name || '未命名户型'}
+          <Typography.Text strong ellipsis={{ tooltip: item.display?.projectTitle || item.name || '未命名户型' }}>
+            {item.display?.projectTitle || item.name || '未命名户型'}
           </Typography.Text>
-          <Typography.Text type="secondary" className="text-xs" ellipsis={{ tooltip: item.externalSource?.layoutLabel || item.creator?.communityName || '-' }}>
-            {item.externalSource?.layoutLabel || item.creator?.communityName || '-'}
+          <Typography.Text type="secondary" className="text-xs" ellipsis={{ tooltip: item.display?.projectSubtitle || item.externalSource?.layoutLabel || item.creator?.communityName || '-' }}>
+            {item.display?.projectSubtitle || item.externalSource?.layoutLabel || item.creator?.communityName || '-'}
           </Typography.Text>
         </Flex>
       ),
@@ -192,7 +198,7 @@ export default function FloorPlansPage() {
       hideInSearch: true,
       render: (_, item) => (
         <Button
-          aria-label={`查看户型 ${item.name || item._id}`}
+          aria-label={`查看量房项目 ${item.display?.recordTitle || item.name || item._id}`}
           icon={<Eye size={16} />}
           href={`/floorplans/${item._id}`}
         >

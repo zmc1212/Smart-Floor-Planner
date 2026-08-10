@@ -2,6 +2,7 @@ const aiService = require('../../utils/aiDesignService.js');
 const { prioritizeProcessingTasks } = require('../../utils/aiDesignTaskOrdering.js');
 const { consumeAIDesignContext, normalizeAIDesignContext } = require('../../utils/aiDesignNavigation.js');
 const { canAccessAIDesign, showAIDesignAccessDenied } = require('../../utils/aiDesignAccess.js');
+const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
 const {
   decorateSourcePlan,
   decorateRecentResult,
@@ -9,6 +10,8 @@ const {
   hasActiveTasks,
   normalizeCredits,
   buildExperienceState,
+  buildProjectPickerView,
+  chooseDefaultProjectGroup,
 } = require('./ai-design-model.js');
 
 const WORKFLOW_DEFINITIONS = [
@@ -61,6 +64,11 @@ Page({
     heroSlides: [],
     activeHeroSlide: 0,
     sources: [],
+    projectGroup: 'in_progress',
+    projectSearch: '',
+    projectGroups: [],
+    filteredProjects: [],
+    projectEmptyCopy: '',
     selectedSource: null,
     sourcePickerOpen: false,
     sourcePickerStep: 'plans',
@@ -210,7 +218,9 @@ Page({
         )
         : this.data.recent;
       const sourcePlans = sourceData.map(decorateSourcePlan);
-      const selectedPlan = sourcePlans.find((item) => item.floorPlanId === this.data.floorPlanId) || null;
+      const selectedPlan = sourcePlans.find((item) => (
+        item.floorPlanId === this.data.floorPlanId && item.eligibility && item.eligibility.eligible
+      )) || null;
       const requestedScope = this.data.targetScope || (this.data.roomId ? 'single_room' : 'whole_floor_plan');
       const selectedRoom = selectedPlan && requestedScope === 'single_room'
         ? (selectedPlan.rooms || []).find((room) => room.roomId === this.data.roomId)
@@ -223,6 +233,8 @@ Page({
         sourceKey: item.floorPlanId,
         selected: !!selectedSource && item.floorPlanId === selectedSource.floorPlanId,
       }));
+      const projectGroup = chooseDefaultProjectGroup(sources, selectedSource && selectedSource.floorPlanId);
+      const projectPickerState = buildProjectPickerView(sources, projectGroup, '');
       const workflowQuery = {
         workflowId: this.data.workflowId,
         leadId: selectedSource ? selectedSource.leadId : this.data.leadId,
@@ -265,6 +277,9 @@ Page({
         heroSlides,
         activeHeroSlide: 0,
         sources,
+        projectGroup,
+        projectSearch: '',
+        ...projectPickerState,
         selectedSource,
         floorPlanId: selectedSource ? selectedSource.floorPlanId : this.data.floorPlanId,
         leadId: selectedSource ? selectedSource.leadId : this.data.leadId,
@@ -562,19 +577,61 @@ Page({
       wx.showToast({ title: '暂无可关联的正式户型', icon: 'none' });
       return;
     }
-    this.setData({ sourcePickerOpen: true, sourcePickerStep: 'plans', activeSourcePlan: null });
+    const projectGroup = chooseDefaultProjectGroup(
+      this.data.sources,
+      this.data.selectedSource && this.data.selectedSource.floorPlanId
+    );
+    this.setData({
+      sourcePickerOpen: true,
+      sourcePickerStep: 'plans',
+      activeSourcePlan: null,
+      projectGroup,
+      projectSearch: '',
+      ...buildProjectPickerView(this.data.sources, projectGroup, ''),
+    });
   },
 
   closeSourcePicker() {
-    this.setData({ sourcePickerOpen: false, sourcePickerStep: 'plans', activeSourcePlan: null });
+    this.setData({ sourcePickerOpen: false, sourcePickerStep: 'plans', activeSourcePlan: null, projectSearch: '' });
   },
 
   noop() {},
 
   selectSourcePlan(event) {
-    const plan = this.data.sources[Number(event.currentTarget.dataset.index)];
+    this.selectProjectCard(event);
+  },
+
+  selectProjectGroup(event) {
+    const projectGroup = event.currentTarget.dataset.group;
+    if (!projectGroup || projectGroup === this.data.projectGroup) return;
+    this.setData({
+      projectGroup,
+      ...buildProjectPickerView(this.data.sources, projectGroup, this.data.projectSearch),
+    });
+  },
+
+  onProjectSearch(event) {
+    const projectSearch = event.detail.value || '';
+    this.setData({
+      projectSearch,
+      ...buildProjectPickerView(this.data.sources, this.data.projectGroup, projectSearch),
+    });
+  },
+
+  selectProjectCard(event) {
+    const plan = this.data.filteredProjects[Number(event.currentTarget.dataset.index)];
     if (!plan) return;
-    this.setData({ activeSourcePlan: plan, sourcePickerStep: 'targets' });
+    if (!plan.eligibility || !plan.eligibility.eligible) {
+      this.closeSourcePicker();
+      openSurveyingEditor({
+        leadId: plan.leadId,
+        leadName: plan.leadName,
+        communityName: plan.communityName,
+        floorPlanId: plan.floorPlanId,
+      });
+      return;
+    }
+    this.applySource(plan, 'whole_floor_plan');
   },
 
   backSourcePlans() {
@@ -593,6 +650,10 @@ Page({
   },
 
   async applySource(plan, targetScope, room) {
+    if (!plan || (plan.eligibility && plan.eligibility.eligible === false)) {
+      wx.showToast({ title: (plan && plan.eligibility && plan.eligibility.reasonLabel) || '请先完成正式量房', icon: 'none' });
+      return;
+    }
     const source = buildSelectedSource(plan, targetScope, room);
     if (!source) return;
     const preferredWorkflowId = this.data.workflowId;
@@ -600,8 +661,16 @@ Page({
       ...item,
       selected: item.floorPlanId === source.floorPlanId,
     }));
+    const projectPickerState = buildProjectPickerView(
+      sources,
+      source.projectGroup || this.data.projectGroup,
+      ''
+    );
     this.setData({
       sources,
+      projectGroup: source.projectGroup || this.data.projectGroup,
+      projectSearch: '',
+      ...projectPickerState,
       selectedSource: source,
       heroResults: [],
       heroSlides: [],

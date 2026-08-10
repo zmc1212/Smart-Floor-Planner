@@ -89,6 +89,19 @@ export class AiWorkflowRepository {
     return [...summaries.values()];
   }
 
+  async listActiveForProjectIndex(input: { leadIds: bigint[]; operatorId: bigint }) {
+    if (!input.leadIds.length) return [];
+    return this.transaction
+      .select()
+      .from(aiWorkflows)
+      .where(and(
+        inArray(aiWorkflows.leadId, input.leadIds),
+        eq(aiWorkflows.operatorId, input.operatorId),
+        eq(aiWorkflows.status, 'active')
+      ))
+      .orderBy(desc(aiWorkflows.updatedAt), desc(aiWorkflows.id));
+  }
+
   async create(input: NewAiWorkflow) {
     const rows = await this.transaction.insert(aiWorkflows).values(input).returning();
     return rows[0];

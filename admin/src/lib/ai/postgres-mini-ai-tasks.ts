@@ -17,6 +17,7 @@ import { createPostgresAiWorkflow } from '@/lib/ai/postgres-workflow-service';
 import { resolveMiniAiFloorPlanTarget, renderMiniAiFloorPlanControlPng, type MiniAiTargetScope } from '@/lib/ai/mini-ai-floorplan';
 import type { MiniAiContext } from '@/lib/ai/mini-ai-auth';
 import type { MiniAiRenderMode } from '@/lib/ai/mini-ai-types';
+import { assertEligibleWorkflowFloorPlan } from '@/lib/ai/workflow-floorplan';
 
 export type CreateMiniAiTaskInput = {
   mode: MiniAiRenderMode;
@@ -133,6 +134,7 @@ export async function createPostgresMiniAiTask(input: CreateMiniAiTaskInput, con
   if (input.sourceResultTaskId && (!sourceTask || sourceTask.status !== 'succeeded')) throw new Error('来源成果不存在或尚未生成成功');
   if (input.mode !== 'floor_plan_render' && !space && !sourceTask) throw new Error('空间图片不存在或无权访问');
   if (input.floorPlanId && !plan) throw Object.assign(new Error('当前角色无权使用所选正式户型'), { status: 403 });
+  if (plan) assertEligibleWorkflowFloorPlan(plan);
   const target = plan ? resolveMiniAiFloorPlanTarget(plan.layoutData, input.targetScope, input.roomId) : null;
   if (input.floorPlanId && !target) throw new Error('正式户型缺少可用房间数据');
   const requestedLead = await accessibleLead(enterpriseId, context, input.leadId);

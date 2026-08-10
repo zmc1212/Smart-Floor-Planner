@@ -54,14 +54,16 @@ test('latest frame queue cancels a pending viewport frame', () => {
   assert.deepEqual(rendered, []);
 });
 
-test('editor constrains both pan and pinch viewports to the visible workspace', () => {
+test('editor keeps pan unrestricted and exposes a broad pinch zoom range', () => {
   const editorSource = fs.readFileSync(
     path.join(__dirname, '../packages/surveying/editor/surveying-editor.js'),
     'utf8'
   );
-  const constrainedViewportCalls = editorSource.match(/this\.constrainViewportToWorkspace\(\{/g) || [];
 
-  assert.equal(constrainedViewportCalls.length, 2);
-  assert.match(editorSource, /getViewportContentSafeArea\(rect\)/);
-  assert.match(editorSource, /surveyCanvasRenderer\.constrainViewportToSafeArea/);
+  assert.match(editorSource, /const MIN_SCALE = 0\.002;/);
+  assert.match(editorSource, /const MAX_SCALE = 4;/);
+  assert.doesNotMatch(editorSource, /constrainViewportToWorkspace/);
+  assert.doesNotMatch(editorSource, /constrainViewportToSafeArea/);
+  assert.match(editorSource, /offsetX: startViewport\.offsetX \+ dx/);
+  assert.match(editorSource, /offsetY: startViewport\.offsetY \+ dy/);
 });

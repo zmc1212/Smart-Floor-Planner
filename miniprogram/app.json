@@ -30,7 +30,10 @@
         "commission-records/commission-records",
         "acquisition-center/acquisition-center",
         "inspiration/inspiration",
-        "recommendations/index"
+        "recommendations/index",
+        "profile-edit/profile-edit",
+        "settings/settings",
+        "account-security/account-security"
       ]
     }
   ],

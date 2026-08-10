@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Legacy ZHouse IL2CPP method trace fixture",
+  "type": "object",
+  "required": ["fixtureVersion", "apkSha256", "methodId", "sequence", "input", "output"],
+  "properties": {
+    "fixtureVersion": { "const": 1 },
+    "apkSha256": {
+      "const": "F3FAB584E8849A071B2C1D7D57A8AAAC7E5891D53F56933FF0E5434292C29AB1"
+    },
+    "methodId": { "type": "string", "minLength": 1 },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "input": {},
+    "output": {},
+    "beforeState": {},
+    "afterState": {},
+    "notes": { "type": "string" }
+  },
+  "additionalProperties": false
+}

@@ -45,3 +45,10 @@ test('viewport gestures render on the primary canvas instead of the cursor overl
     /drawViewportInteractionFrame\(viewport\)[\s\S]*?this\.surveyCtx,[\s\S]*?dpr: this\.surveyCanvasDpr \|\| 1/
   );
 });
+
+test('releasing a straight-wall drag snapped to the start vertex closes immediately', () => {
+  assert.match(
+    editorScript,
+    /session\.alignmentSnapGuide\.type === 'start-vertex-closure'[\s\S]*?surveyGraph\.confirmClosure\(this\.draft\)[\s\S]*?已吸附起点并闭合/
+  );
+});

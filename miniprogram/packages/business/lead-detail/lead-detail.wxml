@@ -70,14 +70,22 @@
       <text>历史量房记录</text>
       <text>{{previousFloorPlans.length}} 份</text>
     </view>
-    <view class="measurement-record" wx:for="{{previousFloorPlans}}" wx:key="_id">
+    <view
+      class="measurement-record"
+      wx:for="{{previousFloorPlans}}"
+      wx:key="_id"
+      data-id="{{item._id}}"
+      bindtap="onContinueMeasure"
+      aria-role="button"
+      aria-label="继续量房 {{item.historyName}}"
+    >
       <view class="measurement-record-copy">
         <text class="measurement-record-name">{{item.historyName}}</text>
         <text class="measurement-record-meta">{{item.displayMeta}}</text>
       </view>
       <view class="measurement-record-actions">
-        <view class="measurement-record-continue" data-id="{{item._id}}" bindtap="onContinueMeasure">继续</view>
-        <view class="measurement-record-delete" data-id="{{item._id}}" bindtap="onDeleteMeasure">删除</view>
+        <view class="measurement-record-continue" data-id="{{item._id}}" catchtap="onContinueMeasure">继续</view>
+        <view class="measurement-record-delete" data-id="{{item._id}}" catchtap="onDeleteMeasure">删除</view>
       </view>
     </view>
   </view>

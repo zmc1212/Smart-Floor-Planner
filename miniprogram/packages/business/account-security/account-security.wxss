@@ -1,0 +1,9 @@
+@import "../account-common.wxss";
+
+.account-security-page .account-section-title:first-of-type {
+  margin-top: 54rpx;
+}
+
+.password-form .field-label {
+  min-width: 152rpx;
+}

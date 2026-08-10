@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   assertEligibleWorkflowFloorPlan,
   buildWorkflowFloorPlanContext,
+  getWorkflowFloorPlanEligibility,
   isEligibleWorkflowFloorPlan,
   resolveWorkflowImageMode,
 } from '@/lib/ai/workflow-floorplan';
@@ -49,6 +50,26 @@ test('workflow floor-plan eligibility requires a completed formal v4 plan', () =
       assert.equal((error as Error & { code?: string }).code, 'INVALID_WORKFLOW_FLOOR_PLAN');
       return true;
     }
+  );
+});
+
+test('workflow floor-plan eligibility exposes stable UI reason codes without weakening validation', () => {
+  assert.deepEqual(
+    getWorkflowFloorPlanEligibility({ status: 'draft', layoutData: layout }),
+    {
+      eligible: false,
+      reasonCode: 'survey_incomplete',
+      reasonLabel: '量房未完成',
+      errorMessage: '只能选择已完成的正式户型',
+    }
+  );
+  assert.equal(
+    getWorkflowFloorPlanEligibility({ status: 'completed', layoutData: [{ name: 'legacy' }] }).reasonCode,
+    'invalid_formal_graph'
+  );
+  assert.deepEqual(
+    getWorkflowFloorPlanEligibility({ status: 'completed', layoutData: layout }),
+    { eligible: true }
   );
 });
 

@@ -5,6 +5,8 @@ const path = require('node:path');
 const {
   decorateNavigator,
   decorateSourcePlan,
+  buildProjectPickerView,
+  chooseDefaultProjectGroup,
   decorateRecentResult,
   buildHeroSlides,
   hasActiveTasks,
@@ -97,6 +99,24 @@ test('preview and recent-task states keep real progress and all non-terminal job
   assert.equal(normalizeCredits(0), 0);
   assert.equal(normalizeCredits(null), 10);
   assert.equal(normalizeCredits(undefined), 10);
+});
+
+test('project picker groups backend-derived states and searches customer identity', () => {
+  const projects = [
+    decorateSourcePlan({ floorPlanId: '1', projectTitle: '年总 · 火凤凰', projectSubtitle: '主户型', projectGroup: 'in_progress', uiState: 'generating' }),
+    decorateSourcePlan({ floorPlanId: '2', projectTitle: '陈女士 · 云栖花园', projectSubtitle: '正式量房', projectGroup: 'ready', uiState: 'ready' }),
+    decorateSourcePlan({ floorPlanId: '3', projectTitle: '王先生 · 碧桂园', projectSubtitle: '草稿', projectGroup: 'needs_survey', uiState: 'needs_survey', eligibility: { eligible: false, reasonLabel: '量房未完成' } }),
+  ];
+  assert.equal(chooseDefaultProjectGroup(projects, ''), 'in_progress');
+  assert.equal(chooseDefaultProjectGroup(projects, '2'), 'ready');
+  assert.deepEqual(
+    buildProjectPickerView(projects, 'ready', '云栖').filteredProjects.map((item) => item.floorPlanId),
+    ['2']
+  );
+  assert.deepEqual(
+    buildProjectPickerView(projects, 'in_progress').projectGroups.map((item) => item.count),
+    [1, 1, 1]
+  );
 });
 
 test('hero carousel is scoped to the explicitly selected full floor plan', () => {
@@ -193,8 +213,42 @@ test('the next action starts with reference recreation and creates a real whole-
   assert.equal(readyAction.taskId, 'task-1');
 });
 
+test('project index task states drive truthful progress, recovery, stale, and continuation actions', () => {
+  const base = { targetLabel: '完整户型', navigationPreview: { state: 'missing' } };
+  assert.equal(buildPrimaryAction({
+    workflows,
+    selectedSource: { ...base, uiState: 'generating', latestGeneration: { id: 'task-1', status: 'processing', progress: 65 } },
+    selectedWorkflow: null,
+  }).taskId, 'task-1');
+  assert.equal(buildPrimaryAction({
+    workflows,
+    selectedSource: { ...base, uiState: 'retry', latestGeneration: { id: 'task-2', status: 'failed' } },
+    selectedWorkflow: null,
+  }).buttonLabel, '进入处理');
+  assert.equal(buildPrimaryAction({
+    workflows,
+    selectedSource: { ...base, uiState: 'stale', targetScope: 'whole_floor_plan' },
+    selectedWorkflow: null,
+  }).buttonLabel, '重建基准');
+  const continuation = buildPrimaryAction({
+    workflows,
+    selectedSource: { ...base, uiState: 'continue', latestGeneration: { id: 'task-3', status: 'succeeded', nextStageKey: 'soft_furnishing' } },
+    selectedWorkflow: null,
+  });
+  assert.equal(continuation.mode, 'soft_furnishing');
+  assert.equal(continuation.sourceResultTaskId, 'task-3');
+});
+
 test('AI Design home restores the v3 spatial workbench while keeping live map and scene states', () => {
   assert.match(pageWxml, /class="plan-navigator reference-plan-navigator"/);
+  assert.match(pageWxml, />AI设计工作台</);
+  assert.match(pageWxml, /class="project-hero-context"/);
+  assert.match(pageWxml, /bindtap="openSourcePicker"/);
+  assert.match(pageWxml, /class="project-group-tabs"/);
+  assert.match(pageWxml, /bindinput="onProjectSearch"/);
+  assert.match(pageWxml, /bindtap="selectProjectCard"/);
+  assert.match(pageWxml, /item\.statusLabel/);
+  assert.match(pageWxml, /item\.actionLabel/);
   assert.match(pageWxml, /class="plan-hero-swiper"/);
   assert.match(pageWxml, /bindtap="openHeroSlide"/);
   assert.match(pageWxml, /\/images\/ai-design-hero-v3\.png/);
@@ -222,11 +276,11 @@ test('AI Design home restores the v3 spatial workbench while keeping live map an
   assert.match(pageModelSource, /生成 3D 户型导览图/);
   assert.doesNotMatch(pageWxml, /class="workflow-grid"/);
   assert.doesNotMatch(pageWxml, />AI 设计</);
-  assert.match(pageWxss, /\.reference-plan-navigator\s*\{[\s\S]*margin:\s*calc\(-214rpx - var\(--ai-navigation-top, 24px\)\) -36rpx 0/);
-  assert.match(pageWxss, /\.reference-plan-stage\s*\{[\s\S]*height:\s*calc\(1018rpx \+ var\(--ai-navigation-top, 24px\)\)/);
+  assert.match(pageWxss, /\.reference-plan-navigator\s*\{[^}]*margin:\s*0 -36rpx/);
+  assert.match(pageWxss, /\.reference-plan-stage\s*\{[^}]*height:\s*760rpx/);
   assert.doesNotMatch(pageWxss, /\.reference-plan-stage\.has-default-hero\s*\{[\s\S]*height:/);
-  assert.match(pageWxss, /\.with-plan \.page-subtitle-line \.page-subtitle\s*\{[^}]*color:\s*#fff;[^}]*text-shadow:/);
-  assert.match(pageWxss, /\.with-plan \.project-chevron\s*\{[^}]*border-color:\s*#fff;[^}]*drop-shadow/);
+  assert.match(pageWxss, /\.with-plan \.page-subtitle-line \.page-subtitle\s*\{[^}]*color:\s*#6f7479;[^}]*text-shadow:\s*none/);
+  assert.match(pageWxss, /\.project-hero-context\s*\{[^}]*top:\s*28rpx/);
   assert.match(pageWxml, /\/images\/ai-design-hero-v3\.png/);
   assert.match(pageWxml, /class="scene-source-card"/);
   assert.match(pageWxml, />参考图复刻</);
@@ -254,6 +308,8 @@ test('AI Design home restores the v3 spatial workbench while keeping live map an
   assert.match(pageWxss, /\.scene-waypoint\s*\{[\s\S]*min-height:\s*54rpx/);
   assert.match(pageWxss, /\.discovery-panel\s*\{[\s\S]*margin:\s*-30rpx -36rpx 0/);
   assert.match(pageWxss, /\.secondary-action\s*\{[\s\S]*font-size:\s*24rpx/);
+  assert.match(pageWxss, /\.project-group-tab\s*\{[^}]*min-height:\s*68rpx/);
+  assert.match(pageWxss, /\.project-source-action\s*\{[^}]*min-height:\s*70rpx/);
   assert.match(
     pageWxss,
     /@media \(max-width: 360px\)[\s\S]*\.without-plan \.next-action\.standalone\s*\{[\s\S]*flex-direction:\s*row/

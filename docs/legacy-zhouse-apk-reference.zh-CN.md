@@ -60,6 +60,23 @@
 
 任何修复都必须保持正式契约：`FloorPlan.layoutData` 仅保存 `version: 4`、`measurementMode: 'surveying'` 和 `surveyGraph`；坐标、长度、墙厚、开口与层高均以毫米计。不得重新引入 `rooms`、`homeOutline`、`partitions` 或其他旧布局副本。
 
+## 独立还原引擎（2026-08-10）
+
+`research/legacy-zhouse-2d/` 是已建立的 APK 2D 独立还原实验室。它位于小程序包之外，
+不注册页面、不被 `miniprogram/` 或 `admin/` 导入，也不连接 BLE、API、登录态、租户数据
+或数据库。其研究模型使用独立的 `legacy-zhouse-2d-reconstruction/v1` 标识，不能写入正式
+`FloorPlan.layoutData`。
+
+第一阶段已实现独立包边界、方法溯源台账、毫米制点/线段/多边形运算、墙中心线双侧偏移、
+平台无关绘制命令缓冲区和隔离测试。`House2DAlgorithm` 的 10 个首批方法已经记录类型、
+签名和 RVA；它们当前均为 `located`，没有任何方法因名称相似或当前小程序行为而被误标为
+已还原。执行容器会拒绝运行尚未达到 `reconstructed` 的方法。
+
+后续每个方法必须依次保留 native 伪代码、ARM64 静态核对、隔离 APK 动态轨迹和差分回归
+证据，才能更新为 `decompiled`、`reconstructed`、`verified-static`、
+`verified-runtime` 或 `matched`。该研究轨不会改变正式量房唯一入口、version-4 墙图、
+API、角色权限或 BLE/手动测量审计。
+
 ## 修复专题索引
 
 | 编号 | 专题 | 状态 | 参考证据 |

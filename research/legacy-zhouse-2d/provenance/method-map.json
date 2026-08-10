@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "reference": {
+    "package": "com.zbj.zhouse",
+    "version": "26.7.16",
+    "versionCode": 440,
+    "sha256": "F3FAB584E8849A071B2C1D7D57A8AAAC7E5891D53F56933FF0E5434292C29AB1",
+    "architecture": "arm64-v8a",
+    "binary": "lib/arm64-v8a/libil2cpp.so",
+    "metadataArtifact": ".codex-tmp/zhouse-il2cpp/dump/dump.cs",
+    "addressArtifact": ".codex-tmp/zhouse-il2cpp/dump/script.json"
+  },
+  "statusOrder": [
+    "located",
+    "decompiled",
+    "reconstructed",
+    "verified-static",
+    "verified-runtime",
+    "matched"
+  ],
+  "methods": [
+    {
+      "id": "House2DAlgorithm.CanChangeThick",
+      "type": "ZhiBenJia.ZHouse.Algorithm.Measure.House2DAlgorithm",
+      "signature": "bool CanChangeThick(HouseWall2D selectWall)",
+      "rva": "0x3E3F0A8",
+      "status": "located",
+      "implementation": null,
+      "evidence": ["dump.cs metadata declaration"]
+    },
+    {
+      "id": "House2DAlgorithm.ChangeInsideWallThick",
+      "type": "ZhiBenJia.ZHouse.Algorithm.Measure.House2DAlgorithm",
+      "signature": "HouseWall2D ChangeInsideWallThick(HouseWall2D selectWall, LineSegment2D changeLine, int thick)",
+      "rva": "0x3E3FFDC",
+      "status": "located",
+      "implementation": null,
+      "evidence": ["dump.cs metadata declaration"]
+    },
+    {
+      "id": "House2DAlgorithm.AddWall.wall",
+      "type": "ZhiBenJia.ZHouse.Algorithm.Measure.House2DAlgorithm",
+      "signature": "AddWallResult AddWall(HouseWall2D wall, out Nullable<HouseWall2D> newWall, string from = \"\")",
+      "rva": "0x3E411D0",
+      "status": "located",
+      "implementation": null,
+      "evidence": ["dump.cs metadata declaration"]
+    },
+    {
+      "id": "House2DAlgorithm.AddWall.points",
+      "type": "ZhiBenJia.ZHouse.Algorithm.Measure.House2DAlgorithm",
+      "signature": "AddWallResult AddWall(HousePoint2D p0, HousePoint2D p1, int thick, out Nullable<HouseWall2D> newWall, out HouseRoom3D originRoom, out HouseRoom3D newRoom, string from)",
+      "rva": "0x3E3EDBC",
+      "status": "located",
+      "implementation": null,
+      "evidence": ["dump.cs metadata declaration"]
+    },
+    {
+      "id": "House2DAlgorithm.AddCurveWall",
+      "type": "ZhiBenJia.ZHouse.Algorithm.Measure.House2DAlgorithm",
+      "signature": "HouseCurveWall2D AddCurveWall(HousePoint2D p0, HousePoint2D p1, HousePoint2D control, int thick, ArcModeEnum curveMode = 0)",
+      "rva": "0x3E4140C",
+      "status": "located",
+      "implementation": null,
+      "evidence": ["dump.cs metadata declaration"]
+    },
+    {
+      "id": "House2DAlgorithm.AddRoom",
+      "type": "ZhiBenJia.ZHouse.Algorithm.Measure.House2DAlgorithm",
+      "signature": "bool AddRoom(HouseRoom2Ds rooms, List<HousePoint2D> inPoints, List<HousePoint2D> outPoints, bool calculateOutPoints = true)",
+      "rva": "0x3E414EC",
+      "status": "located",
+      "implementation": null,
+      "evidence": ["dump.cs metadata declaration"]
+    },
+    {
+      "id": "House2DAlgorithm.UpdateRoomLine",
+      "type": "ZhiBenJia.ZHouse.Algorithm.Measure.House2DAlgorithm",
+      "signature": "void UpdateRoomLine(HouseRoom3D room)",
+      "rva": "0x3E411B4",
+      "status": "located",
+      "implementation": null,
+      "evidence": ["dump.cs metadata declaration"]
+    },
+    {
+      "id": "House2DAlgorithm.FindRoom.point",
+      "type": "ZhiBenJia.ZHouse.Algorithm.Measure.House2DAlgorithm",
+      "signature": "HouseRoom3D FindRoom(HousePoint2D point, bool onBoundary = true, bool isArc = false, int layerId = int.MinValue, float tolerance = 2, bool containOutdoor = true)",
+      "rva": "0x3E41630",
+      "status": "located",
+      "implementation": null,
+      "evidence": ["dump.cs metadata declaration"]
+    },
+    {
+      "id": "House2DAlgorithm.GetRoomsContour",
+      "type": "ZhiBenJia.ZHouse.Algorithm.Measure.House2DAlgorithm",
+      "signature": "List<ReadOnlyCollection<HousePoint2D>> GetRoomsContour()",
+      "rva": "0x3E421A4",
+      "status": "located",
+      "implementation": null,
+      "evidence": ["dump.cs metadata declaration"]
+    },
+    {
+      "id": "House2DAlgorithm.DeleteRoom",
+      "type": "ZhiBenJia.ZHouse.Algorithm.Measure.House2DAlgorithm",
+      "signature": "void DeleteRoom(HouseRoom2Ds rooms, HouseRoom3D room)",
+      "rva": "0x3E426CC",
+      "status": "located",
+      "implementation": null,
+      "evidence": ["dump.cs metadata declaration"]
+    }
+  ]
+}

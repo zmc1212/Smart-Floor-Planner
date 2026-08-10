@@ -613,8 +613,11 @@ permission, or workflow changes.
   retained without migration or deletion. The `/leads` administration view now
   uses the shared Ant Design ProComponents pattern (`PageContainer` and
   `ProTable`) for server-side status filtering and pagination, plus an Ant
-  Design detail drawer for responsible-staff assignment, formal-floor-plan
-  review, and follow-up records. A shared `ModuleOverview` derives visible-page
+  Design detail drawer for read-only creation-time designer ownership,
+  formal-floor-plan review, and follow-up records. The drawer no longer exposes
+  a reassignment control, and `PUT /api/leads/[id]` rejects `assignedTo` writes:
+  measurer--designer rebinding remains in `/staff` and affects only future leads.
+  A shared `ModuleOverview` derives visible-page
   funnel counts from that same paginated list response. List and detail reads still cancel superseded
   requests, so stale responses cannot overwrite newer filtering or selected
   lead state. The customer workflow now uses the canonical four-step rail
@@ -637,6 +640,17 @@ permission, or workflow changes.
   Kuaile floor-plan association. Mini Program `GET /api/floorplans/[id]` also
   includes the linked lead's minimal identity and community summary, so direct
   formal-survey entry can render the correct project title.
+- Display contract (2026-08-10): `lead_floor_plans.measurement_sequence` is a
+  stable ordinal per lead. Existing links are backfilled by formal-plan creation
+  order; a new link takes the next ordinal while its lead row is locked.
+  Floor-plan DTOs expose a read-only `display` object whose primary title prefers
+  the linked community and whose secondary identity is `customer · 第 N 次量房`.
+  Persisted `FloorPlan.name` remains a compatibility fallback. `/floorplans`,
+  its viewer, Mini Program lead/history and Home cards, and the Mini Program
+  AI-source selector consume this contract; tenant scope and role checks are
+  unchanged. Because the linked tables use forced RLS, migration `0018` runs
+  its historical backfill while both table owners temporarily disable forced RLS
+  inside the migration transaction, then restores it before commit.
 - Components/helpers: `FloorPlanViewer`, `FloorPlanViewerWrapper`, `survey-graph`,
   `surveyDimensionPlan`, `surveyWallSolidPlan`, and `dxf`. The dependency-free
   dimension and wall-solid planners are authored under `miniprogram/utils` and
@@ -1342,6 +1356,9 @@ permission, or workflow changes.
   RoomiAI/import assets, uploads, and local database backups; those assets must
   be injected or mounted at runtime. To rebuild only the admin image without
   reusing Docker build cache, run `npm run docker:build-admin` from `admin/`.
+  `npm run docker:restart` rebuilds the admin image, runs the explicit one-shot
+  migration, and force-recreates only the admin service; it does not restart
+  PostgreSQL.
 
 ## Core Models
 

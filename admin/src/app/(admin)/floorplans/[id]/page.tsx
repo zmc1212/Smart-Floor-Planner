@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { parsePostgresId } from '@/db/postgres-dto';
 import { FloorPlanRepository, LeadRepository } from '@/db/repositories';
 import FloorPlanViewerWrapper from '@/components/FloorPlanViewerWrapper';
+import { getFloorPlanDisplay } from '@/lib/floor-plan-display';
 import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
 import { getSessionUser } from '@/lib/session';
 
@@ -37,9 +38,16 @@ export default async function FloorPlanDetailPage({ params }: { params: Promise<
   }
   if (!result) return notFound();
   const { plan, lead } = result;
+  const display = getFloorPlanDisplay(plan, {
+    lead,
+    measurementSequence: lead?.floorPlanRecords.find(
+      (record) => record.id === plan.id
+    )?.measurementSequence,
+  });
   const serializedPlan = {
       _id: plan.id.toString(),
-      name: plan.name,
+      name: display.projectTitle,
+      display,
       layoutData: plan.layoutData,
       status: plan.status,
       source: plan.source,

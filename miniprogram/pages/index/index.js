@@ -70,8 +70,16 @@ function buildRecentPlans(plans) {
     const area = Number(plan.area);
     const customerName = normalizeProjectLabel(plan.customerName);
     const communityName = normalizeProjectLabel(plan.communityName);
+    const display = plan && typeof plan.display === 'object' ? plan.display : null;
     const fallbackName = normalizeProjectLabel(plan.name) || '未命名方案';
-    const displayName = [customerName, communityName].filter(Boolean).join(' · ') || fallbackName;
+    const displayName = normalizeProjectLabel(display && display.projectTitle)
+      || communityName
+      || customerName
+      || fallbackName;
+    const projectSubtitle = normalizeProjectLabel(display && display.projectSubtitle)
+      || [customerName && customerName !== displayName ? customerName : '', '量房记录']
+        .filter(Boolean)
+        .join(' · ');
     const updatedLabel = formatDateLabel(plan.updatedAt || plan.createdAt);
     const progressLabel = Number.isFinite(area) && area > 0
       ? `${area}㎡`
@@ -87,9 +95,7 @@ function buildRecentPlans(plans) {
       meta: updatedLabel,
       updatedLabel: `更新于 ${updatedLabel}`,
       progressLabel,
-      measureSubtitle: statusMeta.className === 'status-completed'
-        ? '正式户型已完成，可查看与继续编辑'
-        : `${updatedLabel} 更新，数据已同步`,
+      measureSubtitle: projectSubtitle,
       statusLabel: statusMeta.label,
       statusClass: statusMeta.className,
       roomCount: Number.isFinite(roomCount) && roomCount > 0 ? roomCount : 0,

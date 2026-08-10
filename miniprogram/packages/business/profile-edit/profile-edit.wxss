@@ -1,0 +1,128 @@
+@import "../account-common.wxss";
+
+.account-profile-card {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  min-height: 220rpx;
+  margin-top: 0;
+  margin-bottom: -72rpx;
+  padding: 28rpx 34rpx;
+  align-items: center;
+  border-radius: 34rpx;
+  background: #fff;
+  box-shadow: 0 18rpx 40rpx rgba(42, 68, 51, 0.1);
+  box-sizing: border-box;
+  transform: translateY(-72rpx);
+}
+
+.account-avatar-shell {
+  position: relative;
+  width: 156rpx;
+  min-width: 156rpx;
+  max-width: 156rpx;
+  height: 156rpx;
+  min-height: 156rpx;
+  max-height: 156rpx;
+  margin: 0 28rpx 0 0;
+  overflow: hidden;
+  border-radius: 50%;
+  box-sizing: border-box;
+  flex: none;
+  background: #e6efe8;
+}
+
+.account-avatar-picker {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  width: 156rpx;
+  height: 156rpx;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 50%;
+  box-sizing: border-box;
+  background: transparent;
+  line-height: 0;
+}
+
+.account-profile-avatar {
+  display: block;
+  width: 156rpx;
+  min-width: 156rpx;
+  max-width: 156rpx;
+  height: 156rpx;
+  min-height: 156rpx;
+  max-height: 156rpx;
+  border-radius: 78rpx;
+  box-sizing: border-box;
+  flex: none;
+}
+
+.account-avatar-camera {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 46rpx;
+  background: rgba(13, 111, 56, 0.82);
+  color: #fff;
+  font-size: 20rpx;
+  line-height: 46rpx;
+  text-align: center;
+}
+
+.account-profile-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.account-profile-name {
+  display: inline-block;
+  max-width: 250rpx;
+  overflow: hidden;
+  color: #1d201e;
+  font-size: 42rpx;
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.account-profile-role {
+  display: inline-block;
+  margin-left: 12rpx;
+  padding: 7rpx 16rpx;
+  border-radius: 99rpx;
+  background: #27bd68;
+  color: #fff;
+  font-size: 22rpx;
+  line-height: 1.25;
+  vertical-align: middle;
+}
+
+.account-profile-change {
+  display: flex;
+  margin-top: 24rpx;
+  align-items: center;
+  color: #0dac58;
+  font-size: 26rpx;
+  line-height: 1.4;
+}
+
+.account-profile-change-arrow {
+  width: 14rpx;
+  height: 14rpx;
+  margin-left: 12rpx;
+  border-top: 3rpx solid #0dac58;
+  border-right: 3rpx solid #0dac58;
+  transform: rotate(45deg);
+}
+
+.profile-name-surface {
+  margin-top: 38rpx;
+}

@@ -18,6 +18,7 @@ import {
   getEffectivePermissions,
   getWorkbenchType,
 } from '@/lib/staff-access';
+import { resolveProfileAvatarUrl } from '@/lib/miniprogram-profile';
 
 export const dynamic = 'force-dynamic';
 
@@ -219,7 +220,13 @@ export async function POST(request: Request) {
       user: {
         nickname:
           user?.nickname || staff.displayName || staff.username || '用户',
-        avatar: user?.avatar || '',
+        avatar: user
+          ? resolveProfileAvatarUrl({
+              request,
+              userId: user.id.toString(),
+              avatar: user.avatar,
+            })
+          : '',
         phone: user?.phone || staff.phone || '',
         role: 'staff',
         staffRole: staff.role,

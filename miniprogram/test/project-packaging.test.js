@@ -64,6 +64,9 @@ test('main package contains only primary tabs and low-frequency flows are split 
         'acquisition-center/acquisition-center',
         'inspiration/inspiration',
         'recommendations/index',
+        'profile-edit/profile-edit',
+        'settings/settings',
+        'account-security/account-security',
       ],
     },
   ]);

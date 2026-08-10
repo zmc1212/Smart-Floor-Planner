@@ -5,6 +5,7 @@ import {
 } from '@/db/postgres-dto';
 import {
   FloorPlanRepository,
+  type FloorPlanListOptions,
   LeadRepository,
   UserRepository,
 } from '@/db/repositories';
@@ -28,6 +29,26 @@ interface FloorPlanRequestBody {
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown error';
+}
+
+async function listFloorPlansWithDisplay(
+  transaction: PostgresTransaction,
+  options: FloorPlanListOptions
+) {
+  const result = await new FloorPlanRepository(transaction).list(options);
+  const leadsByPlan = await new LeadRepository(transaction).findByFloorPlanIds(
+    result.rows.map((plan) => plan.id)
+  );
+  return {
+    data: result.rows.map((plan) => {
+      const lead = leadsByPlan.get(plan.id);
+      const measurementSequence = lead?.floorPlanRecords.find(
+        (record) => record.id === plan.id
+      )?.measurementSequence;
+      return floorPlanToDto(plan, { lead, measurementSequence });
+    }),
+    total: result.total,
+  };
 }
 
 async function resolveCreatorId(
@@ -84,7 +105,7 @@ export async function POST(request: Request) {
       );
     }
     const planStatus = body.status || 'completed';
-    const plan = await withMiniProgramPostgresTransaction(
+    const createdResult = await withMiniProgramPostgresTransaction(
       context,
       async (transaction) => {
         const creatorId = await resolveCreatorId(transaction, context);
@@ -106,6 +127,7 @@ export async function POST(request: Request) {
         });
         if (!created) throw new Error('Failed to create floor plan');
 
+        let linkedLead = null;
         if (body.leadId) {
           const leadRepository = new LeadRepository(transaction);
           const lead = await leadRepository.findById(
@@ -128,12 +150,21 @@ export async function POST(request: Request) {
             lead.id,
             created.id
           );
+          linkedLead = await leadRepository.findById(lead.id);
         }
-        return created;
+        return { plan: created, lead: linkedLead };
       }
     );
     return NextResponse.json(
-      { success: true, data: floorPlanToDto(plan) },
+      {
+        success: true,
+        data: floorPlanToDto(createdResult.plan, {
+          lead: createdResult.lead,
+          measurementSequence: createdResult.lead?.floorPlanRecords.find(
+            (record) => record.id === createdResult.plan.id
+          )?.measurementSequence,
+        }),
+      },
       { status: 201 }
     );
   } catch (error: unknown) {
@@ -167,9 +198,9 @@ export async function GET(request: Request) {
     const result = miniContext
       ? await withMiniProgramPostgresTransaction(
           miniContext,
-          (transaction) => {
+          async (transaction) => {
             const staff = miniContext.staff;
-            return new FloorPlanRepository(transaction).list({
+            return listFloorPlansWithDisplay(transaction, {
               ...baseOptions,
               staffId:
                 staff && staff.role !== 'enterprise_admin'
@@ -185,7 +216,7 @@ export async function GET(request: Request) {
           const adminContext = await getTenantContext(request);
           if (!adminContext) return null;
           return withAdminPostgresTransaction(adminContext, (transaction) =>
-            new FloorPlanRepository(transaction).list({
+            listFloorPlansWithDisplay(transaction, {
               ...baseOptions,
               staffId:
                 adminContext.role === 'designer' ||
@@ -204,7 +235,7 @@ export async function GET(request: Request) {
     }
     return NextResponse.json({
       success: true,
-      data: result.rows.map(floorPlanToDto),
+      data: result.data,
       pagination: {
         total: result.total,
         page,

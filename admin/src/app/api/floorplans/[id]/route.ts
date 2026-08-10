@@ -55,7 +55,12 @@ export async function GET(
     return NextResponse.json({
       success: true,
       data: {
-        ...floorPlanToDto(plan),
+        ...floorPlanToDto(plan, {
+          lead,
+          measurementSequence: lead?.floorPlanRecords.find(
+            (record) => record.id === plan.id
+          )?.measurementSequence,
+        }),
         communityName: lead?.communityName || null,
         lead: lead
           ? {

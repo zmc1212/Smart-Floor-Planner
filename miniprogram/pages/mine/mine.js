@@ -3,6 +3,7 @@ const api = require('../../utils/api.js');
 const { openSurveyingEditor } = require('../../utils/surveyNavigation.js');
 const { openAIDesignTab } = require('../../utils/aiDesignNavigation.js');
 const { canAccessAIDesign } = require('../../utils/aiDesignAccess.js');
+const session = require('../../utils/session.js');
 const {
   buildWorkbenchActions,
   buildDashboardSlices,
@@ -248,11 +249,25 @@ Page({
     try {
       const res = await api.request('/floorplans', 'GET');
       if (res.success && res.data) {
-        const floorPlans = res.data.map((item) => ({
-          ...item,
-          roomCount: getFloorPlanRoomCount(item.layoutData),
-          createdAt: formatFloorPlanDate(item.createdAt)
-        }));
+        const floorPlans = res.data.map((item) => {
+          const roomCount = getFloorPlanRoomCount(item.layoutData);
+          const createdAt = formatFloorPlanDate(item.createdAt);
+          const projectSubtitle = item.display && item.display.projectSubtitle
+            ? item.display.projectSubtitle
+            : '';
+          return {
+            ...item,
+            projectTitle: item.display && item.display.projectTitle
+              ? item.display.projectTitle
+              : (item.name || '未命名户型'),
+            projectSubtitle,
+            projectMeta: [projectSubtitle, createdAt, `${roomCount} 个空间`]
+              .filter(Boolean)
+              .join(' · '),
+            roomCount,
+            createdAt
+          };
+        });
         this.setData({ floorPlans, floorPlansLoading: false });
         return;
       }
@@ -399,28 +414,24 @@ Page({
     }
   },
 
+  onEditProfile() {
+    wx.navigateTo({ url: '/packages/business/profile-edit/profile-edit' });
+  },
+
+  onOpenSettings() {
+    wx.navigateTo({ url: '/packages/business/settings/settings' });
+  },
+
   onOpenAccountSecurity() {
-    const profile = this.data.mineData.profile || FALLBACK_PROFILE;
-    wx.showActionSheet({
-      itemList: [
-        `账号：${profile.name || '未设置'}`,
-        `角色：${profile.roleLabel || '普通用户'}`,
-        `手机：${profile.phoneMasked || '未绑定'}`,
-        '退出登录'
-      ],
-      success: (res) => {
-        if (res.tapIndex === 3) this.onLogout();
-      }
-    });
+    wx.navigateTo({ url: '/packages/business/account-security/account-security' });
   },
 
   clearSession() {
-    app.globalData.openid = null;
-    app.globalData.userInfo = null;
-    app.globalData.token = null;
-    wx.removeStorageSync('openid');
-    wx.removeStorageSync('userInfo');
-    wx.removeStorageSync('token');
+    session.clearSession();
+    this.resetLoggedOutState();
+  },
+
+  resetLoggedOutState() {
     this.setData({
       isLoggedIn: false,
       isStaff: false,
@@ -446,15 +457,11 @@ Page({
   },
 
   onLogout() {
-    wx.showModal({
-      title: '退出登录',
-      content: '确定要退出当前账号吗？',
-      confirmText: '退出',
-      success: (res) => {
-        if (res.confirm) {
-          this.clearSession();
-          wx.showToast({ title: '已退出', icon: 'success' });
-        }
+    session.confirmLogout({
+      redirect: false,
+      onCleared: () => {
+        this.resetLoggedOutState();
+        wx.showToast({ title: '已退出', icon: 'success' });
       }
     });
   }

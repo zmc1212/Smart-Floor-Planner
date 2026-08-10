@@ -8,6 +8,32 @@ const API_BASE_URLS = Object.freeze({
 const ACTIVE_API_ENVIRONMENT = 'local';
 
 let isShowingAuthModal = false;
+const session = require('./session.js');
+
+function handleUnauthorized(url, token) {
+  console.warn(`Unauthorized request to ${url}, clearing session. Token present: ${!!token}`);
+  session.clearSession();
+
+  const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+  const currentPage = pages[pages.length - 1];
+  const isLoginPage = currentPage && currentPage.route === 'packages/business/login/login';
+  if (isLoginPage || isShowingAuthModal) return;
+
+  isShowingAuthModal = true;
+  wx.showModal({
+    title: '登录已过期',
+    content: '您的登录信息已过期或无效，请重新登录。',
+    showCancel: true,
+    confirmText: '去登录',
+    cancelText: '取消',
+    success: (modalRes) => {
+      if (modalRes.confirm) session.goToLogin();
+    },
+    complete: () => {
+      isShowingAuthModal = false;
+    }
+  });
+}
 
 function normalizeBaseUrl(baseUrl) {
   return String(baseUrl || '').replace(/\/+$/, '');
@@ -54,41 +80,7 @@ function request(url, method = 'GET', data = {}, options = {}) {
       },
       success: (res) => {
         if (res.statusCode === 401) {
-          console.warn(`Unauthorized request to ${url}, clearing session. Token present: ${!!token}`);
-          if (token) {
-            console.warn(`Token prefix: ${token.substring(0, 10)}...${token.substring(token.length - 10)}`);
-          }
-          
-          if (app && app.globalData) {
-            app.globalData.token = null;
-            app.globalData.userInfo = null;
-          }
-          wx.removeStorageSync('token');
-          wx.removeStorageSync('userInfo');
-          
-          const pages = getCurrentPages();
-          const currentPage = pages[pages.length - 1];
-          const isLoginPage = currentPage && currentPage.route === 'packages/business/login/login';
-
-          if (!isLoginPage && !isShowingAuthModal) {
-            isShowingAuthModal = true;
-            wx.showModal({
-              title: '登录已过期',
-              content: '您的登录信息已过期或无效，请重新登录。',
-              showCancel: true,
-              confirmText: '去登录',
-              cancelText: '取消',
-              success: (modalRes) => {
-                if (modalRes.confirm) {
-                  wx.reLaunch({ url: '/packages/business/login/login' });
-                }
-              },
-              complete: () => {
-                isShowingAuthModal = false;
-              }
-            });
-          }
-          
+          handleUnauthorized(url, token);
           reject({ error: 'Unauthorized', statusCode: 401 });
           return;
         }
@@ -112,6 +104,41 @@ function request(url, method = 'GET', data = {}, options = {}) {
     };
 
     send(0);
+  });
+}
+
+function uploadProfileAvatar(filePath) {
+  const app = getApp();
+  const token = (app && app.globalData && app.globalData.token) || wx.getStorageSync('token');
+  const baseUrl = getBaseUrls()[0];
+  return new Promise((resolve, reject) => {
+    wx.uploadFile({
+      url: `${baseUrl}/miniprogram/profile/avatar`,
+      filePath,
+      name: 'file',
+      timeout: 30000,
+      header: { Authorization: token ? `Bearer ${token}` : '' },
+      success(res) {
+        let payload = null;
+        try {
+          payload = JSON.parse(res.data || '{}');
+        } catch (error) {
+          reject({ error: '头像上传响应无法解析' });
+          return;
+        }
+        if (res.statusCode === 401) {
+          handleUnauthorized('/miniprogram/profile/avatar', token);
+          reject({ error: '登录已过期，请重新登录', statusCode: 401 });
+          return;
+        }
+        if (res.statusCode >= 200 && res.statusCode < 300 && payload.success) {
+          resolve(payload);
+          return;
+        }
+        reject(payload || { error: '头像上传失败' });
+      },
+      fail: reject
+    });
   });
 }
 
@@ -189,6 +216,7 @@ module.exports = {
   getBaseUrls,
   ACTIVE_API_ENVIRONMENT,
   API_BASE_URLS,
+  uploadProfileAvatar,
   phoneLogin,
   passwordLogin
 };

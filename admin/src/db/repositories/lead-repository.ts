@@ -8,6 +8,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  max,
   or,
   type SQL,
 } from 'drizzle-orm';
@@ -26,7 +27,9 @@ export type LeadRecord = typeof leads.$inferSelect;
 export type LeadUpdate = Partial<
   Omit<NewLead, 'id' | 'createdAt' | 'updatedAt'>
 >;
-export type LeadFloorPlanRecord = typeof floorPlans.$inferSelect;
+export type LeadFloorPlanRecord = typeof floorPlans.$inferSelect & {
+  measurementSequence: number;
+};
 
 export interface LeadStaffSummary {
   id: bigint;
@@ -116,6 +119,7 @@ export class LeadRepository {
       .select({
         leadId: leadFloorPlans.leadId,
         floorPlanId: leadFloorPlans.floorPlanId,
+        measurementSequence: leadFloorPlans.measurementSequence,
       })
       .from(leadFloorPlans)
       .where(inArray(leadFloorPlans.leadId, leadIds));
@@ -137,12 +141,15 @@ export class LeadRepository {
             .orderBy(desc(floorPlans.createdAt), desc(floorPlans.id))
         : [];
     const planMap = new Map(planRows.map((plan) => [plan.id, plan]));
+    const linkMap = new Map(
+      links.map((link) => [`${link.leadId}:${link.floorPlanId}`, link])
+    );
     const leadPlanMap = new Map<bigint, LeadFloorPlanRecord[]>();
     for (const link of links) {
       const plan = planMap.get(link.floorPlanId);
       if (!plan) continue;
       const values = leadPlanMap.get(link.leadId) ?? [];
-      values.push(plan);
+      values.push({ ...plan, measurementSequence: link.measurementSequence });
       leadPlanMap.set(link.leadId, values);
     }
 
@@ -185,7 +192,13 @@ export class LeadRepository {
       ...row,
       floorPlanRecords: leadPlanMap.get(row.id) ?? [],
       primaryFloorPlanRecord: row.primaryFloorPlanId
-        ? planMap.get(row.primaryFloorPlanId) ?? null
+        ? (() => {
+            const plan = planMap.get(row.primaryFloorPlanId);
+            const link = linkMap.get(`${row.id}:${row.primaryFloorPlanId}`);
+            return plan && link
+              ? { ...plan, measurementSequence: link.measurementSequence }
+              : null;
+          })()
         : null,
       assignedUser: row.assignedTo
         ? staffMap.get(row.assignedTo) ?? null
@@ -283,6 +296,27 @@ export class LeadRepository {
     return (await this.attachRelations([rows[0].lead]))[0] ?? null;
   }
 
+  async findByFloorPlanIds(floorPlanIds: bigint[]) {
+    if (!floorPlanIds.length) return new Map<bigint, LeadWithRelations>();
+    const rows = await this.transaction
+      .select({ lead: leads })
+      .from(leadFloorPlans)
+      .innerJoin(leads, eq(leadFloorPlans.leadId, leads.id))
+      .where(inArray(leadFloorPlans.floorPlanId, floorPlanIds))
+      .orderBy(desc(leads.createdAt), desc(leads.id));
+    const relatedLeads = await this.attachRelations(
+      Array.from(new Map(rows.map((row) => [row.lead.id, row.lead])).values())
+    );
+    const requestedIds = new Set(floorPlanIds);
+    const result = new Map<bigint, LeadWithRelations>();
+    relatedLeads.forEach((lead) => {
+      lead.floorPlanRecords.forEach((plan) => {
+        if (requestedIds.has(plan.id) && !result.has(plan.id)) result.set(plan.id, lead);
+      });
+    });
+    return result;
+  }
+
   async create(input: NewLead) {
     const rows = await this.transaction.insert(leads).values(input).returning();
     return rows[0];
@@ -308,6 +342,7 @@ export class LeadRepository {
         .select()
         .from(leads)
         .where(eq(leads.id, leadId))
+        .for('update')
         .limit(1),
       this.transaction
         .select()
@@ -320,10 +355,27 @@ export class LeadRepository {
       throw new Error('Lead and floor plan belong to different enterprises');
     }
 
-    await this.transaction
-      .insert(leadFloorPlans)
-      .values({ leadId, floorPlanId })
-      .onConflictDoNothing();
+    const existingLink = await this.transaction
+      .select({ measurementSequence: leadFloorPlans.measurementSequence })
+      .from(leadFloorPlans)
+      .where(and(
+        eq(leadFloorPlans.leadId, leadId),
+        eq(leadFloorPlans.floorPlanId, floorPlanId)
+      ))
+      .limit(1);
+    if (!existingLink[0]) {
+      const sequences = await this.transaction
+        .select({ value: max(leadFloorPlans.measurementSequence) })
+        .from(leadFloorPlans)
+        .where(eq(leadFloorPlans.leadId, leadId));
+      await this.transaction
+        .insert(leadFloorPlans)
+        .values({
+          leadId,
+          floorPlanId,
+          measurementSequence: Number(sequences[0]?.value ?? 0) + 1,
+        });
+    }
     const rows = await this.transaction
       .update(leads)
       .set({

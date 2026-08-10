@@ -7,20 +7,20 @@ related_targets: ["miniprogram/pages/ai-design/ai-design.js","miniprogram/pages/
 
 ## Scope
 
-`pages/ai-design/ai-design` is the native Mini Program's project-aware design navigation surface. Mode: Operate with an immersive spatial entry.
+`pages/ai-design/ai-design` is the native Mini Program's project-aware design navigation surface. Mode: Operate with an immersive spatial entry and a project-switching bottom sheet.
 
 ## Audience and Task
 
-Enterprise staff choose a specific accessible customer floor plan or room, understand the current design-scheme stage, choose one of four implemented AI tasks, continue the server-derived next action, and review recent generated results.
+Enterprise staff find a specific accessible customer project, distinguish an active workflow from an executing generation, recover failed or stale work, start from an eligible completed formal survey, or return an ineligible record to the sole formal surveying flow. Once selected, they choose the complete plan or one closed room, continue one of four implemented AI tasks, and review recent results.
 
 ## Constraints
 
-Preserve tenant and role-scoped sources, enterprise credits, provider availability, workflow-selection rules, the four implemented task modes, source clearing, the shared custom TabBar, and the iPhone 13 Pro `390x844` baseline. The custom navigation must reserve the measured WeChat capsule lane. Formal-plan geometry must come from the version-4 survey graph read model; never substitute a static sample plan, imply unavailable coordinates, hide a paid action's point cost, or make a paid preview task implicitly. A staff member with multiple leads must never see one lead's AI floor-plan image while another plan is selected.
+Preserve tenant, role, and current-operator boundaries; enterprise credits; provider availability; workflow-selection rules; the four implemented task modes; source clearing; the shared custom TabBar; and the iPhone 13 Pro `390x844` baseline. The custom navigation reserves the measured WeChat capsule lane. The sheet covers the custom TabBar and includes bottom safe-area padding. Formal-plan geometry comes only from the version-4 survey graph read model. Ineligible projects never create an AI task or credit hold and only navigate through `utils/surveyNavigation.js`.
 
 ## Direction
 
-`/images/ai-design-hero-v3.png` remains the warm default hero for the unselected state and for any selected plan without an eligible result. Only an explicitly selected formal plan may replace it with a tappable carousel of at most five successful `floor_plan_render` outputs created by the current operator, with exact matching `floorPlanId` and `targetScope: whole_floor_plan`. The page fetches this bounded set from the server instead of filtering its paginated recent history, so a surveyor's older result for the chosen customer remains discoverable. Room renders, other modes, stale results, and other leads are excluded. Default and generated selected-plan visuals both extend behind the custom header with an equal flow-height compensation, so the hero reaches the top without displacing the workbench. The carousel shows the actual AI output, labels it natively, and opens that exact result. The selected-plan workbench retains the four-stage rail, four implemented tasks, one cost-disclosing next action, and a truthful horizontal scope rail. The no-plan state retains the warm four-waypoint spatial tour.
+The compact emerald project stage uses `/images/ai-design-hero-v3.png` until an explicitly selected formal plan has a current successful whole-plan render. Native overlays show the server-derived project state, current customer, formal-survey identity, closed-space count, and persistent `Switch project` action. The bottom sheet uses a spatial project-folio metaphor with customer/community search and three server-derived groups: in progress, ready, and survey needs work. Cards use an accessible result image or formal navigator; they expose `generating`, `continue`, `retry`, `stale`, `ready`, or `needs_survey` without changing the persisted enums. Eligible selection defaults to the complete plan; the hero scope rail keeps room switching. Multiple active workflows still require explicit selection.
 
 ## Open Decisions
 
-Before a current `cutaway-v1` result exists, the page shows the default spatial hero and requires an explicit credit-charging action to create a full-plan render. Workflow stages without a Mini Program continuation remain read-only and direct the user to the current result or history. The DevTools automation capture verifies the `390x844` page composition but omits native WeChat chrome, so a capsule-visible native or device capture remains outstanding.
+The current source response is bounded to the existing plan query limit and the client filters the loaded project index locally. A `390x844` capture from the user's existing WeChat DevTools window, including native capsule evidence where available, remains required before visual sign-off.

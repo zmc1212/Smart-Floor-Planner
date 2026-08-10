@@ -55,6 +55,8 @@ function groupFlatSources(items) {
         communityName: item.communityName || '',
         floorPlanId: item.floorPlanId,
         floorPlanName: item.floorPlanName || '正式户型',
+        projectTitle: item.projectTitle || item.communityName || item.leadName || item.floorPlanName || '正式户型',
+        projectSubtitle: item.projectSubtitle || item.leadName || '量房记录',
         floorPlanStatus: item.floorPlanStatus,
         updatedAt: item.updatedAt,
         rooms: [],

@@ -84,14 +84,22 @@ function getPlanSpaceCount(plan) {
 
 function toPlanDisplay(plan) {
   const spaceCount = getPlanSpaceCount(plan);
+  const display = plan && typeof plan.display === 'object' ? plan.display : null;
+  const projectTitle = typeof (display && display.projectTitle) === 'string'
+    ? display.projectTitle.trim()
+    : '';
+  const projectSubtitle = typeof (display && display.projectSubtitle) === 'string'
+    ? display.projectSubtitle.trim()
+    : '';
   const metadata = [
+    projectSubtitle,
     plan.status === 'completed' ? '已完成' : '量房中',
     spaceCount ? `${spaceCount}个空间` : '',
     formatPlanDate(plan.updatedAt || plan.createdAt)
   ].filter(Boolean);
   return {
     ...plan,
-    historyName: plan.name || '历史正式量房',
+    historyName: projectTitle || plan.name || '历史正式量房',
     displayMeta: metadata.join(' · ')
   };
 }

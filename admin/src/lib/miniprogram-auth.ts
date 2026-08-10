@@ -80,8 +80,11 @@ export async function resolveMiniProgramContext(
           console.warn(`[Auth] Active staff not found for id: ${payload.id}`);
           return null;
         }
-        if (staffRecord.phone) {
-          userRecord = await users.findByPhone(staffRecord.phone);
+        if (staffRecord.phone) userRecord = await users.findByPhone(staffRecord.phone);
+        if (!userRecord) {
+          userRecord = await users.findByOpenid(
+            staffRecord.openid || `staff_${staffRecord.id.toString()}`
+          );
         }
       } else {
         userRecord = await users.findById(

@@ -10,5 +10,7 @@ test('legacy flat room sources group into one selectable floor plan', () => {
 
   assert.equal(plans.length, 1);
   assert.equal(plans[0].closedRoomCount, 2);
+  assert.equal(plans[0].projectTitle, '张先生');
+  assert.equal(plans[0].projectSubtitle, '张先生');
   assert.deepEqual(plans[0].rooms.map((room) => room.roomId), ['living', 'bedroom']);
 });

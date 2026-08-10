@@ -28,6 +28,35 @@ test('formal-surveying tab has a defined surface and does not cover the lead-det
   assert.doesNotMatch(template, /class="lead-next-action"/);
 });
 
+test('lead-detail scene is anchored to its hero instead of covering measurement history', () => {
+  assert.match(
+    styles,
+    /\.detail-hero\s*\{[^}]*position:\s*relative;/s
+  );
+  assert.match(
+    styles,
+    /\.lead-detail-scene\s*\{[^}]*position:\s*absolute;[^}]*right:\s*-4rpx;[^}]*bottom:\s*-6rpx;/s
+  );
+});
+
+test('each historical measurement record opens its own plan while delete remains isolated', () => {
+  assert.match(
+    template,
+    /class="measurement-record"[\s\S]*?data-id="\{\{item\._id\}\}"[\s\S]*?bindtap="onContinueMeasure"/
+  );
+  assert.match(template, /class="measurement-record-continue"[^>]*catchtap="onContinueMeasure"/);
+  assert.match(template, /class="measurement-record-delete"[^>]*catchtap="onDeleteMeasure"/);
+});
+
+test('history records favor the shared project display name over legacy date titles', () => {
+  const script = fs.readFileSync(
+    path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.js'),
+    'utf8'
+  );
+  assert.match(script, /projectTitle \|\| plan\.name \|\| '历史正式量房'/);
+  assert.match(script, /projectSubtitle,/);
+});
+
 test('lead detail keeps acquisition collaboration out of the hero and reuses the shared designer sheet', () => {
   const script = fs.readFileSync(
     path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.js'),

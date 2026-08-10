@@ -32,6 +32,11 @@ const SCENE_FOCUS = {
 };
 
 const ACTIVE_TASK_STATUSES = ['created', 'pending', 'processing'];
+const PROJECT_GROUP_DEFINITIONS = [
+  { key: 'in_progress', label: '进行中' },
+  { key: 'ready', label: '可开始' },
+  { key: 'needs_survey', label: '待完善量房' },
+];
 
 function round(value) {
   return Number(Number(value || 0).toFixed(2));
@@ -167,8 +172,24 @@ function decorateNavigator(navigator) {
 
 function decorateSourcePlan(plan) {
   const navigationPreview = (plan && plan.navigationPreview) || { state: 'missing' };
+  const eligibility = (plan && plan.eligibility) || { eligible: true };
+  const projectGroup = (plan && plan.projectGroup)
+    || (eligibility.eligible ? 'ready' : 'needs_survey');
+  const uiState = (plan && plan.uiState)
+    || (projectGroup === 'ready' ? 'ready' : 'needs_survey');
   return {
     ...plan,
+    projectTitle: plan.projectTitle || plan.communityName || plan.leadName || plan.floorPlanName || '正式户型',
+    projectSubtitle: plan.projectSubtitle || plan.leadName || '量房记录',
+    eligibility,
+    projectGroup,
+    uiState,
+    statusLabel: plan.statusLabel
+      || eligibility.reasonLabel
+      || (uiState === 'ready' ? '正式量房已就绪' : '量房信息待完善'),
+    actionLabel: plan.actionLabel
+      || (uiState === 'needs_survey' ? '继续量房' : '开始设计'),
+    statusClass: uiState.replace('_', '-'),
     navigationPreview: {
       ...navigationPreview,
       task: decorateTask(navigationPreview.task),
@@ -176,6 +197,37 @@ function decorateSourcePlan(plan) {
     },
     navigatorView: decorateNavigator(plan && plan.navigator),
   };
+}
+
+function buildProjectPickerView(projects, activeGroup = 'in_progress', search = '') {
+  const query = String(search || '').trim().toLocaleLowerCase();
+  const groups = PROJECT_GROUP_DEFINITIONS.map((definition) => ({
+    ...definition,
+    count: (projects || []).filter((item) => item.projectGroup === definition.key).length,
+    active: definition.key === activeGroup,
+  }));
+  const filteredProjects = (projects || []).filter((item) => {
+    if (item.projectGroup !== activeGroup) return false;
+    if (!query) return true;
+    return [item.projectTitle, item.projectSubtitle, item.leadName, item.communityName, item.floorPlanName]
+      .some((value) => String(value || '').toLocaleLowerCase().includes(query));
+  });
+  const emptyCopy = query
+    ? '没有找到匹配的客户设计项目'
+    : activeGroup === 'in_progress'
+      ? '当前没有进行中的设计项目'
+      : activeGroup === 'ready'
+        ? '当前没有可开始设计的正式量房'
+        : '当前没有待完善的量房项目';
+  return { projectGroups: groups, filteredProjects, projectEmptyCopy: emptyCopy };
+}
+
+function chooseDefaultProjectGroup(projects, selectedFloorPlanId) {
+  const selected = (projects || []).find((item) => item.floorPlanId === selectedFloorPlanId);
+  if (selected) return selected.projectGroup;
+  if ((projects || []).some((item) => item.projectGroup === 'in_progress')) return 'in_progress';
+  if ((projects || []).some((item) => item.projectGroup === 'ready')) return 'ready';
+  return 'needs_survey';
 }
 
 function resolveStageIndex(workflow) {
@@ -240,6 +292,55 @@ function buildPrimaryAction({ workflows, selectedSource, selectedWorkflow }) {
   const preview = selectedSource.navigationPreview || {};
   const targetContext = selectedWorkflow && selectedWorkflow.targetContext;
   const targetLabel = selectedSource.targetLabel || '当前空间';
+  const projectTask = selectedSource.latestGeneration;
+
+  if (selectedSource.uiState === 'generating' && projectTask) {
+    return {
+      actionType: 'result',
+      taskId: projectTask.id,
+      title: `${targetLabel}正在生成`,
+      description: `已完成 ${Number(projectTask.progress || 0)}%，切换项目不会取消后台任务`,
+      buttonLabel: '查看生成进度',
+      credits: 0,
+      enabled: true,
+    };
+  }
+  if (selectedSource.uiState === 'retry' && projectTask) {
+    return {
+      actionType: 'result',
+      taskId: projectTask.id,
+      title: '上次生成没有完成',
+      description: projectTask.error || '打开任务查看失败原因并决定是否重试',
+      buttonLabel: '进入处理',
+      credits: 0,
+      enabled: true,
+    };
+  }
+  if (selectedSource.uiState === 'stale') {
+    return modeAction(workflows, 'floor_plan_render', {
+      title: '量房已更新，重建空间基准',
+      description: '旧成果会保留，但不会继续作为当前正式户型的设计基准',
+      buttonLabel: '重建基准',
+      targetScope: selectedSource.targetScope || 'whole_floor_plan',
+    });
+  }
+  if (selectedSource.uiState === 'continue' && projectTask && projectTask.status === 'succeeded') {
+    const nextStageKey = projectTask.nextStageKey
+      || (selectedSource.activeWorkflow && selectedSource.activeWorkflow.currentStageKey);
+    const nextMode = nextStageKey === 'soft_furnishing'
+      ? 'soft_furnishing'
+      : nextStageKey === 'base_render'
+        ? 'style_transform'
+        : '';
+    if (nextMode) {
+      return modeAction(workflows, nextMode, {
+        title: nextMode === 'soft_furnishing' ? '继续深化当前软装' : '继续完善当前风格方案',
+        description: '沿用当前项目的最近成功成果继续设计',
+        buttonLabel: '继续设计',
+        sourceResultTaskId: projectTask.id,
+      });
+    }
+  }
 
   if (targetContext && targetContext.activeTask) {
     return {
@@ -378,6 +479,7 @@ module.exports = {
   STAGE_DEFINITIONS,
   MODE_COPY,
   ACTIVE_TASK_STATUSES,
+  PROJECT_GROUP_DEFINITIONS,
   normalizeProgress,
   normalizeCredits,
   decorateRecentResult,
@@ -385,6 +487,8 @@ module.exports = {
   hasActiveTasks,
   decorateNavigator,
   decorateSourcePlan,
+  buildProjectPickerView,
+  chooseDefaultProjectGroup,
   buildStageRail,
   buildPrimaryAction,
   buildSecondaryActions,

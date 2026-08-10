@@ -42,6 +42,7 @@ This feature is separate from order commissions. Acquisition confirmation is ind
 
 - `POST /api/leads` derives `promoter_id` from the authenticated measurer.
 - The server resolves `assigned_to` through `measurer_designer_bindings`; the client cannot override owner or status.
+- `PUT /api/leads/[id]` rejects `assignedTo`; creation-time designer ownership is read-only on the lead and a binding change in Staff affects only future leads.
 - New leads are created with `status = 'new'`.
 - Existing phone de-duplication remains in force. A duplicate lead does not create a second notification or commission.
 - A measurer without a binding cannot create a new lead and receives an explicit binding error.
