@@ -9,11 +9,11 @@ The feature covers:
 1. Binding every measurer to one designer within the same enterprise.
 2. Requiring a designer WeChat ID and personal WeChat QR asset.
 3. Creating a lead from the Mini Program and automatically assigning the bound designer.
-4. Letting the assigned designer confirm that the customer was acquired through WeChat.
+4. Letting the assigned designer confirm the WeChat handoff without changing lead progress.
 5. Generating one pending-settlement measurer acquisition commission per confirmed lead.
 6. Keeping an in-app notification as the reliable channel and using WeChat subscription messages as a best-effort enhancement.
 
-This feature is separate from order commissions. `acquired` is an intermediate lead status; an acquired lead can continue into the existing measuring and design workflow.
+This feature is separate from order commissions. Acquisition confirmation is independent from the lead lifecycle and never gates surveying, design, or conversion.
 
 ## 2. Implementation status
 
@@ -22,7 +22,8 @@ This feature is separate from order commissions. `acquired` is an intermediate l
 | Measurer–designer binding | `Implemented` | One current binding per measurer; one designer may serve many measurers. |
 | Designer WeChat profile | `Implemented` | WeChat ID and QR asset are required for designer accounts; QR data is stored through `media_assets`. |
 | Measurer lead creation | `Implemented` | The server derives promoter, assigned designer, and `new` status; client ownership/status fields are ignored. |
-| Designer acquisition confirmation | `Implemented` | Only the assigned designer can atomically confirm a `new` lead. |
+| Designer acquisition confirmation | `Implemented` | The assigned designer can confirm during supported open lifecycle stages; the conditional update writes audit facts only. |
+| Role-aware Acquisition Collaboration workbench | `Implemented` | Designers process pending handoffs; measurers use one page-level current-designer entry and review waiting states, receipts, and commission summaries inside task cards. |
 | Acquisition commission | `Implemented` | Independent table, fixed enterprise amount snapshotted at confirmation, initially `pending_settlement`. |
 | Notifications | `Implemented` | In-app notification is persisted; WeChat failure does not roll back business data. |
 | Automatic payout | `Limited` | Settlement is manual; no payment-provider or bank disbursement integration exists. |
@@ -46,15 +47,15 @@ This feature is separate from order commissions. `acquired` is an intermediate l
 - A measurer without a binding cannot create a new lead and receives an explicit binding error.
 
 The product-facing lead workflow uses one canonical current status:
-`new` (New lead) -> `acquired` (Acquired) -> `measuring` (Measuring) ->
+`new` (New lead) -> `measuring` (Measuring) ->
 `designing` (Design proposal) -> `converted` (Signed). `closed` is a terminal
-exception and is not part of the main five-step rail. Historical values
+exception and is not part of the main four-step rail. Historical values
 `contacted`, `measured`, `assigned`, and `quoting` remain readable and map to
 New lead or Design proposal; new writes and floor-plan-driven transitions use
 the canonical values.
 
-Linking a draft floor plan moves a `new` or `acquired` lead to `measuring`.
-Linking a completed formal floor plan moves an open `new`, `acquired`, or
+Linking a draft floor plan moves a `new` lead to `measuring`.
+Linking a completed formal floor plan moves an open `new` or
 `measuring` lead to `designing`. The existing `acquired_at` and `acquired_by`
 fields remain the audit record after the current status advances.
 
@@ -62,8 +63,8 @@ fields remain the audit record after the current status advances.
 
 - `POST /api/leads/[id]/acquire` is restricted to the designer role.
 - The designer must be the lead's current `assigned_to` user.
-- Only `new` can be confirmed, and confirmation is single-use.
-- The update writes `acquired_at` and `acquired_by` while changing the status to `acquired`.
+- `new`, `measuring`, `designing`, and `converted` plus compatible historical values can be confirmed once; an unconfirmed `closed` lead rejects ordinary designer correction.
+- The update writes only `acquired_at`, `acquired_by`, and `updated_at`; lifecycle `status` is unchanged.
 - Lead update and unique commission creation happen in one transaction; concurrent retries can succeed only once.
 
 ### 3.4 Commission
@@ -93,10 +94,11 @@ fields remain the audit record after the current status advances.
 
 - `promoter_id`: measurer who entered the lead.
 - `assigned_to`: designer captured at lead creation; historical ownership is not rewritten after rebinding.
-- `status`: canonical current status `new`, `acquired`, `measuring`,
+- `status`: canonical current status `new`, `measuring`,
   `designing`, `converted`, or `closed`; historical values remain readable and
   are normalized in API filters and client labels.
 - `acquired_at` and `acquired_by`: confirmation audit fields.
+- DTOs derive `acquisitionStatus` from `acquired_at` and expose an independent `acquisitionCommissionStatus`; no persisted acquisition-status column is added.
 
 ### `lead_acquisition_commissions`
 
@@ -111,7 +113,7 @@ fields remain the audit record after the current status advances.
 - `(dedupe_key, channel)` is a partial unique index when a dedupe key exists;
   notification inserts use the same `dedupe_key IS NOT NULL` predicate in
   their conflict target so PostgreSQL can apply this de-duplication rule.
-- Lead notifications navigate to `/pages/leads-management/leads-management?leadId=<leadId>`.
+- Lead notifications navigate to `/packages/business/acquisition-center/acquisition-center?leadId=<leadId>`.
 
 ## 5. API contract
 
@@ -120,7 +122,8 @@ fields remain the audit record after the current status advances.
 | `POST /api/staff`, `PUT /api/staff/[id]` | Enterprise admin, `admin`, `super_admin` | Validate designer profile and same-enterprise active designer binding. |
 | `POST /api/staff/wechat-qr` | Staff-management permission | Multipart image upload to `media_assets`; returns asset ID and short-lived URL. |
 | `POST /api/leads` | Authenticated lead creator; measurer flow is server-derived | Writes measurer, bound designer, and `new`; preserves phone de-duplication. |
-| `POST /api/leads/[id]/acquire` | Assigned designer | Atomically changes `new -> acquired`, creates the unique pending commission, and notifies the measurer. |
+| `POST /api/leads/[id]/acquire` | Assigned designer | Atomically records the handoff without changing lifecycle status, creates the unique pending commission, and notifies the measurer. |
+| `GET /api/acquisition-tasks` | Current Mini Program designer or measurer | Role-isolated pending/completed tasks, pagination, time filters, and truthful summaries. Measurer responses add one page-level current-binding `designerProfile`; task rows do not repeat WeChat or QR fields. |
 | `GET /api/acquisition-commissions` | Measurer sees own records; enterprise/platform admins can filter by tenant | Lists records and summaries by enterprise, measurer, and status. |
 | `POST /api/acquisition-commissions/[id]/settle` | Enterprise admin, `admin`, `super_admin` | Allows only `pending_settlement -> paid`. |
 | `GET /api/miniprogram/notifications` | Authenticated Mini Program staff | Lists the employee's notifications and unread count. |
@@ -135,15 +138,15 @@ Tenant endpoints must continue to use shared tenant helpers, RLS transactions, a
 
 - `/staff`: designer WeChat profile, measurer binding, and fixed commission setting.
 - `/acquisition-commissions`: filters, summaries, and manual settlement.
-- `/leads`: lead list, canonical five-step status labels, and the terminal
+- `/leads`: lead list, canonical four-step business labels, an independent acquisition-confirmation filter, and the terminal
   `closed` filter.
 
 ### Mini Program
 
-- `pages/leads-management/leads-management`: canonical status filters and
-  measurer designer profile/QR card; designers can confirm acquisition.
-- `packages/business/lead-detail`: canonical status rail, next-action copy,
-  and designer acquisition action.
+- `pages/leads-management/leads-management`: four-step business filters and a lightweight measurer-only `我的设计师` entry below the capsule safe lane.
+- `packages/business/acquisition-center/acquisition-center`: designer confirmation plus one page-level measurer designer-contact entry and task-level waiting/receipt/commission-summary views.
+- `packages/business/lead-detail`: four-step status rail, formal surveying, and a normal Acquisition Collaboration information group; confirmation is not duplicated here.
+- `components/designer-contact-sheet/designer-contact-sheet`: the shared read/copy-only bottom sheet used by Leads, lead detail, and the workbench.
 - `packages/business/commission-records`: measurer acquisition commission summary and detail.
 - `pages/mine`: unread notification entry.
 
@@ -152,8 +155,8 @@ Only measurers see the designer QR and acquisition commission entry. Designers d
 ## 7. Transaction, idempotency, and security
 
 1. Notifications are sent after lead transaction commit. WeChat failure updates notification state but never rolls back the lead.
-2. Conditional status update plus the unique `lead_id` index prevents duplicate confirmation and commission generation.
-3. Designers can confirm only their assigned leads. Measurers can read only their own leads, bound designer profile, and commissions.
+2. Conditional `assigned_to + acquired_at IS NULL + supported lifecycle` update plus the unique `lead_id` index prevents duplicate confirmation and commission generation.
+3. Designers can confirm only their assigned leads. Measurers can read only their own leads, one page-level current bound-designer profile, and commissions. Task rows keep historical assignee identity facts but do not repeat WeChat IDs or QR data.
 4. QR delivery verifies enterprise ownership and uses a signed URL; storage keys and unrestricted public URLs must not be exposed.
 5. Rebinding never rewrites historical leads or generated commissions.
 
@@ -168,11 +171,11 @@ Only measurers see the designer QR and acquisition commission entry. Designers d
 
 ## 9. Implementation references
 
-- Migration: `admin/drizzle/0016_measurer_designer_acquisition.sql`
+- Migrations: `admin/drizzle/0016_measurer_designer_acquisition.sql`, `admin/drizzle/0017_acquisition_workbench.sql`
 - Schema: `admin/src/db/schema.ts`
 - Staff APIs: `admin/src/app/api/staff/`, `admin/src/app/api/staff/wechat-qr/`
 - Lead APIs: `admin/src/app/api/leads/`, `admin/src/app/api/leads/[id]/acquire/`
-- Commission APIs: `admin/src/app/api/acquisition-commissions/`
+- Task/commission APIs: `admin/src/app/api/acquisition-tasks/`, `admin/src/app/api/acquisition-commissions/`
 - Notification APIs: `admin/src/app/api/miniprogram/notifications/`
 - Admin pages: `admin/src/app/(admin)/(merchant)/staff/`, `admin/src/app/(admin)/(merchant)/acquisition-commissions/`
-- Mini Program pages: `miniprogram/pages/leads-management/`, `miniprogram/pages/mine/`, `miniprogram/packages/business/commission-records/`
+- Mini Program pages: `miniprogram/pages/leads-management/`, `miniprogram/pages/mine/`, `miniprogram/packages/business/acquisition-center/`, `miniprogram/packages/business/lead-detail/`, `miniprogram/packages/business/commission-records/`

@@ -6,12 +6,15 @@ import {
   gte,
   ilike,
   inArray,
+  isNotNull,
+  isNull,
   or,
   type SQL,
 } from 'drizzle-orm';
 import {
   adminUsers,
   floorPlans,
+  leadAcquisitionCommissions,
   leadFloorPlans,
   leads,
 } from '@/db/schema';
@@ -39,10 +42,15 @@ export interface LeadWithRelations extends LeadRecord {
   primaryFloorPlanRecord: LeadFloorPlanRecord | null;
   assignedUser: LeadStaffSummary | null;
   promoter: LeadStaffSummary | null;
+  acquisitionCommission: {
+    status: string;
+    commissionAmount: string;
+  } | null;
 }
 
 export interface LeadListOptions {
   status?: string;
+  acquisitionStatus?: 'pending_confirmation' | 'confirmed';
   source?: string;
   phone?: string;
   query?: string;
@@ -66,6 +74,11 @@ export class LeadRepository {
           ? eq(leads.status, variants[0])
           : inArray(leads.status, variants)
       );
+    }
+    if (options.acquisitionStatus === 'pending_confirmation') {
+      filters.push(isNull(leads.acquiredAt));
+    } else if (options.acquisitionStatus === 'confirmed') {
+      filters.push(isNotNull(leads.acquiredAt));
     }
     if (options.source) filters.push(eq(leads.source, options.source));
     if (options.phone) filters.push(eq(leads.phone, options.phone));
@@ -142,7 +155,7 @@ export class LeadRepository {
         )
       )
     );
-    const staffRows =
+    const [staffRows, acquisitionRows] = await Promise.all([
       staffIds.length > 0
         ? await this.transaction
             .select({
@@ -155,8 +168,18 @@ export class LeadRepository {
             })
             .from(adminUsers)
             .where(inArray(adminUsers.id, staffIds))
-        : [];
+        : [],
+      this.transaction
+        .select({
+          leadId: leadAcquisitionCommissions.leadId,
+          status: leadAcquisitionCommissions.status,
+          commissionAmount: leadAcquisitionCommissions.commissionAmount,
+        })
+        .from(leadAcquisitionCommissions)
+        .where(inArray(leadAcquisitionCommissions.leadId, leadIds)),
+    ]);
     const staffMap = new Map(staffRows.map((staff) => [staff.id, staff]));
+    const acquisitionMap = new Map(acquisitionRows.map((item) => [item.leadId, item]));
 
     return rows.map((row) => ({
       ...row,
@@ -168,6 +191,7 @@ export class LeadRepository {
         ? staffMap.get(row.assignedTo) ?? null
         : null,
       promoter: row.promoterId ? staffMap.get(row.promoterId) ?? null : null,
+      acquisitionCommission: acquisitionMap.get(row.id) ?? null,
     }));
   }
 

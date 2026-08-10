@@ -23,5 +23,21 @@ test('formal-surveying tab has a defined surface and does not cover the lead-det
   );
   assert.doesNotMatch(template, /class="whole-home-title"/);
   assert.match(template, /class="whole-home-next-copy">\{\{nextAction\}\}<\/text>/);
+  assert.match(template, /从墙图开始建立客户户型/);
+  assert.doesNotMatch(template, /whole-home-plan-name/);
   assert.doesNotMatch(template, /class="lead-next-action"/);
+});
+
+test('lead detail keeps acquisition collaboration out of the hero and reuses the shared designer sheet', () => {
+  const script = fs.readFileSync(
+    path.join(__dirname, '..', 'packages', 'business', 'lead-detail', 'lead-detail.js'),
+    'utf8'
+  );
+  assert.match(template, /class="acquisition-info"/);
+  assert.match(template, /联系设计师/);
+  assert.match(template, /查看协作记录/);
+  assert.match(template, /<designer-contact-sheet/);
+  assert.doesNotMatch(template, /onAcquireLead|确认已获客/);
+  assert.doesNotMatch(script, /onAcquireLead|canAcquireLead/);
+  assert.match(script, /const WORKFLOW_STAGES = \['新线索', '量房中', '方案设计', '已签约'\]/);
 });

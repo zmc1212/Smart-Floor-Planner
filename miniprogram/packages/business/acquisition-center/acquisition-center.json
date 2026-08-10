@@ -1,9 +1,7 @@
 {
-  "navigationBarTitleText": "客户线索",
   "navigationStyle": "custom",
+  "navigationBarTitleText": "获客协作",
   "usingComponents": {
-    "lead-list": "/components/lead-list/lead-list",
-    "lead-modal": "/components/lead-modal/lead-modal",
     "designer-contact-sheet": "/components/designer-contact-sheet/designer-contact-sheet"
   }
 }

@@ -1,6 +1,5 @@
-<view class="container" wx:if="{{!loading}}">
+<view class="container" wx:if="{{!loading && lead}}">
   <view class="detail-hero" wx:if="{{lead}}">
-    <view wx:if="{{canAcquire}}" class="acquire-button" bindtap="onAcquireLead">确认已获客</view>
     <view class="hero-copy">
       <text class="eyebrow">客户详情</text>
       <text class="title">{{lead.name}}</text>
@@ -18,6 +17,37 @@
       <text>{{item.label}}</text>
     </view>
   </view>
+  <view class="acquisition-info" wx:if="{{lead}}">
+    <view class="acquisition-info-heading">
+      <view>
+        <view class="acquisition-info-title">获客协作</view>
+        <view class="acquisition-info-subtitle">客户微信交接回执</view>
+      </view>
+      <view class="acquisition-info-status {{lead.acquisitionStatus === 'confirmed' ? 'is-confirmed' : ''}}">
+        {{lead.acquisitionStatus === 'confirmed' ? '已确认' : '待确认'}}
+      </view>
+    </view>
+    <view class="acquisition-info-grid">
+      <view class="acquisition-info-row">
+        <text>设计师</text>
+        <text>{{designerProfile ? (designerProfile.displayName || designerProfile.username) : '待分配'}}</text>
+      </view>
+      <view class="acquisition-info-row">
+        <text>微信交接</text>
+        <text>{{lead.acquisitionStatus === 'confirmed' ? '已确认' : '等待设计师确认'}}</text>
+      </view>
+      <view class="acquisition-info-row" wx:if="{{lead.acquisitionStatus === 'confirmed'}}">
+        <text>确认时间</text>
+        <text>{{acquisitionConfirmedTime}}</text>
+      </view>
+    </view>
+    <view class="acquisition-info-actions" wx:if="{{canContactDesigner || canViewAcquisition}}">
+      <view wx:if="{{canContactDesigner}}" class="acquisition-info-link" bindtap="onOpenDesignerContact">联系设计师 ›</view>
+      <view wx:if="{{canViewAcquisition}}" class="acquisition-info-link" bindtap="onOpenAcquisition">
+        {{staffRole === 'designer' && lead.acquisitionStatus !== 'confirmed' ? '去处理获客协作' : '查看协作记录'}} ›
+      </view>
+    </view>
+  </view>
   <view class="whole-home-card">
     <view class="whole-home-tab">正式量房</view>
     <view class="whole-home-copy">
@@ -25,8 +55,7 @@
         <text class="whole-home-next-label">下一步</text>
         <text class="whole-home-next-copy">{{nextAction}}</text>
       </view>
-      <view class="whole-home-plan-name" wx:if="{{activeFloorPlan}}">{{activeFloorPlan.displayName}}</view>
-      <view class="whole-home-subtitle">{{activeFloorPlan ? activeFloorPlan.displayMeta : '从墙图开始创建客户户型'}}</view>
+      <view class="whole-home-subtitle">{{activeFloorPlan ? activeFloorPlan.displayMeta : '从墙图开始建立客户户型'}}</view>
     </view>
     <view class="whole-home-actions">
       <view class="whole-home-action" bindtap="onStartMeasure">{{activeFloorPlan ? '继续量房' : '开始量房'}} <text>›</text></view>
@@ -43,7 +72,7 @@
     </view>
     <view class="measurement-record" wx:for="{{previousFloorPlans}}" wx:key="_id">
       <view class="measurement-record-copy">
-        <text class="measurement-record-name">{{item.displayName}}</text>
+        <text class="measurement-record-name">{{item.historyName}}</text>
         <text class="measurement-record-meta">{{item.displayMeta}}</text>
       </view>
       <view class="measurement-record-actions">
@@ -53,4 +82,16 @@
     </view>
   </view>
 </view>
+<view class="detail-error" wx:elif="{{errorMessage}}">
+  <view class="detail-error-title">线索详情暂时无法加载</view>
+  <view class="detail-error-copy">{{errorMessage}}</view>
+  <button class="detail-error-action" bindtap="onRetryDetail">重新加载</button>
+</view>
 <view class="loading-state" wx:else>加载中...</view>
+
+<designer-contact-sheet
+  visible="{{showDesignerSheet}}"
+  profile="{{designerProfile}}"
+  bindclose="onCloseDesignerSheet"
+  bindretry="onRetryDesignerProfile"
+/>

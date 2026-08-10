@@ -276,8 +276,13 @@ export function leadToDto(record: LeadWithRelations, options: { designerWechatQr
     city: record.city,
     source: record.source,
     status: record.status,
+    acquisitionStatus: record.acquiredAt ? 'confirmed' : 'pending_confirmation',
     acquiredAt: record.acquiredAt,
     acquiredBy: record.acquiredBy?.toString() ?? null,
+    acquisitionCommissionStatus: record.acquisitionCommission?.status ?? null,
+    acquisitionCommissionAmount: record.acquisitionCommission
+      ? Number(record.acquisitionCommission.commissionAmount)
+      : null,
     notes: record.notes,
     assignedAt: record.assignedAt,
     floorPlanIds: record.floorPlanRecords.map(floorPlanToDto),

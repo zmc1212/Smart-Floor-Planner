@@ -112,6 +112,7 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
             >
               <view class="tool-icon">
                 <image src="{{item.iconPath}}" mode="aspectFit" />
+                <view wx:if="{{item.badgeCount}}" class="tool-badge">{{item.badgeCount > 99 ? '99+' : item.badgeCount}}</view>
               </view>
               <view class="tool-label">{{item.label}}</view>
               <view class="tool-sublabel">{{item.sublabel}}</view>

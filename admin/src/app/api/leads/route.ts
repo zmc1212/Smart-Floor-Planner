@@ -69,6 +69,10 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const { page, limit } = parsePage(searchParams);
     const status = searchParams.get('status') || undefined;
+    const acquisitionStatusValue = searchParams.get('acquisitionStatus');
+    const acquisitionStatus = acquisitionStatusValue === 'pending_confirmation' || acquisitionStatusValue === 'confirmed'
+      ? acquisitionStatusValue
+      : undefined;
     const miniContext = await resolveMiniProgramContext(request);
 
     if (miniContext) {
@@ -95,7 +99,7 @@ export async function GET(request: Request) {
             ? await new AdminUserRepository(transaction).findDesignerForMeasurer(staffId)
             : null;
           const [list, all, stats, todayNew] = await Promise.all([
-            repository.list({ ...baseOptions, status, page, limit }),
+            repository.list({ ...baseOptions, status, acquisitionStatus, page, limit }),
             repository.count(baseOptions),
             repository.countStatuses(baseOptions, [
               'new',
@@ -159,6 +163,7 @@ export async function GET(request: Request) {
       (transaction) =>
         new LeadRepository(transaction).list({
           status,
+          acquisitionStatus,
           source: searchParams.get('source') || undefined,
           staffId:
             context.role === 'designer'
@@ -196,6 +201,12 @@ export async function POST(request: Request) {
     if (!name || !phone) {
       return NextResponse.json(
         { success: false, error: 'Name and phone are required' },
+        { status: 400 }
+      );
+    }
+    if (String(body.status || '') === 'acquired') {
+      return NextResponse.json(
+        { success: false, error: 'acquired 已从线索业务状态移除，请使用获客确认接口' },
         { status: 400 }
       );
     }
@@ -344,7 +355,7 @@ export async function POST(request: Request) {
           status: 'unread',
           message: `收到客户线索：${lead.name}，待确认获客`,
           dedupeKey: `lead_pending_acquisition:${lead.id.toString()}`,
-          metadata: { page: `/pages/leads-management/leads-management?leadId=${lead.id.toString()}` },
+          metadata: { page: `/packages/business/acquisition-center/acquisition-center?leadId=${lead.id.toString()}` },
         });
       }
       return { lead, shouldNotifyDesigner, shouldNotifyEnterprise: !existing, designerId: assignedTo };
@@ -385,7 +396,7 @@ export async function POST(request: Request) {
         message: `Lead ${lead.name} pending acquisition confirmation`,
         errorMessage: delivery.success ? null : delivery.error || null,
         dedupeKey: `lead_pending_acquisition:${lead.id.toString()}`,
-        metadata: { page: `/pages/leads-management/leads-management?leadId=${lead.id.toString()}` },
+        metadata: { page: `/packages/business/acquisition-center/acquisition-center?leadId=${lead.id.toString()}` },
       }));
     }
 

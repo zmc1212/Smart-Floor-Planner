@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { leads } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
 import { withTenantTransaction } from '@/db/transaction';
@@ -9,6 +9,18 @@ import { getTenantContext } from '@/lib/auth';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withAdminPostgresTransaction, withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import { notifyMeasurerOfAcquiredLead } from '@/lib/wechat-notification';
+import { httpError, httpErrorStatus } from '@/lib/http-error';
+
+const CONFIRMABLE_LEAD_STATUSES = [
+  'new',
+  'contacted',
+  'measuring',
+  'measured',
+  'assigned',
+  'designing',
+  'quoting',
+  'converted',
+];
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -21,14 +33,21 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const execute = async (transaction: PostgresTransaction) => {
       const repository = new LeadRepository(transaction);
       const current = await repository.findById(leadId);
-      if (!current || current.assignedTo !== designerId) throw new Error('线索不存在或无权操作');
-      if (current.status !== 'new') throw new Error('当前线索已确认或已进入后续流程');
-      if (!current.enterpriseId || !current.promoterId) throw new Error('线索缺少企业或测量员归属');
+      if (!current || current.assignedTo !== designerId) throw httpError('线索不存在或无权操作', 404);
+      if (current.acquiredAt) throw httpError('该获客交接已确认，请刷新查看最新回执', 409);
+      if (current.status === 'closed') throw httpError('已关闭线索不能由设计师补确认', 409);
+      if (!CONFIRMABLE_LEAD_STATUSES.includes(current.status)) throw httpError('当前线索状态不支持获客确认', 409);
+      if (!current.enterpriseId || !current.promoterId) throw httpError('线索缺少企业或测量员归属', 409);
       const enterprise = await new EnterpriseRepository(transaction).findById(current.enterpriseId);
-      if (!enterprise) throw new Error('企业不存在');
-      const updatedRows = await transaction.update(leads).set({ status: 'acquired', acquiredAt: new Date(), acquiredBy: designerId, updatedAt: new Date() })
-        .where(and(eq(leads.id, leadId), eq(leads.status, 'new'), eq(leads.assignedTo, designerId))).returning();
-      if (!updatedRows[0]) throw new Error('线索状态已被其他操作更新，请刷新后重试');
+      if (!enterprise) throw httpError('企业不存在', 404);
+      const updatedRows = await transaction.update(leads).set({ acquiredAt: new Date(), acquiredBy: designerId, updatedAt: new Date() })
+        .where(and(
+          eq(leads.id, leadId),
+          eq(leads.assignedTo, designerId),
+          isNull(leads.acquiredAt),
+          inArray(leads.status, CONFIRMABLE_LEAD_STATUSES)
+        )).returning();
+      if (!updatedRows[0]) throw httpError('获客交接已被其他操作确认，请刷新查看最新回执', 409);
       const acquisition = new AcquisitionRepository(transaction);
       const commission = await acquisition.createCommission({
         leadId,
@@ -48,10 +67,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         status: 'unread',
         message: `设计师已确认${current.name}获客，提成待结算`,
         dedupeKey: `lead_acquired_commission_pending:${leadId.toString()}`,
-        metadata: { page: `/pages/leads-management/leads-management?leadId=${leadId.toString()}`, commissionId: commission?.id?.toString() || null },
+        metadata: { page: `/packages/business/acquisition-center/acquisition-center?leadId=${leadId.toString()}`, commissionId: commission?.id?.toString() || null },
       });
       const lead = await repository.findById(leadId);
-      if (!lead || !commission) throw new Error('获客记录保存失败');
+      if (!lead || !commission) throw httpError('获客记录保存失败，请联系管理员核对历史提成', 409);
       return { lead, commission, measurerId: current.promoterId };
     };
     const result = mini ? await withMiniProgramPostgresTransaction(mini, execute) : await withAdminPostgresTransaction(admin!, execute);
@@ -67,11 +86,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         message: `Lead ${result.lead.name} acquired; commission pending settlement`,
         errorMessage: delivery.success ? null : delivery.error || null,
         dedupeKey: `lead_acquired_commission_pending:${leadId.toString()}`,
-        metadata: { page: `/pages/leads-management/leads-management?leadId=${leadId.toString()}`, commissionId: result.commission.id.toString() },
+        metadata: { page: `/packages/business/acquisition-center/acquisition-center?leadId=${leadId.toString()}`, commissionId: result.commission.id.toString() },
       }));
     }
     return NextResponse.json({ success: true, data: { lead: leadToDto(result.lead), commission: acquisitionCommissionToDto(result.commission) } });
   } catch (error: unknown) {
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : '确认获客失败' }, { status: 400 });
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : '确认获客失败' },
+      { status: httpErrorStatus(error, 400) }
+    );
   }
 }

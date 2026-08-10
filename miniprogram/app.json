@@ -28,6 +28,7 @@
         "promotion-records/promotion-records",
         "promotion-record-detail/promotion-record-detail",
         "commission-records/commission-records",
+        "acquisition-center/acquisition-center",
         "inspiration/inspiration",
         "recommendations/index"
       ]

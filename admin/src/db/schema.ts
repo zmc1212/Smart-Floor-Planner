@@ -155,6 +155,7 @@ export const adminUsers = appSchema.table(
       table.enterpriseId,
       table.departmentId
     ),
+    index('admin_users_wechat_qr_asset_idx').on(table.wechatQrAssetId),
   ]
 );
 
@@ -987,10 +988,21 @@ export const leads = appSchema.table(
       table.assignedTo,
       table.createdAt
     ),
+    index('leads_assignee_acquired_created_idx').on(
+      table.assignedTo,
+      table.acquiredAt,
+      table.createdAt
+    ),
     index('leads_promoter_created_idx').on(
       table.promoterId,
       table.createdAt
     ),
+    index('leads_promoter_acquired_created_idx').on(
+      table.promoterId,
+      table.acquiredAt,
+      table.createdAt
+    ),
+    index('leads_acquired_by_idx').on(table.acquiredBy),
     index('leads_primary_floor_plan_idx').on(table.primaryFloorPlanId),
   ]
 );
@@ -1026,6 +1038,8 @@ export const leadAcquisitionCommissions = appSchema.table(
     uniqueIndex('lead_acquisition_commissions_lead_uidx').on(table.leadId),
     index('lead_acquisition_commissions_enterprise_status_idx').on(table.enterpriseId, table.status),
     index('lead_acquisition_commissions_measurer_status_idx').on(table.measurerId, table.status),
+    index('lead_acquisition_commissions_designer_idx').on(table.designerId),
+    index('lead_acquisition_commissions_settled_by_idx').on(table.settledBy),
   ]
 );
 
@@ -1061,6 +1075,7 @@ export const staffNotifications = appSchema.table(
     uniqueIndex('staff_notifications_dedupe_uidx').on(table.dedupeKey, table.channel).where(sql`${table.dedupeKey} is not null`),
     index('staff_notifications_recipient_created_idx').on(table.recipientStaffId, table.createdAt),
     index('staff_notifications_lead_idx').on(table.leadId),
+    index('staff_notifications_enterprise_idx').on(table.enterpriseId),
   ]
 );
 

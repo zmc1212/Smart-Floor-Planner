@@ -1,0 +1,142 @@
+<!--
+THESIS: 获客协作是一张可追踪的客户交接回执，不是第二套线索状态面板。
+OWN-WORLD: 品牌绿交接封套、柔白回执纸、短状态签与清晰的确认动作。
+STORY: 先理解交接规则，再扫描待办/回执，并进入客户或设计师资料完成真实协作。
+FIRST VIEWPORT: 胶囊左侧为返回和标题；小 K 作为交接见证员只出现一次，摘要与分段任务紧随其后。
+FORM: Operate 模式；批准方案未使用随机概念种子。
+-->
+<view class="acquisition-page">
+  <view
+    class="acquisition-nav"
+    style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
+  >
+    <view class="nav-back" bindtap="onBack" aria-role="button" aria-label="返回">
+      <image src="/images/back-arrow.png" mode="aspectFit" />
+    </view>
+    <view class="nav-title">获客协作</view>
+  </view>
+
+  <scroll-view class="acquisition-scroll" scroll-y enhanced show-scrollbar="{{false}}" bindscrolltolower="onLoadMore">
+    <view class="acquisition-content">
+      <view class="handoff-hero">
+        <view class="handoff-copy">
+          <view class="handoff-title">获客协作</view>
+          <view class="handoff-subtitle">{{roleSubtitle || '客户微信交接与获客回执'}}</view>
+          <view class="handoff-rule">客户添加设计师微信后，确认交接即可为测量员生成获客提成。</view>
+        </view>
+        <image class="handoff-witness" src="/images/page-ip-v3/lead-detail.png" mode="aspectFit" aria-hidden="true" />
+      </view>
+
+      <view wx:if="{{loading && !summaryItems.length}}" class="summary-skeleton"></view>
+      <view wx:else class="receipt-summary summary-columns-{{summaryItems.length}}">
+        <view class="summary-item" wx:for="{{summaryItems}}" wx:key="key">
+          <view class="summary-label">{{item.label}}</view>
+          <view class="summary-value">{{item.value}}<text>{{item.unit}}</text></view>
+        </view>
+      </view>
+
+      <view wx:if="{{role === 'measurer' && designerProfile}}" class="bound-designer-strip">
+        <view class="bound-designer-identity">
+          <image src="/images/mine-icons/user.png" mode="aspectFit" aria-hidden="true" />
+          <view class="bound-designer-copy">
+            <view class="bound-designer-label">我的设计师</view>
+            <view class="bound-designer-name">{{designerProfile.displayName || designerProfile.username || '专属设计师'}}</view>
+          </view>
+        </view>
+        <button class="bound-designer-action" bindtap="onOpenDesigner" aria-label="查看我的设计师微信">查看微信</button>
+      </view>
+
+      <view class="task-tabs" wx:if="{{tabs.length}}">
+        <view
+          wx:for="{{tabs}}"
+          wx:key="key"
+          class="task-tab {{status === item.key ? 'is-active' : ''}}"
+          data-status="{{item.key}}"
+          bindtap="onTabChange"
+          aria-role="button"
+          aria-label="{{item.label}}"
+        >{{item.label}}</view>
+      </view>
+
+      <view wx:if="{{loading}}" class="task-skeleton-list">
+        <view class="task-skeleton"></view>
+        <view class="task-skeleton"></view>
+      </view>
+
+      <view wx:elif="{{errorMessage}}" class="acquisition-state">
+        <image src="/images/mine-icons/clipboard-pen.png" mode="aspectFit" />
+        <view class="state-title">协作任务暂时无法加载</view>
+        <view class="state-copy">{{errorMessage}}</view>
+        <button class="state-action" bindtap="onRetry">重新加载</button>
+      </view>
+
+      <view wx:elif="{{tasks.length}}" class="task-list">
+        <view
+          wx:for="{{tasks}}"
+          wx:key="_id"
+          class="handoff-task {{leadId === item.leadId ? 'is-highlighted' : ''}}"
+        >
+          <view class="task-heading">
+            <view class="task-customer">{{item.customerName}}</view>
+            <view class="task-status {{item.acquisitionStatus === 'confirmed' ? 'is-confirmed' : ''}}">
+              {{item.acquisitionStatus === 'confirmed' ? '交接已确认' : (item.blockedReason ? '只读' : '等待确认')}}
+            </view>
+          </view>
+          <view class="task-meta-row">
+            <text>{{item.phoneMasked}}</text>
+            <text wx:if="{{item.communityName}}">{{item.communityName}}</text>
+            <text>{{item.taskTime}}</text>
+          </view>
+
+          <view wx:if="{{role === 'designer'}}" class="task-role-block">
+            <view class="role-line">测量员：{{item.measurerName}}</view>
+            <view wx:if="{{item.acquisitionStatus === 'pending_confirmation' && !item.blockedReason}}" class="task-instruction">请确认客户已经添加你的微信</view>
+            <view wx:if="{{item.blockedReason}}" class="task-blocked">{{item.blockedReason}}</view>
+            <view wx:if="{{item.acquisitionStatus === 'confirmed'}}" class="handoff-receipt">
+              <view>确认时间：{{item.confirmedTime}}</view>
+              <view>测量员：{{item.measurerName}}</view>
+            </view>
+          </view>
+
+          <view wx:else class="task-role-block">
+            <view wx:if="{{item.acquisitionStatus === 'confirmed'}}" class="handoff-receipt">
+              <view class="receipt-title">获客交接已确认</view>
+              <view>确认时间：{{item.confirmedTime}}</view>
+              <view>获客提成：{{item.commissionAmountLabel}}</view>
+              <view>结算状态：{{item.commissionStatusLabel}}</view>
+            </view>
+            <view wx:else class="task-instruction">等待设计师确认客户微信交接</view>
+          </view>
+
+          <view class="task-actions">
+            <button class="task-secondary" data-id="{{item.leadId}}" bindtap="onOpenLead">查看客户线索</button>
+            <button
+              wx:if="{{role === 'designer' && item.canConfirm}}"
+              class="task-primary"
+              data-id="{{item.leadId}}"
+              bindtap="onConfirm"
+              loading="{{confirmingId === item.leadId}}"
+              disabled="{{confirmingId !== ''}}"
+            >确认已添加微信</button>
+          </view>
+          <view wx:if="{{role === 'measurer' && item.acquisitionStatus === 'confirmed'}}" class="commission-link" bindtap="onOpenCommission">查看提成明细 ›</view>
+        </view>
+        <view wx:if="{{loadingMore}}" class="list-footer">正在加载更多…</view>
+        <view wx:elif="{{!hasMore}}" class="list-footer">已显示全部协作记录</view>
+      </view>
+
+      <view wx:else class="acquisition-state empty-state">
+        <image src="/images/mine-icons/clipboard-pen.png" mode="aspectFit" />
+        <view class="state-title">{{role === 'designer' && status === 'pending_confirmation' ? '暂无待确认交接' : '暂无获客协作记录'}}</view>
+        <view class="state-copy">新的客户微信交接任务会在这里形成回执。</view>
+      </view>
+    </view>
+  </scroll-view>
+
+  <designer-contact-sheet
+    visible="{{showDesignerSheet}}"
+    profile="{{designerProfile}}"
+    bindclose="onCloseDesignerSheet"
+    bindretry="onRetryDesignerProfile"
+  />
+</view>

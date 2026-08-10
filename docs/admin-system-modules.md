@@ -597,7 +597,8 @@ permission, or workflow changes.
 ### 7. Leads And Conversion Assets
 
 - Page: `/leads`.
-- APIs: `/api/leads`, `/leads/[id]`, and related floor-plan and staff endpoints.
+- APIs: `/api/leads`, `/leads/[id]`, `/api/acquisition-tasks`, and related
+  floor-plan and staff endpoints.
 - Models/helpers: PostgreSQL `LeadRepository`, `FloorPlanRepository`,
   `AdminUserRepository`, and WeChat helpers.
 - Status: `Implemented`. Covers lead intake/status, follow-ups, assignment,
@@ -616,15 +617,17 @@ permission, or workflow changes.
   review, and follow-up records. A shared `ModuleOverview` derives visible-page
   funnel counts from that same paginated list response. List and detail reads still cancel superseded
   requests, so stale responses cannot overwrite newer filtering or selected
-  lead state. Lead status presentation now uses the canonical five-step rail
-  `New lead -> Acquired -> Measuring -> Design proposal -> Signed`, while
-  `closed` remains a terminal filter. Historical `contacted`, `measured`,
-  `assigned`, and `quoting` values stay readable through normalized labels and
-  grouped status filters. Linking a draft or completed formal floor plan also
-  advances the lead to `measuring` or `designing` respectively. Its API contract, tenant scope, role boundaries, and row actions
-  for detail, AI-plan entry, and destructive deletion are unchanged; visible
-  mutations continue to use shared operation feedback. This is a
-  presentation-layer migration only.
+  lead state. The customer workflow now uses the canonical four-step rail
+  `New lead -> Measuring -> Design proposal -> Signed`, while `closed` remains
+  a terminal filter and historical `acquired` values group under `New lead`.
+  Acquisition confirmation is represented independently by `acquired_at`,
+  `acquired_by`, and its commission record. The table offers separate customer
+  workflow and acquisition-status filters; its detail drawer exposes acquisition
+  time and commission status without inserting another lifecycle stage. Linking
+  a draft or completed formal floor plan advances the lead to `measuring` or
+  `designing` respectively. Tenant scope, role boundaries, paging, and row
+  actions for detail, AI-plan entry, and destructive deletion are unchanged;
+  visible mutations continue to use shared operation feedback.
 
 ### 8. Formal Floor Plans, Search, And Viewing
 
@@ -1371,6 +1374,8 @@ The focused contract is [`docs/measurer-designer-acquisition.md`](measurer-desig
 
 - `/staff` now requires designers to provide `wechatId` and a media-backed QR asset, and requires measurers to bind one active designer from the same enterprise. Bindings are stored in `measurer_designer_bindings`; a designer can have many measurers. Deactivation/deletion is blocked while measurers remain bound.
 - `POST /api/leads` derives measurer ownership, assigned designer, and `new` status from the binding. Duplicate phones reuse the existing lead and do not create duplicate notifications or commissions.
-- `POST /api/leads/[id]/acquire` is restricted to the assigned designer and atomically changes `new` to `acquired`, storing `acquiredAt/acquiredBy` and one `lead_acquisition_commissions` snapshot in `pending_settlement`. The lead list/detail surfaces use the canonical five-step status labels and keep historical status values backward-compatible.
+- `GET /api/acquisition-tasks` is restricted to mini-program designers and measurers. It returns tenant- and role-scoped paginated pending/completed tasks, summaries, masked customer data, and commission fields. A measurer's current designer contact is returned once as page-level `designerProfile`; task rows do not repeat WeChat IDs or QR data. This does not widen access to the administration lead list.
+- `POST /api/leads/[id]/acquire` is restricted to the assigned designer and uses `assigned_to`, `acquired_at IS NULL`, and supported-status conditions for atomic confirmation. It writes only `acquiredAt/acquiredBy` and one `lead_acquisition_commissions` snapshot in `pending_settlement`; duplicate confirmation conflicts without duplicating commission data and customer workflow status is unchanged. Direct lead create/update attempts to write `acquired` are rejected.
+- `0017_acquisition_workbench.sql` normalizes historical `leads.status='acquired'` rows to `new`, emits migration warnings for missing acquisition timestamps or commission links, and adds assignee/promoter acquisition indexes. Runtime readers remain compatible before migration.
 - `/acquisition-commissions` and its settle API are tenant-scoped. Enterprise admins and platform admins can mark pending records as paid; measurers can only view their own records.
-- `staff_notifications` stores in-app notifications and the mini-program notification APIs expose unread/read operations. Its partial `(dedupe_key, channel)` unique index is matched by the notification insert conflict predicate, so duplicate writes are ignored correctly. WeChat delivery is best-effort and never rolls back the lead transaction.
+- `staff_notifications` stores in-app notifications and the mini-program notification APIs expose unread/read operations. Acquisition pending/confirmed notification metadata deep-links to the exact workbench `leadId`. Its partial `(dedupe_key, channel)` unique index is matched by the notification insert conflict predicate, so duplicate writes are ignored correctly. WeChat delivery is best-effort and never rolls back the lead transaction.

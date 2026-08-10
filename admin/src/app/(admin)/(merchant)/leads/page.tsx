@@ -63,6 +63,9 @@ type Lead = {
   stylePreference?: string | null;
   source?: string | null;
   status: string;
+  acquisitionStatus?: 'pending_confirmation' | 'confirmed';
+  acquiredAt?: string | null;
+  acquisitionCommissionStatus?: string | null;
   promoterId?: StaffReference | string | null;
   assignedTo?: StaffReference | string | null;
   floorPlanIds?: FloorPlan[];
@@ -85,7 +88,6 @@ type LeadListResponse = {
 
 const STATUS_OPTIONS = [
   { label: '新线索', value: 'new' },
-  { label: '已获客', value: 'acquired' },
   { label: '量房中', value: 'measuring' },
   { label: '方案设计', value: 'designing' },
   { label: '已签约', value: 'converted' },
@@ -103,7 +105,6 @@ function getFloorPlanSourceLabel(source?: string | null) {
 }
 
 function getStatusColor(status: string) {
-  if (status === 'acquired') return 'green';
   if (status === 'measuring') return 'green';
   if (['measured', 'assigned', 'designing', 'quoting'].includes(status)) return 'blue';
   if (status === 'converted') return 'orange';
@@ -337,6 +338,21 @@ export default function LeadsPage() {
       render: (_, lead) => <Tag color={getStatusColor(lead.status)}>{getLeadStatusLabel(lead.status)}</Tag>,
     },
     {
+      title: '获客确认',
+      dataIndex: 'acquisitionStatus',
+      valueType: 'select',
+      valueEnum: {
+        pending_confirmation: { text: '待确认' },
+        confirmed: { text: '已确认' },
+      },
+      width: 130,
+      render: (_, lead) => (
+        <Tag color={lead.acquisitionStatus === 'confirmed' ? 'green' : 'default'}>
+          {lead.acquisitionStatus === 'confirmed' ? '已确认' : '待确认'}
+        </Tag>
+      ),
+    },
+    {
       title: '客户 / 小区',
       dataIndex: 'name',
       hideInSearch: true,
@@ -437,6 +453,7 @@ export default function LeadsPage() {
               limit: String(params.pageSize || 20),
             });
             if (params.status) query.set('status', String(params.status));
+            if (params.acquisitionStatus) query.set('acquisitionStatus', String(params.acquisitionStatus));
             try {
               const response = await fetch(`/api/leads?${query.toString()}`, { signal: controller.signal });
               const result = await response.json() as LeadListResponse;
@@ -521,6 +538,34 @@ export default function LeadsPage() {
                 { key: 'area', label: '意向面积', children: selectedLead.area ? `${selectedLead.area} m2` : '-' },
                 { key: 'style', label: '偏好风格', children: selectedLead.stylePreference || '-' },
                 { key: 'source', label: '来源渠道', children: selectedLead.source || '-' },
+              ]}
+            />
+
+            <Descriptions
+              title="获客协作"
+              bordered
+              size="small"
+              column={1}
+              items={[
+                {
+                  key: 'acquisitionStatus',
+                  label: '微信交接',
+                  children: selectedLead.acquisitionStatus === 'confirmed' ? '已确认' : '等待设计师确认',
+                },
+                {
+                  key: 'acquiredAt',
+                  label: '确认时间',
+                  children: selectedLead.acquisitionStatus === 'confirmed' ? formatDate(selectedLead.acquiredAt || undefined) : '-',
+                },
+                {
+                  key: 'commissionStatus',
+                  label: '提成结算',
+                  children: selectedLead.acquisitionCommissionStatus === 'paid'
+                    ? '已发放'
+                    : selectedLead.acquisitionCommissionStatus === 'pending_settlement'
+                      ? '待结算'
+                      : '尚未生成',
+                },
               ]}
             />
 

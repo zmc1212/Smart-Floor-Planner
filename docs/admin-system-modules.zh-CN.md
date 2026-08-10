@@ -274,9 +274,9 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
 ### 7. 线索与转化资产
 
 - 页面：`/leads`。
-- API：`/api/leads`、`/leads/[id]` 及户型、员工关联接口。
+- API：`/api/leads`、`/api/leads/[id]`、`/api/acquisition-tasks` 及户型、员工关联接口。
 - 模型/工具：PostgreSQL `LeadRepository`、`FloorPlanRepository`、`AdminUserRepository`、微信工具。
-- 状态：`Implemented`。支持线索录入/状态、跟进、分配、正式户型关联和转化上下文；列表、详情、新建、更新和删除均在 RLS PostgreSQL 事务内执行，并保留十进制字符串 `_id` DTO。线索-户型连接表、主户型选择、租户校验和删除清理为原子操作；普通微信通知在数据库事务提交后调用。企微配置、群分享和员工企微标识已弃用，已从运行时 API 与 UI 移除；历史 MongoDB 字段及 PostgreSQL `admin_users.wecom_user_id` 列保留，不迁移也不删除。`/leads` 后台视图现使用共享 Ant Design ProComponents 模式（`PageContainer`、`ProTable`）承载服务端状态筛选和分页，并使用 Ant Design 详情抽屉完成负责人指派、正式户型查看和跟进记录；共享 `ModuleOverview` 从同一分页列表响应派生当前页漏斗统计；列表和详情读取仍会取消已过期请求，避免旧响应覆盖新的筛选或选中线索。线索状态统一展示为“新线索→已获客→量房中→方案设计→已签约”五步，`已关闭`作为终止筛选；历史状态通过归一化标签和分组筛选保持兼容，草稿/已完成正式户型关联分别推进到量房中/方案设计。其 API 契约、租户范围、角色边界及“详情”“方案”“删除”行内操作均未改变，所有可见变更继续使用共享操作反馈。
+- 状态：`Implemented`。支持线索录入/状态、跟进、分配、正式户型关联和转化上下文；列表、详情、新建、更新和删除均在 RLS PostgreSQL 事务内执行，并保留十进制字符串 `_id` DTO。线索-户型连接表、主户型选择、租户校验和删除清理为原子操作；普通微信通知在数据库事务提交后调用。企微配置、群分享和员工企微标识已弃用，已从运行时 API 与 UI 移除；历史 MongoDB 字段及 PostgreSQL `admin_users.wecom_user_id` 列保留，不迁移也不删除。`/leads` 后台视图使用共享 Ant Design ProComponents 模式（`PageContainer`、`ProTable`）承载服务端分页、四阶段客户状态筛选和独立获客状态筛选，并在详情抽屉展示负责人、正式户型、跟进记录及获客时间/提成状态；共享 `ModuleOverview` 从同一分页响应派生当前页漏斗统计。客户主流程为“新线索→量房中→方案设计→已签约”，`已关闭`为终止筛选；历史 `acquired` 归并到“新线索”，草稿/已完成正式户型关联分别推进到量房中/方案设计。获客确认独立使用 `acquired_at/acquired_by` 和提成记录表达，不再占用客户状态。列表和详情继续取消过期请求，租户范围、角色边界及“详情”“方案”“删除”行内操作保持不变，所有可见变更继续使用共享操作反馈。
 
 ### 8. 正式户型、搜索与查看
 
@@ -399,9 +399,11 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
 
 - `/staff` 中设计师必须填写 `wechatId` 并上传媒体资源二维码；测量员必须绑定同企业启用中的设计师。关系写入 `measurer_designer_bindings`，一个设计师可绑定多个测量员。仍有绑定时禁止停用或删除设计师。
 - `POST /api/leads` 服务端按绑定关系写入测量员负责人、设计师负责人及 `new` 状态；手机号重复时复用原线索，不重复通知或提成。
-- `POST /api/leads/[id]/acquire` 仅负责该线索的设计师可调用，使用条件更新将 `new` 原子变为 `acquired`，并生成金额快照为 `pending_settlement` 的获客提成；线索列表和详情使用统一五步状态文案，历史状态按规范归并展示。
+- `GET /api/acquisition-tasks` 仅向小程序设计师/测量员开放，按租户、角色、负责人和时间范围返回分页待确认/已完成任务、汇总、脱敏客户信息及提成字段；测量员当前绑定设计师联系方式只作为页面级 `designerProfile` 返回一次，任务条目不重复返回微信号或二维码。它不扩大小程序对后台线索列表的读取范围。
+- `POST /api/leads/[id]/acquire` 仅负责该线索的设计师可调用，使用 `assigned_to`、`acquired_at IS NULL` 和允许状态条件做原子确认，只写 `acquiredAt/acquiredBy` 并生成金额快照为 `pending_settlement` 的获客提成；重复确认返回冲突且不会重复提成，也不会修改客户业务状态。直接通过线索新增/更新接口写入 `acquired` 会被拒绝。
+- `0017_acquisition_workbench.sql` 将历史 `leads.status='acquired'` 归并为 `new`，迁移时输出缺失 `acquired_at` 或提成关联的修复告警，并为负责人/推广人获客查询建立索引；运行时仍兼容未迁移的历史值。
 - `/acquisition-commissions` 及结算 API 使用租户隔离；企业负责人和平台管理员可标记已发放，测量员只能查看自己的记录。
-- `staff_notifications` 记录站内通知，小程序提供未读查询与已读接口；写入冲突目标与其 `(dedupe_key, channel)` 部分唯一索引条件一致，可正确忽略重复写入；微信发送失败不会回滚线索。
+- `staff_notifications` 记录站内通知，小程序提供未读查询与已读接口；获客待确认/已确认通知的 `metadata.page` 深链到协作中心对应 `leadId`。写入冲突目标与其 `(dedupe_key, channel)` 部分唯一索引条件一致，可正确忽略重复写入；微信发送失败不会回滚线索。
 
 ## 核心模型
 

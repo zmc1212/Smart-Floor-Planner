@@ -594,6 +594,64 @@ test('a collinear closed-corner closure stays aligned and extends the current wa
   assert.equal(extendedWall.inputSource, 'closure-merge');
 });
 
+test('an offset adjacent room closes through the source shared wall without swallowing the first room', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 2233, yMm: 0 }, 2233);
+  draft = commitWall(draft, { xMm: 2233, yMm: 3182 }, 3182);
+  draft = commitWall(draft, { xMm: 0, yMm: 3182 }, 2233);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 3182);
+  draft = surveyGraph.confirmClosure(draft);
+
+  let floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 0, yMm: 3182 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: 0, yMm: 7318 }, 4136);
+  draft = commitWall(draft, { xMm: 2433, yMm: 7518 }, 2433);
+  draft = commitWall(draft, { xMm: 2433, yMm: 5484 }, 2034);
+
+  floor = surveyGraph.getActiveFloor(draft);
+  const closeTarget = surveyGraph.getNode(floor, floor.session.closeCandidateNodeId);
+  assert.deepEqual(
+    { xMm: closeTarget.xMm, yMm: closeTarget.yMm },
+    { xMm: 2233, yMm: 3182 }
+  );
+  assert.deepEqual(
+    surveyGraph.getClosurePath(floor, floor.session).map(({ xMm, yMm }) => ({ xMm, yMm })),
+    [
+      { xMm: 2433, yMm: 5484 },
+      { xMm: 2433, yMm: 3182 },
+      { xMm: 2233, yMm: 3182 }
+    ]
+  );
+
+  floor = surveyGraph.getActiveFloor(surveyGraph.confirmClosure(draft));
+  const adjacentSpace = floor.spaces.at(-1);
+  const adjacentWalls = adjacentSpace.wallIds.map((wallId) => surveyGraph.getWall(floor, wallId));
+
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 2);
+  assert.equal(adjacentSpace.wallIds.length, 5);
+  assert.deepEqual(adjacentWalls.map((wall) => wall.lengthMm), [4136, 2433, 4136, 0, 2233]);
+  assert.deepEqual(
+    surveyGraph.buildSpaceBoundaryPoints(floor, adjacentSpace.wallIds).map(({ xMm, yMm }) => ({ xMm, yMm })),
+    [
+      { xMm: 0, yMm: 3182 },
+      { xMm: 0, yMm: 7518 },
+      { xMm: 2433, yMm: 7518 },
+      { xMm: 2433, yMm: 3182 },
+      { xMm: 2233, yMm: 3182 }
+    ]
+  );
+});
+
 test('a stepped straight-wall chain closes with two orthogonal edges instead of a diagonal', () => {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });

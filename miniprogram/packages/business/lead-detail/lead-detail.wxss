@@ -134,6 +134,94 @@
   font-weight: 600;
 }
 
+.acquisition-info {
+  margin-bottom: 18rpx;
+  padding: 24rpx;
+  border: 1rpx solid rgba(207, 220, 207, 0.55);
+  border-radius: 22rpx;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-home-card);
+  box-sizing: border-box;
+}
+
+.acquisition-info-heading,
+.acquisition-info-row,
+.acquisition-info-actions {
+  display: flex;
+  align-items: center;
+}
+
+.acquisition-info-heading {
+  justify-content: space-between;
+  gap: 18rpx;
+}
+
+.acquisition-info-title {
+  color: #202a23;
+  font-size: 28rpx;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.acquisition-info-subtitle {
+  margin-top: 5rpx;
+  color: #7b857e;
+  font-size: 20rpx;
+  line-height: 1.35;
+}
+
+.acquisition-info-status {
+  min-height: 44rpx;
+  padding: 0 16rpx;
+  border-radius: 22rpx;
+  color: #9a6a14;
+  background: #fff5db;
+  font-size: 20rpx;
+  line-height: 44rpx;
+}
+
+.acquisition-info-status.is-confirmed {
+  color: #177a3f;
+  background: #e9f8ee;
+}
+
+.acquisition-info-grid {
+  margin-top: 18rpx;
+  padding: 14rpx 18rpx;
+  border-radius: 16rpx;
+  background: #f7f9f7;
+}
+
+.acquisition-info-row {
+  min-height: 54rpx;
+  justify-content: space-between;
+  gap: 20rpx;
+  color: #667169;
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
+.acquisition-info-row text:last-child {
+  color: #2f3932;
+  text-align: right;
+}
+
+.acquisition-info-actions {
+  min-height: 70rpx;
+  margin-top: 8rpx;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8rpx 24rpx;
+}
+
+.acquisition-info-link {
+  min-height: 64rpx;
+  color: #218249;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 64rpx;
+}
+
 .whole-home-card {
   position: relative;
   padding-top: 76rpx;
@@ -321,14 +409,6 @@
   font-size: 24rpx;
   line-height: 1.5;
   font-weight: 500;
-}
-
-.whole-home-plan-name {
-  margin-top: 16rpx;
-  color: #20262d;
-  font-size: 26rpx;
-  font-weight: 500;
-  line-height: 1.35;
 }
 
 .whole-home-subtitle {
@@ -743,16 +823,46 @@
   text-align: center;
   padding: 120rpx 0;
 }
-.acquire-button {
-  display: inline-flex;
+.detail-error {
+  display: flex;
+  min-height: 520rpx;
+  margin: 28rpx 20rpx;
+  padding: 40rpx;
   align-items: center;
   justify-content: center;
-  min-height: 72rpx;
-  margin: 16rpx 0;
-  padding: 0 28rpx;
-  border-radius: 36rpx;
-  background: #1fa774;
-  color: #fff;
+  flex-direction: column;
+  border-radius: 24rpx;
+  text-align: center;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.detail-error-title {
+  color: #283229;
   font-size: 28rpx;
-  font-weight: 600;
+  font-weight: 700;
+}
+
+.detail-error-copy {
+  margin-top: 10rpx;
+  color: #737e76;
+  font-size: 22rpx;
+  line-height: 1.5;
+}
+
+.detail-error-action {
+  min-width: 200rpx;
+  min-height: 80rpx;
+  margin-top: 24rpx;
+  padding: 0 24rpx;
+  border: 0;
+  border-radius: 18rpx;
+  color: #ffffff;
+  background: #18a94b;
+  font-size: 24rpx;
+  line-height: 80rpx;
+}
+
+.detail-error-action::after {
+  border: 0;
 }

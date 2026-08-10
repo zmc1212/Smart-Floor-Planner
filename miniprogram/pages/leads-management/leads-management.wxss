@@ -41,6 +41,29 @@ page {
   flex-direction: column;
 }
 
+.my-designer-entry {
+  position: absolute;
+  z-index: 3;
+  right: 40rpx;
+  display: flex;
+  min-height: 64rpx;
+  padding: 0 14rpx;
+  align-items: center;
+  gap: 8rpx;
+  border-radius: 32rpx;
+  color: #4f5e55;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 6rpx 18rpx rgba(42, 65, 49, 0.08);
+  font-size: 24rpx;
+  line-height: 64rpx;
+  box-sizing: border-box;
+}
+
+.my-designer-entry image {
+  width: 28rpx;
+  height: 28rpx;
+}
+
 .title-row {
   display: flex;
   align-items: center;
@@ -83,9 +106,18 @@ page {
 }
 
 .main-content {
+  display: flex;
   flex: 1;
   min-height: 0;
   position: relative;
   z-index: 2;
   overflow: visible;
+}
+
+.lead-list-host {
+  display: flex;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
 }

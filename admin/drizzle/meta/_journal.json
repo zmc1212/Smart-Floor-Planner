@@ -120,6 +120,13 @@
       "when": 1786100000000,
       "tag": "0016_measurer_designer_acquisition",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1786350000000,
+      "tag": "0017_acquisition_workbench",
+      "breakpoints": true
     }
   ]
 }

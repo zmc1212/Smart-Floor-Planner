@@ -61,6 +61,7 @@ test('main package contains only primary tabs and low-frequency flows are split 
         'promotion-records/promotion-records',
         'promotion-record-detail/promotion-record-detail',
         'commission-records/commission-records',
+        'acquisition-center/acquisition-center',
         'inspiration/inspiration',
         'recommendations/index',
       ],

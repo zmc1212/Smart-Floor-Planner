@@ -169,27 +169,35 @@ utilities, and the admin APIs they call.
 ### Leads And Customer Records
 
 - Pages: `packages/business/lead-form/lead-form`,
-  `pages/leads-management/leads-management`, and
-  `packages/business/lead-detail/lead-detail`.
-- APIs: `/api/leads`, `/api/leads/[id]`, `/api/floorplans/[id]` GET/DELETE.
+  `pages/leads-management/leads-management`,
+  `packages/business/lead-detail/lead-detail`, and
+  `packages/business/acquisition-center/acquisition-center`; designer contact
+  details reuse `components/designer-contact-sheet`.
+- APIs: `/api/leads`, `/api/leads/[id]`, `/api/acquisition-tasks`, and
+  `/api/floorplans/[id]` GET/DELETE.
 - Implemented: customer name/phone/community/area/style capture, recent leads,
   list/detail views, formal-plan association, primary-plan name/status/closed
   space count in lead detail, continue measurement, start a new independent
   measurement, delete active formal plans with local pointer cleanup,
   client-side search across loaded records, and canonical status filtering
-  through both the stage strip and native action sheet. The lead workflow is
-  `New lead -> Acquired -> Measuring -> Design proposal -> Signed`; `closed`
-  remains a terminal filter, while historical status values are normalized for
-  display and grouped server-side.
+  through both the stage strip and native action sheet. The customer workflow is
+  `New lead -> Measuring -> Design proposal -> Signed`; `closed` remains a
+  terminal filter, while historical `acquired` values render as `New lead` for
+  compatibility. Acquisition confirmation is an independent collaboration fact,
+  not a customer workflow stage.
 - Persistence: lead and formal-plan list/detail/create/update/delete operations
   use PostgreSQL RLS transactions and decimal-string IDs; lead-plan linking and
   primary-plan cleanup are atomic.
 - Visual baseline: `design-references/all-pages-ip-v1/02-leads-management.png`
   at `390x844`. The shipped page follows its Xiao K client-concierge scene,
-  green dossier summary, search/filter/create action order, five main
+  green dossier summary, search/filter/create action order, four main
   dossier-index
   stage tabs, stacked customer-record cards, and right-aligned color-coded
-  floor-plan thumbnails. Thumbnail geometry still renders from each lead's
+  floor-plan thumbnails. A capsule-safe lightweight `My Designer` entry opens
+  the shared bottom contact sheet; signed QR and WeChat details are no longer
+  repeated on list cards. The list workspace and its `list-scroller` form one
+  continuous flex-height chain, so the scroller fills the viewport space left
+  after the page header and its own search and stage controls. Thumbnail geometry still renders from each lead's
   formal wall graph or a real external preview URL, and live data, pagination,
   errors, empty states, navigation, and the shared five-item custom tab bar remain
   authoritative. The packaged scene derivative is
@@ -535,7 +543,9 @@ utilities, and the admin APIs they call.
   promotion records, commissions, surveying, and the new AI design home.
 - Implemented: profile/role display, workbench summary, todos, floor-plan list,
   notification/account actions, logout, new measurement, an enterprise-staff
-  AI Design home entry, and contextual AI entry from a plan card.
+  AI Design home entry, contextual AI entry from a plan card, and a role-shaped
+  Acquisition Collaboration action with a live pending badge for designers and
+  measurers.
 - Visual: the Mine surface follows `design-references/mine/miniprogram-mine-v6.png`
   at the iPhone 13 Pro `390x844` baseline. Its left-weighted translucent profile
   card preserves the visible home scene, while the white rounded summary tray,
@@ -833,6 +843,13 @@ utilities, and the admin APIs they call.
   pixel-width clamp. This changes rendering and editor hit/overlay geometry
   only; wall-graph coordinates, persisted thickness, routes, APIs, roles, and
   measurement audits are unchanged.
+- Shared-wall inset cursor correction (2026-08-10): whenever the formal Canvas
+  shows an active cursor, that topology target is the sole owner of the blue
+  full-canvas crosshair. A preview whose effective measured endpoint is inset
+  from a shared wall no longer draws a second crosshair at the red measurement
+  endpoint, so the two indicators cannot separate as zoom increases. The
+  effective length, red measurement edge, closure topology, routes, APIs,
+  roles, version-4 data, and measurement audits are unchanged.
 - Collinear closure preview and wall normalization (2026-08-10): a closure
   guide returning to a closed-room boundary now starts on the current measured
   wall axis and ends at the same outside-face position used by confirmation;
@@ -843,6 +860,16 @@ utilities, and the admin APIs they call.
   outside-face end inset instead of persisting another collinear wall. A real
   turn still creates its own wall. Routes, APIs, roles, version-4 data, and BLE
   audit payloads are unchanged.
+- Offset adjacent-room closure correction (2026-08-10): when a wall chain
+  starts from a closed room and its new room is wider or narrower by one wall
+  thickness, merge closure now prefers the opposite endpoint of the source
+  shared wall instead of whichever old-room node was inserted first. The
+  inferred orthogonal route follows the actual incoming terminal-wall
+  direction, permits the terminal wall-thickness bridge, and applies the
+  shared-wall end inset to the exterior boundary wall. The new space therefore
+  contains only its measured chain plus the direct shared edge, preserving the
+  intended step without swallowing the first room or inflating its dimensions
+  and area. Routes, APIs, roles, version-4 data, and BLE audits are unchanged.
 - Closed-wall deletion recovery (2026-08-07): deleting a wall from a closed
   adjacent room now clears stale cursor-snap metadata, so `resetCursor` cannot
   restore a node/wall that was deleted or belongs to the previous room. After
@@ -995,10 +1022,11 @@ bubble through the original button tree, preserving tap or drag ownership.
 
 The focused business and data contract is [`docs/measurer-designer-acquisition.md`](measurer-designer-acquisition.md) and its Chinese mirror.
 
-- `pages/leads-management/leads-management` and the reusable `lead-list` component display the canonical five-step status labels. For measurers, the list exposes the bound designer's WeChat ID and signed QR image; the copy action is measurer-only by API contract.
-- `packages/business/lead-detail/lead-detail` accepts `id` or notification `leadId`, renders the canonical status rail and next-action copy, and lets designers confirm acquisition only for their own `new` lead through `POST /api/leads/[id]/acquire`; floor-plan linking then advances the lead through measuring and design. The brand-colored formal-surveying tab is the card's sole title; the next-action copy is grouped with its surveying CTA, while the hero contains customer identity and status only. This is presentation-only and changes no route, API, data, or role boundary.
+- `packages/business/acquisition-center/acquisition-center` is the sole designer confirmation entry. `/api/acquisition-tasks` supplies role-shaped pending/completed tasks, summaries, pagination, failure retry, idempotent confirmation, and exact notification `leadId` targeting. A measurer response returns the current binding once as page-level `designerProfile`; one `My Designer / View WeChat` utility follows the summary and task cards do not repeat designer contact data. Confirmation writes `acquiredAt/acquiredBy` and creates the acquisition commission without changing customer workflow status.
+- `pages/leads-management/leads-management` and `components/lead-list` use the four-stage customer workflow and no longer expose an Acquired filter. Measurers open the shared `designer-contact-sheet` from the capsule-safe `My Designer` entry instead of receiving repeated WeChat and QR blocks on every card.
+- `packages/business/lead-detail/lead-detail` accepts `id` or notification `leadId`, renders the four-stage rail, next action, and an ordinary acquisition fact group, but no acquisition-confirmation hero action. Its formal-surveying card shows only real graph status, closed-space count, and update time, and the shared bottom sheet remains the designer-contact entry.
 - `packages/business/commission-records/commission-records` consumes `/api/commission-records`; measurers receive the independent lead-acquisition records with pending/paid summaries while salesperson order commissions remain unchanged.
-- The Mine page reads `/api/miniprogram/notifications?unread=1`, marks selected items through `/api/miniprogram/notifications/read`, and deep-links to the lead detail page. Notification delivery failures are shown through the in-app fallback.
+- The Mine page receives the role-shaped Acquisition Collaboration action and real pending badge from `/api/miniprogram/mine`. Selected in-app notifications are marked through `/api/miniprogram/notifications/read` and prefer `metadata.page` to deep-link the exact workbench record. Notification delivery failures remain visible through the in-app fallback.
 
 ## Maintenance Rules
 

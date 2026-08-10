@@ -18,6 +18,7 @@ type ActionItem = {
   sublabel: string;
   icon: string;
   target: string;
+  badgeCount?: number;
 };
 
 type WorkbenchCard = {
@@ -60,11 +61,13 @@ const ACTIONS_BY_ROLE: Record<string, ActionItem[]> = {
     { key: 'settlement', label: '提成结算', sublabel: '查看收益明细', icon: 'wallet', target: 'commissions' },
   ],
   designer: [
+    { key: 'acquisition', label: '获客协作', sublabel: '确认客户微信交接', icon: 'clipboard-pen', target: 'acquisition' },
     { key: 'customers', label: '客户列表', sublabel: '服务客户线索', icon: 'users', target: 'leads' },
     { key: 'inspiration', label: '灵感库', sublabel: '查看设计灵感', icon: 'wallet', target: 'inspiration' },
   ],
   measurer: [
-    { key: 'commissions', label: 'My commissions', sublabel: 'Lead acquisition commission', icon: 'wallet', target: 'commissions' },
+    { key: 'acquisition', label: '获客协作', sublabel: '跟进微信交接', icon: 'clipboard-pen', target: 'acquisition' },
+    { key: 'commissions', label: '我的提成', sublabel: '查看获客奖励', icon: 'wallet', target: 'commissions' },
     { key: 'customers', label: '服务客户', sublabel: '查看客户信息', icon: 'users', target: 'leads' },
     { key: 'measure', label: '去量房', sublabel: '打开量房工具', icon: 'wallet', target: 'measure' },
   ],
@@ -199,10 +202,23 @@ export async function GET(request: Request) {
         ];
       }
     );
-    const unreadNotificationCount = await withMiniProgramPostgresTransaction(
+    const acquisitionMeta = await withMiniProgramPostgresTransaction(
       context,
-      async (transaction) => (await new AcquisitionRepository(transaction).listNotifications(staffId, true)).length
+      async (transaction) => {
+        const repository = new AcquisitionRepository(transaction);
+        const unreadNotificationCount = (await repository.listNotifications(staffId, true)).length;
+        const acquisitionSummary = role === 'designer' || role === 'measurer'
+          ? await repository.taskSummary({ role, staffId }, month)
+          : null;
+        return { unreadNotificationCount, acquisitionSummary };
+      }
     );
+
+    const actions = (ACTIONS_BY_ROLE[role] || ACTIONS_BY_ROLE.enterprise_admin).map((action) => (
+      action.target === 'acquisition'
+        ? { ...action, badgeCount: acquisitionMeta.acquisitionSummary?.pendingCount || 0 }
+        : action
+    ));
 
     return NextResponse.json({
       success: true,
@@ -218,9 +234,9 @@ export async function GET(request: Request) {
           staffId: staff._id,
           enterpriseId: staff.enterpriseId || context.enterpriseId || null,
         },
-        actions: ACTIONS_BY_ROLE[role] || ACTIONS_BY_ROLE.enterprise_admin,
+        actions,
         workbenchCards,
-        unreadNotificationCount,
+        unreadNotificationCount: acquisitionMeta.unreadNotificationCount,
         // Commercial workflow todos remain empty until that PostgreSQL domain switches.
         todos: [],
       },

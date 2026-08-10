@@ -129,6 +129,12 @@ export async function PUT(
     const { id } = await params;
     const leadId = parsePostgresId(id, 'lead id');
     const body = await request.json();
+    if (String(body.status || '') === 'acquired') {
+      return NextResponse.json(
+        { success: false, error: 'acquired 已从线索业务状态移除，请使用获客确认接口' },
+        { status: 400 }
+      );
+    }
     const updated = await withLeadTransaction(
       context,
       async (transaction) => {
@@ -155,9 +161,6 @@ export async function PUT(
         }
         if (body.source !== undefined) input.source = String(body.source);
         if (body.status !== undefined) {
-          if (String(body.status) === 'acquired' && context.kind === 'admin' && context.admin.role === 'designer') {
-            throw new Error('请使用获客确认接口完成状态变更');
-          }
           input.status = normalizeLeadStatus(String(body.status));
         }
         if (body.notes !== undefined) input.notes = String(body.notes) || null;

@@ -19,9 +19,27 @@
       </view>
       <text class="page-subtitle">高效跟进客户，把握每一次机会</text>
     </view>
+    <view
+      wx:if="{{designerProfile}}"
+      class="my-designer-entry"
+      style="top: {{designerEntryTop}}px;"
+      bindtap="onOpenDesignerSheet"
+      aria-role="button"
+      aria-label="查看我的设计师"
+    >
+      <image src="/images/mine-icons/user.png" mode="aspectFit" />
+      <text>我的设计师</text>
+    </view>
   </view>
 
   <view class="main-content">
-    <lead-list id="leadList" openid="{{openid}}" bindadd="onOpenLeadModal" />
+    <lead-list class="lead-list-host" id="leadList" openid="{{openid}}" bindadd="onOpenLeadModal" bindprofilechange="onDesignerProfileChange" />
   </view>
+
+  <designer-contact-sheet
+    visible="{{showDesignerSheet}}"
+    profile="{{designerProfile}}"
+    bindclose="onCloseDesignerSheet"
+    bindretry="onRetryDesignerProfile"
+  />
 </view>

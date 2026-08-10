@@ -16,6 +16,10 @@ const componentWxss = fs.readFileSync(
   path.join(miniRoot, 'components', 'lead-list', 'lead-list.wxss'),
   'utf8'
 );
+const pageWxss = fs.readFileSync(
+  path.join(miniRoot, 'pages', 'leads-management', 'leads-management.wxss'),
+  'utf8'
+);
 const leadsRoute = fs.readFileSync(
   path.join(miniRoot, '..', 'admin', 'src', 'app', 'api', 'leads', 'route.ts'),
   'utf8'
@@ -53,10 +57,44 @@ function createFormalLayout() {
 }
 
 test('Leads management exposes the canonical lead stages', () => {
-  for (const label of ['全部', '新线索', '已获客', '量房中', '方案设计', '已签约', '已关闭']) {
+  for (const label of ['全部', '新线索', '量房中', '方案设计', '已签约', '已关闭']) {
     assert.match(componentJs, new RegExp(`label: '${label}'`));
   }
+  assert.doesNotMatch(componentJs, /label: '已获客'/);
+  assert.doesNotMatch(componentJs, /id: 'acquired'/);
   assert.match(componentJs, /\{ id: 'designing', query: 'designing', label: '方案设计' \}/);
+});
+
+test('Leads preserves the approved first-screen rhythm and delegates designer contact to the shared sheet', () => {
+  const pageWxml = fs.readFileSync(
+    path.join(miniRoot, 'pages', 'leads-management', 'leads-management.wxml'),
+    'utf8'
+  );
+  const pageJson = fs.readFileSync(
+    path.join(miniRoot, 'pages', 'leads-management', 'leads-management.json'),
+    'utf8'
+  );
+  assert.doesNotMatch(componentWxml, /designer-contact-card|designer-qr/);
+  assert.match(pageWxml, /class="my-designer-entry"/);
+  assert.match(pageWxml, />我的设计师</);
+  assert.match(pageWxml, /<designer-contact-sheet/);
+  assert.match(pageJson, /\/components\/designer-contact-sheet\/designer-contact-sheet/);
+  const headerIndex = pageWxml.indexOf('class="page-header"');
+  const summaryIndex = componentWxml.indexOf('class="lead-hero-card"');
+  const workspaceIndex = componentWxml.indexOf('class="lead-workspace"');
+  assert.ok(headerIndex >= 0 && summaryIndex >= 0 && workspaceIndex > summaryIndex);
+});
+
+test('Leads list scroller receives the complete remaining page height', () => {
+  const pageWxml = fs.readFileSync(
+    path.join(miniRoot, 'pages', 'leads-management', 'leads-management.wxml'),
+    'utf8'
+  );
+  assert.match(pageWxml, /<lead-list class="lead-list-host"/);
+  assert.match(pageWxss, /\.main-content\s*\{[^}]*display:\s*flex;[^}]*flex:\s*1;[^}]*min-height:\s*0;/s);
+  assert.match(pageWxss, /\.lead-list-host\s*\{[^}]*height:\s*100%;[^}]*flex:\s*1;[^}]*min-height:\s*0;/s);
+  assert.match(componentWxss, /\.lead-list-container\s*\{[^}]*flex:\s*1;[^}]*min-height:\s*0;[^}]*height:\s*100%;/s);
+  assert.match(componentWxss, /\.list-scroller\s*\{[^}]*flex:\s*1;[^}]*min-height:\s*0;/s);
 });
 
 test('Leads management search and filter controls are functional', () => {

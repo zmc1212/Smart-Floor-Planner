@@ -2,7 +2,7 @@ const api = require('../../utils/api.js');
 const { buildFloorPlanPreview, pickLeadFloorPlan } = require('./lead-list-model.js');
 
 const STATUS_LABELS = {
-  acquired: '已获客',
+  acquired: '新线索',
   new: '新线索',
   contacted: '新线索',
   measuring: '量房中',
@@ -15,7 +15,7 @@ const STATUS_LABELS = {
 };
 
 const STATUS_TONES = {
-  acquired: 'acquired',
+  acquired: 'pending',
   new: 'pending',
   contacted: 'pending',
   measuring: 'measuring',
@@ -28,7 +28,6 @@ const STATUS_TONES = {
 };
 
 const STATUS_ICONS = {
-  acquired: '/images/leads-v4/ruler-green.png',
   pending: '/images/leads-v4/clock-blue.png',
   measuring: '/images/leads-v4/ruler-green.png',
   remeasuring: '/images/leads-v4/ruler-purple.png',
@@ -54,7 +53,6 @@ Component({
     tabs: [
       { id: 'all', query: 'all', label: '全部' },
       { id: 'new', query: 'new', label: '新线索' },
-      { id: 'acquired', query: 'acquired', label: '已获客' },
       { id: 'measuring', query: 'measuring', label: '量房中' },
       { id: 'designing', query: 'designing', label: '方案设计' },
       { id: 'converted', query: 'converted', label: '已签约' },
@@ -109,15 +107,17 @@ Component({
           const formatted = res.data.map((lead) => this.formatLead(lead));
           const allLeads = reset ? formatted : this.data.allLeads.concat(formatted);
 
+          const designerProfile = res.designerProfile || null;
           this.setData({
             allLeads,
             leads: this.filterLeads(allLeads, this.data.searchKeyword),
-            designerProfile: res.designerProfile || (formatted.find((lead) => lead.assignedTo && lead.assignedTo.wechatQrUrl) || {}).assignedTo || null,
+            designerProfile,
             page: page + 1,
             hasMore: formatted.length === this.data.pageSize,
             loading: false,
             refreshing: false
           });
+          this.triggerEvent('profilechange', { profile: designerProfile });
 
           if (reset) {
             this.updateHeroStats(allLeads, res.stats);
@@ -259,12 +259,6 @@ Component({
 
     onAddLead() {
       this.triggerEvent('add');
-    },
-
-    onCopyWechat(e) {
-      const value = String(e.currentTarget.dataset.wechat || '');
-      if (!value) return;
-      wx.setClipboardData({ data: value, success: () => wx.showToast({ title: '已复制微信号', icon: 'success' }) });
     },
 
     onSearch(e) {

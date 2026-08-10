@@ -5,7 +5,7 @@ const { openSurveyingEditor, clearSurveyingEditorDraft } = require('../../../uti
 const STATUS_LABELS = {
   new: '新线索',
   contacted: '新线索',
-  acquired: '已获客',
+  acquired: '新线索',
   measuring: '量房中',
   measured: '方案设计',
   assigned: '方案设计',
@@ -15,10 +15,10 @@ const STATUS_LABELS = {
   closed: '已关闭'
 };
 
-const WORKFLOW_STAGES = ['新线索', '已获客', '量房中', '方案设计', '已签约'];
+const WORKFLOW_STAGES = ['新线索', '量房中', '方案设计', '已签约'];
 
 function normalizeStatus(status) {
-  if (['contacted'].includes(status)) return 'new';
+  if (['contacted', 'acquired'].includes(status)) return 'new';
   if (['measured', 'assigned', 'designing', 'quoting'].includes(status)) return 'designing';
   return status || 'new';
 }
@@ -34,8 +34,7 @@ function buildStageRail(status) {
 
 function getNextAction(status) {
   const normalized = normalizeStatus(status);
-  if (normalized === 'new') return '等待设计师确认获客';
-  if (normalized === 'acquired') return '安排正式量房';
+  if (normalized === 'new') return '开始正式量房';
   if (normalized === 'measuring') return '完成墙图后进入方案设计';
   if (normalized === 'designing') return '等待方案沟通或客户确认';
   if (normalized === 'converted') return '已签约，无需继续推进';
@@ -66,6 +65,12 @@ function getFormalPlans(lead) {
 function formatPlanDate(value) {
   const date = new Date(value || '');
   if (Number.isNaN(date.getTime())) return '';
+  return `${date.getMonth() + 1}月${date.getDate()}日更新`;
+}
+
+function formatConfirmationDate(value) {
+  const date = new Date(value || '');
+  if (Number.isNaN(date.getTime())) return '';
   const pad = (number) => String(number).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
@@ -77,13 +82,25 @@ function getPlanSpaceCount(plan) {
     : 0;
 }
 
-function toPlanDisplay(plan, index) {
+function toPlanDisplay(plan) {
   const spaceCount = getPlanSpaceCount(plan);
+  const metadata = [
+    plan.status === 'completed' ? '已完成' : '量房中',
+    spaceCount ? `${spaceCount}个空间` : '',
+    formatPlanDate(plan.updatedAt || plan.createdAt)
+  ].filter(Boolean);
   return {
     ...plan,
-    displayName: plan.name || `正式量房 ${index + 1}`,
-    displayMeta: `${plan.status === 'completed' ? '已完成' : '量房中'}${spaceCount ? ` · ${spaceCount} 个空间` : ''}${formatPlanDate(plan.createdAt) ? ` · ${formatPlanDate(plan.createdAt)}` : ''}`
+    historyName: plan.name || '历史正式量房',
+    displayMeta: metadata.join(' · ')
   };
+}
+
+function getStaffRole() {
+  const app = getApp();
+  const user = app && app.globalData && app.globalData.userInfo;
+  if (!user) return '';
+  return user.staffRole || (user.role === 'staff' ? '' : user.role) || '';
 }
 
 Page({
@@ -92,11 +109,17 @@ Page({
     lead: null,
     activeFloorPlan: null,
     previousFloorPlans: [],
-    canAcquire: false,
+    staffRole: '',
+    canContactDesigner: false,
+    canViewAcquisition: false,
+    showDesignerSheet: false,
+    designerProfile: null,
+    acquisitionConfirmedTime: '',
     statusLabel: '新线索',
-    nextAction: '等待设计师确认获客',
+    nextAction: '开始正式量房',
     stageRail: buildStageRail('new'),
     loading: true,
+    errorMessage: '',
     deleting: false
   },
 
@@ -109,14 +132,22 @@ Page({
   },
 
   async fetchLeadDetail() {
-    this.setData({ loading: true });
+    this.setData({ loading: true, errorMessage: '' });
     try {
       const res = await api.request(`/leads/${this.data.leadId}`, 'GET');
       if (!res.success || !res.data) throw new Error('线索加载失败');
       const formalPlans = getFormalPlans(res.data).map(toPlanDisplay);
+      const staffRole = getStaffRole();
+      const designerProfile = res.data.assignedTo && typeof res.data.assignedTo === 'object'
+        ? res.data.assignedTo
+        : null;
       this.setData({
         lead: res.data,
-        canAcquire: this.canAcquireLead(res.data),
+        staffRole,
+        designerProfile,
+        acquisitionConfirmedTime: formatConfirmationDate(res.data.acquiredAt),
+        canContactDesigner: staffRole === 'measurer' && Boolean(designerProfile && (designerProfile.wechatId || designerProfile.wechatQrUrl)),
+        canViewAcquisition: staffRole === 'measurer' || staffRole === 'designer',
         statusLabel: STATUS_LABELS[res.data.status] || res.data.status || '新线索',
         nextAction: getNextAction(res.data.status),
         stageRail: buildStageRail(res.data.status),
@@ -125,35 +156,28 @@ Page({
         loading: false
       });
     } catch (err) {
-      this.setData({ loading: false });
-      wx.showToast({ title: (err && err.error) || '加载失败', icon: 'none' });
+      this.setData({ loading: false, errorMessage: (err && err.error) || '线索详情加载失败，请稍后重试' });
     }
   },
 
-  canAcquireLead(lead) {
-    const app = getApp();
-    const user = app && app.globalData && app.globalData.userInfo;
-    const staffId = String((user && (user._id || user.id)) || '');
-    return user && user.role === 'designer' && lead && lead.status === 'new' && String(lead.assignedTo && (lead.assignedTo._id || lead.assignedTo)) === staffId;
+  onOpenAcquisition() {
+    wx.navigateTo({ url: `/packages/business/acquisition-center/acquisition-center?leadId=${this.data.leadId}` });
   },
 
-  onAcquireLead() {
-    if (!this.data.leadId || !this.data.canAcquire) return;
-    wx.showModal({
-      title: '确认已获客',
-      content: '请确认客户已经添加你的微信，再标记为已获客。',
-      confirmText: '确认已获客',
-      success: async (result) => {
-        if (!result.confirm) return;
-        try {
-          await api.request(`/leads/${this.data.leadId}/acquire`, 'POST');
-          wx.showToast({ title: '已获客，提成待结算', icon: 'success' });
-          await this.fetchLeadDetail();
-        } catch (error) {
-          wx.showToast({ title: (error && error.error) || '确认失败，请刷新重试', icon: 'none' });
-        }
-      }
-    });
+  onOpenDesignerContact() {
+    if (this.data.canContactDesigner) this.setData({ showDesignerSheet: true });
+  },
+
+  onCloseDesignerSheet() {
+    this.setData({ showDesignerSheet: false });
+  },
+
+  onRetryDesignerProfile() {
+    this.fetchLeadDetail();
+  },
+
+  onRetryDetail() {
+    this.fetchLeadDetail();
   },
 
   onStartMeasure() {

@@ -1,13 +1,4 @@
 <view class="lead-list-container">
-  <view wx:if="{{designerProfile && designerProfile.wechatQrUrl}}" class="designer-contact-card">
-    <view class="designer-contact-copy">
-      <text class="designer-contact-title">绑定设计师</text>
-      <text class="designer-contact-name">{{designerProfile.displayName || designerProfile.username}}</text>
-      <text class="designer-contact-wechat">微信号：{{designerProfile.wechatId || '未配置'}}</text>
-      <view class="designer-copy-action" data-wechat="{{designerProfile.wechatId}}" bindtap="onCopyWechat">复制微信号</view>
-    </view>
-    <image class="designer-qr" src="{{designerProfile.wechatQrUrl}}" mode="aspectFill" />
-  </view>
   <view class="lead-hero-card">
     <view class="folder-top-plane"></view>
     <view class="folder-fold"></view>

@@ -883,7 +883,10 @@ function drawGrid(ctx, scene) {
 
 function drawAxes(ctx, scene) {
   const segment = scene.activeSegment;
-  if (!segment || !scene.walls.length) return;
+  // The cursor owns the active crosshair whenever it is visible. Inset
+  // measurement endpoints can intentionally differ from the topology target,
+  // so drawing both crosshairs would make the apparent snap drift with zoom.
+  if (!segment || !scene.walls.length || (scene.cursor && scene.cursor.point)) return;
   const point = segment.endPoint;
 
   ctx.save();

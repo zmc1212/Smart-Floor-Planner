@@ -14,6 +14,10 @@ formal surveying, and AI-assisted design.
 - `docs/measurer-designer-acquisition.zh-CN.md` and
   `docs/measurer-designer-acquisition.md` describe the measurer–designer lead
   acquisition, notification, commission, permission, and data contract.
+- `docs/measurer-designer-acquisition-workbench-plan.zh-CN.md` and
+  `docs/measurer-designer-acquisition-workbench-plan.md` describe the approved
+  dual-track acquisition-workbench target. They are implementation plans, not
+  proof that the current runtime already follows the target design.
 - `蓝牙命令列表V1.docx` is the vendor protocol reference for the supported BLE
   laser distance meter's commands, response frames, system information, and
   device-status fields.
@@ -33,7 +37,8 @@ This gate applies to every feature, bug fix, refactor, and UI/API change:
    module inventory for the affected surface. For surveying work, also read the
    formal surveying document and data contract. For measurer–designer
    acquisition work, also read both `docs/measurer-designer-acquisition.md` and
-   `docs/measurer-designer-acquisition.zh-CN.md`.
+   `docs/measurer-designer-acquisition.zh-CN.md`, plus the approved workbench
+   plan pair before implementing the dual-track redesign.
 2. During implementation, treat the module inventory as part of the feature
    change. Update its status, page/route entry, API, model/data contract,
    permission or role boundary, and known limitations whenever the behavior

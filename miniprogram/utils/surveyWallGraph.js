@@ -786,10 +786,10 @@ function isSafeOrthogonalClosurePath(points, occupiedSegments) {
     const start = points[index];
     const end = points[index + 1];
     const length = distanceMm(start, end);
-    // The first short leg is an alignment correction that disappears when
-    // the cursor snaps onto the opposite rectangle edge. All persisted legs
-    // still need the normal minimum wall length.
-    if (index > 0 && length < MIN_WALL_LENGTH_MM) return false;
+    // A short first or final leg can be the wall-thickness alignment bridge
+    // between an adjacent room's outside corner and the shared-wall topology.
+    // Interior inferred legs are real walls and keep the normal minimum.
+    if (index > 0 && index < points.length - 2 && length < MIN_WALL_LENGTH_MM) return false;
     if (length <= 0) continue;
     const intersects = occupiedSegments.some((segment) => (
       segment.start && segment.end && hasClosureInteriorIntersection(
@@ -854,19 +854,18 @@ function findMergeClosurePlan(floor, session, endPoint) {
       segments.push({ start: anchor, end: endPoint });
     }
 
-    for (let index = 0; index < floor.nodes.length; index += 1) {
-      const candidate = floor.nodes[index];
-      if (!candidate || candidate.id === activeStartNode.id || candidate.id === anchor.id) continue;
-      if (distanceMm(closureStart, candidate) < MIN_WALL_LENGTH_MM) continue;
+    const activeSharedWall = getWall(floor, session.activeSpaceSharedWallId);
+    const activeSharedEndpointIds = activeSharedWall
+      ? [activeSharedWall.startNodeId, activeSharedWall.endNodeId]
+      : [];
+    const candidatePlans = (floor.nodes || []).map((candidate) => {
+      if (!candidate || candidate.id === activeStartNode.id || candidate.id === anchor.id) return null;
+      if (distanceMm(closureStart, candidate) < MIN_WALL_LENGTH_MM) return null;
 
       const candidateConnections = (floor.walls || []).filter((wall) => (
         !activeWallIds[wall.id] && (wall.startNodeId === candidate.id || wall.endNodeId === candidate.id)
       ));
-      // Corners of an already closed room have two boundary connections. They
-      // remain valid merge targets when the new chain can return through an
-      // existing boundary path; restricting this to dangling nodes prevents
-      // adjacent rooms from closing when started at a closed-room corner.
-      if (candidateConnections.length < 1) continue;
+      if (candidateConnections.length < 1) return null;
 
       const boundaryPath = findWallPathBetweenNodes(
         floor,
@@ -874,6 +873,38 @@ function findMergeClosurePlan(floor, session, endPoint) {
         activeStartNode.id,
         activeWallIds
       );
+      if (boundaryPath.length < 1) return null;
+
+      return {
+        candidate,
+        boundaryPath,
+        // A room restarted from an existing wall should close against the
+        // opposite end of that same wall before considering a longer route
+        // around the old room. Node insertion order is unrelated to geometry;
+        // using it here can make the new room swallow the previous room.
+        sharedEndpointRank: activeSharedEndpointIds.indexOf(candidate.id) === -1 ? 1 : 0,
+        boundaryLengthMm: boundaryPath.reduce((total, wallId) => {
+          const wall = getWall(floor, wallId);
+          return total + (wall ? getWallCoordinateLength(floor, wall) : 0);
+        }, 0),
+        closureDistanceMm: distanceMm(closureStart, candidate)
+      };
+    }).filter(Boolean).sort((left, right) => (
+      left.sharedEndpointRank - right.sharedEndpointRank ||
+      left.boundaryPath.length - right.boundaryPath.length ||
+      left.boundaryLengthMm - right.boundaryLengthMm ||
+      left.closureDistanceMm - right.closureDistanceMm
+    ));
+
+    for (let index = 0; index < candidatePlans.length; index += 1) {
+      const candidatePlan = candidatePlans[index];
+      const candidate = candidatePlan.candidate;
+      if (!candidate || candidate.id === activeStartNode.id || candidate.id === anchor.id) continue;
+      // Corners of an already closed room have two boundary connections. They
+      // remain valid merge targets when the new chain can return through an
+      // existing boundary path; restricting this to dangling nodes prevents
+      // adjacent rooms from closing when started at a closed-room corner.
+      const boundaryPath = candidatePlan.boundaryPath;
       // findWallPathBetweenNodes returns wall ids, so a single existing shared
       // wall is a valid boundary path (and is the normal corner-to-corner
       // adjacent-room case).
@@ -885,8 +916,12 @@ function findMergeClosurePlan(floor, session, endPoint) {
       // exposed the merge candidate until the cursor happened to be diagonal.
       const allowOrthogonalSharedPath = session.mode === 'straight' &&
         isClosedBoundaryCorner(floor, session);
+      const lastActiveWall = activeWalls[activeWalls.length - 1] || null;
+      const incomingStart = includesPreview
+        ? anchor
+        : (lastActiveWall ? getNode(floor, lastActiveWall.startNodeId) : anchor);
       const pathCandidates = allowOrthogonalSharedPath
-        ? buildOrthogonalClosurePoints(candidate, closureStart, anchor)
+        ? buildOrthogonalClosurePoints(candidate, closureStart, incomingStart)
         : [[closureStart, candidate]];
       for (let pathIndex = 0; pathIndex < pathCandidates.length; pathIndex += 1) {
         const points = normalizeClosurePoints(pathCandidates[pathIndex]);
@@ -2654,12 +2689,29 @@ function confirmClosure(draft) {
       throw new Error('当前轮廓不能安全闭合，请继续补测墙体');
     }
 
+    const closurePoints = closurePlan.points;
+    const finalConnectorStart = closurePoints.length > 2
+      ? closurePoints[closurePoints.length - 2]
+      : null;
+    const activeSharedWall = getWall(floor, session.activeSpaceSharedWallId);
+    const activeSharedStart = activeSharedWall ? getNode(floor, activeSharedWall.startNodeId) : null;
+    const activeSharedEnd = activeSharedWall ? getNode(floor, activeSharedWall.endNodeId) : null;
+    const finalConnectorFollowsSharedWall = !!(
+      finalConnectorStart &&
+      activeSharedStart &&
+      activeSharedEnd &&
+      (
+        isHorizontalSegment(finalConnectorStart, closeTargetNode) ===
+          isHorizontalSegment(activeSharedStart, activeSharedEnd)
+      )
+    );
+
     let closureStartNode = anchor;
     closurePlan.points.slice(1).forEach((point, index, points) => {
       const closureEndNode = index === points.length - 1
         ? closeTargetNode
         : addNode(floor, point);
-      const measurementEndInsetMm = index === points.length - 1
+      let measurementEndInsetMm = index === points.length - 1
         ? resolveMeasurementEndInsetMm(
           floor,
           closureStartNode,
@@ -2667,6 +2719,18 @@ function confirmClosure(draft) {
           session.activeSpaceSharedWallId
         )
         : 0;
+      if (index === points.length - 2 && finalConnectorFollowsSharedWall) {
+        const targetAlignedStart = {
+          xMm: closeTargetNode.xMm + closureStartNode.xMm - closureEndNode.xMm,
+          yMm: closeTargetNode.yMm + closureStartNode.yMm - closureEndNode.yMm
+        };
+        measurementEndInsetMm = resolveMeasurementEndInsetMm(
+          floor,
+          targetAlignedStart,
+          closeTargetNode,
+          session.activeSpaceSharedWallId
+        );
+      }
       const measurementSide = resolveBoundaryAlignedMeasurementSide(
         floor,
         session,
@@ -3402,29 +3466,149 @@ function updateViewport(draft, viewportPatch) {
   return touchDraft(next);
 }
 
-function calculateSpaceAreaMm2(draft) {
-  const floor = getActiveFloor(draft);
-  const closedSpace = floor.spaces.find((space) => space.closed);
-  if (!closedSpace) return 0;
-
-  const points = buildSpaceBoundaryPoints(floor, closedSpace.wallIds);
-
-  if (points.length < 3) return 0;
-
-  let area = 0;
-  for (let i = 0; i < points.length; i += 1) {
-    const current = points[i];
-    const nextPoint = points[(i + 1) % points.length];
-    area += current.xMm * nextPoint.yMm - nextPoint.xMm * current.yMm;
-  }
-  return Math.round(Math.abs(area) / 2);
-}
-
 function buildSpaceBoundaryPoints(floor, wallIds) {
   const forward = traceClosedSpaceWallChain(floor, wallIds, false);
   const chain = forward.length ? forward : traceClosedSpaceWallChain(floor, wallIds, true);
   if (!chain.length) return [];
   return chain.map((entry) => entry.start);
+}
+
+function buildSpaceWallFaceSegments(floor, wallIds) {
+  const chain = buildClosedSpaceWallChain(floor, wallIds);
+  const centroid = calculateBoundaryCentroid(floor, wallIds);
+  if (!chain.length || !centroid) return [];
+
+  return chain.map((entry) => {
+    const base = buildBaseWallSegment(floor, entry.wall);
+    if (!base) return null;
+    const midpoint = {
+      xMm: (base.start.xMm + base.end.xMm) / 2,
+      yMm: (base.start.yMm + base.end.yMm) / 2
+    };
+    const centroidOffset = dot({
+      x: centroid.xMm - midpoint.xMm,
+      y: centroid.yMm - midpoint.yMm
+    }, base.normal);
+    // A physical wall is emitted once between its topology face and offset
+    // face.  For a shared wall, the two spaces sit on opposite sides and must
+    // therefore select opposite inner faces from the same wall object.
+    const usesOffsetFace = centroidOffset > 0;
+    let innerStart = usesOffsetFace ? base.outerStart : base.start;
+    let innerEnd = usesOffsetFace ? base.outerEnd : base.end;
+    let oppositeStart = usesOffsetFace ? base.start : base.outerStart;
+    let oppositeEnd = usesOffsetFace ? base.end : base.outerEnd;
+    if (entry.reversed) {
+      [innerStart, innerEnd] = [innerEnd, innerStart];
+      [oppositeStart, oppositeEnd] = [oppositeEnd, oppositeStart];
+    }
+    return {
+      wallId: entry.wall.id,
+      wall: entry.wall,
+      thicknessMm: base.thicknessMm,
+      face: usesOffsetFace ? 'offset' : 'topology',
+      innerStart,
+      innerEnd,
+      oppositeStart,
+      oppositeEnd
+    };
+  }).filter(Boolean);
+}
+
+function buildFaceBoundaryPoints(segments, startKey, endKey) {
+  if (!Array.isArray(segments) || segments.length < 3) return [];
+  const points = segments.map((segment, index) => {
+    const previous = segments[(index - 1 + segments.length) % segments.length];
+    const previousStart = previous[startKey];
+    const previousEnd = previous[endKey];
+    const currentStart = segment[startKey];
+    const currentEnd = segment[endKey];
+    const intersection = intersectLines(previousStart, previousEnd, currentStart, currentEnd);
+    if (!intersection) return currentStart;
+
+    const cornerLimit = Math.max(
+      Number(previous.thicknessMm) || DEFAULT_THICKNESS_MM,
+      Number(segment.thicknessMm) || DEFAULT_THICKNESS_MM,
+      CLOSE_TOLERANCE_MM
+    ) * 4;
+    return distanceMm(intersection, currentStart) <= cornerLimit
+      ? intersection
+      : currentStart;
+  });
+
+  return points.filter((point, index) => (
+    index === 0 || !pointsNearlyEqual(point, points[index - 1])
+  ));
+}
+
+function buildSpaceInnerBoundaryPoints(floor, wallIds) {
+  const segments = buildSpaceWallFaceSegments(floor, wallIds);
+  const points = buildFaceBoundaryPoints(segments, 'innerStart', 'innerEnd');
+  return points.length >= 3 && calculatePolygonAreaMm2(points) > 0
+    ? points
+    : buildSpaceBoundaryPoints(floor, wallIds);
+}
+
+function calculateBoundaryBounds(points) {
+  if (!Array.isArray(points) || !points.length) {
+    return { widthMm: 0, heightMm: 0 };
+  }
+  const xs = points.map((point) => Number(point.xMm));
+  const ys = points.map((point) => Number(point.yMm));
+  return {
+    widthMm: Math.round(Math.max(...xs) - Math.min(...xs)),
+    heightMm: Math.round(Math.max(...ys) - Math.min(...ys))
+  };
+}
+
+function buildSpaceDimensionPlan(floor, spaceOrWallIds) {
+  const wallIds = Array.isArray(spaceOrWallIds)
+    ? spaceOrWallIds
+    : (spaceOrWallIds && spaceOrWallIds.wallIds);
+  if (!floor || !Array.isArray(wallIds)) return null;
+  const faces = buildSpaceWallFaceSegments(floor, wallIds);
+  if (faces.length < 3) return null;
+  const innerBoundaryPoints = buildFaceBoundaryPoints(faces, 'innerStart', 'innerEnd');
+  const outerBoundaryPoints = buildFaceBoundaryPoints(faces, 'oppositeStart', 'oppositeEnd');
+  if (innerBoundaryPoints.length < 3 || outerBoundaryPoints.length < 3) return null;
+  const innerBounds = calculateBoundaryBounds(innerBoundaryPoints);
+  const outerBounds = calculateBoundaryBounds(outerBoundaryPoints);
+  return {
+    innerBoundaryPoints,
+    outerBoundaryPoints,
+    inner: Object.assign({}, innerBounds, {
+      areaMm2: Math.round(calculatePolygonAreaMm2(innerBoundaryPoints))
+    }),
+    outer: Object.assign({}, outerBounds, {
+      areaMm2: Math.round(calculatePolygonAreaMm2(outerBoundaryPoints))
+    }),
+    wallThicknessSegments: faces.map((face) => {
+      const start = {
+        xMm: (face.innerStart.xMm + face.innerEnd.xMm) / 2,
+        yMm: (face.innerStart.yMm + face.innerEnd.yMm) / 2
+      };
+      const end = {
+        xMm: (face.oppositeStart.xMm + face.oppositeEnd.xMm) / 2,
+        yMm: (face.oppositeStart.yMm + face.oppositeEnd.yMm) / 2
+      };
+      return {
+        wallId: face.wallId,
+        kind: 'wall-thickness',
+        start,
+        end,
+        lengthMm: Math.round(distanceMm(start, end))
+      };
+    })
+  };
+}
+
+function calculateSpaceAreaMm2(draft, spaceId) {
+  const floor = getActiveFloor(draft);
+  const closedSpace = floor.spaces.find((space) => (
+    space.closed && (!spaceId || space.id === spaceId)
+  ));
+  if (!closedSpace) return 0;
+  const plan = buildSpaceDimensionPlan(floor, closedSpace);
+  return plan ? plan.inner.areaMm2 : 0;
 }
 
 module.exports = {
@@ -3447,6 +3631,8 @@ module.exports = {
   buildWallRenderGeometry,
   buildWallJoinRenderGeometries,
   buildSpaceBoundaryPoints,
+  buildSpaceInnerBoundaryPoints,
+  buildSpaceDimensionPlan,
   getClosurePath,
   getMinimumClosureSuggestionWallCount,
   calculateSpaceAreaMm2,

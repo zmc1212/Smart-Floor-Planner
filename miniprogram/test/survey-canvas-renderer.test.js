@@ -38,6 +38,24 @@ function createClosedRectangleDraft() {
   return surveyGraph.confirmClosure(draft);
 }
 
+function createSharedWallInsetClosureDraft() {
+  let draft = createClosedRectangleDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 0, yMm: 2000 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: 0, yMm: 5000 }, 3000);
+  draft = commitWall(draft, { xMm: 3000, yMm: 5200 }, 3000);
+  return surveyGraph.startPreview(draft, { xMm: 3000, yMm: 2200 });
+}
+
 function createClosedCornerCollinearClosureDraft() {
   let draft = createClosedRectangleDraft();
   const floor = surveyGraph.getActiveFloor(draft);
@@ -54,6 +72,32 @@ function createClosedCornerCollinearClosureDraft() {
   draft = commitWall(draft, { xMm: 0, yMm: 5000 }, 3000);
   draft = commitWall(draft, { xMm: 3000, yMm: 5200 }, 3000);
   return commitWall(draft, { xMm: 3000, yMm: 4000 }, 1200);
+}
+
+function createOffsetAdjacentRoomDraft() {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 2233, yMm: 0 }, 2233);
+  draft = commitWall(draft, { xMm: 2233, yMm: 3182 }, 3182);
+  draft = commitWall(draft, { xMm: 0, yMm: 3182 }, 2233);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 3182);
+  draft = surveyGraph.confirmClosure(draft);
+
+  const floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 0, yMm: 3182 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: 0, yMm: 7318 }, 4136);
+  draft = commitWall(draft, { xMm: 2433, yMm: 7518 }, 2433);
+  draft = commitWall(draft, { xMm: 2433, yMm: 5484 }, 2034);
+  return surveyGraph.confirmClosure(draft);
 }
 
 function createResetCursorMergeClosureDraft() {
@@ -607,6 +651,23 @@ test('closed-corner collinear closure guide continues from the current wall edge
   assert.equal(scene.closureGuide.endPoint.x, currentWall.endPoint.x);
 });
 
+test('offset adjacent-room closure renders the stepped second room with its own dimensions and area', () => {
+  const draft = createOffsetAdjacentRoomDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const secondSpace = floor.spaces.find((space) => space.name === '房间2');
+  const scene = createScene(draft);
+  const secondLabel = scene.closedSpaceLabels.find((label) => label.roomName === '房间2');
+
+  assert.ok(secondSpace);
+  const secondFill = scene.closedSpaceFills.find((space) => space.id === secondSpace.id);
+  assert.ok(secondLabel);
+  assert.ok(secondFill);
+  assert.equal(secondLabel.widthMm, 2433);
+  assert.equal(secondLabel.heightMm, 4136);
+  assert.equal(secondLabel.areaM2, '10.1');
+  assert.equal(secondFill.points.length, 5);
+});
+
 test('stepped straight-wall closure guide renders the inferred right-angle path', () => {
   const draft = createSteppedClosureDraft();
   const scene = createScene(draft);
@@ -650,6 +711,42 @@ test('closed-room second-wall outer snap stays on the rendered exterior edge acr
     assert.equal(scene.alignmentSnapGuide.endPoint.x, rightWall.outerEnd.x);
     assert.equal(scene.cursor.point.x, rightWall.outerEnd.x);
     assert.equal(scene.previewWall.endPoint.x, rightWall.outerEnd.x);
+  });
+});
+
+test('shared-wall inset preview renders only the topology cursor crosshair across zoom levels', () => {
+  const draft = createSharedWallInsetClosureDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+
+  assert.equal(floor.session.closeCandidateType, 'shared-wall');
+  assert.equal(floor.session.previewMeasurementEndInsetMm, 200);
+
+  [0.05, 0.12, 0.24].forEach((scale) => {
+    const scene = createScene(draft, { scale, offsetX: 0, offsetY: 0 });
+    const recorder = createRecordingContext();
+    surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+
+    assert.ok(scene.cursor);
+    assert.ok(scene.activeSegment);
+    assert.equal(
+      Math.round(Math.abs(scene.activeSegment.endPoint.y - scene.cursor.point.y)),
+      Math.round(200 * scale)
+    );
+
+    const activeAxes = recorder.strokeDetails.filter((detail) => (
+      detail.strokeStyle === 'rgba(0, 126, 220, 0.92)'
+    ));
+    const cursorAxes = recorder.strokeDetails.filter((detail) => (
+      detail.strokeStyle === 'rgba(22, 119, 255, 0.92)'
+    ));
+    assert.equal(activeAxes.length, 0);
+    assert.equal(cursorAxes.length, 1);
+    assert.deepEqual(cursorAxes[0].path, [
+      ['moveTo', 0, scene.cursor.point.y],
+      ['lineTo', scene.rect.width, scene.cursor.point.y],
+      ['moveTo', scene.cursor.point.x, 0],
+      ['lineTo', scene.cursor.point.x, scene.rect.height]
+    ]);
   });
 });
 
@@ -807,7 +904,7 @@ test('dimension arrows and guidance lines use the compact drawing treatment', ()
   assert.ok(recorder.widths.includes(1));
   assert.ok(recorder.widths.includes(1.25));
   assert.ok(recorder.widths.includes(1.5));
-  assert.deepEqual(recorder.dashes.filter((dash) => dash.length), [[8, 6], [8, 6], [12, 10], [8, 6]]);
+  assert.deepEqual(recorder.dashes.filter((dash) => dash.length), [[8, 6], [12, 10], [8, 6]]);
   const lastGuideStroke = recorder.strokeDetails.findLastIndex((detail) => (
     detail.strokeStyle === 'rgba(22, 119, 255, 0.92)'
   ));
