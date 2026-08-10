@@ -28,6 +28,7 @@ import { ClipboardCheck, Eye, FilePenLine, LayoutTemplate, MessageSquare, Plus, 
 import ModuleOverview from '@/components/admin/ModuleOverview';
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+import { getLeadNextAction, getLeadStatusLabel, getLeadWorkflowStep, LEAD_WORKFLOW_STEPS } from '@/lib/lead-status';
 
 type StaffReference = {
   _id: string;
@@ -84,10 +85,10 @@ type LeadListResponse = {
 
 const STATUS_OPTIONS = [
   { label: '新线索', value: 'new' },
+  { label: '已获客', value: 'acquired' },
   { label: '量房中', value: 'measuring' },
-  { label: '量房完成', value: 'measured' },
-  { label: '已指派设计师', value: 'assigned' },
-  { label: '已转化（签单）', value: 'converted' },
+  { label: '方案设计', value: 'designing' },
+  { label: '已签约', value: 'converted' },
   { label: '已关闭', value: 'closed' },
 ];
 
@@ -102,8 +103,9 @@ function getFloorPlanSourceLabel(source?: string | null) {
 }
 
 function getStatusColor(status: string) {
-  if (status === 'measuring' || status === 'measured') return 'green';
-  if (status === 'assigned') return 'blue';
+  if (status === 'acquired') return 'green';
+  if (status === 'measuring') return 'green';
+  if (['measured', 'assigned', 'designing', 'quoting'].includes(status)) return 'blue';
   if (status === 'converted') return 'orange';
   if (status === 'closed') return 'default';
   return 'cyan';
@@ -332,7 +334,7 @@ export default function LeadsPage() {
       valueType: 'select',
       valueEnum: STATUS_LABELS,
       width: 150,
-      render: (_, lead) => <Tag color={getStatusColor(lead.status)}>{STATUS_LABELS[lead.status] || lead.status}</Tag>,
+      render: (_, lead) => <Tag color={getStatusColor(lead.status)}>{getLeadStatusLabel(lead.status)}</Tag>,
     },
     {
       title: '客户 / 小区',
@@ -412,9 +414,9 @@ export default function LeadsPage() {
           ariaLabel="线索概览"
           items={[
             { label: '本页线索', value: overview.total, icon: <Users size={18} /> },
-            { label: '本页量房推进中', value: overview.measuring, icon: <ClipboardCheck size={18} />, tone: 'warning' },
-            { label: '本页待设计协作', value: overview.assigned, icon: <LayoutTemplate size={18} />, tone: 'success' },
-            { label: '本页已完成转化', value: overview.converted, icon: <ClipboardCheck size={18} />, tone: 'success' },
+            { label: '本页量房中', value: overview.measuring, icon: <ClipboardCheck size={18} />, tone: 'warning' },
+            { label: '本页方案设计', value: overview.assigned, icon: <LayoutTemplate size={18} />, tone: 'success' },
+            { label: '本页已签约', value: overview.converted, icon: <ClipboardCheck size={18} />, tone: 'success' },
           ]}
         />
         <ProTable<Lead>
@@ -445,8 +447,8 @@ export default function LeadsPage() {
               }
               const nextOverview = {
                 total: result.data?.length || 0,
-                measuring: (result.data || []).filter((lead) => lead.status === 'measuring' || lead.status === 'measured').length,
-                assigned: (result.data || []).filter((lead) => lead.status === 'assigned' || lead.status === 'designing' || lead.status === 'quoting').length,
+                measuring: (result.data || []).filter((lead) => lead.status === 'measuring').length,
+                assigned: (result.data || []).filter((lead) => ['measured', 'assigned', 'designing', 'quoting'].includes(lead.status)).length,
                 converted: (result.data || []).filter((lead) => lead.status === 'converted').length,
               };
               setOverview((current) => (
@@ -488,7 +490,7 @@ export default function LeadsPage() {
             <Flex align="center" justify="space-between" gap={16} wrap>
               <Flex vertical gap={4}>
                 <Typography.Text type="secondary">{selectedLead.phone || '-'}</Typography.Text>
-                <Tag color={getStatusColor(selectedLead.status)}>{STATUS_LABELS[selectedLead.status] || selectedLead.status}</Tag>
+                <Tag color={getStatusColor(selectedLead.status)}>{getLeadStatusLabel(selectedLead.status)}</Tag>
               </Flex>
               <Select
                 className="min-w-44"
@@ -499,17 +501,15 @@ export default function LeadsPage() {
               />
             </Flex>
 
-            <Steps
-              size="small"
-              current={getWorkflowStep(selectedLead.status)}
-              items={[
-                { title: '新线索' },
-                { title: '量房中' },
-                { title: '量房完成' },
-                { title: '方案设计' },
-                { title: '已转化' },
-              ]}
-            />
+              <Steps
+                size="small"
+                current={getLeadWorkflowStep(selectedLead.status)}
+                items={LEAD_WORKFLOW_STEPS.map((title) => ({ title }))}
+              />
+
+              <Typography.Text type="secondary">
+                下一步：{getLeadNextAction(selectedLead.status)}
+              </Typography.Text>
 
             <Descriptions
               bordered
@@ -566,14 +566,6 @@ export default function LeadsPage() {
       </Drawer>
     </div>
   );
-}
-
-function getWorkflowStep(status: string) {
-  if (status === 'measuring') return 1;
-  if (status === 'measured') return 2;
-  if (status === 'assigned' || status === 'designing' || status === 'quoting') return 3;
-  if (status === 'converted') return 4;
-  return 0;
 }
 
 function RelatedFloorPlans({

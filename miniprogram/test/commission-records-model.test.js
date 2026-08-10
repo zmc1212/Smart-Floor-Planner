@@ -86,3 +86,18 @@ test('Commission page data filters the decorated records without changing the su
   assert.equal(pageData.filteredRecords[0].key, '3');
   assert.equal(pageData.summary.pendingAmountText, '100.00');
 });
+
+test('Measurer acquisition commissions expose lead and designer context', () => {
+  const [record] = normalizeRecords([{
+    _id: 'acq-1',
+    leadId: { _id: 'lead-1', name: '李先生' },
+    designerId: { _id: 'designer-1', displayName: '王设计' },
+    status: 'pending_settlement',
+    commissionAmount: 88,
+    generatedAt: '2026-08-03T10:00:00Z'
+  }]);
+  assert.equal(record.leadName, '李先生');
+  assert.equal(record.designerName, '王设计');
+  assert.equal(record.amountText, '88.00');
+  assert.equal(record.statusTone, 'pending');
+});

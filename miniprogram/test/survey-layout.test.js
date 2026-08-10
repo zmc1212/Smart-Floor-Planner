@@ -33,3 +33,27 @@ test('closed wall graph survives formal save and restore', () => {
   assert.equal(restored.spaces.filter((space) => space.closed).length, 1);
   assert.equal(layout.surveyGraph.status, 'completed');
 });
+
+test('formal save and restore preserves optional measurement insets', () => {
+  const graph = surveyGraph.createSurveyDraft();
+  const floor = surveyGraph.getActiveFloor(graph);
+  floor.nodes = [
+    { id: 'a', xMm: 0, yMm: 0 },
+    { id: 'b', xMm: 3200, yMm: 0 }
+  ];
+  floor.walls = [{
+    id: 'wall-a',
+    startNodeId: 'a',
+    endNodeId: 'b',
+    lengthMm: 3000,
+    thicknessMm: 200,
+    measurementStartInsetMm: 200,
+    measurementEndInsetMm: 0
+  }];
+
+  const layout = surveyLayout.createFormalSurveyLayout(graph, 'draft');
+  const restored = surveyLayout.getActiveFloor(JSON.parse(JSON.stringify(layout)));
+  assert.equal(restored.walls[0].measurementStartInsetMm, 200);
+  assert.equal(restored.walls[0].measurementEndInsetMm, 0);
+  assert.equal(restored.walls[0].lengthMm, 3000);
+});

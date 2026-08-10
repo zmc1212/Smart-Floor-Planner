@@ -11,14 +11,21 @@ const editorWxml = fs.readFileSync(
   path.join(__dirname, '..', 'packages', 'surveying', 'editor', 'surveying-editor.wxml'),
   'utf8'
 );
+const editorWxss = fs.readFileSync(
+  path.join(__dirname, '..', 'packages', 'surveying', 'editor', 'surveying-editor.wxss'),
+  'utf8'
+);
 
-test('a one-wall shared-boundary closure renders its close action', () => {
+test('the close action follows the graph minimum-wall rule for standalone and shared starts', () => {
   assert.match(
     editorScript,
-    /const minimumActiveWallCount = session\.activeSpaceSharedWallId \? 1 : \(hasSharedBoundary \? 2 : 3\)/
+    /const minimumActiveWallCount = surveyGraph\.getMinimumClosureSuggestionWallCount\(floor, session\)/
   );
   assert.match(editorScript, /const actionVisible = session\.state === 'closing' \|\| session\.state === 'mergeClosing'/);
+  assert.match(editorScript, /left:\$\{roundPx\(actionX - actionRadius\)\}px; top:\$\{roundPx\(actionY - actionRadius\)\}px;/);
   assert.match(editorWxml, /wx:if="\{\{!componentEditorVisible && closeActionVisible\}\}"[\s\S]*catchtap="onConfirmClose"/);
+  assert.match(editorWxml, /aria-label="闭合当前空间"[\s\S]*<cover-view class="closure-action-label">合<\/cover-view>/);
+  assert.match(editorWxss, /\.closure-action\s*\{\s*width: 56rpx;\s*height: 56rpx;\s*border: 0;\s*border-radius: 50%;\s*background: var\(--brand-primary\);/);
 });
 
 test('a placed cursor keeps its guide visibility when the canvas render data is returned', () => {

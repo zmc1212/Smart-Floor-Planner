@@ -148,6 +148,9 @@ export async function POST(request: Request) {
             groundPromotionFixedCommission: String(
               Number(body.groundPromotionFixedCommission || 0)
             ),
+            measurerAcquisitionFixedCommission: String(
+              Number(body.measurerAcquisitionFixedCommission || 0)
+            ),
             automationConfig: normalizeAutomationConfig(
               body.automationConfig as Record<string, unknown> | undefined
             ),

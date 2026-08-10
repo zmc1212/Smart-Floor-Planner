@@ -6,9 +6,9 @@ import {
   ProFormDigit,
   ProFormText,
 } from '@ant-design/pro-components';
-import { Button, Flex, Form, Image, Row, Col, Typography, Upload } from 'antd';
-import { Image as ImageIcon, Upload as UploadIcon } from 'lucide-react';
+import { Flex, Form, Row, Col, Typography } from 'antd';
 import { notify } from '@/components/ui/operation-feedback';
+import { ImageUploadField } from '@/components/ui/image-upload-field';
 import {
   DEFAULT_ENTERPRISE_FORM,
   EnterpriseFormState,
@@ -60,20 +60,6 @@ export default function EnterpriseEditorDialog({
         groundPromotionFixedCommission: String(enterprise.groundPromotionFixedCommission ?? 0),
       }
     : DEFAULT_ENTERPRISE_FORM;
-
-  const handleLogoChange = async (file: File) => {
-    if (file.size > 1024 * 1024) {
-      notify.error('图片大小不能超过 1MB');
-      return;
-    }
-
-    try {
-      setLogo(await toBase64(file));
-    } catch (error) {
-      console.error('Failed to convert image to base64:', error);
-      notify.error('图片上传失败');
-    }
-  };
 
   const save = async (values: EnterpriseFormState) => {
     try {
@@ -135,22 +121,18 @@ export default function EnterpriseEditorDialog({
         </Col>
       </Row>
 
-      <Form.Item label="企业 Logo" extra="支持 PNG、JPG。建议正方形 Logo，图片会以 Base64 存储，大小限制 1MB。">
-        <Flex align="center" gap={16} wrap>
-          <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-lg border bg-muted">
-            {logo ? (
-              <Image preview={false} src={logo} alt="企业 Logo 预览" className="h-full w-full object-contain" />
-            ) : (
-              <ImageIcon size={24} className="text-muted-foreground" />
-            )}
-          </div>
-          <Flex gap={8}>
-            <Upload accept="image/*" showUploadList={false} beforeUpload={(file) => { void handleLogoChange(file); return false; }}>
-              <Button icon={<UploadIcon size={16} />}>选择图片</Button>
-            </Upload>
-            {logo ? <Button danger type="text" onClick={() => setLogo('')}>移除</Button> : null}
-          </Flex>
-        </Flex>
+      <Form.Item label="企业 Logo" extra="建议使用正方形 Logo，图片会以 Base64 存储。">
+        <ImageUploadField
+          ariaLabel="上传企业 Logo"
+          helpText="支持 PNG、JPG、WebP 或 GIF 格式，图片大小不超过 1MB。"
+          maxSizeBytes={1024 * 1024}
+          previewAlt="企业 Logo 预览"
+          uploadSuccessText="企业 Logo 已选择"
+          uploadText="选择 Logo"
+          value={logo}
+          onUpload={async (file) => ({ previewUrl: await toBase64(file) })}
+          onValueChange={(value) => setLogo(value || '')}
+        />
       </Form.Item>
 
       <Row gutter={[20, 4]}>

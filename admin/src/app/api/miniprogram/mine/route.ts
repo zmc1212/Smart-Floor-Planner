@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { parsePostgresId } from '@/db/postgres-dto';
 import {
   EnterpriseRepository,
+  AcquisitionRepository,
   FloorPlanRepository,
   LeadRepository,
   MeasurementRepository,
@@ -63,6 +64,7 @@ const ACTIONS_BY_ROLE: Record<string, ActionItem[]> = {
     { key: 'inspiration', label: '灵感库', sublabel: '查看设计灵感', icon: 'wallet', target: 'inspiration' },
   ],
   measurer: [
+    { key: 'commissions', label: 'My commissions', sublabel: 'Lead acquisition commission', icon: 'wallet', target: 'commissions' },
     { key: 'customers', label: '服务客户', sublabel: '查看客户信息', icon: 'users', target: 'leads' },
     { key: 'measure', label: '去量房', sublabel: '打开量房工具', icon: 'wallet', target: 'measure' },
   ],
@@ -197,6 +199,10 @@ export async function GET(request: Request) {
         ];
       }
     );
+    const unreadNotificationCount = await withMiniProgramPostgresTransaction(
+      context,
+      async (transaction) => (await new AcquisitionRepository(transaction).listNotifications(staffId, true)).length
+    );
 
     return NextResponse.json({
       success: true,
@@ -214,6 +220,7 @@ export async function GET(request: Request) {
         },
         actions: ACTIONS_BY_ROLE[role] || ACTIONS_BY_ROLE.enterprise_admin,
         workbenchCards,
+        unreadNotificationCount,
         // Commercial workflow todos remain empty until that PostgreSQL domain switches.
         todos: [],
       },

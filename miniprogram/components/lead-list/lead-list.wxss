@@ -685,3 +685,19 @@
   font-size: 23rpx;
   text-align: center;
 }
+.designer-contact-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 24rpx;
+  margin: 0 0 24rpx;
+  padding: 24rpx;
+  border-radius: 24rpx;
+  background: #f2fbf7;
+}
+.designer-contact-copy { display: flex; flex: 1; flex-direction: column; gap: 8rpx; }
+.designer-contact-title, .designer-contact-name, .designer-contact-wechat { font-size: 24rpx; color: #1f2937; }
+.designer-contact-name { font-weight: 700; }
+.designer-copy-action { align-self: flex-start; margin-top: 8rpx; padding: 10rpx 16rpx; border-radius: 18rpx; background: #1fa774; color: #fff; font-size: 24rpx; }
+.designer-qr { width: 160rpx; height: 160rpx; border-radius: 12rpx; background: #fff; }
+.card-acquired { border-color: #a7e8c9; }
+.layer-acquired { background: #d8f7e7; }

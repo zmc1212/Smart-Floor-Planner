@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Eye, ImagePlus, Images, Plus, Star, Trash2, TrendingUp, Upload } from 'lucide-react';
+import { Eye, Images, Plus, Star, Trash2, TrendingUp } from 'lucide-react';
 import {
   ModalForm,
   PageContainer,
@@ -13,9 +13,9 @@ import {
   type ActionType,
   type ProColumns,
 } from '@ant-design/pro-components';
-import { Button, Card, Empty, Flex, Image, Popconfirm, Space, Statistic, Tag, Typography, Upload as AntUpload } from 'antd';
-import type { UploadProps } from 'antd';
+import { Button, Card, Empty, Flex, Image, Popconfirm, Space, Statistic, Tag, Typography } from 'antd';
 import { notify } from '@/components/ui/operation-feedback';
+import { ImageUploadField } from '@/components/ui/image-upload-field';
 
 type Inspiration = {
   _id: string;
@@ -38,13 +38,6 @@ type InspirationFormValues = {
   isRecommended: boolean;
 };
 
-type ImageUploadFieldProps = {
-  label: string;
-  help: string;
-  value?: string;
-  onChange?: (value: string) => void;
-};
-
 const DEFAULT_LAYOUT_DATA = [{ id: 'room-1', name: '复刻空间', width: 400, height: 300, openings: [] }];
 
 const ROOM_TYPE_OPTIONS = [
@@ -62,50 +55,13 @@ const STYLE_OPTIONS = [
   { label: '精致轻奢', value: '精致轻奢' },
 ];
 
-function ImageUploadField({ label, help, value, onChange }: ImageUploadFieldProps) {
-  const [uploading, setUploading] = useState(false);
-
-  const beforeUpload: UploadProps['beforeUpload'] = async (file) => {
-    if (file.size > 500 * 1024) {
-      notify.error('图片体积不能超过 500KB，请压缩后再上传');
-      return AntUpload.LIST_IGNORE;
-    }
-
-    setUploading(true);
-    try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(new Error('图片读取失败'));
-        reader.readAsDataURL(file);
-      });
-      onChange?.(dataUrl);
-    } catch (error) {
-      notify.error(error instanceof Error ? error.message : '图片读取失败');
-    } finally {
-      setUploading(false);
-    }
-
-    return AntUpload.LIST_IGNORE;
-  };
-
-  return (
-    <div className="flex items-center gap-4 rounded-lg border border-dashed border-border bg-muted/30 p-4">
-      <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md bg-card">
-        {value ? <Image alt={label} className="object-cover" height={80} preview src={value} width={80} /> : <ImagePlus className="text-muted-foreground" size={24} />}
-      </div>
-      <Space direction="vertical" size={4}>
-        <AntUpload accept="image/*" beforeUpload={beforeUpload} maxCount={1} showUploadList={false}>
-          <Button icon={<Upload size={16} />} loading={uploading}>
-            上传{label}
-          </Button>
-        </AntUpload>
-        <Typography.Text type="secondary" className="text-xs">
-          {help}
-        </Typography.Text>
-      </Space>
-    </div>
-  );
+async function toBase64(file: File) {
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error('图片读取失败'));
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function InspirationsPage() {
@@ -259,10 +215,10 @@ export default function InspirationsPage() {
               <ProFormSelect label="设计风格" name="style" options={STYLE_OPTIONS} rules={[{ required: true, message: '请选择设计风格' }]} />
             </div>
             <ProForm.Item label="展示封面" name="coverImage" rules={[{ required: true, message: '请上传展示封面' }]}>
-              <ImageUploadField help="支持常见图片格式，文件不超过 500KB。" label="展示封面" />
+              <ImageUploadField helpText="支持常见图片格式，文件不超过 500KB。" maxSizeBytes={500 * 1024} previewAlt="展示封面预览" uploadText="上传展示封面" onUpload={async (file) => ({ previewUrl: await toBase64(file) })} />
             </ProForm.Item>
             <ProForm.Item label="渲染效果图" name="renderingImage" rules={[{ required: true, message: '请上传渲染效果图' }]}>
-              <ImageUploadField help="作为 AI 设计参考素材，建议使用完整、清晰的空间图。" label="渲染效果图" />
+              <ImageUploadField helpText="作为 AI 设计参考素材，建议使用完整、清晰的空间图。" maxSizeBytes={500 * 1024} previewAlt="渲染效果图预览" uploadText="上传渲染效果图" onUpload={async (file) => ({ previewUrl: await toBase64(file) })} />
             </ProForm.Item>
             <ProFormSwitch label="首页精选推荐" name="isRecommended" />
           </ModalForm>,

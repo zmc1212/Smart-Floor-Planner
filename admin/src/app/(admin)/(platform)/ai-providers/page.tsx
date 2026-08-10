@@ -1,15 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { useRef, useState } from 'react';
-import { Ellipsis, Images, Pencil, Plus, RefreshCw, TestTube2, WalletCards } from 'lucide-react';
+import { useRef, useState, type Key } from 'react';
+import { Ellipsis, Images, Pencil, Plus, RefreshCw, TestTube2, Trash2, WalletCards } from 'lucide-react';
 import { PageContainer, ProTable, type ActionType, type ProColumns } from '@ant-design/pro-components';
 import { Button, Dropdown, Popconfirm, Space, Tag, Typography } from 'antd';
 import type { MenuProps } from 'antd';
 import { notify } from '@/components/ui/operation-feedback';
 import type { Provider } from '@/components/ai-providers/types';
 
-type ProviderAction = 'test' | 'models' | 'balance' | 'disable';
+type ProviderAction = 'test' | 'models' | 'balance' | 'disable' | 'delete';
 
 function ProviderState({ provider }: { provider: Provider }) {
   if (!provider.enabled) return <Tag color="default">已停用</Tag>;
@@ -21,15 +21,21 @@ function ProviderState({ provider }: { provider: Provider }) {
 export default function AiProvidersPage() {
   const actionRef = useRef<ActionType>(null);
   const [workingId, setWorkingId] = useState('');
+  const [selectedProviderIds, setSelectedProviderIds] = useState<Key[]>([]);
 
   const runAction = async (provider: Provider, action: ProviderAction) => {
     setWorkingId(`${provider.id}:${action}`);
     try {
       const response = await fetch(
-        action === 'disable'
+        action === 'disable' || action === 'delete'
           ? `/api/admin/ai-providers/${provider.id}`
           : `/api/admin/ai-providers/${provider.id}/${action}`,
-        { method: action === 'disable' ? 'DELETE' : 'POST' },
+        {
+          method: action === 'disable' ? 'PATCH' : action === 'delete' ? 'DELETE' : 'POST',
+          ...(action === 'disable'
+            ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: false }) }
+            : {}),
+        },
       );
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || '操作失败');
@@ -41,10 +47,40 @@ export default function AiProvidersPage() {
             ? `已同步 ${result.data.models.length} 个模型`
             : action === 'balance'
               ? `上游余额：${result.data.balance} ${result.data.unit}`
-              : '供应商已停用',
+          : action === 'disable'
+            ? '供应商已停用'
+            : '供应商已删除',
       );
     } catch (error) {
       notify.error(error instanceof Error ? error.message : '操作失败');
+    } finally {
+      setWorkingId('');
+    }
+  };
+
+  const deleteSelectedProviders = async () => {
+    setWorkingId('bulk-delete');
+    try {
+      const response = await fetch('/api/admin/ai-providers', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: selectedProviderIds }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '批量删除失败');
+      setSelectedProviderIds([]);
+      await actionRef.current?.reload();
+      if (result.data.deletedIds.length) {
+        notify.success(`已删除 ${result.data.deletedIds.length} 个供应商`);
+      }
+      if (result.data.blockedIds.length) {
+        notify.warning(`${result.data.blockedIds.length} 个供应商已有运行审计记录，未删除并需保持停用状态`);
+      }
+      if (result.data.missingIds.length) {
+        notify.warning(`${result.data.missingIds.length} 个供应商已不存在，未执行删除`);
+      }
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '批量删除失败');
     } finally {
       setWorkingId('');
     }
@@ -105,6 +141,12 @@ export default function AiProvidersPage() {
             danger: true,
             label: <Popconfirm title="停用供应商" description="停用后不会再接收新的路由请求。" onConfirm={() => runAction(provider, 'disable')} okText="停用" cancelText="取消"><span>停用供应商</span></Popconfirm>,
           } : null,
+          {
+            key: 'delete',
+            icon: <Trash2 size={16} />,
+            danger: true,
+            label: <Popconfirm title="删除供应商" description="删除后将移除供应商配置，且无法恢复。已有运行审计记录的供应商无法删除。" onConfirm={() => runAction(provider, 'delete')} okText="删除" cancelText="取消"><span>删除供应商</span></Popconfirm>,
+          },
         ];
         return <Space size={8}>
           <Button key="edit" size="small" icon={<Pencil size={14} />} href={`/ai-providers/${provider.id}`}>编辑</Button>
@@ -132,6 +174,26 @@ export default function AiProvidersPage() {
           columns={columns}
           search={false}
           options={{ reload: true, density: true, setting: true }}
+          rowSelection={{
+            selectedRowKeys: selectedProviderIds,
+            onChange: (keys) => setSelectedProviderIds(keys),
+            preserveSelectedRowKeys: true,
+          }}
+          tableAlertRender={({ selectedRowKeys }) => `已选择 ${selectedRowKeys.length} 个供应商`}
+          toolBarRender={() => [
+            selectedProviderIds.length ? (
+              <Popconfirm
+                key="bulk-delete"
+                title={`删除 ${selectedProviderIds.length} 个供应商`}
+                description="删除后将移除可删除的供应商配置，且无法恢复；已有运行审计记录的供应商会保留并提示。"
+                onConfirm={deleteSelectedProviders}
+                okText="删除"
+                cancelText="取消"
+              >
+                <Button danger icon={<Trash2 size={16} />} loading={workingId === 'bulk-delete'}>批量删除</Button>
+              </Popconfirm>
+            ) : null,
+          ]}
           pagination={{ pageSize: 10, showSizeChanger: true }}
           scroll={{ x: 1260 }}
           request={async () => {

@@ -55,6 +55,7 @@ test('opening AI Design without a floor plan never sends a standalone target sco
     loadHistory: aiService.loadHistory,
     loadSources: aiService.loadSources,
     loadWorkflows: aiService.loadWorkflows,
+    loadHeroFloorPlanResults: aiService.loadHeroFloorPlanResults,
   };
   let requestedParams;
   aiService.loadCapabilities = async () => ({
@@ -68,6 +69,7 @@ test('opening AI Design without a floor plan never sends a standalone target sco
     requestedParams = params;
     return [];
   };
+  aiService.loadHeroFloorPlanResults = async () => [];
 
   try {
     const page = createPage(loadPageDefinition());
@@ -139,12 +141,14 @@ test('stale and coworker-processing targets never reuse a previous result', () =
 
 test('switching from living room to kitchen clears old context before reloading the same plan', async () => {
   const originalLoadWorkflows = aiService.loadWorkflows;
+  const originalLoadHeroFloorPlanResults = aiService.loadHeroFloorPlanResults;
   let finishLoad;
   let requestedParams;
   aiService.loadWorkflows = (params) => {
     requestedParams = params;
     return new Promise((resolve) => { finishLoad = resolve; });
   };
+  aiService.loadHeroFloorPlanResults = async () => [];
 
   try {
     const definition = loadPageDefinition();
@@ -193,6 +197,7 @@ test('switching from living room to kitchen clears old context before reloading 
     assert.equal(page.data.primaryAction.title, '生成厨房概念图');
   } finally {
     aiService.loadWorkflows = originalLoadWorkflows;
+    aiService.loadHeroFloorPlanResults = originalLoadHeroFloorPlanResults;
   }
 });
 

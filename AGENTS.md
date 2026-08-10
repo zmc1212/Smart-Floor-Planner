@@ -11,6 +11,9 @@ formal surveying, and AI-assisted design.
 - `docs/miniprogram-system-modules.md` describes the current Mini Program surface.
 - `docs/surveying-module/README.md` and `formal-surveying.md` describe the formal
   surveying contract and its operational cleanup procedure.
+- `docs/measurer-designer-acquisition.zh-CN.md` and
+  `docs/measurer-designer-acquisition.md` describe the measurer–designer lead
+  acquisition, notification, commission, permission, and data contract.
 - `蓝牙命令列表V1.docx` is the vendor protocol reference for the supported BLE
   laser distance meter's commands, response frames, system information, and
   device-status fields.
@@ -28,7 +31,9 @@ This gate applies to every feature, bug fix, refactor, and UI/API change:
 
 1. Before editing, read this file, the nearest nested instruction file, and the
    module inventory for the affected surface. For surveying work, also read the
-   formal surveying document and data contract.
+   formal surveying document and data contract. For measurer–designer
+   acquisition work, also read both `docs/measurer-designer-acquisition.md` and
+   `docs/measurer-designer-acquisition.zh-CN.md`.
 2. During implementation, treat the module inventory as part of the feature
    change. Update its status, page/route entry, API, model/data contract,
    permission or role boundary, and known limitations whenever the behavior

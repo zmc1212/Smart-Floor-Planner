@@ -44,9 +44,10 @@
       wx:if="{{!componentEditorVisible && closeActionVisible}}"
       class="closure-action {{surveyGuideTarget === 'close' ? 'guide-target-control' : ''}}"
       style="{{closeActionStyle}}"
+      aria-label="闭合当前空间"
       catchtap="onConfirmClose"
     >
-      <cover-view class="closure-action-label">可闭合</cover-view>
+      <cover-view class="closure-action-label">合</cover-view>
     </cover-view>
 
     <!-- 选中墙体时的浮动工具栏（图标行） -->

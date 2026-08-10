@@ -34,10 +34,12 @@
           <view class="delivery-bubble">
             <text>方案已生成，看看效果如何吧！</text>
           </view>
-          <image class="result-delivery-scene" src="/images/page-ip-v3/ai-result.png" mode="aspectFit"></image>
+          <view class="result-delivery-character">
+            <image class="result-delivery-scene" src="/images/page-ip-v3/ai-result.png" mode="aspectFit"></image>
+          </view>
         </view>
 
-        <view wx:if="{{task.sourceCompareImageUrl}}" class="compare-stage {{task.floorPlanCompare ? 'floor-plan-compare' : ''}}" style="height: {{task.resultStageHeight}}rpx;" bindtouchstart="handleCompareTouch" catchtouchmove="handleCompareTouch">
+        <view wx:if="{{task.showComparison}}" class="compare-stage {{task.floorPlanCompare ? 'floor-plan-compare' : ''}}" style="height: {{task.resultStageHeight}}rpx;" bindtouchstart="handleCompareTouch" catchtouchmove="handleCompareTouch">
           <image class="compare-image" src="{{task.resultImageUrl}}" mode="{{task.floorPlanCompare || task.preserveComposition ? 'aspectFit' : 'aspectFill'}}"></image>
           <view class="before-layer" style="width: {{comparePercent}}%;">
             <image class="compare-image before-image" src="{{task.sourceCompareImageUrl}}" mode="{{task.floorPlanCompare || task.preserveComposition ? 'aspectFit' : 'aspectFill'}}"></image>

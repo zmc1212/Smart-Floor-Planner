@@ -173,8 +173,9 @@ FORM: Operate 模式的专业个人工作台，严格继承 miniprogram-mine-v6 
         </view>
 
         <view class="account-strip">
-          <view class="account-action" bindtap="onEnableNotification" aria-role="button">
+          <view class="account-action" bindtap="onOpenNotifications" aria-role="button">
             <image src="/images/mine-icons/bell.png" mode="aspectFit" />
+            <text wx:if="{{mineData.unreadNotificationCount}}" class="notification-badge">{{mineData.unreadNotificationCount}}</text>
             <text>通知提醒</text>
           </view>
           <view class="account-divider"></view>

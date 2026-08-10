@@ -20,6 +20,7 @@ interface EnterprisePatchBody {
   logo?: string;
   branding?: Record<string, unknown>;
   groundPromotionFixedCommission?: number;
+  measurerAcquisitionFixedCommission?: number;
   automationConfig?: Record<string, unknown>;
 }
 
@@ -95,9 +96,12 @@ export async function GET(
   try {
     return await withTenantRoute(
       request,
-      { roles: ['super_admin', 'admin'] },
-      async () => {
+      { roles: ['super_admin', 'admin', 'enterprise_admin'] },
+      async (context) => {
         const { id } = await params;
+        if (context.role === 'enterprise_admin' && context.enterpriseId !== id) {
+          return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+        }
         const enterprise = await withPlatformTransaction((transaction) =>
           new EnterpriseRepository(transaction).findById(parsePostgresId(id))
         );
@@ -129,9 +133,12 @@ export async function PATCH(
   try {
     return await withTenantRoute(
       request,
-      { roles: ['super_admin', 'admin'] },
-      async () => {
+      { roles: ['super_admin', 'admin', 'enterprise_admin'] },
+      async (context) => {
         const { id } = await params;
+        if (context.role === 'enterprise_admin' && context.enterpriseId !== id) {
+          return NextResponse.json({ success: false, error: 'Forbidden' }, { status: 403 });
+        }
         const enterpriseId = parsePostgresId(id);
         const body = (await request.json()) as EnterprisePatchBody;
         const enterprise = await withPlatformTransaction(
@@ -156,6 +163,11 @@ export async function PATCH(
               updateData.groundPromotionFixedCommission = String(
                 Number(body.groundPromotionFixedCommission)
               );
+            }
+            if (body.measurerAcquisitionFixedCommission !== undefined) {
+              const amount = Number(body.measurerAcquisitionFixedCommission);
+              if (!Number.isFinite(amount) || amount < 0) throw new Error('测量员获客提成金额必须是非负数字');
+              updateData.measurerAcquisitionFixedCommission = amount.toFixed(2);
             }
             if (body.automationConfig !== undefined) {
               updateData.automationConfig = normalizeAutomationConfig(

@@ -17,6 +17,8 @@ import {
   withAdminPostgresTransaction,
   withMiniProgramPostgresTransaction,
 } from '@/lib/postgres-request-scope';
+import { getSignedMiniAiAssetUrl } from '@/lib/ai/mini-ai-assets';
+import { normalizeLeadStatus } from '@/lib/lead-status';
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown error';
@@ -70,6 +72,17 @@ function canAccess(
   return true;
 }
 
+function dtoForContext(request: Request, lead: LeadWithRelations, role?: string) {
+  const include = role === 'measurer';
+  const assetId = lead.assignedUser?.wechatQrAssetId;
+  return leadToDto(lead, {
+    includeDesignerWechat: include,
+    designerWechatQrUrl: include && assetId && lead.enterpriseId
+      ? getSignedMiniAiAssetUrl({ request, assetId: assetId.toString(), enterpriseId: lead.enterpriseId.toString() })
+      : null,
+  });
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -92,7 +105,7 @@ export async function GET(
         { status: 404 }
       );
     }
-    return NextResponse.json({ success: true, data: leadToDto(lead) });
+    return NextResponse.json({ success: true, data: dtoForContext(request, lead, context.kind === 'mini' ? context.mini.staff?.role : context.admin.role) });
   } catch (error: unknown) {
     return NextResponse.json(
       { success: false, error: errorMessage(error) },
@@ -141,7 +154,12 @@ export async function PUT(
           input.city = String(body.city).trim() || null;
         }
         if (body.source !== undefined) input.source = String(body.source);
-        if (body.status !== undefined) input.status = String(body.status);
+        if (body.status !== undefined) {
+          if (String(body.status) === 'acquired' && context.kind === 'admin' && context.admin.role === 'designer') {
+            throw new Error('请使用获客确认接口完成状态变更');
+          }
+          input.status = normalizeLeadStatus(String(body.status));
+        }
         if (body.notes !== undefined) input.notes = String(body.notes) || null;
         if (Array.isArray(body.followUpRecords)) {
           input.followUpRecords = body.followUpRecords.filter(
@@ -162,7 +180,9 @@ export async function PUT(
           }
           input.assignedTo = assignedTo;
           input.assignedAt = assignedTo ? new Date() : null;
-          if (assignedUser?.role === 'designer') input.status = 'assigned';
+          if (assignedUser?.role === 'designer' && normalizeLeadStatus(current.status) === 'new') {
+            input.status = 'new';
+          }
         }
 
         let lead = await repository.update(leadId, input);
@@ -182,7 +202,7 @@ export async function PUT(
         { status: 404 }
       );
     }
-    return NextResponse.json({ success: true, data: leadToDto(updated) });
+    return NextResponse.json({ success: true, data: dtoForContext(request, updated, context.kind === 'mini' ? context.mini.staff?.role : context.admin.role) });
   } catch (error: unknown) {
     return NextResponse.json(
       { success: false, error: errorMessage(error) },

@@ -18,7 +18,12 @@ test('AI design result restores the V3 delivery layout with only live actions', 
   assert.match(wxml, /open-type="share"/);
   assert.match(wxml, /bindtap="handlePrimaryAction"/);
   assert.match(wxml, /bindtap="openHistory"/);
+  assert.match(wxml, /class="result-delivery-character"/);
+  assert.match(wxml, /wx:if="\{\{task\.showComparison\}\}"/);
   assert.match(wxss, /\.delivery-bubble/);
+  assert.match(wxss, /\.result-delivery-character/);
+  assert.match(wxss, /\.before-label \{ left: 28rpx; background:/);
+  assert.match(wxss, /\.after-label \{ right: 28rpx; background:/);
   assert.match(wxss, /\.bottom-action:first-child/);
   assert.equal(config.navigationBarTitleText, '设计成果');
 });

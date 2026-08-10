@@ -1781,6 +1781,11 @@
   line-height: 1.25;
 }
 
+.with-plan .page-subtitle-line .page-subtitle {
+  color: #fff;
+  text-shadow: 0 2rpx 8rpx rgba(34, 28, 22, 0.58);
+}
+
 .project-chevron {
   flex: 0 0 auto;
   width: 14rpx;
@@ -1790,6 +1795,11 @@
   border-right: 4rpx solid #62666a;
   transform: rotate(45deg);
   box-sizing: border-box;
+}
+
+.with-plan .project-chevron {
+  border-color: #fff;
+  filter: drop-shadow(0 2rpx 4rpx rgba(34, 28, 22, 0.5));
 }
 
 .with-plan .balance-pill {
@@ -1831,17 +1841,75 @@
   position: relative;
   z-index: 2;
   overflow: visible;
-  margin: -8rpx -36rpx 0;
+  /* Match the no-plan scene: the visual starts behind the custom header, while
+   * the stage height below compensates so the workbench keeps its anchor. */
+  margin: calc(-214rpx - var(--ai-navigation-top, 24px)) -36rpx 0;
   background: transparent;
   border-radius: 0;
   box-shadow: none;
 }
 
 .reference-plan-stage {
-  height: 804rpx;
+  height: calc(1018rpx + var(--ai-navigation-top, 24px));
   overflow: visible;
   background:
     radial-gradient(ellipse at 50% 52%, rgba(226, 210, 191, 0.26) 0%, rgba(250, 247, 242, 0) 62%);
+}
+
+.plan-hero-swiper,
+.plan-default-scene,
+.plan-hero-slide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.plan-hero-slide,
+.plan-default-scene {
+  overflow: hidden;
+  background: #eee5d7;
+}
+
+.plan-hero-image,
+.plan-default-scene-image {
+  width: 100%;
+  height: 100%;
+}
+
+.plan-hero-shade,
+.plan-default-scene-shade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 252, 247, 0.24) 0%, rgba(255, 255, 255, 0) 38%, rgba(25, 31, 27, 0.26) 100%);
+}
+
+.plan-hero-caption {
+  position: absolute;
+  left: 38rpx;
+  right: 180rpx;
+  bottom: 116rpx;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  text-shadow: 0 2rpx 10rpx rgba(14, 20, 16, 0.28);
+}
+
+.plan-hero-title {
+  overflow: hidden;
+  color: #fff;
+  font-size: 30rpx;
+  line-height: 1.2;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-hero-meta {
+  margin-top: 8rpx;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 22rpx;
+  line-height: 1.2;
 }
 
 .reference-plan-stage .plan-ai-image,
@@ -1895,6 +1963,24 @@
   z-index: 10;
   height: 84rpx;
   white-space: nowrap;
+}
+
+.hero-slide-count {
+  position: absolute;
+  right: 28rpx;
+  top: 92rpx;
+  z-index: 11;
+  min-height: 48rpx;
+  display: flex;
+  align-items: center;
+  padding: 0 16rpx;
+  background: rgba(31, 39, 33, 0.54);
+  border-radius: var(--radius-full);
+  color: #fff;
+  font-size: 22rpx;
+  line-height: 1;
+  font-weight: 600;
+  box-sizing: border-box;
 }
 
 .hero-room-row {
@@ -2219,7 +2305,7 @@
   }
 
   .reference-plan-stage {
-    height: 760rpx;
+    height: calc(974rpx + var(--ai-navigation-top, 24px));
   }
 
   .reference-plan-stage .plan-ai-image,

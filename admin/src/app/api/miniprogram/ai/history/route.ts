@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { resolveMiniAiContext } from '@/lib/ai/mini-ai-auth';
-import { listPostgresMiniAiTasks, serializePostgresMiniAiTask } from '@/lib/ai/postgres-mini-ai-tasks';
+import {
+  listPostgresMiniAiTasks,
+  listPostgresMiniAiWholePlanRenderHeroTasks,
+  serializePostgresMiniAiTask,
+} from '@/lib/ai/postgres-mini-ai-tasks';
 import { reconcilePostgresCreationTasks } from '@/lib/ai/postgres-creation-runtime';
 
 export async function GET(request: Request) {
@@ -10,6 +14,15 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const page = Math.max(1, Number(url.searchParams.get('page') || 1));
     const limit = Math.min(30, Math.max(1, Number(url.searchParams.get('limit') || 12)));
+    const heroFloorPlanId = url.searchParams.get('heroFloorPlanId');
+    if (heroFloorPlanId) {
+      const rows = await listPostgresMiniAiWholePlanRenderHeroTasks(context, heroFloorPlanId);
+      return NextResponse.json({
+        success: true,
+        data: rows.map((item) => serializePostgresMiniAiTask(item, request)),
+        pagination: { page: 1, limit: 5, total: rows.length, totalPages: 1 },
+      });
+    }
     const result = await listPostgresMiniAiTasks(context, page, limit);
     if (result.rows.some((row) => row.status === 'processing')) {
       await reconcilePostgresCreationTasks(context.enterpriseId, 4).catch((error) => console.error('[Mini AI History Reconcile]', error));

@@ -118,8 +118,14 @@ export async function listProviderRuntimes(capability: AiCapability, logicalMode
   );
 
   return configs
-    .map(toProviderRuntime)
-    .filter((runtime) => Boolean(runtime.modelMappings[logicalModelKey]));
+    .filter((config) => Boolean(normalizeModelMappings(config.modelMappings)[logicalModelKey]))
+    .sort((left, right) => {
+      const leftFallback = left.key.endsWith('-fallback');
+      const rightFallback = right.key.endsWith('-fallback');
+      if (leftFallback !== rightFallback) return leftFallback ? 1 : -1;
+      return left.priority - right.priority || left.createdAt.getTime() - right.createdAt.getTime();
+    })
+    .map(toProviderRuntime);
 }
 
 export async function listProviderRuntimesByAdapter(capability: AiCapability, adapterType: string) {

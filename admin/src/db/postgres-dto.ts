@@ -1,4 +1,5 @@
 import type {
+  AcquisitionCommissionWithRelations,
   AdminUserRecord,
   AiChatSessionRecord,
   CommissionWithRelations,
@@ -15,6 +16,7 @@ import type {
   PromotionRecordWithRelations,
   UserRecord,
   WorkflowNotificationWithRelations,
+  StaffNotificationWithLead,
 } from '@/db/repositories';
 
 export function aiChatSessionSummaryToDto(record: AiChatSessionRecord) {
@@ -65,6 +67,42 @@ export function commissionToDto(record: CommissionWithRelations) {
   };
 }
 
+export function acquisitionCommissionToDto(record: AcquisitionCommissionWithRelations) {
+  return {
+    _id: record.id.toString(),
+    leadId: record.lead ? { _id: record.lead.id.toString(), name: record.lead.name, phone: record.lead.phone, communityName: record.lead.communityName, status: record.lead.status } : record.leadId.toString(),
+    enterpriseId: record.enterpriseId.toString(),
+    measurerId: record.measurer ? { _id: record.measurer.id.toString(), displayName: record.measurer.displayName, username: record.measurer.username, role: record.measurer.role } : record.measurerId.toString(),
+    designerId: record.designer ? { _id: record.designer.id.toString(), displayName: record.designer.displayName, username: record.designer.username, role: record.designer.role } : record.designerId.toString(),
+    commissionAmount: Number(record.commissionAmount),
+    status: record.status,
+    generatedAt: record.generatedAt,
+    settledAt: record.settledAt,
+    settledBy: record.settledBy?.toString() ?? null,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
+export function staffNotificationToDto(record: StaffNotificationWithLead) {
+  return {
+    _id: record.id.toString(),
+    enterpriseId: record.enterpriseId?.toString() ?? null,
+    recipientStaffId: record.recipientStaffId?.toString() ?? null,
+    leadId: record.lead ? { _id: record.lead.id.toString(), name: record.lead.name, communityName: record.lead.communityName, status: record.lead.status } : record.leadId?.toString() ?? null,
+    notificationType: record.notificationType,
+    channel: record.channel,
+    status: record.status,
+    message: record.message,
+    errorMessage: record.errorMessage,
+    metadata: record.metadata,
+    readAt: record.readAt,
+    sentAt: record.sentAt,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+  };
+}
+
 export function enterpriseToDto(record: EnterpriseRecord) {
   return {
     _id: record.id.toString(),
@@ -81,6 +119,7 @@ export function enterpriseToDto(record: EnterpriseRecord) {
     groundPromotionFixedCommission: Number(
       record.groundPromotionFixedCommission
     ),
+    measurerAcquisitionFixedCommission: Number(record.measurerAcquisitionFixedCommission),
     automationConfig: record.automationConfig,
     aiConfig: record.aiConfig,
     aiPolicy: record.aiPolicy,
@@ -125,9 +164,22 @@ export function adminUserToDto(
           }
         : record.departmentId?.toString() ?? null,
     promoterIds: (record.promoterIds ?? []).map((id) => id.toString()),
+    boundDesignerId: (record as AdminUserWithRelations).boundDesignerId?.toString() ?? null,
+    boundDesigner: (record as AdminUserWithRelations).boundDesigner
+      ? {
+          _id: (record as AdminUserWithRelations).boundDesigner!.id.toString(),
+          displayName: (record as AdminUserWithRelations).boundDesigner!.displayName,
+          username: (record as AdminUserWithRelations).boundDesigner!.username,
+          role: (record as AdminUserWithRelations).boundDesigner!.role,
+          wechatId: (record as AdminUserWithRelations).boundDesigner!.wechatId,
+          wechatQrAssetId: (record as AdminUserWithRelations).boundDesigner!.wechatQrAssetId?.toString() ?? null,
+        }
+      : null,
     username: record.username,
     displayName: record.displayName,
     role: record.role,
+    wechatId: record.wechatId,
+    wechatQrAssetId: record.wechatQrAssetId?.toString() ?? null,
     openid: record.openid,
     phone: record.phone,
     menuPermissions: record.menuPermissions,
@@ -201,14 +253,19 @@ function staffSummaryToDto(
     : null;
 }
 
-export function leadToDto(record: LeadWithRelations) {
+export function leadToDto(record: LeadWithRelations, options: { designerWechatQrUrl?: string | null; includeDesignerWechat?: boolean } = {}) {
   return {
     _id: record.id.toString(),
     enterpriseId: record.enterpriseId?.toString() ?? null,
     promoterId:
       staffSummaryToDto(record.promoter) ?? record.promoterId?.toString() ?? null,
     assignedTo:
-      staffSummaryToDto(record.assignedUser) ??
+      record.assignedUser
+        ? {
+            ...staffSummaryToDto(record.assignedUser),
+            ...(options.includeDesignerWechat ? { wechatId: record.assignedUser.wechatId || null, wechatQrUrl: options.designerWechatQrUrl || null } : {}),
+          }
+        :
       record.assignedTo?.toString() ??
       null,
     name: record.name,
@@ -219,6 +276,8 @@ export function leadToDto(record: LeadWithRelations) {
     city: record.city,
     source: record.source,
     status: record.status,
+    acquiredAt: record.acquiredAt,
+    acquiredBy: record.acquiredBy?.toString() ?? null,
     notes: record.notes,
     assignedAt: record.assignedAt,
     floorPlanIds: record.floorPlanRecords.map(floorPlanToDto),
@@ -232,6 +291,11 @@ export function leadToDto(record: LeadWithRelations) {
 }
 
 export function deviceToDto(record: DeviceWithRelations) {
+  const assignedUsers = record.assignedUsers.map((assignedUser) => ({
+    _id: assignedUser.id.toString(),
+    displayName: assignedUser.displayName,
+    username: assignedUser.username,
+  }));
   return {
     _id: record.id.toString(),
     code: record.code,
@@ -239,12 +303,9 @@ export function deviceToDto(record: DeviceWithRelations) {
     enterpriseId: record.enterprise
       ? { _id: record.enterprise.id.toString(), name: record.enterprise.name }
       : record.enterpriseId?.toString() ?? null,
-    assignedUserId: record.assignedUser
-      ? {
-          _id: record.assignedUser.id.toString(),
-          displayName: record.assignedUser.displayName,
-          username: record.assignedUser.username,
-        }
+    assignedUsers,
+    assignedUserId: assignedUsers[0]
+      ? assignedUsers[0]
       : record.assignedUserId?.toString() ?? null,
     status: record.status,
     createdAt: record.createdAt,

@@ -176,14 +176,18 @@ utilities, and the admin APIs they call.
   list/detail views, formal-plan association, primary-plan name/status/closed
   space count in lead detail, continue measurement, start a new independent
   measurement, delete active formal plans with local pointer cleanup,
-  client-side search across loaded records, and status filtering through both
-  the stage strip and native action sheet.
+  client-side search across loaded records, and canonical status filtering
+  through both the stage strip and native action sheet. The lead workflow is
+  `New lead -> Acquired -> Measuring -> Design proposal -> Signed`; `closed`
+  remains a terminal filter, while historical status values are normalized for
+  display and grouped server-side.
 - Persistence: lead and formal-plan list/detail/create/update/delete operations
   use PostgreSQL RLS transactions and decimal-string IDs; lead-plan linking and
   primary-plan cleanup are atomic.
 - Visual baseline: `design-references/all-pages-ip-v1/02-leads-management.png`
   at `390x844`. The shipped page follows its Xiao K client-concierge scene,
-  green dossier summary, search/filter/create action order, six dossier-index
+  green dossier summary, search/filter/create action order, five main
+  dossier-index
   stage tabs, stacked customer-record cards, and right-aligned color-coded
   floor-plan thumbnails. Thumbnail geometry still renders from each lead's
   formal wall graph or a real external preview URL, and live data, pagination,
@@ -382,8 +386,18 @@ utilities, and the admin APIs they call.
   result/compare stages that use the reference image for recreation comparisons,
   and the iPhone 13 Pro `390x844` baseline. The selected-plan home uses
   `design-references/all-pages-ip-v3/04-ai-design-home-v3.png` as its restoration
-  target: the live 3D navigation cover or deterministic formal wall graph owns
-  the first viewport, a horizontal whole-plan/room scope rail changes the real
+  target: `/images/ai-design-hero-v3.png` remains the first viewport whenever no
+  formal plan is explicitly selected, or the selected plan has no current
+  successful whole-plan render. Only after the user explicitly selects a formal
+  plan may that hero be replaced by up to five tappable carousel slides: the
+  current operator's successful `floor_plan_render` outputs whose exact
+  `floorPlanId` and `targetScope: whole_floor_plan` match the selected plan.
+  The Mini Program requests these slides through a dedicated, server-filtered
+  history query (operator + exact `floorPlanId` + successful whole-plan render,
+  capped at five), rather than filtering a paginated recent-history response;
+  therefore an older result for a busy surveyor's selected customer is not
+  dropped. Room renders, style edits, stale outputs, and results from another lead never
+  enter the carousel. A horizontal whole-plan/room scope rail changes the real
   target without claiming unmeasured spatial coordinates, and the character-only
   Xiao K asset acts once as the spatial guide. A single raised white workbench
   joins the four-stage server-derived rail, the four implemented task entries,
@@ -397,17 +411,26 @@ utilities, and the admin APIs they call.
   `design-references/ai-design/ai-design-immersive-a-space-tour-v1.png` and
   `miniprogram/images/ai-design-hero-v3.png`; at widths up to `360px`, its
   recommendation stays compact and keeps safe spacing between the fourth waypoint
-  and formal-plan selector. The selected-plan, real-wall-graph fixture was
+  and formal-plan selector. Selecting a plan with no eligible carousel result
+  also retains that scene rather than displaying a static sample plan. The selected-plan, default-hero fallback fixture was
   inspected in the user's existing WeChat DevTools at `390x844`; the retained QA
-  capture is `output/ai-design-v3-qa-390x844.png`. The automation capture does not
+  capture is `output/ai-design-hero-default-qa-390x844.png`. The automation capture does not
   include the native WeChat capsule, so it verifies the page composition while
   the measured `navigationRight` clearance remains code/test evidence; a native-
   chrome or device capture is still outstanding. Intentional deviations from the
   comp are the truthful horizontal scope rail, visible cost metadata, the capsule
   safety lane, the shared custom TabBar, and existing coherent task iconography
   instead of static sample-plan imagery. The 2026-08-07 restoration changes visual
-  composition only; routes, APIs, permissions, point charging, workflow selection,
-  and formal wall-graph contracts are unchanged. The create page now follows
+  composition and adds the narrowly scoped carousel-history query. The default
+  image and generated carousel both extend behind the selected-plan header using
+  the same compensated stage geometry, so choosing a plan cannot expose a white
+  band above the image or push the workbench below its original first-viewport
+  anchor. The selected customer/community subtitle and its source-picker chevron
+  render in white with a restrained dark shadow so they remain readable over
+  both the bright default hero and generated carousel imagery;
+  routes,
+  permissions, point charging, workflow selection, and formal wall-graph
+  contracts are unchanged. The create page now follows
   `design-references/all-pages-ip-v3/14-ai-design-create-v3.png`: its native step
   rail, Xiao K material-board scene, formal-plan/workflow context, truthful image
   upload states, server-provided style presets, inherited read-only design scope,
@@ -446,6 +469,16 @@ utilities, and the admin APIs they call.
   handlers. This is a visual-only restoration: routes, APIs, permissions, credit
   charging, task/workflow selection, and the formal wall-graph contract remain
   unchanged.
+- Result comparison is now shown only when the task has a real uploaded/source
+  image. `floor_plan_render` tasks are generated from formal floor-plan data and
+  therefore render a single result image without a draggable comparison handle;
+  the result route, task data, permissions, and charging contract are unchanged.
+- Result-page visual alignment refinement (2026-08-07): the `15-ai-design-result-v3.png`
+  restoration now uses the reference's compact page inset, taller near-square result
+  stage, bottom-anchored source/result labels, tighter icon-to-label spacing, and a
+  clipped Xiao K delivery character that excludes the source artwork's decorative
+  frame. Actions, data, routes, permissions, and charging remain unchanged; native
+  WeChat capsule/device capture is still the outstanding visual-QA evidence.
 - Formal-plan boundary: entries pass `floorPlanId`, explicit
   `targetScope: whole_floor_plan | single_room`, and `roomId` only for a single
   room. The backend derives dimensions, ceiling height, and opening summaries
@@ -717,7 +750,7 @@ utilities, and the admin APIs they call.
   creates a separate wall,
   remeasure, shared-wall closure including reset-cursor connections to existing
   boundaries and their inferred missing closing edge, advisory close candidate
-  with a compact `可闭合` action and geometry-anchored Xiao K guide, and direct closure.
+  with the compact green circular `合` action and geometry-anchored Xiao K guide, and direct closure.
   A free-standing stepped chain in straight-wall mode previews and persists a
   two-edge orthogonal route back to its start, preferring continuation of the
   last wall direction; both inferred edges must pass the existing intersection
@@ -729,9 +762,16 @@ utilities, and the admin APIs they call.
   dimensions and side, cursor placement for new wall chains on existing
   vertices, inner edges, outer edges, or free canvas positions, and an inner/outer
   wall-tracking, boundary-constrained measurement-edge prompt on the first
-  committed wall of a free-standing chain only; a chain snapped to an existing
-  wall or vertex inherits that connected boundary and does not show the prompt;
-  an outer-edge hit retains its measurement-side intent while its persisted
+  committed wall of a free-standing chain. A chain snapped to an open wall or
+  vertex inherits that connected boundary and does not show the prompt. When a
+  chain starts from an inner or outer corner of a closed room, its first
+  outgoing wall instead infers the measurement side from the collinear closed
+  boundary: the lower-left inner-corner/downward case resolves to `right`, and
+  the corresponding outer-corner case resolves to `left`. The compact current-
+  measurement-position control remains available during that first preview and
+  after its first commit, and switching it updates the red edge, preview shell,
+  committed wall, and following chain consistently. An outer-edge hit retains
+  its measurement-side intent while its persisted
   shared-boundary node is projected to the source wall centerline, so rectangle
   alignment, closure candidates, and closed-room wall chains use one coordinate;
   after resetting and snapping the cursor to an existing boundary, the first
@@ -740,6 +780,74 @@ utilities, and the admin APIs they call.
   closed room wall shells and outer joins are
   derived from the closed boundary rather than the selected measurement edge.
   undo/reset, completed submission, and measurement audit queue/flush.
+- Two-wall rectangular closure cue (2026-08-07): in an independent straight-wall
+  chain, once two perpendicular walls are confirmed the editor immediately
+  derives and renders the two orthogonal missing edges and exposes the compact
+  close action. The inferred edges remain advisory and are persisted only
+  after explicit confirmation; diagonal chains and shared-boundary rules keep
+  their existing thresholds. Routes, APIs, permissions, the version-4 graph
+  contract, and measurement-audit behavior are unchanged.
+- Corner restart alignment and closure correction (2026-08-07): when a new
+  straight-wall chain starts from a vertex of an already closed room, the
+  adjacent room may use the existing boundary path between the two corner
+  nodes even though both nodes have two boundary connections. The first or
+  second measured wall now keeps the rectangle-completion reference, and
+  manual/BLE length confirmation reapplies that orthogonal snap before
+  rebuilding the endpoint. The editor therefore exposes the real `merge`
+  closure candidate instead of leaving a near-axis endpoint unaligned. This
+  changes no route, API, role boundary, millimetre/v4 graph contract, or
+  measurement-audit behavior.
+- Closed-corner measurement-side correction (2026-08-08): a restart from a
+  closed-room vertex selects the incident boundary wall aligned with the first
+  outgoing segment before resolving inner/outer measurement side. Inner and
+  outer corners therefore produce opposite, wall-aligned sides instead of both
+  falling back to the same axis default. The existing Canvas measurement-
+  position action is now available for this first shared-boundary segment and
+  changes preview and persisted geometry together. Open-wall snaps remain
+  locked. Routes, APIs, roles, v4 persistence, and audit behavior are unchanged.
+- Closed-room continuation measurement origin and closure correction (2026-08-08):
+  the first wall restarted from a closed-room corner now measures from the
+  incident closed wall's real outside face, using its `thicknessMm`; topology
+  nodes remain on the shared boundary while manual/BLE readings, `lengthMm`,
+  red measurement line, preview endpoint, and committed wall all use that
+  outside-face origin. Walls may persist optional
+  `measurementStartInsetMm`/`measurementEndInsetMm` fields (legacy walls default
+  them to zero), and wall splitting, remeasure, extension/shortening, and
+  opening offsets preserve the same measured-length semantics. The first new
+  wall never creates a `merge` candidate or closure guide. The
+  current-measurement-position control uses a canvas vector arrow rotated to the
+  wall normal (vertical left/right, horizontal up/down, diagonal by normal) and
+  switching sides does not alter the measurement origin or reading.
+- Closed-room second-wall snap correction (2026-08-10): the second orthogonal
+  wall restarted from a closed-room corner is alignment-only and never creates
+  a `merge` candidate, closure guide, or close action. Its cursor independently
+  snaps to either the opposite inner topology corner or the mitered outside-wall
+  corner according to pointer proximity. Closure becomes eligible only from the
+  third new wall onward. Persisted nodes, wall lengths, APIs,
+  roles, version-4 data, and BLE audit payloads are unchanged.
+- Outer-edge zoom alignment correction (2026-08-10): formal Canvas wall
+  thickness now stays proportional to `thicknessMm` at every supported viewport
+  scale. The visible outside wall face, blue outer-snap axes, alignment guide,
+  and preview endpoint therefore keep the same Canvas coordinate before and
+  after pinch zoom instead of separating when the wall shell reaches a fixed
+  pixel-width clamp. This changes rendering and editor hit/overlay geometry
+  only; wall-graph coordinates, persisted thickness, routes, APIs, roles, and
+  measurement audits are unchanged.
+- Collinear closure preview and wall normalization (2026-08-10): a closure
+  guide returning to a closed-room boundary now starts on the current measured
+  wall axis and ends at the same outside-face position used by confirmation;
+  it is no longer translated sideways to the shared wall's outer miter. When
+  the first inferred closing leg continues the current terminal wall forward
+  with compatible mode, thickness, and measurement side, confirmation extends
+  that wall to the topology target, preserves its wall ID, and applies the
+  outside-face end inset instead of persisting another collinear wall. A real
+  turn still creates its own wall. Routes, APIs, roles, version-4 data, and BLE
+  audit payloads are unchanged.
+- Closed-wall deletion recovery (2026-08-07): deleting a wall from a closed
+  adjacent room now clears stale cursor-snap metadata, so `resetCursor` cannot
+  restore a node/wall that was deleted or belongs to the previous room. After
+  snapping the cursor to the remaining endpoint, the missing wall again gets
+  the orthogonal guide and a non-empty shared-boundary closure candidate.
 - A reverse drag on that unfinished chain may shorten only its terminal wall,
   preserving the wall and endpoint IDs. This convenience edit is unavailable
   for closed-space, shared-endpoint, branching, or door/window walls; it does
@@ -754,7 +862,7 @@ utilities, and the admin APIs they call.
   preserves the native WeChat capsule safe area. The white Xiao K speech bubble
   is the only explanatory callout for first-wall, measurement-side, and closure
   states; the old solid-green text callouts are removed while their measurement-side
-  and `可闭合` actions remain operational. These presentation changes
+  and `合` actions remain operational. These presentation changes
   do not alter entry context, role boundary, wall-graph contract, or audit flow.
 - Implemented angle behavior: diagonal direction snap within the documented
   threshold, number-pad angle entry, operator-confirmed phone motion angle, and
@@ -832,7 +940,7 @@ utilities, and the admin APIs they call.
 
 ## Shared Components And Utilities
 
-- BLE: `components/ble-connector`, `components/ble-gate`, and `utils/bluetooth.js`.
+- BLE: `components/ble-connector`, `components/ble-gate`, and `utils/bluetooth.js`. While diagnosing device-asset identifiers, an already authorized connection logs the BLE advertisement payload and issues the vendor read-only `ATC001#` command once; the raw validated `ID` frame, 96-bit ID in hex, and printable ASCII rendering remain console-only evidence. This does not yet equate that machine ID with the physical-label SN or change authorization, APIs, persistence, or role boundaries.
 - Navigation: `utils/surveyNavigation.js` owns formal editor entry and local
   resume-pointer cleanup.
 - Graph/rendering: main-package `surveyWallGraph.js` and `surveyLayout.js`, plus
@@ -882,6 +990,15 @@ dedicated straight connector that ends just above the highlighted button. The
 Canvas connector remains below the native dock and the real `cover-view` button
 contains the visible top-layer marker. Its events
 bubble through the original button tree, preserving tap or drag ownership.
+
+## Measurer–Designer Acquisition Flow (Implemented)
+
+The focused business and data contract is [`docs/measurer-designer-acquisition.md`](measurer-designer-acquisition.md) and its Chinese mirror.
+
+- `pages/leads-management/leads-management` and the reusable `lead-list` component display the canonical five-step status labels. For measurers, the list exposes the bound designer's WeChat ID and signed QR image; the copy action is measurer-only by API contract.
+- `packages/business/lead-detail/lead-detail` accepts `id` or notification `leadId`, renders the canonical status rail and next-action copy, and lets designers confirm acquisition only for their own `new` lead through `POST /api/leads/[id]/acquire`; floor-plan linking then advances the lead through measuring and design. The brand-colored formal-surveying tab is the card's sole title; the next-action copy is grouped with its surveying CTA, while the hero contains customer identity and status only. This is presentation-only and changes no route, API, data, or role boundary.
+- `packages/business/commission-records/commission-records` consumes `/api/commission-records`; measurers receive the independent lead-acquisition records with pending/paid summaries while salesperson order commissions remain unchanged.
+- The Mine page reads `/api/miniprogram/notifications?unread=1`, marks selected items through `/api/miniprogram/notifications/read`, and deep-links to the lead detail page. Notification delivery failures are shown through the in-app fallback.
 
 ## Maintenance Rules
 

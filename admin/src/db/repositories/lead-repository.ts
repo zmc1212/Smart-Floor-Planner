@@ -16,6 +16,7 @@ import {
   leads,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
+import { getLeadStatusVariants, resolveLeadStatusAfterFloorPlan } from '@/lib/lead-status';
 
 export type NewLead = typeof leads.$inferInsert;
 export type LeadRecord = typeof leads.$inferSelect;
@@ -29,6 +30,8 @@ export interface LeadStaffSummary {
   displayName: string;
   username: string;
   role: string;
+  wechatId?: string | null;
+  wechatQrAssetId?: bigint | null;
 }
 
 export interface LeadWithRelations extends LeadRecord {
@@ -57,7 +60,12 @@ export class LeadRepository {
   private buildFilters(options: LeadListOptions) {
     const filters: SQL[] = [];
     if (options.status && options.status !== 'all') {
-      filters.push(eq(leads.status, options.status));
+      const variants = getLeadStatusVariants(options.status);
+      filters.push(
+        variants.length === 1
+          ? eq(leads.status, variants[0])
+          : inArray(leads.status, variants)
+      );
     }
     if (options.source) filters.push(eq(leads.source, options.source));
     if (options.phone) filters.push(eq(leads.phone, options.phone));
@@ -142,6 +150,8 @@ export class LeadRepository {
               displayName: adminUsers.displayName,
               username: adminUsers.username,
               role: adminUsers.role,
+              wechatId: adminUsers.wechatId,
+              wechatQrAssetId: adminUsers.wechatQrAssetId,
             })
             .from(adminUsers)
             .where(inArray(adminUsers.id, staffIds))
@@ -294,7 +304,7 @@ export class LeadRepository {
       .update(leads)
       .set({
         primaryFloorPlanId: floorPlanId,
-        status: status ?? (lead[0].status === 'new' ? 'measuring' : lead[0].status),
+        status: resolveLeadStatusAfterFloorPlan(lead[0].status, plan[0].status, status),
         updatedAt: new Date(),
       })
       .where(eq(leads.id, leadId))

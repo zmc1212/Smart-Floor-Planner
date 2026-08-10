@@ -115,6 +115,8 @@ interface SurveyWall {
   endNodeId?: string;
   lengthMm?: number;
   thicknessMm?: number;
+  measurementStartInsetMm?: number;
+  measurementEndInsetMm?: number;
   mode?: string;
   measurementSide?: 'left' | 'right';
 }

@@ -66,6 +66,8 @@ function normalizeRecord(item, index) {
   };
   const amountText = formatMoney(source.commissionAmount);
   const order = source.orderId && typeof source.orderId === 'object' ? source.orderId : {};
+  const lead = source.leadId && typeof source.leadId === 'object' ? source.leadId : {};
+  const designer = source.designerId && typeof source.designerId === 'object' ? source.designerId : {};
 
   return {
     ...source,
@@ -75,6 +77,8 @@ function normalizeRecord(item, index) {
     statusTone: statusMeta.tone,
     iconPath: statusMeta.iconPath,
     amountText,
+    leadName: lead.name || '',
+    designerName: designer.displayName || designer.username || '',
     packageName: order.packageName || '企业订单',
     generatedAtText: formatDate(source.generatedAt) || '日期待确认',
     showDivider: false

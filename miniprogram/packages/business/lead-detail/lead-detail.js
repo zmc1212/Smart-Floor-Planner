@@ -2,6 +2,47 @@ const api = require('../../../utils/api.js');
 const surveyLayout = require('../../../utils/surveyLayout.js');
 const { openSurveyingEditor, clearSurveyingEditorDraft } = require('../../../utils/surveyNavigation.js');
 
+const STATUS_LABELS = {
+  new: '新线索',
+  contacted: '新线索',
+  acquired: '已获客',
+  measuring: '量房中',
+  measured: '方案设计',
+  assigned: '方案设计',
+  designing: '方案设计',
+  quoting: '方案设计',
+  converted: '已签约',
+  closed: '已关闭'
+};
+
+const WORKFLOW_STAGES = ['新线索', '已获客', '量房中', '方案设计', '已签约'];
+
+function normalizeStatus(status) {
+  if (['contacted'].includes(status)) return 'new';
+  if (['measured', 'assigned', 'designing', 'quoting'].includes(status)) return 'designing';
+  return status || 'new';
+}
+
+function buildStageRail(status) {
+  const current = normalizeStatus(status);
+  const currentIndex = Math.max(0, WORKFLOW_STAGES.indexOf(STATUS_LABELS[current] || '新线索'));
+  return WORKFLOW_STAGES.map((label, index) => ({
+    label,
+    state: index < currentIndex ? 'done' : index === currentIndex ? 'current' : 'upcoming'
+  }));
+}
+
+function getNextAction(status) {
+  const normalized = normalizeStatus(status);
+  if (normalized === 'new') return '等待设计师确认获客';
+  if (normalized === 'acquired') return '安排正式量房';
+  if (normalized === 'measuring') return '完成墙图后进入方案设计';
+  if (normalized === 'designing') return '等待方案沟通或客户确认';
+  if (normalized === 'converted') return '已签约，无需继续推进';
+  if (normalized === 'closed') return '该线索已关闭';
+  return '';
+}
+
 function asPlan(value) {
   return value && typeof value === 'object' ? value : null;
 }
@@ -51,12 +92,16 @@ Page({
     lead: null,
     activeFloorPlan: null,
     previousFloorPlans: [],
+    canAcquire: false,
+    statusLabel: '新线索',
+    nextAction: '等待设计师确认获客',
+    stageRail: buildStageRail('new'),
     loading: true,
     deleting: false
   },
 
   onLoad(options) {
-    this.setData({ leadId: options.id || '' });
+    this.setData({ leadId: options.id || options.leadId || '' });
   },
 
   onShow() {
@@ -71,6 +116,10 @@ Page({
       const formalPlans = getFormalPlans(res.data).map(toPlanDisplay);
       this.setData({
         lead: res.data,
+        canAcquire: this.canAcquireLead(res.data),
+        statusLabel: STATUS_LABELS[res.data.status] || res.data.status || '新线索',
+        nextAction: getNextAction(res.data.status),
+        stageRail: buildStageRail(res.data.status),
         activeFloorPlan: formalPlans[0] || null,
         previousFloorPlans: formalPlans.slice(1),
         loading: false
@@ -79,6 +128,32 @@ Page({
       this.setData({ loading: false });
       wx.showToast({ title: (err && err.error) || '加载失败', icon: 'none' });
     }
+  },
+
+  canAcquireLead(lead) {
+    const app = getApp();
+    const user = app && app.globalData && app.globalData.userInfo;
+    const staffId = String((user && (user._id || user.id)) || '');
+    return user && user.role === 'designer' && lead && lead.status === 'new' && String(lead.assignedTo && (lead.assignedTo._id || lead.assignedTo)) === staffId;
+  },
+
+  onAcquireLead() {
+    if (!this.data.leadId || !this.data.canAcquire) return;
+    wx.showModal({
+      title: '确认已获客',
+      content: '请确认客户已经添加你的微信，再标记为已获客。',
+      confirmText: '确认已获客',
+      success: async (result) => {
+        if (!result.confirm) return;
+        try {
+          await api.request(`/leads/${this.data.leadId}/acquire`, 'POST');
+          wx.showToast({ title: '已获客，提成待结算', icon: 'success' });
+          await this.fetchLeadDetail();
+        } catch (error) {
+          wx.showToast({ title: (error && error.error) || '确认失败，请刷新重试', icon: 'none' });
+        }
+      }
+    });
   },
 
   onStartMeasure() {

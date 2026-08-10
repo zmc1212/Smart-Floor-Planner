@@ -6,11 +6,13 @@ import {
 } from '@/db/postgres-dto';
 import {
   AdminUserRepository,
+  AcquisitionRepository,
   LeadRepository,
   type LeadListOptions,
   type LeadUpdate,
 } from '@/db/repositories';
 import type { PostgresTransaction } from '@/db/transaction';
+import { withTenantTransaction } from '@/db/transaction';
 import { getTenantContext, type TenantContext } from '@/lib/auth';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import {
@@ -20,8 +22,22 @@ import {
 import { resolveWritableEnterpriseId } from '@/lib/tenant-route';
 import {
   notifyDesignerOfAssignedLead,
+  notifyDesignerOfPendingLead,
   notifyEnterpriseAdminOfNewLead,
 } from '@/lib/wechat-notification';
+import { getSignedMiniAiAssetUrl } from '@/lib/ai/mini-ai-assets';
+import { normalizeLeadStatus } from '@/lib/lead-status';
+
+function leadDtoForMini(request: Request, lead: Parameters<typeof leadToDto>[0], role?: string) {
+  const include = role === 'measurer';
+  const assetId = lead.assignedUser?.wechatQrAssetId;
+  return leadToDto(lead, {
+    includeDesignerWechat: include,
+    designerWechatQrUrl: include && assetId && lead.enterpriseId
+      ? getSignedMiniAiAssetUrl({ request, assetId: assetId.toString(), enterpriseId: lead.enterpriseId.toString() })
+      : null,
+  });
+}
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown error';
@@ -63,6 +79,7 @@ export async function GET(request: Request) {
         );
       }
       const staffId = parsePostgresId(miniContext.staff._id, 'staff id');
+      const miniStaffRole = miniContext.staff.role;
       const baseOptions: LeadListOptions =
         miniContext.staff.role === 'enterprise_admin'
           ? {}
@@ -74,11 +91,15 @@ export async function GET(request: Request) {
         miniContext,
         async (transaction) => {
           const repository = new LeadRepository(transaction);
+          const designer = miniStaffRole === 'measurer'
+            ? await new AdminUserRepository(transaction).findDesignerForMeasurer(staffId)
+            : null;
           const [list, all, stats, todayNew] = await Promise.all([
             repository.list({ ...baseOptions, status, page, limit }),
             repository.count(baseOptions),
             repository.countStatuses(baseOptions, [
               'new',
+              'acquired',
               'contacted',
               'measuring',
               'measured',
@@ -92,11 +113,12 @@ export async function GET(request: Request) {
               createdSince: startOfChinaBusinessDay(),
             }),
           ]);
-          return { list, all, stats, todayNew };
+          return { list, all, stats, todayNew, designer };
         }
       );
       const following = [
         'new',
+        'acquired',
         'contacted',
         'measuring',
         'measured',
@@ -106,13 +128,22 @@ export async function GET(request: Request) {
       ].reduce((total, key) => total + (result.stats[key] ?? 0), 0);
       return NextResponse.json({
         success: true,
-        data: result.list.rows.map(leadToDto),
+        data: result.list.rows.map((lead) => leadDtoForMini(request, lead, miniContext.staff?.role)),
         stats: {
           all: result.all,
           ...result.stats,
           todayNew: result.todayNew,
           following,
         },
+        designerProfile: result.designer ? {
+          _id: result.designer.id.toString(),
+          displayName: result.designer.displayName,
+          username: result.designer.username,
+          wechatId: result.designer.wechatId,
+          wechatQrUrl: result.designer.wechatQrAssetId && result.designer.enterpriseId
+            ? getSignedMiniAiAssetUrl({ request, assetId: result.designer.wechatQrAssetId.toString(), enterpriseId: result.designer.enterpriseId.toString() })
+            : null,
+        } : null,
       });
     }
 
@@ -140,7 +171,7 @@ export async function GET(request: Request) {
     );
     return NextResponse.json({
       success: true,
-      data: result.rows.map(leadToDto),
+      data: result.rows.map((lead) => leadToDto(lead)),
       pagination: {
         total: result.total,
         page,
@@ -195,6 +226,7 @@ export async function POST(request: Request) {
     const execute = async (transaction: PostgresTransaction) => {
       const leads = new LeadRepository(transaction);
       const admins = new AdminUserRepository(transaction);
+      const acquisitions = new AcquisitionRepository(transaction);
       let enterpriseId = explicitEnterpriseId
         ? parsePostgresId(explicitEnterpriseId, 'enterpriseId')
         : null;
@@ -206,6 +238,15 @@ export async function POST(request: Request) {
         body.assignedTo,
         'assignedTo'
       );
+      const isMeasurerLead = role === 'measurer' && actorStaffId;
+
+      if (isMeasurerLead) {
+        promoterId = actorStaffId;
+        const designer = await admins.findDesignerForMeasurer(actorStaffId);
+        if (!designer) throw new Error('当前测量员尚未绑定设计师');
+        enterpriseId ??= designer.enterpriseId;
+        assignedTo = designer.id;
+      }
 
       const referencedStaffId = promoterId ?? assignedTo;
       if (referencedStaffId) {
@@ -231,13 +272,9 @@ export async function POST(request: Request) {
         assignedTo = actorStaffId;
       }
 
-      let status = body.status || 'new';
-      if (assignedTo && (!body.status || body.status === 'new')) {
-        status =
-          (await admins.findById(assignedTo))?.role === 'designer'
-            ? 'assigned'
-            : 'new';
-      }
+      let status = normalizeLeadStatus(isMeasurerLead ? 'new' : body.status || 'new');
+      if (isMeasurerLead) status = 'new';
+      if (assignedTo && (!body.status || body.status === 'new')) status = 'new';
       const floorPlanId = parseOptionalPostgresId(
         body.floorPlanId,
         'floorPlanId'
@@ -266,6 +303,7 @@ export async function POST(request: Request) {
       };
 
       const existing = await leads.findByPhone(phone);
+      const shouldNotifyDesigner = Boolean(isMeasurerLead && !existing && assignedTo);
       let lead = existing
         ? await leads.update(existing.id, {
             ...common,
@@ -296,29 +334,63 @@ export async function POST(request: Request) {
         lead = await leads.linkFloorPlan(lead.id, floorPlanId);
         if (!lead) throw new Error('Floor plan not found in this scope');
       }
-      return lead;
+      if (shouldNotifyDesigner && assignedTo && lead.enterpriseId) {
+        await acquisitions.createNotification({
+          enterpriseId: lead.enterpriseId,
+          recipientStaffId: assignedTo,
+          leadId: lead.id,
+          notificationType: 'lead_pending_acquisition',
+          channel: 'in_app',
+          status: 'unread',
+          message: `收到客户线索：${lead.name}，待确认获客`,
+          dedupeKey: `lead_pending_acquisition:${lead.id.toString()}`,
+          metadata: { page: `/pages/leads-management/leads-management?leadId=${lead.id.toString()}` },
+        });
+      }
+      return { lead, shouldNotifyDesigner, shouldNotifyEnterprise: !existing, designerId: assignedTo };
     };
 
-    const lead = miniContext
+    const result = miniContext
       ? await withMiniProgramPostgresTransaction(miniContext, execute)
       : await withAdminPostgresTransaction(adminContext!, execute);
+    const lead = result.lead;
 
     const notificationLead = {
       ...lead,
       enterpriseId: lead.enterpriseId?.toString(),
     };
-    await Promise.allSettled([
-      notifyEnterpriseAdminOfNewLead(notificationLead),
-      lead.assignedTo
+    const notificationResults = await Promise.allSettled([
+      result.shouldNotifyEnterprise ? notifyEnterpriseAdminOfNewLead(notificationLead) : Promise.resolve(),
+      result.shouldNotifyDesigner && result.designerId
+        ? notifyDesignerOfPendingLead(notificationLead, result.designerId.toString())
+        : lead.assignedTo
         ? notifyDesignerOfAssignedLead(
             notificationLead,
             lead.assignedTo.toString()
           )
         : Promise.resolve(),
     ]);
+    if (result.shouldNotifyDesigner && result.designerId && lead.enterpriseId) {
+      const designerResult = notificationResults[1];
+      const delivery = designerResult?.status === 'fulfilled' && designerResult.value && typeof designerResult.value === 'object' && 'success' in designerResult.value
+        ? designerResult.value
+        : { success: false, error: 'notification rejected' };
+      await withTenantTransaction(lead.enterpriseId, (transaction) => new AcquisitionRepository(transaction).createNotification({
+        enterpriseId: lead.enterpriseId,
+        recipientStaffId: result.designerId,
+        leadId: lead.id,
+        notificationType: 'lead_pending_acquisition',
+        channel: 'wechat',
+        status: delivery.success ? 'sent' : 'failed',
+        message: `Lead ${lead.name} pending acquisition confirmation`,
+        errorMessage: delivery.success ? null : delivery.error || null,
+        dedupeKey: `lead_pending_acquisition:${lead.id.toString()}`,
+        metadata: { page: `/pages/leads-management/leads-management?leadId=${lead.id.toString()}` },
+      }));
+    }
 
     return NextResponse.json(
-      { success: true, data: leadToDto(lead) },
+      { success: true, data: miniContext ? leadDtoForMini(request, lead, miniContext.staff?.role) : leadToDto(lead) },
       { status: 201 }
     );
   } catch (error: unknown) {

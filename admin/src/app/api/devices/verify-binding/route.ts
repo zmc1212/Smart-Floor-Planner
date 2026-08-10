@@ -55,8 +55,10 @@ export async function POST(request: Request) {
         };
       }
       if (
-        matchedDevice.assignedUserId &&
-        matchedDevice.assignedUserId !== staff.id
+        matchedDevice.assignedUsers.length > 0 &&
+        !matchedDevice.assignedUsers.some(
+          (assignedUser) => assignedUser.id === staff.id
+        )
       ) {
         return {
           authorized: false,

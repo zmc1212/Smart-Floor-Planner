@@ -40,6 +40,7 @@ type Device = {
   status: DeviceStatus;
   enterpriseId?: string | Reference | null;
   assignedUserId?: string | Reference | null;
+  assignedUsers?: Reference[];
   createdAt?: string;
 };
 
@@ -47,7 +48,7 @@ type DeviceForm = {
   code: string;
   description?: string;
   enterpriseId?: string;
-  assignedUserId?: string;
+  assignedUserIds?: string[];
   status?: DeviceStatus;
 };
 
@@ -73,6 +74,15 @@ function getReferenceId(value?: string | Reference | null) {
 function getReferenceName(value?: string | Reference | null) {
   if (!value || typeof value === 'string') return '';
   return value.displayName || value.username || value.name || '';
+}
+
+function getAssignedUserIds(device: Device) {
+  const assignedUsers = device.assignedUsers || [];
+  if (assignedUsers.length > 0) {
+    return assignedUsers.map((assignedUser) => getReferenceId(assignedUser));
+  }
+  const assignedUserId = getReferenceId(device.assignedUserId);
+  return assignedUserId ? [assignedUserId] : [];
 }
 
 function getRoleLabel(role?: string) {
@@ -116,10 +126,18 @@ export default function DevicesPage() {
   const canManage = ['super_admin', 'admin', 'enterprise_admin'].includes(currentUser?.role || '');
   const canChangeEnterprise = ['super_admin', 'admin'].includes(currentUser?.role || '');
 
-  const fetchStaff = useCallback(async () => {
+  const fetchStaff = useCallback(async (enterpriseId?: string) => {
     try {
+      const staffQuery = new URLSearchParams({ limit: '50' });
+      if (
+        canChangeEnterprise &&
+        enterpriseId &&
+        enterpriseId !== UNASSIGNED_VALUE
+      ) {
+        staffQuery.set('enterpriseId', enterpriseId);
+      }
       const [staffResponse, promoterResponse] = await Promise.all([
-        fetch('/api/staff?limit=50'),
+        fetch(`/api/staff?${staffQuery.toString()}`),
         fetch('/api/staff?scope=unassigned-promoters&limit=50'),
       ]);
       const [staffResult, promoterResult] = await Promise.all([
@@ -136,7 +154,7 @@ export default function DevicesPage() {
     } catch {
       // Editing remains available when optional assignment choices cannot load.
     }
-  }, []);
+  }, [canChangeEnterprise]);
 
   const fetchEnterprises = useCallback(async () => {
     try {
@@ -173,13 +191,10 @@ export default function DevicesPage() {
       const visibleStaff = !resolvedEnterpriseId
         ? staff
         : staff.filter((member) => getReferenceId(member.enterpriseId) === resolvedEnterpriseId);
-      return [
-        { label: '未指定人员', value: UNASSIGNED_VALUE },
-        ...visibleStaff.map((member) => ({
+      return visibleStaff.map((member) => ({
           label: `${getReferenceName(member) || member._id}（${getRoleLabel(member.role)}）`,
           value: member._id,
-        })),
-      ];
+        }));
     },
     [staff]
   );
@@ -187,19 +202,22 @@ export default function DevicesPage() {
   const saveDevice = async (values: DeviceForm) => {
     const isEdit = Boolean(editingDevice);
     const enterpriseId = values.enterpriseId === UNASSIGNED_VALUE ? null : values.enterpriseId || null;
-    const assignedUserId = values.assignedUserId === UNASSIGNED_VALUE ? null : values.assignedUserId || null;
+    const assignedUserIds = values.assignedUserIds || [];
     const payload = isEdit
       ? {
           code: values.code.trim(),
           description: values.description?.trim() || '',
           enterpriseId: canChangeEnterprise ? enterpriseId : undefined,
-          assignedUserId,
+          assignedUserIds,
           status: values.status,
         }
       : {
           code: values.code.trim(),
           description: values.description?.trim() || '',
-          enterpriseId: currentUser?.role === 'enterprise_admin' ? getReferenceId(currentUser.enterpriseId) : undefined,
+          enterpriseId: currentUser?.role === 'enterprise_admin'
+            ? getReferenceId(currentUser.enterpriseId)
+            : enterpriseId,
+          assignedUserIds,
           status: currentUser?.role === 'enterprise_admin' ? 'assigned' : 'unassigned',
         };
     try {
@@ -281,11 +299,25 @@ export default function DevicesPage() {
       render: (_, item) => getReferenceName(item.enterpriseId) || '未分配企业',
     },
     {
-      title: '持有人',
+      title: '绑定人员',
       key: 'assignee',
       hideInSearch: true,
-      width: 200,
-      render: (_, item) => getReferenceName(item.assignedUserId) || '未指定人员',
+      width: 260,
+      render: (_, item) => {
+        const assignedUsers = item.assignedUsers || [];
+        if (assignedUsers.length === 0) {
+          return getReferenceName(item.assignedUserId) || '未指定人员';
+        }
+        return (
+          <Space size={[4, 4]} wrap>
+            {assignedUsers.map((assignedUser) => (
+              <Tag key={getReferenceId(assignedUser)}>
+                {getReferenceName(assignedUser) || getReferenceId(assignedUser)}
+              </Tag>
+            ))}
+          </Space>
+        );
+      },
     },
     {
       title: '录入时间',
@@ -395,7 +427,7 @@ export default function DevicesPage() {
           code: editingDevice.code,
           description: editingDevice.description || '',
           enterpriseId: getReferenceId(editingDevice.enterpriseId) || UNASSIGNED_VALUE,
-          assignedUserId: getReferenceId(editingDevice.assignedUserId) || UNASSIGNED_VALUE,
+          assignedUserIds: getAssignedUserIds(editingDevice),
           status: editingDevice.status,
         } : {
           status: 'unassigned',
@@ -408,7 +440,8 @@ export default function DevicesPage() {
         onValuesChange={(changedValues, allValues) => {
           const updates: Partial<DeviceForm> = {};
           if ('enterpriseId' in changedValues) {
-            updates.assignedUserId = UNASSIGNED_VALUE;
+            updates.assignedUserIds = [];
+            void fetchStaff(changedValues.enterpriseId);
             if (
               changedValues.enterpriseId === UNASSIGNED_VALUE &&
               allValues.status === 'assigned'
@@ -417,8 +450,8 @@ export default function DevicesPage() {
             }
           }
           if (
-            'assignedUserId' in changedValues &&
-            changedValues.assignedUserId !== UNASSIGNED_VALUE &&
+            'assignedUserIds' in changedValues &&
+            changedValues.assignedUserIds.length > 0 &&
             allValues.status === 'unassigned'
           ) {
             updates.status = 'assigned';
@@ -440,21 +473,19 @@ export default function DevicesPage() {
           fieldProps={{ placeholder: '例如：SN-123456', className: 'font-mono' }}
         />
         <ProFormTextArea name="description" label="备注" fieldProps={{ rows: 3, placeholder: '例如：杭州分公司备机' }} />
-        {editingDevice && canChangeEnterprise ? (
+        {canChangeEnterprise ? (
           <ProFormSelect name="enterpriseId" label="归属企业" options={enterpriseOptions} />
         ) : null}
-        {editingDevice ? (
-          <ProFormDependency name={['enterpriseId']}>
-            {({ enterpriseId }) => (
-              <ProFormSelect
-                name="assignedUserId"
-                label="持有人"
-                options={getStaffOptions(enterpriseId)}
-                fieldProps={{ placeholder: '未指定人员' }}
-              />
-            )}
-          </ProFormDependency>
-        ) : null}
+        <ProFormDependency name={['enterpriseId']}>
+          {({ enterpriseId }) => (
+            <ProFormSelect
+              name="assignedUserIds"
+              label="绑定人员"
+              options={getStaffOptions(enterpriseId)}
+              fieldProps={{ mode: 'multiple', placeholder: '可选择多名人员' }}
+            />
+          )}
+        </ProFormDependency>
         {editingDevice ? (
           <ProFormSelect name="status" label="状态" options={STATUS_OPTIONS} rules={[{ required: true, message: '请选择设备状态' }]} />
         ) : null}

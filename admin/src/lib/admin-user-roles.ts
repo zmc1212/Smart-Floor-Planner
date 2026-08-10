@@ -33,6 +33,7 @@ export const ALL_MENUS = [
   { key: 'workflow-logs', label: '提醒日志' },
   { key: 'enterprise-orders', label: '成交订单' },
   { key: 'commissions', label: '提成结算' },
+  { key: 'acquisition-commissions', label: '获客提成' },
   { key: 'ai-scenarios', label: 'AI 设计' },
   { key: 'ai-presets', label: 'AI 预设配置' },
   { key: 'inspirations', label: '灵感方案' },
@@ -60,6 +61,7 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'workflow-logs',
     'enterprise-orders',
     'commissions',
+    'acquisition-commissions',
     'ai-scenarios',
     'ai-presets',
     'inspirations',
@@ -75,6 +77,7 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'inspirations',
     'ai-presets',
     'staff',
+    'acquisition-commissions',
     'devices',
   ],
   designer: [

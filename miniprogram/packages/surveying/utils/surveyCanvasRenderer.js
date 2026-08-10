@@ -8,9 +8,7 @@ const wallSolidLayout = require('./surveyWallSolidPlan.js');
 // not a second measurement system.
 const GRID_MINOR_MM = 250;
 const GRID_MAJOR_MM = 1250;
-const WALL_VISUAL_SCALE = 0.56;
-const MIN_WALL_THICKNESS_PX = 10;
-const MAX_WALL_THICKNESS_PX = 22;
+const MIN_WALL_THICKNESS_PX = 1.5;
 const WALL_STROKE_PX = 1.5;
 const REDLINE_STROKE_PX = 2;
 const GUIDE_STROKE_PX = 1.25;
@@ -78,8 +76,12 @@ function createProjector(viewport, rect) {
 }
 
 function getVisualThicknessPx(thicknessMm, scale) {
-  const rawThickness = (thicknessMm || surveyGraph.DEFAULT_THICKNESS_MM) * scale * WALL_VISUAL_SCALE;
-  return Math.round(clamp(rawThickness, MIN_WALL_THICKNESS_PX, MAX_WALL_THICKNESS_PX));
+  // Wall faces, outer-edge snap points, cursor axes, and closure geometry all
+  // describe the same millimetre coordinates. Keep the visible wall thickness
+  // on that scale as well; a fixed pixel clamp makes the wall face drift away
+  // from a correctly projected outer-edge snap as the viewport zoom changes.
+  const rawThickness = (thicknessMm || surveyGraph.DEFAULT_THICKNESS_MM) * scale;
+  return Math.max(MIN_WALL_THICKNESS_PX, rawThickness);
 }
 
 function buildRenderThicknessMmMap(floor, viewport) {
@@ -312,14 +314,9 @@ function buildWallScene(floor, wall, options) {
   const opts = options || {};
   const project = opts.project;
   const viewport = opts.viewport;
-  const start = opts.startPoint || surveyGraph.getNode(floor, wall.startNodeId);
-  const end = opts.endPoint || surveyGraph.getNode(floor, wall.endNodeId);
-  if (!start || !end) return null;
-
-  const startPoint = project(start);
-  const endPoint = project(end);
-  const widthPx = distancePx(startPoint, endPoint);
-  if (!widthPx) return null;
+  const topologyStart = opts.startPoint || surveyGraph.getNode(floor, wall.startNodeId);
+  const topologyEnd = opts.endPoint || surveyGraph.getNode(floor, wall.endNodeId);
+  if (!topologyStart || !topologyEnd) return null;
 
   const geometryOptions = {
     startPoint: opts.startPoint,
@@ -335,6 +332,12 @@ function buildWallScene(floor, wall, options) {
 
   const geometry = surveyGraph.buildWallRenderGeometry(floor, wall, geometryOptions);
   if (!geometry) return null;
+  const start = geometry.start;
+  const end = geometry.end;
+  const startPoint = project(start);
+  const endPoint = project(end);
+  const widthPx = distancePx(startPoint, endPoint);
+  if (!widthPx) return null;
 
   const direction = {
     x: (endPoint.x - startPoint.x) / widthPx,
@@ -389,6 +392,8 @@ function buildWallScene(floor, wall, options) {
     wall,
     start,
     end,
+    topologyStart,
+    topologyEnd,
     startPoint,
     endPoint,
     outerStart,
@@ -446,7 +451,9 @@ function buildPreviewWall(floor, session, options) {
     angleDeg: session.previewAngleDeg,
     angleInteriorDeg: session.previewInteriorAngleDeg,
     thicknessMm: session.thicknessMm,
-    measurementSide: session.measurementSide,
+    measurementSide: session.previewMeasurementSide || session.measurementSide,
+    measurementStartInsetMm: session.previewMeasurementStartInsetMm || 0,
+    measurementEndInsetMm: session.previewMeasurementEndInsetMm || 0,
     status: 'preview'
   };
   const renderThicknessMmMap = Object.assign({}, options.renderThicknessMmMap, {
@@ -476,8 +483,7 @@ function buildClosureGuide(floor, session, project) {
     : 0;
   const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
   const previewCountsAsWall = !!session.previewPoint;
-  const hasSharedBoundary = !!(session.activeSpaceSharedWallId || session.closeCandidateSharedWallId);
-  const minimumActiveWallCount = session.activeSpaceSharedWallId ? 1 : (hasSharedBoundary ? 2 : 3);
+  const minimumActiveWallCount = surveyGraph.getMinimumClosureSuggestionWallCount(floor, session);
   if (activeWallCount + (previewCountsAsWall ? 1 : 0) < minimumActiveWallCount) {
     return null;
   }
@@ -514,6 +520,7 @@ function buildAlignmentSnapGuide(session, project) {
   return {
     type: guide.type,
     direction: guide.direction,
+    snapLine: guide.snapLine || '',
     startPoint: project(guide.referencePoint),
     endPoint: project(guide.snappedPoint)
   };

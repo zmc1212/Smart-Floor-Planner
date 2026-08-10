@@ -3,10 +3,11 @@ Page({
     openid: '',
     statusBarHeight: 0,
     navBarHeightTotal: 0,
-    capsuleRightInset: 190
+    capsuleRightInset: 190,
+    pendingLeadId: ''
   },
 
-  onLoad() {
+  onLoad(options) {
     const app = getApp();
     const systemInfo = wx.getSystemInfoSync();
     const menuButton = wx.getMenuButtonBoundingClientRect();
@@ -19,6 +20,7 @@ Page({
       navBarHeightTotal: navBarHeightTotal,
       capsuleRightInset
     });
+    if (options && options.leadId) this.setData({ pendingLeadId: String(options.leadId) });
   },
 
   onShow() {
@@ -34,6 +36,11 @@ Page({
     const leadList = this.selectComponent('#leadList');
     if (leadList) {
       leadList.onRefresh();
+    }
+    if (this.data.pendingLeadId) {
+      const leadId = this.data.pendingLeadId;
+      this.setData({ pendingLeadId: '' });
+      wx.navigateTo({ url: `/packages/business/lead-detail/lead-detail?id=${leadId}` });
     }
   },
 

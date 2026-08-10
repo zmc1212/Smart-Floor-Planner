@@ -2,8 +2,8 @@
 THESIS: Turn a real measured home into the navigation surface; refuse the generic AI tool grid.
 OWN-WORLD: Warm residential space, formal wall geometry, crisp white controls, quiet oak, and one committed green action.
 STORY: Choose a real home or room, see its live scheme stage, enter one of four implemented tasks, then continue one honest next action.
-FIRST VIEWPORT: Project identity and credits sit above the dominant live plan; a truthful room-scope rail crosses its upper edge, while one raised workbench joins the stage rail, four task entries, and the final CTA before the shared TabBar.
-FORM: The pinned 04-ai-design-home-v3 composition governs selected plans; the established spatial-tour composition remains the truthful no-plan state.
+FIRST VIEWPORT: Project identity and credits sit above the warm spatial hero; only real, successful user floor-plan generations replace it as a tappable carousel, while one raised workbench joins the stage rail, four task entries, and the final CTA before the shared TabBar.
+FORM: The retained ai-design-hero-v3 scene is the honest empty/default hero; verified user-generated floor-plan results become its carousel content.
 -->
 <view class="ai-page sfp-tab-page">
   <scroll-view
@@ -74,39 +74,37 @@ FORM: The pinned 04-ai-design-home-v3 composition governs selected plans; the es
 
         <block wx:if="{{selectedSource}}">
         <view class="plan-navigator reference-plan-navigator">
-          <view class="plan-stage reference-plan-stage {{selectedSource.targetScope === 'single_room' ? 'room-focused' : 'whole-focused'}}">
-            <image
-              wx:if="{{selectedSource.navigationPreview.imageUrl}}"
-              class="plan-ai-image"
-              src="{{selectedSource.navigationPreview.imageUrl}}"
-              mode="aspectFit"
-            ></image>
-
-            <view wx:else class="plan-graph">
-              <view
-                wx:for="{{selectedSource.navigatorView.rooms}}"
-                wx:for-item="room"
-                wx:key="id"
-                class="plan-room-fill {{selectedSource.targetScope === 'whole_floor_plan' || selectedSource.roomId === room.id ? 'active' : ''}}"
-                style="{{room.fillStyle}}"
-              ></view>
-              <view
-                wx:for="{{selectedSource.navigatorView.walls}}"
-                wx:for-item="wall"
-                wx:key="id"
-                class="plan-wall"
-                style="{{wall.style}}"
-              ></view>
-              <view
-                wx:for="{{selectedSource.navigatorView.rooms}}"
-                wx:for-item="room"
-                wx:key="id"
-                class="plan-room-label {{selectedSource.roomId === room.id ? 'active' : ''}}"
-                style="{{room.labelStyle}}"
-              >
-                <text wx:if="{{selectedSource.roomId === room.id}}" class="room-current">当前</text>
-                <text>{{room.name}}</text>
-              </view>
+          <view class="plan-stage reference-plan-stage {{selectedSource.targetScope === 'single_room' ? 'room-focused' : 'whole-focused'}} {{heroSlides.length ? 'has-generated-hero' : 'has-default-hero'}}">
+            <swiper
+              wx:if="{{heroSlides.length}}"
+              class="plan-hero-swiper"
+              circular="{{heroSlides.length > 1}}"
+              autoplay="{{heroSlides.length > 1}}"
+              interval="4200"
+              duration="460"
+              current="{{activeHeroSlide}}"
+              bindchange="onHeroSlideChange"
+            >
+              <swiper-item wx:for="{{heroSlides}}" wx:key="id">
+                <view
+                  class="plan-hero-slide"
+                  data-id="{{item.id}}"
+                  bindtap="openHeroSlide"
+                  aria-role="button"
+                  aria-label="查看{{item.title}}"
+                >
+                  <image class="plan-hero-image" src="{{item.imageUrl}}" mode="aspectFill"></image>
+                  <view class="plan-hero-shade"></view>
+                  <view class="plan-hero-caption">
+                    <text class="plan-hero-title">{{item.title}}</text>
+                    <text class="plan-hero-meta">{{item.meta}}</text>
+                  </view>
+                </view>
+              </swiper-item>
+            </swiper>
+            <view wx:else class="plan-default-scene">
+              <image class="plan-default-scene-image scene-image" src="/images/ai-design-hero-v3.png" mode="aspectFill"></image>
+              <view class="plan-default-scene-shade"></view>
             </view>
 
             <scroll-view scroll-x class="hero-room-rail" enhanced show-scrollbar="{{false}}">
@@ -137,6 +135,10 @@ FORM: The pinned 04-ai-design-home-v3 composition governs selected plans; the es
                 </view>
               </view>
             </scroll-view>
+
+            <view wx:if="{{heroSlides.length > 1}}" class="hero-slide-count">
+              <text>{{activeHeroSlide + 1}} / {{heroSlides.length}}</text>
+            </view>
 
             <view wx:if="{{selectedSource.navigationPreview.state === 'processing'}}" class="preview-progress">
               <text class="preview-progress-label">3D 户型生成中</text>

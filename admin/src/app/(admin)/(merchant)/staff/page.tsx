@@ -10,9 +10,10 @@ import {
   type ActionType,
   type ProColumns,
 } from '@ant-design/pro-components';
-import { Alert, Avatar, Button, Card, Flex, Space, Tag, Tooltip, Tree, Typography, type TreeDataNode } from 'antd';
+import { Alert, Avatar, Button, Card, Flex, Form, Input, Space, Tag, Tooltip, Tree, Typography, type TreeDataNode } from 'antd';
 import { FolderPlus, Pencil, Plus, Trash2, UserCheck, Users, Wrench } from 'lucide-react';
 import ModuleOverview from '@/components/admin/ModuleOverview';
+import { ImageUploadField } from '@/components/ui/image-upload-field';
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -32,6 +33,9 @@ type StaffMember = {
   status?: string;
   departmentId?: { _id: string; name?: string } | string | null;
   createdAt?: string;
+  wechatId?: string | null;
+  wechatQrAssetId?: string | null;
+  boundDesignerId?: string | null;
 };
 
 type StaffRole = 'enterprise_admin' | 'designer' | 'measurer' | 'salesperson';
@@ -43,6 +47,9 @@ type StaffForm = {
   phone?: string;
   role: StaffRole;
   departmentId?: string;
+  wechatId?: string;
+  wechatQrAssetId?: string;
+  boundDesignerId?: string;
 };
 
 type DepartmentForm = { name: string; parentId?: string };
@@ -122,6 +129,12 @@ export default function StaffPage() {
   const [departmentFormOpen, setDepartmentFormOpen] = useState(false);
   const [globalTenantId, setGlobalTenantId] = useState('all');
   const [overview, setOverview] = useState({ total: 0, designers: 0, measurers: 0 });
+  const [designers, setDesigners] = useState<StaffMember[]>([]);
+  const [staffRole, setStaffRole] = useState<StaffRole>('designer');
+  const [wechatQrAssetId, setWechatQrAssetId] = useState<string | null>(null);
+  const [wechatQrPreviewUrl, setWechatQrPreviewUrl] = useState<string | null>(null);
+  const [acquisitionCommission, setAcquisitionCommission] = useState('0');
+  const [savingAcquisitionCommission, setSavingAcquisitionCommission] = useState(false);
 
   const canManage = Boolean(currentUser && ['super_admin', 'admin', 'enterprise_admin'].includes(currentUser.role));
   const requiresTenantSelection = Boolean(currentUser && ['super_admin', 'admin'].includes(currentUser.role) && globalTenantId === 'all');
@@ -147,7 +160,60 @@ export default function StaffPage() {
     setGlobalTenantId(tenantCookie?.split('=')[1] || 'all');
   }, []);
   useEffect(() => { void loadDepartments(); }, [loadDepartments]);
+  useEffect(() => {
+    if (!currentUser || requiresTenantSelection) return;
+    void fetch('/api/staff?roles=designer&limit=100')
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || '读取设计师列表失败');
+        setDesigners((result.data || []).filter((member: StaffMember) => member.status === 'active'));
+      })
+      .catch((error) => notify.error(error instanceof Error ? error.message : '读取设计师列表失败'));
+  }, [currentUser, requiresTenantSelection]);
+  const tenantId = globalTenantId !== 'all'
+    ? globalTenantId
+    : (currentUser?.enterpriseId && typeof currentUser.enterpriseId === 'object' ? currentUser.enterpriseId._id : currentUser?.enterpriseId);
+  useEffect(() => {
+    if (!tenantId || tenantId === 'all') return;
+    void fetch(`/api/admin/enterprises/${tenantId}`)
+      .then(async (response) => {
+        const result = await response.json();
+        if (response.ok && result.success) setAcquisitionCommission(String(result.data?.measurerAcquisitionFixedCommission ?? 0));
+      })
+      .catch(() => undefined);
+  }, [tenantId]);
+
+  const saveAcquisitionCommission = async () => {
+    if (!tenantId) return;
+    setSavingAcquisitionCommission(true);
+    try {
+      const response = await fetch(`/api/admin/enterprises/${tenantId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ measurerAcquisitionFixedCommission: Number(acquisitionCommission) }) });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '保存获客提成配置失败');
+      notify.success('获客提成配置已更新');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '保存获客提成配置失败');
+    } finally {
+      setSavingAcquisitionCommission(false);
+    }
+  };
   useEffect(() => { if (!requiresTenantSelection) void actionRef.current?.reload(); }, [requiresTenantSelection, selectedDepartmentId]);
+  useEffect(() => {
+    setStaffRole(editingStaff?.role || 'designer');
+    setWechatQrAssetId(editingStaff?.wechatQrAssetId || null);
+    setWechatQrPreviewUrl(null);
+  }, [editingStaff]);
+  useEffect(() => {
+    const assetId = editingStaff?.wechatQrAssetId;
+    if (!assetId) return;
+    void fetch(`/api/staff/wechat-qr?assetId=${assetId}`)
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || '读取个人微信二维码失败');
+        setWechatQrPreviewUrl(result.data.imageUrl);
+      })
+      .catch((error) => notify.error(error instanceof Error ? error.message : '读取个人微信二维码失败'));
+  }, [editingStaff?.wechatQrAssetId]);
 
   const saveStaff = async (values: StaffForm) => {
     const isEdit = Boolean(editingStaff);
@@ -155,13 +221,15 @@ export default function StaffPage() {
       const response = await fetch(isEdit ? `/api/staff/${editingStaff?._id}` : '/api/staff', {
         method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...values, departmentId: values.departmentId || '' }),
+        body: JSON.stringify({ ...values, departmentId: values.departmentId || '', wechatQrAssetId: wechatQrAssetId || values.wechatQrAssetId || '' }),
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || '保存员工失败');
       notify.success(isEdit ? '员工信息已更新' : '员工账号已创建');
       setStaffFormOpen(false);
       setEditingStaff(null);
+      setWechatQrAssetId(null);
+      setWechatQrPreviewUrl(null);
       await actionRef.current?.reload();
       return true;
     } catch (error) {
@@ -242,7 +310,7 @@ export default function StaffPage() {
       render: (_, member) => {
         if (!canManage) return [];
         return <Space size={8}>
-          <Button size="small" icon={<Pencil size={14} />} onClick={() => { setEditingStaff(member); setStaffFormOpen(true); }}>编辑</Button>
+          <Button size="small" icon={<Pencil size={14} />} onClick={() => { setStaffRole(member.role); setEditingStaff(member); setStaffFormOpen(true); }}>编辑</Button>
           <Button size="small" danger icon={<Trash2 size={14} />} onClick={() => { void deleteStaff(member); }}>删除</Button>
         </Space>;
       },
@@ -256,7 +324,7 @@ export default function StaffPage() {
         className="admin-page-container"
         title="员工管理"
         content="管理企业内的地推、测量、设计与负责人账号，并按部门快速筛选。"
-        extra={canManage && !requiresTenantSelection ? [<Button key="create" type="primary" icon={<Plus size={16} />} onClick={() => { setEditingStaff(null); setStaffFormOpen(true); }}>新增员工</Button>] : undefined}
+        extra={canManage && !requiresTenantSelection ? [<Button key="create" type="primary" icon={<Plus size={16} />} onClick={() => { setStaffRole('designer'); setEditingStaff(null); setStaffFormOpen(true); }}>新增员工</Button>] : undefined}
       >
         {requiresTenantSelection ? (
           <Alert
@@ -268,6 +336,14 @@ export default function StaffPage() {
         ) : !currentUser ? (
           <Alert showIcon type="info" message="正在加载员工权限" />
         ) : (
+        <>
+        <Card className="admin-panel-card mb-4" title="获客提成配置">
+          <Flex align="center" gap={12} wrap="wrap">
+            <Typography.Text type="secondary">测量员每条已获客线索固定提成（元）</Typography.Text>
+            <Input value={acquisitionCommission} onChange={(event) => setAcquisitionCommission(event.target.value)} inputMode="decimal" className="w-40" />
+            <Button type="primary" loading={savingAcquisitionCommission} onClick={() => void saveAcquisitionCommission()}>保存配置</Button>
+          </Flex>
+        </Card>
         <div className="admin-staff-layout">
           <Card title="部门结构" className="admin-department-panel admin-panel-card w-full">
             <Flex vertical gap={16}>
@@ -330,6 +406,7 @@ export default function StaffPage() {
             />
           </div>
         </div>
+        </>
         )}
       </PageContainer>
 
@@ -337,7 +414,15 @@ export default function StaffPage() {
         key={editingStaff?._id || 'create-staff'}
         title={editingStaff ? '编辑员工' : '新增员工'}
         open={staffFormOpen}
-        initialValues={editingStaff ? { username: editingStaff.username, displayName: editingStaff.displayName || '', phone: editingStaff.phone || '', role: editingStaff.role, departmentId: departmentIdOf(editingStaff) || undefined } : { role: 'designer', departmentId: selectedDepartmentId || undefined }}
+        initialValues={editingStaff ? {
+          username: editingStaff.username,
+          displayName: editingStaff.displayName || '',
+          phone: editingStaff.phone || '',
+          role: editingStaff.role,
+          departmentId: departmentIdOf(editingStaff) || undefined,
+          wechatId: editingStaff.wechatId || undefined,
+          boundDesignerId: editingStaff.boundDesignerId || undefined,
+        } : { role: 'designer', departmentId: selectedDepartmentId || undefined }}
         modalProps={{ destroyOnHidden: true, maskClosable: false }}
         onOpenChange={(open) => { setStaffFormOpen(open); if (!open) setEditingStaff(null); }}
         onFinish={saveStaff}
@@ -348,7 +433,55 @@ export default function StaffPage() {
         <ProFormText name="displayName" label="姓名或昵称" rules={[{ required: true, message: '请输入显示名称' }]} />
         <ProFormText name="phone" label="联系电话" fieldProps={{ inputMode: 'tel', placeholder: '11 位手机号' }} />
         <ProFormSelect name="departmentId" label="所属部门" options={[{ label: '不指定部门', value: '' }, ...departments.map((department) => ({ label: department.name, value: department._id }))]} />
-        <ProFormSelect name="role" label="岗位角色" options={staffRoleOptions} rules={[{ required: true, message: '请选择岗位角色' }]} />
+        <ProFormSelect
+          name="role"
+          label="岗位角色"
+          options={staffRoleOptions}
+          rules={[{ required: true, message: '请选择岗位角色' }]}
+          fieldProps={{ onChange: (value) => setStaffRole(value as StaffRole) }}
+        />
+        {staffRole === 'designer' ? (
+          <>
+              <ProFormText name="wechatId" label="微信号" rules={[{ required: true, message: '请输入设计师微信号' }]} />
+              <Form.Item
+                label="个人微信二维码"
+                required
+                extra="支持 JPG、PNG、WebP 或 GIF 格式，图片大小不超过 5MB。"
+              >
+                <ImageUploadField
+                  ariaLabel="上传个人微信二维码"
+                  helpText="支持 JPG、PNG、WebP 或 GIF 格式，图片大小不超过 5MB。"
+                  previewAlt="个人微信二维码预览"
+                  uploadSuccessText="个人微信二维码已上传"
+                  uploadText="上传二维码"
+                  value={wechatQrPreviewUrl}
+                  onUpload={async (file) => {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    const response = await fetch('/api/staff/wechat-qr', { method: 'POST', body: formData });
+                    const result = await response.json();
+                    if (!response.ok || !result.success) throw new Error(result.error || '个人微信二维码上传失败');
+                    setWechatQrAssetId(result.data.assetId);
+                    return { previewUrl: result.data.imageUrl };
+                  }}
+                  onValueChange={(value) => {
+                    setWechatQrPreviewUrl(value);
+                    if (!value) setWechatQrAssetId(null);
+                  }}
+                />
+              </Form.Item>
+          </>
+        ) : staffRole === 'measurer' ? (
+          <ProFormSelect
+            name="boundDesignerId"
+            label="绑定设计师"
+            options={designers.map((designer) => ({ label: `${designer.displayName || designer.username}${designer.wechatId ? ` (${designer.wechatId})` : ''}`, value: designer._id }))}
+            rules={[{ required: true, message: '请选择绑定设计师' }]}
+            disabled={designers.length === 0}
+            extra={designers.length === 0 ? '当前企业没有可绑定的启用设计师，请先新增或启用设计师。' : undefined}
+            fieldProps={{ placeholder: designers.length > 0 ? '请选择同企业的启用设计师' : '暂无可绑定设计师' }}
+          />
+        ) : null}
       </ModalForm>
 
       <ModalForm<DepartmentForm>

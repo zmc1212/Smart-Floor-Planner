@@ -96,6 +96,7 @@ interface PromotionNotificationRecord {
 }
 
 interface LeadNotificationRecord {
+  id?: bigint | string;
   enterpriseId?: bigint | string | null;
   name: string;
   phone: string;
@@ -195,5 +196,41 @@ export async function notifyDesignerOfAssignedLead(lead: LeadNotificationRecord,
       thing3: { value: '线索派单提醒' },
       thing4: { value: `请尽快跟进客户: ${lead.name}，开启方案设计。` }
     }
+  });
+}
+
+export async function notifyDesignerOfPendingLead(lead: LeadNotificationRecord, designerId: string) {
+  const designer = await withPlatformTransaction((transaction) =>
+    new AdminUserRepository(transaction).findById(parsePostgresId(designerId, 'designer id'))
+  );
+  if (!designer?.openid) return { success: false, error: 'openid unavailable' };
+  return sendSubscriptionMessage({
+    touser: designer.openid,
+    template_id: GLOBAL_TEMPLATE_ID,
+    page: `/pages/leads-management/leads-management?leadId=${encodeURIComponent(String((lead as { id?: bigint | string }).id || ''))}`,
+    data: {
+      thing1: { value: '客户线索待确认' },
+      time2: { value: new Date().toLocaleString('zh-CN', { hour12: false }) },
+      thing3: { value: '请确认是否已获客' },
+      thing4: { value: `客户:${lead.name}，请先在线下添加客户微信后确认` },
+    },
+  });
+}
+
+export async function notifyMeasurerOfAcquiredLead(lead: LeadNotificationRecord, measurerId: string) {
+  const measurer = await withPlatformTransaction((transaction) =>
+    new AdminUserRepository(transaction).findById(parsePostgresId(measurerId, 'measurer id'))
+  );
+  if (!measurer?.openid) return { success: false, error: 'openid unavailable' };
+  return sendSubscriptionMessage({
+    touser: measurer.openid,
+    template_id: GLOBAL_TEMPLATE_ID,
+    page: `/pages/leads-management/leads-management?leadId=${encodeURIComponent(String((lead as { id?: bigint | string }).id || ''))}`,
+    data: {
+      thing1: { value: '设计师已确认获客' },
+      time2: { value: new Date().toLocaleString('zh-CN', { hour12: false }) },
+      thing3: { value: '获客提成待结算' },
+      thing4: { value: `客户:${lead.name}，请留意提成记录` },
+    },
   });
 }

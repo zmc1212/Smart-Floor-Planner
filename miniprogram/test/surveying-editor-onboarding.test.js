@@ -177,6 +177,28 @@ test('Xiao K is the only explanatory callout while closure and measurement-side 
   assert.match(editorWxml, /wx:if="\{\{!componentEditorVisible && closeActionVisible\}\}"[\s\S]*catchtap="onConfirmClose"/);
 });
 
+test('closed-boundary first previews expose the current measurement-position action', () => {
+  assert.match(editorScript, /isFirstMeasurePositionStage\(floor, session\)[\s\S]*canSetInitialMeasurementSide\(floor, session\)/);
+  assert.match(editorScript, /const startPoint = segment && segment\.startPoint/);
+  assert.match(editorScript, /const measurementSide = segment && segment\.measurementSide/);
+  assert.match(editorScript, /const currentSide = session\.previewPoint[\s\S]*session\.previewMeasurementSide \|\| session\.measurementSide/);
+  assert.match(editorScript, /setMeasurementSide\(this\.draft, nextSide, activeWallId\)/);
+});
+
+test('the measurement-position control draws a vector arrow along the wall normal', () => {
+  assert.match(editorScript, /arrowAxis: leftNormal/);
+  assert.match(editorScript, /const arrowAngle = Math\.atan2\(arrowAxis\.y, arrowAxis\.x\)/);
+  assert.match(editorScript, /ctx\.rotate\(arrowAngle\)/);
+  assert.doesNotMatch(editorScript, /ctx\.fillText\(measure\.label/);
+});
+
+test('native preview rendering uses effective measurement endpoints', () => {
+  assert.match(editorScript, /measurementStartInsetMm: session\.previewMeasurementStartInsetMm \|\| 0/);
+  assert.match(editorScript, /measurementEndInsetMm: session\.previewMeasurementEndInsetMm \|\| 0/);
+  assert.match(editorScript, /const renderStart = geometry && geometry\.start \? geometry\.start : start/);
+  assert.match(editorScript, /const renderEnd = geometry && geometry\.end \? geometry\.end : end/);
+});
+
 test('bottom-dock guide targets hand off from canvas to the native control layer', () => {
   assert.match(editorScript, /const BOTTOM_DOCK_GUIDE_GEOMETRY_RPX = Object\.freeze\(\{[\s\S]*bottom:\s*64,[\s\S]*height:\s*108,[\s\S]*actionHeight:\s*82/);
   assert.match(editorScript, /cursorCenterOffsetX:\s*0\.5,[\s\S]*cursorWidth:\s*128/);

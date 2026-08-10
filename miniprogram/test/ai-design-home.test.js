@@ -6,6 +6,7 @@ const {
   decorateNavigator,
   decorateSourcePlan,
   decorateRecentResult,
+  buildHeroSlides,
   hasActiveTasks,
   normalizeCredits,
   buildStageRail,
@@ -26,6 +27,25 @@ const pageModelSource = fs.readFileSync(
   path.join(miniRoot, 'pages', 'ai-design', 'ai-design-model.js'),
   'utf8'
 );
+const pageSource = fs.readFileSync(
+  path.join(miniRoot, 'pages', 'ai-design', 'ai-design.js'),
+  'utf8'
+);
+const aiServiceSource = fs.readFileSync(
+  path.join(miniRoot, 'utils', 'aiDesignService.js'),
+  'utf8'
+);
+
+function loadHomePageConfig() {
+  const modulePath = path.join(miniRoot, 'pages', 'ai-design', 'ai-design.js');
+  const previousPage = global.Page;
+  let pageConfig;
+  global.Page = (config) => { pageConfig = config; };
+  delete require.cache[require.resolve(modulePath)];
+  require(modulePath);
+  global.Page = previousPage;
+  return pageConfig;
+}
 
 const workflows = [
   { key: 'reference_recreate', credits: 20, enabled: true },
@@ -77,6 +97,41 @@ test('preview and recent-task states keep real progress and all non-terminal job
   assert.equal(normalizeCredits(0), 0);
   assert.equal(normalizeCredits(null), 10);
   assert.equal(normalizeCredits(undefined), 10);
+});
+
+test('hero carousel is scoped to the explicitly selected full floor plan', () => {
+  const selectedSource = {
+    floorPlanId: 'plan-a',
+    targetLabel: '完整户型',
+    updatedAt: '2026-08-07T10:00:00.000Z',
+    navigationPreview: { state: 'missing' },
+  };
+  const recent = [
+    { id: 'current', mode: 'floor_plan_render', status: 'succeeded', floorPlanId: 'plan-a', targetScope: 'whole_floor_plan', resultImageUrl: 'https://example.com/current.png', createdAt: '2026-08-07T11:00:00.000Z' },
+    { id: 'other-lead', mode: 'floor_plan_render', status: 'succeeded', floorPlanId: 'plan-b', targetScope: 'whole_floor_plan', resultImageUrl: 'https://example.com/other.png' },
+    { id: 'room-only', mode: 'floor_plan_render', status: 'succeeded', floorPlanId: 'plan-a', targetScope: 'single_room', resultImageUrl: 'https://example.com/room.png' },
+    { id: 'style', mode: 'style_transform', status: 'succeeded', floorPlanId: 'plan-a', targetScope: 'whole_floor_plan', resultImageUrl: 'https://example.com/style.png' },
+    { id: 'stale', mode: 'floor_plan_render', status: 'succeeded', floorPlanId: 'plan-a', targetScope: 'whole_floor_plan', resultImageUrl: 'https://example.com/stale.png', createdAt: '2026-08-07T09:00:00.000Z' },
+  ];
+
+  assert.deepEqual(buildHeroSlides(recent, selectedSource).map((item) => item.id), ['current']);
+  assert.deepEqual(buildHeroSlides(recent, null), []);
+});
+
+test('hero lookup is server-scoped instead of relying on the paginated recent list', () => {
+  assert.match(aiServiceSource, /heroFloorPlanId=\$\{encodeURIComponent\(floorPlanId\)\}/);
+  assert.match(pageSource, /loadHeroFloorPlanResults\(selectedSource\.floorPlanId\)/);
+  assert.match(pageSource, /loadHeroFloorPlanResults\(requestedSource\.floorPlanId\)/);
+  assert.doesNotMatch(pageSource, /loadHistory\(1, 30\)/);
+});
+
+test('tapping a hero slide opens that exact generation result', () => {
+  const page = loadHomePageConfig();
+  let opened;
+  page.openHeroSlide.call({
+    openResult(event) { opened = event.currentTarget.dataset.id; },
+  }, { currentTarget: { dataset: { id: 'hero-task-42' } } });
+  assert.equal(opened, 'hero-task-42');
 });
 
 test('scheme stages map server workflow state to the four approved journey stations', () => {
@@ -140,6 +195,9 @@ test('the next action starts with reference recreation and creates a real whole-
 
 test('AI Design home restores the v3 spatial workbench while keeping live map and scene states', () => {
   assert.match(pageWxml, /class="plan-navigator reference-plan-navigator"/);
+  assert.match(pageWxml, /class="plan-hero-swiper"/);
+  assert.match(pageWxml, /bindtap="openHeroSlide"/);
+  assert.match(pageWxml, /\/images\/ai-design-hero-v3\.png/);
   assert.match(pageWxml, /class="hero-room-rail"/);
   assert.match(pageWxml, /class="hero-room-row"/);
   assert.doesNotMatch(pageWxml, /hero-room-pin|hero-room-all|hero-room-[0-9]/);
@@ -155,7 +213,7 @@ test('AI Design home restores the v3 spatial workbench while keeping live map an
   assert.match(pageWxml, /class="scene-navigator/);
   assert.match(pageWxml, /bindtap="focusSceneWaypoint"/);
   assert.match(pageWxml, /sceneNavigation\.focusClass/);
-  assert.match(pageWxml, /selectedSource\.navigationPreview\.imageUrl/);
+  assert.match(pageWxml, /heroSlides\.length/);
   assert.match(pageWxml, /loading && !hasLoadedOnce/);
   assert.match(pageWxml, /loadError && !hasLoadedOnce/);
   assert.match(pageWxml, /result\.displayImageUrl/);
@@ -164,7 +222,11 @@ test('AI Design home restores the v3 spatial workbench while keeping live map an
   assert.match(pageModelSource, /生成 3D 户型导览图/);
   assert.doesNotMatch(pageWxml, /class="workflow-grid"/);
   assert.doesNotMatch(pageWxml, />AI 设计</);
-  assert.match(pageWxss, /\.reference-plan-stage\s*\{[\s\S]*height:\s*804rpx/);
+  assert.match(pageWxss, /\.reference-plan-navigator\s*\{[\s\S]*margin:\s*calc\(-214rpx - var\(--ai-navigation-top, 24px\)\) -36rpx 0/);
+  assert.match(pageWxss, /\.reference-plan-stage\s*\{[\s\S]*height:\s*calc\(1018rpx \+ var\(--ai-navigation-top, 24px\)\)/);
+  assert.doesNotMatch(pageWxss, /\.reference-plan-stage\.has-default-hero\s*\{[\s\S]*height:/);
+  assert.match(pageWxss, /\.with-plan \.page-subtitle-line \.page-subtitle\s*\{[^}]*color:\s*#fff;[^}]*text-shadow:/);
+  assert.match(pageWxss, /\.with-plan \.project-chevron\s*\{[^}]*border-color:\s*#fff;[^}]*drop-shadow/);
   assert.match(pageWxml, /\/images\/ai-design-hero-v3\.png/);
   assert.match(pageWxml, /class="scene-source-card"/);
   assert.match(pageWxml, />参考图复刻</);

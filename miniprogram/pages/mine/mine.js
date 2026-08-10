@@ -65,6 +65,7 @@ Page({
     summaryCards: [],
     displayTodos: [],
     overviewCards: [],
+    unreadNotificationCount: 0,
     navigationTop: 47,
     navigationHeight: 32,
     navigationRight: 14,
@@ -206,7 +207,8 @@ Page({
           profile: { ...FALLBACK_PROFILE, ...profile },
           actions: data.actions || [],
           workbenchCards,
-          todos
+          todos,
+          unreadNotificationCount: Number(data.unreadNotificationCount || 0)
         },
         workbenchActions,
         ...buildDashboardSlices(workbenchCards, todos)
@@ -355,6 +357,30 @@ Page({
       await requestNotification();
     } catch (e) {
       console.error('Notification enable failed', e);
+    }
+  },
+
+  async onOpenNotifications() {
+    try {
+      const result = await api.request('/miniprogram/notifications?unread=1', 'GET');
+      const notifications = result.data || [];
+      if (!notifications.length) {
+        wx.showToast({ title: '暂无未读通知', icon: 'none' });
+        return;
+      }
+      wx.showActionSheet({
+        itemList: notifications.slice(0, 6).map((item) => item.message || '客户线索通知'),
+        success: async ({ tapIndex }) => {
+          const item = notifications[tapIndex];
+          if (!item) return;
+          await api.request('/miniprogram/notifications/read', 'POST', { ids: [item._id] });
+          const leadId = item.leadId && (item.leadId._id || item.leadId);
+          if (leadId) wx.navigateTo({ url: `/packages/business/lead-detail/lead-detail?id=${leadId}` });
+          this.setData({ unreadNotificationCount: Math.max(0, this.data.unreadNotificationCount - 1) });
+        }
+      });
+    } catch (error) {
+      wx.showToast({ title: (error && error.error) || '通知加载失败', icon: 'none' });
     }
   },
 

@@ -89,9 +89,7 @@ const MIN_SCALE = 0.05;
 const MAX_SCALE = 0.36;
 const MAX_HISTORY = 40;
 const MEASURE_LINE_TOP_PX = 40;
-const WALL_VISUAL_SCALE = 0.56;
-const MIN_WALL_THICKNESS_PX = 10;
-const MAX_WALL_THICKNESS_PX = 22;
+const MIN_WALL_THICKNESS_PX = 1.5;
 const WALL_TOOLBAR_ACTION_WIDTH_PX = 36;
 const WALL_TOOLBAR_ACTION_GAP_PX = 8;
 const WALL_TOOLBAR_HORIZONTAL_PADDING_PX = 16;
@@ -335,7 +333,7 @@ Page({
     topMetricAngle: '',
     measurePositionVisible: false,
     measurePositionStyle: '',
-    measurePositionButtonLabel: '↔',
+    measurePositionButtonLabel: '',
     closureGuideVisible: false,
     closureGuideStyle: '',
     closeActionVisible: false,
@@ -1642,16 +1640,35 @@ Page({
 
     if (controls.measurePosition) {
       const measure = controls.measurePosition;
+      const arrowAxis = measure.arrowAxis || { x: 1, y: 0 };
+      const arrowAngle = Math.atan2(arrowAxis.y, arrowAxis.x);
       ctx.beginPath();
       ctx.fillStyle = 'rgba(65, 65, 69, 0.92)';
       ctx.arc(measure.button.cx, measure.button.cy, measure.button.radius, 0, Math.PI * 2);
       ctx.fill();
+      ctx.save();
+      ctx.translate(measure.button.cx, measure.button.cy);
+      ctx.rotate(arrowAngle);
       ctx.fillStyle = '#ef4444';
-      this.drawRoundRect(ctx, measure.button.cx - 14, measure.button.cy - 8, 28, 4, 2);
+      this.drawRoundRect(ctx, -12, -10, 4, 20, 2);
       ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 20px sans-serif';
-      ctx.fillText(measure.label, measure.button.cx, measure.button.cy + 11);
+      ctx.beginPath();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.4;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.moveTo(-3, 0);
+      ctx.lineTo(13, 0);
+      ctx.moveTo(-3, 0);
+      ctx.lineTo(2, -5);
+      ctx.moveTo(-3, 0);
+      ctx.lineTo(2, 5);
+      ctx.moveTo(13, 0);
+      ctx.lineTo(8, -5);
+      ctx.moveTo(13, 0);
+      ctx.lineTo(8, 5);
+      ctx.stroke();
+      ctx.restore();
     }
 
     ctx.restore();
@@ -2592,8 +2609,8 @@ Page({
   getVisualThicknessPx(thicknessMm) {
     const viewport = this.getViewport();
     const scale = viewport.scale || surveyGraph.DEFAULT_SCALE;
-    const rawThickness = (thicknessMm || 200) * scale * WALL_VISUAL_SCALE;
-    return Math.round(clamp(rawThickness, MIN_WALL_THICKNESS_PX, MAX_WALL_THICKNESS_PX));
+    const rawThickness = (thicknessMm || surveyGraph.DEFAULT_THICKNESS_MM) * scale;
+    return Math.max(MIN_WALL_THICKNESS_PX, rawThickness);
   },
 
   getRenderThicknessMm(thicknessMm) {
@@ -2650,6 +2667,8 @@ Page({
       lengthMm: session.previewLengthMm,
       angleDeg: session.previewAngleDeg,
       thicknessMm: session.thicknessMm,
+      measurementStartInsetMm: session.previewMeasurementStartInsetMm || 0,
+      measurementEndInsetMm: session.previewMeasurementEndInsetMm || 0,
       measurementSide: session.previewMeasurementSide || session.measurementSide,
       status: 'preview'
     };
@@ -2671,12 +2690,14 @@ Page({
   },
 
   buildSegmentRender(start, end, wall, isPreview, previousWall, geometry) {
-    const startPoint = this.mmToCanvasPoint(start);
-    const endPoint = this.mmToCanvasPoint(end);
+    const renderStart = geometry && geometry.start ? geometry.start : start;
+    const renderEnd = geometry && geometry.end ? geometry.end : end;
+    const startPoint = this.mmToCanvasPoint(renderStart);
+    const endPoint = this.mmToCanvasPoint(renderEnd);
     const width = distancePx(startPoint, endPoint);
     const viewport = this.getViewport();
     const thicknessPx = geometry
-      ? Math.round(geometry.thicknessMm * viewport.scale)
+      ? geometry.thicknessMm * viewport.scale
       : this.getVisualThicknessPx(wall.thicknessMm);
     const bodyOffset = wall.measurementSide === 'left' ? MEASURE_LINE_TOP_PX - thicknessPx : MEASURE_LINE_TOP_PX;
     const bodyEdgeStart = Math.min(bodyOffset, MEASURE_LINE_TOP_PX);
@@ -2891,7 +2912,7 @@ Page({
 
   buildMeasurePosition(segment, floor, session) {
     if (!this.isFirstMeasurePositionStage(floor, session)) {
-      return { visible: false, style: '', buttonLabel: '↔', control: null };
+      return { visible: false, style: '', buttonLabel: '', control: null };
     }
 
     const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
@@ -2900,19 +2921,26 @@ Page({
     const wall = floor.walls[startWallIndex];
     const start = wall && surveyGraph.getNode(floor, wall.startNodeId);
     const end = wall && surveyGraph.getNode(floor, wall.endNodeId);
-    if (!wall || !start || !end) {
-      return { visible: false, style: '', buttonLabel: '↔', control: null };
+    const startPoint = segment && segment.startPoint
+      ? segment.startPoint
+      : (start ? this.mmToCanvasPoint(start) : null);
+    const endPoint = segment && segment.endPoint
+      ? segment.endPoint
+      : (end ? this.mmToCanvasPoint(end) : null);
+    const measurementSide = segment && segment.measurementSide
+      ? segment.measurementSide
+      : (wall ? wall.measurementSide : session.previewMeasurementSide || session.measurementSide);
+    if (!startPoint || !endPoint) {
+      return { visible: false, style: '', buttonLabel: '', control: null };
     }
 
-    const startPoint = this.mmToCanvasPoint(start);
-    const endPoint = this.mmToCanvasPoint(end);
     const dx = endPoint.x - startPoint.x;
     const dy = endPoint.y - startPoint.y;
     const length = Math.sqrt(dx * dx + dy * dy);
-    if (!length) return { visible: false, style: '', buttonLabel: '↔', control: null };
+    if (!length) return { visible: false, style: '', buttonLabel: '', control: null };
 
     const leftNormal = { x: -dy / length, y: dx / length };
-    const sideNormal = wall.measurementSide === 'right'
+    const sideNormal = measurementSide === 'right'
       ? { x: -leftNormal.x, y: -leftNormal.y }
       : leftNormal;
     const rect = this.canvasRect || { width: 0, height: 0 };
@@ -2929,14 +2957,14 @@ Page({
     }, safeArea);
     const control = {
       key: 'measure-position',
-      label: '↕',
+      arrowAxis: leftNormal,
       button
     };
 
     return {
       visible: true,
       style: '',
-      buttonLabel: '↕',
+      buttonLabel: '',
       control
     };
   },
@@ -2950,8 +2978,7 @@ Page({
       ? session.activeSpaceStartWallIndex
       : 0;
     const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
-    const hasSharedBoundary = !!(session.activeSpaceSharedWallId || session.closeCandidateSharedWallId);
-    const minimumActiveWallCount = session.activeSpaceSharedWallId ? 1 : (hasSharedBoundary ? 2 : 3);
+    const minimumActiveWallCount = surveyGraph.getMinimumClosureSuggestionWallCount(floor, session);
     if (activeWallCount + (session.previewPoint ? 1 : 0) < minimumActiveWallCount) {
       return { guideVisible: false, guideStyle: '', actionVisible: false, actionStyle: '' };
     }
@@ -2991,7 +3018,7 @@ Page({
       guideVisible: width > 1,
       guideStyle: `left:${roundPx(startPoint.x)}px; top:${roundPx(startPoint.y)}px; width:${roundPx(width)}px; transform:rotate(${roundPx(angleDeg)}deg);`,
       actionVisible,
-      actionStyle: `left:${roundPx(actionX - 24)}px; top:${roundPx(actionY - 12)}px;`,
+      actionStyle: `left:${roundPx(actionX - actionRadius)}px; top:${roundPx(actionY - actionRadius)}px;`,
       action
     };
   },
@@ -3752,12 +3779,13 @@ Page({
     const firstWall = floor.walls[startWallIndex] || null;
     const activeWallId = firstWall ? firstWall.id : '';
     const activeWall = activeWallId ? surveyGraph.getWall(floor, activeWallId) : null;
-    if (!activeWall) return;
-    const currentSide = activeWall ? activeWall.measurementSide : session.measurementSide;
+    const currentSide = session.previewPoint
+      ? (session.previewMeasurementSide || session.measurementSide)
+      : (activeWall ? activeWall.measurementSide : session.measurementSide);
     const nextSide = currentSide === 'right' ? 'left' : 'right';
     const nextDraft = surveyGraph.setMeasurementSide(this.draft, nextSide, activeWallId);
     this.applyDraft(nextDraft, {
-      recordHistory: !!activeWallId,
+      recordHistory: true,
       extraData: { numberPadVisible: this.data.numberPadVisible }
     });
     wx.showToast({ title: '测量位置已更新', icon: 'none' });

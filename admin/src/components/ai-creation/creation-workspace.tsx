@@ -242,6 +242,7 @@ export function CreationWorkspace() {
   const [promptExpanded, setPromptExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const compareViewportRef = useRef<HTMLDivElement>(null);
+  const conversationViewportRef = useRef<HTMLDivElement>(null);
 
   const loadBootstrap = useCallback(async () => {
     const payload = await readJson(await fetch('/api/ai/creation/bootstrap'));
@@ -275,16 +276,23 @@ export function CreationWorkspace() {
 
   const selectedTask = tasks.find((task) => task.id === selectedTaskId);
   const selectedBatch = latestBatch(selectedTask);
-  const results = batchGenerations(selectedBatch);
+  const conversationBatches = selectedTask ? [...selectedTask.batches].sort((a, b) => a.sequence - b.sequence) : [];
   const hasTaskStage = Boolean(selectedTask && selectedBatch);
-  const displayGenerations = results.length
-    ? results
+  const latestResults = batchGenerations(selectedBatch);
+  const displayGenerations = latestResults.length
+    ? latestResults
     : Array.from({ length: selectedBatch?.requestedCount || 1 }, () => undefined);
   const model = bootstrap?.models.find((item) => item.id === modelProfileId);
   const availableAspectRatios = model?.aspectRatiosByResolutionTier?.[resolutionTier] || model?.aspectRatios || [];
   const unitPrice = model?.prices.find((price) => price.resolutionTier === resolutionTier)?.credits || 0;
   const estimatedCredits = unitPrice * count;
   const hasEnabledPrice = unitPrice > 0;
+
+  useEffect(() => {
+    const viewport = conversationViewportRef.current;
+    const latestRound = viewport?.lastElementChild as HTMLElement | null;
+    if (viewport && latestRound) viewport.scrollTop = Math.max(0, latestRound.offsetTop - 12);
+  }, [selectedTaskId, conversationBatches.length]);
 
   const applyModelDefaults = (profile?: CreationModelProfile) => {
     if (!profile) return;
@@ -314,7 +322,8 @@ export function CreationWorkspace() {
     setCustomHeight(batch?.parameterSnapshot.height || 1024);
     setCount(batch?.requestedCount || 1);
     setSelectedTemplate(batch?.parameterSnapshot.templateId ? { id: batch.parameterSnapshot.templateId } as TemplateDetail : null);
-    setAssets(task.referenceAssetIds.map((id) => ({ id, previewUrl: `/api/ai/assets/${id}/image` })));
+    const referenceAssetIds = batch?.referenceAssetIds || task.referenceAssetIds;
+    setAssets(referenceAssetIds.map((id) => ({ id, previewUrl: `/api/ai/assets/${id}/image` })));
     setHistoryOpen(false);
   };
 
@@ -555,8 +564,8 @@ export function CreationWorkspace() {
   }
 
   return (
-    <div className="fixed inset-0 h-screen min-h-[720px] min-w-0 overflow-x-hidden overflow-y-auto bg-[#16171b] font-sans text-[#f6f7fb] min-[1440px]:min-w-[1440px] min-[1440px]:overflow-hidden">
-      <header className="relative z-40 flex h-[68px] min-w-0 items-center justify-between border-b border-white/[0.08] bg-[#16171b] px-3 min-[1440px]:min-w-[1440px]">
+    <div className="fixed inset-0 h-screen min-h-[720px] min-w-0 overflow-x-hidden overflow-y-auto bg-[#16171b] font-sans text-[#f6f7fb] lg:min-w-[1024px] lg:overflow-hidden">
+      <header className="relative z-40 flex h-[68px] min-w-0 items-center justify-between border-b border-white/[0.08] bg-[#16171b] px-3 lg:min-w-[1024px]">
         <div className="flex min-w-0 items-center gap-4">
           <Link href="/ai-studio/scenarios" className="flex items-center gap-2 text-white" title="返回后台 AI 工作台">
             <span className="flex size-7 items-center justify-center rounded-md border border-[#7047ff]/70 text-[#8b6cff]"><Sparkles className="size-4" /></span>
@@ -575,7 +584,7 @@ export function CreationWorkspace() {
         </div>
       </header>
 
-      <div className="absolute inset-x-0 bottom-0 top-[68px] min-w-0 bg-[#17191f] min-[1440px]:min-w-[1440px]">
+      <div className="absolute inset-x-0 bottom-0 top-[68px] min-w-0 bg-[#17191f] lg:min-w-[1024px]">
         <aside className="absolute inset-y-0 left-0 z-30 hidden w-16 flex-col items-center border-r border-white/[0.05] bg-[#0f1016]/70 pt-5 min-[1440px]:flex">
           <Link href="/ai-studio/scenarios" title="展开创作导航" className="mb-4 flex size-8 items-center justify-center rounded-full border border-white/15 text-[#b3b3b3] hover:text-white"><ChevronRight className="size-4" /></Link>
           <button type="button" title="AI 自由创作" className="flex h-12 w-12 items-center justify-center rounded-xl border border-[#7047ff]/55 bg-[#6f45ff]/15 text-[#987dff]"><span className="flex size-6 items-center justify-center rounded-full bg-[#6942df] text-xs font-semibold text-white">AI</span></button>
@@ -605,7 +614,19 @@ export function CreationWorkspace() {
                 const batch = latestBatch(task);
                 const firstImage = batch?.generations.find((item) => item.imageUrl)?.imageUrl;
                 return (
-                  <button key={task.id} type="button" onClick={() => chooseTask(task)} className={cn('group mb-2 flex w-full items-center gap-3 rounded-lg border p-2 text-left transition', selectedTaskId === task.id ? 'border-[#7047ff]/70 bg-[#7047ff]/10' : 'border-transparent bg-white/[0.035] hover:bg-white/[0.07]')}>
+                  <div
+                    key={task.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => chooseTask(task)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        chooseTask(task);
+                      }
+                    }}
+                    className={cn('group mb-2 flex w-full items-center gap-3 rounded-lg border p-2 text-left transition', selectedTaskId === task.id ? 'border-[#7047ff]/70 bg-[#7047ff]/10' : 'border-transparent bg-white/[0.035] hover:bg-white/[0.07]')}
+                  >
                     <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-[#24252a]">{firstImage ? <img src={firstImage} alt="" className="h-full w-full object-cover" /> : <Images className="size-4 text-[#717178]" />}</div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-xs font-medium text-[#eeeeF2]">{task.title}</div>
@@ -615,7 +636,7 @@ export function CreationWorkspace() {
                       <DropdownMenuTrigger asChild onClick={(event) => event.stopPropagation()}><Button variant="ghost" size="icon-xs" className="text-[#8d8d94] opacity-0 group-hover:opacity-100"><MoreHorizontal /></Button></DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="border-white/10 bg-[#202126] text-white"><DropdownMenuItem onSelect={() => chooseTask(task)}><RefreshCw />复用参数</DropdownMenuItem><DropdownMenuItem className="text-red-400" onSelect={() => deleteTask(task)}><Trash2 />删除</DropdownMenuItem></DropdownMenuContent>
                     </DropdownMenu>
-                  </button>
+                  </div>
                 );
               })}
               {!filteredTasks.length ? <div className="py-14 text-center text-xs text-[#77777e]">暂无匹配任务</div> : null}
@@ -632,11 +653,11 @@ export function CreationWorkspace() {
           </aside>
         ) : null}
 
-        <main className={cn('absolute inset-y-0 left-0 right-0 overflow-x-hidden overflow-y-auto min-[1440px]:left-16 min-[1440px]:overflow-hidden', hasTaskStage && 'min-[1440px]:right-14')}>
+        <main className={cn('absolute inset-y-0 left-0 right-0 overflow-x-hidden overflow-y-auto min-[1440px]:left-16 lg:overflow-hidden', hasTaskStage && 'lg:right-14')}>
 
           {hasTaskStage ? (
             <>
-              <section aria-label="当前任务摘要" className="absolute left-1/2 top-7 z-20 flex h-[72px] w-[1080px] -translate-x-1/2 items-start gap-5">
+              <section aria-label="当前任务摘要" className="absolute left-1/2 top-7 z-20 flex h-[72px] w-[calc(100%-32px)] max-w-[1080px] -translate-x-1/2 items-start gap-5">
                 {assets[0] ? (
                   <div className="h-[60px] w-12 shrink-0 -rotate-[4deg] overflow-hidden rounded-md border border-white/10 bg-[#2a2b31] shadow-[0_8px_20px_rgba(0,0,0,0.25)]">
                     <img src={assets[0].previewUrl} alt="任务参考图" className="h-full w-full object-cover" />
@@ -663,9 +684,40 @@ export function CreationWorkspace() {
                 </div>
               </section>
 
-              <section aria-label="生成结果" className="absolute right-0 top-[118px] z-10 h-[264px] bg-[linear-gradient(90deg,#24252c_0%,#202138_58%,#17191f_100%)] [left:calc(50%_-_540px)]">
-                <div className="absolute left-0 top-0 flex max-w-[calc(100%-32px)] gap-3 overflow-hidden">
-                  {displayGenerations.map((generation, index) => (
+              <section aria-label="生成结果" className="absolute left-1/2 top-[118px] z-10 h-[360px] w-[calc(100%-32px)] max-w-[1080px] -translate-x-1/2 bg-[linear-gradient(90deg,#24252c_0%,#202138_58%,#17191f_100%)] lg:bottom-[266px] lg:top-[118px] lg:h-auto">
+                <div ref={conversationViewportRef} className="scrollbar-hide absolute inset-0 flex flex-col gap-4 overflow-y-auto p-3 pb-14 pr-4">
+                  {conversationBatches.slice(0, -1).map((batch) => (
+                    <article key={batch.id} className="shrink-0 rounded-xl border border-white/10 bg-[#1a1b20]/85 p-3">
+                      <div className="mb-3 flex items-start gap-3">
+                        <span className="shrink-0 rounded-full bg-[#7047ff]/20 px-2.5 py-1 text-[11px] font-medium text-[#b8a8ff]">第 {batch.sequence} 轮</span>
+                        <p className="min-w-0 flex-1 whitespace-pre-wrap text-sm leading-5 text-[#e7e7eb]">{batch.prompt}</p>
+                        <time className="shrink-0 text-[11px] text-[#666f91]" dateTime={batch.createdAt}>{formatDateTime(batch.createdAt)}</time>
+                      </div>
+                      <div className="scrollbar-hide flex gap-3 overflow-x-auto pb-1">
+                        {(batch.generations.length ? batch.generations : Array.from({ length: batch.requestedCount || 1 }, () => undefined)).map((generation, index) => (
+                          <GenerationTile
+                            key={generation?.id || `pending-${batch.id}-${index}`}
+                            generation={generation}
+                            batchStatus={batch.status}
+                            onAttach={setAttachGeneration}
+                            onPreview={(item) => { setPreviewGeneration(item); setPreviewZoom(1); setPreviewRotation(0); setPreviewFullscreen(false); }}
+                            onReuse={(item) => { void reuseGeneration(item); }}
+                            onCompare={(item) => { setCompareGeneration(item); setCompareMode('split'); setCompareSwapped(false); setCompareFullscreen(false); setSplitPosition(50); }}
+                            onEdit={setEditorGeneration}
+                            onDelete={() => selectedTask && deleteTask(selectedTask)}
+                          />
+                        ))}
+                      </div>
+                    </article>
+                  ))}
+                  <article className="shrink-0 rounded-xl border border-[#7047ff]/35 bg-[#1a1b20]/90 p-3">
+                    <div className="mb-3 flex items-start gap-3">
+                      <span className="shrink-0 rounded-full bg-[#7047ff]/20 px-2.5 py-1 text-[11px] font-medium text-[#b8a8ff]">第 {selectedBatch?.sequence} 轮</span>
+                      <p className="min-w-0 flex-1 whitespace-pre-wrap text-sm leading-5 text-[#e7e7eb]">{selectedBatch?.prompt}</p>
+                      {selectedBatch?.createdAt ? <time className="shrink-0 text-[11px] text-[#666f91]" dateTime={selectedBatch.createdAt}>{formatDateTime(selectedBatch.createdAt)}</time> : null}
+                    </div>
+                    <div className="scrollbar-hide flex gap-3 overflow-x-auto pb-1">
+                    {displayGenerations.map((generation, index) => (
                     <GenerationTile
                       key={generation?.id || `pending-${index}`}
                       generation={generation}
@@ -677,9 +729,11 @@ export function CreationWorkspace() {
                       onEdit={setEditorGeneration}
                       onDelete={() => selectedTask && deleteTask(selectedTask)}
                     />
-                  ))}
+                    ))}
+                    </div>
+                  </article>
                 </div>
-                <div className="absolute left-0 top-[226px] flex h-[30px] items-center gap-2">
+                <div className="absolute bottom-2 left-3 flex h-[30px] items-center gap-2 lg:bottom-2 lg:left-3">
                   <button type="button" onClick={() => setPromptExpanded(true)} className="flex h-[30px] items-center gap-1.5 rounded-md bg-[#2a2b31] px-3 text-xs text-[#d5d5da] hover:bg-[#34353c] hover:text-white"><Pencil className="size-3.5" />重新编辑</button>
                   <button type="button" disabled={generating} onClick={submitGeneration} className="flex h-[30px] items-center gap-1.5 rounded-md bg-[#2a2b31] px-3 text-xs text-[#d5d5da] hover:bg-[#34353c] hover:text-white disabled:opacity-50">{generating ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}再次生成</button>
                   {selectedTask ? <button type="button" onClick={() => deleteTask(selectedTask)} className="flex h-[30px] items-center gap-1.5 rounded-md bg-[#2a2b31] px-3 text-xs text-[#ff6f75] hover:bg-[#34353c]"><Trash2 className="size-3.5" />删除</button> : null}
@@ -694,8 +748,8 @@ export function CreationWorkspace() {
             </div>
           )}
 
-          <section style={{ backgroundImage: "url('/ai-studio/creation-dialog-frame.png')" }} className={cn('absolute left-4 right-4 z-20 grid w-auto translate-x-0 grid-rows-[minmax(140px,1fr)_auto] gap-3 overflow-visible bg-[#1b1c20]/95 bg-[length:100%_100%] bg-center bg-no-repeat px-4 pb-4 pt-5 sm:left-1/2 sm:right-auto sm:w-[calc(100%-96px)] sm:max-w-[1080px] sm:-translate-x-1/2 min-[1440px]:w-[1080px] min-[1440px]:max-w-none min-[1440px]:gap-2 min-[1440px]:px-[18px] min-[1440px]:pb-4 min-[1440px]:pt-[18px]', hasTaskStage ? 'top-[150px] min-h-[500px] sm:top-[220px] sm:min-h-[400px] min-[1440px]:bottom-[30px] min-[1440px]:top-auto min-[1440px]:h-[212px] min-[1440px]:min-h-0 min-[1440px]:grid-rows-[122px_48px]' : 'top-[180px] min-h-[440px] sm:top-[280px] sm:min-h-[350px] min-[1440px]:top-[365px] min-[1440px]:h-[251px] min-[1440px]:min-h-0 min-[1440px]:grid-rows-[161px_48px]')}>
-            <button type="button" onClick={() => assets.length ? setPromptExpanded(true) : fileInputRef.current?.click()} aria-label="编辑参考图片" title={assets.length ? '编辑参考图片' : '上传参考图片'} className="absolute -top-14 left-0 flex size-12 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/15 min-[1440px]:-left-[60px] min-[1440px]:top-0"><Pencil className="size-5" /></button>
+          <section style={{ backgroundImage: "url('/ai-studio/creation-dialog-frame.png')" }} className={cn('absolute left-4 right-4 z-20 grid w-auto translate-x-0 grid-rows-[minmax(140px,1fr)_auto] gap-3 overflow-visible bg-[#1b1c20]/95 bg-[length:100%_100%] bg-center bg-no-repeat px-4 pb-4 pt-5 sm:left-1/2 sm:right-auto sm:w-[calc(100%-96px)] sm:max-w-[1080px] sm:-translate-x-1/2 lg:w-[calc(100%-96px)] lg:max-w-[1080px] lg:gap-2 lg:px-[18px] lg:pb-4 lg:pt-[18px]', hasTaskStage ? 'top-[150px] min-h-[500px] sm:top-[220px] sm:min-h-[400px] lg:bottom-[30px] lg:top-auto lg:h-[212px] lg:min-h-0 lg:grid-rows-[122px_48px]' : 'top-[180px] min-h-[440px] sm:top-[280px] sm:min-h-[350px] lg:top-[365px] lg:h-[251px] lg:min-h-0 lg:grid-rows-[161px_48px]')}>
+            <button type="button" onClick={() => assets.length ? setPromptExpanded(true) : fileInputRef.current?.click()} aria-label="编辑参考图片" title={assets.length ? '编辑参考图片' : '上传参考图片'} className="absolute -top-14 left-0 flex size-12 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/15 lg:-left-[60px] lg:top-0"><Pencil className="size-5" /></button>
             <div className="absolute -top-[30px] right-[30px] flex items-center gap-1.5 text-sm text-[#b3b3b3]"><span className="flex size-5 items-center justify-center rounded-full bg-[#7047ff] text-[10px] font-semibold text-white">AI</span>预计消耗 <strong className="text-[#f0d567]">{estimatedCredits}</strong> 点</div>
             <div className="grid min-h-0 grid-cols-[64px_minmax(0,1fr)] gap-3 sm:grid-cols-[84px_minmax(0,1fr)]">
               <div className="relative flex h-[98px] items-center justify-center">
@@ -714,12 +768,12 @@ export function CreationWorkspace() {
               </div>
             </div>
 
-            <div aria-label="对话框操作" className="absolute right-3 top-3 flex h-10 w-auto items-center justify-center gap-2 min-[1440px]:-right-[60px] min-[1440px]:bottom-0 min-[1440px]:top-auto min-[1440px]:h-[86px] min-[1440px]:w-12 min-[1440px]:flex-col min-[1440px]:gap-3">
+            <div aria-label="对话框操作" className="absolute right-3 top-3 flex h-10 w-auto items-center justify-center gap-2 lg:-right-[60px] lg:bottom-0 lg:top-auto lg:h-[86px] lg:w-12 lg:flex-col lg:gap-3">
               <button type="button" disabled={assisting || !prompt.trim()} onClick={assistPrompt} title="优化提示词" className="flex size-[30px] items-center justify-center rounded-full text-[#9b9ba2] hover:bg-white/10 hover:text-white disabled:opacity-40">{assisting ? <Loader2 className="size-4 animate-spin" /> : <WandSparkles className="size-4" />}</button>
               <button type="button" onClick={() => setPromptExpanded(true)} title="全屏编辑提示词" className="flex size-[30px] items-center justify-center rounded-full text-[#9b9ba2] hover:bg-white/10 hover:text-white"><Maximize2 className="size-4" /></button>
             </div>
 
-            <div className="grid min-w-0 grid-cols-2 items-center gap-2 overflow-visible sm:flex sm:flex-wrap min-[1440px]:flex-nowrap min-[1440px]:overflow-x-auto min-[1440px]:overflow-y-hidden">
+            <div className="grid min-w-0 grid-cols-2 items-center gap-2 overflow-visible sm:flex sm:flex-wrap lg:flex-nowrap lg:overflow-x-auto lg:overflow-y-hidden">
               <Select value={modelProfileId} onValueChange={(value) => { setModelProfileId(value); applyModelDefaults(bootstrap.models.find((item) => item.id === value)); }}>
                 <SelectTrigger className="col-span-2 h-10 w-full shrink-0 rounded-lg border-[#37373b] bg-[#222226] px-3 text-sm text-[#f5f5f5] focus:ring-[#7047ff] sm:w-[186px]"><Bot className="size-4 text-[#7047ff]" /><SelectValue placeholder="选择模型" /></SelectTrigger>
                 <SelectContent className="border-white/10 bg-[#18191d] text-[#f5f5f5]"><SelectGroup>{bootstrap.models.map((item) => <SelectItem key={item.id} value={item.id} className={darkSelectItemClassName}>{item.name}</SelectItem>)}</SelectGroup></SelectContent>

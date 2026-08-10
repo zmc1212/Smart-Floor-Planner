@@ -1153,6 +1153,78 @@ export async function settlePostgresCreationProviderResult(input: {
 }
 
 /**
+ * Finalizes an accepted provider result that remains hosted upstream. This is
+ * used only for the disabled GRS transfer policy, so no local media record is
+ * created while the usual tenant, attempt, and credit invariants still apply.
+ */
+export async function settlePostgresCreationProviderUrlResult(input: {
+  enterpriseId: string;
+  generationId: string;
+  attemptId: string;
+  remoteTaskId: string;
+  imageUrl: string;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const generationId = parsePostgresId(input.generationId, 'generationId');
+  const attemptId = parsePostgresId(input.attemptId, 'attemptId');
+  const remoteTaskId = input.remoteTaskId.trim();
+  const imageUrl = input.imageUrl.trim();
+  if (!remoteTaskId) throw new Error('供应商结果结算缺少远端任务 ID');
+  if (!/^https?:\/\//i.test(imageUrl)) {
+    throw new Error('供应商结果直连 URL 无效');
+  }
+
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const creation = new AiCreationRepository(transaction);
+    const generation = await creation.findGenerationForUpdate(generationId);
+    if (!generation || generation.deletedAt || !['free_create', 'scenario', 'miniprogram', 'soft_furnishing_render', 'floor_plan_style', 'furnishing_render'].includes(generation.type)) {
+      throw new Error('创作生成任务不存在');
+    }
+    if (generation.currentAttemptId !== attemptId || generation.status !== 'succeeded') {
+      throw new Error('供应商结果结算不属于已成功的当前创作生成任务');
+    }
+    const attempt = await creation.findProviderAttempt(attemptId);
+    if (
+      !attempt
+      || attempt.generationId !== generationId
+      || attempt.remoteTaskId !== remoteTaskId
+      || attempt.status !== 'succeeded'
+      || !attempt.accepted
+    ) {
+      throw new Error('供应商结果结算的远端任务 ID 与当前尝试不一致');
+    }
+
+    const output = asRecord(generation.output);
+    const hasAttachedResult = typeof output.imageUrl === 'string' && output.imageUrl.length > 0;
+    if (hasAttachedResult && output.imageUrl !== imageUrl) {
+      throw new Error('创作生成任务已关联另一结果媒体');
+    }
+    const attachedGeneration = hasAttachedResult
+      ? generation
+      : await creation.updateGeneration(generationId, {
+        output: { ...output, imageUrl },
+      });
+    if (!attachedGeneration) throw new Error('供应商结果 URL 无法持久化关联');
+
+    const billingStatus = String(asRecord(attachedGeneration.billing).status || '');
+    const consumed = await consumePostgresCreationGenerationCreditsInTransaction({
+      transaction,
+      enterpriseId,
+      generation: attachedGeneration,
+    });
+    const workflow = attachedGeneration.type === 'scenario'
+      ? await new AiWorkflowRepository(transaction).applySucceededScenarioGeneration(attachedGeneration.id)
+      : null;
+    return {
+      ...consumed,
+      generation: workflow?.generation ?? consumed.generation,
+      workflow: workflow?.workflow,
+      reused: hasAttachedResult && billingStatus === 'consumed',
+    };
+  });
+}
+
+/**
  * Settles a terminal provider failure and releases the held generation credit
  * in one tenant transaction. Network polling remains outside this boundary.
  */

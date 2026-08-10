@@ -8,6 +8,7 @@ import {
 import {
   AdminUserRepository,
   DepartmentRepository,
+  AiCreationRepository,
 } from '@/db/repositories';
 import { withPlatformTransaction, withTenantTransaction } from '@/db/transaction';
 import { createPaginationMetadata, getPaginationParams } from '@/lib/pagination';
@@ -27,6 +28,9 @@ interface StaffCreateBody {
   enterpriseId?: string;
   departmentId?: string;
   promoterIds?: string[];
+  wechatId?: string;
+  wechatQrAssetId?: string;
+  boundDesignerId?: string;
 }
 
 const BUSINESS_ROLES = [
@@ -55,6 +59,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const { page, limit } = getPaginationParams(request.url);
     const scope = searchParams.get('scope');
+    const requestedEnterpriseId = searchParams.get('enterpriseId');
     const roles =
       searchParams
         .get('roles')
@@ -79,6 +84,36 @@ export async function GET(request: Request) {
           return NextResponse.json({
             success: true,
             data: result.rows.map((row) => adminUserToDto(row)),
+            pagination: createPaginationMetadata(result.total, page, limit),
+          });
+        }
+      );
+    }
+
+    if (requestedEnterpriseId) {
+      return await withTenantRoute(
+        request,
+        { roles: ['super_admin', 'admin'] },
+        async () => {
+          const enterpriseId = parsePostgresId(
+            requestedEnterpriseId,
+            'enterpriseId'
+          );
+          const result = await withTenantTransaction(
+            enterpriseId,
+            (transaction) =>
+              new AdminUserRepository(transaction).list({
+                roles,
+                status: 'active',
+                page,
+                limit,
+              })
+          );
+          return NextResponse.json({
+            success: true,
+            data: result.rows.map((row) =>
+              adminUserToDto(row, { populateRelations: true })
+            ),
             pagination: createPaginationMetadata(result.total, page, limit),
           });
         }
@@ -178,6 +213,9 @@ export async function POST(request: Request) {
           phone,
           promoterIds,
           departmentId,
+          wechatId,
+          wechatQrAssetId,
+          boundDesignerId,
         } = body;
 
         if (!username || !password || !role) {
@@ -254,7 +292,27 @@ export async function POST(request: Request) {
               }
             }
 
-            return repository.create(
+            const qrAssetId = parseOptionalPostgresId(wechatQrAssetId, 'wechatQrAssetId');
+            if (role === 'designer' && (!wechatId?.trim() || !qrAssetId)) {
+              throw new Error('设计师必须填写微信号并上传个人二维码');
+            }
+            if (qrAssetId) {
+              const asset = await new AiCreationRepository(transaction).findMediaAssetForUpdate(qrAssetId);
+              if (!asset || asset.enterpriseId !== BigInt(targetEnterpriseId) || asset.ownerType !== 'staff_wechat_qr' || (asset.ownerId !== null && asset.ownerId !== undefined)) {
+                throw new Error('微信二维码资源无效或已被使用');
+              }
+            }
+
+            const targetDesignerId = role === 'measurer' ? parseOptionalPostgresId(boundDesignerId, 'boundDesignerId') : null;
+            if (role === 'measurer') {
+              if (!targetDesignerId) throw new Error('测量员必须绑定设计师');
+              const designer = await repository.findById(targetDesignerId);
+              if (!designer || designer.role !== 'designer' || designer.status !== 'active' || designer.enterpriseId !== BigInt(targetEnterpriseId)) {
+                throw new Error('绑定的设计师必须是同企业启用中的设计师');
+              }
+            }
+
+            const created = await repository.create(
               {
                 username: username.trim(),
                 passwordHash,
@@ -264,15 +322,20 @@ export async function POST(request: Request) {
                 menuPermissions,
                 enterpriseId: BigInt(targetEnterpriseId),
                 departmentId: targetDepartmentId,
+                wechatId: role === 'designer' ? wechatId?.trim() || null : null,
+                wechatQrAssetId: role === 'designer' ? qrAssetId : null,
                 status: 'active',
               },
               targetPromoterIds
             );
+            if (qrAssetId) await new AiCreationRepository(transaction).updateMediaAsset(qrAssetId, { ownerId: created.id });
+            if (targetDesignerId) await repository.replaceMeasurerDesignerBinding(created.id, targetDesignerId, BigInt(targetEnterpriseId));
+            return repository.findById(created.id);
           }
         );
 
         return NextResponse.json(
-          { success: true, data: adminUserToDto(staff) },
+          { success: true, data: staff ? adminUserToDto(staff) : null },
           { status: 201 }
         );
       }

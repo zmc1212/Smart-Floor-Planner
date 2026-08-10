@@ -3,7 +3,15 @@ export const FORMAL_SURVEY_MEASUREMENT_MODE = 'surveying';
 const FORMAL_SURVEY_LAYOUT_KEYS = ['version', 'measurementMode', 'surveyGraph'];
 
 export type SurveyNode = { id: string; xMm: number; yMm: number };
-export type SurveyWall = { id: string; startNodeId: string; endNodeId: string; lengthMm?: number; thicknessMm?: number };
+export type SurveyWall = {
+  id: string;
+  startNodeId: string;
+  endNodeId: string;
+  lengthMm?: number;
+  thicknessMm?: number;
+  measurementStartInsetMm?: number;
+  measurementEndInsetMm?: number;
+};
 export type SurveyOpening = { id: string; wallId: string; type: 'door' | 'window'; centerOffsetMm?: number; widthMm?: number; heightMm?: number; sillHeightMm?: number };
 export type SurveySpace = { id: string; name?: string; wallIds?: string[]; closed?: boolean };
 export type SurveyFloor = { id: string; name?: string; ceilingHeightMm?: number; nodes?: SurveyNode[]; walls?: SurveyWall[]; openings?: SurveyOpening[]; spaces?: SurveySpace[] };

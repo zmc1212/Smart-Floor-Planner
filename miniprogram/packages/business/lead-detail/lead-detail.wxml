@@ -1,17 +1,30 @@
 <view class="container" wx:if="{{!loading}}">
   <view class="detail-hero" wx:if="{{lead}}">
+    <view wx:if="{{canAcquire}}" class="acquire-button" bindtap="onAcquireLead">确认已获客</view>
     <view class="hero-copy">
       <text class="eyebrow">客户详情</text>
       <text class="title">{{lead.name}}</text>
       <text class="info">手机：{{lead.phone}}</text>
       <text class="info">小区：{{lead.communityName || '未填写'}}</text>
+      <view class="lead-status-summary">
+        <text class="status-pill">{{statusLabel}}</text>
+      </view>
     </view>
     <image class="lead-detail-scene" src="/images/page-ip-v3/lead-detail.png" mode="aspectFit"></image>
+  </view>
+  <view class="lead-stage-rail" wx:if="{{lead}}">
+    <view class="lead-stage-item state-{{item.state}}" wx:for="{{stageRail}}" wx:key="label">
+      <view class="lead-stage-dot"></view>
+      <text>{{item.label}}</text>
+    </view>
   </view>
   <view class="whole-home-card">
     <view class="whole-home-tab">正式量房</view>
     <view class="whole-home-copy">
-      <view class="whole-home-title">正式量房</view>
+      <view class="whole-home-next-action">
+        <text class="whole-home-next-label">下一步</text>
+        <text class="whole-home-next-copy">{{nextAction}}</text>
+      </view>
       <view class="whole-home-plan-name" wx:if="{{activeFloorPlan}}">{{activeFloorPlan.displayName}}</view>
       <view class="whole-home-subtitle">{{activeFloorPlan ? activeFloorPlan.displayMeta : '从墙图开始创建客户户型'}}</view>
     </view>

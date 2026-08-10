@@ -104,6 +104,7 @@ import {
   releasePostgresCreationGenerationCredits,
   refreshPostgresCreationBatchStatus,
   settlePostgresCreationProviderResult,
+  settlePostgresCreationProviderUrlResult,
 } from '@/lib/ai/postgres-creation-service';
 import {
   adjustAiCredits,
@@ -1519,17 +1520,17 @@ test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and g
       prompt: 'Prepare a PostgreSQL creation batch',
       referenceAssetIds: [assetId!.toString()],
       parameters: { aspectRatio: '1:1', resolutionTier: '1K' },
-      count: 2,
+      count: 3,
     });
-    assert.equal(prepared.batch.requestedCount, 2);
+    assert.equal(prepared.batch.requestedCount, 3);
     assert.equal(prepared.batch.creditsEstimate > BigInt(0), true);
-    assert.equal(prepared.generations.length, 2);
+    assert.equal(prepared.generations.length, 3);
 
     const view = await withTenantTransaction(enterpriseAId, (transaction) =>
       new AiCreationRepository(transaction).loadTaskView(task.id)
     );
     assert.equal(view?.batches.length, 1);
-    assert.equal(view?.batches[0]?.generations.length, 2);
+    assert.equal(view?.batches[0]?.generations.length, 3);
     assert.equal(view?.batches[0]?.referenceAssetIds[0], assetId);
 
     const crossTenant = await withTenantTransaction(enterpriseBId, (transaction) =>
@@ -1805,15 +1806,69 @@ test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and g
       /远端任务 ID 与当前尝试不一致/
     );
 
-    const secondHeld = await holdPostgresCreationGenerationCredits({
+    const directUrlHeld = await holdPostgresCreationGenerationCredits({
       enterpriseId: enterpriseAId.toString(),
       generationId: prepared.generations[1]!.id.toString(),
+    });
+    assert.ok(directUrlHeld.ledger);
+    aiCreditLedgerIds.push(directUrlHeld.ledger.id);
+    const directUrlAttempt = await beginPostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[1]!.id.toString(),
+      providerConfigId: aiProviderConfigId.toString(),
+      providerKey: 'integration-provider',
+      adapterType: 'grs',
+      remoteModel: 'gpt-image-2',
+      requestSnapshot: { prompt: 'Keep the provider result URL' },
+    });
+    await acknowledgePostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[1]!.id.toString(),
+      attemptId: directUrlAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-direct-url-task`,
+      remoteStatus: 'queued',
+    });
+    await completePostgresCreationProviderAttempt({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[1]!.id.toString(),
+      attemptId: directUrlAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-direct-url-task`,
+      remoteStatus: 'completed',
+      output: { providerImage: 'https://provider.example/direct-result.png' },
+    });
+    const directUrlSettled = await settlePostgresCreationProviderUrlResult({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[1]!.id.toString(),
+      attemptId: directUrlAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-direct-url-task`,
+      imageUrl: 'https://provider.example/direct-result.png',
+    });
+    assert.equal(directUrlSettled.reused, false);
+    assert.ok(directUrlSettled.ledger);
+    aiCreditLedgerIds.push(directUrlSettled.ledger.id);
+    assert.equal(
+      (directUrlSettled.generation.output as { imageUrl?: string }).imageUrl,
+      'https://provider.example/direct-result.png'
+    );
+    assert.equal((directUrlSettled.generation.billing as { status?: string }).status, 'consumed');
+    const repeatedDirectUrlSettlement = await settlePostgresCreationProviderUrlResult({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[1]!.id.toString(),
+      attemptId: directUrlAttempt.attempt.id.toString(),
+      remoteTaskId: `${testRunKey}-direct-url-task`,
+      imageUrl: 'https://provider.example/direct-result.png',
+    });
+    assert.equal(repeatedDirectUrlSettlement.reused, true);
+
+    const secondHeld = await holdPostgresCreationGenerationCredits({
+      enterpriseId: enterpriseAId.toString(),
+      generationId: prepared.generations[2]!.id.toString(),
     });
     assert.ok(secondHeld.ledger);
     aiCreditLedgerIds.push(secondHeld.ledger.id);
     const secondAttempt = await beginPostgresCreationProviderAttempt({
       enterpriseId: enterpriseAId.toString(),
-      generationId: prepared.generations[1]!.id.toString(),
+      generationId: prepared.generations[2]!.id.toString(),
       providerConfigId: aiProviderConfigId.toString(),
       providerKey: 'integration-provider',
       adapterType: 'grs',
@@ -1822,14 +1877,14 @@ test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and g
     });
     const acknowledgedSecondAttempt = await acknowledgePostgresCreationProviderAttempt({
       enterpriseId: enterpriseAId.toString(),
-      generationId: prepared.generations[1]!.id.toString(),
+      generationId: prepared.generations[2]!.id.toString(),
       attemptId: secondAttempt.attempt.id.toString(),
       remoteTaskId: `${testRunKey}-failed-remote-task`,
       remoteStatus: 'running',
     });
     const released = await failPostgresCreationProviderAttempt({
       enterpriseId: enterpriseAId.toString(),
-      generationId: prepared.generations[1]!.id.toString(),
+      generationId: prepared.generations[2]!.id.toString(),
       attemptId: secondAttempt.attempt.id.toString(),
       remoteTaskId: `${testRunKey}-failed-remote-task`,
       remoteStatus: 'failed',
@@ -1860,7 +1915,7 @@ test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and g
 
     const repeatedRelease = await failPostgresCreationProviderAttempt({
       enterpriseId: enterpriseAId.toString(),
-      generationId: prepared.generations[1]!.id.toString(),
+      generationId: prepared.generations[2]!.id.toString(),
       attemptId: secondAttempt.attempt.id.toString(),
       remoteTaskId: `${testRunKey}-failed-remote-task`,
       errorMessage: 'ignored on retry',
@@ -1882,7 +1937,7 @@ test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and g
     assert.equal(consumed.ledger, null);
     assert.equal((consumed.generation.billing as { status?: string }).status, 'consumed');
     assert.equal(consumed.account.frozenBalance, 0n);
-    assert.equal(consumed.account.balance, settledResult.account.balance);
+    assert.equal(consumed.account.balance, directUrlSettled.account.balance);
 
     const repeatedConsume = await consumePostgresCreationGenerationCredits({
       enterpriseId: enterpriseAId.toString(),
@@ -3201,6 +3256,7 @@ test('every tenant foreign key and RLS predicate column has an index', async () 
 
 test('surveying core repositories preserve bigint relations and tenant isolation', async () => {
   let adminUserId: bigint | null = null;
+  let secondaryAdminUserId: bigint | null = null;
   let userId: bigint | null = null;
   let leadId: bigint | null = null;
   let floorPlanId: bigint | null = null;
@@ -3224,6 +3280,16 @@ test('surveying core repositories preserve bigint relations and tenant isolation
           openid: `${testRunKey}-survey-user`,
           nickname: 'Survey Customer',
           phone: `138${String(Date.now() + 1).slice(-8)}`,
+        });
+        const secondaryAdmin = await new AdminUserRepository(
+          transaction
+        ).create({
+          enterpriseId: enterpriseAId,
+          username: `${testRunKey}-second-surveyor`,
+          passwordHash: 'integration-test-only',
+          displayName: 'Second Integration Surveyor',
+          role: 'measurer',
+          phone: `136${String(Date.now() + 3).slice(-8)}`,
         });
         const plan = await new FloorPlanRepository(transaction).create({
           enterpriseId: enterpriseAId,
@@ -3282,11 +3348,35 @@ test('surveying core repositories preserve bigint relations and tenant isolation
           status: 'assigned',
         });
         assert.equal(device?.assignedUser?.id, admin.id);
-        return { admin, user, lead, plan, device };
+        const sharedDevice = await new DeviceRepository(transaction).update(
+          device!.id,
+          {
+            enterpriseId: enterpriseAId,
+            assignedUserId: admin.id,
+            status: 'assigned',
+          },
+          [admin.id, secondaryAdmin.id]
+        );
+        assert.deepEqual(
+          sharedDevice?.assignedUsers
+            .map((assignedUser) => assignedUser.id.toString())
+            .sort(),
+          [admin.id.toString(), secondaryAdmin.id.toString()].sort()
+        );
+        assert.equal(
+          (
+            await new DeviceRepository(transaction).findLatestAssignedToUser(
+              secondaryAdmin.id
+            )
+          )?.id,
+          device!.id
+        );
+        return { admin, secondaryAdmin, user, lead, plan, device };
       }
     );
 
     adminUserId = created.admin.id;
+    secondaryAdminUserId = created.secondaryAdmin.id;
     userId = created.user.id;
     leadId = created.lead.id;
     floorPlanId = created.plan.id;
@@ -3322,6 +3412,11 @@ test('surveying core repositories preserve bigint relations and tenant isolation
         await transaction
           .delete(adminUsers)
           .where(eq(adminUsers.id, adminUserId));
+      }
+      if (secondaryAdminUserId) {
+        await transaction
+          .delete(adminUsers)
+          .where(eq(adminUsers.id, secondaryAdminUserId));
       }
       if (userId) {
         await transaction.delete(users).where(eq(users.id, userId));

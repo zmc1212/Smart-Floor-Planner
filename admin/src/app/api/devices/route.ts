@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
   deviceToDto,
-  parseOptionalPostgresId,
   parsePostgresId,
 } from '@/db/postgres-dto';
 import {
@@ -10,7 +9,6 @@ import {
 } from '@/db/repositories';
 import { normalizeDeviceBindingStatus } from '@/lib/device-binding-status';
 import {
-  withAdminPostgresTransaction,
   withDevicePostgresTransaction,
 } from '@/lib/postgres-request-scope';
 import {
@@ -40,13 +38,35 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown error';
 }
 
+function postgresErrorCode(error: unknown) {
+  const details = error as { code?: string; cause?: { code?: string } };
+  return details.code ?? details.cause?.code;
+}
+
+function parseAssignedUserIds(value: unknown) {
+  const rawValues = Array.isArray(value) ? value : value == null ? [] : [value];
+  const ids = new Map<string, bigint>();
+  for (const value of rawValues) {
+    if (value == null || value === '') continue;
+    const id = parsePostgresId(value, 'assignedUserIds');
+    ids.set(id.toString(), id);
+  }
+  return [...ids.values()];
+}
+
+function isAssignedUser(
+  user: Awaited<ReturnType<AdminUserRepository['findById']>>
+): user is NonNullable<Awaited<ReturnType<AdminUserRepository['findById']>>> {
+  return Boolean(user);
+}
+
 export async function GET(request: Request) {
   try {
     return await withTenantRoute(
       request,
       { roles: [...READ_ROLES] },
       async (context) => {
-        const devices = await withAdminPostgresTransaction(
+        const devices = await withDevicePostgresTransaction(
           context,
           (transaction) =>
             new DeviceRepository(transaction).list({
@@ -101,44 +121,53 @@ export async function POST(request: Request) {
         const device = await withDevicePostgresTransaction(
           context,
           async (transaction) => {
-            const assignedUserId = parseOptionalPostgresId(
-              body.assignedUserId,
-              'assignedUserId'
+            const assignedUserIds = parseAssignedUserIds(
+              body.assignedUserIds ?? body.assignedUserId
             );
-            const assignedUser = assignedUserId
-              ? await new AdminUserRepository(transaction).findById(
-                  assignedUserId
-                )
-              : null;
-            if (assignedUserId && !assignedUser) {
+            const assignedUsers = await Promise.all(
+              assignedUserIds.map((assignedUserId) =>
+                new AdminUserRepository(transaction).findById(assignedUserId)
+              )
+            );
+            if (assignedUsers.some((assignedUser) => !assignedUser)) {
               throw new Error('Assigned staff not found in this scope');
             }
+            const resolvedAssignedUsers = assignedUsers.filter(
+              isAssignedUser
+            );
             const enterpriseId = explicitEnterpriseId
               ? parsePostgresId(explicitEnterpriseId, 'enterpriseId')
-              : assignedUser?.enterpriseId ?? null;
-            if (assignedUser && enterpriseId !== assignedUser.enterpriseId) {
+              : resolvedAssignedUsers[0]?.enterpriseId ?? null;
+            if (
+              resolvedAssignedUsers.some(
+                (assignedUser) => assignedUser.enterpriseId !== enterpriseId
+              )
+            ) {
               throw new Error(
                 enterpriseId
                   ? 'Assigned staff belongs to another enterprise'
                   : 'An unassigned device can only be assigned to staff without an enterprise'
               );
             }
-            return new DeviceRepository(transaction).create({
-              code,
-              description:
-                typeof body.description === 'string'
-                  ? body.description.trim() || null
-                  : null,
-              enterpriseId,
-              assignedUserId,
-              status: normalizeDeviceBindingStatus(
-                context.role === 'enterprise_admin' && status === 'unassigned'
-                  ? 'assigned'
-                  : status,
-                Boolean(assignedUserId),
-                Boolean(enterpriseId)
-              ),
-            });
+            return new DeviceRepository(transaction).create(
+              {
+                code,
+                description:
+                  typeof body.description === 'string'
+                    ? body.description.trim() || null
+                    : null,
+                enterpriseId,
+                assignedUserId: assignedUserIds[0] ?? null,
+                status: normalizeDeviceBindingStatus(
+                  context.role === 'enterprise_admin' && status === 'unassigned'
+                    ? 'assigned'
+                    : status,
+                  assignedUserIds.length > 0,
+                  Boolean(enterpriseId)
+                ),
+              },
+              assignedUserIds
+            );
           }
         );
 
@@ -149,16 +178,16 @@ export async function POST(request: Request) {
       }
     );
   } catch (error: unknown) {
-    const details = error as { code?: string };
+    const code = postgresErrorCode(error);
     return NextResponse.json(
       {
         success: false,
         error:
-          details.code === '23505'
-            ? '设备编码已存在'
+          code === '23505'
+            ? '设备编码已存在，请在列表中编辑该设备后添加绑定人员'
             : errorMessage(error),
       },
-      { status: details.code === '23505' ? 400 : 500 }
+      { status: code === '23505' ? 409 : 500 }
     );
   }
 }

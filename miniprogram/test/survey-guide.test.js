@@ -59,7 +59,7 @@ test('closure candidates outrank direction and length guidance', () => {
   assert.equal(previewClose.key, 'close-space');
   assert.equal(lengthClose.key, 'close-space');
   assert.equal(resolve('closing').key, 'close-space');
-  assert.match(previewClose.body, /「可闭合」即可闭合当前空间/);
+  assert.match(previewClose.body, /「合」即可闭合当前空间/);
 });
 
 test('the initial measurement side outranks continuation guidance', () => {

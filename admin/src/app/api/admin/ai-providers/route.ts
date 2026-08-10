@@ -47,3 +47,53 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export async function DELETE(request: Request) {
+  try {
+    return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
+      const body = await request.json();
+      if (!Array.isArray(body.ids) || !body.ids.length || body.ids.length > 100) {
+        return NextResponse.json(
+          { success: false, error: '请选择 1-100 个供应商进行删除。' },
+          { status: 400 },
+        );
+      }
+
+      const ids: bigint[] = [...new Set<bigint>(
+        body.ids.map((id: unknown) => parsePostgresId(String(id), 'provider id'))
+      )];
+      const result = await withPlatformTransaction(async (transaction) => {
+        const repository = new AiProviderConfigRepository(transaction);
+        const blockedIdSet = await repository.findAttemptReferencedIds(ids);
+        const deletableIds = ids.filter((id) => !blockedIdSet.has(id));
+        const deleted = await repository.deleteMany(deletableIds);
+        const deletedIdSet = new Set(deleted.map((provider) => provider.id));
+        return {
+          deletedIds: deleted.map((provider) => provider.id.toString()),
+          blockedIds: ids
+            .filter((id) => blockedIdSet.has(id))
+            .map((id) => id.toString()),
+          missingIds: deletableIds
+            .filter((id) => !deletedIdSet.has(id))
+            .map((id) => id.toString()),
+        };
+      });
+
+      return NextResponse.json({ success: true, data: result });
+    });
+  } catch (error) {
+    console.error('[AI Providers DELETE]', error);
+    const details = error as { code?: string; cause?: { code?: string } };
+    const code = details.code ?? details.cause?.code;
+    if (code === '23503') {
+      return NextResponse.json(
+        { success: false, error: '删除期间检测到新的运行审计记录，未删除任何供应商。请刷新后重试。' },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : '批量删除失败' },
+      { status: 400 },
+    );
+  }
+}

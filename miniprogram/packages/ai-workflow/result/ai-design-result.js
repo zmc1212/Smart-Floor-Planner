@@ -13,6 +13,12 @@ function decorateTask(task) {
   const ratio = ratioParts.length === 2 && ratioParts[0] > 0 && ratioParts[1] > 0
     ? ratioParts[0] / ratioParts[1]
     : 1;
+  const isFloorPlanGeneration = task.mode === 'floor_plan_render';
+  const sourceCompareImageUrl = isFloorPlanGeneration
+    ? ''
+    : ((task.mode === 'reference_recreate' ? task.referenceImageUrl : task.controlImageUrl)
+      || task.spaceImageUrl
+      || '');
   return {
     ...task,
     canContinueWorkflow: Boolean(
@@ -21,12 +27,13 @@ function decorateTask(task) {
         && ['soft_furnishing', 'base_render'].includes(task.nextStageKey)
     ),
     modeTitle: MODE_TITLES[task.mode] || 'AI 设计',
-    sourceCompareImageUrl: (task.mode === 'reference_recreate' ? task.referenceImageUrl : task.controlImageUrl)
-      || task.spaceImageUrl
-      || '',
+    sourceCompareImageUrl,
+    showComparison: Boolean(sourceCompareImageUrl),
     preserveComposition: task.mode === 'reference_recreate',
-    floorPlanCompare: Boolean(task.controlImageUrl) && task.mode !== 'reference_recreate',
-    resultStageHeight: Math.round(670 / ratio),
+    floorPlanCompare: Boolean(task.controlImageUrl)
+      && task.mode !== 'reference_recreate'
+      && !isFloorPlanGeneration,
+    resultStageHeight: Math.round(750 / ratio),
   };
 }
 

@@ -151,7 +151,7 @@ Component({
           area: area ? parseFloat(area) : undefined,
           stylePreference,
           source: 'miniprogram',
-          status: 'measuring', // 已初测
+          status: 'new', // 新线索由服务端进入统一状态流转
           floorPlanId: floorPlanId || undefined,
           enterpriseId: enterpriseId || undefined,
           assignedTo: staffId || undefined

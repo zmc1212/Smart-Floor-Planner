@@ -5,6 +5,7 @@ const { canAccessAIDesign, showAIDesignAccessDenied } = require('../../utils/aiD
 const {
   decorateSourcePlan,
   decorateRecentResult,
+  buildHeroSlides,
   hasActiveTasks,
   normalizeCredits,
   buildExperienceState,
@@ -56,6 +57,9 @@ Page({
     workflows: WORKFLOW_DEFINITIONS,
     provider: { available: false, supportsEdit: false, supportsGenerate: false },
     recent: [],
+    heroResults: [],
+    heroSlides: [],
+    activeHeroSlide: 0,
     sources: [],
     selectedSource: null,
     sourcePickerOpen: false,
@@ -228,7 +232,12 @@ Page({
         workflowQuery.targetScope = selectedSource.targetScope;
         workflowQuery.roomId = selectedSource.roomId;
       }
-      const schemeOptions = await aiService.loadWorkflows(workflowQuery);
+      const [schemeOptions, heroResults] = await Promise.all([
+        aiService.loadWorkflows(workflowQuery),
+        selectedSource
+          ? aiService.loadHeroFloorPlanResults(selectedSource.floorPlanId).catch(() => [])
+          : Promise.resolve([]),
+      ]);
       const selectedWorkflow = schemeOptions.find((item) => item.id === this.data.workflowId)
         || (schemeOptions.length === 1 ? schemeOptions[0] : null);
       const decoratedWorkflows = workflows.map((item) => ({
@@ -242,11 +251,19 @@ Page({
         selectedSource,
         selectedWorkflow,
       });
+      const decoratedHeroResults = heroResults.map((item) => decorateRecentResult({
+        ...item,
+        modeTitle: MODE_TITLES[item.mode] || '璁捐鎴愭灉',
+      }));
+      const heroSlides = buildHeroSlides(decoratedHeroResults, selectedSource);
       this.setData({
         account: capabilities.account || { availableBalance: 0, frozenBalance: 0 },
         workflows: decoratedWorkflows,
         provider,
         recent,
+        heroResults: decoratedHeroResults,
+        heroSlides,
+        activeHeroSlide: 0,
         sources,
         selectedSource,
         floorPlanId: selectedSource ? selectedSource.floorPlanId : this.data.floorPlanId,
@@ -312,7 +329,7 @@ Page({
       const previewTask = this.data.selectedSource
         && this.data.selectedSource.navigationPreview
         && this.data.selectedSource.navigationPreview.task;
-      const [history, refreshedPreviewTask, refreshedWorkflows] = await Promise.all([
+      const [history, refreshedPreviewTask, refreshedWorkflows, heroResults] = await Promise.all([
         aiService.loadHistory(1, 4),
         previewTask && ['created', 'pending', 'processing'].includes(previewTask.status)
           ? aiService.getTask(previewTask.id).catch(() => null)
@@ -325,6 +342,9 @@ Page({
             roomId: requestedSource.roomId,
           }).catch(() => null)
           : Promise.resolve(null),
+        requestedSource
+          ? aiService.loadHeroFloorPlanResults(requestedSource.floorPlanId).catch(() => [])
+          : Promise.resolve([]),
       ]);
       if (requestedTargetKey !== sourceTargetKey(this.data.selectedSource)) return;
       const recent = prioritizeProcessingTasks(
@@ -365,8 +385,16 @@ Page({
       const recommendedMode = selectedWorkflow
         && selectedWorkflow.targetContext
         && selectedWorkflow.targetContext.recommendedMiniMode;
+      const decoratedHeroResults = heroResults.map((item) => decorateRecentResult({
+        ...item,
+        modeTitle: MODE_TITLES[item.mode] || '璁捐鎴愭灉',
+      }));
+      const heroSlides = buildHeroSlides(decoratedHeroResults, selectedSource);
       this.setData({
         recent,
+        heroResults: decoratedHeroResults,
+        heroSlides,
+        activeHeroSlide: Math.min(this.data.activeHeroSlide, Math.max(0, heroSlides.length - 1)),
         selectedSource,
         schemeOptions,
         selectedWorkflow,
@@ -391,6 +419,16 @@ Page({
 
   syncExperienceState() {
     this.setData(buildExperienceState(this.data));
+  },
+
+  onHeroSlideChange(event) {
+    this.setData({ activeHeroSlide: Number(event.detail.current || 0) });
+  },
+
+  openHeroSlide(event) {
+    const id = event.currentTarget.dataset.id;
+    if (!id) return;
+    this.openResult({ currentTarget: { dataset: { id } } });
   },
 
   openMode(event) {
@@ -565,6 +603,9 @@ Page({
     this.setData({
       sources,
       selectedSource: source,
+      heroResults: [],
+      heroSlides: [],
+      activeHeroSlide: 0,
       floorPlanId: source.floorPlanId,
       leadId: source.leadId,
       roomId: source.roomId,
@@ -590,12 +631,15 @@ Page({
     this.workflowLoadRequestId = requestId;
     this.setData({ workflowLoading: true, workflowLoadError: '' });
     try {
-      const schemeOptions = await aiService.loadWorkflows({
-        leadId: source.leadId,
-        floorPlanId: source.floorPlanId,
-        targetScope: source.targetScope,
-        roomId: source.roomId,
-      });
+      const [schemeOptions, heroResults] = await Promise.all([
+        aiService.loadWorkflows({
+          leadId: source.leadId,
+          floorPlanId: source.floorPlanId,
+          targetScope: source.targetScope,
+          roomId: source.roomId,
+        }),
+        aiService.loadHeroFloorPlanResults(source.floorPlanId).catch(() => []),
+      ]);
       if (requestId !== this.workflowLoadRequestId
         || sourceTargetKey(source) !== sourceTargetKey(this.data.selectedSource)) return;
       const selectedWorkflow = schemeOptions.find((item) => item.id === preferredWorkflowId)
@@ -603,8 +647,16 @@ Page({
       const recommendedMode = selectedWorkflow
         && selectedWorkflow.targetContext
         && selectedWorkflow.targetContext.recommendedMiniMode;
+      const decoratedHeroResults = heroResults.map((item) => decorateRecentResult({
+        ...item,
+        modeTitle: MODE_TITLES[item.mode] || '璁捐鎴愭灉',
+      }));
+      const heroSlides = buildHeroSlides(decoratedHeroResults, source);
       this.setData({
         schemeOptions,
+        heroResults: decoratedHeroResults,
+        heroSlides,
+        activeHeroSlide: 0,
         selectedWorkflow,
         workflowId: selectedWorkflow ? selectedWorkflow.id : '',
         workflows: this.data.workflows.map((item) => ({
@@ -658,6 +710,9 @@ Page({
     this.setData({
       sources: this.data.sources.map((item) => ({ ...item, selected: false })),
       selectedSource: null,
+      heroResults: [],
+      heroSlides: [],
+      activeHeroSlide: 0,
       floorPlanId: '',
       leadId: '',
       roomId: '',

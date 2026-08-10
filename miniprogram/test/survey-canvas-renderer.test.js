@@ -38,6 +38,24 @@ function createClosedRectangleDraft() {
   return surveyGraph.confirmClosure(draft);
 }
 
+function createClosedCornerCollinearClosureDraft() {
+  let draft = createClosedRectangleDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 0, yMm: 2000 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: 0, yMm: 5000 }, 3000);
+  draft = commitWall(draft, { xMm: 3000, yMm: 5200 }, 3000);
+  return commitWall(draft, { xMm: 3000, yMm: 4000 }, 1200);
+}
+
 function createResetCursorMergeClosureDraft() {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 3000, yMm: 0 });
@@ -191,12 +209,12 @@ function createTJoinDraft() {
   return draft;
 }
 
-function createScene(draft) {
+function createScene(draft, viewport) {
   const floor = surveyGraph.getActiveFloor(draft);
   return surveyCanvasRenderer.createSurveyRenderScene({
     floor,
     session: floor.session,
-    viewport: floor.viewport,
+    viewport: viewport || floor.viewport,
     rect: { width: 400, height: 400 }
   });
 }
@@ -457,6 +475,30 @@ test('closed-space dimensions originate at the rendered exterior wall outline', 
   });
 });
 
+test('a shared-corner preview renders the automatically inferred measurement side', () => {
+  let draft = createClosedRectangleDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 0, yMm: 2000 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = surveyGraph.startPreview(draft, { xMm: 0, yMm: 5000 });
+  floor = surveyGraph.getActiveFloor(draft);
+  const scene = createScene(draft);
+
+  assert.equal(floor.session.previewMeasurementSide, 'right');
+  assert.equal(floor.session.previewMeasurementStartInsetMm, 200);
+  assert.equal(floor.session.previewLengthMm, 2800);
+  assert.equal(floor.session.closeCandidateType, '');
+  assert.equal(scene.previewWall.measurementSide, 'right');
+  assert.equal(scene.previewWall.lengthMm, 2800);
+  assert.equal(scene.activeSegment.measurementSide, 'right');
+  assert.equal(scene.closureGuide, null);
+  assert.equal(scene.previewWall.start.yMm > scene.previewWall.topologyStart.yMm, true);
+});
+
 test('closed room shell stays outside the boundary for either initial measurement side', () => {
   const draft = createClosedRectangleDraft();
   const variants = ['left', 'right'];
@@ -552,6 +594,19 @@ test('reset-cursor merge closure renders its inferred edge and a complete room s
   assert.equal(closedFloor.walls.at(-1).inputSource, 'closure-merge');
 });
 
+test('closed-corner collinear closure guide continues from the current wall edge', () => {
+  const draft = createClosedCornerCollinearClosureDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const scene = createScene(draft);
+  const currentWall = scene.walls.find((wall) => wall.id === floor.walls.at(-1).id);
+
+  assert.ok(scene.closureGuide);
+  assert.ok(currentWall);
+  assert.equal(scene.closureGuide.points.length, 2);
+  assert.equal(scene.closureGuide.startPoint.x, currentWall.endPoint.x);
+  assert.equal(scene.closureGuide.endPoint.x, currentWall.endPoint.x);
+});
+
 test('stepped straight-wall closure guide renders the inferred right-angle path', () => {
   const draft = createSteppedClosureDraft();
   const scene = createScene(draft);
@@ -562,6 +617,40 @@ test('stepped straight-wall closure guide renders the inferred right-angle path'
   assert.equal(scene.closureGuide.points[1].x, scene.closureGuide.points[2].x);
   assert.notEqual(scene.closureGuide.points[0].x, scene.closureGuide.points[2].x);
   assert.notEqual(scene.closureGuide.points[0].y, scene.closureGuide.points[2].y);
+});
+
+test('closed-room second-wall outer snap stays on the rendered exterior edge across zoom levels', () => {
+  let draft = createClosedRectangleDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 0, yMm: 2000 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: 0, yMm: 5000 }, 3000);
+  draft = surveyGraph.startPreview(draft, { xMm: 3170, yMm: 5200 });
+  [0.05, 0.12, 0.24].forEach((scale) => {
+    const scene = createScene(draft, { scale, offsetX: 0, offsetY: 0 });
+    const rightWall = scene.walls.find((wall) => (
+      Math.abs(wall.start.xMm - wall.end.xMm) < 0.1 && wall.start.xMm > 0
+    ));
+
+    assert.equal(scene.closureGuide, null);
+    assert.ok(scene.alignmentSnapGuide);
+    assert.ok(scene.cursor);
+    assert.ok(scene.previewWall);
+    assert.ok(rightWall);
+    assert.equal(scene.alignmentSnapGuide.snapLine, 'outer');
+    assert.equal(scene.alignmentSnapGuide.startPoint.x, rightWall.outerEnd.x);
+    assert.equal(scene.alignmentSnapGuide.endPoint.x, rightWall.outerEnd.x);
+    assert.equal(scene.cursor.point.x, rightWall.outerEnd.x);
+    assert.equal(scene.previewWall.endPoint.x, rightWall.outerEnd.x);
+  });
 });
 
 test('window walls retain global exterior totals without a duplicate positioning chain', () => {

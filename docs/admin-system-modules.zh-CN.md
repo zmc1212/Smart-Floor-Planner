@@ -251,9 +251,9 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
 ### 4. 员工、部门与系统账号
 
 - 页面：`/staff`、`/admins`。
-- API：`/api/staff`、`/staff/[id]`、`/departments`、`/departments/[id]`、`/admin-users`、`/admin-users/[id]`。
+- API：`/api/staff`、`/staff/[id]`、`/staff/wechat-qr`、`/departments`、`/departments/[id]`、`/admin-users`、`/admin-users/[id]`。
 - 模型/Repository：PostgreSQL `AdminUserRepository`、`DepartmentRepository`、`SystemRoleRepository` 和 `admin_user_promoters` 连接表。
-- 状态：`Implemented`。`/staff` 已使用共享 Ant Design ProComponents 模式（`PageContainer`、`ProTable`、`ModalForm` 与 `Tree`）承载服务端员工搜索/分页、部门筛选以及员工和部门维护；此次仅迁移展示层，不改变 API、租户范围或角色边界。其共享 `ModuleOverview` 直接从现有列表响应派生当前页岗位数量，并显示已加载的实时部门数，不新增 API 请求。`/admins` 使用同一套 `PageContainer`、`ProTable` 与 `ModalForm` 模式承载平台账号搜索、范围与角色筛选、新建、编辑、密码重置、状态变更和删除，保留 `admins` 菜单权限守卫、PostgreSQL `admin-users` API 契约及渠道地推不绑定企业规则，表单只展示 API 支持的五种管理角色。支持企业员工、平台管理员、角色、部门树、状态和地推/设计师/测量员关系管理；为兼容前端，现有 `_id` 响应字段继续使用十进制字符串，RLS 与 route 角色检查共同执行租户边界。
+- 状态：`Implemented`。`/staff` 已使用共享 Ant Design ProComponents 模式（`PageContainer`、`ProTable`、`ModalForm` 与 `Tree`）承载服务端员工搜索/分页、部门筛选以及员工和部门维护；此次仅迁移展示层，不改变 API、租户范围或角色边界。编辑设计师时，中文优先的“个人微信二维码”字段会在客户端完成图片格式和 5MB 大小校验后调用 `POST /api/staff/wechat-qr`；上传成功或失败均使用共享操作反馈。既有的企业范围媒体归属和员工管理角色边界不变。后台标准管理表单的图片现统一使用 `components/ui/image-upload-field`：员工二维码、企业 Logo、灵感方案封面/效果图均使用同一个单图卡片控件，提供本地校验、缩略图、放大预览、替换和移除；各业务通过注入上传函数保留原有持久化契约。其共享 `ModuleOverview` 直接从现有列表响应派生当前页岗位数量，并显示已加载的实时部门数，不新增 API 请求。`/admins` 使用同一套 `PageContainer`、`ProTable` 与 `ModalForm` 模式承载平台账号搜索、范围与角色筛选、新建、编辑、密码重置、状态变更和删除，保留 `admins` 菜单权限守卫、PostgreSQL `admin-users` API 契约及渠道地推不绑定企业规则，表单只展示 API 支持的五种管理角色。支持企业员工、平台管理员、角色、部门树、状态和地推/设计师/测量员关系管理；为兼容前端，现有 `_id` 响应字段继续使用十进制字符串，RLS 与 route 角色检查共同执行租户边界。
 
 ### 5. B2B 企业报备与协作工作流
 
@@ -276,7 +276,7 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
 - 页面：`/leads`。
 - API：`/api/leads`、`/leads/[id]` 及户型、员工关联接口。
 - 模型/工具：PostgreSQL `LeadRepository`、`FloorPlanRepository`、`AdminUserRepository`、微信工具。
-- 状态：`Implemented`。支持线索录入/状态、跟进、分配、正式户型关联和转化上下文；列表、详情、新建、更新和删除均在 RLS PostgreSQL 事务内执行，并保留十进制字符串 `_id` DTO。线索-户型连接表、主户型选择、租户校验和删除清理为原子操作；普通微信通知在数据库事务提交后调用。企微配置、群分享和员工企微标识已弃用，已从运行时 API 与 UI 移除；历史 MongoDB 字段及 PostgreSQL `admin_users.wecom_user_id` 列保留，不迁移也不删除。`/leads` 后台视图现使用共享 Ant Design ProComponents 模式（`PageContainer`、`ProTable`）承载服务端状态筛选和分页，并使用 Ant Design 详情抽屉完成负责人指派、正式户型查看和跟进记录；共享 `ModuleOverview` 从同一分页列表响应派生当前页漏斗统计；列表和详情读取仍会取消已过期请求，避免旧响应覆盖新的筛选或选中线索。其 API 契约、租户范围、角色边界及“详情”“方案”“删除”行内操作均未改变，所有可见变更继续使用共享操作反馈。本次仅迁移展示层。
+- 状态：`Implemented`。支持线索录入/状态、跟进、分配、正式户型关联和转化上下文；列表、详情、新建、更新和删除均在 RLS PostgreSQL 事务内执行，并保留十进制字符串 `_id` DTO。线索-户型连接表、主户型选择、租户校验和删除清理为原子操作；普通微信通知在数据库事务提交后调用。企微配置、群分享和员工企微标识已弃用，已从运行时 API 与 UI 移除；历史 MongoDB 字段及 PostgreSQL `admin_users.wecom_user_id` 列保留，不迁移也不删除。`/leads` 后台视图现使用共享 Ant Design ProComponents 模式（`PageContainer`、`ProTable`）承载服务端状态筛选和分页，并使用 Ant Design 详情抽屉完成负责人指派、正式户型查看和跟进记录；共享 `ModuleOverview` 从同一分页列表响应派生当前页漏斗统计；列表和详情读取仍会取消已过期请求，避免旧响应覆盖新的筛选或选中线索。线索状态统一展示为“新线索→已获客→量房中→方案设计→已签约”五步，`已关闭`作为终止筛选；历史状态通过归一化标签和分组筛选保持兼容，草稿/已完成正式户型关联分别推进到量房中/方案设计。其 API 契约、租户范围、角色边界及“详情”“方案”“删除”行内操作均未改变，所有可见变更继续使用共享操作反馈。
 
 ### 8. 正式户型、搜索与查看
 
@@ -290,21 +290,21 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
 
 ### 9. 测量审计与蓝牙设备资产
 
-- 独立设备指派：平台 `super_admin`/`admin` 可将未归属企业的设备指派给同样未归属企业且激活的 `salesperson`（渠道地推）；企业设备仍仅能指派给同一企业员工，企业管理员不能查询或指派独立渠道地推。
-- 绑定状态：为闲置设备保存持有人会自动切换为 `assigned`，这是 `/api/devices/verify-binding` 授权所必需的状态；没有持有人的独立设备不能保持 `assigned`，但企业归属设备可在未指定持有人时作为企业共享设备使用。`maintenance`、`lost` 状态始终不能被小程序授权。
+- 独立设备指派：平台 `super_admin`/`admin` 可将未归属企业的设备绑定给同样未归属企业且激活的 `salesperson`（渠道地推）；企业设备仍仅能绑定同一企业员工，企业管理员不能查询或绑定独立渠道地推。
+- 绑定状态：为闲置设备保存一名或多名绑定人员会自动切换为 `assigned`，这是 `/api/devices/verify-binding` 授权所必需的状态；没有绑定人员的独立设备不能保持 `assigned`，但企业归属设备可在未指定人员时作为企业共享设备使用。`maintenance`、`lost` 状态始终不能被小程序授权。
 - 页面：`/devices`、`/measurements`。
-- API：设备 CRUD、`/devices/verify`、`/devices/verify-binding`、`/measurements`，以及仅平台可用的独立渠道地推查询 `/api/staff?scope=unassigned-promoters`。
-- 模型/Repository：PostgreSQL `DeviceRepository`、`MeasurementRepository`、`AdminUserRepository`、`UserRepository`、`FloorPlanRepository`。
-- 状态：`Implemented`。支持设备池、企业/用户绑定、校验、状态管理，以及来源为 BLE、手动或系统的长度/高度/面积/角度/门窗审计记录。设备分配外键指向 `admin_users`；平台/企业管理员可变更设备，员工只能读取自己的绑定。测量写入会在同一 RLS PostgreSQL 流程中校验操作员、企业、正式户型、数值/类型/来源/时间和已分配设备。`/measurements` 后台视图现使用共享 Ant Design ProComponents 列表模式（`PageContainer`、`ProTable`）承载响应式搜索/筛选、加载/失败反馈和来源标识；共享 `ModuleOverview` 从同一最多 100 条的筛选结果派生 BLE、手动和关联户型数量；其 API 参数、角色范围及记录上限不变。`/devices` 使用 `PageContainer`、`ProTable` 与 `ModalForm` 承载搜索、状态筛选和录入/编辑弹窗；平台角色可选择企业、兼容员工和既有状态枚举，服务端仍负责现有租户和跨企业绑定校验。其共享 `ModuleOverview` 从现有设备列表响应派生当前筛选的状态数量。设备行内“编辑”和“删除”保留与其他管理列表一致的带图标文字 Ant Design 操作按钮，所有可见变更继续使用共享操作反馈。本次仅迁移展示层，路由、API、权限边界和 PostgreSQL 数据契约均未改变。
+- API：设备 CRUD、`/devices/verify`、`/devices/verify-binding`、`/measurements`，以及仅平台可用的独立渠道地推查询 `/api/staff?scope=unassigned-promoters`。平台角色还可通过 `/api/staff?enterpriseId=<id>` 查询所选设备归属企业的激活员工，企业角色不能使用该查询。平台角色即使当前 UI 选择了企业，也以平台作用域读取设备池，确保已有独立设备仍可编辑和绑定。
+- 模型/Repository：PostgreSQL `DeviceRepository`、`device_user_bindings`、`MeasurementRepository`、`AdminUserRepository`、`UserRepository`、`FloorPlanRepository`。
+- 状态：`Implemented`。支持设备池、企业/用户绑定、校验、状态管理，以及来源为 BLE、手动或系统的长度/高度/面积/角度/门窗审计记录。一台设备可通过 `device_user_bindings` 绑定多名 `admin_users`；为兼容已有消费者，`devices.assigned_user_id` 仍保存首名绑定人员，已有单人绑定会迁移到关系表。平台/企业管理员可变更设备，员工可读取所有绑定到自己的设备。测量写入会在同一 RLS PostgreSQL 流程中校验操作员、企业、正式户型、数值/类型/来源/时间和已分配设备。`/measurements` 后台视图现使用共享 Ant Design ProComponents 列表模式（`PageContainer`、`ProTable`）承载响应式搜索/筛选、加载/失败反馈和来源标识；共享 `ModuleOverview` 从同一最多 100 条的筛选结果派生 BLE、手动和关联户型数量；其 API 参数、角色范围及记录上限不变。`/devices` 使用 `PageContainer`、`ProTable` 与 `ModalForm` 承载搜索、状态筛选和录入/编辑弹窗；平台角色可选择企业，表单会重新加载该企业的多名激活兼容员工后供绑定，并保留既有状态枚举。`POST`/`PATCH` 接受 `assignedUserIds` 并返回 `assignedUsers`，单数 `assignedUserId` 响应继续作为兼容别名；服务端仍负责现有租户和跨企业绑定校验；重复设备编码的新建请求返回 `409` 和“编辑已有设备”的业务提示，不再返回原始数据库错误。其共享 `ModuleOverview` 从现有设备列表响应派生当前筛选的状态数量。设备行内“编辑”和“删除”保留与其他管理列表一致的带图标文字 Ant Design 操作按钮，所有可见变更继续使用共享操作反馈。路由和权限边界不变，PostgreSQL 设备绑定数据契约现为多对多。
 
 ### 10. AI 工作室与设计生成
 
 - 页面：`/ai-studio/scenarios` 是客户方案 AI 执行工作台，包含“客户方案、快速工具、AI 助手”；旧 `/ai-studio/designer`、`/ai-studio/floor-plan`、`/ai-studio/furnishing`、`/ai-studio/soft-furnishing` 和方案详情 URL 保留相关查询参数后跳入统一工作台。`/ai-studio/create` 是独立全屏自由创作台，后台侧栏以新标签页打开。资源/配置入口继续为 `/inspirations`、`/ai-presets`、`/ai-providers`、`/ai-models`、`/ai-credit-prices`，企业 AI 页继续管理统一点数。场景新建设计向导现使用带原生步骤指示的 Ant Design `Modal`，版本历史现使用 Ant Design `Drawer`；输入、确认、上传、生成轮询及路由/查询参数行为均不变。
 - 三个工作台入口现在共享全宽响应式工作区边距：客户方案、户型/风格/软装三个快速工具和 AI 助手保留既有工作流、API、点数处理及 `ai-scenarios` 企业权限边界。
-- AI 供应商后台路由：`/ai-providers` 是供应商列表；`/ai-providers/new` 用于新增供应商；`/ai-providers/[id]` 用于查看和编辑供应商；`/ai-models` 是独立的平台生图模型目录。页面使用基于 Ant Design ProComponents 的共享后台壳层（`ProTable`、`ProForm`、`ProDescriptions`），`/ai-models` 复用 `ai-providers` 平台权限，仅平台 `super_admin`、`admin` 可操作（`Implemented`）。
+- AI 供应商后台路由：`/ai-providers` 是供应商列表；`/ai-providers/new` 用于新增供应商；`/ai-providers/[id]` 用于查看和编辑供应商；`/ai-models` 是独立的平台生图模型目录。页面使用基于 Ant Design ProComponents 的共享后台壳层（`ProTable`、`ProForm`、`ProDescriptions`），`/ai-models` 复用 `ai-providers` 平台权限，仅平台 `super_admin`、`admin` 可操作（`Implemented`）。供应商可通过 `PATCH /api/admin/ai-providers/[id]` 停用；没有供应商尝试审计记录引用的供应商可通过 `DELETE /api/admin/ai-providers/[id]` 物理删除，已被引用的供应商返回 `409` 并必须保留为停用状态。相同平台角色可通过 `DELETE /api/admin/ai-providers` 及 `{ ids }` 一次批量删除 1-100 个已选供应商；响应会分别返回已删除、被审计引用阻止和不存在的 ID，以在不删除审计历史的前提下移除可删除配置。
 - 灵感方案后台：`/inspirations` 使用同一套 `PageContainer`、`ProTable`、`ModalForm` 展示模式，支持案例筛选、图片预览、发布、推荐状态和删除。`GET/POST/DELETE /api/inspirations` 现通过 `InspirationRepository` 在租户 RLS PostgreSQL `inspirations` 表中运行；既有筛选、十进制字符串 `_id`、数字 `viewCount`、当前菜单权限与案例工作流保持不变。路由要求已认证的企业上下文，状态为 `Implemented`；历史 MongoDB 灵感方案既未导入，也不会混入新的 bigint 列表。
 - 灵感方案页的概览从现有列表响应派生当前筛选的方案、推荐和浏览总数，列表失败继续使用共享操作反馈，不新增 API 请求；租户 RLS、企业上下文、菜单权限与案例工作流保持不变。
-- 供应商接入契约：`AiProviderConfig` 保留旧版加密 API Key 字段，同时持久化加密/掩码凭证映射和经校验的非敏感 `adapterConfig`。统一编辑页与服务端校验共同读取 `src/lib/ai/provider-adapter-manifest.ts`；当前 GRS、Pollinations、OpenAI Compatible 使用公共的地址/API Key 配置。`Limited`：平台生图模型目录当前仍是 GRS 来源契约，新增供应商必须实现 Adapter 与目录档案支持，不能只新增前端选项。
+- 供应商接入契约：`AiProviderConfig` 保留旧版加密 API Key 字段，同时持久化加密/掩码凭证映射和经校验的非敏感 `adapterConfig`。统一编辑页与服务端校验共同读取 `src/lib/ai/provider-adapter-manifest.ts`；当前 GRS、Pollinations、OpenAI Compatible 使用公共的地址/API Key 配置。运行时供应商路由始终优先选择已启用的非 fallback 供应商，key 以 `-fallback` 结尾的配置只有在没有主供应商时才会尝试。`Limited`：平台生图模型目录当前仍是 GRS 来源契约，新增供应商必须实现 Adapter 与目录档案支持，不能只新增前端选项。
 - PostgreSQL 边界：平台供应商列表、新增、更新、停用、密钥轮换、连通测试、模型同步、上游余额查询及运行时供应商选择现统一经由平台范围 PostgreSQL 事务中的 `AiProviderConfigRepository`。加密凭据保持不透明存储；异步网络调用结束后仅回写非敏感运行状态。配置了 API Key 时，环境变量中的 GRS/Pollinations 默认供应商会幂等写入 PostgreSQL。
 - PostgreSQL 目录边界：`GET/PATCH /api/admin/ai-image-models` 通过
   `AiCreationModelProfileRepository` 读取和更新平台 GRS 目录；
@@ -326,7 +326,7 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
   PostgreSQL 供应商尝试、轮询、结果媒体、结算和重试计费生命周期，并保持既有 DTO 与
   `ai-scenarios` 权限边界。
 - API：AI 对话/Agent、生成/渲染/建议、状态/历史、预设、工作流搜索分页及阶段、设计能力/共享动作目录、媒体资源、供应商 CRUD/密钥轮换/连通测试/模型同步/上游余额查询、受保护任务对账、平台业务动作价格、`GET/PATCH /api/admin/ai-image-models`、`GET/PATCH /api/admin/ai-image-model-prices`、企业点数发放/调整/流水/任务和失败任务重试接口。旧企业 `ai-key`/`ai-sync` 和用量读取仅保留原有 DTO 的只读兼容，现由 PostgreSQL 用量快照提供数据；已退役写接口返回 `410`。
-- 自由创作 API：`GET /api/ai/creation/bootstrap`、提示词分类/列表/详情/预览、`POST /api/ai/creation/assets`、`GET/POST /api/ai/creation/tasks`、`DELETE /api/ai/creation/tasks/[id]`、`POST /api/ai/creation/tasks/[id]/batches`、提示词优化及生成结果归入现有客户方案。页面和整个 API 前缀由代理统一映射到 `ai-scenarios` 权限，写接口还通过 `withTenantRoute` 强制企业上下文。
+- 自由创作 API：`GET /api/ai/creation/bootstrap`、提示词分类/列表/详情/预览、`POST /api/ai/creation/assets`、`GET/POST /api/ai/creation/tasks`、`DELETE /api/ai/creation/tasks/[id]`、`POST /api/ai/creation/tasks/[id]/batches`、提示词优化及生成结果归入现有客户方案。创作台会按顺序把已持久化 batch 渲染为任务内多轮对话，保留每轮提示词/参考图上下文；选中已有任务时追加 batch，桌面端在提示词面板上方提供更大的对话可视区，并隐藏原生滚动条但保留滚动能力。页面和整个 API 前缀由代理统一映射到 `ai-scenarios` 权限，写接口还通过 `withTenantRoute` 强制企业上下文。
 - PostgreSQL 身份边界：新的自由创作、小程序、场景和 `advice` 任务/生成/媒体/供应商尝试/点数记录均在租户 RLS 范围内一致使用 PostgreSQL bigint 标识符。历史 MongoDB `ObjectId` 媒体仅通过显式只读交付分支可读，该分支会在请求被识别为历史记录后才加载 MongoDB/Mongoose；新记录不存在跨存储身份回退。具有企业上下文的 `admin` 或 `super_admin` 可通过平台重试接口，将失败的 PostgreSQL bigint 小程序生成任务交由租户 RLS 生命周期重试；历史 `ObjectId` 生成任务继续使用 MongoDB 兼容分支。小程序自身的重试路由仍仅限原操作人的 PostgreSQL 任务。
 - 企业点数任务边界：平台企业点数读取现从 PostgreSQL bigint 生成记录中列出最近任务，并关联操作员和当前供应商模型。账户/流水/策略/任务 DTO 与 `super_admin`/`admin` 边界保持不变；历史 MongoDB ObjectId 任务有意不与该列表混合。
 - 模型/工具：`AiGeneration`、`AiWorkflow`、`AiChatSession`、`AiStylePreset`、`AiProviderConfig`、`AiProviderAttempt`、`MediaAsset`、`AiCreditAccount`、`AiCreditLedger`、`AiCreditPrice`、`AiModelCreditPrice`、PostgreSQL `InspirationRepository`、`src/lib/ai/*`、`src/lib/media-storage/*`。
@@ -357,11 +357,11 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
 - GRSAI 现行协议与路由：同步结果与完整内置目录合并，`/v1/models` 不可用时仍返回完整目录。请求固定 `replyType: "async"`，不发送文档未定义的 `quality`、`output_format`；Nano 使用 `aspectRatio + imageSize`。自由创作显式模型只在 GRS 配置之间故障转移，并始终保持同一远程模型，不会静默换模型。供应商内部成本可按远程模型和分辨率匹配并写入 `AiProviderAttempt`。
 - 自由创作模型点数：`AiModelCreditPrice` 按 `image.free_create + modelProfileKey + resolutionTier` 唯一定价，VIP 自定义尺寸统一使用 `CUSTOM`。批次估算、冻结、成功扣除、失败释放和重试快照保存模型、远程模型及分辨率；客户工作流与小程序继续使用平台场景默认逻辑模型和原业务动作点数。
 - 小程序目标上下文：`/api/miniprogram/ai/workflows` 校验 `floorPlanId + targetScope + roomId`，从精确任务而非方案全局阶段派生当前目标状态。缺少范围字段的旧任务继续保留在历史中，但不会自动匹配房间；户型更新会令更早成果过期。小程序防重以方案、阶段、正式户型、目标范围和房间为完整键，允许不同房间并行，并取代上一段对小程序“同方案同阶段”防重的概括；后台仍保留原全局阶段语义。`POST /api/miniprogram/ai/tasks` 接收与手动空间图互斥的 `sourceResultTaskId`，重新校验成功状态、方案、目标、访问权限及时效，把内部或外部成果统一固化为新的 `ai_generation_input`，写入 `parentGenerationId` 后才冻结点数。其他员工只能看到同目标忙碌状态，创建员工可打开进度；不新增房间级 `AiWorkflow`，也不改变后台全局已采用成果语义。
-- GRS 结果图策略：默认对 GRS 返回的 `http(s)` 图片只保存上游 URL，不创建 `MediaAsset`。仅当平台在媒体存储页启用转存且当前默认存储为可用七牛配置时，后续 GRS 结果图才下载并写入七牛；Data URI、用户上传和量房控制图仍始终保存为 `MediaAsset`。
+- GRS 结果图策略：关闭转存开关时，GRS 返回的 `http(s)` 图片 URL 直接作为结果引用持久化，不下载也不创建 `MediaAsset`；供应商尝试校验和积分结算仍在原事务中执行。仅当平台在媒体存储页启用转存且当前默认存储为可用七牛配置时，后续 GRS 结果图才下载并写入七牛；Data URI、用户上传、量房控制图及非 GRS 供应商结果仍始终保存为 `MediaAsset`。
 - 迁移/运维：现有数据库启用新路由前运行 `npm run migrate:ai-platform`；脚本保留既有 AI 点数原值、为缺失企业创建 0 点账户、不转换 Pollen，并迁移旧生成/预设和写入环境变量供应商配置。点数价格初始化会移除旧版唯一 `mode_1` 索引，避免无 `mode` 的平台动作价格因重复 `null` 导致能力接口失败；`actionKey_1` 仍是价格记录的唯一业务索引。脚本幂等写入完整 GRSAI 模型/分辨率目录，仅默认启用 `gpt-image-2/1K` 并继承既有 `image.free_create` 点数；历史 `roomi-*` 档案与旧任务快照继续可读，但不作为可执行选项。`npm run cleanup:media-assets` 默认只预览，只有增加 `--execute` 才会在宽限期后物理清理软删除媒体；`npm run migrate:media-assets -- --from=<provider-key> --to=<provider-key>` 默认预览，参数使用稳定配置标识，增加 `--execute` 后按大小和 SHA-256 校验目标对象，先提交新定位再删除源对象。定时调用 `/api/ai/reconcile` 时配置 `AI_RECONCILIATION_SECRET`。
 
 - 历史自由创作批次仍可能读取旧快照中的 `quality` 字段；新建 GRSAI 请求只展示模型、比例和分辨率，且不会发送 `quality` 或 `output_format`。
-- 自由创作响应式行为：视口小于 `1440px` 时取消固定桌面最小宽度、隐藏左侧工具轨，并让模型、数量、比例、分辨率、模板和提交控件自动换行，确保所有命令可触达；`1440px` 及以上继续保持原有 Roomi 风格固定画布。
+- 自由创作响应式行为：实现使用共享 `lg` 断点承载 `1024px` 桌面编排，确保规则顺序晚于 `sm` 移动规则。视口小于 `1024px` 时取消固定桌面最小宽度、隐藏左侧工具轨，并让模型、数量、比例、分辨率、模板和提交控件自动换行，确保所有命令可触达；`1024px` 及以上的已生成任务会将摘要和结果条保持在居中的画布中，并将提示词/参数面板锚定在底部，从而在常见浏览器缩放下仍保持 Roomi 风格执行态，不会退化为过高的流式表单。已完成的自由创作任务 DTO 直接返回已持久化的结果 URL：转存或本地结果为 `/api/ai/assets/:id/image`，未转存的 GRS 结果为上游 HTTPS URL；不再经过生成图跳转，因此浏览器内容过滤器不会阻止结果图渲染。一个自由创作任务现在会把所有已持久化批次按轮次渲染为任务内对话，保留每轮提示词/参考图上下文，并在打开任务或提交新一轮后自动滚动到最新轮次；选中已有任务时继续追加 batch，“新建任务”仍是显式的新任务边界。权限、模型、点数计费和供应商行为不变。
 
 ### 11. 平台媒体存储管理
 
@@ -369,7 +369,7 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
 - 后台 UI：管理页采用共享 Ant Design ProComponents 应用模式：使用 `PageContainer` 提供页面上下文，使用配置面板承载默认存储和 GRS 结果图策略，使用 `ProTable` 展示存储状态和操作，使用 `ModalForm` 编辑七牛配置。本次仅迁移展示层，路由、API、角色边界和存储行为均未改变。
 - API：`GET/POST/PATCH /api/admin/media-storage`、`PATCH/DELETE /api/admin/media-storage/[id]`、`POST /api/admin/media-storage/[id]/test`、`POST /api/admin/media-storage/[id]/activate`。
 - 模型/工具：`MediaStorageConfig`、`PlatformConfig.mediaStorage`、PostgreSQL `MediaStorageConfigRepository` 与 `MediaAssetRepository`、`MediaAsset`、`src/lib/media-storage/*`。
-- 状态：`Implemented`。页面展示当前默认存储、凭证/配置状态、有效/待清理/累计资产数量与容量和最后测试结果；可管理内置本地存储及多套七牛 Kodo 配置，API 只返回密钥掩码，凭证仅在服务端加密保存。每套七牛配置可选填存储前缀，用于同一 Bucket 内隔离项目；前缀只接受以斜杠分段的字母、数字、`.`、`_`、`-`，拒绝路径穿越并规范为单个结尾斜杠。前缀只作用于后续新上传和健康探针，完整对象 key 会固化在 `MediaAsset.storageKey`，所以修改前缀不会影响历史资产读取。Bucket、区域、域名、前缀或凭证变更会清除原测试通过状态；完整探针依次验证上传、对象查询、私有签名下载、内容一致性和删除，只有测试通过且未归档的七牛配置可设为默认。配置稳定 key 创建后不可修改，并写入 `MediaAsset.storageProvider`。归档配置禁止新写入、测试和重新激活，但仍解析用于历史资产读取/删除；当前默认配置不能归档。GRS 结果图默认保留上游 URL；只有当前默认存储是可用七牛配置时，管理员才能启用其转存开关，开启后仅后续 GRS 结果写入七牛，并且在关闭开关前不能切回本地默认存储。切换默认值和转存开关都不会迁移旧资产；未初始化平台配置时继续兼容 `local`。
+- 状态：`Implemented`。页面展示当前默认存储、凭证/配置状态、有效/待清理/累计资产数量与容量和最后测试结果；可管理内置本地存储及多套七牛 Kodo 配置，API 只返回密钥掩码，凭证仅在服务端加密保存。每套七牛配置可选填存储前缀，用于同一 Bucket 内隔离项目；前缀只接受以斜杠分段的字母、数字、`.`、`_`、`-`，拒绝路径穿越并规范为单个结尾斜杠。前缀只作用于后续新上传和健康探针，完整对象 key 会固化在 `MediaAsset.storageKey`，所以修改前缀不会影响历史资产读取。Bucket、区域、域名、前缀或凭证变更会清除原测试通过状态；完整探针依次验证上传、对象查询、私有签名下载、内容一致性和删除，只有测试通过且未归档的七牛配置可设为默认。配置稳定 key 创建后不可修改，并写入 `MediaAsset.storageProvider`。归档配置禁止新写入、测试和重新激活，但仍解析用于历史资产读取/删除；当前默认配置不能归档。GRS 结果图策略默认保留上游 HTTP 图片 URL：PostgreSQL 自由创作、客户方案和小程序结果直接持久化该 URL，不下载也不创建 `MediaAsset`，其供应商尝试校验和积分结算不变。只有当前默认存储是可用七牛配置时，管理员才能启用转存开关；开启后仅后续 GRS 结果写入七牛，并且在关闭开关前不能切回本地默认存储。非 GRS 或非 HTTP 的供应商结果继续经过既有媒体资产交付链路。切换默认值和转存开关都不会迁移旧资产；未初始化平台配置时继续兼容 `local`。
 - PostgreSQL 持久化边界：媒体配置 CRUD、加密凭证读取、连通测试结果、归档、默认 Provider、GRS 转存指针以及资产数量/容量统计均已切换到 PostgreSQL。统计通过平台范围 `MediaAssetRepository` 聚合 `media_assets` 的有效、待清理和累计状态；七牛网络探针在数据库事务外执行，结果使用 `updatedAt` 乐观条件回写，避免覆盖探针期间发生的配置修改。旧 MongoDB 管理员 ID 不能写入 PostgreSQL bigint 审计外键，因此身份域迁移前审计字段暂为 `NULL`。
 - Phase 4 保留数据迁移已导入活动 `zly-images` 七牛配置和 Provider 指针，未写入旧管理员审计 ID；完整上传、对象查询、私有签名下载、内容一致性与删除探针已通过。生产切换前仍必须在部署环境提供独立的 `MEDIA_STORAGE_KEY_ENCRYPTION_SECRET`。
 - 限制/运维：生产云凭证必须配置专用 `MEDIA_STORAGE_KEY_ENCRYPTION_SECRET`；七牛 Bucket 固定按私有空间处理，下载域名必须为 HTTPS 并加入微信小程序合法域名。页面首期不发起迁移或物理清理任务，仍使用默认 dry-run 的 CLI；迁移参数使用稳定配置标识，例如 `--to=qiniu-primary`。
@@ -386,12 +386,22 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
 - API：提醒执行、通知列表/轮询、`/api/health`、`/api/debug`、`/api/debug/tenant-context`、`/api/internal/seed`。
 - 状态：提醒、浏览器轮询、通知日志、健康/调试、种子和 Docker/发布工具为 `Implemented`；内部密钥保护的 seed route 已改为幂等创建 PostgreSQL 初始平台管理员，必须显式配置至少 32 字符的 `INTERNAL_SECRET` 和至少 12 字符的 `INITIAL_ADMIN_PASSWORD`，不再保留源码默认凭据。接口仍需遵守对应角色和运行环境限制。
 - 运维恢复：PostgreSQL migration 已完成后，`npm run migrate:legacy-admin-users` 是导入旧 MongoDB 平台管理员身份的幂等运维命令。它绝不覆盖已有 PostgreSQL 账号，并会报告已存在、无效或租户级而被跳过的记录。
-- PostgreSQL 迁移基础层：PostgreSQL 17 Docker 服务、隔离的 `sfp_migrator`/`sfp_app`/`sfp_auditor` 角色、受限 `pg.Pool`、可审阅 Drizzle migration、备份/恢复演练、44 张 typed 目标表、外键与索引、租户数据强制 RLS、事务内租户/平台上下文，以及企业、部门、管理员、小程序用户、线索、正式户型、测量、设备、平台配置、提示词库、系统角色、媒体存储配置、报备记录、工作流通知、提醒自动化、订单、提成、企业激活、AI 风格预设和 AI 价格 typed Repository 均为 `Implemented`；恢复演练会核对表、RLS 表和策略数量。`/api/health` 继续以 MongoDB 为必需依赖并单独报告 PostgreSQL；只有 `POSTGRES_HEALTHCHECK_REQUIRED=true` 时 PostgreSQL 才参与健康门禁。Docker migration 通过 `npm run docker:migrate` 显式执行，长期运行的 admin 服务不注入 `DATABASE_MIGRATION_URL`。Docker 构建上下文排除运行时 `.env*`、本地 RoomiAI/导入资源、上传目录和本地数据库备份，这些资产必须在运行时注入或挂载。`Limited`：AI 工作流、生成和媒体资产持久化仍使用 MongoDB，Phase 3 继续按域迁移。
+- PostgreSQL 迁移基础层：PostgreSQL 17 Docker 服务、隔离的 `sfp_migrator`/`sfp_app`/`sfp_auditor` 角色、受限 `pg.Pool`、可审阅 Drizzle migration、备份/恢复演练、45 张 typed 目标表、外键与索引、租户数据强制 RLS、事务内租户/平台上下文，以及企业、部门、管理员、小程序用户、线索、正式户型、测量、设备、平台配置、提示词库、系统角色、媒体存储配置、报备记录、工作流通知、提醒自动化、订单、提成、企业激活、AI 风格预设和 AI 价格 typed Repository 均为 `Implemented`；恢复演练会核对表、RLS 表和策略数量。`/api/health` 继续以 MongoDB 为必需依赖并单独报告 PostgreSQL；只有 `POSTGRES_HEALTHCHECK_REQUIRED=true` 时 PostgreSQL 才参与健康门禁。Docker migration 通过 `npm run docker:migrate` 显式执行，长期运行的 admin 服务不注入 `DATABASE_MIGRATION_URL`。Docker 构建上下文排除运行时 `.env*`、本地 RoomiAI/导入资源、上传目录和本地数据库备份，这些资产必须在运行时注入或挂载。只重新构建 admin 镜像且不复用 Docker 构建缓存时，可在 `admin/` 目录执行 `npm run docker:build-admin`。`Limited`：AI 工作流、生成和媒体资产持久化仍使用 MongoDB，Phase 3 继续按域迁移。
 
 ## Phase 3 迁移状态更新（2026-08-02）
 
 - 订单、提成、结算、作废及工作台待结算提成汇总已切换至 PostgreSQL `CommercialRepository`，使用现有 RLS 目标表及 bigint 关系；付费订单在同一短事务中更新报备并 upsert 提成，取消订单会作废对应提成。
 - `/api/admin/enterprises/activate` 已在单个 PostgreSQL 平台事务中完成报备/订单校验、企业及企业管理员创建、订单绑定和报备状态推进；不会读取或写入 MongoDB。旧 `EnterpriseOrder` 和 `CommissionRecord` Mongoose 模型不再是这些运行时 API 的数据源；AI/媒体域仍为 `Limited`，继续使用 MongoDB，等待后续 Phase 3 切片。
+
+## 测量员—设计师获客协作（已实现）
+
+专项业务与数据契约见 [`docs/measurer-designer-acquisition.zh-CN.md`](measurer-designer-acquisition.zh-CN.md)，英文镜像为 `docs/measurer-designer-acquisition.md`。
+
+- `/staff` 中设计师必须填写 `wechatId` 并上传媒体资源二维码；测量员必须绑定同企业启用中的设计师。关系写入 `measurer_designer_bindings`，一个设计师可绑定多个测量员。仍有绑定时禁止停用或删除设计师。
+- `POST /api/leads` 服务端按绑定关系写入测量员负责人、设计师负责人及 `new` 状态；手机号重复时复用原线索，不重复通知或提成。
+- `POST /api/leads/[id]/acquire` 仅负责该线索的设计师可调用，使用条件更新将 `new` 原子变为 `acquired`，并生成金额快照为 `pending_settlement` 的获客提成；线索列表和详情使用统一五步状态文案，历史状态按规范归并展示。
+- `/acquisition-commissions` 及结算 API 使用租户隔离；企业负责人和平台管理员可标记已发放，测量员只能查看自己的记录。
+- `staff_notifications` 记录站内通知，小程序提供未读查询与已读接口；写入冲突目标与其 `(dedupe_key, channel)` 部分唯一索引条件一致，可正确忽略重复写入；微信发送失败不会回滚线索。
 
 ## 核心模型
 

@@ -13,6 +13,7 @@ var _isStateChangeRegistered = false;
 var _isValueChangeRegistered = false;
 var _deviceName = ''; // 存储当前连接的设备名称
 var _hasTriggeredReady = false; // 确保就绪回调仅触发一次
+var _hasRequestedDeviceIdCode = false; // 每次连接只查询一次 ATC001# 机器 ID
 var _dataBuffersByChannel = {};
 
 var _heartbeatTimer = null;
@@ -21,6 +22,52 @@ const HEARTBEAT_INTERVAL = 5000; // 5秒发一次心跳
 const HEARTBEAT_TIMEOUT = 12000;  // 12秒没收到任何回复认为断开
 
 const TARGET_DEVICE_NAME = 'LDMStudio 4D';
+
+function bytesToHex(bytes) {
+  var hex = [];
+  for (var i = 0; i < bytes.length; i++) {
+    var value = bytes[i].toString(16).toUpperCase();
+    hex.push(value.length === 1 ? '0' + value : value);
+  }
+  return hex.join(' ');
+}
+
+function bytesToSafeAscii(bytes) {
+  var text = '';
+  for (var i = 0; i < bytes.length; i++) {
+    text += bytes[i] >= 0x20 && bytes[i] <= 0x7E
+      ? String.fromCharCode(bytes[i])
+      : '.';
+  }
+  return text;
+}
+
+function getAdvertisDataHex(advertisData) {
+  if (!advertisData) return '';
+  try {
+    return bytesToHex(new Uint8Array(advertisData));
+  } catch (error) {
+    console.warn('[BLE discovery] 无法读取广播数据:', error);
+    return '';
+  }
+}
+
+function logDiscoveredDevice(device, name) {
+  console.log(
+    '[BLE discovery] deviceId=' + String(device.deviceId || '') +
+    ' name=' + String(name || '') +
+    ' localName=' + String(device.localName || '') +
+    ' RSSI=' + String(device.RSSI == null ? '' : device.RSSI) +
+    ' advertisData=[' + getAdvertisDataHex(device.advertisData) + ']'
+  );
+}
+
+function requestDeviceIdCode() {
+  if (_hasRequestedDeviceIdCode || !_deviceId || _writeCharacteristics.length === 0) return;
+  _hasRequestedDeviceIdCode = true;
+  console.log('[BLE IDCODE] 发送 ATC001#，读取协议定义的 96 位机器 ID。');
+  sendBLECommand('ATC001#');
+}
 
 function initBLE(callback, connectCallback, disconnectCallback, silent = false) {
   _onMeasureCallback = callback;
@@ -119,6 +166,7 @@ function startScan(silent = false) {
           // 发现目标类设备
           if (name.trim().includes(TARGET_DEVICE_NAME) && !_isConnecting) {
             _foundDevices.push(device);
+            logDiscoveredDevice(device, name.trim());
             
             if (_verifyingDevices[device.deviceId]) return; // 已验证或验证中
             _verifyingDevices[device.deviceId] = true;
@@ -192,6 +240,7 @@ function connectDevice(deviceId, name, silent = false) {
       if (!silent) wx.showToast({ title: '连接成功', icon: 'success' });
       _deviceName = name;
       _hasTriggeredReady = false;
+      _hasRequestedDeviceIdCode = false;
       getServices(deviceId);
       
       startHeartbeat();
@@ -270,6 +319,9 @@ function getCharacteristics(deviceId, serviceId) {
             console.log('🚀 发现写入通道，设备就绪');
             _onConnectCallback(true, _deviceName);
           }
+
+          // 等待通知特征值订阅完成后，读取厂商协议中的稳定机器 ID。
+          setTimeout(requestDeviceIdCode, 300);
         }
       }
     }
@@ -316,7 +368,36 @@ function listenValueChange() {
       var b = dataBuffer[1];
       var c = dataBuffer[2];
 
-      if (a === 0x41 && b === 0x54 && c === 0x44) { // ATD 开始
+      if (a === 0x49 && b === 0x44) { // ID + 96 位机器 ID + CRC + #
+        if (dataBuffer.length < 16) break;
+
+        if (dataBuffer[15] !== 0x23) {
+          console.warn('[BLE IDCODE] 帧尾错误，丢弃一个字节。');
+          dataBuffer.shift();
+          continue;
+        }
+
+        var idCodeCrc = 0;
+        for (var idCodeIndex = 0; idCodeIndex < 14; idCodeIndex++) {
+          idCodeCrc += dataBuffer[idCodeIndex];
+        }
+        idCodeCrc %= 256;
+        if (idCodeCrc !== dataBuffer[14]) {
+          console.warn('[BLE IDCODE] CRC 校验失败，丢弃一个字节。');
+          dataBuffer.shift();
+          continue;
+        }
+
+        var idCodeBytes = dataBuffer.slice(2, 14);
+        console.log(
+          '[BLE IDCODE] deviceId=' + _deviceId +
+          ' name=' + _deviceName +
+          ' raw=[' + bytesToHex(dataBuffer.slice(0, 16)) + ']' +
+          ' idCodeHex=' + bytesToHex(idCodeBytes) +
+          ' idCodeAscii=' + bytesToSafeAscii(idCodeBytes)
+        );
+        dataBuffer.splice(0, 16);
+      } else if (a === 0x41 && b === 0x54 && c === 0x44) { // ATD 开始
         // 有可能是发出 ATD001# 后仪器的回显 (7字节): A T D 0 0 1 #
         if (dataBuffer.length >= 7 && dataBuffer[3] === 0x30 && dataBuffer[4] === 0x30 && dataBuffer[5] === 0x31 && dataBuffer[6] === 0x23) {
           console.log('收到命令反馈: ATD001#');
@@ -417,6 +498,7 @@ function handleDisconnect(reason) {
   _foundDevices = [];
   _writeCharacteristics = [];
   _dataBuffersByChannel = {};
+  _hasRequestedDeviceIdCode = false;
   stopHeartbeat();
   
   wx.closeBLEConnection({ deviceId: tempId }).catch(function(){});

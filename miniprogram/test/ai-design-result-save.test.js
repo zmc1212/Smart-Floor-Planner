@@ -116,7 +116,34 @@ test('reference recreation compares against the reference composition at its out
     assert.equal(page.data.task.sourceCompareImageUrl, 'https://example.com/reference.jpg');
     assert.equal(page.data.task.preserveComposition, true);
     assert.equal(page.data.task.floorPlanCompare, false);
-    assert.equal(page.data.task.resultStageHeight, 377);
+    assert.equal(page.data.task.resultStageHeight, 422);
+  } finally {
+    aiService.getTask = originalGetTask;
+    global.wx = originalWx;
+  }
+});
+
+test('floor-plan generation shows a single result even when a control image exists', async () => {
+  const originalWx = global.wx;
+  const originalGetTask = aiService.getTask;
+  global.wx = { showToast() {} };
+  aiService.getTask = async () => ({
+    id: 'task-floor-plan',
+    mode: 'floor_plan_render',
+    status: 'succeeded',
+    controlImageUrl: 'https://example.com/floor-plan-control.png',
+    spaceImageUrl: 'https://example.com/generated-space.png',
+    resultImageUrl: 'https://example.com/result.jpg',
+  });
+
+  try {
+    const page = createPage(loadPageDefinition());
+    page.data.id = 'task-floor-plan';
+    await page.loadTask();
+
+    assert.equal(page.data.task.sourceCompareImageUrl, '');
+    assert.equal(page.data.task.showComparison, false);
+    assert.equal(page.data.task.floorPlanCompare, false);
   } finally {
     aiService.getTask = originalGetTask;
     global.wx = originalWx;

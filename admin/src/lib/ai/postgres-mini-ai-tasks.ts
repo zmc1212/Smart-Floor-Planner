@@ -268,14 +268,33 @@ export function serializePostgresMiniAiTask(generation: NonNullable<Awaited<Retu
     return url.toString();
   };
   const output = asRecord(generation.output);
-  const resultAssetId = getPostgresAssetIdFromImageUrl(typeof output.imageUrl === 'string' ? output.imageUrl : undefined);
-  return { id: generation.id.toString(), mode: input.mode || generation.type, status: generation.status, progress: generation.status === 'succeeded' || generation.status === 'failed' ? 100 : generation.status === 'processing' ? 65 : 10, styleKey: input.style, spaceAssetId: getPostgresAssetIdFromImageUrl(typeof input.spaceImage === 'string' ? input.spaceImage : undefined)?.toString(), referenceAssetId: getPostgresAssetIdFromImageUrl(typeof input.referenceImage === 'string' ? input.referenceImage : undefined)?.toString(), spaceImageUrl: imageUrl('spaceImage'), referenceImageUrl: imageUrl('referenceImage'), controlImageUrl: imageUrl('controlImage'), resultImageUrl: resultAssetId ? new URL(`/api/miniprogram/ai/assets/${resultAssetId}/image`, request.url).toString() : undefined, resultAssetId: resultAssetId?.toString(), errorCode: generation.errorCode, error: generation.errorMessage, retryCount: generation.retryCount, credits: Number(asRecord(generation.billing).price || 0), billingStatus: asRecord(generation.billing).status, provider: generation.provider, model: undefined, workflowId: generation.workflowId?.toString(), floorPlanId: generation.floorPlanId?.toString(), leadId: generation.leadId?.toString(), roomId: typeof roomData.roomId === 'string' ? roomData.roomId : undefined, targetScope: roomData.targetScope, targetLabel: roomData.targetLabel, outputAspectRatio: input.outputAspectRatio, outputSize: input.outputSize, syncedToWorkflow: Boolean(generation.workflowId), isSelectedBaseline: generation.isSelectedBaseline, stageKey: generation.stageKey, nextStageKey: generation.nextRecommendedStage, createdAt: generation.createdAt, updatedAt: generation.updatedAt };
+  const outputImageUrl = typeof output.imageUrl === 'string' ? output.imageUrl : undefined;
+  const resultAssetId = getPostgresAssetIdFromImageUrl(outputImageUrl);
+  const resultImageUrl = resultAssetId
+    ? new URL(`/api/miniprogram/ai/assets/${resultAssetId}/image`, request.url).toString()
+    : /^https?:\/\//i.test(String(outputImageUrl || '').trim())
+      ? outputImageUrl
+      : undefined;
+  return { id: generation.id.toString(), mode: input.mode || generation.type, status: generation.status, progress: generation.status === 'succeeded' || generation.status === 'failed' ? 100 : generation.status === 'processing' ? 65 : 10, styleKey: input.style, spaceAssetId: getPostgresAssetIdFromImageUrl(typeof input.spaceImage === 'string' ? input.spaceImage : undefined)?.toString(), referenceAssetId: getPostgresAssetIdFromImageUrl(typeof input.referenceImage === 'string' ? input.referenceImage : undefined)?.toString(), spaceImageUrl: imageUrl('spaceImage'), referenceImageUrl: imageUrl('referenceImage'), controlImageUrl: imageUrl('controlImage'), resultImageUrl, resultAssetId: resultAssetId?.toString(), errorCode: generation.errorCode, error: generation.errorMessage, retryCount: generation.retryCount, credits: Number(asRecord(generation.billing).price || 0), billingStatus: asRecord(generation.billing).status, provider: generation.provider, model: undefined, workflowId: generation.workflowId?.toString(), floorPlanId: generation.floorPlanId?.toString(), leadId: generation.leadId?.toString(), roomId: typeof roomData.roomId === 'string' ? roomData.roomId : undefined, targetScope: roomData.targetScope, targetLabel: roomData.targetLabel, outputAspectRatio: input.outputAspectRatio, outputSize: input.outputSize, syncedToWorkflow: Boolean(generation.workflowId), isSelectedBaseline: generation.isSelectedBaseline, stageKey: generation.stageKey, nextStageKey: generation.nextRecommendedStage, createdAt: generation.createdAt, updatedAt: generation.updatedAt };
 }
 
 export async function listPostgresMiniAiTasks(context: MiniAiContext, page = 1, limit = 12) {
   const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
   const operatorId = parsePostgresId(context.operatorId, 'operatorId');
   return withTenantTransaction(enterpriseId, (transaction) => new AiCreationRepository(transaction).listMiniProgramGenerations({ operatorId, page, limit }));
+}
+
+export async function listPostgresMiniAiWholePlanRenderHeroTasks(context: MiniAiContext, floorPlanId: string) {
+  const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
+  const operatorId = parsePostgresId(context.operatorId, 'operatorId');
+  const parsedFloorPlanId = parsePostgresId(floorPlanId, 'floorPlanId');
+  return withTenantTransaction(enterpriseId, (transaction) => (
+    new AiCreationRepository(transaction).listMiniProgramWholePlanRenderHeroGenerations({
+      operatorId,
+      floorPlanId: parsedFloorPlanId,
+      limit: 5,
+    })
+  ));
 }
 
 export async function deletePostgresMiniAiTask(id: string, context: MiniAiContext) {

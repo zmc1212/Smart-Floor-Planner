@@ -30,6 +30,29 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown error';
 }
 
+function postgresErrorCode(error: unknown) {
+  const details = error as { code?: string; cause?: { code?: string } };
+  return details.code ?? details.cause?.code;
+}
+
+function parseAssignedUserIds(value: unknown, fallback: bigint[]) {
+  if (value === undefined) return fallback;
+  const rawValues = Array.isArray(value) ? value : value == null ? [] : [value];
+  const ids = new Map<string, bigint>();
+  for (const value of rawValues) {
+    if (value == null || value === '') continue;
+    const id = parsePostgresId(value, 'assignedUserIds');
+    ids.set(id.toString(), id);
+  }
+  return [...ids.values()];
+}
+
+function isAssignedUser(
+  user: Awaited<ReturnType<AdminUserRepository['findById']>>
+): user is NonNullable<Awaited<ReturnType<AdminUserRepository['findById']>>> {
+  return Boolean(user);
+}
+
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -67,21 +90,21 @@ export async function PATCH(
             }
             const requestedStatus = body.status ?? current.status;
 
-            const assignedUserId =
-              body.assignedUserId !== undefined
-                ? parseOptionalPostgresId(
-                    body.assignedUserId,
-                    'assignedUserId'
-                  )
-                : current.assignedUserId;
-            const assignedUser = assignedUserId
-              ? await new AdminUserRepository(transaction).findById(
-                  assignedUserId
-                )
-              : null;
-            if (assignedUserId && !assignedUser) {
+            const assignedUserIds = parseAssignedUserIds(
+              body.assignedUserIds ?? body.assignedUserId,
+              current.assignedUsers.map((assignedUser) => assignedUser.id)
+            );
+            const assignedUsers = await Promise.all(
+              assignedUserIds.map((assignedUserId) =>
+                new AdminUserRepository(transaction).findById(assignedUserId)
+              )
+            );
+            if (assignedUsers.some((assignedUser) => !assignedUser)) {
               throw new Error('Assigned staff not found in this scope');
             }
+            const resolvedAssignedUsers = assignedUsers.filter(
+              isAssignedUser
+            );
 
             let enterpriseId = current.enterpriseId;
             if (context.role === 'enterprise_admin') {
@@ -95,10 +118,14 @@ export async function PATCH(
                 'enterpriseId'
               );
             }
-            if (!enterpriseId && assignedUser?.enterpriseId) {
-              enterpriseId = assignedUser.enterpriseId;
+            if (!enterpriseId && resolvedAssignedUsers[0]?.enterpriseId) {
+              enterpriseId = resolvedAssignedUsers[0].enterpriseId;
             }
-            if (assignedUser && enterpriseId !== assignedUser.enterpriseId) {
+            if (
+              resolvedAssignedUsers.some(
+                (assignedUser) => assignedUser.enterpriseId !== enterpriseId
+              )
+            ) {
               throw new Error(
                 enterpriseId
                   ? 'Assigned staff belongs to another enterprise'
@@ -107,13 +134,13 @@ export async function PATCH(
             }
             input.status = normalizeDeviceBindingStatus(
               requestedStatus,
-              Boolean(assignedUserId),
+              assignedUserIds.length > 0,
               Boolean(enterpriseId)
             );
             input.enterpriseId = enterpriseId;
-            input.assignedUserId = assignedUserId;
+            input.assignedUserId = assignedUserIds[0] ?? null;
 
-            return repository.update(deviceId, input);
+            return repository.update(deviceId, input, assignedUserIds);
           }
         );
         if (!device) {
@@ -126,16 +153,16 @@ export async function PATCH(
       }
     );
   } catch (error: unknown) {
-    const details = error as { code?: string };
+    const code = postgresErrorCode(error);
     return NextResponse.json(
       {
         success: false,
         error:
-          details.code === '23505'
+          code === '23505'
             ? '设备编码已存在'
             : errorMessage(error),
       },
-      { status: details.code === '23505' ? 400 : 500 }
+      { status: code === '23505' ? 409 : 500 }
     );
   }
 }

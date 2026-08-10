@@ -49,6 +49,7 @@ export type CreationBatch = {
   sequence: number;
   prompt: string;
   negativePrompt?: string;
+  referenceAssetIds: string[];
   modelProfileId: string;
   modelProfileSnapshot: CreationModelProfile;
   parameterSnapshot: {

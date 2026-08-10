@@ -38,19 +38,24 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async (context) => {
+    return await withTenantRoute(request, { roles: ['super_admin', 'admin'] }, async () => {
       const { id } = await params;
       const provider = await withPlatformTransaction((transaction) =>
-        new AiProviderConfigRepository(transaction).update(parsePostgresId(id), {
-          enabled: false,
-          updatedBy: parsePostgresId(context.userId, 'userId'),
-        })
+        new AiProviderConfigRepository(transaction).delete(parsePostgresId(id, 'provider id'))
       );
       if (!provider) return NextResponse.json({ success: false, error: 'Provider not found' }, { status: 404 });
-      return NextResponse.json({ success: true, data: serializeProviderConfig(provider) });
+      return NextResponse.json({ success: true, data: { id: String(provider.id) } });
     });
   } catch (error) {
     console.error('[AI Provider DELETE]', error);
-    return NextResponse.json({ success: false, error: 'Disable failed' }, { status: 500 });
+    const details = error as { code?: string; cause?: { code?: string } };
+    const code = details.code ?? details.cause?.code;
+    if (code === '23503') {
+      return NextResponse.json(
+        { success: false, error: '该供应商已有运行审计记录，无法删除。请先停用供应商。' },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'Delete failed' }, { status: 400 });
   }
 }

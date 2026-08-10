@@ -403,6 +403,33 @@ export class AiCreationRepository {
     return { rows, total: Number(totals[0]?.value ?? 0), page, limit };
   }
 
+  /**
+   * Returns only the completed whole-home renders for one staff member and one
+   * formal floor plan. This is intentionally separate from paginated history:
+   * a busy surveyor's chosen customer plan must not fall out of a recent page.
+   */
+  async listMiniProgramWholePlanRenderHeroGenerations(input: {
+    operatorId: bigint;
+    floorPlanId: bigint;
+    limit?: number;
+  }) {
+    const limit = Math.min(5, Math.max(1, input.limit ?? 5));
+    return this.transaction
+      .select()
+      .from(aiGenerations)
+      .where(and(
+        eq(aiGenerations.operatorId, input.operatorId),
+        eq(aiGenerations.floorPlanId, input.floorPlanId),
+        eq(aiGenerations.channel, 'miniprogram'),
+        eq(aiGenerations.status, 'succeeded'),
+        sql`${aiGenerations.input} ->> 'mode' = 'floor_plan_render'`,
+        sql`${aiGenerations.input} -> 'roomData' ->> 'targetScope' = 'whole_floor_plan'`,
+        sql`${aiGenerations.deletedAt} is null`
+      ))
+      .orderBy(desc(aiGenerations.createdAt), desc(aiGenerations.id))
+      .limit(limit);
+  }
+
   async listMiniProgramGenerationsByFloorPlanIds(floorPlanIds: bigint[]) {
     if (!floorPlanIds.length) return [];
     return this.transaction.select().from(aiGenerations).where(and(

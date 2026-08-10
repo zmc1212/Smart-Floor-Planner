@@ -18,6 +18,7 @@ import {
   refreshPostgresCreationBatchStatus,
   releasePostgresCreationGenerationCredits,
   settlePostgresCreationProviderResult,
+  settlePostgresCreationProviderUrlResult,
 } from '@/lib/ai/postgres-creation-service';
 import {
   readPostgresMediaAssetBuffer,
@@ -39,6 +40,10 @@ import {
 import { parseImageDataUri } from '@/lib/ai/postgres-media-assets';
 import { resolveProviderCostEstimate } from '@/lib/ai/provider-cost';
 import { renderMiniAiFloorPlanControlPng } from '@/lib/ai/mini-ai-floorplan';
+import {
+  getGrsAiOutputPersistenceEnabled,
+  shouldKeepGrsAiOutputUrl,
+} from '@/lib/media-storage/config-service';
 
 type ProviderRequest = Omit<AiImageSubmitInput, 'model'> & {
   logicalModelKey: 'image.generate.standard' | 'image.edit.standard';
@@ -54,12 +59,15 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function toDtoGeneration(generation: AiGenerationRecord) {
   const output = asRecord(generation.output);
+  const imageUrl = typeof output.imageUrl === 'string' && output.imageUrl
+    ? output.imageUrl
+    : undefined;
   return {
     id: generation.id.toString(),
     status: generation.status,
-    imageUrl: typeof output.imageUrl === 'string' && output.imageUrl
-      ? `/api/ai/generations/${generation.id.toString()}/image`
-      : undefined,
+    // The persisted asset route is directly renderable and avoids a redirect
+    // through the generation endpoint that browser content blockers may reject.
+    imageUrl,
     error: generation.errorMessage,
     provider: generation.provider,
     model: asRecord(generation.input).creationParameterSnapshot
@@ -87,6 +95,7 @@ export function serializePostgresCreationTask(task: AiCreationTaskView) {
       sequence: batch.sequence,
       prompt: batch.prompt,
       negativePrompt: batch.negativePrompt,
+      referenceAssetIds: batch.referenceAssetIds.map(String),
       modelProfileId: batch.modelProfileId.toString(),
       modelProfileSnapshot: batch.modelProfileSnapshot,
       parameterSnapshot: batch.parameterSnapshot,
@@ -321,6 +330,7 @@ async function handleProviderResult(input: {
   enterpriseId: bigint;
   generationId: bigint;
   attemptId: bigint;
+  adapterType: string;
   result: AiImageProviderResult;
   pollLeaseId?: string;
 }) {
@@ -331,18 +341,33 @@ async function handleProviderResult(input: {
       attemptId: input.attemptId.toString(), remoteTaskId,
       remoteStatus: input.result.remoteStatus || 'succeeded',
     });
-    const stored = await persistProviderResult({
-      enterpriseId: input.enterpriseId, generationId: input.generationId, image: input.result.image,
+    const keepProviderUrl = shouldKeepGrsAiOutputUrl({
+      adapterType: input.adapterType,
+      image: input.result.image,
+      persistGrsAiOutputs: input.adapterType === 'grs'
+        ? await getGrsAiOutputPersistenceEnabled()
+        : true,
     });
+    const stored = keepProviderUrl
+      ? null
+      : await persistProviderResult({
+          enterpriseId: input.enterpriseId, generationId: input.generationId, image: input.result.image,
+        });
     await completePostgresCreationProviderAttempt({
       enterpriseId: input.enterpriseId.toString(), generationId: input.generationId.toString(),
       attemptId: input.attemptId.toString(), remoteTaskId,
       remoteStatus: input.result.remoteStatus || 'succeeded', output: { providerImage: input.result.image },
       pollLeaseId: input.pollLeaseId,
     });
+    if (keepProviderUrl) {
+      return settlePostgresCreationProviderUrlResult({
+        enterpriseId: input.enterpriseId.toString(), generationId: input.generationId.toString(),
+        attemptId: input.attemptId.toString(), remoteTaskId, imageUrl: input.result.image,
+      });
+    }
     return settlePostgresCreationProviderResult({
       enterpriseId: input.enterpriseId.toString(), generationId: input.generationId.toString(),
-      attemptId: input.attemptId.toString(), remoteTaskId, assetId: stored.asset.id.toString(),
+      attemptId: input.attemptId.toString(), remoteTaskId, assetId: stored!.asset.id.toString(),
     });
   }
   if (input.result.status === 'processing' || input.result.status === 'unknown') {
@@ -407,7 +432,13 @@ export async function submitPostgresCreationGeneration(input: { enterpriseId: st
     });
     if (begun.reused && begun.attempt.remoteTaskId) return begun.generation;
     const result = await getAiProviderAdapter(runtime.adapterType).submitImage(runtime, { ...request, model: remoteModel });
-    await handleProviderResult({ enterpriseId, generationId, attemptId: begun.attempt.id, result });
+    await handleProviderResult({
+      enterpriseId,
+      generationId,
+      attemptId: begun.attempt.id,
+      adapterType: runtime.adapterType,
+      result,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await releasePostgresCreationGenerationCredits({ enterpriseId: enterpriseId.toString(), generationId: generationId.toString(), errorMessage: message });
@@ -444,6 +475,7 @@ export async function reconcilePostgresCreationTasks(enterpriseId?: string, limi
         enterpriseId: scopedEnterpriseId,
         generationId,
         attemptId,
+        adapterType: runtime.adapterType,
         result,
         pollLeaseId: claim.pollLeaseId,
       });

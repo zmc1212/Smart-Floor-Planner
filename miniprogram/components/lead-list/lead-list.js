@@ -2,22 +2,24 @@ const api = require('../../utils/api.js');
 const { buildFloorPlanPreview, pickLeadFloorPlan } = require('./lead-list-model.js');
 
 const STATUS_LABELS = {
-  new: '待跟进',
-  contacted: '待跟进',
+  acquired: '已获客',
+  new: '新线索',
+  contacted: '新线索',
   measuring: '量房中',
-  measured: '复房中',
-  assigned: '设计中',
-  designing: '设计中',
-  quoting: '设计中',
-  converted: '已成交',
+  measured: '方案设计',
+  assigned: '方案设计',
+  designing: '方案设计',
+  quoting: '方案设计',
+  converted: '已签约',
   closed: '已关闭'
 };
 
 const STATUS_TONES = {
+  acquired: 'acquired',
   new: 'pending',
   contacted: 'pending',
   measuring: 'measuring',
-  measured: 'remeasuring',
+  measured: 'designing',
   assigned: 'designing',
   designing: 'designing',
   quoting: 'designing',
@@ -26,6 +28,7 @@ const STATUS_TONES = {
 };
 
 const STATUS_ICONS = {
+  acquired: '/images/leads-v4/ruler-green.png',
   pending: '/images/leads-v4/clock-blue.png',
   measuring: '/images/leads-v4/ruler-green.png',
   remeasuring: '/images/leads-v4/ruler-purple.png',
@@ -50,11 +53,12 @@ Component({
   data: {
     tabs: [
       { id: 'all', query: 'all', label: '全部' },
-      { id: 'new', query: 'new', label: '待跟进' },
+      { id: 'new', query: 'new', label: '新线索' },
+      { id: 'acquired', query: 'acquired', label: '已获客' },
       { id: 'measuring', query: 'measuring', label: '量房中' },
-      { id: 'remeasuring', query: 'measured', label: '复房中' },
-      { id: 'designing', query: 'assigned', label: '设计中' },
-      { id: 'converted', query: 'converted', label: '已成交' }
+      { id: 'designing', query: 'designing', label: '方案设计' },
+      { id: 'converted', query: 'converted', label: '已签约' },
+      { id: 'closed', query: 'closed', label: '已关闭' }
     ],
     heroSummary: {
       todayNew: 0,
@@ -65,6 +69,7 @@ Component({
     currentTabIndex: 0,
     allLeads: [],
     leads: [],
+    designerProfile: null,
     searchKeyword: '',
     loading: false,
     refreshing: false,
@@ -107,6 +112,7 @@ Component({
           this.setData({
             allLeads,
             leads: this.filterLeads(allLeads, this.data.searchKeyword),
+            designerProfile: res.designerProfile || (formatted.find((lead) => lead.assignedTo && lead.assignedTo.wechatQrUrl) || {}).assignedTo || null,
             page: page + 1,
             hasMore: formatted.length === this.data.pageSize,
             loading: false,
@@ -255,6 +261,12 @@ Component({
       this.triggerEvent('add');
     },
 
+    onCopyWechat(e) {
+      const value = String(e.currentTarget.dataset.wechat || '');
+      if (!value) return;
+      wx.setClipboardData({ data: value, success: () => wx.showToast({ title: '已复制微信号', icon: 'success' }) });
+    },
+
     onSearch(e) {
       this.onSearchInput(e);
     },
@@ -302,6 +314,7 @@ Component({
           + (stats.contacted || 0)
           + (stats.measuring || 0)
           + (stats.measured || 0)
+          + (stats.acquired || 0)
           + (stats.assigned || 0)
           + (stats.designing || 0)
           + (stats.quoting || 0);

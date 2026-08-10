@@ -88,6 +88,39 @@ function decorateRecentResult(result) {
   };
 }
 
+function buildHeroSlides(recent, selectedSource) {
+  // A carousel belongs to an explicitly selected customer plan. Never surface
+  // another lead's result merely because the current employee generated it.
+  if (!selectedSource || !selectedSource.floorPlanId) return [];
+
+  const slides = [];
+  const seen = new Set();
+  const selectedFloorPlanId = selectedSource && selectedSource.floorPlanId;
+  const selectedPlanUpdatedAt = Date.parse(selectedSource.updatedAt || '');
+  const addSlide = (task, overrides = {}) => {
+    const imageUrl = overrides.imageUrl || (task && task.resultImageUrl);
+    const id = overrides.id || (task && task.id);
+    if (!imageUrl || !id || seen.has(id)) return;
+    seen.add(id);
+    slides.push({
+      id,
+      imageUrl,
+      title: overrides.title || (task && task.targetLabel) || 'AI 户型导览图',
+      meta: overrides.meta || '轻触查看设计成果',
+    });
+  };
+
+  (recent || []).forEach((result) => {
+    if (result.status !== 'succeeded' || result.mode !== 'floor_plan_render') return;
+    if (result.floorPlanId !== selectedFloorPlanId || result.targetScope !== 'whole_floor_plan') return;
+    const createdAt = Date.parse(result.createdAt || '');
+    if (Number.isFinite(selectedPlanUpdatedAt) && Number.isFinite(createdAt) && createdAt < selectedPlanUpdatedAt) return;
+    addSlide(result, { title: result.targetLabel || 'AI 户型导览图' });
+  });
+
+  return slides.slice(0, 5);
+}
+
 function hasActiveTasks(results) {
   return (results || []).some((item) => (
     item && (item.isProcessing || ACTIVE_TASK_STATUSES.includes(item.status))
@@ -348,6 +381,7 @@ module.exports = {
   normalizeProgress,
   normalizeCredits,
   decorateRecentResult,
+  buildHeroSlides,
   hasActiveTasks,
   decorateNavigator,
   decorateSourcePlan,

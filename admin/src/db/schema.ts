@@ -59,6 +59,12 @@ export const enterprises = appSchema.table(
     )
       .notNull()
       .default('0'),
+    measurerAcquisitionFixedCommission: numeric(
+      'measurer_acquisition_fixed_commission',
+      { precision: 14, scale: 2 }
+    )
+      .notNull()
+      .default('0'),
     automationConfig: jsonObject<Record<string, unknown>>('automation_config'),
     aiConfig: jsonObject<Record<string, unknown>>('ai_config'),
     aiPolicy: jsonObject<Record<string, unknown>>('ai_policy'),
@@ -123,6 +129,11 @@ export const adminUsers = appSchema.table(
     displayName: text('display_name').notNull().default(''),
     role: text('role').notNull().default('admin'),
     wecomUserId: text('wecom_user_id'),
+    wechatId: text('wechat_id'),
+    wechatQrAssetId: bigint('wechat_qr_asset_id', { mode: 'bigint' }).references(
+      () => mediaAssets.id,
+      { onDelete: 'set null' }
+    ),
     openid: text('openid'),
     phone: text('phone'),
     menuPermissions: textArray('menu_permissions'),
@@ -163,6 +174,28 @@ export const adminUserPromoters = appSchema.table(
       columns: [table.adminUserId, table.promoterId],
     }),
     index('admin_user_promoters_promoter_idx').on(table.promoterId),
+  ]
+);
+
+export const measurerDesignerBindings = appSchema.table(
+  'measurer_designer_bindings',
+  {
+    measurerId: bigint('measurer_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: 'cascade' }),
+    designerId: bigint('designer_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: 'restrict' }),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'cascade' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    primaryKey({ name: 'measurer_designer_bindings_pkey', columns: [table.measurerId] }),
+    index('measurer_designer_bindings_designer_idx').on(table.designerId),
+    index('measurer_designer_bindings_enterprise_idx').on(table.enterpriseId),
   ]
 );
 
@@ -911,6 +944,11 @@ export const leads = appSchema.table(
     city: text('city'),
     source: text('source').notNull(),
     status: text('status').notNull().default('new'),
+    acquiredAt: timestamp('acquired_at', { withTimezone: true, mode: 'date' }),
+    acquiredBy: bigint('acquired_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
     notes: text('notes'),
     assignedAt: timestamp('assigned_at', {
       withTimezone: true,
@@ -954,6 +992,75 @@ export const leads = appSchema.table(
       table.createdAt
     ),
     index('leads_primary_floor_plan_idx').on(table.primaryFloorPlanId),
+  ]
+);
+
+export const leadAcquisitionCommissions = appSchema.table(
+  'lead_acquisition_commissions',
+  {
+    id: id(),
+    leadId: bigint('lead_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => leads.id, { onDelete: 'cascade' }),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'restrict' }),
+    measurerId: bigint('measurer_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: 'restrict' }),
+    designerId: bigint('designer_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: 'restrict' }),
+    commissionAmount: numeric('commission_amount', { precision: 14, scale: 2 }).notNull(),
+    status: text('status').notNull().default('pending_settlement'),
+    generatedAt: timestamp('generated_at', { withTimezone: true, mode: 'date' }).notNull(),
+    settledAt: timestamp('settled_at', { withTimezone: true, mode: 'date' }),
+    settledBy: bigint('settled_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('lead_acquisition_commissions_lead_uidx').on(table.leadId),
+    index('lead_acquisition_commissions_enterprise_status_idx').on(table.enterpriseId, table.status),
+    index('lead_acquisition_commissions_measurer_status_idx').on(table.measurerId, table.status),
+  ]
+);
+
+export const staffNotifications = appSchema.table(
+  'staff_notifications',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' }).references(
+      () => enterprises.id,
+      { onDelete: 'cascade' }
+    ),
+    recipientStaffId: bigint('recipient_staff_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    leadId: bigint('lead_id', { mode: 'bigint' }).references(
+      () => leads.id,
+      { onDelete: 'cascade' }
+    ),
+    notificationType: text('notification_type').notNull(),
+    channel: text('channel').notNull().default('in_app'),
+    status: text('status').notNull().default('unread'),
+    message: text('message'),
+    errorMessage: text('error_message'),
+    metadata: jsonObject<Record<string, unknown>>('metadata'),
+    dedupeKey: text('dedupe_key'),
+    readAt: timestamp('read_at', { withTimezone: true, mode: 'date' }),
+    sentAt: timestamp('sent_at', { withTimezone: true, mode: 'date' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('staff_notifications_dedupe_uidx').on(table.dedupeKey, table.channel).where(sql`${table.dedupeKey} is not null`),
+    index('staff_notifications_recipient_created_idx').on(table.recipientStaffId, table.createdAt),
+    index('staff_notifications_lead_idx').on(table.leadId),
   ]
 );
 
@@ -1116,6 +1223,31 @@ export const devices = appSchema.table(
     uniqueIndex('devices_code_uidx').on(table.code),
     index('devices_enterprise_status_idx').on(table.enterpriseId, table.status),
     index('devices_assigned_user_idx').on(table.assignedUserId),
+  ]
+);
+
+export const deviceUserBindings = appSchema.table(
+  'device_user_bindings',
+  {
+    deviceId: bigint('device_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => devices.id, { onDelete: 'cascade' }),
+    adminUserId: bigint('admin_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: 'cascade' }),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' }).references(
+      () => enterprises.id,
+      { onDelete: 'cascade' }
+    ),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    primaryKey({
+      name: 'device_user_bindings_pkey',
+      columns: [table.deviceId, table.adminUserId],
+    }),
+    index('device_user_bindings_admin_user_idx').on(table.adminUserId),
+    index('device_user_bindings_enterprise_idx').on(table.enterpriseId),
   ]
 );
 

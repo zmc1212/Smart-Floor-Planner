@@ -1,5 +1,5 @@
-import { and, asc, eq } from 'drizzle-orm';
-import { aiProviderConfigs } from '@/db/schema';
+import { and, asc, eq, inArray } from 'drizzle-orm';
+import { aiProviderAttempts, aiProviderConfigs } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
 
 export type AiProviderConfigRecord = typeof aiProviderConfigs.$inferSelect;
@@ -74,6 +74,31 @@ export class AiProviderConfigRepository {
       .where(eq(aiProviderConfigs.id, id))
       .returning();
     return rows[0] ?? null;
+  }
+
+  async delete(id: bigint) {
+    const rows = await this.transaction
+      .delete(aiProviderConfigs)
+      .where(eq(aiProviderConfigs.id, id))
+      .returning();
+    return rows[0] ?? null;
+  }
+
+  async findAttemptReferencedIds(ids: bigint[]) {
+    if (!ids.length) return new Set<bigint>();
+    const rows = await this.transaction
+      .select({ providerConfigId: aiProviderAttempts.providerConfigId })
+      .from(aiProviderAttempts)
+      .where(inArray(aiProviderAttempts.providerConfigId, ids));
+    return new Set(rows.map((row) => row.providerConfigId));
+  }
+
+  async deleteMany(ids: bigint[]) {
+    if (!ids.length) return [];
+    return this.transaction
+      .delete(aiProviderConfigs)
+      .where(inArray(aiProviderConfigs.id, ids))
+      .returning({ id: aiProviderConfigs.id });
   }
 
 }

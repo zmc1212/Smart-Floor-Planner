@@ -52,11 +52,11 @@ function createFormalLayout() {
   };
 }
 
-test('Leads management exposes the six approved visual stages', () => {
-  for (const label of ['全部', '待跟进', '量房中', '复房中', '设计中', '已成交']) {
+test('Leads management exposes the canonical lead stages', () => {
+  for (const label of ['全部', '新线索', '已获客', '量房中', '方案设计', '已签约', '已关闭']) {
     assert.match(componentJs, new RegExp(`label: '${label}'`));
   }
-  assert.match(componentJs, /\{ id: 'remeasuring', query: 'measured', label: '复房中' \}/);
+  assert.match(componentJs, /\{ id: 'designing', query: 'designing', label: '方案设计' \}/);
 });
 
 test('Leads management search and filter controls are functional', () => {

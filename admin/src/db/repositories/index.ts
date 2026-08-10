@@ -1,4 +1,5 @@
 export * from './admin-user-repository';
+export * from './acquisition-repository';
 export * from './ai-creation-model-profile-repository';
 export * from './ai-creation-repository';
 export * from './ai-chat-session-repository';

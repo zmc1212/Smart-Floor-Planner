@@ -474,8 +474,8 @@ permission, or workflow changes.
 ### 4. Staff, Departments, And System Accounts
 
 - Pages: `/staff`, `/admins`.
-- APIs: `/api/staff`, `/staff/[id]`, `/departments`, `/departments/[id]`,
-  `/admin-users`, and `/admin-users/[id]`.
+- APIs: `/api/staff`, `/staff/[id]`, `/staff/wechat-qr`, `/departments`,
+  `/departments/[id]`, `/admin-users`, and `/admin-users/[id]`.
 - Models/repositories: PostgreSQL `AdminUserRepository`,
   `DepartmentRepository`, `SystemRoleRepository`, and the
   `admin_user_promoters` junction.
@@ -483,7 +483,17 @@ permission, or workflow changes.
   pattern (`PageContainer`, `ProTable`, `ModalForm`, and `Tree`) for server-side
   staff search/pagination, department filtering, and staff or department
   maintenance; this presentation migration does not change its APIs, tenant
-  scope, or role boundaries. Its shared `ModuleOverview` derives visible-page
+  scope, or role boundaries. When editing a designer, the Chinese-first
+  “个人微信二维码” field sends the selected image through
+  `POST /api/staff/wechat-qr`; the upload request runs after the client image
+  and 5MB validation, and its success/failure feedback uses the shared operation
+  feedback UI. The existing enterprise-scoped media ownership and staff-management
+  role boundary are unchanged. Standard management-form images now share
+  `components/ui/image-upload-field`: staff QR codes, enterprise Logos, and
+  inspiration cover/rendering images use one single-image picture-card control
+  with local validation, thumbnail preview, full-size preview, replacement, and
+  removal. The control accepts an injected upload function so each existing
+  persistence contract remains unchanged. Its shared `ModuleOverview` derives visible-page
   staff-role counts from the existing list response and shows the live loaded
   department count without adding an API request. `/admins` uses the same `PageContainer`,
   `ProTable`, and `ModalForm` pattern for platform account search, scope and
@@ -606,7 +616,12 @@ permission, or workflow changes.
   review, and follow-up records. A shared `ModuleOverview` derives visible-page
   funnel counts from that same paginated list response. List and detail reads still cancel superseded
   requests, so stale responses cannot overwrite newer filtering or selected
-  lead state. Its API contract, tenant scope, role boundaries, and row actions
+  lead state. Lead status presentation now uses the canonical five-step rail
+  `New lead -> Acquired -> Measuring -> Design proposal -> Signed`, while
+  `closed` remains a terminal filter. Historical `contacted`, `measured`,
+  `assigned`, and `quoting` values stay readable through normalized labels and
+  grouped status filters. Linking a draft or completed formal floor plan also
+  advances the lead to `measuring` or `designing` respectively. Its API contract, tenant scope, role boundaries, and row actions
   for detail, AI-plan entry, and destructive deletion are unchanged; visible
   mutations continue to use shared operation feedback. This is a
   presentation-layer migration only.
@@ -668,12 +683,12 @@ permission, or workflow changes.
 
 ### 9. Measurement Audit And BLE Device Assets
 
-- Standalone-device assignment: platform `super_admin`/`admin` may assign an
-  enterprise-null device to an active, enterprise-null `salesperson` (channel
-  promoter). Enterprise devices remain assignable only to staff in that same
+- Standalone-device assignment: platform `super_admin`/`admin` may bind an
+  enterprise-null device to active, enterprise-null `salesperson` channel
+  promoters. Enterprise devices remain bindable only to staff in that same
   enterprise; enterprise administrators cannot query or assign standalone
   promoters.
-- Binding state: saving a holder on an idle device changes it to `assigned`,
+- Binding state: saving one or more bound staff on an idle device changes it to `assigned`,
   which is required by `/api/devices/verify-binding`. A holderless standalone
   device cannot remain `assigned`; enterprise-owned devices may be assigned
   without a named holder for shared enterprise use. `maintenance` and `lost`
@@ -682,14 +697,21 @@ permission, or workflow changes.
 - APIs: `/api/devices`, `/devices/[id]`, `/devices/verify`,
   `/devices/verify-binding`, `/api/measurements`, and
   `/api/staff?scope=unassigned-promoters` (platform-only standalone channel
-  promoters).
-- Models/repositories: PostgreSQL `DeviceRepository`, `MeasurementRepository`,
+  promoters). Platform roles may also query active staff for a selected device
+  enterprise through `/api/staff?enterpriseId=<id>`; that query is unavailable
+  to enterprise roles. Platform roles list this device pool in platform scope even when
+  their active UI context is an enterprise, so existing standalone devices stay
+  editable and assignable.
+- Models/repositories: PostgreSQL `DeviceRepository`, `device_user_bindings`, `MeasurementRepository`,
   `AdminUserRepository`, `UserRepository`, and `FloorPlanRepository`.
 - Status: `Implemented`. Supports device pool, enterprise/user binding,
   verification, status management, and formal length/height/area/angle/opening
-  audit records with BLE, manual, or system source markers. Device assignment is
-  an `admin_users` foreign key; platform/enterprise admins mutate devices, while
-  staff can read their own assignment. Measurement writes validate operator,
+  audit records with BLE, manual, or system source markers. A device can bind
+  multiple `admin_users` through `device_user_bindings`; the legacy
+  `devices.assigned_user_id` remains populated with the first bound staff member
+  for compatible consumers, and existing single-user bindings are migrated into
+  the relation. Platform/enterprise admins mutate devices, while staff can read
+  every device bound to them. Measurement writes validate operator,
   enterprise, formal plan, value/type/source/date, and assigned device in one
   RLS-scoped PostgreSQL flow. The `/measurements` administration view now uses
   the shared Ant Design ProComponents list pattern (`PageContainer` and
@@ -698,13 +720,18 @@ permission, or workflow changes.
   manual, and distinct-floor-plan counts from the same 100-record response; its API parameters, role scope, and 100-record display limit
   are unchanged. The `/devices` view uses `PageContainer`, `ProTable`, and
   `ModalForm` for search, status filtering, and create/edit dialogs; platform
-  roles can select an enterprise, compatible staff, and the existing status
-  enum, while the server retains current tenant and cross-enterprise binding
-  validation. Device row edits and deletions retain the shared Ant Design
+  roles can select an enterprise, and the form reloads multiple compatible,
+  active staff for that enterprise before binding. It retains the existing
+  status enum. `POST`/`PATCH` accept `assignedUserIds` and return `assignedUsers`;
+  the singular `assignedUserId` response remains as a compatibility alias. The
+  server retains tenant and cross-enterprise binding validation. Duplicate
+  device-code creates return `409` with an edit-existing-device instruction,
+  rather than a raw database error. Device row edits and deletions retain the shared Ant Design
   icon-and-label action controls, and all visible mutations use shared
   operation feedback. Its shared `ModuleOverview` derives current filtered
-  status counts from the existing device list response. This is a presentation-layer migration only: routes,
-  APIs, permission boundaries, and PostgreSQL data contracts are unchanged.
+  status counts from the existing device list response. Routes and role
+  boundaries are unchanged; the PostgreSQL device-binding data contract is now
+  many-to-many.
 
 ### 10. AI Studio And Design Generation
 
@@ -729,7 +756,14 @@ permission, or workflow changes.
   detail/edit page; `/ai-models` is the separate platform image-model catalog.
   The routes use the shared Ant Design ProComponents-based admin shell
   (`ProTable`, `ProForm`, and `ProDescriptions`) and the existing `ai-providers`
-  platform permission for `super_admin` and `admin` (`Implemented`).
+  platform permission for `super_admin` and `admin` (`Implemented`). Providers
+  can be disabled with `PATCH /api/admin/ai-providers/[id]` and permanently
+  deleted with `DELETE /api/admin/ai-providers/[id]` when no provider-attempt
+  audit rows reference them; referenced providers return `409` and must remain
+  disabled. The same platform roles can batch-delete 1-100 selected providers
+  with `DELETE /api/admin/ai-providers` and `{ ids }`; its per-provider result
+  reports deleted, audit-blocked, and missing IDs so eligible configurations are
+  removed without deleting audit history.
 - Inspiration administration: `/inspirations` uses the same `PageContainer`,
   `ProTable`, and `ModalForm` presentation pattern for case filtering, image
   preview, publishing, recommendation state, and deletion. `GET/POST/DELETE
@@ -747,7 +781,8 @@ permission, or workflow changes.
   validated non-secret `adapterConfig`. The common editor and server validation
   both read `src/lib/ai/provider-adapter-manifest.ts`; current GRS,
   Pollinations, and OpenAI-compatible adapters use the shared endpoint/API-key
-  configuration. `Limited`: the platform image-model catalog currently has a
+  configuration. Runtime routing always prefers enabled non-fallback providers;
+  keys ending in `-fallback` are considered only after primary providers. `Limited`: the platform image-model catalog currently has a
   GRS source contract, so a new provider requires an adapter implementation and
   catalog-profile support, not merely an additional UI option.
 - PostgreSQL boundary: platform-provider list/create/update/disable, credential
@@ -798,7 +833,11 @@ permission, or workflow changes.
   prompt template list/detail/preview, `POST /api/ai/creation/assets`,
   `GET/POST /api/ai/creation/tasks`, `DELETE /api/ai/creation/tasks/[id]`,
   `POST /api/ai/creation/tasks/[id]/batches`, prompt assistance, and generation
-  attachment to an existing customer workflow. The proxy maps the entire page
+  attachment to an existing customer workflow. The create workspace renders
+  persisted batches as ordered in-task conversation rounds, keeps each round's
+  prompt/reference context, appends a batch for an existing task, and reserves a
+  larger desktop conversation viewport above the prompt panel while hiding its
+  native scrollbars without disabling scrolling. The proxy maps the entire page
   and API prefix to the unified `ai-scenarios` permission, while writable routes
   also require an enterprise through `withTenantRoute`.
 - PostgreSQL identity boundary: new free-creation, Mini Program, scenario, and
@@ -1076,13 +1115,16 @@ permission, or workflow changes.
   model override is restricted to GRS runtimes and retains the exact selected
   remote model across fallback attempts; it never silently changes models.
   Provider cost rules may additionally match remote model and resolution, while
-  currency and estimated cost remain internal-only accounting metadata. GRS `http(s)`
-  output URLs remain the default result reference and are not copied to platform
-  storage. Platform operators can enable the Media Storage page's GRS
-  output-transfer policy only when an active Qiniu configuration is the default
-  provider; then subsequent GRS outputs are persisted to that Qiniu configuration
-  before settlement. Data-URI outputs, user uploads, and generated control images
-  continue to use `MediaAsset` regardless of the policy. Fallback is
+  currency and estimated cost remain internal-only accounting metadata. When the
+  GRS output-transfer policy is disabled, GRS `http(s)` output URLs are persisted
+  directly as the result reference without downloading or creating a
+  `MediaAsset`; provider-attempt validation and credit settlement still run in
+  their normal transaction. Platform operators can enable the Media Storage
+  page's GRS output-transfer policy only when an active Qiniu configuration is
+  the default provider; then subsequent GRS outputs are persisted to that Qiniu
+  configuration before settlement. Data-URI outputs, user uploads, generated
+  control images, and non-GRS provider results continue to use `MediaAsset`
+  regardless of the policy. Fallback is
   allowed only for connection/unaccepted/refunded-safe failures. Accepted or
   unknown attempts with a remote task ID retain the hold and never create a
   second upstream task. An untrackable submission response without a remote
@@ -1136,11 +1178,24 @@ permission, or workflow changes.
 - Legacy free-creation snapshots may still display a historical `quality` value
   when reading old batches; new GRSAI requests expose model, ratio, and
   resolution only and never send `quality` or `output_format`.
-- Free-creation responsive behavior: viewports below `1440px` remove the fixed
+- Free-creation responsive behavior: the implementation uses the shared `lg`
+  breakpoint for the `1024px` desktop arrangement so its rules remain ordered
+  after the `sm` mobile rules. Viewports below `1024px` remove the fixed
   desktop minimum width, hide the left tool rail, and wrap model, output,
   ratio, resolution, template, and submit controls so every command remains
-  reachable. The original fixed Roomi-style canvas remains unchanged at
-  `1440px` and above.
+  reachable. At `1024px` and above, a generated task keeps its summary and
+  result strip in the centred canvas while the prompt/parameter panel stays
+  bottom-anchored; this also preserves the Roomi-style execution layout under
+  common browser zoom instead of falling back to a tall flowing form. Completed
+  free-creation task DTOs now expose the persisted result URL directly rather
+  than the generation-image redirect: this is `/api/ai/assets/:id/image` for
+  transferred or local results and the upstream HTTPS URL for non-transferred
+  GRS results, so browser content filters cannot prevent a result image from
+  rendering. One free-creation task now renders all persisted batches as an
+  in-task conversation, keeps each round's prompt/reference context, and
+  auto-scrolls to the newest round after opening or submitting. Starting from
+  a selected task appends a new batch; `New task` remains the explicit new-task
+  boundary. No permission, model, billing, or provider behavior changes.
 
 ### 11. Platform Media Storage Management
 
@@ -1175,10 +1230,14 @@ permission, or workflow changes.
   Archived configs cannot write, test, or reactivate, but remain resolvable for
   historical asset reads/deletes; the current default cannot be archived.
   Switching defaults affects new uploads only and does not migrate old assets.
-  The GRS output policy defaults to keeping the upstream image URL; its explicit
-  transfer option requires the current default to be a usable Qiniu configuration,
-  persists only subsequent remote GRS outputs, and prevents switching the default
-  back to local until transfer is disabled.
+  The GRS output policy defaults to keeping the upstream HTTP image URL, which
+  PostgreSQL creation, scenario, and Mini Program results persist directly
+  without downloading or creating a `MediaAsset`; their normal provider-attempt
+  and credit-settlement rules remain unchanged. Its explicit transfer option
+  requires the current default to be a usable Qiniu configuration, persists only
+  subsequent remote GRS outputs, and prevents switching the default back to
+  local until transfer is disabled. Non-GRS and non-HTTP provider results retain
+  the existing media-asset delivery path.
   `local` remains the compatibility default until a platform choice is persisted.
   Media-storage configuration CRUD, encrypted credential reads, connectivity-test
   results, archival, default-provider selection, and the GRS transfer pointer are
@@ -1254,7 +1313,7 @@ permission, or workflow changes.
 - PostgreSQL migration foundation: `Implemented` for the PostgreSQL 17
   Docker service, isolated `sfp_migrator`/`sfp_app`/`sfp_auditor` roles,
   bounded `pg.Pool`, reviewable Drizzle migrations, backup/restore-drill
-  scripts, Docker health ordering, 44 typed target tables, foreign keys and
+  scripts, Docker health ordering, 45 typed target tables, foreign keys and
   indexes, forced RLS on tenant data, transaction-local tenant/platform
   context, and typed repositories for enterprise, department, admin-user,
   Mini Program user, lead, floor-plan, measurement, device, platform-config,
@@ -1278,7 +1337,8 @@ permission, or workflow changes.
   through `npm run docker:migrate`; the long-running admin service is not given
   `DATABASE_MIGRATION_URL`. Docker build context excludes runtime `.env*`, local
   RoomiAI/import assets, uploads, and local database backups; those assets must
-  be injected or mounted at runtime.
+  be injected or mounted at runtime. To rebuild only the admin image without
+  reusing Docker build cache, run `npm run docker:build-admin` from `admin/`.
 
 ## Core Models
 
@@ -1304,3 +1364,13 @@ keys, `proxy.ts`, role defaults, tenant resolution, model indexes, and operation
 feedback. Do not document a roadmap item as implemented until a real route,
 handler, and persistence/provider path exists. A change with no functional impact
 must say so explicitly in its handoff.
+
+## Measurer–Designer Lead Acquisition Collaboration (Implemented)
+
+The focused contract is [`docs/measurer-designer-acquisition.md`](measurer-designer-acquisition.md) and its Chinese mirror.
+
+- `/staff` now requires designers to provide `wechatId` and a media-backed QR asset, and requires measurers to bind one active designer from the same enterprise. Bindings are stored in `measurer_designer_bindings`; a designer can have many measurers. Deactivation/deletion is blocked while measurers remain bound.
+- `POST /api/leads` derives measurer ownership, assigned designer, and `new` status from the binding. Duplicate phones reuse the existing lead and do not create duplicate notifications or commissions.
+- `POST /api/leads/[id]/acquire` is restricted to the assigned designer and atomically changes `new` to `acquired`, storing `acquiredAt/acquiredBy` and one `lead_acquisition_commissions` snapshot in `pending_settlement`. The lead list/detail surfaces use the canonical five-step status labels and keep historical status values backward-compatible.
+- `/acquisition-commissions` and its settle API are tenant-scoped. Enterprise admins and platform admins can mark pending records as paid; measurers can only view their own records.
+- `staff_notifications` stores in-app notifications and the mini-program notification APIs expose unread/read operations. Its partial `(dedupe_key, channel)` unique index is matched by the notification insert conflict predicate, so duplicate writes are ignored correctly. WeChat delivery is best-effort and never rolls back the lead transaction.

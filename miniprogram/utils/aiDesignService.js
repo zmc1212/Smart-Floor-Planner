@@ -107,6 +107,16 @@ function loadHistory(page = 1, limit = 12) {
   return api.request(`/miniprogram/ai/history?page=${page}&limit=${limit}`, 'GET');
 }
 
+// The API keeps the authenticated operator boundary and exact floor-plan filter
+// on the server, so a busy surveyor's older customer render cannot be missed.
+function loadHeroFloorPlanResults(floorPlanId) {
+  if (!floorPlanId) return Promise.resolve([]);
+  return api.request(
+    `/miniprogram/ai/history?heroFloorPlanId=${encodeURIComponent(floorPlanId)}`,
+    'GET'
+  ).then((res) => res.data || []);
+}
+
 function deleteHistory(id) {
   return api.request(`/miniprogram/ai/history/${id}`, 'DELETE');
 }
@@ -121,6 +131,7 @@ module.exports = {
   getTask,
   retryTask,
   loadHistory,
+  loadHeroFloorPlanResults,
   deleteHistory,
   groupFlatSources,
 };

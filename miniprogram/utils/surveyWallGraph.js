@@ -61,7 +61,9 @@ function createSession() {
     lastWallSnapWallId: '',
     lastWallSnapT: null,
     lastWallSnapLine: '',
-    previewMeasurementSide: ''
+    previewMeasurementSide: '',
+    previewMeasurementStartInsetMm: 0,
+    previewMeasurementEndInsetMm: 0
   };
 }
 
@@ -153,6 +155,12 @@ function ensureSessionSpaceTracking(floor) {
   if (typeof session.previewMeasurementSide !== 'string') {
     session.previewMeasurementSide = '';
   }
+  if (!Number.isFinite(Number(session.previewMeasurementStartInsetMm))) {
+    session.previewMeasurementStartInsetMm = 0;
+  }
+  if (!Number.isFinite(Number(session.previewMeasurementEndInsetMm))) {
+    session.previewMeasurementEndInsetMm = 0;
+  }
   if (typeof session.previewAngleSource !== 'string') {
     session.previewAngleSource = '';
   }
@@ -216,6 +224,32 @@ function findClosedSpaceForWall(floor, wallId) {
     Array.isArray(space.wallIds) &&
     space.wallIds.indexOf(wallId) !== -1
   )) || null;
+}
+
+function normalizeMeasurementInset(value) {
+  const parsed = Math.round(Number(value) || 0);
+  return Math.max(0, parsed);
+}
+
+function getWallCoordinateLength(floor, wall) {
+  if (!floor || !wall) return 0;
+  return distanceMm(
+    getNode(floor, wall.startNodeId),
+    getNode(floor, wall.endNodeId)
+  );
+}
+
+function getWallMeasurementInsets(wall) {
+  return {
+    start: normalizeMeasurementInset(wall && wall.measurementStartInsetMm),
+    end: normalizeMeasurementInset(wall && wall.measurementEndInsetMm)
+  };
+}
+
+function getMeasuredWallLength(floor, wall) {
+  const coordinateLength = getWallCoordinateLength(floor, wall);
+  const insets = getWallMeasurementInsets(wall);
+  return Math.max(0, coordinateLength - insets.start - insets.end);
 }
 
 function calculateBoundaryCentroid(floor, wallIds) {
@@ -352,7 +386,7 @@ function hasWallConnectionAtPoint(floor, wall, point) {
   });
 }
 
-function buildResolvedSegment(floor, wall, options) {
+function buildBaseWallSegment(floor, wall, options) {
   const opts = options || {};
   const start = opts.startPoint || getNode(floor, wall.startNodeId);
   const end = opts.endPoint || getNode(floor, wall.endNodeId);
@@ -396,6 +430,100 @@ function buildResolvedSegment(floor, wall, options) {
   };
 }
 
+function findPerpendicularClosedBoundaryWall(floor, node, towardPoint, excludedWallId, preferredWallId) {
+  if (!floor || !node || !towardPoint) return null;
+  const dx = towardPoint.xMm - node.xMm;
+  const dy = towardPoint.yMm - node.yMm;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  if (!length) return null;
+  const outgoingDirection = { x: dx / length, y: dy / length };
+  const candidates = [];
+
+  (floor.walls || []).forEach((candidate) => {
+    if (!candidate || candidate.id === excludedWallId || !findClosedSpaceForWall(floor, candidate.id)) return;
+    const candidateStart = getNode(floor, candidate.startNodeId);
+    const candidateEnd = getNode(floor, candidate.endNodeId);
+    const isPreferred = candidate.id === preferredWallId;
+    const touchesNode = candidate.startNodeId === node.id || candidate.endNodeId === node.id ||
+      (isPreferred && pointTouchesWallSegment(node, candidateStart, candidateEnd));
+    if (!touchesNode) return;
+    const segment = buildBaseWallSegment(floor, candidate);
+    if (!segment) return;
+    const parallelScore = Math.abs(dot(outgoingDirection, segment.direction));
+    const outwardScore = dot(outgoingDirection, segment.normal);
+    if (parallelScore > 0.25 || outwardScore < 0.25) return;
+    candidates.push({ wall: candidate, parallelScore, outwardScore, isPreferred });
+  });
+
+  candidates.sort((first, second) => (
+    first.parallelScore - second.parallelScore ||
+    Number(second.isPreferred) - Number(first.isPreferred) ||
+    second.outwardScore - first.outwardScore
+  ));
+  return candidates.length ? candidates[0].wall : null;
+}
+
+function resolveClosedBoundaryInsetMm(floor, node, towardPoint, options) {
+  const opts = options || {};
+  const boundaryWall = findPerpendicularClosedBoundaryWall(
+    floor,
+    node,
+    towardPoint,
+    opts.excludedWallId || '',
+    opts.preferredWallId || ''
+  );
+  if (!boundaryWall) return 0;
+  return Math.round(resolveRenderThicknessMm(boundaryWall, opts));
+}
+
+function isClosedBoundaryCorner(floor, session) {
+  if (!floor || !session || !session.activeSpaceStartNodeId || !session.activeSpaceSharedWallId) return false;
+  if (!findClosedSpaceForWall(floor, session.activeSpaceSharedWallId)) return false;
+  const incidentClosedWalls = (floor.walls || []).filter((wall) => (
+    (wall.startNodeId === session.activeSpaceStartNodeId || wall.endNodeId === session.activeSpaceStartNodeId) &&
+    !!findClosedSpaceForWall(floor, wall.id)
+  ));
+  return incidentClosedWalls.length >= 2;
+}
+
+function buildResolvedSegment(floor, wall, options) {
+  const opts = options || {};
+  const base = buildBaseWallSegment(floor, wall, opts);
+  if (!base) return null;
+  const storedInsets = getWallMeasurementInsets(wall);
+  const renderStartInset = storedInsets.start > 0
+    ? resolveClosedBoundaryInsetMm(floor, base.start, base.end, {
+      excludedWallId: wall.id,
+      renderThicknessMmMap: opts.renderThicknessMmMap
+    }) || storedInsets.start
+    : 0;
+  const renderEndInset = storedInsets.end > 0
+    ? resolveClosedBoundaryInsetMm(floor, base.end, base.start, {
+      excludedWallId: wall.id,
+      renderThicknessMmMap: opts.renderThicknessMmMap
+    }) || storedInsets.end
+    : 0;
+  const maximumInset = Math.max(0, base.lengthMm - 1);
+  const startInset = Math.min(renderStartInset, maximumInset);
+  const endInset = Math.min(renderEndInset, Math.max(0, maximumInset - startInset));
+  const start = addVector(base.start, base.direction, startInset);
+  const end = addVector(base.end, base.direction, -endInset);
+
+  return Object.assign({}, base, {
+    topologyStart: base.start,
+    topologyEnd: base.end,
+    start,
+    end,
+    lengthMm: Number.isFinite(Number(wall.lengthMm))
+      ? Math.max(0, Math.round(Number(wall.lengthMm)))
+      : Math.max(0, base.lengthMm - storedInsets.start - storedInsets.end),
+    measurementStartInsetMm: storedInsets.start,
+    measurementEndInsetMm: storedInsets.end,
+    outerStart: addVector(start, base.normal, base.thicknessMm),
+    outerEnd: addVector(end, base.normal, base.thicknessMm)
+  });
+}
+
 function normalForMeasurementSide(start, end, side) {
   if (!start || !end) return null;
   const dx = end.xMm - start.xMm;
@@ -422,6 +550,44 @@ function resolveStableAxisMeasurementSide(start, end) {
   return dot(leftNormal, preferredNormal) >= dot(rightNormal, preferredNormal) ? 'left' : 'right';
 }
 
+function resolveBoundaryAlignmentSourceWall(floor, session, start, end) {
+  const sourceWall = getWall(floor, session.activeSpaceSharedWallId);
+  if (!sourceWall || !start || !end || !start.id) return sourceWall;
+
+  const previewLength = distanceMm(start, end);
+  if (!previewLength) return sourceWall;
+  const previewDirection = {
+    x: (end.xMm - start.xMm) / previewLength,
+    y: (end.yMm - start.yMm) / previewLength
+  };
+  let bestWall = sourceWall;
+  const sourceSegment = buildResolvedSegment(floor, sourceWall);
+  let bestScore = sourceSegment
+    ? Math.abs(dot(previewDirection, sourceSegment.direction))
+    : -1;
+
+  // A closed-room corner belongs to two boundary walls. Use the wall aligned
+  // with the outgoing preview to preserve the inner/outer corner distinction.
+  (floor.walls || []).forEach((wall) => {
+    if (
+      wall.id === sourceWall.id ||
+      (wall.startNodeId !== start.id && wall.endNodeId !== start.id) ||
+      !findClosedSpaceForWall(floor, wall.id)
+    ) {
+      return;
+    }
+    const segment = buildResolvedSegment(floor, wall);
+    if (!segment) return;
+    const score = Math.abs(dot(previewDirection, segment.direction));
+    if (score > bestScore + 0.001) {
+      bestScore = score;
+      bestWall = wall;
+    }
+  });
+
+  return bestWall;
+}
+
 function resolveBoundaryAlignedMeasurementSide(floor, session, start, end) {
   if (!floor || !session || !start || !end) return session ? session.measurementSide : 'left';
   const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
@@ -432,7 +598,7 @@ function resolveBoundaryAlignedMeasurementSide(floor, session, start, end) {
     return session.measurementSide;
   }
 
-  const sourceWall = getWall(floor, session.activeSpaceSharedWallId);
+  const sourceWall = resolveBoundaryAlignmentSourceWall(floor, session, start, end);
   const sourceSegment = sourceWall ? buildResolvedSegment(floor, sourceWall) : null;
   if (!sourceSegment || !sourceSegment.normal) return session.measurementSide;
 
@@ -450,6 +616,35 @@ function resolveBoundaryAlignedMeasurementSide(floor, session, start, end) {
   }
 
   return leftScore >= rightScore ? 'left' : 'right';
+}
+
+function resolvePreviewMeasurementStartInsetMm(floor, session, anchor, previewPoint) {
+  if (!floor || !session || !anchor || !previewPoint || !session.activeSpaceSharedWallId) return 0;
+  const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+    ? session.activeSpaceStartWallIndex
+    : 0;
+  const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
+  if (activeWallCount !== 0 || !findClosedSpaceForWall(floor, session.activeSpaceSharedWallId)) return 0;
+  return resolveClosedBoundaryInsetMm(floor, anchor, previewPoint, {
+    preferredWallId: session.activeSpaceSharedWallId
+  });
+}
+
+function resolveMeasurementEndInsetMm(floor, start, end, preferredWallId, excludedWallId) {
+  if (!floor || !start || !end) return 0;
+  return resolveClosedBoundaryInsetMm(floor, end, start, {
+    excludedWallId: excludedWallId || '',
+    preferredWallId: preferredWallId || ''
+  });
+}
+
+function calculateMeasuredPreviewLength(anchor, previewPoint, startInsetMm, endInsetMm) {
+  return Math.max(
+    0,
+    distanceMm(anchor, previewPoint) -
+      normalizeMeasurementInset(startInsetMm) -
+      normalizeMeasurementInset(endInsetMm)
+  );
 }
 
 function intersectLines(a1, a2, b1, b2) {
@@ -585,6 +780,42 @@ function isSafeClosurePath(points, occupiedSegments) {
   return true;
 }
 
+function isSafeOrthogonalClosurePath(points, occupiedSegments) {
+  if (!Array.isArray(points) || points.length < 2) return false;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+    const length = distanceMm(start, end);
+    // The first short leg is an alignment correction that disappears when
+    // the cursor snaps onto the opposite rectangle edge. All persisted legs
+    // still need the normal minimum wall length.
+    if (index > 0 && length < MIN_WALL_LENGTH_MM) return false;
+    if (length <= 0) continue;
+    const intersects = occupiedSegments.some((segment) => (
+      segment.start && segment.end && hasClosureInteriorIntersection(
+        start,
+        end,
+        segment.start,
+        segment.end
+      )
+    ));
+    if (intersects) return false;
+  }
+  return true;
+}
+
+function isAxisAlignedSegment(start, end) {
+  if (!start || !end) return false;
+  return Math.abs(end.xMm - start.xMm) <= RECTANGLE_ALIGNMENT_TOLERANCE_MM ||
+    Math.abs(end.yMm - start.yMm) <= RECTANGLE_ALIGNMENT_TOLERANCE_MM;
+}
+
+function getMinimumClosureSuggestionWallCount(floor, session) {
+  if (!session || !session.activeSpaceSharedWallId) return 2;
+  if (!isClosedBoundaryCorner(floor, session)) return 1;
+  return 3;
+}
+
 function findMergeClosurePlan(floor, session, endPoint) {
   if (!floor || !session || !endPoint) return null;
 
@@ -600,7 +831,18 @@ function findMergeClosurePlan(floor, session, endPoint) {
   // A reset cursor can begin a new wall chain from an existing boundary. In
   // that case, one measured wall plus a new closing edge can form a room by
   // following the existing boundary back to the snapped start point.
-  if (session.activeSpaceSharedWallId && activeStartNode && anchor && requiredWallCount >= 1) {
+  // Closed-corner continuations may use the opposite corner as a snap
+  // reference on their second wall, but that reference must not become a
+  // closure suggestion until a third new wall exists.
+  const minimumSharedWallCount = isClosedBoundaryCorner(floor, session) && session.mode === 'straight'
+    ? 2
+    : getMinimumClosureSuggestionWallCount(floor, session);
+  if (
+    session.activeSpaceSharedWallId &&
+    activeStartNode &&
+    anchor &&
+    requiredWallCount >= minimumSharedWallCount
+  ) {
     const closureStart = includesPreview ? endPoint : anchor;
     const activeWallIds = {};
     activeWalls.forEach((wall) => { activeWallIds[wall.id] = true; });
@@ -620,7 +862,11 @@ function findMergeClosurePlan(floor, session, endPoint) {
       const candidateConnections = (floor.walls || []).filter((wall) => (
         !activeWallIds[wall.id] && (wall.startNodeId === candidate.id || wall.endNodeId === candidate.id)
       ));
-      if (candidateConnections.length !== 1) continue;
+      // Corners of an already closed room have two boundary connections. They
+      // remain valid merge targets when the new chain can return through an
+      // existing boundary path; restricting this to dangling nodes prevents
+      // adjacent rooms from closing when started at a closed-room corner.
+      if (candidateConnections.length < 1) continue;
 
       const boundaryPath = findWallPathBetweenNodes(
         floor,
@@ -628,26 +874,42 @@ function findMergeClosurePlan(floor, session, endPoint) {
         activeStartNode.id,
         activeWallIds
       );
-      if (boundaryPath.length < 2) continue;
+      // findWallPathBetweenNodes returns wall ids, so a single existing shared
+      // wall is a valid boundary path (and is the normal corner-to-corner
+      // adjacent-room case).
+      if (boundaryPath.length < 1) continue;
 
-      const crossesExistingWall = segments.some((segment) => (
-        segment.start && segment.end && hasClosureInteriorIntersection(
-          closureStart,
-          candidate,
-          segment.start,
-          segment.end
-        )
-      ));
-      if (!crossesExistingWall) {
+      // A restarted chain from a closed-room corner usually reaches the
+      // opposite corner through an L-shaped orthogonal route. The old logic
+      // only accepted a direct axis-aligned segment, so two valid walls never
+      // exposed the merge candidate until the cursor happened to be diagonal.
+      const allowOrthogonalSharedPath = session.mode === 'straight' &&
+        isClosedBoundaryCorner(floor, session);
+      const pathCandidates = allowOrthogonalSharedPath
+        ? buildOrthogonalClosurePoints(candidate, closureStart, anchor)
+        : [[closureStart, candidate]];
+      for (let pathIndex = 0; pathIndex < pathCandidates.length; pathIndex += 1) {
+        const points = normalizeClosurePoints(pathCandidates[pathIndex]);
+        if (session.mode === 'straight' && points.some((point, pointIndex) => (
+          pointIndex > 0 && !isAxisAlignedSegment(points[pointIndex - 1], point)
+        ))) continue;
+        const safePath = allowOrthogonalSharedPath
+          ? isSafeOrthogonalClosurePath(points, segments)
+          : isSafeClosurePath(points, segments);
+        if (!safePath) continue;
         return {
           targetNode: candidate,
-          points: [closureStart, candidate]
+          points
         };
       }
     }
   }
 
-  if (!activeStartNode || !anchor || requiredWallCount < 3 || distanceMm(endPoint, activeStartNode) < MIN_WALL_LENGTH_MM) {
+  // In straight mode, two confirmed orthogonal walls already determine the
+  // remaining rectangle. Surface that two-segment closure as a suggestion;
+  // the missing walls are still only persisted after the user confirms it.
+  const minimumWallCount = session.mode === 'straight' ? 2 : 3;
+  if (!activeStartNode || !anchor || requiredWallCount < minimumWallCount || distanceMm(endPoint, activeStartNode) < MIN_WALL_LENGTH_MM) {
     return null;
   }
 
@@ -708,7 +970,25 @@ function getClosurePath(floor, session) {
 
   const plan = findMergeClosurePlan(floor, session, currentNode);
   if (!plan || !plan.targetNode || plan.targetNode.id !== session.closeCandidateNodeId) return [];
-  return plan.points;
+  const points = plan.points.map((point) => ({ xMm: point.xMm, yMm: point.yMm }));
+  if (points.length >= 2) {
+    const previous = points[points.length - 2];
+    const target = points[points.length - 1];
+    const endInsetMm = resolveMeasurementEndInsetMm(
+      floor,
+      previous,
+      plan.targetNode,
+      session.activeSpaceSharedWallId
+    );
+    const length = distanceMm(previous, target);
+    if (endInsetMm > 0 && length > endInsetMm) {
+      points[points.length - 1] = {
+        xMm: Math.round(target.xMm + (previous.xMm - target.xMm) / length * endInsetMm),
+        yMm: Math.round(target.yMm + (previous.yMm - target.yMm) / length * endInsetMm)
+      };
+    }
+  }
+  return points;
 }
 
 function isUsableJoinPoint(segment, point) {
@@ -923,19 +1203,74 @@ function maybeSnapThirdWallForRectangle(floor, session, anchor, previewPoint) {
   };
 }
 
-function pointFromLength(anchor, previewPoint, lengthMm) {
+function pointFromLength(anchor, previewPoint, lengthMm, startInsetMm, endInsetMm) {
   const dx = previewPoint.xMm - anchor.xMm;
   const dy = previewPoint.yMm - anchor.yMm;
   const length = Math.sqrt(dx * dx + dy * dy);
 
+  const coordinateLengthMm = lengthMm +
+    normalizeMeasurementInset(startInsetMm) +
+    normalizeMeasurementInset(endInsetMm);
+
   if (length === 0) {
-    return { xMm: anchor.xMm + lengthMm, yMm: anchor.yMm };
+    return { xMm: anchor.xMm + coordinateLengthMm, yMm: anchor.yMm };
   }
 
   return {
-    xMm: Math.round(anchor.xMm + dx / length * lengthMm),
-    yMm: Math.round(anchor.yMm + dy / length * lengthMm)
+    xMm: Math.round(anchor.xMm + dx / length * coordinateLengthMm),
+    yMm: Math.round(anchor.yMm + dy / length * coordinateLengthMm)
   };
+}
+
+function resolveClosedCornerOuterVertex(floor, node, guideDirection) {
+  if (!floor || !node) return null;
+  const wantsVerticalWall = guideDirection === 'vertical';
+  const candidates = [];
+  (floor.walls || []).forEach((wall) => {
+    if (!findClosedSpaceForWall(floor, wall.id) ||
+      (wall.startNodeId !== node.id && wall.endNodeId !== node.id)) return;
+    const start = getNode(floor, wall.startNodeId);
+    const end = getNode(floor, wall.endNodeId);
+    if (!start || !end) return;
+    const isVerticalWall = Math.abs(end.xMm - start.xMm) <= 1;
+    if (isVerticalWall !== wantsVerticalWall) return;
+    const geometry = buildWallRenderGeometry(floor, wall);
+    if (!geometry) return;
+    const point = wall.startNodeId === node.id ? geometry.outerStart : geometry.outerEnd;
+    if (point) candidates.push(point);
+  });
+  return candidates[0] || null;
+}
+
+function resolveSharedBoundaryOppositeNode(floor, session) {
+  if (!floor || !session || !session.activeSpaceSharedWallId || !session.activeSpaceStartNodeId) {
+    return null;
+  }
+  const firstWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+    ? session.activeSpaceStartWallIndex
+    : 0;
+  const firstWall = floor.walls[firstWallIndex];
+  const firstSegment = firstWall ? buildBaseWallSegment(floor, firstWall) : null;
+  const candidates = (floor.walls || []).filter((wall) => (
+    findClosedSpaceForWall(floor, wall.id) &&
+    (wall.startNodeId === session.activeSpaceStartNodeId || wall.endNodeId === session.activeSpaceStartNodeId)
+  )).map((wall) => {
+    const segment = buildBaseWallSegment(floor, wall);
+    return {
+      wall,
+      parallelScore: firstSegment && segment
+        ? Math.abs(dot(firstSegment.direction, segment.direction))
+        : (wall.id === session.activeSpaceSharedWallId ? 0 : 1),
+      preferred: wall.id === session.activeSpaceSharedWallId
+    };
+  }).sort((first, second) => (
+    first.parallelScore - second.parallelScore || Number(second.preferred) - Number(first.preferred)
+  ));
+  const wall = candidates.length ? candidates[0].wall : null;
+  if (!wall) return null;
+  return wall.startNodeId === session.activeSpaceStartNodeId
+    ? getNode(floor, wall.endNodeId)
+    : getNode(floor, wall.startNodeId);
 }
 
 function maybeSnapResetChainForRectangleClosure(floor, session, anchor, previewPoint) {
@@ -947,36 +1282,52 @@ function maybeSnapResetChainForRectangleClosure(floor, session, anchor, previewP
     ? session.activeSpaceStartWallIndex
     : 0;
   const activeWallCount = Math.max(0, floor.walls.length - startWallIndex);
-  if (activeWallCount !== 0 || !session.activeSpaceSharedWallId) {
+  // A restarted chain may need the first or second measured wall to align
+  // with the far endpoint of an existing shared boundary.
+  if (activeWallCount > 1 || !session.activeSpaceSharedWallId) {
     return { point: previewPoint, guide: null };
   }
 
   const previewSession = Object.assign({}, session, { previewPoint });
-  const closureNode = findMergeClosureCandidate(floor, previewSession, previewPoint);
+  const closureNode = isClosedBoundaryCorner(floor, session)
+    ? resolveSharedBoundaryOppositeNode(floor, session)
+    : findMergeClosureCandidate(floor, previewSession, previewPoint);
   if (!closureNode) {
     return { point: previewPoint, guide: null };
   }
 
   const previewIsHorizontal = isHorizontalSegment(anchor, previewPoint);
-  const alignedPoint = previewIsHorizontal
-    ? { xMm: closureNode.xMm, yMm: previewPoint.yMm }
-    : { xMm: previewPoint.xMm, yMm: closureNode.yMm };
-  const offset = previewIsHorizontal
-    ? Math.abs(previewPoint.xMm - closureNode.xMm)
-    : Math.abs(previewPoint.yMm - closureNode.yMm);
-  const alignedClosureNode = offset <= RECTANGLE_ALIGNMENT_TOLERANCE_MM
-    ? findMergeClosureCandidate(
-      floor,
-      Object.assign({}, session, { previewPoint: alignedPoint }),
-      alignedPoint
-    )
+  const guideDirection = previewIsHorizontal ? 'vertical' : 'horizontal';
+  const outerVertex = isClosedBoundaryCorner(floor, session)
+    ? resolveClosedCornerOuterVertex(floor, closureNode, guideDirection)
     : null;
+  const snapTargets = [
+    { point: closureNode, snapLine: 'inner' }
+  ];
+  if (outerVertex && distanceMm(outerVertex, closureNode) > 1) {
+    snapTargets.push({ point: outerVertex, snapLine: 'outer' });
+  }
+  snapTargets.sort((first, second) => {
+    const firstOffset = previewIsHorizontal
+      ? Math.abs(previewPoint.xMm - first.point.xMm)
+      : Math.abs(previewPoint.yMm - first.point.yMm);
+    const secondOffset = previewIsHorizontal
+      ? Math.abs(previewPoint.xMm - second.point.xMm)
+      : Math.abs(previewPoint.yMm - second.point.yMm);
+    return firstOffset - secondOffset;
+  });
+  const snapTarget = snapTargets[0];
+  const alignedPoint = previewIsHorizontal
+    ? { xMm: snapTarget.point.xMm, yMm: previewPoint.yMm }
+    : { xMm: previewPoint.xMm, yMm: snapTarget.point.yMm };
+  const offset = previewIsHorizontal
+    ? Math.abs(previewPoint.xMm - snapTarget.point.xMm)
+    : Math.abs(previewPoint.yMm - snapTarget.point.yMm);
 
   if (
-    !alignedClosureNode ||
-    alignedClosureNode.id !== closureNode.id ||
+    offset > RECTANGLE_ALIGNMENT_TOLERANCE_MM ||
     distanceMm(anchor, alignedPoint) < MIN_WALL_LENGTH_MM ||
-    distanceMm(alignedPoint, closureNode) < MIN_WALL_LENGTH_MM
+    distanceMm(alignedPoint, snapTarget.point) < MIN_WALL_LENGTH_MM
   ) {
     return { point: previewPoint, guide: null };
   }
@@ -985,8 +1336,9 @@ function maybeSnapResetChainForRectangleClosure(floor, session, anchor, previewP
     point: alignedPoint,
     guide: {
       type: 'rectangle-third-wall',
-      direction: previewIsHorizontal ? 'vertical' : 'horizontal',
-      referencePoint: { xMm: closureNode.xMm, yMm: closureNode.yMm },
+      direction: guideDirection,
+      snapLine: snapTarget.snapLine,
+      referencePoint: { xMm: snapTarget.point.xMm, yMm: snapTarget.point.yMm },
       snappedPoint: { xMm: alignedPoint.xMm, yMm: alignedPoint.yMm }
     }
   };
@@ -1080,7 +1432,7 @@ function refreshWallMetrics(floor) {
   floor.walls.forEach((wall) => {
     const start = getNode(floor, wall.startNodeId);
     const end = getNode(floor, wall.endNodeId);
-    wall.lengthMm = distanceMm(start, end);
+    wall.lengthMm = getMeasuredWallLength(floor, wall);
     wall.angleDeg = angleDeg(start, end);
   });
 }
@@ -1454,6 +1806,20 @@ function getSharedWallProjection(floor, session, point) {
   if (startT !== null && Math.abs(projection.t - startT) * distanceMm(start, end) < MIN_WALL_LENGTH_MM) {
     return null;
   }
+  const endpointCandidates = [
+    { node: start, t: 0 },
+    { node: end, t: 1 }
+  ];
+  const nearestEndpoint = endpointCandidates
+    .map((candidate) => Object.assign(candidate, {
+      distanceMm: distanceMm(projection.point, candidate.node)
+    }))
+    .sort((a, b) => a.distanceMm - b.distanceMm)[0];
+  if (nearestEndpoint && nearestEndpoint.distanceMm <= CLOSE_TOLERANCE_MM) {
+    projection.point = { xMm: nearestEndpoint.node.xMm, yMm: nearestEndpoint.node.yMm };
+    projection.node = nearestEndpoint.node;
+    projection.t = nearestEndpoint.t;
+  }
   if (projection.t <= 0.0001) projection.node = start;
   if (projection.t >= 0.9999) projection.node = end;
   projection.wall = wall;
@@ -1488,6 +1854,21 @@ function findSharedWallClosureProjection(floor, session, point) {
     if (endProjection.distanceMm > CLOSE_TOLERANCE_MM) return;
     if (Math.abs(endProjection.t - startProjection.t) * distanceMm(start, end) < MIN_WALL_LENGTH_MM) return;
 
+    const endpointCandidates = [
+      { node: start, t: 0 },
+      { node: end, t: 1 }
+    ];
+    const nearestEndpoint = endpointCandidates
+      .map((candidate) => Object.assign(candidate, {
+        distanceMm: distanceMm(endProjection.point, candidate.node)
+      }))
+      .sort((a, b) => a.distanceMm - b.distanceMm)[0];
+    if (nearestEndpoint && nearestEndpoint.distanceMm <= CLOSE_TOLERANCE_MM) {
+      endProjection.point = { xMm: nearestEndpoint.node.xMm, yMm: nearestEndpoint.node.yMm };
+      endProjection.node = nearestEndpoint.node;
+      endProjection.t = nearestEndpoint.t;
+    }
+
     if (!best || endProjection.distanceMm < best.distanceMm) {
       best = Object.assign({}, endProjection, { wall, start, end });
     }
@@ -1516,6 +1897,20 @@ function findAnySharedWallClosureProjection(floor, session, point) {
 
     const projection = projectPointToWallSegment(point, start, end);
     if (!projection || projection.distanceMm > CLOSE_TOLERANCE_MM) return;
+    const endpointCandidates = [
+      { node: start, t: 0 },
+      { node: end, t: 1 }
+    ];
+    const nearestEndpoint = endpointCandidates
+      .map((candidate) => Object.assign(candidate, {
+        distanceMm: distanceMm(projection.point, candidate.node)
+      }))
+      .sort((a, b) => a.distanceMm - b.distanceMm)[0];
+    if (nearestEndpoint && nearestEndpoint.distanceMm <= CLOSE_TOLERANCE_MM) {
+      projection.point = { xMm: nearestEndpoint.node.xMm, yMm: nearestEndpoint.node.yMm };
+      projection.node = nearestEndpoint.node;
+      projection.t = nearestEndpoint.t;
+    }
     if (!best || projection.distanceMm < best.distanceMm) {
       best = Object.assign({}, projection, { wall, start, end });
     }
@@ -1571,6 +1966,8 @@ function cloneWallSegment(sourceWall, startNodeId, endNodeId, id) {
     angleDeg: sourceWall.angleDeg,
     thicknessMm: sourceWall.thicknessMm,
     measurementSide: sourceWall.measurementSide,
+    measurementStartInsetMm: 0,
+    measurementEndInsetMm: 0,
     inputSource: sourceWall.inputSource || 'manual',
     angleSource: sourceWall.angleSource || '',
     angleInteriorDeg: Number.isFinite(sourceWall.angleInteriorDeg) ? sourceWall.angleInteriorDeg : null,
@@ -1620,14 +2017,19 @@ function replaceWallInSpaces(floor, wallId, replacementIds) {
 function remapOpeningsForSplitWall(floor, originalWall, segments) {
   ensureOpenings(floor).forEach((opening) => {
     if (opening.wallId !== originalWall.id) return;
-    const centerOffset = opening.centerOffsetMm || 0;
+    const originalInsets = getWallMeasurementInsets(originalWall);
+    const centerOffset = (opening.centerOffsetMm || 0) + originalInsets.start;
     const target = segments.find((segment) => (
       centerOffset >= segment.startAlongMm - 1 &&
       centerOffset <= segment.endAlongMm + 1
     )) || segments[segments.length - 1];
     if (!target) return;
     opening.wallId = target.wall.id;
-    opening.centerOffsetMm = Math.round(centerOffset - target.startAlongMm);
+    opening.centerOffsetMm = Math.round(
+      centerOffset -
+      target.startAlongMm -
+      getWallMeasurementInsets(target.wall).start
+    );
     normalizeOpeningToWall(floor, opening);
     normalizeOpeningDirection(opening);
   });
@@ -1638,7 +2040,7 @@ function splitWallAtNodes(floor, wallId, cutNodeIds) {
   const originalWall = floor.walls[wallIndex];
   if (wallIndex === -1 || !originalWall) return { sharedWallId: wallId, segmentIds: [wallId] };
 
-  const wallLength = originalWall.lengthMm || distanceMm(
+  const wallLength = distanceMm(
     getNode(floor, originalWall.startNodeId),
     getNode(floor, originalWall.endNodeId)
   );
@@ -1672,6 +2074,9 @@ function splitWallAtNodes(floor, wallId, cutNodeIds) {
   }
 
   if (!segmentRecords.length) return { sharedWallId: wallId, segmentIds: [wallId] };
+  const originalInsets = getWallMeasurementInsets(originalWall);
+  segmentRecords[0].wall.measurementStartInsetMm = originalInsets.start;
+  segmentRecords[segmentRecords.length - 1].wall.measurementEndInsetMm = originalInsets.end;
   floor.walls.splice(wallIndex, 1, ...segmentRecords.map((record) => record.wall));
   refreshWallMetrics(floor);
   replaceWallInSpaces(floor, originalWall.id, segmentRecords.map((record) => record.wall.id));
@@ -1805,9 +2210,25 @@ function startPreview(draft, rawPoint) {
     anchor,
     rectangleSnap.point
   );
-  const previewPoint = resetClosureSnap.point;
-  const previewLengthMm = distanceMm(anchor, previewPoint);
-  const previewMeasurementSide = resolveBoundaryAlignedMeasurementSide(floor, session, anchor, previewPoint);
+  let previewPoint = resetClosureSnap.point;
+  let previewMeasurementStartInsetMm = resolvePreviewMeasurementStartInsetMm(
+    floor,
+    session,
+    anchor,
+    previewPoint
+  );
+  let previewMeasurementEndInsetMm = 0;
+  let previewLengthMm = calculateMeasuredPreviewLength(
+    anchor,
+    previewPoint,
+    previewMeasurementStartInsetMm,
+    previewMeasurementEndInsetMm
+  );
+  let previewMeasurementSide = resolveBoundaryAlignedMeasurementSide(floor, session, anchor, previewPoint);
+  const activeWallCount = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
+  if (activeWallCount === 0 && session.activeSpaceSharedWallId) {
+    session.measurementSide = previewMeasurementSide;
+  }
 
   session.state = 'wallPreview';
   session.previewPoint = previewPoint;
@@ -1816,6 +2237,8 @@ function startPreview(draft, rawPoint) {
   session.previewAngleSource = '';
   session.previewInteriorAngleDeg = null;
   session.previewMeasurementSide = previewMeasurementSide;
+  session.previewMeasurementStartInsetMm = previewMeasurementStartInsetMm;
+  session.previewMeasurementEndInsetMm = previewMeasurementEndInsetMm;
   session.pendingWallId = '';
   session.selectedWallId = '';
   session.selectedOpeningId = '';
@@ -1826,13 +2249,50 @@ function startPreview(draft, rawPoint) {
   session.alignmentSnapGuide = resetClosureSnap.guide || rectangleSnap.guide || directionSnap.guide;
 
   const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
-  const activeWallCount = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
-  if (activeStartNode && (activeWallCount >= 2 || !!session.activeSpaceSharedWallId)) {
+  const minimumClosureWallCount = getMinimumClosureSuggestionWallCount(floor, session);
+  if (activeStartNode && activeWallCount + 1 >= minimumClosureWallCount) {
     const sharedProjection = findAnySharedWallClosureProjection(floor, session, previewPoint);
     if (sharedProjection) {
+      if (
+        session.mode === 'straight' &&
+        sharedProjection.node &&
+        distanceMm(previewPoint, sharedProjection.point) <= CLOSE_TOLERANCE_MM
+      ) {
+        previewPoint = sharedProjection.point;
+        previewMeasurementStartInsetMm = resolvePreviewMeasurementStartInsetMm(
+          floor,
+          session,
+          anchor,
+          previewPoint
+        );
+        previewMeasurementSide = resolveBoundaryAlignedMeasurementSide(
+          floor,
+          session,
+          anchor,
+          previewPoint
+        );
+        session.previewPoint = previewPoint;
+        session.previewLengthMm = previewLengthMm;
+        session.previewAngleDeg = angleDeg(anchor, previewPoint);
+        session.previewMeasurementSide = previewMeasurementSide;
+        if (!session.alignmentSnapGuide && distanceMm(previewPoint, rawPoint) > 0) {
+          session.alignmentSnapGuide = {
+            type: 'rectangle-third-wall',
+            direction: isHorizontalSegment(anchor, previewPoint) ? 'vertical' : 'horizontal',
+            referencePoint: { xMm: sharedProjection.node.xMm, yMm: sharedProjection.node.yMm },
+            snappedPoint: { xMm: previewPoint.xMm, yMm: previewPoint.yMm }
+          };
+        }
+      }
       session.closeCandidatePoint = sharedProjection.point;
       session.closeCandidateType = 'shared-wall';
       session.closeCandidateSharedWallId = sharedProjection.wall.id;
+      previewMeasurementEndInsetMm = resolveMeasurementEndInsetMm(
+        floor,
+        anchor,
+        previewPoint,
+        sharedProjection.wall.id
+      );
     } else if (distanceMm(previewPoint, activeStartNode) <= CLOSE_TOLERANCE_MM) {
       session.closeCandidateNodeId = activeStartNode.id;
       session.closeCandidateType = 'start';
@@ -1844,6 +2304,15 @@ function startPreview(draft, rawPoint) {
       }
     }
   }
+
+  session.previewMeasurementStartInsetMm = previewMeasurementStartInsetMm;
+  session.previewMeasurementEndInsetMm = previewMeasurementEndInsetMm;
+  session.previewLengthMm = calculateMeasuredPreviewLength(
+    anchor,
+    previewPoint,
+    previewMeasurementStartInsetMm,
+    previewMeasurementEndInsetMm
+  );
 
   return touchDraft(next);
 }
@@ -1925,6 +2394,12 @@ function reopenLastDiagonalWallForAngle(draft) {
     ? lastWall.angleInteriorDeg
     : null;
   session.previewMeasurementSide = lastWall.measurementSide || session.measurementSide;
+  session.previewMeasurementStartInsetMm = normalizeMeasurementInset(
+    lastWall.measurementStartInsetMm
+  );
+  session.previewMeasurementEndInsetMm = normalizeMeasurementInset(
+    lastWall.measurementEndInsetMm
+  );
   session.pendingWallId = '';
   session.selectedWallId = '';
   session.selectedOpeningId = '';
@@ -1945,9 +2420,14 @@ function cancelPending(draft) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  session.previewMeasurementSide = '';
+  session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementEndInsetMm = 0;
   session.previewAngleSource = '';
   session.previewInteriorAngleDeg = null;
   session.previewMeasurementSide = '';
+  session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementEndInsetMm = 0;
   session.pendingWallId = '';
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
@@ -1984,11 +2464,33 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     throw new Error('请先拖出待确认墙体');
   }
 
-  let endPoint = pointFromLength(anchor, session.previewPoint, parsedLength);
+  let endPoint = pointFromLength(
+    anchor,
+    session.previewPoint,
+    parsedLength,
+    session.previewMeasurementStartInsetMm,
+    session.previewMeasurementEndInsetMm
+  );
+  // Length confirmation (manual or BLE) rebuilds the endpoint from the
+  // measured value. Reapply rectangle/closure snapping here so confirmation
+  // cannot silently discard a snap that was visible during the drag preview.
+  const confirmedRectangleSnap = maybeSnapThirdWallForRectangle(
+    floor,
+    session,
+    anchor,
+    endPoint
+  );
+  const confirmedResetClosureSnap = maybeSnapResetChainForRectangleClosure(
+    floor,
+    session,
+    anchor,
+    confirmedRectangleSnap.point
+  );
+  endPoint = confirmedResetClosureSnap.point;
   const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
   const activeWallCountBeforeCommit = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
-  const canCloseWithSharedBoundary = activeWallCountBeforeCommit >= 2 ||
-    !!session.activeSpaceSharedWallId;
+  const minimumClosureWallCount = getMinimumClosureSuggestionWallCount(floor, session);
+  const canCloseWithSharedBoundary = activeWallCountBeforeCommit + 1 >= minimumClosureWallCount;
   const sharedProjection = canCloseWithSharedBoundary
     ? findAnySharedWallClosureProjection(floor, session, endPoint)
     : null;
@@ -1998,6 +2500,17 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   if (sharedProjection) {
     endPoint = sharedProjection.point;
   }
+  const measurementStartInsetMm = normalizeMeasurementInset(
+    session.previewMeasurementStartInsetMm
+  );
+  const measurementEndInsetMm = sharedProjection
+    ? resolveMeasurementEndInsetMm(
+      floor,
+      anchor,
+      endPoint,
+      sharedProjection.wall.id
+    )
+    : normalizeMeasurementInset(session.previewMeasurementEndInsetMm);
   const shortenLastWall = canShortenLastWall(
     floor,
     session,
@@ -2014,6 +2527,9 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
 
   const measurementSide = session.previewMeasurementSide ||
     resolveBoundaryAlignedMeasurementSide(floor, session, anchor, endPoint);
+  if (activeWallCountBeforeCommit === 0 && session.activeSpaceSharedWallId) {
+    session.measurementSide = measurementSide;
+  }
   const extendLastWall = canExtendLastWall(
     floor,
     session,
@@ -2029,7 +2545,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     anchor.xMm = Math.round(endPoint.xMm);
     anchor.yMm = Math.round(endPoint.yMm);
     endNode = anchor;
-    wall.lengthMm = distanceMm(getNode(floor, wall.startNodeId), endNode);
+    wall.lengthMm = getMeasuredWallLength(floor, wall);
     wall.angleDeg = angleDeg(getNode(floor, wall.startNodeId), endNode);
     wall.inputSource = inputSource || 'manual';
     wall.measuredAt = nowIso();
@@ -2040,10 +2556,15 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
       startNodeId: anchor.id,
       endNodeId: endNode.id,
       mode: session.mode,
-      lengthMm: distanceMm(anchor, endNode),
+      lengthMm: Math.max(
+        0,
+        distanceMm(anchor, endNode) - measurementStartInsetMm - measurementEndInsetMm
+      ),
       angleDeg: angleDeg(anchor, endNode),
       thicknessMm: session.thicknessMm,
       measurementSide,
+      measurementStartInsetMm,
+      measurementEndInsetMm,
       inputSource: inputSource || 'manual',
       angleSource: session.previewAngleSource || '',
       angleInteriorDeg: session.previewInteriorAngleDeg,
@@ -2062,6 +2583,8 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   session.previewAngleSource = '';
   session.previewInteriorAngleDeg = null;
   session.previewMeasurementSide = '';
+  session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementEndInsetMm = 0;
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
   session.closeCandidateType = '';
@@ -2083,7 +2606,10 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     session.closeCandidateNodeId = activeStartNode.id;
     session.closeCandidateType = 'start';
   } else {
-    const mergeCandidate = findMergeClosureCandidate(floor, session, endNode);
+    const minimumMergeWallCount = getMinimumClosureSuggestionWallCount(floor, session);
+    const mergeCandidate = activeWallCount >= minimumMergeWallCount
+      ? findMergeClosureCandidate(floor, session, endNode)
+      : null;
     if (mergeCandidate) {
       session.state = 'mergeClosing';
       session.closeCandidateNodeId = mergeCandidate.id;
@@ -2133,24 +2659,56 @@ function confirmClosure(draft) {
       const closureEndNode = index === points.length - 1
         ? closeTargetNode
         : addNode(floor, point);
-      floor.walls.push({
-        id: nextId('wall'),
-        startNodeId: closureStartNode.id,
-        endNodeId: closureEndNode.id,
-        mode: session.mode,
-        lengthMm: distanceMm(closureStartNode, closureEndNode),
-        angleDeg: angleDeg(closureStartNode, closureEndNode),
-        thicknessMm: session.thicknessMm,
-        measurementSide: resolveBoundaryAlignedMeasurementSide(
+      const measurementEndInsetMm = index === points.length - 1
+        ? resolveMeasurementEndInsetMm(
           floor,
-          session,
           closureStartNode,
-          closureEndNode
-        ),
-        inputSource: 'closure-merge',
-        status: 'confirmed',
-        measuredAt: nowIso()
-      });
+          closureEndNode,
+          session.activeSpaceSharedWallId
+        )
+        : 0;
+      const measurementSide = resolveBoundaryAlignedMeasurementSide(
+        floor,
+        session,
+        closureStartNode,
+        closureEndNode
+      );
+      const extendLastWall = index === 0 && canExtendLastWall(
+        floor,
+        session,
+        closureStartNode,
+        closureEndNode,
+        measurementSide,
+        false
+      );
+      if (extendLastWall) {
+        const lastWall = getLastWall(floor);
+        lastWall.endNodeId = closureEndNode.id;
+        lastWall.measurementEndInsetMm = measurementEndInsetMm;
+        lastWall.lengthMm = getMeasuredWallLength(floor, lastWall);
+        lastWall.angleDeg = angleDeg(getNode(floor, lastWall.startNodeId), closureEndNode);
+        lastWall.inputSource = 'closure-merge';
+        lastWall.measuredAt = nowIso();
+      } else {
+        floor.walls.push({
+          id: nextId('wall'),
+          startNodeId: closureStartNode.id,
+          endNodeId: closureEndNode.id,
+          mode: session.mode,
+          lengthMm: Math.max(
+            0,
+            distanceMm(closureStartNode, closureEndNode) - measurementEndInsetMm
+          ),
+          angleDeg: angleDeg(closureStartNode, closureEndNode),
+          thicknessMm: session.thicknessMm,
+          measurementSide,
+          measurementStartInsetMm: 0,
+          measurementEndInsetMm,
+          inputSource: 'closure-merge',
+          status: 'confirmed',
+          measuredAt: nowIso()
+        });
+      }
       closureStartNode = closureEndNode;
     });
     session.anchorNodeId = closeTargetNode.id;
@@ -2165,7 +2723,9 @@ function confirmClosure(draft) {
   const activeWallCount = Math.max(0, floor.walls.length - startWallIndex);
   const closeCandidateSharedWallId = session.closeCandidateSharedWallId;
   const hasSharedBoundary = !!(session.activeSpaceSharedWallId || closeCandidateSharedWallId);
-  const minimumActiveWallCount = session.activeSpaceSharedWallId ? 1 : (hasSharedBoundary ? 2 : 3);
+  const minimumActiveWallCount = session.activeSpaceSharedWallId
+    ? getMinimumClosureSuggestionWallCount(floor, session)
+    : (hasSharedBoundary ? 2 : 3);
 
   if (session.state !== 'closing' || (!session.closeCandidateNodeId && !session.closeCandidatePoint) || activeWallCount < minimumActiveWallCount) {
     return next;
@@ -2268,6 +2828,9 @@ function confirmClosure(draft) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  session.previewMeasurementSide = '';
+  session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementEndInsetMm = 0;
   session.alignmentSnapGuide = null;
   session.closedFromNodeId = oldEndNodeId;
   session.activeSpaceStartNodeId = '';
@@ -2292,6 +2855,8 @@ function selectWall(draft, wallId) {
   floor.session.previewPoint = null;
   floor.session.previewLengthMm = 0;
   floor.session.previewAngleDeg = 0;
+  floor.session.previewMeasurementStartInsetMm = 0;
+  floor.session.previewMeasurementEndInsetMm = 0;
   floor.session.closeCandidateNodeId = '';
   floor.session.closeCandidatePoint = null;
   floor.session.closeCandidateType = '';
@@ -2312,6 +2877,8 @@ function selectOpening(draft, openingId) {
   floor.session.previewPoint = null;
   floor.session.previewLengthMm = 0;
   floor.session.previewAngleDeg = 0;
+  floor.session.previewMeasurementStartInsetMm = 0;
+  floor.session.previewMeasurementEndInsetMm = 0;
   floor.session.closeCandidateNodeId = '';
   floor.session.closeCandidatePoint = null;
   floor.session.closeCandidateType = '';
@@ -2466,6 +3033,8 @@ function deleteWall(draft, wallId) {
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
   session.previewMeasurementSide = '';
+  session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementEndInsetMm = 0;
   session.pendingWallId = '';
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
@@ -2475,6 +3044,12 @@ function deleteWall(draft, wallId) {
   session.closedFromNodeId = '';
   session.selectedWallId = '';
   session.selectedOpeningId = '';
+  // A deleted wall invalidates the previous cursor/wall snap. Keeping it lets
+  // resetCursor restore a node that no longer belongs to the edited chain.
+  session.lastWallSnapNodeId = '';
+  session.lastWallSnapWallId = '';
+  session.lastWallSnapT = null;
+  session.lastWallSnapLine = '';
   if (!preserveActiveChain) {
     session.activeSpaceStartNodeId = '';
     session.activeSpaceStartWallIndex = floor.walls.length;
@@ -2553,6 +3128,11 @@ function snapCursorToWall(draft, point, target) {
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
   session.previewMeasurementSide = '';
+  session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementEndInsetMm = 0;
+  session.previewMeasurementSide = '';
+  session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementEndInsetMm = 0;
   session.pendingWallId = '';
   session.selectedWallId = '';
   session.selectedOpeningId = '';
@@ -2619,8 +3199,10 @@ function remeasureSelectedWall(draft, lengthMm, inputSource) {
   const dx = (movingNode.xMm - fixedNode.xMm) / safeLength;
   const dy = (movingNode.yMm - fixedNode.yMm) / safeLength;
 
-  movingNode.xMm = Math.round(fixedNode.xMm + dx * parsedLength);
-  movingNode.yMm = Math.round(fixedNode.yMm + dy * parsedLength);
+  const insets = getWallMeasurementInsets(wall);
+  const coordinateLength = parsedLength + insets.start + insets.end;
+  movingNode.xMm = Math.round(fixedNode.xMm + dx * coordinateLength);
+  movingNode.yMm = Math.round(fixedNode.yMm + dy * coordinateLength);
   wall.inputSource = inputSource || 'manual';
   wall.measuredAt = nowIso();
 
@@ -2653,17 +3235,39 @@ function setMeasurementSide(draft, side, wallId) {
   if (!canSetInitialMeasurementSide(floor, floor.session, wall && wall.id)) return next;
 
   floor.session.measurementSide = targetSide;
-  wall.measurementSide = targetSide;
+  if (floor.session.previewPoint) {
+    floor.session.previewMeasurementSide = targetSide;
+  }
+  if (wall) {
+    wall.measurementSide = targetSide;
+  }
 
   return touchDraft(next);
 }
 
 function canSetInitialMeasurementSide(floor, session, wallId) {
-  if (!floor || !session || session.activeSpaceSharedWallId) return false;
+  if (!floor || !session) return false;
   const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
     ? session.activeSpaceStartWallIndex
     : 0;
+  const activeWallCount = Math.max(0, floor.walls.length - startWallIndex);
   const firstWall = floor.walls[startWallIndex] || null;
+
+  if (session.activeSpaceSharedWallId) {
+    const startsFromClosedBoundary = !!findClosedSpaceForWall(floor, session.activeSpaceSharedWallId);
+    const previewStage = startsFromClosedBoundary &&
+      activeWallCount === 0 &&
+      !!session.previewPoint &&
+      (session.state === 'wallPreview' || session.state === 'awaitingLength');
+    const committedStage = startsFromClosedBoundary &&
+      activeWallCount === 1 &&
+      !!firstWall &&
+      (!wallId || wallId === firstWall.id) &&
+      (session.state === 'wallCommitted' || session.state === 'mergeClosing') &&
+      !session.previewPoint;
+    return previewStage || committedStage;
+  }
+
   return !!(
     firstWall &&
     (!wallId || wallId === firstWall.id) &&
@@ -2687,6 +3291,8 @@ function placeNewWallChainCursor(draft, point) {
   session.previewAngleSource = '';
   session.previewInteriorAngleDeg = null;
   session.previewMeasurementSide = '';
+  session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementEndInsetMm = 0;
   session.pendingWallId = '';
   session.selectedWallId = '';
   session.selectedOpeningId = '';
@@ -2731,6 +3337,9 @@ function resetCursor(draft) {
   session.previewPoint = null;
   session.previewLengthMm = 0;
   session.previewAngleDeg = 0;
+  session.previewMeasurementSide = '';
+  session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementEndInsetMm = 0;
   session.pendingWallId = '';
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
@@ -2753,7 +3362,10 @@ function resetCursor(draft) {
     session.activeSpaceStartNodeId = lastSnapNode.id;
     session.activeSpaceStartWallIndex = floor.walls.length;
     session.activeSpaceSharedWallId = lastSnapWall.id;
-    session.activeSpaceSharedStartT = typeof session.lastWallSnapT === 'number' ? session.lastWallSnapT : pointAlongWall(floor, lastSnapWall, lastSnapNode.id) / Math.max(1, lastSnapWall.lengthMm || 1);
+    session.activeSpaceSharedStartT = typeof session.lastWallSnapT === 'number'
+      ? session.lastWallSnapT
+      : pointAlongWall(floor, lastSnapWall, lastSnapNode.id) /
+        Math.max(1, getWallCoordinateLength(floor, lastSnapWall));
     session.activeSpaceSharedSnapLine = session.lastWallSnapLine || 'inner';
     return touchDraft(next);
   }
@@ -2836,6 +3448,7 @@ module.exports = {
   buildWallJoinRenderGeometries,
   buildSpaceBoundaryPoints,
   getClosurePath,
+  getMinimumClosureSuggestionWallCount,
   calculateSpaceAreaMm2,
   setMode,
   placeCursor,

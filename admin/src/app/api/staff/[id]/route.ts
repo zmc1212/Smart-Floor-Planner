@@ -8,6 +8,7 @@ import {
 import {
   AdminUserRepository,
   type AdminUserUpdate,
+  AiCreationRepository,
   DepartmentRepository,
 } from '@/db/repositories';
 import { withTenantTransaction } from '@/db/transaction';
@@ -22,6 +23,9 @@ interface StaffUpdateBody {
   status?: string;
   promoterIds?: string[];
   departmentId?: string | null;
+  wechatId?: string;
+  wechatQrAssetId?: string | null;
+  boundDesignerId?: string | null;
 }
 
 const BUSINESS_ROLES = [
@@ -129,6 +133,30 @@ export async function PUT(
               updateData.passwordHash = await bcrypt.hash(body.password, 10);
             }
 
+            const nextRole = body.role || current.role;
+            if ((nextRole !== 'designer' || body.status === 'inactive') && current.role === 'designer') {
+              if ((await repository.findMeasurersForDesigner(current.id)).length > 0) {
+                throw new Error('璇ヨ璁″笀浠嶇粦瀹氭祴閲忓憳锛岃鍏堝畬鎴愭崲缁戞垨鍚敤璐﹀彿');
+              }
+            }
+            const qrAssetId = body.wechatQrAssetId === undefined
+              ? current.wechatQrAssetId
+              : parseOptionalPostgresId(body.wechatQrAssetId, 'wechatQrAssetId');
+            const nextWechatId = body.wechatId === undefined ? current.wechatId : body.wechatId.trim();
+            if (nextRole === 'designer' && (!nextWechatId || !qrAssetId)) {
+              throw new Error('设计师必须填写微信号并上传个人二维码');
+            }
+            if (qrAssetId && qrAssetId !== current.wechatQrAssetId) {
+              const asset = await new AiCreationRepository(transaction).findMediaAssetForUpdate(qrAssetId);
+              if (!asset || asset.enterpriseId !== current.enterpriseId || asset.ownerType !== 'staff_wechat_qr' || (asset.ownerId !== null && asset.ownerId !== staffId)) {
+                throw new Error('微信二维码资源无效或已被使用');
+              }
+              updateData.wechatQrAssetId = qrAssetId;
+              await new AiCreationRepository(transaction).updateMediaAsset(qrAssetId, { ownerId: staffId });
+            }
+            if (body.wechatId !== undefined || nextRole !== current.role) updateData.wechatId = nextRole === 'designer' ? nextWechatId || null : null;
+            if (body.wechatQrAssetId !== undefined || nextRole !== current.role) updateData.wechatQrAssetId = nextRole === 'designer' ? qrAssetId : null;
+
             const promoterIds = body.promoterIds?.map((promoterId) =>
               parsePostgresId(promoterId, 'promoterId')
             );
@@ -139,7 +167,23 @@ export async function PUT(
                 }
               }
             }
-            return repository.update(staffId, updateData, promoterIds);
+            const targetDesignerId = nextRole === 'measurer'
+              ? (body.boundDesignerId === undefined
+                ? current.boundDesignerId
+                : parseOptionalPostgresId(body.boundDesignerId, 'boundDesignerId'))
+              : null;
+            if (nextRole === 'measurer') {
+              if (!targetDesignerId) throw new Error('测量员必须绑定设计师');
+              const designer = await repository.findById(targetDesignerId);
+              if (!designer || designer.role !== 'designer' || designer.status !== 'active' || designer.enterpriseId !== current.enterpriseId) {
+                throw new Error('绑定的设计师必须是同企业启用中的设计师');
+              }
+            }
+            const result = await repository.update(staffId, updateData, promoterIds);
+            if (!result) return null;
+            if (targetDesignerId) await repository.replaceMeasurerDesignerBinding(staffId, targetDesignerId, current.enterpriseId!);
+            else await repository.deleteMeasurerDesignerBinding(staffId);
+            return repository.findById(staffId);
           }
         );
 
@@ -197,8 +241,15 @@ export async function DELETE(
         }
         const deleted = await withTenantTransaction(
           context.enterpriseId!,
-          (transaction) =>
-            new AdminUserRepository(transaction).delete(parsePostgresId(id))
+          async (transaction) => {
+            const repository = new AdminUserRepository(transaction);
+            const target = await repository.findById(parsePostgresId(id));
+            if (target?.role === 'designer' && (await repository.findMeasurersForDesigner(target.id)).length > 0) {
+              throw new Error('该设计师仍绑定测量员，请先完成换绑');
+            }
+            await repository.deleteMeasurerDesignerBinding(parsePostgresId(id));
+            return repository.delete(parsePostgresId(id));
+          }
         );
         if (!deleted) {
           return NextResponse.json(

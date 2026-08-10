@@ -16,7 +16,8 @@ export type PostgresMediaOwnerType =
   | 'ai_workflow_source'
   | 'ai_generation_output'
   | 'ai_generation_input'
-  | 'manual_upload';
+  | 'manual_upload'
+  | 'staff_wechat_qr';
 
 type StorePostgresMediaInput = {
   enterpriseId: bigint;
