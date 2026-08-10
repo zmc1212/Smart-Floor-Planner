@@ -33,7 +33,14 @@
   </view>
 
   <view class="main-content">
-    <lead-list class="lead-list-host" id="leadList" openid="{{openid}}" bindadd="onOpenLeadModal" bindprofilechange="onDesignerProfileChange" />
+    <lead-list
+      class="lead-list-host"
+      style="display: flex; height: 100%; flex: 1; min-height: 0; flex-direction: column;"
+      id="leadList"
+      openid="{{openid}}"
+      bindadd="onOpenLeadModal"
+      bindprofilechange="onDesignerProfileChange"
+    />
   </view>
 
   <designer-contact-sheet

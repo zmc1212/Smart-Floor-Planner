@@ -36,6 +36,18 @@ test('Acquisition collaboration is a role-aware subpackage workbench with truthf
   assert.match(pageJs, /此操作不会改变客户线索的量房或设计进度/);
 });
 
+test('Acquisition collaboration supports pull-to-refresh and visible-page polling', () => {
+  assert.match(pageWxml, /refresher-enabled/);
+  assert.match(pageWxml, /refresher-triggered="\{\{refreshing\}\}"/);
+  assert.match(pageWxml, /bindrefresherrefresh="onRefresh"/);
+  assert.match(pageJs, /async onRefresh\(\)/);
+  assert.match(pageJs, /setInterval\(/);
+  assert.match(pageJs, /clearInterval\(/);
+  assert.match(pageJs, /onHide\(\)/);
+  assert.match(pageJs, /onUnload\(\)/);
+  assert.match(pageJs, /30 \* 1000/);
+});
+
 test('The shared designer contact sheet is bottom anchored, read-only, and supports real QR states', () => {
   assert.match(sheetWxml, />设计师名片</);
   assert.match(sheetWxml, /show-menu-by-longpress="\{\{true\}\}"/);

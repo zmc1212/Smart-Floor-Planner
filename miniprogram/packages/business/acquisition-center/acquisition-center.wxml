@@ -16,7 +16,16 @@ FORM: Operate 模式；批准方案未使用随机概念种子。
     <view class="nav-title">获客协作</view>
   </view>
 
-  <scroll-view class="acquisition-scroll" scroll-y enhanced show-scrollbar="{{false}}" bindscrolltolower="onLoadMore">
+  <scroll-view
+    class="acquisition-scroll"
+    scroll-y
+    enhanced
+    show-scrollbar="{{false}}"
+    refresher-enabled
+    refresher-triggered="{{refreshing}}"
+    bindrefresherrefresh="onRefresh"
+    bindscrolltolower="onLoadMore"
+  >
     <view class="acquisition-content">
       <view class="handoff-hero">
         <view class="handoff-copy">

@@ -34,7 +34,7 @@ Formal `FloorPlan.layoutData` remains version 4 surveying data only. Do not rein
 
 | ID | Topic | Status | Evidence |
 | --- | --- | --- | --- |
-| ALG-001 | Shared-wall closure, wall faces, and net area | Diagnosed; implementation pending | Current Mini Program screenshots 1/2; legacy APK screenshot 3 |
+| ALG-001 | Shared-wall closure, wall faces, and net area | Implemented; device visual QA pending | Current Mini Program screenshots 1/2; legacy APK screenshot 3; wall-graph/renderer regressions |
 
 Create later topics as `ALG-002`, `ALG-003`, and so on. Each must retain reproduction steps, input wall graph, legacy baseline, current result, confirmed/inferred cause, scoped fix, regression tests, and verification.
 
@@ -72,6 +72,13 @@ Render or union each physical wall once. Do not create one outward wall body per
 ### Scope and acceptance
 
 The fix is limited to version-4 graph geometry and render read models; API, permissions, BLE audit, and persisted top-level shape remain unchanged. Regression coverage must include vertically adjacent 200 mm-wall rectangles, one shared physical wall, an aligned exterior envelope, independent net areas, separate inner/outer dimension bands, correct measurement insets, and stability after delete, re-snap, remeasure, split, and re-close.
+
+### Implementation and verification (2026-08-10)
+
+- `surveyWallGraph.js` now derives wall faces from each closed space's oriented wall chain. One physical `wall` remains authoritative; each adjacent space selects the face toward its own interior, and adjacent face lines are intersected to form the inner-surface polygon. A topology bridge fully consumed by measurement insets is excluded from the clear boundary.
+- `calculateSpaceAreaMm2(draft, spaceId)`, room fills, and labels use that polygon. `buildSpaceDimensionPlan()` exposes read-only inner/outer boundaries, envelope dimensions, net area, and wall-thickness segments without writing them to `surveyGraph`.
+- The aligned `2230 × 3182 mm` adjacent-room regression references the shared wall from both spaces but emits it once. Both net areas are `7,095,860 mm²`; the second room's raw topology-envelope area of `7,541,860 mm²` is not used as net area, and both exterior side faces remain collinear without a `200 mm` step.
+- Measurement insets, topology nodes, BLE/manual readings, deletion, re-snap, remeasure, split, and re-close behavior are unchanged. The focused renderer, cursor, dimension, and wall-solid suites pass `79/79`; WeChat DevTools/device visual QA remains pending.
 
 ### Evidence to attach next time
 

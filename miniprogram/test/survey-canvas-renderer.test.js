@@ -100,6 +100,32 @@ function createOffsetAdjacentRoomDraft() {
   return surveyGraph.confirmClosure(draft);
 }
 
+function createAlignedAdjacentRoomDraft() {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 2230, yMm: 0 }, 2230);
+  draft = commitWall(draft, { xMm: 2230, yMm: 3182 }, 3182);
+  draft = commitWall(draft, { xMm: 0, yMm: 3182 }, 2230);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 3182);
+  draft = surveyGraph.confirmClosure(draft);
+
+  const floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 0, yMm: 3182 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: 0, yMm: 6564 }, 3182);
+  draft = commitWall(draft, { xMm: 2230, yMm: 6564 }, 2230);
+  draft = commitWall(draft, { xMm: 2230, yMm: 3382 }, 3182);
+  return surveyGraph.confirmClosure(draft);
+}
+
 function createResetCursorMergeClosureDraft() {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 3000, yMm: 0 });
@@ -665,7 +691,59 @@ test('offset adjacent-room closure renders the stepped second room with its own 
   assert.equal(secondLabel.widthMm, 2433);
   assert.equal(secondLabel.heightMm, 4136);
   assert.equal(secondLabel.areaM2, '10.1');
-  assert.equal(secondFill.points.length, 5);
+  assert.equal(secondFill.points.length, 4);
+});
+
+test('aligned adjacent rooms share one wall body and derive independent net-face plans', () => {
+  const draft = createAlignedAdjacentRoomDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const scene = createScene(draft);
+  const closedSpaces = floor.spaces.filter((space) => space.closed);
+  const wallUseCounts = {};
+  closedSpaces.forEach((space) => {
+    space.wallIds.forEach((wallId) => {
+      wallUseCounts[wallId] = (wallUseCounts[wallId] || 0) + 1;
+    });
+  });
+  const sharedWallIds = Object.keys(wallUseCounts).filter((wallId) => wallUseCounts[wallId] === 2);
+
+  assert.equal(closedSpaces.length, 2);
+  assert.equal(sharedWallIds.length, 1);
+  assert.equal(scene.walls.filter((wall) => wall.id === sharedWallIds[0]).length, 1);
+  assert.equal(scene.closedSpaceFills.length, 2);
+  assert.equal(scene.closedSpaceFills.every((fill) => fill.points.length === 4), true);
+
+  const plans = closedSpaces.map((space) => surveyGraph.buildSpaceDimensionPlan(floor, space));
+  plans.forEach((plan) => {
+    assert.deepEqual(plan.inner, { widthMm: 2230, heightMm: 3182, areaMm2: 7095860 });
+    assert.deepEqual(plan.outer, { widthMm: 2630, heightMm: 3582, areaMm2: 9420660 });
+    assert.equal(plan.wallThicknessSegments.length, 4);
+    assert.equal(plan.wallThicknessSegments.every((item) => (
+      item.kind === 'wall-thickness' && item.lengthMm === 200
+    )), true);
+  });
+  assert.equal(surveyGraph.calculateSpaceAreaMm2(draft, closedSpaces[0].id), 7095860);
+  assert.equal(surveyGraph.calculateSpaceAreaMm2(draft, closedSpaces[1].id), 7095860);
+
+  const secondRawBoundary = surveyGraph.buildSpaceBoundaryPoints(floor, closedSpaces[1].wallIds);
+  const rawWidth = Math.max(...secondRawBoundary.map((point) => point.xMm)) -
+    Math.min(...secondRawBoundary.map((point) => point.xMm));
+  const rawHeight = Math.max(...secondRawBoundary.map((point) => point.yMm)) -
+    Math.min(...secondRawBoundary.map((point) => point.yMm));
+  assert.equal(rawWidth * rawHeight, 7541860);
+  assert.notEqual(plans[1].inner.areaMm2, rawWidth * rawHeight);
+
+  const verticalExteriorFaces = scene.walls.filter((wall) => (
+    Math.abs(wall.topologyStart.xMm - wall.topologyEnd.xMm) <= 1 &&
+    wall.id !== sharedWallIds[0]
+  )).map((wall) => Math.round((wall.rawOuterStart.x + wall.rawOuterEnd.x) / 2));
+  const exteriorFaceCounts = verticalExteriorFaces.reduce((counts, value) => {
+    counts[value] = (counts[value] || 0) + 1;
+    return counts;
+  }, {});
+  assert.equal(Object.keys(exteriorFaceCounts).length, 2);
+  assert.deepEqual(Object.values(exteriorFaceCounts).sort((a, b) => a - b), [2, 2]);
+  assert.equal(scene.spaceDimensionPlans.length, 2);
 });
 
 test('stepped straight-wall closure guide renders the inferred right-angle path', () => {

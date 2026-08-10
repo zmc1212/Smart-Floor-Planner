@@ -90,7 +90,7 @@ test('Leads list scroller receives the complete remaining page height', () => {
     path.join(miniRoot, 'pages', 'leads-management', 'leads-management.wxml'),
     'utf8'
   );
-  assert.match(pageWxml, /<lead-list class="lead-list-host"/);
+  assert.match(pageWxml, /<lead-list\s+class="lead-list-host"\s+style="display: flex; height: 100%; flex: 1; min-height: 0; flex-direction: column;"/);
   assert.match(pageWxss, /\.main-content\s*\{[^}]*display:\s*flex;[^}]*flex:\s*1;[^}]*min-height:\s*0;/s);
   assert.match(pageWxss, /\.lead-list-host\s*\{[^}]*height:\s*100%;[^}]*flex:\s*1;[^}]*min-height:\s*0;/s);
   assert.match(componentWxss, /\.lead-list-container\s*\{[^}]*flex:\s*1;[^}]*min-height:\s*0;[^}]*height:\s*100%;/s);

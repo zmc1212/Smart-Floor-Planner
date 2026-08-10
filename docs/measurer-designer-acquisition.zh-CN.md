@@ -139,7 +139,7 @@
 ### Mini Program
 
 - `pages/leads-management/leads-management`：四步业务状态筛选；仅测量员在胶囊安全内容通道看到轻量“我的设计师”入口。
-- `packages/business/acquisition-center/acquisition-center`：设计师确认微信交接；测量员在汇总后通过唯一“我的设计师 / 查看微信”入口查看当前绑定，任务卡只显示等待、回执和提成摘要。
+- `packages/business/acquisition-center/acquisition-center`：设计师确认微信交接；测量员在汇总后通过唯一“我的设计师 / 查看微信”入口查看当前绑定，任务卡只显示等待、回执和提成摘要。任务列表支持原生 `scroll-view` 手动下拉刷新；仅在页面可见时每 30 秒刷新当前状态，隐藏或卸载时清理定时器，并复用在途请求保护。
 - `packages/business/lead-detail`：四步业务状态时间线、正式量房和普通“获客协作”信息组；不重复实现确认动作。
 - `components/designer-contact-sheet/designer-contact-sheet`：线索页、详情和协作工作台复用的只读设计师名片底部抽屉。
 - `packages/business/commission-records`：测量员查看获客提成汇总、明细和结算状态。

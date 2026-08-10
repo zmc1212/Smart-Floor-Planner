@@ -144,7 +144,7 @@ Tenant endpoints must continue to use shared tenant helpers, RLS transactions, a
 ### Mini Program
 
 - `pages/leads-management/leads-management`: four-step business filters and a lightweight measurer-only `我的设计师` entry below the capsule safe lane.
-- `packages/business/acquisition-center/acquisition-center`: designer confirmation plus one page-level measurer designer-contact entry and task-level waiting/receipt/commission-summary views.
+- `packages/business/acquisition-center/acquisition-center`: designer confirmation plus one page-level measurer designer-contact entry and task-level waiting/receipt/commission-summary views. Its task list supports native `scroll-view` pull-to-refresh and refreshes the active status every 30 seconds only while the page is visible; polling is cleared on hide/unload and shares the active-request guard.
 - `packages/business/lead-detail`: four-step status rail, formal surveying, and a normal Acquisition Collaboration information group; confirmation is not duplicated here.
 - `components/designer-contact-sheet/designer-contact-sheet`: the shared read/copy-only bottom sheet used by Leads, lead detail, and the workbench.
 - `packages/business/commission-records`: measurer acquisition commission summary and detail.

@@ -3479,6 +3479,10 @@ function buildSpaceWallFaceSegments(floor, wallIds) {
   if (!chain.length || !centroid) return [];
 
   return chain.map((entry) => {
+    // Closure may persist a short topology bridge whose entire coordinate
+    // length is consumed by a measurement inset. It represents the thickness
+    // connection to a shared wall, not an additional clear-room boundary.
+    if (getMeasuredWallLength(floor, entry.wall) <= 0) return null;
     const base = buildBaseWallSegment(floor, entry.wall);
     if (!base) return null;
     const midpoint = {

@@ -870,6 +870,19 @@ utilities, and the admin APIs they call.
   contains only its measured chain plus the direct shared edge, preserving the
   intended step without swallowing the first room or inflating its dimensions
   and area. Routes, APIs, roles, version-4 data, and BLE audits are unchanged.
+- ALG-001 shared-wall face and net-area correction (2026-08-10): closed-space
+  fills, clear dimensions, and areas now derive the physical inner faces from
+  each space's oriented `wallIds` chain. A shared wall still emits one physical
+  solid while adjacent spaces select their respective faces, and a
+  wall-thickness topology bridge is excluded from the clear boundary. The
+  read-only space plan distinguishes inner/outer boundaries and per-wall
+  thickness segments; room labels no longer replace irregular net area with
+  the longest horizontal wall multiplied by the longest vertical wall. The
+  aligned `2230 × 3182 mm` adjacent-room regression confirms one shared solid,
+  collinear exterior side faces, and independent net areas rather than the
+  second room's raw topology-envelope area. Routes, APIs, roles, BLE audits,
+  and version-4 persistence are unchanged; focused geometry/render tests pass
+  `79/79`, with device visual QA still pending.
 - Closed-wall deletion recovery (2026-08-07): deleting a wall from a closed
   adjacent room now clears stale cursor-snap metadata, so `resetCursor` cannot
   restore a node/wall that was deleted or belongs to the previous room. After
@@ -1022,7 +1035,7 @@ bubble through the original button tree, preserving tap or drag ownership.
 
 The focused business and data contract is [`docs/measurer-designer-acquisition.md`](measurer-designer-acquisition.md) and its Chinese mirror.
 
-- `packages/business/acquisition-center/acquisition-center` is the sole designer confirmation entry. `/api/acquisition-tasks` supplies role-shaped pending/completed tasks, summaries, pagination, failure retry, idempotent confirmation, and exact notification `leadId` targeting. A measurer response returns the current binding once as page-level `designerProfile`; one `My Designer / View WeChat` utility follows the summary and task cards do not repeat designer contact data. Confirmation writes `acquiredAt/acquiredBy` and creates the acquisition commission without changing customer workflow status.
+- `packages/business/acquisition-center/acquisition-center` is the sole designer confirmation entry. `/api/acquisition-tasks` supplies role-shaped pending/completed tasks, summaries, pagination, failure retry, idempotent confirmation, and exact notification `leadId` targeting. A measurer response returns the current binding once as page-level `designerProfile`; one `My Designer / View WeChat` utility follows the summary and task cards do not repeat designer contact data. Confirmation writes `acquiredAt/acquiredBy` and creates the acquisition commission without changing customer workflow status. The task list supports native `scroll-view` pull-to-refresh and refreshes the current status page every 30 seconds while visible; polling stops on hide/unload and never overlaps an active request.
 - `pages/leads-management/leads-management` and `components/lead-list` use the four-stage customer workflow and no longer expose an Acquired filter. Measurers open the shared `designer-contact-sheet` from the capsule-safe `My Designer` entry instead of receiving repeated WeChat and QR blocks on every card.
 - `packages/business/lead-detail/lead-detail` accepts `id` or notification `leadId`, renders the four-stage rail, next action, and an ordinary acquisition fact group, but no acquisition-confirmation hero action. Its formal-surveying card shows only real graph status, closed-space count, and update time, and the shared bottom sheet remains the designer-contact entry.
 - `packages/business/commission-records/commission-records` consumes `/api/commission-records`; measurers receive the independent lead-acquisition records with pending/paid summaries while salesperson order commissions remain unchanged.

@@ -647,46 +647,16 @@ function buildClosedSpaceLabels(floor, project, viewport) {
   const detailViewportScale = (viewport && viewport.scale) || surveyGraph.DEFAULT_SCALE;
 
   return closedSpaces.map((space) => {
-    const boundaryPoints = surveyGraph.buildSpaceBoundaryPoints(floor, space.wallIds);
+    const dimensionPlan = surveyGraph.buildSpaceDimensionPlan(floor, space);
+    const boundaryPoints = dimensionPlan && dimensionPlan.innerBoundaryPoints;
     if (!boundaryPoints || boundaryPoints.length < 3) return null;
 
     const centroidMm = calculatePolygonCentroid(boundaryPoints);
     if (!centroidMm) return null;
     const centroid = project(centroidMm);
-    let area = 0;
-    for (let index = 0; index < boundaryPoints.length; index += 1) {
-      const current = boundaryPoints[index];
-      const next = boundaryPoints[(index + 1) % boundaryPoints.length];
-      area += current.xMm * next.yMm - next.xMm * current.yMm;
-    }
-    area = area / 2;
-
-    // Inner dimensions come from the same measured wall lengths shown inside
-    // the room. Boundary points can sit on the outside corner after wall joins.
-    const walls = space.wallIds
-      .map((id) => surveyGraph.getWall(floor, id))
-      .filter(Boolean);
-    const hWalls = walls.filter((wall) => {
-      const angle = Math.abs(wall.angleDeg || 0);
-      return angle < 45 || angle > 135;
-    });
-    const vWalls = walls.filter((wall) => {
-      const angle = Math.abs(wall.angleDeg || 0);
-      return angle >= 45 && angle <= 135;
-    });
-    const fallbackWidthMm = Math.round(Math.max.apply(null, boundaryPoints.map((p) => p.xMm)) -
-      Math.min.apply(null, boundaryPoints.map((p) => p.xMm)));
-    const fallbackHeightMm = Math.round(Math.max.apply(null, boundaryPoints.map((p) => p.yMm)) -
-      Math.min.apply(null, boundaryPoints.map((p) => p.yMm)));
-    const widthMm = hWalls.length
-      ? Math.round(Math.max.apply(null, hWalls.map((wall) => wall.lengthMm || 0)))
-      : fallbackWidthMm;
-    const heightMm = vWalls.length
-      ? Math.round(Math.max.apply(null, vWalls.map((wall) => wall.lengthMm || 0)))
-      : fallbackHeightMm;
-    const areaM2 = (widthMm && heightMm
-      ? widthMm * heightMm / 1000000
-      : Math.abs(area) / 1000000).toFixed(1);
+    const widthMm = dimensionPlan.inner.widthMm;
+    const heightMm = dimensionPlan.inner.heightMm;
+    const areaM2 = (dimensionPlan.inner.areaMm2 / 1000000).toFixed(1);
 
     return {
       centroid,
@@ -705,7 +675,7 @@ function buildClosedSpaceLabels(floor, project, viewport) {
 function buildClosedSpaceFills(floor, project) {
   return (floor.spaces || []).filter((space) => space.closed && Array.isArray(space.wallIds))
     .map((space) => {
-      const boundaryPoints = surveyGraph.buildSpaceBoundaryPoints(floor, space.wallIds);
+      const boundaryPoints = surveyGraph.buildSpaceInnerBoundaryPoints(floor, space.wallIds);
       if (!boundaryPoints || boundaryPoints.length < 3) return null;
       return {
         id: space.id,
@@ -807,6 +777,13 @@ function createSurveyRenderScene(input) {
   exteriorBoundaryWalls.forEach((wall) => { exteriorSourceWallIds[wall.sourceWallId] = true; });
   walls.forEach((wall) => { wall.isExteriorBoundary = !!exteriorSourceWallIds[wall.id]; });
   const dimensions = resolveDimensions(walls, openings, exteriorBoundaryWalls);
+  const spaceDimensionPlans = (floor.spaces || [])
+    .filter((space) => space.closed && Array.isArray(space.wallIds))
+    .map((space) => ({
+      spaceId: space.id,
+      plan: surveyGraph.buildSpaceDimensionPlan(floor, space)
+    }))
+    .filter((entry) => entry.plan);
 
   return {
     rect,
@@ -826,6 +803,7 @@ function createSurveyRenderScene(input) {
     cursor: buildCursor(floor, session, project),
     closedSpaceFills: buildClosedSpaceFills(floor, project),
     closedSpaceLabels: buildClosedSpaceLabels(floor, project, viewport),
+    spaceDimensionPlans,
     activeSegment: buildActiveSegment(walls, previewWall, session),
     closed: shouldCloseWholeWallPath(floor, previewWall),
     session

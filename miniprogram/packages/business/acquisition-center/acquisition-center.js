@@ -1,5 +1,7 @@
 const api = require('../../../utils/api.js');
 
+const AUTO_REFRESH_INTERVAL = 30 * 1000;
+
 const COMMISSION_STATUS_LABELS = {
   pending_settlement: '待结算',
   paid: '已发放',
@@ -65,6 +67,7 @@ Page({
     tasks: [],
     loading: true,
     loadingMore: false,
+    refreshing: false,
     errorMessage: '',
     page: 1,
     pageSize: 20,
@@ -80,7 +83,19 @@ Page({
   },
 
   onShow() {
+    this._pageVisible = true;
     this.fetchTasks(true);
+    this.startAutoRefresh();
+  },
+
+  onHide() {
+    this._pageVisible = false;
+    this.stopAutoRefresh();
+  },
+
+  onUnload() {
+    this._pageVisible = false;
+    this.stopAutoRefresh();
   },
 
   syncNavigationMetrics() {
@@ -94,7 +109,17 @@ Page({
   },
 
   async fetchTasks(reset = false) {
+    if (this._fetchPromise) return this._fetchPromise;
     if (this.data.loadingMore || (!reset && !this.data.hasMore)) return;
+    this._fetchPromise = this._fetchTasks(reset);
+    try {
+      return await this._fetchPromise;
+    } finally {
+      this._fetchPromise = null;
+    }
+  },
+
+  async _fetchTasks(reset = false) {
     const page = reset ? 1 : this.data.page;
     this.setData(reset
       ? { loading: true, errorMessage: '' }
@@ -140,7 +165,7 @@ Page({
       ) {
         this._deepLinkFallbackTried = true;
         this.setData({ status: 'confirmed' });
-        await this.fetchTasks(true);
+        await this._fetchTasks(true);
       }
     } catch (error) {
       this.setData({
@@ -148,6 +173,30 @@ Page({
         loadingMore: false,
         errorMessage: (error && error.error) || (error && error.message) || '网络异常，请稍后重试'
       });
+    }
+  },
+
+  startAutoRefresh() {
+    this.stopAutoRefresh();
+    this._autoRefreshTimer = setInterval(() => {
+      if (!this._pageVisible || this.data.loading || this.data.loadingMore || this.data.refreshing) return;
+      this.fetchTasks(true);
+    }, AUTO_REFRESH_INTERVAL);
+  },
+
+  stopAutoRefresh() {
+    if (!this._autoRefreshTimer) return;
+    clearInterval(this._autoRefreshTimer);
+    this._autoRefreshTimer = null;
+  },
+
+  async onRefresh() {
+    if (this.data.refreshing) return;
+    this.setData({ refreshing: true });
+    try {
+      await this.fetchTasks(true);
+    } finally {
+      this.setData({ refreshing: false });
     }
   },
 
