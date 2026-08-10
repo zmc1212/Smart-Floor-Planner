@@ -1603,6 +1603,88 @@ function projectInteractionSolidPlan(plan, transform) {
   });
 }
 
+function resolveInteractionStructuralBounds(scene) {
+  if (!scene) return null;
+  const solidPoints = ((scene.wallSolidPlan && scene.wallSolidPlan.rings) || [])
+    .reduce((points, ring) => points.concat(ring || []), []);
+  const wallPoints = (scene.walls || [])
+    .reduce((points, wall) => points.concat((wall && wall.bodyPolygon) || []), []);
+  const fillPoints = (scene.closedSpaceFills || [])
+    .reduce((points, fill) => points.concat((fill && fill.points) || []), []);
+  const points = solidPoints.length ? solidPoints : (wallPoints.length ? wallPoints : fillPoints);
+  if (!points.length) return null;
+
+  return points.reduce((bounds, point) => ({
+    left: Math.min(bounds.left, point.x),
+    top: Math.min(bounds.top, point.y),
+    right: Math.max(bounds.right, point.x),
+    bottom: Math.max(bounds.bottom, point.y)
+  }), {
+    left: Infinity,
+    top: Infinity,
+    right: -Infinity,
+    bottom: -Infinity
+  });
+}
+
+function resolveSafeAxisDelta(contentStart, contentEnd, safeStart, safeEnd) {
+  const contentSize = contentEnd - contentStart;
+  const safeSize = safeEnd - safeStart;
+  if (!(contentSize >= 0) || !(safeSize > 0)) return 0;
+
+  if (contentSize <= safeSize) {
+    if (contentStart < safeStart) return safeStart - contentStart;
+    if (contentEnd > safeEnd) return safeEnd - contentEnd;
+    return 0;
+  }
+
+  // Large plans may overflow the workspace, but panning must not expose blank
+  // space beyond both opposing structural edges.
+  if (contentStart > safeStart) return safeStart - contentStart;
+  if (contentEnd < safeEnd) return safeEnd - contentEnd;
+  return 0;
+}
+
+function constrainViewportToSafeArea(scene, viewport, safeArea) {
+  if (!scene || !scene.rect) return resolveViewport(viewport);
+  const bounds = resolveInteractionStructuralBounds(scene);
+  if (!bounds) return resolveViewport(viewport);
+
+  const rect = resolveRect(scene.rect);
+  const safe = Object.assign({
+    left: 0,
+    top: 0,
+    right: rect.width,
+    bottom: rect.height
+  }, safeArea || {});
+  safe.left = clamp(safe.left, 0, rect.width);
+  safe.top = clamp(safe.top, 0, rect.height);
+  safe.right = clamp(safe.right, safe.left, rect.width);
+  safe.bottom = clamp(safe.bottom, safe.top, rect.height);
+
+  const target = resolveViewport(viewport);
+  const transform = resolveViewportInteractionTransform(scene.viewport, target, rect);
+  const projectedTopLeft = projectInteractionPoint({ x: bounds.left, y: bounds.top }, transform);
+  const projectedBottomRight = projectInteractionPoint({ x: bounds.right, y: bounds.bottom }, transform);
+  const deltaX = resolveSafeAxisDelta(
+    projectedTopLeft.x,
+    projectedBottomRight.x,
+    safe.left,
+    safe.right
+  );
+  const deltaY = resolveSafeAxisDelta(
+    projectedTopLeft.y,
+    projectedBottomRight.y,
+    safe.top,
+    safe.bottom
+  );
+
+  return Object.assign({}, target, {
+    offsetX: target.offsetX + deltaX,
+    offsetY: target.offsetY + deltaY
+  });
+}
+
 // Some Mini Program Canvas versions render transformed compound fills
 // differently from a formal redraw. Project only the already-built paths for
 // gesture frames so fills, solids, and outlines share the target coordinates.
@@ -2026,6 +2108,8 @@ module.exports = {
   drawDraggingCursor,
   clearDraggingCursor,
   resolveViewportInteractionTransform,
+  resolveInteractionStructuralBounds,
+  constrainViewportToSafeArea,
   createViewportInteractionScene,
   hitTestSurveyWall,
   hitTestSurveyOpening

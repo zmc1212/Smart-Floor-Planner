@@ -2903,6 +2903,33 @@ Page({
     };
   },
 
+  getViewportContentSafeArea(rect) {
+    const designScale = Math.max(0.82, Math.min(1.08, rect.width / 390));
+    const edgeInset = 12 * designScale;
+    const rpxScale = rect.width / 750;
+    const rightRailInset = (34 + 88) * rpxScale;
+    const bottomDockInset = (64 + 108) * rpxScale + Number(this.data.bottomSafeArea || 0);
+    const top = Math.max(edgeInset, Number(this.data.overlayContentTop || 0) + edgeInset);
+    return {
+      left: edgeInset,
+      top,
+      right: Math.max(edgeInset, rect.width - rightRailInset - edgeInset),
+      bottom: Math.max(top, rect.height - bottomDockInset - edgeInset)
+    };
+  },
+
+  constrainViewportToWorkspace(viewport) {
+    if (!viewport || !this.canvasRect) return viewport;
+    const interactionScene = this.viewportInteraction && this.viewportInteraction.baseScene;
+    const scene = interactionScene || this.surveyRenderScene;
+    if (!scene) return viewport;
+    return surveyCanvasRenderer.constrainViewportToSafeArea(
+      scene,
+      viewport,
+      this.getViewportContentSafeArea(this.canvasRect)
+    );
+  },
+
   constrainCanvasCircle(circle, safeArea) {
     return Object.assign({}, circle, {
       cx: clamp(circle.cx, safeArea.left + circle.radius, safeArea.right - circle.radius),
@@ -4117,11 +4144,11 @@ Page({
       const rect = this.canvasRect;
       const offsetX = center.x - rect.left - rect.width / 2 - anchorMm.xMm * scale;
       const offsetY = center.y - rect.top - rect.height / 2 - anchorMm.yMm * scale;
-      const nextViewport = {
+      const nextViewport = this.constrainViewportToWorkspace({
         scale,
         offsetX,
         offsetY
-      };
+      });
       if (!this.updateViewportInteraction(nextViewport)) {
         this.draft = surveyGraph.updateViewport(this.draft, nextViewport);
         this.syncFromDraft();
@@ -4203,11 +4230,11 @@ Page({
 
     if (this.touchState.mode === 'pan') {
       const startViewport = this.touchState.startViewport;
-      const nextViewport = {
+      const nextViewport = this.constrainViewportToWorkspace({
         scale: startViewport.scale,
         offsetX: startViewport.offsetX + dx,
         offsetY: startViewport.offsetY + dy
-      };
+      });
       if (!this.updateViewportInteraction(nextViewport)) {
         this.draft = surveyGraph.updateViewport(this.draft, nextViewport);
         this.syncFromDraft();
