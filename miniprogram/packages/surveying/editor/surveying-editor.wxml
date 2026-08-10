@@ -165,20 +165,7 @@
       </cover-view>
     </cover-view>
 
-    <cover-view wx:if="{{objectToolsVisible && !selectedOpening}}" class="tool-group primary-tools object-tools">
-      <cover-view
-        class="tool-button"
-        wx:for="{{objectTools}}"
-        wx:key="key"
-        data-tool="{{item.key}}"
-        bindtap="onToolTap"
-      >
-        <cover-view class="tool-label">{{item.label}}</cover-view>
-        <cover-view class="tool-helper">{{item.helper}}</cover-view>
-      </cover-view>
-    </cover-view>
-
-    <cover-view wx:if="{{!objectToolsVisible && !selectedOpening}}" class="tool-group primary-tools">
+    <cover-view wx:if="{{!selectedOpening}}" class="tool-group primary-tools">
       <cover-view
         class="tool-button {{item.active ? 'active' : ''}}"
         wx:for="{{coreTools}}"
@@ -259,7 +246,6 @@
       <cover-view class="cursor-lens-grid">
         <cover-view class="cursor-lens-cross horizontal"></cover-view>
         <cover-view class="cursor-lens-cross vertical"></cover-view>
-        <cover-view class="cursor-lens-target"></cover-view>
       </cover-view>
       <cover-view class="cursor-lens-meta">
         <cover-view>{{cursorLensSnapLabel}}</cover-view>

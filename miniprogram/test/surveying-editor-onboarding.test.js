@@ -109,6 +109,22 @@ test('surveying toolbar uses the approved rail cuts and stateful BLE icons', () 
   assert.match(editorWxml, /editor-rail\/align\.png/);
 });
 
+test('selected walls do not replace the right rail with a contextual action panel', () => {
+  assert.doesNotMatch(editorWxml, /class="tool-group primary-tools object-tools"/);
+  assert.match(editorWxml, /wx:if="\{\{!selectedOpening\}\}" class="tool-group primary-tools"/);
+  assert.doesNotMatch(editorScript, /OBJECT_TOOLS|objectToolsVisible|objectTools:/);
+  assert.doesNotMatch(editorWxss, /object-tools|tool-helper/);
+});
+
+test('cursor magnifier uses the compact green cross placement marker', () => {
+  assert.match(editorWxml, /class="cursor-lens-cross horizontal"/);
+  assert.match(editorWxml, /class="cursor-lens-cross vertical"/);
+  assert.doesNotMatch(editorWxml, /cursor-lens-target/);
+  assert.match(editorWxss, /\.cursor-lens-cross\s*\{[\s\S]*background:\s*#22c55e;/);
+  assert.match(editorWxss, /\.cursor-lens-cross\.horizontal\s*\{[\s\S]*width:\s*24px;[\s\S]*height:\s*2px;/);
+  assert.match(editorWxss, /\.cursor-lens-cross\.vertical\s*\{[\s\S]*width:\s*2px;[\s\S]*height:\s*24px;/);
+});
+
 test('formal surveying fixed chrome follows the compact high-fidelity reference geometry', () => {
   assert.match(editorWxss, /\.survey-topbar\s*\{[\s\S]*height:\s*160rpx;/);
   assert.match(editorWxss, /\.topbar-right\s*\{[\s\S]*top:\s*94rpx;[\s\S]*right:\s*28rpx;/);

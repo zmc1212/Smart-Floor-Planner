@@ -21,14 +21,6 @@ const RESERVED_TOOLS = [
   { key: 'cad', label: 'CAD' },
   { key: 'more', label: '更多' }
 ];
-const OBJECT_TOOLS = [
-  { key: 'object-edit', label: '编辑', helper: '尺寸' },
-  { key: 'object-split', label: '拆分', helper: '后续' },
-  { key: 'object-add', label: '添加', helper: '门窗' },
-  { key: 'object-arrange', label: '布置', helper: '后续' },
-  { key: 'object-delete', label: '删除', helper: '墙体/门窗' }
-];
-
 const NUMBER_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '清空', '0', '退格'];
 const FORMAL_DRAFT_KEY = 'surveying_draft_v1';
 const FORMAL_DRAFT_BACKUP_KEY = 'surveying_last_draft_backup';
@@ -319,7 +311,6 @@ Page({
     formalNotice: '正式量房草稿',
     showFormalExtras: false,
     coreTools: buildCoreTools('straight', 200),
-    objectTools: OBJECT_TOOLS,
     reservedTools: RESERVED_TOOLS,
     canvasWidth: 0,
     canvasHeight: 0,
@@ -358,7 +349,6 @@ Page({
     cursorLensSnapType: 'none',
     selectedWall: null,
     selectedOpening: null,
-    objectToolsVisible: false,
     canResumeWallDrawing: false,
     spaceSummary: null,
     numberPadVisible: false,
@@ -2337,7 +2327,6 @@ Page({
       closeActionStyle: renderData.closeActionStyle,
       selectedWall,
       selectedOpening,
-      objectToolsVisible: !!(selectedWall || selectedOpening),
       canResumeWallDrawing: !!selectedOpening && floor.walls.length > 0 && !floor.spaces.some((space) => space.closed),
       componentEditorTitle: componentState.title,
       componentTypeLabel: componentState.typeLabel,
@@ -4439,8 +4428,7 @@ Page({
     this.applyDraft(surveyGraph.cancelPending(this.draft), {
       extraData: {
         selectedWall: null,
-        selectedOpening: null,
-        objectToolsVisible: false
+        selectedOpening: null
       },
       persist: false
     });

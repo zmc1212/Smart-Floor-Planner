@@ -70,6 +70,7 @@ fields remain the audit record after the current status advances.
 ### 3.4 Commission
 
 - Enterprise setting: `enterprises.measurer_acquisition_fixed_commission`, default `0.00`.
+- Only the enterprise administrator can read or change the setting through the acquisition-commission rule endpoint; it belongs to the enterprise, not to an employee profile.
 - The amount is snapshotted when the designer confirms the lead; later setting changes do not alter history.
 - `lead_id` is unique, so one lead can produce at most one acquisition commission.
 - States are `pending_settlement`, `paid`, and `voided`. The implemented settlement transition is `pending_settlement -> paid`.
@@ -126,9 +127,9 @@ fields remain the audit record after the current status advances.
 | `GET /api/acquisition-tasks` | Current Mini Program designer or measurer | Role-isolated pending/completed tasks, pagination, time filters, and truthful summaries. Measurer responses add one page-level current-binding `designerProfile`; task rows do not repeat WeChat or QR fields. |
 | `GET /api/acquisition-commissions` | Measurer sees own records; enterprise/platform admins can filter by tenant | Lists records and summaries by enterprise, measurer, and status. |
 | `POST /api/acquisition-commissions/[id]/settle` | Enterprise admin, `admin`, `super_admin` | Allows only `pending_settlement -> paid`. |
+| `GET/PATCH /api/acquisition-commissions/settings` | Enterprise admin in its own enterprise | Reads or updates the fixed amount for future acquisition confirmations. |
 | `GET /api/miniprogram/notifications` | Authenticated Mini Program staff | Lists the employee's notifications and unread count. |
 | `POST /api/miniprogram/notifications/read` | Authenticated Mini Program staff | Marks only the employee's notifications as read. |
-| `PATCH /api/admin/enterprises/[id]` | Enterprise configuration permission | Changes the fixed amount for future confirmations. |
 
 Tenant endpoints must continue to use shared tenant helpers, RLS transactions, and the authenticated staff context. Do not hand-roll cross-enterprise filters.
 
@@ -136,8 +137,8 @@ Tenant endpoints must continue to use shared tenant helpers, RLS transactions, a
 
 ### Admin
 
-- `/staff`: designer WeChat profile, measurer binding, and fixed commission setting.
-- `/acquisition-commissions`: filters, summaries, and manual settlement.
+- `/staff`: designer WeChat profile and measurer-to-designer binding only.
+- `/acquisition-commissions`: settlement-record filters, summaries, and manual settlement; `/acquisition-commissions/settings` is the enterprise-admin-only fixed commission rule page.
 - `/leads`: lead list, canonical four-step business labels, an independent acquisition-confirmation filter, and the terminal
   `closed` filter.
 

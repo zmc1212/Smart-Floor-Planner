@@ -397,12 +397,12 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
 
 专项业务与数据契约见 [`docs/measurer-designer-acquisition.zh-CN.md`](measurer-designer-acquisition.zh-CN.md)，英文镜像为 `docs/measurer-designer-acquisition.md`。
 
-- `/staff` 中设计师必须填写 `wechatId` 并上传媒体资源二维码；测量员必须绑定同企业启用中的设计师。关系写入 `measurer_designer_bindings`，一个设计师可绑定多个测量员。仍有绑定时禁止停用或删除设计师。
+- `/staff` 中设计师必须填写 `wechatId` 并上传媒体资源二维码；测量员必须绑定同企业启用中的设计师。关系写入 `measurer_designer_bindings`，一个设计师可绑定多个测量员。仍有绑定时禁止停用或删除设计师；该页面不再承载获客提成配置。
 - `POST /api/leads` 服务端按绑定关系写入测量员负责人、设计师负责人及 `new` 状态；手机号重复时复用原线索，不重复通知或提成。
 - `GET /api/acquisition-tasks` 仅向小程序设计师/测量员开放，按租户、角色、负责人和时间范围返回分页待确认/已完成任务、汇总、脱敏客户信息及提成字段；测量员当前绑定设计师联系方式只作为页面级 `designerProfile` 返回一次，任务条目不重复返回微信号或二维码。它不扩大小程序对后台线索列表的读取范围。
 - `POST /api/leads/[id]/acquire` 仅负责该线索的设计师可调用，使用 `assigned_to`、`acquired_at IS NULL` 和允许状态条件做原子确认，只写 `acquiredAt/acquiredBy` 并生成金额快照为 `pending_settlement` 的获客提成；重复确认返回冲突且不会重复提成，也不会修改客户业务状态。直接通过线索新增/更新接口写入 `acquired` 会被拒绝。
 - `0017_acquisition_workbench.sql` 将历史 `leads.status='acquired'` 归并为 `new`，迁移时输出缺失 `acquired_at` 或提成关联的修复告警，并为负责人/推广人获客查询建立索引；运行时仍兼容未迁移的历史值。
-- `/acquisition-commissions` 及结算 API 使用租户隔离；企业负责人和平台管理员可标记已发放，测量员只能查看自己的记录。
+- `/acquisition-commissions` 及结算 API 使用租户隔离；企业负责人和平台管理员可标记已发放，测量员只能查看自己的记录。其 `/acquisition-commissions/settings` 规则页调用 `GET/PATCH /api/acquisition-commissions/settings`，仅本企业企业负责人可为之后确认的线索设置固定金额；既有记录继续保留确认时的金额快照。
 - `staff_notifications` 记录站内通知，小程序提供未读查询与已读接口；获客待确认/已确认通知的 `metadata.page` 深链到协作中心对应 `leadId`。写入冲突目标与其 `(dedupe_key, channel)` 部分唯一索引条件一致，可正确忽略重复写入；微信发送失败不会回滚线索。
 
 ## 核心模型

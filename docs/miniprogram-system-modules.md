@@ -678,6 +678,12 @@ utilities, and the admin APIs they call.
   inspector. This is a presentation and selected-opening control-surface
   refinement only: the route, API, role boundary, v4 graph, measurement audit,
   opening fields, component editor, and persistence behavior are unchanged.
+- Wall-selection rail simplification (2026-08-10): selecting a wall no longer
+  replaces the ordinary right rail with the contextual `编辑 / 拆分 / 添加 /
+  布置 / 删除` panel. The normal four-item rail remains visible; the existing
+  on-canvas wall toolbar remains the available wall-specific control surface.
+  This presentation-only removal does not change routes, APIs, roles, the v4
+  wall graph, persistence, or measurement audits.
 - Visual baseline: `design-references/all-pages-ip-v1/03-surveying-editor-idle.png`,
   `18-surveying-editor-active.png`, `19-surveying-state-board.png`,
   `design-references/all-pages-ip-v1/ChatGPT Image 2026年8月5日 15_44_17.png`, and
@@ -961,6 +967,16 @@ utilities, and the admin APIs they call.
   room fills and compound wall solids do not diverge on native Canvas. Gesture
   frames do not update page data
   or recompute wall solids and dimension plans.
+- Closed-plan pan safe-area correction (2026-08-10): the viewport now constrains
+  structural wall bounds to the visible workspace between the opaque header,
+  right tool rail, and bottom dock. When the complete wall shell fits that
+  workspace, pan and pinch gestures can no longer hide a closure edge behind
+  opaque controls and make a closed room appear open. Plans larger than the
+  workspace remain pannable, while the constraint prevents meaningless blank
+  space from appearing beyond both opposing structural edges on the same axis.
+  This changes viewport offsets only; routes, APIs, roles, version-4 graph data,
+  millimetre geometry, persistence, and BLE/manual measurement audits are
+  unchanged.
   Gesture frames render directly on the primary canvas, rather than the cursor
   overlay, so native Canvas does not composite a shared-wall room with an older
   formal frame after wall snapping. A cursor-drop handoff also clears its
@@ -971,7 +987,7 @@ utilities, and the admin APIs they call.
   production builds synchronize local mirrors instead of expanding the
   Turbopack watch root across the repository.
 - Limited: BLE actions require a compatible connected device; some reserved
-  bottom/object tools intentionally display a planned/unavailable message.
+  bottom tools intentionally display a planned/unavailable message.
 - Boundary: the Mini Program editor does not expose a current report exporter or
   full-plan CAD/3D export. Admin `FloorPlanViewer` owns full-plan 2D/3D viewing
   and DXF download through backend adapters. No legacy layout mirror may be saved.

@@ -20,7 +20,6 @@ interface EnterprisePatchBody {
   logo?: string;
   branding?: Record<string, unknown>;
   groundPromotionFixedCommission?: number;
-  measurerAcquisitionFixedCommission?: number;
   automationConfig?: Record<string, unknown>;
 }
 
@@ -163,11 +162,6 @@ export async function PATCH(
               updateData.groundPromotionFixedCommission = String(
                 Number(body.groundPromotionFixedCommission)
               );
-            }
-            if (body.measurerAcquisitionFixedCommission !== undefined) {
-              const amount = Number(body.measurerAcquisitionFixedCommission);
-              if (!Number.isFinite(amount) || amount < 0) throw new Error('测量员获客提成金额必须是非负数字');
-              updateData.measurerAcquisitionFixedCommission = amount.toFixed(2);
             }
             if (body.automationConfig !== undefined) {
               updateData.automationConfig = normalizeAutomationConfig(

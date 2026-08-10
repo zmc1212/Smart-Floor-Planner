@@ -1031,7 +1031,7 @@ test('dimension endpoint ticks float clear of the measured wall', () => {
   ))), true);
 });
 
-test('drag-only canvas renders one dashed cross guide and one square cursor', () => {
+test('drag-only canvas renders one dashed cross guide and one green square cursor', () => {
   const recorder = createRecordingContext();
   surveyCanvasRenderer.drawDraggingCursor(
     recorder.context,
@@ -1043,6 +1043,9 @@ test('drag-only canvas renders one dashed cross guide and one square cursor', ()
   assert.deepEqual(recorder.dashes.filter((dash) => dash.length), [[8, 6]]);
   assert.ok(recorder.widths.includes(1.25));
   assert.equal(recorder.widths.includes(3), false);
+  assert.ok(recorder.strokeDetails.some((detail) => detail.strokeStyle === '#22c55e'));
+  assert.ok(recorder.fillRectDetails.some((detail) => detail.fillStyle === 'rgba(34, 197, 94, 0.16)'));
+  assert.equal(recorder.strokeDetails.some((detail) => detail.strokeStyle === '#f07a21'), false);
   assert.ok(recorder.strokes.some((path) => (
     path.some((command) => command[0] === 'moveTo' && command[1] === 0 && command[2] === 220) &&
     path.some((command) => command[0] === 'lineTo' && command[1] === 400 && command[2] === 220) &&
@@ -1141,6 +1144,69 @@ test('viewport interaction projects closed fills, wall solids, and openings into
     y: sourceOpening.center.y * transform.scale + transform.translateY
   });
   assert.equal(projectedOpening.wall, interactionScene.walls.find((wall) => wall.id === sourceOpening.wall.id));
+});
+
+test('stationary canvas cursor uses the same green placement marker', () => {
+  const recorder = createRecordingContext();
+  const scene = createScene(createOpenDraft());
+
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+
+  assert.ok(scene.cursor);
+  assert.ok(recorder.strokeDetails.some((detail) => detail.strokeStyle === '#22c55e'));
+  assert.ok(recorder.fillRectDetails.some((detail) => detail.fillStyle === 'rgba(34, 197, 94, 0.16)'));
+});
+
+test('viewport constraint keeps a fitting closed wall shell below opaque editor controls', () => {
+  const draft = createClosedRectangleDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const scene = surveyCanvasRenderer.createSurveyRenderScene({
+    floor,
+    session: floor.session,
+    viewport: { scale: 0.05, offsetX: -75, offsetY: -50 },
+    rect: { width: 390, height: 844 }
+  });
+  const safeArea = { left: 12, top: 128, right: 315, bottom: 743 };
+  const requestedViewport = Object.assign({}, scene.viewport, {
+    offsetY: scene.viewport.offsetY - 500
+  });
+  const constrainedViewport = surveyCanvasRenderer.constrainViewportToSafeArea(
+    scene,
+    requestedViewport,
+    safeArea
+  );
+  const interactionScene = surveyCanvasRenderer.createViewportInteractionScene(scene, constrainedViewport);
+  const bounds = surveyCanvasRenderer.resolveInteractionStructuralBounds(interactionScene);
+
+  assert.ok(Math.abs(bounds.top - safeArea.top) < 0.0001);
+  assert.ok(bounds.bottom <= safeArea.bottom);
+  assert.ok(bounds.left >= safeArea.left);
+  assert.ok(bounds.right <= safeArea.right);
+});
+
+test('viewport constraint lets an oversized plan pan while preventing blank workspace gaps', () => {
+  const draft = createClosedRectangleDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const scene = surveyCanvasRenderer.createSurveyRenderScene({
+    floor,
+    session: floor.session,
+    viewport: { scale: 0.2, offsetX: -300, offsetY: -200 },
+    rect: { width: 390, height: 844 }
+  });
+  const safeArea = { left: 12, top: 128, right: 315, bottom: 743 };
+  const requestedViewport = Object.assign({}, scene.viewport, {
+    offsetX: scene.viewport.offsetX + 900
+  });
+  const constrainedViewport = surveyCanvasRenderer.constrainViewportToSafeArea(
+    scene,
+    requestedViewport,
+    safeArea
+  );
+  const interactionScene = surveyCanvasRenderer.createViewportInteractionScene(scene, constrainedViewport);
+  const bounds = surveyCanvasRenderer.resolveInteractionStructuralBounds(interactionScene);
+
+  assert.ok(Math.abs(bounds.left - safeArea.left) < 0.0001);
+  assert.ok(bounds.right >= safeArea.right);
 });
 
 test('snapping a new cursor onto a closed wall preserves the completed room render geometry', () => {

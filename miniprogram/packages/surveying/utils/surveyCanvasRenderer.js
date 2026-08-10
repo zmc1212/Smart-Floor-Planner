@@ -1519,8 +1519,11 @@ function drawCursor(ctx, scene) {
   ctx.stroke();
   if (ctx.setLineDash) ctx.setLineDash([]);
 
-  ctx.strokeStyle = '#f07a21';
-  ctx.fillStyle = 'rgba(240, 122, 33, 0.16)';
+  // Keep the small cursor mark visually distinct from the blue workspace
+  // guides. The measurement surface uses the product green for its active
+  // placement target, matching the magnifier preview.
+  ctx.strokeStyle = '#22c55e';
+  ctx.fillStyle = 'rgba(34, 197, 94, 0.16)';
   ctx.lineWidth = 1.5;
   ctx.lineCap = 'butt';
 
@@ -1532,7 +1535,7 @@ function drawCursor(ctx, scene) {
   ctx.stroke();
 
   ctx.lineWidth = 1.5;
-  ctx.strokeStyle = '#f07a21';
+  ctx.strokeStyle = '#22c55e';
   ctx.fillRect(point.x - core / 2, point.y - core / 2, core, core);
   ctx.strokeRect(point.x - core / 2, point.y - core / 2, core, core);
   ctx.restore();
@@ -1867,13 +1870,13 @@ function drawDraggingCursor(ctx, rect, point, options) {
   const outerSize = 52;
   const crossHalf = 36;
   const coreSize = 14;
-  ctx.fillStyle = 'rgba(240, 122, 33, 0.16)';
-  ctx.strokeStyle = 'rgba(240, 122, 33, 0.56)';
+  ctx.fillStyle = 'rgba(34, 197, 94, 0.16)';
+  ctx.strokeStyle = 'rgba(34, 197, 94, 0.56)';
   ctx.lineWidth = 1.5;
   ctx.fillRect(point.x - outerSize / 2, point.y - outerSize / 2, outerSize, outerSize);
   ctx.strokeRect(point.x - outerSize / 2, point.y - outerSize / 2, outerSize, outerSize);
 
-  ctx.strokeStyle = '#f07a21';
+  ctx.strokeStyle = '#22c55e';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(point.x - crossHalf, point.y);
@@ -1883,7 +1886,7 @@ function drawDraggingCursor(ctx, rect, point, options) {
   ctx.stroke();
 
   ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
-  ctx.strokeStyle = '#f07a21';
+  ctx.strokeStyle = '#22c55e';
   ctx.lineWidth = 1.5;
   ctx.fillRect(point.x - coreSize / 2, point.y - coreSize / 2, coreSize, coreSize);
   ctx.strokeRect(point.x - coreSize / 2, point.y - coreSize / 2, coreSize, coreSize);

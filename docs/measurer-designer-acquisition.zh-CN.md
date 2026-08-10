@@ -67,6 +67,7 @@
 ### 3.4 获客提成
 
 - 企业配置字段：`enterprises.measurer_acquisition_fixed_commission`，默认 `0.00`。
+- 仅企业负责人可通过获客提成规则接口读取和修改该配置；它属于企业经营规则，不属于员工资料。
 - 提成金额在设计师确认时快照，之后修改企业配置不影响历史记录。
 - 每条线索最多一条获客提成，由 `lead_id` 唯一约束保证幂等。
 - 状态：`pending_settlement`（待结算）、`paid`（已发放）、`voided`（作废）。当前业务只允许 `pending_settlement -> paid`，作废需后续明确业务入口和审计要求。
@@ -122,9 +123,9 @@
 | `GET /api/acquisition-tasks` | 当前小程序设计师或测量员 | 按角色隔离返回待确认/已完成任务、分页、时间筛选及真实摘要；测量员响应额外在页面级返回一次当前绑定 `designerProfile`，任务条目不重复返回微信号或二维码。 |
 | `GET /api/acquisition-commissions` | 测量员仅自己；企业负责人/平台管理员按企业 | 支持企业、测量员、状态筛选和汇总。 |
 | `POST /api/acquisition-commissions/[id]/settle` | 企业负责人、`admin`、`super_admin` | 仅允许 `pending_settlement -> paid`。 |
+| `GET/PATCH /api/acquisition-commissions/settings` | 本企业企业负责人 | 读取或修改之后获客确认生效的固定提成金额。 |
 | `GET /api/miniprogram/notifications` | 已认证小程序员工 | 查询自己的站内通知和未读数量。 |
 | `POST /api/miniprogram/notifications/read` | 已认证小程序员工 | 仅能把自己的通知标记为已读。 |
-| `PATCH /api/admin/enterprises/[id]` | 企业配置权限 | 修改之后确认生效的固定获客提成金额。 |
 
 所有租户 API 必须继续使用共享 tenant helpers、RLS transaction 和当前员工上下文，禁止手写跨企业查询。
 
@@ -132,8 +133,8 @@
 
 ### Admin
 
-- `/staff`：设计师微信号/二维码、测量员绑定设计师、企业固定获客提成配置。
-- `/acquisition-commissions`：按状态和测量员查看获客提成，人工确认发放。
+- `/staff`：设计师微信号/二维码、测量员绑定设计师，不再承载获客提成配置。
+- `/acquisition-commissions`：按状态和测量员查看获客提成、人工确认发放；`/acquisition-commissions/settings` 是仅企业负责人可见的企业固定提成规则页。
 - `/leads`：后台线索列表、四步业务状态、独立获客确认筛选和 `closed` 终止筛选。
 
 ### Mini Program

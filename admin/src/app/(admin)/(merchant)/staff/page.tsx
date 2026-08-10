@@ -10,7 +10,7 @@ import {
   type ActionType,
   type ProColumns,
 } from '@ant-design/pro-components';
-import { Alert, Avatar, Button, Card, Flex, Form, Input, Space, Tag, Tooltip, Tree, Typography, type TreeDataNode } from 'antd';
+import { Alert, Avatar, Button, Card, Flex, Form, Space, Tag, Tooltip, Tree, Typography, type TreeDataNode } from 'antd';
 import { FolderPlus, Pencil, Plus, Trash2, UserCheck, Users, Wrench } from 'lucide-react';
 import ModuleOverview from '@/components/admin/ModuleOverview';
 import { ImageUploadField } from '@/components/ui/image-upload-field';
@@ -133,8 +133,6 @@ export default function StaffPage() {
   const [staffRole, setStaffRole] = useState<StaffRole>('designer');
   const [wechatQrAssetId, setWechatQrAssetId] = useState<string | null>(null);
   const [wechatQrPreviewUrl, setWechatQrPreviewUrl] = useState<string | null>(null);
-  const [acquisitionCommission, setAcquisitionCommission] = useState('0');
-  const [savingAcquisitionCommission, setSavingAcquisitionCommission] = useState(false);
 
   const canManage = Boolean(currentUser && ['super_admin', 'admin', 'enterprise_admin'].includes(currentUser.role));
   const requiresTenantSelection = Boolean(currentUser && ['super_admin', 'admin'].includes(currentUser.role) && globalTenantId === 'all');
@@ -170,33 +168,6 @@ export default function StaffPage() {
       })
       .catch((error) => notify.error(error instanceof Error ? error.message : '读取设计师列表失败'));
   }, [currentUser, requiresTenantSelection]);
-  const tenantId = globalTenantId !== 'all'
-    ? globalTenantId
-    : (currentUser?.enterpriseId && typeof currentUser.enterpriseId === 'object' ? currentUser.enterpriseId._id : currentUser?.enterpriseId);
-  useEffect(() => {
-    if (!tenantId || tenantId === 'all') return;
-    void fetch(`/api/admin/enterprises/${tenantId}`)
-      .then(async (response) => {
-        const result = await response.json();
-        if (response.ok && result.success) setAcquisitionCommission(String(result.data?.measurerAcquisitionFixedCommission ?? 0));
-      })
-      .catch(() => undefined);
-  }, [tenantId]);
-
-  const saveAcquisitionCommission = async () => {
-    if (!tenantId) return;
-    setSavingAcquisitionCommission(true);
-    try {
-      const response = await fetch(`/api/admin/enterprises/${tenantId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ measurerAcquisitionFixedCommission: Number(acquisitionCommission) }) });
-      const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || '保存获客提成配置失败');
-      notify.success('获客提成配置已更新');
-    } catch (error) {
-      notify.error(error instanceof Error ? error.message : '保存获客提成配置失败');
-    } finally {
-      setSavingAcquisitionCommission(false);
-    }
-  };
   useEffect(() => { if (!requiresTenantSelection) void actionRef.current?.reload(); }, [requiresTenantSelection, selectedDepartmentId]);
   useEffect(() => {
     setStaffRole(editingStaff?.role || 'designer');
@@ -337,13 +308,6 @@ export default function StaffPage() {
           <Alert showIcon type="info" message="正在加载员工权限" />
         ) : (
         <>
-        <Card className="admin-panel-card mb-4" title="获客提成配置">
-          <Flex align="center" gap={12} wrap="wrap">
-            <Typography.Text type="secondary">测量员每条已获客线索固定提成（元）</Typography.Text>
-            <Input value={acquisitionCommission} onChange={(event) => setAcquisitionCommission(event.target.value)} inputMode="decimal" className="w-40" />
-            <Button type="primary" loading={savingAcquisitionCommission} onClick={() => void saveAcquisitionCommission()}>保存配置</Button>
-          </Flex>
-        </Card>
         <div className="admin-staff-layout">
           <Card title="部门结构" className="admin-department-panel admin-panel-card w-full">
             <Flex vertical gap={16}>
