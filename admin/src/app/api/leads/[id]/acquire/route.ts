@@ -10,6 +10,7 @@ import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withAdminPostgresTransaction, withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import { notifyMeasurerOfAcquiredLead } from '@/lib/wechat-notification';
 import { httpError, httpErrorStatus } from '@/lib/http-error';
+import { leadArchivedError } from '@/lib/lead-lifecycle';
 
 const CONFIRMABLE_LEAD_STATUSES = [
   'new',
@@ -33,6 +34,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const execute = async (transaction: PostgresTransaction) => {
       const repository = new LeadRepository(transaction);
       const current = await repository.findById(leadId);
+      if (current?.archivedAt) throw leadArchivedError();
       if (!current || current.assignedTo !== designerId) throw httpError('线索不存在或无权操作', 404);
       if (current.acquiredAt) throw httpError('该获客交接已确认，请刷新查看最新回执', 409);
       if (current.status === 'closed') throw httpError('已关闭线索不能由设计师补确认', 409);
@@ -45,6 +47,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
           eq(leads.id, leadId),
           eq(leads.assignedTo, designerId),
           isNull(leads.acquiredAt),
+          isNull(leads.archivedAt),
           inArray(leads.status, CONFIRMABLE_LEAD_STATUSES)
         )).returning();
       if (!updatedRows[0]) throw httpError('获客交接已被其他操作确认，请刷新查看最新回执', 409);

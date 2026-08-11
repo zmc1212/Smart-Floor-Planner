@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type Key } from 'react';
 import {
   PageContainer,
   ProTable,
@@ -11,11 +11,15 @@ import {
 } from '@ant-design/pro-components';
 import {
   Button,
+  Alert,
   Descriptions,
   Drawer,
   Empty,
   Flex,
   Input,
+  Modal,
+  Segmented,
+  Select,
   Space,
   Steps,
   Tag,
@@ -23,7 +27,7 @@ import {
   Typography,
 } from 'antd';
 import { useRouter } from 'next/navigation';
-import { ClipboardCheck, Eye, FilePenLine, LayoutTemplate, MessageSquare, Plus, Trash2, Users } from 'lucide-react';
+import { Archive, ClipboardCheck, Eye, FilePenLine, LayoutTemplate, MessageSquare, Plus, RotateCcw, Trash2, Users } from 'lucide-react';
 import ModuleOverview from '@/components/admin/ModuleOverview';
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -68,6 +72,10 @@ type Lead = {
   status: string;
   acquisitionStatus?: 'pending_confirmation' | 'confirmed';
   acquiredAt?: string | null;
+  archivedAt?: string | null;
+  archivedBy?: StaffReference | string | null;
+  archiveReason?: string | null;
+  archiveNote?: string | null;
   acquisitionCommissionStatus?: string | null;
   promoterId?: StaffReference | string | null;
   assignedTo?: StaffReference | string | null;
@@ -76,6 +84,42 @@ type Lead = {
   followUpRecords?: FollowUpRecord[];
   createdAt?: string;
 };
+
+type LifecycleImpact = {
+  leadId: string;
+  unavailable?: boolean;
+  floorPlanCount?: number;
+  aiWorkflowCount?: number;
+  aiGenerationCount?: number;
+  inFlightAiCount?: number;
+  followUpCount?: number;
+  commissionCount?: number;
+  hasAcquisition?: boolean;
+  canArchive?: boolean;
+  archiveBlockers?: string[];
+  canPurge?: boolean;
+  purgeBlockers?: string[];
+};
+
+type ArchiveBatchFailure = {
+  leadId: string;
+  name: string;
+  status: string;
+  reason: string;
+};
+
+const ARCHIVE_REASON_OPTIONS = [
+  { label: '无意向', value: 'no_intent' },
+  { label: '失联', value: 'lost_contact' },
+  { label: '无效联系方式', value: 'invalid_contact' },
+  { label: '重复线索', value: 'duplicate' },
+  { label: '误录', value: 'mistaken_entry' },
+  { label: '其他', value: 'other' },
+];
+
+const ARCHIVE_REASON_LABELS = Object.fromEntries(
+  ARCHIVE_REASON_OPTIONS.map((item) => [item.value, item.label])
+);
 
 type LeadListResponse = {
   success: boolean;
@@ -183,12 +227,40 @@ export default function LeadsPage() {
   const [newNote, setNewNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [archiveState, setArchiveState] = useState<'active' | 'archived'>('active');
+  const [capabilities, setCapabilities] = useState({ canManageArchive: false, canPurge: false });
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Key[]>([]);
+  const [visibleLeads, setVisibleLeads] = useState<Lead[]>([]);
+  const [archiveTargets, setArchiveTargets] = useState<Lead[]>([]);
+  const [archiveImpacts, setArchiveImpacts] = useState<LifecycleImpact[]>([]);
+  const [archiveReason, setArchiveReason] = useState<string>();
+  const [archiveNote, setArchiveNote] = useState('');
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [archiveFailures, setArchiveFailures] = useState<ArchiveBatchFailure[]>([]);
+  const [purgeTarget, setPurgeTarget] = useState<Lead | null>(null);
+  const [purgeImpact, setPurgeImpact] = useState<LifecycleImpact | null>(null);
+  const [purgeConfirmation, setPurgeConfirmation] = useState('');
   const [overview, setOverview] = useState({ total: 0, measuring: 0, assigned: 0, converted: 0 });
 
   useEffect(() => () => {
     leadListRequestRef.current?.abort();
     leadDetailRequestRef.current?.abort();
   }, []);
+
+  useEffect(() => {
+    void fetch('/api/leads/capabilities')
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.error || '读取线索操作权限失败');
+        setCapabilities(result.data);
+      })
+      .catch((error) => notify.error(error instanceof Error ? error.message : '读取线索操作权限失败'));
+  }, []);
+
+  useEffect(() => {
+    setSelectedRowKeys([]);
+    void actionRef.current?.reload();
+  }, [archiveState]);
 
   const refreshLeads = useCallback(async () => {
     await actionRef.current?.reload();
@@ -244,25 +316,141 @@ export default function LeadsPage() {
     }
   };
 
-  const deleteLead = async (lead: Lead) => {
+  const openArchive = async (targets: Lead[]) => {
+    if (!targets.length || archiveLoading) return;
+    if (targets.length > 100) {
+      notify.error('每次最多归档 100 条客户线索');
+      return;
+    }
+    setArchiveLoading(true);
+    try {
+      const response = await fetch('/api/leads/archive-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: targets.map((lead) => lead._id) }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '归档预检失败');
+      setArchiveTargets(targets);
+      setArchiveImpacts(result.data || []);
+      setArchiveReason(undefined);
+      setArchiveNote('');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '归档预检失败');
+    } finally {
+      setArchiveLoading(false);
+    }
+  };
+
+  const archiveLeads = async () => {
+    if (!archiveReason || !archiveTargets.length) return;
+    setArchiveLoading(true);
+    try {
+      const response = await fetch('/api/leads/archive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ids: archiveTargets.map((lead) => lead._id),
+          reason: archiveReason,
+          note: archiveNote,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '归档失败');
+      const resultItems = (result.data || []) as Array<{
+        leadId: string;
+        status: string;
+        impact?: LifecycleImpact;
+      }>;
+      const archivedCount = resultItems.filter((item) => item.status === 'archived').length;
+      const failures = resultItems
+        .filter((item) => item.status !== 'archived')
+        .map((item) => ({
+          leadId: item.leadId,
+          name: archiveTargets.find((lead) => lead._id === item.leadId)?.name || `线索 ${item.leadId}`,
+          status: item.status,
+          reason: item.status === 'blocked'
+            ? (item.impact?.archiveBlockers || ['存在运行中的 AI 任务']).join('；')
+            : item.status === 'already_archived'
+              ? '线索已归档，无需重复处理'
+              : '无权访问或线索已不存在',
+        }));
+      const blockedCount = failures.length;
+      if (archivedCount) notify.success(`已归档 ${archivedCount} 条客户线索`);
+      if (blockedCount) {
+        setArchiveFailures(failures);
+        notify.error(`${blockedCount} 条线索未处理，已列出具体原因`);
+      }
+      if (selectedLead && archiveTargets.some((lead) => lead._id === selectedLead._id)) closeLeadDetail();
+      setArchiveTargets([]);
+      setArchiveImpacts([]);
+      setSelectedRowKeys([]);
+      await refreshLeads();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '归档失败');
+    } finally {
+      setArchiveLoading(false);
+    }
+  };
+
+  const restoreLead = async (lead: Lead) => {
     if (deletingId) return;
     const confirmed = await confirmAction({
-      title: '删除线索',
-      description: `确定删除线索“${lead.name}”吗？此操作不可撤销。`,
-      confirmText: '删除',
-      destructive: true,
+      title: '恢复客户线索',
+      description: `恢复“${lead.name}”后，将重新出现在业务列表并可继续跟进。`,
+      confirmText: '恢复',
     });
     if (!confirmed) return;
     setDeletingId(lead._id);
     try {
-      const response = await fetch(`/api/leads/${lead._id}`, { method: 'DELETE' });
+      const response = await fetch(`/api/leads/${lead._id}/restore`, { method: 'POST' });
       const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.error || '删除线索失败');
+      if (!response.ok || !result.success) throw new Error(result.error || '恢复失败');
       if (selectedLead?._id === lead._id) closeLeadDetail();
-      notify.success('线索已删除');
+      notify.success('客户线索已恢复');
       await refreshLeads();
     } catch (error) {
-      notify.error(error instanceof Error ? error.message : '删除线索失败');
+      notify.error(error instanceof Error ? error.message : '恢复失败');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const openPurge = async (lead: Lead) => {
+    if (deletingId) return;
+    setDeletingId(lead._id);
+    try {
+      const response = await fetch(`/api/leads/${lead._id}/purge-preview`);
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '删除预检失败');
+      setPurgeTarget(lead);
+      setPurgeImpact(result.data);
+      setPurgeConfirmation('');
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '删除预检失败');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const purgeLead = async () => {
+    if (!purgeTarget || purgeConfirmation !== purgeTarget.name || !purgeImpact?.canPurge) return;
+    setDeletingId(purgeTarget._id);
+    try {
+      const response = await fetch(`/api/leads/${purgeTarget._id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmName: purgeConfirmation }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error([result.error, ...(result.blockers || [])].filter(Boolean).join('：'));
+      if (selectedLead?._id === purgeTarget._id) closeLeadDetail();
+      setPurgeTarget(null);
+      setPurgeImpact(null);
+      notify.success('空白客户线索已永久删除');
+      await refreshLeads();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '永久删除失败');
     } finally {
       setDeletingId(null);
     }
@@ -347,6 +535,18 @@ export default function LeadsPage() {
       width: 190,
       render: (_, lead) => formatDate(lead.createdAt),
     },
+    ...(archiveState === 'archived' ? [{
+      title: '归档信息',
+      key: 'archive',
+      hideInSearch: true,
+      width: 210,
+      render: (_: unknown, lead: Lead) => (
+        <Flex vertical gap={2}>
+          <Typography.Text>{ARCHIVE_REASON_LABELS[lead.archiveReason || ''] || '其他'}</Typography.Text>
+          <Typography.Text type="secondary" className="text-xs">{formatDate(lead.archivedAt || undefined)}</Typography.Text>
+        </Flex>
+      ),
+    } satisfies ProColumns<Lead>] : []),
     {
       title: '操作',
       key: 'actions',
@@ -359,12 +559,29 @@ export default function LeadsPage() {
           <Button size="small" icon={<Eye size={14} />} onClick={() => void openLeadDetail(lead)}>
             详情
           </Button>
-          <Button size="small" icon={<FilePenLine size={14} />} onClick={() => router.push(`/ai-studio/scenarios?leadId=${lead._id}`)}>
-            {lead.floorPlanIds?.length || lead.followUpRecords?.length ? '查看方案' : '开始方案'}
-          </Button>
-          <Button size="small" danger disabled={deletingId === lead._id} loading={deletingId === lead._id} icon={<Trash2 size={14} />} onClick={() => void deleteLead(lead)}>
-            删除
-          </Button>
+          {archiveState === 'active' ? (
+            <>
+              <Button size="small" icon={<FilePenLine size={14} />} onClick={() => router.push(`/ai-studio/scenarios?leadId=${lead._id}`)}>
+                {lead.floorPlanIds?.length || lead.followUpRecords?.length ? '查看方案' : '开始方案'}
+              </Button>
+              {capabilities.canManageArchive ? (
+                <Button size="small" disabled={archiveLoading} loading={archiveLoading && archiveTargets.some((item) => item._id === lead._id)} icon={<Archive size={14} />} onClick={() => void openArchive([lead])}>
+                  归档
+                </Button>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <Button size="small" disabled={Boolean(deletingId)} loading={deletingId === lead._id} icon={<RotateCcw size={14} />} onClick={() => void restoreLead(lead)}>
+                恢复
+              </Button>
+              {capabilities.canPurge ? (
+                <Button size="small" danger disabled={Boolean(deletingId)} loading={deletingId === lead._id} icon={<Trash2 size={14} />} onClick={() => void openPurge(lead)}>
+                  永久删除
+                </Button>
+              ) : null}
+            </>
+          )}
         </Space>
       ),
     },
@@ -394,6 +611,35 @@ export default function LeadsPage() {
           columns={columns}
           search={{ labelWidth: 'auto', defaultCollapsed: false, span: 12 }}
           options={{ reload: true, density: true, setting: true }}
+          toolBarRender={() => [
+            capabilities.canManageArchive ? (
+              <Segmented
+                key="archive-state"
+                value={archiveState}
+                options={[
+                  { label: '在用线索', value: 'active' },
+                  { label: '已归档', value: 'archived' },
+                ]}
+                onChange={(value) => setArchiveState(value as 'active' | 'archived')}
+              />
+            ) : null,
+            archiveState === 'active' && capabilities.canManageArchive ? (
+              <Button
+                key="batch-archive"
+                icon={<Archive size={16} />}
+                disabled={!selectedRowKeys.length || archiveLoading}
+                loading={archiveLoading}
+                onClick={() => void openArchive(visibleLeads.filter((lead) => selectedRowKeys.includes(lead._id)))}
+              >
+                归档所选（{selectedRowKeys.length}）
+              </Button>
+            ) : null,
+          ].filter(Boolean)}
+          rowSelection={archiveState === 'active' && capabilities.canManageArchive ? {
+            selectedRowKeys,
+            preserveSelectedRowKeys: false,
+            onChange: setSelectedRowKeys,
+          } : false}
           pagination={{ defaultPageSize: 20, showSizeChanger: true }}
           scroll={{ x: 1240 }}
           request={async (params) => {
@@ -406,10 +652,12 @@ export default function LeadsPage() {
             });
             if (params.status) query.set('status', String(params.status));
             if (params.acquisitionStatus) query.set('acquisitionStatus', String(params.acquisitionStatus));
+            query.set('archiveState', archiveState);
             try {
               const response = await fetch(`/api/leads?${query.toString()}`, { signal: controller.signal });
               const result = await response.json() as LeadListResponse;
               if (!response.ok || !result.success) throw new Error(result.error || '线索列表加载失败');
+              setVisibleLeads(result.data || []);
               if (selectedLead) {
                 const refreshed = result.data?.find((lead) => lead._id === selectedLead._id);
                 if (refreshed) setSelectedLead((current) => current ? { ...current, ...refreshed } : current);
@@ -442,13 +690,109 @@ export default function LeadsPage() {
         />
       </PageContainer>
 
+      <Modal
+        open={archiveTargets.length > 0}
+        title={`归档 ${archiveTargets.length} 条客户线索`}
+        okText="确认归档"
+        cancelText="取消"
+        confirmLoading={archiveLoading}
+        okButtonProps={{ disabled: !archiveReason || !archiveImpacts.some((impact) => impact.canArchive) }}
+        onCancel={() => { if (!archiveLoading) { setArchiveTargets([]); setArchiveImpacts([]); } }}
+        onOk={() => void archiveLeads()}
+      >
+        <Flex vertical gap={16}>
+          <Alert
+            showIcon
+            type={archiveImpacts.some((impact) => (impact.inFlightAiCount || 0) > 0) ? 'warning' : 'info'}
+            message="归档不会删除客户资产"
+            description={archiveImpacts.some((impact) => (impact.inFlightAiCount || 0) > 0)
+              ? '存在运行中的 AI 任务；这些线索会跳过，其余可处理线索仍可归档。'
+              : '归档后将从日常线索、小程序和 AI 客户选择中隐藏，户型、方案、提成和历史记录仍会保留。'}
+          />
+          {archiveImpacts.some((impact) => !impact.canArchive) ? (
+            <Flex vertical gap={4}>
+              {archiveImpacts.filter((impact) => !impact.canArchive).map((impact) => {
+                const lead = archiveTargets.find((item) => item._id === impact.leadId);
+                return (
+                  <Typography.Text key={impact.leadId} type="secondary">
+                    {lead?.name || impact.leadId}：{impact.unavailable ? '无权访问或线索已不存在' : (impact.archiveBlockers || ['当前不可归档']).join('；')}
+                  </Typography.Text>
+                );
+              })}
+            </Flex>
+          ) : null}
+          <Descriptions
+            size="small"
+            column={2}
+            items={[
+              { key: 'floorplans', label: '关联户型', children: archiveImpacts.reduce((total, item) => total + (item.floorPlanCount || 0), 0) },
+              { key: 'workflows', label: 'AI 方案', children: archiveImpacts.reduce((total, item) => total + (item.aiWorkflowCount || 0), 0) },
+              { key: 'generations', label: 'AI 生成', children: archiveImpacts.reduce((total, item) => total + (item.aiGenerationCount || 0), 0) },
+              { key: 'followups', label: '跟进记录', children: archiveImpacts.reduce((total, item) => total + (item.followUpCount || 0), 0) },
+            ]}
+          />
+          <Flex vertical gap={6}>
+            <Typography.Text strong>归档原因</Typography.Text>
+            <Select value={archiveReason} options={ARCHIVE_REASON_OPTIONS} placeholder="请选择归档原因" onChange={setArchiveReason} />
+          </Flex>
+          <Flex vertical gap={6} className="pb-3">
+            <Typography.Text strong>备注（可选）</Typography.Text>
+            <Input.TextArea value={archiveNote} maxLength={500} showCount autoSize={{ minRows: 2, maxRows: 4 }} onChange={(event) => setArchiveNote(event.target.value)} />
+          </Flex>
+        </Flex>
+      </Modal>
+
+      <Modal
+        open={archiveFailures.length > 0}
+        title="未处理的客户线索"
+        footer={<Button type="primary" onClick={() => setArchiveFailures([])}>知道了</Button>}
+        onCancel={() => setArchiveFailures([])}
+      >
+        <Flex vertical gap={10}>
+          {archiveFailures.map((item) => (
+            <Flex key={`${item.leadId}-${item.status}`} vertical gap={2}>
+              <Typography.Text strong>{item.name}</Typography.Text>
+              <Typography.Text type="secondary">{item.reason}</Typography.Text>
+            </Flex>
+          ))}
+        </Flex>
+      </Modal>
+
+      <Modal
+        open={Boolean(purgeTarget)}
+        title="永久删除空白客户线索"
+        okText="永久删除"
+        cancelText="取消"
+        okButtonProps={{
+          danger: true,
+          disabled: !purgeTarget || !purgeImpact?.canPurge || purgeConfirmation !== purgeTarget.name,
+          loading: Boolean(purgeTarget && deletingId === purgeTarget._id),
+        }}
+        onCancel={() => { if (!deletingId) { setPurgeTarget(null); setPurgeImpact(null); } }}
+        onOk={() => void purgeLead()}
+      >
+        <Flex vertical gap={16}>
+          {purgeImpact?.canPurge ? (
+            <Alert showIcon type="error" message="此操作不可恢复" description="该线索未发现户型、AI、获客、提成或跟进记录。永久删除后只保留不含客户隐私的操作审计。" />
+          ) : (
+            <Alert showIcon type="warning" message="该线索不能永久删除" description={(purgeImpact?.purgeBlockers || []).join('；')} />
+          )}
+          {purgeTarget && purgeImpact?.canPurge ? (
+            <Flex vertical gap={6}>
+              <Typography.Text>请输入客户名称 <Typography.Text strong>{purgeTarget.name}</Typography.Text> 确认：</Typography.Text>
+              <Input value={purgeConfirmation} onChange={(event) => setPurgeConfirmation(event.target.value)} />
+            </Flex>
+          ) : null}
+        </Flex>
+      </Modal>
+
       <Drawer
         open={Boolean(selectedLead)}
         width={640}
         destroyOnHidden
         title={selectedLead ? `${selectedLead.name}的线索详情` : '线索详情'}
         onClose={closeLeadDetail}
-        extra={selectedLead ? (
+        extra={selectedLead && !selectedLead.archivedAt ? (
           <Button icon={<FilePenLine size={16} />} onClick={() => router.push(`/ai-studio/scenarios?leadId=${selectedLead._id}`)}>
             {selectedLead.floorPlanIds?.length || selectedLead.followUpRecords?.length ? '查看方案' : '开始方案'}
           </Button>
@@ -456,6 +800,14 @@ export default function LeadsPage() {
       >
         {selectedLead ? (
           <Flex vertical gap={24}>
+            {selectedLead.archivedAt ? (
+              <Alert
+                showIcon
+                type="info"
+                message="该客户线索已归档"
+                description={`${ARCHIVE_REASON_LABELS[selectedLead.archiveReason || ''] || '其他'} · ${formatDate(selectedLead.archivedAt)}${selectedLead.archiveNote ? ` · ${selectedLead.archiveNote}` : ''}`}
+              />
+            ) : null}
             <Flex align="center" justify="space-between" gap={16} wrap>
               <Flex vertical gap={4}>
                 <Typography.Text type="secondary">{selectedLead.phone || '-'}</Typography.Text>
@@ -531,7 +883,7 @@ export default function LeadsPage() {
                 <Typography.Text strong>跟进日志</Typography.Text>
                 <Tag>{selectedLead.followUpRecords?.length || 0}</Tag>
               </Flex>
-              <Flex gap={8} align="start">
+              {!selectedLead.archivedAt ? <Flex gap={8} align="start">
                 <Input.TextArea
                   autoSize={{ minRows: 2, maxRows: 4 }}
                   placeholder="记录新的跟进动态"
@@ -541,7 +893,7 @@ export default function LeadsPage() {
                 <Button type="primary" icon={<Plus size={16} />} loading={isSubmitting} disabled={!newNote.trim()} onClick={() => void addFollowUp()}>
                   添加
                 </Button>
-              </Flex>
+              </Flex> : null}
               {selectedLead.followUpRecords?.length ? (
                 <Timeline
                   items={[...(selectedLead.followUpRecords || [])].reverse().map((record) => ({

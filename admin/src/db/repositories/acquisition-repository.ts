@@ -25,7 +25,14 @@ export type StaffNotificationRecord = typeof staffNotifications.$inferSelect;
 export type NewStaffNotification = typeof staffNotifications.$inferInsert;
 
 export interface AcquisitionCommissionWithRelations extends LeadAcquisitionCommissionRecord {
-  lead: { id: bigint; name: string; phone: string; communityName: string | null; status: string } | null;
+  lead: {
+    id: bigint;
+    name: string;
+    phone: string;
+    communityName: string | null;
+    status: string;
+    archivedAt: Date | null;
+  } | null;
   measurer: { id: bigint; displayName: string; username: string; role: string } | null;
   designer: { id: bigint; displayName: string; username: string; role: string } | null;
 }
@@ -83,6 +90,7 @@ export class AcquisitionRepository {
     const page = Math.max(options.page ?? 1, 1);
     const limit = Math.min(Math.max(options.limit ?? 20, 1), 50);
     const filters: SQL[] = [
+      isNull(leads.archivedAt),
       options.role === 'designer'
         ? eq(leads.assignedTo, options.staffId)
         : eq(leads.promoterId, options.staffId),
@@ -139,16 +147,17 @@ export class AcquisitionRepository {
       this.transaction
         .select({ value: count() })
         .from(leads)
-        .where(and(visibility, isNull(leads.acquiredAt))),
+        .where(and(visibility, isNull(leads.archivedAt), isNull(leads.acquiredAt))),
       this.transaction
         .select({ value: count() })
         .from(leads)
-        .where(and(visibility, isNotNull(leads.acquiredAt))),
+        .where(and(visibility, isNull(leads.archivedAt), isNotNull(leads.acquiredAt))),
       this.transaction
         .select({ value: count() })
         .from(leads)
         .where(and(
           visibility,
+          isNull(leads.archivedAt),
           isNotNull(leads.acquiredAt),
           gte(leads.acquiredAt, month.start),
           lt(leads.acquiredAt, month.end)
@@ -228,7 +237,7 @@ export class AcquisitionRepository {
     const leadIds = Array.from(new Set(rows.map((row) => row.leadId)));
     const staffIds = Array.from(new Set(rows.flatMap((row) => [row.measurerId, row.designerId])));
     const [leadRows, staffRows] = await Promise.all([
-      this.transaction.select({ id: leads.id, name: leads.name, phone: leads.phone, communityName: leads.communityName, status: leads.status }).from(leads).where(inArray(leads.id, leadIds)),
+      this.transaction.select({ id: leads.id, name: leads.name, phone: leads.phone, communityName: leads.communityName, status: leads.status, archivedAt: leads.archivedAt }).from(leads).where(inArray(leads.id, leadIds)),
       this.transaction.select({ id: adminUsers.id, displayName: adminUsers.displayName, username: adminUsers.username, role: adminUsers.role }).from(adminUsers).where(inArray(adminUsers.id, staffIds)),
     ]);
     const leadMap = new Map(leadRows.map((lead) => [lead.id, lead]));

@@ -26,7 +26,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     console.error('[Admin Mini AI Retry]', error);
     const status = (error as { status?: number })?.status || 400;
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : '任务重试失败' },
+      { success: false, code: (error as { code?: string })?.code, error: error instanceof Error ? error.message : '任务重试失败' },
       { status }
     );
   }

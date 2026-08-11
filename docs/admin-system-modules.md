@@ -354,6 +354,11 @@ permission, or workflow changes.
 
 - Shell and navigation: `src/app/(admin)/layout.tsx`, `Sidebar.tsx`,
   `FetchInterceptor.tsx`, and `useCurrentUser`.
+- Build/runtime note (2026-08-10): the shared shell uses a local system font
+  stack (`PingFang SC`, `Microsoft YaHei`, `Noto Sans CJK SC`, and Source Han
+  Sans fallbacks) through `globals.css` and `antd-provider.tsx`; it no longer
+  downloads `next/font/google` assets during Docker builds. Routes, APIs,
+  permissions, and data contracts are unchanged.
 - Auth and tenant context: `src/lib/auth.ts`, `session.ts`, `proxy.ts`,
   `tenant-context.ts`, `tenant-route.ts`, and `miniprogram-auth.ts`.
 - Tenant isolation: `withTenantRoute`, `withTenantContext`, tenant resolvers,
@@ -631,6 +636,14 @@ permission, or workflow changes.
   `designing` respectively. Tenant scope, role boundaries, paging, and row
   actions for detail, AI-plan entry, and destructive deletion are unchanged;
   visible mutations continue to use shared operation feedback.
+
+#### Lead archive lifecycle (2026-08-10)
+
+- `Implemented`: `closed` remains a business-terminal state. `archived_at`, `archived_by`, `archive_reason`, and `archive_note` independently control visibility. `/leads` now has Active/Archived segments, up-to-100 batch archive preview and execution, read-only archived details, restore, and manager-only purge preview/name confirmation. The daily list no longer exposes destructive deletion.
+- `GET /api/leads` defaults to `archiveState=active`; archived reads require the live `leads.archive_manage` capability. Archive preview, archive, restore, and purge preview use tenant transactions, row locks, and existing assignee/promoter boundaries. In-flight AI jobs are reported per row and skipped without preventing other eligible rows in the batch.
+- The capability is fixed for `super_admin`, `admin`, and `enterprise_admin`. Designer/measurer access resolves from enterprise role defaults and staff inherit/allow/deny overrides on every mutation; `/staff` exposes this policy only to enterprise/platform managers. `leads.purge` is not delegatable.
+- Permanent deletion accepts only an already archived, exact-name-confirmed empty lead. Any floor plan/formal survey, AI workflow/generation/task, acquisition confirmation/commission, or follow-up returns `409 LEAD_PURGE_BLOCKED`. A successful purge removes only the lead and cascade-safe internal notifications; media assets are untouched. `lead_lifecycle_events` retains a tenant-scoped, PII-free audit after purge.
+- Archived leads stay hidden from Mini Program lead lists, acquisition tasks, and AI customer selectors. Existing floor-plan, AI, and commission history remains readable with an archived marker. Lead/follow-up updates, acquisition confirmation, floor-plan binding, and new/retried AI work return `409 LEAD_ARCHIVED`; phone de-duplication returns `409 ARCHIVED_LEAD_EXISTS` instead of creating or reassigning a duplicate.
 
 ### 8. Formal Floor Plans, Search, And Viewing
 
@@ -1174,7 +1187,11 @@ permission, or workflow changes.
   images as a new `ai_generation_input`, and records `parentGenerationId` before
   holding credits. Coworkers see only a busy flag for another operator's active
   target task, while the owner may open progress. No room-level `AiWorkflow` or
-  change to Admin's global adopted-result semantics is introduced.
+  change to Admin's global adopted-result semantics is introduced. The
+  PostgreSQL route now applies `workflowId` inside the tenant-scoped repository
+  query and rebuilds `selectedTask`, `latestTask`, and `targetContext` from the
+  matching PostgreSQL generations, restoring the existing Mini Program response
+  contract without changing its JWT, enterprise, operator, or credit boundary.
 - Migration/operations: run `npm run migrate:ai-platform` before enabling the
   new routes on an existing database. It preserves existing AI-credit balances,
   creates zero-balance accounts when absent, does not convert Pollen, maps legacy
@@ -1299,7 +1316,8 @@ permission, or workflow changes.
   reference without requiring a separate room photo. The workflow endpoint returns only context-visible
   active schemes and executable Mini Program actions. With a formal target it
   also returns `sourceFloorPlanId` and a target-local context matched by plan,
-  scope, and room; another operator's active task is represented only as busy.
+  scope, and room; `workflowId` is an exact query filter, and another operator's
+  active task is represented only as busy.
   An explicit workflow is
   continued; a unique customer/formal-plan match is reused automatically; when
   multiple schemes match, the client must choose instead of silently merging.

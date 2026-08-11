@@ -97,6 +97,7 @@
   `converted`、`closed`；历史状态仍可读取，并在 API 筛选和客户端标签中归一化。
 - `acquired_at`、`acquired_by`：设计师确认时间和确认人。
 - API DTO 从 `acquired_at` 派生 `acquisitionStatus`，并返回独立的 `acquisitionCommissionStatus`；不新增持久化获客状态列。
+- `archived_at`、`archived_by`、`archive_reason`、`archive_note` 是独立的可见性生命周期。归档线索保留户型、正式量房、AI 工作流/生成、获客事实、提成、通知和跟进记录，可恢复且不改变负责人或结算事实；归档线索从获客任务隐藏，所有新增写入统一返回 `409 LEAD_ARCHIVED`。
 
 ### `lead_acquisition_commissions`
 
@@ -121,6 +122,10 @@
 | `POST /api/staff/wechat-qr` | 员工管理权限 | `multipart/form-data` 上传图片，写入 `media_assets`，返回资产 ID 和短期图片地址。 |
 | `POST /api/leads` | 小程序测量员或既有线索创建权限 | 自动写入测量员、绑定设计师和 `new`，保留手机号去重。 |
 | `POST /api/leads/[id]/acquire` | 负责该线索的设计师 | 原子写入获客确认事实，保持业务状态不变，创建唯一待结算提成并通知测量员。 |
+| `GET /api/leads?archiveState=archived` | `leads.archive_manage` | 读取归档区；普通列表默认只返回在用线索。 |
+| `POST /api/leads/archive-preview`、`POST /api/leads/archive` | `leads.archive_manage` + 行级访问 | 预检并归档最多 100 条线索，保留全部业务资产；运行中的 AI 任务只阻止受影响条目。 |
+| `POST /api/leads/[id]/restore` | `leads.archive_manage` + 行级访问 | 恢复可见性、原业务状态和关联关系。 |
+| `GET /api/leads/[id]/purge-preview`、`DELETE /api/leads/[id]` | 仅企业/平台管理角色 | 预检并在名称完全匹配后永久删除已归档空线索；存在受保护关系返回 `409`，不提供强制级联删除。 |
 | `GET /api/acquisition-tasks` | 当前小程序设计师或测量员 | 按角色隔离返回待确认/已完成任务、分页、时间筛选及真实摘要；测量员响应额外在页面级返回一次当前绑定 `designerProfile`，任务条目不重复返回微信号或二维码。 |
 | `GET /api/acquisition-commissions` | 测量员仅自己；企业负责人/平台管理员按企业 | 支持企业、测量员、状态筛选和汇总。 |
 | `POST /api/acquisition-commissions/[id]/settle` | 企业负责人、`admin`、`super_admin` | 仅允许 `pending_settlement -> paid`。 |
@@ -156,6 +161,7 @@
 3. 设计师只能确认自己负责的线索；测量员只能读取自己录入的线索、页面级当前绑定设计师资料和自己的提成。任务条目仍保留历史负责人身份事实，但不得逐条重复暴露微信号或二维码。
 4. 二维码访问必须校验企业归属并生成签名 URL，不能暴露原始存储密钥或不受限公共 URL。
 5. 删除/停用设计师前必须检查绑定关系；历史线索和已生成提成不能因为换绑被改写。
+6. 归档和删除事务锁定线索并在提交前重查关联数据。生命周期事件记录操作者、时间、线索 ID、动作、原因和影响统计，不包含客户 PII，永久删除后仍保留。手机号录入命中归档档案时返回 `409 ARCHIVED_LEAD_EXISTS`，不会创建替代线索或重复提成。
 
 ## 8. 后续细化清单
 
@@ -168,7 +174,7 @@
 
 ## 9. 相关实现位置
 
-- Migration：`admin/drizzle/0016_measurer_designer_acquisition.sql`、`admin/drizzle/0017_acquisition_workbench.sql`
+- Migration：`admin/drizzle/0016_measurer_designer_acquisition.sql`、`admin/drizzle/0017_acquisition_workbench.sql`、`admin/drizzle/0019_lead_archive_lifecycle.sql`、`admin/drizzle/0020_lead_lifecycle_actor_indexes.sql`
 - Schema：`admin/src/db/schema.ts`
 - 员工 API：`admin/src/app/api/staff/`、`admin/src/app/api/staff/wechat-qr/`
 - 线索 API：`admin/src/app/api/leads/`、`admin/src/app/api/leads/[id]/acquire/`

@@ -93,7 +93,7 @@ test('result saving opens settings when photo album permission is denied', async
   }
 });
 
-test('reference recreation compares against the reference composition at its output ratio', async () => {
+test('reference recreation preserves its composition inside the approved result window', async () => {
   const originalWx = global.wx;
   const originalGetTask = aiService.getTask;
   global.wx = { showToast() {} };
@@ -116,7 +116,8 @@ test('reference recreation compares against the reference composition at its out
     assert.equal(page.data.task.sourceCompareImageUrl, 'https://example.com/reference.jpg');
     assert.equal(page.data.task.preserveComposition, true);
     assert.equal(page.data.task.floorPlanCompare, false);
-    assert.equal(page.data.task.resultStageHeight, 422);
+    assert.equal(page.data.task.resultImageMode, 'aspectFit');
+    assert.equal(page.data.task.resultStageHeight, 720);
   } finally {
     aiService.getTask = originalGetTask;
     global.wx = originalWx;

@@ -14,7 +14,7 @@ export function AdminAntdProvider({ children }: { children: React.ReactNode }) {
           colorBgContainer: '#ffffff',
           colorBorderSecondary: '#e5e9e5',
           borderRadius: 6,
-          fontFamily: 'var(--font-geist-sans), "PingFang SC", "Microsoft YaHei", sans-serif',
+          fontFamily: '"PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", "Helvetica Neue", Arial, sans-serif',
         },
         components: {
           Table: { headerBg: '#f6f8f6', headerColor: '#526052', rowHoverBg: '#f3faf4' },

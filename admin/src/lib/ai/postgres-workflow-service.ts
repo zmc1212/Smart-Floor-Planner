@@ -1,6 +1,7 @@
 import { parsePostgresId } from '@/db/postgres-dto';
 import { AiCreationRepository } from '@/db/repositories/ai-creation-repository';
 import { AiWorkflowRepository, type AiWorkflowRecord } from '@/db/repositories/ai-workflow-repository';
+import { LeadLifecycleRepository } from '@/db/repositories/lead-lifecycle-repository';
 import { LeadRepository } from '@/db/repositories/lead-repository';
 import { withTenantTransaction } from '@/db/transaction';
 import {
@@ -31,6 +32,7 @@ import { resolvePostgresScenarioProviderImage } from '@/lib/ai/postgres-creation
 import { executePostgresWorkflowChat } from '@/lib/ai/postgres-workflow-chat';
 import type { AiChatMessage } from '@/lib/ai/provider-types';
 import { parseImageDataUri } from '@/lib/ai/postgres-media-assets';
+import { leadArchivedError } from '@/lib/lead-lifecycle';
 import {
   getPostgresAssetIdFromImageUrl,
   getPostgresMediaAssetImageUrl,
@@ -80,6 +82,7 @@ export type CreatePostgresWorkflowManualGenerationInput = {
 
 export type ListPostgresWorkflowsInput = {
   enterpriseId: string | bigint;
+  workflowId?: string | bigint;
   operatorId?: string | bigint;
   leadId?: string | bigint;
   query?: string;
@@ -222,8 +225,10 @@ export async function createPostgresAiWorkflow(input: CreatePostgresWorkflowInpu
 
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const leads = new LeadRepository(transaction);
+    await new LeadLifecycleRepository(transaction).lockByIds([leadId]);
     const lead = await leads.findById(leadId);
     if (!lead) throw notFound('客户线索不存在或无权访问');
+    if (lead.archivedAt) throw leadArchivedError();
 
     let sourceAssetRole: AiWorkflowSourceAssetRole = input.sourceAssetRole || 'rough_sketch';
     if (sourceFloorPlanId) {
@@ -291,6 +296,8 @@ export async function getPostgresAiWorkflowContext(input: {
         name: lead.name,
         phone: lead.phone,
         status: lead.status,
+        archivedAt: lead.archivedAt,
+        isArchived: Boolean(lead.archivedAt),
         stylePreference: lead.stylePreference,
         communityName: lead.communityName,
         floorPlans: lead.floorPlanRecords
@@ -318,6 +325,9 @@ export async function listPostgresAiWorkflows(input: ListPostgresWorkflowsInput)
   const requestedLeadId = input.leadId
     ? parsePostgresId(input.leadId, 'leadId')
     : undefined;
+  const requestedWorkflowId = input.workflowId
+    ? parsePostgresId(input.workflowId, 'workflowId')
+    : undefined;
   const operatorId = input.operatorId
     ? parsePostgresId(input.operatorId, 'operatorId')
     : undefined;
@@ -330,6 +340,7 @@ export async function listPostgresAiWorkflows(input: ListPostgresWorkflowsInput)
     if (requestedLeadId) {
       const lead = await leads.findById(requestedLeadId);
       if (!lead) throw notFound('客户线索不存在或无权访问');
+      if (lead.archivedAt) throw notFound('客户线索不存在或无权访问');
       leadIds = [lead.id];
     } else if (input.query?.trim()) {
       const matched = await leads.list({ query: input.query, limit: 100 });
@@ -337,6 +348,7 @@ export async function listPostgresAiWorkflows(input: ListPostgresWorkflowsInput)
     }
 
     const workflows = await new AiWorkflowRepository(transaction).list({
+      id: requestedWorkflowId,
       leadIds,
       operatorId,
       status: input.status === 'archived' ? 'archived' : 'active',
@@ -345,7 +357,10 @@ export async function listPostgresAiWorkflows(input: ListPostgresWorkflowsInput)
     });
     const workflowIds = workflows.rows.map((workflow) => workflow.id);
     const [workflowLeads, generations] = await Promise.all([
-      leads.findByIds(Array.from(new Set(workflows.rows.map((workflow) => workflow.leadId)))),
+      leads.findByIds(
+        Array.from(new Set(workflows.rows.map((workflow) => workflow.leadId))),
+        { includeArchived: true },
+      ),
       new AiCreationRepository(transaction).listGenerationsByWorkflowIds(workflowIds),
     ]);
     const leadById = new Map(workflowLeads.map((lead) => [lead.id, lead]));
@@ -381,6 +396,8 @@ export async function listPostgresAiWorkflows(input: ListPostgresWorkflowsInput)
                 phone: lead.phone,
                 communityName: lead.communityName,
                 status: lead.status,
+                archivedAt: lead.archivedAt,
+                isArchived: Boolean(lead.archivedAt),
               }
             : undefined,
           stageState: getAiWorkflowStageAvailabilityFromDocs(
@@ -483,8 +500,10 @@ export async function createPostgresAiWorkflowManualGeneration(
     const workflows = new AiWorkflowRepository(transaction);
     const workflow = await workflows.findById(workflowId);
     if (!workflow) throw notFound('方案会话不存在或无权访问');
+    await new LeadLifecycleRepository(transaction).lockByIds([workflow.leadId]);
     const lead = await new LeadRepository(transaction).findById(workflow.leadId);
     if (!lead) throw notFound('客户线索不存在或无权访问');
+    if (lead.archivedAt) throw leadArchivedError();
 
     const creations = new AiCreationRepository(transaction);
     const asset = await creations.findMediaAssetForUpdate(assetId);
@@ -554,8 +573,10 @@ export async function preparePostgresAiWorkflowStage(input: PreparePostgresWorkf
     const workflow = await workflows.findById(workflowId);
     if (!workflow || workflow.status !== 'active') throw notFound('方案会话不存在或无权访问');
 
+    await new LeadLifecycleRepository(transaction).lockByIds([workflow.leadId]);
     const lead = await new LeadRepository(transaction).findById(workflow.leadId);
     if (!lead) throw notFound('客户线索不存在或无权访问');
+    if (lead.archivedAt) throw leadArchivedError();
 
     const creations = new AiCreationRepository(transaction);
     const generations = await creations.listGenerationsByWorkflowId(workflow.id);

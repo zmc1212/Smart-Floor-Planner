@@ -159,6 +159,66 @@ export const adminUsers = appSchema.table(
   ]
 );
 
+export const enterpriseRoleCapabilities = appSchema.table(
+  'enterprise_role_capabilities',
+  {
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'cascade' }),
+    roleKey: text('role_key').notNull(),
+    capabilityKey: text('capability_key').notNull(),
+    allowed: boolean('allowed').notNull().default(false),
+    updatedBy: bigint('updated_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    primaryKey({
+      name: 'enterprise_role_capabilities_pkey',
+      columns: [table.enterpriseId, table.roleKey, table.capabilityKey],
+    }),
+    index('enterprise_role_capabilities_lookup_idx').on(
+      table.enterpriseId,
+      table.capabilityKey
+    ),
+    index('enterprise_role_capabilities_updated_by_idx').on(table.updatedBy),
+  ]
+);
+
+export const adminUserCapabilityOverrides = appSchema.table(
+  'admin_user_capability_overrides',
+  {
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'cascade' }),
+    adminUserId: bigint('admin_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: 'cascade' }),
+    capabilityKey: text('capability_key').notNull(),
+    allowed: boolean('allowed').notNull(),
+    updatedBy: bigint('updated_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    primaryKey({
+      name: 'admin_user_capability_overrides_pkey',
+      columns: [table.adminUserId, table.capabilityKey],
+    }),
+    index('admin_user_capability_overrides_lookup_idx').on(
+      table.enterpriseId,
+      table.capabilityKey
+    ),
+    index('admin_user_capability_overrides_updated_by_idx').on(table.updatedBy),
+  ]
+);
+
 export const adminUserPromoters = appSchema.table(
   'admin_user_promoters',
   {
@@ -950,6 +1010,13 @@ export const leads = appSchema.table(
       () => adminUsers.id,
       { onDelete: 'set null' }
     ),
+    archivedAt: timestamp('archived_at', { withTimezone: true, mode: 'date' }),
+    archivedBy: bigint('archived_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    archiveReason: text('archive_reason'),
+    archiveNote: text('archive_note'),
     notes: text('notes'),
     assignedAt: timestamp('assigned_at', {
       withTimezone: true,
@@ -1003,7 +1070,46 @@ export const leads = appSchema.table(
       table.createdAt
     ),
     index('leads_acquired_by_idx').on(table.acquiredBy),
+    index('leads_archived_by_idx').on(table.archivedBy),
+    index('leads_enterprise_archived_created_idx').on(
+      table.enterpriseId,
+      table.archivedAt,
+      table.createdAt,
+      table.id
+    ),
     index('leads_primary_floor_plan_idx').on(table.primaryFloorPlanId),
+  ]
+);
+
+export const leadLifecycleEvents = appSchema.table(
+  'lead_lifecycle_events',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'restrict' }),
+    leadRecordId: bigint('lead_record_id', { mode: 'bigint' }).notNull(),
+    actorId: bigint('actor_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    action: text('action').notNull(),
+    reason: text('reason'),
+    metadata: jsonObject<Record<string, unknown>>('metadata'),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index('lead_lifecycle_events_enterprise_created_idx').on(
+      table.enterpriseId,
+      table.createdAt,
+      table.id
+    ),
+    index('lead_lifecycle_events_lead_idx').on(
+      table.enterpriseId,
+      table.leadRecordId,
+      table.createdAt
+    ),
+    index('lead_lifecycle_events_actor_idx').on(table.actorId),
   ]
 );
 

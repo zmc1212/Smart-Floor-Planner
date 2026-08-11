@@ -6,6 +6,7 @@ const { ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG } = require('../utils/debugConfig.js')
 Component({
   data: {
     selected: 0,
+    suppressed: false,
     compactMeasureTab: true,
     list: [
       {

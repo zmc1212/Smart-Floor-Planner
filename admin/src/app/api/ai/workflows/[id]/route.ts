@@ -93,7 +93,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     console.error('[AI Workflow PATCH]', error);
     const status = (error as Error & { status?: number }).status;
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Failed to update workflow' },
+      { success: false, code: (error as { code?: string })?.code, error: error instanceof Error ? error.message : 'Failed to update workflow' },
       { status: status && status >= 400 ? status : 500 }
     );
   }

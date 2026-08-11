@@ -6,6 +6,7 @@ import {
 } from '@/db/postgres-dto';
 import {
   LeadRepository,
+  LeadLifecycleRepository,
   type LeadUpdate,
   type LeadWithRelations,
 } from '@/db/repositories';
@@ -18,6 +19,14 @@ import {
 } from '@/lib/postgres-request-scope';
 import { getSignedMiniAiAssetUrl } from '@/lib/ai/mini-ai-assets';
 import { normalizeLeadStatus } from '@/lib/lead-status';
+import {
+  canAccessLeadForActor,
+  canManageLeadArchive,
+  canPurgeLeads,
+  getPurgeBlockers,
+  leadArchivedError,
+} from '@/lib/lead-lifecycle';
+import { httpErrorStatus } from '@/lib/http-error';
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Unknown error';
@@ -104,6 +113,30 @@ export async function GET(
         { status: 404 }
       );
     }
+    if (lead.archivedAt) {
+      if (context.kind === 'mini') {
+        return NextResponse.json(
+          { success: false, code: 'LEAD_ARCHIVED', error: '该客户线索已归档' },
+          { status: 410 }
+        );
+      }
+      if (!context.admin.enterpriseId) {
+        return NextResponse.json({ success: false, error: '请先选择企业' }, { status: 400 });
+      }
+      const allowed = await withAdminPostgresTransaction(context.admin, (transaction) =>
+        canManageLeadArchive(transaction, {
+          role: context.admin.role,
+          actorId: parsePostgresId(context.admin.userId, 'userId'),
+          enterpriseId: BigInt(context.admin.enterpriseId!),
+        })
+      );
+      if (!allowed) {
+        return NextResponse.json(
+          { success: false, error: 'Lead not found or access denied' },
+          { status: 404 }
+        );
+      }
+    }
     return NextResponse.json({ success: true, data: dtoForContext(request, lead, context.kind === 'mini' ? context.mini.staff?.role : context.admin.role) });
   } catch (error: unknown) {
     return NextResponse.json(
@@ -149,6 +182,7 @@ export async function PUT(
         const repository = new LeadRepository(transaction);
         const current = await repository.findById(leadId);
         if (!current || !canAccess(current, context)) return null;
+        if (current.archivedAt) throw leadArchivedError();
 
         const input: LeadUpdate = {};
         if (body.name !== undefined) input.name = String(body.name).trim();
@@ -198,8 +232,8 @@ export async function PUT(
     return NextResponse.json({ success: true, data: dtoForContext(request, updated, context.kind === 'mini' ? context.mini.staff?.role : context.admin.role) });
   } catch (error: unknown) {
     return NextResponse.json(
-      { success: false, error: errorMessage(error) },
-      { status: 500 }
+      { success: false, code: (error as { code?: string }).code, error: errorMessage(error) },
+      { status: httpErrorStatus(error, 500) }
     );
   }
 }
@@ -216,33 +250,53 @@ export async function DELETE(
         { status: 401 }
       );
     }
+    if (!admin.enterpriseId) {
+      return NextResponse.json({ success: false, error: '请先选择企业' }, { status: 400 });
+    }
+    if (!canPurgeLeads(admin.role)) {
+      return NextResponse.json({ success: false, error: '无权永久删除客户线索' }, { status: 403 });
+    }
+    const body = await request.json().catch(() => ({}));
     const { id } = await params;
-    const deleted = await withAdminPostgresTransaction(
+    const leadId = parsePostgresId(id, 'lead id');
+    const actorId = parsePostgresId(admin.userId, 'userId');
+    const result = await withAdminPostgresTransaction(
       admin as TenantContext,
       async (transaction) => {
-        const repository = new LeadRepository(transaction);
-        const lead = await repository.findById(parsePostgresId(id, 'lead id'));
-        if (!lead) return null;
-        if (
-          admin.role === 'designer' &&
-          lead.assignedTo !== parsePostgresId(admin.userId, 'userId')
-        ) {
-          return null;
-        }
-        return repository.deleteWithFloorPlans(lead.id);
+        const lifecycle = new LeadLifecycleRepository(transaction);
+        await lifecycle.lockByIds([leadId]);
+        const lead = await new LeadRepository(transaction).findById(leadId);
+        if (!lead || !canAccessLeadForActor(lead, admin.role, actorId)) return null;
+        if (!lead.archivedAt) return { conflict: ['线索尚未归档'] };
+        if (body.confirmName !== lead.name) return { confirmationRequired: true };
+        const impact = (await lifecycle.impacts([leadId]))[0];
+        if (!impact) return null;
+        const blockers = getPurgeBlockers(impact);
+        if (blockers.length) return { conflict: blockers };
+        const deleted = await lifecycle.purge(leadId, actorId, impact);
+        return deleted ? { deleted: true } : null;
       }
     );
-    if (!deleted) {
+    if (!result) {
       return NextResponse.json(
         { success: false, error: 'Lead not found or access denied' },
         { status: 404 }
+      );
+    }
+    if ('confirmationRequired' in result) {
+      return NextResponse.json({ success: false, error: '请输入完整客户名称确认永久删除' }, { status: 400 });
+    }
+    if ('conflict' in result) {
+      return NextResponse.json(
+        { success: false, code: 'LEAD_PURGE_BLOCKED', error: '该线索包含受保护数据，不能永久删除', blockers: result.conflict },
+        { status: 409 }
       );
     }
     return NextResponse.json({ success: true, data: {} });
   } catch (error: unknown) {
     return NextResponse.json(
       { success: false, error: errorMessage(error) },
-      { status: 500 }
+      { status: httpErrorStatus(error, 500) }
     );
   }
 }

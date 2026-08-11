@@ -26,7 +26,7 @@ test('V3 page-role assets remain native artwork instead of flattened page screen
   const aiHome = read('pages/ai-design/ai-design.wxml');
   assert.match(aiHome, /class="plan-default-scene"/);
   assert.match(aiHome, /class="plan-hero-swiper"/);
-  assert.match(aiHome, /\/images\/ai-design-hero-v3\.png/);
+  assert.match(aiHome, /\/images\/ai-design-project-hero-v5\.jpg/);
   assert.match(aiHome, /\/images\/mine-icons\/tab-measure-k\.png/);
   assert.doesNotMatch(aiHome, /\/images\/page-ip-v3\/ai-home\.png/);
 

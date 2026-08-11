@@ -26,12 +26,18 @@ export async function GET(request: Request) {
         || context.role === 'designer' && lead.assignedTo === operatorId
       ));
       const accessible = plans.filter((plan) => ['enterprise_admin', 'admin', 'super_admin'].includes(context.role) || (context.role === 'measurer' || context.role === 'designer') && plan.staffId === operatorId || visibleLeads.some((lead) => lead.floorPlanRecords.some((item) => item.id === plan.id)));
-      const generations = await new AiCreationRepository(transaction).listMiniProgramGenerationsByFloorPlanIds(accessible.map((plan) => plan.id));
       const leadByPlan = await new LeadRepository(transaction).findByFloorPlanIds(
         accessible.map((plan) => plan.id)
       );
+      const activeAccessible = accessible.filter((plan) => !leadByPlan.get(plan.id)?.archivedAt);
+      const generations = await new AiCreationRepository(transaction).listMiniProgramGenerationsByFloorPlanIds(
+        activeAccessible.map((plan) => plan.id)
+      );
       const leadIds = Array.from(new Set(
-        Array.from(leadByPlan.values()).map((lead) => lead.id)
+        activeAccessible
+          .map((plan) => leadByPlan.get(plan.id))
+          .filter((lead): lead is NonNullable<typeof lead> => Boolean(lead))
+          .map((lead) => lead.id)
       ));
       const activeWorkflows = await new AiWorkflowRepository(transaction).listActiveForProjectIndex({
         leadIds,
@@ -43,7 +49,7 @@ export async function GET(request: Request) {
           activeWorkflowByPlan.set(workflow.sourceFloorPlanId, workflow);
         }
       });
-      return accessible.flatMap((plan) => {
+      return activeAccessible.flatMap((plan) => {
         const formalLayout = isFormalSurveyLayout(plan.layoutData);
         const rooms = formalLayout
           ? adaptSurveyGraphToRooms(plan.layoutData).map((room) => ({ roomId: room.id, roomName: room.name, roomSize: `${(room.width / 10).toFixed(2)} m x ${(room.height / 10).toFixed(2)} m`, openingCount: room.openings.length }))
@@ -53,6 +59,7 @@ export async function GET(request: Request) {
         const active = current.find((generation) => ['pending', 'created', 'processing'].includes(generation.status));
         const ready = current.find((generation) => generation.status === 'succeeded' && asRecord(generation.output).imageUrl);
         const lead = leadByPlan.get(plan.id);
+        const leadArchived = Boolean(lead?.archivedAt);
         const display = getFloorPlanDisplay(plan, {
           lead,
           measurementSequence: lead?.floorPlanRecords.find(
@@ -83,6 +90,7 @@ export async function GET(request: Request) {
         );
         return [{
           leadId: lead?.id.toString() || '',
+          leadArchived,
           leadName: lead?.name || '未关联客户',
           communityName: lead?.communityName || '',
           floorPlanId: plan.id.toString(),
@@ -115,10 +123,15 @@ export async function GET(request: Request) {
         }];
       });
     });
-    const data = result
+    // Archived leads keep their floor-plan records for recovery, but they are
+    // not active AI-design projects. Do not expose them to the Mini Program;
+    // this also prevents the home page from issuing a workflow query that can
+    // only fail with LEAD_ARCHIVED.
+    const activeProjects = result.filter((plan) => !plan.leadArchived);
+    const data = activeProjects
       .filter((plan) => plan.eligibility.eligible)
       .flatMap((plan) => plan.rooms.map((room) => ({ leadId: plan.leadId, leadName: plan.leadName, communityName: plan.communityName, floorPlanId: plan.floorPlanId, floorPlanName: plan.floorPlanName, projectTitle: plan.projectTitle, projectSubtitle: plan.projectSubtitle, floorPlanStatus: plan.floorPlanStatus, ...room, updatedAt: plan.updatedAt })));
-    return NextResponse.json({ success: true, data, plans: result });
+    return NextResponse.json({ success: true, data, plans: activeProjects });
   } catch (error) {
     console.error('[Mini AI Sources]', error);
     return NextResponse.json({ success: false, error: '加载客户户型失败' }, { status: 500 });

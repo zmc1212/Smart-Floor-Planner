@@ -10,8 +10,8 @@ import {
   type ActionType,
   type ProColumns,
 } from '@ant-design/pro-components';
-import { Alert, Avatar, Button, Card, Flex, Form, Space, Tag, Tooltip, Tree, Typography, type TreeDataNode } from 'antd';
-import { FolderPlus, Pencil, Plus, Trash2, UserCheck, Users, Wrench } from 'lucide-react';
+import { Alert, Avatar, Button, Card, Drawer, Flex, Form, Select, Space, Switch, Tag, Tooltip, Tree, Typography, type TreeDataNode } from 'antd';
+import { FolderPlus, Pencil, Plus, ShieldCheck, Trash2, UserCheck, Users, Wrench } from 'lucide-react';
 import ModuleOverview from '@/components/admin/ModuleOverview';
 import { ImageUploadField } from '@/components/ui/image-upload-field';
 import { notify } from '@/components/ui/operation-feedback';
@@ -53,6 +53,16 @@ type StaffForm = {
 };
 
 type DepartmentForm = { name: string; parentId?: string };
+
+type PermissionEffect = 'inherit' | 'allow' | 'deny';
+type PermissionStaff = {
+  _id: string;
+  displayName?: string;
+  username: string;
+  role: 'designer' | 'measurer';
+  effect: PermissionEffect;
+  effectiveAllowed: boolean;
+};
 
 const ROLE_OPTIONS: Array<{ label: string; value: StaffRole }> = [
   { label: '设计师', value: 'designer' },
@@ -133,9 +143,56 @@ export default function StaffPage() {
   const [staffRole, setStaffRole] = useState<StaffRole>('designer');
   const [wechatQrAssetId, setWechatQrAssetId] = useState<string | null>(null);
   const [wechatQrPreviewUrl, setWechatQrPreviewUrl] = useState<string | null>(null);
+  const [permissionDrawerOpen, setPermissionDrawerOpen] = useState(false);
+  const [permissionLoading, setPermissionLoading] = useState(false);
+  const [permissionSaving, setPermissionSaving] = useState(false);
+  const [permissionRoleDefaults, setPermissionRoleDefaults] = useState({ designer: false, measurer: false });
+  const [permissionStaff, setPermissionStaff] = useState<PermissionStaff[]>([]);
 
   const canManage = Boolean(currentUser && ['super_admin', 'admin', 'enterprise_admin'].includes(currentUser.role));
   const requiresTenantSelection = Boolean(currentUser && ['super_admin', 'admin'].includes(currentUser.role) && globalTenantId === 'all');
+
+  const loadActionPermissions = useCallback(async () => {
+    setPermissionLoading(true);
+    try {
+      const response = await fetch('/api/staff/action-permissions');
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '读取线索归档权限失败');
+      setPermissionRoleDefaults(result.data.roleDefaults);
+      setPermissionStaff(result.data.staff || []);
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '读取线索归档权限失败');
+    } finally {
+      setPermissionLoading(false);
+    }
+  }, []);
+
+  const openPermissionDrawer = () => {
+    setPermissionDrawerOpen(true);
+    void loadActionPermissions();
+  };
+
+  const saveActionPermissions = async () => {
+    setPermissionSaving(true);
+    try {
+      const response = await fetch('/api/staff/action-permissions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          roleDefaults: permissionRoleDefaults,
+          userOverrides: permissionStaff.map((member) => ({ userId: member._id, effect: member.effect })),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '保存线索归档权限失败');
+      notify.success('线索归档权限已保存');
+      await loadActionPermissions();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '保存线索归档权限失败');
+    } finally {
+      setPermissionSaving(false);
+    }
+  };
   const staffRoleOptions = useMemo(
     () => currentUser?.role === 'super_admin' ? [...ROLE_OPTIONS, { label: '企业负责人', value: 'enterprise_admin' as StaffRole }] : ROLE_OPTIONS,
     [currentUser?.role],
@@ -295,7 +352,10 @@ export default function StaffPage() {
         className="admin-page-container"
         title="员工管理"
         content="管理企业内的地推、测量、设计与负责人账号，并按部门快速筛选。"
-        extra={canManage && !requiresTenantSelection ? [<Button key="create" type="primary" icon={<Plus size={16} />} onClick={() => { setStaffRole('designer'); setEditingStaff(null); setStaffFormOpen(true); }}>新增员工</Button>] : undefined}
+        extra={canManage && !requiresTenantSelection ? [
+          <Button key="permissions" icon={<ShieldCheck size={16} />} onClick={openPermissionDrawer}>线索归档权限</Button>,
+          <Button key="create" type="primary" icon={<Plus size={16} />} onClick={() => { setStaffRole('designer'); setEditingStaff(null); setStaffFormOpen(true); }}>新增员工</Button>,
+        ] : undefined}
       >
         {requiresTenantSelection ? (
           <Alert
@@ -373,6 +433,122 @@ export default function StaffPage() {
         </>
         )}
       </PageContainer>
+
+      <Drawer
+        open={permissionDrawerOpen}
+        width={720}
+        destroyOnHidden
+        title="线索归档权限"
+        onClose={() => { if (!permissionSaving) setPermissionDrawerOpen(false); }}
+        extra={<Button type="primary" icon={<ShieldCheck size={16} />} loading={permissionSaving} disabled={permissionLoading} onClick={() => void saveActionPermissions()}>保存权限</Button>}
+      >
+        <Flex vertical gap={24}>
+          <Alert
+            showIcon
+            type="info"
+            message="企业负责人和平台管理员始终拥有此权限"
+            description="设计师和测量员先继承本企业的角色默认值，再应用个人覆盖。归档只隐藏客户档案，不删除户型、AI 方案、提成或历史记录。"
+          />
+          <Flex vertical gap={12}>
+            <Typography.Title level={5} className="!mb-0">角色默认</Typography.Title>
+            <Flex justify="space-between" align="center" gap={16} className="rounded-lg bg-muted px-4 py-3">
+              <Flex vertical gap={2}>
+                <Typography.Text strong>设计师</Typography.Text>
+                <Typography.Text type="secondary">默认允许归档和恢复自己负责的线索</Typography.Text>
+              </Flex>
+              <Switch checked={permissionRoleDefaults.designer} loading={permissionLoading} onChange={(checked) => setPermissionRoleDefaults((current) => ({ ...current, designer: checked }))} />
+            </Flex>
+            <Flex justify="space-between" align="center" gap={16} className="rounded-lg bg-muted px-4 py-3">
+              <Flex vertical gap={2}>
+                <Typography.Text strong>测量员</Typography.Text>
+                <Typography.Text type="secondary">默认允许归档和恢复自己录入或负责的线索</Typography.Text>
+              </Flex>
+              <Switch checked={permissionRoleDefaults.measurer} loading={permissionLoading} onChange={(checked) => setPermissionRoleDefaults((current) => ({ ...current, measurer: checked }))} />
+            </Flex>
+          </Flex>
+          <div className="hidden md:block">
+            <ProTable<PermissionStaff>
+              rowKey="_id"
+              loading={permissionLoading}
+              dataSource={permissionStaff}
+              search={false}
+              options={false}
+              pagination={false}
+              headerTitle="员工覆盖"
+              columns={[
+              { title: '员工', key: 'member', render: (_, member) => <Flex vertical gap={2}><Typography.Text strong>{member.displayName || member.username}</Typography.Text><Typography.Text type="secondary" className="text-xs">@{member.username}</Typography.Text></Flex> },
+              { title: '岗位', dataIndex: 'role', width: 100, render: (_, member) => <Tag color={ROLE_COLORS[member.role]}>{ROLE_LABELS[member.role]}</Tag> },
+              {
+                title: '个人设置',
+                dataIndex: 'effect',
+                width: 160,
+                render: (_, member) => (
+                  <Select
+                    value={member.effect}
+                    className="w-full"
+                    options={[
+                      { label: '继承角色默认', value: 'inherit' },
+                      { label: '单独允许', value: 'allow' },
+                      { label: '单独禁止', value: 'deny' },
+                    ]}
+                    onChange={(effect: PermissionEffect) => setPermissionStaff((current) => current.map((item) => item._id === member._id ? {
+                      ...item,
+                      effect,
+                      effectiveAllowed: effect === 'inherit' ? permissionRoleDefaults[item.role] : effect === 'allow',
+                    } : item))}
+                  />
+                ),
+              },
+              {
+                title: '最终权限',
+                key: 'effective',
+                width: 100,
+                render: (_, member) => {
+                  const allowed = member.effect === 'inherit' ? permissionRoleDefaults[member.role] : member.effect === 'allow';
+                  return <Tag color={allowed ? 'green' : 'default'}>{allowed ? '允许' : '禁止'}</Tag>;
+                },
+              },
+              ]}
+            />
+          </div>
+          <Flex vertical gap={0} className="md:hidden">
+            <Typography.Title level={5} className="!mb-2">员工覆盖</Typography.Title>
+            {permissionStaff.map((member) => {
+              const allowed = member.effect === 'inherit'
+                ? permissionRoleDefaults[member.role]
+                : member.effect === 'allow';
+              return (
+                <Flex key={member._id} vertical gap={10} className="border-b border-border py-4 last:border-b-0">
+                  <Flex justify="space-between" align="start" gap={12}>
+                    <Flex vertical gap={2} className="min-w-0">
+                      <Typography.Text strong>{member.displayName || member.username}</Typography.Text>
+                      <Typography.Text type="secondary" className="text-xs" ellipsis>@{member.username}</Typography.Text>
+                    </Flex>
+                    <Space size={6} wrap>
+                      <Tag color={ROLE_COLORS[member.role]}>{ROLE_LABELS[member.role]}</Tag>
+                      <Tag color={allowed ? 'green' : 'default'}>{allowed ? '允许' : '禁止'}</Tag>
+                    </Space>
+                  </Flex>
+                  <Select
+                    value={member.effect}
+                    className="w-full"
+                    options={[
+                      { label: '继承角色默认', value: 'inherit' },
+                      { label: '单独允许', value: 'allow' },
+                      { label: '单独禁止', value: 'deny' },
+                    ]}
+                    onChange={(effect: PermissionEffect) => setPermissionStaff((current) => current.map((item) => item._id === member._id ? {
+                      ...item,
+                      effect,
+                      effectiveAllowed: effect === 'inherit' ? permissionRoleDefaults[item.role] : effect === 'allow',
+                    } : item))}
+                  />
+                </Flex>
+              );
+            })}
+          </Flex>
+        </Flex>
+      </Drawer>
 
       <ModalForm<StaffForm>
         key={editingStaff?._id || 'create-staff'}

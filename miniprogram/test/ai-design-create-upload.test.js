@@ -148,3 +148,101 @@ test('AI create explains the real recovery path when enterprise credits are insu
     global.wx = originalWx;
   }
 });
+
+test('AI create restores the requested workflow source instead of using the first list item', async () => {
+  const originals = {
+    loadCapabilities: aiService.loadCapabilities,
+    loadSources: aiService.loadSources,
+    loadWorkflows: aiService.loadWorkflows,
+  };
+  const originalWx = global.wx;
+  global.wx = { showToast() {} };
+  aiService.loadCapabilities = async () => ({
+    account: { availableBalance: 50 },
+    modes: [{ key: 'style_transform', credits: 10, enabled: true }],
+    styles: [{ key: 'modern', name: '现代简约' }],
+    provider: {},
+  });
+  aiService.loadSources = async () => [{
+    floorPlanId: '157',
+    floorPlanName: '客户正式户型',
+    closedRoomCount: 1,
+    rooms: [],
+  }];
+  aiService.loadWorkflows = async () => [{ id: 'other-workflow' }, {
+    id: '234',
+    title: '客户方案',
+    currentStageLabel: '风格方案',
+    lead: { id: '388', name: '测试客户' },
+    sourceFloorPlanId: '157',
+    targetContext: {
+      sourceTask: {
+        id: '846',
+        resultImageUrl: 'https://example.com/baseline.png',
+        styleKey: 'modern',
+      },
+    },
+  }];
+
+  try {
+    const page = createPage(loadPageDefinition());
+    page.setData({
+      mode: 'style_transform',
+      floorPlanId: '157',
+      leadId: '388',
+      targetScope: 'whole_floor_plan',
+      workflowId: '234',
+      requestedSourceResultTaskId: '846',
+    });
+    await page.loadInitialData();
+
+    assert.equal(page.data.loadError, '');
+    assert.equal(page.data.workflowId, '234');
+    assert.equal(page.data.sourceResultTaskId, '846');
+    assert.equal(page.data.spaceImagePath, 'https://example.com/baseline.png');
+    assert.equal(page.data.canSubmit, true);
+  } finally {
+    Object.assign(aiService, originals);
+    global.wx = originalWx;
+  }
+});
+
+test('AI create exposes a stale workflow source error instead of a generic config failure', async () => {
+  const originals = {
+    loadCapabilities: aiService.loadCapabilities,
+    loadSources: aiService.loadSources,
+    loadWorkflows: aiService.loadWorkflows,
+  };
+  const originalWx = global.wx;
+  let toastTitle = '';
+  global.wx = { showToast(options) { toastTitle = options.title; } };
+  aiService.loadCapabilities = async () => ({
+    account: { availableBalance: 50 },
+    modes: [{ key: 'style_transform', credits: 10, enabled: true }],
+    styles: [{ key: 'modern', name: '现代简约' }],
+    provider: {},
+  });
+  aiService.loadSources = async () => [];
+  aiService.loadWorkflows = async () => [{
+    id: '234',
+    targetContext: { sourceTask: { id: 'new-baseline' } },
+  }];
+
+  try {
+    const page = createPage(loadPageDefinition());
+    page.setData({
+      mode: 'style_transform',
+      floorPlanId: '157',
+      targetScope: 'whole_floor_plan',
+      workflowId: '234',
+      requestedSourceResultTaskId: '846',
+    });
+    await page.loadInitialData();
+
+    assert.equal(page.data.loadError, '当前空间基准图已变化，请返回后重试');
+    assert.equal(toastTitle, page.data.loadError);
+  } finally {
+    Object.assign(aiService, originals);
+    global.wx = originalWx;
+  }
+});

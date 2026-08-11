@@ -2,7 +2,7 @@
 THESIS: Make the real customer project the AI navigation surface; refuse both a generic tool grid and a CRM lead list.
 OWN-WORLD: One emerald spatial project folio, warm white controls, formal wall geometry, restrained status color, and native business text.
 STORY: Find a server-qualified project, understand whether work is running, resumable, failed, stale, ready, or blocked by surveying, then take its one truthful next action.
-FIRST VIEWPORT: Capsule-safe title and credits lead into a compact emerald project stage with persistent switching; a raised workbench keeps scope, stage, four implemented tasks, and the costed next action.
+FIRST VIEWPORT: Capsule-safe title and credits lead into an emerald project stage with progress and a truthful primary action; search, project cards, and the design-preparation entry follow in one continuous workbench.
 FORM: The project-switching bottom sheet groups a server-derived read model; result imagery and formal navigator geometry provide the project thumbnails without inventing data.
 -->
 <view class="ai-page sfp-tab-page">
@@ -21,7 +21,7 @@ FORM: The project-switching bottom sheet groups a server-derived read model; res
     >
       <view
         class="page-head immersive-page-head"
-        style="--ai-navigation-right: {{navigationRight}}px; padding-right: {{navigationRight}}px; min-height: {{navigationHeight}}px;"
+        style="--ai-navigation-right: {{navigationRight}}px; --ai-navigation-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px; min-height: {{navigationHeight}}px;"
       >
         <view class="page-heading">
           <text class="page-title">AI设计工作台</text>
@@ -79,7 +79,12 @@ FORM: The project-switching bottom sheet groups a server-derived read model; res
                   aria-label="切换客户设计项目"
                 >
                   <text>切换项目</text>
-                  <view class="project-switch-arrows"></view>
+                  <image
+                    class="project-switch-arrows"
+                    src="/images/ai-design-switch-arrows-v1.png"
+                    mode="aspectFit"
+                    aria-hidden="true"
+                  ></image>
                 </view>
               </view>
               <view
@@ -90,7 +95,7 @@ FORM: The project-switching bottom sheet groups a server-derived read model; res
               >
                 <text class="project-hero-label">当前客户</text>
                 <view class="project-hero-title-row">
-                  <text class="project-hero-title">{{selectedSource.projectTitle}}</text>
+                  <text class="project-hero-title">{{selectedSource.projectDisplayTitle}}</text>
                   <view class="project-hero-chevron"></view>
                 </view>
                 <text class="project-hero-meta">正式量房 · {{selectedSource.projectSubtitle}} · {{selectedSource.closedRoomCount}} 个闭合空间</text>
@@ -116,59 +121,61 @@ FORM: The project-switching bottom sheet groups a server-derived read model; res
                 >
                   <image class="plan-hero-image" src="{{item.imageUrl}}" mode="aspectFill"></image>
                   <view class="plan-hero-shade"></view>
-                  <view class="plan-hero-caption">
-                    <text class="plan-hero-title">{{item.title}}</text>
-                    <text class="plan-hero-meta">{{item.meta}}</text>
-                  </view>
                 </view>
               </swiper-item>
             </swiper>
             <view wx:else class="plan-default-scene">
-              <image class="plan-default-scene-image scene-image" src="/images/ai-design-hero-v3.png" mode="aspectFill"></image>
+              <image class="plan-default-scene-image scene-image" src="/images/ai-design-project-hero-v5.jpg" mode="aspectFit"></image>
               <view class="plan-default-scene-shade"></view>
             </view>
 
-            <scroll-view scroll-x class="hero-room-rail" enhanced show-scrollbar="{{false}}">
-              <view class="hero-room-row">
+            <view class="project-hero-progress {{sourcePickerOpen ? 'picker-progress' : 'home-progress'}}">
+              <view class="project-hero-progress-head">
+                <text>{{progressLabel}} · {{selectedSource.projectProgress}}%</text>
+              </view>
+              <view class="project-hero-progress-track">
+                <view class="project-hero-progress-bar" style="width: {{selectedSource.projectProgress}}%"></view>
+              </view>
+              <view class="project-hero-stage-rail">
                 <view
-                  class="hero-room-chip {{selectedSource.targetScope === 'whole_floor_plan' ? 'active' : ''}}"
-                  data-scope="whole_floor_plan"
-                  bindtap="selectMapTarget"
-                  aria-role="button"
-                  aria-label="选择完整户型"
-                  aria-checked="{{selectedSource.targetScope === 'whole_floor_plan'}}"
+                  wx:for="{{stageRail}}"
+                  wx:for-item="stage"
+                  wx:key="key"
+                  class="project-hero-stage {{stage.status}}"
                 >
-                  <view class="hero-room-chip-label"><text>全屋</text></view>
-                </view>
-                <view
-                  wx:for="{{selectedSource.rooms}}"
-                  wx:for-item="room"
-                  wx:key="roomId"
-                  class="hero-room-chip {{selectedSource.roomId === room.roomId ? 'active' : ''}}"
-                  data-scope="single_room"
-                  data-index="{{index}}"
-                  bindtap="selectMapTarget"
-                  aria-role="button"
-                  aria-label="选择{{room.roomName}}"
-                  aria-checked="{{selectedSource.roomId === room.roomId}}"
-                >
-                  <view class="hero-room-chip-label"><text>{{room.roomName}}</text></view>
+                  <view class="project-hero-stage-node">
+                    <image
+                      wx:if="{{stage.status === 'current'}}"
+                      class="project-hero-stage-glow"
+                      src="/images/ai-design-stage-active-glow-v1.png"
+                      mode="aspectFit"
+                      aria-hidden="true"
+                    ></image>
+                    <view wx:if="{{stage.status === 'done'}}" class="project-hero-stage-check"></view>
+                    <text wx:else>{{index + 1}}</text>
+                  </view>
+                  <view wx:if="{{index < stageRail.length - 1}}" class="project-hero-stage-line"></view>
+                  <text class="project-hero-stage-label">{{stage.label}}</text>
                 </view>
               </view>
-            </scroll-view>
+            </view>
+
+            <view
+              wx:if="{{!sourcePickerOpen}}"
+              class="project-hero-primary {{primaryAction.enabled && !workflowLoading && !workflowLoadError ? '' : 'disabled'}}"
+              bindtap="openPrimaryAction"
+              aria-role="button"
+              aria-label="{{primaryAction.buttonLabel}}"
+            >
+              <text>{{primaryAction.buttonLabel}}</text>
+            </view>
 
             <view wx:if="{{heroSlides.length > 1}}" class="hero-slide-count">
               <text>{{activeHeroSlide + 1}} / {{heroSlides.length}}</text>
             </view>
 
-            <view wx:if="{{selectedSource.navigationPreview.state === 'processing'}}" class="preview-progress">
-              <text class="preview-progress-label">3D 户型生成中</text>
-              <text class="preview-progress-value">{{selectedSource.navigationPreview.task.progress}}%</text>
-              <view class="preview-progress-track">
-                <view class="preview-progress-bar" style="width: {{selectedSource.navigationPreview.task.progress}}%"></view>
-              </view>
-            </view>
             <image
+              wx:if="{{heroSlides.length}}"
               class="plan-guide-scene plan-guide-stage"
               src="/images/mine-icons/tab-measure-k.png"
               mode="aspectFit"
@@ -177,176 +184,300 @@ FORM: The project-switching bottom sheet groups a server-derived read model; res
           </view>
         </view>
 
-        <view class="journey-panel design-workbench">
+        <view wx:if="{{workflowLoading || workflowLoadError}}" class="workflow-state project-workflow-state {{workflowLoadError ? 'error' : ''}}">
+          <view class="workflow-state-copy">
+            <text class="workflow-state-title">{{workflowLoading ? '正在加载客户方案' : '客户方案加载失败'}}</text>
+            <text class="workflow-state-detail">{{workflowLoading ? '加载完成后即可继续设计' : '为避免成果写入错误方案，请先重新加载'}}</text>
+          </view>
+          <text wx:if="{{workflowLoadError}}" class="workflow-state-action" bindtap="retryWorkflowLoad">重试</text>
+        </view>
+
+        <view class="home-project-query">
           <view
-            class="stage-rail reference-stage-rail"
-            bindtap="openWorkflowPicker"
+            class="home-project-search"
+            bindtap="openSourcePicker"
             aria-role="button"
-            aria-label="{{schemeOptions.length ? '查看或更换当前客户方案' : '当前客户方案阶段'}}"
+            aria-label="搜索客户或小区"
           >
+            <image src="/images/mine-icons/search.png" mode="aspectFit"></image>
+            <text>搜索客户或小区</text>
+          </view>
+          <view
+            class="home-project-filter"
+            bindtap="openSourcePicker"
+            aria-role="button"
+            aria-label="筛选客户设计项目"
+          >
+            <image src="/images/leads-v4/filter.png" mode="aspectFit"></image>
+            <text>筛选</text>
+          </view>
+        </view>
+
+        <view class="space-scheme-head">
+          <text class="space-scheme-title">空间方案</text>
+          <view class="space-scheme-more" bindtap="openHistory" aria-role="button" aria-label="查看全部空间方案">
+            <text>查看全部</text>
+            <image src="/images/leads-v4/chevron-right.png" mode="aspectFit"></image>
+          </view>
+        </view>
+
+        <scroll-view scroll-x class="space-scheme-strip" enhanced show-scrollbar="{{false}}">
+          <view class="space-scheme-row">
             <view
-              wx:for="{{stageRail}}"
-              wx:for-item="stage"
-              wx:key="key"
-              class="stage-item {{stage.status}}"
+              wx:for="{{sources}}"
+              wx:key="sourceKey"
+              class="space-scheme-card {{selectedSource.floorPlanId === item.floorPlanId ? 'active' : ''}}"
+              data-index="{{index}}"
+              bindtap="selectHomeProjectCard"
+              aria-role="button"
+              aria-label="打开{{item.projectDisplayTitle}}"
             >
-              <view class="stage-node">
-                <view class="stage-dot">
-                  <view wx:if="{{stage.status === 'done'}}" class="stage-check"></view>
+              <image
+                wx:if="{{!item.previewLoadFailed && (item.latestGeneration.resultImageUrl || item.navigationPreview.imageUrl)}}"
+                class="space-scheme-image"
+                src="{{item.latestGeneration.resultImageUrl || item.navigationPreview.imageUrl}}"
+                mode="aspectFill"
+                data-source-key="{{item.sourceKey}}"
+                binderror="onProjectPreviewError"
+              ></image>
+              <view wx:else class="space-room-art">
+                <view wx:if="{{item.navigatorView.walls.length}}" class="space-mini-plan">
+                  <view
+                    wx:for="{{item.navigatorView.rooms}}"
+                    wx:for-item="room"
+                    wx:key="id"
+                    class="space-mini-room"
+                    style="{{room.fillStyle}}"
+                  ></view>
+                  <view
+                    wx:for="{{item.navigatorView.walls}}"
+                    wx:for-item="wall"
+                    wx:key="id"
+                    class="space-mini-wall"
+                    style="{{wall.style}}"
+                  ></view>
                 </view>
-                <view wx:if="{{index < stageRail.length - 1}}" class="stage-line"></view>
+                <image wx:else src="/images/ai-design-icons/floor-plan.png" mode="aspectFit"></image>
               </view>
-              <text class="stage-label">{{stage.label}}</text>
-              <text wx:if="{{stage.status === 'current'}}" class="stage-status">进行中</text>
+              <view class="space-scheme-shade"></view>
+              <view class="space-scheme-copy">
+                <text class="space-scheme-name">{{item.projectDisplayTitle}}</text>
+                <text class="space-scheme-status">{{selectedSource.floorPlanId === item.floorPlanId ? '当前项目' : item.statusLabel}}</text>
+              </view>
             </view>
           </view>
+        </scroll-view>
 
-          <view class="workflow-cards">
+        <view
+          class="design-preparation-card"
+          bindtap="openPreparationProjects"
+          aria-role="button"
+          aria-label="查看待完善量房项目"
+        >
+          <view class="design-preparation-art">
+            <image src="/images/ai-design-preparation-art-v1.jpg" mode="aspectFit"></image>
+          </view>
+          <view class="design-preparation-copy">
+            <text class="design-preparation-title">设计准备区</text>
+            <text class="design-preparation-meta">{{projectGroups[2] && projectGroups[2].count ? projectGroups[2].count + ' 个客户待完善量房' : '当前项目量房数据已就绪'}}</text>
+          </view>
+          <image class="design-preparation-chevron" src="/images/leads-v4/chevron-right.png" mode="aspectFit"></image>
+        </view>
+
+        <view class="project-tool-dock secondary-tool-dock">
+          <view class="project-tool-head">
+            <text class="project-tool-title">更多设计方式</text>
+            <text wx:if="{{schemeOptions.length}}" class="project-scheme-link" bindtap="openWorkflowPicker">客户方案</text>
+          </view>
+          <view class="project-tool-row">
             <view
               wx:for="{{workflows}}"
               wx:for-item="workflow"
               wx:key="key"
-              class="workflow-card {{primaryAction.mode === workflow.key ? 'recommended' : ''}} {{workflow.enabled && !workflowLoading && !workflowLoadError ? '' : 'disabled'}}"
+              class="project-tool-item {{workflow.enabled && !workflowLoading && !workflowLoadError ? '' : 'disabled'}}"
               data-mode="{{workflow.key}}"
               data-scope="{{workflow.key === 'floor_plan_render' ? 'whole_floor_plan' : ''}}"
               bindtap="openMode"
               aria-role="button"
               aria-label="{{workflow.title + '，' + workflow.credits + '点'}}"
-              aria-disabled="{{workflow.enabled && !workflowLoading && !workflowLoadError ? false : true}}"
             >
-              <text class="workflow-card-title">{{workflow.title}}</text>
-              <view class="workflow-art">
-                <image src="{{workflow.icon}}" mode="aspectFit"></image>
-                <view wx:if="{{primaryAction.mode === workflow.key}}" class="workflow-art-corner"></view>
-              </view>
-            </view>
-          </view>
-
-          <view wx:if="{{workflowLoading || workflowLoadError}}" class="workflow-state {{workflowLoadError ? 'error' : ''}}">
-            <view class="workflow-state-copy">
-              <text class="workflow-state-title">{{workflowLoading ? '正在加载客户方案' : '客户方案加载失败'}}</text>
-              <text class="workflow-state-detail">{{workflowLoading ? '加载完成后即可继续设计' : '为避免成果写入错误方案，请先重新加载'}}</text>
-            </view>
-            <text wx:if="{{workflowLoadError}}" class="workflow-state-action" bindtap="retryWorkflowLoad">重试</text>
-          </view>
-
-          <view
-            class="next-action-panel reference-next-action {{primaryAction.enabled && !workflowLoading && !workflowLoadError ? '' : 'disabled'}}"
-            bindtap="openPrimaryAction"
-            aria-role="button"
-            aria-label="{{primaryAction.title + '，' + primaryAction.buttonLabel + (primaryAction.credits ? '，' + primaryAction.credits + '点' : '')}}"
-          >
-            <image class="next-action-k" src="/images/page-ip-v3/ai-create.png" mode="aspectFit"></image>
-            <view class="next-action">
-              <view class="next-action-copy">
-                <view class="next-kicker-row">
-                  <text class="next-kicker">下一步</text>
-                  <text class="next-action-meta">{{primaryAction.buttonLabel}}{{primaryAction.credits ? ' · ' + primaryAction.credits + ' 点' : ''}}</text>
-                </view>
-                <text class="next-title">{{primaryAction.title}}</text>
-              </view>
-              <view class="next-button">
-                <view class="next-button-chevron"></view>
-              </view>
+              <image src="{{workflow.icon}}" mode="aspectFit"></image>
+              <text>{{workflow.title}}</text>
             </view>
           </view>
         </view>
         </block>
 
         <block wx:else>
-        <view class="scene-navigator {{sceneNavigation.focusClass}}">
-          <image class="scene-image" src="/images/ai-design-hero-v3.png" mode="aspectFill"></image>
-          <view class="scene-shade"></view>
-          <view class="scene-waypoint scene-point-one {{activeSceneMode === 'reference_recreate' ? 'active' : ''}}" data-mode="reference_recreate" bindtap="focusSceneWaypoint">
-            <view class="scene-waypoint-icon"><image src="/images/ai-design-icons/reference.png" mode="aspectFit"></image></view>
-            <text>参考图复刻</text>
-          </view>
-          <view class="scene-waypoint scene-point-two {{activeSceneMode === 'style_transform' ? 'active' : ''}}" data-mode="style_transform" bindtap="focusSceneWaypoint">
-            <view class="scene-waypoint-icon"><image src="/images/ai-design-icons/palette.png" mode="aspectFit"></image></view>
-            <text>拍照换风格</text>
-          </view>
-          <view class="scene-waypoint scene-point-three {{activeSceneMode === 'floor_plan_render' ? 'active' : ''}}" data-mode="floor_plan_render" bindtap="focusSceneWaypoint">
-            <view class="scene-waypoint-icon"><image src="/images/ai-design-icons/floor-plan.png" mode="aspectFit"></image></view>
-            <text>户型生成</text>
-          </view>
-          <view class="scene-waypoint scene-point-four {{activeSceneMode === 'soft_furnishing' ? 'active' : ''}}" data-mode="soft_furnishing" bindtap="focusSceneWaypoint">
-            <view class="scene-waypoint-icon"><image src="/images/ai-design-icons/armchair.png" mode="aspectFit"></image></view>
-            <text>软装搭配</text>
-          </view>
-          <view class="scene-source-card" bindtap="openSourcePicker">
-            <view class="scene-source-preview">
-              <image src="/images/ai-design-icons/floor-plan.png" mode="aspectFit"></image>
+          <view class="project-empty-stage">
+            <image
+              class="project-empty-scene"
+              src="/images/ai-design-empty-v2/stage-art.jpg"
+              mode="aspectFill"
+              aria-hidden="true"
+            ></image>
+            <view class="project-empty-message">
+              <text class="project-empty-title">从一条客户量房开始</text>
+              <text class="project-empty-copy">选择正式量房，建立第一个空间基准</text>
             </view>
-            <view class="scene-source-copy">
-              <text class="scene-source-title">选择真实户型</text>
-              <text class="scene-source-meta">{{sources.length ? '按全屋或房间开始探索' : '完成正式量房后即可关联'}}</text>
-            </view>
-            <view class="scene-source-action {{sources.length ? '' : 'disabled'}}">
-              <text>{{sources.length ? '选择' : '暂无户型'}}</text>
-              <view wx:if="{{sources.length}}" class="scene-source-chevron"></view>
-            </view>
-          </view>
-        </view>
-
-        <view class="discovery-panel">
-          <view class="discovery-handle"></view>
-          <view class="next-action standalone">
-            <view class="next-action-copy">
-              <view class="discovery-recommendation">
-                <image src="/images/mine-icons/tab-ai-active.png" mode="aspectFit"></image>
-                <text class="next-kicker">建议下一步</text>
+            <view class="project-empty-path" aria-label="客户量房到AI方案的设计路径">
+              <view class="project-empty-path-item">
+                <view class="project-empty-path-node">
+                  <image src="/images/ai-design-empty-v2/step-customer.png" mode="aspectFit"></image>
+                </view>
+                <text>客户量房</text>
               </view>
-              <text class="next-title">{{sceneNavigation.title}}</text>
+              <view class="project-empty-path-line"></view>
+              <view class="project-empty-path-item">
+                <view class="project-empty-path-node">
+                  <image src="/images/ai-design-empty-v2/step-survey.png" mode="aspectFit"></image>
+                </view>
+                <text>空间基准</text>
+              </view>
+              <view class="project-empty-path-line"></view>
+              <view class="project-empty-path-item">
+                <view class="project-empty-path-node">
+                  <image src="/images/ai-design-empty-v2/step-ai.png" mode="aspectFit"></image>
+                </view>
+                <text>AI方案</text>
+              </view>
             </view>
-            <view class="next-button {{sceneNavigation.enabled ? '' : 'disabled'}}" bindtap="enterSceneMode">
-              <text>{{sceneNavigation.buttonLabel}}</text>
-              <view class="next-button-chevron"></view>
+            <view
+              class="project-empty-action"
+              bindtap="openSourcePicker"
+              aria-role="button"
+              aria-label="选择客户量房"
+            >选择客户量房</view>
+          </view>
+
+          <view class="home-project-query empty-project-query">
+            <view
+              class="home-project-search"
+              bindtap="openSourcePicker"
+              aria-role="button"
+              aria-label="搜索客户或小区"
+            >
+              <image src="/images/mine-icons/search.png" mode="aspectFit"></image>
+              <text>搜索客户或小区</text>
+            </view>
+            <view
+              class="home-project-filter"
+              bindtap="openSourcePicker"
+              aria-role="button"
+              aria-label="筛选客户设计项目"
+            >
+              <image src="/images/leads-v4/filter.png" mode="aspectFit"></image>
+              <text>筛选</text>
             </view>
           </view>
-        </view>
+
+          <view class="space-scheme-head empty-source-head">
+            <text class="space-scheme-title">可开始设计</text>
+            <view class="space-scheme-more" bindtap="openSourcePicker" aria-role="button" aria-label="查看全部客户量房">
+              <text>查看全部</text>
+              <image src="/images/leads-v4/chevron-right.png" mode="aspectFit"></image>
+            </view>
+          </view>
+
+          <scroll-view wx:if="{{sources.length}}" scroll-x class="empty-source-strip" enhanced show-scrollbar="{{false}}">
+            <view class="empty-source-row">
+              <view
+                wx:for="{{sources}}"
+                wx:key="sourceKey"
+                class="empty-source-card"
+                data-index="{{index}}"
+                bindtap="selectHomeProjectCard"
+                aria-role="button"
+                aria-label="选择{{item.projectDisplayTitle}}"
+              >
+                <image
+                  wx:if="{{!item.previewLoadFailed && (item.latestGeneration.resultImageUrl || item.navigationPreview.imageUrl)}}"
+                  class="empty-source-image"
+                  src="{{item.latestGeneration.resultImageUrl || item.navigationPreview.imageUrl}}"
+                  mode="aspectFill"
+                  data-source-key="{{item.sourceKey}}"
+                  binderror="onProjectPreviewError"
+                ></image>
+                <view wx:else class="empty-source-plan-art">
+                  <image src="/images/ai-design-icons/floor-plan.png" mode="aspectFit"></image>
+                </view>
+                <view class="empty-source-shade"></view>
+                <view class="empty-source-copy">
+                  <text class="empty-source-name">{{item.projectDisplayTitle}}</text>
+                  <text class="empty-source-meta">{{item.projectSubtitle}}</text>
+                </view>
+              </view>
+            </view>
+          </scroll-view>
+
+          <view wx:else class="empty-source-none">
+            <image src="/images/ai-design-icons/floor-plan.png" mode="aspectFit"></image>
+            <view>
+              <text class="empty-source-none-title">暂无可开始设计的正式量房</text>
+              <text class="empty-source-none-copy">完成新的正式量房后，项目会自动出现在这里</text>
+            </view>
+          </view>
+
+          <view
+            class="design-preparation-card empty-preparation-card"
+            bindtap="openPreparationProjects"
+            aria-role="button"
+            aria-label="查看待完善量房项目"
+          >
+            <view class="design-preparation-art">
+              <image src="/images/ai-design-preparation-art-v1.jpg" mode="aspectFit"></image>
+            </view>
+            <view class="design-preparation-copy">
+              <text class="design-preparation-title">设计准备区</text>
+              <text class="design-preparation-meta">{{projectGroups[2] && projectGroups[2].count ? projectGroups[2].count + ' 个客户待完善量房' : '暂无待完善的正式量房'}}</text>
+            </view>
+            <image class="design-preparation-chevron" src="/images/leads-v4/chevron-right.png" mode="aspectFit"></image>
+          </view>
         </block>
 
-        <view wx:if="{{historyLoadError}}" class="history-state">
-          <text>最近成果暂时加载失败</text>
-          <text class="history-state-action" bindtap="retryLoad">重试</text>
-        </view>
+        <block wx:if="{{selectedSource}}">
+          <view wx:if="{{historyLoadError}}" class="history-state">
+            <text>最近成果暂时加载失败</text>
+            <text class="history-state-action" bindtap="retryLoad">重试</text>
+          </view>
 
-        <view class="recent-head">
-          <text class="recent-title">最近方案</text>
-          <view class="history-link" bindtap="openHistory">更多 <view class="history-chevron"></view></view>
-        </view>
+          <view class="recent-head">
+            <text class="recent-title">最近方案</text>
+            <view class="history-link" bindtap="openHistory">更多 <view class="history-chevron"></view></view>
+          </view>
 
-        <scroll-view wx:if="{{recent.length}}" scroll-x class="recent-strip" enhanced show-scrollbar="{{false}}">
-          <view class="recent-row">
-            <view
-              wx:for="{{recent}}"
-              wx:for-item="result"
-              wx:key="id"
-              class="result-card {{result.isProcessing ? 'processing' : ''}}"
-              data-id="{{result.id}}"
-              bindtap="openResult"
-            >
-              <image wx:if="{{result.displayImageUrl}}" class="result-image" src="{{result.displayImageUrl}}" mode="aspectFill"></image>
-              <view wx:else class="result-image result-placeholder">
-                <view class="result-placeholder-dot"></view>
-                <text>{{result.isProcessing ? '正在生成 ' + result.progress + '%' : '暂无预览'}}</text>
-              </view>
-              <view class="result-footer">
-                <text class="result-mode">{{result.modeTitle}}</text>
-                <text class="result-status {{result.statusClass}}">{{result.statusLabel}}</text>
-                <text wx:if="{{result.targetLabel}}" class="result-target">{{result.targetLabel}}</text>
-              </view>
-              <view wx:if="{{result.isProcessing}}" class="result-progress-track">
-                <view class="result-progress-bar" style="width: {{result.progress}}%"></view>
+          <scroll-view wx:if="{{recent.length}}" scroll-x class="recent-strip" enhanced show-scrollbar="{{false}}">
+            <view class="recent-row">
+              <view
+                wx:for="{{recent}}"
+                wx:for-item="result"
+                wx:key="id"
+                class="result-card {{result.isProcessing ? 'processing' : ''}}"
+                data-id="{{result.id}}"
+                bindtap="openResult"
+              >
+                <image wx:if="{{result.displayImageUrl}}" class="result-image" src="{{result.displayImageUrl}}" mode="aspectFill"></image>
+                <view wx:else class="result-image result-placeholder">
+                  <view class="result-placeholder-dot"></view>
+                  <text>{{result.isProcessing ? '正在生成 ' + result.progress + '%' : '暂无预览'}}</text>
+                </view>
+                <view class="result-footer">
+                  <text class="result-mode">{{result.modeTitle}}</text>
+                  <text class="result-status {{result.statusClass}}">{{result.statusLabel}}</text>
+                  <text wx:if="{{result.targetLabel}}" class="result-target">{{result.targetLabel}}</text>
+                </view>
+                <view wx:if="{{result.isProcessing}}" class="result-progress-track">
+                  <view class="result-progress-bar" style="width: {{result.progress}}%"></view>
+                </view>
               </view>
             </view>
-          </view>
-        </scroll-view>
+          </scroll-view>
 
-        <view wx:else class="empty-result">
-          <text class="empty-title">还没有设计成果</text>
-          <text class="empty-copy">完成第一次探索后，方案会保存在这里</text>
-        </view>
+          <view wx:else class="empty-result">
+            <text class="empty-title">还没有设计成果</text>
+            <text class="empty-copy">完成第一次探索后，方案会保存在这里</text>
+          </view>
+        </block>
       </block>
     </view>
   </scroll-view>
@@ -397,16 +528,10 @@ FORM: The project-switching bottom sheet groups a server-derived read model; res
         data-index="{{index}}"
         bindtap="selectProjectCard"
         aria-role="button"
-        aria-label="{{item.projectTitle}}，{{item.statusLabel}}，{{item.actionLabel}}"
+        aria-label="{{item.projectDisplayTitle}}，{{item.statusLabel}}，{{item.actionLabel}}"
       >
-        <view class="project-source-preview">
-          <image
-            wx:if="{{item.latestGeneration.resultImageUrl || item.navigationPreview.imageUrl}}"
-            class="project-source-image"
-            src="{{item.latestGeneration.resultImageUrl || item.navigationPreview.imageUrl}}"
-            mode="aspectFill"
-          ></image>
-          <view wx:else class="project-mini-plan">
+        <view class="project-source-preview project-source-preview-wide">
+          <view class="project-mini-plan">
             <view
               wx:for="{{item.navigatorView.rooms}}"
               wx:for-item="room"
@@ -421,11 +546,33 @@ FORM: The project-switching bottom sheet groups a server-derived read model; res
               class="project-mini-wall"
               style="{{wall.style}}"
             ></view>
-            <text wx:if="{{!item.navigatorView.walls.length}}" class="project-mini-empty">待完善</text>
+            <view wx:if="{{!item.navigatorView.walls.length}}" class="project-mini-placeholder-wrap">
+              <image
+                class="project-mini-placeholder"
+                src="/images/ai-design-icons/floor-plan.png"
+                mode="aspectFit"
+              ></image>
+            </view>
           </view>
+          <image
+            wx:if="{{!item.previewLoadFailed && (item.latestGeneration.resultImageUrl || item.navigationPreview.imageUrl)}}"
+            class="project-source-result-half"
+            src="{{item.latestGeneration.resultImageUrl || item.navigationPreview.imageUrl}}"
+            mode="aspectFill"
+            data-source-key="{{item.sourceKey}}"
+            binderror="onProjectPreviewError"
+          ></image>
+          <image
+            wx:if="{{!item.navigatorView.walls.length && !item.previewLoadFailed && (item.latestGeneration.resultImageUrl || item.navigationPreview.imageUrl)}}"
+            class="project-source-image"
+            src="{{item.latestGeneration.resultImageUrl || item.navigationPreview.imageUrl}}"
+            mode="aspectFill"
+            data-source-key="{{item.sourceKey}}"
+            binderror="onProjectPreviewError"
+          ></image>
         </view>
           <view class="source-item-main">
-            <text class="source-item-title">{{item.projectTitle}}</text>
+            <text class="source-item-title">{{item.projectDisplayTitle}}</text>
             <text class="source-item-meta">{{item.projectSubtitle}} · {{item.closedRoomCount}} 个闭合房间</text>
             <text class="source-item-detail {{item.statusClass}}">{{item.statusLabel}}</text>
           </view>

@@ -1,5 +1,6 @@
 export * from './admin-user-repository';
 export * from './acquisition-repository';
+export * from './action-permission-repository';
 export * from './ai-creation-model-profile-repository';
 export * from './ai-creation-repository';
 export * from './ai-chat-session-repository';
@@ -17,6 +18,7 @@ export * from './enterprise-ai-usage-snapshot-repository';
 export * from './floor-plan-repository';
 export * from './inspiration-repository';
 export * from './lead-repository';
+export * from './lead-lifecycle-repository';
 export * from './media-storage-config-repository';
 export * from './measurement-repository';
 export * from './media-asset-repository';

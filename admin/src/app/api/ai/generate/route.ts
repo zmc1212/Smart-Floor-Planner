@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     console.error('[AI Generate]', error);
     const status = (error as { status?: number })?.status || 500;
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : '服务端内部错误' },
+      { success: false, code: (error as { code?: string })?.code, error: error instanceof Error ? error.message : '服务端内部错误' },
       { status: status >= 400 ? status : 500 }
     );
   }

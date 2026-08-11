@@ -594,8 +594,9 @@ function buildCursor(floor, session, project) {
 
   const anchor = surveyGraph.getNode(floor, session.anchorNodeId);
   if (!anchor) return null;
+  const cursorPoint = surveyGraph.getCursorDisplayPoint(floor, session) || anchor;
   return {
-    point: project(session.previewPoint || anchor)
+    point: project(cursorPoint)
   };
 }
 

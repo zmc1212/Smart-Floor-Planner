@@ -49,7 +49,7 @@ function source(roomId, roomName) {
   };
 }
 
-test('opening AI Design without a floor plan never sends a standalone target scope', async () => {
+test('opening AI Design without any project does not query cross-project workflows', async () => {
   const originals = {
     loadCapabilities: aiService.loadCapabilities,
     loadHistory: aiService.loadHistory,
@@ -75,9 +75,55 @@ test('opening AI Design without a floor plan never sends a standalone target sco
     const page = createPage(loadPageDefinition());
     await page.loadData();
 
-    assert.deepEqual(requestedParams, { workflowId: '', leadId: '' });
+    assert.equal(requestedParams, undefined);
     assert.equal(page.data.loadError, '');
     assert.equal(page.data.selectedSource, null);
+  } finally {
+    Object.assign(aiService, originals);
+  }
+});
+
+test('opening AI Design with an archived lead shows the empty workbench without querying workflows', async () => {
+  const originals = {
+    loadCapabilities: aiService.loadCapabilities,
+    loadHistory: aiService.loadHistory,
+    loadSources: aiService.loadSources,
+    loadWorkflows: aiService.loadWorkflows,
+    loadHeroFloorPlanResults: aiService.loadHeroFloorPlanResults,
+  };
+  let workflowRequests = 0;
+  aiService.loadCapabilities = async () => ({
+    account: { availableBalance: 10, frozenBalance: 0 },
+    provider: { available: true, supportsEdit: true, supportsGenerate: true },
+    modes: [],
+  });
+  aiService.loadHistory = async () => ({ data: [] });
+  aiService.loadSources = async () => [{
+    leadId: '388',
+    leadArchived: true,
+    floorPlanId: '157',
+    rooms: [{ roomId: 'living', roomName: '客厅', openingCount: 1 }],
+    eligibility: { eligible: true },
+  }];
+  aiService.loadWorkflows = async () => {
+    workflowRequests += 1;
+    return [];
+  };
+  aiService.loadHeroFloorPlanResults = async () => [];
+
+  try {
+    const page = createPage(loadPageDefinition(), {
+      leadId: '388',
+      floorPlanId: '157',
+      workflowId: '234',
+    });
+    await page.loadData();
+
+    assert.equal(workflowRequests, 0);
+    assert.equal(page.data.selectedSource, null);
+    assert.equal(page.data.schemeOptions.length, 0);
+    assert.equal(page.data.workflowLoadError, '');
+    assert.equal(page.data.loadError, '');
   } finally {
     Object.assign(aiService, originals);
   }

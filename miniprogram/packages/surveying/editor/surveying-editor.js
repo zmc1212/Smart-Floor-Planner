@@ -1912,7 +1912,7 @@ Page({
 
     if (target === 'cursor' && session.anchorNodeId) {
       const anchor = surveyGraph.getNode(floor, session.anchorNodeId);
-      const cursorSource = session.previewPoint || anchor;
+      const cursorSource = surveyGraph.getCursorDisplayPoint(floor, session) || anchor;
       if (cursorSource) {
         const point = this.mmToCanvasPoint(cursorSource);
         return { x: point.x, y: point.y, width: 52, height: 52 };
@@ -2467,13 +2467,13 @@ Page({
     ) {
       const anchor = surveyGraph.getNode(floor, session.anchorNodeId);
       if (anchor) {
-        const cursorPoint = session.previewPoint || anchor;
+        const cursorPoint = surveyGraph.getCursorDisplayPoint(floor, session) || anchor;
         const cursorScreenPoint = this.mmToCanvasPoint(cursorPoint);
         cursorVisible = true;
         cursorStyle = `left:${roundPx(cursorScreenPoint.x - 24)}px; top:${roundPx(cursorScreenPoint.y - 24)}px;`;
 
         if (floor.walls.length > 0) {
-          const anchorScreenPoint = this.mmToCanvasPoint(anchor);
+          const anchorScreenPoint = this.mmToCanvasPoint(cursorPoint);
           guideVisible = true;
           cursorHorizontalGuideStyle = `top:${roundPx(anchorScreenPoint.y)}px;`;
           cursorVerticalGuideStyle = `left:${roundPx(anchorScreenPoint.x)}px;`;

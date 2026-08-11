@@ -24,13 +24,6 @@ const MODE_COPY = {
   },
 };
 
-const SCENE_FOCUS = {
-  reference_recreate: 'scene-focus-inspiration',
-  style_transform: 'scene-focus-style',
-  floor_plan_render: 'scene-focus-floor-plan',
-  soft_furnishing: 'scene-focus-furnishing',
-};
-
 const ACTIVE_TASK_STATUSES = ['created', 'pending', 'processing'];
 const PROJECT_GROUP_DEFINITIONS = [
   { key: 'in_progress', label: '进行中' },
@@ -180,6 +173,13 @@ function decorateSourcePlan(plan) {
   return {
     ...plan,
     projectTitle: plan.projectTitle || plan.communityName || plan.leadName || plan.floorPlanName || '正式户型',
+    projectDisplayTitle: plan.projectDisplayTitle
+      || (plan.leadName && plan.communityName ? `${plan.leadName} · ${plan.communityName}` : '')
+      || plan.projectTitle
+      || plan.communityName
+      || plan.leadName
+      || plan.floorPlanName
+      || '正式户型',
     projectSubtitle: plan.projectSubtitle || plan.leadName || '量房记录',
     eligibility,
     projectGroup,
@@ -190,6 +190,10 @@ function decorateSourcePlan(plan) {
     actionLabel: plan.actionLabel
       || (uiState === 'needs_survey' ? '继续量房' : '开始设计'),
     statusClass: uiState.replace('_', '-'),
+    projectProgress: normalizeProgress(
+      (plan.latestGeneration && plan.latestGeneration.progress)
+      || (plan.activeGeneration && plan.activeGeneration.progress)
+    ),
     navigationPreview: {
       ...navigationPreview,
       task: decorateTask(navigationPreview.task),
@@ -230,6 +234,20 @@ function chooseDefaultProjectGroup(projects, selectedFloorPlanId) {
   return 'needs_survey';
 }
 
+function chooseDefaultProject(projects, requestedFloorPlanId = '', requestedWorkflowId = '') {
+  const list = projects || [];
+  const requested = list.find((item) => item.floorPlanId === requestedFloorPlanId)
+    || list.find((item) => item.activeWorkflow && item.activeWorkflow.id === requestedWorkflowId);
+  if (requested) {
+    return requested.eligibility && requested.eligibility.eligible === false ? null : requested;
+  }
+  const isEligible = (item) => !item.eligibility || item.eligibility.eligible !== false;
+  return list.find((item) => item.projectGroup === 'in_progress' && isEligible(item))
+    || list.find((item) => item.projectGroup === 'ready' && isEligible(item))
+    || list.find(isEligible)
+    || null;
+}
+
 function resolveStageIndex(workflow) {
   if (!workflow) return 0;
   if (['proposal_pack', 'lighting', 'tour_board', 'premium_board', 'cad_detail'].includes(workflow.currentStageKey)) return 3;
@@ -263,22 +281,6 @@ function modeAction(workflows, mode, overrides = {}) {
     enabled: workflow.enabled !== false,
     targetScope: overrides.targetScope || '',
     sourceResultTaskId: overrides.sourceResultTaskId || '',
-  };
-}
-
-function buildSceneNavigation(workflows, mode = 'reference_recreate') {
-  const buttonLabels = {
-    reference_recreate: '上传参考图',
-    style_transform: '拍照开始',
-    floor_plan_render: '选择户型',
-    soft_furnishing: '上传空间图',
-  };
-  const action = modeAction(workflows, mode, {
-    buttonLabel: buttonLabels[mode] || '开始设计',
-  });
-  return {
-    ...action,
-    focusClass: SCENE_FOCUS[mode] || SCENE_FOCUS.reference_recreate,
   };
 }
 
@@ -466,12 +468,13 @@ function buildExperienceState(data) {
   const stageRail = buildStageRail(targetStageKey
     ? { currentStageKey: targetStageKey }
     : data.selectedWorkflow);
+  const currentStage = stageRail.find((stage) => stage.status === 'current') || stageRail[0];
   const primaryAction = buildPrimaryAction(data);
   return {
     stageRail,
+    progressLabel: currentStage ? currentStage.label : '空间基准',
     primaryAction,
     secondaryActions: buildSecondaryActions(data.workflows, primaryAction),
-    sceneNavigation: buildSceneNavigation(data.workflows, data.activeSceneMode),
   };
 }
 
@@ -489,9 +492,9 @@ module.exports = {
   decorateSourcePlan,
   buildProjectPickerView,
   chooseDefaultProjectGroup,
+  chooseDefaultProject,
   buildStageRail,
   buildPrimaryAction,
   buildSecondaryActions,
-  buildSceneNavigation,
   buildExperienceState,
 };

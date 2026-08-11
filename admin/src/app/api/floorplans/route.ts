@@ -169,9 +169,10 @@ export async function POST(request: Request) {
     );
   } catch (error: unknown) {
     const message = getErrorMessage(error);
-    const status = message.includes('access denied') ? 403 : 500;
+    const status = (error as { status?: number })?.status
+      || (message.includes('access denied') ? 403 : 500);
     return NextResponse.json(
-      { success: false, error: message },
+      { success: false, error: message, code: (error as { code?: string })?.code },
       { status }
     );
   }

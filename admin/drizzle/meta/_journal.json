@@ -134,6 +134,20 @@
       "when": 1786370400000,
       "tag": "0018_floor_plan_display_sequence",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1786380000000,
+      "tag": "0019_lead_archive_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786383600000,
+      "tag": "0020_lead_lifecycle_actor_indexes",
+      "breakpoints": true
     }
   ]
 }

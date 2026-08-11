@@ -101,6 +101,7 @@ fields remain the audit record after the current status advances.
   are normalized in API filters and client labels.
 - `acquired_at` and `acquired_by`: confirmation audit fields.
 - DTOs derive `acquisitionStatus` from `acquired_at` and expose an independent `acquisitionCommissionStatus`; no persisted acquisition-status column is added.
+- `archived_at`, `archived_by`, `archive_reason`, and `archive_note` are an independent visibility lifecycle. Archived leads retain floor plans, formal surveys, AI workflows/generations, acquisition facts, commissions, notifications, and follow-ups for history and can be restored without changing ownership or settlement facts. Archived leads are hidden from acquisition tasks and all lead write paths return `409 LEAD_ARCHIVED`.
 
 ### `lead_acquisition_commissions`
 
@@ -125,6 +126,10 @@ fields remain the audit record after the current status advances.
 | `POST /api/staff/wechat-qr` | Staff-management permission | Multipart image upload to `media_assets`; returns asset ID and short-lived URL. |
 | `POST /api/leads` | Authenticated lead creator; measurer flow is server-derived | Writes measurer, bound designer, and `new`; preserves phone de-duplication. |
 | `POST /api/leads/[id]/acquire` | Assigned designer | Atomically records the handoff without changing lifecycle status, creates the unique pending commission, and notifies the measurer. |
+| `GET /api/leads?archiveState=archived` | `leads.archive_manage` | Reads the archived-only area; normal list queries default to active leads. |
+| `POST /api/leads/archive-preview`, `POST /api/leads/archive` | `leads.archive_manage` plus row access | Preview and archive up to 100 leads, retaining all business assets; in-flight AI jobs block only the affected rows. |
+| `POST /api/leads/[id]/restore` | `leads.archive_manage` plus row access | Restores visibility and original business state/relations. |
+| `GET /api/leads/[id]/purge-preview`, `DELETE /api/leads/[id]` | Enterprise/platform manager only | Preview and permanently delete only an archived empty lead after exact-name confirmation; protected relationships return `409` and no force cascade exists. |
 | `GET /api/acquisition-tasks` | Current Mini Program designer or measurer | Role-isolated pending/completed tasks, pagination, time filters, and truthful summaries. Measurer responses add one page-level current-binding `designerProfile`; task rows do not repeat WeChat or QR fields. |
 | `GET /api/acquisition-commissions` | Measurer sees own records; enterprise/platform admins can filter by tenant | Lists records and summaries by enterprise, measurer, and status. |
 | `POST /api/acquisition-commissions/[id]/settle` | Enterprise admin, `admin`, `super_admin` | Allows only `pending_settlement -> paid`. |
@@ -161,6 +166,7 @@ Only measurers see the designer QR and acquisition commission entry. Designers d
 3. Designers can confirm only their assigned leads. Measurers can read only their own leads, one page-level current bound-designer profile, and commissions. Task rows keep historical assignee identity facts but do not repeat WeChat IDs or QR data.
 4. QR delivery verifies enterprise ownership and uses a signed URL; storage keys and unrestricted public URLs must not be exposed.
 5. Rebinding never rewrites historical leads or generated commissions.
+6. Archive and purge transactions lock the lead row and recheck relationships before commit. Lifecycle events keep actor/time/lead/action/reason and aggregate impact without customer PII, including after purge. Duplicate phone intake returns `409 ARCHIVED_LEAD_EXISTS` for an archived match and never creates a replacement commission.
 
 ## 8. Refinement backlog
 
@@ -173,7 +179,7 @@ Only measurers see the designer QR and acquisition commission entry. Designers d
 
 ## 9. Implementation references
 
-- Migrations: `admin/drizzle/0016_measurer_designer_acquisition.sql`, `admin/drizzle/0017_acquisition_workbench.sql`
+- Migrations: `admin/drizzle/0016_measurer_designer_acquisition.sql`, `admin/drizzle/0017_acquisition_workbench.sql`, `admin/drizzle/0019_lead_archive_lifecycle.sql`, `admin/drizzle/0020_lead_lifecycle_actor_indexes.sql`
 - Schema: `admin/src/db/schema.ts`
 - Staff APIs: `admin/src/app/api/staff/`, `admin/src/app/api/staff/wechat-qr/`
 - Lead APIs: `admin/src/app/api/leads/`, `admin/src/app/api/leads/[id]/acquire/`

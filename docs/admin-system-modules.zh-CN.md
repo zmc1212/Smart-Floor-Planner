@@ -205,6 +205,10 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
 ## 共享架构
 
 - 外壳和导航：`src/app/(admin)/layout.tsx`、`Sidebar.tsx`、`FetchInterceptor.tsx` 和 `useCurrentUser`。
+- 构建/运行说明（2026-08-10）：共享后台外壳通过 `globals.css` 和
+  `antd-provider.tsx` 使用本地系统字体栈（`PingFang SC`、`Microsoft YaHei`、
+  `Noto Sans CJK SC` 及思源黑体回退），不再在 Docker 构建时下载
+  `next/font/google` 资源；路由、API、权限和数据契约保持不变。
 - 认证与租户：`src/lib/auth.ts`、`session.ts`、`proxy.ts`、`tenant-context.ts`、`tenant-route.ts`、`miniprogram-auth.ts`。
 - 租户隔离：使用 `withTenantRoute`、`withTenantContext`、租户解析器和 `multiTenantPlugin`；平台管理员通过 `global_tenant_id` Cookie 切换全局视图。
 - 角色：`super_admin`、`admin`、`enterprise_admin`、`designer`、`salesperson`、`measurer`、`viewer`。菜单和默认权限在 `models/AdminUser.ts`，自定义角色在 `models/SystemRole.ts`。
@@ -277,6 +281,22 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
 - API：`/api/leads`、`/api/leads/[id]`、`/api/acquisition-tasks` 及户型、员工关联接口。
 - 模型/工具：PostgreSQL `LeadRepository`、`FloorPlanRepository`、`AdminUserRepository`、微信工具。
 - 状态：`Implemented`。支持线索录入/状态、跟进、创建时绑定设计师、正式户型关联和转化上下文；列表、详情、新建、更新和删除均在 RLS PostgreSQL 事务内执行，并保留十进制字符串 `_id` DTO。线索-户型连接表、主户型选择、租户校验和删除清理为原子操作；普通微信通知在数据库事务提交后调用。企微配置、群分享和员工企微标识已弃用，已从运行时 API 与 UI 移除；历史 MongoDB 字段及 PostgreSQL `admin_users.wecom_user_id` 列保留，不迁移也不删除。`/leads` 后台视图使用共享 Ant Design ProComponents 模式（`PageContainer`、`ProTable`）承载服务端分页、四阶段客户状态筛选和独立获客状态筛选，并在详情抽屉只读展示创建时绑定的设计师、正式户型、跟进记录及获客时间/提成状态；不再提供负责人换绑控件，`PUT /api/leads/[id]` 拒绝 `assignedTo` 写入，测量员—设计师换绑仅在 `/staff` 完成且只影响后续新线索；共享 `ModuleOverview` 从同一分页响应派生当前页漏斗统计。客户主流程为“新线索→量房中→方案设计→已签约”，`已关闭`为终止筛选；历史 `acquired` 归并到“新线索”，草稿/已完成正式户型关联分别推进到量房中/方案设计。获客确认独立使用 `acquired_at/acquired_by` 和提成记录表达，不再占用客户状态。列表和详情继续取消过期请求，租户范围、角色边界及“详情”“方案”“删除”行内操作保持不变，所有可见变更继续使用共享操作反馈。
+
+#### 客户线索归档生命周期（2026-08-10）
+
+- `Implemented`：`closed` 继续表示业务终止；`archived_at`、`archived_by`、`archive_reason`、`archive_note` 独立控制可见性。`/leads` 新增“在用线索 / 已归档”、最多 100 条批量预检与归档、归档只读详情、恢复，以及仅管理角色可用的永久删除预检和客户名称确认；日常列表不再展示直接删除。
+- `GET /api/leads` 默认 `archiveState=active`；读取归档区要求服务端实时解析的 `leads.archive_manage`。归档预检、归档、恢复和删除预检均在租户事务中使用行锁并叠加既有负责人/录入人边界；运行中的 AI 任务按条阻止，不影响同批其他可归档线索。
+- `super_admin`、`admin`、`enterprise_admin` 固定拥有归档管理能力；设计师和测量员每次按企业角色默认与员工“继承 / 允许 / 禁止”覆盖实时解析。`/staff` 仅向企业负责人和平台管理员提供配置抽屉，员工岗位变化会清理旧覆盖。`leads.purge` 不可下放。
+- 永久删除只接受已归档、客户名称完全匹配的空白线索。存在任意户型/正式量房、AI 工作流/生成/运行任务、获客确认/提成或跟进记录时返回 `409 LEAD_PURGE_BLOCKED`。允许删除时只删除基础线索及安全级联的内部通知，不触碰媒体资产；`lead_lifecycle_events` 在删除后继续保留不含客户 PII 的租户审计。
+- 归档线索默认从小程序线索、获客任务和 AI 客户选择器隐藏；历史户型、AI 方案和提成继续可读并返回归档标识。线索/跟进更新、获客确认、户型绑定和新增/重试 AI 任务统一返回 `409 LEAD_ARCHIVED`；手机号去重命中归档档案时返回 `409 ARCHIVED_LEAD_EXISTS`，不会自动创建、换绑或重复生成提成。
+
+#### 客户线索归档生命周期（2026-08-10）
+
+- `Implemented`：`closed` 继续表示业务终止；`archived_at`、`archived_by`、`archive_reason`、`archive_note` 独立控制可见性。`/leads` 新增“在用线索 / 已归档”、最多 100 条批量预检与归档、归档只读详情、恢复，以及仅管理角色可用的永久删除预检和客户名称确认；日常列表不再展示直接删除。
+- `GET /api/leads` 默认 `archiveState=active`；读取归档区要求服务端实时解析的 `leads.archive_manage`。归档预检、归档、恢复和删除预检均在租户事务中使用行锁并叠加既有负责人/录入人边界；运行中的 AI 任务按条阻止，不影响同批其他可归档线索。
+- `super_admin`、`admin`、`enterprise_admin` 固定拥有归档管理能力；设计师和测量员每次按企业角色默认与员工“继承 / 允许 / 禁止”覆盖实时解析。`/staff` 仅向企业负责人和平台管理员提供配置抽屉，员工岗位变化会清理旧覆盖。`leads.purge` 不可下放。
+- 永久删除只接受已归档、客户名称完全匹配的空白线索。存在任意户型/正式量房、AI 工作流/生成/运行任务、获客确认/提成或跟进记录时返回 `409 LEAD_PURGE_BLOCKED`。允许删除时只删除基础线索及安全级联的内部通知，不触碰媒体资产；`lead_lifecycle_events` 在删除后继续保留不含客户 PII 的租户审计。
+- 归档线索默认从小程序线索、获客任务和 AI 客户选择器隐藏；历史户型、AI 方案和提成继续可读并返回归档标识。线索/跟进更新、获客确认、户型绑定和新增/重试 AI 任务统一返回 `409 LEAD_ARCHIVED`；手机号去重命中归档档案时返回 `409 ARCHIVED_LEAD_EXISTS`，不会自动创建、换绑或重复生成提成。
 
 ### 8. 正式户型、搜索与查看
 
@@ -357,7 +377,7 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
 - GRSAI 现行模型目录：版本化目录按 2026-06-29 协议内置 `gpt-image-2`、`gpt-image-2-vip` 和 11 个 Nano Banana 模型。平台 `super_admin`/`admin` 在 `/ai-providers` 启停模型、指定唯一默认模型并设置 0–10 张参考图上限；供应商同步发现但没有参数能力定义的模型只读展示且不可执行。自由创作台只显示“模型已启用且至少一个分辨率价格已启用”的模型，提供模型/比例/分辨率联动，不再显示通用质量控件；VIP 使用官方像素预设矩阵或经过边长、16 倍数、长短边比与总像素校验的 `CUSTOM` 宽高。
 - GRSAI 现行协议与路由：同步结果与完整内置目录合并，`/v1/models` 不可用时仍返回完整目录。请求固定 `replyType: "async"`，不发送文档未定义的 `quality`、`output_format`；Nano 使用 `aspectRatio + imageSize`。自由创作显式模型只在 GRS 配置之间故障转移，并始终保持同一远程模型，不会静默换模型。供应商内部成本可按远程模型和分辨率匹配并写入 `AiProviderAttempt`。
 - 自由创作模型点数：`AiModelCreditPrice` 按 `image.free_create + modelProfileKey + resolutionTier` 唯一定价，VIP 自定义尺寸统一使用 `CUSTOM`。批次估算、冻结、成功扣除、失败释放和重试快照保存模型、远程模型及分辨率；客户工作流与小程序继续使用平台场景默认逻辑模型和原业务动作点数。
-- 小程序目标上下文：`/api/miniprogram/ai/workflows` 校验 `floorPlanId + targetScope + roomId`，从精确任务而非方案全局阶段派生当前目标状态。缺少范围字段的旧任务继续保留在历史中，但不会自动匹配房间；户型更新会令更早成果过期。小程序防重以方案、阶段、正式户型、目标范围和房间为完整键，允许不同房间并行，并取代上一段对小程序“同方案同阶段”防重的概括；后台仍保留原全局阶段语义。`POST /api/miniprogram/ai/tasks` 接收与手动空间图互斥的 `sourceResultTaskId`，重新校验成功状态、方案、目标、访问权限及时效，把内部或外部成果统一固化为新的 `ai_generation_input`，写入 `parentGenerationId` 后才冻结点数。其他员工只能看到同目标忙碌状态，创建员工可打开进度；不新增房间级 `AiWorkflow`，也不改变后台全局已采用成果语义。
+- 小程序目标上下文：`/api/miniprogram/ai/workflows` 校验 `floorPlanId + targetScope + roomId`，从精确任务而非方案全局阶段派生当前目标状态。缺少范围字段的旧任务继续保留在历史中，但不会自动匹配房间；户型更新会令更早成果过期。小程序防重以方案、阶段、正式户型、目标范围和房间为完整键，允许不同房间并行，并取代上一段对小程序“同方案同阶段”防重的概括；后台仍保留原全局阶段语义。`POST /api/miniprogram/ai/tasks` 接收与手动空间图互斥的 `sourceResultTaskId`，重新校验成功状态、方案、目标、访问权限及时效，把内部或外部成果统一固化为新的 `ai_generation_input`，写入 `parentGenerationId` 后才冻结点数。其他员工只能看到同目标忙碌状态，创建员工可打开进度；不新增房间级 `AiWorkflow`，也不改变后台全局已采用成果语义。PostgreSQL 路由现已在租户范围 Repository 查询中精确应用 `workflowId`，并从匹配的 PostgreSQL 生成记录恢复 `selectedTask`、`latestTask` 和 `targetContext`；JWT、企业、操作员与点数边界均不改变。
 - GRS 结果图策略：关闭转存开关时，GRS 返回的 `http(s)` 图片 URL 直接作为结果引用持久化，不下载也不创建 `MediaAsset`；供应商尝试校验和积分结算仍在原事务中执行。仅当平台在媒体存储页启用转存且当前默认存储为可用七牛配置时，后续 GRS 结果图才下载并写入七牛；Data URI、用户上传、量房控制图及非 GRS 供应商结果仍始终保存为 `MediaAsset`。
 - 迁移/运维：现有数据库启用新路由前运行 `npm run migrate:ai-platform`；脚本保留既有 AI 点数原值、为缺失企业创建 0 点账户、不转换 Pollen，并迁移旧生成/预设和写入环境变量供应商配置。点数价格初始化会移除旧版唯一 `mode_1` 索引，避免无 `mode` 的平台动作价格因重复 `null` 导致能力接口失败；`actionKey_1` 仍是价格记录的唯一业务索引。脚本幂等写入完整 GRSAI 模型/分辨率目录，仅默认启用 `gpt-image-2/1K` 并继承既有 `image.free_create` 点数；历史 `roomi-*` 档案与旧任务快照继续可读，但不作为可执行选项。`npm run cleanup:media-assets` 默认只预览，只有增加 `--execute` 才会在宽限期后物理清理软删除媒体；`npm run migrate:media-assets -- --from=<provider-key> --to=<provider-key>` 默认预览，参数使用稳定配置标识，增加 `--execute` 后按大小和 SHA-256 校验目标对象，先提交新定位再删除源对象。定时调用 `/api/ai/reconcile` 时配置 `AI_RECONCILIATION_SECRET`。
 
@@ -379,7 +399,7 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
 
 - API：`/api/auth/miniprogram`、`/api/miniprogram/home`、`/mine`、小程序 AI 能力/来源/方案/媒体/任务/历史接口，以及共享线索、户型、测量、提成、订单、报备接口。
 - 状态：`Implemented`。负责小程序身份、员工上下文、首页/我的工作台、定位、品牌、共享业务资产和企业员工 AI 设计；AI API 强制 Bearer JWT、企业和操作员归属校验。媒体上传按文件实际字节识别 JPG/PNG 及宽高，不依赖微信 multipart 请求声明 MIME；`/api/miniprogram/ai/sources` 保留旧版扁平房间数组并新增按正式户型分组的数据，只暴露当前角色可访问的正式户型和闭合房间。任务创建复用相同角色边界并保存显式 `whole_floor_plan`/`single_room` 范围；完整户型生成派生独立 1024px 控制图 `MediaAsset` 并调用图片编辑，单房间户型生成使用量房摘要调用图片生成。关联正式户型的参考复刻也会派生控制图，存在 `roomId` 时只绘制该闭合房间及其门窗，并把控制图置于参考图之前提交，均不修改正式墙图。显式方案直接续接；同客户/户型只有一个活动方案时自动复用，存在多个方案时必须由客户端选择，不会静默合并，并可明确新建备选方案。
-- 方案目标响应：正式目标的方案接口同时返回 `sourceFloorPlanId` 和按户型、范围、房间精确匹配的 `targetContext`；旧任务不会自动填图，其他员工的活动任务仅返回忙碌状态。任务续接与目标级防重继续复用上述角色边界。
+- 方案目标响应：正式目标的方案接口同时返回 `sourceFloorPlanId` 和按户型、范围、房间精确匹配的 `targetContext`；`workflowId` 是精确查询条件，旧任务不会自动填图，其他员工的活动任务仅返回忙碌状态。任务续接与目标级防重继续复用上述角色边界。
 - PostgreSQL 工作台边界：`/api/miniprogram/home` 和 `/mine` 已通过 typed RLS Repository 派生实时线索、正式户型、测量、设备、报备和待办数据，`/api/users` 也返回 PostgreSQL 户型计数。AI 生成域迁移前，首页 `aiGeneratedCases` 返回 `0`；订单和提成仍由 MongoDB 支撑，不会把 PostgreSQL bigint ID 传入旧 MongoDB 查询。
 
 ### 13. 通知、自动化与诊断

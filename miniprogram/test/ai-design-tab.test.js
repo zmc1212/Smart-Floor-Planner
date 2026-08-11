@@ -77,11 +77,14 @@ test('AI Design uses the shared tab-page scrolling contract', () => {
   assert.match(aiDesignWxml, /bindrefresherrefresh="onRefresh"/);
   assert.match(aiDesignWxss, /\.source-sheet[^}]+bottom: 0/);
   assert.match(aiDesignWxss, /safe-area-inset-bottom/);
-  assert.match(
-    aiDesignWxss,
-    /\.without-plan \.scene-navigator\s*\{[\s\S]*margin:\s*calc\(-214rpx - var\(--ai-navigation-top/
-  );
+  assert.match(aiDesignWxml, /class="project-empty-stage"/);
+  assert.doesNotMatch(aiDesignWxml, /class="scene-navigator/);
   assert.match(aiDesignPageSource, /syncTabBar\(\) \{[\s\S]*tabBar\.syncSelected\(\)/);
+  assert.match(customTabSource, /suppressed: false/);
+  assert.match(customTabWxml, /wx:if="\{\{!suppressed\}\}" class="tabbar-shell"/);
+  assert.match(aiDesignPageSource, /setTabBarHidden\(hidden\)/);
+  assert.match(aiDesignPageSource, /openSourcePicker\(\) \{[\s\S]*this\.setTabBarHidden\(true\)/);
+  assert.match(aiDesignPageSource, /closeSourcePicker\(\) \{[\s\S]*this\.setTabBarHidden\(false\)/);
   assert.match(aiDesignPageSource, /syncImmersiveNavigationMetrics\(\)/);
 });
 
@@ -98,6 +101,8 @@ test('the center Measure action uses the approved background-free Xiao K rangefi
     /\.center-image\s*\{[\s\S]*?width:\s*128rpx;[\s\S]*?height:\s*128rpx;/
   );
   assert.match(customTabWxss, /\.tab-item\.center \.tab-text\s*\{[\s\S]*?top:\s*96rpx;/);
+  assert.match(customTabWxss, /\.tab-item\.center \.tab-text\s*\{[\s\S]*?color:\s*currentColor;[\s\S]*?font-weight:\s*400;/);
+  assert.doesNotMatch(customTabWxss, /\.tab-item\.center \.tab-text\s*\{[\s\S]*?color:\s*#079b45;/);
 
   const measureAsset = fs.readFileSync(
     path.join(miniRoot, 'images', 'mine-icons', 'tab-measure-k.png')

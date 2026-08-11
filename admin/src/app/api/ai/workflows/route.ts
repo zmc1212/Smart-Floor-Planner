@@ -69,8 +69,8 @@ export async function POST(req: Request) {
         );
       } catch (error) {
         return NextResponse.json(
-          { success: false, error: error instanceof Error ? error.message : 'Failed to create workflow' },
-          { status: 400 }
+          { success: false, code: (error as { code?: string }).code, error: error instanceof Error ? error.message : 'Failed to create workflow' },
+          { status: (error as { status?: number }).status || 400 }
         );
       }
 

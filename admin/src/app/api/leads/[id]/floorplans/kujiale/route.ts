@@ -235,8 +235,11 @@ export async function POST(
     const message = getErrorMessage(error);
     console.error('Import KuJiale floor plan error:', error);
     return NextResponse.json(
-      { success: false, error: message },
-      { status: message.includes('access denied') ? 404 : 500 }
+      { success: false, error: message, code: (error as { code?: string })?.code },
+      {
+        status: (error as { status?: number })?.status
+          || (message.includes('access denied') ? 404 : 500),
+      }
     );
   }
 }

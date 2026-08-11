@@ -65,6 +65,43 @@ or a roadmap do not replace the current module inventory.
 - Do not infer implementation approval from a request to redesign an interface,
   even when the requested design is technically straightforward.
 
+## Mandatory UI Design Source Check
+
+- Before changing any visible UI, including a bug fix, state transition, empty
+  state, loading/error state, copy, spacing, asset, or navigation treatment,
+  first inspect the repository for the corresponding design reference, prompt,
+  screenshot, visual-QA record, and any existing implementation restored from
+  that design. The confirmed design source and the existing restored UI are the
+  authority for the change.
+- If a corresponding design source exists, explicitly map the requested change
+  to that source before editing. A state-only request must switch the existing
+  approved state/data path; it must not replace the state with a generic card,
+  self-invented layout, copy, color, icon, or artwork.
+- If no design source can be found, or multiple sources conflict, pause and ask
+  the user which design to follow. Do not invent a visual solution or begin
+  frontend implementation based only on a functional guess.
+- When the user asks for behavior/API work and does not authorize a visual
+  change, preserve the existing markup, styles, assets, and visual hierarchy.
+  If the requested behavior exposes a visual-state decision not covered by an
+  approved design, ask before changing the UI.
+- Before handoff, verify the rendered state against the confirmed design source
+  at the applicable viewport and record the source and verification evidence in
+  the relevant module documentation.
+- For high-fidelity restoration, build and verify an element-by-element visual
+  ledger from the approved design: each visible element's bounds, size,
+  alignment, and spacing to adjacent elements must be checked at the target
+  viewport. Merely avoiding overlap is not an acceptable substitute for the
+  designed spacing. When native host UI participates in the composition (for
+  example the WeChat menu capsule), validate both application-layer bounds and
+  a full host-window capture that includes the native layer.
+- When the approved design already contains the required raster artwork, icon,
+  or cut region, reuse or extract that exact design asset for the production UI.
+  Do not substitute an approximate generated image, a stock asset, or an
+  unrelated existing project icon for convenience. If an exact asset cannot be
+  extracted or reused, pause and ask the user instead of inventing a substitute.
+  Record the mapping from approved design source/cut to packaged production path
+  in the relevant module documentation and include it in visual QA.
+
 ## Repository Map
 
 - `admin/`: Next.js 16 App Router, React 19, Tailwind 4, shadcn/ui + Radix,
@@ -208,6 +245,19 @@ staged change; split unrelated work.
 
 - Reuse the user's currently open WeChat DevTools project window for Mini
   Program compilation, automation, screenshots, and visual QA.
+- After attaching to the existing WeChat DevTools automation endpoint, trigger
+  one fresh Mini Program compilation before the first interactive check or
+  screenshot and confirm that the simulator has resumed rendering. The initial
+  home page can remain visually frozen after an automated attachment; do not
+  treat that frozen frame as application behavior or visual-QA evidence.
+- Before every Mini Program visual-QA screenshot, identify the intended restored
+  page route and inspect the running page stack through the automation runtime.
+  Capture only after the top active route exactly matches that target (ignoring
+  query parameters and a leading slash) and the simulator has rendered it. A
+  launch or home-page frame is never evidence for a different restored page. If
+  the route differs, navigate to the target, wait for it to render, and repeat
+  the route check before taking the screenshot; record the confirmed route with
+  the visual-QA evidence.
 - Do not run `cli open`, `cli auto`, or an equivalent command when it would open
   a duplicate WeChat DevTools window for the same project. Connect only to the
   automation endpoint already exposed by the current window.

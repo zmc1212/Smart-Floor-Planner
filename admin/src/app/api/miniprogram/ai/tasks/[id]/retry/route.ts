@@ -13,6 +13,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   } catch (error) {
     console.error('[Mini AI Task Retry]', error);
     const status = (error as { status?: number })?.status || 400;
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : '重试失败' }, { status });
+    return NextResponse.json({ success: false, code: (error as { code?: string })?.code, error: error instanceof Error ? error.message : '重试失败' }, { status });
   }
 }

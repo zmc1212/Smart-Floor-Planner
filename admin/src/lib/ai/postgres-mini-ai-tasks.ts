@@ -1,5 +1,6 @@
-import { AiCreationRepository, AiWorkflowRepository, FloorPlanRepository, LeadRepository } from '@/db/repositories';
+import { AiCreationRepository, AiWorkflowRepository, FloorPlanRepository, LeadLifecycleRepository, LeadRepository, type AiGenerationRecord } from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
+import type { PostgresTransaction } from '@/db/transaction';
 import { withTenantTransaction } from '@/db/transaction';
 import { getAiCreditPrice } from '@/lib/ai/credits';
 import {
@@ -18,6 +19,7 @@ import { resolveMiniAiFloorPlanTarget, renderMiniAiFloorPlanControlPng, type Min
 import type { MiniAiContext } from '@/lib/ai/mini-ai-auth';
 import type { MiniAiRenderMode } from '@/lib/ai/mini-ai-types';
 import { assertEligibleWorkflowFloorPlan } from '@/lib/ai/workflow-floorplan';
+import { leadArchivedError } from '@/lib/lead-lifecycle';
 
 export type CreateMiniAiTaskInput = {
   mode: MiniAiRenderMode;
@@ -50,6 +52,20 @@ function errorCode(error: unknown) {
   return (error as { status?: number })?.status === 402 ? 'INSUFFICIENT_CREDITS' : 'PROVIDER_ERROR';
 }
 
+async function assertMiniAiGenerationLeadActive(
+  transaction: PostgresTransaction,
+  generation: Pick<AiGenerationRecord, 'leadId' | 'floorPlanId'>,
+) {
+  let leadId = generation.leadId;
+  if (!leadId && generation.floorPlanId) {
+    leadId = (await new LeadRepository(transaction).findByFloorPlanId(generation.floorPlanId))?.id ?? null;
+  }
+  if (!leadId) return;
+  await new LeadLifecycleRepository(transaction).lockByIds([leadId]);
+  const lead = await new LeadRepository(transaction).findById(leadId);
+  if (lead?.archivedAt) throw leadArchivedError();
+}
+
 async function findAsset(enterpriseId: bigint, id?: string) {
   if (!id || !/^[1-9]\d*$/.test(id)) return null;
   return withTenantTransaction(enterpriseId, (transaction) => new AiCreationRepository(transaction).findMediaAsset(BigInt(id)));
@@ -74,9 +90,10 @@ async function accessibleFloorPlan(enterpriseId: bigint, context: MiniAiContext,
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const plan = await new FloorPlanRepository(transaction).findById(BigInt(id));
     if (!plan) return null;
+    const lead = await new LeadRepository(transaction).findByFloorPlanId(plan.id);
+    if (lead?.archivedAt) throw leadArchivedError();
     if (['enterprise_admin', 'admin', 'super_admin'].includes(context.role)) return plan;
     if ((context.role === 'designer' || context.role === 'measurer') && plan.staffId === BigInt(context.operatorId)) return plan;
-    const lead = await new LeadRepository(transaction).findByFloorPlanId(plan.id);
     if (!lead) return null;
     if (context.role === 'salesperson' && lead.promoterId !== BigInt(context.operatorId)) return null;
     if (context.role === 'designer' && lead.assignedTo !== BigInt(context.operatorId)) return null;
@@ -90,6 +107,7 @@ async function accessibleLead(enterpriseId: bigint, context: MiniAiContext, id?:
   return withTenantTransaction(enterpriseId, async (transaction) => {
     const lead = await new LeadRepository(transaction).findById(BigInt(id));
     if (!lead) return null;
+    if (lead.archivedAt) throw leadArchivedError();
     if (['enterprise_admin', 'admin', 'super_admin'].includes(context.role)) return lead;
     if (context.role === 'salesperson') return lead.promoterId === operatorId ? lead : null;
     if (context.role === 'designer') {
@@ -142,6 +160,7 @@ export async function createPostgresMiniAiTask(input: CreateMiniAiTaskInput, con
   const planLead = plan
     ? await withTenantTransaction(enterpriseId, (transaction) => new LeadRepository(transaction).findByFloorPlanId(plan.id))
     : null;
+  if (planLead?.archivedAt) throw leadArchivedError();
   const leadId = requestedLead?.id || planLead?.id;
   let workflowId: bigint | undefined;
   if (input.workflowId && /^[1-9]\d*$/.test(input.workflowId)) {
@@ -165,8 +184,11 @@ export async function createPostgresMiniAiTask(input: CreateMiniAiTaskInput, con
   const referenceAsset = await cloneAsset(enterpriseId, reference);
   const controlAsset = plan ? (await storePostgresMediaBuffer({ enterpriseId, ownerType: 'ai_generation_input', mimeType: 'image/png', buffer: await renderMiniAiFloorPlanControlPng(plan.layoutData, 1024, target?.targetScope === 'single_room' ? target.roomId : undefined), storageProviderKey: 'local' })).asset : null;
   const roomData = target ? { summary: target.summary, roomId: target.roomId, targetScope: target.targetScope, targetLabel: target.targetLabel, roomCount: target.roomCount, ...(target.targetScope === 'whole_floor_plan' ? { navigationRenderVersion: MINI_AI_WHOLE_PLAN_RENDER_VERSION } : {}) } : undefined;
-  const generation = await withTenantTransaction(enterpriseId, async (transaction) => new AiCreationRepository(transaction).createGeneration({
-    enterpriseId, operatorId, floorPlanId: plan?.id, leadId: leadId ?? null, workflowId: workflowId ?? null, parentGenerationId: sourceTask?.id ?? null, type: 'miniprogram', channel: 'miniprogram', stageKey: config.stageKey, sourceAssetRole: plan ? 'floor_plan' : 'rough_sketch', nextRecommendedStage: config.nextStageKey, status: 'pending', actionKey: config.actionKey, capability: config.logicalModelKey === 'image.edit.standard' ? 'image.edit' : 'image.generate', logicalModelKey: plan && input.mode === 'floor_plan_render' ? 'image.edit.standard' : config.logicalModelKey, input: { mode: input.mode, style: input.styleKey || 'modern', customPrompt: buildPrompt({ mode: input.mode, style: input.styleKey, summary: roomData?.summary }), roomData, spaceImage: spaceAsset ? getPostgresMediaAssetImageUrl(spaceAsset.id) : undefined, referenceImage: referenceAsset ? getPostgresMediaAssetImageUrl(referenceAsset.id) : undefined, controlImage: controlAsset ? getPostgresMediaAssetImageUrl(controlAsset.id) : undefined, outputAspectRatio: input.mode === 'floor_plan_render' ? '1:1' : '16:9', outputSize: input.mode === 'floor_plan_render' ? '1024x1024' : '1280x720' }, output: {}, billing: { cycle: 0, actionKey: config.actionKey, price: price.credits, status: 'unbilled' } }));
+  const generation = await withTenantTransaction(enterpriseId, async (transaction) => {
+    if (leadId) await assertMiniAiGenerationLeadActive(transaction, { leadId, floorPlanId: plan?.id ?? null });
+    return new AiCreationRepository(transaction).createGeneration({
+      enterpriseId, operatorId, floorPlanId: plan?.id, leadId: leadId ?? null, workflowId: workflowId ?? null, parentGenerationId: sourceTask?.id ?? null, type: 'miniprogram', channel: 'miniprogram', stageKey: config.stageKey, sourceAssetRole: plan ? 'floor_plan' : 'rough_sketch', nextRecommendedStage: config.nextStageKey, status: 'pending', actionKey: config.actionKey, capability: config.logicalModelKey === 'image.edit.standard' ? 'image.edit' : 'image.generate', logicalModelKey: plan && input.mode === 'floor_plan_render' ? 'image.edit.standard' : config.logicalModelKey, input: { mode: input.mode, style: input.styleKey || 'modern', customPrompt: buildPrompt({ mode: input.mode, style: input.styleKey, summary: roomData?.summary }), roomData, spaceImage: spaceAsset ? getPostgresMediaAssetImageUrl(spaceAsset.id) : undefined, referenceImage: referenceAsset ? getPostgresMediaAssetImageUrl(referenceAsset.id) : undefined, controlImage: controlAsset ? getPostgresMediaAssetImageUrl(controlAsset.id) : undefined, outputAspectRatio: input.mode === 'floor_plan_render' ? '1:1' : '16:9', outputSize: input.mode === 'floor_plan_render' ? '1024x1024' : '1280x720' }, output: {}, billing: { cycle: 0, actionKey: config.actionKey, price: price.credits, status: 'unbilled' } });
+  });
   await withTenantTransaction(enterpriseId, async (transaction) => {
     const repo = new AiCreationRepository(transaction);
     await Promise.all([spaceAsset, referenceAsset, controlAsset].filter(Boolean).map((asset) => repo.updateMediaAsset(asset!.id, { ownerId: generation.id })));
@@ -205,6 +227,9 @@ async function findPostgresMiniAiTask(inputId: string, input: {
 export async function executePostgresMiniAiTask(id: string, context: MiniAiContext) {
   const generation = await getPostgresMiniAiTask(id, context);
   if (!generation) throw Object.assign(new Error('任务不存在'), { status: 404 });
+  await withTenantTransaction(parsePostgresId(context.enterpriseId, 'enterpriseId'), (transaction) =>
+    assertMiniAiGenerationLeadActive(transaction, generation)
+  );
   if (generation.status === 'pending' || generation.status === 'created') await submitPostgresCreationGeneration({ enterpriseId: context.enterpriseId, generationId: generation.id.toString() });
   return getPostgresMiniAiTask(id, context);
 }
@@ -214,7 +239,10 @@ export async function retryPostgresMiniAiTask(id: string, context: MiniAiContext
   if (!generation || generation.status !== 'failed') throw Object.assign(new Error('只有失败的小程序 AI 任务可以重试'), { status: 400 });
   const enterpriseId = parsePostgresId(context.enterpriseId, 'enterpriseId');
   if (String(asRecord(generation.billing).status) === 'held') await releasePostgresCreationGenerationCredits({ enterpriseId: context.enterpriseId, generationId: id, errorMessage: '重试前释放冻结积分' });
-  await withTenantTransaction(enterpriseId, (transaction) => new AiCreationRepository(transaction).updateGeneration(generation.id, { status: 'pending', errorCode: null, errorMessage: null, currentAttemptId: null, externalTask: {}, retryCount: generation.retryCount + 1, billing: { ...asRecord(generation.billing), cycle: generation.retryCount + 1, status: 'unbilled' } }));
+  await withTenantTransaction(enterpriseId, async (transaction) => {
+    await assertMiniAiGenerationLeadActive(transaction, generation);
+    return new AiCreationRepository(transaction).updateGeneration(generation.id, { status: 'pending', errorCode: null, errorMessage: null, currentAttemptId: null, externalTask: {}, retryCount: generation.retryCount + 1, billing: { ...asRecord(generation.billing), cycle: generation.retryCount + 1, status: 'unbilled' } });
+  });
   return executePostgresMiniAiTask(id, context);
 }
 
@@ -232,8 +260,9 @@ export async function preparePostgresMiniAiTaskRetry(id: string, enterpriseId: s
       errorMessage: 'Release frozen credits before administrator retry',
     });
   }
-  await withTenantTransaction(parsedEnterpriseId, (transaction) =>
-    new AiCreationRepository(transaction).updateGeneration(generation.id, {
+  await withTenantTransaction(parsedEnterpriseId, async (transaction) => {
+    await assertMiniAiGenerationLeadActive(transaction, generation);
+    return new AiCreationRepository(transaction).updateGeneration(generation.id, {
       status: 'pending',
       errorCode: null,
       errorMessage: null,
@@ -245,8 +274,8 @@ export async function preparePostgresMiniAiTaskRetry(id: string, enterpriseId: s
         cycle: generation.retryCount + 1,
         status: 'unbilled',
       },
-    })
-  );
+    });
+  });
   return generation;
 }
 

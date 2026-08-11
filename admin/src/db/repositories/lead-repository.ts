@@ -45,6 +45,7 @@ export interface LeadWithRelations extends LeadRecord {
   primaryFloorPlanRecord: LeadFloorPlanRecord | null;
   assignedUser: LeadStaffSummary | null;
   promoter: LeadStaffSummary | null;
+  archivedUser: LeadStaffSummary | null;
   acquisitionCommission: {
     status: string;
     commissionAmount: string;
@@ -63,6 +64,7 @@ export interface LeadListOptions {
   limit?: number;
   createdSince?: Date;
   orderBy?: 'createdAt' | 'updatedAt';
+  archiveState?: 'active' | 'archived' | 'all';
 }
 
 export class LeadRepository {
@@ -70,6 +72,11 @@ export class LeadRepository {
 
   private buildFilters(options: LeadListOptions) {
     const filters: SQL[] = [];
+    if (options.archiveState === 'archived') {
+      filters.push(isNotNull(leads.archivedAt));
+    } else if (options.archiveState !== 'all') {
+      filters.push(isNull(leads.archivedAt));
+    }
     if (options.status && options.status !== 'all') {
       const variants = getLeadStatusVariants(options.status);
       filters.push(
@@ -156,7 +163,7 @@ export class LeadRepository {
     const staffIds = Array.from(
       new Set(
         rows.flatMap((row) =>
-          [row.assignedTo, row.promoterId].filter(
+          [row.assignedTo, row.promoterId, row.archivedBy].filter(
             (value): value is bigint => value !== null
           )
         )
@@ -204,6 +211,7 @@ export class LeadRepository {
         ? staffMap.get(row.assignedTo) ?? null
         : null,
       promoter: row.promoterId ? staffMap.get(row.promoterId) ?? null : null,
+      archivedUser: row.archivedBy ? staffMap.get(row.archivedBy) ?? null : null,
       acquisitionCommission: acquisitionMap.get(row.id) ?? null,
     }));
   }
@@ -264,12 +272,14 @@ export class LeadRepository {
     return (await this.attachRelations(rows))[0] ?? null;
   }
 
-  async findByIds(ids: bigint[]) {
+  async findByIds(ids: bigint[], options: { includeArchived?: boolean } = {}) {
     if (!ids.length) return [];
     const rows = await this.transaction
       .select()
       .from(leads)
-      .where(inArray(leads.id, ids));
+      .where(options.includeArchived
+        ? inArray(leads.id, ids)
+        : and(inArray(leads.id, ids), isNull(leads.archivedAt)));
     return this.attachRelations(rows);
   }
 
@@ -323,6 +333,18 @@ export class LeadRepository {
   }
 
   async update(id: bigint, input: LeadUpdate) {
+    const current = await this.transaction
+      .select({ archivedAt: leads.archivedAt })
+      .from(leads)
+      .where(eq(leads.id, id))
+      .for('update')
+      .limit(1);
+    if (current[0]?.archivedAt) {
+      throw Object.assign(new Error('该客户线索已归档，请先恢复后再操作'), {
+        status: 409,
+        code: 'LEAD_ARCHIVED',
+      });
+    }
     const rows = await this.transaction
       .update(leads)
       .set({ ...input, updatedAt: new Date() })
@@ -351,6 +373,12 @@ export class LeadRepository {
         .limit(1),
     ]);
     if (!lead[0] || !plan[0]) return null;
+    if (lead[0].archivedAt) {
+      throw Object.assign(new Error('该客户线索已归档，请先恢复后再操作'), {
+        status: 409,
+        code: 'LEAD_ARCHIVED',
+      });
+    }
     if (lead[0].enterpriseId !== plan[0].enterpriseId) {
       throw new Error('Lead and floor plan belong to different enterprises');
     }
@@ -398,21 +426,4 @@ export class LeadRepository {
       .where(eq(leadFloorPlans.floorPlanId, floorPlanId));
   }
 
-  async deleteWithFloorPlans(id: bigint) {
-    const links = await this.transaction
-      .select({ floorPlanId: leadFloorPlans.floorPlanId })
-      .from(leadFloorPlans)
-      .where(eq(leadFloorPlans.leadId, id));
-    const deleted = await this.transaction
-      .delete(leads)
-      .where(eq(leads.id, id))
-      .returning();
-    if (!deleted[0]) return null;
-    if (links.length > 0) {
-      await this.transaction
-        .delete(floorPlans)
-        .where(inArray(floorPlans.id, links.map((link) => link.floorPlanId)));
-    }
-    return deleted[0];
-  }
 }

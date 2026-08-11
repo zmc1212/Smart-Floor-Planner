@@ -18,6 +18,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   } catch (error) {
     console.error('[Mini AI Task Run]', error);
     const status = (error as { status?: number })?.status || 502;
-    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : 'AI 生成失败' }, { status });
+    return NextResponse.json({ success: false, code: (error as { code?: string })?.code, error: error instanceof Error ? error.message : 'AI 生成失败' }, { status });
   }
 }

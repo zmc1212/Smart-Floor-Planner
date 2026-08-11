@@ -28,6 +28,7 @@ import {
   floorPlans,
   inspirations,
   leadAcquisitionCommissions,
+  leadLifecycleEvents,
   leads,
   mediaStorageConfigs,
   packages,
@@ -55,6 +56,7 @@ import {
   EnterpriseAiUsageSnapshotRepository,
   FloorPlanRepository,
   InspirationRepository,
+  LeadLifecycleRepository,
   LeadRepository,
   MediaAssetRepository,
   MediaStorageConfigRepository,
@@ -583,6 +585,70 @@ test('AI creation policy reads a PostgreSQL enterprise identity without ObjectId
 
   const policy = await getEnterpriseAiPolicy(enterpriseAId.toString());
   assert.deepEqual(policy.enabledActionKeys, ['image.free_create']);
+});
+
+test('lead archive lifecycle filters active rows and restores the original business state', async () => {
+  let leadId: bigint | null = null;
+  const phone = `135${String(Date.now()).slice(-8)}`;
+  try {
+    await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const leadRepository = new LeadRepository(transaction);
+      const lifecycleRepository = new LeadLifecycleRepository(transaction);
+      const lead = await leadRepository.create({
+        enterpriseId: enterpriseAId,
+        assignedTo: promotionDesignerAId,
+        name: 'Archive lifecycle integration lead',
+        phone,
+        source: 'integration-test',
+        status: 'closed',
+      });
+      leadId = lead.id;
+
+      assert.equal((await leadRepository.list({ phone })).total, 1);
+      await lifecycleRepository.lockByIds([lead.id]);
+      const [impact] = await lifecycleRepository.impacts([lead.id]);
+      assert.ok(impact);
+      const archived = await lifecycleRepository.archive({
+        leadId: lead.id,
+        actorId: promotionDesignerAId,
+        reason: 'duplicate',
+        note: 'integration test',
+        impact,
+      });
+      assert.equal(archived?.status, 'closed');
+      assert.equal((await leadRepository.list({ phone })).total, 0);
+      assert.equal((await leadRepository.list({ phone, archiveState: 'archived' })).total, 1);
+      assert.equal((await leadRepository.findByPhone(phone))?.id, lead.id);
+
+      await lifecycleRepository.lockByIds([lead.id]);
+      const restored = await lifecycleRepository.restore(lead.id, promotionDesignerAId);
+      assert.equal(restored?.status, 'closed');
+      assert.equal(restored?.archivedAt, null);
+      assert.equal((await leadRepository.list({ phone })).total, 1);
+      assert.equal((await leadRepository.list({ phone, archiveState: 'archived' })).total, 0);
+
+      const events = await transaction
+        .select()
+        .from(leadLifecycleEvents)
+        .where(eq(leadLifecycleEvents.leadRecordId, lead.id));
+      assert.deepEqual(events.map((event) => event.action).sort(), ['archived', 'restored']);
+      assert.equal(JSON.stringify(events, (_, value) =>
+        typeof value === 'bigint' ? value.toString() : value
+      ).includes(phone), false);
+    });
+
+    const crossTenantLead = await withTenantTransaction(enterpriseBId, (transaction) =>
+      new LeadRepository(transaction).findById(leadId!)
+    );
+    assert.equal(crossTenantLead, null);
+  } finally {
+    if (leadId) {
+      await withPlatformTransaction(async (transaction) => {
+        await transaction.delete(leadLifecycleEvents).where(eq(leadLifecycleEvents.leadRecordId, leadId!));
+        await transaction.delete(leads).where(eq(leads.id, leadId!));
+      });
+    }
+  }
 });
 
 after(async () => {

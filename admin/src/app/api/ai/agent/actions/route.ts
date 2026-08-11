@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('[Agent Action API Error]', error);
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Internal Server Error' },
+      { success: false, code: (error as { code?: string })?.code, error: error instanceof Error ? error.message : 'Internal Server Error' },
       { status: httpErrorStatus(error, 500) }
     );
   }

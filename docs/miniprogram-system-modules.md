@@ -190,6 +190,14 @@ utilities, and the admin APIs they call.
 - Persistence: lead and formal-plan list/detail/create/update/delete operations
   use PostgreSQL RLS transactions and decimal-string IDs; lead-plan linking and
   primary-plan cleanup are atomic.
+- Archive lifecycle (2026-08-10): all Mini Program lead/acquisition/AI customer
+  queries default to active leads. Archived leads disappear from daily lists,
+  acquisition tasks, and AI project selectors; direct writes, floor-plan links,
+  acquisition confirmation, and new/retried AI tasks return
+  `409 LEAD_ARCHIVED`. Duplicate phone intake returns
+  `409 ARCHIVED_LEAD_EXISTS` and requires an authorized Admin restore. Existing
+  floor plans, AI results, commissions, and financial settlement history remain
+  available in their asset/history modules with an archived-customer marker.
 - Visual baseline: `design-references/all-pages-ip-v1/02-leads-management.png`
   at `390x844`. The shipped page follows its Xiao K client-concierge scene,
   green dossier summary, search/filter/create action order, four main
@@ -322,7 +330,12 @@ utilities, and the admin APIs they call.
   recovery instead of dropping every plan without a closed room; the legacy
   flat room list remains eligible-only. Workflow lookup additionally honors the
   requested `floorPlanId`, while the project index supplies the latest accessible
-  task and current stage without changing tenant/operator boundaries.
+  task and current stage without changing tenant/operator boundaries. A direct
+  visit now selects the first eligible server-ordered project (`In progress`
+  before `Ready`); if no project is eligible, it opens the grouped project picker.
+  It never queries cross-project workflows or opens the legacy scheme picker on
+  arrival. Multiple schemes remain an explicit choice only when the user starts
+  an action that cannot otherwise be resolved.
 - Target context: workflow reads for a selected plan filter the current
   operator's active workflows by `leadId` and exact `floorPlanId`; generation
   requests carry `floorPlanId + targetScope + roomId` (with `roomId` omitted only
@@ -331,7 +344,19 @@ utilities, and the admin APIs they call.
   metadata never fill a room automatically. The exact globally adopted result
   wins when it belongs to the target, otherwise the newest exact successful
   result is used. Results older than `FloorPlan.updatedAt` remain in history but
-  are not continued automatically.
+  are not continued automatically. The PostgreSQL workflow response preserves
+  this contract: `workflowId` is an exact server-side filter, and each matching
+  workflow is enriched from its tenant-scoped generation records with
+  `selectedTask`, `latestTask`, and the exact `targetContext`. The create page
+  also resolves the requested workflow by ID rather than list position and
+  surfaces stale-baseline errors instead of relabeling them as capability-load
+  failures.
+- Archived lead handling: the Mini Program source index excludes formal plans
+  whose linked lead has `archivedAt`. Opening AI Design with an archived lead
+  therefore switches to the restored `ai-design-customer-workbench-empty-v2`
+  empty state and does not issue a workflow query. Restoring the lead makes the same
+  formal plan selectable again; workflow, credit, and permission boundaries are
+  unchanged.
 - Implemented: enterprise-shared AI-credit and action-price display; an
   immersive spatial home surface that retains the four real tasks for reference
   recreation, whole-space style transformation, formal-floor-plan concept
@@ -345,16 +370,10 @@ utilities, and the admin APIs they call.
   2D formal graph with an explicit credit-charging generate/regenerate action.
   Only tasks stamped with the current `cutaway-v1` navigation-render contract
   qualify as covers. The page never creates a paid preview automatically, and a result is stale
-  when its task predates the formal plan's latest update. Without a selected
-  formal plan, the default entry remains an interior-scene tour. Its four
-  non-ordinal waypoints use the existing AI icon family and are labeled
-  `Reference recreation`, `Photo restyle`, `Floor-plan generation`, and `Soft
-  furnishing`; they represent independently available capabilities rather than
-  a mandatory 1-to-4 sequence. The waypoints maintain an active navigation
-  state, smoothly pan/zoom the scene, and update the confirmed next action with
-  an explicit input action before entering a task. The separate scheme rail is
-  the only ordered progression, while server context still selects the
-  recommended next action. Existing generation capabilities include dual-image
+  when its task predates the formal plan's latest update. The old unscoped
+  interior-scene home and its four tool waypoints are no longer a fallback for
+  this customer-project workbench. With no selectable project, the route shows a
+  project-specific empty state and recovery action instead. Existing generation capabilities include dual-image
   reference input, source-image plus preset styles, camera/album upload with
   byte-signature validation, stable local previews and in-place upload retry,
   server-derived output proportions that map the composition source to a
@@ -412,12 +431,15 @@ utilities, and the admin APIs they call.
   context remain supported as quick standalone generations.
 - Visuals: locally rendered Lucide icons, hairline separators, output-ratio-aware
   result/compare stages that use the reference image for recreation comparisons,
-  and the iPhone 13 Pro `390x844` baseline. The selected-plan home uses
-  `design-references/all-pages-ip-v3/04-ai-design-home-v3.png` as its restoration
-  target: `/images/ai-design-hero-v3.png` remains the first viewport whenever no
-  formal plan is explicitly selected, or the selected plan has no current
-  successful whole-plan render. Only after the user explicitly selects a formal
-  plan may that hero be replaced by up to five tappable carousel slides: the
+  and the iPhone 13 Pro `390x844` baseline. The selected-plan home now uses
+  `design-references/ai-design/ai-design-customer-project-switcher-v3/ai-design-customer-workbench-home-v2.png`
+  as its restoration target, paired with the switcher-v3 sheet reference. The project-switching restoration uses
+  `/images/ai-design-project-hero-v5.jpg` as the selected project's fallback
+  whenever it has no current successful whole-plan render. The compressed local
+  artwork restores the approved emerald floor-plan-to-interior composition and
+  contains no business copy or controls; all project identity, state, progress,
+  and actions remain native. That hero may be
+  replaced by up to five tappable carousel slides: the
   current operator's successful `floor_plan_render` outputs whose exact
   `floorPlanId` and `targetScope: whole_floor_plan` match the selected plan.
   The Mini Program requests these slides through a dedicated, server-filtered
@@ -425,31 +447,35 @@ utilities, and the admin APIs they call.
   capped at five), rather than filtering a paginated recent-history response;
   therefore an older result for a busy surveyor's selected customer is not
   dropped. Room renders, style edits, stale outputs, and results from another lead never
-  enter the carousel. A horizontal whole-plan/room scope rail changes the real
-  target without claiming unmeasured spatial coordinates, and the character-only
-  Xiao K asset acts once as the spatial guide. A single raised white workbench
-  joins the four-stage server-derived rail, the four implemented task entries,
-  and one full-width green contextual next action that visibly discloses its live
-  operation label and point cost. The selected hero now keeps a persistent
+  enter the carousel. The emerald hero itself now carries the live progress,
+  four-stage rail, and single truthful next action. It is followed by native
+  customer/project search, a horizontal `Space schemes` strip backed by the
+  real role-scoped project index, and a truthful design-preparation entry for
+  incomplete surveys. The old room-chip rail and raised project-state card are
+  removed; the four implemented task entries remain available below the first
+  viewport in a visually secondary tool dock. The selected hero keeps a persistent
   `Switch project` action plus a tappable customer/project identity; source
   clearing remains available inside that picker, multiple active
   schemes still require explicit selection, and recent live results remain below
   the first-viewport workbench. The custom navigation reserves the measured WeChat
   capsule lane even where the supplied reference does not show that capsule. The
-  no-plan spatial-tour state remains backed by
-  `design-references/ai-design/ai-design-immersive-a-space-tour-v1.png` and
-  `miniprogram/images/ai-design-hero-v3.png`; at widths up to `360px`, its
-  recommendation stays compact and keeps safe spacing between the fourth waypoint
-  and formal-plan selector. Selecting a plan with no eligible carousel result
-  also retains that scene rather than displaying a static sample plan. The selected-plan, default-hero fallback fixture was
-  inspected in the user's existing WeChat DevTools at `390x844`; the retained QA
-  capture is `output/ai-design-hero-default-qa-390x844.png`. The automation capture does not
-  include the native WeChat capsule, so it verifies the page composition while
-  the measured `navigationRight` clearance remains code/test evidence; a native-
-  chrome or device capture is still outstanding. Intentional deviations from the
-  comp are the truthful horizontal scope rail, visible cost metadata, the capsule
+  obsolete no-plan spatial-tour branch has been removed from this route; the
+  no-project state remains inside the same project-workbench information
+  architecture. The automatic-arrival workbench and grouped project picker were
+  inspected in the user's existing WeChat DevTools window at the `390x844`
+  baseline; the current restoration captures are
+  `design-references/ai-design/ai-design-customer-project-switcher-v3/qa-restored-ai-design-entry-v5.png`
+  and `qa-restored-project-picker-v5.png`. The open picker restores the in-hero
+  live progress and four-stage rail, uses a reference-measured half-screen sheet,
+  and combines the formal-plan preview with the latest accessible result when
+  both exist. Failed remote thumbnails fall back to the formal navigator/local
+  plan mark rather than leaving a misleading empty image. The picker explicitly hides the shared
+  custom TabBar while open and restores it on close or page exit. The DevTools
+  automation endpoint remains unavailable, but it is no longer a blocker for
+  this visual evidence. Intentional deviations from the
+  comp are truthful missing-result placeholders, visible cost metadata, the capsule
   safety lane, the shared custom TabBar, and existing coherent task iconography
-  instead of static sample-plan imagery. The 2026-08-07 restoration changes visual
+  instead of static sample-plan imagery. The 2026-08-10 re-restoration changes visual
   composition and adds the narrowly scoped carousel-history query. The default
   image and generated carousel share the same compact rounded emerald project
   stage below the capsule-safe header. Native project identity, state, formal
@@ -506,6 +532,22 @@ utilities, and the admin APIs they call.
   clipped Xiao K delivery character that excludes the source artwork's decorative
   frame. Actions, data, routes, permissions, and charging remain unchanged; native
   WeChat capsule/device capture is still the outstanding visual-QA evidence.
+- Result-page fidelity review (2026-08-11):
+  `design-references/all-pages-ip-v3/15-ai-design-result-v3.png` remains the sole
+  visual authority. At the `390x844` baseline the delivery cue is compressed, the
+  complete Xiao K result-delivery role is restored on the right, and the five-action
+  strip, four equal summary rows, and normal-flow primary/secondary footer recover
+  the approved first-screen rhythm. The result stage is constrained to a
+  `720–760rpx` near-square delivery window: near-square outputs use `aspectFill`,
+  while clearly wide or tall outputs use `aspectFit` so their full composition is
+  preserved without letting an arbitrary provider ratio stretch the page. Share now
+  uses the same local green Lucide outline language as the other actions. Candidate
+  or selected-baseline status no longer competes with the summary; workflow
+  ownership, current space, generation mode, and real credits remain task-derived.
+  Routes, APIs, role/tenant permissions, charging, task/workflow selection, and the
+  version-4 formal wall-graph contract are unchanged. A new native-capsule
+  `390x844` capture remains a release check until the current WeChat DevTools window
+  exposes a compatible automation endpoint.
 - Formal-plan boundary: entries pass `floorPlanId`, explicit
   `targetScope: whole_floor_plan | single_room`, and `roomId` only for a single
   room. The backend derives dimensions, ceiling height, and opening summaries
@@ -912,6 +954,18 @@ utilities, and the admin APIs they call.
   pixel-width clamp. This changes rendering and editor hit/overlay geometry
   only; wall-graph coordinates, persisted thickness, routes, APIs, roles, and
   measurement audits are unchanged.
+- Outer-vertex drop stability correction (2026-08-11): when the drag lens has
+  selected a mitered outside-wall vertex, releasing the bottom cursor keeps the
+  stationary green cursor and blue full-canvas axes on that exact visible outer
+  vertex instead of redrawing them at the inner topology corner. The graph anchor
+  still uses the source wall's centerline node, and the recorded outer snap side,
+  wall geometry, routes, APIs, roles, version-4 persistence, and measurement
+  audits are unchanged. The user-supplied before/after device captures
+  `cc5e4de4589b3280c15d230fa3367692.jpg` and
+  `d955597eeb981aea1c1fac6ea8fc4353.jpg` are the defect/design-state authority;
+  focused graph/editor rendering tests pass `89/89`. A fresh `390x844` device
+  capture remains pending because the existing WeChat DevTools window does not
+  expose a compatible Mini Program Automator endpoint.
 - Shared-wall inset cursor correction (2026-08-10): whenever the formal Canvas
   shows an active cursor, that topology target is the sole owner of the blue
   full-canvas crosshair. A preview whose effective measured endpoint is inset
@@ -1118,6 +1172,92 @@ The focused business and data contract is [`docs/measurer-designer-acquisition.m
 - `packages/business/lead-detail/lead-detail` accepts `id` or notification `leadId`, renders the four-stage rail, next action, and an ordinary acquisition fact group, but no acquisition-confirmation hero action. Its formal-surveying card shows only real graph status, closed-space count, and update time, and the shared bottom sheet remains the designer-contact entry.
 - `packages/business/commission-records/commission-records` consumes `/api/commission-records`; measurers receive the independent lead-acquisition records with pending/paid summaries while salesperson order commissions remain unchanged.
 - The Mine page receives the role-shaped Acquisition Collaboration action and real pending badge from `/api/miniprogram/mine`. Selected in-app notifications are marked through `/api/miniprogram/notifications/read` and prefer `metadata.page` to deep-link the exact workbench record. Notification delivery failures remain visible through the in-app fallback.
+
+### AI Design workbench fidelity correction (2026-08-11)
+
+- The latest visual baseline remains the paired
+  `design-references/ai-design/ai-design-customer-project-switcher-v3/ai-design-customer-workbench-home-v2.png`
+  and `ai-design-customer-project-switcher-v3.png`; it supersedes the earlier
+  first-viewport description of a raised project-state card and home room-chip
+  scope rail. The emerald project hero now uses the recomposed artwork-only
+  `/images/ai-design-project-hero-v5.jpg`; its floor-plan and interior subjects
+  leave measured native-text lanes at the upper left and lower stage. The
+  legacy carousel result title/helper caption and duplicate navigation-preview
+  progress are removed, so live project progress, the brighter local selected-stage
+  glow, the four-stage rail, and the one truthful next action remain the only
+  lower-stage status layer. The points pill is lifted away from the project
+  switch action, whose double-arrow mark now uses the approved local derivative.
+  Native customer/community search,
+  a horizontal `Space schemes` strip backed by the real role-scoped project
+  index, and a truthful incomplete-survey preparation entry follow it. The four
+  real design tasks remain below the first viewport. The design-preparation entry
+  uses the approved drafting-scroll artwork. The project picker keeps the reference
+  half-screen height, search, and three derived state groups; its wide thumbnail
+  uses live formal navigator geometry on the left and the latest accessible result
+  on the right, and the local plan mark appears only when formal geometry is absent.
+  `qa-restored-ai-design-entry-v5.png` and `qa-restored-project-picker-v5.png` are
+  retained as pre-correction evidence only. The earlier automation-endpoint
+  limitation recorded for this pass has since been superseded by the verified
+  existing-window workflow in the no-selected-project record below. Routes,
+  APIs, permissions, credit charging, workflow selection, surveying navigation,
+  and the version-4 graph contract are unchanged.
+- The no-selected-project branch is restored from
+  `design-references/ai-design/ai-design-customer-project-switcher-v3/ai-design-customer-workbench-empty-v2.png`.
+  The production artwork `/images/ai-design-empty-v2/stage-art.jpg` and the
+  `step-customer.png`, `step-survey.png`, and `step-ai.png` process marks are
+  direct derivatives of that approved design source. Their editable source cuts
+  remain beside the design reference; no approximate generated scene or unrelated
+  icon is used. The title, guidance, three-step path, `Select customer survey`
+  action, search/filter controls, `Ready to design` sources, and preparation
+  summary remain native UI. Source cards are rendered only from the role-scoped
+  source response; when no active formal survey exists, the page states that
+  truth instead of showing the design comp's sample projects. Project-independent
+  recent-result placeholders are hidden in this branch, so an archived deep link
+  cannot resemble a failed workflow.
+
+  Whole-page visual QA uses the approved `853x1844` source scaled to the iPhone
+  12/13 Pro `390x844` baseline and records actual runtime bounds rather than a
+  no-overlap-only check. The emerald stage is `left 8 / top 127 / width 374 /
+  height 314`; its message starts at `left 22 / top 143`. The primary survey CTA
+  is `left 22.5 / top 390 / width 345 / height 37`, matching the design-derived
+  approximately `344x38px` target. The three source-cut process marks are each
+  `28x28px`; the search control is `294x31px`, the filter is `60x31px`, the
+  `Ready to design` heading starts at `left 12 / top 497`, and the truthful empty
+  source and preparation rows are both `366px` wide. The native menu capsule is
+  `left 296 / top 51 / right 383 / bottom 83`; the credit pill is `top 91..119`
+  and the emerald stage starts at `top 127`, preserving both `8px` adjacent gaps.
+  Evidence and the element ledger are retained as
+  `visual-qa-empty-390x844-2026-08-11-final-v2.png`,
+  `visual-qa-empty-390x844-2026-08-11-final-v2.metrics.json`, and
+  `visual-qa-empty-native-capsule-2026-08-11-final-v2.png` beside the source.
+  The existing WeChat DevTools window was reused; after automation attachment it
+  was explicitly recompiled, switched to `pages/ai-design/ai-design`, and queried
+  through the exposed automation endpoint. Targeted Mini Program tests cover the
+  artwork budget, approved copy, and archived no-query flow. Routes, APIs,
+  permissions, credit charging, project selection, and the version-4 graph
+  contract are unchanged.
+- A follow-up selected-project fidelity pass uses the user-provided narrow-device
+  capture as evidence without copying its sample state or data. The header now
+  reserves a native layout lane below the points pill, and the `<=360px` variant
+  keeps the same inset `568rpx` emerald project card as the `390x844` baseline
+  instead of expanding it edge to edge. The artwork-only fallback uses
+  `aspectFit` with an emerald text-protection shade, so the formal drawing,
+  interior board, and Xiao K remain visible without pushing native customer copy
+  or the primary action out of their measured lanes. The progress row names the
+  current four-stage journey station instead of repeating the server-derived
+  project status. Home scheme cards use a real accessible result/navigation
+  preview or the formal navigator geometry and no longer duplicate the generic
+  hero for the selected project. The center surveying label inherits the shared
+  inactive TabBar color whenever `Design` is selected, removing the former dual
+  active-state signal. Targeted `ai-design-home` and `ai-design-tab` tests cover
+  these contracts. The existing DevTools window rendered the current no-project
+  branch at its iPhone 12/13 baseline; the retained evidence is
+  `design-references/ai-design/ai-design-customer-project-switcher-v3/qa-fidelity-pass-empty-state-390x844-devtools.png`.
+  That live session supplied no selectable project and no compatible automation
+  endpoint, so selected-project `390x844` and narrow `360x800` captures remain
+  pending. This is a presentation-only correction: routes, APIs,
+  role/tenant permissions, project/workflow selection, credits, surveying
+  navigation, and the version-4 graph contract are unchanged.
 
 ## Maintenance Rules
 

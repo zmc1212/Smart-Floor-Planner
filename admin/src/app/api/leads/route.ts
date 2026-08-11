@@ -27,6 +27,11 @@ import {
 } from '@/lib/wechat-notification';
 import { getSignedMiniAiAssetUrl } from '@/lib/ai/mini-ai-assets';
 import { normalizeLeadStatus } from '@/lib/lead-status';
+import {
+  archivedLeadExistsError,
+  canManageLeadArchive,
+} from '@/lib/lead-lifecycle';
+import { httpErrorStatus } from '@/lib/http-error';
 
 function leadDtoForMini(request: Request, lead: Parameters<typeof leadToDto>[0], role?: string) {
   const include = role === 'measurer';
@@ -158,6 +163,22 @@ export async function GET(request: Request) {
         { status: 401 }
       );
     }
+    const archiveState = searchParams.get('archiveState') === 'archived' ? 'archived' : 'active';
+    if (archiveState === 'archived') {
+      if (!context.enterpriseId) {
+        return NextResponse.json({ success: false, error: '请先选择企业' }, { status: 400 });
+      }
+      const allowed = await withAdminPostgresTransaction(context, (transaction) =>
+        canManageLeadArchive(transaction, {
+          role: context.role,
+          actorId: parsePostgresId(context.userId, 'userId'),
+          enterpriseId: BigInt(context.enterpriseId!),
+        })
+      );
+      if (!allowed) {
+        return NextResponse.json({ success: false, error: '无权查看归档线索' }, { status: 403 });
+      }
+    }
     const result = await withAdminPostgresTransaction(
       context,
       (transaction) =>
@@ -166,10 +187,11 @@ export async function GET(request: Request) {
           acquisitionStatus,
           source: searchParams.get('source') || undefined,
           staffId:
-            context.role === 'designer'
+            context.role === 'designer' || context.role === 'measurer'
               ? parsePostgresId(context.userId, 'userId')
               : undefined,
-          staffVisibility: 'assigned',
+          staffVisibility: context.role === 'measurer' ? 'promoted-or-assigned' : 'assigned',
+          archiveState,
           page,
           limit,
         })
@@ -314,6 +336,7 @@ export async function POST(request: Request) {
       };
 
       const existing = await leads.findByPhone(phone);
+      if (existing?.archivedAt) throw archivedLeadExistsError();
       const shouldNotifyDesigner = Boolean(isMeasurerLead && !existing && assignedTo);
       let lead = existing
         ? await leads.update(existing.id, {
@@ -407,8 +430,8 @@ export async function POST(request: Request) {
   } catch (error: unknown) {
     console.error('Create lead error:', error);
     return NextResponse.json(
-      { success: false, error: errorMessage(error) },
-      { status: 500 }
+      { success: false, code: (error as { code?: string }).code, error: errorMessage(error) },
+      { status: httpErrorStatus(error, 500) }
     );
   }
 }

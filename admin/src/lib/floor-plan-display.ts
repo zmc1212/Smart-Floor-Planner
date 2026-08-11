@@ -1,6 +1,7 @@
 export type FloorPlanDisplayLead = {
   name?: string | null;
   communityName?: string | null;
+  archivedAt?: Date | string | null;
 };
 
 export type FloorPlanDisplay = {

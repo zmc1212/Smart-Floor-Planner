@@ -12,6 +12,7 @@ const {
   buildExperienceState,
   buildProjectPickerView,
   chooseDefaultProjectGroup,
+  chooseDefaultProject,
 } = require('./ai-design-model.js');
 
 const WORKFLOW_DEFINITIONS = [
@@ -42,6 +43,14 @@ function buildSelectedSource(plan, targetScope, room) {
     roomSize: targetScope === 'single_room' ? room.roomSize : `${roomCount} 个闭合房间`,
     openingCount,
   };
+}
+
+function isArchivedSource(source) {
+  return Boolean(source && (
+    source.leadArchived
+    || source.isArchived
+    || source.archivedAt
+  ));
 }
 
 function sourceTargetKey(source) {
@@ -87,8 +96,6 @@ Page({
     stageRail: [],
     primaryAction: null,
     secondaryActions: [],
-    activeSceneMode: 'reference_recreate',
-    sceneNavigation: null,
     navigationTop: 24,
     navigationHeight: 32,
     navigationRight: 96,
@@ -123,6 +130,18 @@ Page({
     const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
     if (tabBar) {
       tabBar.syncSelected();
+      if (typeof tabBar.setData === 'function') {
+        tabBar.setData({
+          suppressed: !!(this.data.sourcePickerOpen || this.data.workflowPickerOpen),
+        });
+      }
+    }
+  },
+
+  setTabBarHidden(hidden) {
+    const tabBar = typeof this.getTabBar === 'function' && this.getTabBar();
+    if (tabBar && typeof tabBar.setData === 'function') {
+      tabBar.setData({ suppressed: !!hidden });
     }
   },
 
@@ -155,11 +174,13 @@ Page({
   onHide() {
     this.recentPageVisible = false;
     this.stopRecentPolling();
+    this.setTabBarHidden(false);
   },
 
   onUnload() {
     this.recentPageVisible = false;
     this.stopRecentPolling();
+    this.setTabBarHidden(false);
   },
 
   onPullDownRefresh() {
@@ -217,26 +238,50 @@ Page({
           })),
         )
         : this.data.recent;
-      const sourcePlans = sourceData.map(decorateSourcePlan);
-      const selectedPlan = sourcePlans.find((item) => (
-        item.floorPlanId === this.data.floorPlanId && item.eligibility && item.eligibility.eligible
-      )) || null;
-      const requestedScope = this.data.targetScope || (this.data.roomId ? 'single_room' : 'whole_floor_plan');
+      // Archived leads remain recoverable in the admin system, but they are
+      // not selectable AI-design projects. Keep the empty-state workbench
+      // authoritative even if an older API response still includes one.
+      const sourcePlans = sourceData
+        .map(decorateSourcePlan)
+        .filter((item) => !isArchivedSource(item));
+      const requestedPlan = sourcePlans.find((item) => item.floorPlanId === this.data.floorPlanId)
+        || sourcePlans.find((item) => (
+          item.activeWorkflow && item.activeWorkflow.id === this.data.workflowId
+        ))
+        || null;
+      const selectedPlan = chooseDefaultProject(
+        sourcePlans,
+        this.data.floorPlanId,
+        this.data.workflowId
+      );
+      const preservesRequestedScope = !!selectedPlan
+        && !!requestedPlan
+        && selectedPlan.floorPlanId === requestedPlan.floorPlanId;
+      const requestedScope = preservesRequestedScope
+        ? (this.data.targetScope || (this.data.roomId ? 'single_room' : 'whole_floor_plan'))
+        : 'whole_floor_plan';
       const selectedRoom = selectedPlan && requestedScope === 'single_room'
         ? (selectedPlan.rooms || []).find((room) => room.roomId === this.data.roomId)
         : null;
       const selectedSource = selectedPlan
-        ? buildSelectedSource(selectedPlan, requestedScope, selectedRoom)
+        ? (buildSelectedSource(selectedPlan, requestedScope, selectedRoom)
+          || buildSelectedSource(selectedPlan, 'whole_floor_plan'))
         : null;
       const sources = sourcePlans.map((item) => ({
         ...item,
         sourceKey: item.floorPlanId,
         selected: !!selectedSource && item.floorPlanId === selectedSource.floorPlanId,
       }));
-      const projectGroup = chooseDefaultProjectGroup(sources, selectedSource && selectedSource.floorPlanId);
+      const projectGroup = chooseDefaultProjectGroup(
+        sources,
+        (selectedSource && selectedSource.floorPlanId) || (requestedPlan && requestedPlan.floorPlanId)
+      );
       const projectPickerState = buildProjectPickerView(sources, projectGroup, '');
+      const preferredWorkflowId = this.data.workflowId
+        || (selectedSource && selectedSource.activeWorkflow && selectedSource.activeWorkflow.id)
+        || '';
       const workflowQuery = {
-        workflowId: this.data.workflowId,
+        workflowId: preferredWorkflowId,
         leadId: selectedSource ? selectedSource.leadId : this.data.leadId,
       };
       if (selectedSource) {
@@ -245,12 +290,12 @@ Page({
         workflowQuery.roomId = selectedSource.roomId;
       }
       const [schemeOptions, heroResults] = await Promise.all([
-        aiService.loadWorkflows(workflowQuery),
+        selectedSource ? aiService.loadWorkflows(workflowQuery) : Promise.resolve([]),
         selectedSource
           ? aiService.loadHeroFloorPlanResults(selectedSource.floorPlanId).catch(() => [])
           : Promise.resolve([]),
       ]);
-      const selectedWorkflow = schemeOptions.find((item) => item.id === this.data.workflowId)
+      const selectedWorkflow = schemeOptions.find((item) => item.id === preferredWorkflowId)
         || (schemeOptions.length === 1 ? schemeOptions[0] : null);
       const decoratedWorkflows = workflows.map((item) => ({
         ...item,
@@ -268,6 +313,8 @@ Page({
         modeTitle: MODE_TITLES[item.mode] || '璁捐鎴愭灉',
       }));
       const heroSlides = buildHeroSlides(decoratedHeroResults, selectedSource);
+      const sourcePickerOpen = this.data.sourcePickerOpen
+        || (!this.data.hasLoadedOnce && !selectedSource && sources.length > 0);
       this.setData({
         account: capabilities.account || { availableBalance: 0, frozenBalance: 0 },
         workflows: decoratedWorkflows,
@@ -281,14 +328,15 @@ Page({
         projectSearch: '',
         ...projectPickerState,
         selectedSource,
-        floorPlanId: selectedSource ? selectedSource.floorPlanId : this.data.floorPlanId,
-        leadId: selectedSource ? selectedSource.leadId : this.data.leadId,
-        roomId: selectedSource ? selectedSource.roomId : this.data.roomId,
-        targetScope: selectedSource ? selectedSource.targetScope : this.data.targetScope,
+        sourcePickerOpen,
+        floorPlanId: selectedSource ? selectedSource.floorPlanId : (sourcePlans.length ? this.data.floorPlanId : ''),
+        leadId: selectedSource ? selectedSource.leadId : (sourcePlans.length ? this.data.leadId : ''),
+        roomId: selectedSource ? selectedSource.roomId : (sourcePlans.length ? this.data.roomId : ''),
+        targetScope: selectedSource ? selectedSource.targetScope : (sourcePlans.length ? this.data.targetScope : ''),
         schemeOptions,
         selectedWorkflow,
         workflowId: selectedWorkflow ? selectedWorkflow.id : '',
-        workflowPickerOpen: schemeOptions.length > 1 && !selectedWorkflow,
+        workflowPickerOpen: false,
         workflowLoading: false,
         workflowLoadError: '',
         createNewWorkflow: false,
@@ -297,6 +345,7 @@ Page({
         historyLoadError: historyResult.error,
         ...experienceState,
       });
+      this.setTabBarHidden(sourcePickerOpen);
       this.scheduleRecentPolling(recent, selectedSource, selectedWorkflow);
     } catch (error) {
       const loadError = error.error || error.message || 'AI 服务加载失败';
@@ -346,10 +395,11 @@ Page({
         && this.data.selectedSource.navigationPreview.task;
       const [history, refreshedPreviewTask, refreshedWorkflows, heroResults] = await Promise.all([
         aiService.loadHistory(1, 4),
-        previewTask && ['created', 'pending', 'processing'].includes(previewTask.status)
+        requestedSource && !isArchivedSource(requestedSource)
+          && previewTask && ['created', 'pending', 'processing'].includes(previewTask.status)
           ? aiService.getTask(previewTask.id).catch(() => null)
           : Promise.resolve(null),
-        requestedSource
+        requestedSource && !isArchivedSource(requestedSource)
           ? aiService.loadWorkflows({
             leadId: requestedSource.leadId,
             floorPlanId: requestedSource.floorPlanId,
@@ -357,7 +407,7 @@ Page({
             roomId: requestedSource.roomId,
           }).catch(() => null)
           : Promise.resolve(null),
-        requestedSource
+        requestedSource && !isArchivedSource(requestedSource)
           ? aiService.loadHeroFloorPlanResults(requestedSource.floorPlanId).catch(() => [])
           : Promise.resolve([]),
       ]);
@@ -395,6 +445,11 @@ Page({
       const schemeOptions = refreshedWorkflows || this.data.schemeOptions;
       const selectedWorkflow = refreshedWorkflows
         ? (schemeOptions.find((item) => item.id === this.data.workflowId)
+          || schemeOptions.find((item) => (
+            selectedSource
+            && selectedSource.activeWorkflow
+            && item.id === selectedSource.activeWorkflow.id
+          ))
           || (schemeOptions.length === 1 ? schemeOptions[0] : null))
         : this.data.selectedWorkflow;
       const recommendedMode = selectedWorkflow
@@ -416,9 +471,7 @@ Page({
         workflowId: refreshedWorkflows
           ? (selectedWorkflow ? selectedWorkflow.id : '')
           : this.data.workflowId,
-        workflowPickerOpen: refreshedWorkflows
-          ? schemeOptions.length > 1 && !selectedWorkflow
-          : this.data.workflowPickerOpen,
+        workflowPickerOpen: refreshedWorkflows ? false : this.data.workflowPickerOpen,
         workflows: this.data.workflows.map((item) => ({
           ...item,
           recommended: item.key === recommendedMode,
@@ -462,6 +515,7 @@ Page({
     }
     if (this.data.schemeOptions.length > 1 && !this.data.workflowId && !this.data.createNewWorkflow) {
       this.setData({ workflowPickerOpen: true });
+      this.setTabBarHidden(true);
       wx.showToast({ title: '请先选择要续接的客户方案', icon: 'none' });
       return;
     }
@@ -477,6 +531,7 @@ Page({
     if (mode === 'floor_plan_render' && !this.data.floorPlanId) {
       if (this.data.sources.length) {
         this.setData({ sourcePickerOpen: true });
+        this.setTabBarHidden(true);
         wx.showToast({ title: '请先关联户型并选择设计范围', icon: 'none' });
       } else {
         wx.showToast({ title: '暂无可关联的正式户型', icon: 'none' });
@@ -546,32 +601,6 @@ Page({
     });
   },
 
-  focusSceneWaypoint(event) {
-    const mode = event.currentTarget.dataset.mode;
-    if (!mode || mode === this.data.activeSceneMode) return;
-    this.setData({ activeSceneMode: mode }, () => this.syncExperienceState());
-  },
-
-  enterSceneMode() {
-    const navigation = this.data.sceneNavigation;
-    if (!navigation || navigation.enabled === false) {
-      wx.showToast({ title: '当前服务暂不可用', icon: 'none' });
-      return;
-    }
-    if (navigation.mode === 'floor_plan_render' && !this.data.floorPlanId) {
-      this.openSourcePicker();
-      return;
-    }
-    this.openMode({
-      currentTarget: {
-        dataset: {
-          mode: navigation.mode,
-          scope: navigation.targetScope,
-        },
-      },
-    });
-  },
-
   openSourcePicker() {
     if (!this.data.sources.length) {
       wx.showToast({ title: '暂无可关联的正式户型', icon: 'none' });
@@ -589,10 +618,34 @@ Page({
       projectSearch: '',
       ...buildProjectPickerView(this.data.sources, projectGroup, ''),
     });
+    this.setTabBarHidden(true);
+  },
+
+  openPreparationProjects() {
+    if (!this.data.sources.length) {
+      wx.showToast({ title: '暂无可关联的正式户型', icon: 'none' });
+      return;
+    }
+    const projectGroup = this.data.sources.some((item) => item.projectGroup === 'needs_survey')
+      ? 'needs_survey'
+      : chooseDefaultProjectGroup(
+        this.data.sources,
+        this.data.selectedSource && this.data.selectedSource.floorPlanId
+      );
+    this.setData({
+      sourcePickerOpen: true,
+      sourcePickerStep: 'plans',
+      activeSourcePlan: null,
+      projectGroup,
+      projectSearch: '',
+      ...buildProjectPickerView(this.data.sources, projectGroup, ''),
+    });
+    this.setTabBarHidden(true);
   },
 
   closeSourcePicker() {
     this.setData({ sourcePickerOpen: false, sourcePickerStep: 'plans', activeSourcePlan: null, projectSearch: '' });
+    this.setTabBarHidden(false);
   },
 
   noop() {},
@@ -618,11 +671,38 @@ Page({
     });
   },
 
+  onProjectPreviewError(event) {
+    const sourceKey = event.currentTarget.dataset.sourceKey;
+    if (!sourceKey) return;
+    const sources = this.data.sources.map((item) => (
+      item.sourceKey === sourceKey ? { ...item, previewLoadFailed: true } : item
+    ));
+    this.setData({
+      sources,
+      ...buildProjectPickerView(sources, this.data.projectGroup, this.data.projectSearch),
+    });
+  },
+
   selectProjectCard(event) {
     const plan = this.data.filteredProjects[Number(event.currentTarget.dataset.index)];
     if (!plan) return;
     if (!plan.eligibility || !plan.eligibility.eligible) {
       this.closeSourcePicker();
+      openSurveyingEditor({
+        leadId: plan.leadId,
+        leadName: plan.leadName,
+        communityName: plan.communityName,
+        floorPlanId: plan.floorPlanId,
+      });
+      return;
+    }
+    this.applySource(plan, 'whole_floor_plan');
+  },
+
+  selectHomeProjectCard(event) {
+    const plan = this.data.sources[Number(event.currentTarget.dataset.index)];
+    if (!plan) return;
+    if (!plan.eligibility || !plan.eligibility.eligible) {
       openSurveyingEditor({
         leadId: plan.leadId,
         leadName: plan.leadName,
@@ -650,13 +730,20 @@ Page({
   },
 
   async applySource(plan, targetScope, room) {
+    if (isArchivedSource(plan)) {
+      wx.showToast({ title: '该客户线索已归档，请先恢复后继续设计', icon: 'none' });
+      return;
+    }
     if (!plan || (plan.eligibility && plan.eligibility.eligible === false)) {
       wx.showToast({ title: (plan && plan.eligibility && plan.eligibility.reasonLabel) || '请先完成正式量房', icon: 'none' });
       return;
     }
     const source = buildSelectedSource(plan, targetScope, room);
     if (!source) return;
-    const preferredWorkflowId = this.data.workflowId;
+    const sameProject = source.floorPlanId === this.data.floorPlanId;
+    const preferredWorkflowId = sameProject
+      ? this.data.workflowId
+      : ((plan.activeWorkflow && plan.activeWorkflow.id) || '');
     const sources = this.data.sources.map((item) => ({
       ...item,
       selected: item.floorPlanId === source.floorPlanId,
@@ -691,11 +778,28 @@ Page({
       workflowLoading: true,
       workflowLoadError: '',
     }, () => this.syncExperienceState());
+    this.setTabBarHidden(false);
     await this.loadSourceWorkflows(source, preferredWorkflowId);
   },
 
   async loadSourceWorkflows(source, preferredWorkflowId = this.data.workflowId) {
-    if (!source) return;
+    if (!source || isArchivedSource(source)) {
+      this.workflowLoadRequestId = Number(this.workflowLoadRequestId || 0) + 1;
+      this.setData({
+        selectedSource: null,
+        sourcePickerOpen: false,
+        schemeOptions: [],
+        selectedWorkflow: null,
+        workflowId: '',
+        floorPlanId: '',
+        leadId: '',
+        roomId: '',
+        targetScope: '',
+        workflowLoading: false,
+        workflowLoadError: '',
+      }, () => this.syncExperienceState());
+      return;
+    }
     const requestId = Number(this.workflowLoadRequestId || 0) + 1;
     this.workflowLoadRequestId = requestId;
     this.setData({ workflowLoading: true, workflowLoadError: '' });
@@ -712,6 +816,9 @@ Page({
       if (requestId !== this.workflowLoadRequestId
         || sourceTargetKey(source) !== sourceTargetKey(this.data.selectedSource)) return;
       const selectedWorkflow = schemeOptions.find((item) => item.id === preferredWorkflowId)
+        || schemeOptions.find((item) => (
+          source.activeWorkflow && item.id === source.activeWorkflow.id
+        ))
         || (schemeOptions.length === 1 ? schemeOptions[0] : null);
       const recommendedMode = selectedWorkflow
         && selectedWorkflow.targetContext
@@ -732,7 +839,7 @@ Page({
           ...item,
           recommended: item.key === recommendedMode,
         })),
-        workflowPickerOpen: schemeOptions.length > 1 && !selectedWorkflow,
+        workflowPickerOpen: false,
         workflowLoadError: '',
       }, () => {
         this.syncExperienceState();
@@ -801,10 +908,12 @@ Page({
   openWorkflowPicker() {
     if (!this.data.schemeOptions.length) return;
     this.setData({ workflowPickerOpen: true });
+    this.setTabBarHidden(true);
   },
 
   closeWorkflowPicker() {
     this.setData({ workflowPickerOpen: false });
+    this.setTabBarHidden(false);
   },
 
   selectWorkflow(event) {
@@ -820,6 +929,7 @@ Page({
         recommended: item.key === (workflow.targetContext && workflow.targetContext.recommendedMiniMode),
       })),
     }, () => {
+      this.setTabBarHidden(false);
       this.syncExperienceState();
       this.scheduleRecentPolling(this.data.recent, this.data.selectedSource, workflow);
     });
@@ -831,7 +941,10 @@ Page({
       workflowId: '',
       createNewWorkflow: true,
       workflowPickerOpen: false,
-    }, () => this.syncExperienceState());
+    }, () => {
+      this.setTabBarHidden(false);
+      this.syncExperienceState();
+    });
     wx.showToast({ title: '将创建新的备选方案', icon: 'none' });
   },
 

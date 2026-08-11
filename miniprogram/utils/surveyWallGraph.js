@@ -1920,6 +1920,36 @@ function getCursorPlacementTarget(floor, point, maxDistanceMm) {
   };
 }
 
+/**
+ * Keep the stationary cursor on the same physical wall face that won during
+ * drag hit testing. The graph anchor remains on the centerline topology, but
+ * an outer-edge drop must not visually jump back to that inner/topology point
+ * when touchend redraws the formal canvas.
+ */
+function getCursorDisplayPoint(floor, session) {
+  if (!floor || !session || !session.anchorNodeId) return null;
+  if (session.previewPoint) return session.previewPoint;
+
+  const anchor = getNode(floor, session.anchorNodeId);
+  if (!anchor) return null;
+  if (
+    session.activeSpaceSharedSnapLine !== 'outer' ||
+    session.lastWallSnapLine !== 'outer' ||
+    !session.activeSpaceSharedWallId ||
+    session.activeSpaceSharedWallId !== session.lastWallSnapWallId ||
+    session.anchorNodeId !== session.lastWallSnapNodeId
+  ) {
+    return anchor;
+  }
+
+  const projection = findTargetWallProjection(floor, anchor, {
+    wallId: session.activeSpaceSharedWallId,
+    nodeId: session.lastWallSnapNodeId,
+    snapLine: 'outer'
+  });
+  return projection && projection.point ? projection.point : anchor;
+}
+
 function getOrCreateSnapNode(floor, projection) {
   if (!projection) return null;
   if (projection.node) return projection.node;
@@ -3753,6 +3783,7 @@ module.exports = {
   getOpening,
   getWallSnapPoint,
   getCursorPlacementTarget,
+  getCursorDisplayPoint,
   distanceMm,
   angleDeg,
   buildWallSnapGeometry,

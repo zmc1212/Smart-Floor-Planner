@@ -7,6 +7,7 @@ import {
 } from '@/db/postgres-dto';
 import {
   AdminUserRepository,
+  ActionPermissionRepository,
   type AdminUserUpdate,
   AiCreationRepository,
   DepartmentRepository,
@@ -181,6 +182,9 @@ export async function PUT(
             }
             const result = await repository.update(staffId, updateData, promoterIds);
             if (!result) return null;
+            if (body.role && body.role !== current.role) {
+              await new ActionPermissionRepository(transaction).deleteUserOverrides(staffId);
+            }
             if (targetDesignerId) await repository.replaceMeasurerDesignerBinding(staffId, targetDesignerId, current.enterpriseId!);
             else await repository.deleteMeasurerDesignerBinding(staffId);
             return repository.findById(staffId);

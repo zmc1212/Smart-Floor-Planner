@@ -1164,6 +1164,33 @@ test('stationary canvas cursor uses the same green placement marker', () => {
   assert.ok(recorder.fillRectDetails.some((detail) => detail.fillStyle === 'rgba(34, 197, 94, 0.16)'));
 });
 
+test('stationary canvas cursor stays on the outer vertex selected by the drag lens', () => {
+  const closedDraft = createClosedRectangleDraft();
+  const floor = surveyGraph.getActiveFloor(closedDraft);
+  const wall = floor.walls[0];
+  const geometry = surveyGraph.buildWallRenderGeometry(floor, wall);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    geometry.outerStart,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  const snappedDraft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(closedDraft),
+    target.pointMm,
+    target
+  );
+  const scene = createScene(snappedDraft);
+  const snappedFloor = surveyGraph.getActiveFloor(snappedDraft);
+  const expectedMm = surveyGraph.getCursorDisplayPoint(snappedFloor, snappedFloor.session);
+  const viewport = scene.viewport;
+
+  assert.deepEqual(scene.cursor.point, {
+    x: scene.rect.width / 2 + viewport.offsetX + expectedMm.xMm * viewport.scale,
+    y: scene.rect.height / 2 + viewport.offsetY + expectedMm.yMm * viewport.scale
+  });
+  assert.deepEqual(expectedMm, geometry.outerStart);
+});
+
 test('snapping a new cursor onto a closed wall preserves the completed room render geometry', () => {
   const closedDraft = createClosedRectangleDraft();
   const closedFloor = surveyGraph.getActiveFloor(closedDraft);

@@ -19,6 +19,7 @@ function decorateTask(task) {
     : ((task.mode === 'reference_recreate' ? task.referenceImageUrl : task.controlImageUrl)
       || task.spaceImageUrl
       || '');
+  const ratioAwareHeight = Math.round(750 / ratio);
   return {
     ...task,
     canContinueWorkflow: Boolean(
@@ -33,7 +34,8 @@ function decorateTask(task) {
     floorPlanCompare: Boolean(task.controlImageUrl)
       && task.mode !== 'reference_recreate'
       && !isFloorPlanGeneration,
-    resultStageHeight: Math.round(750 / ratio),
+    resultImageMode: ratio < 0.85 || ratio > 1.25 ? 'aspectFit' : 'aspectFill',
+    resultStageHeight: Math.max(720, Math.min(760, ratioAwareHeight)),
   };
 }
 

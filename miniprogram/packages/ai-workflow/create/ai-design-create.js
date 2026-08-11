@@ -226,7 +226,7 @@ Page({
           targetScope: this.data.targetScope,
           roomId: this.data.roomId,
         });
-        const workflow = workflows[0];
+        const workflow = (workflows || []).find((item) => item.id === this.data.workflowId);
         if (workflow) {
           nextData.workflowId = workflow.id;
           nextData.workflowTitle = workflow.title || '';
@@ -258,7 +258,8 @@ Page({
       Object.assign(nextData, deriveSubmitState({ ...this.data, ...nextData }));
       this.setData(nextData);
     } catch (error) {
-      const loadError = error.error || '加载 AI 配置失败，请检查网络后重试';
+      console.error('[AI Design Create] Failed to load initial data', error);
+      const loadError = error.error || error.message || error.errMsg || '加载 AI 配置失败，请检查网络后重试';
       this.setData({
         loadError,
         canSubmit: false,

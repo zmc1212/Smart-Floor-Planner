@@ -1,4 +1,4 @@
-import { AiCreationRepository, AiWorkflowRepository, LeadRepository } from '@/db/repositories';
+import { AiCreationRepository, AiWorkflowRepository, LeadLifecycleRepository, LeadRepository } from '@/db/repositories';
 import { parseOptionalPostgresId, parsePostgresId } from '@/db/postgres-dto';
 import { withTenantTransaction } from '@/db/transaction';
 import { getAiCreditPrice } from '@/lib/ai/credits';
@@ -27,6 +27,7 @@ import { buildSoftFurnishingPromptFromPreset, type FurnitureSelection } from '@/
 import type { AiWorkflowSourceAssetRole, AiWorkflowStageKey } from '@/lib/ai/workflow-stages';
 import { getNextWorkflowStage } from '@/lib/ai/workflow-stages';
 import { executePostgresWorkflowChat } from '@/lib/ai/postgres-workflow-chat';
+import { leadArchivedError } from '@/lib/lead-lifecycle';
 
 type DirectGenerationType = 'floor_plan_style' | 'furnishing_render' | 'soft_furnishing_render';
 
@@ -157,11 +158,20 @@ export async function preparePostgresDirectGeneration(input: {
   const generation = await withTenantTransaction(enterpriseId, async (transaction) => {
     const creations = new AiCreationRepository(transaction);
     let workflow = null;
+    let relatedLeadId: bigint | null = null;
     if (workflowId) {
       workflow = await new AiWorkflowRepository(transaction).findById(workflowId);
       if (!workflow) throw new Error('方案会话不存在或无权限访问');
-      const lead = await new LeadRepository(transaction).findById(workflow.leadId);
+      relatedLeadId = workflow.leadId;
+    } else if (floorPlanId) {
+      const linkedLead = await new LeadRepository(transaction).findByFloorPlanId(floorPlanId);
+      relatedLeadId = linkedLead?.id ?? null;
+    }
+    if (relatedLeadId) {
+      await new LeadLifecycleRepository(transaction).lockByIds([relatedLeadId]);
+      const lead = await new LeadRepository(transaction).findById(relatedLeadId);
       if (!lead) throw new Error('Associated lead not found or inaccessible');
+      if (lead.archivedAt) throw leadArchivedError();
     }
     if (parentGenerationId) {
       const parent = await creations.findGeneration(parentGenerationId);
@@ -173,7 +183,7 @@ export async function preparePostgresDirectGeneration(input: {
     const created = await creations.createGeneration({
       enterpriseId,
       operatorId,
-      leadId: workflow?.leadId,
+      leadId: relatedLeadId,
       workflowId: workflow?.id,
       parentGenerationId,
       floorPlanId,
@@ -354,6 +364,12 @@ export async function renderPostgresDirectGeneration(input: {
     const selectedGeneration = workflow?.selectedGenerationId
       ? await repository.findGeneration(workflow.selectedGenerationId)
       : null;
+    const leadId = generation.leadId ?? workflow?.leadId;
+    if (leadId) {
+      await new LeadLifecycleRepository(transaction).lockByIds([leadId]);
+      const lead = await new LeadRepository(transaction).findById(leadId);
+      if (lead?.archivedAt) throw leadArchivedError();
+    }
     const outputImage = (value: unknown) => value && typeof value === 'object'
       ? (value as Record<string, unknown>).imageUrl
       : undefined;
@@ -380,6 +396,12 @@ export async function renderPostgresDirectGeneration(input: {
     const generation = await repository.findGenerationForUpdate(generationId);
     if (!generation || generation.deletedAt || !['pending', 'failed'].includes(generation.status)) {
       throw new Error('Generation is already in progress or completed');
+    }
+    const leadId = generation.leadId;
+    if (leadId) {
+      await new LeadLifecycleRepository(transaction).lockByIds([leadId]);
+      const lead = await new LeadRepository(transaction).findById(leadId);
+      if (lead?.archivedAt) throw leadArchivedError();
     }
     const existingInput = generation.input && typeof generation.input === 'object' ? generation.input : {};
     const existingOutput = generation.output && typeof generation.output === 'object' ? generation.output : {};

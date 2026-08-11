@@ -44,7 +44,7 @@ export async function POST(request: Request) {
         const message = status === 402
           ? '当前企业 AI 点数不足，请联系平台管理员调整。'
           : error instanceof Error ? error.message : '图片生成失败';
-        return NextResponse.json({ success: false, error: message }, { status: status >= 400 ? status : 500 });
+        return NextResponse.json({ success: false, code: (error as { code?: string })?.code, error: message }, { status: status >= 400 ? status : 500 });
       }
     });
   } catch (error) {

@@ -71,7 +71,7 @@ export function commissionToDto(record: CommissionWithRelations) {
 export function acquisitionCommissionToDto(record: AcquisitionCommissionWithRelations) {
   return {
     _id: record.id.toString(),
-    leadId: record.lead ? { _id: record.lead.id.toString(), name: record.lead.name, phone: record.lead.phone, communityName: record.lead.communityName, status: record.lead.status } : record.leadId.toString(),
+    leadId: record.lead ? { _id: record.lead.id.toString(), name: record.lead.name, phone: record.lead.phone, communityName: record.lead.communityName, status: record.lead.status, archivedAt: record.lead.archivedAt, isArchived: Boolean(record.lead.archivedAt) } : record.leadId.toString(),
     enterpriseId: record.enterpriseId.toString(),
     measurerId: record.measurer ? { _id: record.measurer.id.toString(), displayName: record.measurer.displayName, username: record.measurer.username, role: record.measurer.role } : record.measurerId.toString(),
     designerId: record.designer ? { _id: record.designer.id.toString(), displayName: record.designer.displayName, username: record.designer.username, role: record.designer.role } : record.designerId.toString(),
@@ -237,6 +237,8 @@ export function floorPlanToDto(
     staffId: record.staffId?.toString() ?? null,
     name: record.name,
     display: getFloorPlanDisplay(record, displayOptions),
+    leadArchivedAt: displayOptions.lead?.archivedAt ?? null,
+    leadIsArchived: Boolean(displayOptions.lead?.archivedAt),
     layoutData: record.layoutData,
     source: record.source,
     externalSource: record.externalSource,
@@ -286,6 +288,12 @@ export function leadToDto(record: LeadWithRelations, options: { designerWechatQr
     acquisitionStatus: record.acquiredAt ? 'confirmed' : 'pending_confirmation',
     acquiredAt: record.acquiredAt,
     acquiredBy: record.acquiredBy?.toString() ?? null,
+    archivedAt: record.archivedAt,
+    archivedBy: record.archivedUser
+      ? staffSummaryToDto(record.archivedUser)
+      : record.archivedBy?.toString() ?? null,
+    archiveReason: record.archiveReason,
+    archiveNote: record.archiveNote,
     acquisitionCommissionStatus: record.acquisitionCommission?.status ?? null,
     acquisitionCommissionAmount: record.acquisitionCommission
       ? Number(record.acquisitionCommission.commissionAmount)

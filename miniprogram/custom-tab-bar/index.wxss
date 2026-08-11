@@ -120,6 +120,6 @@
   z-index: 2;
   margin-top: 0;
   line-height: 28rpx;
-  color: #079b45;
-  font-weight: 600;
+  color: currentColor;
+  font-weight: 400;
 }

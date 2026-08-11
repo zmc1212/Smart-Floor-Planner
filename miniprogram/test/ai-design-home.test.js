@@ -7,13 +7,14 @@ const {
   decorateSourcePlan,
   buildProjectPickerView,
   chooseDefaultProjectGroup,
+  chooseDefaultProject,
   decorateRecentResult,
   buildHeroSlides,
   hasActiveTasks,
   normalizeCredits,
   buildStageRail,
   buildPrimaryAction,
-  buildSceneNavigation,
+  buildExperienceState,
 } = require('../pages/ai-design/ai-design-model.js');
 
 const miniRoot = path.resolve(__dirname, '..');
@@ -117,6 +118,9 @@ test('project picker groups backend-derived states and searches customer identit
     buildProjectPickerView(projects, 'in_progress').projectGroups.map((item) => item.count),
     [1, 1, 1]
   );
+  assert.equal(chooseDefaultProject(projects).floorPlanId, '1');
+  assert.equal(chooseDefaultProject(projects, '2').floorPlanId, '2');
+  assert.equal(chooseDefaultProject(projects, '3'), null);
 });
 
 test('hero carousel is scoped to the explicitly selected full floor plan', () => {
@@ -169,20 +173,20 @@ test('scheme stages map server workflow state to the four approved journey stati
   );
 });
 
-test('scene waypoints create a real focus state and a matching next action', () => {
-  const scene = buildSceneNavigation(workflows, 'style_transform');
-  assert.equal(scene.mode, 'style_transform');
-  assert.equal(scene.focusClass, 'scene-focus-style');
-  assert.equal(scene.title, '拍照换风格');
-  assert.equal(scene.buttonLabel, '拍照开始');
-  assert.equal(scene.credits, 20);
+test('the hero progress names the current design stage instead of repeating the project status', () => {
+  assert.equal(buildExperienceState({
+    workflows,
+    selectedSource: null,
+    selectedWorkflow: null,
+  }).progressLabel, '空间基准');
+  assert.equal(buildExperienceState({
+    workflows,
+    selectedSource: null,
+    selectedWorkflow: { currentStageKey: 'soft_furnishing' },
+  }).progressLabel, '软装完善');
 });
 
-test('the next action starts with reference recreation and creates a real whole-plan 3D navigator on demand', () => {
-  const standalone = buildPrimaryAction({ workflows, selectedSource: null, selectedWorkflow: null });
-  assert.equal(standalone.mode, 'reference_recreate');
-  assert.equal(standalone.title, '参考图复刻');
-
+test('the project next action creates a real whole-plan 3D navigator on demand', () => {
   const planAction = buildPrimaryAction({
     workflows,
     selectedSource: { targetLabel: '客厅', navigationPreview: { state: 'missing' } },
@@ -239,7 +243,7 @@ test('project index task states drive truthful progress, recovery, stale, and co
   assert.equal(continuation.sourceResultTaskId, 'task-3');
 });
 
-test('AI Design home restores the v3 spatial workbench while keeping live map and scene states', () => {
+test('AI Design home restores the project workbench hierarchy without the legacy scene fallback', () => {
   assert.match(pageWxml, /class="plan-navigator reference-plan-navigator"/);
   assert.match(pageWxml, />AI设计工作台</);
   assert.match(pageWxml, /class="project-hero-context"/);
@@ -249,24 +253,59 @@ test('AI Design home restores the v3 spatial workbench while keeping live map an
   assert.match(pageWxml, /bindtap="selectProjectCard"/);
   assert.match(pageWxml, /item\.statusLabel/);
   assert.match(pageWxml, /item\.actionLabel/);
+  assert.match(pageWxml, /wx:if="\{\{!item\.navigatorView\.walls\.length\}\}" class="project-mini-placeholder-wrap"/);
+  assert.doesNotMatch(pageWxml, /class="project-mini-empty"/);
+  assert.doesNotMatch(pageSource, /workflowPickerOpen:\s*schemeOptions\.length > 1/);
   assert.match(pageWxml, /class="plan-hero-swiper"/);
   assert.match(pageWxml, /bindtap="openHeroSlide"/);
-  assert.match(pageWxml, /\/images\/ai-design-hero-v3\.png/);
-  assert.match(pageWxml, /class="hero-room-rail"/);
-  assert.match(pageWxml, /class="hero-room-row"/);
-  assert.doesNotMatch(pageWxml, /hero-room-pin|hero-room-all|hero-room-[0-9]/);
-  assert.match(pageWxml, /class="stage-rail reference-stage-rail"/);
-  assert.match(pageWxml, /class="stage-status">进行中/);
-  assert.match(pageWxml, /class="workflow-cards"/);
-  assert.match(pageWxml, /class="next-action-panel reference-next-action/);
-  assert.match(pageWxml, /class="next-action-k"/);
+  assert.match(pageWxml, /\/images\/ai-design-project-hero-v5\.jpg/);
+  assert.match(pageWxml, /class="plan-default-scene-image scene-image"[^>]*mode="aspectFit"/);
+  const projectHero = fs.readFileSync(path.join(miniRoot, 'images', 'ai-design-project-hero-v5.jpg'));
+  assert.equal(projectHero.subarray(0, 2).toString('hex'), 'ffd8');
+  assert.ok(projectHero.length <= 150 * 1024, 'project hero exceeds the 150KB artwork budget');
+  const emptyHero = fs.readFileSync(path.join(miniRoot, 'images', 'ai-design-empty-v2', 'stage-art.jpg'));
+  assert.equal(emptyHero.subarray(0, 2).toString('hex'), 'ffd8');
+  assert.ok(emptyHero.length <= 100 * 1024, 'empty-state hero exceeds the 100KB artwork budget');
+  for (const stepAsset of ['step-customer.png', 'step-survey.png', 'step-ai.png']) {
+    const stepIcon = fs.readFileSync(path.join(miniRoot, 'images', 'ai-design-empty-v2', stepAsset));
+    assert.equal(stepIcon.subarray(1, 4).toString(), 'PNG');
+    assert.ok(stepIcon.length <= 20 * 1024, `${stepAsset} exceeds the 20KB process-icon budget`);
+  }
+  assert.match(pageWxml, /class="project-hero-primary/);
+  assert.match(pageWxml, /class="home-project-query"/);
+  assert.match(pageWxml, /class="home-project-search"/);
+  assert.match(pageWxml, /class="home-project-filter"/);
+  assert.match(pageWxml, /class="space-scheme-strip"/);
+  assert.match(pageWxml, /class="space-scheme-card/);
+  assert.match(pageWxml, /wx:for="\{\{sources\}\}"/);
+  assert.match(pageWxml, /bindtap="selectHomeProjectCard"/);
+  assert.match(pageWxml, /\{\{progressLabel\}\} · \{\{selectedSource\.projectProgress\}\}%/);
+  assert.doesNotMatch(pageWxml, /project-hero-progress-head">\s*<text>\{\{selectedSource\.statusLabel\}\}/);
+  assert.match(pageWxml, /class="space-mini-plan"/);
+  assert.doesNotMatch(pageWxml, /selectedSource\.floorPlanId === item\.floorPlanId \? '\/images\/ai-design-project-hero-v5\.jpg'/);
+  assert.match(pageWxml, /class="design-preparation-card"/);
+  assert.match(pageWxml, /bindtap="openPreparationProjects"/);
+  assert.doesNotMatch(pageWxml, /class="hero-room-rail"/);
+  assert.doesNotMatch(pageWxml, /class="project-state-panel/);
+  assert.match(pageWxml, /class="project-tool-dock secondary-tool-dock"/);
   assert.match(pageWxml, /primaryAction\.buttonLabel/);
-  assert.match(pageWxml, /primaryAction\.credits/);
+  assert.match(pageWxml, /workflow\.credits/);
   assert.match(pageWxml, /\/images\/mine-icons\/tab-measure-k\.png/);
   assert.doesNotMatch(pageWxml, /\/images\/page-ip-v3\/ai-home\.png/);
-  assert.match(pageWxml, /class="scene-navigator/);
-  assert.match(pageWxml, /bindtap="focusSceneWaypoint"/);
-  assert.match(pageWxml, /sceneNavigation\.focusClass/);
+  assert.doesNotMatch(pageWxml, /class="scene-navigator/);
+  assert.doesNotMatch(pageWxml, /bindtap="focusSceneWaypoint"/);
+  assert.match(pageWxml, /class="project-empty-stage"/);
+  assert.match(pageWxml, /\/images\/ai-design-empty-v2\/stage-art\.jpg/);
+  assert.match(pageWxml, /\/images\/ai-design-empty-v2\/step-customer\.png/);
+  assert.match(pageWxml, /\/images\/ai-design-empty-v2\/step-survey\.png/);
+  assert.match(pageWxml, /\/images\/ai-design-empty-v2\/step-ai\.png/);
+  assert.match(pageWxml, />从一条客户量房开始</);
+  assert.match(pageWxml, />选择正式量房，建立第一个空间基准</);
+  assert.match(pageWxml, />选择客户量房</);
+  assert.match(pageWxml, />可开始设计</);
+  assert.match(pageWxml, /class="empty-source-card"/);
+  assert.match(pageWxml, /class="design-preparation-card empty-preparation-card"/);
+  assert.match(pageWxml, /<block wx:if="\{\{selectedSource\}\}">\s*<view wx:if="\{\{historyLoadError\}\}"/);
   assert.match(pageWxml, /heroSlides\.length/);
   assert.match(pageWxml, /loading && !hasLoadedOnce/);
   assert.match(pageWxml, /loadError && !hasLoadedOnce/);
@@ -276,46 +315,43 @@ test('AI Design home restores the v3 spatial workbench while keeping live map an
   assert.match(pageModelSource, /生成 3D 户型导览图/);
   assert.doesNotMatch(pageWxml, /class="workflow-grid"/);
   assert.doesNotMatch(pageWxml, />AI 设计</);
-  assert.match(pageWxss, /\.reference-plan-navigator\s*\{[^}]*margin:\s*0 -36rpx/);
-  assert.match(pageWxss, /\.reference-plan-stage\s*\{[^}]*height:\s*760rpx/);
+  assert.match(pageWxss, /\.reference-plan-navigator\s*\{[^}]*margin:\s*0;/);
+  assert.match(pageWxss, /\.reference-plan-stage\s*\{[^}]*height:\s*568rpx/);
   assert.doesNotMatch(pageWxss, /\.reference-plan-stage\.has-default-hero\s*\{[\s\S]*height:/);
   assert.match(pageWxss, /\.with-plan \.page-subtitle-line \.page-subtitle\s*\{[^}]*color:\s*#6f7479;[^}]*text-shadow:\s*none/);
-  assert.match(pageWxss, /\.project-hero-context\s*\{[^}]*top:\s*28rpx/);
-  assert.match(pageWxml, /\/images\/ai-design-hero-v3\.png/);
-  assert.match(pageWxml, /class="scene-source-card"/);
-  assert.match(pageWxml, />参考图复刻</);
-  assert.match(pageWxml, />拍照换风格</);
-  assert.match(pageWxml, />户型生成</);
-  assert.match(pageWxml, />软装搭配</);
-  assert.match(pageWxml, /sceneNavigation\.buttonLabel/);
+  assert.match(pageWxss, /\.project-hero-context\s*\{[^}]*top:\s*24rpx/);
+  assert.match(pageWxml, /\/images\/ai-design-project-hero-v5\.jpg/);
+  assert.match(pageWxml, /class="project-hero-progress /);
+  assert.match(pageWxml, /class="project-hero-stage-rail"/);
+  assert.match(pageWxml, /class="project-hero-stage-glow"/);
+  assert.match(pageWxml, /\/images\/ai-design-stage-active-glow-v1\.png/);
+  assert.match(pageWxml, /class="project-source-result-half"/);
+  assert.match(pageWxml, /class="project-source-preview project-source-preview-wide"/);
+  assert.match(pageWxml, /\/images\/ai-design-switch-arrows-v1\.png/);
+  assert.match(pageWxml, /\/images\/ai-design-preparation-art-v1\.jpg/);
+  assert.match(pageWxml, /binderror="onProjectPreviewError"/);
+  assert.match(pageSource, /onProjectPreviewError\(event\)/);
+  assert.doesNotMatch(pageWxml, /class="scene-source-card"/);
+  assert.doesNotMatch(pageWxml, /sceneNavigation/);
+  assert.doesNotMatch(pageWxml, /class="plan-hero-caption"/);
+  assert.doesNotMatch(pageWxml, /class="preview-progress"/);
   assert.doesNotMatch(pageWxml, /class="scene-index"/);
   assert.doesNotMatch(pageWxml, />0[1-4]</);
-  assert.match(pageWxss, /\.scene-waypoint-icon image\s*\{[\s\S]*width:\s*30rpx/);
-  assert.match(pageWxml, /class="discovery-handle"/);
-  assert.match(pageWxml, /\/images\/mine-icons\/tab-ai-active\.png/);
+  assert.doesNotMatch(pageWxml, /class="discovery-handle"/);
   assert.match(pageWxml, />最近方案</);
   assert.match(pageWxml, /class="result-progress-track"/);
-  assert.match(pageWxss, /\.scene-navigator\s*\{[\s\S]*height:\s*calc\(1024rpx/);
   assert.match(pageWxss, /var\(--ai-navigation-top,\s*24px\)/);
-  assert.match(pageWxss, /\.next-button\s*\{[\s\S]*font-size:\s*24rpx/);
-  assert.match(pageWxss, /\.stage-label\s*\{[\s\S]*font-size:\s*25rpx/);
-  assert.match(pageWxss, /\.stage-dot\s*\{[\s\S]*width:\s*42rpx/);
-  assert.match(pageWxss, /\.hero-room-chip\s*\{[\s\S]*min-height:\s*84rpx/);
-  assert.match(pageWxss, /\.hero-room-chip-label\s*\{[\s\S]*min-height:\s*54rpx/);
-  assert.match(pageWxss, /\.hero-room-chip\.active \.hero-room-chip-label\s*\{[\s\S]*color:\s*#10a948/);
-  assert.match(pageWxss, /\.design-workbench\s*\{[\s\S]*margin:\s*-76rpx 0 0/);
-  assert.match(pageWxss, /\.reference-next-action\s*\{[\s\S]*min-height:\s*114rpx/);
-  assert.match(pageWxss, /\.scene-waypoint\s*\{[\s\S]*min-height:\s*54rpx/);
-  assert.match(pageWxss, /\.discovery-panel\s*\{[\s\S]*margin:\s*-30rpx -36rpx 0/);
-  assert.match(pageWxss, /\.secondary-action\s*\{[\s\S]*font-size:\s*24rpx/);
-  assert.match(pageWxss, /\.project-group-tab\s*\{[^}]*min-height:\s*68rpx/);
-  assert.match(pageWxss, /\.project-source-action\s*\{[^}]*min-height:\s*70rpx/);
-  assert.match(
-    pageWxss,
-    /@media \(max-width: 360px\)[\s\S]*\.without-plan \.next-action\.standalone\s*\{[\s\S]*flex-direction:\s*row/
-  );
-  assert.match(
-    pageWxss,
-    /@media \(max-width: 360px\)[\s\S]*\.without-plan \.next-action\.standalone \.next-button\s*\{[\s\S]*width:\s*auto/
-  );
+  assert.match(pageWxss, /\.project-hero-primary\s*\{[^}]*min-height:\s*76rpx/);
+  assert.match(pageWxss, /\.project-hero-primary\s*\{[^}]*box-sizing:\s*border-box/);
+  assert.match(pageWxss, /@media \(max-width: 360px\)[\s\S]*?\.reference-plan-navigator\s*\{[^}]*margin-right:\s*0;[^}]*margin-left:\s*0/);
+  assert.match(pageWxss, /@media \(max-width: 360px\)[\s\S]*?\.reference-plan-stage\s*\{[^}]*height:\s*568rpx/);
+  assert.match(pageWxss, /\.space-scheme-card\s*\{[^}]*width:\s*320rpx;[^}]*height:\s*380rpx/);
+  assert.match(pageWxss, /\.design-preparation-card\s*\{[^}]*height:\s*112rpx/);
+  assert.match(pageWxss, /\.source-sheet\s*\{[^}]*height:\s*49vh/);
+  assert.match(pageWxss, /\.source-sheet \.project-source-preview\s*\{[^}]*width:\s*248rpx/);
+  assert.match(pageWxss, /\.project-source-preview-wide\s*\{[^}]*width:\s*248rpx/);
+  assert.match(pageWxss, /\.project-tool-item\s*\{[^}]*min-height:\s*116rpx/);
+  assert.match(pageWxss, /\.project-group-tab\s*\{[^}]*min-height:\s*62rpx/);
+  assert.match(pageWxss, /\.project-source-action\s*\{[^}]*min-height:\s*64rpx/);
+  assert.match(pageWxss, /\.project-source-action text\s*\{[^}]*white-space:\s*nowrap/);
 });

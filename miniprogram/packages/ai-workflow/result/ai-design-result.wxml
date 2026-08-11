@@ -40,9 +40,9 @@
         </view>
 
         <view wx:if="{{task.showComparison}}" class="compare-stage {{task.floorPlanCompare ? 'floor-plan-compare' : ''}}" style="height: {{task.resultStageHeight}}rpx;" bindtouchstart="handleCompareTouch" catchtouchmove="handleCompareTouch">
-          <image class="compare-image" src="{{task.resultImageUrl}}" mode="{{task.floorPlanCompare || task.preserveComposition ? 'aspectFit' : 'aspectFill'}}"></image>
+          <image class="compare-image" src="{{task.resultImageUrl}}" mode="{{task.resultImageMode}}"></image>
           <view class="before-layer" style="width: {{comparePercent}}%;">
-            <image class="compare-image before-image" src="{{task.sourceCompareImageUrl}}" mode="{{task.floorPlanCompare || task.preserveComposition ? 'aspectFit' : 'aspectFill'}}"></image>
+            <image class="compare-image before-image" src="{{task.sourceCompareImageUrl}}" mode="{{task.resultImageMode}}"></image>
           </view>
           <view class="compare-line" style="left: {{comparePercent}}%;">
             <view class="compare-handle">
@@ -54,8 +54,8 @@
         </view>
 
         <view wx:else class="compare-stage single-result" style="height: {{task.resultStageHeight}}rpx;">
-          <image class="compare-image" src="{{task.resultImageUrl}}" mode="aspectFill"></image>
-          <view class="compare-label after-label">AI 概念方案</view>
+          <image class="compare-image" src="{{task.resultImageUrl}}" mode="{{task.resultImageMode}}"></image>
+          <view class="compare-label after-label">AI 方案</view>
         </view>
 
         <view class="result-actions">
@@ -68,7 +68,7 @@
             <text>{{saving ? '保存中' : '保存'}}</text>
           </button>
           <button class="result-action action-share" hover-class="primary-pressed" open-type="share">
-            <image class="action-icon-image" src="/packages/ai-workflow/assets/result-icons/share-white.png" mode="aspectFit"></image>
+            <image class="action-icon-image" src="/packages/ai-workflow/assets/result-icons/share.png" mode="aspectFit"></image>
             <text>分享</text>
           </button>
           <button class="result-action" hover-class="action-pressed" bindtap="handlePrimaryAction">
@@ -82,24 +82,20 @@
         </view>
 
         <view class="task-summary">
-          <view wx:if="{{task.workflowId}}" class="workflow-summary">
+          <view wx:if="{{task.workflowId}}" class="summary-item summary-workflow">
             <image class="summary-icon" src="/images/mine-icons/users.png" mode="aspectFit"></image>
-            <view class="workflow-summary-copy">
-              <text class="workflow-summary-label">所属客户方案</text>
-              <text class="workflow-summary-title">{{task.workflowTitle || '客户 AI 方案'}}</text>
-              <text wx:if="{{task.leadName}}" class="workflow-summary-meta">{{task.leadName}}</text>
-            </view>
-            <text class="workflow-summary-status">{{task.isSelectedBaseline ? '当前定稿' : '候选版本'}}</text>
+            <text class="summary-label">所属客户方案</text>
+            <text class="summary-value summary-workflow-value">{{task.workflowTitle || '客户 AI 方案'}}</text>
+          </view>
+          <view wx:if="{{task.targetLabel}}" class="summary-item">
+            <image class="summary-icon" src="/images/ai-design-icons/floor-plan.png" mode="aspectFit"></image>
+            <text class="summary-label">当前空间</text>
+            <text class="summary-value">{{task.targetLabel}}</text>
           </view>
           <view class="summary-item">
             <image class="summary-icon" src="/images/ai-design-icons/palette.png" mode="aspectFit"></image>
             <text class="summary-label">生成模式</text>
             <text class="summary-value">{{task.modeTitle}}</text>
-          </view>
-          <view wx:if="{{task.targetLabel}}" class="summary-item">
-            <image class="summary-icon" src="/images/ai-design-icons/floor-plan.png" mode="aspectFit"></image>
-            <text class="summary-label">设计范围</text>
-            <text class="summary-value">{{task.targetLabel}}</text>
           </view>
           <view class="summary-item">
             <image class="summary-icon summary-icon-credit" src="/images/mine-icons/wallet.png" mode="aspectFit"></image>

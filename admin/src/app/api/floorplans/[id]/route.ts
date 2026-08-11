@@ -67,6 +67,8 @@ export async function GET(
               _id: lead.id.toString(),
               name: lead.name,
               communityName: lead.communityName,
+              archivedAt: lead.archivedAt,
+              isArchived: Boolean(lead.archivedAt),
             }
           : null,
       },
@@ -163,8 +165,11 @@ export async function PUT(
   } catch (error: unknown) {
     const message = getErrorMessage(error);
     return NextResponse.json(
-      { success: false, error: message },
-      { status: message.includes('access denied') ? 403 : 500 }
+      { success: false, error: message, code: (error as { code?: string })?.code },
+      {
+        status: (error as { status?: number })?.status
+          || (message.includes('access denied') ? 403 : 500),
+      }
     );
   }
 }

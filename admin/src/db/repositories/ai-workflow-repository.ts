@@ -20,6 +20,7 @@ export class AiWorkflowRepository {
   constructor(private readonly transaction: PostgresTransaction) {}
 
   async list(options: {
+    id?: bigint;
     leadId?: bigint;
     leadIds?: bigint[];
     operatorId?: bigint;
@@ -30,6 +31,7 @@ export class AiWorkflowRepository {
     const page = Math.max(1, options.page ?? 1);
     const limit = Math.min(50, Math.max(1, options.limit ?? 20));
     const filters: SQL[] = [];
+    if (options.id) filters.push(eq(aiWorkflows.id, options.id));
     if (options.leadId) filters.push(eq(aiWorkflows.leadId, options.leadId));
     if (options.leadIds) {
       if (options.leadIds.length === 0) return { rows: [], total: 0, page, limit };

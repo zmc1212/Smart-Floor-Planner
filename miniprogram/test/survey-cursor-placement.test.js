@@ -283,6 +283,30 @@ test('cursor placement snaps a visible mitered outer corner to its topology node
   assert.equal(nextFloor.session.activeSpaceSharedStartT, 0);
 });
 
+test('an outer-corner drop keeps the stationary cursor on the visible outer vertex', () => {
+  const draft = createClosedDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const wall = floor.walls[0];
+  const geometry = surveyGraph.buildWallRenderGeometry(floor, wall);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    geometry.outerStart,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  const snappedDraft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  const snappedFloor = surveyGraph.getActiveFloor(snappedDraft);
+  const topologyAnchor = surveyGraph.getNode(snappedFloor, snappedFloor.session.anchorNodeId);
+  const cursorPoint = surveyGraph.getCursorDisplayPoint(snappedFloor, snappedFloor.session);
+
+  assert.notDeepEqual(cursorPoint, topologyAnchor);
+  assert.deepEqual(cursorPoint, geometry.outerStart);
+  assert.equal(snappedFloor.session.activeSpaceSharedSnapLine, 'outer');
+});
+
 test('an outer endpoint keeps its measurement side while the graph anchor stays on the topology node', () => {
   const draft = createWallDraft();
   const floor = surveyGraph.getActiveFloor(draft);

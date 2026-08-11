@@ -266,7 +266,19 @@ Phone de-duplication affects attribution. Do not create a second commission for 
 - PostgreSQL integration tests and Mini Program model/UI contract tests.
 - Focused acquisition contract and both Admin/Mini Program module-inventory language pairs.
 
-## 14. Acceptance criteria
+## 14. Lead archive compatibility
+
+The acquisition workbench must treat archived leads as historical assets, not
+active tasks: archive-aware lead queries default to active, archived rows are
+hidden from acquisition task lists and customer selectors, and confirmation or
+new acquisition work returns `409 LEAD_ARCHIVED`. Existing settled and pending
+commission records remain readable/settleable. Phone de-duplication must return
+`409 ARCHIVED_LEAD_EXISTS` for an archived match. Archive/purge permissions and
+the row-level designer/measurer boundaries are resolved live from enterprise
+role defaults plus employee overrides; purge remains manager-only and never
+force-cascades protected assets.
+
+## 15. Acceptance criteria
 
 - Acquisition confirmation never changes lead lifecycle status.
 - Surveying does not depend on acquisition confirmation.
