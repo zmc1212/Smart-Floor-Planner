@@ -878,8 +878,9 @@ utilities, and the admin APIs they call.
   vertex inherits that connected boundary and does not show the prompt. When a
   chain starts from an inner or outer corner of a closed room, its first
   outgoing wall instead infers the measurement side from the collinear closed
-  boundary: the lower-left inner-corner/downward case resolves to `right`, and
-  the corresponding outer-corner case resolves to `left`. The compact current-
+  boundary's physical wall-body normal: the lower-left inner-corner/downward and
+  corresponding outer-corner/downward cases both resolve to `right`, while the
+  inner/outer snap still controls the physical measurement origin. The compact current-
   measurement-position control remains available during that first preview and
   after its first commit, and switching it updates the red edge, preview shell,
   committed wall, and following chain consistently. An outer-edge hit retains
@@ -920,9 +921,10 @@ utilities, and the admin APIs they call.
   measurement-audit behavior.
 - Closed-corner measurement-side correction (2026-08-08): a restart from a
   closed-room vertex selects the incident boundary wall aligned with the first
-  outgoing segment before resolving inner/outer measurement side. Inner and
-  outer corners therefore produce opposite, wall-aligned sides instead of both
-  falling back to the same axis default. The existing Canvas measurement-
+  outgoing segment before resolving measurement side. Inner and outer corners
+  retain their distinct measurement origins but select the side whose wall body
+  follows that incident boundary's outward normal instead of falling back to an
+  axis default. The existing Canvas measurement-
   position action is now available for this first shared-boundary segment and
   changes preview and persisted geometry together. Open-wall snaps remain
   locked. Routes, APIs, roles, v4 persistence, and audit behavior are unchanged.
@@ -966,6 +968,17 @@ utilities, and the admin APIs they call.
   focused graph/editor rendering tests pass `89/89`. A fresh `390x844` device
   capture remains pending because the existing WeChat DevTools window does not
   expose a compatible Mini Program Automator endpoint.
+- Closed-corner wall-face alignment correction (2026-08-11): the first wall
+  pulled from a closed-room outer vertex now inherits the incident boundary's
+  physical wall-body normal. In the user-supplied
+  `fb00dd97d15453c27336410cb7313410.jpg` state, a wall pulled left from the
+  upper-left outside vertex therefore selects `right` automatically and keeps
+  its outer face collinear with the existing top wall; the operator no longer
+  needs to press the current-measurement-position switch. The switch remains
+  available as an explicit override. Focused graph/render tests pass `77/77`;
+  routes, APIs, roles, version-4 persistence, millimetre geometry, and
+  measurement audits are unchanged. A fresh `390x844` capture is pending until
+  the existing WeChat DevTools window exposes a compatible automation endpoint.
 - Shared-wall inset cursor correction (2026-08-10): whenever the formal Canvas
   shows an active cursor, that topology target is the sole owner of the blue
   full-canvas crosshair. A preview whose effective measured endpoint is inset
@@ -1241,16 +1254,35 @@ The focused business and data contract is [`docs/measurer-designer-acquisition.m
   reserves a native layout lane below the points pill, and the `<=360px` variant
   keeps the same inset `568rpx` emerald project card as the `390x844` baseline
   instead of expanding it edge to edge. The artwork-only fallback uses
-  `aspectFit` with an emerald text-protection shade, so the formal drawing,
-  interior board, and Xiao K remain visible without pushing native customer copy
-  or the primary action out of their measured lanes. The progress row names the
+  `aspectFit` without an additional scene shade, so the formal drawing, interior
+  board, and Xiao K keep the authored reference brightness. The selected-project
+  hero is governed jointly by the home composition reference and
+  `ai-design-customer-project-switcher-v3.png`: it therefore preserves the
+  `Current customer` eyebrow, real project title, and the live
+  formal-survey/subtitle/closed-space metadata line shown by the switcher design.
+  Runtime evidence from the `341x728` narrow-device capture showed that normal
+  flow placed this identity block too low and let the drafting board enter its
+  metadata lane. The identity block is therefore raised by `26rpx`. A follow-up
+  compiled capture showed the status chip still touching the eyebrow and the
+  arrow still entering the metadata baseline, so the chip now uses compact
+  `4rpx` vertical padding and the default artwork starts `70rpx` below the stage
+  top with `height: calc(100% - 70rpx)`. This preserves its aspect ratio,
+  authored brightness, and the measured upper-left copy clearance without
+  changing the generated-result carousel.
+  The selected journey station combines the approved local
+  `96rpx` glow derivative with an explicit emerald fill, `3rpx` white ring,
+  stronger outer highlight, and emphasized label instead of making the node body
+  transparent.
+  The progress row names the
   current four-stage journey station instead of repeating the server-derived
   project status. Home scheme cards use a real accessible result/navigation
   preview or the formal navigator geometry and no longer duplicate the generic
   hero for the selected project. The center surveying label inherits the shared
   inactive TabBar color whenever `Design` is selected, removing the former dual
   active-state signal. Targeted `ai-design-home` and `ai-design-tab` tests cover
-  these contracts. The existing DevTools window rendered the current no-project
+  these contracts, including preservation of the switcher-owned hero identity
+  copy and absence of the fallback shade.
+  The existing DevTools window rendered the current no-project
   branch at its iPhone 12/13 baseline; the retained evidence is
   `design-references/ai-design/ai-design-customer-project-switcher-v3/qa-fidelity-pass-empty-state-390x844-devtools.png`.
   That live session supplied no selectable project and no compatible automation

@@ -445,7 +445,7 @@ test('an open-wall snapped continuation does not reopen the initial measurement-
   assert.equal(surveyGraph.getActiveFloor(unchanged).walls[1].measurementSide, originalSide);
 });
 
-test('closed-room inner and outer lower-left corners infer right and left measurement sides', () => {
+test('closed-room inner and outer lower-left corners align the new wall body with the boundary', () => {
   const closedDraft = createClosedDraft();
   const closedFloor = surveyGraph.getActiveFloor(closedDraft);
   const lowerLeftWall = closedFloor.walls.find((wall) => {
@@ -466,7 +466,7 @@ test('closed-room inner and outer lower-left corners infer right and left measur
     {
       point: outerCorner,
       expectedSnapLine: 'outer',
-      expectedSide: 'left',
+      expectedSide: 'right',
       expectedStartInsetMm: 200,
       expectedPreviewLengthMm: 2800
     }
@@ -500,6 +500,34 @@ test('closed-room inner and outer lower-left corners infer right and left measur
     assert.equal(floor.session.closeCandidateType, '');
     assert.equal(surveyGraph.canSetInitialMeasurementSide(floor, floor.session), true);
   });
+});
+
+test('a wall pulled left from the upper-left outer vertex aligns with the top wall face', () => {
+  const closedDraft = createClosedDraft();
+  const closedFloor = surveyGraph.getActiveFloor(closedDraft);
+  const topWall = closedFloor.walls[0];
+  const outerCorner = surveyGraph.buildWallRenderGeometry(closedFloor, topWall).outerStart;
+  const target = surveyGraph.getCursorPlacementTarget(
+    closedFloor,
+    outerCorner,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  let draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(closedDraft),
+    target.pointMm,
+    target
+  );
+  draft = surveyGraph.startPreview(draft, { xMm: -2200, yMm: 0 });
+  let floor = surveyGraph.getActiveFloor(draft);
+
+  assert.equal(target.snapLine, 'outer');
+  assert.equal(floor.session.previewMeasurementSide, 'right');
+  assert.equal(floor.session.measurementSide, 'right');
+  assert.equal(floor.session.previewMeasurementStartInsetMm, 200);
+
+  draft = surveyGraph.commitPreviewLength(draft, 2000, 'manual');
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.walls.at(-1).measurementSide, 'right');
 });
 
 test('shared-corner measurement-side switching updates preview, committed wall, and following wall', () => {

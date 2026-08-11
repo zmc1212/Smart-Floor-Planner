@@ -42,6 +42,40 @@ Before editing a page, capture a short restoration brief:
 If an item is unknown, mark it as an open decision. Do not fill a design gap
 with a fake card, number, action, or AI-generated text.
 
+### 2.1 Mandatory HTML-First Approval Gate
+
+Every Mini Program high-fidelity restoration begins as a design-only HTML gate.
+Before editing any Mini Program production file:
+
+1. Create an independent HTML comparison prototype only under
+   `design-references/html-prototypes/<surface>/`. Do not modify
+   `miniprogram/`, Admin/API code, tests, production assets, or runtime module
+   documentation during this gate.
+2. Map every visible region to its approved design authority. When multiple
+   references jointly own the screen, record which source owns each region and
+   define any dynamic-data or native-host masks before scoring.
+3. Apply the `impeccable` quality constraints and use the in-app Browser at the
+   approved viewport, including the `390x844` Mini Program baseline, to iterate
+   through screenshots and identical-scale overlays.
+4. Produce an element ledger containing target and actual bounds, size,
+   alignment, adjacent spacing, and a reproducible score. Keep the HTML, final
+   browser capture, overlay, source map, masks/exclusions, scoring weights, and
+   ledger together in the prototype directory.
+5. Reach a documented composite visual similarity of at least `90%`. Do not
+   substitute a flattened full-page design screenshot for real HTML structure,
+   and do not raise the score by counting masked or mutually conflicting source
+   regions.
+6. Present the evidence and request a new, explicit approval to implement the
+   Mini Program. Passing the threshold never authorizes WXML/WXSS/JS or asset
+   changes by itself.
+
+This gate is the default for future restorations even when the initial request
+says “还原设计图” or otherwise sounds implementation-oriented. Only an explicit
+instruction to skip the HTML gate and implement directly may bypass it. After
+approval, the HTML is a measured reference—not production code—and the normal
+Mini Program implementation, tests, documentation, and native DevTools/device
+verification requirements still apply.
+
 ## 3. Design-to-Layout Translation
 
 ### 3.1 Measure Before Styling

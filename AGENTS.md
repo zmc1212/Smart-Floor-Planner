@@ -56,6 +56,26 @@ or a roadmap do not replace the current module inventory.
 - Treat requests to design, redesign, restyle, explore, or propose an interface
   as design-only work unless the user explicitly asks for implementation in the
   same request.
+- For every Mini Program high-fidelity design restoration, the HTML-first gate
+  is mandatory even when the request uses implementation language such as
+  “还原设计图”. Before touching production code, create an independent HTML
+  comparison prototype only under
+  `design-references/html-prototypes/<surface>/`. During this gate do not modify
+  `miniprogram/`, Admin/API code, tests, or runtime module documentation. The
+  user may waive this gate only with an explicit instruction to skip the HTML
+  prototype and implement directly.
+- Apply the `impeccable` quality constraints to that prototype and use the
+  in-app Browser at the approved target viewport to iterate with screenshots,
+  overlays, and an element-by-element visual ledger. Record the design-source
+  mapping, masks/exclusions, scoring weights, target and actual bounds, and the
+  resulting evidence beside the HTML prototype. Do not use a flattened full-page
+  design screenshot as the HTML implementation or inflate the score by counting
+  masked/conflicting regions.
+- The HTML gate passes only when the documented composite visual similarity is
+  at least `90%`. Passing the score is not implementation approval: present the
+  HTML, final browser capture, overlay, and ledger to the user and obtain a new,
+  explicit Mini Program implementation approval before editing WXML/WXSS/JS,
+  production assets, APIs, tests, or runtime documentation.
 - For design-only work, produce the design proposal, wireframe, mockup, visual
   reference, or review without modifying product code, styles, APIs, tests, or
   runtime module documentation.

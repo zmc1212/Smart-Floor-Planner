@@ -602,9 +602,11 @@ function resolveBoundaryAlignedMeasurementSide(floor, session, start, end) {
   const sourceSegment = sourceWall ? buildResolvedSegment(floor, sourceWall) : null;
   if (!sourceSegment || !sourceSegment.normal) return session.measurementSide;
 
-  const towardWallBody = session.activeSpaceSharedSnapLine === 'outer'
-    ? { x: -sourceSegment.normal.x, y: -sourceSegment.normal.y }
-    : sourceSegment.normal;
+  // Inner/outer snapping changes the physical measurement origin, but it must
+  // not flip the new wall body to the opposite side. Match the outward normal
+  // of the incident closed boundary so a wall pulled from its visible outer
+  // vertex continues the neighbouring wall face without a manual side switch.
+  const towardWallBody = sourceSegment.normal;
   const leftNormal = normalForMeasurementSide(start, end, 'left');
   const rightNormal = normalForMeasurementSide(start, end, 'right');
   if (!leftNormal || !rightNormal) return session.measurementSide;

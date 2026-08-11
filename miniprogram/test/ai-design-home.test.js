@@ -325,6 +325,14 @@ test('AI Design home restores the project workbench hierarchy without the legacy
   assert.match(pageWxml, /class="project-hero-stage-rail"/);
   assert.match(pageWxml, /class="project-hero-stage-glow"/);
   assert.match(pageWxml, /\/images\/ai-design-stage-active-glow-v1\.png/);
+  assert.match(pageWxml, /class="project-hero-label">当前客户<\/text>/);
+  assert.match(pageWxml, /class="project-hero-meta">正式量房 · \{\{selectedSource\.projectSubtitle\}\} · \{\{selectedSource\.closedRoomCount\}\} 个闭合空间<\/text>/);
+  assert.doesNotMatch(pageWxml, /class="plan-default-scene-shade"/);
+  assert.match(pageWxss, /\.plan-default-scene-image\s*\{[^}]*height:\s*calc\(100% - 70rpx\);[^}]*margin-top:\s*70rpx/);
+  assert.match(pageWxss, /\.project-state-chip\s*\{[^}]*padding:\s*4rpx 16rpx/);
+  assert.match(pageWxss, /\.project-hero-identity\s*\{[^}]*margin-top:\s*-16rpx/);
+  assert.match(pageWxss, /\.project-hero-stage-glow\s*\{[^}]*width:\s*96rpx;[^}]*height:\s*96rpx/);
+  assert.match(pageWxss, /\.project-hero-stage\.current \.project-hero-stage-node\s*\{[^}]*background:\s*#12c95a;[^}]*border:\s*3rpx solid #fff;[^}]*rgba\(55, 255, 119, 0\.68\)/);
   assert.match(pageWxml, /class="project-source-result-half"/);
   assert.match(pageWxml, /class="project-source-preview project-source-preview-wide"/);
   assert.match(pageWxml, /\/images\/ai-design-switch-arrows-v1\.png/);

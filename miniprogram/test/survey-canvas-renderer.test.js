@@ -1191,6 +1191,30 @@ test('stationary canvas cursor stays on the outer vertex selected by the drag le
   assert.deepEqual(expectedMm, geometry.outerStart);
 });
 
+test('an outer-corner continuation preview aligns its wall body with the adjacent wall', () => {
+  const closedDraft = createClosedRectangleDraft();
+  const floor = surveyGraph.getActiveFloor(closedDraft);
+  const topWall = floor.walls[0];
+  const outerCorner = surveyGraph.buildWallRenderGeometry(floor, topWall).outerStart;
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    outerCorner,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  let previewDraft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(closedDraft),
+    target.pointMm,
+    target
+  );
+  previewDraft = surveyGraph.startPreview(previewDraft, { xMm: -2200, yMm: 0 });
+  const scene = createScene(previewDraft);
+  const renderedTopWall = scene.walls.find((wall) => wall.id === topWall.id);
+
+  assert.equal(scene.previewWall.measurementSide, 'right');
+  assert.equal(scene.previewWall.rawOuterStart.y, renderedTopWall.rawOuterStart.y);
+  assert.equal(scene.previewWall.rawOuterEnd.y, renderedTopWall.rawOuterEnd.y);
+});
+
 test('snapping a new cursor onto a closed wall preserves the completed room render geometry', () => {
   const closedDraft = createClosedRectangleDraft();
   const closedFloor = surveyGraph.getActiveFloor(closedDraft);

@@ -126,7 +126,6 @@ FORM: The project-switching bottom sheet groups a server-derived read model; res
             </swiper>
             <view wx:else class="plan-default-scene">
               <image class="plan-default-scene-image scene-image" src="/images/ai-design-project-hero-v5.jpg" mode="aspectFit"></image>
-              <view class="plan-default-scene-shade"></view>
             </view>
 
             <view class="project-hero-progress {{sourcePickerOpen ? 'picker-progress' : 'home-progress'}}">

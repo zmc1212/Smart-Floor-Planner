@@ -2241,8 +2241,12 @@
   height: 100%;
 }
 
-.plan-hero-shade,
-.plan-default-scene-shade {
+.plan-default-scene-image {
+  height: calc(100% - 70rpx);
+  margin-top: 70rpx;
+}
+
+.plan-hero-shade {
   position: absolute;
   inset: 0;
   background:
@@ -3209,7 +3213,7 @@
 .project-state-chip {
   max-width: 340rpx;
   overflow: hidden;
-  padding: 9rpx 18rpx;
+  padding: 4rpx 16rpx;
   background: rgba(0, 62, 32, 0.82);
   border-radius: var(--radius-full);
   color: #fff;
@@ -3251,7 +3255,7 @@
 
 .project-hero-identity {
   width: 520rpx;
-  margin-top: 10rpx;
+  margin-top: -16rpx;
 }
 
 .project-hero-label,
@@ -3373,8 +3377,8 @@
   left: 50%;
   top: 50%;
   z-index: 0;
-  width: 88rpx;
-  height: 88rpx;
+  width: 96rpx;
+  height: 96rpx;
   transform: translate(-50%, -50%);
 }
 
@@ -3391,9 +3395,11 @@
 }
 
 .project-hero-stage.current .project-hero-stage-node {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
+  background: #12c95a;
+  border: 3rpx solid #fff;
+  box-shadow:
+    0 0 0 5rpx rgba(69, 238, 124, 0.48),
+    0 2rpx 26rpx 10rpx rgba(55, 255, 119, 0.68);
 }
 
 .project-hero-stage-check {
@@ -3428,6 +3434,11 @@
 .project-hero-stage.done .project-hero-stage-label,
 .project-hero-stage.current .project-hero-stage-label {
   color: #fff;
+}
+
+.project-hero-stage.current .project-hero-stage-label {
+  font-weight: 700;
+  text-shadow: 0 2rpx 10rpx rgba(62, 255, 124, 0.28);
 }
 
 .plan-hero-caption {
