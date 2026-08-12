@@ -56,7 +56,10 @@
 
 - 新 UI 遵循 `miniprogram/DESIGN.md`、`design-tokens.json` 和 `app.wxss` token，保持明亮绿色、平静的家装设计风格。
 - AI 生成的设计参考图统一放在仓库根目录 `design-references/`。该目录已加入 Git 忽略规则，且不得放入 `miniprogram/`，避免参考资源增大小程序包体积。
-- 唯一正式量房页面是 `miniprogram/pages/surveying-editor/surveying-editor.*`。
+- 每次生成位图后，必须在保留或打包前完成压缩优化。凡是放入 `miniprogram/` 的生成图片必须不超过 `300KB`；保持资源路径和视觉构图，仅在必要时降低色彩深度或尺寸，并在交付前核验最终编码体积。不得提交超过该限制的生成素材。
+- 小程序运行时不得新增、生成或引用 WebP 资源。透明或无损素材使用 PNG，不透明照片使用 JPEG；交付前必须核验打包文件的扩展名与文件签名，避免 WebP 在目标真机无法渲染。
+- 唯一正式量房页面是 `miniprogram/packages/surveying/editor/surveying-editor.*`。
+- 小程序设计还原暂不要求 HTML-first 原型、相似度评分、热力图或 HTML 通过后再次授权。它们只在用户明确要求或能直接帮助定位具体视觉问题时作为可选工具使用；设计源核对、生产界面验证、台账更新和明确实施授权仍然必须完成。
 - 所有量房入口都带 `leadId` 和/或 `floorPlanId` 进入该页面。不得恢复 `pages/editor/editor`、`restoreFloorPlan` 或双入口。
 - 正式 `FloorPlan.layoutData` 只允许 `version: 4`、`measurementMode: 'surveying'` 和 `surveyGraph`。禁止持久化 `rooms`、`homeOutline`、`partitions`、`surveyDraft`、`prototypeOnly` 或 `surveying_prototype`。
 - 墙图单位为毫米。有效 BLE 读数必须写入正式测量审计；首次云端保存前的读数要等正式 `floorPlanId` 创建后再补写。临时接管 BLE 回调的流程关闭时必须恢复常规回调。

@@ -6,6 +6,7 @@ import {
 } from '@/db/repositories';
 import { canAccessMiniProgramFloorPlan } from '@/lib/floor-plan-access';
 import { linkFloorPlanToLead } from '@/lib/floorplan-lead-link';
+import { canDeleteLeadFloorPlan } from '@/lib/lead-status';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import { withMiniProgramPostgresTransaction } from '@/lib/postgres-request-scope';
 import { isFormalSurveyLayout } from '@/lib/survey-graph';
@@ -195,6 +196,13 @@ export async function DELETE(
           parsePostgresId(id, 'floor plan id')
         );
         if (!plan || !canAccessMiniProgramFloorPlan(plan, context)) return null;
+        const lead = await new LeadRepository(transaction).findByFloorPlanId(plan.id);
+        if (lead && !canDeleteLeadFloorPlan(lead.status)) {
+          throw Object.assign(
+            new Error('线索已进入方案设计或后续阶段，不能删除量房记录'),
+            { status: 409, code: 'FLOOR_PLAN_REQUIRED_FOR_LEAD_STAGE' }
+          );
+        }
         return repository.delete(plan.id);
       }
     );
@@ -206,9 +214,10 @@ export async function DELETE(
     }
     return NextResponse.json({ success: true });
   } catch (error: unknown) {
+    const message = getErrorMessage(error);
     return NextResponse.json(
-      { success: false, error: getErrorMessage(error) },
-      { status: 500 }
+      { success: false, error: message, code: (error as { code?: string })?.code },
+      { status: (error as { status?: number })?.status || 500 }
     );
   }
 }

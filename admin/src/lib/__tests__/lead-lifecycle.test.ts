@@ -8,6 +8,7 @@ import {
   isLeadArchiveReason,
   resolveDelegatedLeadArchiveCapability,
 } from '@/lib/lead-lifecycle';
+import { canDeleteLeadFloorPlan } from '@/lib/lead-status';
 
 test('accepts only the fixed archive reasons', () => {
   assert.equal(Object.keys(LEAD_ARCHIVE_REASONS).length, 6);
@@ -56,4 +57,13 @@ test('purge blockers cover every protected relationship', () => {
     hasAcquisition: false,
     commissionCount: 0,
   }), []);
+});
+
+test('formal floor plans cannot be deleted once the lead has entered design or a later stage', () => {
+  assert.equal(canDeleteLeadFloorPlan('new'), true);
+  assert.equal(canDeleteLeadFloorPlan('measuring'), true);
+  assert.equal(canDeleteLeadFloorPlan('designing'), false);
+  assert.equal(canDeleteLeadFloorPlan('quoting'), false);
+  assert.equal(canDeleteLeadFloorPlan('converted'), false);
+  assert.equal(canDeleteLeadFloorPlan('closed'), false);
 });

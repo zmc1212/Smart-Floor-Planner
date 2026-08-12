@@ -16,6 +16,11 @@ This inventory describes the native WeChat Mini Program under `miniprogram/`.
 The implementation baseline is the current `app.json`, page handlers, shared
 utilities, and the admin APIs they call.
 
+The canonical route-to-design, HTML similarity, and production-restoration
+lookup is `docs/miniprogram-design-restoration-ledger.md`, mirrored by
+`docs/miniprogram-design-restoration-ledger.zh-CN.md`. Visual restoration work
+must update that ledger pair in the same change.
+
 ## Status Legend And Runtime
 
 - `Implemented`: the page and its real data/action path work.
@@ -28,11 +33,15 @@ utilities, and the admin APIs they call.
   package for opening 3D previews, and optional BLE laser distance meter
   integration.
 - Package layout: the main package contains only the four Tab pages and their
-  shared runtime. `packages/surveying` owns the formal editor, its renderer,
-  guide assets, and the 3D adapter; `packages/ai-workflow` owns AI create/result/
-  history plus the legacy redirect; `packages/business` owns login and secondary
-  business workflows. These are ordinary subpackages that may depend on the main
-  package but never on one another. No subpackage is preloaded at startup.
+  shared runtime. The Leads Tab and its Home-reused `components/lead-list` remain
+  in the main package because TabBar routes cannot be subpackaged. `packages/surveying`
+  owns the formal editor, its renderer, guide assets, and the 3D adapter;
+  `packages/ai-workflow` owns AI create/result/history, their approved page-role
+  artwork, and the legacy redirect; `packages/business` owns login and secondary
+  business workflows with their page-exclusive assets (including lead form/detail,
+  inspiration, and recommendations). These are ordinary subpackages that may
+  depend on the main package but never on one another. No subpackage is preloaded
+  at startup.
 - Source-package guard: `project.config.json` excludes test fixtures, local
   development logs, and design-tool metadata from preview/upload packages.
   Production assets are local and image-compressed; the release budget is
@@ -182,7 +191,11 @@ utilities, and the admin APIs they call.
   space count in lead detail, continue measurement, start a new independent
   measurement, delete active formal plans with local pointer cleanup,
   client-side search across loaded records, and canonical status filtering
-  through both the stage strip and native action sheet. The customer workflow is
+  through both the stage strip and native action sheet. Deletion is allowed only
+  while the linked lead is in `new` or `measuring`; `/api/floorplans/[id]`
+  returns `409 FLOOR_PLAN_REQUIRED_FOR_LEAD_STAGE` from `designing`,
+  `converted`, or `closed` so a design-stage lead cannot lose its formal-plan
+  basis and fall back to the start-measurement state. The customer workflow is
   `New lead -> Measuring -> Design proposal -> Signed`; `closed` remains a
   terminal filter, while historical `acquired` values render as `New lead` for
   compatibility. Acquisition confirmation is an independent collaboration fact,
@@ -434,9 +447,10 @@ utilities, and the admin APIs they call.
   and the iPhone 13 Pro `390x844` baseline. The selected-plan home now uses
   `design-references/ai-design/ai-design-customer-project-switcher-v3/ai-design-customer-workbench-home-v2.png`
   as its restoration target, paired with the switcher-v3 sheet reference. The project-switching restoration uses
-  `/images/ai-design-project-hero-v5.jpg` as the selected project's fallback
-  whenever it has no current successful whole-plan render. The compressed local
-  artwork restores the approved emerald floor-plan-to-interior composition and
+  `/images/generated-hero-bleed-v2.png` as the selected project's fallback
+  whenever it has no current successful whole-plan render. This is the approved
+  standalone Hero source from `design-references/html-prototypes/ai-design-customer-workbench/`, rendered with `aspectFill` to cover the full stage.
+  The local artwork restores the approved emerald floor-plan-to-interior composition and
   contains no business copy or controls; all project identity, state, progress,
   and actions remain native. That hero may be
   replaced by up to five tappable carousel slides: the
@@ -548,6 +562,37 @@ utilities, and the admin APIs they call.
   version-4 formal wall-graph contract are unchanged. A new native-capsule
   `390x844` capture remains a release check until the current WeChat DevTools window
   exposes a compatible automation endpoint.
+- AI workflow subpage restoration gate (2026-08-11): the independent HTML
+  prototype under `design-references/html-prototypes/ai-workflow/` maps the
+  create, result, and history routes to
+  `design-references/all-pages-ip-v3/14-ai-design-create-v3.png`,
+  `15-ai-design-result-v3.png`, and `16-ai-design-history-v3.png`. At the
+  iPhone 13 Pro `390x844` baseline, the final documented composite similarities are
+  `98.59%`, `98.70%`, and `99.30%`; all three pass the upgraded `96%`
+  composite and `96%` asset-source/bounds/crop gates. The final browser captures, same-scale
+  overlays, element ledger, measurements, scoring weights, and exclusions are
+  retained beside the prototype. No application-content region was masked and
+  no flattened design screenshot was used as implementation. Twelve exact
+  source regions are packed into one local comparison artboard, then exported
+  through its coordinate manifest. Production maps the exact create scene and
+  three style cuts to `/packages/ai-workflow/assets/page-ip-v3/ai-create.jpg` and
+  `ai-create-style-{modern,cream,chinese}.jpg`, the result-delivery cut to
+  `ai-result.jpg`, and the history archive cut to `ai-history.jpg`; the three
+  prior approximate PNGs were removed after reference migration. Production now
+  aligns the create page's full-bleed material-board scene and compact context
+  card, the result page's delivery header, four-row summary, and first-screen
+  action footer, and the history page's compact task cards with native time,
+  target, status, progress, and navigation affordances. History metadata is
+  derived from the existing task response; missing thumbnails remain truthful
+  native placeholders. The legacy `packages/ai-workflow/legacy/ai-gen` route
+  remains redirect-only. Routes, APIs, role/tenant permissions, enterprise
+  credits, workflow/task selection, media behavior, and the version-4 formal
+  wall-graph contract are unchanged. The targeted AI-workflow suite passed
+  `13/13`. The current WeChat DevTools project window was reused, but none of
+  its listening endpoints exposed the compatible automation protocol required
+  for a fresh compile, route-stack assertion, and native-capsule screenshot;
+  that native `390x844` evidence remains the release check and no duplicate
+  DevTools window was opened.
 - Formal-plan boundary: entries pass `floorPlanId`, explicit
   `targetScope: whole_floor_plan | single_room`, and `roomId` only for a single
   room. The backend derives dimensions, ceiling height, and opening summaries
@@ -698,15 +743,33 @@ utilities, and the admin APIs they call.
   `utils/surveyNavigation.js` with `leadId` and/or `floorPlanId`. The entry
   context carries the lead community when available; `GET /api/floorplans/[id]`
   also returns its linked lead summary for direct plan entry.
+- HTML-first exception (approved 2026-08-12): this formal surveying route may
+  implement Canvas-native geometry, measurement, snapping, annotation, and
+  state-rendering changes directly after explicit development authorization,
+  without an HTML comparison prototype or similarity score. Design-source
+  mapping, focused tests, this bilingual module inventory, the restoration
+  ledger, and existing-window WeChat DevTools/real-device Canvas verification
+  remain mandatory. Other Mini Program routes are unchanged.
+- Cursor-lens rendering resilience (2026-08-12): while the bottom cursor is
+  being dragged, its approved upper-left Canvas lens stays mounted as a native
+  `cover-view` and switches only an explicit visible state. The first drag frame
+  keeps refreshing until that state is applied, preventing rapid movement or
+  delayed `setData` from suppressing the lens. Its Canvas scene, geometry,
+  snap labels, route, APIs, roles, v4 graph, and measurement audit are
+  unchanged.
 - Data contract: `FloorPlan.layoutData` is only `{ version: 4,
   measurementMode: 'surveying', surveyGraph }`; graph units are millimetres.
 - Canvas drawing refinement (2026-08-06): formal wall outlines, active red
   measurement edges, cursor crosshairs, and closure/alignment guides use thinner
   drafting strokes. Blue coordinate, cursor, and alignment guides use the denser
   `[8, 6]` dash rhythm; the green closure cue retains `[12, 10]`. The Xiao K
-  connector retains its independent `[5, 4]` rhythm and 1.75px stroke. Wall dimensions use
-  blue values on neutral-grey backing plates; their dimension lines sit 32px from
-  an unfinished measured edge and at least 28px from a closed exterior wall.
+  connector retains its independent `[5, 4]` rhythm and 1.75px stroke. Live
+  dimensions for the current unfinished wall chain use blue 14px values on
+  neutral-grey backing plates and sit 32px beyond the active measured face.
+  Closed-space `opening-segment`, `room-clear`, and `building-overall`
+  dimensions are permanent drafting annotations: thin muted-grey lines with
+  compact 12px dark labels on a quiet white backing, arranged outside the
+  closed outline with a base gap of at least 28px.
   Short 8px endpoint ticks cross the floating dimension line but deliberately do
   not connect back to a wall; the endpoint arrows face outward, with their tips
   aligned to rather than beyond the dimension-line endpoints. The active red
@@ -900,15 +963,20 @@ utilities, and the admin APIs they call.
   after explicit confirmation; diagonal chains and shared-boundary rules keep
   their existing thresholds. Routes, APIs, permissions, the version-4 graph
   contract, and measurement-audit behavior are unchanged.
-- Direct start-vertex closure snap (2026-08-10): after three walls of an
-  independent straight-wall chain are confirmed, dragging the fourth wall's
-  pointer into the start vertex tolerance snaps the preview endpoint exactly to
-  that orthogonally aligned vertex; releasing commits the wall and closes the
-  space immediately. A close candidate produced only by the orthogonal
-  projection remains advisory and still requires the `合` action, preventing an
-  accidental close when the pointer did not actually reach the start vertex.
-  Routes, APIs, roles, version-4 persistence, and BLE/manual measurement audits
-  are unchanged.
+- Direct closure-target snap (2026-08-11): in straight mode, releasing a wall
+  whose final preview endpoint exactly matches the current valid closure target
+  commits the preview and closes the space immediately. This visible snapped
+  state takes precedence over an on-device touch coordinate that may lag by one
+  move; a raw pointer within target tolerance remains a fallback. This covers
+  both an independent chain returning to its start vertex and an adjacent room's
+  third or later new wall reaching a shared-wall closure point. A candidate
+  created only by orthogonal projection, without the final preview actually
+  landing on the target, remains advisory and still requires the `合` action;
+  diagonal walls retain their angle/length confirmation flow. The user-supplied
+  `a91d3f532111f4270a1ba1a13469f806.jpg` records the adjacent-room defect state
+  where the preview is visibly coincident but the room remains open. Routes,
+  APIs, roles, version-4 persistence, and BLE/manual measurement audits are
+  unchanged. Focused graph/editor interaction tests pass `48/48`.
 - Corner restart alignment and closure correction (2026-08-07): when a new
   straight-wall chain starts from a vertex of an already closed room, the
   adjacent room may use the existing boundary path between the two corner
@@ -968,6 +1036,36 @@ utilities, and the admin APIs they call.
   focused graph/editor rendering tests pass `89/89`. A fresh `390x844` device
   capture remains pending because the existing WeChat DevTools window does not
   expose a compatible Mini Program Automator endpoint.
+- Outer-corner candidate priority correction (2026-08-11): when a raw cursor
+  drop at one closed-room corner lies in the wall-thickness direction from the
+  topology node toward its visible mitered outside corner, the outside vertex
+  now wins over that same inner vertex even if the pointer is still numerically
+  closer to the topology node. Drops on the room-interior side retain an
+  independently selectable inner vertex. This prevents adjacent-room starts
+  from inheriting an unintended inner corner and producing a slanted boundary.
+  The user-provided device captures
+  `codex-clipboard-3c0e6474-c194-48f3-b8cb-65ab5e43b2db.jpg` and
+  `d2a3272efb1adc354dd7ee9479850896.jpg` are the defect/state authority. Markup,
+  styles, routes, APIs, roles, version-4 persistence, and measurement audits are
+  unchanged. The existing WeChat DevTools window exposes no compatible Mini
+  Program Automator endpoint, so a fresh `390x844` route-confirmed interaction
+  capture remains pending; no duplicate DevTools window was opened.
+- Distant vertex-axis snapping (2026-08-12): bottom-cursor placement and
+  straight-wall previews now treat the horizontal or vertical extension of a
+  valid closed-room inner or visible outer vertex as an alignment candidate
+  when the corresponding axis is within `350mm`, even when the pointer is many
+  metres away on the other axis. Exact two-dimensional vertex and wall hits,
+  rectangle completion, shared-boundary closure, and direct closure retain
+  higher priority. An axis-aligned free start creates its own topology node
+  rather than incorrectly joining the distant source corner; manual and BLE
+  confirmation reapply the same alignment so the persisted endpoint cannot
+  jump off the preview guide. The user-supplied device capture
+  `b3868f487984b1db1c1875b8934e3cc1.jpg` is the interaction-state authority.
+  Markup, styles, routes, APIs, roles, version-4 persistence, and measurement
+  audit payloads are unchanged. Focused cursor, Canvas, and closure tests pass
+  `91/91`. The existing WeChat DevTools window has no compatible Mini Program
+  Automator listening port, so no duplicate window was opened and a fresh
+  route-confirmed `390x844` interaction capture remains pending.
 - Closed-corner wall-face alignment correction (2026-08-11): the first wall
   pulled from a closed-room outer vertex now inherits the incident boundary's
   physical wall-body normal. In the user-supplied
@@ -1019,6 +1117,57 @@ utilities, and the admin APIs they call.
   second room's raw topology-envelope area. Routes, APIs, roles, BLE audits,
   and version-4 persistence are unchanged; focused geometry/render tests pass
   `79/79`, with device visual QA still pending.
+- ALG-002 closed-room dimension-chain correction (2026-08-11): the Mini
+  Program Canvas and the read-only Admin `FloorPlanViewer` now consume the same
+  `createClosedDimensionPlan()`. Orthogonal plans place door positioning
+  (`opening-segment`), exterior-facing room-clear spans (`room-clear`), and the
+  physical building total (`building-overall`) in fixed near-to-far lanes; the
+  clear span occupies the first lane when that side has no door. Clear spans
+  derive from each space's directed inner-face chain and only survive when they
+  map to the building outline, so shared and wholly internal walls do not emit
+  exterior annotations. Building totals come directly from the outermost
+  positive wall-solid ring, and extension origins are real corners belonging to
+  the corresponding exterior direction; dimension lines may not cross a room
+  or wall. Single rectangles, adjacent and offset rooms, and orthogonal L/U/step
+  outlines use the new semantics. Any diagonal exterior boundary falls back to
+  the existing diagonal planner for the entire dimension set. The canonical
+  algorithms live under `miniprogram/packages/surveying/utils/`, and Admin
+  `predev`/`prebuild` now synchronizes from that actual source directory. The
+  focused dimension/Canvas suite passes `48/48`, and the Admin production build
+  passes. The current WeChat DevTools window exposes internal debugging sockets
+  but no compatible Mini Program Automator control endpoint, so a safe fresh
+  compile, route-stack assertion, and native `390x844` single/adjacent-room
+  capture could not be completed; no duplicate window was opened. WXML, WXSS,
+  routes, APIs, roles, areas, BLE/manual audits, and version-4 persistence are
+  unchanged.
+- Live/permanent dimension and outer-face continuation correction (2026-08-12):
+  live dimensions and closed-space dimensions now carry independent visual
+  roles instead of sharing the blue live label treatment. When a new adjacent
+  wall chain starts from a closed room's visible outer vertex, the snap retains
+  the neighbouring wall-body alignment but the cursor, live measurement path,
+  and dimensions use the operator's centreline working anchor. This prevents
+  an outer-face visual duplicate beside the actual black wall line while the
+  graph anchor remains on the source topology node.
+  Manual/BLE millimetre values, measurement insets, route, roles, APIs,
+  version-4 persistence, and measurement audits are unchanged. The approved
+  interaction reference is
+  `design-references/surveying/runtime-live-dimension-reference-20260812.jpg`;
+  targeted surveying renderer, cursor, closure, dimension-planning, and editor
+  source-contract tests pass `113/113`, including the two-edge L chain and the
+  permanent/live style split. The already-open WeChat DevTools window is the
+  current project, but it was not started with `autoPort`; its listening ports
+  expose internal debugging protocols rather than a compatible Mini Program
+  Automator endpoint. This run did not open a duplicate window, so recompilation,
+  route-stack confirmation, and native-Canvas screenshots remain pending until
+  automation is enabled in that window or the behavior is checked on a real device.
+- Closed-room continuation working-line correction (2026-08-12): an outer-edge
+  hit remains valid snap metadata and still controls the neighbouring wall-body
+  alignment, but the Canvas cursor, preview/red measurement path, and live
+  dimensions now use the same centreline working anchor that the operator
+  dragged. This removes the parallel outer-face cursor/line beside the black
+  wall line seen during closed-room continuations. Version-4 graph coordinates,
+  manual/BLE millimetre values, APIs, roles, persistence, and measurement
+  audits are unchanged.
 - Closed-wall deletion recovery (2026-08-07): deleting a wall from a closed
   adjacent room now clears stale cursor-snap metadata, so `resetCursor` cannot
   restore a node/wall that was deleted or belongs to the previous room. After
@@ -1067,20 +1216,11 @@ utilities, and the admin APIs they call.
   control to convert native `cover-view` local touch coordinates when a device
   reports missing or zeroed `pageX`/`clientX`; a meaningful start-to-end movement also
   completes a drop when a device omits intermediate `touchmove` events.
-  An engineering-style exterior DimensionPlan is used for
-  closed plans: a single exterior wall has one total dimension, while a
-  continuous multi-wall run or door wall has an inner positioning chain. Each
-  exterior direction receives one outer global total across the complete plan
-  bounds, rather than repeated local totals. Windows keep CAD symbols without
-  a duplicate detail chain.
-  Its extension origins and dimension-line
-  endpoints follow the rendered exterior wall face, including mitered exterior
-  corners, then route to global exterior dimension lanes beyond the whole
-  closed-plan outline. Closed-space edges are geometrically
-  split and merged before annotation, excluding differently identified/split
-  shared walls and enclosed inner holes. CAD-style thin extension lines start at
-  the exterior wall face; compact arrows and masked dimension text replace
-  duplicate whole-wall pairs; thin,
+  Closed plans use the ALG-002 dimension chain: orthogonal outlines show door
+  positioning, exterior-facing room-clear spans, and the physical building
+  total, while diagonal outlines retain the previous fallback. Existing CAD
+  styling remains unchanged: thin extension lines, compact arrows, masked
+  dimension text, and windows without a duplicate positioning chain. Thin,
   consistent crosshair/square cursor treatment remains in the canvas,
   drag layer, and bottom drop control. Closure, measurement-side, and other
   operation instructions use the single white Xiao K guide with compound
@@ -1193,7 +1333,7 @@ The focused business and data contract is [`docs/measurer-designer-acquisition.m
   and `ai-design-customer-project-switcher-v3.png`; it supersedes the earlier
   first-viewport description of a raised project-state card and home room-chip
   scope rail. The emerald project hero now uses the recomposed artwork-only
-  `/images/ai-design-project-hero-v5.jpg`; its floor-plan and interior subjects
+  `/images/generated-hero-bleed-v2.png`; its floor-plan and interior subjects
   leave measured native-text lanes at the upper left and lower stage. The
   legacy carousel result title/helper caption and duplicate navigation-preview
   progress are removed, so live project progress, the brighter local selected-stage
@@ -1254,7 +1394,7 @@ The focused business and data contract is [`docs/measurer-designer-acquisition.m
   reserves a native layout lane below the points pill, and the `<=360px` variant
   keeps the same inset `568rpx` emerald project card as the `390x844` baseline
   instead of expanding it edge to edge. The artwork-only fallback uses
-  `aspectFit` without an additional scene shade, so the formal drawing, interior
+  `aspectFill` without an additional scene shade and fills the full hero container, so the formal drawing, interior
   board, and Xiao K keep the authored reference brightness. The selected-project
   hero is governed jointly by the home composition reference and
   `ai-design-customer-project-switcher-v3.png`: it therefore preserves the
@@ -1265,10 +1405,9 @@ The focused business and data contract is [`docs/measurer-designer-acquisition.m
   metadata lane. The identity block is therefore raised by `26rpx`. A follow-up
   compiled capture showed the status chip still touching the eyebrow and the
   arrow still entering the metadata baseline, so the chip now uses compact
-  `4rpx` vertical padding and the default artwork starts `70rpx` below the stage
-  top with `height: calc(100% - 70rpx)`. This preserves its aspect ratio,
-  authored brightness, and the measured upper-left copy clearance without
-  changing the generated-result carousel.
+  `4rpx` vertical padding. The default artwork now starts at the stage top and
+  fills its parent at `width: 100%; height: 100%`. This preserves its authored
+  brightness without changing the generated-result carousel.
   The selected journey station combines the approved local
   `96rpx` glow derivative with an explicit emerald fill, `3rpx` white ring,
   stronger outer highlight, and emphasized label instead of making the node body
@@ -1290,6 +1429,65 @@ The focused business and data contract is [`docs/measurer-designer-acquisition.m
   pending. This is a presentation-only correction: routes, APIs,
   role/tenant permissions, project/workflow selection, credits, surveying
   navigation, and the version-4 graph contract are unchanged.
+
+#### HTML workbench layout alignment (2026-08-12)
+
+- The selected-project branch now maps its first viewport directly to
+  `design-references/html-prototypes/ai-design-customer-workbench/index.html`
+  at `390x844`: the capsule-safe header and credit pill lead into the
+  `left 9px / top 114px / right 381px / bottom 410px` Hero (`372px x 296px`);
+  native state, customer identity,
+  progress rail, and truthful next action retain that Hero's measured lanes.
+  The live search row, `166px x 197px` scheme cards, and `58px`
+  preparation entry follow the prototype rhythm. The Hero continues to use
+  the packaged `/images/generated-hero-bleed-v2.png` with `aspectFill`; real
+  sources, results, empty state, permissions, APIs, and all navigation remain
+  unchanged. Static source/layout assertions pass; the existing WeChat DevTools
+  window does not expose an automation endpoint for the required native-capsule
+  screenshot, so that capture remains a release check.
+
+#### Customer-project drawer alignment (2026-08-12)
+
+- `pages/ai-design/ai-design` now restores its customer-project drawer directly
+  from `design-references/ai-design/ai-design-customer-project-switcher-v3/ai-design-customer-project-switcher-v3.png`.
+  The native half-screen sheet retains the live role-scoped project index, search,
+  and derived `In progress` / `Ready` / `Needs survey` groups. Its card treatment
+  now maps the approved composition to live data: an accessible result stays in
+  the thumbnail when present; otherwise eligible projects use the generic
+  project-folio guide, while only `needs_survey` retains simplified wall
+  geometry. The selected project shows its real progress with a current-project
+  chip and check, and other projects retain their truthful next action. Source cards use the reference's relaxed media-row
+  density (`170rpx` card height, `270rpx × 150rpx` thumbnail and a separately
+  spaced action column), rather than compacting project identity and actions into
+  a settings-list row. The route, APIs, tenant/role boundary, credits,
+  surveying entry, and version-4 wall-graph contract are unchanged. Static
+  source/layout assertions pass; the native-capsule DevTools capture remains
+  pending because the existing window exposes no automation endpoint.
+
+#### Stage guides and project folios (2026-08-12)
+
+- `pages/ai-design/ai-design` no longer presents raw formal-navigator geometry
+  as a general-purpose project cover. In `Space schemes` and the customer-project
+  drawer, a real accessible result remains first priority; otherwise eligible
+  projects use the explicitly non-result project-folio guide
+  `/images/ai-design-project-folio-cover-v1.png`. Only the
+  `needs_survey` group retains the simplified live plan because its task is to
+  identify incomplete measurement, not a design outcome. With no full-plan
+  result, the Hero restores the approved
+  `/images/generated-hero-bleed-v2.png` PNG at its authored composition;
+  native project identity, status, stage, and progress remain the source of
+  truth. Full-plan results still supersede the fallback in the carousel. The
+  route, source APIs, tenant/role
+  boundary, selection behavior, credits, and version-4 wall-graph contract are
+  unchanged. The project-folio asset was generated through Sub2API `gpt-image-2`,
+  packaged as PNG, and its editable source is retained in
+  `design-references/ai-design/ai-design-stage-fallbacks-v1/`.
+
+### Mini Program asset budget cleanup (2026-08-12)
+
+- Source-package asset audit removed 33 files with no runtime references, including superseded non-`-v3` surveying guide artwork and unused historical page/toolbar artwork. Runtime paths and page contracts were not changed.
+- Retained large artwork was recompressed in place where the encoded output was materially smaller: `images/generated-hero-bleed-v2.png` (1,605.3KB -> 1,503.8KB), `images/home-ip-v1/hero-scene-wechat-safe-overscan.png` (765.4KB -> 290.8KiB; 1,022x934 -> 900x823), `packages/business/assets/login-v1/hero-scene.jpg` (115.1KB -> 81.0KB), `packages/business/assets/promotion-create/hero-scene.jpg` (28.9KB -> 22.8KB), `packages/business/assets/commission-records/hero-scene.jpg` (19.3KB -> 14.2KB), and `images/ai-design-empty-v2/stage-art.jpg` (52.7KB -> 49.9KB). Formats, alpha channels, asset paths, and visual composition were preserved; the homepage Hero alone was downsampled to meet the 300KB asset cap.
+- Transparent PNGs whose optimized output was not materially smaller were left byte-for-byte unchanged. `miniprogram/node_modules` remains development-only and is excluded by `nodeModules: false`; it is not part of the reported Mini Program package budget.
 
 ## Maintenance Rules
 

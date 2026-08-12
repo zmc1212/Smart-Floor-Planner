@@ -32,6 +32,17 @@ test('source package keeps the Mini Program runtime directories', () => {
   }
 });
 
+test('runtime artwork excludes WebP and keeps the AI project folio as PNG', () => {
+  const root = path.join(__dirname, '..');
+  const runtimeFiles = fs.readdirSync(root, { recursive: true });
+  const webpFiles = runtimeFiles.filter((file) => /\.webp$/i.test(file));
+  assert.deepEqual(webpFiles, []);
+
+  const folio = fs.readFileSync(path.join(root, 'images', 'ai-design-project-folio-cover-v1.png'));
+  assert.equal(folio.subarray(1, 4).toString(), 'PNG');
+  assert.ok(folio.length <= 300 * 1024, 'AI project folio exceeds the generated-artwork budget');
+});
+
 test('main package contains only primary tabs and low-frequency flows are split by domain', () => {
   const appConfig = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'app.json'), 'utf8'));
 
@@ -109,6 +120,39 @@ test('removed legacy artwork cannot silently return to the source package', () =
     'images/mine-icons/tab-plus.png',
     'images/idea0.png',
     'images/idea1.png',
+    'images/ai-design-hero-v3.png',
+    'images/ai-design-project-hero-v4.jpg',
+    'images/ai-design-project-hero-v5.jpg',
+    'images/home-ip-v1/hero-scene-wechat-safe.png',
+    'images/home-v5/notification.png',
+    'images/mine-icons/log-out.png',
+    'images/mine-icons/tab-bulb.png',
+    'images/mine-icons/tab-bulb-active.png',
+    'images/mine-icons/tab-measure.png',
+    'images/mine-icons/tab-measure-active.png',
+    'images/mine-icons/todo-blue.png',
+    'images/mine-icons/todo-green.png',
+    'images/mine-icons/todo-orange.png',
+    'images/mine-v6/tab-create.png',
+    'images/page-ip-v3/ai-home.png',
+    'packages/ai-workflow/assets/result-icons/share-white.png',
+    'packages/surveying/assets/surveying-guide-k-left.png',
+    'packages/surveying/assets/surveying-guide-k-right.png',
+    'packages/surveying/assets/surveying-guide-k-down.png',
+    'packages/surveying/assets/icons/cursor-compass.png',
+    'packages/surveying/assets/icons/topbar-assistant.png',
+    'packages/surveying/assets/icons/topbar-save.png',
+    'packages/surveying/assets/icons/editor-rail/diagonal.png',
+    'packages/surveying/assets/icons/editor-rail/diagonal-active.png',
+    'packages/surveying/assets/icons/editor-rail/input.png',
+    'packages/surveying/assets/icons/editor-rail/straight.png',
+    'packages/surveying/assets/icons/editor-rail/straight-active.png',
+    'packages/surveying/assets/icons/editor-rail/thickness.png',
+    'packages/surveying/assets/icons/editor-rail/zoom.png',
+    'packages/surveying/assets/icons/wall-toolbar/preview.png',
+    'packages/surveying/assets/icons/wall-toolbar/reset.png',
+    'packages/surveying/assets/icons/wall-toolbar/side.png',
+    'packages/surveying/assets/icons/wall-toolbar/thickness.png',
   ];
 
   for (const asset of removedAssets) {

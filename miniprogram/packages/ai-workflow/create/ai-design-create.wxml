@@ -26,7 +26,7 @@
       </view>
 
       <view class="create-scene" aria-hidden="true">
-        <image class="create-scene-image" src="/images/page-ip-v3/ai-create.png" mode="aspectFit"></image>
+        <image class="create-scene-image" src="/packages/ai-workflow/assets/page-ip-v3/ai-create.jpg" mode="aspectFit"></image>
       </view>
 
       <view class="context-card">

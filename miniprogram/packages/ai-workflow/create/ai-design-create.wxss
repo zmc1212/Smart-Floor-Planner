@@ -7,7 +7,7 @@
 .create-shell {
   display: flex;
   min-height: 100%;
-  padding: 14rpx 28rpx calc(24rpx + env(safe-area-inset-bottom));
+  padding: 0 24rpx calc(24rpx + env(safe-area-inset-bottom));
   flex-direction: column;
   box-sizing: border-box;
 }
@@ -69,8 +69,8 @@
 }
 
 .create-scene {
-  height: 228rpx;
-  margin: 0 -28rpx 4rpx;
+  height: 236rpx;
+  margin: 0 -24rpx 4rpx;
   overflow: hidden;
   background: #fbfaf7;
 }
@@ -84,7 +84,7 @@
 .context-card {
   display: flex;
   align-items: center;
-  min-height: 98rpx;
+  min-height: 102rpx;
   margin-bottom: 12rpx;
   padding: 14rpx 20rpx;
   border-radius: 24rpx;

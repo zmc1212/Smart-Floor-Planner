@@ -1,0 +1,199 @@
+{"kind":"deck","id":"pr/00jq9y","name":"Deck"}
+{"kind":"layout","layoutId":"7bf31ebe-9c05-429d-baa6-5f34e162fbd1","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"6f4f3c74-7a70-4a69-85e4-fceaa22e36aa","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/qlxyf4","slide":1,"title":"家客来","textShapes":10}
+{"kind":"textbox","id":"sh/pojitsfa","slide":1,"text":"家客来","textPreview":"家客来","textChars":3,"textLines":1,"bbox":[155,61,180,36]}
+{"kind":"textbox","id":"sh/4na1kny5","slide":1,"text":"装修企业数字化服务系统\n一张图看懂","textPreview":"装修企业数字化服务系统 | 一张图看懂","textChars":17,"textLines":2,"bbox":[64,168,620,120]}
+{"kind":"textbox","id":"sh/bq10v2xg","slide":1,"text":"客户经营  ×  正式量房  ×  AI设计  ×  企业管理","textPreview":"客户经营  ×  正式量房  ×  AI设计  ×  企业管理","textChars":31,"textLines":1,"bbox":[67,332,700,30]}
+{"kind":"shape","id":"sh/qpsjmxgv","slide":1,"bbox":[780,128,390,390]}
+{"kind":"textbox","id":"sh/ds3ixcfm","slide":1,"text":"家客来","textPreview":"家客来","textChars":3,"textLines":1,"bbox":[875,272,200,55]}
+{"kind":"textbox","id":"sh/cra1o7y1","slide":1,"text":"围绕同一个客户\n让三类角色协同工作","textPreview":"围绕同一个客户 | 让三类角色协同工作","textChars":17,"textLines":2,"bbox":[845,342,260,65]}
+{"kind":"shape","id":"sh/7uh0jyxc","slide":1,"bbox":[850,182,70,63]}
+{"kind":"shape","id":"sh/6t8zadgr","slide":1,"bbox":[1010,182,75,63]}
+{"kind":"shape","id":"sh/0fedk3mh","slide":1,"bbox":[850,390,70,80]}
+{"kind":"shape","id":"sh/1gned8nm","slide":1,"bbox":[1010,390,75,80]}
+{"kind":"textbox","id":"sh/edwvit4b","slide":1,"text":"客户","textPreview":"客户","textChars":2,"textLines":1,"bbox":[785,153,130,28]}
+{"kind":"textbox","id":"sh/fe5wby5w","slide":1,"text":"空间","textPreview":"空间","textChars":2,"textLines":1,"bbox":[1052,153,130,28]}
+{"kind":"textbox","id":"sh/ojedo3md","slide":1,"text":"方案","textPreview":"方案","textChars":2,"textLines":1,"bbox":[785,472,130,28]}
+{"kind":"textbox","id":"sh/pk7eh8ny","slide":1,"text":"管理","textPreview":"管理","textChars":2,"textLines":1,"bbox":[1052,472,130,28]}
+{"kind":"textbox","id":"sh/ni5wfi5s","slide":1,"text":"面向装修公司负责人 / 测量员 / 设计师","textPreview":"面向装修公司负责人 / 测量员 / 设计师","textChars":21,"textLines":1,"bbox":[67,642,430,20]}
+{"kind":"image","id":"im/bapsvqpk","slide":1,"name":"","geometry":"roundRect","alt":"家客来 Logo","bbox":[64,50,72,72]}
+{"kind":"image","id":"im/h4bq54ru","slide":1,"name":"","geometry":"roundRect","alt":"小K空间变形角色","bbox":[1075,540,125,135]}
+{"kind":"notes","id":"nt/qlxyf4","slide":1,"text":"开场：这不是功能清单，而是一张系统地图。今天沿着中心节点和四个分支看完整产品。每页只回答地图上的一个问题。\n[Sources] 产品能力来自仓库当前模块清单、正式量房文档、获客协作契约和已批准设计参考；界面图来自 design-references/all-pages-ip-v1。"}
+{"kind":"slide","id":"sl/iq0dzo","slide":2,"title":"系统总览","textShapes":15}
+{"kind":"textbox","id":"sh/hofmdgzm","slide":2,"text":"系统总览","textPreview":"系统总览","textChars":4,"textLines":1,"bbox":[64,42,410,22]}
+{"kind":"textbox","id":"sh/ulo3ilgb","slide":2,"text":"家客来 = 一个中心，四个业务分支","textPreview":"家客来 = 一个中心，四个业务分支","textChars":17,"textLines":1,"bbox":[64,78,900,76]}
+{"kind":"textbox","id":"sh/vmxkbqhw","slide":2,"text":"家客来  /  02","textPreview":"家客来  /  02","textChars":10,"textLines":1,"bbox":[1030,43,180,20]}
+{"kind":"shape","id":"sh/4bqlovyd","slide":2,"bbox":[290,190,350,170]}
+{"kind":"shape","id":"sh/5czmh0fy","slide":2,"bbox":[640,190,350,170]}
+{"kind":"shape","id":"sh/ip83mlg7","slide":2,"bbox":[290,360,350,170]}
+{"kind":"shape","id":"sh/jah4fqhs","slide":2,"bbox":[640,360,350,170]}
+{"kind":"shape","id":"sh/kfmlcry9","slide":2,"bbox":[525,285,230,145]}
+{"kind":"textbox","id":"sh/lgv25wzu","slide":2,"text":"家客来","textPreview":"家客来","textChars":3,"textLines":1,"bbox":[557,311,166,38]}
+{"kind":"textbox","id":"sh/d8fi98rm","slide":2,"text":"装修企业\n客户经营与空间服务","textPreview":"装修企业 | 客户经营与空间服务","textChars":14,"textLines":2,"bbox":[552,358,176,42]}
+{"kind":"shape","id":"sh/c76h03ah","slide":2,"bbox":[90,132,310,130]}
+{"kind":"textbox","id":"sh/r6x07y9w","slide":2,"text":"客户经营","textPreview":"客户经营","textChars":4,"textLines":1,"bbox":[114,155,220,30]}
+{"kind":"textbox","id":"sh/qlozydsb","slide":2,"text":"线索 / 客户档案 / 状态推进","textPreview":"线索 / 客户档案 / 状态推进","textChars":16,"textLines":1,"bbox":[114,199,260,30]}
+{"kind":"shape","id":"sh/0bqh4nad","slide":2,"bbox":[835,132,310,130]}
+{"kind":"textbox","id":"sh/zax0bi9s","slide":2,"text":"正式量房","textPreview":"正式量房","textChars":4,"textLines":1,"bbox":[859,155,220,30]}
+{"kind":"textbox","id":"sh/e9oz2ds7","slide":2,"text":"墙图 / 门窗 / BLE / 保存","textPreview":"墙图 / 门窗 / BLE / 保存","textChars":18,"textLines":1,"bbox":[859,199,260,30]}
+{"kind":"shape","id":"sh/ofqh8nap","slide":2,"bbox":[90,472,310,130]}
+{"kind":"textbox","id":"sh/8vit0v2x","slide":2,"text":"AI设计","textPreview":"AI设计","textChars":4,"textLines":1,"bbox":[114,495,220,30]}
+{"kind":"textbox","id":"sh/twrat03i","slide":2,"text":"整户 / 单空间 / 方案历史","textPreview":"整户 / 单空间 / 方案历史","textChars":15,"textLines":1,"bbox":[114,539,260,30]}
+{"kind":"shape","id":"sh/7u9srqlc","slide":2,"bbox":[835,472,310,130]}
+{"kind":"textbox","id":"sh/gzit4f2t","slide":2,"text":"企业管理","textPreview":"企业管理","textChars":4,"textLines":1,"bbox":[859,495,220,30]}
+{"kind":"textbox","id":"sh/hkbaxk3e","slide":2,"text":"角色 / 权限 / 设备 / 规则","textPreview":"角色 / 权限 / 设备 / 规则","textChars":17,"textLines":1,"bbox":[859,539,260,30]}
+{"kind":"textbox","id":"sh/vy9svalo","slide":2,"text":"中心不变：一个客户主线，贯穿四个分支。","textPreview":"中心不变：一个客户主线，贯穿四个分支。","textChars":19,"textLines":1,"bbox":[64,625,700,24]}
+{"kind":"textbox","id":"sh/w3y9sbmp","slide":2,"text":"装修企业的客户经营与空间服务工作台","textPreview":"装修企业的客户经营与空间服务工作台","textChars":17,"textLines":1,"bbox":[64,679,500,18]}
+{"kind":"image","id":"im/qxs3mlgb","slide":2,"name":"","geometry":"roundRect","alt":"客户经营页面","bbox":[328,150,56,92]}
+{"kind":"image","id":"im/e1s3q5g7","slide":2,"name":"","geometry":"roundRect","alt":"正式量房页面","bbox":[1073,150,56,92]}
+{"kind":"image","id":"im/xs3290vq","slide":2,"name":"","geometry":"roundRect","alt":"AI设计页面","bbox":[328,490,56,92]}
+{"kind":"image","id":"im/p43250vu","slide":2,"name":"","geometry":"roundRect","alt":"企业管理页面","bbox":[1073,490,56,92]}
+{"kind":"notes","id":"nt/iq0dzo","slide":2,"text":"总览讲法：只讲一次全局。客户经营负责‘客户是谁’，正式量房负责‘空间是什么’，AI设计负责‘方案怎么表达’，企业管理负责‘谁能看、谁来协作、规则如何落地’。\n[Sources] 产品能力来自仓库当前模块清单、正式量房文档、获客协作契约和已批准设计参考；界面图来自 design-references/all-pages-ip-v1。"}
+{"kind":"slide","id":"sl/zcaur6","slide":3,"title":"角色地图","textShapes":14}
+{"kind":"textbox","id":"sh/pcb6dwz2","slide":3,"text":"角色地图","textPreview":"角色地图","textChars":4,"textLines":1,"bbox":[64,42,410,22]}
+{"kind":"textbox","id":"sh/29072hgb","slide":3,"text":"三个角色，围绕一份客户档案协同","textPreview":"三个角色，围绕一份客户档案协同","textChars":15,"textLines":1,"bbox":[64,78,900,76]}
+{"kind":"textbox","id":"sh/na9obmhw","slide":3,"text":"家客来  /  03","textPreview":"家客来  /  03","textChars":10,"textLines":1,"bbox":[1030,43,180,20]}
+{"kind":"shape","id":"sh/0nip07yl","slide":3,"bbox":[248,398,260,0]}
+{"kind":"shape","id":"sh/1or69czq","slide":3,"bbox":[772,398,260,0]}
+{"kind":"shape","id":"sh/el07yxgf","slide":3,"bbox":[80,220,250,310]}
+{"kind":"textbox","id":"sh/sjipw7y9","slide":3,"text":"测量员","textPreview":"测量员","textChars":3,"textLines":1,"bbox":[108,414,190,30]}
+{"kind":"textbox","id":"sh/dkr65czu","slide":3,"text":"把现场变成可用的空间底图","textPreview":"把现场变成可用的空间底图","textChars":12,"textLines":1,"bbox":[108,454,195,46]}
+{"kind":"textbox","id":"sh/x4bmt87y","slide":3,"text":"客户录入\n正式量房\n保存与继续","textPreview":"客户录入 | 正式量房 | 保存与继续","textChars":15,"textLines":3,"bbox":[108,512,192,54]}
+{"kind":"shape","id":"sh/c325036d","slide":3,"bbox":[515,220,250,310]}
+{"kind":"textbox","id":"sh/a10nydon","slide":3,"text":"设计师","textPreview":"设计师","textChars":3,"textLines":1,"bbox":[543,414,190,30]}
+{"kind":"textbox","id":"sh/pgrmp872","slide":3,"text":"把客户和户型推进到方案沟通","textPreview":"把客户和户型推进到方案沟通","textChars":13,"textLines":1,"bbox":[543,454,195,46]}
+{"kind":"textbox","id":"sh/ofilw36h","slide":3,"text":"承接交接\n启动 AI 设计\n查看任务历史","textPreview":"承接交接 | 启动 AI 设计 | 查看任务历史","textChars":20,"textLines":3,"bbox":[543,512,192,54]}
+{"kind":"shape","id":"sh/ne94nypw","slide":3,"bbox":[950,220,250,310]}
+{"kind":"textbox","id":"sh/1crmlo7q","slide":3,"text":"企业负责人","textPreview":"企业负责人","textChars":5,"textLines":1,"bbox":[978,414,190,30]}
+{"kind":"textbox","id":"sh/0bylsj6l","slide":3,"text":"把过程、人员和规则放在企业里","textPreview":"把过程、人员和规则放在企业里","textChars":14,"textLines":1,"bbox":[978,454,195,46]}
+{"kind":"textbox","id":"sh/sv258jy1","slide":3,"text":"查看进度\n管理权限\n设备与结算规则","textPreview":"查看进度 | 管理权限 | 设备与结算规则","textChars":17,"textLines":3,"bbox":[978,512,192,54]}
+{"kind":"textbox","id":"sh/twbmhofm","slide":3,"text":"角色分工不是三套系统，而是同一条客户主线的三个观察角度。","textPreview":"角色分工不是三套系统，而是同一条客户主线的三个观察角度。","textChars":28,"textLines":1,"bbox":[64,615,920,25]}
+{"kind":"textbox","id":"sh/6tkn6tgb","slide":3,"text":"装修企业的客户经营与空间服务工作台","textPreview":"装修企业的客户经营与空间服务工作台","textChars":17,"textLines":1,"bbox":[64,679,500,18]}
+{"kind":"image","id":"im/m90jqdgb","slide":3,"name":"","geometry":"roundRect","alt":"测量员界面","bbox":[147,240,116,156]}
+{"kind":"image","id":"im/oj2p0zap","slide":3,"name":"","geometry":"roundRect","alt":"设计师界面","bbox":[582,240,116,156]}
+{"kind":"image","id":"im/xovqxorm","slide":3,"name":"","geometry":"roundRect","alt":"企业负责人界面","bbox":[1017,240,116,156]}
+{"kind":"notes","id":"nt/zcaur6","slide":3,"text":"角色地图：这一页替代原来多页重复的老板价值和现场人员价值。强调三角色共用客户、户型和协作事实。\n[Sources] 产品能力来自仓库当前模块清单、正式量房文档、获客协作契约和已批准设计参考；界面图来自 design-references/all-pages-ip-v1。"}
+{"kind":"slide","id":"sl/vnso0b","slide":4,"title":"客户主线","textShapes":21}
+{"kind":"textbox","id":"sh/itgfyh4n","slide":4,"text":"客户主线","textPreview":"客户主线","textChars":4,"textLines":1,"bbox":[64,42,410,22]}
+{"kind":"textbox","id":"sh/5g7ytw3y","slide":4,"text":"沿着客户主线，系统在不同节点接力","textPreview":"沿着客户主线，系统在不同节点接力","textChars":16,"textLines":1,"bbox":[64,78,900,76]}
+{"kind":"textbox","id":"sh/4vyx0rmt","slide":4,"text":"家客来  /  04","textPreview":"家客来  /  04","textChars":10,"textLines":1,"bbox":[1030,43,180,20]}
+{"kind":"textbox","id":"sh/ripgvml4","slide":4,"text":"一条主线，五个节点","textPreview":"一条主线，五个节点","textChars":9,"textLines":1,"bbox":[64,160,400,30]}
+{"kind":"shape","id":"sh/6hgf214j","slide":4,"bbox":[256,425,36,0]}
+{"kind":"shape","id":"sh/tkryxw3a","slide":4,"bbox":[64,272,192,248]}
+{"kind":"textbox","id":"sh/sjih4rmp","slide":4,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[82,292,40,20]}
+{"kind":"textbox","id":"sh/7m5gj2l0","slide":4,"text":"客户进入","textPreview":"客户进入","textChars":4,"textLines":1,"bbox":[82,326,150,28]}
+{"kind":"textbox","id":"sh/mlwfqx4f","slide":4,"text":"姓名 / 电话 / 社区","textPreview":"姓名 / 电话 / 社区","textChars":12,"textLines":1,"bbox":[82,370,150,40]}
+{"kind":"shape","id":"sh/knqx43a9","slide":4,"bbox":[488,425,36,0]}
+{"kind":"shape","id":"sh/lozyd8bu","slide":4,"bbox":[296,272,192,248]}
+{"kind":"textbox","id":"sh/yl8f2ts3","slide":4,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[314,292,40,20]}
+{"kind":"textbox","id":"sh/zmhgbyto","slide":4,"text":"量房建底图","textPreview":"量房建底图","textChars":5,"textLines":1,"bbox":[314,326,150,28]}
+{"kind":"textbox","id":"sh/8bax83al","slide":4,"text":"墙图 / 尺寸 / 门窗","textPreview":"墙图 / 尺寸 / 门窗","textChars":12,"textLines":1,"bbox":[314,370,150,40]}
+{"kind":"shape","id":"sh/9cjyh8bq","slide":4,"bbox":[720,425,36,0]}
+{"kind":"shape","id":"sh/mp8f6dsf","slide":4,"bbox":[528,272,192,248]}
+{"kind":"textbox","id":"sh/7a1gfit0","slide":4,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[546,292,40,20]}
+{"kind":"textbox","id":"sh/of6xwja1","slide":4,"text":"方案表达","textPreview":"方案表达","textChars":4,"textLines":1,"bbox":[546,326,150,28]}
+{"kind":"textbox","id":"sh/pgfy5obm","slide":4,"text":"整户 / 单空间 AI","textPreview":"整户 / 单空间 AI","textChars":11,"textLines":1,"bbox":[546,370,150,40]}
+{"kind":"shape","id":"sh/50nmdgze","slide":4,"bbox":[952,425,36,0]}
+{"kind":"shape","id":"sh/4ze5kbyt","slide":4,"bbox":[760,272,192,248]}
+{"kind":"textbox","id":"sh/3y54b6h8","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[778,292,40,20]}
+{"kind":"textbox","id":"sh/ixwni1gn","slide":4,"text":"协作确认","textPreview":"协作确认","textChars":4,"textLines":1,"bbox":[778,326,150,28]}
+{"kind":"textbox","id":"sh/d47mhgza","slide":4,"text":"通知 / 回执 / 提成","textPreview":"通知 / 回执 / 提成","textChars":12,"textLines":1,"bbox":[778,370,150,40]}
+{"kind":"shape","id":"sh/s3y5ovyp","slide":4,"bbox":[992,272,192,248]}
+{"kind":"textbox","id":"sh/r2p4fqh4","slide":4,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1010,292,40,20]}
+{"kind":"textbox","id":"sh/q1gnmlgz","slide":4,"text":"负责人管理","textPreview":"负责人管理","textChars":5,"textLines":1,"bbox":[1010,326,150,28]}
+{"kind":"textbox","id":"sh/1s7ml0zm","slide":4,"text":"过程 / 权限 / 规则","textPreview":"过程 / 权限 / 规则","textChars":12,"textLines":1,"bbox":[1010,370,150,40]}
+{"kind":"textbox","id":"sh/07y5svy1","slide":4,"text":"只需要记住：客户档案是起点，正式户型是底图，企业负责人看到的是全过程。","textPreview":"只需要记住：客户档案是起点，正式户型是底图，企业负责人看到的是全过程。","textChars":35,"textLines":1,"bbox":[64,586,1050,28]}
+{"kind":"textbox","id":"sh/ydsjmxwj","slide":4,"text":"装修企业的客户经营与空间服务工作台","textPreview":"装修企业的客户经营与空间服务工作台","textChars":17,"textLines":1,"bbox":[64,679,500,18]}
+{"kind":"image","id":"im/svydg7q5","slide":4,"name":"","geometry":"roundRect","alt":"客户进入页面","bbox":[82,426,156,78]}
+{"kind":"image","id":"im/7u5w729k","slide":4,"name":"","geometry":"roundRect","alt":"量房建底图页面","bbox":[314,426,156,78]}
+{"kind":"image","id":"im/6twvex8z","slide":4,"name":"","geometry":"roundRect","alt":"协作确认页面","bbox":[778,426,156,78]}
+{"kind":"image","id":"im/5sne5sru","slide":4,"name":"","geometry":"roundRect","alt":"方案表达页面","bbox":[546,426,156,78]}
+{"kind":"image","id":"im/kredc7q9","slide":4,"name":"","geometry":"roundRect","alt":"负责人管理页面","bbox":[1010,426,156,78]}
+{"kind":"notes","id":"nt/vnso0b","slide":4,"text":"客户主线：用一页说明各模块的关系，后续不再重复用‘闭环’或‘过程可视’作为标题。\n[Sources] 产品能力来自仓库当前模块清单、正式量房文档、获客协作契约和已批准设计参考；界面图来自 design-references/all-pages-ip-v1。"}
+{"kind":"slide","id":"sl/4g78w2","slide":5,"title":"分支一 · 正式量房","textShapes":8}
+{"kind":"textbox","id":"sh/v6tcn6hk","slide":5,"text":"分支一 · 正式量房","textPreview":"分支一 · 正式量房","textChars":10,"textLines":1,"bbox":[64,42,410,22]}
+{"kind":"textbox","id":"sh/g7mdgbi5","slide":5,"text":"正式量房，把现场信息变成设计可用的空间底图","textPreview":"正式量房，把现场信息变成设计可用的空间底图","textChars":21,"textLines":1,"bbox":[64,78,900,76]}
+{"kind":"textbox","id":"sh/h8vupgzq","slide":5,"text":"家客来  /  05","textPreview":"家客来  /  05","textChars":10,"textLines":1,"bbox":[1030,43,180,20]}
+{"kind":"shape","id":"sh/tkbulgze","slide":5,"bbox":[826,170,340,402]}
+{"kind":"textbox","id":"sh/qd4vm507","slide":5,"text":"这条分支只回答一个问题","textPreview":"这条分支只回答一个问题","textChars":11,"textLines":1,"bbox":[861,211,260,26]}
+{"kind":"textbox","id":"sh/redwvqhs","slide":5,"text":"空间底图\n如何变得可信？","textPreview":"空间底图 | 如何变得可信？","textChars":12,"textLines":2,"bbox":[861,253,260,70]}
+{"kind":"textbox","id":"sh/rmxcvapg","slide":5,"text":"毫米级墙图\n门窗与闭合空间\n草稿恢复与云端保存\n手动 + 兼容 BLE 测距","textPreview":"毫米级墙图 | 门窗与闭合空间 | 草稿恢复与云端保存 | 手动 + 兼容 BLE 测距","textChars":38,"textLines":4,"bbox":[861,355,240,125]}
+{"kind":"textbox","id":"sh/6lob2p8v","slide":5,"text":"BLE依赖兼容硬件、授权与连接状态。","textPreview":"BLE依赖兼容硬件、授权与连接状态。","textChars":18,"textLines":1,"bbox":[861,505,245,36]}
+{"kind":"textbox","id":"sh/t8zuxk7m","slide":5,"text":"装修企业的客户经营与空间服务工作台","textPreview":"装修企业的客户经营与空间服务工作台","textChars":17,"textLines":1,"bbox":[64,679,500,18]}
+{"kind":"image","id":"im/rmhkz6lc","slide":5,"name":"","geometry":"roundRect","alt":"量房初始状态","bbox":[64,178,210,390]}
+{"kind":"image","id":"im/qlo3q1kr","slide":5,"name":"","geometry":"roundRect","alt":"量房活动状态","bbox":[304,145,210,423]}
+{"kind":"image","id":"im/doz21g32","slide":5,"name":"","geometry":"roundRect","alt":"门窗编辑状态","bbox":[544,178,210,390]}
+{"kind":"notes","id":"nt/4g78w2","slide":5,"text":"分支说明：只讲正式量房产生什么，不再重复介绍整个系统。演示优先画墙、输入尺寸、门窗、保存。\n[Sources] 产品能力来自仓库当前模块清单、正式量房文档、获客协作契约和已批准设计参考；界面图来自 design-references/all-pages-ip-v1。"}
+{"kind":"slide","id":"sl/rcdriz","slide":6,"title":"分支二 · AI设计","textShapes":8}
+{"kind":"textbox","id":"sh/w7uhkjed","slide":6,"text":"分支二 · AI设计","textPreview":"分支二 · AI设计","textChars":10,"textLines":1,"bbox":[64,42,410,22]}
+{"kind":"textbox","id":"sh/v6lgrexs","slide":6,"text":"正式户型进入 AI 设计，形成可沟通的方案方向","textPreview":"正式户型进入 AI 设计，形成可沟通的方案方向","textChars":23,"textLines":1,"bbox":[64,78,900,76]}
+{"kind":"textbox","id":"sh/a5czi9w7","slide":6,"text":"家客来  /  06","textPreview":"家客来  /  06","textChars":10,"textLines":1,"bbox":[1030,43,180,20]}
+{"kind":"shape","id":"sh/kvehoje9","slide":6,"bbox":[255,360,105,0]}
+{"kind":"shape","id":"sh/i9czmtwj","slide":6,"bbox":[592,360,105,0]}
+{"kind":"shape","id":"sh/0zahcze5","slide":6,"bbox":[965,205,235,270]}
+{"kind":"textbox","id":"sh/u5s7ax4f","slide":6,"text":"分支结果","textPreview":"分支结果","textChars":4,"textLines":1,"bbox":[997,237,170,24]}
+{"kind":"textbox","id":"sh/f61832lk","slide":6,"text":"从一份户型\n到一组方案方向","textPreview":"从一份户型 | 到一组方案方向","textChars":13,"textLines":2,"bbox":[997,278,166,68]}
+{"kind":"textbox","id":"sh/g7apc7m5","slide":6,"text":"整户 / 单空间\n历史 / 进度 / 重试","textPreview":"整户 / 单空间 | 历史 / 进度 / 重试","textChars":21,"textLines":2,"bbox":[997,380,166,56]}
+{"kind":"textbox","id":"sh/18jq5c3q","slide":6,"text":"AI 是方案参考，不是施工图。","textPreview":"AI 是方案参考，不是施工图。","textChars":15,"textLines":1,"bbox":[64,595,540,26]}
+{"kind":"textbox","id":"sh/2tsreh4b","slide":6,"text":"装修企业的客户经营与空间服务工作台","textPreview":"装修企业的客户经营与空间服务工作台","textChars":17,"textLines":1,"bbox":[64,679,500,18]}
+{"kind":"image","id":"im/crq9wr6p","slide":6,"name":"","geometry":"roundRect","alt":"正式量房底图","bbox":[64,200,180,330]}
+{"kind":"image","id":"im/aporuhoz","slide":6,"name":"","geometry":"roundRect","alt":"AI设计首页","bbox":[380,160,200,390]}
+{"kind":"image","id":"im/svmpkn6l","slide":6,"name":"","geometry":"roundRect","alt":"AI设计结果","bbox":[720,160,200,390]}
+{"kind":"notes","id":"nt/rcdriz","slide":6,"text":"分支说明：AI只出现一次。展示‘正式户型 → 目标选择 → 结果历史’三步，不重复讲企业价值。\n[Sources] 产品能力来自仓库当前模块清单、正式量房文档、获客协作契约和已批准设计参考；界面图来自 design-references/all-pages-ip-v1。"}
+{"kind":"slide","id":"sl/s7af8v","slide":7,"title":"分支三 · 企业管理","textShapes":13}
+{"kind":"textbox","id":"sh/betsj6d8","slide":7,"text":"分支三 · 企业管理","textPreview":"分支三 · 企业管理","textChars":10,"textLines":1,"bbox":[64,42,410,22]}
+{"kind":"textbox","id":"sh/cfm9sbud","slide":7,"text":"负责人在后台管理‘人、数据、设备和规则’","textPreview":"负责人在后台管理‘人、数据、设备和规则’","textChars":20,"textLines":1,"bbox":[64,78,900,76]}
+{"kind":"textbox","id":"sh/xgvalwvy","slide":7,"text":"家客来  /  07","textPreview":"家客来  /  07","textChars":10,"textLines":1,"bbox":[1030,43,180,20]}
+{"kind":"shape","id":"sh/nqtsfmdw","slide":7,"bbox":[80,190,270,95]}
+{"kind":"textbox","id":"sh/ob29oruh","slide":7,"text":"人","textPreview":"人","textChars":1,"textLines":1,"bbox":[102,209,40,36]}
+{"kind":"textbox","id":"sh/pcbahwv2","slide":7,"text":"员工角色与企业权限","textPreview":"员工角色与企业权限","textChars":9,"textLines":1,"bbox":[160,212,165,40]}
+{"kind":"shape","id":"sh/6l4bylcv","slide":7,"bbox":[80,320,270,95]}
+{"kind":"textbox","id":"sh/76dsrqd0","slide":7,"text":"数据","textPreview":"数据","textChars":2,"textLines":1,"bbox":[102,339,40,36]}
+{"kind":"textbox","id":"sh/f2t87y58","slide":7,"text":"客户、户型、协作与归档","textPreview":"客户、户型、协作与归档","textChars":11,"textLines":1,"bbox":[160,342,165,40]}
+{"kind":"shape","id":"sh/e1k7et4n","slide":7,"bbox":[80,450,270,95]}
+{"kind":"textbox","id":"sh/14bq9o3e","slide":7,"text":"设备","textPreview":"设备","textChars":2,"textLines":1,"bbox":[102,469,40,36]}
+{"kind":"textbox","id":"sh/g32pgjmt","slide":7,"text":"绑定状态与授权使用","textPreview":"绑定状态与授权使用","textChars":9,"textLines":1,"bbox":[160,472,165,40]}
+{"kind":"shape","id":"sh/36t8byl4","slide":7,"bbox":[400,450,270,95]}
+{"kind":"textbox","id":"sh/25k7it4j","slide":7,"text":"规则","textPreview":"规则","textChars":2,"textLines":1,"bbox":[422,469,40,36]}
+{"kind":"textbox","id":"sh/p8vqd83a","slide":7,"text":"AI额度、提成与人工结算","textPreview":"AI额度、提成与人工结算","textChars":12,"textLines":1,"bbox":[480,472,165,40]}
+{"kind":"textbox","id":"sh/o72pk3mp","slide":7,"text":"负责人看的是‘系统是否在按企业规则运行’。","textPreview":"负责人看的是‘系统是否在按企业规则运行’。","textChars":21,"textLines":1,"bbox":[80,590,530,26]}
+{"kind":"textbox","id":"sh/bud8filg","slide":7,"text":"装修企业的客户经营与空间服务工作台","textPreview":"装修企业的客户经营与空间服务工作台","textChars":17,"textLines":1,"bbox":[64,679,500,18]}
+{"kind":"image","id":"im/bq54za9g","slide":7,"name":"","geometry":"roundRect","alt":"企业能力总览","bbox":[720,105,470,480]}
+{"kind":"notes","id":"nt/s7af8v","slide":7,"text":"分支说明：管理端只讲人、数据、设备和规则四个对象，避免重复罗列后台菜单。\n[Sources] 产品能力来自仓库当前模块清单、正式量房文档、获客协作契约和已批准设计参考；界面图来自 design-references/all-pages-ip-v1。"}
+{"kind":"slide","id":"sl/9319mi","slide":8,"title":"带着这张地图，现场走一遍真实流程","textShapes":24}
+{"kind":"textbox","id":"sh/qt47qp4r","slide":8,"text":"带着这张地图，现场走一遍真实流程","textPreview":"带着这张地图，现场走一遍真实流程","textChars":16,"textLines":1,"bbox":[64,66,720,55]}
+{"kind":"shape","id":"sh/dgfqlk32","slide":8,"bbox":[214,294,28,0]}
+{"kind":"shape","id":"sh/cf6psfmx","slide":8,"bbox":[64,235,150,120]}
+{"kind":"textbox","id":"sh/zix8nul8","slide":8,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[82,255,35,18]}
+{"kind":"textbox","id":"sh/ehorupkn","slide":8,"text":"客户档案","textPreview":"客户档案","textChars":4,"textLines":1,"bbox":[82,282,112,25]}
+{"kind":"textbox","id":"sh/lkfqp43e","slide":8,"text":"测量员","textPreview":"测量员","textChars":3,"textLines":1,"bbox":[82,316,112,20]}
+{"kind":"shape","id":"sh/0j69wz2t","slide":8,"bbox":[404,294,28,0]}
+{"kind":"shape","id":"sh/fmt8bal4","slide":8,"bbox":[254,235,150,120]}
+{"kind":"textbox","id":"sh/ulk7i54j","slide":8,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[272,255,35,18]}
+{"kind":"textbox","id":"sh/0ja98bel","slide":8,"text":"正式量房","textPreview":"正式量房","textChars":4,"textLines":1,"bbox":[272,282,112,25]}
+{"kind":"textbox","id":"sh/1kjq1gv6","slide":8,"text":"测量员","textPreview":"测量员","textChars":3,"textLines":1,"bbox":[272,316,112,20]}
+{"kind":"shape","id":"sh/ex8r61wf","slide":8,"bbox":[594,294,28,0]}
+{"kind":"shape","id":"sh/fih8z6d0","slide":8,"bbox":[444,235,150,120]}
+{"kind":"textbox","id":"sh/ona9cveh","slide":8,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[462,255,35,18]}
+{"kind":"textbox","id":"sh/pojq50v2","slide":8,"text":"AI方案","textPreview":"AI方案","textChars":4,"textLines":1,"bbox":[462,282,112,25]}
+{"kind":"textbox","id":"sh/2lsralwr","slide":8,"text":"设计师","textPreview":"设计师","textChars":3,"textLines":1,"bbox":[462,316,112,20]}
+{"kind":"shape","id":"sh/nm183qdc","slide":8,"bbox":[784,294,28,0]}
+{"kind":"shape","id":"sh/4rq90red","slide":8,"bbox":[634,235,150,120]}
+{"kind":"textbox","id":"sh/5szqtwvy","slide":8,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[652,255,35,18]}
+{"kind":"textbox","id":"sh/lor6xsnm","slide":8,"text":"协作回执","textPreview":"协作回执","textChars":4,"textLines":1,"bbox":[652,282,112,25]}
+{"kind":"textbox","id":"sh/knipon61","slide":8,"text":"设计师","textPreview":"设计师","textChars":3,"textLines":1,"bbox":[652,316,112,20]}
+{"kind":"shape","id":"sh/jmpovi5w","slide":8,"bbox":[824,235,150,120]}
+{"kind":"textbox","id":"sh/ylg7mdob","slide":8,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[842,255,35,18]}
+{"kind":"textbox","id":"sh/tcr61sny","slide":8,"text":"企业管理","textPreview":"企业管理","textChars":4,"textLines":1,"bbox":[842,282,112,25]}
+{"kind":"textbox","id":"sh/8bipsn6d","slide":8,"text":"负责人","textPreview":"负责人","textChars":3,"textLines":1,"bbox":[842,316,112,20]}
+{"kind":"textbox","id":"sh/7q9oz25s","slide":8,"text":"已具备","textPreview":"已具备","textChars":3,"textLines":1,"bbox":[64,418,120,25]}
+{"kind":"textbox","id":"sh/6p07qxo7","slide":8,"text":"线索、正式量房、手动 / 兼容 BLE、AI 工作流、协作通知、企业权限","textPreview":"线索、正式量房、手动 / 兼容 BLE、AI 工作流、协作通知、企业权限","textChars":36,"textLines":1,"bbox":[205,418,720,25]}
+{"kind":"textbox","id":"sh/hgb65cnu","slide":8,"text":"需满足","textPreview":"需满足","textChars":3,"textLines":1,"bbox":[64,464,120,25]}
+{"kind":"textbox","id":"sh/gf2pw769","slide":8,"text":"BLE硬件与授权；AI配置、额度、有效正式户型和权限","textPreview":"BLE硬件与授权；AI配置、额度、有效正式户型和权限","textChars":26,"textLines":1,"bbox":[205,464,720,25]}
+{"kind":"textbox","id":"sh/e1c3q94r","slide":8,"text":"不承诺","textPreview":"不承诺","textChars":3,"textLines":1,"bbox":[64,510,120,25]}
+{"kind":"textbox","id":"sh/zml4zelc","slide":8,"text":"自动打款、银行代发、小程序完整报告导出；AI不等同施工图","textPreview":"自动打款、银行代发、小程序完整报告导出；AI不等同施工图","textChars":28,"textLines":1,"bbox":[205,510,820,25]}
+{"kind":"shape","id":"sh/0nulszmx","slide":8,"bbox":[64,584,575,58]}
+{"kind":"textbox","id":"sh/1onm143i","slide":8,"text":"下一步：预约一次企业试用演示","textPreview":"下一步：预约一次企业试用演示","textChars":14,"textLines":1,"bbox":[90,600,515,25]}
+{"kind":"textbox","id":"sh/mpw3u943","slide":8,"text":"测量员 / 设计师 / 负责人一起验证一个真实客户场景","textPreview":"测量员 / 设计师 / 负责人一起验证一个真实客户场景","textChars":27,"textLines":1,"bbox":[705,599,460,26]}
+{"kind":"notes","id":"nt/9319mi","slide":8,"text":"收口：全场只保留一条演示路径。二维码、联系人和试用入口需要会前替换。\n[Sources] 产品能力来自仓库当前模块清单、正式量房文档、获客协作契约和已批准设计参考；界面图来自 design-references/all-pages-ip-v1。"}

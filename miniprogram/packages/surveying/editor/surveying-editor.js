@@ -2023,10 +2023,12 @@ Page({
             x: (lineStart.x + lineEnd.x) / 2,
             y: (lineStart.y + lineEnd.y) / 2
           };
+          const isBuildingOverall = dimension.kind === 'building-overall';
+          const permanentFont = `${isBuildingOverall ? '600' : '500'} 12px sans-serif`;
           labelRect = rotatedLabelBounds(
             center,
-            measureWidth(dimension.label, '600 11px sans-serif') + 8,
-            16,
+            measureWidth(dimension.label, permanentFont) + 6,
+            15,
             Math.atan2(lineEnd.y - lineStart.y, lineEnd.x - lineStart.x)
           );
         }
@@ -2914,11 +2916,11 @@ Page({
     const wall = floor.walls[startWallIndex];
     const start = wall && surveyGraph.getNode(floor, wall.startNodeId);
     const end = wall && surveyGraph.getNode(floor, wall.endNodeId);
-    const startPoint = segment && segment.startPoint
-      ? segment.startPoint
+    const startPoint = segment && (segment.measurementStartPoint || segment.startPoint)
+      ? (segment.measurementStartPoint || segment.startPoint)
       : (start ? this.mmToCanvasPoint(start) : null);
-    const endPoint = segment && segment.endPoint
-      ? segment.endPoint
+    const endPoint = segment && (segment.measurementEndPoint || segment.endPoint)
+      ? (segment.measurementEndPoint || segment.endPoint)
       : (end ? this.mmToCanvasPoint(end) : null);
     const measurementSide = segment && segment.measurementSide
       ? segment.measurementSide
@@ -3331,7 +3333,9 @@ Page({
       pointMm: target.pointMm,
       nodeId: target.nodeId || '',
       wallId: target.wallId || '',
-      snapLine: target.snapLine || ''
+      snapLine: target.snapLine || '',
+      axis: target.axis || '',
+      referencePoint: target.referencePoint || null
     };
   },
 
@@ -3354,9 +3358,11 @@ Page({
       cursorLensYLabel: `Y ${Math.round(point.yMm)}`,
       cursorLensSnapLabel: targetType === 'vertex'
         ? (snapLine === 'outer' ? '外边顶点吸附' : '顶点吸附')
+        : (targetType === 'alignment'
+          ? (snapLine === 'outer' ? '外边顶点延长吸附' : '顶点延长吸附')
         : (targetType === 'wall'
           ? (snapLine === 'outer' ? '外边吸附' : '内边吸附')
-          : '自由放置'),
+          : '自由放置')),
       cursorLensSnapType: targetType || 'none'
     };
   },
@@ -3365,7 +3371,9 @@ Page({
     const candidate = this.getCursorPlacementCandidate(clientPoint);
     // 自由放置必须严格跟随手指。只有真正命中顶点或墙体时，才把
     // 十字光标移动到吸附后的坐标，避免一次 mm 往返换算造成初始跳位。
-    const isSnapped = candidate && (candidate.type === 'vertex' || candidate.type === 'wall');
+    const isSnapped = candidate && (
+      candidate.type === 'vertex' || candidate.type === 'wall' || candidate.type === 'alignment'
+    );
     const displayPoint = isSnapped && candidate.pointMm
       ? this.mmToClientPoint(candidate.pointMm)
       : clientPoint;
@@ -3416,9 +3424,14 @@ Page({
     if (!canStartWallDrag(session.state)) return false;
 
     const anchor = surveyGraph.getNode(floor, session.anchorNodeId);
+    // Outer-edge drops keep their graph node on the wall centerline, while the
+    // visible cursor is intentionally rendered on the physical outer face.
+    // Hit testing must use that same displayed point; otherwise a user can
+    // begin a drag from the hidden centerline and leave the visible cursor and
+    // the preview wall on two parallel lines.
     const cursorSource = session.state === 'awaitingLength' && session.previewPoint
       ? session.previewPoint
-      : anchor;
+      : (surveyGraph.getCursorDisplayPoint(floor, session) || anchor);
     if (!cursorSource) return false;
 
     const cursorPoint = this.mmToCanvasPoint(cursorSource);
@@ -4326,18 +4339,16 @@ Page({
 
     if (movedWall) {
       if (session.previewLengthMm >= surveyGraph.MIN_WALL_LENGTH_MM) {
-        const directStartClosure = session.mode === 'straight' &&
-          session.closeCandidateType === 'start' &&
-          session.alignmentSnapGuide &&
-          session.alignmentSnapGuide.type === 'start-vertex-closure';
-        if (directStartClosure) {
+        const releasePointMm = this.canvasPointToMm(touchState.lastPoint || touchState.startPoint);
+        const directClosureHit = surveyGraph.isDirectClosureHit(floor, session, releasePointMm);
+        if (directClosureHit) {
           try {
             const nextDraft = surveyGraph.confirmClosure(this.draft);
             this.applyDraft(nextDraft, {
               recordHistory: true,
               historyDraft
             });
-            wx.showToast({ title: '已吸附起点并闭合', icon: 'success' });
+            wx.showToast({ title: '已吸附闭合点并闭合', icon: 'success' });
           } catch (err) {
             wx.showToast({ title: err.message || '闭合失败，请重新测量', icon: 'none' });
           }
@@ -4601,7 +4612,11 @@ Page({
     const wasDragging = this.cursorPlacementState === 'dragging';
     this.cursorPlacementState = 'dragging';
     const now = Date.now();
-    const shouldUpdateLens = !wasDragging || now - this.cursorLensLastUpdateAt >= 80;
+    // A native cover-view can take a frame to apply the first setData update.
+    // Keep rebuilding until that visible flag has arrived, otherwise a rapid
+    // drag can remain in the dragging state without ever mounting its lens.
+    const shouldUpdateLens = !wasDragging || !this.data.cursorLensVisible ||
+      now - this.cursorLensLastUpdateAt >= 80;
     const dragData = this.resolveCursorDragPoint(point, shouldUpdateLens);
     if (shouldUpdateLens) {
       this.cursorLensLastUpdateAt = now;
@@ -4657,9 +4672,11 @@ Page({
     });
     const placedMessage = candidate.type === 'vertex'
       ? `光标已吸附到${candidate.snapLine === 'outer' ? '外边顶点' : '顶点'}`
+      : (candidate.type === 'alignment'
+        ? `光标已对齐到${candidate.snapLine === 'outer' ? '外边顶点延长线' : '顶点延长线'}`
       : (candidate.type === 'wall'
         ? `光标已吸附到${candidate.snapLine === 'outer' ? '外边' : '内边'}`
-        : '光标已放置');
+        : '光标已放置'));
     wx.showToast({ title: placedMessage, icon: 'none' });
   },
 

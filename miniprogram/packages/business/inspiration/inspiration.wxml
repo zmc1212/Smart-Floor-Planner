@@ -4,7 +4,7 @@
       <text class="hero-title">灵感库</text>
       <text class="hero-subtitle">精选真实空间案例，快速找到适合家的设计方向。</text>
     </view>
-    <image class="inspiration-scene" src="/images/page-ip-v3/inspiration.png" mode="aspectFit"></image>
+    <image class="inspiration-scene" src="/packages/business/assets/inspiration/inspiration.png" mode="aspectFit"></image>
   </view>
 
   <scroll-view scroll-x class="filter-bar" enable-flex show-scrollbar="{{false}}">

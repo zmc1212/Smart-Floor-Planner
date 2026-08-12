@@ -1,0 +1,86 @@
+{"kind":"layout","layoutId":"/ppt/slideMasters/slideMaster1.xml","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"/ppt/slideLayouts/slideLayout1.xml","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/y90nupkv","slide":1,"title":"家客来  /  客户服务协同流程","textShapes":43}
+{"kind":"shape","id":"sh/cfa10jml","slide":1,"bbox":[1000,10,280,280]}
+{"kind":"shape","id":"sh/547294r6","slide":1,"bbox":[1110,20,150,150]}
+{"kind":"shape","id":"sh/k3yl0zql","slide":1,"bbox":[0,0,1280,7]}
+{"kind":"shape","id":"sh/7qp4be9c","slide":1,"bbox":[58,34,42,42]}
+{"kind":"textbox","id":"sh/ts7md4r2","slide":1,"text":"家客来  /  客户服务协同流程","textPreview":"家客来  /  客户服务协同流程","textChars":16,"textLines":1,"bbox":[114,43,400,28]}
+{"kind":"textbox","id":"sh/sryl4zqx","slide":1,"name":"slide-title","text":"一位客户，三角色接力完成服务","textPreview":"一位客户，三角色接力完成服务","textChars":14,"textLines":1,"bbox":[58,90,810,52]}
+{"kind":"textbox","id":"sh/fu94fe98","slide":1,"text":"从线索到方案交付，客户、空间与过程始终可追溯","textPreview":"从线索到方案交付，客户、空间与过程始终可追溯","textChars":22,"textLines":1,"bbox":[60,151,720,25]}
+{"kind":"shape","id":"sh/utg3698n","slide":1,"bbox":[971,101,244,44]}
+{"kind":"textbox","id":"sh/wn6dc7eh","slide":1,"text":"同一客户 · 全程可追溯","textPreview":"同一客户 · 全程可追溯","textChars":12,"textLines":1,"bbox":[990,112,206,20]}
+{"kind":"shape","id":"sh/hofulsf2","slide":1,"bbox":[252,335,42,0]}
+{"kind":"shape","id":"sh/ul4vaxgb","slide":1,"bbox":[488,335,42,0]}
+{"kind":"shape","id":"sh/vmdcj2xw","slide":1,"bbox":[724,335,42,0]}
+{"kind":"shape","id":"sh/4r6dg7et","slide":1,"bbox":[960,335,42,0]}
+{"kind":"shape","id":"sh/5sfepcfe","slide":1,"bbox":[58,223,194,242]}
+{"kind":"shape","id":"sh/ipovexwn","slide":1,"bbox":[72,238,40,27]}
+{"kind":"textbox","id":"sh/3qxwn2x8","slide":1,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[72,244,40,16]}
+{"kind":"textbox","id":"sh/sfqdkrep","slide":1,"text":"客户建档","textPreview":"客户建档","textChars":4,"textLines":1,"bbox":[74,282,162,30]}
+{"kind":"shape","id":"sh/dgzetcfa","slide":1,"bbox":[113,319,84,25]}
+{"kind":"textbox","id":"sh/1cvuxc7e","slide":1,"text":"测量员","textPreview":"测量员","textChars":3,"textLines":1,"bbox":[113,324,84,16]}
+{"kind":"textbox","id":"sh/zadcv2p8","slide":1,"text":"线索 · 档案 · 跟进","textPreview":"线索 · 档案 · 跟进","textChars":12,"textLines":1,"bbox":[74,431,162,18]}
+{"kind":"shape","id":"sh/e94v2hon","slide":1,"bbox":[294,223,194,242]}
+{"kind":"shape","id":"sh/90ve1w7q","slide":1,"bbox":[308,238,40,27]}
+{"kind":"textbox","id":"sh/ozmd8r65","slide":1,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[308,244,40,16]}
+{"kind":"textbox","id":"sh/nydczmpk","slide":1,"text":"正式量房","textPreview":"正式量房","textChars":4,"textLines":1,"bbox":[310,282,162,30]}
+{"kind":"shape","id":"sh/mx4v6hoz","slide":1,"bbox":[349,319,84,25]}
+{"kind":"textbox","id":"sh/p4bu5s76","slide":1,"text":"测量员","textPreview":"测量员","textChars":3,"textLines":1,"bbox":[349,324,84,16]}
+{"kind":"textbox","id":"sh/uxgjq907","slide":1,"text":"墙体 · 尺寸 · 门窗","textPreview":"墙体 · 尺寸 · 门窗","textChars":12,"textLines":1,"bbox":[310,431,162,18]}
+{"kind":"shape","id":"sh/vyp0je1s","slide":1,"bbox":[530,223,194,242]}
+{"kind":"shape","id":"sh/wzy1szid","slide":1,"bbox":[544,238,40,27]}
+{"kind":"textbox","id":"sh/h072l4jy","slide":1,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[544,244,40,16]}
+{"kind":"textbox","id":"sh/i1gje90j","slide":1,"text":"AI 方案","textPreview":"AI 方案","textChars":5,"textLines":1,"bbox":[546,282,162,30]}
+{"kind":"shape","id":"sh/j2pkne14","slide":1,"bbox":[585,319,84,25]}
+{"kind":"textbox","id":"sh/43y1gji9","slide":1,"text":"设计师","textPreview":"设计师","textChars":3,"textLines":1,"bbox":[585,324,84,16]}
+{"kind":"textbox","id":"sh/y5wjip0z","slide":1,"text":"正式户型 · 方案方向","textPreview":"正式户型 · 方案方向","textChars":11,"textLines":1,"bbox":[546,431,162,18]}
+{"kind":"shape","id":"sh/z650ba1k","slide":1,"bbox":[766,223,194,242]}
+{"kind":"shape","id":"sh/z2xgf6to","slide":1,"bbox":[780,238,40,27]}
+{"kind":"textbox","id":"sh/e1oz61c3","slide":1,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[780,244,40,16]}
+{"kind":"textbox","id":"sh/14fyhgbe","slide":1,"text":"协作交接","textPreview":"协作交接","textChars":4,"textLines":1,"bbox":[782,282,162,30]}
+{"kind":"shape","id":"sh/036h8but","slide":1,"bbox":[821,319,84,25]}
+{"kind":"textbox","id":"sh/nqxgjqtk","slide":1,"text":"设计师","textPreview":"设计师","textChars":3,"textLines":1,"bbox":[821,324,84,16]}
+{"kind":"shape","id":"sh/mpozalcz","slide":1,"bbox":[786,361,12,12]}
+{"kind":"textbox","id":"sh/9sfylgbq","slide":1,"text":"✓","textPreview":"✓","textChars":1,"textLines":1,"bbox":[786,360,12,13]}
+{"kind":"textbox","id":"sh/or6hcvu5","slide":1,"text":"确认","textPreview":"确认","textChars":2,"textLines":1,"bbox":[807,358,110,18]}
+{"kind":"shape","id":"sh/buh0nqtg","slide":1,"bbox":[786,383,12,12]}
+{"kind":"textbox","id":"sh/at8zelcb","slide":1,"text":"✓","textPreview":"✓","textChars":1,"textLines":1,"bbox":[786,382,12,13]}
+{"kind":"textbox","id":"sh/8zqx4vq9","slide":1,"text":"通知","textPreview":"通知","textChars":2,"textLines":1,"bbox":[807,380,110,18]}
+{"kind":"shape","id":"sh/t0jyd0ru","slide":1,"bbox":[786,405,12,12]}
+{"kind":"textbox","id":"sh/6x8f2583","slide":1,"text":"✓","textPreview":"✓","textChars":1,"textLines":1,"bbox":[786,404,12,13]}
+{"kind":"textbox","id":"sh/7yhgbq9o","slide":1,"text":"回执","textPreview":"回执","textChars":2,"textLines":1,"bbox":[807,402,110,18]}
+{"kind":"textbox","id":"sh/kvqx0vqd","slide":1,"text":"确认 · 通知 · 回执","textPreview":"确认 · 通知 · 回执","textChars":12,"textLines":1,"bbox":[782,431,162,18]}
+{"kind":"shape","id":"sh/lwzy90ry","slide":1,"bbox":[1002,223,194,242]}
+{"kind":"shape","id":"sh/yt8fyl87","slide":1,"bbox":[1016,238,40,27]}
+{"kind":"textbox","id":"sh/juhg7q9s","slide":1,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1016,244,40,16]}
+{"kind":"textbox","id":"sh/wr6xwbq1","slide":1,"text":"企业管理","textPreview":"企业管理","textChars":4,"textLines":1,"bbox":[1018,282,162,30]}
+{"kind":"shape","id":"sh/xsfy5grm","slide":1,"bbox":[1057,319,84,25]}
+{"kind":"textbox","id":"sh/dc7md8fe","slide":1,"text":"负责人","textPreview":"负责人","textChars":3,"textLines":1,"bbox":[1057,324,84,16]}
+{"kind":"shape","id":"sh/cby5k3yt","slide":1,"bbox":[1019,358,69,27]}
+{"kind":"textbox","id":"sh/ra54bix8","slide":1,"text":"人","textPreview":"人","textChars":1,"textLines":1,"bbox":[1019,365,69,14]}
+{"kind":"shape","id":"sh/q9wnidgn","slide":1,"bbox":[1100,358,69,27]}
+{"kind":"textbox","id":"sh/5onm98f2","slide":1,"text":"数据","textPreview":"数据","textChars":2,"textLines":1,"bbox":[1100,365,69,14]}
+{"kind":"shape","id":"sh/4ne5g3yh","slide":1,"bbox":[1019,394,69,27]}
+{"kind":"textbox","id":"sh/3m547yxw","slide":1,"text":"设备","textPreview":"设备","textChars":2,"textLines":1,"bbox":[1019,401,69,14]}
+{"kind":"shape","id":"sh/ilw3etgr","slide":1,"bbox":[1100,394,69,27]}
+{"kind":"textbox","id":"sh/9kr6lsfm","slide":1,"text":"规则","textPreview":"规则","textChars":2,"textLines":1,"bbox":[1100,401,69,14]}
+{"kind":"textbox","id":"sh/oji5sne1","slide":1,"text":"人 · 数据 · 设备 · 规则","textPreview":"人 · 数据 · 设备 · 规则","textChars":16,"textLines":1,"bbox":[1018,431,162,18]}
+{"kind":"textbox","id":"sh/6psjmpwj","slide":1,"text":"谁在接力","textPreview":"谁在接力","textChars":4,"textLines":1,"bbox":[60,509,105,22]}
+{"kind":"shape","id":"sh/7q1kfudo","slide":1,"bbox":[58,539,430,53]}
+{"kind":"textbox","id":"sh/8ra1oze9","slide":1,"text":"测量员","textPreview":"测量员","textChars":3,"textLines":1,"bbox":[76,555,74,19]}
+{"kind":"textbox","id":"sh/ts32h4vu","slide":1,"text":"接住客户与空间数据","textPreview":"接住客户与空间数据","textChars":9,"textLines":1,"bbox":[159,556,315,19]}
+{"kind":"shape","id":"sh/ylsjipw7","slide":1,"bbox":[512,539,430,53]}
+{"kind":"textbox","id":"sh/jm1kbuds","slide":1,"text":"设计师","textPreview":"设计师","textChars":3,"textLines":1,"bbox":[530,555,74,19]}
+{"kind":"textbox","id":"sh/kna1kzed","slide":1,"text":"把空间转成方案并完成交接","textPreview":"把空间转成方案并完成交接","textChars":12,"textLines":1,"bbox":[613,556,315,19]}
+{"kind":"shape","id":"sh/loj2dkvy","slide":1,"bbox":[966,539,250,53]}
+{"kind":"textbox","id":"sh/ihc3u9cr","slide":1,"text":"负责人","textPreview":"负责人","textChars":3,"textLines":1,"bbox":[984,555,74,19]}
+{"kind":"textbox","id":"sh/3ilknedw","slide":1,"text":"看见全流程","textPreview":"看见全流程","textChars":5,"textLines":1,"bbox":[1067,556,135,19]}
+{"kind":"shape","id":"sh/rehk7e50","slide":1,"bbox":[58,626,1158,48]}
+{"kind":"textbox","id":"sh/qd8jy94v","slide":1,"text":"客户资产不断线：一次录入，多角色协同，企业全过程可见。","textPreview":"客户资产不断线：一次录入，多角色协同，企业全过程可见。","textChars":27,"textLines":1,"bbox":[82,640,860,21]}
+{"kind":"textbox","id":"sh/d0j29on6","slide":1,"text":"家客来","textPreview":"家客来","textChars":3,"textLines":1,"bbox":[1087,641,102,19]}
+{"kind":"image","id":"im/c3mpgvmx","slide":1,"name":"","geometry":"roundRect","bbox":[63,39,32,32]}
+{"kind":"image","id":"im/x4vqpgni","slide":1,"name":"","geometry":"roundRect","bbox":[74,355,162,65]}
+{"kind":"image","id":"im/a147el47","slide":1,"name":"","geometry":"roundRect","bbox":[310,355,162,65]}
+{"kind":"image","id":"im/b2d8nq5c","slide":1,"name":"","geometry":"roundRect","bbox":[546,355,162,65]}
+{"kind":"notes","id":"nt/y90nupkv","slide":1,"text":""}

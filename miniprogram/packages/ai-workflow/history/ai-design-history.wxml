@@ -5,7 +5,7 @@
       <text class="history-title">设计成果</text>
       <text class="history-count">{{items.length}} 条</text>
       </view>
-      <image class="history-archive-scene" src="/images/page-ip-v3/ai-history.png" mode="aspectFit"></image>
+      <image class="history-archive-scene" src="/packages/ai-workflow/assets/page-ip-v3/ai-history.jpg" mode="aspectFit"></image>
     </view>
 
     <view class="history-filters">
@@ -14,22 +14,32 @@
 
     <view wx:if="{{filteredItems.length}}" class="history-list">
       <view wx:for="{{filteredItems}}" wx:key="id" class="history-item">
-        <image class="history-image" src="{{item.resultImageUrl || item.spaceImageUrl}}" mode="aspectFill" data-id="{{item.id}}" bindtap="openResult"></image>
+        <image wx:if="{{item.resultImageUrl || item.spaceImageUrl}}" class="history-image" src="{{item.resultImageUrl || item.spaceImageUrl}}" mode="aspectFill" data-id="{{item.id}}" bindtap="openResult"></image>
+        <view wx:else class="history-image history-image-placeholder" data-id="{{item.id}}" bindtap="openResult"><text>AI</text></view>
         <view class="history-body">
           <view class="history-info" data-id="{{item.id}}" bindtap="openResult">
+            <text class="history-time">{{item.timeLabel}}</text>
             <text class="item-title">{{item.modeTitle}}</text>
-            <text wx:if="{{item.targetLabel}}" class="item-target">{{item.targetLabel}}</text>
+            <view wx:if="{{item.targetLabel}}" class="item-target-row">
+              <image class="item-target-icon" src="/images/leads-v4/map-pin.png" mode="aspectFit"></image>
+              <text class="item-target">{{item.targetLabel}}</text>
+            </view>
             <view class="sync-row">
               <text class="sync-chip {{item.syncedToWorkflow ? 'synced' : ''}}">{{item.syncedToWorkflow ? '已同步方案' : '独立任务'}}</text>
               <text wx:if="{{item.workflowTitle}}" class="workflow-name">{{item.workflowTitle}}</text>
             </view>
-            <text class="item-meta {{item.status === 'created' || item.status === 'pending' || item.status === 'processing' ? 'processing' : ''}}">{{item.status === 'succeeded' ? '已完成' : item.status === 'failed' ? '生成失败' : '生成中 ' + item.progress + '%'}} · {{item.credits}} 点</text>
+            <view class="item-status-row {{item.statusClass}}">
+              <view class="item-status-dot"></view>
+              <text class="item-meta">{{item.statusLabel}}{{item.status === 'failed' ? '' : ' · ' + item.credits + ' 点'}}</text>
+            </view>
+            <view wx:if="{{item.statusClass === 'processing'}}" class="history-progress-track"><view class="history-progress-bar" style="width: {{item.progress}}%;"></view></view>
           </view>
           <view class="item-actions">
             <button class="mini-action" data-id="{{item.id}}" bindtap="reuse">再设计</button>
             <button class="mini-action danger" data-id="{{item.id}}" bindtap="remove">删除</button>
           </view>
         </view>
+        <image class="history-chevron" src="/images/leads-v4/chevron-right.png" mode="aspectFit" data-id="{{item.id}}" bindtap="openResult"></image>
       </view>
       <view wx:if="{{loading}}" class="loading-more">加载中...</view>
     </view>

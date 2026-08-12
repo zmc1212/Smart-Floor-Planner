@@ -1,0 +1,86 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/ua9bnp",
+    "id": "ua9bnp",
+    "slide": 1,
+    "layoutId": "f73186e5-6a0b-41fe-bf29-750dcaf18060",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "babccacb-c69a-4b8d-b88b-3437b2124630",
+    "masterLayoutName": "Master",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "bg1": "#FFFFFF",
+      "bg2": "#000000",
+      "tx1": "#1F1F1F",
+      "tx2": "#FFFFFF",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    }
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "f73186e5-6a0b-41fe-bf29-750dcaf18060",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "babccacb-c69a-4b8d-b88b-3437b2124630",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "babccacb-c69a-4b8d-b88b-3437b2124630",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "image",
+      "scope": "slide",
+      "aid": "im/ut8fixkr",
+      "id": "1",
+      "bbox": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "geometry": "rect",
+      "alt": "家客来三角色接力流程图生图稳定版",
+      "contentType": "image/png",
+      "imageFit": "cover",
+      "imageMask": {
+        "geometry": "rect"
+      },
+      "asset": {
+        "assetId": "bba40cea-4098-4577-98d2-a191396a466e",
+        "contentType": "image/png",
+        "byteLength": 3318423
+      }
+    }
+  ],
+  "composeRuns": []
+}

@@ -16,10 +16,14 @@ const GUIDE_STROKE_PX = 1.25;
 // green closure cue so they remain easy to track across the full workspace.
 const BLUE_GUIDE_DASH_PX = [8, 6];
 const CLOSURE_GUIDE_DASH_PX = [12, 10];
-const DIMENSION_LABEL_BACKGROUND = 'rgba(210, 210, 210, 0.96)';
-const DIMENSION_LABEL_COLOR = '#0077d7';
+const LIVE_DIMENSION_LABEL_BACKGROUND = 'rgba(210, 210, 210, 0.96)';
+const LIVE_DIMENSION_LABEL_COLOR = '#0077d7';
+const PERMANENT_DIMENSION_LABEL_BACKGROUND = 'rgba(255, 255, 255, 0.92)';
+const PERMANENT_DIMENSION_LABEL_COLOR = '#374151';
 const DIMENSION_LABEL_PADDING_X = 4;
 const DIMENSION_LABEL_HEIGHT_PX = 18;
+const PERMANENT_DIMENSION_LABEL_PADDING_X = 3;
+const PERMANENT_DIMENSION_LABEL_HEIGHT_PX = 15;
 const DIMENSION_ENDPOINT_TICK_PX = 8;
 // Keep dimension lines clear of the measured wall, with extension lines
 // bridging the deliberate drafting gap from each wall end.
@@ -111,10 +115,12 @@ function createBoundingBox(points) {
   };
 }
 
-function createLabelBox(wall, y, label) {
+function createLabelBox(wall, y, label, startX, endX) {
   const width = Math.max(34, String(label).length * 8 + 16);
   const height = DIMENSION_LABEL_HEIGHT_PX;
-  const centerX = wall.widthPx / 2;
+  const resolvedStartX = Number.isFinite(startX) ? startX : 0;
+  const resolvedEndX = Number.isFinite(endX) ? endX : wall.widthPx;
+  const centerX = (resolvedStartX + resolvedEndX) / 2;
   const corners = [
     { x: centerX - width / 2, y: y - height / 2 },
     { x: centerX + width / 2, y: y - height / 2 },
@@ -130,13 +136,8 @@ function createLabelBox(wall, y, label) {
 
 function createDimensionOptions(wall, priority) {
   const innerSign = wall.measurementSide === 'left' ? 1 : -1;
-  const outerSign = typeof wall.closedOutsideSign === 'number'
-    ? wall.closedOutsideSign
-    : -innerSign;
   const innerLabel = `${Math.round(wall.lengthMm || 0)}`;
-  const outerLabel = `${Math.round(wall.outerLengthMm || wall.lengthMm || 0)}`;
-  
-  const configs = [
+  const innerConfigs = [
     {
       kind: 'inner',
       placement: 'inside',
@@ -148,16 +149,6 @@ function createDimensionOptions(wall, priority) {
       endY: 0
     },
     {
-      kind: 'outer',
-      placement: 'outside',
-      offset: outerSign * (wall.thicknessPx + DIMENSION_OUTER_GAP_PX),
-      label: outerLabel,
-      startX: wall.outerStartAlongPx || 0,
-      endX: wall.outerEndPx || wall.widthPx,
-      startY: outerSign * wall.thicknessPx,
-      endY: outerSign * wall.thicknessPx
-    },
-    {
       kind: 'inner',
       placement: 'inside',
       offset: innerSign * (DIMENSION_GAP_PX + DIMENSION_LABEL_HEIGHT_PX + 10),
@@ -166,66 +157,46 @@ function createDimensionOptions(wall, priority) {
       endX: wall.widthPx,
       startY: 0,
       endY: 0
-    },
-    {
-      kind: 'outer',
-      placement: 'outside',
-      offset: outerSign * (wall.thicknessPx + DIMENSION_OUTER_GAP_PX + DIMENSION_LABEL_HEIGHT_PX + 10),
-      label: outerLabel,
-      startX: wall.outerStartAlongPx || 0,
-      endX: wall.outerEndPx || wall.widthPx,
-      startY: outerSign * wall.thicknessPx,
-      endY: outerSign * wall.thicknessPx
-    },
-    // Once a room closes, both values move outside the wall: the measured
-    // inside length stays nearer to the wall and the outline length sits beyond it.
-    {
-      kind: 'inner',
-      placement: 'outside',
-      offset: outerSign * (wall.thicknessPx + DIMENSION_OUTER_GAP_PX),
-      label: innerLabel,
-      startX: 0,
-      endX: wall.widthPx,
-      startY: 0,
-      endY: 0
-    },
-    {
-      kind: 'inner',
-      placement: 'outside',
-      offset: outerSign * (wall.thicknessPx + DIMENSION_OUTER_GAP_PX + (DIMENSION_LABEL_HEIGHT_PX + 10) * 2),
-      label: innerLabel,
-      startX: 0,
-      endX: wall.widthPx,
-      startY: 0,
-      endY: 0
-    },
-    {
-      kind: 'outer',
-      placement: 'outside',
-      offset: outerSign * (wall.thicknessPx + DIMENSION_OUTER_GAP_PX + DIMENSION_LABEL_HEIGHT_PX + 10),
-      label: outerLabel,
-      startX: wall.outerStartAlongPx || 0,
-      endX: wall.outerEndPx || wall.widthPx,
-      startY: outerSign * wall.thicknessPx,
-      endY: outerSign * wall.thicknessPx
-    },
-    {
-      kind: 'outer',
-      placement: 'outside',
-      offset: outerSign * (wall.thicknessPx + DIMENSION_OUTER_GAP_PX + (DIMENSION_LABEL_HEIGHT_PX + 10) * 3),
-      label: outerLabel,
-      startX: wall.outerStartAlongPx || 0,
-      endX: wall.outerEndPx || wall.widthPx,
-      startY: outerSign * wall.thicknessPx,
-      endY: outerSign * wall.thicknessPx
     }
   ];
 
+  const outerFaceY = Number.isFinite(wall.outerOffsetPx)
+    ? wall.outerOffsetPx
+    : -innerSign * wall.thicknessPx;
+  const outerFaceSign = outerFaceY < 0 ? -1 : 1;
+  const outerStartX = Number.isFinite(wall.outerStartAlongPx) ? wall.outerStartAlongPx : 0;
+  const outerEndX = Number.isFinite(wall.outerEndPx) ? wall.outerEndPx : wall.widthPx;
+  const outerConfigs = [
+    {
+      kind: 'inner',
+      placement: 'outside',
+      offset: outerFaceY + outerFaceSign * DIMENSION_GAP_PX,
+      label: innerLabel,
+      startX: outerStartX,
+      endX: outerEndX,
+      startY: outerFaceY,
+      endY: outerFaceY
+    },
+    {
+      kind: 'inner',
+      placement: 'outside',
+      offset: outerFaceY + outerFaceSign * (DIMENSION_GAP_PX + DIMENSION_LABEL_HEIGHT_PX + 10),
+      label: innerLabel,
+      startX: outerStartX,
+      endX: outerEndX,
+      startY: outerFaceY,
+      endY: outerFaceY
+    }
+  ];
+  const configs = wall.measurementFace === 'outer' ? outerConfigs : innerConfigs;
+
   return configs.map((cfg, index) => {
-    const labelBox = createLabelBox(wall, cfg.offset, cfg.label);
+    const labelBox = createLabelBox(wall, cfg.offset, cfg.label, cfg.startX, cfg.endX);
     return {
       wall,
       kind: cfg.kind,
+      visualRole: 'live',
+      measurementFace: wall.measurementFace || 'inner',
       placement: cfg.placement,
       label: cfg.label,
       offset: cfg.offset,
@@ -239,14 +210,27 @@ function createDimensionOptions(wall, priority) {
   });
 }
 
-function createClosedDimensionPlan(walls, openings, sourceWalls) {
+function createClosedDimensions(walls, openings, spaces, spacePlans, outerRings, viewportScale) {
   const wallById = {};
-  (sourceWalls || []).forEach((wall) => { wallById[wall.id] = wall; });
-  const plan = dimensionLayout.createExteriorDimensionPlan({
+  (walls || []).forEach((wall) => { wallById[wall.id] = wall; });
+  const plan = dimensionLayout.createClosedDimensionPlan({
     baseGap: DIMENSION_OUTER_GAP_PX,
     laneGap: DIMENSION_LABEL_HEIGHT_PX + 12,
     groupTolerance: 2,
-    walls,
+    measurementUnitsPerCoordinate: 1 / Math.max(0.000001, Number(viewportScale || surveyGraph.DEFAULT_SCALE)),
+    walls: (walls || []).filter((wall) => !wall.lineOnly && wall.closed).map((wall) => ({
+      id: wall.id,
+      start: wall.startPoint,
+      end: wall.endPoint,
+      coordinateLength: wall.widthPx,
+      measurementLength: wall.lengthMm,
+      thickness: wall.thicknessPx,
+      outerStart: wall.outerStart,
+      outerEnd: wall.outerEnd
+    })),
+    spaces: spaces || [],
+    spacePlans: spacePlans || [],
+    outerRings: outerRings || [],
     openings: (openings || []).map((opening) => ({
       id: opening.id,
       wallId: opening.wall && opening.wall.id,
@@ -260,9 +244,12 @@ function createClosedDimensionPlan(walls, openings, sourceWalls) {
     id: item.id,
     wall: wallById[item.sourceWallId] || null,
     kind: item.kind,
+    visualRole: 'permanent',
     placement: 'outside',
     label: item.label,
     lane: item.lane,
+    normal: item.normal,
+    sourceSpaceId: item.sourceSpaceId,
     startPoint: item.start,
     endPoint: item.end,
     extensionStart: item.extensionStart,
@@ -270,7 +257,17 @@ function createClosedDimensionPlan(walls, openings, sourceWalls) {
   }));
 }
 
-function resolveDimensions(walls, openings, exteriorBoundaryWalls) {
+function applyMeasurementFace(wall, measurementFace) {
+  if (!wall) return wall;
+  const face = measurementFace === 'outer' ? 'outer' : 'inner';
+  return Object.assign(wall, {
+    measurementFace: face,
+    measurementStartPoint: face === 'outer' ? wall.outerStart : wall.startPoint,
+    measurementEndPoint: face === 'outer' ? wall.outerEnd : wall.endPoint
+  });
+}
+
+function resolveDimensions(walls, openings, spaces, spacePlans, outerRings, viewportScale) {
   const dimensions = [];
   const accepted = [];
   const activeWalls = walls.filter((wall) => !wall.lineOnly && wall.isActiveMeasurement && !wall.closed);
@@ -295,16 +292,19 @@ function resolveDimensions(walls, openings, exteriorBoundaryWalls) {
     const allOptions = createDimensionOptions(wall, priority);
     innerGroup.push({
       wall,
-      options: [allOptions[0], allOptions[2]],
+      options: allOptions,
       priority
     });
   });
 
   processGroup(innerGroup);
-  dimensions.push(...createClosedDimensionPlan(
-    exteriorBoundaryWalls,
+  dimensions.push(...createClosedDimensions(
+    walls,
     openings,
-    walls
+    spaces,
+    spacePlans,
+    outerRings,
+    viewportScale
   ));
 
   return dimensions;
@@ -460,7 +460,7 @@ function buildPreviewWall(floor, session, options) {
     [previewWall.id]: getVisualThicknessPx(previewWall.thicknessMm, options.viewport.scale) / options.viewport.scale
   });
 
-  return buildWallScene(floor, previewWall, Object.assign({}, options, {
+  return applyMeasurementFace(buildWallScene(floor, previewWall, Object.assign({}, options, {
     startPoint: anchor,
     endPoint: session.previewPoint,
     previousWall: (floor.walls || [])[floor.walls.length - 1] || null,
@@ -470,7 +470,7 @@ function buildPreviewWall(floor, session, options) {
     useExplicitNext: true,
     preview: true,
     lineOnly: session.state === 'wallPreview'
-  }));
+  })), options.measurementFace);
 }
 
 function buildClosureGuide(floor, session, project) {
@@ -513,7 +513,10 @@ function buildAlignmentSnapGuide(session, project) {
     };
   }
 
-  if (guide.type !== 'rectangle-third-wall' || !guide.referencePoint) {
+  if (
+    (guide.type !== 'rectangle-third-wall' && guide.type !== 'vertex-axis') ||
+    !guide.referencePoint
+  ) {
     return null;
   }
 
@@ -581,7 +584,7 @@ function buildOpeningScenes(floor, walls, session) {
     .filter(Boolean);
 }
 
-function buildCursor(floor, session, project) {
+function buildCursor(floor, session, project, activeSegment) {
   if (
     !session ||
     !session.anchorNodeId ||
@@ -594,6 +597,9 @@ function buildCursor(floor, session, project) {
 
   const anchor = surveyGraph.getNode(floor, session.anchorNodeId);
   if (!anchor) return null;
+  if (activeSegment && activeSegment.measurementEndPoint) {
+    return { point: activeSegment.measurementEndPoint };
+  }
   const cursorPoint = surveyGraph.getCursorDisplayPoint(floor, session) || anchor;
   return {
     point: project(cursorPoint)
@@ -710,6 +716,10 @@ function createSurveyRenderScene(input) {
   const activeWallStartIndex = Number.isInteger(session.activeSpaceStartWallIndex)
     ? Math.max(0, Math.min(session.activeSpaceStartWallIndex, (floor.walls || []).length))
     : 0;
+  // A closed-room outer-edge snap chooses how the new wall body joins its
+  // neighbour, not a second visible working line. Keep the live red/orange
+  // path and cursor on the same inner render edge as the dragged wall line.
+  const activeMeasurementFace = 'inner';
   const walls = (floor.walls || []).map((wall, index) => buildWallScene(floor, wall, {
     project,
     viewport,
@@ -729,18 +739,20 @@ function createSurveyRenderScene(input) {
       ? (centerOffset >= 0 ? -1 : 1)
       : null;
 
-    return Object.assign(wall, {
+    const isActiveMeasurement = (floor.walls || []).indexOf(wall.wall) >= activeWallStartIndex && !closedWallIds[wall.id];
+    return applyMeasurementFace(Object.assign(wall, {
       closed: !!closedWallIds[wall.id],
       closedOutsideSign,
       isExteriorBoundary: closedWallSpaceCounts[wall.id] === 1,
-      isActiveMeasurement: (floor.walls || []).indexOf(wall.wall) >= activeWallStartIndex && !closedWallIds[wall.id]
-    });
+      isActiveMeasurement
+    }), isActiveMeasurement ? activeMeasurementFace : 'inner');
   });
   const previewWall = buildPreviewWall(floor, session, {
     project,
     viewport,
     renderThicknessMmMap,
-    selectedWallId: session.selectedWallId
+    selectedWallId: session.selectedWallId,
+    measurementFace: activeMeasurementFace
   });
   const solidWalls = walls.concat(previewWall && !previewWall.lineOnly ? [previewWall] : []);
   const createSolidPlan = (items) => wallSolidLayout.createWallSolidPlan({
@@ -777,7 +789,6 @@ function createSurveyRenderScene(input) {
   const exteriorSourceWallIds = {};
   exteriorBoundaryWalls.forEach((wall) => { exteriorSourceWallIds[wall.sourceWallId] = true; });
   walls.forEach((wall) => { wall.isExteriorBoundary = !!exteriorSourceWallIds[wall.id]; });
-  const dimensions = resolveDimensions(walls, openings, exteriorBoundaryWalls);
   const spaceDimensionPlans = (floor.spaces || [])
     .filter((space) => space.closed && Array.isArray(space.wallIds))
     .map((space) => ({
@@ -785,7 +796,25 @@ function createSurveyRenderScene(input) {
       plan: surveyGraph.buildSpaceDimensionPlan(floor, space)
     }))
     .filter((entry) => entry.plan);
+  const projectedSpacePlans = spaceDimensionPlans.map((entry) => ({
+    spaceId: entry.spaceId,
+    innerBoundaryPoints: entry.plan.innerBoundaryPoints.map(project),
+    innerSegments: (entry.plan.innerSegments || []).map((segment) => ({
+      wallId: segment.wallId,
+      start: project(segment.start),
+      end: project(segment.end)
+    }))
+  }));
+  const dimensions = resolveDimensions(
+    walls,
+    openings,
+    floor.spaces,
+    projectedSpacePlans,
+    wallSolidPlans.closed.rings,
+    viewport.scale
+  );
 
+  const activeSegment = buildActiveSegment(walls, previewWall, session);
   return {
     rect,
     viewport,
@@ -801,11 +830,11 @@ function createSurveyRenderScene(input) {
     wallSolidPlans,
     closureGuide: buildClosureGuide(floor, session, project),
     alignmentSnapGuide: buildAlignmentSnapGuide(session, project),
-    cursor: buildCursor(floor, session, project),
+    cursor: buildCursor(floor, session, project, activeSegment),
     closedSpaceFills: buildClosedSpaceFills(floor, project),
     closedSpaceLabels: buildClosedSpaceLabels(floor, project, viewport),
     spaceDimensionPlans,
-    activeSegment: buildActiveSegment(walls, previewWall, session),
+    activeSegment,
     closed: shouldCloseWholeWallPath(floor, previewWall),
     session
   };
@@ -866,7 +895,7 @@ function drawAxes(ctx, scene) {
   // measurement endpoints can intentionally differ from the topology target,
   // so drawing both crosshairs would make the apparent snap drift with zoom.
   if (!segment || !scene.walls.length || (scene.cursor && scene.cursor.point)) return;
-  const point = segment.endPoint;
+  const point = segment.measurementEndPoint || segment.endPoint;
 
   ctx.save();
   ctx.strokeStyle = 'rgba(0, 126, 220, 0.92)';
@@ -947,17 +976,20 @@ function drawRedlinePath(ctx, walls, color, closed) {
   if (!walls.length) return;
   ctx.beginPath();
   walls.forEach((wall, index) => {
+    const startPoint = wall.measurementStartPoint || wall.startPoint;
+    const endPoint = wall.measurementEndPoint || wall.endPoint;
     if (index === 0) {
-      ctx.moveTo(wall.startPoint.x, wall.startPoint.y);
+      ctx.moveTo(startPoint.x, startPoint.y);
     } else {
       const previous = walls[index - 1];
-      if (distancePx(previous.endPoint, wall.startPoint) > 1.5) {
-        ctx.moveTo(wall.startPoint.x, wall.startPoint.y);
+      const previousEndPoint = previous.measurementEndPoint || previous.endPoint;
+      if (distancePx(previousEndPoint, startPoint) > 1.5) {
+        ctx.moveTo(startPoint.x, startPoint.y);
       } else {
-        ctx.lineTo(wall.startPoint.x, wall.startPoint.y);
+        ctx.lineTo(startPoint.x, startPoint.y);
       }
     }
-    ctx.lineTo(wall.endPoint.x, wall.endPoint.y);
+    ctx.lineTo(endPoint.x, endPoint.y);
   });
   if (closed && walls.length > 2) {
     ctx.closePath();
@@ -1348,9 +1380,9 @@ function drawPlannedDimension(ctx, dimension) {
   ctx.save();
   ctx.translate(start.x, start.y);
   ctx.rotate(Math.atan2(dy, dx));
-  ctx.strokeStyle = '#4b5563';
-  ctx.fillStyle = '#374151';
-  ctx.lineWidth = 0.8;
+  ctx.strokeStyle = 'rgba(75, 85, 99, 0.76)';
+  ctx.fillStyle = PERMANENT_DIMENSION_LABEL_COLOR;
+  ctx.lineWidth = 0.75;
   ctx.beginPath();
   ctx.moveTo(0, -DIMENSION_ENDPOINT_TICK_PX);
   ctx.lineTo(0, DIMENSION_ENDPOINT_TICK_PX);
@@ -1364,17 +1396,17 @@ function drawPlannedDimension(ctx, dimension) {
   ctx.save();
   ctx.translate(length / 2, 0);
   if (flipLabel) ctx.rotate(Math.PI);
-  const fontWeight = dimension.kind === 'chain-total' ? '700' : '600';
-  ctx.font = `${fontWeight} 14px sans-serif`;
+  const fontWeight = dimension.kind === 'building-overall' ? '600' : '500';
+  ctx.font = `${fontWeight} 12px sans-serif`;
   const labelWidth = ctx.measureText(dimension.label).width;
-  ctx.fillStyle = DIMENSION_LABEL_BACKGROUND;
+  ctx.fillStyle = PERMANENT_DIMENSION_LABEL_BACKGROUND;
   ctx.fillRect(
-    -labelWidth / 2 - DIMENSION_LABEL_PADDING_X,
-    -DIMENSION_LABEL_HEIGHT_PX / 2,
-    labelWidth + DIMENSION_LABEL_PADDING_X * 2,
-    DIMENSION_LABEL_HEIGHT_PX
+    -labelWidth / 2 - PERMANENT_DIMENSION_LABEL_PADDING_X,
+    -PERMANENT_DIMENSION_LABEL_HEIGHT_PX / 2,
+    labelWidth + PERMANENT_DIMENSION_LABEL_PADDING_X * 2,
+    PERMANENT_DIMENSION_LABEL_HEIGHT_PX
   );
-  ctx.fillStyle = DIMENSION_LABEL_COLOR;
+  ctx.fillStyle = PERMANENT_DIMENSION_LABEL_COLOR;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(dimension.label, 0, 0);
@@ -1433,14 +1465,14 @@ function drawDimension(ctx, dimension) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const labelWidth = ctx.measureText(dimension.label).width;
-  ctx.fillStyle = DIMENSION_LABEL_BACKGROUND;
+  ctx.fillStyle = LIVE_DIMENSION_LABEL_BACKGROUND;
   ctx.fillRect(
     -labelWidth / 2 - DIMENSION_LABEL_PADDING_X,
     -DIMENSION_LABEL_HEIGHT_PX / 2,
     labelWidth + DIMENSION_LABEL_PADDING_X * 2,
     DIMENSION_LABEL_HEIGHT_PX
   );
-  ctx.fillStyle = DIMENSION_LABEL_COLOR;
+  ctx.fillStyle = LIVE_DIMENSION_LABEL_COLOR;
   ctx.fillText(dimension.label, 0, 0);
   ctx.restore();
 
@@ -1578,7 +1610,9 @@ function projectInteractionWall(wall, transform) {
     'outerStart',
     'outerEnd',
     'rawOuterStart',
-    'rawOuterEnd'
+    'rawOuterEnd',
+    'measurementStartPoint',
+    'measurementEndPoint'
   ].forEach((key) => {
     projected[key] = projectInteractionPoint(wall[key], transform);
   });

@@ -3180,6 +3180,18 @@ page,
   box-shadow: 0 12rpx 34rpx rgba(15, 23, 42, 0.24);
   box-sizing: border-box;
   pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.cursor-lens-visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+.cursor-lens-hidden {
+  opacity: 0;
+  visibility: hidden;
 }
 
 .cursor-lens-grid {

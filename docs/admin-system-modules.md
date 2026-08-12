@@ -32,6 +32,29 @@ and active Roomi prompt-library revision.
 > `POST /api/internal/seed` bypasses cookie authentication only so deployment
 > can reach its own `INTERNAL_SECRET` check; it remains inaccessible without
 > that secret and never exposes credentials.
+> For Windows releases, double-click `admin/release.bat`. It rebuilds
+> `zmc1212/sfp-admin:latest` without Docker cache and attempts `docker push` to
+> Docker Hub. A push failure is reported but does not discard the offline
+> fallback: the script exports `sfp-admin.tar` and produces
+> `admin/release/sfp-admin-release.zip` with the server Compose files,
+> migrations, deployment script, and environment template. The archive excludes
+> `.env.production`; configure real production secrets on the server before
+> running `./deploy.sh` after extraction. The deployment script resolves and
+> validates its sibling `docker-compose.yml` explicitly, so an inherited
+> `COMPOSE_FILE` setting or an unrelated Compose file in a parent directory
+> cannot select a different service set. Before starting PostgreSQL it verifies
+> the loaded image contains the one-shot migration entry script, preventing a
+> stale or incomplete offline archive from reaching a partial deployment. The
+> release package includes `SHA256SUMS` for `sfp-admin.tar`, which `deploy.sh`
+> verifies before loading when that file is present. The script also requires
+> sibling `.env.production` and `drizzle/` paths before contacting Docker, and
+> prints the Compose-resolved service list rather than hiding configuration
+> parser failures behind a generic missing-service error. The checksum reader
+> accepts Windows CRLF and Unix LF line endings so a Windows-built release
+> manifest remains valid on the Linux deployment host. After PostgreSQL is
+> ready, `deploy.sh` idempotently applies `docker/postgres/init/001-roles.sql`
+> before migrations, so application roles are also created for an existing
+> volume that was initialized before that file was mounted.
 
 > 2026-08-05 PostgreSQL migration update: authenticated Kujiale city and
 > floor-plan search proxies no longer connect to MongoDB. PostgreSQL bigint AI

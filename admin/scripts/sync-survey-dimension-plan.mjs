@@ -1,4 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,9 +9,10 @@ const sharedFiles = [
   ['survey-dimensions', 'surveyDimensionPlan.js'],
   ['survey-wall-solid', 'surveyWallSolidPlan.js']
 ];
+const digest = (content) => createHash('sha256').update(content).digest('hex');
 
 for (const [label, fileName] of sharedFiles) {
-  const sourcePath = resolve(adminRoot, '..', 'miniprogram', 'utils', fileName);
+  const sourcePath = resolve(adminRoot, '..', 'miniprogram', 'packages', 'surveying', 'utils', fileName);
   const targetPath = resolve(adminRoot, 'src', 'lib', fileName);
   let source;
   try {
@@ -37,4 +39,12 @@ for (const [label, fileName] of sharedFiles) {
     await writeFile(targetPath, source, 'utf8');
     console.log(`[${label}] Synced the admin mirror from the Mini Program source.`);
   }
+
+  const synchronizedTarget = await readFile(targetPath, 'utf8');
+  const sourceHash = digest(source);
+  const targetHash = digest(synchronizedTarget);
+  if (sourceHash !== targetHash) {
+    throw new Error(`[${label}] Shared source and admin mirror hashes differ.`);
+  }
+  console.log(`[${label}] Mirror verified (${sourceHash}).`);
 }

@@ -2,6 +2,7 @@ const DEFAULT_THICKNESS_MM = 200;
 const DEFAULT_SCALE = 0.05;
 const CLOSE_TOLERANCE_MM = 350;
 const RECTANGLE_ALIGNMENT_TOLERANCE_MM = CLOSE_TOLERANCE_MM;
+const VERTEX_AXIS_SNAP_TOLERANCE_MM = CLOSE_TOLERANCE_MM;
 const DIAGONAL_DIRECTION_SNAP_TOLERANCE_DEG = 8;
 const MIN_WALL_LENGTH_MM = 100;
 const MIN_THICKNESS_MM = 50;
@@ -1672,6 +1673,166 @@ function findNearestOuterVertex(floor, point, maxDistanceMm) {
   return best;
 }
 
+function collectVertexAxisTargets(floor) {
+  if (!floor) return [];
+  const targets = [];
+  const seen = new Set();
+  const closedWallIds = new Set();
+  (floor.spaces || []).forEach((space) => {
+    if (!space || !space.closed || !Array.isArray(space.wallIds)) return;
+    if (!buildClosedSpaceWallChain(floor, space.wallIds).length) return;
+    space.wallIds.forEach((wallId) => closedWallIds.add(wallId));
+  });
+
+  const addTarget = (pointMm, nodeId, wallId, snapLine) => {
+    if (!pointMm || !nodeId || !wallId) return;
+    const roundedPoint = {
+      xMm: Math.round(pointMm.xMm),
+      yMm: Math.round(pointMm.yMm)
+    };
+    const key = `${roundedPoint.xMm}:${roundedPoint.yMm}:${nodeId}:${snapLine}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    targets.push({
+      pointMm: roundedPoint,
+      nodeId,
+      wallId,
+      snapLine
+    });
+  };
+
+  (floor.walls || []).forEach((wall) => {
+    if (!closedWallIds.has(wall.id)) return;
+    const start = getNode(floor, wall.startNodeId);
+    const end = getNode(floor, wall.endNodeId);
+    if (!start || !end) return;
+    addTarget(start, start.id, wall.id, 'inner');
+    addTarget(end, end.id, wall.id, 'inner');
+
+    const geometry = buildWallRenderGeometry(floor, wall);
+    if (!geometry) return;
+    addTarget(geometry.outerStart, start.id, wall.id, 'outer');
+    addTarget(geometry.outerEnd, end.id, wall.id, 'outer');
+  });
+
+  return targets;
+}
+
+function findNearestVertexAxisAlignment(floor, point, maxDistanceMm, preferredAxis) {
+  if (!floor || !point) return null;
+  const limit = typeof maxDistanceMm === 'number'
+    ? maxDistanceMm
+    : VERTEX_AXIS_SNAP_TOLERANCE_MM;
+  const axes = preferredAxis === 'x' || preferredAxis === 'y'
+    ? [preferredAxis]
+    : ['x', 'y'];
+  let best = null;
+
+  collectVertexAxisTargets(floor).forEach((target) => {
+    axes.forEach((axis) => {
+      const axisKey = axis === 'x' ? 'xMm' : 'yMm';
+      const perpendicularKey = axis === 'x' ? 'yMm' : 'xMm';
+      const axisDistanceMm = Math.abs(point[axisKey] - target.pointMm[axisKey]);
+      if (axisDistanceMm > limit) return;
+      const perpendicularDistanceMm = Math.abs(
+        point[perpendicularKey] - target.pointMm[perpendicularKey]
+      );
+      const candidate = Object.assign({}, target, {
+        type: 'alignment',
+        axis,
+        axisDistanceMm,
+        perpendicularDistanceMm,
+        referencePoint: {
+          xMm: target.pointMm.xMm,
+          yMm: target.pointMm.yMm
+        },
+        pointMm: axis === 'x'
+          ? { xMm: target.pointMm.xMm, yMm: Math.round(point.yMm) }
+          : { xMm: Math.round(point.xMm), yMm: target.pointMm.yMm }
+      });
+      if (
+        !best ||
+        candidate.axisDistanceMm < best.axisDistanceMm ||
+        (
+          candidate.axisDistanceMm === best.axisDistanceMm &&
+          candidate.perpendicularDistanceMm < best.perpendicularDistanceMm
+        )
+      ) {
+        best = candidate;
+      }
+    });
+  });
+
+  return best;
+}
+
+function maybeSnapStraightPreviewToVertexAxis(floor, session, anchor, previewPoint) {
+  const activeWallCount = floor && session
+    ? Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex)
+    : 0;
+  if (
+    !floor ||
+    !session ||
+    session.mode !== 'straight' ||
+    (session.activeSpaceSharedWallId && activeWallCount === 0) ||
+    !anchor ||
+    !previewPoint
+  ) {
+    return { point: previewPoint, guide: null };
+  }
+
+  const previewIsHorizontal = isHorizontalSegment(anchor, previewPoint);
+  const target = findNearestVertexAxisAlignment(
+    floor,
+    previewPoint,
+    VERTEX_AXIS_SNAP_TOLERANCE_MM,
+    previewIsHorizontal ? 'x' : 'y'
+  );
+  if (!target || distanceMm(anchor, target.pointMm) < MIN_WALL_LENGTH_MM) {
+    return { point: previewPoint, guide: null };
+  }
+
+  return {
+    point: target.pointMm,
+    guide: {
+      type: 'vertex-axis',
+      direction: target.axis === 'x' ? 'vertical' : 'horizontal',
+      snapLine: target.snapLine,
+      nodeId: target.nodeId,
+      wallId: target.wallId,
+      referencePoint: target.referencePoint,
+      snappedPoint: { xMm: target.pointMm.xMm, yMm: target.pointMm.yMm }
+    }
+  };
+}
+
+function shouldPreferOuterVertex(floor, point, innerVertex, outerVertex) {
+  if (!outerVertex) return false;
+  if (!innerVertex || outerVertex.distanceMm < innerVertex.distanceMm) return true;
+  if (outerVertex.nodeId !== innerVertex.nodeId) return false;
+  const belongsToClosedBoundary = (floor.spaces || []).some((space) => (
+    space && space.closed && Array.isArray(space.wallIds) &&
+    space.wallIds.indexOf(outerVertex.wallId) !== -1
+  ));
+  if (!belongsToClosedBoundary) return false;
+
+  const topologyNode = getNode(floor, outerVertex.nodeId);
+  if (!topologyNode) return false;
+  const outerDirection = {
+    x: outerVertex.pointMm.xMm - topologyNode.xMm,
+    y: outerVertex.pointMm.yMm - topologyNode.yMm
+  };
+  const pointerDirection = {
+    x: point.xMm - topologyNode.xMm,
+    y: point.yMm - topologyNode.yMm
+  };
+
+  // A drop on the physical wall body is an outer-corner intent even when it
+  // is still numerically closer to the centerline topology node. A drop on
+  // the room-interior side keeps the inner vertex independently selectable.
+  return dot(outerDirection, pointerDirection) > 0;
+}
+
 function getNodeWallUseCount(floor, nodeId) {
   if (!floor || !nodeId) return 0;
   return (floor.walls || []).filter((wall) => wall.startNodeId === nodeId || wall.endNodeId === nodeId).length;
@@ -1895,10 +2056,7 @@ function getCursorPlacementTarget(floor, point, maxDistanceMm) {
   });
 
   const nearestOuterVertex = findNearestOuterVertex(floor, point, limit);
-  if (
-    nearestOuterVertex &&
-    (!nearestVertex || nearestOuterVertex.distanceMm < nearestVertex.distanceMm)
-  ) {
+  if (shouldPreferOuterVertex(floor, point, nearestVertex, nearestOuterVertex)) {
     nearestVertex = nearestOuterVertex;
   }
 
@@ -1910,7 +2068,8 @@ function getCursorPlacementTarget(floor, point, maxDistanceMm) {
   if (nearestVertex && !outerProjectionWins) return nearestVertex;
 
   if (!projection || projection.distanceMm > limit) {
-    return freeTarget;
+    const alignment = findNearestVertexAxisAlignment(floor, point, limit);
+    return alignment || freeTarget;
   }
 
   return {
@@ -1922,34 +2081,36 @@ function getCursorPlacementTarget(floor, point, maxDistanceMm) {
   };
 }
 
+function isDirectClosureHit(floor, session, rawPoint) {
+  if (!floor || !session || session.mode !== 'straight') return false;
+  if (!session.closeCandidateNodeId && !session.closeCandidatePoint) return false;
+
+  const target = session.closeCandidatePoint || getNode(floor, session.closeCandidateNodeId);
+  if (!target) return false;
+
+  // The rendered preview is the final snapping result and therefore the most
+  // reliable release state on-device. Touch coordinates can lag one move
+  // behind even though the preview has already landed on the closure target.
+  if (session.previewPoint && distanceMm(session.previewPoint, target) <= 1) {
+    return true;
+  }
+
+  return !!rawPoint && distanceMm(rawPoint, target) <= CLOSE_TOLERANCE_MM;
+}
+
 /**
- * Keep the stationary cursor on the same physical wall face that won during
- * drag hit testing. The graph anchor remains on the centerline topology, but
- * an outer-edge drop must not visually jump back to that inner/topology point
- * when touchend redraws the formal canvas.
+ * The graph anchor is the visible working line for a new wall chain. An outer
+ * edge is still a valid snapping target and retains its measurement-side
+ * metadata, but must not displace the cursor away from the line the operator
+ * actually dragged. Otherwise a closed-room continuation shows a parallel
+ * cursor/measurement line beside its black wall body.
  */
 function getCursorDisplayPoint(floor, session) {
   if (!floor || !session || !session.anchorNodeId) return null;
   if (session.previewPoint) return session.previewPoint;
 
   const anchor = getNode(floor, session.anchorNodeId);
-  if (!anchor) return null;
-  if (
-    session.activeSpaceSharedSnapLine !== 'outer' ||
-    session.lastWallSnapLine !== 'outer' ||
-    !session.activeSpaceSharedWallId ||
-    session.activeSpaceSharedWallId !== session.lastWallSnapWallId ||
-    session.anchorNodeId !== session.lastWallSnapNodeId
-  ) {
-    return anchor;
-  }
-
-  const projection = findTargetWallProjection(floor, anchor, {
-    wallId: session.activeSpaceSharedWallId,
-    nodeId: session.lastWallSnapNodeId,
-    snapLine: 'outer'
-  });
-  return projection && projection.point ? projection.point : anchor;
+  return anchor || null;
 }
 
 function getOrCreateSnapNode(floor, projection) {
@@ -2394,12 +2555,20 @@ function startPreview(draft, rawPoint) {
     anchor,
     rectangleSnap.point
   );
+  const vertexAxisSnap = resetClosureSnap.guide || rectangleSnap.guide
+    ? { point: resetClosureSnap.point, guide: null }
+    : maybeSnapStraightPreviewToVertexAxis(
+      floor,
+      session,
+      anchor,
+      resetClosureSnap.point
+    );
   const directStartClosureSnap = maybeSnapStraightClosureToStart(
     floor,
     session,
     anchor,
     rawPoint,
-    resetClosureSnap.point
+    vertexAxisSnap.point
   );
   let previewPoint = directStartClosureSnap.point;
   let previewMeasurementStartInsetMm = resolvePreviewMeasurementStartInsetMm(
@@ -2437,7 +2606,8 @@ function startPreview(draft, rawPoint) {
   session.closeCandidatePoint = null;
   session.closeCandidateType = '';
   session.closeCandidateSharedWallId = '';
-  session.alignmentSnapGuide = directStartClosureSnap.guide || resetClosureSnap.guide || rectangleSnap.guide || directionSnap.guide;
+  session.alignmentSnapGuide = directStartClosureSnap.guide || resetClosureSnap.guide ||
+    rectangleSnap.guide || vertexAxisSnap.guide || directionSnap.guide;
 
   const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
   const minimumClosureWallCount = getMinimumClosureSuggestionWallCount(floor, session);
@@ -2677,7 +2847,15 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     anchor,
     confirmedRectangleSnap.point
   );
-  endPoint = confirmedResetClosureSnap.point;
+  const confirmedVertexAxisSnap = confirmedResetClosureSnap.guide || confirmedRectangleSnap.guide
+    ? { point: confirmedResetClosureSnap.point, guide: null }
+    : maybeSnapStraightPreviewToVertexAxis(
+      floor,
+      session,
+      anchor,
+      confirmedResetClosureSnap.point
+    );
+  endPoint = confirmedVertexAxisSnap.point;
   const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
   const activeWallCountBeforeCommit = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
   const minimumClosureWallCount = getMinimumClosureSuggestionWallCount(floor, session);
@@ -3735,6 +3913,11 @@ function buildSpaceDimensionPlan(floor, spaceOrWallIds) {
   return {
     innerBoundaryPoints,
     outerBoundaryPoints,
+    innerSegments: faces.map((face, index) => ({
+      wallId: face.wallId,
+      start: innerBoundaryPoints[index],
+      end: innerBoundaryPoints[(index + 1) % innerBoundaryPoints.length]
+    })),
     inner: Object.assign({}, innerBounds, {
       areaMm2: Math.round(calculatePolygonAreaMm2(innerBoundaryPoints))
     }),
@@ -3775,6 +3958,7 @@ module.exports = {
   DEFAULT_THICKNESS_MM,
   DEFAULT_SCALE,
   CLOSE_TOLERANCE_MM,
+  VERTEX_AXIS_SNAP_TOLERANCE_MM,
   MIN_WALL_LENGTH_MM,
   MIN_THICKNESS_MM,
   createSurveyDraft,
@@ -3786,6 +3970,7 @@ module.exports = {
   getWallSnapPoint,
   getCursorPlacementTarget,
   getCursorDisplayPoint,
+  isDirectClosureHit,
   distanceMm,
   angleDeg,
   buildWallSnapGeometry,

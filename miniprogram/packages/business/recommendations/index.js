@@ -29,7 +29,7 @@ Page({
           description: '简洁明快的设计风格，功能至上。',
           estimatedBudget: { min: 150000, max: 250000 },
           budgetLabel: '¥150,000 - ¥250,000',
-          imageUrl: '/images/share-preview.jpg',
+          imageUrl: '/packages/business/assets/recommendations/share-preview.jpg',
           features: ['储物优化', '开放布局', '智能家居'],
           matchScore: 0.85,
           matchPercent: 85
@@ -41,7 +41,7 @@ Page({
           description: '温暖舒适的浅色空间方案。',
           estimatedBudget: { min: 180000, max: 300000 },
           budgetLabel: '¥180,000 - ¥300,000',
-          imageUrl: '/images/share-preview.jpg',
+          imageUrl: '/packages/business/assets/recommendations/share-preview.jpg',
           features: ['温柔色调', '自然材质', '舒适布局'],
           matchScore: 0.92,
           matchPercent: 92
@@ -53,7 +53,7 @@ Page({
           description: '传统气质与现代功能融合。',
           estimatedBudget: { min: 220000, max: 400000 },
           budgetLabel: '¥220,000 - ¥400,000',
-          imageUrl: '/images/share-preview.jpg',
+          imageUrl: '/packages/business/assets/recommendations/share-preview.jpg',
           features: ['文化元素', '现代功能', '典雅设计'],
           matchScore: 0.78,
           matchPercent: 78
@@ -65,7 +65,7 @@ Page({
           description: '低调精致，强调材质与细节。',
           estimatedBudget: { min: 300000, max: 600000 },
           budgetLabel: '¥300,000 - ¥600,000',
-          imageUrl: '/images/share-preview.jpg',
+          imageUrl: '/packages/business/assets/recommendations/share-preview.jpg',
           features: ['高级材质', '精致细节', '智能化'],
           matchScore: 0.88,
           matchPercent: 88
@@ -106,7 +106,7 @@ Page({
     return {
       title: styleId ? `我选择了${this.getStyleName(styleId)}风格，你也来试试` : '智能量房大师为我推荐了装修方案',
       path: `/packages/business/recommendations/index${styleId ? `?selected=${styleId}` : ''}`,
-      imageUrl: '/images/share-preview.jpg'
+      imageUrl: '/packages/business/assets/recommendations/share-preview.jpg'
     };
   },
 

@@ -26,25 +26,25 @@ test('V3 page-role assets remain native artwork instead of flattened page screen
   const aiHome = read('pages/ai-design/ai-design.wxml');
   assert.match(aiHome, /class="plan-default-scene"/);
   assert.match(aiHome, /class="plan-hero-swiper"/);
-  assert.match(aiHome, /\/images\/ai-design-project-hero-v5\.jpg/);
+  assert.match(aiHome, /\/images\/generated-hero-bleed-v2\.png/);
   assert.match(aiHome, /\/images\/mine-icons\/tab-measure-k\.png/);
   assert.doesNotMatch(aiHome, /\/images\/page-ip-v3\/ai-home\.png/);
 
   const references = [
-    ['pages/mine/mine.wxml', 'mine.png'],
-    ['packages/business/lead-form/lead-form.wxml', 'lead-form.png'],
-    ['packages/business/lead-detail/lead-detail.wxml', 'lead-detail.png'],
-    ['packages/business/inspiration/inspiration.wxml', 'inspiration.png'],
-    ['packages/ai-workflow/create/ai-design-create.wxml', 'ai-create.png'],
-    ['packages/ai-workflow/result/ai-design-result.wxml', 'ai-result.png'],
-    ['packages/ai-workflow/history/ai-design-history.wxml', 'ai-history.png'],
-    ['packages/business/recommendations/index.wxml', 'recommendations.png'],
+    ['pages/mine/mine.wxml', 'images/page-ip-v3/mine.png', '89504e470d0a1a0a'],
+    ['packages/business/lead-form/lead-form.wxml', 'packages/business/assets/leads/lead-form.png', '89504e470d0a1a0a'],
+    ['packages/business/lead-detail/lead-detail.wxml', 'packages/business/assets/leads/lead-detail.png', '89504e470d0a1a0a'],
+    ['packages/business/inspiration/inspiration.wxml', 'packages/business/assets/inspiration/inspiration.png', '89504e470d0a1a0a'],
+    ['packages/ai-workflow/create/ai-design-create.wxml', 'packages/ai-workflow/assets/page-ip-v3/ai-create.jpg', 'ffd8ff'],
+    ['packages/ai-workflow/result/ai-design-result.wxml', 'packages/ai-workflow/assets/page-ip-v3/ai-result.jpg', 'ffd8ff'],
+    ['packages/ai-workflow/history/ai-design-history.wxml', 'packages/ai-workflow/assets/page-ip-v3/ai-history.jpg', 'ffd8ff'],
+    ['packages/business/recommendations/index.wxml', 'packages/business/assets/recommendations/recommendations.png', '89504e470d0a1a0a'],
   ];
 
-  for (const [sourcePath, assetName] of references) {
-    assert.match(read(sourcePath), new RegExp(`/images/page-ip-v3/${assetName.replace('.', '\\.')}`));
-    const asset = fs.readFileSync(path.join(miniRoot, 'images', 'page-ip-v3', assetName));
-    assert.equal(asset.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+  for (const [sourcePath, assetPath, signature] of references) {
+    assert.match(read(sourcePath), new RegExp(`/${assetPath.replace(/[.]/g, '\\.')}`));
+    const asset = fs.readFileSync(path.join(miniRoot, assetPath));
+    assert.equal(asset.subarray(0, signature.length / 2).toString('hex'), signature);
   }
 });
 
@@ -85,7 +85,7 @@ test('AI design create V3 keeps production data and actions native', () => {
     'ai-create-style-cream.jpg',
     'ai-create-style-chinese.jpg',
   ]) {
-    const asset = fs.readFileSync(path.join(miniRoot, 'images', 'page-ip-v3', assetName));
+    const asset = fs.readFileSync(path.join(miniRoot, 'packages', 'ai-workflow', 'assets', 'page-ip-v3', assetName));
     assert.equal(asset.subarray(0, 3).toString('hex'), 'ffd8ff');
   }
 });
@@ -128,6 +128,31 @@ test('AI history status filters preserve all processing states and exact termina
   assert.equal(update.filteredItems.length, 3);
 });
 
+test('AI history V3 keeps time, status progress, local icons, and compact card geometry native', () => {
+  const page = loadPageConfig('packages/ai-workflow/history/ai-design-history.js');
+  const wxml = read('packages/ai-workflow/history/ai-design-history.wxml');
+  const wxss = read('packages/ai-workflow/history/ai-design-history.wxss');
+
+  assert.match(wxml, /\{\{item\.timeLabel\}\}/);
+  assert.match(wxml, /\/images\/leads-v4\/map-pin\.png/);
+  assert.match(wxml, /\/images\/leads-v4\/chevron-right\.png/);
+  assert.match(wxml, /class="history-progress-track"/);
+  assert.match(wxml, /class="history-image history-image-placeholder"/);
+  assert.match(wxss, /min-height: 262rpx/);
+  assert.match(wxss, /grid-template-columns: 264rpx minmax\(0, 1fr\)/);
+  assert.match(wxss, /height: 66rpx/);
+
+  const now = new Date(2026, 7, 11, 12, 0).getTime();
+  assert.equal(page.formatHistoryTime(new Date(2026, 7, 11, 10, 21).toISOString(), now), '今天 10:21');
+  assert.equal(page.formatHistoryTime(new Date(2026, 7, 10, 16, 48).toISOString(), now), '昨天 16:48');
+  assert.equal(page.formatHistoryTime(new Date(2026, 4, 19, 15, 20).toISOString(), now), '05-19 15:20');
+
+  const decorated = page.decorateHistoryItem({ status: 'processing', progress: 68, mode: 'style_transform', updatedAt: new Date(2026, 7, 11, 10, 21).toISOString() });
+  assert.equal(decorated.modeTitle, '空间换风格');
+  assert.equal(decorated.statusClass, 'processing');
+  assert.equal(decorated.statusLabel, '生成中 68%');
+});
+
 test('recommendations expose only the native share path after a real local selection', () => {
   const source = read('packages/business/recommendations/index.js');
   const wxml = read('packages/business/recommendations/index.wxml');
@@ -144,7 +169,7 @@ test('recommendations expose only the native share path after a real local selec
   });
   assert.equal(share.title, '我选择了奶油风风格，你也来试试');
   assert.equal(share.path, '/packages/business/recommendations/index?selected=cream-style');
-  assert.equal(share.imageUrl, '/images/share-preview.jpg');
+  assert.equal(share.imageUrl, '/packages/business/assets/recommendations/share-preview.jpg');
 });
 
 test('lead detail keeps every measurement action on the formal surveying entry', () => {

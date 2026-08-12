@@ -33,7 +33,7 @@ FORM: Operate 模式；批准方案未使用随机概念种子。
           <view class="handoff-subtitle">{{roleSubtitle || '客户微信交接与获客回执'}}</view>
           <view class="handoff-rule">客户添加设计师微信后，确认交接即可为测量员生成获客提成。</view>
         </view>
-        <image class="handoff-witness" src="/images/page-ip-v3/lead-detail.png" mode="aspectFit" aria-hidden="true" />
+        <image class="handoff-witness" src="/packages/business/assets/leads/lead-detail.png" mode="aspectFit" aria-hidden="true" />
       </view>
 
       <view wx:if="{{loading && !summaryItems.length}}" class="summary-skeleton"></view>

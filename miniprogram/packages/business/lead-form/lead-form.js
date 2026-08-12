@@ -7,7 +7,7 @@ const DEFAULT_RECENT_LEADS = [
     communityName: '',
     area: '',
     stylePreference: '',
-    avatar: '/images/lead-avatar-zhang.png'
+    avatar: '/packages/business/assets/leads/lead-avatar-zhang.png'
   },
   {
     name: '李先生',
@@ -15,7 +15,7 @@ const DEFAULT_RECENT_LEADS = [
     communityName: '',
     area: '',
     stylePreference: '',
-    avatar: '/images/lead-avatar-li.png'
+    avatar: '/packages/business/assets/leads/lead-avatar-li.png'
   },
   {
     name: '王女士',
@@ -23,7 +23,7 @@ const DEFAULT_RECENT_LEADS = [
     communityName: '',
     area: '',
     stylePreference: '',
-    fullImage: '/images/lead-avatar-wang.png'
+    fullImage: '/packages/business/assets/leads/lead-avatar-wang.png'
   }
 ];
 
@@ -73,9 +73,9 @@ Page({
       if (res.success) {
         const recentLeads = res.data || [];
         const fallbackAvatars = [
-          '/images/lead-avatar-zhang.png',
-          '/images/lead-avatar-li.png',
-          '/images/lead-avatar-zhang.png'
+          '/packages/business/assets/leads/lead-avatar-zhang.png',
+          '/packages/business/assets/leads/lead-avatar-li.png',
+          '/packages/business/assets/leads/lead-avatar-zhang.png'
         ];
         const recentLeadChips = recentLeads.slice(0, 3).map((lead, index) => ({
           ...lead,

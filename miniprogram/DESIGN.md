@@ -61,7 +61,10 @@ Before editing any Mini Program production file:
    alignment, adjacent spacing, and a reproducible score. Keep the HTML, final
    browser capture, overlay, source map, masks/exclusions, scoring weights, and
    ledger together in the prototype directory.
-5. Reach a documented composite visual similarity of at least `90%`. Do not
+5. Reach a documented composite visual similarity of at least `96%`. The
+   asset-source/bounds/crop dimension must independently reach `96%`; an
+   incorrect approved cut, substituted key artwork, or visibly mismatched crop
+   is a hard failure even when the weighted composite reaches `96%`. Do not
    substitute a flattened full-page design screenshot for real HTML structure,
    and do not raise the score by counting masked or mutually conflicting source
    regions.
@@ -75,6 +78,32 @@ instruction to skip the HTML gate and implement directly may bypass it. After
 approval, the HTML is a measured reference—not production code—and the normal
 Mini Program implementation, tests, documentation, and native DevTools/device
 verification requirements still apply.
+
+Route-specific exception approved on 2026-08-12: the formal surveying route
+`packages/surveying/editor/surveying-editor` does not require an HTML comparison
+prototype or HTML similarity score. Its Canvas-native measurement geometry,
+snapping, dimension planning, and state rendering must instead be verified by
+focused algorithm/renderer tests and by the existing WeChat DevTools project;
+when automation omits the native Canvas layer, real-device evidence remains
+mandatory. The design-source check, production authorization, bilingual module
+documentation, and restoration-ledger record still apply. No other route
+inherits this exception.
+
+### 2.2 Canonical Restoration Ledger
+
+Before restoring or changing a visible page, read
+`docs/miniprogram-design-restoration-ledger.md` and
+`docs/miniprogram-design-restoration-ledger.zh-CN.md`.
+
+- The normalized runtime route is the unique key. Keep one row per route.
+- Record exactly one latest approved design file. Replace the old source when a
+  newer design is approved; historical source lists remain only in local
+  evidence when they are needed for audit.
+- After the HTML gate, record the prototype entry and reproducible final score.
+- Mark the Mini Program as restored only after production UI or packaged assets
+  have actually changed; an HTML-only pass remains not restored.
+- Update both language ledgers in the same change. Do not hand off a restoration
+  while its route row is missing, duplicated, or stale.
 
 ## 3. Design-to-Layout Translation
 
@@ -387,6 +416,10 @@ Every interface-restoration handoff records: target route, approved reference,
 measured baseline, reusable primitives/tokens, state coverage, actual data and
 permission boundaries, QA evidence, intentional deviations, and the next
 permitted reopen trigger.
+
+The same handoff must update the route's single current row in the English and
+Chinese Mini Program design-restoration ledgers with its latest design file,
+HTML prototype and final similarity, production-restoration status, and date.
 
 Update the English/Chinese module-inventory pair only if the implementation
 changes a route, API, permission boundary, data contract, or real user flow.

@@ -1,0 +1,86 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/d1hmes",
+    "id": "d1hmes",
+    "slide": 1,
+    "layoutId": "b1b229d4-f0e4-475d-aeb0-68329a38be28",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "f54fae2e-a5dc-4707-ac14-06401ac82669",
+    "masterLayoutName": "Master",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "bg1": "#FFFFFF",
+      "bg2": "#000000",
+      "tx1": "#1F1F1F",
+      "tx2": "#FFFFFF",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    }
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "b1b229d4-f0e4-475d-aeb0-68329a38be28",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "f54fae2e-a5dc-4707-ac14-06401ac82669",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "f54fae2e-a5dc-4707-ac14-06401ac82669",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "image",
+      "scope": "slide",
+      "aid": "im/7ehcnu98",
+      "id": "1",
+      "bbox": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "geometry": "rect",
+      "alt": "家客来一位客户三角色接力完成服务流程图",
+      "contentType": "image/png",
+      "imageFit": "cover",
+      "imageMask": {
+        "geometry": "rect"
+      },
+      "asset": {
+        "assetId": "20c88d17-1afb-433d-9792-69cecdae662d",
+        "contentType": "image/png",
+        "byteLength": 1658542
+      }
+    }
+  ],
+  "composeRuns": []
+}

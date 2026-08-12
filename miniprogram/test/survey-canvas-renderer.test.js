@@ -472,13 +472,14 @@ test('inside/outside measurement edge can change only while a wall chain first w
   assert.equal(floor.walls[2].measurementSide, 'left');
 });
 
-test('closed space creates one exterior dimension chain while a new wall chain remains inner-only', () => {
+test('closed space creates clear-room and building-overall bands while a new wall chain remains inner-only', () => {
   const closedDraft = createClosedRectangleDraft();
   const closedFloor = surveyGraph.getActiveFloor(closedDraft);
   const closedScene = createScene(closedDraft);
 
-  assert.equal(closedScene.dimensions.length, closedFloor.walls.length);
-  assert.equal(closedScene.dimensions.every((dimension) => dimension.kind === 'chain-total'), true);
+  assert.equal(closedScene.dimensions.length, closedFloor.walls.length * 2);
+  assert.equal(closedScene.dimensions.filter((dimension) => dimension.kind === 'room-clear').length, 4);
+  assert.equal(closedScene.dimensions.filter((dimension) => dimension.kind === 'building-overall').length, 4);
   assert.equal(closedScene.dimensions.every((dimension) => dimension.placement === 'outside'), true);
   assert.equal(closedScene.dimensions.every((dimension) => dimension.startPoint && dimension.endPoint), true);
   assert.equal(closedScene.dimensions.every((dimension) => (
@@ -499,7 +500,7 @@ test('closed space creates one exterior dimension chain while a new wall chain r
     wall.measurementSide = wall.measurementSide === 'left' ? 'right' : 'left';
   });
   const reversedSideScene = createScene(reversedSideDraft);
-  assert.equal(reversedSideScene.dimensions.length, closedFloor.walls.length);
+  assert.equal(reversedSideScene.dimensions.length, closedFloor.walls.length * 2);
 
   const nextDraft = surveyGraph.cloneDraft(closedDraft);
   const nextFloor = surveyGraph.getActiveFloor(nextDraft);
@@ -521,21 +522,23 @@ test('closed space creates one exterior dimension chain while a new wall chain r
   nextFloor.session.state = 'wallCommitted';
 
   const mixedScene = createScene(nextDraft);
-  assert.equal(mixedScene.dimensions.filter((dimension) => dimension.kind === 'chain-total').length, closedFloor.walls.length);
-  assert.equal(mixedScene.dimensions.filter((dimension) => dimension.wall.id === 'next-wall').length, 1);
-  assert.equal(mixedScene.dimensions.find((dimension) => dimension.wall.id === 'next-wall').kind, 'inner');
+  assert.equal(mixedScene.dimensions.filter((dimension) => dimension.kind === 'building-overall').length, closedFloor.walls.length);
+  assert.equal(mixedScene.dimensions.filter((dimension) => dimension.wall && dimension.wall.id === 'next-wall').length, 1);
+  assert.equal(mixedScene.dimensions.find((dimension) => dimension.wall && dimension.wall.id === 'next-wall').kind, 'inner');
   assert.deepEqual(mixedScene.activeMeasurementWallIds, ['next-wall']);
 });
 
-test('closed-space dimensions originate at the rendered exterior wall outline', () => {
+test('closed-space dimensions originate at the matching inner or exterior wall face', () => {
   ['left', 'right'].forEach((measurementSide) => {
     const draft = surveyGraph.cloneDraft(createClosedRectangleDraft());
     surveyGraph.getActiveFloor(draft).walls.forEach((wall) => { wall.measurementSide = measurementSide; });
     const scene = createScene(draft);
     const exteriorCorners = scene.walls.flatMap((wall) => [wall.outerStart, wall.outerEnd]);
+    const innerCorners = scene.closedSpaceFills.flatMap((fill) => fill.points);
 
     scene.dimensions.forEach((dimension) => {
-      const matchesCorner = (point) => exteriorCorners.some((corner) => (
+      const sourceCorners = dimension.kind === 'room-clear' ? innerCorners : exteriorCorners;
+      const matchesCorner = (point) => sourceCorners.some((corner) => (
         Math.hypot(point.x - corner.x, point.y - corner.y) < 0.01
       ));
       const matchesStart = matchesCorner(dimension.extensionStart);
@@ -608,37 +611,40 @@ test('closed room shell stays outside the boundary for either initial measuremen
   });
 });
 
-test('shared walls never receive V8 exterior positioning or total dimensions', () => {
+test('shared walls never receive exterior dimensions and adjacent rooms keep independent clear chains', () => {
   const scene = createScene(createTwoClosedRoomsWithSharedDoorDraft());
   const sharedWall = scene.walls.find((wall) => wall.id === 'wall-2');
 
   assert.equal(sharedWall.closed, true);
   assert.equal(sharedWall.isExteriorBoundary, false);
   assert.equal(scene.dimensions.some((dimension) => dimension.wall && dimension.wall.id === 'wall-2'), false);
-  assert.equal(scene.dimensions.length, 8);
-  assert.equal(scene.dimensions.filter((dimension) => dimension.kind === 'chain-total').length, 4);
-  assert.equal(scene.dimensions.filter((dimension) => dimension.kind === 'chain-segment').length, 4);
+  assert.equal(scene.dimensions.length, 10);
+  assert.equal(scene.dimensions.filter((dimension) => dimension.kind === 'building-overall').length, 4);
+  assert.equal(scene.dimensions.filter((dimension) => dimension.kind === 'room-clear').length, 6);
   assert.equal(scene.dimensions.every((dimension) => !dimension.wall || dimension.wall.isExteriorBoundary), true);
 });
 
-test('closed door wall renders a V8 positioning chain plus its total dimension', () => {
+test('closed door wall renders opening, clear-room, and building-overall lanes', () => {
   let draft = createClosedRectangleDraft();
   const firstWallId = surveyGraph.getActiveFloor(draft).walls[0].id;
   draft = surveyGraph.addOpeningToWall(draft, firstWallId, 'door');
   const scene = createScene(draft);
-  const wallDimension = scene.dimensions.find((dimension) => (
-    dimension.wall.id === firstWallId && dimension.kind === 'chain-total'
+  const roomDimension = scene.dimensions.find((dimension) => (
+    dimension.wall && dimension.wall.id === firstWallId && dimension.kind === 'room-clear'
   ));
   const positioningDimensions = scene.dimensions.filter((dimension) => (
-    dimension.wall.id === firstWallId && dimension.kind === 'opening-segment'
+    dimension.wall && dimension.wall.id === firstWallId && dimension.kind === 'opening-segment'
+  ));
+  const buildingDimension = scene.dimensions.find((dimension) => (
+    dimension.kind === 'building-overall' && dimension.label === '3400' && dimension.lane === 2
   ));
 
-  assert.equal(wallDimension.kind, 'chain-total');
-  assert.equal(wallDimension.label, '3000');
-  assert.equal(wallDimension.placement, 'outside');
-  assert.ok(wallDimension.startPoint && wallDimension.endPoint);
+  assert.equal(roomDimension.label, '3000');
+  assert.equal(roomDimension.placement, 'outside');
+  assert.ok(buildingDimension.startPoint && buildingDimension.endPoint);
   assert.deepEqual(positioningDimensions.map((dimension) => dimension.label), ['1050', '900', '1050']);
-  assert.equal(positioningDimensions.every((dimension) => dimension.lane < wallDimension.lane), true);
+  assert.equal(positioningDimensions.every((dimension) => dimension.lane < roomDimension.lane), true);
+  assert.ok(roomDimension.lane < buildingDimension.lane);
   assert.equal(scene.closedSpaceLabels[0].ceilingHeightMm, 2800);
 });
 
@@ -792,7 +798,28 @@ test('closed-room second-wall outer snap stays on the rendered exterior edge acr
   });
 });
 
-test('shared-wall inset preview renders only the topology cursor crosshair across zoom levels', () => {
+test('distant vertex-axis snapping renders a guide from the closed-room corner to the preview endpoint', () => {
+  let draft = createClosedRectangleDraft();
+  const closedFloor = surveyGraph.getActiveFloor(draft);
+  const sourceGeometry = surveyGraph.buildWallRenderGeometry(closedFloor, closedFloor.walls[0]);
+  const targetX = sourceGeometry.outerStart.xMm;
+  const targetY = sourceGeometry.outerStart.yMm + 5402;
+
+  draft = surveyGraph.placeNewWallChainCursor(
+    surveyGraph.startWallSnap(draft),
+    { xMm: targetX + 1062, yMm: targetY }
+  );
+  draft = surveyGraph.startPreview(draft, { xMm: targetX + 70, yMm: targetY });
+
+  const scene = createScene(draft);
+  assert.ok(scene.alignmentSnapGuide);
+  assert.equal(scene.alignmentSnapGuide.type, 'vertex-axis');
+  assert.equal(scene.alignmentSnapGuide.startPoint.x, scene.alignmentSnapGuide.endPoint.x);
+  assert.notEqual(scene.alignmentSnapGuide.startPoint.y, scene.alignmentSnapGuide.endPoint.y);
+  assert.equal(scene.previewWall.endPoint.x, scene.alignmentSnapGuide.endPoint.x);
+});
+
+test('shared-wall inset preview keeps one cursor on the effective measurement endpoint across zoom levels', () => {
   const draft = createSharedWallInsetClosureDraft();
   const floor = surveyGraph.getActiveFloor(draft);
 
@@ -806,10 +833,8 @@ test('shared-wall inset preview renders only the topology cursor crosshair acros
 
     assert.ok(scene.cursor);
     assert.ok(scene.activeSegment);
-    assert.equal(
-      Math.round(Math.abs(scene.activeSegment.endPoint.y - scene.cursor.point.y)),
-      Math.round(200 * scale)
-    );
+    assert.deepEqual(scene.cursor.point, scene.activeSegment.measurementEndPoint);
+    assert.deepEqual(scene.activeSegment.measurementEndPoint, scene.activeSegment.endPoint);
 
     const activeAxes = recorder.strokeDetails.filter((detail) => (
       detail.strokeStyle === 'rgba(0, 126, 220, 0.92)'
@@ -828,13 +853,14 @@ test('shared-wall inset preview renders only the topology cursor crosshair acros
   });
 });
 
-test('window walls retain global exterior totals without a duplicate positioning chain', () => {
+test('window walls retain clear-room and building totals without a positioning chain', () => {
   let draft = createClosedRectangleDraft();
   const firstWallId = surveyGraph.getActiveFloor(draft).walls[0].id;
   draft = surveyGraph.addOpeningToWall(draft, firstWallId, 'window');
   const scene = createScene(draft);
 
-  assert.equal(scene.dimensions.filter((dimension) => dimension.kind === 'chain-total').length, 4);
+  assert.equal(scene.dimensions.filter((dimension) => dimension.kind === 'room-clear').length, 4);
+  assert.equal(scene.dimensions.filter((dimension) => dimension.kind === 'building-overall').length, 4);
   assert.equal(scene.dimensions.some((dimension) => dimension.kind === 'opening-segment'), false);
 });
 
@@ -1099,6 +1125,26 @@ test('cursor lens reuses the formal wall scene around the drag target', () => {
   )));
 });
 
+test('closed dimensions use quiet permanent labels instead of the live blue treatment', () => {
+  const scene = createScene(createClosedRectangleDraft());
+  const recorder = createRecordingContext();
+
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+
+  assert.equal(scene.dimensions.every((dimension) => dimension.visualRole === 'permanent'), true);
+  const dimensionTexts = recorder.texts.filter((detail) => (
+    scene.dimensions.some((dimension) => dimension.label === detail.text)
+  ));
+  assert.equal(dimensionTexts.length, scene.dimensions.length);
+  assert.ok(dimensionTexts.every((detail) => (
+    detail.fillStyle === '#374151' && /^(500|600) 12px sans-serif$/.test(detail.font)
+  )));
+  assert.ok(recorder.fillRectDetails.some((detail) => (
+    detail.fillStyle === 'rgba(255, 255, 255, 0.92)' && detail.height === 15
+  )));
+  assert.equal(dimensionTexts.some((detail) => detail.fillStyle === '#0077d7'), false);
+});
+
 test('viewport interaction transform matches a full scene rebuilt at the target viewport', () => {
   const rect = { width: 390, height: 650 };
   const baseViewport = { scale: 0.03, offsetX: 23, offsetY: -108 };
@@ -1164,7 +1210,7 @@ test('stationary canvas cursor uses the same green placement marker', () => {
   assert.ok(recorder.fillRectDetails.some((detail) => detail.fillStyle === 'rgba(34, 197, 94, 0.16)'));
 });
 
-test('stationary canvas cursor stays on the outer vertex selected by the drag lens', () => {
+test('stationary canvas cursor stays on the dragged working line after an outer snap', () => {
   const closedDraft = createClosedRectangleDraft();
   const floor = surveyGraph.getActiveFloor(closedDraft);
   const wall = floor.walls[0];
@@ -1188,7 +1234,8 @@ test('stationary canvas cursor stays on the outer vertex selected by the drag le
     x: scene.rect.width / 2 + viewport.offsetX + expectedMm.xMm * viewport.scale,
     y: scene.rect.height / 2 + viewport.offsetY + expectedMm.yMm * viewport.scale
   });
-  assert.deepEqual(expectedMm, geometry.outerStart);
+  assert.deepEqual(expectedMm, surveyGraph.getNode(snappedFloor, snappedFloor.session.anchorNodeId));
+  assert.notDeepEqual(expectedMm, geometry.outerStart);
 });
 
 test('an outer-corner continuation preview aligns its wall body with the adjacent wall', () => {
@@ -1211,8 +1258,88 @@ test('an outer-corner continuation preview aligns its wall body with the adjacen
   const renderedTopWall = scene.walls.find((wall) => wall.id === topWall.id);
 
   assert.equal(scene.previewWall.measurementSide, 'right');
+  assert.equal(scene.previewWall.measurementFace, 'inner');
+  assert.deepEqual(scene.previewWall.measurementStartPoint, scene.previewWall.startPoint);
+  assert.deepEqual(scene.previewWall.measurementEndPoint, scene.previewWall.endPoint);
+  assert.deepEqual(scene.cursor.point, scene.previewWall.measurementEndPoint);
   assert.equal(scene.previewWall.rawOuterStart.y, renderedTopWall.rawOuterStart.y);
   assert.equal(scene.previewWall.rawOuterEnd.y, renderedTopWall.rawOuterEnd.y);
+});
+
+test('an outer-corner committed wall keeps its redline and live dimension on the dragged working line', () => {
+  const closedDraft = createClosedRectangleDraft();
+  const floor = surveyGraph.getActiveFloor(closedDraft);
+  const topWall = floor.walls[0];
+  const outerCorner = surveyGraph.buildWallRenderGeometry(floor, topWall).outerStart;
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    outerCorner,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  let draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(closedDraft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: -2200, yMm: 0 }, 2000);
+  const scene = createScene(draft);
+  const activeWall = scene.walls.find((wall) => wall.isActiveMeasurement);
+  const liveDimension = scene.dimensions.find((dimension) => dimension.wall === activeWall);
+  const recorder = createRecordingContext();
+
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+
+  assert.ok(activeWall);
+  assert.equal(activeWall.measurementFace, 'inner');
+  assert.deepEqual(activeWall.measurementStartPoint, activeWall.startPoint);
+  assert.deepEqual(activeWall.measurementEndPoint, activeWall.endPoint);
+  assert.deepEqual(scene.cursor.point, activeWall.measurementEndPoint);
+  assert.equal(liveDimension.visualRole, 'live');
+  assert.equal(liveDimension.measurementFace, 'inner');
+  assert.equal(liveDimension.startY, 0);
+  assert.ok(recorder.strokeDetails.some((detail) => (
+    detail.strokeStyle === '#d71920' &&
+    detail.path.some((command) => (
+      command[0] === 'moveTo' &&
+      command[1] === activeWall.measurementStartPoint.x &&
+      command[2] === activeWall.measurementStartPoint.y
+    )) &&
+    detail.path.some((command) => (
+      command[0] === 'lineTo' &&
+      command[1] === activeWall.measurementEndPoint.x &&
+      command[2] === activeWall.measurementEndPoint.y
+    ))
+  )));
+});
+
+test('an outer-corner L chain keeps horizontal and vertical live dimensions on the dragged working line', () => {
+  const closedDraft = createClosedRectangleDraft();
+  const floor = surveyGraph.getActiveFloor(closedDraft);
+  const topWall = floor.walls[0];
+  const outerCorner = surveyGraph.buildWallRenderGeometry(floor, topWall).outerStart;
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    outerCorner,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  let draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(closedDraft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: -2200, yMm: 0 }, 2000);
+  draft = commitWall(draft, { xMm: -2200, yMm: 2000 }, 2000);
+  const scene = createScene(draft);
+  const activeWalls = scene.walls.filter((wall) => wall.isActiveMeasurement);
+  const liveDimensions = scene.dimensions.filter((dimension) => dimension.visualRole === 'live');
+
+  assert.equal(activeWalls.length, 2);
+  assert.equal(liveDimensions.length, 2);
+  assert.equal(activeWalls.every((wall) => wall.measurementFace === 'inner'), true);
+  assert.equal(liveDimensions.every((dimension) => dimension.measurementFace === 'inner'), true);
+  liveDimensions.forEach((dimension) => {
+    assert.equal(dimension.startY, 0);
+  });
 });
 
 test('snapping a new cursor onto a closed wall preserves the completed room render geometry', () => {

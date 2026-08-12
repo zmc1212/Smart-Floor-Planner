@@ -12,7 +12,7 @@ test('AI design result restores the V3 delivery layout with only live actions', 
   const config = JSON.parse(read('packages/ai-workflow/result/ai-design-result.json'));
 
   assert.match(wxml, /方案已生成，看看效果如何吧！/);
-  assert.match(wxml, /src="\/images\/page-ip-v3\/ai-result\.png"/);
+  assert.match(wxml, /src="\/packages\/ai-workflow\/assets\/page-ip-v3\/ai-result\.jpg"/);
   assert.match(wxml, /bindtap="previewResult"/);
   assert.match(wxml, /bindtap="saveResult"/);
   assert.match(wxml, /open-type="share"/);
@@ -25,10 +25,12 @@ test('AI design result restores the V3 delivery layout with only live actions', 
   assert.match(wxss, /\.result-delivery-character/);
   assert.match(wxss, /\.before-label \{ left: 28rpx; background:/);
   assert.match(wxss, /\.after-label \{ right: 28rpx; background:/);
-  assert.match(wxss, /min-height: 166rpx/);
+  assert.match(wxss, /min-height: 146rpx/);
   assert.match(wxss, /min-height: 100rpx/);
   assert.match(wxss, /\.summary-workflow-value/);
   assert.match(wxss, /\.bottom-action:first-child/);
+  assert.match(wxss, /min-height: 64rpx/);
+  assert.match(wxss, /height: 84rpx/);
   assert.equal(config.navigationBarTitleText, '设计成果');
 });
 

@@ -5,6 +5,8 @@ const STAGE_DEFINITIONS = [
   { key: 'handoff', label: '提案深化' },
 ];
 
+const PROJECT_FOLIO_COVER = '/images/ai-design-project-folio-cover-v1.png';
+
 const MODE_COPY = {
   reference_recreate: {
     title: '参考图复刻',
@@ -250,9 +252,10 @@ function chooseDefaultProject(projects, requestedFloorPlanId = '', requestedWork
 
 function resolveStageIndex(workflow) {
   if (!workflow) return 0;
-  if (['proposal_pack', 'lighting', 'tour_board', 'premium_board', 'cad_detail'].includes(workflow.currentStageKey)) return 3;
-  if (workflow.currentStageKey === 'soft_furnishing') return 2;
-  if (['base_render', 'perspective_upgrade'].includes(workflow.currentStageKey)) return 1;
+  const stageKey = workflow.currentStageKey || workflow.stageKey;
+  if (['handoff', 'proposal_pack', 'lighting', 'tour_board', 'premium_board', 'cad_detail'].includes(stageKey)) return 3;
+  if (['furnishing', 'soft_furnishing'].includes(stageKey)) return 2;
+  if (['style', 'base_render', 'perspective_upgrade'].includes(stageKey)) return 1;
   return 0;
 }
 
@@ -480,6 +483,7 @@ function buildExperienceState(data) {
 
 module.exports = {
   STAGE_DEFINITIONS,
+  PROJECT_FOLIO_COVER,
   MODE_COPY,
   ACTIVE_TASK_STATUSES,
   PROJECT_GROUP_DEFINITIONS,

@@ -5,7 +5,7 @@
       <text class="title">为家精选合适方案</text>
       <text class="subtitle">根据户型与偏好生成适合你的装修方向</text>
     </view>
-    <image class="recommendation-scene" src="/images/page-ip-v3/recommendations.png" mode="aspectFit"></image>
+    <image class="recommendation-scene" src="/packages/business/assets/recommendations/recommendations.png" mode="aspectFit"></image>
   </view>
 
   <view class="progress-section">

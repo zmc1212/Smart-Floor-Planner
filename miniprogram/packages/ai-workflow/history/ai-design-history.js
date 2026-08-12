@@ -8,6 +8,34 @@ const MODE_TITLES = {
   soft_furnishing: '软装深化',
 };
 
+function padTimePart(value) {
+  return String(value).padStart(2, '0');
+}
+
+function formatHistoryTime(value, nowValue = Date.now()) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const now = new Date(nowValue);
+  const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const itemDayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const dayDifference = Math.round((dayStart - itemDayStart) / 86400000);
+  const time = `${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}`;
+  if (dayDifference === 0) return `今天 ${time}`;
+  if (dayDifference === 1) return `昨天 ${time}`;
+  return `${padTimePart(date.getMonth() + 1)}-${padTimePart(date.getDate())} ${time}`;
+}
+
+function decorateHistoryItem(item) {
+  const processing = ['created', 'pending', 'processing'].includes(item.status);
+  return {
+    ...item,
+    modeTitle: MODE_TITLES[item.mode] || 'AI 设计',
+    timeLabel: formatHistoryTime(item.updatedAt || item.createdAt),
+    statusClass: processing ? 'processing' : item.status === 'failed' ? 'failed' : 'succeeded',
+    statusLabel: processing ? `生成中 ${item.progress}%` : item.status === 'failed' ? '生成失败' : '已完成',
+  };
+}
+
 Page({
   data: {
     items: [],
@@ -48,7 +76,7 @@ Page({
     this.setData({ loading: true });
     try {
       const result = await aiService.loadHistory(page, 12);
-      const pageItems = (result.data || []).map((item) => ({ ...item, modeTitle: MODE_TITLES[item.mode] || 'AI 设计' }));
+      const pageItems = (result.data || []).map(decorateHistoryItem);
       const items = reset ? pageItems : this.data.items.concat(pageItems);
       this.setData({
         items,
@@ -74,6 +102,9 @@ Page({
     }
     return items.filter((item) => item.status === filter);
   },
+
+  formatHistoryTime,
+  decorateHistoryItem,
 
   selectHistoryFilter(event) {
     const activeFilter = event.currentTarget.dataset.value || 'all';

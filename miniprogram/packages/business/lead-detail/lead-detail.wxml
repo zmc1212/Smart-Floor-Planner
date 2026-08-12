@@ -9,7 +9,7 @@
         <text class="status-pill">{{statusLabel}}</text>
       </view>
     </view>
-    <image class="lead-detail-scene" src="/images/page-ip-v3/lead-detail.png" mode="aspectFit"></image>
+    <image class="lead-detail-scene" src="/packages/business/assets/leads/lead-detail.png" mode="aspectFit"></image>
   </view>
   <view class="lead-stage-rail" wx:if="{{lead}}">
     <view class="lead-stage-item state-{{item.state}}" wx:for="{{stageRail}}" wx:key="label">

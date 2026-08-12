@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { createExteriorBoundarySegments, createExteriorDimensionPlan } from '@/lib/surveyDimensionPlan.js';
+import { createClosedDimensionPlan } from '@/lib/surveyDimensionPlan.js';
 import { createWallSolidPlan } from '@/lib/surveyWallSolidPlan.js';
 
 // @see react-best-practices: rendering-hoist-jsx — 静态常量提升到模块级别
@@ -870,8 +870,11 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
   const drawingScale = Math.max(bounds.width, bounds.height);
   const dimensionOffset = Math.max(160, drawingScale * 0.035);
   const dimensionTextSize = Math.max(76, Math.min(130, drawingScale / 40));
-  const exteriorBoundaryWalls = useMemo(() => createExteriorBoundarySegments({
-    tolerance: Math.max(12, drawingScale * 0.002),
+  const dimensionItems = useMemo(() => createClosedDimensionPlan({
+    baseGap: dimensionOffset * 0.28,
+    laneGap: dimensionTextSize * 1.45,
+    groupTolerance: Math.max(12, drawingScale * 0.002),
+    measurementUnitsPerCoordinate: 1,
     walls: wallBodies.map(({ wall, body }) => ({
       id: wall.id,
       start: { x: body.start.xMm, y: body.start.yMm },
@@ -883,12 +886,7 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
       outerEnd: { x: body.outerEnd.xMm, y: body.outerEnd.yMm },
     })),
     spaces: (floor?.spaces || []).filter((space) => space.closed),
-  }), [drawingScale, floor, wallBodies]);
-  const dimensionItems = useMemo(() => createExteriorDimensionPlan({
-    baseGap: dimensionOffset * 0.28,
-    laneGap: dimensionTextSize * 1.45,
-    groupTolerance: Math.max(12, drawingScale * 0.002),
-    walls: exteriorBoundaryWalls,
+    outerRings: wallSolidPlan.rings,
     openings: (floor?.openings || []).map((opening) => {
       const wall = (floor?.walls || []).find((item) => item.id === opening.wallId);
       const wallLength = wall ? getSurveyWallLengthMm(floor, wall) : 0;
@@ -902,7 +900,7 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
         end: center + width / 2,
       };
     }),
-  }).items, [dimensionOffset, dimensionTextSize, drawingScale, exteriorBoundaryWalls, floor]);
+  }).items, [dimensionOffset, dimensionTextSize, drawingScale, floor, wallBodies, wallSolidPlan]);
   const viewBounds = useMemo(() => {
     const textPadding = dimensionTextSize * 1.2;
     const points = dimensionItems.flatMap((dimension) => [
@@ -1146,7 +1144,7 @@ function SurveyPlanViewer({ planData, layoutData }: { planData: FloorPlanViewerD
                   <line x1="0" y1="0" x2={length} y2="0" />
                   <path d={`M 0 0 l ${arrowLength} ${-arrowHalfHeight} v ${arrowHalfHeight * 2} z`} fill="#374151" stroke="none" />
                   <path d={`M ${length} 0 l ${-arrowLength} ${-arrowHalfHeight} v ${arrowHalfHeight * 2} z`} fill="#374151" stroke="none" />
-                  <text x={length / 2} y="0" fill="#111" stroke="#f8f8f8" strokeWidth={textSize * 0.32} paintOrder="stroke" textAnchor="middle" dominantBaseline="middle" fontSize={textSize} fontWeight={dimension.kind === 'chain-total' ? "600" : "500"} transform={isUpsideDown ? `rotate(180 ${length / 2} 0)` : undefined}>{dimension.label}</text>
+                  <text x={length / 2} y="0" fill="#111" stroke="#f8f8f8" strokeWidth={textSize * 0.32} paintOrder="stroke" textAnchor="middle" dominantBaseline="middle" fontSize={textSize} fontWeight={dimension.kind === 'building-overall' || dimension.kind === 'chain-total' ? "600" : "500"} transform={isUpsideDown ? `rotate(180 ${length / 2} 0)` : undefined}>{dimension.label}</text>
                 </g>
               );
             })}

@@ -3,9 +3,9 @@ const { validateTaskInput } = require('../../../utils/aiDesignValidation.js');
 const { canAccessAIDesign, showAIDesignAccessDenied } = require('../../../utils/aiDesignAccess.js');
 
 const STYLE_PREVIEW_IMAGES = {
-  modern: '/images/page-ip-v3/ai-create-style-modern.jpg',
-  cream: '/images/page-ip-v3/ai-create-style-cream.jpg',
-  new_chinese: '/images/page-ip-v3/ai-create-style-chinese.jpg',
+  modern: '/packages/ai-workflow/assets/page-ip-v3/ai-create-style-modern.jpg',
+  cream: '/packages/ai-workflow/assets/page-ip-v3/ai-create-style-cream.jpg',
+  new_chinese: '/packages/ai-workflow/assets/page-ip-v3/ai-create-style-chinese.jpg',
 };
 
 function withStylePreviews(styles) {

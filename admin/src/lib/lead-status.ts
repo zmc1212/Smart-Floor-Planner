@@ -55,6 +55,11 @@ export function getLeadNextAction(status: string) {
   return '';
 }
 
+export function canDeleteLeadFloorPlan(status: string) {
+  const normalized = normalizeLeadStatus(status);
+  return !['designing', 'converted', 'closed'].includes(normalized);
+}
+
 export function resolveLeadStatusAfterFloorPlan(
   currentStatus: string,
   planStatus: string,

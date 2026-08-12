@@ -35,7 +35,7 @@
             <text>方案已生成，看看效果如何吧！</text>
           </view>
           <view class="result-delivery-character">
-            <image class="result-delivery-scene" src="/images/page-ip-v3/ai-result.png" mode="aspectFit"></image>
+            <image class="result-delivery-scene" src="/packages/ai-workflow/assets/page-ip-v3/ai-result.jpg" mode="aspectFit"></image>
           </view>
         </view>
 

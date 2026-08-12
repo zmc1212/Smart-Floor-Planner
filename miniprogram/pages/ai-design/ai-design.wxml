@@ -1,9 +1,9 @@
 <!--
 THESIS: Make the real customer project the AI navigation surface; refuse both a generic tool grid and a CRM lead list.
-OWN-WORLD: One emerald spatial project folio, warm white controls, formal wall geometry, restrained status color, and native business text.
+OWN-WORLD: One emerald spatial project folio, warm white controls, stage-guidance artwork, restrained status color, and native business text.
 STORY: Find a server-qualified project, understand whether work is running, resumable, failed, stale, ready, or blocked by surveying, then take its one truthful next action.
 FIRST VIEWPORT: Capsule-safe title and credits lead into an emerald project stage with progress and a truthful primary action; search, project cards, and the design-preparation entry follow in one continuous workbench.
-FORM: The project-switching bottom sheet groups a server-derived read model; result imagery and formal navigator geometry provide the project thumbnails without inventing data.
+FORM: The project-switching bottom sheet groups a server-derived read model; real result imagery takes priority, while a generic project folio guide keeps non-result projects legible without presenting wall geometry as an outcome.
 -->
 <view class="ai-page sfp-tab-page">
   <scroll-view
@@ -125,7 +125,7 @@ FORM: The project-switching bottom sheet groups a server-derived read model; res
               </swiper-item>
             </swiper>
             <view wx:else class="plan-default-scene">
-              <image class="plan-default-scene-image scene-image" src="/images/ai-design-project-hero-v5.jpg" mode="aspectFit"></image>
+              <image class="plan-default-scene-image scene-image" src="/images/generated-hero-bleed-v2.png" mode="aspectFill"></image>
             </view>
 
             <view class="project-hero-progress {{sourcePickerOpen ? 'picker-progress' : 'home-progress'}}">
@@ -238,6 +238,13 @@ FORM: The project-switching bottom sheet groups a server-derived read model; res
                 mode="aspectFill"
                 data-source-key="{{item.sourceKey}}"
                 binderror="onProjectPreviewError"
+              ></image>
+              <image
+                wx:elif="{{item.projectGroup !== 'needs_survey'}}"
+                class="space-scheme-image project-folio-cover"
+                src="{{projectFolioCover}}"
+                mode="aspectFill"
+                aria-hidden="true"
               ></image>
               <view wx:else class="space-room-art">
                 <view wx:if="{{item.navigatorView.walls.length}}" class="space-mini-plan">
@@ -487,11 +494,7 @@ FORM: The project-switching bottom sheet groups a server-derived read model; res
     <view class="sheet-head">
       <view>
         <text class="sheet-title">选择客户设计项目</text>
-        <text class="sheet-subtitle">按客户找到对应的量房与 AI 方案</text>
-      </view>
-      <view class="sheet-actions">
-        <text wx:if="{{selectedSource}}" class="sheet-clear" bindtap="clearSource" aria-role="button" aria-label="清除当前户型">清除</text>
-        <text class="sheet-close" bindtap="closeSourcePicker" aria-role="button" aria-label="关闭户型选择">关闭</text>
+        <text class="sheet-subtitle">按客户找到对应的正式量房</text>
       </view>
     </view>
     <view class="project-search-field">
@@ -530,7 +533,7 @@ FORM: The project-switching bottom sheet groups a server-derived read model; res
         aria-label="{{item.projectDisplayTitle}}，{{item.statusLabel}}，{{item.actionLabel}}"
       >
         <view class="project-source-preview project-source-preview-wide">
-          <view class="project-mini-plan">
+          <view wx:if="{{item.projectGroup === 'needs_survey'}}" class="project-mini-plan">
             <view
               wx:for="{{item.navigatorView.rooms}}"
               wx:for-item="room"
@@ -554,7 +557,7 @@ FORM: The project-switching bottom sheet groups a server-derived read model; res
             </view>
           </view>
           <image
-            wx:if="{{!item.previewLoadFailed && (item.latestGeneration.resultImageUrl || item.navigationPreview.imageUrl)}}"
+            wx:if="{{item.navigatorView.walls.length && !item.previewLoadFailed && (item.latestGeneration.resultImageUrl || item.navigationPreview.imageUrl)}}"
             class="project-source-result-half"
             src="{{item.latestGeneration.resultImageUrl || item.navigationPreview.imageUrl}}"
             mode="aspectFill"
@@ -569,16 +572,34 @@ FORM: The project-switching bottom sheet groups a server-derived read model; res
             data-source-key="{{item.sourceKey}}"
             binderror="onProjectPreviewError"
           ></image>
+          <image
+            wx:elif="{{item.projectGroup !== 'needs_survey'}}"
+            class="project-source-image project-folio-cover"
+            src="{{projectFolioCover}}"
+            mode="aspectFill"
+            aria-hidden="true"
+          ></image>
         </view>
-          <view class="source-item-main">
-            <text class="source-item-title">{{item.projectDisplayTitle}}</text>
-            <text class="source-item-meta">{{item.projectSubtitle}} · {{item.closedRoomCount}} 个闭合房间</text>
-            <text class="source-item-detail {{item.statusClass}}">{{item.statusLabel}}</text>
+        <view class="source-item-main">
+          <text class="source-item-title">{{item.projectDisplayTitle}}</text>
+          <text class="source-item-meta">{{item.projectSubtitle}} · {{item.closedRoomCount}} 个闭合空间</text>
+          <view wx:if="{{selectedSource && item.floorPlanId === selectedSource.floorPlanId}}" class="project-source-progress">
+            <text>{{item.projectProgress}}%</text>
+            <view class="project-source-progress-track">
+              <view class="project-source-progress-bar" style="width: {{item.projectProgress}}%"></view>
+            </view>
           </view>
-          <view class="project-source-action {{item.statusClass}}">
-            <text>{{selectedSource && item.floorPlanId === selectedSource.floorPlanId ? '当前项目' : item.actionLabel}}</text>
-            <view wx:if="{{selectedSource && item.floorPlanId === selectedSource.floorPlanId}}" class="project-selected-check"></view>
+          <text wx:else class="source-item-detail {{item.statusClass}}">{{item.statusLabel}}</text>
+        </view>
+        <view wx:if="{{selectedSource && item.floorPlanId === selectedSource.floorPlanId}}" class="project-source-current">
+          <text class="project-source-current-label">当前项目</text>
+          <view class="project-source-current-check">
+            <view class="project-selected-check"></view>
           </view>
+        </view>
+        <view wx:else class="project-source-action {{item.statusClass}}">
+          <text>{{item.actionLabel}}</text>
+        </view>
       </view>
       <view wx:if="{{!filteredProjects.length}}" class="project-picker-empty">
         <text class="project-picker-empty-title">{{projectEmptyCopy}}</text>

@@ -34,13 +34,17 @@ test('formal surveying uses a persistent state-following guide mode instead of a
   assert.match(editorScript, /this\.surveyGuideCanvasModel = \{/);
   assert.match(editorScript, /drawSurveyGuideCanvas\(\)/);
   assert.doesNotMatch(editorWxml, /<cover-view[\s\S]*class="survey-guide-overlay"/);
-  assert.match(editorWxml, /<block wx:if="\{\{cursorPlacementState === 'dragging' && !numberPadVisible\}\}">/);
+  assert.match(editorWxml, /class="cursor-lens \{\{cursorPlacementState === 'dragging' && cursorLensVisible \? 'cursor-lens-visible' : 'cursor-lens-hidden'\}\} \{\{cursorLensSnapType\}\}"/);
+  assert.doesNotMatch(editorWxml, /<cover-view wx:if="\{\{cursorLensVisible\}\}" class="cursor-lens/);
   assert.doesNotMatch(editorWxml, /<cover-view[\s\S]*class="cursor-drag-lens-layer"/);
   assert.match(editorWxml, /id="cursor-drag-control"/);
   assert.match(editorScript, /query\.select\('#cursor-drag-control'\)/);
   assert.doesNotMatch(editorScript, /query\.select\('\.cursor-fab-drop'\)/);
   assert.match(editorScript, /hasUsablePagePoint = pageX !== null && pageY !== null/);
   assert.match(editorScript, /const movedWithoutTouchMove = !wasDragging && dragWasPending/);
+  assert.match(editorScript, /const shouldUpdateLens = !wasDragging \|\| !this\.data\.cursorLensVisible \|\|/);
+  assert.match(editorWxss, /\.cursor-lens-visible\s*\{[\s\S]*opacity:\s*1;[\s\S]*visibility:\s*visible;/);
+  assert.match(editorWxss, /\.cursor-lens-hidden\s*\{[\s\S]*opacity:\s*0;[\s\S]*visibility:\s*hidden;/);
   assert.doesNotMatch(editorScript, /SURVEYING_ONBOARDING_STEPS|onOnboardingNext|onOnboardingSkip/);
   assert.doesNotMatch(editorWxml, /onboardingProgress|onboarding-next|survey-onboarding/);
   assert.doesNotMatch(editorWxml, /class="survey-guide-layer/);
@@ -195,7 +199,8 @@ test('Xiao K is the only explanatory callout while closure and measurement-side 
 
 test('closed-boundary first previews expose the current measurement-position action', () => {
   assert.match(editorScript, /isFirstMeasurePositionStage\(floor, session\)[\s\S]*canSetInitialMeasurementSide\(floor, session\)/);
-  assert.match(editorScript, /const startPoint = segment && segment\.startPoint/);
+  assert.match(editorScript, /const startPoint = segment && \(segment\.measurementStartPoint \|\| segment\.startPoint\)/);
+  assert.match(editorScript, /const endPoint = segment && \(segment\.measurementEndPoint \|\| segment\.endPoint\)/);
   assert.match(editorScript, /const measurementSide = segment && segment\.measurementSide/);
   assert.match(editorScript, /const currentSide = session\.previewPoint[\s\S]*session\.previewMeasurementSide \|\| session\.measurementSide/);
   assert.match(editorScript, /setMeasurementSide\(this\.draft, nextSide, activeWallId\)/);

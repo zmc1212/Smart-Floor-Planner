@@ -13,7 +13,7 @@
           <view class="lead-intake-title">让<text>家</text>更懂你</view>
           <view class="lead-intake-subtitle">完善资料，获得更精准的服务与方案</view>
         </view>
-        <image class="lead-intake-scene" src="/images/page-ip-v3/lead-form.png" mode="aspectFit"></image>
+        <image class="lead-intake-scene" src="/packages/business/assets/leads/lead-form.png" mode="aspectFit"></image>
       </view>
 
       <view class="recent-head">
@@ -93,7 +93,7 @@
           立即提交
         </button>
         <view class="privacy-note">
-          <image class="privacy-icon" src="/images/lead-privacy-icon.png" mode="widthFix"></image>
+          <image class="privacy-icon" src="/packages/business/assets/leads/lead-privacy-icon.png" mode="widthFix"></image>
           <text>我们将严格保护您的隐私信息，仅用于家装服务</text>
         </view>
       </view>

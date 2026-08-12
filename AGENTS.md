@@ -53,29 +53,33 @@ or a roadmap do not replace the current module inventory.
 
 ## Mandatory Design Approval Gate
 
+- `docs/visual-restoration-execution-checklist.md` and its Chinese mirror are
+  optional visual-QA aids. Until the user explicitly restores this requirement,
+  they must not impose an HTML-first prototype, pixel-similarity score, heatmap,
+  or implementation-authorization gate.
+- Before any Mini Program visual restoration, read
+  `docs/miniprogram-design-restoration-ledger.md` and its Chinese mirror. The
+  ledger is the canonical cross-session mapping between a runtime route, its
+  latest approved design file, visual-QA status, and whether the production
+  Mini Program UI has been restored.
+- Keep exactly one ledger row per runtime route and exactly one latest design
+  file in that row. A newer approved design replaces the prior source entry; do
+  not accumulate old design files in the canonical table. Update visual-QA and
+  production-restoration status only after the relevant work is complete.
+
 - Treat requests to design, redesign, restyle, explore, or propose an interface
   as design-only work unless the user explicitly asks for implementation in the
   same request.
-- For every Mini Program high-fidelity design restoration, the HTML-first gate
-  is mandatory even when the request uses implementation language such as
-  “还原设计图”. Before touching production code, create an independent HTML
-  comparison prototype only under
-  `design-references/html-prototypes/<surface>/`. During this gate do not modify
-  `miniprogram/`, Admin/API code, tests, or runtime module documentation. The
-  user may waive this gate only with an explicit instruction to skip the HTML
-  prototype and implement directly.
-- Apply the `impeccable` quality constraints to that prototype and use the
-  in-app Browser at the approved target viewport to iterate with screenshots,
-  overlays, and an element-by-element visual ledger. Record the design-source
-  mapping, masks/exclusions, scoring weights, target and actual bounds, and the
-  resulting evidence beside the HTML prototype. Do not use a flattened full-page
-  design screenshot as the HTML implementation or inflate the score by counting
-  masked/conflicting regions.
-- The HTML gate passes only when the documented composite visual similarity is
-  at least `90%`. Passing the score is not implementation approval: present the
-  HTML, final browser capture, overlay, and ledger to the user and obtain a new,
-  explicit Mini Program implementation approval before editing WXML/WXSS/JS,
-  production assets, APIs, tests, or runtime documentation.
+- HTML comparison prototypes, heatmaps, overlays, and similarity scores are
+  optional investigation tools, not a prerequisite for production UI work.
+  Use them only when the user explicitly requests them or when they materially
+  help diagnose a specific visual mismatch.
+- **No source-image slicing in product UI.** A reference screenshot, composite
+  design frame, or browser capture must never be divided into tiles, strips,
+  backgrounds, or component cuts and painted into an implementation. Only a
+  true standalone artwork asset explicitly supplied by the approved design may
+  be reused; it must not contain page layout, UI text, controls, or multiple
+  scene layers.
 - For design-only work, produce the design proposal, wireframe, mockup, visual
   reference, or review without modifying product code, styles, APIs, tests, or
   runtime module documentation.
@@ -84,6 +88,9 @@ or a roadmap do not replace the current module inventory.
   “按此方案落地” authorizes implementation.
 - Do not infer implementation approval from a request to redesign an interface,
   even when the requested design is technically straightforward.
+- A Mini Program visual-restoration handoff is incomplete until the English and
+  Chinese restoration ledgers contain the final current row for every affected
+  route.
 
 ## Mandatory UI Design Source Check
 
@@ -210,6 +217,15 @@ staged change; split unrelated work.
   OpenAI-compatible provider. Keep the same prompt, reference-image order, and
   output constraints across the fallback; report which path produced the final
   image without exposing credentials.
+- After every raster image generation, optimize the generated file before it is
+  retained or packaged. Any generated image shipped in `miniprogram/` must be
+  at most 300KB; preserve the asset path and visual composition, reduce colour
+  depth and dimensions only as needed, and verify the final encoded size before
+  handoff. Do not add a generated asset that exceeds this limit.
+- Do not add, generate, or reference WebP assets in the Mini Program runtime.
+  Use PNG for transparent or lossless artwork and JPEG for opaque photographs;
+  verify the packaged file signature and extension before handoff because WebP
+  may fail to render on target devices.
 - Use the iPhone 13 Pro `390x844` viewport as the primary visual QA baseline.
   Every Mini Program screen design, generated design reference, and visual QA
   capture must include the native WeChat top-right capsule safe area. Reserve

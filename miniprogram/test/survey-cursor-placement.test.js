@@ -183,6 +183,10 @@ test('dragging the fourth straight wall onto the start vertex snaps and closes d
   assert.deepEqual(previewFloor.session.previewPoint, { xMm: 0, yMm: 0 });
   assert.equal(previewFloor.session.closeCandidateType, 'start');
   assert.equal(previewFloor.session.alignmentSnapGuide.type, 'start-vertex-closure');
+  assert.equal(
+    surveyGraph.isDirectClosureHit(previewFloor, previewFloor.session, { xMm: 140, yMm: 80 }),
+    true
+  );
 
   const closedFloor = surveyGraph.getActiveFloor(surveyGraph.confirmClosure(draft));
   assert.equal(closedFloor.session.state, 'spaceClosed');
@@ -201,10 +205,45 @@ test('a projected close candidate does not become a direct start-vertex snap', (
   const floor = surveyGraph.getActiveFloor(draft);
   assert.deepEqual(floor.session.previewPoint, { xMm: 0, yMm: 100 });
   assert.equal(floor.session.closeCandidateType, 'start');
+  assert.equal(
+    surveyGraph.isDirectClosureHit(floor, floor.session, { xMm: 400, yMm: 100 }),
+    false
+  );
   assert.notEqual(
     floor.session.alignmentSnapGuide && floor.session.alignmentSnapGuide.type,
     'start-vertex-closure'
   );
+});
+
+test('dragging an adjacent straight room onto a shared-wall closure point closes directly', () => {
+  let draft = createClosedDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const startTarget = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 3000, yMm: 0 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    startTarget.pointMm,
+    startTarget
+  );
+  draft = commitWall(draft, { xMm: 6000, yMm: 0 }, 3000);
+  draft = commitWall(draft, { xMm: 6000, yMm: 2000 }, 2000);
+  draft = surveyGraph.startPreview(draft, { xMm: 3120, yMm: 2000 });
+
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.session.closeCandidateType, 'shared-wall');
+  assert.deepEqual(floor.session.closeCandidatePoint, { xMm: 3000, yMm: 2000 });
+  assert.deepEqual(floor.session.previewPoint, floor.session.closeCandidatePoint);
+  assert.equal(
+    surveyGraph.isDirectClosureHit(floor, floor.session, { xMm: 4200, yMm: 3100 }),
+    true
+  );
+
+  floor = surveyGraph.getActiveFloor(surveyGraph.confirmClosure(draft));
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 2);
+  assert.equal(floor.session.state, 'spaceClosed');
 });
 
 test('cursor placement prefers an existing vertex over a nearby wall segment', () => {
@@ -218,6 +257,41 @@ test('cursor placement prefers an existing vertex over a nearby wall segment', (
   assert.equal(target.type, 'vertex');
   assert.deepEqual(target.pointMm, { xMm: 0, yMm: 0 });
   assert.ok(target.nodeId);
+});
+
+test('cursor placement prefers the outer corner inside a closed wall body', () => {
+  const floor = surveyGraph.getActiveFloor(createClosedDraft());
+  const wall = floor.walls[0];
+  const node = surveyGraph.getNode(floor, wall.startNodeId);
+  const geometry = surveyGraph.buildWallRenderGeometry(floor, wall);
+  const wallBodyPoint = {
+    xMm: Math.round(node.xMm + (geometry.outerStart.xMm - node.xMm) * 0.25),
+    yMm: Math.round(node.yMm + (geometry.outerStart.yMm - node.yMm) * 0.25)
+  };
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    wallBodyPoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+
+  assert.equal(target.type, 'vertex');
+  assert.equal(target.snapLine, 'outer');
+  assert.equal(target.nodeId, wall.startNodeId);
+  assert.deepEqual(target.pointMm, geometry.outerStart);
+
+  const roomInteriorPoint = {
+    xMm: Math.round(node.xMm - (geometry.outerStart.xMm - node.xMm) * 0.25),
+    yMm: Math.round(node.yMm - (geometry.outerStart.yMm - node.yMm) * 0.25)
+  };
+  const innerTarget = surveyGraph.getCursorPlacementTarget(
+    floor,
+    roomInteriorPoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  assert.equal(innerTarget.type, 'vertex');
+  assert.equal(innerTarget.snapLine, undefined);
+  assert.equal(innerTarget.nodeId, wall.startNodeId);
+  assert.deepEqual(innerTarget.pointMm, { xMm: node.xMm, yMm: node.yMm });
 });
 
 test('cursor placement falls back to a wall point outside vertex tolerance', () => {
@@ -283,7 +357,7 @@ test('cursor placement snaps a visible mitered outer corner to its topology node
   assert.equal(nextFloor.session.activeSpaceSharedStartT, 0);
 });
 
-test('an outer-corner drop keeps the stationary cursor on the visible outer vertex', () => {
+test('an outer-corner drop keeps the stationary cursor on its working topology line', () => {
   const draft = createClosedDraft();
   const floor = surveyGraph.getActiveFloor(draft);
   const wall = floor.walls[0];
@@ -302,8 +376,8 @@ test('an outer-corner drop keeps the stationary cursor on the visible outer vert
   const topologyAnchor = surveyGraph.getNode(snappedFloor, snappedFloor.session.anchorNodeId);
   const cursorPoint = surveyGraph.getCursorDisplayPoint(snappedFloor, snappedFloor.session);
 
-  assert.notDeepEqual(cursorPoint, topologyAnchor);
-  assert.deepEqual(cursorPoint, geometry.outerStart);
+  assert.deepEqual(cursorPoint, topologyAnchor);
+  assert.notDeepEqual(cursorPoint, geometry.outerStart);
   assert.equal(snappedFloor.session.activeSpaceSharedSnapLine, 'outer');
 });
 
@@ -374,6 +448,112 @@ test('cursor placement away from walls returns a free target without mutating th
   assert.deepEqual(target.pointMm, { xMm: 1500, yMm: 1000 });
   assert.equal(floor.nodes.length, nodeCount);
   assert.equal(floor.walls.length, wallCount);
+});
+
+test('cursor placement snaps to a distant closed-room vertex axis without joining its topology', () => {
+  const draft = createClosedDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const sourceWall = floor.walls[0];
+  const sourceGeometry = surveyGraph.buildWallRenderGeometry(floor, sourceWall);
+  const rawPoint = {
+    xMm: sourceGeometry.outerStart.xMm + 80,
+    yMm: sourceGeometry.outerStart.yMm + 5402
+  };
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    rawPoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+
+  assert.equal(target.type, 'alignment');
+  assert.equal(target.axis, 'x');
+  assert.equal(target.snapLine, 'outer');
+  assert.equal(target.referencePoint.xMm, sourceGeometry.outerStart.xMm);
+  assert.ok(target.referencePoint.yMm < rawPoint.yMm);
+  assert.deepEqual(target.pointMm, {
+    xMm: sourceGeometry.outerStart.xMm,
+    yMm: rawPoint.yMm
+  });
+
+  const next = surveyGraph.placeNewWallChainCursor(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm
+  );
+  const nextFloor = surveyGraph.getActiveFloor(next);
+  const placedNode = surveyGraph.getNode(nextFloor, nextFloor.session.anchorNodeId);
+  assert.notEqual(placedNode.id, target.nodeId);
+  assert.deepEqual(
+    { xMm: placedNode.xMm, yMm: placedNode.yMm },
+    target.pointMm
+  );
+});
+
+test('straight-wall preview snaps to a distant vertex axis and keeps it after length confirmation', () => {
+  let draft = createClosedDraft();
+  const closedFloor = surveyGraph.getActiveFloor(draft);
+  const targetWall = closedFloor.walls[0];
+  const targetGeometry = surveyGraph.buildWallRenderGeometry(closedFloor, targetWall);
+  const targetX = targetGeometry.outerStart.xMm;
+
+  draft = surveyGraph.placeNewWallChainCursor(
+    surveyGraph.startWallSnap(draft),
+    { xMm: targetX + 1062, yMm: targetGeometry.outerStart.yMm + 5402 }
+  );
+  draft = surveyGraph.startPreview(draft, {
+    xMm: targetX + 70,
+    yMm: targetGeometry.outerStart.yMm + 5402
+  });
+
+  let floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.session.previewPoint.xMm, targetX);
+  assert.equal(floor.session.alignmentSnapGuide.type, 'vertex-axis');
+  assert.equal(floor.session.alignmentSnapGuide.snapLine, 'outer');
+  assert.equal(floor.session.alignmentSnapGuide.referencePoint.xMm, targetGeometry.outerStart.xMm);
+  assert.ok(floor.session.alignmentSnapGuide.referencePoint.yMm < floor.session.previewPoint.yMm);
+
+  draft = surveyGraph.commitPreviewLength(
+    draft,
+    floor.session.previewLengthMm,
+    'manual'
+  );
+  floor = surveyGraph.getActiveFloor(draft);
+  const wall = floor.walls[floor.walls.length - 1];
+  const end = surveyGraph.getNode(floor, wall.endNodeId);
+  assert.equal(end.xMm, targetX);
+  assert.equal(end.yMm, targetGeometry.outerStart.yMm + 5402);
+});
+
+test('a later wall from a shared-boundary start aligns to another distant closed-room vertex axis', () => {
+  let draft = createClosedDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const bottomWall = floor.walls[2];
+  const bottomStart = surveyGraph.getNode(floor, bottomWall.startNodeId);
+  const bottomEnd = surveyGraph.getNode(floor, bottomWall.endNodeId);
+  const midpoint = {
+    xMm: Math.round((bottomStart.xMm + bottomEnd.xMm) / 2),
+    yMm: Math.round((bottomStart.yMm + bottomEnd.yMm) / 2)
+  };
+  const sharedTarget = surveyGraph.getCursorPlacementTarget(
+    floor,
+    midpoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    sharedTarget.pointMm,
+    sharedTarget
+  );
+  draft = commitWall(draft, { xMm: midpoint.xMm, yMm: midpoint.yMm + 5402 }, 5402);
+  floor = surveyGraph.getActiveFloor(draft);
+  const anchor = surveyGraph.getNode(floor, floor.session.anchorNodeId);
+  draft = surveyGraph.startPreview(draft, { xMm: 80, yMm: anchor.yMm });
+
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.session.previewPoint.xMm, 0);
+  assert.equal(floor.session.previewPoint.yMm, anchor.yMm);
+  assert.equal(floor.session.alignmentSnapGuide.type, 'vertex-axis');
+  assert.equal(floor.session.alignmentSnapGuide.snapLine, 'inner');
+  assert.deepEqual(floor.session.alignmentSnapGuide.referencePoint, { xMm: 0, yMm: 2000 });
 });
 
 test('free cursor placement starts a separate wall chain without changing completed geometry', () => {

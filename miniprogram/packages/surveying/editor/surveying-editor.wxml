@@ -241,18 +241,18 @@
   <!-- ══════════════════════════════════════════════ -->
   <!--  拖拽放置光标的纯展示层（不接收触摸，事件始终由底部按钮承接） -->
   <!-- ══════════════════════════════════════════════ -->
-  <block wx:if="{{cursorPlacementState === 'dragging' && !numberPadVisible}}">
-    <cover-view wx:if="{{cursorLensVisible}}" class="cursor-lens {{cursorLensSnapType}}">
-      <cover-view class="cursor-lens-grid">
-        <cover-view class="cursor-lens-cross horizontal"></cover-view>
-        <cover-view class="cursor-lens-cross vertical"></cover-view>
-      </cover-view>
-      <cover-view class="cursor-lens-meta">
-        <cover-view>{{cursorLensSnapLabel}}</cover-view>
-        <cover-view>{{cursorLensXLabel}} / {{cursorLensYLabel}}</cover-view>
-      </cover-view>
+  <cover-view
+    class="cursor-lens {{cursorPlacementState === 'dragging' && cursorLensVisible ? 'cursor-lens-visible' : 'cursor-lens-hidden'}} {{cursorLensSnapType}}"
+  >
+    <cover-view class="cursor-lens-grid">
+      <cover-view class="cursor-lens-cross horizontal"></cover-view>
+      <cover-view class="cursor-lens-cross vertical"></cover-view>
     </cover-view>
-  </block>
+    <cover-view class="cursor-lens-meta">
+      <cover-view>{{cursorLensSnapLabel}}</cover-view>
+      <cover-view>{{cursorLensXLabel}} / {{cursorLensYLabel}}</cover-view>
+    </cover-view>
+  </cover-view>
 
 
   <!-- ══════════════════════════════════════════════ -->

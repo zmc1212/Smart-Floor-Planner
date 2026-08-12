@@ -32,6 +32,13 @@ test('a placed cursor keeps its guide visibility when the canvas render data is 
   assert.match(editorScript, /return \{\s*cursorVisible,\s*guideVisible,/);
 });
 
+test('wall dragging starts from the rendered cursor face instead of its hidden topology node', () => {
+  assert.match(
+    editorScript,
+    /const cursorSource = session\.state === 'awaitingLength' && session\.previewPoint[\s\S]*?surveyGraph\.getCursorDisplayPoint\(floor, session\) \|\| anchor/
+  );
+});
+
 test('wall-snapped cursor drops clear a late transient frame after the formal canvas redraw', () => {
   assert.match(
     editorScript,
@@ -46,9 +53,9 @@ test('viewport gestures render on the primary canvas instead of the cursor overl
   );
 });
 
-test('releasing a straight-wall drag snapped to the start vertex closes immediately', () => {
+test('releasing a straight-wall drag on any valid closure target closes immediately', () => {
   assert.match(
     editorScript,
-    /session\.alignmentSnapGuide\.type === 'start-vertex-closure'[\s\S]*?surveyGraph\.confirmClosure\(this\.draft\)[\s\S]*?已吸附起点并闭合/
+    /surveyGraph\.isDirectClosureHit\(floor, session, releasePointMm\)[\s\S]*?surveyGraph\.confirmClosure\(this\.draft\)[\s\S]*?已吸附闭合点并闭合/
   );
 });
