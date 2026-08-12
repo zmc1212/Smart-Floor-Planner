@@ -344,6 +344,7 @@ Page({
     manualActionSubtitle: '输入当前墙',
     cursorActionSubtitle: '保留已测墙',
     cursorPlacementState: 'placed',
+    cursorLensActive: false,
     dragCursorX: 0,
     dragCursorY: 0,
     cursorLensVisible: false,
@@ -425,7 +426,7 @@ Page({
       : this.loadFormalDraft(leadId, context.surveyGraph, this.formalDraftKey);
     this.draft = restoredDraft || surveyGraph.resetCursor(surveyGraph.createSurveyDraft());
     const initialFloor = surveyGraph.getActiveFloor(this.draft);
-    this.cursorPlacementState = initialFloor && initialFloor.session && initialFloor.session.state === 'spaceClosed'
+    this.cursorPlacementState = initialFloor && initialFloor.session && initialFloor.session.state === 'wallSnapPending'
       ? 'awaitingWallDrop'
       : 'placed';
     this.history = { undo: [], redo: [] };
@@ -440,6 +441,7 @@ Page({
     this.cursorDragCanvasDpr = sysInfo.pixelRatio || 1;
     this.cursorDragCanvasPoint = null;
     this.cursorDragClientPoint = null;
+    this.cursorDragCandidate = null;
     this.cursorDragStartPoint = null;
     this.cursorDragAnimationFrame = null;
     this.transientCanvasMode = null;
@@ -448,6 +450,7 @@ Page({
     this.viewportInteractionAwaitingHandoff = false;
     this.cursorLensLastUpdateAt = 0;
     this.cursorLensScene = null;
+    this.canvasCursorLensActive = false;
     this.rpxScale = rpxScale;
     this.cursorLensRect = {
       left: 24 * rpxScale + 8,
@@ -1425,7 +1428,7 @@ Page({
 
     const render = () => {
       this.cursorDragAnimationFrame = null;
-      if (!this.cursorDragCanvasPoint || this.cursorPlacementState !== 'dragging') return;
+      if (!this.cursorDragCanvasPoint || !this.isCursorLensActive()) return;
       surveyCanvasRenderer.drawDraggingCursor(
         this.cursorDragCtx,
         { width: this.canvasRect.width, height: this.canvasRect.height },
@@ -3195,7 +3198,7 @@ Page({
   resolveCursorPlacementState(floor, session) {
     if (this.cursorPlacementState === 'dragging') return 'dragging';
     if (!floor || !session) return 'placed';
-    if (session.state === 'spaceClosed' || session.state === 'wallSnapPending') {
+    if (session.state === 'wallSnapPending') {
       return 'awaitingWallDrop';
     }
     return this.cursorPlacementState === 'awaitingWallDrop' ? 'awaitingWallDrop' : 'placed';
@@ -3212,7 +3215,7 @@ Page({
 
     this.cursorPlacementState = 'awaitingWallDrop';
     this.applyDraft(surveyGraph.startWallSnap(this.draft), { persist: true });
-    wx.showToast({ title: '请拖动光标到目标位置', icon: 'none' });
+    wx.showToast({ title: '请拖动光标到墙体', icon: 'none' });
   },
 
   buildGuideSnapPoint(floor, session, rawMm) {
@@ -3367,6 +3370,36 @@ Page({
     };
   },
 
+  isCursorLensActive() {
+    return this.cursorPlacementState === 'dragging' || this.canvasCursorLensActive;
+  },
+
+  updateCanvasCursorLens(clientPoint, pointMm) {
+    this.canvasCursorLensActive = true;
+    const now = Date.now();
+    const shouldUpdateLens = !this.data.cursorLensVisible ||
+      now - this.cursorLensLastUpdateAt >= 80;
+    const lensData = shouldUpdateLens
+      ? this.buildCursorLens(pointMm, 'free')
+      : null;
+    this.queueCursorDragCanvas(clientPoint);
+    if (!lensData) return;
+
+    this.cursorLensLastUpdateAt = now;
+    this.setData(Object.assign({ cursorLensActive: true }, lensData));
+  },
+
+  clearCanvasCursorLens() {
+    if (!this.canvasCursorLensActive) return;
+    this.canvasCursorLensActive = false;
+    this.cursorLensLastUpdateAt = 0;
+    this.clearCursorDragCanvas();
+    this.setData({
+      cursorLensActive: false,
+      cursorLensVisible: false
+    });
+  },
+
   resolveCursorDragPoint(clientPoint, includeLens) {
     const candidate = this.getCursorPlacementCandidate(clientPoint);
     // 自由放置必须严格跟随手指。只有真正命中顶点或墙体时，才把
@@ -3377,6 +3410,13 @@ Page({
     const displayPoint = isSnapped && candidate.pointMm
       ? this.mmToClientPoint(candidate.pointMm)
       : clientPoint;
+    // touchend 的 cover-view 坐标可能回报手指释放前的原始位置。提交时
+    // 必须沿用用户最后看到的吸附候选，否则外边顶点会被重新判成内边。
+    this.cursorDragCandidate = isSnapped && candidate.pointMm
+      ? Object.assign({}, candidate, {
+        pointMm: { xMm: candidate.pointMm.xMm, yMm: candidate.pointMm.yMm }
+      })
+      : null;
     this.cursorDragClientPoint = { x: displayPoint.x, y: displayPoint.y };
     const dragData = {
       dragCursorX: displayPoint.x,
@@ -3708,7 +3748,7 @@ Page({
 
     wx.showModal({
       title: '删除墙体',
-      content: '将删除当前墙体及其上的门窗，已闭合空间会转回未闭合状态。',
+      content: '将删除当前墙体及其上的门窗。若它是两个闭合空间的共用墙，空间将自动合并；否则相关空间会转回未闭合状态。',
       confirmText: '删除',
       confirmColor: '#d71920',
       success: (res) => {
@@ -4204,6 +4244,7 @@ Page({
       const _session = _floor.session;
       const snappedMm = this.buildGuideSnapPoint(_floor, _session, currentMm);
       this.draft = surveyGraph.startPreview(this.draft, snappedMm);
+      this.updateCanvasCursorLens(point, snappedMm);
       this.syncFromDraft();
       return;
     }
@@ -4237,6 +4278,9 @@ Page({
     const historyDraft = touchState.historyDraft;
 
     this.touchState = null;
+    if (movedWall) {
+      this.clearCanvasCursorLens();
+    }
 
     if (lockTap) {
       const nextDraft = surveyGraph.setFixedNode(this.draft, touchState.lockHit.nodeId);
@@ -4250,13 +4294,16 @@ Page({
     }
 
     if (touchState.mode === 'wallSnapPending') {
-      const wallHit = this.hitTestWallAtClientPoint(touchState.startPoint);
-      if (!wallHit || !wallHit.wallId) {
-        wx.showToast({ title: '请点击已有墙体附近', icon: 'none' });
+      const candidate = this.getCursorPlacementCandidate(touchState.startPoint);
+      if (!candidate || !candidate.pointMm || (
+        candidate.type !== 'vertex' && candidate.type !== 'wall'
+      )) {
+        wx.showToast({ title: '请选择已有墙体或顶点', icon: 'none' });
         return;
       }
-      const pointMm = this.canvasPointToMm(touchState.startPoint);
-      const nextDraft = surveyGraph.snapCursorToWall(this.draft, pointMm);
+      // Canvas tapping must preserve the same inner/outer vertex target as
+      // the bottom cursor drag path rather than reclassifying raw coordinates.
+      const nextDraft = surveyGraph.snapCursorToWall(this.draft, candidate.pointMm, candidate);
       this.applyDraft(nextDraft, {
         recordHistory: true,
         extraData: { numberPadVisible: false }
@@ -4596,6 +4643,7 @@ Page({
     if (!touch) return;
     this.cursorDragTouchId = touch.identifier === undefined ? null : touch.identifier;
     this.cursorDragStartPoint = this.getCursorDragTouch(e, false);
+    this.cursorDragCandidate = null;
     this.cursorLensLastUpdateAt = 0;
     this.clearCursorDragCanvas();
     this.refreshCursorControlRect();
@@ -4622,6 +4670,7 @@ Page({
       this.cursorLensLastUpdateAt = now;
       this.setData(Object.assign({
         cursorPlacementState: 'dragging',
+        cursorLensActive: true,
         topMetricVisible: false,
         topMetricLength: '',
         topMetricAngle: ''
@@ -4646,12 +4695,14 @@ Page({
     this.cursorDragStartPoint = null;
     if (!wasDragging && !movedWithoutTouchMove) return;
     this.clearCursorDragCanvas();
-    const candidate = this.getCursorPlacementCandidate(releasePoint);
+    const candidate = this.cursorDragCandidate || this.getCursorPlacementCandidate(releasePoint);
+    this.cursorDragCandidate = null;
 
     if (!candidate || candidate.type === 'none' || !candidate.pointMm) {
       this.cursorPlacementState = 'awaitingWallDrop';
       this.setData({
         cursorPlacementState: 'awaitingWallDrop',
+        cursorLensActive: false,
         cursorLensVisible: false
       }, () => this.drawSurveyCanvas());
       wx.showToast({ title: '光标放置失败，请重试', icon: 'none' });
@@ -4666,6 +4717,7 @@ Page({
       recordHistory: true,
       extraData: {
         cursorPlacementState: 'placed',
+        cursorLensActive: false,
         cursorLensVisible: false,
         numberPadVisible: false
       }
@@ -4690,6 +4742,7 @@ Page({
     this.cursorPlacementState = 'awaitingWallDrop';
     this.setData({
       cursorPlacementState: 'awaitingWallDrop',
+      cursorLensActive: false,
       cursorLensVisible: false
     }, () => this.drawSurveyCanvas());
   },

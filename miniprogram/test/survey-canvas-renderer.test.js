@@ -126,6 +126,70 @@ function createAlignedAdjacentRoomDraft() {
   return surveyGraph.confirmClosure(draft);
 }
 
+function createProtectedInnerCornerAdjacentRoomDraft() {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 2205, yMm: 0 }, 2205);
+  draft = commitWall(draft, { xMm: 2205, yMm: 2901 }, 2901);
+  draft = commitWall(draft, { xMm: 0, yMm: 2901 }, 2205);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 2901);
+  draft = surveyGraph.confirmClosure(draft);
+
+  const floor = surveyGraph.getActiveFloor(draft);
+  const sharedWall = floor.walls[3];
+  const innerCorner = surveyGraph.getNode(floor, sharedWall.startNodeId);
+  const outerCorner = surveyGraph.buildWallRenderGeometry(floor, sharedWall).outerStart;
+  const pointer = {
+    xMm: Math.round(innerCorner.xMm + (outerCorner.xMm - innerCorner.xMm) * 0.6),
+    yMm: Math.round(innerCorner.yMm + (outerCorner.yMm - innerCorner.yMm) * 0.6)
+  };
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    pointer,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  assert.equal(target.nodeId, sharedWall.startNodeId);
+  assert.equal(target.snapLine, undefined);
+
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: -2834, yMm: 2901 }, 2834);
+  draft = commitWall(draft, { xMm: -2834, yMm: 0 }, 2901);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 2834);
+  return surveyGraph.confirmClosure(draft);
+}
+
+function createOuterFaceAdjacentRoomDraft() {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 1723, yMm: 0 }, 1723);
+  draft = commitWall(draft, { xMm: 1723, yMm: 3827 }, 3827);
+  draft = commitWall(draft, { xMm: 0, yMm: 3827 }, 1723);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 3827);
+  draft = surveyGraph.confirmClosure(draft);
+
+  const floor = surveyGraph.getActiveFloor(draft);
+  const sharedWall = floor.walls[3];
+  const geometry = surveyGraph.buildWallRenderGeometry(floor, sharedWall);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    geometry.outerStart,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: -2449, yMm: 3827 }, 2249);
+  draft = commitWall(draft, { xMm: -2449, yMm: 0 }, 3827);
+  draft = commitWall(draft, { xMm: -200, yMm: 0 }, 2249);
+  return surveyGraph.confirmClosure(draft);
+}
+
 function createResetCursorMergeClosureDraft() {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 3000, yMm: 0 });
@@ -562,14 +626,14 @@ test('a shared-corner preview renders the automatically inferred measurement sid
   const scene = createScene(draft);
 
   assert.equal(floor.session.previewMeasurementSide, 'right');
-  assert.equal(floor.session.previewMeasurementStartInsetMm, 200);
-  assert.equal(floor.session.previewLengthMm, 2800);
+  assert.equal(floor.session.previewMeasurementStartInsetMm, 0);
+  assert.equal(floor.session.previewLengthMm, 3000);
   assert.equal(floor.session.closeCandidateType, '');
   assert.equal(scene.previewWall.measurementSide, 'right');
-  assert.equal(scene.previewWall.lengthMm, 2800);
+  assert.equal(scene.previewWall.lengthMm, 3000);
   assert.equal(scene.activeSegment.measurementSide, 'right');
   assert.equal(scene.closureGuide, null);
-  assert.equal(scene.previewWall.start.yMm > scene.previewWall.topologyStart.yMm, true);
+  assert.equal(scene.previewWall.start.yMm, scene.previewWall.topologyStart.yMm);
 });
 
 test('closed room shell stays outside the boundary for either initial measurement side', () => {
@@ -720,9 +784,11 @@ test('aligned adjacent rooms share one wall body and derive independent net-face
   assert.equal(scene.closedSpaceFills.every((fill) => fill.points.length === 4), true);
 
   const plans = closedSpaces.map((space) => surveyGraph.buildSpaceDimensionPlan(floor, space));
-  plans.forEach((plan) => {
+  plans.forEach((plan, index) => {
     assert.deepEqual(plan.inner, { widthMm: 2230, heightMm: 3182, areaMm2: 7095860 });
-    assert.deepEqual(plan.outer, { widthMm: 2630, heightMm: 3582, areaMm2: 9420660 });
+    assert.deepEqual(plan.outer, index === 0
+      ? { widthMm: 2630, heightMm: 3582, areaMm2: 9420660 }
+      : { widthMm: 2630, heightMm: 3182, areaMm2: 8368660 });
     assert.equal(plan.wallThicknessSegments.length, 4);
     assert.equal(plan.wallThicknessSegments.every((item) => (
       item.kind === 'wall-thickness' && item.lengthMm === 200
@@ -736,8 +802,8 @@ test('aligned adjacent rooms share one wall body and derive independent net-face
     Math.min(...secondRawBoundary.map((point) => point.xMm));
   const rawHeight = Math.max(...secondRawBoundary.map((point) => point.yMm)) -
     Math.min(...secondRawBoundary.map((point) => point.yMm));
-  assert.equal(rawWidth * rawHeight, 7541860);
-  assert.notEqual(plans[1].inner.areaMm2, rawWidth * rawHeight);
+  assert.equal(rawWidth * rawHeight, 7095860);
+  assert.equal(plans[1].inner.areaMm2, rawWidth * rawHeight);
 
   const verticalExteriorFaces = scene.walls.filter((wall) => (
     Math.abs(wall.topologyStart.xMm - wall.topologyEnd.xMm) <= 1 &&
@@ -750,6 +816,183 @@ test('aligned adjacent rooms share one wall body and derive independent net-face
   assert.equal(Object.keys(exteriorFaceCounts).length, 2);
   assert.deepEqual(Object.values(exteriorFaceCounts).sort((a, b) => a - b), [2, 2]);
   assert.equal(scene.spaceDimensionPlans.length, 2);
+});
+
+test('2205/2901/2834 inner-corner closure keeps its visible lower-wall endpoint after closing and deleting', () => {
+  const draft = createProtectedInnerCornerAdjacentRoomDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const firstSpace = floor.spaces[0];
+  const secondSpace = floor.spaces[1];
+  const newWallIds = secondSpace.wallIds.filter((wallId) => firstSpace.wallIds.indexOf(wallId) === -1);
+  const lowerWallId = newWallIds[0];
+  const upperWallId = newWallIds[2];
+  const scene = createScene(draft);
+  const lowerWallBefore = scene.walls.find((wall) => wall.id === lowerWallId);
+  const dimensionPlan = surveyGraph.buildSpaceDimensionPlan(floor, secondSpace);
+
+  assert.deepEqual(dimensionPlan.inner, {
+    widthMm: 2834,
+    heightMm: 2901,
+    areaMm2: 8221434
+  });
+  assert.equal(secondSpace.wallFaceOverrides[firstSpace.wallIds[3]], 'topology');
+  assert.equal(newWallIds.every((wallId) => {
+    const wall = surveyGraph.getWall(floor, wallId);
+    return (wall.measurementStartInsetMm || 0) === 0 &&
+      (wall.measurementEndInsetMm || 0) === 0;
+  }), true);
+  assert.deepEqual(
+    scene.dimensions
+      .filter((dimension) => dimension.kind === 'building-overall')
+      .map((dimension) => dimension.label),
+    ['3301', '5439', '3301', '5439']
+  );
+  assert.equal(scene.wallFaceOverrideBoundaries.length, 1);
+  const selectedBoundary = scene.wallFaceOverrideBoundaries[0].points;
+  assert.deepEqual(selectedBoundary[0], lowerWallBefore.startPoint);
+  assert.deepEqual(selectedBoundary[1], lowerWallBefore.endPoint);
+
+  const recorder = createRecordingContext();
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+  assert.equal(recorder.strokeDetails.some((detail) => (
+    detail.strokeStyle === '#1f1f1f' &&
+    detail.path.some((command, index, path) => (
+      index > 0 && command[0] === 'lineTo' && path[index - 1][0] === 'moveTo' &&
+      path[index - 1][1] === lowerWallBefore.startPoint.x &&
+      path[index - 1][2] === lowerWallBefore.startPoint.y &&
+      command[1] === lowerWallBefore.endPoint.x &&
+      command[2] === lowerWallBefore.endPoint.y
+    ))
+  )), true);
+
+  const openedDraft = surveyGraph.deleteWall(draft, upperWallId);
+  const lowerWallAfter = createScene(openedDraft).walls.find((wall) => wall.id === lowerWallId);
+  const selectWallGeometry = (wall) => ({
+    start: wall.start,
+    end: wall.end,
+    topologyStart: wall.topologyStart,
+    topologyEnd: wall.topologyEnd,
+    rawOuterStart: wall.rawOuterStart,
+    rawOuterEnd: wall.rawOuterEnd
+  });
+  assert.deepEqual(selectWallGeometry(lowerWallAfter), selectWallGeometry(lowerWallBefore));
+});
+
+test('deleting the wall shared by two closed rooms merges their fill, label, and net area', () => {
+  const draft = createAlignedAdjacentRoomDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const wallUseCounts = {};
+  floor.spaces.filter((space) => space.closed).forEach((space) => {
+    space.wallIds.forEach((wallId) => {
+      wallUseCounts[wallId] = (wallUseCounts[wallId] || 0) + 1;
+    });
+  });
+  const sharedWallId = Object.keys(wallUseCounts).find((wallId) => wallUseCounts[wallId] === 2);
+  assert.ok(sharedWallId);
+
+  const mergedDraft = surveyGraph.deleteWall(draft, sharedWallId);
+  const mergedFloor = surveyGraph.getActiveFloor(mergedDraft);
+  const mergedSpaces = mergedFloor.spaces.filter((space) => space.closed);
+  const mergedScene = createScene(mergedDraft);
+
+  assert.equal(mergedSpaces.length, 1);
+  assert.equal(mergedSpaces[0].name, '\u623f\u95f43');
+  assert.equal(mergedSpaces[0].wallIds.includes(sharedWallId), false);
+  assert.equal(mergedFloor.walls.some((wall) => wall.id === sharedWallId), false);
+  assert.equal(mergedFloor.session.state, 'spaceClosed');
+  assert.equal(mergedScene.closedSpaceFills.length, 1);
+  assert.equal(mergedScene.closedSpaceLabels.length, 1);
+  assert.equal(mergedScene.closedSpaceFills[0].points.length, 6);
+  assert.deepEqual(surveyGraph.buildSpaceDimensionPlan(mergedFloor, mergedSpaces[0]).inner, {
+    widthMm: 2230,
+    heightMm: 6364,
+    areaMm2: 14191720
+  });
+});
+
+test('deleting an exterior wall still invalidates its single closed room', () => {
+  const draft = createClosedRectangleDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const exteriorWallId = floor.spaces[0].wallIds[0];
+  const openedDraft = surveyGraph.deleteWall(draft, exteriorWallId);
+  const openedFloor = surveyGraph.getActiveFloor(openedDraft);
+  const openedScene = createScene(openedDraft);
+
+  assert.equal(openedFloor.spaces.filter((space) => space.closed).length, 0);
+  assert.equal(openedScene.closedSpaceFills.length, 0);
+  assert.equal(openedFloor.session.state, 'wallCommitted');
+});
+
+test('deleting an outer-face shared wall clears only its obsolete perimeter insets', () => {
+  let draft = createOuterFaceAdjacentRoomDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const wallUseCounts = {};
+  floor.spaces.forEach((space) => {
+    space.wallIds.forEach((wallId) => {
+      wallUseCounts[wallId] = (wallUseCounts[wallId] || 0) + 1;
+    });
+  });
+  const sharedWallId = Object.keys(wallUseCounts).find((wallId) => wallUseCounts[wallId] === 2);
+  const sharedWall = surveyGraph.getWall(floor, sharedWallId);
+  const sharedNodeIds = new Set([sharedWall.startNodeId, sharedWall.endNodeId]);
+  const insetBoundaryWalls = floor.walls.filter((wall) => (
+    wall.id !== sharedWallId &&
+    (sharedNodeIds.has(wall.startNodeId) || sharedNodeIds.has(wall.endNodeId)) &&
+    ((wall.measurementStartInsetMm || 0) > 0 || (wall.measurementEndInsetMm || 0) > 0)
+  ));
+
+  assert.deepEqual(insetBoundaryWalls.map((wall) => wall.lengthMm).sort((a, b) => a - b), [2249, 2249]);
+  assert.deepEqual(insetBoundaryWalls.map((wall) => (
+    (wall.measurementStartInsetMm || 0) + (wall.measurementEndInsetMm || 0)
+  )), [200, 200]);
+
+  const openingWall = insetBoundaryWalls.find((wall) => (wall.measurementStartInsetMm || 0) > 0);
+  draft = surveyGraph.addOpeningToWall(draft, openingWall.id, 'door');
+  const floorWithOpening = surveyGraph.getActiveFloor(draft);
+  const openingBefore = floorWithOpening.openings.at(-1);
+  const openingWallBefore = surveyGraph.getWall(floorWithOpening, openingWall.id);
+  const openingCoordinateBefore = openingBefore.centerOffsetMm +
+    (openingWallBefore.measurementStartInsetMm || 0);
+
+  const mergedDraft = surveyGraph.deleteWall(draft, sharedWallId);
+  const mergedFloor = surveyGraph.getActiveFloor(mergedDraft);
+  const mergedSpace = mergedFloor.spaces.find((space) => space.closed);
+  const mergedScene = createScene(mergedDraft);
+  const repairedWalls = insetBoundaryWalls.map((wall) => surveyGraph.getWall(mergedFloor, wall.id));
+  const openingAfter = mergedFloor.openings.find((opening) => opening.id === openingBefore.id);
+  const openingWallAfter = surveyGraph.getWall(mergedFloor, openingAfter.wallId);
+
+  assert.equal(mergedFloor.spaces.filter((space) => space.closed).length, 1);
+  assert.deepEqual(repairedWalls.map((wall) => wall.lengthMm).sort((a, b) => a - b), [2449, 2449]);
+  assert.equal(repairedWalls.every((wall) => (
+    (wall.measurementStartInsetMm || 0) === 0 && (wall.measurementEndInsetMm || 0) === 0
+  )), true);
+  assert.equal(
+    openingAfter.centerOffsetMm + (openingWallAfter.measurementStartInsetMm || 0),
+    openingCoordinateBefore
+  );
+  assert.equal(mergedScene.wallSolidPlans.closed.rings.length, 2);
+  assert.equal(mergedScene.wallSolidPlans.closed.rings.every((ring) => ring.length === 4), true);
+  repairedWalls.forEach((wall) => {
+    const sceneWall = mergedScene.walls.find((item) => item.id === wall.id);
+    if (sharedNodeIds.has(wall.startNodeId)) {
+      assert.deepEqual(
+        { xMm: sceneWall.start.xMm, yMm: sceneWall.start.yMm },
+        { xMm: sceneWall.topologyStart.xMm, yMm: sceneWall.topologyStart.yMm }
+      );
+    }
+    if (sharedNodeIds.has(wall.endNodeId)) {
+      assert.deepEqual(
+        { xMm: sceneWall.end.xMm, yMm: sceneWall.end.yMm },
+        { xMm: sceneWall.topologyEnd.xMm, yMm: sceneWall.topologyEnd.yMm }
+      );
+    }
+  });
+  assert.deepEqual(surveyGraph.buildSpaceDimensionPlan(mergedFloor, mergedSpace).inner, {
+    widthMm: 4172,
+    heightMm: 3827,
+    areaMm2: 15966244
+  });
 });
 
 test('stepped straight-wall closure guide renders the inferred right-angle path', () => {
@@ -819,12 +1062,12 @@ test('distant vertex-axis snapping renders a guide from the closed-room corner t
   assert.equal(scene.previewWall.endPoint.x, scene.alignmentSnapGuide.endPoint.x);
 });
 
-test('shared-wall inset preview keeps one cursor on the effective measurement endpoint across zoom levels', () => {
+test('inner shared-wall preview keeps one cursor on the selected topology endpoint across zoom levels', () => {
   const draft = createSharedWallInsetClosureDraft();
   const floor = surveyGraph.getActiveFloor(draft);
 
   assert.equal(floor.session.closeCandidateType, 'shared-wall');
-  assert.equal(floor.session.previewMeasurementEndInsetMm, 200);
+  assert.equal(floor.session.previewMeasurementEndInsetMm, 0);
 
   [0.05, 0.12, 0.24].forEach((scale) => {
     const scene = createScene(draft, { scale, offsetX: 0, offsetY: 0 });
@@ -1145,6 +1388,53 @@ test('closed dimensions use quiet permanent labels instead of the live blue trea
   assert.equal(dimensionTexts.some((detail) => detail.fillStyle === '#0077d7'), false);
 });
 
+test('closed dimensions use fixed short extensions and centered 4px 60-degree slashes', () => {
+  const scene = createScene(createClosedRectangleDraft());
+  const recorder = createRecordingContext();
+
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+
+  const permanentStrokes = recorder.strokeDetails.filter((detail) => (
+    detail.strokeStyle === 'rgba(75, 85, 99, 0.76)'
+  ));
+  const permanentPath = permanentStrokes.find((detail) => detail.path.some((command, index, path) => {
+    if (command[0] !== 'lineTo' || index === 0 || path[index - 1][0] !== 'moveTo') return false;
+    const start = path[index - 1];
+    const run = Math.abs(command[1] - start[1]);
+    const rise = Math.abs(command[2] - start[2]);
+    return run > 0 && Math.abs(rise / run - Math.sqrt(3)) < 0.001;
+  }));
+  assert.ok(permanentPath);
+  const segments = permanentPath.path.flatMap((command, index, path) => {
+    if (command[0] !== 'lineTo' || index === 0 || path[index - 1][0] !== 'moveTo') return [];
+    return [{ start: path[index - 1], end: command }];
+  });
+  const slashes = segments.filter((segment) => {
+    const run = Math.abs(segment.end[1] - segment.start[1]);
+    const rise = Math.abs(segment.end[2] - segment.start[2]);
+    return run > 0 && Math.abs(rise / run - Math.sqrt(3)) < 0.001;
+  });
+  const extensions = segments.filter((segment) => (
+    Math.abs(segment.end[1] - segment.start[1]) < 0.001 &&
+    Math.abs(segment.end[2] - segment.start[2]) > 8
+  ));
+  assert.ok(extensions.length >= 2);
+  assert.ok(extensions.every((extension) => (
+    Math.abs(extension.end[2] - extension.start[2]) <= 18.001
+  )));
+  assert.ok(slashes.every((slash) => (
+    Math.hypot(slash.end[1] - slash.start[1], slash.end[2] - slash.start[2]) <= 4.001
+  )));
+  assert.ok(slashes.every((slash) => extensions.some((extension) => (
+    Math.abs((slash.start[1] + slash.end[1]) / 2 - extension.end[1]) < 0.001 &&
+    Math.abs((slash.start[2] + slash.end[2]) / 2 - extension.end[2]) < 0.001
+  ))));
+  assert.equal(recorder.fills.some((path) => (
+    path.filter((command) => command[0] === 'lineTo').length === 2 &&
+    path.some((command) => command[0] === 'closePath')
+  )), false);
+});
+
 test('viewport interaction transform matches a full scene rebuilt at the target viewport', () => {
   const rect = { width: 390, height: 650 };
   const baseViewport = { scale: 0.03, offsetX: 23, offsetY: -108 };
@@ -1210,7 +1500,7 @@ test('stationary canvas cursor uses the same green placement marker', () => {
   assert.ok(recorder.fillRectDetails.some((detail) => detail.fillStyle === 'rgba(34, 197, 94, 0.16)'));
 });
 
-test('stationary canvas cursor stays on the dragged working line after an outer snap', () => {
+test('stationary canvas cursor stays on the visible outer corner after an outer snap', () => {
   const closedDraft = createClosedRectangleDraft();
   const floor = surveyGraph.getActiveFloor(closedDraft);
   const wall = floor.walls[0];
@@ -1234,8 +1524,8 @@ test('stationary canvas cursor stays on the dragged working line after an outer 
     x: scene.rect.width / 2 + viewport.offsetX + expectedMm.xMm * viewport.scale,
     y: scene.rect.height / 2 + viewport.offsetY + expectedMm.yMm * viewport.scale
   });
-  assert.deepEqual(expectedMm, surveyGraph.getNode(snappedFloor, snappedFloor.session.anchorNodeId));
-  assert.notDeepEqual(expectedMm, geometry.outerStart);
+  assert.notDeepEqual(expectedMm, surveyGraph.getNode(snappedFloor, snappedFloor.session.anchorNodeId));
+  assert.deepEqual(expectedMm, geometry.outerStart);
 });
 
 test('an outer-corner continuation preview aligns its wall body with the adjacent wall', () => {
@@ -1310,6 +1600,29 @@ test('an outer-corner committed wall keeps its redline and live dimension on the
       command[2] === activeWall.measurementEndPoint.y
     ))
   )));
+});
+
+test('an active wall pulled from a closed room moves permanent dimensions outside the wall body', () => {
+  const closedDraft = createClosedRectangleDraft();
+  const floor = surveyGraph.getActiveFloor(closedDraft);
+  const topWall = floor.walls[0];
+  const outerCorner = surveyGraph.buildWallRenderGeometry(floor, topWall).outerStart;
+  const target = surveyGraph.getCursorPlacementTarget(floor, outerCorner, surveyGraph.CLOSE_TOLERANCE_MM);
+  let draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(closedDraft), target.pointMm, target);
+  draft = commitWall(draft, { xMm: -2200, yMm: 0 }, 2000);
+  const scene = createScene(draft);
+  const activeWall = scene.walls.find((wall) => wall.isActiveMeasurement);
+  const leftDimensions = scene.dimensions.filter((dimension) => (
+    dimension.visualRole === 'permanent' && dimension.normal.x === -1
+  ));
+
+  assert.ok(activeWall);
+  assert.ok(leftDimensions.length > 0);
+  const activeLeft = Math.min(activeWall.startPoint.x, activeWall.endPoint.x, activeWall.outerStart.x, activeWall.outerEnd.x);
+  leftDimensions.forEach((dimension) => {
+    assert.ok(dimension.startPoint.x < activeLeft);
+    assert.ok(dimension.endPoint.x < activeLeft);
+  });
 });
 
 test('an outer-corner L chain keeps horizontal and vertical live dimensions on the dragged working line', () => {

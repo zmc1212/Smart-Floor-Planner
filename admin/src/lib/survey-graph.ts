@@ -13,7 +13,13 @@ export type SurveyWall = {
   measurementEndInsetMm?: number;
 };
 export type SurveyOpening = { id: string; wallId: string; type: 'door' | 'window'; centerOffsetMm?: number; widthMm?: number; heightMm?: number; sillHeightMm?: number };
-export type SurveySpace = { id: string; name?: string; wallIds?: string[]; closed?: boolean };
+export type SurveySpace = {
+  id: string;
+  name?: string;
+  wallIds?: string[];
+  wallFaceOverrides?: Record<string, 'topology' | 'offset'>;
+  closed?: boolean;
+};
 export type SurveyFloor = { id: string; name?: string; ceilingHeightMm?: number; nodes?: SurveyNode[]; walls?: SurveyWall[]; openings?: SurveyOpening[]; spaces?: SurveySpace[] };
 export type SurveyGraph = { kind: 'survey-wall-graph'; activeFloorId?: string; floors: SurveyFloor[] };
 export type FormalSurveyLayout = { version: 4; measurementMode: 'surveying'; surveyGraph: SurveyGraph };

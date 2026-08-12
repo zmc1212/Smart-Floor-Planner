@@ -538,18 +538,39 @@ permission, or workflow changes.
 
 - Pages: `/promotion-records`, `/workflow-logs`.
 - APIs: promotion records, `/promotion-records/pool`, `/conflicts`, platform
-  promotion config, workbench summary/todos, notification logs, and reminder run.
+  promotion and notification config, workbench summary/todos, notification logs,
+  and reminder run.
 - Models/helpers: PostgreSQL `PlatformConfigRepository`,
   `PromotionRecordRepository`, `WorkflowNotificationRepository`,
   `postgres-promotion-workflow`, `postgres-workflow-automation`, and WeChat
   notification helpers. The legacy `PromotionEnterpriseRecord`/
   `WorkflowNotificationLog` models remain only for legacy helper compatibility
   paths.
+- Subscription template handoff: the first four `房屋装修` public templates
+  and their business mapping are recorded in
+  [`docs/miniprogram-subscription-notification-template-baseline.md`](miniprogram-subscription-notification-template-baseline.md).
+  V2 platform configuration now stores four typed IDs and exact keyword
+  contracts. Aggregate authorization plus workflow-todo, lead-assignment, and
+  new-lead delivery are `Implemented`. Only the on-site measurement appointment
+  trigger remains `Limited` because no real appointment model or confirmation
+  event exists; an SLA deadline is never used as an appointment.
 - Status: `Implemented`. Includes reporting, duplicate/conflict handling, public
   pool, claim/approval, assignment, business stages, follow-up timelines, SLA
   reminders, notification deduplication, and audit logs. Platform administrators
   read and update the global promotion protection/approval configuration through
-  PostgreSQL. `/promotion-records` uses the shared Ant Design ProComponents
+  PostgreSQL. Platform `admin` and `super_admin` users can also read and update
+  four distinct Mini Program subscription-template IDs through
+  `GET/PATCH /api/platform/notification-config`. The V2 map, exact keyword
+  contracts, and former single-ID migration fact live in
+  `platform_configs.notification_config`; the deprecated
+  `miniprogramTemplateId` alias and legacy PATCH shape remain for one release.
+  `/workflow-logs` presents four fixed semantic fields and identifies the
+  appointment template as authorization-only until a real appointment event
+  exists. Runtime builders select todo versus assignment templates by event and
+  emit only approved keys. Lead notifications persist the in-app channel before
+  recording WeChat `sent`, `failed`, or `skipped`; duplicate-phone intake emits
+  no duplicate notification, and WeChat failures never roll back business data.
+  `/promotion-records` uses the shared Ant Design ProComponents
   presentation pattern (`PageContainer`, `ProTable`, `ProForm`, and
   `ProDescriptions`) for the list, global-rule form, record detail, follow-up,
   assignment, pool, and claim-review interactions; this presentation migration
@@ -557,8 +578,10 @@ permission, or workflow changes.
   `/workflow-logs` page uses `PageContainer`, summary cards, and `ProTable` for
   server-paginated notification-log review and status filtering; it preserves
   the notification-log API, enterprise-admin read scope, and platform
-  `admin`/`super_admin` reminder-scan boundary. Load and scan failures use the
-  shared operation feedback UI. The shared `/` dashboard now uses
+  `admin`/`super_admin` reminder-scan and template-configuration boundary. The
+  page adds the platform-only subscription-template form without exposing the
+  value to enterprise administrators. Load, scan, and configuration failures use
+  the shared operation feedback UI. The shared `/` dashboard now uses
   `PageContainer` and Ant Design summary/list components. Platform admins see
   only the implemented user, formal-floor-plan, and enterprise totals from the
   existing APIs; it does not present mock node, trend, latency, or health
@@ -890,7 +913,14 @@ permission, or workflow changes.
   persisted batches as ordered in-task conversation rounds, keeps each round's
   prompt/reference context, appends a batch for an existing task, and reserves a
   larger desktop conversation viewport above the prompt panel while hiding its
-  native scrollbars without disabling scrolling. The proxy maps the entire page
+  native scrollbars without disabling scrolling. Its reference-image control
+  now renders every uploaded asset allowed by the selected model (the existing
+  0–10 model capability limit) as a numbered stacked deck; hover or keyboard
+  focus expands the deck and reveals per-image removal plus the next upload
+  slot. Selecting an image opens an in-place multi-image preview with thumbnail
+  switching, previous/next navigation, zoom, rotation, fullscreen, and download.
+  The UI only uses the existing tenant-scoped asset upload and task/batch DTOs;
+  it adds no API, data-model, role, or generation-contract change. The proxy maps the entire page
   and API prefix to the unified `ai-scenarios` permission, while writable routes
   also require an enterprise through `withTenantRoute`.
 - PostgreSQL identity boundary: new free-creation, Mini Program, scenario, and

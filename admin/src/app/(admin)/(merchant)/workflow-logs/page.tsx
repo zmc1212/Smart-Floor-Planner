@@ -1,13 +1,15 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   PageContainer,
+  ProForm,
+  ProFormText,
   ProTable,
   type ActionType,
   type ProColumns,
 } from '@ant-design/pro-components';
-import { Button, Card, Flex, Statistic, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Flex, Statistic, Tag, Typography } from 'antd';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -44,6 +46,33 @@ type WorkflowLog = {
 };
 
 type NotificationStats = Record<LogStatus, number>;
+
+type NotificationTemplateKind =
+  | 'workflow_todo'
+  | 'lead_assignment'
+  | 'new_lead'
+  | 'measurement_appointment';
+
+type NotificationConfigForm = {
+  version: 2;
+  templates: Record<NotificationTemplateKind, {
+    title?: string;
+    templateId: string;
+    keywordKeys?: Record<string, string>;
+  }>;
+  miniprogramTemplateId?: string;
+};
+
+const TEMPLATE_FIELDS: Array<{
+  kind: NotificationTemplateKind;
+  label: string;
+  help: string;
+}> = [
+  { kind: 'workflow_todo', label: '装修待办提醒', help: '跟进、逾期、量房提交、设计完成及提成待结算等通用任务。' },
+  { kind: 'lead_assignment', label: '客户指派成功通知', help: '量房师、设计师派单，以及客户交接待确认。' },
+  { kind: 'new_lead', label: '新增客户成功通知', help: '新线索创建后通知企业负责人。' },
+  { kind: 'measurement_appointment', label: '上门量房提醒', help: '仅配置和授权；独立预约功能上线前不会触发发送。' },
+];
 
 const STATUS_OPTIONS: Array<{ label: string; value: LogStatus }> = [
   { label: '已发送', value: 'sent' },
@@ -106,10 +135,30 @@ export default function WorkflowLogsPage() {
     skipped: 0,
   });
   const [scanRunning, setScanRunning] = useState(false);
+  const [notificationConfig, setNotificationConfig] = useState<NotificationConfigForm | null>(null);
+  const [notificationConfigSaving, setNotificationConfigSaving] = useState(false);
 
   const canRunScan = Boolean(
     currentUser && ['super_admin', 'admin'].includes(currentUser.role),
   );
+
+  const fetchNotificationConfig = useCallback(async () => {
+    if (!canRunScan) return;
+    try {
+      const response = await fetch('/api/platform/notification-config');
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '读取小程序通知配置失败');
+      }
+      setNotificationConfig(result.data);
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '读取小程序通知配置失败');
+    }
+  }, [canRunScan]);
+
+  useEffect(() => {
+    void fetchNotificationConfig();
+  }, [fetchNotificationConfig]);
 
   const runReminderScan = async () => {
     setScanRunning(true);
@@ -215,6 +264,70 @@ export default function WorkflowLogsPage() {
         ] : undefined}
       >
         <div className="flex flex-col gap-8">
+          {canRunScan ? (
+            <Card title="小程序订阅消息模板" className="admin-panel-card">
+              <Flex vertical gap={16}>
+                <Typography.Paragraph type="secondary" className="!mb-0">
+                  四个模板用于小程序聚合授权，服务端会按通知类型选择模板并只发送其允许的关键词字段。
+                </Typography.Paragraph>
+                <Alert
+                  type="info"
+                  showIcon
+                  message="保存后立即生效"
+                  description="已登录小程序会在下一次授权时获取四个模板；此前已授权的用户需要按微信规则重新授权。上门量房提醒当前只参与授权，尚未启用业务触发。"
+                />
+                {notificationConfig ? (
+                  <ProForm<NotificationConfigForm>
+                    key={TEMPLATE_FIELDS.map(({ kind }) => notificationConfig.templates[kind].templateId).join(':')}
+                    layout="vertical"
+                    initialValues={notificationConfig}
+                    onFinish={async (values) => {
+                      setNotificationConfigSaving(true);
+                      try {
+                        const response = await fetch('/api/platform/notification-config', {
+                          method: 'PATCH',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(values),
+                        });
+                        const result = await response.json();
+                        if (!response.ok || !result.success) throw new Error(result.error || '保存小程序通知配置失败');
+                        setNotificationConfig(result.data);
+                        notify.success('小程序订阅消息模板已保存');
+                        return true;
+                      } catch (error) {
+                        notify.error(error instanceof Error ? error.message : '保存小程序通知配置失败');
+                        return false;
+                      } finally {
+                        setNotificationConfigSaving(false);
+                      }
+                    }}
+                    submitter={{
+                      searchConfig: { submitText: '保存模板 ID' },
+                      submitButtonProps: { loading: notificationConfigSaving },
+                      render: (_, dom) => <Flex justify="end" gap={12}>{dom}</Flex>,
+                    }}
+                  >
+                    <div className="grid grid-cols-1 gap-x-6 md:grid-cols-2">
+                      {TEMPLATE_FIELDS.map((field) => (
+                        <ProFormText
+                          key={field.kind}
+                          name={['templates', field.kind, 'templateId']}
+                          label={field.label}
+                          tooltip={field.help}
+                          extra={field.help}
+                          rules={[
+                            { required: true, message: `请填写${field.label}模板 ID` },
+                            { pattern: /^[A-Za-z0-9_-]{10,128}$/, message: '模板 ID 格式不正确' },
+                          ]}
+                          fieldProps={{ autoComplete: 'off', className: 'w-full' }}
+                        />
+                      ))}
+                    </div>
+                  </ProForm>
+                ) : null}
+              </Flex>
+            </Card>
+          ) : null}
           <section aria-label="通知送达概览" className="flex flex-col gap-4">
             <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
               <div>

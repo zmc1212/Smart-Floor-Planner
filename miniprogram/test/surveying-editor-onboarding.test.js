@@ -34,7 +34,7 @@ test('formal surveying uses a persistent state-following guide mode instead of a
   assert.match(editorScript, /this\.surveyGuideCanvasModel = \{/);
   assert.match(editorScript, /drawSurveyGuideCanvas\(\)/);
   assert.doesNotMatch(editorWxml, /<cover-view[\s\S]*class="survey-guide-overlay"/);
-  assert.match(editorWxml, /class="cursor-lens \{\{cursorPlacementState === 'dragging' && cursorLensVisible \? 'cursor-lens-visible' : 'cursor-lens-hidden'\}\} \{\{cursorLensSnapType\}\}"/);
+  assert.match(editorWxml, /class="cursor-lens \{\{cursorLensActive && cursorLensVisible \? 'cursor-lens-visible' : 'cursor-lens-hidden'\}\} \{\{cursorLensSnapType\}\}"/);
   assert.doesNotMatch(editorWxml, /<cover-view wx:if="\{\{cursorLensVisible\}\}" class="cursor-lens/);
   assert.doesNotMatch(editorWxml, /<cover-view[\s\S]*class="cursor-drag-lens-layer"/);
   assert.match(editorWxml, /id="cursor-drag-control"/);
@@ -43,6 +43,9 @@ test('formal surveying uses a persistent state-following guide mode instead of a
   assert.match(editorScript, /hasUsablePagePoint = pageX !== null && pageY !== null/);
   assert.match(editorScript, /const movedWithoutTouchMove = !wasDragging && dragWasPending/);
   assert.match(editorScript, /const shouldUpdateLens = !wasDragging \|\| !this\.data\.cursorLensVisible \|\|/);
+  assert.match(editorScript, /isCursorLensActive\(\) \{[\s\S]*this\.cursorPlacementState === 'dragging' \|\| this\.canvasCursorLensActive/);
+  assert.match(editorScript, /this\.draft = surveyGraph\.startPreview\(this\.draft, snappedMm\);[\s\S]*this\.updateCanvasCursorLens\(point, snappedMm\);/);
+  assert.match(editorScript, /if \(movedWall\) \{[\s\S]*this\.clearCanvasCursorLens\(\);/);
   assert.match(editorWxss, /\.cursor-lens-visible\s*\{[\s\S]*opacity:\s*1;[\s\S]*visibility:\s*visible;/);
   assert.match(editorWxss, /\.cursor-lens-hidden\s*\{[\s\S]*opacity:\s*0;[\s\S]*visibility:\s*hidden;/);
   assert.doesNotMatch(editorScript, /SURVEYING_ONBOARDING_STEPS|onOnboardingNext|onOnboardingSkip/);

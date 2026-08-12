@@ -28,6 +28,13 @@ import {
 } from '@/db/transaction';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { sendSubscriptionMessage } from '@/lib/wechat-notification';
+import {
+  getMiniProgramSubscriptionTemplate,
+} from '@/lib/platform-notification-config';
+import {
+  buildWorkflowNotificationPayload,
+  resolveWorkflowTemplateKind,
+} from '@/lib/miniprogram-subscription-messages';
 import type { PromotionNotificationJob } from '@/lib/postgres-promotion-workflow';
 
 export const DEFAULT_AUTOMATION_CONFIG = {
@@ -442,6 +449,11 @@ export async function dispatchWorkflowNotifications(input: {
 }) {
   const record = input.record as PromotionRecord;
   const automation = await recordAutomationConfig(record);
+  const template = automation.miniprogramNotificationEnabled
+    ? await getMiniProgramSubscriptionTemplate(
+        resolveWorkflowTemplateKind(input.notificationType)
+      )
+    : null;
   for (const role of input.recipientRoles) {
     const recipients = await resolveRecipientsForRole(record, role);
     if (recipients.length === 0) {
@@ -475,7 +487,21 @@ export async function dispatchWorkflowNotifications(input: {
           notificationLabel: notificationLabel(input.notificationType),
         },
       });
-      if (!recipient.openid) continue;
+      if (!recipient.openid) {
+        await createWorkflowNotificationLog({
+          enterpriseId: record.enterpriseId,
+          recordId: record.id,
+          recipientRole: role,
+          recipientStaffId: recipient.id,
+          channel: 'miniprogram_sub',
+          notificationType: input.notificationType,
+          status: 'skipped',
+          dedupeKey: `${dedupeBase}:miniprogram_sub`,
+          message: input.message,
+          errorMessage: 'openid unavailable',
+        });
+        continue;
+      }
       if (!automation.miniprogramNotificationEnabled) {
         await createWorkflowNotificationLog({
           enterpriseId: record.enterpriseId,
@@ -491,16 +517,32 @@ export async function dispatchWorkflowNotifications(input: {
         });
         continue;
       }
+      if (!template?.templateId) {
+        await createWorkflowNotificationLog({
+          enterpriseId: record.enterpriseId,
+          recordId: record.id,
+          recipientRole: role,
+          recipientStaffId: recipient.id,
+          channel: 'miniprogram_sub',
+          notificationType: input.notificationType,
+          status: 'skipped',
+          dedupeKey: `${dedupeBase}:miniprogram_sub`,
+          message: input.message,
+          errorMessage: 'Mini Program subscription template is not configured',
+        });
+        continue;
+      }
       const subResult = await sendSubscriptionMessage({
         touser: recipient.openid,
-        template_id: 'j6WMWNX3_-NKfuZPs7XuHYz91EymYKcnob1uDziK5f4',
+        template_id: template.templateId,
         page: '/pages/leads-management/leads-management',
-        data: {
-          thing1: { value: 'Workflow reminder' },
-          time2: { value: new Date().toLocaleString('zh-CN', { hour12: false }) },
-          thing3: { value: notificationLabel(input.notificationType) },
-          thing4: { value: input.message.substring(0, 20) },
-        },
+        data: buildWorkflowNotificationPayload({
+          template,
+          notificationType: input.notificationType,
+          record,
+          recipientName: recipient.displayName || recipient.username,
+          message: input.message,
+        }),
       });
       await createWorkflowNotificationLog({
         enterpriseId: record.enterpriseId,

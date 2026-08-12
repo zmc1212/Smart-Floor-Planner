@@ -4,6 +4,19 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const projectRoot = path.resolve(__dirname, '..');
+const notificationTemplates = [
+  ['workflow_todo', '48Jvq7OjOKwRhshn8fyvtsjxAamLOakaNtiKcO11rOc'],
+  ['lead_assignment', 'wltuS0LdggzpMWdSOlr6FBSKeRbOKUzqXVCqJDmLpmA'],
+  ['new_lead', 'EEvg03Lsp4V0ASHWhLOMiTmDI79Z_T3Sjq4xest9GRc'],
+  ['measurement_appointment', 'CtcuQ_NWF4GOpHvstgviDPmYRlSjyqTjnFAoeQR9-vl'],
+];
+
+function notificationConfig() {
+  return {
+    version: 2,
+    templates: notificationTemplates.map(([type, templateId]) => ({ type, templateId, title: type }))
+  };
+}
 
 function read(relativePath) {
   return fs.readFileSync(path.join(projectRoot, relativePath), 'utf8');
@@ -207,16 +220,20 @@ test('Successful password change clears the session and returns to login', async
   }
 });
 
-test('Settings reflects accepted subscription state and opens WeChat settings', () => {
+test('Settings reflects accepted subscription state and opens WeChat settings', async () => {
   const originalWx = global.wx;
+  const api = require('../utils/api.js');
+  const originalRequest = api.request;
   const calls = [];
+  const config = notificationConfig();
+  api.request = async () => ({ data: config });
   global.wx = {
+    getStorageSync() { return config; },
+    setStorageSync() {},
     getSetting(options) {
       options.success({
         subscriptionsSetting: {
-          itemSettings: {
-            'j6WMWNX3_-NKfuZPs7XuHYz91EymYKcnob1uDziK5f4': 'accept'
-          }
+          itemSettings: Object.fromEntries(notificationTemplates.map(([, id]) => [id, 'accept']))
         }
       });
     },
@@ -228,24 +245,62 @@ test('Settings reflects accepted subscription state and opens WeChat settings', 
 
   try {
     const page = createPage(loadPage('packages/business/settings/settings.js'));
-    page.onShow();
+    await page.onShow();
     assert.equal(page.data.notificationStatus, '已允许');
     assert.equal(page.data.notificationAccepted, true);
-    page.onOpenSystemSettings();
+    await page.onOpenSystemSettings();
     assert.deepEqual(calls, ['openSetting']);
   } finally {
+    api.request = originalRequest;
     global.wx = originalWx;
   }
 });
 
-test('Settings keeps rejected subscription state explicit', () => {
+test('Settings keeps rejected subscription state explicit', async () => {
   const originalWx = global.wx;
+  const api = require('../utils/api.js');
+  const originalRequest = api.request;
+  const config = notificationConfig();
+  api.request = async () => ({ data: config });
   global.wx = {
+    getStorageSync() { return config; },
+    setStorageSync() {},
+    getSetting(options) {
+      options.success({
+        subscriptionsSetting: {
+          itemSettings: Object.fromEntries(notificationTemplates.map(([, id]) => [id, 'reject']))
+        }
+      });
+    }
+  };
+  try {
+    const page = createPage(loadPage('packages/business/settings/settings.js'));
+    await page.onShow();
+    assert.equal(page.data.notificationStatus, '已拒绝');
+    assert.equal(page.data.notificationAccepted, false);
+  } finally {
+    api.request = originalRequest;
+    global.wx = originalWx;
+  }
+});
+
+test('Settings shows a truthful partial subscription count', async () => {
+  const originalWx = global.wx;
+  const api = require('../utils/api.js');
+  const originalRequest = api.request;
+  const config = notificationConfig();
+  api.request = async () => ({ data: config });
+  global.wx = {
+    getStorageSync() { return config; },
+    setStorageSync() {},
     getSetting(options) {
       options.success({
         subscriptionsSetting: {
           itemSettings: {
-            'j6WMWNX3_-NKfuZPs7XuHYz91EymYKcnob1uDziK5f4': 'reject'
+            [notificationTemplates[0][1]]: 'accept',
+            [notificationTemplates[1][1]]: 'accept',
+            [notificationTemplates[2][1]]: 'reject',
+            [notificationTemplates[3][1]]: 'reject'
           }
         }
       });
@@ -253,10 +308,40 @@ test('Settings keeps rejected subscription state explicit', () => {
   };
   try {
     const page = createPage(loadPage('packages/business/settings/settings.js'));
-    page.onShow();
-    assert.equal(page.data.notificationStatus, '已拒绝');
+    await page.onShow();
+    assert.equal(page.data.notificationStatus, '已允许 2/4');
+    assert.equal(page.data.notificationAccepted, true);
+  } finally {
+    api.request = originalRequest;
+    global.wx = originalWx;
+  }
+});
+
+test('Settings gives the subscription main switch precedence over cached item grants', async () => {
+  const originalWx = global.wx;
+  const api = require('../utils/api.js');
+  const originalRequest = api.request;
+  const config = notificationConfig();
+  api.request = async () => ({ data: config });
+  global.wx = {
+    getStorageSync() { return config; },
+    setStorageSync() {},
+    getSetting(options) {
+      options.success({
+        subscriptionsSetting: {
+          mainSwitch: false,
+          itemSettings: Object.fromEntries(notificationTemplates.map(([, id]) => [id, 'accept']))
+        }
+      });
+    }
+  };
+  try {
+    const page = createPage(loadPage('packages/business/settings/settings.js'));
+    await page.onShow();
+    assert.equal(page.data.notificationStatus, '已关闭');
     assert.equal(page.data.notificationAccepted, false);
   } finally {
+    api.request = originalRequest;
     global.wx = originalWx;
   }
 });

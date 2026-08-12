@@ -2145,13 +2145,85 @@ page,
   opacity: 0.32;
 }
 
-.dock-action.cursor-action {
+.cursor-action {
   width: 128rpx;
+  position: relative;
+  border-right: 0;
 }
 
-.dock-action.cursor-action.is-dragging {
-  color: #10bd4b;
+.dock-cursor-icon {
+  width: 52rpx;
+  height: 52rpx;
+}
+
+.dock-action-label {
+  width: 100%;
+  height: 26rpx;
+  color: inherit;
+  font-size: 22rpx;
+  line-height: 26rpx;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.cursor-action-reset {
+  gap: 2rpx;
+}
+
+.cursor-action-drag {
+  justify-content: center;
+  border-radius: 18rpx;
   background: #f3fbf5;
+}
+
+.cursor-action-dragging {
+  color: rgba(31, 41, 34, 0.3);
+  background: #f7faf8;
+}
+
+.dock-cursor-icon-ghost {
+  opacity: 0.28;
+}
+
+.dock-cursor-origin {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 38rpx;
+  height: 38rpx;
+  border: 2rpx solid rgba(16, 189, 75, 0.34);
+  border-radius: 8rpx;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.cursor-dock-helper {
+  position: fixed;
+  left: 50%;
+  z-index: 24;
+  width: 232rpx;
+  height: 28rpx;
+  color: #536158;
+  font-size: 22rpx;
+  line-height: 28rpx;
+  text-align: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.cursor-dock-helper-label {
+  width: 100%;
+  height: 28rpx;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.cursor-dock-helper.is-dragging {
+  color: #16803e;
 }
 
 .dock-measure {

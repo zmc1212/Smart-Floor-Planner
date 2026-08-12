@@ -57,3 +57,18 @@ test('formal save and restore preserves optional measurement insets', () => {
   assert.equal(restored.walls[0].measurementEndInsetMm, 0);
   assert.equal(restored.walls[0].lengthMm, 3000);
 });
+
+test('formal save and restore preserves per-space wall-face overrides', () => {
+  const graph = surveyGraph.createSurveyDraft();
+  const floor = surveyGraph.getActiveFloor(graph);
+  floor.spaces = [{
+    id: 'space-a',
+    wallIds: ['wall-a'],
+    wallFaceOverrides: { 'wall-a': 'topology' },
+    closed: true
+  }];
+
+  const layout = surveyLayout.createFormalSurveyLayout(graph, 'draft');
+  const restored = surveyLayout.getActiveFloor(JSON.parse(JSON.stringify(layout)));
+  assert.deepEqual(restored.spaces[0].wallFaceOverrides, { 'wall-a': 'topology' });
+});

@@ -6,13 +6,11 @@ import {
 } from '@/db/postgres-dto';
 import {
   AdminUserRepository,
-  AcquisitionRepository,
   LeadRepository,
   type LeadListOptions,
   type LeadUpdate,
 } from '@/db/repositories';
 import type { PostgresTransaction } from '@/db/transaction';
-import { withTenantTransaction } from '@/db/transaction';
 import { getTenantContext, type TenantContext } from '@/lib/auth';
 import { resolveMiniProgramContext } from '@/lib/miniprogram-auth';
 import {
@@ -259,7 +257,6 @@ export async function POST(request: Request) {
     const execute = async (transaction: PostgresTransaction) => {
       const leads = new LeadRepository(transaction);
       const admins = new AdminUserRepository(transaction);
-      const acquisitions = new AcquisitionRepository(transaction);
       let enterpriseId = explicitEnterpriseId
         ? parsePostgresId(explicitEnterpriseId, 'enterpriseId')
         : null;
@@ -368,20 +365,13 @@ export async function POST(request: Request) {
         lead = await leads.linkFloorPlan(lead.id, floorPlanId);
         if (!lead) throw new Error('Floor plan not found in this scope');
       }
-      if (shouldNotifyDesigner && assignedTo && lead.enterpriseId) {
-        await acquisitions.createNotification({
-          enterpriseId: lead.enterpriseId,
-          recipientStaffId: assignedTo,
-          leadId: lead.id,
-          notificationType: 'lead_pending_acquisition',
-          channel: 'in_app',
-          status: 'unread',
-          message: `收到客户线索：${lead.name}，待确认获客`,
-          dedupeKey: `lead_pending_acquisition:${lead.id.toString()}`,
-          metadata: { page: `/packages/business/acquisition-center/acquisition-center?leadId=${lead.id.toString()}` },
-        });
-      }
-      return { lead, shouldNotifyDesigner, shouldNotifyEnterprise: !existing, designerId: assignedTo };
+      return {
+        lead,
+        shouldNotifyDesigner,
+        shouldNotifyEnterprise: !existing,
+        shouldNotifyAssignedDesigner: Boolean(!existing && assignedTo),
+        designerId: assignedTo,
+      };
     };
 
     const result = miniContext
@@ -393,35 +383,17 @@ export async function POST(request: Request) {
       ...lead,
       enterpriseId: lead.enterpriseId?.toString(),
     };
-    const notificationResults = await Promise.allSettled([
+    await Promise.allSettled([
       result.shouldNotifyEnterprise ? notifyEnterpriseAdminOfNewLead(notificationLead) : Promise.resolve(),
       result.shouldNotifyDesigner && result.designerId
         ? notifyDesignerOfPendingLead(notificationLead, result.designerId.toString())
-        : lead.assignedTo
+        : result.shouldNotifyAssignedDesigner && result.designerId
         ? notifyDesignerOfAssignedLead(
             notificationLead,
-            lead.assignedTo.toString()
+            result.designerId.toString()
           )
         : Promise.resolve(),
     ]);
-    if (result.shouldNotifyDesigner && result.designerId && lead.enterpriseId) {
-      const designerResult = notificationResults[1];
-      const delivery = designerResult?.status === 'fulfilled' && designerResult.value && typeof designerResult.value === 'object' && 'success' in designerResult.value
-        ? designerResult.value
-        : { success: false, error: 'notification rejected' };
-      await withTenantTransaction(lead.enterpriseId, (transaction) => new AcquisitionRepository(transaction).createNotification({
-        enterpriseId: lead.enterpriseId,
-        recipientStaffId: result.designerId,
-        leadId: lead.id,
-        notificationType: 'lead_pending_acquisition',
-        channel: 'wechat',
-        status: delivery.success ? 'sent' : 'failed',
-        message: `Lead ${lead.name} pending acquisition confirmation`,
-        errorMessage: delivery.success ? null : delivery.error || null,
-        dedupeKey: `lead_pending_acquisition:${lead.id.toString()}`,
-        metadata: { page: `/packages/business/acquisition-center/acquisition-center?leadId=${lead.id.toString()}` },
-      }));
-    }
 
     return NextResponse.json(
       { success: true, data: miniContext ? leadDtoForMini(request, lead, miniContext.staff?.role) : leadToDto(lead) },

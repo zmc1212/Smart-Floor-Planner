@@ -799,6 +799,12 @@ function createClosedDimensionPlan(input) {
   const exteriorPoints = outerRingSegments.length
     ? outerRingSegments.flatMap((wall) => [wall.start, wall.end])
     : exteriorWalls.flatMap((wall) => [wall.outerStart, wall.outerEnd]);
+  // A closed room remains the source of its permanent dimensions while an
+  // adjacent wall chain is being measured. Its annotations still need to sit
+  // outside that visible work-in-progress wall body rather than underneath it.
+  const clearancePoints = exteriorPoints.concat((options.clearancePoints || [])
+    .filter((value) => value && Number.isFinite(value.x) && Number.isFinite(value.y)));
+  const supportFor = (normal) => Math.max(...clearancePoints.map((value) => dot(value, normal)));
   const sideGroups = new Map();
 
   outlineSegments.forEach((wall) => {
@@ -851,7 +857,7 @@ function createClosedDimensionPlan(input) {
     const doorOpenings = getDoorOpeningsForWall(wall, doorOpeningsByWall);
     if (!doorOpenings.length) return;
     const frame = createOrthogonalFrame(wall, tolerance);
-    const support = Math.max(...exteriorPoints.map((value) => dot(value, frame.outward)));
+    const support = supportFor(frame.outward);
     const coordinateLength = Math.max(0.0001, Number(wall.coordinateLength || distance(wall.start, wall.end)));
     const measurementLength = Math.max(0, Number(wall.measurementLength || coordinateLength * measurementScale));
     const wallDirection = wallFrame(wall).direction;
@@ -900,7 +906,7 @@ function createClosedDimensionPlan(input) {
   mergedRooms.forEach((run, index) => {
     if (run.maxProjection - run.minProjection <= tolerance * 0.25) return;
     const sideKey = normalKey(run.normal);
-    const support = Math.max(...exteriorPoints.map((value) => dot(value, run.normal)));
+    const support = supportFor(run.normal);
     const lane = sidesWithDoorDimensions.has(sideKey) ? 1 : 0;
     const gap = baseGap + laneGap * lane;
     const extensionStart = add(
@@ -945,7 +951,7 @@ function createClosedDimensionPlan(input) {
     const minProjection = dot(extensionStart, side.direction);
     const maxProjection = dot(extensionEnd, side.direction);
     if (maxProjection - minProjection <= tolerance * 0.25) return;
-    const support = Math.max(...exteriorPoints.map((value) => dot(value, side.normal)));
+    const support = supportFor(side.normal);
     const nearLane = sidesWithDoorDimensions.has(side.key) ? 1 : 0;
     const lane = nearLane + (sidesWithRoomDimensions.has(side.key) ? 1 : 0);
     const gap = baseGap + laneGap * lane;

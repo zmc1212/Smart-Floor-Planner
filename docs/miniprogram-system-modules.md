@@ -16,6 +16,17 @@ This inventory describes the native WeChat Mini Program under `miniprogram/`.
 The implementation baseline is the current `app.json`, page handlers, shared
 utilities, and the admin APIs they call.
 
+### Subscription notification template handoff
+
+The first four `房屋装修` public templates, fixed keyword choices, template-ID
+readback requirements, and notification-type mapping are recorded in
+[`docs/miniprogram-subscription-notification-template-baseline.md`](miniprogram-subscription-notification-template-baseline.md).
+The authenticated endpoint now returns a complete ordered V2 list and the Mini
+Program authorizes all four differently titled templates in one request while
+reporting partial acceptance. Todo, lead-assignment, and new-lead delivery are
+`Implemented`; the on-site measurement template is configured and authorized
+but its real appointment trigger remains `Limited`.
+
 The canonical route-to-design, HTML similarity, and production-restoration
 lookup is `docs/miniprogram-design-restoration-ledger.md`, mirrored by
 `docs/miniprogram-design-restoration-ledger.zh-CN.md`. Visual restoration work
@@ -688,7 +699,13 @@ must update that ledger pair in the same change.
   managed reference in `users.avatar`; signed reads hide storage details while
   historical external avatar URLs remain readable. Staff display-name edits
   update both `admin_users.displayName` and the linked user profile. Settings
-  exposes only real WeChat subscription/permission actions. Password changes
+  exposes only real WeChat subscription/permission actions. Before requesting
+  a subscription, the client reads the ordered four-template V2 list through
+  authenticated `GET /api/miniprogram/notification-template` and requests all
+  four in one call. It caches only a complete V2 response, uses the last good
+  cache offline, and has no bundled template-ID fallback. The approved single
+  Settings row reports full, partial (`N/4`), rejected, disabled, unset, and
+  unavailable states without changing its visual hierarchy. Password changes
   require the current password, update only the authenticated staff record,
   and clear the local Mini Program session for re-login.
 - Account visual restoration (2026-08-10): `profile-edit`, `settings`, and
@@ -757,6 +774,87 @@ must update that ledger pair in the same change.
   delayed `setData` from suppressing the lens. Its Canvas scene, geometry,
   snap labels, route, APIs, roles, v4 graph, and measurement audit are
   unchanged.
+- Canvas cursor-drag lens coverage (2026-08-12): the same upper-left lens is
+  also active while an operator grabs the current cursor in the Canvas and
+  drags out a wall preview. Canvas panning, pinch zooming, and opening moves do
+  not impersonate cursor drag and therefore do not show the lens. This changes
+  no geometry, route, API, role, v4 graph, or measurement audit.
+- Cursor release snap consistency (2026-08-12): the editor retains the last
+  visible snapped cursor candidate through `touchend`. A visible outer-edge or
+  outer-vertex snap therefore commits that same target instead of reclassifying
+  the raw release coordinate as the nearby inner edge. Free placement still
+  resolves from the release coordinate when no snap was visible. This changes
+  no route, API, role boundary, version-4 wall graph, or measurement audit.
+- Outer-snap cursor placement (2026-08-12): after an outer-edge or outer-vertex
+  drop, the stationary cursor is rendered back on that visible outer target.
+  The linked graph node remains on the source-wall centerline for topology,
+  shared-wall closure, and persistence, while the cursor only uses the stored
+  outer-wall projection until the new chain begins. This changes no route, API,
+  role boundary, version-4 wall graph, or measurement audit.
+- Explicit inner-vertex closure target (2026-08-12): when the editor supplies
+  an explicit inner vertex target, `snapCursorToWall()` now preserves its
+  `nodeId` and inner snap side instead of reclassifying the release coordinate
+  against the nearby outer wall face. Closing or continuing from room 1
+  therefore keeps the cursor on the selected inner vertex; routes, APIs, roles,
+  the version-4 graph contract, and measurement audits are unchanged.
+- Canvas inner-vertex snap parity (2026-08-12): the in-canvas reset-cursor tap
+  now resolves and forwards the same vertex/wall placement candidate as the
+  bottom cursor drag. A room-1 inner corner is therefore no longer passed as a
+  raw coordinate and reclassified as an outer wall face before an adjacent
+  room closes. Routes, APIs, roles, the version-4 graph contract, and
+  measurement audits are unchanged.
+- Inner/outer corner touch protection and delete stability (2026-08-12): when
+  a closed-room inner corner and its mitered outer corner both fall inside the
+  `350mm` touch tolerance, the inner corner keeps priority throughout the
+  maximum thickness of its incident closed walls, and an outer-wall projection
+  cannot steal the hit inside that protected radius. A deliberate touch in the
+  visible outer corner's terminal band can still select the outer vertex. In
+  the supplied `e5bd088fa67a37c4d843980ef5087141.jpg` case,
+  `2092mm + 1862mm + 3 * 200mm = 4554mm` identifies the erroneous outer-corner
+  path; the corrected inner-corner path produces a `4354mm` building outside
+  width, a `2092 x 3331mm` clear room 2, and zero start/end insets on all three
+  new walls. The regression also asserts that deleting room 2's upper wall does
+  not change its lower wall's topology, measured endpoints, or outer geometry,
+  covering the state difference exposed by
+  `1036a5b23be2cb4ea7b1089c3278f5e1.jpg`. The earlier
+  `2044/2444 x 3799/4199` and `1896mm` adjacent-room video flow remains covered.
+  Markup, styles, routes, APIs, roles, the version-4 graph contract, and
+  measurement audits are unchanged; focused tests pass `121/121`.
+- Inner-face adjacent-room closure geometry (2026-08-12): when a straight
+  adjacent room starts and closes on a closed room's inner vertices, the first
+  and final measured walls now use those selected topology points directly;
+  they no longer receive automatic wall-thickness start/end insets. The new
+  closed space records `wallFaceOverrides` for the actual borrowed shared-wall
+  segments so its fill, clear dimensions, area, and later wall splitting keep
+  using the selected topology face instead of reselecting the outer face from
+  the space centroid. Outer-face starts and true wall-thickness step closures
+  retain their existing inset behavior. The supplied
+  `f2c7c9823b1f8f532fb91a2dc7f68a20.mp4` flow now derives room 1 as
+  `2044 x 3799mm`, room 2 as `1896 x 3799mm`, and the building outside width
+  as `4340mm` rather than `4540mm`. The top-level version-4 layout, routes,
+  APIs, roles, and measurement audits are unchanged.
+- Visible inner-face closure endpoints (2026-08-12): the closed-wall boolean
+  union still preserves the physical shared-wall thickness, but an adjacent
+  space with `wallFaceOverrides` now redraws its selected clear boundary. This
+  prevents the union from swallowing the final wall-thickness portion of the
+  new upper and lower walls as an internal seam. The exact regression for
+  `78f2af19ba0bf323d3a89489a1232408.jpg` and
+  `ab939769e85d6758f3aaa485c2037aeb.jpg` uses room 1 at
+  `2205 x 2901mm`, room 2 at `2834 x 2901mm`, and a `5439 x 3301mm`
+  building outside. Both adjoining walls remain visibly connected to room 1's
+  selected inner vertices after closure, and the lower visible endpoint is
+  unchanged after deleting room 2's upper wall. This only completes the formal
+  Canvas outline; walls, spaces, areas, dimensions, markup, styles, routes,
+  APIs, roles, version-4 persistence, and measurement audits are unchanged.
+- Cursor dock state clarity (2026-08-12): a cursor that is already placed on
+  the Canvas, including after a closed space is restored, keeps the `重置光标`
+  action. Selecting it enters `wallSnapPending`, where the same dock control
+  becomes a crosshair drag origin and an independent helper line reads
+  `光标拖动到墙体` until a new wall target is placed. While dragging, the origin
+  becomes a subdued ghost and the existing Canvas crosshair follows the finger,
+  making the handoff spatially explicit without clipping the instruction. This
+  presentation state change affects no route, API, role boundary, version-4
+  wall graph, or measurement audit.
 - Data contract: `FloorPlan.layoutData` is only `{ version: 4,
   measurementMode: 'surveying', surveyGraph }`; graph units are millimetres.
 - Canvas drawing refinement (2026-08-06): formal wall outlines, active red
@@ -769,10 +867,10 @@ must update that ledger pair in the same change.
   Closed-space `opening-segment`, `room-clear`, and `building-overall`
   dimensions are permanent drafting annotations: thin muted-grey lines with
   compact 12px dark labels on a quiet white backing, arranged outside the
-  closed outline with a base gap of at least 28px.
-  Short 8px endpoint ticks cross the floating dimension line but deliberately do
-  not connect back to a wall; the endpoint arrows face outward, with their tips
-  aligned to rather than beyond the dimension-line endpoints. The active red
+  closed outline with a 60px base gap. Extension lines are fixed at 18px from
+  the dimension-line side and retain a 12px break before the wall when space
+  allows. Equal 4px, 60-degree endpoint slashes cross each dimension-line intersection
+  at their centres; permanent annotations have no arrows. The active red
   measurement edge is redrawn after guides and the cursor, so it remains the
   topmost wall indication at an intersection. This is presentation-only: the page
   route, APIs, roles, v4 wall-graph contract, BLE audit, and editor interactions
@@ -923,6 +1021,17 @@ must update that ledger pair in the same change.
   compatible wall instead of persisting artificial wall segments, while a real
   direction, drawing-mode, thickness, measurement-side, chain, or closure boundary still
   creates a separate wall,
+  deleting the sole wall shared by exactly two valid closed spaces rebuilds
+  their remaining perimeter as one directed closed space, so the Canvas derives
+  one merged fill, room label, permanent dimension plan, and net area; deleting
+  an exterior or single-space boundary still invalidates the affected room. If
+  an adjacent room started from the shared wall's outer face, a perimeter wall
+  can retain a wall-thickness start/end measurement inset at that junction;
+  successful merging clears only those obsolete insets at the deleted wall's
+  two endpoint nodes and refreshes the affected lengths, restoring one
+  continuous wall solid without deleting or combining unselected perimeter
+  walls or wall IDs; openings compensate for any removed start inset so their
+  absolute position along the wall does not move,
   remeasure, shared-wall closure including reset-cursor connections to existing
   boundaries and their inferred missing closing edge, advisory close candidate
   with the compact green circular `合` action and geometry-anchored Xiao K guide, and direct closure.
@@ -931,7 +1040,11 @@ must update that ledger pair in the same change.
   last wall direction; both inferred edges must pass the existing intersection
   and overlap checks, so closure never inserts a diagonal shortcut across the room.
   Shared-boundary splits apply only to nodes that lie on that boundary, preserving
-  every existing edge needed for the merged room shell.
+  every existing edge needed for the merged room shell. When a shared wall is
+  split for a new adjacent room, each existing closed space receives the split
+  pieces in the direction required by its own directed `wallIds` chain; a
+  reverse-oriented room boundary therefore remains closed instead of losing its
+  fill, label, dimensions, or area after the neighbouring room closes.
   from a pending diagonal preview (the close action commits its current preview
   length before closing), openings, opening
   dimensions and side, cursor placement for new wall chains on existing
@@ -1036,13 +1149,14 @@ must update that ledger pair in the same change.
   focused graph/editor rendering tests pass `89/89`. A fresh `390x844` device
   capture remains pending because the existing WeChat DevTools window does not
   expose a compatible Mini Program Automator endpoint.
-- Outer-corner candidate priority correction (2026-08-11): when a raw cursor
-  drop at one closed-room corner lies in the wall-thickness direction from the
-  topology node toward its visible mitered outside corner, the outside vertex
-  now wins over that same inner vertex even if the pointer is still numerically
-  closer to the topology node. Drops on the room-interior side retain an
-  independently selectable inner vertex. This prevents adjacent-room starts
-  from inheriting an unintended inner corner and producing a slanted boundary.
+- Explicit outer-corner candidate correction (2026-08-11, updated 2026-08-12):
+  when inner and outer candidates coexist at one closed-room corner, a drop
+  inside one wall thickness of the topology corner remains on the inner vertex.
+  The outer vertex wins only when the drop deliberately enters the visible
+  mitered corner's terminal band, or leaves the inner protection radius and is
+  nearer the outer corner. This prevents slight finger or lens-marker drift
+  into the wall body from changing an adjacent-room start to outer-face
+  semantics while retaining an explicitly selectable outside corner.
   The user-provided device captures
   `codex-clipboard-3c0e6474-c194-48f3-b8cb-65ab5e43b2db.jpg` and
   `d2a3272efb1adc354dd7ee9479850896.jpg` are the defect/state authority. Markup,
@@ -1160,6 +1274,18 @@ must update that ledger pair in the same change.
   Automator endpoint. This run did not open a duplicate window, so recompilation,
   route-stack confirmation, and native-Canvas screenshots remain pending until
   automation is enabled in that window or the behavior is checked on a real device.
+- Closed-room dimension endpoint and continuation clearance correction (2026-08-12):
+  permanent closed-space dimension lines keep a 60px clearance from each wall face;
+  their extension lines run a fixed 18px from the dimension-line side, retain a
+  12px wall-side break when space allows, and meet the centre of equal 4px
+  parallel 60-degree end slashes at the same
+  dimension-line crossings instead of using arrowheads. Live dimensions
+  retain their blue arrow treatment.
+  Active and preview wall bodies are included in the matching directional support
+  so permanent dimensions move beyond a wall pulled out from a closed room. The
+  v4 graph, values, route, shell, APIs, roles, persistence, and audits are
+  unchanged. Unit and Canvas regression coverage is added; native 390x844 QA
+  remains pending because the current DevTools window has no automation endpoint.
 - Closed-room continuation working-line correction (2026-08-12): an outer-edge
   hit remains valid snap metadata and still controls the neighbouring wall-body
   alignment, but the Canvas cursor, preview/red measurement path, and live

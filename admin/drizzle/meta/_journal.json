@@ -148,6 +148,13 @@
       "when": 1786383600000,
       "tag": "0020_lead_lifecycle_actor_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786540800000,
+      "tag": "0021_platform_notification_config",
+      "breakpoints": true
     }
   ]
 }

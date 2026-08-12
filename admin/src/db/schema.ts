@@ -302,6 +302,7 @@ export const platformConfigs = appSchema.table(
     key: text('key').notNull(),
     mediaStorage: jsonObject<Record<string, unknown>>('media_storage'),
     promotionConfig: jsonObject<Record<string, unknown>>('promotion_config'),
+    notificationConfig: jsonObject<Record<string, unknown>>('notification_config'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

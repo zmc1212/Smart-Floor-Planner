@@ -25,7 +25,7 @@ This feature is separate from order commissions. Acquisition confirmation is ind
 | Designer acquisition confirmation | `Implemented` | The assigned designer can confirm during supported open lifecycle stages; the conditional update writes audit facts only. |
 | Role-aware Acquisition Collaboration workbench | `Implemented` | Designers process pending handoffs; measurers use one page-level current-designer entry and review waiting states, receipts, and commission summaries inside task cards. |
 | Acquisition commission | `Implemented` | Independent table, fixed enterprise amount snapshotted at confirmation, initially `pending_settlement`. |
-| Notifications | `Implemented` | In-app notification is persisted; WeChat failure does not roll back business data. |
+| Notifications | `Implemented` | In-app notification is persisted first; lead handoffs use `lead_assignment`, acquisition-commission reminders use `workflow_todo`, and WeChat `sent`/`failed`/`skipped` outcomes never roll back business data. |
 | Automatic payout | `Limited` | Settlement is manual; no payment-provider or bank disbursement integration exists. |
 
 ## 3. Business rules
@@ -113,6 +113,14 @@ fields remain the audit record after the current status advances.
 ### `staff_notifications`
 
 - Stores recipient, enterprise, lead, notification type, in-app status, WeChat status, error, dedupe key, and navigation parameters.
+- Delivery always creates the in-app channel before attempting WeChat. A missing
+  OpenID, missing template, missing authorization, transport failure, or WeChat
+  error code is recorded as `skipped` or `failed` without changing the business
+  response.
+- New-lead designer handoffs use the version-2 `lead_assignment` template;
+  measurer acquisition-commission reminders use `workflow_todo`. Enterprise
+  owners receiving a genuinely new lead use `new_lead`. Reused duplicate-phone
+  leads do not create either channel again.
 - `(dedupe_key, channel)` is a partial unique index when a dedupe key exists;
   notification inserts use the same `dedupe_key IS NOT NULL` predicate in
   their conflict target so PostgreSQL can apply this de-duplication rule.
@@ -161,7 +169,7 @@ Only measurers see the designer QR and acquisition commission entry. Designers d
 
 ## 7. Transaction, idempotency, and security
 
-1. Notifications are sent after lead transaction commit. WeChat failure updates notification state but never rolls back the lead.
+1. Notifications are delivered after the lead transaction commits: persist the in-app channel, then attempt WeChat, then record `sent`/`failed`/`skipped`. WeChat failure never rolls back the lead or commission.
 2. Conditional `assigned_to + acquired_at IS NULL + supported lifecycle` update plus the unique `lead_id` index prevents duplicate confirmation and commission generation.
 3. Designers can confirm only their assigned leads. Measurers can read only their own leads, one page-level current bound-designer profile, and commissions. Task rows keep historical assignee identity facts but do not repeat WeChat IDs or QR data.
 4. QR delivery verifies enterprise ownership and uses a signed URL; storage keys and unrestricted public URLs must not be exposed.
@@ -172,7 +180,7 @@ Only measurers see the designer QR and acquisition commission entry. Designers d
 
 - Define the `voided` entry point, reason, audit event, and correction policy.
 - Confirm amount precision, bounds, and bulk configuration/import rules.
-- Add subscription-template authorization expiry handling and administrator-visible delivery failure monitoring.
+- Add operator guidance and monitoring for exhausted one-time subscription grants, authorization expiry, and re-authorization.
 - Define staff deactivation, enterprise transfer, designer departure, and outstanding settlement behavior.
 - Add binding-change audit history: who bound which measurer to which designer and when.
 - Expand PostgreSQL integration coverage for de-duplication, concurrent confirmation, tenant isolation, and notification de-duplication.

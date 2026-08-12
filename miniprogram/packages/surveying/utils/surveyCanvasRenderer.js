@@ -28,8 +28,13 @@ const DIMENSION_ENDPOINT_TICK_PX = 8;
 // Keep dimension lines clear of the measured wall, with extension lines
 // bridging the deliberate drafting gap from each wall end.
 const DIMENSION_GAP_PX = 32;
-const DIMENSION_OUTER_GAP_PX = 28;
+const DIMENSION_OUTER_GAP_PX = 60;
 const DIMENSION_COLLISION_GAP_PX = 6;
+// Permanent annotations use short, fixed drafting marks near the dimension
+// line; cap them against the wall-side clearance so they never cross a wall.
+const PERMANENT_EXTENSION_LENGTH_PX = 18;
+const PERMANENT_EXTENSION_WALL_GAP_PX = 12;
+const PERMANENT_SLASH_HALF_RUN_PX = 1;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -210,7 +215,7 @@ function createDimensionOptions(wall, priority) {
   });
 }
 
-function createClosedDimensions(walls, openings, spaces, spacePlans, outerRings, viewportScale) {
+function createClosedDimensions(walls, openings, spaces, spacePlans, outerRings, viewportScale, clearanceWalls) {
   const wallById = {};
   (walls || []).forEach((wall) => { wallById[wall.id] = wall; });
   const plan = dimensionLayout.createClosedDimensionPlan({
@@ -231,6 +236,14 @@ function createClosedDimensions(walls, openings, spaces, spacePlans, outerRings,
     spaces: spaces || [],
     spacePlans: spacePlans || [],
     outerRings: outerRings || [],
+    clearancePoints: (clearanceWalls || []).flatMap((wall) => [
+      wall.startPoint,
+      wall.endPoint,
+      wall.rawOuterStart,
+      wall.rawOuterEnd,
+      wall.outerStart,
+      wall.outerEnd
+    ]),
     openings: (openings || []).map((opening) => ({
       id: opening.id,
       wallId: opening.wall && opening.wall.id,
@@ -267,7 +280,7 @@ function applyMeasurementFace(wall, measurementFace) {
   });
 }
 
-function resolveDimensions(walls, openings, spaces, spacePlans, outerRings, viewportScale) {
+function resolveDimensions(walls, openings, spaces, spacePlans, outerRings, viewportScale, previewWall) {
   const dimensions = [];
   const accepted = [];
   const activeWalls = walls.filter((wall) => !wall.lineOnly && wall.isActiveMeasurement && !wall.closed);
@@ -304,7 +317,8 @@ function resolveDimensions(walls, openings, spaces, spacePlans, outerRings, view
     spaces,
     spacePlans,
     outerRings,
-    viewportScale
+    viewportScale,
+    activeWalls.concat(previewWall ? [previewWall] : [])
   ));
 
   return dimensions;
@@ -682,7 +696,7 @@ function buildClosedSpaceLabels(floor, project, viewport) {
 function buildClosedSpaceFills(floor, project) {
   return (floor.spaces || []).filter((space) => space.closed && Array.isArray(space.wallIds))
     .map((space) => {
-      const boundaryPoints = surveyGraph.buildSpaceInnerBoundaryPoints(floor, space.wallIds);
+      const boundaryPoints = surveyGraph.buildSpaceInnerBoundaryPoints(floor, space);
       if (!boundaryPoints || boundaryPoints.length < 3) return null;
       return {
         id: space.id,
@@ -793,11 +807,13 @@ function createSurveyRenderScene(input) {
     .filter((space) => space.closed && Array.isArray(space.wallIds))
     .map((space) => ({
       spaceId: space.id,
+      hasWallFaceOverrides: !!(space.wallFaceOverrides && Object.keys(space.wallFaceOverrides).length),
       plan: surveyGraph.buildSpaceDimensionPlan(floor, space)
     }))
     .filter((entry) => entry.plan);
   const projectedSpacePlans = spaceDimensionPlans.map((entry) => ({
     spaceId: entry.spaceId,
+    hasWallFaceOverrides: entry.hasWallFaceOverrides,
     innerBoundaryPoints: entry.plan.innerBoundaryPoints.map(project),
     innerSegments: (entry.plan.innerSegments || []).map((segment) => ({
       wallId: segment.wallId,
@@ -811,8 +827,15 @@ function createSurveyRenderScene(input) {
     floor.spaces,
     projectedSpacePlans,
     wallSolidPlans.closed.rings,
-    viewport.scale
+    viewport.scale,
+    previewWall
   );
+  const wallFaceOverrideBoundaries = projectedSpacePlans
+    .filter((entry) => entry.hasWallFaceOverrides && entry.innerBoundaryPoints.length >= 3)
+    .map((entry) => ({
+      spaceId: entry.spaceId,
+      points: entry.innerBoundaryPoints
+    }));
 
   const activeSegment = buildActiveSegment(walls, previewWall, session);
   return {
@@ -833,6 +856,7 @@ function createSurveyRenderScene(input) {
     cursor: buildCursor(floor, session, project, activeSegment),
     closedSpaceFills: buildClosedSpaceFills(floor, project),
     closedSpaceLabels: buildClosedSpaceLabels(floor, project, viewport),
+    wallFaceOverrideBoundaries,
     spaceDimensionPlans,
     activeSegment,
     closed: shouldCloseWholeWallPath(floor, previewWall),
@@ -963,6 +987,23 @@ function drawWallOutlines(ctx, scene) {
   ctx.lineCap = 'butt';
   ctx.lineJoin = 'miter';
   drawCompoundRings(ctx, scene.wallSolidPlan && scene.wallSolidPlan.rings, null, '#1f1f1f', WALL_STROKE_PX);
+  // A topology-face override records that the operator deliberately closed an
+  // adjacent room on the existing room's inner vertices. The compound wall
+  // union keeps the shared wall solid, but otherwise hides the final
+  // wall-thickness segment of both adjoining walls as an internal seam. Redraw
+  // that selected clear boundary so closure does not appear to move those
+  // endpoints back to the shared wall's opposite face.
+  (scene.wallFaceOverrideBoundaries || []).forEach((boundary) => {
+    const points = boundary && boundary.points;
+    if (!points || points.length < 3) return;
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let index = 1; index < points.length; index += 1) {
+      ctx.lineTo(points[index].x, points[index].y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+  });
   if (scene.previewWall && scene.previewWall.lineOnly) {
     ctx.beginPath();
     ctx.moveTo(scene.previewWall.startPoint.x, scene.previewWall.startPoint.y);
@@ -1375,7 +1416,18 @@ function drawPlannedDimension(ctx, dimension) {
   const dy = end.y - start.y;
   const length = Math.hypot(dx, dy);
   if (!length) return;
+  const direction = { x: dx / length, y: dy / length };
+  const lineNormal = { x: -direction.y, y: direction.x };
   const flipLabel = Math.atan2(dy, dx) > Math.PI / 2 || Math.atan2(dy, dx) <= -Math.PI / 2;
+
+  function toLocal(point) {
+    const offsetX = point.x - start.x;
+    const offsetY = point.y - start.y;
+    return {
+      x: offsetX * direction.x + offsetY * direction.y,
+      y: offsetX * lineNormal.x + offsetY * lineNormal.y
+    };
+  }
 
   ctx.save();
   ctx.translate(start.x, start.y);
@@ -1383,16 +1435,32 @@ function drawPlannedDimension(ctx, dimension) {
   ctx.strokeStyle = 'rgba(75, 85, 99, 0.76)';
   ctx.fillStyle = PERMANENT_DIMENSION_LABEL_COLOR;
   ctx.lineWidth = 0.75;
+  const extensionStart = toLocal(dimension.extensionStart || start);
+  const extensionEnd = toLocal(dimension.extensionEnd || end);
+  const slashRun = PERMANENT_SLASH_HALF_RUN_PX;
+  const slashRise = slashRun * Math.sqrt(3);
+  const extensionSide = extensionStart.y + extensionEnd.y >= 0 ? 1 : -1;
+  const extensionLength = (point) => {
+    const wallDistance = point.y * extensionSide;
+    const available = Math.max(0, wallDistance - PERMANENT_EXTENSION_WALL_GAP_PX);
+    return extensionSide * Math.min(PERMANENT_EXTENSION_LENGTH_PX, available);
+  };
+  const extensionStartStopY = extensionLength(extensionStart);
+  const extensionEndStopY = extensionLength(extensionEnd);
   ctx.beginPath();
-  ctx.moveTo(0, -DIMENSION_ENDPOINT_TICK_PX);
-  ctx.lineTo(0, DIMENSION_ENDPOINT_TICK_PX);
-  ctx.moveTo(length, -DIMENSION_ENDPOINT_TICK_PX);
-  ctx.lineTo(length, DIMENSION_ENDPOINT_TICK_PX);
+  // Extension lines stop just before the wall. Each 60-degree slash is centred
+  // on the same dimension-line crossing as its extension line.
+  ctx.moveTo(extensionStart.x, extensionStartStopY);
+  ctx.lineTo(0, 0);
+  ctx.moveTo(extensionEnd.x, extensionEndStopY);
+  ctx.lineTo(length, 0);
+  ctx.moveTo(-slashRun, -extensionSide * slashRise);
+  ctx.lineTo(slashRun, extensionSide * slashRise);
+  ctx.moveTo(length - slashRun, -extensionSide * slashRise);
+  ctx.lineTo(length + slashRun, extensionSide * slashRise);
   ctx.moveTo(0, 0);
   ctx.lineTo(length, 0);
   ctx.stroke();
-  drawArrow(ctx, 4.5, 0, -1, 4.5);
-  drawArrow(ctx, length - 4.5, 0, 1, 4.5);
   ctx.save();
   ctx.translate(length / 2, 0);
   if (flipLabel) ctx.rotate(Math.PI);
@@ -1664,6 +1732,11 @@ function createViewportInteractionScene(scene, viewport) {
     closedSpaceFills: (scene.closedSpaceFills || []).map((space) => Object.assign({}, space, {
       points: projectInteractionPoints(space.points, transform)
     })),
+    wallFaceOverrideBoundaries: (scene.wallFaceOverrideBoundaries || []).map((boundary) => (
+      Object.assign({}, boundary, {
+        points: projectInteractionPoints(boundary.points, transform)
+      })
+    )),
     wallSolidPlan: projectInteractionSolidPlan(scene.wallSolidPlan, transform),
     wallSolidPlans: Object.keys(scene.wallSolidPlans || {}).reduce((plans, key) => {
       plans[key] = projectInteractionSolidPlan(scene.wallSolidPlans[key], transform);

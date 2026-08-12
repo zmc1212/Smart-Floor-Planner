@@ -332,6 +332,33 @@ test('closed single room emits clear dimensions and physical building totals on 
   });
 });
 
+test('closed dimensions clear an active wall chain that extends beyond the room outline', () => {
+  const room = createSpacePlan('room', [
+    { x: 0, y: 0 }, { x: 2100, y: 0 }, { x: 2100, y: 3160 }, { x: 0, y: 3160 }
+  ]);
+  const outerRing = [
+    { x: -200, y: -200 }, { x: 2300, y: -200 }, { x: 2300, y: 3360 }, { x: -200, y: 3360 }
+  ];
+  const plan = createClosedDimensionPlan(createClosedPlanInput(room, outerRing, {
+    clearancePoints: [
+      { x: -1800, y: -200 },
+      { x: -1800, y: 0 }
+    ]
+  }));
+  const leftDimensions = plan.items.filter((item) => item.normal.x === -1);
+
+  assert.ok(leftDimensions.length > 0);
+  leftDimensions.forEach((item) => {
+    assert.ok(
+      item.start.x <= -1900 && item.end.x <= -1900,
+      `${item.id} should sit outside the active wall chain`
+    );
+  });
+  plan.items.filter((item) => item.normal.x === 1).forEach((item) => {
+    assert.ok(item.start.x >= 2400 && item.end.x >= 2400);
+  });
+});
+
 test('adjacent rooms create an exterior clear chain without dimensioning the shared wall', () => {
   const left = createSpacePlan('left', [
     { x: 0, y: 0 }, { x: 3370, y: 0 }, { x: 3370, y: 3160 }, { x: 0, y: 3160 }

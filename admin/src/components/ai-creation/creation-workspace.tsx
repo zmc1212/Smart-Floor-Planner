@@ -229,6 +229,10 @@ export function CreationWorkspace() {
   const [attachGeneration, setAttachGeneration] = useState<CreationGeneration | null>(null);
   const [attachWorkflowId, setAttachWorkflowId] = useState('');
   const [previewGeneration, setPreviewGeneration] = useState<CreationGeneration | null>(null);
+  const [previewReferenceIndex, setPreviewReferenceIndex] = useState<number | null>(null);
+  const [activeReferenceIndex, setActiveReferenceIndex] = useState(0);
+  const [hoveredReferenceIndex, setHoveredReferenceIndex] = useState<number | null>(null);
+  const [referenceStackExpanded, setReferenceStackExpanded] = useState(false);
   const [previewZoom, setPreviewZoom] = useState(1);
   const [previewRotation, setPreviewRotation] = useState(0);
   const [previewFullscreen, setPreviewFullscreen] = useState(false);
@@ -287,12 +291,18 @@ export function CreationWorkspace() {
   const unitPrice = model?.prices.find((price) => price.resolutionTier === resolutionTier)?.credits || 0;
   const estimatedCredits = unitPrice * count;
   const hasEnabledPrice = unitPrice > 0;
+  const previewReference = previewReferenceIndex === null ? null : assets[previewReferenceIndex];
 
   useEffect(() => {
     const viewport = conversationViewportRef.current;
     const latestRound = viewport?.lastElementChild as HTMLElement | null;
     if (viewport && latestRound) viewport.scrollTop = Math.max(0, latestRound.offsetTop - 12);
   }, [selectedTaskId, conversationBatches.length]);
+
+  useEffect(() => {
+    setActiveReferenceIndex((current) => Math.min(current, Math.max(assets.length - 1, 0)));
+    setPreviewReferenceIndex((current) => current === null || current < assets.length ? current : null);
+  }, [assets.length]);
 
   const applyModelDefaults = (profile?: CreationModelProfile) => {
     if (!profile) return;
@@ -373,6 +383,10 @@ export function CreationWorkspace() {
     if (!files?.length) return;
     await uploadReferenceFiles(Array.from(files), '已上传参考图');
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removeReferenceAsset = (assetId: string) => {
+    setAssets((current) => current.filter((asset) => asset.id !== assetId));
   };
 
   const reuseGeneration = async (generation: CreationGeneration) => {
@@ -752,10 +766,65 @@ export function CreationWorkspace() {
             <button type="button" onClick={() => assets.length ? setPromptExpanded(true) : fileInputRef.current?.click()} aria-label="编辑参考图片" title={assets.length ? '编辑参考图片' : '上传参考图片'} className="absolute -top-14 left-0 flex size-12 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/15 lg:-left-[60px] lg:top-0"><Pencil className="size-5" /></button>
             <div className="absolute -top-[30px] right-[30px] flex items-center gap-1.5 text-sm text-[#b3b3b3]"><span className="flex size-5 items-center justify-center rounded-full bg-[#7047ff] text-[10px] font-semibold text-white">AI</span>预计消耗 <strong className="text-[#f0d567]">{estimatedCredits}</strong> 点</div>
             <div className="grid min-h-0 grid-cols-[64px_minmax(0,1fr)] gap-3 sm:grid-cols-[84px_minmax(0,1fr)]">
-              <div className="relative flex h-[98px] items-center justify-center">
+              <div
+                className="relative flex h-[98px] items-center justify-center overflow-visible"
+                onMouseEnter={() => setReferenceStackExpanded(true)}
+                onMouseLeave={() => setReferenceStackExpanded(false)}
+                onFocus={() => setReferenceStackExpanded(true)}
+                onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setReferenceStackExpanded(false); }}
+              >
                 {assets.length ? (
-                  <div className="relative h-[86px] w-[71px]">
-                    {assets.slice(0, 3).map((asset, index) => <div key={asset.id} className="group absolute inset-0 overflow-hidden rounded-md border border-[#7047ff]/70 bg-[#222226] shadow-lg" style={{ transform: `translate(${index * 5}px, ${index * 3}px) rotate(${index * 4 - 5}deg)`, zIndex: index }}><img src={asset.previewUrl} alt="参考图" className="h-full w-full object-cover" /><button type="button" onClick={() => setAssets((current) => current.filter((item) => item.id !== asset.id))} className="absolute right-1 top-1 flex size-5 items-center justify-center rounded-full bg-black/70 opacity-0 group-hover:opacity-100"><X className="size-3" /></button></div>)}
+                  <div className="relative h-[86px] w-[71px] overflow-visible">
+                    {assets.map((asset, index) => {
+                      const isActive = index === activeReferenceIndex;
+                      const isHovered = referenceStackExpanded && hoveredReferenceIndex === index;
+                      const offsetX = referenceStackExpanded ? index * 65 : index * 4;
+                      const offsetY = (isActive ? -4 : index % 2 ? -1 : 1) + (isHovered ? -8 : 0);
+                      const rotation = [-5, 7, -4, 6, -7, 4][index % 6];
+                      return (
+                        <div
+                          key={asset.id}
+                          className={cn(
+                            'group absolute left-0 top-1.5 h-[78px] w-[61px] cursor-pointer rounded-md border border-[#8b72ff]/80 bg-[#222226] shadow-[0_6px_14px_rgba(0,0,0,0.28)] outline-none transition-[transform,box-shadow] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:z-20 hover:shadow-[0_16px_28px_rgba(0,0,0,0.38)] focus-visible:z-20 focus-visible:ring-2 focus-visible:ring-[#a584ff]',
+                            isHovered && 'z-20 shadow-[0_16px_28px_rgba(0,0,0,0.38)]'
+                          )}
+                          style={{ transform: `translate3d(${offsetX}px, ${offsetY}px, 0) rotate(${rotation}deg) scale(${isHovered ? 1.1 : 1})`, zIndex: referenceStackExpanded ? index + 1 : index + 2 }}
+                          role="button"
+                          tabIndex={0}
+                          aria-label={`预览第 ${index + 1} 张参考图`}
+                          onClick={() => { setActiveReferenceIndex(index); setPreviewReferenceIndex(index); setPreviewZoom(1); setPreviewRotation(0); setPreviewFullscreen(false); }}
+                          onMouseEnter={() => setHoveredReferenceIndex(index)}
+                          onMouseLeave={() => setHoveredReferenceIndex((current) => current === index ? null : current)}
+                          onFocus={() => setHoveredReferenceIndex(index)}
+                          onBlur={() => setHoveredReferenceIndex((current) => current === index ? null : current)}
+                          onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setActiveReferenceIndex(index); setPreviewReferenceIndex(index); setPreviewZoom(1); setPreviewRotation(0); setPreviewFullscreen(false); } }}
+                        >
+                          <img src={asset.previewUrl} alt={`参考图 ${index + 1}`} className="h-full w-full rounded-[5px] object-cover" />
+                          <span aria-hidden className="absolute left-1 top-1 flex min-w-[18px] items-center justify-center rounded-full border border-white/30 bg-[#17171f]/80 px-1 text-[11px] font-semibold leading-4 text-white">{index + 1}</span>
+                          <button
+                            type="button"
+                            aria-label={`删除第 ${index + 1} 张参考图`}
+                            className={cn('absolute -right-2 -top-2 flex size-6 items-center justify-center rounded-full border border-white/10 bg-[#414148] text-white shadow-lg transition duration-150 hover:bg-[#5b5b64] focus-visible:opacity-100', referenceStackExpanded ? 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100' : 'pointer-events-none opacity-0')}
+                            onClick={(event) => { event.stopPropagation(); removeReferenceAsset(asset.id); }}
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                    {model?.supportsReferenceImages && assets.length < model.maxReferenceImages ? (
+                      <button
+                        type="button"
+                        aria-label="添加参考图"
+                        title="添加参考图"
+                        disabled={uploading}
+                        onClick={() => fileInputRef.current?.click()}
+                        className="absolute left-0 top-1.5 flex h-[78px] w-[61px] items-center justify-center rounded-md border-2 border-[#7047ff] bg-[#222226] text-white shadow-[0_0_22px_rgba(112,71,255,0.18)] transition-[transform,background-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-1 hover:bg-[#29282f] disabled:opacity-40"
+                        style={{ transform: `translate3d(${referenceStackExpanded ? assets.length * 65 : Math.max(44, assets.length * 4 + 38)}px, 0, 0) rotate(-8deg)`, zIndex: referenceStackExpanded ? assets.length + 2 : 20 }}
+                      >
+                        {uploading ? <Loader2 className="size-5 animate-spin" /> : <Plus className="size-6" />}
+                      </button>
+                    ) : null}
                   </div>
                 ) : (
                   <button type="button" aria-label="上传参考图" disabled={uploading || !model?.supportsReferenceImages} onClick={() => fileInputRef.current?.click()} className="flex h-[86px] w-[71px] -rotate-[12deg] items-center justify-center rounded-md border-2 border-[#7047ff] bg-[#222226] text-white shadow-[0_0_22px_rgba(112,71,255,0.18)] hover:bg-[#29282f] disabled:opacity-40">{uploading ? <Loader2 className="size-5 animate-spin" /> : <Plus className="size-6" />}</button>
@@ -844,6 +913,35 @@ export function CreationWorkspace() {
               {previewGeneration?.imageUrl ? <Button size="icon-sm" variant="secondary" asChild title="下载图片"><a href={previewGeneration.imageUrl} download={`ai-creation-${previewGeneration.id}.png`}><Download /></a></Button> : null}
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={previewReferenceIndex !== null} onOpenChange={(open) => !open && setPreviewReferenceIndex(null)}>
+        <DialogContent className={cn('grid grid-rows-[auto_minmax(0,1fr)_auto] gap-3 border-white/10 bg-[#111216] p-4 text-white sm:rounded-xl', previewFullscreen ? 'h-screen w-screen max-w-none' : 'h-[90vh] max-w-[92vw]')}>
+          <DialogHeader>
+            <DialogTitle className="text-base">图片预览</DialogTitle>
+            <DialogDescription className="sr-only">查看、切换、缩放、旋转或下载已上传的参考图片。</DialogDescription>
+          </DialogHeader>
+          <div className="relative min-h-0 overflow-hidden rounded-lg bg-black/25">
+            {previewReference ? <img src={previewReference.previewUrl} alt={`参考图 ${(previewReferenceIndex || 0) + 1} 大图`} className="h-full w-full object-contain transition-transform" style={{ transform: `scale(${previewZoom}) rotate(${previewRotation}deg)` }} /> : null}
+            {assets.length > 1 ? (
+              <>
+                <Button size="icon-sm" variant="secondary" className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80" title="查看上一张图片" onClick={() => { setPreviewReferenceIndex((current) => current === null ? 0 : (current - 1 + assets.length) % assets.length); setPreviewZoom(1); setPreviewRotation(0); }}><ChevronRight className="size-4 rotate-180" /></Button>
+                <Button size="icon-sm" variant="secondary" className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/60 hover:bg-black/80" title="查看下一张图片" onClick={() => { setPreviewReferenceIndex((current) => current === null ? 0 : (current + 1) % assets.length); setPreviewZoom(1); setPreviewRotation(0); }}><ChevronRight className="size-4" /></Button>
+              </>
+            ) : null}
+            <div className="absolute right-3 top-3 flex items-center gap-1 rounded-lg border border-white/10 bg-black/70 p-1.5 backdrop-blur">
+              <Button size="icon-sm" variant="secondary" title="放大图片" onClick={() => setPreviewZoom((value) => Math.min(3, value + 0.2))}><Plus /></Button>
+              <Button size="icon-sm" variant="secondary" title="缩小图片" onClick={() => setPreviewZoom((value) => Math.max(0.4, value - 0.2))}><Minus /></Button>
+              <Button size="sm" variant="secondary" title="恢复原始比例" onClick={() => { setPreviewZoom(1); setPreviewRotation(0); }}>1:1</Button>
+              <Button size="icon-sm" variant="secondary" title="顺时针旋转图片" onClick={() => setPreviewRotation((value) => value + 90)}><RotateCw /></Button>
+              <Button size="icon-sm" variant="secondary" title="全屏预览" onClick={() => setPreviewFullscreen((value) => !value)}><Maximize2 /></Button>
+              {previewReference ? <Button size="icon-sm" variant="secondary" asChild title="下载图片"><a href={previewReference.previewUrl} download={`ai-reference-${previewReference.id}.png`}><Download /></a></Button> : null}
+            </div>
+          </div>
+          {assets.length > 1 ? <div aria-label="参考图缩略图列表" className="flex justify-center gap-3 overflow-x-auto pb-1">
+            {assets.map((asset, index) => <button key={asset.id} type="button" title={`查看第 ${index + 1} 张参考图`} aria-label={`查看第 ${index + 1} 张参考图`} onClick={() => { setPreviewReferenceIndex(index); setActiveReferenceIndex(index); setPreviewZoom(1); setPreviewRotation(0); }} className={cn('relative h-20 w-16 shrink-0 overflow-hidden rounded-md border-2 bg-[#24252b] transition', previewReferenceIndex === index ? 'border-[#8b72ff] shadow-[0_0_0_2px_rgba(112,71,255,0.28)]' : 'border-white/15 hover:border-white/40')}><img src={asset.previewUrl} alt={`缩略图 ${index + 1}`} className="h-full w-full object-cover" /><span className="absolute left-1 top-1 rounded bg-black/65 px-1 text-[10px] font-semibold text-white">{index + 1}</span></button>)}
+          </div> : null}
         </DialogContent>
       </Dialog>
 

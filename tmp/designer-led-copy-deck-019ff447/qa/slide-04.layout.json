@@ -1,0 +1,1326 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/u2qrrp",
+    "id": "u2qrrp",
+    "slide": 4,
+    "layoutId": "cfc545e4-c885-42ac-a999-616ed2d1deeb",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "1bc9aab1-62b7-4048-958d-10bc59a6c4b9",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#FCFCF8",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "bg1": "#FFFFFF",
+      "bg2": "#000000",
+      "tx1": "#1F1F1F",
+      "tx2": "#FFFFFF",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "typefaces": [
+      "+mn-lt"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "cfc545e4-c885-42ac-a999-616ed2d1deeb",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "1bc9aab1-62b7-4048-958d-10bc59a6c4b9",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "1bc9aab1-62b7-4048-958d-10bc59a6c4b9",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/47idobax",
+      "id": "1",
+      "bbox": [
+        0,
+        0,
+        18,
+        720
+      ],
+      "geometry": "rect",
+      "fillColor": "#12A75A",
+      "lineWidth": 0
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/369wv6tc",
+      "id": "2",
+      "bbox": [
+        64,
+        42,
+        120,
+        24
+      ],
+      "geometry": "rect",
+      "text": "家客来",
+      "textPreview": "家客来",
+      "resolvedFontSize": 16,
+      "resolvedTextStyle": {
+        "fontSize": 16,
+        "typeface": "+mn-lt",
+        "color": "#12A75A",
+        "bold": true,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "家客来"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "家客来",
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "color": "#12A75A",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "家客来",
+              "fontSize": 16,
+              "color": "#12A75A",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/i5gvm1sr",
+      "id": "3",
+      "bbox": [
+        184,
+        43,
+        340,
+        21
+      ],
+      "geometry": "rect",
+      "text": "方案表达",
+      "textPreview": "方案表达",
+      "resolvedFontSize": 14,
+      "resolvedTextStyle": {
+        "fontSize": 14,
+        "typeface": "+mn-lt",
+        "color": "#5B756A",
+        "bold": true,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "方案表达"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "方案表达",
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "color": "#5B756A",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "方案表达",
+              "fontSize": 14,
+              "color": "#5B756A",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/h47etwb6",
+      "id": "4",
+      "bbox": [
+        1144,
+        43,
+        70,
+        21
+      ],
+      "geometry": "rect",
+      "text": "04",
+      "textPreview": "04",
+      "resolvedFontSize": 14,
+      "resolvedTextStyle": {
+        "fontSize": 14,
+        "typeface": "+mn-lt",
+        "color": "#5B756A",
+        "bold": true,
+        "alignment": "right",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "04"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "04",
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "color": "#5B756A",
+            "bold": true,
+            "alignment": "right"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "04",
+              "fontSize": 14,
+              "color": "#5B756A",
+              "bold": true,
+              "alignment": "right"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 5,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/g3ydkral",
+      "id": "5",
+      "bbox": [
+        64,
+        81,
+        1152,
+        0
+      ],
+      "geometry": "line",
+      "lineColor": "#CFE4D7",
+      "lineWidth": 1
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/v2pwrmtg",
+      "id": "6",
+      "name": "slide-title",
+      "bbox": [
+        64,
+        121,
+        1080,
+        58
+      ],
+      "geometry": "rect",
+      "text": "有了正式户型，设计师才能更快把需求讲成方案",
+      "textPreview": "有了正式户型，设计师才能更快把需求讲成方案",
+      "resolvedFontSize": 35,
+      "resolvedTextStyle": {
+        "fontSize": 35,
+        "typeface": "+mn-lt",
+        "color": "#123D31",
+        "bold": true,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "有了正式户型，设计师才能更快把需求讲成方案"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "有了正式户型，设计师才能更快把需求讲成方案",
+          "resolvedTextStyle": {
+            "fontSize": 35,
+            "color": "#123D31",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "有了正式户型，设计师才能更快把需求讲成方案",
+              "fontSize": 35,
+              "color": "#123D31",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 7,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/u1gvihsv",
+      "id": "7",
+      "bbox": [
+        67,
+        193,
+        1010,
+        30
+      ],
+      "geometry": "rect",
+      "text": "AI 是设计师的方案表达助手，用于探索方向、保留结果并继续和客户沟通。",
+      "textPreview": "AI 是设计师的方案表达助手，用于探索方向、保留结果并继续和客户沟通。",
+      "resolvedFontSize": 18,
+      "resolvedTextStyle": {
+        "fontSize": 18,
+        "typeface": "+mn-lt",
+        "color": "#5B756A",
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "AI 是设计师的方案表达助手，用于探索方向、保留结果并继续和客户沟通。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "AI 是设计师的方案表达助手，用于探索方向、保留结果并继续和客户沟通。",
+          "resolvedTextStyle": {
+            "fontSize": 18,
+            "color": "#5B756A"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "AI 是设计师的方案表达助手，用于探索方向、保留结果并继续和客户沟通。",
+              "fontSize": 18,
+              "color": "#5B756A"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 8,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/10be50rq",
+      "id": "8",
+      "bbox": [
+        78,
+        283,
+        20,
+        20
+      ],
+      "geometry": "ellipse",
+      "fillColor": "#12A75A",
+      "lineWidth": 0
+    },
+    {
+      "order": 9,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/0z2dwva5",
+      "id": "9",
+      "bbox": [
+        78,
+        286,
+        20,
+        12
+      ],
+      "geometry": "rect",
+      "text": "1",
+      "textPreview": "1",
+      "resolvedFontSize": 10,
+      "resolvedTextStyle": {
+        "fontSize": 10,
+        "typeface": "+mn-lt",
+        "color": "#FFFFFF",
+        "bold": true,
+        "alignment": "center",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "1"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "1",
+          "resolvedTextStyle": {
+            "fontSize": 10,
+            "color": "#FFFFFF",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "1",
+              "fontSize": 10,
+              "color": "#FFFFFF",
+              "bold": true,
+              "alignment": "center"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 10,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/e543mhsz",
+      "id": "10",
+      "bbox": [
+        124,
+        276,
+        295,
+        25
+      ],
+      "geometry": "rect",
+      "text": "选择目标",
+      "textPreview": "选择目标",
+      "resolvedFontSize": 20,
+      "resolvedTextStyle": {
+        "fontSize": 20,
+        "typeface": "+mn-lt",
+        "color": "#123D31",
+        "bold": true,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "选择目标"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "选择目标",
+          "resolvedTextStyle": {
+            "fontSize": 20,
+            "color": "#123D31",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "选择目标",
+              "fontSize": 20,
+              "color": "#123D31",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 11,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/f6d4fm9k",
+      "id": "11",
+      "bbox": [
+        124,
+        309,
+        790,
+        28
+      ],
+      "geometry": "rect",
+      "text": "基于已完成的正式户型，选择整户或单空间。",
+      "textPreview": "基于已完成的正式户型，选择整户或单空间。",
+      "resolvedFontSize": 17,
+      "resolvedTextStyle": {
+        "fontSize": 17,
+        "typeface": "+mn-lt",
+        "color": "#5B756A",
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "基于已完成的正式户型，选择整户或单空间。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "基于已完成的正式户型，选择整户或单空间。",
+          "resolvedTextStyle": {
+            "fontSize": 17,
+            "color": "#5B756A"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "基于已完成的正式户型，选择整户或单空间。",
+              "fontSize": 17,
+              "color": "#5B756A"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 12,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/g7mlorap",
+      "id": "12",
+      "bbox": [
+        78,
+        378,
+        20,
+        20
+      ],
+      "geometry": "ellipse",
+      "fillColor": "#12A75A",
+      "lineWidth": 0
+    },
+    {
+      "order": 13,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/18vmhwra",
+      "id": "13",
+      "bbox": [
+        78,
+        381,
+        20,
+        12
+      ],
+      "geometry": "rect",
+      "text": "2",
+      "textPreview": "2",
+      "resolvedFontSize": 10,
+      "resolvedTextStyle": {
+        "fontSize": 10,
+        "typeface": "+mn-lt",
+        "color": "#FFFFFF",
+        "bold": true,
+        "alignment": "center",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "2"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "2",
+          "resolvedTextStyle": {
+            "fontSize": 10,
+            "color": "#FFFFFF",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "2",
+              "fontSize": 10,
+              "color": "#FFFFFF",
+              "bold": true,
+              "alignment": "center"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 14,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/6hk3ihsn",
+      "id": "14",
+      "bbox": [
+        124,
+        371,
+        295,
+        25
+      ],
+      "geometry": "rect",
+      "text": "形成表达",
+      "textPreview": "形成表达",
+      "resolvedFontSize": 20,
+      "resolvedTextStyle": {
+        "fontSize": 20,
+        "typeface": "+mn-lt",
+        "color": "#123D31",
+        "bold": true,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "形成表达"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "形成表达",
+          "resolvedTextStyle": {
+            "fontSize": 20,
+            "color": "#123D31",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "形成表达",
+              "fontSize": 20,
+              "color": "#123D31",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 15,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/rit4bm98",
+      "id": "15",
+      "bbox": [
+        124,
+        404,
+        790,
+        28
+      ],
+      "geometry": "rect",
+      "text": "围绕空间、风格与软装方向，建立可沟通的方案参考。",
+      "textPreview": "围绕空间、风格与软装方向，建立可沟通的方案参考。",
+      "resolvedFontSize": 17,
+      "resolvedTextStyle": {
+        "fontSize": 17,
+        "typeface": "+mn-lt",
+        "color": "#5B756A",
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "围绕空间、风格与软装方向，建立可沟通的方案参考。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "围绕空间、风格与软装方向，建立可沟通的方案参考。",
+          "resolvedTextStyle": {
+            "fontSize": 17,
+            "color": "#5B756A"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "围绕空间、风格与软装方向，建立可沟通的方案参考。",
+              "fontSize": 17,
+              "color": "#5B756A"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 16,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/sjmlkrat",
+      "id": "16",
+      "bbox": [
+        78,
+        473,
+        20,
+        20
+      ],
+      "geometry": "ellipse",
+      "fillColor": "#12A75A",
+      "lineWidth": 0
+    },
+    {
+      "order": 17,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/tkvmdwre",
+      "id": "17",
+      "bbox": [
+        78,
+        476,
+        20,
+        12
+      ],
+      "geometry": "rect",
+      "text": "3",
+      "textPreview": "3",
+      "resolvedFontSize": 10,
+      "resolvedTextStyle": {
+        "fontSize": 10,
+        "typeface": "+mn-lt",
+        "color": "#FFFFFF",
+        "bold": true,
+        "alignment": "center",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "3"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "3",
+          "resolvedTextStyle": {
+            "fontSize": 10,
+            "color": "#FFFFFF",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "3",
+              "fontSize": 10,
+              "color": "#FFFFFF",
+              "bold": true,
+              "alignment": "center"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 18,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/qdonu1s7",
+      "id": "18",
+      "bbox": [
+        124,
+        466,
+        295,
+        25
+      ],
+      "geometry": "rect",
+      "text": "保留过程",
+      "textPreview": "保留过程",
+      "resolvedFontSize": 20,
+      "resolvedTextStyle": {
+        "fontSize": 20,
+        "typeface": "+mn-lt",
+        "color": "#123D31",
+        "bold": true,
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "保留过程"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "保留过程",
+          "resolvedTextStyle": {
+            "fontSize": 20,
+            "color": "#123D31",
+            "bold": true
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "保留过程",
+              "fontSize": 20,
+              "color": "#123D31",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 19,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/bex4n69c",
+      "id": "19",
+      "bbox": [
+        124,
+        499,
+        790,
+        28
+      ],
+      "geometry": "rect",
+      "text": "任务历史、状态与重试入口留在同一条设计工作流中。",
+      "textPreview": "任务历史、状态与重试入口留在同一条设计工作流中。",
+      "resolvedFontSize": 17,
+      "resolvedTextStyle": {
+        "fontSize": 17,
+        "typeface": "+mn-lt",
+        "color": "#5B756A",
+        "alignment": "left",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "任务历史、状态与重试入口留在同一条设计工作流中。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "任务历史、状态与重试入口留在同一条设计工作流中。",
+          "resolvedTextStyle": {
+            "fontSize": 17,
+            "color": "#5B756A"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "任务历史、状态与重试入口留在同一条设计工作流中。",
+              "fontSize": 17,
+              "color": "#5B756A"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 20,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/n6pszels",
+      "id": "20",
+      "bbox": [
+        892,
+        266,
+        284,
+        258
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#F5FAF7",
+      "lineColor": "#CFE4D7",
+      "lineWidth": 1
+    },
+    {
+      "order": 21,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/m5wrq947",
+      "id": "21",
+      "bbox": [
+        922,
+        303,
+        224,
+        26
+      ],
+      "geometry": "rect",
+      "text": "正确定位",
+      "textPreview": "正确定位",
+      "resolvedFontSize": 22,
+      "resolvedTextStyle": {
+        "fontSize": 22,
+        "typeface": "+mn-lt",
+        "color": "#12A75A",
+        "bold": true,
+        "alignment": "center",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "正确定位"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "正确定位",
+          "resolvedTextStyle": {
+            "fontSize": 22,
+            "color": "#12A75A",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "正确定位",
+              "fontSize": 22,
+              "color": "#12A75A",
+              "bold": true,
+              "alignment": "center"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 22,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/987a1o3y",
+      "id": "22",
+      "bbox": [
+        922,
+        354,
+        224,
+        54
+      ],
+      "geometry": "rect",
+      "text": "AI 用于方案参考\n与概念表达",
+      "textPreview": "AI 用于方案参考 | 与概念表达",
+      "resolvedFontSize": 22,
+      "resolvedTextStyle": {
+        "fontSize": 22,
+        "typeface": "+mn-lt",
+        "color": "#123D31",
+        "bold": true,
+        "alignment": "center",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "AI 用于方案参考"
+          },
+          {
+            "index": 2,
+            "text": "与概念表达"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "AI 用于方案参考",
+          "resolvedTextStyle": {
+            "fontSize": 22,
+            "color": "#123D31",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "AI 用于方案参考",
+              "fontSize": 22,
+              "color": "#123D31",
+              "bold": true,
+              "alignment": "center"
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 2,
+          "text": "与概念表达",
+          "resolvedTextStyle": {
+            "fontSize": 22,
+            "color": "#123D31",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "与概念表达",
+              "fontSize": 22,
+              "color": "#123D31",
+              "bold": true,
+              "alignment": "center"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 23,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/o7y9sjmd",
+      "id": "23",
+      "bbox": [
+        922,
+        431,
+        224,
+        44
+      ],
+      "geometry": "rect",
+      "text": "不是施工图、\n自动报价或自动成交",
+      "textPreview": "不是施工图、 | 自动报价或自动成交",
+      "resolvedFontSize": 16,
+      "resolvedTextStyle": {
+        "fontSize": 16,
+        "typeface": "+mn-lt",
+        "color": "#5B756A",
+        "alignment": "center",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "不是施工图、"
+          },
+          {
+            "index": 2,
+            "text": "自动报价或自动成交"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "不是施工图、",
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "color": "#5B756A",
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "不是施工图、",
+              "fontSize": 16,
+              "color": "#5B756A",
+              "alignment": "center"
+            }
+          ],
+          "marginLeft": 0
+        },
+        {
+          "index": 2,
+          "text": "自动报价或自动成交",
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "color": "#5B756A",
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "自动报价或自动成交",
+              "fontSize": 16,
+              "color": "#5B756A",
+              "alignment": "center"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    },
+    {
+      "order": 24,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/baps3elo",
+      "id": "24",
+      "bbox": [
+        64,
+        618,
+        1152,
+        48
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#123D31",
+      "lineWidth": 0
+    },
+    {
+      "order": 25,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/a9gbut43",
+      "id": "25",
+      "bbox": [
+        88,
+        632,
+        1100,
+        21
+      ],
+      "geometry": "rect",
+      "text": "让设计师更快进入方案沟通，而不是替代设计师的判断。",
+      "textPreview": "让设计师更快进入方案沟通，而不是替代设计师的判断。",
+      "resolvedFontSize": 16,
+      "resolvedTextStyle": {
+        "fontSize": 16,
+        "typeface": "+mn-lt",
+        "color": "#FFFFFF",
+        "bold": true,
+        "alignment": "center",
+        "insets": {
+          "top": 4.8,
+          "right": 9.6,
+          "bottom": 4.8,
+          "left": 9.6
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "让设计师更快进入方案沟通，而不是替代设计师的判断。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "让设计师更快进入方案沟通，而不是替代设计师的判断。",
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "color": "#FFFFFF",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "让设计师更快进入方案沟通，而不是替代设计师的判断。",
+              "fontSize": 16,
+              "color": "#FFFFFF",
+              "bold": true,
+              "alignment": "center"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

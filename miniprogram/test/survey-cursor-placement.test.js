@@ -259,39 +259,53 @@ test('cursor placement prefers an existing vertex over a nearby wall segment', (
   assert.ok(target.nodeId);
 });
 
-test('cursor placement prefers the outer corner inside a closed wall body', () => {
+test('cursor placement separates inner and outer corners inside a closed wall body', () => {
   const floor = surveyGraph.getActiveFloor(createClosedDraft());
   const wall = floor.walls[0];
   const node = surveyGraph.getNode(floor, wall.startNodeId);
   const geometry = surveyGraph.buildWallRenderGeometry(floor, wall);
-  const wallBodyPoint = {
+  const nearInnerPoint = {
     xMm: Math.round(node.xMm + (geometry.outerStart.xMm - node.xMm) * 0.25),
     yMm: Math.round(node.yMm + (geometry.outerStart.yMm - node.yMm) * 0.25)
   };
-  const target = surveyGraph.getCursorPlacementTarget(
-    floor,
-    wallBodyPoint,
-    surveyGraph.CLOSE_TOLERANCE_MM
-  );
-
-  assert.equal(target.type, 'vertex');
-  assert.equal(target.snapLine, 'outer');
-  assert.equal(target.nodeId, wall.startNodeId);
-  assert.deepEqual(target.pointMm, geometry.outerStart);
-
-  const roomInteriorPoint = {
-    xMm: Math.round(node.xMm - (geometry.outerStart.xMm - node.xMm) * 0.25),
-    yMm: Math.round(node.yMm - (geometry.outerStart.yMm - node.yMm) * 0.25)
-  };
   const innerTarget = surveyGraph.getCursorPlacementTarget(
     floor,
-    roomInteriorPoint,
+    nearInnerPoint,
     surveyGraph.CLOSE_TOLERANCE_MM
   );
+
   assert.equal(innerTarget.type, 'vertex');
   assert.equal(innerTarget.snapLine, undefined);
   assert.equal(innerTarget.nodeId, wall.startNodeId);
   assert.deepEqual(innerTarget.pointMm, { xMm: node.xMm, yMm: node.yMm });
+
+  const wallBodyInnerZonePoint = {
+    xMm: Math.round(node.xMm + (geometry.outerStart.xMm - node.xMm) * 0.6),
+    yMm: Math.round(node.yMm + (geometry.outerStart.yMm - node.yMm) * 0.6)
+  };
+  const wallBodyInnerZoneTarget = surveyGraph.getCursorPlacementTarget(
+    floor,
+    wallBodyInnerZonePoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  assert.equal(wallBodyInnerZoneTarget.type, 'vertex');
+  assert.equal(wallBodyInnerZoneTarget.snapLine, undefined);
+  assert.equal(wallBodyInnerZoneTarget.nodeId, wall.startNodeId);
+  assert.deepEqual(wallBodyInnerZoneTarget.pointMm, { xMm: node.xMm, yMm: node.yMm });
+
+  const nearOuterPoint = {
+    xMm: Math.round(node.xMm + (geometry.outerStart.xMm - node.xMm) * 0.75),
+    yMm: Math.round(node.yMm + (geometry.outerStart.yMm - node.yMm) * 0.75)
+  };
+  const outerTarget = surveyGraph.getCursorPlacementTarget(
+    floor,
+    nearOuterPoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  assert.equal(outerTarget.type, 'vertex');
+  assert.equal(outerTarget.snapLine, 'outer');
+  assert.equal(outerTarget.nodeId, wall.startNodeId);
+  assert.deepEqual(outerTarget.pointMm, geometry.outerStart);
 });
 
 test('cursor placement falls back to a wall point outside vertex tolerance', () => {
@@ -357,7 +371,97 @@ test('cursor placement snaps a visible mitered outer corner to its topology node
   assert.equal(nextFloor.session.activeSpaceSharedStartT, 0);
 });
 
-test('an outer-corner drop keeps the stationary cursor on its working topology line', () => {
+test('explicit inner vertex target is preserved when snapping a closed-room cursor', () => {
+  const draft = createClosedDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const wall = floor.walls[0];
+  const node = surveyGraph.getNode(floor, wall.startNodeId);
+  const innerTarget = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: node.xMm, yMm: node.yMm },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  const next = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    innerTarget.pointMm,
+    innerTarget
+  );
+  const nextFloor = surveyGraph.getActiveFloor(next);
+  assert.equal(nextFloor.session.activeSpaceSharedSnapLine, 'inner');
+  const displayPoint = surveyGraph.getCursorDisplayPoint(nextFloor, nextFloor.session);
+  assert.deepEqual(
+    { xMm: displayPoint.xMm, yMm: displayPoint.yMm },
+    { xMm: node.xMm, yMm: node.yMm }
+  );
+});
+
+test('a near-inner touch closes the photographed adjacent room on the selected inner corners', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 2044, yMm: 0 }, 2044);
+  draft = commitWall(draft, { xMm: 2044, yMm: 3799 }, 3799);
+  draft = commitWall(draft, { xMm: 0, yMm: 3799 }, 2044);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 3799);
+  draft = surveyGraph.confirmClosure(draft);
+
+  let floor = surveyGraph.getActiveFloor(draft);
+  const roomOneBefore = surveyGraph.buildSpaceBoundaryPoints(
+    floor,
+    floor.spaces[0].wallIds
+  ).map(({ xMm, yMm }) => ({ xMm, yMm }));
+  const startNode = surveyGraph.getNode(floor, floor.walls[2].endNodeId);
+  const cornerGeometry = surveyGraph.buildWallRenderGeometry(floor, floor.walls[2]);
+  const nearInnerPoint = {
+    xMm: Math.round(startNode.xMm + (cornerGeometry.outerEnd.xMm - startNode.xMm) * 0.6),
+    yMm: Math.round(startNode.yMm + (cornerGeometry.outerEnd.yMm - startNode.yMm) * 0.6)
+  };
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    nearInnerPoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+
+  assert.equal(target.type, 'vertex');
+  assert.equal(target.snapLine, undefined);
+  assert.deepEqual(target.pointMm, { xMm: 0, yMm: 3799 });
+
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  assert.equal(surveyGraph.getActiveFloor(draft).session.activeSpaceSharedSnapLine, 'inner');
+  draft = commitWall(draft, { xMm: -1896, yMm: 3799 }, 1896);
+  draft = commitWall(draft, { xMm: -1896, yMm: 0 }, 3799);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 1896);
+
+  floor = surveyGraph.getActiveFloor(draft);
+  const activeWalls = floor.walls.slice(floor.session.activeSpaceStartWallIndex);
+  const closeNode = surveyGraph.getNode(floor, floor.session.closeCandidateNodeId);
+  assert.equal(floor.session.state, 'closing');
+  assert.deepEqual({ xMm: closeNode.xMm, yMm: closeNode.yMm }, { xMm: 0, yMm: 0 });
+  assert.deepEqual(activeWalls.map((wall) => wall.lengthMm), [1896, 3799, 1896]);
+  assert.deepEqual(activeWalls.map((wall) => wall.measurementStartInsetMm || 0), [0, 0, 0]);
+  assert.deepEqual(activeWalls.map((wall) => wall.measurementEndInsetMm || 0), [0, 0, 0]);
+
+  floor = surveyGraph.getActiveFloor(surveyGraph.confirmClosure(draft));
+  const roomOneAfter = surveyGraph.buildSpaceBoundaryPoints(
+    floor,
+    floor.spaces[0].wallIds
+  ).map(({ xMm, yMm }) => ({ xMm, yMm }));
+  const roomTwo = floor.spaces[1];
+  const roomTwoPlan = surveyGraph.buildSpaceDimensionPlan(floor, roomTwo);
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 2);
+  assert.deepEqual(roomOneAfter, roomOneBefore);
+  assert.deepEqual(roomTwoPlan.inner, {
+    widthMm: 1896,
+    heightMm: 3799,
+    areaMm2: 7202904
+  });
+  assert.equal(roomTwo.wallFaceOverrides[floor.spaces[0].wallIds[3]], 'topology');
+});
+
+test('an outer-corner drop keeps the topology anchor on the centerline and the stationary cursor on the outer corner', () => {
   const draft = createClosedDraft();
   const floor = surveyGraph.getActiveFloor(draft);
   const wall = floor.walls[0];
@@ -376,8 +480,8 @@ test('an outer-corner drop keeps the stationary cursor on its working topology l
   const topologyAnchor = surveyGraph.getNode(snappedFloor, snappedFloor.session.anchorNodeId);
   const cursorPoint = surveyGraph.getCursorDisplayPoint(snappedFloor, snappedFloor.session);
 
-  assert.deepEqual(cursorPoint, topologyAnchor);
-  assert.notDeepEqual(cursorPoint, geometry.outerStart);
+  assert.notDeepEqual(cursorPoint, topologyAnchor);
+  assert.deepEqual(cursorPoint, geometry.outerStart);
   assert.equal(snappedFloor.session.activeSpaceSharedSnapLine, 'outer');
 });
 
@@ -633,15 +737,15 @@ test('closed-room inner and outer lower-left corners align the new wall body wit
     const end = surveyGraph.getNode(closedFloor, wall.endNodeId);
     return start && end && start.xMm === 0 && end.xMm === 0;
   });
-  const outerCorner = surveyGraph.buildWallSnapGeometry(closedFloor, lowerLeftWall).outerStart;
+  const outerCorner = surveyGraph.buildWallRenderGeometry(closedFloor, lowerLeftWall).outerStart;
 
   const cases = [
     {
       point: { xMm: 0, yMm: 2000 },
       expectedSnapLine: 'inner',
       expectedSide: 'right',
-      expectedStartInsetMm: 200,
-      expectedPreviewLengthMm: 2800
+      expectedStartInsetMm: 0,
+      expectedPreviewLengthMm: 3000
     },
     {
       point: outerCorner,
@@ -730,12 +834,12 @@ test('shared-corner measurement-side switching updates preview, committed wall, 
   const committedStart = surveyGraph.getNode(floor, committedWall.startNodeId);
   const committedEnd = surveyGraph.getNode(floor, committedWall.endNodeId);
   assert.equal(committedWall.measurementSide, 'left');
-  assert.equal(committedWall.measurementStartInsetMm, 200);
+  assert.equal(committedWall.measurementStartInsetMm, 0);
   assert.equal(committedWall.lengthMm, 3000);
   assert.equal(Math.hypot(
     committedEnd.xMm - committedStart.xMm,
     committedEnd.yMm - committedStart.yMm
-  ), 3200);
+  ), 3000);
   assert.equal(floor.session.measurementSide, 'left');
   assert.equal(floor.session.state, 'wallCommitted');
   assert.equal(floor.session.closeCandidateType, '');
@@ -774,8 +878,8 @@ test('remeasuring an inset wall changes only the measured segment length', () =>
   const end = surveyGraph.getNode(floor, wall.endNodeId);
 
   assert.equal(wall.lengthMm, 2800);
-  assert.equal(wall.measurementStartInsetMm, 200);
-  assert.equal(end.yMm - start.yMm, 3000);
+  assert.equal(wall.measurementStartInsetMm, 0);
+  assert.equal(end.yMm - start.yMm, 2800);
 });
 
 test('a reset cursor can close a room with one wall between existing shared boundaries', () => {
@@ -852,13 +956,13 @@ test('a closed-room second wall snaps to inner and outer corners without offerin
     ),
     3
   );
-  assert.deepEqual(innerSession.previewPoint, { xMm: 3000, yMm: 5200 });
+  assert.deepEqual(innerSession.previewPoint, { xMm: 3000, yMm: 5000 });
   assert.equal(innerSession.alignmentSnapGuide.snapLine, 'inner');
   assert.equal(innerSession.closeCandidateType, '');
 
   const outerDraft = surveyGraph.startPreview(draft, { xMm: 3170, yMm: 5200 });
   const outerSession = surveyGraph.getActiveFloor(outerDraft).session;
-  assert.deepEqual(outerSession.previewPoint, { xMm: 3200, yMm: 5200 });
+  assert.deepEqual(outerSession.previewPoint, { xMm: 3200, yMm: 5000 });
   assert.equal(outerSession.alignmentSnapGuide.snapLine, 'outer');
   assert.equal(outerSession.closeCandidateType, '');
 });
@@ -887,7 +991,7 @@ test('a collinear closed-corner closure stays aligned and extends the current wa
   assert.equal(closedSpace.wallIds.includes(currentWall.id), true);
   assert.equal(closedSpace.wallIds.length, 4);
   assert.deepEqual({ xMm: extendedEnd.xMm, yMm: extendedEnd.yMm }, { xMm: 3000, yMm: 2000 });
-  assert.equal(extendedWall.lengthMm, 3000);
+  assert.equal(extendedWall.lengthMm, 2800);
   assert.equal(extendedWall.measurementEndInsetMm, 200);
   assert.equal(extendedWall.inputSource, 'closure-merge');
 });
@@ -925,7 +1029,7 @@ test('an offset adjacent room closes through the source shared wall without swal
   assert.deepEqual(
     surveyGraph.getClosurePath(floor, floor.session).map(({ xMm, yMm }) => ({ xMm, yMm })),
     [
-      { xMm: 2433, yMm: 5484 },
+      { xMm: 2433, yMm: 5284 },
       { xMm: 2433, yMm: 3182 },
       { xMm: 2233, yMm: 3182 }
     ]
@@ -937,17 +1041,59 @@ test('an offset adjacent room closes through the source shared wall without swal
 
   assert.equal(floor.spaces.filter((space) => space.closed).length, 2);
   assert.equal(adjacentSpace.wallIds.length, 5);
-  assert.deepEqual(adjacentWalls.map((wall) => wall.lengthMm), [4136, 2433, 4136, 0, 2233]);
+  assert.deepEqual(adjacentWalls.map((wall) => wall.lengthMm), [4136, 2433, 3936, 0, 2233]);
   assert.deepEqual(
     surveyGraph.buildSpaceBoundaryPoints(floor, adjacentSpace.wallIds).map(({ xMm, yMm }) => ({ xMm, yMm })),
     [
       { xMm: 0, yMm: 3182 },
-      { xMm: 0, yMm: 7518 },
-      { xMm: 2433, yMm: 7518 },
+      { xMm: 0, yMm: 7318 },
+      { xMm: 2433, yMm: 7318 },
       { xMm: 2433, yMm: 3182 },
       { xMm: 2233, yMm: 3182 }
     ]
   );
+});
+
+test('splitting a shared wall preserves a reversed existing room boundary', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 3000, yMm: 0 }, 3000);
+  draft = commitWall(draft, { xMm: 3000, yMm: 4000 }, 4000);
+  draft = commitWall(draft, { xMm: 0, yMm: 4000 }, 3000);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 4000);
+  draft = surveyGraph.confirmClosure(draft);
+
+  // Closed spaces may legitimately retain the reverse wall order. Splitting
+  // their shared wall for a neighbouring room must preserve that continuity.
+  let floor = surveyGraph.getActiveFloor(draft);
+  floor.spaces[0].wallIds.reverse();
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 0, yMm: 1000 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: -2000, yMm: 1000 }, 2000);
+  draft = commitWall(draft, { xMm: -2000, yMm: 3000 }, 2000);
+  draft = commitWall(draft, { xMm: 0, yMm: 3000 }, 2000);
+  draft = surveyGraph.confirmClosure(draft);
+
+  floor = surveyGraph.getActiveFloor(draft);
+  const firstRoomBoundary = surveyGraph.buildSpaceBoundaryPoints(floor, floor.spaces[0].wallIds);
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 2);
+  assert.deepEqual(firstRoomBoundary.map(({ xMm, yMm }) => ({ xMm, yMm })), [
+    { xMm: 0, yMm: 0 },
+    { xMm: 0, yMm: 1000 },
+    { xMm: 0, yMm: 3000 },
+    { xMm: 0, yMm: 4000 },
+    { xMm: 3000, yMm: 4000 },
+    { xMm: 3000, yMm: 0 }
+  ]);
+  assert.ok(surveyGraph.buildSpaceBoundaryPoints(floor, floor.spaces[1].wallIds).length >= 4);
 });
 
 test('a stepped straight-wall chain closes with two orthogonal edges instead of a diagonal', () => {
@@ -1029,7 +1175,7 @@ test('a closed-room corner restart aligns the second wall without offering adjac
   draft = surveyGraph.startPreview(draft, { xMm: 80, yMm: 5200 });
   floor = surveyGraph.getActiveFloor(draft);
 
-  assert.deepEqual(floor.session.previewPoint, { xMm: 0, yMm: 5200 });
+  assert.deepEqual(floor.session.previewPoint, { xMm: 0, yMm: 5000 });
   assert.equal(floor.session.previewLengthMm, 3000);
   assert.equal(floor.session.alignmentSnapGuide.type, 'rectangle-third-wall');
   assert.equal(floor.session.alignmentSnapGuide.snapLine, 'inner');
@@ -1040,7 +1186,7 @@ test('a closed-room corner restart aligns the second wall without offering adjac
   assert.equal(floor.session.state, 'wallCommitted');
   assert.equal(floor.session.closeCandidateType, '');
   assert.equal(floor.spaces.filter((space) => space.closed).length, 1);
-  assert.equal(floor.walls.at(-2).measurementStartInsetMm, 200);
+  assert.equal(floor.walls.at(-2).measurementStartInsetMm, 0);
 });
 
 test('confirmed near-axis lengths retain rectangle snapping after BLE/manual confirmation', () => {

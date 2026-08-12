@@ -1,5 +1,10 @@
 # 后台系统当前功能清单
 
+### 小程序订阅通知模板交接（2026-08-12）
+
+第一批四个“房屋装修”公共模板及其业务映射记录在
+[`docs/miniprogram-subscription-notification-template-baseline.zh-CN.md`](miniprogram-subscription-notification-template-baseline.zh-CN.md)。平台现以 `version: 2` 保存四类模板 ID 和精确关键词契约，小程序聚合授权四个模板；通用待办、客户指派和新增客户发送为 `Implemented`。`Limited` 仅指上门量房提醒仍缺少真实预约数据与确认事件，不得复用 SLA 截止时间触发。
+
 ### PostgreSQL-only AI 运行时（2026-08-05）
 
 > 2026-08-06 API 迁移测试修复：AI 会话创建/详情响应现统一使用显式 DTO，
@@ -264,7 +269,7 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
 - 页面：`/promotion-records`、`/workflow-logs`。
 - API：报备、`/promotion-records/pool`、`/conflicts`、平台报备配置、工作台 summary/todos、通知日志和提醒执行。
 - 模型/工具：PostgreSQL `PlatformConfigRepository`、`PromotionRecordRepository`、`WorkflowNotificationRepository`、`postgres-promotion-workflow`、`postgres-workflow-automation`、微信通知工具。旧 `PromotionEnterpriseRecord`/`WorkflowNotificationLog` 模型仅保留给旧辅助兼容路径。
-- 状态：`Implemented`。支持报备、重复/冲突、公海、认领/审批、分配、业务阶段、跟进时间线、SLA 提醒、通知去重和审计。平台管理员通过 PostgreSQL 读取和更新全局报备保护期/审批配置。`/promotion-records` 已使用共享 Ant Design ProComponents 展示模式（`PageContainer`、`ProTable`、`ProForm` 与 `ProDescriptions`）承载列表、全局规则表单、报备详情、跟进、指派、公海和认领审批；此次仅迁移展示层，不改变 API、数据契约或角色边界。`/workflow-logs` 使用 `PageContainer`、汇总卡片和 `ProTable` 承载服务端分页的通知日志查看与状态筛选，保留通知日志 API、企业负责人读取范围及平台 `admin`/`super_admin` 的提醒扫描边界，表格加载和扫描失败使用共享操作反馈。报备路由、公海/冲突、工作台 summary/todos、通知日志/轮询和提醒自动化均已在租户/平台 RLS 事务内使用 typed PostgreSQL Repository；状态变更使用短事务条件更新，通知在事务提交后发送，既有 DTO、角色边界和小程序 API 路径保持不变。平台归属的 `salesperson` 可以没有企业，因为其职责是为平台拓展潜在客户；此时报告列表/详情、公海认领、工作台和通知轮询进入显式平台 B2B scope，但 Repository 的 actor 过滤和写操作角色检查仍只允许访问本人记录或可认领公海记录，且不能把新报备指定到任意企业。`Limited`：仍引用 MongoDB ObjectId 的 AI/媒体消费者要等依赖切片迁移后再切换。
+- 状态：`Implemented`。支持报备、重复/冲突、公海、认领/审批、分配、业务阶段、跟进时间线、SLA 提醒、通知去重和审计。平台 `admin`/`super_admin` 可通过 `GET/PATCH /api/platform/notification-config` 维护 `workflow_todo`、`lead_assignment`、`new_lead`、`measurement_appointment` 四个全局模板 ID；PostgreSQL `platform_configs.notification_config` 保存 V2 映射、精确关键词契约及旧单 ID 迁移事实，GET 和旧 PATCH 在一个发布周期内继续提供 `miniprogramTemplateId` 兼容。四个 ID 必须非空、合法且互不重复。`/workflow-logs` 沿用既有配置卡和共享操作反馈展示四项固定语义字段，并明确上门量房提醒当前只配置/授权、不触发。工作流按事件选择待办或指派模板并只生成允许的字段，站内日志先于微信发送；企业负责人新增客户、设计师指派/交接和测量员获客提成通知同样先写 `staff_notifications.in_app`，再记录微信 `sent`/`failed`/`skipped`，缺少 openid、模板或微信失败不回滚业务。手机号重复复用线索时不重复通知。`/promotion-records` 现有报备、公海和审批展示、平台 B2B scope、RLS Repository、短事务、角色边界和 DTO 保持不变。`Limited`：真实上门量房预约仍无数据模型/API/确认事件；更换模板后用户仍需按微信规则重新授权。仍引用 MongoDB ObjectId 的 AI/媒体消费者要等依赖切片迁移后再切换。
 
 - 工作台展示：共享 `/` 工作台已使用 `PageContainer` 和 Ant Design 汇总/列表组件。平台角色只查看既有 API 返回的用户、正式户型和企业总量，不再展示节点、趋势、延迟或健康度等占位数据；所有非平台角色只读取 PostgreSQL/RLS 按角色裁剪的工作台卡片和待办，只有 `enterprise_admin` 额外读取既有租户范围内的线索、正式户型和员工总量。本次仅迁移展示层，不改变路由、API、权限或数据契约。
 
@@ -347,7 +352,7 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
   PostgreSQL 供应商尝试、轮询、结果媒体、结算和重试计费生命周期，并保持既有 DTO 与
   `ai-scenarios` 权限边界。
 - API：AI 对话/Agent、生成/渲染/建议、状态/历史、预设、工作流搜索分页及阶段、设计能力/共享动作目录、媒体资源、供应商 CRUD/密钥轮换/连通测试/模型同步/上游余额查询、受保护任务对账、平台业务动作价格、`GET/PATCH /api/admin/ai-image-models`、`GET/PATCH /api/admin/ai-image-model-prices`、企业点数发放/调整/流水/任务和失败任务重试接口。旧企业 `ai-key`/`ai-sync` 和用量读取仅保留原有 DTO 的只读兼容，现由 PostgreSQL 用量快照提供数据；已退役写接口返回 `410`。
-- 自由创作 API：`GET /api/ai/creation/bootstrap`、提示词分类/列表/详情/预览、`POST /api/ai/creation/assets`、`GET/POST /api/ai/creation/tasks`、`DELETE /api/ai/creation/tasks/[id]`、`POST /api/ai/creation/tasks/[id]/batches`、提示词优化及生成结果归入现有客户方案。创作台会按顺序把已持久化 batch 渲染为任务内多轮对话，保留每轮提示词/参考图上下文；选中已有任务时追加 batch，桌面端在提示词面板上方提供更大的对话可视区，并隐藏原生滚动条但保留滚动能力。页面和整个 API 前缀由代理统一映射到 `ai-scenarios` 权限，写接口还通过 `withTenantRoute` 强制企业上下文。
+- 自由创作 API：`GET /api/ai/creation/bootstrap`、提示词分类/列表/详情/预览、`POST /api/ai/creation/assets`、`GET/POST /api/ai/creation/tasks`、`DELETE /api/ai/creation/tasks/[id]`、`POST /api/ai/creation/tasks/[id]/batches`、提示词优化及生成结果归入现有客户方案。创作台会按顺序把已持久化 batch 渲染为任务内多轮对话，保留每轮提示词/参考图上下文；选中已有任务时追加 batch，桌面端在提示词面板上方提供更大的对话可视区，并隐藏原生滚动条但保留滚动能力。参考图控件现会按已选模型既有的 0–10 张能力上限，呈现全部已上传素材：编号叠放后可在悬浮或键盘聚焦时展开，逐张显示移除入口和下一上传位；点击图片可打开含缩略图切换、上一张/下一张、缩放、旋转、全屏和下载的多图预览。界面只使用既有租户范围内的素材上传及任务/batch DTO，不新增 API、数据模型、角色或生成契约。页面和整个 API 前缀由代理统一映射到 `ai-scenarios` 权限，写接口还通过 `withTenantRoute` 强制企业上下文。
 - PostgreSQL 身份边界：新的自由创作、小程序、场景和 `advice` 任务/生成/媒体/供应商尝试/点数记录均在租户 RLS 范围内一致使用 PostgreSQL bigint 标识符。历史 MongoDB `ObjectId` 媒体仅通过显式只读交付分支可读，该分支会在请求被识别为历史记录后才加载 MongoDB/Mongoose；新记录不存在跨存储身份回退。具有企业上下文的 `admin` 或 `super_admin` 可通过平台重试接口，将失败的 PostgreSQL bigint 小程序生成任务交由租户 RLS 生命周期重试；历史 `ObjectId` 生成任务继续使用 MongoDB 兼容分支。小程序自身的重试路由仍仅限原操作人的 PostgreSQL 任务。
 - 企业点数任务边界：平台企业点数读取现从 PostgreSQL bigint 生成记录中列出最近任务，并关联操作员和当前供应商模型。账户/流水/策略/任务 DTO 与 `super_admin`/`admin` 边界保持不变；历史 MongoDB ObjectId 任务有意不与该列表混合。
 - 模型/工具：`AiGeneration`、`AiWorkflow`、`AiChatSession`、`AiStylePreset`、`AiProviderConfig`、`AiProviderAttempt`、`MediaAsset`、`AiCreditAccount`、`AiCreditLedger`、`AiCreditPrice`、`AiModelCreditPrice`、PostgreSQL `InspirationRepository`、`src/lib/ai/*`、`src/lib/media-storage/*`。

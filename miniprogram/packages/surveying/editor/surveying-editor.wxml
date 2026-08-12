@@ -205,9 +205,9 @@
       <cover-image src="/packages/surveying/assets/icons/history-redo.png" mode="aspectFit"></cover-image>
       <cover-view>重做</cover-view>
     </cover-view>
-    <cover-view wx:if="{{cursorPlacementState === 'placed'}}" class="dock-action cursor-action {{surveyGuideTarget === 'dock-cursor' ? 'guide-target-control' : ''}}" bindtap="onResetCursorTap">
+    <cover-view wx:if="{{cursorPlacementState === 'placed'}}" class="dock-action cursor-action cursor-action-reset {{surveyGuideTarget === 'dock-cursor' ? 'guide-target-control' : ''}}" bindtap="onResetCursorTap" aria-role="button" aria-label="重置光标">
       <cover-image class="dock-cursor-icon" src="/packages/surveying/assets/icons/editor-rail/align.png" mode="aspectFit"></cover-image>
-      <cover-view>重置光标</cover-view>
+      <cover-view class="dock-action-label">重置光标</cover-view>
       <cover-view wx:if="{{surveyGuideTarget === 'dock-cursor'}}" class="dock-guide-native-marker">
         <cover-view class="dock-guide-native-pointer"></cover-view>
       </cover-view>
@@ -215,15 +215,17 @@
     <cover-view
       wx:else
       id="cursor-drag-control"
-      class="dock-action cursor-action {{cursorPlacementState === 'dragging' ? 'is-dragging' : ''}} {{surveyGuideTarget === 'dock-cursor' ? 'guide-target-control' : ''}}"
+      class="dock-action cursor-action cursor-action-drag {{cursorPlacementState === 'dragging' ? 'cursor-action-dragging' : ''}} {{surveyGuideTarget === 'dock-cursor' ? 'guide-target-control' : ''}}"
       data-cursor-control="true"
       bindtouchstart="onCursorControlTouchStart"
       catchtouchmove="onCursorControlTouchMove"
       bindtouchend="onCursorDragEnd"
       bindtouchcancel="onCursorDragCancel"
+      aria-role="button"
+      aria-label="拖动光标到墙体"
     >
-      <cover-image class="dock-cursor-icon" src="/packages/surveying/assets/icons/editor-rail/align.png" mode="aspectFit"></cover-image>
-      <cover-view>拖动光标</cover-view>
+      <cover-image class="dock-cursor-icon {{cursorPlacementState === 'dragging' ? 'dock-cursor-icon-ghost' : ''}}" src="/packages/surveying/assets/icons/editor-rail/align.png" mode="aspectFit"></cover-image>
+      <cover-view wx:if="{{cursorPlacementState === 'dragging'}}" class="dock-cursor-origin"></cover-view>
       <cover-view wx:if="{{surveyGuideTarget === 'dock-cursor'}}" class="dock-guide-native-marker">
         <cover-view class="dock-guide-native-pointer"></cover-view>
       </cover-view>
@@ -238,11 +240,19 @@
     </cover-view>
   </cover-view>
 
+  <cover-view
+    wx:if="{{!numberPadVisible && cursorPlacementState !== 'placed'}}"
+    class="cursor-dock-helper {{cursorPlacementState === 'dragging' ? 'is-dragging' : ''}}"
+    style="bottom: calc(12rpx + {{bottomSafeArea}}px);"
+  >
+    <cover-view class="cursor-dock-helper-label">光标拖动到墙体</cover-view>
+  </cover-view>
+
   <!-- ══════════════════════════════════════════════ -->
   <!--  拖拽放置光标的纯展示层（不接收触摸，事件始终由底部按钮承接） -->
   <!-- ══════════════════════════════════════════════ -->
   <cover-view
-    class="cursor-lens {{cursorPlacementState === 'dragging' && cursorLensVisible ? 'cursor-lens-visible' : 'cursor-lens-hidden'}} {{cursorLensSnapType}}"
+    class="cursor-lens {{cursorLensActive && cursorLensVisible ? 'cursor-lens-visible' : 'cursor-lens-hidden'}} {{cursorLensSnapType}}"
   >
     <cover-view class="cursor-lens-grid">
       <cover-view class="cursor-lens-cross horizontal"></cover-view>

@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { leads } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
-import { withTenantTransaction } from '@/db/transaction';
 import { acquisitionCommissionToDto, leadToDto, parsePostgresId } from '@/db/postgres-dto';
 import { AcquisitionRepository, EnterpriseRepository, LeadRepository } from '@/db/repositories';
 import { getTenantContext } from '@/lib/auth';
@@ -61,37 +60,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         status: 'pending_settlement',
         generatedAt: new Date(),
       });
-      await acquisition.createNotification({
-        enterpriseId: current.enterpriseId,
-        recipientStaffId: current.promoterId,
-        leadId,
-        notificationType: 'lead_acquired_commission_pending',
-        channel: 'in_app',
-        status: 'unread',
-        message: `设计师已确认${current.name}获客，提成待结算`,
-        dedupeKey: `lead_acquired_commission_pending:${leadId.toString()}`,
-        metadata: { page: `/packages/business/acquisition-center/acquisition-center?leadId=${leadId.toString()}`, commissionId: commission?.id?.toString() || null },
-      });
       const lead = await repository.findById(leadId);
       if (!lead || !commission) throw httpError('获客记录保存失败，请联系管理员核对历史提成', 409);
       return { lead, commission, measurerId: current.promoterId };
     };
     const result = mini ? await withMiniProgramPostgresTransaction(mini, execute) : await withAdminPostgresTransaction(admin!, execute);
-    const delivery = await notifyMeasurerOfAcquiredLead({ ...result.lead, id: result.lead.id, enterpriseId: result.lead.enterpriseId?.toString() }, result.measurerId.toString());
-    if (result.lead.enterpriseId) {
-      await withTenantTransaction(result.lead.enterpriseId, (transaction) => new AcquisitionRepository(transaction).createNotification({
-        enterpriseId: result.lead.enterpriseId,
-        recipientStaffId: result.measurerId,
-        leadId,
-        notificationType: 'lead_acquired_commission_pending',
-        channel: 'wechat',
-        status: delivery.success ? 'sent' : 'failed',
-        message: `Lead ${result.lead.name} acquired; commission pending settlement`,
-        errorMessage: delivery.success ? null : delivery.error || null,
-        dedupeKey: `lead_acquired_commission_pending:${leadId.toString()}`,
-        metadata: { page: `/packages/business/acquisition-center/acquisition-center?leadId=${leadId.toString()}`, commissionId: result.commission.id.toString() },
-      }));
-    }
+    await notifyMeasurerOfAcquiredLead(
+      { ...result.lead, id: result.lead.id, enterpriseId: result.lead.enterpriseId?.toString() },
+      result.measurerId.toString(),
+      result.commission.id.toString()
+    );
     return NextResponse.json({ success: true, data: { lead: leadToDto(result.lead), commission: acquisitionCommissionToDto(result.commission) } });
   } catch (error: unknown) {
     return NextResponse.json(

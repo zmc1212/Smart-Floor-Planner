@@ -46,6 +46,35 @@ test('wall-snapped cursor drops clear a late transient frame after the formal ca
   );
 });
 
+test('cursor release commits the last visible snap candidate instead of reclassifying the raw touchend point', () => {
+  assert.match(
+    editorScript,
+    /this\.cursorDragCandidate = isSnapped && candidate\.pointMm[\s\S]*?const candidate = this\.cursorDragCandidate \|\| this\.getCursorPlacementCandidate\(releasePoint\);/
+  );
+  assert.match(editorScript, /this\.cursorDragCandidate = null;[\s\S]*?this\.cursorDragPending = true;/);
+});
+
+test('canvas wall snapping forwards the resolved vertex or wall candidate to the graph', () => {
+  assert.match(
+    editorScript,
+    /const candidate = this\.getCursorPlacementCandidate\(touchState\.startPoint\);[\s\S]*?candidate\.type !== 'vertex' && candidate\.type !== 'wall'[\s\S]*?surveyGraph\.snapCursorToWall\(this\.draft, candidate\.pointMm, candidate\)/
+  );
+});
+
+test('a placed cursor stays resettable after a room closes, then explicitly enters wall-drop mode', () => {
+  assert.match(
+    editorScript,
+    /resolveCursorPlacementState\(floor, session\) \{[\s\S]*?session\.state === 'wallSnapPending'/
+  );
+  assert.doesNotMatch(editorScript, /session\.state === 'spaceClosed' \|\| session\.state === 'wallSnapPending'/);
+  assert.match(editorScript, /wx\.showToast\(\{ title: '请拖动光标到墙体', icon: 'none' \}\)/);
+  assert.match(editorWxml, /wx:if="\{\{cursorPlacementState === 'placed'\}\}"[\s\S]*?cursor-action-reset[\s\S]*?重置光标/);
+  assert.match(editorWxml, /cursor-action-drag[\s\S]*?dock-cursor-icon-ghost[\s\S]*?dock-cursor-origin[\s\S]*?cursor-dock-helper-label[\s\S]*?光标拖动到墙体/);
+  assert.match(editorWxss, /\.cursor-action-drag\s*\{[\s\S]*?background:\s*#f3fbf5;/);
+  assert.match(editorWxss, /\.cursor-dock-helper\s*\{[\s\S]*?width:\s*232rpx;[\s\S]*?pointer-events:\s*none;/);
+  assert.match(editorWxss, /\.cursor-dock-helper-label\s*\{[\s\S]*?text-align:\s*center;/);
+});
+
 test('viewport gestures render on the primary canvas instead of the cursor overlay', () => {
   assert.match(
     editorScript,
