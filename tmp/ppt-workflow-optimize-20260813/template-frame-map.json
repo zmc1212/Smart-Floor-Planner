@@ -1,0 +1,20 @@
+﻿{
+  "outputSlides": [
+    {"outputSlide": 1, "sourceSlide": 1, "narrativeRole": "preserve", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 2, "sourceSlide": 2, "narrativeRole": "preserve", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 3, "sourceSlide": 3, "narrativeRole": "preserve", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 4, "sourceSlide": 4, "narrativeRole": "preserve", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 5, "sourceSlide": 5, "narrativeRole": "preserve", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 6, "sourceSlide": 6, "narrativeRole": "preserve", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 7, "sourceSlide": 7, "narrativeRole": "preserve", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 8, "sourceSlide": 8, "narrativeRole": "three-channel acquisition", "reuseMode": "duplicate-slide", "editTargets": [{"shapeId":"sh/lgbepgvm","action":"rewrite"}]},
+    {"outputSlide": 9, "sourceSlide": 9, "narrativeRole": "1+N operating unit", "reuseMode": "duplicate-slide", "editTargets": [{"shapeId":"sh/2l4faloj","action":"rewrite"}]},
+    {"outputSlide": 10, "sourceSlide": 10, "narrativeRole": "owner control", "reuseMode": "duplicate-slide", "editTargets": [{"shapeId":"sh/cva9k7a9","action":"rewrite"}]},
+    {"outputSlide": 11, "sourceSlide": 11, "narrativeRole": "preserve", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 12, "sourceSlide": 12, "narrativeRole": "preserve", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 13, "sourceSlide": 13, "narrativeRole": "preserve", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 14, "sourceSlide": 14, "narrativeRole": "preserve", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 15, "sourceSlide": 15, "narrativeRole": "preserve", "reuseMode": "duplicate-slide", "editTargets": []}
+  ],
+  "omittedSourceSlides": []
+}

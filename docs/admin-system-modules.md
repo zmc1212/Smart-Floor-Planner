@@ -855,12 +855,27 @@ permission, or workflow changes.
 - Provider integration contract: `AiProviderConfig` retains its legacy encrypted
   API-key fields and now also persists masked/encrypted credential maps plus a
   validated non-secret `adapterConfig`. The common editor and server validation
-  both read `src/lib/ai/provider-adapter-manifest.ts`; current GRS,
+  both read `src/lib/ai/provider-adapter-manifest.ts`; current GRS, API Nebula,
   Pollinations, and OpenAI-compatible adapters use the shared endpoint/API-key
-  configuration. Runtime routing always prefers enabled non-fallback providers;
-  keys ending in `-fallback` are considered only after primary providers. `Limited`: the platform image-model catalog currently has a
-  GRS source contract, so a new provider requires an adapter implementation and
-  catalog-profile support, not merely an additional UI option.
+  configuration. The dedicated API Nebula adapter uses OpenAI-compatible chat
+  and model discovery plus `/v1/image-tasks/generations`,
+  `/v1/image-tasks/edits`, and `/v1/image-tasks/{taskId}?detail=true` for
+  asynchronous image execution. Runtime routing always prefers enabled
+  non-fallback providers; keys ending in `-fallback` are ordered after primary
+  providers. Default image execution may advance to the next configured
+  provider only when submission definitively was not accepted; timeouts and
+  ambiguous responses never trigger a duplicate upstream task. Free Creation
+  uses the same safe fallback only between providers whose mapped remote model
+  exactly matches the persisted GRS catalog snapshot, preserving its resolution
+  and credit-price contract. When
+  `APINEBULA_API_KEY` is configured, an image-only `apinebula-fallback` provider
+  is seeded at priority 20; separate provider records/keys can be used for
+  token groups with different model access. API Nebula balance remains console
+  only because no public balance API is documented. `Limited`: the platform
+  image-model catalog and price profiles remain GRS-authored, so a GRS-only
+  remote model cannot switch to a differently named API Nebula model. API
+  Nebula image editing with tenant-protected `data:` references still requires
+  a real-key compatibility check against the selected token group.
 - PostgreSQL boundary: platform-provider list/create/update/disable, credential
   rotation, connection tests, model discovery, upstream-balance checks, and the
   runtime provider registry now use `AiProviderConfigRepository` in

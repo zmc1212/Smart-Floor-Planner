@@ -1,0 +1,13 @@
+Source deck: 家客来-装修公司老板销售版-第8-10页内容优化版-2026-08.pptx
+
+Communication job: Help renovation-company owners see that JiaKeLai keeps the customer record, formal measurement, AI design and team follow-up on one accountable workflow.
+
+Source structure: 15-slide 16:9 sales presentation using an off-white background, dark charcoal typography, bright green brand accent, large single-message headlines, page numbers and product screenshots.
+
+Target adjustment: Preserve the source deck's masters, type hierarchy, page furniture, claims and sourced product media. Rework screenshot placement so each application capture is shown in a fully visible, proportionally scaled frame with an intentional surrounding margin. Audit every screenshot and media frame in the deck for clipping or over-cropping.
+
+Layout direction inferred from the supplied online reference: one dominant visual evidence area, calm white space, restrained supporting copy, and image frames that read as deliberately presented rather than cropped fragments.
+
+Inherited placeholders: Source deck uses a title-slide layout and a common master. No authoring placeholders were identified in the pre-existing inspect file; final XML will be checked after export.
+
+Typography and brand: Keep inherited source typography and brand treatment. Do not introduce a new visual system.

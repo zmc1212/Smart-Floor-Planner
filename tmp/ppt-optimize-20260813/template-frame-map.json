@@ -1,0 +1,20 @@
+{
+  "outputSlides": [
+    {"outputSlide": 1, "sourceSlide": 1, "narrativeRole": "cover", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 2, "sourceSlide": 2, "narrativeRole": "problem", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 3, "sourceSlide": 3, "narrativeRole": "workflow", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 4, "sourceSlide": 4, "narrativeRole": "customer record evidence", "reuseMode": "duplicate-slide", "editTargets": [{"sourceElementIds": ["im/q5onm50v", "im/m1s7e9k3"], "action": "rewrite-and-reposition", "reason": "Show full Mini Program screenshots without cropping."}]},
+    {"outputSlide": 5, "sourceSlide": 5, "narrativeRole": "formal surveying evidence", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 6, "sourceSlide": 6, "narrativeRole": "floor plan evidence", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 7, "sourceSlide": 7, "narrativeRole": "AI design evidence", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 8, "sourceSlide": 8, "narrativeRole": "AI output evidence", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 9, "sourceSlide": 9, "narrativeRole": "operational ownership", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 10, "sourceSlide": 10, "narrativeRole": "value summary", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 11, "sourceSlide": 11, "narrativeRole": "pilot context", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 12, "sourceSlide": 12, "narrativeRole": "next action", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 13, "sourceSlide": 13, "narrativeRole": "AI appendix", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 14, "sourceSlide": 14, "narrativeRole": "task appendix", "reuseMode": "duplicate-slide", "editTargets": []},
+    {"outputSlide": 15, "sourceSlide": 15, "narrativeRole": "conditions appendix", "reuseMode": "duplicate-slide", "editTargets": []}
+  ],
+  "omittedSourceSlides": []
+}

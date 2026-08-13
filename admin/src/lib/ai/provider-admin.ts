@@ -58,11 +58,11 @@ export function validateProviderPayload(
   }
   if (!partial || body.adapterType !== undefined) {
     const adapterType = String(body.adapterType || '') as AiProviderAdapterType;
-    if (!['grs', 'pollinations', 'openai_compatible'].includes(adapterType)) throw new Error('适配器类型无效');
+    if (!['grs', 'apinebula', 'pollinations', 'openai_compatible'].includes(adapterType)) throw new Error('适配器类型无效');
     result.adapterType = adapterType;
   }
   if (!partial || body.adapterConfig !== undefined || body.adapterType !== undefined) {
-    if (!['grs', 'pollinations', 'openai_compatible'].includes(adapterType)) {
+    if (!['grs', 'apinebula', 'pollinations', 'openai_compatible'].includes(adapterType)) {
       throw new Error('适配器类型无效');
     }
     result.adapterConfig = validateProviderAdapterConfig(adapterType, body.adapterConfig);

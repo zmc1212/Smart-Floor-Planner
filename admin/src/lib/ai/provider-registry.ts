@@ -14,6 +14,7 @@ import {
   type AiProviderRuntimeConfig,
 } from './provider-types';
 import { grsAdapter } from './providers/grs';
+import { apiNebulaAdapter } from './providers/apinebula';
 import { openAiCompatibleAdapter } from './providers/openai-compatible';
 import { pollinationsAdapter } from './providers/pollinations';
 import { httpError } from '@/lib/http-error';
@@ -43,6 +44,7 @@ function toProviderRuntime(config: AiProviderConfigRecord): AiProviderRuntimeCon
 
 const adapters = new Map<string, AiProviderAdapter>([
   ['grs', grsAdapter],
+  ['apinebula', apiNebulaAdapter],
   ['pollinations', pollinationsAdapter],
   ['openai_compatible', openAiCompatibleAdapter],
 ]);
@@ -68,6 +70,21 @@ export async function ensureEnvironmentAiProviders() {
         'vision.reference_analysis': process.env.GRS_VISION_MODEL || 'gemini-3.1-pro',
         'image.generate.standard': process.env.GRS_IMAGE_MODEL || 'gpt-image-2',
         'image.edit.standard': process.env.GRS_IMAGE_MODEL || 'gpt-image-2',
+      },
+    },
+    {
+      key: 'apinebula-fallback',
+      name: 'API Nebula',
+      adapterType: 'apinebula',
+      baseUrl: process.env.APINEBULA_BASE_URL || 'https://apinebula.ai',
+      apiKey: process.env.APINEBULA_API_KEY?.trim(),
+      priority: 20,
+      capabilities: ['image.generate', 'image.edit'],
+      modelMappings: {
+        'chat.general': '',
+        'vision.reference_analysis': '',
+        'image.generate.standard': process.env.APINEBULA_IMAGE_MODEL || 'gpt-image-2',
+        'image.edit.standard': process.env.APINEBULA_IMAGE_MODEL || 'gpt-image-2',
       },
     },
     {

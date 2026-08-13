@@ -1,0 +1,51 @@
+{
+  "status": "fail",
+  "checkedAt": "2026-08-13T02:31:22.354Z",
+  "workspace": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\ppt-optimize-20260813",
+  "mapPath": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\ppt-optimize-20260813\\template-frame-map.json",
+  "inspectPath": "G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\ppt-optimize-20260813\\template-inspect\\template-inspect.ndjson",
+  "sourceSlideCount": 15,
+  "issueCount": 6,
+  "issues": [
+    {
+      "severity": "fail",
+      "id": "missing-template-inspect",
+      "message": "Missing template inspection file: G:\\workspace\\向总\\Smart-Floor-Planner\\tmp\\ppt-optimize-20260813\\template-inspect\\template-inspect.ndjson. Run inspect_template_deck.mjs before preparing the starter deck."
+    },
+    {
+      "severity": "fail",
+      "id": "preserve-only-content-role",
+      "message": "editTargets: [] means preserve-only, but narrativeRole \"formal surveying evidence\" appears content-bearing.",
+      "outputSlide": 5,
+      "sourceSlide": 5
+    },
+    {
+      "severity": "fail",
+      "id": "preserve-only-content-role",
+      "message": "editTargets: [] means preserve-only, but narrativeRole \"floor plan evidence\" appears content-bearing.",
+      "outputSlide": 6,
+      "sourceSlide": 6
+    },
+    {
+      "severity": "fail",
+      "id": "preserve-only-content-role",
+      "message": "editTargets: [] means preserve-only, but narrativeRole \"AI design evidence\" appears content-bearing.",
+      "outputSlide": 7,
+      "sourceSlide": 7
+    },
+    {
+      "severity": "fail",
+      "id": "preserve-only-content-role",
+      "message": "editTargets: [] means preserve-only, but narrativeRole \"AI output evidence\" appears content-bearing.",
+      "outputSlide": 8,
+      "sourceSlide": 8
+    },
+    {
+      "severity": "fail",
+      "id": "preserve-only-content-role",
+      "message": "editTargets: [] means preserve-only, but narrativeRole \"value summary\" appears content-bearing.",
+      "outputSlide": 10,
+      "sourceSlide": 10
+    }
+  ]
+}

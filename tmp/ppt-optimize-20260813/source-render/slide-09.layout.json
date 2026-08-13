@@ -1,0 +1,1607 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/udsvah03",
+    "id": "udsvah03",
+    "slide": 9,
+    "layoutId": "/ppt/slideLayouts/slideLayout1.xml",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "/ppt/slideMasters/slideMaster1.xml",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#FFFFFF",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "fontScheme": {
+      "name": "Office",
+      "majorFont": {
+        "latinTypeface": "Calibri Light",
+        "eastAsianTypeface": "Calibri Light",
+        "complexScriptTypeface": "Calibri Light"
+      },
+      "minorFont": {
+        "latinTypeface": "Calibri",
+        "eastAsianTypeface": "Calibri",
+        "complexScriptTypeface": "Calibri"
+      }
+    },
+    "typefaces": [
+      "Calibri",
+      "Calibri Light",
+      "Microsoft YaHei"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "/ppt/slideLayouts/slideLayout1.xml",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "/ppt/slideMasters/slideMaster1.xml",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "/ppt/slideMasters/slideMaster1.xml",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/2l4faloj",
+      "id": "30",
+      "bbox": [
+        54,
+        34,
+        520,
+        22
+      ],
+      "geometry": "rect",
+      "text": "08 / 团队接力",
+      "textPreview": "08 / 团队接力",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "08 / 团队接力"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "08 / 团队接力",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 13,
+            "typeface": "Microsoft YaHei",
+            "color": "#0BAF55",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "08 / 团队接力",
+              "fontSize": 13,
+              "typeface": "Microsoft YaHei",
+              "color": "#0BAF55",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/1cfmhgne",
+      "id": "2",
+      "bbox": [
+        54,
+        72,
+        1120,
+        62
+      ],
+      "geometry": "rect",
+      "text": "量房师、设计师和管理者围绕同一客户接力",
+      "textPreview": "量房师、设计师和管理者围绕同一客户接力",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "量房师、设计师和管理者围绕同一客户接力"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "量房师、设计师和管理者围绕同一客户接力",
+          "lineSpacingPercent": 95000,
+          "resolvedTextStyle": {
+            "fontSize": 46,
+            "typeface": "Microsoft YaHei",
+            "color": "#10231C",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "量房师、设计师和管理者围绕同一客户接力",
+              "fontSize": 46,
+              "typeface": "Microsoft YaHei",
+              "color": "#10231C",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/0b65obm9",
+      "id": "3",
+      "bbox": [
+        54,
+        142,
+        1120,
+        44
+      ],
+      "geometry": "rect",
+      "text": "张女士不需要重复建档；上一岗位交付的成果，直接成为下一岗位的工作起点。",
+      "textPreview": "张女士不需要重复建档；上一岗位交付的成果，直接成为下一岗位的工作起点。",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "张女士不需要重复建档；上一岗位交付的成果，直接成为下一岗位的工作起点。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "张女士不需要重复建档；上一岗位交付的成果，直接成为下一岗位的工作起点。",
+          "lineSpacingPercent": 115000,
+          "resolvedTextStyle": {
+            "fontSize": 21,
+            "typeface": "Microsoft YaHei",
+            "color": "#66756F",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "张女士不需要重复建档；上一岗位交付的成果，直接成为下一岗位的工作起点。",
+              "fontSize": 21,
+              "typeface": "Microsoft YaHei",
+              "color": "#66756F"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/nex4jq5k",
+      "id": "4",
+      "bbox": [
+        54,
+        680,
+        400,
+        18
+      ],
+      "geometry": "rect",
+      "text": "家客来 JIAKELAI  ·  团队接力",
+      "textPreview": "家客来 JIAKELAI  ·  团队接力",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "家客来 JIAKELAI  ·  团队接力"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "家客来 JIAKELAI  ·  团队接力",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 12,
+            "typeface": "Microsoft YaHei",
+            "color": "#8AA097",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "家客来 JIAKELAI  ·  团队接力",
+              "fontSize": 12,
+              "typeface": "Microsoft YaHei",
+              "color": "#8AA097"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 5,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/mdonql4z",
+      "id": "5",
+      "bbox": [
+        1180,
+        680,
+        48,
+        18
+      ],
+      "geometry": "rect",
+      "text": "09",
+      "textPreview": "09",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "09"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "09",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 12,
+            "typeface": "Microsoft YaHei",
+            "color": "#8AA097",
+            "alignment": "right"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "09",
+              "fontSize": 12,
+              "typeface": "Microsoft YaHei",
+              "color": "#8AA097"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/9gzml0nq",
+      "id": "6",
+      "bbox": [
+        250,
+        342,
+        760,
+        0
+      ],
+      "geometry": "line",
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "#CBE3D7",
+      "lineWidth": 6
+    },
+    {
+      "order": 7,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ofq5svm5",
+      "id": "7",
+      "bbox": [
+        70,
+        238,
+        340,
+        346
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#F7F6F1",
+      "lineColor": "#E1E8E3",
+      "lineWidth": 1
+    },
+    {
+      "order": 8,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/bih4na5w",
+      "id": "8",
+      "bbox": [
+        196,
+        270,
+        88,
+        88
+      ],
+      "geometry": "ellipse",
+      "fillColor": "#0BAF55",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 9,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ah8nu54b",
+      "id": "9",
+      "bbox": [
+        196,
+        294,
+        88,
+        28
+      ],
+      "geometry": "rect",
+      "text": "A",
+      "textPreview": "A",
+      "resolvedFontSize": 20.32,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 0.85,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "A"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "A",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 26,
+            "typeface": "Microsoft YaHei",
+            "color": "#FFFFFF",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "A",
+              "fontSize": 26,
+              "typeface": "Microsoft YaHei",
+              "color": "#FFFFFF",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 10,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/oza1gfyh",
+      "id": "10",
+      "bbox": [
+        110,
+        376,
+        260,
+        40
+      ],
+      "geometry": "rect",
+      "text": "量房师",
+      "textPreview": "量房师",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "量房师"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "量房师",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 27,
+            "typeface": "Microsoft YaHei",
+            "color": "#10231C",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "量房师",
+              "fontSize": 27,
+              "typeface": "Microsoft YaHei",
+              "color": "#10231C",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 11,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/p0ji9kf2",
+      "id": "11",
+      "bbox": [
+        110,
+        436,
+        260,
+        64
+      ],
+      "geometry": "rect",
+      "text": "接收客户\n完成正式量房",
+      "textPreview": "接收客户 | 完成正式量房",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "接收客户"
+          },
+          {
+            "index": 2,
+            "text": "完成正式量房"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "接收客户",
+          "lineSpacingPercent": 130000,
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Microsoft YaHei",
+            "color": "#66756F",
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "接收客户",
+              "fontSize": 19,
+              "typeface": "Microsoft YaHei",
+              "color": "#66756F"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        },
+        {
+          "index": 2,
+          "text": "完成正式量房",
+          "lineSpacingPercent": 130000,
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Microsoft YaHei",
+            "color": "#66756F",
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "完成正式量房",
+              "fontSize": 19,
+              "typeface": "Microsoft YaHei",
+              "color": "#66756F"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 12,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/2xsjepgb",
+      "id": "12",
+      "bbox": [
+        98,
+        522,
+        284,
+        34
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 13,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/3y107axw",
+      "id": "13",
+      "bbox": [
+        110,
+        529,
+        260,
+        20
+      ],
+      "geometry": "rect",
+      "text": "交付：客户资料 + 正式户型",
+      "textPreview": "交付：客户资料 + 正式户型",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "交付：客户资料 + 正式户型"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "交付：客户资料 + 正式户型",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Microsoft YaHei",
+            "color": "#0BAF55",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "交付：客户资料 + 正式户型",
+              "fontSize": 14,
+              "typeface": "Microsoft YaHei",
+              "color": "#0BAF55",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 14,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/cnu1kzyd",
+      "id": "14",
+      "bbox": [
+        470,
+        238,
+        340,
+        346
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#F7F6F1",
+      "lineColor": "#E1E8E3",
+      "lineWidth": 1
+    },
+    {
+      "order": 15,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/do3id4fy",
+      "id": "15",
+      "bbox": [
+        596,
+        270,
+        88,
+        88
+      ],
+      "geometry": "ellipse",
+      "fillColor": "#F5A623",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 16,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/qlcjipgn",
+      "id": "16",
+      "bbox": [
+        596,
+        294,
+        88,
+        28
+      ],
+      "geometry": "rect",
+      "text": "B",
+      "textPreview": "B",
+      "resolvedFontSize": 20.32,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 0.85,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "B"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "B",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 26,
+            "typeface": "Microsoft YaHei",
+            "color": "#FFFFFF",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "B",
+              "fontSize": 26,
+              "typeface": "Microsoft YaHei",
+              "color": "#FFFFFF",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 17,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/bml0buxs",
+      "id": "17",
+      "bbox": [
+        510,
+        376,
+        260,
+        40
+      ],
+      "geometry": "rect",
+      "text": "设计师",
+      "textPreview": "设计师",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "设计师"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "设计师",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 27,
+            "typeface": "Microsoft YaHei",
+            "color": "#10231C",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "设计师",
+              "fontSize": 27,
+              "typeface": "Microsoft YaHei",
+              "color": "#10231C",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 18,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/0ru1ozyp",
+      "id": "18",
+      "bbox": [
+        510,
+        436,
+        260,
+        64
+      ],
+      "geometry": "rect",
+      "text": "接收正式户型\n生成并优化方案",
+      "textPreview": "接收正式户型 | 生成并优化方案",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "接收正式户型"
+          },
+          {
+            "index": 2,
+            "text": "生成并优化方案"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "接收正式户型",
+          "lineSpacingPercent": 130000,
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Microsoft YaHei",
+            "color": "#66756F",
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "接收正式户型",
+              "fontSize": 19,
+              "typeface": "Microsoft YaHei",
+              "color": "#66756F"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        },
+        {
+          "index": 2,
+          "text": "生成并优化方案",
+          "lineSpacingPercent": 130000,
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Microsoft YaHei",
+            "color": "#66756F",
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "生成并优化方案",
+              "fontSize": 19,
+              "typeface": "Microsoft YaHei",
+              "color": "#66756F"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 19,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/lsn2h4fa",
+      "id": "19",
+      "bbox": [
+        498,
+        522,
+        284,
+        34
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 20,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/98ji147e",
+      "id": "20",
+      "bbox": [
+        510,
+        529,
+        260,
+        20
+      ],
+      "geometry": "rect",
+      "text": "承接：不重新录入",
+      "textPreview": "承接：不重新录入",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "承接：不重新录入"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "承接：不重新录入",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Microsoft YaHei",
+            "color": "#F5A623",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "承接：不重新录入",
+              "fontSize": 14,
+              "typeface": "Microsoft YaHei",
+              "color": "#F5A623",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 21,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/87a18zqt",
+      "id": "21",
+      "bbox": [
+        870,
+        238,
+        340,
+        346
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#F7F6F1",
+      "lineColor": "#E1E8E3",
+      "lineWidth": 1
+    },
+    {
+      "order": 22,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/76h0zup8",
+      "id": "22",
+      "bbox": [
+        996,
+        270,
+        88,
+        88
+      ],
+      "geometry": "ellipse",
+      "fillColor": "#4F7DF3",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 23,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ml8j6p8n",
+      "id": "23",
+      "bbox": [
+        996,
+        294,
+        88,
+        28
+      ],
+      "geometry": "rect",
+      "text": "C",
+      "textPreview": "C",
+      "resolvedFontSize": 20.32,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 0.85,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "C"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "C",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 26,
+            "typeface": "Microsoft YaHei",
+            "color": "#FFFFFF",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "C",
+              "fontSize": 26,
+              "typeface": "Microsoft YaHei",
+              "color": "#FFFFFF",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 24,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/hcji5o7a",
+      "id": "24",
+      "bbox": [
+        910,
+        376,
+        260,
+        40
+      ],
+      "geometry": "rect",
+      "text": "企业管理者",
+      "textPreview": "企业管理者",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "企业管理者"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "企业管理者",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 27,
+            "typeface": "Microsoft YaHei",
+            "color": "#10231C",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "企业管理者",
+              "fontSize": 27,
+              "typeface": "Microsoft YaHei",
+              "color": "#10231C",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 25,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/wba1cjqp",
+      "id": "25",
+      "bbox": [
+        910,
+        436,
+        260,
+        64
+      ],
+      "geometry": "rect",
+      "text": "配置成员与权限\n查看阶段与进展",
+      "textPreview": "配置成员与权限 | 查看阶段与进展",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "配置成员与权限"
+          },
+          {
+            "index": 2,
+            "text": "查看阶段与进展"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "配置成员与权限",
+          "lineSpacingPercent": 130000,
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Microsoft YaHei",
+            "color": "#66756F",
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "配置成员与权限",
+              "fontSize": 19,
+              "typeface": "Microsoft YaHei",
+              "color": "#66756F"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        },
+        {
+          "index": 2,
+          "text": "查看阶段与进展",
+          "lineSpacingPercent": 130000,
+          "resolvedTextStyle": {
+            "fontSize": 19,
+            "typeface": "Microsoft YaHei",
+            "color": "#66756F",
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "查看阶段与进展",
+              "fontSize": 19,
+              "typeface": "Microsoft YaHei",
+              "color": "#66756F"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 26,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/va103ep4",
+      "id": "26",
+      "bbox": [
+        898,
+        522,
+        284,
+        34
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 27,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/u9sja98z",
+      "id": "27",
+      "bbox": [
+        910,
+        529,
+        260,
+        20
+      ],
+      "geometry": "rect",
+      "text": "保障：角色边界清晰",
+      "textPreview": "保障：角色边界清晰",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "保障：角色边界清晰"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "保障：角色边界清晰",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Microsoft YaHei",
+            "color": "#4F7DF3",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "保障：角色边界清晰",
+              "fontSize": 14,
+              "typeface": "Microsoft YaHei",
+              "color": "#4F7DF3",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 28,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/xgzitk76",
+      "id": "28",
+      "bbox": [
+        264,
+        608,
+        752,
+        44
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#EAF8EF",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 29,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/cf6h0fql",
+      "id": "29",
+      "bbox": [
+        282,
+        620,
+        716,
+        22
+      ],
+      "geometry": "rect",
+      "text": "同一客户、同一空间依据、同一方案旅程。",
+      "textPreview": "同一客户、同一空间依据、同一方案旅程。",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "同一客户、同一空间依据、同一方案旅程。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "同一客户、同一空间依据、同一方案旅程。",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 17,
+            "typeface": "Microsoft YaHei",
+            "color": "#0BAF55",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "同一客户、同一空间依据、同一方案旅程。",
+              "fontSize": 17,
+              "typeface": "Microsoft YaHei",
+              "color": "#0BAF55",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

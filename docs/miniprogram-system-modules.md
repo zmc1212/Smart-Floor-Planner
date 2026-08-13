@@ -832,6 +832,19 @@ must update that ledger pair in the same change.
   raw coordinate and reclassified as an outer wall face before an adjacent
   room closes. Routes, APIs, roles, the version-4 graph contract, and
   measurement audits are unchanged.
+- Internal-wall room partition (2026-08-13): when a cursor starts on the
+  middle of one wall in exactly one closed room and a straight preview reaches
+  the opposite boundary, the preview and manual/BLE confirmation stop at that
+  first boundary intersection. Confirmation splits both boundary walls as
+  needed, reuses the measured divider as a shared wall, and replaces the
+  source boundary with two closed spaces. The cursor cannot continue through
+  the opposite internal wall as a free wall chain. This is local
+  `survey-wall-graph` topology only: the page route, APIs, roles, version-4
+  persistence shape, millimetre readings, and measurement audits are
+  unchanged. The supplied runtime screenshot is the interaction reference;
+  focused cursor-placement regression coverage passes, while native 390x844
+  Canvas QA remains pending on the existing DevTools window because no
+  compatible automation endpoint is available.
 - Inner/outer corner touch protection and delete stability (2026-08-12): when
   a closed-room inner corner and its mitered outer corner both fall inside the
   `350mm` touch tolerance, the inner corner keeps priority throughout the

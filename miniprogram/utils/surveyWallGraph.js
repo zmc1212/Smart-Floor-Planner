@@ -58,6 +58,7 @@ function createSession() {
     activeSpaceSharedWallId: '',
     activeSpaceSharedStartT: null,
     activeSpaceSharedSnapLine: '',
+    partitionSourceSpaceId: '',
     lastWallSnapNodeId: '',
     lastWallSnapWallId: '',
     lastWallSnapT: null,
@@ -140,6 +141,9 @@ function ensureSessionSpaceTracking(floor) {
   }
   if (typeof session.activeSpaceSharedSnapLine !== 'string') {
     session.activeSpaceSharedSnapLine = '';
+  }
+  if (typeof session.partitionSourceSpaceId !== 'string') {
+    session.partitionSourceSpaceId = '';
   }
   if (typeof session.lastWallSnapNodeId !== 'string') {
     session.lastWallSnapNodeId = '';
@@ -225,6 +229,33 @@ function findClosedSpaceForWall(floor, wallId) {
     Array.isArray(space.wallIds) &&
     space.wallIds.indexOf(wallId) !== -1
   )) || null;
+}
+
+function findClosedSpacesForWall(floor, wallId) {
+  if (!floor || !wallId || !Array.isArray(floor.spaces)) return [];
+  return floor.spaces.filter((space) => (
+    space &&
+    space.closed &&
+    Array.isArray(space.wallIds) &&
+    space.wallIds.indexOf(wallId) !== -1
+  ));
+}
+
+function isPointInsidePolygon(point, polygon) {
+  if (!point || !Array.isArray(polygon) || polygon.length < 3) return false;
+  let inside = false;
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index, index += 1) {
+    const currentPoint = polygon[index];
+    const previousPoint = polygon[previous];
+    const crossesRay = (currentPoint.yMm > point.yMm) !== (previousPoint.yMm > point.yMm);
+    if (!crossesRay) continue;
+    const intersectionX = (
+      (previousPoint.xMm - currentPoint.xMm) * (point.yMm - currentPoint.yMm) /
+      (previousPoint.yMm - currentPoint.yMm) + currentPoint.xMm
+    );
+    if (point.xMm < intersectionX) inside = !inside;
+  }
+  return inside;
 }
 
 function normalizeMeasurementInset(value) {
@@ -2320,6 +2351,69 @@ function findAnySharedWallClosureProjection(floor, session, point) {
   return best;
 }
 
+function findPartitionClosureProjection(floor, session, anchor, point) {
+  if (!floor || !session || !anchor || !point || session.mode !== 'straight') return null;
+  const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+    ? session.activeSpaceStartWallIndex
+    : 0;
+  if ((floor.walls || []).length !== startWallIndex || !session.activeSpaceSharedWallId) return null;
+
+  const sourceSpaces = findClosedSpacesForWall(floor, session.activeSpaceSharedWallId);
+  if (!sourceSpaces.length) return null;
+
+  const directionLength = distanceMm(anchor, point);
+  if (directionLength < MIN_WALL_LENGTH_MM) return null;
+  const direction = {
+    x: (point.xMm - anchor.xMm) / directionLength,
+    y: (point.yMm - anchor.yMm) / directionLength
+  };
+  const probe = {
+    xMm: Math.round(anchor.xMm + direction.x * MIN_WALL_LENGTH_MM),
+    yMm: Math.round(anchor.yMm + direction.y * MIN_WALL_LENGTH_MM)
+  };
+  const sourceSpace = sourceSpaces.find((space) => (
+    isPointInsidePolygon(probe, buildSpaceBoundaryPoints(floor, space.wallIds))
+  ));
+  if (!sourceSpace) return null;
+
+  let best = null;
+  sourceSpace.wallIds.forEach((wallId) => {
+    if (wallId === session.activeSpaceSharedWallId) return;
+    const wall = getWall(floor, wallId);
+    const start = wall && getNode(floor, wall.startNodeId);
+    const end = wall && getNode(floor, wall.endNodeId);
+    if (!wall || !start || !end) return;
+    const previewDirection = { x: point.xMm - anchor.xMm, y: point.yMm - anchor.yMm };
+    const wallDirection = { x: end.xMm - start.xMm, y: end.yMm - start.yMm };
+    const denominator = cross(previewDirection, wallDirection);
+    if (Math.abs(denominator) < 0.000001) return;
+    const offset = { x: start.xMm - anchor.xMm, y: start.yMm - anchor.yMm };
+    const previewT = cross(offset, wallDirection) / denominator;
+    const wallT = cross(offset, previewDirection) / denominator;
+    if (previewT <= 0.0001 || previewT > 1.0001 || wallT < -0.0001 || wallT > 1.0001) return;
+    const intersection = {
+      xMm: Math.round(anchor.xMm + previewDirection.x * previewT),
+      yMm: Math.round(anchor.yMm + previewDirection.y * previewT)
+    };
+    if (distanceMm(anchor, intersection) < MIN_WALL_LENGTH_MM) return;
+
+    if (!best || previewT < best.previewT) {
+      best = {
+        wall,
+        start,
+        end,
+        point: intersection,
+        t: wallT,
+        previewT,
+        distanceMm: 0,
+        sourceSpace
+      };
+    }
+  });
+
+  return best;
+}
+
 function findWallPathBetweenNodes(floor, fromNodeId, toNodeId, excludedWallIds) {
   if (!floor || !fromNodeId || !toNodeId) return [];
   if (fromNodeId === toNodeId) return [];
@@ -2352,6 +2446,66 @@ function findWallPathBetweenNodes(floor, fromNodeId, toNodeId, excludedWallIds) 
   }
 
   return [];
+}
+
+function findClosedBoundaryPathsBetweenNodes(floor, space, fromNodeId, toNodeId) {
+  const chain = space && buildClosedSpaceWallChain(floor, space.wallIds);
+  if (!chain || !chain.length || !fromNodeId || !toNodeId || fromNodeId === toNodeId) return [];
+  const nodes = chain.map((entry) => entry.start.id);
+  const fromIndex = nodes.indexOf(fromNodeId);
+  const toIndex = nodes.indexOf(toNodeId);
+  if (fromIndex < 0 || toIndex < 0) return [];
+
+  const forward = [];
+  for (let index = fromIndex; index !== toIndex; index = (index + 1) % chain.length) {
+    forward.push(chain[index].wall.id);
+  }
+  const reverse = [];
+  for (let index = fromIndex; index !== toIndex; index = (index - 1 + chain.length) % chain.length) {
+    reverse.push(chain[(index - 1 + chain.length) % chain.length].wall.id);
+  }
+  return [forward, reverse].filter((path) => path.length);
+}
+
+function splitClosedSpaceWithPartition(floor, session, partitionWall) {
+  const sourceSpace = (floor.spaces || []).find((space) => (
+    space && space.id === session.partitionSourceSpaceId && space.closed
+  ));
+  const startNode = getNode(floor, session.activeSpaceStartNodeId);
+  const endNode = partitionWall && getNode(floor, partitionWall.endNodeId);
+  if (!sourceSpace || !startNode || !endNode || !partitionWall) return false;
+
+  splitWallAtNodes(floor, session.activeSpaceSharedWallId, [startNode.id]);
+  splitWallAtNodes(floor, session.closeCandidateSharedWallId, [endNode.id]);
+
+  const refreshedSource = (floor.spaces || []).find((space) => space.id === sourceSpace.id);
+  const boundaryPaths = findClosedBoundaryPathsBetweenNodes(
+    floor,
+    refreshedSource,
+    startNode.id,
+    endNode.id
+  );
+  if (boundaryPaths.length !== 2) return false;
+
+  const firstWallIds = boundaryPaths[0].concat(partitionWall.id);
+  const secondWallIds = boundaryPaths[1].concat(partitionWall.id);
+  if (
+    buildSpaceBoundaryPoints(floor, firstWallIds).length < 3 ||
+    buildSpaceBoundaryPoints(floor, secondWallIds).length < 3
+  ) {
+    return false;
+  }
+
+  refreshedSource.wallIds = firstWallIds;
+  const roomIndex = floor.spaces.filter((space) => space.closed).length + 1;
+  floor.spaces.push({
+    id: nextId('space'),
+    name: `\u623f\u95f4${roomIndex}`,
+    wallIds: secondWallIds,
+    closed: true,
+    source: 'measured'
+  });
+  return true;
 }
 
 function cloneWallSegment(sourceWall, startNodeId, endNodeId, id) {
@@ -2668,6 +2822,15 @@ function startPreview(draft, rawPoint) {
     vertexAxisSnap.point
   );
   let previewPoint = directStartClosureSnap.point;
+  const partitionProjection = findPartitionClosureProjection(
+    floor,
+    session,
+    anchor,
+    previewPoint
+  );
+  if (partitionProjection) {
+    previewPoint = partitionProjection.point;
+  }
   let previewMeasurementStartInsetMm = resolvePreviewMeasurementStartInsetMm(
     floor,
     session,
@@ -2703,6 +2866,7 @@ function startPreview(draft, rawPoint) {
   session.closeCandidatePoint = null;
   session.closeCandidateType = '';
   session.closeCandidateSharedWallId = '';
+  session.partitionSourceSpaceId = partitionProjection ? partitionProjection.sourceSpace.id : '';
   session.alignmentSnapGuide = directStartClosureSnap.guide || resetClosureSnap.guide ||
     rectangleSnap.guide || vertexAxisSnap.guide || directionSnap.guide;
 
@@ -2762,6 +2926,12 @@ function startPreview(draft, rawPoint) {
         session.closeCandidateType = 'merge';
       }
     }
+  }
+
+  if (partitionProjection) {
+    session.closeCandidatePoint = partitionProjection.point;
+    session.closeCandidateType = 'partition';
+    session.closeCandidateSharedWallId = partitionProjection.wall.id;
   }
 
   session.previewMeasurementStartInsetMm = previewMeasurementStartInsetMm;
@@ -2961,11 +3131,18 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   const sharedProjection = canCloseWithSharedBoundary
     ? findAnySharedWallClosureProjection(floor, session, endPoint)
     : null;
+  const partitionProjection = findPartitionClosureProjection(
+    floor,
+    session,
+    anchor,
+    endPoint
+  );
+  const closureProjection = partitionProjection || sharedProjection;
   const isClosingCurrentSpace = activeStartNode &&
-    (activeWallCountBeforeCommit >= 2 || !!sharedProjection) &&
-    (sharedProjection || distanceMm(endPoint, activeStartNode) <= CLOSE_TOLERANCE_MM);
-  if (sharedProjection) {
-    endPoint = sharedProjection.point;
+    (activeWallCountBeforeCommit >= 2 || !!closureProjection) &&
+    (closureProjection || distanceMm(endPoint, activeStartNode) <= CLOSE_TOLERANCE_MM);
+  if (closureProjection) {
+    endPoint = closureProjection.point;
   }
   const measurementStartInsetMm = normalizeMeasurementInset(
     session.previewMeasurementStartInsetMm
@@ -3018,7 +3195,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     wall.inputSource = inputSource || 'manual';
     wall.measuredAt = nowIso();
   } else {
-    endNode = sharedProjection ? getOrCreateSnapNode(floor, sharedProjection) : addNode(floor, endPoint);
+    endNode = closureProjection ? getOrCreateSnapNode(floor, closureProjection) : addNode(floor, endPoint);
     wall = {
       id: nextId('wall'),
       startNodeId: anchor.id,
@@ -3060,7 +3237,14 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   session.alignmentSnapGuide = null;
 
   const activeWallCount = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
-  if (sharedProjection && activeWallCount >= 1) {
+  if (partitionProjection && activeWallCount === 1) {
+    session.state = 'closing';
+    session.closeCandidateNodeId = endNode.id;
+    session.closeCandidatePoint = partitionProjection.point;
+    session.closeCandidateType = 'partition';
+    session.closeCandidateSharedWallId = partitionProjection.wall.id;
+    session.partitionSourceSpaceId = partitionProjection.sourceSpace.id;
+  } else if (sharedProjection && activeWallCount >= 1) {
     session.state = 'closing';
     if (!session.activeSpaceSharedWallId) {
       session.activeSpaceSharedWallId = sharedProjection.wall.id;
@@ -3223,6 +3407,37 @@ function confirmClosure(draft) {
   const minimumActiveWallCount = session.activeSpaceSharedWallId
     ? getMinimumClosureSuggestionWallCount(floor, session)
     : (hasSharedBoundary ? 2 : 3);
+
+  if (session.state === 'closing' && session.closeCandidateType === 'partition') {
+    const partitionWall = getLastWall(floor);
+    if (!partitionWall || !splitClosedSpaceWithPartition(floor, session, partitionWall)) {
+      throw new Error('当前分隔墙无法安全拆分房间，请重新从内部墙开始测量');
+    }
+    session.state = 'spaceClosed';
+    session.anchorNodeId = '';
+    session.pendingWallId = '';
+    session.selectedWallId = '';
+    session.selectedOpeningId = '';
+    session.closeCandidateNodeId = '';
+    session.closeCandidatePoint = null;
+    session.closeCandidateType = '';
+    session.closeCandidateSharedWallId = '';
+    session.partitionSourceSpaceId = '';
+    session.previewPoint = null;
+    session.previewLengthMm = 0;
+    session.previewAngleDeg = 0;
+    session.previewMeasurementSide = '';
+    session.previewMeasurementStartInsetMm = 0;
+    session.previewMeasurementEndInsetMm = 0;
+    session.alignmentSnapGuide = null;
+    session.activeSpaceStartNodeId = '';
+    session.activeSpaceStartWallIndex = floor.walls.length;
+    session.activeSpaceSharedWallId = '';
+    session.activeSpaceSharedStartT = null;
+    session.activeSpaceSharedSnapLine = '';
+    removeUnreferencedNodes(floor);
+    return touchDraft(next);
+  }
 
   if (session.state !== 'closing' || (!session.closeCandidateNodeId && !session.closeCandidatePoint) || activeWallCount < minimumActiveWallCount) {
     return next;

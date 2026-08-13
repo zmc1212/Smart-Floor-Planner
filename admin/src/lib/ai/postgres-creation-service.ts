@@ -717,6 +717,53 @@ function isImageLogicalModelKey(value: unknown): value is 'image.generate.standa
  * The caller performs provider network I/O after this short transaction, using
  * the persisted request snapshot and attempt ID for later reconciliation.
  */
+export async function abandonPostgresCreationProviderAttempt(input: {
+  enterpriseId: string;
+  generationId: string;
+  attemptId: string;
+  errorCode: string;
+  errorMessage: string;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const generationId = parsePostgresId(input.generationId, 'generationId');
+  const attemptId = parsePostgresId(input.attemptId, 'attemptId');
+
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const creation = new AiCreationRepository(transaction);
+    const generation = await creation.findGenerationForUpdate(generationId);
+    const attempt = await creation.findProviderAttempt(attemptId);
+    if (
+      !generation
+      || generation.currentAttemptId !== attemptId
+      || generation.status !== 'processing'
+      || !attempt
+      || attempt.generationId !== generationId
+      || attempt.status !== 'created'
+      || attempt.accepted
+      || attempt.remoteTaskId
+    ) {
+      throw new Error('Only an unaccepted current provider attempt can be abandoned for fallback');
+    }
+
+    await creation.updateProviderAttempt(attemptId, {
+      status: 'failed',
+      accepted: false,
+      errorCode: input.errorCode.trim() || 'PROVIDER_UNAVAILABLE',
+      errorMessage: input.errorMessage.trim() || 'Provider rejected the submission before accepting it',
+      durationMs: Math.max(0, Date.now() - attempt.createdAt.getTime()),
+    });
+    const updated = await creation.updateGeneration(generationId, {
+      status: 'created',
+      provider: null,
+      currentAttemptId: null,
+      errorCode: null,
+      errorMessage: null,
+    });
+    if (!updated) throw new Error('Creation generation no longer exists');
+    return updated;
+  });
+}
+
 export async function beginPostgresCreationProviderAttempt(input: {
   enterpriseId: string;
   generationId: string;

@@ -1397,3 +1397,107 @@ test('the latest confirmed diagonal can reopen as an angle preview without an or
   assert.equal(session.previewInteriorAngleDeg, 120);
   assert.equal(floor.nodes.some((node) => node.xMm === 4000 && node.yMm === 1732), false);
 });
+
+test('an internal-wall partition stops at the opposite boundary and closes two rooms', () => {
+  let draft = createClosedDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const leftWall = floor.walls.find((wall) => {
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    return start && end && start.xMm === 0 && end.xMm === 0;
+  });
+  const startTarget = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 0, yMm: 1000 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  assert.equal(startTarget.wallId, leftWall.id);
+
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    startTarget.pointMm,
+    startTarget
+  );
+  draft = surveyGraph.startPreview(draft, { xMm: 7000, yMm: 1000 });
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.deepEqual(floor.session.previewPoint, { xMm: 3000, yMm: 1000 });
+  assert.equal(floor.session.closeCandidateType, 'partition');
+
+  draft = surveyGraph.commitPreviewLength(draft, floor.session.previewLengthMm, 'manual');
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.session.state, 'closing');
+  assert.equal(floor.session.closeCandidateType, 'partition');
+  assert.equal(floor.walls.at(-1).lengthMm, 3000);
+
+  draft = surveyGraph.confirmClosure(draft);
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.session.state, 'spaceClosed');
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 2);
+  assert.equal(floor.walls.some((wall) => {
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    return start && end && Math.max(start.xMm, end.xMm) > 3000;
+  }), false);
+  assert.equal(
+    floor.spaces.every((space) => surveyGraph.buildSpaceBoundaryPoints(floor, space.wallIds).length >= 4),
+    true
+  );
+});
+
+test('a shared internal-wall partition selects the room entered by the drag', () => {
+  let draft = createClosedDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const rightWall = floor.walls.find((wall) => {
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    return start && end && start.xMm === 3000 && end.xMm === 3000;
+  });
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 3000, yMm: 1000 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = commitWall(draft, { xMm: 6000, yMm: 1000 }, 3000);
+  draft = commitWall(draft, { xMm: 6000, yMm: 2000 }, 1000);
+  draft = commitWall(draft, { xMm: 3000, yMm: 2000 }, 3000);
+  draft = surveyGraph.confirmClosure(draft);
+
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 2);
+  const sharedWall = floor.walls.find((wall) => {
+    return floor.spaces.filter((space) => space.wallIds.includes(wall.id)).length === 2;
+  });
+  assert.ok(sharedWall);
+  const sharedStart = surveyGraph.getNode(floor, sharedWall.startNodeId);
+  const sharedEnd = surveyGraph.getNode(floor, sharedWall.endNodeId);
+  const sharedMidpoint = {
+    xMm: Math.round((sharedStart.xMm + sharedEnd.xMm) / 2),
+    yMm: Math.round((sharedStart.yMm + sharedEnd.yMm) / 2)
+  };
+
+  const splitTarget = surveyGraph.getCursorPlacementTarget(
+    floor,
+    sharedMidpoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    splitTarget.pointMm,
+    splitTarget
+  );
+  draft = surveyGraph.startPreview(draft, { xMm: 7000, yMm: sharedMidpoint.yMm });
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.deepEqual(floor.session.previewPoint, { xMm: 6000, yMm: sharedMidpoint.yMm });
+  assert.equal(floor.session.closeCandidateType, 'partition');
+
+  draft = surveyGraph.commitPreviewLength(draft, floor.session.previewLengthMm, 'manual');
+  draft = surveyGraph.confirmClosure(draft);
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 3);
+  assert.equal(floor.walls.some((wall) => {
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    return start && end && Math.max(start.xMm, end.xMm) > 6000;
+  }), false);
+});

@@ -14,7 +14,9 @@ export async function providerFetch(
     const response = await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs), cache: 'no-store' });
     if (!response.ok) {
       const message = (await response.text()).slice(0, 2000);
-      const disposition = response.status >= 400 && response.status < 500 && response.status !== 408
+      const disposition = (
+        response.status >= 400 && response.status < 500 && response.status !== 408
+      ) || response.status === 503
         ? 'safe_fallback'
         : 'unknown';
       throw new AiProviderError(

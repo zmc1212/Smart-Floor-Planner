@@ -1,0 +1,2 @@
+Slide 4: Reposition and resize the two inherited Mini Program screenshots so their complete page bounds are visible, with proportional scaling and no intentional crop.
+All slides: Retain source master, slide structure, text, notes and existing brand assets. Inspect all picture frames and adjust only when a render demonstrates an unintended crop.

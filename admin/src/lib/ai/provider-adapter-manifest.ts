@@ -50,6 +50,18 @@ export const AI_PROVIDER_ADAPTER_MANIFESTS: Record<AiProviderAdapterType, Provid
     supportsModelDiscovery: true,
     supportsBalanceLookup: true,
   },
+  apinebula: {
+    type: 'apinebula',
+    label: 'API Nebula',
+    description: '支持 OpenAI Compatible 聊天、模型同步，以及 API Nebula 异步生图和轮询。',
+    defaultBaseUrl: 'https://apinebula.ai',
+    baseUrlPlaceholder: 'https://apinebula.ai',
+    defaultCapabilities: ALL_CAPABILITIES,
+    credentialFields: [API_KEY_CREDENTIAL],
+    configFields: [],
+    supportsModelDiscovery: true,
+    supportsBalanceLookup: false,
+  },
   pollinations: {
     type: 'pollinations',
     label: 'Pollinations',

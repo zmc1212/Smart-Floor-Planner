@@ -8,6 +8,7 @@ import {
 import { parsePostgresId } from '@/db/postgres-dto';
 import { withTenantTransaction } from '@/db/transaction';
 import {
+  abandonPostgresCreationProviderAttempt,
   acknowledgePostgresCreationProviderAttempt,
   beginPostgresCreationProviderAttempt,
   claimPostgresCreationProviderPolls,
@@ -26,7 +27,9 @@ import {
   storePostgresMediaBuffer,
 } from '@/lib/ai/postgres-media-assets';
 import {
+  AiProviderError,
   capabilityForLogicalModel,
+  isSafeProviderFallback,
   type AiImageProviderResult,
   type AiImageSubmitInput,
   type AiLogicalModelKey,
@@ -35,7 +38,6 @@ import {
   getAiProviderAdapter,
   getProviderRuntimeById,
   listProviderRuntimes,
-  listProviderRuntimesByAdapter,
 } from '@/lib/ai/provider-registry';
 import { parseImageDataUri } from '@/lib/ai/postgres-media-assets';
 import { resolveProviderCostEstimate } from '@/lib/ai/provider-cost';
@@ -406,39 +408,56 @@ export async function submitPostgresCreationGeneration(input: { enterpriseId: st
       : await toProviderDataUris(loaded.assets);
     const request = providerRequest(loaded.generation, images);
     const useDefaultImageRuntime = ['scenario', 'miniprogram', 'soft_furnishing_render', 'floor_plan_style', 'furnishing_render'].includes(loaded.generation.type);
-    const runtimes = useDefaultImageRuntime
-      ? await listProviderRuntimes(
-          capabilityForLogicalModel(request.logicalModelKey as AiLogicalModelKey),
-          request.logicalModelKey
-        )
-      : await listProviderRuntimesByAdapter(
-          capabilityForLogicalModel(request.logicalModelKey as AiLogicalModelKey),
-          String(asRecord(loaded.batch?.modelProfileSnapshot).adapterType || '').trim()
-        );
-    const runtime = useDefaultImageRuntime
-      ? runtimes[0]
-      : runtimes.find((item) => item.modelMappings[request.logicalModelKey] === request.remoteModel);
-    if (!runtime) throw new Error('没有与创作模型快照匹配的可用 AI 供应商');
-    const remoteModel = runtime.modelMappings[request.logicalModelKey];
-    if (!remoteModel) throw new Error('供应商未配置所需的图片模型能力');
-    request.remoteModel = remoteModel;
-    const begun = await beginPostgresCreationProviderAttempt({
-      enterpriseId: enterpriseId.toString(), generationId: generationId.toString(), providerConfigId: runtime.id,
-      providerKey: runtime.key, adapterType: runtime.adapterType, remoteModel,
-      requestSnapshot: request,
-      estimatedCost: resolveProviderCostEstimate(
-        runtime, request.logicalModelKey, remoteModel, String(request.resolutionTier || '')
-      ),
-    });
-    if (begun.reused && begun.attempt.remoteTaskId) return begun.generation;
-    const result = await getAiProviderAdapter(runtime.adapterType).submitImage(runtime, { ...request, model: remoteModel });
-    await handleProviderResult({
-      enterpriseId,
-      generationId,
-      attemptId: begun.attempt.id,
-      adapterType: runtime.adapterType,
-      result,
-    });
+    const runtimes = await listProviderRuntimes(
+      capabilityForLogicalModel(request.logicalModelKey as AiLogicalModelKey),
+      request.logicalModelKey
+    );
+    const candidates = useDefaultImageRuntime
+      ? runtimes
+      : runtimes.filter((item) => item.modelMappings[request.logicalModelKey] === request.remoteModel);
+    if (!candidates.length) throw new Error('没有与创作模型快照匹配的可用 AI 供应商');
+
+    let submitted = false;
+    let lastError: unknown;
+    for (const [index, runtime] of candidates.entries()) {
+      const remoteModel = runtime.modelMappings[request.logicalModelKey];
+      if (!remoteModel) continue;
+      request.remoteModel = remoteModel;
+      const begun = await beginPostgresCreationProviderAttempt({
+        enterpriseId: enterpriseId.toString(), generationId: generationId.toString(), providerConfigId: runtime.id,
+        providerKey: runtime.key, adapterType: runtime.adapterType, remoteModel,
+        requestSnapshot: request,
+        estimatedCost: resolveProviderCostEstimate(
+          runtime, request.logicalModelKey, remoteModel, String(request.resolutionTier || '')
+        ),
+      });
+      if (begun.reused && begun.attempt.remoteTaskId) return begun.generation;
+      try {
+        const result = await getAiProviderAdapter(runtime.adapterType).submitImage(runtime, { ...request, model: remoteModel });
+        await handleProviderResult({
+          enterpriseId,
+          generationId,
+          attemptId: begun.attempt.id,
+          adapterType: runtime.adapterType,
+          result,
+        });
+        submitted = true;
+        break;
+      } catch (error) {
+        lastError = error;
+        const safeUnacceptedFailure = isSafeProviderFallback(error);
+        if (!safeUnacceptedFailure) throw error;
+        await abandonPostgresCreationProviderAttempt({
+          enterpriseId: enterpriseId.toString(),
+          generationId: generationId.toString(),
+          attemptId: begun.attempt.id.toString(),
+          errorCode: error instanceof AiProviderError ? error.code : 'PROVIDER_UNAVAILABLE',
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+        if (index >= candidates.length - 1) throw error;
+      }
+    }
+    if (!submitted) throw lastError || new Error('供应商未配置所需的图片模型能力');
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await releasePostgresCreationGenerationCredits({ enterpriseId: enterpriseId.toString(), generationId: generationId.toString(), errorMessage: message });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Save, Trash2 } from 'lucide-react';
 import {
@@ -12,6 +12,7 @@ import {
   ProFormText,
   ProDescriptions,
   PageContainer,
+  type ProFormInstance,
 } from '@ant-design/pro-components';
 import { Button, Card, Col, Empty, Flex, Input, Row, Select, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -49,7 +50,7 @@ function AdapterConfigField({ field }: { field: ProviderAdapterConfigField }) {
 
 function resolveAdapterManifest(value: unknown) {
   return getProviderAdapterManifest(
-    value === 'pollinations' || value === 'openai_compatible' || value === 'grs' ? value : 'grs'
+    value === 'apinebula' || value === 'pollinations' || value === 'openai_compatible' || value === 'grs' ? value : 'grs'
   );
 }
 
@@ -82,6 +83,7 @@ function RemoteModelSelect({
 
 export default function ProviderEditor({ providerId }: ProviderEditorProps) {
   const router = useRouter();
+  const formRef = useRef<ProFormInstance<ProviderFields>>(null);
   const { data: providers, isLoading } = useFetch<Provider[]>('/api/admin/ai-providers');
   const [saving, setSaving] = useState(false);
   const [formState, setFormState] = useState<ProviderFormState | null>(null);
@@ -231,8 +233,18 @@ export default function ProviderEditor({ providerId }: ProviderEditorProps) {
       >
         <ProForm<ProviderFields>
         key={`${providerId || 'new'}-${initialForm.key}`}
+        formRef={formRef}
         layout="vertical"
         initialValues={initialForm}
+        onValuesChange={(changedValues) => {
+          if (!changedValues.adapterType) return;
+          const manifest = resolveAdapterManifest(changedValues.adapterType);
+          formRef.current?.setFieldsValue({
+            baseUrl: manifest.defaultBaseUrl,
+            capabilities: manifest.defaultCapabilities,
+            adapterConfig: {},
+          });
+        }}
         submitter={{
           searchConfig: { submitText: providerId ? '保存更改' : '创建供应商', resetText: '取消' },
           submitButtonProps: { loading: saving, icon: <Save size={16} /> },
@@ -299,7 +311,7 @@ export default function ProviderEditor({ providerId }: ProviderEditorProps) {
           </Card>
 
           <Card title="模型路由" className="admin-panel-card">
-          <Typography.Paragraph type="secondary">逻辑模型用于默认业务路由。自由创作台选择 GRSAI 模型后会覆盖远程模型，但只会在能执行同一模型的 GRS 配置间故障转移。</Typography.Paragraph>
+          <Typography.Paragraph type="secondary">逻辑模型用于默认业务路由。图片任务按供应商优先级执行，仅在请求明确未被上游受理时安全切换；自由创作只会切换到远程模型名完全相同的供应商。</Typography.Paragraph>
           <Table
             size="middle"
             pagination={false}

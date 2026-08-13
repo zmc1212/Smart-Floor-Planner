@@ -21,7 +21,7 @@ export const AI_ACTION_KEYS = [
 ] as const;
 export type AiActionKey = (typeof AI_ACTION_KEYS)[number];
 
-export type AiProviderAdapterType = 'grs' | 'pollinations' | 'openai_compatible';
+export type AiProviderAdapterType = 'grs' | 'apinebula' | 'pollinations' | 'openai_compatible';
 export type AiProviderAttemptStatus =
   | 'created'
   | 'submitted'

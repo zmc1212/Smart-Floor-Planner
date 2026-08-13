@@ -12,6 +12,7 @@ test('every supported adapter exposes one API key credential through the shared 
 
 test('adapter config rejects fields that are not declared by the adapter', () => {
   assert.deepEqual(validateProviderAdapterConfig('grs', {}), {});
+  assert.deepEqual(validateProviderAdapterConfig('apinebula', {}), {});
   assert.throws(() => validateProviderAdapterConfig('grs', { unsupported: 'value' }), /不支持配置项/);
 });
 

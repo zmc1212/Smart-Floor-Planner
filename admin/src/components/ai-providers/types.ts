@@ -14,7 +14,7 @@ export type Provider = {
   id: string;
   key: string;
   name: string;
-  adapterType: 'grs' | 'pollinations' | 'openai_compatible';
+  adapterType: 'grs' | 'apinebula' | 'pollinations' | 'openai_compatible';
   baseUrl: string;
   apiKeyMasked: string;
   credentialsMasked: Record<string, string>;
