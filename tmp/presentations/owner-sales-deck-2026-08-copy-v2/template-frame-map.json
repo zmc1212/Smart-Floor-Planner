@@ -1,0 +1,238 @@
+{
+  "outputSlides": [
+    {
+      "outputSlide": 1,
+      "sourceSlide": 1,
+      "narrativeRole": "preserve source narrative",
+      "reuseMode": "duplicate-slide",
+      "editTargets": []
+    },
+    {
+      "outputSlide": 2,
+      "sourceSlide": 2,
+      "narrativeRole": "preserve source narrative",
+      "reuseMode": "duplicate-slide",
+      "editTargets": []
+    },
+    {
+      "outputSlide": 3,
+      "sourceSlide": 3,
+      "narrativeRole": "preserve source narrative",
+      "reuseMode": "duplicate-slide",
+      "editTargets": []
+    },
+    {
+      "outputSlide": 4,
+      "sourceSlide": 4,
+      "narrativeRole": "preserve source narrative",
+      "reuseMode": "duplicate-slide",
+      "editTargets": []
+    },
+    {
+      "outputSlide": 5,
+      "sourceSlide": 5,
+      "narrativeRole": "preserve source narrative",
+      "reuseMode": "duplicate-slide",
+      "editTargets": []
+    },
+    {
+      "outputSlide": 6,
+      "sourceSlide": 6,
+      "narrativeRole": "preserve source narrative",
+      "reuseMode": "duplicate-slide",
+      "editTargets": []
+    },
+    {
+      "outputSlide": 7,
+      "sourceSlide": 7,
+      "narrativeRole": "preserve source narrative",
+      "reuseMode": "duplicate-slide",
+      "editTargets": []
+    },
+    {
+      "outputSlide": 8,
+      "sourceSlide": 8,
+      "narrativeRole": "AI production control",
+      "reuseMode": "duplicate-slide",
+      "editTargets": [
+        {
+          "action": "rewrite",
+          "shapeId": "sh/lgbepgvm",
+          "newText": "07 / AI 生产可控"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/18byd4zy",
+          "newText": "AI 不是黑盒：进度看得见，失败不白扣点"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/g72x4zyd",
+          "newText": "老板关心的是稳定交付：提交前知道要什么，生成中知道到哪，失败有原因，成功才扣点。"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/id0fu50z",
+          "newText": "提交前：需求一次说清"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/n6pwfmd8",
+          "newText": "生成中：进度随时可查"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/1k7edwv2",
+          "newText": "老板能管"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/ehgvihwr",
+          "newText": "素材齐不齐\n进度到哪步\n本次耗几点\n失败为何"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/kfixwbe1",
+          "newText": "成功才扣点\n失败释放 · 随时重试"
+        }
+      ]
+    },
+    {
+      "outputSlide": 9,
+      "sourceSlide": 9,
+      "narrativeRole": "preserve source narrative",
+      "reuseMode": "duplicate-slide",
+      "editTargets": []
+    },
+    {
+      "outputSlide": 10,
+      "sourceSlide": 10,
+      "narrativeRole": "field efficiency and owner visibility",
+      "reuseMode": "duplicate-slide",
+      "editTargets": [
+        {
+          "action": "rewrite",
+          "shapeId": "sh/cva9k7a9",
+          "newText": "09 / 一线轻、老板清"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/xc3mho32",
+          "newText": "一线少填表，老板仍能看清客户、方案与进度"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/cbu58j2h",
+          "newText": "员工在小程序完成高频动作；后台沉淀组织、权限和全局数据，扩店时不用重新搭流程。"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/725onyl4",
+          "newText": "小程序 · 一线执行"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/d87uxg3m",
+          "newText": "接待与量房"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/q5gb21kb",
+          "newText": "客户建档、正式量房，一次完成。"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/0bit8b2d",
+          "newText": "方案与跟进"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/1cru1g3y",
+          "newText": "查看户型、发起设计，继续当前客户。"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/ozitcv29",
+          "newText": "企业后台 · 老板看全局"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/wvetgbud",
+          "newText": "客户进展"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/bu5cnqd8",
+          "newText": "谁在跟、走到哪、是否停滞"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/kjytkvup",
+          "newText": "团队与权限"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/jypcrqd4",
+          "newText": "成员、岗位与数据边界"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/0nut8rul",
+          "newText": "方案与成本"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/q9srixs3",
+          "newText": "任务记录、结果版本与 AI 点数"
+        },
+        {
+          "action": "rewrite",
+          "shapeId": "sh/ru18r2to",
+          "newText": "一线操作更轻，老板管理更清，门店复制更容易。"
+        }
+      ]
+    },
+    {
+      "outputSlide": 11,
+      "sourceSlide": 11,
+      "narrativeRole": "preserve source narrative",
+      "reuseMode": "duplicate-slide",
+      "editTargets": []
+    },
+    {
+      "outputSlide": 12,
+      "sourceSlide": 12,
+      "narrativeRole": "preserve source narrative",
+      "reuseMode": "duplicate-slide",
+      "editTargets": []
+    },
+    {
+      "outputSlide": 13,
+      "sourceSlide": 13,
+      "narrativeRole": "preserve source narrative",
+      "reuseMode": "duplicate-slide",
+      "editTargets": []
+    },
+    {
+      "outputSlide": 14,
+      "sourceSlide": 14,
+      "narrativeRole": "preserve source narrative",
+      "reuseMode": "duplicate-slide",
+      "editTargets": [
+        {
+          "action": "replace",
+          "shapeId": "im/vm9g3yl4",
+          "asset": "owner-sales-modern-cream-v2.jpg"
+        }
+      ]
+    },
+    {
+      "outputSlide": 15,
+      "sourceSlide": 15,
+      "narrativeRole": "preserve source narrative",
+      "reuseMode": "duplicate-slide",
+      "editTargets": []
+    }
+  ],
+  "omittedSourceSlides": []
+}

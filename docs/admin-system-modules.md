@@ -908,17 +908,32 @@ permission, or workflow changes.
 - Free-creation APIs: `GET /api/ai/creation/bootstrap`, prompt categories,
   prompt template list/detail/preview, `POST /api/ai/creation/assets`,
   `GET/POST /api/ai/creation/tasks`, `DELETE /api/ai/creation/tasks/[id]`,
-  `POST /api/ai/creation/tasks/[id]/batches`, prompt assistance, and generation
-  attachment to an existing customer workflow. The create workspace renders
+  `POST /api/ai/creation/tasks/[id]/batches`, `POST
+  /api/ai/creation/tasks/[id]/batches/[batchId]/retry`, prompt assistance, and
+  generation attachment to an existing customer workflow. The create workspace renders
   persisted batches as ordered in-task conversation rounds, keeps each round's
   prompt/reference context, appends a batch for an existing task, and reserves a
   larger desktop conversation viewport above the prompt panel while hiding its
   native scrollbars without disabling scrolling. Its reference-image control
   now renders every uploaded asset allowed by the selected model (the existing
   0–10 model capability limit) as a numbered stacked deck; hover or keyboard
-  focus expands the deck and reveals per-image removal plus the next upload
-  slot. Selecting an image opens an in-place multi-image preview with thumbnail
+  focus expands the deck and reveals per-image removal plus a circular,
+  overlapping next-upload control. The prompt textarea hides browser scrollbar
+  chrome while retaining normal wheel, touchpad, keyboard, and touch scrolling.
+  The execution summary reads its reference-image thumbnail from the persisted
+  selected-batch snapshot (falling back to the task snapshot), so removing an
+  image from the next-generation composer never alters submitted task history.
+  Selecting an image opens an in-place multi-image preview with thumbnail
   switching, previous/next navigation, zoom, rotation, fullscreen, and download.
+  The retry route accepts only the latest `failed` or `partial` batch and reopens
+  only its failed generation rows; successful images and the batch sequence stay
+  unchanged. Each reopened generation clears its previous provider task state,
+  increments `retryCount`, and starts a new billing cycle using the currently
+  enabled price for the snapshotted model and resolution. In the UI, an unchanged
+  failed round uses `Retry this round` or `Retry failed items`; editing any prompt,
+  reference, model, size, count, or template changes the action to a new round.
+  Pending/processing rounds disable duplicate submission and continue through
+  status polling.
   The UI only uses the existing tenant-scoped asset upload and task/batch DTOs;
   it adds no API, data-model, role, or generation-contract change. The proxy maps the entire page
   and API prefix to the unified `ai-scenarios` permission, while writable routes
@@ -1103,8 +1118,9 @@ permission, or workflow changes.
   The free-creation workspace provides local template search and three-level
   categories, template fill, reference images, prompt assistance, mapped local
   executable model profiles, 1-4 outputs, model/ratio/resolution controls, credit estimates,
-  history, reuse, retry, delete, download, and attachment to an existing customer
-  workflow. Completed result tiles reproduce the verified Roomi interaction surface:
+  history, reuse, in-place retry of failed items, explicit new-round generation,
+  delete, download, and attachment to an existing customer workflow. Completed
+  result tiles reproduce the verified Roomi interaction surface:
   hover actions, annotatable reference reuse, full preview controls, and exported
   A/B comparison without introducing a Roomi runtime dependency. Template results load incrementally across the complete active revision,
   and mobile users retain access to the same three-level category filter. The
@@ -1128,7 +1144,9 @@ permission, or workflow changes.
   intersects template parameters with the selected local
   model profile before submission and snapshots the accepted values. Generation
   uses the existing provider execution, polling, and hold/consume/release billing
-  path under the `image.free_create` action. The versioned GRSAI catalog currently
+  path under the `image.free_create` action. A failed-item retry retains the
+  current batch/round, preserves successful siblings, and creates a fresh billed
+  provider attempt for each reopened generation. The versioned GRSAI catalog currently
   defines `gpt-image-2`, `gpt-image-2-vip`, and eleven Nano Banana variants from
   the 2026-06-29 protocol. Platform administrators enable models, choose one
   default, and cap reference images at 0-10 on `/ai-providers`; synchronized
@@ -1202,10 +1220,21 @@ permission, or workflow changes.
   GRS output-transfer policy is disabled, GRS `http(s)` output URLs are persisted
   directly as the result reference without downloading or creating a
   `MediaAsset`; provider-attempt validation and credit settlement still run in
-  their normal transaction. Platform operators can enable the Media Storage
+  their normal transaction. Mini Program DTOs never expose that provider host:
+  protected `MediaAsset` images use expiring tenant-signed URLs, while a
+  non-transferred GRS result uses an expiring signed task-result route that
+  verifies the tenant/task and streams verified JPG/PNG bytes from the Admin API.
+  A placeholder or invalid `MINIPROGRAM_API_PUBLIC_ORIGIN` falls back to the
+  actual/forwarded request host instead of emitting an `api.example.com` URL.
+  This keeps existing successful Mini Program tasks readable without changing the
+  Admin browser's direct-result contract or creating another billable generation.
+  Platform operators can enable the Media Storage
   page's GRS output-transfer policy only when an active Qiniu configuration is
-  the default provider; then subsequent GRS outputs are persisted to that Qiniu
-  configuration before settlement. Data-URI outputs, user uploads, generated
+  the default provider; then subsequent GRS outputs are persisted to that
+  default Qiniu configuration before settlement and cannot be overridden by the
+  local provider. Persisted results still return the uniform
+  `/api/ai/assets/:id/image` client URL; that private-asset endpoint redirects
+  to a short-lived Qiniu signed-download URL. Data-URI outputs, user uploads, generated
   control images, and non-GRS provider results continue to use `MediaAsset`
   regardless of the policy. Fallback is
   allowed only for connection/unaccepted/refunded-safe failures. Accepted or
@@ -1243,8 +1272,15 @@ permission, or workflow changes.
   change to Admin's global adopted-result semantics is introduced. The
   PostgreSQL route now applies `workflowId` inside the tenant-scoped repository
   query and rebuilds `selectedTask`, `latestTask`, and `targetContext` from the
-  matching PostgreSQL generations, restoring the existing Mini Program response
-  contract without changing its JWT, enterprise, operator, or credit boundary.
+  matching PostgreSQL generations. For an exact formal-plan target, legacy
+  Mini Program results that predate workflow synchronization fall back to that
+  verified target source as `selectedTask` instead of being hidden. This keeps
+  the existing response contract and does not change its JWT, enterprise,
+  operator, or credit boundary.
+  Once a Mini Program result image is persisted, its shared workflow uses the
+  same stage policy as an Admin scenario: the first successful base/soft-
+  furnishing result is selected as its baseline and advances the stage; a
+  pending, failed, or image-less task cannot advance it.
 - Migration/operations: run `npm run migrate:ai-platform` before enabling the
   new routes on an existing database. It preserves existing AI-credit balances,
   creates zero-balance accounts when absent, does not convert Pollen, maps legacy

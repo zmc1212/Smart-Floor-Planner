@@ -307,6 +307,109 @@ export async function preparePostgresCreationBatch(input: {
   });
 }
 
+/**
+ * Reopens only the failed generation rows in the latest free-creation batch.
+ * A provider retry is a new billed attempt, but it remains part of the same
+ * user-visible creation round and therefore does not allocate another batch.
+ */
+export async function preparePostgresCreationBatchRetry(input: {
+  enterpriseId: string;
+  taskId: string;
+  batchId: string;
+}) {
+  const enterpriseId = parsePostgresId(input.enterpriseId, 'enterpriseId');
+  const taskId = parsePostgresId(input.taskId, 'taskId');
+  const batchId = parsePostgresId(input.batchId, 'batchId');
+  const current = await withTenantTransaction(enterpriseId, (transaction) =>
+    new AiCreationRepository(transaction).loadTaskView(taskId)
+  );
+  const currentBatch = current?.batches.find((batch) => batch.id === batchId);
+  if (!current || !currentBatch || current.lastBatchId !== batchId) {
+    throw Object.assign(new Error('只能重试当前轮生成'), { status: 400 });
+  }
+  if (!['failed', 'partial'].includes(currentBatch.status)) {
+    throw Object.assign(new Error('只有失败或部分失败的当前轮可以重试'), { status: 400 });
+  }
+
+  const modelSnapshot = asRecord(currentBatch.modelProfileSnapshot);
+  const parameterSnapshot = asRecord(currentBatch.parameterSnapshot);
+  const modelProfileKey = String(modelSnapshot.key || '').trim();
+  const resolutionTier = String(parameterSnapshot.resolutionTier || parameterSnapshot.size || '').toUpperCase() as GrsResolutionTier;
+  if (!modelProfileKey || !resolutionTier) throw new Error('当前轮缺少可重试的模型或分辨率快照');
+
+  await assertEnterpriseAiActionAllowed(enterpriseId.toString(), 'image.free_create');
+  const price = await getPostgresImageModelPrice(modelProfileKey, resolutionTier);
+  const capturedAt = new Date().toISOString();
+
+  return withTenantTransaction(enterpriseId, async (transaction) => {
+    const repository = new AiCreationRepository(transaction);
+    const batch = await repository.findBatchForUpdate(batchId);
+    const task = await repository.findTask(taskId);
+    if (!batch || !task || batch.taskId !== taskId || task.lastBatchId !== batchId) {
+      throw Object.assign(new Error('只能重试当前轮生成'), { status: 400 });
+    }
+    if (!['failed', 'partial'].includes(batch.status)) {
+      throw Object.assign(new Error('当前轮已经开始重试或不再可重试'), { status: 409 });
+    }
+
+    const generations = await repository.listBatchGenerationsForUpdate(batchId);
+    if (generations.length !== batch.requestedCount) throw new Error('创作批次生成数量与请求快照不一致');
+    const failedGenerations = generations.filter((generation) => generation.status === 'failed');
+    if (!failedGenerations.length) {
+      throw Object.assign(new Error('当前轮没有可重试的失败项'), { status: 409 });
+    }
+    for (const generation of failedGenerations) {
+      if (generation.type !== 'free_create' || generation.creationTaskId !== taskId) {
+        throw new Error('当前轮包含无效的自由创作生成记录');
+      }
+      const billing = asRecord(generation.billing);
+      if (String(billing.status || '') !== 'released') {
+        throw new Error('失败项的冻结点数尚未释放，请稍后再试');
+      }
+    }
+
+    const retriedGenerations = await Promise.all(failedGenerations.map((generation) => {
+      const billing = asRecord(generation.billing);
+      const cycle = Math.max(0, Math.trunc(Number(billing.cycle ?? generation.retryCount ?? 0)) || 0) + 1;
+      return repository.updateGeneration(generation.id, {
+        status: 'pending',
+        provider: null,
+        currentAttemptId: null,
+        externalTask: {},
+        providerState: {},
+        output: {},
+        errorCode: null,
+        errorMessage: null,
+        durationMs: null,
+        retryCount: generation.retryCount + 1,
+        billing: {
+          actionKey: 'image.free_create',
+          cycle,
+          price: price.credits.toString(),
+          priceSnapshot: {
+            actionKey: 'image.free_create',
+            label: price.label,
+            credits: price.credits.toString(),
+            modelProfileKey,
+            remoteModel: String(modelSnapshot.remoteModel || ''),
+            resolutionTier,
+            capturedAt,
+          },
+          status: 'unbilled',
+        },
+      });
+    }));
+    if (retriedGenerations.some((generation) => !generation)) throw new Error('失败项重试状态无法保存');
+    const updatedBatch = await repository.updateBatch(batchId, { status: 'pending' });
+    if (!updatedBatch) throw new Error('当前轮重试状态无法保存');
+    return {
+      taskId,
+      batch: updatedBatch,
+      generations: retriedGenerations.filter((generation): generation is NonNullable<typeof generation> => Boolean(generation)),
+    };
+  });
+}
+
 function readPositiveBigInt(value: unknown, field: string) {
   try {
     const parsed = BigInt(String(value));
@@ -1139,8 +1242,8 @@ export async function settlePostgresCreationProviderResult(input: {
       enterpriseId,
       generation: attachedGeneration,
     });
-    const workflow = attachedGeneration.type === 'scenario'
-      ? await new AiWorkflowRepository(transaction).applySucceededScenarioGeneration(attachedGeneration.id)
+    const workflow = ['scenario', 'miniprogram'].includes(attachedGeneration.type)
+      ? await new AiWorkflowRepository(transaction).applySucceededWorkflowGeneration(attachedGeneration.id)
       : null;
     return {
       ...consumed,
@@ -1212,8 +1315,8 @@ export async function settlePostgresCreationProviderUrlResult(input: {
       enterpriseId,
       generation: attachedGeneration,
     });
-    const workflow = attachedGeneration.type === 'scenario'
-      ? await new AiWorkflowRepository(transaction).applySucceededScenarioGeneration(attachedGeneration.id)
+    const workflow = ['scenario', 'miniprogram'].includes(attachedGeneration.type)
+      ? await new AiWorkflowRepository(transaction).applySucceededWorkflowGeneration(attachedGeneration.id)
       : null;
     return {
       ...consumed,

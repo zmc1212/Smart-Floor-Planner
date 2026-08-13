@@ -12,10 +12,12 @@ const MIN_WALL_THICKNESS_PX = 1.5;
 const WALL_STROKE_PX = 1.5;
 const REDLINE_STROKE_PX = 2;
 const GUIDE_STROKE_PX = 1.25;
-// Blue coordinate, cursor, and snap guides need a denser cadence than the
-// green closure cue so they remain easy to track across the full workspace.
+// Blue cursor coordinates use a denser cadence than the closure cue so the
+// last committed point remains easy to read across the full workspace.
 const BLUE_GUIDE_DASH_PX = [8, 6];
 const CLOSURE_GUIDE_DASH_PX = [12, 10];
+const BLUE_GUIDE_COLOR = 'rgba(22, 119, 255, 0.92)';
+const STATUS_GUIDE_COLOR = '#f07a21';
 const LIVE_DIMENSION_LABEL_BACKGROUND = 'rgba(210, 210, 210, 0.96)';
 const LIVE_DIMENSION_LABEL_COLOR = '#0077d7';
 const PERMANENT_DIMENSION_LABEL_BACKGROUND = 'rgba(255, 255, 255, 0.92)';
@@ -611,12 +613,22 @@ function buildCursor(floor, session, project, activeSegment) {
 
   const anchor = surveyGraph.getNode(floor, session.anchorNodeId);
   if (!anchor) return null;
+  const hasCommittedWall = !!(floor.walls && floor.walls.length);
   if (activeSegment && activeSegment.measurementEndPoint) {
-    return { point: activeSegment.measurementEndPoint };
+    const isPreview = activeSegment.status === 'preview' || activeSegment.id === 'preview-wall';
+    return {
+      point: activeSegment.measurementEndPoint,
+      guidePoint: hasCommittedWall
+        ? (isPreview
+          ? (activeSegment.measurementStartPoint || activeSegment.startPoint)
+          : activeSegment.measurementEndPoint)
+        : null
+    };
   }
   const cursorPoint = surveyGraph.getCursorDisplayPoint(floor, session) || anchor;
   return {
-    point: project(cursorPoint)
+    point: project(cursorPoint),
+    guidePoint: hasCommittedWall ? project(cursorPoint) : null
   };
 }
 
@@ -913,16 +925,12 @@ function drawGrid(ctx, scene) {
   drawLines(majorStep, 'rgba(161, 177, 166, 0.14)', 1);
 }
 
-function drawAxes(ctx, scene) {
-  const segment = scene.activeSegment;
-  // The cursor owns the active crosshair whenever it is visible. Inset
-  // measurement endpoints can intentionally differ from the topology target,
-  // so drawing both crosshairs would make the apparent snap drift with zoom.
-  if (!segment || !scene.walls.length || (scene.cursor && scene.cursor.point)) return;
-  const point = segment.measurementEndPoint || segment.endPoint;
+function drawCursorGuide(ctx, scene) {
+  const point = scene.cursor && scene.cursor.guidePoint;
+  if (!point) return;
 
   ctx.save();
-  ctx.strokeStyle = 'rgba(0, 126, 220, 0.92)';
+  ctx.strokeStyle = BLUE_GUIDE_COLOR;
   ctx.lineWidth = GUIDE_STROKE_PX;
   if (ctx.setLineDash) ctx.setLineDash(BLUE_GUIDE_DASH_PX);
   ctx.beginPath();
@@ -1555,7 +1563,7 @@ function drawClosureGuide(ctx, scene) {
   const guide = scene.closureGuide;
   if (!guide) return;
   ctx.save();
-  ctx.strokeStyle = '#16a34a';
+  ctx.strokeStyle = STATUS_GUIDE_COLOR;
   ctx.lineWidth = GUIDE_STROKE_PX;
   if (ctx.setLineDash) ctx.setLineDash(CLOSURE_GUIDE_DASH_PX);
   ctx.beginPath();
@@ -1591,7 +1599,7 @@ function drawAlignmentSnapGuide(ctx, scene) {
   };
 
   ctx.save();
-  ctx.strokeStyle = '#2875b4';
+  ctx.strokeStyle = STATUS_GUIDE_COLOR;
   ctx.lineWidth = GUIDE_STROKE_PX;
   if (ctx.setLineDash) ctx.setLineDash(BLUE_GUIDE_DASH_PX);
   ctx.beginPath();
@@ -1609,17 +1617,6 @@ function drawCursor(ctx, scene) {
   const core = 14;
 
   ctx.save();
-  ctx.strokeStyle = 'rgba(22, 119, 255, 0.92)';
-  ctx.lineWidth = GUIDE_STROKE_PX;
-  if (ctx.setLineDash) ctx.setLineDash(BLUE_GUIDE_DASH_PX);
-  ctx.beginPath();
-  ctx.moveTo(0, point.y);
-  ctx.lineTo(scene.rect.width, point.y);
-  ctx.moveTo(point.x, 0);
-  ctx.lineTo(point.x, scene.rect.height);
-  ctx.stroke();
-  if (ctx.setLineDash) ctx.setLineDash([]);
-
   // Keep the small cursor mark visually distinct from the blue workspace
   // guides. The measurement surface uses the product green for its active
   // placement target, matching the magnifier preview.
@@ -1826,7 +1823,7 @@ function drawRoundedRectPath(ctx, left, top, width, height, radius) {
   ctx.closePath();
 }
 
-function drawCursorLensScene(ctx, scene, lensRect) {
+function drawCursorLensScene(ctx, scene, lensRect, meta) {
   if (!scene || !lensRect) return;
   const left = lensRect.left || 0;
   const top = lensRect.top || 0;
@@ -1845,6 +1842,21 @@ function drawCursorLensScene(ctx, scene, lensRect) {
   drawRoundedRectPath(ctx, panelLeft, panelTop, panelWidth, panelHeight, 11);
   ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
   ctx.fill();
+  ctx.restore();
+
+  // Keep the active target locked to the lens centre. It represents the formal
+  // preview/display point, not the raw finger coordinate that initiated drag.
+  const centerX = left + size / 2;
+  const centerY = top + size / 2;
+  ctx.save();
+  ctx.strokeStyle = '#22c55e';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(centerX - 12, centerY);
+  ctx.lineTo(centerX + 12, centerY);
+  ctx.moveTo(centerX, centerY - 12);
+  ctx.lineTo(centerX, centerY + 12);
+  ctx.stroke();
   ctx.restore();
 
   ctx.save();
@@ -1879,6 +1891,18 @@ function drawCursorLensScene(ctx, scene, lensRect) {
   ctx.lineWidth = 1;
   ctx.stroke();
   ctx.restore();
+
+  if (!meta) return;
+  const footerY = top + size + 29;
+  ctx.save();
+  ctx.fillStyle = '#374151';
+  ctx.font = '600 10px sans-serif';
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  ctx.fillText(meta.snapLabel || '', panelLeft + 10, footerY);
+  ctx.textAlign = 'right';
+  ctx.fillText(meta.coordinateLabel || '', panelLeft + panelWidth - 10, footerY);
+  ctx.restore();
 }
 
 /**
@@ -1895,42 +1919,85 @@ function drawDraggingCursor(ctx, rect, point, options) {
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
 
-  ctx.strokeStyle = 'rgba(22, 119, 255, 0.92)';
-  ctx.lineWidth = GUIDE_STROKE_PX;
-  if (ctx.setLineDash) ctx.setLineDash(BLUE_GUIDE_DASH_PX);
-  ctx.beginPath();
-  ctx.moveTo(0, point.y);
-  ctx.lineTo(rect.width, point.y);
-  ctx.moveTo(point.x, 0);
-  ctx.lineTo(point.x, rect.height);
-  ctx.stroke();
-  if (ctx.setLineDash) ctx.setLineDash([]);
+  // The formal canvas owns its stationary/moving cursor while a wall is drawn
+  // directly on the canvas. In that path this lightweight layer contributes
+  // only the lens, otherwise it would paint a second green cursor.
+  const showCursor = !options || options.showCursor !== false;
+  const snapGuide = showCursor && options && options.snapGuide;
+  if (snapGuide) {
+    const drawAxis = (axis, axisPoint) => {
+      if (!axisPoint) return;
+      if (axis === 'x') {
+        ctx.moveTo(axisPoint.x, 0);
+        ctx.lineTo(axisPoint.x, rect.height);
+      } else if (axis === 'y') {
+        ctx.moveTo(0, axisPoint.y);
+        ctx.lineTo(rect.width, axisPoint.y);
+      }
+    };
+    ctx.strokeStyle = STATUS_GUIDE_COLOR;
+    ctx.lineWidth = GUIDE_STROKE_PX;
+    if (ctx.setLineDash) ctx.setLineDash(BLUE_GUIDE_DASH_PX);
+    ctx.beginPath();
+    if (snapGuide.startPoint && snapGuide.endPoint) {
+      const dx = snapGuide.endPoint.x - snapGuide.startPoint.x;
+      const dy = snapGuide.endPoint.y - snapGuide.startPoint.y;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      if (length) {
+        const extend = Math.sqrt(rect.width * rect.width + rect.height * rect.height);
+        const ux = dx / length;
+        const uy = dy / length;
+        ctx.moveTo(
+          snapGuide.startPoint.x - ux * extend,
+          snapGuide.startPoint.y - uy * extend
+        );
+        ctx.lineTo(
+          snapGuide.endPoint.x + ux * extend,
+          snapGuide.endPoint.y + uy * extend
+        );
+      }
+    } else if (snapGuide.axis === 'both') {
+      drawAxis('x', snapGuide.point);
+      drawAxis('y', snapGuide.point);
+    } else {
+      drawAxis(snapGuide.axis, snapGuide.point);
+    }
+    ctx.stroke();
+    if (ctx.setLineDash) ctx.setLineDash([]);
+  }
 
-  const outerSize = 52;
-  const crossHalf = 36;
-  const coreSize = 14;
-  ctx.fillStyle = 'rgba(34, 197, 94, 0.16)';
-  ctx.strokeStyle = 'rgba(34, 197, 94, 0.56)';
-  ctx.lineWidth = 1.5;
-  ctx.fillRect(point.x - outerSize / 2, point.y - outerSize / 2, outerSize, outerSize);
-  ctx.strokeRect(point.x - outerSize / 2, point.y - outerSize / 2, outerSize, outerSize);
+  if (showCursor) {
+    const outerSize = 52;
+    const crossHalf = 36;
+    const coreSize = 14;
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.16)';
+    ctx.strokeStyle = 'rgba(34, 197, 94, 0.56)';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(point.x - outerSize / 2, point.y - outerSize / 2, outerSize, outerSize);
+    ctx.strokeRect(point.x - outerSize / 2, point.y - outerSize / 2, outerSize, outerSize);
 
-  ctx.strokeStyle = '#22c55e';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.moveTo(point.x - crossHalf, point.y);
-  ctx.lineTo(point.x + crossHalf, point.y);
-  ctx.moveTo(point.x, point.y - crossHalf);
-  ctx.lineTo(point.x, point.y + crossHalf);
-  ctx.stroke();
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(point.x - crossHalf, point.y);
+    ctx.lineTo(point.x + crossHalf, point.y);
+    ctx.moveTo(point.x, point.y - crossHalf);
+    ctx.lineTo(point.x, point.y + crossHalf);
+    ctx.stroke();
 
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
-  ctx.strokeStyle = '#22c55e';
-  ctx.lineWidth = 1.5;
-  ctx.fillRect(point.x - coreSize / 2, point.y - coreSize / 2, coreSize, coreSize);
-  ctx.strokeRect(point.x - coreSize / 2, point.y - coreSize / 2, coreSize, coreSize);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 1.5;
+    ctx.fillRect(point.x - coreSize / 2, point.y - coreSize / 2, coreSize, coreSize);
+    ctx.strokeRect(point.x - coreSize / 2, point.y - coreSize / 2, coreSize, coreSize);
+  }
 
-  drawCursorLensScene(ctx, options && options.lensScene, options && options.lensRect);
+  drawCursorLensScene(
+    ctx,
+    options && options.lensScene,
+    options && options.lensRect,
+    options && options.lensMeta
+  );
   ctx.restore();
 }
 
@@ -2067,7 +2134,6 @@ function drawSurveyScene(ctx, scene, options) {
   ctx.clearRect(0, 0, scene.rect.width, scene.rect.height);
 
   drawGrid(ctx, scene);
-  drawAxes(ctx, scene);
   drawClosedSpaceFills(ctx, scene);
   drawWallBodies(ctx, scene);
   drawWallOutlines(ctx, scene);
@@ -2076,6 +2142,7 @@ function drawSurveyScene(ctx, scene, options) {
   drawDimensions(ctx, scene);
   drawClosedSpaceLabel(ctx, scene);
   drawLockHandles(ctx, scene);
+  drawCursorGuide(ctx, scene);
   drawAlignmentSnapGuide(ctx, scene);
   drawClosureGuide(ctx, scene);
   drawCursor(ctx, scene);

@@ -17,6 +17,7 @@ import {
 import { createPostgresAiWorkflow } from '@/lib/ai/postgres-workflow-service';
 import { resolveMiniAiFloorPlanTarget, renderMiniAiFloorPlanControlPng, type MiniAiTargetScope } from '@/lib/ai/mini-ai-floorplan';
 import type { MiniAiContext } from '@/lib/ai/mini-ai-auth';
+import { getSignedMiniAiAssetUrl, getSignedMiniAiTaskResultUrl } from '@/lib/ai/mini-ai-assets';
 import type { MiniAiRenderMode } from '@/lib/ai/mini-ai-types';
 import { assertEligibleWorkflowFloorPlan } from '@/lib/ai/workflow-floorplan';
 import { leadArchivedError } from '@/lib/lead-lifecycle';
@@ -224,6 +225,10 @@ async function findPostgresMiniAiTask(inputId: string, input: {
   });
 }
 
+export function getPostgresMiniAiTaskForTenant(id: string, enterpriseId: string) {
+  return findPostgresMiniAiTask(id, { enterpriseId });
+}
+
 export async function executePostgresMiniAiTask(id: string, context: MiniAiContext) {
   const generation = await getPostgresMiniAiTask(id, context);
   if (!generation) throw Object.assign(new Error('任务不存在'), { status: 404 });
@@ -291,20 +296,20 @@ export async function retryPostgresMiniAiTaskForAdmin(id: string, enterpriseId: 
 export function serializePostgresMiniAiTask(generation: NonNullable<Awaited<ReturnType<typeof getPostgresMiniAiTask>>>, request: Request) {
   const input = asRecord(generation.input);
   const roomData = asRecord(input.roomData);
+  const enterpriseId = generation.enterpriseId.toString();
   const imageUrl = (key: string) => {
     const value = typeof input[key] === 'string' ? input[key] as string : undefined;
     const assetId = getPostgresAssetIdFromImageUrl(value);
     if (!assetId) return undefined;
-    const url = new URL(`/api/miniprogram/ai/assets/${assetId}/image`, request.url);
-    return url.toString();
+    return getSignedMiniAiAssetUrl({ request, assetId: assetId.toString(), enterpriseId });
   };
   const output = asRecord(generation.output);
   const outputImageUrl = typeof output.imageUrl === 'string' ? output.imageUrl : undefined;
   const resultAssetId = getPostgresAssetIdFromImageUrl(outputImageUrl);
   const resultImageUrl = resultAssetId
-    ? new URL(`/api/miniprogram/ai/assets/${resultAssetId}/image`, request.url).toString()
+    ? getSignedMiniAiAssetUrl({ request, assetId: resultAssetId.toString(), enterpriseId })
     : /^https?:\/\//i.test(String(outputImageUrl || '').trim())
-      ? outputImageUrl
+      ? getSignedMiniAiTaskResultUrl({ request, taskId: generation.id.toString(), enterpriseId })
       : undefined;
   return { id: generation.id.toString(), mode: input.mode || generation.type, status: generation.status, progress: generation.status === 'succeeded' || generation.status === 'failed' ? 100 : generation.status === 'processing' ? 65 : 10, styleKey: input.style, spaceAssetId: getPostgresAssetIdFromImageUrl(typeof input.spaceImage === 'string' ? input.spaceImage : undefined)?.toString(), referenceAssetId: getPostgresAssetIdFromImageUrl(typeof input.referenceImage === 'string' ? input.referenceImage : undefined)?.toString(), spaceImageUrl: imageUrl('spaceImage'), referenceImageUrl: imageUrl('referenceImage'), controlImageUrl: imageUrl('controlImage'), resultImageUrl, resultAssetId: resultAssetId?.toString(), errorCode: generation.errorCode, error: generation.errorMessage, retryCount: generation.retryCount, credits: Number(asRecord(generation.billing).price || 0), billingStatus: asRecord(generation.billing).status, provider: generation.provider, model: undefined, workflowId: generation.workflowId?.toString(), floorPlanId: generation.floorPlanId?.toString(), leadId: generation.leadId?.toString(), roomId: typeof roomData.roomId === 'string' ? roomData.roomId : undefined, targetScope: roomData.targetScope, targetLabel: roomData.targetLabel, outputAspectRatio: input.outputAspectRatio, outputSize: input.outputSize, syncedToWorkflow: Boolean(generation.workflowId), isSelectedBaseline: generation.isSelectedBaseline, stageKey: generation.stageKey, nextStageKey: generation.nextRecommendedStage, createdAt: generation.createdAt, updatedAt: generation.updatedAt };
 }

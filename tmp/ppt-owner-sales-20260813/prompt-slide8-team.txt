@@ -1,0 +1,10 @@
+﻿Use case: photorealistic-natural
+Asset type: 16:9 Chinese B2B sales presentation visual
+Primary request: A renovation company owner and a female designer in a concise morning review, standing beside a large display that shows one customer journey through measured floor plan, living-room design proposal, and a simple next-step checklist, demonstrating that the team works from the same customer record and can hand off without repeated explanation.
+Scene/backdrop: modern but realistic Chinese renovation company meeting area, daylight, small professional team
+Subject: one Chinese company owner and one Chinese female designer, collaborative review, measured floor plan and finished living-room visual as evidence
+Style/medium: premium editorial business photography, natural, credible, calm
+Composition/framing: landscape 16:9, people on left and center, display clearly visible on right, balanced and uncluttered
+Lighting/mood: confident, efficient, trustworthy, natural daylight
+Color palette: white, light gray, warm wood, restrained bright green accents
+Constraints: no readable UI text, no logos, no watermark, no futuristic holograms, no fake software interface, no floating graphics, no sales handshake pose

@@ -20,7 +20,8 @@ test('angle measurement uses one sheet for phone, manual, and Pythagorean states
   assert.match(wxml, /angleTriangleResult \|\| '--'/);
   assert.match(wxml, /wx:if="\{\{!numberPadVisible\}\}" class="history-action-bar/);
   assert.match(wxml, /wx:if="\{\{!numberPadVisible\}\}" class="bottom-fab-bar/);
-  assert.match(wxml, /cursorLensActive && cursorLensVisible \? 'cursor-lens-visible' : 'cursor-lens-hidden'/);
+  assert.doesNotMatch(wxml, /cursor-lens/);
+  assert.match(pageScript, /lensMeta: this\.cursorLensMeta/);
 });
 
 test('angle measurement keeps real sensor and BLE lifecycle handlers', () => {

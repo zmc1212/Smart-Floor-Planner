@@ -1,0 +1,9 @@
+Slide 1: rewrites the promise from product coverage to owner-facing business value while preserving the source cover composition.
+Slides 2-5: tighten the problem, customer journey, customer record, and formal-surveying copy around one customer named 张女士.
+Slide 6: fixes the prior image-label mismatch by replacing all three inherited comparison images with modern cream, modern French, and modern Chinese assets in the correct order.
+Slide 7: reframes the inherited AI workbench slide as before/after and local-refinement evidence; inherited images already match the new claims.
+Slide 8: keeps inherited product screenshots and explicitly presents them as the actual task lifecycle rather than a conceptual result page.
+Slides 9-10: retain the role and two-client structures but rewrite them for owner-level accountability and management visibility.
+Slide 11: repurposes the dark six-condition layout as a non-contractual pilot and purchasing checklist. No price or performance number is invented.
+Slide 12: converts the live-demo transition into a standalone call to action with observable pilot success criteria.
+Slides 13-15: move template breadth and operating boundaries into an appendix.

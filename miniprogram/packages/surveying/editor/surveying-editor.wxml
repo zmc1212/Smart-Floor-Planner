@@ -249,23 +249,6 @@
   </cover-view>
 
   <!-- ══════════════════════════════════════════════ -->
-  <!--  拖拽放置光标的纯展示层（不接收触摸，事件始终由底部按钮承接） -->
-  <!-- ══════════════════════════════════════════════ -->
-  <cover-view
-    class="cursor-lens {{cursorLensActive && cursorLensVisible ? 'cursor-lens-visible' : 'cursor-lens-hidden'}} {{cursorLensSnapType}}"
-  >
-    <cover-view class="cursor-lens-grid">
-      <cover-view class="cursor-lens-cross horizontal"></cover-view>
-      <cover-view class="cursor-lens-cross vertical"></cover-view>
-    </cover-view>
-    <cover-view class="cursor-lens-meta">
-      <cover-view>{{cursorLensSnapLabel}}</cover-view>
-      <cover-view>{{cursorLensXLabel}} / {{cursorLensYLabel}}</cover-view>
-    </cover-view>
-  </cover-view>
-
-
-  <!-- ══════════════════════════════════════════════ -->
   <!--  门窗构件编辑器（全屏覆盖）                       -->
   <!-- ══════════════════════════════════════════════ -->
   <view wx:if="{{componentEditorVisible}}" class="component-editor">

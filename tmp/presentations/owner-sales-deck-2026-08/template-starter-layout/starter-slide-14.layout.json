@@ -1,0 +1,1134 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/y6k0k7",
+    "id": "y6k0k7",
+    "slide": 14,
+    "layoutId": "/ppt/slideLayouts/slideLayout1.xml",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "/ppt/slideMasters/slideMaster1.xml",
+    "masterLayoutName": "Master",
+    "backgroundColor": "#F7F6F1",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "fontScheme": {
+      "name": "Office",
+      "majorFont": {
+        "latinTypeface": "Calibri Light",
+        "eastAsianTypeface": "Calibri Light",
+        "complexScriptTypeface": "Calibri Light"
+      },
+      "minorFont": {
+        "latinTypeface": "Calibri",
+        "eastAsianTypeface": "Calibri",
+        "complexScriptTypeface": "Calibri"
+      }
+    },
+    "typefaces": [
+      "Calibri",
+      "Calibri Light",
+      "Microsoft YaHei"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "/ppt/slideLayouts/slideLayout1.xml",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "/ppt/slideMasters/slideMaster1.xml",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "/ppt/slideMasters/slideMaster1.xml",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/36tcbu9o",
+      "id": "24",
+      "bbox": [
+        54,
+        34,
+        520,
+        22
+      ],
+      "geometry": "rect",
+      "text": "11 / 家装模板库",
+      "textPreview": "11 / 家装模板库",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "11 / 家装模板库"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "11 / 家装模板库",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 13,
+            "typeface": "Microsoft YaHei",
+            "color": "#0BAF55",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "11 / 家装模板库",
+              "fontSize": 13,
+              "typeface": "Microsoft YaHei",
+              "color": "#0BAF55",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/v29szets",
+      "id": "2",
+      "bbox": [
+        54,
+        72,
+        1120,
+        62
+      ],
+      "geometry": "rect",
+      "text": "把模板做成可选择的能力，而不是一条固定提示词",
+      "textPreview": "把模板做成可选择的能力，而不是一条固定提示词",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "把模板做成可选择的能力，而不是一条固定提示词"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "把模板做成可选择的能力，而不是一条固定提示词",
+          "lineSpacingPercent": 95000,
+          "resolvedTextStyle": {
+            "fontSize": 46,
+            "typeface": "Microsoft YaHei",
+            "color": "#10231C",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "把模板做成可选择的能力，而不是一条固定提示词",
+              "fontSize": 46,
+              "typeface": "Microsoft YaHei",
+              "color": "#10231C",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/a10bqts7",
+      "id": "3",
+      "bbox": [
+        54,
+        142,
+        1120,
+        44
+      ],
+      "geometry": "rect",
+      "text": "真实数据库示例：现代奶油毛坯装修、法式毛坯装修、户型问题诊断。",
+      "textPreview": "真实数据库示例：现代奶油毛坯装修、法式毛坯装修、户型问题诊断。",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "真实数据库示例：现代奶油毛坯装修、法式毛坯装修、户型问题诊断。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "真实数据库示例：现代奶油毛坯装修、法式毛坯装修、户型问题诊断。",
+          "lineSpacingPercent": 115000,
+          "resolvedTextStyle": {
+            "fontSize": 21,
+            "typeface": "Microsoft YaHei",
+            "color": "#66756F",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "真实数据库示例：现代奶油毛坯装修、法式毛坯装修、户型问题诊断。",
+              "fontSize": 21,
+              "typeface": "Microsoft YaHei",
+              "color": "#66756F"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/5sba58ru",
+      "id": "4",
+      "bbox": [
+        54,
+        680,
+        400,
+        18
+      ],
+      "geometry": "rect",
+      "text": "家客来 JIAKELAI  ·  AI 能力",
+      "textPreview": "家客来 JIAKELAI  ·  AI 能力",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "家客来 JIAKELAI  ·  AI 能力"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "家客来 JIAKELAI  ·  AI 能力",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 12,
+            "typeface": "Microsoft YaHei",
+            "color": "#8AA097",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "家客来 JIAKELAI  ·  AI 能力",
+              "fontSize": 12,
+              "typeface": "Microsoft YaHei",
+              "color": "#8AA097"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 5,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/kritw3a9",
+      "id": "5",
+      "bbox": [
+        1180,
+        680,
+        48,
+        18
+      ],
+      "geometry": "rect",
+      "text": "12",
+      "textPreview": "12",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "12"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "12",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 12,
+            "typeface": "Microsoft YaHei",
+            "color": "#8AA097",
+            "alignment": "right"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "12",
+              "fontSize": 12,
+              "typeface": "Microsoft YaHei",
+              "color": "#8AA097"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/jq9s3y9o",
+      "id": "6",
+      "bbox": [
+        58,
+        205,
+        274,
+        382
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "#DDE5E0",
+      "lineWidth": 1
+    },
+    {
+      "order": 7,
+      "kind": "image",
+      "scope": "slide",
+      "aid": "im/d47a18z6",
+      "id": "25",
+      "bbox": [
+        70,
+        245,
+        250,
+        245
+      ],
+      "contentType": "image/jpeg",
+      "asset": {
+        "assetId": "/ppt/media/image3.jpeg",
+        "contentType": "image/jpeg",
+        "byteLength": 155269
+      },
+      "fillImage": {
+        "assetId": "/ppt/media/image3.jpeg",
+        "contentType": "image/jpeg",
+        "byteLength": 155269
+      }
+    },
+    {
+      "order": 8,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/lw7at4ba",
+      "id": "8",
+      "bbox": [
+        66,
+        507,
+        258,
+        34
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#EAF8EF",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 9,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/0vy9kzap",
+      "id": "9",
+      "bbox": [
+        78,
+        514,
+        234,
+        20
+      ],
+      "geometry": "rect",
+      "text": "现代奶油毛坯装修",
+      "textPreview": "现代奶油毛坯装修",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "现代奶油毛坯装修"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "现代奶油毛坯装修",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Microsoft YaHei",
+            "color": "#0BAF55",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "现代奶油毛坯装修",
+              "fontSize": 14,
+              "typeface": "Microsoft YaHei",
+              "color": "#0BAF55",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 10,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/idgvq5cz",
+      "id": "10",
+      "bbox": [
+        360,
+        205,
+        274,
+        382
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "#DDE5E0",
+      "lineWidth": 1
+    },
+    {
+      "order": 11,
+      "kind": "image",
+      "scope": "slide",
+      "aid": "im/q1wbqtgf",
+      "id": "26",
+      "bbox": [
+        372,
+        245,
+        250,
+        245
+      ],
+      "contentType": "image/jpeg",
+      "asset": {
+        "assetId": "/ppt/media/image4.jpeg",
+        "contentType": "image/jpeg",
+        "byteLength": 197413
+      },
+      "fillImage": {
+        "assetId": "/ppt/media/image4.jpeg",
+        "contentType": "image/jpeg",
+        "byteLength": 197413
+      }
+    },
+    {
+      "order": 12,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/kfidsfu5",
+      "id": "12",
+      "bbox": [
+        368,
+        507,
+        258,
+        34
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#FFF1E0",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 13,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/50relkbq",
+      "id": "13",
+      "bbox": [
+        380,
+        514,
+        234,
+        20
+      ],
+      "geometry": "rect",
+      "text": "法式毛坯装修",
+      "textPreview": "法式毛坯装修",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "法式毛坯装修"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "法式毛坯装修",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Microsoft YaHei",
+            "color": "#F5A623",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "法式毛坯装修",
+              "fontSize": 14,
+              "typeface": "Microsoft YaHei",
+              "color": "#F5A623",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 14,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/610vupcb",
+      "id": "14",
+      "bbox": [
+        662,
+        205,
+        274,
+        382
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "#DDE5E0",
+      "lineWidth": 1
+    },
+    {
+      "order": 15,
+      "kind": "image",
+      "scope": "slide",
+      "aid": "im/r2pszyh0",
+      "id": "27",
+      "bbox": [
+        674,
+        245,
+        250,
+        245
+      ],
+      "contentType": "image/jpeg",
+      "asset": {
+        "assetId": "/ppt/media/image5.jpeg",
+        "contentType": "image/jpeg",
+        "byteLength": 228406
+      },
+      "fillImage": {
+        "assetId": "/ppt/media/image5.jpeg",
+        "contentType": "image/jpeg",
+        "byteLength": 228406
+      }
+    },
+    {
+      "order": 16,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/s3ixwzu1",
+      "id": "16",
+      "bbox": [
+        670,
+        507,
+        258,
+        34
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#FFF1E0",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 17,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/t4repkbm",
+      "id": "17",
+      "bbox": [
+        682,
+        514,
+        234,
+        20
+      ],
+      "geometry": "rect",
+      "text": "户型问题诊断",
+      "textPreview": "户型问题诊断",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "户型问题诊断"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "户型问题诊断",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 14,
+            "typeface": "Microsoft YaHei",
+            "color": "#4F7DF3",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "户型问题诊断",
+              "fontSize": 14,
+              "typeface": "Microsoft YaHei",
+              "color": "#4F7DF3",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 18,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/u50fypc7",
+      "id": "18",
+      "bbox": [
+        966,
+        220,
+        252,
+        342
+      ],
+      "geometry": "roundRect",
+      "fillColor": "#06372A",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 19,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/f6twruts",
+      "id": "19",
+      "bbox": [
+        994,
+        250,
+        196,
+        30
+      ],
+      "geometry": "rect",
+      "text": "当前提示词库",
+      "textPreview": "当前提示词库",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "当前提示词库"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "当前提示词库",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 23,
+            "typeface": "Microsoft YaHei",
+            "color": "#FFFFFF",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "当前提示词库",
+              "fontSize": 23,
+              "typeface": "Microsoft YaHei",
+              "color": "#FFFFFF",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 20,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ratcfu90",
+      "id": "20",
+      "bbox": [
+        994,
+        298,
+        196,
+        76
+      ],
+      "geometry": "rect",
+      "text": "2026-08-01 发布；共 960 个启用模板。",
+      "textPreview": "2026-08-01 发布；共 960 个启用模板。",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "2026-08-01 发布；共"
+          },
+          {
+            "index": 2,
+            "text": "960 个启用模板。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "2026-08-01 发布；共 960 个启用模板。",
+          "lineSpacingPercent": 130000,
+          "resolvedTextStyle": {
+            "fontSize": 17,
+            "typeface": "Microsoft YaHei",
+            "color": "#C8DDD4",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "2026-08-01 发布；共 960 个启用模板。",
+              "fontSize": 17,
+              "typeface": "Microsoft YaHei",
+              "color": "#C8DDD4"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 21,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/q9kvm98f",
+      "id": "21",
+      "bbox": [
+        994,
+        396,
+        196,
+        0
+      ],
+      "geometry": "line",
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "#2D6B56",
+      "lineWidth": 2
+    },
+    {
+      "order": 22,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/dcbeh4rq",
+      "id": "22",
+      "bbox": [
+        994,
+        424,
+        196,
+        30
+      ],
+      "geometry": "rect",
+      "text": "演示筛选",
+      "textPreview": "演示筛选",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "演示筛选"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "演示筛选",
+          "lineSpacingPercent": 106000,
+          "resolvedTextStyle": {
+            "fontSize": 21,
+            "typeface": "Microsoft YaHei",
+            "color": "#A9D8FF",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "演示筛选",
+              "fontSize": 21,
+              "typeface": "Microsoft YaHei",
+              "color": "#A9D8FF",
+              "bold": true
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 23,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/cb2dozql",
+      "id": "23",
+      "bbox": [
+        994,
+        470,
+        196,
+        70
+      ],
+      "geometry": "rect",
+      "text": "优先家装、可比较、客户易理解的模板。",
+      "textPreview": "优先家装、可比较、客户易理解的模板。",
+      "resolvedFontSize": 24,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 24,
+        "typeface": "Calibri",
+        "color": "tx1",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "autoFit": "shrinkText",
+        "autoFitScale": 1,
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "优先家装、可比较、客户易"
+          },
+          {
+            "index": 2,
+            "text": "理解的模板。"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "优先家装、可比较、客户易理解的模板。",
+          "lineSpacingPercent": 128000,
+          "resolvedTextStyle": {
+            "fontSize": 16,
+            "typeface": "Microsoft YaHei",
+            "color": "#C8DDD4",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "优先家装、可比较、客户易理解的模板。",
+              "fontSize": 16,
+              "typeface": "Microsoft YaHei",
+              "color": "#C8DDD4"
+            }
+          ],
+          "bulletCharacter": "",
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

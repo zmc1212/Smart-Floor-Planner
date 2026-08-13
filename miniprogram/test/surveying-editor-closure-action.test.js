@@ -46,6 +46,48 @@ test('wall-snapped cursor drops clear a late transient frame after the formal ca
   );
 });
 
+test('cursor dragging forwards only active snap geometry and clears it on every exit path', () => {
+  assert.match(
+    editorScript,
+    /snapGuide: this\.cursorDragSnapGuide/
+  );
+  assert.match(
+    editorScript,
+    /buildCursorDragSnapGuide\(candidate\)[\s\S]*?candidate\.type === 'free' \|\| candidate\.type === 'none'[\s\S]*?candidate\.type === 'alignment'[\s\S]*?candidate\.type === 'vertex'[\s\S]*?axis: 'both'/
+  );
+  assert.match(
+    editorScript,
+    /this\.cursorDragSnapGuide = this\.buildCursorDragSnapGuide\(candidate\)/
+  );
+  assert.match(
+    editorScript,
+    /clearCursorDragCanvas\(options\)[\s\S]*?this\.cursorDragSnapGuide = null;/
+  );
+  assert.match(
+    editorScript,
+    /applyDraft\(nextDraft, options\) \{[\s\S]*?this\.clearCursorDragCanvas\(\{ force: true \}\);/
+  );
+  assert.match(
+    editorScript,
+    /onUndo\(\) \{\s*this\.clearCursorDragCanvas\(\{ force: true \}\);\s*if \(!this\.history\.undo\.length\) return;/
+  );
+  assert.match(
+    editorScript,
+    /onRedoTap\(\) \{\s*this\.clearCursorDragCanvas\(\{ force: true \}\);\s*if \(!this\.history\.redo\.length\) return;/
+  );
+});
+
+test('canvas cursor drags reuse the lens layer without painting a second drag cursor', () => {
+  assert.match(
+    editorScript,
+    /updateCanvasCursorLens\(clientPoint, pointMm\)[\s\S]*?queueCursorDragCanvas\(clientPoint, \{ showCursor: false \}\)/
+  );
+  assert.match(
+    editorScript,
+    /showCursor: this\.cursorDragCanvasShowCursor/
+  );
+});
+
 test('cursor release commits the last visible snap candidate instead of reclassifying the raw touchend point', () => {
   assert.match(
     editorScript,

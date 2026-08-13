@@ -438,6 +438,55 @@ test('default surveying canvas uses the fine low-contrast reference grid', () =>
   assert.ok(minorGaps.every((gap) => gap >= 12 && gap <= 13));
 });
 
+test('an initial cursor has no blue guide before the first wall is committed', () => {
+  const draft = surveyGraph.placeCursor(
+    surveyGraph.createSurveyDraft(),
+    { xMm: 600, yMm: 400 }
+  );
+  const scene = createScene(draft);
+  const recorder = createRecordingContext();
+
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+
+  assert.ok(scene.cursor);
+  assert.equal(scene.cursor.guidePoint, null);
+  assert.equal(recorder.strokeDetails.some((detail) => (
+    detail.strokeStyle === 'rgba(22, 119, 255, 0.92)'
+  )), false);
+});
+
+test('the blue guide stays at the last committed point while a preview cursor moves', () => {
+  let draft = surveyGraph.placeCursor(
+    surveyGraph.createSurveyDraft(),
+    { xMm: 0, yMm: 0 }
+  );
+  draft = commitWall(draft, { xMm: 3000, yMm: 0 }, 3000);
+  const committedScene = createScene(draft);
+  assert.deepEqual(committedScene.cursor.guidePoint, committedScene.cursor.point);
+
+  const previewDraft = surveyGraph.startPreview(draft, { xMm: 3000, yMm: 2000 });
+  const previewScene = createScene(previewDraft);
+  const recorder = createRecordingContext();
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, previewScene, { dpr: 1 });
+
+  assert.notDeepEqual(previewScene.cursor.point, previewScene.cursor.guidePoint);
+  assert.deepEqual(previewScene.cursor.guidePoint, previewScene.previewWall.measurementStartPoint);
+  const blueGuide = recorder.strokeDetails.find((detail) => (
+    detail.strokeStyle === 'rgba(22, 119, 255, 0.92)'
+  ));
+  assert.deepEqual(blueGuide.path, [
+    ['moveTo', 0, previewScene.cursor.guidePoint.y],
+    ['lineTo', previewScene.rect.width, previewScene.cursor.guidePoint.y],
+    ['moveTo', previewScene.cursor.guidePoint.x, 0],
+    ['lineTo', previewScene.cursor.guidePoint.x, previewScene.rect.height]
+  ]);
+
+  const committedNext = surveyGraph.commitPreviewLength(previewDraft, 2000, 'manual');
+  const committedNextScene = createScene(committedNext);
+  assert.deepEqual(committedNextScene.cursor.guidePoint, committedNextScene.cursor.point);
+  assert.deepEqual(committedNextScene.cursor.point, previewScene.cursor.point);
+});
+
 test('open wall chain renders only inner dimensions and keeps its full chain red', () => {
   const draft = createOpenDraft();
   const floor = surveyGraph.getActiveFloor(draft);
@@ -1077,6 +1126,7 @@ test('inner shared-wall preview keeps one cursor on the selected topology endpoi
     assert.ok(scene.cursor);
     assert.ok(scene.activeSegment);
     assert.deepEqual(scene.cursor.point, scene.activeSegment.measurementEndPoint);
+    assert.deepEqual(scene.cursor.guidePoint, scene.activeSegment.measurementStartPoint);
     assert.deepEqual(scene.activeSegment.measurementEndPoint, scene.activeSegment.endPoint);
 
     const activeAxes = recorder.strokeDetails.filter((detail) => (
@@ -1088,10 +1138,10 @@ test('inner shared-wall preview keeps one cursor on the selected topology endpoi
     assert.equal(activeAxes.length, 0);
     assert.equal(cursorAxes.length, 1);
     assert.deepEqual(cursorAxes[0].path, [
-      ['moveTo', 0, scene.cursor.point.y],
-      ['lineTo', scene.rect.width, scene.cursor.point.y],
-      ['moveTo', scene.cursor.point.x, 0],
-      ['lineTo', scene.cursor.point.x, scene.rect.height]
+      ['moveTo', 0, scene.cursor.guidePoint.y],
+      ['lineTo', scene.rect.width, scene.cursor.guidePoint.y],
+      ['moveTo', scene.cursor.guidePoint.x, 0],
+      ['lineTo', scene.cursor.guidePoint.x, scene.rect.height]
     ]);
   });
 });
@@ -1251,7 +1301,9 @@ test('dimension arrows and guidance lines use the compact drawing treatment', ()
   assert.ok(recorder.widths.includes(1));
   assert.ok(recorder.widths.includes(1.25));
   assert.ok(recorder.widths.includes(1.5));
-  assert.deepEqual(recorder.dashes.filter((dash) => dash.length), [[8, 6], [12, 10], [8, 6]]);
+  assert.deepEqual(recorder.dashes.filter((dash) => dash.length), [[8, 6], [8, 6], [12, 10]]);
+  const orangeGuides = recorder.strokeDetails.filter((detail) => detail.strokeStyle === '#f07a21');
+  assert.equal(orangeGuides.length, 2);
   const lastGuideStroke = recorder.strokeDetails.findLastIndex((detail) => (
     detail.strokeStyle === 'rgba(22, 119, 255, 0.92)'
   ));
@@ -1300,7 +1352,7 @@ test('dimension endpoint ticks float clear of the measured wall', () => {
   ))), true);
 });
 
-test('drag-only canvas renders one dashed cross guide and one green square cursor', () => {
+test('free drag renders only the moving green cursor without a following blue guide', () => {
   const recorder = createRecordingContext();
   surveyCanvasRenderer.drawDraggingCursor(
     recorder.context,
@@ -1309,21 +1361,105 @@ test('drag-only canvas renders one dashed cross guide and one green square curso
     { dpr: 1 }
   );
 
-  assert.deepEqual(recorder.dashes.filter((dash) => dash.length), [[8, 6]]);
-  assert.ok(recorder.widths.includes(1.25));
+  assert.deepEqual(recorder.dashes.filter((dash) => dash.length), []);
   assert.equal(recorder.widths.includes(3), false);
   assert.ok(recorder.strokeDetails.some((detail) => detail.strokeStyle === '#22c55e'));
   assert.ok(recorder.fillRectDetails.some((detail) => detail.fillStyle === 'rgba(34, 197, 94, 0.16)'));
   assert.equal(recorder.strokeDetails.some((detail) => detail.strokeStyle === '#f07a21'), false);
-  assert.ok(recorder.strokes.some((path) => (
+  assert.equal(recorder.strokes.some((path) => (
     path.some((command) => command[0] === 'moveTo' && command[1] === 0 && command[2] === 220) &&
-    path.some((command) => command[0] === 'lineTo' && command[1] === 400 && command[2] === 220) &&
-    path.some((command) => command[0] === 'moveTo' && command[1] === 180 && command[2] === 0) &&
-    path.some((command) => command[0] === 'lineTo' && command[1] === 180 && command[2] === 500)
-  )));
+    path.some((command) => command[0] === 'lineTo' && command[1] === 400 && command[2] === 220)
+  )), false);
   assert.equal(recorder.strokes.some((path) => (
     path.some((command) => command[0] === 'arc')
   )), false);
+});
+
+test('canvas cursor drag suppresses the transient green cursor and guides', () => {
+  const recorder = createRecordingContext();
+  surveyCanvasRenderer.drawDraggingCursor(
+    recorder.context,
+    { width: 400, height: 500 },
+    { x: 180, y: 220 },
+    { dpr: 1, showCursor: false }
+  );
+
+  assert.equal(recorder.strokeDetails.some((detail) => detail.strokeStyle === '#22c55e'), false);
+  assert.equal(recorder.fillRectDetails.some((detail) => detail.fillStyle === 'rgba(34, 197, 94, 0.16)'), false);
+  assert.deepEqual(recorder.dashes.filter((dash) => dash.length), []);
+});
+
+test('drag-only canvas uses an orange dashed axis only for an active snap', () => {
+  const recorder = createRecordingContext();
+  surveyCanvasRenderer.drawDraggingCursor(
+    recorder.context,
+    { width: 400, height: 500 },
+    { x: 180, y: 220 },
+    {
+      dpr: 1,
+      snapGuide: {
+        axis: 'x',
+        point: { x: 180, y: 220 }
+      }
+    }
+  );
+
+  assert.deepEqual(recorder.dashes.filter((dash) => dash.length), [[8, 6]]);
+  const orangeGuide = recorder.strokeDetails.find((detail) => detail.strokeStyle === '#f07a21');
+  assert.deepEqual(orangeGuide.path, [
+    ['moveTo', 180, 0],
+    ['lineTo', 180, 500]
+  ]);
+  assert.equal(recorder.strokeDetails.some((detail) => (
+    detail.strokeStyle === 'rgba(22, 119, 255, 0.92)'
+  )), false);
+});
+
+test('drag-only wall snap renders only the orange constrained wall path', () => {
+  const recorder = createRecordingContext();
+  surveyCanvasRenderer.drawDraggingCursor(
+    recorder.context,
+    { width: 400, height: 500 },
+    { x: 180, y: 220 },
+    {
+      dpr: 1,
+      snapGuide: {
+        startPoint: { x: 80, y: 120 },
+        endPoint: { x: 280, y: 120 }
+      }
+    }
+  );
+
+  assert.deepEqual(recorder.dashes.filter((dash) => dash.length), [[8, 6]]);
+  const orangeGuides = recorder.strokeDetails.filter((detail) => detail.strokeStyle === '#f07a21');
+  assert.equal(orangeGuides.length, 1);
+  assert.equal(orangeGuides[0].path.length, 2);
+  assert.equal(orangeGuides[0].path[0][2], 120);
+  assert.equal(orangeGuides[0].path[1][2], 120);
+});
+
+test('drag-only vertex snap renders the two orange constrained axes', () => {
+  const recorder = createRecordingContext();
+  surveyCanvasRenderer.drawDraggingCursor(
+    recorder.context,
+    { width: 400, height: 500 },
+    { x: 180, y: 220 },
+    {
+      dpr: 1,
+      snapGuide: {
+        axis: 'both',
+        point: { x: 180, y: 220 }
+      }
+    }
+  );
+
+  const orangeGuide = recorder.strokeDetails.find((detail) => detail.strokeStyle === '#f07a21');
+  assert.deepEqual(orangeGuide.path, [
+    ['moveTo', 180, 0],
+    ['lineTo', 180, 500],
+    ['moveTo', 0, 220],
+    ['lineTo', 400, 220]
+  ]);
 });
 
 test('cursor lens reuses the formal wall scene around the drag target', () => {
@@ -1354,11 +1490,19 @@ test('cursor lens reuses the formal wall scene around the drag target', () => {
     {
       dpr: 1,
       lensScene: scene,
-      lensRect: { left: 20, top: 98, size: 180 }
+      lensRect: { left: 20, top: 98, size: 180 },
+      lensMeta: { snapLabel: '自由放置', coordinateLabel: 'X 3000 / Y 1000' }
     }
   );
   assert.ok(recorder.fills.length > 0);
   assert.ok(recorder.strokes.length > 0);
+  assert.ok(recorder.strokeDetails.some((detail) => (
+    detail.strokeStyle === '#22c55e' &&
+    detail.path.some((command) => command[0] === 'moveTo' && command[1] === 98 && command[2] === 188) &&
+    detail.path.some((command) => command[0] === 'lineTo' && command[1] === 122 && command[2] === 188)
+  )));
+  assert.ok(recorder.texts.some((detail) => detail.text === '自由放置'));
+  assert.ok(recorder.texts.some((detail) => detail.text === 'X 3000 / Y 1000'));
   assert.ok(recorder.strokeDetails.some((detail) => (
     detail.strokeStyle === 'rgba(22, 119, 255, 0.92)' &&
     detail.path.some((command) => command[0] === 'moveTo' && command[1] === 0 && command[2] === 90) &&

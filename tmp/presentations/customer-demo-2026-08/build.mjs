@@ -139,6 +139,12 @@ function bullet(slide, titleText, body, x, y, w, accent = COLORS.green) {
   text(slide, body, x + 24, y + 34, w - 24, 54, { size: 18, color: COLORS.gray, lineSpacing: 1.2 });
 }
 
+async function designShot(slide, name, x, y, w, h, caption, accent = COLORS.green, alt = caption) {
+  box(slide, x, y, w, h, COLORS.white, 22, "#DDE5E0", 1, "shadow-sm");
+  await image(slide, name, x + 7, y + 7, w - 14, h - 14, { fit: "contain", rounded: false, alt });
+  label(slide, caption, x + 8, y + h + 10, w - 16, accent === COLORS.green ? COLORS.mint : "#FFF1E0", accent);
+}
+
 const deck = Presentation.create({ slideSize: { width: W, height: H } });
 
 // 1 — cover
@@ -281,31 +287,20 @@ const deck = Presentation.create({ slideSize: { width: W, height: H } });
 {
   const s = deck.slides.add();
   s.background.fill = COLORS.paper;
-  addHeader(s, "07 / AI 设计总览", "AI 设计围绕同一位客户和同一份空间资料持续推进", "客户、正式户型、设计范围与当前方案始终关联，沟通不再从一张孤立图片重新开始。", 8, "AI 能力");
-  box(s, 54, 210, 522, 424, COLORS.white, 28, "#E0E7E2", 1, "shadow-sm");
-  await image(s, "ai-workbench-home-v2.png", 68, 224, 494, 396, { fit: "cover", crop: { left: 0, top: 0.03, right: 0, bottom: 0.53 }, radius: 22, alt: "AI 设计工作台批准设计图" });
-  label(s, "同一客户 · 同一正式户型 · 同一方案旅程", 626, 218, 430, COLORS.mint, COLORS.green);
-  bullet(s, "先确定设计对象", "客户档案与正式户型提供稳定上下文，可选择整屋或单空间继续设计。", 626, 278, 548, COLORS.green);
-  bullet(s, "再围绕当前方案推进", "每次生成都进入同一客户方案，设计师能看见当前进度与下一步。", 626, 382, 548, COLORS.blue);
-  text(s, "方案旅程", 626, 494, 150, 28, { size: 20, bold: true, color: COLORS.ink });
-  const journey = ["空间基准", "风格方案", "软装完善", "提案深化"];
-  journey.forEach((j, i) => {
-    const x = 626 + i * 140;
-    circle(s, x, 540, 34, i === 0 ? COLORS.green : i === 1 ? COLORS.orange : "#B8C8C0");
-    text(s, String(i + 1), x, 549, 34, 16, { size: 13, bold: true, color: COLORS.white, align: "center" });
-    text(s, j, x - 18, 584, 86, 24, { size: 16, bold: true, color: i < 2 ? COLORS.ink : COLORS.gray, align: "center" });
-    if (i < 3) line(s, x + 36, 556, 96, 0, "#B8D9C8", 3);
-  });
-  addNotes(s, "design-references/ai-design/ai-design-customer-project-switcher-v3/ai-design-customer-workbench-home-v2.png; docs/ai-design/miniprogram-ai-design-requirements.zh-CN.md");
+  addHeader(s, "07 / AI 设计总览", "AI 设计围绕同一位客户和同一份空间资料持续推进", "从项目工作台进入空间设计，客户、正式户型和方案阶段始终关联。", 8, "AI 能力");
+  await designShot(s, "ai-project-switcher-v3.png", 68, 202, 330, 384, "选择客户项目", COLORS.green, "完整客户项目选择设计稿");
+  await designShot(s, "ai-workbench-home-v2.png", 474, 202, 330, 384, "查看方案旅程", COLORS.orange, "完整 AI 工作台设计稿");
+  await designShot(s, "ai-immersive-a-v1.png", 880, 202, 330, 384, "继续当前设计", COLORS.green, "完整沉浸式设计工作台设计稿");
+  addNotes(s, "Full approved design comps: ai-design-customer-project-switcher-v3.png; ai-design-customer-workbench-home-v2.png; ai-design-immersive-a-space-tour-v1.png; docs/ai-design/miniprogram-ai-design-requirements.zh-CN.md");
 }
 
 // 9 — four AI tasks
 {
   const s = deck.slides.add();
   s.background.fill = COLORS.white;
-  addHeader(s, "08 / 四类 AI 任务", "四种 AI 任务，解决四种客户沟通问题", "每类任务都有明确输入与结果边界；目标是形成可讨论的概念方案，不承诺像素级复刻或施工级还原。", 9, "AI 能力");
-  box(s, 54, 210, 424, 424, COLORS.paper, 28, "#E1E7E3", 1);
-  await image(s, "ai-home-v3.png", 68, 224, 396, 396, { fit: "cover", crop: { left: 0, top: 0.40, right: 0, bottom: 0.08 }, radius: 22, alt: "四类 AI 任务入口批准设计图" });
+  addHeader(s, "08 / 四类 AI 任务", "四种 AI 任务，解决四种客户沟通问题", "两张完整设计稿展示任务入口与空间导航；右侧说明每类任务解决什么问题。", 9, "AI 能力");
+  await designShot(s, "ai-home-v3.png", 58, 205, 270, 382, "任务入口", COLORS.green, "完整 AI 设计首页设计稿");
+  await designShot(s, "ai-immersive-c-v1.png", 358, 205, 270, 382, "整屋与房间", COLORS.orange, "完整户型空间导航设计稿");
   const tasks = [
     ["参考图复刻", "把参考图的风格语言应用到当前空间，优先遵守空间结构。", COLORS.green],
     ["空间换风格", "尽量保留结构与镜头，调整材质、家具和整体氛围。", COLORS.orange],
@@ -315,95 +310,98 @@ const deck = Presentation.create({ slideSize: { width: W, height: H } });
   tasks.forEach((t, i) => {
     const col = i % 2;
     const row = Math.floor(i / 2);
-    const x = 510 + col * 354;
-    const y = 210 + row * 212;
-    box(s, x, y, 330, 192, row === 0 ? COLORS.paper : "#F4F6F4", 26, "#E0E6E2", 1);
+    const x = 666 + col * 278;
+    const y = 205 + row * 204;
+    box(s, x, y, 254, 184, row === 0 ? COLORS.paper : "#F4F6F4", 24, "#E0E6E2", 1);
     circle(s, x + 24, y + 24, 42, t[2]);
     text(s, String(i + 1), x + 24, y + 36, 42, 18, { size: 15, bold: true, color: COLORS.white, align: "center" });
-    text(s, t[0], x + 84, y + 25, 210, 30, { size: 23, bold: true });
-    text(s, t[1], x + 26, y + 86, 278, 74, { size: 18, color: COLORS.gray, lineSpacing: 1.25 });
+    text(s, t[0], x + 80, y + 25, 150, 30, { size: 21, bold: true });
+    text(s, t[1], x + 24, y + 82, 208, 74, { size: 16, color: COLORS.gray, lineSpacing: 1.25 });
   });
-  addNotes(s, "design-references/all-pages-ip-v3/04-ai-design-home-v3.png; task definitions verified against current Mini Program AI requirements and code labels");
+  addNotes(s, "Full approved design comps: all-pages-ip-v3/04-ai-design-home-v3.png; ai-design-immersive-c-floor-map-v1.png; task definitions verified against current Mini Program AI requirements and code labels");
 }
 
 // 10 — formal plan as AI basis
 {
   const s = deck.slides.add();
   s.background.fill = COLORS.paper;
-  addHeader(s, "09 / 设计依据", "先确认设计对象，再选择整屋或单空间", "正式户型为 AI 提供墙体、尺寸、层高与门窗依据，系统不再维护第二份容易偏离的户型副本。", 10, "AI 能力");
-  box(s, 54, 210, 500, 424, COLORS.white, 28, "#E0E7E2", 1, "shadow-sm");
-  await image(s, "ai-project-switcher-v3.png", 68, 224, 472, 396, { fit: "cover", crop: { left: 0, top: 0.02, right: 0, bottom: 0.48 }, radius: 22, alt: "选择客户设计项目批准设计图" });
-  const route = ["选择客户", "正式户型", "设计范围", "目标房间"];
-  route.forEach((r, i) => {
-    const x = 594 + i * 150;
-    circle(s, x, 238, 42, i < 2 ? COLORS.green : COLORS.blue);
-    text(s, String(i + 1), x, 250, 42, 18, { size: 15, bold: true, color: COLORS.white, align: "center" });
-    text(s, r, x - 28, 292, 98, 26, { size: 17, bold: true, align: "center" });
-    if (i < 3) line(s, x + 44, 258, 102, 0, "#B8D9C8", 3);
-  });
-  box(s, 594, 350, 620, 118, COLORS.white, 24, "#E0E6E2", 1);
-  text(s, "户型生成", 622, 374, 120, 28, { size: 21, bold: true, color: COLORS.green });
-  text(s, "必须关联合格的正式户型，才能按整屋或单空间生成概念效果。", 758, 372, 420, 54, { size: 18, color: COLORS.gray, lineSpacing: 1.2 });
-  box(s, 594, 486, 620, 118, "#EAF2FF", 24);
-  text(s, "其他三类任务", 622, 510, 134, 28, { size: 21, bold: true, color: COLORS.blue });
-  text(s, "可按各自需要的真实素材独立使用；如已选择客户与空间，则继续继承这些上下文。", 772, 508, 406, 58, { size: 18, color: COLORS.gray, lineSpacing: 1.2 });
-  addNotes(s, "design-references/ai-design/ai-design-customer-project-switcher-v3/ai-design-customer-project-switcher-v3.png; formal plan and task eligibility verified against current AI requirements");
+  addHeader(s, "09 / 设计依据", "先确认设计对象，再选择整屋或单空间", "正式户型提供墙体、尺寸、层高与门窗依据；完整设计稿展示客户项目、空间范围和房间选择。", 10, "AI 能力");
+  await designShot(s, "ai-project-switcher-v3.png", 58, 205, 274, 382, "客户与正式户型", COLORS.green, "完整客户项目选择设计稿");
+  await designShot(s, "ai-immersive-c-v1.png", 360, 205, 274, 382, "整屋与单空间", COLORS.orange, "完整空间范围选择设计稿");
+  await designShot(s, "ai-workbench-empty-v2.png", 662, 205, 274, 382, "资料未齐时提示", COLORS.blue, "完整 AI 工作台待完善设计稿");
+  box(s, 966, 220, 252, 342, COLORS.dark, 24);
+  text(s, "户型生成", 994, 250, 196, 30, { size: 23, bold: true, color: COLORS.white });
+  text(s, "必须关联有效正式户型，再选择整屋或目标房间。", 994, 298, 196, 76, { size: 17, color: "#C8DDD4", lineSpacing: 1.3 });
+  line(s, 994, 396, 196, 0, "#2D6B56", 2);
+  text(s, "其他三类任务", 994, 424, 196, 30, { size: 21, bold: true, color: "#A9D8FF" });
+  text(s, "可按实际素材独立使用；已选客户与空间时继续继承上下文。", 994, 470, 196, 70, { size: 16, color: "#C8DDD4", lineSpacing: 1.28 });
+  addNotes(s, "Full approved design comps: ai-design-customer-project-switcher-v3.png; ai-design-immersive-c-floor-map-v1.png; ai-design-customer-workbench-empty-v2.png; formal plan eligibility verified against current AI requirements");
 }
 
 // 11 — controlled task creation
 {
   const s = deck.slides.add();
   s.background.fill = COLORS.white;
-  addHeader(s, "10 / 创建任务", "从准备素材到生成方案，每一步都有明确提示", "任务类型、所需图片、目标风格、设计范围与点数预估在提交前可见；生成过程与失败重试也有清楚反馈。", 11, "AI 能力");
-  box(s, 54, 210, 500, 424, COLORS.paper, 28, "#E0E7E2", 1);
-  await image(s, "ai-create-v3.png", 68, 224, 472, 396, { fit: "cover", crop: { left: 0, top: 0.16, right: 0, bottom: 0.34 }, radius: 22, alt: "创建 AI 设计任务批准设计图" });
-  const checks = [
-    ["任务与素材", "按任务提示准备参考图、空间图或正式户型。", COLORS.green],
-    ["风格与范围", "确认目标风格，以及整屋或单空间范围。", COLORS.orange],
-    ["点数预估", "提交前显示本次任务所需点数。", COLORS.blue],
-  ];
-  checks.forEach((c, i) => {
-    const y = 220 + i * 94;
-    circle(s, 596, y + 6, 40, c[2]);
-    text(s, "✓", 596, y + 15, 40, 20, { size: 18, bold: true, color: COLORS.white, align: "center" });
-    text(s, c[0], 654, y, 170, 28, { size: 21, bold: true });
-    text(s, c[1], 654, y + 34, 510, 42, { size: 17, color: COLORS.gray });
-  });
-  box(s, 590, 504, 620, 106, COLORS.dark, 24);
-  text(s, "提交", 618, 530, 64, 24, { size: 18, bold: true, color: COLORS.white, align: "center" });
-  text(s, "→", 688, 530, 30, 24, { size: 18, bold: true, color: "#7BDDA4", align: "center" });
-  text(s, "查看进度", 724, 530, 104, 24, { size: 18, bold: true, color: COLORS.white, align: "center" });
-  text(s, "→", 834, 530, 30, 24, { size: 18, bold: true, color: "#7BDDA4", align: "center" });
-  text(s, "成功扣点", 870, 530, 104, 24, { size: 18, bold: true, color: "#7BE4A6", align: "center" });
-  text(s, "或", 982, 530, 34, 24, { size: 15, color: "#9EC2B4", align: "center" });
-  text(s, "失败释放 · 可重试", 1020, 530, 160, 24, { size: 17, bold: true, color: "#F5C27A", align: "center" });
-  text(s, "点数与任务状态均由系统记录，客户沟通时可以说明发生了什么、下一步怎么做。", 618, 570, 562, 26, { size: 15, color: "#BCD7CC", align: "center" });
-  addNotes(s, "design-references/all-pages-ip-v3/14-ai-design-create-v3.png; credit freeze/consume/release behavior verified against current AI requirements");
+  addHeader(s, "10 / 创建任务", "从准备素材到生成方案，每一步都有明确提示", "完整页面展示素材、风格与范围；不同任务状态则集中在项目列表中持续反馈。", 11, "AI 能力");
+  await designShot(s, "ai-create-v3.png", 58, 205, 330, 382, "准备素材与风格", COLORS.green, "完整 AI 任务创建设计稿");
+  await designShot(s, "ai-project-state-matrix-v4.png", 430, 205, 500, 382, "生成进度与异常处理", COLORS.orange, "完整 AI 项目状态矩阵设计稿");
+  box(s, 970, 220, 244, 342, COLORS.dark, 24);
+  text(s, "提交前", 998, 248, 188, 26, { size: 21, bold: true, color: COLORS.white });
+  text(s, "任务类型\n所需图片\n目标风格\n设计范围\n点数预估", 998, 294, 188, 150, { size: 18, color: "#C9DFD6", lineSpacing: 1.55 });
+  line(s, 998, 466, 188, 0, "#2D6B56", 2);
+  text(s, "成功扣点\n失败释放 · 允许重试", 998, 490, 188, 58, { size: 17, bold: true, color: "#F3C27E", lineSpacing: 1.35 });
+  addNotes(s, "Full approved design comps: all-pages-ip-v3/14-ai-design-create-v3.png; ai-design-project-state-matrix-v4.png; credit behavior verified against current AI requirements");
 }
 
 // 12 — outcomes and continued refinement
 {
   const s = deck.slides.add();
   s.background.fill = COLORS.paper;
-  addHeader(s, "11 / 成果与深化", "小程序快速形成沟通方案，后台继续深化和管理", "AI 结果会回到同一客户方案中：先预览、比较与分享，再由设计师和管理者继续选择、深化与跟进。", 12, "AI 能力");
-  box(s, 54, 210, 500, 424, COLORS.white, 28, "#E0E7E2", 1, "shadow-sm");
-  await image(s, "ai-result-v3.png", 68, 224, 472, 396, { fit: "cover", crop: { left: 0, top: 0.12, right: 0, bottom: 0.38 }, radius: 22, alt: "AI 设计成果批准设计图" });
-  box(s, 590, 210, 624, 174, COLORS.white, 26, "#E0E6E2", 1);
-  label(s, "小程序 · 快速沟通", 618, 232, 200, COLORS.mint, COLORS.green);
-  text(s, "预览与前后对比  ·  保存与分享\n继续优化  ·  查看历史记录", 620, 286, 548, 66, { size: 21, bold: true, color: COLORS.ink, lineSpacing: 1.35 });
-  box(s, 590, 404, 624, 174, COLORS.dark, 26);
-  label(s, "企业后台 · 深化管理", 618, 426, 220, "#0B5941", "#D3F7E1");
-  text(s, "同步到同一客户方案，区分当前定稿与候选版本，给出推荐下一步；提案深化与灯光等后续工作在后台继续。", 620, 482, 548, 70, { size: 19, bold: true, color: COLORS.white, lineSpacing: 1.28 });
-  box(s, 646, 594, 512, 36, "#FFF0E2", 18);
-  text(s, "结果是可沟通、可比较、可持续优化的概念方案，不是施工图。", 662, 603, 480, 20, { size: 15, bold: true, color: "#B76822", align: "center" });
-  addNotes(s, "design-references/all-pages-ip-v3/15-ai-design-result-v3.png; result actions, adopted/candidate logic and backend continuation verified against current AI requirements and admin module inventory");
+  addHeader(s, "11 / 成果与深化", "成果可以比较、分享，并沿同一客户方案继续深化", "三张完整设计稿展示结果对比、历史记录与方案推荐；小程序完成沟通，后台继续管理版本与下一步。", 12, "AI 能力");
+  await designShot(s, "ai-result-v2.png", 58, 205, 288, 382, "查看前后效果", COLORS.green, "完整 AI 结果对比设计稿");
+  await designShot(s, "ai-history-v3.png", 374, 205, 288, 382, "管理历史任务", COLORS.orange, "完整 AI 历史记录设计稿");
+  await designShot(s, "ai-recommendations-v3.png", 690, 205, 288, 382, "比较推荐方案", COLORS.green, "完整装修方案推荐设计稿");
+  box(s, 1006, 220, 208, 342, COLORS.dark, 24);
+  text(s, "小程序", 1032, 248, 156, 26, { size: 21, bold: true, color: "#9CF0BC" });
+  text(s, "预览与比较\n保存与分享\n继续优化\n查看历史", 1032, 292, 156, 112, { size: 17, color: COLORS.white, lineSpacing: 1.5 });
+  line(s, 1032, 426, 156, 0, "#2D6B56", 2);
+  text(s, "企业后台", 1032, 450, 156, 26, { size: 20, bold: true, color: "#A9D8FF" });
+  text(s, "管理定稿与候选\n推荐下一步\n继续提案与灯光深化", 1032, 490, 156, 66, { size: 15, color: "#C8DDD4", lineSpacing: 1.35 });
+  text(s, "概念方案，不是施工图", 998, 606, 224, 22, { size: 15, bold: true, color: "#B76822", align: "center" });
+  addNotes(s, "Full approved design comps: ai-design-result-v2.png; all-pages-ip-v3/16-ai-design-history-v3.png; all-pages-ip-v3/17-recommendations-v3.png; backend continuation verified against current AI requirements and admin module inventory");
 }
 
-// 13 — roles and handoff
+// 13 — enterprise AI studio
 {
   const s = deck.slides.add();
   s.background.fill = COLORS.white;
-  addHeader(s, "12 / 团队接续", "三个角色围绕同一客户接力，不重复建档", "AI 成果回到客户方案后，量房师、设计师和企业管理者都能在各自职责内继续推进。", 13, "团队跟进");
+  addHeader(s, "12 / 企业后台 AI 工作台", "AI 工作台把参考图整理成可继续创作的方案资产", "上传空间图或参考图后，AI 协助提取色彩、材质、家具与灯具语言，形成情绪板并继续生成空间效果。", 13, "AI 能力");
+  box(s, 54, 210, 690, 316, "#171820", 24, "#353742", 1, "shadow-sm");
+  await image(s, "user-ai-studio-workbench.png", 64, 220, 670, 296, { fit: "contain", rounded: false, alt: "用户提供的企业后台 AI 创作工作台截图" });
+  label(s, "企业后台 · 上传参考图、编辑提示、再次生成与历史记录", 72, 542, 654, COLORS.mint, COLORS.green);
+
+  box(s, 776, 210, 208, 208, COLORS.paper, 22, "#E0E6E2", 1);
+  await image(s, "user-ai-moodboard.png", 784, 218, 192, 192, { fit: "contain", rounded: false, alt: "用户提供的现代自然风格情绪板" });
+  box(s, 1004, 210, 222, 208, COLORS.paper, 22, "#E0E6E2", 1);
+  await image(s, "user-ai-render-result.png", 1012, 218, 206, 192, { fit: "contain", rounded: false, alt: "用户提供的现代自然客厅空间效果图" });
+  label(s, "风格情绪板", 784, 430, 192, COLORS.mint, COLORS.green);
+  label(s, "空间效果图", 1012, 430, 206, "#FFF1E0", COLORS.orange);
+
+  box(s, 776, 486, 450, 120, COLORS.dark, 24);
+  text(s, "参考图", 800, 514, 76, 24, { size: 18, bold: true, color: COLORS.white, align: "center" });
+  text(s, "→", 874, 514, 28, 24, { size: 18, bold: true, color: "#82E2A9", align: "center" });
+  text(s, "提取设计语言", 904, 514, 126, 24, { size: 18, bold: true, color: COLORS.white, align: "center" });
+  text(s, "→", 1030, 514, 28, 24, { size: 18, bold: true, color: "#82E2A9", align: "center" });
+  text(s, "生成方案", 1060, 514, 102, 24, { size: 18, bold: true, color: COLORS.white, align: "center" });
+  text(s, "从视觉参考中提取色彩、材质、纹理、家具与灯具线索，先形成可沟通的情绪板，再生成空间效果并持续迭代。", 800, 558, 402, 40, { size: 15, color: "#C8DDD4", align: "center", lineSpacing: 1.25 });
+  addNotes(s, "User-provided references: codex-clipboard-28a3ca0b-9ad8-4156-8e98-ac50c896980b.png; codex-clipboard-1813148f-57d1-43e9-9d83-84beafc30de6.png; codex-clipboard-ae627997-305c-437b-b00d-5161e199391d.png");
+}
+
+// 14 — roles and handoff
+{
+  const s = deck.slides.add();
+  s.background.fill = COLORS.white;
+  addHeader(s, "13 / 团队接续", "三个角色围绕同一客户接力，不重复建档", "AI 成果回到客户方案后，量房师、设计师和企业管理者都能在各自职责内继续推进。", 14, "团队跟进");
   line(s, 250, 342, 760, 0, "#CBE3D7", 6);
   const roles = [
     ["量房师", "建立或接收客户\n完成正式量房", "交付：客户资料 + 正式户型", COLORS.green],
@@ -424,11 +422,11 @@ const deck = Presentation.create({ slideSize: { width: W, height: H } });
   addNotes(s, "Role and acquisition boundaries verified against measurer–designer acquisition contract");
 }
 
-// 14 — mini program vs admin
+// 15 — mini program vs admin
 {
   const s = deck.slides.add();
   s.background.fill = COLORS.paper;
-  addHeader(s, "13 / 两端分工", "小程序跑现场，企业后台管组织与全局", "两端共享同一企业与客户上下文，但分别服务高频执行和集中管理。", 14, "两端协作");
+  addHeader(s, "14 / 两端分工", "小程序跑现场，企业后台管组织与全局", "两端共享同一企业与客户上下文，但分别服务高频执行和集中管理。", 15, "两端协作");
   box(s, 54, 222, 565, 394, COLORS.white, 30, "#E0E7E2", 1, "shadow-sm");
   label(s, "小程序 · 高频执行", 84, 252, 210, COLORS.mint, COLORS.green);
   await image(s, "p09-img03.png", 86, 302, 184, 276, { fit: "cover", crop: { left: 0, top: 0.02, right: 0, bottom: 0.02 }, radius: 20, alt: "小程序高频工作首页" });
@@ -439,7 +437,7 @@ const deck = Presentation.create({ slideSize: { width: W, height: H } });
   const adminItems = [
     ["组织与权限", "成员、岗位与访问范围"],
     ["客户与户型", "正式户型、测量记录与进展"],
-    ["服务配置", "点数、设备与通知等企业服务条件"],
+    ["AI 创作与深化", "情绪板、方案版本与后续深化管理"],
   ];
   adminItems.forEach((a, i) => {
     const y = 318 + i * 82;
@@ -452,11 +450,11 @@ const deck = Presentation.create({ slideSize: { width: W, height: H } });
   addNotes(s, "Mini Program screenshot extracted from source slide 9; admin responsibilities verified against current module inventory");
 }
 
-// 15 — boundaries
+// 16 — boundaries
 {
   const s = deck.slides.add();
   s.background.fill = COLORS.dark;
-  text(s, "14 / 使用条件与产品边界", 54, 34, 520, 22, { size: 13, bold: true, color: "#6EE39E" });
+  text(s, "15 / 使用条件与产品边界", 54, 34, 520, 22, { size: 13, bold: true, color: "#6EE39E" });
   text(s, "顺利完成量房与设计，需要先具备这些条件", 54, 78, 1130, 60, { size: 46, bold: true, color: COLORS.white });
   text(s, "账号、户型、权限和服务配置准备就绪后，团队即可沿客户流程继续推进。", 54, 150, 1120, 38, { size: 21, color: "#BFD7CE" });
   const boundaries = [
@@ -479,11 +477,11 @@ const deck = Presentation.create({ slideSize: { width: W, height: H } });
     text(s, b[1], x + 88, y + 50, 438, 28, { size: 16, color: "#C6DDD4" });
   });
   text(s, "家客来 JIAKELAI  ·  产品边界", 54, 680, 420, 18, { size: 12, color: "#789D8F" });
-  text(s, "15", 1180, 680, 48, 18, { size: 12, color: "#789D8F", align: "right" });
+  text(s, "16", 1180, 680, 48, 18, { size: 12, color: "#789D8F", align: "right" });
   addNotes(s, "Capability boundaries verified against current Mini Program, admin, formal surveying, and AI module documentation");
 }
 
-// 16 — demo and close
+// 17 — demo and close
 {
   const s = deck.slides.add();
   s.background.fill = COLORS.paper;
@@ -510,7 +508,7 @@ const deck = Presentation.create({ slideSize: { width: W, height: H } });
   text(s, "您将看到：", 92, 506, 620, 40, { size: 28, bold: true, color: "#B7F3CD" });
   text(s, "客户资料如何沉淀为正式户型，\n并继续生成可沟通、可优化的设计方案。", 92, 550, 1030, 64, { size: 26, bold: true, color: COLORS.white, lineSpacing: 1.18 });
   text(s, "家客来 JIAKELAI  ·  客户演示稿  ·  2026.08", 58, 678, 520, 18, { size: 12, color: "#8AA097" });
-  text(s, "16", 1180, 678, 48, 18, { size: 12, color: "#8AA097", align: "right" });
+  text(s, "17", 1180, 678, 48, 18, { size: 12, color: "#8AA097", align: "right" });
   addNotes(s);
 }
 

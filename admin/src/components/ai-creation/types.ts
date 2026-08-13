@@ -41,6 +41,7 @@ export type CreationGeneration = {
   provider?: string;
   model?: string;
   workflowId?: string;
+  retryCount: number;
   createdAt: string;
 };
 

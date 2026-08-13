@@ -311,3 +311,18 @@ For documentation-only changes, run `git diff --check` and verify referenced
 paths, route names, status labels, and English/Chinese parity. For code changes,
 run the narrowest relevant tests (`cd miniprogram && npm test`, or the applicable
 `admin` lint/build checks) in addition to the document checks.
+
+## Sales Presentation Maintenance
+
+- Treat an explicitly named sales PPTX as the canonical working file. Unless the
+  user explicitly requests a new version or backup, edit and overwrite that same
+  path instead of creating another suffixed PPTX for each revision.
+- Keep temporary builders, renders, audits, generated-image prompts, and QA
+  evidence under `tmp/` or `design-references/`; do not place sibling draft PPTX
+  files beside the canonical deck.
+- Write sales copy from the buyer's business perspective. For renovation-company
+  owners, lead with fewer handoff gaps, less re-entry and rework, faster customer
+  proposal discussions, clear ownership, and reusable customer/floor-plan/design
+  records. Do not make internal terms such as points, frozen balance, task state,
+  provider state, or template count the primary sales message; retain them only
+  when explaining purchase, operating conditions, or verified product limits.

@@ -104,6 +104,7 @@ import {
   failPostgresCreationProviderAttempt,
   holdPostgresCreationGenerationCredits,
   preparePostgresCreationBatch,
+  preparePostgresCreationBatchRetry,
   recordPostgresCreationProviderPollState,
   releasePostgresCreationGenerationCredits,
   refreshPostgresCreationBatchStatus,
@@ -1991,6 +1992,35 @@ test('PostgreSQL creation preparation binds bigint tasks, assets, batches, and g
     assert.equal(repeatedRelease.reused, true);
     assert.equal(repeatedRelease.account.frozenBalance, released.account.frozenBalance);
 
+    const retriedBatch = await preparePostgresCreationBatchRetry({
+      enterpriseId: enterpriseAId.toString(),
+      taskId: task.id.toString(),
+      batchId: prepared.batch.id.toString(),
+    });
+    assert.equal(retriedBatch.batch.id, prepared.batch.id);
+    assert.equal(retriedBatch.batch.sequence, prepared.batch.sequence);
+    assert.equal(retriedBatch.batch.status, 'pending');
+    assert.equal(retriedBatch.generations.length, 1);
+    assert.equal(retriedBatch.generations[0]?.id, prepared.generations[2]?.id);
+    assert.equal(retriedBatch.generations[0]?.status, 'pending');
+    assert.equal(retriedBatch.generations[0]?.retryCount, 1);
+    assert.equal(retriedBatch.generations[0]?.currentAttemptId, null);
+    assert.deepEqual(retriedBatch.generations[0]?.externalTask, {});
+    assert.equal((retriedBatch.generations[0]?.billing as { cycle?: number; status?: string }).cycle, 1);
+    assert.equal((retriedBatch.generations[0]?.billing as { status?: string }).status, 'unbilled');
+    const generationsAfterRetry = await withTenantTransaction(enterpriseAId, (transaction) =>
+      new AiCreationRepository(transaction).listBatchGenerationsForUpdate(prepared.batch.id)
+    );
+    assert.equal(generationsAfterRetry.filter((generation) => generation.status === 'succeeded').length, 2);
+    await assert.rejects(
+      preparePostgresCreationBatchRetry({
+        enterpriseId: enterpriseAId.toString(),
+        taskId: task.id.toString(),
+        batchId: prepared.batch.id.toString(),
+      }),
+      /只有失败或部分失败的当前轮可以重试/
+    );
+
     const repeatedHold = await holdPostgresCreationGenerationCredits({
       enterpriseId: enterpriseAId.toString(),
       generationId: prepared.generations[0]!.id.toString(),
@@ -2772,6 +2802,71 @@ test('AI workflow repository atomically attaches succeeded free creations under 
       if (generationIds.length) {
         await transaction.delete(aiGenerations).where(inArray(aiGenerations.id, generationIds));
       }
+      if (leadId) await transaction.delete(leads).where(eq(leads.id, leadId));
+    });
+  }
+});
+
+test('Mini Program workflow results become a baseline only after their persisted success', async () => {
+  let leadId: bigint | null = null;
+  let workflowId: bigint | null = null;
+  let generationId: bigint | null = null;
+  try {
+    await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const lead = await new LeadRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        assignedTo: promotionDesignerAId,
+        name: 'Mini Program workflow synchronization lead',
+        phone: `135${String(Date.now()).slice(-8)}`,
+        source: 'integration-test',
+        status: 'new',
+      });
+      leadId = lead.id;
+      const workflows = new AiWorkflowRepository(transaction);
+      const workflow = await workflows.create({
+        enterpriseId: enterpriseAId,
+        leadId: lead.id,
+        operatorId: promotionDesignerAId,
+        title: 'Mini Program workflow synchronization',
+        sourceAssetRole: 'floor_plan',
+        currentStageKey: 'base_render',
+      });
+      workflowId = workflow.id;
+      const [generation] = await transaction
+        .insert(aiGenerations)
+        .values({
+          enterpriseId: enterpriseAId,
+          operatorId: promotionDesignerAId,
+          leadId: lead.id,
+          workflowId: workflow.id,
+          type: 'miniprogram',
+          channel: 'miniprogram',
+          stageKey: 'base_render',
+          nextRecommendedStage: 'soft_furnishing',
+          status: 'succeeded',
+          input: { roomData: { targetScope: 'whole_floor_plan' } },
+          output: { imageUrl: 'https://example.test/mini-program-result.png' },
+        })
+        .returning();
+      generationId = generation.id;
+
+      const synchronized = await workflows.applySucceededWorkflowGeneration(generation.id);
+      assert.ok(synchronized);
+      assert.equal(synchronized.workflow.selectedGenerationId, generation.id);
+      assert.equal(synchronized.workflow.lastGenerationId, generation.id);
+      assert.equal(synchronized.workflow.currentStageKey, 'soft_furnishing');
+      assert.equal(synchronized.generation.isSelectedBaseline, true);
+    });
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (workflowId) {
+        await transaction
+          .update(aiWorkflows)
+          .set({ selectedGenerationId: null, lastGenerationId: null, updatedAt: new Date() })
+          .where(eq(aiWorkflows.id, workflowId));
+      }
+      if (generationId) await transaction.delete(aiGenerations).where(eq(aiGenerations.id, generationId));
+      if (workflowId) await transaction.delete(aiWorkflows).where(eq(aiWorkflows.id, workflowId));
       if (leadId) await transaction.delete(leads).where(eq(leads.id, leadId));
     });
   }

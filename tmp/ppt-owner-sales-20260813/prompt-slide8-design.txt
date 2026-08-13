@@ -1,0 +1,10 @@
+﻿Use case: photorealistic-natural
+Asset type: 16:9 Chinese B2B sales presentation visual
+Primary request: A Chinese interior designer at a clean studio desk reviewing a measured apartment floor plan on a tablet and comparing three warm living-room concept images on a large monitor, demonstrating that one reliable measurement can immediately support customer-facing design proposals.
+Scene/backdrop: contemporary small renovation company design studio, daylight, realistic working environment
+Subject: one professional Chinese interior designer, floor plan, three concept alternatives, organized customer materials
+Style/medium: premium editorial business photography, natural, credible, not stock-like
+Composition/framing: landscape 16:9, subject on the right half, screens and floor plan clearly visible, generous clean space, no cropped hands
+Lighting/mood: calm natural daylight, efficient and confident
+Color palette: white, light gray, warm wood, restrained bright green accents
+Constraints: no readable UI text, no logos, no watermark, no futuristic holograms, no fake software interface, no floating graphics

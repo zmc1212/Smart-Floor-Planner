@@ -1,0 +1,355 @@
+{"kind":"slide","id":"sl/y90nupkv","slide":1,"title":"家客来  JIAKELAI","textShapes":5}
+{"kind":"textbox","id":"sh/7qp4be9c","slide":1,"text":"家客来  JIAKELAI","textPreview":"家客来  JIAKELAI","textChars":13,"textLines":1,"bbox":[120,58,320,26]}
+{"kind":"textbox","id":"sh/65g3298r","slide":1,"text":"从客户建档到设计方案，\n让家装服务连续推进","textPreview":"从客户建档到设计方案， | 让家装服务连续推进","textChars":21,"textLines":2,"bbox":[58,160,610,190]}
+{"kind":"textbox","id":"sh/sryl4zqx","slide":1,"text":"家客来连接客户档案、正式量房、AI 设计与团队跟进。","textPreview":"家客来连接客户档案、正式量房、AI 设计与团队跟进。","textChars":26,"textLines":1,"bbox":[58,414,590,60]}
+{"kind":"textbox","id":"sh/utg3698n","slide":1,"text":"客户档案  ·  正式户型  ·  设计方案","textPreview":"客户档案  ·  正式户型  ·  设计方案","textChars":22,"textLines":1,"bbox":[70,527,406,20]}
+{"kind":"textbox","id":"sh/wn6dc7eh","slide":1,"text":"客户演示稿  ·  16:9  ·  2026.08","textPreview":"客户演示稿  ·  16:9  ·  2026.08","textChars":26,"textLines":1,"bbox":[58,667,390,18]}
+{"kind":"image","id":"im/5cze9svq","slide":1,"name":"","bbox":[692.18,135,515.64,410]}
+{"kind":"image","id":"im/kr6xgnu5","slide":1,"name":"","bbox":[58,48,48,48]}
+{"kind":"notes","id":"nt/y90nupkv","slide":1,"text":"[Sources]\n- 家客来-客户演示稿-内容改进计划-2026-08.md\n- 家客来-产品说明书-内容优化版-16比9横版-2026-08.pdf\n- Current repository module inventories and runtime labels\n- Brand visuals extracted from the local source deck"}
+{"kind":"slide","id":"sl/hwbqtkby","slide":2,"title":"01 / 家客来是什么","textShapes":11}
+{"kind":"textbox","id":"sh/bip8jmho","slide":2,"text":"01 / 家客来是什么","textPreview":"01 / 家客来是什么","textChars":11,"textLines":1,"bbox":[54,34,520,22]}
+{"kind":"textbox","id":"sh/9072xkry","slide":2,"text":"一套围绕同一位客户持续工作的协作工具","textPreview":"一套围绕同一位客户持续工作的协作工具","textChars":18,"textLines":1,"bbox":[54,72,1120,62]}
+{"kind":"textbox","id":"sh/ozy1ofad","slide":2,"text":"量房师、设计师和企业管理者使用同一份客户与空间资料，各自完成职责内的下一步。","textPreview":"量房师、设计师和企业管理者使用同一份客户与空间资料，各自完成职责内的下一步。","textChars":38,"textLines":1,"bbox":[54,142,1120,44]}
+{"kind":"textbox","id":"sh/b29kza94","slide":2,"text":"家客来 JIAKELAI  ·  客户主线","textPreview":"家客来 JIAKELAI  ·  客户主线","textChars":21,"textLines":1,"bbox":[54,680,400,18]}
+{"kind":"textbox","id":"sh/a10jqpsj","slide":2,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1180,680,48,18]}
+{"kind":"textbox","id":"sh/r65knqtk","slide":2,"text":"谁使用","textPreview":"谁使用","textChars":3,"textLines":1,"bbox":[112,254,496,28]}
+{"kind":"textbox","id":"sh/q5wjelsz","slide":2,"text":"家装企业的量房师、设计师和企业管理者。","textPreview":"家装企业的量房师、设计师和企业管理者。","textChars":19,"textLines":1,"bbox":[112,288,496,54]}
+{"kind":"textbox","id":"sh/9wnqhczy","slide":2,"text":"管什么","textPreview":"管什么","textChars":3,"textLines":1,"bbox":[112,364,496,28]}
+{"kind":"textbox","id":"sh/mtwrmxg7","slide":2,"text":"客户资料、正式户型、设计方案和客户阶段。","textPreview":"客户资料、正式户型、设计方案和客户阶段。","textChars":20,"textLines":1,"bbox":[112,398,496,54]}
+{"kind":"textbox","id":"sh/wjy9sry9","slide":2,"text":"带来什么","textPreview":"带来什么","textChars":4,"textLines":1,"bbox":[112,474,496,28]}
+{"kind":"textbox","id":"sh/xk7qlczu","slide":2,"text":"后一个岗位直接使用前一个岗位的成果，减少重复确认与重新录入。","textPreview":"后一个岗位直接使用前一个岗位的成果，减少重复确认与重新录入。","textChars":30,"textLines":1,"bbox":[112,508,496,54]}
+{"kind":"image","id":"im/nqlwvq1w","slide":2,"name":"","geometry":"roundRect","bbox":[720,212,500,408]}
+{"kind":"notes","id":"nt/hwbqtkby","slide":2,"text":"[Sources]\n- 家客来-客户演示稿-内容改进计划-2026-08.md\n- 家客来-产品说明书-内容优化版-16比9横版-2026-08.pdf\n- Current repository module inventories and runtime labels\n- Brand illustration extracted from source slide 3"}
+{"kind":"slide","id":"sl/ofy9wn61","slide":3,"title":"02 / 为什么需要","textShapes":18}
+{"kind":"textbox","id":"sh/re9g7yxo","slide":3,"text":"02 / 为什么需要","textPreview":"02 / 为什么需要","textChars":10,"textLines":1,"bbox":[54,34,520,22]}
+{"kind":"textbox","id":"sh/cza94vmx","slide":3,"text":"问题不在工具少，而在工作成果经常断开","textPreview":"问题不在工具少，而在工作成果经常断开","textChars":18,"textLines":1,"bbox":[54,72,1120,62]}
+{"kind":"textbox","id":"sh/d0jax03i","slide":3,"text":"客户资料、现场尺寸、设计依据和跟进责任一旦分散，团队就会反复确认同一件事。","textPreview":"客户资料、现场尺寸、设计依据和跟进责任一旦分散，团队就会反复确认同一件事。","textChars":37,"textLines":1,"bbox":[54,142,1120,44]}
+{"kind":"textbox","id":"sh/298ryl4v","slide":3,"text":"家客来 JIAKELAI  ·  客户主线","textPreview":"家客来 JIAKELAI  ·  客户主线","textChars":21,"textLines":1,"bbox":[54,680,400,18]}
+{"kind":"textbox","id":"sh/3ah8rqlg","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1180,680,48,18]}
+{"kind":"textbox","id":"sh/m5cra54z","slide":3,"text":"01","textPreview":"01","textChars":2,"textLines":1,"bbox":[98,248,50,20]}
+{"kind":"textbox","id":"sh/n6ls3alk","slide":3,"text":"客户资料散落","textPreview":"客户资料散落","textChars":6,"textLines":1,"bbox":[180,224,330,34]}
+{"kind":"textbox","id":"sh/n2l4fq98","slide":3,"text":"个人微信、纸张和表格彼此分离，团队无法共享完整上下文。","textPreview":"个人微信、纸张和表格彼此分离，团队无法共享完整上下文。","textChars":27,"textLines":1,"bbox":[520,226,650,52]}
+{"kind":"textbox","id":"sh/943mhgre","slide":3,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[98,340,50,20]}
+{"kind":"textbox","id":"sh/83ulovat","slide":3,"text":"现场尺寸反复录入","textPreview":"现场尺寸反复录入","textChars":8,"textLines":1,"bbox":[180,316,330,34]}
+{"kind":"textbox","id":"sh/v6l4jq94","slide":3,"text":"手抄、拍照、转述后再录入，正式空间依据难以延续。","textPreview":"手抄、拍照、转述后再录入，正式空间依据难以延续。","textChars":24,"textLines":1,"bbox":[520,318,650,52]}
+{"kind":"textbox","id":"sh/x8nml0ra","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[98,432,50,20]}
+{"kind":"textbox","id":"sh/w7ulsvqp","slide":3,"text":"设计接手仍要重问","textPreview":"设计接手仍要重问","textChars":8,"textLines":1,"bbox":[180,408,330,34]}
+{"kind":"textbox","id":"sh/ja54na9g","slide":3,"text":"客户需求与户型信息没有连起来，设计师只能重新确认。","textPreview":"客户需求与户型信息没有连起来，设计师只能重新确认。","textChars":25,"textLines":1,"bbox":[520,410,650,52]}
+{"kind":"textbox","id":"sh/e10f2twf","slide":3,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[98,524,50,20]}
+{"kind":"textbox","id":"sh/f29gbyx0","slide":3,"text":"管理者看不见下一步","textPreview":"管理者看不见下一步","textChars":9,"textLines":1,"bbox":[180,500,330,34]}
+{"kind":"textbox","id":"sh/03ix43e5","slide":3,"text":"客户卡在哪一步、由谁接手、产出了什么都不够清晰。","textPreview":"客户卡在哪一步、由谁接手、产出了什么都不够清晰。","textChars":24,"textLines":1,"bbox":[520,502,650,52]}
+{"kind":"textbox","id":"sh/6d0fytg3","slide":3,"text":"家客来把断开的工作接起来：每一步都留下可继续使用的成果。","textPreview":"家客来把断开的工作接起来：每一步都留下可继续使用的成果。","textChars":28,"textLines":1,"bbox":[206,615,948,24]}
+{"kind":"notes","id":"nt/ofy9wn61","slide":3,"text":"[Sources]\n- 家客来-客户演示稿-内容改进计划-2026-08.md\n- 家客来-产品说明书-内容优化版-16比9横版-2026-08.pdf\n- Current repository module inventories and runtime labels"}
+{"kind":"slide","id":"sl/jyx0ra1s","slide":4,"title":"03 / 单一客户主线","textShapes":30}
+{"kind":"textbox","id":"sh/qhcb6l47","slide":4,"text":"03 / 单一客户主线","textPreview":"03 / 单一客户主线","textChars":11,"textLines":1,"bbox":[54,34,520,22]}
+{"kind":"textbox","id":"sh/1cj2d8b6","slide":4,"text":"张女士的装修需求，沿一条路径持续推进","textPreview":"张女士的装修需求，沿一条路径持续推进","textChars":18,"textLines":1,"bbox":[54,72,1120,62]}
+{"kind":"textbox","id":"sh/0ba143al","slide":4,"text":"这条路径是整套演示的导航：每一步同时明确负责人和产生的成果。","textPreview":"这条路径是整套演示的导航：每一步同时明确负责人和产生的成果。","textChars":30,"textLines":1,"bbox":[54,142,1120,44]}
+{"kind":"textbox","id":"sh/rm1k7yt4","slide":4,"text":"家客来 JIAKELAI  ·  客户主线","textPreview":"家客来 JIAKELAI  ·  客户主线","textChars":21,"textLines":1,"bbox":[54,680,400,18]}
+{"kind":"textbox","id":"sh/ql8jytsj","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1180,680,48,18]}
+{"kind":"textbox","id":"sh/3ihk3et8","slide":4,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[70,297,68,28]}
+{"kind":"textbox","id":"sh/ih8ju9sn","slide":4,"text":"建立客户档案","textPreview":"建立客户档案","textChars":6,"textLines":1,"bbox":[20,372,168,50]}
+{"kind":"textbox","id":"sh/5cva1cfq","slide":4,"text":"业务人员","textPreview":"业务人员","textChars":4,"textLines":1,"bbox":[50,441,108,20]}
+{"kind":"textbox","id":"sh/i94r6xgz","slide":4,"text":"客户资料","textPreview":"客户资料","textChars":4,"textLines":1,"bbox":[38,486,132,26]}
+{"kind":"textbox","id":"sh/w72947yt","slide":4,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[270,297,68,28]}
+{"kind":"textbox","id":"sh/x8vaxsfe","slide":4,"text":"正式量房","textPreview":"正式量房","textChars":4,"textLines":1,"bbox":[220,372,168,50]}
+{"kind":"textbox","id":"sh/v6tsv2xo","slide":4,"text":"量房师","textPreview":"量房师","textChars":3,"textLines":1,"bbox":[250,441,108,20]}
+{"kind":"textbox","id":"sh/g36tgryd","slide":4,"text":"测量墙图","textPreview":"测量墙图","textChars":4,"textLines":1,"bbox":[238,486,132,26]}
+{"kind":"textbox","id":"sh/p0batw72","slide":4,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[470,297,68,28]}
+{"kind":"textbox","id":"sh/oz29krqh","slide":4,"text":"保存正式户型","textPreview":"保存正式户型","textChars":6,"textLines":1,"bbox":[420,372,168,50]}
+{"kind":"textbox","id":"sh/2xkrih8b","slide":4,"text":"量房师","textPreview":"量房师","textChars":3,"textLines":1,"bbox":[450,441,108,20]}
+{"kind":"textbox","id":"sh/1wbapc7q","slide":4,"text":"空间资产","textPreview":"空间资产","textChars":4,"textLines":1,"bbox":[438,486,132,26]}
+{"kind":"textbox","id":"sh/fu9sn2p0","slide":4,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[670,297,68,28]}
+{"kind":"textbox","id":"sh/et0reh8f","slide":4,"text":"发起 AI 设计","textPreview":"发起 AI 设计","textChars":8,"textLines":1,"bbox":[620,372,168,50]}
+{"kind":"textbox","id":"sh/sri9s7q9","slide":4,"text":"设计师","textPreview":"设计师","textChars":3,"textLines":1,"bbox":[650,441,108,20]}
+{"kind":"textbox","id":"sh/ilwf69kv","slide":4,"text":"设计任务","textPreview":"设计任务","textChars":4,"textLines":1,"bbox":[638,486,132,26]}
+{"kind":"textbox","id":"sh/knex8j21","slide":4,"text":"5","textPreview":"5","textChars":1,"textLines":1,"bbox":[870,297,68,28]}
+{"kind":"textbox","id":"sh/5ony1oj6","slide":4,"text":"沟通与优化","textPreview":"沟通与优化","textChars":5,"textLines":1,"bbox":[820,372,168,50]}
+{"kind":"textbox","id":"sh/vy5gbe14","slide":4,"text":"设计师","textPreview":"设计师","textChars":3,"textLines":1,"bbox":[850,441,108,20]}
+{"kind":"textbox","id":"sh/wzex4z2p","slide":4,"text":"概念方案","textPreview":"概念方案","textChars":4,"textLines":1,"bbox":[838,486,132,26]}
+{"kind":"textbox","id":"sh/mtcfypkn","slide":4,"text":"6","textPreview":"6","textChars":1,"textLines":1,"bbox":[1070,297,68,28]}
+{"kind":"textbox","id":"sh/nulw7u18","slide":4,"text":"更新客户阶段","textPreview":"更新客户阶段","textChars":6,"textLines":1,"bbox":[1020,372,168,50]}
+{"kind":"textbox","id":"sh/elwba54j","slide":4,"text":"团队","textPreview":"团队","textChars":2,"textLines":1,"bbox":[1050,441,108,20]}
+{"kind":"textbox","id":"sh/18nu50nu","slide":4,"text":"跟进记录","textPreview":"跟进记录","textChars":4,"textLines":1,"bbox":[1038,486,132,26]}
+{"kind":"textbox","id":"sh/rilczq5s","slide":4,"text":"客户档案是入口  ·  正式户型是空间依据  ·  设计方案是沟通成果","textPreview":"客户档案是入口  ·  正式户型是空间依据  ·  设计方案是沟通成果","textChars":35,"textLines":1,"bbox":[96,587,1086,28]}
+{"kind":"notes","id":"nt/jyx0ra1s","slide":4,"text":"[Sources]\n- 家客来-客户演示稿-内容改进计划-2026-08.md\n- 家客来-产品说明书-内容优化版-16比9横版-2026-08.pdf\n- Current repository module inventories and runtime labels"}
+{"kind":"slide","id":"sl/i107q5of","slide":5,"title":"04 / 客户档案","textShapes":11}
+{"kind":"textbox","id":"sh/sb6xsvu9","slide":5,"text":"04 / 客户档案","textPreview":"04 / 客户档案","textChars":9,"textLines":1,"bbox":[54,34,520,22]}
+{"kind":"textbox","id":"sh/dgbulwnm","slide":5,"text":"一条客户线索，就是后续服务的入口","textPreview":"一条客户线索，就是后续服务的入口","textChars":16,"textLines":1,"bbox":[54,72,1120,62]}
+{"kind":"textbox","id":"sh/cf2tcr61","slide":5,"text":"先把“为谁做、房子在哪里、现在进行到哪一步”说清楚，再进入量房与设计。","textPreview":"先把“为谁做、房子在哪里、现在进行到哪一步”说清楚，再进入量房与设计。","textChars":35,"textLines":1,"bbox":[54,142,1120,44]}
+{"kind":"textbox","id":"sh/z2tcnm5s","slide":5,"text":"家客来 JIAKELAI  ·  客户档案","textPreview":"家客来 JIAKELAI  ·  客户档案","textChars":21,"textLines":1,"bbox":[54,680,400,18]}
+{"kind":"textbox","id":"sh/yhkbe1o7","slide":5,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1180,680,48,18]}
+{"kind":"textbox","id":"sh/w32dkbuh","slide":5,"text":"建立完整档案","textPreview":"建立完整档案","textChars":6,"textLines":1,"bbox":[752,258,390,28]}
+{"kind":"textbox","id":"sh/x4vedgvm","slide":5,"text":"记录称呼、电话、小区、面积和偏好。","textPreview":"记录称呼、电话、小区、面积和偏好。","textChars":17,"textLines":1,"bbox":[752,292,390,54]}
+{"kind":"textbox","id":"sh/v2twb6dw","slide":5,"text":"关联核心成果","textPreview":"关联核心成果","textChars":6,"textLines":1,"bbox":[752,370,390,28]}
+{"kind":"textbox","id":"sh/k7mxovud","slide":5,"text":"同一客户下查看正式户型、设计方案和更新时间。","textPreview":"同一客户下查看正式户型、设计方案和更新时间。","textChars":22,"textLines":1,"bbox":[752,404,390,54]}
+{"kind":"textbox","id":"sh/i54fmlc7","slide":5,"text":"找到下一步","textPreview":"找到下一步","textChars":5,"textLines":1,"bbox":[752,482,390,28]}
+{"kind":"textbox","id":"sh/j6dwfqds","slide":5,"text":"通过搜索与客户阶段筛选，定位需要继续处理的客户。","textPreview":"通过搜索与客户阶段筛选，定位需要继续处理的客户。","textChars":24,"textLines":1,"bbox":[752,516,390,54]}
+{"kind":"image","id":"im/uhkvq14z","slide":5,"name":"","geometry":"roundRect","bbox":[60,212,286,428]}
+{"kind":"image","id":"im/yt0f21or","slide":5,"name":"","geometry":"roundRect","bbox":[370,240,255,382]}
+{"kind":"notes","id":"nt/i107q5of","slide":5,"text":"[Sources]\n- 家客来-客户演示稿-内容改进计划-2026-08.md\n- 家客来-产品说明书-内容优化版-16比9横版-2026-08.pdf\n- Current repository module inventories and runtime labels\n- Product screenshots extracted from source slide 9"}
+{"kind":"slide","id":"sl/x8f69ofe","slide":6,"title":"05 / 正式量房","textShapes":10}
+{"kind":"textbox","id":"sh/twfux0ne","slide":6,"text":"05 / 正式量房","textPreview":"05 / 正式量房","textChars":9,"textLines":1,"bbox":[54,34,520,22]}
+{"kind":"textbox","id":"sh/yhg7epsj","slide":6,"text":"现场量房的成果，是一份可继续使用的正式户型","textPreview":"现场量房的成果，是一份可继续使用的正式户型","textChars":21,"textLines":1,"bbox":[54,72,1120,62]}
+{"kind":"textbox","id":"sh/zi98nu94","slide":6,"text":"设备只是输入方式；真正重要的是墙体、门窗、尺寸与闭合空间被保存到客户档案。","textPreview":"设备只是输入方式；真正重要的是墙体、门窗、尺寸与闭合空间被保存到客户档案。","textChars":37,"textLines":1,"bbox":[54,142,1120,44]}
+{"kind":"textbox","id":"sh/87ipkzal","slide":6,"text":"家客来 JIAKELAI  ·  正式量房","textPreview":"家客来 JIAKELAI  ·  正式量房","textChars":21,"textLines":1,"bbox":[54,680,400,18]}
+{"kind":"textbox","id":"sh/98rqt4r6","slide":6,"text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1180,680,48,18]}
+{"kind":"textbox","id":"sh/h4bupgn6","slide":6,"text":"两种输入","textPreview":"两种输入","textChars":4,"textLines":1,"bbox":[1052,276,144,30]}
+{"kind":"textbox","id":"sh/v2tcn650","slide":6,"text":"手工录入","textPreview":"手工录入","textChars":4,"textLines":1,"bbox":[1060,341,126,20]}
+{"kind":"textbox","id":"sh/5svutgni","slide":6,"text":"授权蓝牙","textPreview":"授权蓝牙","textChars":4,"textLines":1,"bbox":[1060,389,126,20]}
+{"kind":"textbox","id":"sh/j6dcr65c","slide":6,"text":"统一结果","textPreview":"统一结果","textChars":4,"textLines":1,"bbox":[1052,474,144,26]}
+{"kind":"textbox","id":"sh/i54bylor","slide":6,"text":"毫米制墙图\n门窗与闭合空间\n可继续量房","textPreview":"毫米制墙图 | 门窗与闭合空间 | 可继续量房","textChars":19,"textLines":3,"bbox":[1044,518,160,76]}
+{"kind":"image","id":"im/b61sbutc","slide":6,"name":"","geometry":"roundRect","bbox":[54,210,398,430]}
+{"kind":"image","id":"im/zax8jq94","slide":6,"name":"","geometry":"roundRect","bbox":[478,240,250,372]}
+{"kind":"image","id":"im/e9orqlsj","slide":6,"name":"","geometry":"roundRect","bbox":[754,240,250,372]}
+{"kind":"notes","id":"nt/x8f69ofe","slide":6,"text":"[Sources]\n- 家客来-客户演示稿-内容改进计划-2026-08.md\n- 家客来-产品说明书-内容优化版-16比9横版-2026-08.pdf\n- Current repository module inventories and runtime labels\n- Formal surveying screenshots extracted from source slide 10"}
+{"kind":"slide","id":"sl/gnmp4jqx","slide":7,"title":"06 / 正式户型复用","textShapes":18}
+{"kind":"textbox","id":"sh/s3ml0v61","slide":7,"text":"06 / 正式户型复用","textPreview":"06 / 正式户型复用","textChars":11,"textLines":1,"bbox":[54,34,520,22]}
+{"kind":"textbox","id":"sh/cb2tkvap","slide":7,"text":"同一份正式户型，继续服务多个后续场景","textPreview":"同一份正式户型，继续服务多个后续场景","textChars":18,"textLines":1,"bbox":[54,72,1120,62]}
+{"kind":"textbox","id":"sh/dcbud0ra","slide":7,"text":"查看、导出、2D/3D 与 AI 都从正式墙图派生，不再维护容易偏离的户型副本。","textPreview":"查看、导出、2D/3D 与 AI 都从正式墙图派生，不再维护容易偏离的户型副本。","textChars":40,"textLines":1,"bbox":[54,142,1120,44]}
+{"kind":"textbox","id":"sh/ydkbm5sv","slide":7,"text":"家客来 JIAKELAI  ·  正式户型","textPreview":"家客来 JIAKELAI  ·  正式户型","textChars":21,"textLines":1,"bbox":[54,680,400,18]}
+{"kind":"textbox","id":"sh/zedcfa9g","slide":7,"text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[1180,680,48,18]}
+{"kind":"textbox","id":"sh/fi9c369c","slide":7,"text":"正式户型 = 统一空间依据","textPreview":"正式户型 = 统一空间依据","textChars":13,"textLines":1,"bbox":[128,565,302,20]}
+{"kind":"textbox","id":"sh/a9ojq5kz","slide":7,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[560,241,46,20]}
+{"kind":"textbox","id":"sh/xcz2l03q","slide":7,"text":"客户详情","textPreview":"客户详情","textChars":4,"textLines":1,"bbox":[630,225,230,30]}
+{"kind":"textbox","id":"sh/cbq1sv25","slide":7,"text":"查看量房状态、闭合空间数与更新时间","textPreview":"查看量房状态、闭合空间数与更新时间","textChars":17,"textLines":1,"bbox":[630,263,520,44]}
+{"kind":"textbox","id":"sh/25ojml43","slide":7,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[560,335,46,20]}
+{"kind":"textbox","id":"sh/p8fih03e","slide":7,"text":"管理后台","textPreview":"管理后台","textChars":4,"textLines":1,"bbox":[630,319,230,30]}
+{"kind":"textbox","id":"sh/o761ov2t","slide":7,"text":"集中查看正式户型与测量记录","textPreview":"集中查看正式户型与测量记录","textChars":13,"textLines":1,"bbox":[630,357,520,44]}
+{"kind":"textbox","id":"sh/eh4jil4r","slide":7,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[560,429,46,20]}
+{"kind":"textbox","id":"sh/id4ju1oz","slide":7,"text":"2D / 3D / DXF","textPreview":"2D / 3D / DXF","textChars":13,"textLines":1,"bbox":[630,413,230,30]}
+{"kind":"textbox","id":"sh/jedkn654","slide":7,"text":"完整且受支持时用于查看与下载","textPreview":"完整且受支持时用于查看与下载","textChars":14,"textLines":1,"bbox":[630,451,520,44]}
+{"kind":"textbox","id":"sh/50v2pgna","slide":7,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[560,523,46,20]}
+{"kind":"textbox","id":"sh/q143ylov","slide":7,"text":"AI 设计","textPreview":"AI 设计","textChars":5,"textLines":1,"bbox":[630,507,230,30]}
+{"kind":"textbox","id":"sh/r2dkrq5g","slide":7,"text":"从同一份正式户型派生整屋或单空间依据","textPreview":"从同一份正式户型派生整屋或单空间依据","textChars":18,"textLines":1,"bbox":[630,545,520,44]}
+{"kind":"image","id":"im/ix4nytoz","slide":7,"name":"","geometry":"roundRect","bbox":[94.42,258,369.16,286]}
+{"kind":"notes","id":"nt/gnmp4jqx","slide":7,"text":"[Sources]\n- 家客来-客户演示稿-内容改进计划-2026-08.md\n- 家客来-产品说明书-内容优化版-16比9横版-2026-08.pdf\n- Current repository module inventories and runtime labels\n- Formal floor-plan illustration extracted from source slide 4"}
+{"kind":"slide","id":"sl/fu1gfa1s","slide":8,"title":"07 / AI 设计总览","textShapes":8}
+{"kind":"textbox","id":"sh/kfixwbe1","slide":8,"text":"07 / AI 设计总览","textPreview":"07 / AI 设计总览","textChars":12,"textLines":1,"bbox":[54,34,520,22]}
+{"kind":"textbox","id":"sh/18byd4zy","slide":8,"text":"AI 设计围绕同一位客户和同一份空间资料持续推进","textPreview":"AI 设计围绕同一位客户和同一份空间资料持续推进","textChars":24,"textLines":1,"bbox":[54,72,1120,62]}
+{"kind":"textbox","id":"sh/g72x4zyd","slide":8,"text":"从项目工作台进入空间设计，客户、正式户型和方案阶段始终关联。","textPreview":"从项目工作台进入空间设计，客户、正式户型和方案阶段始终关联。","textChars":30,"textLines":1,"bbox":[54,142,1120,44]}
+{"kind":"textbox","id":"sh/ri9g7uhw","slide":8,"text":"家客来 JIAKELAI  ·  AI 能力","textPreview":"家客来 JIAKELAI  ·  AI 能力","textChars":22,"textLines":1,"bbox":[54,680,400,18]}
+{"kind":"textbox","id":"sh/6h0fypgb","slide":8,"text":"08","textPreview":"08","textChars":2,"textLines":1,"bbox":[1180,680,48,18]}
+{"kind":"textbox","id":"sh/id0fu50z","slide":8,"text":"选择客户项目","textPreview":"选择客户项目","textChars":6,"textLines":1,"bbox":[88,603,290,20]}
+{"kind":"textbox","id":"sh/n6pwfmd8","slide":8,"text":"查看方案旅程","textPreview":"查看方案旅程","textChars":6,"textLines":1,"bbox":[494,603,290,20]}
+{"kind":"textbox","id":"sh/zipwbmdc","slide":8,"text":"继续当前设计","textPreview":"继续当前设计","textChars":6,"textLines":1,"bbox":[900,603,290,20]}
+{"kind":"image","id":"im/mt47qt0z","slide":8,"name":"","bbox":[147.62,209,170.77,370]}
+{"kind":"image","id":"im/yp8rix47","slide":8,"name":"","bbox":[553.42,209,171.16,370]}
+{"kind":"image","id":"im/jqhsb2ls","slide":8,"name":"","bbox":[959.42,209,171.16,370]}
+{"kind":"notes","id":"nt/fu1gfa1s","slide":8,"text":"[Sources]\n- 家客来-客户演示稿-内容改进计划-2026-08.md\n- 家客来-产品说明书-内容优化版-16比9横版-2026-08.pdf\n- Current repository module inventories and runtime labels\n- Full approved design comps: ai-design-customer-project-switcher-v3.png; ai-design-customer-workbench-home-v2.png; ai-design-immersive-a-space-tour-v1.png; docs/ai-design/miniprogram-ai-design-requirements.zh-CN.md"}
+{"kind":"slide","id":"sl/udsvah03","slide":9,"title":"08 / 四类 AI 任务","textShapes":19}
+{"kind":"textbox","id":"sh/apofe5of","slide":9,"text":"08 / 四类 AI 任务","textPreview":"08 / 四类 AI 任务","textChars":13,"textLines":1,"bbox":[54,34,520,22]}
+{"kind":"textbox","id":"sh/1cfmhgne","slide":9,"text":"数据库里的家装模板，把一次生成扩展为多种能力","textPreview":"数据库里的家装模板，把一次生成扩展为多种能力","textChars":22,"textLines":1,"bbox":[54,72,1120,62]}
+{"kind":"textbox","id":"sh/0b65obm9","slide":9,"text":"当前启用模板库共 960 项；这里筛选最适合客户沟通的四类家装能力。","textPreview":"当前启用模板库共 960 项；这里筛选最适合客户沟通的四类家装能力。","textChars":34,"textLines":1,"bbox":[54,142,1120,44]}
+{"kind":"textbox","id":"sh/nex4jq5k","slide":9,"text":"家客来 JIAKELAI  ·  AI 能力","textPreview":"家客来 JIAKELAI  ·  AI 能力","textChars":22,"textLines":1,"bbox":[54,680,400,18]}
+{"kind":"textbox","id":"sh/mdonql4z","slide":9,"text":"09","textPreview":"09","textChars":2,"textLines":1,"bbox":[1180,680,48,18]}
+{"kind":"textbox","id":"sh/ah8nu54b","slide":9,"text":"毛坯变完整方案","textPreview":"毛坯变完整方案","textChars":7,"textLines":1,"bbox":[78,514,230,20]}
+{"kind":"textbox","id":"sh/3y107axw","slide":9,"text":"户型与空间诊断","textPreview":"户型与空间诊断","textChars":7,"textLines":1,"bbox":[378,604,230,20]}
+{"kind":"textbox","id":"sh/qlcjipgn","slide":9,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[690,241,42,18]}
+{"kind":"textbox","id":"sh/bml0buxs","slide":9,"text":"毛坯装修","textPreview":"毛坯装修","textChars":4,"textLines":1,"bbox":[746,230,150,30]}
+{"kind":"textbox","id":"sh/0ru1ozyp","slide":9,"text":"从空房或毛坯底图生成完整硬装、家具与灯光表达。","textPreview":"从空房或毛坯底图生成完整硬装、家具与灯光表达。","textChars":23,"textLines":1,"bbox":[690,287,208,74]}
+{"kind":"textbox","id":"sh/87a18zqt","slide":9,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[968,241,42,18]}
+{"kind":"textbox","id":"sh/76h0zup8","slide":9,"text":"风格迁移","textPreview":"风格迁移","textChars":4,"textLines":1,"bbox":[1024,230,150,30]}
+{"kind":"textbox","id":"sh/ml8j6p8n","slide":9,"text":"沿用参考图的色彩、材质与家具语言，适配当前空间。","textPreview":"沿用参考图的色彩、材质与家具语言，适配当前空间。","textChars":24,"textLines":1,"bbox":[968,287,208,74]}
+{"kind":"textbox","id":"sh/va103ep4","slide":9,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[690,445,42,18]}
+{"kind":"textbox","id":"sh/u9sja98z","slide":9,"text":"平面与诊断","textPreview":"平面与诊断","textChars":5,"textLines":1,"bbox":[746,434,150,30]}
+{"kind":"textbox","id":"sh/xgzitk76","slide":9,"text":"彩化户型、识别布局问题，辅助整屋方案沟通。","textPreview":"彩化户型、识别布局问题，辅助整屋方案沟通。","textChars":21,"textLines":1,"bbox":[690,491,208,74]}
+{"kind":"textbox","id":"sh/nmdg3q54","slide":9,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[968,445,42,18]}
+{"kind":"textbox","id":"sh/onmxcv69","slide":9,"text":"局部深化","textPreview":"局部深化","textChars":4,"textLines":1,"bbox":[1024,434,150,30]}
+{"kind":"textbox","id":"sh/pofy50nu","slide":9,"text":"材质替换、软装搭配与局部修改，支持持续迭代。","textPreview":"材质替换、软装搭配与局部修改，支持持续迭代。","textChars":22,"textLines":1,"bbox":[968,491,208,74]}
+{"kind":"image","id":"im/g3atgzyl","slide":9,"name":"","alt":"AI 演示素材：db-906.jpg","bbox":[70,245,250,245]}
+{"kind":"image","id":"im/f21s7eh0","slide":9,"name":"","alt":"AI 演示素材：db-642.jpg","bbox":[372,245,250,245]}
+{"kind":"notes","id":"nt/udsvah03","slide":9,"text":"[Sources]\n- Internal PostgreSQL AI prompt library active revision 17 (published 2026-08-01): 960 enabled templates; examples include IDs 906, 420, 642, 930, and 618.\n- Preview imagery from the same internal prompt-template records."}
+{"kind":"slide","id":"sl/m90b6t0r","slide":10,"title":"09 / 同空间多方案","textShapes":12}
+{"kind":"textbox","id":"sh/lk7ut0va","slide":10,"text":"09 / 同空间多方案","textPreview":"09 / 同空间多方案","textChars":11,"textLines":1,"bbox":[54,34,520,22]}
+{"kind":"textbox","id":"sh/xc3mho32","slide":10,"text":"同一空间保持几何不变，快速比较三种设计语言","textPreview":"同一空间保持几何不变，快速比较三种设计语言","textChars":21,"textLines":1,"bbox":[54,72,1120,62]}
+{"kind":"textbox","id":"sh/cbu58j2h","slide":10,"text":"演示以同一空房为基准，仅改变硬装、材质、家具与灯光，方案差异一眼可见。","textPreview":"演示以同一空房为基准，仅改变硬装、材质、家具与灯光，方案差异一眼可见。","textChars":35,"textLines":1,"bbox":[54,142,1120,44]}
+{"kind":"textbox","id":"sh/zelojyl8","slide":10,"text":"家客来 JIAKELAI  ·  AI 能力","textPreview":"家客来 JIAKELAI  ·  AI 能力","textChars":22,"textLines":1,"bbox":[54,680,400,18]}
+{"kind":"textbox","id":"sh/ydcnatkn","slide":10,"text":"10","textPreview":"10","textChars":2,"textLines":1,"bbox":[1180,680,48,18]}
+{"kind":"textbox","id":"sh/m1cnetkj","slide":10,"text":"输入 · 原始空间","textPreview":"输入 · 原始空间","textChars":9,"textLines":1,"bbox":[78,514,234,20]}
+{"kind":"textbox","id":"sh/r6pcv6lw","slide":10,"text":"方案 A · 现代奶油","textPreview":"方案 A · 现代奶油","textChars":11,"textLines":1,"bbox":[380,514,234,20]}
+{"kind":"textbox","id":"sh/fapcz6ls","slide":10,"text":"方案 B · 现代法式","textPreview":"方案 B · 现代法式","textChars":11,"textLines":1,"bbox":[682,514,234,20]}
+{"kind":"textbox","id":"sh/p0ru503u","slide":10,"text":"方案 C · 现代中式","textPreview":"方案 C · 现代中式","textChars":11,"textLines":1,"bbox":[994,250,196,30]}
+{"kind":"textbox","id":"sh/xwnupgvy","slide":10,"text":"深色胡桃木、纸灯与克制留白，氛围沉静。","textPreview":"深色胡桃木、纸灯与克制留白，氛围沉静。","textChars":19,"textLines":1,"bbox":[994,298,196,76]}
+{"kind":"textbox","id":"sh/bu5cnqd8","slide":10,"text":"演示价值","textPreview":"演示价值","textChars":4,"textLines":1,"bbox":[994,424,196,30]}
+{"kind":"textbox","id":"sh/atwbelcn","slide":10,"text":"统一镜头下直接比较，减少客户对风格想象的偏差。","textPreview":"统一镜头下直接比较，减少客户对风格想象的偏差。","textChars":23,"textLines":1,"bbox":[994,470,196,70]}
+{"kind":"image","id":"im/v6xczqp0","slide":10,"name":"","alt":"AI 演示素材：01-before-empty.jpg","bbox":[70,245,250,245]}
+{"kind":"image","id":"im/w76tsvq5","slide":10,"name":"","alt":"AI 演示素材：02-modern-cream.jpg","bbox":[372,245,250,245]}
+{"kind":"image","id":"im/h8fu1g7q","slide":10,"name":"","alt":"AI 演示素材：03-modern-french.jpg","bbox":[674,245,250,245]}
+{"kind":"notes","id":"nt/m90b6t0r","slide":10,"text":"[Sources]\n- OpenAI built-in image generation, same-space home-renovation demo set: empty room, modern cream, modern French, modern Chinese.\n- AI-generated demonstration effects; not live Mini Program screenshots."}
+{"kind":"slide","id":"sl/jetc3ut0","slide":11,"title":"10 / 局部深化","textShapes":12}
+{"kind":"textbox","id":"sh/l43ilgn2","slide":11,"text":"10 / 局部深化","textPreview":"10 / 局部深化","textChars":9,"textLines":1,"bbox":[54,34,520,22]}
+{"kind":"textbox","id":"sh/xcryxg7y","slide":11,"text":"同一方案继续优化，只改材质也能形成清晰对比","textPreview":"同一方案继续优化，只改材质也能形成清晰对比","textChars":21,"textLines":1,"bbox":[54,72,1120,62]}
+{"kind":"textbox","id":"sh/wbih4b6d","slide":11,"text":"保留结构、家具与灯光，仅把电视墙替换为洞石、地面替换为浅烟熏橡木。","textPreview":"保留结构、家具与灯光，仅把电视墙替换为洞石、地面替换为浅烟熏橡木。","textChars":33,"textLines":1,"bbox":[54,142,1120,44]}
+{"kind":"textbox","id":"sh/n69grmpw","slide":11,"text":"家客来 JIAKELAI  ·  AI 能力","textPreview":"家客来 JIAKELAI  ·  AI 能力","textChars":22,"textLines":1,"bbox":[54,680,400,18]}
+{"kind":"textbox","id":"sh/250zy18b","slide":11,"text":"11","textPreview":"11","textChars":2,"textLines":1,"bbox":[1180,680,48,18]}
+{"kind":"textbox","id":"sh/61kzalof","slide":11,"text":"基础方案 · 现代奶油","textPreview":"基础方案 · 现代奶油","textChars":11,"textLines":1,"bbox":[78,514,234,20]}
+{"kind":"textbox","id":"sh/nehs7iho","slide":11,"text":"局部修改 · 材质替换","textPreview":"局部修改 · 材质替换","textChars":11,"textLines":1,"bbox":[380,514,234,20]}
+{"kind":"textbox","id":"sh/zaxs3yhc","slide":11,"text":"辅助输出 · 软装分析","textPreview":"辅助输出 · 软装分析","textChars":11,"textLines":1,"bbox":[682,514,234,20]}
+{"kind":"textbox","id":"sh/dofa18z6","slide":11,"text":"提示词要点","textPreview":"提示词要点","textChars":5,"textLines":1,"bbox":[994,250,196,30]}
+{"kind":"textbox","id":"sh/tsnip0ny","slide":11,"text":"电视墙改暖米色洞石；地面改浅烟熏橡木。","textPreview":"电视墙改暖米色洞石；地面改浅烟熏橡木。","textChars":19,"textLines":1,"bbox":[994,298,196,76]}
+{"kind":"textbox","id":"sh/7650nq5s","slide":11,"text":"不变项","textPreview":"不变项","textChars":3,"textLines":1,"bbox":[994,424,196,30]}
+{"kind":"textbox","id":"sh/65wzelo7","slide":11,"text":"镜头、结构、家具、灯光与物件位置保持不变。","textPreview":"镜头、结构、家具、灯光与物件位置保持不变。","textChars":21,"textLines":1,"bbox":[994,470,196,70]}
+{"kind":"image","id":"im/7itszulo","slide":11,"name":"","alt":"AI 演示素材：02-modern-cream.jpg","bbox":[70,245,250,245]}
+{"kind":"image","id":"im/sj29szm9","slide":11,"name":"","alt":"AI 演示素材：05-material-replacement.jpg","bbox":[372,245,250,245]}
+{"kind":"image","id":"im/tkva143e","slide":11,"name":"","alt":"AI 演示素材：db-618.jpg","bbox":[674,245,250,245]}
+{"kind":"notes","id":"nt/jetc3ut0","slide":11,"text":"[Sources]\n- OpenAI built-in image generation, local material replacement demo.\n- Internal prompt-template preview ID 618 (living-room soft-furnishing analysis).\n- AI-generated demonstration effects; not live runtime screenshots."}
+{"kind":"slide","id":"sl/8f2psfyx","slide":12,"title":"11 / 家装模板库","textShapes":12}
+{"kind":"textbox","id":"sh/tgrm1wzy","slide":12,"text":"11 / 家装模板库","textPreview":"11 / 家装模板库","textChars":10,"textLines":1,"bbox":[54,34,520,22]}
+{"kind":"textbox","id":"sh/1gbm9s3a","slide":12,"text":"把模板做成可选择的能力，而不是一条固定提示词","textPreview":"把模板做成可选择的能力，而不是一条固定提示词","textChars":22,"textLines":1,"bbox":[54,72,1120,62]}
+{"kind":"textbox","id":"sh/0f2lgnmp","slide":12,"text":"真实数据库示例：现代奶油毛坯装修、法式毛坯装修、户型问题诊断。","textPreview":"真实数据库示例：现代奶油毛坯装修、法式毛坯装修、户型问题诊断。","textChars":31,"textLines":1,"bbox":[54,142,1120,44]}
+{"kind":"textbox","id":"sh/ra943il8","slide":12,"text":"家客来 JIAKELAI  ·  AI 能力","textPreview":"家客来 JIAKELAI  ·  AI 能力","textChars":22,"textLines":1,"bbox":[54,680,400,18]}
+{"kind":"textbox","id":"sh/q903ad4n","slide":12,"text":"12","textPreview":"12","textChars":2,"textLines":1,"bbox":[1180,680,48,18]}
+{"kind":"textbox","id":"sh/a543mx4r","slide":12,"text":"现代奶油毛坯装修","textPreview":"现代奶油毛坯装修","textChars":8,"textLines":1,"bbox":[78,514,234,20]}
+{"kind":"textbox","id":"sh/bulo7u58","slide":12,"text":"法式毛坯装修","textPreview":"法式毛坯装修","textChars":6,"textLines":1,"bbox":[380,514,234,20]}
+{"kind":"textbox","id":"sh/nq1o3a5w","slide":12,"text":"户型问题诊断","textPreview":"户型问题诊断","textChars":6,"textLines":1,"bbox":[682,514,234,20]}
+{"kind":"textbox","id":"sh/1oj61kn6","slide":12,"text":"当前提示词库","textPreview":"当前提示词库","textChars":6,"textLines":1,"bbox":[994,250,196,30]}
+{"kind":"textbox","id":"sh/hkbm5wzu","slide":12,"text":"2026-08-01 发布；共 960 个启用模板。","textPreview":"2026-08-01 发布；共 960 个启用模板。","textChars":26,"textLines":1,"bbox":[994,298,196,76]}
+{"kind":"textbox","id":"sh/fit436ho","slide":12,"text":"演示筛选","textPreview":"演示筛选","textChars":4,"textLines":1,"bbox":[994,424,196,30]}
+{"kind":"textbox","id":"sh/uh0na1g3","slide":12,"text":"优先家装、可比较、客户易理解的模板。","textPreview":"优先家装、可比较、客户易理解的模板。","textChars":18,"textLines":1,"bbox":[994,470,196,70]}
+{"kind":"image","id":"im/bqhs3u5w","slide":12,"name":"","alt":"AI 演示素材：db-906.jpg","bbox":[70,245,250,245]}
+{"kind":"image","id":"im/crq9wz6h","slide":12,"name":"","alt":"AI 演示素材：db-893.jpg","bbox":[372,245,250,245]}
+{"kind":"image","id":"im/xsza54n2","slide":12,"name":"","alt":"AI 演示素材：db-642.jpg","bbox":[674,245,250,245]}
+{"kind":"notes","id":"nt/8f2psfyx","slide":12,"text":"[Sources]\n- Internal PostgreSQL AI prompt library active revision 17 (published 2026-08-01), 960 enabled templates.\n- Shown template previews: ID 906 modern cream rough-home renovation; ID 893 French rough-home renovation; ID 642 floor-plan renovation analysis."}
+{"kind":"slide","id":"sl/hgzapcr6","slide":13,"title":"12 / 创建任务","textShapes":10}
+{"kind":"textbox","id":"sh/kjmxsfm1","slide":13,"text":"12 / 创建任务","textPreview":"12 / 创建任务","textChars":9,"textLines":1,"bbox":[54,34,520,22]}
+{"kind":"textbox","id":"sh/q50nydsj","slide":13,"text":"从准备素材到生成方案，每一步都有明确提示","textPreview":"从准备素材到生成方案，每一步都有明确提示","textChars":20,"textLines":1,"bbox":[54,72,1120,62]}
+{"kind":"textbox","id":"sh/bq9orito","slide":13,"text":"完整页面展示素材、风格与范围；不同任务状态则集中在项目列表中持续反馈。","textPreview":"完整页面展示素材、风格与范围；不同任务状态则集中在项目列表中持续反馈。","textChars":35,"textLines":1,"bbox":[54,142,1120,44]}
+{"kind":"textbox","id":"sh/o3i5w3ad","slide":13,"text":"家客来 JIAKELAI  ·  AI 能力","textPreview":"家客来 JIAKELAI  ·  AI 能力","textChars":22,"textLines":1,"bbox":[54,680,400,18]}
+{"kind":"textbox","id":"sh/p4r6p8by","slide":13,"text":"13","textPreview":"13","textChars":2,"textLines":1,"bbox":[1180,680,48,18]}
+{"kind":"textbox","id":"sh/1076lobm","slide":13,"text":"准备素材与风格","textPreview":"准备素材与风格","textChars":7,"textLines":1,"bbox":[78,604,290,20]}
+{"kind":"textbox","id":"sh/u9ofyp43","slide":13,"text":"生成进度与异常处理","textPreview":"生成进度与异常处理","textChars":9,"textLines":1,"bbox":[450,604,460,20]}
+{"kind":"textbox","id":"sh/876xwfmx","slide":13,"text":"提交前","textPreview":"提交前","textChars":3,"textLines":1,"bbox":[998,248,188,26]}
+{"kind":"textbox","id":"sh/7mdg3als","slide":13,"text":"任务类型\n所需图片\n目标风格\n设计范围\n点数预估","textPreview":"任务类型 | 所需图片 | 目标风格 | 设计范围 | 点数预估","textChars":24,"textLines":5,"bbox":[998,294,188,150]}
+{"kind":"textbox","id":"sh/lkvy103m","slide":13,"text":"成功扣点\n失败释放 · 允许重试","textPreview":"成功扣点 | 失败释放 · 允许重试","textChars":16,"textLines":2,"bbox":[998,490,188,58]}
+{"kind":"image","id":"im/3adgzm9w","slide":13,"name":"","bbox":[138.08,212,169.85,368]}
+{"kind":"image","id":"im/294fqhsb","slide":13,"name":"","bbox":[496,212,368,368]}
+{"kind":"notes","id":"nt/hgzapcr6","slide":13,"text":"[Sources]\n- 家客来-客户演示稿-内容改进计划-2026-08.md\n- 家客来-产品说明书-内容优化版-16比9横版-2026-08.pdf\n- Current repository module inventories and runtime labels\n- Full approved design comps: all-pages-ip-v3/14-ai-design-create-v3.png; ai-design-project-state-matrix-v4.png; credit behavior verified against current AI requirements"}
+{"kind":"slide","id":"sl/6lsnupw7","slide":14,"title":"13 / 小程序成果交付","textShapes":13}
+{"kind":"textbox","id":"sh/4vmh0vq5","slide":14,"text":"13 / 小程序成果交付","textPreview":"13 / 小程序成果交付","textChars":12,"textLines":1,"bbox":[54,34,520,22]}
+{"kind":"textbox","id":"sh/xc7eds76","slide":14,"text":"同一套小程序界面，承接多种 AI 设计结果","textPreview":"同一套小程序界面，承接多种 AI 设计结果","textChars":21,"textLines":1,"bbox":[54,72,1120,62]}
+{"kind":"textbox","id":"sh/wbydknq1","slide":14,"text":"以下为基于获批结果页设计稿的演示状态，用于展示真实运行截图缺失时的产品能力。","textPreview":"以下为基于获批结果页设计稿的演示状态，用于展示真实运行截图缺失时的产品能力。","textChars":38,"textLines":1,"bbox":[54,142,1120,44]}
+{"kind":"textbox","id":"sh/jepwf2pc","slide":14,"text":"家客来 JIAKELAI  ·  AI 能力","textPreview":"家客来 JIAKELAI  ·  AI 能力","textChars":22,"textLines":1,"bbox":[54,680,400,18]}
+{"kind":"textbox","id":"sh/idgvmx8r","slide":14,"text":"14","textPreview":"14","textChars":2,"textLines":1,"bbox":[1180,680,48,18]}
+{"kind":"textbox","id":"sh/ehwvat8n","slide":14,"text":"现代奶油 · 温暖治愈","textPreview":"现代奶油 · 温暖治愈","textChars":11,"textLines":1,"bbox":[78,604,248,20]}
+{"kind":"textbox","id":"sh/b2507exs","slide":14,"text":"现代法式 · 精致明亮","textPreview":"现代法式 · 精致明亮","textChars":11,"textLines":1,"bbox":[394,604,248,20]}
+{"kind":"textbox","id":"sh/z650byxo","slide":14,"text":"现代中式 · 沉静克制","textPreview":"现代中式 · 沉静克制","textChars":11,"textLines":1,"bbox":[710,604,248,20]}
+{"kind":"textbox","id":"sh/1w3i14fq","slide":14,"text":"现场沟通","textPreview":"现场沟通","textChars":4,"textLines":1,"bbox":[1032,248,156,26]}
+{"kind":"textbox","id":"sh/hsvy50re","slide":14,"text":"预览多方案\n保存与分享\n继续优化\n查看历史","textPreview":"预览多方案 | 保存与分享 | 继续优化 | 查看历史","textChars":21,"textLines":4,"bbox":[1032,292,156,112]}
+{"kind":"textbox","id":"sh/fqdg3q98","slide":14,"text":"状态说明","textPreview":"状态说明","textChars":4,"textLines":1,"bbox":[1032,450,156,26]}
+{"kind":"textbox","id":"sh/up4fal83","slide":14,"text":"批准设计稿 + AI 演示效果\n非真实运行截图","textPreview":"批准设计稿 + AI 演示效果 | 非真实运行截图","textChars":23,"textLines":2,"bbox":[1032,490,156,66]}
+{"kind":"textbox","id":"sh/pwvy90rq","slide":14,"text":"概念方案，不是施工图","textPreview":"概念方案，不是施工图","textChars":10,"textLines":1,"bbox":[998,606,224,22]}
+{"kind":"image","id":"im/wnixc3mp","slide":14,"name":"","alt":"AI 演示素材：08-miniprogram-result-cream.png","bbox":[116.89,212,170.23,368]}
+{"kind":"image","id":"im/hory583a","slide":14,"name":"","alt":"AI 演示素材：09-miniprogram-result-french.png","bbox":[432.89,212,170.23,368]}
+{"kind":"image","id":"im/apwfy94f","slide":14,"name":"","alt":"AI 演示素材：10-miniprogram-result-chinese.png","bbox":[748.89,212,170.23,368]}
+{"kind":"notes","id":"nt/6lsnupw7","slide":14,"text":"[Sources]\n- Approved Mini Program design source: design-references/all-pages-ip-v3/15-ai-design-result-v3.png.\n- Result-stage imagery generated with OpenAI built-in image generation for modern cream, modern French, and modern Chinese comparisons.\n- Composite design demonstration; not a live runtime screenshot."}
+{"kind":"slide","id":"sl/vaxsvy10","slide":15,"title":"14 / 企业后台 AI 工作台","textShapes":14}
+{"kind":"textbox","id":"sh/o7ah4nm5","slide":15,"text":"14 / 企业后台 AI 工作台","textPreview":"14 / 企业后台 AI 工作台","textChars":16,"textLines":1,"bbox":[54,34,520,22]}
+{"kind":"textbox","id":"sh/547mhg3m","slide":15,"text":"AI 工作台不止一种效果，而是一套可复用的家装模板库","textPreview":"AI 工作台不止一种效果，而是一套可复用的家装模板库","textChars":26,"textLines":1,"bbox":[54,72,1120,132]}
+{"kind":"textbox","id":"sh/k3y5ov21","slide":15,"text":"当前数据库启用 960 个模板；家装演示优先呈现毛坯装修、风格迁移、材质替换与软装分析。","textPreview":"当前数据库启用 960 个模板；家装演示优先呈现毛坯装修、风格迁移、材质替换与软装分析。","textChars":44,"textLines":1,"bbox":[54,178,1120,42]}
+{"kind":"textbox","id":"sh/76p4jqls","slide":15,"text":"家客来 JIAKELAI  ·  AI 能力","textPreview":"家客来 JIAKELAI  ·  AI 能力","textChars":22,"textLines":1,"bbox":[54,680,400,18]}
+{"kind":"textbox","id":"sh/65gnqlk7","slide":15,"text":"15","textPreview":"15","textChars":2,"textLines":1,"bbox":[1180,680,48,18]}
+{"kind":"textbox","id":"sh/m9c3e1kn","slide":15,"text":"示例：现代奶油毛坯装修 · 从空房到完整客厅方案","textPreview":"示例：现代奶油毛坯装修 · 从空房到完整客厅方案","textChars":24,"textLines":1,"bbox":[84,549,630,20]}
+{"kind":"textbox","id":"sh/5wvax0f6","slide":15,"text":"同空间 · 毛坯 → 方案","textPreview":"同空间 · 毛坯 → 方案","textChars":13,"textLines":1,"bbox":[796,437,168,20]}
+{"kind":"textbox","id":"sh/judsvqxg","slide":15,"text":"局部深化 · 材质替换","textPreview":"局部深化 · 材质替换","textChars":11,"textLines":1,"bbox":[1024,437,182,20]}
+{"kind":"textbox","id":"sh/l0bqlgf2","slide":15,"text":"选择模板","textPreview":"选择模板","textChars":4,"textLines":1,"bbox":[800,514,76,24]}
+{"kind":"textbox","id":"sh/1kjyt83e","slide":15,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[874,514,28,24]}
+{"kind":"textbox","id":"sh/gjax03m9","slide":15,"text":"参数化提示","textPreview":"参数化提示","textChars":5,"textLines":1,"bbox":[904,514,126,24]}
+{"kind":"textbox","id":"sh/fi1grylo","slide":15,"text":"→","textPreview":"→","textChars":1,"textLines":1,"bbox":[1030,514,28,24]}
+{"kind":"textbox","id":"sh/ehsfyt43","slide":15,"text":"继续深化","textPreview":"继续深化","textChars":4,"textLines":1,"bbox":[1060,514,102,24]}
+{"kind":"textbox","id":"sh/p8jyx83q","slide":15,"text":"可组合空间类型、目标风格、硬装材质、家具与灯光要求；历史任务继续保留并可再次生成。","textPreview":"可组合空间类型、目标风格、硬装材质、家具与灯光要求；历史任务继续保留并可再次生成。","textChars":41,"textLines":1,"bbox":[800,558,402,40]}
+{"kind":"image","id":"im/gve5crul","slide":15,"name":"","alt":"AI 演示素材：06-compare-before-cream.jpg","bbox":[69.73,220,658.54,296]}
+{"kind":"image","id":"im/1wn65cb6","slide":15,"name":"","alt":"AI 演示素材：db-906.jpg","bbox":[784,218,192,192]}
+{"kind":"image","id":"im/65cn6xcj","slide":15,"name":"","alt":"AI 演示素材：07-compare-cream-material.jpg","bbox":[1012,245.33,206,137.33]}
+{"kind":"notes","id":"nt/vaxsvy10","slide":15,"text":"[Sources]\n- Internal PostgreSQL prompt library active revision 17 and template previews.\n- OpenAI built-in image generation: before/after style and material-replacement examples.\n- AI-generated demonstration effects; not live runtime screenshots."}
+{"kind":"slide","id":"sl/gny5sjyp","slide":16,"title":"15 / 团队接续","textShapes":18}
+{"kind":"textbox","id":"sh/tcbmdcre","slide":16,"text":"15 / 团队接续","textPreview":"15 / 团队接续","textChars":9,"textLines":1,"bbox":[54,34,520,22]}
+{"kind":"textbox","id":"sh/8z2h8bq1","slide":16,"text":"三个角色围绕同一客户接力，不重复建档","textPreview":"三个角色围绕同一客户接力，不重复建档","textChars":18,"textLines":1,"bbox":[54,72,1120,62]}
+{"kind":"textbox","id":"sh/9kby1g7m","slide":16,"text":"AI 成果回到客户方案后，量房师、设计师和企业管理者都能在各自职责内继续推进。","textPreview":"AI 成果回到客户方案后，量房师、设计师和企业管理者都能在各自职责内继续推进。","textChars":39,"textLines":1,"bbox":[54,142,1120,44]}
+{"kind":"textbox","id":"sh/ytkf2h8j","slide":16,"text":"家客来 JIAKELAI  ·  团队跟进","textPreview":"家客来 JIAKELAI  ·  团队跟进","textChars":21,"textLines":1,"bbox":[54,680,400,18]}
+{"kind":"textbox","id":"sh/zutgvm94","slide":16,"text":"16","textPreview":"16","textChars":2,"textLines":1,"bbox":[1180,680,48,18]}
+{"kind":"textbox","id":"sh/3qdg7qpo","slide":16,"text":"A","textPreview":"A","textChars":1,"textLines":1,"bbox":[196,294,88,28]}
+{"kind":"textbox","id":"sh/fm1gzq5o","slide":16,"text":"量房师","textPreview":"量房师","textChars":3,"textLines":1,"bbox":[110,376,260,40]}
+{"kind":"textbox","id":"sh/e1sf65o3","slide":16,"text":"建立或接收客户\n完成正式量房","textPreview":"建立或接收客户 | 完成正式量房","textChars":14,"textLines":2,"bbox":[110,436,260,64]}
+{"kind":"textbox","id":"sh/gnax8v6t","slide":16,"text":"交付：客户资料 + 正式户型","textPreview":"交付：客户资料 + 正式户型","textChars":14,"textLines":1,"bbox":[110,529,260,20]}
+{"kind":"textbox","id":"sh/ps3y5knq","slide":16,"text":"B","textPreview":"B","textChars":1,"textLines":1,"bbox":[596,294,88,28]}
+{"kind":"textbox","id":"sh/oruhcf65","slide":16,"text":"设计师","textPreview":"设计师","textChars":3,"textLines":1,"bbox":[510,376,260,40]}
+{"kind":"textbox","id":"sh/bulg7u5g","slide":16,"text":"接收客户与空间\n生成并优化方案","textPreview":"接收客户与空间 | 生成并优化方案","textChars":15,"textLines":2,"bbox":[510,436,260,64]}
+{"kind":"textbox","id":"sh/mpgj6t8j","slide":16,"text":"承接：不重新建档","textPreview":"承接：不重新建档","textChars":8,"textLines":1,"bbox":[510,529,260,20]}
+{"kind":"textbox","id":"sh/9c7i1o7u","slide":16,"text":"C","textPreview":"C","textChars":1,"textLines":1,"bbox":[996,294,88,28]}
+{"kind":"textbox","id":"sh/ylwj2987","slide":16,"text":"企业管理者","textPreview":"企业管理者","textChars":5,"textLines":1,"bbox":[910,376,260,40]}
+{"kind":"textbox","id":"sh/zm50veps","slide":16,"text":"管理成员与权限\n查看进展与配置","textPreview":"管理成员与权限 | 查看进展与配置","textChars":15,"textLines":2,"bbox":[910,436,260,64]}
+{"kind":"textbox","id":"sh/lo7ixo7y","slide":16,"text":"保障：角色能完成工作","textPreview":"保障：角色能完成工作","textChars":10,"textLines":1,"bbox":[910,529,260,20]}
+{"kind":"textbox","id":"sh/ji9k7ypw","slide":16,"text":"获客确认与提成独立记录，不改变客户处于量房或设计的业务阶段。","textPreview":"获客确认与提成独立记录，不改变客户处于量房或设计的业务阶段。","textChars":30,"textLines":1,"bbox":[282,620,716,22]}
+{"kind":"notes","id":"nt/gny5sjyp","slide":16,"text":"[Sources]\n- 家客来-客户演示稿-内容改进计划-2026-08.md\n- 家客来-产品说明书-内容优化版-16比9横版-2026-08.pdf\n- Current repository module inventories and runtime labels\n- Role and acquisition boundaries verified against measurer–designer acquisition contract"}
+{"kind":"slide","id":"sl/14bup87q","slide":17,"title":"16 / 两端分工","textShapes":21}
+{"kind":"textbox","id":"sh/oza547ed","slide":17,"text":"16 / 两端分工","textPreview":"16 / 两端分工","textChars":9,"textLines":1,"bbox":[54,34,520,22]}
+{"kind":"textbox","id":"sh/1c7e50ni","slide":17,"text":"小程序跑现场，企业后台管组织与全局","textPreview":"小程序跑现场，企业后台管组织与全局","textChars":17,"textLines":1,"bbox":[54,72,1120,62]}
+{"kind":"textbox","id":"sh/gbedwfmx","slide":17,"text":"两端共享同一企业与客户上下文，但分别服务高频执行和集中管理。","textPreview":"两端共享同一企业与客户上下文，但分别服务高频执行和集中管理。","textChars":30,"textLines":1,"bbox":[54,142,1120,44]}
+{"kind":"textbox","id":"sh/rm5czq50","slide":17,"text":"家客来 JIAKELAI  ·  两端协作","textPreview":"家客来 JIAKELAI  ·  两端协作","textChars":21,"textLines":1,"bbox":[54,680,400,18]}
+{"kind":"textbox","id":"sh/6lwvql4v","slide":17,"text":"17","textPreview":"17","textChars":2,"textLines":1,"bbox":[1180,680,48,18]}
+{"kind":"textbox","id":"sh/jilcvq54","slide":17,"text":"小程序 · 高频执行","textPreview":"小程序 · 高频执行","textChars":10,"textLines":1,"bbox":[96,259,186,20]}
+{"kind":"textbox","id":"sh/pc7qhwn6","slide":17,"text":"客户与量房","textPreview":"客户与量房","textChars":5,"textLines":1,"bbox":[326,308,250,28]}
+{"kind":"textbox","id":"sh/29grm1of","slide":17,"text":"录入客户、进入正式量房、查看个人待办。","textPreview":"录入客户、进入正式量房、查看个人待办。","textChars":19,"textLines":1,"bbox":[326,342,250,54]}
+{"kind":"textbox","id":"sh/gnepkr69","slide":17,"text":"现场跟进","textPreview":"现场跟进","textChars":4,"textLines":1,"bbox":[326,426,250,28]}
+{"kind":"textbox","id":"sh/honqdwnu","slide":17,"text":"查看客户、正式户型、待办与方案进展。","textPreview":"查看客户、正式户型、待办与方案进展。","textChars":18,"textLines":1,"bbox":[326,460,250,54]}
+{"kind":"textbox","id":"sh/0ji9wb6t","slide":17,"text":"企业后台 · 集中管理","textPreview":"企业后台 · 集中管理","textChars":11,"textLines":1,"bbox":[706,259,204,20]}
+{"kind":"textbox","id":"sh/90nq9gfi","slide":17,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[696,331,36,18]}
+{"kind":"textbox","id":"sh/8ze9gbyx","slide":17,"text":"组织与权限","textPreview":"组织与权限","textChars":5,"textLines":1,"bbox":[752,318,200,26]}
+{"kind":"textbox","id":"sh/ny5876xc","slide":17,"text":"成员、岗位与访问范围","textPreview":"成员、岗位与访问范围","textChars":10,"textLines":1,"bbox":[752,352,390,32]}
+{"kind":"textbox","id":"sh/lwnq5gf6","slide":17,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[696,413,36,18]}
+{"kind":"textbox","id":"sh/0vepcbyl","slide":17,"text":"客户与户型","textPreview":"客户与户型","textChars":5,"textLines":1,"bbox":[752,400,200,26]}
+{"kind":"textbox","id":"sh/zul836xg","slide":17,"text":"正式户型、测量记录与进展","textPreview":"正式户型、测量记录与进展","textChars":12,"textLines":1,"bbox":[752,434,390,32]}
+{"kind":"textbox","id":"sh/d83q1wfa","slide":17,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[696,495,36,18]}
+{"kind":"textbox","id":"sh/c7up8ryp","slide":17,"text":"AI 创作与深化","textPreview":"AI 创作与深化","textChars":8,"textLines":1,"bbox":[752,482,200,26]}
+{"kind":"textbox","id":"sh/2dsn2xwn","slide":17,"text":"情绪板、方案版本与后续深化管理","textPreview":"情绪板、方案版本与后续深化管理","textChars":15,"textLines":1,"bbox":[752,516,390,32]}
+{"kind":"textbox","id":"sh/3e1ob2d8","slide":17,"text":"不重复建档，只保留客户企业内部的组织、资产与服务配置。","textPreview":"不重复建档，只保留客户企业内部的组织、资产与服务配置。","textChars":27,"textLines":1,"bbox":[696,570,470,32]}
+{"kind":"image","id":"im/yxwvmh8j","slide":17,"name":"","geometry":"roundRect","bbox":[86,302,184,276]}
+{"kind":"notes","id":"nt/14bup87q","slide":17,"text":"[Sources]\n- 家客来-客户演示稿-内容改进计划-2026-08.md\n- 家客来-产品说明书-内容优化版-16比9横版-2026-08.pdf\n- Current repository module inventories and runtime labels\n- Mini Program screenshot extracted from source slide 9; admin responsibilities verified against current module inventory"}
+{"kind":"slide","id":"sl/y5wne50z","slide":18,"title":"17 / 使用条件与产品边界","textShapes":23}
+{"kind":"textbox","id":"sh/f218rits","slide":18,"text":"17 / 使用条件与产品边界","textPreview":"17 / 使用条件与产品边界","textChars":14,"textLines":1,"bbox":[54,34,520,22]}
+{"kind":"textbox","id":"sh/wrelszu9","slide":18,"text":"顺利完成量房与设计，需要先具备这些条件","textPreview":"顺利完成量房与设计，需要先具备这些条件","textChars":19,"textLines":1,"bbox":[54,78,1130,60]}
+{"kind":"textbox","id":"sh/hsn2l4bu","slide":18,"text":"账号、户型、权限和服务配置准备就绪后，团队即可沿客户流程继续推进。","textPreview":"账号、户型、权限和服务配置准备就绪后，团队即可沿客户流程继续推进。","textChars":33,"textLines":1,"bbox":[54,150,1120,38]}
+{"kind":"textbox","id":"sh/4felwzu5","slide":18,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[80,263,44,18]}
+{"kind":"textbox","id":"sh/5gnmp4bq","slide":18,"text":"账号与服务","textPreview":"账号与服务","textChars":5,"textLines":1,"bbox":[144,244,172,26]}
+{"kind":"textbox","id":"sh/6hw3y9sb","slide":18,"text":"企业账号可正常使用，网络和服务连接有效。","textPreview":"企业账号可正常使用，网络和服务连接有效。","textChars":20,"textLines":1,"bbox":[144,276,438,28]}
+{"kind":"textbox","id":"sh/upg3i18r","slide":18,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[688,263,44,18]}
+{"kind":"textbox","id":"sh/1cr2tg72","slide":18,"text":"蓝牙测距（可选）","textPreview":"蓝牙测距（可选）","textChars":8,"textLines":1,"bbox":[752,244,172,26]}
+{"kind":"textbox","id":"sh/gbylkbqh","slide":18,"text":"使用兼容且已分配授权的设备；也可手工录入。","textPreview":"使用兼容且已分配授权的设备；也可手工录入。","textChars":21,"textLines":1,"bbox":[752,276,438,28]}
+{"kind":"textbox","id":"sh/to72pw76","slide":18,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[80,383,44,18]}
+{"kind":"textbox","id":"sh/snylgrql","slide":18,"text":"户型数据","textPreview":"户型数据","textChars":4,"textLines":1,"bbox":[144,364,172,26]}
+{"kind":"textbox","id":"sh/bi94zqp4","slide":18,"text":"墙体有效并形成闭合空间，方可进入对应设计流程。","textPreview":"墙体有效并形成闭合空间，方可进入对应设计流程。","textChars":23,"textLines":1,"bbox":[144,396,438,28]}
+{"kind":"textbox","id":"sh/nedoru9c","slide":18,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[688,383,44,18]}
+{"kind":"textbox","id":"sh/8zm5kzax","slide":18,"text":"AI 设计","textPreview":"AI 设计","textChars":5,"textLines":1,"bbox":[752,364,172,26]}
+{"kind":"textbox","id":"sh/90v6t4ri","slide":18,"text":"企业已开通权限，并具备可用点数和有效服务配置。","textPreview":"企业已开通权限，并具备可用点数和有效服务配置。","textChars":23,"textLines":1,"bbox":[752,396,438,28]}
+{"kind":"textbox","id":"sh/w36poza9","slide":18,"text":"5","textPreview":"5","textChars":1,"textLines":1,"bbox":[80,503,44,18]}
+{"kind":"textbox","id":"sh/x4f6x4re","slide":18,"text":"方案用途","textPreview":"方案用途","textChars":4,"textLines":1,"bbox":[144,484,172,26]}
+{"kind":"textbox","id":"sh/q5kna5sz","slide":18,"text":"用于概念表达、方案比较和客户沟通，不作为施工图。","textPreview":"用于概念表达、方案比较和客户沟通，不作为施工图。","textChars":24,"textLines":1,"bbox":[144,516,438,28]}
+{"kind":"textbox","id":"sh/szq9g3uh","slide":18,"text":"6","textPreview":"6","textChars":1,"textLines":1,"bbox":[688,503,44,18]}
+{"kind":"textbox","id":"sh/7yh8nytw","slide":18,"text":"数据访问","textPreview":"数据访问","textChars":4,"textLines":1,"bbox":[752,484,172,26]}
+{"kind":"textbox","id":"sh/6x8retcb","slide":18,"text":"员工按企业角色和本人权限访问客户与户型数据。","textPreview":"员工按企业角色和本人权限访问客户与户型数据。","textChars":22,"textLines":1,"bbox":[752,516,438,28]}
+{"kind":"textbox","id":"sh/h4jqtsby","slide":18,"text":"家客来 JIAKELAI  ·  产品边界","textPreview":"家客来 JIAKELAI  ·  产品边界","textChars":21,"textLines":1,"bbox":[54,680,420,18]}
+{"kind":"textbox","id":"sh/g3a9knud","slide":18,"text":"18","textPreview":"18","textChars":2,"textLines":1,"bbox":[1180,680,48,18]}
+{"kind":"notes","id":"nt/y5wne50z","slide":18,"text":"[Sources]\n- 家客来-客户演示稿-内容改进计划-2026-08.md\n- 家客来-产品说明书-内容优化版-16比9横版-2026-08.pdf\n- Current repository module inventories and runtime labels\n- Capability boundaries verified against current Mini Program, admin, formal surveying, and AI module documentation"}
+{"kind":"slide","id":"sl/nid43ytk","slide":19,"title":"现场演示","textShapes":19}
+{"kind":"textbox","id":"sh/9gb6xgbi","slide":19,"text":"现场演示","textPreview":"现场演示","textChars":4,"textLines":1,"bbox":[126,54,220,28]}
+{"kind":"textbox","id":"sh/8v2pobax","slide":19,"text":"接下来，用一位客户走完整流程","textPreview":"接下来，用一位客户走完整流程","textChars":14,"textLines":1,"bbox":[58,126,850,60]}
+{"kind":"textbox","id":"sh/vitozqt8","slide":19,"text":"从建档、量房到 AI 设计和团队接续，所有步骤围绕同一份客户资料推进。","textPreview":"从建档、量房到 AI 设计和团队接续，所有步骤围绕同一份客户资料推进。","textChars":35,"textLines":1,"bbox":[58,202,1080,36]}
+{"kind":"textbox","id":"sh/wj2psvat","slide":19,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[70,296,66,24]}
+{"kind":"textbox","id":"sh/jmd83atk","slide":19,"text":"创建客户档案","textPreview":"创建客户档案","textChars":6,"textLines":1,"bbox":[24,372,158,52]}
+{"kind":"textbox","id":"sh/cri1gnql","slide":19,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[268,296,66,24]}
+{"kind":"textbox","id":"sh/dsri9sr6","slide":19,"text":"进入正式量房","textPreview":"进入正式量房","textChars":6,"textLines":1,"bbox":[222,372,158,52]}
+{"kind":"textbox","id":"sh/rqp07290","slide":19,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[466,296,66,24]}
+{"kind":"textbox","id":"sh/0vi1k7qx","slide":19,"text":"保存正式户型","textPreview":"保存正式户型","textChars":6,"textLines":1,"bbox":[420,372,158,52]}
+{"kind":"textbox","id":"sh/et0jix8r","slide":19,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[664,296,66,24]}
+{"kind":"textbox","id":"sh/zu90b29c","slide":19,"text":"发起 AI 设计","textPreview":"发起 AI 设计","textChars":8,"textLines":1,"bbox":[618,372,158,52]}
+{"kind":"textbox","id":"sh/9kb2hcre","slide":19,"text":"5","textPreview":"5","textChars":1,"textLines":1,"bbox":[862,296,66,24]}
+{"kind":"textbox","id":"sh/x07i1cji","slide":19,"text":"查看方案成果","textPreview":"查看方案成果","textChars":6,"textLines":1,"bbox":[816,372,158,52]}
+{"kind":"textbox","id":"sh/vep0z21c","slide":19,"text":"6","textPreview":"6","textChars":1,"textLines":1,"bbox":[1060,296,66,24]}
+{"kind":"textbox","id":"sh/adgjqx0r","slide":19,"text":"查看团队接续","textPreview":"查看团队接续","textChars":6,"textLines":1,"bbox":[1014,372,158,52]}
+{"kind":"textbox","id":"sh/k3y1wri9","slide":19,"text":"您将看到：","textPreview":"您将看到：","textChars":5,"textLines":1,"bbox":[92,506,620,40]}
+{"kind":"textbox","id":"sh/j2p03m1o","slide":19,"text":"客户资料如何沉淀为正式户型，\n并继续生成可沟通、可优化的设计方案。","textPreview":"客户资料如何沉淀为正式户型， | 并继续生成可沟通、可优化的设计方案。","textChars":33,"textLines":2,"bbox":[92,550,1030,64]}
+{"kind":"textbox","id":"sh/i1gjuh03","slide":19,"text":"家客来 JIAKELAI  ·  客户演示稿  ·  2026.08","textPreview":"家客来 JIAKELAI  ·  客户演示稿  ·  2026.08","textChars":34,"textLines":1,"bbox":[58,678,520,18]}
+{"kind":"textbox","id":"sh/l8nitsja","slide":19,"text":"19","textPreview":"19","textChars":2,"textLines":1,"bbox":[1180,678,48,18]}
+{"kind":"image","id":"im/ja5836lw","slide":19,"name":"","bbox":[58,42,52,52]}
+{"kind":"notes","id":"nt/nid43ytk","slide":19,"text":"[Sources]\n- 家客来-客户演示稿-内容改进计划-2026-08.md\n- 家客来-产品说明书-内容优化版-16比9横版-2026-08.pdf\n- Current repository module inventories and runtime labels"}

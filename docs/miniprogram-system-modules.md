@@ -438,9 +438,12 @@ must update that ledger pair in the same change.
 - Workflow integration: with a valid `leadId`, or a `floorPlanId` that resolves to
   a lead, Mini Program generations explicitly continue the chosen shared
   `AiWorkflow`, reuse a unique customer/formal-plan match, or create a new one and
-  map to `base_render`, `perspective_upgrade`, or `soft_furnishing`. Successful
-  first base/soft-furnishing results become the workflow baseline; later results
-  at that stage stay candidates. The Mini Program can continue style/soft-
+  map to `base_render`, `perspective_upgrade`, or `soft_furnishing`. Once its
+  result image is persisted, a successful Mini Program run participates in the
+  same workflow synchronization as an Admin scenario: the first base/soft-
+  furnishing result becomes the workflow baseline and advances the stage;
+  later results at that stage stay candidates. A pending, failed, or image-less
+  task cannot advance the workflow. The Mini Program can continue style/soft-
   furnishing steps directly, while proposal and lighting hand off to Admin.
   Active-generation deduplication is scoped to workflow, stage, formal plan,
   target scope, and room, so different rooms may run concurrently without
@@ -557,6 +560,25 @@ must update that ledger pair in the same change.
   clipped Xiao K delivery character that excludes the source artwork's decorative
   frame. Actions, data, routes, permissions, and charging remain unchanged; native
   WeChat capsule/device capture is still the outstanding visual-QA evidence.
+- Result-image delivery correction (2026-08-12): task DTOs now return expiring,
+  tenant-signed same-origin URLs for every protected input/control/result
+  `MediaAsset`. When the platform intentionally keeps a GRS `http(s)` result instead
+  of transferring it, the Mini Program receives a signed task-result image route
+  that validates tenant/task ownership and streams the verified JPG/PNG bytes from
+  the server; it never asks the WeChat `<image>`, preview, album-save, or share paths
+  to load the unapproved provider host directly. Existing succeeded tasks such as
+  task `1071` recover after a detail reload and do not require regeneration or
+  another credit charge. Placeholder or invalid `MINIPROGRAM_API_PUBLIC_ORIGIN`
+  values fall back to the actual/forwarded request host, so a local `3005` build
+  cannot rewrite a valid signed image URL to `api.example.com`. The approved visual authority remains
+  `design-references/all-pages-ip-v3/15-ai-design-result-v3.png`; WXML/WXSS geometry,
+  actions, route, role/tenant access, workflow selection, charging, and the version-4
+  wall-graph contract are unchanged. Focused serializer/signature regression tests
+  verify protected assets, direct-provider results, and public-origin fallback. For
+  task `1071`, the previously returned unsigned asset request reproduced `401`, while
+  the same `1,496,827`-byte PNG returned `200 image/png` through signed delivery. A new native `390x844`
+  capture remains pending because the existing WeChat DevTools window exposes no
+  compatible automation endpoint.
 - Result-page fidelity review (2026-08-11):
   `design-references/all-pages-ip-v3/15-ai-design-result-v3.png` remains the sole
   visual authority. At the `390x844` baseline the delivery cue is compressed, the
@@ -768,17 +790,24 @@ must update that ledger pair in the same change.
   ledger, and existing-window WeChat DevTools/real-device Canvas verification
   remain mandatory. Other Mini Program routes are unchanged.
 - Cursor-lens rendering resilience (2026-08-12): while the bottom cursor is
-  being dragged, its approved upper-left Canvas lens stays mounted as a native
-  `cover-view` and switches only an explicit visible state. The first drag frame
-  keeps refreshing until that state is applied, preventing rapid movement or
-  delayed `setData` from suppressing the lens. Its Canvas scene, geometry,
-  snap labels, route, APIs, roles, v4 graph, and measurement audit are
-  unchanged.
+  being dragged, its approved upper-left lens is drawn as one Canvas panel,
+  including the centred green target and metadata footer. It has no overlapping
+  native `cover-view` container. The first drag frame keeps refreshing until
+  the lens state is applied, preventing rapid movement or delayed `setData`
+  from suppressing the lens. Its Canvas scene, geometry, snap labels, route,
+  APIs, roles, v4 graph, and measurement audit are unchanged.
 - Canvas cursor-drag lens coverage (2026-08-12): the same upper-left lens is
   also active while an operator grabs the current cursor in the Canvas and
-  drags out a wall preview. Canvas panning, pinch zooming, and opening moves do
-  not impersonate cursor drag and therefore do not show the lens. This changes
-  no geometry, route, API, role, v4 graph, or measurement audit.
+  drags out a wall preview. In this path the formal Canvas remains the only
+  owner of the green cursor and guides; the lightweight layer draws the lens
+  only, preventing a second bottom-dock drag cursor from appearing. The active
+  lens is retained across formal-canvas redraws, and it temporarily owns the
+  upper-left lane so the ordinary live-measurement bubble cannot overlap it.
+  Its lens centre and displayed X/Y always use the final formal preview/display
+  point after directional snapping, never the raw finger coordinate.
+  Canvas panning, pinch zooming, and opening moves do not impersonate cursor
+  drag and therefore do not show the lens. This changes no geometry, route,
+  API, role, v4 graph, or measurement audit.
 - Cursor release snap consistency (2026-08-12): the editor retains the last
   visible snapped cursor candidate through `touchend`. A visible outer-edge or
   outer-vertex snap therefore commits that same target instead of reclassifying
@@ -857,11 +886,17 @@ must update that ledger pair in the same change.
   wall graph, or measurement audit.
 - Data contract: `FloorPlan.layoutData` is only `{ version: 4,
   measurementMode: 'surveying', surveyGraph }`; graph units are millimetres.
-- Canvas drawing refinement (2026-08-06): formal wall outlines, active red
-  measurement edges, cursor crosshairs, and closure/alignment guides use thinner
-  drafting strokes. Blue coordinate, cursor, and alignment guides use the denser
-  `[8, 6]` dash rhythm; the green closure cue retains `[12, 10]`. The Xiao K
-  connector retains its independent `[5, 4]` rhythm and 1.75px stroke. Live
+- Canvas drawing refinement (2026-08-06; guide-state layering updated
+  2026-08-12): formal wall outlines, active red measurement edges, cursor
+  crosshairs, and closure/alignment guides use thinner drafting strokes. The
+  blue `[8, 6]` crosshair represents only the last committed point: it is absent
+  before the first wall is committed, stays at the previous point while the
+  preview cursor moves, and advances only after commit. Free dragging no longer
+  paints a following blue crosshair. Wall, vertex, and axis snaps use orange
+  `[8, 6]` guides, while closure paths use orange `[12, 10]`; both cover only the
+  constrained axis/path and are cleared on release, cancellation, reset,
+  undo/redo, or state change. The Xiao K connector retains its independent green
+  `[5, 4]` rhythm and 1.75px stroke. Live
   dimensions for the current unfinished wall chain use blue 14px values on
   neutral-grey backing plates and sit 32px beyond the active measured face.
   Closed-space `opening-segment`, `room-clear`, and `building-overall`
@@ -872,9 +907,10 @@ must update that ledger pair in the same change.
   allows. Equal 4px, 60-degree endpoint slashes cross each dimension-line intersection
   at their centres; permanent annotations have no arrows. The active red
   measurement edge is redrawn after guides and the cursor, so it remains the
-  topmost wall indication at an intersection. This is presentation-only: the page
-  route, APIs, roles, v4 wall-graph contract, BLE audit, and editor interactions
-  are unchanged.
+  topmost wall indication at an intersection. The latest state authority is
+  `design-references/surveying/cursor-guide-state-reference-20260812.jpg`.
+  This is presentation-only: the page route, APIs, roles, v4 wall-graph
+  contract, BLE audit, and editor interactions are unchanged.
 - Top measurement card contrast correction (2026-08-07): the compact white
   measurement card now explicitly renders live lengths in dark navy, uses a
   matching low-contrast divider, and uses a darker orange for actionable
@@ -1131,10 +1167,11 @@ must update that ledger pair in the same change.
   roles, version-4 data, and BLE audit payloads are unchanged.
 - Outer-edge zoom alignment correction (2026-08-10): formal Canvas wall
   thickness now stays proportional to `thicknessMm` at every supported viewport
-  scale. The visible outside wall face, blue outer-snap axes, alignment guide,
+  scale. The visible outside wall face, orange outer-snap state guide, alignment guide,
   and preview endpoint therefore keep the same Canvas coordinate before and
   after pinch zoom instead of separating when the wall shell reaches a fixed
-  pixel-width clamp. This changes rendering and editor hit/overlay geometry
+  pixel-width clamp. Snap-state guides are orange while the committed cursor
+  crosshair remains blue. This changes rendering and editor hit/overlay geometry
   only; wall-graph coordinates, persisted thickness, routes, APIs, roles, and
   measurement audits are unchanged.
 - Outer-vertex drop stability correction (2026-08-11): when the drag lens has
@@ -1191,11 +1228,11 @@ must update that ledger pair in the same change.
   routes, APIs, roles, version-4 persistence, millimetre geometry, and
   measurement audits are unchanged. A fresh `390x844` capture is pending until
   the existing WeChat DevTools window exposes a compatible automation endpoint.
-- Shared-wall inset cursor correction (2026-08-10): whenever the formal Canvas
-  shows an active cursor, that topology target is the sole owner of the blue
-  full-canvas crosshair. A preview whose effective measured endpoint is inset
-  from a shared wall no longer draws a second crosshair at the red measurement
-  endpoint, so the two indicators cannot separate as zoom increases. The
+- Shared-wall inset cursor correction (2026-08-10; guide ownership updated
+  2026-08-12): the blue full-canvas crosshair is owned only by the last committed
+  display point. A preview whose effective measured endpoint is inset from a
+  shared wall no longer draws a second crosshair at the red measurement endpoint,
+  so the two indicators cannot separate as zoom increases. The
   effective length, red measurement edge, closure topology, routes, APIs,
   roles, version-4 data, and measurement audits are unchanged.
 - Collinear closure preview and wall normalization (2026-08-10): a closure

@@ -170,7 +170,7 @@ function GenerationTile({
       <div className="flex size-[216px] shrink-0 items-center justify-center rounded-lg bg-[#2a2b31]">
         <div className="relative flex size-16 items-center justify-center">
           <Loader2 className="absolute inset-0 size-16 animate-spin text-[#6245ff]" strokeWidth={1.25} />
-          <span className="text-xs font-medium text-[#ededf2]">生成中</span>
+          <span className="text-xs font-medium text-[#ededf2]">{generation.retryCount > 0 ? '重试中' : '生成中'}</span>
         </div>
       </div>
     );
@@ -181,6 +181,7 @@ function GenerationTile({
         <FileImage className="mb-3 size-6 text-red-400" />
         <span className="text-sm font-medium text-white">生成失败</span>
         <span className="mt-1 line-clamp-2 text-xs text-[#8d8d94]">{generation.error || '供应商未返回结果'}</span>
+        {generation.retryCount > 0 ? <span className="mt-1 text-[11px] text-[#77777e]">已重试 {generation.retryCount} 次</span> : null}
       </div>
     );
   }
@@ -224,6 +225,7 @@ export function CreationWorkspace() {
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateDetail | null>(null);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [assisting, setAssisting] = useState(false);
   const [attachGeneration, setAttachGeneration] = useState<CreationGeneration | null>(null);
@@ -292,6 +294,32 @@ export function CreationWorkspace() {
   const estimatedCredits = unitPrice * count;
   const hasEnabledPrice = unitPrice > 0;
   const previewReference = previewReferenceIndex === null ? null : assets[previewReferenceIndex];
+  const selectedBatchTier = selectedBatch?.parameterSnapshot.resolutionTier
+    || selectedBatch?.parameterSnapshot.size?.toUpperCase()
+    || '1K';
+  const selectedBatchReferenceIds = selectedBatch?.referenceAssetIds || [];
+  const composerChangedFromSelectedBatch = Boolean(selectedBatch && (
+    prompt !== selectedBatch.prompt
+    || negativePrompt !== (selectedBatch.negativePrompt || '')
+    || modelProfileId !== selectedBatch.modelProfileId
+    || aspectRatio !== (selectedBatch.parameterSnapshot.aspectRatio || '1:1')
+    || resolutionTier !== selectedBatchTier
+    || count !== selectedBatch.requestedCount
+    || assets.map((asset) => asset.id).join(',') !== selectedBatchReferenceIds.join(',')
+    || (resolutionTier === 'CUSTOM' && (
+      customWidth !== (selectedBatch.parameterSnapshot.width || 1024)
+      || customHeight !== (selectedBatch.parameterSnapshot.height || 1024)
+    ))
+    || (selectedTemplate?.id || '') !== (selectedBatch.parameterSnapshot.templateId || '')
+  ));
+  const currentBatchRetryable = selectedBatch?.status === 'failed' || selectedBatch?.status === 'partial';
+  const shouldRetryCurrentBatch = Boolean(currentBatchRetryable && !composerChangedFromSelectedBatch);
+  const currentBatchActive = selectedBatch?.status === 'pending' || selectedBatch?.status === 'processing';
+  const failedGenerationCount = selectedBatch?.generations.filter((generation) => generation.status === 'failed').length || 0;
+  const actionEstimatedCredits = shouldRetryCurrentBatch ? unitPrice * failedGenerationCount : estimatedCredits;
+  // The task summary is a submitted-batch snapshot, not the mutable composer draft.
+  const taskReferenceAssetId = selectedBatch?.referenceAssetIds[0] || selectedTask?.referenceAssetIds[0];
+  const taskReferencePreviewUrl = taskReferenceAssetId ? `/api/ai/assets/${taskReferenceAssetId}/image` : null;
 
   useEffect(() => {
     const viewport = conversationViewportRef.current;
@@ -537,6 +565,29 @@ export function CreationWorkspace() {
     }
   };
 
+  const retryCurrentBatch = async () => {
+    if (!selectedTask || !selectedBatch || !currentBatchRetryable) return;
+    if ((bootstrap?.account.availableBalance || 0) < actionEstimatedCredits) {
+      return notify.error(`AI 点数不足，本次重试需要 ${actionEstimatedCredits} 点`);
+    }
+    setRetrying(true);
+    const loadingId = notify.loading(selectedBatch.status === 'partial' ? '正在重试当前轮失败项' : '正在重试当前轮');
+    try {
+      const payload = await readJson(await fetch(`/api/ai/creation/tasks/${selectedTask.id}/batches/${selectedBatch.id}/retry`, {
+        method: 'POST',
+      }));
+      const retriedTask = payload.data.task as CreationTask;
+      setTasks((current) => [retriedTask, ...current.filter((item) => item.id !== retriedTask.id)]);
+      setBootstrap((current) => current ? { ...current, account: payload.data.account } : current);
+      notify.success(`已在第 ${selectedBatch.sequence} 轮重试 ${payload.data.retriedCount} 个失败项`, { id: loadingId });
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '当前轮重试失败', { id: loadingId });
+      await loadTasks(true);
+    } finally {
+      setRetrying(false);
+    }
+  };
+
   const deleteTask = async (task: CreationTask) => {
     if (!window.confirm(`确认删除“${task.title}”及其历史记录吗？`)) return;
     try {
@@ -672,9 +723,9 @@ export function CreationWorkspace() {
           {hasTaskStage ? (
             <>
               <section aria-label="当前任务摘要" className="absolute left-1/2 top-7 z-20 flex h-[72px] w-[calc(100%-32px)] max-w-[1080px] -translate-x-1/2 items-start gap-5">
-                {assets[0] ? (
+                {taskReferencePreviewUrl ? (
                   <div className="h-[60px] w-12 shrink-0 -rotate-[4deg] overflow-hidden rounded-md border border-white/10 bg-[#2a2b31] shadow-[0_8px_20px_rgba(0,0,0,0.25)]">
-                    <img src={assets[0].previewUrl} alt="任务参考图" className="h-full w-full object-cover" />
+                    <img src={taskReferencePreviewUrl} alt="任务参考图" className="h-full w-full object-cover" />
                   </div>
                 ) : (
                   <div className="flex h-[60px] w-12 shrink-0 items-center justify-center rounded-md bg-[#24252b] text-[#777780]"><Images className="size-5" /></div>
@@ -749,7 +800,15 @@ export function CreationWorkspace() {
                 </div>
                 <div className="absolute bottom-2 left-3 flex h-[30px] items-center gap-2 lg:bottom-2 lg:left-3">
                   <button type="button" onClick={() => setPromptExpanded(true)} className="flex h-[30px] items-center gap-1.5 rounded-md bg-[#2a2b31] px-3 text-xs text-[#d5d5da] hover:bg-[#34353c] hover:text-white"><Pencil className="size-3.5" />重新编辑</button>
-                  <button type="button" disabled={generating} onClick={submitGeneration} className="flex h-[30px] items-center gap-1.5 rounded-md bg-[#2a2b31] px-3 text-xs text-[#d5d5da] hover:bg-[#34353c] hover:text-white disabled:opacity-50">{generating ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}再次生成</button>
+                  <button
+                    type="button"
+                    disabled={generating || retrying || currentBatchActive}
+                    onClick={shouldRetryCurrentBatch ? retryCurrentBatch : submitGeneration}
+                    className="flex h-[30px] items-center gap-1.5 rounded-md bg-[#2a2b31] px-3 text-xs text-[#d5d5da] hover:bg-[#34353c] hover:text-white disabled:opacity-50"
+                  >
+                    {generating || retrying || currentBatchActive ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+                    {retrying ? '重试中' : currentBatchActive ? '生成中' : shouldRetryCurrentBatch ? (selectedBatch?.status === 'partial' ? '重试失败项' : '重试本轮') : currentBatchRetryable ? '生成新一轮' : '再次生成'}
+                  </button>
                   {selectedTask ? <button type="button" onClick={() => deleteTask(selectedTask)} className="flex h-[30px] items-center gap-1.5 rounded-md bg-[#2a2b31] px-3 text-xs text-[#ff6f75] hover:bg-[#34353c]"><Trash2 className="size-3.5" />删除</button> : null}
                 </div>
                 <time className="absolute bottom-2 right-[25%] text-[11px] text-[#666f91]" dateTime={selectedBatch?.createdAt}>{selectedBatch?.createdAt ? formatDateTime(selectedBatch.createdAt) : null}</time>
@@ -764,7 +823,7 @@ export function CreationWorkspace() {
 
           <section style={{ backgroundImage: "url('/ai-studio/creation-dialog-frame.png')" }} className={cn('absolute left-4 right-4 z-20 grid w-auto translate-x-0 grid-rows-[minmax(140px,1fr)_auto] gap-3 overflow-visible bg-[#1b1c20]/95 bg-[length:100%_100%] bg-center bg-no-repeat px-4 pb-4 pt-5 sm:left-1/2 sm:right-auto sm:w-[calc(100%-96px)] sm:max-w-[1080px] sm:-translate-x-1/2 lg:w-[calc(100%-96px)] lg:max-w-[1080px] lg:gap-2 lg:px-[18px] lg:pb-4 lg:pt-[18px]', hasTaskStage ? 'top-[150px] min-h-[500px] sm:top-[220px] sm:min-h-[400px] lg:bottom-[30px] lg:top-auto lg:h-[212px] lg:min-h-0 lg:grid-rows-[122px_48px]' : 'top-[180px] min-h-[440px] sm:top-[280px] sm:min-h-[350px] lg:top-[365px] lg:h-[251px] lg:min-h-0 lg:grid-rows-[161px_48px]')}>
             <button type="button" onClick={() => assets.length ? setPromptExpanded(true) : fileInputRef.current?.click()} aria-label="编辑参考图片" title={assets.length ? '编辑参考图片' : '上传参考图片'} className="absolute -top-14 left-0 flex size-12 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/15 lg:-left-[60px] lg:top-0"><Pencil className="size-5" /></button>
-            <div className="absolute -top-[30px] right-[30px] flex items-center gap-1.5 text-sm text-[#b3b3b3]"><span className="flex size-5 items-center justify-center rounded-full bg-[#7047ff] text-[10px] font-semibold text-white">AI</span>预计消耗 <strong className="text-[#f0d567]">{estimatedCredits}</strong> 点</div>
+            <div className="absolute -top-[30px] right-[30px] flex items-center gap-1.5 text-sm text-[#b3b3b3]"><span className="flex size-5 items-center justify-center rounded-full bg-[#7047ff] text-[10px] font-semibold text-white">AI</span>预计消耗 <strong className="text-[#f0d567]">{actionEstimatedCredits}</strong> 点</div>
             <div className="grid min-h-0 grid-cols-[64px_minmax(0,1fr)] gap-3 sm:grid-cols-[84px_minmax(0,1fr)]">
               <div
                 className="relative flex h-[98px] items-center justify-center overflow-visible"
@@ -819,10 +878,10 @@ export function CreationWorkspace() {
                         title="添加参考图"
                         disabled={uploading}
                         onClick={() => fileInputRef.current?.click()}
-                        className="absolute left-0 top-1.5 flex h-[78px] w-[61px] items-center justify-center rounded-md border-2 border-[#7047ff] bg-[#222226] text-white shadow-[0_0_22px_rgba(112,71,255,0.18)] transition-[transform,background-color] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-1 hover:bg-[#29282f] disabled:opacity-40"
-                        style={{ transform: `translate3d(${referenceStackExpanded ? assets.length * 65 : Math.max(44, assets.length * 4 + 38)}px, 0, 0) rotate(-8deg)`, zIndex: referenceStackExpanded ? assets.length + 2 : 20 }}
+                        className="absolute bottom-0 left-0 flex size-[38px] items-center justify-center rounded-full border-2 border-[#5a48cf] bg-[#1a1a1c] text-white shadow-[0_5px_14px_rgba(0,0,0,0.32)] transition-[transform,filter] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:scale-95 disabled:opacity-40"
+                        style={{ transform: `translate3d(${referenceStackExpanded ? assets.length * 65 - 6 : 38}px, 0, 0)`, zIndex: referenceStackExpanded ? assets.length + 2 : 20 }}
                       >
-                        {uploading ? <Loader2 className="size-5 animate-spin" /> : <Plus className="size-6" />}
+                        {uploading ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-5" />}
                       </button>
                     ) : null}
                   </div>
@@ -833,7 +892,7 @@ export function CreationWorkspace() {
               </div>
               <div className="relative min-h-0 pt-0.5">
                 {selectedTemplate ? <div className="mb-1 flex items-center gap-2 text-[11px] text-[#9f8cff]"><PanelsTopLeft className="size-3" /><span className="truncate">{selectedTemplate.name || '已选择提示词模板'}</span><button type="button" onClick={() => setSelectedTemplate(null)} title="取消模板"><X className="size-3" /></button></div> : null}
-                <Textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={model?.description || '描述空间、风格、材质、光线与构图，或从提示词模板中选择'} className="h-full min-h-0 resize-none border-0 bg-transparent p-0 text-base leading-6 text-[#b3b3b3] shadow-none placeholder:text-[#77777e] focus-visible:ring-0" />
+                <Textarea value={prompt} onChange={(event) => setPrompt(event.target.value)} placeholder={model?.description || '描述空间、风格、材质、光线与构图，或从提示词模板中选择'} className="scrollbar-hide h-full min-h-0 resize-none border-0 bg-transparent p-0 text-base leading-6 text-[#b3b3b3] shadow-none placeholder:text-[#77777e] focus-visible:ring-0" />
               </div>
             </div>
 
@@ -866,7 +925,15 @@ export function CreationWorkspace() {
                 </div>
               ) : null}
               <button type="button" onClick={() => setTemplateOpen(true)} className="flex h-10 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-[#37373b] bg-[#222226] px-3 text-sm text-[#f5f5f5] hover:bg-[#2a2a2f] sm:w-[124px]"><PanelsTopLeft className="size-4" />提示词模板</button>
-              <button type="button" disabled={generating || !prompt.trim() || !modelProfileId || !hasEnabledPrice} onClick={submitGeneration} className="col-span-2 ml-0 flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#9447ff] to-[#5f2cff] px-3 text-base font-normal text-white shadow-[0_0_24px_rgba(104,49,255,0.2)] hover:brightness-110 disabled:cursor-not-allowed disabled:bg-[#6b6b6b] disabled:bg-none disabled:opacity-100 sm:ml-auto sm:w-[152px]">{generating ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}开始生图</button>
+              <button
+                type="button"
+                disabled={generating || retrying || currentBatchActive || !prompt.trim() || !modelProfileId || !hasEnabledPrice}
+                onClick={shouldRetryCurrentBatch ? retryCurrentBatch : submitGeneration}
+                className="col-span-2 ml-0 flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#9447ff] to-[#5f2cff] px-3 text-base font-normal text-white shadow-[0_0_24px_rgba(104,49,255,0.2)] hover:brightness-110 disabled:cursor-not-allowed disabled:bg-[#6b6b6b] disabled:bg-none disabled:opacity-100 sm:ml-auto sm:w-[152px]"
+              >
+                {generating || retrying || currentBatchActive ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
+                {retrying ? '重试中' : currentBatchActive ? '生成中' : shouldRetryCurrentBatch ? (selectedBatch?.status === 'partial' ? '重试失败项' : '重试本轮') : hasTaskStage ? '开始新一轮' : '开始生图'}
+              </button>
             </div>
           </section>
         </main>

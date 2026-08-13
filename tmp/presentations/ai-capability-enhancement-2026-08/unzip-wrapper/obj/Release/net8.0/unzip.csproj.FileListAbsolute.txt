@@ -1,0 +1,15 @@
+C:\Users\Administrator\CodexTmp\ai-capability-enhancement-2026-08\bin\unzip.exe
+C:\Users\Administrator\CodexTmp\ai-capability-enhancement-2026-08\bin\unzip.deps.json
+C:\Users\Administrator\CodexTmp\ai-capability-enhancement-2026-08\bin\unzip.runtimeconfig.json
+C:\Users\Administrator\CodexTmp\ai-capability-enhancement-2026-08\bin\unzip.dll
+C:\Users\Administrator\CodexTmp\ai-capability-enhancement-2026-08\bin\unzip.pdb
+G:\workspace\向总\Smart-Floor-Planner\tmp\presentations\ai-capability-enhancement-2026-08\unzip-wrapper\obj\Release\net8.0\unzip.GeneratedMSBuildEditorConfig.editorconfig
+G:\workspace\向总\Smart-Floor-Planner\tmp\presentations\ai-capability-enhancement-2026-08\unzip-wrapper\obj\Release\net8.0\unzip.AssemblyInfoInputs.cache
+G:\workspace\向总\Smart-Floor-Planner\tmp\presentations\ai-capability-enhancement-2026-08\unzip-wrapper\obj\Release\net8.0\unzip.AssemblyInfo.cs
+G:\workspace\向总\Smart-Floor-Planner\tmp\presentations\ai-capability-enhancement-2026-08\unzip-wrapper\obj\Release\net8.0\unzip.csproj.CoreCompileInputs.cache
+G:\workspace\向总\Smart-Floor-Planner\tmp\presentations\ai-capability-enhancement-2026-08\unzip-wrapper\obj\Release\net8.0\unzip.sourcelink.json
+G:\workspace\向总\Smart-Floor-Planner\tmp\presentations\ai-capability-enhancement-2026-08\unzip-wrapper\obj\Release\net8.0\unzip.dll
+G:\workspace\向总\Smart-Floor-Planner\tmp\presentations\ai-capability-enhancement-2026-08\unzip-wrapper\obj\Release\net8.0\refint\unzip.dll
+G:\workspace\向总\Smart-Floor-Planner\tmp\presentations\ai-capability-enhancement-2026-08\unzip-wrapper\obj\Release\net8.0\unzip.pdb
+G:\workspace\向总\Smart-Floor-Planner\tmp\presentations\ai-capability-enhancement-2026-08\unzip-wrapper\obj\Release\net8.0\unzip.genruntimeconfig.cache
+G:\workspace\向总\Smart-Floor-Planner\tmp\presentations\ai-capability-enhancement-2026-08\unzip-wrapper\obj\Release\net8.0\ref\unzip.dll

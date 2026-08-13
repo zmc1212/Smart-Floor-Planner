@@ -440,6 +440,7 @@ Page({
     this.cursorDragCtx = null;
     this.cursorDragCanvasDpr = sysInfo.pixelRatio || 1;
     this.cursorDragCanvasPoint = null;
+    this.cursorDragCanvasShowCursor = true;
     this.cursorDragClientPoint = null;
     this.cursorDragCandidate = null;
     this.cursorDragStartPoint = null;
@@ -450,6 +451,7 @@ Page({
     this.viewportInteractionAwaitingHandoff = false;
     this.cursorLensLastUpdateAt = 0;
     this.cursorLensScene = null;
+    this.cursorLensMeta = null;
     this.canvasCursorLensActive = false;
     this.rpxScale = rpxScale;
     this.cursorLensRect = {
@@ -1416,7 +1418,7 @@ Page({
     this.viewportInteractionFrameQueue = null;
   },
 
-  queueCursorDragCanvas(point) {
+  queueCursorDragCanvas(point, options) {
     if (!point || !this.canvasRect) return;
     if (this.transientCanvasMode === 'viewport') return;
     this.transientCanvasMode = 'cursor';
@@ -1424,6 +1426,7 @@ Page({
       x: point.x - this.canvasRect.left,
       y: point.y - this.canvasRect.top
     };
+    this.cursorDragCanvasShowCursor = !options || options.showCursor !== false;
     if (!this.cursorDragCanvas || !this.cursorDragCtx || this.cursorDragAnimationFrame !== null) return;
 
     const render = () => {
@@ -1435,8 +1438,11 @@ Page({
         this.cursorDragCanvasPoint,
         {
           dpr: this.cursorDragCanvasDpr || 1,
+          showCursor: this.cursorDragCanvasShowCursor,
           lensScene: this.cursorLensScene,
-          lensRect: this.cursorLensRect
+          lensRect: this.cursorLensRect,
+          lensMeta: this.cursorLensMeta,
+          snapGuide: this.cursorDragSnapGuide
         }
       );
     };
@@ -1457,8 +1463,11 @@ Page({
     }
     this.cursorDragAnimationFrame = null;
     this.cursorDragCanvasPoint = null;
+    this.cursorDragCanvasShowCursor = true;
     this.cursorDragClientPoint = null;
+    this.cursorDragSnapGuide = null;
     this.cursorLensScene = null;
+    this.cursorLensMeta = null;
     if (this.transientCanvasMode === 'cursor' || force) {
       this.transientCanvasMode = null;
     }
@@ -2298,7 +2307,10 @@ Page({
       this.cursorPlacementState = cursorPlacementState;
     }
     const renderData = this.buildCanvasRenderData(floor, session);
-    const topMetricSuppressed = cursorPlacementState !== 'placed';
+    // A canvas-originated wall drag keeps the formal placement state as
+    // `placed`, but its lens occupies the same upper-left lane. Keep the
+    // regular live-measurement bubble out of that lane for the whole drag.
+    const topMetricSuppressed = cursorPlacementState !== 'placed' || this.canvasCursorLensActive;
     const selectedOpening = this.buildSelectedOpening(floor, session.selectedOpeningId);
     const requestedComponentSpecMode = (extraData && extraData.componentSpecMode) || this.data.componentSpecMode;
     const componentState = this.buildComponentEditorState(floor, selectedOpening, requestedComponentSpecMode);
@@ -2363,7 +2375,10 @@ Page({
       // A cursor-drag frame can finish after its drop event on native Canvas.
       // Clear the transient layer after the formal redraw so it cannot cover a
       // closed room with an obsolete frame after snapping to a wall.
-      if (this.data.cursorPlacementState !== 'dragging') {
+      // Canvas-originated wall drags do not change cursorPlacementState to
+      // `dragging`. They still own an active lens, so clearing this layer here
+      // would erase it after every formal-canvas redraw and make it flicker.
+      if (!this.isCursorLensActive()) {
         this.clearCursorDragCanvas({ force: true });
       }
       if (this.data.cursorPlacementState === 'awaitingWallDrop') {
@@ -3205,6 +3220,7 @@ Page({
   },
 
   resetCursorPlacement() {
+    this.clearCursorDragCanvas({ force: true });
     const floor = surveyGraph.getActiveFloor(this.draft);
     if (!floor.walls.length) {
       this.cursorPlacementState = 'placed';
@@ -3355,17 +3371,25 @@ Page({
       })
       : null;
 
+    const snapLabel = targetType === 'vertex'
+      ? (snapLine === 'outer' ? '外边顶点吸附' : '顶点吸附')
+      : (targetType === 'alignment'
+        ? (snapLine === 'outer' ? '外边顶点延长吸附' : '顶点延长吸附')
+      : (targetType === 'wall'
+        ? (snapLine === 'outer' ? '外边吸附' : '内边吸附')
+        : '自由放置'));
+    const xLabel = `X ${Math.round(point.xMm)}`;
+    const yLabel = `Y ${Math.round(point.yMm)}`;
+    this.cursorLensMeta = {
+      snapLabel,
+      coordinateLabel: `${xLabel} / ${yLabel}`
+    };
+
     return {
       cursorLensVisible: true,
-      cursorLensXLabel: `X ${Math.round(point.xMm)}`,
-      cursorLensYLabel: `Y ${Math.round(point.yMm)}`,
-      cursorLensSnapLabel: targetType === 'vertex'
-        ? (snapLine === 'outer' ? '外边顶点吸附' : '顶点吸附')
-        : (targetType === 'alignment'
-          ? (snapLine === 'outer' ? '外边顶点延长吸附' : '顶点延长吸附')
-        : (targetType === 'wall'
-          ? (snapLine === 'outer' ? '外边吸附' : '内边吸附')
-          : '自由放置')),
+      cursorLensXLabel: xLabel,
+      cursorLensYLabel: yLabel,
+      cursorLensSnapLabel: snapLabel,
       cursorLensSnapType: targetType || 'none'
     };
   },
@@ -3382,7 +3406,8 @@ Page({
     const lensData = shouldUpdateLens
       ? this.buildCursorLens(pointMm, 'free')
       : null;
-    this.queueCursorDragCanvas(clientPoint);
+    this.cursorDragSnapGuide = null;
+    this.queueCursorDragCanvas(clientPoint, { showCursor: false });
     if (!lensData) return;
 
     this.cursorLensLastUpdateAt = now;
@@ -3398,6 +3423,54 @@ Page({
       cursorLensActive: false,
       cursorLensVisible: false
     });
+  },
+
+  buildCursorDragSnapGuide(candidate) {
+    if (!candidate || !candidate.pointMm || candidate.type === 'free' || candidate.type === 'none') {
+      return null;
+    }
+
+    const point = this.mmToCanvasPoint(candidate.pointMm);
+    if (candidate.type === 'alignment') {
+      return {
+        axis: candidate.axis === 'x' ? 'x' : 'y',
+        point
+      };
+    }
+    if (candidate.type === 'vertex') {
+      return {
+        axis: 'both',
+        point
+      };
+    }
+
+    const floor = surveyGraph.getActiveFloor(this.draft);
+    let wall = candidate.wallId ? surveyGraph.getWall(floor, candidate.wallId) : null;
+    if (!wall && candidate.nodeId) {
+      wall = (floor.walls || []).find((item) => (
+        item.startNodeId === candidate.nodeId || item.endNodeId === candidate.nodeId
+      )) || null;
+    }
+    if (!wall) {
+      return null;
+    }
+
+    const geometry = surveyGraph.buildWallRenderGeometry(floor, wall);
+    const startNode = surveyGraph.getNode(floor, wall.startNodeId);
+    const endNode = surveyGraph.getNode(floor, wall.endNodeId);
+    const startMm = candidate.snapLine === 'outer' && geometry && geometry.outerStart
+      ? geometry.outerStart
+      : startNode;
+    const endMm = candidate.snapLine === 'outer' && geometry && geometry.outerEnd
+      ? geometry.outerEnd
+      : endNode;
+    if (!startMm || !endMm) {
+      return null;
+    }
+    return {
+      startPoint: this.mmToCanvasPoint(startMm),
+      endPoint: this.mmToCanvasPoint(endMm)
+    };
   },
 
   resolveCursorDragPoint(clientPoint, includeLens) {
@@ -3418,6 +3491,7 @@ Page({
       })
       : null;
     this.cursorDragClientPoint = { x: displayPoint.x, y: displayPoint.y };
+    this.cursorDragSnapGuide = this.buildCursorDragSnapGuide(candidate);
     const dragData = {
       dragCursorX: displayPoint.x,
       dragCursorY: displayPoint.y
@@ -3484,6 +3558,7 @@ Page({
 
   applyDraft(nextDraft, options) {
     const opts = options || {};
+    this.clearCursorDragCanvas({ force: true });
     if (opts.recordHistory) {
       this.history.undo.push(opts.historyDraft ? surveyGraph.cloneDraft(opts.historyDraft) : surveyGraph.cloneDraft(this.draft));
       if (this.history.undo.length > MAX_HISTORY) {
@@ -4244,7 +4319,11 @@ Page({
       const _session = _floor.session;
       const snappedMm = this.buildGuideSnapPoint(_floor, _session, currentMm);
       this.draft = surveyGraph.startPreview(this.draft, snappedMm);
-      this.updateCanvasCursorLens(point, snappedMm);
+      const previewFloor = surveyGraph.getActiveFloor(this.draft);
+      const previewPointMm = surveyGraph.getCursorDisplayPoint(previewFloor, previewFloor.session)
+        || previewFloor.session.previewPoint
+        || snappedMm;
+      this.updateCanvasCursorLens(point, previewPointMm);
       this.syncFromDraft();
       return;
     }
@@ -4527,6 +4606,7 @@ Page({
   },
 
   onUndo() {
+    this.clearCursorDragCanvas({ force: true });
     if (!this.history.undo.length) return;
     this.history.redo.push(surveyGraph.cloneDraft(this.draft));
     const restoredDraft = this.history.undo.pop();
@@ -4544,6 +4624,7 @@ Page({
   },
 
   onRedoTap() {
+    this.clearCursorDragCanvas({ force: true });
     if (!this.history.redo.length) return;
     this.history.undo.push(surveyGraph.cloneDraft(this.draft));
     this.draft = this.history.redo.pop();
@@ -4749,6 +4830,7 @@ Page({
 
 
   onRedo() {
+    this.clearCursorDragCanvas({ force: true });
     if (!this.history.redo.length) return;
     this.history.undo.push(surveyGraph.cloneDraft(this.draft));
     this.draft = this.history.redo.pop();

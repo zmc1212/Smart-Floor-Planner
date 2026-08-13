@@ -189,14 +189,20 @@ export class AiWorkflowRepository {
     return { workflow: updated, generation: selected };
   }
 
-  /** Applies the existing automatic stage progression after a scenario result settles. */
-  async applySucceededScenarioGeneration(generationId: bigint) {
+  /**
+   * Applies automatic stage progression after a persisted workflow result settles.
+   *
+   * Both Admin scenario runs and Mini Program runs share an AiWorkflow. A Mini
+   * Program result must therefore be selected and advanced only after its output
+   * has been persisted, just like an Admin scenario result.
+   */
+  async applySucceededWorkflowGeneration(generationId: bigint) {
     const generationRows = await this.transaction
       .select()
       .from(aiGenerations)
       .where(and(
         eq(aiGenerations.id, generationId),
-        eq(aiGenerations.type, 'scenario'),
+        inArray(aiGenerations.type, ['scenario', 'miniprogram']),
         eq(aiGenerations.status, 'succeeded'),
         isNull(aiGenerations.deletedAt)
       ))

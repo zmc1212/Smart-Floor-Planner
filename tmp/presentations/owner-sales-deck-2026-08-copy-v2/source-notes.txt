@@ -1,0 +1,4 @@
+Source deck: output/pdf/家客来-装修公司老板销售版-客户量房AI设计闭环-2026-08.pptx
+Visible product screenshots and factual operating boundaries remain inherited from the source deck and its existing [Sources] speaker notes.
+Slide 14 restored asset: design-references/presentation-ai-demo-2026-08/owner-sales-modern-cream-v2.jpg, the exact existing modern-cream demonstration asset already used in the deck.
+No external research or new commercial metrics were introduced in this edit.

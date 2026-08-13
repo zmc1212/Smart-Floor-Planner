@@ -34,8 +34,7 @@ test('formal surveying uses a persistent state-following guide mode instead of a
   assert.match(editorScript, /this\.surveyGuideCanvasModel = \{/);
   assert.match(editorScript, /drawSurveyGuideCanvas\(\)/);
   assert.doesNotMatch(editorWxml, /<cover-view[\s\S]*class="survey-guide-overlay"/);
-  assert.match(editorWxml, /class="cursor-lens \{\{cursorLensActive && cursorLensVisible \? 'cursor-lens-visible' : 'cursor-lens-hidden'\}\} \{\{cursorLensSnapType\}\}"/);
-  assert.doesNotMatch(editorWxml, /<cover-view wx:if="\{\{cursorLensVisible\}\}" class="cursor-lens/);
+  assert.doesNotMatch(editorWxml, /class="cursor-lens/);
   assert.doesNotMatch(editorWxml, /<cover-view[\s\S]*class="cursor-drag-lens-layer"/);
   assert.match(editorWxml, /id="cursor-drag-control"/);
   assert.match(editorScript, /query\.select\('#cursor-drag-control'\)/);
@@ -44,10 +43,9 @@ test('formal surveying uses a persistent state-following guide mode instead of a
   assert.match(editorScript, /const movedWithoutTouchMove = !wasDragging && dragWasPending/);
   assert.match(editorScript, /const shouldUpdateLens = !wasDragging \|\| !this\.data\.cursorLensVisible \|\|/);
   assert.match(editorScript, /isCursorLensActive\(\) \{[\s\S]*this\.cursorPlacementState === 'dragging' \|\| this\.canvasCursorLensActive/);
-  assert.match(editorScript, /this\.draft = surveyGraph\.startPreview\(this\.draft, snappedMm\);[\s\S]*this\.updateCanvasCursorLens\(point, snappedMm\);/);
+  assert.match(editorScript, /this\.draft = surveyGraph\.startPreview\(this\.draft, snappedMm\);[\s\S]*surveyGraph\.getCursorDisplayPoint\(previewFloor, previewFloor\.session\)[\s\S]*this\.updateCanvasCursorLens\(point, previewPointMm\);/);
   assert.match(editorScript, /if \(movedWall\) \{[\s\S]*this\.clearCanvasCursorLens\(\);/);
-  assert.match(editorWxss, /\.cursor-lens-visible\s*\{[\s\S]*opacity:\s*1;[\s\S]*visibility:\s*visible;/);
-  assert.match(editorWxss, /\.cursor-lens-hidden\s*\{[\s\S]*opacity:\s*0;[\s\S]*visibility:\s*hidden;/);
+  assert.match(editorScript, /lensMeta: this\.cursorLensMeta/);
   assert.doesNotMatch(editorScript, /SURVEYING_ONBOARDING_STEPS|onOnboardingNext|onOnboardingSkip/);
   assert.doesNotMatch(editorWxml, /onboardingProgress|onboarding-next|survey-onboarding/);
   assert.doesNotMatch(editorWxml, /class="survey-guide-layer/);
@@ -123,13 +121,10 @@ test('selected walls do not replace the right rail with a contextual action pane
   assert.doesNotMatch(editorWxss, /object-tools|tool-helper/);
 });
 
-test('cursor magnifier uses the compact green cross placement marker', () => {
-  assert.match(editorWxml, /class="cursor-lens-cross horizontal"/);
-  assert.match(editorWxml, /class="cursor-lens-cross vertical"/);
-  assert.doesNotMatch(editorWxml, /cursor-lens-target/);
-  assert.match(editorWxss, /\.cursor-lens-cross\s*\{[\s\S]*background:\s*#22c55e;/);
-  assert.match(editorWxss, /\.cursor-lens-cross\.horizontal\s*\{[\s\S]*width:\s*24px;[\s\S]*height:\s*2px;/);
-  assert.match(editorWxss, /\.cursor-lens-cross\.vertical\s*\{[\s\S]*width:\s*2px;[\s\S]*height:\s*24px;/);
+test('cursor magnifier uses one Canvas panel instead of a second native cover layer', () => {
+  assert.doesNotMatch(editorWxml, /cursor-lens/);
+  assert.doesNotMatch(editorWxss, /\.cursor-lens/);
+  assert.match(editorScript, /this\.cursorLensMeta = \{[\s\S]*coordinateLabel:/);
 });
 
 test('formal surveying fixed chrome follows the compact high-fidelity reference geometry', () => {
@@ -243,11 +238,22 @@ test('bottom-dock guide targets hand off from canvas to the native control layer
 });
 
 test('cursor placement removes the stale top measurement shell', () => {
-  assert.match(editorScript, /const topMetricSuppressed = cursorPlacementState !== 'placed'/);
+  assert.match(editorScript, /const topMetricSuppressed = cursorPlacementState !== 'placed' \|\| this\.canvasCursorLensActive/);
   assert.match(editorScript, /topMetricVisible:\s*!topMetricSuppressed && renderData\.topMetricVisible/);
   assert.match(editorScript, /cursorPlacementState:\s*'dragging',[\s\S]*topMetricVisible:\s*false,[\s\S]*topMetricLength:\s*''/);
   assert.match(editorWxml, /topMetricVisible && topMetricLength && cursorPlacementState === 'placed'/);
   assert.match(editorWxss, /background:\s*rgba\(255, 255, 255, 0\.96\);\s*color:\s*#17345e;/);
   assert.match(editorWxss, /\.top-measure-bubble \.top-measure-angle\s*\{[\s\S]*?border-left-color:\s*rgba\(23, 52, 94, 0\.16\);[\s\S]*?color:\s*#17345e;/);
   assert.match(editorWxss, /\.top-measure-bubble \.top-measure-angle\.actionable\s*\{[\s\S]*?color:\s*#c4550f;/);
+});
+
+test('canvas cursor lens survives formal redraws and owns the upper-left measurement lane', () => {
+  assert.match(
+    editorScript,
+    /Canvas-originated wall drags[\s\S]*?if \(!this\.isCursorLensActive\(\)\) \{[\s\S]*?this\.clearCursorDragCanvas\(\{ force: true \}\);/
+  );
+  assert.match(
+    editorScript,
+    /topMetricSuppressed = cursorPlacementState !== 'placed' \|\| this\.canvasCursorLensActive/
+  );
 });

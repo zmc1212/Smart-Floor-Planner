@@ -1,0 +1,6 @@
+Source deck: output/pdf/家客来-客户演示稿-AI能力增强版-多模板与小程序对比-图片比例修正版-2026-08.pptx
+Product truth: current repository module inventories for customer records, formal surveying, Mini Program AI workflows, enterprise credits, role permissions, and product boundaries.
+Product screenshots: inherited from the source deck. They are retained only where they represent the current customer, surveying, or AI task flow.
+AI demonstration images: design-references/presentation-ai-demo-2026-08/02-modern-cream.jpg, 03-modern-french.jpg, 04-modern-chinese.jpg, 06-compare-before-cream.jpg, and 07-compare-cream-material.jpg.
+Prompt-library evidence: internal active revision published 2026-08-01 with 960 enabled templates. Template quantity appears only in the appendix.
+No customer outcome, conversion-rate, implementation-duration, or price figure is invented. The pilot and purchasing slides are proposals and configuration checklists, not contractual claims.

@@ -70,6 +70,7 @@ function toDtoGeneration(generation: AiGenerationRecord) {
     imageUrl,
     error: generation.errorMessage,
     provider: generation.provider,
+    retryCount: generation.retryCount,
     model: asRecord(generation.input).creationParameterSnapshot
       ? String(asRecord(asRecord(generation.input).creationParameterSnapshot).remoteModel || '') || undefined
       : undefined,
@@ -322,7 +323,6 @@ async function persistProviderResult(input: {
     mimeType,
     buffer: Buffer.from(await response.arrayBuffer()),
     originalUrl: image,
-    storageProviderKey: 'local',
   });
 }
 

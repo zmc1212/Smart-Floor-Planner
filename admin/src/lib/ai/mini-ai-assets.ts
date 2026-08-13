@@ -8,6 +8,10 @@ function signaturePayload(assetId: string, enterpriseId: string, expires: number
   return `${assetId}:${enterpriseId}:${expires}`;
 }
 
+function taskResultSignaturePayload(taskId: string, enterpriseId: string, expires: number) {
+  return `task-result:${taskId}:${enterpriseId}:${expires}`;
+}
+
 export function createMiniAiAssetSignature(assetId: string, enterpriseId: string, expires: number) {
   return crypto.createHmac('sha256', secret()).update(signaturePayload(assetId, enterpriseId, expires)).digest('hex');
 }
@@ -20,6 +24,22 @@ export function verifyMiniAiAssetSignature(input: {
 }) {
   if (!Number.isFinite(input.expires) || input.expires < Math.floor(Date.now() / 1000)) return false;
   const expected = createMiniAiAssetSignature(input.assetId, input.enterpriseId, input.expires);
+  if (expected.length !== input.signature.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(input.signature));
+}
+
+export function createMiniAiTaskResultSignature(taskId: string, enterpriseId: string, expires: number) {
+  return crypto.createHmac('sha256', secret()).update(taskResultSignaturePayload(taskId, enterpriseId, expires)).digest('hex');
+}
+
+export function verifyMiniAiTaskResultSignature(input: {
+  taskId: string;
+  enterpriseId: string;
+  expires: number;
+  signature: string;
+}) {
+  if (!Number.isFinite(input.expires) || input.expires < Math.floor(Date.now() / 1000)) return false;
+  const expected = createMiniAiTaskResultSignature(input.taskId, input.enterpriseId, input.expires);
   if (expected.length !== input.signature.length) return false;
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(input.signature));
 }
@@ -39,8 +59,16 @@ export function getMiniAiPublicRequestUrl(request: Request) {
   const configuredOrigin = process.env.MINIPROGRAM_API_PUBLIC_ORIGIN?.trim();
 
   if (configuredOrigin) {
-    applyOrigin(requestUrl, new URL(configuredOrigin));
-    return requestUrl.toString();
+    try {
+      const origin = new URL(configuredOrigin);
+      const isExampleOrigin = origin.hostname === 'example.com' || origin.hostname.endsWith('.example.com');
+      if (!isExampleOrigin) {
+        applyOrigin(requestUrl, origin);
+        return requestUrl.toString();
+      }
+    } catch {
+      // Invalid or placeholder configuration falls back to the actual request host.
+    }
   }
 
   const forwardedHost = firstHeaderValue(request.headers.get('x-forwarded-host'));
@@ -66,6 +94,24 @@ export function getSignedMiniAiAssetUrl(input: {
   const signature = createMiniAiAssetSignature(input.assetId, input.enterpriseId, expires);
   const url = new URL(
     `/api/miniprogram/ai/assets/${input.assetId}/image`,
+    getMiniAiPublicRequestUrl(input.request)
+  );
+  url.searchParams.set('tenant', input.enterpriseId);
+  url.searchParams.set('expires', String(expires));
+  url.searchParams.set('signature', signature);
+  return url.toString();
+}
+
+export function getSignedMiniAiTaskResultUrl(input: {
+  request: Request;
+  taskId: string;
+  enterpriseId: string;
+  ttlSeconds?: number;
+}) {
+  const expires = Math.floor(Date.now() / 1000) + (input.ttlSeconds || 3600);
+  const signature = createMiniAiTaskResultSignature(input.taskId, input.enterpriseId, expires);
+  const url = new URL(
+    `/api/miniprogram/ai/tasks/${input.taskId}/image`,
     getMiniAiPublicRequestUrl(input.request)
   );
   url.searchParams.set('tenant', input.enterpriseId);

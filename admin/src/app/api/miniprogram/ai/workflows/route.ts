@@ -83,6 +83,11 @@ export async function GET(request: Request) {
             planUpdatedAt: plan?.updatedAt,
           })
         : undefined;
+      // Existing Mini Program results created before workflow synchronization
+      // was introduced may not have a global selectedGenerationId yet. When a
+      // caller supplies an exact formal-plan target, return its verified source
+      // result as the selected task rather than hiding a completed first round.
+      const selectedTask = selected || resolvedTargetContext?.sourceTask;
       return {
           id: workflow.id,
           title: workflow.title,
@@ -102,7 +107,7 @@ export async function GET(request: Request) {
               : '请到后台继续深化',
           lead: workflow.lead,
           sourceFloorPlanId: workflow.sourceFloorPlanId,
-          selectedTask: selected ? serializePostgresMiniAiTask(selected, request) : undefined,
+          selectedTask: selectedTask ? serializePostgresMiniAiTask(selectedTask, request) : undefined,
           latestTask: latest ? serializePostgresMiniAiTask(latest, request) : undefined,
           targetContext: resolvedTargetContext ? {
             status: resolvedTargetContext.status,
