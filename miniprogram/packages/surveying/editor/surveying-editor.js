@@ -1,5 +1,6 @@
 const app = getApp();
 const surveyGraph = require('../../../utils/surveyWallGraph.js');
+const surveySnapEngine = require('../../../utils/survey/snap/snap-engine.js');
 const surveyCanvasRenderer = require('../utils/surveyCanvasRenderer.js');
 const surveyViewportInteraction = require('../utils/surveyViewportInteraction.js');
 const bluetooth = require('../../../utils/bluetooth.js');
@@ -669,6 +670,16 @@ Page({
   },
 
   buildFormalCloudLayoutData(status) {
+    if (status === 'completed') {
+      const validation = surveyGraph.validateSurveyDraft(this.draft, { mode: 'full' });
+      if (!validation.valid) {
+        const first = validation.errors[0];
+        const error = new Error(first ? first.message : '正式量房墙图未通过完整校验');
+        error.code = first ? first.code : 'SURVEY_VALIDATION_FAILED';
+        error.validation = validation;
+        throw error;
+      }
+    }
     return surveyLayout.createFormalSurveyLayout(this.draft, status);
   },
 
@@ -3415,23 +3426,42 @@ Page({
     };
   },
 
-  getCursorPlacementCandidate(clientPoint) {
+  getCursorPlacementCandidate(clientPoint, options) {
     const floor = surveyGraph.getActiveFloor(this.draft);
     const rawPoint = this.canvasPointToMm(clientPoint);
     if (!floor || !rawPoint) return { type: 'none', pointMm: null };
+    const opts = options || {};
+    const viewport = this.getViewport();
+    const searchToleranceMm = opts.useHysteresis
+      ? surveySnapEngine.SNAP_RELEASE_PX / Math.max(0.000001, viewport.scale)
+      : surveyGraph.CLOSE_TOLERANCE_MM;
     const target = surveyGraph.getCursorPlacementTarget(
       floor,
       rawPoint,
-      surveyGraph.CLOSE_TOLERANCE_MM
+      searchToleranceMm
     );
+    let resolvedTarget = target;
+    if (opts.useHysteresis) {
+      const snapCandidate = target && ['vertex', 'wall', 'alignment'].includes(target.type)
+        ? target
+        : null;
+      const snap = surveySnapEngine.resolveSnap({
+        scale: viewport.scale,
+        rawPointMm: rawPoint,
+        candidate: snapCandidate,
+        previousLock: this.cursorSnapLock
+      });
+      this.cursorSnapLock = snap.lock;
+      resolvedTarget = snap.candidate || { type: 'free', pointMm: rawPoint };
+    }
     return {
-      type: target.type,
-      pointMm: target.pointMm,
-      nodeId: target.nodeId || '',
-      wallId: target.wallId || '',
-      snapLine: target.snapLine || '',
-      axis: target.axis || '',
-      referencePoint: target.referencePoint || null
+      type: resolvedTarget.type,
+      pointMm: resolvedTarget.pointMm,
+      nodeId: resolvedTarget.nodeId || '',
+      wallId: resolvedTarget.wallId || '',
+      snapLine: resolvedTarget.snapLine || '',
+      axis: resolvedTarget.axis || '',
+      referencePoint: resolvedTarget.referencePoint || null
     };
   },
 
@@ -3551,7 +3581,7 @@ Page({
   },
 
   resolveCursorDragPoint(clientPoint, includeLens) {
-    const candidate = this.getCursorPlacementCandidate(clientPoint);
+    const candidate = this.getCursorPlacementCandidate(clientPoint, { useHysteresis: true });
     // 自由放置必须严格跟随手指。只有真正命中顶点或墙体时，才把
     // 十字光标移动到吸附后的坐标，避免一次 mm 往返换算造成初始跳位。
     const isSnapped = candidate && (
@@ -4802,6 +4832,7 @@ Page({
     this.cursorDragTouchId = touch.identifier === undefined ? null : touch.identifier;
     this.cursorDragStartPoint = this.getCursorDragTouch(e, false);
     this.cursorDragCandidate = null;
+    this.cursorSnapLock = null;
     this.cursorLensLastUpdateAt = 0;
     this.clearCursorDragCanvas();
     this.refreshCursorControlRect();
@@ -4853,8 +4884,9 @@ Page({
     this.cursorDragStartPoint = null;
     if (!wasDragging && !movedWithoutTouchMove) return;
     this.clearCursorDragCanvas();
-    const candidate = this.cursorDragCandidate || this.getCursorPlacementCandidate(releasePoint);
+    const candidate = this.cursorDragCandidate || this.getCursorPlacementCandidate(releasePoint, { useHysteresis: true });
     this.cursorDragCandidate = null;
+    this.cursorSnapLock = null;
 
     if (!candidate || candidate.type === 'none' || !candidate.pointMm) {
       this.cursorPlacementState = 'awaitingWallDrop';
@@ -4895,6 +4927,7 @@ Page({
     this.cursorDragPending = false;
     this.cursorDragTouchId = null;
     this.cursorDragStartPoint = null;
+    this.cursorSnapLock = null;
     if (!wasDragging) return;
     this.clearCursorDragCanvas();
     this.cursorPlacementState = 'awaitingWallDrop';

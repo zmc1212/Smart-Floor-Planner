@@ -91,7 +91,7 @@ test('canvas cursor drags reuse the lens layer without painting a second drag cu
 test('cursor release commits the last visible snap candidate instead of reclassifying the raw touchend point', () => {
   assert.match(
     editorScript,
-    /this\.cursorDragCandidate = isSnapped && candidate\.pointMm[\s\S]*?const candidate = this\.cursorDragCandidate \|\| this\.getCursorPlacementCandidate\(releasePoint\);/
+    /this\.cursorDragCandidate = isSnapped && candidate\.pointMm[\s\S]*?const candidate = this\.cursorDragCandidate \|\| this\.getCursorPlacementCandidate\(releasePoint, \{ useHysteresis: true \}\);/
   );
   assert.match(editorScript, /this\.cursorDragCandidate = null;[\s\S]*?this\.cursorDragPending = true;/);
 });

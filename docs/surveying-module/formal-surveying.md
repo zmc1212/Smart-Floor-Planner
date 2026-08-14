@@ -1,5 +1,43 @@
 # 正式量房数据合同
 
+## CAD 内核、事务与诊断合同（2026-08-14）
+
+- `miniprogram/utils/surveyWallGraph.js` 是唯一公共墙图入口，保留原 CommonJS 合同；新增
+  `validateSurveyDraft(draft, { mode: 'quick' | 'full' })`，统一返回
+  `{ valid, errors, warnings, stats }`。每个错误包含稳定 `code`、数据 `path` 和中文
+  `message`。
+- 事务使用一次草稿克隆运行复杂墙体/门窗变更、既有指标刷新、门窗迁移/规范化、节点清理
+  和 `quick` 校验。任何抛错都不得改变调用方草稿；临时事务标记不可枚举，不进入 JSON。
+  `TopologyIndex` 只在内存中维护 `nodesById`、`wallsById`、`wallsByNodeId`、
+  `spacesByWallId` 和 `openingsByWallId` 等映射，绝不持久化。
+- `quick` 检查 ID/引用、零长度墙、闭合空间、门窗范围、会话引用和孤立节点；`full` 额外
+  检查重复墙、未节点化内部交点、自交空间、异常共享墙，并以临时双向 Half-Edge 按
+  `atan2` 环游提取有界 Face。Face 只与既有 `spaces[]` 的数量、边界覆盖和拓扑面积对照；
+  不一致会阻止 `completed` 保存，开放墙链只报告 `DANGLE_WALL` warning。
+- `full`/Face 禁止在页面启动、普通草稿恢复、拖动或每帧渲染中运行。Face、TopologyIndex、
+  Snap 锁和事务标记均不属于持久化合同。SnapEngine 的 `16px` 获取/`26px` 释放容差按
+  viewport 换算，最终坐标仍为整数毫米。
+- 顶层正式合同仍严格为 `{ version: 4, measurementMode: 'surveying', surveyGraph }`；
+  路由、API、角色/租户权限、BLE 协议、测量日志、数据库结构、WXML/WXSS 和 Canvas
+  读模型均未改变。尺寸约束 Solver、对角线求解和持久化 DCEL 仍不在当前范围。
+
+## H5 浏览器算法验证台（2026-08-14）
+
+`surveying-h5/` 直接消费生产 `miniprogram/packages/surveying/editor/surveying-editor.js`、
+`miniprogram/utils/surveyWallGraph.js` 与生产 Canvas 渲染器。H5 只允许提供平台桥、
+自动化入口和本地验证界面，不得复制另一套拓扑、闭合、复尺或尺寸算法。导入/导出仍是
+`{ version: 4, measurementMode: 'surveying', surveyGraph }`；浏览器本地草稿和模拟 BLE
+读数不得上传、不得冒充正式测量审计或真实硬件证据。H5 通过只说明共享算法在浏览器
+Canvas 和确定性事件下的结果，不替代微信原生组件、页面栈、BLE、传感器和真机验证。
+H5 场景目录当前按单空间轮廓、连续测量、共墙多空间、交点与分支、墙体与构件提供
+23 个代表场景。用户提供的 `5faec65980dc0f15a9f19e98d98a5dfe.jpg` 映射到
+`staggered-adjacent`：底边对齐、上沿错层、共享竖墙，定向断言为 8 段墙、2 个闭合空间，
+空间尺寸分别为 `2761×3223 mm`、`3082×4120 mm`。所有目录场景必须通过生产墙图的
+`full` 校验。浏览器自动适配必须按固定测距栏的实际占用预留底部安全区，确保闭合墙与
+尺寸链完整可见；T 型三房按左房、右上房、右下房沿共墙逐间闭合，并校验三向共享交点，
+防止隔墙测量内缩在 T 交点墙面形成三角缺口。曲墙、圆弧、独立楼栋和楼层高差仍不属于
+version-4 二维墙图能力。
+
 ## 纯前端几何算法撤回（2026-08-13）
 
 此前接入的 `surveyGeometryPipeline.js`、入口草稿 `normalizeTopology()`、草稿更新审计、
@@ -123,7 +161,7 @@ T 型节点形成后，分支墙实体覆盖的完整墙厚必须从测量读数
 
 开放墙链悬空端点的光标重置不得改变墙链行进方向对应的测量侧。重新吸附源墙终点时继承源墙 `measurementSide`；重新吸附源墙起点时翻转 `left`/`right`，使反向遍历仍保持同一物理墙侧。内边和外边顶点只改变可见吸附语义，不得让下一转角相对连续拖墙翻面，也不得给既有源墙新增一个墙厚的端点内缩。闭合边界起测和墙中 T 型拓扑继续使用各自既有规则；该约束不增加持久化字段。
 
-T 型/十字连接中的端点内缩属于测量合同，不是实体裁剪合同。`measurementStartInsetMm`/`measurementEndInsetMm` 只用于有效测量端点、尺寸和门窗沿墙位置；Canvas 实体墙、命中多边形及实体布尔并集必须从 `startNodeId`/`endNodeId` 对应的原始拓扑节点生成。斜墙投影产生的亚像素近重合连接点必须在实体轮廓拼接前归并，且归并容差不得达到可见像素尺度。删除 T 型或十字分支后，必须按该节点仍连接的墙重新计算同源切分段内缩，并保持门窗绝对沿墙坐标不变。
+T 型/十字连接中的端点内缩首先属于测量合同。`measurementStartInsetMm`/`measurementEndInsetMm` 用于有效测量端点、尺寸和门窗沿墙位置；同源切分后的被贯穿源墙段仍从 `startNodeId`/`endNodeId` 对应的原始拓扑节点生成 Canvas 实体、命中多边形和布尔并集，确保源墙交点没有背景空洞。没有 `topologySourceWallId` 的新拉分支墙及预览若存在端点内缩，其实体与命中范围必须改用有效端点，使分支墙停在源墙远侧墙面，而不是从原墙内边或拓扑节点穿入源墙。`selectionPolygon` 则从拓扑跨度出发，按端点处非共线相邻墙的实际实体占用范围裁切并使用垂直端帽；它不得直接复用测量内缩，也不得继承实体墙斜接点，从而让普通转角、T 型、十字和房间分割交点只保留真实相交墙体的中性墙色。斜墙投影产生的亚像素近重合连接点必须在实体轮廓拼接前归并，且归并容差不得达到可见像素尺度。删除 T 型或十字分支后，必须按该节点仍连接的墙重新计算同源切分段内缩，并保持门窗绝对沿墙坐标不变。
 
 实体布尔并集仍是墙体覆盖和外轮廓的几何依据。原生 Canvas 必须沿用上一稳定 Git 版本的闭环绘制契约：闭合墙和开放墙分别从各自分类后的 `rings` 一次性填色，完整 `wallSolidPlan.rings` 一次性闭合描边。不得逐个填充输入矩形或 `joinPolygons`，不得以墙色设备像素扫描线 `fillRect()` 重画交点，也不得逐段描绘 `segments`；这些额外路径会在混合闭合/开放 T 型和边角处造成颜色所有权冲突，并随平移后的像素采样表现为随机缺口。正式场景、平移/缩放轻量场景及光标放大镜必须使用同一组并集闭环。这项表现层约束不改变 version-4 拓扑、房间面、测量数值或保存合同。
 

@@ -57,22 +57,47 @@ function snapPoint(point) {
   };
 }
 
+function offsetPoint(point, offsetX, offsetY) {
+  if (!point) return point;
+  return {
+    x: Number(point.x) + offsetX,
+    y: Number(point.y) + offsetY
+  };
+}
+
+function offsetPolygon(points, offsetX, offsetY) {
+  return (points || []).map((point) => offsetPoint(point, offsetX, offsetY));
+}
+
+function offsetWall(wall, offsetX, offsetY) {
+  if (!wall) return wall;
+  return Object.assign({}, wall, {
+    start: offsetPoint(wall.start, offsetX, offsetY),
+    end: offsetPoint(wall.end, offsetX, offsetY),
+    outerStart: offsetPoint(wall.outerStart, offsetX, offsetY),
+    outerEnd: offsetPoint(wall.outerEnd, offsetX, offsetY),
+    polygon: offsetPolygon(wall.polygon, offsetX, offsetY)
+  });
+}
+
 function segmentKey(start, end) {
   const first = pointKey(start);
   const second = pointKey(end);
   return first < second ? `${first}|${second}` : `${second}|${first}`;
 }
 
-function pointOnSegment(point, start, end) {
+function pointOnSegment(point, start, end, tolerance) {
+  const allowedDistance = Number.isFinite(tolerance) ? tolerance : EPSILON * 10;
   const lengthSquared = (end.x - start.x) ** 2 + (end.y - start.y) ** 2;
-  if (lengthSquared <= EPSILON * EPSILON) return distance(point, start) <= EPSILON;
+  if (lengthSquared <= EPSILON * EPSILON) return distance(point, start) <= allowedDistance;
   const t = ((point.x - start.x) * (end.x - start.x) + (point.y - start.y) * (end.y - start.y)) / lengthSquared;
-  if (t < -EPSILON || t > 1 + EPSILON) return false;
+  const parameterTolerance = allowedDistance / Math.max(Math.sqrt(lengthSquared), EPSILON);
+  if (t < -parameterTolerance || t > 1 + parameterTolerance) return false;
   const projection = {
     x: start.x + (end.x - start.x) * t,
     y: start.y + (end.y - start.y) * t
   };
-  return distance(point, projection) <= EPSILON * 10;
+  return distance(point, projection) <= allowedDistance;
 }
 
 function pointInPolygon(point, polygon) {
@@ -167,7 +192,13 @@ function buildJoinPolygons(walls) {
   });
   const joins = [];
   endpoints.forEach((joint) => {
-    const incident = geometryWalls.filter((wall) => pointOnSegment(joint, wall.start, wall.end));
+    // Endpoint keys are canonicalized on the 0.01px grid. Use the same
+    // sub-pixel tolerance when resolving incident walls; the previous
+    // 0.001px check could reject a mathematically shared endpoint after a
+    // viewport projection and leave two independent rectangle rings.
+    const incident = geometryWalls.filter((wall) => (
+      pointOnSegment(joint, wall.start, wall.end, VERTEX_SNAP * 2)
+    ));
     if (incident.length < 2) return;
     const points = [joint];
     incident.forEach((wall) => {
@@ -381,7 +412,18 @@ function stitchRings(segments) {
 
 function createWallSolidPlan(input) {
   const options = input || {};
-  const sourceWalls = options.walls || [];
+  const inputWalls = options.walls || [];
+  const anchorWall = inputWalls.find((wall) => (
+    wall && Array.isArray(wall.polygon) && wall.polygon.length && wall.polygon[0]
+  ));
+  const anchor = anchorWall
+    ? { x: Number(anchorWall.polygon[0].x) || 0, y: Number(anchorWall.polygon[0].y) || 0 }
+    : { x: 0, y: 0 };
+  // Vertex snapping must use wall-local coordinates. Snapping absolute Canvas
+  // coordinates makes a pure pan change the rounding phase, which can split a
+  // closed-room or T-junction union into a different set of rings after the
+  // formal frame replaces the gesture frame.
+  const sourceWalls = inputWalls.map((wall) => offsetWall(wall, -anchor.x, -anchor.y));
   const sourcePolygons = sourceWalls
     .map((wall) => normalizePolygon(wall && wall.polygon))
     .filter((polygon) => polygon.length >= 3);
@@ -399,11 +441,14 @@ function createWallSolidPlan(input) {
   const pieces = splitEdges(polygons);
   const segments = canonicalizeSegmentVertices(classifyBoundaryPieces(pieces, polygons, scale));
   return {
-    polygons,
-    joinPolygons,
+    polygons: polygons.map((polygon) => offsetPolygon(polygon, anchor.x, anchor.y)),
+    joinPolygons: joinPolygons.map((polygon) => offsetPolygon(polygon, anchor.x, anchor.y)),
     sourcePolygonCount: sourcePolygons.length,
-    rings: stitchRings(segments),
-    segments
+    rings: stitchRings(segments).map((ring) => offsetPolygon(ring, anchor.x, anchor.y)),
+    segments: segments.map((segment) => ({
+      start: offsetPoint(segment.start, anchor.x, anchor.y),
+      end: offsetPoint(segment.end, anchor.x, anchor.y)
+    }))
   };
 }
 

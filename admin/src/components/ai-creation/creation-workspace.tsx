@@ -288,6 +288,7 @@ function BatchActionPanel({
 
 export function CreationWorkspace() {
   const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [tasks, setTasks] = useState<CreationTask[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState('');
   const [historyQuery, setHistoryQuery] = useState('');
@@ -330,9 +331,17 @@ export function CreationWorkspace() {
   const conversationViewportRef = useRef<HTMLDivElement>(null);
 
   const loadBootstrap = useCallback(async () => {
-    const payload = await readJson(await fetch('/api/ai/creation/bootstrap'));
-    setBootstrap(payload.data);
-    setModelProfileId((current) => current || payload.data.models?.[0]?.id || '');
+    try {
+      const payload = await readJson(await fetch('/api/ai/creation/bootstrap'));
+      if (!payload.data) throw new Error('AI 创作台初始化数据为空');
+      setBootstrap(payload.data);
+      setBootstrapError(null);
+      setModelProfileId((current) => current || payload.data.models?.[0]?.id || '');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '加载 AI 创作台失败';
+      setBootstrapError(message);
+      throw error;
+    }
   }, []);
 
   const loadTasks = useCallback(async (silent = false) => {
@@ -348,6 +357,13 @@ export function CreationWorkspace() {
 
   useEffect(() => {
     Promise.all([loadBootstrap(), loadTasks()]).catch((error) => {
+      notify.error(error instanceof Error ? error.message : '加载创作台失败');
+    });
+  }, [loadBootstrap, loadTasks]);
+
+  const retryBootstrap = useCallback(() => {
+    setBootstrapError(null);
+    void Promise.all([loadBootstrap(), loadTasks()]).catch((error) => {
       notify.error(error instanceof Error ? error.message : '加载创作台失败');
     });
   }, [loadBootstrap, loadTasks]);
@@ -722,6 +738,28 @@ export function CreationWorkspace() {
   }, [tasks, historyQuery]);
 
   if (!bootstrap) {
+    if (bootstrapError) {
+      const message = bootstrapError === 'Please select an enterprise first'
+        ? '请先在后台选择企业，再打开 AI 创作台。'
+        : bootstrapError === 'Unauthorized'
+          ? '登录状态已失效，请重新登录后再试。'
+          : bootstrapError;
+      return (
+        <div className="flex h-screen items-center justify-center bg-[#16171b] px-6 text-[#f6f7fb]">
+          <div role="alert" className="w-full max-w-md rounded-2xl border border-white/10 bg-[#202127] p-6 shadow-2xl">
+            <div className="mb-3 flex items-center gap-3">
+              <div className="flex size-9 items-center justify-center rounded-full bg-[#7047ff]/15 text-[#9b82ff]"><Sparkles className="size-4" /></div>
+              <h1 className="text-base font-semibold">AI 创作台暂不可用</h1>
+            </div>
+            <p className="text-sm leading-6 text-[#b3b3b3]">{message}</p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button type="button" onClick={retryBootstrap} className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#7047ff] px-4 text-sm font-medium text-white hover:bg-[#805cff]"><RefreshCw className="size-4" />重试</button>
+              <Link href="/ai-studio/scenarios" className="inline-flex h-9 items-center rounded-lg border border-white/10 px-4 text-sm text-[#d7d7dc] hover:bg-white/5">返回 AI 工作台</Link>
+            </div>
+          </div>
+        </div>
+      );
+    }
     return <div className="flex h-screen items-center justify-center bg-[#16171b] text-sm text-[#b3b3b3]"><Loader2 className="mr-2 size-5 animate-spin text-[#7047ff]" />加载 AI 创作台</div>;
   }
 

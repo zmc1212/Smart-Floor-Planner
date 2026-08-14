@@ -248,6 +248,15 @@ function assertMatrixPassed(failures, cases, label) {
   );
 }
 
+function assertFullShadowMatches(draft) {
+  const validation = surveyGraph.validateSurveyDraft(draft, { mode: 'full' });
+  assert.equal(
+    validation.valid,
+    true,
+    validation.errors.map((error) => `${error.code}@${error.path}`).join(', ')
+  );
+}
+
 function buildTMatrix(sourceType) {
   const cases = [];
   ROTATIONS.forEach((rotation) => {
@@ -350,6 +359,7 @@ function executeTScenario(scenario) {
       `source wall solid lost ${missingSamples.length} junction samples`
     );
   }
+  assertFullShadowMatches(draft);
   return { draft, sourceWallId, junctionNodeId, beforeSourceScene };
 }
 

@@ -126,6 +126,38 @@ function createAlignedAdjacentRoomDraft() {
   return surveyGraph.confirmClosure(draft);
 }
 
+function createClosedPolygonDraft(points) {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, points[0]);
+  points.slice(1).forEach((point) => {
+    const preview = surveyGraph.startPreview(draft, point);
+    const floor = surveyGraph.getActiveFloor(preview);
+    draft = surveyGraph.commitPreviewLength(
+      preview,
+      floor.session.previewLengthMm,
+      'manual'
+    );
+  });
+  return surveyGraph.confirmClosure(draft);
+}
+
+function createPartitionedRectangleDraft() {
+  let draft = createClosedRectangleDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 1500, yMm: 0 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: 1500, yMm: 2000 }, 2000);
+  return surveyGraph.confirmClosure(draft);
+}
+
 function normalizeRingStart(ring) {
   if (!Array.isArray(ring) || !ring.length) return ring || [];
   const startIndex = ring.reduce((bestIndex, point, index) => {
@@ -1971,6 +2003,247 @@ test('a mixed closed/open T junction keeps separate stable union-ring colour own
     )),
     false,
     'wall junctions must not be recoloured by device-pixel repair strips'
+  );
+});
+
+test('an outward T branch body starts at the source wall far face', () => {
+  let draft = createClosedRectangleDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const sourceWall = floor.walls[0];
+  const sourceStart = surveyGraph.getNode(floor, sourceWall.startNodeId);
+  const sourceEnd = surveyGraph.getNode(floor, sourceWall.endNodeId);
+  const junctionPoint = {
+    xMm: Math.round((sourceStart.xMm + sourceEnd.xMm) / 2),
+    yMm: Math.round((sourceStart.yMm + sourceEnd.yMm) / 2)
+  };
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    junctionPoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  const previewDraft = surveyGraph.startPreview(
+    draft,
+    { xMm: junctionPoint.xMm, yMm: junctionPoint.yMm - 2000 }
+  );
+  const previewFloor = surveyGraph.getActiveFloor(previewDraft);
+  const previewScene = createScene(previewDraft);
+  assert.ok((previewFloor.session.previewMeasurementStartInsetMm || 0) > 0);
+  assert.deepEqual(previewScene.previewWall.solidStartPoint, previewScene.previewWall.startPoint);
+  draft = surveyGraph.commitPreviewLength(
+    previewDraft,
+    previewFloor.session.previewLengthMm,
+    'manual'
+  );
+  floor = surveyGraph.getActiveFloor(draft);
+
+  const branch = floor.walls.find((wall) => (
+    !wall.topologySourceWallId && (wall.measurementStartInsetMm || 0) > 0
+  ));
+  const sourceSegments = floor.walls.filter((wall) => (
+    wall.topologySourceWallId === sourceWall.id
+  ));
+  assert.ok(branch);
+  assert.equal(sourceSegments.length, 2);
+
+  const scene = createScene(draft);
+  const branchScene = scene.walls.find((wall) => wall.id === branch.id);
+  const sourceScenes = scene.walls.filter((wall) => sourceSegments.some((item) => item.id === wall.id));
+  const nodeSourceScene = sourceScenes.find((wall) => wall.wall.endNodeId === branch.startNodeId) ||
+    sourceScenes.find((wall) => wall.wall.startNodeId === branch.startNodeId);
+  const nodePoint = nodeSourceScene.wall.endNodeId === branch.startNodeId
+    ? nodeSourceScene.solidEndPoint
+    : nodeSourceScene.solidStartPoint;
+  const sourceFarFace = Math.max(...sourceScenes.flatMap((wall) => wall.bodyPolygon.map((point) => (
+    (point.x - nodePoint.x) * branchScene.direction.x +
+    (point.y - nodePoint.y) * branchScene.direction.y
+  ))));
+  const branchStart =
+    (branchScene.solidStartPoint.x - nodePoint.x) * branchScene.direction.x +
+    (branchScene.solidStartPoint.y - nodePoint.y) * branchScene.direction.y;
+
+  assert.equal(branchStart, sourceFarFace);
+  assert.deepEqual(branchScene.solidStartPoint, branchScene.startPoint);
+  assert.notDeepEqual(branchScene.solidStartPoint, nodePoint);
+  const insetSourceScene = sourceScenes.find((wall) => (
+    (wall.wall.measurementStartInsetMm || 0) > 0 || (wall.wall.measurementEndInsetMm || 0) > 0
+  ));
+  assert.ok(insetSourceScene);
+  assert.notDeepEqual(insetSourceScene.startPoint, insetSourceScene.solidStartPoint);
+});
+
+test('closed U and stepped outlines keep concave wall solids joined at degree-two nodes', () => {
+  const fixtures = [
+    [
+      { xMm: 0, yMm: 0 }, { xMm: 6000, yMm: 0 }, { xMm: 6000, yMm: 4400 },
+      { xMm: 4300, yMm: 4400 }, { xMm: 4300, yMm: 1800 }, { xMm: 1700, yMm: 1800 },
+      { xMm: 1700, yMm: 4400 }, { xMm: 0, yMm: 4400 }, { xMm: 0, yMm: 0 }
+    ],
+    [
+      { xMm: 0, yMm: 0 }, { xMm: 5600, yMm: 0 }, { xMm: 5600, yMm: 1600 },
+      { xMm: 4300, yMm: 1600 }, { xMm: 4300, yMm: 2900 }, { xMm: 3000, yMm: 2900 },
+      { xMm: 3000, yMm: 4200 }, { xMm: 0, yMm: 4200 }, { xMm: 0, yMm: 0 }
+    ]
+  ];
+
+  fixtures.forEach((points) => {
+    const draft = createClosedPolygonDraft(points);
+    const floor = surveyGraph.getActiveFloor(draft);
+    const scene = createScene(draft);
+    const insetEndpoints = [];
+
+    floor.walls.forEach((wall) => {
+      const wallScene = scene.walls.find((item) => item.id === wall.id);
+      [
+        { nodeId: wall.startNodeId, insetMm: wall.measurementStartInsetMm, solid: wallScene.solidStartPoint, measured: wallScene.startPoint },
+        { nodeId: wall.endNodeId, insetMm: wall.measurementEndInsetMm, solid: wallScene.solidEndPoint, measured: wallScene.endPoint }
+      ].forEach((endpoint) => {
+        if (!(endpoint.insetMm > 0)) return;
+        const degree = floor.walls.filter((candidate) => (
+          candidate.startNodeId === endpoint.nodeId || candidate.endNodeId === endpoint.nodeId
+        )).length;
+        if (degree !== 2) return;
+        const node = surveyGraph.getNode(floor, endpoint.nodeId);
+        const expected = {
+          x: scene.rect.width / 2 + scene.viewport.offsetX + node.xMm * scene.viewport.scale,
+          y: scene.rect.height / 2 + scene.viewport.offsetY + node.yMm * scene.viewport.scale
+        };
+        insetEndpoints.push(endpoint);
+        assert.deepEqual(endpoint.solid, expected);
+        assert.notDeepEqual(endpoint.solid, endpoint.measured);
+      });
+    });
+
+    assert.ok(insetEndpoints.length >= 2);
+  });
+});
+
+test('a selected T-junction source segment highlights only its physical junction-free span', () => {
+  let draft = createClosedRectangleDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const sourceWall = floor.walls[0];
+  const sourceStart = surveyGraph.getNode(floor, sourceWall.startNodeId);
+  const sourceEnd = surveyGraph.getNode(floor, sourceWall.endNodeId);
+  const target = surveyGraph.getCursorPlacementTarget(floor, {
+    xMm: Math.round((sourceStart.xMm + sourceEnd.xMm) / 2),
+    yMm: Math.round((sourceStart.yMm + sourceEnd.yMm) / 2)
+  }, surveyGraph.CLOSE_TOLERANCE_MM);
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = commitWall(draft, { xMm: 1500, yMm: -2000 }, 2000);
+  floor = surveyGraph.getActiveFloor(draft);
+
+  const splitSourceWalls = floor.walls.filter((wall) => (
+    wall.id === sourceWall.id || wall.topologySourceWallId === sourceWall.id
+  ));
+  const insetWall = splitSourceWalls.find((wall) => (
+    (wall.measurementStartInsetMm || 0) > 0 || (wall.measurementEndInsetMm || 0) > 0
+  ));
+  assert.ok(insetWall);
+
+  draft = surveyGraph.selectWall(draft, insetWall.id);
+  const scene = createScene(draft);
+  const selectedWall = scene.walls.find((wall) => wall.id === insetWall.id);
+  assert.ok(selectedWall.selected);
+  assert.deepEqual(selectedWall.bodyPolygon, [
+    selectedWall.solidStartPoint,
+    selectedWall.solidEndPoint,
+    selectedWall.solidOuterEnd,
+    selectedWall.solidOuterStart
+  ]);
+  assert.deepEqual(selectedWall.selectionPolygon, [
+    selectedWall.startPoint,
+    selectedWall.endPoint,
+    selectedWall.rawOuterEnd,
+    selectedWall.rawOuterStart
+  ]);
+  assert.notDeepEqual(selectedWall.selectionPolygon, selectedWall.bodyPolygon);
+
+  const insetAtStart = (insetWall.measurementStartInsetMm || 0) > 0;
+  assert.notDeepEqual(
+    insetAtStart ? selectedWall.startPoint : selectedWall.endPoint,
+    insetAtStart ? selectedWall.solidStartPoint : selectedWall.solidEndPoint
+  );
+
+  const recorder = createRecordingContext();
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+  const selectionFill = recorder.fillDetails.find((detail) => (
+    detail.fillStyle === 'rgba(226, 73, 79, 0.92)'
+  ));
+  assert.ok(selectionFill);
+  assert.deepEqual(selectionFill.path[0], [
+    'moveTo',
+    selectedWall.selectionPolygon[0].x,
+    selectedWall.selectionPolygon[0].y
+  ]);
+});
+
+test('partitioned-room wall selections clip symmetrically to the divider footprint', () => {
+  const draft = createPartitionedRectangleDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const splitNode = floor.nodes.find((node) => node.xMm === 1500 && node.yMm === 0);
+  const divider = floor.walls.find((wall) => (
+    wall.startNodeId === splitNode.id && !wall.topologySourceWallId
+  ));
+  const sourceWalls = floor.walls.filter((wall) => (
+    wall.topologySourceWallId &&
+    (wall.startNodeId === splitNode.id || wall.endNodeId === splitNode.id)
+  ));
+  assert.ok(divider);
+  assert.equal(sourceWalls.length, 2);
+
+  sourceWalls.forEach((sourceWall) => {
+    const selectedDraft = surveyGraph.selectWall(draft, sourceWall.id);
+    const scene = createScene(selectedDraft);
+    const selected = scene.walls.find((wall) => wall.id === sourceWall.id);
+    const dividerScene = scene.walls.find((wall) => wall.id === divider.id);
+    const atStart = sourceWall.startNodeId === splitNode.id;
+    const nodePoint = atStart ? selected.solidStartPoint : selected.solidEndPoint;
+    const dividerExtents = dividerScene.bodyPolygon.map((point) => (
+      (point.x - nodePoint.x) * selected.direction.x +
+      (point.y - nodePoint.y) * selected.direction.y
+    ));
+    const expectedCap = atStart
+      ? Math.max(0, ...dividerExtents)
+      : Math.min(0, ...dividerExtents);
+    const capPoint = atStart ? selected.selectionPolygon[0] : selected.selectionPolygon[1];
+    const actualCap =
+      (capPoint.x - nodePoint.x) * selected.direction.x +
+      (capPoint.y - nodePoint.y) * selected.direction.y;
+
+    assert.equal(actualCap, expectedCap);
+    assert.equal(
+      (selected.selectionPolygon[3 - (atStart ? 0 : 1)].x - capPoint.x) * selected.direction.x +
+        (selected.selectionPolygon[3 - (atStart ? 0 : 1)].y - capPoint.y) * selected.direction.y,
+      0,
+      'the clipped selection end must remain square'
+    );
+  });
+});
+
+test('a selected closed wall uses square caps instead of mitered selection ends', () => {
+  let draft = createClosedRectangleDraft();
+  const selectedWallId = surveyGraph.getActiveFloor(draft).walls[0].id;
+  draft = surveyGraph.selectWall(draft, selectedWallId);
+  const selectedWall = createScene(draft).walls.find((wall) => wall.id === selectedWallId);
+
+  assert.ok(selectedWall.selected);
+  assert.deepEqual(selectedWall.selectionPolygon, [
+    selectedWall.startPoint,
+    selectedWall.endPoint,
+    selectedWall.rawOuterEnd,
+    selectedWall.rawOuterStart
+  ]);
+  assert.notDeepEqual(selectedWall.rawOuterStart, selectedWall.outerStart);
+  assert.notDeepEqual(selectedWall.rawOuterEnd, selectedWall.outerEnd);
+  assert.equal(
+    (selectedWall.selectionPolygon[3].x - selectedWall.selectionPolygon[0].x) * selectedWall.direction.x +
+      (selectedWall.selectionPolygon[3].y - selectedWall.selectionPolygon[0].y) * selectedWall.direction.y,
+    0
+  );
+  assert.equal(
+    (selectedWall.selectionPolygon[2].x - selectedWall.selectionPolygon[1].x) * selectedWall.direction.x +
+      (selectedWall.selectionPolygon[2].y - selectedWall.selectionPolygon[1].y) * selectedWall.direction.y,
+    0
   );
 });
 

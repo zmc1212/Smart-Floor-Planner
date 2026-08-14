@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f4f8f4" />
+    <title>正式量房 · H5 算法验证台</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <header class="topbar">
+        <div class="product-lockup">
+          <span class="product-mark" aria-hidden="true">K</span>
+          <div>
+            <h1>正式量房</h1>
+            <p>H5 算法验证台 · 直接运行小程序生产逻辑</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <span id="renderer-revision" class="revision-chip">加载中</span>
+          <button id="export-button" class="quiet-button" type="button">导出墙图</button>
+          <label class="quiet-button file-button">
+            导入墙图
+            <input id="import-input" type="file" accept="application/json,.json" />
+          </label>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="editor-stage" aria-label="量房画布">
+          <div class="stage-status" aria-live="polite">
+            <div>
+              <span id="measurement-title" class="status-title">准备测墙</span>
+              <span id="measurement-value" class="status-value">从画布中心光标拖出墙体</span>
+            </div>
+            <div id="top-metric" class="top-metric" hidden></div>
+          </div>
+
+          <div class="grid-canvas">
+            <canvas id="survey-canvas" aria-label="正式量房绘图画布"></canvas>
+            <canvas id="cursor-drag-canvas" aria-hidden="true"></canvas>
+          </div>
+
+          <nav class="tool-rail" aria-label="墙体工具">
+            <button class="tool-button is-active" data-tool="straight" type="button"><b>直</b><span>直墙</span></button>
+            <button class="tool-button" data-tool="diagonal" type="button"><b>斜</b><span>斜墙</span></button>
+            <button class="tool-button" data-tool="thickness" type="button"><b>厚</b><span>墙厚</span></button>
+            <button class="tool-button" data-tool="input" type="button"><b>入</b><span>手输</span></button>
+            <button class="tool-button" data-tool="reset" type="button"><b>准</b><span>重置</span></button>
+          </nav>
+
+          <div class="history-bar">
+            <button id="undo-button" type="button">撤销</button>
+            <button id="redo-button" type="button">重做</button>
+            <span id="mode-pill" class="mode-pill">测墙模式</span>
+          </div>
+
+          <form id="measure-form" class="measure-dock">
+            <label for="measure-input">模拟测距读数</label>
+            <div class="measure-row">
+              <input id="measure-input" inputmode="numeric" pattern="[0-9]*" value="3000" aria-label="毫米读数" />
+              <span>mm</span>
+              <button type="submit">写入当前墙</button>
+            </div>
+            <p>拖出方向后输入读数；该操作走生产页的 BLE 回调路径。</p>
+          </form>
+
+          <button id="close-button" class="close-button" type="button" hidden>合</button>
+        </section>
+
+        <aside class="inspector">
+          <section class="inspector-section scenario-section">
+            <div class="section-heading">
+              <div>
+                <h2>场景回放</h2>
+                <p>用相同墙图算法快速建立基准场景</p>
+              </div>
+              <button id="clear-button" class="text-button" type="button">清空</button>
+            </div>
+            <div id="scenario-catalog" class="scenario-catalog"></div>
+          </section>
+
+          <section class="inspector-section summary-section">
+            <h2>实时拓扑</h2>
+            <dl class="summary-grid">
+              <div><dt>状态</dt><dd id="summary-state">—</dd></div>
+              <div><dt>节点</dt><dd id="summary-nodes">0</dd></div>
+              <div><dt>墙体</dt><dd id="summary-walls">0</dd></div>
+              <div><dt>闭合空间</dt><dd id="summary-spaces">0</dd></div>
+              <div><dt>开口</dt><dd id="summary-openings">0</dd></div>
+              <div><dt>面积</dt><dd id="summary-area">—</dd></div>
+            </dl>
+          </section>
+
+          <section class="inspector-section graph-section">
+            <div class="section-heading">
+              <div>
+                <h2>墙段明细</h2>
+                <p>坐标、净读数与墙侧均来自当前 draft</p>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>#</th><th>长度</th><th>角度</th><th>墙厚</th><th>侧</th></tr></thead>
+                <tbody id="wall-table-body"><tr><td colspan="5" class="empty-cell">暂无墙体</td></tr></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="inspector-section log-section">
+            <div class="section-heading">
+              <div>
+                <h2>操作记录</h2>
+                <p>浏览器桥接层反馈，不写入业务 API</p>
+              </div>
+            </div>
+            <ol id="event-log" class="event-log"></ol>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <div id="number-sheet" class="number-sheet" hidden>
+      <button class="sheet-mask" type="button" aria-label="关闭输入面板"></button>
+      <form class="sheet-panel">
+        <div>
+          <h2 id="sheet-title">输入长度</h2>
+          <p id="sheet-subtitle">单位：mm</p>
+        </div>
+        <label>
+          <span>数值</span>
+          <input id="sheet-input" inputmode="decimal" autocomplete="off" />
+        </label>
+        <div class="sheet-actions">
+          <button id="sheet-cancel" type="button">取消</button>
+          <button class="primary-button" type="submit">确认</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <script src="/dist/app.js"></script>
+  </body>
+</html>

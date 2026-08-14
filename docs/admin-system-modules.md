@@ -867,7 +867,10 @@ permission, or workflow changes.
   `/ai-studio/soft-furnishing`, and scenario-detail URLs preserve relevant
   query parameters and redirect into that workbench. `/ai-studio/create` is a
   separate full-screen free-creation workspace opened from the sidebar in a new
-  tab. `/inspirations`, `/ai-presets`,
+  tab. Its bootstrap failure path now leaves the loading state and provides a
+  retry action plus an actionable message for missing authentication or
+  enterprise context; the creation APIs, tenant boundary, and permission key
+  remain unchanged. `/inspirations`, `/ai-presets`,
   `/ai-providers`, `/ai-models`, `/ai-credit-prices`, and AI-credit management on the enterprise AI page.
   The scenario creation wizard now uses an Ant Design `Modal` with a native
   step indicator, and its version history uses an Ant Design `Drawer`; their

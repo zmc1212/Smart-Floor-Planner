@@ -16,6 +16,48 @@ This inventory describes the native WeChat Mini Program under `miniprogram/`.
 The implementation baseline is the current `app.json`, page handlers, shared
 utilities, and the admin APIs they call.
 
+### Formal surveying CAD kernel refactor (2026-08-14)
+
+- Status: `Implemented` for the compatibility facade, atomic edit transactions,
+  quick/full validation, completion-time Face shadow checks, and cursor-snap
+  hysteresis. `miniprogram/utils/surveyWallGraph.js` remains the sole public
+  CommonJS entry and preserves every previous export, argument, return, and
+  thrown-error contract; the only additive public API is
+  `validateSurveyDraft(draft, { mode: 'quick' | 'full' })`.
+- The implementation is layered under `miniprogram/utils/survey/` as `core`,
+  `geometry`, `domain`, `topology`, `operations`, `snap`, `read-model`, and
+  `invariants`. `legacy-kernel.js` is the temporary compatibility host for the
+  already-proven edit state machine while pure dependencies and operations move
+  behind those boundaries; consumers must not import it directly.
+- Complex wall/opening edits now run against one in-memory draft clone. Failed
+  mutations or invariant checks throw without changing the caller's draft, and
+  the editor still records the returned result through one `applyDraft(...,
+  { recordHistory: true })`. The non-persisted `TopologyIndex` covers node,
+  wall, space, and opening reverse lookups and supports explicit invalidation.
+- `quick` validation is the linear transaction guard. `full` additionally checks
+  duplicate walls, un-noded intersections, self-intersecting spaces, invalid
+  shared-wall topology, and a temporary half-edge Face extraction. Full/Face
+  work runs only before `completed` cloud save and in tests/diagnostics; it is
+  absent from page load, touch-move, and Canvas rendering. Face results and
+  dangles are diagnostic only and never rebuild or persist `spaces[]`.
+- Cursor placement retains the existing vertex/wall/alignment priority and adds
+  a viewport-scaled `16px` acquire / `26px` release lock. The lock is page-local
+  transient state, returns integer millimetres, and is cleared at drag end or
+  cancellation; it is never written to version-4 JSON or measurement audit.
+- Compatibility is unchanged: route, WXML/WXSS/assets, Canvas union rendering,
+  APIs, roles, BLE protocol, measurement audit, database schema, and the
+  `{ version: 4, measurementMode: 'surveying', surveyGraph }` envelope did not
+  change. The design-restoration ledger is therefore unchanged.
+- Verification: the pre-refactor surveying baseline remains `74/74`, new CAD
+  contract/invariant/transaction/Face/snap/fixture/runtime-boundary tests pass
+  `20/20`, H5 passes `29/29` and builds, and the full Mini Program suite is
+  `356/359` with only the three pre-existing non-surveying failures. A 2,000-run
+  200-wall commit microbenchmark measured the transaction facade at `1.166x`
+  the compatibility-kernel baseline (`+16.6%`, below the `20%` gate); the
+  500-wall quick/index guard remains below its `250ms` test ceiling. Native
+  first-frame and route-flow capture remain pending because the existing WeChat
+  DevTools window exposes no compatible automation endpoint.
+
 ### Subscription notification template handoff
 
 The first four `房屋装修` public templates, fixed keyword choices, template-ID
@@ -810,6 +852,37 @@ must update that ledger pair in the same change.
 
 ## Formal Surveying
 
+- Browser algorithm harness (2026-08-14): `surveying-h5/` is a local-only H5
+  validation surface that bundles the current production
+  `surveying-editor.js`, `surveyWallGraph.js`, and `surveyCanvasRenderer.js`
+  directly instead of maintaining a second topology implementation. Its
+  browser bridge adapts `Page/setData`, storage, Canvas queries, pointer input,
+  feedback, Fetch, and deterministic simulated BLE readings. It supports live
+  wall drawing, pan/zoom, closure, dimensions, undo/redo, version-4 JSON
+  import/export. Its catalog now groups 23 representative cases into
+  single-space outlines, in-progress measurement chains, shared-wall spaces,
+  junctions/branches, and wall/opening conditions. Coverage includes
+  rectangle/L/U/stepped/trapezoid/chamfer/bay outlines, orthogonal and diagonal
+  open chains, aligned/stacked/staggered shared-wall rooms, room partitions,
+  three- and four-room layouts, straight/diagonal T and cross junctions,
+  openings, and mixed wall thicknesses. The supplied
+  `5faec65980dc0f15a9f19e98d98a5dfe.jpg` maps to `staggered-adjacent`, with
+  assertions for eight walls, two closed spaces, and `2761×3223 mm` plus
+  `3082×4120 mm` dimensions; every catalog case passes production `full`
+  validation. Scenario auto-fit reserves the actual fixed measurement dock
+  overlap as a bottom safe area, so closing walls and dimension chains remain
+  visible. The T-shaped three-room case closes the left, upper-right, and
+  lower-right rooms in field order through shared boundaries, with a three-way
+  shared-junction assertion that prevents measurement insets from creating a
+  triangular wall-face gap. It registers no Mini Program route, does not write production
+  APIs or databases by default, and cannot prove real BLE, native `cover-view`,
+  WeChat page-stack, device-motion, or device-Canvas compatibility; those still
+  require the existing WeChat DevTools window and real-device evidence. Curves,
+  arcs, detached buildings, and floor-level differences remain outside the
+  version-4 2D wall-graph capability. The
+  production route, API, roles, measurement audits, and
+  `{ version: 4, measurementMode: 'surveying', surveyGraph }` contract are
+  unchanged.
 - Isolated APK reconstruction research (2026-08-10):
   `research/legacy-zhouse-2d/` now exists outside the Mini Program package with
   a method-RVA/evidence ledger, independent millimetre geometry primitives,
@@ -1573,11 +1646,14 @@ must update that ledger pair in the same change.
   the existing DevTools window exposes no compatible automation endpoint; no
   duplicate window was opened.
 - T-junction physical-solid continuity and scenario matrix (2026-08-14):
-  measurement start/end insets now affect only the measured red edge, dimensions,
-  and opening coordinates. Canvas wall bodies, hit polygons, and solid-union
+  measurement start/end insets shorten the measured red edge, dimensions, and
+  opening coordinates. Split-source wall bodies, hit polygons, and solid-union
   inputs span the original topology nodes, so a branch can reserve its full wall
   thickness in the readings without cutting a white rectangle out of the
-  traversing wall. The solid union canonicalizes sub-pixel diagonal join vertices
+  traversing wall. A newly drawn non-source branch or preview uses its effective
+  inset endpoint for its own body and hit polygon, so it starts at the source
+  wall's far face and does not paint a light strip through that wall. The solid
+  union canonicalizes sub-pixel diagonal join vertices
   before stitching rings, and deleting a T/cross branch recomputes split-source
   endpoint insets from the walls that still meet that node instead of leaving a
   stale deduction. A test-first matrix covers 780 straight/diagonal, open/closed,
@@ -1595,6 +1671,30 @@ must update that ledger pair in the same change.
   role, version-4 field, BLE audit, room dimension, or opening-position contract
   changed. Native DevTools Canvas verification remains pending because the
   existing window still exposes no compatible automation endpoint.
+- Neutral selected-wall junctions (2026-08-14): the user-approved target states
+  `d4920bfd0ddb84a810c2109b344016d1.jpg` and
+  `f275da8992b3901e9165f4d13d28c81e.jpg` are the local behavior authority.
+  Selected-wall fill now uses square caps clipped against the actual solid
+  footprint of non-collinear walls at each topology node. It does not inherit
+  mitered body corners or reuse measurement insets, so ordinary corners have no
+  diagonal selection ends and T/cross/partition junctions leave exactly the
+  intersecting wall thickness in the normal neutral colour. Split-source
+  `bodyPolygon` geometry and hit testing still span topology nodes, while a new
+  inset branch uses its effective far-face endpoint; union outlines, topology
+  nodes, and `topologySourceWallId` keep their existing contract. Routes, APIs, roles,
+  version-4 data, millimetre readings, remeasurement, openings, and measurement
+  audits are unchanged. The later partition defect states
+  `codex-clipboard-15fa0150-9139-490d-92e1-e424da9531d5.png` and
+  `codex-clipboard-1337ae98-24ed-4e5d-b5ce-52fb651562f6.png` are covered by a
+  symmetric two-sided regression. The selection behavior was introduced by
+  `wall-local-selection-junction-clip-v11`;
+  the current renderer `wall-local-branch-far-face-v12` additionally keeps a new
+  T branch out of the source-wall body. The focused Canvas suite passes `61/61`;
+  the H5 contract suite passes `3/3` and its build
+  succeeds. The user-approved `3004eb002d311652998850a69781cf2d.jpg`
+  is the branch-origin reference. The full Mini Program suite passes `336/339`;
+  the same three acquisition, API-environment, and offline-debug failures are
+  unrelated.
 - Native Canvas Git-baseline junction restoration (2026-08-14): comparison of
   current commit `d3d3a1c` with the last stable commit `ad28143` identified the
   regression in the draw contract, not the graph topology or cache. The stable

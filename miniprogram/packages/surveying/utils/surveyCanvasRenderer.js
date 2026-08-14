@@ -10,7 +10,7 @@ const GRID_MINOR_MM = 250;
 const GRID_MAJOR_MM = 1250;
 const MIN_WALL_THICKNESS_PX = 1.5;
 const WALL_STROKE_PX = 1.5;
-const RENDER_REVISION = 'wall-local-union-origin-v8';
+const RENDER_REVISION = 'degree-aware-branch-far-face-v13';
 const REDLINE_STROKE_PX = 2;
 const GUIDE_STROKE_PX = 1.25;
 // Blue cursor coordinates use a denser cadence than the closure cue so the
@@ -387,12 +387,25 @@ function buildWallScene(floor, wall, options) {
     x: endPoint.x + localY.x * outerOffsetPx,
     y: endPoint.y + localY.y * outerOffsetPx
   };
-  // Measurement insets intentionally shorten the red/annotated edge, but the
-  // physical wall body still spans the graph's topology nodes. Keeping a
-  // separate solid polygon prevents a T-junction measurement inset from
-  // cutting a rectangular hole out of the traversing wall.
-  const solidStartPoint = project(topologyStart);
-  const solidEndPoint = project(topologyEnd);
+  function retainsTopologyAt(nodeId) {
+    if (wall.topologySourceWallId) return true;
+    if (!nodeId) return false;
+    const degree = (floor.walls || []).filter((candidate) => (
+      candidate.startNodeId === nodeId || candidate.endNodeId === nodeId
+    )).length;
+    return degree <= 2;
+  }
+
+  // A degree-two corner is one continuous wall chain even when its measured
+  // edge excludes the neighbouring wall thickness. Only a new branch at a
+  // degree-three-or-higher junction stops at its effective far-face endpoint.
+  // Split source segments always retain topology-node solids.
+  const solidStartPoint = project(
+    retainsTopologyAt(wall.startNodeId) ? topologyStart : start
+  );
+  const solidEndPoint = project(
+    retainsTopologyAt(wall.endNodeId) ? topologyEnd : end
+  );
   const solidOuterStart = {
     x: solidStartPoint.x + localY.x * outerOffsetPx,
     y: solidStartPoint.y + localY.y * outerOffsetPx
@@ -545,6 +558,57 @@ function buildAlignmentSnapGuide(session, project) {
     startPoint: project(guide.referencePoint),
     endPoint: project(guide.snappedPoint)
   };
+}
+
+function createSelectionPolygon(wall, walls) {
+  const startNodeId = wall.wall && wall.wall.startNodeId;
+  const endNodeId = wall.wall && wall.wall.endNodeId;
+  const widthPx = distancePx(wall.solidStartPoint, wall.solidEndPoint);
+  if (!startNodeId || !endNodeId || !widthPx) return wall.selectionPolygon;
+
+  function getJunctionInset(nodeId, isStart) {
+    let minimum = 0;
+    let maximum = 0;
+    walls.forEach((other) => {
+      if (!other || other.id === wall.id || other.lineOnly || !other.wall) return;
+      if (other.wall.startNodeId !== nodeId && other.wall.endNodeId !== nodeId) return;
+      const parallelRate = Math.abs(
+        wall.direction.x * other.direction.x + wall.direction.y * other.direction.y
+      );
+      if (parallelRate >= 0.98) return;
+      (other.bodyPolygon || []).forEach((point) => {
+        const along =
+          (point.x - (isStart ? wall.solidStartPoint.x : wall.solidEndPoint.x)) * wall.direction.x +
+          (point.y - (isStart ? wall.solidStartPoint.y : wall.solidEndPoint.y)) * wall.direction.y;
+        minimum = Math.min(minimum, along);
+        maximum = Math.max(maximum, along);
+      });
+    });
+    return isStart ? Math.max(0, maximum) : Math.max(0, -minimum);
+  }
+
+  const startInsetPx = Math.min(widthPx, getJunctionInset(startNodeId, true));
+  const endInsetPx = Math.min(
+    widthPx - startInsetPx,
+    getJunctionInset(endNodeId, false)
+  );
+  const start = {
+    x: wall.solidStartPoint.x + wall.direction.x * startInsetPx,
+    y: wall.solidStartPoint.y + wall.direction.y * startInsetPx
+  };
+  const end = {
+    x: wall.solidEndPoint.x - wall.direction.x * endInsetPx,
+    y: wall.solidEndPoint.y - wall.direction.y * endInsetPx
+  };
+  const outerStart = {
+    x: start.x + wall.localY.x * wall.outerOffsetPx,
+    y: start.y + wall.localY.y * wall.outerOffsetPx
+  };
+  const outerEnd = {
+    x: end.x + wall.localY.x * wall.outerOffsetPx,
+    y: end.y + wall.localY.y * wall.outerOffsetPx
+  };
+  return [start, end, outerEnd, outerStart];
 }
 
 function shouldCloseWholeWallPath(floor, previewWall) {
@@ -774,6 +838,12 @@ function createSurveyRenderScene(input) {
       isExteriorBoundary: closedWallSpaceCounts[wall.id] === 1,
       isActiveMeasurement
     }), isActiveMeasurement ? activeMeasurementFace : 'inner');
+  });
+  // Selection ownership follows the actual one-sided wall solids at each
+  // junction. Stored measurement insets describe net readings and can point to
+  // the opposite side of a split wall, so they are not a reliable paint clip.
+  walls.forEach((wall) => {
+    wall.selectionPolygon = createSelectionPolygon(wall, walls);
   });
   const previewWall = buildPreviewWall(floor, session, {
     project,
