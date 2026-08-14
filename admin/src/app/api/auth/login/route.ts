@@ -59,11 +59,14 @@ export async function POST(request: Request) {
         role: admin.role,
       },
     });
+    const secureAuthCookie =
+      process.env.NODE_ENV === 'production' &&
+      process.env.AUTH_COOKIE_SECURE !== 'false';
     response.cookies.set({
       name: 'auth_token',
       value: token,
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: secureAuthCookie,
       sameSite: 'lax',
       maxAge: 60 * 60 * 24,
       path: '/',

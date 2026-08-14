@@ -2,7 +2,7 @@
   <view class="history-shell">
     <view class="history-hero">
       <view class="history-head">
-      <text class="history-title">设计成果</text>
+      <text class="history-title">我的设计</text>
       <text class="history-count">{{items.length}} 条</text>
       </view>
       <image class="history-archive-scene" src="/packages/ai-workflow/assets/page-ip-v3/ai-history.jpg" mode="aspectFit"></image>
@@ -20,6 +20,8 @@
           <view class="history-info" data-id="{{item.id}}" bindtap="openResult">
             <text class="history-time">{{item.timeLabel}}</text>
             <text class="item-title">{{item.modeTitle}}</text>
+            <text wx:if="{{item.recipeName}}" class="recipe-origin">装修配方</text>
+            <text wx:if="{{item.projectTitle}}" class="item-project">{{item.projectTitle}}</text>
             <view wx:if="{{item.targetLabel}}" class="item-target-row">
               <image class="item-target-icon" src="/images/leads-v4/map-pin.png" mode="aspectFit"></image>
               <text class="item-target">{{item.targetLabel}}</text>
@@ -30,9 +32,9 @@
             </view>
             <view class="item-status-row {{item.statusClass}}">
               <view class="item-status-dot"></view>
-              <text class="item-meta">{{item.statusLabel}}{{item.status === 'failed' ? '' : ' · ' + item.credits + ' 点'}}</text>
+              <text class="item-meta">{{item.statusLabel}} · {{item.credits}} 点</text>
             </view>
-            <view wx:if="{{item.statusClass === 'processing'}}" class="history-progress-track"><view class="history-progress-bar" style="width: {{item.progress}}%;"></view></view>
+            <view wx:if="{{item.statusClass === 'processing' && !item.recipeId}}" class="history-progress-track"><view class="history-progress-bar" style="width: {{item.progress}}%;"></view></view>
           </view>
           <view class="item-actions">
             <button class="mini-action" data-id="{{item.id}}" bindtap="reuse">再设计</button>
@@ -46,7 +48,7 @@
 
     <view wx:else class="history-empty">
       <view class="empty-mark">AI</view>
-      <text class="empty-title">还没有 AI 设计记录</text>
+      <text class="empty-title">还没有使用过装修配方</text>
     </view>
   </view>
 </scroll-view>

@@ -155,6 +155,13 @@
       "when": 1786540800000,
       "tag": "0021_platform_notification_config",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1786627200000,
+      "tag": "0022_enterprise_admin_promotion_records",
+      "breakpoints": true
     }
   ]
 }

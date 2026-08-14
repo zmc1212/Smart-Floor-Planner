@@ -54,7 +54,10 @@ and active Roomi prompt-library revision.
 > manifest remains valid on the Linux deployment host. After PostgreSQL is
 > ready, `deploy.sh` idempotently applies `docker/postgres/init/001-roles.sql`
 > before migrations, so application roles are also created for an existing
-> volume that was initialized before that file was mounted.
+> volume that was initialized before that file was mounted. The production
+> runner no longer installs Alpine `curl`; deployment health and seed requests
+> use the Node 20 runtime's built-in `fetch`, avoiding a redundant package
+> repository dependency during image builds without weakening either check.
 
 > 2026-08-05 PostgreSQL migration update: authenticated Kujiale city and
 > floor-plan search proxies no longer connect to MongoDB. PostgreSQL bigint AI
@@ -377,6 +380,20 @@ permission, or workflow changes.
 
 - Shell and navigation: `src/app/(admin)/layout.tsx`, `Sidebar.tsx`,
   `FetchInterceptor.tsx`, and `useCurrentUser`.
+- Admin brand lockup: the expanded sidebar displays the Mini Program's
+  `家客来` name preceded by its exact local `brand-logo.png`; the collapsed
+  sidebar uses the same logo. For platform administrators, the brand lockup
+  and global enterprise selector share one `64px` header row; the selector
+  takes the remaining width and truncates long enterprise names rather than
+  wrapping under the brand. The copied runtime asset lives at
+  `admin/public/brand-logo.png`, sourced from
+  `miniprogram/images/home-ip-v1/brand-logo.png`. `proxy.ts` explicitly leaves
+  this fixed public asset unauthenticated so Next Image optimization can read
+  the PNG without a session; no business route, API, data contract, or role
+  permission is exposed or changed. The login page, its footer, the compact
+  mobile header, and the standalone AI creation workspace use the same
+  `brand-logo.png` plus the exact `家客来` name, replacing legacy product-brand
+  text only; measurement-domain terms remain unchanged.
 - Build/runtime note (2026-08-10): the shared shell uses a local system font
   stack (`PingFang SC`, `Microsoft YaHei`, `Noto Sans CJK SC`, and Source Han
   Sans fallbacks) through `globals.css` and `antd-provider.tsx`; it no longer
@@ -423,6 +440,13 @@ permission, or workflow changes.
 - Status: `Implemented` for PostgreSQL-backed admin login/session validation,
   enterprise self-registration, Mini Program staff login/identity binding,
   JWT/cookie handling, account-status revalidation, and unauthorized redirects.
+- Deployment/session boundary: the Docker intranet HTTP deployment sets
+  `AUTH_COOKIE_SECURE=false`, allowing the HttpOnly `auth_token` cookie to be
+  stored after `/api/auth/login`; it must be set to `true` before serving the
+  admin application over HTTPS or any public network. `deploy.sh` supplies
+  `.env.production` to Docker Compose for this setting, which defaults to
+  `false` only when absent. JWT validation, cookie scope, role permissions, and
+  unauthorized redirects are unchanged.
 - Legacy platform-admin recovery: `npm run migrate:legacy-admin-users` imports
   MongoDB platform accounts into PostgreSQL idempotently, preserving their
   bcrypt password hashes, roles, account status, and menu permissions so users
@@ -463,7 +487,7 @@ permission, or workflow changes.
 
 - Pages: `/`, `/enterprises`, `/enterprises/[id]`, and enterprise AI and
   automation subpages.
-- APIs: `/api/admin/enterprises`, `/activate`, `[id]`, `[id]/ai-key`,
+- APIs: `/api/admin/enterprises`, `/activate`, `[id]`, `[id]/logo`, `[id]/ai-key`,
   `[id]/ai-sync`, `[id]/ai-usage`, and `/api/branding/[id]`.
 - Models/helpers: PostgreSQL `EnterpriseRepository`, `AdminUserRepository`,
   `PromotionRecordRepository`, `CommercialRepository`, and
@@ -478,8 +502,9 @@ permission, or workflow changes.
   authoritative list API, status tags, and a final action menu. `/enterprises/[id]`
   and the shared enterprise editor use `PageContainer`, Ant Design cards,
   `ProDescriptions`, and `ModalForm`/`ProForm` for profile review, AI/automation
-  navigation, and manual/edit form submission. The Base64 logo size limit and
-  shared operation feedback remain unchanged. Enterprise AI and automation
+  navigation, and manual/edit form submission. Logo uploads use the managed
+  media asset endpoint and follow the active default media-storage provider;
+  shared operation feedback remains unchanged. Enterprise AI and automation
   subpages use the same `PageContainer` tab pattern; their policy, adjustment,
   ledger/task review, notification, and SLA controls use Ant Design
   `Checkbox.Group`, `Select`, `ProForm`, and `ProTable`. Their APIs and platform
@@ -515,7 +540,9 @@ permission, or workflow changes.
   “个人微信二维码” field sends the selected image through
   `POST /api/staff/wechat-qr`; the upload request runs after the client image
   and 5MB validation, and its success/failure feedback uses the shared operation
-  feedback UI. The existing enterprise-scoped media ownership and staff-management
+  feedback UI. The upload follows the active default media-storage provider rather
+  than forcing local storage; historical assets continue to use their recorded
+  provider. The existing enterprise-scoped media ownership and staff-management
   role boundary are unchanged. Standard management-form images now share
   `components/ui/image-upload-field`: staff QR codes, enterprise Logos, and
   inspiration cover/rendering images use one single-image picture-card control
@@ -588,7 +615,16 @@ permission, or workflow changes.
   values. Every non-platform role receives the PostgreSQL/RLS-scoped workbench
   cards and todos; only `enterprise_admin` additionally reads the existing
   tenant-scoped lead, formal-floor-plan, and staff totals. This presentation
-  migration does not change routes, APIs, permissions, or data contracts.
+  migration does not change routes, APIs, permissions, or data contracts. The
+  workbench summary labels are Chinese for every supported role, and the shared
+  operation feedback layer translates known generic and English-only API errors
+  before they are presented. The enterprise-administrator default menu set now
+  includes `promotion-records`, matching the existing record API role boundary;
+  migration `0022_enterprise_admin_promotion_records` appends that menu key to
+  existing enterprise-administrator system roles when absent. The workbench's
+  “Go to processing” action uses a direct button navigation rather than nesting
+  a button inside a link. Users must sign in again after the migration to refresh
+  the JWT permission claim. Response keys and endpoint behavior remain unchanged.
   The PostgreSQL
   promotion/notification foundation now has explicit
   bigint foreign keys for claim review, measurement/design assignment, and
@@ -846,7 +882,11 @@ permission, or workflow changes.
   /api/inspirations` now use tenant-RLS PostgreSQL `inspirations` through
   `InspirationRepository`; the existing filters, decimal-string `_id`, numeric
   `viewCount`, current menu access, and case workflows are retained. The route
-  requires an authenticated enterprise context and is `Implemented`. Its
+  requires an authenticated enterprise context and is `Implemented`. Cover and
+  rendering images use the shared managed upload endpoint and the active default
+  media-storage provider; responses convert managed images to signed Mini
+  Program URLs so the same case remains readable from Qiniu without exposing a
+  backend-session-only image route. Its
   overview derives the current filtered case, recommendation, and view totals
   from the existing list response, and list failures use shared operation
   feedback without adding an API request. Historical
@@ -1169,9 +1209,9 @@ permission, or workflow changes.
   execute. The bootstrap exposes only enabled models with at least one enabled
   model-resolution price. GPT Image 2 has no quality control, VIP uses the
   documented pixel preset matrix or validated `CUSTOM` dimensions, and Nano
-  requests use `aspectRatio + imageSize`. Free-creation uploads and any result
-  that must be persisted are forced to the local media provider even when Qiniu
-  is the platform default. The first UI release attempts the imported audited
+  requests use `aspectRatio + imageSize`. Free-creation uploads and every result
+  that must be persisted use the active default media-storage provider, including
+  Qiniu when it is configured as the platform default. The first UI release attempts the imported audited
   `sourceUrl` for a template preview and falls back to its imported local preview;
   it never calls a Roomi API at runtime.
   User-facing AI credits and `AiWorkflow` records are
@@ -1246,8 +1286,7 @@ permission, or workflow changes.
   Platform operators can enable the Media Storage
   page's GRS output-transfer policy only when an active Qiniu configuration is
   the default provider; then subsequent GRS outputs are persisted to that
-  default Qiniu configuration before settlement and cannot be overridden by the
-  local provider. Persisted results still return the uniform
+  default Qiniu configuration before settlement. Persisted results still return the uniform
   `/api/ai/assets/:id/image` client URL; that private-asset endpoint redirects
   to a short-lived Qiniu signed-download URL. Data-URI outputs, user uploads, generated
   control images, and non-GRS provider results continue to use `MediaAsset`
@@ -1400,7 +1439,7 @@ permission, or workflow changes.
 ### 12. Mini Program Support And Cross-Client APIs
 
 - APIs: `/api/auth/miniprogram`, `/api/miniprogram/home`, `/mine`, Mini Program
-  AI capabilities/sources/workflows/media/tasks/history endpoints, plus shared leads,
+  AI capabilities/recipes/sources/workflows/media/tasks/history endpoints, plus shared leads,
   floor-plans, measurements, commissions, orders, and promotion APIs.
 - Status: `Implemented`. These endpoints resolve Mini Program identity,
   professional context, workbench data, shared business assets, and enterprise-
@@ -1425,6 +1464,21 @@ permission, or workflow changes.
   An explicit workflow is
   continued; a unique customer/formal-plan match is reused automatically; when
   multiple schemes match, the client must choose instead of silently merging.
+- Recipe APIs (2026-08-14): `GET /api/miniprogram/ai/recipes`,
+  `GET /api/miniprogram/ai/recipes/[id]`, and the signed preview route adapt
+  active PostgreSQL prompt templates into the client recipe catalog. Public
+  DTOs contain only name, category, inferred space/input requirements,
+  supported scope, explanation, and a same-origin preview URL. Internal
+  `promptContent` is used only when `POST /api/miniprogram/ai/tasks` compiles
+  provider input and persists its task snapshot; it never enters a client
+  response. Missing or unpublished recipes return `RECIPE_UNAVAILABLE` before
+  any credit hold. With no explicit workflow, a unique active customer/plan
+  workflow is reused; multiple matches return `WORKFLOW_CONFLICT` with a
+  sanitized scheme list. The preview route verifies the tenant HMAC and first
+  reads the imported storage object. If a Windows development server does not
+  mount Docker's `/data/ai-assets`, Admin falls back server-side to the asset
+  `sourceUrl`; object-storage redirects are proxied the same way. The response
+  is resized and compressed to a Mini-Program-safe same-origin JPEG.
 - PostgreSQL workbench boundary: `/api/miniprogram/home` and `/mine` now derive
   live lead, formal-plan, measurement, device, promotion, and todo data through
   typed RLS repositories; `/api/users` also returns PostgreSQL plan counts. Home

@@ -113,7 +113,7 @@ must update that ledger pair in the same change.
   revalidate active status on refresh and request-context resolution.
 - `app.js`: restores sessions, reads QR/referral `enterpriseId`/`staffId`, syncs
   staff professional context, loads enterprise branding from PostgreSQL through
-  `/api/branding/[id]`, and attempts silent BLE
+  `/api/branding/[id]` (including a signed managed Logo URL when applicable), and attempts silent BLE
   reconnection for a remembered device.
 - `utils/api.js`: sends the bearer token through the explicitly selected
   `ACTIVE_API_ENVIRONMENT` (`local` or `production`), clears expired sessions,
@@ -121,7 +121,9 @@ must update that ledger pair in the same change.
   environments, and persisted `apiBaseUrl` values are not consulted.
 - Mini Program AI asset delivery: `/api/miniprogram/ai/assets/[id]/image`
   reads new decimal PostgreSQL asset IDs in tenant RLS scope. Legacy MongoDB
-  ObjectId URLs remain readable only as retained historical AI records.
+  ObjectId URLs remain readable only as retained historical AI records. Signed
+  Mini Program requests stream the configured storage object from the API
+  origin instead of redirecting the client to a provider URL.
 - Status: PostgreSQL-backed login and context restoration are `Implemented`; a
   valid WeChat authorization, account, API base, and enterprise/provider
   configuration are required for the corresponding path. `Limited` during
@@ -312,7 +314,9 @@ must update that ledger pair in the same change.
 - Page: `packages/business/inspiration/inspiration`.
 - API: `/api/inspirations?page=...&style=...&roomType=...`.
 - Implemented: paginated loading, pull-to-refresh, style and room filters,
-  image preview, share-poster shell, and free-design lead entry.
+  image preview, share-poster shell, and free-design lead entry. Managed cover
+  and rendering assets are returned as signed Mini Program media URLs, so both
+  local and Qiniu storage remain transparent to the page.
 - Navigation: retained as a secondary route and no longer occupies a primary
   tab.
 - Limited: result availability depends on published backend inspiration content.
@@ -320,14 +324,21 @@ must update that ledger pair in the same change.
 ### AI Design And Enterprise Credits
 
 - Pages: `pages/ai-design/ai-design`,
-  `packages/ai-workflow/create/ai-design-create`,
+  `packages/ai-workflow/recipe-detail/recipe-detail`,
+  `packages/ai-workflow/recipe-project/recipe-project`,
+  `packages/ai-workflow/recipe-confirm/recipe-confirm`,
   `packages/ai-workflow/result/ai-design-result`, and
-  `packages/ai-workflow/history/ai-design-history`; legacy
+  `packages/ai-workflow/history/ai-design-history`; the former
+  `packages/ai-workflow/create/ai-design-create` remains for compatibility, and legacy
   `packages/ai-workflow/legacy/ai-gen` is a compatibility redirect only.
 - Navigation: `pages/ai-design/ai-design` is the primary `Design` tab; it
   uses `navigationStyle: custom`, measures the native capsule/safe area, and
-  integrates its title and credit balance into the spatial header instead of
-  rendering the centered default WeChat title bar. It also uses the shared
+  keeps the title in the capsule's safe left lane instead of rendering the
+  centered default WeChat title bar. Design History and the real credit balance
+  now occupy a two-column `88rpx` toolbar in normal document flow below the
+  capsule, and the Hero follows that toolbar. Neither control is positioned
+  against the page or Hero, so notches, capsule metrics, and host scaling cannot
+  place the primary artwork over them. It also uses the shared
   fixed custom-tab layout and scroll/refresher contract.
   Contextual entries transfer floor-plan, room, lead, scope, and workflow state
   through `utils/aiDesignNavigation.js` before calling `switchTab`, because
@@ -335,12 +346,34 @@ must update that ledger pair in the same change.
   The tab and all AI entry points are hidden for staff sessions without an
   `enterpriseId`; the shared navigation and page guard return any legacy/direct
   route to Home before an AI API is requested.
-- APIs: Mini Program AI capabilities, role-scoped formal-plan/room sources,
+- APIs: Mini Program AI capabilities, recipe list/detail/same-origin signed previews, role-scoped formal-plan/room sources,
   normalized formal wall/room navigation read models, the current whole-plan
   navigation-preview state, context-visible active workflows, media upload/signed reads,
   task create/run/status/retry, and history
   list/delete endpoints through `utils/aiDesignService.js` with bearer JWT
   authentication.
+- Recipe workflow (2026-08-14): the Design tab uses published prompt-template
+  records as the sole recipe catalog. The server adapts template name,
+  category, preview, inferred space, and input requirement into a user-facing
+  recipe DTO; prompt content is read only inside server-side task creation.
+  Recipe list/detail, task, and history DTOs never expose prompts, models,
+  technical modes, or internal workflow IDs. The primary path is recipe
+  discovery/search → detail → customer formal survey → whole plan or closed
+  room → photo/existing customer result only when required → one-screen
+  confirmation → generation/result, with no four-stage rail. One unambiguous
+  active customer workflow is continued automatically; multiple unresolved
+  workflows return `WORKFLOW_CONFLICT` for a plain-language existing/new
+  scheme choice. Empty customer state links back to Leads, while ineligible
+  plans can only continue the canonical formal-survey route. Unpublished
+  recipes, insufficient credits, unavailable providers, upload failures,
+  generation failures, and expired previews retain executable recovery paths.
+  Recipe preview bytes always pass through the signed Admin origin. The route
+  prefers the imported storage object, falls back server-side to the imported
+  asset `sourceUrl` when a development process does not mount that local
+  storage directory, and also proxies external-storage redirects. Every source
+  is resized and compressed to JPEG, so the Mini Program neither contacts
+  storage domains nor packages WebP. All 960 templates in the current active
+  `roomi` revision have a linked preview asset.
 - Project index (2026-08-10): the role-scoped source response is now also the
   AI-workbench project read model. It keeps persisted `FloorPlan`, active
   `AiWorkflow`, and Mini Program `AiGeneration` states unchanged, then derives
@@ -662,9 +695,11 @@ must update that ledger pair in the same change.
   and remains a concept rather than a measurement source. Floor-plan-only
   generation cannot infer an exact camera or unmeasured finishes. There is no
   WeChat recharge, mask-based replacement, or homeowner account. Media URLs stay
-  on the authenticated Mini Program asset endpoint: the local provider streams
-  bytes, while the Qiniu private-bucket provider redirects to a short-lived
-  signed URL without changing the page contract. A server-side Qiniu object
+  on the authenticated Mini Program asset endpoint: signed Mini Program URLs
+  always stream bytes from the configured API origin for both local and Qiniu
+  private-bucket assets, avoiding a second WeChat download-domain redirect. A
+  non-signed administrative asset read may still redirect to a short-lived Qiniu
+  URL without changing the page contract. A server-side Qiniu object
   prefix affects only new persisted object keys and is transparent to Mini
   Program pages and URLs. Qiniu upload failures do not fall back to local
   storage, historical assets stay readable through their own stable provider
@@ -718,7 +753,8 @@ must update that ledger pair in the same change.
 - Account surfaces (2026-08-10): the three formerly shared account entry points
   now have separate real routes. Profile editing stores a normalized `512x512`
   WebP through the configured local/Qiniu media provider and keeps a versioned
-  managed reference in `users.avatar`; signed reads hide storage details while
+  managed reference in `users.avatar`; signed reads stream the provider object
+  through the API origin and hide storage details while
   historical external avatar URLs remain readable. Staff display-name edits
   update both `admin_users.displayName` and the linked user profile. Settings
   exposes only real WeChat subscription/permission actions. Before requesting
@@ -774,6 +810,33 @@ must update that ledger pair in the same change.
   second surveying page, connects to no BLE/API/database, and cannot write
   `FloorPlan.layoutData`; the formal page, routes, roles, version-4 graph, and
   measurement audits are unchanged.
+- Independent 2D reconstruction app (2026-08-13):
+  `zhouse-2d-miniprogram/` is a separate native Mini Program project with the
+  single local route `pages/editor/editor`. V0.1 replaces the former generic
+  geometry prototype with APK-shaped `HousePoint2D`, `HouseWall2D P0-P3`,
+  signed thickness, `wallSeries`, `roomSeries`, and room in/out/calculate-point
+  state. Four observed directions of single axis-aligned rectangular
+  inside-wall splitting match the normalized APK `newWall`, output-nullability,
+  immediate return state, and available settled state field by field
+  (`state-matched`). The observed four-wall rectangle matches the APK result
+  sequence `NewWalls (23) -> OnWalls (2) -> OnWalls (2) -> ClosedRoom0 (5)`
+  and recovered method path, but remains `runtime-trace-matched` because the
+  complete post-close APK state was not captured. The Canvas now paints the
+  actual `P0 -> P1 -> P3 -> P2` wall quadrilateral and APK room fields. The UI
+  exposes only evidence-covered orthogonal construction, rectangular splitting,
+  read-only wall inspection, history, local APK-schema JSON, pan, zoom, and fit;
+  diagonal/curve/opening/complex topology, wall deletion/movement, BLE, formal
+  version-4 export, APIs, tenants, roles, and database writes fail closed or are
+  absent. `docs/DEVELOPMENT.md` and `docs/method-porting-ledger.json` inside the
+  project record the roadmap and machine-verifiable method/RVA/evidence/fixture
+  status. The independently configured AppID is not the production AppID; the
+  project has no runtime dependency on `miniprogram/`,
+  `research/legacy-zhouse-2d/`, or `admin/`, cannot register a production route,
+  and cannot write `FloorPlan.layoutData`. Isolation, ledger, APK differential,
+  history, renderer, fail-closed, and page-contract tests pass via
+  `cd zhouse-2d-miniprogram && npm run verify`. WeChat DevTools/device visual
+  evidence remains pending in the separately imported project window; the
+  existing production window must not be replaced or duplicated.
 - BLE connection UX: each live BLE ranging entry in the editor offers to search
   for an authorized distance meter in the current editor when no device is
   connected. This changes no API, role boundary, wall-graph contract, or audit
@@ -854,23 +917,23 @@ must update that ledger pair in the same change.
   the supplied `e5bd088fa67a37c4d843980ef5087141.jpg` case,
   `2092mm + 1862mm + 3 * 200mm = 4554mm` identifies the erroneous outer-corner
   path; the corrected inner-corner path produces a `4354mm` building outside
-  width, a `2092 x 3331mm` clear room 2, and zero start/end insets on all three
-  new walls. The regression also asserts that deleting room 2's upper wall does
+  width and a `2092 x 3331mm` clear room 2. The former zero-inset interpretation
+  is superseded by the 2026-08-14 intersection-exclusion rule below. The regression also asserts that deleting room 2's upper wall does
   not change its lower wall's topology, measured endpoints, or outer geometry,
   covering the state difference exposed by
   `1036a5b23be2cb4ea7b1089c3278f5e1.jpg`. The earlier
   `2044/2444 x 3799/4199` and `1896mm` adjacent-room video flow remains covered.
   Markup, styles, routes, APIs, roles, the version-4 graph contract, and
   measurement audits are unchanged; focused tests pass `121/121`.
-- Inner-face adjacent-room closure geometry (2026-08-12): when a straight
-  adjacent room starts and closes on a closed room's inner vertices, the first
-  and final measured walls now use those selected topology points directly;
-  they no longer receive automatic wall-thickness start/end insets. The new
-  closed space records `wallFaceOverrides` for the actual borrowed shared-wall
-  segments so its fill, clear dimensions, area, and later wall splitting keep
-  using the selected topology face instead of reselecting the outer face from
-  the space centroid. Outer-face starts and true wall-thickness step closures
-  retain their existing inset behavior. The supplied
+- Inner-face adjacent-room closure geometry (2026-08-12, superseded measurement
+  semantics 2026-08-14): a straight adjacent room still keeps its topology
+  nodes on the selected shared-wall intersections. Every measurement record now
+  excludes the complete intersecting wall body: the first wall stores a start
+  inset, the final wall stores an end inset, and `lengthMm` remains the net
+  manual/BLE span. The new closed space records `wallFaceOverrides: 'offset'`
+  for borrowed shared-wall segments so its clear dimensions and area use the
+  opposite physical face rather than adding the topology-only wall thickness
+  back into the room. The supplied
   `f2c7c9823b1f8f532fb91a2dc7f68a20.mp4` flow now derives room 1 as
   `2044 x 3799mm`, room 2 as `1896 x 3799mm`, and the building outside width
   as `4340mm` rather than `4540mm`. The top-level version-4 layout, routes,
@@ -1066,6 +1129,13 @@ must update that ledger pair in the same change.
   it does not change role boundaries, graph contract, audit queue, or export scope.
 - Implemented editor behavior: startup restore, local draft and cloud draft
   persistence, straight and diagonal wall preview/commit, live BLE/manual length,
+  selected-wall BLE remeasure is transactional: the pre-measurement draft and
+  history are restored when applying the reading or rebuilding dimensions fails,
+  so an error cannot be persisted on page unload. Closed-dimension planning also
+  validates physical exterior walls before using orthogonal frames and falls back
+  to the legacy planner when a remeasured exterior edge becomes diagonal. The
+  shared admin mirror is synchronized from the Mini Program source by
+  `admin/scripts/sync-survey-dimension-plan.mjs`;
   repeated forward drags on the same collinear unfinished chain extend the last
   compatible wall instead of persisting artificial wall segments, while a real
   direction, drawing-mode, thickness, measurement-side, chain, or closure boundary still
@@ -1377,9 +1447,10 @@ must update that ledger pair in the same change.
   and drag-lens controls, restoring them without changing their state on close.
 - Implemented rendering/editor behavior: CAD-like full-width door/window symbols,
   inner-edge unfinished redline, room fills that accept only a fully connected
-  closed wall chain in either first-wall direction, and a compound wall-solid
-  union built from one-sided wall bodies plus connected-node fills. Filling and
-  outlining the union once removes internal caps, diagonal seams, and boxed ends
+  closed wall chain in either first-wall direction, and a wall-solid union built
+  from one-sided wall bodies plus connected-node fills. Canvas fills each union
+  input polygon independently and strokes only classified exterior boundary
+  segments, avoiding native compound-path winding instability while removing internal caps, diagonal seams, and boxed ends
   at connected nodes, L/T joins, and overlapping segments; opening cuts cover
   the complete wall thickness. The cursor-drag magnifier rebuilds its local view
   through the same formal Canvas scene renderer, so wall solids, joins, selected
@@ -1409,8 +1480,8 @@ must update that ledger pair in the same change.
   render layer: walls, room fills, outlines, and openings remain visible while
   dimensions, room labels, guides, and callouts return after one final formal
   scene rebuild when the gesture ends. The transient layer projects the
-  already-built structural paths directly into the target viewport so closed
-  room fills and compound wall solids do not diverge on native Canvas. Gesture
+  already-built structural polygons and boundary segments directly into the target viewport so closed
+  room fills and wall solids do not diverge on native Canvas. Gesture
   frames do not update page data
   or recompute wall solids and dimension plans.
 - Infinite drafting viewport correction (2026-08-10): pan no longer constrains
@@ -1447,6 +1518,146 @@ must update that ledger pair in the same change.
 - Graph/rendering: main-package `surveyWallGraph.js` and `surveyLayout.js`, plus
   the surveying-package `surveyCanvasRenderer.js`; AI design uses
   `aiDesignService.js` and `aiDesignValidation.js`.
+- Geometry pipeline bridge (2026-08-13): `surveyWallGraph.js` exposes the
+  read-only `buildGeometryPipelineInput()` adapter for the Node-only
+  `research/survey-geometry-poc` bridge. It does not replace Mini Program
+  closure or persistence; the original implementation remains the runtime
+  source of truth. The preserved pre-integration file is
+  `research/survey-geometry-poc/backups/surveyWallGraph.js.backup-20260813-194929`.
+- Planar topology V2 (2026-08-13): `utils/surveyGeometryPipeline.js`
+  runs dependency-free planar noding and half-edge face extraction after editor
+  draft updates. Proper crossings are persisted as shared nodes and atomic wall
+  segments; bounded faces rebuild standard closed `spaces[]`, and openings move
+  to the split segment containing their original absolute position. Open active
+  chains are reported separately as `openEnds` and no longer count as closed
+  boundary `DANGLE` errors. Normalization runs on restore, explicit closure, and
+  committed crossings. Missing T/crossing nodes are always materialized, while
+  existing spaces use local wall replacement instead of a full rebuild when the
+  face count still matches. Routes, APIs, roles, millimetre units,
+  measurement audits, and the version-4 top-level contract are unchanged.
+  Inner- and outer-edge continuations preserve the shared topology node at the
+  wall intersection. `measurementStartInsetMm` excludes the full junction wall
+  thickness from `lengthMm`, so net measured spans and wall thickness remain
+  separate dimensions.
+  When a closing wall enters an existing wall collinearly, a pointer landing in
+  the wall middle selects that wall but does not create a topology node. Closure
+  snaps to the first existing topology endpoint along the drag direction;
+  non-collinear intersections continue to node at the actual crossing.
+  Starting a new wall from the middle of an existing wall materializes the
+  junction immediately when the cursor snap is confirmed: the source wall is
+  atomically replaced by two same-source segments in every referencing space,
+  and the committed branch reuses their shared node to form a degree-three T
+  junction. This does not wait for room closure and an open branch does not
+  create another space. Fill rendering may omit the collinear display point,
+  but the persisted graph retains both segments and `topologySourceWallId`.
+  The branch redline starts at the far face of the source wall. The two source
+  segments keep independent endpoint insets, so the segment on the branch-body
+  side starts after the full branch thickness and the opposite segment stops at
+  the topology junction; selecting either segment therefore never highlights
+  through the intersecting wall body. Wall caps remain topology-driven rather
+  than measurement-endpoint-driven. Focused cursor/topology and Canvas suites
+  pass `105/105`. The full Mini Program suite passes `300/303`; the three pre-existing
+  failures cover acquisition notification routing, the local API `3005/3006`
+  mismatch, and the offline debug default, and are unrelated to topology.
+  The 2026-08-14 defect and target screenshots are the behavior reference; no
+  WXML/WXSS or visible controls changed. Native `390x844` Canvas verification remains pending because
+  the existing DevTools window exposes no compatible automation endpoint; no
+  duplicate window was opened.
+- T-junction physical-solid continuity and scenario matrix (2026-08-14):
+  measurement start/end insets now affect only the measured red edge, dimensions,
+  and opening coordinates. Canvas wall bodies, hit polygons, and solid-union
+  inputs span the original topology nodes, so a branch can reserve its full wall
+  thickness in the readings without cutting a white rectangle out of the
+  traversing wall. The solid union canonicalizes sub-pixel diagonal join vertices
+  before stitching rings, and deleting a T/cross branch recomputes split-source
+  endpoint insets from the walls that still meet that node instead of leaving a
+  stale deduction. A test-first matrix covers 780 straight/diagonal, open/closed,
+  exterior/shared-wall, inner/outer snap, rotated, unequal-thickness, opening-remap,
+  delete/rebuild, cross-delete, formal save/restore, reset-continuation, and
+  fixed-seed replay scenarios; all `12/12` matrix groups pass. The related graph,
+  Canvas, solid-plan, cursor, and final-scene pixel suites pass `124/124`.
+  Seven representative visual scenes (equal/unequal exterior T, diagonal T,
+  photographed two-room exterior T, shared-wall T, cross, and branch deletion)
+  are rendered into `tmp/survey-topology-visual-regression.png`; pixel sampling
+  finds no full background pixel or internal black cap/seam inside each marked
+  junction, and the atlas passes manual visual inspection. The full Mini Program
+  suite passes `323/326`; its three existing acquisition, API-environment, and
+  offline-debug failures are unrelated. No WXML/WXSS, route, API,
+  role, version-4 field, BLE audit, room dimension, or opening-position contract
+  changed. Native DevTools Canvas verification remains pending because the
+  existing window still exposes no compatible automation endpoint.
+- Native Canvas junction repaint stability (2026-08-14): the real-device
+  screenshots `281f295ee0d54aa908237afea5d3f484.jpg` and
+  `2ef3a3cd6e3e23ed79ae86aa0f81c5a8.jpg` showed that an unchanged intersection
+  could disappear and reappear after panning. Wall fill no longer submits touching
+  rings, holes, and T/cross nodes to one native compound `fill()`; it paints one
+  convex union-source polygon per call, while outlines use only the union's
+  classified boundary segments. Viewport interaction now projects those same
+  polygons, segments, and topology-solid endpoints. Structural regression asserts
+  that formal and gesture frames contain no compound wall fill/closed outline;
+  the focused renderer/topology/visual run passes `68/68`, and the regenerated
+  seven-scene atlas remains visually continuous. Markup, controls, routes, APIs,
+  roles, graph data, measurement values, room faces, and opening positions are unchanged.
+  Formal scenes now carry a monotonic revision: stale `setData` callbacks are
+  rejected, formal redraws arriving during pan/pinch ownership are deferred to
+  the final handoff, and late canvas-rect/main-canvas/drag-canvas initialization
+  callbacks are rejected by independent generation tokens. The expanded focused
+  renderer, topology, visual, viewport, and editor run passes `99/99`. Runtime
+  vConsole prints renderer revision `native-polygon-frame-owner-v3` so a device
+  can confirm that it actually loaded this build.
+- Native Canvas mixed-junction underpaint (2026-08-14): device confirmation of
+  `native-polygon-frame-owner-v3` proved that cache and stale-callback ownership
+  were not the remaining cause. The visible fill and outline were consuming
+  different geometry: open and closed walls were filled from two independently
+  unioned groups, while the outline used the complete union. Cross-group T/corner
+  patches therefore existed only in the outline, and Android antialiasing could
+  expose their touching fill edge as background until another viewport frame.
+  Both formal and viewport frames now underpaint every polygon from the complete
+  union in the open-wall colour, then repaint closed polygons in the completed-wall
+  colour. Every classified boundary segment is also stroked independently instead
+  of sharing one native stroke with many touching subpaths. The expanded focused
+  run passes `101/101`; renderer revision `native-union-underpaint-v4` identifies
+  this build. The full Mini Program run passes `325/328`; the same three existing
+  acquisition, API-environment, and offline-debug failures remain unrelated.
+  Markup, controls, topology, dimensions, APIs, roles, and persistence are
+  unchanged; native-device verification remains required.
+- Native Canvas deterministic junction repair (2026-08-14): continued device
+  failures showed that complete-union underpainting still depended on each
+  separate corner/T patch path being rasterized. A missed patch produces the
+  full wall-thickness square seen at rectangle corners, not a subpixel seam.
+  The solid plan now exposes `joinPolygons`; after ordinary wall fills, both
+  formal and viewport frames convert every join polygon into DPR-aligned
+  horizontal scanlines and repaint it with `fillRect()`. Open colour is laid
+  first, then only scanline ranges intersecting the closed-wall union regain
+  the completed-wall colour. This removes the single native path-fill call as
+  a failure point while preserving mixed T colour priority and diagonal joins.
+  Focused regressions pass `103/103`, the full Mini Program run passes `327/330`
+  with the same three unrelated failures, and renderer revision
+  `native-scanline-junction-repair-v5` identifies this build. No graph, route,
+  API, role, measurement, opening, WXML, or WXSS contract changed.
+- Open-chain reset continuation parity (2026-08-14): after an operator resets
+  the cursor and snaps it back to either the inner or outer vertex of a dangling
+  open-wall endpoint, the next wall now inherits the source wall's oriented
+  measurement side. Snapping to the source end preserves `left`/`right`, while
+  snapping to its start reverses that side to represent the same traversal.
+  The resulting corner therefore matches an uninterrupted drag and no longer
+  pushes the existing source wall's measurement endpoint inward by one wall
+  thickness. Closed-boundary restarts and wall-middle T-junction rules are
+  unchanged. The focused cursor suite passes `54/54`; the full Mini Program
+  suite passes `301/304`, with the three existing acquisition-route, local API
+  port, and offline-debug-default failures unrelated to this fix. This changes
+  no WXML/WXSS, route, API, role, version-4 field, or measurement audit.
+- Pure frontend geometry V1 (2026-08-13): collinear contiguous topology wall
+  segments now share one derived physical-wall side for Canvas solid union, so
+  split points do not render as wall ends. A chain that borrows one closed-wall
+  point and returns to that point may close without inventing a shared boundary.
+  Routes, permissions, version-4 persistence, openings, and audits are unchanged.
+- Geometry runtime rollback (2026-08-13): the experimental pipeline module,
+  startup normalization, draft audit, committed-crossing normalization, and
+  physical-wall grouping were removed because synchronous whole-graph work
+  blocked formal-surveying startup on real devices. `surveyWallGraph.js` again
+  matches the pre-integration backup. The preceding V1/V2 bullets are retained
+  only as historical experiment records and are not current runtime capability.
 - UI: nav bar, custom tab bar, lead list/modal, share poster, room library, and
   survey compass components.
 
@@ -1497,7 +1708,7 @@ bubble through the original button tree, preserving tap or drag ownership.
 The focused business and data contract is [`docs/measurer-designer-acquisition.md`](measurer-designer-acquisition.md) and its Chinese mirror.
 
 - `packages/business/acquisition-center/acquisition-center` is the sole designer confirmation entry. `/api/acquisition-tasks` supplies role-shaped pending/completed tasks, summaries, pagination, failure retry, idempotent confirmation, and exact notification `leadId` targeting. A measurer response returns the current binding once as page-level `designerProfile`; one `My Designer / View WeChat` utility follows the summary and task cards do not repeat designer contact data. Confirmation writes `acquiredAt/acquiredBy` and creates the acquisition commission without changing customer workflow status. The task list supports native `scroll-view` pull-to-refresh and refreshes the current status page every 30 seconds while visible; polling stops on hide/unload and never overlaps an active request.
-- `pages/leads-management/leads-management` and `components/lead-list` use the four-stage customer workflow and no longer expose an Acquired filter. Measurers open the shared `designer-contact-sheet` from the capsule-safe `My Designer` entry instead of receiving repeated WeChat and QR blocks on every card.
+- `pages/leads-management/leads-management` and `components/lead-list` use the four-stage customer workflow and no longer expose an Acquired filter. Measurers open the shared `designer-contact-sheet` from the capsule-safe `My Designer` entry instead of receiving repeated WeChat and QR blocks on every card. The protected QR is fetched as bytes through the already-authorized Mini Program request channel and rendered from an app-local temporary file, avoiding a separate remote-image download-domain/cache failure. Retry uses a bounded refresh state, a renewed `designerProfile`, and a client-only cache key.
 - `packages/business/lead-detail/lead-detail` accepts `id` or notification `leadId`, renders the four-stage rail, next action, and an ordinary acquisition fact group, but no acquisition-confirmation hero action. Its formal-surveying card shows only real graph status, closed-space count, and update time, and the shared bottom sheet remains the designer-contact entry.
 - `packages/business/commission-records/commission-records` consumes `/api/commission-records`; measurers receive the independent lead-acquisition records with pending/paid summaries while salesperson order commissions remain unchanged.
 - The Mine page receives the role-shaped Acquisition Collaboration action and real pending badge from `/api/miniprogram/mine`. Selected in-app notifications are marked through `/api/miniprogram/notifications/read` and prefer `metadata.page` to deep-link the exact workbench record. Notification delivery failures remain visible through the in-app fallback.

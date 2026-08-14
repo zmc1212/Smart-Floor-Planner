@@ -8,7 +8,7 @@ const MODE_TITLES = {
   soft_furnishing: '软装深化',
 };
 
-function decorateTask(task) {
+function decorateTask(task, project) {
   const ratioParts = String(task.outputAspectRatio || '1:1').split(':').map(Number);
   const ratio = ratioParts.length === 2 && ratioParts[0] > 0 && ratioParts[1] > 0
     ? ratioParts[0] / ratioParts[1]
@@ -22,12 +22,13 @@ function decorateTask(task) {
   const ratioAwareHeight = Math.round(750 / ratio);
   return {
     ...task,
+    projectTitle: project ? project.projectDisplayTitle : '',
     canContinueWorkflow: Boolean(
       task.workflowId
         && task.hasExactTargetContext
         && ['soft_furnishing', 'base_render'].includes(task.nextStageKey)
     ),
-    modeTitle: MODE_TITLES[task.mode] || 'AI 设计',
+    modeTitle: task.recipeName || MODE_TITLES[task.mode] || 'AI 设计',
     sourceCompareImageUrl,
     showComparison: Boolean(sourceCompareImageUrl),
     preserveComposition: task.mode === 'reference_recreate',
@@ -118,15 +119,19 @@ Page({
 
   async loadTask() {
     try {
-      const response = await aiService.getTask(this.data.id);
-      const task = decorateTask(response);
+      const [response, sources] = await Promise.all([
+        aiService.getTask(this.data.id),
+        Promise.resolve().then(() => aiService.loadSources()).catch(() => []),
+      ]);
+      const project = (sources || []).find((item) => item.floorPlanId === response.floorPlanId);
+      const task = decorateTask(response, project);
       this.compareRect = null;
       this.setData({ task, loading: false });
       if (task.status === 'succeeded') this.resetPageScroll();
-      if (this.shouldRun && task.status === 'created' && !this.data.running) {
+      if (this.shouldRun && ['created', 'pending'].includes(task.status) && !this.data.running) {
         this.shouldRun = false;
         this.startRun();
-      } else if (task.status === 'created' || task.status === 'processing') {
+      } else if (['created', 'pending', 'processing'].includes(task.status)) {
         this.startPolling();
       } else {
         this.stopPolling();
@@ -143,7 +148,7 @@ Page({
     this.startPolling();
     aiService.runTask(this.data.id)
       .then((task) => {
-        this.setData({ task: decorateTask(task), running: false });
+        this.setData({ task: decorateTask(task, this.data.task && { projectDisplayTitle: this.data.task.projectTitle }), running: false });
         if (task.status !== 'processing') this.stopPolling();
       })
       .catch(() => {
@@ -228,7 +233,7 @@ Page({
     this.setData({ running: true });
     try {
       const task = await aiService.retryTask(this.data.id);
-      this.setData({ task: decorateTask(task), running: false });
+      this.setData({ task: decorateTask(task, this.data.task && { projectDisplayTitle: this.data.task.projectTitle }), running: false });
       this.startPolling();
     } catch (error) {
       this.setData({ running: false });
@@ -239,6 +244,10 @@ Page({
   reuseInputs() {
     const task = this.data.task;
     if (!task) return;
+    if (task.recipeId) {
+      wx.switchTab({ url: '/pages/ai-design/ai-design' });
+      return;
+    }
     wx.navigateTo({ url: `/packages/ai-workflow/create/ai-design-create?mode=${task.mode}&sourceTaskId=${task.id}` });
   },
 
@@ -264,6 +273,10 @@ Page({
 
   handlePrimaryAction() {
     const task = this.data.task;
+    if (task && task.recipeId) {
+      wx.switchTab({ url: '/pages/ai-design/ai-design' });
+      return;
+    }
     if (task && task.workflowId && ['proposal_pack', 'lighting'].includes(task.nextStageKey)) {
       wx.showModal({
         title: '请到后台继续深化',
@@ -286,10 +299,14 @@ Page({
     wx.navigateTo({ url: '/packages/ai-workflow/history/ai-design-history' });
   },
 
+  browseRecipes() {
+    wx.switchTab({ url: '/pages/ai-design/ai-design' });
+  },
+
   onShareAppMessage() {
     const task = this.data.task || {};
     return {
-      title: `${task.modeTitle || 'AI 设计'}成果`,
+      title: `${task.recipeName || task.modeTitle || 'AI 设计'}成果`,
       path: `/packages/ai-workflow/result/ai-design-result?id=${this.data.id}`,
       imageUrl: task.resultImageUrl || '',
     };

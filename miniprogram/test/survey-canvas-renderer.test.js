@@ -126,6 +126,23 @@ function createAlignedAdjacentRoomDraft() {
   return surveyGraph.confirmClosure(draft);
 }
 
+function normalizeRingStart(ring) {
+  if (!Array.isArray(ring) || !ring.length) return ring || [];
+  const startIndex = ring.reduce((bestIndex, point, index) => {
+    const best = ring[bestIndex];
+    return point.x < best.x || (point.x === best.x && point.y < best.y)
+      ? index
+      : bestIndex;
+  }, 0);
+  return ring.slice(startIndex).concat(ring.slice(0, startIndex));
+}
+
+function normalizeRingPlan(rings) {
+  return (rings || []).map(normalizeRingStart).sort((first, second) => (
+    JSON.stringify(first).localeCompare(JSON.stringify(second))
+  ));
+}
+
 function createProtectedInnerCornerAdjacentRoomDraft() {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
@@ -359,6 +376,7 @@ function createRecordingContext() {
   const dashes = [];
   const widths = [];
   const strokeDetails = [];
+  const fillDetails = [];
   const fillRectDetails = [];
   const texts = [];
   let path = [];
@@ -392,7 +410,11 @@ function createRecordingContext() {
       strokes.push(recordedPath);
       strokeDetails.push({ path: recordedPath, strokeStyle, lineWidth });
     },
-    fill() { fills.push(path.slice()); },
+    fill() {
+      const recordedPath = path.slice();
+      fills.push(recordedPath);
+      fillDetails.push({ path: recordedPath, fillStyle });
+    },
     setLineDash(value) { dashes.push(value.slice()); },
     measureText(text) { return { width: String(text).length * 7 }; },
     fillText(text, x, y) { texts.push({ text, x, y, fillStyle, font }); }
@@ -417,7 +439,7 @@ function createRecordingContext() {
   ['lineCap', 'lineJoin', 'textAlign', 'textBaseline', 'shadowColor', 'shadowBlur', 'shadowOffsetY', 'miterLimit']
     .forEach((property) => Object.defineProperty(context, property, { set() {}, get() { return undefined; } }));
 
-  return { context, strokes, fills, dashes, widths, strokeDetails, fillRectDetails, texts };
+  return { context, strokes, fills, dashes, widths, strokeDetails, fillDetails, fillRectDetails, texts };
 }
 
 test('default surveying canvas uses the fine low-contrast reference grid', () => {
@@ -675,14 +697,14 @@ test('a shared-corner preview renders the automatically inferred measurement sid
   const scene = createScene(draft);
 
   assert.equal(floor.session.previewMeasurementSide, 'right');
-  assert.equal(floor.session.previewMeasurementStartInsetMm, 0);
-  assert.equal(floor.session.previewLengthMm, 3000);
+  assert.equal(floor.session.previewMeasurementStartInsetMm, 200);
+  assert.equal(floor.session.previewLengthMm, 2800);
   assert.equal(floor.session.closeCandidateType, '');
   assert.equal(scene.previewWall.measurementSide, 'right');
-  assert.equal(scene.previewWall.lengthMm, 3000);
+  assert.equal(scene.previewWall.lengthMm, 2800);
   assert.equal(scene.activeSegment.measurementSide, 'right');
   assert.equal(scene.closureGuide, null);
-  assert.equal(scene.previewWall.start.yMm, scene.previewWall.topologyStart.yMm);
+  assert.notEqual(scene.previewWall.start.yMm, scene.previewWall.topologyStart.yMm);
 });
 
 test('closed room shell stays outside the boundary for either initial measurement side', () => {
@@ -837,7 +859,7 @@ test('aligned adjacent rooms share one wall body and derive independent net-face
     assert.deepEqual(plan.inner, { widthMm: 2230, heightMm: 3182, areaMm2: 7095860 });
     assert.deepEqual(plan.outer, index === 0
       ? { widthMm: 2630, heightMm: 3582, areaMm2: 9420660 }
-      : { widthMm: 2630, heightMm: 3182, areaMm2: 8368660 });
+      : { widthMm: 2630, heightMm: 3582, areaMm2: 9420660 });
     assert.equal(plan.wallThicknessSegments.length, 4);
     assert.equal(plan.wallThicknessSegments.every((item) => (
       item.kind === 'wall-thickness' && item.lengthMm === 200
@@ -851,8 +873,8 @@ test('aligned adjacent rooms share one wall body and derive independent net-face
     Math.min(...secondRawBoundary.map((point) => point.xMm));
   const rawHeight = Math.max(...secondRawBoundary.map((point) => point.yMm)) -
     Math.min(...secondRawBoundary.map((point) => point.yMm));
-  assert.equal(rawWidth * rawHeight, 7095860);
-  assert.equal(plans[1].inner.areaMm2, rawWidth * rawHeight);
+  assert.equal(rawWidth * rawHeight, 7541860);
+  assert.notEqual(plans[1].inner.areaMm2, rawWidth * rawHeight);
 
   const verticalExteriorFaces = scene.walls.filter((wall) => (
     Math.abs(wall.topologyStart.xMm - wall.topologyEnd.xMm) <= 1 &&
@@ -884,17 +906,16 @@ test('2205/2901/2834 inner-corner closure keeps its visible lower-wall endpoint 
     heightMm: 2901,
     areaMm2: 8221434
   });
-  assert.equal(secondSpace.wallFaceOverrides[firstSpace.wallIds[3]], 'topology');
-  assert.equal(newWallIds.every((wallId) => {
+  assert.equal(secondSpace.wallFaceOverrides[firstSpace.wallIds[3]], 'offset');
+  assert.deepEqual(newWallIds.map((wallId) => {
     const wall = surveyGraph.getWall(floor, wallId);
-    return (wall.measurementStartInsetMm || 0) === 0 &&
-      (wall.measurementEndInsetMm || 0) === 0;
-  }), true);
+    return [wall.measurementStartInsetMm || 0, wall.measurementEndInsetMm || 0];
+  }), [[200, 0], [0, 0], [0, 200]]);
   assert.deepEqual(
     scene.dimensions
       .filter((dimension) => dimension.kind === 'building-overall')
       .map((dimension) => dimension.label),
-    ['3301', '5439', '3301', '5439']
+    ['3301', '5639', '3301', '5639']
   );
   assert.equal(scene.wallFaceOverrideBoundaries.length, 1);
   const selectedBoundary = scene.wallFaceOverrideBoundaries[0].points;
@@ -954,8 +975,8 @@ test('deleting the wall shared by two closed rooms merges their fill, label, and
   assert.equal(mergedScene.closedSpaceFills[0].points.length, 6);
   assert.deepEqual(surveyGraph.buildSpaceDimensionPlan(mergedFloor, mergedSpaces[0]).inner, {
     widthMm: 2230,
-    heightMm: 6364,
-    areaMm2: 14191720
+    heightMm: 6564,
+    areaMm2: 14637720
   });
 });
 
@@ -1111,12 +1132,12 @@ test('distant vertex-axis snapping renders a guide from the closed-room corner t
   assert.equal(scene.previewWall.endPoint.x, scene.alignmentSnapGuide.endPoint.x);
 });
 
-test('inner shared-wall preview keeps one cursor on the selected topology endpoint across zoom levels', () => {
+test('inner shared-wall preview keeps one cursor on the inset measurement endpoint across zoom levels', () => {
   const draft = createSharedWallInsetClosureDraft();
   const floor = surveyGraph.getActiveFloor(draft);
 
   assert.equal(floor.session.closeCandidateType, 'shared-wall');
-  assert.equal(floor.session.previewMeasurementEndInsetMm, 0);
+  assert.equal(floor.session.previewMeasurementEndInsetMm, 200);
 
   [0.05, 0.12, 0.24].forEach((scale) => {
     const scene = createScene(draft, { scale, offsetX: 0, offsetY: 0 });
@@ -1127,7 +1148,6 @@ test('inner shared-wall preview keeps one cursor on the selected topology endpoi
     assert.ok(scene.activeSegment);
     assert.deepEqual(scene.cursor.point, scene.activeSegment.measurementEndPoint);
     assert.deepEqual(scene.cursor.guidePoint, scene.activeSegment.measurementStartPoint);
-    assert.deepEqual(scene.activeSegment.measurementEndPoint, scene.activeSegment.endPoint);
 
     const activeAxes = recorder.strokeDetails.filter((detail) => (
       detail.strokeStyle === 'rgba(0, 126, 220, 0.92)'
@@ -1615,6 +1635,10 @@ test('viewport interaction projects closed fills, wall solids, and openings into
   const projectedFillPoint = interactionScene.closedSpaceFills[0].points[0];
   const sourceSolidPoint = scene.wallSolidPlans.closed.rings[0][0];
   const projectedSolidPoint = interactionScene.wallSolidPlans.closed.rings[0][0];
+  const sourcePolygonPoint = scene.wallSolidPlans.closed.polygons[0][0];
+  const projectedPolygonPoint = interactionScene.wallSolidPlans.closed.polygons[0][0];
+  const sourceBoundaryStart = scene.wallSolidPlan.segments[0].start;
+  const projectedBoundaryStart = interactionScene.wallSolidPlan.segments[0].start;
   const sourceOpening = scene.openings[0];
   const projectedOpening = interactionScene.openings[0];
 
@@ -1625,6 +1649,14 @@ test('viewport interaction projects closed fills, wall solids, and openings into
   assert.deepEqual(projectedSolidPoint, {
     x: sourceSolidPoint.x * transform.scale + transform.translateX,
     y: sourceSolidPoint.y * transform.scale + transform.translateY
+  });
+  assert.deepEqual(projectedPolygonPoint, {
+    x: sourcePolygonPoint.x * transform.scale + transform.translateX,
+    y: sourcePolygonPoint.y * transform.scale + transform.translateY
+  });
+  assert.deepEqual(projectedBoundaryStart, {
+    x: sourceBoundaryStart.x * transform.scale + transform.translateX,
+    y: sourceBoundaryStart.y * transform.scale + transform.translateY
   });
   assert.deepEqual(projectedOpening.center, {
     x: sourceOpening.center.x * transform.scale + transform.translateX,
@@ -1818,8 +1850,14 @@ test('snapping a new cursor onto a closed wall preserves the completed room rend
   assert.equal(after.activeSegment, null);
   assert.ok(after.cursor);
   assert.deepEqual(after.closedSpaceFills, before.closedSpaceFills);
-  assert.deepEqual(after.wallSolidPlan.rings, before.wallSolidPlan.rings);
-  assert.deepEqual(after.wallSolidPlans.closed.rings, before.wallSolidPlans.closed.rings);
+  assert.deepEqual(
+    normalizeRingPlan(after.wallSolidPlan.rings),
+    normalizeRingPlan(before.wallSolidPlan.rings)
+  );
+  assert.deepEqual(
+    normalizeRingPlan(after.wallSolidPlans.closed.rings),
+    normalizeRingPlan(before.wallSolidPlans.closed.rings)
+  );
 });
 
 test('a room closed from a wall-snapped cursor keeps fills and shared-wall solids in the same gesture frame', () => {
@@ -1854,4 +1892,158 @@ test('viewport interaction keeps structural drawing and skips dimensions, labels
     interactionRecorder.dashes.some((dash) => dash.length && dash[0] === 12 && dash[1] === 10),
     false
   );
+});
+
+test('formal and viewport wall rendering avoid compound fill paths at closed and T junctions', () => {
+  [createClosedRectangleDraft(), createClosedCornerCollinearClosureDraft()].forEach((draft) => {
+    const scene = createScene(draft);
+    const formalRecorder = createRecordingContext();
+    const interactionRecorder = createRecordingContext();
+
+    surveyCanvasRenderer.drawSurveyScene(formalRecorder.context, scene, { dpr: 1 });
+    surveyCanvasRenderer.drawSurveyInteractionScene(interactionRecorder.context, scene, {
+      dpr: 1,
+      baseViewport: scene.viewport,
+      viewport: Object.assign({}, scene.viewport, {
+        offsetX: scene.viewport.offsetX + 31,
+        offsetY: scene.viewport.offsetY - 17
+      })
+    });
+
+    [formalRecorder, interactionRecorder].forEach((recorder) => {
+      assert.ok(recorder.fills.length > 0);
+      assert.equal(recorder.fills.every((path) => (
+        path.filter((command) => command[0] === 'moveTo').length <= 1
+      )), true);
+      const wallOutline = recorder.strokeDetails.find((detail) => detail.strokeStyle === '#1f1f1f');
+      assert.ok(wallOutline);
+      assert.equal(wallOutline.path.some((command) => command[0] === 'closePath'), false);
+    });
+  });
+});
+
+test('a completed source wall paints over its open T branch at the shared intersection', () => {
+  let draft = createClosedRectangleDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const sourceWall = floor.walls[0];
+  const sourceStart = surveyGraph.getNode(floor, sourceWall.startNodeId);
+  const sourceEnd = surveyGraph.getNode(floor, sourceWall.endNodeId);
+  const target = surveyGraph.getCursorPlacementTarget(floor, {
+    xMm: Math.round((sourceStart.xMm + sourceEnd.xMm) / 2),
+    yMm: Math.round((sourceStart.yMm + sourceEnd.yMm) / 2)
+  }, surveyGraph.CLOSE_TOLERANCE_MM);
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = commitWall(draft, { xMm: 1500, yMm: -2000 }, 2000);
+  floor = surveyGraph.getActiveFloor(draft);
+  const scene = createScene(draft);
+  const recorder = createRecordingContext();
+
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+
+  assert.ok(scene.walls.some((wall) => wall.closed));
+  assert.ok(scene.walls.some((wall) => !wall.closed));
+  const wallFills = recorder.fillDetails.filter((detail) => (
+    detail.fillStyle === '#e2e2e0' || detail.fillStyle === '#8e8e8c'
+  ));
+  assert.ok(wallFills.length > 1);
+  assert.equal(wallFills[0].fillStyle, '#e2e2e0');
+  assert.equal(wallFills.at(-1).fillStyle, '#8e8e8c');
+});
+
+test('mixed T junctions underpaint the complete union before closed walls', () => {
+  let draft = createClosedRectangleDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const sourceWall = floor.walls[0];
+  const sourceStart = surveyGraph.getNode(floor, sourceWall.startNodeId);
+  const sourceEnd = surveyGraph.getNode(floor, sourceWall.endNodeId);
+  const target = surveyGraph.getCursorPlacementTarget(floor, {
+    xMm: Math.round((sourceStart.xMm + sourceEnd.xMm) / 2),
+    yMm: Math.round((sourceStart.yMm + sourceEnd.yMm) / 2)
+  }, surveyGraph.CLOSE_TOLERANCE_MM);
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = commitWall(draft, { xMm: 1500, yMm: -2000 }, 2000);
+  const scene = createScene(draft);
+  const recorder = createRecordingContext();
+
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+
+  const wallFills = recorder.fillDetails.filter((detail) => (
+    detail.fillStyle === '#e2e2e0' || detail.fillStyle === '#8e8e8c'
+  ));
+  assert.equal(
+    wallFills.filter((detail) => detail.fillStyle === '#e2e2e0').length,
+    scene.wallSolidPlan.polygons.length
+  );
+  assert.equal(
+    wallFills.filter((detail) => detail.fillStyle === '#8e8e8c').length,
+    scene.wallSolidPlans.closed.polygons.length
+  );
+  assert.ok(
+    scene.wallSolidPlan.polygons.length >
+      scene.wallSolidPlans.open.polygons.length + scene.wallSolidPlans.closed.polygons.length,
+    'the complete union must contribute the cross-group junction patch'
+  );
+});
+
+test('native wall outlines stroke each union segment independently', () => {
+  const scene = createScene(createClosedCornerCollinearClosureDraft());
+  const recorder = createRecordingContext();
+
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+
+  const wallOutlines = recorder.strokeDetails.filter((detail) => detail.strokeStyle === '#1f1f1f');
+  assert.equal(wallOutlines.length, scene.wallSolidPlan.segments.length);
+  assert.equal(wallOutlines.every((detail) => (
+    detail.path.filter((command) => command[0] === 'moveTo').length === 1 &&
+    detail.path.filter((command) => command[0] === 'lineTo').length === 1
+  )), true);
+});
+
+test('closed corners receive device-pixel scanline repairs after polygon fills', () => {
+  const scene = createScene(createClosedRectangleDraft());
+  const recorder = createRecordingContext();
+
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 3 });
+
+  assert.equal(scene.wallSolidPlan.joinPolygons.length, 4);
+  const repairRects = recorder.fillRectDetails.filter((detail) => (
+    detail.fillStyle === '#e2e2e0' || detail.fillStyle === '#8e8e8c'
+  ));
+  assert.ok(repairRects.length >= scene.wallSolidPlan.joinPolygons.length * 3);
+  scene.wallSolidPlan.joinPolygons.forEach((polygon) => {
+    const center = polygon.reduce((point, current) => ({
+      x: point.x + current.x / polygon.length,
+      y: point.y + current.y / polygon.length
+    }), { x: 0, y: 0 });
+    assert.equal(repairRects.some((rect) => (
+      center.x >= rect.x && center.x <= rect.x + rect.width &&
+      center.y >= rect.y && center.y <= rect.y + rect.height
+    )), true, `missing scanline repair at ${JSON.stringify(center)}`);
+  });
+});
+
+test('viewport interaction projects and repairs its junction polygons at the moved position', () => {
+  const scene = createScene(createClosedRectangleDraft());
+  const recorder = createRecordingContext();
+  const viewport = Object.assign({}, scene.viewport, {
+    offsetX: scene.viewport.offsetX + 41,
+    offsetY: scene.viewport.offsetY - 23
+  });
+
+  surveyCanvasRenderer.drawSurveyInteractionScene(recorder.context, scene, {
+    dpr: 2,
+    baseViewport: scene.viewport,
+    viewport
+  });
+
+  const repairRects = recorder.fillRectDetails.filter((detail) => detail.fillStyle === '#8e8e8c');
+  assert.ok(repairRects.length > 0);
+  const sourceCenter = scene.wallSolidPlan.joinPolygons[0].reduce((point, current) => ({
+    x: point.x + current.x / scene.wallSolidPlan.joinPolygons[0].length,
+    y: point.y + current.y / scene.wallSolidPlan.joinPolygons[0].length
+  }), { x: 0, y: 0 });
+  assert.equal(repairRects.some((rect) => (
+    sourceCenter.x + 41 >= rect.x && sourceCenter.x + 41 <= rect.x + rect.width &&
+    sourceCenter.y - 23 >= rect.y && sourceCenter.y - 23 <= rect.y + rect.height
+  )), true);
 });

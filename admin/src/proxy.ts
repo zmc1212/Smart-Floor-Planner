@@ -132,7 +132,8 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - brand-logo.png (public product-brand asset)
      */
-    '/((?!api/auth/login|_next/static|_next/image|favicon.ico).*)',
+    '/((?!api/auth/login|_next/static|_next/image|favicon.ico|brand-logo.png).*)',
   ],
 };

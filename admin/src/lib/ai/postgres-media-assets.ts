@@ -17,6 +17,7 @@ export type PostgresMediaOwnerType =
   | 'ai_generation_output'
   | 'ai_generation_input'
   | 'manual_upload'
+  | 'enterprise_logo'
   | 'staff_wechat_qr';
 
 type StorePostgresMediaInput = {

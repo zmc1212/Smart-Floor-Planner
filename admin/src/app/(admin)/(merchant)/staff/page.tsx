@@ -367,70 +367,70 @@ export default function StaffPage() {
         ) : !currentUser ? (
           <Alert showIcon type="info" message="正在加载员工权限" />
         ) : (
-        <>
-        <div className="admin-staff-layout">
-          <Card title="部门结构" className="admin-department-panel admin-panel-card w-full">
-            <Flex vertical gap={16}>
-              <Flex justify="space-between" align="center">
-                <Button type={selectedDepartmentId === null ? 'primary' : 'default'} onClick={() => setSelectedDepartmentId(null)}>全部员工</Button>
-                {canManage ? <Tooltip title="新增顶级部门"><Button aria-label="新增顶级部门" type="text" icon={<FolderPlus size={18} />} onClick={() => { setEditingDepartment(null); setDepartmentParentId(null); setDepartmentFormOpen(true); }} /></Tooltip> : null}
-              </Flex>
-              <Tree
-                blockNode
-                defaultExpandAll
-                selectedKeys={selectedDepartmentId ? [selectedDepartmentId] : []}
-                treeData={departmentTree}
-                onSelect={(keys) => setSelectedDepartmentId(typeof keys[0] === 'string' ? keys[0] : null)}
-              />
-            </Flex>
-          </Card>
+          <>
+            <div className="admin-staff-layout">
+              <Card title="部门结构" className="admin-department-panel admin-panel-card w-full">
+                <Flex vertical gap={16}>
+                  <Flex justify="space-between" align="center">
+                    <Button type={selectedDepartmentId === null ? 'primary' : 'default'} onClick={() => setSelectedDepartmentId(null)}>全部员工</Button>
+                    {canManage ? <Tooltip title="新增顶级部门"><Button aria-label="新增顶级部门" type="text" icon={<FolderPlus size={18} />} onClick={() => { setEditingDepartment(null); setDepartmentParentId(null); setDepartmentFormOpen(true); }} /></Tooltip> : null}
+                  </Flex>
+                  <Tree
+                    blockNode
+                    defaultExpandAll
+                    selectedKeys={selectedDepartmentId ? [selectedDepartmentId] : []}
+                    treeData={departmentTree}
+                    onSelect={(keys) => setSelectedDepartmentId(typeof keys[0] === 'string' ? keys[0] : null)}
+                  />
+                </Flex>
+              </Card>
 
-          <div className="min-w-0 flex-1">
-            <ModuleOverview
-              ariaLabel="团队概览"
-              items={[
-                { label: '本页团队成员', value: overview.total, icon: <Users size={18} /> },
-                { label: '本页设计师', value: overview.designers, icon: <UserCheck size={18} />, tone: 'success' },
-                { label: '本页测量员', value: overview.measurers, icon: <Wrench size={18} />, tone: 'warning' },
-                { label: '部门结构', value: departments.length, icon: <FolderPlus size={18} /> },
-              ]}
-            />
-            <ProTable<StaffMember>
-              className="admin-data-table admin-mobile-filter-stack"
-              actionRef={actionRef}
-              rowKey="_id"
-              columns={columns}
-              search={{ labelWidth: 'auto', defaultCollapsed: false, span: 12 }}
-              options={{ reload: true, density: true, setting: true }}
-              pagination={{ defaultPageSize: 20, showSizeChanger: true }}
-              scroll={{ x: 900 }}
-              request={async (params) => {
-                const query = new URLSearchParams({ page: String(params.current || 1), limit: String(params.pageSize || 20) });
-                if (selectedDepartmentId) query.set('departmentId', selectedDepartmentId);
-                if (params.search) query.set('search', String(params.search));
-                if (params.role) query.set('roles', String(params.role));
-                const response = await fetch(`/api/staff?${query}`);
-                const result = await response.json();
-                if (!response.ok || !result.success) throw new Error(result.error || '读取员工失败');
-                const rows = result.data || [];
-                const nextOverview = {
-                  total: rows.length,
-                  designers: rows.filter((member: StaffMember) => member.role === 'designer').length,
-                  measurers: rows.filter((member: StaffMember) => member.role === 'measurer').length,
-                };
-                setOverview((current) => (
-                  current.total === nextOverview.total &&
-                  current.designers === nextOverview.designers &&
-                  current.measurers === nextOverview.measurers
-                    ? current
-                    : nextOverview
-                ));
-                return { data: result.data || [], total: result.pagination?.total || 0, success: true };
-              }}
-            />
-          </div>
-        </div>
-        </>
+              <div className="min-w-0 flex-1">
+                <ModuleOverview
+                  ariaLabel="团队概览"
+                  items={[
+                    { label: '本页团队成员', value: overview.total, icon: <Users size={18} /> },
+                    { label: '本页设计师', value: overview.designers, icon: <UserCheck size={18} />, tone: 'success' },
+                    { label: '本页测量员', value: overview.measurers, icon: <Wrench size={18} />, tone: 'warning' },
+                    { label: '部门结构', value: departments.length, icon: <FolderPlus size={18} /> },
+                  ]}
+                />
+                <ProTable<StaffMember>
+                  className="admin-data-table admin-mobile-filter-stack"
+                  actionRef={actionRef}
+                  rowKey="_id"
+                  columns={columns}
+                  search={{ labelWidth: 'auto', defaultCollapsed: false, span: 12 }}
+                  options={{ reload: true, density: true, setting: true }}
+                  pagination={{ defaultPageSize: 20, showSizeChanger: true }}
+                  scroll={{ x: 900 }}
+                  request={async (params) => {
+                    const query = new URLSearchParams({ page: String(params.current || 1), limit: String(params.pageSize || 20) });
+                    if (selectedDepartmentId) query.set('departmentId', selectedDepartmentId);
+                    if (params.search) query.set('search', String(params.search));
+                    if (params.role) query.set('roles', String(params.role));
+                    const response = await fetch(`/api/staff?${query}`);
+                    const result = await response.json();
+                    if (!response.ok || !result.success) throw new Error(result.error || '读取员工失败');
+                    const rows = result.data || [];
+                    const nextOverview = {
+                      total: rows.length,
+                      designers: rows.filter((member: StaffMember) => member.role === 'designer').length,
+                      measurers: rows.filter((member: StaffMember) => member.role === 'measurer').length,
+                    };
+                    setOverview((current) => (
+                      current.total === nextOverview.total &&
+                        current.designers === nextOverview.designers &&
+                        current.measurers === nextOverview.measurers
+                        ? current
+                        : nextOverview
+                    ));
+                    return { data: result.data || [], total: result.pagination?.total || 0, success: true };
+                  }}
+                />
+              </div>
+            </div>
+          </>
         )}
       </PageContainer>
 
@@ -476,38 +476,38 @@ export default function StaffPage() {
               pagination={false}
               headerTitle="员工覆盖"
               columns={[
-              { title: '员工', key: 'member', render: (_, member) => <Flex vertical gap={2}><Typography.Text strong>{member.displayName || member.username}</Typography.Text><Typography.Text type="secondary" className="text-xs">@{member.username}</Typography.Text></Flex> },
-              { title: '岗位', dataIndex: 'role', width: 100, render: (_, member) => <Tag color={ROLE_COLORS[member.role]}>{ROLE_LABELS[member.role]}</Tag> },
-              {
-                title: '个人设置',
-                dataIndex: 'effect',
-                width: 160,
-                render: (_, member) => (
-                  <Select
-                    value={member.effect}
-                    className="w-full"
-                    options={[
-                      { label: '继承角色默认', value: 'inherit' },
-                      { label: '单独允许', value: 'allow' },
-                      { label: '单独禁止', value: 'deny' },
-                    ]}
-                    onChange={(effect: PermissionEffect) => setPermissionStaff((current) => current.map((item) => item._id === member._id ? {
-                      ...item,
-                      effect,
-                      effectiveAllowed: effect === 'inherit' ? permissionRoleDefaults[item.role] : effect === 'allow',
-                    } : item))}
-                  />
-                ),
-              },
-              {
-                title: '最终权限',
-                key: 'effective',
-                width: 100,
-                render: (_, member) => {
-                  const allowed = member.effect === 'inherit' ? permissionRoleDefaults[member.role] : member.effect === 'allow';
-                  return <Tag color={allowed ? 'green' : 'default'}>{allowed ? '允许' : '禁止'}</Tag>;
+                { title: '员工', key: 'member', render: (_, member) => <Flex vertical gap={2}><Typography.Text strong>{member.displayName || member.username}</Typography.Text><Typography.Text type="secondary" className="text-xs">@{member.username}</Typography.Text></Flex> },
+                { title: '岗位', dataIndex: 'role', width: 100, render: (_, member) => <Tag color={ROLE_COLORS[member.role]}>{ROLE_LABELS[member.role]}</Tag> },
+                {
+                  title: '个人设置',
+                  dataIndex: 'effect',
+                  width: 160,
+                  render: (_, member) => (
+                    <Select
+                      value={member.effect}
+                      className="w-full"
+                      options={[
+                        { label: '继承角色默认', value: 'inherit' },
+                        { label: '单独允许', value: 'allow' },
+                        { label: '单独禁止', value: 'deny' },
+                      ]}
+                      onChange={(effect: PermissionEffect) => setPermissionStaff((current) => current.map((item) => item._id === member._id ? {
+                        ...item,
+                        effect,
+                        effectiveAllowed: effect === 'inherit' ? permissionRoleDefaults[item.role] : effect === 'allow',
+                      } : item))}
+                    />
+                  ),
                 },
-              },
+                {
+                  title: '最终权限',
+                  key: 'effective',
+                  width: 100,
+                  render: (_, member) => {
+                    const allowed = member.effect === 'inherit' ? permissionRoleDefaults[member.role] : member.effect === 'allow';
+                    return <Tag color={allowed ? 'green' : 'default'}>{allowed ? '允许' : '禁止'}</Tag>;
+                  },
+                },
               ]}
             />
           </div>
@@ -582,34 +582,33 @@ export default function StaffPage() {
         />
         {staffRole === 'designer' ? (
           <>
-              <ProFormText name="wechatId" label="微信号" rules={[{ required: true, message: '请输入设计师微信号' }]} />
-              <Form.Item
-                label="个人微信二维码"
-                required
-                extra="支持 JPG、PNG、WebP 或 GIF 格式，图片大小不超过 5MB。"
-              >
-                <ImageUploadField
-                  ariaLabel="上传个人微信二维码"
-                  helpText="支持 JPG、PNG、WebP 或 GIF 格式，图片大小不超过 5MB。"
-                  previewAlt="个人微信二维码预览"
-                  uploadSuccessText="个人微信二维码已上传"
-                  uploadText="上传二维码"
-                  value={wechatQrPreviewUrl}
-                  onUpload={async (file) => {
-                    const formData = new FormData();
-                    formData.append('file', file);
-                    const response = await fetch('/api/staff/wechat-qr', { method: 'POST', body: formData });
-                    const result = await response.json();
-                    if (!response.ok || !result.success) throw new Error(result.error || '个人微信二维码上传失败');
-                    setWechatQrAssetId(result.data.assetId);
-                    return { previewUrl: result.data.imageUrl };
-                  }}
-                  onValueChange={(value) => {
-                    setWechatQrPreviewUrl(value);
-                    if (!value) setWechatQrAssetId(null);
-                  }}
-                />
-              </Form.Item>
+            <ProFormText name="wechatId" label="微信号" rules={[{ required: true, message: '请输入设计师微信号' }]} />
+            <Form.Item
+              label="个人微信二维码"
+              required
+            >
+              <ImageUploadField
+                ariaLabel="上传个人微信二维码"
+                helpText="支持 JPG、PNG、WebP 或 GIF 格式，图片大小不超过 5MB。"
+                previewAlt="个人微信二维码预览"
+                uploadSuccessText="个人微信二维码已上传"
+                uploadText="上传二维码"
+                value={wechatQrPreviewUrl}
+                onUpload={async (file) => {
+                  const formData = new FormData();
+                  formData.append('file', file);
+                  const response = await fetch('/api/staff/wechat-qr', { method: 'POST', body: formData });
+                  const result = await response.json();
+                  if (!response.ok || !result.success) throw new Error(result.error || '个人微信二维码上传失败');
+                  setWechatQrAssetId(result.data.assetId);
+                  return { previewUrl: result.data.imageUrl };
+                }}
+                onValueChange={(value) => {
+                  setWechatQrPreviewUrl(value);
+                  if (!value) setWechatQrAssetId(null);
+                }}
+              />
+            </Form.Item>
           </>
         ) : staffRole === 'measurer' ? (
           <ProFormSelect

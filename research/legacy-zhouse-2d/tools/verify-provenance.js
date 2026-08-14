@@ -1,6 +1,8 @@
 'use strict'
 
 const methodMap = require('../provenance/method-map.json')
+const fs = require('node:fs')
+const path = require('node:path')
 
 const allowedStatuses = new Set(methodMap.statusOrder)
 const ids = new Set()
@@ -18,6 +20,18 @@ for (const method of methodMap.methods) {
   if (rvas.has(method.rva)) throw new Error(`duplicate method RVA: ${method.rva}`)
   if (['located', 'decompiled'].includes(method.status) && method.implementation !== null) {
     throw new Error(`unverified method must not name an implementation: ${method.id}`)
+  }
+  if (!['located', 'decompiled'].includes(method.status)) {
+    if (typeof method.implementation !== 'string' || !method.implementation.includes('#')) {
+      throw new Error(`reconstructed method must name file#export: ${method.id}`)
+    }
+    const [relativePath, exportName] = method.implementation.split('#')
+    const implementationPath = path.resolve(__dirname, '..', relativePath)
+    if (!fs.existsSync(implementationPath)) throw new Error(`implementation file is missing: ${method.id}`)
+    const implementationModule = require(implementationPath)
+    if (typeof implementationModule[exportName] !== 'function') {
+      throw new Error(`implementation export is missing: ${method.id}`)
+    }
   }
   ids.add(method.id)
   rvas.add(method.rva)

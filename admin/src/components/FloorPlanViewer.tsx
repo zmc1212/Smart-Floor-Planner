@@ -1431,7 +1431,7 @@ export default function FloorPlanViewer({ planData }: { planData: FloorPlanViewe
            <div className="space-y-2 rounded-md border bg-foreground p-3 font-mono text-[10px] text-background shadow-lg opacity-85 transition-opacity hover:opacity-100">
               <div className="flex items-center gap-2 border-b border-background/20 pb-2 text-emerald-300">
                  <Activity size={14} />
-                 <span className="font-bold underline">ENGINE STATUS</span>
+                 <span className="font-bold underline">引擎状态</span>
               </div>
               <p><span className="text-primary-foreground">Rooms:</span> {roomsToRender.length} / {allRooms.length}</p>
               <p><span className="text-primary-foreground">View:</span> {is3D ? 'PERSPECTIVE' : 'ORTHO'}</p>

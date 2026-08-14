@@ -96,7 +96,7 @@ export default function ImageCropperDialog({ open, onOpenChange, imageUrl, onCro
           {previewImageUrl ? (
             <img 
               src={previewImageUrl} 
-              alt="Preview selection" 
+              alt="预览选区"
               style={{ maxHeight: '55vh', maxWidth: '100%', width: 'auto', height: 'auto', display: 'block', margin: '0 auto' }}
               className="rounded-lg shadow-sm border border-zinc-200"
             />
@@ -105,7 +105,7 @@ export default function ImageCropperDialog({ open, onOpenChange, imageUrl, onCro
               <img 
                 ref={imageRef} 
                 src={imageUrl} 
-                alt="Crop selection" 
+                alt="裁剪选区"
                 style={{ maxHeight: '55vh', maxWidth: '100%', width: 'auto', height: 'auto', display: 'block', margin: '0 auto' }}
                 crossOrigin="anonymous"
               />

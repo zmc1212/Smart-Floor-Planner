@@ -302,7 +302,7 @@ export default function GenerationDetailPage() {
             <div className="relative flex aspect-square items-center justify-center overflow-hidden rounded-lg border bg-card shadow-sm lg:aspect-[4/3]">
               {data.status === 'succeeded' ? (
                 <div className="relative h-full w-full">
-                  <img src={imageUrl} alt="Generated Floor Plan" className="h-full w-full object-contain" />
+                  <img src={imageUrl} alt="生成的户型图" className="h-full w-full object-contain" />
                   {overlaySvg && (
                     <div className="pointer-events-none absolute inset-0" dangerouslySetInnerHTML={{ __html: overlaySvg }} />
                   )}
@@ -330,7 +330,7 @@ export default function GenerationDetailPage() {
                     <p className="text-xl font-bold">AI 正在渲染中...</p>
                     <div className="flex min-w-[240px] flex-col items-center gap-1.5">
                       <div className="flex w-full justify-between text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                        <span>Status</span>
+                        <span>进度</span>
                         <span>{data.progress}%</span>
                       </div>
                       <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">

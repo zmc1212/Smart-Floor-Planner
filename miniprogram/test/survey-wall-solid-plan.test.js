@@ -60,6 +60,8 @@ test('wall union fills the outside corner when one-sided wall rectangles only to
   });
 
   assert.equal(plan.rings.length, 1);
+  assert.equal(plan.sourcePolygonCount, 2);
+  assert.equal(plan.joinPolygons.length, 1);
   assertArea(areaOfPlan(plan), 440000);
   assert.equal(plan.rings[0].some((point) => point.x === 1200 && point.y === -200), true);
   assert.equal(plan.rings[0].some((point, index) => {

@@ -1,0 +1,18 @@
+<view class="project-page">
+  <view class="project-nav" style="padding-top:{{navigationTop}}px;padding-right:{{navigationRight}}px;min-height:{{navigationTop + navigationHeight}}px"><view class="nav-back" bindtap="goBack"><view></view></view><view><text>{{step === 'projects' ? '选择客户项目' : '选择设计空间'}}</text><text>{{step === 'projects' ? '只展示当前账号可使用的正式量房' : selectedProject.projectDisplayTitle}}</text></view></view>
+  <view wx:if="{{loading}}" class="project-state"><view class="state-card shimmer"></view><text>正在整理客户方案册…</text></view>
+  <view wx:elif="{{error}}" class="project-state"><text class="state-title">客户项目加载失败</text><text>{{error}}</text><view class="state-action" bindtap="retry">重新加载</view></view>
+  <block wx:else>
+    <scroll-view wx:if="{{step === 'projects'}}" scroll-y enhanced show-scrollbar="{{false}}" class="project-scroll">
+      <view class="project-content">
+        <view class="selected-recipe-mini"><image wx:if="{{recipe.previewUrl}}" src="{{recipe.previewUrl}}" mode="aspectFill"></image><view class="mini-shade"></view><view><text>已选配方</text><text>{{recipe.name}}</text></view></view>
+        <view class="project-search"><image src="/images/mine-icons/search.png" mode="aspectFit"></image><input placeholder="搜索客户或小区" value="{{projectSearch}}" bindinput="onProjectSearch" /></view>
+        <scroll-view scroll-x show-scrollbar="{{false}}" class="project-group-scroll"><view class="project-groups"><view wx:for="{{projectGroups}}" wx:key="key" class="project-group {{item.active ? 'active' : ''}}" data-key="{{item.key}}" bindtap="selectProjectGroup"><text>{{item.label}}</text><text>{{item.count}}</text></view></view></scroll-view>
+        <view wx:if="{{!filteredProjects.length}}" class="project-empty"><text>{{projectEmptyCopy}}</text><text>{{projectGroup === 'needs_survey' ? '先完成量房后，这里会自动出现可设计项目。' : '可以返回客户线索创建并完成一次正式量房。'}}</text><view class="project-empty-action" bindtap="openCustomerLeads">前往客户线索</view></view>
+        <view wx:else class="project-list"><view wx:for="{{filteredProjects}}" wx:key="floorPlanId" class="project-card {{item.projectGroup}}" data-id="{{item.floorPlanId}}" bindtap="selectProject"><view class="project-cover"><image wx:if="{{item.navigationPreview.imageUrl}}" src="{{item.navigationPreview.imageUrl}}" mode="aspectFill"></image><image wx:else src="/images/ai-design-project-folio-cover-v1.png" mode="aspectFill"></image><text>{{item.statusLabel}}</text></view><view class="project-card-copy"><text>{{item.projectDisplayTitle}}</text><text>正式量房 · {{item.closedRoomCount}} 个闭合空间</text><text>{{item.projectSubtitle}}</text></view><view class="project-action">{{item.projectGroup === 'needs_survey' ? '继续量房' : '选择'}}</view></view></view>
+      </view>
+    </scroll-view>
+    <scroll-view wx:else scroll-y enhanced show-scrollbar="{{false}}" class="project-scroll"><view class="scope-content"><view class="project-identity"><text>当前客户</text><text>{{selectedProject.projectDisplayTitle}}</text><text>正式量房 · {{selectedProject.projectSubtitle}} · {{selectedProject.closedRoomCount}} 个闭合空间</text></view><text class="scope-heading">应用到哪里</text><view class="scope-list"><view wx:for="{{scopes}}" wx:key="key" class="scope-card {{selectedScope.key === item.key ? 'active' : ''}}" data-key="{{item.key}}" bindtap="selectScope"><view class="scope-mark"><view></view></view><view><text>{{item.name}}</text><text>{{item.meta}}</text></view><text>{{item.targetScope === 'whole_floor_plan' ? '整屋方案' : '单房间'}}</text></view></view><view class="scope-note">配方只应用到当前选择，不会自动为其他房间生成，也不会产生额外扣点。</view><view class="scope-bottom-space"></view></view></scroll-view>
+  </block>
+  <view wx:if="{{step === 'scope' && selectedScope}}" class="project-bottom"><view bindtap="continueToConfirm">确认空间，继续</view></view>
+</view>

@@ -70,6 +70,7 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
   ],
   enterprise_admin: [
     'dashboard',
+    'promotion-records',
     'leads',
     'floorplans',
     'measurements',

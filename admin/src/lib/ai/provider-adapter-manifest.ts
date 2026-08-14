@@ -31,7 +31,7 @@ export type ProviderAdapterManifest = {
 
 const API_KEY_CREDENTIAL: ProviderCredentialField = {
   key: 'apiKey',
-  label: 'API Key',
+  label: 'API 密钥',
   required: true,
 };
 
@@ -76,7 +76,7 @@ export const AI_PROVIDER_ADAPTER_MANIFESTS: Record<AiProviderAdapterType, Provid
   },
   openai_compatible: {
     type: 'openai_compatible',
-    label: 'OpenAI Compatible',
+    label: 'OpenAI 兼容接口',
     description: '适用于兼容 OpenAI API 协议的供应商；模型参数由后端适配器转换。',
     defaultBaseUrl: 'https://api.openai.com/v1',
     baseUrlPlaceholder: 'https://api.example.com/v1',

@@ -620,6 +620,26 @@ function resolveBoundaryAlignmentSourceWall(floor, session, start, end) {
   return bestWall;
 }
 
+function resolveOpenEndpointContinuationMeasurementSide(floor, session, sourceWall) {
+  if (
+    !floor ||
+    !session ||
+    !sourceWall ||
+    findClosedSpaceForWall(floor, sourceWall.id) ||
+    !session.activeSpaceStartNodeId ||
+    getNodeWallUseCount(floor, session.activeSpaceStartNodeId) !== 1
+  ) {
+    return '';
+  }
+
+  const sourceSide = sourceWall.measurementSide === 'right' ? 'right' : 'left';
+  if (sourceWall.endNodeId === session.activeSpaceStartNodeId) return sourceSide;
+  if (sourceWall.startNodeId === session.activeSpaceStartNodeId) {
+    return sourceSide === 'left' ? 'right' : 'left';
+  }
+  return '';
+}
+
 function resolveBoundaryAlignedMeasurementSide(floor, session, start, end) {
   if (!floor || !session || !start || !end) return session ? session.measurementSide : 'left';
   const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
@@ -631,6 +651,12 @@ function resolveBoundaryAlignedMeasurementSide(floor, session, start, end) {
   }
 
   const sourceWall = resolveBoundaryAlignmentSourceWall(floor, session, start, end);
+  const continuationSide = resolveOpenEndpointContinuationMeasurementSide(
+    floor,
+    session,
+    sourceWall
+  );
+  if (continuationSide) return continuationSide;
   const sourceSegment = sourceWall ? buildResolvedSegment(floor, sourceWall) : null;
   if (!sourceSegment || !sourceSegment.normal) return session.measurementSide;
 
@@ -659,30 +685,137 @@ function resolvePreviewMeasurementStartInsetMm(floor, session, anchor, previewPo
     : 0;
   const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
   if (activeWallCount !== 0 || !findClosedSpaceForWall(floor, session.activeSpaceSharedWallId)) return 0;
-  if (session.activeSpaceSharedSnapLine === 'inner') return 0;
   return resolveClosedBoundaryInsetMm(floor, anchor, previewPoint, {
     preferredWallId: session.activeSpaceSharedWallId
   });
 }
 
-function resolveSharedClosureEndInsetMm(floor, session, start, end, sharedWallId) {
-  const startWallIndex = session && Number.isInteger(session.activeSpaceStartWallIndex)
-    ? session.activeSpaceStartWallIndex
-    : 0;
-  const activeWalls = floor && (floor.walls || []).slice(startWallIndex);
-  const isRectangularSharedClosure = session &&
-    session.activeSpaceSharedSnapLine === 'inner' &&
-    session.activeSpaceSharedWallId &&
-    activeWalls &&
-    activeWalls.length >= 2 &&
-    activeWalls.every((wall) => {
-      const wallStart = getNode(floor, wall.startNodeId);
-      const wallEnd = getNode(floor, wall.endNodeId);
-      return wall.mode === 'straight' && isAxisAlignedSegment(wallStart, wallEnd);
-    });
-  if (isRectangularSharedClosure) {
-    return 0;
+function setWallEndpointInset(floor, wall, nodeId, insetMm, onlyIncrease) {
+  if (!floor || !wall || !nodeId) return;
+  const coordinateLength = getWallCoordinateLength(floor, wall);
+  const currentInsets = getWallMeasurementInsets(wall);
+  const absoluteOpeningOffsets = ensureOpenings(floor)
+    .filter((opening) => opening.wallId === wall.id)
+    .map((opening) => ({
+      opening,
+      absoluteOffsetMm: (opening.centerOffsetMm || 0) + currentInsets.start
+    }));
+  const isStart = wall.startNodeId === nodeId;
+  const isEnd = wall.endNodeId === nodeId;
+  if (!isStart && !isEnd) return;
+
+  const oppositeInset = isStart ? currentInsets.end : currentInsets.start;
+  const maximumInset = Math.max(0, coordinateLength - oppositeInset - 1);
+  const nextInset = Math.min(
+    maximumInset,
+    onlyIncrease
+      ? Math.max(isStart ? currentInsets.start : currentInsets.end, normalizeMeasurementInset(insetMm))
+      : normalizeMeasurementInset(insetMm)
+  );
+  if (isStart) {
+    wall.measurementStartInsetMm = nextInset;
+  } else {
+    wall.measurementEndInsetMm = nextInset;
   }
+  wall.lengthMm = getMeasuredWallLength(floor, wall);
+
+  const nextStartInset = getWallMeasurementInsets(wall).start;
+  absoluteOpeningOffsets.forEach(({ opening, absoluteOffsetMm }) => {
+    opening.centerOffsetMm = Math.round(absoluteOffsetMm - nextStartInset);
+    normalizeOpeningToWall(floor, opening);
+  });
+}
+
+function updateWallEndpointInset(floor, wall, nodeId, insetMm) {
+  setWallEndpointInset(floor, wall, nodeId, insetMm, true);
+}
+
+function applyWallBodyInsetToIncidentWalls(floor, sourceWall, nodeId) {
+  if (!floor || !sourceWall || !nodeId) return;
+  const sourceSegment = buildBaseWallSegment(floor, sourceWall);
+  if (!sourceSegment) return;
+
+  (floor.walls || []).forEach((wall) => {
+    if (!wall || wall.id === sourceWall.id) return;
+    const touchesStart = wall.startNodeId === nodeId;
+    const touchesEnd = wall.endNodeId === nodeId;
+    if (!touchesStart && !touchesEnd) return;
+    const node = getNode(floor, nodeId);
+    const oppositeNode = getNode(floor, touchesStart ? wall.endNodeId : wall.startNodeId);
+    if (!node || !oppositeNode) return;
+    const length = distanceMm(node, oppositeNode);
+    if (!length) return;
+    const awayDirection = {
+      x: (oppositeNode.xMm - node.xMm) / length,
+      y: (oppositeNode.yMm - node.yMm) / length
+    };
+    const coverageRate = dot(awayDirection, sourceSegment.normal);
+    if (coverageRate <= 0.25) return;
+    updateWallEndpointInset(
+      floor,
+      wall,
+      nodeId,
+      Math.ceil(sourceSegment.thicknessMm / coverageRate)
+    );
+  });
+}
+
+function recomputeSplitNodeBodyInsets(floor, nodeId) {
+  if (!floor || !nodeId) return [];
+  const node = getNode(floor, nodeId);
+  if (!node) return [];
+  const incidentWalls = (floor.walls || []).filter((wall) => (
+    wall && (wall.startNodeId === nodeId || wall.endNodeId === nodeId)
+  ));
+  const sourceGroups = new Map();
+  incidentWalls.forEach((wall) => {
+    if (!wall.topologySourceWallId) return;
+    if (!sourceGroups.has(wall.topologySourceWallId)) {
+      sourceGroups.set(wall.topologySourceWallId, []);
+    }
+    sourceGroups.get(wall.topologySourceWallId).push(wall);
+  });
+
+  const repairedWallIds = [];
+  sourceGroups.forEach((sourceWalls, topologySourceWallId) => {
+    if (sourceWalls.length < 2) return;
+    sourceWalls.forEach((wall) => {
+      const oppositeNode = getNode(
+        floor,
+        wall.startNodeId === nodeId ? wall.endNodeId : wall.startNodeId
+      );
+      if (!oppositeNode) return;
+      const length = distanceMm(node, oppositeNode);
+      if (!length) return;
+      const awayDirection = {
+        x: (oppositeNode.xMm - node.xMm) / length,
+        y: (oppositeNode.yMm - node.yMm) / length
+      };
+      let nextInsetMm = 0;
+      incidentWalls.forEach((sourceWall) => {
+        if (sourceWall.id === wall.id || sourceWall.topologySourceWallId === topologySourceWallId) {
+          return;
+        }
+        const sourceSegment = buildBaseWallSegment(floor, sourceWall);
+        if (!sourceSegment) return;
+        const coverageRate = dot(awayDirection, sourceSegment.normal);
+        if (coverageRate <= 0.25) return;
+        nextInsetMm = Math.max(
+          nextInsetMm,
+          Math.ceil(sourceSegment.thicknessMm / coverageRate)
+        );
+      });
+      const currentInsets = getWallMeasurementInsets(wall);
+      const currentInsetMm = wall.startNodeId === nodeId ? currentInsets.start : currentInsets.end;
+      if (currentInsetMm === nextInsetMm) return;
+      setWallEndpointInset(floor, wall, nodeId, nextInsetMm, false);
+      repairedWallIds.push(wall.id);
+    });
+  });
+  return repairedWallIds;
+}
+
+function resolveSharedClosureEndInsetMm(floor, session, start, end, sharedWallId) {
   return resolveMeasurementEndInsetMm(floor, start, end, sharedWallId);
 }
 
@@ -1122,8 +1255,10 @@ function buildWallRenderGeometry(floor, wall, options) {
     angleDeg: angleDeg(current.start, current.end),
     startJoined,
     endJoined,
-    startOpen: !hasWallConnectionAtPoint(floor, wall, current.start),
-    endOpen: !hasWallConnectionAtPoint(floor, wall, current.end),
+    // Insets shorten only the measured/red segment. Physical wall connectivity
+    // is a topology property and must still be evaluated at the graph nodes.
+    startOpen: !hasWallConnectionAtPoint(floor, wall, current.topologyStart),
+    endOpen: !hasWallConnectionAtPoint(floor, wall, current.topologyEnd),
     outerStart,
     outerEnd,
     outerStartAlongMm: projectAlong(current, outerStart),
@@ -2317,6 +2452,7 @@ function findAnySharedWallClosureProjection(floor, session, point) {
   const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
     ? session.activeSpaceStartWallIndex
     : 0;
+  const anchor = getNode(floor, session.anchorNodeId);
   let best = null;
   (floor.walls || []).forEach((wall, index) => {
     if (index >= startWallIndex || wall.id === session.activeSpaceSharedWallId) return;
@@ -2326,6 +2462,46 @@ function findAnySharedWallClosureProjection(floor, session, point) {
 
     const projection = projectPointToWallSegment(point, start, end);
     if (!projection || projection.distanceMm > CLOSE_TOLERANCE_MM) return;
+    if (anchor) {
+      const previewLength = distanceMm(anchor, point);
+      const wallLength = distanceMm(start, end);
+      if (previewLength > 0 && wallLength > 0) {
+        const previewDirection = {
+          x: (point.xMm - anchor.xMm) / previewLength,
+          y: (point.yMm - anchor.yMm) / previewLength
+        };
+        const wallDirection = {
+          x: (end.xMm - start.xMm) / wallLength,
+          y: (end.yMm - start.yMm) / wallLength
+        };
+        const isCollinear = Math.abs(cross(previewDirection, wallDirection)) <= 0.001;
+        if (isCollinear) {
+          const entryNode = [start, end].map((node) => {
+            const relative = {
+              x: node.xMm - anchor.xMm,
+              y: node.yMm - anchor.yMm
+            };
+            return {
+              node,
+              alongMm: dot(relative, previewDirection),
+              perpendicularMm: Math.abs(cross(relative, previewDirection))
+            };
+          }).filter((candidate) => (
+            candidate.alongMm >= MIN_WALL_LENGTH_MM &&
+            candidate.alongMm <= previewLength + CLOSE_TOLERANCE_MM &&
+            candidate.perpendicularMm <= CLOSE_TOLERANCE_MM
+          )).sort((first, second) => first.alongMm - second.alongMm)[0];
+          if (entryNode) {
+            projection.point = { xMm: entryNode.node.xMm, yMm: entryNode.node.yMm };
+            projection.node = entryNode.node;
+            projection.t = entryNode.node.id === start.id ? 0 : 1;
+            projection.distanceMm = distanceMm(point, entryNode.node);
+            projection.snapsToTopologyEndpoint = true;
+            projection.topologyEntryAlongMm = entryNode.alongMm;
+          }
+        }
+      }
+    }
     const endpointCandidates = [
       { node: start, t: 0 },
       { node: end, t: 1 }
@@ -2340,7 +2516,12 @@ function findAnySharedWallClosureProjection(floor, session, point) {
       projection.node = nearestEndpoint.node;
       projection.t = nearestEndpoint.t;
     }
-    if (!best || projection.distanceMm < best.distanceMm) {
+    const prefersTopologyEndpoint = projection.snapsToTopologyEndpoint &&
+      (!best || !best.snapsToTopologyEndpoint ||
+        projection.topologyEntryAlongMm < best.topologyEntryAlongMm);
+    const prefersNearestProjection = !projection.snapsToTopologyEndpoint &&
+      (!best || (!best.snapsToTopologyEndpoint && projection.distanceMm < best.distanceMm));
+    if (prefersTopologyEndpoint || prefersNearestProjection) {
       best = Object.assign({}, projection, { wall, start, end });
     }
   });
@@ -2511,6 +2692,7 @@ function splitClosedSpaceWithPartition(floor, session, partitionWall) {
 function cloneWallSegment(sourceWall, startNodeId, endNodeId, id) {
   return {
     id: id || nextId('wall'),
+    topologySourceWallId: sourceWall.topologySourceWallId || sourceWall.id,
     startNodeId,
     endNodeId,
     mode: sourceWall.mode,
@@ -2653,7 +2835,7 @@ function splitWallAtNodes(floor, wallId, cutNodeIds) {
   for (let index = 0; index < cutItems.length - 1; index += 1) {
     const current = cutItems[index];
     const next = cutItems[index + 1];
-    if (!current.node || !next.node || Math.abs(next.alongMm - current.alongMm) < MIN_WALL_LENGTH_MM) {
+    if (!current.node || !next.node || Math.abs(next.alongMm - current.alongMm) <= 1) {
       continue;
     }
     const wall = cloneWallSegment(
@@ -2878,7 +3060,10 @@ function startPreview(draft, rawPoint) {
       if (
         session.mode === 'straight' &&
         sharedProjection.node &&
-        distanceMm(previewPoint, sharedProjection.point) <= CLOSE_TOLERANCE_MM
+        (
+          sharedProjection.snapsToTopologyEndpoint ||
+          distanceMm(previewPoint, sharedProjection.point) <= CLOSE_TOLERANCE_MM
+        )
       ) {
         previewPoint = sharedProjection.point;
         previewMeasurementStartInsetMm = resolvePreviewMeasurementStartInsetMm(
@@ -3217,6 +3402,8 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
       measuredAt: nowIso()
     };
     floor.walls.push(wall);
+    applyWallBodyInsetToIncidentWalls(floor, wall, wall.startNodeId);
+    applyWallBodyInsetToIncidentWalls(floor, wall, wall.endNodeId);
   }
   session.anchorNodeId = endNode.id;
   session.pendingWallId = '';
@@ -3521,7 +3708,13 @@ function confirmClosure(draft) {
     const roomIndex = floor.spaces.filter((space) => space.closed).length + 1;
     const wallFaceOverrides = session.activeSpaceSharedSnapLine === 'inner'
       ? sharedWallIds.reduce((overrides, wallId) => {
-        overrides[wallId] = 'topology';
+        // The selected inner corner is the topology face of the existing room.
+        // The adjacent room occupies the other side of that same physical wall,
+        // so its clear boundary must use the opposite (offset) face. The new
+        // room's measured walls already exclude the shared wall body through
+        // their endpoint insets; keeping the topology face here would add the
+        // same thickness back into room dimensions and area.
+        overrides[wallId] = 'offset';
         return overrides;
       }, {})
       : undefined;
@@ -3844,10 +4037,15 @@ function deleteWall(draft, wallId) {
   floor.spaces = (floor.spaces || []).filter((space) => {
     return !Array.isArray(space.wallIds) || space.wallIds.indexOf(targetId) === -1;
   });
-  let repairedBoundaryWallIds = [];
+  let repairedBoundaryWallIds = [
+    ...recomputeSplitNodeBodyInsets(floor, wall.startNodeId),
+    ...recomputeSplitNodeBodyInsets(floor, wall.endNodeId)
+  ];
   if (mergedSpace) {
     floor.spaces.push(mergedSpace);
-    repairedBoundaryWallIds = clearDeletedSharedWallBoundaryInsets(floor, mergedSpace, wall);
+    repairedBoundaryWallIds = repairedBoundaryWallIds.concat(
+      clearDeletedSharedWallBoundaryInsets(floor, mergedSpace, wall)
+    );
   }
 
   refreshWallMetrics(floor);
@@ -3979,6 +4177,19 @@ function snapCursorToWall(draft, point, target) {
 
   if (!node) return next;
 
+  let snappedWall = topologyProjection && topologyProjection.wall;
+  let snappedT = topologyProjection && topologyProjection.t;
+  if (snappedWall && snappedT > 0.0001 && snappedT < 0.9999) {
+    const splitResult = splitWallAtNodes(floor, snappedWall.id, [node.id]);
+    const snappedSegments = splitResult.segmentIds
+      .map((wallId) => getWall(floor, wallId))
+      .filter((wall) => wall && (
+        wall.startNodeId === node.id || wall.endNodeId === node.id
+      ));
+    snappedWall = snappedSegments[0] || snappedWall;
+    snappedT = snappedWall.startNodeId === node.id ? 0 : 1;
+  }
+
   session.state = 'cursorPlaced';
   session.anchorNodeId = node.id;
   session.previewPoint = null;
@@ -4000,12 +4211,12 @@ function snapCursorToWall(draft, point, target) {
   session.alignmentSnapGuide = null;
   session.activeSpaceStartNodeId = node.id;
   session.activeSpaceStartWallIndex = floor.walls.length;
-  session.activeSpaceSharedWallId = projection.wall.id;
-  session.activeSpaceSharedStartT = projection.t;
+  session.activeSpaceSharedWallId = snappedWall.id;
+  session.activeSpaceSharedStartT = snappedT;
   session.activeSpaceSharedSnapLine = projection.snapLine || 'inner';
   session.lastWallSnapNodeId = node.id;
-  session.lastWallSnapWallId = projection.wall.id;
-  session.lastWallSnapT = projection.t;
+  session.lastWallSnapWallId = snappedWall.id;
+  session.lastWallSnapT = snappedT;
   session.lastWallSnapLine = projection.snapLine || 'inner';
 
   return touchDraft(next);
@@ -4354,6 +4565,40 @@ function buildSpaceInnerBoundaryPoints(floor, spaceOrWallIds) {
     : buildSpaceBoundaryPoints(floor, wallIds);
 }
 
+function buildSpaceRenderBoundaryPoints(floor, spaceOrWallIds) {
+  const wallIds = Array.isArray(spaceOrWallIds)
+    ? spaceOrWallIds
+    : (spaceOrWallIds && spaceOrWallIds.wallIds);
+  const wallFaceOverrides = !Array.isArray(spaceOrWallIds) && spaceOrWallIds
+    ? spaceOrWallIds.wallFaceOverrides
+    : null;
+  const segments = buildSpaceWallFaceSegments(floor, wallIds, wallFaceOverrides);
+  const points = buildFaceBoundaryPoints(segments, 'innerStart', 'innerEnd');
+  if (points.length < 3) return buildSpaceBoundaryPoints(floor, wallIds);
+  if (points.length !== segments.length) return points;
+
+  const renderPoints = points.filter((point, index) => {
+    const previousSegment = segments[(index - 1 + segments.length) % segments.length];
+    const currentSegment = segments[index];
+    const previousSourceId = previousSegment.wall.topologySourceWallId;
+    const currentSourceId = currentSegment.wall.topologySourceWallId;
+    if (!previousSourceId || previousSourceId !== currentSourceId) return true;
+    const previousDirection = {
+      x: previousSegment.innerEnd.xMm - previousSegment.innerStart.xMm,
+      y: previousSegment.innerEnd.yMm - previousSegment.innerStart.yMm
+    };
+    const currentDirection = {
+      x: currentSegment.innerEnd.xMm - currentSegment.innerStart.xMm,
+      y: currentSegment.innerEnd.yMm - currentSegment.innerStart.yMm
+    };
+    return Math.abs(cross(previousDirection, currentDirection)) > 0.001 ||
+      dot(previousDirection, currentDirection) < 0;
+  });
+  return renderPoints.length >= 3 && calculatePolygonAreaMm2(renderPoints) > 0
+    ? renderPoints
+    : points;
+}
+
 function calculateBoundaryBounds(points) {
   if (!Array.isArray(points) || !points.length) {
     return { widthMm: 0, heightMm: 0 };
@@ -4449,6 +4694,7 @@ module.exports = {
   buildWallJoinRenderGeometries,
   buildSpaceBoundaryPoints,
   buildSpaceInnerBoundaryPoints,
+  buildSpaceRenderBoundaryPoints,
   buildSpaceDimensionPlan,
   getClosurePath,
   getMinimumClosureSuggestionWallCount,

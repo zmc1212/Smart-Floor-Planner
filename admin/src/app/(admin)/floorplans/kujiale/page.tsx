@@ -383,7 +383,7 @@ export default function KujialeFloorPlanSearchPage() {
 
                   <div className="flex items-center justify-between gap-3 border-t pt-4">
                     <div className="min-w-0 text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground">planId</span>
+                      <span className="font-medium text-foreground">户型标识</span>
                       <span className="ml-2 break-all">{plan.externalId}</span>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">

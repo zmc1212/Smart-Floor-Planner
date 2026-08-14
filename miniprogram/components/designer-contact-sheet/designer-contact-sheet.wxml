@@ -27,7 +27,11 @@
       </view>
 
       <view class="designer-qr-panel">
-        <view wx:if="{{qrImageUrl && !qrError}}" class="designer-qr-frame">
+        <view wx:if="{{qrRefreshing}}" class="designer-qr-state">
+          <view class="designer-qr-state-title">正在重新获取二维码</view>
+          <view class="designer-qr-state-copy">请稍候，正在更新安全访问地址</view>
+        </view>
+        <view wx:elif="{{qrImageUrl && !qrError}}" class="designer-qr-frame">
           <view wx:if="{{qrLoading}}" class="designer-qr-loading">二维码加载中…</view>
           <image
             class="designer-qr-image"
@@ -40,7 +44,7 @@
         </view>
         <view wx:elif="{{qrError}}" class="designer-qr-state">
           <view class="designer-qr-state-title">二维码加载失败</view>
-          <view class="designer-qr-state-copy">签名地址可能已过期，请重新获取</view>
+          <view class="designer-qr-state-copy">二维码资源暂时无法读取，请重新获取</view>
           <button class="designer-qr-retry" bindtap="onRetryQr">重新加载</button>
         </view>
         <view wx:else class="designer-qr-state">

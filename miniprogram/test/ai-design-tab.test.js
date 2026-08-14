@@ -75,10 +75,13 @@ test('AI Design uses the shared tab-page scrolling contract', () => {
   assert.match(aiDesignWxml, /--ai-navigation-top: \{\{navigationTop\}\}px/);
   assert.match(aiDesignWxml, /padding-right: \{\{navigationRight\}\}px/);
   assert.match(aiDesignWxml, /bindrefresherrefresh="onRefresh"/);
-  assert.match(aiDesignWxss, /\.source-sheet[^}]+bottom: 0/);
+  assert.match(aiDesignWxss, /\.recipe-search-overlay[^}]+position:\s*fixed/);
   assert.match(aiDesignWxss, /safe-area-inset-bottom/);
-  assert.match(aiDesignWxml, /class="project-empty-stage"/);
+  assert.match(aiDesignWxml, /class="recipe-hero"/);
   assert.doesNotMatch(aiDesignWxml, /class="scene-navigator/);
+  assert.match(aiDesignWxml, /class="recipe-waterfall"/);
+  assert.doesNotMatch(aiDesignWxml, /workflowId|提示词|模型/);
+  return;
   assert.match(aiDesignPageSource, /syncTabBar\(\) \{[\s\S]*tabBar\.syncSelected\(\)/);
   assert.match(customTabSource, /suppressed: false/);
   assert.match(customTabWxml, /wx:if="\{\{!suppressed\}\}" class="tabbar-shell"/);

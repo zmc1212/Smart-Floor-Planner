@@ -27,10 +27,19 @@ test('research state is JSON-friendly and separate from the formal v4 contract',
 
 test('located metadata cannot accidentally execute as a reconstructed method', () => {
   const engine = createReconstructionEngine(createHouseState(), {
-    'House2DAlgorithm.AddWall.points': () => ({ state: createHouseState(), result: true }),
+    'House2DAlgorithm.CanChangeThick': () => ({ state: createHouseState(), result: true }),
   })
   assert.throws(
-    () => engine.execute('House2DAlgorithm.AddWall.points', {}),
+    () => engine.execute('House2DAlgorithm.CanChangeThick', {}),
+    /legacy method is not reconstructed/
+  )
+  assert.equal(engine.getTrace().length, 0)
+})
+
+test('reconstructed metadata still requires an explicitly registered implementation', () => {
+  const engine = createReconstructionEngine(createHouseState())
+  assert.throws(
+    () => engine.execute('House2DAlgorithm.AddRoom', {}),
     /legacy method is not reconstructed/
   )
   assert.equal(engine.getTrace().length, 0)

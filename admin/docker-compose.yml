@@ -10,6 +10,9 @@ services:
       - .env.production
     environment:
       - NODE_ENV=production
+      # Defaults to false for trusted-intranet HTTP. deploy.sh reads the value
+      # from .env.production, so set it to true before serving HTTPS/public traffic.
+      - AUTH_COOKIE_SECURE=${AUTH_COOKIE_SECURE:-false}
       - MEDIA_STORAGE_PROVIDER=local
       - AI_ASSET_STORAGE_DIR=/data/ai-assets
       - DATABASE_URL=postgresql://sfp_app:sfp_app_local_only@postgres:5432/smart_floor_planner

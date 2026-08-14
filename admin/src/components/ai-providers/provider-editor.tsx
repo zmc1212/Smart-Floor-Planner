@@ -285,7 +285,7 @@ export default function ProviderEditor({ providerId }: ProviderEditorProps) {
               <ProFormDependency name={['adapterType']}>
                 {({ adapterType }) => {
                   const manifest = resolveAdapterManifest(adapterType);
-                  return <ProFormText name="baseUrl" label="Base URL" placeholder={manifest.baseUrlPlaceholder} rules={[{ required: true, type: 'url' }]} />;
+                  return <ProFormText name="baseUrl" label="服务地址" placeholder={manifest.baseUrlPlaceholder} rules={[{ required: true, type: 'url' }]} />;
                 }}
               </ProFormDependency>
             </Col>

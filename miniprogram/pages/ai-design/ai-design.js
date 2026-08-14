@@ -28,6 +28,33 @@ const MODE_TITLES = WORKFLOW_DEFINITIONS.reduce((result, item) => {
   return result;
 }, {});
 
+const RECIPE_SPACE_FILTERS = [
+  { key: 'all', label: '精选', icon: '/images/ai-design-icons/palette.png' },
+  { key: 'living_room', label: '客厅', icon: '/images/ai-design-icons/armchair.png' },
+  { key: 'bedroom', label: '卧室', icon: '/images/ai-design-icons/reference.png' },
+  { key: 'dining_kitchen', label: '餐厨', icon: '/images/ai-design-icons/floor-plan.png' },
+  { key: 'study', label: '书房', icon: '/images/mine-icons/clipboard-pen.png' },
+];
+
+function decorateRecipeCard(recipe, index) {
+  const heightClasses = ['recipe-tall', 'recipe-short', 'recipe-mid', 'recipe-tallest'];
+  return {
+    ...recipe,
+    heightClass: heightClasses[index % heightClasses.length],
+    featured: index === 0,
+    previewFailed: false,
+  };
+}
+
+function splitRecipeColumns(recipes) {
+  const columns = [
+    { key: 'left', items: [] },
+    { key: 'right', items: [] },
+  ];
+  (recipes || []).forEach((recipe, index) => columns[index % 2].items.push(recipe));
+  return columns;
+}
+
 function buildSelectedSource(plan, targetScope, room) {
   if (!plan) return null;
   if (targetScope === 'single_room' && !room) return null;
@@ -101,10 +128,37 @@ Page({
     navigationTop: 24,
     navigationHeight: 32,
     navigationRight: 96,
+    recipeInputMode: 'floor_plan',
+    recipeSpaceFilters: RECIPE_SPACE_FILTERS.map((item, index) => ({ ...item, active: index === 0 })),
+    recipeSpaceFilter: 'all',
+    recipeQuery: '',
+    recipeRecentSearches: ['奶油风', '现代简约', '原木客厅'],
+    recipeSearchOpen: false,
+    recipeLoading: true,
+    recipeLoadingMore: false,
+    recipeError: '',
+    recipes: [],
+    visibleRecipes: [],
+    featuredRecipes: [],
+    recipeColumns: splitRecipeColumns([]),
+    recipeSkeletons: [1, 2, 3, 4],
+    recipeCategories: [],
+    recipePage: 1,
+    recipeTotalPages: 1,
+    recipeTotal: 0,
+    heroRecipe: null,
   },
 
   onLoad(options) {
     this.syncImmersiveNavigationMetrics();
+    try {
+      const recentSearches = wx.getStorageSync('aiRecipeRecentSearches');
+      if (Array.isArray(recentSearches) && recentSearches.length) {
+        this.setData({ recipeRecentSearches: recentSearches.slice(0, 6) });
+      }
+    } catch (error) {
+      // Search history is a convenience only; discovery remains usable without storage.
+    }
     this.applyNavigationContext(options);
   },
 
@@ -208,7 +262,7 @@ Page({
   async loadData() {
     this.setData({ loading: true, loadError: '' });
     try {
-      const [capabilities, historyResult, sourceData] = await Promise.all([
+      const [capabilities, historyResult, sourceData, recipeResult] = await Promise.all([
         aiService.loadCapabilities(),
         aiService.loadHistory(1, 4)
           .then((history) => ({ history, error: '' }))
@@ -217,12 +271,21 @@ Page({
             error: error.error || error.message || '最近成果加载失败',
           })),
         aiService.loadSources(),
+        Promise.resolve().then(() => aiService.loadRecipes({ page: 1, limit: 24 }))
+          .then((data) => ({ data, error: '' }))
+          .catch((error) => ({
+            data: null,
+            error: error.error || error.message || '装修配方加载失败',
+          })),
       ]);
       const priceMap = (capabilities.modes || []).reduce((result, item) => {
         result[item.key] = item;
         return result;
       }, {});
       const provider = capabilities.provider || { available: false };
+      const recipeItems = recipeResult.data
+        ? (recipeResult.data.items || []).map(decorateRecipeCard)
+        : this.data.recipes;
       const workflows = WORKFLOW_DEFINITIONS.map((item) => {
         const capability = priceMap[item.key] || {};
         const providerReady = item.requires === 'generate' ? provider.supportsGenerate : provider.supportsEdit;
@@ -315,8 +378,7 @@ Page({
         modeTitle: MODE_TITLES[item.mode] || '璁捐鎴愭灉',
       }));
       const heroSlides = buildHeroSlides(decoratedHeroResults, selectedSource);
-      const sourcePickerOpen = this.data.sourcePickerOpen
-        || (!this.data.hasLoadedOnce && !selectedSource && sources.length > 0);
+      const sourcePickerOpen = false;
       this.setData({
         account: capabilities.account || { availableBalance: 0, frozenBalance: 0 },
         workflows: decoratedWorkflows,
@@ -345,8 +407,16 @@ Page({
         hasLoadedOnce: true,
         loadError: '',
         historyLoadError: historyResult.error,
+        recipeLoading: false,
+        recipeError: recipeResult.error,
+        recipes: recipeItems,
+        recipeCategories: recipeResult.data ? (recipeResult.data.categories || []) : this.data.recipeCategories,
+        recipePage: recipeResult.data ? Number(recipeResult.data.pagination.page || 1) : this.data.recipePage,
+        recipeTotalPages: recipeResult.data ? Number(recipeResult.data.pagination.totalPages || 1) : this.data.recipeTotalPages,
+        recipeTotal: recipeResult.data ? Number(recipeResult.data.pagination.total || recipeItems.length) : this.data.recipeTotal,
         ...experienceState,
       });
+      this.applyRecipeFilters();
       this.setTabBarHidden(sourcePickerOpen);
       this.scheduleRecentPolling(recent, selectedSource, selectedWorkflow);
     } catch (error) {
@@ -358,6 +428,129 @@ Page({
     } finally {
       this.setData({ loading: false });
     }
+  },
+
+  applyRecipeFilters() {
+    const inputMode = this.data.recipeInputMode;
+    const spaceFilter = this.data.recipeSpaceFilter;
+    const inputRecipes = (this.data.recipes || []).filter((recipe) => (
+      (recipe.inputTypes || []).includes(inputMode)
+    ));
+    const visibleRecipes = inputRecipes.filter((recipe) => {
+      if (spaceFilter === 'all') return true;
+      if (spaceFilter === 'dining_kitchen') return ['dining_room', 'kitchen'].includes(recipe.spaceKey);
+      return recipe.spaceKey === spaceFilter;
+    });
+    const resolvedRecipes = visibleRecipes.length ? visibleRecipes : inputRecipes;
+    this.setData({
+      visibleRecipes: resolvedRecipes,
+      featuredRecipes: resolvedRecipes.slice(0, 4),
+      recipeColumns: splitRecipeColumns(resolvedRecipes),
+      heroRecipe: resolvedRecipes[0] || null,
+    });
+  },
+
+  switchRecipeInputMode(event) {
+    const mode = event.currentTarget.dataset.mode;
+    if (!['floor_plan', 'photo'].includes(mode) || mode === this.data.recipeInputMode) return;
+    this.setData({ recipeInputMode: mode }, () => this.applyRecipeFilters());
+  },
+
+  selectRecipeSpace(event) {
+    const key = event.currentTarget.dataset.key || 'all';
+    this.setData({
+      recipeSpaceFilter: key,
+      recipeSpaceFilters: this.data.recipeSpaceFilters.map((item) => ({ ...item, active: item.key === key })),
+    }, () => this.applyRecipeFilters());
+  },
+
+  openRecipeSearch() {
+    this.setData({ recipeSearchOpen: true });
+  },
+
+  closeRecipeSearch() {
+    this.setData({ recipeSearchOpen: false });
+  },
+
+  onRecipeSearchInput(event) {
+    this.setData({ recipeQuery: event.detail.value || '' });
+  },
+
+  onRecipeSuggestionTap(event) {
+    this.setData({ recipeQuery: event.currentTarget.dataset.name || '' }, () => this.submitRecipeSearch());
+  },
+
+  async submitRecipeSearch() {
+    if (this.data.recipeLoading) return;
+    this.setData({ recipeLoading: true, recipeError: '' });
+    try {
+      const data = await aiService.loadRecipes({ page: 1, limit: 24, q: this.data.recipeQuery.trim() });
+      const recipes = (data.items || []).map(decorateRecipeCard);
+      this.setData({
+        recipes,
+        recipeCategories: data.categories || [],
+        recipePage: Number(data.pagination.page || 1),
+        recipeTotalPages: Number(data.pagination.totalPages || 1),
+        recipeTotal: Number(data.pagination.total || recipes.length),
+        recipeLoading: false,
+        recipeSearchOpen: false,
+        recipeSpaceFilter: 'all',
+        recipeSpaceFilters: this.data.recipeSpaceFilters.map((item) => ({ ...item, active: item.key === 'all' })),
+      });
+      const query = this.data.recipeQuery.trim();
+      if (query) {
+        const recipeRecentSearches = [query, ...this.data.recipeRecentSearches.filter((item) => item !== query)].slice(0, 6);
+        this.setData({ recipeRecentSearches });
+        try { wx.setStorageSync('aiRecipeRecentSearches', recipeRecentSearches); } catch (error) { /* optional */ }
+      }
+      this.applyRecipeFilters();
+    } catch (error) {
+      this.setData({ recipeLoading: false, recipeError: error.error || error.message || '搜索配方失败' });
+    }
+  },
+
+  async loadMoreRecipes() {
+    if (this.data.recipeLoadingMore || this.data.recipePage >= this.data.recipeTotalPages) return;
+    this.setData({ recipeLoadingMore: true });
+    try {
+      const nextPage = this.data.recipePage + 1;
+      const data = await aiService.loadRecipes({ page: nextPage, limit: 24, q: this.data.recipeQuery.trim() });
+      const recipes = this.data.recipes.concat((data.items || []).map((item, index) => (
+        decorateRecipeCard(item, this.data.recipes.length + index)
+      )));
+      this.setData({
+        recipes,
+        recipePage: nextPage,
+        recipeTotalPages: Number(data.pagination.totalPages || nextPage),
+        recipeLoadingMore: false,
+      });
+      this.applyRecipeFilters();
+    } catch (error) {
+      this.setData({ recipeLoadingMore: false });
+      wx.showToast({ title: error.error || error.message || '加载更多失败', icon: 'none' });
+    }
+  },
+
+  retryRecipes() {
+    this.submitRecipeSearch();
+  },
+
+  clearRecipeSearch() {
+    this.setData({ recipeQuery: '', recipeSpaceFilter: 'all' }, () => this.submitRecipeSearch());
+  },
+
+  onRecipeImageError(event) {
+    const id = String(event.currentTarget.dataset.id || '');
+    const recipes = this.data.recipes.map((item) => item.id === id ? { ...item, previewFailed: true } : item);
+    this.setData({ recipes }, () => this.applyRecipeFilters());
+  },
+
+  openRecipeDetail(event) {
+    const id = event.currentTarget.dataset.id;
+    if (!id) return;
+    wx.navigateTo({
+      url: `/packages/ai-workflow/recipe-detail/recipe-detail?id=${encodeURIComponent(id)}&inputMode=${this.data.recipeInputMode}`,
+    });
   },
 
   retryLoad() {

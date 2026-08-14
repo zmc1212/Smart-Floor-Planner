@@ -42,45 +42,104 @@
       "type": "ZhiBenJia.ZHouse.Algorithm.Measure.House2DAlgorithm",
       "signature": "AddWallResult AddWall(HouseWall2D wall, out Nullable<HouseWall2D> newWall, string from = \"\")",
       "rva": "0x3E411D0",
-      "status": "located",
-      "implementation": null,
-      "evidence": ["dump.cs metadata declaration"]
+      "status": "reconstructed",
+      "implementation": "src/orchestration/core-editing.js#addWallWrapper",
+      "evidence": [
+        "dump.cs metadata declaration",
+        "provenance/core-editing-call-graph.json",
+        "test/differential/static/add-wall-wrapper.json",
+        ".codex-tmp/zhouse-recovery/cpp2il-target-isil/IsilDump/ZhiBenJia.ZHouse.Algorithm/ZhiBenJia/ZHouse/Algorithm/Measure/House2DAlgorithm.txt",
+        ".codex-tmp/zhouse-recovery/recovered-csharp/House2DAlgorithm/ZhiBenJia.ZHouse.Algorithm.Measure.House2DAlgorithm.decompiled.cs"
+      ]
     },
     {
       "id": "House2DAlgorithm.AddWall.points",
       "type": "ZhiBenJia.ZHouse.Algorithm.Measure.House2DAlgorithm",
       "signature": "AddWallResult AddWall(HousePoint2D p0, HousePoint2D p1, int thick, out Nullable<HouseWall2D> newWall, out HouseRoom3D originRoom, out HouseRoom3D newRoom, string from)",
       "rva": "0x3E3EDBC",
-      "status": "located",
-      "implementation": null,
-      "evidence": ["dump.cs metadata declaration"]
+      "status": "verified-runtime",
+      "implementation": "src/orchestration/core-editing.js#addWall",
+      "evidence": [
+        "dump.cs metadata declaration",
+        "provenance/core-editing-call-graph.json",
+        "docs/core-editing-algorithm-spec.md",
+        "test/differential/static/add-wall-endless-loop.json",
+        "test/differential/static/add-wall-normal-close.json",
+        "test/differential/static/add-wall-thick-close.json",
+        "test/differential/runtime/rectangle-wall-01.json",
+        "test/differential/runtime/rectangle-wall-02.json",
+        "test/differential/runtime/rectangle-wall-03.json",
+        "test/differential/runtime/rectangle-wall-04.json",
+        "test/differential/runtime/internal-wall-split.json",
+        "test/differential/runtime/horizontal-wall-split.json",
+        "test/differential/runtime/horizontal-wall-split-reverse.json",
+        "test/differential/runtime/vertical-wall-split-reverse.json",
+        "test/rectangular-inside-wall.test.js",
+        ".codex-tmp/zhouse-recovery/cpp2il-target-isil/IsilDump/ZhiBenJia.ZHouse.Algorithm/ZhiBenJia/ZHouse/Algorithm/Measure/House2DAlgorithm.txt",
+        ".codex-tmp/zhouse-recovery/ghidra-decompiled-targets.c"
+      ],
+      "runtimeCoverage": "Return enum and immediate room state for both directions of vertical and horizontal walls with thick=-200 splitting one axis-aligned rectangular room; stable room state is captured for the original top-to-bottom and left-to-right samples. Three samples verify the full newWall value and originRoom/newRoom presence. Existing wallSeries, diagonal, curved, multi-room, non-rectangular, and positive-thickness branches remain limited or unverified."
+    },
+    {
+      "id": "WallsLinkRoomsHandler.AddInsideWall",
+      "type": "ZhiBenJia.ZHouse.Algorithm.Measure.WallsLinkRoomsHandler",
+      "signature": "AddWallResult AddInsideWall(HousePoint2D p0, HousePoint2D p1, int thick, out Nullable<HouseWall2D> newWall, out HouseRoom3D originRoom, out HouseRoom3D newRoom, string from)",
+      "rva": "0x3EA1B8C",
+      "status": "verified-runtime",
+      "implementation": "src/geometry/rectangular-inside-wall.js#addInsideWall",
+      "evidence": [
+        "dump.cs metadata declaration",
+        "provenance/core-editing-call-graph.json#House2DAlgorithm.AddWall.points",
+        "docs/core-editing-algorithm-spec.md",
+        "test/differential/runtime/internal-wall-split.json",
+        "test/differential/runtime/horizontal-wall-split.json",
+        "test/differential/runtime/horizontal-wall-split-reverse.json",
+        "test/differential/runtime/vertical-wall-split-reverse.json",
+        "test/rectangular-inside-wall.test.js",
+        ".codex-tmp/zhouse-recovery/cpp2il-target-isil/IsilDump/ZhiBenJia.ZHouse.Algorithm/ZhiBenJia/ZHouse/Algorithm/Measure/House2DAlgorithm.txt"
+      ],
+      "runtimeCoverage": "Return enum and immediate room state for both directions of observed vertical and horizontal splits of one axis-aligned rectangular room with negative signed thickness; stable state is captured only for the original top-to-bottom and left-to-right samples. Full newWall values and non-null originRoom/null newRoom presence are verified, but not the originRoom object state. Existing wallSeries, diagonal, curved, multi-room, non-rectangular, and positive-thickness cases fail closed."
     },
     {
       "id": "House2DAlgorithm.AddCurveWall",
       "type": "ZhiBenJia.ZHouse.Algorithm.Measure.House2DAlgorithm",
       "signature": "HouseCurveWall2D AddCurveWall(HousePoint2D p0, HousePoint2D p1, HousePoint2D control, int thick, ArcModeEnum curveMode = 0)",
       "rva": "0x3E4140C",
-      "status": "located",
-      "implementation": null,
-      "evidence": ["dump.cs metadata declaration"]
+      "status": "reconstructed",
+      "implementation": "src/orchestration/core-editing.js#addCurveWall",
+      "evidence": [
+        "dump.cs metadata declaration",
+        "provenance/core-editing-call-graph.json",
+        "test/differential/static/add-curve-wall.json",
+        ".codex-tmp/zhouse-recovery/cpp2il-target-isil/IsilDump/ZhiBenJia.ZHouse.Algorithm/ZhiBenJia/ZHouse/Algorithm/Measure/House2DAlgorithm.txt"
+      ]
     },
     {
       "id": "House2DAlgorithm.AddRoom",
       "type": "ZhiBenJia.ZHouse.Algorithm.Measure.House2DAlgorithm",
       "signature": "bool AddRoom(HouseRoom2Ds rooms, List<HousePoint2D> inPoints, List<HousePoint2D> outPoints, bool calculateOutPoints = true)",
       "rva": "0x3E414EC",
-      "status": "located",
-      "implementation": null,
-      "evidence": ["dump.cs metadata declaration"]
+      "status": "reconstructed",
+      "implementation": "src/orchestration/core-editing.js#addRoomWrapper",
+      "evidence": [
+        "dump.cs metadata declaration",
+        "provenance/core-editing-call-graph.json",
+        "test/differential/static/add-room-wrapper.json"
+      ]
     },
     {
       "id": "House2DAlgorithm.UpdateRoomLine",
       "type": "ZhiBenJia.ZHouse.Algorithm.Measure.House2DAlgorithm",
       "signature": "void UpdateRoomLine(HouseRoom3D room)",
       "rva": "0x3E411B4",
-      "status": "located",
-      "implementation": null,
-      "evidence": ["dump.cs metadata declaration"]
+      "status": "reconstructed",
+      "implementation": "src/orchestration/core-editing.js#updateRoomLine",
+      "evidence": [
+        "dump.cs metadata declaration",
+        "provenance/core-editing-call-graph.json",
+        "test/differential/static/update-room-line-wrapper.json",
+        ".codex-tmp/zhouse-recovery/cpp2il-target-isil/IsilDump/ZhiBenJia.ZHouse.Algorithm/ZhiBenJia/ZHouse/Algorithm/Measure/House2DAlgorithm.txt"
+      ]
     },
     {
       "id": "House2DAlgorithm.FindRoom.point",
@@ -108,6 +167,53 @@
       "status": "located",
       "implementation": null,
       "evidence": ["dump.cs metadata declaration"]
+    },
+    {
+      "id": "WallsCloseHandler.CloseRoom",
+      "type": "ZhiBenJia.ZHouse.Algorithm.Measure.WallsCloseHandler",
+      "signature": "AddWallResult CloseRoom(HouseWall2Ds newWalls, AddWallResult addWallResult, out HouseRoom3D newRoom)",
+      "rva": "0x3E2C154",
+      "status": "reconstructed",
+      "implementation": "src/orchestration/core-editing.js#closeRoom",
+      "evidence": [
+        "provenance/core-editing-call-graph.json",
+        "docs/core-editing-algorithm-spec.md",
+        "test/differential/static/close-room-closed-edge.json",
+        "test/differential/static/close-room-existing-room.json",
+        "test/differential/runtime/rectangle-wall-01.json#output.closeRoom",
+        "test/differential/runtime/rectangle-wall-02.json#output.closeRoom",
+        "test/differential/runtime/rectangle-wall-03.json#output.closeRoom",
+        "test/differential/runtime/rectangle-wall-04.json#output.closeRoom",
+        ".codex-tmp/zhouse-recovery/cpp2il-chain-isil/IsilDump/ZhiBenJia.ZHouse.Algorithm/ZhiBenJia/ZHouse/Algorithm/Measure/WallsCloseHandler.txt",
+        ".codex-tmp/zhouse-recovery/ghidra-decompiled-targets.c"
+      ]
+    },
+    {
+      "id": "HouseRoom2DsAlgorithm.AddRoom.points",
+      "type": "ZhiBenJia.ZHouse.Algorithm.Measure.HouseRoom2DsAlgorithm",
+      "signature": "bool AddRoom(HouseRoom2Ds rooms, List<HousePoint2D> inPoints, List<HousePoint2D> outPoints, bool calculateOutPoints = true)",
+      "rva": "0x3E8DF60",
+      "status": "reconstructed",
+      "implementation": "src/orchestration/core-editing.js#addRoom",
+      "evidence": [
+        "provenance/core-editing-call-graph.json",
+        "test/differential/static/add-room-success.json",
+        ".codex-tmp/zhouse-recovery/cpp2il-chain-isil/IsilDump/ZhiBenJia.ZHouse.Algorithm/ZhiBenJia/ZHouse/Algorithm/Measure/HouseRoom2DsAlgorithm.txt"
+      ]
+    },
+    {
+      "id": "HouseChangeAlgorithm.UpdateRoomLine",
+      "type": "ZhiBenJia.ZHouse.Algorithm.Measure.HouseChangeAlgorithm",
+      "signature": "void UpdateRoomLine(HouseRoom3D room)",
+      "rva": "0x3E5BE70",
+      "status": "decompiled",
+      "implementation": null,
+      "evidence": [
+        "provenance/core-editing-call-graph.json",
+        "docs/core-editing-algorithm-spec.md",
+        ".codex-tmp/zhouse-recovery/cpp2il-chain-isil/IsilDump/ZhiBenJia.ZHouse.Algorithm/ZhiBenJia/ZHouse/Algorithm/Measure/HouseChangeAlgorithm.txt",
+        ".codex-tmp/zhouse-recovery/ghidra-decompiled-targets.c"
+      ]
     }
   ]
 }

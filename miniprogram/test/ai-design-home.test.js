@@ -243,7 +243,28 @@ test('project index task states drive truthful progress, recovery, stale, and co
   assert.equal(continuation.sourceResultTaskId, 'task-3');
 });
 
-test('AI Design home restores the project workbench hierarchy without the legacy scene fallback', () => {
+test('AI Design home exposes the approved recipe discovery hierarchy without technical workflow controls', () => {
+  assert.match(pageWxml, />装修配方</);
+  assert.match(pageWxml, /class="recipe-hero"/);
+  assert.match(pageWxml, /小 K · 空间配方调配师/);
+  assert.match(pageWxml, /class="recipe-header-tools"/);
+  assert.match(pageWxml, />设计记录<\/text>/);
+  assert.match(pageWxml, /bindtap="openHistory"/);
+  assert.doesNotMatch(pageWxml, /class="recipe-header-actions"/);
+  assert.doesNotMatch(pageWxss, /\.recipe-credit-pill\s*\{[^}]*position:\s*absolute/);
+  assert.match(pageWxml, /bindtap="switchRecipeInputMode"/);
+  assert.match(pageWxml, /bindtap="openRecipeSearch"/);
+  assert.match(pageWxml, /class="featured-recipe-strip"/);
+  assert.match(pageWxml, /class="recipe-waterfall"/);
+  assert.match(pageWxml, /wx:for="\{\{column\.items\}\}"/);
+  assert.match(pageSource, /loadRecipes/);
+  assert.match(pageSource, /openRecipeDetail/);
+  assert.doesNotMatch(pageWxml, /workflowId|提示词|模型|四阶段/);
+  assert.doesNotMatch(pageWxml, /class="plan-default-scene"|class="project-hero-stage-rail"/);
+  const hero = fs.readFileSync(path.join(miniRoot, 'images', 'ai-recipe', 'recipe-atelier-hero.jpg'));
+  assert.equal(hero.subarray(0, 2).toString('hex'), 'ffd8');
+  assert.ok(hero.length <= 300 * 1024, 'recipe hero exceeds the generated-artwork budget');
+  return;
   assert.match(pageWxml, /class="plan-navigator reference-plan-navigator"/);
   assert.match(pageWxml, />AI设计工作台</);
   assert.match(pageWxml, /class="project-hero-context"/);

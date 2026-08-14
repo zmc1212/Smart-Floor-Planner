@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, memo } from 'react';
+import NextImage from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
@@ -204,14 +205,22 @@ const SidebarContent = memo(function SidebarContent({
       {/* Header */}
       <div className={cn("h-16 flex items-center border-b border-border px-6 shrink-0", collapsed && "justify-center px-0")}>
         {!collapsed ? (
-          <div className="flex flex-col w-full">
-            <h1 className="text-sm font-semibold">
-              Smart Floor <span className="text-primary">Planner</span>
-            </h1>
+          <div className="flex w-full min-w-0 items-center gap-3">
+            <div className="flex shrink-0 items-center gap-2">
+              <NextImage
+                src="/brand-logo.png"
+                alt=""
+                aria-hidden="true"
+                width={28}
+                height={28}
+                className="shrink-0 rounded-lg"
+              />
+              <h1 className="text-sm font-semibold text-foreground">家客来</h1>
+            </div>
             {(admin?.role === 'super_admin' || admin?.role === 'admin') && (
-              <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+              <div className="min-w-0 flex-1" onClick={(e) => e.stopPropagation()}>
                 <Select value={globalTenantId} onValueChange={handleTenantChange}>
-                  <SelectTrigger className="h-7 w-full border-input bg-muted text-[11px] font-medium text-muted-foreground shadow-none transition-colors hover:text-foreground focus:ring-0">
+                  <SelectTrigger className="h-8 w-full min-w-0 border-input bg-muted text-[11px] font-medium text-muted-foreground shadow-none transition-colors hover:text-foreground focus:ring-0">
                     <SelectValue placeholder="全局企业视图" />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl border-border bg-popover text-popover-foreground shadow-lg">
@@ -227,9 +236,13 @@ const SidebarContent = memo(function SidebarContent({
             )}
           </div>
         ) : (
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-black text-primary-foreground">
-            S
-          </div>
+          <NextImage
+            src="/brand-logo.png"
+            alt="家客来"
+            width={32}
+            height={32}
+            className="rounded-lg"
+          />
         )}
       </div>
 
@@ -440,7 +453,10 @@ export default function Sidebar() {
 
       {/* Mobile Menu Trigger */}
       <div className="fixed top-0 left-0 right-0 z-40 flex h-14 items-center justify-between border-b border-border bg-card px-4 md:hidden">
-        <h1 className="text-sm font-bold">SMART FLOOR PLANNER</h1>
+        <div className="flex items-center gap-2">
+          <NextImage src="/brand-logo.png" alt="" aria-hidden="true" width={28} height={28} className="rounded-lg" />
+          <h1 className="text-sm font-bold">家客来</h1>
+        </div>
         <Sheet>
           <SheetTrigger aria-label="打开导航菜单" className={cn(buttonVariants({ variant: "ghost", size: "icon-lg" }), "h-10 w-10 md:hidden")}>
             <Menu size={20} />

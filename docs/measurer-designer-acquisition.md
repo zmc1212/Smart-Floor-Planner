@@ -131,7 +131,7 @@ fields remain the audit record after the current status advances.
 | API | Permission | Behavior |
 | --- | --- | --- |
 | `POST /api/staff`, `PUT /api/staff/[id]` | Enterprise admin, `admin`, `super_admin` | Validate designer profile and same-enterprise active designer binding. |
-| `POST /api/staff/wechat-qr` | Staff-management permission | Multipart image upload to `media_assets`; returns asset ID and short-lived URL. |
+| `POST /api/staff/wechat-qr` | Staff-management permission | Multipart image upload to `media_assets` using the active default media-storage provider; returns asset ID and short-lived URL. Historical assets continue to use their recorded provider. |
 | `POST /api/leads` | Authenticated lead creator; measurer flow is server-derived | Writes measurer, bound designer, and `new`; preserves phone de-duplication. |
 | `POST /api/leads/[id]/acquire` | Assigned designer | Atomically records the handoff without changing lifecycle status, creates the unique pending commission, and notifies the measurer. |
 | `GET /api/leads?archiveState=archived` | `leads.archive_manage` | Reads the archived-only area; normal list queries default to active leads. |
@@ -161,7 +161,7 @@ Tenant endpoints must continue to use shared tenant helpers, RLS transactions, a
 - `pages/leads-management/leads-management`: four-step business filters and a lightweight measurer-only `我的设计师` entry below the capsule safe lane.
 - `packages/business/acquisition-center/acquisition-center`: designer confirmation plus one page-level measurer designer-contact entry and task-level waiting/receipt/commission-summary views. Its task list supports native `scroll-view` pull-to-refresh and refreshes the active status every 30 seconds only while the page is visible; polling is cleared on hide/unload and shares the active-request guard.
 - `packages/business/lead-detail`: four-step status rail, formal surveying, and a normal Acquisition Collaboration information group; confirmation is not duplicated here.
-- `components/designer-contact-sheet/designer-contact-sheet`: the shared read/copy-only bottom sheet used by Leads, lead detail, and the workbench.
+- `components/designer-contact-sheet/designer-contact-sheet`: the shared read/copy-only bottom sheet used by Leads, lead detail, and the workbench. It retrieves the protected QR with `wx.request` as image bytes, writes an app-local temporary image, then gives that local path to `<image>`; this keeps the existing signed, enterprise-scoped authorization while avoiding the separate remote-image download-domain/cache path. Retry unmounts the failed image, shows a bounded refresh state, and refreshes the role-scoped parent profile; each request includes a client-only cache key outside the signed payload.
 - `packages/business/commission-records`: measurer acquisition commission summary and detail.
 - `pages/mine`: unread notification entry.
 

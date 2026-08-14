@@ -22,3 +22,7 @@ test('current, closable, pending, selected, and cursor-snapped walls receive BLE
   assert.match(editorScript, /applyBleReadingToSelectedWall\(distanceInMeters\)\s*\{[\s\S]*remeasureSelectedWall\(this\.draft, valueMm, 'ble'\)/);
   assert.match(editorScript, /applyBleReadingToPendingWall\(distanceInMeters\)\s*\{[\s\S]*commitPreviewLength\(this\.draft, valueMm, 'ble'\)/);
 });
+
+test('selected-wall BLE remeasure restores the pre-measurement draft when applying or redrawing fails', () => {
+  assert.match(editorScript, /applyBleReadingToSelectedWall\(distanceInMeters\)\s*\{[\s\S]*const historyDraft = this\.bleMeasureHistoryDraft;[\s\S]*const restoreMeasurementDraft = \(\) =>[\s\S]*this\.history\.undo\.splice\(historyUndoLength\);[\s\S]*this\.history\.redo = historyRedo;[\s\S]*this\.draft = surveyGraph\.cloneDraft\(historyDraft\);[\s\S]*distanceInMeters === null[\s\S]*restoreMeasurementDraft\(\);[\s\S]*catch \(err\) \{[\s\S]*restoreMeasurementDraft\(\);/);
+});

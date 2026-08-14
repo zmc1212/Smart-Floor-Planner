@@ -297,6 +297,7 @@ function mergeRoomClearRuns(candidates, tolerance) {
       const previous = groupRuns[groupRuns.length - 1];
       if (previous && entry.minProjection - previous.maxProjection <= tolerance) {
         previous.maxProjection = Math.max(previous.maxProjection, entry.maxProjection);
+        previous.labelLength += entry.labelLength;
         previous.sourceWallIds.push(entry.sourceWallId);
         return;
       }
@@ -383,7 +384,13 @@ function createRoomCandidatesFromPlans(spacePlans, outerSegments, maxExteriorGap
         lineNormal,
         lineProjection: dot(midpoint, lineNormal),
         minProjection,
-        maxProjection
+        maxProjection,
+        labelLength: Math.max(
+          0,
+          maxProjection - minProjection -
+          Number(segment.measurementStartInsetMm || 0) -
+          Number(segment.measurementEndInsetMm || 0)
+        )
       });
     });
   });
@@ -783,7 +790,10 @@ function createClosedDimensionPlan(input) {
   const openings = options.openings || [];
 
   if (!outlineSegments.length) return { items: [], exteriorWalls, fallback: false };
-  if (outlineSegments.some((wall) => !createOrthogonalFrame(wall, tolerance))) {
+  // The orthogonal planner also consumes physical exterior walls for door
+  // dimensions. A derived outer ring can stay orthogonal while a remeasured
+  // wall becomes diagonal, so validate both inputs before reading frames.
+  if (outlineSegments.concat(exteriorWalls).some((wall) => !createOrthogonalFrame(wall, tolerance))) {
     const fallbackPlan = createExteriorDimensionPlan({
       baseGap,
       laneGap,
@@ -927,7 +937,7 @@ function createClosedDimensionPlan(input) {
       groupId: `dimension-room:${run.sourceSpaceId}:${sideKey}`,
       sourceSpaceId: run.sourceSpaceId,
       sourceWallId: run.sourceWallIds[0] || '',
-      label: (run.maxProjection - run.minProjection) * measurementScale,
+      label: run.labelLength * measurementScale,
       lane,
       start: extensionStart,
       end: extensionEnd,

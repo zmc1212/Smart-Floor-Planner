@@ -45,6 +45,7 @@
 - BLE 连接体验：任一 BLE 测距入口在未连接时可确认并在当前编辑器中搜索已授权设备；连接仍受手机蓝牙、授权与兼容硬件状态限制。
 - `Implemented`（已实现）：正式墙图编辑、草稿和完成保存、BLE/手动测量、测量审计、门窗编辑及门窗构件 3D 预览。
 - `Limited`（有限支持）：BLE 依赖兼容且已连接的测距仪；部分保留工具仍显示规划中或暂未开放。
+- 复尺错误恢复（2026-08-13）：选中墙体后 BLE 读数应用或闭合尺寸重建失败时，编辑器恢复测距前的 v4 草稿与历史，不把失败中间态写入本地自动草稿；闭合尺寸检测到物理外墙斜化时回退既有斜墙规划。入口、API、权限、审计和持久化合同不变。
 - `Placeholder`（占位/未开放）：小程序当前没有真实报告导出，也没有全户型 CAD/3D 导出。
 - 全户型 2D/3D 查看与 DXF 下载由后台 `FloorPlanViewer` 和 `/api/floorplans/[id]/export/dxf` 提供。
 
@@ -110,7 +111,7 @@ API、角色权限、持久化行为或测量审计。
 门的内开/外开使用等宽轨道和显式居中的文字行；窗口检查器按 `design-references/surveying-editor-v5/surveying-window-inspector-continue-wall-v1.png` 在高度字段后直接进入编辑操作，不为无功能状态保留空位。“继续测墙”与检查器等宽但使用绿色描边次操作样式，并以 `28rpx` 间距和本地绿色“墙段向前延伸”图标与绿色“编辑”主操作保持明确层级。该原生按钮的最终表面和图文布局必须直接定义在简单的 `opening-resume-*` 类上，不得依赖祖先/子级复合选择器反转旧基础样式，以免真机保留纯绿色背景并吞掉深绿色图文。
 
 - 闭合空间填充必须分别尝试首墙正向和反向，只接受每面墙逐段相连且最终回到起点的完整闭环；禁止用“最近端点”补接断链，以免生成自交多边形和斜切空白。
-- 墙体外壳必须由单侧墙体矩形和连接节点补面执行全局实体合并，再以一个复合路径统一填充和描边；连接节点、L/T 型接入和重合分段不得出现内部端帽、对角斜缝或叠加方框，房间孔洞必须通过有向闭环保留。
+- 墙体外壳必须由单侧墙体矩形和连接节点补面执行全局实体合并；Canvas 填充必须逐个绘制实体输入多边形，描边只绘制并集分类后的独立边界段，不得把相切外环、房间孔洞和 T/十字节点交给一次原生复合路径 `fill()/stroke()`。正式重绘、平移/缩放轻量帧和放大镜必须投影同一组多边形与边界段；连接节点、L/T 型接入和重合分段不得出现随机白洞、内部端帽、对角斜缝或叠加方框。
 - 门窗切口必须沿墙体实际外法线覆盖完整墙厚和实测开口宽度，切口两侧不得残留墙体轮廓。
 - 门窗在二维画布中按完整实测开口宽度绘制 CAD 风格符号：平开门的开启门扇与门套间关闭位窄条均为完整细长描边矩形，关闭位窄条位于开启弧相反一侧的墙面，门扇和 90 度开启弧连接对侧门框；窗使用细线三轨窗框。
 - 点击门窗优先选中开口而不是父墙；开口 `touchend` 后到达的原生 Canvas `tap` 不得清除刚选中的开口。
@@ -121,8 +122,18 @@ API、角色权限、持久化行为或测量审计。
 ## 尺寸与审计不变量
 
 - 空间未闭合时，当前墙链只显示内测边尺寸并以红线高亮；预览墙使用顶部实时读数。光标放到画布空白处创建独立墙链后，该墙链第一面墙确认时可选择内/外测量边；小 K 对话框会随对应真实目标重新求解位置，内/外墙切换控件和红线继续指示实际测量边，后续墙保持锁定。光标吸附到未闭合墙体或顶点后仍继承既有边界，不显示该提示，也不能重新切换首墙测量侧。从已闭合房间边角续测时，外边命中继续决定新墙实体与相邻墙面的对齐侧；但手输/BLE 长度、红线、预览墙和光标终点统一使用操作员实际拖出的中心线工作位置，避免在黑色墙线旁绘制平行的外边线。预览及首墙确认后均显示“当前测量位置”切换按钮，切换不改变起算面或长度；按钮的双向矢量箭头沿墙体法线绘制，竖墙为左右、横墙为上下、斜墙随法线旋转。
-- 墙对象可选保存 `measurementStartInsetMm` 和 `measurementEndInsetMm`；旧数据缺失时均按 `0` 处理。`lengthMm` 始终是拓扑节点跨度扣除两端内缩后的实际测距读数；复尺、墙体延长/缩短、开口偏移和墙体切分均保留该语义。
-- 闭合房间角点续测的第一、第二面新墙均不产生闭合候选、橙色闭合虚线或“合”按钮；第二面直角墙只做正交吸附，光标按距离分别命中对侧内墙拓扑角点或斜接后的外墙角点。从第三面新墙开始才允许进入闭合判断；橙色闭合虚线必须从当前测量墙轴线连续绘制到确认闭合实际采用的墙面终点，不得为了显示斜接外角而横向错位。内边顶点起测并回到内边顶点时不使用首尾内缩；外边起测或真实墙厚错台闭合才继续使用末端内缩排除共享墙厚。同向共线的闭合延伸归并到当前末墙，不额外生成重复墙段。
+- 墙对象可选保存 `measurementStartInsetMm` 和 `measurementEndInsetMm`；旧数据缺失时均按 `0` 处理。内边或外边续测都保留墙体交点处的共享拓扑节点，并用测量内缩排除交点覆盖的完整墙厚；`lengthMm` 是拓扑节点跨度扣除两端内缩后的净测距读数，墙厚独立标注。复尺、墙体延长/缩短、开口偏移和墙体切分均保留该语义。
+- 闭合墙与既有墙共线且光标落在墙中段时，光标只表示目标墙；闭合点必须取沿拖动方向最先遇到的既有拓扑端点。非共线相交仍在实际交点切分。
+- 从既有墙中段起测新墙时，吸附确认立即将源墙切为两条同源原子边，并把既有空间的 `wallIds` 替换为两段；新墙提交后与两段源墙复用同一节点，形成度数为 3 的 T 型连接。切分不等待房间闭合，开放分支不生成新空间；只读填充边界可折叠同源共线中间点，但持久化拓扑仍保留切分节点和 `topologySourceWallId`。
+  源墙两段的红色测量边必须在分支墙实体处留下完整墙厚空档；分支墙自身的红线也从源墙远侧墙面开始。哪一侧源墙段需要端点内缩由分支墙实体所在法线侧决定，不允许两段继续共享一条穿过交点墙体的测量红线。墙体实体的开口/闭合仍只按拓扑节点判断，不能因红线内缩而误画端帽。
+  本轮光标/拓扑与 Canvas 两个直接回归套件 `105/105` 通过；小程序全量测试 `300/303` 通过，3 条既有失败分别是获客通知路径、本地 API 端口 `3005/3006` 不一致和离线调试开关默认值，均与本轮拓扑变更无关。WXML/WXSS、路由、API、角色和 version-4 合同不变。
+- 重置光标重新吸附到开放墙链的悬空端点时，内边与外边顶点都必须恢复源墙的有向测量侧：从源墙终点续画保持原侧，从源墙起点反向续画则翻转左右侧。重置后的下一转角必须与不重置时连续拖出的拓扑、墙体侧向、净长度及既有墙端点内缩完全一致，禁止因重新推导测量侧而给源墙额外写入一个墙厚的末端内缩。该规则不适用于闭合边界起测或墙中 T 型连接，不新增 version-4 字段，也不改变路由、API、角色或测量审计。
+- T 型/十字节点的测量内缩与实体几何必须分层：内缩只影响红色测量边、尺寸读数和门窗沿墙坐标，墙体实体、选择命中和实体并集始终使用原始拓扑节点。斜墙连接点在实体并集中允许按不可见的亚像素容差归并，避免浮点法线产生开环；删除分支后必须根据节点剩余墙体重算同源切分段内缩，不能保留已删除墙造成的扣减。系统矩阵必须覆盖开放/闭合、外墙/共墙、直墙/斜墙、内外边、旋转、非等厚、门窗、删除、十字、保存恢复及固定种子回放。
+- 拓扑回归之外必须执行最终 Canvas 场景的视觉回归：在交点像素区域对各墙体 `bodyPolygon` 的期望覆盖与 `wallSolidPlan` 最终复合轮廓做高密度采样，禁止出现完整背景像素；最终描边段两侧若都属于墙体实体，则判定为内部端帽/接缝并失败。代表场景还必须输出 `tmp/survey-topology-visual-regression.png` 供人工检查墙体连续性、轮廓、红线和删除恢复效果。
+- 真机交点稳定性回归还必须断言墙体填充的每次 `fill()` 只含一个闭合多边形、墙体轮廓不使用闭合复合环，并验证平移帧完整投影 `polygons`、`segments` 及拓扑实体端点。正式帧与手势帧都先用完整 `wallSolidPlan.polygons` 浅色铺底，再以闭合墙组深色覆盖；不能只分别绘制 open/closed 并集，因为两组独立求并集会遗漏跨组 T 型/边角连接补片，在 Android 原生 Canvas 的抗锯齿边缘暴露背景缝。最终轮廓的每条分类边界段必须独立 `stroke()`，不能把大量相接子路径合并为一次描边；防止相同拓扑在正式帧与拖动画布帧之间随机缺失或拖动后才恢复。
+- 墙体并集必须单独暴露 `joinPolygons`。每个 L/T/十字或斜墙连接补片在普通多边形填充之后，还要按当前 DPR 转换为设备像素扫描线并用 `fillRect()` 重画；扫描线先覆盖开放墙色，再只在与闭合墙并集相交的区间恢复闭合墙色。这样完整墙厚角点不再依赖某一次原生路径填充是否成功，正式帧与平移帧必须投影并修复相同的补片位置。
+- 正式 Canvas 与平移/缩放轻量帧不得同时拥有主画布：每次场景构建都分配递增代次，过期 `setData` 回调必须丢弃；手势期间到达的正式重绘只能挂起，并在手势结束后由最新场景一次性交接。画布尺寸查询、主 Canvas 初始化和拖拽 Canvas 初始化同样必须校验各自代次，页面卸载后不得接受迟到回调。
+- 闭合房间角点续测的第一、第二面新墙均不产生闭合候选、橙色闭合虚线或“合”按钮；第二面直角墙只做正交吸附，光标按距离分别命中对侧内墙拓扑角点或斜接后的外墙角点。从第三面新墙开始才允许进入闭合判断；橙色闭合虚线必须从当前测量墙轴线连续绘制到确认闭合实际采用的墙面终点，不得为了显示斜接外角而横向错位。无论命中内边还是外边，首墙和末墙都通过 `measurementStartInsetMm`/`measurementEndInsetMm` 排除交点覆盖的完整墙厚；同向共线的闭合延伸归并到当前末墙，不额外生成重复墙段。
 - 从唯一已闭合房间某面内部墙的中段开始画直线分隔墙时，预览和手输/BLE 确认都必须在对侧首个边界交点停止，不能让光标或预览墙穿过对侧内部墙。确认会按需切分两端边界墙，复用该实测分隔墙作为共享墙，并把原房间墙链替换为两个闭合空间；该局部拓扑操作不新增旧版 `rooms` 数据、不改变 v4 顶层结构、入口、API、角色、毫米读数或测量审计。
 - 空间明确闭合后，`createClosedDimensionPlan()` 从完整墙体实体、闭合空间有向墙链和建筑外轮廓生成统一只读尺寸计划。正交户型的尺寸项按由近到远固定为门洞定位 `opening-segment`、建筑外侧房间净尺寸 `room-clear`、真实外包总尺寸 `building-overall`；没有门洞的方向由净尺寸占第一层。房间净尺寸从对应空间的物理内墙面合并同轴相邻段，只保留能映射到建筑外轮廓的段，共享墙和完全内部墙不得向外生成尺寸线。外包总尺寸直接使用墙体实体最外层正向环的几何跨度，不再用净墙测量值与坐标长度比例反推；每个方向的延伸起点来自该方向外轮廓段的真实角点，尺寸线和标签均布置在建筑外包范围之外，不得穿过房间或墙体。窗口只保留 CAD 图形，不生成门洞定位链。单矩形、并排空间、错台空间和 L/U/阶梯形正交边界使用该规则；只要建筑外边界含斜墙，整套尺寸回退现有 `createExteriorDimensionPlan()`，避免臆造角度尺寸语义。
 - `miniprogram/packages/surveying/utils/surveyDimensionPlan.js` 与 `miniprogram/packages/surveying/utils/surveyWallSolidPlan.js` 分别是尺寸和墙体实体规划算法源；后台在 `predev`/`prebuild` 阶段从该目录同步到 `admin/src/lib` 的同名镜像，并校验镜像内容一致，禁止为共享算法扩大 Turbopack 仓库监控根目录。
@@ -130,6 +141,95 @@ API、角色权限、持久化行为或测量审计。
 - 首次云端保存前取得的读数进入当前会话队列；正式 `floorPlanId` 创建后补写，失败记录保留到下次成功重试。
 
 ## 运维
+
+### Geometry runtime rollback (2026-08-13)
+
+The experimental `surveyGeometryPipeline.js`, startup `normalizeTopology()`,
+draft-update auditing, committed-crossing normalization, and physical-wall
+segment derivation were removed from the Mini Program runtime. Their synchronous
+whole-graph work blocked formal-surveying page startup on real devices. The
+runtime `surveyWallGraph.js` now matches the pre-integration backup at
+`research/survey-geometry-poc/backups/surveyWallGraph.js.backup-20260813-194929`.
+Routes, version-4 persistence, APIs, roles, BLE measurement audits, and existing
+UI remain unchanged. The V1/V2 sections below are historical experiment notes,
+not current runtime capability.
+
+### Historical experiment: geometry pipeline bridge (rolled back)
+
+`miniprogram/utils/surveyWallGraph.js` now exposes the read-only
+`buildGeometryPipelineInput(floorOrDraft)` adapter. It converts the current
+version-4 `nodes/walls` graph into integer-millimetre centerlines while
+preserving `wall.id` as `sourceWallId`; it does not alter closure behavior,
+openings, measurement audits, or persisted layout data. The isolated
+`research/survey-geometry-poc/src/production-bridge.js` consumes this adapter
+and runs Turf polygonization, JSTS topology diagnostics, and Clipper2 wall
+solid/clear-face derivation against real `surveyWallGraph` drafts. The bridge
+is Node-side research tooling only: JSTS and Clipper2 WASM are not Mini Program
+runtime dependencies. The original graph implementation is backed up at
+`research/survey-geometry-poc/backups/surveyWallGraph.js.backup-20260813-194929`.
+The production graph remains the active interaction implementation until real
+multi-room replay data is validated.
+
+The Mini Program also contains a dependency-free counterpart at
+`miniprogram/utils/surveyGeometryPipeline.js`. The editor subpackage
+runs it after draft updates for diagnostics and uses the same noded half-edge
+result when a committed wall crosses another wall or the derived face count no
+longer matches persisted spaces. Proper crossings are valid graph junctions:
+both source walls are split at the intersection, the original wall ID stays on
+the first atomic segment, additional segments retain `topologySourceWallId`, openings
+move to the segment containing their absolute wall position, and every bounded
+face becomes a closed `spaces[]` entry. The top-level version-4 contract,
+millimetre units, API, roles, and measurement audits are unchanged.
+
+Normalization also runs when a formal draft is restored and after explicit
+closure. Missing T/crossing nodes are always materialized, but existing spaces
+are updated locally rather than rebuilt when the derived face count still
+equals the persisted closed-space count; this preserves historical wall order
+and `wallFaceOverrides`. Cross/T junction normalization is idempotent.
+
+Open continuation walls are exported as `topologyRole: 'active-chain'`, while
+walls referenced by closed spaces are `closed-boundary`. Degree-one endpoints
+on an active chain remain available as `openEnds` telemetry but are not
+reported as `DANGLE`; a degree-one closed boundary remains an error. This keeps
+multi-room face validation active while an operator starts the next wall.
+The editor emits one console summary per changed audit state: valid states use
+`console.info`, while invalid states use `console.warn`.
+
+### Historical experiment: pure frontend geometry V1 (rolled back)
+
+Topology split points are no longer treated as physical wall ends during the
+read-only render derivation. Collinear, contiguous segments with equal wall
+thickness resolve one consistent physical-wall side before the existing Canvas
+solid union runs, so a room junction does not add an internal end cap or make
+one continuous wall look like separate short walls. IDs, openings, version-4
+persistence, and measurement audits remain unchanged.
+
+`confirmClosure()` now also accepts a new wall chain that borrows one point on
+an existing closed boundary and returns independently to that same point via
+the approved closure path. It no longer demands a nonexistent shared-boundary
+path in that case; closures between two different existing boundary points
+still require a connected shared path. The pre-change snapshot is
+`research/survey-geometry-poc/backups/frontend-v1-20260813-205333/`.
+
+### Historical experiment: planar topology V2 (rolled back)
+
+Room recognition no longer depends only on the operator's recording-order wall
+chain. `normalizeFloorTopology()` nodes every centerline intersection, persists
+the resulting atomic wall segments, walks the directed half-edge graph, and
+rebuilds bounded rooms from faces. A cross junction inside one outer boundary
+therefore yields four rooms, and a full divider joined to opposite boundaries
+yields two rooms regardless of the number or order of incident walls. The
+runtime remains dependency-free; Turf/JSTS/Clipper2 stay research-only.
+
+The user-supplied multi-room screenshots on 2026-08-13 are the behavioral
+reference for intersection splitting and stable room adjacency; no WXML/WXSS or
+visible control was changed. Focused graph, Canvas, dimension, formal-layout,
+closure, and package-boundary tests pass `148/148`, including cross,
+T-junction, idempotence, opening-remap, and main-package import cases. The
+existing WeChat DevTools window was detected but has
+no compatible Mini Program Automator endpoint, so a fresh compile, confirmed
+`packages/surveying/editor/surveying-editor` page stack, and native Canvas
+`390x844` capture remain pending; no duplicate window was opened.
 
 旧户型清理会删除不符合正式墙图合同的数据及其关联测量日志。必须先按
 [formal-surveying.md](./formal-surveying.md) 执行 dry run，再考虑使用 `--execute`。

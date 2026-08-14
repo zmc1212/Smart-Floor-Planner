@@ -177,7 +177,6 @@ async function persistPostgresManualGenerationImage(input: {
       ownerType: 'ai_generation_output',
       mimeType: parsed.mimeType,
       buffer: parsed.buffer,
-      storageProviderKey: 'local',
     })).imageUrl;
   }
 
@@ -201,7 +200,6 @@ async function persistPostgresManualGenerationImage(input: {
     mimeType,
     buffer: Buffer.from(await response.arrayBuffer()),
     originalUrl: imageUrl,
-    storageProviderKey: 'local',
   })).imageUrl;
 }
 

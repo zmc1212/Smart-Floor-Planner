@@ -41,6 +41,7 @@ interface MiniProgramEnterprise {
   _id: string;
   name: string;
   code: string;
+  logo?: string | null;
   branding?: Record<string, unknown>;
   automationConfig?: Record<string, unknown>;
   [key: string]: unknown;

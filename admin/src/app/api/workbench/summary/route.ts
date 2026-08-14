@@ -106,31 +106,31 @@ export async function GET(request: Request) {
     let cards: Array<{ key: string; label: string; value: number }>;
     if (identity.role === 'salesperson') {
       cards = [
-        { key: 'reported', label: 'My reports', value: records.rows.length },
-        { key: 'pendingTodo', label: 'Pending follow-up', value: todos.length },
-        { key: 'overdueFollowUps', label: 'Overdue follow-up', value: overdueTodos.length },
-        { key: 'pendingCommission', label: 'Pending commission', value: pendingCommission },
+        { key: 'reported', label: '我的报备', value: records.rows.length },
+        { key: 'pendingTodo', label: '待跟进事项', value: todos.length },
+        { key: 'overdueFollowUps', label: '超时跟进', value: overdueTodos.length },
+        { key: 'pendingCommission', label: '待结算提成', value: pendingCommission },
       ];
     } else if (identity.role === 'measurer') {
       cards = [
-        { key: 'mine', label: 'My tasks', value: todos.length },
-        { key: 'assigned', label: 'Awaiting acceptance', value: records.rows.filter((item) => item.measureTaskStatus === 'assigned').length },
-        { key: 'accepted', label: 'In progress', value: records.rows.filter((item) => item.measureTaskStatus === 'accepted').length },
-        { key: 'overdueMeasures', label: 'Overdue measurement', value: overdueTodos.length },
+        { key: 'mine', label: '我的任务', value: todos.length },
+        { key: 'assigned', label: '待接收任务', value: records.rows.filter((item) => item.measureTaskStatus === 'assigned').length },
+        { key: 'accepted', label: '量房进行中', value: records.rows.filter((item) => item.measureTaskStatus === 'accepted').length },
+        { key: 'overdueMeasures', label: '超时量房', value: overdueTodos.length },
       ];
     } else if (identity.role === 'designer') {
       cards = [
-        { key: 'mine', label: 'My tasks', value: todos.length },
-        { key: 'assigned', label: 'Awaiting design', value: records.rows.filter((item) => item.designTaskStatus === 'assigned').length },
-        { key: 'progress', label: 'Design in progress', value: records.rows.filter((item) => item.designTaskStatus === 'in_progress').length },
-        { key: 'overdueDesigns', label: 'Overdue design', value: overdueTodos.length },
+        { key: 'mine', label: '我的任务', value: todos.length },
+        { key: 'assigned', label: '待设计任务', value: records.rows.filter((item) => item.designTaskStatus === 'assigned').length },
+        { key: 'progress', label: '设计进行中', value: records.rows.filter((item) => item.designTaskStatus === 'in_progress').length },
+        { key: 'overdueDesigns', label: '超时设计', value: overdueTodos.length },
       ];
     } else {
       cards = [
-        { key: 'records', label: 'Enterprise reports', value: records.rows.length },
-        { key: 'pendingAssignments', label: 'Pending assignment', value: pendingAssignments },
-        { key: 'overdue', label: 'Overdue tasks', value: overdueTodos.length },
-        { key: 'pendingCommission', label: 'Pending commission', value: pendingCommission },
+        { key: 'records', label: '企业报备', value: records.rows.length },
+        { key: 'pendingAssignments', label: '待分配任务', value: pendingAssignments },
+        { key: 'overdue', label: '超时任务', value: overdueTodos.length },
+        { key: 'pendingCommission', label: '待结算提成', value: pendingCommission },
       ];
     }
 

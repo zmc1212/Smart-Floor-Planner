@@ -13,6 +13,8 @@ import {
   adaptSurveyGraphToRooms,
   isFormalSurveyLayout,
 } from '@/lib/survey-graph';
+import { getSignedMiniAiAssetUrl } from '@/lib/ai/mini-ai-assets';
+import { getPostgresAssetIdFromImageUrl } from '@/lib/ai/postgres-media-assets';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +45,21 @@ function deriveCity(user: Record<string, unknown>) {
   const text = String(user.communityName || '');
   const match = text.match(/([\u4e00-\u9fa5]+(?:市|区|县))/);
   return match?.[1] || '';
+}
+
+function serializeEnterpriseLogo(
+  request: Request,
+  enterpriseId: string,
+  logo?: string | null
+) {
+  const assetId = getPostgresAssetIdFromImageUrl(logo);
+  return assetId
+    ? getSignedMiniAiAssetUrl({
+        request,
+        assetId: assetId.toString(),
+        enterpriseId,
+      })
+    : logo;
 }
 
 export async function GET(request: Request) {
@@ -161,7 +178,7 @@ export async function GET(request: Request) {
           branding: enterprise
             ? {
                 name: enterprise.name,
-                logo: enterprise.logo,
+                logo: serializeEnterpriseLogo(request, enterprise._id, enterprise.logo),
                 primaryColor: enterprise.branding?.primaryColor,
               }
             : undefined,

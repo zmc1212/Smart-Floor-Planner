@@ -25,14 +25,15 @@ function formatHistoryTime(value, nowValue = Date.now()) {
   return `${padTimePart(date.getMonth() + 1)}-${padTimePart(date.getDate())} ${time}`;
 }
 
-function decorateHistoryItem(item) {
+function decorateHistoryItem(item, project) {
   const processing = ['created', 'pending', 'processing'].includes(item.status);
   return {
     ...item,
-    modeTitle: MODE_TITLES[item.mode] || 'AI 设计',
+    projectTitle: project ? project.projectDisplayTitle : '',
+    modeTitle: item.recipeName || MODE_TITLES[item.mode] || 'AI 设计',
     timeLabel: formatHistoryTime(item.updatedAt || item.createdAt),
     statusClass: processing ? 'processing' : item.status === 'failed' ? 'failed' : 'succeeded',
-    statusLabel: processing ? `生成中 ${item.progress}%` : item.status === 'failed' ? '生成失败' : '已完成',
+    statusLabel: processing ? (item.recipeId ? '生成中' : `生成中 ${item.progress}%`) : item.status === 'failed' ? '生成失败' : '已完成',
   };
 }
 
@@ -51,6 +52,7 @@ Page({
     totalPages: 1,
     loading: false,
     refreshing: false,
+    projects: [],
   },
 
   onShow() {
@@ -75,11 +77,19 @@ Page({
     if (!reset && page > this.data.totalPages) return;
     this.setData({ loading: true });
     try {
-      const result = await aiService.loadHistory(page, 12);
-      const pageItems = (result.data || []).map(decorateHistoryItem);
+      const [result, sources] = await Promise.all([
+        aiService.loadHistory(page, 12),
+        reset ? aiService.loadSources().catch(() => this.data.projects) : Promise.resolve(this.data.projects),
+      ]);
+      const projects = sources || [];
+      const pageItems = (result.data || []).map((item) => decorateHistoryItem(
+        item,
+        projects.find((project) => project.floorPlanId === item.floorPlanId)
+      ));
       const items = reset ? pageItems : this.data.items.concat(pageItems);
       this.setData({
         items,
+        projects,
         filteredItems: this.filterHistoryItems(items, this.data.activeFilter),
         page: page + 1,
         totalPages: (result.pagination && result.pagination.totalPages) || 1,
@@ -121,6 +131,10 @@ Page({
   reuse(event) {
     const item = this.data.items.find((entry) => entry.id === event.currentTarget.dataset.id);
     if (!item) return;
+    if (item.recipeId) {
+      wx.navigateTo({ url: `/packages/ai-workflow/recipe-detail/recipe-detail?id=${encodeURIComponent(item.recipeId)}` });
+      return;
+    }
     wx.navigateTo({ url: `/packages/ai-workflow/create/ai-design-create?mode=${item.mode}&sourceTaskId=${item.id}` });
   },
 

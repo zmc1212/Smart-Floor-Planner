@@ -499,3 +499,36 @@ test('diagonal exterior boundaries retain the legacy dimension planner unchanged
   assert.equal(closed.fallback, true);
   assert.deepEqual(closed.items, legacy.items);
 });
+
+test('an orthogonal outer ring still falls back when a physical exterior wall becomes diagonal', () => {
+  const room = createSpacePlan('room', [
+    { x: 0, y: 0 },
+    { x: 4000, y: 0 },
+    { x: 4000, y: 3000 },
+    { x: 0, y: 3000 }
+  ]);
+  const input = createClosedPlanInput(room, [
+    { x: -200, y: -200 },
+    { x: 4200, y: -200 },
+    { x: 4200, y: 3200 },
+    { x: -200, y: 3200 }
+  ]);
+  input.walls[0].end = { x: 4000, y: 120 };
+  input.walls[1].start = { x: 4000, y: 120 };
+  input.walls[0].coordinateLength = Math.hypot(4000, 120);
+  input.walls[0].measurementLength = input.walls[0].coordinateLength;
+  input.walls[1].coordinateLength = 2880;
+  input.walls[1].measurementLength = 2880;
+  input.openings = [{
+    id: 'door-1',
+    type: 'door',
+    wallId: input.walls[0].id,
+    start: 1550,
+    end: 2450
+  }];
+
+  const plan = createClosedDimensionPlan(input);
+
+  assert.equal(plan.fallback, true);
+  assert.ok(Array.isArray(plan.items));
+});

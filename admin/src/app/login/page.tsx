@@ -1,12 +1,12 @@
 'use client';
 
 import React, { useState } from 'react';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Cpu, Lock, User as UserIcon, AlertCircle, ArrowRight, ShieldCheck, Sparkles, Loader2 } from 'lucide-react';
+import { Lock, User as UserIcon, AlertCircle, ArrowRight, ShieldCheck, Loader2 } from 'lucide-react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -37,7 +37,7 @@ export default function LoginPage() {
       } else {
         setError(data.error || '登录失败，请检查用户名和密码');
       }
-    } catch (err) {
+    } catch {
       setError('网络错误，请稍后再试');
     } finally {
       setLoading(false);
@@ -49,12 +49,16 @@ export default function LoginPage() {
       <div className="max-w-[440px] w-full transform transition-all duration-700 animate-in fade-in slide-in-from-bottom-8">
         <div className="text-center mb-12">
           <div className="inline-flex items-center gap-3 mb-8">
-             <div className="w-14 h-14 bg-foreground rounded-[20px] flex items-center justify-center shadow-2xl shadow-primary/20">
-                <Cpu className="text-background" size={28} />
-             </div>
+             <Image
+                src="/brand-logo.png"
+                alt="家客来"
+                width={56}
+                height={56}
+                className="shrink-0 rounded-[20px]"
+             />
              <div className="text-left">
-                <h1 className="text-[24px] font-black tracking-tighter leading-none mb-1">量房大师</h1>
-                <Badge variant="secondary" className="bg-muted text-muted-foreground border-none font-bold text-[10px] uppercase tracking-widest px-2 py-0">Admin Enterprise</Badge>
+                <h1 className="text-[24px] font-black tracking-tighter leading-none mb-1">家客来</h1>
+                <Badge variant="secondary" className="bg-muted text-muted-foreground border-none font-bold text-[10px] uppercase tracking-widest px-2 py-0">企业管理后台</Badge>
              </div>
           </div>
           <h2 className="text-[32px] font-black tracking-tighter text-foreground mb-4 leading-tight">全权管理您的数字化资产</h2>
@@ -143,7 +147,10 @@ export default function LoginPage() {
         </div>
         
         <div className="mt-12 text-center">
-           <p className="text-[12px] font-bold text-muted-foreground/30 uppercase tracking-[4px]">Powered by ZMC Systems</p>
+           <div className="inline-flex items-center gap-2 text-muted-foreground/50">
+             <Image src="/brand-logo.png" alt="" aria-hidden="true" width={18} height={18} className="rounded-md" />
+             <span className="text-[12px] font-bold">家客来</span>
+           </div>
         </div>
       </div>
 

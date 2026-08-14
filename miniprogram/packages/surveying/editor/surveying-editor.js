@@ -469,6 +469,12 @@ Page({
     this.componentAnimationRunning = false;
     this.surveyCanvasDpr = sysInfo.pixelRatio || 1;
     this.surveyRenderScene = null;
+    this.surveySceneRevision = 0;
+    this.surveyCanvasInitRevision = 0;
+    this.cursorCanvasInitRevision = 0;
+    this.canvasRectRevision = 0;
+    this.formalCanvasDrawPending = false;
+    this.surveyCanvasDisposed = false;
     this.cursorDragPending = false;
     this.cursorDragTouchId = null;
     this.cursorControlRect = null;
@@ -527,6 +533,10 @@ Page({
   },
 
   onUnload() {
+    this.surveyCanvasDisposed = true;
+    this.canvasRectRevision += 1;
+    this.surveyCanvasInitRevision += 1;
+    this.cursorCanvasInitRevision += 1;
     app.globalData.surveyingEditorContext = null;
     this.finishViewportInteraction({ sync: false, persist: false });
     this.clearCursorDragCanvas({ force: true });
@@ -955,13 +965,28 @@ Page({
   applyBleReadingToSelectedWall(distanceInMeters) {
     const historyDraft = this.bleMeasureHistoryDraft;
     this.bleMeasureHistoryDraft = null;
+    const historyUndoLength = this.history.undo.length;
+    const historyRedo = this.history.redo.slice();
+    const restoreMeasurementDraft = () => {
+      if (!historyDraft) return;
+      this.history.undo.splice(historyUndoLength);
+      this.history.redo = historyRedo;
+      this.draft = surveyGraph.cloneDraft(historyDraft);
+      try {
+        this.syncFromDraft({ numberPadVisible: false });
+      } catch (restoreErr) {
+        console.error('[surveying-editor] Failed to redraw the BLE remeasure rollback draft', restoreErr);
+      }
+    };
 
     if (distanceInMeters === null || distanceInMeters <= 0) {
+      restoreMeasurementDraft();
       wx.showToast({ title: '测量失败，请重试', icon: 'none' });
       return;
     }
 
     if (this.shouldIgnoreDuplicateBleReading(distanceInMeters)) {
+      restoreMeasurementDraft();
       return;
     }
 
@@ -974,6 +999,7 @@ Page({
       });
       wx.showToast({ title: '已更新当前墙体', icon: 'success' });
     } catch (err) {
+      restoreMeasurementDraft();
       wx.showToast({ title: err.message || '更新墙体失败', icon: 'none' });
     }
   },
@@ -1308,10 +1334,13 @@ Page({
   },
 
   refreshCanvasRect() {
+    const rectRevision = (this.canvasRectRevision || 0) + 1;
+    this.canvasRectRevision = rectRevision;
     wx.createSelectorQuery()
       .in(this)
       .select('.grid-canvas')
       .boundingClientRect((rect) => {
+        if (this.surveyCanvasDisposed || rectRevision !== this.canvasRectRevision) return;
         if (rect && rect.width && rect.height) {
           this.canvasRect = rect;
           this.setData({
@@ -1329,12 +1358,15 @@ Page({
 
   initSurveyCanvas() {
     if (!this.canvasRect || !this.canvasRect.width || !this.canvasRect.height) return;
+    const initRevision = (this.surveyCanvasInitRevision || 0) + 1;
+    this.surveyCanvasInitRevision = initRevision;
 
     wx.createSelectorQuery()
       .in(this)
       .select('#survey-canvas')
       .fields({ node: true, size: true })
       .exec((res) => {
+        if (this.surveyCanvasDisposed || initRevision !== this.surveyCanvasInitRevision) return;
         const target = res && res[0];
         const canvas = target && target.node;
         if (!canvas) return;
@@ -1355,18 +1387,29 @@ Page({
         this.surveyCanvas = canvas;
         this.surveyCtx = canvas.getContext('2d');
         this.surveyCanvasDpr = dpr || 1;
-        this.drawSurveyCanvas();
+        console.info('[surveying-editor] Canvas renderer ready', {
+          revision: surveyCanvasRenderer.RENDER_REVISION,
+          sceneRevision: this.surveySceneRevision
+        });
+        if (this.viewportInteraction && this.transientCanvasMode === 'viewport') {
+          this.drawViewportInteractionFrame(this.viewportInteraction.viewport);
+        } else {
+          this.drawSurveyCanvas();
+        }
       });
   },
 
   initCursorDragCanvas() {
     if (!this.canvasRect || !this.canvasRect.width || !this.canvasRect.height) return;
+    const initRevision = (this.cursorCanvasInitRevision || 0) + 1;
+    this.cursorCanvasInitRevision = initRevision;
 
     wx.createSelectorQuery()
       .in(this)
       .select('#cursor-drag-canvas')
       .fields({ node: true, size: true })
       .exec((res) => {
+        if (this.surveyCanvasDisposed || initRevision !== this.cursorCanvasInitRevision) return;
         const target = res && res[0];
         const canvas = target && target.node;
         if (!canvas) return;
@@ -1561,6 +1604,7 @@ Page({
     } else {
       this.viewportInteractionAwaitingHandoff = false;
       this.clearViewportInteractionCanvas();
+      if (this.formalCanvasDrawPending) this.drawSurveyCanvas();
     }
 
     if (dirty && opts.persist) {
@@ -1569,8 +1613,27 @@ Page({
     return dirty;
   },
 
-  drawSurveyCanvas() {
+  drawSurveyCanvas(options) {
     if (!this.surveyCtx || !this.surveyRenderScene) return;
+    const opts = options || {};
+    const drawDecision = surveyViewportInteraction.resolveFormalDrawDecision({
+      disposed: this.surveyCanvasDisposed,
+      expectedRevision: opts.renderRevision,
+      currentRevision: this.surveySceneRevision,
+      viewportInteractionActive: !!(
+        this.viewportInteraction && this.transientCanvasMode === 'viewport'
+      )
+    });
+    if (drawDecision === 'drop' || drawDecision === 'stale') return false;
+    // The primary canvas is also the owner of lightweight pan/pinch frames.
+    // A delayed setData/image/init callback must not overwrite that frame with
+    // a formal scene built for another viewport. Remember the request and let
+    // finishViewportInteraction perform the single current-scene handoff.
+    if (drawDecision === 'defer') {
+      this.formalCanvasDrawPending = true;
+      return false;
+    }
+    this.formalCanvasDrawPending = false;
     surveyCanvasRenderer.drawSurveyScene(this.surveyCtx, this.surveyRenderScene, {
       dpr: this.surveyCanvasDpr || 1
     });
@@ -1580,6 +1643,7 @@ Page({
       this.viewportInteractionAwaitingHandoff = false;
       this.clearViewportInteractionCanvas();
     }
+    return true;
   },
 
   drawRoundRect(ctx, x, y, width, height, radius) {
@@ -2307,6 +2371,7 @@ Page({
       this.cursorPlacementState = cursorPlacementState;
     }
     const renderData = this.buildCanvasRenderData(floor, session);
+    const renderRevision = this.surveySceneRevision;
     // A canvas-originated wall drag keeps the formal placement state as
     // `placed`, but its lens occupies the same upper-left lane. Keep the
     // regular live-measurement bubble out of that lane for the whole drag.
@@ -2371,7 +2436,8 @@ Page({
         redo: this.history.redo.length
       }
     }, surveyGuideData, extraData || {}), () => {
-      this.drawSurveyCanvas();
+      if (renderRevision !== this.surveySceneRevision || this.surveyCanvasDisposed) return;
+      this.drawSurveyCanvas({ renderRevision });
       // A cursor-drag frame can finish after its drop event on native Canvas.
       // Clear the transient layer after the formal redraw so it cannot cover a
       // closed room with an obsolete frame after snapping to a wall.
@@ -2473,6 +2539,7 @@ Page({
       rect: this.canvasRect || { width: 0, height: 0 }
     });
     this.surveyRenderScene = scene;
+    this.surveySceneRevision = (this.surveySceneRevision || 0) + 1;
     let cursorVisible = false;
     let guideVisible = false;
     let cursorStyle = '';

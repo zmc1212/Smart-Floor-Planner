@@ -18,12 +18,14 @@ export async function POST(request: Request) {
     console.error('[Mini AI Task Create]', error);
     const status = (error as { status?: number })?.status || 400;
     const existingTaskId = (error as { existingTaskId?: string })?.existingTaskId;
+    const workflows = (error as { workflows?: unknown[] })?.workflows;
     return NextResponse.json(
       {
         success: false,
         error: error instanceof Error ? error.message : 'AI 任务创建失败',
         code: (error as { code?: string })?.code,
         existingTaskId,
+        workflows,
       },
       { status: status >= 400 && status < 600 ? status : 400 }
     );

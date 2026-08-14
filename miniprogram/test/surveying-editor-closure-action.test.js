@@ -42,7 +42,7 @@ test('wall dragging starts from the rendered cursor face instead of its hidden t
 test('wall-snapped cursor drops clear a late transient frame after the formal canvas redraw', () => {
   assert.match(
     editorScript,
-    /this\.drawSurveyCanvas\(\);\s*\/\/ A cursor-drag frame[\s\S]*?this\.clearCursorDragCanvas\(\{ force: true \}\);/
+    /this\.drawSurveyCanvas\(\{ renderRevision \}\);\s*\/\/ A cursor-drag frame[\s\S]*?this\.clearCursorDragCanvas\(\{ force: true \}\);/
   );
 });
 

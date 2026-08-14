@@ -6,7 +6,6 @@ import {
   decodeManagedAvatarReference,
   verifyProfileAvatarSignature,
 } from '@/lib/miniprogram-profile';
-import { resolveMediaObjectDelivery } from '@/lib/media-storage/operations';
 import { getMediaStorageProvider } from '@/lib/media-storage/registry';
 
 export async function GET(
@@ -40,25 +39,15 @@ export async function GET(
       );
     }
     const provider = await getMediaStorageProvider(reference.provider);
-    const delivery = await resolveMediaObjectDelivery({
-      provider,
-      location: {
-        objectKey: reference.objectKey,
-        bucket: reference.bucket,
-      },
-      expiresInSeconds: 300,
+    const buffer = await provider.getObject({
+      objectKey: reference.objectKey,
+      bucket: reference.bucket,
     });
-    if (delivery.kind === 'redirect') {
-      return NextResponse.redirect(delivery.url, {
-        status: 302,
-        headers: { 'Cache-Control': 'private, no-store' },
-      });
-    }
-    return new NextResponse(new Uint8Array(delivery.buffer), {
+    return new NextResponse(new Uint8Array(buffer), {
       headers: {
         'Content-Type': reference.mimeType,
-        'Content-Length': String(delivery.buffer.length),
-        'Cache-Control': 'private, max-age=3600',
+        'Content-Length': String(buffer.length),
+        'Cache-Control': 'private, no-store',
       },
     });
   } catch (error) {

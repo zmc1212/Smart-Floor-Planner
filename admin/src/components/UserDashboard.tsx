@@ -60,7 +60,7 @@ export default function UserDashboard({ initialUsers, initialPlans }: { initialU
                     <div className="flex items-center gap-6">
                       <div className="relative">
                         {user.avatar ? (
-                          <img src={user.avatar} alt="avatar" className="w-14 h-14 rounded-full border-2 border-white shadow-lg object-cover" />
+                          <img src={user.avatar} alt="用户头像" className="w-14 h-14 rounded-full border-2 border-white shadow-lg object-cover" />
                         ) : (
                           <div className="bg-muted w-14 h-14 rounded-full flex items-center justify-center text-muted-foreground shadow-inner">
                             <Users size={24} />

@@ -89,7 +89,6 @@ async function persistPostgresImageReference(input: {
       ownerType: 'ai_generation_input',
       mimeType: parsed.mimeType,
       buffer: parsed.buffer,
-      storageProviderKey: 'local',
     });
     return stored.imageUrl;
   }
@@ -107,7 +106,6 @@ async function persistPostgresImageReference(input: {
     mimeType,
     buffer: Buffer.from(await response.arrayBuffer()),
     originalUrl: image,
-    storageProviderKey: 'local',
   });
   return stored.imageUrl;
 }

@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     if (!(file instanceof File)) return NextResponse.json({ success: false, error: '请选择要上传的图片' }, { status: 400 });
     const buffer = Buffer.from(await file.arrayBuffer());
     const dimensions = validateAiImage({ buffer });
-    const stored = await storePostgresMediaBuffer({ enterpriseId: BigInt(context.enterpriseId), ownerType: 'manual_upload', mimeType: dimensions.mimeType, buffer, width: dimensions.width, height: dimensions.height, storageProviderKey: 'local' });
+    const stored = await storePostgresMediaBuffer({ enterpriseId: BigInt(context.enterpriseId), ownerType: 'manual_upload', mimeType: dimensions.mimeType, buffer, width: dimensions.width, height: dimensions.height });
     return NextResponse.json({ success: true, data: { id: stored.asset.id.toString(), mimeType: dimensions.mimeType, size: buffer.length, width: dimensions.width, height: dimensions.height, previewUrl: getSignedMiniAiAssetUrl({ request, assetId: stored.asset.id.toString(), enterpriseId: context.enterpriseId }) } });
   } catch (error) {
     console.error('[Mini AI Asset Upload]', error);

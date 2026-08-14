@@ -61,6 +61,9 @@ test('main package contains only primary tabs and low-frequency flows are split 
         'create/ai-design-create',
         'result/ai-design-result',
         'history/ai-design-history',
+        'recipe-detail/recipe-detail',
+        'recipe-project/recipe-project',
+        'recipe-confirm/recipe-confirm',
       ],
     },
     {

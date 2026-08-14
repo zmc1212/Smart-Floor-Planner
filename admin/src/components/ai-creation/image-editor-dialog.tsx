@@ -211,7 +211,7 @@ export function ImageEditorDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl border-white/10 bg-[#17181d] p-6 text-white sm:rounded-2xl">
         <DialogHeader className="flex-row items-start justify-between pr-8">
-          <div><p className="text-[11px] tracking-[0.12em] text-[#9a9aa2]">IMAGE EDITOR</p><DialogTitle className="mt-1 text-xl">图片编辑</DialogTitle><DialogDescription className="sr-only">使用标注工具编辑生成图片并保存为参考图。</DialogDescription></div>
+          <div><p className="text-[11px] tracking-[0.12em] text-[#9a9aa2]">图片编辑器</p><DialogTitle className="mt-1 text-xl">图片编辑</DialogTitle><DialogDescription className="sr-only">使用标注工具编辑生成图片并保存为参考图。</DialogDescription></div>
         </DialogHeader>
         <div className="grid min-h-0 grid-cols-[minmax(0,1fr)_220px] gap-4">
           <div className="min-w-0 rounded-2xl border border-white/10 bg-[#202126] p-3">

@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 IMAGE_NAME="zmc1212/sfp-admin:latest"
-compose=(env -u COMPOSE_FILE docker compose --project-directory "$SCRIPT_DIR" -f "$COMPOSE_FILE")
+compose=(env -u COMPOSE_FILE docker compose --env-file "$SCRIPT_DIR/.env.production" --project-directory "$SCRIPT_DIR" -f "$COMPOSE_FILE")
 
 if [ ! -f "$COMPOSE_FILE" ]; then
   echo "Deployment Compose file not found: $COMPOSE_FILE" >&2
@@ -82,12 +82,34 @@ echo "Starting the admin service..."
 "${compose[@]}" up -d admin
 
 echo "Waiting for the admin health endpoint..."
-until "${compose[@]}" exec -T admin curl -fsS http://127.0.0.1:3005/api/health >/dev/null; do
+until "${compose[@]}" exec -T admin node -e '
+  fetch("http://127.0.0.1:3005/api/health")
+    .then((response) => {
+      if (!response.ok) process.exit(1);
+    })
+    .catch(() => process.exit(1));
+' >/dev/null; do
   sleep 2
 done
 
 echo "Creating the initial administrator when needed..."
-"${compose[@]}" exec -T admin sh -c \
-  'curl -fsS -X POST -H "Content-Type: application/json" -H "x-internal-secret: $INTERNAL_SECRET" http://127.0.0.1:3005/api/internal/seed'
+"${compose[@]}" exec -T admin node -e '
+  fetch("http://127.0.0.1:3005/api/internal/seed", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-internal-secret": process.env.INTERNAL_SECRET,
+    },
+  })
+    .then(async (response) => {
+      const body = await response.text();
+      if (body) process.stdout.write(body);
+      if (!response.ok) process.exit(1);
+    })
+    .catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+'
 
 echo "Deployment completed."

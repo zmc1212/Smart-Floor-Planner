@@ -55,13 +55,13 @@ const STYLE_OPTIONS = [
   { label: '精致轻奢', value: '精致轻奢' },
 ];
 
-async function toBase64(file: File) {
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(new Error('图片读取失败'));
-    reader.readAsDataURL(file);
-  });
+async function uploadManagedImage(file: File) {
+  const formData = new FormData();
+  formData.set('file', file);
+  const response = await fetch('/api/ai/creation/assets', { method: 'POST', body: formData });
+  const result = await response.json();
+  if (!response.ok || !result.success) throw new Error(result.error || '图片上传失败');
+  return { previewUrl: String(result.data.previewUrl) };
 }
 
 export default function InspirationsPage() {
@@ -215,10 +215,10 @@ export default function InspirationsPage() {
               <ProFormSelect label="设计风格" name="style" options={STYLE_OPTIONS} rules={[{ required: true, message: '请选择设计风格' }]} />
             </div>
             <ProForm.Item label="展示封面" name="coverImage" rules={[{ required: true, message: '请上传展示封面' }]}>
-              <ImageUploadField helpText="支持常见图片格式，文件不超过 500KB。" maxSizeBytes={500 * 1024} previewAlt="展示封面预览" uploadText="上传展示封面" onUpload={async (file) => ({ previewUrl: await toBase64(file) })} />
+              <ImageUploadField helpText="支持常见图片格式，文件不超过 500KB。" maxSizeBytes={500 * 1024} previewAlt="展示封面预览" uploadText="上传展示封面" onUpload={uploadManagedImage} />
             </ProForm.Item>
             <ProForm.Item label="渲染效果图" name="renderingImage" rules={[{ required: true, message: '请上传渲染效果图' }]}>
-              <ImageUploadField helpText="作为 AI 设计参考素材，建议使用完整、清晰的空间图。" maxSizeBytes={500 * 1024} previewAlt="渲染效果图预览" uploadText="上传渲染效果图" onUpload={async (file) => ({ previewUrl: await toBase64(file) })} />
+              <ImageUploadField helpText="作为 AI 设计参考素材，建议使用完整、清晰的空间图。" maxSizeBytes={500 * 1024} previewAlt="渲染效果图预览" uploadText="上传渲染效果图" onUpload={uploadManagedImage} />
             </ProForm.Item>
             <ProFormSwitch label="首页精选推荐" name="isRecommended" />
           </ModalForm>,

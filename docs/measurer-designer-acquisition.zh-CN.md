@@ -121,7 +121,7 @@
 | API | 权限 | 关键行为 |
 | --- | --- | --- |
 | `POST /api/staff`、`PUT /api/staff/[id]` | 企业负责人、`admin`、`super_admin` | 设计师微信资料必填；测量员绑定同企业启用设计师；换绑保留历史线索归属。 |
-| `POST /api/staff/wechat-qr` | 员工管理权限 | `multipart/form-data` 上传图片，写入 `media_assets`，返回资产 ID 和短期图片地址。 |
+| `POST /api/staff/wechat-qr` | 员工管理权限 | `multipart/form-data` 上传图片，使用当前启用的默认媒体存储 Provider 写入 `media_assets`，返回资产 ID 和短期图片地址；历史资源仍按自身记录的 Provider 读取。 |
 | `POST /api/leads` | 小程序测量员或既有线索创建权限 | 自动写入测量员、绑定设计师和 `new`，保留手机号去重。 |
 | `POST /api/leads/[id]/acquire` | 负责该线索的设计师 | 原子写入获客确认事实，保持业务状态不变，创建唯一待结算提成并通知测量员。 |
 | `GET /api/leads?archiveState=archived` | `leads.archive_manage` | 读取归档区；普通列表默认只返回在用线索。 |
@@ -150,7 +150,7 @@
 - `pages/leads-management/leads-management`：四步业务状态筛选；仅测量员在胶囊安全内容通道看到轻量“我的设计师”入口。
 - `packages/business/acquisition-center/acquisition-center`：设计师确认微信交接；测量员在汇总后通过唯一“我的设计师 / 查看微信”入口查看当前绑定，任务卡只显示等待、回执和提成摘要。任务列表支持原生 `scroll-view` 手动下拉刷新；仅在页面可见时每 30 秒刷新当前状态，隐藏或卸载时清理定时器，并复用在途请求保护。
 - `packages/business/lead-detail`：四步业务状态时间线、正式量房和普通“获客协作”信息组；不重复实现确认动作。
-- `components/designer-contact-sheet/designer-contact-sheet`：线索页、详情和协作工作台复用的只读设计师名片底部抽屉。
+- `components/designer-contact-sheet/designer-contact-sheet`：线索页、详情和协作工作台复用的只读设计师名片底部抽屉。它通过 `wx.request` 获取受保护二维码的图片字节，写入小程序本地临时文件后再交给 `<image>` 渲染；保留既有签名和企业范围校验，同时避开远程图片下载域名/缓存通道。加载失败后，重试会卸载失败图片并显示有时限的刷新状态，先刷新按角色裁剪的父级设计师资料；每次请求还会在签名负载之外附加仅客户端使用的缓存标识。
 - `packages/business/commission-records`：测量员查看获客提成汇总、明细和结算状态。
 - `pages/mine`：未读通知入口和提醒。
 

@@ -22,7 +22,6 @@ export async function POST(request: Request) {
         ownerType: 'staff_wechat_qr',
         mimeType: file.type,
         buffer,
-        storageProviderKey: 'local',
       });
       return NextResponse.json({ success: true, data: { assetId: stored.asset.id.toString(), imageUrl: getPostgresMediaAssetImageUrl(stored.asset.id) } }, { status: 201 });
     });

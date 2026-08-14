@@ -226,7 +226,6 @@ async function loadScenarioProviderImages(
       ownerId: generation.id,
       mimeType: 'image/png',
       buffer: controlBuffer,
-      storageProviderKey: 'local',
     });
     await withTenantTransaction(enterpriseId, async (transaction) => {
       const repository = new AiCreationRepository(transaction);
@@ -312,7 +311,6 @@ async function persistProviderResult(input: {
       ownerType: 'ai_generation_output',
       mimeType: parsed.mimeType,
       buffer: parsed.buffer,
-      storageProviderKey: 'local',
     });
   }
   const response = await fetch(image, { cache: 'no-store' });

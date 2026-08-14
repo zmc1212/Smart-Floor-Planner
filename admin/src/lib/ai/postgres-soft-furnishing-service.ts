@@ -28,7 +28,6 @@ export async function createPostgresSoftFurnishingRender(input: {
     ownerType: 'ai_generation_input',
     mimeType: parsedImage.mimeType,
     buffer: parsedImage.buffer,
-    storageProviderKey: 'local',
   });
   const generation = await withTenantTransaction(enterpriseId, async (transaction) => {
     const repository = new AiCreationRepository(transaction);

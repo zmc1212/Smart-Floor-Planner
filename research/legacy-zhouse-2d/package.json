@@ -5,7 +5,7 @@
   "description": "Isolated reconstruction laboratory for the legacy ZHouse IL2CPP 2D engine",
   "type": "commonjs",
   "scripts": {
-    "test": "node --test test/geometry.test.js test/boundary.test.js",
-    "verify": "node tools/verify-provenance.js && node tools/verify-isolation.js && npm test"
+    "test": "node --test test/geometry.test.js test/boundary.test.js test/core-editing.test.js test/runtime-trace.test.js test/runtime-state-transition.test.js test/rectangular-inside-wall.test.js test/persisted-layout.test.js",
+    "verify": "node tools/verify-provenance.js && node tools/verify-call-graph.js && node tools/verify-isolation.js && npm test"
   }
 }

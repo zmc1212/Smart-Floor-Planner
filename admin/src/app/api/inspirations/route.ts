@@ -4,6 +4,8 @@ import {
   InspirationRepository,
   type InspirationRecord,
 } from '@/db/repositories';
+import { getSignedMiniAiAssetUrl } from '@/lib/ai/mini-ai-assets';
+import { getPostgresAssetIdFromImageUrl } from '@/lib/ai/postgres-media-assets';
 import { withAdminPostgresTransaction } from '@/lib/postgres-request-scope';
 import { withTenantRoute } from '@/lib/tenant-route';
 
@@ -11,12 +13,28 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'Internal server error';
 }
 
-function serializeInspiration(inspiration: InspirationRecord) {
+function serializeManagedImage(
+  request: Request,
+  enterpriseId: string,
+  imageUrl: string
+) {
+  const assetId = getPostgresAssetIdFromImageUrl(imageUrl);
+  return assetId
+    ? getSignedMiniAiAssetUrl({
+        request,
+        assetId: assetId.toString(),
+        enterpriseId,
+      })
+    : imageUrl;
+}
+
+function serializeInspiration(inspiration: InspirationRecord, request: Request) {
+  const enterpriseId = inspiration.enterpriseId.toString();
   return {
     _id: inspiration.id.toString(),
     title: inspiration.title,
-    coverImage: inspiration.coverImage,
-    renderingImage: inspiration.renderingImage,
+    coverImage: serializeManagedImage(request, enterpriseId, inspiration.coverImage),
+    renderingImage: serializeManagedImage(request, enterpriseId, inspiration.renderingImage),
     style: inspiration.style,
     roomType: inspiration.roomType,
     layoutData: inspiration.layoutData,
@@ -40,7 +58,10 @@ export async function GET(request: Request) {
           limit: limit || undefined,
         })
       );
-      return NextResponse.json({ success: true, data: inspirations.map(serializeInspiration) });
+      return NextResponse.json({
+        success: true,
+        data: inspirations.map((inspiration) => serializeInspiration(inspiration, request)),
+      });
     });
   } catch (error: unknown) {
     console.error('Fetch inspirations error:', error);
@@ -71,7 +92,10 @@ export async function POST(request: Request) {
           viewCount: Number.isSafeInteger(body.viewCount) && body.viewCount >= 0 ? BigInt(body.viewCount) : BigInt(0),
         })
       );
-      return NextResponse.json({ success: true, data: serializeInspiration(inspiration) }, { status: 201 });
+      return NextResponse.json(
+        { success: true, data: serializeInspiration(inspiration, request) },
+        { status: 201 }
+      );
     });
   } catch (error: unknown) {
     console.error('Create inspiration error:', error);

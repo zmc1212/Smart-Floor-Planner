@@ -34,6 +34,17 @@ function createLatestFrameQueue(options) {
   };
 }
 
+function resolveFormalDrawDecision(input) {
+  const state = input || {};
+  if (state.disposed) return 'drop';
+  if (Number.isFinite(state.expectedRevision) && state.expectedRevision !== state.currentRevision) {
+    return 'stale';
+  }
+  if (state.viewportInteractionActive) return 'defer';
+  return 'draw';
+}
+
 module.exports = {
-  createLatestFrameQueue
+  createLatestFrameQueue,
+  resolveFormalDrawDecision
 };

@@ -497,7 +497,7 @@ export default function MediaStoragePage() {
           type="info"
           showIcon
           message="凭证仅在服务端加密保存"
-          description="Bucket 必须是私有空间。编辑时留空 AccessKey 和 SecretKey 可保留原凭证。"
+          description="存储空间（Bucket）必须为私有空间。编辑时留空访问密钥和私钥可保留原凭证。"
           style={{ marginBottom: 16 }}
         />
         <ProFormText
@@ -511,17 +511,17 @@ export default function MediaStoragePage() {
         <ProFormText name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]} fieldProps={{ placeholder: '七牛主存储' }} />
         <ProFormText.Password
           name="accessKey"
-          label={isEditModalOpen ? 'AccessKey（留空保留）' : 'AccessKey'}
+          label={isEditModalOpen ? '访问密钥（留空保留）' : '访问密钥'}
           rules={isEditModalOpen ? [] : [{ required: true, message: '请输入 AccessKey' }]}
           fieldProps={{ autoComplete: 'new-password' }}
         />
         <ProFormText.Password
           name="secretKey"
-          label={isEditModalOpen ? 'SecretKey（留空保留）' : 'SecretKey'}
+          label={isEditModalOpen ? '私钥（留空保留）' : '私钥'}
           rules={isEditModalOpen ? [] : [{ required: true, message: '请输入 SecretKey' }]}
           fieldProps={{ autoComplete: 'new-password' }}
         />
-        <ProFormText name="bucket" label="Bucket" rules={[{ required: true, message: '请输入 Bucket' }]} fieldProps={{ placeholder: 'private-media' }} />
+        <ProFormText name="bucket" label="存储空间（Bucket）" rules={[{ required: true, message: '请输入存储空间名称' }]} fieldProps={{ placeholder: 'private-media' }} />
         <ProFormSelect name="region" label="区域" options={REGION_OPTIONS} rules={[{ required: true, message: '请选择区域' }]} />
         <ProFormText
           name="objectPrefix"

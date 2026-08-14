@@ -10,6 +10,7 @@ const GRID_MINOR_MM = 250;
 const GRID_MAJOR_MM = 1250;
 const MIN_WALL_THICKNESS_PX = 1.5;
 const WALL_STROKE_PX = 1.5;
+const RENDER_REVISION = 'native-scanline-junction-repair-v5';
 const REDLINE_STROKE_PX = 2;
 const GUIDE_STROKE_PX = 1.25;
 // Blue cursor coordinates use a denser cadence than the closure cue so the
@@ -386,23 +387,20 @@ function buildWallScene(floor, wall, options) {
     x: endPoint.x + localY.x * outerOffsetPx,
     y: endPoint.y + localY.y * outerOffsetPx
   };
-  const selectionStartPoint = {
-    x: startPoint.x,
-    y: startPoint.y
+  // Measurement insets intentionally shorten the red/annotated edge, but the
+  // physical wall body still spans the graph's topology nodes. Keeping a
+  // separate solid polygon prevents a T-junction measurement inset from
+  // cutting a rectangular hole out of the traversing wall.
+  const solidStartPoint = project(topologyStart);
+  const solidEndPoint = project(topologyEnd);
+  const solidOuterStart = {
+    x: solidStartPoint.x + localY.x * outerOffsetPx,
+    y: solidStartPoint.y + localY.y * outerOffsetPx
   };
-  const selectionEndPoint = {
-    x: endPoint.x,
-    y: endPoint.y
+  const solidOuterEnd = {
+    x: solidEndPoint.x + localY.x * outerOffsetPx,
+    y: solidEndPoint.y + localY.y * outerOffsetPx
   };
-  const selectionOuterStart = {
-    x: rawOuterStart.x,
-    y: rawOuterStart.y
-  };
-  const selectionOuterEnd = {
-    x: rawOuterEnd.x,
-    y: rawOuterEnd.y
-  };
-
   return {
     id: wall.id,
     wall,
@@ -416,11 +414,15 @@ function buildWallScene(floor, wall, options) {
     outerEnd,
     rawOuterStart,
     rawOuterEnd,
+    solidStartPoint,
+    solidEndPoint,
+    solidOuterStart,
+    solidOuterEnd,
     outerStartAlongPx,
     outerEndPx,
     outerLengthMm,
-    bodyPolygon: [startPoint, endPoint, outerEnd, outerStart],
-    selectionPolygon: [selectionStartPoint, selectionEndPoint, selectionOuterEnd, selectionOuterStart],
+    bodyPolygon: [solidStartPoint, solidEndPoint, solidOuterEnd, solidOuterStart],
+    selectionPolygon: [solidStartPoint, solidEndPoint, solidOuterEnd, solidOuterStart],
     direction,
     localY,
     widthPx,
@@ -708,7 +710,7 @@ function buildClosedSpaceLabels(floor, project, viewport) {
 function buildClosedSpaceFills(floor, project) {
   return (floor.spaces || []).filter((space) => space.closed && Array.isArray(space.wallIds))
     .map((space) => {
-      const boundaryPoints = surveyGraph.buildSpaceInnerBoundaryPoints(floor, space);
+      const boundaryPoints = surveyGraph.buildSpaceRenderBoundaryPoints(floor, space);
       if (!boundaryPoints || boundaryPoints.length < 3) return null;
       return {
         id: space.id,
@@ -784,12 +786,12 @@ function createSurveyRenderScene(input) {
   const createSolidPlan = (items) => wallSolidLayout.createWallSolidPlan({
     walls: items.map((wall) => ({
       id: wall.id,
-      start: wall.startPoint,
-      end: wall.endPoint,
-      outerStart: wall.rawOuterStart,
-      outerEnd: wall.rawOuterEnd,
+      start: wall.solidStartPoint,
+      end: wall.solidEndPoint,
+      outerStart: wall.solidOuterStart,
+      outerEnd: wall.solidOuterEnd,
       thickness: wall.thicknessPx,
-      polygon: [wall.startPoint, wall.endPoint, wall.rawOuterEnd, wall.rawOuterStart]
+      polygon: wall.bodyPolygon
     }))
   });
   const wallSolidPlan = createSolidPlan(solidWalls);
@@ -830,7 +832,9 @@ function createSurveyRenderScene(input) {
     innerSegments: (entry.plan.innerSegments || []).map((segment) => ({
       wallId: segment.wallId,
       start: project(segment.start),
-      end: project(segment.end)
+      end: project(segment.end),
+      measurementStartInsetMm: segment.measurementStartInsetMm || 0,
+      measurementEndInsetMm: segment.measurementEndInsetMm || 0
     }))
   }));
   const dimensions = resolveDimensions(
@@ -886,6 +890,109 @@ function drawPolygon(ctx, points, fillStyle) {
   ctx.closePath();
   ctx.fillStyle = fillStyle;
   ctx.fill();
+}
+
+function polygonScanlineIntervals(points, y) {
+  const intersections = [];
+  (points || []).forEach((start, index) => {
+    const end = points[(index + 1) % points.length];
+    if (!end || start.y === end.y) return;
+    const minimumY = Math.min(start.y, end.y);
+    const maximumY = Math.max(start.y, end.y);
+    // Half-open edge ownership prevents a vertex from being counted twice.
+    if (y < minimumY || y >= maximumY) return;
+    const ratio = (y - start.y) / (end.y - start.y);
+    intersections.push(start.x + (end.x - start.x) * ratio);
+  });
+  intersections.sort((first, second) => first - second);
+  const intervals = [];
+  for (let index = 0; index + 1 < intersections.length; index += 2) {
+    if (intersections[index + 1] > intersections[index]) {
+      intervals.push([intersections[index], intersections[index + 1]]);
+    }
+  }
+  return intervals;
+}
+
+function mergeIntervals(intervals) {
+  const ordered = (intervals || [])
+    .filter((interval) => interval && interval[1] > interval[0])
+    .sort((first, second) => first[0] - second[0]);
+  const merged = [];
+  ordered.forEach((interval) => {
+    const previous = merged[merged.length - 1];
+    if (!previous || interval[0] > previous[1]) {
+      merged.push(interval.slice());
+      return;
+    }
+    previous[1] = Math.max(previous[1], interval[1]);
+  });
+  return merged;
+}
+
+function intersectIntervals(firstIntervals, secondIntervals) {
+  const result = [];
+  let firstIndex = 0;
+  let secondIndex = 0;
+  while (firstIndex < firstIntervals.length && secondIndex < secondIntervals.length) {
+    const first = firstIntervals[firstIndex];
+    const second = secondIntervals[secondIndex];
+    const start = Math.max(first[0], second[0]);
+    const end = Math.min(first[1], second[1]);
+    if (end > start) result.push([start, end]);
+    if (first[1] < second[1]) firstIndex += 1;
+    else secondIndex += 1;
+  }
+  return result;
+}
+
+function drawScanlineIntervals(ctx, intervals, row, dpr, fillStyle) {
+  if (!intervals.length) return;
+  ctx.fillStyle = fillStyle;
+  intervals.forEach((interval) => {
+    const startDeviceX = Math.floor(interval[0] * dpr);
+    const endDeviceX = Math.ceil(interval[1] * dpr);
+    if (endDeviceX <= startDeviceX) return;
+    ctx.fillRect(
+      startDeviceX / dpr,
+      row / dpr,
+      (endDeviceX - startDeviceX) / dpr,
+      1 / dpr
+    );
+  });
+}
+
+function drawWallJunctionRepairs(ctx, scene) {
+  const joinPolygons = (scene.wallSolidPlan && scene.wallSolidPlan.joinPolygons) || [];
+  if (!joinPolygons.length) return;
+  const dpr = Math.max(1, Number(scene.renderDpr || 1));
+  const closedPolygons = (
+    scene.wallSolidPlans && scene.wallSolidPlans.closed && scene.wallSolidPlans.closed.polygons
+  ) || [];
+
+  joinPolygons.forEach((polygon) => {
+    const ys = polygon.map((point) => point.y);
+    const startRow = Math.floor(Math.min(...ys) * dpr);
+    const endRow = Math.ceil(Math.max(...ys) * dpr);
+    for (let row = startRow; row < endRow; row += 1) {
+      const sampleY = (row + 0.5) / dpr;
+      const joinIntervals = mergeIntervals(polygonScanlineIntervals(polygon, sampleY));
+      if (!joinIntervals.length) continue;
+      // Device-pixel fillRect strips do not depend on native path winding or
+      // antialiasing, so a skipped corner/T patch cannot expose the background.
+      drawScanlineIntervals(ctx, joinIntervals, row, dpr, '#e2e2e0');
+      const closedIntervals = mergeIntervals(closedPolygons.flatMap((closedPolygon) => (
+        polygonScanlineIntervals(closedPolygon, sampleY)
+      )));
+      drawScanlineIntervals(
+        ctx,
+        intersectIntervals(joinIntervals, closedIntervals),
+        row,
+        dpr,
+        '#8e8e8c'
+      );
+    }
+  });
 }
 
 function drawGrid(ctx, scene) {
@@ -951,8 +1058,27 @@ function drawClosedSpaceFills(ctx, scene) {
 
 function drawWallBodies(ctx, scene) {
   const solids = scene.wallSolidPlans || {};
-  drawCompoundRings(ctx, solids.closed && solids.closed.rings, '#8e8e8c');
-  drawCompoundRings(ctx, solids.open && solids.open.rings, '#e2e2e0');
+  // Native Mini Program Canvas implementations do not rasterize compound
+  // paths with touching rings consistently. A T/cross junction can therefore
+  // look hollow until the next pan repaints it, even though the union topology
+  // is unchanged. Fill the already-unioned source polygons one at a time;
+  // overlaps are intentional and deterministic because each colour group is
+  // painted in one pass.
+  // Underpaint the complete union before applying the closed-wall colour.
+  // Computing open and closed groups independently omits cross-group join
+  // polygons. Their mathematical edges still touch, but Android native Canvas
+  // can expose that shared antialiased edge as a background-coloured hole and
+  // then make it disappear after the next viewport transform. The complete
+  // union contains those mixed T/corner patches, so this first pass guarantees
+  // wall-coloured coverage in every frame. Closed walls remain the final pass
+  // and therefore stay visually continuous where an open branch meets them.
+  (((scene.wallSolidPlan && scene.wallSolidPlan.polygons) || [])).forEach((polygon) => {
+    drawPolygon(ctx, polygon, '#e2e2e0');
+  });
+  ((solids.closed && solids.closed.polygons) || []).forEach((polygon) => {
+    drawPolygon(ctx, polygon, '#8e8e8c');
+  });
+  drawWallJunctionRepairs(ctx, scene);
   scene.walls.forEach((wall) => {
     if (wall.selected) {
       drawPolygon(ctx, wall.selectionPolygon, 'rgba(226, 73, 79, 0.92)');
@@ -994,7 +1120,22 @@ function drawWallOutlines(ctx, scene) {
   ctx.lineWidth = WALL_STROKE_PX;
   ctx.lineCap = 'butt';
   ctx.lineJoin = 'miter';
-  drawCompoundRings(ctx, scene.wallSolidPlan && scene.wallSolidPlan.rings, null, '#1f1f1f', WALL_STROKE_PX);
+  // Stroke only the classified union boundary. Unlike a compound ring path,
+  // these disconnected two-point subpaths have no fill rule or winding state
+  // for native Canvas to reinterpret between a formal redraw and a pan frame.
+  const boundarySegments = (scene.wallSolidPlan && scene.wallSolidPlan.segments) || [];
+  if (boundarySegments.length) {
+    boundarySegments.forEach((segment) => {
+      // Keep each native stroke independent. Some Android Canvas backends
+      // intermittently drop a short subpath when many touching moveTo/lineTo
+      // pairs are submitted in one stroke; a later pan then happens to restore
+      // it. Independent strokes make formal and interaction frames identical.
+      ctx.beginPath();
+      ctx.moveTo(segment.start.x, segment.start.y);
+      ctx.lineTo(segment.end.x, segment.end.y);
+      ctx.stroke();
+    });
+  }
   // A topology-face override records that the operator deliberately closed an
   // adjacent room on the existing room's inner vertices. The compound wall
   // union keeps the shared wall solid, but otherwise hides the final
@@ -1395,28 +1536,6 @@ function drawArrow(ctx, x, y, direction, size) {
   ctx.fill();
 }
 
-function drawCompoundRings(ctx, rings, fillStyle, strokeStyle, lineWidth) {
-  if (!rings || !rings.length) return;
-  ctx.beginPath();
-  rings.forEach((ring) => {
-    if (!ring || ring.length < 3) return;
-    ctx.moveTo(ring[0].x, ring[0].y);
-    for (let index = 1; index < ring.length; index += 1) {
-      ctx.lineTo(ring[index].x, ring[index].y);
-    }
-    ctx.closePath();
-  });
-  if (fillStyle) {
-    ctx.fillStyle = fillStyle;
-    ctx.fill();
-  }
-  if (strokeStyle) {
-    ctx.strokeStyle = strokeStyle;
-    ctx.lineWidth = lineWidth || 1;
-    ctx.stroke();
-  }
-}
-
 function drawPlannedDimension(ctx, dimension) {
   const start = dimension.startPoint;
   const end = dimension.endPoint;
@@ -1676,6 +1795,10 @@ function projectInteractionWall(wall, transform) {
     'outerEnd',
     'rawOuterStart',
     'rawOuterEnd',
+    'solidStartPoint',
+    'solidEndPoint',
+    'solidOuterStart',
+    'solidOuterEnd',
     'measurementStartPoint',
     'measurementEndPoint'
   ].forEach((key) => {
@@ -1702,7 +1825,13 @@ function projectInteractionWall(wall, transform) {
 function projectInteractionSolidPlan(plan, transform) {
   if (!plan) return plan;
   return Object.assign({}, plan, {
-    rings: (plan.rings || []).map((ring) => projectInteractionPoints(ring, transform))
+    polygons: (plan.polygons || []).map((polygon) => projectInteractionPoints(polygon, transform)),
+    joinPolygons: (plan.joinPolygons || []).map((polygon) => projectInteractionPoints(polygon, transform)),
+    rings: (plan.rings || []).map((ring) => projectInteractionPoints(ring, transform)),
+    segments: (plan.segments || []).map((segment) => ({
+      start: projectInteractionPoint(segment.start, transform),
+      end: projectInteractionPoint(segment.end, transform)
+    }))
   });
 }
 
@@ -1788,6 +1917,7 @@ function drawSurveyInteractionScene(ctx, scene, options) {
     ? Object.assign({}, scene, { viewport: resolveViewport(opts.baseViewport) })
     : scene;
   const interactionScene = createViewportInteractionScene(baseScene, viewport);
+  interactionScene.renderDpr = dpr;
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, scene.rect.width, scene.rect.height);
@@ -2129,6 +2259,7 @@ function drawClosedSpaceLabel(ctx, scene) {
 function drawSurveyScene(ctx, scene, options) {
   if (!ctx || !scene || !scene.rect.width || !scene.rect.height) return;
   const dpr = (options && options.dpr) || 1;
+  scene.renderDpr = dpr;
 
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, scene.rect.width, scene.rect.height);
@@ -2210,6 +2341,7 @@ function hitTestSurveyOpening(scene, canvasPoint) {
 }
 
 module.exports = {
+  RENDER_REVISION,
   createSurveyRenderScene,
   createSurveyLensScene,
   drawSurveyScene,

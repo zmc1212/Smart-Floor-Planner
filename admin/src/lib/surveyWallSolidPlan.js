@@ -6,6 +6,12 @@
  */
 
 const EPSILON = 0.0001;
+// Wall endpoints originate in integer millimetres but their projected offset
+// faces use floating-point normals. At diagonal joins, mathematically shared
+// vertices can differ by a few thousandths of a canvas pixel. Canonicalize
+// boundary vertices at a still-invisible 0.01px grid while retaining the
+// tighter epsilon for intersection and inside/outside classification.
+const VERTEX_SNAP = 0.01;
 
 function cross(a, b, c) {
   return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
@@ -41,13 +47,13 @@ function normalizePolygon(points) {
 }
 
 function pointKey(point) {
-  return `${Math.round(point.x / EPSILON)}:${Math.round(point.y / EPSILON)}`;
+  return `${Math.round(point.x / VERTEX_SNAP)}:${Math.round(point.y / VERTEX_SNAP)}`;
 }
 
 function snapPoint(point) {
   return {
-    x: Math.round(point.x / EPSILON) * EPSILON,
-    y: Math.round(point.y / EPSILON) * EPSILON
+    x: Math.round(point.x / VERTEX_SNAP) * VERTEX_SNAP,
+    y: Math.round(point.y / VERTEX_SNAP) * VERTEX_SNAP
   };
 }
 
@@ -99,6 +105,12 @@ function lineIntersection(firstStart, firstEnd, secondStart, secondEnd) {
     firstT,
     secondT
   };
+}
+
+function pointToInfiniteLineDistance(point, start, end) {
+  const lineLength = distance(start, end);
+  if (lineLength <= EPSILON) return distance(point, start);
+  return Math.abs(cross(start, end, point)) / lineLength;
 }
 
 function infiniteLineIntersection(firstStart, firstEnd, secondStart, secondEnd) {
@@ -199,18 +211,18 @@ function splitEdges(polygons) {
     const first = edges[firstIndex];
     for (let secondIndex = firstIndex + 1; secondIndex < edges.length; secondIndex += 1) {
       const second = edges[secondIndex];
-      const intersection = lineIntersection(first.start, first.end, second.start, second.end);
-      if (intersection) {
-        first.parameters.push(intersection.firstT);
-        second.parameters.push(intersection.secondT);
-        continue;
-      }
-      if (Math.abs(cross(first.start, first.end, second.start)) <= EPSILON * 10 &&
-          Math.abs(cross(first.start, first.end, second.end)) <= EPSILON * 10) {
+      if (pointToInfiniteLineDistance(second.start, first.start, first.end) <= VERTEX_SNAP &&
+          pointToInfiniteLineDistance(second.end, first.start, first.end) <= VERTEX_SNAP) {
         addProjectedParameter(first.parameters, second.start, first.start, first.end);
         addProjectedParameter(first.parameters, second.end, first.start, first.end);
         addProjectedParameter(second.parameters, first.start, second.start, second.end);
         addProjectedParameter(second.parameters, first.end, second.start, second.end);
+        continue;
+      }
+      const intersection = lineIntersection(first.start, first.end, second.start, second.end);
+      if (intersection) {
+        first.parameters.push(intersection.firstT);
+        second.parameters.push(intersection.secondT);
       }
     }
   }
@@ -267,6 +279,37 @@ function classifyBoundaryPieces(pieces, polygons, scale) {
       return;
     }
     if (pointKey(previous.start) === pointKey(candidate.end) && pointKey(previous.end) === pointKey(candidate.start)) {
+      edgeMap.delete(key);
+    }
+  });
+  return Array.from(edgeMap.values());
+}
+
+function canonicalizeSegmentVertices(segments) {
+  const canonicalPoints = [];
+  const resolvePoint = (point) => {
+    const existing = canonicalPoints.find((candidate) => (
+      distance(candidate, point) <= VERTEX_SNAP * 2
+    ));
+    if (existing) return existing;
+    const canonical = { x: point.x, y: point.y };
+    canonicalPoints.push(canonical);
+    return canonical;
+  };
+  const edgeMap = new Map();
+  (segments || []).forEach((segment) => {
+    const candidate = {
+      start: resolvePoint(segment.start),
+      end: resolvePoint(segment.end)
+    };
+    if (candidate.start === candidate.end) return;
+    const key = segmentKey(candidate.start, candidate.end);
+    const previous = edgeMap.get(key);
+    if (!previous) {
+      edgeMap.set(key, candidate);
+      return;
+    }
+    if (previous.start === candidate.end && previous.end === candidate.start) {
       edgeMap.delete(key);
     }
   });
@@ -349,7 +392,7 @@ function createWallSolidPlan(input) {
   const ys = allPoints.map((point) => point.y);
   const scale = Math.max(1, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
   const pieces = splitEdges(polygons);
-  const segments = classifyBoundaryPieces(pieces, polygons, scale);
+  const segments = canonicalizeSegmentVertices(classifyBoundaryPieces(pieces, polygons, scale));
   return { rings: stitchRings(segments), segments };
 }
 

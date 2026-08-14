@@ -12,6 +12,10 @@ function taskResultSignaturePayload(taskId: string, enterpriseId: string, expire
   return `task-result:${taskId}:${enterpriseId}:${expires}`;
 }
 
+function recipePreviewSignaturePayload(recipeId: string, enterpriseId: string, expires: number) {
+  return `recipe-preview:${recipeId}:${enterpriseId}:${expires}`;
+}
+
 export function createMiniAiAssetSignature(assetId: string, enterpriseId: string, expires: number) {
   return crypto.createHmac('sha256', secret()).update(signaturePayload(assetId, enterpriseId, expires)).digest('hex');
 }
@@ -40,6 +44,22 @@ export function verifyMiniAiTaskResultSignature(input: {
 }) {
   if (!Number.isFinite(input.expires) || input.expires < Math.floor(Date.now() / 1000)) return false;
   const expected = createMiniAiTaskResultSignature(input.taskId, input.enterpriseId, input.expires);
+  if (expected.length !== input.signature.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(input.signature));
+}
+
+export function createMiniAiRecipePreviewSignature(recipeId: string, enterpriseId: string, expires: number) {
+  return crypto.createHmac('sha256', secret()).update(recipePreviewSignaturePayload(recipeId, enterpriseId, expires)).digest('hex');
+}
+
+export function verifyMiniAiRecipePreviewSignature(input: {
+  recipeId: string;
+  enterpriseId: string;
+  expires: number;
+  signature: string;
+}) {
+  if (!Number.isFinite(input.expires) || input.expires < Math.floor(Date.now() / 1000)) return false;
+  const expected = createMiniAiRecipePreviewSignature(input.recipeId, input.enterpriseId, input.expires);
   if (expected.length !== input.signature.length) return false;
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(input.signature));
 }
@@ -112,6 +132,24 @@ export function getSignedMiniAiTaskResultUrl(input: {
   const signature = createMiniAiTaskResultSignature(input.taskId, input.enterpriseId, expires);
   const url = new URL(
     `/api/miniprogram/ai/tasks/${input.taskId}/image`,
+    getMiniAiPublicRequestUrl(input.request)
+  );
+  url.searchParams.set('tenant', input.enterpriseId);
+  url.searchParams.set('expires', String(expires));
+  url.searchParams.set('signature', signature);
+  return url.toString();
+}
+
+export function getSignedMiniAiRecipePreviewUrl(input: {
+  request: Request;
+  recipeId: string;
+  enterpriseId: string;
+  ttlSeconds?: number;
+}) {
+  const expires = Math.floor(Date.now() / 1000) + (input.ttlSeconds || 3600);
+  const signature = createMiniAiRecipePreviewSignature(input.recipeId, input.enterpriseId, expires);
+  const url = new URL(
+    `/api/miniprogram/ai/recipes/${input.recipeId}/preview`,
     getMiniAiPublicRequestUrl(input.request)
   );
   url.searchParams.set('tenant', input.enterpriseId);

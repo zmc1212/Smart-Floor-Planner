@@ -23,7 +23,6 @@ export async function POST(request: Request) {
         buffer,
         width: image.width,
         height: image.height,
-        storageProviderKey: 'local',
       });
       return NextResponse.json({
         success: true,

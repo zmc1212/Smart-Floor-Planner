@@ -2,6 +2,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import NextImage from 'next/image';
 import Link from 'next/link';
 import {
   Bell,
@@ -633,8 +634,8 @@ export function CreationWorkspace() {
       <header className="relative z-40 flex h-[68px] min-w-0 items-center justify-between border-b border-white/[0.08] bg-[#16171b] px-3 lg:min-w-[1024px]">
         <div className="flex min-w-0 items-center gap-4">
           <Link href="/ai-studio/scenarios" className="flex items-center gap-2 text-white" title="返回后台 AI 工作台">
-            <span className="flex size-7 items-center justify-center rounded-md border border-[#7047ff]/70 text-[#8b6cff]"><Sparkles className="size-4" /></span>
-            <span className="hidden text-[15px] font-semibold sm:inline">SMART FLOOR AI</span>
+            <NextImage src="/brand-logo.png" alt="" aria-hidden="true" width={28} height={28} className="shrink-0 rounded-md" />
+            <span className="hidden text-[15px] font-semibold sm:inline">家客来</span>
           </Link>
           <span className="h-6 w-px bg-white/20" />
           <h1 className="truncate text-base font-medium sm:text-lg">创作工作台</h1>

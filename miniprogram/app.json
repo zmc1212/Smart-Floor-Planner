@@ -16,7 +16,10 @@
         "legacy/ai-gen",
         "create/ai-design-create",
         "result/ai-design-result",
-        "history/ai-design-history"
+        "history/ai-design-history",
+        "recipe-detail/recipe-detail",
+        "recipe-project/recipe-project",
+        "recipe-confirm/recipe-confirm"
       ]
     },
     {

@@ -190,7 +190,7 @@ export default function PresetEditor({ presetId }: PresetEditorProps) {
                 <Col xs={24} md={6}><ProFormDigit name="sortOrder" label="排序权重" fieldProps={{ precision: 0 }} /></Col>
                 <Col span={24}><ProFormTextArea name="description" label="用途描述" fieldProps={{ autoSize: { minRows: 2, maxRows: 4 } }} /></Col>
                 <Col xs={24} md={12}><ProFormText name="previewClassName" label="预览样式标识" tooltip="保留现有数据；前端会在支持该样式的视图中使用。" /></Col>
-                <Col xs={24} md={12}><ProFormText name="mockImageUrl" label="Mock 预览图地址" placeholder="/static/previews/modern.png" /></Col>
+                <Col xs={24} md={12}><ProFormText name="mockImageUrl" label="示例预览图地址" placeholder="/static/previews/modern.png" /></Col>
                 <Col span={24}>
                   <ProFormSwitch
                     name="enabled"
@@ -212,7 +212,7 @@ export default function PresetEditor({ presetId }: PresetEditorProps) {
                 />
                 <ProFormTextArea
                   name="promptTemplate"
-                  label="Prompt 提示词模板"
+                  label="提示词模板"
                   rules={[{ required: true, message: '请输入提示词模板' }]}
                   fieldProps={{ autoSize: { minRows: 8, maxRows: 18 } }}
                 />

@@ -24,10 +24,9 @@ function loadPageConfig(relativePath) {
 
 test('V3 page-role assets remain native artwork instead of flattened page screenshots', () => {
   const aiHome = read('pages/ai-design/ai-design.wxml');
-  assert.match(aiHome, /class="plan-default-scene"/);
-  assert.match(aiHome, /class="plan-hero-swiper"/);
-  assert.match(aiHome, /\/images\/generated-hero-bleed-v2\.png/);
-  assert.match(aiHome, /\/images\/mine-icons\/tab-measure-k\.png/);
+  assert.match(aiHome, /class="recipe-hero"/);
+  assert.match(aiHome, /class="recipe-waterfall"/);
+  assert.match(aiHome, /\/images\/ai-recipe\/recipe-atelier-hero\.jpg/);
   assert.doesNotMatch(aiHome, /\/images\/page-ip-v3\/ai-home\.png/);
 
   const references = [

@@ -5,6 +5,7 @@
   background: #fafbf8;
   color: var(--text-primary);
 }
+.recipe-result{background:#f6f7f4}.recipe-result .state-panel{margin:28rpx 8rpx;background:linear-gradient(145deg,#063c27,#002d1d);border:0;color:#fff;box-shadow:0 18rpx 44rpx rgba(0,59,35,.16)}.recipe-result .state-meta{color:#d9eee2}.recipe-result .processing-mark{background:#00bd57;color:#fff}.recipe-result .background-browse{background:#fff;color:#004c2b;box-shadow:none}.recipe-result .result-heading{margin:0 -24rpx 18rpx;background:linear-gradient(112deg,#004c2b,#008446);border-radius:0 0 38rpx 38rpx}.recipe-result .delivery-bubble{left:38%;color:#003a24}.recipe-result .complete-chip{left:45%;border:0;color:#004c2b}.recipe-result .compare-stage{border:0;border-radius:34rpx;box-shadow:0 18rpx 44rpx rgba(10,31,19,.15)}.recipe-result .result-actions{margin-top:18rpx;border-radius:30rpx;background:#fff}.recipe-result .task-summary{border-radius:30rpx;background:#fff;box-shadow:0 8rpx 26rpx rgba(24,39,30,.06)}
 
 .result-shell {
   min-height: 100%;
@@ -131,6 +132,20 @@ button::after {
   font-size: 27rpx;
   line-height: 88rpx;
 }
+
+.background-browse {
+  min-width: 276rpx;
+  height: 88rpx;
+  margin-top: 24rpx;
+  padding: 0 34rpx;
+  border-radius: 28rpx;
+  background: #fff;
+  color: #004c2b;
+  font-size: 24rpx;
+  line-height: 88rpx;
+  box-shadow: inset 0 0 0 2rpx #00bd57;
+}
+.recipe-task-status{min-height:88rpx;margin:28rpx 0 8rpx;padding:0 24rpx;border-radius:24rpx;background:#e9f8ef;color:#004c2b;display:flex;align-items:center;justify-content:center;gap:14rpx;font-size:24rpx;font-weight:700;box-sizing:border-box}.recipe-task-status view{width:18rpx;height:18rpx;border-radius:50%;background:#00bd57;box-shadow:0 0 0 9rpx rgba(0,189,87,.13);animation:status-pulse 1.4s ease-in-out infinite}@keyframes status-pulse{50%{opacity:.45;transform:scale(.82)}}
 
 .result-heading {
   position: relative;

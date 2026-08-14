@@ -41,6 +41,9 @@ test('AI design result keeps generated artwork inside the approved near-square d
   assert.match(script, /resultImageMode: ratio < 0\.85 \|\| ratio > 1\.25 \? 'aspectFit' : 'aspectFill'/);
   assert.match(script, /resultStageHeight: Math\.max\(720, Math\.min\(760, ratioAwareHeight\)\)/);
   assert.match(wxml, /mode="\{\{task\.resultImageMode\}\}"/);
-  assert.match(wxml, /<text class="summary-label">当前空间<\/text>[\s\S]*<text class="summary-label">生成模式<\/text>/);
+  assert.match(wxml, /<text class="summary-label">当前空间<\/text>[\s\S]*<text class="summary-label">装修配方<\/text>/);
+  assert.match(wxml, /task\.recipeId/);
+  assert.match(wxml, /任务已提交，等待设计服务接收/);
+  assert.match(script, /\['created', 'pending'\]\.includes\(task\.status\)/);
   assert.doesNotMatch(wxml, /候选版本|当前定稿/);
 });

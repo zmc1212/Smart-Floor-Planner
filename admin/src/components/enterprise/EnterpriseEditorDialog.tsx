@@ -22,15 +22,6 @@ interface EnterpriseEditorDialogProps {
   onSaved?: () => Promise<void> | void;
 }
 
-async function toBase64(file: File): Promise<string> {
-  return await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = (error) => reject(error);
-  });
-}
-
 export default function EnterpriseEditorDialog({
   open,
   onOpenChange,
@@ -38,9 +29,13 @@ export default function EnterpriseEditorDialog({
   onSaved,
 }: EnterpriseEditorDialogProps) {
   const [logo, setLogo] = useState(enterprise?.logo || '');
+  const [pendingLogoFile, setPendingLogoFile] = useState<File | null>(null);
 
   useEffect(() => {
-    if (open) setLogo(enterprise?.logo || '');
+    if (open) {
+      setLogo(enterprise?.logo || '');
+      setPendingLogoFile(null);
+    }
   }, [enterprise, open]);
 
   const initialValues: EnterpriseFormState = enterprise
@@ -70,12 +65,20 @@ export default function EnterpriseEditorDialog({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...values,
-          logo,
+          logo: pendingLogoFile ? (enterprise?.logo || '') : logo,
           groundPromotionFixedCommission: String(values.groundPromotionFixedCommission ?? 0),
         }),
       });
       const result = await response.json();
       if (!response.ok || !result.success) throw new Error(result.error || '保存失败');
+
+      if (pendingLogoFile) {
+        const formData = new FormData();
+        formData.set('file', pendingLogoFile);
+        const logoResponse = await fetch(`/api/admin/enterprises/${result.data._id}/logo`, { method: 'POST', body: formData });
+        const logoResult = await logoResponse.json();
+        if (!logoResponse.ok || !logoResult.success) throw new Error(logoResult.error || 'Logo 上传失败');
+      }
 
       notify.success(enterprise ? '企业更新成功' : '企业创建成功');
       onOpenChange(false);
@@ -130,8 +133,14 @@ export default function EnterpriseEditorDialog({
           uploadSuccessText="企业 Logo 已选择"
           uploadText="选择 Logo"
           value={logo}
-          onUpload={async (file) => ({ previewUrl: await toBase64(file) })}
-          onValueChange={(value) => setLogo(value || '')}
+          onUpload={async (file) => {
+            setPendingLogoFile(file);
+            return { previewUrl: URL.createObjectURL(file) };
+          }}
+          onValueChange={(value) => {
+            setLogo(value || '');
+            if (!value) setPendingLogoFile(null);
+          }}
         />
       </Form.Item>
 

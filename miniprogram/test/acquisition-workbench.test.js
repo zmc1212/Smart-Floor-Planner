@@ -11,6 +11,7 @@ const appJson = read(miniRoot, 'app.json');
 const pageJs = read(miniRoot, 'packages', 'business', 'acquisition-center', 'acquisition-center.js');
 const pageWxml = read(miniRoot, 'packages', 'business', 'acquisition-center', 'acquisition-center.wxml');
 const pageWxss = read(miniRoot, 'packages', 'business', 'acquisition-center', 'acquisition-center.wxss');
+const sheetJs = read(miniRoot, 'components', 'designer-contact-sheet', 'designer-contact-sheet.js');
 const sheetWxml = read(miniRoot, 'components', 'designer-contact-sheet', 'designer-contact-sheet.wxml');
 const sheetWxss = read(miniRoot, 'components', 'designer-contact-sheet', 'designer-contact-sheet.wxss');
 const mineJs = read(miniRoot, 'pages', 'mine', 'mine.js');
@@ -57,6 +58,15 @@ test('The shared designer contact sheet is bottom anchored, read-only, and suppo
   assert.match(sheetWxss, /bottom: 0;/);
   assert.match(sheetWxss, /env\(safe-area-inset-bottom\)/);
   assert.doesNotMatch(sheetWxml, /绑定设计师|换绑|编辑关系/);
+  assert.match(sheetJs, /this\.triggerEvent\('retry'\)/);
+  assert.match(sheetJs, /qrRefreshing: true/);
+  assert.match(sheetWxml, /正在重新获取二维码/);
+  assert.match(sheetJs, /setTimeout\(/);
+  assert.match(sheetJs, /_qrRetry=\$\{Date\.now\(\)\}/);
+  assert.match(sheetJs, /responseType: 'arraybuffer'/);
+  assert.match(sheetJs, /wx\.getFileSystemManager\(\)\.writeFile/);
+  assert.match(sheetWxml, /二维码资源暂时无法读取/);
+  assert.doesNotMatch(sheetJs, /wx\.nextTick/);
 });
 
 test('Acquisition confirmation remains independent from lead lifecycle and is idempotent', () => {

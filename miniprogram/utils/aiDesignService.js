@@ -43,6 +43,18 @@ function loadCapabilities() {
   return api.request('/miniprogram/ai/capabilities', 'GET').then((res) => res.data);
 }
 
+function loadRecipes(params = {}) {
+  const query = Object.keys(params)
+    .filter((key) => params[key] !== undefined && params[key] !== null && params[key] !== '')
+    .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`)
+    .join('&');
+  return api.request(`/miniprogram/ai/recipes${query ? `?${query}` : ''}`, 'GET').then((res) => res.data);
+}
+
+function getRecipe(id) {
+  return api.request(`/miniprogram/ai/recipes/${encodeURIComponent(id)}`, 'GET').then((res) => res.data);
+}
+
 function groupFlatSources(items) {
   const plans = [];
   const byId = {};
@@ -126,6 +138,8 @@ function deleteHistory(id) {
 module.exports = {
   uploadAsset,
   loadCapabilities,
+  loadRecipes,
+  getRecipe,
   loadSources,
   loadWorkflows,
   createTask,
