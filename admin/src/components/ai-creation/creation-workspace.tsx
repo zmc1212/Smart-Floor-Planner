@@ -74,6 +74,19 @@ type TemplateDetail = PromptTemplate & {
   parameterTemplate?: { parameters?: Record<string, unknown> };
 };
 
+type GenerationDraft = {
+  prompt: string;
+  negativePrompt: string;
+  referenceAssetIds: string[];
+  modelProfileId: string;
+  aspectRatio: string;
+  resolutionTier: '1K' | '2K' | '4K' | 'CUSTOM';
+  width: number;
+  height: number;
+  templateId?: string;
+  count: number;
+};
+
 const darkSelectItemClassName = 'text-[#f5f5f5] focus:bg-white/10 focus:text-white data-[state=checked]:bg-white/[0.08] data-[state=checked]:text-white';
 
 async function readJson(response: Response) {
@@ -115,8 +128,28 @@ function latestBatch(task?: CreationTask) {
   return task?.batches?.[0];
 }
 
-function batchGenerations(batch?: CreationBatch) {
-  return batch?.generations || [];
+function batchResolutionTier(batch: CreationBatch): GenerationDraft['resolutionTier'] {
+  const storedTier = batch.parameterSnapshot.resolutionTier
+    || batch.parameterSnapshot.size?.toUpperCase()
+    || '1K';
+  return ['1K', '2K', '4K', 'CUSTOM'].includes(storedTier)
+    ? storedTier as GenerationDraft['resolutionTier']
+    : '1K';
+}
+
+function generationDraftFromBatch(batch: CreationBatch): GenerationDraft {
+  return {
+    prompt: batch.prompt,
+    negativePrompt: batch.negativePrompt || '',
+    referenceAssetIds: batch.referenceAssetIds,
+    modelProfileId: batch.modelProfileId,
+    aspectRatio: batch.parameterSnapshot.aspectRatio || '1:1',
+    resolutionTier: batchResolutionTier(batch),
+    width: batch.parameterSnapshot.width || 1024,
+    height: batch.parameterSnapshot.height || 1024,
+    templateId: batch.parameterSnapshot.templateId,
+    count: batch.requestedCount || 1,
+  };
 }
 
 function statusLabel(status: CreationBatch['status']) {
@@ -208,6 +241,51 @@ function GenerationTile({
   );
 }
 
+function BatchActionPanel({
+  batch,
+  isLatest,
+  generating,
+  retrying,
+  onEdit,
+  onGenerate,
+  onDelete,
+}: {
+  batch: CreationBatch;
+  isLatest: boolean;
+  generating: boolean;
+  retrying: boolean;
+  onEdit: () => void;
+  onGenerate: () => void;
+  onDelete: () => void;
+}) {
+  const active = batch.status === 'pending' || batch.status === 'processing';
+  const retryable = isLatest && (batch.status === 'failed' || batch.status === 'partial');
+  const busy = generating || retrying || active;
+  const actionLabel = retrying && isLatest
+    ? '重试中'
+    : active
+      ? '生成中'
+      : retryable
+        ? batch.status === 'partial' ? '重试失败项' : '重试本轮'
+        : '再次生成';
+
+  return (
+    <div aria-label={`第 ${batch.sequence} 轮操作`} className="mt-3 flex h-[30px] items-center gap-2">
+      <button type="button" onClick={onEdit} className="flex h-[30px] items-center gap-1.5 rounded-md bg-[#2a2b31] px-3 text-xs text-[#d5d5da] hover:bg-[#34353c] hover:text-white"><Pencil className="size-3.5" />重新编辑</button>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={onGenerate}
+        className="flex h-[30px] items-center gap-1.5 rounded-md bg-[#2a2b31] px-3 text-xs text-[#d5d5da] hover:bg-[#34353c] hover:text-white disabled:opacity-50"
+      >
+        {busy ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+        {actionLabel}
+      </button>
+      <button type="button" onClick={onDelete} title="删除整个任务" className="flex h-[30px] items-center gap-1.5 rounded-md bg-[#2a2b31] px-3 text-xs text-[#ff6f75] hover:bg-[#34353c]"><Trash2 className="size-3.5" />删除</button>
+    </div>
+  );
+}
+
 export function CreationWorkspace() {
   const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
   const [tasks, setTasks] = useState<CreationTask[]>([]);
@@ -285,10 +363,6 @@ export function CreationWorkspace() {
   const selectedBatch = latestBatch(selectedTask);
   const conversationBatches = selectedTask ? [...selectedTask.batches].sort((a, b) => a.sequence - b.sequence) : [];
   const hasTaskStage = Boolean(selectedTask && selectedBatch);
-  const latestResults = batchGenerations(selectedBatch);
-  const displayGenerations = latestResults.length
-    ? latestResults
-    : Array.from({ length: selectedBatch?.requestedCount || 1 }, () => undefined);
   const model = bootstrap?.models.find((item) => item.id === modelProfileId);
   const availableAspectRatios = model?.aspectRatiosByResolutionTier?.[resolutionTier] || model?.aspectRatios || [];
   const unitPrice = model?.prices.find((price) => price.resolutionTier === resolutionTier)?.credits || 0;
@@ -342,27 +416,24 @@ export function CreationWorkspace() {
     setAssets((current) => current.slice(0, profile.maxReferenceImages));
   };
 
+  const applyBatchToComposer = (batch: CreationBatch) => {
+    const draft = generationDraftFromBatch(batch);
+    setPrompt(draft.prompt);
+    setNegativePrompt(draft.negativePrompt);
+    setModelProfileId(draft.modelProfileId);
+    setAspectRatio(draft.aspectRatio);
+    setResolutionTier(draft.resolutionTier);
+    setCustomWidth(draft.width);
+    setCustomHeight(draft.height);
+    setCount(draft.count);
+    setSelectedTemplate(draft.templateId ? { id: draft.templateId } as TemplateDetail : null);
+    setAssets(draft.referenceAssetIds.map((id) => ({ id, previewUrl: `/api/ai/assets/${id}/image` })));
+  };
+
   const chooseTask = (task: CreationTask) => {
     const batch = latestBatch(task);
-    const storedTier = batch?.parameterSnapshot.resolutionTier
-      || batch?.parameterSnapshot.size?.toUpperCase()
-      || '1K';
     setSelectedTaskId(task.id);
-    setPrompt(batch?.prompt || task.prompt);
-    setNegativePrompt(batch?.negativePrompt || '');
-    setModelProfileId(batch?.modelProfileId || task.modelProfileId);
-    setAspectRatio(batch?.parameterSnapshot.aspectRatio || '1:1');
-    setResolutionTier(
-      ['1K', '2K', '4K', 'CUSTOM'].includes(storedTier)
-        ? storedTier as '1K' | '2K' | '4K' | 'CUSTOM'
-        : '1K'
-    );
-    setCustomWidth(batch?.parameterSnapshot.width || 1024);
-    setCustomHeight(batch?.parameterSnapshot.height || 1024);
-    setCount(batch?.requestedCount || 1);
-    setSelectedTemplate(batch?.parameterSnapshot.templateId ? { id: batch.parameterSnapshot.templateId } as TemplateDetail : null);
-    const referenceAssetIds = batch?.referenceAssetIds || task.referenceAssetIds;
-    setAssets(referenceAssetIds.map((id) => ({ id, previewUrl: `/api/ai/assets/${id}/image` })));
+    if (batch) applyBatchToComposer(batch);
     setHistoryOpen(false);
   };
 
@@ -514,14 +585,29 @@ export function CreationWorkspace() {
     }
   };
 
-  const submitGeneration = async () => {
-    if (!prompt.trim()) return notify.warning('请输入提示词');
-    if (!modelProfileId) return notify.warning('请选择模型');
-    if (!hasEnabledPrice) return notify.warning('当前模型分辨率尚未开放');
+  const submitGeneration = async (sourceBatch?: CreationBatch) => {
+    const draft: GenerationDraft = sourceBatch ? generationDraftFromBatch(sourceBatch) : {
+      prompt,
+      negativePrompt,
+      referenceAssetIds: assets.map((asset) => asset.id),
+      modelProfileId,
+      aspectRatio,
+      resolutionTier,
+      width: customWidth,
+      height: customHeight,
+      templateId: selectedTemplate?.id,
+      count,
+    };
+    const draftModel = bootstrap?.models.find((item) => item.id === draft.modelProfileId);
+    const draftUnitPrice = draftModel?.prices.find((price) => price.resolutionTier === draft.resolutionTier)?.credits || 0;
+    const draftEstimatedCredits = draftUnitPrice * draft.count;
+    if (!draft.prompt.trim()) return notify.warning('请输入提示词');
+    if (!draft.modelProfileId) return notify.warning('请选择模型');
+    if (!draftUnitPrice) return notify.warning('当前模型分辨率尚未开放');
     if (!bootstrap?.provider.actionEnabled) return notify.error('当前企业未开放 AI 自由创作');
     if (!bootstrap?.provider.supportsGenerate) return notify.error('尚未配置可用的图片生成模型');
-    if (assets.length && !bootstrap.provider.supportsEdit) return notify.error('尚未配置可用的图片编辑模型');
-    if ((bootstrap.account.availableBalance || 0) < estimatedCredits) return notify.error(`AI 点数不足，本次需要 ${estimatedCredits} 点`);
+    if (draft.referenceAssetIds.length && !bootstrap.provider.supportsEdit) return notify.error('尚未配置可用的图片编辑模型');
+    if ((bootstrap.account.availableBalance || 0) < draftEstimatedCredits) return notify.error(`AI 点数不足，本次需要 ${draftEstimatedCredits} 点`);
     setGenerating(true);
     const loadingId = notify.loading('正在提交生成任务');
     try {
@@ -531,10 +617,10 @@ export function CreationWorkspace() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            title: prompt.trim().slice(0, 32),
-            prompt,
-            referenceAssetIds: assets.map((asset) => asset.id),
-            modelProfileId,
+            title: draft.prompt.trim().slice(0, 32),
+            prompt: draft.prompt,
+            referenceAssetIds: draft.referenceAssetIds,
+            modelProfileId: draft.modelProfileId,
           }),
         }));
         taskId = created.data.id;
@@ -544,16 +630,16 @@ export function CreationWorkspace() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prompt,
-          negativePrompt,
-          referenceAssetIds: assets.map((asset) => asset.id),
-          modelProfileId,
-          aspectRatio,
-          resolutionTier,
-          width: resolutionTier === 'CUSTOM' ? customWidth : undefined,
-          height: resolutionTier === 'CUSTOM' ? customHeight : undefined,
-          templateId: selectedTemplate?.id,
-          count,
+          prompt: draft.prompt,
+          negativePrompt: draft.negativePrompt,
+          referenceAssetIds: draft.referenceAssetIds,
+          modelProfileId: draft.modelProfileId,
+          aspectRatio: draft.aspectRatio,
+          resolutionTier: draft.resolutionTier,
+          width: draft.resolutionTier === 'CUSTOM' ? draft.width : undefined,
+          height: draft.resolutionTier === 'CUSTOM' ? draft.height : undefined,
+          templateId: draft.templateId,
+          count: draft.count,
         }),
       }));
       setBootstrap((current) => current ? { ...current, account: generated.data.account } : current);
@@ -564,6 +650,16 @@ export function CreationWorkspace() {
     } finally {
       setGenerating(false);
     }
+  };
+
+  const editBatch = (batch: CreationBatch) => {
+    applyBatchToComposer(batch);
+    setPromptExpanded(true);
+  };
+
+  const regenerateBatch = (batch: CreationBatch) => {
+    applyBatchToComposer(batch);
+    void submitGeneration(batch);
   };
 
   const retryCurrentBatch = async () => {
@@ -751,68 +847,53 @@ export function CreationWorkspace() {
               </section>
 
               <section aria-label="生成结果" className="absolute left-1/2 top-[118px] z-10 h-[360px] w-[calc(100%-32px)] max-w-[1080px] -translate-x-1/2 bg-[linear-gradient(90deg,#24252c_0%,#202138_58%,#17191f_100%)] lg:bottom-[266px] lg:top-[118px] lg:h-auto">
-                <div ref={conversationViewportRef} className="scrollbar-hide absolute inset-0 flex flex-col gap-4 overflow-y-auto p-3 pb-14 pr-4">
-                  {conversationBatches.slice(0, -1).map((batch) => (
-                    <article key={batch.id} className="shrink-0 rounded-xl border border-white/10 bg-[#1a1b20]/85 p-3">
-                      <div className="mb-3 flex items-start gap-3">
-                        <span className="shrink-0 rounded-full bg-[#7047ff]/20 px-2.5 py-1 text-[11px] font-medium text-[#b8a8ff]">第 {batch.sequence} 轮</span>
-                        <p className="min-w-0 flex-1 whitespace-pre-wrap text-sm leading-5 text-[#e7e7eb]">{batch.prompt}</p>
-                        <time className="shrink-0 text-[11px] text-[#666f91]" dateTime={batch.createdAt}>{formatDateTime(batch.createdAt)}</time>
-                      </div>
-                      <div className="scrollbar-hide flex gap-3 overflow-x-auto pb-1">
-                        {(batch.generations.length ? batch.generations : Array.from({ length: batch.requestedCount || 1 }, () => undefined)).map((generation, index) => (
-                          <GenerationTile
-                            key={generation?.id || `pending-${batch.id}-${index}`}
-                            generation={generation}
-                            batchStatus={batch.status}
-                            onAttach={setAttachGeneration}
-                            onPreview={(item) => { setPreviewGeneration(item); setPreviewZoom(1); setPreviewRotation(0); setPreviewFullscreen(false); }}
-                            onReuse={(item) => { void reuseGeneration(item); }}
-                            onCompare={(item) => { setCompareGeneration(item); setCompareMode('split'); setCompareSwapped(false); setCompareFullscreen(false); setSplitPosition(50); }}
-                            onEdit={setEditorGeneration}
-                            onDelete={() => selectedTask && deleteTask(selectedTask)}
-                          />
-                        ))}
-                      </div>
-                    </article>
-                  ))}
-                  <article className="shrink-0 rounded-xl border border-[#7047ff]/35 bg-[#1a1b20]/90 p-3">
-                    <div className="mb-3 flex items-start gap-3">
-                      <span className="shrink-0 rounded-full bg-[#7047ff]/20 px-2.5 py-1 text-[11px] font-medium text-[#b8a8ff]">第 {selectedBatch?.sequence} 轮</span>
-                      <p className="min-w-0 flex-1 whitespace-pre-wrap text-sm leading-5 text-[#e7e7eb]">{selectedBatch?.prompt}</p>
-                      {selectedBatch?.createdAt ? <time className="shrink-0 text-[11px] text-[#666f91]" dateTime={selectedBatch.createdAt}>{formatDateTime(selectedBatch.createdAt)}</time> : null}
-                    </div>
-                    <div className="scrollbar-hide flex gap-3 overflow-x-auto pb-1">
-                    {displayGenerations.map((generation, index) => (
-                    <GenerationTile
-                      key={generation?.id || `pending-${index}`}
-                      generation={generation}
-                      batchStatus={selectedBatch?.status}
-                      onAttach={setAttachGeneration}
-                      onPreview={(item) => { setPreviewGeneration(item); setPreviewZoom(1); setPreviewRotation(0); setPreviewFullscreen(false); }}
-                      onReuse={(item) => { void reuseGeneration(item); }}
-                      onCompare={(item) => { setCompareGeneration(item); setCompareMode('split'); setCompareSwapped(false); setCompareFullscreen(false); setSplitPosition(50); }}
-                      onEdit={setEditorGeneration}
-                      onDelete={() => selectedTask && deleteTask(selectedTask)}
-                    />
-                    ))}
-                    </div>
-                  </article>
+                <div ref={conversationViewportRef} className="scrollbar-hide absolute inset-0 flex flex-col gap-4 overflow-y-auto p-3 pr-4">
+                  {conversationBatches.map((batch) => {
+                    const isLatest = batch.id === selectedBatch?.id;
+                    const generations = batch.generations.length
+                      ? batch.generations
+                      : Array.from({ length: batch.requestedCount || 1 }, () => undefined);
+                    return (
+                      <article key={batch.id} className={cn('shrink-0 rounded-xl border bg-[#1a1b20]/90 p-3', isLatest ? 'border-[#7047ff]/35' : 'border-white/10')}>
+                        <div className="mb-3 flex items-start gap-3">
+                          <span className="shrink-0 rounded-full bg-[#7047ff]/20 px-2.5 py-1 text-[11px] font-medium text-[#b8a8ff]">第 {batch.sequence} 轮</span>
+                          <p className="min-w-0 flex-1 whitespace-pre-wrap text-sm leading-5 text-[#e7e7eb]">{batch.prompt}</p>
+                          <time className="shrink-0 text-[11px] text-[#666f91]" dateTime={batch.createdAt}>{formatDateTime(batch.createdAt)}</time>
+                        </div>
+                        <div className="scrollbar-hide flex gap-3 overflow-x-auto pb-1">
+                          {generations.map((generation, index) => (
+                            <GenerationTile
+                              key={generation?.id || `pending-${batch.id}-${index}`}
+                              generation={generation}
+                              batchStatus={batch.status}
+                              onAttach={setAttachGeneration}
+                              onPreview={(item) => { setPreviewGeneration(item); setPreviewZoom(1); setPreviewRotation(0); setPreviewFullscreen(false); }}
+                              onReuse={(item) => { void reuseGeneration(item); }}
+                              onCompare={(item) => { setCompareGeneration(item); setCompareMode('split'); setCompareSwapped(false); setCompareFullscreen(false); setSplitPosition(50); }}
+                              onEdit={setEditorGeneration}
+                              onDelete={() => selectedTask && deleteTask(selectedTask)}
+                            />
+                          ))}
+                        </div>
+                        <BatchActionPanel
+                          batch={batch}
+                          isLatest={isLatest}
+                          generating={generating}
+                          retrying={retrying}
+                          onEdit={() => editBatch(batch)}
+                          onGenerate={() => {
+                            if (isLatest && (batch.status === 'failed' || batch.status === 'partial')) {
+                              void retryCurrentBatch();
+                              return;
+                            }
+                            regenerateBatch(batch);
+                          }}
+                          onDelete={() => selectedTask && deleteTask(selectedTask)}
+                        />
+                      </article>
+                    );
+                  })}
                 </div>
-                <div className="absolute bottom-2 left-3 flex h-[30px] items-center gap-2 lg:bottom-2 lg:left-3">
-                  <button type="button" onClick={() => setPromptExpanded(true)} className="flex h-[30px] items-center gap-1.5 rounded-md bg-[#2a2b31] px-3 text-xs text-[#d5d5da] hover:bg-[#34353c] hover:text-white"><Pencil className="size-3.5" />重新编辑</button>
-                  <button
-                    type="button"
-                    disabled={generating || retrying || currentBatchActive}
-                    onClick={shouldRetryCurrentBatch ? retryCurrentBatch : submitGeneration}
-                    className="flex h-[30px] items-center gap-1.5 rounded-md bg-[#2a2b31] px-3 text-xs text-[#d5d5da] hover:bg-[#34353c] hover:text-white disabled:opacity-50"
-                  >
-                    {generating || retrying || currentBatchActive ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-                    {retrying ? '重试中' : currentBatchActive ? '生成中' : shouldRetryCurrentBatch ? (selectedBatch?.status === 'partial' ? '重试失败项' : '重试本轮') : currentBatchRetryable ? '生成新一轮' : '再次生成'}
-                  </button>
-                  {selectedTask ? <button type="button" onClick={() => deleteTask(selectedTask)} className="flex h-[30px] items-center gap-1.5 rounded-md bg-[#2a2b31] px-3 text-xs text-[#ff6f75] hover:bg-[#34353c]"><Trash2 className="size-3.5" />删除</button> : null}
-                </div>
-                <time className="absolute bottom-2 right-[25%] text-[11px] text-[#666f91]" dateTime={selectedBatch?.createdAt}>{selectedBatch?.createdAt ? formatDateTime(selectedBatch.createdAt) : null}</time>
               </section>
             </>
           ) : (
@@ -929,7 +1010,7 @@ export function CreationWorkspace() {
               <button
                 type="button"
                 disabled={generating || retrying || currentBatchActive || !prompt.trim() || !modelProfileId || !hasEnabledPrice}
-                onClick={shouldRetryCurrentBatch ? retryCurrentBatch : submitGeneration}
+                onClick={shouldRetryCurrentBatch ? retryCurrentBatch : () => { void submitGeneration(); }}
                 className="col-span-2 ml-0 flex h-12 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#9447ff] to-[#5f2cff] px-3 text-base font-normal text-white shadow-[0_0_24px_rgba(104,49,255,0.2)] hover:brightness-110 disabled:cursor-not-allowed disabled:bg-[#6b6b6b] disabled:bg-none disabled:opacity-100 sm:ml-auto sm:w-[152px]"
               >
                 {generating || retrying || currentBatchActive ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}

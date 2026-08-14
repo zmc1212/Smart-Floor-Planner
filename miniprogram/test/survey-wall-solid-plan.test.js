@@ -70,6 +70,36 @@ test('wall union fills the outside corner when one-sided wall rectangles only to
   }), false);
 });
 
+test('wall union joins projected endpoints that differ below the visible pixel tolerance', () => {
+  const endpointOffset = 0.004;
+  const plan = createWallSolidPlan({
+    walls: [
+      {
+        id: 'horizontal',
+        start: { x: 0, y: 0 },
+        end: { x: 1000, y: 0 },
+        outerStart: { x: 0, y: -200 },
+        outerEnd: { x: 1000, y: -200 },
+        thickness: 200,
+        polygon: rectangle(0, -200, 1000, 200)
+      },
+      {
+        id: 'vertical',
+        start: { x: 1000 + endpointOffset, y: 0 },
+        end: { x: 1000 + endpointOffset, y: 1000 },
+        outerStart: { x: 1200 + endpointOffset, y: 0 },
+        outerEnd: { x: 1200 + endpointOffset, y: 1000 },
+        thickness: 200,
+        polygon: rectangle(1000 + endpointOffset, 0, 200, 1000)
+      }
+    ]
+  });
+
+  assert.equal(plan.joinPolygons.length, 1);
+  assert.equal(plan.rings.length, 1);
+  assert.equal(plan.rings[0].length, 6);
+});
+
 test('wall union removes the branch cap at a T join', () => {
   const plan = createWallSolidPlan({
     walls: [

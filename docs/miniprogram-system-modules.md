@@ -1625,6 +1625,30 @@ must update that ledger pair in the same change.
   renderer, topology, visual, viewport, and editor run passes `99/99`. Runtime
   vConsole prints renderer revision `native-polygon-frame-owner-v3` so a device
   can confirm that it actually loaded this build.
+- Wall-local union origin correction (2026-08-14): device evidence persisted
+  after the draw-contract restoration because the remaining defect was upstream
+  of Canvas painting. `surveyWallSolidPlan` snapped vertices on an absolute
+  `0.01px` Canvas grid; a pure pan therefore changed the rounding phase and could
+  rebuild the same closed-room/T-junction input as a different ring set during
+  the formal-frame handoff. The union now translates each wall colour group to
+  its first input vertex before canonicalization and restores the local result
+  to Canvas coordinates afterward. This retains diagonal near-coincident vertex
+  merging while making formal and gesture ring geometry translation-invariant.
+  A failing-first regression compares complete, closed, and open union rings at
+  three sub-pixel/large translations across equal/unequal exterior T, diagonal T,
+  two-room exterior T, shared-wall T, cross, and branch-deletion scenes. The
+  focused solid/renderer/topology/visual/viewport/editor run passes `92/92`, and
+  the regenerated seven-scene atlas passes manual wall-fill and outline review.
+  The full Mini Program suite passes `332/335`; the three existing acquisition,
+  local API-port, and offline-debug-default failures are unrelated.
+  Renderer revision `wall-local-union-origin-v8` identifies this build. The
+  editor also logs a single-line `Wall union` signature such as `open=1[6]`,
+  which distinguishes the fixed continuous L ring from the stale two-rectangle
+  runtime output on a real device. Endpoint incidence now uses the same
+  sub-pixel tolerance as vertex canonicalization, preventing a projected join
+  from becoming independent four-point rings. WXML,
+  WXSS, controls, routes, APIs, roles, version-4 data, measurements, room faces,
+  openings, and Canvas paint order are unchanged.
 - Open-chain reset continuation parity (2026-08-14): after an operator resets
   the cursor and snaps it back to either the inner or outer vertex of a dangling
   open-wall endpoint, the next wall now inherits the source wall's oriented

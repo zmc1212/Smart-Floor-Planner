@@ -1387,10 +1387,9 @@ Page({
         this.surveyCanvas = canvas;
         this.surveyCtx = canvas.getContext('2d');
         this.surveyCanvasDpr = dpr || 1;
-        console.info('[surveying-editor] Canvas renderer ready', {
-          revision: surveyCanvasRenderer.RENDER_REVISION,
-          sceneRevision: this.surveySceneRevision
-        });
+        console.info(
+          `[surveying-editor] Canvas renderer ready ${surveyCanvasRenderer.RENDER_REVISION} scene=${this.surveySceneRevision || 0}`
+        );
         if (this.viewportInteraction && this.transientCanvasMode === 'viewport') {
           this.drawViewportInteractionFrame(this.viewportInteraction.viewport);
         } else {
@@ -2540,6 +2539,17 @@ Page({
     });
     this.surveyRenderScene = scene;
     this.surveySceneRevision = (this.surveySceneRevision || 0) + 1;
+    const wallUnionSignature = ['closed', 'open'].map((group) => {
+      const plan = scene.wallSolidPlans && scene.wallSolidPlans[group];
+      const rings = (plan && plan.rings) || [];
+      return `${group}=${rings.length}[${rings.map((ring) => ring.length).join(',')}]`;
+    }).join(' ');
+    if (this.surveyWallUnionSignature !== wallUnionSignature) {
+      this.surveyWallUnionSignature = wallUnionSignature;
+      console.info(
+        `[surveying-editor] Wall union ${surveyCanvasRenderer.RENDER_REVISION} ${wallUnionSignature}`
+      );
+    }
     let cursorVisible = false;
     let guideVisible = false;
     let cursorStyle = '';

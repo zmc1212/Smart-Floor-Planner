@@ -18,6 +18,26 @@ restorations. Read it before changing visible Mini Program UI.
 
 ## Current ledger
 
+Surveying editor QA correction (2026-08-14): the current production renderer is
+  `wall-local-union-origin-v8`. The remaining T/corner disappearance was upstream
+of Canvas painting: absolute `0.01px` vertex snapping changed rounding phase
+after a pan and rebuilt the same walls into different union rings. Union
+canonicalization now runs relative to each wall group's first vertex and then
+restores Canvas coordinates. Formal and gesture rings are therefore invariant
+under pure translation without changing the approved UI or paint order. A
+failing-first regression covers seven T/cross/delete scenes at three sub-pixel
+and large translations; the focused solid/renderer/topology/visual/viewport/
+  editor run passes `92/92`, and the regenerated seven-scene atlas passes manual
+  fill/outline inspection. The two-wall fractional-offset regression also keeps
+  the corner as one six-point L ring, including a `0.004px` projected endpoint
+  discrepancy. The full Mini Program suite passes `332/335`; the three
+existing acquisition, local API-port, and offline-debug-default failures are
+unrelated. Native iPhone 13 Pro `390x844` confirmation remains
+pending because the existing DevTools window has no compatible Automator
+endpoint. This correction supersedes the earlier renderer-revision conclusion
+inside the surveying route row below; its design source and restoration status
+remain unchanged.
+
 | Runtime route | Latest design source | Visual-QA status | Mini Program restored | Updated |
 | --- | --- | --- | :---: | --- |
 | `pages/index/index` | `design-references/all-pages-ip-v1/01-home-v2.png` | Existing restoration; route-level evidence to be refreshed on the next visual change | Yes | 2026-08-06 |

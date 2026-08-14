@@ -983,7 +983,10 @@ permission, or workflow changes.
   persisted batches as ordered in-task conversation rounds, keeps each round's
   prompt/reference context, appends a batch for an existing task, and reserves a
   larger desktop conversation viewport above the prompt panel while hiding its
-  native scrollbars without disabling scrolling. Its reference-image control
+  native scrollbars without disabling scrolling. The latest round owns its
+  edit/regenerate/delete action row inside the round card, so those controls
+  scroll with that round instead of remaining pinned to the conversation
+  viewport. Its reference-image control
   now renders every uploaded asset allowed by the selected model (the existing
   0–10 model capability limit) as a numbered stacked deck; hover or keyboard
   focus expands the deck and reveals per-image removal plus a circular,
