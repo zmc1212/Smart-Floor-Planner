@@ -23,10 +23,11 @@ function linePath(start, end) {
   return `M${start.x.toFixed(3)} ${start.y.toFixed(3)} L${end.x.toFixed(3)} ${end.y.toFixed(3)}`;
 }
 
-function polygonMarkup(polygons, fill) {
-  return (polygons || []).map((polygon) => (
-    `<polygon points="${polygon.map((point) => `${point.x},${point.y}`).join(' ')}" fill="${fill}"/>`
-  )).join('');
+function ringPath(rings) {
+  return (rings || []).map((ring) => {
+    if (!ring || ring.length < 3) return '';
+    return `M${ring.map((point) => `${point.x.toFixed(3)} ${point.y.toFixed(3)}`).join(' L')} Z`;
+  }).join(' ');
 }
 
 function renderScene(caseItem, index) {
@@ -35,11 +36,9 @@ function renderScene(caseItem, index) {
   const x = gutter + column * (panelWidth + gutter);
   const y = gutter + row * (panelHeight + headerHeight + gutter);
   const scene = caseItem.scene;
-  const closedPolygons = polygonMarkup(scene.wallSolidPlans.closed.polygons, '#8e8e8c');
-  const unionUnderpaint = polygonMarkup(scene.wallSolidPlan.polygons, '#e2e2e0');
-  const outlineSegments = (scene.wallSolidPlan.segments || []).map((segment) => (
-    `<path d="${linePath(segment.start, segment.end)}" fill="none" stroke="#1f1f1f" stroke-width="1.5" stroke-linecap="butt"/>`
-  )).join('');
+  const closedRings = ringPath(scene.wallSolidPlans.closed.rings);
+  const openRings = ringPath(scene.wallSolidPlans.open.rings);
+  const outlineRings = ringPath(scene.wallSolidPlan.rings);
   const redlines = scene.walls.filter((wall) => wall.isActiveMeasurement).map((wall) => {
     const start = wall.measurementStartPoint || wall.startPoint;
     const end = wall.measurementEndPoint || wall.endPoint;
@@ -53,9 +52,9 @@ function renderScene(caseItem, index) {
     <g transform="translate(${x} ${y + headerHeight}) scale(${panelScale})">
       <rect x="0" y="0" width="${RECT.width}" height="${RECT.height}" rx="12" fill="#fcfffc" stroke="#d7ded8" stroke-width="1.5"/>
       ${roomFills}
-      ${unionUnderpaint}
-      ${closedPolygons}
-      ${outlineSegments}
+      <path d="${closedRings}" fill="#8e8e8c" fill-rule="nonzero"/>
+      <path d="${openRings}" fill="#e2e2e0" fill-rule="nonzero"/>
+      <path d="${outlineRings}" fill="none" stroke="#1f1f1f" stroke-width="1.5" stroke-linecap="butt" stroke-linejoin="miter"/>
       ${redlines}
       <circle cx="${caseItem.junctionPx.x}" cy="${caseItem.junctionPx.y}" r="24" fill="none" stroke="#00b864" stroke-width="1.5" stroke-dasharray="5 4"/>
     </g>

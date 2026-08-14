@@ -8,7 +8,10 @@ import {
   isLeadArchiveReason,
   resolveDelegatedLeadArchiveCapability,
 } from '@/lib/lead-lifecycle';
-import { canDeleteLeadFloorPlan } from '@/lib/lead-status';
+import {
+  canDeleteLeadFloorPlan,
+  resolveLeadStatusAfterFloorPlan,
+} from '@/lib/lead-status';
 
 test('accepts only the fixed archive reasons', () => {
   assert.equal(Object.keys(LEAD_ARCHIVE_REASONS).length, 6);
@@ -43,9 +46,10 @@ test('purge blockers cover every protected relationship', () => {
     inFlightAiCount: 1,
     followUpCount: 3,
     hasAcquisition: true,
+    hasConversion: true,
     commissionCount: 4,
   });
-  assert.equal(blockers.length, 7);
+  assert.equal(blockers.length, 8);
   assert.deepEqual(getPurgeBlockers({
     leadId: 1n,
     archived: true,
@@ -55,6 +59,7 @@ test('purge blockers cover every protected relationship', () => {
     inFlightAiCount: 0,
     followUpCount: 0,
     hasAcquisition: false,
+    hasConversion: false,
     commissionCount: 0,
   }), []);
 });
@@ -66,4 +71,5 @@ test('formal floor plans cannot be deleted once the lead has entered design or a
   assert.equal(canDeleteLeadFloorPlan('quoting'), false);
   assert.equal(canDeleteLeadFloorPlan('converted'), false);
   assert.equal(canDeleteLeadFloorPlan('closed'), false);
+  assert.equal(resolveLeadStatusAfterFloorPlan('converted', 'completed', 'measured'), 'converted');
 });

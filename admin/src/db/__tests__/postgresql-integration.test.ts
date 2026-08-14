@@ -92,6 +92,8 @@ import {
   updatePostgresAiWorkflowState,
 } from '@/lib/ai/postgres-workflow-service';
 import { preparePostgresMiniAiTaskRetry } from '@/lib/ai/postgres-mini-ai-tasks';
+import { chinaDateString } from '@/lib/lead-conversion';
+import { getPurgeBlockers } from '@/lib/lead-lifecycle';
 import { listPostgresExecutableImageModelProfiles } from '@/lib/ai/image-model-catalog';
 import {
   createPostgresCreationTask,
@@ -642,6 +644,96 @@ test('lead archive lifecycle filters active rows and restores the original busin
       new LeadRepository(transaction).findById(leadId!)
     );
     assert.equal(crossTenantLead, null);
+  } finally {
+    if (leadId) {
+      await withPlatformTransaction(async (transaction) => {
+        await transaction.delete(leadLifecycleEvents).where(eq(leadLifecycleEvents.leadRecordId, leadId!));
+        await transaction.delete(leads).where(eq(leads.id, leadId!));
+      });
+    }
+  }
+});
+
+test('lead conversion is atomic, protected from generic status writes, revertible, and purge-blocking', async () => {
+  let leadId: bigint | null = null;
+  const phone = `134${String(Date.now()).slice(-8)}`;
+  try {
+    leadId = await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const lead = await new LeadRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        assignedTo: promotionDesignerAId,
+        name: 'Lead conversion integration test',
+        phone,
+        source: 'integration-test',
+        status: 'designing',
+      });
+      return lead.id;
+    });
+
+    const attempts = await Promise.allSettled([
+      withTenantTransaction(enterpriseAId, (transaction) =>
+        new LeadLifecycleRepository(transaction).convert({
+          leadId: leadId!,
+          actorId: promotionDesignerAId,
+          convertedOn: chinaDateString(),
+          contractAmount: '128000.50',
+          conversionNote: 'integration conversion',
+        })
+      ),
+      withTenantTransaction(enterpriseAId, (transaction) =>
+        new LeadLifecycleRepository(transaction).convert({
+          leadId: leadId!,
+          actorId: promotionDesignerAId,
+          convertedOn: chinaDateString(),
+          contractAmount: null,
+          conversionNote: null,
+        })
+      ),
+    ]);
+    assert.equal(attempts.filter((item) => item.status === 'fulfilled').length, 1);
+    assert.equal(attempts.filter((item) => item.status === 'rejected').length, 1);
+
+    await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const repository = new LeadRepository(transaction);
+      const converted = await repository.findById(leadId!);
+      assert.equal(converted?.status, 'converted');
+      assert.equal(converted?.convertedOn, chinaDateString());
+      assert.equal(converted?.convertedBy, promotionDesignerAId);
+      await assert.rejects(
+        () => repository.update(leadId!, { status: 'measuring' }),
+        /专用签约操作/
+      );
+
+      const [impact] = await new LeadLifecycleRepository(transaction).impacts([leadId!]);
+      assert.equal(impact.hasConversion, true);
+      assert.equal(getPurgeBlockers({ ...impact, archived: true }).includes('存在客户签约事实'), true);
+    });
+
+    await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const lifecycle = new LeadLifecycleRepository(transaction);
+      const reverted = await lifecycle.revertConversion({
+        leadId: leadId!,
+        actorId: promotionDesignerAId,
+        reason: 'integration correction',
+      });
+      assert.equal(reverted?.status, 'designing');
+      assert.equal(reverted?.convertedAt, null);
+      assert.equal(reverted?.contractAmount, null);
+      const events = await transaction
+        .select()
+        .from(leadLifecycleEvents)
+        .where(eq(leadLifecycleEvents.leadRecordId, leadId!));
+      assert.deepEqual(events.map((event) => event.action).sort(), [
+        'conversion_reverted',
+        'converted',
+      ]);
+      const [impactAfterRevert] = await lifecycle.impacts([leadId!]);
+      assert.equal(impactAfterRevert.hasConversion, true);
+      assert.equal(
+        getPurgeBlockers({ ...impactAfterRevert, archived: true }).includes('存在客户签约事实'),
+        true
+      );
+    });
   } finally {
     if (leadId) {
       await withPlatformTransaction(async (transaction) => {

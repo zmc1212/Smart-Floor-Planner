@@ -17,6 +17,48 @@
       <text>{{item.label}}</text>
     </view>
   </view>
+  <view class="conversion-card" wx:if="{{lead && (canMarkConverted || lead.status === 'converted')}}">
+    <view class="conversion-card-heading">
+      <view class="conversion-card-copy">
+        <text class="conversion-card-title">成交进度</text>
+        <text class="conversion-card-subtitle" wx:if="{{canMarkConverted}}">客户完成合同签署后，在这里结束业务跟进</text>
+        <text class="conversion-card-subtitle" wx:else>签约事实已记录，客户进入已签约阶段</text>
+      </view>
+      <text class="conversion-status" wx:if="{{lead.status === 'converted'}}">已签约</text>
+    </view>
+    <button
+      wx:if="{{canMarkConverted}}"
+      class="conversion-primary-action"
+      bindtap="onOpenConversionSheet"
+      disabled="{{conversionSubmitting}}"
+      aria-label="标记客户已签约"
+    >标记已签约</button>
+    <view class="conversion-summary" wx:elif="{{lead.status === 'converted'}}">
+      <view class="conversion-summary-row">
+        <text>签约日期</text>
+        <text>{{lead.convertedOn || '历史数据未记录'}}</text>
+      </view>
+      <view class="conversion-summary-row" wx:if="{{showInternalConversionDetails}}">
+        <text>标记人</text>
+        <text>{{convertedByName}}</text>
+      </view>
+      <view class="conversion-summary-row" wx:if="{{showInternalConversionDetails && convertedTime}}">
+        <text>标记时间</text>
+        <text>{{convertedTime}}</text>
+      </view>
+      <view class="conversion-summary-row" wx:if="{{showInternalConversionDetails && convertedAmountText}}">
+        <text>签约金额</text>
+        <text>{{convertedAmountText}}</text>
+      </view>
+      <view class="conversion-summary-note" wx:if="{{showInternalConversionDetails && lead.conversionNote}}">{{lead.conversionNote}}</view>
+      <button
+        wx:if="{{canRevertConversion}}"
+        class="conversion-revert-action"
+        bindtap="onOpenRevertConversionSheet"
+        disabled="{{conversionSubmitting}}"
+      >撤销签约标记</button>
+    </view>
+  </view>
   <view class="acquisition-info" wx:if="{{lead}}">
     <view class="acquisition-info-heading">
       <view>
@@ -103,3 +145,80 @@
   bindclose="onCloseDesignerSheet"
   bindretry="onRetryDesignerProfile"
 />
+
+<view class="conversion-sheet-mask" wx:if="{{showConversionSheet}}" catchtap="onCloseConversionSheet">
+  <view class="conversion-sheet" catchtap="onSheetTap">
+    <view class="conversion-sheet-handle"></view>
+    <view class="conversion-sheet-header">
+      <view>
+        <text class="conversion-sheet-title">确认客户已签约</text>
+        <text class="conversion-sheet-customer">{{lead.name}} · {{lead.communityName || '未填写小区'}}</text>
+      </view>
+      <text class="conversion-sheet-close" catchtap="onCloseConversionSheet">关闭</text>
+    </view>
+    <view class="conversion-skip-warning" wx:if="{{conversionSkipsStages}}">本次操作将跳过尚未完成的中间阶段</view>
+    <view class="conversion-field">
+      <text class="conversion-field-label">签约日期</text>
+      <picker mode="date" value="{{conversionDate}}" end="{{todayDateValue}}" bindchange="onConversionDateChange">
+        <view class="conversion-field-control">{{conversionDate}} <text>选择</text></view>
+      </picker>
+    </view>
+    <view class="conversion-field">
+      <text class="conversion-field-label">签约金额（选填）</text>
+      <view class="conversion-amount-control">
+        <text>¥</text>
+        <input
+          type="digit"
+          value="{{conversionAmount}}"
+          placeholder="用于经营统计，不作为财务结算凭证"
+          bindinput="onConversionAmountInput"
+        />
+      </view>
+    </view>
+    <view class="conversion-field">
+      <text class="conversion-field-label">签约备注（选填）</text>
+      <textarea
+        class="conversion-note-control"
+        value="{{conversionNote}}"
+        maxlength="200"
+        auto-height
+        placeholder="可记录合同编号或需要交接的事项"
+        bindinput="onConversionNoteInput"
+      ></textarea>
+    </view>
+    <view class="conversion-boundary-copy">仅更新客户业务状态，不会自动生成订单、扣款或结算获客提成。</view>
+    <view class="conversion-sheet-actions">
+      <button class="conversion-sheet-secondary" catchtap="onCloseConversionSheet" disabled="{{conversionSubmitting}}">取消</button>
+      <button class="conversion-sheet-primary" catchtap="onConfirmConversion" loading="{{conversionSubmitting}}" disabled="{{conversionSubmitting || !conversionDate}}">确认已签约</button>
+    </view>
+  </view>
+</view>
+
+<view class="conversion-sheet-mask" wx:if="{{showRevertConversionSheet}}" catchtap="onCloseRevertConversionSheet">
+  <view class="conversion-sheet" catchtap="onSheetTap">
+    <view class="conversion-sheet-handle"></view>
+    <view class="conversion-sheet-header">
+      <view>
+        <text class="conversion-sheet-title">撤销签约标记</text>
+        <text class="conversion-sheet-customer">撤销后恢复为签约前的业务阶段</text>
+      </view>
+      <text class="conversion-sheet-close" catchtap="onCloseRevertConversionSheet">关闭</text>
+    </view>
+    <view class="conversion-revert-warning">签约审计记录会保留，请填写本次修正原因。</view>
+    <view class="conversion-field">
+      <text class="conversion-field-label">撤销原因</text>
+      <textarea
+        class="conversion-note-control"
+        value="{{revertConversionReason}}"
+        maxlength="200"
+        auto-height
+        placeholder="请说明合同未生效或误操作等原因"
+        bindinput="onRevertConversionReasonInput"
+      ></textarea>
+    </view>
+    <view class="conversion-sheet-actions">
+      <button class="conversion-sheet-secondary" catchtap="onCloseRevertConversionSheet" disabled="{{conversionSubmitting}}">取消</button>
+      <button class="conversion-sheet-danger" catchtap="onConfirmRevertConversion" loading="{{conversionSubmitting}}" disabled="{{conversionSubmitting || !revertConversionReason}}">确认撤销</button>
+    </view>
+  </view>
+</view>

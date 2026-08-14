@@ -285,6 +285,13 @@ export function leadToDto(record: LeadWithRelations, options: { designerWechatQr
     city: record.city,
     source: record.source,
     status: record.status,
+    convertedOn: record.convertedOn,
+    convertedAt: record.convertedAt,
+    convertedBy: record.convertedUser
+      ? staffSummaryToDto(record.convertedUser)
+      : record.convertedBy?.toString() ?? null,
+    contractAmount: record.contractAmount === null ? null : Number(record.contractAmount),
+    conversionNote: record.conversionNote,
     acquisitionStatus: record.acquiredAt ? 'confirmed' : 'pending_confirmation',
     acquiredAt: record.acquiredAt,
     acquiredBy: record.acquiredBy?.toString() ?? null,

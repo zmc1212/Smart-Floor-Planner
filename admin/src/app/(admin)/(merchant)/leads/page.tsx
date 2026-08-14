@@ -17,6 +17,7 @@ import {
   Empty,
   Flex,
   Input,
+  InputNumber,
   Modal,
   Segmented,
   Select,
@@ -27,7 +28,7 @@ import {
   Typography,
 } from 'antd';
 import { useRouter } from 'next/navigation';
-import { Archive, ClipboardCheck, Eye, FilePenLine, LayoutTemplate, MessageSquare, Plus, RotateCcw, Trash2, Users } from 'lucide-react';
+import { Archive, BadgeCheck, ClipboardCheck, Eye, FilePenLine, LayoutTemplate, MessageSquare, Plus, RotateCcw, Trash2, Undo2, Users } from 'lucide-react';
 import ModuleOverview from '@/components/admin/ModuleOverview';
 import { notify } from '@/components/ui/operation-feedback';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -77,6 +78,15 @@ type Lead = {
   archiveReason?: string | null;
   archiveNote?: string | null;
   acquisitionCommissionStatus?: string | null;
+  convertedOn?: string | null;
+  convertedAt?: string | null;
+  convertedBy?: StaffReference | string | null;
+  contractAmount?: number | null;
+  conversionNote?: string | null;
+  conversionActions?: {
+    canMarkConverted: boolean;
+    canRevertConversion: boolean;
+  };
   promoterId?: StaffReference | string | null;
   assignedTo?: StaffReference | string | null;
   floorPlanIds?: FloorPlan[];
@@ -173,6 +183,21 @@ function formatDate(value?: string | Date) {
   return Number.isNaN(parsed.getTime()) ? '-' : parsed.toLocaleString('zh-CN');
 }
 
+function chinaDateValue() {
+  return new Date(Date.now() + 8 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+function formatContractAmount(value?: number | null) {
+  if (!value) return '-';
+  return new Intl.NumberFormat('zh-CN', {
+    style: 'currency',
+    currency: 'CNY',
+    minimumFractionDigits: 2,
+  }).format(value);
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -241,6 +266,13 @@ export default function LeadsPage() {
   const [purgeImpact, setPurgeImpact] = useState<LifecycleImpact | null>(null);
   const [purgeConfirmation, setPurgeConfirmation] = useState('');
   const [overview, setOverview] = useState({ total: 0, measuring: 0, assigned: 0, converted: 0 });
+  const [conversionOpen, setConversionOpen] = useState(false);
+  const [conversionDate, setConversionDate] = useState(chinaDateValue());
+  const [conversionAmount, setConversionAmount] = useState<number | null>(null);
+  const [conversionNote, setConversionNote] = useState('');
+  const [conversionSubmitting, setConversionSubmitting] = useState(false);
+  const [revertConversionOpen, setRevertConversionOpen] = useState(false);
+  const [revertReason, setRevertReason] = useState('');
 
   useEffect(() => () => {
     leadListRequestRef.current?.abort();
@@ -290,6 +322,9 @@ export default function LeadsPage() {
     leadDetailRequestRef.current?.abort();
     setSelectedLead(null);
     setNewNote('');
+    setConversionOpen(false);
+    setRevertConversionOpen(false);
+    setRevertReason('');
   };
 
   const updateLead = async (
@@ -466,6 +501,62 @@ export default function LeadsPage() {
     const succeeded = await updateLead(selectedLead._id, { followUpRecords: records });
     if (succeeded) setNewNote('');
     setIsSubmitting(false);
+  };
+
+  const openConversion = () => {
+    setConversionDate(chinaDateValue());
+    setConversionAmount(null);
+    setConversionNote('');
+    setConversionOpen(true);
+  };
+
+  const markConverted = async () => {
+    if (!selectedLead || !conversionDate || conversionSubmitting) return;
+    setConversionSubmitting(true);
+    try {
+      const response = await fetch(`/api/leads/${selectedLead._id}/convert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          convertedOn: conversionDate,
+          contractAmount: conversionAmount,
+          conversionNote,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '标记已签约失败');
+      setSelectedLead(result.data);
+      setConversionOpen(false);
+      notify.success('客户已标记为已签约');
+      await refreshLeads();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '标记已签约失败');
+    } finally {
+      setConversionSubmitting(false);
+    }
+  };
+
+  const revertConversion = async () => {
+    if (!selectedLead || !revertReason.trim() || conversionSubmitting) return;
+    setConversionSubmitting(true);
+    try {
+      const response = await fetch(`/api/leads/${selectedLead._id}/revert-conversion`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: revertReason.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error(result.error || '撤销签约标记失败');
+      setSelectedLead(result.data);
+      setRevertConversionOpen(false);
+      setRevertReason('');
+      notify.success('签约标记已撤销');
+      await refreshLeads();
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : '撤销签约标记失败');
+    } finally {
+      setConversionSubmitting(false);
+    }
   };
 
   const columns: ProColumns<Lead>[] = [
@@ -786,6 +877,116 @@ export default function LeadsPage() {
         </Flex>
       </Modal>
 
+      <Modal
+        open={conversionOpen}
+        title="确认客户已签约"
+        destroyOnHidden
+        footer={(
+          <Flex justify="end" gap={8}>
+            <Button disabled={conversionSubmitting} onClick={() => setConversionOpen(false)}>取消</Button>
+            <Button
+              color="green"
+              variant="solid"
+              icon={<BadgeCheck size={16} />}
+              loading={conversionSubmitting}
+              disabled={!conversionDate}
+              onClick={() => void markConverted()}
+            >
+              确认已签约
+            </Button>
+          </Flex>
+        )}
+        onCancel={() => { if (!conversionSubmitting) setConversionOpen(false); }}
+      >
+        <Flex vertical gap={16}>
+          <Alert
+            showIcon
+            type="info"
+            message={selectedLead ? `${selectedLead.name} · ${selectedLead.communityName || '未填写小区'}` : '客户信息'}
+            description={`当前阶段：${selectedLead ? getLeadStatusLabel(selectedLead.status) : '-'}`}
+          />
+          {selectedLead && !['measured', 'assigned', 'designing', 'quoting'].includes(selectedLead.status) ? (
+            <Alert showIcon type="warning" message="本次操作将跳过尚未完成的中间阶段" />
+          ) : null}
+          <Flex vertical gap={6}>
+            <Typography.Text strong>签约日期</Typography.Text>
+            <Input
+              type="date"
+              max={chinaDateValue()}
+              value={conversionDate}
+              onChange={(event) => setConversionDate(event.target.value)}
+            />
+          </Flex>
+          <Flex vertical gap={6}>
+            <Typography.Text strong>签约金额（选填）</Typography.Text>
+            <InputNumber
+              className="w-full"
+              min={0.01}
+              max={999999999999.99}
+              precision={2}
+              controls={false}
+              prefix="¥"
+              placeholder="用于经营统计，不作为财务结算凭证"
+              value={conversionAmount}
+              onChange={(value) => setConversionAmount(value)}
+            />
+          </Flex>
+          <Flex vertical gap={6}>
+            <Typography.Text strong>签约备注（选填）</Typography.Text>
+            <Input.TextArea
+              value={conversionNote}
+              maxLength={200}
+              showCount
+              autoSize={{ minRows: 2, maxRows: 4 }}
+              placeholder="可记录合同编号或需要交接的事项"
+              onChange={(event) => setConversionNote(event.target.value)}
+            />
+          </Flex>
+          <Typography.Text type="secondary">
+            仅更新客户业务状态，不会自动生成订单、扣款或结算获客提成。
+          </Typography.Text>
+        </Flex>
+      </Modal>
+
+      <Modal
+        open={revertConversionOpen}
+        title="撤销签约标记"
+        okText="确认撤销"
+        cancelText="取消"
+        okButtonProps={{
+          danger: true,
+          loading: conversionSubmitting,
+          disabled: !revertReason.trim(),
+        }}
+        onCancel={() => {
+          if (!conversionSubmitting) {
+            setRevertConversionOpen(false);
+            setRevertReason('');
+          }
+        }}
+        onOk={() => void revertConversion()}
+      >
+        <Flex vertical gap={12}>
+          <Alert
+            showIcon
+            type="warning"
+            message="撤销后将恢复为签约前的业务阶段"
+            description="签约审计记录会保留，已记录的签约信息将从当前线索摘要中移除。"
+          />
+          <Flex vertical gap={6}>
+            <Typography.Text strong>撤销原因</Typography.Text>
+            <Input.TextArea
+              value={revertReason}
+              maxLength={200}
+              showCount
+              autoSize={{ minRows: 3, maxRows: 5 }}
+              placeholder="请说明合同未生效或误操作等原因"
+              onChange={(event) => setRevertReason(event.target.value)}
+            />
+          </Flex>
+        </Flex>
+      </Modal>
+
       <Drawer
         open={Boolean(selectedLead)}
         width={640}
@@ -830,6 +1031,53 @@ export default function LeadsPage() {
               <Typography.Text type="secondary">
                 下一步：{getLeadNextAction(selectedLead.status)}
               </Typography.Text>
+
+            {selectedLead.conversionActions?.canMarkConverted ? (
+              <Flex
+                align="center"
+                justify="space-between"
+                gap={16}
+                wrap
+                className="rounded-xl bg-emerald-50 p-4"
+              >
+                <Flex vertical gap={2}>
+                  <Typography.Text strong>客户已完成合同签署？</Typography.Text>
+                  <Typography.Text type="secondary">
+                    确认后进入“已签约”，并记录签约日期与操作人。
+                  </Typography.Text>
+                </Flex>
+                <Button color="green" variant="solid" icon={<BadgeCheck size={16} />} onClick={openConversion}>
+                  标记已签约
+                </Button>
+              </Flex>
+            ) : null}
+
+            {selectedLead.status === 'converted' ? (
+              <Descriptions
+                title="签约记录"
+                bordered
+                size="small"
+                column={1}
+                extra={selectedLead.conversionActions?.canRevertConversion ? (
+                  <Button
+                    type="text"
+                    danger
+                    size="small"
+                    icon={<Undo2 size={14} />}
+                    onClick={() => setRevertConversionOpen(true)}
+                  >
+                    撤销签约标记
+                  </Button>
+                ) : null}
+                items={[
+                  { key: 'convertedOn', label: '签约日期', children: selectedLead.convertedOn || '历史数据未记录' },
+                  { key: 'convertedBy', label: '标记人', children: getStaffName(selectedLead.convertedBy) || '历史数据未记录' },
+                  { key: 'convertedAt', label: '标记时间', children: formatDate(selectedLead.convertedAt || undefined) },
+                  { key: 'contractAmount', label: '签约金额', children: formatContractAmount(selectedLead.contractAmount) },
+                  ...(selectedLead.conversionNote ? [{ key: 'conversionNote', label: '签约备注', children: selectedLead.conversionNote }] : []),
+                ]}
+              />
+            ) : null}
 
             <Descriptions
               bordered

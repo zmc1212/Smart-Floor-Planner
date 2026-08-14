@@ -684,7 +684,8 @@ permission, or workflow changes.
 ### 7. Leads And Conversion Assets
 
 - Page: `/leads`.
-- APIs: `/api/leads`, `/leads/[id]`, `/api/acquisition-tasks`, and related
+- APIs: `/api/leads`, `/leads/[id]`, `POST /api/leads/[id]/convert`,
+  `POST /api/leads/[id]/revert-conversion`, `/api/acquisition-tasks`, and related
   floor-plan and staff endpoints.
 - Models/helpers: PostgreSQL `LeadRepository`, `FloorPlanRepository`,
   `AdminUserRepository`, and WeChat helpers.
@@ -718,13 +719,26 @@ permission, or workflow changes.
   `designing` respectively. Tenant scope, role boundaries, paging, and row
   actions for detail, AI-plan entry, and destructive deletion are unchanged;
   visible mutations continue to use shared operation feedback.
+  As of 2026-08-14, conversion uses dedicated single-lead actions rather than
+  generic status editing. An enterprise administrator may mark any active open
+  lead in its enterprise; a designer may mark only the lead assigned at
+  creation. The required signing date cannot be later than the current China-time-zone date, while contract
+  amount and note are optional. The locked transaction writes
+  `converted_on/converted_at/converted_by/converted_from_status/contract_amount/conversion_note`
+  and a `converted` lifecycle event. Enterprise administrators may provide a
+  reason to revert the marker and restore the pre-conversion stage, producing a
+  `conversion_reverted` event. Creation, generic updates, and floor-plan import/linking cannot enter or
+  leave `converted`; the repository rechecks under the row lock so a concurrent ordinary update cannot overwrite conversion. Dedicated actions require an enterprise context, archived and `closed` leads cannot convert directly, and any current or historical conversion fact blocks empty-lead permanent deletion. The
+  existing detail drawer exposes the confirmation and read-only conversion
+  summary without adding list bulk conversion. Conversion does not create an
+  order, charge money, or change acquisition confirmation/commission state.
 
 #### Lead archive lifecycle (2026-08-10)
 
 - `Implemented`: `closed` remains a business-terminal state. `archived_at`, `archived_by`, `archive_reason`, and `archive_note` independently control visibility. `/leads` now has Active/Archived segments, up-to-100 batch archive preview and execution, read-only archived details, restore, and manager-only purge preview/name confirmation. The daily list no longer exposes destructive deletion.
 - `GET /api/leads` defaults to `archiveState=active`; archived reads require the live `leads.archive_manage` capability. Archive preview, archive, restore, and purge preview use tenant transactions, row locks, and existing assignee/promoter boundaries. In-flight AI jobs are reported per row and skipped without preventing other eligible rows in the batch.
 - The capability is fixed for `super_admin`, `admin`, and `enterprise_admin`. Designer/measurer access resolves from enterprise role defaults and staff inherit/allow/deny overrides on every mutation; `/staff` exposes this policy only to enterprise/platform managers. `leads.purge` is not delegatable.
-- Permanent deletion accepts only an already archived, exact-name-confirmed empty lead. Any floor plan/formal survey, AI workflow/generation/task, acquisition confirmation/commission, or follow-up returns `409 LEAD_PURGE_BLOCKED`. A successful purge removes only the lead and cascade-safe internal notifications; media assets are untouched. `lead_lifecycle_events` retains a tenant-scoped, PII-free audit after purge.
+- Permanent deletion accepts only an already archived, exact-name-confirmed empty lead. Any conversion fact, floor plan/formal survey, AI workflow/generation/task, acquisition confirmation/commission, or follow-up returns `409 LEAD_PURGE_BLOCKED`. A successful purge removes only the lead and cascade-safe internal notifications; media assets are untouched. `lead_lifecycle_events` retains a tenant-scoped, PII-free audit after purge.
 - Archived leads stay hidden from Mini Program lead lists, acquisition tasks, and AI customer selectors. Existing floor-plan, AI, and commission history remains readable with an archived marker. Lead/follow-up updates, acquisition confirmation, floor-plan binding, and new/retried AI work return `409 LEAD_ARCHIVED`; phone de-duplication returns `409 ARCHIVED_LEAD_EXISTS` instead of creating or reassigning a duplicate.
 
 ### 8. Formal Floor Plans, Search, And Viewing

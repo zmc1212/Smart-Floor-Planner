@@ -75,6 +75,22 @@ function formatConfirmationDate(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function todayDate() {
+  return new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+function formatContractAmount(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return '';
+  return `¥${amount.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+}
+
+function getStaffName(value) {
+  if (!value) return '';
+  if (typeof value === 'object') return value.displayName || value.username || '';
+  return String(value);
+}
+
 function getPlanSpaceCount(plan) {
   const floor = surveyLayout.getActiveFloor(plan && plan.layoutData);
   return Array.isArray(floor && floor.spaces)
@@ -126,6 +142,21 @@ Page({
     statusLabel: '新线索',
     nextAction: '开始正式量房',
     stageRail: buildStageRail('new'),
+    canMarkConverted: false,
+    canRevertConversion: false,
+    convertedByName: '',
+    convertedTime: '',
+    convertedAmountText: '',
+    showInternalConversionDetails: false,
+    showConversionSheet: false,
+    todayDateValue: todayDate(),
+    conversionDate: todayDate(),
+    conversionAmount: '',
+    conversionNote: '',
+    showRevertConversionSheet: false,
+    revertConversionReason: '',
+    conversionSubmitting: false,
+    conversionSkipsStages: false,
     loading: true,
     errorMessage: '',
     deleting: false
@@ -144,27 +175,125 @@ Page({
     try {
       const res = await api.request(`/leads/${this.data.leadId}`, 'GET');
       if (!res.success || !res.data) throw new Error('线索加载失败');
-      const formalPlans = getFormalPlans(res.data).map(toPlanDisplay);
-      const staffRole = getStaffRole();
-      const designerProfile = res.data.assignedTo && typeof res.data.assignedTo === 'object'
-        ? res.data.assignedTo
-        : null;
-      this.setData({
-        lead: res.data,
-        staffRole,
-        designerProfile,
-        acquisitionConfirmedTime: formatConfirmationDate(res.data.acquiredAt),
-        canContactDesigner: staffRole === 'measurer' && Boolean(designerProfile && (designerProfile.wechatId || designerProfile.wechatQrUrl)),
-        canViewAcquisition: staffRole === 'measurer' || staffRole === 'designer',
-        statusLabel: STATUS_LABELS[res.data.status] || res.data.status || '新线索',
-        nextAction: getNextAction(res.data.status),
-        stageRail: buildStageRail(res.data.status),
-        activeFloorPlan: formalPlans[0] || null,
-        previousFloorPlans: formalPlans.slice(1),
-        loading: false
-      });
+      this.applyLeadDetail(res.data);
     } catch (err) {
       this.setData({ loading: false, errorMessage: (err && err.error) || '线索详情加载失败，请稍后重试' });
+    }
+  },
+
+  applyLeadDetail(lead) {
+    const formalPlans = getFormalPlans(lead).map(toPlanDisplay);
+    const staffRole = getStaffRole();
+    const designerProfile = lead.assignedTo && typeof lead.assignedTo === 'object'
+      ? lead.assignedTo
+      : null;
+    const conversionActions = lead.conversionActions || {};
+    this.setData({
+      lead,
+      staffRole,
+      designerProfile,
+      acquisitionConfirmedTime: formatConfirmationDate(lead.acquiredAt),
+      canContactDesigner: staffRole === 'measurer' && Boolean(designerProfile && (designerProfile.wechatId || designerProfile.wechatQrUrl)),
+      canViewAcquisition: staffRole === 'measurer' || staffRole === 'designer',
+      statusLabel: STATUS_LABELS[lead.status] || lead.status || '新线索',
+      nextAction: getNextAction(lead.status),
+      stageRail: buildStageRail(lead.status),
+      canMarkConverted: Boolean(conversionActions.canMarkConverted),
+      canRevertConversion: Boolean(conversionActions.canRevertConversion),
+      convertedByName: getStaffName(lead.convertedBy) || '历史数据未记录',
+      convertedTime: formatConfirmationDate(lead.convertedAt),
+      convertedAmountText: formatContractAmount(lead.contractAmount),
+      showInternalConversionDetails: ['enterprise_admin', 'designer', 'measurer', 'salesperson'].includes(staffRole),
+      conversionSkipsStages: !['designing', 'measured', 'assigned', 'quoting'].includes(lead.status),
+      activeFloorPlan: formalPlans[0] || null,
+      previousFloorPlans: formalPlans.slice(1),
+      loading: false
+    });
+  },
+
+  onOpenConversionSheet() {
+    if (!this.data.canMarkConverted || this.data.conversionSubmitting) return;
+    const currentChinaDate = todayDate();
+    this.setData({
+      showConversionSheet: true,
+      todayDateValue: currentChinaDate,
+      conversionDate: currentChinaDate,
+      conversionAmount: '',
+      conversionNote: ''
+    });
+  },
+
+  onCloseConversionSheet() {
+    if (!this.data.conversionSubmitting) this.setData({ showConversionSheet: false });
+  },
+
+  onSheetTap() {},
+
+  onConversionDateChange(event) {
+    this.setData({ conversionDate: event.detail.value });
+  },
+
+  onConversionAmountInput(event) {
+    this.setData({ conversionAmount: event.detail.value });
+  },
+
+  onConversionNoteInput(event) {
+    this.setData({ conversionNote: event.detail.value });
+  },
+
+  async onConfirmConversion() {
+    if (!this.data.canMarkConverted || !this.data.conversionDate || this.data.conversionSubmitting) return;
+    const amountText = String(this.data.conversionAmount || '').trim();
+    const amount = amountText ? Number(amountText) : null;
+    if (amountText && (!Number.isFinite(amount) || amount <= 0)) {
+      wx.showToast({ title: '请输入有效的签约金额', icon: 'none' });
+      return;
+    }
+    this.setData({ conversionSubmitting: true });
+    try {
+      const res = await api.request(`/leads/${this.data.leadId}/convert`, 'POST', {
+        convertedOn: this.data.conversionDate,
+        contractAmount: amount,
+        conversionNote: String(this.data.conversionNote || '').trim()
+      });
+      if (!res.success || !res.data) throw new Error('标记已签约失败');
+      this.setData({ showConversionSheet: false });
+      this.applyLeadDetail(res.data);
+      wx.showToast({ title: '已标记为已签约', icon: 'success' });
+    } catch (err) {
+      wx.showToast({ title: (err && err.error) || '标记失败，请重试', icon: 'none' });
+    } finally {
+      this.setData({ conversionSubmitting: false });
+    }
+  },
+
+  onOpenRevertConversionSheet() {
+    if (!this.data.canRevertConversion || this.data.conversionSubmitting) return;
+    this.setData({ showRevertConversionSheet: true, revertConversionReason: '' });
+  },
+
+  onCloseRevertConversionSheet() {
+    if (!this.data.conversionSubmitting) this.setData({ showRevertConversionSheet: false });
+  },
+
+  onRevertConversionReasonInput(event) {
+    this.setData({ revertConversionReason: event.detail.value });
+  },
+
+  async onConfirmRevertConversion() {
+    const reason = String(this.data.revertConversionReason || '').trim();
+    if (!this.data.canRevertConversion || !reason || this.data.conversionSubmitting) return;
+    this.setData({ conversionSubmitting: true });
+    try {
+      const res = await api.request(`/leads/${this.data.leadId}/revert-conversion`, 'POST', { reason });
+      if (!res.success || !res.data) throw new Error('撤销签约标记失败');
+      this.setData({ showRevertConversionSheet: false, revertConversionReason: '' });
+      this.applyLeadDetail(res.data);
+      wx.showToast({ title: '签约标记已撤销', icon: 'success' });
+    } catch (err) {
+      wx.showToast({ title: (err && err.error) || '撤销失败，请重试', icon: 'none' });
+    } finally {
+      this.setData({ conversionSubmitting: false });
     }
   },
 

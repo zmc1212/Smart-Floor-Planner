@@ -285,16 +285,16 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
 ### 7. 线索与转化资产
 
 - 页面：`/leads`。
-- API：`/api/leads`、`/api/leads/[id]`、`/api/acquisition-tasks` 及户型、员工关联接口。
+- API：`/api/leads`、`/api/leads/[id]`、`POST /api/leads/[id]/convert`、`POST /api/leads/[id]/revert-conversion`、`/api/acquisition-tasks` 及户型、员工关联接口。
 - 模型/工具：PostgreSQL `LeadRepository`、`FloorPlanRepository`、`AdminUserRepository`、微信工具。
-- 状态：`Implemented`。支持线索录入/状态、跟进、创建时绑定设计师、正式户型关联和转化上下文；列表、详情、新建、更新和删除均在 RLS PostgreSQL 事务内执行，并保留十进制字符串 `_id` DTO。线索-户型连接表、主户型选择、租户校验和删除清理为原子操作；普通微信通知在数据库事务提交后调用。企微配置、群分享和员工企微标识已弃用，已从运行时 API 与 UI 移除；历史 MongoDB 字段及 PostgreSQL `admin_users.wecom_user_id` 列保留，不迁移也不删除。`/leads` 后台视图使用共享 Ant Design ProComponents 模式（`PageContainer`、`ProTable`）承载服务端分页、四阶段客户状态筛选和独立获客状态筛选，并在详情抽屉只读展示创建时绑定的设计师、正式户型、跟进记录及获客时间/提成状态；不再提供负责人换绑控件，`PUT /api/leads/[id]` 拒绝 `assignedTo` 写入，测量员—设计师换绑仅在 `/staff` 完成且只影响后续新线索；共享 `ModuleOverview` 从同一分页响应派生当前页漏斗统计。客户主流程为“新线索→量房中→方案设计→已签约”，`已关闭`为终止筛选；历史 `acquired` 归并到“新线索”，草稿/已完成正式户型关联分别推进到量房中/方案设计。获客确认独立使用 `acquired_at/acquired_by` 和提成记录表达，不再占用客户状态。列表和详情继续取消过期请求，租户范围、角色边界及“详情”“方案”“删除”行内操作保持不变，所有可见变更继续使用共享操作反馈。
+- 状态：`Implemented`。支持线索录入/状态、跟进、创建时绑定设计师、正式户型关联和转化上下文；列表、详情、新建、更新和删除均在 RLS PostgreSQL 事务内执行，并保留十进制字符串 `_id` DTO。线索-户型连接表、主户型选择、租户校验和删除清理为原子操作；普通微信通知在数据库事务提交后调用。企微配置、群分享和员工企微标识已弃用，已从运行时 API 与 UI 移除；历史 MongoDB 字段及 PostgreSQL `admin_users.wecom_user_id` 列保留，不迁移也不删除。`/leads` 后台视图使用共享 Ant Design ProComponents 模式（`PageContainer`、`ProTable`）承载服务端分页、四阶段客户状态筛选和独立获客状态筛选，并在详情抽屉只读展示创建时绑定的设计师、正式户型、跟进记录及获客时间/提成状态；不再提供负责人换绑控件，`PUT /api/leads/[id]` 拒绝 `assignedTo` 写入，测量员—设计师换绑仅在 `/staff` 完成且只影响后续新线索；共享 `ModuleOverview` 从同一分页响应派生当前页漏斗统计。客户主流程为“新线索→量房中→方案设计→已签约”，`已关闭`为终止筛选；历史 `acquired` 归并到“新线索”，草稿/已完成正式户型关联分别推进到量房中/方案设计。获客确认独立使用 `acquired_at/acquired_by` 和提成记录表达，不再占用客户状态。2026-08-14 新增专用签约动作：企业管理员可标记本企业任一在用开放阶段线索，设计师仅可标记创建时分配给自己的线索；签约日期必填且不得晚于中国时区当天，金额和备注可选。事务会锁定线索、写入 `converted_on/converted_at/converted_by/converted_from_status/contract_amount/conversion_note`，并记录 `converted` 生命周期事件；企业管理员可填写原因后撤销并恢复签约前阶段，产生 `conversion_reverted` 事件。创建、通用更新和户型导入/关联均不能进入或离开 `converted`，仓库在持锁后重查状态以阻止并发覆盖；专用动作要求企业上下文，归档和 `closed` 线索也不能直接签约，任意当前或历史签约事实都会阻止空白线索永久删除。详情抽屉在现有阶段区提供单条签约确认和签约摘要，不增加列表批量成交；该动作不生成订单、不扣款，也不改变获客确认或提成。列表和详情继续取消过期请求，所有可见变更继续使用共享操作反馈。
 
 #### 客户线索归档生命周期（2026-08-10）
 
 - `Implemented`：`closed` 继续表示业务终止；`archived_at`、`archived_by`、`archive_reason`、`archive_note` 独立控制可见性。`/leads` 新增“在用线索 / 已归档”、最多 100 条批量预检与归档、归档只读详情、恢复，以及仅管理角色可用的永久删除预检和客户名称确认；日常列表不再展示直接删除。
 - `GET /api/leads` 默认 `archiveState=active`；读取归档区要求服务端实时解析的 `leads.archive_manage`。归档预检、归档、恢复和删除预检均在租户事务中使用行锁并叠加既有负责人/录入人边界；运行中的 AI 任务按条阻止，不影响同批其他可归档线索。
 - `super_admin`、`admin`、`enterprise_admin` 固定拥有归档管理能力；设计师和测量员每次按企业角色默认与员工“继承 / 允许 / 禁止”覆盖实时解析。`/staff` 仅向企业负责人和平台管理员提供配置抽屉，员工岗位变化会清理旧覆盖。`leads.purge` 不可下放。
-- 永久删除只接受已归档、客户名称完全匹配的空白线索。存在任意户型/正式量房、AI 工作流/生成/运行任务、获客确认/提成或跟进记录时返回 `409 LEAD_PURGE_BLOCKED`。允许删除时只删除基础线索及安全级联的内部通知，不触碰媒体资产；`lead_lifecycle_events` 在删除后继续保留不含客户 PII 的租户审计。
+- 永久删除只接受已归档、客户名称完全匹配的空白线索。存在任意签约事实、户型/正式量房、AI 工作流/生成/运行任务、获客确认/提成或跟进记录时返回 `409 LEAD_PURGE_BLOCKED`。允许删除时只删除基础线索及安全级联的内部通知，不触碰媒体资产；`lead_lifecycle_events` 在删除后继续保留不含客户 PII 的租户审计。
 - 归档线索默认从小程序线索、获客任务和 AI 客户选择器隐藏；历史户型、AI 方案和提成继续可读并返回归档标识。线索/跟进更新、获客确认、户型绑定和新增/重试 AI 任务统一返回 `409 LEAD_ARCHIVED`；手机号去重命中归档档案时返回 `409 ARCHIVED_LEAD_EXISTS`，不会自动创建、换绑或重复生成提成。
 
 #### 客户线索归档生命周期（2026-08-10）
@@ -302,7 +302,7 @@ AI 工作台配置和提示词库 API 现在只读取 PostgreSQL 数据。历史
 - `Implemented`：`closed` 继续表示业务终止；`archived_at`、`archived_by`、`archive_reason`、`archive_note` 独立控制可见性。`/leads` 新增“在用线索 / 已归档”、最多 100 条批量预检与归档、归档只读详情、恢复，以及仅管理角色可用的永久删除预检和客户名称确认；日常列表不再展示直接删除。
 - `GET /api/leads` 默认 `archiveState=active`；读取归档区要求服务端实时解析的 `leads.archive_manage`。归档预检、归档、恢复和删除预检均在租户事务中使用行锁并叠加既有负责人/录入人边界；运行中的 AI 任务按条阻止，不影响同批其他可归档线索。
 - `super_admin`、`admin`、`enterprise_admin` 固定拥有归档管理能力；设计师和测量员每次按企业角色默认与员工“继承 / 允许 / 禁止”覆盖实时解析。`/staff` 仅向企业负责人和平台管理员提供配置抽屉，员工岗位变化会清理旧覆盖。`leads.purge` 不可下放。
-- 永久删除只接受已归档、客户名称完全匹配的空白线索。存在任意户型/正式量房、AI 工作流/生成/运行任务、获客确认/提成或跟进记录时返回 `409 LEAD_PURGE_BLOCKED`。允许删除时只删除基础线索及安全级联的内部通知，不触碰媒体资产；`lead_lifecycle_events` 在删除后继续保留不含客户 PII 的租户审计。
+- 永久删除只接受已归档、客户名称完全匹配的空白线索。存在任意签约事实、户型/正式量房、AI 工作流/生成/运行任务、获客确认/提成或跟进记录时返回 `409 LEAD_PURGE_BLOCKED`。允许删除时只删除基础线索及安全级联的内部通知，不触碰媒体资产；`lead_lifecycle_events` 在删除后继续保留不含客户 PII 的租户审计。
 - 归档线索默认从小程序线索、获客任务和 AI 客户选择器隐藏；历史户型、AI 方案和提成继续可读并返回归档标识。线索/跟进更新、获客确认、户型绑定和新增/重试 AI 任务统一返回 `409 LEAD_ARCHIVED`；手机号去重命中归档档案时返回 `409 ARCHIVED_LEAD_EXISTS`，不会自动创建、换绑或重复生成提成。
 
 ### 8. 正式户型、搜索与查看

@@ -65,9 +65,10 @@ export function resolveLeadStatusAfterFloorPlan(
   planStatus: string,
   requestedStatus?: string
 ) {
+  const current = normalizeLeadStatus(currentStatus);
+  if (current === 'converted') return current;
   if (requestedStatus) return normalizeLeadStatus(requestedStatus);
 
-  const current = normalizeLeadStatus(currentStatus);
   if (planStatus === 'completed' && ['new', 'measuring'].includes(current)) {
     return 'designing';
   }

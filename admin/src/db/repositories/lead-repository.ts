@@ -20,7 +20,11 @@ import {
   leads,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
-import { getLeadStatusVariants, resolveLeadStatusAfterFloorPlan } from '@/lib/lead-status';
+import {
+  getLeadStatusVariants,
+  normalizeLeadStatus,
+  resolveLeadStatusAfterFloorPlan,
+} from '@/lib/lead-status';
 
 export type NewLead = typeof leads.$inferInsert;
 export type LeadRecord = typeof leads.$inferSelect;
@@ -46,6 +50,7 @@ export interface LeadWithRelations extends LeadRecord {
   assignedUser: LeadStaffSummary | null;
   promoter: LeadStaffSummary | null;
   archivedUser: LeadStaffSummary | null;
+  convertedUser: LeadStaffSummary | null;
   acquisitionCommission: {
     status: string;
     commissionAmount: string;
@@ -163,7 +168,7 @@ export class LeadRepository {
     const staffIds = Array.from(
       new Set(
         rows.flatMap((row) =>
-          [row.assignedTo, row.promoterId, row.archivedBy].filter(
+          [row.assignedTo, row.promoterId, row.archivedBy, row.convertedBy].filter(
             (value): value is bigint => value !== null
           )
         )
@@ -212,6 +217,7 @@ export class LeadRepository {
         : null,
       promoter: row.promoterId ? staffMap.get(row.promoterId) ?? null : null,
       archivedUser: row.archivedBy ? staffMap.get(row.archivedBy) ?? null : null,
+      convertedUser: row.convertedBy ? staffMap.get(row.convertedBy) ?? null : null,
       acquisitionCommission: acquisitionMap.get(row.id) ?? null,
     }));
   }
@@ -334,7 +340,7 @@ export class LeadRepository {
 
   async update(id: bigint, input: LeadUpdate) {
     const current = await this.transaction
-      .select({ archivedAt: leads.archivedAt })
+      .select({ archivedAt: leads.archivedAt, status: leads.status })
       .from(leads)
       .where(eq(leads.id, id))
       .for('update')
@@ -344,6 +350,19 @@ export class LeadRepository {
         status: 409,
         code: 'LEAD_ARCHIVED',
       });
+    }
+    if (current[0] && input.status !== undefined) {
+      const currentStatus = normalizeLeadStatus(current[0].status);
+      const nextStatus = normalizeLeadStatus(input.status);
+      if (
+        (currentStatus === 'converted' && nextStatus !== 'converted') ||
+        (currentStatus !== 'converted' && nextStatus === 'converted')
+      ) {
+        throw Object.assign(
+          new Error('已签约状态只能通过专用签约操作修改或撤销'),
+          { status: 400 }
+        );
+      }
     }
     const rows = await this.transaction
       .update(leads)

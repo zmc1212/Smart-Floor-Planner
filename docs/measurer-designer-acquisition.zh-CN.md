@@ -74,6 +74,17 @@
 - 状态：`pending_settlement`（待结算）、`paid`（已发放）、`voided`（作废）。当前业务只允许 `pending_settlement -> paid`，作废需后续明确业务入口和审计要求。
 - `paid` 必须记录 `settled_at` 和 `settled_by`。
 
+### 3.5 客户签约标记
+
+- 签约是线索业务生命周期事实，与微信获客确认和获客提成相互独立；标记或撤销签约都不创建订单、不扣款，也不生成、结算或冲销获客提成。
+- 同企业 `enterprise_admin` 可标记任意在用、未关闭线索；`designer` 只能标记 `assigned_to` 等于自己的线索。测量员和普通员工无此权限。
+- `new`、`measuring`、`designing` 及兼容历史状态均可标记为 `converted`。从早期阶段直接签约仅在确认界面提示跳过中间阶段，不阻断操作；`closed` 必须先重新打开，已归档线索必须先恢复。
+- 签约日期必填，按中国时区校验且不能晚于当天；合同金额和签约备注可选。金额仅是线索快照，不是订单或财务台账。
+- 转换事务写入 `converted_on`、`converted_at`、`converted_by`、`converted_from_status`、`contract_amount` 和 `conversion_note`，并创建 `converted` 生命周期事件。
+- 只有同企业 `enterprise_admin` 可以撤销签约，且必须填写原因；撤销恢复签约前状态、清空当前签约摘要，并创建 `conversion_reverted` 生命周期事件保留审计原因。
+- 通用 `POST /api/leads` 不允许直接创建 `converted`，`PUT /api/leads/[id]` 和户型导入/关联也不能进入或离开 `converted`；仓库层在持有行锁后再次校验，避免并发普通更新覆盖签约事实。客户端必须使用专用签约/撤销接口，避免绕过权限、输入校验和审计。
+- 专用动作必须存在企业上下文；无论详情还是创建/去重响应，普通微信客户都只能读取签约状态和日期，不返回内部签约金额、备注、操作人或精确操作时间。
+
 ## 4. 数据模型
 
 ### `admin_users`
@@ -95,6 +106,7 @@
 - `assigned_to`：创建时绑定的设计师；历史线索不随换绑迁移。
 - `status`：规范当前状态为 `new`、`measuring`、`designing`、
   `converted`、`closed`；历史状态仍可读取，并在 API 筛选和客户端标签中归一化。
+- `converted_on`、`converted_at`、`converted_by`、`converted_from_status`、`contract_amount`、`conversion_note`：当前签约日期、操作审计、撤销恢复点和可选合同摘要；金额不进入订单、扣款或提成账本。
 - `acquired_at`、`acquired_by`：设计师确认时间和确认人。
 - API DTO 从 `acquired_at` 派生 `acquisitionStatus`，并返回独立的 `acquisitionCommissionStatus`；不新增持久化获客状态列。
 - `archived_at`、`archived_by`、`archive_reason`、`archive_note` 是独立的可见性生命周期。归档线索保留户型、正式量房、AI 工作流/生成、获客事实、提成、通知和跟进记录，可恢复且不改变负责人或结算事实；归档线索从获客任务隐藏，所有新增写入统一返回 `409 LEAD_ARCHIVED`。
@@ -124,6 +136,8 @@
 | `POST /api/staff/wechat-qr` | 员工管理权限 | `multipart/form-data` 上传图片，使用当前启用的默认媒体存储 Provider 写入 `media_assets`，返回资产 ID 和短期图片地址；历史资源仍按自身记录的 Provider 读取。 |
 | `POST /api/leads` | 小程序测量员或既有线索创建权限 | 自动写入测量员、绑定设计师和 `new`，保留手机号去重。 |
 | `POST /api/leads/[id]/acquire` | 负责该线索的设计师 | 原子写入获客确认事实，保持业务状态不变，创建唯一待结算提成并通知测量员。 |
+| `POST /api/leads/[id]/convert` | 本企业负责人或负责该线索的设计师 | 把在用开放线索原子标记为 `converted`，校验非未来签约日期，并写入可选金额/备注和生命周期审计。 |
+| `POST /api/leads/[id]/revert-conversion` | 本企业负责人 | 必填撤销原因，恢复签约前状态并写入撤销审计；不改变订单、扣款或获客提成。 |
 | `GET /api/leads?archiveState=archived` | `leads.archive_manage` | 读取归档区；普通列表默认只返回在用线索。 |
 | `POST /api/leads/archive-preview`、`POST /api/leads/archive` | `leads.archive_manage` + 行级访问 | 预检并归档最多 100 条线索，保留全部业务资产；运行中的 AI 任务只阻止受影响条目。 |
 | `POST /api/leads/[id]/restore` | `leads.archive_manage` + 行级访问 | 恢复可见性、原业务状态和关联关系。 |
@@ -143,13 +157,13 @@
 
 - `/staff`：设计师微信号/二维码、测量员绑定设计师，不再承载获客提成配置。
 - `/acquisition-commissions`：按状态和测量员查看获客提成、人工确认发放；`/acquisition-commissions/settings` 是仅企业负责人可见的企业固定提成规则页。
-- `/leads`：后台线索列表、四步业务状态、独立获客确认筛选和 `closed` 终止筛选。
+- `/leads`：后台线索列表、四步业务状态、独立获客确认筛选和 `closed` 终止筛选；详情抽屉按服务端权限提供单条签约及负责人撤销，不提供批量签约。
 
 ### Mini Program
 
 - `pages/leads-management/leads-management`：四步业务状态筛选；仅测量员在胶囊安全内容通道看到轻量“我的设计师”入口。
 - `packages/business/acquisition-center/acquisition-center`：设计师确认微信交接；测量员在汇总后通过唯一“我的设计师 / 查看微信”入口查看当前绑定，任务卡只显示等待、回执和提成摘要。任务列表支持原生 `scroll-view` 手动下拉刷新；仅在页面可见时每 30 秒刷新当前状态，隐藏或卸载时清理定时器，并复用在途请求保护。
-- `packages/business/lead-detail`：四步业务状态时间线、正式量房和普通“获客协作”信息组；不重复实现确认动作。
+- `packages/business/lead-detail`：四步业务状态时间线下方提供独立的签约进度区和安全区底部确认层；按服务端权限允许负责人/负责设计师标记签约及负责人撤销，仍不重复实现获客确认动作。
 - `components/designer-contact-sheet/designer-contact-sheet`：线索页、详情和协作工作台复用的只读设计师名片底部抽屉。它通过 `wx.request` 获取受保护二维码的图片字节，写入小程序本地临时文件后再交给 `<image>` 渲染；保留既有签名和企业范围校验，同时避开远程图片下载域名/缓存通道。加载失败后，重试会卸载失败图片并显示有时限的刷新状态，先刷新按角色裁剪的父级设计师资料；每次请求还会在签名负载之外附加仅客户端使用的缓存标识。
 - `packages/business/commission-records`：测量员查看获客提成汇总、明细和结算状态。
 - `pages/mine`：未读通知入口和提醒。
@@ -163,7 +177,7 @@
 3. 设计师只能确认自己负责的线索；测量员只能读取自己录入的线索、页面级当前绑定设计师资料和自己的提成。任务条目仍保留历史负责人身份事实，但不得逐条重复暴露微信号或二维码。
 4. 二维码访问必须校验企业归属并生成签名 URL，不能暴露原始存储密钥或不受限公共 URL。
 5. 删除/停用设计师前必须检查绑定关系；历史线索和已生成提成不能因为换绑被改写。
-6. 归档和删除事务锁定线索并在提交前重查关联数据。生命周期事件记录操作者、时间、线索 ID、动作、原因和影响统计，不包含客户 PII，永久删除后仍保留。手机号录入命中归档档案时返回 `409 ARCHIVED_LEAD_EXISTS`，不会创建替代线索或重复提成。
+6. 归档和删除事务锁定线索并在提交前重查关联数据；存在任意当前或历史签约事实的线索不能按“空白线索”永久删除。生命周期事件记录操作者、时间、线索 ID、动作、原因和影响统计，不包含客户 PII，永久删除后仍保留。手机号录入命中归档档案时返回 `409 ARCHIVED_LEAD_EXISTS`，不会创建替代线索或重复提成。
 
 ## 8. 后续细化清单
 
@@ -176,10 +190,10 @@
 
 ## 9. 相关实现位置
 
-- Migration：`admin/drizzle/0016_measurer_designer_acquisition.sql`、`admin/drizzle/0017_acquisition_workbench.sql`、`admin/drizzle/0019_lead_archive_lifecycle.sql`、`admin/drizzle/0020_lead_lifecycle_actor_indexes.sql`
+- Migration：`admin/drizzle/0016_measurer_designer_acquisition.sql`、`admin/drizzle/0017_acquisition_workbench.sql`、`admin/drizzle/0019_lead_archive_lifecycle.sql`、`admin/drizzle/0020_lead_lifecycle_actor_indexes.sql`、`admin/drizzle/0023_lead_conversion.sql`
 - Schema：`admin/src/db/schema.ts`
 - 员工 API：`admin/src/app/api/staff/`、`admin/src/app/api/staff/wechat-qr/`
-- 线索 API：`admin/src/app/api/leads/`、`admin/src/app/api/leads/[id]/acquire/`
+- 线索 API：`admin/src/app/api/leads/`、`admin/src/app/api/leads/[id]/acquire/`、`admin/src/app/api/leads/[id]/convert/`、`admin/src/app/api/leads/[id]/revert-conversion/`
 - 获客任务/提成 API：`admin/src/app/api/acquisition-tasks/`、`admin/src/app/api/acquisition-commissions/`
 - 通知 API：`admin/src/app/api/miniprogram/notifications/`
 - Admin 页面：`admin/src/app/(admin)/(merchant)/staff/`、`admin/src/app/(admin)/(merchant)/acquisition-commissions/`

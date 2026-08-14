@@ -77,6 +77,17 @@ fields remain the audit record after the current status advances.
 - States are `pending_settlement`, `paid`, and `voided`. The implemented settlement transition is `pending_settlement -> paid`.
 - A paid record stores `settled_at` and `settled_by`.
 
+### 3.5 Lead conversion
+
+- Conversion is a lead-lifecycle fact independent of WeChat acquisition confirmation and acquisition commission. Marking or reverting conversion creates no order, charge, acquisition commission, settlement, or reversal.
+- An in-tenant `enterprise_admin` may convert any active, non-closed lead. A `designer` may convert only a lead whose `assigned_to` is that designer. Measurers and ordinary staff have no conversion permission.
+- `new`, `measuring`, `designing`, and compatible historical states can enter `converted`. A direct early-stage conversion is warned about in the confirmation UI but remains valid; `closed` leads must be reopened and archived leads restored first.
+- The signing date is required, checked in the China time zone, and cannot be later than today. Contract amount and note are optional; the amount is only a lead snapshot, not an order or financial ledger.
+- The transaction writes `converted_on`, `converted_at`, `converted_by`, `converted_from_status`, `contract_amount`, and `conversion_note`, then appends a `converted` lifecycle event.
+- Only an in-tenant `enterprise_admin` can revert conversion, with a required reason. Reversion restores the pre-conversion status, clears the current conversion summary, and appends a `conversion_reverted` event retaining the audit reason.
+- Generic `POST /api/leads` cannot create `converted`, and neither `PUT /api/leads/[id]` nor floor-plan import/linking can enter or leave `converted`. The repository rechecks under the row lock so a concurrent ordinary update cannot overwrite a conversion fact. Clients must use the dedicated endpoints so permission, validation, and audit rules cannot be bypassed.
+- Dedicated actions require an enterprise context. Across detail and create/dedup responses, ordinary WeChat customers may read only the converted status and signing date; internal amount, note, operator, and exact operation time are omitted.
+
 ## 4. Data model
 
 ### `admin_users`
@@ -99,6 +110,7 @@ fields remain the audit record after the current status advances.
 - `status`: canonical current status `new`, `measuring`,
   `designing`, `converted`, or `closed`; historical values remain readable and
   are normalized in API filters and client labels.
+- `converted_on`, `converted_at`, `converted_by`, `converted_from_status`, `contract_amount`, and `conversion_note`: current signing date, operator audit, reversion restore point, and optional contract summary. The amount does not enter the order, charge, or commission ledgers.
 - `acquired_at` and `acquired_by`: confirmation audit fields.
 - DTOs derive `acquisitionStatus` from `acquired_at` and expose an independent `acquisitionCommissionStatus`; no persisted acquisition-status column is added.
 - `archived_at`, `archived_by`, `archive_reason`, and `archive_note` are an independent visibility lifecycle. Archived leads retain floor plans, formal surveys, AI workflows/generations, acquisition facts, commissions, notifications, and follow-ups for history and can be restored without changing ownership or settlement facts. Archived leads are hidden from acquisition tasks and all lead write paths return `409 LEAD_ARCHIVED`.
@@ -134,6 +146,8 @@ fields remain the audit record after the current status advances.
 | `POST /api/staff/wechat-qr` | Staff-management permission | Multipart image upload to `media_assets` using the active default media-storage provider; returns asset ID and short-lived URL. Historical assets continue to use their recorded provider. |
 | `POST /api/leads` | Authenticated lead creator; measurer flow is server-derived | Writes measurer, bound designer, and `new`; preserves phone de-duplication. |
 | `POST /api/leads/[id]/acquire` | Assigned designer | Atomically records the handoff without changing lifecycle status, creates the unique pending commission, and notifies the measurer. |
+| `POST /api/leads/[id]/convert` | In-tenant enterprise admin or assigned designer | Atomically marks an active open lead as `converted`, validates a non-future signing date, and records the optional amount/note plus lifecycle audit. |
+| `POST /api/leads/[id]/revert-conversion` | In-tenant enterprise admin | Requires a reason, restores the pre-conversion status, and records the reversion audit without changing orders, charges, or acquisition commission. |
 | `GET /api/leads?archiveState=archived` | `leads.archive_manage` | Reads the archived-only area; normal list queries default to active leads. |
 | `POST /api/leads/archive-preview`, `POST /api/leads/archive` | `leads.archive_manage` plus row access | Preview and archive up to 100 leads, retaining all business assets; in-flight AI jobs block only the affected rows. |
 | `POST /api/leads/[id]/restore` | `leads.archive_manage` plus row access | Restores visibility and original business state/relations. |
@@ -153,14 +167,13 @@ Tenant endpoints must continue to use shared tenant helpers, RLS transactions, a
 
 - `/staff`: designer WeChat profile and measurer-to-designer binding only.
 - `/acquisition-commissions`: settlement-record filters, summaries, and manual settlement; `/acquisition-commissions/settings` is the enterprise-admin-only fixed commission rule page.
-- `/leads`: lead list, canonical four-step business labels, an independent acquisition-confirmation filter, and the terminal
-  `closed` filter.
+- `/leads`: lead list, canonical four-step business labels, an independent acquisition-confirmation filter, and the terminal `closed` filter. Its detail drawer exposes single-lead conversion and manager-only reversion from server-provided permissions; bulk conversion is not provided.
 
 ### Mini Program
 
 - `pages/leads-management/leads-management`: four-step business filters and a lightweight measurer-only `我的设计师` entry below the capsule safe lane.
 - `packages/business/acquisition-center/acquisition-center`: designer confirmation plus one page-level measurer designer-contact entry and task-level waiting/receipt/commission-summary views. Its task list supports native `scroll-view` pull-to-refresh and refreshes the active status every 30 seconds only while the page is visible; polling is cleared on hide/unload and shares the active-request guard.
-- `packages/business/lead-detail`: four-step status rail, formal surveying, and a normal Acquisition Collaboration information group; confirmation is not duplicated here.
+- `packages/business/lead-detail`: a separate conversion progress area below the four-step rail and safe-area bottom confirmation sheets, with server-authorized manager/assigned-designer conversion and manager-only reversion. Acquisition confirmation remains outside this page.
 - `components/designer-contact-sheet/designer-contact-sheet`: the shared read/copy-only bottom sheet used by Leads, lead detail, and the workbench. It retrieves the protected QR with `wx.request` as image bytes, writes an app-local temporary image, then gives that local path to `<image>`; this keeps the existing signed, enterprise-scoped authorization while avoiding the separate remote-image download-domain/cache path. Retry unmounts the failed image, shows a bounded refresh state, and refreshes the role-scoped parent profile; each request includes a client-only cache key outside the signed payload.
 - `packages/business/commission-records`: measurer acquisition commission summary and detail.
 - `pages/mine`: unread notification entry.
@@ -174,7 +187,7 @@ Only measurers see the designer QR and acquisition commission entry. Designers d
 3. Designers can confirm only their assigned leads. Measurers can read only their own leads, one page-level current bound-designer profile, and commissions. Task rows keep historical assignee identity facts but do not repeat WeChat IDs or QR data.
 4. QR delivery verifies enterprise ownership and uses a signed URL; storage keys and unrestricted public URLs must not be exposed.
 5. Rebinding never rewrites historical leads or generated commissions.
-6. Archive and purge transactions lock the lead row and recheck relationships before commit. Lifecycle events keep actor/time/lead/action/reason and aggregate impact without customer PII, including after purge. Duplicate phone intake returns `409 ARCHIVED_LEAD_EXISTS` for an archived match and never creates a replacement commission.
+6. Archive and purge transactions lock the lead row and recheck relationships before commit; a lead with any current or historical conversion fact cannot be permanently deleted as an empty lead. Lifecycle events keep actor/time/lead/action/reason and aggregate impact without customer PII, including after purge. Duplicate phone intake returns `409 ARCHIVED_LEAD_EXISTS` for an archived match and never creates a replacement commission.
 
 ## 8. Refinement backlog
 
@@ -187,10 +200,10 @@ Only measurers see the designer QR and acquisition commission entry. Designers d
 
 ## 9. Implementation references
 
-- Migrations: `admin/drizzle/0016_measurer_designer_acquisition.sql`, `admin/drizzle/0017_acquisition_workbench.sql`, `admin/drizzle/0019_lead_archive_lifecycle.sql`, `admin/drizzle/0020_lead_lifecycle_actor_indexes.sql`
+- Migrations: `admin/drizzle/0016_measurer_designer_acquisition.sql`, `admin/drizzle/0017_acquisition_workbench.sql`, `admin/drizzle/0019_lead_archive_lifecycle.sql`, `admin/drizzle/0020_lead_lifecycle_actor_indexes.sql`, `admin/drizzle/0023_lead_conversion.sql`
 - Schema: `admin/src/db/schema.ts`
 - Staff APIs: `admin/src/app/api/staff/`, `admin/src/app/api/staff/wechat-qr/`
-- Lead APIs: `admin/src/app/api/leads/`, `admin/src/app/api/leads/[id]/acquire/`
+- Lead APIs: `admin/src/app/api/leads/`, `admin/src/app/api/leads/[id]/acquire/`, `admin/src/app/api/leads/[id]/convert/`, `admin/src/app/api/leads/[id]/revert-conversion/`
 - Task/commission APIs: `admin/src/app/api/acquisition-tasks/`, `admin/src/app/api/acquisition-commissions/`
 - Notification APIs: `admin/src/app/api/miniprogram/notifications/`
 - Admin pages: `admin/src/app/(admin)/(merchant)/staff/`, `admin/src/app/(admin)/(merchant)/acquisition-commissions/`

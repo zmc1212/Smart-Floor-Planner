@@ -8,6 +8,8 @@ import {
   leads,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
+import { httpError } from '@/lib/http-error';
+import { normalizeLeadStatus } from '@/lib/lead-status';
 
 const IN_FLIGHT_AI_STATUSES = ['created', 'pending', 'processing'];
 
@@ -20,6 +22,7 @@ export interface LeadLifecycleImpact {
   inFlightAiCount: number;
   followUpCount: number;
   hasAcquisition: boolean;
+  hasConversion: boolean;
   commissionCount: number;
 }
 
@@ -39,6 +42,7 @@ function impactMetadata(impact: LeadLifecycleImpact): Record<string, unknown> {
     inFlightAiCount: impact.inFlightAiCount,
     followUpCount: impact.followUpCount,
     hasAcquisition: impact.hasAcquisition,
+    hasConversion: impact.hasConversion,
     commissionCount: impact.commissionCount,
   };
 }
@@ -57,7 +61,7 @@ export class LeadLifecycleRepository {
 
   async impacts(ids: bigint[]): Promise<LeadLifecycleImpact[]> {
     if (!ids.length) return [];
-    const [leadRows, floorPlanRows, workflowRows, generationRows, inFlightRows, commissionRows] = await Promise.all([
+    const [leadRows, floorPlanRows, workflowRows, generationRows, inFlightRows, commissionRows, conversionEventRows] = await Promise.all([
       this.transaction.select().from(leads).where(inArray(leads.id, ids)),
       this.transaction
         .select({ leadId: leadFloorPlans.leadId, value: count() })
@@ -88,12 +92,21 @@ export class LeadLifecycleRepository {
         .from(leadAcquisitionCommissions)
         .where(inArray(leadAcquisitionCommissions.leadId, ids))
         .groupBy(leadAcquisitionCommissions.leadId),
+      this.transaction
+        .select({ leadId: leadLifecycleEvents.leadRecordId, value: count() })
+        .from(leadLifecycleEvents)
+        .where(and(
+          inArray(leadLifecycleEvents.leadRecordId, ids),
+          inArray(leadLifecycleEvents.action, ['converted', 'conversion_reverted'])
+        ))
+        .groupBy(leadLifecycleEvents.leadRecordId),
     ]);
     const floorPlanMap = toCountMap(floorPlanRows);
     const workflowMap = toCountMap(workflowRows);
     const generationMap = toCountMap(generationRows);
     const inFlightMap = toCountMap(inFlightRows);
     const commissionMap = toCountMap(commissionRows);
+    const conversionEventMap = toCountMap(conversionEventRows);
     return leadRows.map((lead) => ({
       leadId: lead.id,
       archived: Boolean(lead.archivedAt),
@@ -103,6 +116,13 @@ export class LeadLifecycleRepository {
       inFlightAiCount: inFlightMap.get(lead.id) ?? 0,
       followUpCount: Array.isArray(lead.followUpRecords) ? lead.followUpRecords.length : 0,
       hasAcquisition: Boolean(lead.acquiredAt || lead.acquiredBy),
+      hasConversion: Boolean(
+        lead.convertedOn ||
+        lead.convertedAt ||
+        lead.convertedBy ||
+        normalizeLeadStatus(lead.status) === 'converted' ||
+        (conversionEventMap.get(lead.id) ?? 0) > 0
+      ),
       commissionCount: commissionMap.get(lead.id) ?? 0,
     }));
   }
@@ -167,6 +187,130 @@ export class LeadLifecycleRepository {
       .returning({ id: leads.id, enterpriseId: leads.enterpriseId, archiveReason: leads.archiveReason });
     if (!rows[0]?.enterpriseId) return null;
     await this.recordEvent(leadId, rows[0].enterpriseId, actorId, 'purged', rows[0].archiveReason, impactMetadata(impact));
+    return rows[0];
+  }
+
+  async convert(input: {
+    leadId: bigint;
+    actorId: bigint;
+    convertedOn: string;
+    contractAmount: string | null;
+    conversionNote: string | null;
+  }) {
+    const current = await this.transaction
+      .select()
+      .from(leads)
+      .where(eq(leads.id, input.leadId))
+      .for('update')
+      .limit(1);
+    const lead = current[0];
+    if (!lead) return null;
+    if (lead.archivedAt) {
+      throw Object.assign(httpError('该客户线索已归档，请先恢复后再操作', 409), {
+        code: 'LEAD_ARCHIVED',
+      });
+    }
+    const normalized = normalizeLeadStatus(lead.status);
+    if (normalized === 'converted') throw httpError('该客户已经标记为已签约', 409);
+    if (normalized === 'closed') throw httpError('已关闭线索需要先重新打开', 409);
+    if (!['new', 'measuring', 'designing'].includes(normalized)) {
+      throw httpError('当前线索状态不能标记为已签约', 409);
+    }
+
+    const now = new Date();
+    const rows = await this.transaction
+      .update(leads)
+      .set({
+        status: 'converted',
+        convertedOn: input.convertedOn,
+        convertedAt: now,
+        convertedBy: input.actorId,
+        convertedFromStatus: lead.status,
+        contractAmount: input.contractAmount,
+        conversionNote: input.conversionNote,
+        updatedAt: now,
+      })
+      .where(and(
+        eq(leads.id, input.leadId),
+        eq(leads.status, lead.status),
+        isNull(leads.archivedAt)
+      ))
+      .returning();
+    if (!rows[0]) throw httpError('线索状态已变化，请刷新后重试', 409);
+    await this.recordEvent(
+      input.leadId,
+      rows[0].enterpriseId,
+      input.actorId,
+      'converted',
+      null,
+      {
+        previousStatus: lead.status,
+        convertedOn: input.convertedOn,
+        contractAmount: input.contractAmount,
+      }
+    );
+    return rows[0];
+  }
+
+  async revertConversion(input: {
+    leadId: bigint;
+    actorId: bigint;
+    reason: string;
+  }) {
+    const current = await this.transaction
+      .select()
+      .from(leads)
+      .where(eq(leads.id, input.leadId))
+      .for('update')
+      .limit(1);
+    const lead = current[0];
+    if (!lead) return null;
+    if (lead.archivedAt) {
+      throw Object.assign(httpError('该客户线索已归档，请先恢复后再操作', 409), {
+        code: 'LEAD_ARCHIVED',
+      });
+    }
+    if (normalizeLeadStatus(lead.status) !== 'converted') {
+      throw httpError('该客户当前不是已签约状态', 409);
+    }
+    const originalStatus = lead.convertedFromStatus || 'designing';
+    const normalizedOriginal = normalizeLeadStatus(originalStatus);
+    const restoredStatus = ['new', 'measuring', 'designing'].includes(normalizedOriginal)
+      ? originalStatus
+      : 'designing';
+    const now = new Date();
+    const rows = await this.transaction
+      .update(leads)
+      .set({
+        status: restoredStatus,
+        convertedOn: null,
+        convertedAt: null,
+        convertedBy: null,
+        convertedFromStatus: null,
+        contractAmount: null,
+        conversionNote: null,
+        updatedAt: now,
+      })
+      .where(and(
+        eq(leads.id, input.leadId),
+        eq(leads.status, lead.status),
+        isNull(leads.archivedAt)
+      ))
+      .returning();
+    if (!rows[0]) throw httpError('线索状态已变化，请刷新后重试', 409);
+    await this.recordEvent(
+      input.leadId,
+      rows[0].enterpriseId,
+      input.actorId,
+      'conversion_reverted',
+      input.reason,
+      {
+        restoredStatus,
+        convertedOn: lead.convertedOn,
+        convertedAt: lead.convertedAt?.toISOString() || null,
+        contractAmount: lead.contractAmount,
+      }
+    );
     return rows[0];
   }
 

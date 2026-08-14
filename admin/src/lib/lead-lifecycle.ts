@@ -83,6 +83,7 @@ export function getPurgeBlockers(impact: LeadLifecycleImpact) {
   if (impact.aiGenerationCount > 0) blockers.push(`关联 ${impact.aiGenerationCount} 条 AI 生成记录`);
   if (impact.inFlightAiCount > 0) blockers.push(`仍有 ${impact.inFlightAiCount} 个 AI 任务运行中`);
   if (impact.hasAcquisition) blockers.push('存在获客确认事实');
+  if (impact.hasConversion) blockers.push('存在客户签约事实');
   if (impact.commissionCount > 0) blockers.push(`存在 ${impact.commissionCount} 条获客提成记录`);
   if (impact.followUpCount > 0) blockers.push(`存在 ${impact.followUpCount} 条跟进记录`);
   return blockers;
@@ -99,6 +100,7 @@ export function serializeLeadLifecycleImpact(impact: LeadLifecycleImpact) {
     inFlightAiCount: impact.inFlightAiCount,
     followUpCount: impact.followUpCount,
     hasAcquisition: impact.hasAcquisition,
+    hasConversion: impact.hasConversion,
     commissionCount: impact.commissionCount,
     canArchive: !impact.archived && impact.inFlightAiCount === 0,
     archiveBlockers:

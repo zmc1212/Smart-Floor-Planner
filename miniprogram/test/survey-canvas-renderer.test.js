@@ -1894,7 +1894,7 @@ test('viewport interaction keeps structural drawing and skips dimensions, labels
   );
 });
 
-test('formal and viewport wall rendering avoid compound fill paths at closed and T junctions', () => {
+test('formal and viewport wall rendering use one union-ring fill per wall colour group', () => {
   [createClosedRectangleDraft(), createClosedCornerCollinearClosureDraft()].forEach((draft) => {
     const scene = createScene(draft);
     const formalRecorder = createRecordingContext();
@@ -1911,18 +1911,29 @@ test('formal and viewport wall rendering avoid compound fill paths at closed and
     });
 
     [formalRecorder, interactionRecorder].forEach((recorder) => {
-      assert.ok(recorder.fills.length > 0);
-      assert.equal(recorder.fills.every((path) => (
-        path.filter((command) => command[0] === 'moveTo').length <= 1
-      )), true);
+      const wallFills = recorder.fillDetails.filter((detail) => (
+        detail.fillStyle === '#e2e2e0' || detail.fillStyle === '#8e8e8c'
+      ));
+      const expectedGroups = [
+        ['#8e8e8c', scene.wallSolidPlans.closed.rings],
+        ['#e2e2e0', scene.wallSolidPlans.open.rings]
+      ].filter(([, rings]) => rings.length);
+      assert.equal(wallFills.length, expectedGroups.length);
+      expectedGroups.forEach(([fillStyle, rings], index) => {
+        assert.equal(wallFills[index].fillStyle, fillStyle);
+        assert.equal(
+          wallFills[index].path.filter((command) => command[0] === 'moveTo').length,
+          rings.length
+        );
+      });
       const wallOutline = recorder.strokeDetails.find((detail) => detail.strokeStyle === '#1f1f1f');
       assert.ok(wallOutline);
-      assert.equal(wallOutline.path.some((command) => command[0] === 'closePath'), false);
+      assert.equal(wallOutline.path.some((command) => command[0] === 'closePath'), true);
     });
   });
 });
 
-test('a completed source wall paints over its open T branch at the shared intersection', () => {
+test('a mixed closed/open T junction keeps separate stable union-ring colour ownership', () => {
   let draft = createClosedRectangleDraft();
   let floor = surveyGraph.getActiveFloor(draft);
   const sourceWall = floor.walls[0];
@@ -1945,84 +1956,59 @@ test('a completed source wall paints over its open T branch at the shared inters
   const wallFills = recorder.fillDetails.filter((detail) => (
     detail.fillStyle === '#e2e2e0' || detail.fillStyle === '#8e8e8c'
   ));
-  assert.ok(wallFills.length > 1);
-  assert.equal(wallFills[0].fillStyle, '#e2e2e0');
-  assert.equal(wallFills.at(-1).fillStyle, '#8e8e8c');
-});
-
-test('mixed T junctions underpaint the complete union before closed walls', () => {
-  let draft = createClosedRectangleDraft();
-  let floor = surveyGraph.getActiveFloor(draft);
-  const sourceWall = floor.walls[0];
-  const sourceStart = surveyGraph.getNode(floor, sourceWall.startNodeId);
-  const sourceEnd = surveyGraph.getNode(floor, sourceWall.endNodeId);
-  const target = surveyGraph.getCursorPlacementTarget(floor, {
-    xMm: Math.round((sourceStart.xMm + sourceEnd.xMm) / 2),
-    yMm: Math.round((sourceStart.yMm + sourceEnd.yMm) / 2)
-  }, surveyGraph.CLOSE_TOLERANCE_MM);
-  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
-  draft = commitWall(draft, { xMm: 1500, yMm: -2000 }, 2000);
-  const scene = createScene(draft);
-  const recorder = createRecordingContext();
-
-  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
-
-  const wallFills = recorder.fillDetails.filter((detail) => (
-    detail.fillStyle === '#e2e2e0' || detail.fillStyle === '#8e8e8c'
-  ));
+  assert.deepEqual(wallFills.map((detail) => detail.fillStyle), ['#8e8e8c', '#e2e2e0']);
   assert.equal(
-    wallFills.filter((detail) => detail.fillStyle === '#e2e2e0').length,
-    scene.wallSolidPlan.polygons.length
+    wallFills[0].path.filter((command) => command[0] === 'moveTo').length,
+    scene.wallSolidPlans.closed.rings.length
   );
   assert.equal(
-    wallFills.filter((detail) => detail.fillStyle === '#8e8e8c').length,
-    scene.wallSolidPlans.closed.polygons.length
+    wallFills[1].path.filter((command) => command[0] === 'moveTo').length,
+    scene.wallSolidPlans.open.rings.length
   );
-  assert.ok(
-    scene.wallSolidPlan.polygons.length >
-      scene.wallSolidPlans.open.polygons.length + scene.wallSolidPlans.closed.polygons.length,
-    'the complete union must contribute the cross-group junction patch'
+  assert.equal(
+    recorder.fillRectDetails.some((detail) => (
+      detail.fillStyle === '#e2e2e0' || detail.fillStyle === '#8e8e8c'
+    )),
+    false,
+    'wall junctions must not be recoloured by device-pixel repair strips'
   );
 });
 
-test('native wall outlines stroke each union segment independently', () => {
+test('wall outlines stroke the complete classified union as one closed path', () => {
   const scene = createScene(createClosedCornerCollinearClosureDraft());
   const recorder = createRecordingContext();
 
   surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
 
   const wallOutlines = recorder.strokeDetails.filter((detail) => detail.strokeStyle === '#1f1f1f');
-  assert.equal(wallOutlines.length, scene.wallSolidPlan.segments.length);
-  assert.equal(wallOutlines.every((detail) => (
-    detail.path.filter((command) => command[0] === 'moveTo').length === 1 &&
-    detail.path.filter((command) => command[0] === 'lineTo').length === 1
-  )), true);
+  assert.equal(wallOutlines.length, 1);
+  assert.equal(
+    wallOutlines[0].path.filter((command) => command[0] === 'moveTo').length,
+    scene.wallSolidPlan.rings.length
+  );
+  assert.equal(
+    wallOutlines[0].path.filter((command) => command[0] === 'closePath').length,
+    scene.wallSolidPlan.rings.length
+  );
 });
 
-test('closed corners receive device-pixel scanline repairs after polygon fills', () => {
+test('closed corners render without source-polygon or scanline repair passes', () => {
   const scene = createScene(createClosedRectangleDraft());
   const recorder = createRecordingContext();
 
   surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 3 });
 
   assert.equal(scene.wallSolidPlan.joinPolygons.length, 4);
-  const repairRects = recorder.fillRectDetails.filter((detail) => (
+  assert.equal(recorder.fillRectDetails.some((detail) => (
     detail.fillStyle === '#e2e2e0' || detail.fillStyle === '#8e8e8c'
-  ));
-  assert.ok(repairRects.length >= scene.wallSolidPlan.joinPolygons.length * 3);
-  scene.wallSolidPlan.joinPolygons.forEach((polygon) => {
-    const center = polygon.reduce((point, current) => ({
-      x: point.x + current.x / polygon.length,
-      y: point.y + current.y / polygon.length
-    }), { x: 0, y: 0 });
-    assert.equal(repairRects.some((rect) => (
-      center.x >= rect.x && center.x <= rect.x + rect.width &&
-      center.y >= rect.y && center.y <= rect.y + rect.height
-    )), true, `missing scanline repair at ${JSON.stringify(center)}`);
-  });
+  )), false);
+  assert.equal(
+    recorder.fillDetails.filter((detail) => detail.fillStyle === '#8e8e8c').length,
+    1
+  );
 });
 
-test('viewport interaction projects and repairs its junction polygons at the moved position', () => {
+test('viewport interaction projects the same union rings used by the formal frame', () => {
   const scene = createScene(createClosedRectangleDraft());
   const recorder = createRecordingContext();
   const viewport = Object.assign({}, scene.viewport, {
@@ -2036,14 +2022,10 @@ test('viewport interaction projects and repairs its junction polygons at the mov
     viewport
   });
 
-  const repairRects = recorder.fillRectDetails.filter((detail) => detail.fillStyle === '#8e8e8c');
-  assert.ok(repairRects.length > 0);
-  const sourceCenter = scene.wallSolidPlan.joinPolygons[0].reduce((point, current) => ({
-    x: point.x + current.x / scene.wallSolidPlan.joinPolygons[0].length,
-    y: point.y + current.y / scene.wallSolidPlan.joinPolygons[0].length
-  }), { x: 0, y: 0 });
-  assert.equal(repairRects.some((rect) => (
-    sourceCenter.x + 41 >= rect.x && sourceCenter.x + 41 <= rect.x + rect.width &&
-    sourceCenter.y - 23 >= rect.y && sourceCenter.y - 23 <= rect.y + rect.height
-  )), true);
+  const closedFill = recorder.fillDetails.find((detail) => detail.fillStyle === '#8e8e8c');
+  assert.ok(closedFill);
+  const firstMove = closedFill.path.find((command) => command[0] === 'moveTo');
+  assert.ok(firstMove);
+  assert.equal(firstMove[1], scene.wallSolidPlans.closed.rings[0][0].x + 41);
+  assert.equal(firstMove[2], scene.wallSolidPlans.closed.rings[0][0].y - 23);
 });

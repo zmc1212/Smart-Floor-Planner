@@ -382,18 +382,29 @@ function stitchRings(segments) {
 function createWallSolidPlan(input) {
   const options = input || {};
   const sourceWalls = options.walls || [];
-  const polygons = sourceWalls
+  const sourcePolygons = sourceWalls
     .map((wall) => normalizePolygon(wall && wall.polygon))
     .filter((polygon) => polygon.length >= 3);
-  buildJoinPolygons(sourceWalls).forEach((polygon) => polygons.push(normalizePolygon(polygon)));
-  if (!polygons.length) return { rings: [], segments: [] };
+  const joinPolygons = buildJoinPolygons(sourceWalls)
+    .map((polygon) => normalizePolygon(polygon))
+    .filter((polygon) => polygon.length >= 3);
+  const polygons = sourcePolygons.concat(joinPolygons);
+  if (!polygons.length) {
+    return { polygons: [], joinPolygons: [], sourcePolygonCount: 0, rings: [], segments: [] };
+  }
   const allPoints = polygons.flat();
   const xs = allPoints.map((point) => point.x);
   const ys = allPoints.map((point) => point.y);
   const scale = Math.max(1, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
   const pieces = splitEdges(polygons);
   const segments = canonicalizeSegmentVertices(classifyBoundaryPieces(pieces, polygons, scale));
-  return { rings: stitchRings(segments), segments };
+  return {
+    polygons,
+    joinPolygons,
+    sourcePolygonCount: sourcePolygons.length,
+    rings: stitchRings(segments),
+    segments
+  };
 }
 
 module.exports = {

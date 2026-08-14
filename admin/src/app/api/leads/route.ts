@@ -30,16 +30,19 @@ import {
   canManageLeadArchive,
 } from '@/lib/lead-lifecycle';
 import { httpErrorStatus } from '@/lib/http-error';
+import { redactLeadConversionDetailsForConsumer } from '@/lib/lead-conversion';
 
-function leadDtoForMini(request: Request, lead: Parameters<typeof leadToDto>[0], role?: string) {
+export function leadDtoForMini(request: Request, lead: Parameters<typeof leadToDto>[0], role?: string) {
   const include = role === 'measurer';
+  const hasStaffContext = Boolean(role && role !== 'user');
   const assetId = lead.assignedUser?.wechatQrAssetId;
-  return leadToDto(lead, {
+  const dto = leadToDto(lead, {
     includeDesignerWechat: include,
     designerWechatQrUrl: include && assetId && lead.enterpriseId
       ? getSignedMiniAiAssetUrl({ request, assetId: assetId.toString(), enterpriseId: lead.enterpriseId.toString() })
       : null,
   });
+  return hasStaffContext ? dto : redactLeadConversionDetailsForConsumer(dto);
 }
 
 function errorMessage(error: unknown) {
@@ -227,6 +230,15 @@ export async function POST(request: Request) {
     if (String(body.status || '') === 'acquired') {
       return NextResponse.json(
         { success: false, error: 'acquired 已从线索业务状态移除，请使用获客确认接口' },
+        { status: 400 }
+      );
+    }
+    if (
+      body.status !== undefined &&
+      normalizeLeadStatus(String(body.status)) === 'converted'
+    ) {
+      return NextResponse.json(
+        { success: false, error: '新建线索不能直接标记已签约，请创建后使用专用签约操作' },
         { status: 400 }
       );
     }

@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -1006,6 +1007,15 @@ export const leads = appSchema.table(
     city: text('city'),
     source: text('source').notNull(),
     status: text('status').notNull().default('new'),
+    convertedOn: date('converted_on', { mode: 'string' }),
+    convertedAt: timestamp('converted_at', { withTimezone: true, mode: 'date' }),
+    convertedBy: bigint('converted_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    convertedFromStatus: text('converted_from_status'),
+    contractAmount: numeric('contract_amount', { precision: 14, scale: 2 }),
+    conversionNote: text('conversion_note'),
     acquiredAt: timestamp('acquired_at', { withTimezone: true, mode: 'date' }),
     acquiredBy: bigint('acquired_by', { mode: 'bigint' }).references(
       () => adminUsers.id,
@@ -1071,6 +1081,12 @@ export const leads = appSchema.table(
       table.createdAt
     ),
     index('leads_acquired_by_idx').on(table.acquiredBy),
+    index('leads_converted_by_idx').on(table.convertedBy),
+    index('leads_enterprise_converted_at_idx').on(
+      table.enterpriseId,
+      table.convertedAt,
+      table.id
+    ),
     index('leads_archived_by_idx').on(table.archivedBy),
     index('leads_enterprise_archived_created_idx').on(
       table.enterpriseId,

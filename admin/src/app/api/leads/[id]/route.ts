@@ -18,6 +18,11 @@ import {
   withMiniProgramPostgresTransaction,
 } from '@/lib/postgres-request-scope';
 import { getSignedMiniAiAssetUrl } from '@/lib/ai/mini-ai-assets';
+import {
+  getLeadConversionActions,
+  isProtectedConversionStatusChange,
+  redactLeadConversionDetailsForConsumer,
+} from '@/lib/lead-conversion';
 import { normalizeLeadStatus } from '@/lib/lead-status';
 import {
   canAccessLeadForActor,
@@ -80,15 +85,32 @@ function canAccess(
   return true;
 }
 
-function dtoForContext(request: Request, lead: LeadWithRelations, role?: string) {
+function dtoForContext(
+  request: Request,
+  lead: LeadWithRelations,
+  context: NonNullable<Awaited<ReturnType<typeof resolveLeadContext>>>
+) {
+  const role = context.kind === 'mini' ? context.mini.staff?.role || '' : context.admin.role;
+  const actorId = context.kind === 'mini'
+    ? context.mini.staff?._id
+      ? parsePostgresId(context.mini.staff._id, 'staff id')
+      : null
+    : parsePostgresId(context.admin.userId, 'userId');
   const include = role === 'measurer';
   const assetId = lead.assignedUser?.wechatQrAssetId;
-  return leadToDto(lead, {
+  let dto = leadToDto(lead, {
     includeDesignerWechat: include,
     designerWechatQrUrl: include && assetId && lead.enterpriseId
       ? getSignedMiniAiAssetUrl({ request, assetId: assetId.toString(), enterpriseId: lead.enterpriseId.toString() })
       : null,
   });
+  if (context.kind === 'mini' && !context.mini.staff) {
+    dto = redactLeadConversionDetailsForConsumer(dto);
+  }
+  return {
+    ...dto,
+    conversionActions: getLeadConversionActions(lead, role, actorId),
+  };
 }
 
 export async function GET(
@@ -137,7 +159,7 @@ export async function GET(
         );
       }
     }
-    return NextResponse.json({ success: true, data: dtoForContext(request, lead, context.kind === 'mini' ? context.mini.staff?.role : context.admin.role) });
+    return NextResponse.json({ success: true, data: dtoForContext(request, lead, context) });
   } catch (error: unknown) {
     return NextResponse.json(
       { success: false, error: errorMessage(error) },
@@ -167,6 +189,12 @@ export async function PUT(
         { status: 400 }
       );
     }
+    if (body.status !== undefined && normalizeLeadStatus(String(body.status)) === 'converted') {
+      return NextResponse.json(
+        { success: false, error: '请使用专用签约操作标记客户已签约' },
+        { status: 400 }
+      );
+    }
     if (body.assignedTo !== undefined) {
       return NextResponse.json(
         {
@@ -183,6 +211,15 @@ export async function PUT(
         const current = await repository.findById(leadId);
         if (!current || !canAccess(current, context)) return null;
         if (current.archivedAt) throw leadArchivedError();
+        if (
+          body.status !== undefined &&
+          isProtectedConversionStatusChange(current.status, String(body.status))
+        ) {
+          throw Object.assign(
+            new Error('已签约状态只能通过专用签约操作修改或撤销'),
+            { status: 400 }
+          );
+        }
 
         const input: LeadUpdate = {};
         if (body.name !== undefined) input.name = String(body.name).trim();
@@ -229,7 +266,7 @@ export async function PUT(
         { status: 404 }
       );
     }
-    return NextResponse.json({ success: true, data: dtoForContext(request, updated, context.kind === 'mini' ? context.mini.staff?.role : context.admin.role) });
+    return NextResponse.json({ success: true, data: dtoForContext(request, updated, context) });
   } catch (error: unknown) {
     return NextResponse.json(
       { success: false, code: (error as { code?: string }).code, error: errorMessage(error) },

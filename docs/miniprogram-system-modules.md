@@ -197,7 +197,8 @@ must update that ledger pair in the same change.
   `packages/business/lead-detail/lead-detail`, and
   `packages/business/acquisition-center/acquisition-center`; designer contact
   details reuse `components/designer-contact-sheet`.
-- APIs: `/api/leads`, `/api/leads/[id]`, `/api/acquisition-tasks`, and
+- APIs: `/api/leads`, `/api/leads/[id]`, `POST /api/leads/[id]/convert`,
+  `POST /api/leads/[id]/revert-conversion`, `/api/acquisition-tasks`, and
   `/api/floorplans/[id]` GET/DELETE.
 - Implemented: customer name/phone/community/area/style capture, recent leads,
   list/detail views, formal-plan association, primary-plan name/status/closed
@@ -213,6 +214,14 @@ must update that ledger pair in the same change.
   terminal filter, while historical `acquired` values render as `New lead` for
   compatibility. Acquisition confirmation is an independent collaboration fact,
   not a customer workflow stage.
+  As of 2026-08-14, lead detail exposes one conversion action directly below
+  the existing stage rail. Enterprise administrators may act on enterprise
+  leads only when an enterprise context exists, while designers may act only on their assigned leads. The bottom sheet
+  limits signing dates to the current China-time-zone date and accepts optional amount and note while
+  explicitly stating that no order, charge, or acquisition-commission
+  settlement is created. The same area becomes a signed summary after success;
+  enterprise administrators can revert with a required reason, while designers,
+  measurers, and ordinary users cannot. Ordinary WeChat customer detail keeps only the signed status and date, omitting internal amount, note, operator, and exact operation time. The detail API supplies the action capabilities so the client does not infer permission locally.
 - Persistence: lead and formal-plan list/detail/create/update/delete operations
   use PostgreSQL RLS transactions and decimal-string IDs; lead-plan linking and
   primary-plan cleanup are atomic.
@@ -1586,18 +1595,29 @@ must update that ledger pair in the same change.
   role, version-4 field, BLE audit, room dimension, or opening-position contract
   changed. Native DevTools Canvas verification remains pending because the
   existing window still exposes no compatible automation endpoint.
-- Native Canvas junction repaint stability (2026-08-14): the real-device
-  screenshots `281f295ee0d54aa908237afea5d3f484.jpg` and
-  `2ef3a3cd6e3e23ed79ae86aa0f81c5a8.jpg` showed that an unchanged intersection
-  could disappear and reappear after panning. Wall fill no longer submits touching
-  rings, holes, and T/cross nodes to one native compound `fill()`; it paints one
-  convex union-source polygon per call, while outlines use only the union's
-  classified boundary segments. Viewport interaction now projects those same
-  polygons, segments, and topology-solid endpoints. Structural regression asserts
-  that formal and gesture frames contain no compound wall fill/closed outline;
-  the focused renderer/topology/visual run passes `68/68`, and the regenerated
-  seven-scene atlas remains visually continuous. Markup, controls, routes, APIs,
-  roles, graph data, measurement values, room faces, and opening positions are unchanged.
+- Native Canvas Git-baseline junction restoration (2026-08-14): comparison of
+  current commit `d3d3a1c` with the last stable commit `ad28143` identified the
+  regression in the draw contract, not the graph topology or cache. The stable
+  renderer filled the classified closed/open union rings once per colour group
+  and stroked the complete closed union outline once. Replacing that with
+  per-source-polygon fills, per-boundary-segment strokes, and device-pixel
+  scanline join repairs gave light open-wall patches and dark completed walls
+  competing colour ownership at mixed T/corner junctions; changed pixel sampling
+  during pan explains why a missing junction could reappear. Formal, gesture, and
+  lens frames now restore the stable union-ring contract while retaining
+  topology-node wall solids, measurement-inset separation, scene generations,
+  and stale-callback guards. `joinPolygons` remains diagnostic metadata and is no
+  longer an extra paint layer. Structural regressions require one compound-ring
+  fill per non-empty colour group, one closed-ring outline for the complete wall
+  union, and no wall-colour `fillRect()` repair strips. The focused renderer,
+  solid-plan, visual, and viewport run passes `68/68`; the seven-scene atlas is
+  regenerated with the runtime ring order and passes manual continuity review.
+  The full Mini Program suite passes `326/329`; the same three acquisition,
+  API-environment, and offline-debug failures are unrelated.
+  Renderer revision `git-union-ring-restore-v6` identifies this build. Markup,
+  controls, routes, APIs, roles, graph data, measurements, room faces, and opening
+  positions are unchanged. Native `390x844` verification remains pending because
+  the existing DevTools window has no compatible automation endpoint.
   Formal scenes now carry a monotonic revision: stale `setData` callbacks are
   rejected, formal redraws arriving during pan/pinch ownership are deferred to
   the final handoff, and late canvas-rect/main-canvas/drag-canvas initialization
@@ -1605,36 +1625,6 @@ must update that ledger pair in the same change.
   renderer, topology, visual, viewport, and editor run passes `99/99`. Runtime
   vConsole prints renderer revision `native-polygon-frame-owner-v3` so a device
   can confirm that it actually loaded this build.
-- Native Canvas mixed-junction underpaint (2026-08-14): device confirmation of
-  `native-polygon-frame-owner-v3` proved that cache and stale-callback ownership
-  were not the remaining cause. The visible fill and outline were consuming
-  different geometry: open and closed walls were filled from two independently
-  unioned groups, while the outline used the complete union. Cross-group T/corner
-  patches therefore existed only in the outline, and Android antialiasing could
-  expose their touching fill edge as background until another viewport frame.
-  Both formal and viewport frames now underpaint every polygon from the complete
-  union in the open-wall colour, then repaint closed polygons in the completed-wall
-  colour. Every classified boundary segment is also stroked independently instead
-  of sharing one native stroke with many touching subpaths. The expanded focused
-  run passes `101/101`; renderer revision `native-union-underpaint-v4` identifies
-  this build. The full Mini Program run passes `325/328`; the same three existing
-  acquisition, API-environment, and offline-debug failures remain unrelated.
-  Markup, controls, topology, dimensions, APIs, roles, and persistence are
-  unchanged; native-device verification remains required.
-- Native Canvas deterministic junction repair (2026-08-14): continued device
-  failures showed that complete-union underpainting still depended on each
-  separate corner/T patch path being rasterized. A missed patch produces the
-  full wall-thickness square seen at rectangle corners, not a subpixel seam.
-  The solid plan now exposes `joinPolygons`; after ordinary wall fills, both
-  formal and viewport frames convert every join polygon into DPR-aligned
-  horizontal scanlines and repaint it with `fillRect()`. Open colour is laid
-  first, then only scanline ranges intersecting the closed-wall union regain
-  the completed-wall colour. This removes the single native path-fill call as
-  a failure point while preserving mixed T colour priority and diagonal joins.
-  Focused regressions pass `103/103`, the full Mini Program run passes `327/330`
-  with the same three unrelated failures, and renderer revision
-  `native-scanline-junction-repair-v5` identifies this build. No graph, route,
-  API, role, measurement, opening, WXML, or WXSS contract changed.
 - Open-chain reset continuation parity (2026-08-14): after an operator resets
   the cursor and snaps it back to either the inner or outer vertex of a dangling
   open-wall endpoint, the next wall now inherits the source wall's oriented
@@ -1709,7 +1699,7 @@ The focused business and data contract is [`docs/measurer-designer-acquisition.m
 
 - `packages/business/acquisition-center/acquisition-center` is the sole designer confirmation entry. `/api/acquisition-tasks` supplies role-shaped pending/completed tasks, summaries, pagination, failure retry, idempotent confirmation, and exact notification `leadId` targeting. A measurer response returns the current binding once as page-level `designerProfile`; one `My Designer / View WeChat` utility follows the summary and task cards do not repeat designer contact data. Confirmation writes `acquiredAt/acquiredBy` and creates the acquisition commission without changing customer workflow status. The task list supports native `scroll-view` pull-to-refresh and refreshes the current status page every 30 seconds while visible; polling stops on hide/unload and never overlaps an active request.
 - `pages/leads-management/leads-management` and `components/lead-list` use the four-stage customer workflow and no longer expose an Acquired filter. Measurers open the shared `designer-contact-sheet` from the capsule-safe `My Designer` entry instead of receiving repeated WeChat and QR blocks on every card. The protected QR is fetched as bytes through the already-authorized Mini Program request channel and rendered from an app-local temporary file, avoiding a separate remote-image download-domain/cache failure. Retry uses a bounded refresh state, a renewed `designerProfile`, and a client-only cache key.
-- `packages/business/lead-detail/lead-detail` accepts `id` or notification `leadId`, renders the four-stage rail, next action, and an ordinary acquisition fact group, but no acquisition-confirmation hero action. Its formal-surveying card shows only real graph status, closed-space count, and update time, and the shared bottom sheet remains the designer-contact entry.
+- `packages/business/lead-detail/lead-detail` accepts `id` or notification `leadId`, renders the four-stage rail, next action, and an ordinary acquisition fact group, but no acquisition-confirmation hero action. A separate conversion area below the rail consumes only detail-API `conversionActions`: enterprise admins or the assigned designer can open a native bottom sheet to mark conversion, the converted state shows date/operator/time/amount/note, and only enterprise admins receive the reasoned reversion action. Its formal-surveying card shows only real graph status, closed-space count, and update time, and the shared bottom sheet remains the designer-contact entry.
 - `packages/business/commission-records/commission-records` consumes `/api/commission-records`; measurers receive the independent lead-acquisition records with pending/paid summaries while salesperson order commissions remain unchanged.
 - The Mine page receives the role-shaped Acquisition Collaboration action and real pending badge from `/api/miniprogram/mine`. Selected in-app notifications are marked through `/api/miniprogram/notifications/read` and prefer `metadata.page` to deep-link the exact workbench record. Notification delivery failures remain visible through the in-app fallback.
 

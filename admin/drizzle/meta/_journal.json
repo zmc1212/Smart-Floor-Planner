@@ -162,6 +162,13 @@
       "when": 1786627200000,
       "tag": "0022_enterprise_admin_promotion_records",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1786713600000,
+      "tag": "0023_lead_conversion",
+      "breakpoints": true
     }
   ]
 }
