@@ -19,7 +19,7 @@ restorations. Read it before changing visible Mini Program UI.
 ## Current ledger
 
 Surveying editor QA correction (2026-08-14): the current production renderer is
-`wall-local-branch-far-face-v12`. The wall-local union correction remains in
+`degree-aware-branch-far-face-v13`. The wall-local union correction remains in
 place; selected-wall fill uses square caps clipped to the actual adjacent-wall
 solid footprint, and a newly drawn T branch now starts at the source wall's far
 face instead of painting its light body through the source wall.

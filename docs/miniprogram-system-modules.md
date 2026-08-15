@@ -883,6 +883,13 @@ must update that ledger pair in the same change.
   production route, API, roles, measurement audits, and
   `{ version: 4, measurementMode: 'surveying', surveyGraph }` contract are
   unchanged.
+- Concave-wall solid continuity (2026-08-14): renderer revision
+  `degree-aware-branch-far-face-v13` applies effective measurement endpoints only
+  to newly drawn branches at degree-three-or-higher junctions. Ordinary degree-two
+  concave corners in U-shaped and stepped outlines retain topology-node solids,
+  preventing a wall-thickness gap while preserving the T-branch far-face rule.
+  The focused Canvas suite passes `62/62`, H5 passes `29/29` and builds, and the
+  route, API, role, version-4 graph, and measurement-audit contracts are unchanged.
 - Isolated APK reconstruction research (2026-08-10):
   `research/legacy-zhouse-2d/` now exists outside the Mini Program package with
   a method-RVA/evidence ledger, independent millimetre geometry primitives,
@@ -1688,8 +1695,9 @@ must update that ledger pair in the same change.
   `codex-clipboard-1337ae98-24ed-4e5d-b5ce-52fb651562f6.png` are covered by a
   symmetric two-sided regression. The selection behavior was introduced by
   `wall-local-selection-junction-clip-v11`;
-  the current renderer `wall-local-branch-far-face-v12` additionally keeps a new
-  T branch out of the source-wall body. The focused Canvas suite passes `61/61`;
+   the current renderer `degree-aware-branch-far-face-v13` additionally keeps a new
+   T branch out of the source-wall body while retaining topology-node solids at
+   ordinary degree-two concave corners. The focused Canvas suite passes `62/62`;
   the H5 contract suite passes `3/3` and its build
   succeeds. The user-approved `3004eb002d311652998850a69781cf2d.jpg`
   is the branch-origin reference. The full Mini Program suite passes `336/339`;
