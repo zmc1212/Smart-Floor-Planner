@@ -1,231 +1,61 @@
-# 正式量房数据合同
+# Formal Surveying Data Contract
 
-## CAD 内核、事务与诊断合同（2026-08-14）
+This file records the current version-4 surveying contract. Historical geometry
+experiments and rollback narratives belong in Git history, not the live contract.
 
-- `miniprogram/utils/surveyWallGraph.js` 是唯一公共墙图入口，保留原 CommonJS 合同；新增
-  `validateSurveyDraft(draft, { mode: 'quick' | 'full' })`，统一返回
-  `{ valid, errors, warnings, stats }`。每个错误包含稳定 `code`、数据 `path` 和中文
-  `message`。
-- 事务使用一次草稿克隆运行复杂墙体/门窗变更、既有指标刷新、门窗迁移/规范化、节点清理
-  和 `quick` 校验。任何抛错都不得改变调用方草稿；临时事务标记不可枚举，不进入 JSON。
-  `TopologyIndex` 只在内存中维护 `nodesById`、`wallsById`、`wallsByNodeId`、
-  `spacesByWallId` 和 `openingsByWallId` 等映射，绝不持久化。
-- `quick` 检查 ID/引用、零长度墙、闭合空间、门窗范围、会话引用和孤立节点；`full` 额外
-  检查重复墙、未节点化内部交点、自交空间、异常共享墙，并以临时双向 Half-Edge 按
-  `atan2` 环游提取有界 Face。Face 只与既有 `spaces[]` 的数量、边界覆盖和拓扑面积对照；
-  不一致会阻止 `completed` 保存，开放墙链只报告 `DANGLE_WALL` warning。
-- `full`/Face 禁止在页面启动、普通草稿恢复、拖动或每帧渲染中运行。Face、TopologyIndex、
-  Snap 锁和事务标记均不属于持久化合同。SnapEngine 的 `16px` 获取/`26px` 释放容差按
-  viewport 换算，最终坐标仍为整数毫米。
-- 顶层正式合同仍严格为 `{ version: 4, measurementMode: 'surveying', surveyGraph }`；
-  路由、API、角色/租户权限、BLE 协议、测量日志、数据库结构、WXML/WXSS 和 Canvas
-  读模型均未改变。尺寸约束 Solver、对角线求解和持久化 DCEL 仍不在当前范围。
+## Authoritative data
 
-## H5 浏览器算法验证台（2026-08-14）
-
-`surveying-h5/` 直接消费生产 `miniprogram/packages/surveying/editor/surveying-editor.js`、
-`miniprogram/utils/surveyWallGraph.js` 与生产 Canvas 渲染器。H5 只允许提供平台桥、
-自动化入口和本地验证界面，不得复制另一套拓扑、闭合、复尺或尺寸算法。导入/导出仍是
-`{ version: 4, measurementMode: 'surveying', surveyGraph }`；浏览器本地草稿和模拟 BLE
-读数不得上传、不得冒充正式测量审计或真实硬件证据。H5 通过只说明共享算法在浏览器
-Canvas 和确定性事件下的结果，不替代微信原生组件、页面栈、BLE、传感器和真机验证。
-H5 场景目录当前按单空间轮廓、连续测量、共墙多空间、交点与分支、墙体与构件提供
-23 个代表场景。用户提供的 `5faec65980dc0f15a9f19e98d98a5dfe.jpg` 映射到
-`staggered-adjacent`：底边对齐、上沿错层、共享竖墙，定向断言为 8 段墙、2 个闭合空间，
-空间尺寸分别为 `2761×3223 mm`、`3082×4120 mm`。所有目录场景必须通过生产墙图的
-`full` 校验。浏览器自动适配必须按固定测距栏的实际占用预留底部安全区，确保闭合墙与
-尺寸链完整可见；T 型三房按左房、右上房、右下房沿共墙逐间闭合，并校验三向共享交点，
-防止隔墙测量内缩在 T 交点墙面形成三角缺口。曲墙、圆弧、独立楼栋和楼层高差仍不属于
-version-4 二维墙图能力。
-
-## 纯前端几何算法撤回（2026-08-13）
-
-此前接入的 `surveyGeometryPipeline.js`、入口草稿 `normalizeTopology()`、草稿更新审计、
-提交墙体后的交点归一化和物理墙段派生已全部从小程序运行时删除。原因是这些同步
-全图计算会阻塞正式量房页面启动，真机表现为点击“量房”后长时间无法进入页面。
-`surveyWallGraph.js` 已恢复到接入前备份
-`research/survey-geometry-poc/backups/surveyWallGraph.js.backup-20260813-194929` 的实现；
-路由、version-4 持久化合同、API、角色、BLE 测量审计和现有 UI 均不改变。下方
-几何管线 V1/V2 内容仅保留为历史实验记录，不代表当前运行时能力。
-
-## 历史实验：几何管线桥接（已撤回）
-
-`miniprogram/utils/surveyWallGraph.js` 的
-`buildGeometryPipelineInput(floorOrDraft)` 是只读适配器，将正式
-`nodes/walls` 转为整数毫米墙中心线，并保留 `wall.id` 作为
-`sourceWallId`。它不改变闭合交互、门窗、测量审计或
-version-4 持久化结构。`research/survey-geometry-poc` 中的 Node
-bridge 使用真实 `surveyWallGraph` 草稿运行 Turf、JSTS 和 Clipper2
-对照；JSTS 和 Clipper2 WASM 不进入小程序运行时包。原始墙图备份位于
-`research/survey-geometry-poc/backups/surveyWallGraph.js.backup-20260813-194929`。
-
-小程序端另有无第三方依赖的纯前端实现
-`miniprogram/utils/surveyGeometryPipeline.js`。正式编辑器分包
-在草稿更新后运行它并输出闭合面、共享墙、悬挂边和交点诊断；当已提交墙体
-发生内部相交，或几何面数与已持久化闭合空间数不一致时，同一半边结果会接管
-正式拓扑归一化。内部交点是合法图节点，不再作为异常交叉：两条源墙都必须在
-交点切分，首个原子段保留原墙 ID，新增段保留 `topologySourceWallId`，门窗按原墙绝对
-位置迁移到对应原子墙段，每个有界面写回标准 `spaces[]`。version-4 顶层合同、
-毫米单位、API、角色和测量审计不变。
-
-闭合空间引用的墙以 `topologyRole: 'closed-boundary'` 输出，闭合后继续测量的
-开放墙链以 `active-chain` 输出。活动链的度数为一端点只记录到 `openEnds`，
-不再误报 `DANGLE`；闭合边界出现同类断点仍作为错误。这样量房人员在两个
-房间闭合后继续拉出下一面墙时，面数校验继续生效且不会产生假告警。
-审计摘要仅在状态变化时输出一次；有效场景使用 `console.info`，异常场景使用
-`console.warn`，便于真机 vConsole 直接确认 `faces`、`closedSpaces` 和
-`openEnds`。
-
-### 历史实验：纯前端几何 V1（已撤回）
-
-拓扑切分点不再被当成物理墙端点。`surveyWallGraph.js` 会在只读渲染派生时
-收集同一直线、连续且墙厚一致的拓扑墙段，并根据整组相邻闭合空间统一墙体
-外侧方向；Canvas 墙体布尔合并因此不会在房间接入点绘制内部端帽或把连续墙
-显示成独立短墙。该归并不合并墙 ID、不改门窗归属、不写入新字段，也不改变
-version-4 持久化合同或测量审计。
-
-当新墙链从既有闭合墙借一个拓扑点起测，随后由正式橙色闭合路径独立回到
-同一点时，`confirmClosure()` 不再强制寻找不存在的旧公共边路径，新空间只
-引用本次新测墙。起点和终点确实位于不同旧边界点时，原公共边连通校验继续
-生效。修改前快照位于
-`research/survey-geometry-poc/backups/frontend-v1-20260813-205333/`。
-### 历史实验：平面拓扑 V2（已撤回）
-
-房间识别不再只依赖量房人员的墙链录入顺序。`normalizeFloorTopology()` 对全部
-中心线做交点节点化、把墙切为原子边、按节点角度排序有向半边并提取全部有界面；
-外框内十字相交可稳定得到四个房间，贯穿两侧边界的 T 型/分隔墙可稳定得到两个
-房间，任意节点可以连接多面墙。正式草稿恢复、显式闭合以及墙体提交出现真实内部
-交点时都会执行归一化。缺失的 T 型/十字节点始终物化；若切分后的派生面数仍等于
-既有闭合空间数，则只局部替换原空间中的墙段，不全量重建空间，以保留历史墙链方向
-和 `wallFaceOverrides`；重复归一化不会继续拆墙。
-Turf、JSTS、Clipper2 仍只用于研究对照，不进入小程序运行时。
-
-2026-08-13 用户提供的多房间截图是本次交点切分与房间相邻关系的行为依据；本轮
-未修改 WXML/WXSS 或可见控件。墙图、Canvas、尺寸、正式保存恢复和闭合定向测试
-与分包边界测试 `148/148` 通过，覆盖十字、T 型、重复归一化、门窗迁移，以及
-主包禁止反向引用分包。现有微信开发者工具窗口
-虽在运行，但没有兼容的 Mini Program Automator 端点，因此无法按规则执行重新编译、
-确认 `packages/surveying/editor/surveying-editor` 顶层路由和获取原生 Canvas `390x844`
-截图；本轮未打开重复窗口，该原生核验仍待补充。
-
-> 放大镜渲染约束（2026-08-12）：拖动光标时，放大镜必须是单一 Canvas 面板，不能由原生 `cover-view` 再叠加背景容器。镜心和 X/Y 标签一律使用方向吸附后的正式预览显示点，不使用手指原始落点；画布内拖动期间，该面板跨正式 Canvas 重绘保持可见并独占左上角区域。
-
-`miniprogram/packages/surveying/editor/surveying-editor` 是唯一正式量房页面。
-
-该唯一正式测量路由于 2026-08-12 获得用户明确批准，作为 Canvas 几何、测量、
-吸附、标注和状态渲染算法的常设 HTML-first 例外。明确授权开发后可直接修改原生
-Canvas 链路，不制作 HTML 对照原型或 HTML 相似度证据；其他小程序路由不继承此
-例外。设计来源核对、正式合同审查、测试、现有微信开发者工具验证、中英文模块文档
-及设计还原台账仍为强制门禁，开发者工具遗漏原生 Canvas 时必须补真机验收。
-
-`research/legacy-zhouse-2d/` 是小程序包外的旧 APK 2D 独立还原实验室，不是正式入口，
-不连接 BLE、API 或数据库。其 `legacy-zhouse-2d-reconstruction/v1` 研究模型不能作为
-正式户型保存；除非未来通过单独审批和验证的单向适配器，否则不得转换或写入下述
-version-4 数据合同。
-
-引导提示由主 `survey-canvas` 绘制：白底对话框及其浅绿箭头尾巴、居中的“小K提示”
-标签、小K、目标光圈和从手势出发的绿色虚线贝塞尔箭头均不生成 WXML 覆盖节点。指向
-底部控制坞时，既有原生 `cover-view` 按钮内部的描边标记显示高层高亮，不新增独立全局引导覆盖层。这样
-引导可见时原生 Canvas 仍拥有拖动光标、平移和双指缩放的触摸事件，底部按钮也继续持有点击或拖拽；仅顶部“引导”保留
-本机持久化开关。该展示层不写入 `FloorPlan.layoutData`、草稿或测量审计，也不改变 API
-或角色权限。
-
-引导正文按 Canvas 当前字体和气泡内宽测量换行，禁止中文文本越界；旧的 WXML 测量气泡不设
-空白回退分支，缺少顶部测量值时不显示浮卡；空间闭合后的等待拖放和光标拖动状态还必须清空并隐藏该原生浮层，不得在左上角残留空白矩形。下一墙链光标放置后，当前测量段只允许来自 `activeSpaceStartWallIndex` 及其后的新墙；尚未拉出新墙时不得复用上一闭合房间的末墙，以免同时绘制旧墙端点与新光标两组蓝色十字辅助线，或恢复旧量测浮层。
-
-尾巴和卡片必须使用连续 Canvas 轮廓，禁止拼接横线；每个引导状态均由真实目标位置选择小K左右指向，最后一行正文下方必须保留底部内边距。
-
-编辑器顶部仅显示关联线索的小区名称；`utils/surveyNavigation.js` 在入口已知时携带该名称，按 `floorPlanId` 直接进入时由 `GET /api/floorplans/[id]` 返回关联线索摘要。状态跟随式引导在本地默认开启，顶部固定的“引导”操作与对话框关闭按钮均可持久化关闭；重新开启时根据当前墙图和编辑状态继续，而非从固定步骤重播。每个有操作目标的引导均以完整白底浅绿边框的小K对话框呈现：标题行包含“小K提示”标签、绿色星芒图标（`images/mine-icons/tab-ai-active.png`）和关闭按钮，正文为可换行的一句行动提示；固定壳层和引导卡的比例、图标语义、字距及间距以 `design-references/all-pages-ip-v1/ChatGPT Image 2026年8月5日 15_44_17.png` 为高保真对照。本地透明左指、右指、下指小K（`packages/surveying/assets/surveying-guide-k-left-v3.png`、`-right-v3.png`、`-down-v3.png`）统一从 `design-references/surveying-editor-v3/sub2api-20260805-075309-1.png` 单张画板裁切。卡片和完整小 K 姿态作为一个组合共同选位且不得互相遮挡；角色手势经绿色虚线、箭头和目标波纹连接到真实 Canvas 几何或控件。障碍集合覆盖安全区、工具栏、控制坞、顶部测量卡、对象工具栏、目标控件、全部墙体/预览墙、门窗、尺寸文字与尺寸线、房间信息；尺寸与房间文字禁止覆盖和穿线，墙体、门窗、红色测量边及尺寸线按权重避让。引导覆盖拉首墙、确认方向/长度/测量边、续墙、闭合、下一空间光标吸附、构件编辑和完成提交；数字键盘、构件编辑器或测角面板开启时仍由面板自身说明接管。关闭引导不影响闭合、测量边、吸附、BLE 或提交反馈，且引导不写入 `FloorPlan.layoutData`、本地草稿或测量审计。
-
-引导卡的像素几何按当前 Canvas 宽度相对 `390px` 基准缩放，并为卡片、小K和真实目标之间的连接留出固定视觉路径。不得显示产品未实现的编号阶段或分页教程。白底浅绿边框对话框使用清晰的箭头尾巴指向真实目标；小K选择朝向目标的姿态，绿色弧形虚线箭头从其朝向目标的手出发并在真实 Canvas/控件目标处结束。连接线先对多条贝塞尔候选采样，全部穿过硬障碍时改用平滑网格路径绕行；仍无安全路径时，本帧省略连接线而不穿过标注。上一有效布局具有稳定性偏好，避免小幅平移时跳位。底部目标按控制坞真实 `575rpx × 108rpx` 几何和 `64rpx` 底部偏移计算；此时对话框上移、小 K 优先位于卡片下方，专用直线虚线直接终止在按钮正上方。Canvas 线在原生按钮处交接，按钮内部的原生描边标记显示更高层高亮。标记仍处于按钮事件树中，不改变原有触摸所有权。旧的纯绿色背景说明气泡不再绘制，白底小 K 对话框成为唯一教学说明；测量边切换和绿色圆形“合”操作仍保留。工具轨激活图标使用本地绿色 PNG，底部光标使用本地深色准星，避免依赖真机不一致的图片滤色。
-
-正式 `FloorPlan.layoutData` 必须使用：
+`FloorPlan.layoutData` must contain exactly:
 
 ```json
 {
   "version": 4,
   "measurementMode": "surveying",
-  "surveyGraph": { "kind": "survey-wall-graph", "floors": [] }
+  "surveyGraph": {}
 }
 ```
 
-不再存储或读取 `rooms`、`homeOutline`、`partitions`、`surveyDraft`、`prototypeOnly` 或 `surveying_prototype`。报告、CAD、3D、后台和 AI 使用墙图读适配层，不创建旧布局副本。
+Coordinates, lengths, wall thickness, openings, and heights use millimetres.
+The graph is the only persisted editable geometry. Do not write `rooms`,
+`homeOutline`, `partitions`, `surveyDraft`, `prototypeOnly`, or a legacy layout
+copy back to `layoutData`.
 
-墙对象可选持久化 `measurementStartInsetMm` 和 `measurementEndInsetMm`，分别表示拓扑起点到真实测量起点、真实测量终点到拓扑终点的距离。无论从闭合房间的内边还是外边续测，拓扑节点都保留在墙体交点，交点覆盖的完整墙厚通过测量内缩排除并作为独立墙厚尺寸表达。缺失字段的旧墙按 `0` 处理，不需迁移。`lengthMm = 节点几何长度 - measurementStartInsetMm - measurementEndInsetMm`，因此 `lengthMm` 始终表示手输或 BLE 测距仪的净测距读数。复尺、延长/缩短和开口偏移按该有效测量段计算；墙体切分时只有首段继承起点内缩，末段继承终点内缩。
+## Entry and consumers
 
-当闭合墙沿既有墙方向共线进入其墙中段时，手指/光标落点仅用于识别闭合目标，不能物化为新的拓扑节点；系统必须沿当前墙前进方向选择最先遇到的既有拓扑端点作为闭合点。只有新墙与既有墙发生非共线相交时，才在实际交点切分并物化共享节点。
+- The only formal measurement page is
+  `miniprogram/packages/surveying/editor/surveying-editor.*`.
+- Every entry carries `leadId` and/or `floorPlanId`.
+- Admin viewers, DXF, 3D, AI, and Mini Program read models derive from the v4
+  graph through adapters; they do not maintain a second editable geometry.
+- Graph and renderer sources are `miniprogram/utils/surveyWallGraph.js`,
+  `miniprogram/packages/surveying/utils/surveyCanvasRenderer.js`,
+  `surveyDimensionPlan.js`, and `surveyWallSolidPlan.js`.
 
-从既有墙中段起测新墙时，墙中吸附确认必须立即把源墙切为两条原子拓扑边，两段同时复用吸附节点，既有闭合空间的 `wallIds` 同步替换为这两段。新墙提交后必须从同一节点出发，使该节点同时连接两段源墙和一段新墙，形成度数为 3 的 T 型拓扑。此切分在吸附操作时原子完成，不等待新房间闭合，也不因开放分支墙误建新空间。切分墙段保留 `topologySourceWallId`；房间填充的只读渲染边界可折叠同源共线中间点，但不得合并回持久化拓扑边。
-T 型节点形成后，分支墙实体覆盖的完整墙厚必须从测量读数中排除：分支墙的测量起点位于源墙远侧墙面；源墙被切出的两段分别保存自己的端点内缩，其中只有位于分支墙实体法线侧的墙段扣除分支墙厚。这样两段红线之间保留完整墙厚空档，而拓扑仍在唯一共享节点连续。实体墙是否开口只按拓扑端点连接判断，不按已经内缩的测量端点判断。
-本轮未改 WXML/WXSS、路由、API、角色或 version-4 顶层合同；光标/拓扑与 Canvas 两个直接回归套件 `105/105` 通过。小程序全量测试 `300/303` 通过，3 条既有失败分别是获客通知路径、本地 API 端口 `3005/3006` 不一致和离线调试开关默认值，均与本轮拓扑变更无关。
+## Measurement and audit rules
 
-开放墙链悬空端点的光标重置不得改变墙链行进方向对应的测量侧。重新吸附源墙终点时继承源墙 `measurementSide`；重新吸附源墙起点时翻转 `left`/`right`，使反向遍历仍保持同一物理墙侧。内边和外边顶点只改变可见吸附语义，不得让下一转角相对连续拖墙翻面，也不得给既有源墙新增一个墙厚的端点内缩。闭合边界起测和墙中 T 型拓扑继续使用各自既有规则；该约束不增加持久化字段。
+- Manual and BLE readings are recorded as measurement audits with value, unit,
+  source, operator, and timestamp.
+- Readings captured before the first cloud save remain queued until a formal
+  `floorPlanId` exists.
+- Temporary BLE callback owners restore the normal callback when they close.
+- Failed cloud saves restore the last readable graph and undo/redo state; failed
+  intermediate drafts are not persisted as a new layout contract.
 
-T 型/十字连接中的端点内缩首先属于测量合同。`measurementStartInsetMm`/`measurementEndInsetMm` 用于有效测量端点、尺寸和门窗沿墙位置；同源切分后的被贯穿源墙段仍从 `startNodeId`/`endNodeId` 对应的原始拓扑节点生成 Canvas 实体、命中多边形和布尔并集，确保源墙交点没有背景空洞。没有 `topologySourceWallId` 的新拉分支墙及预览若存在端点内缩，其实体与命中范围必须改用有效端点，使分支墙停在源墙远侧墙面，而不是从原墙内边或拓扑节点穿入源墙。`selectionPolygon` 则从拓扑跨度出发，按端点处非共线相邻墙的实际实体占用范围裁切并使用垂直端帽；它不得直接复用测量内缩，也不得继承实体墙斜接点，从而让普通转角、T 型、十字和房间分割交点只保留真实相交墙体的中性墙色。斜墙投影产生的亚像素近重合连接点必须在实体轮廓拼接前归并，且归并容差不得达到可见像素尺度。删除 T 型或十字分支后，必须按该节点仍连接的墙重新计算同源切分段内缩，并保持门窗绝对沿墙坐标不变。
+## Geometry invariants
 
-实体布尔并集仍是墙体覆盖和外轮廓的几何依据。原生 Canvas 必须沿用上一稳定 Git 版本的闭环绘制契约：闭合墙和开放墙分别从各自分类后的 `rings` 一次性填色，完整 `wallSolidPlan.rings` 一次性闭合描边。不得逐个填充输入矩形或 `joinPolygons`，不得以墙色设备像素扫描线 `fillRect()` 重画交点，也不得逐段描绘 `segments`；这些额外路径会在混合闭合/开放 T 型和边角处造成颜色所有权冲突，并随平移后的像素采样表现为随机缺口。正式场景、平移/缩放轻量场景及光标放大镜必须使用同一组并集闭环。这项表现层约束不改变 version-4 拓扑、房间面、测量数值或保存合同。
+- A physical wall is stored once. Shared-wall faces and room boundaries are
+  derived from wall direction, thickness, and each space's ordered `wallIds`.
+- Closed-space fill and net area use derived inner wall faces, not topology-node
+  polygon area or a bounding rectangle.
+- Dimensions are read models. They must not be written into `surveyGraph` or
+  alter the graph's topology.
+- Consumers must preserve wall openings, shared-wall thickness, closure rules,
+  deletion/rejoin behavior, and the v4 schema.
 
-由于一侧墙矩形之间的完整墙厚外角、T 型和十字中心依赖额外连接补片，实体计划继续输出 `joinPolygons` 供并集分类、测试和诊断使用；运行时不得在并集闭环填充后再次单独绘制这些补片。
+## Verification
 
-实体并集的近重合顶点可以使用不达可见像素尺度的容差，但容差网格必须锚定到墙组局部原点，不得锚定到 Canvas 绝对原点；连接节点判定也必须使用同一亚像素容差，不能在端点归并后退回更严格的浮点距离判断。纯 viewport 平移前后，正式重建的 `wallSolidPlan.rings`、`wallSolidPlans.closed.rings` 和 `wallSolidPlans.open.rings` 在去除平移量后必须与手势帧严格一致；不得因为亚像素平移将一个连通墙体拆成额外闭环或丢失边界节点。
+Use focused wall-graph, renderer, dimension, persistence, and BLE tests for
+changes to this contract. Real-device or WeChat DevTools evidence is required
+when the change involves native Canvas, BLE, or host UI behavior.
 
-主 Canvas 在任一时刻只能由正式场景或视口手势场景之一拥有。正式场景使用递增 `sceneRevision`；过期页面更新回调不得触发绘制，手势持有画布期间到达的正式绘制请求必须延迟到手势提交后的最新场景。画布尺寸及节点初始化也使用独立代次，避免迟到初始化重设 `canvas.width/height` 后清空当前帧。该调度规则只影响显示时序，不写入墙图数据。
-
-验收不能只检查墙图节点与空间数量。最终 `createSurveyRenderScene()` 输出必须通过像素级实体覆盖与内部描边检测，并对等厚/非等厚外墙 T、斜墙 T、双房间外墙 T、共墙 T、十字和删除恢复生成可目检图集；交点不得出现可见背景像素、黑色内部端帽/接缝、异常凸块或开环轮廓。
-
-空间对象可选持久化 `wallFaceOverrides: Record<wallId, 'topology' | 'offset'>`，用于锁定该空间实际使用的共享墙面。相邻房间从既有房间内边顶点起测时，拓扑节点仍保留在墙体交点，但首墙起点和末墙终点必须分别内缩完整共享墙厚；新空间对复用共享墙段写入 `offset`，使净尺寸和面积采用共享墙另一侧的真实房间面，而不是把拓扑跨度中的墙厚重新计入净测距。填充、尺寸、面积和墙体切分后的替换墙段必须保留该选择。该字段位于 version-4 `surveyGraph.floors[].spaces[]` 内，不改变顶层结构、毫米单位、API、角色边界或 BLE/手动测量审计。
-
-墙体提交时，同一未闭合墙链连续向前、同向共线且模式、墙厚、测量侧兼容的拖动必须延长末墙，保留原 wall ID 和端点节点 ID，不得把一次直线延长持久化为多段墙。当前未闭合墙链的末墙可沿同轴反向回拖以缩短，并保留相同的 wall ID 和末端节点 ID；已闭合空间、共享末端、分支节点或带门窗的墙体不得使用该便捷修正。矩形补全时，第三面末墙即使已先落图为半墙，后续延长或反向缩短仍必须向首墙的正交轴线吸附；删除该未闭合末墙后，剩余墙链必须保留同一吸附参考。确认闭合时，若推导路径的第一段继续沿当前末墙同向共线前进且属性兼容，必须把末墙直接延长到闭合拓扑节点、保留原 wall ID，并把共享墙外表面的距离记录为末端内缩；只有真实转向或不兼容的补边才创建独立墙。该墙图规范化不改变毫米单位、正式保存结构、API、角色边界或 BLE/手动测量审计行为。
-
-直线模式的独立阶梯墙链不得用一条斜向推导边直接连接末端与起点。闭合候选必须优先沿末墙方向生成同轴拐点，再以第二条正交边返回起点，并对每一段执行既有墙体相交、重叠和最小墙长校验；确认时同向共线且属性兼容的第一段归并到当前末墙，真实转角后的边作为独立正式墙写入当前空间墙链。该规则不改变斜线模式、共享墙路径、毫米单位、API、角色边界或 BLE/手动测量审计。
-
-酷家乐户型导入遵守同一合同：服务端把上游房间轮廓转换为毫米制的闭合节点、墙和空间链，并以顶层 `version: 4`、`measurementMode: "surveying"`、`surveyGraph.kind: "survey-wall-graph"` 持久化；上游请求不得占用数据库事务，户型写入与线索关联必须原子提交。由于当前上游响应不能可靠标识开口所属墙体，导入暂不生成门窗开口，也不得通过最近墙体等启发式规则猜测。
-
-小程序户型列表的空间数只按 `surveyGraph.floors[].spaces` 中 `closed: true` 的空间统计；这只是只读展示，不改变正式墙图合同。
-
-每条 `lead_floor_plans` 关联包含稳定的 `measurement_sequence`：已有记录按正式户型创建顺序回填；同一线索的新记录在锁定线索后取现有最大值加一，因此删除历史记录不会重排序号。展示 DTO 以关联小区为 `projectTitle`，以“客户 · 第 N 次量房”为 `projectSubtitle`；持久化 `FloorPlan.name` 不改写，只为无关联数据提供兼容回退。这是小程序、后台和 AI 来源共用的只读身份模型，不改变 v4 墙图、API 授权或角色边界。
-
-小程序 AI 设计可携带 `floorPlanId`、显式 `targetScope: whole_floor_plan | single_room`，仅单房间携带 `roomId`。后台只通过正式墙图读适配层派生上下文：完整户型消费全部闭合空间并把 1024px 墙体/门窗控制图保存为独立 `MediaAsset`，单房间只消费指定闭合空间的尺寸、层高和开口摘要；任何派生数据都不回写 `FloorPlan.layoutData`。生成记录可关联客户 `AiWorkflow`，现场照片、参考图和生成结果属于独立 `MediaAsset`/`AiGeneration` 数据；仅凭户型生成的图片是概念效果，不作为施工级还原。
-
-AI 工作台项目索引允许展示当前角色可见但尚未通过资格校验的 version-4 量房，以稳定原因码说明未完成、墙图无效、没有闭合空间或缺少可用墙体，并只引导回 `utils/surveyNavigation.js` 所指向的唯一正式量房入口。可见不代表可生成：小程序创建任何户型关联 AI 任务前必须再次执行共享资格校验，要求 `FloorPlan.status = completed`、有效 version-4 正式墙图、闭合空间及其可用墙体；失败时不得创建任务、冻结点数或写入 AI 结果。
-
-首次保存正式户型前收到的有效 BLE 读数会暂存于当前量房会话；户型创建成功后，这些读数会带着正式 `floorPlanId` 写入测量审计。保存失败的读数保留至下一次成功保存后重试。
-
-BLE 复尺属于事务性编辑：读数写回墙体或其只读尺寸规划重建失败时，客户端必须恢复读数前的
-`surveyGraph` 及撤销/重做历史，不得把失败的中间态写入本地自动草稿。闭合尺寸规划在消费物理
-外墙前必须确认其可生成正交 frame；若复尺导致任一外墙变为斜边，则回退
-`createExteriorDimensionPlan()`，保持 version-4 墙图和测量审计不变。
-
-关联线索处于 `new` 或 `measuring` 时可删除正式户型；一旦进入 `designing`、`converted` 或 `closed`，该户型是下游方案的必要依据，`DELETE /api/floorplans/[id]` 返回 `409 FLOOR_PLAN_REQUIRED_FOR_LEAD_STAGE` 并保持线索状态、户型关联和本地续测指针不变。
-
-从已闭合房间角点开始相邻空间续测时，首段外边命中仍按既有闭合边界外法线决定新墙实体与相邻墙面的连续对齐；例如左下内边角和对应外边角向下均自动为 `right`。手输、BLE 读数、红色/橙色测量线、预览墙、活动十字和光标终点使用有效测量段；拓扑节点仍与原房间边界交点连接，二者之间的完整墙厚记录为端点内缩。“当前测量位置”控件在首段预览和首墙确认后可用，切换只翻转墙体所在侧，不改变净读数。该起点的第一、第二面新墙均禁止创建或显示 `merge`/闭合候选；第二面直角墙仅进行正交吸附。从第三面新墙开始才允许进入闭合判断；橙色闭合虚线必须连续到确认动作实际使用的共享墙面终点。无论内边还是外边起测，所有墙的测量记录都排除交点墙体覆盖部分；同向共线的闭合延伸归并到当前末墙。该调整不改变 v4 顶层结构、API、角色边界或测量审计内容。
-
-当直线分隔墙从唯一闭合空间某面墙的中段开始且指向该空间的另一条边界墙时，预览及手输/BLE 确认必须取拖拽射线命中的第一个对侧边界交点，禁止预览、光标或新墙穿过该内部墙。确认后将两端边界墙切分到连接节点，实测分隔墙同时成为两条有向闭合墙链的共享墙，原空间替换为两个闭合空间。此操作只改写同一 version-4 `surveyGraph` 内的节点、墙和 `spaces.wallIds`；不得写入旧版 `rooms`、不得改变入口、API、角色边界、毫米单位或测量审计。
-
-相邻空间比既有闭合房间宽或窄一个墙厚而形成错台时，合并闭合必须先尝试起算共享墙的另一端，并按当前末墙的真实来向排序正交补边。末端与共享墙拓扑之间允许保留墙厚连接段，且共享墙厚对应的 `measurementEndInsetMm` 必须记在新空间外边界墙上；空间 `wallIds` 只能追加从闭合目标回到起点的直接共享边，禁止选择绕过既有房间其他三边的等长路径。这样闭合后的房间名称、填充、尺寸和面积只属于新空间，同时保留真实错台。该规则不改变 v4 顶层结构、入口、API、角色边界或测量审计。
-
-每个闭合空间的填充、净尺寸与净面积必须从该空间有向 `wallIds` 链派生物理内墙面：同一共享 `wall` 只生成一次实体，相邻空间各自选择靠近自身的墙面，相邻墙面通过交点形成净边界；有效测量长度为零的墙厚拓扑连接段不得计入净边界。内/外边界、包络尺寸、净面积和墙厚段仅作为读模型生成，不得写回 `FloorPlan.layoutData`。房间面积不得直接使用拓扑节点鞋带面积，也不得以最长横墙乘最长竖墙替代不规则空间面积。该规则不改变毫米单位、入口、API、角色边界、BLE/手动测量审计或 version-4 顶层结构。
-
-闭合后的尺寸同样属于只读派生数据。正交建筑外边界使用共享 `createClosedDimensionPlan()`：门洞定位、外侧房间净尺寸、建筑真实外包总尺寸分别输出为 `opening-segment`、`room-clear`、`building-overall`，并按由近到远的固定尺寸带排列。净尺寸延伸线从对应空间内墙面起笔，只有映射到建筑外轮廓的房间边参与；共享墙和完全内部墙不得标注。活动未闭合墙或预览墙从闭合房间外侧拉出时，尺寸计划把其可见实体角点纳入对应方向的外侧支撑边界，使已有永久尺寸避让到新墙之外。外包值和端点直接来自墙体实体最外层正向环，禁止把外包端点与 `lengthMm` 净测量标签混用，也禁止跨侧选点或把尺寸线布置到房间内部。若建筑外边界包含斜墙，整套尺寸继续使用既有斜墙规划器。闭合永久尺寸使用深灰 `12px` 标签、细弱尺寸线、白底、尺寸线离墙 `60px` 的尺寸带；延伸线从尺寸线向靠墙侧固定绘制 `18px`，空间不足时在墙面前保留 `12px` 小间隙；两端与尺寸线约 `60°`、总长 `4px` 的平行短斜线必须等长等角，并以各自延伸线与尺寸线的交点为中心。不得使用箭头或复用活动测量的蓝色大字号样式，`building-overall` 只用稍高字重区分。Mini Program Canvas 与后台只读户型查看器消费同一计划；算法权威源位于 `miniprogram/packages/surveying/utils/`，构建前同步到 `admin/src/lib`。该规则不改变闭合操作、墙体坐标、面积、毫米单位、API、角色、BLE 审计或 version-4 持久化合同。
-
-正式 Canvas 的 viewport 是可自由探索的无限草图平面。平移不得按墙体实体边界或顶部导航、右侧工具轨、底部控制坞之间的可见工作区回弹；用户可以把闭合房间完整移出当前视口，在任意方向腾出空白并继续新建相邻房间。双指缩放保持手势中心锚定，只使用 `0.002–4 px/mm` 的超宽数值安全范围，禁止恢复原 `0.05–0.36 px/mm` 的编辑视口限制。该规则只调整 viewport 比例和偏移，不得改写闭合空间、墙体节点、毫米坐标、`FloorPlan.layoutData`、API、角色边界或测量审计。
-
-正式 Canvas 墙体的可见厚度必须按 `thicknessMm × viewport.scale` 同比缩放，使外墙面、橙色外边吸附状态线、对齐辅助线和预览终点始终投影到同一 Canvas 坐标；禁止使用会在缩放后把可见墙面与真实外表面分离的固定像素墙厚限宽。该规则只约束渲染及编辑器命中/覆盖层几何，不改变正式墙图坐标、持久化墙厚、API、角色边界或测量审计。
-
-正式 Canvas 的蓝色整屏十字辅助线必须只锚定最后一个已确认显示点。空白初始态和首墙尚未确认时不画蓝线；继续拖墙时活动光标、预览墙和放大镜跟手移动，蓝线保持在上一确认点，只有墙体提交后才移动到新终点。闭合路径以及墙面、顶点和轴向吸附只把实际受约束的路径或轴绘制为 `#f07a21` 橙色虚线；基础蓝色十字可以同时存在，自由拖放不得出现橙线，所有瞬态橙线必须在松手、取消、重置、撤销、重做或状态切换时清除。在 Canvas 内拖动当前光标时，正式 Canvas 始终是唯一的绿色光标和辅助线绘制者；临时拖拽层只绘制左上角放大镜，绝不能叠加底部拖放控件的方框十字。该放大镜必须跨正式 Canvas 重绘保持可见，并在其显示时独占左上角区域，普通实时测量气泡不得叠在其后方。 同一闭合边角同时存在内外顶点候选时，落点距拓扑内角不超过相邻闭合墙最大墙厚即保持内边顶点，外边线投影不得抢占；只有落点进入可见斜接外角末端约 `40%` 墙厚带，或离开内角保护区且数值上更靠近外角时，才选择外边顶点。新活动墙链从外边顶点或外边线起算时，`outer` 只保留为墙体实体与相邻墙面连续的吸附语义；红色/橙色测量边、唯一活动光标和蓝色 `14px` 实时尺寸均使用操作员实际拖出的中心线工作位置，避免黑色实际墙线旁出现平行的第二组可见线。共享墙闭合预览因 `measurementEndInsetMm` 使有效测量终点与拓扑终点相隔墙厚时，有效终点继续用于真实读数，但不得另画第二组蓝色十字。该状态逻辑的当前设计来源为 `design-references/surveying/cursor-guide-state-reference-20260812.jpg`，实时尺寸视觉仍以 `design-references/surveying/runtime-live-dimension-reference-20260812.jpg` 为准；它不改变墙长、闭合拓扑、持久化结构、API、角色边界或测量审计。
-
-当内边相邻空间通过 `wallFaceOverrides` 记录用户选择的既有内边墙面时，正式 Canvas 的闭合墙实体布尔合并必须保留共享墙厚，并在其上补画该空间的净边界。上下新墙到达所选内边顶点的末段不能因与共享墙实体相交而作为内部接缝消失；删除该空间另一面墙、使其由闭合空间转为开放墙链前后，同一端点必须保持相同可见位置。该规则只影响正式 Canvas 轮廓绘制，不改变 version-4 墙图、空间派生、毫米尺寸、面积、API、角色边界或测量审计。
-
-从底部控件拖放光标，或在 Canvas 内抓住当前光标拖出墙体时，左上角放大镜都必须从首个有效 `touchmove` 起连续可见，直到 `touchend` 或 `touchcancel`；其原生 `cover-view` 保持常驻，仅切换可见状态，并在页面状态尚未回写可见标记时继续刷新，避免快速拖动或原生条件节点重建导致偶发漏显。普通画布平移、双指缩放和门窗拖动不属于光标拖动，不显示放大镜。该显示韧性调整不改变放大镜的正式 Canvas 场景、几何、吸附、墙图、API、角色边界或测量审计。
-
-底部光标放置和直墙预览还必须支持完整闭合边界顶点的远距离轴向吸附：二维近距离顶点/墙边未命中时，只要落点与内边或可见外边顶点的 X 或 Y 单轴误差不超过 `350mm`，即可吸附到该顶点的水平/垂直延长轴，另一轴保持当前拖拽坐标。共享边起点的首墙仍由专用墙面/矩形规则控制，从第二面墙开始允许该远距离轴向候选。该候选只提供几何对齐；新起点必须创建独立拓扑节点，不得与数米之外的源顶点建立错误连接。手输或 BLE 长度确认必须重新应用相同轴向约束，矩形补边、共享边续测、闭合候选与直接闭合继续优先。Canvas 对齐辅助线从源顶点延伸到当前端点，放大镜和操作反馈必须区分“顶点延长吸附”与真正的二维“顶点吸附”。用户提供的 `b3868f487984b1db1c1875b8934e3cc1.jpg` 是该交互状态依据；该规则不改变 version-4 数据结构、API、角色边界或测量审计。
-
-独立直线墙链在第二面正交墙确认后即可生成矩形闭合候选：候选路径沿末墙方向生成同轴拐点，再以第二条正交边返回起点；Canvas 立即绘制两条橙色虚线并显示绿色圆形“合”操作。该候选仍为提示性状态，只有明确确认才新增补边和闭合空间；斜线模式继续要求原有的完整边界条件。
-
-直线模式下，最终预览端点准确吸附到当前有效闭合目标、预览墙长满足最小值时，画布松手必须把该可见吸附状态视为明确闭合动作：按当前预览长度提交末墙并立即执行闭合，不再要求二次点击“合”。真机触摸坐标可能滞后一帧，因此原始拖拽点进入目标的 `CLOSE_TOLERANCE_MM` 范围仅作为后备判据，不能否定已经显示为重合的最终预览。该规则同时覆盖独立墙链回到首顶点，以及相邻房间从第三面新墙开始回到共享墙闭合点；第一、第二面相邻墙仍遵守禁止闭合候选的既有门槛。若正交投影只产生了闭合候选、最终预览端点并未准确落到目标上，则保持提示性候选，不得自动闭合；斜线继续保留角度和长度确认流程。该交互不改变 version-4 顶层结构、毫米单位、API、角色边界或 BLE/手动测量审计。
-
-删除已闭合空间中的墙体后，客户端必须清除上一墙体/上一节点的临时光标吸附记录；重新吸附到剩余边界后，缺失墙的正交预览和共享边闭合候选必须基于当前墙图重新推导。
-
-当被删除墙体是且仅是两个有效闭合空间共同引用的唯一共用墙时，删除操作必须把两个旧空间替换为一个新闭合空间：移除该墙及其门窗，对两侧剩余 `wallIds` 去重并按节点连续性重建唯一有向外环，再由既有读模型派生合并后的填充、名称、净尺寸和净面积。若相邻空间从共墙外墙面起测，连接共墙端点的外围墙可能持久化等于共墙厚度的 `measurementStartInsetMm` 或 `measurementEndInsetMm`；共墙删除且空间合并成功后，必须只把新外环中落在被删共墙起止节点的这些内缩归零并刷新对应测量墙长，使墙体布尔实体恢复连续，禁止删除、合并或改名其他外围墙。若清除的是起点内缩，该墙已有门窗的 `centerOffsetMm` 必须增加原起点内缩并在新墙长下重新规范化，以保持门窗绝对墙上位置不动。若剩余边界不能形成唯一闭环，或墙体只属于一个闭合空间、被三个及以上空间引用、两空间还共享其他墙段，则禁止臆造合并空间，继续按删除边界后空间失效处理。该规范不新增 `FloorPlan.layoutData` 字段，不改变 version-4 顶层合同、毫米单位、API、角色边界或 BLE/手动测量审计。
-
-运行 `npm run cleanup:legacy-floorplans -- --execute` 会将已有墙图原型规范为正式草稿，并永久删除所有其他旧户型、其线索引用和测量日志。先不带 `--execute` 运行可查看清理数量。
+Chinese module overview: [README.md](./README.md)

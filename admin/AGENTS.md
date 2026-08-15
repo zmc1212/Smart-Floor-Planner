@@ -32,18 +32,18 @@ Read the repository-level `../AGENTS.md` first. The current admin feature map is
 Before changing any backend page, API, model, workflow, or shared component,
 read `../AGENTS.md` and the applicable sections of both admin module inventories.
 Before handoff, update both inventories in the same change with the new route/API,
-model or data behavior, permission boundary, status, and limitations. Treat a
-missing documentation update as incomplete work; if the change has no functional
-impact, record that explicitly in the handoff.
+model or data behavior, permission boundary, status, and limitations. Replace
+the affected current entry; do not append a change log. If the change has no
+functional impact, state that explicitly in the handoff.
 
 For any Admin UI refactor, also read `../docs/admin-ui-refactor.md` and
 `../docs/admin-ui-refactor.zh-CN.md` before selecting a route. Their route ledger
 is authoritative for refactor recency and reopen conditions: a generic request to
 continue refactoring may select only an unrecorded or explicitly queued route.
-Update the route's latest record in both files before handoff, including scope,
-verification, remaining visual QA, and the concrete trigger required to revisit
-the route. Do not reselect a `Hold` route merely because it shares a convenient
-`ProTable` pattern with another page.
+Replace the route's current record in both files before handoff, including scope,
+concise verification, remaining visual QA, and the concrete trigger required to
+revisit the route. Do not reselect a `Hold` route merely because it shares a
+convenient `ProTable` pattern with another page.
 
 ## Verification And Documentation
 

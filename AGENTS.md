@@ -14,10 +14,6 @@ formal surveying, and AI-assisted design.
 - `docs/measurer-designer-acquisition.zh-CN.md` and
   `docs/measurer-designer-acquisition.md` describe the measurer–designer lead
   acquisition, notification, commission, permission, and data contract.
-- `docs/measurer-designer-acquisition-workbench-plan.zh-CN.md` and
-  `docs/measurer-designer-acquisition-workbench-plan.md` describe the approved
-  dual-track acquisition-workbench target. They are implementation plans, not
-  proof that the current runtime already follows the target design.
 - `蓝牙命令列表V1.docx` is the vendor protocol reference for the supported BLE
   laser distance meter's commands, response frames, system information, and
   device-status fields.
@@ -53,10 +49,10 @@ or a roadmap do not replace the current module inventory.
 
 ## Mandatory Design Approval Gate
 
-- `docs/visual-restoration-execution-checklist.md` and its Chinese mirror are
-  optional visual-QA aids. Until the user explicitly restores this requirement,
-  they must not impose an HTML-first prototype, pixel-similarity score, heatmap,
-  or implementation-authorization gate.
+- Visual QA evidence is optional supporting material. It must not impose an
+  HTML-first prototype, pixel-similarity score, heatmap, or implementation-
+  authorization gate unless the user explicitly requests one for a specific
+  investigation.
 - Before any Mini Program visual restoration, read
   `docs/miniprogram-design-restoration-ledger.md` and its Chinese mirror. The
   ledger is the canonical cross-session mapping between a runtime route, its
@@ -180,10 +176,10 @@ staged change; split unrelated work.
   contract changes, or the user explicitly approves a new design direction.
   Prefer an unrecorded or explicitly queued route after auditing the remaining
   Admin surface; do not repeatedly choose familiar low-risk table pages.
-- Every Admin UI refactor must update the latest ledger record in both language
-  files with its date, exact visual scope, unchanged route/API/permission
-  boundaries, verification evidence, outstanding visual-QA state, and the next
-  permitted reopen trigger. A refactor without this record is incomplete.
+- Every Admin UI refactor must replace the route's single current record in both
+  language files with its visual scope, unchanged route/API/permission
+  boundaries, concise verification evidence, and any current reopen trigger.
+  Do not append a dated change history or full test transcript.
 - Every visible admin-triggered mutation must use the shared operation feedback
   UI for success and failure. Do not use raw `alert()` as normal feedback.
 - Dangerous confirmations may be native, but the resulting operation still needs
@@ -253,7 +249,7 @@ staged change; split unrelated work.
   use `transform: scaleX(0.5)` or `scaleY(0.5)` on the thickness axis instead of
   a visually heavy full-length border.
 - The only formal measurement page is
-  `miniprogram/pages/surveying-editor/surveying-editor.*`.
+  `miniprogram/packages/surveying/editor/surveying-editor.*`.
 - Every measurement entry uses that page with `leadId` and/or `floorPlanId`.
   Never reintroduce `pages/editor/editor`, `restoreFloorPlan`, or a dual entry.
 - Formal `FloorPlan.layoutData` contains only `version: 4`,

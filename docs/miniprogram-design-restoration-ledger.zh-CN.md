@@ -1,44 +1,27 @@
 # 小程序设计还原台账
 
-本文档是跨对话查询小程序视觉还原状态的唯一台账。修改任何可见的小程序界面前，必须先读取本文件。
+本文是当前路由与设计源的唯一查询表。每个运行路由只保留一行，每行只保留一份
+最新批准设计源；设计源或生产状态变化时直接替换，不追加还原历史。
+
+| 运行路由 | 最新设计源 | 当前视觉核验 | 已还原 |
+| --- | --- | --- | :---: |
+| `pages/index/index` | `design-references/all-pages-ip-v1/01-home-v2.png` | 已有还原；下次视觉变更时刷新路由证据 | 是 |
+| `packages/business/lead-detail/lead-detail` | `design-references/all-pages-ip-v3/08-lead-detail-v3.png` | 客户、获客、签约和正式量房状态已实现；剩余原生胶囊截图核验 | 是 |
+| `packages/business/settings/settings` | `design-references/account/settings-v1.png` | 当前通知权限状态已实现；剩余原生胶囊截图核验 | 是 |
+| `pages/ai-design/ai-design` | `design-references/ai-design/ai-recipe-discovery-home-v2/ai-recipe-discovery-home-v2.png` | 当前方案发现、项目选择和真实任务状态已实现；剩余原生胶囊截图核验 | 是 |
+| `packages/ai-workflow/create/ai-design-create` | `design-references/all-pages-ip-v3/14-ai-design-create-v3.png` | 已有还原 | 是 |
+| `packages/ai-workflow/recipe-detail/recipe-detail` | `design-references/ai-design/ai-recipe-discovery-home-v2/ai-recipe-discovery-home-v2.png` | 当前方案说明和输入合同已实现；原生截图待补 | 是 |
+| `packages/ai-workflow/recipe-project/recipe-project` | `design-references/ai-design/ai-recipe-discovery-home-v2/ai-recipe-discovery-home-v2.png` | 当前项目和正式量房资格状态已实现；原生截图待补 | 是 |
+| `packages/ai-workflow/recipe-confirm/recipe-confirm` | `design-references/ai-design/ai-recipe-discovery-home-v2/ai-recipe-discovery-home-v2.png` | 当前确认和来源选择状态已实现；原生截图待补 | 是 |
+| `packages/ai-workflow/result/ai-design-result` | `design-references/ai-design/ai-recipe-discovery-home-v2/ai-recipe-discovery-home-v2.png` | 当前生成、失败和交付状态已实现；原生截图待补 | 是 |
+| `packages/ai-workflow/history/ai-design-history` | `design-references/ai-design/ai-recipe-discovery-home-v2/ai-recipe-discovery-home-v2.png` | 当前任务筛选和真实任务卡片已实现；原生截图待补 | 是 |
+| `packages/surveying/editor/surveying-editor` | `design-references/surveying/cursor-guide-state-reference-20260812.jpg` | Canvas 引导和光标状态由聚焦测试覆盖；原生胶囊截图待补 | 是 |
 
 ## 记录规则
 
-- 使用 `miniprogram/app.json` 中的标准运行路由作为唯一键，每条路由只保留一行当前记录。
-- “最后设计稿”只记录一个当前已批准设计文件；新设计源直接替换旧条目，不保留历史行。
-- 记录设计源映射和路由级视觉验收状态。HTML 原型和相似度评分在 HTML-first 门禁暂停期间仅作为可选的历史证据。
-- 只有生产 WXML/WXSS/JS 或小程序包内素材实际完成修改后，才能把“小程序已还原”标记为“是”。
-- 视觉还原变化时，同步更新本文件及英文镜像。
+- 使用 `miniprogram/app.json` 的标准路由作为唯一键。
+- 记录设计映射和一条简短当前视觉核验结论。
+- 截图、指标和测试日志放在本地证据目录，不放入 canonical 台账。
+- 视觉还原变化时同步更新中英文台账。
 
-## 当前台账
-
-正式量房页视觉验证更正（2026-08-14）：当前生产渲染标识为
-`degree-aware-branch-far-face-v13`。墙组局部原点并集修正继续保留；选中墙体仍以
-垂直端帽按相邻墙实体占用范围裁切，新拉 T 型分支则从源墙远侧墙面开始，不再把
-浅色分支实体画进原墙。
-用户批准的 `d4920bfd0ddb84a810c2109b344016d1.jpg` 与
-`f275da8992b3901e9165f4d13d28c81e.jpg` 是该局部选中态依据；
-`3004eb002d311652998850a69781cf2d.jpg` 是后续分支起点行为依据。
-此前剩余的 T 型/边角消失发生在 Canvas 绘制之前：
-顶点按 Canvas 绝对 `0.01px` 网格取整，平移后网格相位变化，使同一组墙体
-重建为不同并集闭环。现改为以每个墙组的首个顶点为局部原点归并，完成后再还原
-Canvas 坐标，不改获批 UI 和绘制顺序，但使正式帧与手势帧对纯平移严格不变。
-先失败后修复的回归测试覆盖七类 T/十字/删除场景及三组亚像素与大幅平移；
-实体/渲染/拓扑/视觉/视口/编辑器专项 `92/92`，七场景图集的填充和轮廓人工检查通过。
-两墙小数偏移回归还确认墙角始终是一个 6 点 L 形闭环，并覆盖 `0.004px` 投影端点误差；小程序全量测试 `332/335`，3 条既有失败分别是获客跳转断言、本地 API 端口和离线调试默认开关，与本修复无关。
-既有开发者工具窗口无兼容 Automator 端点，原生 iPhone 13 Pro `390x844` 核验仍待补充。
-本更正取代下方正式量房路由行中先前的渲染版本结论；设计来源和已还原状态不变。
-
-| 小程序路由 | 最后设计稿 | 视觉验收状态 | 小程序已还原 | 更新时间 |
-| --- | --- | --- | :---: | --- |
-| `pages/index/index` | `design-references/all-pages-ip-v1/01-home-v2.png` | 已有还原；下次视觉变更时补充路由级证据 | 是 | 2026-08-06 |
-| `packages/business/lead-detail/lead-detail` | `design-references/all-pages-ip-v3/08-lead-detail-v3.png` | 沿用已还原的客户档案、四阶段轨道、获客协作和正式量房结构；在轨道下新增由服务端权限驱动的签约进度区与安全区底部确认层，支持企业负责人/负责设计师标记签约及负责人填写原因撤销。签约日期、金额、备注和“不会生成订单、扣款或获客提成”边界均使用原生可读控件，不新增装饰素材。签约、详情布局和 V3 还原静态测试已通过。已确认现有微信开发者工具窗口打开本仓库 `miniprogram`，但该窗口未暴露 `autoPort`/兼容 Automator 端点；按窗口纪律未打开重复窗口，重新编译、顶层路由确认和带原生胶囊的 `390x844` 截图仍待补。 | 是 | 2026-08-14 |
-| `packages/business/settings/settings` | `design-references/account/settings-v1.png` | 获批的通知单行布局、间距、图标和层级保持不变；原有尾部状态现按四个 V2 模板统一显示“全部允许、部分允许、已拒绝、已关闭、未设置或配置暂不可用”，设置页与聚合授权静态测试已通过。仍需在现有微信开发者工具窗口重新编译、确认顶层路由，并补充带原生胶囊的 `390x844` 截图。 | 是 | 2026-08-12 |
-| `pages/ai-design/ai-design` | `design-references/ai-design/ai-recipe-discovery-home-v2/ai-recipe-discovery-home-v2.png` | 已按用户批准的空间方案册方向替换旧四阶段项目工作台：原生装修配方发现页提供户型/照片入口、搜索、空间分类、主推荐与同顶双列全图瀑布流；配方数据来自已发布提示词模板，但不向客户端返回提示词、模型或内部方案 ID。2026-08-14 根据真机遮挡截图把“设计记录/点数”从绝对定位改为胶囊下方正常文档流中的双列 `88rpx` 工具条，Hero 排在工具条之后；静态路由、素材、结构与功能回归通过，现有开发者工具窗口重新编译及带原生胶囊的 `390x844` 截图仍待补。 | 是 | 2026-08-14 |
-| `packages/ai-workflow/create/ai-design-create` | `design-references/all-pages-ip-v3/14-ai-design-create-v3.png` | 已有还原；HTML 证据仅为可选历史记录 | 是 | 2026-08-11 |
-| `packages/ai-workflow/recipe-detail/recipe-detail` | `design-references/ai-design/ai-recipe-discovery-home-v2/ai-recipe-discovery-home-v2.png` | 沿用获批的暖白、深绿、全图方案页语言，原生展示配方说明、输入要求、完整户型/单房间支持和真实点数；不显示技术配置。静态回归通过，原生 `390x844` 路由截图待补。 | 是 | 2026-08-14 |
-| `packages/ai-workflow/recipe-project/recipe-project` | `design-references/ai-design/ai-recipe-discovery-home-v2/ai-recipe-discovery-home-v2.png` | 项目与空间选择合并为同一路由的连续页面，不显示四步轨道；卡片只使用真实正式量房资格、客户/小区和闭合房间，待完善项目只可继续量房。静态回归通过，原生 `390x844` 路由截图待补。 | 是 | 2026-08-14 |
-| `packages/ai-workflow/recipe-confirm/recipe-confirm` | `design-references/ai-design/ai-recipe-discovery-home-v2/ai-recipe-discovery-home-v2.png` | 单屏确认同时承载照片上传/客户已有成果选择和仅在无法自动消歧时出现的方案选择底部层；内部方案 ID 不可见。静态回归通过，原生 `390x844` 路由截图待补。 | 是 | 2026-08-14 |
-| `packages/ai-workflow/result/ai-design-result` | `design-references/ai-design/ai-recipe-discovery-home-v2/ai-recipe-discovery-home-v2.png` | 生成、失败与交付状态已切入空间方案册视觉语言；配方任务只展示真实队列/处理状态，不显示推算百分比，成功页保留原图/方案对比、保存、分享、继续配方和历史，并补充客户项目、空间、配方及实际点数。静态回归通过，原生 `390x844` 路由截图待补。 | 是 | 2026-08-14 |
-| `packages/ai-workflow/history/ai-design-history` | `design-references/ai-design/ai-recipe-discovery-home-v2/ai-recipe-discovery-home-v2.png` | “我的设计”使用同一深绿方案册头部和原生任务卡，全部、生成中、已完成、失败筛选保留；每条展示客户项目、空间、配方、状态、时间和真实点数。静态回归通过，原生 `390x844` 路由截图待补。 | 是 | 2026-08-14 |
-| `packages/surveying/editor/surveying-editor` | `design-references/surveying/cursor-guide-state-reference-20260812.jpg` | 最新六态参考板规定辅助线语义：初始和首墙未确认时不显示蓝色虚线；继续拖墙时活动准星与预览墙跟手移动，蓝色十字留在上一确认点并只在提交后移动；自由拖放不生成橙线，墙面、顶点、轴向吸附和闭合路径只把真实受约束的轴或路径绘制为橙色虚线，且瞬态线在松手、取消、重置、撤销、重做或状态切换时清除。底部光标控制坞仍保留获批三态和独立辅助文案；画布平移、双指缩放和门窗移动不显示放大镜。左上角放大镜改为单一 Canvas 面板，不再叠加第二个原生背景容器。画布内拖动当前光标时，正式 Canvas 仍是唯一的光标/辅助线渲染者，瞬态层只提供同一获批放大镜；该放大镜跨正式画布重绘保持可见，并临时隐藏其后方竞争同一左上区域的实时测量气泡，镜心和 X/Y 标签始终采用正式预览/显示的最终吸附点，而非手指原始坐标。墙体外边或外边顶点吸附后，静态光标保持在同一可见外边目标，墙图拓扑仍以中心线为准。删除恰好由两个闭合空间共同引用的唯一共用墙时，现有获批 Canvas 继续切换为一个合并后的填充、标签、永久尺寸和净面积；外墙面起测场景只清除被删共墙端点处失效的墙厚内缩，保留全部未选中外围墙及其门窗原位并恢复连续墙体。内边相邻闭合仍保留共享墙实体并补画所选净边界。布局、光标标记、墙体、尺寸、工具栏、导航、API、角色、v4 墙图和测量审计均不改变。2026-08-13 的几何 V1/V2 运行时实验已撤回。2026-08-14 以用户缺陷截图 `6475f5780dc029bfa918dba09954fc4c.jpg`、`99e89446853768a52b11fc60baa8dc59.jpg`、`9e37904e8637f3c7280319a6a911d9b9.jpg`、`e0e4092fae8ff103e29260a78a0aff35.jpg`、`6984d8a41017d3e97394f727a0e52c2c.jpg`、`281f295ee0d54aa908237afea5d3f484.jpg`、`2ef3a3cd6e3e23ed79ae86aa0f81c5a8.jpg` 及目标状态 `d4920bfd0ddb84a810c2109b344016d1.jpg`、`f275da8992b3901e9165f4d13d28c81e.jpg` 为行为依据：T 型源墙两段红色测量边仍保留完整分支墙厚间隔，但测量内缩不再裁剪由拓扑节点生成的实体墙；斜墙近重合连接点先归并，删除分支后重算剩余同源切分段内缩。真机 Canvas 墙体改为每次只填充一个实体并集输入多边形、只描绘分类后的外边界段；开放分支先绘制、闭合墙后绘制，使闭合源墙在交叠区保持连续深色，不再被浅色分支视觉掏空。正式帧和拖动画布帧投影同一组几何；正式场景使用递增代次，过期页面回调被丢弃，手势持有画布时到达的正式重绘延迟到最终交接，尺寸查询及主/拖拽 Canvas 初始化也有独立代次保护，避免迟到回调清空或覆盖当前帧。未改 WXML/WXSS 或控件布局。780 组场景矩阵的 `12/12` 个分组全部通过，原有光标/拓扑、Canvas、实体并集及最终场景像素专项测试 `124/124` 通过，正式帧/手势帧结构及绘制优先级专项 `68/68`，扩展渲染器/拓扑/视觉/视口/编辑器专项 `103/103`，小程序全量 `327/330`（3 条既有失败无关）。七种代表场景输出至 `tmp/survey-topology-visual-regression.png`，标记交点内无完整背景像素或内部黑色端帽/接缝，按运行时同样的逐多边形填充与边界段描边重生成后人工目检通过。真机已确认加载 `native-polygon-frame-owner-v3`，因此缓存和过期回调不是剩余根因；进一步确认填充分别消费 open/closed 独立并集、轮廓却消费完整并集，导致跨组 T 型/边角补片只存在于轮廓。当前正式帧和手势帧先以浅色逐个铺满完整并集，再以深色覆盖闭合墙，并把每条分类边界段独立描边。继续真机复验表明独立补片路径仍可能整块漏画；实体计划现显式输出 `joinPolygons`，并在普通填充后按 DPR 以设备像素扫描线 `fillRect()` 确定性重画连接补片及其闭合墙交集；该扫描线实验已被与稳定父提交 `ad28143` 的 Git 对比结论取代：逐多边形、逐边界段和扫描线着色本身会让混合开放/闭合交点争夺颜色所有权，平移后的像素采样变化造成缺口随机消失或恢复。当前 `git-union-ring-restore-v6` 恢复每个非空墙色组一次分类并集闭环填充、完整墙体一次闭合并集环描边，同时保留拓扑节点实体和帧代次保护；扫描线与独立补片着色均已删除。渲染/实体/视觉/视口专项 `68/68`、小程序全量 `326/329`，3 条既有失败无关；七场景图集已按当前运行时闭环顺序重生成并人工检查墙体及轮廓连续。后续 `wall-local-selection-junction-clip-v11` 修正保持上述实体不变，仅把垂直端帽的选中填充按相邻墙真实实体占用范围裁切；H5 浏览器交互已验证普通闭合转角、T 型源墙和房间分割两侧。当前 `wall-local-branch-far-face-v12` 还把有端点内缩的新拉分支墙实体起点移到源墙远侧墙面；H5 已验证源墙保持连续，且此前交点中性选中态不回退。既有开发者工具窗口无兼容 Automator 端点，原生 iPhone 13 Pro `390x844` 交互核验仍待补充，本轮未打开重复窗口。 | 是 | 2026-08-14 |
+English mirror: [miniprogram-design-restoration-ledger.md](./miniprogram-design-restoration-ledger.md)
