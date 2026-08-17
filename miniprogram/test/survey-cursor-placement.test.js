@@ -458,7 +458,7 @@ test('cursor placement can snap to the outer wall edge', () => {
   assert.deepEqual(target.pointMm, outerMidpoint);
 });
 
-test('inner and outer wall-middle T starts retain one topology path and mark distinct working faces', () => {
+test('inner and outer wall-middle T starts retain one topology path and distinct source boundaries', () => {
   const base = createClosedDraft();
   const floor = surveyGraph.getActiveFloor(base);
   const wall = floor.walls[0];
@@ -651,11 +651,11 @@ test('an outer-corner drop keeps the topology anchor on the centerline and the s
   assert.equal(snappedFloor.session.activeSpaceSharedSnapLine, 'outer');
 });
 
-test('an outer T continuation keeps right and left measured lengths on the visible cursor working line', () => {
+test('an outer T continuation keeps the visible cursor on the shared branch working face', () => {
   [
-    { direction: 1, expectedInsetMm: 200, expectedExtensionMm: 0 },
-    { direction: -1, expectedInsetMm: 0, expectedExtensionMm: 200 }
-  ].forEach(({ direction, expectedInsetMm, expectedExtensionMm }) => {
+    { direction: 1 },
+    { direction: -1 }
+  ].forEach(({ direction }) => {
     let draft = createClosedDraft(6000);
     let floor = surveyGraph.getActiveFloor(draft);
     const sourceWall = floor.walls[0];
@@ -678,7 +678,7 @@ test('an outer T continuation keeps right and left measured lengths on the visib
     draft = commitWall(draft, { xMm: outerMidpoint.xMm, yMm: -2000 }, 1800);
     floor = surveyGraph.getActiveFloor(draft);
     assert.deepEqual(surveyGraph.getCursorDisplayPoint(floor, floor.session), {
-      xMm: outerMidpoint.xMm + 200,
+      xMm: outerMidpoint.xMm,
       yMm: -2000
     });
 
@@ -689,8 +689,8 @@ test('an outer T continuation keeps right and left measured lengths on the visib
 
     assert.equal(floor.session.previewPoint.yMm, -2000);
     assert.equal(floor.session.previewLengthMm, 1810);
-    assert.equal(floor.session.previewMeasurementStartInsetMm, expectedInsetMm);
-    assert.equal(floor.session.previewMeasurementStartExtensionMm, expectedExtensionMm);
+    assert.equal(floor.session.previewMeasurementStartInsetMm, 0);
+    assert.equal(floor.session.previewMeasurementStartExtensionMm, 0);
     assert.deepEqual(
       surveyGraph.getCursorDisplayPoint(floor, floor.session),
       draggedPoint
@@ -704,9 +704,9 @@ test('an outer T continuation keeps right and left measured lengths on the visib
     const coordinateLengthMm = Math.round(Math.hypot(end.xMm - start.xMm, end.yMm - start.yMm));
 
     assert.equal(wall.lengthMm, 1810);
-    assert.equal(wall.measurementStartInsetMm || 0, expectedInsetMm);
-    assert.equal(wall.measurementStartExtensionMm || 0, expectedExtensionMm);
-    assert.equal(coordinateLengthMm, 1810 + direction * 200);
+    assert.equal(wall.measurementStartInsetMm || 0, 0);
+    assert.equal(wall.measurementStartExtensionMm || 0, 0);
+    assert.equal(coordinateLengthMm, 1810);
     assert.equal(
       coordinateLengthMm - (wall.measurementStartInsetMm || 0) + (wall.measurementStartExtensionMm || 0),
       1810

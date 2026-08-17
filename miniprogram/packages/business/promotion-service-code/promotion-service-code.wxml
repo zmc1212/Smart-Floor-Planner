@@ -1,0 +1,61 @@
+<!--
+THESIS: 一张安静、可信的服务凭证，让客户先看懂价值再扫码，不暴露背后的企业关系。
+OWN-WORLD: 暖白纸面、品牌绿服务码框、短测量路径与完整小 K 服务向导。
+STORY: 客户确认免费测量与设计师服务，扫描唯一服务码进入手机号授权。
+FIRST VIEWPORT: 胶囊左侧标题；价值标题、服务码、三项承诺和底部小 K 在 390x844 同屏。
+FORM: 批准的 selected option A 左屏；精确设计源已锁定，未运行概念 seed。
+-->
+<view class="service-code-page">
+  <view
+    class="service-nav"
+    style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
+  >
+    <view class="nav-title">免费设计服务</view>
+  </view>
+
+  <view class="service-code-content">
+    <view class="service-heading">
+      <view class="heading-primary">免费上门测量</view>
+      <view class="heading-accent">免费设计师服务</view>
+    </view>
+
+    <view class="qr-stage">
+      <view wx:if="{{loading}}" class="qr-loading">
+        <view class="qr-loading-grid"></view>
+        <view class="qr-state-copy">服务码生成中</view>
+      </view>
+      <view wx:elif="{{errorMessage}}" class="qr-error">
+        <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+        <view class="qr-state-title">服务码暂不可用</view>
+        <view class="qr-state-copy">{{errorMessage}}</view>
+        <button class="qr-retry" bindtap="onRetry">重新生成</button>
+      </view>
+      <image wx:else class="service-qr" src="{{qrImagePath}}" mode="aspectFit" show-menu-by-longpress />
+    </view>
+    <view class="scan-copy">微信扫码领取服务</view>
+
+    <view class="service-promises">
+      <view class="promise-item">
+        <view class="promise-icon promise-price">¥0</view>
+        <view class="promise-title">0元服务</view>
+        <view class="promise-copy">全程免费</view>
+      </view>
+      <view class="promise-item">
+        <view class="promise-icon"><image src="/images/mine-icons/user.png" mode="aspectFit" /></view>
+        <view class="promise-title">专业设计师</view>
+        <view class="promise-copy">一对一服务</view>
+      </view>
+      <view class="promise-item">
+        <view class="promise-icon"><image src="/packages/business/assets/promotion-detail/measurer.png" mode="aspectFit" /></view>
+        <view class="promise-title">上门量房</view>
+        <view class="promise-copy">精准测量</view>
+      </view>
+    </view>
+
+    <view class="guide-scene" aria-hidden="true">
+      <view class="city-line city-line-one"></view>
+      <view class="city-line city-line-two"></view>
+      <view class="guide-ground"></view>
+    </view>
+  </view>
+</view>

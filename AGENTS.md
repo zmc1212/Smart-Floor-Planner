@@ -213,6 +213,27 @@ staged change; split unrelated work.
   OpenAI-compatible provider. Keep the same prompt, reference-image order, and
   output constraints across the fallback; report which path produced the final
   image without exposing credentials.
+- When the user explicitly asks to generate an image with `Antigravity`, that
+  request overrides the normal Codex-to-Sub2API priority for the requested
+  image. Reuse the already running standalone Antigravity 2.0 desktop app and
+  its `Smart-Floor-Planner` project; do not substitute Antigravity IDE or open
+  another Antigravity instance. Use Antigravity's built-in
+  `generate_image`/`image_generation` capability rather than installing or
+  claiming a separate image-generation plugin.
+- For an Antigravity image request, give the agent the complete prompt, ordered
+  reference-image paths and exact workspace output path. Keep generated design
+  references under repository-root `design-references/`, and do not authorize
+  unrelated product-source changes. The existing Antigravity configuration is
+  `Turbo Mode` with artifact review set to `Always Proceed`; do not downgrade or
+  reset it. A turn created before a permission change may retain its old
+  permission snapshot, but new turns must use the current project settings.
+- Treat an Antigravity generation as successful only after the requested raster
+  file actually exists at the target path. Verify its file signature, format,
+  pixel dimensions and encoded size, inspect the rendered image, and report the
+  final absolute path. A submitted prompt, a running indicator, or a generated
+  temporary artifact is not completion. If Antigravity is unavailable or its
+  built-in image tool fails, report the actual error and then follow the normal
+  fallback rule above without claiming Antigravity success.
 - After every raster image generation, optimize the generated file before it is
   retained or packaged. Any generated image shipped in `miniprogram/` must be
   at most 300KB; preserve the asset path and visual composition, reduce colour
@@ -275,8 +296,27 @@ staged change; split unrelated work.
 
 ### WeChat DevTools Window Discipline
 
-- Reuse the user's currently open WeChat DevTools project window for Mini
-  Program compilation, automation, screenshots, and visual QA.
+- Reuse the user's currently open WeChat DevTools project window when that
+  exact window already exposes a working `miniprogram-automator` WebSocket
+  endpoint. The IDE HTTP service port recorded in `.ide`/`.cli` is not the
+  automator port and must not be passed to `automator.connect`.
+- Before attaching or replacing a window, resolve and verify the exact open
+  project path. It must equal this repository's `miniprogram/` path. If the
+  path is ambiguous, multiple windows contain the same project, or a different
+  project would be affected, stop and ask the user instead of closing anything.
+- If the verified current project window is open normally but has no working
+  automator endpoint, Codex is pre-authorized to replace that project window:
+  close only the verified old project window through the existing IDE service,
+  wait until that project window has closed, then run `cli auto` for the same
+  absolute project path with `--auto-port` and `--trust-project`. Prefer fixed
+  port `9420` after confirming it is free; if it is occupied by a non-matching
+  process, select another free local port and record it in the QA evidence.
+  Reuse the existing IDE HTTP service port via `--port`; do not quit or restart
+  the whole WeChat DevTools application.
+- After the fallback launch, confirm exactly one window is open for the
+  project, confirm the selected automator port is listening, connect with
+  `miniprogram-automator`, and verify the reported project/page context before
+  any interaction. Do not create a temporary project copy.
 - After attaching to the existing WeChat DevTools automation endpoint, trigger
   one fresh Mini Program compilation before the first interactive check or
   screenshot and confirm that the simulator has resumed rendering. The initial
@@ -290,16 +330,13 @@ staged change; split unrelated work.
   the route differs, navigate to the target, wait for it to render, and repeat
   the route check before taking the screenshot; record the confirmed route with
   the visual-QA evidence.
-- Do not run `cli open`, `cli auto`, or an equivalent command when it would open
-  a duplicate WeChat DevTools window for the same project. Connect only to the
-  automation endpoint already exposed by the current window.
-- If the current window has not enabled automation or its endpoint is
-  unavailable, report that limitation and ask the user to enable it in the
-  existing window. Do not create a temporary project copy or launch another
-  DevTools window as a workaround.
-- Never close, restart, or replace the user's current WeChat DevTools window
-  without explicit approval. A window created by Codex may be closed only after
-  its exact project path has been verified.
+- Do not run `cli open`, `cli auto`, or an equivalent command while the old
+  verified project window is still open; the fallback above must close that
+  project window first so a duplicate is never created.
+- Outside the verified no-automator fallback above, never close, restart, or
+  replace the user's current WeChat DevTools window without explicit approval.
+  A window created by Codex may be closed only after its exact project path has
+  been verified.
 
 ## Verification
 

@@ -86,6 +86,13 @@ Component({
     async openMostRecentlyEditedSurvey() {
       if (this.isOpeningSurvey) return;
       this.isOpeningSurvey = true;
+
+      if (ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG) {
+        openSurveyingEditor({ startNewSurvey: true });
+        this.isOpeningSurvey = false;
+        return;
+      }
+
       wx.showLoading({ title: '加载量房记录' });
 
       try {
@@ -99,11 +106,6 @@ Component({
 
         openSurveyingEditor({ startNewSurvey: true });
       } catch (err) {
-        if (ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG) {
-          openSurveyingEditor({ startNewSurvey: true });
-          return;
-        }
-
         wx.showToast({
           title: (err && err.error) || '加载最近量房失败',
           icon: 'none'

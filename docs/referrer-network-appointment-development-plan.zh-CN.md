@@ -1,6 +1,6 @@
 # 推荐人网络与预约量房闭环开发计划
 
-状态：`Approved design / Phase 3 implemented`
+状态：`Approved design / Phase 4 in progress`
 
 本文是“推荐人多企业推广、客户授权建线索、自动派单、预约量房、AI 方案、签单和三方提成”破坏式改造的持续开发入口。当前代码、PostgreSQL schema、迁移和模块清单仍是已实现能力的依据；本文中的表、接口和路由在代码落地并通过测试前都只能标记为 `Planned`。
 
@@ -137,7 +137,7 @@ closed 为终止状态
 
 阶段 2 已实现本节的服务端合同：企业管理员可查询、换新和停用员工/推荐人入驻码，换码与扫码结果写入审计；已授权手机号的小程序用户可入驻为单企业员工或加入默认最多 3 家企业的推荐人网络，并可查询、退出成员关系和重取当前推广令牌。令牌为基于服务端密钥的 192-bit 不透明值，数据库只保存 SHA-256 哈希，不编码企业明文。
 
-阶段 2 的 `POST /api/miniprogram/codes/resolve` 负责区分入驻码/推广码、校验状态并写审计；阶段 3 已在有效推广码响应中增加 10 分钟的加密签名待确认来源。解析本身仍不创建线索，只有客户授权接口提交该来源后才创建归属与线索。阶段 3 未新增生产小程序页面，因此设计还原台账不变。
+阶段 2 的 `POST /api/miniprogram/codes/resolve` 负责区分入驻码/推广码、校验状态并写审计；阶段 3 已在有效推广码响应中增加 10 分钟的加密签名待确认来源。阶段 4 已将批准设计落为推广服务码展示页和客户领取页；解析本身仍不创建线索，只有客户授权接口提交该来源后才创建归属与线索。
 
 ### 6.1 企业双码
 
@@ -252,6 +252,7 @@ closed 为终止状态
 | 双码管理 | `GET /api/enterprise/join-codes`、`POST /api/enterprise/join-codes/[type]/rotate`、`POST /api/enterprise/join-codes/[type]/disable`；阶段 2 已实现。 |
 | 入驻 | `POST /api/miniprogram/onboarding/staff`、`POST /api/miniprogram/onboarding/referrer`；阶段 2 已实现。 |
 | 推荐人 | `GET /api/miniprogram/referrer-memberships`、`DELETE /api/miniprogram/referrer-memberships/[id]`、`GET /api/miniprogram/referrer-memberships/[id]/promotion-code`；阶段 2 已实现。 |
+| 服务码图片 | `GET /api/miniprogram/referrer-memberships/[id]/promotion-code/image`；阶段 4 已实现，校验当前推荐人关系后在事务外调用微信小程序码接口，返回不缓存的 PNG。 |
 | 客户建线索 | `POST /api/miniprogram/referrals/authorize-and-create-lead`；阶段 3 已实现客户上下文/微信手机号直接授权、幂等归属、原子建线索和派单。 |
 | 派单 | `POST /api/internal/lead-assignments/[leadId]/retry`；阶段 3 已实现且仅接受至少 32 字符的 `INTERNAL_SECRET` 服务身份。 |
 | 可用时段 | `GET /api/appointments/availability` |
@@ -263,11 +264,14 @@ closed 为终止状态
 
 ## 13. 计划小程序与后台界面
 
-计划运行路由在创建前不写入设计还原台账：
+阶段 4 已实现并写入设计还原台账的运行路由：
+
+- `packages/business/promotion-service-code/promotion-service-code`：选定设计左屏，供推荐人展示给客户；服务码图片通过受保护接口生成。
+- `packages/business/free-design-service/free-design-service`：选定设计中屏和右屏，承载扫码解析、手机号授权、幂等建线索和设计师微信结果。
+
+其余计划路由在创建前不写入设计还原台账：
 
 - `packages/business/referrer-workbench/referrer-workbench`：推荐人企业关系、内部企业选择和推广码入口。
-- `packages/business/promotion-service-code/promotion-service-code`：选定设计左屏，供推荐人展示给客户。
-- `packages/business/free-design-service/free-design-service`：选定设计中屏和右屏，承载扫码、授权和设计师微信结果。
 - `packages/business/customer-project/customer-project`：客户项目、预约、正式户型和已发布方案。
 - `packages/business/appointment-reschedule/appointment-reschedule`：客户可用时段与改期。
 - `packages/business/measurer-calendar/measurer-calendar`：测量员预约与不可用日历。
@@ -309,7 +313,7 @@ closed 为终止状态
 | 1. Schema 与身份基础 | `Completed` | 目标表、`leads` 扩展、强制 RLS、Repository、数据库实时身份列表/切换、`contextVersion` 失效及普通客户手机号登录已实现；数据库合同测试通过。旧 OpenID 字段仅为第 8 阶段前的旧流程并存兼容。 |
 | 2. 双码与推荐人网络 | `Completed` | 双码换码/停用审计、员工单企业、推荐人默认三家上限与退出、可重取的不透明推广令牌已实现；Repository 数据库合同测试通过。 |
 | 3. 客户授权与自动派单 | `Completed` | 两阶段扫码、原子用户关联/建线索、首次有效归属、稳定最小负载派单、无候选保留、事务后通知、服务身份及员工池变化重试已实现；Repository/RLS/并发测试通过。 |
-| 4. 选定设计生产实现 | `Not started` | 三屏对应路由按 `390x844` 实现并通过微信胶囊、字号、权限和真机视觉核验；更新设计台账。 |
+| 4. 选定设计生产实现 | `In progress` | `promotion-service-code` 与 `free-design-service` 两条路由按 `390x844` 实现三屏状态；服务码图片接口、扫码解析、手机号授权、幂等建线索、设计师二维码交付和无设计师待分配状态已接通；聚焦测试通过。缺失素材已准备固定 `3x2` 生图画板 prompt 与六格裁切映射，但当前 Sub2API 账号未暴露图像模型；素材生成/包内接入及连接真实 automator 端口后的原生胶囊核验仍待完成。 |
 | 5. 预约与日历 | `Not started` | 设置、不可用时间、排斥约束、首次预约、客户/内部改期、取消、事件审计和通知。 |
 | 6. 客户项目、量房与 AI 发布 | `Not started` | 正式量房入口、项目聚合 API、AI 发布事实和客户只读权限。 |
 | 7. 签单与三方提成 | `Not started` | 三规则、签单快照、三条唯一提成、已付/作废约束和报表。 |

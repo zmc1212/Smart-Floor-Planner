@@ -76,7 +76,8 @@ function request(url, method = 'GET', data = {}, options = {}) {
       timeout: options.timeout || 30000,
       header: {
         'content-type': 'application/json',
-        'Authorization': token ? `Bearer ${token}` : ''
+        'Authorization': token ? `Bearer ${token}` : '',
+        ...(options.headers || {})
       },
       success: (res) => {
         if (res.statusCode === 401) {

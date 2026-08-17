@@ -2103,7 +2103,7 @@ test('a mixed closed/open T junction keeps separate stable union-ring colour own
   );
 });
 
-test('an outer-face T branch body starts at the source wall far face', () => {
+test('an outer-start T branch body starts at the source wall far face', () => {
   let draft = createClosedRectangleDraft();
   let floor = surveyGraph.getActiveFloor(draft);
   const sourceWall = floor.walls[0];
@@ -2126,6 +2126,8 @@ test('an outer-face T branch body starts at the source wall far face', () => {
   const previewScene = createScene(previewDraft);
   assert.ok((previewFloor.session.previewMeasurementStartInsetMm || 0) > 0);
   assert.deepEqual(previewScene.previewWall.solidStartPoint, previewScene.previewWall.startPoint);
+  assert.deepEqual(previewScene.cursor.point, previewScene.previewWall.measurementEndPoint);
+  assert.deepEqual(previewScene.previewWall.measurementEndPoint, previewScene.previewWall.endPoint);
   draft = surveyGraph.commitPreviewLength(
     previewDraft,
     previewFloor.session.previewLengthMm,
@@ -2161,8 +2163,9 @@ test('an outer-face T branch body starts at the source wall far face', () => {
   assert.equal(branchStart, sourceFarFace);
   assert.deepEqual(branchScene.solidStartPoint, branchScene.startPoint);
   assert.notDeepEqual(branchScene.solidStartPoint, nodePoint);
-  assert.equal(branchScene.measurementFace, 'outer');
-  assert.deepEqual(branchScene.measurementStartPoint, branchScene.outerStart);
+  assert.equal(branchScene.measurementFace, 'inner');
+  assert.deepEqual(branchScene.measurementStartPoint, branchScene.startPoint);
+  assert.deepEqual(scene.cursor.point, branchScene.measurementEndPoint);
   const insetSourceScene = sourceScenes.find((wall) => (
     (wall.wall.measurementStartInsetMm || 0) > 0 || (wall.wall.measurementEndInsetMm || 0) > 0
   ));
@@ -2170,7 +2173,7 @@ test('an outer-face T branch body starts at the source wall far face', () => {
   assert.notDeepEqual(insetSourceScene.startPoint, insetSourceScene.solidStartPoint);
 });
 
-test('an outer-face T branch keeps later red edges on the continuous cursor working line', () => {
+test('an outer-start T right turn keeps one continuous branch face and body side', () => {
   let draft = createClosedRectangleDraft();
   let floor = surveyGraph.getActiveFloor(draft);
   const sourceWall = floor.walls[0];
@@ -2196,7 +2199,7 @@ test('an outer-face T branch keeps later red edges on the continuous cursor work
 
   assert.equal(floor.session.activeSpaceSharedSnapLine, 'outer');
   assert.equal(activeWalls.length, 2);
-  assert.equal(activeWalls[0].measurementFace, 'outer');
+  assert.equal(activeWalls[0].measurementFace, 'inner');
   assert.equal(rightwardWall.measurementFace, 'inner');
   assert.equal(activeWalls[0].outerStart.x > activeWalls[0].startPoint.x, true);
   assert.equal(rightwardWall.outerStart.y > rightwardWall.startPoint.y, true);
@@ -2242,7 +2245,7 @@ test('an inner-face T second-wall preview preserves the confirmed first wall bod
   });
 });
 
-test('an outer-face T second-wall preview places the body toward the source room', () => {
+test('an outer-start T second-wall preview stays on the first branch working face', () => {
   [6200, -200].forEach((endX) => {
     let draft = createClosedRectangleDraft();
     let floor = surveyGraph.getActiveFloor(draft);
@@ -2263,17 +2266,18 @@ test('an outer-face T second-wall preview places the body toward the source room
 
     assert.deepEqual(firstWallDuringPreview.outerStart, firstWallBeforePreview.outerStart, `first outer start endX=${endX}`);
     assert.deepEqual(firstWallDuringPreview.outerEnd, firstWallBeforePreview.outerEnd, `first outer end endX=${endX}`);
+    assert.equal(firstWallDuringPreview.measurementFace, 'inner', `first measurement face endX=${endX}`);
     assert.equal(scene.previewWall.measurementFace, 'inner', `measurement face endX=${endX}`);
     assert.deepEqual(
       firstWallDuringPreview.measurementEndPoint,
       scene.previewWall.measurementStartPoint,
-      `continuous outer corner endX=${endX}`
+      `continuous branch corner endX=${endX}`
     );
     assert.deepEqual(scene.previewWall.measurementEndPoint, scene.previewWall.endPoint, `dragged edge endX=${endX}`);
     assert.deepEqual(scene.cursor.point, scene.previewWall.endPoint, `cursor edge endX=${endX}`);
     assert.equal(
       Math.sign(scene.previewWall.outerOffsetPx),
-      endX > 3000 ? 1 : -1,
+      Math.sign(firstWallDuringPreview.outerOffsetPx),
       `second wall body side endX=${endX}`
     );
   });

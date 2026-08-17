@@ -211,8 +211,8 @@ function createScenarioCatalog(surveyGraph) {
   }
 
   function exteriorTRightwardContinuation() {
-    // The first wall uses the selected outer face; later turns use the face
-    // that passes through the current cursor so the working path cannot jump.
+    // Outer snapping selects the source wall's far boundary. The branch itself
+    // keeps the same graph-side working face and body side through the turn.
     let draft = rectangle(6000, 4000, { xMm: 0, yMm: 0 }, { thicknessMm: 200 });
     draft = snapCursor(draft, { xMm: 3000, yMm: -200 });
     draft = commitWall(draft, { xMm: 3000, yMm: -2000 });
@@ -444,12 +444,12 @@ function createScenarioCatalog(surveyGraph) {
     },
     {
       key: 'outer-t-rightward-continuation', category: '交点与分支', label: '外墙 T：外起右拉后续',
-      description: '外边首段向右转后，后续工作面穿过原光标；黑线、红线、橙线和光标连续且实体墙不翻面。', expected: { walls: 7, spaces: 1, openings: 0 },
+      description: '外边只决定源墙远侧起步；向右转后绿光标、红线与墙体保持首段的局部工作侧。', expected: { walls: 7, spaces: 1, openings: 0 },
       build: exteriorTRightwardContinuation
     },
     {
       key: 'outer-t-rightward-preview', category: '交点与分支', label: '外墙 T：外起右拉预览',
-      description: '首段外边确认后刚向右拉出第二段时，光标不下跳墙厚，预览黑线和橙线穿过原光标。', expected: { walls: 6, spaces: 1, openings: 0 },
+      description: '首段确认后向右拉出第二段时，光标不跳墙厚，橙线从上一段红线端点连续起步。', expected: { walls: 6, spaces: 1, openings: 0 },
       build: exteriorTRightwardPreview
     },
     {

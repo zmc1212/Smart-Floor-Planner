@@ -17,6 +17,8 @@ production state changes; do not append restoration history here.
 | `packages/ai-workflow/result/ai-design-result` | `design-references/ai-design/ai-recipe-discovery-home-v2/ai-recipe-discovery-home-v2.png` | Current generation, failure and delivery states are implemented; native capture pending | Yes |
 | `packages/ai-workflow/history/ai-design-history` | `design-references/ai-design/ai-recipe-discovery-home-v2/ai-recipe-discovery-home-v2.png` | Current task filters and truthful task cards are implemented; native capture pending | Yes |
 | `packages/surveying/editor/surveying-editor` | `design-references/surveying/cursor-guide-state-reference-20260812.jpg` | Current Canvas guide and cursor states plus the right-rail confirmed canvas-clear/restart action are covered by focused tests; native capsule capture pending | Yes |
+| `packages/business/promotion-service-code/promotion-service-code` | `design-references/referrer-network-appointment-v1/selected-option-a.png` | Selected option A left-screen structure implemented with protected WeChat code image, anonymous copy, and safe capsule lane; a fixed 3x2 generation-board prompt and six-cell cut map now cover the missing artwork without slicing the composite, but the current Sub2API account exposes no image model, so generation/package integration and native capsule capture remain pending | Yes |
+| `packages/business/free-design-service/free-design-service` | `design-references/referrer-network-appointment-v1/selected-option-a.png` | Selected option A middle/right states implemented with token resolution, phone authorization, idempotent claim, designer contact delivery, and assignment-pending fallback; native capsule capture pending | Yes |
 
 ## Recording rules
 

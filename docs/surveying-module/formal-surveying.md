@@ -55,30 +55,27 @@ copy back to `layoutData`.
 - Consumers must preserve wall openings, shared-wall thickness, closure rules,
   deletion/rejoin behavior, and the v4 schema.
 - A T-branch started on a closed exterior wall middle keeps one topology node
-  and physical wall. The first inner-start working line uses the inner graph
-  face, while the first outer-start working line uses the derived physical
-  outer face; those first readings are one wall thickness apart. A turn must
-  not mechanically keep the next wall's local outer face because its rotated
-  normal would move the cursor by one wall thickness. Each following segment
-  instead selects the face passing through the current green cursor, forming
-  one continuous working path. Orthogonal gesture input is stored on the
-  internal graph, while the preview outline, orange/red path, live-dimension
-  endpoints, and green cursor remain coincident on that path. An outer-start
-  turn persists the visible working-face offset from its
-  topology anchor as `measurementStartInsetMm` when it advances along the
-  measurement direction, or `measurementStartExtensionMm` when it extends in
-  the reverse direction. Preview, manual/BLE confirmation, Canvas, and
-  dimension consumers all use `topology length - start inset + start extension
-  - end inset`; the red path, displayed dimension, and confirmed reading cannot
-  differ by one wall thickness. Confirming the first branch wall separately
-  fixes the wall-local side used by the physical body. Inner-start later
-  previews and committed turns inherit that body side; outer-start later
-  segments choose the side toward the source-room centroid so the continuous
-  red working line remains the exterior face, without moving the cursor or
-  reflecting the confirmed first wall. Adjacent working faces meet at
-  their line intersection, keeping the red corner continuous. This display
-  projection does not alter graph centreline or closure topology.
-  From the second branch wall onward, a turn may join the rendered wall solids
+  and physical wall. Inner/outer start selects the near/far point on the source
+  wall boundary and the corresponding first-wall start inset; it does not
+  select opposite local measurement faces for the new branch. The first branch
+  wall and every continuation use the graph-side working face and inherit the
+  physical-body side fixed by that first wall. Neither turn direction nor the
+  source-space centroid may re-evaluate that side. Orthogonal gesture input is
+  stored on the internal graph, while the preview outline, orange/red path,
+  live-dimension endpoints, and green cursor remain coincident on one continuous
+  path. Adjacent working faces meet at their line intersection, so the previous
+  red endpoint equals the following red start and a turn cannot shift either by
+  one wall thickness. This display projection does not alter graph centreline
+  or closure topology.
+- `measurementStartInsetMm`, `measurementStartExtensionMm`, and
+  `measurementEndInsetMm` record real boundary or closure adjustments only. An
+  ordinary T turn starts at the current graph working-face endpoint and must not
+  synthesize a one-thickness inset or extension merely because the chain began
+  on the source wall's outer boundary. Preview, manual/BLE confirmation, Canvas,
+  and dimension consumers all use `topology length - start inset + start
+  extension - end inset`; the red path, displayed dimension, and confirmed
+  reading cannot differ by one wall thickness.
+- From the second branch wall onward, a turn may join the rendered wall solids
   but must not rewrite measurement insets on preceding walls or shorten any
   confirmed reading.
   Every shared-boundary closure chain

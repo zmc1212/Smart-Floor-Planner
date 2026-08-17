@@ -24,10 +24,10 @@ restoration notes and test transcripts belong in Git history or local evidence.
 
 | Surface | Runtime routes | Current contract | Status/limitation |
 | --- | --- | --- | --- |
-| Home and measurement entry | `pages/index/index` | Role-aware home, lead/project cards, formal-survey entry | Implemented; data is tenant/role shaped |
+| Home and measurement entry | `pages/index/index` | Role-aware home, lead/project cards, formal-survey entry; the local `ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG` switch opens a fresh editor without loading recent plans | Implemented; data is tenant/role shaped in normal mode; the debug switch is local-only |
 | Leads and customer records | `pages/leads-management/leads-management`, `packages/business/lead-form/lead-form`, `packages/business/lead-detail/lead-detail` | Lead list/detail, acquisition collaboration, conversion state, formal-plan summary | Implemented; conversion permissions are server enforced |
 | Promotion and staff tasks | `packages/business/promotion-records/promotion-records`, `packages/business/promotion-record-detail/promotion-record-detail`, `packages/business/acquisition-center/acquisition-center` | Enterprise referral, staff task and notification flows | Implemented/Limited; WeChat delivery can fail externally |
-| Referrer network backend | No production route in phase 3 | `/api/miniprogram/codes/resolve` resolves/audits tokens and issues a ten-minute pending source for valid promotion codes; `/api/miniprogram/referrals/authorize-and-create-lead` atomically locks first attribution, creates the lead, and stably assigns designer/measurer after phone authorization; onboarding and membership endpoints continue to manage the dual-code network | Limited; the phase-3 backend contract is implemented, while the approved workbench and anonymous service screens remain phase 4; no-candidate leads remain pending for retry |
+| Referrer network and anonymous claim | `packages/business/promotion-service-code/promotion-service-code`, `packages/business/free-design-service/free-design-service` | `/api/miniprogram/codes/resolve` resolves/audits tokens and issues a ten-minute pending source; `/api/miniprogram/referrer-memberships/[id]/promotion-code/image` returns the protected WeChat Mini Program code; `/api/miniprogram/referrals/authorize-and-create-lead` atomically locks first attribution, creates the lead, and stably assigns designer/measurer after phone authorization; onboarding and membership endpoints continue to manage the dual-code network | Implemented/Limited; public pages never reveal enterprise identity, customer phone authorization is required before lead creation, WeChat QR/provider delivery depends on external configuration, and no-candidate leads remain pending for retry |
 | Commission records | `packages/business/commission-records/commission-records` | Measurer acquisition commissions and order commissions | Implemented; settlement remains backend/business controlled |
 | Inspiration library | `packages/business/inspiration/inspiration` | Tenant-scoped inspiration browsing and detail | Implemented/Limited; media provider is external |
 | AI design workflow | `pages/ai-design/ai-design`, `packages/ai-workflow/*` | Customer/project selection, recipe entry, confirmation, task result/history | Implemented; provider, credit and formal-survey eligibility are server controlled |
@@ -44,29 +44,22 @@ and/or `floorPlanId`. The authoritative contract is
 Canvas renderer, dimensions, BLE readings, audit queue, undo/redo, the
 right-rail confirmed canvas-clear/restart action, and save failure behavior
 must follow that contract.
-Closed exterior-wall T branches retain one topology node and physical wall. An
-inner-start first wall uses its inner graph face, while an outer-start first
-wall uses its derived physical outer face; those readings are one wall
-thickness apart. A turn cannot mechanically retain the next segment's local
-outer face because its rotated normal would move the cursor by one wall
-thickness. Each following segment instead selects the face passing through the
-current green cursor, forming one continuous working path. Orthogonal touch
-input remains on the internal graph, while the preview outline, orange/red
-path, live-dimension endpoints, and green cursor coincide on that path.
-Outer-start later segments persist the visible working-face offset from the
-topology anchor as `measurementStartInsetMm` in the forward direction or
-`measurementStartExtensionMm` in the reverse direction. Preview, manual/BLE
-confirmation, Canvas, and dimension consumers consistently calculate
-`topology length - start inset + start extension - end inset`, so the red path,
-displayed value, and confirmed reading cannot differ by one wall thickness.
-Confirming the first branch wall separately fixes the wall-local side used by
-its physical body. Inner-start later previews and committed turns inherit that
-body side; outer-start later segments choose the side toward the source-room
-centroid so the continuous red working line remains the exterior face without
-moving the cursor or reflecting the confirmed first wall. Adjacent
-working faces meet at their line intersection, keeping the red corner
-continuous. This derived Canvas projection does not change graph
-centreline/closure topology. From the second branch wall onward, turns may
+Closed exterior-wall T branches retain one topology node and physical wall.
+Inner/outer start selects the near/far point on the source boundary and the
+corresponding first-wall inset; it does not choose opposite local faces for the
+new branch. Every branch segment uses the graph-side working face and inherits
+the physical-body side fixed by the first segment. Turn direction and the
+source-space centroid cannot re-evaluate that side. Orthogonal touch input stays
+on the internal graph, while the preview outline, orange/red path,
+live-dimension endpoints, and green cursor remain coincident. Adjacent red edges
+meet with equal endpoints, so beginning a second segment cannot shift the cursor
+or red line by one wall thickness. Measurement inset/extension fields record
+real boundary or closure adjustments only; an ordinary outer-start T turn does
+not synthesize a wall-thickness adjustment. Preview, manual/BLE confirmation,
+Canvas, and dimension consumers consistently calculate `topology length - start
+inset + start extension - end inset`. This derived Canvas projection does not
+change graph centreline/closure topology. From the second branch wall onward,
+turns may
 join the rendered wall solids but cannot rewrite preceding measurement insets
 or shorten confirmed readings. A shared-boundary closure
 chain retains its rendered body side when it closes,
@@ -84,8 +77,10 @@ continuations and shared internal partitions keep their existing closure behavio
   `/api/miniprogram/identity-contexts/switch`, and the shared context resolver.
   Context lists are always read from the database; a switch cannot assert an
   enterprise, staff identity, or referrer membership that is not active.
-- Referrer network: code resolution classifies and audits opaque tokens and
-  issues a short-lived pending source without creating a lead. Customer
+- Referrer network: the promotion display route loads a protected WeChat Mini
+  Program code for the current referrer membership; the anonymous claim route
+  classifies and audits opaque tokens and issues a short-lived pending source
+  without creating a lead. Customer
   authorization with `Idempotency-Key` atomically creates the active attribution,
   lead, and assignment; concurrent or repeated scans cannot replace an open
   project. Phone-authorized users can

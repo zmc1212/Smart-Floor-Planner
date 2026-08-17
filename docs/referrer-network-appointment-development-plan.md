@@ -1,6 +1,6 @@
 # Referrer Network and Measurement Appointment Development Plan
 
-Status: `Approved design / Phase 3 implemented`
+Status: `Approved design / Phase 4 in progress`
 
 This document is the durable implementation entry point for the breaking redesign covering multi-enterprise referrers, phone-authorized lead creation, automatic assignment, measurement appointments, published AI designs, conversion, and three-role commissions. Current code, PostgreSQL schema, migrations, and module inventories remain the authority for implemented behavior. Every table, API, and route in this plan remains `Planned` until code and tests prove otherwise.
 
@@ -137,7 +137,7 @@ Every enterprise business table enables and forces RLS and uses existing tenant 
 
 Phase 2 implements this section's server contract. Enterprise administrators can list, rotate, and disable distinct staff/referrer join codes, with rotation and resolution outcomes audited. A Mini Program user with an authorized phone can join one enterprise as staff or join the referrer network up to the default three-enterprise limit, then list or exit memberships and retrieve the current promotion token. Tokens are server-key-derived, opaque 192-bit values; PostgreSQL stores only their SHA-256 hashes and no plaintext enterprise identifier is encoded.
 
-Phase 2 made `POST /api/miniprogram/codes/resolve` classify join/promotion tokens, validate state, and write audits. Phase 3 adds a ten-minute encrypted and authenticated pending source for valid promotion codes. Resolution still creates no lead; attribution and lead creation happen only when the customer authorization endpoint submits that source. Phase 3 adds no production Mini Program page, so the restoration ledger remains unchanged.
+Phase 2 made `POST /api/miniprogram/codes/resolve` classify join/promotion tokens, validate state, and write audits. Phase 3 adds a ten-minute encrypted and authenticated pending source for valid promotion codes. Phase 4 now ships the approved promotion-code display and customer claim routes. Resolution still creates no lead; attribution and lead creation happen only when the customer authorization endpoint submits that source.
 
 ### 6.1 Enterprise onboarding codes
 
@@ -250,6 +250,7 @@ Exact route names may be adjusted within an implementation slice to match App Ro
 | Dual-code management | `GET /api/enterprise/join-codes`, `POST /api/enterprise/join-codes/[type]/rotate`, `POST /api/enterprise/join-codes/[type]/disable`; implemented in phase 2. |
 | Onboarding | `POST /api/miniprogram/onboarding/staff`, `POST /api/miniprogram/onboarding/referrer`; implemented in phase 2. |
 | Referrers | `GET /api/miniprogram/referrer-memberships`, `DELETE /api/miniprogram/referrer-memberships/[id]`, `GET /api/miniprogram/referrer-memberships/[id]/promotion-code`; implemented in phase 2. |
+| Service-code image | `GET /api/miniprogram/referrer-memberships/[id]/promotion-code/image`; implemented in phase 4, validates the active membership and calls the WeChat Mini Program code provider outside the database transaction, returning a non-cacheable PNG. |
 | Customer lead creation | `POST /api/miniprogram/referrals/authorize-and-create-lead`; phase 3 implements customer-context/direct WeChat phone authorization, idempotent attribution, and atomic lead creation/assignment. |
 | Assignment | `POST /api/internal/lead-assignments/[leadId]/retry`; phase 3 implements this for service identity authenticated by an `INTERNAL_SECRET` of at least 32 characters. |
 | Availability | `GET /api/appointments/availability` |
@@ -261,11 +262,14 @@ Enterprise endpoints use existing tenant route/context helpers and RLS. Internal
 
 ## 13. Planned Mini Program and Admin surfaces
 
-Do not add planned routes to the restoration ledger before they exist:
+Phase 4 routes now exist and are recorded in the restoration ledger:
+
+- `packages/business/promotion-service-code/promotion-service-code`: selected design left screen shown to customers; the code image comes from a protected provider endpoint.
+- `packages/business/free-design-service/free-design-service`: selected design middle and right authorization/result states, including token resolution, phone authorization, idempotent lead creation, and designer contact delivery.
+
+The remaining planned routes are not added to the restoration ledger before they exist:
 
 - `packages/business/referrer-workbench/referrer-workbench`: memberships, internal enterprise selection, promotion-code entry.
-- `packages/business/promotion-service-code/promotion-service-code`: selected design left screen shown to customers.
-- `packages/business/free-design-service/free-design-service`: selected design middle and right authorization/result states.
 - `packages/business/customer-project/customer-project`: project, appointment, formal floor plan, and publications.
 - `packages/business/appointment-reschedule/appointment-reschedule`: customer availability and reschedule.
 - `packages/business/measurer-calendar/measurer-calendar`: measurer appointments and unavailability.
@@ -307,7 +311,7 @@ Update this status table incrementally and update both module inventories and af
 | 1. Schema and identity | `Completed` | Target tables, lead extensions, forced RLS, repositories, database-backed context list/switch, `contextVersion` invalidation, and ordinary-customer phone login are implemented; DB contract tests pass. Legacy OpenID columns remain only for coexistence with the old flow until phase 8. |
 | 2. Dual codes and referrer network | `Completed` | Rotation/disable audit, single-enterprise staff, default three-enterprise membership limit/leave, and reproducible opaque promotion tokens are implemented; repository database contract tests pass. |
 | 3. Authorization and assignment | `Completed` | Two-stage scan, atomic user linkage/lead creation, first attribution, stable lowest-load assignment, no-candidate retention, post-commit notification, service retry, and staff-pool-change retry are implemented; repository/RLS/concurrency tests pass. |
-| 4. Selected design implementation | `Not started` | Three mapped states implemented at `390x844`, verified for capsule, type, authorization, and device rendering; ledgers updated. |
+| 4. Selected design implementation | `In progress` | `promotion-service-code` and `free-design-service` implement the three selected states at `390x844`; the service-code image endpoint, token resolution, phone authorization, idempotent lead creation, designer QR delivery, and assignment-pending state are wired. Focused tests pass. A fixed 3x2 asset-board prompt and six-cell cut map are prepared, but the configured Sub2API account currently exposes no image model; asset generation/package integration and native-capsule evidence from an actual automator port remain pending. |
 | 5. Appointments and calendar | `Not started` | Settings, unavailability, exclusion constraint, first appointment, both reschedule paths, cancellation, events, notifications. |
 | 6. Project, surveying, and publication | `Not started` | Formal entry, aggregation API, publication fact, customer read boundary. |
 | 7. Conversion and commissions | `Not started` | Three rules, conversion snapshot, three unique records, paid/void constraints, report. |

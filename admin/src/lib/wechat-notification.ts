@@ -16,34 +16,7 @@ import {
   type SubscriptionTemplateConfig,
   type SubscriptionTemplateKind,
 } from '@/lib/platform-notification-config';
-
-const WX_APPID = process.env.WX_APPID;
-const WX_APPSECRET = process.env.WX_APPSECRET;
-
-let cachedToken: string | null = null;
-let tokenExpiresAt = 0;
-
-async function getAccessToken() {
-  const now = Date.now();
-  if (cachedToken && tokenExpiresAt > now) return cachedToken;
-
-  try {
-    const response = await fetch(
-      `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${WX_APPID}&secret=${WX_APPSECRET}`
-    );
-    const data = await response.json();
-    if (data.access_token) {
-      cachedToken = data.access_token;
-      tokenExpiresAt = now + (data.expires_in - 200) * 1000;
-      return cachedToken;
-    }
-    console.error('Failed to get WeChat access token:', data);
-    return null;
-  } catch (error) {
-    console.error('Error fetching WeChat access token:', error);
-    return null;
-  }
-}
+import { getWechatAccessToken } from '@/lib/wechat-access-token';
 
 export interface SubscriptionMessageData {
   touser: string;
@@ -54,10 +27,8 @@ export interface SubscriptionMessageData {
 }
 
 export async function sendSubscriptionMessage(params: SubscriptionMessageData) {
-  const token = await getAccessToken();
-  if (!token) return { success: false, error: 'No access token' };
-
   try {
+    const token = await getWechatAccessToken();
     const response = await fetch(
       `https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token=${token}`,
       {

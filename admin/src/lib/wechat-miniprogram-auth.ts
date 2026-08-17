@@ -1,3 +1,5 @@
+import { getWechatAccessToken } from '@/lib/wechat-access-token';
+
 export interface WechatSessionIdentity {
   openid: string;
   unionid?: string;
@@ -29,19 +31,11 @@ export async function getWechatSessionIdentity(
 }
 
 export async function getWechatPhoneNumber(phoneCode: string) {
-  const { appId, appSecret } = wechatCredentials();
   if (!phoneCode) throw new Error('WeChat phone code is required');
-
-  const tokenRes = await fetch(
-    `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`
-  );
-  const tokenData = await tokenRes.json();
-  if (tokenData.errcode || !tokenData.access_token) {
-    throw new Error(tokenData.errmsg || 'Unable to obtain WeChat access token');
-  }
+  const accessToken = await getWechatAccessToken();
 
   const phoneRes = await fetch(
-    `https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token=${tokenData.access_token}`,
+    `https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token=${accessToken}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

@@ -748,13 +748,12 @@ function resolveOuterTContinuationStartAdjustment(floor, session, anchor, previe
   const previousGeometry = previousWall ? buildWallRenderGeometry(floor, previousWall) : null;
   if (!previousGeometry) return { insetMm: 0, extensionMm: 0 };
 
-  const workingStart = activeWallCount === 1
-    ? previousGeometry.outerEnd
-    : previousGeometry.end;
   const dx = previewPoint.xMm - anchor.xMm;
   const dy = previewPoint.yMm - anchor.yMm;
   const coordinateLength = Math.sqrt(dx * dx + dy * dy);
-  if (!workingStart || coordinateLength <= 0) return { insetMm: 0, extensionMm: 0 };
+  if (coordinateLength <= 0) return { insetMm: 0, extensionMm: 0 };
+
+  const workingStart = previousGeometry.end;
 
   const signedOffsetMm = Math.round(
     (workingStart.xMm - anchor.xMm) * dx / coordinateLength +
@@ -2406,39 +2405,17 @@ function getCursorDisplayPoint(floor, session) {
   const isOuterTChain = session.activeSpaceSharedWallMiddle &&
     session.activeSpaceSharedSnapLine === 'outer';
 
-  // The graph anchor remains on the topology/inner line. For an exterior T
-  // start, the operator actually sees and drags the wall's outer working line.
-  // Build that display point from the same resolved geometry used by the
-  // renderer so hit testing, the cursor lens, and the canvas stay coincident.
-  if (isOuterTChain && session.previewPoint && activeWallCount === 0) {
-    const lastWall = (floor.walls || [])[floor.walls.length - 1] || null;
-    const cursorWall = {
-      id: '__cursor-preview__',
-      thicknessMm: session.thicknessMm,
-      measurementSide: session.previewMeasurementSide || session.measurementSide,
-      bodyNormalSide: lastWall && lastWall.bodyNormalSide,
-      measurementStartInsetMm: session.previewMeasurementStartInsetMm || 0,
-      measurementStartExtensionMm: session.previewMeasurementStartExtensionMm || 0,
-      measurementEndInsetMm: session.previewMeasurementEndInsetMm || 0
-    };
-    const previewGeometry = buildWallRenderGeometry(floor, cursorWall, {
-      startPoint: anchor,
-      endPoint: session.previewPoint,
-      previousWall: lastWall,
-      nextWall: null
-    });
-    if (previewGeometry && previewGeometry.outerEnd) {
-      return previewGeometry.outerEnd;
-    }
-  }
-
+  // Once a branch is being drawn, the cursor follows its graph-side working
+  // face. Inner/outer only chooses the near/far start on the source boundary;
+  // applying it again to the branch endpoint would shift the cursor sideways
+  // by one wall thickness as soon as the operator drags the next segment.
   if (session.previewPoint) return session.previewPoint;
 
   if (isOuterTChain && activeWallCount > 0) {
     const lastWall = (floor.walls || [])[floor.walls.length - 1] || null;
     const geometry = lastWall ? buildWallRenderGeometry(floor, lastWall) : null;
     if (geometry) {
-      return activeWallCount === 1 ? geometry.outerEnd : geometry.end;
+      return geometry.end;
     }
   }
 

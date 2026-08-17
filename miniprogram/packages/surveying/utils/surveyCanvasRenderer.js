@@ -10,7 +10,7 @@ const GRID_MINOR_MM = 250;
 const GRID_MAJOR_MM = 1250;
 const MIN_WALL_THICKNESS_PX = 1.5;
 const WALL_STROKE_PX = 1.5;
-const RENDER_REVISION = 'degree-aware-branch-working-face-v15';
+const RENDER_REVISION = 'degree-aware-branch-working-face-v17';
 const REDLINE_STROKE_PX = 2;
 const GUIDE_STROKE_PX = 1.25;
 // Blue cursor coordinates use a denser cadence than the closure cue so the
@@ -283,17 +283,11 @@ function applyMeasurementFace(wall, measurementFace) {
   });
 }
 
-function resolveActiveMeasurementFace(session, activeWallIndex, activeWallStartIndex) {
-  if (!session || !session.activeSpaceSharedWallMiddle) return 'inner';
-
-  // An exterior T begins on the selected outer face. After a turn, the next
-  // segment uses the graph face that passes through the current cursor; keeping
-  // every segment on its local outer face would rotate the offset normal and
-  // make the cursor jump by one wall thickness.
-  return session.activeSpaceSharedSnapLine === 'outer' &&
-    activeWallIndex === activeWallStartIndex
-    ? 'outer'
-    : 'inner';
+function resolveActiveMeasurementFace() {
+  // Inner/outer T snapping selects the near/far start on the source boundary;
+  // it does not select opposite local faces for the new branch wall. Every
+  // segment in the branch therefore uses one graph-side working face.
+  return 'inner';
 }
 
 function reflectWallBodyAcrossMeasurementEdge(wall) {
@@ -327,57 +321,16 @@ function resolveTBranchBodyOffsetSign(session, wallEntries, activeWallStartIndex
   const firstBranchWall = wallEntries.find((entry) => entry.index === activeWallStartIndex);
   if (!firstBranchWall || !firstBranchWall.wall || !firstBranchWall.wall.outerOffsetPx) return 0;
 
-  // Inner starts inherit the first wall's local body side. For outer starts
-  // this sign is only the fallback; later segments are re-evaluated against
-  // the source-room centroid so the continuous red path stays exterior.
+  // Inner and outer starts both inherit the first branch wall's local body
+  // side. The source-boundary choice must not be reinterpreted after a turn.
   return Math.sign(firstBranchWall.wall.outerOffsetPx);
 }
 
-function resolveTBranchSourceCentroid(floor, session, project) {
-  if (!floor || !session || !session.activeSpaceSharedWallId) return null;
-  const sourceWallId = session.activeSpaceSharedWallId;
-  const sourceSpace = (floor.spaces || []).find((space) => (
-    space.closed &&
-    Array.isArray(space.wallIds) &&
-    space.wallIds.some((wallId) => {
-      const wall = surveyGraph.getWall(floor, wallId);
-      return wallId === sourceWallId || (wall && wall.topologySourceWallId === sourceWallId);
-    })
-  ));
-  if (!sourceSpace) return null;
-  const points = surveyGraph.buildSpaceBoundaryPoints(floor, sourceSpace.wallIds);
-  const centroid = calculatePolygonCentroid(points);
-  return centroid ? project(centroid) : null;
-}
-
-function resolveActiveWallBodyOffsetSign(
-  session,
-  wall,
-  wallIndex,
-  activeWallStartIndex,
-  fallbackSign,
-  sourceCentroid
-) {
-  if (
-    !wall ||
-    !sourceCentroid ||
-    !session ||
-    session.activeSpaceSharedSnapLine !== 'outer' ||
-    wallIndex === activeWallStartIndex
-  ) {
-    return fallbackSign;
-  }
-
-  const midpoint = {
-    x: (wall.startPoint.x + wall.endPoint.x) / 2,
-    y: (wall.startPoint.y + wall.endPoint.y) / 2
-  };
-  const towardSource = {
-    x: sourceCentroid.x - midpoint.x,
-    y: sourceCentroid.y - midpoint.y
-  };
-  const sourceSideScore = towardSource.x * wall.localY.x + towardSource.y * wall.localY.y;
-  return Math.abs(sourceSideScore) > 1 ? Math.sign(sourceSideScore) : fallbackSign;
+function resolveActiveWallBodyOffsetSign(fallbackSign) {
+  // The branch body stays on the first segment's local side for both inner-
+  // and outer-source starts. Re-evaluating against the source-room centroid at
+  // each turn is what made an outer-start chain visibly change sides.
+  return fallbackSign;
 }
 
 function alignWallBodyToOffsetSign(wall, desiredOffsetSign) {
@@ -975,9 +928,9 @@ function createSurveyRenderScene(input) {
     activeWallStartIndex + activeWallCount,
     activeWallStartIndex
   );
-  // The graph stays topology-centred. An exterior T starts on the outer face,
-  // then each turn keeps the visible working path continuous through the
-  // current cursor. Body-side inheritance remains an independent invariant.
+  // The graph stays topology-centred. Inner/outer T snapping only chooses the
+  // source-boundary start; the branch keeps one local working face and body
+  // side through every turn.
   const wallEntries = (floor.walls || []).map((wall, index) => ({
     index,
     wall: buildWallScene(floor, wall, {
@@ -1000,20 +953,15 @@ function createSurveyRenderScene(input) {
     wallEntries,
     activeWallStartIndex
   );
-  const branchSourceCentroid = resolveTBranchSourceCentroid(floor, session, project);
   const walls = wallEntries.map((entry) => {
     let wall = entry.wall;
     const activeWallIndex = entry.index;
     const isActiveMeasurement = activeWallIndex >= activeWallStartIndex && !closedWallIds[wall.id];
     if (isActiveMeasurement) {
-      wall = alignWallBodyToOffsetSign(wall, resolveActiveWallBodyOffsetSign(
-        session,
+      wall = alignWallBodyToOffsetSign(
         wall,
-        activeWallIndex,
-        activeWallStartIndex,
-        branchBodyOffsetSign,
-        branchSourceCentroid
-      ));
+        resolveActiveWallBodyOffsetSign(branchBodyOffsetSign)
+      );
     }
     const centroid = closedWallCentroids[wall.id];
     const midpoint = {
@@ -1044,14 +992,10 @@ function createSurveyRenderScene(input) {
     wall.selectionPolygon = createSelectionPolygon(wall, walls);
   });
   previewWall = applyMeasurementFace(
-    alignWallBodyToOffsetSign(previewWall, resolveActiveWallBodyOffsetSign(
-      session,
+    alignWallBodyToOffsetSign(
       previewWall,
-      activeWallStartIndex + activeWallCount,
-      activeWallStartIndex,
-      branchBodyOffsetSign,
-      branchSourceCentroid
-    )),
+      resolveActiveWallBodyOffsetSign(branchBodyOffsetSign)
+    ),
     previewMeasurementFace
   );
   joinActiveMeasurementPath(walls, previewWall);

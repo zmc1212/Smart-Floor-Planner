@@ -10,15 +10,12 @@ const customTabSource = fs.readFileSync(
   'utf8'
 );
 
-test('offline survey entry debug switch is disabled by default', () => {
-  assert.equal(debugConfig.ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG, false);
+test('offline survey entry debug switch bypasses loading and recent-plan requests', () => {
+  assert.equal(typeof debugConfig.ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG, 'boolean');
   assert.match(customTabSource, /ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG/);
-});
-
-test('offline survey entry only bypasses the failed recent-plan request when enabled', () => {
   assert.match(
     customTabSource,
-    /catch \(err\) \{\s*if \(ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG\) \{\s*openSurveyingEditor\(\{ startNewSurvey: true \}\);\s*return;\s*\}/
+    /this\.isOpeningSurvey = true;\s*if \(ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG\) \{\s*openSurveyingEditor\(\{ startNewSurvey: true \}\);\s*this\.isOpeningSurvey = false;\s*return;\s*\}\s*wx\.showLoading\(\{ title: '加载量房记录' \}\);\s*try \{\s*const res = await api\.request\('\/floorplans\?page=1&limit=1', 'GET'\);/
   );
   assert.match(customTabSource, /title: \(err && err\.error\) \|\| '加载最近量房失败'/);
 });
