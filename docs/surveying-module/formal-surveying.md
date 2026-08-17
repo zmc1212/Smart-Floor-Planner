@@ -65,9 +65,11 @@ copy back to `layoutData`.
   internal graph, while the preview outline, orange/red path, live-dimension
   endpoints, and green cursor remain coincident on that path. Confirming the
   first branch wall separately
-  fixes the wall-local side used by the physical body, and every later
-  left/right preview and committed turn inherits that body side so the
-  confirmed first wall cannot reflect. Adjacent working faces meet at
+  fixes the wall-local side used by the physical body. Inner-start later
+  previews and committed turns inherit that body side; outer-start later
+  segments choose the side toward the source-room centroid so the continuous
+  red working line remains the exterior face, without moving the cursor or
+  reflecting the confirmed first wall. Adjacent working faces meet at
   their line intersection, keeping the red corner continuous. This display
   projection does not alter graph centreline or closure topology.
   From the second branch wall onward, a turn may join the rendered wall solids

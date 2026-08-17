@@ -25,7 +25,7 @@
 | 登录与会话 | `/login`、`/register` | `/api/auth/*`；小程序 JWT 使用基础用户 `sub`、当前 `customer/staff/referrer` 上下文和 `contextVersion` | 公开入口与登录后路由；Implemented | 微信供应商配置依赖环境；旧身份字段在旧获客流程下线前并存 |
 | 导航、角色与权限 | 共用侧栏、路由守卫 | `/api/permissions`、角色/菜单 Repository | `super_admin`、`admin`、企业角色；Implemented | 权限按租户和角色实时生效 |
 | 平台与企业 | `/dashboard`、`/enterprises` | 企业、品牌、激活及平台 Repository | 平台角色；Implemented | 租户变更必须存在企业上下文 |
-| 员工与账号 | `/staff`、`/departments`、`/users` | 员工、部门、绑定、管理员 Repository | 平台/企业管理员；Implemented | 员工变化会影响角色派生可见性 |
+| 员工与账号 | `/staff`、`/departments`、`/users`；阶段 2 尚无双码界面 | 员工、部门、绑定、管理员 Repository；`/api/enterprise/join-codes`、换码/停用接口及 `/api/miniprogram/onboarding/staff` | 双码管理限 `super_admin`、`admin`、`enterprise_admin`；入驻令牌按类型隔离，员工只能属于一家企业；Implemented | 当前活动入驻码依赖至少 128-bit 的稳定生产 `REFERRER_TOKEN_SECRET` 或 `JWT_SECRET`；生产双码界面仍在计划中 |
 | 报备与协作 | `/promotions`、企业协作页 | 报备、推荐、通知、获客 Repository | 企业和员工边界；Implemented | 企业微信投递为可选外部能力 |
 | 套餐、订单与提成 | `/packages`、`/orders`、`/commissions` | 套餐、订单、提成 Repository | 平台/企业边界；Implemented | 支付结算不在本系统内完成 |
 | 线索与转化 | `/leads`、`/leads/[id]` | 线索、获客、生命周期、户型 Repository | 租户与责任人校验；Implemented | 存在合同或派生记录时禁止清除 |
@@ -33,7 +33,7 @@
 | 测量与 BLE 设备 | `/measurements`、`/devices` | 测量、设备、绑定、审计 Repository | 平台/企业分配边界；Implemented | 仅支持协议文档定义的测距仪 |
 | AI 工作室与生成 | AI 工作流、资产、供应商、价格、点数页面 | PostgreSQL AI Repository 与供应商适配器 | 平台及租户 AI 权限；Implemented/Limited | 供应商可用性和图片存储依赖外部服务 |
 | 媒体存储 | `/media-storage` | `media_assets`、供应商配置、存储适配器 | 平台管理员；Implemented | 对象存储清理由独立运维执行 |
-| 小程序支撑 API | 诊断页及共用 API handler | `/api/auth/miniprogram`、`/api/miniprogram/identity-contexts`、`/api/miniprogram/identity-contexts/switch`；线索、户型、AI、通知 | 普通客户及经实时校验的员工/推荐人上下文；Implemented | 推荐人成员关系创建和新业务闭环留待后续阶段 |
+| 小程序支撑 API | 诊断页及共用 API handler；阶段 2 未新增小程序页面 | 身份/上下文 API；`/api/miniprogram/codes/resolve`、`/api/miniprogram/onboarding/{staff,referrer}`、`/api/miniprogram/referrer-memberships/*`；线索、户型、AI、通知 | 已授权手机号的用户；身份关系实时校验；推荐人默认最多三个活动企业关系，退出后提升 `contextVersion`；Implemented/Limited | 令牌解析尚不创建客户归属、线索或派单；这些能力与生产界面留待后续阶段 |
 | 通知、自动化与诊断 | 通知设置、提醒运行时、诊断 | 通知模板、调度器、运维记录 | 平台/企业角色；Implemented/Limited | 微信可能拒绝订阅通知投递 |
 
 ## 正式量房边界

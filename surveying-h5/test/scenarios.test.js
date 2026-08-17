@@ -241,7 +241,11 @@ test('the H5 leftward T replays retain their dragged working edge and exterior w
     assert.equal(continuation.outerStart.y > continuation.startPoint.y, key === 'outer-t-leftward-continuation', key);
     assert.equal(firstWall.outerStart.x > firstWall.startPoint.x, true, key);
     assert.equal(scene.previewWall.measurementFace, 'inner', key);
-    assert.equal(scene.previewWall.outerStart.x < scene.previewWall.startPoint.x, true, key);
+    assert.equal(
+      scene.previewWall.outerStart.x < scene.previewWall.startPoint.x,
+      key === 'inner-t-leftward-continuation',
+      key
+    );
     assert.deepEqual(scene.cursor.point, scene.previewWall.endPoint, key);
   });
 });

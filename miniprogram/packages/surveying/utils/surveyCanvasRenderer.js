@@ -327,9 +327,9 @@ function resolveTBranchBodyOffsetSign(session, wallEntries, activeWallStartIndex
   const firstBranchWall = wallEntries.find((entry) => entry.index === activeWallStartIndex);
   if (!firstBranchWall || !firstBranchWall.wall || !firstBranchWall.wall.outerOffsetPx) return 0;
 
-  // Inner- and outer-face starts both fix their physical side when the first
-  // wall is confirmed. Later previews inherit that wall-local side and never
-  // gain authority to reflect already confirmed geometry.
+  // Inner starts inherit the first wall's local body side. For outer starts
+  // this sign is only the fallback; later segments are re-evaluated against
+  // the source-room centroid so the continuous red path stays exterior.
   return Math.sign(firstBranchWall.wall.outerOffsetPx);
 }
 

@@ -1,6 +1,6 @@
 # Referrer Network and Measurement Appointment Development Plan
 
-Status: `Approved design / Phase 1 implemented`
+Status: `Approved design / Phase 2 implemented`
 
 This document is the durable implementation entry point for the breaking redesign covering multi-enterprise referrers, phone-authorized lead creation, automatic assignment, measurement appointments, published AI designs, conversion, and three-role commissions. Current code, PostgreSQL schema, migrations, and module inventories remain the authority for implemented behavior. Every table, API, and route in this plan remains `Planned` until code and tests prove otherwise.
 
@@ -135,6 +135,10 @@ Every enterprise business table enables and forces RLS and uses existing tenant 
 
 ## 6. Dual codes and referrer network
 
+Phase 2 implements this section's server contract. Enterprise administrators can list, rotate, and disable distinct staff/referrer join codes, with rotation and resolution outcomes audited. A Mini Program user with an authorized phone can join one enterprise as staff or join the referrer network up to the default three-enterprise limit, then list or exit memberships and retrieve the current promotion token. Tokens are server-key-derived, opaque 192-bit values; PostgreSQL stores only their SHA-256 hashes and no plaintext enterprise identifier is encoded.
+
+In phase 2, `POST /api/miniprogram/codes/resolve` only classifies join/promotion tokens, validates their state, and records an audit. It does not issue a pending customer attribution, create a lead, or assign staff; those remain phase 3. No production Mini Program page is added in this phase, so the restoration ledger is unchanged.
+
 ### 6.1 Enterprise onboarding codes
 
 - Staff and referrer codes have distinct `code_type` values and cannot cross onboarding endpoints.
@@ -238,10 +242,10 @@ Exact route names may be adjusted within an implementation slice to match App Ro
 | Family | Planned endpoints |
 | --- | --- |
 | Identity | `GET /api/miniprogram/identity-contexts`, `POST /api/miniprogram/identity-contexts/switch`; implemented in phase 1. |
-| Code resolution | `POST /api/miniprogram/codes/resolve` |
-| Dual-code management | `GET /api/enterprise/join-codes`, `POST /api/enterprise/join-codes/[type]/rotate`, `POST /api/enterprise/join-codes/[type]/disable` |
-| Onboarding | `POST /api/miniprogram/onboarding/staff`, `POST /api/miniprogram/onboarding/referrer` |
-| Referrers | `GET /api/miniprogram/referrer-memberships`, `DELETE /api/miniprogram/referrer-memberships/[id]`, `GET /api/miniprogram/referrer-memberships/[id]/promotion-code` |
+| Code resolution | `POST /api/miniprogram/codes/resolve`; phase 2 implements token type/state resolution and audit, while pending customer attribution remains phase 3. |
+| Dual-code management | `GET /api/enterprise/join-codes`, `POST /api/enterprise/join-codes/[type]/rotate`, `POST /api/enterprise/join-codes/[type]/disable`; implemented in phase 2. |
+| Onboarding | `POST /api/miniprogram/onboarding/staff`, `POST /api/miniprogram/onboarding/referrer`; implemented in phase 2. |
+| Referrers | `GET /api/miniprogram/referrer-memberships`, `DELETE /api/miniprogram/referrer-memberships/[id]`, `GET /api/miniprogram/referrer-memberships/[id]/promotion-code`; implemented in phase 2. |
 | Customer lead creation | `POST /api/miniprogram/referrals/authorize-and-create-lead` |
 | Assignment | `POST /api/internal/lead-assignments/[leadId]/retry` |
 | Availability | `GET /api/appointments/availability` |
@@ -297,7 +301,7 @@ Update this status table incrementally and update both module inventories and af
 | --- | --- | --- |
 | 0. Plan and design lock | `Completed` | Selected design and bilingual plan; no production UI change. |
 | 1. Schema and identity | `Completed` | Target tables, lead extensions, forced RLS, repositories, database-backed context list/switch, `contextVersion` invalidation, and ordinary-customer phone login are implemented; DB contract tests pass. Legacy OpenID columns remain only for coexistence with the old flow until phase 8. |
-| 2. Dual codes and referrer network | `Not started` | Rotation/disable audit, single-enterprise staff, membership limit/leave, promotion tokens. |
+| 2. Dual codes and referrer network | `Completed` | Rotation/disable audit, single-enterprise staff, default three-enterprise membership limit/leave, and reproducible opaque promotion tokens are implemented; repository database contract tests pass. |
 | 3. Authorization and assignment | `Not started` | Two-stage scan, atomic lead creation, first attribution, stable assignment, failure retry. |
 | 4. Selected design implementation | `Not started` | Three mapped states implemented at `390x844`, verified for capsule, type, authorization, and device rendering; ledgers updated. |
 | 5. Appointments and calendar | `Not started` | Settings, unavailability, exclusion constraint, first appointment, both reschedule paths, cancellation, events, notifications. |

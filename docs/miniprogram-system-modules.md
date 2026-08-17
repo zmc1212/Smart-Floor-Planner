@@ -25,6 +25,7 @@ restoration notes and test transcripts belong in Git history or local evidence.
 | Home and measurement entry | `pages/index/index` | Role-aware home, lead/project cards, formal-survey entry | Implemented; data is tenant/role shaped |
 | Leads and customer records | `pages/leads-management/leads-management`, `packages/business/lead-form/lead-form`, `packages/business/lead-detail/lead-detail` | Lead list/detail, acquisition collaboration, conversion state, formal-plan summary | Implemented; conversion permissions are server enforced |
 | Promotion and staff tasks | `packages/business/promotion-records/promotion-records`, `packages/business/promotion-record-detail/promotion-record-detail`, `packages/business/acquisition-center/acquisition-center` | Enterprise referral, staff task and notification flows | Implemented/Limited; WeChat delivery can fail externally |
+| Referrer network backend | No production route in phase 2 | Code type/state resolution, phone-authorized staff/referrer onboarding, membership list/exit, and stable promotion-token retrieval use `/api/miniprogram/codes/resolve`, `/api/miniprogram/onboarding/*`, and `/api/miniprogram/referrer-memberships/*` | Limited; backend contract is implemented, while the approved workbench and anonymous service screens remain phase 4 |
 | Commission records | `packages/business/commission-records/commission-records` | Measurer acquisition commissions and order commissions | Implemented; settlement remains backend/business controlled |
 | Inspiration library | `packages/business/inspiration/inspiration` | Tenant-scoped inspiration browsing and detail | Implemented/Limited; media provider is external |
 | AI design workflow | `pages/ai-design/ai-design`, `packages/ai-workflow/*` | Customer/project selection, recipe entry, confirmation, task result/history | Implemented; provider, credit and formal-survey eligibility are server controlled |
@@ -51,9 +52,10 @@ current green cursor, forming one continuous working path. Orthogonal touch
 input remains on the internal graph, while the preview outline, orange/red
 path, live-dimension endpoints, and green cursor coincide on that path.
 Confirming the first branch wall separately fixes the wall-local side used by
-its physical body.
-Every later left/right preview and committed turn inherits that body side, so
-changing drag direction cannot reflect the confirmed first wall. Adjacent
+its physical body. Inner-start later previews and committed turns inherit that
+body side; outer-start later segments choose the side toward the source-room
+centroid so the continuous red working line remains the exterior face without
+moving the cursor or reflecting the confirmed first wall. Adjacent
 working faces meet at their line intersection, keeping the red corner
 continuous. This derived Canvas projection does not change graph
 centreline/closure topology. From the second branch wall onward, turns may
@@ -74,6 +76,10 @@ continuations and shared internal partitions keep their existing closure behavio
   `/api/miniprogram/identity-contexts/switch`, and the shared context resolver.
   Context lists are always read from the database; a switch cannot assert an
   enterprise, staff identity, or referrer membership that is not active.
+- Referrer network: phase-2 code resolution classifies and audits opaque tokens
+  without creating a customer attribution or lead. Phone-authorized users can
+  join one staff enterprise or up to three referrer enterprises by default;
+  leaving a membership disables its promotion token and invalidates old JWTs.
 - Leads, floor plans, measurements, devices, AI, commissions, promotions, and
   notifications use their corresponding tenant-aware API families.
 - Graph and Canvas sources are `miniprogram/utils/surveyWallGraph.js`,

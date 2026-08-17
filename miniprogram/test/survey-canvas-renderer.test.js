@@ -2242,7 +2242,7 @@ test('an inner-face T second-wall preview preserves the confirmed first wall bod
   });
 });
 
-test('an outer-face T second-wall preview preserves the confirmed first wall body side', () => {
+test('an outer-face T second-wall preview places the body toward the source room', () => {
   [6200, -200].forEach((endX) => {
     let draft = createClosedRectangleDraft();
     let floor = surveyGraph.getActiveFloor(draft);

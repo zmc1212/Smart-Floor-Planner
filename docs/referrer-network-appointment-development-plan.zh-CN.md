@@ -1,6 +1,6 @@
 # 推荐人网络与预约量房闭环开发计划
 
-状态：`Approved design / Phase 1 implemented`
+状态：`Approved design / Phase 2 implemented`
 
 本文是“推荐人多企业推广、客户授权建线索、自动派单、预约量房、AI 方案、签单和三方提成”破坏式改造的持续开发入口。当前代码、PostgreSQL schema、迁移和模块清单仍是已实现能力的依据；本文中的表、接口和路由在代码落地并通过测试前都只能标记为 `Planned`。
 
@@ -135,6 +135,10 @@ closed 为终止状态
 
 ## 6. 双码与推荐人网络
 
+阶段 2 已实现本节的服务端合同：企业管理员可查询、换新和停用员工/推荐人入驻码，换码与扫码结果写入审计；已授权手机号的小程序用户可入驻为单企业员工或加入默认最多 3 家企业的推荐人网络，并可查询、退出成员关系和重取当前推广令牌。令牌为基于服务端密钥的 192-bit 不透明值，数据库只保存 SHA-256 哈希，不编码企业明文。
+
+`POST /api/miniprogram/codes/resolve` 在本阶段只区分入驻码/推广码、校验状态并写审计；它不签发客户待确认来源、不创建线索也不派单。这些能力仍属阶段 3。本阶段未新增生产小程序页面，因此设计还原台账不变。
+
 ### 6.1 企业双码
 
 - 员工入驻码和推荐人入驻码使用不同 `code_type`，服务端拒绝跨类型调用。
@@ -240,10 +244,10 @@ closed 为终止状态
 | API 族 | 计划接口 |
 | --- | --- |
 | 身份 | `GET /api/miniprogram/identity-contexts`、`POST /api/miniprogram/identity-contexts/switch`；阶段 1 已实现。 |
-| 扫码解析 | `POST /api/miniprogram/codes/resolve` |
-| 双码管理 | `GET /api/enterprise/join-codes`、`POST /api/enterprise/join-codes/[type]/rotate`、`POST /api/enterprise/join-codes/[type]/disable` |
-| 入驻 | `POST /api/miniprogram/onboarding/staff`、`POST /api/miniprogram/onboarding/referrer` |
-| 推荐人 | `GET /api/miniprogram/referrer-memberships`、`DELETE /api/miniprogram/referrer-memberships/[id]`、`GET /api/miniprogram/referrer-memberships/[id]/promotion-code` |
+| 扫码解析 | `POST /api/miniprogram/codes/resolve`；阶段 2 已实现令牌类型/状态解析与审计，待确认客户来源留待阶段 3。 |
+| 双码管理 | `GET /api/enterprise/join-codes`、`POST /api/enterprise/join-codes/[type]/rotate`、`POST /api/enterprise/join-codes/[type]/disable`；阶段 2 已实现。 |
+| 入驻 | `POST /api/miniprogram/onboarding/staff`、`POST /api/miniprogram/onboarding/referrer`；阶段 2 已实现。 |
+| 推荐人 | `GET /api/miniprogram/referrer-memberships`、`DELETE /api/miniprogram/referrer-memberships/[id]`、`GET /api/miniprogram/referrer-memberships/[id]/promotion-code`；阶段 2 已实现。 |
 | 客户建线索 | `POST /api/miniprogram/referrals/authorize-and-create-lead` |
 | 派单 | `POST /api/internal/lead-assignments/[leadId]/retry` |
 | 可用时段 | `GET /api/appointments/availability` |
@@ -299,7 +303,7 @@ closed 为终止状态
 | --- | --- | --- |
 | 0. 计划与设计锁定 | `Completed` | 选定设计文件和本计划中英文版；未修改生产运行界面。 |
 | 1. Schema 与身份基础 | `Completed` | 目标表、`leads` 扩展、强制 RLS、Repository、数据库实时身份列表/切换、`contextVersion` 失效及普通客户手机号登录已实现；数据库合同测试通过。旧 OpenID 字段仅为第 8 阶段前的旧流程并存兼容。 |
-| 2. 双码与推荐人网络 | `Not started` | 双码换码/停用审计、员工单企业、推荐人上限与退出、推广短令牌。 |
+| 2. 双码与推荐人网络 | `Completed` | 双码换码/停用审计、员工单企业、推荐人默认三家上限与退出、可重取的不透明推广令牌已实现；Repository 数据库合同测试通过。 |
 | 3. 客户授权与自动派单 | `Not started` | 两阶段扫码、原子建线索、首次有效归属、稳定派单、异常重试。 |
 | 4. 选定设计生产实现 | `Not started` | 三屏对应路由按 `390x844` 实现并通过微信胶囊、字号、权限和真机视觉核验；更新设计台账。 |
 | 5. 预约与日历 | `Not started` | 设置、不可用时间、排斥约束、首次预约、客户/内部改期、取消、事件审计和通知。 |
