@@ -304,9 +304,17 @@ export class ReferrerNetworkRepository {
       .where(eq(referrerPromotionCodes.tokenHash, tokenHash))
       .limit(1);
     const code = rows[0] ?? null;
+    const membership = code
+      ? await this.transaction
+          .select()
+          .from(referrerEnterpriseMemberships)
+          .where(eq(referrerEnterpriseMemberships.id, code.membershipId))
+          .limit(1)
+          .then((membershipRows) => membershipRows[0] ?? null)
+      : null;
     const result = !code
       ? 'code_not_found'
-      : code.status === 'active'
+      : code.status === 'active' && membership?.status === 'active'
         ? 'ok'
         : 'code_disabled';
     if (code) {
@@ -320,7 +328,7 @@ export class ReferrerNetworkRepository {
         deviceSummary: input.deviceSummary ?? {},
       });
     }
-    return { code, result };
+    return { code, membership, result };
   }
 
   async onboardStaff(input: {

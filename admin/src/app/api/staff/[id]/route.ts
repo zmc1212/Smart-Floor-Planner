@@ -14,6 +14,7 @@ import {
 } from '@/db/repositories';
 import { withTenantTransaction } from '@/db/transaction';
 import { withTenantRoute } from '@/lib/tenant-route';
+import { retryPendingLeadAssignmentsForEnterprise } from '@/lib/lead-assignment-retry';
 
 interface StaffUpdateBody {
   username?: string;
@@ -27,6 +28,7 @@ interface StaffUpdateBody {
   wechatId?: string;
   wechatQrAssetId?: string | null;
   boundDesignerId?: string | null;
+  assignmentPaused?: boolean;
 }
 
 const BUSINESS_ROLES = [
@@ -115,6 +117,9 @@ export async function PUT(
               updateData.phone = phone || null;
             }
             if (body.status !== undefined) updateData.status = body.status;
+            if (typeof body.assignmentPaused === 'boolean') {
+              updateData.assignmentPaused = body.assignmentPaused;
+            }
             if (body.departmentId !== undefined) {
               const departmentId = parseOptionalPostgresId(
                 body.departmentId,
@@ -196,6 +201,27 @@ export async function PUT(
             { success: false, error: 'Staff not found' },
             { status: 404 }
           );
+        }
+        const mayExpandAssignmentPool =
+          body.role !== undefined ||
+          body.status === 'active' ||
+          body.assignmentPaused === false ||
+          (updated.role === 'designer' &&
+            (body.wechatId !== undefined ||
+              body.wechatQrAssetId !== undefined));
+        if (
+          mayExpandAssignmentPool &&
+          updated.enterpriseId &&
+          updated.status === 'active' &&
+          !updated.assignmentPaused &&
+          (updated.role === 'designer' || updated.role === 'measurer')
+        ) {
+          await retryPendingLeadAssignmentsForEnterprise({
+            enterpriseId: updated.enterpriseId,
+            reason: 'staff_profile_or_assignment_availability_changed',
+          }).catch((error) => {
+            console.error('[Staff update assignment retry]', error);
+          });
         }
         return NextResponse.json({
           success: true,

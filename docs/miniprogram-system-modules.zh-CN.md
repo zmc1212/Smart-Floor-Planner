@@ -7,7 +7,7 @@
 
 - 原生微信小程序，使用自定义 TabBar、亮绿色设计 token，视觉基准为 iPhone 13 Pro
   `390x844`。
-- 会话使用 `/api/auth/miniprogram` 和 bearer JWT。手机号授权可创建普通客户账号；
+- 会话使用 `/api/auth/miniprogram` 和 bearer JWT。手机号授权可创建普通客户账号；阶段 3 的推荐领取接口也可直接使用微信授权码，在同一事务中关联账号、归属和线索；
   token 选择数据库实时校验的 `customer`、`staff` 或 `referrer` 上下文，并由
   `contextVersion` 使旧 token 失效。专业员工、企业上下文、线索、户型、AI 任务、
   提成和报备记录都通过共享 API 解析。
@@ -21,7 +21,7 @@
 | 首页与量房入口 | `pages/index/index` | 角色化首页、线索/项目卡片、正式量房入口 | Implemented；数据按租户和角色返回 |
 | 线索与客户 | `pages/leads-management/leads-management`、`packages/business/lead-form/lead-form`、`packages/business/lead-detail/lead-detail` | 线索列表/详情、获客协作、签约状态、正式户型摘要 | Implemented；签约权限由服务端执行 |
 | 报备与员工任务 | `packages/business/promotion-records/promotion-records`、`packages/business/promotion-record-detail/promotion-record-detail`、`packages/business/acquisition-center/acquisition-center` | 企业报备、员工任务和通知 | Implemented/Limited；微信投递可能被外部拒绝 |
-| 推荐人网络后端 | 阶段 2 无生产运行页 | `/api/miniprogram/codes/resolve`、`/api/miniprogram/onboarding/*`、`/api/miniprogram/referrer-memberships/*` 提供令牌类型/状态解析、手机号授权后的员工/推荐人入驻、成员查询/退出和稳定推广令牌 | Limited；后端合同已实现，已批准的工作台和匿名服务三屏仍属阶段 4 |
+| 推荐人网络后端 | 阶段 3 无生产运行页 | `/api/miniprogram/codes/resolve` 解析并审计令牌且为有效推广码签发 10 分钟待确认来源；`/api/miniprogram/referrals/authorize-and-create-lead` 在手机号授权后原子锁定首次归属、建线索并稳定分配设计师/测量员；入驻和成员接口继续提供双码网络管理 | Limited；阶段 3 后端合同已实现，已批准的工作台和匿名服务三屏仍属阶段 4；无候选线索保留待重试 |
 | 提成记录 | `packages/business/commission-records/commission-records` | 测量员获客提成和订单提成 | Implemented；结算仍由后台业务控制 |
 | 灵感库 | `packages/business/inspiration/inspiration` | 租户范围内灵感浏览和详情 | Implemented/Limited；媒体供应商为外部服务 |
 | AI 设计工作流 | `pages/ai-design/ai-design`、`packages/ai-workflow/*` | 客户/项目选择、方案入口、确认、结果和历史 | Implemented；供应商、点数和正式量房资格由服务端控制 |
@@ -36,13 +36,14 @@
 `FloorPlan.layoutData` 只保存 v4 `surveyGraph`；wall graph、Canvas、尺寸、BLE
 读数、审计队列、撤销/重做、右侧工具栏经确认的清空重做操作和保存失败行为都必须遵守该合同。
 封闭外墙中段的 T 型分支保持同一拓扑节点和实体墙。内边起步的首段工作线位于 graph 内边；外边起步的首段工作线位于派生的实体外边，两种首段读数相差一个墙厚。转角后不能机械地继续选择新墙段的局部外边，因为墙段法向量随方向旋转会让光标瞬移一个墙厚；后续墙段必须选择穿过当前绿色光标的连续工作面。触点按正交规则写入内部 graph，预览黑线、橙线、确认红线、实时尺寸端点和绿色光标必须落在这条连续工作线上。内边起步的后续墙段继承首段实体侧；外边起步的后续墙段则按源房间质心重新决定实体墙朝向，使连续红线保持外侧，改变拖动方向也不得翻转首段实体墙。相邻工作线在直线交点连接，转角红线必须连续。以上 Canvas 派生投影不改变 graph 的中心线和闭合拓扑。T 链第二段及之后的转角只能补齐实体墙连接，不得回写前序墙段的测量内缩或缩短已确认读数。所有共享边闭合链在确认后都保持确认前的实体侧，包括“向外量墙、最后橙线吸附既有房间内边”的路径；不能将墙体翻到已对齐红线/橙线的另一侧或再叠加一个墙厚。最后光标命中既有墙的可见外边时，必须保留该外边工作坐标，并以短桥接连接拓扑角点，不得暗中投影回中心线。墙角续接和共享内墙分区仍遵守原有边界闭合规则。
+外边 T 后续墙段将可见工作面相对拓扑锚点的有符号起点修正保存为 `measurementStartInsetMm`（沿测量方向前移）或 `measurementStartExtensionMm`（反向延伸）。预览、手工/BLE 确认、Canvas 和尺寸消费者统一按“拓扑长度 - 起点内缩 + 起点延伸 - 终点内缩”计算；红线长度、显示值和确认读数不得相差一个墙厚。
 
 ## 共用 API 与工具
 
 - 身份/上下文：`/api/auth/miniprogram`、`/api/miniprogram/identity-contexts`、
   `/api/miniprogram/identity-contexts/switch` 及共用上下文解析器。身份列表每次从
   数据库读取；切换不能伪造非活动企业、员工身份或推荐人成员关系。
-- 推荐人网络：阶段 2 的扫码解析只分类、校验并审计不透明令牌，不创建客户归属或线索。已授权手机号的用户可入驻一家员工企业，或默认最多加入三家推荐人企业；退出会停用对应推广令牌并使旧 JWT 失效。
+- 推荐人网络：扫码解析只分类、校验、审计不透明令牌并签发短时待确认来源，不创建线索。客户使用 `Idempotency-Key` 授权后才原子创建活动归属、线索和派单；并发或重复扫码不能覆盖未关闭项目。已授权手机号的用户可入驻一家员工企业，或默认最多加入三家推荐人企业；退出会停用对应推广令牌并使旧 JWT 失效。
 - 线索、户型、测量、设备、AI、提成、报备和通知使用对应的租户 API 族。
 - 几何与 Canvas 源文件为 `miniprogram/utils/surveyWallGraph.js`、
   `miniprogram/packages/surveying/utils/surveyCanvasRenderer.js` 及量房尺寸/实体规划器。

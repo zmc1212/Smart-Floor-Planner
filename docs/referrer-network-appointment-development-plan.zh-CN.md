@@ -1,6 +1,6 @@
 # 推荐人网络与预约量房闭环开发计划
 
-状态：`Approved design / Phase 2 implemented`
+状态：`Approved design / Phase 3 implemented`
 
 本文是“推荐人多企业推广、客户授权建线索、自动派单、预约量房、AI 方案、签单和三方提成”破坏式改造的持续开发入口。当前代码、PostgreSQL schema、迁移和模块清单仍是已实现能力的依据；本文中的表、接口和路由在代码落地并通过测试前都只能标记为 `Planned`。
 
@@ -137,7 +137,7 @@ closed 为终止状态
 
 阶段 2 已实现本节的服务端合同：企业管理员可查询、换新和停用员工/推荐人入驻码，换码与扫码结果写入审计；已授权手机号的小程序用户可入驻为单企业员工或加入默认最多 3 家企业的推荐人网络，并可查询、退出成员关系和重取当前推广令牌。令牌为基于服务端密钥的 192-bit 不透明值，数据库只保存 SHA-256 哈希，不编码企业明文。
 
-`POST /api/miniprogram/codes/resolve` 在本阶段只区分入驻码/推广码、校验状态并写审计；它不签发客户待确认来源、不创建线索也不派单。这些能力仍属阶段 3。本阶段未新增生产小程序页面，因此设计还原台账不变。
+阶段 2 的 `POST /api/miniprogram/codes/resolve` 负责区分入驻码/推广码、校验状态并写审计；阶段 3 已在有效推广码响应中增加 10 分钟的加密签名待确认来源。解析本身仍不创建线索，只有客户授权接口提交该来源后才创建归属与线索。阶段 3 未新增生产小程序页面，因此设计还原台账不变。
 
 ### 6.1 企业双码
 
@@ -157,6 +157,8 @@ closed 为终止状态
 
 ## 7. 客户授权与首次有效归属
 
+阶段 3 已实现本节服务端合同。`POST /api/miniprogram/referrals/authorize-and-create-lead` 可使用已授权手机号的 `customer` token，或直接提交微信 `loginCode + phoneCode`；直接授权路径在同一 PostgreSQL 事务中关联基础用户、锁定归属、创建线索、写入派单事实。接口要求 `Idempotency-Key`，相同客户与相同键返回原线索；活动归属由部分唯一索引和客户级事务锁共同保护。关闭线索通过 `LeadRepository.update` 在同一事务释放活动锁。
+
 扫码分两阶段：
 
 1. `resolve` 只验证推广 token，建立有短 TTL 的签名待确认来源；不得创建线索。
@@ -172,6 +174,8 @@ closed 为终止状态
 - 通知发送在事务提交后执行，失败不回滚线索。
 
 ## 8. 自动派单
+
+阶段 3 已实现稳定服务端派单。企业级事务锁串行化候选负载计算；设计师按未关闭线索数、最后派单时间和员工 ID 排序，测量员按待量房线索数、未来预约占用时长、最后派单时间和员工 ID 排序。缺少任一角色时线索保留为 `assignment_pending` 并通知企业负责人；服务身份重试接口以及员工入驻、创建、资料补全或恢复派单会幂等重试。
 
 ### 8.1 设计师
 
@@ -244,12 +248,12 @@ closed 为终止状态
 | API 族 | 计划接口 |
 | --- | --- |
 | 身份 | `GET /api/miniprogram/identity-contexts`、`POST /api/miniprogram/identity-contexts/switch`；阶段 1 已实现。 |
-| 扫码解析 | `POST /api/miniprogram/codes/resolve`；阶段 2 已实现令牌类型/状态解析与审计，待确认客户来源留待阶段 3。 |
+| 扫码解析 | `POST /api/miniprogram/codes/resolve`；阶段 3 已实现令牌类型/状态解析、审计和有效推广码的 10 分钟加密签名待确认来源；解析不创建线索。 |
 | 双码管理 | `GET /api/enterprise/join-codes`、`POST /api/enterprise/join-codes/[type]/rotate`、`POST /api/enterprise/join-codes/[type]/disable`；阶段 2 已实现。 |
 | 入驻 | `POST /api/miniprogram/onboarding/staff`、`POST /api/miniprogram/onboarding/referrer`；阶段 2 已实现。 |
 | 推荐人 | `GET /api/miniprogram/referrer-memberships`、`DELETE /api/miniprogram/referrer-memberships/[id]`、`GET /api/miniprogram/referrer-memberships/[id]/promotion-code`；阶段 2 已实现。 |
-| 客户建线索 | `POST /api/miniprogram/referrals/authorize-and-create-lead` |
-| 派单 | `POST /api/internal/lead-assignments/[leadId]/retry` |
+| 客户建线索 | `POST /api/miniprogram/referrals/authorize-and-create-lead`；阶段 3 已实现客户上下文/微信手机号直接授权、幂等归属、原子建线索和派单。 |
+| 派单 | `POST /api/internal/lead-assignments/[leadId]/retry`；阶段 3 已实现且仅接受至少 32 字符的 `INTERNAL_SECRET` 服务身份。 |
 | 可用时段 | `GET /api/appointments/availability` |
 | 预约 | `POST /api/appointments`、`POST /api/appointments/[id]/customer-reschedule`、`POST /api/appointments/[id]/internal-reschedule`、`POST /api/appointments/[id]/cancel`、`POST /api/appointments/[id]/complete` |
 | 日历与配置 | `GET/PUT /api/appointment-settings`、`GET/POST/DELETE /api/measurer-unavailability` |
@@ -304,7 +308,7 @@ closed 为终止状态
 | 0. 计划与设计锁定 | `Completed` | 选定设计文件和本计划中英文版；未修改生产运行界面。 |
 | 1. Schema 与身份基础 | `Completed` | 目标表、`leads` 扩展、强制 RLS、Repository、数据库实时身份列表/切换、`contextVersion` 失效及普通客户手机号登录已实现；数据库合同测试通过。旧 OpenID 字段仅为第 8 阶段前的旧流程并存兼容。 |
 | 2. 双码与推荐人网络 | `Completed` | 双码换码/停用审计、员工单企业、推荐人默认三家上限与退出、可重取的不透明推广令牌已实现；Repository 数据库合同测试通过。 |
-| 3. 客户授权与自动派单 | `Not started` | 两阶段扫码、原子建线索、首次有效归属、稳定派单、异常重试。 |
+| 3. 客户授权与自动派单 | `Completed` | 两阶段扫码、原子用户关联/建线索、首次有效归属、稳定最小负载派单、无候选保留、事务后通知、服务身份及员工池变化重试已实现；Repository/RLS/并发测试通过。 |
 | 4. 选定设计生产实现 | `Not started` | 三屏对应路由按 `390x844` 实现并通过微信胶囊、字号、权限和真机视觉核验；更新设计台账。 |
 | 5. 预约与日历 | `Not started` | 设置、不可用时间、排斥约束、首次预约、客户/内部改期、取消、事件审计和通知。 |
 | 6. 客户项目、量房与 AI 发布 | `Not started` | 正式量房入口、项目聚合 API、AI 发布事实和客户只读权限。 |

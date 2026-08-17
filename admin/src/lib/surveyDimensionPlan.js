@@ -389,7 +389,8 @@ function createRoomCandidatesFromPlans(spacePlans, outerSegments, maxExteriorGap
           0,
           maxProjection - minProjection -
           Number(segment.measurementStartInsetMm || 0) -
-          Number(segment.measurementEndInsetMm || 0)
+          Number(segment.measurementEndInsetMm || 0) +
+          Number(segment.measurementStartExtensionMm || 0)
         )
       });
     });

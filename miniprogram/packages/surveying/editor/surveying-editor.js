@@ -2769,6 +2769,7 @@ Page({
       angleDeg: session.previewAngleDeg,
       thicknessMm: session.thicknessMm,
       measurementStartInsetMm: session.previewMeasurementStartInsetMm || 0,
+      measurementStartExtensionMm: session.previewMeasurementStartExtensionMm || 0,
       measurementEndInsetMm: session.previewMeasurementEndInsetMm || 0,
       measurementSide: session.previewMeasurementSide || session.measurementSide,
       status: 'preview'

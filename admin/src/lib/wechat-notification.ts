@@ -283,6 +283,55 @@ export async function notifyEnterpriseAdminOfNewLead(lead: LeadNotificationRecor
   }
 }
 
+export async function notifyEnterpriseAdminOfAssignmentPending(
+  lead: LeadNotificationRecord,
+  input: { reasonCode: string; eventKey: string }
+) {
+  if (!lead.enterpriseId || !lead.id) {
+    return { success: false, error: 'Lead scope unavailable' };
+  }
+  try {
+    const admins = await withTenantTransaction(
+      parsePostgresId(lead.enterpriseId, 'lead enterprise id'),
+      async (transaction) =>
+        (
+          await new AdminUserRepository(transaction).list({
+            roles: ['enterprise_admin'],
+            status: 'active',
+            page: 1,
+            limit: 1000,
+          })
+        ).rows
+    );
+    const results = await Promise.all(
+      admins.map((admin) =>
+        deliverLeadNotification({
+          lead,
+          recipient: admin,
+          templateKind: 'workflow_todo',
+          notificationType: 'lead_assignment_pending',
+          message: `客户${lead.name}自动派单待处理，请补充可用人员`,
+          dedupeKey: `lead_assignment_pending:${String(lead.id)}:${admin.id.toString()}:${input.eventKey}`,
+          page: '/pages/leads-management/leads-management',
+          metadata: { reasonCode: input.reasonCode },
+          buildData: (template) =>
+            buildWorkflowTodoPayload(template, {
+              projectName: lead.communityName || lead.name,
+              owner: admin.displayName || admin.username,
+              currentStatus: '派单待处理',
+              todo: '补充设计师或测量员',
+              note: input.reasonCode,
+            }),
+        })
+      )
+    );
+    return { success: results.every((item) => item.success), results };
+  } catch (error) {
+    console.error('Pending assignment notification failed:', error);
+    return { success: false, error: deliveryError(error) };
+  }
+}
+
 async function findNotificationRecipient(id: string, label: string) {
   try {
     return await withPlatformTransaction((transaction) =>

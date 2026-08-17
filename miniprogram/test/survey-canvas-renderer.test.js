@@ -2360,13 +2360,13 @@ test('inner- and outer-face T closures preserve every confirmed measurement thro
     assert.deepEqual(result.lengthsBeforeClosingWall, [2000, 1582], snapLine);
     assert.deepEqual(activeWalls.map((wall) => wall.lengthMm), [2000, 1582, 2000], snapLine);
     assert.deepEqual(
-      renderedActiveWalls[0].endPoint,
-      renderedActiveWalls[1].startPoint,
+      renderedActiveWalls[0].measurementEndPoint,
+      renderedActiveWalls[1].measurementStartPoint,
       `${snapLine}: first turn red edge`
     );
     assert.deepEqual(
-      renderedActiveWalls[1].endPoint,
-      renderedActiveWalls[2].startPoint,
+      renderedActiveWalls[1].measurementEndPoint,
+      renderedActiveWalls[2].measurementStartPoint,
       `${snapLine}: second turn red edge`
     );
   });

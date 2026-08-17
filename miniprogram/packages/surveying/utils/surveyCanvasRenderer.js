@@ -10,7 +10,7 @@ const GRID_MINOR_MM = 250;
 const GRID_MAJOR_MM = 1250;
 const MIN_WALL_THICKNESS_PX = 1.5;
 const WALL_STROKE_PX = 1.5;
-const RENDER_REVISION = 'degree-aware-branch-working-face-v14';
+const RENDER_REVISION = 'degree-aware-branch-working-face-v15';
 const REDLINE_STROKE_PX = 2;
 const GUIDE_STROKE_PX = 1.25;
 // Blue cursor coordinates use a denser cadence than the closure cue so the
@@ -644,6 +644,7 @@ function buildPreviewWall(floor, session, options) {
     thicknessMm: session.thicknessMm,
     measurementSide: session.previewMeasurementSide || session.measurementSide,
     measurementStartInsetMm: session.previewMeasurementStartInsetMm || 0,
+    measurementStartExtensionMm: session.previewMeasurementStartExtensionMm || 0,
     measurementEndInsetMm: session.previewMeasurementEndInsetMm || 0,
     status: 'preview'
   };

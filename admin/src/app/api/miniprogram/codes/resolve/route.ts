@@ -12,6 +12,10 @@ import {
   referrerNetworkError,
   sanitizeDeviceSummary,
 } from '@/lib/referrer-network-api';
+import {
+  pendingReferralSourceTtlSeconds,
+  sealPendingReferralSource,
+} from '@/lib/referral-attribution';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,6 +66,16 @@ export async function POST(request: Request) {
         kind: 'referral' as const,
         codeType: null,
         result: promotionCode.result,
+        pendingSource:
+          promotionCode.result === 'ok' &&
+          promotionCode.code &&
+          promotionCode.membership
+            ? sealPendingReferralSource({
+                promotionCodeId: promotionCode.code.id,
+                membershipId: promotionCode.membership.id,
+                version: promotionCode.code.version,
+              })
+            : null,
       };
     });
 
@@ -73,6 +87,12 @@ export async function POST(request: Request) {
       data: {
         kind: result.kind,
         ...(result.codeType ? { codeType: result.codeType } : {}),
+        ...(result.kind === 'referral'
+          ? {
+              pendingSource: result.pendingSource,
+              expiresIn: pendingReferralSourceTtlSeconds,
+            }
+          : {}),
       },
     });
   } catch (error) {

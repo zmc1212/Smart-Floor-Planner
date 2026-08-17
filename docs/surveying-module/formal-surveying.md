@@ -63,8 +63,14 @@ copy back to `layoutData`.
   instead selects the face passing through the current green cursor, forming
   one continuous working path. Orthogonal gesture input is stored on the
   internal graph, while the preview outline, orange/red path, live-dimension
-  endpoints, and green cursor remain coincident on that path. Confirming the
-  first branch wall separately
+  endpoints, and green cursor remain coincident on that path. An outer-start
+  turn persists the visible working-face offset from its
+  topology anchor as `measurementStartInsetMm` when it advances along the
+  measurement direction, or `measurementStartExtensionMm` when it extends in
+  the reverse direction. Preview, manual/BLE confirmation, Canvas, and
+  dimension consumers all use `topology length - start inset + start extension
+  - end inset`; the red path, displayed dimension, and confirmed reading cannot
+  differ by one wall thickness. Confirming the first branch wall separately
   fixes the wall-local side used by the physical body. Inner-start later
   previews and committed turns inherit that body side; outer-start later
   segments choose the side toward the source-room centroid so the continuous

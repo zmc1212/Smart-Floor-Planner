@@ -10,6 +10,7 @@ export type SurveyWall = {
   lengthMm?: number;
   thicknessMm?: number;
   measurementStartInsetMm?: number;
+  measurementStartExtensionMm?: number;
   measurementEndInsetMm?: number;
 };
 export type SurveyOpening = { id: string; wallId: string; type: 'door' | 'window'; centerOffsetMm?: number; widthMm?: number; heightMm?: number; sillHeightMm?: number };

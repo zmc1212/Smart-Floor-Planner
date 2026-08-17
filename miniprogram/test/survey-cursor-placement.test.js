@@ -17,12 +17,12 @@ function commitWall(draft, point, lengthMm) {
   );
 }
 
-function createClosedDraft() {
+function createClosedDraft(widthMm = 3000) {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
-  draft = commitWall(draft, { xMm: 3000, yMm: 0 }, 3000);
-  draft = commitWall(draft, { xMm: 3000, yMm: 2000 }, 2000);
-  draft = commitWall(draft, { xMm: 0, yMm: 2000 }, 3000);
+  draft = commitWall(draft, { xMm: widthMm, yMm: 0 }, widthMm);
+  draft = commitWall(draft, { xMm: widthMm, yMm: 2000 }, 2000);
+  draft = commitWall(draft, { xMm: 0, yMm: 2000 }, widthMm);
   draft = commitWall(draft, { xMm: 0, yMm: 0 }, 2000);
   return surveyGraph.confirmClosure(draft);
 }
@@ -651,12 +651,12 @@ test('an outer-corner drop keeps the topology anchor on the centerline and the s
   assert.equal(snappedFloor.session.activeSpaceSharedSnapLine, 'outer');
 });
 
-test('an outer T continuation keeps right and left drag endpoints on the current cursor working line', () => {
+test('an outer T continuation keeps right and left measured lengths on the visible cursor working line', () => {
   [
-    { endX: 3200 },
-    { endX: -200 }
-  ].forEach(({ endX }) => {
-    let draft = createClosedDraft();
+    { direction: 1, expectedInsetMm: 200, expectedExtensionMm: 0 },
+    { direction: -1, expectedInsetMm: 0, expectedExtensionMm: 200 }
+  ].forEach(({ direction, expectedInsetMm, expectedExtensionMm }) => {
+    let draft = createClosedDraft(6000);
     let floor = surveyGraph.getActiveFloor(draft);
     const sourceWall = floor.walls[0];
     const sourceGeometry = surveyGraph.buildWallSnapGeometry(floor, sourceWall);
@@ -682,14 +682,34 @@ test('an outer T continuation keeps right and left drag endpoints on the current
       yMm: -2000
     });
 
-    const draggedPoint = { xMm: endX, yMm: -2000 };
+    const visibleStart = surveyGraph.getCursorDisplayPoint(floor, floor.session);
+    const draggedPoint = { xMm: visibleStart.xMm + direction * 1810, yMm: -2000 };
     draft = surveyGraph.startPreview(draft, draggedPoint);
     floor = surveyGraph.getActiveFloor(draft);
 
     assert.equal(floor.session.previewPoint.yMm, -2000);
+    assert.equal(floor.session.previewLengthMm, 1810);
+    assert.equal(floor.session.previewMeasurementStartInsetMm, expectedInsetMm);
+    assert.equal(floor.session.previewMeasurementStartExtensionMm, expectedExtensionMm);
     assert.deepEqual(
       surveyGraph.getCursorDisplayPoint(floor, floor.session),
       draggedPoint
+    );
+
+    draft = surveyGraph.commitPreviewLength(draft, 1810, 'manual');
+    floor = surveyGraph.getActiveFloor(draft);
+    const wall = floor.walls.at(-1);
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    const coordinateLengthMm = Math.round(Math.hypot(end.xMm - start.xMm, end.yMm - start.yMm));
+
+    assert.equal(wall.lengthMm, 1810);
+    assert.equal(wall.measurementStartInsetMm || 0, expectedInsetMm);
+    assert.equal(wall.measurementStartExtensionMm || 0, expectedExtensionMm);
+    assert.equal(coordinateLengthMm, 1810 + direction * 200);
+    assert.equal(
+      coordinateLengthMm - (wall.measurementStartInsetMm || 0) + (wall.measurementStartExtensionMm || 0),
+      1810
     );
   });
 });

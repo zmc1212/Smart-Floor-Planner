@@ -116,6 +116,7 @@ interface SurveyWall {
   lengthMm?: number;
   thicknessMm?: number;
   measurementStartInsetMm?: number;
+  measurementStartExtensionMm?: number;
   measurementEndInsetMm?: number;
   mode?: string;
   measurementSide?: 'left' | 'right';

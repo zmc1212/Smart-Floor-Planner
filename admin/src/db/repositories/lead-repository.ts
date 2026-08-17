@@ -16,6 +16,7 @@ import {
   adminUsers,
   floorPlans,
   leadAcquisitionCommissions,
+  customerAttributionLocks,
   leadFloorPlans,
   leads,
 } from '@/db/schema';
@@ -364,12 +365,30 @@ export class LeadRepository {
         );
       }
     }
+    const nextStatus = input.status === undefined
+      ? current[0]?.status
+      : normalizeLeadStatus(input.status);
     const rows = await this.transaction
       .update(leads)
       .set({ ...input, updatedAt: new Date() })
       .where(eq(leads.id, id))
       .returning();
     if (!rows[0]) return null;
+    if (nextStatus === 'closed' && current[0]?.status !== 'closed') {
+      await this.transaction
+        .update(customerAttributionLocks)
+        .set({
+          releasedAt: new Date(),
+          releaseReason: 'lead_closed',
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(customerAttributionLocks.leadId, id),
+            isNull(customerAttributionLocks.releasedAt)
+          )
+        );
+    }
     return (await this.attachRelations(rows))[0] ?? null;
   }
 

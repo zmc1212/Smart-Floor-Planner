@@ -332,6 +332,25 @@ test('closed single room emits clear dimensions and physical building totals on 
   });
 });
 
+test('room-clear dimensions use signed measurement-start adjustment', () => {
+  const room = createSpacePlan('adjusted-room', [
+    { x: 0, y: 0 }, { x: 2100, y: 0 }, { x: 2100, y: 3160 }, { x: 0, y: 3160 }
+  ]);
+  room.innerSegments[0].measurementStartInsetMm = 50;
+  room.innerSegments[0].measurementStartExtensionMm = 200;
+  room.innerSegments[0].measurementEndInsetMm = 100;
+  const outerRing = [
+    { x: -200, y: -200 }, { x: 2300, y: -200 }, { x: 2300, y: 3360 }, { x: -200, y: 3360 }
+  ];
+
+  const plan = createClosedDimensionPlan(createClosedPlanInput(room, outerRing));
+  const adjusted = plan.items.find((item) => (
+    item.kind === 'room-clear' && item.sourceWallId === 'adjusted-room-wall-0'
+  ));
+
+  assert.equal(adjusted.label, '2150');
+});
+
 test('closed dimensions clear an active wall chain that extends beyond the room outline', () => {
   const room = createSpacePlan('room', [
     { x: 0, y: 0 }, { x: 2100, y: 0 }, { x: 2100, y: 3160 }, { x: 0, y: 3160 }

@@ -73,6 +73,7 @@ function createSession() {
     lastWallSnapLine: '',
     previewMeasurementSide: '',
     previewMeasurementStartInsetMm: 0,
+    previewMeasurementStartExtensionMm: 0,
     previewMeasurementEndInsetMm: 0,
     // The raw cursor can intentionally target a source wall's rendered outer
     // face. Keep that intent only for the active preview/confirmation pair.
@@ -180,6 +181,9 @@ function ensureSessionSpaceTracking(floor) {
   if (!Number.isFinite(Number(session.previewMeasurementStartInsetMm))) {
     session.previewMeasurementStartInsetMm = 0;
   }
+  if (!Number.isFinite(Number(session.previewMeasurementStartExtensionMm))) {
+    session.previewMeasurementStartExtensionMm = 0;
+  }
   if (!Number.isFinite(Number(session.previewMeasurementEndInsetMm))) {
     session.previewMeasurementEndInsetMm = 0;
   }
@@ -280,6 +284,11 @@ function normalizeMeasurementInset(value) {
   return Math.max(0, parsed);
 }
 
+function normalizeMeasurementExtension(value) {
+  const parsed = Math.round(Number(value) || 0);
+  return Math.max(0, parsed);
+}
+
 function getWallCoordinateLength(floor, wall) {
   if (!floor || !wall) return 0;
   return distanceMm(
@@ -298,7 +307,8 @@ function getWallMeasurementInsets(wall) {
 function getMeasuredWallLength(floor, wall) {
   const coordinateLength = getWallCoordinateLength(floor, wall);
   const insets = getWallMeasurementInsets(wall);
-  return Math.max(0, coordinateLength - insets.start - insets.end);
+  const startExtension = normalizeMeasurementExtension(wall && wall.measurementStartExtensionMm);
+  return Math.max(0, coordinateLength - insets.start + startExtension - insets.end);
 }
 
 function calculateBoundaryCentroid(floor, wallIds) {
@@ -546,6 +556,7 @@ function buildResolvedSegment(floor, wall, options) {
   const base = buildBaseWallSegment(floor, wall, opts);
   if (!base) return null;
   const storedInsets = getWallMeasurementInsets(wall);
+  const storedStartExtension = normalizeMeasurementExtension(wall.measurementStartExtensionMm);
   const renderStartInset = storedInsets.start > 0
     ? resolveClosedBoundaryInsetMm(floor, base.start, base.end, {
       excludedWallId: wall.id,
@@ -560,8 +571,9 @@ function buildResolvedSegment(floor, wall, options) {
     : 0;
   const maximumInset = Math.max(0, base.lengthMm - 1);
   const startInset = Math.min(renderStartInset, maximumInset);
+  const startExtension = Math.min(storedStartExtension, maximumInset);
   const endInset = Math.min(renderEndInset, Math.max(0, maximumInset - startInset));
-  const start = addVector(base.start, base.direction, startInset);
+  const start = addVector(base.start, base.direction, startInset - startExtension);
   const end = addVector(base.end, base.direction, -endInset);
 
   return Object.assign({}, base, {
@@ -571,8 +583,9 @@ function buildResolvedSegment(floor, wall, options) {
     end,
     lengthMm: Number.isFinite(Number(wall.lengthMm))
       ? Math.max(0, Math.round(Number(wall.lengthMm)))
-      : Math.max(0, base.lengthMm - storedInsets.start - storedInsets.end),
+      : Math.max(0, base.lengthMm - storedInsets.start + storedStartExtension - storedInsets.end),
     measurementStartInsetMm: storedInsets.start,
+    measurementStartExtensionMm: storedStartExtension,
     measurementEndInsetMm: storedInsets.end,
     outerStart: addVector(start, base.normal, base.thicknessMm),
     outerEnd: addVector(end, base.normal, base.thicknessMm)
@@ -711,6 +724,45 @@ function resolvePreviewMeasurementStartInsetMm(floor, session, anchor, previewPo
   return resolveClosedBoundaryInsetMm(floor, anchor, previewPoint, {
     preferredWallId: session.activeSpaceSharedWallId
   });
+}
+
+function resolveOuterTContinuationStartAdjustment(floor, session, anchor, previewPoint) {
+  if (
+    !floor ||
+    !session ||
+    !anchor ||
+    !previewPoint ||
+    !session.activeSpaceSharedWallMiddle ||
+    session.activeSpaceSharedSnapLine !== 'outer'
+  ) {
+    return { insetMm: 0, extensionMm: 0 };
+  }
+
+  const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+    ? session.activeSpaceStartWallIndex
+    : 0;
+  const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
+  if (activeWallCount === 0) return { insetMm: 0, extensionMm: 0 };
+
+  const previousWall = (floor.walls || [])[floor.walls.length - 1];
+  const previousGeometry = previousWall ? buildWallRenderGeometry(floor, previousWall) : null;
+  if (!previousGeometry) return { insetMm: 0, extensionMm: 0 };
+
+  const workingStart = activeWallCount === 1
+    ? previousGeometry.outerEnd
+    : previousGeometry.end;
+  const dx = previewPoint.xMm - anchor.xMm;
+  const dy = previewPoint.yMm - anchor.yMm;
+  const coordinateLength = Math.sqrt(dx * dx + dy * dy);
+  if (!workingStart || coordinateLength <= 0) return { insetMm: 0, extensionMm: 0 };
+
+  const signedOffsetMm = Math.round(
+    (workingStart.xMm - anchor.xMm) * dx / coordinateLength +
+    (workingStart.yMm - anchor.yMm) * dy / coordinateLength
+  );
+  return signedOffsetMm >= 0
+    ? { insetMm: signedOffsetMm, extensionMm: 0 }
+    : { insetMm: 0, extensionMm: -signedOffsetMm };
 }
 
 function setWallEndpointInset(floor, wall, nodeId, insetMm, onlyIncrease) {
@@ -865,12 +917,13 @@ function resolveMeasurementEndInsetMm(floor, start, end, preferredWallId, exclud
   });
 }
 
-function calculateMeasuredPreviewLength(anchor, previewPoint, startInsetMm, endInsetMm) {
+function calculateMeasuredPreviewLength(anchor, previewPoint, startInsetMm, endInsetMm, startExtensionMm) {
   return Math.max(
     0,
     distanceMm(anchor, previewPoint) -
       normalizeMeasurementInset(startInsetMm) -
-      normalizeMeasurementInset(endInsetMm)
+      normalizeMeasurementInset(endInsetMm) +
+      normalizeMeasurementExtension(startExtensionMm)
   );
 }
 
@@ -1516,14 +1569,15 @@ function maybeSnapStraightClosureToStart(floor, session, anchor, rawPoint, previ
   };
 }
 
-function pointFromLength(anchor, previewPoint, lengthMm, startInsetMm, endInsetMm) {
+function pointFromLength(anchor, previewPoint, lengthMm, startInsetMm, endInsetMm, startExtensionMm) {
   const dx = previewPoint.xMm - anchor.xMm;
   const dy = previewPoint.yMm - anchor.yMm;
   const length = Math.sqrt(dx * dx + dy * dy);
 
   const coordinateLengthMm = lengthMm +
     normalizeMeasurementInset(startInsetMm) +
-    normalizeMeasurementInset(endInsetMm);
+    normalizeMeasurementInset(endInsetMm) -
+    normalizeMeasurementExtension(startExtensionMm);
 
   if (length === 0) {
     return { xMm: anchor.xMm + coordinateLengthMm, yMm: anchor.yMm };
@@ -2364,6 +2418,7 @@ function getCursorDisplayPoint(floor, session) {
       measurementSide: session.previewMeasurementSide || session.measurementSide,
       bodyNormalSide: lastWall && lastWall.bodyNormalSide,
       measurementStartInsetMm: session.previewMeasurementStartInsetMm || 0,
+      measurementStartExtensionMm: session.previewMeasurementStartExtensionMm || 0,
       measurementEndInsetMm: session.previewMeasurementEndInsetMm || 0
     };
     const previewGeometry = buildWallRenderGeometry(floor, cursorWall, {
@@ -2433,6 +2488,17 @@ function getOrCreateWallCenterNode(floor, wallId, point) {
   return existing || addNode(floor, projection.point);
 }
 
+function preservesOuterTInteriorProjection(session, projection) {
+  return !!(
+    session &&
+    projection &&
+    session.activeSpaceSharedWallMiddle &&
+    session.activeSpaceSharedSnapLine === 'outer' &&
+    projection.t > 0.0001 &&
+    projection.t < 0.9999
+  );
+}
+
 function getSharedWallProjection(floor, session, point) {
   if (!session || !session.activeSpaceSharedWallId || !point) return null;
   const wall = getWall(floor, session.activeSpaceSharedWallId);
@@ -2454,7 +2520,11 @@ function getSharedWallProjection(floor, session, point) {
       distanceMm: distanceMm(projection.point, candidate.node)
     }))
     .sort((a, b) => a.distanceMm - b.distanceMm)[0];
-  if (nearestEndpoint && nearestEndpoint.distanceMm <= CLOSE_TOLERANCE_MM) {
+  if (
+    nearestEndpoint &&
+    nearestEndpoint.distanceMm <= CLOSE_TOLERANCE_MM &&
+    !preservesOuterTInteriorProjection(session, projection)
+  ) {
     projection.point = { xMm: nearestEndpoint.node.xMm, yMm: nearestEndpoint.node.yMm };
     projection.node = nearestEndpoint.node;
     projection.t = nearestEndpoint.t;
@@ -2502,7 +2572,11 @@ function findSharedWallClosureProjection(floor, session, point) {
         distanceMm: distanceMm(endProjection.point, candidate.node)
       }))
       .sort((a, b) => a.distanceMm - b.distanceMm)[0];
-    if (nearestEndpoint && nearestEndpoint.distanceMm <= CLOSE_TOLERANCE_MM) {
+    if (
+      nearestEndpoint &&
+      nearestEndpoint.distanceMm <= CLOSE_TOLERANCE_MM &&
+      !preservesOuterTInteriorProjection(session, endProjection)
+    ) {
       endProjection.point = { xMm: nearestEndpoint.node.xMm, yMm: nearestEndpoint.node.yMm };
       endProjection.node = nearestEndpoint.node;
       endProjection.t = nearestEndpoint.t;
@@ -2586,7 +2660,11 @@ function findAnySharedWallClosureProjection(floor, session, point) {
         distanceMm: distanceMm(projection.point, candidate.node)
       }))
       .sort((a, b) => a.distanceMm - b.distanceMm)[0];
-    if (nearestEndpoint && nearestEndpoint.distanceMm <= CLOSE_TOLERANCE_MM) {
+    if (
+      nearestEndpoint &&
+      nearestEndpoint.distanceMm <= CLOSE_TOLERANCE_MM &&
+      !preservesOuterTInteriorProjection(session, projection)
+    ) {
       projection.point = { xMm: nearestEndpoint.node.xMm, yMm: nearestEndpoint.node.yMm };
       projection.node = nearestEndpoint.node;
       projection.t = nearestEndpoint.t;
@@ -2847,6 +2925,7 @@ function cloneWallSegment(sourceWall, startNodeId, endNodeId, id) {
     measurementSide: sourceWall.measurementSide,
     bodyNormalSide: sourceWall.bodyNormalSide || '',
     measurementStartInsetMm: 0,
+    measurementStartExtensionMm: 0,
     measurementEndInsetMm: 0,
     inputSource: sourceWall.inputSource || 'manual',
     angleSource: sourceWall.angleSource || '',
@@ -2999,7 +3078,9 @@ function splitWallAtNodes(floor, wallId, cutNodeIds) {
 
   if (!segmentRecords.length) return { sharedWallId: wallId, segmentIds: [wallId] };
   const originalInsets = getWallMeasurementInsets(originalWall);
+  const originalStartExtension = normalizeMeasurementExtension(originalWall.measurementStartExtensionMm);
   segmentRecords[0].wall.measurementStartInsetMm = originalInsets.start;
+  segmentRecords[0].wall.measurementStartExtensionMm = originalStartExtension;
   segmentRecords[segmentRecords.length - 1].wall.measurementEndInsetMm = originalInsets.end;
   floor.walls.splice(wallIndex, 1, ...segmentRecords.map((record) => record.wall));
   refreshWallMetrics(floor);
@@ -3169,12 +3250,23 @@ function startPreview(draft, rawPoint) {
     anchor,
     previewPoint
   );
+  const continuationStartAdjustment = resolveOuterTContinuationStartAdjustment(
+    floor,
+    session,
+    anchor,
+    previewPoint
+  );
+  if (continuationStartAdjustment.insetMm || continuationStartAdjustment.extensionMm) {
+    previewMeasurementStartInsetMm = continuationStartAdjustment.insetMm;
+  }
+  let previewMeasurementStartExtensionMm = continuationStartAdjustment.extensionMm;
   let previewMeasurementEndInsetMm = 0;
   let previewLengthMm = calculateMeasuredPreviewLength(
     anchor,
     previewPoint,
     previewMeasurementStartInsetMm,
-    previewMeasurementEndInsetMm
+    previewMeasurementEndInsetMm,
+    previewMeasurementStartExtensionMm
   );
   let previewMeasurementSide = resolveBoundaryAlignedMeasurementSide(floor, session, anchor, previewPoint);
   const activeWallCount = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
@@ -3190,6 +3282,7 @@ function startPreview(draft, rawPoint) {
   session.previewInteriorAngleDeg = null;
   session.previewMeasurementSide = previewMeasurementSide;
   session.previewMeasurementStartInsetMm = previewMeasurementStartInsetMm;
+  session.previewMeasurementStartExtensionMm = previewMeasurementStartExtensionMm;
   session.previewMeasurementEndInsetMm = previewMeasurementEndInsetMm;
   session.pendingWallId = '';
   session.selectedWallId = '';
@@ -3236,6 +3329,16 @@ function startPreview(draft, rawPoint) {
           anchor,
           previewPoint
         );
+        const snappedStartAdjustment = resolveOuterTContinuationStartAdjustment(
+          floor,
+          session,
+          anchor,
+          previewPoint
+        );
+        if (snappedStartAdjustment.insetMm || snappedStartAdjustment.extensionMm) {
+          previewMeasurementStartInsetMm = snappedStartAdjustment.insetMm;
+          previewMeasurementStartExtensionMm = snappedStartAdjustment.extensionMm;
+        }
         previewMeasurementSide = resolveBoundaryAlignedMeasurementSide(
           floor,
           session,
@@ -3284,12 +3387,14 @@ function startPreview(draft, rawPoint) {
   }
 
   session.previewMeasurementStartInsetMm = previewMeasurementStartInsetMm;
+  session.previewMeasurementStartExtensionMm = previewMeasurementStartExtensionMm;
   session.previewMeasurementEndInsetMm = previewMeasurementEndInsetMm;
   session.previewLengthMm = calculateMeasuredPreviewLength(
     anchor,
     previewPoint,
     previewMeasurementStartInsetMm,
-    previewMeasurementEndInsetMm
+    previewMeasurementEndInsetMm,
+    previewMeasurementStartExtensionMm
   );
 
   return touchDraft(next);
@@ -3375,6 +3480,9 @@ function reopenLastDiagonalWallForAngle(draft) {
   session.previewMeasurementStartInsetMm = normalizeMeasurementInset(
     lastWall.measurementStartInsetMm
   );
+  session.previewMeasurementStartExtensionMm = normalizeMeasurementExtension(
+    lastWall.measurementStartExtensionMm
+  );
   session.previewMeasurementEndInsetMm = normalizeMeasurementInset(
     lastWall.measurementEndInsetMm
   );
@@ -3400,11 +3508,13 @@ function cancelPending(draft) {
   session.previewAngleDeg = 0;
   session.previewMeasurementSide = '';
   session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementStartExtensionMm = 0;
   session.previewMeasurementEndInsetMm = 0;
   session.previewAngleSource = '';
   session.previewInteriorAngleDeg = null;
   session.previewMeasurementSide = '';
   session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementStartExtensionMm = 0;
   session.previewMeasurementEndInsetMm = 0;
   session.pendingWallId = '';
   session.closeCandidateNodeId = '';
@@ -3447,8 +3557,16 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     session.previewPoint,
     parsedLength,
     session.previewMeasurementStartInsetMm,
-    session.previewMeasurementEndInsetMm
+    session.previewMeasurementEndInsetMm,
+    session.previewMeasurementStartExtensionMm
   );
+  const measuredEndPoint = endPoint;
+  const preservesOuterTWorkingLength = session.activeSpaceSharedWallMiddle &&
+    session.activeSpaceSharedSnapLine === 'outer' &&
+    (
+      normalizeMeasurementInset(session.previewMeasurementStartInsetMm) > 0 ||
+      normalizeMeasurementExtension(session.previewMeasurementStartExtensionMm) > 0
+    );
   // Length confirmation (manual or BLE) rebuilds the endpoint from the
   // measured value. Reapply rectangle/closure snapping here so confirmation
   // cannot silently discard a snap that was visible during the drag preview.
@@ -3472,7 +3590,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
       anchor,
       confirmedResetClosureSnap.point
     );
-  endPoint = confirmedVertexAxisSnap.point;
+  endPoint = preservesOuterTWorkingLength ? measuredEndPoint : confirmedVertexAxisSnap.point;
   const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
   const activeWallCountBeforeCommit = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
   const minimumClosureWallCount = getMinimumClosureSuggestionWallCount(floor, session);
@@ -3503,6 +3621,9 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   }
   const measurementStartInsetMm = normalizeMeasurementInset(
     session.previewMeasurementStartInsetMm
+  );
+  const measurementStartExtensionMm = normalizeMeasurementExtension(
+    session.previewMeasurementStartExtensionMm
   );
   const measurementEndInsetMm = sharedProjection
     ? resolveSharedClosureEndInsetMm(
@@ -3560,7 +3681,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
       mode: session.mode,
       lengthMm: Math.max(
         0,
-        distanceMm(anchor, endNode) - measurementStartInsetMm - measurementEndInsetMm
+        distanceMm(anchor, endNode) - measurementStartInsetMm + measurementStartExtensionMm - measurementEndInsetMm
       ),
       angleDeg: angleDeg(anchor, endNode),
       thicknessMm: session.thicknessMm,
@@ -3570,6 +3691,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
       // inner face and ending on another inner face.
       bodyNormalSide: session.activeSpaceSharedSnapLine === 'outer' ? measurementSide : '',
       measurementStartInsetMm,
+      measurementStartExtensionMm,
       measurementEndInsetMm,
       inputSource: inputSource || 'manual',
       angleSource: session.previewAngleSource || '',
@@ -3592,6 +3714,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   session.previewInteriorAngleDeg = null;
   session.previewMeasurementSide = '';
   session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementStartExtensionMm = 0;
   session.previewMeasurementEndInsetMm = 0;
   session.previewOuterFaceWallId = '';
   session.closeCandidateNodeId = '';
@@ -3803,6 +3926,7 @@ function confirmClosure(draft) {
     session.previewAngleDeg = 0;
     session.previewMeasurementSide = '';
     session.previewMeasurementStartInsetMm = 0;
+    session.previewMeasurementStartExtensionMm = 0;
     session.previewMeasurementEndInsetMm = 0;
     session.alignmentSnapGuide = null;
     session.activeSpaceStartNodeId = '';
@@ -3942,6 +4066,7 @@ function confirmClosure(draft) {
   session.previewAngleDeg = 0;
   session.previewMeasurementSide = '';
   session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementStartExtensionMm = 0;
   session.previewMeasurementEndInsetMm = 0;
   session.alignmentSnapGuide = null;
   session.closedFromNodeId = oldEndNodeId;
@@ -3968,6 +4093,7 @@ function selectWall(draft, wallId) {
   floor.session.previewLengthMm = 0;
   floor.session.previewAngleDeg = 0;
   floor.session.previewMeasurementStartInsetMm = 0;
+  floor.session.previewMeasurementStartExtensionMm = 0;
   floor.session.previewMeasurementEndInsetMm = 0;
   floor.session.closeCandidateNodeId = '';
   floor.session.closeCandidatePoint = null;
@@ -3990,6 +4116,7 @@ function selectOpening(draft, openingId) {
   floor.session.previewLengthMm = 0;
   floor.session.previewAngleDeg = 0;
   floor.session.previewMeasurementStartInsetMm = 0;
+  floor.session.previewMeasurementStartExtensionMm = 0;
   floor.session.previewMeasurementEndInsetMm = 0;
   floor.session.closeCandidateNodeId = '';
   floor.session.closeCandidatePoint = null;
@@ -4261,6 +4388,7 @@ function deleteWall(draft, wallId) {
   session.previewAngleDeg = 0;
   session.previewMeasurementSide = '';
   session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementStartExtensionMm = 0;
   session.previewMeasurementEndInsetMm = 0;
   session.pendingWallId = '';
   session.closeCandidateNodeId = '';
@@ -4398,9 +4526,11 @@ function snapCursorToWall(draft, point, target) {
   session.previewAngleDeg = 0;
   session.previewMeasurementSide = '';
   session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementStartExtensionMm = 0;
   session.previewMeasurementEndInsetMm = 0;
   session.previewMeasurementSide = '';
   session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementStartExtensionMm = 0;
   session.previewMeasurementEndInsetMm = 0;
   session.pendingWallId = '';
   session.selectedWallId = '';
@@ -4563,6 +4693,7 @@ function placeNewWallChainCursor(draft, point) {
   session.previewInteriorAngleDeg = null;
   session.previewMeasurementSide = '';
   session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementStartExtensionMm = 0;
   session.previewMeasurementEndInsetMm = 0;
   session.pendingWallId = '';
   session.selectedWallId = '';
@@ -4611,6 +4742,7 @@ function resetCursor(draft) {
   session.previewAngleDeg = 0;
   session.previewMeasurementSide = '';
   session.previewMeasurementStartInsetMm = 0;
+  session.previewMeasurementStartExtensionMm = 0;
   session.previewMeasurementEndInsetMm = 0;
   session.pendingWallId = '';
   session.closeCandidateNodeId = '';

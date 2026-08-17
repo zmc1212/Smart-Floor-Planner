@@ -1,6 +1,6 @@
 # Referrer Network and Measurement Appointment Development Plan
 
-Status: `Approved design / Phase 2 implemented`
+Status: `Approved design / Phase 3 implemented`
 
 This document is the durable implementation entry point for the breaking redesign covering multi-enterprise referrers, phone-authorized lead creation, automatic assignment, measurement appointments, published AI designs, conversion, and three-role commissions. Current code, PostgreSQL schema, migrations, and module inventories remain the authority for implemented behavior. Every table, API, and route in this plan remains `Planned` until code and tests prove otherwise.
 
@@ -137,7 +137,7 @@ Every enterprise business table enables and forces RLS and uses existing tenant 
 
 Phase 2 implements this section's server contract. Enterprise administrators can list, rotate, and disable distinct staff/referrer join codes, with rotation and resolution outcomes audited. A Mini Program user with an authorized phone can join one enterprise as staff or join the referrer network up to the default three-enterprise limit, then list or exit memberships and retrieve the current promotion token. Tokens are server-key-derived, opaque 192-bit values; PostgreSQL stores only their SHA-256 hashes and no plaintext enterprise identifier is encoded.
 
-In phase 2, `POST /api/miniprogram/codes/resolve` only classifies join/promotion tokens, validates their state, and records an audit. It does not issue a pending customer attribution, create a lead, or assign staff; those remain phase 3. No production Mini Program page is added in this phase, so the restoration ledger is unchanged.
+Phase 2 made `POST /api/miniprogram/codes/resolve` classify join/promotion tokens, validate state, and write audits. Phase 3 adds a ten-minute encrypted and authenticated pending source for valid promotion codes. Resolution still creates no lead; attribution and lead creation happen only when the customer authorization endpoint submits that source. Phase 3 adds no production Mini Program page, so the restoration ledger remains unchanged.
 
 ### 6.1 Enterprise onboarding codes
 
@@ -157,6 +157,8 @@ In phase 2, `POST /api/miniprogram/codes/resolve` only classifies join/promotion
 
 ## 7. Authorization and first valid attribution
 
+Phase 3 implements this server contract. `POST /api/miniprogram/referrals/authorize-and-create-lead` accepts either a phone-authorized `customer` token or direct WeChat `loginCode + phoneCode`; the direct path links the base user, locks attribution, creates the lead, and records assignment facts in one PostgreSQL transaction. `Idempotency-Key` is required, and the same customer/key returns the original lead. A partial unique index plus a customer-scoped transaction lock protects the active attribution. Closing a lead through `LeadRepository.update` releases the active lock in the same transaction.
+
 Scanning has two stages:
 
 1. `resolve` validates the token and creates a short-lived signed pending source without creating a lead.
@@ -172,6 +174,8 @@ Concurrency and idempotency:
 - Notifications run after commit and never roll back the lead.
 
 ## 8. Automatic assignment
+
+Phase 3 implements stable server-side assignment. An enterprise-scoped transaction lock serializes load calculation. Designers sort by open-lead count, last assignment, and staff ID; measurers sort by pending measurement-lead count, future appointment duration, last assignment, and staff ID. If either role is unavailable, the lead remains `assignment_pending` and enterprise owners are notified. The service-only retry endpoint and staff onboarding, creation, profile completion, or assignment re-enable trigger idempotent retries.
 
 ### 8.1 Designers
 
@@ -242,12 +246,12 @@ Exact route names may be adjusted within an implementation slice to match App Ro
 | Family | Planned endpoints |
 | --- | --- |
 | Identity | `GET /api/miniprogram/identity-contexts`, `POST /api/miniprogram/identity-contexts/switch`; implemented in phase 1. |
-| Code resolution | `POST /api/miniprogram/codes/resolve`; phase 2 implements token type/state resolution and audit, while pending customer attribution remains phase 3. |
+| Code resolution | `POST /api/miniprogram/codes/resolve`; phase 3 implements type/state resolution, audit, and a ten-minute encrypted pending source for valid promotion codes; resolution creates no lead. |
 | Dual-code management | `GET /api/enterprise/join-codes`, `POST /api/enterprise/join-codes/[type]/rotate`, `POST /api/enterprise/join-codes/[type]/disable`; implemented in phase 2. |
 | Onboarding | `POST /api/miniprogram/onboarding/staff`, `POST /api/miniprogram/onboarding/referrer`; implemented in phase 2. |
 | Referrers | `GET /api/miniprogram/referrer-memberships`, `DELETE /api/miniprogram/referrer-memberships/[id]`, `GET /api/miniprogram/referrer-memberships/[id]/promotion-code`; implemented in phase 2. |
-| Customer lead creation | `POST /api/miniprogram/referrals/authorize-and-create-lead` |
-| Assignment | `POST /api/internal/lead-assignments/[leadId]/retry` |
+| Customer lead creation | `POST /api/miniprogram/referrals/authorize-and-create-lead`; phase 3 implements customer-context/direct WeChat phone authorization, idempotent attribution, and atomic lead creation/assignment. |
+| Assignment | `POST /api/internal/lead-assignments/[leadId]/retry`; phase 3 implements this for service identity authenticated by an `INTERNAL_SECRET` of at least 32 characters. |
 | Availability | `GET /api/appointments/availability` |
 | Appointments | `POST /api/appointments`, `POST /api/appointments/[id]/customer-reschedule`, `POST /api/appointments/[id]/internal-reschedule`, `POST /api/appointments/[id]/cancel`, `POST /api/appointments/[id]/complete` |
 | Calendar/settings | `GET/PUT /api/appointment-settings`, `GET/POST/DELETE /api/measurer-unavailability` |
@@ -302,7 +306,7 @@ Update this status table incrementally and update both module inventories and af
 | 0. Plan and design lock | `Completed` | Selected design and bilingual plan; no production UI change. |
 | 1. Schema and identity | `Completed` | Target tables, lead extensions, forced RLS, repositories, database-backed context list/switch, `contextVersion` invalidation, and ordinary-customer phone login are implemented; DB contract tests pass. Legacy OpenID columns remain only for coexistence with the old flow until phase 8. |
 | 2. Dual codes and referrer network | `Completed` | Rotation/disable audit, single-enterprise staff, default three-enterprise membership limit/leave, and reproducible opaque promotion tokens are implemented; repository database contract tests pass. |
-| 3. Authorization and assignment | `Not started` | Two-stage scan, atomic lead creation, first attribution, stable assignment, failure retry. |
+| 3. Authorization and assignment | `Completed` | Two-stage scan, atomic user linkage/lead creation, first attribution, stable lowest-load assignment, no-candidate retention, post-commit notification, service retry, and staff-pool-change retry are implemented; repository/RLS/concurrency tests pass. |
 | 4. Selected design implementation | `Not started` | Three mapped states implemented at `390x844`, verified for capsule, type, authorization, and device rendering; ledgers updated. |
 | 5. Appointments and calendar | `Not started` | Settings, unavailability, exclusion constraint, first appointment, both reschedule paths, cancellation, events, notifications. |
 | 6. Project, surveying, and publication | `Not started` | Formal entry, aggregation API, publication fact, customer read boundary. |

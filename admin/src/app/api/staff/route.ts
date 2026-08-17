@@ -18,6 +18,7 @@ import {
   resolveWritableEnterpriseId,
   withTenantRoute,
 } from '@/lib/tenant-route';
+import { retryPendingLeadAssignmentsForEnterprise } from '@/lib/lead-assignment-retry';
 
 interface StaffCreateBody {
   username: string;
@@ -333,6 +334,20 @@ export async function POST(request: Request) {
             return repository.findById(created.id);
           }
         );
+
+        if (
+          staff?.enterpriseId &&
+          staff.status === 'active' &&
+          !staff.assignmentPaused &&
+          (staff.role === 'designer' || staff.role === 'measurer')
+        ) {
+          await retryPendingLeadAssignmentsForEnterprise({
+            enterpriseId: staff.enterpriseId,
+            reason: 'staff_created',
+          }).catch((error) => {
+            console.error('[Staff creation assignment retry]', error);
+          });
+        }
 
         return NextResponse.json(
           { success: true, data: staff ? adminUserToDto(staff) : null },

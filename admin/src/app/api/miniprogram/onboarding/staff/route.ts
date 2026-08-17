@@ -18,6 +18,7 @@ import {
   validateMiniProgramIdentity,
 } from '@/lib/referrer-network-api';
 import { getEffectivePermissions } from '@/lib/staff-access';
+import { retryPendingLeadAssignmentsForEnterprise } from '@/lib/lead-assignment-retry';
 
 export const dynamic = 'force-dynamic';
 
@@ -97,6 +98,14 @@ export async function POST(request: Request) {
       context: result.selected,
       source: payload.source,
     });
+    if (result.onboarding.staff.enterpriseId) {
+      await retryPendingLeadAssignmentsForEnterprise({
+        enterpriseId: result.onboarding.staff.enterpriseId,
+        reason: 'staff_onboarded',
+      }).catch((error) => {
+        console.error('[Staff onboarding assignment retry]', error);
+      });
+    }
     return NextResponse.json({
       success: true,
       token: switchedToken,
