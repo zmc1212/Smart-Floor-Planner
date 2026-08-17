@@ -9,8 +9,51 @@ const { CATEGORY_ORDER, createScenarioCatalog } = require('../src/scenarios.js')
 
 const catalog = createScenarioCatalog(surveyGraph);
 
+function commitMeasuredWall(draft, point, lengthMm) {
+  return surveyGraph.commitPreviewLength(
+    surveyGraph.startPreview(draft, point),
+    lengthMm,
+    'h5-regression'
+  );
+}
+
+function createMeasuredTClosureDraft(snapLine) {
+  const rectangleScenario = catalog.find((entry) => entry.key === 'rectangle');
+  let draft = rectangleScenario.build();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const sourceWall = floor.walls[0];
+  const sourceStart = surveyGraph.getNode(floor, sourceWall.startNodeId);
+  const sourceEnd = surveyGraph.getNode(floor, sourceWall.endNodeId);
+  const sourceGeometry = surveyGraph.buildWallSnapGeometry(floor, sourceWall);
+  const targetPoint = snapLine === 'outer'
+    ? {
+      xMm: Math.round((sourceGeometry.outerStart.xMm + sourceGeometry.outerEnd.xMm) / 2),
+      yMm: Math.round((sourceGeometry.outerStart.yMm + sourceGeometry.outerEnd.yMm) / 2)
+    }
+    : {
+      xMm: Math.round((sourceStart.xMm + sourceEnd.xMm) / 2),
+      yMm: Math.round((sourceStart.yMm + sourceEnd.yMm) / 2)
+    };
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    targetPoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = commitMeasuredWall(draft, { xMm: 2000, yMm: -2200 }, 2000);
+  draft = commitMeasuredWall(draft, { xMm: 3582, yMm: -2200 }, 1582);
+  floor = surveyGraph.getActiveFloor(draft);
+  const lengthsBeforeClosingWall = floor.walls
+    .slice(floor.session.activeSpaceStartWallIndex)
+    .map((wall) => wall.lengthMm);
+  draft = commitMeasuredWall(draft, { xMm: 3582, yMm: 0 }, 2000);
+
+  return { draft, lengthsBeforeClosingWall };
+}
+
 test('scenario catalog covers the supported measurement topology families', () => {
-  assert.equal(catalog.length, 28);
+  assert.equal(catalog.length, 33);
   assert.deepEqual([...new Set(catalog.map((scenario) => scenario.category))], CATEGORY_ORDER);
   assert.equal(new Set(catalog.map((scenario) => scenario.key)).size, catalog.length);
   ['rectangle', 'l-shape', 'open-chain', 'adjacent-rooms', 't-junction', 'partition']
@@ -90,8 +133,8 @@ test('the H5 T replays retain distinct inner- and outer-face first red edges', (
   assert.notDeepEqual(innerRenderedBranch.measurementStartPoint, outerRenderedBranch.measurementStartPoint);
 });
 
-test('the H5 outer-T rightward replay keeps the down-drag cursor on the black inner edge', () => {
-  const scenario = catalog.find((entry) => entry.key === 'outer-t-rightward-inner-continuation');
+test('the H5 outer-T rightward replay returns later red edges to the continuous dragged line', () => {
+  const scenario = catalog.find((entry) => entry.key === 'outer-t-rightward-continuation');
   const floor = surveyGraph.getActiveFloor(scenario.build());
   const scene = surveyCanvasRenderer.createSurveyRenderScene({
     floor,
@@ -106,10 +149,112 @@ test('the H5 outer-T rightward replay keeps the down-drag cursor on the black in
   assert.equal(activeWalls.length, 2);
   assert.equal(activeWalls[0].measurementFace, 'outer');
   assert.equal(rightwardWall.measurementFace, 'inner');
+  assert.equal(activeWalls[0].outerStart.x > activeWalls[0].startPoint.x, true);
+  assert.equal(rightwardWall.outerStart.y > rightwardWall.startPoint.y, true);
   assert.equal(scene.previewWall.measurementFace, 'inner');
+  assert.equal(scene.previewWall.outerStart.x < scene.previewWall.startPoint.x, true);
+  assert.deepEqual(activeWalls[0].measurementEndPoint, rightwardWall.measurementStartPoint);
+  assert.deepEqual(rightwardWall.measurementEndPoint, scene.previewWall.measurementStartPoint);
   assert.deepEqual(scene.previewWall.measurementEndPoint, scene.previewWall.endPoint);
-  assert.equal(scene.previewWall.measurementEndPoint.x, rightwardWall.endPoint.x);
   assert.deepEqual(scene.cursor.point, scene.previewWall.endPoint);
+});
+
+test('the H5 outer-T rightward preview does not flip its confirmed first wall', () => {
+  const scenario = catalog.find((entry) => entry.key === 'outer-t-rightward-preview');
+  const floor = surveyGraph.getActiveFloor(scenario.build());
+  const scene = surveyCanvasRenderer.createSurveyRenderScene({
+    floor,
+    session: floor.session,
+    viewport: floor.viewport,
+    rect: { width: 800, height: 800 }
+  });
+  const firstWall = scene.walls.find((wall) => wall.isActiveMeasurement);
+
+  assert.equal(firstWall.measurementFace, 'outer');
+  assert.equal(firstWall.outerStart.x > firstWall.startPoint.x, true);
+  assert.equal(scene.previewWall.outerStart.y > scene.previewWall.startPoint.y, true);
+  assert.equal(scene.previewWall.measurementFace, 'inner');
+  assert.equal(scene.previewWall.measurementStartPoint.y, scene.previewWall.startPoint.y);
+  assert.deepEqual(firstWall.measurementEndPoint, scene.previewWall.measurementStartPoint);
+  assert.deepEqual(scene.previewWall.measurementEndPoint, scene.previewWall.endPoint);
+  assert.deepEqual(scene.cursor.point, scene.previewWall.endPoint);
+});
+
+test('the H5 inner-T rightward replay inherits the first wall local body side', () => {
+  const scenario = catalog.find((entry) => entry.key === 'inner-t-rightward-continuation');
+  const floor = surveyGraph.getActiveFloor(scenario.build());
+  const scene = surveyCanvasRenderer.createSurveyRenderScene({
+    floor,
+    session: floor.session,
+    viewport: floor.viewport,
+    rect: { width: 800, height: 800 }
+  });
+  const activeWalls = scene.walls.filter((wall) => wall.isActiveMeasurement);
+  const rightwardWall = activeWalls.at(-1);
+
+  assert.equal(floor.session.activeSpaceSharedSnapLine, 'inner');
+  assert.equal(activeWalls[0].measurementFace, 'inner');
+  assert.equal(rightwardWall.measurementFace, 'inner');
+  assert.equal(activeWalls[0].outerStart.x > activeWalls[0].startPoint.x, true);
+  assert.deepEqual(rightwardWall.measurementStartPoint, rightwardWall.startPoint);
+  assert.equal(rightwardWall.outerStart.y > rightwardWall.startPoint.y, true);
+  assert.equal(scene.previewWall.measurementFace, 'inner');
+  assert.equal(scene.previewWall.outerStart.x < scene.previewWall.startPoint.x, true);
+  assert.deepEqual(scene.previewWall.measurementStartPoint, scene.previewWall.startPoint);
+});
+
+test('the H5 inner-T rightward preview does not flip its confirmed first wall', () => {
+  const scenario = catalog.find((entry) => entry.key === 'inner-t-rightward-preview');
+  const floor = surveyGraph.getActiveFloor(scenario.build());
+  const scene = surveyCanvasRenderer.createSurveyRenderScene({
+    floor,
+    session: floor.session,
+    viewport: floor.viewport,
+    rect: { width: 800, height: 800 }
+  });
+  const firstWall = scene.walls.find((wall) => wall.isActiveMeasurement);
+
+  assert.equal(firstWall.outerStart.x > firstWall.startPoint.x, true);
+  assert.equal(scene.previewWall.outerStart.y > scene.previewWall.startPoint.y, true);
+  assert.deepEqual(scene.previewWall.measurementStartPoint, scene.previewWall.startPoint);
+});
+
+test('the H5 leftward T replays retain their dragged working edge and exterior wall body', () => {
+  [
+    ['outer-t-leftward-continuation', 'outer'],
+    ['inner-t-leftward-continuation', 'inner']
+  ].forEach(([key, expectedFirstFace]) => {
+    const scenario = catalog.find((entry) => entry.key === key);
+    const floor = surveyGraph.getActiveFloor(scenario.build());
+    const scene = surveyCanvasRenderer.createSurveyRenderScene({
+      floor,
+      session: floor.session,
+      viewport: floor.viewport,
+      rect: { width: 800, height: 800 }
+    });
+    const continuation = scene.walls.filter((wall) => wall.isActiveMeasurement).at(-1);
+    const firstWall = scene.walls.filter((wall) => wall.isActiveMeasurement)[0];
+
+    assert.equal(firstWall.measurementFace, expectedFirstFace, key);
+    assert.equal(continuation.measurementFace, 'inner', key);
+    assert.equal(continuation.measurementStartPoint.y, continuation.startPoint.y, key);
+    assert.equal(continuation.outerStart.y < continuation.startPoint.y, true, key);
+    assert.equal(firstWall.outerStart.x > firstWall.startPoint.x, true, key);
+    assert.equal(scene.previewWall.measurementFace, 'inner', key);
+    assert.equal(scene.previewWall.outerStart.x < scene.previewWall.startPoint.x, true, key);
+    assert.deepEqual(scene.cursor.point, scene.previewWall.endPoint, key);
+  });
+});
+
+test('the H5 T closure replay keeps confirmed lengths stable for inner and outer starts', () => {
+  ['inner', 'outer'].forEach((snapLine) => {
+    const result = createMeasuredTClosureDraft(snapLine);
+    const floor = surveyGraph.getActiveFloor(result.draft);
+    const activeWalls = floor.walls.slice(floor.session.activeSpaceStartWallIndex);
+
+    assert.deepEqual(result.lengthsBeforeClosingWall, [2000, 1582], snapLine);
+    assert.deepEqual(activeWalls.map((wall) => wall.lengthMm), [2000, 1582, 2000], snapLine);
+  });
 });
 
 test('the H5 inner- and outer-start closures keep their final wall left of the orange line', () => {

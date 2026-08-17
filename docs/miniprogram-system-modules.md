@@ -39,13 +39,20 @@ and/or `floorPlanId`. The authoritative contract is
 Canvas renderer, dimensions, BLE readings, audit queue, undo/redo, the
 right-rail confirmed canvas-clear/restart action, and save failure behavior
 must follow that contract.
-Closed exterior-wall T branches retain one topology node and physical wall,
-while their wall-middle inner/outer cursor starts select the corresponding
-branch face for the live red measurement line: inner face for an inner start,
-outer face for an outer start, one wall thickness apart. An
-outer-face start applies only to its first branch; after the first turn, the
-following red/orange preview line and cursor must continue on the current inner
-working face instead of shifting by a wall thickness. A shared-boundary closure
+Closed exterior-wall T branches retain one topology node and physical wall. An
+inner start places the first red edge on the dragged graph line; an outer start
+offsets only that first red edge to the branch outer face, one wall thickness
+away. That measurement offset does not propagate beyond the first wall. After
+a turn, every later red/orange segment and the cursor stay on the operator's
+actual dragged graph line instead of shifting by another wall thickness.
+Confirming the first branch wall separately fixes the wall-local side used by
+its physical body. Every later left/right preview and committed turn inherits
+that body side, so changing drag direction cannot reflect the confirmed first
+wall. The first outer edge meets the following dragged edge at their line
+intersection, keeping the red corner continuous. This is derived Canvas
+geometry and does not change graph centreline/closure topology. From the second branch wall onward, turns may
+join the rendered wall solids but cannot rewrite preceding measurement insets
+or shorten confirmed readings. A shared-boundary closure
 chain retains its rendered body side when it closes,
 including an exterior-facing chain whose final orange line snaps to an existing
 room's inner face; the close operation cannot flip that body across the aligned

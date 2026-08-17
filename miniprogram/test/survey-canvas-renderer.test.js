@@ -126,6 +126,50 @@ function createAlignedAdjacentRoomDraft() {
   return surveyGraph.confirmClosure(draft);
 }
 
+function createWideClosedRectangleDraft() {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 6000, yMm: 0 }, 6000);
+  draft = commitWall(draft, { xMm: 6000, yMm: 4000 }, 4000);
+  draft = commitWall(draft, { xMm: 0, yMm: 4000 }, 6000);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 4000);
+  return surveyGraph.confirmClosure(draft);
+}
+
+function createMeasuredTClosureDraft(snapLine) {
+  let draft = createWideClosedRectangleDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const sourceWall = floor.walls[0];
+  const sourceStart = surveyGraph.getNode(floor, sourceWall.startNodeId);
+  const sourceEnd = surveyGraph.getNode(floor, sourceWall.endNodeId);
+  const sourceGeometry = surveyGraph.buildWallSnapGeometry(floor, sourceWall);
+  const targetPoint = snapLine === 'outer'
+    ? {
+      xMm: Math.round((sourceGeometry.outerStart.xMm + sourceGeometry.outerEnd.xMm) / 2),
+      yMm: Math.round((sourceGeometry.outerStart.yMm + sourceGeometry.outerEnd.yMm) / 2)
+    }
+    : {
+      xMm: Math.round((sourceStart.xMm + sourceEnd.xMm) / 2),
+      yMm: Math.round((sourceStart.yMm + sourceEnd.yMm) / 2)
+    };
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    targetPoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = commitWall(draft, { xMm: 3000, yMm: -2200 }, 2000);
+  draft = commitWall(draft, { xMm: 4582, yMm: -2200 }, 1582);
+  floor = surveyGraph.getActiveFloor(draft);
+  const lengthsBeforeClosingWall = floor.walls
+    .slice(floor.session.activeSpaceStartWallIndex)
+    .map((wall) => wall.lengthMm);
+  draft = commitWall(draft, { xMm: 4582, yMm: 0 }, 2000);
+
+  return { draft, lengthsBeforeClosingWall };
+}
+
 function createClosedPolygonDraft(points) {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, points[0]);
@@ -2126,7 +2170,7 @@ test('an outer-face T branch body starts at the source wall far face', () => {
   assert.notDeepEqual(insetSourceScene.startPoint, insetSourceScene.solidStartPoint);
 });
 
-test('an outer-face T branch switches to the rightward inner working edge before dragging down', () => {
+test('an outer-face T branch returns later red edges to the continuous dragged line', () => {
   let draft = createClosedRectangleDraft();
   let floor = surveyGraph.getActiveFloor(draft);
   const sourceWall = floor.walls[0];
@@ -2154,10 +2198,178 @@ test('an outer-face T branch switches to the rightward inner working edge before
   assert.equal(activeWalls.length, 2);
   assert.equal(activeWalls[0].measurementFace, 'outer');
   assert.equal(rightwardWall.measurementFace, 'inner');
+  assert.equal(activeWalls[0].outerStart.x > activeWalls[0].startPoint.x, true);
+  assert.equal(rightwardWall.outerStart.y > rightwardWall.startPoint.y, true);
   assert.equal(scene.previewWall.measurementFace, 'inner');
+  assert.equal(scene.previewWall.outerStart.x < scene.previewWall.startPoint.x, true);
+  assert.deepEqual(activeWalls[0].measurementEndPoint, rightwardWall.measurementStartPoint);
+  assert.deepEqual(rightwardWall.measurementEndPoint, scene.previewWall.measurementStartPoint);
+  assert.deepEqual(scene.previewWall.measurementStartPoint, scene.previewWall.startPoint);
   assert.deepEqual(scene.previewWall.measurementEndPoint, scene.previewWall.endPoint);
-  assert.equal(scene.previewWall.measurementEndPoint.x, rightwardWall.endPoint.x);
   assert.deepEqual(scene.cursor.point, scene.previewWall.endPoint);
+});
+
+test('an inner-face T second-wall preview preserves the confirmed first wall body side', () => {
+  [3200, -200].forEach((endX) => {
+    let draft = createClosedRectangleDraft();
+    let floor = surveyGraph.getActiveFloor(draft);
+    const sourceWall = floor.walls[0];
+    const sourceStart = surveyGraph.getNode(floor, sourceWall.startNodeId);
+    const sourceEnd = surveyGraph.getNode(floor, sourceWall.endNodeId);
+    const target = surveyGraph.getCursorPlacementTarget(floor, {
+      xMm: Math.round((sourceStart.xMm + sourceEnd.xMm) / 2),
+      yMm: Math.round((sourceStart.yMm + sourceEnd.yMm) / 2)
+    }, surveyGraph.CLOSE_TOLERANCE_MM);
+
+    draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+    draft = commitWall(draft, { xMm: 1500, yMm: -2000 }, 1800);
+    const firstWallBeforePreview = createScene(draft).walls.find((wall) => wall.isActiveMeasurement);
+
+    draft = surveyGraph.startPreview(draft, { xMm: endX, yMm: -2000 });
+    const scene = createScene(draft);
+    const firstWallDuringPreview = scene.walls.find((wall) => wall.isActiveMeasurement);
+
+    assert.equal(firstWallBeforePreview.outerStart.x > firstWallBeforePreview.startPoint.x, true, `initial endX=${endX}`);
+    assert.deepEqual(firstWallDuringPreview.outerStart, firstWallBeforePreview.outerStart, `first outer start endX=${endX}`);
+    assert.deepEqual(firstWallDuringPreview.outerEnd, firstWallBeforePreview.outerEnd, `first outer end endX=${endX}`);
+    assert.equal(scene.previewWall.measurementFace, 'inner', `measurement face endX=${endX}`);
+    assert.deepEqual(scene.previewWall.measurementStartPoint, scene.previewWall.startPoint, `measurement start endX=${endX}`);
+    assert.equal(
+      scene.previewWall.outerStart.y > scene.previewWall.startPoint.y,
+      endX > 1500,
+      `second wall body side endX=${endX}`
+    );
+  });
+});
+
+test('an outer-face T second-wall preview preserves the confirmed first wall body side', () => {
+  [6200, -200].forEach((endX) => {
+    let draft = createClosedRectangleDraft();
+    let floor = surveyGraph.getActiveFloor(draft);
+    const sourceWall = floor.walls[0];
+    const sourceGeometry = surveyGraph.buildWallSnapGeometry(floor, sourceWall);
+    const target = surveyGraph.getCursorPlacementTarget(floor, {
+      xMm: Math.round((sourceGeometry.outerStart.xMm + sourceGeometry.outerEnd.xMm) / 2),
+      yMm: Math.round((sourceGeometry.outerStart.yMm + sourceGeometry.outerEnd.yMm) / 2)
+    }, surveyGraph.CLOSE_TOLERANCE_MM);
+
+    draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+    draft = commitWall(draft, { xMm: 3000, yMm: -2000 }, 1800);
+    const firstWallBeforePreview = createScene(draft).walls.find((wall) => wall.isActiveMeasurement);
+
+    draft = surveyGraph.startPreview(draft, { xMm: endX, yMm: -2000 });
+    const scene = createScene(draft);
+    const firstWallDuringPreview = scene.walls.find((wall) => wall.isActiveMeasurement);
+
+    assert.deepEqual(firstWallDuringPreview.outerStart, firstWallBeforePreview.outerStart, `first outer start endX=${endX}`);
+    assert.deepEqual(firstWallDuringPreview.outerEnd, firstWallBeforePreview.outerEnd, `first outer end endX=${endX}`);
+    assert.equal(scene.previewWall.measurementFace, 'inner', `measurement face endX=${endX}`);
+    assert.deepEqual(
+      firstWallDuringPreview.measurementEndPoint,
+      scene.previewWall.measurementStartPoint,
+      `continuous outer corner endX=${endX}`
+    );
+    assert.deepEqual(scene.previewWall.measurementEndPoint, scene.previewWall.endPoint, `dragged edge endX=${endX}`);
+    assert.deepEqual(scene.cursor.point, scene.previewWall.endPoint, `cursor edge endX=${endX}`);
+    assert.equal(
+      Math.sign(scene.previewWall.outerOffsetPx),
+      Math.sign(firstWallBeforePreview.outerOffsetPx),
+      `second wall body side endX=${endX}`
+    );
+  });
+});
+
+test('an inner-face T branch keeps its rightward red edge and inherits the first wall body side', () => {
+  let draft = createClosedRectangleDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const sourceWall = floor.walls[0];
+  const sourceStart = surveyGraph.getNode(floor, sourceWall.startNodeId);
+  const sourceEnd = surveyGraph.getNode(floor, sourceWall.endNodeId);
+  const innerMidpoint = {
+    xMm: Math.round((sourceStart.xMm + sourceEnd.xMm) / 2),
+    yMm: Math.round((sourceStart.yMm + sourceEnd.yMm) / 2)
+  };
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    innerMidpoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = commitWall(draft, { xMm: 1500, yMm: -2000 }, 1800);
+  draft = commitWall(draft, { xMm: 3200, yMm: -2000 }, 1700);
+  draft = surveyGraph.startPreview(draft, { xMm: 3200, yMm: -900 });
+  floor = surveyGraph.getActiveFloor(draft);
+  const scene = createScene(draft);
+  const activeWalls = scene.walls.filter((wall) => wall.isActiveMeasurement);
+  const rightwardWall = activeWalls.at(-1);
+
+  assert.equal(floor.session.activeSpaceSharedSnapLine, 'inner');
+  assert.equal(activeWalls.length, 2);
+  assert.equal(activeWalls[0].measurementFace, 'inner');
+  assert.equal(rightwardWall.measurementFace, 'inner');
+  assert.equal(activeWalls[0].outerStart.x > activeWalls[0].startPoint.x, true);
+  assert.deepEqual(rightwardWall.measurementEndPoint, rightwardWall.endPoint);
+  assert.equal(rightwardWall.outerStart.y > rightwardWall.startPoint.y, true);
+  assert.equal(scene.previewWall.measurementFace, 'inner');
+  assert.equal(scene.previewWall.outerStart.x < scene.previewWall.startPoint.x, true);
+  assert.deepEqual(scene.previewWall.measurementStartPoint, scene.previewWall.startPoint);
+});
+
+test('inner-face T continuations preserve the confirmed wall-local body side in both directions', () => {
+  [3200, -200].forEach((endX) => {
+    let draft = createClosedRectangleDraft();
+    let floor = surveyGraph.getActiveFloor(draft);
+    const sourceWall = floor.walls[0];
+    const sourceStart = surveyGraph.getNode(floor, sourceWall.startNodeId);
+    const sourceEnd = surveyGraph.getNode(floor, sourceWall.endNodeId);
+    const target = surveyGraph.getCursorPlacementTarget(floor, {
+      xMm: Math.round((sourceStart.xMm + sourceEnd.xMm) / 2),
+      yMm: Math.round((sourceStart.yMm + sourceEnd.yMm) / 2)
+    }, surveyGraph.CLOSE_TOLERANCE_MM);
+
+    draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+    draft = commitWall(draft, { xMm: 1500, yMm: -2000 }, 1800);
+    draft = commitWall(draft, { xMm: endX, yMm: -2000 }, Math.abs(endX - 1500));
+    draft = surveyGraph.startPreview(draft, { xMm: endX, yMm: -900 });
+    floor = surveyGraph.getActiveFloor(draft);
+    const scene = createScene(draft);
+    const activeWalls = scene.walls.filter((wall) => wall.isActiveMeasurement);
+    const continuation = activeWalls.at(-1);
+
+    assert.equal(continuation.measurementFace, 'inner', `endX=${endX}`);
+    assert.deepEqual(continuation.measurementStartPoint, continuation.startPoint, `endX=${endX}`);
+    assert.equal(
+      continuation.outerStart.y > continuation.startPoint.y,
+      endX > 1500,
+      `continuation body side endX=${endX}`
+    );
+    assert.equal(activeWalls[0].outerStart.x > activeWalls[0].startPoint.x, true, `first wall side endX=${endX}`);
+    assert.equal(scene.previewWall.outerStart.x < scene.previewWall.startPoint.x, true, `downward body side endX=${endX}`);
+  });
+});
+
+test('inner- and outer-face T closures preserve every confirmed measurement through later turns', () => {
+  ['inner', 'outer'].forEach((snapLine) => {
+    const result = createMeasuredTClosureDraft(snapLine);
+    const floor = surveyGraph.getActiveFloor(result.draft);
+    const activeWalls = floor.walls.slice(floor.session.activeSpaceStartWallIndex);
+    const scene = createScene(result.draft);
+    const renderedActiveWalls = scene.walls.filter((wall) => wall.isActiveMeasurement);
+
+    assert.deepEqual(result.lengthsBeforeClosingWall, [2000, 1582], snapLine);
+    assert.deepEqual(activeWalls.map((wall) => wall.lengthMm), [2000, 1582, 2000], snapLine);
+    assert.deepEqual(
+      renderedActiveWalls[0].endPoint,
+      renderedActiveWalls[1].startPoint,
+      `${snapLine}: first turn red edge`
+    );
+    assert.deepEqual(
+      renderedActiveWalls[1].endPoint,
+      renderedActiveWalls[2].startPoint,
+      `${snapLine}: second turn red edge`
+    );
+  });
 });
 
 test('an inner-face T branch redline stays on the branch inner edge', () => {

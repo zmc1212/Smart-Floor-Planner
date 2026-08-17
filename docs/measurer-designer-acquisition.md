@@ -2,6 +2,10 @@
 
 This is the focused business and data contract for the measurer–designer lead-acquisition loop. When this feature is refined, read this document together with the current code, PostgreSQL schema, migrations, and the English/Chinese module inventories. If implementation and this contract diverge, update the contract and record the compatibility decision first.
 
+## Planned replacement
+
+The referrer-network and appointment loop has an approved design direction but is not implemented yet. The breaking redesign starts from the [Referrer Network and Measurement Appointment Development Plan](./referrer-network-appointment-development-plan.md). Until the replacement is complete, this document describes the currently implemented legacy flow and is not evidence for the new workflow.
+
 ## 1. Scope and outcome
 
 The feature covers:

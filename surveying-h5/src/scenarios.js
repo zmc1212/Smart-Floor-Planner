@@ -210,16 +210,55 @@ function createScenarioCatalog(surveyGraph) {
     return commitWall(draft, { xMm: 3000, yMm: -2200 });
   }
 
-  function exteriorTRightwardInnerContinuation() {
-    // Regression replay for the physical working-line hand-off: start on the
-    // top wall's outer face, pull the branch upward and then right, then keep
-    // dragging down the right-hand black inner edge.  The orange preview and
-    // cursor must remain on x=6200 instead of jumping left by 200 mm.
+  function exteriorTRightwardContinuation() {
+    // The first branch reading starts on the source wall's outer face. After
+    // turning, the red/orange line and cursor return to the actual dragged
+    // graph line while the physical wall body keeps its confirmed local side.
     let draft = rectangle(6000, 4000, { xMm: 0, yMm: 0 }, { thicknessMm: 200 });
     draft = snapCursor(draft, { xMm: 3000, yMm: -200 });
     draft = commitWall(draft, { xMm: 3000, yMm: -2000 });
     draft = commitWall(draft, { xMm: 6200, yMm: -2000 });
     return surveyGraph.startPreview(draft, { xMm: 6200, yMm: -900 });
+  }
+
+  function exteriorTRightwardPreview() {
+    let draft = rectangle(6000, 4000, { xMm: 0, yMm: 0 }, { thicknessMm: 200 });
+    draft = snapCursor(draft, { xMm: 3000, yMm: -200 });
+    draft = commitWall(draft, { xMm: 3000, yMm: -2000 });
+    return surveyGraph.startPreview(draft, { xMm: 4800, yMm: -2000 });
+  }
+
+  function interiorTRightwardContinuation() {
+    // The confirmed first wall fixes the local body side. Turning right keeps
+    // that first wall in place and puts the continuation below its red edge.
+    let draft = rectangle(6000, 4000, { xMm: 0, yMm: 0 }, { thicknessMm: 200 });
+    draft = snapCursor(draft, { xMm: 3000, yMm: 0 });
+    draft = commitWall(draft, { xMm: 3000, yMm: -2000 });
+    draft = commitWall(draft, { xMm: 6000, yMm: -2000 });
+    return surveyGraph.startPreview(draft, { xMm: 6000, yMm: -900 });
+  }
+
+  function interiorTRightwardPreview() {
+    let draft = rectangle(6000, 4000, { xMm: 0, yMm: 0 }, { thicknessMm: 200 });
+    draft = snapCursor(draft, { xMm: 3000, yMm: 0 });
+    draft = commitWall(draft, { xMm: 3000, yMm: -2000 });
+    return surveyGraph.startPreview(draft, { xMm: 4800, yMm: -2000 });
+  }
+
+  function exteriorTLeftwardContinuation() {
+    let draft = rectangle(6000, 4000, { xMm: 0, yMm: 0 }, { thicknessMm: 200 });
+    draft = snapCursor(draft, { xMm: 3000, yMm: -200 });
+    draft = commitWall(draft, { xMm: 3000, yMm: -2000 });
+    draft = commitWall(draft, { xMm: -200, yMm: -2000 });
+    return surveyGraph.startPreview(draft, { xMm: -200, yMm: -900 });
+  }
+
+  function interiorTLeftwardContinuation() {
+    let draft = rectangle(6000, 4000, { xMm: 0, yMm: 0 }, { thicknessMm: 200 });
+    draft = snapCursor(draft, { xMm: 3000, yMm: 0 });
+    draft = commitWall(draft, { xMm: 3000, yMm: -2000 });
+    draft = commitWall(draft, { xMm: -200, yMm: -2000 });
+    return surveyGraph.startPreview(draft, { xMm: -200, yMm: -900 });
   }
 
   function crossJunction() {
@@ -405,9 +444,34 @@ function createScenarioCatalog(surveyGraph) {
       build: () => exteriorTJunction({ snapLine: 'outer' })
     },
     {
-      key: 'outer-t-rightward-inner-continuation', category: '交点与分支', label: '外墙 T：右拉后内边下续',
-      description: '外边起步后向右转，橙线和光标继续沿右侧黑色内边下拉，不得左跳一个墙厚。', expected: { walls: 7, spaces: 1, openings: 0 },
-      build: exteriorTRightwardInnerContinuation
+      key: 'outer-t-rightward-continuation', category: '交点与分支', label: '外墙 T：外起右拉后续',
+      description: '外边只决定首段红线；向右转后红线、橙线和光标回到真实拖拽线，实体墙不翻面。', expected: { walls: 7, spaces: 1, openings: 0 },
+      build: exteriorTRightwardContinuation
+    },
+    {
+      key: 'outer-t-rightward-preview', category: '交点与分支', label: '外墙 T：外起右拉预览',
+      description: '首段外边确认后刚向右拉出第二段时，橙线和光标位于真实拖拽线，首段实体侧保持不变。', expected: { walls: 6, spaces: 1, openings: 0 },
+      build: exteriorTRightwardPreview
+    },
+    {
+      key: 'inner-t-rightward-continuation', category: '交点与分支', label: '外墙 T：内起右拉后续',
+      description: '内边起步后向右转，首段墙体不翻面，右拉墙体沿首段相同局部侧续接。', expected: { walls: 7, spaces: 1, openings: 0 },
+      build: interiorTRightwardContinuation
+    },
+    {
+      key: 'inner-t-rightward-preview', category: '交点与分支', label: '外墙 T：内起右拉预览',
+      description: '首段确认后刚向右拉出第二段时，首段墙体保持原侧，预览墙体位于红线下方。', expected: { walls: 6, spaces: 1, openings: 0 },
+      build: interiorTRightwardPreview
+    },
+    {
+      key: 'outer-t-leftward-continuation', category: '交点与分支', label: '外墙 T：外起左拉后续',
+      description: '外边起步后向左转，后续红线、橙线和光标回到真实拖拽线，且不得横跳墙厚。', expected: { walls: 7, spaces: 1, openings: 0 },
+      build: exteriorTLeftwardContinuation
+    },
+    {
+      key: 'inner-t-leftward-continuation', category: '交点与分支', label: '外墙 T：内起左拉后续',
+      description: '内边起步后向左转，红线保持内侧，墙体实体始终在红线的外侧。', expected: { walls: 7, spaces: 1, openings: 0 },
+      build: interiorTLeftwardContinuation
     },
     {
       key: 'cross-junction', category: '交点与分支', label: '开放十字交点',

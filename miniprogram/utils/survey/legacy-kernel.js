@@ -755,6 +755,21 @@ function updateWallEndpointInset(floor, wall, nodeId, insetMm) {
 
 function applyWallBodyInsetToIncidentWalls(floor, sourceWall, nodeId) {
   if (!floor || !sourceWall || !nodeId) return;
+  const session = ensureSessionSpaceTracking(floor);
+  const activeStartWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+    ? session.activeSpaceStartWallIndex
+    : floor.walls.length;
+  const sourceWallIndex = floor.walls.findIndex((wall) => wall && wall.id === sourceWall.id);
+  if (
+    session.activeSpaceSharedWallMiddle &&
+    sourceWallIndex > activeStartWallIndex
+  ) {
+    // A wall-middle T chain already records its real measurement origin on
+    // the first wall and its final boundary inset on the closing wall. Later
+    // turns must not shorten earlier confirmed readings merely to cover the
+    // solid corner; the renderer joins those wall bodies from topology.
+    return;
+  }
   const sourceSegment = buildBaseWallSegment(floor, sourceWall);
   if (!sourceSegment) return;
 

@@ -284,18 +284,115 @@ function applyMeasurementFace(wall, measurementFace) {
 }
 
 function resolveActiveMeasurementFace(session, activeWallIndex, activeWallStartIndex) {
-  // An exterior T start has one special, visible first edge: the operator
-  // explicitly placed the cursor on the source wall's outer face.  That does
-  // not make every later turn an outer-face measurement.  Once the branch
-  // turns away from that start, the current red/orange line follows the live
-  // inner working edge again.  Keeping the original outer face for the next
-  // vertical segment shifts its cursor sideways by one wall thickness.
-  return session &&
-    session.activeSpaceSharedWallMiddle &&
-    session.activeSpaceSharedSnapLine === 'outer' &&
+  if (!session || !session.activeSpaceSharedWallMiddle) return 'inner';
+
+  // An outer wall-middle hit offsets only the first branch reading. Once the
+  // operator turns, later red/orange segments and the cursor stay on the
+  // actual dragged graph line. Physical body placement is locked separately.
+  return session.activeSpaceSharedSnapLine === 'outer' &&
     activeWallIndex === activeWallStartIndex
     ? 'outer'
     : 'inner';
+}
+
+function reflectWallBodyAcrossMeasurementEdge(wall) {
+  if (!wall) return wall;
+  const reflect = (point, edgePoint) => ({
+    x: edgePoint.x * 2 - point.x,
+    y: edgePoint.y * 2 - point.y
+  });
+  const outerStart = reflect(wall.outerStart, wall.startPoint);
+  const outerEnd = reflect(wall.outerEnd, wall.endPoint);
+  const rawOuterStart = reflect(wall.rawOuterStart, wall.startPoint);
+  const rawOuterEnd = reflect(wall.rawOuterEnd, wall.endPoint);
+  const solidOuterStart = reflect(wall.solidOuterStart, wall.solidStartPoint);
+  const solidOuterEnd = reflect(wall.solidOuterEnd, wall.solidEndPoint);
+  return Object.assign(wall, {
+    outerStart,
+    outerEnd,
+    rawOuterStart,
+    rawOuterEnd,
+    solidOuterStart,
+    solidOuterEnd,
+    bodyPolygon: [wall.solidStartPoint, wall.solidEndPoint, solidOuterEnd, solidOuterStart],
+    selectionPolygon: [wall.solidStartPoint, wall.solidEndPoint, solidOuterEnd, solidOuterStart],
+    outerOffsetPx: -wall.outerOffsetPx,
+    centerLineYPx: -wall.centerLineYPx
+  });
+}
+
+function resolveTBranchBodyOffsetSign(session, wallEntries, activeWallStartIndex) {
+  if (!session || !session.activeSpaceSharedWallMiddle) return 0;
+  const firstBranchWall = wallEntries.find((entry) => entry.index === activeWallStartIndex);
+  if (!firstBranchWall || !firstBranchWall.wall || !firstBranchWall.wall.outerOffsetPx) return 0;
+
+  // Inner- and outer-face starts both fix their physical side when the first
+  // wall is confirmed. Later previews inherit that wall-local side and never
+  // gain authority to reflect already confirmed geometry.
+  return Math.sign(firstBranchWall.wall.outerOffsetPx);
+}
+
+function alignWallBodyToOffsetSign(wall, desiredOffsetSign) {
+  if (!wall || !desiredOffsetSign || !wall.outerOffsetPx) return wall;
+  return Math.sign(wall.outerOffsetPx) === desiredOffsetSign
+    ? wall
+    : reflectWallBodyAcrossMeasurementEdge(wall);
+}
+
+function intersectMeasurementLines(firstWall, secondWall) {
+  const firstStart = firstWall.measurementStartPoint;
+  const firstEnd = firstWall.measurementEndPoint;
+  const secondStart = secondWall.measurementStartPoint;
+  const secondEnd = secondWall.measurementEndPoint;
+  if (!firstStart || !firstEnd || !secondStart || !secondEnd) return null;
+
+  const firstVector = {
+    x: firstEnd.x - firstStart.x,
+    y: firstEnd.y - firstStart.y
+  };
+  const secondVector = {
+    x: secondEnd.x - secondStart.x,
+    y: secondEnd.y - secondStart.y
+  };
+  const cross = firstVector.x * secondVector.y - firstVector.y * secondVector.x;
+  if (Math.abs(cross) < 0.000001) return null;
+
+  const betweenStarts = {
+    x: secondStart.x - firstStart.x,
+    y: secondStart.y - firstStart.y
+  };
+  const factor = (
+    betweenStarts.x * secondVector.y - betweenStarts.y * secondVector.x
+  ) / cross;
+  return {
+    x: firstStart.x + factor * firstVector.x,
+    y: firstStart.y + factor * firstVector.y
+  };
+}
+
+function joinActiveMeasurementPath(walls, previewWall) {
+  const chain = (walls || []).filter((wall) => wall.isActiveMeasurement);
+  if (previewWall) {
+    chain.push(previewWall);
+  }
+
+  for (let index = 1; index < chain.length; index += 1) {
+    const previous = chain[index - 1];
+    const current = chain[index];
+    const intersection = intersectMeasurementLines(previous, current);
+    if (!intersection) continue;
+
+    const joinLimit = Math.max(previous.thicknessPx || 0, current.thicknessPx || 0) * 4 + 2;
+    if (
+      distancePx(previous.measurementEndPoint, intersection) > joinLimit ||
+      distancePx(current.measurementStartPoint, intersection) > joinLimit
+    ) {
+      continue;
+    }
+
+    previous.measurementEndPoint = intersection;
+    current.measurementStartPoint = intersection;
+  }
 }
 
 function resolveDimensions(walls, openings, spaces, spacePlans, outerRings, viewportScale, previewWall) {
@@ -823,18 +920,44 @@ function createSurveyRenderScene(input) {
   const activeWallStartIndex = Number.isInteger(session.activeSpaceStartWallIndex)
     ? Math.max(0, Math.min(session.activeSpaceStartWallIndex, (floor.walls || []).length))
     : 0;
-  // The graph stays centreline-topological.  An exterior T start exposes its
-  // selected outer face on the first active branch only; after a turn, the
-  // live red/orange edge must follow the current inner working edge instead
-  // of carrying the original outer-face offset into a new direction.
   const activeWallCount = Math.max(0, (floor.walls || []).length - activeWallStartIndex);
-  const walls = (floor.walls || []).map((wall, index) => buildWallScene(floor, wall, {
+  const previewMeasurementFace = resolveActiveMeasurementFace(
+    session,
+    activeWallStartIndex + activeWallCount,
+    activeWallStartIndex
+  );
+  // The graph stays centreline-topological. An outer start offsets only the
+  // first red edge; later edges follow the dragged graph line. The first
+  // confirmed T wall separately fixes the body side inherited by later turns.
+  const wallEntries = (floor.walls || []).map((wall, index) => ({
+    index,
+    wall: buildWallScene(floor, wall, {
+      project,
+      viewport,
+      renderThicknessMmMap,
+      relativePreviousWall: index > 0 ? floor.walls[index - 1] : null,
+      selectedWallId: session.selectedWallId
+    })
+  })).filter((entry) => entry.wall);
+  let previewWall = buildPreviewWall(floor, session, {
     project,
     viewport,
     renderThicknessMmMap,
-    relativePreviousWall: index > 0 ? floor.walls[index - 1] : null,
-    selectedWallId: session.selectedWallId
-  })).filter(Boolean).map((wall) => {
+    selectedWallId: session.selectedWallId,
+    measurementFace: previewMeasurementFace
+  });
+  const branchBodyOffsetSign = resolveTBranchBodyOffsetSign(
+    session,
+    wallEntries,
+    activeWallStartIndex
+  );
+  const walls = wallEntries.map((entry) => {
+    let wall = entry.wall;
+    const activeWallIndex = entry.index;
+    const isActiveMeasurement = activeWallIndex >= activeWallStartIndex && !closedWallIds[wall.id];
+    if (isActiveMeasurement) {
+      wall = alignWallBodyToOffsetSign(wall, branchBodyOffsetSign);
+    }
     const centroid = closedWallCentroids[wall.id];
     const midpoint = {
       x: (wall.startPoint.x + wall.endPoint.x) / 2,
@@ -847,8 +970,6 @@ function createSurveyRenderScene(input) {
       ? (centerOffset >= 0 ? -1 : 1)
       : null;
 
-    const activeWallIndex = (floor.walls || []).indexOf(wall.wall);
-    const isActiveMeasurement = activeWallIndex >= activeWallStartIndex && !closedWallIds[wall.id];
     const measurementFace = isActiveMeasurement
       ? resolveActiveMeasurementFace(session, activeWallIndex, activeWallStartIndex)
       : 'inner';
@@ -865,17 +986,11 @@ function createSurveyRenderScene(input) {
   walls.forEach((wall) => {
     wall.selectionPolygon = createSelectionPolygon(wall, walls);
   });
-  const previewWall = buildPreviewWall(floor, session, {
-    project,
-    viewport,
-    renderThicknessMmMap,
-    selectedWallId: session.selectedWallId,
-    measurementFace: resolveActiveMeasurementFace(
-      session,
-      activeWallStartIndex + activeWallCount,
-      activeWallStartIndex
-    )
-  });
+  previewWall = applyMeasurementFace(
+    alignWallBodyToOffsetSign(previewWall, branchBodyOffsetSign),
+    previewMeasurementFace
+  );
+  joinActiveMeasurementPath(walls, previewWall);
   const solidWalls = walls.concat(previewWall && !previewWall.lineOnly ? [previewWall] : []);
   const createSolidPlan = (items) => wallSolidLayout.createWallSolidPlan({
     walls: items.map((wall) => ({

@@ -13,3 +13,6 @@ admin/uploads/
 admin/.roomi-import/
 .codex-tmp/
 com.zbj.zhouse_26.7.16.apk
+tmp/
+output/
+customer-materials/
