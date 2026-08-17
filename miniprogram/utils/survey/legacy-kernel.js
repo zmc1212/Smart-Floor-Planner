@@ -2343,13 +2343,50 @@ function isDirectClosureHit(floor, session, rawPoint) {
 
 function getCursorDisplayPoint(floor, session) {
   if (!floor || !session || !session.anchorNodeId) return null;
-  if (session.previewPoint) return session.previewPoint;
 
   const anchor = getNode(floor, session.anchorNodeId);
   const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
     ? session.activeSpaceStartWallIndex
     : 0;
   const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
+  const isOuterTChain = session.activeSpaceSharedWallMiddle &&
+    session.activeSpaceSharedSnapLine === 'outer';
+
+  // The graph anchor remains on the topology/inner line. For an exterior T
+  // start, the operator actually sees and drags the wall's outer working line.
+  // Build that display point from the same resolved geometry used by the
+  // renderer so hit testing, the cursor lens, and the canvas stay coincident.
+  if (isOuterTChain && session.previewPoint && activeWallCount === 0) {
+    const lastWall = (floor.walls || [])[floor.walls.length - 1] || null;
+    const cursorWall = {
+      id: '__cursor-preview__',
+      thicknessMm: session.thicknessMm,
+      measurementSide: session.previewMeasurementSide || session.measurementSide,
+      bodyNormalSide: lastWall && lastWall.bodyNormalSide,
+      measurementStartInsetMm: session.previewMeasurementStartInsetMm || 0,
+      measurementEndInsetMm: session.previewMeasurementEndInsetMm || 0
+    };
+    const previewGeometry = buildWallRenderGeometry(floor, cursorWall, {
+      startPoint: anchor,
+      endPoint: session.previewPoint,
+      previousWall: lastWall,
+      nextWall: null
+    });
+    if (previewGeometry && previewGeometry.outerEnd) {
+      return previewGeometry.outerEnd;
+    }
+  }
+
+  if (session.previewPoint) return session.previewPoint;
+
+  if (isOuterTChain && activeWallCount > 0) {
+    const lastWall = (floor.walls || [])[floor.walls.length - 1] || null;
+    const geometry = lastWall ? buildWallRenderGeometry(floor, lastWall) : null;
+    if (geometry) {
+      return activeWallCount === 1 ? geometry.outerEnd : geometry.end;
+    }
+  }
+
   if (
     anchor &&
     activeWallCount === 0 &&

@@ -27,7 +27,7 @@ integration.
 
 | Module | Current entry points | API/data boundary | Permission/status | Current limitation |
 | --- | --- | --- | --- | --- |
-| Authentication and sessions | `/login`, `/register`; auth middleware | `/api/auth/*`; session/JWT helpers | Public entry plus authenticated routes; Implemented | Provider configuration remains environment-dependent |
+| Authentication and sessions | `/login`, `/register`; auth middleware | `/api/auth/*`; Mini Program JWTs use base user `sub`, selected `customer/staff/referrer` context, and `contextVersion` | Public entry plus authenticated routes; Implemented | WeChat provider configuration remains environment-dependent; legacy identity columns coexist until the old acquisition flow is retired |
 | Navigation, roles, access | Shared sidebar and route guards | `/api/permissions`, role/menu repositories | `super_admin`, `admin`, enterprise roles; Implemented | Effective permissions are tenant and role scoped |
 | Platform and enterprises | `/dashboard`, `/enterprises` | Enterprise, branding, activation, and platform repositories | Platform roles; Implemented | Enterprise context is required for tenant mutations |
 | Staff and accounts | `/staff`, `/departments`, `/users` | Staff, department, binding, and admin-user repositories | Platform/enterprise admin boundaries; Implemented | Staff changes can invalidate role-derived visibility |
@@ -38,7 +38,7 @@ integration.
 | Measurements and BLE devices | `/measurements`, `/devices` | Measurement, device, binding, and audit repositories | Platform/enterprise assignment boundaries; Implemented | Device protocol support is limited to the documented meter |
 | AI studio and generation | AI workflow, asset, provider, pricing, and credit pages | PostgreSQL AI repositories and provider adapters | Platform plus tenant AI permissions; Implemented/Limited | Provider availability and image storage are external |
 | Media storage | `/media-storage` | `media_assets`, provider configuration, storage adapters | Platform admin; Implemented | Bucket cleanup is a separate operation |
-| Mini Program support APIs | Admin diagnostics and shared API handlers | Mini Program identity, leads, floor plans, AI, notifications | Existing client auth and tenant boundaries; Implemented | Client capability still depends on WeChat platform APIs |
+| Mini Program support APIs | Admin diagnostics and shared API handlers | `/api/auth/miniprogram`, `/api/miniprogram/identity-contexts`, `/api/miniprogram/identity-contexts/switch`; leads, floor plans, AI, notifications | Ordinary customers and validated staff/referrer contexts; Implemented | Referrer membership creation and the redesigned business loop remain planned for later phases |
 | Notifications, automation, diagnostics | Notification settings, reminder runtime, diagnostics | Notification templates, scheduler, operational records | Platform/enterprise roles; Implemented/Limited | Subscription delivery can be rejected by WeChat |
 
 ## Formal surveying boundary

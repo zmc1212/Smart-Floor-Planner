@@ -8,9 +8,11 @@ restoration notes and test transcripts belong in Git history or local evidence.
 
 - Native WeChat Mini Program with custom tab bar, bright-green design tokens,
   and iPhone 13 Pro `390x844` as the visual baseline.
-- Sessions use `/api/auth/miniprogram` and bearer JWT. Professional staff,
-  enterprise context, leads, floor plans, AI tasks, commissions, and promotion
-  records resolve through the shared tenant-aware API.
+- Sessions use `/api/auth/miniprogram` and bearer JWT. Phone authorization can
+  create an ordinary customer account; tokens select a database-validated
+  `customer`, `staff`, or `referrer` context and are invalidated by
+  `contextVersion`. Professional staff, enterprise context, leads, floor plans,
+  AI tasks, commissions, and promotion records resolve through shared APIs.
 - Primary actions use locally stored, license-documented icons. Native host
   capsule and safe areas remain outside the content lane.
 - `Implemented`, `Limited`, and `Placeholder` describe executable runtime
@@ -40,17 +42,21 @@ Canvas renderer, dimensions, BLE readings, audit queue, undo/redo, the
 right-rail confirmed canvas-clear/restart action, and save failure behavior
 must follow that contract.
 Closed exterior-wall T branches retain one topology node and physical wall. An
-inner start places the first red edge on the dragged graph line; an outer start
-offsets only that first red edge to the branch outer face, one wall thickness
-away. That measurement offset does not propagate beyond the first wall. After
-a turn, every later red/orange segment and the cursor stay on the operator's
-actual dragged graph line instead of shifting by another wall thickness.
+inner-start first wall uses its inner graph face, while an outer-start first
+wall uses its derived physical outer face; those readings are one wall
+thickness apart. A turn cannot mechanically retain the next segment's local
+outer face because its rotated normal would move the cursor by one wall
+thickness. Each following segment instead selects the face passing through the
+current green cursor, forming one continuous working path. Orthogonal touch
+input remains on the internal graph, while the preview outline, orange/red
+path, live-dimension endpoints, and green cursor coincide on that path.
 Confirming the first branch wall separately fixes the wall-local side used by
-its physical body. Every later left/right preview and committed turn inherits
-that body side, so changing drag direction cannot reflect the confirmed first
-wall. The first outer edge meets the following dragged edge at their line
-intersection, keeping the red corner continuous. This is derived Canvas
-geometry and does not change graph centreline/closure topology. From the second branch wall onward, turns may
+its physical body.
+Every later left/right preview and committed turn inherits that body side, so
+changing drag direction cannot reflect the confirmed first wall. Adjacent
+working faces meet at their line intersection, keeping the red corner
+continuous. This derived Canvas projection does not change graph
+centreline/closure topology. From the second branch wall onward, turns may
 join the rendered wall solids but cannot rewrite preceding measurement insets
 or shorten confirmed readings. A shared-boundary closure
 chain retains its rendered body side when it closes,
@@ -63,7 +69,11 @@ continuations and shared internal partitions keep their existing closure behavio
 
 ## Shared APIs and utilities
 
-- Authentication/context: `/api/auth/miniprogram` and shared context resolver.
+- Authentication/context: `/api/auth/miniprogram`,
+  `/api/miniprogram/identity-contexts`,
+  `/api/miniprogram/identity-contexts/switch`, and the shared context resolver.
+  Context lists are always read from the database; a switch cannot assert an
+  enterprise, staff identity, or referrer membership that is not active.
 - Leads, floor plans, measurements, devices, AI, commissions, promotions, and
   notifications use their corresponding tenant-aware API families.
 - Graph and Canvas sources are `miniprogram/utils/surveyWallGraph.js`,

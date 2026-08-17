@@ -651,6 +651,49 @@ test('an outer-corner drop keeps the topology anchor on the centerline and the s
   assert.equal(snappedFloor.session.activeSpaceSharedSnapLine, 'outer');
 });
 
+test('an outer T continuation keeps right and left drag endpoints on the current cursor working line', () => {
+  [
+    { endX: 3200 },
+    { endX: -200 }
+  ].forEach(({ endX }) => {
+    let draft = createClosedDraft();
+    let floor = surveyGraph.getActiveFloor(draft);
+    const sourceWall = floor.walls[0];
+    const sourceGeometry = surveyGraph.buildWallSnapGeometry(floor, sourceWall);
+    const outerMidpoint = {
+      xMm: Math.round((sourceGeometry.outerStart.xMm + sourceGeometry.outerEnd.xMm) / 2),
+      yMm: Math.round((sourceGeometry.outerStart.yMm + sourceGeometry.outerEnd.yMm) / 2)
+    };
+    const target = surveyGraph.getCursorPlacementTarget(
+      floor,
+      outerMidpoint,
+      surveyGraph.CLOSE_TOLERANCE_MM
+    );
+
+    draft = surveyGraph.snapCursorToWall(
+      surveyGraph.startWallSnap(draft),
+      target.pointMm,
+      target
+    );
+    draft = commitWall(draft, { xMm: outerMidpoint.xMm, yMm: -2000 }, 1800);
+    floor = surveyGraph.getActiveFloor(draft);
+    assert.deepEqual(surveyGraph.getCursorDisplayPoint(floor, floor.session), {
+      xMm: outerMidpoint.xMm + 200,
+      yMm: -2000
+    });
+
+    const draggedPoint = { xMm: endX, yMm: -2000 };
+    draft = surveyGraph.startPreview(draft, draggedPoint);
+    floor = surveyGraph.getActiveFloor(draft);
+
+    assert.equal(floor.session.previewPoint.yMm, -2000);
+    assert.deepEqual(
+      surveyGraph.getCursorDisplayPoint(floor, floor.session),
+      draggedPoint
+    );
+  });
+});
+
 test('an outer endpoint keeps its measurement side while the graph anchor stays on the topology node', () => {
   const draft = createWallDraft();
   const floor = surveyGraph.getActiveFloor(draft);

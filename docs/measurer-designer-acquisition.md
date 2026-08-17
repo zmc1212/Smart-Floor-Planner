@@ -4,7 +4,7 @@ This is the focused business and data contract for the measurer–designer lead-
 
 ## Planned replacement
 
-The referrer-network and appointment loop has an approved design direction but is not implemented yet. The breaking redesign starts from the [Referrer Network and Measurement Appointment Development Plan](./referrer-network-appointment-development-plan.md). Until the replacement is complete, this document describes the currently implemented legacy flow and is not evidence for the new workflow.
+The referrer-network and appointment loop has an approved design direction, and its schema-and-identity foundation is implemented, but it has not replaced the production acquisition flow described here. The breaking redesign starts from the [Referrer Network and Measurement Appointment Development Plan](./referrer-network-appointment-development-plan.md). Until the replacement is complete, this document describes the currently implemented legacy flow and is not evidence for later workflow phases.
 
 ## 1. Scope and outcome
 

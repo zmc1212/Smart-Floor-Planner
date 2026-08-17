@@ -31,11 +31,14 @@ import {
   leadLifecycleEvents,
   leads,
   mediaStorageConfigs,
+  referrerEnterpriseMemberships,
+  referrerProfiles,
   packages,
   platformConfigs,
   promotionEnterpriseRecords,
   systemRoles,
   users,
+  wechatIdentities,
   workflowNotificationLogs,
 } from '@/db/schema';
 import {
@@ -60,6 +63,7 @@ import {
   LeadRepository,
   MediaAssetRepository,
   MediaStorageConfigRepository,
+  MiniProgramIdentityRepository,
   PlatformConfigRepository,
   PromptLibraryRepository,
   SystemRoleRepository,
@@ -1359,6 +1363,19 @@ test('user repository resolves and updates Mini Program identities', async () =>
     const repository = new UserRepository(transaction);
     const found = await repository.findByOpenid(openid);
     assert.equal(found?.id, created.id);
+    const identityRows = await transaction
+      .select({
+        legacyOpenid: users.openid,
+        identityOpenid: wechatIdentities.openid,
+      })
+      .from(users)
+      .leftJoin(
+        wechatIdentities,
+        eq(wechatIdentities.userId, users.id)
+      )
+      .where(eq(users.id, created.id));
+    assert.equal(identityRows[0]?.legacyOpenid, null);
+    assert.equal(identityRows[0]?.identityOpenid, openid);
     return repository.update(created.id, {
       nickname: 'After',
       phone: '13800000000',
@@ -1418,6 +1435,120 @@ test('media storage repository uses optimistic test-result updates', async () =>
     assert.equal(currentResult?.lastTestOk, true);
     assert.equal(currentResult?.lastTestMessage, 'current success');
   });
+});
+
+test('Mini Program identity contexts are database-backed and tenant-safe', async () => {
+  let userId: bigint | null = null;
+  let staffId: bigint | null = null;
+  let referrerId: bigint | null = null;
+  let membershipId: bigint | null = null;
+  const openid = `${testRunKey}-context-openid`;
+  const phone = `131${String(Date.now()).slice(-8)}`;
+  try {
+    const created = await withPlatformTransaction(async (transaction) => {
+      const usersRepository = new UserRepository(transaction);
+      const user = await usersRepository.create({
+        phone,
+        nickname: 'Identity context user',
+      });
+      const identities = new MiniProgramIdentityRepository(transaction);
+      await identities.attachWechatIdentity({ userId: user.id, openid });
+      const staff = await new AdminUserRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        username: `${testRunKey}-context-staff`,
+        passwordHash: 'test-hash',
+        displayName: 'Identity Staff',
+        role: 'designer',
+        phone,
+      });
+      await identities.resolveWechatPhoneUser({ openid, phone });
+      const [referrer] = await transaction
+        .insert(referrerProfiles)
+        .values({ userId: user.id, displayName: 'Identity Referrer' })
+        .returning();
+      const [membership] = await transaction
+        .insert(referrerEnterpriseMemberships)
+        .values({
+          referrerId: referrer.id,
+          enterpriseId: enterpriseAId,
+        })
+        .returning();
+      return { user, staff, referrer, membership };
+    });
+    userId = created.user.id;
+    staffId = created.staff.id;
+    referrerId = created.referrer.id;
+    membershipId = created.membership.id;
+
+    await withPlatformTransaction(async (transaction) => {
+      const identities = new MiniProgramIdentityRepository(transaction);
+      const contexts = await identities.listContexts(created.user.id);
+      assert.deepEqual(
+        contexts.map((context) => context.mode),
+        ['customer', 'staff', 'referrer']
+      );
+      assert.equal(contexts[1].staffId, created.staff.id);
+      assert.equal(
+        contexts[2].referrerMembershipId,
+        created.membership.id
+      );
+      assert.equal(
+        await identities.selectContext(created.user.id, {
+          mode: 'referrer',
+          enterpriseId: enterpriseBId,
+          referrerMembershipId: created.membership.id,
+        }),
+        null
+      );
+      assert.equal(
+        await identities.bumpContextVersion(created.user.id),
+        created.user.contextVersion + 1
+      );
+      await assert.rejects(
+        identities.attachWechatIdentity({
+          userId: created.user.id,
+          openid: `${openid}-replacement`,
+        }),
+        /WECHAT_USER_ALREADY_LINKED/
+      );
+    });
+
+    await assert.rejects(
+      withTenantTransaction(enterpriseBId, async (transaction) => {
+        await transaction.insert(referrerEnterpriseMemberships).values({
+          referrerId: created.referrer.id,
+          enterpriseId: enterpriseAId,
+        });
+      }),
+      (error: unknown) =>
+        (error as { cause?: { code?: string } }).cause?.code === '42501' ||
+        (error as { code?: string }).code === '42501'
+    );
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (membershipId) {
+        await transaction
+          .delete(referrerEnterpriseMemberships)
+          .where(eq(referrerEnterpriseMemberships.id, membershipId));
+      }
+      if (referrerId) {
+        await transaction
+          .delete(referrerProfiles)
+          .where(eq(referrerProfiles.id, referrerId));
+      }
+      if (staffId) {
+        await transaction
+          .delete(adminUsers)
+          .where(eq(adminUsers.id, staffId));
+      }
+      if (userId) {
+        await transaction
+          .delete(wechatIdentities)
+          .where(eq(wechatIdentities.userId, userId));
+        await transaction.delete(users).where(eq(users.id, userId));
+      }
+    });
+  }
 });
 
 test('media asset storage stats use PostgreSQL soft-delete and purge state', async () => {

@@ -55,18 +55,21 @@ copy back to `layoutData`.
 - Consumers must preserve wall openings, shared-wall thickness, closure rules,
   deletion/rejoin behavior, and the v4 schema.
 - A T-branch started on a closed exterior wall middle keeps one topology node
-  and physical wall. An inner start places the first red edge on the dragged
-  graph line; an outer start offsets only that first red edge to the branch
-  outer face, one wall thickness away. The outer measurement offset must not
-  propagate beyond the first wall. After a turn, every later red/orange segment
-  and the cursor stay on the operator's actual dragged graph line instead of
-  being shifted by another wall thickness. Confirming the first branch wall
-  separately fixes the wall-local side used by the physical body, and every
-  later left/right preview and committed turn inherits that body side so the
-  confirmed first wall cannot reflect. The first outer edge and the following
-  dragged edge meet at their line intersection, keeping the red corner
-  continuous. This is derived Canvas geometry and does not alter graph
-  centreline or closure topology.
+  and physical wall. The first inner-start working line uses the inner graph
+  face, while the first outer-start working line uses the derived physical
+  outer face; those first readings are one wall thickness apart. A turn must
+  not mechanically keep the next wall's local outer face because its rotated
+  normal would move the cursor by one wall thickness. Each following segment
+  instead selects the face passing through the current green cursor, forming
+  one continuous working path. Orthogonal gesture input is stored on the
+  internal graph, while the preview outline, orange/red path, live-dimension
+  endpoints, and green cursor remain coincident on that path. Confirming the
+  first branch wall separately
+  fixes the wall-local side used by the physical body, and every later
+  left/right preview and committed turn inherits that body side so the
+  confirmed first wall cannot reflect. Adjacent working faces meet at
+  their line intersection, keeping the red corner continuous. This display
+  projection does not alter graph centreline or closure topology.
   From the second branch wall onward, a turn may join the rendered wall solids
   but must not rewrite measurement insets on preceding walls or shorten any
   confirmed reading.

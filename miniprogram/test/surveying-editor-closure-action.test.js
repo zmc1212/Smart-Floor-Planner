@@ -43,7 +43,7 @@ test('a placed cursor keeps its guide visibility when the canvas render data is 
 test('wall dragging starts from the rendered cursor face instead of its hidden topology node', () => {
   assert.match(
     editorScript,
-    /const cursorSource = session\.state === 'awaitingLength' && session\.previewPoint[\s\S]*?surveyGraph\.getCursorDisplayPoint\(floor, session\) \|\| anchor/
+    /const cursorSource = surveyGraph\.getCursorDisplayPoint\(floor, session\) \|\| anchor/
   );
 });
 

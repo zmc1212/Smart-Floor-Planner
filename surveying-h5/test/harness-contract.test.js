@@ -60,7 +60,7 @@ test('H5 Canvas scene uses the current production renderer revision', () => {
     viewport: floor.viewport,
     rect: { width: 1000, height: 760 }
   });
-  assert.equal(surveyRenderer.RENDER_REVISION, 'degree-aware-branch-far-face-v13');
+  assert.equal(surveyRenderer.RENDER_REVISION, 'degree-aware-branch-working-face-v14');
   assert.equal(scene.walls.length, 6);
   assert.ok(scene.wallSolidPlans.closed.rings.length > 0);
 });

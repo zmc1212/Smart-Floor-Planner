@@ -3645,14 +3645,9 @@ Page({
     if (!canStartWallDrag(session.state)) return false;
 
     const anchor = surveyGraph.getNode(floor, session.anchorNodeId);
-    // Outer-edge drops keep their graph node on the wall centerline, while the
-    // visible cursor is intentionally rendered on the physical outer face.
-    // Hit testing must use that same displayed point; otherwise a user can
-    // begin a drag from the hidden centerline and leave the visible cursor and
-    // the preview wall on two parallel lines.
-    const cursorSource = session.state === 'awaitingLength' && session.previewPoint
-      ? session.previewPoint
-      : (surveyGraph.getCursorDisplayPoint(floor, session) || anchor);
+    // Use the same displayed point as the canvas. Exterior T chains expose the
+    // outer working line while their graph anchor stays on the topology line.
+    const cursorSource = surveyGraph.getCursorDisplayPoint(floor, session) || anchor;
     if (!cursorSource) return false;
 
     const cursorPoint = this.mmToCanvasPoint(cursorSource);

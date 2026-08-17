@@ -1,6 +1,6 @@
 # 推荐人网络与预约量房闭环开发计划
 
-状态：`Approved design / Planned implementation`
+状态：`Approved design / Phase 1 implemented`
 
 本文是“推荐人多企业推广、客户授权建线索、自动派单、预约量房、AI 方案、签单和三方提成”破坏式改造的持续开发入口。当前代码、PostgreSQL schema、迁移和模块清单仍是已实现能力的依据；本文中的表、接口和路由在代码落地并通过测试前都只能标记为 `Planned`。
 
@@ -109,7 +109,7 @@ closed 为终止状态
 
 ## 5. 目标数据模型
 
-表名是当前批准的实现目标；迁移前应再次对照 `admin/src/lib/db/schema.ts` 和 Repository 命名约定。
+以下目标表已由阶段 1 写入 `admin/src/db/schema.ts` 和迁移 `0024_same_shockwave.sql`；后续阶段在现有约束和 Repository 命名约定上实现业务写入，不得另建平行数据模型。
 
 | 实体/表 | 核心字段与约束 |
 | --- | --- |
@@ -239,7 +239,7 @@ closed 为终止状态
 
 | API 族 | 计划接口 |
 | --- | --- |
-| 身份 | `GET /api/miniprogram/identity-contexts`、`POST /api/miniprogram/identity-contexts/switch` |
+| 身份 | `GET /api/miniprogram/identity-contexts`、`POST /api/miniprogram/identity-contexts/switch`；阶段 1 已实现。 |
 | 扫码解析 | `POST /api/miniprogram/codes/resolve` |
 | 双码管理 | `GET /api/enterprise/join-codes`、`POST /api/enterprise/join-codes/[type]/rotate`、`POST /api/enterprise/join-codes/[type]/disable` |
 | 入驻 | `POST /api/miniprogram/onboarding/staff`、`POST /api/miniprogram/onboarding/referrer` |
@@ -298,7 +298,7 @@ closed 为终止状态
 | 阶段 | 状态 | 交付物与退出条件 |
 | --- | --- | --- |
 | 0. 计划与设计锁定 | `Completed` | 选定设计文件和本计划中英文版；未修改生产运行界面。 |
-| 1. Schema 与身份基础 | `Not started` | 新表、RLS、Repository、身份列表/切换、普通客户手机号登录；数据库合同测试通过。 |
+| 1. Schema 与身份基础 | `Completed` | 目标表、`leads` 扩展、强制 RLS、Repository、数据库实时身份列表/切换、`contextVersion` 失效及普通客户手机号登录已实现；数据库合同测试通过。旧 OpenID 字段仅为第 8 阶段前的旧流程并存兼容。 |
 | 2. 双码与推荐人网络 | `Not started` | 双码换码/停用审计、员工单企业、推荐人上限与退出、推广短令牌。 |
 | 3. 客户授权与自动派单 | `Not started` | 两阶段扫码、原子建线索、首次有效归属、稳定派单、异常重试。 |
 | 4. 选定设计生产实现 | `Not started` | 三屏对应路由按 `390x844` 实现并通过微信胶囊、字号、权限和真机视觉核验；更新设计台账。 |

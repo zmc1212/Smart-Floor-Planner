@@ -2,6 +2,8 @@ import { sql } from 'drizzle-orm';
 import {
   bigint,
   boolean,
+  check,
+  customType,
   date,
   index,
   integer,
@@ -30,6 +32,11 @@ const jsonObject = <T extends Record<string, unknown>>(name: string) =>
   jsonb(name).$type<T>().notNull().default(sql`'{}'::jsonb`);
 const textArray = (name: string) =>
   text(name).array().notNull().default(sql`'{}'::text[]`);
+const tstzrange = customType<{ data: string }>({
+  dataType() {
+    return 'tstzrange';
+  },
+});
 
 export const migrationCheckpoints = appSchema.table('migration_checkpoints', {
   key: text('key').primaryKey(),
@@ -117,6 +124,9 @@ export const adminUsers = appSchema.table(
   'admin_users',
   {
     id: id(),
+    userId: bigint('user_id', { mode: 'bigint' }).references(() => users.id, {
+      onDelete: 'set null',
+    }),
     enterpriseId: bigint('enterprise_id', { mode: 'bigint' }).references(
       () => enterprises.id,
       { onDelete: 'restrict' }
@@ -139,6 +149,11 @@ export const adminUsers = appSchema.table(
     phone: text('phone'),
     menuPermissions: textArray('menu_permissions'),
     status: text('status').notNull().default('active'),
+    assignmentPaused: boolean('assignment_paused').notNull().default(false),
+    lastAssignedAt: timestamp('last_assigned_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
     lastLoginAt: timestamp('last_login_at', {
       withTimezone: true,
       mode: 'date',
@@ -148,6 +163,9 @@ export const adminUsers = appSchema.table(
   },
   (table) => [
     uniqueIndex('admin_users_username_uidx').on(table.username),
+    uniqueIndex('admin_users_user_uidx')
+      .on(table.userId)
+      .where(sql`${table.userId} is not null`),
     uniqueIndex('admin_users_phone_uidx')
       .on(table.phone)
       .where(sql`${table.phone} is not null`),
@@ -278,6 +296,7 @@ export const users = appSchema.table(
     communityName: text('community_name'),
     city: text('city'),
     phone: text('phone'),
+    contextVersion: integer('context_version').notNull().default(1),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -293,6 +312,195 @@ export const users = appSchema.table(
       table.createdAt
     ),
     index('users_phone_idx').on(table.phone),
+  ]
+);
+
+export const wechatIdentities = appSchema.table(
+  'wechat_identities',
+  {
+    id: id(),
+    userId: bigint('user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    openid: text('openid').notNull(),
+    unionid: text('unionid'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('wechat_identities_user_uidx').on(table.userId),
+    uniqueIndex('wechat_identities_openid_uidx').on(table.openid),
+    uniqueIndex('wechat_identities_unionid_uidx')
+      .on(table.unionid)
+      .where(sql`${table.unionid} is not null`),
+  ]
+);
+
+export const referrerProfiles = appSchema.table(
+  'referrer_profiles',
+  {
+    id: id(),
+    userId: bigint('user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    displayName: text('display_name').notNull().default(''),
+    phone: text('phone'),
+    status: text('status').notNull().default('active'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('referrer_profiles_user_uidx').on(table.userId),
+    index('referrer_profiles_status_created_idx').on(table.status, table.createdAt),
+    check('referrer_profiles_status_check', sql`${table.status} in ('active', 'disabled')`),
+  ]
+);
+
+export const enterpriseJoinCodes = appSchema.table(
+  'enterprise_join_codes',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'cascade' }),
+    codeType: text('code_type').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    status: text('status').notNull().default('active'),
+    version: integer('version').notNull().default(1),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }),
+    createdBy: bigint('created_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    disabledBy: bigint('disabled_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    disabledAt: timestamp('disabled_at', { withTimezone: true, mode: 'date' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('enterprise_join_codes_token_hash_uidx').on(table.tokenHash),
+    uniqueIndex('enterprise_join_codes_active_type_uidx')
+      .on(table.enterpriseId, table.codeType)
+      .where(sql`${table.status} = 'active'`),
+    index('enterprise_join_codes_enterprise_created_idx').on(table.enterpriseId, table.createdAt),
+    index('enterprise_join_codes_created_by_idx').on(table.createdBy),
+    index('enterprise_join_codes_disabled_by_idx').on(table.disabledBy),
+    check('enterprise_join_codes_type_check', sql`${table.codeType} in ('staff', 'referrer')`),
+    check('enterprise_join_codes_status_check', sql`${table.status} in ('active', 'rotated', 'disabled', 'expired')`),
+  ]
+);
+
+export const enterpriseJoinCodeEvents = appSchema.table(
+  'enterprise_join_code_events',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'cascade' }),
+    joinCodeId: bigint('join_code_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterpriseJoinCodes.id, { onDelete: 'cascade' }),
+    eventType: text('event_type').notNull(),
+    actorUserId: bigint('actor_user_id', { mode: 'bigint' }).references(
+      () => users.id,
+      { onDelete: 'set null' }
+    ),
+    actorStaffId: bigint('actor_staff_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    result: text('result').notNull(),
+    metadata: jsonObject<Record<string, unknown>>('metadata'),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index('enterprise_join_code_events_enterprise_created_idx').on(table.enterpriseId, table.createdAt),
+    index('enterprise_join_code_events_join_code_idx').on(table.joinCodeId),
+    index('enterprise_join_code_events_actor_user_idx').on(table.actorUserId),
+    index('enterprise_join_code_events_actor_staff_idx').on(table.actorStaffId),
+  ]
+);
+
+export const referrerEnterpriseMemberships = appSchema.table(
+  'referrer_enterprise_memberships',
+  {
+    id: id(),
+    referrerId: bigint('referrer_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => referrerProfiles.id, { onDelete: 'cascade' }),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'restrict' }),
+    status: text('status').notNull().default('active'),
+    joinedAt: timestamp('joined_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    exitedAt: timestamp('exited_at', { withTimezone: true, mode: 'date' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('referrer_memberships_active_enterprise_uidx')
+      .on(table.referrerId, table.enterpriseId)
+      .where(sql`${table.status} = 'active'`),
+    index('referrer_memberships_enterprise_status_idx').on(table.enterpriseId, table.status),
+    index('referrer_memberships_referrer_status_idx').on(table.referrerId, table.status),
+    check('referrer_memberships_status_check', sql`${table.status} in ('active', 'exited', 'disabled')`),
+  ]
+);
+
+export const referrerPromotionCodes = appSchema.table(
+  'referrer_promotion_codes',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'restrict' }),
+    membershipId: bigint('membership_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => referrerEnterpriseMemberships.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(),
+    status: text('status').notNull().default('active'),
+    version: integer('version').notNull().default(1),
+    disabledAt: timestamp('disabled_at', { withTimezone: true, mode: 'date' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('referrer_promotion_codes_token_hash_uidx').on(table.tokenHash),
+    uniqueIndex('referrer_promotion_codes_active_membership_uidx')
+      .on(table.membershipId)
+      .where(sql`${table.status} = 'active'`),
+    index('referrer_promotion_codes_enterprise_created_idx').on(table.enterpriseId, table.createdAt),
+    check('referrer_promotion_codes_status_check', sql`${table.status} in ('active', 'rotated', 'disabled')`),
+  ]
+);
+
+export const promotionScanAudits = appSchema.table(
+  'promotion_scan_audits',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'restrict' }),
+    promotionCodeId: bigint('promotion_code_id', { mode: 'bigint' }).references(
+      () => referrerPromotionCodes.id,
+      { onDelete: 'set null' }
+    ),
+    tokenHash: text('token_hash').notNull(),
+    sessionKey: text('session_key'),
+    result: text('result').notNull(),
+    ipHash: text('ip_hash'),
+    deviceSummary: jsonObject<Record<string, unknown>>('device_summary'),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index('promotion_scan_audits_enterprise_created_idx').on(table.enterpriseId, table.createdAt),
+    index('promotion_scan_audits_promotion_code_idx').on(table.promotionCodeId),
+    index('promotion_scan_audits_token_created_idx').on(table.tokenHash, table.createdAt),
   ]
 );
 
@@ -999,6 +1207,19 @@ export const leads = appSchema.table(
       () => adminUsers.id,
       { onDelete: 'set null' }
     ),
+    customerUserId: bigint('customer_user_id', { mode: 'bigint' }).references(
+      () => users.id,
+      { onDelete: 'restrict' }
+    ),
+    referrerMembershipId: bigint('referrer_membership_id', {
+      mode: 'bigint',
+    }).references(() => referrerEnterpriseMemberships.id, {
+      onDelete: 'restrict',
+    }),
+    measurerId: bigint('measurer_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
     name: text('name').notNull(),
     phone: text('phone').notNull(),
     communityName: text('community_name'),
@@ -1033,6 +1254,12 @@ export const leads = appSchema.table(
       withTimezone: true,
       mode: 'date',
     }),
+    attributionLockedAt: timestamp('attribution_locked_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    assignmentStatus: text('assignment_status').notNull().default('not_requested'),
+    assignmentErrorCode: text('assignment_error_code'),
     primaryFloorPlanId: bigint('primary_floor_plan_id', { mode: 'bigint' }),
     followUpRecords: jsonb('follow_up_records')
       .$type<Record<string, unknown>[]>()
@@ -1066,6 +1293,14 @@ export const leads = appSchema.table(
       table.assignedTo,
       table.createdAt
     ),
+    index('leads_customer_user_idx').on(table.customerUserId),
+    index('leads_referrer_membership_idx').on(table.referrerMembershipId),
+    index('leads_measurer_created_idx').on(table.measurerId, table.createdAt),
+    index('leads_enterprise_assignment_status_idx').on(
+      table.enterpriseId,
+      table.assignmentStatus,
+      table.createdAt
+    ),
     index('leads_assignee_acquired_created_idx').on(
       table.assignedTo,
       table.acquiredAt,
@@ -1095,6 +1330,301 @@ export const leads = appSchema.table(
       table.id
     ),
     index('leads_primary_floor_plan_idx').on(table.primaryFloorPlanId),
+  ]
+);
+
+export const customerAttributionLocks = appSchema.table(
+  'customer_attribution_locks',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'restrict' }),
+    customerUserId: bigint('customer_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    leadId: bigint('lead_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => leads.id, { onDelete: 'restrict' }),
+    referrerMembershipId: bigint('referrer_membership_id', {
+      mode: 'bigint',
+    }).references(() => referrerEnterpriseMemberships.id, {
+      onDelete: 'restrict',
+    }),
+    lockedAt: timestamp('locked_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    releasedAt: timestamp('released_at', { withTimezone: true, mode: 'date' }),
+    releaseReason: text('release_reason'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('customer_attribution_locks_active_user_uidx')
+      .on(table.customerUserId)
+      .where(sql`${table.releasedAt} is null`),
+    uniqueIndex('customer_attribution_locks_active_lead_uidx')
+      .on(table.leadId)
+      .where(sql`${table.releasedAt} is null`),
+    index('customer_attribution_locks_enterprise_created_idx').on(table.enterpriseId, table.createdAt),
+    index('customer_attribution_locks_referrer_idx').on(table.referrerMembershipId),
+  ]
+);
+
+export const leadAssignmentEvents = appSchema.table(
+  'lead_assignment_events',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'restrict' }),
+    leadId: bigint('lead_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => leads.id, { onDelete: 'cascade' }),
+    eventType: text('event_type').notNull(),
+    previousDesignerId: bigint('previous_designer_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    designerId: bigint('designer_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    previousMeasurerId: bigint('previous_measurer_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    measurerId: bigint('measurer_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    actorUserId: bigint('actor_user_id', { mode: 'bigint' }).references(
+      () => users.id,
+      { onDelete: 'set null' }
+    ),
+    errorCode: text('error_code'),
+    reason: text('reason'),
+    metadata: jsonObject<Record<string, unknown>>('metadata'),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index('lead_assignment_events_enterprise_created_idx').on(table.enterpriseId, table.createdAt),
+    index('lead_assignment_events_lead_created_idx').on(table.leadId, table.createdAt),
+    index('lead_assignment_events_previous_designer_idx').on(table.previousDesignerId),
+    index('lead_assignment_events_designer_idx').on(table.designerId),
+    index('lead_assignment_events_previous_measurer_idx').on(table.previousMeasurerId),
+    index('lead_assignment_events_measurer_idx').on(table.measurerId),
+    index('lead_assignment_events_actor_user_idx').on(table.actorUserId),
+  ]
+);
+
+export const enterpriseAppointmentSettings = appSchema.table(
+  'enterprise_appointment_settings',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'cascade' }),
+    timezone: text('timezone').notNull().default('Asia/Shanghai'),
+    weeklySchedule: jsonObject<Record<string, unknown>>('weekly_schedule'),
+    defaultDurationMinutes: integer('default_duration_minutes').notNull().default(120),
+    slotStepMinutes: integer('slot_step_minutes').notNull().default(30),
+    maxAdvanceDays: integer('max_advance_days').notNull().default(30),
+    customerRescheduleCutoffHours: integer('customer_reschedule_cutoff_hours').notNull().default(2),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('enterprise_appointment_settings_enterprise_uidx').on(table.enterpriseId),
+    check('enterprise_appointment_duration_check', sql`${table.defaultDurationMinutes} > 0`),
+    check('enterprise_appointment_step_check', sql`${table.slotStepMinutes} > 0`),
+    check('enterprise_appointment_advance_check', sql`${table.maxAdvanceDays} > 0`),
+    check('enterprise_appointment_cutoff_check', sql`${table.customerRescheduleCutoffHours} >= 0`),
+  ]
+);
+
+export const staffUnavailabilityPeriods = appSchema.table(
+  'staff_unavailability_periods',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'cascade' }),
+    staffId: bigint('staff_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: 'cascade' }),
+    timeRange: tstzrange('time_range').notNull(),
+    reason: text('reason'),
+    createdBy: bigint('created_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index('staff_unavailability_enterprise_range_idx').on(table.enterpriseId, table.timeRange),
+    index('staff_unavailability_staff_range_idx').on(table.staffId, table.timeRange),
+    index('staff_unavailability_created_by_idx').on(table.createdBy),
+  ]
+);
+
+export const measurementAppointments = appSchema.table(
+  'measurement_appointments',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'restrict' }),
+    leadId: bigint('lead_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => leads.id, { onDelete: 'restrict' }),
+    designerId: bigint('designer_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: 'restrict' }),
+    measurerId: bigint('measurer_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => adminUsers.id, { onDelete: 'restrict' }),
+    address: text('address').notNull(),
+    timeRange: tstzrange('time_range').notNull(),
+    status: text('status').notNull().default('confirmed'),
+    version: integer('version').notNull().default(1),
+    updatedByUserId: bigint('updated_by_user_id', { mode: 'bigint' }).references(
+      () => users.id,
+      { onDelete: 'set null' }
+    ),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index('measurement_appointments_enterprise_range_idx').on(table.enterpriseId, table.timeRange),
+    index('measurement_appointments_lead_created_idx').on(table.leadId, table.createdAt),
+    index('measurement_appointments_designer_range_idx').on(table.designerId, table.timeRange),
+    index('measurement_appointments_measurer_range_idx').on(table.measurerId, table.timeRange),
+    index('measurement_appointments_updated_by_user_idx').on(table.updatedByUserId),
+    check('measurement_appointments_status_check', sql`${table.status} in ('confirmed', 'cancelled', 'completed')`),
+    check('measurement_appointments_version_check', sql`${table.version} > 0`),
+  ]
+);
+
+export const measurementAppointmentEvents = appSchema.table(
+  'measurement_appointment_events',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'restrict' }),
+    appointmentId: bigint('appointment_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => measurementAppointments.id, { onDelete: 'cascade' }),
+    eventType: text('event_type').notNull(),
+    previousTimeRange: tstzrange('previous_time_range'),
+    timeRange: tstzrange('time_range'),
+    previousMeasurerId: bigint('previous_measurer_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    measurerId: bigint('measurer_id', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    actorUserId: bigint('actor_user_id', { mode: 'bigint' }).references(
+      () => users.id,
+      { onDelete: 'set null' }
+    ),
+    reason: text('reason'),
+    eventKey: text('event_key').notNull(),
+    metadata: jsonObject<Record<string, unknown>>('metadata'),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('measurement_appointment_events_key_uidx').on(table.eventKey),
+    index('measurement_appointment_events_enterprise_created_idx').on(table.enterpriseId, table.createdAt),
+    index('measurement_appointment_events_appointment_created_idx').on(table.appointmentId, table.createdAt),
+    index('measurement_appointment_events_previous_measurer_idx').on(table.previousMeasurerId),
+    index('measurement_appointment_events_measurer_idx').on(table.measurerId),
+    index('measurement_appointment_events_actor_user_idx').on(table.actorUserId),
+  ]
+);
+
+export const enterpriseCommissionRules = appSchema.table(
+  'enterprise_commission_rules',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'cascade' }),
+    role: text('role').notNull(),
+    calculationType: text('calculation_type').notNull(),
+    value: numeric('value', { precision: 14, scale: 4 }).notNull(),
+    status: text('status').notNull().default('active'),
+    version: integer('version').notNull().default(1),
+    createdBy: bigint('created_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    updatedBy: bigint('updated_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('enterprise_commission_rules_enterprise_role_uidx').on(table.enterpriseId, table.role),
+    index('enterprise_commission_rules_created_by_idx').on(table.createdBy),
+    index('enterprise_commission_rules_updated_by_idx').on(table.updatedBy),
+    check('enterprise_commission_rules_role_check', sql`${table.role} in ('referrer', 'designer', 'measurer')`),
+    check('enterprise_commission_rules_type_check', sql`${table.calculationType} in ('fixed', 'percentage')`),
+    check('enterprise_commission_rules_status_check', sql`${table.status} in ('active', 'disabled')`),
+    check('enterprise_commission_rules_value_check', sql`${table.value} >= 0`),
+  ]
+);
+
+export const leadCommissions = appSchema.table(
+  'lead_commissions',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'restrict' }),
+    leadId: bigint('lead_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => leads.id, { onDelete: 'restrict' }),
+    role: text('role').notNull(),
+    beneficiaryUserId: bigint('beneficiary_user_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    ruleType: text('rule_type').notNull(),
+    ruleValue: numeric('rule_value', { precision: 14, scale: 4 }).notNull(),
+    ruleVersion: integer('rule_version').notNull(),
+    contractAmount: numeric('contract_amount', { precision: 14, scale: 2 }),
+    payableAmount: numeric('payable_amount', { precision: 14, scale: 2 }).notNull(),
+    status: text('status').notNull().default('payable'),
+    paidAt: timestamp('paid_at', { withTimezone: true, mode: 'date' }),
+    paidBy: bigint('paid_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    voidedAt: timestamp('voided_at', { withTimezone: true, mode: 'date' }),
+    voidedBy: bigint('voided_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    voidReason: text('void_reason'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('lead_commissions_lead_role_uidx').on(table.leadId, table.role),
+    index('lead_commissions_enterprise_status_idx').on(table.enterpriseId, table.status),
+    index('lead_commissions_beneficiary_status_idx').on(table.beneficiaryUserId, table.status),
+    index('lead_commissions_paid_by_idx').on(table.paidBy),
+    index('lead_commissions_voided_by_idx').on(table.voidedBy),
+    check('lead_commissions_role_check', sql`${table.role} in ('referrer', 'designer', 'measurer')`),
+    check('lead_commissions_rule_type_check', sql`${table.ruleType} in ('fixed', 'percentage')`),
+    check('lead_commissions_status_check', sql`${table.status} in ('payable', 'paid', 'voided')`),
+    check('lead_commissions_amount_check', sql`${table.payableAmount} >= 0`),
   ]
 );
 
@@ -1840,6 +2370,45 @@ export const aiGenerations = appSchema.table(
       .where(
         sql`${table.status} = 'processing' and ${table.currentAttemptId} is not null and ${table.deletedAt} is null`
       ),
+  ]
+);
+
+export const aiGenerationPublications = appSchema.table(
+  'ai_generation_publications',
+  {
+    id: id(),
+    enterpriseId: bigint('enterprise_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => enterprises.id, { onDelete: 'restrict' }),
+    leadId: bigint('lead_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => leads.id, { onDelete: 'cascade' }),
+    generationId: bigint('generation_id', { mode: 'bigint' })
+      .notNull()
+      .references(() => aiGenerations.id, { onDelete: 'restrict' }),
+    publishedBy: bigint('published_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    publishedAt: timestamp('published_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .defaultNow(),
+    withdrawnBy: bigint('withdrawn_by', { mode: 'bigint' }).references(
+      () => adminUsers.id,
+      { onDelete: 'set null' }
+    ),
+    withdrawnAt: timestamp('withdrawn_at', { withTimezone: true, mode: 'date' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex('ai_generation_publications_active_generation_uidx')
+      .on(table.generationId)
+      .where(sql`${table.withdrawnAt} is null`),
+    index('ai_generation_publications_enterprise_created_idx').on(table.enterpriseId, table.createdAt),
+    index('ai_generation_publications_lead_published_idx').on(table.leadId, table.publishedAt),
+    index('ai_generation_publications_published_by_idx').on(table.publishedBy),
+    index('ai_generation_publications_withdrawn_by_idx').on(table.withdrawnBy),
   ]
 );
 

@@ -20,6 +20,7 @@ export * from './inspiration-repository';
 export * from './lead-repository';
 export * from './lead-lifecycle-repository';
 export * from './media-storage-config-repository';
+export * from './miniprogram-identity-repository';
 export * from './measurement-repository';
 export * from './media-asset-repository';
 export * from './package-repository';

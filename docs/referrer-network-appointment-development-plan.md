@@ -1,6 +1,6 @@
 # Referrer Network and Measurement Appointment Development Plan
 
-Status: `Approved design / Planned implementation`
+Status: `Approved design / Phase 1 implemented`
 
 This document is the durable implementation entry point for the breaking redesign covering multi-enterprise referrers, phone-authorized lead creation, automatic assignment, measurement appointments, published AI designs, conversion, and three-role commissions. Current code, PostgreSQL schema, migrations, and module inventories remain the authority for implemented behavior. Every table, API, and route in this plan remains `Planned` until code and tests prove otherwise.
 
@@ -109,7 +109,7 @@ The full context list is read from the database. Context switching revalidates a
 
 ## 5. Target data model
 
-Names below are the approved implementation target and must be checked against current `admin/src/lib/db/schema.ts` and repository conventions before migration authoring.
+Phase 1 persists the target tables below in `admin/src/db/schema.ts` and migration `0024_same_shockwave.sql`. Later phases must implement business writes on these constraints and repository conventions instead of creating a parallel data model.
 
 | Entity/table | Core contract |
 | --- | --- |
@@ -237,7 +237,7 @@ Exact route names may be adjusted within an implementation slice to match App Ro
 
 | Family | Planned endpoints |
 | --- | --- |
-| Identity | `GET /api/miniprogram/identity-contexts`, `POST /api/miniprogram/identity-contexts/switch` |
+| Identity | `GET /api/miniprogram/identity-contexts`, `POST /api/miniprogram/identity-contexts/switch`; implemented in phase 1. |
 | Code resolution | `POST /api/miniprogram/codes/resolve` |
 | Dual-code management | `GET /api/enterprise/join-codes`, `POST /api/enterprise/join-codes/[type]/rotate`, `POST /api/enterprise/join-codes/[type]/disable` |
 | Onboarding | `POST /api/miniprogram/onboarding/staff`, `POST /api/miniprogram/onboarding/referrer` |
@@ -296,7 +296,7 @@ Update this status table incrementally and update both module inventories and af
 | Phase | Status | Deliverables and exit condition |
 | --- | --- | --- |
 | 0. Plan and design lock | `Completed` | Selected design and bilingual plan; no production UI change. |
-| 1. Schema and identity | `Not started` | Tables, RLS, repositories, context list/switch, ordinary customer phone login; DB contract tests pass. |
+| 1. Schema and identity | `Completed` | Target tables, lead extensions, forced RLS, repositories, database-backed context list/switch, `contextVersion` invalidation, and ordinary-customer phone login are implemented; DB contract tests pass. Legacy OpenID columns remain only for coexistence with the old flow until phase 8. |
 | 2. Dual codes and referrer network | `Not started` | Rotation/disable audit, single-enterprise staff, membership limit/leave, promotion tokens. |
 | 3. Authorization and assignment | `Not started` | Two-stage scan, atomic lead creation, first attribution, stable assignment, failure retry. |
 | 4. Selected design implementation | `Not started` | Three mapped states implemented at `390x844`, verified for capsule, type, authorization, and device rendering; ledgers updated. |

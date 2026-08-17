@@ -7,7 +7,7 @@ import {
 import {
   AdminUserRepository,
   EnterpriseRepository,
-  UserRepository,
+  MiniProgramIdentityRepository,
 } from '@/db/repositories';
 import { withPlatformTransaction } from '@/db/transaction';
 import { verifyMiniProgramToken } from './miniprogram-jwt';
@@ -52,6 +52,8 @@ export interface MiniProgramContext {
   readonly staff: MiniProgramStaff | null;
   readonly enterprise: MiniProgramEnterprise | null;
   readonly enterpriseId: string | undefined;
+  readonly mode: 'customer' | 'staff' | 'referrer';
+  readonly referrerMembershipId: string | undefined;
 }
 
 export async function resolveMiniProgramContext(
@@ -68,56 +70,46 @@ export async function resolveMiniProgramContext(
 
   try {
     return await withPlatformTransaction(async (transaction) => {
-      const adminUsers = new AdminUserRepository(transaction);
-      const users = new UserRepository(transaction);
-      let staffRecord = null;
-      let userRecord = null;
-
-      if (payload.role !== 'user') {
-        staffRecord = await adminUsers.findById(
-          parsePostgresId(payload.id, 'staff id')
-        );
-        if (!staffRecord || staffRecord.status !== 'active') {
-          console.warn(`[Auth] Active staff not found for id: ${payload.id}`);
-          return null;
-        }
-        if (staffRecord.phone) userRecord = await users.findByPhone(staffRecord.phone);
-        if (!userRecord) {
-          userRecord = await users.findByOpenid(
-            staffRecord.openid || `staff_${staffRecord.id.toString()}`
-          );
-        }
-      } else {
-        userRecord = await users.findById(
-          parsePostgresId(payload.id, 'user id')
-        );
-        if (!userRecord) {
-          console.warn(`[Auth] User not found for id: ${payload.id}`);
-          return null;
-        }
-        if (userRecord.openid) {
-          staffRecord = await adminUsers.findByOpenidOrPhone(
-            userRecord.openid,
-            userRecord.phone
-          );
-        }
+      const identities = new MiniProgramIdentityRepository(transaction);
+      const userId = parsePostgresId(payload.sub, 'user id');
+      const userRecord = await identities.findUserById(userId);
+      if (!userRecord || userRecord.contextVersion !== payload.contextVersion) {
+        console.warn(`[Auth] MiniProgram context version mismatch for user: ${payload.sub}`);
+        return null;
       }
+
+      const selectedContext = await identities.selectContext(userId, {
+        mode: payload.mode,
+        enterpriseId: payload.enterpriseId
+          ? parsePostgresId(payload.enterpriseId, 'enterprise id')
+          : null,
+        staffId: payload.staffId
+          ? parsePostgresId(payload.staffId, 'staff id')
+          : null,
+        referrerMembershipId: payload.referrerMembershipId
+          ? parsePostgresId(payload.referrerMembershipId, 'referrer membership id')
+          : null,
+      });
+      if (!selectedContext) {
+        console.warn(`[Auth] MiniProgram identity context is no longer active: ${payload.sub}`);
+        return null;
+      }
+
+      const staffRecord = selectedContext.staffId
+        ? await new AdminUserRepository(transaction).findById(
+            selectedContext.staffId
+          )
+        : null;
+      const wechatIdentity = await identities.findWechatIdentityByUserId(userId);
 
       const staff = staffRecord
         ? (adminUserToDto(staffRecord) as unknown as MiniProgramStaff)
         : null;
-      const user = userRecord
-        ? (userToDto(userRecord) as unknown as MiniProgramUser)
-        : {
-            _id: `staff_${staffRecord!.id.toString()}`,
-            openid:
-              staffRecord!.openid || `staff_${staffRecord!.id.toString()}`,
-            nickname: staffRecord!.displayName || staffRecord!.username,
-            role: 'staff',
-            enterpriseId: staffRecord!.enterpriseId?.toString() ?? null,
-          };
-      const enterpriseId =
-        staffRecord?.enterpriseId ?? userRecord?.enterpriseId ?? null;
+      const user = {
+        ...(userToDto(userRecord) as unknown as MiniProgramUser),
+        openid: wechatIdentity?.openid,
+      };
+      const enterpriseId = selectedContext.enterpriseId;
       const enterpriseRecord = enterpriseId
         ? await new EnterpriseRepository(transaction).findById(enterpriseId)
         : null;
@@ -131,6 +123,9 @@ export async function resolveMiniProgramContext(
             ) as unknown as MiniProgramEnterprise)
           : null,
         enterpriseId: enterpriseId?.toString(),
+        mode: selectedContext.mode,
+        referrerMembershipId:
+          selectedContext.referrerMembershipId?.toString(),
       };
     });
   } catch (error) {

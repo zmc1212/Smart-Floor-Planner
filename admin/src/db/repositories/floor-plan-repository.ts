@@ -15,6 +15,7 @@ import {
   leadFloorPlans,
   leads,
   users,
+  wechatIdentities,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
 
@@ -89,13 +90,14 @@ export class FloorPlanRepository {
           id: users.id,
           nickname: users.nickname,
           avatar: users.avatar,
-          openid: users.openid,
+          openid: sql<string | null>`coalesce(${wechatIdentities.openid}, ${users.openid})`,
           communityName: users.communityName,
           phone: users.phone,
         },
       })
       .from(floorPlans)
-      .leftJoin(users, eq(floorPlans.creatorId, users.id));
+      .leftJoin(users, eq(floorPlans.creatorId, users.id))
+      .leftJoin(wechatIdentities, eq(wechatIdentities.userId, users.id));
   }
 
   private normalizeRows(

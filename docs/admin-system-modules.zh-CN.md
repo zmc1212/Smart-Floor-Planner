@@ -22,7 +22,7 @@
 
 | 模块 | 当前入口 | API/数据边界 | 权限/状态 | 当前限制 |
 | --- | --- | --- | --- | --- |
-| 登录与会话 | `/login`、`/register` | `/api/auth/*`、会话/JWT 工具 | 公开入口与登录后路由；Implemented | 供应商配置依赖环境 |
+| 登录与会话 | `/login`、`/register` | `/api/auth/*`；小程序 JWT 使用基础用户 `sub`、当前 `customer/staff/referrer` 上下文和 `contextVersion` | 公开入口与登录后路由；Implemented | 微信供应商配置依赖环境；旧身份字段在旧获客流程下线前并存 |
 | 导航、角色与权限 | 共用侧栏、路由守卫 | `/api/permissions`、角色/菜单 Repository | `super_admin`、`admin`、企业角色；Implemented | 权限按租户和角色实时生效 |
 | 平台与企业 | `/dashboard`、`/enterprises` | 企业、品牌、激活及平台 Repository | 平台角色；Implemented | 租户变更必须存在企业上下文 |
 | 员工与账号 | `/staff`、`/departments`、`/users` | 员工、部门、绑定、管理员 Repository | 平台/企业管理员；Implemented | 员工变化会影响角色派生可见性 |
@@ -33,7 +33,7 @@
 | 测量与 BLE 设备 | `/measurements`、`/devices` | 测量、设备、绑定、审计 Repository | 平台/企业分配边界；Implemented | 仅支持协议文档定义的测距仪 |
 | AI 工作室与生成 | AI 工作流、资产、供应商、价格、点数页面 | PostgreSQL AI Repository 与供应商适配器 | 平台及租户 AI 权限；Implemented/Limited | 供应商可用性和图片存储依赖外部服务 |
 | 媒体存储 | `/media-storage` | `media_assets`、供应商配置、存储适配器 | 平台管理员；Implemented | 对象存储清理由独立运维执行 |
-| 小程序支撑 API | 诊断页及共用 API handler | 小程序身份、线索、户型、AI、通知 | 客户端认证和租户边界；Implemented | 能力仍受微信平台 API 限制 |
+| 小程序支撑 API | 诊断页及共用 API handler | `/api/auth/miniprogram`、`/api/miniprogram/identity-contexts`、`/api/miniprogram/identity-contexts/switch`；线索、户型、AI、通知 | 普通客户及经实时校验的员工/推荐人上下文；Implemented | 推荐人成员关系创建和新业务闭环留待后续阶段 |
 | 通知、自动化与诊断 | 通知设置、提醒运行时、诊断 | 通知模板、调度器、运维记录 | 平台/企业角色；Implemented/Limited | 微信可能拒绝订阅通知投递 |
 
 ## 正式量房边界

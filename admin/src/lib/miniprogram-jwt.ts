@@ -4,11 +4,15 @@ const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_random_123';
 const secret = new TextEncoder().encode(JWT_SECRET);
 
 export interface MiniProgramJWTPayload extends jose.JWTPayload {
-  id: string;            // AdminUser._id or User._id
+  sub: string;           // Base user ID
+  id: string;            // Compatibility alias for the base user ID
+  mode: 'customer' | 'staff' | 'referrer';
   role: 'staff' | 'user' | 'super_admin' | 'admin' | 'enterprise_admin' | 'designer' | 'salesperson' | 'measurer' | 'viewer';
   staffRole?: string;    // Specific role if staff
   enterpriseId?: string; // Enterprise context
-  openid?: string;       // Original openid if available
+  staffId?: string;
+  referrerMembershipId?: string;
+  contextVersion: number;
   source: 'wechat' | 'password' | 'phone';
 }
 
@@ -19,6 +23,7 @@ export interface MiniProgramJWTPayload extends jose.JWTPayload {
 export async function signMiniProgramToken(payload: MiniProgramJWTPayload): Promise<string> {
   return await new jose.SignJWT({ ...payload })
     .setProtectedHeader({ alg: 'HS256' })
+    .setSubject(payload.sub)
     .setIssuedAt()
     .setAudience('miniprogram')
     .setExpirationTime('21d')
@@ -33,22 +38,17 @@ export async function verifyMiniProgramToken(token: string): Promise<MiniProgram
     const { payload } = await jose.jwtVerify(token, secret, {
       audience: 'miniprogram',
     });
+    if (
+      typeof payload.sub !== 'string' ||
+      !/^[1-9]\d*$/.test(payload.sub) ||
+      !['customer', 'staff', 'referrer'].includes(String(payload.mode)) ||
+      !Number.isInteger(payload.contextVersion)
+    ) {
+      return null;
+    }
     return payload as MiniProgramJWTPayload;
   } catch (error) {
     console.error('[JWT] Verification failed:', error);
     return null;
   }
-}
-
-/**
- * Silent refresh: Issue a new token if the old one is valid but nearing expiry
- * Or simply re-issue upon valid check to slide the window
- */
-export async function refreshMiniProgramToken(token: string): Promise<string | null> {
-  const payload = await verifyMiniProgramToken(token);
-  if (!payload) return null;
-
-  // Re-issue with new timestamps
-  const { iat, exp, aud, ...rest } = payload;
-  return await signMiniProgramToken(rest as MiniProgramJWTPayload);
 }

@@ -2170,7 +2170,7 @@ test('an outer-face T branch body starts at the source wall far face', () => {
   assert.notDeepEqual(insetSourceScene.startPoint, insetSourceScene.solidStartPoint);
 });
 
-test('an outer-face T branch returns later red edges to the continuous dragged line', () => {
+test('an outer-face T branch keeps later red edges on the continuous cursor working line', () => {
   let draft = createClosedRectangleDraft();
   let floor = surveyGraph.getActiveFloor(draft);
   const sourceWall = floor.walls[0];
@@ -2273,7 +2273,7 @@ test('an outer-face T second-wall preview preserves the confirmed first wall bod
     assert.deepEqual(scene.cursor.point, scene.previewWall.endPoint, `cursor edge endX=${endX}`);
     assert.equal(
       Math.sign(scene.previewWall.outerOffsetPx),
-      Math.sign(firstWallBeforePreview.outerOffsetPx),
+      endX > 3000 ? 1 : -1,
       `second wall body side endX=${endX}`
     );
   });

@@ -10,7 +10,7 @@ const GRID_MINOR_MM = 250;
 const GRID_MAJOR_MM = 1250;
 const MIN_WALL_THICKNESS_PX = 1.5;
 const WALL_STROKE_PX = 1.5;
-const RENDER_REVISION = 'degree-aware-branch-far-face-v13';
+const RENDER_REVISION = 'degree-aware-branch-working-face-v14';
 const REDLINE_STROKE_PX = 2;
 const GUIDE_STROKE_PX = 1.25;
 // Blue cursor coordinates use a denser cadence than the closure cue so the
@@ -286,9 +286,10 @@ function applyMeasurementFace(wall, measurementFace) {
 function resolveActiveMeasurementFace(session, activeWallIndex, activeWallStartIndex) {
   if (!session || !session.activeSpaceSharedWallMiddle) return 'inner';
 
-  // An outer wall-middle hit offsets only the first branch reading. Once the
-  // operator turns, later red/orange segments and the cursor stay on the
-  // actual dragged graph line. Physical body placement is locked separately.
+  // An exterior T begins on the selected outer face. After a turn, the next
+  // segment uses the graph face that passes through the current cursor; keeping
+  // every segment on its local outer face would rotate the offset normal and
+  // make the cursor jump by one wall thickness.
   return session.activeSpaceSharedSnapLine === 'outer' &&
     activeWallIndex === activeWallStartIndex
     ? 'outer'
@@ -330,6 +331,53 @@ function resolveTBranchBodyOffsetSign(session, wallEntries, activeWallStartIndex
   // wall is confirmed. Later previews inherit that wall-local side and never
   // gain authority to reflect already confirmed geometry.
   return Math.sign(firstBranchWall.wall.outerOffsetPx);
+}
+
+function resolveTBranchSourceCentroid(floor, session, project) {
+  if (!floor || !session || !session.activeSpaceSharedWallId) return null;
+  const sourceWallId = session.activeSpaceSharedWallId;
+  const sourceSpace = (floor.spaces || []).find((space) => (
+    space.closed &&
+    Array.isArray(space.wallIds) &&
+    space.wallIds.some((wallId) => {
+      const wall = surveyGraph.getWall(floor, wallId);
+      return wallId === sourceWallId || (wall && wall.topologySourceWallId === sourceWallId);
+    })
+  ));
+  if (!sourceSpace) return null;
+  const points = surveyGraph.buildSpaceBoundaryPoints(floor, sourceSpace.wallIds);
+  const centroid = calculatePolygonCentroid(points);
+  return centroid ? project(centroid) : null;
+}
+
+function resolveActiveWallBodyOffsetSign(
+  session,
+  wall,
+  wallIndex,
+  activeWallStartIndex,
+  fallbackSign,
+  sourceCentroid
+) {
+  if (
+    !wall ||
+    !sourceCentroid ||
+    !session ||
+    session.activeSpaceSharedSnapLine !== 'outer' ||
+    wallIndex === activeWallStartIndex
+  ) {
+    return fallbackSign;
+  }
+
+  const midpoint = {
+    x: (wall.startPoint.x + wall.endPoint.x) / 2,
+    y: (wall.startPoint.y + wall.endPoint.y) / 2
+  };
+  const towardSource = {
+    x: sourceCentroid.x - midpoint.x,
+    y: sourceCentroid.y - midpoint.y
+  };
+  const sourceSideScore = towardSource.x * wall.localY.x + towardSource.y * wall.localY.y;
+  return Math.abs(sourceSideScore) > 1 ? Math.sign(sourceSideScore) : fallbackSign;
 }
 
 function alignWallBodyToOffsetSign(wall, desiredOffsetSign) {
@@ -926,9 +974,9 @@ function createSurveyRenderScene(input) {
     activeWallStartIndex + activeWallCount,
     activeWallStartIndex
   );
-  // The graph stays centreline-topological. An outer start offsets only the
-  // first red edge; later edges follow the dragged graph line. The first
-  // confirmed T wall separately fixes the body side inherited by later turns.
+  // The graph stays topology-centred. An exterior T starts on the outer face,
+  // then each turn keeps the visible working path continuous through the
+  // current cursor. Body-side inheritance remains an independent invariant.
   const wallEntries = (floor.walls || []).map((wall, index) => ({
     index,
     wall: buildWallScene(floor, wall, {
@@ -951,12 +999,20 @@ function createSurveyRenderScene(input) {
     wallEntries,
     activeWallStartIndex
   );
+  const branchSourceCentroid = resolveTBranchSourceCentroid(floor, session, project);
   const walls = wallEntries.map((entry) => {
     let wall = entry.wall;
     const activeWallIndex = entry.index;
     const isActiveMeasurement = activeWallIndex >= activeWallStartIndex && !closedWallIds[wall.id];
     if (isActiveMeasurement) {
-      wall = alignWallBodyToOffsetSign(wall, branchBodyOffsetSign);
+      wall = alignWallBodyToOffsetSign(wall, resolveActiveWallBodyOffsetSign(
+        session,
+        wall,
+        activeWallIndex,
+        activeWallStartIndex,
+        branchBodyOffsetSign,
+        branchSourceCentroid
+      ));
     }
     const centroid = closedWallCentroids[wall.id];
     const midpoint = {
@@ -987,7 +1043,14 @@ function createSurveyRenderScene(input) {
     wall.selectionPolygon = createSelectionPolygon(wall, walls);
   });
   previewWall = applyMeasurementFace(
-    alignWallBodyToOffsetSign(previewWall, branchBodyOffsetSign),
+    alignWallBodyToOffsetSign(previewWall, resolveActiveWallBodyOffsetSign(
+      session,
+      previewWall,
+      activeWallStartIndex + activeWallCount,
+      activeWallStartIndex,
+      branchBodyOffsetSign,
+      branchSourceCentroid
+    )),
     previewMeasurementFace
   );
   joinActiveMeasurementPath(walls, previewWall);
@@ -1230,9 +1293,11 @@ function drawWallOutlines(ctx, scene) {
     ctx.stroke();
   });
   if (scene.previewWall && scene.previewWall.lineOnly) {
+    const startPoint = scene.previewWall.measurementStartPoint || scene.previewWall.startPoint;
+    const endPoint = scene.previewWall.measurementEndPoint || scene.previewWall.endPoint;
     ctx.beginPath();
-    ctx.moveTo(scene.previewWall.startPoint.x, scene.previewWall.startPoint.y);
-    ctx.lineTo(scene.previewWall.endPoint.x, scene.previewWall.endPoint.y);
+    ctx.moveTo(startPoint.x, startPoint.y);
+    ctx.lineTo(endPoint.x, endPoint.y);
     ctx.stroke();
   }
   ctx.restore();

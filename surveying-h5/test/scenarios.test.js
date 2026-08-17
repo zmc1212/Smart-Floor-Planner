@@ -133,7 +133,7 @@ test('the H5 T replays retain distinct inner- and outer-face first red edges', (
   assert.notDeepEqual(innerRenderedBranch.measurementStartPoint, outerRenderedBranch.measurementStartPoint);
 });
 
-test('the H5 outer-T rightward replay returns later red edges to the continuous dragged line', () => {
+test('the H5 outer-T rightward replay keeps later red edges on the continuous cursor working line', () => {
   const scenario = catalog.find((entry) => entry.key === 'outer-t-rightward-continuation');
   const floor = surveyGraph.getActiveFloor(scenario.build());
   const scene = surveyCanvasRenderer.createSurveyRenderScene({
@@ -238,7 +238,7 @@ test('the H5 leftward T replays retain their dragged working edge and exterior w
     assert.equal(firstWall.measurementFace, expectedFirstFace, key);
     assert.equal(continuation.measurementFace, 'inner', key);
     assert.equal(continuation.measurementStartPoint.y, continuation.startPoint.y, key);
-    assert.equal(continuation.outerStart.y < continuation.startPoint.y, true, key);
+    assert.equal(continuation.outerStart.y > continuation.startPoint.y, key === 'outer-t-leftward-continuation', key);
     assert.equal(firstWall.outerStart.x > firstWall.startPoint.x, true, key);
     assert.equal(scene.previewWall.measurementFace, 'inner', key);
     assert.equal(scene.previewWall.outerStart.x < scene.previewWall.startPoint.x, true, key);
