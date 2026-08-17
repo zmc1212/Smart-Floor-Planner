@@ -36,24 +36,53 @@ function findBridgeWallIds(index) {
   const low = new Map();
   const bridges = new Set();
   let sequence = 0;
-  const visit = (nodeId, parentWallId) => {
+
+  // Iterative DFS replaces the original recursive version to avoid call-stack
+  // overflow in the WeChat Mini Program JS engine, which has a lower stack
+  // depth limit than desktop V8. Each frame tracks { nodeId, parentWallId,
+  // childIdx, parentEdge } so the post-order low[] update and bridge check
+  // happen correctly when the frame is popped.
+  index.nodesById.forEach((startNode) => {
+    if (discovery.has(startNode.id)) return;
     sequence += 1;
-    discovery.set(nodeId, sequence);
-    low.set(nodeId, sequence);
-    (index.wallsByNodeId.get(nodeId) || []).forEach((wall) => {
-      if (wall.id === parentWallId) return;
-      const otherId = wall.startNodeId === nodeId ? wall.endNodeId : wall.startNodeId;
-      if (!discovery.has(otherId)) {
-        visit(otherId, wall.id);
-        low.set(nodeId, Math.min(low.get(nodeId), low.get(otherId)));
-        if (low.get(otherId) > discovery.get(nodeId)) bridges.add(wall.id);
-      } else {
-        low.set(nodeId, Math.min(low.get(nodeId), discovery.get(otherId)));
+    discovery.set(startNode.id, sequence);
+    low.set(startNode.id, sequence);
+    const stack = [{ nodeId: startNode.id, parentWallId: '', childIdx: 0, parentEdge: null }];
+
+    while (stack.length) {
+      const frame = stack[stack.length - 1];
+      const walls = index.wallsByNodeId.get(frame.nodeId) || [];
+      let pushed = false;
+
+      while (frame.childIdx < walls.length) {
+        const wall = walls[frame.childIdx];
+        frame.childIdx += 1;
+        if (wall.id === frame.parentWallId) continue;
+        const otherId = wall.startNodeId === frame.nodeId ? wall.endNodeId : wall.startNodeId;
+        if (!discovery.has(otherId)) {
+          sequence += 1;
+          discovery.set(otherId, sequence);
+          low.set(otherId, sequence);
+          stack.push({ nodeId: otherId, parentWallId: wall.id, childIdx: 0, parentEdge: wall });
+          pushed = true;
+          break;
+        } else {
+          // Back edge: propagate discovery order up to current node
+          low.set(frame.nodeId, Math.min(low.get(frame.nodeId), discovery.get(otherId)));
+        }
       }
-    });
-  };
-  index.nodesById.forEach((node) => {
-    if (!discovery.has(node.id)) visit(node.id, '');
+
+      if (!pushed) {
+        stack.pop();
+        if (stack.length && frame.parentEdge) {
+          const parentFrame = stack[stack.length - 1];
+          low.set(parentFrame.nodeId, Math.min(low.get(parentFrame.nodeId), low.get(frame.nodeId)));
+          if (low.get(frame.nodeId) > discovery.get(parentFrame.nodeId)) {
+            bridges.add(frame.parentEdge.id);
+          }
+        }
+      }
+    }
   });
   return bridges;
 }

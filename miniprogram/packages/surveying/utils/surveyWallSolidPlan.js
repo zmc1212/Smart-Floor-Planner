@@ -196,21 +196,26 @@ function buildJoinPolygons(walls) {
     // sub-pixel tolerance when resolving incident walls; the previous
     // 0.001px check could reject a mathematically shared endpoint after a
     // viewport projection and leave two independent rectangle rings.
-    const incident = geometryWalls.filter((wall) => (
+    const incident = geometryWalls.filter((wall) =>
       pointOnSegment(joint, wall.start, wall.end, VERTEX_SNAP * 2)
-    ));
+    );
     if (incident.length < 2) return;
     const points = [joint];
     incident.forEach((wall) => {
       const outerPoint = projectPointToOuterEdge(wall, joint);
       if (outerPoint) points.push(outerPoint);
     });
+    // Use the maximum thickness across ALL incident walls when testing
+    // intersection proximity. The previous per-pair maximum excluded valid
+    // intersection points when a third (thicker) wall was present at the
+    // junction, leaving a visible gap at T-shaped three-wall joints.
+    const maxThickness = Math.max(...incident.map((w) => Number(w.thickness || 0)), 1);
     for (let firstIndex = 0; firstIndex < incident.length; firstIndex += 1) {
       for (let secondIndex = firstIndex + 1; secondIndex < incident.length; secondIndex += 1) {
         const first = incident[firstIndex];
         const second = incident[secondIndex];
         const intersection = infiniteLineIntersection(first.outerStart, first.outerEnd, second.outerStart, second.outerEnd);
-        const limit = Math.max(Number(first.thickness || 0), Number(second.thickness || 0), 1) * 4;
+        const limit = maxThickness * 4;
         if (intersection && distance(intersection, joint) <= limit) points.push(intersection);
       }
     }
@@ -281,7 +286,13 @@ function splitEdges(polygons) {
 }
 
 function classifyBoundaryPieces(pieces, polygons, scale) {
-  const sampleOffset = Math.max(EPSILON * 100, scale * 0.000001);
+  // The sample offset must be large enough to clear floating-point noise at
+  // polygon vertices, but small enough not to cross an adjacent polygon
+  // boundary. For small floor plans (bounding box < 200 px) the old formula
+  // produced offsets near floating-point epsilon, causing misclassification.
+  // Adding a VERTEX_SNAP-proportional floor keeps sampling reliable at any
+  // residential scale.
+  const sampleOffset = Math.max(EPSILON * 100, VERTEX_SNAP * 0.5, scale * 0.0001);
   const candidates = [];
   pieces.forEach((piece) => {
     const dx = piece.end.x - piece.start.x;

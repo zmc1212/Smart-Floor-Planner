@@ -383,7 +383,7 @@ function joinActiveMeasurementPath(walls, previewWall) {
     const intersection = intersectMeasurementLines(previous, current);
     if (!intersection) continue;
 
-    const joinLimit = Math.max(previous.thicknessPx || 0, current.thicknessPx || 0) * 4 + 2;
+    const joinLimit = Math.max(previous.thicknessPx || 0, current.thicknessPx || 0) * 8 + 4;
     if (
       distancePx(previous.measurementEndPoint, intersection) > joinLimit ||
       distancePx(current.measurementStartPoint, intersection) > joinLimit

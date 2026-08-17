@@ -1315,7 +1315,11 @@ function isUsableJoinPoint(segment, point) {
 function offsetJoinPoint(current, adjacent) {
   if (!current || !adjacent) return null;
   const point = intersectLines(current.outerStart, current.outerEnd, adjacent.outerStart, adjacent.outerEnd);
-  return isUsableJoinPoint(current, point) ? point : null;
+  // Validate against BOTH segments. Previously only `current` was checked,
+  // so at acute angles (< 30°) the intersection could land far outside the
+  // adjacent wall's extents, producing a miter point that detaches the outer
+  // corner from the wall body.
+  return (isUsableJoinPoint(current, point) && isUsableJoinPoint(adjacent, point)) ? point : null;
 }
 
 function buildWallRenderGeometry(floor, wall, options) {
