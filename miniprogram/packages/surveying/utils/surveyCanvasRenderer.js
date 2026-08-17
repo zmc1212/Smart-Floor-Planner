@@ -283,6 +283,21 @@ function applyMeasurementFace(wall, measurementFace) {
   });
 }
 
+function resolveActiveMeasurementFace(session, activeWallIndex, activeWallStartIndex) {
+  // An exterior T start has one special, visible first edge: the operator
+  // explicitly placed the cursor on the source wall's outer face.  That does
+  // not make every later turn an outer-face measurement.  Once the branch
+  // turns away from that start, the current red/orange line follows the live
+  // inner working edge again.  Keeping the original outer face for the next
+  // vertical segment shifts its cursor sideways by one wall thickness.
+  return session &&
+    session.activeSpaceSharedWallMiddle &&
+    session.activeSpaceSharedSnapLine === 'outer' &&
+    activeWallIndex === activeWallStartIndex
+    ? 'outer'
+    : 'inner';
+}
+
 function resolveDimensions(walls, openings, spaces, spacePlans, outerRings, viewportScale, previewWall) {
   const dimensions = [];
   const accepted = [];
@@ -808,10 +823,11 @@ function createSurveyRenderScene(input) {
   const activeWallStartIndex = Number.isInteger(session.activeSpaceStartWallIndex)
     ? Math.max(0, Math.min(session.activeSpaceStartWallIndex, (floor.walls || []).length))
     : 0;
-  // A closed-room outer-edge snap chooses how the new wall body joins its
-  // neighbour, not a second visible working line. Keep the live red/orange
-  // path and cursor on the same inner render edge as the dragged wall line.
-  const activeMeasurementFace = 'inner';
+  // The graph stays centreline-topological.  An exterior T start exposes its
+  // selected outer face on the first active branch only; after a turn, the
+  // live red/orange edge must follow the current inner working edge instead
+  // of carrying the original outer-face offset into a new direction.
+  const activeWallCount = Math.max(0, (floor.walls || []).length - activeWallStartIndex);
   const walls = (floor.walls || []).map((wall, index) => buildWallScene(floor, wall, {
     project,
     viewport,
@@ -831,13 +847,17 @@ function createSurveyRenderScene(input) {
       ? (centerOffset >= 0 ? -1 : 1)
       : null;
 
-    const isActiveMeasurement = (floor.walls || []).indexOf(wall.wall) >= activeWallStartIndex && !closedWallIds[wall.id];
+    const activeWallIndex = (floor.walls || []).indexOf(wall.wall);
+    const isActiveMeasurement = activeWallIndex >= activeWallStartIndex && !closedWallIds[wall.id];
+    const measurementFace = isActiveMeasurement
+      ? resolveActiveMeasurementFace(session, activeWallIndex, activeWallStartIndex)
+      : 'inner';
     return applyMeasurementFace(Object.assign(wall, {
       closed: !!closedWallIds[wall.id],
       closedOutsideSign,
       isExteriorBoundary: closedWallSpaceCounts[wall.id] === 1,
       isActiveMeasurement
-    }), isActiveMeasurement ? activeMeasurementFace : 'inner');
+    }), measurementFace);
   });
   // Selection ownership follows the actual one-sided wall solids at each
   // junction. Stored measurement insets describe net readings and can point to
@@ -850,7 +870,11 @@ function createSurveyRenderScene(input) {
     viewport,
     renderThicknessMmMap,
     selectedWallId: session.selectedWallId,
-    measurementFace: activeMeasurementFace
+    measurementFace: resolveActiveMeasurementFace(
+      session,
+      activeWallStartIndex + activeWallCount,
+      activeWallStartIndex
+    )
   });
   const solidWalls = walls.concat(previewWall && !previewWall.lineOnly ? [previewWall] : []);
   const createSolidPlan = (items) => wallSolidLayout.createWallSolidPlan({

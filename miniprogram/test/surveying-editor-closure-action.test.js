@@ -28,6 +28,14 @@ test('the close action follows the graph minimum-wall rule for standalone and sh
   assert.match(editorWxss, /\.closure-action\s*\{\s*width: 56rpx;\s*height: 56rpx;\s*border: 0;\s*border-radius: 50%;\s*background: var\(--brand-primary\);/);
 });
 
+test('the right rail exposes a separately confirmed canvas-reset action', () => {
+  assert.match(editorWxml, /class="rail-reset-canvas"[\s\S]*?bindtap="onRequestResetCanvas"/);
+  assert.match(editorWxml, /aria-label="清空画布后重新测量"[\s\S]*?清空重做/);
+  assert.match(editorScript, /onRequestResetCanvas\(\) \{[\s\S]*?wx\.showModal\([\s\S]*?this\.onResetCanvas\(\);/);
+  assert.match(editorScript, /onResetCanvas\(\) \{[\s\S]*?this\.history = \{ undo: \[\], redo: \[\] \};[\s\S]*?this\.pendingMeasurementRecords = \[\];/);
+  assert.match(editorWxss, /\.rail-reset-canvas\s*\{[\s\S]*?color:\s*#b42318;/);
+});
+
 test('a placed cursor keeps its guide visibility when the canvas render data is returned', () => {
   assert.match(editorScript, /return \{\s*cursorVisible,\s*guideVisible,/);
 });

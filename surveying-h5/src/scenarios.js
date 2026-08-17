@@ -99,6 +99,42 @@ function createScenarioCatalog(surveyGraph) {
     return surveyGraph.confirmClosure(draft);
   }
 
+  function innerStartInnerFaceClosure() {
+    // Screenshot regression: 6000 mm inner / 6400 mm outer source room;
+    // start from the inner measurement edge, then measure the 1800 x 3000 chain
+    // and close its orange edge onto the source room's inner right face.
+    let draft = rectangle(6000, 4000, { xMm: 0, yMm: 0 }, { thicknessMm: 200 });
+    draft = snapCursor(draft, { xMm: 3000, yMm: 0 });
+    draft = commitWall(draft, { xMm: 3000, yMm: -2000 });
+    draft = commitWall(draft, { xMm: 6000, yMm: -2000 });
+    draft = commitWall(draft, { xMm: 6000, yMm: 100 });
+    return surveyGraph.confirmClosure(draft);
+  }
+
+  function outerStartInnerFaceClosure() {
+    // Same geometry and inner-face close as above, but the cursor begins on
+    // the visible outer face. Its live red edge uses the outer wall face.
+    let draft = rectangle(6000, 4000, { xMm: 0, yMm: 0 }, { thicknessMm: 200 });
+    draft = snapCursor(draft, { xMm: 3000, yMm: -200 });
+    draft = commitWall(draft, { xMm: 3000, yMm: -2000 });
+    draft = commitWall(draft, { xMm: 6000, yMm: -2000 });
+    draft = commitWall(draft, { xMm: 6000, yMm: 100 });
+    return surveyGraph.confirmClosure(draft);
+  }
+
+  function outerFaceCornerMergeClosure() {
+    // Exact outer-face continuation: 6000 mm inner / 6400 mm outer source
+    // room, 1800 mm first reading and 3000 mm top reading. The final cursor
+    // is on the right wall's outer face (x=6200), so the short bridge must be
+    // inferred without moving the visible closing wall to x=6400.
+    let draft = rectangle(6000, 4000, { xMm: 0, yMm: 0 }, { thicknessMm: 200 });
+    draft = snapCursor(draft, { xMm: 3000, yMm: -200 });
+    draft = commitWall(draft, { xMm: 3000, yMm: -2000 });
+    draft = commitWall(draft, { xMm: 6200, yMm: -2000 });
+    draft = surveyGraph.startPreview(draft, { xMm: 6200, yMm: 100 });
+    return surveyGraph.confirmClosure(draft);
+  }
+
   function photographedStaggeredRooms() {
     // The supplied reference: aligned bottom edge, stepped top edge, one shared wall.
     let draft = rectangle(3082, 4120, { xMm: 2761, yMm: 0 });
@@ -158,11 +194,32 @@ function createScenarioCatalog(surveyGraph) {
     let draft = rectangle(6000, 4000, { xMm: 0, yMm: 0 }, {
       thicknessMm: options.sourceThicknessMm || 200
     });
-    draft = snapCursor(draft, { xMm: 3000, yMm: 0 });
+    const floor = surveyGraph.getActiveFloor(draft);
+    const sourceWall = floor.walls[0];
+    const sourceGeometry = surveyGraph.buildWallSnapGeometry(floor, sourceWall);
+    const snapPoint = options.snapLine === 'outer'
+      ? {
+        xMm: Math.round((sourceGeometry.outerStart.xMm + sourceGeometry.outerEnd.xMm) / 2),
+        yMm: Math.round((sourceGeometry.outerStart.yMm + sourceGeometry.outerEnd.yMm) / 2)
+      }
+      : { xMm: 3000, yMm: 0 };
+    draft = snapCursor(draft, snapPoint);
     if (options.branchThicknessMm) {
       draft = surveyGraph.setThickness(draft, options.branchThicknessMm);
     }
     return commitWall(draft, { xMm: 3000, yMm: -2200 });
+  }
+
+  function exteriorTRightwardInnerContinuation() {
+    // Regression replay for the physical working-line hand-off: start on the
+    // top wall's outer face, pull the branch upward and then right, then keep
+    // dragging down the right-hand black inner edge.  The orange preview and
+    // cursor must remain on x=6200 instead of jumping left by 200 mm.
+    let draft = rectangle(6000, 4000, { xMm: 0, yMm: 0 }, { thicknessMm: 200 });
+    draft = snapCursor(draft, { xMm: 3000, yMm: -200 });
+    draft = commitWall(draft, { xMm: 3000, yMm: -2000 });
+    draft = commitWall(draft, { xMm: 6200, yMm: -2000 });
+    return surveyGraph.startPreview(draft, { xMm: 6200, yMm: -900 });
   }
 
   function crossJunction() {
@@ -298,6 +355,21 @@ function createScenarioCatalog(surveyGraph) {
       build: stackedSharedRooms
     },
     {
+      key: 'inner-start-inner-face-closure', category: '共墙多空间', label: '图示：内起外量、内边闭合',
+      description: '6000/6400 源房；红线为 1800 × 3000，最后橙线吸附右内边。确认后墙体仍在橙线左侧。', expected: { walls: 8, spaces: 2, openings: 0 },
+      build: innerStartInnerFaceClosure
+    },
+    {
+      key: 'outer-start-inner-face-closure', category: '共墙多空间', label: '图示：外起外量、内边闭合',
+      description: '同一 1800 × 3000 链路改为外边起步；确认后必须与内边起步保持同一实体侧。', expected: { walls: 8, spaces: 2, openings: 0 },
+      build: outerStartInnerFaceClosure
+    },
+    {
+      key: 'outer-face-corner-merge-closure', category: '共墙多空间', label: '图示：外起外合、右外边闭合',
+      description: '红线 1800 × 3000，最后橙线落在右墙外边；闭合时保留该竖线并在左侧生成墙体。', expected: { walls: 9, spaces: 2, openings: 0 },
+      build: outerFaceCornerMergeClosure
+    },
+    {
       key: 'staggered-adjacent', category: '共墙多空间', label: '错层共墙（示例图）',
       description: '底边对齐、上沿错层、右房更高的共享竖墙双房。', expected: { walls: 8, spaces: 2, openings: 0 },
       build: photographedStaggeredRooms
@@ -323,9 +395,19 @@ function createScenarioCatalog(surveyGraph) {
       build: fourRoomGrid
     },
     {
-      key: 't-junction', category: '交点与分支', label: '外墙 T 型分支',
-      description: '从既有墙中点向外拉出一条分支墙。', expected: { walls: 6, spaces: 1, openings: 0 },
+      key: 't-junction', category: '交点与分支', label: '外墙 T：内边起步',
+      description: '首段红线沿分支墙内边显示；拓扑锚点与外边起步共用。', expected: { walls: 6, spaces: 1, openings: 0 },
       build: exteriorTJunction
+    },
+    {
+      key: 'outer-start-t-junction', category: '交点与分支', label: '外墙 T：外边起步',
+      description: '首段红线沿分支墙外边显示，与内边起步相差一个墙厚。', expected: { walls: 6, spaces: 1, openings: 0 },
+      build: () => exteriorTJunction({ snapLine: 'outer' })
+    },
+    {
+      key: 'outer-t-rightward-inner-continuation', category: '交点与分支', label: '外墙 T：右拉后内边下续',
+      description: '外边起步后向右转，橙线和光标继续沿右侧黑色内边下拉，不得左跳一个墙厚。', expected: { walls: 7, spaces: 1, openings: 0 },
+      build: exteriorTRightwardInnerContinuation
     },
     {
       key: 'cross-junction', category: '交点与分支', label: '开放十字交点',

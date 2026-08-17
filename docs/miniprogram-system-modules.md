@@ -36,8 +36,23 @@ The only measurement editor is
 and/or `floorPlanId`. The authoritative contract is
 [`surveying-module/formal-surveying.md`](./surveying-module/formal-surveying.md).
 `FloorPlan.layoutData` contains only version-4 `surveyGraph` data. Wall graph,
-Canvas renderer, dimensions, BLE readings, audit queue, undo/redo, and save
-failure behavior must follow that contract.
+Canvas renderer, dimensions, BLE readings, audit queue, undo/redo, the
+right-rail confirmed canvas-clear/restart action, and save failure behavior
+must follow that contract.
+Closed exterior-wall T branches retain one topology node and physical wall,
+while their wall-middle inner/outer cursor starts select the corresponding
+branch face for the live red measurement line: inner face for an inner start,
+outer face for an outer start, one wall thickness apart. An
+outer-face start applies only to its first branch; after the first turn, the
+following red/orange preview line and cursor must continue on the current inner
+working face instead of shifting by a wall thickness. A shared-boundary closure
+chain retains its rendered body side when it closes,
+including an exterior-facing chain whose final orange line snaps to an existing
+room's inner face; the close operation cannot flip that body across the aligned
+line by one wall thickness. When the final cursor targets a source wall's
+visible outer face, it retains that physical outer coordinate and bridges to
+the topology corner instead of projecting it to the centre line. Corner
+continuations and shared internal partitions keep their existing closure behavior.
 
 ## Shared APIs and utilities
 

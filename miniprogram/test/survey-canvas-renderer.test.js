@@ -1810,6 +1810,59 @@ test('an outer-corner committed wall keeps its redline and live dimension on the
   )));
 });
 
+test('an inner-corner outward branch starts its body and redline at the exterior face', () => {
+  let draft = createClosedRectangleDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  floor.walls.forEach((wall) => {
+    draft = surveyGraph.setThickness(draft, 400, wall.id);
+  });
+  draft = surveyGraph.setThickness(draft, 400);
+  floor = surveyGraph.getActiveFloor(draft);
+
+  const innerCorner = surveyGraph.getNode(floor, floor.walls[0].startNodeId);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    innerCorner,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: 0, yMm: -2083 }, 1683);
+
+  const scene = createScene(draft);
+  const activeWall = scene.walls.find((wall) => wall.isActiveMeasurement);
+  const recorder = createRecordingContext();
+  const anchorPoint = {
+    x: scene.rect.width / 2 + scene.viewport.offsetX + innerCorner.xMm * scene.viewport.scale,
+    y: scene.rect.height / 2 + scene.viewport.offsetY + innerCorner.yMm * scene.viewport.scale
+  };
+
+  surveyCanvasRenderer.drawSurveyScene(recorder.context, scene, { dpr: 1 });
+
+  assert.ok(activeWall);
+  assert.equal(activeWall.wall.measurementStartInsetMm, 400);
+  assert.equal(activeWall.wall.lengthMm, 1683);
+  assert.deepEqual(activeWall.measurementStartPoint, activeWall.startPoint);
+  assert.deepEqual(activeWall.solidStartPoint, activeWall.startPoint);
+  assert.notDeepEqual(activeWall.measurementStartPoint, anchorPoint);
+  assert.ok(recorder.strokeDetails.some((detail) => (
+    detail.strokeStyle === '#d71920' &&
+    detail.path.some((command) => (
+      command[0] === 'moveTo' &&
+      command[1] === activeWall.measurementStartPoint.x &&
+      command[2] === activeWall.measurementStartPoint.y
+    )) &&
+    detail.path.some((command) => (
+      command[0] === 'lineTo' &&
+      command[1] === activeWall.measurementEndPoint.x &&
+      command[2] === activeWall.measurementEndPoint.y
+    ))
+  )));
+});
+
 test('an active wall pulled from a closed room moves permanent dimensions outside the wall body', () => {
   const closedDraft = createClosedRectangleDraft();
   const floor = surveyGraph.getActiveFloor(closedDraft);
@@ -2006,15 +2059,14 @@ test('a mixed closed/open T junction keeps separate stable union-ring colour own
   );
 });
 
-test('an outward T branch body starts at the source wall far face', () => {
+test('an outer-face T branch body starts at the source wall far face', () => {
   let draft = createClosedRectangleDraft();
   let floor = surveyGraph.getActiveFloor(draft);
   const sourceWall = floor.walls[0];
-  const sourceStart = surveyGraph.getNode(floor, sourceWall.startNodeId);
-  const sourceEnd = surveyGraph.getNode(floor, sourceWall.endNodeId);
+  const sourceGeometry = surveyGraph.buildWallSnapGeometry(floor, sourceWall);
   const junctionPoint = {
-    xMm: Math.round((sourceStart.xMm + sourceEnd.xMm) / 2),
-    yMm: Math.round((sourceStart.yMm + sourceEnd.yMm) / 2)
+    xMm: Math.round((sourceGeometry.outerStart.xMm + sourceGeometry.outerEnd.xMm) / 2),
+    yMm: Math.round((sourceGeometry.outerStart.yMm + sourceGeometry.outerEnd.yMm) / 2)
   };
   const target = surveyGraph.getCursorPlacementTarget(
     floor,
@@ -2065,11 +2117,75 @@ test('an outward T branch body starts at the source wall far face', () => {
   assert.equal(branchStart, sourceFarFace);
   assert.deepEqual(branchScene.solidStartPoint, branchScene.startPoint);
   assert.notDeepEqual(branchScene.solidStartPoint, nodePoint);
+  assert.equal(branchScene.measurementFace, 'outer');
+  assert.deepEqual(branchScene.measurementStartPoint, branchScene.outerStart);
   const insetSourceScene = sourceScenes.find((wall) => (
     (wall.wall.measurementStartInsetMm || 0) > 0 || (wall.wall.measurementEndInsetMm || 0) > 0
   ));
   assert.ok(insetSourceScene);
   assert.notDeepEqual(insetSourceScene.startPoint, insetSourceScene.solidStartPoint);
+});
+
+test('an outer-face T branch switches to the rightward inner working edge before dragging down', () => {
+  let draft = createClosedRectangleDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const sourceWall = floor.walls[0];
+  const sourceGeometry = surveyGraph.buildWallSnapGeometry(floor, sourceWall);
+  const outerMidpoint = {
+    xMm: Math.round((sourceGeometry.outerStart.xMm + sourceGeometry.outerEnd.xMm) / 2),
+    yMm: Math.round((sourceGeometry.outerStart.yMm + sourceGeometry.outerEnd.yMm) / 2)
+  };
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    outerMidpoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = commitWall(draft, { xMm: 1500, yMm: -2000 }, 1800);
+  draft = commitWall(draft, { xMm: 3200, yMm: -2000 }, 1700);
+  draft = surveyGraph.startPreview(draft, { xMm: 3200, yMm: -900 });
+  floor = surveyGraph.getActiveFloor(draft);
+  const scene = createScene(draft);
+  const activeWalls = scene.walls.filter((wall) => wall.isActiveMeasurement);
+  const rightwardWall = activeWalls.at(-1);
+
+  assert.equal(floor.session.activeSpaceSharedSnapLine, 'outer');
+  assert.equal(activeWalls.length, 2);
+  assert.equal(activeWalls[0].measurementFace, 'outer');
+  assert.equal(rightwardWall.measurementFace, 'inner');
+  assert.equal(scene.previewWall.measurementFace, 'inner');
+  assert.deepEqual(scene.previewWall.measurementEndPoint, scene.previewWall.endPoint);
+  assert.equal(scene.previewWall.measurementEndPoint.x, rightwardWall.endPoint.x);
+  assert.deepEqual(scene.cursor.point, scene.previewWall.endPoint);
+});
+
+test('an inner-face T branch redline stays on the branch inner edge', () => {
+  let draft = createClosedRectangleDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const sourceWall = floor.walls[0];
+  const sourceStart = surveyGraph.getNode(floor, sourceWall.startNodeId);
+  const sourceEnd = surveyGraph.getNode(floor, sourceWall.endNodeId);
+  const junctionPoint = {
+    xMm: Math.round((sourceStart.xMm + sourceEnd.xMm) / 2),
+    yMm: Math.round((sourceStart.yMm + sourceEnd.yMm) / 2)
+  };
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    junctionPoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = surveyGraph.startPreview(draft, { xMm: junctionPoint.xMm, yMm: junctionPoint.yMm - 2000 });
+  floor = surveyGraph.getActiveFloor(draft);
+  const scene = createScene(draft);
+
+  assert.equal(floor.session.activeSpaceSharedSnapLine, 'inner');
+  assert.equal(floor.session.previewMeasurementStartInsetMm, 200);
+  assert.equal(floor.session.previewLengthMm, 1800);
+  assert.equal(scene.previewWall.measurementFace, 'inner');
+  assert.deepEqual(scene.previewWall.measurementStartPoint, scene.previewWall.startPoint);
+  assert.deepEqual(scene.previewWall.solidStartPoint, scene.previewWall.startPoint);
 });
 
 test('closed U and stepped outlines keep concave wall solids joined at degree-two nodes', () => {

@@ -179,6 +179,22 @@
       </cover-view>
     </cover-view>
 
+    <cover-view
+      wx:if="{{!selectedOpening}}"
+      class="rail-reset-canvas"
+      bindtap="onRequestResetCanvas"
+      hover-class="rail-reset-canvas-pressed"
+      aria-role="button"
+      aria-label="清空画布后重新测量"
+    >
+      <cover-image
+        class="rail-reset-canvas-icon"
+        src="/packages/surveying/assets/icons/object-rail/delete-danger.png"
+        mode="aspectFit"
+      ></cover-image>
+      <cover-view class="rail-reset-canvas-label">清空重做</cover-view>
+    </cover-view>
+
     <cover-view wx:if="{{showFormalExtras}}" class="tool-group reserved-tools">
       <cover-view
         class="reserved-button disabled"

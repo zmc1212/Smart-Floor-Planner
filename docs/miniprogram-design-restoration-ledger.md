@@ -16,7 +16,7 @@ production state changes; do not append restoration history here.
 | `packages/ai-workflow/recipe-confirm/recipe-confirm` | `design-references/ai-design/ai-recipe-discovery-home-v2/ai-recipe-discovery-home-v2.png` | Current confirmation and source-choice states are implemented; native capture pending | Yes |
 | `packages/ai-workflow/result/ai-design-result` | `design-references/ai-design/ai-recipe-discovery-home-v2/ai-recipe-discovery-home-v2.png` | Current generation, failure and delivery states are implemented; native capture pending | Yes |
 | `packages/ai-workflow/history/ai-design-history` | `design-references/ai-design/ai-recipe-discovery-home-v2/ai-recipe-discovery-home-v2.png` | Current task filters and truthful task cards are implemented; native capture pending | Yes |
-| `packages/surveying/editor/surveying-editor` | `design-references/surveying/cursor-guide-state-reference-20260812.jpg` | Current Canvas guide and cursor states are covered by focused tests; native capsule capture pending | Yes |
+| `packages/surveying/editor/surveying-editor` | `design-references/surveying/cursor-guide-state-reference-20260812.jpg` | Current Canvas guide and cursor states plus the right-rail confirmed canvas-clear/restart action are covered by focused tests; native capsule capture pending | Yes |
 
 ## Recording rules
 

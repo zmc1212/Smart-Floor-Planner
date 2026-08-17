@@ -2053,6 +2053,37 @@ page,
   font-weight: 700;
 }
 
+.rail-reset-canvas {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 76rpx;
+  height: 88rpx;
+  margin: 8rpx auto 0;
+  border-top: 1px solid rgba(180, 35, 24, 0.12);
+  color: #b42318;
+  box-sizing: border-box;
+}
+
+.rail-reset-canvas-icon {
+  width: 30rpx;
+  height: 30rpx;
+  margin-bottom: 5rpx;
+}
+
+.rail-reset-canvas-label {
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 28rpx;
+  white-space: nowrap;
+}
+
+.rail-reset-canvas-pressed {
+  border-radius: 14rpx;
+  background: #fff1f1;
+}
+
 .right-rail .reserved-tools {
   display: none;
 }

@@ -63,15 +63,20 @@ function createSession() {
     activeSpaceStartWallIndex: 0,
     activeSpaceSharedWallId: '',
     activeSpaceSharedStartT: null,
+    activeSpaceSharedWallMiddle: false,
     activeSpaceSharedSnapLine: '',
     partitionSourceSpaceId: '',
     lastWallSnapNodeId: '',
     lastWallSnapWallId: '',
     lastWallSnapT: null,
+    lastWallSnapWallMiddle: false,
     lastWallSnapLine: '',
     previewMeasurementSide: '',
     previewMeasurementStartInsetMm: 0,
-    previewMeasurementEndInsetMm: 0
+    previewMeasurementEndInsetMm: 0,
+    // The raw cursor can intentionally target a source wall's rendered outer
+    // face. Keep that intent only for the active preview/confirmation pair.
+    previewOuterFaceWallId: ''
   };
 }
 
@@ -145,6 +150,9 @@ function ensureSessionSpaceTracking(floor) {
   if (typeof session.activeSpaceSharedStartT !== 'number') {
     session.activeSpaceSharedStartT = null;
   }
+  if (typeof session.activeSpaceSharedWallMiddle !== 'boolean') {
+    session.activeSpaceSharedWallMiddle = false;
+  }
   if (typeof session.activeSpaceSharedSnapLine !== 'string') {
     session.activeSpaceSharedSnapLine = '';
   }
@@ -160,6 +168,9 @@ function ensureSessionSpaceTracking(floor) {
   if (typeof session.lastWallSnapT !== 'number') {
     session.lastWallSnapT = null;
   }
+  if (typeof session.lastWallSnapWallMiddle !== 'boolean') {
+    session.lastWallSnapWallMiddle = false;
+  }
   if (typeof session.lastWallSnapLine !== 'string') {
     session.lastWallSnapLine = '';
   }
@@ -171,6 +182,9 @@ function ensureSessionSpaceTracking(floor) {
   }
   if (!Number.isFinite(Number(session.previewMeasurementEndInsetMm))) {
     session.previewMeasurementEndInsetMm = 0;
+  }
+  if (typeof session.previewOuterFaceWallId !== 'string') {
+    session.previewOuterFaceWallId = '';
   }
   if (typeof session.previewAngleSource !== 'string') {
     session.previewAngleSource = '';
@@ -444,12 +458,18 @@ function buildBaseWallSegment(floor, wall, options) {
   const outward = centroid
     ? { x: midpoint.xMm - centroid.xMm, y: midpoint.yMm - centroid.yMm }
     : null;
-  // Once a space is explicitly closed, its physical wall body must always
-  // expand away from the room centroid. The first-wall measurement-side choice
-  // controls the redline while measuring; it cannot invert a closed room shell.
-  const normal = outward && dot(leftNormal, outward) >= dot(rightNormal, outward)
+  // A shared-boundary closure records the visible body side while the chain is
+  // still open. When that chain later becomes a room, deriving the normal from
+  // the new room centroid could flip a completed wall across its red line.
+  const persistedNormal = wall.bodyNormalSide === 'left'
     ? leftNormal
-    : (outward ? rightNormal : (wall.measurementSide === 'left' ? leftNormal : rightNormal));
+    : (wall.bodyNormalSide === 'right' ? rightNormal : null);
+  // Normal closed-room walls expand away from their room centroid. A wall
+  // participating in a shared-boundary closure carries its pre-close physical
+  // side explicitly instead.
+  const normal = persistedNormal || (outward && dot(leftNormal, outward) >= dot(rightNormal, outward)
+    ? leftNormal
+    : (outward ? rightNormal : (wall.measurementSide === 'left' ? leftNormal : rightNormal)));
   const thicknessMm = resolveRenderThicknessMm(wall, opts);
 
   return {
@@ -2535,6 +2555,76 @@ function findAnySharedWallClosureProjection(floor, session, point) {
   return best;
 }
 
+function findOuterFaceClosureProjection(floor, session, point, forcedWallId) {
+  if (!floor || !session || !point || !session.activeSpaceSharedWallId) return null;
+  const cursorTarget = forcedWallId ? null : getCursorPlacementTarget(floor, point, CLOSE_TOLERANCE_MM);
+  // Do not infer an outer-face close from geometric proximity alone. At a
+  // shared corner, an inner endpoint is also close to several outer faces.
+  // The cursor hit classification is the authority for the user's intent.
+  if (!forcedWallId && (!cursorTarget || cursorTarget.snapLine !== 'outer')) return null;
+  const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+    ? session.activeSpaceStartWallIndex
+    : 0;
+  const anchor = getNode(floor, session.anchorNodeId);
+  let best = null;
+
+  (floor.walls || []).forEach((wall, index) => {
+    if (index >= startWallIndex) return;
+    if (forcedWallId && wall.id !== forcedWallId) return;
+    const start = getNode(floor, wall.startNodeId);
+    const end = getNode(floor, wall.endNodeId);
+    const geometry = start && end ? buildWallSnapGeometry(floor, wall) : null;
+    if (!geometry) return;
+    const projection = projectPointToWallSegment(point, geometry.outerStart, geometry.outerEnd);
+    if (!projection || projection.distanceMm > CLOSE_TOLERANCE_MM) return;
+    const topologyProjection = projectPointToWallSegment(point, start, end);
+    // A normal shared-wall close can be within the broad close tolerance of a
+    // neighbouring outer face. Only treat this as an outer-face close when
+    // the pointer is materially displaced from this wall's topology line.
+    if (!topologyProjection || topologyProjection.distanceMm < Number(wall.thicknessMm || 0) * 0.75) return;
+
+    const outerLength = distanceMm(geometry.outerStart, geometry.outerEnd);
+    const approachLength = anchor ? distanceMm(anchor, point) : 0;
+    const approach = approachLength > 0
+      ? { x: (point.xMm - anchor.xMm) / approachLength, y: (point.yMm - anchor.yMm) / approachLength }
+      : null;
+    const outerDirection = outerLength > 0
+      ? {
+        x: (geometry.outerEnd.xMm - geometry.outerStart.xMm) / outerLength,
+        y: (geometry.outerEnd.yMm - geometry.outerStart.yMm) / outerLength
+      }
+      : null;
+    const alignment = approach && outerDirection ? Math.abs(dot(approach, outerDirection)) : 0;
+    const endpointCandidates = [
+      { node: start, outerPoint: geometry.outerStart, t: 0 },
+      { node: end, outerPoint: geometry.outerEnd, t: 1 }
+    ];
+    const nearestEndpoint = endpointCandidates
+      .map((candidate) => Object.assign(candidate, {
+        distanceMm: distanceMm(projection.point, candidate.outerPoint)
+      }))
+      .sort((left, right) => left.distanceMm - right.distanceMm)[0];
+    const candidate = {
+      wall,
+      start,
+      end,
+      point: projection.point,
+      topologyNode: nearestEndpoint && nearestEndpoint.distanceMm <= CLOSE_TOLERANCE_MM
+        ? nearestEndpoint.node
+        : null,
+      alignment,
+      distanceMm: projection.distanceMm
+    };
+    if (!best || candidate.alignment > best.alignment + 0.001 || (
+      Math.abs(candidate.alignment - best.alignment) <= 0.001 && candidate.distanceMm < best.distanceMm
+    )) {
+      best = candidate;
+    }
+  });
+
+  return best;
+}
+
 function findPartitionClosureProjection(floor, session, anchor, point) {
   if (!floor || !session || !anchor || !point || session.mode !== 'straight') return null;
   const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
@@ -2703,6 +2793,7 @@ function cloneWallSegment(sourceWall, startNodeId, endNodeId, id) {
     angleDeg: sourceWall.angleDeg,
     thicknessMm: sourceWall.thicknessMm,
     measurementSide: sourceWall.measurementSide,
+    bodyNormalSide: sourceWall.bodyNormalSide || '',
     measurementStartInsetMm: 0,
     measurementEndInsetMm: 0,
     inputSource: sourceWall.inputSource || 'manual',
@@ -3000,6 +3091,17 @@ function startPreview(draft, rawPoint) {
     vertexAxisSnap.point
   );
   let previewPoint = directStartClosureSnap.point;
+  const rawOuterFaceProjection = findOuterFaceClosureProjection(floor, session, rawPoint);
+  if (rawOuterFaceProjection && session.mode === 'straight') {
+    const outerDx = Math.abs(rawOuterFaceProjection.end.xMm - rawOuterFaceProjection.start.xMm);
+    const outerDy = Math.abs(rawOuterFaceProjection.end.yMm - rawOuterFaceProjection.start.yMm);
+    // Preserve the physical outer coordinate selected by the cursor, while
+    // retaining any orthogonal/rectangle snap for the other coordinate.
+    previewPoint = outerDx >= outerDy
+      ? { xMm: previewPoint.xMm, yMm: rawOuterFaceProjection.point.yMm }
+      : { xMm: rawOuterFaceProjection.point.xMm, yMm: previewPoint.yMm };
+  }
+  session.previewOuterFaceWallId = rawOuterFaceProjection ? rawOuterFaceProjection.wall.id : '';
   const partitionProjection = findPartitionClosureProjection(
     floor,
     session,
@@ -3051,8 +3153,22 @@ function startPreview(draft, rawPoint) {
   const activeStartNode = getNode(floor, session.activeSpaceStartNodeId) || getFirstNode(floor);
   const minimumClosureWallCount = getMinimumClosureSuggestionWallCount(floor, session);
   if (activeStartNode && activeWallCount + 1 >= minimumClosureWallCount) {
-    const sharedProjection = findAnySharedWallClosureProjection(floor, session, previewPoint);
-    if (sharedProjection) {
+    // A final drag can land on the visible outer face of a perpendicular
+    // closed wall. That is not the same topology point as the wall centre:
+    // forcing it onto the centre line turns the visible vertical orange edge
+    // into a diagonal/shared closure and later adds a wall thickness outward.
+    const outerFaceProjection = rawOuterFaceProjection || findOuterFaceClosureProjection(floor, session, previewPoint);
+    const sharedProjection = outerFaceProjection
+      ? null
+      : findAnySharedWallClosureProjection(floor, session, previewPoint);
+    if (outerFaceProjection) {
+      const mergeCandidate = outerFaceProjection.topologyNode ||
+        findMergeClosureCandidate(floor, session, previewPoint);
+      if (mergeCandidate) {
+        session.closeCandidateNodeId = mergeCandidate.id;
+        session.closeCandidateType = 'merge';
+      }
+    } else if (sharedProjection) {
       if (
         session.mode === 'straight' &&
         sharedProjection.node &&
@@ -3309,7 +3425,15 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   const activeWallCountBeforeCommit = Math.max(0, floor.walls.length - session.activeSpaceStartWallIndex);
   const minimumClosureWallCount = getMinimumClosureSuggestionWallCount(floor, session);
   const canCloseWithSharedBoundary = activeWallCountBeforeCommit + 1 >= minimumClosureWallCount;
-  const sharedProjection = canCloseWithSharedBoundary
+  const outerFaceProjection = canCloseWithSharedBoundary
+    ? findOuterFaceClosureProjection(
+      floor,
+      session,
+      endPoint,
+      session.previewOuterFaceWallId || ''
+    )
+    : null;
+  const sharedProjection = canCloseWithSharedBoundary && !outerFaceProjection
     ? findAnySharedWallClosureProjection(floor, session, endPoint)
     : null;
   const partitionProjection = findPartitionClosureProjection(
@@ -3320,8 +3444,8 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   );
   const closureProjection = partitionProjection || sharedProjection;
   const isClosingCurrentSpace = activeStartNode &&
-    (activeWallCountBeforeCommit >= 2 || !!closureProjection) &&
-    (closureProjection || distanceMm(endPoint, activeStartNode) <= CLOSE_TOLERANCE_MM);
+    (activeWallCountBeforeCommit >= 2 || !!closureProjection || !!outerFaceProjection) &&
+    (closureProjection || outerFaceProjection || distanceMm(endPoint, activeStartNode) <= CLOSE_TOLERANCE_MM);
   if (closureProjection) {
     endPoint = closureProjection.point;
   }
@@ -3389,6 +3513,10 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
       angleDeg: angleDeg(anchor, endNode),
       thicknessMm: session.thicknessMm,
       measurementSide,
+      // Preserve the exterior-start case immediately. Shared-boundary closure
+      // below also locks every active wall, including chains started on an
+      // inner face and ending on another inner face.
+      bodyNormalSide: session.activeSpaceSharedSnapLine === 'outer' ? measurementSide : '',
       measurementStartInsetMm,
       measurementEndInsetMm,
       inputSource: inputSource || 'manual',
@@ -3413,6 +3541,7 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
   session.previewMeasurementSide = '';
   session.previewMeasurementStartInsetMm = 0;
   session.previewMeasurementEndInsetMm = 0;
+  session.previewOuterFaceWallId = '';
   session.closeCandidateNodeId = '';
   session.closeCandidatePoint = null;
   session.closeCandidateType = '';
@@ -3436,6 +3565,16 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     session.closeCandidatePoint = sharedProjection.point;
     session.closeCandidateType = 'shared-wall';
     session.closeCandidateSharedWallId = sharedProjection.wall.id;
+  } else if (outerFaceProjection && activeWallCount >= 1) {
+    const mergeCandidate = outerFaceProjection.topologyNode ||
+      findMergeClosureCandidate(floor, session, endNode);
+    if (mergeCandidate) {
+      session.state = 'mergeClosing';
+      session.closeCandidateNodeId = mergeCandidate.id;
+      session.closeCandidateType = 'merge';
+    } else {
+      session.state = 'wallCommitted';
+    }
   } else if (activeStartNode && activeWallCount >= 3 && distanceMm(endNode, activeStartNode) <= CLOSE_TOLERANCE_MM) {
     session.state = 'closing';
     session.closeCandidateNodeId = activeStartNode.id;
@@ -3566,6 +3705,7 @@ function confirmClosure(draft) {
           angleDeg: angleDeg(closureStartNode, closureEndNode),
           thicknessMm: session.thicknessMm,
           measurementSide,
+          bodyNormalSide: session.activeSpaceSharedSnapLine === 'outer' ? measurementSide : '',
           measurementStartInsetMm: 0,
           measurementEndInsetMm,
           inputSource: 'closure-merge',
@@ -3653,6 +3793,18 @@ function confirmClosure(draft) {
   refreshWallMetrics(floor);
 
   const newWallIds = floor.walls.slice(startWallIndex).map((wall) => wall.id);
+  if (session.closeCandidateType === 'shared-wall') {
+    // The orange closing line is the live body reference. It can terminate on
+    // the source room's inner face even when the new chain was measured toward
+    // the exterior. Lock the still-open chain's render side before adding its
+    // room: afterwards centroid inference would put this body on the opposite
+    // side of that already-visible line (one wall thickness away).
+    floor.walls.slice(startWallIndex).forEach((wall) => {
+      if (!wall.bodyNormalSide && (wall.measurementSide === 'left' || wall.measurementSide === 'right')) {
+        wall.bodyNormalSide = wall.measurementSide;
+      }
+    });
+  }
   const excludedWallIds = {};
   newWallIds.forEach((wallId) => { excludedWallIds[wallId] = true; });
 
@@ -4175,6 +4327,7 @@ function snapCursorToWall(draft, point, target) {
 
   let snappedWall = topologyProjection && topologyProjection.wall;
   let snappedT = topologyProjection && topologyProjection.t;
+  const snappedAtWallMiddle = !!(snappedWall && snappedT > 0.0001 && snappedT < 0.9999);
   if (snappedWall && snappedT > 0.0001 && snappedT < 0.9999) {
     const splitResult = splitWallAtNodes(floor, snappedWall.id, [node.id]);
     const snappedSegments = splitResult.segmentIds
@@ -4209,10 +4362,12 @@ function snapCursorToWall(draft, point, target) {
   session.activeSpaceStartWallIndex = floor.walls.length;
   session.activeSpaceSharedWallId = snappedWall.id;
   session.activeSpaceSharedStartT = snappedT;
+  session.activeSpaceSharedWallMiddle = snappedAtWallMiddle;
   session.activeSpaceSharedSnapLine = projection.snapLine || 'inner';
   session.lastWallSnapNodeId = node.id;
   session.lastWallSnapWallId = snappedWall.id;
   session.lastWallSnapT = snappedT;
+  session.lastWallSnapWallMiddle = snappedAtWallMiddle;
   session.lastWallSnapLine = projection.snapLine || 'inner';
 
   return touchDraft(next);
@@ -4369,6 +4524,7 @@ function placeNewWallChainCursor(draft, point) {
   session.activeSpaceStartWallIndex = floor.walls.length;
   session.activeSpaceSharedWallId = '';
   session.activeSpaceSharedStartT = null;
+  session.activeSpaceSharedWallMiddle = false;
   session.activeSpaceSharedSnapLine = '';
   session.lastWallSnapNodeId = '';
   session.lastWallSnapWallId = '';
@@ -4430,6 +4586,7 @@ function resetCursor(draft) {
       ? session.lastWallSnapT
       : pointAlongWall(floor, lastSnapWall, lastSnapNode.id) /
         Math.max(1, getWallCoordinateLength(floor, lastSnapWall));
+    session.activeSpaceSharedWallMiddle = session.lastWallSnapWallMiddle;
     session.activeSpaceSharedSnapLine = session.lastWallSnapLine || 'inner';
     return touchDraft(next);
   }

@@ -4,12 +4,13 @@ const test = require('node:test');
 
 const root = path.resolve(__dirname, '..', '..');
 const surveyGraph = require(path.join(root, 'miniprogram/utils/surveyWallGraph.js'));
+const surveyCanvasRenderer = require(path.join(root, 'miniprogram/packages/surveying/utils/surveyCanvasRenderer.js'));
 const { CATEGORY_ORDER, createScenarioCatalog } = require('../src/scenarios.js');
 
 const catalog = createScenarioCatalog(surveyGraph);
 
 test('scenario catalog covers the supported measurement topology families', () => {
-  assert.equal(catalog.length, 23);
+  assert.equal(catalog.length, 28);
   assert.deepEqual([...new Set(catalog.map((scenario) => scenario.category))], CATEGORY_ORDER);
   assert.equal(new Set(catalog.map((scenario) => scenario.key)).size, catalog.length);
   ['rectangle', 'l-shape', 'open-chain', 'adjacent-rooms', 't-junction', 'partition']
@@ -58,4 +59,101 @@ test('the T-shaped layout closes adjacent rooms through shared boundaries', () =
   assert.equal(junctionWalls.length, 3);
   assert.equal(new Set(endpointKeys).size, floor.walls.length);
   assert.equal(floor.spaces.filter((space) => space.closed).length, 3);
+});
+
+test('the H5 T replays retain distinct inner- and outer-face first red edges', () => {
+  const innerScenario = catalog.find((entry) => entry.key === 't-junction');
+  const outerScenario = catalog.find((entry) => entry.key === 'outer-start-t-junction');
+  const innerFloor = surveyGraph.getActiveFloor(innerScenario.build());
+  const outerFloor = surveyGraph.getActiveFloor(outerScenario.build());
+  const innerBranch = innerFloor.walls.at(-1);
+  const outerBranch = outerFloor.walls.at(-1);
+  const render = (floor) => surveyCanvasRenderer.createSurveyRenderScene({
+    floor,
+    session: floor.session,
+    viewport: floor.viewport,
+    rect: { width: 800, height: 800 }
+  });
+  const innerScene = render(innerFloor);
+  const outerScene = render(outerFloor);
+  const innerRenderedBranch = innerScene.walls.find((wall) => wall.id === innerBranch.id);
+  const outerRenderedBranch = outerScene.walls.find((wall) => wall.id === outerBranch.id);
+
+  assert.equal(innerBranch.measurementStartInsetMm, 200);
+  assert.equal(outerBranch.measurementStartInsetMm, 200);
+  assert.equal(innerBranch.lengthMm, 2000);
+  assert.equal(outerBranch.lengthMm, 2000);
+  assert.equal(innerRenderedBranch.measurementFace, 'inner');
+  assert.equal(outerRenderedBranch.measurementFace, 'outer');
+  assert.deepEqual(innerRenderedBranch.measurementStartPoint, innerRenderedBranch.startPoint);
+  assert.deepEqual(outerRenderedBranch.measurementStartPoint, outerRenderedBranch.outerStart);
+  assert.notDeepEqual(innerRenderedBranch.measurementStartPoint, outerRenderedBranch.measurementStartPoint);
+});
+
+test('the H5 outer-T rightward replay keeps the down-drag cursor on the black inner edge', () => {
+  const scenario = catalog.find((entry) => entry.key === 'outer-t-rightward-inner-continuation');
+  const floor = surveyGraph.getActiveFloor(scenario.build());
+  const scene = surveyCanvasRenderer.createSurveyRenderScene({
+    floor,
+    session: floor.session,
+    viewport: floor.viewport,
+    rect: { width: 800, height: 800 }
+  });
+  const activeWalls = scene.walls.filter((wall) => wall.isActiveMeasurement);
+  const rightwardWall = activeWalls.at(-1);
+
+  assert.equal(floor.session.activeSpaceSharedSnapLine, 'outer');
+  assert.equal(activeWalls.length, 2);
+  assert.equal(activeWalls[0].measurementFace, 'outer');
+  assert.equal(rightwardWall.measurementFace, 'inner');
+  assert.equal(scene.previewWall.measurementFace, 'inner');
+  assert.deepEqual(scene.previewWall.measurementEndPoint, scene.previewWall.endPoint);
+  assert.equal(scene.previewWall.measurementEndPoint.x, rightwardWall.endPoint.x);
+  assert.deepEqual(scene.cursor.point, scene.previewWall.endPoint);
+});
+
+test('the H5 inner- and outer-start closures keep their final wall left of the orange line', () => {
+  ['inner-start-inner-face-closure', 'outer-start-inner-face-closure'].forEach((key) => {
+    const scenario = catalog.find((entry) => entry.key === key);
+    const floor = surveyGraph.getActiveFloor(scenario.build());
+    const closingWall = floor.walls.find((wall) => {
+      const start = surveyGraph.getNode(floor, wall.startNodeId);
+      const end = surveyGraph.getNode(floor, wall.endNodeId);
+      return start.xMm === 6000 && end.xMm === 6000 && start.yMm === -2000;
+    });
+
+    assert.ok(closingWall, key);
+    const geometry = surveyGraph.buildWallRenderGeometry(floor, closingWall);
+    assert.equal(closingWall.bodyNormalSide, 'right', key);
+    assert.equal(geometry.outerStart.xMm, 5800, key);
+    assert.equal(geometry.outerEnd.xMm, 5800, key);
+    const newRoom = floor.spaces.filter((space) => space.closed).at(-1);
+    assert.deepEqual(surveyGraph.buildSpaceDimensionPlan(floor, newRoom).inner, {
+      widthMm: 2600,
+      heightMm: 1600,
+      areaMm2: 4160000
+    }, key);
+  });
+});
+
+test('the H5 outer-face corner merge keeps the final wall left of the orange line', () => {
+  const scenario = catalog.find((entry) => entry.key === 'outer-face-corner-merge-closure');
+  const floor = surveyGraph.getActiveFloor(scenario.build());
+  const closingWall = floor.walls.find((wall) => {
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    return start.xMm === 6200 && end.xMm === 6200 && start.yMm === -2000 && end.yMm === 0;
+  });
+
+  assert.ok(closingWall);
+  const geometry = surveyGraph.buildWallRenderGeometry(floor, closingWall);
+  assert.equal(closingWall.bodyNormalSide, 'right');
+  assert.equal(geometry.outerStart.xMm, 6000);
+  assert.equal(geometry.outerEnd.xMm, 6000);
+  const newRoom = floor.spaces.filter((space) => space.closed).at(-1);
+  assert.deepEqual(surveyGraph.buildSpaceDimensionPlan(floor, newRoom).inner, {
+    widthMm: 2800,
+    heightMm: 1600,
+    areaMm2: 4480000
+  });
 });

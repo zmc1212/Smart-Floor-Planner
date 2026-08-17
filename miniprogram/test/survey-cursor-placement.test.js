@@ -458,6 +458,55 @@ test('cursor placement can snap to the outer wall edge', () => {
   assert.deepEqual(target.pointMm, outerMidpoint);
 });
 
+test('inner and outer wall-middle T starts retain one topology path and mark distinct working faces', () => {
+  const base = createClosedDraft();
+  const floor = surveyGraph.getActiveFloor(base);
+  const wall = floor.walls[0];
+  const geometry = surveyGraph.buildWallSnapGeometry(floor, wall);
+  const innerMidpoint = {
+    xMm: Math.round((geometry.start.xMm + geometry.end.xMm) / 2),
+    yMm: Math.round((geometry.start.yMm + geometry.end.yMm) / 2)
+  };
+  const outerMidpoint = {
+    xMm: Math.round((geometry.outerStart.xMm + geometry.outerEnd.xMm) / 2),
+    yMm: Math.round((geometry.outerStart.yMm + geometry.outerEnd.yMm) / 2)
+  };
+
+  const innerTarget = surveyGraph.getCursorPlacementTarget(
+    floor,
+    innerMidpoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  let innerDraft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(base),
+    innerTarget.pointMm,
+    innerTarget
+  );
+  innerDraft = surveyGraph.startPreview(innerDraft, { xMm: innerMidpoint.xMm, yMm: -2000 });
+  const innerSession = surveyGraph.getActiveFloor(innerDraft).session;
+  assert.equal(innerSession.activeSpaceSharedSnapLine, 'inner');
+  assert.equal(innerSession.activeSpaceSharedWallMiddle, true);
+  assert.equal(innerSession.previewMeasurementStartInsetMm, 200);
+  assert.equal(innerSession.previewLengthMm, 1800);
+
+  const outerTarget = surveyGraph.getCursorPlacementTarget(
+    floor,
+    outerMidpoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  let outerDraft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(base),
+    outerTarget.pointMm,
+    outerTarget
+  );
+  outerDraft = surveyGraph.startPreview(outerDraft, { xMm: outerMidpoint.xMm, yMm: -2000 });
+  const outerSession = surveyGraph.getActiveFloor(outerDraft).session;
+  assert.equal(outerSession.activeSpaceSharedSnapLine, 'outer');
+  assert.equal(outerSession.activeSpaceSharedWallMiddle, true);
+  assert.equal(outerSession.previewMeasurementStartInsetMm, 200);
+  assert.equal(outerSession.previewLengthMm, 1800);
+});
+
 test('cursor placement snaps a visible mitered outer corner to its topology node', () => {
   const draft = createClosedDraft();
   const floor = surveyGraph.getActiveFloor(draft);
@@ -649,9 +698,114 @@ test('outer wall snap keeps rectangle guide and shared closure on one graph coor
 
   assert.deepEqual(floor.session.previewPoint, floor.session.closeCandidatePoint);
   assert.equal(floor.session.alignmentSnapGuide.type, 'rectangle-third-wall');
+  draft = surveyGraph.commitPreviewLength(draft, floor.session.previewLengthMm, 'manual');
+  floor = surveyGraph.getActiveFloor(draft);
+  const closingWall = floor.walls.at(-1);
+  const geometryBeforeClosure = surveyGraph.buildWallRenderGeometry(floor, closingWall);
+
   draft = surveyGraph.confirmClosure(draft);
   floor = surveyGraph.getActiveFloor(draft);
+  const closedWall = surveyGraph.getWall(floor, closingWall.id);
+  const geometryAfterClosure = surveyGraph.buildWallRenderGeometry(floor, closedWall);
+
   assert.ok(floor.spaces.filter((space) => space.closed).length >= 2);
+  assert.deepEqual(geometryAfterClosure.outerStart, geometryBeforeClosure.outerStart);
+  assert.deepEqual(geometryAfterClosure.outerEnd, geometryBeforeClosure.outerEnd);
+});
+
+test('an exterior-facing chain that closes on an inner shared face keeps the orange-line body side', () => {
+  const commitPreview = (draft, point) => {
+    const preview = surveyGraph.startPreview(draft, point);
+    const previewFloor = surveyGraph.getActiveFloor(preview);
+    return surveyGraph.commitPreviewLength(preview, previewFloor.session.previewLengthMm, 'manual');
+  };
+  let draft = surveyGraph.setThickness(surveyGraph.createSurveyDraft(), 400);
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 2779, yMm: 0 }, 2779);
+  draft = commitWall(draft, { xMm: 2779, yMm: 3545 }, 3545);
+  draft = commitWall(draft, { xMm: 0, yMm: 3545 }, 2779);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 3545);
+  draft = surveyGraph.confirmClosure(draft);
+
+  let floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 1139, yMm: 0 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  assert.equal(target.snapLine, 'inner');
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = commitPreview(draft, { xMm: 1139, yMm: -2523 });
+  draft = commitPreview(draft, { xMm: 2779, yMm: -2523 });
+  draft = commitPreview(draft, { xMm: 2779, yMm: 100 });
+
+  floor = surveyGraph.getActiveFloor(draft);
+  const closingWall = floor.walls.at(-1);
+  const geometryBeforeClosure = surveyGraph.buildWallRenderGeometry(floor, closingWall);
+  assert.equal(floor.session.closeCandidateType, 'shared-wall');
+  assert.equal(closingWall.bodyNormalSide, '');
+  assert.equal(geometryBeforeClosure.outerStart.xMm, 2379);
+
+  draft = surveyGraph.confirmClosure(draft);
+  floor = surveyGraph.getActiveFloor(draft);
+  const closedWall = surveyGraph.getWall(floor, closingWall.id);
+  const geometryAfterClosure = surveyGraph.buildWallRenderGeometry(floor, closedWall);
+
+  assert.equal(closedWall.bodyNormalSide, 'right');
+  assert.deepEqual(geometryAfterClosure.outerStart, geometryBeforeClosure.outerStart);
+  assert.deepEqual(geometryAfterClosure.outerEnd, geometryBeforeClosure.outerEnd);
+  assert.equal(geometryAfterClosure.outerStart.xMm, 2379);
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 2);
+});
+
+test('an outer-face closing line keeps its physical x coordinate and bridges to the source corner', () => {
+  const commitPreview = (draft, point) => {
+    const preview = surveyGraph.startPreview(draft, point);
+    const previewFloor = surveyGraph.getActiveFloor(preview);
+    return surveyGraph.commitPreviewLength(preview, previewFloor.session.previewLengthMm, 'manual');
+  };
+  let draft = surveyGraph.setThickness(surveyGraph.createSurveyDraft(), 200);
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 6000, yMm: 0 }, 6000);
+  draft = commitWall(draft, { xMm: 6000, yMm: 4000 }, 4000);
+  draft = commitWall(draft, { xMm: 0, yMm: 4000 }, 6000);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 4000);
+  draft = surveyGraph.confirmClosure(draft);
+
+  let floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 3000, yMm: -200 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  assert.equal(target.snapLine, 'outer');
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = commitPreview(draft, { xMm: 3000, yMm: -2000 });
+  draft = commitPreview(draft, { xMm: 6200, yMm: -2000 });
+  draft = surveyGraph.startPreview(draft, { xMm: 6200, yMm: 100 });
+
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.deepEqual(floor.session.previewPoint, { xMm: 6200, yMm: 0 });
+  assert.equal(floor.session.closeCandidateType, 'merge');
+  draft = surveyGraph.confirmClosure(draft);
+  floor = surveyGraph.getActiveFloor(draft);
+  const closingWall = floor.walls.find((wall) => {
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    return start.xMm === 6200 && end.xMm === 6200 && start.yMm === -2000 && end.yMm === 0;
+  });
+  assert.ok(closingWall);
+  const geometry = surveyGraph.buildWallRenderGeometry(floor, closingWall);
+  const newRoom = floor.spaces.filter((space) => space.closed).at(-1);
+
+  assert.equal(closingWall.bodyNormalSide, 'right');
+  assert.equal(geometry.outerStart.xMm, 6000);
+  assert.equal(geometry.outerEnd.xMm, 6000);
+  assert.deepEqual(surveyGraph.buildSpaceDimensionPlan(floor, newRoom).inner, {
+    widthMm: 2800,
+    heightMm: 1600,
+    areaMm2: 4480000
+  });
 });
 
 test('cursor placement away from walls returns a free target without mutating the wall graph', () => {

@@ -105,6 +105,27 @@ function createPartitionedTwoRoomDraft(options) {
   return draft;
 }
 
+function createThreeRoomRowDraft() {
+  let draft = createClosedRectangleDraft({ widthMm: 9000, heightMm: 4000 });
+  [3000, 6000].forEach((xMm) => {
+    const floor = surveyGraph.getActiveFloor(draft);
+    const target = surveyGraph.getCursorPlacementTarget(
+      floor,
+      { xMm, yMm: 0 },
+      surveyGraph.CLOSE_TOLERANCE_MM
+    );
+    draft = surveyGraph.snapCursorToWall(
+      surveyGraph.startWallSnap(draft),
+      target.pointMm,
+      target
+    );
+    draft = commitPreview(draft, { xMm, yMm: 4000 });
+    assert.equal(surveyGraph.getActiveFloor(draft).session.state, 'closing');
+    draft = surveyGraph.confirmClosure(draft);
+  });
+  return draft;
+}
+
 function createDiagonalOpenWallDraft(options) {
   const opts = options || {};
   const angleRad = opts.angleDeg * Math.PI / 180;
@@ -529,6 +550,38 @@ test('a T branch from a shared wall keeps both room contracts and the wall solid
     assert.equal(missingSamples.length, 0, `shared wall lost ${missingSamples.length} samples`);
   });
   assertMatrixPassed(failures, cases, 'shared-wall T scenarios');
+});
+
+test('deleting one shared divider leaves an unrelated third closed space unchanged', () => {
+  let draft = createThreeRoomRowDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 3);
+
+  const divider = floor.walls.find((wall) => {
+    const start = surveyGraph.getNode(floor, wall.startNodeId);
+    const end = surveyGraph.getNode(floor, wall.endNodeId);
+    return start && end && start.xMm === 3000 && end.xMm === 3000;
+  });
+  assert.ok(divider, 'first shared divider was not found');
+  const unaffectedSpace = floor.spaces.find((space) => (
+    space.closed && space.wallIds.indexOf(divider.id) === -1
+  ));
+  assert.ok(unaffectedSpace, 'unrelated third space was not found');
+  const boundaryBefore = surveyGraph.buildSpaceBoundaryPoints(floor, unaffectedSpace.wallIds);
+  const dimensionsBefore = surveyGraph.buildSpaceDimensionPlan(floor, unaffectedSpace).inner;
+
+  draft = surveyGraph.deleteWall(draft, divider.id);
+  floor = surveyGraph.getActiveFloor(draft);
+  const remainingSpace = floor.spaces.find((space) => space.id === unaffectedSpace.id);
+  assert.ok(remainingSpace && remainingSpace.closed, 'unrelated third space was invalidated');
+  assert.deepEqual(
+    surveyGraph.buildSpaceBoundaryPoints(floor, remainingSpace.wallIds),
+    boundaryBefore
+  );
+  assert.deepEqual(
+    surveyGraph.buildSpaceDimensionPlan(floor, remainingSpace).inner,
+    dimensionsBefore
+  );
 });
 
 test('diagonal open-wall T matrix keeps the source wall solid', () => {
