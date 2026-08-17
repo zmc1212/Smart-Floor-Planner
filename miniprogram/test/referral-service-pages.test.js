@@ -9,6 +9,15 @@ function source(relativePath) {
   return fs.readFileSync(path.join(miniRoot, relativePath), 'utf8');
 }
 
+const referralAssets = [
+  'thumbs-up-xiao-k.png',
+  'onsite-measurement.png',
+  'designer-service.png',
+  'phone-authorization.png',
+  'designer-matching.png',
+  'privacy-lock.png',
+];
+
 test('promotion service screen keeps the public presentation anonymous and scanable', () => {
   const wxml = source('packages/business/promotion-service-code/promotion-service-code.wxml');
   const js = source('packages/business/promotion-service-code/promotion-service-code.js');
@@ -18,6 +27,7 @@ test('promotion service screen keeps the public presentation anonymous and scana
   assert.match(wxml, /免费设计师服务/);
   assert.match(wxml, /微信扫码领取服务/);
   assert.match(wxml, /0元服务/);
+  assert.match(wxml, /referral-service-v1\/thumbs-up-xiao-k\.png/);
   assert.match(js, /promotion-code\/image/);
   assert.match(js, /free-design-service\/free-design-service\?token=/);
   assert.match(js, /responseType:\s*'arraybuffer'/);
@@ -35,6 +45,9 @@ test('free design service resolves before phone authorization and renders truthf
   assert.match(wxml, /设计师已为你分配/);
   assert.match(wxml, /服务档案已建立/);
   assert.match(wxml, /设计师正在分配中/);
+  for (const asset of referralAssets.slice(1)) {
+    assert.match(wxml, new RegExp(`referral-service-v1/${asset.replace('.', '\\.')}`));
+  }
   assert.match(js, /\/miniprogram\/codes\/resolve/);
   assert.match(js, /\/miniprogram\/referrals\/authorize-and-create-lead/);
   assert.match(js, /'Idempotency-Key'/);
@@ -42,7 +55,19 @@ test('free design service resolves before phone authorization and renders truthf
   assert.match(js, /wx\.setClipboardData/);
   assert.match(js, /wx\.saveImageToPhotosAlbum/);
   assert.match(wxss, /@media \(max-width:\s*360px\)/);
+  assert.match(wxss, /\.claim-action\s*\{[^}]*align-self:\s*stretch/);
+  assert.match(wxss, /\.claim-action\s*\{[^}]*min-width:\s*100%/);
   assert.doesNotMatch(wxml, /装修公司|企业名称|enterpriseName|企业选择/);
+});
+
+test('Antigravity referral assets are transparent PNG files within the package limit', () => {
+  for (const asset of referralAssets) {
+    const assetPath = path.join(miniRoot, 'packages/business/assets/referral-service-v1', asset);
+    const bytes = fs.readFileSync(assetPath);
+    assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+    assert.ok(bytes.length <= 300 * 1024, `${asset} exceeds 300KB`);
+    assert.ok(bytes.includes(Buffer.from('tRNS')) || [4, 6].includes(bytes[25]), `${asset} must retain transparency`);
+  }
 });
 
 test('referral service primary copy respects the Mini Program type floor', () => {

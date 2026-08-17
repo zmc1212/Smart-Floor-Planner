@@ -1,6 +1,6 @@
 # 推荐人网络与预约量房闭环开发计划
 
-状态：`Approved design / Phase 4 in progress`
+状态：`Approved design / Phase 4 completed`
 
 本文是“推荐人多企业推广、客户授权建线索、自动派单、预约量房、AI 方案、签单和三方提成”破坏式改造的持续开发入口。当前代码、PostgreSQL schema、迁移和模块清单仍是已实现能力的依据；本文中的表、接口和路由在代码落地并通过测试前都只能标记为 `Planned`。
 
@@ -40,6 +40,19 @@ English mirror: [referrer-network-appointment-development-plan.md](./referrer-ne
 6. 已登录客户进入项目页和预约卡片后，可以按业务需要查看服务装修公司、设计师、测量员、地址和预约时间；“匿名”边界只覆盖公共推广与授权领取链路。
 7. 实现必须使用原生 WXML/WXSS、语义控件和项目图标资产，不得切割、铺贴或直接显示整张设计图。
 8. 所有新路由在实现后才加入中英文设计还原台账；每个运行路由只保留一行最新设计源。
+
+### 1.4 生成素材与生产路径映射
+
+Antigravity 2.8.1 的内置 `generate_image` 能力按固定顺序读取选定稿、F1/F3 品牌参考和角色场景参考，生成 `design-references/referrer-network-appointment-v1/generated-assets-v1/referral-service-assets-board-v1.png`。该画板只作为设计参考；生产包只保留从六个独立素材格提取并优化后的透明 PNG，不包含整页布局、控件或页面文字。
+
+| 设计元素 | 生产路径 |
+| --- | --- |
+| 点赞小 K | `miniprogram/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png` |
+| 上门量房服务 | `miniprogram/packages/business/assets/referral-service-v1/onsite-measurement.png` |
+| 设计师服务 | `miniprogram/packages/business/assets/referral-service-v1/designer-service.png` |
+| 手机号授权 | `miniprogram/packages/business/assets/referral-service-v1/phone-authorization.png` |
+| 设计师匹配 | `miniprogram/packages/business/assets/referral-service-v1/designer-matching.png` |
+| 隐私保护锁 | `miniprogram/packages/business/assets/referral-service-v1/privacy-lock.png` |
 
 ## 2. 目标业务闭环
 
@@ -313,7 +326,7 @@ closed 为终止状态
 | 1. Schema 与身份基础 | `Completed` | 目标表、`leads` 扩展、强制 RLS、Repository、数据库实时身份列表/切换、`contextVersion` 失效及普通客户手机号登录已实现；数据库合同测试通过。旧 OpenID 字段仅为第 8 阶段前的旧流程并存兼容。 |
 | 2. 双码与推荐人网络 | `Completed` | 双码换码/停用审计、员工单企业、推荐人默认三家上限与退出、可重取的不透明推广令牌已实现；Repository 数据库合同测试通过。 |
 | 3. 客户授权与自动派单 | `Completed` | 两阶段扫码、原子用户关联/建线索、首次有效归属、稳定最小负载派单、无候选保留、事务后通知、服务身份及员工池变化重试已实现；Repository/RLS/并发测试通过。 |
-| 4. 选定设计生产实现 | `In progress` | `promotion-service-code` 与 `free-design-service` 两条路由按 `390x844` 实现三屏状态；服务码图片接口、扫码解析、手机号授权、幂等建线索、设计师二维码交付和无设计师待分配状态已接通；聚焦测试通过。缺失素材已准备固定 `3x2` 生图画板 prompt 与六格裁切映射，但当前 Sub2API 账号未暴露图像模型；素材生成/包内接入及连接真实 automator 端口后的原生胶囊核验仍待完成。 |
+| 4. 选定设计生产实现 | `Completed` | `promotion-service-code` 与 `free-design-service` 两条路由按 `390x844` 实现三屏状态；服务码图片接口、扫码解析、手机号授权、幂等建线索、设计师二维码交付和无设计师待分配状态已接通。Antigravity 2.8.1 通过内置 `generate_image` 按固定 `3x2` prompt 和有序参考图生成画板，六个独立透明 PNG 已裁切、优化并接入 `packages/business/assets/referral-service-v1/`，均不超过 300KB。聚焦测试通过；真实微信开发者工具 automator 在 iPhone 12/13 Pro `390x844` 模拟器上完成精确路由、元素边界和包含原生胶囊的整窗截图核验。 |
 | 5. 预约与日历 | `Not started` | 设置、不可用时间、排斥约束、首次预约、客户/内部改期、取消、事件审计和通知。 |
 | 6. 客户项目、量房与 AI 发布 | `Not started` | 正式量房入口、项目聚合 API、AI 发布事实和客户只读权限。 |
 | 7. 签单与三方提成 | `Not started` | 三规则、签单快照、三条唯一提成、已付/作废约束和报表。 |

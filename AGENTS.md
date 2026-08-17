@@ -317,11 +317,13 @@ staged change; split unrelated work.
   project, confirm the selected automator port is listening, connect with
   `miniprogram-automator`, and verify the reported project/page context before
   any interaction. Do not create a temporary project copy.
-- After attaching to the existing WeChat DevTools automation endpoint, trigger
-  one fresh Mini Program compilation before the first interactive check or
-  screenshot and confirm that the simulator has resumed rendering. The initial
-  home page can remain visually frozen after an automated attachment; do not
-  treat that frozen frame as application behavior or visual-QA evidence.
+- Every time Codex controls, opens, or reopens this Mini Program project window,
+  including a `cli auto` replacement, trigger one fresh Mini Program compilation
+  before the first page-stack check, interaction, or screenshot. Reconnect and
+  confirm that the simulator reports a live page at the expected viewport. A
+  connected automator whose `systemInfo` or page RPC times out is still frozen;
+  compile again before continuing. Never treat the initial frozen home frame as
+  application behavior or visual-QA evidence.
 - Before every Mini Program visual-QA screenshot, identify the intended restored
   page route and inspect the running page stack through the automation runtime.
   Capture only after the top active route exactly matches that target (ignoring

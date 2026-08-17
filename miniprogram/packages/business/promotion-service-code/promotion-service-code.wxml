@@ -56,6 +56,11 @@ FORM: 批准的 selected option A 左屏；精确设计源已锁定，未运行�
       <view class="city-line city-line-one"></view>
       <view class="city-line city-line-two"></view>
       <view class="guide-ground"></view>
+      <image
+        class="guide-xiaok"
+        src="/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png"
+        mode="aspectFit"
+      />
     </view>
   </view>
 </view>

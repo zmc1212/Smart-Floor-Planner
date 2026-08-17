@@ -32,12 +32,12 @@ FORM: 批准的 selected option A 中/右屏，信息结构采用 option B；精
       <view class="block-title">服务内容</view>
       <view class="service-pair">
         <view class="service-item">
-          <view class="service-icon"><image src="/packages/business/assets/promotion-detail/measurer.png" mode="aspectFit" /></view>
+          <view class="service-icon"><image src="/packages/business/assets/referral-service-v1/onsite-measurement.png" mode="aspectFit" /></view>
           <view class="service-label">上门测量</view>
         </view>
         <view class="service-plus">+</view>
         <view class="service-item">
-          <view class="service-icon"><image src="/packages/business/assets/promotion-detail/designer.png" mode="aspectFit" /></view>
+          <view class="service-icon"><image src="/packages/business/assets/referral-service-v1/designer-service.png" mode="aspectFit" /></view>
           <view class="service-label">设计师服务</view>
         </view>
       </view>
@@ -47,19 +47,19 @@ FORM: 批准的 selected option A 中/右屏，信息结构采用 option B；精
       <view class="block-title">领取流程</view>
       <view class="process-row">
         <view class="process-item">
-          <view class="process-node"><image src="/packages/business/assets/login-v1/smartphone.png" mode="aspectFit" /></view>
+          <view class="process-node"><image src="/packages/business/assets/referral-service-v1/phone-authorization.png" mode="aspectFit" /></view>
           <view class="process-label">授权手机号</view>
         </view>
         <view class="process-line"><view class="process-arrow"></view></view>
         <view class="process-item">
-          <view class="process-node"><image src="/images/mine-icons/user.png" mode="aspectFit" /></view>
+          <view class="process-node"><image src="/packages/business/assets/referral-service-v1/designer-matching.png" mode="aspectFit" /></view>
           <view class="process-label">自动匹配设计师</view>
         </view>
       </view>
     </view>
 
     <view class="privacy-note">
-      <image src="/images/mine-icons/shield-check.png" mode="aspectFit" />
+      <image src="/packages/business/assets/referral-service-v1/privacy-lock.png" mode="aspectFit" />
       <view>手机号仅用于本次家装服务联系，我们将严格保护您的隐私安全</view>
     </view>
 

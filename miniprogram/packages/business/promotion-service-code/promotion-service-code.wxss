@@ -81,7 +81,7 @@ page {
 .guide-scene {
   position: relative;
   width: calc(100% + 96rpx);
-  min-height: 144rpx;
+  min-height: 180rpx;
   margin-top: auto;
   overflow: hidden;
 }
@@ -90,6 +90,7 @@ page {
 .city-line { position: absolute; bottom: 38rpx; width: 114rpx; height: 76rpx; border-top: 1px solid #dfeee2; border-right: 1px solid #dfeee2; }
 .city-line-one { left: 32rpx; }
 .city-line-two { right: 36rpx; height: 104rpx; }
+.guide-xiaok { position: absolute; z-index: 2; bottom: 0; left: 50%; width: 180rpx; height: 180rpx; transform: translateX(-50%); }
 
 @keyframes qr-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 
@@ -98,5 +99,6 @@ page {
   .heading-primary, .heading-accent { font-size: 43rpx; }
   .qr-stage { width: 360rpx; height: 360rpx; margin-top: 24rpx; }
   .service-promises { margin-top: 22rpx; }
-  .guide-scene { min-height: 118rpx; }
+  .guide-scene { min-height: 156rpx; }
+  .guide-xiaok { width: 156rpx; height: 156rpx; }
 }

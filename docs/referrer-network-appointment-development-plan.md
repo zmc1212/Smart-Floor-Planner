@@ -1,6 +1,6 @@
 # Referrer Network and Measurement Appointment Development Plan
 
-Status: `Approved design / Phase 4 in progress`
+Status: `Approved design / Phase 4 completed`
 
 This document is the durable implementation entry point for the breaking redesign covering multi-enterprise referrers, phone-authorized lead creation, automatic assignment, measurement appointments, published AI designs, conversion, and three-role commissions. Current code, PostgreSQL schema, migrations, and module inventories remain the authority for implemented behavior. Every table, API, and route in this plan remains `Planned` until code and tests prove otherwise.
 
@@ -40,6 +40,19 @@ The board-level note about automatic lead insertion and assignment is an impleme
 6. An authenticated customer project or appointment card may show the service enterprise, designer, measurer, address, and appointment after lead creation. The anonymous boundary applies only to the public promotion and claim flow.
 7. Production must use native WXML/WXSS, semantic controls, and project icon assets. Never slice or paint the design board into product UI.
 8. Add a route to the English and Chinese restoration ledgers only after that runtime route exists; each route retains one current design source row.
+
+### 1.4 Generated asset and production-path mapping
+
+Antigravity 2.8.1 used its built-in `generate_image` capability with the selected board, F1/F3 brand reference, and role-scene reference in a fixed order to create `design-references/referrer-network-appointment-v1/generated-assets-v1/referral-service-assets-board-v1.png`. That board remains a design reference only. The Mini Program package contains only the six optimized transparent PNGs extracted from independent asset cells, with no page layout, controls, or embedded page copy.
+
+| Design element | Production path |
+| --- | --- |
+| Thumbs-up Xiao K | `miniprogram/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png` |
+| On-site measurement service | `miniprogram/packages/business/assets/referral-service-v1/onsite-measurement.png` |
+| Designer service | `miniprogram/packages/business/assets/referral-service-v1/designer-service.png` |
+| Phone authorization | `miniprogram/packages/business/assets/referral-service-v1/phone-authorization.png` |
+| Designer matching | `miniprogram/packages/business/assets/referral-service-v1/designer-matching.png` |
+| Privacy lock | `miniprogram/packages/business/assets/referral-service-v1/privacy-lock.png` |
 
 ## 2. Target workflow
 
@@ -311,7 +324,7 @@ Update this status table incrementally and update both module inventories and af
 | 1. Schema and identity | `Completed` | Target tables, lead extensions, forced RLS, repositories, database-backed context list/switch, `contextVersion` invalidation, and ordinary-customer phone login are implemented; DB contract tests pass. Legacy OpenID columns remain only for coexistence with the old flow until phase 8. |
 | 2. Dual codes and referrer network | `Completed` | Rotation/disable audit, single-enterprise staff, default three-enterprise membership limit/leave, and reproducible opaque promotion tokens are implemented; repository database contract tests pass. |
 | 3. Authorization and assignment | `Completed` | Two-stage scan, atomic user linkage/lead creation, first attribution, stable lowest-load assignment, no-candidate retention, post-commit notification, service retry, and staff-pool-change retry are implemented; repository/RLS/concurrency tests pass. |
-| 4. Selected design implementation | `In progress` | `promotion-service-code` and `free-design-service` implement the three selected states at `390x844`; the service-code image endpoint, token resolution, phone authorization, idempotent lead creation, designer QR delivery, and assignment-pending state are wired. Focused tests pass. A fixed 3x2 asset-board prompt and six-cell cut map are prepared, but the configured Sub2API account currently exposes no image model; asset generation/package integration and native-capsule evidence from an actual automator port remain pending. |
+| 4. Selected design implementation | `Completed` | `promotion-service-code` and `free-design-service` implement the three selected states at `390x844`; the service-code image endpoint, token resolution, phone authorization, idempotent lead creation, designer QR delivery, and assignment-pending state are wired. Antigravity 2.8.1 used its built-in `generate_image` capability with the fixed 3x2 prompt and ordered references; six independent transparent PNG assets were cut, optimized, and packaged under `packages/business/assets/referral-service-v1/`, each below 300KB. Focused tests pass. An actual WeChat DevTools automator verified exact routes, element bounds, and full host-window captures including the native capsule on the iPhone 12/13 Pro `390x844` simulator. |
 | 5. Appointments and calendar | `Not started` | Settings, unavailability, exclusion constraint, first appointment, both reschedule paths, cancellation, events, notifications. |
 | 6. Project, surveying, and publication | `Not started` | Formal entry, aggregation API, publication fact, customer read boundary. |
 | 7. Conversion and commissions | `Not started` | Three rules, conversion snapshot, three unique records, paid/void constraints, report. |
