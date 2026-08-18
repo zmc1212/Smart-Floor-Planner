@@ -57,7 +57,9 @@ copy back to `layoutData`.
   closed rooms punches through that interface and merges them into one closed
   room. If the shared interface is split into collinear segments, deleting any
   one segment removes the whole collinear shared run rather than leaving a
-  dangling stub.
+  dangling stub. After that punch-through, collapsed collinear inner corners
+  must still produce a defined inner dimension plan whose every segment has
+  millimetre start and end points, so Canvas can render the merged room.
 - A T-branch started on a closed exterior wall middle keeps one topology node
   and physical wall. Inner/outer start selects the near/far point on the source
   wall boundary and the corresponding first-wall start inset; it does not

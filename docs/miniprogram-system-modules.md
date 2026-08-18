@@ -45,7 +45,8 @@ Canvas renderer, dimensions, BLE readings, audit queue, undo/redo, the
 right-rail confirmed canvas-clear/restart action, and save failure behavior
 must follow that contract. Deleting a wall shared by two closed rooms punches
 through that interface and merges them into one closed room, including when the
-shared run has been split into collinear segments.
+shared run has been split into collinear segments. A merged inner dimension
+plan must remain defined after collinear inner corners collapse.
 Closed exterior-wall T branches retain one topology node and physical wall.
 Inner/outer start selects the near/far point on the source boundary and the
 corresponding first-wall inset; it does not choose opposite local faces for the

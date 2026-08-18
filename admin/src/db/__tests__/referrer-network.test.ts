@@ -285,6 +285,10 @@ test('referrer memberships cap at three and exit disables the promotion token', 
     }
     assert.equal(contextVersion, 4);
     assert.equal((await repository.listReferrerMemberships(userId)).length, 3);
+    assert.equal(
+      await repository.countActiveReferrerPromotionCodes(enterpriseIds[1]),
+      1
+    );
 
     const limited = await repository.onboardReferrer({
       token: joinCodes[3].token,
@@ -311,6 +315,10 @@ test('referrer memberships cap at three and exit disables the promotion token', 
         .result,
       'code_disabled'
     );
+    assert.equal(
+      await repository.countActiveReferrerPromotionCodes(enterpriseIds[1]),
+      0
+    );
 
     const replacement = await repository.onboardReferrer({
       token: joinCodes[3].token,
@@ -321,6 +329,10 @@ test('referrer memberships cap at three and exit disables the promotion token', 
     });
     assert.equal(replacement.ok, true);
     if (replacement.ok) assert.equal(replacement.user.contextVersion, 6);
+    assert.equal(
+      await repository.countActiveReferrerPromotionCodes(enterpriseIds[3]),
+      1
+    );
     const history = await repository.listReferrerMemberships(userId);
     assert.equal(history.filter((row) => row.membership.status === 'active').length, 3);
     assert.equal(history.filter((row) => row.membership.status === 'exited').length, 1);

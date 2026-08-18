@@ -287,6 +287,42 @@ test('enterprise onboarding workbench accepts both WeChat image formats', () => 
   assert.doesNotMatch(page, /image\.type !== 'image\/png'\) throw new Error\('入驻二维码格式无效'\)/);
 });
 
+test('enterprise onboarding workbench links code-provider readiness to delivery diagnostics', () => {
+  const page = readFileSync(
+    path.join(
+      process.cwd(),
+      'src/app/(admin)/(merchant)/referrer-network-operations/page.tsx'
+    ),
+    'utf8'
+  );
+
+  assert.match(page, /微信小程序服务码能力[\s\S]*href: '\/workflow-logs'[\s\S]*actionLabel: '查看送达记录'/);
+  assert.doesNotMatch(page, /actionLabel: '查看通知配置'/);
+});
+
+test('enterprise onboarding readiness distinguishes active promotion codes from memberships', () => {
+  const repository = readFileSync(
+    path.join(process.cwd(), 'src/db/repositories/referrer-network-repository.ts'),
+    'utf8'
+  );
+  const route = readFileSync(
+    path.join(process.cwd(), 'src/app/api/enterprise/referrer-network-readiness/route.ts'),
+    'utf8'
+  );
+  const page = readFileSync(
+    path.join(
+      process.cwd(),
+      'src/app/(admin)/(merchant)/referrer-network-operations/page.tsx'
+    ),
+    'utf8'
+  );
+
+  assert.match(repository, /countActiveReferrerPromotionCodes[\s\S]*referrerPromotionCodes\.status, 'active'[\s\S]*referrerEnterpriseMemberships\.status, 'active'/);
+  assert.match(route, /network\.countActiveReferrerPromotionCodes\(enterpriseId\)/);
+  assert.match(page, /activeReferrerPromotionCodes/);
+  assert.match(page, /活动推荐人成员关系已有服务码/);
+});
+
 test('enterprise join-code rotation does not return a plaintext token', () => {
   const route = readFileSync(
     path.join(

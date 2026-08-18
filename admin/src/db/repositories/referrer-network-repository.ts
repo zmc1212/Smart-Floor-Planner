@@ -193,6 +193,24 @@ export class ReferrerNetworkRepository {
     return Number(rows[0]?.value ?? 0);
   }
 
+  async countActiveReferrerPromotionCodes(enterpriseId: bigint) {
+    const rows = await this.transaction
+      .select({ value: count() })
+      .from(referrerPromotionCodes)
+      .innerJoin(
+        referrerEnterpriseMemberships,
+        eq(referrerPromotionCodes.membershipId, referrerEnterpriseMemberships.id)
+      )
+      .where(
+        and(
+          eq(referrerPromotionCodes.enterpriseId, enterpriseId),
+          eq(referrerPromotionCodes.status, 'active'),
+          eq(referrerEnterpriseMemberships.status, 'active')
+        )
+      );
+    return Number(rows[0]?.value ?? 0);
+  }
+
   async revealActiveEnterpriseJoinCode(input: {
     enterpriseId: bigint;
     codeType: EnterpriseJoinCodeType;

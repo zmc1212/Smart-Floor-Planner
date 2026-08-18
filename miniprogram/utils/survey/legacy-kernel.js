@@ -5101,6 +5101,23 @@ function buildSpaceWallFaceSegments(floor, wallIds, wallFaceOverrides) {
   }).filter(Boolean);
 }
 
+function buildPlanEdgeSegments(faces, boundaryPoints) {
+  const points = (boundaryPoints || []).filter((point) => (
+    point && Number.isFinite(Number(point.xMm)) && Number.isFinite(Number(point.yMm))
+  ));
+  if (points.length < 2) return [];
+  return points.map((start, index) => {
+    const face = (faces || []).length === points.length
+      ? faces[index]
+      : (faces || [])[index];
+    return {
+      wallId: (face && face.wallId) || '',
+      start,
+      end: points[(index + 1) % points.length]
+    };
+  });
+}
+
 function buildFaceBoundaryPoints(segments, startKey, endKey) {
   if (!Array.isArray(segments) || segments.length < 3) return [];
   const points = segments.map((segment, index) => {
@@ -5205,11 +5222,7 @@ function buildSpaceDimensionPlan(floor, spaceOrWallIds) {
   return {
     innerBoundaryPoints,
     outerBoundaryPoints,
-    innerSegments: faces.map((face, index) => ({
-      wallId: face.wallId,
-      start: innerBoundaryPoints[index],
-      end: innerBoundaryPoints[(index + 1) % innerBoundaryPoints.length]
-    })),
+    innerSegments: buildPlanEdgeSegments(faces, innerBoundaryPoints),
     inner: Object.assign({}, innerBounds, {
       areaMm2: Math.round(calculatePolygonAreaMm2(innerBoundaryPoints))
     }),

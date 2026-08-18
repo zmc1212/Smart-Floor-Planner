@@ -22,10 +22,11 @@ export async function GET(request: Request) {
         const actorId = parsePostgresId(context.userId, 'actorId');
         const data = await withTenantTransaction(context.enterpriseId!, async (transaction) => {
           const network = new ReferrerNetworkRepository(transaction);
-          const [codes, events, activeReferrerMemberships, staff, appointmentSettings, commissionRules] = await Promise.all([
+          const [codes, events, activeReferrerMemberships, activeReferrerPromotionCodes, staff, appointmentSettings, commissionRules] = await Promise.all([
             network.listEnterpriseJoinCodes(enterpriseId),
             network.listEnterpriseJoinCodeEvents(enterpriseId),
             network.countActiveReferrerMemberships(enterpriseId),
+            network.countActiveReferrerPromotionCodes(enterpriseId),
             new AdminUserRepository(transaction).list({ roles: ['designer', 'measurer'], page: 1, limit: 200 }),
             new AppointmentRepository(transaction).getSettings(enterpriseId),
             new LeadCommissionRepository(transaction).listRules(enterpriseId, actorId),
@@ -44,6 +45,7 @@ export async function GET(request: Request) {
               createdAt: event.createdAt,
             })),
             activeReferrerMemberships,
+            activeReferrerPromotionCodes,
             staff: staff.rows.map((member) => adminUserToDto(member)),
             appointmentSettings: {
               id: appointmentSettings.id.toString(),

@@ -283,6 +283,39 @@ function createOuterFaceAdjacentRoomDraft() {
   return surveyGraph.confirmClosure(draft);
 }
 
+function createOuterFaceMidWallClosureDraft() {
+  const thicknessMm = 200;
+  const roomWidthMm = 3129;
+  const roomHeightMm = 3565;
+  const armWidthMm = 2454;
+  const armJoinYMm = 1569;
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.setThickness(draft, thicknessMm);
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: roomWidthMm, yMm: 0 }, roomWidthMm);
+  draft = commitWall(draft, { xMm: roomWidthMm, yMm: roomHeightMm }, roomHeightMm);
+  draft = commitWall(draft, { xMm: 0, yMm: roomHeightMm }, roomWidthMm);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, roomHeightMm);
+  draft = surveyGraph.confirmClosure(draft);
+
+  const outerStart = { xMm: roomWidthMm + thicknessMm, yMm: -thicknessMm };
+  const floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    outerStart,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = commitWall(draft, { xMm: outerStart.xMm + armWidthMm, yMm: outerStart.yMm }, armWidthMm);
+  draft = commitWall(draft, { xMm: outerStart.xMm + armWidthMm, yMm: armJoinYMm }, armJoinYMm - outerStart.yMm);
+  draft = surveyGraph.startPreview(draft, { xMm: outerStart.xMm, yMm: armJoinYMm });
+  return surveyGraph.confirmClosure(draft);
+}
+
 function createResetCursorMergeClosureDraft() {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 3000, yMm: 0 });
@@ -1157,6 +1190,102 @@ test('deleting a partial shared wall between staggered rooms merges them into on
     )).length;
     return startCount === 2 && endCount === 2;
   }), true);
+});
+
+test('punching through an outer-face mid-wall keeps the concave L corner from convex-mitering', () => {
+  const thicknessMm = 200;
+  const innerCorner = { xMm: 3129, yMm: 1569 };
+  const convexMiter = { xMm: innerCorner.xMm + thicknessMm, yMm: innerCorner.yMm + thicknessMm };
+  let draft = createOuterFaceMidWallClosureDraft();
+  const sharedWallId = findSharedWallIds(surveyGraph.getActiveFloor(draft))[0];
+  assert.ok(sharedWallId);
+
+  const mergedDraft = surveyGraph.deleteWall(draft, sharedWallId);
+  const mergedFloor = surveyGraph.getActiveFloor(mergedDraft);
+  const mergedSpaces = mergedFloor.spaces.filter((space) => space.closed);
+  const roundPoint = (point) => ({
+    xMm: Math.round(point.xMm),
+    yMm: Math.round(point.yMm)
+  });
+  const nodePoint = (wall, key) => roundPoint(surveyGraph.getNode(mergedFloor, wall[key]));
+  const stepWall = mergedFloor.walls.find((wall) => {
+    const start = nodePoint(wall, 'startNodeId');
+    const end = nodePoint(wall, 'endNodeId');
+    return start.yMm === innerCorner.yMm && end.yMm === innerCorner.yMm &&
+      Math.min(start.xMm, end.xMm) === innerCorner.xMm;
+  });
+  const remainingWall = mergedFloor.walls.find((wall) => {
+    const start = nodePoint(wall, 'startNodeId');
+    const end = nodePoint(wall, 'endNodeId');
+    return start.xMm === innerCorner.xMm && end.xMm === innerCorner.xMm &&
+      Math.min(start.yMm, end.yMm) === innerCorner.yMm &&
+      Math.max(start.yMm, end.yMm) > innerCorner.yMm;
+  });
+  assert.ok(stepWall);
+  assert.ok(remainingWall);
+
+  const stepGeometry = surveyGraph.buildWallRenderGeometry(mergedFloor, stepWall);
+  const remainingGeometry = surveyGraph.buildWallRenderGeometry(mergedFloor, remainingWall);
+  const stepOuterAtCorner = roundPoint(nodePoint(stepWall, 'endNodeId').xMm === innerCorner.xMm
+    ? stepGeometry.outerEnd
+    : stepGeometry.outerStart);
+  const remainingOuterAtCorner = roundPoint(nodePoint(remainingWall, 'startNodeId').xMm === innerCorner.xMm &&
+    nodePoint(remainingWall, 'startNodeId').yMm === innerCorner.yMm
+    ? remainingGeometry.outerStart
+    : remainingGeometry.outerEnd);
+
+  assert.equal(mergedSpaces.length, 1);
+  assert.notDeepEqual(stepOuterAtCorner, convexMiter);
+  assert.notDeepEqual(remainingOuterAtCorner, convexMiter);
+  assert.deepEqual(stepOuterAtCorner, { xMm: innerCorner.xMm, yMm: innerCorner.yMm + thicknessMm });
+  assert.deepEqual(remainingOuterAtCorner, { xMm: innerCorner.xMm + thicknessMm, yMm: innerCorner.yMm });
+});
+
+test('an outer-face corner merge still renders after punching through a remaining wall', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.setThickness(draft, 200);
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 6000, yMm: 0 }, 6000);
+  draft = commitWall(draft, { xMm: 6000, yMm: 4000 }, 4000);
+  draft = commitWall(draft, { xMm: 0, yMm: 4000 }, 6000);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 4000);
+  draft = surveyGraph.confirmClosure(draft);
+
+  const sourceFloor = surveyGraph.getActiveFloor(draft);
+  const outerTarget = surveyGraph.getCursorPlacementTarget(
+    sourceFloor,
+    { xMm: 3000, yMm: -200 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    outerTarget.pointMm,
+    outerTarget
+  );
+  draft = commitWall(draft, { xMm: 3000, yMm: -2000 }, 1800);
+  draft = commitWall(draft, { xMm: 6200, yMm: -2000 }, 3200);
+  draft = surveyGraph.startPreview(draft, { xMm: 6200, yMm: 100 });
+  draft = surveyGraph.confirmClosure(draft);
+
+  const closedFloor = surveyGraph.getActiveFloor(draft);
+  assert.equal(closedFloor.spaces.filter((space) => space.closed).length, 2);
+  const mergedDraft = surveyGraph.deleteWall(draft, closedFloor.walls[1].id);
+  const mergedFloor = surveyGraph.getActiveFloor(mergedDraft);
+  const mergedSpaces = mergedFloor.spaces.filter((space) => space.closed);
+  const plan = surveyGraph.buildSpaceDimensionPlan(mergedFloor, mergedSpaces[0]);
+  assert.equal(mergedSpaces.length, 1);
+  assert.equal(mergedFloor.session.state, 'spaceClosed');
+  assert.ok(plan);
+  assert.equal((plan.innerSegments || []).every((segment) => (
+    segment &&
+    segment.start &&
+    segment.end &&
+    Number.isFinite(segment.start.xMm) &&
+    Number.isFinite(segment.end.xMm)
+  )), true);
+  const mergedScene = createScene(mergedDraft);
+  assert.equal(mergedScene.closedSpaceFills.length, 1);
+  assert.equal(mergedScene.closedSpaceLabels.length, 1);
 });
 
 test('deleting an exterior wall still invalidates its single closed room', () => {
