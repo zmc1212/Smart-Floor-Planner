@@ -13,6 +13,7 @@
 # testing
 /coverage
 /.postgres-backups/
+/.cleanup-audits/
 
 # next.js
 /.next/

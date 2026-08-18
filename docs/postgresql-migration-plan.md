@@ -42,6 +42,11 @@ import is part of the current runtime contract.
   directly from an API handler.
 - A PostgreSQL write cannot be rolled back by switching to the stale MongoDB
   copy. Restore PostgreSQL from the tested backup/rebuild procedure instead.
+- `npm run db:backup` creates a custom PostgreSQL dump and records its duration.
+  `npm run db:restore-drill` restores only into the fixed
+  `smart_floor_planner_restore_drill` database, verifies the current app-schema
+  table/RLS/policy counts, records restore duration, and removes that drill
+  database afterwards.
 - Data deletion, secret re-encryption, bucket cleanup, and a new migration slice
   require a separate approved operational procedure.
 

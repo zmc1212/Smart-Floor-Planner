@@ -22,6 +22,7 @@ for (const [label, value] of [
 
 const backupDirectory = path.resolve(process.cwd(), '.postgres-backups');
 await fs.mkdir(backupDirectory, { recursive: true });
+const startedAt = Date.now();
 const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 const outputPath = path.join(backupDirectory, `${database}-${timestamp}.dump`);
 
@@ -71,6 +72,7 @@ console.log(
       success: true,
       backup: path.relative(process.cwd(), outputPath),
       bytes: stats.size,
+      durationMs: Date.now() - startedAt,
     },
     null,
     2

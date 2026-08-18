@@ -16,6 +16,7 @@
     "db:check": "node scripts/postgres-check.mjs",
     "db:backup": "node scripts/postgres-backup.mjs",
     "db:restore-drill": "node scripts/postgres-restore-drill.mjs",
+    "db:cleanup:dry-run": "node scripts/postgres-cleanup-dry-run.mjs",
     "docker:build": "docker compose build",
     "docker:build-admin": "docker compose build --no-cache admin",
     "docker:migrate": "docker compose run --rm migrate",

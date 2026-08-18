@@ -7,12 +7,12 @@ const sourceDatabase =
 const drillDatabase = 'smart_floor_planner_restore_drill';
 const owner = process.env.POSTGRES_BACKUP_USER || 'sfp_owner';
 const service = process.env.POSTGRES_DOCKER_SERVICE || 'postgres';
-const expectedTableCount = Number(process.env.POSTGRES_RESTORE_EXPECTED_TABLES || 45);
+const expectedTableCount = Number(process.env.POSTGRES_RESTORE_EXPECTED_TABLES || 68);
 const expectedRlsTableCount = Number(
-  process.env.POSTGRES_RESTORE_EXPECTED_RLS_TABLES || 26
+  process.env.POSTGRES_RESTORE_EXPECTED_RLS_TABLES || 47
 );
 const expectedPolicyCount = Number(
-  process.env.POSTGRES_RESTORE_EXPECTED_POLICIES || 52
+  process.env.POSTGRES_RESTORE_EXPECTED_POLICIES || 88
 );
 
 function assertSafeIdentifier(label, value) {
@@ -92,6 +92,7 @@ if (
 }
 
 await fs.access(backupPath);
+const startedAt = Date.now();
 
 try {
   await dockerCommand([
@@ -153,6 +154,7 @@ try {
         rlsTableCount,
         policyCount,
         migrationCheckpointRows: checkpointCount,
+        restoreDurationMs: Date.now() - startedAt,
       },
       null,
       2

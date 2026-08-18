@@ -34,6 +34,10 @@
 - API handler 必须显式序列化 `bigint`，不得直接返回 Repository 行对象。
 - PostgreSQL 写入后不能切回已经过期的 MongoDB 副本；应使用已验证的
   PostgreSQL 备份/重建流程恢复。
+- `npm run db:backup` 会创建 PostgreSQL 自定义 dump 并记录耗时。
+  `npm run db:restore-drill` 只恢复到固定的
+  `smart_floor_planner_restore_drill` 数据库，校验当前 app schema 的表/RLS/策略
+  数量、记录恢复耗时，并在完成后移除该演练库。
 - 数据删除、密钥重加密、对象存储清理和新的迁移切片都需要单独批准的运维流程。
 
 ## 当前核验原则

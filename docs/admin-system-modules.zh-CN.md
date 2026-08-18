@@ -32,7 +32,7 @@
 | 正式户型 | `/floorplans`、`/floorplans/[id]`、`/floorplans/kujiale` | `FloorPlanRepository`、量房适配器、DXF 导出 | 租户与户型权限；Implemented | 酷家乐供应商能力为 Limited |
 | 测量与 BLE 设备 | `/measurements`、`/devices` | 测量、设备、绑定、审计 Repository | 平台/企业分配边界；Implemented | 仅支持协议文档定义的测距仪 |
 | AI 工作室与生成 | AI 工作流、资产、供应商、价格、点数页面 | PostgreSQL AI Repository 与供应商适配器 | 平台及租户 AI 权限；Implemented/Limited | 供应商可用性和图片存储依赖外部服务 |
-| 媒体存储 | `/media-storage` | `media_assets`、供应商配置、存储适配器 | 平台管理员；Implemented | 对象存储清理由独立运维执行 |
+| 媒体存储 | `/media-storage`；`npm run db:backup`、`npm run db:restore-drill` 和 `npm run db:cleanup:dry-run` | `media_assets`、供应商配置、存储适配器；备份输出 PostgreSQL 自定义 dump 与耗时，恢复演练只使用 `smart_floor_planner_restore_drill` 并在移除该演练库前校验当前 app schema；清理 dry-run 在只读 PostgreSQL 事务中校验目标指纹、输出逐表保留/删除计数和七牛候选清单，不调用对象存储 | 平台管理员；Implemented/Limited | 对象存储清理和生产业务数据清理均须独立审批；dry-run 不删除数据库记录或对象 |
 | 小程序支撑 API | 诊断页及共用 API handler；匿名领取生产路由已接入小程序 | 身份/上下文、双码/推荐成员 API；`/api/miniprogram/codes/resolve` 签发 10 分钟待确认来源，`/api/miniprogram/referrer-memberships/[id]/promotion-code/image` 返回由微信生成的受保护 PNG，`/api/miniprogram/referrals/authorize-and-create-lead` 原子关联客户、锁归属、建线索和派单；第 5 阶段提供预约 API；第 6 阶段提供客户项目聚合、仅客户本人读取的已发布方案图片，以及设计师/企业负责人发布或撤回方案 API | 推广解析和服务码图片对客户匿名、对推荐人成员关系受保护；客户项目按 `customer_user_id` 校验，不信任客户端企业上下文；预约 API 按客户本人、负责设计师、已指派测量员或企业负责人隔离并使用租户事务；`/api/miniprogram/notification-template` 对已认证身份提供配置以便客户订阅授权；Implemented/Limited | 客户项目使用完成户型摘要和受保护已发布方案图片，不暴露可编辑 graph 或量房编辑器。预约创建、改期、取消在事务后尝试投递员工及已授权客户；微信小程序码生成、授权和通知依赖外部配置 |
 | 通知、自动化与诊断 | 通知设置、提醒运行时、诊断 | 通知模板、调度器、运维记录 | 平台/企业角色；Implemented/Limited | 微信可能拒绝订阅通知投递 |
 
