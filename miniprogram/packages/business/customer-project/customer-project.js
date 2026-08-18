@@ -22,16 +22,17 @@ function formatRange(range) {
 }
 
 Page({
-  data: { navigationTop: 24, navigationHeight: 32, navigationRight: 96, leadId: '', loading: true, appointment: null, range: null, error: '' },
+  data: { navigationTop: 24, navigationHeight: 32, navigationRight: 96, leadId: '', loading: true, appointment: null, designer: null, range: null, error: '' },
   onLoad(query) { this.setData({ ...navigationMetrics(), leadId: query.leadId || query.id || '' }); this.load(); },
   async onShow() { if (this.data.leadId) await this.load(); },
   async load() {
     if (!this.data.leadId) return this.setData({ loading: false, error: '缺少客户项目' });
     this.setData({ loading: true, error: '' });
     try {
-      const result = await api.request(`/appointments?leadId=${encodeURIComponent(this.data.leadId)}`, 'GET');
-      const appointment = (result.data || []).find((item) => item.status === 'confirmed') || null;
-      this.setData({ appointment, range: appointment ? formatRange(appointment.timeRange) : null });
+      const result = await api.request(`/miniprogram/customer-projects/${encodeURIComponent(this.data.leadId)}`, 'GET');
+      const project = result.data || {};
+      const appointment = project.appointment || null;
+      this.setData({ appointment, designer: project.designer || null, range: appointment ? formatRange(appointment.timeRange) : null });
     } catch (error) { this.setData({ error: error.message || '暂时无法加载预约' }); }
     finally { this.setData({ loading: false }); }
   },

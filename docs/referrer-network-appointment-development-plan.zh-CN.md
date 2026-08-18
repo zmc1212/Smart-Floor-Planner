@@ -1,6 +1,6 @@
 # 推荐人网络与预约量房闭环开发计划
 
-状态：`Approved design / Phase 5 completed`
+状态：`Approved design / Phase 6 in progress`
 
 本文是“推荐人多企业推广、客户授权建线索、自动派单、预约量房、AI 方案、签单和三方提成”破坏式改造的持续开发入口。当前代码、PostgreSQL schema、迁移和模块清单仍是已实现能力的依据；本文中的表、接口和路由在代码落地并通过测试前都只能标记为 `Planned`。
 
@@ -247,6 +247,8 @@ closed 为终止状态
 - 客户项目页统一展示设计师名片、最新预约、正式户型摘要和已发布方案。
 - 公共匿名领取链路不展示装修公司；进入本人项目和预约后按业务合同展示服务企业。
 
+阶段 6 的首个后端切片已实现：`CustomerProjectRepository` 将客户本人、企业、设计师名片、当前预约、完成的 v4 正式户型摘要和活动发布方案聚合为一个只读项目；读取强制以 `customer_user_id` 校验，不能以手机号或客户端企业上下文代替。负责设计师或企业负责人可只发布/撤回属于该线索且已成功的 AI generation；撤回保留生成记录，但立即从客户聚合和受保护图片端点隐藏。客户项目运行页继续使用已批准的第 5 阶段预约卡布局，但已改为读取该聚合，并在既有“服务信息”两行展示服务端返回的设计师和测量员；量房摘要和发布方案 UI 仍必须在确认对应设计源后接入。
+
 ## 11. 签单与三方提成
 
 - 企业分别配置推荐人、设计师、测量员规则；每个角色选择固定金额或合同金额比例。
@@ -274,6 +276,7 @@ closed 为终止状态
 | 可用时段 | `GET /api/appointments/availability`；第 5 阶段已完成，按企业排班、时长/步长、活动预约与不可用时间返回候选测量员可用时段，以及企业时区、时长、步长和最远可预约天数边界。 |
 | 预约 | `GET/POST /api/appointments`、`POST /api/appointments/[id]/customer-reschedule`、`POST /api/appointments/[id]/internal-reschedule`、`POST /api/appointments/[id]/cancel`、`POST /api/appointments/[id]/complete`；第 5 阶段已完成，已接通版本乐观锁、客户/设计师/测量员/企业负责人边界、自动换测量员、事件审计，以及创建、改期、取消后的事务后员工和已授权客户订阅消息尝试。客户读取和改期仅在请求线索或预约确属本人后推导企业范围，不接受 token 或请求声明的企业 ID。 |
 | 日历与配置 | `GET/PUT /api/appointment-settings`、`GET/POST/DELETE /api/measurer-unavailability`；第 5 阶段已完成。 |
+| 客户项目与方案发布 | `GET /api/miniprogram/customer-projects/[leadId]`、`GET /api/miniprogram/customer-projects/[leadId]/published-generations/[generationId]/image`、`POST /api/leads/[id]/ai-publications`、`DELETE /api/leads/[id]/ai-publications/[generationId]`；阶段 6 后端切片已实现。客户读取只允许本人项目，设计师仅能发布/撤回自己负责线索的已成功 generation，企业负责人可管理本企业线索；已撤回或已删除 generation 绝不出现在客户聚合或图片端点。 |
 | 提成 | `GET/PUT /api/commission-rules`、`GET /api/lead-commissions`、`POST /api/lead-commissions/mark-paid` |
 
 所有企业接口使用现有 tenant route/context helper 和 RLS；内部重试接口必须使用服务身份，不能暴露给普通客户端。
@@ -288,7 +291,7 @@ closed 为终止状态
 第 5 阶段运行路由已按各自已批准的第 5 阶段设计源写入两份设计还原台账：
 
 - `packages/business/referrer-workbench/referrer-workbench`：推荐人企业关系、内部企业选择和推广码入口。
-- `packages/business/customer-project/customer-project`：当前客户预约卡及改期入口；正式户型和发布方案聚合仍属第 6 阶段。
+- `packages/business/customer-project/customer-project`：当前客户预约卡及改期入口已读取第 6 阶段客户项目聚合，并在既有服务信息行展示真实设计师/测量员；正式户型和发布方案区仍属第 6 阶段。
 - `packages/business/appointment-reschedule/appointment-reschedule`：服务端计算客户可用时段与即时改期。
 - `packages/business/appointment-booking/appointment-booking`：负责设计师从无有效预约的线索详情进入，填写上门地址、选择服务端实时计算的可用时段并创建首次预约。
 - `packages/business/measurer-calendar/measurer-calendar`：已确认的测量员日程，提供不可用时间编辑入口。
@@ -333,7 +336,7 @@ closed 为终止状态
 | 3. 客户授权与自动派单 | `Completed` | 两阶段扫码、原子用户关联/建线索、首次有效归属、稳定最小负载派单、无候选保留、事务后通知、服务身份及员工池变化重试已实现；Repository/RLS/并发测试通过。 |
 | 4. 选定设计生产实现 | `Completed` | `promotion-service-code` 与 `free-design-service` 两条路由按 `390x844` 实现三屏状态；服务码图片接口、扫码解析、手机号授权、幂等建线索、设计师二维码交付和无设计师待分配状态已接通。Antigravity 2.8.1 通过内置 `generate_image` 按固定 `3x2` prompt 和有序参考图生成画板，六个独立透明 PNG 已裁切、优化并接入 `packages/business/assets/referral-service-v1/`，均不超过 300KB。聚焦测试通过；真实微信开发者工具 automator 在 iPhone 12/13 Pro `390x844` 模拟器上完成精确路由、元素边界和包含原生胶囊的整窗截图核验。 |
 | 5. 预约与日历 | `Completed` | 已实现租户预约设置、测量员不可用时间、工作时段校验、首次预约、客户/内部改期、取消/完成、事件审计、版本乐观锁和数据库排斥约束；推荐人可在内部工作台查询活动企业关系、选择企业、展示受保护服务码，并以确认流程退出关系（历史归属不变）。负责设计师在尚无有效预约时可从线索详情进入预约页，填写地址并从服务端实时可用时段创建首次预约。Repository/RLS/并发集成测试及客户预约、改期、测量员日程、本人不可用时间编辑器和推荐人工作台路由已实现；首次预约和客户改期在 iPhone 12/13 Pro `390x844` 自动化模拟器中核验通栏 CTA 的窗口计算宽度与左右边距。创建、改期、取消在事务后尝试向员工和已授权客户投递订阅消息；首次预约入口、推荐人工作台、客户预约卡、客户改期、首次预约、测量员日程与不可用时间编辑器均已在真实微信开发者工具 `390x844` 模拟器逐路由确认顶层路由和包含原生胶囊的整窗截图。 |
-| 6. 客户项目、量房与 AI 发布 | `Not started` | 正式量房入口、项目聚合 API、AI 发布事实和客户只读权限。 |
+| 6. 客户项目、量房与 AI 发布 | `In progress` | 已完成项目聚合 API、AI 发布/撤回事实和客户只读权限的 Repository/RLS 集成测试；既有已批准预约卡已读取聚合并展示真实设计师/测量员。待按批准设计接入正式户型/已发布方案区及量房入口，并补齐相应视觉核验。 |
 | 7. 签单与三方提成 | `Not started` | 三规则、签单快照、三条唯一提成、已付/作废约束和报表。 |
 | 8. 旧流程下线 | `Not started` | 删除旧绑定、获客确认、旧工作台和旧获客提成；文档与权限清单一致。 |
 | 9. 清理演练与生产发布 | `Not started` | dry-run、备份恢复演练、指纹确认、审计报告和独立批准。 |

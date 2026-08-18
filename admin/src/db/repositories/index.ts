@@ -11,6 +11,7 @@ export * from './ai-provider-config-repository';
 export * from './ai-style-preset-repository';
 export * from './ai-workflow-repository';
 export * from './commercial-repository';
+export * from './customer-project-repository';
 export * from './department-repository';
 export * from './device-repository';
 export * from './enterprise-repository';

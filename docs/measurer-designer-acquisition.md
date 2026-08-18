@@ -4,7 +4,7 @@ This is the focused business and data contract for the measurer–designer lead-
 
 ## Planned replacement
 
-The referrer-network and appointment loop has an approved design direction, and its schema/identity, dual-code network, customer-authorization/automatic-assignment backend, and the approved anonymous promotion-code/customer-claim screens are implemented. The referrer workbench, appointments, projects, and later workflow phases remain planned, and the new loop has not replaced the production acquisition flow described here. The breaking redesign starts from the [Referrer Network and Measurement Appointment Development Plan](./referrer-network-appointment-development-plan.md). Until that replacement is complete, this document continues to describe the currently implemented legacy acquisition flow and is not evidence for later workflow phases.
+The referrer-network and appointment loop has an approved design direction, and its schema/identity, dual-code network, customer authorization/automatic assignment, anonymous promotion-code/customer-claim screens, referrer workbench, and appointments are implemented. Phase 6 now includes the customer-project aggregate plus AI publication/withdrawal and customer-read backend, while the formal-floor-plan/published-design UI and later workflow phases remain in development. The new loop has not replaced the production acquisition flow described here. The breaking redesign starts from the [Referrer Network and Measurement Appointment Development Plan](./referrer-network-appointment-development-plan.md). Until that replacement is complete, this document continues to describe the currently implemented legacy acquisition flow and is not evidence for later workflow phases.
 
 ## 1. Scope and outcome
 
