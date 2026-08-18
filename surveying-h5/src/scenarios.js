@@ -178,6 +178,127 @@ function createScenarioCatalog(surveyGraph) {
     return surveyGraph.confirmClosure(draft);
   }
 
+  function mergedRoomAfterDeletion() {
+    // Regression test for deleting a shared wall between two adjacent rooms
+    // Room 1: 3129 wide × 3565 tall, wall thickness 200.
+    const thk = 200;
+    const room1W = 3129;
+    const room1H = 3565;
+    let draft = rectangle(room1W, room1H, { xMm: 0, yMm: 0 }, { thicknessMm: thk });
+    // Start at the outer top-right corner of Room 1.
+    draft = snapCursor(draft, { xMm: room1W + thk, yMm: -thk });
+    // Wall 1: horizontal right.
+    draft = commitWall(draft, { xMm: room1W + thk + 2454, yMm: -thk });
+    // Wall 2: vertical down.
+    draft = commitWall(draft, { xMm: room1W + thk + 2454, yMm: 1569 });
+    // Wall 3 preview: horizontal left, ending on Room 1's right outer face mid-section.
+    draft = surveyGraph.startPreview(draft, { xMm: room1W + thk, yMm: 1569 });
+    draft = surveyGraph.confirmClosure(draft);
+    
+    // Now delete the shared wall
+    const floor = draft.floors[0];
+    const spaces = floor.spaces || [];
+    if (spaces.length === 2) {
+      const room2 = spaces[1];
+      const sharedWallId = spaces[0].wallIds.find(id => room2.wallIds.includes(id));
+      if (sharedWallId) {
+        draft = surveyGraph.deleteWall(draft, sharedWallId);
+      }
+    }
+    return draft;
+  }
+
+  function mergedRoomMiddleDeletion() {
+    let draft = rectangle(3000, 4000, { xMm: 0, yMm: 0 }, { thicknessMm: 200 });
+    // draw room attached to the middle of the right wall
+    draft = snapCursor(draft, { xMm: 3200, yMm: 1000 });
+    draft = commitWall(draft, { xMm: 6200, yMm: 1000 });
+    draft = commitWall(draft, { xMm: 6200, yMm: 3000 });
+    draft = surveyGraph.startPreview(draft, { xMm: 3200, yMm: 3000 });
+    draft = surveyGraph.confirmClosure(draft);
+    
+    const floor = draft.floors[0];
+    const spaces = floor.spaces || [];
+    if (spaces.length === 2) {
+      const sharedWallId = spaces[0].wallIds.find(id => spaces[1].wallIds.includes(id));
+      if (sharedWallId) {
+        draft = surveyGraph.deleteWall(draft, sharedWallId);
+      }
+    }
+    return draft;
+  }
+
+  function mergedRoomWithThirdRoom() {
+    let draft = rectangle(3000, 4000, { xMm: 0, yMm: 0 }, { thicknessMm: 200 });
+    // Room 2 attached to the right
+    draft = snapCursor(draft, { xMm: 3200, yMm: 0 });
+    draft = commitWall(draft, { xMm: 6200, yMm: 0 });
+    draft = commitWall(draft, { xMm: 6200, yMm: 2000 });
+    draft = surveyGraph.startPreview(draft, { xMm: 3200, yMm: 2000 });
+    draft = surveyGraph.confirmClosure(draft);
+    
+    // Room 3 attached to the right of Room 1, below Room 2
+    draft = snapCursor(draft, { xMm: 3200, yMm: 2000 });
+    draft = commitWall(draft, { xMm: 6200, yMm: 2000 });
+    draft = commitWall(draft, { xMm: 6200, yMm: 4000 });
+    draft = surveyGraph.startPreview(draft, { xMm: 3200, yMm: 4000 });
+    draft = surveyGraph.confirmClosure(draft);
+
+    const floor = draft.floors[0];
+    const spaces = floor.spaces || [];
+    if (spaces.length === 3) {
+      // Delete shared wall between Room 1 and Room 2
+      const sharedWallId = spaces[0].wallIds.find(id => spaces[1].wallIds.includes(id));
+      if (sharedWallId) {
+        draft = surveyGraph.deleteWall(draft, sharedWallId);
+      }
+    }
+    return draft;
+  }
+
+  function mergedRoomCollinearRight() {
+    // Room 1: 4000x4000.
+    let draft = rectangle(4000, 4000, { xMm: 0, yMm: 0 }, { thicknessMm: 200 });
+    // Room 2: 2000x2000, attached to the right part of Room 1's top wall.
+    // So the right walls are collinear!
+    draft = snapCursor(draft, { xMm: 2000, yMm: -200 });
+    draft = commitWall(draft, { xMm: 2000, yMm: -2200 });
+    draft = commitWall(draft, { xMm: 4200, yMm: -2200 });
+    draft = surveyGraph.startPreview(draft, { xMm: 4200, yMm: -200 });
+    draft = surveyGraph.confirmClosure(draft);
+
+    const floor = draft.floors[0];
+    const spaces = floor.spaces || [];
+    if (spaces.length === 2) {
+      const sharedWallId = spaces[0].wallIds.find(id => spaces[1].wallIds.includes(id));
+      if (sharedWallId) {
+        draft = surveyGraph.deleteWall(draft, sharedWallId);
+      }
+    }
+    return draft;
+  }
+
+  function mergedRoomMiddleTopAttachment() {
+    let draft = rectangle(6000, 4000, { xMm: 0, yMm: 0 }, { thicknessMm: 200 });
+    // Room 2: 2000x2000, attached to the middle of Room 1's top wall.
+    // Room 1 top wall goes from 0 to 6000 at y=0.
+    // Room 2 attaches at x=2000 to x=4000 on y=0.
+    draft = snapCursor(draft, { xMm: 2000, yMm: 0 });
+    draft = commitWall(draft, { xMm: 2000, yMm: -2000 });
+    draft = commitWall(draft, { xMm: 4000, yMm: -2000 });
+    draft = surveyGraph.startPreview(draft, { xMm: 4000, yMm: 0 });
+    draft = surveyGraph.confirmClosure(draft);
+
+    const floor = draft.floors[0];
+    const spaces = floor.spaces || [];
+    if (spaces.length === 2) {
+      const sharedWallId = spaces[0].wallIds.find(id => spaces[1].wallIds.includes(id));
+      if (sharedWallId) {
+        draft = surveyGraph.deleteWall(draft, sharedWallId);
+      }
+    }
+    return draft;
+  }
 
   function partitionedRoom() {
     return addPartition(
@@ -451,6 +572,26 @@ function createScenarioCatalog(surveyGraph) {
       description: '房间2从房间1右上外角出发，3面墙后闭合到右壁外侧中段（非端点）。修复前产生偏移，修复后应得到正确L型。',
       expected: { walls: 9, spaces: 2, openings: 0 },
       build: outerFaceMidWallClosure
+    },
+    {
+      key: 'merged-room-after-deletion', category: '共墙多空间', label: '删除共墙后合并',
+      description: '删除两相邻房间的共享墙，测试空间合并算法。', expected: { walls: 6, spaces: 1, openings: 0 },
+      build: mergedRoomAfterDeletion
+    },
+    {
+      key: 'merged-room-middle-deletion', category: '共墙多空间', label: '中段删除合并',
+      description: '删除中间共墙，测试剩余悬空墙是否导致合并失败。', expected: { walls: 10, spaces: 1, openings: 0 },
+      build: mergedRoomMiddleDeletion
+    },
+    {
+      key: 'merged-room-collinear-right', category: '共墙多空间', label: '右壁共线合并',
+      description: '测试共线墙的合并。', expected: { walls: 6, spaces: 1, openings: 0 },
+      build: mergedRoomCollinearRight
+    },
+    {
+      key: 'merged-room-middle-top', category: '共墙多空间', label: '顶壁中段合并',
+      description: '测试顶壁中段的合并。', expected: { walls: 10, spaces: 1, openings: 0 },
+      build: mergedRoomMiddleTopAttachment
     },
     {
       key: 'partition', category: '共墙多空间', label: '单房贯穿分割',

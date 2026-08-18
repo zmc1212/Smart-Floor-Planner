@@ -5,11 +5,18 @@
     "miniprogram": {
       "list": [
         {
-          "name": "packages/surveying/editor/surveying-editor",
-          "pathName": "packages/surveying/editor/surveying-editor",
+          "name": "packages/business/onboarding/onboarding",
+          "pathName": "packages/business/onboarding/onboarding",
           "query": "",
           "scene": null,
           "launchMode": "default"
+        },
+        {
+          "name": "packages/surveying/editor/surveying-editor",
+          "pathName": "packages/surveying/editor/surveying-editor",
+          "query": "",
+          "launchMode": "default",
+          "scene": null
         }
       ]
     }

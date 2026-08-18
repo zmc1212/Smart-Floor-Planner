@@ -27,11 +27,13 @@ function loginCode() {
 
 function safeToken(value) {
   const raw = String(value || '').trim();
+  let decoded = raw;
   try {
-    return decodeURIComponent(raw);
+    decoded = decodeURIComponent(raw);
   } catch (error) {
-    return raw;
+    // Keep the original value when the QR scene is not URI encoded.
   }
+  return /^[A-Za-z0-9_-]{32}$/.test(decoded) ? `rp_${decoded}` : decoded;
 }
 
 function deviceSummary() {

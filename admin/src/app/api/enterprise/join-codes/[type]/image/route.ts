@@ -3,7 +3,10 @@ import { ReferrerNetworkRepository } from '@/db/repositories';
 import { parsePostgresId } from '@/db/postgres-dto';
 import { withTenantTransaction } from '@/db/transaction';
 import { isEnterpriseJoinCodeType } from '@/lib/referrer-network-api';
-import { createEnterpriseOnboardingCode } from '@/lib/wechat-miniprogram-code';
+import {
+  createEnterpriseOnboardingCode,
+  getMiniProgramCodeContentType,
+} from '@/lib/wechat-miniprogram-code';
 import { withTenantRoute } from '@/lib/tenant-route';
 
 export const dynamic = 'force-dynamic';
@@ -39,11 +42,13 @@ export async function POST(
         }
         try {
           const image = await createEnterpriseOnboardingCode(revealed.token);
+          const contentType = getMiniProgramCodeContentType(image) ?? 'application/octet-stream';
+          const extension = contentType === 'image/jpeg' ? 'jpg' : 'png';
           return new NextResponse(image, {
             headers: {
-              'Content-Type': 'image/png',
+              'Content-Type': contentType,
               'Cache-Control': 'private, no-store, max-age=0',
-              'Content-Disposition': `inline; filename="${type}-onboarding-code.png"`,
+              'Content-Disposition': `inline; filename="${type}-onboarding-code.${extension}"`,
             },
           });
         } catch (error) {

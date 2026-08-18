@@ -13,6 +13,7 @@ import {
   createEnterpriseOnboardingCode,
   createPromotionServiceCode,
   ENTERPRISE_ONBOARDING_PAGE,
+  getMiniProgramCodeContentType,
   PROMOTION_SERVICE_PAGE,
 } from '@/lib/wechat-miniprogram-code';
 
@@ -55,7 +56,7 @@ test('pending referral sources are opaque, authenticated, and time limited', () 
   );
 });
 
-test('promotion service codes use the anonymous claim route and real WeChat PNG bytes', async () => {
+test('promotion service codes use the anonymous claim route and real WeChat image bytes', async () => {
   const previousAppId = process.env.WX_APPID;
   const previousSecret = process.env.WX_APPSECRET;
   process.env.WX_APPID = 'wx_test_app';
@@ -102,7 +103,7 @@ test('promotion service codes use the anonymous claim route and real WeChat PNG 
   }
 });
 
-test('enterprise onboarding codes use the dedicated Mini Program route and real WeChat PNG bytes', async () => {
+test('enterprise onboarding codes use the dedicated Mini Program route and real WeChat image bytes', async () => {
   const previousAppId = process.env.WX_APPID;
   const previousSecret = process.env.WX_APPSECRET;
   process.env.WX_APPID = 'wx_test_app';
@@ -147,6 +148,83 @@ test('enterprise onboarding codes use the dedicated Mini Program route and real 
   }
 });
 
+test('WeChat JPEG Mini Program code bytes are accepted and preserve their media type', async () => {
+  const previousAppId = process.env.WX_APPID;
+  const previousSecret = process.env.WX_APPSECRET;
+  process.env.WX_APPID = 'wx_test_app';
+  process.env.WX_APPSECRET = 'test_secret';
+  resetWechatAccessTokenCacheForTests();
+
+  const token = `ej_${'C'.repeat(32)}`;
+  const jpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+  const fetchImpl = (async (input: string | URL | Request) => {
+    if (String(input).includes('/cgi-bin/token')) {
+      return new Response(
+        JSON.stringify({ access_token: 'wechat_access_token', expires_in: 7200 }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    return new Response(jpeg, {
+      status: 200,
+      headers: { 'Content-Type': 'image/jpeg' },
+    });
+  }) as typeof fetch;
+
+  try {
+    const bytes = await createEnterpriseOnboardingCode(token, { fetchImpl });
+    assert.deepEqual([...bytes], [...jpeg]);
+    assert.equal(getMiniProgramCodeContentType(bytes), 'image/jpeg');
+  } finally {
+    resetWechatAccessTokenCacheForTests();
+    if (previousAppId === undefined) delete process.env.WX_APPID;
+    else process.env.WX_APPID = previousAppId;
+    if (previousSecret === undefined) delete process.env.WX_APPSECRET;
+    else process.env.WX_APPSECRET = previousSecret;
+  }
+});
+
+test('development Mini Program codes target the develop version with a compact scene token', async () => {
+  const previousAppId = process.env.WX_APPID;
+  const previousSecret = process.env.WX_APPSECRET;
+  process.env.WX_APPID = 'wx_test_app';
+  process.env.WX_APPSECRET = 'test_secret';
+  resetWechatAccessTokenCacheForTests();
+
+  const token = `ej_${'D'.repeat(32)}`;
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    calls.push({ url, init });
+    if (url.includes('/cgi-bin/token')) {
+      return new Response(
+        JSON.stringify({ access_token: 'wechat_access_token', expires_in: 7200 }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    return new Response(png, {
+      status: 200,
+      headers: { 'Content-Type': 'image/png' },
+    });
+  }) as typeof fetch;
+
+  try {
+    await createEnterpriseOnboardingCode(token, { fetchImpl, envVersion: 'develop' });
+    assert.match(calls[1].url, /\/wxa\/getwxacodeunlimit\?/);
+    const body = JSON.parse(String(calls[1].init?.body));
+    assert.equal(body.scene, 'D'.repeat(32));
+    assert.equal(body.page, ENTERPRISE_ONBOARDING_PAGE);
+    assert.equal(body.env_version, 'develop');
+    assert.equal(body.check_path, false);
+  } finally {
+    resetWechatAccessTokenCacheForTests();
+    if (previousAppId === undefined) delete process.env.WX_APPID;
+    else process.env.WX_APPID = previousAppId;
+    if (previousSecret === undefined) delete process.env.WX_APPSECRET;
+    else process.env.WX_APPSECRET = previousSecret;
+  }
+});
+
 test('promotion code image route keeps provider failures stable and private', () => {
   const route = readFileSync(
     path.join(
@@ -178,6 +256,19 @@ test('enterprise onboarding image route is tenant-protected and keeps provider f
   assert.match(route, /Cache-Control': 'private, no-store, max-age=0'/);
   assert.match(route, /wechat_code_unavailable[\s\S]*status:\s*502/);
   assert.doesNotMatch(route, /data:\s*\{[^}]*token/);
+});
+
+test('enterprise onboarding workbench accepts both WeChat image formats', () => {
+  const page = readFileSync(
+    path.join(
+      process.cwd(),
+      'src/app/(admin)/(merchant)/referrer-network-operations/page.tsx'
+    ),
+    'utf8'
+  );
+
+  assert.match(page, /image\.type !== 'image\/png' && image\.type !== 'image\/jpeg'/);
+  assert.doesNotMatch(page, /image\.type !== 'image\/png'\) throw new Error\('入驻二维码格式无效'\)/);
 });
 
 test('enterprise join-code rotation does not return a plaintext token', () => {

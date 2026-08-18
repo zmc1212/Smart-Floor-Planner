@@ -50,6 +50,7 @@ test('free design service resolves before phone authorization and renders truthf
   }
   assert.match(js, /\/miniprogram\/codes\/resolve/);
   assert.match(js, /\/miniprogram\/referrals\/authorize-and-create-lead/);
+  assert.match(js, /`rp_\$\{decoded\}`/);
   assert.match(js, /'Idempotency-Key'/);
   assert.match(js, /pageState:\s*designerProfile\s*\?\s*'success'\s*:\s*'pending'/);
   assert.match(js, /wx\.setClipboardData/);

@@ -91,7 +91,11 @@ export default function ReferrerNetworkOperationsPage() {
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [loading, setLoading] = useState(true);
   const [actingType, setActingType] = useState<JoinCodeType | null>(null);
-  const [onboardingCode, setOnboardingCode] = useState<{ codeType: JoinCodeType; imageUrl: string } | null>(null);
+  const [onboardingCode, setOnboardingCode] = useState<{
+    codeType: JoinCodeType;
+    imageUrl: string;
+    imageType: 'image/png' | 'image/jpeg';
+  } | null>(null);
   const [globalTenantId, setGlobalTenantId] = useState('all');
 
   const requiresTenantSelection = Boolean(
@@ -173,8 +177,10 @@ export default function ReferrerNetworkOperationsPage() {
         throw new Error(result?.error || '生成入驻二维码失败');
       }
       const image = await response.blob();
-      if (image.type !== 'image/png') throw new Error('入驻二维码格式无效');
-      setOnboardingCode({ codeType, imageUrl: URL.createObjectURL(image) });
+      if (image.type !== 'image/png' && image.type !== 'image/jpeg') {
+        throw new Error('入驻二维码格式无效');
+      }
+      setOnboardingCode({ codeType, imageType: image.type, imageUrl: URL.createObjectURL(image) });
       notify.success(`${CODE_LABELS[codeType]}已生成，可供微信扫码入驻`);
       await loadReadiness();
     } catch (error) {
@@ -234,7 +240,7 @@ export default function ReferrerNetworkOperationsPage() {
     if (!onboardingCode) return;
     const link = document.createElement('a');
     link.href = onboardingCode.imageUrl;
-    link.download = `${onboardingCode.codeType}-onboarding-code.png`;
+    link.download = `${onboardingCode.codeType}-onboarding-code.${onboardingCode.imageType === 'image/jpeg' ? 'jpg' : 'png'}`;
     document.body.appendChild(link);
     link.click();
     link.remove();

@@ -35,6 +35,7 @@ test('onboarding page resolves an enterprise code before collecting a phone auth
   assert.match(js, /\/miniprogram\/codes\/resolve/);
   assert.match(js, /\/miniprogram\/onboarding\/staff/);
   assert.match(js, /\/miniprogram\/onboarding\/referrer/);
+  assert.match(js, /`ej_\$\{decoded\}`/);
   assert.match(js, /code_rotated/);
   assert.match(wxml, /navigationRight/);
   assert.match(wxss, /safe-area-inset-bottom/);

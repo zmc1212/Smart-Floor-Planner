@@ -10,7 +10,10 @@ import {
   referrerNetworkError,
   validateMiniProgramIdentity,
 } from '@/lib/referrer-network-api';
-import { createPromotionServiceCode } from '@/lib/wechat-miniprogram-code';
+import {
+  createPromotionServiceCode,
+  getMiniProgramCodeContentType,
+} from '@/lib/wechat-miniprogram-code';
 
 export const dynamic = 'force-dynamic';
 
@@ -58,11 +61,13 @@ export async function GET(
 
   try {
     const image = await createPromotionServiceCode(result.promotion.token);
+    const contentType = getMiniProgramCodeContentType(image) ?? 'application/octet-stream';
+    const extension = contentType === 'image/jpeg' ? 'jpg' : 'png';
     return new NextResponse(image, {
       headers: {
-        'Content-Type': 'image/png',
+        'Content-Type': contentType,
         'Cache-Control': 'private, no-store, max-age=0',
-        'Content-Disposition': 'inline; filename="promotion-service-code.png"',
+        'Content-Disposition': `inline; filename="promotion-service-code.${extension}"`,
       },
     });
   } catch (error) {

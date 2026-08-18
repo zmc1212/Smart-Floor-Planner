@@ -77,8 +77,11 @@ continuations and shared internal partitions keep their existing closure behavio
   `/api/miniprogram/identity-contexts/switch`, and the shared context resolver.
   Context lists are always read from the database; a switch cannot assert an
   enterprise, staff identity, or referrer membership that is not active.
-- Referrer network: enterprise join-code PNGs open the dedicated onboarding
-  route, which resolves only the opaque token type before phone authorization
+- Referrer network: enterprise join-code PNG/JPEGs open the dedicated onboarding
+  route, which resolves only the opaque token type before phone authorization.
+  Local/experience code generation can target `develop`/`trial` through
+  `getwxacodeunlimit`; its 32-character `scene` carries the token digest and
+  the onboarding page restores the `ej_`/`rp_` prefix before resolution
   and then uses the existing onboarding API. The promotion display route loads
   a protected WeChat Mini Program code for the current referrer membership; the anonymous claim route
   classifies and audits opaque tokens and issues a short-lived pending source

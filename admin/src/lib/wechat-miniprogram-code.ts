@@ -5,6 +5,13 @@ export const PROMOTION_SERVICE_PAGE =
 export const ENTERPRISE_ONBOARDING_PAGE =
   'packages/business/onboarding/onboarding';
 
+export type MiniProgramCodeEnvironment = 'release' | 'trial' | 'develop';
+
+export type MiniProgramCodeOptions = {
+  fetchImpl?: typeof fetch;
+  envVersion?: MiniProgramCodeEnvironment;
+};
+
 export function buildPromotionServicePath(token: string) {
   const normalized = token.trim();
   if (!/^rp_[A-Za-z0-9_-]{24,}$/.test(normalized)) {
@@ -31,22 +38,43 @@ export function buildEnterpriseOnboardingPath(token: string) {
 
 async function createMiniProgramCode(
   path: string,
-  options: { fetchImpl?: typeof fetch } = {}
+  token: string,
+  options: MiniProgramCodeOptions = {}
 ) {
   const fetchImpl = options.fetchImpl ?? fetch;
+  const envVersion = resolveMiniProgramCodeEnvironment(options.envVersion);
   const accessToken = await getWechatAccessToken({ fetchImpl });
+  const isRelease = envVersion === 'release';
+  const page = path.split('?')[0];
+  const scene = token.slice(3);
+  if (!isRelease && !/^[A-Za-z0-9_-]{32}$/.test(scene)) {
+    throw new Error('Mini Program code token cannot be encoded into scene');
+  }
   const response = await fetchImpl(
-    `https://api.weixin.qq.com/wxa/getwxacode?access_token=${encodeURIComponent(accessToken)}`,
+    `https://api.weixin.qq.com/wxa/${isRelease ? 'getwxacode' : 'getwxacodeunlimit'}?access_token=${encodeURIComponent(accessToken)}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        path,
-        width: 430,
-        auto_color: false,
-        line_color: { r: 8, g: 137, b: 57 },
-        is_hyaline: false,
-      }),
+      body: JSON.stringify(
+        isRelease
+          ? {
+              path,
+              width: 430,
+              auto_color: false,
+              line_color: { r: 8, g: 137, b: 57 },
+              is_hyaline: false,
+            }
+          : {
+              scene,
+              page,
+              check_path: false,
+              env_version: envVersion,
+              width: 430,
+              auto_color: false,
+              line_color: { r: 8, g: 137, b: 57 },
+              is_hyaline: false,
+            }
+      ),
     }
   );
   const bytes = new Uint8Array(await response.arrayBuffer());
@@ -61,22 +89,56 @@ async function createMiniProgramCode(
     }
     throw new Error(message);
   }
-  if (bytes.length < 8 || bytes[0] !== 0x89 || bytes[1] !== 0x50) {
+  if (!getMiniProgramCodeContentType(bytes)) {
     throw new Error('WeChat returned an invalid Mini Program code image');
   }
   return bytes;
 }
 
+function resolveMiniProgramCodeEnvironment(
+  requested?: MiniProgramCodeEnvironment
+): MiniProgramCodeEnvironment {
+  const configured = requested ?? process.env.WX_MINIPROGRAM_CODE_ENV_VERSION;
+  if (configured === 'release' || configured === 'trial' || configured === 'develop') {
+    return configured;
+  }
+  return process.env.NODE_ENV === 'development' ? 'develop' : 'release';
+}
+
+/**
+ * WeChat's code endpoints return JPEG bytes in production (and PNG bytes in
+ * some environments). Keep the signature check independent of the provider's
+ * Content-Type header, which has not been consistent across responses.
+ */
+export function getMiniProgramCodeContentType(
+  bytes: Uint8Array
+): 'image/png' | 'image/jpeg' | null {
+  const isPng =
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a;
+  if (isPng) return 'image/png';
+
+  const isJpeg = bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  return isJpeg ? 'image/jpeg' : null;
+}
+
 export async function createPromotionServiceCode(
   token: string,
-  options: { fetchImpl?: typeof fetch } = {}
+  options: MiniProgramCodeOptions = {}
 ) {
-  return createMiniProgramCode(buildPromotionServicePath(token), options);
+  return createMiniProgramCode(buildPromotionServicePath(token), token, options);
 }
 
 export async function createEnterpriseOnboardingCode(
   token: string,
-  options: { fetchImpl?: typeof fetch } = {}
+  options: MiniProgramCodeOptions = {}
 ) {
-  return createMiniProgramCode(buildEnterpriseOnboardingPath(token), options);
+  return createMiniProgramCode(buildEnterpriseOnboardingPath(token), token, options);
 }
