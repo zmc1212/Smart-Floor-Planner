@@ -87,9 +87,14 @@ Component({
       if (this.data.loading) return;
 
       const page = reset ? 1 : this.data.page;
-      const openid = this.data.openid || getApp().globalData.openid;
+      const app = getApp();
+      const hasSession = Boolean(
+        this.data.openid
+        || app.globalData.openid
+        || app.globalData.token
+      );
 
-      if (!openid) return;
+      if (!hasSession) return;
 
       this.setData({ loading: true, errorMessage: '' });
 

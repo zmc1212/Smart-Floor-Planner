@@ -11,7 +11,8 @@ App({
     justLoggedIn: false,
     sessionHydrated: false,
     sessionHydrating: false,
-    roleLandingRedirected: false
+    roleLandingRedirected: false,
+    roleLandingRestoreRetries: 0
   },
   onLaunch(options) {
     console.log('智能量房大师小程序启动', options);
@@ -113,7 +114,14 @@ App({
   restoreRoleLanding() {
     if (this.globalData.roleLandingRedirected || !this.globalData.userInfo) return;
     const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
-    if (!pages.length) return;
+    if (!pages.length) {
+      if (this.globalData.roleLandingRestoreRetries < 3) {
+        this.globalData.roleLandingRestoreRetries += 1;
+        setTimeout(() => this.restoreRoleLanding(), 50);
+      }
+      return;
+    }
+    this.globalData.roleLandingRestoreRetries = 0;
     const current = pages[pages.length - 1].route || '';
     const rootRoutes = new Set(['pages/index/index', 'pages/mine/mine']);
     if (!rootRoutes.has(current)) return;

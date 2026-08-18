@@ -65,7 +65,10 @@ copy back to `layoutData`.
   into the room. Inner-face closures keep each remaining wall's original body
   side, so the merged inner L extends into the room and collinear walls with
   opposite thickness stay a stepped facade. The two remaining walls at that
-  inner L must still show a filled intersection on the wall-solid outline.
+  inner L keep overlapping rectangular solids; they must not convex-miter a
+  trapezoid that cuts a triangular hole out of the join. Collinear remaining
+  walls with opposite thickness keep a stepped outer facade and fill only the
+  inner thickness corner into the room.
 - A T-branch started on a closed exterior wall middle keeps one topology node
   and physical wall. Inner/outer start selects the near/far point on the source
   wall boundary and the corresponding first-wall start inset; it does not

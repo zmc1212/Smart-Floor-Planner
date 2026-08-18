@@ -114,13 +114,7 @@ Page({
   },
 
   finishLogin() {
-    const pages = getCurrentPages();
-    // 如果页面栈大于1，说明是从其他页面跳过来的，直接返回
-    if (pages.length > 1) {
-      wx.navigateBack();
-    } else {
-      navigateToRoleLanding(app.globalData.userInfo);
-    }
+    navigateToRoleLanding(app.globalData.userInfo);
   },
 
   onBack() {

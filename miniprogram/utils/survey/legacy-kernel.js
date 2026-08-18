@@ -1332,21 +1332,6 @@ function isInteriorJoinProjection(segment, point) {
   return along > inset && along < segment.lengthMm - inset;
 }
 
-function isPastEndpointJoin(segment, point) {
-  if (!segment || !point) return false;
-  const along = projectAlong(segment, point);
-  return along < -1 || along > segment.lengthMm + 1;
-}
-
-function shouldExtendSolidOuterToInnerJoin(current, adjacent, miter) {
-  if (!current || !adjacent || !miter) return false;
-  const currentPast = isPastEndpointJoin(current, miter);
-  const adjacentPast = isPastEndpointJoin(adjacent, miter);
-  const currentInterior = isInteriorJoinProjection(current, miter);
-  const adjacentInterior = isInteriorJoinProjection(adjacent, miter);
-  return (currentPast && adjacentInterior) || (currentInterior && adjacentPast);
-}
-
 function offsetJoinPoint(current, adjacent) {
   if (!current || !adjacent) return null;
   const point = intersectLines(current.outerStart, current.outerEnd, adjacent.outerStart, adjacent.outerEnd);
@@ -1401,12 +1386,7 @@ function buildWallRenderGeometry(floor, wall, options) {
     outerEnd,
     outerStartAlongMm: projectAlong(current, outerStart),
     outerEndAlongMm: projectAlong(current, outerEnd),
-    thicknessMm: current.thicknessMm,
-    // A past-end miter that lands inside the adjacent wall is the inner-L join
-    // into the room. Extend both solids to that meeting point so the two walls
-    // still show an intersection after a shared-wall punch-through.
-    extendSolidOuterStart: shouldExtendSolidOuterToInnerJoin(current, startAdjacent, startMiter),
-    extendSolidOuterEnd: shouldExtendSolidOuterToInnerJoin(current, endAdjacent, endMiter)
+    thicknessMm: current.thicknessMm
   };
 }
 

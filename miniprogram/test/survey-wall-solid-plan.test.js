@@ -117,6 +117,18 @@ test('wall union removes the branch cap at a T join', () => {
   }), false);
 });
 
+function pointInPolygon(point, polygon) {
+  let inside = false;
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+    const current = polygon[index];
+    const prior = polygon[previous];
+    const intersects = ((current.y > point.y) !== (prior.y > point.y)) &&
+      point.x < ((prior.x - current.x) * (point.y - current.y)) / (prior.y - current.y) + current.x;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
 test('overlapping duplicate wall bodies are emitted once', () => {
   const plan = createWallSolidPlan({
     walls: [
@@ -127,4 +139,65 @@ test('overlapping duplicate wall bodies are emitted once', () => {
 
   assert.equal(plan.rings.length, 1);
   assertArea(areaOfPlan(plan), 200000);
+});
+
+test('wall union fills the inner step when collinear walls have opposite thickness', () => {
+  const plan = createWallSolidPlan({
+    walls: [
+      {
+        id: 'upper',
+        start: { x: 6000, y: 0 },
+        end: { x: 6000, y: -2000 },
+        outerStart: { x: 5800, y: 0 },
+        outerEnd: { x: 5800, y: -2000 },
+        thickness: 200,
+        polygon: rectangle(5800, -2000, 200, 2000)
+      },
+      {
+        id: 'lower',
+        start: { x: 6000, y: 0 },
+        end: { x: 6000, y: 4000 },
+        outerStart: { x: 6200, y: 0 },
+        outerEnd: { x: 6200, y: 4000 },
+        thickness: 200,
+        polygon: rectangle(6000, 0, 200, 4000)
+      }
+    ]
+  });
+
+  assert.equal(plan.rings.length, 1);
+  assert.equal(plan.joinPolygons.length, 1);
+  assert.equal(pointInPolygon({ x: 5900, y: 100 }, plan.rings[0]), true);
+  assert.equal(pointInPolygon({ x: 6100, y: -100 }, plan.rings[0]), false);
+  assert.equal(plan.rings[0].some((point) => Math.abs(point.x - 5800) < 0.01), true);
+  assert.equal(plan.rings[0].some((point) => Math.abs(point.x - 6200) < 0.01), true);
+});
+
+test('same-side collinear walls do not grow an extra thickness stub', () => {
+  const plan = createWallSolidPlan({
+    walls: [
+      {
+        id: 'first',
+        start: { x: 0, y: 0 },
+        end: { x: 0, y: 1000 },
+        outerStart: { x: 200, y: 0 },
+        outerEnd: { x: 200, y: 1000 },
+        thickness: 200,
+        polygon: rectangle(0, 0, 200, 1000)
+      },
+      {
+        id: 'second',
+        start: { x: 0, y: 1000 },
+        end: { x: 0, y: 2000 },
+        outerStart: { x: 200, y: 1000 },
+        outerEnd: { x: 200, y: 2000 },
+        thickness: 200,
+        polygon: rectangle(0, 1000, 200, 1000)
+      }
+    ]
+  });
+
+  assert.equal(plan.rings.length, 1);
+  assert.equal(plan.joinPolygons.length, 0);
+  assertArea(areaOfPlan(plan), 200 * 2000);
 });

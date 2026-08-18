@@ -1,7 +1,14 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const navigation = require('../utils/identity-navigation.js');
+
+const loginSource = fs.readFileSync(
+  path.join(__dirname, '..', 'packages', 'business', 'login', 'login.js'),
+  'utf8'
+);
 
 test('role landing keeps referrers out of the generic home shell', () => {
   assert.equal(
@@ -33,4 +40,11 @@ test('role landing navigation is idempotent and uses relaunch for subpackage rou
     global.wx = originalWx;
     global.getCurrentPages = originalPages;
   }
+});
+
+test('login completion always enters the signed identity landing', () => {
+  assert.match(
+    loginSource,
+    /finishLogin\(\)\s*\{\s*navigateToRoleLanding\(app\.globalData\.userInfo\);\s*\}/
+  );
 });

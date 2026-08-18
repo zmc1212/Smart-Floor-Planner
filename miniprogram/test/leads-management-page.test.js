@@ -103,6 +103,12 @@ test('Leads management search and filter controls are functional', () => {
   assert.doesNotMatch(componentJs, /筛选功能开发中/);
 });
 
+test('Leads list accepts bearer sessions without requiring a legacy OpenID', () => {
+  assert.match(componentJs, /const app = getApp\(\);/);
+  assert.match(componentJs, /app\.globalData\.token/);
+  assert.doesNotMatch(componentJs, /if \(!openid\) return;/);
+});
+
 test('Leads visual assets exist and micro-icons stay within budget', () => {
   const assetDir = path.join(miniRoot, 'images', 'leads-v4');
   const icons = [

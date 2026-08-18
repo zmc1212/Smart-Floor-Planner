@@ -1274,11 +1274,29 @@ test('punching through an outer-face mid-wall keeps the concave L corner from co
   assert.deepEqual(remainingOuterAtCorner, { xMm: innerCorner.xMm + thicknessMm, yMm: innerCorner.yMm });
 });
 
-function ringHasPoint(rings, point, tolerance) {
-  const allowed = Number.isFinite(tolerance) ? tolerance : 1.5;
-  return (rings || []).some((ring) => (ring || []).some((vertex) => (
-    Math.hypot(vertex.x - point.x, vertex.y - point.y) <= allowed
-  )));
+function pointInRings(rings, point) {
+  return (rings || []).some((polygon) => {
+    let inside = false;
+    for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+      const current = polygon[index];
+      const prior = polygon[previous];
+      const intersects = ((current.y > point.y) !== (prior.y > point.y)) &&
+        point.x < ((prior.x - current.x) * (point.y - current.y)) / (prior.y - current.y) + current.x;
+      if (intersects) inside = !inside;
+    }
+    return inside;
+  });
+}
+
+function ringHasDiagonalNear(rings, point, radius) {
+  return (rings || []).some((ring) => ring.some((vertex, index) => {
+    const next = ring[(index + 1) % ring.length];
+    const dx = Math.abs(next.x - vertex.x);
+    const dy = Math.abs(next.y - vertex.y);
+    if (dx < 1 || dy < 1) return false;
+    const mid = { x: (vertex.x + next.x) / 2, y: (vertex.y + next.y) / 2 };
+    return Math.hypot(mid.x - point.x, mid.y - point.y) <= radius;
+  }));
 }
 
 test('deleting the shared inner-face closure wall keeps the inner L join and a stepped right facade', () => {
@@ -1326,7 +1344,6 @@ test('deleting the shared inner-face closure wall keeps the inner L join and a s
     assert.ok(closingWall, JSON.stringify(snapPoint));
     assert.ok(sourceRightWall, JSON.stringify(snapPoint));
 
-    const leftoverGeometry = surveyGraph.buildWallRenderGeometry(mergedFloor, leftoverTopWall);
     const branchGeometry = surveyGraph.buildWallRenderGeometry(mergedFloor, branchWall);
     const closingGeometry = surveyGraph.buildWallRenderGeometry(mergedFloor, closingWall);
     const sourceRightGeometry = surveyGraph.buildWallRenderGeometry(mergedFloor, sourceRightWall);
@@ -1338,36 +1355,42 @@ test('deleting the shared inner-face closure wall keeps the inner L join and a s
     assert.equal(Math.round(closingGeometry.outerEnd.xMm), 5800, JSON.stringify(snapPoint));
     assert.equal(Math.round(sourceRightGeometry.outerStart.xMm), 6200, JSON.stringify(snapPoint));
     assert.equal(Math.round(sourceRightGeometry.outerEnd.xMm), 6200, JSON.stringify(snapPoint));
-    assert.equal(leftoverGeometry.extendSolidOuterEnd || leftoverGeometry.extendSolidOuterStart, true, JSON.stringify(snapPoint));
-    assert.equal(branchGeometry.extendSolidOuterStart || branchGeometry.extendSolidOuterEnd, true, JSON.stringify(snapPoint));
 
     const mergedScene = createScene(mergedDraft);
     const leftoverSceneWall = mergedScene.walls.find((wall) => wall.id === leftoverTopWall.id);
     const branchSceneWall = mergedScene.walls.find((wall) => wall.id === branchWall.id);
-    const leftoverJoinOuter = leftoverGeometry.extendSolidOuterEnd
+    const innerCorner = leftoverSceneWall.endPoint.x > leftoverSceneWall.startPoint.x
+      ? leftoverSceneWall.endPoint
+      : leftoverSceneWall.startPoint;
+    const leftoverOuterAtInner = leftoverSceneWall.endPoint.x > leftoverSceneWall.startPoint.x
       ? leftoverSceneWall.solidOuterEnd
       : leftoverSceneWall.solidOuterStart;
-    const leftoverJoinInner = leftoverGeometry.extendSolidOuterEnd
-      ? leftoverSceneWall.solidEndPoint
-      : leftoverSceneWall.solidStartPoint;
+    const branchOuterAtInner = Math.hypot(branchSceneWall.solidOuterStart.x - innerCorner.x, branchSceneWall.solidOuterStart.y - innerCorner.y) <
+      Math.hypot(branchSceneWall.solidOuterEnd.x - innerCorner.x, branchSceneWall.solidOuterEnd.y - innerCorner.y)
+      ? branchSceneWall.solidOuterStart
+      : branchSceneWall.solidOuterEnd;
     const joinFill = {
-      x: (leftoverJoinInner.x + leftoverJoinOuter.x) / 2,
-      y: (leftoverJoinInner.y + leftoverJoinOuter.y) / 2
+      x: (innerCorner.x + leftoverOuterAtInner.x + branchOuterAtInner.x) / 3,
+      y: (innerCorner.y + leftoverOuterAtInner.y + branchOuterAtInner.y) / 3
     };
+    const rings = mergedScene.wallSolidPlans.closed.rings;
     assert.ok(leftoverSceneWall, JSON.stringify(snapPoint));
     assert.ok(branchSceneWall, JSON.stringify(snapPoint));
-    assert.equal(
-      ringHasPoint(mergedScene.wallSolidPlans.closed.rings, leftoverJoinOuter),
-      true,
-      JSON.stringify({ snapPoint, leftoverJoinOuter, rings: mergedScene.wallSolidPlans.closed.rings })
-    );
-    assert.equal(
-      mergedScene.wallSolidPlans.closed.polygons.some((polygon) => (
-        polygon.some((point) => Math.hypot(point.x - joinFill.x, point.y - joinFill.y) <= 8)
-      )),
-      true,
-      JSON.stringify({ snapPoint, joinFill })
-    );
+    const closingSceneWall = mergedScene.walls.find((wall) => wall.id === closingWall.id);
+    const sourceRightSceneWall = mergedScene.walls.find((wall) => wall.id === sourceRightWall.id);
+    const stepJoint = closingSceneWall.endPoint;
+    const innerStepFill = {
+      x: (closingSceneWall.solidOuterEnd.x + closingSceneWall.solidEndPoint.x) / 2,
+      y: stepJoint.y + Math.sign(sourceRightSceneWall.solidEndPoint.y - stepJoint.y) * closingSceneWall.thicknessPx / 2
+    };
+    const outerStepGap = {
+      x: (sourceRightSceneWall.solidOuterStart.x + sourceRightSceneWall.solidStartPoint.x) / 2,
+      y: stepJoint.y - Math.sign(sourceRightSceneWall.solidEndPoint.y - stepJoint.y) * sourceRightSceneWall.thicknessPx / 2
+    };
+    assert.ok(closingSceneWall, JSON.stringify(snapPoint));
+    assert.ok(sourceRightSceneWall, JSON.stringify(snapPoint));
+    assert.equal(pointInRings(rings, innerStepFill), true, JSON.stringify({ snapPoint, innerStepFill, rings }));
+    assert.equal(pointInRings(rings, outerStepGap), false, JSON.stringify({ snapPoint, outerStepGap, rings }));
   });
 });
 

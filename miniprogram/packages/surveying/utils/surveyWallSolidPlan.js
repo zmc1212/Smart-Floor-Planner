@@ -182,10 +182,86 @@ function projectPointToOuterEdge(wall, point) {
   };
 }
 
+function vectorBetween(start, end) {
+  return { x: end.x - start.x, y: end.y - start.y };
+}
+
+function vectorLength(vector) {
+  return Math.hypot(vector.x, vector.y);
+}
+
+function unitVector(vector) {
+  const length = vectorLength(vector);
+  if (length <= EPSILON) return null;
+  return { x: vector.x / length, y: vector.y / length };
+}
+
+function addScaled(point, vector, scale) {
+  return {
+    x: point.x + vector.x * scale,
+    y: point.y + vector.y * scale
+  };
+}
+
+function wallDirectionFromJoint(wall, joint) {
+  const startDistance = distance(wall.start, joint);
+  const endDistance = distance(wall.end, joint);
+  const far = startDistance <= endDistance ? wall.end : wall.start;
+  return unitVector(vectorBetween(joint, far));
+}
+
+function wallThickness(wall) {
+  const thickness = Number(wall.thickness);
+  if (Number.isFinite(thickness) && thickness > EPSILON) return thickness;
+  return Math.max(distance(wall.start, wall.outerStart), distance(wall.end, wall.outerEnd), 1);
+}
+
+function polygonCentroid(polygons) {
+  let x = 0;
+  let y = 0;
+  let count = 0;
+  (polygons || []).forEach((polygon) => {
+    (polygon || []).forEach((point) => {
+      x += point.x;
+      y += point.y;
+      count += 1;
+    });
+  });
+  if (!count) return null;
+  return { x: x / count, y: y / count };
+}
+
+function oppositeThicknessJoin(joint, first, second, interior) {
+  const firstOuter = projectPointToOuterEdge(first, joint);
+  const secondOuter = projectPointToOuterEdge(second, joint);
+  const firstOffset = firstOuter && vectorBetween(joint, firstOuter);
+  const secondOffset = secondOuter && vectorBetween(joint, secondOuter);
+  if (!firstOffset || !secondOffset) return [];
+  if (firstOffset.x * secondOffset.x + firstOffset.y * secondOffset.y >= -EPSILON) return [];
+  const firstDirection = wallDirectionFromJoint(first, joint);
+  const secondDirection = wallDirectionFromJoint(second, joint);
+  if (!firstDirection || !secondDirection) return [];
+  if (Math.abs(firstDirection.x * secondDirection.x + firstDirection.y * secondDirection.y) < 0.98) {
+    return [];
+  }
+  const candidates = [
+    [joint, firstOuter, addScaled(firstOuter, secondDirection, wallThickness(second)), addScaled(joint, secondDirection, wallThickness(second))],
+    [joint, secondOuter, addScaled(secondOuter, firstDirection, wallThickness(first)), addScaled(joint, firstDirection, wallThickness(first))]
+  ].map((points) => convexHull(points)).filter((hull) => (
+    hull.length >= 3 && Math.abs(signedArea(hull)) > EPSILON
+  ));
+  if (candidates.length <= 1) return candidates;
+  if (!interior) return candidates;
+  return candidates.slice().sort((firstHull, secondHull) => (
+    distance(polygonCentroid([firstHull]), interior) - distance(polygonCentroid([secondHull]), interior)
+  )).slice(0, 1);
+}
+
 function buildJoinPolygons(walls) {
   const geometryWalls = (walls || []).filter((wall) => (
     wall && wall.start && wall.end && wall.outerStart && wall.outerEnd
   ));
+  const interior = polygonCentroid(geometryWalls.map((wall) => wall.polygon).filter(Boolean));
   const endpoints = new Map();
   geometryWalls.forEach((wall) => {
     [wall.start, wall.end].forEach((point) => endpoints.set(pointKey(point), snapPoint(point)));
@@ -220,7 +296,20 @@ function buildJoinPolygons(walls) {
       }
     }
     const hull = convexHull(points);
-    if (hull.length >= 3 && Math.abs(signedArea(hull)) > EPSILON) joins.push(hull);
+    if (hull.length >= 3 && Math.abs(signedArea(hull)) > EPSILON) {
+      joins.push(hull);
+      return;
+    }
+    // Collinear walls with opposite thickness only touch at a point. Parallel
+    // outers have no miter, so the inner thickness corner into the room would
+    // otherwise disappear. Keep the stepped outer facade; fill only the inner
+    // square closer to the occupied interior.
+    for (let firstIndex = 0; firstIndex < incident.length; firstIndex += 1) {
+      for (let secondIndex = firstIndex + 1; secondIndex < incident.length; secondIndex += 1) {
+        oppositeThicknessJoin(joint, incident[firstIndex], incident[secondIndex], interior)
+          .forEach((join) => joins.push(join));
+      }
+    }
   });
   return joins;
 }
