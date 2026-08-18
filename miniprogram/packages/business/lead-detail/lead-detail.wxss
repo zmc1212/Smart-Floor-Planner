@@ -135,6 +135,52 @@
   font-weight: 600;
 }
 
+.appointment-entry {
+  display: flex;
+  margin: 20rpx 28rpx 0;
+  padding: 24rpx;
+  align-items: center;
+  gap: 20rpx;
+  border: 1rpx solid #dbe9de;
+  border-radius: 20rpx;
+  background: #ffffff;
+  box-shadow: 0 10rpx 28rpx rgba(24, 107, 54, 0.06);
+}
+
+.appointment-entry-copy { min-width: 0; flex: 1; }
+
+.appointment-entry-title {
+  display: block;
+  color: #253128;
+  font-size: 28rpx;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.appointment-entry-note {
+  display: block;
+  margin-top: 7rpx;
+  color: #68756c;
+  font-size: 22rpx;
+  line-height: 1.45;
+}
+
+.appointment-entry-action {
+  min-width: 180rpx;
+  min-height: 68rpx;
+  margin: 0;
+  padding: 0 16rpx;
+  border: 0;
+  border-radius: 14rpx;
+  color: #ffffff;
+  background: #0aa447;
+  font-size: 24rpx;
+  font-weight: 600;
+  line-height: 68rpx;
+}
+
+.appointment-entry-action::after { border: 0; }
+
 .conversion-card {
   margin-bottom: 18rpx;
   padding: 24rpx;

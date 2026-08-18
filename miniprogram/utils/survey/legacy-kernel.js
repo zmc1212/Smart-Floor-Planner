@@ -2408,7 +2408,19 @@ function isDirectClosureHit(floor, session, rawPoint) {
     return true;
   }
 
-  return !!rawPoint && distanceMm(rawPoint, target) <= CLOSE_TOLERANCE_MM;
+  const effectiveTolerance = Math.max(CLOSE_TOLERANCE_MM, Number(session.thicknessMm || 0) * 1.5);
+  if (rawPoint && distanceMm(rawPoint, target) <= effectiveTolerance) {
+    return true;
+  }
+
+  if (session.closeCandidateNodeId) {
+    const node = getNode(floor, session.closeCandidateNodeId);
+    if (node && rawPoint && distanceMm(rawPoint, node) <= effectiveTolerance) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function getCursorDisplayPoint(floor, session) {
@@ -2777,7 +2789,33 @@ function findRayWallIntersection(floor, session, anchor, targetPoint) {
 
     const segDirection = { x: segEnd.xMm - segStart.xMm, y: segEnd.yMm - segStart.yMm };
     const denom = cross(direction, segDirection);
-    if (Math.abs(denom) < 0.000001) return;
+    if (Math.abs(denom) < 0.000001) {
+      const dirUnit = { x: direction.x / len, y: direction.y / len };
+      const offset = { x: segStart.xMm - anchor.xMm, y: segStart.yMm - anchor.yMm };
+      const perpDist = Math.abs(cross(offset, dirUnit));
+      if (perpDist <= CLOSE_TOLERANCE_MM) {
+        const along1 = dot({ x: segStart.xMm - anchor.xMm, y: segStart.yMm - anchor.yMm }, dirUnit);
+        const along2 = dot({ x: segEnd.xMm - anchor.xMm, y: segEnd.yMm - anchor.yMm }, dirUnit);
+        const minAlong = Math.min(along1 > 10 ? along1 : Infinity, along2 > 10 ? along2 : Infinity);
+        if (minAlong !== Infinity) {
+          const hitPoint = along1 === minAlong ? segStart : segEnd;
+          const dist = minAlong;
+          if (!best || dist < best.distanceMm) {
+            best = {
+              wall,
+              point: { xMm: Math.round(hitPoint.xMm), yMm: Math.round(hitPoint.yMm) },
+              start: segStart,
+              end: segEnd,
+              t: dist / len,
+              u: along1 === minAlong ? 0 : 1,
+              distanceMm: dist,
+              snapLine: useOuter ? 'outer' : 'inner'
+            };
+          }
+        }
+      }
+      return;
+    }
 
     const offset = { x: segStart.xMm - anchor.xMm, y: segStart.yMm - anchor.yMm };
     const t = cross(offset, segDirection) / denom;
@@ -3279,6 +3317,18 @@ function startPreview(draft, rawPoint) {
   let previewPoint = directStartClosureSnap.point;
   const rayIntersection = findRayWallIntersection(floor, session, anchor, previewPoint);
   let rawOuterFaceProjection = findOuterFaceClosureProjection(floor, session, rawPoint);
+  if (rayIntersection) {
+    const distToAnchor = distanceMm(anchor, previewPoint);
+    if (distToAnchor > rayIntersection.distanceMm) {
+      previewPoint = rayIntersection.point;
+    }
+  }
+  if (rayIntersection && rawOuterFaceProjection) {
+    const rawProjDist = distanceMm(anchor, rawOuterFaceProjection.point);
+    if (rawProjDist > rayIntersection.distanceMm + CLOSE_TOLERANCE_MM) {
+      rawOuterFaceProjection = null;
+    }
+  }
   if (!rawOuterFaceProjection && rayIntersection && rayIntersection.snapLine === 'outer') {
     const distToAnchor = distanceMm(anchor, previewPoint);
     if (distToAnchor >= rayIntersection.distanceMm - CLOSE_TOLERANCE_MM) {
@@ -3747,6 +3797,20 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     wall.inputSource = inputSource || 'manual';
     wall.measuredAt = nowIso();
   } else {
+    if (activeWallCountBeforeCommit === 0 && session.activeSpaceSharedWallId && session.activeSpaceSharedWallMiddle) {
+      const splitResult = splitWallAtNodes(floor, session.activeSpaceSharedWallId, [anchor.id]);
+      const snappedSegments = splitResult.segmentIds
+        .map((wallId) => getWall(floor, wallId))
+        .filter((seg) => seg && (
+          seg.startNodeId === anchor.id || seg.endNodeId === anchor.id
+        ));
+      const snappedWall = snappedSegments[0];
+      if (snappedWall) {
+        session.activeSpaceSharedWallId = snappedWall.id;
+        session.activeSpaceSharedStartT = snappedWall.startNodeId === anchor.id ? 0 : 1;
+      }
+      session.activeSpaceStartWallIndex = floor.walls.length;
+    }
     endNode = closureProjection ? getOrCreateSnapNode(floor, closureProjection) : addNode(floor, endPoint);
     wall = {
       id: nextId('wall'),
@@ -4589,16 +4653,6 @@ function snapCursorToWall(draft, point, target) {
   let snappedWall = topologyProjection && topologyProjection.wall;
   let snappedT = topologyProjection && topologyProjection.t;
   const snappedAtWallMiddle = !!(snappedWall && snappedT > 0.0001 && snappedT < 0.9999);
-  if (snappedWall && snappedT > 0.0001 && snappedT < 0.9999) {
-    const splitResult = splitWallAtNodes(floor, snappedWall.id, [node.id]);
-    const snappedSegments = splitResult.segmentIds
-      .map((wallId) => getWall(floor, wallId))
-      .filter((wall) => wall && (
-        wall.startNodeId === node.id || wall.endNodeId === node.id
-      ));
-    snappedWall = snappedSegments[0] || snappedWall;
-    snappedT = snappedWall.startNodeId === node.id ? 0 : 1;
-  }
 
   session.state = 'cursorPlaced';
   session.anchorNodeId = node.id;

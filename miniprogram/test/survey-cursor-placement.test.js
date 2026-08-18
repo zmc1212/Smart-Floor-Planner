@@ -339,8 +339,12 @@ test('a perpendicular wall pulled from a wall middle immediately materializes a 
     target
   );
   floor = surveyGraph.getActiveFloor(draft);
-
   const junctionNodeId = floor.session.anchorNodeId;
+  assert.equal(floor.walls.length, 4);
+  assert.equal(floor.walls.some((w) => w.id === sourceWall.id), true);
+
+  draft = commitWall(draft, { xMm: 1500, yMm: -1692 }, 1692);
+  floor = surveyGraph.getActiveFloor(draft);
   const sourceSpace = floor.spaces.find((space) => space.id === sourceSpaceId);
   const sourceSegments = floor.walls.filter((wall) => (
     wall.topologySourceWallId === sourceWall.id
@@ -356,8 +360,6 @@ test('a perpendicular wall pulled from a wall middle immediately materializes a 
     sourceSegments.map((wall) => sourceSpace.wallIds.includes(wall.id)),
     [true, true]
   );
-
-  draft = commitWall(draft, { xMm: 1500, yMm: -1692 }, 1692);
   floor = surveyGraph.getActiveFloor(draft);
   const committedSourceSegments = floor.walls.filter((wall) => (
     wall.topologySourceWallId === sourceWall.id
@@ -1926,3 +1928,86 @@ test('a shared internal-wall partition selects the room entered by the drag', ()
     return start && end && Math.max(start.xMm, end.xMm) > 6200;
   }), false);
 });
+
+test('placing cursor on wall keeps wall un-split until a new branch wall is committed', () => {
+  let draft = createClosedDraft(4000);
+  let floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.walls.length, 4);
+  const targetWall = floor.walls[0];
+
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 2000, yMm: 0 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  assert.equal(target.type, 'wall');
+
+  // Snap cursor to wall
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  floor = surveyGraph.getActiveFloor(draft);
+  // The wall should NOT be split yet!
+  assert.equal(floor.walls.length, 4);
+  assert.equal(floor.walls[0].id, targetWall.id);
+  assert.equal(floor.session.state, 'cursorPlaced');
+  assert.equal(floor.session.activeSpaceSharedWallMiddle, true);
+
+  // Now drag and commit a new wall from the cursor
+  draft = commitWall(draft, { xMm: 2000, yMm: -2000 }, 2000);
+  floor = surveyGraph.getActiveFloor(draft);
+  // Now the target wall should be split (2 segments) + 1 new wall + 3 remaining walls = 6 walls
+  assert.equal(floor.walls.length, 6);
+  const segments = floor.walls.filter((w) => w.topologySourceWallId === targetWall.id);
+  assert.equal(segments.length, 2);
+});
+
+test('dragging closing wall deeply downward along adjacent wall clamps at source corner and closes correctly', () => {
+  let draft = createClosedDraft(6000);
+  let floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(floor, { xMm: 3000, yMm: 0 }, surveyGraph.CLOSE_TOLERANCE_MM);
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = commitWall(draft, { xMm: 3000, yMm: -2000 }, 2000);
+  draft = commitWall(draft, { xMm: 6200, yMm: -2000 }, 3200);
+
+  // Drag Wall 3 deeply downward past y=0 to (6200, 2000)
+  draft = surveyGraph.startPreview(draft, { xMm: 6200, yMm: 2000 });
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.deepEqual(floor.session.previewPoint, { xMm: 6000, yMm: 0 });
+  assert.equal(floor.session.closeCandidateSharedWallId !== '', true);
+
+  draft = surveyGraph.confirmClosure(draft);
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(floor.spaces.length, 2);
+  const room1 = floor.spaces[0];
+  const room2 = floor.spaces[1];
+  assert.equal(room1.closed, true);
+  assert.equal(room2.closed, true);
+
+  // Check no giant 6000mm wall was created along the right side
+  assert.equal(floor.walls.some((w) => w.lengthMm > 5000 && w.lengthMm !== 6000), false);
+});
+
+test('releasing closing wall at outer corner directly auto-closes without needing extra downward drag', () => {
+  let draft = createClosedDraft(6000);
+  let floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(floor, { xMm: 3000, yMm: 0 }, surveyGraph.CLOSE_TOLERANCE_MM);
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = commitWall(draft, { xMm: 3000, yMm: -2000 }, 2000);
+  draft = commitWall(draft, { xMm: 6200, yMm: -2000 }, 3200);
+
+  // Drag Wall 3 to (6200, -200) (the outer top edge of Room 1)
+  draft = surveyGraph.startPreview(draft, { xMm: 6200, yMm: -200 });
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(surveyGraph.isDirectClosureHit(floor, floor.session, { xMm: 6200, yMm: -200 }), true);
+
+  // Also verify at (6200, 0)
+  draft = surveyGraph.startPreview(draft, { xMm: 6200, yMm: 0 });
+  floor = surveyGraph.getActiveFloor(draft);
+  assert.equal(surveyGraph.isDirectClosureHit(floor, floor.session, { xMm: 6200, yMm: 0 }), true);
+});
+
+
+

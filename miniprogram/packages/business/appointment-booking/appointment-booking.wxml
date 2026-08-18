@@ -1,0 +1,38 @@
+<!--
+THESIS: 设计师先确认客户与地址，再从服务端返回的真实可用时段中完成首次预约。
+OWN-WORLD: 预约协调小 K 只出现一次，陪同选择时间而不替代真实排期。
+FORM: Antigravity design source `phase-5-designer-appointment-booking-v1.png`; the composite reference is never rendered or sliced.
+-->
+<view class="booking-page sfp-page">
+  <view class="booking-nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;">
+    <view class="back" bindtap="onBack" aria-role="button" aria-label="返回"><view class="back-chevron"></view></view>
+    <text class="nav-title">安排上门量房</text>
+  </view>
+
+  <view wx:if="{{loading}}" class="state-card sfp-card">正在读取客户和可用时段…</view>
+  <view wx:elif="{{error && !customer}}" class="state-card sfp-card"><text>{{error}}</text><button class="retry" bindtap="load">重新加载</button></view>
+  <view wx:else class="booking-content">
+    <view class="scene" aria-hidden="true">
+      <image src="/packages/business/assets/appointment-booking-v1/schedule-guide.png" mode="aspectFit" />
+      <text>为客户选定真实可用时段</text>
+    </view>
+
+    <view class="customer-card sfp-card">
+      <view class="customer-line"><text class="line-label">客户</text><text>{{customer.name}} {{customer.phone}}</text></view>
+      <view class="hairline"></view>
+      <view class="address-field"><text class="line-label">量房地址</text><input value="{{address}}" maxlength="300" placeholder="填写上门测量的详细地址" bindinput="onAddressInput" /></view>
+    </view>
+
+    <view class="section-title">选择量房时间</view>
+    <scroll-view class="date-scroll" scroll-x="true" show-scrollbar="false">
+      <view class="date-list"><view wx:for="{{dates}}" wx:key="key" class="day {{selectedDate === item.key ? 'day-active' : ''}}" data-date="{{item.key}}" bindtap="chooseDate"><text>{{item.label}}</text><text>{{item.shortDate}}</text></view></view>
+    </scroll-view>
+
+    <view wx:if="{{loadingSlots}}" class="slots-state">正在计算可用时段…</view>
+    <view wx:elif="{{error}}" class="slots-state"><text>{{error}}</text><button class="retry" bindtap="loadSlots">重试</button></view>
+    <view wx:else class="slot-grid"><view wx:for="{{slots}}" wx:key="startAt" class="slot {{selectedSlot.startAt === item.startAt ? 'slot-selected' : ''}}" data-slot="{{item}}" bindtap="chooseSlot">{{item.label}}</view><text wx:if="{{!slots.length}}" class="slots-state">当天暂无可用时段，请选择其他日期。</text></view>
+    <text class="scheduling-note">系统将安排合适的量房伙伴上门；如遇排期冲突，将自动协同调整人员。</text>
+  </view>
+
+  <view class="confirm-bar"><button class="confirm sfp-primary-action" style="width: {{actionWidth}}px;" loading="{{submitting}}" disabled="{{!selectedSlot || submitting}}" bindtap="submit">确认预约{{selectedSlot ? ' ' + selectedSlot.label : ''}}</button></view>
+</view>

@@ -1,0 +1,83 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+const api = require('../utils/api.js');
+
+const root = path.join(__dirname, '..');
+const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
+
+function loadBookingPage() {
+  const pagePath = require.resolve('../packages/business/appointment-booking/appointment-booking.js');
+  const originalPage = global.Page;
+  let definition;
+  global.Page = (next) => { definition = next; };
+  delete require.cache[pagePath];
+  require(pagePath);
+  global.Page = originalPage;
+  return definition;
+}
+
+test('designer appointment booking uses server availability and submits the selected real slot', () => {
+  const appJson = read('app.json');
+  const pageJs = read('packages/business/appointment-booking/appointment-booking.js');
+  const pageWxml = read('packages/business/appointment-booking/appointment-booking.wxml');
+  const pageWxss = read('packages/business/appointment-booking/appointment-booking.wxss');
+
+  assert.match(appJson, /appointment-booking\/appointment-booking/);
+  assert.match(pageJs, /appointments\/availability\?leadId=/);
+  assert.match(pageJs, /maxAdvanceDays/);
+  assert.match(pageJs, /nextDates\(maxAdvanceDays\)/);
+  assert.match(pageJs, /api\.request\('\/appointments', 'POST'/);
+  assert.match(pageJs, /startAt: selectedSlot\.startAt/);
+  assert.match(pageJs, /endAt: selectedSlot\.endAt/);
+  assert.match(pageJs, /address: String\(address\)\.trim\(\)/);
+  assert.match(pageJs, /getMenuButtonBoundingClientRect/);
+  assert.match(pageWxml, /packages\/business\/assets\/appointment-booking-v1\/schedule-guide\.png/);
+  assert.match(pageWxml, /class="back-chevron"/);
+  assert.doesNotMatch(pageWxml, /‹/);
+  assert.match(pageJs, /actionWidth: Math\.max\(0, Number\(windowInfo\.windowWidth \|\| 390\) - 28\)/);
+  assert.match(pageWxml, /class="confirm sfp-primary-action" style="width: \{\{actionWidth\}\}px;"/);
+  assert.match(pageWxml, /确认预约/);
+  assert.match(pageWxml, /系统将安排合适的量房伙伴上门/);
+  assert.match(pageWxss, /env\(safe-area-inset-bottom\)/);
+  assert.match(pageWxss, /\.back-chevron/);
+  assert.match(pageWxss, /\.confirm-bar/);
+  assert.match(pageWxss, /\.confirm \{ display: block;/);
+  assert.match(pageWxss, /font-size: 24rpx/);
+});
+
+test('designer booking keeps every date the server makes available in the existing date scroller', async () => {
+  const definition = loadBookingPage();
+  const originalRequest = api.request;
+  api.request = async () => ({
+    data: {
+      maxAdvanceDays: 7,
+      slots: [{ startAt: '2026-08-20T01:00:00.000Z', endAt: '2026-08-20T03:00:00.000Z' }],
+    },
+  });
+  const context = {
+    data: { ...definition.data, leadId: '1', selectedDate: '2026-08-20' },
+    setData(next) { Object.assign(this.data, next); },
+  };
+  try {
+    await definition.loadSlots.call(context);
+    assert.equal(context.data.dates.length, 8);
+    assert.equal(context.data.slots[0].label, '09:00 - 11:00');
+  } finally {
+    api.request = originalRequest;
+  }
+});
+
+test('lead detail exposes first booking only to the assigned designer without a confirmed appointment', () => {
+  const detailJs = read('packages/business/lead-detail/lead-detail.js');
+  const detailWxml = read('packages/business/lead-detail/lead-detail.wxml');
+  const detailWxss = read('packages/business/lead-detail/lead-detail.wxss');
+
+  assert.match(detailJs, /staffRole === 'designer'/);
+  assert.match(detailJs, /item\.status === 'confirmed'/);
+  assert.match(detailJs, /appointment-booking\/appointment-booking\?leadId=/);
+  assert.match(detailWxml, /wx:if="\{\{canScheduleAppointment\}\}"/);
+  assert.match(detailWxml, />安排上门量房<\/button>/);
+  assert.match(detailWxss, /\.appointment-entry-action/);
+});

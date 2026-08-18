@@ -138,6 +138,7 @@ Page({
     canViewAcquisition: false,
     showDesignerSheet: false,
     designerProfile: null,
+    canScheduleAppointment: false,
     acquisitionConfirmedTime: '',
     statusLabel: '新线索',
     nextAction: '开始正式量房',
@@ -209,6 +210,24 @@ Page({
       previousFloorPlans: formalPlans.slice(1),
       loading: false
     });
+    this.refreshAppointmentEntry(staffRole, lead);
+  },
+
+  async refreshAppointmentEntry(staffRole, lead) {
+    const canOpen = staffRole === 'designer'
+      && lead
+      && !['closed', 'converted'].includes(lead.status);
+    if (!canOpen) {
+      this.setData({ canScheduleAppointment: false });
+      return;
+    }
+    try {
+      const result = await api.request(`/appointments?leadId=${encodeURIComponent(this.data.leadId)}`, 'GET');
+      const hasConfirmedAppointment = (result.data || []).some((item) => item.status === 'confirmed');
+      this.setData({ canScheduleAppointment: !hasConfirmedAppointment });
+    } catch (error) {
+      this.setData({ canScheduleAppointment: false });
+    }
   },
 
   onOpenConversionSheet() {
@@ -315,6 +334,13 @@ Page({
 
   onRetryDetail() {
     this.fetchLeadDetail();
+  },
+
+  onScheduleAppointment() {
+    if (!this.data.canScheduleAppointment || !this.data.leadId) return;
+    wx.navigateTo({
+      url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(this.data.leadId)}`,
+    });
   },
 
   onStartMeasure() {

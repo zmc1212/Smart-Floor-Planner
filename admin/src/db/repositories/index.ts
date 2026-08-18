@@ -29,5 +29,6 @@ export * from './promotion-record-repository';
 export * from './prompt-library-repository';
 export * from './referrer-network-repository';
 export * from './referral-lead-repository';
+export * from './appointment-repository';
 export * from './system-role-repository';
 export * from './user-repository';

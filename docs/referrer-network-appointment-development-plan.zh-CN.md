@@ -1,6 +1,6 @@
 # 推荐人网络与预约量房闭环开发计划
 
-状态：`Approved design / Phase 4 completed`
+状态：`Approved design / Phase 5 completed`
 
 本文是“推荐人多企业推广、客户授权建线索、自动派单、预约量房、AI 方案、签单和三方提成”破坏式改造的持续开发入口。当前代码、PostgreSQL schema、迁移和模块清单仍是已实现能力的依据；本文中的表、接口和路由在代码落地并通过测试前都只能标记为 `Planned`。
 
@@ -19,6 +19,8 @@ English mirror: [referrer-network-appointment-development-plan.md](./referrer-ne
 - 生成方式：内置图像工具不可用后由 Sub2API `gpt-image-2` 编辑，再以确定性蒙版合成，确保只替换中间手机内部。
 
 `design-references/` 由 Git 忽略，设计图只作为本机批准源，不得进入小程序包。若文件缺失或哈希不符，应先向产品负责人确认，不得自行换成近似设计。
+
+第 5 阶段的推荐人内部工作台使用 `design-references/referrer-network-appointment-v1/phase-5-referrer-workbench-v1.png`：`1024x1536` PNG，以 `390x844` 为构图基线；它只适用于已认证推荐人选择企业和进入服务码，不适用于客户匿名链路。该参考由 Antigravity 内置图像引擎重新生成；工具未暴露可验证的具体 Google 图像模型名，因此文档不将其误标为 `Gemini 3 Pro Image`。
 
 ### 1.2 三屏业务映射
 
@@ -43,7 +45,7 @@ English mirror: [referrer-network-appointment-development-plan.md](./referrer-ne
 
 ### 1.4 生成素材与生产路径映射
 
-Antigravity 2.8.1 的内置 `generate_image` 能力按固定顺序读取选定稿、F1/F3 品牌参考和角色场景参考，生成 `design-references/referrer-network-appointment-v1/generated-assets-v1/referral-service-assets-board-v1.png`。该画板只作为设计参考；生产包只保留从六个独立素材格提取并优化后的透明 PNG，不包含整页布局、控件或页面文字。
+Antigravity 2.8.1 的内置 `generate_image` 能力按固定顺序读取选定稿、F1/F3 品牌参考和角色场景参考，生成 `design-references/referrer-network-appointment-v1/generated-assets-v1/referral-service-assets-board-v1.png`。该画板只作为设计参考；生产包只保留从六个独立素材格提取并优化后的透明 PNG，以及从推荐人工作台独立素材任务生成的服务码引导小 K PNG，不包含整页布局、控件或页面文字。
 
 | 设计元素 | 生产路径 |
 | --- | --- |
@@ -53,6 +55,7 @@ Antigravity 2.8.1 的内置 `generate_image` 能力按固定顺序读取选定�
 | 手机号授权 | `miniprogram/packages/business/assets/referral-service-v1/phone-authorization.png` |
 | 设计师匹配 | `miniprogram/packages/business/assets/referral-service-v1/designer-matching.png` |
 | 隐私保护锁 | `miniprogram/packages/business/assets/referral-service-v1/privacy-lock.png` |
+| 推广服务码引导小 K | `miniprogram/packages/business/assets/referrer-workbench-v1/service-code-guide.png` |
 
 ## 2. 目标业务闭环
 
@@ -268,9 +271,9 @@ closed 为终止状态
 | 服务码图片 | `GET /api/miniprogram/referrer-memberships/[id]/promotion-code/image`；阶段 4 已实现，校验当前推荐人关系后在事务外调用微信小程序码接口，返回不缓存的 PNG。 |
 | 客户建线索 | `POST /api/miniprogram/referrals/authorize-and-create-lead`；阶段 3 已实现客户上下文/微信手机号直接授权、幂等归属、原子建线索和派单。 |
 | 派单 | `POST /api/internal/lead-assignments/[leadId]/retry`；阶段 3 已实现且仅接受至少 32 字符的 `INTERNAL_SECRET` 服务身份。 |
-| 可用时段 | `GET /api/appointments/availability` |
-| 预约 | `POST /api/appointments`、`POST /api/appointments/[id]/customer-reschedule`、`POST /api/appointments/[id]/internal-reschedule`、`POST /api/appointments/[id]/cancel`、`POST /api/appointments/[id]/complete` |
-| 日历与配置 | `GET/PUT /api/appointment-settings`、`GET/POST/DELETE /api/measurer-unavailability` |
+| 可用时段 | `GET /api/appointments/availability`；第 5 阶段已完成，按企业排班、时长/步长、活动预约与不可用时间返回候选测量员可用时段，以及企业时区、时长、步长和最远可预约天数边界。 |
+| 预约 | `GET/POST /api/appointments`、`POST /api/appointments/[id]/customer-reschedule`、`POST /api/appointments/[id]/internal-reschedule`、`POST /api/appointments/[id]/cancel`、`POST /api/appointments/[id]/complete`；第 5 阶段已完成，已接通版本乐观锁、客户/设计师/测量员/企业负责人边界、自动换测量员、事件审计，以及创建、改期、取消后的事务后员工和已授权客户订阅消息尝试。客户读取和改期仅在请求线索或预约确属本人后推导企业范围，不接受 token 或请求声明的企业 ID。 |
+| 日历与配置 | `GET/PUT /api/appointment-settings`、`GET/POST/DELETE /api/measurer-unavailability`；第 5 阶段已完成。 |
 | 提成 | `GET/PUT /api/commission-rules`、`GET /api/lead-commissions`、`POST /api/lead-commissions/mark-paid` |
 
 所有企业接口使用现有 tenant route/context helper 和 RLS；内部重试接口必须使用服务身份，不能暴露给普通客户端。
@@ -282,12 +285,14 @@ closed 为终止状态
 - `packages/business/promotion-service-code/promotion-service-code`：选定设计左屏，供推荐人展示给客户；服务码图片通过受保护接口生成。
 - `packages/business/free-design-service/free-design-service`：选定设计中屏和右屏，承载扫码解析、手机号授权、幂等建线索和设计师微信结果。
 
-其余计划路由在创建前不写入设计还原台账：
+第 5 阶段运行路由已按各自已批准的第 5 阶段设计源写入两份设计还原台账：
 
 - `packages/business/referrer-workbench/referrer-workbench`：推荐人企业关系、内部企业选择和推广码入口。
-- `packages/business/customer-project/customer-project`：客户项目、预约、正式户型和已发布方案。
-- `packages/business/appointment-reschedule/appointment-reschedule`：客户可用时段与改期。
-- `packages/business/measurer-calendar/measurer-calendar`：测量员预约与不可用日历。
+- `packages/business/customer-project/customer-project`：当前客户预约卡及改期入口；正式户型和发布方案聚合仍属第 6 阶段。
+- `packages/business/appointment-reschedule/appointment-reschedule`：服务端计算客户可用时段与即时改期。
+- `packages/business/appointment-booking/appointment-booking`：负责设计师从无有效预约的线索详情进入，填写上门地址、选择服务端实时计算的可用时段并创建首次预约。
+- `packages/business/measurer-calendar/measurer-calendar`：已确认的测量员日程，提供不可用时间编辑入口。
+- `packages/business/measurer-unavailability/measurer-unavailability`：测量员仅维护本人不可用时段；使用原生日期/时段 picker、原因、保存和删除，API 仍在服务端强制角色和本人边界。
 
 后台优先复用当前商户路由边界，新增或替换：人员双码、预约设置、提成规则、三方提成报表。任何可见后台修改前必须先检查对应批准设计；没有设计源时只实现 API/模型，不自行创造生产 UI。
 
@@ -327,7 +332,7 @@ closed 为终止状态
 | 2. 双码与推荐人网络 | `Completed` | 双码换码/停用审计、员工单企业、推荐人默认三家上限与退出、可重取的不透明推广令牌已实现；Repository 数据库合同测试通过。 |
 | 3. 客户授权与自动派单 | `Completed` | 两阶段扫码、原子用户关联/建线索、首次有效归属、稳定最小负载派单、无候选保留、事务后通知、服务身份及员工池变化重试已实现；Repository/RLS/并发测试通过。 |
 | 4. 选定设计生产实现 | `Completed` | `promotion-service-code` 与 `free-design-service` 两条路由按 `390x844` 实现三屏状态；服务码图片接口、扫码解析、手机号授权、幂等建线索、设计师二维码交付和无设计师待分配状态已接通。Antigravity 2.8.1 通过内置 `generate_image` 按固定 `3x2` prompt 和有序参考图生成画板，六个独立透明 PNG 已裁切、优化并接入 `packages/business/assets/referral-service-v1/`，均不超过 300KB。聚焦测试通过；真实微信开发者工具 automator 在 iPhone 12/13 Pro `390x844` 模拟器上完成精确路由、元素边界和包含原生胶囊的整窗截图核验。 |
-| 5. 预约与日历 | `Not started` | 设置、不可用时间、排斥约束、首次预约、客户/内部改期、取消、事件审计和通知。 |
+| 5. 预约与日历 | `Completed` | 已实现租户预约设置、测量员不可用时间、工作时段校验、首次预约、客户/内部改期、取消/完成、事件审计、版本乐观锁和数据库排斥约束；推荐人可在内部工作台查询活动企业关系、选择企业、展示受保护服务码，并以确认流程退出关系（历史归属不变）。负责设计师在尚无有效预约时可从线索详情进入预约页，填写地址并从服务端实时可用时段创建首次预约。Repository/RLS/并发集成测试及客户预约、改期、测量员日程、本人不可用时间编辑器和推荐人工作台路由已实现；首次预约和客户改期在 iPhone 12/13 Pro `390x844` 自动化模拟器中核验通栏 CTA 的窗口计算宽度与左右边距。创建、改期、取消在事务后尝试向员工和已授权客户投递订阅消息；首次预约入口、推荐人工作台、客户预约卡、客户改期、首次预约、测量员日程与不可用时间编辑器均已在真实微信开发者工具 `390x844` 模拟器逐路由确认顶层路由和包含原生胶囊的整窗截图。 |
 | 6. 客户项目、量房与 AI 发布 | `Not started` | 正式量房入口、项目聚合 API、AI 发布事实和客户只读权限。 |
 | 7. 签单与三方提成 | `Not started` | 三规则、签单快照、三条唯一提成、已付/作废约束和报表。 |
 | 8. 旧流程下线 | `Not started` | 删除旧绑定、获客确认、旧工作台和旧获客提成；文档与权限清单一致。 |

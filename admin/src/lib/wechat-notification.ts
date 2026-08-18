@@ -1,5 +1,10 @@
 import { parsePostgresId } from '@/db/postgres-dto';
-import { AcquisitionRepository, AdminUserRepository } from '@/db/repositories';
+import {
+  AcquisitionRepository,
+  AdminUserRepository,
+  LeadRepository,
+  MiniProgramIdentityRepository,
+} from '@/db/repositories';
 import {
   withPlatformTransaction,
   withTenantTransaction,
@@ -7,6 +12,7 @@ import {
 import {
   assignmentCopy,
   buildLeadAssignmentPayload,
+  buildMeasurementAppointmentPayload,
   buildNewLeadPayload,
   buildWorkflowTodoPayload,
   type SubscriptionMessagePayload,
@@ -382,4 +388,89 @@ export async function notifyMeasurerOfAcquiredLead(
       note: `客户：${lead.name}`,
     }),
   });
+}
+
+export async function notifyAppointmentStaff(input: {
+  enterpriseId: bigint;
+  leadId: bigint;
+  designerId: bigint;
+  measurerId: bigint;
+  address: string;
+  startsAt: Date;
+  eventKey: string;
+  eventType: 'created' | 'customer_rescheduled' | 'internal_rescheduled' | 'cancelled';
+}) {
+  try {
+    const lead = await withTenantTransaction(input.enterpriseId, (transaction) =>
+      new LeadRepository(transaction).findById(input.leadId)
+    );
+    if (!lead) return { success: false, error: 'lead unavailable' };
+    const recipients = await Promise.all([
+      findNotificationRecipient(input.designerId.toString(), 'designer id'),
+      findNotificationRecipient(input.measurerId.toString(), 'measurer id'),
+    ]);
+    const action = input.eventType === 'cancelled' ? '预约已取消' : input.eventType === 'created' ? '已创建上门预约' : '预约时间已更新';
+    const results = await Promise.all(recipients.filter(Boolean).map((recipient) =>
+      deliverLeadNotification({
+        lead: { ...lead, id: lead.id, enterpriseId: lead.enterpriseId?.toString() },
+        recipient: recipient!, templateKind: 'measurement_appointment', notificationType: `measurement_appointment_${input.eventType}`,
+        message: `客户${lead.name}${action}`,
+        dedupeKey: `measurement_appointment:${input.eventKey}:${recipient!.id.toString()}`,
+        page: `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(input.leadId.toString())}`,
+        metadata: { appointmentEvent: input.eventType },
+        buildData: (template) => buildMeasurementAppointmentPayload(template, {
+          customerName: lead.name, phone: lead.phone, community: input.address,
+          measurementAt: input.startsAt, reminder: input.eventType === 'cancelled' ? '预约已取消' : '请按时到场',
+        }),
+      })
+    ));
+    return { success: results.every((result) => result.success), results };
+  } catch (error) {
+    console.error('Appointment notification failed:', error);
+    return { success: false, error: deliveryError(error) };
+  }
+}
+
+export async function notifyCustomerOfAppointment(input: {
+  enterpriseId: bigint;
+  leadId: bigint;
+  address: string;
+  startsAt: Date;
+  eventType: 'created' | 'customer_rescheduled' | 'internal_rescheduled' | 'cancelled';
+}) {
+  try {
+    const lead = await withTenantTransaction(input.enterpriseId, (transaction) =>
+      new LeadRepository(transaction).findById(input.leadId)
+    );
+    if (!lead?.customerUserId) return { success: false, skipped: true, error: 'customer unavailable' };
+
+    const identity = await withPlatformTransaction((transaction) =>
+      new MiniProgramIdentityRepository(transaction).findWechatIdentityByUserId(lead.customerUserId!)
+    );
+    if (!identity?.openid) return { success: false, skipped: true, error: 'customer openid unavailable' };
+
+    const template = await getMiniProgramSubscriptionTemplate('measurement_appointment');
+    if (!template?.templateId) return { success: false, skipped: true, error: 'subscription template unavailable' };
+
+    const action = input.eventType === 'cancelled'
+      ? '预约已取消'
+      : input.eventType === 'created'
+        ? '上门量房已预约'
+        : '预约时间已更新';
+    return await sendSubscriptionMessage({
+      touser: identity.openid,
+      template_id: template.templateId,
+      page: `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(input.leadId.toString())}`,
+      data: buildMeasurementAppointmentPayload(template, {
+        customerName: lead.name,
+        phone: lead.phone,
+        community: input.address,
+        measurementAt: input.startsAt,
+        reminder: action,
+      }),
+    });
+  } catch (error) {
+    console.error('Customer appointment notification failed:', error);
+    return { success: false, error: deliveryError(error) };
+  }
 }

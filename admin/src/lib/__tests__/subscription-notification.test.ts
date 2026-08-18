@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildLeadAssignmentPayload,
+  buildMeasurementAppointmentPayload,
   buildNewLeadPayload,
   buildWorkflowNotificationPayload,
   buildWorkflowTodoPayload,
@@ -70,6 +71,16 @@ test('payload builders emit only the approved keyword keys', () => {
   });
   assert.deepEqual(Object.keys(newLead), ['name1', 'date2', 'name3', 'phone_number4', 'time5']);
   assert.equal(newLead.time5.value, '2026-08-13 15:00:00');
+
+  const appointment = buildMeasurementAppointmentPayload(DEFAULT_SUBSCRIPTION_TEMPLATES.measurement_appointment, {
+    customerName: '张三',
+    phone: '13555555555',
+    community: '天福克拉广场36-14',
+    measurementAt: '2026-08-13T07:00:00.000Z',
+    reminder: '预约时间已更新',
+  });
+  assert.deepEqual(Object.keys(appointment), ['thing1', 'phone_number2', 'thing3', 'time6', 'thing7']);
+  assert.equal(appointment.time6.value, '2026-08-13 15:00:00');
 });
 
 test('new-lead selected time falls back from assignment to creation time', () => {

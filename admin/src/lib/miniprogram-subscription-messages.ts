@@ -125,6 +125,26 @@ export function buildNewLeadPayload(
   return payload;
 }
 
+export function buildMeasurementAppointmentPayload(
+  template: SubscriptionTemplateConfig,
+  input: {
+    customerName?: unknown;
+    phone?: unknown;
+    community?: unknown;
+    measurementAt?: Date | string | null;
+    reminder?: unknown;
+  }
+) {
+  const keys = template.keywordKeys;
+  const payload: SubscriptionMessagePayload = {};
+  payloadEntry(payload, keys.customerName, truncateWeChatText(input.customerName, 20, '客户'));
+  payloadEntry(payload, keys.phone, truncateWeChatText(input.phone, 17, '未填写'));
+  payloadEntry(payload, keys.community, truncateWeChatText(input.community, 20, '上门地址'));
+  payloadEntry(payload, keys.measurementAt, formatWeChatDateTime(input.measurementAt));
+  payloadEntry(payload, keys.reminder, truncateWeChatText(input.reminder, 20, '请按时到场'));
+  return payload;
+}
+
 export function resolveWorkflowTemplateKind(notificationType: string): SubscriptionTemplateKind {
   return notificationType === 'measure_assigned' || notificationType === 'design_assigned'
     ? 'lead_assignment'

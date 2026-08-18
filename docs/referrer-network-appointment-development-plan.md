@@ -1,6 +1,6 @@
 # Referrer Network and Measurement Appointment Development Plan
 
-Status: `Approved design / Phase 4 completed`
+Status: `Approved design / Phase 5 completed`
 
 This document is the durable implementation entry point for the breaking redesign covering multi-enterprise referrers, phone-authorized lead creation, automatic assignment, measurement appointments, published AI designs, conversion, and three-role commissions. Current code, PostgreSQL schema, migrations, and module inventories remain the authority for implemented behavior. Every table, API, and route in this plan remains `Planned` until code and tests prove otherwise.
 
@@ -19,6 +19,8 @@ Chinese mirror: [referrer-network-appointment-development-plan.zh-CN.md](./refer
 - Production method: after the built-in image tool was unavailable, Sub2API `gpt-image-2` produced the edit and a deterministic mask composite restricted the replacement to the middle phone.
 
 `design-references/` is Git-ignored and the design board must never enter the Mini Program package. If the file is missing or its hash differs, ask the product owner before substituting or inventing a design.
+
+The phase-5 internal referrer workbench uses `design-references/referrer-network-appointment-v1/phase-5-referrer-workbench-v1.png`, a `1024x1536` PNG composed for the `390x844` baseline. It applies only to an authenticated referrer choosing an enterprise and entering its service code, never to the anonymous customer claim path. Antigravity's built-in image engine regenerated this source, but did not expose a verifiable concrete Google image model name, so this document does not mislabel it as `Gemini 3 Pro Image`.
 
 ### 1.2 Screen mapping
 
@@ -43,7 +45,7 @@ The board-level note about automatic lead insertion and assignment is an impleme
 
 ### 1.4 Generated asset and production-path mapping
 
-Antigravity 2.8.1 used its built-in `generate_image` capability with the selected board, F1/F3 brand reference, and role-scene reference in a fixed order to create `design-references/referrer-network-appointment-v1/generated-assets-v1/referral-service-assets-board-v1.png`. That board remains a design reference only. The Mini Program package contains only the six optimized transparent PNGs extracted from independent asset cells, with no page layout, controls, or embedded page copy.
+Antigravity 2.8.1 used its built-in `generate_image` capability with the selected board, F1/F3 brand reference, and role-scene reference in a fixed order to create `design-references/referrer-network-appointment-v1/generated-assets-v1/referral-service-assets-board-v1.png`. That board remains a design reference only. The Mini Program package contains only the six optimized transparent PNGs extracted from independent asset cells plus the service-code-guide Xiao K PNG from a standalone referrer-workbench asset task, with no page layout, controls, or embedded page copy.
 
 | Design element | Production path |
 | --- | --- |
@@ -53,6 +55,7 @@ Antigravity 2.8.1 used its built-in `generate_image` capability with the selecte
 | Phone authorization | `miniprogram/packages/business/assets/referral-service-v1/phone-authorization.png` |
 | Designer matching | `miniprogram/packages/business/assets/referral-service-v1/designer-matching.png` |
 | Privacy lock | `miniprogram/packages/business/assets/referral-service-v1/privacy-lock.png` |
+| Referrer service-code-guide Xiao K | `miniprogram/packages/business/assets/referrer-workbench-v1/service-code-guide.png` |
 
 ## 2. Target workflow
 
@@ -266,9 +269,9 @@ Exact route names may be adjusted within an implementation slice to match App Ro
 | Service-code image | `GET /api/miniprogram/referrer-memberships/[id]/promotion-code/image`; implemented in phase 4, validates the active membership and calls the WeChat Mini Program code provider outside the database transaction, returning a non-cacheable PNG. |
 | Customer lead creation | `POST /api/miniprogram/referrals/authorize-and-create-lead`; phase 3 implements customer-context/direct WeChat phone authorization, idempotent attribution, and atomic lead creation/assignment. |
 | Assignment | `POST /api/internal/lead-assignments/[leadId]/retry`; phase 3 implements this for service identity authenticated by an `INTERNAL_SECRET` of at least 32 characters. |
-| Availability | `GET /api/appointments/availability` |
-| Appointments | `POST /api/appointments`, `POST /api/appointments/[id]/customer-reschedule`, `POST /api/appointments/[id]/internal-reschedule`, `POST /api/appointments/[id]/cancel`, `POST /api/appointments/[id]/complete` |
-| Calendar/settings | `GET/PUT /api/appointment-settings`, `GET/POST/DELETE /api/measurer-unavailability` |
+| Availability | `GET /api/appointments/availability`; phase 5 is complete and returns candidate-measurer availability plus the enterprise time zone, duration, step, and maximum advance-day boundary from enterprise schedules, active appointments, and unavailability. |
+| Appointments | `GET/POST /api/appointments`, `POST /api/appointments/[id]/customer-reschedule`, `POST /api/appointments/[id]/internal-reschedule`, `POST /api/appointments/[id]/cancel`, `POST /api/appointments/[id]/complete`; phase 5 is complete with optimistic versions, customer/designer/measurer/enterprise-owner boundaries, automatic measurer replacement, event audit, and post-commit staff and subscribed-customer notification attempts for create, reschedule, and cancellation. Customer reads and reschedules derive their tenant from the customer-owned lead or appointment rather than accepting an enterprise ID from the token or request. |
+| Calendar/settings | `GET/PUT /api/appointment-settings`, `GET/POST/DELETE /api/measurer-unavailability`; phase 5 is complete. |
 | Commissions | `GET/PUT /api/commission-rules`, `GET /api/lead-commissions`, `POST /api/lead-commissions/mark-paid` |
 
 Enterprise endpoints use existing tenant route/context helpers and RLS. Internal retries use a service identity and are not exposed to ordinary clients.
@@ -280,12 +283,14 @@ Phase 4 routes now exist and are recorded in the restoration ledger:
 - `packages/business/promotion-service-code/promotion-service-code`: selected design left screen shown to customers; the code image comes from a protected provider endpoint.
 - `packages/business/free-design-service/free-design-service`: selected design middle and right authorization/result states, including token resolution, phone authorization, idempotent lead creation, and designer contact delivery.
 
-The remaining planned routes are not added to the restoration ledger before they exist:
+The phase-5 runtime routes now exist and are recorded against their approved phase-5 design references in both restoration ledgers:
 
 - `packages/business/referrer-workbench/referrer-workbench`: memberships, internal enterprise selection, promotion-code entry.
-- `packages/business/customer-project/customer-project`: project, appointment, formal floor plan, and publications.
-- `packages/business/appointment-reschedule/appointment-reschedule`: customer availability and reschedule.
-- `packages/business/measurer-calendar/measurer-calendar`: measurer appointments and unavailability.
+- `packages/business/customer-project/customer-project`: current customer appointment card and entry into rescheduling; the formal-floor-plan and publication aggregation remains phase 6.
+- `packages/business/appointment-reschedule/appointment-reschedule`: server-calculated customer availability and immediate customer reschedule.
+- `packages/business/appointment-booking/appointment-booking`: the assigned designer enters from a lead without a confirmed appointment, provides the service address, selects a server-calculated real slot, and creates the first appointment.
+- `packages/business/measurer-calendar/measurer-calendar`: confirmed measurer itinerary with an entry to manage unavailability.
+- `packages/business/measurer-unavailability/measurer-unavailability`: measurers manage only their own unavailable periods with native date/time pickers, optional reason, save, and delete; server APIs continue to enforce role and ownership.
 
 Admin work stays within merchant boundaries and adds or replaces staff dual-code management, appointment settings, commission rules, and the three-role report. Before visible Admin work, inspect an approved source. If none exists, implement only models/APIs and do not invent production UI.
 
@@ -325,7 +330,7 @@ Update this status table incrementally and update both module inventories and af
 | 2. Dual codes and referrer network | `Completed` | Rotation/disable audit, single-enterprise staff, default three-enterprise membership limit/leave, and reproducible opaque promotion tokens are implemented; repository database contract tests pass. |
 | 3. Authorization and assignment | `Completed` | Two-stage scan, atomic user linkage/lead creation, first attribution, stable lowest-load assignment, no-candidate retention, post-commit notification, service retry, and staff-pool-change retry are implemented; repository/RLS/concurrency tests pass. |
 | 4. Selected design implementation | `Completed` | `promotion-service-code` and `free-design-service` implement the three selected states at `390x844`; the service-code image endpoint, token resolution, phone authorization, idempotent lead creation, designer QR delivery, and assignment-pending state are wired. Antigravity 2.8.1 used its built-in `generate_image` capability with the fixed 3x2 prompt and ordered references; six independent transparent PNG assets were cut, optimized, and packaged under `packages/business/assets/referral-service-v1/`, each below 300KB. Focused tests pass. An actual WeChat DevTools automator verified exact routes, element bounds, and full host-window captures including the native capsule on the iPhone 12/13 Pro `390x844` simulator. |
-| 5. Appointments and calendar | `Not started` | Settings, unavailability, exclusion constraint, first appointment, both reschedule paths, cancellation, events, notifications. |
+| 5. Appointments and calendar | `Completed` | Tenant appointment settings, measurer unavailability, working-slot validation, first appointment, customer/internal rescheduling, cancellation/completion, event audit, optimistic versions, and the database exclusion constraint are implemented. Referrers can list active memberships in the internal workbench, choose one, enter its protected service-code route, or leave it through a confirmation flow without changing historical attribution. The assigned designer can enter booking from a lead without a confirmed appointment, supply the address, and create the first appointment from server-calculated availability. Repository/RLS/concurrency integration tests and the customer/reschedule/measurer itinerary/self-service unavailability/referrer-workbench Mini Program routes are implemented; first booking and customer rescheduling have been checked in the iPhone 12/13 Pro `390x844` automation simulator for window-computed full-width CTA geometry and side insets. Post-commit creation, reschedule, and cancellation attempts notify staff and subscribed customers; the first-booking entry, referrer workbench, customer appointment card, customer rescheduling, first booking, measurer itinerary, and unavailability editor have each verified their exact top route and a full host-window capture including the native capsule in the actual `390x844` WeChat DevTools simulator. |
 | 6. Project, surveying, and publication | `Not started` | Formal entry, aggregation API, publication fact, customer read boundary. |
 | 7. Conversion and commissions | `Not started` | Three rules, conversion snapshot, three unique records, paid/void constraints, report. |
 | 8. Legacy removal | `Not started` | Old binding, acquisition confirmation, workbench, and commission removed; docs and permissions aligned. |

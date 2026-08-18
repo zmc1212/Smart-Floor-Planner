@@ -19,9 +19,9 @@
 | 界面 | 运行路由 | 当前合同 | 状态/限制 |
 | --- | --- | --- | --- |
 | 首页与量房入口 | `pages/index/index` | 角色化首页、线索/项目卡片、正式量房入口；本地 `ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG` 开关会跳过最近户型加载并直接新建量房 | Implemented；正常模式数据按租户和角色返回，调试开关仅限本地使用 |
-| 线索与客户 | `pages/leads-management/leads-management`、`packages/business/lead-form/lead-form`、`packages/business/lead-detail/lead-detail` | 线索列表/详情、获客协作、签约状态、正式户型摘要 | Implemented；签约权限由服务端执行 |
+| 线索与客户 | `pages/leads-management/leads-management`、`packages/business/lead-form/lead-form`、`packages/business/lead-detail/lead-detail` | 线索列表/详情、获客协作、签约状态、正式户型摘要；负责设计师在尚无有效预约时可进入首次预约 | Implemented；签约与预约入口权限均由服务端执行 |
 | 报备与员工任务 | `packages/business/promotion-records/promotion-records`、`packages/business/promotion-record-detail/promotion-record-detail`、`packages/business/acquisition-center/acquisition-center` | 企业报备、员工任务和通知 | Implemented/Limited；微信投递可能被外部拒绝 |
-| 推荐人网络与匿名领取 | `packages/business/promotion-service-code/promotion-service-code`、`packages/business/free-design-service/free-design-service` | `/api/miniprogram/codes/resolve` 解析并审计令牌且签发 10 分钟待确认来源；`/api/miniprogram/referrer-memberships/[id]/promotion-code/image` 校验当前关系并返回受保护的微信小程序码；`/api/miniprogram/referrals/authorize-and-create-lead` 在手机号授权后原子锁定首次归属、建线索并稳定分配设计师/测量员；Antigravity 按批准设计生成的 6 个透明 PNG 已打包在 `packages/business/assets/referral-service-v1/` | Implemented/Limited；公共页面不展示企业身份，客户必须主动授权手机号后才建线索，微信小程序码/授权依赖外部配置，无候选线索保留待重试 |
+| 推荐人网络、预约与匿名领取 | `packages/business/referrer-workbench/referrer-workbench`、`packages/business/promotion-service-code/promotion-service-code`、`packages/business/free-design-service/free-design-service`、`packages/business/customer-project/customer-project`、`packages/business/appointment-reschedule/appointment-reschedule`、`packages/business/appointment-booking/appointment-booking`、`packages/business/measurer-calendar/measurer-calendar`、`packages/business/measurer-unavailability/measurer-unavailability` | 推荐人内部工作台列出活动企业关系、选择并进入受保护服务码，退出关系不改历史归属；已有匿名领取 API；第 5 阶段预约合同及设计师首次预约、客户预约卡、改期、测量员日程与本人不可用时间编辑路由已实现。首次预约与客户改期均使用按当前窗口计算的通栏固定 CTA，避免原生按钮压缩 | Implemented/Limited；Repository/RLS/并发测试已通过，创建、改期、取消在事务后尝试投递员工与已授权客户订阅消息；微信投递依赖外部配置并可能拒绝。第 5 阶段受影响路由已在真实微信开发者工具 iPhone 12/13 Pro `390x844` 模拟器逐路由确认顶层路由与包含原生胶囊的整窗截图 |
 | 提成记录 | `packages/business/commission-records/commission-records` | 测量员获客提成和订单提成 | Implemented；结算仍由后台业务控制 |
 | 灵感库 | `packages/business/inspiration/inspiration` | 租户范围内灵感浏览和详情 | Implemented/Limited；媒体供应商为外部服务 |
 | AI 设计工作流 | `pages/ai-design/ai-design`、`packages/ai-workflow/*` | 客户/项目选择、方案入口、确认、结果和历史 | Implemented；供应商、点数和正式量房资格由服务端控制 |
@@ -43,7 +43,10 @@
   `/api/miniprogram/identity-contexts/switch` 及共用上下文解析器。身份列表每次从
   数据库读取；切换不能伪造非活动企业、员工身份或推荐人成员关系。
 - 推荐人网络：推广展示页为当前推荐人成员关系加载受保护的微信小程序码；客户领取页只解析、校验、审计不透明令牌并签发短时待确认来源，不创建线索。客户使用 `Idempotency-Key` 授权后才原子创建活动归属、线索和派单；并发或重复扫码不能覆盖未关闭项目。已授权手机号的用户可入驻一家员工企业，或默认最多加入三家推荐人企业；退出会停用对应推广令牌并使旧 JWT 失效。
-- 线索、户型、测量、设备、AI、提成、报备和通知使用对应的租户 API 族。
+- 线索、户型、测量、设备、AI、提成、报备和通知使用对应的租户 API 族。预约可用
+  时段接口会返回企业时区、时长、步长和最远可预约天数；预约与改期页面以该服务端
+  边界为准，不将本地生成的日期列表当作权威范围。客户预约接口只在确认请求的线索
+  或预约归属该客户后才推导企业范围；客户 token 不携带或声明企业 ID。
 - 几何与 Canvas 源文件为 `miniprogram/utils/surveyWallGraph.js`、
   `miniprogram/packages/surveying/utils/surveyCanvasRenderer.js` 及量房尺寸/实体规划器。
 - BLE 集成位于 `miniprogram/utils/bluetooth.js`；协议语义以仓库厂商文档为准。

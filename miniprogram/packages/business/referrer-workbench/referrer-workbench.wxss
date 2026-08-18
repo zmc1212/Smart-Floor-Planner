@@ -1,0 +1,36 @@
+page { height: 100%; overflow: hidden; background: #f6f8f5; }
+.workbench-page { display: flex; min-height: 100vh; flex-direction: column; color: #172019; background: linear-gradient(180deg, #fcfdfb 0%, #f3f8f3 100%); }
+.service-nav { position: relative; z-index: 4; display: flex; padding-bottom: 14rpx; padding-left: 40rpx; align-items: center; box-sizing: content-box; background: #fff; }
+.nav-title { font-size: 32rpx; font-weight: 700; line-height: 1.2; }
+.intro-scene { position: relative; display: flex; height: 168rpx; margin: 0 24rpx; padding: 28rpx 248rpx 22rpx 30rpx; overflow: hidden; border-radius: 0 0 24rpx 24rpx; background: linear-gradient(135deg, #e9f9ee 0%, #dff3e7 100%); box-sizing: border-box; }
+.scene-copy { position: relative; z-index: 1; color: #1d3c28; font-size: 27rpx; font-weight: 600; line-height: 1.5; }
+.guide-xiaok { position: absolute; right: 12rpx; bottom: -12rpx; width: 238rpx; height: 178rpx; }
+.workbench-content { display: flex; min-height: 0; padding: 30rpx 24rpx calc(28rpx + env(safe-area-inset-bottom)); flex: 1; flex-direction: column; box-sizing: border-box; }
+.section-heading { margin: 0 4rpx 18rpx; font-size: 30rpx; font-weight: 700; }
+.membership-scroll { width: 100%; white-space: nowrap; }
+.membership-list { display: inline-flex; min-width: 100%; gap: 16rpx; }
+.membership { display: inline-flex; min-height: 78rpx; max-width: 380rpx; margin: 0; padding: 0 26rpx; overflow: hidden; align-items: center; justify-content: center; border: 2rpx solid #d8e1d9; border-radius: 16rpx; color: #33403a; background: #fff; font-size: 26rpx; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; }
+.membership::after, .retry::after, .leave-action::after { border: 0; }
+.membership-active { border-color: #1aab51; color: #176b35; background: #effbf2; box-shadow: 0 6rpx 18rpx rgba(34, 151, 73, .12); }
+.service-card { display: flex; margin-top: 28rpx; padding: 30rpx; flex-direction: column; }
+.service-title { margin-bottom: 26rpx; font-size: 32rpx; font-weight: 700; }
+.benefit-row { display: flex; min-height: 88rpx; align-items: center; gap: 20rpx; }
+.benefit-row + .benefit-row { margin-top: 18rpx; }
+.benefit-icon { display: flex; width: 68rpx; height: 68rpx; flex: 0 0 auto; align-items: center; justify-content: center; border-radius: 50%; background: #f2fbf4; }
+.benefit-icon image { width: 52rpx; height: 52rpx; }
+.benefit-title, .benefit-copy { display: block; }
+.benefit-title { font-size: 28rpx; font-weight: 700; line-height: 1.25; }
+.benefit-copy { margin-top: 8rpx; color: #6b746d; font-size: 22rpx; line-height: 1.35; }
+.show-code { width: 100%; height: 88rpx; margin-top: 32rpx; }
+.leave-action { margin: 32rpx auto 0; padding: 14rpx 28rpx; color: #69736d; background: transparent; font-size: 28rpx; line-height: 1.2; }
+.leave-note { margin-top: 10rpx; color: #7a837d; font-size: 22rpx; line-height: 1.4; text-align: center; }
+.state-card { display: flex; margin: 34rpx 24rpx; padding: 56rpx 34rpx; align-items: center; flex-direction: column; color: #68736b; font-size: 26rpx; line-height: 1.5; text-align: center; }
+.empty-title { color: #27342c; font-size: 30rpx; font-weight: 700; }
+.empty-copy { margin-top: 14rpx; }
+.retry { min-height: 72rpx; margin-top: 22rpx; color: #159a47; background: #fff; font-size: 26rpx; line-height: 72rpx; }
+
+@media (max-width: 360px) {
+  .intro-scene { padding-right: 218rpx; }
+  .guide-xiaok { right: 0; width: 220rpx; }
+  .membership { max-width: 330rpx; font-size: 24rpx; }
+}

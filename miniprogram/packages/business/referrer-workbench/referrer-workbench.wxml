@@ -1,0 +1,59 @@
+<!--
+THESIS: 推荐人先明确当前展示的服务归属，再把客户可见的匿名服务码交出去。
+OWN-WORLD: 暖白与浅薄荷的服务通道，小 K 只作为服务码引导员出现一次。
+FIRST VIEWPORT: 标题、企业选择、服务权益和“展示服务码”在 390x844 中可连续理解。
+FORM: Antigravity design source `phase-5-referrer-workbench-v1.png`; composite reference is never rendered or sliced.
+-->
+<view class="workbench-page sfp-page">
+  <view
+    class="service-nav"
+    style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"
+  >
+    <view class="nav-title">推广服务</view>
+  </view>
+
+  <view class="intro-scene" aria-hidden="true">
+    <view class="scene-copy">选择所属企业，展示对应的专属推广服务码</view>
+    <image class="guide-xiaok" src="/packages/business/assets/referrer-workbench-v1/service-code-guide.png" mode="aspectFit" />
+  </view>
+
+  <view wx:if="{{loading}}" class="state-card sfp-card">正在加载推广企业…</view>
+  <view wx:elif="{{error}}" class="state-card sfp-card">
+    <text>{{error}}</text>
+    <button class="retry" bindtap="load">重新加载</button>
+  </view>
+  <view wx:elif="{{!memberships.length}}" class="state-card sfp-card">
+    <text class="empty-title">暂未加入推广企业</text>
+    <text class="empty-copy">加入企业后，可在这里选择并展示对应的服务码。</text>
+  </view>
+  <view wx:else class="workbench-content">
+    <view class="section-heading">企业成员选择</view>
+    <scroll-view class="membership-scroll" scroll-x="true" enable-flex="true" show-scrollbar="false">
+      <view class="membership-list">
+        <button
+          wx:for="{{memberships}}"
+          wx:key="id"
+          class="membership {{selectedMembershipId === item.id ? 'membership-active' : ''}}"
+          data-id="{{item.id}}"
+          bindtap="selectMembership"
+        >{{item.enterpriseName}}</button>
+      </view>
+    </scroll-view>
+
+    <view class="service-card sfp-card">
+      <view class="service-title">当前推广权益</view>
+      <view class="benefit-row">
+        <view class="benefit-icon"><image src="/packages/business/assets/referral-service-v1/onsite-measurement.png" mode="aspectFit" /></view>
+        <view><text class="benefit-title">免费上门量房</text><text class="benefit-copy">专业人员到现场完成测量</text></view>
+      </view>
+      <view class="benefit-row">
+        <view class="benefit-icon"><image src="/packages/business/assets/referral-service-v1/designer-service.png" mode="aspectFit" /></view>
+        <view><text class="benefit-title">免费设计师服务</text><text class="benefit-copy">为客户建立服务档案后安排设计师</text></view>
+      </view>
+      <button class="show-code sfp-primary-action" bindtap="showServiceCode">展示服务码</button>
+    </view>
+
+    <button class="leave-action" loading="{{exitingId === selectedMembershipId}}" disabled="{{!!exitingId}}" bindtap="leaveSelectedEnterprise">退出该企业</button>
+    <text class="leave-note">退出不影响历史已产生的推荐记录与服务归属</text>
+  </view>
+</view>

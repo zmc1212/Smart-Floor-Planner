@@ -4487,7 +4487,7 @@ Page({
       // the bottom cursor drag path rather than reclassifying raw coordinates.
       const nextDraft = surveyGraph.snapCursorToWall(this.draft, candidate.pointMm, candidate);
       this.applyDraft(nextDraft, {
-        recordHistory: true,
+        recordHistory: false,
         extraData: { numberPadVisible: false }
       });
       wx.showToast({ title: '光标已吸附到墙体', icon: 'none' });
@@ -4900,7 +4900,7 @@ Page({
       ? surveyGraph.snapCursorToWall(this.draft, candidate.pointMm, candidate)
       : surveyGraph.placeNewWallChainCursor(this.draft, candidate.pointMm);
     this.applyDraft(nextDraft, {
-      recordHistory: true,
+      recordHistory: false,
       extraData: {
         cursorPlacementState: 'placed',
         cursorLensActive: false,

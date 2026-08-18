@@ -17,6 +17,13 @@
       <text>{{item.label}}</text>
     </view>
   </view>
+  <view class="appointment-entry" wx:if="{{canScheduleAppointment}}">
+    <view class="appointment-entry-copy">
+      <text class="appointment-entry-title">上门量房</text>
+      <text class="appointment-entry-note">先从真实可用时段安排首次上门服务</text>
+    </view>
+    <button class="appointment-entry-action" bindtap="onScheduleAppointment">安排上门量房</button>
+  </view>
   <view class="conversion-card" wx:if="{{lead && (canMarkConverted || lead.status === 'converted')}}">
     <view class="conversion-card-heading">
       <view class="conversion-card-copy">

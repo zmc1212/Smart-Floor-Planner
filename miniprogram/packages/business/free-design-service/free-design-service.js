@@ -263,7 +263,7 @@ Page({
   onOpenProject() {
     const leadId = this.data.lead && this.data.lead.id;
     if (leadId) {
-      wx.navigateTo({ url: `/packages/business/lead-detail/lead-detail?id=${encodeURIComponent(leadId)}` });
+      wx.navigateTo({ url: `/packages/business/customer-project/customer-project?leadId=${encodeURIComponent(leadId)}` });
       return;
     }
     wx.switchTab({ url: '/pages/mine/mine' });

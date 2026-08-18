@@ -73,7 +73,8 @@ test('Acquisition confirmation remains independent from lead lifecycle and is id
   assert.doesNotMatch(acquireRoute, /set\(\{\s*status:\s*'acquired'/s);
   assert.match(acquireRoute, /isNull\(leads\.acquiredAt\)/);
   assert.match(acquireRoute, /inArray\(leads\.status, CONFIRMABLE_LEAD_STATUSES\)/);
-  assert.match(acquireRoute, /acquisition-center\/acquisition-center\?leadId=/);
+  assert.match(acquireRoute, /notifyMeasurerOfAcquiredLead/);
+  assert.match(acquireRoute, /acquisitionCommissionToDto/);
   assert.match(taskRoute, /role !== 'designer' && role !== 'measurer'/);
   assert.match(taskRoute, /pending_confirmation/);
   assert.match(taskRoute, /taskSummary/);

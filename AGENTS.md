@@ -220,6 +220,22 @@ staged change; split unrelated work.
   another Antigravity instance. Use Antigravity's built-in
   `generate_image`/`image_generation` capability rather than installing or
   claiming a separate image-generation plugin.
+- `generate_image` is an internal Antigravity-agent capability, not a native
+  Codex tool. The absence of a directly callable Codex `generate_image` tool is
+  never evidence that the running Antigravity app is unavailable and must not
+  trigger a provider fallback. Attach to the existing standalone app through
+  its live `%APPDATA%\\Antigravity\\DevToolsActivePort` endpoint, read the
+  CDP page target from `http://127.0.0.1:<port>/json/list`, and use that page's
+  WebSocket connection to verify the `Smart-Floor-Planner` project, submit the
+  generation prompt, and monitor the task. Do not rely on keyboard focus when
+  a DOM/CDP interaction is available.
+- Never invoke the standalone Electron executable with `--help`, `-h`, or an
+  equivalent help flag: `Antigravity.exe --help` opens an unintended desktop
+  instance rather than providing a harmless CLI help response. To inspect the
+  installation, version, or running state, use executable metadata, installed
+  files, and process inspection without launching the executable. To start it
+  on the user's request, use the verified executable path with no arguments;
+  reuse an existing verified instance whenever possible.
 - For an Antigravity image request, give the agent the complete prompt, ordered
   reference-image paths and exact workspace output path. Keep generated design
   references under repository-root `design-references/`, and do not authorize
@@ -231,9 +247,12 @@ staged change; split unrelated work.
   file actually exists at the target path. Verify its file signature, format,
   pixel dimensions and encoded size, inspect the rendered image, and report the
   final absolute path. A submitted prompt, a running indicator, or a generated
-  temporary artifact is not completion. If Antigravity is unavailable or its
-  built-in image tool fails, report the actual error and then follow the normal
-  fallback rule above without claiming Antigravity success.
+  temporary artifact is not completion. Only after process inspection, CDP
+  endpoint discovery, attachment, and an attempted Antigravity tool invocation
+  have each failed may the app be called unavailable. When the user explicitly
+  named Antigravity, report that exact failure and ask before switching to the
+  normal Codex/Sub2API fallback; never silently report a fallback asset as an
+  Antigravity result.
 - After every raster image generation, optimize the generated file before it is
   retained or packaged. Any generated image shipped in `miniprogram/` must be
   at most 300KB; preserve the asset path and visual composition, reduce colour
@@ -322,8 +341,11 @@ staged change; split unrelated work.
   before the first page-stack check, interaction, or screenshot. Reconnect and
   confirm that the simulator reports a live page at the expected viewport. A
   connected automator whose `systemInfo` or page RPC times out is still frozen;
-  compile again before continuing. Never treat the initial frozen home frame as
-  application behavior or visual-QA evidence.
+  that first timeout must never end the visual-QA attempt: invoke an explicit
+  Mini Program recompile (not merely a reconnect), wait for compilation to
+  finish, then reconnect and retry `systemInfo` plus the target page-stack
+  check before deciding whether the runtime remains unavailable. Never treat
+  the initial frozen home frame as application behavior or visual-QA evidence.
 - Before every Mini Program visual-QA screenshot, identify the intended restored
   page route and inspect the running page stack through the automation runtime.
   Capture only after the top active route exactly matches that target (ignoring

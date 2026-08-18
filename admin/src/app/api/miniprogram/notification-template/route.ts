@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
     const context = await resolveMiniProgramContext(request);
-    if (!context?.staff) {
+    if (!context) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     const templates = await getMiniProgramSubscriptionTemplates();
