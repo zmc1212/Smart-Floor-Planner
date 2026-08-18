@@ -67,8 +67,8 @@ copy back to `layoutData`.
   opposite thickness stay a stepped facade. The two remaining walls at that
   inner L keep overlapping rectangular solids; they must not convex-miter a
   trapezoid that cuts a triangular hole out of the join. Collinear remaining
-  walls with opposite thickness keep a stepped outer facade and fill only the
-  inner thickness corner into the room.
+  walls with opposite thickness keep a stepped outer facade and fill the outer
+  step corner so inner faces stay aligned at the shared node.
 - A T-branch started on a closed exterior wall middle keeps one topology node
   and physical wall. Inner/outer start selects the near/far point on the source
   wall boundary and the corresponding first-wall start inset; it does not

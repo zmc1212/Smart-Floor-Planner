@@ -1,18 +1,67 @@
 const ROLE_LANDING_PATHS = Object.freeze({
   customer: '/pages/index/index',
   referrer: '/packages/business/referrer-workbench/referrer-workbench',
-  staff: '/pages/mine/mine'
+  staff: '/pages/mine/mine',
+  designer: '/pages/leads-management/leads-management',
+  measurer: '/packages/business/measurer-calendar/measurer-calendar',
+  enterprise_admin: '/pages/mine/mine'
 });
+
+const ROLE_CAPABILITIES = Object.freeze({
+  customer: ['customer.service', 'customer.projects', 'account'],
+  referrer: ['referrer.promotion', 'referrer.progress', 'referrer.earnings', 'account'],
+  designer: ['staff.leads', 'staff.appointments', 'staff.design', 'account'],
+  measurer: ['staff.schedule', 'staff.tasks', 'staff.surveying', 'account'],
+  enterprise_admin: ['enterprise.operations', 'enterprise.customers', 'enterprise.appointments', 'account'],
+  staff: ['staff.leads', 'staff.appointments', 'account']
+});
+
+const ROUTE_CAPABILITIES = Object.freeze({
+  '/pages/index/index': 'customer.service',
+  '/pages/leads-management/leads-management': 'staff.leads',
+  '/pages/ai-design/ai-design': 'staff.design',
+  '/packages/ai-workflow/create/ai-design-create': 'staff.design',
+  '/packages/ai-workflow/result/ai-design-result': 'staff.design',
+  '/packages/ai-workflow/history/ai-design-history': 'staff.design',
+  '/packages/business/lead-detail/lead-detail': 'staff.leads',
+  '/packages/business/lead-form/lead-form': 'staff.leads',
+  '/packages/business/appointment-booking/appointment-booking': 'staff.appointments',
+  '/packages/business/appointment-detail/appointment-detail': ['customer.projects', 'staff.appointments', 'enterprise.appointments'],
+  '/packages/business/appointment-reschedule/appointment-reschedule': ['customer.projects', 'staff.appointments', 'enterprise.appointments'],
+  '/packages/surveying/editor/surveying-editor': 'staff.surveying',
+  '/packages/business/measurer-calendar/measurer-calendar': 'staff.schedule',
+  '/packages/business/measurer-unavailability/measurer-unavailability': 'staff.schedule',
+  '/packages/business/referrer-workbench/referrer-workbench': 'referrer.promotion',
+  '/packages/business/promotion-service-code/promotion-service-code': 'referrer.promotion',
+  '/packages/business/customer-project/customer-project': 'customer.projects',
+  '/pages/mine/mine': 'account',
+  '/packages/business/settings/settings': 'account',
+  '/packages/business/identity-switch/identity-switch': 'account',
+  '/packages/business/account-security/account-security': 'account'
+});
+
+function roleForIdentity(value) {
+  if (!value) return null;
+  if (value.role && ROLE_CAPABILITIES[value.role]) return value.role;
+  if (value.mode === 'referrer') return 'referrer';
+  if (value.mode === 'customer') return 'customer';
+  if (value.mode === 'staff') {
+    return ROLE_CAPABILITIES[value.staffRole] && value.staffRole !== 'staff'
+      ? value.staffRole
+      : null;
+  }
+  return null;
+}
 
 function normalizeIdentity(identity) {
   const value = identity || {};
-  const mode = value.mode || (value.role === 'staff' ? 'staff' : 'customer');
-  return { ...value, mode };
+  const mode = value.mode || (value.role === 'staff' ? 'staff' : null);
+  return { ...value, mode, role: roleForIdentity(value) };
 }
 
 function getRoleLanding(identity) {
   const normalized = normalizeIdentity(identity);
-  return normalized.landingPath || ROLE_LANDING_PATHS[normalized.mode] || ROLE_LANDING_PATHS.customer;
+  return normalized.landingPath || ROLE_LANDING_PATHS[normalized.role] || null;
 }
 
 function routePath(route) {
@@ -25,6 +74,7 @@ function isRoleLanding(route, identity) {
 
 function navigateToRoleLanding(identity, options = {}) {
   const url = getRoleLanding(identity);
+  if (!url) return false;
   const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
   const current = pages && pages.length ? `/${pages[pages.length - 1].route}` : '';
   if (isRoleLanding(current, identity)) return false;
@@ -35,10 +85,44 @@ function navigateToRoleLanding(identity, options = {}) {
   return true;
 }
 
+function canAccessRoute(route, bootstrapOrIdentity) {
+  const path = routePath(route);
+  const required = ROUTE_CAPABILITIES[path];
+  if (!required) return true;
+  const bootstrap = bootstrapOrIdentity && bootstrapOrIdentity.current
+    ? bootstrapOrIdentity
+    : null;
+  const capabilities = bootstrap
+    ? (bootstrap.current.capabilities || (bootstrap.navigation && bootstrap.navigation.capabilities) || [])
+    : (ROLE_CAPABILITIES[roleForIdentity(bootstrapOrIdentity)] || []);
+  return Array.isArray(required)
+    ? required.some((capability) => capabilities.includes(capability))
+    : capabilities.includes(required);
+}
+
+function guardDeepLink(route, bootstrapOrIdentity) {
+  const allowed = canAccessRoute(route, bootstrapOrIdentity);
+  if (allowed) return { allowed: true, route: routePath(route), reason: null };
+  const current = bootstrapOrIdentity && bootstrapOrIdentity.current
+    ? bootstrapOrIdentity.current
+    : bootstrapOrIdentity;
+  return {
+    allowed: false,
+    route: routePath(route),
+    reason: 'identity_route_forbidden',
+    redirectPath: getRoleLanding(current)
+  };
+}
+
 module.exports = {
   ROLE_LANDING_PATHS,
+  ROLE_CAPABILITIES,
+  ROUTE_CAPABILITIES,
+  roleForIdentity,
   normalizeIdentity,
   getRoleLanding,
   isRoleLanding,
-  navigateToRoleLanding
+  navigateToRoleLanding,
+  canAccessRoute,
+  guardDeepLink
 };

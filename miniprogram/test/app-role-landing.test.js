@@ -52,3 +52,40 @@ test('role landing retries until the root page is available after session hydrat
     global.setTimeout = previousSetTimeout;
   }
 });
+
+test('an invalid signed context clears the session and enters explicit recovery', async () => {
+  const definition = loadAppDefinition();
+  const api = require('../utils/api.js');
+  const originalRequest = api.request;
+  const originalWx = global.wx;
+  const removed = [];
+  const relaunched = [];
+  global.wx = {
+    removeStorageSync(key) { removed.push(key); },
+    getStorageSync() { return null; },
+    reLaunch(options) { relaunched.push(options.url); }
+  };
+  api.request = async () => { throw { error: 'Unauthorized', statusCode: 401, code: 'identity_context_invalid' }; };
+  const app = {
+    globalData: {
+      token: 'expired-token',
+      userInfo: { mode: 'referrer' },
+      openid: 'openid',
+      sessionHydrating: false,
+      sessionHydrated: false,
+      bootstrap: { current: { role: 'referrer' } },
+      lastValidIdentityContext: { mode: 'referrer' }
+    }
+  };
+
+  try {
+    await definition.hydrateStoredSession.call(app);
+    assert.equal(app.globalData.token, null);
+    assert.equal(app.globalData.sessionRecovery.reason, 'identity_context_invalid');
+    assert.deepEqual(relaunched, ['/packages/business/login/login?recovery=identity_context_invalid']);
+    assert.deepEqual(removed.sort(), ['openid', 'token', 'userInfo']);
+  } finally {
+    api.request = originalRequest;
+    global.wx = originalWx;
+  }
+});

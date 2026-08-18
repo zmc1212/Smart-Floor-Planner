@@ -10,7 +10,10 @@ Page({
     loading: false
   },
 
-  onLoad() {
+  onLoad(options) {
+    if (options && options.recovery === 'identity_context_invalid') {
+      wx.showToast({ title: '身份已变更，请重新登录', icon: 'none' });
+    }
     if (app.globalData.openid && app.globalData.userInfo) {
       wx.navigateBack();
     }
@@ -80,6 +83,8 @@ Page({
         if (typeof app.syncProfessionalContext === 'function') {
           app.syncProfessionalContext();
         }
+        await app.hydrateStoredSession();
+        if (app.globalData.sessionRecovery) throw new Error('身份资料已失效，请重新登录');
 
         // Fix: Use modal to create a new user gesture for notification request
         wx.showModal({

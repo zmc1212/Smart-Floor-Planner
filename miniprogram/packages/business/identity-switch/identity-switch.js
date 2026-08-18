@@ -68,6 +68,11 @@ Page({
     const key = [context.mode, context.enterpriseId, context.staffId, context.referrerMembershipId].filter(Boolean).join(':');
     const app = getApp();
     const oldToken = (app && app.globalData && app.globalData.token) || wx.getStorageSync('token');
+    const oldSession = app && app.globalData ? {
+      userInfo: app.globalData.userInfo,
+      openid: app.globalData.openid,
+      bootstrap: app.globalData.bootstrap
+    } : null;
     this.setData({ switchingKey: key });
     try {
       const switched = await api.request('/miniprogram/identity-contexts/switch', 'POST', {
@@ -93,15 +98,26 @@ Page({
       wx.setStorageSync('token', refreshed.token);
       wx.setStorageSync('userInfo', refreshed.user);
       if (refreshed.openid) wx.setStorageSync('openid', refreshed.openid);
+      app.globalData.sessionHydrated = false;
+      await app.hydrateStoredSession();
+      if (app.globalData.sessionRecovery) throw new Error('身份已失效，请重新选择');
       wx.showToast({ title: '身份已切换', icon: 'success' });
       setTimeout(() => navigateToRoleLanding({
-        ...context,
+        ...app.globalData.userInfo,
+        ...(app.globalData.bootstrap && app.globalData.bootstrap.current || {}),
         // Keep the approved referrer landing explicit for older DevTools builds.
-        landingPath: context.mode === 'referrer' ? '/packages/business/referrer-workbench/referrer-workbench' : '/pages/mine/mine'
+        landingPath: (app.globalData.bootstrap && app.globalData.bootstrap.current && app.globalData.bootstrap.current.landingPath)
+          || (context.mode === 'referrer' ? '/packages/business/referrer-workbench/referrer-workbench' : '/pages/mine/mine')
       }), 500);
     } catch (error) {
-      if (app && app.globalData) app.globalData.token = oldToken;
-      if (oldToken) wx.setStorageSync('token', oldToken);
+      if (app && app.globalData && !app.globalData.sessionRecovery) {
+        app.globalData.token = oldToken;
+        app.globalData.userInfo = oldSession && oldSession.userInfo;
+        app.globalData.openid = oldSession && oldSession.openid;
+        app.globalData.bootstrap = oldSession && oldSession.bootstrap;
+        if (oldToken) wx.setStorageSync('token', oldToken);
+        if (oldSession && oldSession.userInfo) wx.setStorageSync('userInfo', oldSession.userInfo);
+      }
       wx.showToast({ title: errorMessage(error, '身份切换失败'), icon: 'none' });
     } finally {
       this.setData({ switchingKey: '' });

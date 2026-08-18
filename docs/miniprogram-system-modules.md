@@ -8,7 +8,10 @@ restoration notes and test transcripts belong in Git history or local evidence.
 
 - Native WeChat Mini Program with custom tab bar, bright-green design tokens,
   and iPhone 13 Pro `390x844` as the visual baseline.
-- Sessions use `/api/auth/miniprogram` and bearer JWT. Phone authorization can
+- Sessions use `/api/auth/miniprogram` and bearer JWT. `GET /api/miniprogram/bootstrap`
+  validates the signed context and returns the current role, valid role groups,
+  enterprise/membership context, landing path, capability allowlist, and
+  server-owned badge summary. Phone authorization can
   create an ordinary customer account; the phase-3 referral claim endpoint can
   also consume WeChat authorization codes and atomically link the account,
   attribution, and lead. Tokens select a database-validated
@@ -35,7 +38,7 @@ restoration notes and test transcripts belong in Git history or local evidence.
 | Commission records | `packages/business/commission-records/commission-records` | Order commissions for eligible commercial roles | Implemented; settlement remains backend/business controlled |
 | Inspiration library | `packages/business/inspiration/inspiration` | Tenant-scoped inspiration browsing and detail | Implemented/Limited; media provider is external |
 | AI design workflow | `pages/ai-design/ai-design`, `packages/ai-workflow/*` | Customer/project selection, recipe entry, confirmation, task result/history, and lead-scoped publication state. A succeeded result tied to a lead lets the responsible designer or enterprise administrator publish it to or withdraw it from the customer project after confirmation | Implemented; provider, credit, formal-survey eligibility, lead responsibility, and publication visibility are server controlled |
-| Mine and account | `pages/mine/mine`, `packages/business/profile-edit/profile-edit`, `packages/business/settings/settings`, `packages/business/identity-switch/identity-switch`, `packages/business/account-security/account-security` | Notifications, account security, and server-backed identity-context selection; switching exchanges a signed context token, refreshes profile data, and persists the session. Login, onboarding, switching, and startup recovery always use shared identity navigation to enter the signed customer, staff, or referrer landing rather than returning to the pre-login tab | Implemented/Limited; the switch entry is buried in Settings, five roles still share the legacy Mine and static tab shell, and referrer progress/earnings are not yet present. Invalid context clears local session state; exactly one context remains active. The signed referrer landing has real login/cold-launch host evidence; the identity-list capture and Phase 11-15 role redesign remain pending |
+| Mine and account | `pages/mine/mine`, `packages/business/profile-edit/profile-edit`, `packages/business/settings/settings`, `packages/business/identity-switch/identity-switch`, `packages/business/account-security/account-security` | Notifications, account security, and server-backed identity-context selection; `GET /api/miniprogram/bootstrap` returns the current role, valid role groups, enterprise/membership context, landing path, capability allowlist, and server-owned badge summary. Switching exchanges a signed context token; login, onboarding, claims, switching, and startup recovery refresh and validate bootstrap before shared identity navigation enters a signed landing. `identity-navigation` rejects unknown identities and forbidden deep links | Implemented/Limited; five roles still share the legacy Mine and static tab shell, and referrer progress/earnings are not yet present. Revoked, deactivated, or version-mismatched contexts clear local session state with an explicit recovery reason instead of falling back to customer UI. Phase 12-15 role workbenches and recovery-page design remain pending |
 | Recommendation share | `packages/business/recommendation-share/*` | Read-only shared recommendation and project summary | Limited by share authorization and available assets |
 
 ## Formal surveying
@@ -54,7 +57,7 @@ plan must remain defined after collinear inner corners collapse. A punch-through
 L corner keeps rectangular wall solids and must not convex-miter into the room.
 Inner-face punch-through keeps each remaining wall's original body side: the
 inner L extends into the merged room, opposite-thickness collinear walls stay a
-stepped facade and fill only the inner thickness corner, and the two remaining
+stepped facade and fill the outer step corner so inner faces stay aligned, and the two remaining
 walls keep overlapping rectangular solids instead of a convex-mitered trapezoid.
 Closed exterior-wall T branches retain one topology node and physical wall.
 Inner/outer start selects the near/far point on the source boundary and the
@@ -84,7 +87,7 @@ continuations and shared internal partitions keep their existing closure behavio
 
 ## Shared APIs and utilities
 
-- Authentication/context: `/api/auth/miniprogram`,
+- Authentication/context: `/api/auth/miniprogram`, `/api/miniprogram/bootstrap`,
   `/api/miniprogram/identity-contexts`,
   `/api/miniprogram/identity-contexts/switch`, and the shared context resolver.
   Context lists are always read from the database; a switch cannot assert an

@@ -374,7 +374,7 @@ test('Shared session clear removes every persisted identity value', () => {
 
   try {
     session.clearSession();
-    assert.deepEqual(removed.sort(), ['openid', 'token', 'userInfo']);
+    assert.deepEqual(removed.sort(), ['lastValidIdentityContext', 'openid', 'token', 'userInfo']);
     assert.equal(app.globalData.token, null);
     assert.equal(app.globalData.userInfo, null);
     assert.deepEqual(app.globalData.referral, { enterpriseId: null, staffId: null });

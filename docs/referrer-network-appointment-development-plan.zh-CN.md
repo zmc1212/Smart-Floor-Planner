@@ -1,6 +1,6 @@
 # 推荐人网络与预约量房闭环开发计划
 
-状态：`Phase 9 completed / Phase 10 in progress`
+状态：`Phase 10 in progress / Phase 11 completed`
 
 本文是“推荐人多企业推广、客户授权建线索、自动派单、预约量房、AI 方案、签单和三方提成”破坏式改造的持续开发入口。当前代码、PostgreSQL schema、迁移和模块清单仍是已实现能力的依据；本文中的表、接口和路由在代码落地并通过测试前都只能标记为 `Planned`。
 
@@ -281,6 +281,7 @@ closed 为终止状态
 | 预约 | `GET/POST /api/appointments`、`POST /api/appointments/[id]/customer-reschedule`、`POST /api/appointments/[id]/internal-reschedule`、`POST /api/appointments/[id]/cancel`、`POST /api/appointments/[id]/complete`；第 5 阶段已完成，已接通版本乐观锁、客户/设计师/测量员/企业负责人边界、自动换测量员、事件审计，以及创建、改期、取消后的事务后员工和已授权客户订阅消息尝试。客户读取和改期仅在请求线索或预约确属本人后推导企业范围，不接受 token 或请求声明的企业 ID。 |
 | 日历与配置 | `GET/PUT /api/appointment-settings`、`GET/POST/DELETE /api/measurer-unavailability`；第 5 阶段已完成。 |
 | 客户项目与方案发布 | `GET /api/miniprogram/customer-projects/[leadId]`、`GET /api/miniprogram/customer-projects/[leadId]/published-generations/[generationId]/image`、`POST /api/leads/[id]/ai-publications`、`DELETE /api/leads/[id]/ai-publications/[generationId]`；阶段 6 后端切片已实现。客户读取只允许本人项目，设计师仅能发布/撤回自己负责线索的已成功 generation，企业负责人可管理本企业线索；已撤回或已删除 generation 绝不出现在客户聚合或图片端点。 |
+| 启动与身份外壳 | `GET /api/miniprogram/bootstrap`；第 11 阶段实现。服务端按当前签名 JWT 实时校验 `contextVersion`、活动员工/推荐人关系，返回当前角色、有效角色组、企业/成员上下文、落点、能力白名单和服务端徽标摘要；无效上下文返回 `identity_context_invalid`，不回退客户身份。 |
 | 提成 | `GET/PUT /api/commission-rules`、`GET /api/lead-commissions?status=&role=&fromDate=&toDate=`、`POST /api/lead-commissions/mark-paid`；第 7 阶段服务端已实现。规则只允许企业管理员/平台管理角色按租户读取和以版本乐观锁更新；报表和付款 API 只返回或修改本企业记录。 |
 
 所有企业接口使用现有 tenant route/context helper 和 RLS；内部重试接口必须使用服务身份，不能暴露给普通客户端。
@@ -318,6 +319,8 @@ closed 为终止状态
 这是功能型后台 UI，直接遵循双语 Admin UI 重构约定及既有 Ant Design/Admin Pro 路由方向，不需要独立桌面设计源；不得复用客户匿名领取页设计，也不得把二维码、令牌或审计数据切片为界面素材。实现后需在中英文 Admin UI 路由台账和模块清单中登记最终路由、权限、视觉证据和限制。
 
 当前切片已实现带逐项真实入口的 `/referrer-network-operations`，并新增 `/appointment-settings`，明确区分系统自动默认值与管理员已确认策略。推广服务码就绪项会分别读取已持久化的活动码数量与活动成员关系，不再把成员关系当作服务码仍可用的证明。同时补齐此前仅有接口的客户端缺口：预约详情/内部动作、AI 结果发布/撤回及身份切换。普通双码列表继续不返回活动令牌，受租户授权并写入审计的图片接口保持私有、禁止缓存。小程序现在在启动/回到前台时刷新保存的 JWT，校验 `contextVersion` 并统一选择角色落点；推荐人登录和冷启动会重新进入推广工作台，不再回到登录前的 Tab，失效上下文会清理本地会话。带 JWT 的员工线索列表无需 legacy OpenID 也会加载。认证 Chrome 已在 `http://localhost:3006` 完成核验；真实登录态推荐人已在 `390x844` 完成登录完成与重新编译后冷启动核验，并保存包含原生胶囊的宿主截图。预约与方案发布的登录态动作仍需真实已派线索数据。
+
+第 11 阶段已完成身份启动与权限外壳：`GET /api/miniprogram/bootstrap` 以当前签名上下文为唯一输入，返回当前角色、有效角色组、企业/成员关系、默认落点、能力白名单和服务端徽标摘要；冷启动、登录、入驻、身份切换和客户领取成功后的会话均在进入落点前重新刷新并校验 bootstrap。上下文撤权、停用或版本变化会清理 token 并保留明确的恢复原因，不再生成本地伪造身份。`identity-navigation` 提供角色能力与深链守卫，越权路由统一回到当前有效角色落点；未知身份不会静默回落客户页。第 12 阶段的角色化 TabBar、恢复页视觉源和五角色工作台仍未实施。
 
 ### 13.2 第 11-15 阶段：五角色完整小程序体验（Planned）
 
@@ -417,7 +420,7 @@ TabBar 使用角色白名单生成，不保留所有身份共用的固定中心�
 | 8. 旧流程下线 | `Completed` | 运行时 schema、接口、菜单、旧工作台和小程序旧联系入口均已删除。PostgreSQL 合同测试和小程序测试通过；历史数据库对象和业务数据保留至第 9 阶段清理演练获得单独批准后处理。 |
 | 9. 清理演练与生产发布 | `Completed` | 已在用户确认的本地 Docker 正式 volume 完成：只读 dry-run、目标指纹和空七牛清单确认、清理前完整备份、单事务业务数据清理、JSON/Markdown 审计以及清理前备份的恢复演练。平台管理员、角色权限、套餐、平台/媒体/AI 配置、提示词及迁移记录均保留；业务表已清空，七牛无候选对象。 |
 | 10. 后台运营与全流程验收工作台 | `In progress` | `/referrer-network-operations` 已实现双码操作、派单资格和可执行真实状态清单；`/appointment-settings` 展示并确认企业预约策略。小程序深层业务路由、身份刷新和推荐人冷启动落点已经存在，但五角色通用首页、静态导航裁剪和脱敏进度/收益闭环尚未完成；认证后台视觉核验已在 `http://localhost:3006` 完成，仅 JWT 的设计师线索空态及真实登录态推荐人登录/冷启动工作台均已在 `390x844` 完成原生宿主胶囊核验，预约和方案发布的登录态动作仍需真实已派线索数据。 |
-| 11. 身份启动与权限外壳 | `Planned` | 建立服务端驱动的 bootstrap、冷启动/登录/入驻/切换恢复、最后有效上下文和深链守卫；移除静默回落普通用户界面。退出条件是上下文失效、停用和多角色恢复测试通过。 |
+| 11. 身份启动与权限外壳 | `Completed` | `GET /api/miniprogram/bootstrap` 返回当前签名角色、有效角色组、企业/成员上下文、落点、能力白名单和服务端徽标摘要；冷启动、登录、入驻、领取和切换均先刷新校验；撤权/停用/版本变化清理会话并保留恢复原因；身份导航拒绝未知身份和越权深链，不静默回落客户界面。上下文撤权、停用、多角色恢复及深链负向测试通过。 |
 | 12. 角色信息架构与设计批准 | `Planned` | 为五角色落点、角色白名单 TabBar、身份切换/失效状态及关键空状态完成设计源并取得明确批准；生产代码在批准前不得修改。退出条件是目标路由、状态矩阵、元素安全区和设计源映射确定。 |
 | 13. 客户与推荐人闭环 | `Planned` | 客户仅获得本人服务/项目体验；推荐人获得单一角色入口、工作台内企业切换、推广进度及脱敏收益。补齐客户项目索引和推荐人聚合/提成只读合同，服务端负向权限测试通过。 |
 | 14. 设计师、测量员与企业负责人闭环 | `Planned` | 设计师只处理本人客户与方案，测量员只处理本人日程/任务/正式量房，企业负责人只处理租户经营与异常；通用首页、线索、量房、设计和“我的”按角色裁剪，所有动作继续复用现有权威业务 API。 |

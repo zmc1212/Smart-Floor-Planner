@@ -1274,8 +1274,21 @@ test('punching through an outer-face mid-wall keeps the concave L corner from co
   assert.deepEqual(remainingOuterAtCorner, { xMm: innerCorner.xMm + thicknessMm, yMm: innerCorner.yMm });
 });
 
+function ringSignedArea(polygon) {
+  let area = 0;
+  for (let index = 0; index < polygon.length; index += 1) {
+    const current = polygon[index];
+    const next = polygon[(index + 1) % polygon.length];
+    area += current.x * next.y - next.x * current.y;
+  }
+  return area / 2;
+}
+
 function pointInRings(rings, point) {
-  return (rings || []).some((polygon) => {
+  // Match canvas fill(): compound rings use the non-zero winding rule, so a
+  // hole ring cancels the outer ring instead of counting as extra wall fill.
+  let winding = 0;
+  (rings || []).forEach((polygon) => {
     let inside = false;
     for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
       const current = polygon[index];
@@ -1284,8 +1297,9 @@ function pointInRings(rings, point) {
         point.x < ((prior.x - current.x) * (point.y - current.y)) / (prior.y - current.y) + current.x;
       if (intersects) inside = !inside;
     }
-    return inside;
+    if (inside) winding += Math.sign(ringSignedArea(polygon)) || 1;
   });
+  return winding !== 0;
 }
 
 function ringHasDiagonalNear(rings, point, radius) {
@@ -1389,8 +1403,13 @@ test('deleting the shared inner-face closure wall keeps the inner L join and a s
     };
     assert.ok(closingSceneWall, JSON.stringify(snapPoint));
     assert.ok(sourceRightSceneWall, JSON.stringify(snapPoint));
-    assert.equal(pointInRings(rings, innerStepFill), true, JSON.stringify({ snapPoint, innerStepFill, rings }));
-    assert.equal(pointInRings(rings, outerStepGap), false, JSON.stringify({ snapPoint, outerStepGap, rings }));
+    assert.equal(
+      Math.round(stepJoint.y),
+      Math.round(innerCorner.y),
+      JSON.stringify({ snapPoint, stepJoint, innerCorner })
+    );
+    assert.equal(pointInRings(rings, innerStepFill), false, JSON.stringify({ snapPoint, innerStepFill, rings }));
+    assert.equal(pointInRings(rings, outerStepGap), true, JSON.stringify({ snapPoint, outerStepGap, rings }));
   });
 });
 

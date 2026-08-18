@@ -141,7 +141,7 @@ test('overlapping duplicate wall bodies are emitted once', () => {
   assertArea(areaOfPlan(plan), 200000);
 });
 
-test('wall union fills the inner step when collinear walls have opposite thickness', () => {
+test('wall union fills the outer step corner when collinear walls have opposite thickness', () => {
   const plan = createWallSolidPlan({
     walls: [
       {
@@ -167,8 +167,8 @@ test('wall union fills the inner step when collinear walls have opposite thickne
 
   assert.equal(plan.rings.length, 1);
   assert.equal(plan.joinPolygons.length, 1);
-  assert.equal(pointInPolygon({ x: 5900, y: 100 }, plan.rings[0]), true);
-  assert.equal(pointInPolygon({ x: 6100, y: -100 }, plan.rings[0]), false);
+  assert.equal(pointInPolygon({ x: 5900, y: 100 }, plan.rings[0]), false);
+  assert.equal(pointInPolygon({ x: 6100, y: -100 }, plan.rings[0]), true);
   assert.equal(plan.rings[0].some((point) => Math.abs(point.x - 5800) < 0.01), true);
   assert.equal(plan.rings[0].some((point) => Math.abs(point.x - 6200) < 0.01), true);
 });

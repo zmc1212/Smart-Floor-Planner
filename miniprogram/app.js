@@ -11,8 +11,12 @@ App({
     justLoggedIn: false,
     sessionHydrated: false,
     sessionHydrating: false,
+    bootstrap: null,
+    sessionRecovery: null,
+    lastValidIdentityContext: null,
     roleLandingRedirected: false,
-    roleLandingRestoreRetries: 0
+    roleLandingRestoreRetries: 0,
+    deepLinkRedirecting: false
   },
   onLaunch(options) {
     console.log('智能量房大师小程序启动', options);
@@ -23,19 +27,18 @@ App({
     const userInfo = wx.getStorageSync('userInfo');
     const openid = wx.getStorageSync('openid'); // Legacy fallback
 
-    if (token && userInfo) {
+    if (token) {
       this.globalData.token = token;
-      this.globalData.userInfo = userInfo;
-      this.globalData.openid = openid || (userInfo.openid);
-      console.log('会话已恢复 (JWT):', userInfo.displayName || userInfo.username);
-      this.syncProfessionalContext();
+      this.globalData.userInfo = userInfo || null;
+      this.globalData.openid = openid || (userInfo && userInfo.openid) || null;
+      console.log('会话已恢复 (JWT)');
+      if (userInfo) this.syncProfessionalContext();
       this.hydrateStoredSession();
-    } else if (openid && userInfo) {
-      // Legacy session recovery
-      this.globalData.openid = openid;
-      this.globalData.userInfo = userInfo;
-      console.log('会话已恢复 (Legacy OpenID):', openid);
-      this.syncProfessionalContext();
+    } else if (openid || userInfo) {
+      // Legacy-only storage cannot prove the active signed context.
+      this.globalData.sessionRecovery = { reason: 'signed_context_required' };
+      wx.removeStorageSync('openid');
+      wx.removeStorageSync('userInfo');
     }
 
     // 3. Silent Bluetooth Reconnection (静默自动重连)
@@ -73,6 +76,8 @@ App({
     this.handleReferral(options);
     if (this.globalData.token && !this.globalData.sessionHydrated) {
       this.hydrateStoredSession();
+    } else if (this.globalData.sessionHydrated) {
+      this.guardCurrentRoute();
     }
   },
 
@@ -94,8 +99,17 @@ App({
       wx.setStorageSync('userInfo', refreshed.user);
       if (refreshed.openid) wx.setStorageSync('openid', refreshed.openid);
       this.globalData.sessionHydrated = true;
+      const bootstrap = await api.request('/miniprogram/bootstrap', 'GET', {}, { suppressUnauthorized: true });
+      if (!bootstrap || !bootstrap.current || !bootstrap.current.context) {
+        throw Object.assign(new Error('Identity bootstrap failed'), { statusCode: 401, error: 'Identity bootstrap failed' });
+      }
+      this.globalData.bootstrap = bootstrap;
+      this.globalData.lastValidIdentityContext = bootstrap.current.context;
+      this.globalData.sessionRecovery = null;
+      wx.setStorageSync('lastValidIdentityContext', bootstrap.current.context);
       this.syncProfessionalContext();
       this.restoreRoleLanding();
+      this.guardCurrentRoute();
     } catch (error) {
       if (error && (error.statusCode === 401 || error.error === 'Unauthorized')) {
         this.globalData.token = null;
@@ -104,6 +118,19 @@ App({
         wx.removeStorageSync('token');
         wx.removeStorageSync('userInfo');
         wx.removeStorageSync('openid');
+        this.globalData.bootstrap = null;
+        this.globalData.sessionRecovery = {
+          reason: error.code || 'identity_context_invalid',
+          lastValidIdentityContext: this.globalData.lastValidIdentityContext || wx.getStorageSync('lastValidIdentityContext') || null
+        };
+        this.globalData.sessionHydrated = true;
+        wx.reLaunch({ url: '/packages/business/login/login?recovery=identity_context_invalid' });
+      } else {
+        this.globalData.sessionRecovery = {
+          reason: 'bootstrap_unavailable',
+          retryable: true,
+          lastValidIdentityContext: this.globalData.lastValidIdentityContext || wx.getStorageSync('lastValidIdentityContext') || null
+        };
         this.globalData.sessionHydrated = true;
       }
     } finally {
@@ -126,8 +153,25 @@ App({
     const rootRoutes = new Set(['pages/index/index', 'pages/mine/mine']);
     if (!rootRoutes.has(current)) return;
     const navigation = require('./utils/identity-navigation.js');
-    if (!navigation.navigateToRoleLanding(this.globalData.userInfo)) return;
+    if (!navigation.navigateToRoleLanding({
+      ...this.globalData.userInfo,
+      ...(this.globalData.bootstrap && this.globalData.bootstrap.current || {})
+    })) return;
     this.globalData.roleLandingRedirected = true;
+  },
+  guardCurrentRoute() {
+    if (this.globalData.deepLinkRedirecting || !this.globalData.bootstrap) return;
+    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+    const current = pages.length ? `/${pages[pages.length - 1].route}` : '';
+    if (!current || current.includes('/login') || current.includes('/onboarding') || current.includes('/free-design-service')) return;
+    const navigation = require('./utils/identity-navigation.js');
+    const result = navigation.guardDeepLink(current, this.globalData.bootstrap);
+    if (result.allowed || !result.redirectPath || result.redirectPath === current) return;
+    this.globalData.deepLinkRedirecting = true;
+    wx.reLaunch({
+      url: result.redirectPath,
+      complete: () => { this.globalData.deepLinkRedirecting = false; }
+    });
   },
   handleReferral(options) {
     const query = options.query || {};

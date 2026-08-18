@@ -7,11 +7,11 @@
 
 - 原生微信小程序，使用自定义 TabBar、亮绿色设计 token，视觉基准为 iPhone 13 Pro
   `390x844`。
-- 会话使用 `/api/auth/miniprogram` 和 bearer JWT。手机号授权可创建普通客户账号；阶段 3 的推荐领取接口也可直接使用微信授权码，在同一事务中关联账号、归属和线索；
+- 会话使用 `/api/auth/miniprogram` 和 bearer JWT；`GET /api/miniprogram/bootstrap` 会校验签名上下文并返回当前角色、有效角色组、企业/成员关系、落点、能力白名单和服务端徽标摘要。手机号授权可创建普通客户账号；阶段 3 的推荐领取接口也可直接使用微信授权码，在同一事务中关联账号、归属和线索；
   token 选择数据库实时校验的 `customer`、`staff` 或 `referrer` 上下文，并由
   `contextVersion` 使旧 token 失效。专业员工、企业上下文、线索、户型、AI 任务、
   提成和报备记录都通过共享 API 解析。小程序启动/回到前台时会用保存的 token 调用
-  `refresh` 重新读取当前上下文；上下文失效会清理本地会话，推荐人上下文从首页或“我的”
+  `refresh` 重新读取当前上下文，随后由 bootstrap 确认服务端能力与落点；上下文失效会清理本地会话，推荐人上下文从首页或“我的”
   冷启动时恢复到推广工作台，避免静默落入普通客户界面。
 - 主操作使用本地存储且有许可证记录的图标；原生右上角胶囊和安全区不得被内容覆盖。
 - `Implemented`、`Limited`、`Placeholder` 只表示可执行运行时行为，不代表标签或 mock 响应。
@@ -27,7 +27,7 @@
 | 提成记录 | `packages/business/commission-records/commission-records` | 适用商业角色的订单提成 | Implemented；结算仍由后台业务控制 |
 | 灵感库 | `packages/business/inspiration/inspiration` | 租户范围内灵感浏览和详情 | Implemented/Limited；媒体供应商为外部服务 |
 | AI 设计工作流 | `pages/ai-design/ai-design`、`packages/ai-workflow/*` | 客户/项目选择、方案入口、确认、结果、历史及线索范围的发布状态。绑定线索的成功结果允许负责设计师或企业负责人确认后发布到客户项目或撤回 | Implemented；供应商、点数、正式量房资格、线索责任人与发布可见性均由服务端控制 |
-| 我的与账号 | `pages/mine/mine`、`packages/business/profile-edit/profile-edit`、`packages/business/settings/settings`、`packages/business/identity-switch/identity-switch`、`packages/business/account-security/account-security` | 通知、账号安全及服务端身份上下文选择；切换会交换签名 token、刷新资料并持久化会话；登录、入驻、切换和冷启动均通过统一身份导航进入已签发的客户、员工或推荐人落点，不再返回登录前的 Tab | Implemented/Limited；身份切换入口藏在设置页，五角色仍共用旧“我的”与静态 TabBar，推荐人工作台尚无脱敏推广进度和收益。上下文失效会清理本地会话，一次只允许一个活动上下文；真实登录态推荐人落点已有登录/冷启动宿主截图，身份列表截图及第 11-15 阶段角色化重构仍待完成 |
+| 我的与账号 | `pages/mine/mine`、`packages/business/profile-edit/profile-edit`、`packages/business/settings/settings`、`packages/business/identity-switch/identity-switch`、`packages/business/account-security/account-security` | 通知、账号安全及服务端身份上下文选择；`GET /api/miniprogram/bootstrap` 返回当前角色、有效角色组、企业/成员关系、落点、能力白名单和服务端徽标摘要；切换会交换签名 token，登录、入驻、领取、切换和冷启动均先刷新并校验 bootstrap，再通过统一身份导航进入已签发落点；`identity-navigation` 对未知身份和越权深链返回明确拒绝 | Implemented/Limited；五角色仍共用旧“我的”与静态 TabBar，推荐人工作台尚无脱敏推广进度和收益。上下文撤权、停用或版本变化会清理本地会话并保留恢复原因，不静默回落客户；第 12-15 阶段角色化工作台和恢复页视觉源仍待完成 |
 | 推荐分享 | `packages/business/recommendation-share/*` | 只读推荐方案和项目摘要 | 受分享授权及可用资源限制 |
 
 ## 正式量房
@@ -36,12 +36,12 @@
 携带 `leadId` 和/或 `floorPlanId`。权威合同见
 [`surveying-module/formal-surveying.md`](./surveying-module/formal-surveying.md)。
 `FloorPlan.layoutData` 只保存 v4 `surveyGraph`；wall graph、Canvas、尺寸、BLE
-读数、审计队列、撤销/重做、右侧工具栏经确认的清空重做操作和保存失败行为都必须遵守该合同。删除两个闭合房间的共用墙会打通该界面并合并成一个闭合房间；共用界面被拆成共线多段时，删除其中任一段都会去掉整条共线共用墙。打通后若共线内角点被折叠，净尺寸计划仍须按折叠后的内边界给出每一段端点。打通形成的 L 型凹角保持矩形墙体相接，不得按凸角斜接把剩余外墙错进房间。内边闭合打通后仍保持各墙原有实体侧：内转角伸进合并房间，对侧共线墙保持台阶外皮并只补内侧墙厚转角，内 L 两墙保持矩形重叠相接，不得斜接成梯形缺口。
+读数、审计队列、撤销/重做、右侧工具栏经确认的清空重做操作和保存失败行为都必须遵守该合同。删除两个闭合房间的共用墙会打通该界面并合并成一个闭合房间；共用界面被拆成共线多段时，删除其中任一段都会去掉整条共线共用墙。打通后若共线内角点被折叠，净尺寸计划仍须按折叠后的内边界给出每一段端点。打通形成的 L 型凹角保持矩形墙体相接，不得按凸角斜接把剩余外墙错进房间。内边闭合打通后仍保持各墙原有实体侧：内转角伸进合并房间，对侧共线墙保持台阶外皮并只补外侧台阶转角、内边仍与共用节点对齐，内 L 两墙保持矩形重叠相接，不得斜接成梯形缺口。
 封闭外墙中段的 T 型分支保持同一拓扑节点和实体墙。“内边/外边起步”只选择源墙边界的近侧/远侧起点及对应的首段起点内缩，不得再次解释为新分支墙相反的局部测量面。分支所有墙段统一使用 graph 侧工作面，并继承首段确定的实体侧；转向和源房间质心都不得重新翻面。触点按正交规则写入内部 graph，预览黑线、橙线、确认红线、实时尺寸端点和绿色光标必须重合在同一条连续工作路径上；相邻红线端点严格相等，拉出第二段时光标和红线不得横移一个墙厚。`measurementStartInsetMm`、`measurementStartExtensionMm` 和 `measurementEndInsetMm` 只记录真实边界或闭合修正，普通外边 T 转角不得自动生成一个墙厚的修正。预览、手工/BLE 确认、Canvas 和尺寸消费者统一按“拓扑长度 - 起点内缩 + 起点延伸 - 终点内缩”计算。以上 Canvas 派生投影不改变 graph 的中心线和闭合拓扑；T 链第二段及之后的转角只能补齐实体墙连接，不得回写前序墙段的测量内缩或缩短已确认读数。所有共享边闭合链在确认后都保持确认前的实体侧，包括“向外量墙、最后橙线吸附既有房间内边”的路径；不能将墙体翻到已对齐红线/橙线的另一侧或再叠加一个墙厚。最后光标命中既有墙的可见外边时，必须保留该外边工作坐标，并以短桥接连接拓扑角点，不得暗中投影回中心线。墙角续接和共享内墙分区仍遵守原有边界闭合规则。
 
 ## 共用 API 与工具
 
-- 身份/上下文：`/api/auth/miniprogram`、`/api/miniprogram/identity-contexts`、
+- 身份/上下文：`/api/auth/miniprogram`、`/api/miniprogram/bootstrap`、`/api/miniprogram/identity-contexts`、
   `/api/miniprogram/identity-contexts/switch` 及共用上下文解析器。身份列表每次从
   数据库读取；切换不能伪造非活动企业、员工身份或推荐人成员关系。`app.js` 的启动
   恢复会用 `/api/auth/miniprogram` 的 `refresh` 重新签发当前 token，并在 `customer/staff/referrer`

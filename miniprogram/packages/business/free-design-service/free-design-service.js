@@ -177,21 +177,15 @@ Page({
         app.globalData.openid = refreshed.openid || '';
         wx.setStorageSync('userInfo', refreshed.user);
         if (refreshed.openid) wx.setStorageSync('openid', refreshed.openid);
+        app.globalData.sessionHydrated = false;
+        await app.hydrateStoredSession();
+        if (app.globalData.sessionRecovery) throw new Error('客户身份已失效');
+        return;
       }
     } catch (error) {
-      const context = response.context || {};
-      const fallbackUser = {
-        nickname: '用户',
-        role: 'user',
-        mode: 'customer',
-        enterpriseId: '',
-        enterpriseName: '',
-        staffId: '',
-        referrerMembershipId: context.referrerMembershipId || ''
-      };
-      app.globalData.userInfo = fallbackUser;
-      wx.setStorageSync('userInfo', fallbackUser);
+      throw new Error('客户身份资料刷新失败');
     }
+    throw new Error('客户身份资料缺失');
   },
 
   loadDesignerQr(url) {

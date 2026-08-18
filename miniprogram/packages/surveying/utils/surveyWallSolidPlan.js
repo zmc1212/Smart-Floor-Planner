@@ -252,8 +252,10 @@ function oppositeThicknessJoin(joint, first, second, interior) {
   ));
   if (candidates.length <= 1) return candidates;
   if (!interior) return candidates;
+  // Keep inner faces aligned with the shared node. Extending thickness into the
+  // room shifts the whole step by one wall. Fill the outer step corner instead.
   return candidates.slice().sort((firstHull, secondHull) => (
-    distance(polygonCentroid([firstHull]), interior) - distance(polygonCentroid([secondHull]), interior)
+    distance(polygonCentroid([secondHull]), interior) - distance(polygonCentroid([firstHull]), interior)
   )).slice(0, 1);
 }
 
@@ -301,9 +303,8 @@ function buildJoinPolygons(walls) {
       return;
     }
     // Collinear walls with opposite thickness only touch at a point. Parallel
-    // outers have no miter, so the inner thickness corner into the room would
-    // otherwise disappear. Keep the stepped outer facade; fill only the inner
-    // square closer to the occupied interior.
+    // outers have no miter. Fill the outer step corner so the inner faces stay
+    // aligned at the shared node instead of shifting one wall into the room.
     for (let firstIndex = 0; firstIndex < incident.length; firstIndex += 1) {
       for (let secondIndex = firstIndex + 1; secondIndex < incident.length; secondIndex += 1) {
         oppositeThicknessJoin(joint, incident[firstIndex], incident[secondIndex], interior)

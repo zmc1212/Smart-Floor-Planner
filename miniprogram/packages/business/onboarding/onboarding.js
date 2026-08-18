@@ -148,16 +148,15 @@ Page({
         app.globalData.openid = refreshed.openid || '';
         wx.setStorageSync('userInfo', refreshed.user);
         if (refreshed.openid) wx.setStorageSync('openid', refreshed.openid);
+        app.globalData.sessionHydrated = false;
+        await app.hydrateStoredSession();
+        if (app.globalData.sessionRecovery) throw new Error('入驻身份已失效');
         return;
       }
     } catch (error) {
-      // The onboarding token remains valid; use the smallest truthful local identity until refresh succeeds.
+      throw new Error('入驻身份资料刷新失败');
     }
-    const fallbackUser = this.data.codeType === 'staff'
-      ? { role: 'staff', staffRole: this.data.selectedStaffRole, mode: 'staff' }
-      : { role: 'user', mode: 'referrer' };
-    app.globalData.userInfo = fallbackUser;
-    wx.setStorageSync('userInfo', fallbackUser);
+    throw new Error('入驻身份资料缺失');
   },
 
   onContinue() {

@@ -7,10 +7,14 @@ function clearSession() {
     app.globalData.userInfo = null;
     app.globalData.token = null;
     app.globalData.referral = { enterpriseId: null, staffId: null };
+    app.globalData.bootstrap = null;
+    app.globalData.sessionRecovery = null;
+    app.globalData.lastValidIdentityContext = null;
   }
   wx.removeStorageSync('openid');
   wx.removeStorageSync('userInfo');
   wx.removeStorageSync('token');
+  wx.removeStorageSync('lastValidIdentityContext');
 }
 
 function goToLogin() {
