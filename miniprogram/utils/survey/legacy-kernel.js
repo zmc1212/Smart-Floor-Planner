@@ -3423,20 +3423,25 @@ function startPreview(draft, rawPoint) {
       ? null
       : findAnySharedWallClosureProjection(floor, session, previewPoint);
     if (outerFaceProjection) {
-      const mergeCandidate = outerFaceProjection.topologyNode ||
-        findMergeClosureCandidate(floor, session, previewPoint);
+      // Only use the merge path when the cursor lands precisely on an existing
+      // topology endpoint (topologyNode non-null). A mid-wall outer-face hit
+      // has no valid merge target node; forcing findMergeClosureCandidate here
+      // picks the nearest existing endpoint which is NOT the actual contact
+      // point, causing the new room to shift by up to a full wall thickness.
+      // Use shared-wall insertion instead so confirmClosure splits the old wall
+      // at the exact projection point and traces back along the boundary.
+      const mergeCandidate = outerFaceProjection.topologyNode;
       if (mergeCandidate) {
         session.closeCandidateNodeId = mergeCandidate.id;
         session.closeCandidateType = 'merge';
+      } else {
+        session.closeCandidateType = 'shared-wall';
       }
       // Always record the outer-face projection point as the close candidate
       // so that isDirectClosureHit fires when the user releases on the outer
       // face, regardless of whether a topology merge node was found.
       session.closeCandidatePoint = outerFaceProjection.point;
       session.closeCandidateSharedWallId = outerFaceProjection.wall.id;
-      if (!mergeCandidate) {
-        session.closeCandidateType = 'shared-wall';
-      }
     } else if (sharedProjection) {
       if (
         session.mode === 'straight' &&
@@ -3879,16 +3884,21 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
     session.closeCandidateType = 'shared-wall';
     session.closeCandidateSharedWallId = sharedProjection.wall.id;
   } else if (outerFaceProjection && activeWallCount >= 1) {
-    const mergeCandidate = outerFaceProjection.topologyNode ||
-      findMergeClosureCandidate(floor, session, endNode);
+    // Only treat the outer-face hit as a merge when the cursor landed exactly
+    // on a topology endpoint (topologyNode non-null). A mid-wall projection has
+    // no valid existing node to merge to; calling findMergeClosureCandidate
+    // would select the nearest existing endpoint, which is displaced from the
+    // real contact point and causes the closed room to shift by a wall
+    // thickness. Route mid-wall outer-face hits through shared-wall insertion
+    // so confirmClosure splits the boundary wall at the exact point and traces
+    // the shared boundary back to the chain's start node.
+    const mergeCandidate = outerFaceProjection.topologyNode;
     if (mergeCandidate) {
       session.state = 'mergeClosing';
       session.closeCandidateNodeId = mergeCandidate.id;
       session.closeCandidateType = 'merge';
     } else {
-      // No topology merge node found, but the wall ended on the outer face of
-      // the shared boundary. Close via the shared-wall path so confirmClosure
-      // can split the wall and build the room without needing an explicit merge.
+      // Mid-wall outer-face hit: use shared-wall insertion path.
       session.state = 'closing';
       session.closeCandidateNodeId = endNode.id;
       session.closeCandidatePoint = outerFaceProjection.point;
@@ -4039,8 +4049,20 @@ function confirmClosure(draft) {
     session.state = 'closing';
     session.closeCandidateNodeId = closeTargetNode.id;
     session.closeCandidatePoint = null;
-    session.closeCandidateType = 'merge';
-    session.closeCandidateSharedWallId = '';
+    let correctSharedWallId = session.activeSpaceSharedWallId;
+    if (session.activeSpaceSharedWallId) {
+      const activeWalls = (floor.walls || []).slice(session.activeSpaceStartWallIndex || 0);
+      const activeWallIds = {};
+      activeWalls.forEach((wall) => { activeWallIds[wall.id] = true; });
+      const targetWall = (floor.walls || []).find((wall) => 
+        !activeWallIds[wall.id] && (wall.startNodeId === closeTargetNode.id || wall.endNodeId === closeTargetNode.id)
+      );
+      if (targetWall) {
+        correctSharedWallId = targetWall.id;
+      }
+    }
+    session.closeCandidateType = correctSharedWallId ? 'shared-wall' : 'merge';
+    session.closeCandidateSharedWallId = correctSharedWallId || '';
   }
 
   const startWallIndex = session.activeSpaceStartWallIndex || 0;

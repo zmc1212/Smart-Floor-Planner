@@ -1,12 +1,33 @@
 <view class="project-page sfp-page">
-  <view class="nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;"><view class="back" bindtap="onBack" aria-role="button" aria-label="返回"><view class="back-chevron"></view></view><text class="nav-title">我的预约</text></view>
+  <view class="nav" style="padding-top: {{navigationTop}}px; min-height: {{navigationHeight}}px; padding-right: {{navigationRight}}px;">
+    <view class="back" bindtap="onBack" aria-role="button" aria-label="返回"><view class="back-chevron"></view></view>
+    <text class="nav-title">我的家装项目</text>
+  </view>
   <view wx:if="{{loading}}" class="state">正在加载服务档案…</view>
   <view wx:elif="{{error}}" class="state"><text>{{error}}</text><button class="retry" bindtap="load">重试</button></view>
-  <view wx:elif="{{appointment}}" class="content">
-    <view class="hero sfp-hero-card"><view><view class="check">✓</view><text class="hero-title">预约已确认</text><text class="hero-note">上门量房服务已为您安排</text></view><image src="/images/home-ip-v1/measure-k.png" mode="aspectFit" class="measure-k" /></view>
-    <view class="card sfp-card"><text class="section-title">服务信息</text><view class="person"><view class="avatar">设</view><view><text class="person-title">{{designer && designer.displayName ? designer.displayName : '专属设计师'}}</text><text class="person-note">{{designer && designer.wechatId ? designer.wechatId : '将陪您完成量房与设计沟通'}}</text></view></view><view class="person"><view class="avatar green">量</view><view><text class="person-title">{{appointment.measurerName || '测量伙伴'}}</text><text class="person-note">请提前保留现场测量条件</text></view></view></view>
-    <view class="card sfp-card"><text class="section-title">预约安排</text><view class="line"><text>预约日期</text><text>{{range.date}}</text></view><view class="line"><text>预约时间</text><text>{{range.time}}</text></view><view class="line address"><text>上门地址</text><text>{{appointment.address}}</text></view></view>
-    <button class="reschedule sfp-secondary-action" bindtap="reschedule">改期</button><text class="hint">如需调整时间，请在截止时间前选择可用时段</text>
+  <view wx:else class="content">
+    <view class="project-rail sfp-card">
+      <view class="rail-heading"><view><text class="rail-title">服务进度</text><text wx:if="{{enterpriseName}}" class="rail-enterprise">{{enterpriseName}}</text></view><image src="/packages/business/assets/customer-project-v1/project-delivery-xiao-k.png" mode="aspectFit" class="delivery-k" /></view>
+      <view class="stages"><block wx:for="{{stages}}" wx:key="label"><view class="stage {{item.state}}"><view class="stage-dot"></view><text class="stage-label">{{item.label}}</text></view><view wx:if="{{index < stages.length - 1}}" class="stage-line {{item.complete ? 'done' : ''}}"></view></block></view>
+    </view>
+    <view class="service-card sfp-card">
+      <text class="section-title">本次服务</text>
+      <view class="service-rows">
+        <view class="service-person"><view class="avatar">设</view><view><text class="person-label">专属设计师</text><text class="person-title">{{designer && designer.displayName ? designer.displayName : '待分配'}}</text><text wx:if="{{designer && designer.wechatId}}" class="person-note">微信号：{{designer.wechatId}}</text></view></view>
+        <view class="service-person"><view class="avatar green">量</view><view><text class="person-label">测量伙伴</text><text class="person-title">{{appointment && appointment.measurerName ? appointment.measurerName : '待确认'}}</text><text class="person-note">负责上门正式量房</text></view></view>
+      </view>
+      <view wx:if="{{appointment}}" class="appointment-row"><view><text class="appointment-label">预约时间</text><text class="appointment-value">{{range.date}} {{range.time}}</text><text class="appointment-address">{{appointment.address}}</text></view><button class="reschedule sfp-secondary-action" bindtap="reschedule">改期</button></view>
+    </view>
+    <view class="folio-card sfp-card">
+      <view class="folio-heading"><view><text class="section-title">我的户型</text><text class="section-subtitle">正式量房形成的户型档案</text></view><text wx:if="{{formalFloorPlan}}" class="complete-tag">已完成</text></view>
+      <view wx:if="{{formalFloorPlan}}" class="floorplan-summary"><image src="/packages/business/assets/customer-project-v1/formal-floor-plan-archive.png" mode="aspectFit" class="floorplan-art" /><view class="floorplan-copy"><text class="floorplan-name">{{formalFloorPlan.name || '正式量房户型'}}</text><text class="floorplan-meta">{{formalFloorPlan.displayCompletedAt}}</text><text class="floorplan-note">户型已归档，设计师将据此完成方案服务</text></view></view>
+      <view wx:else class="empty-folio"><image src="/packages/business/assets/customer-project-v1/formal-floor-plan-archive.png" mode="aspectFit" class="empty-art" /><view><text class="empty-title">正在等待正式量房</text><text class="empty-note">完成量房后，户型档案会显示在这里</text></view></view>
+    </view>
+    <view class="folio-card sfp-card">
+      <view class="folio-heading"><view><text class="section-title">设计方案</text><text class="section-subtitle">仅展示设计师主动发布的方案</text></view><text wx:if="{{publishedDesigns.length}}" class="complete-tag">{{publishedDesigns.length}} 项</text></view>
+      <view wx:if="{{publishedDesigns.length}}" class="published-grid"><view wx:for="{{publishedDesigns}}" wx:key="id" class="published-item" bindtap="previewPublishedDesign" data-index="{{index}}" aria-role="button" aria-label="查看已发布设计方案"><view class="published-image-frame"><image wx:if="{{item.imageState === 'loaded'}}" class="published-image" src="{{item.imagePath}}" mode="aspectFill" /><view wx:elif="{{item.imageState === 'loading'}}" class="image-state">正在读取方案…</view><view wx:else class="image-state error">方案图片暂不可读</view></view><text class="published-title">{{item.title || '设计方案'}}</text><view class="published-status"><view class="published-status-dot"></view><text>已发布</text></view></view></view>
+      <view wx:else class="empty-folio"><image src="/packages/business/assets/customer-project-v1/published-design-folio.png" mode="aspectFit" class="empty-art" /><view><text class="empty-title">设计师正在准备方案</text><text class="empty-note">方案发布后，您可以在这里查看成果</text></view></view>
+    </view>
+    <text wx:if="{{appointment}}" class="hint">如需调整时间，请在截止时间前选择可用时段</text>
   </view>
-  <view wx:else class="state">当前暂无已确认的上门预约</view>
 </view>
