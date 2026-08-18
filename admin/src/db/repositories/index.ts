@@ -20,6 +20,7 @@ export * from './floor-plan-repository';
 export * from './inspiration-repository';
 export * from './lead-repository';
 export * from './lead-lifecycle-repository';
+export * from './lead-commission-repository';
 export * from './media-storage-config-repository';
 export * from './miniprogram-identity-repository';
 export * from './measurement-repository';

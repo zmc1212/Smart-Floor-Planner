@@ -8,6 +8,7 @@ import {
   leads,
 } from '@/db/schema';
 import type { PostgresTransaction } from '@/db/transaction';
+import { LeadCommissionRepository } from '@/db/repositories/lead-commission-repository';
 import { httpError } from '@/lib/http-error';
 import { normalizeLeadStatus } from '@/lib/lead-status';
 
@@ -249,6 +250,9 @@ export class LeadLifecycleRepository {
         contractAmount: input.contractAmount,
       }
     );
+    if (rows[0].referrerMembershipId || rows[0].measurerId) {
+      await new LeadCommissionRepository(this.transaction).snapshotForConvertedLead(input.leadId);
+    }
     return rows[0];
   }
 
@@ -278,6 +282,8 @@ export class LeadLifecycleRepository {
     const restoredStatus = ['new', 'measuring', 'designing'].includes(normalizedOriginal)
       ? originalStatus
       : 'designing';
+    const voidedCommissionCount = await new LeadCommissionRepository(this.transaction)
+      .voidUnpaidForRevertedLead(input.leadId, input.actorId, input.reason);
     const now = new Date();
     const rows = await this.transaction
       .update(leads)
@@ -309,6 +315,7 @@ export class LeadLifecycleRepository {
         convertedOn: lead.convertedOn,
         convertedAt: lead.convertedAt?.toISOString() || null,
         contractAmount: lead.contractAmount,
+        voidedCommissionCount,
       }
     );
     return rows[0];

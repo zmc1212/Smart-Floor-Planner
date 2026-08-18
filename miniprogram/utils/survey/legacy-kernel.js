@@ -4167,6 +4167,17 @@ function confirmClosure(draft) {
     const sharedCloseNode = getOrCreateWallCenterNode(floor, closeCandidateSharedWallId, closeTargetNode);
     if (sharedCloseNode) sharedCloseNodeId = sharedCloseNode.id;
   }
+  // For an outer-face closure the last new wall terminates at the outer face
+  // coordinate (one wall thickness away from the topology centre-line). The
+  // shared-wall insertion step above resolved sharedCloseNodeId to the topology
+  // projection on the centre-line. If they differ, redirect the last wall's end
+  // to the topology node so the new wall chain forms a continuous closed loop
+  // with the shared boundary segment.
+  if (closeCandidateSharedWallId && sharedCloseNodeId !== closeTargetNode.id) {
+    lastWall.endNodeId = sharedCloseNodeId;
+    refreshWallMetrics(floor);
+  }
+
 
   if (sharedBoundaryWallIds.length && session.activeSpaceStartNodeId) {
     sharedBoundaryWallIds.forEach((wallId) => {

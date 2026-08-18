@@ -145,6 +145,40 @@ function createScenarioCatalog(surveyGraph) {
     return surveyGraph.confirmClosure(draft);
   }
 
+  function outerFaceMidWallClosure() {
+    // Regression: Room 2 starts at the outer top-right corner of Room 1
+    // (shared outer corner), draws 3 walls (right → down → left), and the
+    // final wall preview ends on the MID-SECTION of Room 1's right outer face
+    // at y=1569 — matching the "X 3329 / Y 1569" cursor position in image 1.
+    // Before the fix this walked mergeClosing and picked the wrong node,
+    // shifting Room 2 by a full wall thickness (image 2 result).
+    // After the fix: shared-wall insertion splits the boundary wall at the
+    // topology projection, lastWall.endNodeId is redirected to the topology
+    // node so the chain connects, and the correct L-shape (image 3) is formed.
+    //
+    // Room 1: 3129 wide × 3565 tall, wall thickness 200.
+    //   Outer top-right corner: (3329, -200)
+    //   Outer right face: x=3329, y ∈ [-200, 3765]
+    // Room 2 path from outer top-right corner:
+    //   → right  : (3329, -200) → (5783, -200)   [2454 mm wide]
+    //   → down   : (5783, -200) → (5783,  1569)  [1769 mm tall]
+    //   → left   : (5783, 1569) → (3329,  1569)  preview ending on right outer face
+    const thk = 200;
+    const room1W = 3129;
+    const room1H = 3565;
+    let draft = rectangle(room1W, room1H, { xMm: 0, yMm: 0 }, { thicknessMm: thk });
+    // Start at the outer top-right corner of Room 1.
+    draft = snapCursor(draft, { xMm: room1W + thk, yMm: -thk });
+    // Wall 1: horizontal right.
+    draft = commitWall(draft, { xMm: room1W + thk + 2454, yMm: -thk });
+    // Wall 2: vertical down.
+    draft = commitWall(draft, { xMm: room1W + thk + 2454, yMm: 1569 });
+    // Wall 3 preview: horizontal left, ending on Room 1's right outer face mid-section.
+    draft = surveyGraph.startPreview(draft, { xMm: room1W + thk, yMm: 1569 });
+    return surveyGraph.confirmClosure(draft);
+  }
+
+
   function partitionedRoom() {
     return addPartition(
       rectangle(6400, 3600),
@@ -411,6 +445,12 @@ function createScenarioCatalog(surveyGraph) {
       key: 'staggered-adjacent', category: '共墙多空间', label: '错层共墙（示例图）',
       description: '底边对齐、上沿错层、右房更高的共享竖墙双房。', expected: { walls: 8, spaces: 2, openings: 0 },
       build: photographedStaggeredRooms
+    },
+    {
+      key: 'outer-face-mid-wall-closure', category: '共墙多空间', label: '外壁中段闭合（图1→图3）',
+      description: '房间2从房间1右上外角出发，3面墙后闭合到右壁外侧中段（非端点）。修复前产生偏移，修复后应得到正确L型。',
+      expected: { walls: 9, spaces: 2, openings: 0 },
+      build: outerFaceMidWallClosure
     },
     {
       key: 'partition', category: '共墙多空间', label: '单房贯穿分割',

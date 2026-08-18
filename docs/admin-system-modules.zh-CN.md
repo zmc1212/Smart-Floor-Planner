@@ -27,8 +27,8 @@
 | 平台与企业 | `/dashboard`、`/enterprises` | 企业、品牌、激活及平台 Repository | 平台角色；Implemented | 租户变更必须存在企业上下文 |
 | 员工与账号 | `/staff`、`/departments`、`/users`；阶段 3 尚无双码界面 | 员工、部门、旧绑定、管理员 Repository；双码接口；设计师/测量员的 `assignmentPaused` 与资料完整性决定新流程派单资格，入驻、创建、资料补全或恢复派单触发待处理线索重试 | 双码管理限 `super_admin`、`admin`、`enterprise_admin`；入驻令牌按类型隔离，员工只能属于一家企业；Implemented | 当前活动入驻码和待确认来源依赖至少 128-bit 的稳定生产密钥；生产双码界面仍在计划中 |
 | 报备与协作 | `/promotions`、企业协作页 | 报备、推荐、通知、获客 Repository | 企业和员工边界；Implemented | 企业微信投递为可选外部能力 |
-| 套餐、订单与提成 | `/packages`、`/orders`、`/commissions` | 套餐、订单、提成 Repository | 平台/企业边界；Implemented | 支付结算不在本系统内完成 |
-| 线索与转化 | `/leads`、`/leads/[id]` | 线索、旧获客、生命周期、户型、`ReferralLeadRepository` 及 `CustomerProjectRepository`；新流程原子写入客户归属锁、推荐人成员、设计师/测量员派单与事件，关闭线索同步释放活动归属；AI generation 只有通过发布事实才进入客户项目 | 客户授权或租户/责任人校验；负责设计师仅管理自己线索的已成功 generation，企业负责人可管理本企业；Implemented/Limited | 客户项目已展示受保护聚合中的真实服务事实、完成正式户型摘要及主动发布方案；方案图片保持仅客户本人读取并写为小程序本地临时文件。客户不具备 graph 编辑或量房编辑器入口；旧获客流程在阶段 8 前继续并存；存在合同或派生记录时禁止清除 |
+| 套餐、订单与提成 | `/packages`、`/orders`、`/commissions`；三方提成暂提供 API | 套餐、订单、既有提成及 `LeadCommissionRepository`；`GET/PUT /api/commission-rules`、`GET /api/lead-commissions`、`POST /api/lead-commissions/mark-paid`。报表逐条返回客户、推荐人关系、企业、设计师、测量员和当前有效预约 | 平台/企业边界；Implemented/Limited | 三方规则、报表读取和线下批量标记已支付均受 RLS 与企业管理员/平台管理角色限制；生产后台页面尚无批准设计，支付不在本系统内完成 |
+| 线索与转化 | `/leads`、`/leads/[id]` | 线索、旧获客、生命周期、户型、`ReferralLeadRepository`、`CustomerProjectRepository` 与 `LeadCommissionRepository`；新流程原子写入客户归属锁、推荐人成员、设计师/测量员派单与事件，关闭线索同步释放活动归属；推荐网络线索签单时原子快照三条角色提成，AI generation 只有通过发布事实才进入客户项目 | 客户授权或租户/责任人校验；负责设计师仅管理自己线索的已成功 generation，企业负责人可管理本企业；撤销签单仅企业管理员且已支付提成会阻止撤销；Implemented/Limited | 客户项目已展示受保护聚合中的真实服务事实、完成正式户型摘要及主动发布方案；方案图片保持仅客户本人读取并写为小程序本地临时文件。客户不具备 graph 编辑或量房编辑器入口；旧获客流程在阶段 8 前继续并存，缺少三方新受益人的旧线索保持既有签单行为；存在合同或派生记录时禁止清除 |
 | 正式户型 | `/floorplans`、`/floorplans/[id]`、`/floorplans/kujiale` | `FloorPlanRepository`、量房适配器、DXF 导出 | 租户与户型权限；Implemented | 酷家乐供应商能力为 Limited |
 | 测量与 BLE 设备 | `/measurements`、`/devices` | 测量、设备、绑定、审计 Repository | 平台/企业分配边界；Implemented | 仅支持协议文档定义的测距仪 |
 | AI 工作室与生成 | AI 工作流、资产、供应商、价格、点数页面 | PostgreSQL AI Repository 与供应商适配器 | 平台及租户 AI 权限；Implemented/Limited | 供应商可用性和图片存储依赖外部服务 |
@@ -44,8 +44,8 @@
 
 ## 获客与提成边界
 
-当前测量员—设计师合同见 [`measurer-designer-acquisition.zh-CN.md`](./measurer-designer-acquisition.zh-CN.md)，
-包含绑定、获客确认、通知、提成、幂等和角色边界。独立工作台方案不是运行时合同。
+当前测量员—设计师旧流程合同见 [`measurer-designer-acquisition.zh-CN.md`](./measurer-designer-acquisition.zh-CN.md)，
+包含绑定、获客确认、通知、旧提成、幂等和角色边界。推荐网络线索的签单三方提成以本清单和开发计划为当前合同；后台 UI 仍需批准设计后实施。
 
 ## 维护规则
 

@@ -23,11 +23,13 @@ import {
   adminUsers,
   departments,
   devices,
+  enterpriseCommissionRules,
   enterpriseOrders,
   enterprises,
   floorPlans,
   inspirations,
   leadAcquisitionCommissions,
+  leadCommissions,
   leadLifecycleEvents,
   leads,
   mediaStorageConfigs,
@@ -60,6 +62,7 @@ import {
   FloorPlanRepository,
   InspirationRepository,
   LeadLifecycleRepository,
+  LeadCommissionRepository,
   LeadRepository,
   MediaAssetRepository,
   MediaStorageConfigRepository,
@@ -745,6 +748,157 @@ test('lead conversion is atomic, protected from generic status writes, revertibl
         await transaction.delete(leads).where(eq(leads.id, leadId!));
       });
     }
+  }
+});
+
+test('referral signing snapshots three decimal-safe commissions and voids unpaid records on reversion', async () => {
+  let leadId: bigint | null = null;
+  let paidBlockerLeadId: bigint | null = null;
+  let concurrentLeadId: bigint | null = null;
+  let membershipId: bigint | null = null;
+  let designerId: bigint | null = null;
+  const suffix = `${Date.now()}-${Math.floor(Math.random() * 10_000)}`;
+  const createdUserIds: bigint[] = [];
+  const createdStaffIds: bigint[] = [];
+  try {
+    await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const [referrerUser, designerUser, measurerUser, customerUser] = await transaction.insert(users).values([
+        { enterpriseId: enterpriseAId, nickname: `Commission referrer ${suffix}`, phone: `159${String(Date.now()).slice(-8)}` },
+        { enterpriseId: enterpriseAId, nickname: `Commission designer ${suffix}` },
+        { enterpriseId: enterpriseAId, nickname: `Commission measurer ${suffix}` },
+        { enterpriseId: enterpriseAId, nickname: `Commission customer ${suffix}` },
+      ]).returning({ id: users.id });
+      createdUserIds.push(referrerUser.id, designerUser.id, measurerUser.id, customerUser.id);
+      const staffRepository = new AdminUserRepository(transaction);
+      const [designer, measurer] = await Promise.all([
+        staffRepository.create({ enterpriseId: enterpriseAId, userId: designerUser.id, username: `${testRunKey}-commission-designer-${suffix}`, passwordHash: 'test-hash', displayName: 'Commission Designer', role: 'designer' }),
+        staffRepository.create({ enterpriseId: enterpriseAId, userId: measurerUser.id, username: `${testRunKey}-commission-measurer-${suffix}`, passwordHash: 'test-hash', displayName: 'Commission Measurer', role: 'measurer' }),
+      ]);
+      designerId = designer.id;
+      createdStaffIds.push(designer.id, measurer.id);
+      const [profile] = await transaction.insert(referrerProfiles).values({ userId: referrerUser.id, displayName: 'Commission Referrer' }).returning();
+      const [membership] = await transaction.insert(referrerEnterpriseMemberships).values({ referrerId: profile.id, enterpriseId: enterpriseAId }).returning();
+      membershipId = membership.id;
+      const commissionRepository = new LeadCommissionRepository(transaction);
+      await commissionRepository.updateRules(enterpriseAId, designer.id, [
+        { role: 'referrer', calculationType: 'percentage', value: '12.5000', status: 'active', version: 1 },
+        { role: 'designer', calculationType: 'fixed', value: '88.1250', status: 'active', version: 1 },
+        { role: 'measurer', calculationType: 'fixed', value: '10.0000', status: 'active', version: 1 },
+      ]);
+      const lead = await new LeadRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        customerUserId: customerUser.id,
+        referrerMembershipId: membership.id,
+        assignedTo: designer.id,
+        measurerId: measurer.id,
+        name: 'Three-role commission lead',
+        phone: `133${String(Date.now()).slice(-8)}`,
+        source: 'referral-commission-test',
+        status: 'designing',
+      });
+      leadId = lead.id;
+      await new LeadLifecycleRepository(transaction).convert({
+        leadId: lead.id,
+        actorId: designer.id,
+        convertedOn: chinaDateString(),
+        contractAmount: '1000.00',
+        conversionNote: null,
+      });
+      const commissions = await commissionRepository.list(enterpriseAId, { leadId: lead.id });
+      assert.deepEqual(commissions.map((item) => [item.role, item.payableAmount]).sort(), [
+        ['designer', '88.13'],
+        ['measurer', '10.00'],
+        ['referrer', '125.00'],
+      ]);
+      assert.equal(commissions.every((item) => item.status === 'payable'), true);
+      const referrerCommission = commissions.find((item) => item.role === 'referrer');
+      assert.equal(referrerCommission?.enterprise?.name.includes(testRunKey), true);
+      assert.equal(referrerCommission?.customer?.id, customerUser.id);
+      assert.equal(referrerCommission?.referrer?.userId, referrerUser.id);
+      assert.equal(referrerCommission?.designer?.staffId, designer.id);
+      assert.equal(referrerCommission?.measurer?.staffId, measurer.id);
+      assert.equal(referrerCommission?.appointment, null);
+
+      await new LeadLifecycleRepository(transaction).revertConversion({
+        leadId: lead.id,
+        actorId: designer.id,
+        reason: 'contract correction',
+      });
+      const voided = await commissionRepository.list(enterpriseAId, { leadId: lead.id });
+      assert.equal(voided.every((item) => item.status === 'voided' && item.voidReason === 'contract correction'), true);
+
+      const paidBlockerLead = await new LeadRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        customerUserId: customerUser.id,
+        referrerMembershipId: membership.id,
+        assignedTo: designer.id,
+        measurerId: measurer.id,
+        name: 'Paid commission reversal blocker',
+        phone: `132${String(Date.now()).slice(-8)}`,
+        source: 'referral-commission-test',
+        status: 'designing',
+      });
+      paidBlockerLeadId = paidBlockerLead.id;
+      await new LeadLifecycleRepository(transaction).convert({
+        leadId: paidBlockerLead.id, actorId: designer.id, convertedOn: chinaDateString(), contractAmount: '1000.00', conversionNote: null,
+      });
+      const payable = await commissionRepository.list(enterpriseAId, { leadId: paidBlockerLead.id });
+      await commissionRepository.markPaid(enterpriseAId, [payable[0].id], designer.id);
+      await assert.rejects(
+        () => new LeadLifecycleRepository(transaction).revertConversion({ leadId: paidBlockerLead.id, actorId: designer.id, reason: 'must be blocked' }),
+        /已支付提成/
+      );
+
+      const concurrentLead = await new LeadRepository(transaction).create({
+        enterpriseId: enterpriseAId,
+        customerUserId: customerUser.id,
+        referrerMembershipId: membership.id,
+        assignedTo: designer.id,
+        measurerId: measurer.id,
+        name: 'Concurrent commission snapshot',
+        phone: `131${String(Date.now()).slice(-8)}`,
+        source: 'referral-commission-test',
+        status: 'designing',
+      });
+      concurrentLeadId = concurrentLead.id;
+    });
+    const concurrentConversions = await Promise.allSettled([
+      withTenantTransaction(enterpriseAId, (transaction) => new LeadLifecycleRepository(transaction).convert({
+        leadId: concurrentLeadId!, actorId: designerId!, convertedOn: chinaDateString(), contractAmount: '1000.00', conversionNote: null,
+      })),
+      withTenantTransaction(enterpriseAId, (transaction) => new LeadLifecycleRepository(transaction).convert({
+        leadId: concurrentLeadId!, actorId: designerId!, convertedOn: chinaDateString(), contractAmount: '1000.00', conversionNote: null,
+      })),
+    ]);
+    assert.equal(concurrentConversions.filter((item) => item.status === 'fulfilled').length, 1);
+    await withTenantTransaction(enterpriseAId, async (transaction) => {
+      const commissions = await new LeadCommissionRepository(transaction).list(enterpriseAId, { leadId: concurrentLeadId! });
+      assert.equal(commissions.length, 3);
+    });
+  } finally {
+    await withPlatformTransaction(async (transaction) => {
+      if (leadId) {
+        await transaction.delete(leadCommissions).where(eq(leadCommissions.leadId, leadId));
+        await transaction.delete(leadLifecycleEvents).where(eq(leadLifecycleEvents.leadRecordId, leadId));
+        await transaction.delete(leads).where(eq(leads.id, leadId));
+      }
+      if (paidBlockerLeadId) {
+        await transaction.delete(leadCommissions).where(eq(leadCommissions.leadId, paidBlockerLeadId));
+        await transaction.delete(leadLifecycleEvents).where(eq(leadLifecycleEvents.leadRecordId, paidBlockerLeadId));
+        await transaction.delete(leads).where(eq(leads.id, paidBlockerLeadId));
+      }
+      if (concurrentLeadId) {
+        await transaction.delete(leadCommissions).where(eq(leadCommissions.leadId, concurrentLeadId));
+        await transaction.delete(leadLifecycleEvents).where(eq(leadLifecycleEvents.leadRecordId, concurrentLeadId));
+        await transaction.delete(leads).where(eq(leads.id, concurrentLeadId));
+      }
+      if (membershipId) {
+        await transaction.delete(referrerEnterpriseMemberships).where(eq(referrerEnterpriseMemberships.id, membershipId));
+      }
+      await transaction.delete(enterpriseCommissionRules).where(eq(enterpriseCommissionRules.enterpriseId, enterpriseAId));
+      if (createdStaffIds.length) await transaction.delete(adminUsers).where(inArray(adminUsers.id, createdStaffIds));
+      if (createdUserIds.length) await transaction.delete(users).where(inArray(users.id, createdUserIds));
+    });
   }
 });
 

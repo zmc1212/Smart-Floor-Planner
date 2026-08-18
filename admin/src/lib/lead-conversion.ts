@@ -3,8 +3,6 @@ import { httpError } from '@/lib/http-error';
 import { normalizeLeadStatus } from '@/lib/lead-status';
 
 const CONVERTIBLE_STATUSES = new Set(['new', 'measuring', 'designing']);
-const MAX_CONTRACT_AMOUNT = 999_999_999_999.99;
-
 type ConversionLead = Pick<
   LeadWithRelations,
   'assignedTo' | 'archivedAt' | 'status'
@@ -101,11 +99,16 @@ export function parseLeadConversionInput(body: Record<string, unknown>) {
   const amountText = String(body.contractAmount ?? '').trim();
   let contractAmount: string | null = null;
   if (amountText) {
-    const amount = Number(amountText);
-    if (!Number.isFinite(amount) || amount <= 0 || amount > MAX_CONTRACT_AMOUNT) {
+    const match = /^(\d+)(?:\.(\d{1,2}))?$/.exec(amountText);
+    if (!match) {
       throw httpError('签约金额必须是有效的正数', 400);
     }
-    contractAmount = amount.toFixed(2);
+    const cents = BigInt(`${match[1]}${(match[2] || '').padEnd(2, '0')}`);
+    if (cents <= BigInt(0) || cents > BigInt('99999999999999')) {
+      throw httpError('签约金额必须是有效的正数', 400);
+    }
+    const normalized = cents.toString().padStart(3, '0');
+    contractAmount = `${normalized.slice(0, -2)}.${normalized.slice(-2)}`;
   }
 
   const conversionNote = String(body.conversionNote || '').trim() || null;

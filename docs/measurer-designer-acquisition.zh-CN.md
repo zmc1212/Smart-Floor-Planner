@@ -86,7 +86,7 @@
 - 同企业 `enterprise_admin` 可标记任意在用、未关闭线索；`designer` 只能标记 `assigned_to` 等于自己的线索。测量员和普通员工无此权限。
 - `new`、`measuring`、`designing` 及兼容历史状态均可标记为 `converted`。从早期阶段直接签约仅在确认界面提示跳过中间阶段，不阻断操作；`closed` 必须先重新打开，已归档线索必须先恢复。
 - 签约日期必填，按中国时区校验且不能晚于当天；合同金额和签约备注可选。金额仅是线索快照，不是订单或财务台账。
-- 转换事务写入 `converted_on`、`converted_at`、`converted_by`、`converted_from_status`、`contract_amount` 和 `conversion_note`，并创建 `converted` 生命周期事件。
+- 旧获客线索的转换事务写入 `converted_on`、`converted_at`、`converted_by`、`converted_from_status`、`contract_amount` 和 `conversion_note`，并创建 `converted` 生命周期事件。具有推荐成员、预分配测量员和设计师三方受益人的推荐网络线索还会在同一事务中按新三方规则生成提成快照；该新合同以 `referrer-network-appointment-development-plan.zh-CN.md` 为准。
 - 只有同企业 `enterprise_admin` 可以撤销签约，且必须填写原因；撤销恢复签约前状态、清空当前签约摘要，并创建 `conversion_reverted` 生命周期事件保留审计原因。
 - 通用 `POST /api/leads` 不允许直接创建 `converted`，`PUT /api/leads/[id]` 和户型导入/关联也不能进入或离开 `converted`；仓库层在持有行锁后再次校验，避免并发普通更新覆盖签约事实。客户端必须使用专用签约/撤销接口，避免绕过权限、输入校验和审计。
 - 专用动作必须存在企业上下文；无论详情还是创建/去重响应，普通微信客户都只能读取签约状态和日期，不返回内部签约金额、备注、操作人或精确操作时间。
