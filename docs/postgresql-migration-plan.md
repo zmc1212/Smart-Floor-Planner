@@ -47,6 +47,10 @@ import is part of the current runtime contract.
   `smart_floor_planner_restore_drill` database, verifies the current app-schema
   table/RLS/policy counts, records restore duration, and removes that drill
   database afterwards.
+- `npm run db:cleanup:execute` is intentionally separate from migrations. It
+  requires the just-audited target fingerprint, Qiniu manifest SHA-256, explicit
+  local-production acknowledgement, and operator identity, then writes an audit
+  after its single database transaction commits.
 - Data deletion, secret re-encryption, bucket cleanup, and a new migration slice
   require a separate approved operational procedure.
 

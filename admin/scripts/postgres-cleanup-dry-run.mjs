@@ -189,7 +189,7 @@ async function readMigrationHead(client) {
   };
 }
 
-async function buildReport(client) {
+export async function buildReport(client) {
   const catalog = await client.query(`
     select tablename as table_name
     from pg_tables
@@ -223,8 +223,8 @@ async function buildReport(client) {
     if (classification.table === 'admin_users') {
       const result = await client.query(`
         select
-          count(*) filter (where enterprise_id is null and role in ('super_admin', 'admin'))::text as retain_count,
-          count(*) filter (where not (enterprise_id is null and role in ('super_admin', 'admin')))::text as delete_count
+          count(*) filter (where role in ('super_admin', 'admin'))::text as retain_count,
+          count(*) filter (where role not in ('super_admin', 'admin'))::text as delete_count
         from app.admin_users
       `);
       tableCounts.push({
@@ -240,16 +240,14 @@ async function buildReport(client) {
         count(*) filter (
           where id in (
             select user_id from app.admin_users
-            where enterprise_id is null
-              and role in ('super_admin', 'admin')
+            where role in ('super_admin', 'admin')
               and user_id is not null
           )
         )::text as retain_count,
         count(*) filter (
           where id not in (
             select user_id from app.admin_users
-            where enterprise_id is null
-              and role in ('super_admin', 'admin')
+            where role in ('super_admin', 'admin')
               and user_id is not null
           )
         )::text as delete_count
@@ -383,6 +381,11 @@ async function main() {
     const client = await pool.connect();
     try {
       await client.query('begin read only');
+      await client.query(`
+        select
+          set_config('app.current_enterprise_id', '', true),
+          set_config('app.is_platform_admin', 'true', true)
+      `);
       const report = await buildReport(client);
       await client.query('rollback');
       if (args.writeAuditDirectory) report.auditFiles = await writeAudit(args.writeAuditDirectory, report);

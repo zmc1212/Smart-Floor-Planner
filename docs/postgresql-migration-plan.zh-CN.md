@@ -38,6 +38,8 @@
   `npm run db:restore-drill` 只恢复到固定的
   `smart_floor_planner_restore_drill` 数据库，校验当前 app schema 的表/RLS/策略
   数量、记录恢复耗时，并在完成后移除该演练库。
+- `npm run db:cleanup:execute` 与迁移严格分离。它要求刚审核过的目标指纹、七牛
+  清单 SHA-256、显式本地正式库确认和操作者身份，随后在单个数据库事务提交后写入审计。
 - 数据删除、密钥重加密、对象存储清理和新的迁移切片都需要单独批准的运维流程。
 
 ## 当前核验原则
