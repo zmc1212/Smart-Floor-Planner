@@ -1,5 +1,6 @@
 const app = getApp();
 const api = require('../../../utils/api.js');
+const { navigateToRoleLanding } = require('../../../utils/identity-navigation.js');
 
 Page({
   data: {
@@ -71,6 +72,8 @@ Page({
         app.globalData.userInfo = res.user || app.globalData.userInfo;
         app.globalData.openid = res.openid || app.globalData.openid || (res.user && res.user.openid);
         app.globalData.justLoggedIn = true;
+        app.globalData.sessionHydrated = false;
+        app.globalData.roleLandingRedirected = false;
 
         if (res.openid) wx.setStorageSync('openid', res.openid);
 
@@ -116,8 +119,7 @@ Page({
     if (pages.length > 1) {
       wx.navigateBack();
     } else {
-      // 否则跳转到首页
-      wx.switchTab({ url: '/pages/index/index' });
+      navigateToRoleLanding(app.globalData.userInfo);
     }
   },
 

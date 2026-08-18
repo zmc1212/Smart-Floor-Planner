@@ -519,14 +519,16 @@ function buildWallScene(floor, wall, options) {
   const solidEndPoint = project(
     retainsTopologyAt(wall.endNodeId) ? topologyEnd : end
   );
-  const solidOuterStart = {
+  const simpleOuterStart = {
     x: solidStartPoint.x + localY.x * outerOffsetPx,
     y: solidStartPoint.y + localY.y * outerOffsetPx
   };
-  const solidOuterEnd = {
+  const simpleOuterEnd = {
     x: solidEndPoint.x + localY.x * outerOffsetPx,
     y: solidEndPoint.y + localY.y * outerOffsetPx
   };
+  const solidOuterStart = geometry.extendSolidOuterStart ? outerStart : simpleOuterStart;
+  const solidOuterEnd = geometry.extendSolidOuterEnd ? outerEnd : simpleOuterEnd;
   return {
     id: wall.id,
     wall,

@@ -59,7 +59,13 @@ copy back to `layoutData`.
   one segment removes the whole collinear shared run rather than leaving a
   dangling stub. After that punch-through, collapsed collinear inner corners
   must still produce a defined inner dimension plan whose every segment has
-  millimetre start and end points, so Canvas can render the merged room.
+  millimetre start and end points, so Canvas can render the merged room. An
+  L-shaped concave corner created by that punch-through keeps overlapping
+  rectangular wall solids; it must not convex-miter the remaining outer wall
+  into the room. Inner-face closures keep each remaining wall's original body
+  side, so the merged inner L extends into the room and collinear walls with
+  opposite thickness stay a stepped facade. The two remaining walls at that
+  inner L must still show a filled intersection on the wall-solid outline.
 - A T-branch started on a closed exterior wall middle keeps one topology node
   and physical wall. Inner/outer start selects the near/far point on the source
   wall boundary and the corresponding first-wall start inset; it does not

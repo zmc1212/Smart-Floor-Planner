@@ -81,7 +81,7 @@ function request(url, method = 'GET', data = {}, options = {}) {
       },
       success: (res) => {
         if (res.statusCode === 401) {
-          handleUnauthorized(url, token);
+          if (!options.suppressUnauthorized) handleUnauthorized(url, token);
           reject({ error: 'Unauthorized', statusCode: 401 });
           return;
         }

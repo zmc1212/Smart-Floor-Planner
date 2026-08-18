@@ -1,4 +1,5 @@
 const api = require('../../../utils/api.js');
+const { navigateToRoleLanding } = require('../../../utils/identity-navigation.js');
 
 const MODE_LABELS = { customer: '客户', referrer: '推荐人', staff: '员工' };
 const ROLE_LABELS = { enterprise_admin: '企业负责人', designer: '设计师', measurer: '测量员', salesperson: '地推人员' };
@@ -93,7 +94,11 @@ Page({
       wx.setStorageSync('userInfo', refreshed.user);
       if (refreshed.openid) wx.setStorageSync('openid', refreshed.openid);
       wx.showToast({ title: '身份已切换', icon: 'success' });
-      setTimeout(() => wx.reLaunch({ url: context.mode === 'referrer' ? '/packages/business/referrer-workbench/referrer-workbench' : '/pages/mine/mine' }), 500);
+      setTimeout(() => navigateToRoleLanding({
+        ...context,
+        // Keep the approved referrer landing explicit for older DevTools builds.
+        landingPath: context.mode === 'referrer' ? '/packages/business/referrer-workbench/referrer-workbench' : '/pages/mine/mine'
+      }), 500);
     } catch (error) {
       if (app && app.globalData) app.globalData.token = oldToken;
       if (oldToken) wx.setStorageSync('token', oldToken);

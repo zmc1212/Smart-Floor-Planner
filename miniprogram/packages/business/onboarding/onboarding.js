@@ -1,4 +1,5 @@
 const api = require('../../../utils/api.js');
+const { getRoleLanding } = require('../../../utils/identity-navigation.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -134,6 +135,8 @@ Page({
   async persistOnboardingSession(response) {
     const app = getApp();
     app.globalData.token = response.token;
+    app.globalData.sessionHydrated = false;
+    app.globalData.roleLandingRedirected = false;
     wx.setStorageSync('token', response.token);
     try {
       const refreshed = await api.request('/auth/miniprogram', 'POST', {
@@ -158,10 +161,7 @@ Page({
   },
 
   onContinue() {
-    const url = this.data.codeType === 'staff'
-      ? '/pages/index/index'
-      : '/packages/business/referrer-workbench/referrer-workbench';
-    wx.reLaunch({ url });
+    wx.reLaunch({ url: getRoleLanding({ mode: this.data.codeType === 'staff' ? 'staff' : 'referrer' }) });
   },
 
   onRetry() {

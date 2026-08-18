@@ -11,6 +11,12 @@ function commitWall(draft, point, length) {
   );
 }
 
+function commitPreviewTo(draft, point) {
+  const preview = surveyGraph.startPreview(draft, point);
+  const floor = surveyGraph.getActiveFloor(preview);
+  return surveyGraph.commitPreviewLength(preview, floor.session.previewLengthMm, 'manual');
+}
+
 function createOpenDraft() {
   let draft = surveyGraph.createSurveyDraft();
   draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
@@ -310,9 +316,36 @@ function createOuterFaceMidWallClosureDraft() {
     target.pointMm,
     target
   );
-  draft = commitWall(draft, { xMm: outerStart.xMm + armWidthMm, yMm: outerStart.yMm }, armWidthMm);
-  draft = commitWall(draft, { xMm: outerStart.xMm + armWidthMm, yMm: armJoinYMm }, armJoinYMm - outerStart.yMm);
+  draft = commitPreviewTo(draft, { xMm: outerStart.xMm + armWidthMm, yMm: outerStart.yMm });
+  draft = commitPreviewTo(draft, { xMm: outerStart.xMm + armWidthMm, yMm: armJoinYMm });
   draft = surveyGraph.startPreview(draft, { xMm: outerStart.xMm, yMm: armJoinYMm });
+  return surveyGraph.confirmClosure(draft);
+}
+
+function createInnerFaceAdjacentClosureDraft(snapPoint) {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.setThickness(draft, 200);
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 6000, yMm: 0 }, 6000);
+  draft = commitWall(draft, { xMm: 6000, yMm: 4000 }, 4000);
+  draft = commitWall(draft, { xMm: 0, yMm: 4000 }, 6000);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 4000);
+  draft = surveyGraph.confirmClosure(draft);
+
+  const floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    snapPoint,
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(
+    surveyGraph.startWallSnap(draft),
+    target.pointMm,
+    target
+  );
+  draft = commitPreviewTo(draft, { xMm: 3000, yMm: -2000 });
+  draft = commitPreviewTo(draft, { xMm: 6000, yMm: -2000 });
+  draft = commitPreviewTo(draft, { xMm: 6000, yMm: 100 });
   return surveyGraph.confirmClosure(draft);
 }
 
@@ -1239,6 +1272,103 @@ test('punching through an outer-face mid-wall keeps the concave L corner from co
   assert.notDeepEqual(remainingOuterAtCorner, convexMiter);
   assert.deepEqual(stepOuterAtCorner, { xMm: innerCorner.xMm, yMm: innerCorner.yMm + thicknessMm });
   assert.deepEqual(remainingOuterAtCorner, { xMm: innerCorner.xMm + thicknessMm, yMm: innerCorner.yMm });
+});
+
+function ringHasPoint(rings, point, tolerance) {
+  const allowed = Number.isFinite(tolerance) ? tolerance : 1.5;
+  return (rings || []).some((ring) => (ring || []).some((vertex) => (
+    Math.hypot(vertex.x - point.x, vertex.y - point.y) <= allowed
+  )));
+}
+
+test('deleting the shared inner-face closure wall keeps the inner L join and a stepped right facade', () => {
+  [
+    { xMm: 3000, yMm: 0 },
+    { xMm: 3000, yMm: -200 }
+  ].forEach((snapPoint) => {
+    const draft = createInnerFaceAdjacentClosureDraft(snapPoint);
+    const sharedWallId = findSharedWallIds(surveyGraph.getActiveFloor(draft))[0];
+    assert.ok(sharedWallId, JSON.stringify(snapPoint));
+
+    const mergedDraft = surveyGraph.deleteWall(draft, sharedWallId);
+    const mergedFloor = surveyGraph.getActiveFloor(mergedDraft);
+    const roundPoint = (point) => ({
+      xMm: Math.round(point.xMm),
+      yMm: Math.round(point.yMm)
+    });
+    const nodePoint = (wall, key) => roundPoint(surveyGraph.getNode(mergedFloor, wall[key]));
+    const leftoverTopWall = mergedFloor.walls.find((wall) => {
+      const start = nodePoint(wall, 'startNodeId');
+      const end = nodePoint(wall, 'endNodeId');
+      return start.yMm === 0 && end.yMm === 0 &&
+        Math.min(start.xMm, end.xMm) === 0 && Math.max(start.xMm, end.xMm) === 3000;
+    });
+    const branchWall = mergedFloor.walls.find((wall) => {
+      const start = nodePoint(wall, 'startNodeId');
+      const end = nodePoint(wall, 'endNodeId');
+      return start.xMm === 3000 && end.xMm === 3000 &&
+        Math.min(start.yMm, end.yMm) < 0;
+    });
+    const closingWall = mergedFloor.walls.find((wall) => {
+      const start = nodePoint(wall, 'startNodeId');
+      const end = nodePoint(wall, 'endNodeId');
+      return start.xMm === 6000 && end.xMm === 6000 &&
+        Math.min(start.yMm, end.yMm) < 0;
+    });
+    const sourceRightWall = mergedFloor.walls.find((wall) => {
+      const start = nodePoint(wall, 'startNodeId');
+      const end = nodePoint(wall, 'endNodeId');
+      return start.xMm === 6000 && end.xMm === 6000 &&
+        Math.min(start.yMm, end.yMm) === 0 && Math.max(start.yMm, end.yMm) === 4000;
+    });
+    assert.ok(leftoverTopWall, JSON.stringify(snapPoint));
+    assert.ok(branchWall, JSON.stringify(snapPoint));
+    assert.ok(closingWall, JSON.stringify(snapPoint));
+    assert.ok(sourceRightWall, JSON.stringify(snapPoint));
+
+    const leftoverGeometry = surveyGraph.buildWallRenderGeometry(mergedFloor, leftoverTopWall);
+    const branchGeometry = surveyGraph.buildWallRenderGeometry(mergedFloor, branchWall);
+    const closingGeometry = surveyGraph.buildWallRenderGeometry(mergedFloor, closingWall);
+    const sourceRightGeometry = surveyGraph.buildWallRenderGeometry(mergedFloor, sourceRightWall);
+    const branchOuterX = Math.round((branchGeometry.outerStart.xMm + branchGeometry.outerEnd.xMm) / 2);
+
+    assert.equal(mergedFloor.spaces.filter((space) => space.closed).length, 1, JSON.stringify(snapPoint));
+    assert.equal(branchOuterX, 3200, JSON.stringify(snapPoint));
+    assert.equal(Math.round(closingGeometry.outerStart.xMm), 5800, JSON.stringify(snapPoint));
+    assert.equal(Math.round(closingGeometry.outerEnd.xMm), 5800, JSON.stringify(snapPoint));
+    assert.equal(Math.round(sourceRightGeometry.outerStart.xMm), 6200, JSON.stringify(snapPoint));
+    assert.equal(Math.round(sourceRightGeometry.outerEnd.xMm), 6200, JSON.stringify(snapPoint));
+    assert.equal(leftoverGeometry.extendSolidOuterEnd || leftoverGeometry.extendSolidOuterStart, true, JSON.stringify(snapPoint));
+    assert.equal(branchGeometry.extendSolidOuterStart || branchGeometry.extendSolidOuterEnd, true, JSON.stringify(snapPoint));
+
+    const mergedScene = createScene(mergedDraft);
+    const leftoverSceneWall = mergedScene.walls.find((wall) => wall.id === leftoverTopWall.id);
+    const branchSceneWall = mergedScene.walls.find((wall) => wall.id === branchWall.id);
+    const leftoverJoinOuter = leftoverGeometry.extendSolidOuterEnd
+      ? leftoverSceneWall.solidOuterEnd
+      : leftoverSceneWall.solidOuterStart;
+    const leftoverJoinInner = leftoverGeometry.extendSolidOuterEnd
+      ? leftoverSceneWall.solidEndPoint
+      : leftoverSceneWall.solidStartPoint;
+    const joinFill = {
+      x: (leftoverJoinInner.x + leftoverJoinOuter.x) / 2,
+      y: (leftoverJoinInner.y + leftoverJoinOuter.y) / 2
+    };
+    assert.ok(leftoverSceneWall, JSON.stringify(snapPoint));
+    assert.ok(branchSceneWall, JSON.stringify(snapPoint));
+    assert.equal(
+      ringHasPoint(mergedScene.wallSolidPlans.closed.rings, leftoverJoinOuter),
+      true,
+      JSON.stringify({ snapPoint, leftoverJoinOuter, rings: mergedScene.wallSolidPlans.closed.rings })
+    );
+    assert.equal(
+      mergedScene.wallSolidPlans.closed.polygons.some((polygon) => (
+        polygon.some((point) => Math.hypot(point.x - joinFill.x, point.y - joinFill.y) <= 8)
+      )),
+      true,
+      JSON.stringify({ snapPoint, joinFill })
+    );
+  });
 });
 
 test('an outer-face corner merge still renders after punching through a remaining wall', () => {

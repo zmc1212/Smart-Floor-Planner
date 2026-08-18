@@ -1,4 +1,5 @@
 const api = require('../../../utils/api.js');
+const session = require('../../../utils/session.js');
 
 function navigationMetrics() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync();
@@ -26,6 +27,7 @@ Page({
     error: '',
     memberships: [],
     selectedMembershipId: '',
+    identityCount: 0,
   },
 
   onLoad() {
@@ -41,11 +43,21 @@ Page({
     this.setData({ loading: true, error: '' });
     try {
       const result = await api.request('/miniprogram/referrer-memberships', 'GET');
+      let identityCount = 0;
+      try {
+        const identityResult = await api.request('/miniprogram/identity-contexts', 'GET');
+        identityCount = Array.isArray(identityResult.contexts)
+          ? new Set(identityResult.contexts.map((context) => context && context.mode).filter(Boolean)).size
+          : 0;
+      } catch (identityError) {
+        // The promotion workbench remains usable when the optional switch list is temporarily unavailable.
+        console.warn('Failed to read identity contexts for referrer workbench', identityError);
+      }
       const memberships = (result.data || []).filter((item) => item.status === 'active');
       const selectedMembershipId = memberships.some((item) => item.id === this.data.selectedMembershipId)
         ? this.data.selectedMembershipId
         : (memberships[0] && memberships[0].id) || '';
-      this.setData({ memberships, selectedMembershipId });
+      this.setData({ memberships, selectedMembershipId, identityCount });
     } catch (error) {
       this.setData({ error: error.message || error.error || '暂时无法读取推广企业' });
     } finally {
@@ -66,6 +78,14 @@ Page({
     wx.navigateTo({
       url: `/packages/business/promotion-service-code/promotion-service-code?membershipId=${encodeURIComponent(membershipId)}`,
     });
+  },
+
+  onOpenIdentitySwitch() {
+    wx.navigateTo({ url: '/packages/business/identity-switch/identity-switch' });
+  },
+
+  onLogout() {
+    session.confirmLogout();
   },
 
   leaveSelectedEnterprise() {

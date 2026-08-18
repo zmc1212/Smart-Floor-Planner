@@ -8,7 +8,10 @@ App({
       staffId: null
     },
     pendingBluetoothAutoConnect: false,
-    justLoggedIn: false
+    justLoggedIn: false,
+    sessionHydrated: false,
+    sessionHydrating: false,
+    roleLandingRedirected: false
   },
   onLaunch(options) {
     console.log('智能量房大师小程序启动', options);
@@ -25,6 +28,7 @@ App({
       this.globalData.openid = openid || (userInfo.openid);
       console.log('会话已恢复 (JWT):', userInfo.displayName || userInfo.username);
       this.syncProfessionalContext();
+      this.hydrateStoredSession();
     } else if (openid && userInfo) {
       // Legacy session recovery
       this.globalData.openid = openid;
@@ -66,6 +70,56 @@ App({
   },
   onShow(options) {
     this.handleReferral(options);
+    if (this.globalData.token && !this.globalData.sessionHydrated) {
+      this.hydrateStoredSession();
+    }
+  },
+
+  async hydrateStoredSession() {
+    if (this.globalData.sessionHydrating || !this.globalData.token) return;
+    this.globalData.sessionHydrating = true;
+    const api = require('./utils/api.js');
+    const token = this.globalData.token;
+    try {
+      const refreshed = await api.request('/auth/miniprogram', 'POST', {
+        type: 'refresh',
+        token
+      }, { suppressUnauthorized: true });
+      if (!refreshed || !refreshed.token || !refreshed.user) throw new Error('Session refresh failed');
+      this.globalData.token = refreshed.token;
+      this.globalData.userInfo = refreshed.user;
+      this.globalData.openid = refreshed.openid || refreshed.user.openid || null;
+      wx.setStorageSync('token', refreshed.token);
+      wx.setStorageSync('userInfo', refreshed.user);
+      if (refreshed.openid) wx.setStorageSync('openid', refreshed.openid);
+      this.globalData.sessionHydrated = true;
+      this.syncProfessionalContext();
+      this.restoreRoleLanding();
+    } catch (error) {
+      if (error && (error.statusCode === 401 || error.error === 'Unauthorized')) {
+        this.globalData.token = null;
+        this.globalData.userInfo = null;
+        this.globalData.openid = null;
+        wx.removeStorageSync('token');
+        wx.removeStorageSync('userInfo');
+        wx.removeStorageSync('openid');
+        this.globalData.sessionHydrated = true;
+      }
+    } finally {
+      this.globalData.sessionHydrating = false;
+    }
+  },
+
+  restoreRoleLanding() {
+    if (this.globalData.roleLandingRedirected || !this.globalData.userInfo) return;
+    const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : [];
+    if (!pages.length) return;
+    const current = pages[pages.length - 1].route || '';
+    const rootRoutes = new Set(['pages/index/index', 'pages/mine/mine']);
+    if (!rootRoutes.has(current)) return;
+    const navigation = require('./utils/identity-navigation.js');
+    if (!navigation.navigateToRoleLanding(this.globalData.userInfo)) return;
+    this.globalData.roleLandingRedirected = true;
   },
   handleReferral(options) {
     const query = options.query || {};
