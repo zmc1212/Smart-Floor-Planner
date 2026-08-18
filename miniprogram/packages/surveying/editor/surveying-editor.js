@@ -3319,7 +3319,7 @@ Page({
     }
 
     this.cursorPlacementState = 'awaitingWallDrop';
-    this.applyDraft(surveyGraph.startWallSnap(this.draft), { persist: true });
+    this.applyDraft(surveyGraph.startWallSnap(this.draft), { persist: true, recordHistory: false });
     wx.showToast({ title: '请拖动光标到墙体', icon: 'none' });
   },
 
@@ -4166,7 +4166,7 @@ Page({
         return;
       }
       this.applyDraft(surveyGraph.startWallSnap(this.draft), {
-        recordHistory: true,
+        recordHistory: false,
         extraData: { numberPadVisible: false }
       });
       wx.showToast({ title: '点击已有墙体放置光标', icon: 'none' });
