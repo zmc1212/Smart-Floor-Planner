@@ -89,8 +89,12 @@ test('promotion service codes use the anonymous claim route and real WeChat imag
     const bytes = await createPromotionServiceCode(token, { fetchImpl });
     assert.deepEqual([...bytes], [...png]);
     assert.equal(calls.length, 2);
+    assert.match(calls[1].url, /\/wxa\/getwxacodeunlimit\?/);
     const body = JSON.parse(String(calls[1].init?.body));
-    assert.equal(body.path, `${PROMOTION_SERVICE_PAGE}?token=${token}`);
+    assert.equal(body.scene, 'A'.repeat(32));
+    assert.equal(body.page, PROMOTION_SERVICE_PAGE);
+    assert.equal(body.env_version, 'develop');
+    assert.equal(body.check_path, false);
     assert.equal(body.width, 430);
     assert.deepEqual(body.line_color, { r: 8, g: 137, b: 57 });
     assert.equal(JSON.stringify(body).includes('enterprise'), false);
@@ -135,8 +139,12 @@ test('enterprise onboarding codes use the dedicated Mini Program route and real 
     );
     const bytes = await createEnterpriseOnboardingCode(token, { fetchImpl });
     assert.deepEqual([...bytes], [...png]);
+    assert.match(calls[1].url, /\/wxa\/getwxacodeunlimit\?/);
     const body = JSON.parse(String(calls[1].init?.body));
-    assert.equal(body.path, `${ENTERPRISE_ONBOARDING_PAGE}?token=${token}`);
+    assert.equal(body.scene, 'B'.repeat(32));
+    assert.equal(body.page, ENTERPRISE_ONBOARDING_PAGE);
+    assert.equal(body.env_version, 'develop');
+    assert.equal(body.check_path, false);
     assert.equal(body.width, 430);
     assert.deepEqual(body.line_color, { r: 8, g: 137, b: 57 });
   } finally {
@@ -183,11 +191,15 @@ test('WeChat JPEG Mini Program code bytes are accepted and preserve their media 
   }
 });
 
-test('development Mini Program codes target the develop version with a compact scene token', async () => {
+test('Mini Program codes remain on the develop version in a production server process', async () => {
   const previousAppId = process.env.WX_APPID;
   const previousSecret = process.env.WX_APPSECRET;
+  const previousNodeEnv = process.env.NODE_ENV;
+  const previousCodeEnvironment = process.env.WX_MINIPROGRAM_CODE_ENV_VERSION;
   process.env.WX_APPID = 'wx_test_app';
   process.env.WX_APPSECRET = 'test_secret';
+  process.env.NODE_ENV = 'production';
+  process.env.WX_MINIPROGRAM_CODE_ENV_VERSION = 'release';
   resetWechatAccessTokenCacheForTests();
 
   const token = `ej_${'D'.repeat(32)}`;
@@ -209,7 +221,7 @@ test('development Mini Program codes target the develop version with a compact s
   }) as typeof fetch;
 
   try {
-    await createEnterpriseOnboardingCode(token, { fetchImpl, envVersion: 'develop' });
+    await createEnterpriseOnboardingCode(token, { fetchImpl });
     assert.match(calls[1].url, /\/wxa\/getwxacodeunlimit\?/);
     const body = JSON.parse(String(calls[1].init?.body));
     assert.equal(body.scene, 'D'.repeat(32));
@@ -222,6 +234,10 @@ test('development Mini Program codes target the develop version with a compact s
     else process.env.WX_APPID = previousAppId;
     if (previousSecret === undefined) delete process.env.WX_APPSECRET;
     else process.env.WX_APPSECRET = previousSecret;
+    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousNodeEnv;
+    if (previousCodeEnvironment === undefined) delete process.env.WX_MINIPROGRAM_CODE_ENV_VERSION;
+    else process.env.WX_MINIPROGRAM_CODE_ENV_VERSION = previousCodeEnvironment;
   }
 });
 
@@ -282,4 +298,18 @@ test('enterprise join-code rotation does not return a plaintext token', () => {
 
   assert.match(route, /data:\s*enterpriseJoinCodeToDto\(result\.code\)/);
   assert.doesNotMatch(route, /token:\s*result\.token/);
+});
+
+test('onboarding code resolution returns its enterprise display name without exposing the token', () => {
+  const route = readFileSync(
+    path.join(
+      process.cwd(),
+      'src/app/api/miniprogram/codes/resolve/route.ts'
+    ),
+    'utf8'
+  );
+
+  assert.match(route, /EnterpriseRepository/);
+  assert.match(route, /enterpriseName:\s*enterprise\?\.name\s*\?\?\s*null/);
+  assert.doesNotMatch(route, /token:\s*joinCode/);
 });

@@ -1024,16 +1024,20 @@ test('2205/2901/2834 inner-corner closure keeps its visible lower-wall endpoint 
   assert.deepEqual(selectWallGeometry(lowerWallAfter), selectWallGeometry(lowerWallBefore));
 });
 
-test('deleting the wall shared by two closed rooms merges their fill, label, and net area', () => {
-  const draft = createAlignedAdjacentRoomDraft();
-  const floor = surveyGraph.getActiveFloor(draft);
+function findSharedWallIds(floor) {
   const wallUseCounts = {};
-  floor.spaces.filter((space) => space.closed).forEach((space) => {
+  (floor.spaces || []).filter((space) => space.closed).forEach((space) => {
     space.wallIds.forEach((wallId) => {
       wallUseCounts[wallId] = (wallUseCounts[wallId] || 0) + 1;
     });
   });
-  const sharedWallId = Object.keys(wallUseCounts).find((wallId) => wallUseCounts[wallId] === 2);
+  return Object.keys(wallUseCounts).filter((wallId) => wallUseCounts[wallId] >= 2);
+}
+
+test('deleting the wall shared by two closed rooms merges their fill, label, and net area', () => {
+  const draft = createAlignedAdjacentRoomDraft();
+  const floor = surveyGraph.getActiveFloor(draft);
+  const sharedWallId = findSharedWallIds(floor)[0];
   assert.ok(sharedWallId);
 
   const mergedDraft = surveyGraph.deleteWall(draft, sharedWallId);
@@ -1054,6 +1058,105 @@ test('deleting the wall shared by two closed rooms merges their fill, label, and
     heightMm: 6564,
     areaMm2: 14637720
   });
+});
+
+test('deleting one segment of a split shared wall punches through the collinear run and merges both rooms', () => {
+  let draft = createAlignedAdjacentRoomDraft();
+  let floor = surveyGraph.getActiveFloor(draft);
+  const sharedWall = surveyGraph.getWall(floor, findSharedWallIds(floor)[0]);
+  const start = surveyGraph.getNode(floor, sharedWall.startNodeId);
+  const end = surveyGraph.getNode(floor, sharedWall.endNodeId);
+  const mid = {
+    xMm: Math.round((start.xMm + end.xMm) / 2),
+    yMm: Math.round((start.yMm + end.yMm) / 2)
+  };
+  const target = surveyGraph.getCursorPlacementTarget(floor, mid, surveyGraph.CLOSE_TOLERANCE_MM);
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  const outward = {
+    xMm: mid.xMm + Math.round(end.yMm - start.yMm) * 800 / sharedWall.lengthMm,
+    yMm: mid.yMm - Math.round(end.xMm - start.xMm) * 800 / sharedWall.lengthMm
+  };
+  draft = commitWall(draft, outward, 800);
+  floor = surveyGraph.getActiveFloor(draft);
+  draft = surveyGraph.deleteWall(draft, floor.walls[floor.walls.length - 1].id);
+
+  floor = surveyGraph.getActiveFloor(draft);
+  const splitSharedIds = findSharedWallIds(floor);
+  assert.equal(splitSharedIds.length, 2);
+  assert.equal(floor.spaces.filter((space) => space.closed).length, 2);
+
+  const mergedDraft = surveyGraph.deleteWall(draft, splitSharedIds[0]);
+  const mergedFloor = surveyGraph.getActiveFloor(mergedDraft);
+  const mergedSpaces = mergedFloor.spaces.filter((space) => space.closed);
+  const mergedScene = createScene(mergedDraft);
+
+  assert.equal(mergedSpaces.length, 1);
+  assert.equal(mergedFloor.session.state, 'spaceClosed');
+  assert.equal(mergedScene.closedSpaceFills.length, 1);
+  assert.equal(mergedScene.closedSpaceLabels.length, 1);
+  splitSharedIds.forEach((wallId) => {
+    assert.equal(mergedFloor.walls.some((wall) => wall.id === wallId), false);
+    assert.equal(mergedSpaces[0].wallIds.includes(wallId), false);
+  });
+  assert.equal(mergedFloor.walls.every((wall) => {
+    const incident = mergedFloor.walls.filter((item) => (
+      item.startNodeId === wall.startNodeId || item.endNodeId === wall.startNodeId
+    )).length;
+    const otherIncident = mergedFloor.walls.filter((item) => (
+      item.startNodeId === wall.endNodeId || item.endNodeId === wall.endNodeId
+    )).length;
+    return incident === 2 && otherIncident === 2;
+  }), true);
+});
+
+test('deleting a partial shared wall between staggered rooms merges them into one L-shaped room', () => {
+  let draft = surveyGraph.createSurveyDraft();
+  draft = surveyGraph.setThickness(draft, 200);
+  draft = surveyGraph.placeCursor(draft, { xMm: 0, yMm: 0 });
+  draft = commitWall(draft, { xMm: 4000, yMm: 0 }, 4000);
+  draft = commitWall(draft, { xMm: 4000, yMm: 6000 }, 6000);
+  draft = commitWall(draft, { xMm: 0, yMm: 6000 }, 4000);
+  draft = commitWall(draft, { xMm: 0, yMm: 0 }, 6000);
+  draft = surveyGraph.confirmClosure(draft);
+
+  const floor = surveyGraph.getActiveFloor(draft);
+  const target = surveyGraph.getCursorPlacementTarget(
+    floor,
+    { xMm: 4000, yMm: 0 },
+    surveyGraph.CLOSE_TOLERANCE_MM
+  );
+  draft = surveyGraph.snapCursorToWall(surveyGraph.startWallSnap(draft), target.pointMm, target);
+  draft = commitWall(draft, { xMm: 7000, yMm: 0 }, 3000);
+  draft = commitWall(draft, { xMm: 7000, yMm: 2500 }, 2500);
+  draft = surveyGraph.startPreview(draft, { xMm: 4000, yMm: 2500 });
+  draft = surveyGraph.confirmClosure(draft);
+
+  const sharedWallId = findSharedWallIds(surveyGraph.getActiveFloor(draft))[0];
+  const mergedDraft = surveyGraph.deleteWall(draft, sharedWallId);
+  const mergedFloor = surveyGraph.getActiveFloor(mergedDraft);
+  const mergedSpaces = mergedFloor.spaces.filter((space) => space.closed);
+  const mergedScene = createScene(mergedDraft);
+  const boundary = surveyGraph.buildSpaceBoundaryPoints(mergedFloor, mergedSpaces[0].wallIds)
+    .map((point) => [point.xMm, point.yMm]);
+  const uniqueCorners = [...new Set(boundary.map((point) => point.join(',')))];
+
+  assert.equal(mergedSpaces.length, 1);
+  assert.equal(mergedFloor.session.state, 'spaceClosed');
+  assert.equal(mergedScene.closedSpaceFills.length, 1);
+  assert.equal(mergedScene.closedSpaceLabels.length, 1);
+  assert.equal(uniqueCorners.length, 7);
+  assert.deepEqual(uniqueCorners.sort(), [
+    '0,0', '0,6000', '4000,0', '4000,2500', '4000,6000', '7200,0', '7200,2500'
+  ]);
+  assert.equal(mergedFloor.walls.every((wall) => {
+    const startCount = mergedFloor.walls.filter((item) => (
+      item.startNodeId === wall.startNodeId || item.endNodeId === wall.startNodeId
+    )).length;
+    const endCount = mergedFloor.walls.filter((item) => (
+      item.startNodeId === wall.endNodeId || item.endNodeId === wall.endNodeId
+    )).length;
+    return startCount === 2 && endCount === 2;
+  }), true);
 });
 
 test('deleting an exterior wall still invalidates its single closed room', () => {

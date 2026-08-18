@@ -18,14 +18,14 @@
 
 | 界面 | 运行路由 | 当前合同 | 状态/限制 |
 | --- | --- | --- | --- |
-| 首页与量房入口 | `pages/index/index` | 角色化首页、线索/项目卡片、正式量房入口；本地 `ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG` 开关会跳过最近户型加载并直接新建量房 | Implemented；正常模式数据按租户和角色返回，调试开关仅限本地使用 |
-| 线索与客户 | `pages/leads-management/leads-management`、`packages/business/lead-form/lead-form`、`packages/business/lead-detail/lead-detail` | 线索列表/详情、签约状态、正式户型摘要；负责设计师在尚无有效预约时可进入首次预约。推荐网络线索经现有签约接口进入 `converted` 时，服务端在同一事务快照推荐人、设计师、测量员三条提成 | Implemented/Limited；签约与预约入口权限均由服务端执行；比例规则要求合同金额，已支付三方提成会阻止企业负责人撤销签约 |
+| 首页与量房入口 | `pages/index/index` | 当前共用首页、线索/项目卡片和正式量房入口；本地 `ENABLE_OFFLINE_SURVEY_ENTRY_DEBUG` 开关会跳过最近户型加载并直接新建量房 | Limited；服务端数据可按租户/角色限制，但客户端仍以员工/非员工二分并共用旧首页，静态 TabBar 会向推荐人、客户等不相关身份暴露线索、量房或 AI 入口。第 11-15 阶段将改为五角色白名单外壳；调试开关仅限本地使用 |
+| 线索与客户 | `pages/leads-management/leads-management`、`packages/business/lead-form/lead-form`、`packages/business/lead-detail/lead-detail` | 线索列表/详情、签约状态、正式户型摘要；负责设计师在尚无有效预约时可进入首次预约。推荐网络线索经现有签约接口进入 `converted` 时，服务端在同一事务快照推荐人、设计师、测量员三条提成 | Implemented/Limited；签约与预约入口权限由服务端执行，但共用 TabBar 尚未按身份移除无关线索入口；比例规则要求合同金额，已支付三方提成会阻止企业负责人撤销签约 |
 | 报备与员工任务 | `packages/business/promotion-records/promotion-records`、`packages/business/promotion-record-detail/promotion-record-detail` | 企业报备和员工通知 | Implemented/Limited；微信投递可能被外部拒绝 |
-| 推荐人网络、预约与匿名领取 | `packages/business/onboarding/onboarding`、`packages/business/referrer-workbench/referrer-workbench`、`packages/business/promotion-service-code/promotion-service-code`、`packages/business/free-design-service/free-design-service`、`packages/business/customer-project/customer-project`、`packages/business/appointment-detail/appointment-detail`、`packages/business/appointment-reschedule/appointment-reschedule`、`packages/business/appointment-booking/appointment-booking`、`packages/business/measurer-calendar/measurer-calendar`、`packages/business/measurer-unavailability/measurer-unavailability` | 按类型隔离的入驻与推荐人工作台保持既有合同。预约详情现在从线索详情与测量员日程展示真实调度记录：负责设计师或企业负责人可填写必填原因后内部改期，或填写必填原因后取消；负责测量员或企业负责人可确认完成。客户改期继续复用服务端计算的可用时段选择器。客户项目服务册继续仅客户本人读取且只展示主动发布方案 | Implemented/Limited；所有预约变更继续经过服务端岗位权限和乐观版本校验，且只有有效预约显示岗位动作。客户项目 API 强制 `customer_user_id` 所有权并过滤撤回/删除方案。预约详情路由及缺少上下文时的可恢复状态已在新鲜编译后以 `390x844` 核验；因模拟器登录态已失效，带真实岗位动作的登录态截图仍待补。微信投递继续依赖外部配置 |
+| 推荐人网络、预约与匿名领取 | `packages/business/onboarding/onboarding`、`packages/business/onboarding-debug/onboarding-debug`、`packages/business/referrer-workbench/referrer-workbench`、`packages/business/promotion-service-code/promotion-service-code`、`packages/business/free-design-service/free-design-service`、`packages/business/customer-project/customer-project`、`packages/business/appointment-detail/appointment-detail`、`packages/business/appointment-reschedule/appointment-reschedule`、`packages/business/appointment-booking/appointment-booking`、`packages/business/measurer-calendar/measurer-calendar`、`packages/business/measurer-unavailability/measurer-unavailability` | 按类型隔离的入驻、推广码、客户领取、项目和预约深层路由保持既有合同。手机号授权前，有效入驻码会解析码类型和企业展示名称；开发版 `onboarding-debug` 可选择本地小程序码进入同一真实流程。预约动作继续按设计师、测量员、企业负责人和客户边界执行 | Implemented/Limited；推荐人首次入驻可直接进入工作台，但冷启动/重新登录不会恢复到推荐人落点，现有工作台也只有企业/服务码，尚无脱敏推广进度和本人收益闭环。客户项目与预约 API 继续执行所有权、岗位权限和乐观锁；登录态岗位动作与原生宿主截图仍待补，微信投递依赖外部配置。第 11-15 阶段负责角色外壳与完整闭环 |
 | 提成记录 | `packages/business/commission-records/commission-records` | 适用商业角色的订单提成 | Implemented；结算仍由后台业务控制 |
 | 灵感库 | `packages/business/inspiration/inspiration` | 租户范围内灵感浏览和详情 | Implemented/Limited；媒体供应商为外部服务 |
 | AI 设计工作流 | `pages/ai-design/ai-design`、`packages/ai-workflow/*` | 客户/项目选择、方案入口、确认、结果、历史及线索范围的发布状态。绑定线索的成功结果允许负责设计师或企业负责人确认后发布到客户项目或撤回 | Implemented；供应商、点数、正式量房资格、线索责任人与发布可见性均由服务端控制 |
-| 我的与账号 | `pages/mine/mine`、`packages/business/profile-edit/profile-edit`、`packages/business/settings/settings`、`packages/business/identity-switch/identity-switch`、`packages/business/account-security/account-security` | 角色化工作台、通知、账号安全及服务端身份上下文选择。切换时交换签名上下文令牌、刷新完整用户资料、持久化会话，并重新进入对应客户/员工/推荐人界面 | Implemented/Limited；只能选择基础账号当前拥有的活动身份，一次只激活一个上下文；部分权限设置由微信平台托管。身份切换路由及中文登录失效状态已在新鲜编译后以 `390x844` 核验；登录态身份列表截图仍待补 |
+| 我的与账号 | `pages/mine/mine`、`packages/business/profile-edit/profile-edit`、`packages/business/settings/settings`、`packages/business/identity-switch/identity-switch`、`packages/business/account-security/account-security` | 通知、账号安全及服务端身份上下文选择；切换会交换签名 token、刷新资料并持久化会话 | Implemented/Limited；身份切换入口藏在设置页，推荐人上下文在当前“我的”接口中进入普通用户分支，冷启动也没有角色落点恢复；多企业推荐人成员关系在身份列表与工作台重复。一次只允许一个活动上下文，登录态身份列表截图及第 11-15 阶段角色化重构仍待完成 |
 | 推荐分享 | `packages/business/recommendation-share/*` | 只读推荐方案和项目摘要 | 受分享授权及可用资源限制 |
 
 ## 正式量房
@@ -34,7 +34,7 @@
 携带 `leadId` 和/或 `floorPlanId`。权威合同见
 [`surveying-module/formal-surveying.md`](./surveying-module/formal-surveying.md)。
 `FloorPlan.layoutData` 只保存 v4 `surveyGraph`；wall graph、Canvas、尺寸、BLE
-读数、审计队列、撤销/重做、右侧工具栏经确认的清空重做操作和保存失败行为都必须遵守该合同。
+读数、审计队列、撤销/重做、右侧工具栏经确认的清空重做操作和保存失败行为都必须遵守该合同。删除两个闭合房间的共用墙会打通该界面并合并成一个闭合房间；共用界面被拆成共线多段时，删除其中任一段都会去掉整条共线共用墙。
 封闭外墙中段的 T 型分支保持同一拓扑节点和实体墙。“内边/外边起步”只选择源墙边界的近侧/远侧起点及对应的首段起点内缩，不得再次解释为新分支墙相反的局部测量面。分支所有墙段统一使用 graph 侧工作面，并继承首段确定的实体侧；转向和源房间质心都不得重新翻面。触点按正交规则写入内部 graph，预览黑线、橙线、确认红线、实时尺寸端点和绿色光标必须重合在同一条连续工作路径上；相邻红线端点严格相等，拉出第二段时光标和红线不得横移一个墙厚。`measurementStartInsetMm`、`measurementStartExtensionMm` 和 `measurementEndInsetMm` 只记录真实边界或闭合修正，普通外边 T 转角不得自动生成一个墙厚的修正。预览、手工/BLE 确认、Canvas 和尺寸消费者统一按“拓扑长度 - 起点内缩 + 起点延伸 - 终点内缩”计算。以上 Canvas 派生投影不改变 graph 的中心线和闭合拓扑；T 链第二段及之后的转角只能补齐实体墙连接，不得回写前序墙段的测量内缩或缩短已确认读数。所有共享边闭合链在确认后都保持确认前的实体侧，包括“向外量墙、最后橙线吸附既有房间内边”的路径；不能将墙体翻到已对齐红线/橙线的另一侧或再叠加一个墙厚。最后光标命中既有墙的可见外边时，必须保留该外边工作坐标，并以短桥接连接拓扑角点，不得暗中投影回中心线。墙角续接和共享内墙分区仍遵守原有边界闭合规则。
 
 ## 共用 API 与工具
@@ -42,7 +42,7 @@
 - 身份/上下文：`/api/auth/miniprogram`、`/api/miniprogram/identity-contexts`、
   `/api/miniprogram/identity-contexts/switch` 及共用上下文解析器。身份列表每次从
   数据库读取；切换不能伪造非活动企业、员工身份或推荐人成员关系。
-- 推荐人网络：企业入驻码 PNG/JPEG 打开专用入驻页；该页在手机号授权前只解析不透明令牌类型，之后调用既有入驻接口。本地/体验码可通过 `getwxacodeunlimit` 指向 `develop`/`trial`，使用 32 位 `scene` 携带令牌摘要，入驻页恢复 `ej_`/`rp_` 前缀后再解析。推广展示页为当前推荐人成员关系加载受保护的微信小程序码；客户领取页只解析、校验、审计不透明令牌并签发短时待确认来源，不创建线索。客户使用 `Idempotency-Key` 授权后才原子创建活动归属、线索和派单；并发或重复扫码不能覆盖未关闭项目。已授权手机号的用户可入驻一家员工企业，或默认最多加入三家推荐人企业；退出会停用对应推广令牌并使旧 JWT 失效。
+- 推荐人网络：企业入驻码 PNG/JPEG 打开专用入驻页；该页在手机号授权前只解析不透明令牌类型，之后调用既有入驻接口。企业入驻码和推荐推广码均通过 `getwxacodeunlimit` 指向 `develop`，即使服务端以生产模式运行也不回退到正式版；使用 32 位 `scene` 携带令牌摘要，入驻页恢复 `ej_`/`rp_` 前缀后再解析。推广展示页为当前推荐人成员关系加载受保护的微信小程序码；客户领取页只解析、校验、审计不透明令牌并签发短时待确认来源，不创建线索。客户使用 `Idempotency-Key` 授权后才原子创建活动归属、线索和派单；并发或重复扫码不能覆盖未关闭项目。已授权手机号的用户可入驻一家员工企业，或默认最多加入三家推荐人企业；退出会停用对应推广令牌并使旧 JWT 失效。
 - 客户项目与方案发布：`GET /api/miniprogram/customer-projects/[leadId]` 只向该线索 `customer_user_id` 返回企业、设计师、当前预约、完成的 v4 户型摘要和活动发布方案；已发布图片通过同一客户身份的受保护端点读取。负责设计师只能发布或撤回自己负责线索的已成功 generation，企业负责人可管理本企业；撤回不删除生成结果但立即取消客户可见性。
 - 线索、户型、测量、设备、AI、提成、报备和通知使用对应的租户 API 族。预约可用
   时段接口会返回企业时区、时长、步长和最远可预约天数；预约与改期页面以该服务端

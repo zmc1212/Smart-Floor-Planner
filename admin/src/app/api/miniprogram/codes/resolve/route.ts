@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
+  EnterpriseRepository,
   MiniProgramIdentityRepository,
   ReferrerNetworkRepository,
 } from '@/db/repositories';
@@ -47,9 +48,13 @@ export async function POST(request: Request) {
         actorUserId
       );
       if (joinCode.code) {
+        const enterprise = await new EnterpriseRepository(transaction).findById(
+          joinCode.code.enterpriseId
+        );
         return {
           kind: 'onboarding' as const,
           codeType: joinCode.code.codeType,
+          enterpriseName: enterprise?.name ?? null,
           result: joinCode.result,
         };
       }
@@ -86,7 +91,12 @@ export async function POST(request: Request) {
       success: true,
       data: {
         kind: result.kind,
-        ...(result.codeType ? { codeType: result.codeType } : {}),
+        ...(result.codeType
+          ? {
+              codeType: result.codeType,
+              enterpriseName: result.enterpriseName,
+            }
+          : {}),
         ...(result.kind === 'referral'
           ? {
               pendingSource: result.pendingSource,

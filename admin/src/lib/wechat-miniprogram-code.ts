@@ -9,8 +9,9 @@ export type MiniProgramCodeEnvironment = 'release' | 'trial' | 'develop';
 
 export type MiniProgramCodeOptions = {
   fetchImpl?: typeof fetch;
-  envVersion?: MiniProgramCodeEnvironment;
 };
+
+const MINI_PROGRAM_CODE_ENVIRONMENT: MiniProgramCodeEnvironment = 'develop';
 
 export function buildPromotionServicePath(token: string) {
   const normalized = token.trim();
@@ -42,7 +43,7 @@ async function createMiniProgramCode(
   options: MiniProgramCodeOptions = {}
 ) {
   const fetchImpl = options.fetchImpl ?? fetch;
-  const envVersion = resolveMiniProgramCodeEnvironment(options.envVersion);
+  const envVersion = MINI_PROGRAM_CODE_ENVIRONMENT;
   const accessToken = await getWechatAccessToken({ fetchImpl });
   const isRelease = envVersion === 'release';
   const page = path.split('?')[0];
@@ -95,19 +96,9 @@ async function createMiniProgramCode(
   return bytes;
 }
 
-function resolveMiniProgramCodeEnvironment(
-  requested?: MiniProgramCodeEnvironment
-): MiniProgramCodeEnvironment {
-  const configured = requested ?? process.env.WX_MINIPROGRAM_CODE_ENV_VERSION;
-  if (configured === 'release' || configured === 'trial' || configured === 'develop') {
-    return configured;
-  }
-  return process.env.NODE_ENV === 'development' ? 'develop' : 'release';
-}
-
 /**
- * WeChat's code endpoints return JPEG bytes in production (and PNG bytes in
- * some environments). Keep the signature check independent of the provider's
+ * WeChat's code endpoints can return JPEG or PNG bytes. Keep the signature check
+ * independent of the provider's
  * Content-Type header, which has not been consistent across responses.
  */
 export function getMiniProgramCodeContentType(

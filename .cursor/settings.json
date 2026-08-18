@@ -1,0 +1,7 @@
+{
+  "plugins": {
+    "browser-use": {
+      "enabled": true
+    }
+  }
+}

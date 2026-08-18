@@ -178,6 +178,20 @@ function createScenarioCatalog(surveyGraph) {
     return surveyGraph.confirmClosure(draft);
   }
 
+  function outerFaceMidWallDeletion() {
+    let draft = outerFaceMidWallClosure();
+    const floor = draft.floors[0];
+    const spaces = floor.spaces || [];
+    if (spaces.length === 2) {
+      const room2 = spaces[1];
+      const sharedWallId = spaces[0].wallIds.find(id => room2.wallIds.includes(id));
+      if (sharedWallId) {
+        draft = surveyGraph.deleteWall(draft, sharedWallId);
+      }
+    }
+    return draft;
+  }
+
   function mergedRoomAfterDeletion() {
     // Regression test for deleting a shared wall between two adjacent rooms
     // Room 1: 3129 wide × 3565 tall, wall thickness 200.
@@ -570,27 +584,32 @@ function createScenarioCatalog(surveyGraph) {
     {
       key: 'outer-face-mid-wall-closure', category: '共墙多空间', label: '外壁中段闭合（图1→图3）',
       description: '房间2从房间1右上外角出发，3面墙后闭合到右壁外侧中段（非端点）。修复前产生偏移，修复后应得到正确L型。',
-      expected: { walls: 9, spaces: 2, openings: 0 },
+      expected: { walls: 8, spaces: 2, openings: 0 },
       build: outerFaceMidWallClosure
     },
     {
       key: 'merged-room-after-deletion', category: '共墙多空间', label: '删除共墙后合并',
-      description: '删除两相邻房间的共享墙，测试空间合并算法。', expected: { walls: 6, spaces: 1, openings: 0 },
+      description: '删除两相邻房间的共享墙后，两个闭合房间打通合并成一个闭合房间。', expected: { walls: 7, spaces: 1, openings: 0 },
       build: mergedRoomAfterDeletion
     },
     {
+      key: 'outer-face-mid-wall-deletion', category: '共墙多空间', label: '图1中段删除合并',
+      description: '外壁中段闭合后删除共墙，两个闭合房间打通合并成一个 L 型闭合房间。', expected: { walls: 7, spaces: 1, openings: 0 },
+      build: outerFaceMidWallDeletion
+    },
+    {
       key: 'merged-room-middle-deletion', category: '共墙多空间', label: '中段删除合并',
-      description: '删除中间共墙，测试剩余悬空墙是否导致合并失败。', expected: { walls: 10, spaces: 1, openings: 0 },
+      description: '删除中间共墙后，剩余墙段组成一个打通后的闭合房间。', expected: { walls: 8, spaces: 1, openings: 0 },
       build: mergedRoomMiddleDeletion
     },
     {
       key: 'merged-room-collinear-right', category: '共墙多空间', label: '右壁共线合并',
-      description: '测试共线墙的合并。', expected: { walls: 6, spaces: 1, openings: 0 },
+      description: '删除共墙后，共线外墙保留为打通后闭合房间的一部分。', expected: { walls: 8, spaces: 1, openings: 0 },
       build: mergedRoomCollinearRight
     },
     {
       key: 'merged-room-middle-top', category: '共墙多空间', label: '顶壁中段合并',
-      description: '测试顶壁中段的合并。', expected: { walls: 10, spaces: 1, openings: 0 },
+      description: '删除顶壁中段共墙后，两个闭合房间打通合并成一个闭合房间。', expected: { walls: 8, spaces: 1, openings: 0 },
       build: mergedRoomMiddleTopAttachment
     },
     {

@@ -53,7 +53,11 @@ copy back to `layoutData`.
 - Dimensions are read models. They must not be written into `surveyGraph` or
   alter the graph's topology.
 - Consumers must preserve wall openings, shared-wall thickness, closure rules,
-  deletion/rejoin behavior, and the v4 schema.
+  deletion/rejoin behavior, and the v4 schema. Deleting a wall shared by two
+  closed rooms punches through that interface and merges them into one closed
+  room. If the shared interface is split into collinear segments, deleting any
+  one segment removes the whole collinear shared run rather than leaving a
+  dangling stub.
 - A T-branch started on a closed exterior wall middle keeps one topology node
   and physical wall. Inner/outer start selects the near/far point on the source
   wall boundary and the corresponding first-wall start inset; it does not

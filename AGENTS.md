@@ -128,7 +128,7 @@ or a roadmap do not replace the current module inventory.
 ## Repository Map
 
 - `admin/`: Next.js 16 App Router, React 19, Tailwind 4, Ant Design 5 + Ant Design Pro,
-  Mongoose, and MongoDB-backed APIs. Local development uses port `3005`.
+  Mongoose, and MongoDB-backed APIs. Local development uses port `3006`.
 - `miniprogram/`: native WeChat Mini Program. BLE laser integration is in
   `utils/bluetooth.js`; graph and canvas logic are in `utils/surveyWallGraph.js`
   and `utils/surveyCanvasRenderer.js`; Three.js is used for opening previews.
@@ -164,7 +164,7 @@ staged change; split unrelated work.
   (`PageContainer`/`ProTable` where appropriate), and shared `AdminAntdProvider`
   tokens. Reusable Admin controls belong under `admin/src/components/admin/*` or
   established business-component areas; do not introduce a parallel UI system.
-- For Admin visual QA, use `http://localhost:3005` rather than `127.0.0.1` or
+- For Admin visual QA, use `http://localhost:3006` rather than `127.0.0.1` or
   another loopback alias. For authenticated flows, control the user's existing
   Chrome session with the Chrome plugin; the in-app Browser uses an isolated
   session and is suitable only for unauthenticated views unless separately

@@ -8,7 +8,7 @@ Read the repository-level `../AGENTS.md` first. The current admin feature map is
 
 - This is a Next.js 16 App Router application using React 19, Tailwind CSS 4,
   Ant Design 5, Ant Design Pro, Mongoose, and MongoDB.
-- The local development server runs on port `3005` (`npm run dev`).
+- The local development server runs on port `3006` (`npm run dev`).
 - UI routes live under `src/app/(admin)`, with platform and merchant route groups.
 - API routes live under `src/app/api`; shared auth, tenant, workflow, AI, WeCom,
   and survey adapters live under `src/lib`.

@@ -4466,18 +4466,68 @@ function orderClosedBoundaryWallIds(floor, wallIds) {
   return ordered.length ? ordered : trace(true);
 }
 
-function buildMergedSpaceForDeletedSharedWall(floor, wallId) {
+function wallsShareEndpoint(first, second) {
+  return !!(first && second && (
+    first.startNodeId === second.startNodeId ||
+    first.startNodeId === second.endNodeId ||
+    first.endNodeId === second.startNodeId ||
+    first.endNodeId === second.endNodeId
+  ));
+}
+
+function wallsAreCollinear(floor, first, second) {
+  const firstStart = getNode(floor, first.startNodeId);
+  const firstEnd = getNode(floor, first.endNodeId);
+  const secondStart = getNode(floor, second.startNodeId);
+  const secondEnd = getNode(floor, second.endNodeId);
+  if (!firstStart || !firstEnd || !secondStart || !secondEnd) return false;
+  const firstDx = firstEnd.xMm - firstStart.xMm;
+  const firstDy = firstEnd.yMm - firstStart.yMm;
+  const secondDx = secondEnd.xMm - secondStart.xMm;
+  const secondDy = secondEnd.yMm - secondStart.yMm;
+  return Math.abs(firstDx * secondDy - firstDy * secondDx) <= 1;
+}
+
+function collectCollinearSharedWallIds(floor, sharedWallIds, seedWallId) {
+  const sharedSet = new Set((sharedWallIds || []).filter(Boolean));
+  sharedSet.add(seedWallId);
+  const collected = new Set([seedWallId]);
+  let expanded = true;
+  while (expanded) {
+    expanded = false;
+    sharedSet.forEach((wallId) => {
+      if (collected.has(wallId)) return;
+      const candidate = getWall(floor, wallId);
+      if (!candidate) return;
+      const connected = [...collected].some((existingId) => {
+        const existing = getWall(floor, existingId);
+        return existing && wallsShareEndpoint(existing, candidate) && wallsAreCollinear(floor, existing, candidate);
+      });
+      if (!connected) return;
+      collected.add(wallId);
+      expanded = true;
+    });
+  }
+  return [...collected];
+}
+
+function planMergedSpaceForDeletedSharedWall(floor, wallId) {
   // Two room faces separated by one physical wall become one face when that
-  // wall is removed. Rebuild the remaining perimeter as one directed cycle.
+  // wall is removed. A split shared wall is still one interface: deleting any
+  // collinear shared segment punches through the whole run.
   const affectedSpaces = (floor.spaces || []).filter((space) => (
     space && space.closed && Array.isArray(space.wallIds) &&
-    space.wallIds.indexOf(wallId) !== -1 && buildClosedSpaceWallChain(floor, space.wallIds).length
+    space.wallIds.indexOf(wallId) !== -1
   ));
   if (affectedSpaces.length !== 2) return null;
   const secondWallIds = new Set(affectedSpaces[1].wallIds);
   const sharedWallIds = affectedSpaces[0].wallIds.filter((id) => secondWallIds.has(id));
-  if (sharedWallIds.length !== 1 || sharedWallIds[0] !== wallId) return null;
-  const boundaryWallIds = affectedSpaces.flatMap((space) => space.wallIds.filter((id) => id !== wallId));
+  if (!sharedWallIds.length || sharedWallIds.indexOf(wallId) === -1) return null;
+  const removedWallIds = collectCollinearSharedWallIds(floor, sharedWallIds, wallId);
+  const removedSet = new Set(removedWallIds);
+  const boundaryWallIds = [...new Set(affectedSpaces.flatMap((space) => (
+    space.wallIds.filter((id) => !removedSet.has(id))
+  )))];
   const orderedWallIds = orderClosedBoundaryWallIds(floor, boundaryWallIds);
   if (orderedWallIds.length !== boundaryWallIds.length) return null;
   const wallFaceOverrides = {};
@@ -4491,18 +4541,26 @@ function buildMergedSpaceForDeletedSharedWall(floor, wallId) {
     return match ? Math.max(max, Number(match[1])) : max;
   }, 0);
   return {
-    id: nextId('space'),
-    name: `\u623f\u95f4${maxRoomNumber + 1}`,
-    wallIds: orderedWallIds,
-    ...(Object.keys(wallFaceOverrides).length ? { wallFaceOverrides } : {}),
-    closed: true,
-    source: 'measured'
+    removedWallIds,
+    space: {
+      id: nextId('space'),
+      name: `\u623f\u95f4${maxRoomNumber + 1}`,
+      wallIds: orderedWallIds,
+      ...(Object.keys(wallFaceOverrides).length ? { wallFaceOverrides } : {}),
+      closed: true,
+      source: 'measured'
+    }
   };
 }
 
-function clearDeletedSharedWallBoundaryInsets(floor, mergedSpace, deletedWall) {
-  if (!floor || !mergedSpace || !deletedWall || !Array.isArray(mergedSpace.wallIds)) return [];
-  const deletedNodeIds = new Set([deletedWall.startNodeId, deletedWall.endNodeId]);
+function clearDeletedSharedWallBoundaryInsets(floor, mergedSpace, deletedWalls) {
+  const walls = Array.isArray(deletedWalls) ? deletedWalls.filter(Boolean) : [deletedWalls];
+  if (!floor || !mergedSpace || !walls.length || !Array.isArray(mergedSpace.wallIds)) return [];
+  const deletedNodeIds = new Set();
+  walls.forEach((deletedWall) => {
+    if (deletedWall.startNodeId) deletedNodeIds.add(deletedWall.startNodeId);
+    if (deletedWall.endNodeId) deletedNodeIds.add(deletedWall.endNodeId);
+  });
   const repairedWallIds = [];
   mergedSpace.wallIds.forEach((wallId) => {
     const boundaryWall = getWall(floor, wallId);
@@ -4546,21 +4604,23 @@ function deleteWall(draft, wallId) {
     wallIndex === floor.walls.length - 1 &&
     wallIndex >= activeStartWallIndex &&
     wallIndex > activeStartWallIndex;
-  const mergedSpace = buildMergedSpaceForDeletedSharedWall(floor, targetId);
+  const mergePlan = planMergedSpaceForDeletedSharedWall(floor, targetId);
+  const mergedSpace = mergePlan && mergePlan.space;
+  const removedWallIds = new Set(mergePlan && mergePlan.removedWallIds || [targetId]);
+  removedWallIds.add(targetId);
+  const deletedWalls = [...removedWallIds].map((id) => getWall(floor, id)).filter(Boolean);
+  const deletedNodeIds = [...new Set(deletedWalls.flatMap((item) => [item.startNodeId, item.endNodeId]))];
   const deletedStartNode = getNode(floor, wall.startNodeId);
-  floor.walls = floor.walls.filter((item) => item.id !== targetId);
-  floor.openings = ensureOpenings(floor).filter((opening) => opening.wallId !== targetId);
+  floor.walls = floor.walls.filter((item) => !removedWallIds.has(item.id));
+  floor.openings = ensureOpenings(floor).filter((opening) => !removedWallIds.has(opening.wallId));
   floor.spaces = (floor.spaces || []).filter((space) => {
     return !Array.isArray(space.wallIds) || space.wallIds.indexOf(targetId) === -1;
   });
-  let repairedBoundaryWallIds = [
-    ...recomputeSplitNodeBodyInsets(floor, wall.startNodeId),
-    ...recomputeSplitNodeBodyInsets(floor, wall.endNodeId)
-  ];
+  let repairedBoundaryWallIds = deletedNodeIds.flatMap((nodeId) => recomputeSplitNodeBodyInsets(floor, nodeId));
   if (mergedSpace) {
     floor.spaces.push(mergedSpace);
     repairedBoundaryWallIds = repairedBoundaryWallIds.concat(
-      clearDeletedSharedWallBoundaryInsets(floor, mergedSpace, wall)
+      clearDeletedSharedWallBoundaryInsets(floor, mergedSpace, deletedWalls)
     );
   }
 

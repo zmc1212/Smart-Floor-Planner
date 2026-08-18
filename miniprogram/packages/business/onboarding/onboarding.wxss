@@ -13,6 +13,9 @@ page { height: 100%; overflow: hidden; background: #fbfdfb; }
 .welcome-copy { position: relative; z-index: 1; width: 62%; }
 .role-tag { display: inline-flex; min-height: 44rpx; padding: 0 18rpx; align-items: center; border-radius: 22rpx; color: #087c36; background: rgba(255, 255, 255, 0.82); font-size: 22rpx; font-weight: 700; line-height: 44rpx; }
 .welcome-title { margin-top: 16rpx; font-size: 36rpx; font-weight: 800; line-height: 1.25; }
+.enterprise-target { margin-top: 12rpx; }
+.enterprise-label { color: #53705a; font-size: 20rpx; line-height: 1.4; }
+.enterprise-name { margin-top: 3rpx; overflow: hidden; color: #087c36; font-size: 26rpx; font-weight: 800; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .welcome-subtitle { margin-top: 8rpx; color: #53705a; font-size: 22rpx; line-height: 1.5; }
 .guide-k { position: absolute; right: -14rpx; bottom: -14rpx; width: 230rpx; height: 230rpx; }
 

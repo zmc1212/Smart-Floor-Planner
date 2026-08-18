@@ -49,6 +49,7 @@ Page({
     pageState: 'resolving',
     onboardingToken: '',
     codeType: '',
+    enterpriseName: '',
     selectedStaffRole: 'designer',
     submitting: false,
     errorMessage: '',
@@ -70,10 +71,19 @@ Page({
     this.setData({ pageState: 'resolving', errorMessage: '' });
     try {
       const response = await api.request('/miniprogram/codes/resolve', 'POST', { token });
-      if (!response.data || response.data.kind !== 'onboarding' || !['staff', 'referrer'].includes(response.data.codeType)) {
+      if (
+        !response.data ||
+        response.data.kind !== 'onboarding' ||
+        !['staff', 'referrer'].includes(response.data.codeType) ||
+        !String(response.data.enterpriseName || '').trim()
+      ) {
         throw new Error('入驻码类型无效');
       }
-      this.setData({ pageState: 'ready', codeType: response.data.codeType });
+      this.setData({
+        pageState: 'ready',
+        codeType: response.data.codeType,
+        enterpriseName: String(response.data.enterpriseName).trim()
+      });
     } catch (error) {
       this.setData({ pageState: 'error', errorMessage: onboardingErrorMessage(error) });
     }

@@ -1,0 +1,15 @@
+<view class="debug-page">
+  <view wx:if="{{isDevelopment}}" class="debug-card">
+    <view class="eyebrow">开发版专用</view>
+    <view class="title">本机入驻码测试</view>
+    <view class="copy">从电脑选择已下载的员工或推荐人入驻小程序码，后续校验、手机号授权和入驻都会请求当前本地服务端。</view>
+
+    <button class="primary-action" bindtap="selectOnboardingCode">从电脑选择小程序码</button>
+    <view wx:if="{{errorMessage}}" class="error-copy">{{errorMessage}}</view>
+  </view>
+
+  <view wx:else class="locked-state">
+    <view class="title">测试入口仅限开发版</view>
+    <view class="copy">请在微信开发者工具的开发版中使用此页面。</view>
+  </view>
+</view>

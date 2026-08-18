@@ -31,6 +31,7 @@ const dom = {
   undo: document.querySelector('#undo-button'),
   redo: document.querySelector('#redo-button'),
   close: document.querySelector('#close-button'),
+  deleteWall: document.querySelector('#delete-wall-button'),
   measureForm: document.querySelector('#measure-form'),
   measureInput: document.querySelector('#measure-input'),
   clear: document.querySelector('#clear-button'),
@@ -284,6 +285,11 @@ function renderUi() {
   document.querySelectorAll('.tool-button[data-tool]').forEach((button) => {
     button.classList.toggle('is-active', button.dataset.tool === data.activeTool);
   });
+  if (dom.deleteWall) {
+    const canDelete = !!(session.selectedWallId || session.selectedOpeningId);
+    dom.deleteWall.classList.toggle('is-armed', canDelete);
+    dom.deleteWall.disabled = false;
+  }
 
   const closeControl = page.canvasControls && page.canvasControls.closeAction;
   dom.close.hidden = !data.closeActionVisible || !closeControl;
@@ -528,6 +534,9 @@ function bindControls() {
   });
   dom.undo.addEventListener('click', () => page.onUndoTap());
   dom.redo.addEventListener('click', () => page.onRedoTap());
+  if (dom.deleteWall) {
+    dom.deleteWall.addEventListener('click', () => page.deleteSelectedObject());
+  }
   dom.close.addEventListener('click', () => page.onConfirmClose());
   dom.clear.addEventListener('click', clearDraft);
   dom.export.addEventListener('click', exportDraft);
@@ -602,6 +611,7 @@ function exposeAutomationApi() {
     },
     listScenarios: () => scenarioCatalog.map(({ build, ...scenario }) => ({ ...scenario })),
     simulateMeasurement,
+    deleteSelectedObject: () => page.deleteSelectedObject(),
     clear: clearDraft
   };
 }

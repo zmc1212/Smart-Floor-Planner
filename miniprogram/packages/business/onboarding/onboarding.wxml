@@ -22,6 +22,10 @@
         <view class="welcome-copy">
           <view class="role-tag">{{codeType === 'staff' ? '员工入驻' : '推荐人入驻'}}</view>
           <view class="welcome-title">欢迎加入服务协作</view>
+          <view class="enterprise-target">
+            <view class="enterprise-label">正在加入企业</view>
+            <view class="enterprise-name">{{enterpriseName}}</view>
+          </view>
           <view class="welcome-subtitle">完成手机号授权后，即可使用与你身份匹配的企业服务入口。</view>
         </view>
         <image class="guide-k" src="/packages/business/assets/referral-service-v1/thumbs-up-xiao-k.png" mode="aspectFit" aria-label="小K入驻引导" />

@@ -53,7 +53,7 @@ function createMeasuredTClosureDraft(snapLine) {
 }
 
 test('scenario catalog covers the supported measurement topology families', () => {
-  assert.equal(catalog.length, 33);
+  assert.equal(catalog.length, 39);
   assert.deepEqual([...new Set(catalog.map((scenario) => scenario.category))], CATEGORY_ORDER);
   assert.equal(new Set(catalog.map((scenario) => scenario.key)).size, catalog.length);
   ['rectangle', 'l-shape', 'open-chain', 'adjacent-rooms', 't-junction', 'partition']

@@ -12,6 +12,13 @@
           "launchMode": "default"
         },
         {
+          "name": "packages/business/onboarding-debug/onboarding-debug",
+          "pathName": "packages/business/onboarding-debug/onboarding-debug",
+          "query": "",
+          "scene": null,
+          "launchMode": "default"
+        },
+        {
           "name": "packages/surveying/editor/surveying-editor",
           "pathName": "packages/surveying/editor/surveying-editor",
           "query": "",

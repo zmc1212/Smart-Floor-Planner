@@ -10,7 +10,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3005`. The application requires the repository's
+Open `http://localhost:3006`. The application requires the repository's
 configured PostgreSQL and provider environment variables for authenticated
 business flows.
 

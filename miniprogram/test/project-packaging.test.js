@@ -78,6 +78,7 @@ test('main package contains only primary tabs and low-frequency flows are split 
         'promotion-service-code/promotion-service-code',
         'free-design-service/free-design-service',
         'onboarding/onboarding',
+        'onboarding-debug/onboarding-debug',
         'referrer-workbench/referrer-workbench',
         'customer-project/customer-project',
         'appointment-detail/appointment-detail',

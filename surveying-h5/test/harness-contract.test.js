@@ -27,6 +27,7 @@ test('browser harness imports the production editor, graph and renderer', () => 
   assert.match(h5Source, /miniprogram\/packages\/surveying\/editor\/surveying-editor\.js/);
   assert.match(h5Source, /miniprogram\/utils\/surveyWallGraph\.js/);
   assert.match(h5Source, /miniprogram\/packages\/surveying\/utils\/surveyCanvasRenderer\.js/);
+  assert.match(h5Source, /deleteSelectedObject/);
   assert.doesNotMatch(h5Source, /pages\/editor\/editor|restoreFloorPlan|surveying_prototype/);
 });
 

@@ -269,10 +269,10 @@ Exact route names may be adjusted within an implementation slice to match App Ro
 | --- | --- |
 | Identity | `GET /api/miniprogram/identity-contexts`, `POST /api/miniprogram/identity-contexts/switch`; implemented in phase 1. |
 | Code resolution | `POST /api/miniprogram/codes/resolve`; phase 3 implements type/state resolution, audit, and a ten-minute encrypted pending source for valid promotion codes; resolution creates no lead. |
-| Dual-code management | `GET /api/enterprise/join-codes`, `POST /api/enterprise/join-codes/[type]/rotate`, `POST /api/enterprise/join-codes/[type]/disable`, `POST /api/enterprise/join-codes/[type]/image`; implemented in phase 2/10. The image endpoint is tenant-authorized, audited, private/no-store, and returns a WeChat Mini Program PNG only. |
+| Dual-code management | `GET /api/enterprise/join-codes`, `POST /api/enterprise/join-codes/[type]/rotate`, `POST /api/enterprise/join-codes/[type]/disable`, `POST /api/enterprise/join-codes/[type]/image`; implemented in phase 2/10. The image endpoint is tenant-authorized, audited, private/no-store, preserves WeChat PNG/JPEG media, and always generates a `develop` Mini Program code through `getwxacodeunlimit`. |
 | Onboarding | `POST /api/miniprogram/onboarding/staff`, `POST /api/miniprogram/onboarding/referrer`; implemented in phase 2. |
 | Referrers | `GET /api/miniprogram/referrer-memberships`, `DELETE /api/miniprogram/referrer-memberships/[id]`, `GET /api/miniprogram/referrer-memberships/[id]/promotion-code`; implemented in phase 2. |
-| Service-code image | `GET /api/miniprogram/referrer-memberships/[id]/promotion-code/image`; implemented in phase 4, validates the active membership and calls the WeChat Mini Program code provider outside the database transaction, returning a non-cacheable PNG. |
+| Service-code image | `GET /api/miniprogram/referrer-memberships/[id]/promotion-code/image`; implemented in phase 4, validates the active membership and calls the WeChat Mini Program code provider outside the database transaction, returning non-cacheable PNG/JPEG bytes. It uses the same `getwxacodeunlimit` `develop` environment as enterprise onboarding codes. |
 | Customer lead creation | `POST /api/miniprogram/referrals/authorize-and-create-lead`; phase 3 implements customer-context/direct WeChat phone authorization, idempotent attribution, and atomic lead creation/assignment. |
 | Assignment | `POST /api/internal/lead-assignments/[leadId]/retry`; phase 3 implements this for service identity authenticated by an `INTERNAL_SECRET` of at least 32 characters. |
 | Availability | `GET /api/appointments/availability`; phase 5 is complete and returns candidate-measurer availability plus the enterprise time zone, duration, step, and maximum advance-day boundary from enterprise schedules, active appointments, and unavailability. |
@@ -315,7 +315,63 @@ The dual-code, staff/referrer onboarding, assignment eligibility, and end-to-end
 
 This functional Admin UI follows the bilingual Admin UI refactor contract and the existing Ant Design/Admin Pro routes; an independent desktop design source is not required. Do not reuse the anonymous customer-claim design or slice QR/token/audit content into UI assets. After implementation, record the final route, permission, visual evidence, and limitation in both Admin UI ledgers and module inventories.
 
-The current slice implements `/referrer-network-operations` with direct links for every readiness item and `/appointment-settings` with an explicit distinction between an auto-created default and an administrator-confirmed policy. It also closes the previously API-only client gaps: appointment detail/internal actions, AI result publication/withdrawal, and identity switching. Ordinary code listing never returns an active token; the tenant-authorized, audited image endpoint remains private and no-store. Authenticated Chrome and WeChat DevTools visual QA remain pending for the current build.
+The current slice implements `/referrer-network-operations` with direct links for every readiness item and `/appointment-settings` with an explicit distinction between an auto-created default and an administrator-confirmed policy. It also closes the previously API-only client gaps: appointment detail/internal actions, AI result publication/withdrawal, and identity switching. Ordinary code listing never returns an active token; the tenant-authorized, audited image endpoint remains private and no-store. Authenticated Chrome QA is complete at `http://localhost:3006`; the Mini Program captured the appointment-detail missing-context application layer, while authenticated role actions and native-host-capsule evidence remain pending.
+
+### 13.2 Phases 11-15: role-complete Mini Program experience (Planned)
+
+The server can create and switch `customer/staff/referrer` contexts, but the client still organizes home, leads, surveying, design, and Mine around the legacy staff/non-staff split. A referrer can enter the promotion workbench immediately after onboarding, yet cold launch or a later login returns to the generic home. The static tab bar also exposes leads, surveying, or AI entries to unrelated roles. Identity switching is buried in Settings, while multi-enterprise referrer memberships are represented both in the identity list and again in the workbench. Phases 11-15 must remove these product gaps; the existence of deep routes is not proof of a complete role workflow.
+
+#### 13.2.1 Approved role and responsibility boundary
+
+The Mini Program serves five business workbench roles: customer, referrer, designer, measurer, and enterprise owner. Platform administrators and the legacy `salesperson` stay in Admin and are outside this Mini Program information architecture. One base WeChat account may own several roles, but exactly one signed context is active at a time. A person who is both a designer, referrer, or enterprise owner must switch explicitly; permissions are never merged.
+
+| Active identity | Default landing and navigation | Core job | Must never appear |
+| --- | --- | --- | --- |
+| Customer | `Service / Projects / Mine` | Read owned service progress, current appointment, formal-plan summary, and published designs; reschedule inside the allowed window | Staff lead pool, formal surveying editor, BLE, AI production tools, conversion/commission administration |
+| Referrer | `Promote / Progress / Earnings / Mine` | Select the service enterprise inside the workbench, show its service code, and read masked customer milestones plus own commission state | Customer phone, precise address, editable plan, internal appointment reasons, staff dispatch, or enterprise rules |
+| Designer | `Workbench / Customers / Design / Mine` | Process assigned leads, create or coordinate appointments, consume formal survey results, generate/publish designs, and collaborate on conversion | Measurer unavailability, other designers' leads, enterprise commission configuration, or context-free surveying |
+| Measurer | `Schedule / Tasks / Survey / Mine` | Read assigned appointments, maintain own unavailability, enter the single formal survey editor from an assigned task, and complete handoff | Design publication, conversion, referrer earnings, enterprise rules, or unassigned customer data |
+| Enterprise owner | `Operations / Customers / Appointments / Mine` | Read tenant exceptions and key measures, resolve assignment/appointment exceptions, inspect the customer lifecycle, and perform existing authorized conversion/mobile approvals | Implicit designer or measurer tools; hands-on work requires switching to that staff identity |
+
+The tab bar is generated from a role allowlist and no longer preserves a universal center Survey action. Only the measurer context exposes surveying as a primary entry. Designers and enterprise owners reach permitted read-only results or existing actions from a lead/floor-plan context; customers and referrers never see the survey editor. Client visibility, deep-link guards, and server authorization must agree; hiding a control is not access control.
+
+#### 13.2.2 Identity startup, recovery, and two-level switching
+
+1. Add or extend a unified `GET /api/miniprogram/bootstrap` contract returning the signed current context, available role groups, current enterprise/membership, allowed navigation capabilities, default landing, and necessary badge summaries. Pages must not infer identity independently from `role === 'staff'`.
+2. Cold launch, warm launch, phone/password login, successful onboarding, and identity switching all refresh and validate the current context before entering its landing surface. Preserve the last context while it remains valid; otherwise show an explicit recovery/selection state and never silently fall back to customer UI.
+3. Mine always exposes the current role and enterprise plus a discoverable identity switch on its first screen. A single-role account shows its current identity without creating a pointless switch flow.
+4. Referrer appears once at the role level. Enterprise selection happens inside the promotion workbench and uses the existing signed switch contract to update `referrerMembershipId`; subsequent data, service codes, and commissions remain scoped to that membership.
+5. Leaving a membership, staff deactivation, enterprise deactivation, or `contextVersion` change invalidates the old token immediately. Recovery explains the change and lists only still-valid identities without leaking inactive enterprise data.
+
+#### 13.2.3 Five-role interface design contract
+
+All new design continues `miniprogram/DESIGN.md`, the design tokens, and the F1 Xiao K + F3 spatial-transformation system; it does not create a parallel visual language. Xiao K has one operational role per identity: customer service guide, referrer promotion steward, designer case coordinator, measurer partner, enterprise dispatch observer, and identity custodian in Mine. The IP must organize real information or action and cannot become repeated decoration or imply unavailable capability.
+
+Phase 12 must first produce explicit design sources for the role shell, five landings, role-aware tab bar, identity selection/recovery, and key empty states, then receive user approval before production UI work. Each runtime route enters both restoration ledgers only after implementation and `390x844` native-host verification; this plan is not visual implementation approval. Existing approved customer-project, promotion-code, appointment, and formal-survey designs remain authoritative for their deep routes and must not be replaced with generic cards during shell work.
+
+#### 13.2.4 End-to-end role workflow
+
+```text
+Referrer selects an enterprise and presents its service code
+  -> customer reads the anonymous service and authorizes a phone number
+  -> system locks attribution, creates the lead, and assigns designer/measurer
+  -> designer contacts the customer and creates the first appointment
+  -> measurer enters the formal survey from the assigned schedule and hands it off
+  -> designer consumes the formal plan, generates, and explicitly publishes a design
+  -> customer reads appointment, plan summary, and published design in the owned project
+  -> enterprise owner confirms conversion and creates three-role commissions
+  -> referrer reads only masked service milestones and own payable/paid earnings
+```
+
+Cross-role handoffs are driven by real events: assignment, appointment create/reschedule/complete, formal-plan completion, publication, conversion, and commission changes each produce retryable notifications and durable in-app facts. A role landing aggregates only executable next steps for that identity. It does not copy whole business tables or use APIs, scripts, fabricated records, or manual database edits as acceptance substitutes.
+
+#### 13.2.5 States, ranges, and privacy
+
+- Every role covers first use, populated, empty, loading, retryable error, expired session, revoked permission, and paginated long lists. Referrer additionally covers zero/one/many enterprises and membership exit.
+- Customer project lists use `customer_user_id` ownership; designers read assigned leads; measurers read assigned current/history tasks; enterprise owners stay inside the current tenant; referrers read masked attribution and own commissions for the current membership.
+- Referrer progress exposes only service stage, masked customer identity, attributed enterprise, update time, and commission state needed to prove service. It never returns phone, WeChat ID, precise address, floor-plan graph, internal appointment reason, or design files.
+- A deep link outside the current identity renders a clear no-access recovery and returns to the role landing. It never renders the legacy UI, a blank page, or continues with another role's token.
+- Home and tab badges come from real server counts in the active role scope. Unknown or failed counts use recoverable states instead of local mock numbers.
 
 ## 14. Notifications and reliability
 
@@ -355,10 +411,15 @@ Update this status table incrementally and update both module inventories and af
 | 4. Selected design implementation | `Completed` | `promotion-service-code` and `free-design-service` implement the three selected states at `390x844`; the service-code image endpoint, token resolution, phone authorization, idempotent lead creation, designer QR delivery, and assignment-pending state are wired. Antigravity 2.8.1 used its built-in `generate_image` capability with the fixed 3x2 prompt and ordered references; six independent transparent PNG assets were cut, optimized, and packaged under `packages/business/assets/referral-service-v1/`, each below 300KB. Focused tests pass. An actual WeChat DevTools automator verified exact routes, element bounds, and full host-window captures including the native capsule on the iPhone 12/13 Pro `390x844` simulator. |
 | 5. Appointments and calendar | `Completed` | Tenant appointment settings, measurer unavailability, working-slot validation, first appointment, customer/internal rescheduling, cancellation/completion, event audit, optimistic versions, and the database exclusion constraint are implemented. The Admin settings sheet confirms policy defaults; lead detail and the measurer itinerary enter a real appointment dispatch page, where the responsible role sees only its allowed actions and internal reschedule/cancel reasons are required. Existing appointment states have prior `390x844` evidence; the new detail/internal-action states await refreshed capture. |
 | 6. Project, surveying, and publication | `Completed` | Project aggregation, publication/withdrawal facts, owner-only reads, completed formal-plan summary, and protected preview are implemented. The AI result page now reads true publication state and lets the responsible designer or enterprise administrator publish or withdraw after confirmation. The customer folio has no measurement-editor or graph-editing path. Existing customer-project evidence remains valid; the new result control needs refreshed capture. |
-| 7. Conversion and commissions | `Completed` | Three-rule repository, atomic conversion snapshots, three unique commissions, paid/void constraints, RLS report reads, batch payout API, and the approved `/lead-commissions` rule/report workbench are implemented. Focused PostgreSQL commission testing, the production build, and authenticated `localhost:3005` visual verification of the approved desktop workbench are complete. |
+| 7. Conversion and commissions | `Completed` | Three-rule repository, atomic conversion snapshots, three unique commissions, paid/void constraints, RLS report reads, batch payout API, and the approved `/lead-commissions` rule/report workbench are implemented. Focused PostgreSQL commission testing, the production build, and authenticated `localhost:3006` visual verification of the approved desktop workbench are complete. |
 | 8. Legacy removal | `Completed` | Runtime schema, endpoints, menus, workbench, and obsolete Mini Program contact entries are removed. PostgreSQL contract tests and Mini Program tests pass. Historical database objects and business data are retained for the separately approved Phase-9 cleanup rehearsal. |
 | 9. Cleanup rehearsal and production release | `Completed` | The user-confirmed local Docker production volume completed the read-only dry-run, target-fingerprint and empty-Qiniu-manifest confirmation, pre-cleanup full backup, single-transaction business-data cleanup, JSON/Markdown audit, and restore rehearsal from the pre-cleanup backup. Platform administrators, roles/permissions, packages, platform/media/AI configuration, prompts, and migration records remain; business tables are empty and Qiniu has no candidate objects. |
-| 10. Admin operations and end-to-end acceptance workbench | `In progress` | `/referrer-network-operations` implements dual-code operations, assignment eligibility, and an actionable real-state checklist; `/appointment-settings` exposes and confirms the enterprise policy. The Mini Program now exposes onboarding, appointment lifecycle actions, AI publication, and database-backed identity switching without API-only gaps. API calls, scripts, or fabricated data do not substitute for the real workflow. Authenticated Admin and new-route WeChat DevTools visual QA remain pending. |
+| 10. Admin operations and end-to-end acceptance workbench | `In progress` | `/referrer-network-operations` implements dual-code operations, assignment eligibility, and an actionable real-state checklist; `/appointment-settings` exposes and confirms enterprise policy. The Mini Program deep business routes and identity APIs exist, but cold launch, generic home, and static navigation do not yet form a five-role loop. Authenticated Admin QA is complete at `http://localhost:3006`; authenticated role-action and native-host-capsule evidence for new Mini Program routes remain pending. |
+| 11. Identity startup and authorization shell | `Planned` | Add server-driven bootstrap, cold-launch/login/onboarding/switch recovery, last-valid context, and deep-link guards; remove silent fallback to ordinary-user UI. Exit requires context revocation, deactivation, and multi-role recovery tests. |
+| 12. Role information architecture and design approval | `Planned` | Produce and explicitly approve design sources for five role landings, allowlisted role tab bars, identity selection/recovery, and key empty states before production UI changes. Exit requires named routes, state matrices, safe-area geometry, and design-source mappings. |
+| 13. Customer and referrer loops | `Planned` | Give customers only owned service/project experiences; give referrers one role entry, in-workbench enterprise switching, masked progress, and earnings. Add customer-project index and referrer aggregate/commission read contracts with negative authorization tests. |
+| 14. Designer, measurer, and enterprise-owner loops | `Planned` | Designers handle only assigned customers/designs; measurers handle only own schedule/tasks/formal surveys; enterprise owners handle tenant operations/exceptions. Trim generic home, leads, survey, design, and Mine by role while reusing authoritative business APIs. |
+| 15. Real five-role end-to-end acceptance | `Planned` | Use real WeChat accounts or real contexts on one account to verify service code through authorization, assignment, appointment, survey, publication, conversion, and commissions. Cover cold launch, switching, revocation, notification failure, pagination, and negative deep links, then close every affected route with `390x844` native-capsule evidence and bilingual documentation. |
 
 ## 17. Test and acceptance matrix
 
@@ -369,6 +430,11 @@ Update this status table incrementally and update both module inventories and af
 - Assignment: lowest load and stable tie-break; no staff retains the lead; onboarding retries; no manual acceptance.
 - Appointments: working hours, step, horizon, leave, exclusion constraint, customer cutoff, internal reason, automatic replacement, version conflict.
 - Authorization: forwarded cards cannot cross user boundaries; customers read only their project; staff/referrers cannot cross enterprises; designer QR remains protected.
+- Role startup: cold launch, later login, onboarding completion, and identity switching enter the current valid role landing; invalid context never silently becomes customer.
+- Role navigation: each identity exposes only allowlisted tabs/actions; customer/referrer has no survey entry, measurer has no design publication, and enterprise owner does not inherit specialist tools.
+- Multi-role: token, landing, tab bar, cache, and request scope all update after switching; enterprise selection inside referrer mode updates the signed membership context.
+- Referrer privacy: progress and earnings are auditable while phone, precise address, floor-plan graph, internal appointment reason, and design files remain hidden.
+- Role deep links: copied or forwarded routes are rejected server-side and recover client-side without flashing unauthorized content.
 - Notifications: create, reschedule, replacement, cancel, retry; WeChat failure does not affect business commit.
 - Surveying/AI: formal v4 only; customer sees explicitly published designs only.
 - Conversion: percentage requires contract amount; three rows in one transaction; paid commission blocks reversal.
@@ -410,6 +476,10 @@ These decisions do not require repeated confirmation unless the product owner ch
 - A customer must actively authorize a phone number; scanning cannot retrieve it.
 - Personal WeChat cannot be auto-added; show ID and personal QR only.
 - Referrers join at most three enterprises by default; platform configuration may change it.
+- Mini Program workbenches are limited to customer, referrer, designer, measurer, and enterprise owner; platform administrators and legacy `salesperson` remain in Admin.
+- Referrer has one role entry; multiple enterprises are selected inside its workbench and update the signed membership context.
+- Customers do not use staff leads, formal-survey editing, or AI production tools; enterprise owners do not automatically receive designer/measurer hands-on entries.
+- Exactly one identity context is active at a time; invalid context requires explicit recovery and never silently falls back to ordinary-user UI.
 - Staff and referrer onboarding takes effect immediately without review.
 - Measurers are provisionally assigned and automatically replaced on appointment conflict.
 - Customers select only server-confirmed availability; reschedules take effect immediately.
