@@ -35,7 +35,7 @@
 
 | 路由 | 视觉范围 | 边界 | 核验 | 未决项 |
 | --- | --- | --- | --- | --- |
-| `/lead-commissions` — 商户三方提成工作台 | 批准设计源 `design-references/referrer-network-appointment-v1/phase-7-three-role-commission-admin-v1.png`（1487x1058 PNG，SHA-256 `DAA7ED1235C474F0C6A0D7FC625A5DD0BD9D97E54F580AB4CD530CE743AB2A1C`）：页头、推荐人/设计师/测量员独立规则卡、台账筛选、待支付选择、确认后的批量标记已支付和金额汇总 | 新路由与 `/acquisition-commissions` 保持独立；路由/API 权限 `lead-commissions` 限 `super_admin`、`admin`、`enterprise_admin`；租户/RLS 边界及既有规则、报表、付款 API 不变 | 聚焦 ESLint 与 `npm run build` 通过；构建路由表包含 `/lead-commissions`、`/api/commission-rules`、`/api/lead-commissions`、`/api/lead-commissions/mark-paid` | `http://localhost:3005` 当前代理至已运行四天的 Docker 旧镜像，新路由返回 404；待当前工作区运行态及已登录管理员会话可用后按批准图进行视觉比对 |
+| `/lead-commissions` — 商户三方提成工作台 | 批准设计源 `design-references/referrer-network-appointment-v1/phase-7-three-role-commission-admin-v1.png`（1487x1058 PNG，SHA-256 `DAA7ED1235C474F0C6A0D7FC625A5DD0BD9D97E54F580AB4CD530CE743AB2A1C`）：页头、推荐人/设计师/测量员独立规则卡、台账筛选、待支付选择、确认后的批量标记已支付和金额汇总 | 新路由与 `/acquisition-commissions` 保持独立；路由/API 权限 `lead-commissions` 限 `super_admin`、`admin`、`enterprise_admin`；租户/RLS 边界及既有规则、报表、付款 API 不变 | 聚焦 PostgreSQL 提成测试、ESLint 与 `npm run build` 通过。认证 Chrome 在 `http://localhost:3005/lead-commissions` 核验侧栏入口、三张生效规则卡、筛选项、空台账、禁用付款操作及金额汇总 | 仅在批准设计改变、观察到有数据台账的布局缺陷，或工作流/权限合同变化时重开 |
 
 ## 交接
 
