@@ -29,5 +29,10 @@ Page({
   manageUnavailability() {
     wx.navigateTo({ url: '/packages/business/measurer-unavailability/measurer-unavailability' });
   },
+  openAppointment(event) {
+    const item = event.currentTarget.dataset.item;
+    if (!item || !item.id || !item.leadId) return;
+    wx.navigateTo({ url: `/packages/business/appointment-detail/appointment-detail?leadId=${encodeURIComponent(item.leadId)}&appointmentId=${encodeURIComponent(item.id)}` });
+  },
   onBack() { wx.navigateBack(); },
 });

@@ -2,6 +2,8 @@ import { getWechatAccessToken } from '@/lib/wechat-access-token';
 
 export const PROMOTION_SERVICE_PAGE =
   'packages/business/free-design-service/free-design-service';
+export const ENTERPRISE_ONBOARDING_PAGE =
+  'packages/business/onboarding/onboarding';
 
 export function buildPromotionServicePath(token: string) {
   const normalized = token.trim();
@@ -15,8 +17,20 @@ export function buildPromotionServicePath(token: string) {
   return path;
 }
 
-export async function createPromotionServiceCode(
-  token: string,
+export function buildEnterpriseOnboardingPath(token: string) {
+  const normalized = token.trim();
+  if (!/^ej_[A-Za-z0-9_-]{32}$/.test(normalized)) {
+    throw new Error('Invalid enterprise onboarding token');
+  }
+  const path = `${ENTERPRISE_ONBOARDING_PAGE}?token=${encodeURIComponent(normalized)}`;
+  if (Buffer.byteLength(path, 'utf8') > 128) {
+    throw new Error('Enterprise onboarding path exceeds the WeChat code limit');
+  }
+  return path;
+}
+
+async function createMiniProgramCode(
+  path: string,
   options: { fetchImpl?: typeof fetch } = {}
 ) {
   const fetchImpl = options.fetchImpl ?? fetch;
@@ -27,7 +41,7 @@ export async function createPromotionServiceCode(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        path: buildPromotionServicePath(token),
+        path,
         width: 430,
         auto_color: false,
         line_color: { r: 8, g: 137, b: 57 },
@@ -51,4 +65,18 @@ export async function createPromotionServiceCode(
     throw new Error('WeChat returned an invalid Mini Program code image');
   }
   return bytes;
+}
+
+export async function createPromotionServiceCode(
+  token: string,
+  options: { fetchImpl?: typeof fetch } = {}
+) {
+  return createMiniProgramCode(buildPromotionServicePath(token), options);
+}
+
+export async function createEnterpriseOnboardingCode(
+  token: string,
+  options: { fetchImpl?: typeof fetch } = {}
+) {
+  return createMiniProgramCode(buildEnterpriseOnboardingPath(token), options);
 }

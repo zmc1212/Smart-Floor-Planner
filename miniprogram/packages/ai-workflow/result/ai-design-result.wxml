@@ -87,6 +87,15 @@
           </button>
         </view>
 
+        <view class="publication-panel" wx:if="{{publicationAvailable}}">
+          <view class="publication-copy">
+            <view class="publication-heading"><text>客户可见方案</text><text class="publication-status {{publishedToCustomer ? 'is-published' : ''}}">{{publicationLoading ? '读取中' : publishedToCustomer ? '客户可见' : '仅内部可见'}}</text></view>
+            <text class="publication-note">{{publishedToCustomer ? '客户已能在自己的项目中查看此方案。' : '确认方案适合沟通后，再发布给该客户。'}}</text>
+          </view>
+          <button wx:if="{{!publishedToCustomer}}" class="publication-action" loading="{{publicationUpdating}}" disabled="{{publicationLoading || publicationUpdating}}" bindtap="publishToCustomer">发布给客户</button>
+          <button wx:else class="publication-action withdraw" loading="{{publicationUpdating}}" disabled="{{publicationUpdating}}" bindtap="withdrawFromCustomer">撤回方案</button>
+        </view>
+
         <view class="task-summary">
           <view wx:if="{{task.projectTitle}}" class="summary-item">
             <image class="summary-icon" src="/images/mine-icons/users.png" mode="aspectFit"></image>

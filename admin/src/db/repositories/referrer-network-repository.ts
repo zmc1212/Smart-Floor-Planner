@@ -164,6 +164,66 @@ export class ReferrerNetworkRepository {
       );
   }
 
+  async listEnterpriseJoinCodeEvents(enterpriseId: bigint, limit = 50) {
+    return this.transaction
+      .select({
+        event: enterpriseJoinCodeEvents,
+        codeType: enterpriseJoinCodes.codeType,
+      })
+      .from(enterpriseJoinCodeEvents)
+      .innerJoin(
+        enterpriseJoinCodes,
+        eq(enterpriseJoinCodeEvents.joinCodeId, enterpriseJoinCodes.id)
+      )
+      .where(eq(enterpriseJoinCodeEvents.enterpriseId, enterpriseId))
+      .orderBy(desc(enterpriseJoinCodeEvents.createdAt), desc(enterpriseJoinCodeEvents.id))
+      .limit(Math.max(1, Math.min(limit, 100)));
+  }
+
+  async countActiveReferrerMemberships(enterpriseId: bigint) {
+    const rows = await this.transaction
+      .select({ value: count() })
+      .from(referrerEnterpriseMemberships)
+      .where(
+        and(
+          eq(referrerEnterpriseMemberships.enterpriseId, enterpriseId),
+          eq(referrerEnterpriseMemberships.status, 'active')
+        )
+      );
+    return Number(rows[0]?.value ?? 0);
+  }
+
+  async revealActiveEnterpriseJoinCode(input: {
+    enterpriseId: bigint;
+    codeType: EnterpriseJoinCodeType;
+    actorStaffId: bigint;
+  }) {
+    const rows = await this.transaction
+      .select()
+      .from(enterpriseJoinCodes)
+      .where(
+        and(
+          eq(enterpriseJoinCodes.enterpriseId, input.enterpriseId),
+          eq(enterpriseJoinCodes.codeType, input.codeType),
+          eq(enterpriseJoinCodes.status, 'active')
+        )
+      )
+      .orderBy(desc(enterpriseJoinCodes.version), desc(enterpriseJoinCodes.id))
+      .limit(1);
+    const code = rows[0] ?? null;
+    if (!code || (code.expiresAt && code.expiresAt <= new Date())) return null;
+    await this.recordJoinCodeEvent({
+      code,
+      eventType: 'reveal',
+      result: 'token_revealed',
+      actorStaffId: input.actorStaffId,
+    });
+    return {
+      code,
+      token: createEnterpriseJoinToken(code.enterpriseId, input.codeType, code.version),
+    };
+  }
+
   async rotateEnterpriseJoinCode(input: {
     enterpriseId: bigint;
     codeType: EnterpriseJoinCodeType;

@@ -34,6 +34,7 @@ export const ALL_MENUS = [
   { key: 'enterprise-orders', label: '成交订单' },
   { key: 'commissions', label: '提成结算' },
   { key: 'lead-commissions', label: '三方提成' },
+  { key: 'referrer-network-operations', label: '推荐网络运营' },
   { key: 'ai-scenarios', label: 'AI 设计' },
   { key: 'ai-presets', label: 'AI 预设配置' },
   { key: 'inspirations', label: '灵感方案' },
@@ -62,6 +63,7 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'enterprise-orders',
     'commissions',
     'lead-commissions',
+    'referrer-network-operations',
     'ai-scenarios',
     'ai-presets',
     'inspirations',
@@ -79,6 +81,7 @@ export const DEFAULT_PERMISSIONS: Record<string, string[]> = {
     'ai-presets',
     'staff',
     'lead-commissions',
+    'referrer-network-operations',
     'devices',
   ],
   designer: [

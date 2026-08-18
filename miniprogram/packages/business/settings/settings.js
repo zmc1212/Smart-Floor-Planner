@@ -4,6 +4,22 @@ const {
   refreshTemplateConfig
 } = require('../../../utils/notification.js');
 const session = require('../../../utils/session.js');
+const api = require('../../../utils/api.js');
+
+const IDENTITY_LABELS = { customer: '客户身份', referrer: '推荐人身份', staff: '员工身份' };
+
+async function readIdentityState(page) {
+  try {
+    const result = await api.request('/miniprogram/identity-contexts', 'GET');
+    const current = result.current || {};
+    const detail = current.mode === 'staff'
+      ? (current.staffDisplayName || current.enterpriseName || '')
+      : (current.enterpriseName || '个人');
+    page.setData({ identityLabel: `${IDENTITY_LABELS[current.mode] || '当前身份'}${detail ? ` · ${detail}` : ''}`, identityCount: (result.contexts || []).length });
+  } catch (error) {
+    page.setData({ identityLabel: '读取失败', identityCount: 0 });
+  }
+}
 
 async function readNotificationState(page, refresh = true) {
   if (!wx.getSetting) {
@@ -51,11 +67,13 @@ Page({
   data: {
     notificationStatus: '读取中',
     notificationAccepted: false,
-    notificationRequesting: false
+    notificationRequesting: false,
+    identityLabel: '读取中',
+    identityCount: 0
   },
 
   onShow() {
-    return readNotificationState(this);
+    return Promise.all([readNotificationState(this), readIdentityState(this)]);
   },
 
   async onEnableNotification() {
@@ -88,6 +106,10 @@ Page({
 
   onOpenAccountSecurity() {
     wx.navigateTo({ url: '/packages/business/account-security/account-security' });
+  },
+
+  onOpenIdentitySwitch() {
+    wx.navigateTo({ url: '/packages/business/identity-switch/identity-switch' });
   },
 
   onLogout() {

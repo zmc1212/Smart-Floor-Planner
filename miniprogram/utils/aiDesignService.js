@@ -135,6 +135,18 @@ function deleteHistory(id) {
   return api.request(`/miniprogram/ai/history/${id}`, 'DELETE');
 }
 
+function getPublication(leadId, generationId) {
+  return api.request(`/leads/${encodeURIComponent(leadId)}/ai-publications?generationId=${encodeURIComponent(generationId)}`, 'GET').then((res) => res.data);
+}
+
+function publishGeneration(leadId, generationId) {
+  return api.request(`/leads/${encodeURIComponent(leadId)}/ai-publications`, 'POST', { generationId }).then((res) => res.data);
+}
+
+function withdrawGeneration(leadId, generationId) {
+  return api.request(`/leads/${encodeURIComponent(leadId)}/ai-publications/${encodeURIComponent(generationId)}`, 'DELETE').then((res) => res.data);
+}
+
 module.exports = {
   uploadAsset,
   loadCapabilities,
@@ -149,5 +161,8 @@ module.exports = {
   loadHistory,
   loadHeroFloorPlanResults,
   deleteHistory,
+  getPublication,
+  publishGeneration,
+  withdrawGeneration,
   groupFlatSources,
 };

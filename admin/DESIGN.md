@@ -7,10 +7,9 @@ It should be treated as the source of truth for admin-side UI generation, redesi
 
 Primary references:
 - `miniprogram/DESIGN.md`
-- `admin/src/app/globals.css`
-- `admin/src/components/ui/button.tsx`
-- `admin/src/components/ui/card.tsx`
-- `admin/src/components/ui/badge.tsx`
+- `admin/src/components/admin/antd-provider.tsx`
+- existing Admin pages under `admin/src/app/(admin)/`
+- `docs/admin-ui-refactor.md`
 
 When references conflict:
 - Follow this document first
@@ -272,18 +271,18 @@ Do not:
 ## 12. Current Implementation Layer
 
 The current admin implementation uses:
-- `admin/src/app/globals.css`
-- shadcn-style semantic tokens such as `--background`, `--foreground`, `--primary`, `--muted`, `--border`
-- `Geist Sans` and `Geist Mono` from `next/font/google`
+- Ant Design 5 and Ant Design Pro components
+- the shared `AdminAntdProvider` `ConfigProvider` token configuration
+- `PageContainer`, `ProTable`, and Ant Design form/feedback primitives where they fit the workflow
 
 ### Current Constraints
-- The global `--primary` token is still neutral rather than green
-- Several business pages already use green, emerald, blue, and orange accents directly in component class names
-- Some AI pages still use purple-forward styling, which should be treated as transitional rather than canonical
+- New pages must stay within the shared Ant Design/Admin Pro token and component direction.
+- Several business pages already use green, emerald, blue, and orange accents directly in component class names.
+- Some AI pages still use purple-forward styling, which should be treated as transitional rather than canonical.
 
 ### Canonical Direction
 - Future UI work should move the admin system toward the shared green brand
-- New pages should prefer semantic tokens or reusable utility patterns rather than isolated hardcoded colors
+- New pages should prefer shared Ant Design tokens, component configuration, or reusable Admin patterns rather than isolated hardcoded colors
 - Existing purple-first AI screens should gradually align with the green-led product system unless a scoped feature reason prevents it
 
 ## 13. Preferred Token Direction

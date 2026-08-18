@@ -26,7 +26,7 @@
 
 ## 仓库结构
 
-- `admin/`：Next.js 16 App Router、React 19、Tailwind 4、shadcn/ui + Radix、Mongoose 和 MongoDB API；本地开发端口为 `3005`。
+- `admin/`：Next.js 16 App Router、React 19、Tailwind 4、Ant Design 5 + Ant Design Pro、Mongoose 和 MongoDB API；本地开发端口为 `3005`。
 - `miniprogram/`：原生微信小程序。`utils/bluetooth.js` 负责蓝牙测距，`utils/surveyWallGraph.js` 与 `utils/surveyCanvasRenderer.js` 负责墙图和画布，Three.js 用于门窗构件预览。
 - `docs/`：当前模块清单和专项技术合同。
 - `admin/src/models/`：支持租户隔离的业务模型。
@@ -47,7 +47,8 @@
 
 ### 后台 UI 与反馈
 
-- 使用 shadcn/ui 和 Radix primitive。可复用控件放在 `admin/src/components/ui/*`；业务页面优先使用共享组件和语义化 Tailwind token。
+- 遵循现有 Admin UI 方向：Ant Design 5、Ant Design Pro（适用时使用 `PageContainer`/`ProTable`）及共享的 `AdminAntdProvider` token。可复用后台控件放在 `admin/src/components/admin/*` 或既有业务组件目录；不得再引入平行的 UI 系统。
+- 双语 Admin UI 重构约定及现有 Ant Design/Admin Pro 路由是功能型后台工作的确认设计源。除非用户要求新的视觉方向，或路由台账明确要求，否则不需要独立的图片或 mockup 设计源。
 - 管理员显式触发且用户可见的变更，成功和失败都必须使用共享操作反馈 UI；不得用原生 `alert()` 作为常规反馈。
 - 危险操作可以使用原生确认框，但操作结果仍必须通知用户。
 - 涉及租户的路由必须使用 `withTenantRoute`、`withTenantContext` 或对应共享解析器，并校验接口角色边界。

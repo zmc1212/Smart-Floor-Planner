@@ -129,6 +129,17 @@ test('enterprise join codes rotate, disable, and enforce code types', async () =
       (await repository.resolveEnterpriseJoinToken(second.token)).result,
       'ok'
     );
+    const revealed = await repository.revealActiveEnterpriseJoinCode({
+      enterpriseId: enterpriseIds[0],
+      codeType: 'staff',
+      actorStaffId: actorIds[0],
+    });
+    assert.equal(revealed?.token, second.token);
+    assert.equal(
+      (await repository.listEnterpriseJoinCodeEvents(enterpriseIds[0]))[0]?.event.result,
+      'token_revealed'
+    );
+    assert.equal(await repository.countActiveReferrerMemberships(enterpriseIds[0]), 0);
 
     const referrerCode = await repository.rotateEnterpriseJoinCode({
       enterpriseId: enterpriseIds[0],

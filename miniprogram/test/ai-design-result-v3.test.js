@@ -19,6 +19,9 @@ test('AI design result restores the V3 delivery layout with only live actions', 
   assert.match(wxml, /result-icons\/share\.png/);
   assert.match(wxml, /bindtap="handlePrimaryAction"/);
   assert.match(wxml, /bindtap="openHistory"/);
+  assert.match(wxml, /客户可见方案/);
+  assert.match(wxml, /bindtap="publishToCustomer"/);
+  assert.match(wxml, /bindtap="withdrawFromCustomer"/);
   assert.match(wxml, /class="result-delivery-character"/);
   assert.match(wxml, /wx:if="\{\{task\.showComparison\}\}"/);
   assert.match(wxss, /\.delivery-bubble/);
@@ -31,6 +34,13 @@ test('AI design result restores the V3 delivery layout with only live actions', 
   assert.match(wxss, /\.bottom-action:first-child/);
   assert.match(wxss, /min-height: 64rpx/);
   assert.match(wxss, /height: 84rpx/);
+  assert.match(wxss, /\.publication-panel/);
+  const script = read('packages/ai-workflow/result/ai-design-result.js');
+  const service = read('utils/aiDesignService.js');
+  assert.match(script, /getPublication\(task\.leadId, task\.id\)/);
+  assert.match(script, /publishGeneration\(task\.leadId, task\.id\)/);
+  assert.match(script, /withdrawGeneration\(task\.leadId, task\.id\)/);
+  assert.match(service, /\/ai-publications\?generationId=/);
   assert.equal(config.navigationBarTitleText, '设计成果');
 });
 

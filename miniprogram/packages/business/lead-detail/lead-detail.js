@@ -127,6 +127,16 @@ function getStaffRole() {
   return user.staffRole || (user.role === 'staff' ? '' : user.role) || '';
 }
 
+function appointmentSummary(value) {
+  const match = String(value || '').match(/[[(]([^,]+),([^\])]+)[\])]/);
+  if (!match) return '上门时间待确认';
+  const start = new Date(match[1].replaceAll('"', ''));
+  const end = new Date(match[2].replaceAll('"', ''));
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return '上门时间待确认';
+  const pad = (number) => String(number).padStart(2, '0');
+  return `${start.getMonth() + 1}月${start.getDate()}日 ${pad(start.getHours())}:${pad(start.getMinutes())}-${pad(end.getHours())}:${pad(end.getMinutes())}`;
+}
+
 Page({
   data: {
     leadId: '',
@@ -134,6 +144,7 @@ Page({
     activeFloorPlan: null,
     previousFloorPlans: [],
     staffRole: '',
+    appointment: null,
     canScheduleAppointment: false,
     statusLabel: '新线索',
     nextAction: '开始正式量房',
@@ -202,19 +213,22 @@ Page({
   },
 
   async refreshAppointmentEntry(staffRole, lead) {
-    const canOpen = staffRole === 'designer'
+    const canOpen = ['designer', 'measurer', 'enterprise_admin'].includes(staffRole)
       && lead
-      && !['closed', 'converted'].includes(lead.status);
+      && this.data.leadId;
     if (!canOpen) {
-      this.setData({ canScheduleAppointment: false });
+      this.setData({ appointment: null, canScheduleAppointment: false });
       return;
     }
     try {
       const result = await api.request(`/appointments?leadId=${encodeURIComponent(this.data.leadId)}`, 'GET');
-      const hasConfirmedAppointment = (result.data || []).some((item) => item.status === 'confirmed');
-      this.setData({ canScheduleAppointment: !hasConfirmedAppointment });
+      const appointment = (result.data || []).find((item) => item.status === 'confirmed') || null;
+      this.setData({
+        appointment: appointment ? { ...appointment, summary: appointmentSummary(appointment.timeRange) } : null,
+        canScheduleAppointment: !appointment && ['designer', 'enterprise_admin'].includes(staffRole) && !['closed', 'converted'].includes(lead.status)
+      });
     } catch (error) {
-      this.setData({ canScheduleAppointment: false });
+      this.setData({ appointment: null, canScheduleAppointment: false });
     }
   },
 
@@ -312,6 +326,14 @@ Page({
     if (!this.data.canScheduleAppointment || !this.data.leadId) return;
     wx.navigateTo({
       url: `/packages/business/appointment-booking/appointment-booking?leadId=${encodeURIComponent(this.data.leadId)}`,
+    });
+  },
+
+  onOpenAppointment() {
+    const appointment = this.data.appointment;
+    if (!appointment || !this.data.leadId) return;
+    wx.navigateTo({
+      url: `/packages/business/appointment-detail/appointment-detail?leadId=${encodeURIComponent(this.data.leadId)}&appointmentId=${encodeURIComponent(appointment.id)}`
     });
   },
 

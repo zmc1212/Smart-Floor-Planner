@@ -9,6 +9,12 @@ const LEGACY_AI_EXECUTION_PERMISSIONS = [
   'ai-soft-furnishing',
 ];
 
+const REFERRER_NETWORK_OPERATIONS_ROLES = new Set([
+  'super_admin',
+  'admin',
+  'enterprise_admin',
+]);
+
 export function normalizeMenuPermissions(permissions: string[]) {
   const normalized = new Set(permissions);
   if (
@@ -39,19 +45,26 @@ export async function getRolePermissionMap() {
 
 export async function getEffectivePermissions(role: string, _menuPermissions?: string[]) {
   void _menuPermissions;
+  const withRequiredOperationsAccess = (permissions: string[]) => {
+    const normalized = normalizeMenuPermissions(permissions);
+    if (REFERRER_NETWORK_OPERATIONS_ROLES.has(role)) {
+      normalized.push('referrer-network-operations');
+    }
+    return Array.from(new Set(normalized));
+  };
   try {
     const roleConfig = await withPlatformTransaction((transaction) =>
       new SystemRoleRepository(transaction).findByRoleKey(role)
     );
     if (roleConfig) {
-      return normalizeMenuPermissions(roleConfig.menuKeys);
+      return withRequiredOperationsAccess(roleConfig.menuKeys);
     }
   } catch (err) {
     console.error('Failed to fetch role permissions from PostgreSQL:', err);
   }
 
   // Fallback to hardcoded defaults
-  return normalizeMenuPermissions(DEFAULT_PERMISSIONS[role] || []);
+  return withRequiredOperationsAccess(DEFAULT_PERMISSIONS[role] || []);
 }
 
 export function getWorkbenchType(role?: string) {

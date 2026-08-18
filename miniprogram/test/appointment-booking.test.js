@@ -69,15 +69,16 @@ test('designer booking keeps every date the server makes available in the existi
   }
 });
 
-test('lead detail exposes first booking only to the assigned designer without a confirmed appointment', () => {
+test('lead detail exposes first booking to scheduling roles only without a confirmed appointment', () => {
   const detailJs = read('packages/business/lead-detail/lead-detail.js');
   const detailWxml = read('packages/business/lead-detail/lead-detail.wxml');
   const detailWxss = read('packages/business/lead-detail/lead-detail.wxss');
 
-  assert.match(detailJs, /staffRole === 'designer'/);
+  assert.match(detailJs, /\['designer', 'enterprise_admin'\]\.includes\(staffRole\)/);
   assert.match(detailJs, /item\.status === 'confirmed'/);
   assert.match(detailJs, /appointment-booking\/appointment-booking\?leadId=/);
   assert.match(detailWxml, /wx:if="\{\{canScheduleAppointment\}\}"/);
   assert.match(detailWxml, />安排上门量房<\/button>/);
+  assert.match(detailWxml, />查看预约<\/button>/);
   assert.match(detailWxss, /\.appointment-entry-action/);
 });

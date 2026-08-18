@@ -1,6 +1,6 @@
 # 推荐人网络与预约量房闭环开发计划
 
-状态：`Approved design / Phase 8 completed`
+状态：`Phase 9 completed / Phase 10 in progress`
 
 本文是“推荐人多企业推广、客户授权建线索、自动派单、预约量房、AI 方案、签单和三方提成”破坏式改造的持续开发入口。当前代码、PostgreSQL schema、迁移和模块清单仍是已实现能力的依据；本文中的表、接口和路由在代码落地并通过测试前都只能标记为 `Planned`。
 
@@ -153,7 +153,7 @@ closed 为终止状态
 
 ## 6. 双码与推荐人网络
 
-阶段 2 已实现本节的服务端合同：企业管理员可查询、换新和停用员工/推荐人入驻码，换码与扫码结果写入审计；已授权手机号的小程序用户可入驻为单企业员工或加入默认最多 3 家企业的推荐人网络，并可查询、退出成员关系和重取当前推广令牌。令牌为基于服务端密钥的 192-bit 不透明值，数据库只保存 SHA-256 哈希，不编码企业明文。
+阶段 2 已实现本节的服务端合同：企业管理员可查询、换新、停用并生成员工/推荐人入驻码的私有微信小程序码 PNG，换码、扫码解析和码图片生成结果写入审计；已授权手机号的小程序用户可扫码进入专用入驻页，入驻为单企业员工或加入默认最多 3 家企业的推荐人网络，并可查询、退出成员关系和重取当前推广令牌。令牌为基于服务端密钥的 192-bit 不透明值，数据库只保存 SHA-256 哈希，不编码企业明文。
 
 阶段 2 的 `POST /api/miniprogram/codes/resolve` 负责区分入驻码/推广码、校验状态并写审计；阶段 3 已在有效推广码响应中增加 10 分钟的加密签名待确认来源。阶段 4 已将批准设计落为推广服务码展示页和客户领取页；解析本身仍不创建线索，只有客户授权接口提交该来源后才创建归属与线索。
 
@@ -271,7 +271,7 @@ closed 为终止状态
 | --- | --- |
 | 身份 | `GET /api/miniprogram/identity-contexts`、`POST /api/miniprogram/identity-contexts/switch`；阶段 1 已实现。 |
 | 扫码解析 | `POST /api/miniprogram/codes/resolve`；阶段 3 已实现令牌类型/状态解析、审计和有效推广码的 10 分钟加密签名待确认来源；解析不创建线索。 |
-| 双码管理 | `GET /api/enterprise/join-codes`、`POST /api/enterprise/join-codes/[type]/rotate`、`POST /api/enterprise/join-codes/[type]/disable`；阶段 2 已实现。 |
+| 双码管理 | `GET /api/enterprise/join-codes`、`POST /api/enterprise/join-codes/[type]/rotate`、`POST /api/enterprise/join-codes/[type]/disable`、`POST /api/enterprise/join-codes/[type]/image`；阶段 2/10 已实现。图片接口受租户授权、写入审计、私有且禁止缓存，只返回微信小程序码 PNG。 |
 | 入驻 | `POST /api/miniprogram/onboarding/staff`、`POST /api/miniprogram/onboarding/referrer`；阶段 2 已实现。 |
 | 推荐人 | `GET /api/miniprogram/referrer-memberships`、`DELETE /api/miniprogram/referrer-memberships/[id]`、`GET /api/miniprogram/referrer-memberships/[id]/promotion-code`；阶段 2 已实现。 |
 | 服务码图片 | `GET /api/miniprogram/referrer-memberships/[id]/promotion-code/image`；阶段 4 已实现，校验当前推荐人关系后在事务外调用微信小程序码接口，返回不缓存的 PNG。 |
@@ -296,12 +296,28 @@ closed 为终止状态
 
 - `packages/business/referrer-workbench/referrer-workbench`：推荐人企业关系、内部企业选择和推广码入口。
 - `packages/business/customer-project/customer-project`：已批准的第 6 阶段客户项目服务册展示真实预约、设计师/测量员、完成正式户型摘要和主动发布方案；受保护方案图片读取为小程序本地文件后再供客户预览。该页面刻意不提供客户量房编辑入口或可编辑户型查看器。
-- `packages/business/appointment-reschedule/appointment-reschedule`：服务端计算客户可用时段与即时改期。
+- `packages/business/appointment-detail/appointment-detail`：真实服务调度记录及按岗位限制的内部改期、取消和完成动作。
+- `packages/business/appointment-reschedule/appointment-reschedule`：服务端计算可用时段，支持客户改期或必填原因的内部改期。
 - `packages/business/appointment-booking/appointment-booking`：负责设计师从无有效预约的线索详情进入，填写上门地址、选择服务端实时计算的可用时段并创建首次预约。
 - `packages/business/measurer-calendar/measurer-calendar`：已确认的测量员日程，提供不可用时间编辑入口。
 - `packages/business/measurer-unavailability/measurer-unavailability`：测量员仅维护本人不可用时段；使用原生日期/时段 picker、原因、保存和删除，API 仍在服务端强制角色和本人边界。
+- `packages/business/onboarding/onboarding`：员工/推荐人入驻码落地页；它在手机号授权前解析码类型，收集授权，员工只选择 `designer` 或 `measurer`，调用既有入驻接口并切换到返回身份上下文。
+- `packages/business/identity-switch/identity-switch`：列出服务端活动身份上下文，交换签名上下文令牌，刷新完整会话，并重新进入所选客户/员工/推荐人界面。
 
-第 7 阶段商户路由 `/lead-commissions` 已按批准后台设计源实现三条规则卡、状态/角色/日期台账筛选、真实关联报表列、带确认的批量标记已支付和金额汇总。它新增独立的 `lead-commissions` 导航与权限边界，不替换 `/acquisition-commissions`。其余后台工作仍需复用商户路由边界，并在可见实现前检查批准设计源。
+第 7 阶段商户路由 `/lead-commissions` 已按既有 Admin UI 方向实现三条规则卡、状态/角色/日期台账筛选、真实关联报表列、带确认的批量标记已支付和金额汇总。它新增独立的 `lead-commissions` 导航与权限边界，不替换 `/acquisition-commissions`。其余功能型后台工作遵循双语 Admin UI 重构约定及既有 Ant Design/Admin Pro 路由模式。
+
+### 13.1 第 10 阶段：后台运营与全流程验收工作台（In progress）
+
+当前双码、员工/推荐人入驻、派单资格和全流程业务合同均已具备服务端能力，但后台缺少运营人员无需调用 API 的可视化入口。第 10 阶段新增一个独立后台路由（最终 pathname 在实施中确定），供 `super_admin`、`admin` 和 `enterprise_admin` 在现有租户边界内完成以下工作：
+
+1. 选择当前企业，查看员工码与推荐人码的状态、版本、失效时间、创建/停用审计；在确认后换码、停用、展示或下载可扫码的入驻二维码。令牌不会离开服务端进入后台页面、普通日志或公开页面。
+2. 在同一工作台检查设计师和测量员的入驻、账号状态、`assignmentPaused`、设计师微信号/二维码完整性及当前派单资格；只复用现有员工资料和派单重试合同，不新增手工接单或跨企业派单。
+3. 提供面向测试人员的“完整工作流准备清单”：推荐人已入驻、已生成推广服务码、可派单设计师/测量员、预约设置、三角色提成规则及外部微信能力。清单只呈现真实状态和跳转入口，不伪造客户、线索、预约、量房、AI 或签单数据。
+4. 以真实小程序账号依次完成推荐人入驻、展示服务码、客户领取、自动派单、预约、正式量房、AI 发布、签单及提成台账的人工验收；工作台只展示已发生的审计/状态，不绕过手机号授权、匿名边界或客户所有权校验。
+
+这是功能型后台 UI，直接遵循双语 Admin UI 重构约定及既有 Ant Design/Admin Pro 路由方向，不需要独立桌面设计源；不得复用客户匿名领取页设计，也不得把二维码、令牌或审计数据切片为界面素材。实现后需在中英文 Admin UI 路由台账和模块清单中登记最终路由、权限、视觉证据和限制。
+
+当前切片已实现带逐项真实入口的 `/referrer-network-operations`，并新增 `/appointment-settings`，明确区分系统自动默认值与管理员已确认策略。同时补齐此前仅有接口的客户端缺口：预约详情/内部动作、AI 结果发布/撤回及身份切换。普通双码列表继续不返回活动令牌，受租户授权并写入审计的图片接口保持私有、禁止缓存。当前构建的认证 Chrome 与微信开发者工具视觉核验仍待完成。
 
 ## 14. 通知与可靠性
 
@@ -339,11 +355,12 @@ closed 为终止状态
 | 2. 双码与推荐人网络 | `Completed` | 双码换码/停用审计、员工单企业、推荐人默认三家上限与退出、可重取的不透明推广令牌已实现；Repository 数据库合同测试通过。 |
 | 3. 客户授权与自动派单 | `Completed` | 两阶段扫码、原子用户关联/建线索、首次有效归属、稳定最小负载派单、无候选保留、事务后通知、服务身份及员工池变化重试已实现；Repository/RLS/并发测试通过。 |
 | 4. 选定设计生产实现 | `Completed` | `promotion-service-code` 与 `free-design-service` 两条路由按 `390x844` 实现三屏状态；服务码图片接口、扫码解析、手机号授权、幂等建线索、设计师二维码交付和无设计师待分配状态已接通。Antigravity 2.8.1 通过内置 `generate_image` 按固定 `3x2` prompt 和有序参考图生成画板，六个独立透明 PNG 已裁切、优化并接入 `packages/business/assets/referral-service-v1/`，均不超过 300KB。聚焦测试通过；真实微信开发者工具 automator 在 iPhone 12/13 Pro `390x844` 模拟器上完成精确路由、元素边界和包含原生胶囊的整窗截图核验。 |
-| 5. 预约与日历 | `Completed` | 已实现租户预约设置、测量员不可用时间、工作时段校验、首次预约、客户/内部改期、取消/完成、事件审计、版本乐观锁和数据库排斥约束；推荐人可在内部工作台查询活动企业关系、选择企业、展示受保护服务码，并以确认流程退出关系（历史归属不变）。负责设计师在尚无有效预约时可从线索详情进入预约页，填写地址并从服务端实时可用时段创建首次预约。Repository/RLS/并发集成测试及客户预约、改期、测量员日程、本人不可用时间编辑器和推荐人工作台路由已实现；首次预约和客户改期在 iPhone 12/13 Pro `390x844` 自动化模拟器中核验通栏 CTA 的窗口计算宽度与左右边距。创建、改期、取消在事务后尝试向员工和已授权客户投递订阅消息；首次预约入口、推荐人工作台、客户预约卡、客户改期、首次预约、测量员日程与不可用时间编辑器均已在真实微信开发者工具 `390x844` 模拟器逐路由确认顶层路由和包含原生胶囊的整窗截图。 |
-| 6. 客户项目、量房与 AI 发布 | `Completed` | 项目聚合 API、AI 发布/撤回事实、仅客户本人读取边界、完成正式户型摘要和受保护已发布方案预览均已实现。客户服务册不提供客户量房编辑入口或 graph 编辑路径。Repository/RLS 集成测试与小程序合同测试通过；真实微信开发者工具自动化已在 `390x844` 确认精确的 customer-project 顶层路由，并保存应用层截图及包含原生胶囊的宿主整窗截图。 |
+| 5. 预约与日历 | `Completed` | 租户预约设置、不可用时间、工作时段、首次预约、客户/内部改期、取消/完成、事件审计、乐观版本和排斥约束均已实现。后台设置单可确认默认策略；线索详情和测量员日程进入真实预约调度页，每个岗位只显示被允许的动作，内部改期/取消原因必填。既有预约状态保留 `390x844` 证据；新增详情与内部动作状态待刷新截图。 |
+| 6. 客户项目、量房与 AI 发布 | `Completed` | 项目聚合、发布/撤回事实、仅客户本人读取、完成正式户型摘要和受保护预览均已实现。AI 结果页现在读取真实发布状态，并允许负责设计师或企业负责人确认后发布/撤回。客户服务册不提供量房编辑或 graph 编辑路径。既有客户项目证据继续有效；新增结果控制待刷新截图。 |
 | 7. 签单与三方提成 | `Completed` | 已实现三规则 Repository、签单原子快照、三条唯一提成、已付/作废约束、RLS 报表、批量付款 API 及批准的 `/lead-commissions` 规则/报表工作台。聚焦 PostgreSQL 提成测试、生产构建及认证 `localhost:3005` 对批准桌面工作台的视觉核验均已完成。 |
 | 8. 旧流程下线 | `Completed` | 运行时 schema、接口、菜单、旧工作台和小程序旧联系入口均已删除。PostgreSQL 合同测试和小程序测试通过；历史数据库对象和业务数据保留至第 9 阶段清理演练获得单独批准后处理。 |
 | 9. 清理演练与生产发布 | `Completed` | 已在用户确认的本地 Docker 正式 volume 完成：只读 dry-run、目标指纹和空七牛清单确认、清理前完整备份、单事务业务数据清理、JSON/Markdown 审计以及清理前备份的恢复演练。平台管理员、角色权限、套餐、平台/媒体/AI 配置、提示词及迁移记录均保留；业务表已清空，七牛无候选对象。 |
+| 10. 后台运营与全流程验收工作台 | `In progress` | `/referrer-network-operations` 已实现双码操作、派单资格和可执行真实状态清单；`/appointment-settings` 展示并确认企业预约策略。小程序已提供入驻、预约生命周期动作、AI 发布及数据库身份切换，不再只剩 API。不得用 API、脚本或伪造数据替代真实流程；后台认证态与新增小程序路由的视觉核验仍待完成。 |
 
 ## 17. 测试与验收矩阵
 

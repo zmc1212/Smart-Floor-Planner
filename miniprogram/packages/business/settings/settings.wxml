@@ -31,6 +31,14 @@
 
   <view class="account-section-title">账号</view>
   <view class="account-surface">
+    <view class="account-row" hover-class="account-row-pressed" bindtap="onOpenIdentitySwitch" aria-role="button">
+      <image class="account-row-icon" src="/images/mine-icons/users.png" mode="aspectFit" />
+      <view class="account-row-copy">
+        <view class="account-row-label">当前身份</view>
+        <view class="account-row-helper">{{identityLabel}}{{identityCount > 1 ? ' · 可切换' : ''}}</view>
+      </view>
+      <view class="account-chevron"></view>
+    </view>
     <view class="account-row" hover-class="account-row-pressed" bindtap="onOpenAccountSecurity" aria-role="button">
       <image class="account-row-icon" src="/images/mine-icons/shield-check.png" mode="aspectFit" />
       <view class="account-row-copy">

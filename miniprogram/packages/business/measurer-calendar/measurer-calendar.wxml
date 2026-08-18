@@ -4,7 +4,7 @@
   <view wx:if="{{loading}}" class="state">正在加载日程…</view>
   <view wx:elif="{{error}}" class="state">{{error}}</view>
   <view wx:else class="list">
-    <view wx:for="{{items}}" wx:key="id" class="appointment sfp-card"><view class="top"><text class="time">{{item.time}}</text><text class="tag">已确认</text></view><text class="address">{{item.address}}</text><text class="meta">客户量房 · 请提前到场</text></view>
+    <view wx:for="{{items}}" wx:key="id" class="appointment sfp-card" data-item="{{item}}" bindtap="openAppointment" hover-class="appointment-pressed" aria-role="button" aria-label="查看预约 {{item.address}}"><view class="top"><text class="time">{{item.time}}</text><text class="tag">已确认</text></view><text class="address">{{item.address}}</text><view class="appointment-footer"><text class="meta">客户量房 · 请提前到场</text><text class="open-label">查看预约</text></view></view>
     <view wx:if="{{!items.length}}" class="state">本周暂未安排量房</view>
   </view>
   <view class="unavailable" bindtap="manageUnavailability" hover-class="unavailable-pressed" aria-role="button">

@@ -5,7 +5,7 @@
 
 ## 共用架构
 
-- Next.js 16 App Router、React 19、Tailwind CSS 4、shadcn/ui/Radix。
+- Next.js 16 App Router、React 19、Tailwind CSS 4、Ant Design 5 和 Ant Design Pro。
 - 部署运行时使用 PostgreSQL 17、`drizzle-orm`/`pg`；租户读写通过 Repository、
   事务和 RLS 执行。
 - 后台会话使用 cookie/JWT；平台和企业角色由路由守卫与菜单权限共同约束。
@@ -25,7 +25,7 @@
 | 登录与会话 | `/login`、`/register` | `/api/auth/*`；小程序 JWT 使用基础用户 `sub`、当前 `customer/staff/referrer` 上下文和 `contextVersion` | 公开入口与登录后路由；Implemented | 微信供应商配置依赖环境；旧身份字段在旧获客流程下线前并存 |
 | 导航、角色与权限 | 共用侧栏、路由守卫 | `/api/permissions`、角色/菜单 Repository | `super_admin`、`admin`、企业角色；Implemented | 权限按租户和角色实时生效 |
 | 平台与企业 | `/dashboard`、`/enterprises` | 企业、品牌、激活及平台 Repository | 平台角色；Implemented | 租户变更必须存在企业上下文 |
-| 员工与账号 | `/staff`、`/departments`、`/users`；阶段 3 尚无双码界面 | 员工、部门、共享通知和管理员 Repository；双码接口；设计师/测量员的 `assignmentPaused` 与资料完整性决定新流程派单资格，入驻、创建、资料补全或恢复派单触发待处理线索重试 | 双码管理限 `super_admin`、`admin`、`enterprise_admin`；入驻令牌按类型隔离，员工只能属于一家企业；Implemented | 当前活动入驻码和待确认来源依赖至少 128-bit 的稳定生产密钥；生产双码界面仍在计划中 |
+| 员工、账号与预约运营 | `/staff`、`/departments`、`/users`、`/referrer-network-operations`、`/appointment-settings` | 员工、部门、共享通知、管理员与预约 Repository。预约设置页通过 `GET/PUT /api/appointment-settings` 读取和修改时区、每周开放时间、默认时长、时段步长、最远预约天数及客户改期截止；系统自动建立的默认记录会与管理员已确认策略明确区分。运营工作台经 `GET /api/enterprise/referrer-network-readiness` 读取双码审计、活动推荐人成员关系、派单资格、已确认预约设置、提成规则及微信服务码配置，并为每项验收项提供真实操作入口。`GET /api/enterprise/join-codes` 继续不返回令牌，写入审计的图片接口生成私有、禁止缓存的入驻码 | `referrer-network-operations`、`/appointment-settings` 及对应 API 复用 `referrer-network-operations` 权限，固定限当前租户内的 `super_admin`、`admin`、`enterprise_admin`；入驻令牌继续按类型隔离，员工只能属于一家企业；Implemented/Limited | 工作台不创建测试业务数据，也不绕过小程序手机号授权；外部微信凭据只诊断、不在本页配置。当前构建的后台视觉核验待完成 |
 | 报备与协作 | `/promotions`、企业协作页 | 报备、推荐和共享通知 Repository | 企业和员工边界；Implemented | 企业微信投递为可选外部能力 |
 | 套餐、订单与提成 | `/packages`、`/orders`、`/commissions`、`/lead-commissions` | 套餐、订单、既有提成及 `LeadCommissionRepository`；`GET/PUT /api/commission-rules`、可筛选的 `GET /api/lead-commissions`、`POST /api/lead-commissions/mark-paid`。工作台维护三条规则，并在报表逐条展示客户、推荐人关系、企业、设计师、测量员和当前有效预约 | `lead-commissions` 仅 `super_admin`、`admin`、`enterprise_admin` 可用；系统管理员即使使用旧的已存菜单快照也始终展示该受保护入口；规则修改和线下批量标记已支付均使用 RLS 与租户事务；Implemented/Limited | 旧获客提成路由已下线。支付不在本系统内完成 |
 | 线索与转化 | `/leads`、`/leads/[id]` | 线索生命周期、户型、`ReferralLeadRepository`、`CustomerProjectRepository` 与 `LeadCommissionRepository`；新流程原子写入客户归属锁、推荐人成员、设计师/测量员派单与事件，关闭线索同步释放活动归属；推荐网络线索签单时原子快照三条角色提成，AI generation 只有通过发布事实才进入客户项目 | 客户授权或租户/责任人校验；负责设计师仅管理自己线索的已成功 generation，企业负责人可管理本企业；撤销签单仅企业管理员且已支付提成会阻止撤销；Implemented/Limited | 客户项目已展示受保护聚合中的真实服务事实、完成正式户型摘要及主动发布方案；方案图片保持仅客户本人读取并写为小程序本地临时文件。客户不具备 graph 编辑或量房编辑器入口；存在合同或派生记录时禁止清除 |

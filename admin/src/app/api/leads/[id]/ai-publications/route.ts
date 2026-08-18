@@ -8,6 +8,38 @@ function canPublish(role: string, assignedTo: bigint | null, staffId: bigint) {
   return role === 'enterprise_admin' || (role === 'designer' && assignedTo === staffId);
 }
 
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const context = await resolveMiniProgramContext(request);
+    if (!context?.enterpriseId || context.mode !== 'staff' || !context.staff || !['designer', 'enterprise_admin'].includes(context.staff.role)) {
+      return NextResponse.json({ success: false, error: '仅负责设计师或企业负责人可查看方案发布状态' }, { status: 403 });
+    }
+    const enterpriseId = parsePostgresId(context.enterpriseId, 'enterprise id');
+    const leadId = parsePostgresId((await params).id, 'lead id');
+    const staffId = parsePostgresId(context.staff._id, 'staff id');
+    const generationIdText = new URL(request.url).searchParams.get('generationId');
+    const generationId = generationIdText ? parsePostgresId(generationIdText, 'generation id') : null;
+    const result = await withMiniProgramPostgresTransaction(context, async (transaction) => {
+      const lead = await new LeadRepository(transaction).findById(leadId);
+      if (!lead || !canPublish(context.staff!.role, lead.assignedTo, staffId)) return null;
+      const publications = await new CustomerProjectRepository(transaction).listActivePublications(enterpriseId, leadId);
+      return publications.map((item) => ({
+        generationId: item.generation.id.toString(),
+        publishedAt: item.publication.publishedAt,
+      }));
+    });
+    if (!result) return NextResponse.json({ success: false, error: '无权查看该客户项目的方案' }, { status: 403 });
+    return NextResponse.json({
+      success: true,
+      data: generationId
+        ? { generationId: generationId.toString(), published: result.some((item) => item.generationId === generationId.toString()), publication: result.find((item) => item.generationId === generationId.toString()) || null }
+        : result,
+    });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : '读取方案发布状态失败' }, { status: 400 });
+  }
+}
+
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const context = await resolveMiniProgramContext(request);

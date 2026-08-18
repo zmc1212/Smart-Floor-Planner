@@ -54,6 +54,7 @@ test('Mine routes edit, settings, and security actions to separate real pages', 
   assert.ok(business.pages.includes('profile-edit/profile-edit'));
   assert.ok(business.pages.includes('settings/settings'));
   assert.ok(business.pages.includes('account-security/account-security'));
+  assert.ok(business.pages.includes('identity-switch/identity-switch'));
   assert.match(mineWxml, /编辑资料[\s\S]*bindtap="onEditProfile"|bindtap="onEditProfile"[\s\S]*编辑资料/);
   assert.match(mineWxml, /settings-button[^>]*bindtap="onOpenSettings"/);
   assert.match(mineWxml, /账号与安全[\s\S]*onOpenAccountSecurity|onOpenAccountSecurity[\s\S]*账号与安全/);
@@ -96,7 +97,21 @@ test('Account pages use the approved account-v1 scenes while keeping live contro
   assert.match(pageSources[0], /class="account-profile-avatar"[^>]*mode="aspectFill"/);
   assert.doesNotMatch(pageSources[0], /class="profile-card"/);
   assert.match(pageSources[1], /bindtap="onEnableNotification"/);
+  assert.match(pageSources[1], /bindtap="onOpenIdentitySwitch"/);
   assert.match(pageSources[2], /bindtap="onChangePassword"/);
+});
+
+test('Identity switch uses server contexts and refreshes the signed session', () => {
+  const script = read('packages/business/identity-switch/identity-switch.js');
+  const wxml = read('packages/business/identity-switch/identity-switch.wxml');
+  assert.match(script, /\/miniprogram\/identity-contexts/);
+  assert.match(script, /\/miniprogram\/identity-contexts\/switch/);
+  assert.match(script, /type: 'refresh', token: switched\.token/);
+  assert.match(script, /wx\.setStorageSync\('userInfo', refreshed\.user\)/);
+  assert.match(script, /referrer-workbench\/referrer-workbench/);
+  assert.match(wxml, /settings-guardian-scene-v3\.png/);
+  assert.match(wxml, /item\.current/);
+  assert.match(wxml, /contexts\.length === 1/);
 });
 
 test('Profile save uploads a pending avatar, updates the nickname, and refreshes session data', async () => {

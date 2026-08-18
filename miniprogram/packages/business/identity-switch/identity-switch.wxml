@@ -1,0 +1,29 @@
+<!--
+THESIS: 把同一账号拥有的业务身份整理成清晰档案列，切换前明确企业和岗位边界。
+OWN-WORLD: 复用已批准的账户权限管家小 K 场景与账户行语言。
+FORM: Identity dossier list; all controls remain native and stateful.
+-->
+<view class="account-page identity-page">
+  <view class="account-hero">
+    <view class="account-hero-green"></view>
+    <view class="account-hero-copy"><view class="account-hero-title">身份管家 · 小K</view><view class="account-hero-copy-text">每次只进入一个身份，数据与权限不会混用</view></view>
+    <image class="account-hero-art" src="../assets/account-v1/settings-guardian-scene-v3.png" mode="aspectFit" aria-hidden="true"></image>
+  </view>
+  <view class="account-section-title">选择当前身份</view>
+  <view wx:if="{{loading}}" class="state-message">正在读取可用身份…</view>
+  <view wx:elif="{{error}}" class="state-message">
+    {{error}}
+    <view wx:if="{{sessionExpired}}" class="state-retry" bindtap="goToLogin" aria-role="button">重新登录</view>
+    <view wx:else class="state-retry" bindtap="load" aria-role="button">重新加载</view>
+  </view>
+  <view wx:else class="identity-list">
+    <view wx:for="{{contexts}}" wx:key="index" class="identity-item {{item.current ? 'identity-current' : ''}}" data-context="{{item}}" bindtap="selectIdentity" hover-class="identity-pressed" aria-role="button" aria-label="{{item.current ? '当前身份' : '切换身份'}} {{item.title}}">
+      <view class="identity-mark">{{item.modeLabel.slice(0,1)}}</view>
+      <view class="identity-copy"><text class="identity-title">{{item.title}}</text><text class="identity-detail">{{item.detail}}</text></view>
+      <text wx:if="{{item.current}}" class="identity-status">当前</text>
+      <text wx:elif="{{switchingKey}}" class="identity-status pending">处理中</text>
+      <view wx:else class="account-chevron"></view>
+    </view>
+    <view wx:if="{{contexts.length === 1}}" class="single-note">当前账号只有一个可用身份。完成企业员工或推荐人入驻后，其他身份会出现在这里。</view>
+  </view>
+</view>

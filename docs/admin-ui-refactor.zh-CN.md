@@ -5,9 +5,10 @@
 
 ## 共用约定
 
-- Next.js App Router 页面使用现有 shadcn/ui 和 Radix primitives。
+- Next.js App Router 页面使用既有 Ant Design 5 和 Ant Design Pro 系统，包含共享的 `AdminAntdProvider` token 配置。
+- 在适合工作流时使用 `PageContainer`、`ProTable`、Ant Design 表单/反馈 primitive 及既有后台业务组件；新的后台工作不得引入平行 UI 系统。
 - 保持路由、API、租户、角色和操作边界不变。
-- 可复用控件放在 `admin/src/components/ui/*`。
+- 可复用后台控件放在 `admin/src/components/admin/*` 或既有业务组件目录。
 - 所有可见后台变更使用共用成功/失败操作反馈 UI。
 - 视觉检查使用 `http://localhost:3005`；认证流程使用用户现有 Chrome 会话。
 
@@ -36,6 +37,8 @@
 | 路由 | 视觉范围 | 边界 | 核验 | 未决项 |
 | --- | --- | --- | --- | --- |
 | `/lead-commissions` — 商户三方提成工作台 | 批准设计源 `design-references/referrer-network-appointment-v1/phase-7-three-role-commission-admin-v1.png`（1487x1058 PNG，SHA-256 `DAA7ED1235C474F0C6A0D7FC625A5DD0BD9D97E54F580AB4CD530CE743AB2A1C`）：页头、推荐人/设计师/测量员独立规则卡、台账筛选、待支付选择、确认后的批量标记已支付和金额汇总 | 新路由与 `/acquisition-commissions` 保持独立；路由/API 权限 `lead-commissions` 限 `super_admin`、`admin`、`enterprise_admin`；租户/RLS 边界及既有规则、报表、付款 API 不变 | 聚焦 PostgreSQL 提成测试、ESLint 与 `npm run build` 通过。认证 Chrome 在 `http://localhost:3005/lead-commissions` 核验侧栏入口、三张生效规则卡、筛选项、空台账、禁用付款操作及金额汇总 | 仅在批准设计改变、观察到有数据台账的布局缺陷，或工作流/权限合同变化时重开 |
+| `/referrer-network-operations` — 推荐网络运营与验收工作台 | 沿用既有 Ant Design/Admin Pro 方向：双码操作、派单资格表，以及每行都提供真实处理入口的状态验收清单 | 路由与 `referrer-network-operations` 权限继续限当前租户的 `super_admin`、`admin`、`enterprise_admin`。预约默认值在管理员保存前保持“待处理”；工作台不创建测试数据，也不绕过客户授权 | 聚焦 ESLint 通过。认证 Chrome 已在当前实时开发构建 `localhost:3006` 确认七项清单、逐项入口及预约默认值待确认状态 | 将当前构建部署到规定的 `localhost:3005`，或出现清单/双码工作流可复现缺陷时重开 |
+| `/appointment-settings` — 企业预约策略 | 沿用既有 Ant Design/Admin Pro 设置单方向：确认状态、时区、七天多时段开放时间和预约数值边界，只有一个主保存动作 | 复用 `GET/PUT /api/appointment-settings` 与 `referrer-network-operations` 权限，限已选租户的 `super_admin`、`admin`、`enterprise_admin`；保存会确认默认策略，不改变预约岗位 API | 聚焦 ESLint 与生产构建通过。认证 Chrome 已在 `localhost:3006` 确认默认值待处理提示、七天排期、增加时段、预约边界和可用保存动作；`localhost:3005` 的旧服务访问新路由为 404 | 将当前构建部署到 `localhost:3005`，或策略合同变化/出现可复现表单缺陷时重开 |
 
 ## 交接
 

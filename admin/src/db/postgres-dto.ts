@@ -155,6 +155,7 @@ export function adminUserToDto(
     phone: record.phone,
     menuPermissions: record.menuPermissions,
     status: record.status,
+    assignmentPaused: record.assignmentPaused,
     lastLoginAt: record.lastLoginAt,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,

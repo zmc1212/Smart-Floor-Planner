@@ -24,6 +24,13 @@
     </view>
     <button class="appointment-entry-action" bindtap="onScheduleAppointment">安排上门量房</button>
   </view>
+  <view class="appointment-entry" wx:elif="{{appointment}}">
+    <view class="appointment-entry-copy">
+      <text class="appointment-entry-title">上门量房 · 已确认</text>
+      <text class="appointment-entry-note">{{appointment.summary}} · {{appointment.address}}</text>
+    </view>
+    <button class="appointment-entry-action appointment-entry-action-secondary" bindtap="onOpenAppointment">查看预约</button>
+  </view>
   <view class="conversion-card" wx:if="{{lead && (canMarkConverted || lead.status === 'converted')}}">
     <view class="conversion-card-heading">
       <view class="conversion-card-copy">

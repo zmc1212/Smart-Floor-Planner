@@ -7,7 +7,7 @@ Read the repository-level `../AGENTS.md` first. The current admin feature map is
 ## Runtime And Architecture
 
 - This is a Next.js 16 App Router application using React 19, Tailwind CSS 4,
-  shadcn/ui, Radix primitives, Mongoose, and MongoDB.
+  Ant Design 5, Ant Design Pro, Mongoose, and MongoDB.
 - The local development server runs on port `3005` (`npm run dev`).
 - UI routes live under `src/app/(admin)`, with platform and merchant route groups.
 - API routes live under `src/app/api`; shared auth, tenant, workflow, AI, WeCom,
@@ -20,8 +20,10 @@ Read the repository-level `../AGENTS.md` first. The current admin feature map is
   filtering logic.
 - Check the endpoint role boundary and whether a route supports platform-wide
   `global_tenant_id` before reading or mutating tenant data.
-- Add reusable UI to `src/components/ui/*` and use existing shadcn/Radix controls
-  in business pages. Do not introduce Base UI or arbitrary hard-coded styling.
+- Follow the established Ant Design/Admin Pro direction and shared
+  `AdminAntdProvider` token configuration. Add reusable Admin controls to
+  `src/components/admin/*` or established business-component areas; do not
+  introduce a parallel UI system, Base UI, or arbitrary hard-coded styling.
 - Every visible admin mutation uses the shared operation feedback UI for success
   and failure. Native `alert()` is not normal feedback.
 - When adding a page or menu, update Sidebar permissions, route guards, default
@@ -44,6 +46,11 @@ Replace the route's current record in both files before handoff, including scope
 concise verification, remaining visual QA, and the concrete trigger required to
 revisit the route. Do not reselect a `Hold` route merely because it shares a
 convenient `ProTable` pattern with another page.
+
+The bilingual Admin UI refactor contract and existing Ant Design/Admin Pro
+routes are the confirmed source for functional Admin work. A separate mockup is
+needed only for a user-requested new visual direction or an explicit ledger
+requirement.
 
 ## Verification And Documentation
 

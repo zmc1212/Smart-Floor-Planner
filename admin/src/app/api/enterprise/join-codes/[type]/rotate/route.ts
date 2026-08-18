@@ -49,10 +49,7 @@ export async function POST(
         );
         return NextResponse.json({
           success: true,
-          data: {
-            ...enterpriseJoinCodeToDto(result.code),
-            token: result.token,
-          },
+          data: enterpriseJoinCodeToDto(result.code),
         });
       }
     );

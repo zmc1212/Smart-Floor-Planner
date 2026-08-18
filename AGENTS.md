@@ -127,7 +127,7 @@ or a roadmap do not replace the current module inventory.
 
 ## Repository Map
 
-- `admin/`: Next.js 16 App Router, React 19, Tailwind 4, shadcn/ui + Radix,
+- `admin/`: Next.js 16 App Router, React 19, Tailwind 4, Ant Design 5 + Ant Design Pro,
   Mongoose, and MongoDB-backed APIs. Local development uses port `3005`.
 - `miniprogram/`: native WeChat Mini Program. BLE laser integration is in
   `utils/bluetooth.js`; graph and canvas logic are in `utils/surveyWallGraph.js`
@@ -160,9 +160,10 @@ staged change; split unrelated work.
 
 ### Admin UI And Feedback
 
-- Use shadcn/ui and Radix primitives. Reusable controls belong in
-  `admin/src/components/ui/*`; business pages should use shared components and
-  semantic Tailwind tokens.
+- Follow the existing Admin UI direction: Ant Design 5, Ant Design Pro
+  (`PageContainer`/`ProTable` where appropriate), and shared `AdminAntdProvider`
+  tokens. Reusable Admin controls belong under `admin/src/components/admin/*` or
+  established business-component areas; do not introduce a parallel UI system.
 - For Admin visual QA, use `http://localhost:3005` rather than `127.0.0.1` or
   another loopback alias. For authenticated flows, control the user's existing
   Chrome session with the Chrome plugin; the in-app Browser uses an isolated
@@ -176,6 +177,10 @@ staged change; split unrelated work.
   contract changes, or the user explicitly approves a new design direction.
   Prefer an unrecorded or explicitly queued route after auditing the remaining
   Admin surface; do not repeatedly choose familiar low-risk table pages.
+- The bilingual Admin UI refactor contract and existing Ant Design/Admin Pro
+  routes are the confirmed design source for functional Admin work. A separate
+  raster or mockup source is not required unless the user requests a new visual
+  direction or the route ledger explicitly requires one.
 - Every Admin UI refactor must replace the route's single current record in both
   language files with its visual scope, unchanged route/API/permission
   boundaries, concise verification evidence, and any current reopen trigger.

@@ -8,8 +8,11 @@ import {
 } from '@/lib/referral-attribution';
 import { resetWechatAccessTokenCacheForTests } from '@/lib/wechat-access-token';
 import {
+  buildEnterpriseOnboardingPath,
   buildPromotionServicePath,
+  createEnterpriseOnboardingCode,
   createPromotionServiceCode,
+  ENTERPRISE_ONBOARDING_PAGE,
   PROMOTION_SERVICE_PAGE,
 } from '@/lib/wechat-miniprogram-code';
 
@@ -99,6 +102,51 @@ test('promotion service codes use the anonymous claim route and real WeChat PNG 
   }
 });
 
+test('enterprise onboarding codes use the dedicated Mini Program route and real WeChat PNG bytes', async () => {
+  const previousAppId = process.env.WX_APPID;
+  const previousSecret = process.env.WX_APPSECRET;
+  process.env.WX_APPID = 'wx_test_app';
+  process.env.WX_APPSECRET = 'test_secret';
+  resetWechatAccessTokenCacheForTests();
+
+  const token = `ej_${'B'.repeat(32)}`;
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const fetchImpl = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    calls.push({ url, init });
+    if (url.includes('/cgi-bin/token')) {
+      return new Response(
+        JSON.stringify({ access_token: 'wechat_access_token', expires_in: 7200 }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+    return new Response(png, {
+      status: 200,
+      headers: { 'Content-Type': 'image/png' },
+    });
+  }) as typeof fetch;
+
+  try {
+    assert.equal(
+      buildEnterpriseOnboardingPath(token),
+      `${ENTERPRISE_ONBOARDING_PAGE}?token=${token}`
+    );
+    const bytes = await createEnterpriseOnboardingCode(token, { fetchImpl });
+    assert.deepEqual([...bytes], [...png]);
+    const body = JSON.parse(String(calls[1].init?.body));
+    assert.equal(body.path, `${ENTERPRISE_ONBOARDING_PAGE}?token=${token}`);
+    assert.equal(body.width, 430);
+    assert.deepEqual(body.line_color, { r: 8, g: 137, b: 57 });
+  } finally {
+    resetWechatAccessTokenCacheForTests();
+    if (previousAppId === undefined) delete process.env.WX_APPID;
+    else process.env.WX_APPID = previousAppId;
+    if (previousSecret === undefined) delete process.env.WX_APPSECRET;
+    else process.env.WX_APPSECRET = previousSecret;
+  }
+});
+
 test('promotion code image route keeps provider failures stable and private', () => {
   const route = readFileSync(
     path.join(
@@ -112,4 +160,35 @@ test('promotion code image route keeps provider failures stable and private', ()
   assert.match(route, /promotion_code_lookup_failed[\s\S]*status:\s*500/);
   assert.match(route, /wechat_code_unavailable[\s\S]*status:\s*502/);
   assert.doesNotMatch(route, /error:\s*error\s+instanceof\s+Error/);
+});
+
+test('enterprise onboarding image route is tenant-protected and keeps provider failures private', () => {
+  const route = readFileSync(
+    path.join(
+      process.cwd(),
+      'src/app/api/enterprise/join-codes/[type]/image/route.ts'
+    ),
+    'utf8'
+  );
+
+  assert.match(route, /roles:\s*\['super_admin', 'admin', 'enterprise_admin'\]/);
+  assert.match(route, /requireEnterprise:\s*true/);
+  assert.match(route, /revealActiveEnterpriseJoinCode/);
+  assert.match(route, /createEnterpriseOnboardingCode/);
+  assert.match(route, /Cache-Control': 'private, no-store, max-age=0'/);
+  assert.match(route, /wechat_code_unavailable[\s\S]*status:\s*502/);
+  assert.doesNotMatch(route, /data:\s*\{[^}]*token/);
+});
+
+test('enterprise join-code rotation does not return a plaintext token', () => {
+  const route = readFileSync(
+    path.join(
+      process.cwd(),
+      'src/app/api/enterprise/join-codes/[type]/rotate/route.ts'
+    ),
+    'utf8'
+  );
+
+  assert.match(route, /data:\s*enterpriseJoinCodeToDto\(result\.code\)/);
+  assert.doesNotMatch(route, /token:\s*result\.token/);
 });

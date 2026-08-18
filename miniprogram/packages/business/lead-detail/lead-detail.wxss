@@ -181,6 +181,11 @@
 
 .appointment-entry-action::after { border: 0; }
 
+.appointment-entry-action-secondary {
+  color: #087c36;
+  background: #e9f8ed;
+}
+
 .conversion-card {
   margin-bottom: 18rpx;
   padding: 24rpx;

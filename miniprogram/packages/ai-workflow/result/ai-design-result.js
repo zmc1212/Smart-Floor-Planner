@@ -75,6 +75,12 @@ function isAlbumPermissionError(error) {
     || message.includes('permission denied');
 }
 
+function getStaffRole() {
+  const app = typeof getApp === 'function' ? getApp() : null;
+  const user = app && app.globalData && app.globalData.userInfo;
+  return user && (user.staffRole || (user.role === 'staff' ? '' : user.role)) || '';
+}
+
 Page({
   data: {
     id: '',
@@ -82,6 +88,10 @@ Page({
     loading: true,
     running: false,
     saving: false,
+    publicationAvailable: false,
+    publicationLoading: false,
+    publicationUpdating: false,
+    publishedToCustomer: false,
     comparePercent: 50,
     pageScrollTop: 0,
   },
@@ -127,7 +137,10 @@ Page({
       const task = decorateTask(response, project);
       this.compareRect = null;
       this.setData({ task, loading: false });
-      if (task.status === 'succeeded') this.resetPageScroll();
+      if (task.status === 'succeeded') {
+        this.resetPageScroll();
+        this.loadPublication(task);
+      }
       if (this.shouldRun && ['created', 'pending'].includes(task.status) && !this.data.running) {
         this.shouldRun = false;
         this.startRun();
@@ -148,7 +161,9 @@ Page({
     this.startPolling();
     aiService.runTask(this.data.id)
       .then((task) => {
-        this.setData({ task: decorateTask(task, this.data.task && { projectDisplayTitle: this.data.task.projectTitle }), running: false });
+        const decorated = decorateTask(task, this.data.task && { projectDisplayTitle: this.data.task.projectTitle });
+        this.setData({ task: decorated, running: false });
+        if (task.status === 'succeeded') this.loadPublication(decorated);
         if (task.status !== 'processing') this.stopPolling();
       })
       .catch(() => {
@@ -239,6 +254,69 @@ Page({
       this.setData({ running: false });
       wx.showToast({ title: error.error || '重试失败', icon: 'none' });
     }
+  },
+
+  async loadPublication(task) {
+    const role = getStaffRole();
+    const publicationAvailable = Boolean(task && task.leadId && task.id && ['designer', 'enterprise_admin'].includes(role));
+    this.setData({ publicationAvailable, publishedToCustomer: false });
+    if (!publicationAvailable) return;
+    this.setData({ publicationLoading: true });
+    try {
+      const state = await aiService.getPublication(task.leadId, task.id);
+      this.setData({ publishedToCustomer: Boolean(state && state.published) });
+    } catch (error) {
+      this.setData({ publicationAvailable: false });
+    } finally {
+      this.setData({ publicationLoading: false });
+    }
+  },
+
+  publishToCustomer() {
+    const task = this.data.task;
+    if (!task || !this.data.publicationAvailable || this.data.publicationUpdating) return;
+    wx.showModal({
+      title: '发布给客户',
+      content: '发布后，客户可在自己的项目中查看这张方案。',
+      confirmText: '确认发布',
+      success: async (result) => {
+        if (!result.confirm) return;
+        this.setData({ publicationUpdating: true });
+        try {
+          await aiService.publishGeneration(task.leadId, task.id);
+          this.setData({ publishedToCustomer: true });
+          wx.showToast({ title: '已发布给客户', icon: 'success' });
+        } catch (error) {
+          wx.showToast({ title: error.error || error.message || '发布失败', icon: 'none' });
+        } finally {
+          this.setData({ publicationUpdating: false });
+        }
+      }
+    });
+  },
+
+  withdrawFromCustomer() {
+    const task = this.data.task;
+    if (!task || !this.data.publishedToCustomer || this.data.publicationUpdating) return;
+    wx.showModal({
+      title: '撤回客户方案',
+      content: '撤回后，客户将不能继续在项目中查看这张方案。',
+      confirmText: '确认撤回',
+      confirmColor: '#c43b31',
+      success: async (result) => {
+        if (!result.confirm) return;
+        this.setData({ publicationUpdating: true });
+        try {
+          await aiService.withdrawGeneration(task.leadId, task.id);
+          this.setData({ publishedToCustomer: false });
+          wx.showToast({ title: '方案已撤回', icon: 'success' });
+        } catch (error) {
+          wx.showToast({ title: error.error || error.message || '撤回失败', icon: 'none' });
+        } finally {
+          this.setData({ publicationUpdating: false });
+        }
+      }
+    });
   },
 
   reuseInputs() {

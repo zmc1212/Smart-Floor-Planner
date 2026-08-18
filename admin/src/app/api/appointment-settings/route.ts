@@ -6,7 +6,14 @@ import { httpErrorStatus } from '@/lib/http-error';
 import { withTenantRoute } from '@/lib/tenant-route';
 
 function dto(settings: Awaited<ReturnType<AppointmentRepository['getSettings']>>) {
-  return { ...settings, id: settings.id.toString(), enterpriseId: settings.enterpriseId.toString() };
+  const configured = settings.updatedAt.getTime() > settings.createdAt.getTime();
+  return {
+    ...settings,
+    id: settings.id.toString(),
+    enterpriseId: settings.enterpriseId.toString(),
+    configured,
+    configuredAt: configured ? settings.updatedAt : null,
+  };
 }
 
 export async function GET(request: Request) {
