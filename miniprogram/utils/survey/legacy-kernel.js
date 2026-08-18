@@ -983,6 +983,10 @@ function findOverlappingWall(floor, start, end, options) {
     const wallEnd = getNode(floor, wall.endNodeId);
     if (!wallStart || !wallEnd) return false;
 
+    if (hasClosureInteriorIntersection(start, end, wallStart, wallEnd)) {
+      return wall;
+    }
+
     const overlapLength = segmentOverlapLengthMm(start, end, wallStart, wallEnd);
     const wallLength = distanceMm(wallStart, wallEnd);
     const meaningfulOverlap = Math.min(currentLength, wallLength) * 0.25;
@@ -999,13 +1003,22 @@ function hasClosureInteriorIntersection(start, end, otherStart, otherEnd) {
     return segmentOverlapLengthMm(start, end, otherStart, otherEnd) > WALL_OVERLAP_TOLERANCE_MM;
   }
 
+  const otherLen = Math.sqrt(otherDirection.x * otherDirection.x + otherDirection.y * otherDirection.y);
+  if (otherLen > 0) {
+    const otherDirNorm = { x: otherDirection.x / otherLen, y: otherDirection.y / otherLen };
+    const startDist = pointLineDistanceMm(start, otherStart, otherDirNorm);
+    const endDist = pointLineDistanceMm(end, otherStart, otherDirNorm);
+    if (startDist <= WALL_OVERLAP_TOLERANCE_MM || endDist <= WALL_OVERLAP_TOLERANCE_MM) {
+      return false;
+    }
+  }
+
   const offset = { x: otherStart.xMm - start.xMm, y: otherStart.yMm - start.yMm };
   const t = cross(offset, otherDirection) / denominator;
   const u = cross(offset, direction) / denominator;
   const epsilon = 0.0001;
 
-  // The virtual closing edge may meet the first/last wall at either endpoint,
-  // but it cannot pass through any existing wall in its interior.
+  // The segment cuts across the other wall in the interior of both
   return t > epsilon && t < 1 - epsilon && u >= -epsilon && u <= 1 + epsilon;
 }
 
@@ -2736,6 +2749,65 @@ function findOuterFaceClosureProjection(floor, session, point, forcedWallId) {
   return best;
 }
 
+function findRayWallIntersection(floor, session, anchor, targetPoint) {
+  if (!floor || !session || !anchor || !targetPoint) return null;
+  const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
+    ? session.activeSpaceStartWallIndex
+    : 0;
+  const activeWallCount = Math.max(0, (floor.walls || []).length - startWallIndex);
+  if (activeWallCount < 2) return null;
+
+  const direction = { x: targetPoint.xMm - anchor.xMm, y: targetPoint.yMm - anchor.yMm };
+  const len = Math.sqrt(direction.x * direction.x + direction.y * direction.y);
+  if (len < MIN_WALL_LENGTH_MM) return null;
+
+  const isOuterChain = session.activeSpaceSharedSnapLine === 'outer';
+  let best = null;
+
+  (floor.walls || []).forEach((wall, index) => {
+    if (index >= startWallIndex) return;
+    const start = getNode(floor, wall.startNodeId);
+    const end = getNode(floor, wall.endNodeId);
+    if (!start || !end) return;
+
+    const geom = buildWallSnapGeometry(floor, wall);
+    const useOuter = isOuterChain && geom && geom.outerStart && geom.outerEnd;
+    const segStart = useOuter ? geom.outerStart : start;
+    const segEnd = useOuter ? geom.outerEnd : end;
+
+    const segDirection = { x: segEnd.xMm - segStart.xMm, y: segEnd.yMm - segStart.yMm };
+    const denom = cross(direction, segDirection);
+    if (Math.abs(denom) < 0.000001) return;
+
+    const offset = { x: segStart.xMm - anchor.xMm, y: segStart.yMm - anchor.yMm };
+    const t = cross(offset, segDirection) / denom;
+    const u = cross(offset, direction) / denom;
+    const epsilon = 0.0001;
+
+    if (t > 0.05 && u >= -epsilon && u <= 1 + epsilon) {
+      const intersectPoint = {
+        xMm: Math.round(anchor.xMm + t * direction.x),
+        yMm: Math.round(anchor.yMm + t * direction.y)
+      };
+      const dist = distanceMm(anchor, intersectPoint);
+      if (!best || dist < best.distanceMm) {
+        best = {
+          wall,
+          point: intersectPoint,
+          start: segStart,
+          end: segEnd,
+          t,
+          u,
+          distanceMm: dist,
+          snapLine: useOuter ? 'outer' : 'inner'
+        };
+      }
+    }
+  });
+
+  return best;
+}
+
 function findPartitionClosureProjection(floor, session, anchor, point) {
   if (!floor || !session || !anchor || !point || session.mode !== 'straight') return null;
   const startWallIndex = Number.isInteger(session.activeSpaceStartWallIndex)
@@ -3205,7 +3277,15 @@ function startPreview(draft, rawPoint) {
     vertexAxisSnap.point
   );
   let previewPoint = directStartClosureSnap.point;
-  const rawOuterFaceProjection = findOuterFaceClosureProjection(floor, session, rawPoint);
+  const rayIntersection = findRayWallIntersection(floor, session, anchor, previewPoint);
+  let rawOuterFaceProjection = findOuterFaceClosureProjection(floor, session, rawPoint);
+  if (!rawOuterFaceProjection && rayIntersection && rayIntersection.snapLine === 'outer') {
+    const distToAnchor = distanceMm(anchor, previewPoint);
+    if (distToAnchor >= rayIntersection.distanceMm - CLOSE_TOLERANCE_MM) {
+      rawOuterFaceProjection = findOuterFaceClosureProjection(floor, session, rayIntersection.point, rayIntersection.wall.id);
+    }
+  }
+
   if (rawOuterFaceProjection && session.mode === 'straight') {
     const outerDx = Math.abs(rawOuterFaceProjection.end.xMm - rawOuterFaceProjection.start.xMm);
     const outerDy = Math.abs(rawOuterFaceProjection.end.yMm - rawOuterFaceProjection.start.yMm);
@@ -3214,6 +3294,11 @@ function startPreview(draft, rawPoint) {
     previewPoint = outerDx >= outerDy
       ? { xMm: previewPoint.xMm, yMm: rawOuterFaceProjection.point.yMm }
       : { xMm: rawOuterFaceProjection.point.xMm, yMm: previewPoint.yMm };
+  } else if (rayIntersection) {
+    const distToAnchor = distanceMm(anchor, previewPoint);
+    if (distToAnchor > rayIntersection.distanceMm) {
+      previewPoint = rayIntersection.point;
+    }
   }
   session.previewOuterFaceWallId = rawOuterFaceProjection ? rawOuterFaceProjection.wall.id : '';
   const partitionProjection = findPartitionClosureProjection(
