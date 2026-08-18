@@ -3294,6 +3294,14 @@ function startPreview(draft, rawPoint) {
         session.closeCandidateNodeId = mergeCandidate.id;
         session.closeCandidateType = 'merge';
       }
+      // Always record the outer-face projection point as the close candidate
+      // so that isDirectClosureHit fires when the user releases on the outer
+      // face, regardless of whether a topology merge node was found.
+      session.closeCandidatePoint = outerFaceProjection.point;
+      session.closeCandidateSharedWallId = outerFaceProjection.wall.id;
+      if (!mergeCandidate) {
+        session.closeCandidateType = 'shared-wall';
+      }
     } else if (sharedProjection) {
       if (
         session.mode === 'straight' &&
@@ -3729,7 +3737,14 @@ function commitPreviewLength(draft, lengthMm, inputSource) {
       session.closeCandidateNodeId = mergeCandidate.id;
       session.closeCandidateType = 'merge';
     } else {
-      session.state = 'wallCommitted';
+      // No topology merge node found, but the wall ended on the outer face of
+      // the shared boundary. Close via the shared-wall path so confirmClosure
+      // can split the wall and build the room without needing an explicit merge.
+      session.state = 'closing';
+      session.closeCandidateNodeId = endNode.id;
+      session.closeCandidatePoint = outerFaceProjection.point;
+      session.closeCandidateType = 'shared-wall';
+      session.closeCandidateSharedWallId = outerFaceProjection.wall.id;
     }
   } else if (activeStartNode && activeWallCount >= 3 && distanceMm(endNode, activeStartNode) <= CLOSE_TOLERANCE_MM) {
     session.state = 'closing';
